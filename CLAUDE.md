@@ -363,4 +363,10 @@ repo is settled. See `docs/agents/domain.md`.
 - `/code-review`'s Standards axis reads this file and `.claude/rules/`
   (`code-quality.md`, `failure-modes.md`). The plugin's skill is
   `mattpocock-skills:code-review`, not Claude Code's built-in `/code-review`.
+  Give it the spec's path so the Spec axis can quote requirement IDs.
+- Plans come first. `writing-plan-specs` writes `requirements.md` and `spec.md`
+  under `.claude/plans/` and owns their templates (`/to-spec` is not used here;
+  `/to-tickets` writes tickets in that format). `checking-plan-readiness` runs
+  before a spec or ticket becomes `ready-for-agent`; `checking-plan-consistency`
+  runs per wave of specs; `scripts/check_plans.py` is their mechanical half.
 - A slice is finished when its area file in `.claude/plans/` says so.

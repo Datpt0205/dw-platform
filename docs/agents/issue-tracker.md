@@ -25,16 +25,34 @@ installed). Without it, this layout is still the plan the session hooks read.
     - the spec: `.claude/plans/<area>/<feature-slug>/spec.md`
     - one file per ticket: `.claude/plans/<area>/<feature-slug>/issues/<NN>-<slug>.md`,
       numbered from `01`, never a single combined tickets file
+    - a change that fits one sentence may have tickets and no spec: the folder then holds only
+      `issues/`, each ticket says `Yêu cầu: không (<lý do>)`, and every ticket check still runs
+      on it (`ticket-template.md` says what makes such a ticket ready)
+- An area planned before code also keeps `.claude/plans/<area>/requirements.md`
+  (its high-level requirements) and a `discovery/` folder: the wayfinder map
+  and its tickets, the brainstorm and research notes, frozen once
+  `requirements.md` is approved.
 - A ticket records its triage state as a `Status:` line near the top (role
   strings in `triage-labels.md`), blockers as `Blocked by: NN, NN`, and
   conversation under a `## Comments` heading at the bottom.
+- The formats of `requirements.md`, `spec.md` and a ticket file are the
+  templates of those names in `.claude/skills/writing-plan-specs/`; nothing
+  else restates them. Specs and tickets are Vietnamese, ADRs English.
 
 ## When a skill says "publish to the issue tracker"
 
 Create the file under `.claude/plans/<area>/<feature-slug>/` (creating the
-directory if needed), then add or refresh a one-line pointer to it in
-`.claude/plans/<area>.md`. The area file is what the stop hook counts as the
-plan being updated; a ticket file alone is detail, not the plan.
+directory if needed), then add or refresh one pointer per feature folder (not
+per ticket) in `.claude/plans/<area>.md`. The area file is what the stop hook
+counts as the plan being updated; a ticket file alone is detail, not the plan.
+
+`/to-tickets` publishes here, not to `.scratch/<feature-slug>/issues/`, in the
+ticket template, with `Status: needs-triage`; a ticket becomes
+`ready-for-agent` only after `checking-plan-readiness` passes. `/to-spec` is
+not used for specs here: its template (English, no file paths, published as
+`ready-for-agent`) contradicts the house one. `scripts/check_plans.py` reports a
+ticket, spec or map outside this layout; CI runs it in advisory mode until the
+existing plans are clean, and runs its own tests (`make test-plans`) enforcing.
 
 ## When a skill says "fetch the relevant ticket"
 
@@ -43,8 +61,8 @@ the ticket number directly.
 
 ## Closing work
 
-When a ticket is done, set `Status: resolved`, and record the slice (commit
-hash, one line) in the area file's slice log, as every slice so far has been.
+When a ticket is done, set `Status: resolved (<yyyy-mm-dd>, <branch>)`, and
+record the slice (commit hash, one line) in the area file's slice log, as every slice so far has been.
 Update `.claude/PLAN.md` only when an area's state, the next step or a
 decision owed changes.
 
