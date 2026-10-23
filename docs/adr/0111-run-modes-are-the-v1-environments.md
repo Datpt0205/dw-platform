@@ -1,5 +1,5 @@
 ---
-status: Proposed (direction chosen by the requester on 2026-10-22 and 2026-10-23; not yet reviewed by Đạt)
+status: Accepted (Đạt, 2026-10-23; amendments from the decision brief applied)
 date: 2026-10-23
 source:
     - ../../.claude/plans/studio/tenant-config/spec.md
@@ -64,7 +64,7 @@ v1 and v2, and on the provisional call on DO-26.
    tenant-wide normalised addresses (E.164, lower-case email, provider user id), expiring within 90 days and
    revocable; an empty list sends nothing. The egress client re-checks these rules. Internal effects, record writes
    included, are intercepted as in `simulate`, with nothing persisted in v1 (DO-26). A `critical` effect keeps its
-   approval (CLAUDE.md:61-62), routed to the tester. Connector manifests declare `test_isolation` (`isolated`,
+   approval (CLAUDE.md:68-69), routed to the tester. Connector manifests declare `test_isolation` (`isolated`,
    `partial` or `none`; unknown is `none`) and, per messaging action, its recipient argument.
 5. **A non-live run stays with its tester.** Its notifications and approvals reach only the tester, in the app, never
    through a chat channel. Spans, audit events and the usage ledger carry `run_mode`; business metrics exclude non-live
@@ -111,10 +111,10 @@ v1 and v2, and on the provisional call on DO-26.
   analysis mitigate); a workflow that creates a record and reads it back cannot be tested end to end until the scratch
   ships; test runs and evaluations still spend model tokens, paid from the tenant budget under purpose caps (DO-50,
   provisional; ADR 0121); v2 adds the first cross-tenant write lane besides offboarding.
-- The value `test` collides with the deployment profile `test` (CLAUDE.md:278-283): a different concept, kept apart by
+- The value `test` collides with the deployment profile `test` (CLAUDE.md:319-324): a different concept, kept apart by
   the typed `RunMode` and the glossary and never compared with the settings profile; deployment gates stay on
   `settings.is_deployed` (`apps/api/src/dw_api/settings.py:323`). Worth keeping because the UI says "Chạy thử", never
-  the code value. Nothing else is contradicted: the policy shape of CLAUDE.md:172-177 is unchanged, and the research
+  the code value. Nothing else is contradicted: the policy shape of CLAUDE.md:194-203 is unchanged, and the research
   recommendation set aside above is planning, not a decision of record.
 - si-platform: none; si-platform has no run modes. Our workspace is neither an RLS boundary nor an environment, unlike
   si-platform `docs/adr/0030-workspace-is-the-rls-boundary-accounts-are-tenant-wide.md` (ADR 0102 records that
@@ -126,11 +126,21 @@ v1 and v2, and on the provisional call on DO-26.
    2026-10-23, option (a)): a record write in a `test` run is intercepted like `simulate` and the run keeps its would-be
    writes, a run-scoped scratch follows in v1.5, and `test` keeps its name with a typed `RunMode`. If wrong: (b) real
    records tagged `test` need a purge lane and a filter in every list; (c) the run-scoped scratch is built now and the
-   value becomes `trial`.
+   value becomes `trial`. Answered 2026-10-23: option (a); W1 opens `simulate` only, the test-run door answering 422
+   to `test` until W2, egress refusing every mode but `live`, and the executor still intercepting a `test` run like
+   `simulate` if one arrives (DO-26.1 (a)); `test` keeps its name with a typed `RunMode`, the UI saying "Chạy thử"
+   (DO-26.2 (a)).
 2. **DO-55 (counsel and requester, before P1).** Consent wording and validity for employees' contact data used as test
    recipients, and who may add them (proposed: tenant admins, 90 days).
 3. **DO-62 (requester and counsel, before GA).** v2 sandbox tenants: billing and quota, who creates them (proposed:
    operators only) and what data they hold (proposed: synthetic only, since a masked copy of production is a new
-   purpose under PDPL).
+   purpose under PDPL). Answered 2026-10-23: operators alone create them, they hold synthetic data only, and their
+   quota is their own, never counted against the production tenant (DO-62 (a)); not urgent, since they are W3.
 4. **FOG-60 (prototype)** for the run-scoped scratch through the records gateway, and **FOG-04 (research)** for
    whether ZNS has a test or development mode that would earn a `test_isolation` of `partial`.
+
+## Acceptance (2026-10-23)
+
+- Status Accepted by Đạt; the decisions are accepted as written, since the phasing already opens `simulate` only in
+  W1 and `test` with its recipient list in W2 (DO-26.1 (a)). No `CLAUDE.md` line changes (`:278-283` holds).
+- Open 1 answered (DO-26.1 (a), DO-26.2 (a)) and Open 3 answered (DO-62 (a)); Open 2 waits until `test` opens in W2.

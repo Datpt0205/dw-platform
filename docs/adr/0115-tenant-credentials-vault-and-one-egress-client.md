@@ -1,5 +1,5 @@
 ---
-status: Proposed (direction chosen by the requester on 2026-10-22 and 2026-10-23; not yet reviewed by Đạt)
+status: Accepted (Đạt, 2026-10-23; amendments from the decision brief applied; OpenBao and smokescreen ship only after spike 21 (FOG-25) measures unattended unseal and Transit parity)
 date: 2026-10-23
 source:
     - ../../.claude/plans/studio/connections-and-vault/spec.md
@@ -45,11 +45,15 @@ platform's vault and are injected per call into the model proxy) and D14 (the pr
    checkpoints, traces, logs or audit, and the API never returns one (write-only fields; a signing secret the platform
    generates is shown once). A new subject (OAuth client, outbound webhook endpoint, inbound endpoint, MCP server
    registration, model connection) is one nullable FK plus a widened `num_nonnulls(...) = 1` CHECK. An unreachable KMS
-   fails the call with `kms_unavailable`; nothing falls back to plaintext or to a Valkey cache. Offboarding destroys
-   the tenant key (crypto-shredding), so the tenant's ciphertext in every backup becomes unreadable.
+   fails the call with `kms_unavailable`; nothing falls back to plaintext or to a Valkey cache. A tenant key rotates
+   every 90 days (`rewrap`), and tenant-supplied keys (BYOK) come after v1. Offboarding destroys the tenant key
+   (crypto-shredding). The shredding takes effect once the oldest key-store backup that still holds the key has
+   expired, since an older OpenBao backup could still decrypt an older database backup: the key store's backups are
+   kept under a written term no longer than the data backups', and the restore drill checks both.
 2. **Connections and the one rule.** `platform.connections` holds one authorized link to one external account, owned
    by a workspace (`share_scope` `owner`, `workspace` or `workspace_subtree`) or, from v1, by one user. RLS is
-   tenant-only, because reach crosses the workspaces of a tenant by design (D1); the status machine is the database's
+   tenant-only, because reach crosses the workspaces of a tenant by design (D1), and the table is listed as tenant-wide
+   with that reason under amendment A6 (ADR-0100); the status machine is the database's
    (`platform.guard_connection_status`). `connection_usable(connection, context, purpose)`, one function in the
    platform's connections application layer, is the single answer to "may this run use this connection now": same
    tenant, `status = 'active'`, the run's workspace equal to the owning one or inside its sub-tree under
@@ -90,9 +94,11 @@ platform's vault and are injected per call into the model proxy) and D14 (the pr
    pinned commit) runs on networks of its own (`dw-egress-in`, internal, shared with api, worker, the MCP gateway and
    the model proxy; `dw-egress-out`, smokescreen alone; never `dw-edge`) as a second layer that decides nothing
    tenant-specific: role `catalog` enforces the union of manifest hosts, role `tenant` admits any global address. The
-   per-tenant allowlist stays in Python, and `validate_for_profile` refuses a deployed profile that enables a
-   tenant-defined destination without `DW_EGRESS_PROXY_URL`. The MCP gateway and the model proxy reach the internet
-   only through it.
+   per-tenant allowlist stays in Python. The proxy is mandatory before the first tenant-defined HTTP destination (W2:
+   HTTP tools, webhooks, MCP servers, model base URLs), and `validate_for_profile` refuses a deployed profile that
+   enables a tenant-defined HTTP destination without `DW_EGRESS_PROXY_URL`. SMTP is outside that rule: P1's one
+   tenant-defined destination, the SMTP host, is resolved once by `resolve_checked` and reached at the address it
+   pinned (decision 5), without the proxy. The MCP gateway and the model proxy reach the internet only through it.
 8. **Webhooks and signatures.** Outbound webhooks are tenant-registered HTTPS endpoints (`platform.webhook_endpoints`)
    fed from the outbox in ADR-0006's shape (`platform.webhook_deliveries`, whose rows enter only through SECURITY
    DEFINER `platform.enqueue_webhook_deliveries`) and signed per Standard Webhooks 1.0 (`webhook-id`,
@@ -100,11 +106,14 @@ platform's vault and are injected per call into the model proxy) and D14 (the pr
    a 24-hour rotation; <https://github.com/standard-webhooks/standard-webhooks/blob/main/spec/standard-webhooks.md>).
    One pure module owns that signing and every inbound signature verifier: a `SignatureVerifier` Protocol and one
    `VERIFIERS` table keyed by scheme (`standard_webhooks_v1`, `standard_webhooks_v1a`, `static_header_token`,
-   `meta_x_hub_signature_256`, and `zalo_oa_zevent` until it is measured), with a 5-minute timestamp tolerance.
+   `meta_x_hub_signature_256`, and `zalo_oa_zevent` until it is measured), with a 5-minute timestamp tolerance. An
+   outbound event is thin by default. An endpoint carries personal data only once `include_personal_data` is switched
+   on for it, audited; a principal named on the endpoint then decides what stays hidden, as the record API does for its
+   caller (YC24, ADR-0106), and an endpoint abroad must pass the residency route class (ADR-0123) (DO-58 (b)).
 
 ## Alternatives considered
 
-- **Secrets in OpenBao KV with a reference in Postgres.** Rejected: a second system of record (`CLAUDE.md:57`) and one
+- **Secrets in OpenBao KV with a reference in Postgres.** Rejected: a second system of record (`CLAUDE.md:61`) and one
   more failure domain on every read, with no RLS and offboarding and backups split across two stores.
 - **pgcrypto under one platform key, or one Transit key with derived contexts.** Rejected: no per-tenant
   crypto-shredding at offboarding, and with pgcrypto the key travels through SQL.
@@ -121,11 +130,15 @@ platform's vault and are injected per call into the model proxy) and D14 (the pr
 
 ## Consequences
 
-- OpenBao and smokescreen are new tier-0 services (P1) under the deployable admission rules; the host grows first
-  (D14), sized by measurement (FOG-23). tools-and-skills, mcp-client, model-connections and workflow-triggers consume
-  the vault, the usable rule and the egress client rather than building their own.
-- OpenBao's storage joins the backup job and the restore drill: `scripts/backup_postgres.sh:26` backs up the `dw`
-  database only, so a green drill could not see the keys (failure-modes #0).
+- OpenBao (P1) and smokescreen (before the first tenant-defined HTTP destination, W2) are new tier-0 services under
+  the deployable admission rules, and they ship only after spike 21 (FOG-25) measures unattended unseal and Transit
+  parity; the host grows first (D14), sized by measurement (FOG-23). tools-and-skills, mcp-client, model-connections
+  and workflow-triggers consume the vault, the usable rule and the egress client rather than building their own.
+- Only OpenBao and smokescreen wait for the spike: `KmsPort`, `LocalDevKms`, `platform.secret_envelopes` with its
+  definer functions, and the address policy that closes the gaps of `net_guard.py:36-46` (decision 5) go ahead now.
+- OpenBao's storage joins the backup job, under decision 1's retention term, and the restore drill:
+  `scripts/backup_postgres.sh:26` backs up the `dw` database only, so a green drill could not see the keys
+  (failure-modes #0).
 - Migrations: `platform.secret_envelopes` (RLS ENABLE and FORCE, no grant to `dw_app`), `platform.connections`,
   `platform.oauth_flows`, `platform.oauth_clients`, `platform.egress_allowed_hosts`, `platform.webhook_endpoints`,
   `platform.webhook_deliveries` and the definer functions; `platform.connection_delegations` with personal connections.
@@ -138,8 +151,9 @@ platform's vault and are injected per call into the model proxy) and D14 (the pr
 - Harder: an extra hop per call, a Go image to maintain, an unseal after every OpenBao restart; an operator endpoint on
   CGNAT space (`100.64.0.0/10`) is refused after the change unless allow-listed.
 - The existing outbound URL check folds into the one address policy, so startup checks and the egress client cannot
-  disagree. `CLAUDE.md:111-116` (Required stack) gains OpenBao and smokescreen (amendment A10).
-- `CLAUDE.md:103-107` (a second language must not take over "anything that decides"): OpenBao and smokescreen are Go,
+  disagree. `CLAUDE.md:124-129` (Required stack) gains "OpenBao (Transit) holds tenant keys, and smokescreen is the
+  egress proxy in deployed profiles" (amendment A10).
+- `CLAUDE.md:116-120` (a second language must not take over "anything that decides"): OpenBao and smokescreen are Go,
   but each decides only an infrastructure fact (may this process identity use this key; is this address global);
   whether a connection may be used stays in Python. `apps/api/src/dw_api/settings.py:1` stays true for deployment
   secrets only; its docstring is amended on acceptance.
@@ -156,13 +170,33 @@ platform's vault and are injected per call into the model proxy) and D14 (the pr
 
 1. **DO-47 (Đạt and operator).** Accept OpenBao as a tier-0 service with an unattended unseal path (integrated storage
    or its own database); the `dw-egress` networks with smokescreen built from a pinned commit, mandatory before the
-   first tenant-defined destination; a 90-day tenant key rotation; tenant-supplied keys in v2?
-2. **DO-48 (requester; counsel on fan-out).** Workspace-shared connections only in P1? Provisional call (agent,
-   2026-10-23): yes, with generic SMTP as the P1 email path.
-3. **DO-24, answered by D14 (2026-10-23).** At least 4 vCPU / 16 GB before OpenBao and the egress proxy ship; the
-   sizes are fixed only after FOG-23 measures them.
-4. **DO-58 (requester and counsel, before GA).** May outbound webhook payloads carry personal data? Until answered,
-   events are thin and an endpoint's `include_personal_data` is off by default.
+   first tenant-defined destination; a 90-day tenant key rotation; tenant-supplied keys in v2? Answered 2026-10-23:
+   OpenBao Transit from P1 with an unattended unseal as FOG-25 measures it, key-store backups and a 90-day rotation;
+   tenant-supplied keys after v1 (DO-47.1 (a)); smokescreen mandatory before the first tenant-defined HTTP
+   destination (W2), P1's SMTP host pinned by address only (DO-47.2 (a)). Both ship only after spike 21.
+2. **DO-48 (requester; counsel on fan-out).** Workspace-shared connections only in P1? Answered 2026-10-23: yes, with
+   generic SMTP as the P1 email path; OAuth flows and personal connections are W2 (DO-48.1 (a)).
+3. **DO-24.** Answered 2026-10-23 by D14: at least 4 vCPU / 16 GB before OpenBao and the egress proxy ship; the sizes
+   are fixed only after FOG-23 measures them.
+4. **DO-58 (requester and counsel, before GA).** May outbound webhook payloads carry personal data? Answered
+   2026-10-23 (DO-58 (b)): thin by default, and personal data only on an endpoint switched to it, as decision 8 says.
 5. **FOG-25 and FOG-26 (prototypes).** OpenBao 2.7.x Transit parity with the documented API (`datakey/plaintext`,
    `rewrap`, `deletion_allowed`), latency, unseal and the need for a data-key cache; smokescreen's build, role
-   identification without mTLS, deny ranges and CONNECT through `httpx2`.
+   identification without mTLS, deny ranges and CONNECT through `httpx2`. Spike 21 is the condition this ADR was
+   accepted on.
+
+## Acceptance (2026-10-23)
+
+Accepted by Đạt on 2026-10-23, on condition that OpenBao and smokescreen ship only after spike 21 (FOG-25) measures
+unattended unseal and Transit parity, with these amendments from the decision brief:
+
+- Decision 1: a 90-day key rotation and BYOK after v1; crypto-shredding takes effect only once the oldest key-store
+  backup holding the key has expired, so key-store backups are kept no longer than data backups and the restore drill
+  checks both (DO-47.1 (a)).
+- Decision 2: `platform.connections` is listed as tenant-wide under amendment A6.
+- Decision 7: the proxy is mandatory before the first tenant-defined HTTP destination (W2), and `validate_for_profile`
+  checks HTTP destinations only; P1's SMTP host is pinned by address without the proxy (DO-47.2 (a)).
+- Decision 8: outbound events are thin by default; personal data is switched on per endpoint, audited, with hidden
+  fields and the residency route applied (DO-58 (b)).
+- Consequences: what waits for the spike and what goes ahead now; the A10 sentence written out.
+- Open: DO-47, DO-48, DO-24 and DO-58 answered; FOG-25 and FOG-26 stay open as the condition.

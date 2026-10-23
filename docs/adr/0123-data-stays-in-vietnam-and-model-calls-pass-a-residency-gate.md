@@ -1,5 +1,5 @@
 ---
-status: Proposed (direction chosen by the requester on 2026-10-22 and 2026-10-23; not yet reviewed by Đạt)
+status: Accepted (Đạt, 2026-10-23; amendments from the decision brief applied)
 date: 2026-10-23
 source:
     - ../../.claude/plans/studio/compliance-pdpl/spec.md
@@ -61,9 +61,10 @@ and `model-connections` the gate on the model path.
       only one: the class is reached only through the attested loosening below.
     - `cross_border_full` admits a foreign route only under a live row of `platform.cross_border_attestations`
       (processor, CTIA reference, `attested_by`, `expires_at`, `revoked_at`), which must name sensitive data to cover
-      it.
-    - Tightening takes one person. Loosening a tenant's or a workspace's class takes a maker and a different checker
-      (D11), audited, and toward a cross-border class a live attestation naming the processor.
+      it. The table is tenant-wide under amendment A6 (ADR-0100), since the tenant is the controller.
+    - Tightening takes one person, audited. Loosening a tenant's or a workspace's class takes a maker and a different
+      checker (D11), audited, and toward a cross-border class a live attestation naming the processor. The requester
+      and Đạt scoped D11 this way on 2026-10-23: closing takes one person, opening two.
 4. **One gate before any byte leaves.** `ResidencyGate.check(route_class, route)` is injected by constructor into
    every adapter that sends content to a model: the ModelResolver's doors (ADR-0118: the agent chat model and the
    structured gateway), embeddings and rerank, document extraction and transcription, compaction and evaluation
@@ -100,7 +101,9 @@ and `model-connections` the gate on the model path.
   connector manifests; compliance-pdpl keeps the processing register and the attestation records.
 - A `vn_only` tenant without a Vietnamese model cannot run AI nodes, and the UI says why. Every tenant starts at
   `vn_only` and an undeclared alias is foreign, so the pilot needs a declared route processed in Vietnam before its
-  first AI node runs (FOG-10).
+  first AI node runs (FOG-10). Discovery 18 (where each of the requester's aliases is processed, FOG-18) and the
+  FOG-10 part of discovery 19 run now for that reason. Building does not wait for counsel: `vn_only` is the strictest
+  class, and counsel can only allow more.
 - Hosted Langfuse abroad is excluded for personal data, and counsel is engaged before the first external pilot on real
   data (compliance-pdpl 02). TLS on internal hops and encrypted backups are W2.
 - Tests that must exist, each shown red with its guard removed: a `vn_only` call to a foreign or undeclared route is
@@ -110,8 +113,9 @@ and `model-connections` the gate on the model path.
 
 ### Contradictions and amendments
 
-- Extends CLAUDE.md:286-289 (trace metadata, safe identifiers only) with route class, location and processor.
-  CLAUDE.md has no residency rule yet; one is added when this ADR is accepted.
+- Extends CLAUDE.md:327-330 (trace metadata, safe identifiers only) with route class, location and processor.
+  CLAUDE.md had no residency rule; with this acceptance it gains "Personal data is processed in Vietnam unless the
+  tenant's route class and a live attestation allow otherwise; every model call passes `ResidencyGate`."
 - `.claude/plans/platform-runtime.md:221` (the chat path reads the platform profile, not the tenant's) must be fixed by
   model-connections (ADR-0118) for the class to apply per tenant.
 - Diverges from the vocabulary of dw-proterial `docs/adr/0006-model-routing-by-data-classification.md` as stated
@@ -123,16 +127,33 @@ and `model-connections` the gate on the model path.
 
 1. **DO-53** (counsel): is Studio a personal-data processing service that needs the Ministry of Public Security
    certificate before the first paying tenant, is there a transition, and which entity holds it (FOG-73)? It may gate
-   selling at all; until it is answered, synthetic or internal data only.
+   selling at all; until it is answered, synthetic or internal data only. Handling decided 2026-10-23 (DO-53 (a)):
+   the question goes to counsel in W1's first week, only synthetic or internal data is processed until a written
+   answer, and the answer is a condition for shadow runs (YC99). Counsel's answer is still owed.
 2. **DO-54** (counsel and the requester): the platform as processor and the tenant as controller, attested at
    onboarding with a DPA signed before shadow runs; `vn_only` by default for every tenant, the pilot included;
    cross-border only with an attestation naming the processor and its CTIA, tools, MCP servers and connectors abroad
    included; and who files the DPIA and the CTIA when a tenant picks a foreign model or connector. Recommended: the
-   product exports the dossier inputs, counsel decides who files.
+   product exports the dossier inputs, counsel decides who files. Answered 2026-10-23 as recommended: the W1 mechanism
+   (DO-54.1 (a)) and the roles, the DPA before shadow runs and the attestation for tools, MCP servers and connectors
+   abroad (DO-54.2 (a)); counsel decides who files the DPIA and the CTIA.
 3. **DO-07** (Đạt): loosening a tenant's residency class takes two people, answered for the requester by D11 on
-   2026-10-23; Đạt's review is owed.
+   2026-10-23; Đạt's review is owed. Answered 2026-10-23: Đạt accepts it; tightening takes one person, audited
+   (decision 3).
 4. **DO-19** (requester): whether the models behind the requester's existing gateway are processed in Vietnam or
    abroad, alias by alias (FOG-18); until declared they count as foreign. FOG-10 asks which in-country models meet the
    pilot's quality and cost under `vn_only`.
 5. **FOG-74** (research): the status of the AI Law's implementing decrees, the PDPL sanctions decree, the
    Cybersecurity Law 2025 and the Decree 53 replacement, any of which may add localisation or logging duties here.
+
+## Acceptance (2026-10-23)
+
+Accepted by Đạt on 2026-10-23 for its mechanism, with these amendments from the decision brief; the legal questions
+stay open:
+
+- Decision 3: `vn_only` stays the default for every tenant (DO-54.1 (a)); tightening takes one person with an audit
+  event, as the requester and Đạt scoped D11; `platform.cross_border_attestations` is tenant-wide under amendment A6.
+- Consequences: the pilot's first AI step waits for a route declared as processed in Vietnam, so discovery 18 and
+  FOG-10's part of discovery 19 run now (OPS-j); building does not wait for counsel.
+- Contradictions: the residency rule `CLAUDE.md` gains is written out.
+- Open: DO-54 and DO-07 answered; DO-53's handling decided while counsel's answer is owed; DO-19 and FOG-74 stay open.

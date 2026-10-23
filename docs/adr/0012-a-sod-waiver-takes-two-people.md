@@ -8,6 +8,8 @@ source:
 
 # 0012. A separation-of-duties waiver takes two people, and a role cannot change under a membership
 
+Amended by ADR-0104 (2026-10-23)
+
 Amends the waiver design of migration `6b26771e549d` (per-tenant waivers, on the
 record) and the membership trigger of `b9862fa13a80`.
 

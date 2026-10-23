@@ -1,5 +1,5 @@
 ---
-status: Proposed (direction chosen by the requester on 2026-10-22 and 2026-10-23; not yet reviewed by Đạt)
+status: Accepted (Đạt, 2026-10-23; amendments from the decision brief applied)
 date: 2026-10-23
 source:
     - ../../.claude/plans/studio/org-and-principals/spec.md
@@ -14,7 +14,7 @@ source:
 
 Numbered in the block 0100-0199 reserved for Studio (ADR 0100 records the block). It rests on the requester's D1
 (workspaces own data and reach each other through access rights, never by copying) and D3 (record access in four
-layers, field security applied to agents and search too), and on the provisional call on DO-39.
+layers, field security applied to agents and search too), and on the call on DO-39, decided 2026-10-23.
 
 ## Context
 
@@ -107,7 +107,7 @@ layers, field security applied to agents and search too), and on the provisional
 ## Alternatives considered
 
 - **An agent as a principal with its own roles** (the research's recommendation, `research.md:340`). Rejected: a second
-  holder of rights that can exceed every person who invokes it, the super-agent CLAUDE.md:50 forbids, and a confused
+  holder of rights that can exceed every person who invokes it, the super-agent CLAUDE.md:54 forbids, and a confused
   deputy for prompt injection.
 - **Unattended runs act as the publisher.** Rejected: the publisher's reach would leak to anonymous senders, a later
   demotion would not narrow running versions, and a leaver would break the workflow.
@@ -117,7 +117,7 @@ layers, field security applied to agents and search too), and on the provisional
   Rejected: cost and configuration grow with every realm (measured in planning on Keycloak 26.7.2, on a contended host,
   ratios only), while Organizations route within one realm.
 - **The organization claim as the tenant binding.** Rejected: a token claim would become tenant context
-  (CLAUDE.md:166-167), and a membership list kept in Keycloak would have to agree with the platform's (failure-modes #2).
+  (CLAUDE.md:188-189), and a membership list kept in Keycloak would have to agree with the platform's (failure-modes #2).
 - **A separate principal table.** Rejected for v1: every foreign key to `platform.users` would move, and two identity
   tables would answer one question; revisit if agent identities with their own grants arrive (FOG-80).
 - **Remove email linking at once.** Rejected: invitations rely on it until claims ship; the interim rule narrows it.
@@ -145,7 +145,7 @@ layers, field security applied to agents and search too), and on the provisional
   `membership_lookup.py:200-202`, worth reopening because an email is not a stable identifier and a `sub` is unique
   only within its issuer; contradicts `infra/keycloak/dw-realm.json:12-14` (8-hour tokens). Closes ADR 0024's Open 2 in
   two steps (the interim rule, then claims). Retires the stamped reach of `contracts.py:126-127` with ADR 0105.
-  Reinforces CLAUDE.md:166-167; consistent with ADR 0011 (a lane audits as itself) and ADR 0024.
+  Reinforces CLAUDE.md:188-189; consistent with ADR 0011 (a lane audits as itself) and ADR 0024.
 - si-platform: diverges from si-platform `docs/adr/0035-each-tenant-signs-in-with-its-own-idp.md` (one realm with
   Organizations and a platform-side binding, not an issuer per tenant), porting its `amr` check and the
   `email_verified` semantics of `packages/python/platform/si_core/src/si_core/application/identity.py`.
@@ -154,16 +154,29 @@ layers, field security applied to agents and search too), and on the provisional
 
 1. **DO-12 (Đạt and requester, before W1).** An unattended run acts as a per-version service principal through an
    approved binding, never the publisher (recommended), or as the publisher, or as a tenant-wide system principal?
-   Decisions 4 and 5 rest on the first.
+   Decisions 4 and 5 rest on the first. Answered 2026-10-23: the per-version service principal through an approved
+   `principal` binding, never wider than its proposer (DO-12 (a)).
 2. **DO-17 (Đạt, before W1).** Keycloak Organizations in one realm rather than a realm or an issuer per tenant; a
    service principal as a `platform.users` row of kind `service` in v1; and the interim linking rule now, after asking
-   dw-proterial whether any import path depends on unverified email linking?
+   dw-proterial whether any import path depends on unverified email linking? Answered 2026-10-23: yes to all three.
+   Organizations in one realm, the claim only routing (DO-17.3 (a)); a `platform.users` row of kind `service` with
+   `platform.service_principals` as its detail (DO-17.2 (a)); the interim rule in P0, with dw-proterial asked in
+   parallel and before foundations-hardening/02 merges (DO-17.1 (a)).
 3. **DO-39 (requester).** Provisional (agent, tạm theo khuyến nghị, 2026-10-23, option (a)): an accountable owner
    leaving alerts and blocks publishing while live versions keep running; invitations by an admin-copied claim link;
    MFA for operators, support staff and critical-permission holders. If wrong: ownership passes to the leaver's manager,
-   invitations wait for a mailer, or MFA covers every member.
+   invitations wait for a mailer, or MFA covers every member. Answered 2026-10-23: option (a) on all three, each in W2
+   (DO-39.2 (a)).
 4. **FOG-45 (grilling).** For nested actors (an agent node in a workflow, a workflow called as a tool, linked agents),
    which boundaries intersect along the chain and how the intersection is bound to `app.boundary_id`; decision 5
    proposes every boundary on the chain.
 5. **FOG-78 (prototype).** Does Entra or Google MFA reach `amr` through Keycloak brokering, and does the realm's token
    carry `email_verified`? Decisions 8 and 9 assume both.
+
+## Acceptance (2026-10-23)
+
+- Status Accepted by Đạt; no decision text changes, and no `CLAUDE.md` line changes (`:166-167` is reinforced).
+- Open 1 answered with DO-12 (a), Open 2 with DO-17.1, DO-17.2 and DO-17.3 (a), Open 3 with DO-39.2 (a); the line
+  that rested on a provisional DO-39 now names it decided.
+- dw-proterial is asked, before foundations-hardening/02 merges, whether an import path depends on unverified email
+  linking (DO-17.1 (a)).

@@ -1,5 +1,5 @@
 ---
-status: Proposed (agent-proposed on 2026-10-23; not yet reviewed by Đạt)
+status: Accepted (Đạt, 2026-10-23; amendments from the decision brief applied)
 date: 2026-10-23
 source:
     - ../../.claude/plans/studio/app-standards/spec.md
@@ -26,7 +26,7 @@ without it, and Studio's tools and workflow nodes are the first effects that ret
   and the keyset helper pages descending only
   (`packages/python/dw_platform/src/dw_platform/adapters/persistence/keyset.py:22-27`), while records sort on
   typed fields both ways, with NULLs. Under RLS a predicate whose operator is not LEAKPROOF silently loses its
-  index (ADR 0107), so `CLAUDE.md:246-249` needs a mechanical check.
+  index (ADR 0107), so `CLAUDE.md:284-287` needs a mechanical check.
 - **HTTP idempotency.** `RequestFingerprint` holds method, path, workspace and body hash, not the caller
   (`packages/python/dw_platform/src/dw_platform/application/idempotency.py:45-67`): a second member who sends
   the same key and body in the same workspace receives the first member's stored answer, and the handler with
@@ -37,7 +37,7 @@ without it, and Studio's tools and workflow nodes are the first effects that ret
 - **Tool idempotency.** The executor looks for a succeeded call and only then runs the handler
   (`packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py:202-204`); the backstop
   `uq_tool_executions_idempotency` covers succeeded rows only (`db/migrations/sql/0001_platform_baseline.sql:698`),
-  so two concurrent calls with one key both run the effect. `CLAUDE.md:214`: "All side effects use
+  so two concurrent calls with one key both run the effect. `CLAUDE.md:249`: "All side effects use
   idempotency keys."
 - si-platform found and fixed both idempotency defects in its copy of this code: the 2026-10-20 amendment of
   `docs/adr/0045-one-idempotency-key-store-handed-to-modules-by-the-host.md`,
@@ -54,9 +54,11 @@ without it, and Studio's tools and workflow nodes are the first effects that ret
    `RequestValidationError`, Starlette's `HTTPException` (unknown route 404, wrong method 405) and unexpected
    exceptions (500, nothing internal). `ErrorCode` gains `method_not_allowed` (405), `precondition_failed`
    (412) and `precondition_required` (428), mirrored in TypeScript; OpenAPI carries one `Problem` schema on
-   every 4XX and 5XX. Adopted additively: every member a client reads today keeps its name and meaning.
-   People read text the web builds from `code` and `errors[].code`; a tenant-written validation message
-   travels in `errors[].detail`.
+   every 4XX and 5XX. Adopted additively: every member of the platform envelope a client reads today keeps
+   its name and meaning. The one shape that changes is FastAPI's own 422 body, whose `detail` was a list: it
+   becomes a string and the list moves to `errors[]`, which only an outside integration parsing FastAPI's
+   shape would notice (neither `apps/web` nor the generated client reads `detail`). People read text the web
+   builds from `code` and `errors[].code`; a tenant-written validation message travels in `errors[].detail`.
 2. **Lists.** A typed keyset cursor v2: `sort_value` tagged `text|int|float|date|datetime|bool|null` with a
    phase `values|nulls`, so NULLS LAST is two index-backed phases; `id` is always the last sort key; v1
    cursors still decode; no offset; a cursor never grants access (re-checked on every page,
@@ -104,7 +106,7 @@ without it, and Studio's tools and workflow nodes are the first effects that ret
 
 - **Keep today's envelope and let Studio routes extend it.** Rejected: each spec would invent its own
   `errors[]` and pointers. A Studio-only problem+json is two envelopes; RFC 7807 is obsoleted by RFC 9457.
-- **Offset pagination.** Rejected: page 50 costs what the whole match set costs (`CLAUDE.md:246-249`). OData
+- **Offset pagination.** Rejected: page 50 costs what the whole match set costs (`CLAUDE.md:284-287`). OData
   `$filter` or AIP-160 strings as the primary syntax: a string parser may come later and compile to the AST.
 - **Replay a stored answer to anyone holding the key.** Rejected: a leaked key discloses another caller's
   answer, and the replay skips that caller's authorization.
@@ -136,8 +138,8 @@ without it, and Studio's tools and workflow nodes are the first effects that ret
   blocks its key until `expires_at`, which is bounded. The 24-hour key term follows common vendor practice
   (unverified). The worker's lane-set test (`apps/worker/tests/unit/test_worker.py`) gains the retention lane.
 - No ADR is contradicted. The current envelope is extended additively, so the claim at
-  `apps/api/src/dw_api/errors.py:28-34` becomes true rather than broken; `CLAUDE.md:214` and
-  `CLAUDE.md:246-249` gain tests; ADR 0024's refusal shape holds (a feature's reason stays in
+  `apps/api/src/dw_api/errors.py:28-34` becomes true rather than broken; `CLAUDE.md:249` and
+  `CLAUDE.md:284-287` gain tests; ADR 0024's refusal shape holds (a feature's reason stays in
   `details.reason_code`, and `ErrorCode` grows only by three HTTP-level codes). The "Append-only" docstring
   of `packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/tool_execution_store.py:1` becomes true
   for UPDATE, which the default privileges grant today (`db/migrations/sql/0001_platform_grants.sql:44-46`);
@@ -151,7 +153,19 @@ without it, and Studio's tools and workflow nodes are the first effects that ret
 
 All three are DO-16, owned by Đạt:
 
-1. Adopt RFC 9457 problem+json platform-wide, additively, as decision 1 states?
+1. Adopt RFC 9457 problem+json platform-wide, additively, as decision 1 states? Answered 2026-10-23: yes
+   (DO-16.2 (a)).
 2. The custom-method spelling: `/records/batch-create` (the platform's style, proposed) or the AIP colon form
-   `/records:batchCreate`, which would be a second URL convention?
-3. The deprecation notice period for integrator routes: at least six months, as proposed?
+   `/records:batchCreate`, which would be a second URL convention? Answered 2026-10-23: `/records/batch-create`,
+   so ADR 0112's task submission and ADR 0114's expression routes take the sub-resource form too (DO-16.2 (a)).
+3. The deprecation notice period for integrator routes: at least six months, as proposed? Answered 2026-10-23: at
+   least six months (DO-16.2 (a)).
+
+## Acceptance (2026-10-23)
+
+- Status Accepted by Đạt; DO-16 (a) answers Open 1 to 3 as proposed, and Studio's routes form one group under
+  `/api/v1/studio/` (DO-16.1 (a)).
+- Decision 1 states the one shape that changes, FastAPI's own 422 `detail` list, beside the additive members
+  (DO-16.2 (a)).
+- The colon spellings in ADR 0112 and ADR 0114 give way to sub-resources (`/tasks/{id}/submit`, `/expressions/check`,
+  `/expressions/evaluate`); no `CLAUDE.md` line changes (`:214` and `:246-249` gain tests).

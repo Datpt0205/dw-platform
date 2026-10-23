@@ -1,5 +1,5 @@
 ---
-status: Proposed (direction chosen by the requester on 2026-10-22 and 2026-10-23; not yet reviewed by Đạt)
+status: Accepted (Đạt, 2026-10-23; amendments from the decision brief applied)
 date: 2026-10-23
 source:
     - ../../.claude/plans/studio/agent-lifecycle/spec.md
@@ -8,14 +8,14 @@ source:
     - ../../configs/workers/README.md
 ---
 
-# 0125. Every agent and workflow version is analysed at publish, a path combining untrusted input, private data and an external effect must pass a person before the effect, and an AI risk tier travels with the publish approval
+# 0125. Every agent and workflow version is analysed at submit, a path combining untrusted input, private data and an external effect must pass a person before the effect, and an AI risk tier travels with the publish approval
 
 Numbered in the block 0100-0199 reserved for Studio (ADR-0100 records the block). It rests on requester decision D4
 (2026-10-22): the Marketing pilot reads leads from forms, Facebook and Zalo, scores them with AI, and sends a Zalo or
 email message after a human approval, which is exactly the combination this ADR governs. The publish approval that
 carries the tier needs a second person under D11 (2026-10-23, ADR-0120). The mechanism is agent-proposed; the Rule of
-Two survives as the Marketing pack's design. The `agent-lifecycle` spec owns the analysis at submit, and
-`compliance-pdpl` the risk tier record.
+Two survives as the Marketing pack's design. The `compliance-pdpl` spec owns the capability analysis at submit, its
+record in `studio.version_assessments` and the risk tier; `agent-lifecycle` only reads the stored outcome.
 
 ## Context
 
@@ -48,7 +48,10 @@ Two survives as the Marketing pack's design. The `agent-lifecycle` spec owns the
    external effect: a tool at `side_effect_level` `external` or `critical`, transitively through workflow-as-tool and
    linked agents (ADR-0117). Labels per node type and tool kind live in one dispatch table at the composition root
    (the `NodeTypeSpec` labels of ADR-0112), and an unknown kind counts as all three. A tool version missing any of
-   the three classifications refuses submit with `tool_unclassified` (ADR-0116).
+   the three classifications refuses submit with `tool_unclassified` (ADR-0116). compliance-pdpl runs the analysis
+   at submit and stores its outcome in `studio.version_assessments` (decision 6), with no other copy; the
+   `studio_gate` lane only reads it, as a backstop: a missing or failed outcome fails the gate and opens no publish
+   approval (no 422, since no caller waits on the lane), so a direct stage write cannot skip the analysis.
 2. **Workflows: a person dominates every effect on such a path.** Every A to B to C path needs a `human.approval`
    node that dominates the C node, or submit answers 422 naming the path. The analysis runs on ADR-0112's
    `WorkflowIR` through the same graph module (`reachable`, `dominators`, `paths_to`), so the validator and the
@@ -97,8 +100,9 @@ Two survives as the Marketing pack's design. The `agent-lifecycle` spec owns the
 
 - Most marketing agents land at A2 or lower, and the pilot's read-only assistant holds no effect tool at all.
   tools-and-skills classifies every tool version before it can be pinned.
-- compliance-pdpl 05 (W1) ships the analysis for workflows and agents and its catalogue of labels; the risk tier
-  record, the explanation sheet and runtime taint at the executor are W2.
+- compliance-pdpl 05 (W1) ships the analysis for workflows and agents, its catalogue of labels and the
+  `studio.version_assessments` rows that hold the outcome; the risk tier fields, the explanation sheet and runtime
+  taint at the executor are W2.
 - Approval fatigue is a real risk. It is met by one approval per message in a fast queue (ADR-0124), a raw view of
   the parameters, and a verdict that explains itself.
 - Tests that must exist, each shown red with its guard removed: a workflow with an A to B to C path and no dominating
@@ -109,7 +113,7 @@ Two survives as the Marketing pack's design. The `agent-lifecycle` spec owns the
 
 ### Contradictions and amendments
 
-- None with an ADR. Reinforces CLAUDE.md:61-62 ("critical effects require approval") and CLAUDE.md:65
+- None with an ADR. Reinforces CLAUDE.md:68-69 ("critical effects require approval") and CLAUDE.md:75
   ("Human-in-command"). Narrows `autonomy.py:14-18` for trifecta versions the way the critical floor (`:29-33`)
   already does, a tightening.
 - `configs/workers/README.md:14-17` is stale on autonomy; foundations-hardening corrects it.
@@ -122,12 +126,30 @@ Two survives as the Marketing pack's design. The `agent-lifecycle` spec owns the
 
 1. **The floor (no DO id; B9 O3, the consolidator, then Đạt).** The platform floor is a person before the effect, as
    B10a and B11 propose, with B12's Rule of Two as the pack's design and a tightening, not the floor. Đạt confirms.
+   Answered 2026-10-23: Đạt confirms the floor as stated (decision 5).
 2. **DO-60** (counsel): under Law 134/2025/QH15, who supplies a tenant-built agent, what the tier criteria are, and
    whether a marketing agent is medium risk; may a tenant declare a tier below the suggestion (recommended: no in
    v1)? Recommended: the tenant classifies its own agents from platform defaults, the tier record ships in P1, and
-   the export pack follows counsel's reading.
+   the export pack follows counsel's reading. Partly answered 2026-10-23 (DO-60): the tenant classifies its own
+   agents from platform defaults and may not declare a tier below the suggestion in v1; the tier record ships in W2;
+   an "AI-drafted" label is on by default on AI-drafted messages to leads until counsel answers, with provenance on
+   the send log (ADR-0124). Still with counsel: who supplies a tenant-built agent, the tier criteria, and whether a
+   marketing agent is medium risk.
 3. **FOG-47** (grilling): how fine must taint be for record content that came from inbound sources: a flag on the
    object or provenance per field? Too coarse forces approval everywhere; too fine is costly to track.
 4. **FOG-48** (grilling): may the person who started a run approve its own approval step (`studio.step.`)? Agent
    tool approvals are non-strict by design, so an invoker may approve their own ask-before step (ADR-0117); a
-   self-approved step reads like a control and may not be one.
+   self-approved step reads like a control and may not be one. Answered 2026-10-23: no. A step approval's type sits
+   under the strict prefix `studio.step.` (ADR-0112 decision 7, YC51, workflow-nodes R9.2), so neither the run's
+   requester nor its run-as principal decides it; agent tool approvals stay non-strict by design (ADR-0117).
+
+## Acceptance (2026-10-23)
+
+Accepted by Đạt on 2026-10-23 with these amendments from the decision brief:
+
+- Title: the analysis runs at submit, where decisions 2 and 3 already placed it, not at publish.
+- Opening and decision 1: compliance-pdpl owns the analysis and stores its outcome in `studio.version_assessments`,
+  with no `capability_report` column; agent-lifecycle and the `studio_gate` lane only read it, the lane as a backstop
+  that fails the gate on a missing or failed outcome (the submit-time 422 item, option (a)).
+- Consequences: compliance-pdpl 05 ships the stored outcome in W1, the tier fields in W2.
+- Open: the floor confirmed; DO-60 answered except counsel's part; FOG-48 closed; FOG-47 stays open.

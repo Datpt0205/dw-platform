@@ -1,5 +1,5 @@
 ---
-status: Proposed (direction chosen by the requester on 2026-10-22 and 2026-10-23; not yet reviewed by Đạt)
+status: Accepted (Đạt, 2026-10-23; amendments from the decision brief applied)
 date: 2026-10-23
 source:
     - ../../.claude/plans/studio/workflow-builder-ui/spec.md
@@ -18,7 +18,7 @@ Numbered in the block 0100-0199 reserved for Studio (ADR 0100 records the block)
 D2 makes builders business admins who work without code: they drag nodes onto a canvas, configure each node in a form
 and connect them. A workflow builder therefore needs a graph canvas: pan, zoom, edges, drop targets and keyboard paths.
 
-`CLAUDE.md:123-131` allows `antd`, `@ant-design/icons` and `@ant-design/nextjs-registry` "and nothing else", the rule
+`CLAUDE.md:137-148` allows `antd`, `@ant-design/icons` and `@ant-design/nextjs-registry` "and nothing else", the rule
 Đạt set on 2026-10-08 when he asked for antd everywhere. antd ships no graph canvas. The guard behind the rule cannot
 see a library it does not name: `apps/web/lib/__tests__/antd-only.test.ts:16-18` is a denylist of the removed modules,
 its manifest check (`:128-141`) reads the same list, and ESLint names the same modules (`apps/web/.eslintrc.json:4-37`).
@@ -53,17 +53,19 @@ it, which the spike measures rather than assumes.
 3. **The document holds topology; dagre computes positions.** Node positions are computed by dagre at render and on
    every change, and never stored. The workflow document holds topology only (nodes, ports, edges); an edit changes
    topology only (insert between, append after, connect a port, delete), so the definition hash (ADR 0109) carries no
-   layout. The browser checks nothing beyond display: validation and graph checks belong to the server's validator
-   (ADR 0112).
+   layout. The layout function that calls dagre lives under the canvas glob. The browser checks nothing beyond
+   display: validation and graph checks belong to the server's validator (ADR 0112).
 4. **The guard becomes an allowlist.** `antd-only.test.ts` accepts in `apps/web` and `packages/typescript/ui` only
    listed runtime dependencies (today `antd`, `@ant-design/icons`, `@ant-design/nextjs-registry`, `dayjs`,
-   `keycloak-js`, `next`, `react`, `react-dom` and `@dw/*`) plus exceptions. An exception names a module, the path
-   glob that may import it and the ADR that admits it; an import of that module outside its glob fails. ESLint carries
+   `keycloak-js`, `next`, `react`, `react-dom` and `@dw/*`) plus exceptions. An exception is a `{module, glob, adr}`
+   entry: the module, the path glob that may import it and the ADR that admits it; an import of that module outside
+   its glob fails. ESLint carries
    the same rule, with an `overrides` entry per glob. Any other library fails until its own ADR admits it, and the
    modules removed on 2026-10-08 stay refused because no entry lists them.
 5. **The attribution badge stays.** The React Flow attribution badge is kept; no React Flow Pro licence is bought.
-6. **Charts are not covered.** Dashboards in P1 use antd `Statistic`, `Table` and `Progress`; a chart library needs its
-   own ADR, decided before v1 GA.
+6. **Charts are not covered, and v1 ships none.** The usage screen (`/usage`) and every other dashboard use antd
+   `Statistic`, `Table` and `Progress`; a chart library needs its own ADR, written when a requirement asks for a chart,
+   and the allowlist refuses one until then.
 
 ## Alternatives considered
 
@@ -75,23 +77,26 @@ it, which the spike measures rather than assumes.
   cosmetic move would change the definition hash, invalidate evaluation evidence keyed by it and cause merge conflicts.
 - **A blanket exemption for the two libraries.** Rejected: the next library would slip in with no decision recorded.
 - **Another graph or layout library.** `elkjs` and AntV X6 are rejected for the reasons si-platform measured, above.
-- **React Flow Pro to hide the badge.** Not bought (point 5); the requester may overturn this (Open 2).
+- **React Flow Pro to hide the badge.** Not bought (point 5), confirmed on 2026-10-23 and open to change at any time
+  (Open 2).
 
 ## Consequences
 
 - workflow-builder-ui depends on this ADR's acceptance. studio-skeleton ticket 03 turns the guard into an allowlist
   without widening it, with a test proving an unlisted import is still red. workflow-builder-ui ticket 01 then runs a
   spike in `apps/web` (CSP with the nonce, the CSS layer order, bundle size, the jsdom shim, a 100-node workflow) and
-  adds the canvas exception in the same commit as the first canvas import.
-- The first-load cost of the canvas route is measured and stated in the workflow-builder-ui spec: the roughly 250 kB
-  first-load budget accepted for antd (`CLAUDE.md:141`) does not cover it.
+  adds the canvas `{module, glob, adr}` entries in the same commit as the first canvas import.
+- The first-load cost of the canvas route is measured on its own by workflow-builder-ui ticket 01 and recorded here
+  and in the workflow-builder-ui spec: the roughly 250 kB first-load budget accepted for antd (`CLAUDE.md:159`) does
+  not cover it.
 - Tests, each shown red by removing its guard: either library imported outside `apps/web/app/studio/**/canvas/**`
   fails; a manifest other than `apps/web/package.json` declaring either fails; an unlisted runtime dependency fails;
   the `dw.workflow/v1` schema refuses a document that carries coordinates, so a stored position cannot slip in.
 - From the canvas the builder submits a version for the quality gate ("Gửi kiểm định") and starts `simulate` runs
   (`test` runs later, ADR 0111); it never publishes by itself (ADR 0120).
 - workflow-builder-ui owes the accessible path: every mouse action has a keyboard path, `ariaLabelConfig` is in
-  Vietnamese, and an outline view of the same document (antd `Tree`) serves screen readers and the 320 px width.
+  Vietnamese, taken from the message keys (DO-57), and an outline view of the same document (antd `Tree`) serves
+  screen readers and the 320 px width.
 - Harder: every future UI library needs an ADR before its first import; an `@xyflow/react` major upgrade (v13 was in
   prerelease when si-platform measured) is a deliberate change with a new measurement, never an automatic bump; a module
   outside the canvas path, such as the pure document-to-graph module workflow-builder-ui plans at
@@ -100,11 +105,13 @@ it, which the spike measures rather than assumes.
 
 ### Contradictions (the amendment applies only when this ADR is accepted)
 
-- Contradicts `CLAUDE.md:123-131` ("and nothing else"), Đạt's 2026-10-08 antd-everywhere decision, worth reopening
+- Contradicts `CLAUDE.md:137-148` ("and nothing else"), Đạt's 2026-10-08 antd-everywhere decision, worth reopening
   because antd has no graph canvas and D2 asks for one. Amendment A3 replaces "and nothing else:" with "and nothing
-  else, except a module an ADR admits for one path: the Studio canvas uses `@xyflow/react` and `@dagrejs/dagre` under
-  `apps/web/app/studio/**/canvas/`. `antd-only.test.ts` is an allowlist of UI dependencies, so the next library fails
-  it until it has its own ADR."
+  else unless an ADR admits a module for one path", names the canvas exception (`@xyflow/react` and `@dagrejs/dagre`,
+  pinned exactly, only under `apps/web/app/studio/**/canvas/**`, antd still drawing every node body, panel, form and
+  notice), and describes `antd-only.test.ts` as an allowlist of `{module, glob, adr}` entries in which an unlisted
+  library, or an excepted one imported outside its glob, fails; the Bundle line adds that the canvas route is measured
+  on its own.
 - Changes `apps/web/lib/__tests__/antd-only.test.ts` and `apps/web/.eslintrc.json` from denylists into an allowlist.
   The amendment narrows the rule's exceptions to named paths; it does not reopen the 2026-10-08 sweep.
 
@@ -121,7 +128,25 @@ it, which the spike measures rather than assumes.
 ## Open
 
 1. **DO-42, the exception (Đạt).** Amend the Web UI rule set on 2026-10-08 (antd everywhere) for this one path, with the
-   allowlist test in the same change? Blocks workflow-builder-ui ticket 01.
-2. **DO-42, the badge (requester).** Keep the React Flow attribution badge rather than buy React Flow Pro?
+   allowlist test in the same change? Blocks workflow-builder-ui ticket 01. Answered 2026-10-23: yes; Đạt admits
+   `@xyflow/react` and, in the same exception, `@dagrejs/dagre`, both pinned exactly, on the one glob
+   `apps/web/app/studio/**/canvas/**`; studio-skeleton ticket 03 makes the guard an allowlist, and the canvas entries
+   land with the first canvas import (DO-42.1 (a)).
+2. **DO-42, the badge (requester).** Keep the React Flow attribution badge rather than buy React Flow Pro? Answered
+   2026-10-23: keep the badge, buy no Pro licence (DO-42.2 (a)).
 3. **DO-42, charts (Đạt).** A chart library exception for dashboards, decided before v1 GA; until then P1 uses antd
-   `Statistic`, `Table` and `Progress` only. Blocks the usage dashboard's charts in usage-and-limits.
+   `Statistic`, `Table` and `Progress` only. Blocks the usage dashboard's charts in usage-and-limits. Answered
+   2026-10-23: no chart library in v1; a requirement that asks for a chart brings its own ADR (DO-42.3 (a)).
+
+## Acceptance (2026-10-23)
+
+- Status Accepted by Đạt; `@dagrejs/dagre` is confirmed in the same exception as `@xyflow/react`, on one glob
+  (override "React Flow (DO-42)").
+- Decision 3: the dagre layout function lives under the canvas glob, so `apps/web/lib/workflow-graph.ts` stays pure
+  (DO-42.1 (a)).
+- Decision 4: an exception is written as a `{module, glob, adr}` entry (DO-42.1 (a)).
+- Decision 6: no chart library in v1, rather than one decided before GA (DO-42.3 (a)).
+- Consequences: the canvas route's bundle is measured on its own and recorded here; `ariaLabelConfig` comes from the
+  message keys (DO-57 (a)).
+- Amendment A3 restated to match the glob `apps/web/app/studio/**/canvas/**` and the allowlist entries.
+- Open 1 to 3 answered.

@@ -1,5 +1,5 @@
 ---
-status: Proposed (direction chosen by the requester on 2026-10-22 and 2026-10-23; not yet reviewed by Đạt)
+status: Accepted (Đạt, 2026-10-23; amendments from the decision brief applied)
 date: 2026-10-23
 source:
     - ../../.claude/plans/studio/agent-builder/spec.md
@@ -81,7 +81,7 @@ repository root. External facts were gathered by the Studio research on 2026-10-
    `contain_untrusted`, serves agents and workflow AI nodes.
 5. **Compiled per version inside the existing runner, in the worker.** A `StudioGraphSource` beside
    `GraphRegistry` answers `hosts()` for any `RunContext.artifact` of kind `agent`. A version compiles
-   per `(tenant_id, agent_version_id)` into an LRU of at most 256 entries (CLAUDE.md:198), loads under
+   per `(tenant_id, agent_version_id)` into an LRU of at most 256 entries (CLAUDE.md:230), loads under
    RLS, and is refused when its stored `definition_hash` differs from a recomputed one. It is assembled
    on the platform's `create_agent` stack: pinned tools (ADR-0116), run control (ADR-0120),
    `StudioModelSelection` outermost, then limits and the run budget (ADR-0121), one approval per step,
@@ -96,12 +96,23 @@ repository root. External facts were gathered by the Studio research on 2026-10-
    (`workspace_id`, `agent_artifact_id`, `owner_user_id`, `status` CHECK (`active`, `archived`) with no
    default, `active_run_id`) and `studio.conversation_messages` (`seq`, `role` CHECK (`user`,
    `assistant`, `notice`, `summary`), capped `content`, `run_id`, `agent_version_id`, `citations`,
-   `activity` naming tools and workflows, never arguments). RLS: the workspace shape of
-   CLAUDE.md:172-177 as the PERMISSIVE policy plus a RESTRICTIVE policy
-   `owner_user_id = NULLIF(current_setting('app.user_id', true), '')::uuid OR current_setting('app.workspace_scope', true) = 'tenant'`,
-   so an unset user reads nothing and only the offboarding lane reads past the owner. Run rows hold ids
-   only. One run per conversation turn, claimed on `active_run_id`, else 409 `conversation_busy`.
-   Citation markers (`[[rec:<id>]]`, `[[doc:<evidence_id>]]`) are checked against the evidence the turn
+   `activity` naming tools and workflows, never arguments). A message carries its conversation's
+   `workspace_id` and `owner_user_id` through a composite foreign key, so the two copies cannot differ.
+   Messages are range-partitioned by month with a DEFAULT partition, registered by one row in
+   `platform.time_partitioned_tables`, and no partition grants `dw_app` anything, so a partition read
+   by name shows nobody's messages (DO-02.2). RLS: the workspace shape of CLAUDE.md:194-203 as the
+   PERMISSIVE policy plus a RESTRICTIVE policy of the form `tenant AND (owner OR scope)`,
+   `tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid AND (owner_user_id = NULLIF(current_setting('app.user_id', true), '')::uuid OR current_setting('app.workspace_scope', true) = 'tenant')`,
+   so an unset user reads nothing and only a lane listed in the registry of `tenant_wide_scope()` (in
+   W1, offboarding) reads past the owner. Every lane added to that registry reads every person's
+   conversations, so its entry says whether it needs to and is reviewed as opening them (DO-13.1). No
+   tenant role reads another person's conversation (DO-44). From W2, if counsel holds that a data
+   subject's request covers conversation content, the data protection officer's audited lane retrieves
+   the messages concerning that data subject through a SECURITY DEFINER function that returns content
+   by data subject, audits the call, notifies the person whose conversation it reads, and never sets
+   `app.workspace_scope` (DO-44.2 (c)). Run rows hold ids only. One run per conversation turn, claimed
+   on `active_run_id`, else 409 `conversation_busy`. Citation markers (`[[rec:<id>]]`,
+   `[[doc:<evidence_id>]]`) are checked against the evidence the turn
    recorded and an unmatched one is dropped and counted. Feedback goes to `studio.message_feedback`
    (`up` or `down` with a `reason_code`), read by the quality panel and online evaluation sampling.
 7. **A linked agent is a child run; an agent with links orchestrates.** Each link becomes a platform
@@ -120,7 +131,8 @@ repository root. External facts were gathered by the Studio research on 2026-10-
   agents blur where effects happen.
 - **Tenant instructions as a text template.** Rejected: template injection; ADR-0010 would not hold.
 - **Conversations visible to workspace admins.** Rejected: a person's conversation is theirs under the
-  PDPL (Law 91/2025/QH15); an audited export with notice to the person comes later.
+  PDPL (Law 91/2025/QH15); from W2 only decision 6's audited data-subject lane reads one, if counsel
+  requires it.
 - **Deep agents with builtins.** Rejected under stance S8; see ADR-0116.
 - **Audience inside the version.** Rejected: changing who may use an agent would need a quality gate
   and a second approver for no safety gain.
@@ -136,24 +148,28 @@ repository root. External facts were gathered by the Studio research on 2026-10-
 - Migrations: revisions for `studio.agent_settings`, `studio.conversations`,
   `studio.conversation_messages` and `studio.message_feedback`, RLS forced, grants in the same revision.
 - Tests that must exist, each shown red with its guard removed: a second person in the same workspace
-  reads none of another's conversation; a transaction with no `app.user_id` reads nothing; text holding
+  reads none of another's conversation; a transaction with no `app.user_id` reads nothing; a partition
+  of `studio.conversation_messages` read by name returns nothing to `dw_app`; text holding
   `{{`, `{name}` or `</tenant_instructions>` is refused or contained; a compiled version is never served
   to another tenant; an agent with links pinning a write tool is refused at publish; a killed linked
   agent is refused inside its running parent.
 - P1 polls instead of streaming tokens (docs/adr/0008-chat-updates-poll-locally-webhook-when-hosted.md
   is the precedent); P2 relays events over an ephemeral Valkey channel, the transcript staying the truth
-  (CLAUDE.md:60). The first use of a version pays its compile (agent-builder 01, FOG-36).
+  (CLAUDE.md:64). The first use of a version pays its compile (agent-builder 01, FOG-36).
 - Harder: no tenant role reads a person's conversation to investigate a complaint in v1; every link
-  call pays queue latency; a tenant cannot change the frame; a conversation retention term is owed.
+  call pays queue latency; a tenant cannot change the frame; the conversation retention term, a
+  provisional UNVERIFIED number Đạt sets in the retention policy (DO-52, ADR-0122), is still owed.
 
 ### Contradictions and amendments
 
-- Reinforces CLAUDE.md:50 ("never a super-agent").
-- _Contradicts CLAUDE.md:172-177 (`app.workspace_scope` read only inside `tenant AND (workspace OR scope)`,
+- Reinforces CLAUDE.md:54 ("never a super-agent").
+- _Contradicts CLAUDE.md:194-203 (`app.workspace_scope` read only inside `tenant AND (workspace OR scope)`,
   enforced by `packages/python/dw_platform/tests/integration/test_rls_coverage.py:427-433`), worth
-  reopening because a conversation is narrowed to its owner while offboarding must still export it: the
-  owner policy is a second shape, the test learns it, and CLAUDE.md is amended with it._
-- _Contradicts CLAUDE.md:181-184 (every versioned prompt resolves through `TenantOverlay`), worth
+  reopening because a conversation is narrowed to its owner while offboarding must still export it. The
+  owner policy keeps the tenant clause beside the scope, `tenant AND (owner OR scope)`, so the test that
+  holds the scope beside a pure tenant clause passes it as written; CLAUDE.md is amended to name the
+  owner form beside the workspace form._
+- _Contradicts CLAUDE.md:209-212 (every versioned prompt resolves through `TenantOverlay`), worth
   reopening because the frame is the containment: `studio.agent_frame` resolves at the platform layer
   only, the question ADR-0110 already asks about tenant overrides of platform prompts._
 - `configs/workers/README.md:14-17` is stale on autonomy and is corrected by foundations-hardening.
@@ -164,7 +180,29 @@ repository root. External facts were gathered by the Studio research on 2026-10-
 1. **DO-44** (Đạt with the requester; counsel for conversations): may any tenant role read other
    people's conversations (O5)? Recommended: none in v1, an audited export with a reason and a notice
    to the person in v1.5; and `chat` runs in the worker with polling in P1 (O4). Blocks agent-builder 04.
+   Answered 2026-10-23, the line Đạt confirmed in agent-builder's spec: `chat` runs in the worker,
+   polling in P1 and server-sent events over an ephemeral Valkey relay in P2 (DO-44.1 (a)); no tenant
+   role reads another person's conversation, and from W2 decision 6's audited data-subject lane may
+   (DO-44.2 (c)). Still with counsel: whether a data subject's request covers conversation content; if
+   it does not, no lane is added.
 2. Owned elsewhere, read here: DO-05 (Đạt: versions in the one envelope, ADR-0109); DO-40 (Đạt and
    the requester: the audience as a typed condition list); DO-30, a provisional call by the agent on
    2026-10-23 following the recommendation (linked versions pinned at submit, drift proposes the
-   update; if overturned, links follow the live version).
+   update; if overturned, links follow the live version). Answered 2026-10-23: all three as stated
+   (DO-05 (a), DO-40 (a), DO-30 (a)).
+
+## Acceptance (2026-10-23)
+
+Accepted by Đạt on 2026-10-23 with these amendments from the decision brief:
+
+- Decision 6: a message carries `workspace_id` and `owner_user_id` from its conversation through a
+  composite foreign key; messages are partitioned by month with a DEFAULT partition, registered by one
+  row, and their partitions grant `dw_app` nothing (DO-02.2); the RESTRICTIVE policy gains its tenant
+  clause, `tenant AND (owner OR scope)`, which the scope test requires (the CRITICAL on
+  `agent-builder:R4.1`, option (a)); only a lane in the `tenant_wide_scope()` registry reads past the
+  owner, at that stated cost (DO-13.1 (a)); no tenant role reads another's conversation, and from W2 an
+  audited data-subject lane may, if counsel requires it (DO-44.2 (c)).
+- Alternatives and Consequences: follow decision 6, with a test on partitions read by name; the
+  conversation retention term is DO-52's to set.
+- Contradictions: the owner policy passes the scope test as written; CLAUDE.md names the owner form.
+- Open: DO-44 answered except counsel's part; DO-05, DO-40 and DO-30 answered.

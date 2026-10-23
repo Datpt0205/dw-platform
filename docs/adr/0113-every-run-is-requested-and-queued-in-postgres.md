@@ -1,5 +1,5 @@
 ---
-status: Proposed (agent-proposed on 2026-10-23; not yet reviewed by Đạt)
+status: Accepted (Đạt, 2026-10-23; amendments from the decision brief applied)
 date: 2026-10-23
 source:
     - ../../.claude/plans/studio/workflow-engine/spec.md
@@ -12,11 +12,12 @@ source:
 # 0113. Every Studio run is requested through one door and executed by the worker from a Postgres queue that is the run row itself; triggers and inbound events only request runs
 
 Numbered 0113 in the block 0100-0199 that ADR-0100 reserves for Studio. Agent-proposed under stance S6; no requester
-decision rests on it, and the provisional calls it leans on are marked in Open.
+decision rests on it. Đạt accepted it on 2026-10-23 together with ADR-0121, whose `LimitsPort` its claim calls,
+with the amendments listed under Acceptance; the calls it leaned on are answered in Open.
 
 ## Context
 
-- Agent runs execute inline in the API, and the plan quota is enforced where a run begins (`CLAUDE.md:220-224`). The
+- Agent runs execute inline in the API, and the plan quota is enforced where a run begins (`CLAUDE.md:256-261`). The
   worker "hosts no graph" (`apps/worker/src/dw_worker/main.py:203-205`). A stale `platform.worker_runs` row is reaped
   only on the claim path, because "a cross-tenant reaper needs `BYPASSRLS`"
   (`packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/run_store.py:216-220`).
@@ -48,12 +49,22 @@ decision rests on it, and the provisional calls it leans on are marked in Open.
    `set_config('app.tenant_id', ..., true)`, an RLS-bound claim (an `UPDATE` over `SELECT ... FOR UPDATE SKIP LOCKED`)
    takes at most `ceil(batch / tenants)` rows by `(priority, available_at)`. Measured on 2026-10-22: behind one
    tenant's 100,000-row backlog, another tenant's first claim took 0.9 s, against 4.8 s first-in-first-out.
-3. **Admission at dispatch, fenced claims, a deadline for every run.** At claim, `RunControlPort.require_open`
-   (ADR-0120), then `LimitsPort.admit` (ADR-0121): a window or concurrency refusal re-queues with a later
-   `available_at`, a hard refusal fails the run with `limit_exceeded`. A claim lease (`lease_owner`, `lease_until`; not
-   ADR-0121's budget lease) lasts 60 s with a 15 s heartbeat; state and checkpoint writes are fenced by
-   `(lease_owner, attempt)`, so a stale holder's writes fail. Lane `studio_run_reaper` re-queues expired claims with
-   backoff `min(2^attempt * 5 s, 10 min)` plus jitter; after 5 attempts the run is dead-lettered (`dead_lettered`,
+3. **Admission at dispatch, fenced claims, a deadline for every run.** At claim the `studio_runs` lane asks
+   `RunControlPort.require_open` (ADR-0120), then `LimitsPort.admit` (ADR-0121). That claim is the one place a Studio
+   run is admitted; a child run shares its root's lease and is not admitted again (decision 9). One table keyed by
+   `trigger_kind` shapes every refusal, for freezes and limits alike. Missing concurrency re-queues every kind with a
+   later `available_at`. A freeze re-queues a trigger run (`datahub`, `provider_app`, `schedule`, `record_event`)
+   with a later `available_at`, so that it starts in arrival order once the freeze lifts, and ends an interactive run
+   (`chat`, `manual`, `test`) or an evaluation trial (`eval`) at once as `cancelled` with `tenant_frozen` or
+   `platform_frozen`. A spent hard limit
+   re-queues a `datahub`, `provider_app` or `record_event` run until the window's `resets_at`, never dropping it;
+   records a `schedule` fire (W2) as `limit_refused` instead of holding it; ends an interactive run `failed` with
+   `limit_exceeded` and `resets_at` (a conversation shows it as a `notice`); and ends an evaluation's gate run `error`
+   with `limit_exceeded` (ADR-0120). A killed artifact's queued runs are cancelled, never held. A claim lease
+   (`lease_owner`, `lease_until`; not ADR-0121's budget lease) lasts 60 s with a 15 s heartbeat; state and
+   checkpoint writes are fenced by `(lease_owner, attempt)`, so a stale holder's writes fail. Lane
+   `studio_run_reaper` re-queues expired claims with backoff `min(2^attempt * 5 s, 10 min)` plus jitter; after 5
+   attempts the run is dead-lettered (`dead_lettered`,
    audit `run.dead_lettered`, outbox `studio.run.dead_lettered`). `POST /api/v1/runs/{run_id}/cancel` (`runs.cancel`)
    sets `cancel_requested_at` and notifies on `dw_run_state` (`run_store.py:51-53`), which `RunStateListener`
    (`adapters/run_events.py:96`) turns into a task cancel; queued and waiting runs are cancelled in the database with
@@ -78,8 +89,10 @@ decision rests on it, and the provisional calls it leans on are marked in Open.
    `suppressed_loop`, `suppressed_budget`, `limit_refused`. Idempotency is the run row's `request_key`, because a
    unique index cannot span partitions: `<subscription_id>:<event_id>`, and for a schedule fire
    `sched:<subscription_id>:<nominal UTC time>`, so a second replica's fire of one occurrence is refused. Under a
-   freeze (ADR-0120) an inbound event is stored and started in arrival order once the freeze lifts; a killed
-   workflow's events are refused (`refused_killed`) while the sender is still answered 2xx, so it keeps the endpoint.
+   freeze (ADR-0120) an inbound event is stored and held, with one `held_frozen` delivery written when the hold
+   starts: the `studio_inbound` lane asks `RunControlPort` each cycle, leaves held events alone while the freeze holds
+   and, once it lifts, requests their runs in `received_at` order. A killed workflow's events are refused
+   (`refused_killed`) while the sender is still answered 2xx, so it keeps the endpoint.
 6. **Inbound ingress stores and answers, and starts nothing.** A Data Hub endpoint is a Studio artifact of kind
    `endpoint` (`dw.endpoint/v1`) with a public id of `ep_` and 26 Crockford base32 characters (130 random bits),
    resolved before any tenant context by SECURITY DEFINER `studio.resolve_inbound_endpoint(p_public_id)` (ids and
@@ -88,7 +101,8 @@ decision rests on it, and the provisional calls it leans on are marked in Open.
    signature-verifier module (ADR-0115) over the exact bytes with a 5-minute tolerance (a static token before the body
    is read, ADR-0008's order), validates (422 without echo, or quarantine), deduplicates in `studio.inbound_dedupe` for
    at least 72 hours and stores the `studio.inbound_events` row in one transaction, then answers 2xx in under 1 s at
-   p99. No model or provider call runs on this path; the `studio_inbound` lane hands accepted events to the door.
+   p99, measured at 100 requests per second. No model or provider call runs on this path; the `studio_inbound` lane
+   hands accepted events to the door.
 7. **Provider-app events are routed by the account they name.** `POST /api/v1/hooks/providers/{provider_app_key}`
    (with Meta's `GET` handshake) verifies with the provider app's secret before anything else, then routes each entry
    by its external account (a Page, an OA) through SECURITY DEFINER
@@ -109,10 +123,17 @@ decision rests on it, and the provisional calls it leans on are marked in Open.
 10. **Chat runs in the worker.** A conversation turn is a run of trigger kind `chat` requested through the door and
     executed by the worker; the client polls in P1, and streaming arrives in P2 over an ephemeral Valkey relay that is
     never the source of truth. The API never executes an agent inline.
+11. **Which rows carry a workspace.** `studio.inbound_events` and `studio.trigger_deliveries` carry `workspace_id`, a
+    snapshot of the workspace that owns the endpoint or the subscription when the row is written, as
+    `platform.worker_runs.workspace_id` is the run's, under tenant-only RLS as that table has: personal payloads are
+    filtered by workspace depth through an index and found per data subject (YC90), and the event history (W2) reads
+    the column on deliveries. `platform.run_waits` (a child of its run, deleted with it), `studio.inbound_dedupe` (a
+    72-hour key holding no personal data) and the configuration rows of `studio.trigger_subscriptions` and
+    `studio.inbound_endpoints` are tenant-wide, each listed with its reason under amendment A6 (ADR-0100).
 
 ## Alternatives considered
 
-- **An external queue (Celery, a Valkey stream).** Rejected: Valkey is never a source of truth (`CLAUDE.md:60`), and a
+- **An external queue (Celery, a Valkey stream).** Rejected: Valkey is never a source of truth (`CLAUDE.md:64`), and a
   second store of run state would drift from the run row. Temporal is a second runtime and system of record; it stays
   the escape hatch behind `WorkflowRunnerPort`.
 - **Triggers start runs inline.** Rejected: it bypasses admission, freezes and limits (failure-modes #5).
@@ -141,8 +162,9 @@ decision rests on it, and the provisional calls it leans on are marked in Open.
   `waiting`.
 - Harder: every new start path must go through the door; each linked-agent call pays queue latency; P1 has no token
   streaming.
-- Reinforces `CLAUDE.md:220-224`. Follows `docs/adr/0008-chat-updates-poll-locally-webhook-when-hosted.md` for inbound
-  endpoints and `docs/adr/0006-provider-neutral-channel-delivery-outbox.md` for the outbox shape; neither changes.
+- Reinforces `CLAUDE.md:256-261`, whose port becomes `LimitsPort` with ADR-0121. Follows
+  `docs/adr/0008-chat-updates-poll-locally-webhook-when-hosted.md` for inbound endpoints and
+  `docs/adr/0006-provider-neutral-channel-delivery-outbox.md` for the outbox shape; neither changes.
   ADR-0008's queue is identity plane without RLS
   (`db/migrations/versions/395acbcad324_platform_channel_inbound_updates.py:15`); Data Hub inbound events are tenant
   rows behind an identifiers-only lookup instead.
@@ -154,12 +176,38 @@ decision rests on it, and the provisional calls it leans on are marked in Open.
 ## Open
 
 1. **DO-41 (Đạt).** Runs wait in place with compaction in v1, and the segment model only if measurement asks for it?
+   Answered 2026-10-23: yes (DO-41 (a)); the segment model waits until UAT measurement asks for it.
 2. **DO-44 (Đạt with the requester; counsel for conversations).** Chat runs in the worker through `RunRequestService`,
-   with polling in P1?
+   with polling in P1? Answered 2026-10-23: yes, with server-sent events over an ephemeral Valkey relay in P2 (DO-44.1
+   (a), the line Đạt confirmed in agent-builder's spec); who may read a conversation is ADR-0117's.
 3. **DO-48 (requester; counsel on fan-out).** Does the same Page or OA connected by two tenants fan out to both,
-   silently? Provisional call (agent, 2026-10-23): fan out to both, counsel to confirm.
+   silently? Answered 2026-10-23, provisionally (DO-48.2 (a)): fan out to both, so decision 7 stands. Provider-event
+   routing (W2) stays off until counsel's opinion (compliance-pdpl 02) and discovery 18's third question are in; if
+   counsel refuses the fan-out, decision 7 is redesigned under the constraint that no tenant learns of another (the
+   last alternative above), never as a refusal at connect.
 4. **DO-52 (counsel and Đạt).** Retention for inbound events (30 days proposed), trigger deliveries (90 days), terminal
-   runs (180 days), checkpoints (24 hours after the run ends) and inbound dedupe rows (72 hours).
+   runs (180 days), checkpoints (24 hours after the run ends) and inbound dedupe rows (72 hours). Answered 2026-10-23,
+   provisionally (DO-52 (a)): the terms are versioned data in ADR-0122's retention policy, UNVERIFIED until counsel
+   confirms them before shadow runs: inbound events 30 days, trigger deliveries 90 days, checkpoints 24 hours after the
+   run ends and dedupe rows 72 hours, while terminal runs keep ADR-0122's 395 days.
 5. **Related provisional calls (agent, 2026-10-23).** DO-28: a freeze cancels running runs at the next door, keeps
    waiting runs waiting and refuses decisions. DO-39: inbound events for a locked tenant are refused with 503 and
-   nothing is stored.
+   nothing is stored. Answered 2026-10-23: DO-28 keeps both and takes option C for runs not yet started (decision 3,
+   ADR-0120 decision 7); DO-39 holds from W1 for a locked or offboarding tenant (DO-39.1 (a)).
+
+## Acceptance (2026-10-23)
+
+Accepted by Đạt on 2026-10-23, together with ADR-0121, with these amendments from the decision brief:
+
+- Decision 3: the `studio_runs` lane's claim is the one place a Studio run is admitted, and one table keyed by
+  `trigger_kind` shapes every refusal. A freeze or a spent hard limit re-queues a trigger run with a later
+  `available_at` and ends an interactive run at once; a `schedule` fire refused for its window is recorded
+  `limit_refused`; an evaluation's gate run ends `error`; a killed artifact's queued runs are cancelled. This replaces
+  "a hard refusal fails the run" (DO-28 (C), DO-21.3 (a)).
+- Decision 5: the `studio_inbound` lane asks `RunControlPort` each cycle and requests the runs of held events in
+  `received_at` order once a freeze lifts (H:agent-lifecycle:R7.2~workflow-triggers:R1.3 (a)).
+- Decision 6: the p99 bound is measured at 100 requests per second (requirements Q2 (a)).
+- Decision 11, new: inbound events and trigger deliveries carry `workspace_id` under tenant-only RLS, while run waits,
+  dedupe keys and trigger configuration are tenant-wide under amendment A6 (the CRITICAL on `platform.run_waits`,
+  option (a)).
+- Open: DO-41, DO-44, DO-48, DO-52, DO-28 and DO-39 answered.

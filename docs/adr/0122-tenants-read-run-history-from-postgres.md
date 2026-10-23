@@ -1,5 +1,5 @@
 ---
-status: Proposed (agent-proposed on 2026-10-23; not yet reviewed by Đạt)
+status: Accepted (Đạt, 2026-10-23; amendments from the decision brief applied)
 date: 2026-10-23
 source:
     - ../../.claude/plans/studio/telemetry-and-audit/spec.md
@@ -20,7 +20,7 @@ ADR 0121, which owns the usage ledger whose screens and retention this ADR also 
   internals, unmasked and deleted after the run; traces are sampled and sit in a backend with no
   tenant access control.
 - Langfuse runs in compose on floating major tags (`infra/compose/docker-compose.yml:532`, `:563`)
-  beside ClickHouse 24.8 (`:510`), although `CLAUDE.md:115-116` says to pin versions. Langfuse's
+  beside ClickHouse 24.8 (`:510`), although `CLAUDE.md:128-129` says to pin versions. Langfuse's
   open-source edition has no RLS, data retention, server-side masking or project roles; those are
   Enterprise features (https://langfuse.com/self-hosting/license-key, fetched 2026-10-22).
 - Seven `dw_*` metrics are declared and never emitted (`dw_observability/metrics.py:12-22`), which
@@ -67,38 +67,47 @@ ADR 0121, which owns the usage ledger whose screens and retention this ADR also 
    `GET /api/v1/runs/{id}/steps` serve it; a payload needs `runs.read_payloads` and every payload
    view is audited as `run.payload.viewed`. Builder test results and quality gate evidence are read
    from it; neither keeps a store of its own.
-5. **Content capture stays with the tenant, briefly.** A tenant may opt in through the audited
+5. **Content capture stays with the tenant, briefly (W2).** A tenant may opt in through the audited
    policy `telemetry.content_capture`: model messages and tool arguments of `model_call` steps are
    kept by reference in that tenant's run history for at most 7 days, readable only by holders of
    `runs.read_content` in the tenant, never by operators or support staff. A span only ever
    carries a reference.
 6. **Audit becomes queryable and exportable.** `GET /api/v1/audit/events` gains server-side filters
-   (action, actor, resource, run, and a window of at most 93 days, default 7) over two new indexes
-   on the partitioned parent, `ix_audit_events_run` and `ix_audit_events_action`. One action
+   (action, actor, resource, run, and a window of at most 93 days, default 7) over a new index on
+   the partitioned parent, `ix_audit_events_action`, and the one run index,
+   `platform.audit_events (tenant_id, run_id, occurred_at)`, which app-standards 03 owns. One action
    catalogue, `configs/copy/audit_actions@1.0.0.yaml`, gives every action its Vietnamese label, and
    an AST test fails an emitted action the catalogue lacks. Studio configuration changes audit
    before and after values as identifiers and numbers, never business data. An audit export
    (`POST /api/v1/audit/exports`, permission `audit.export`, rows in `platform.audit_exports`,
    written by the worker lane `audit_export`) is gated by the `audit_export` feature, its first
    reader.
-7. **One retention policy, a remover for every store.** `configs/policies/retention@1.8.0.yaml`
-   replaces 1.7.0; unfinished runs are never touched, and each row below has a remover and a test.
+7. **One retention policy, one owner, a remover for every store.**
+   `configs/policies/retention@1.8.0.yaml` replaces 1.7.0, and telemetry-and-audit owns the file:
+   compliance-pdpl adds its stores' rows in 1.9.0, after it. The terms are provisional, versioned
+   data, UNVERIFIED until counsel confirms them before shadow runs; counsel changes a number with a
+   new policy version, never with code (DO-52 (a)). Run steps keep 30 days, as YC88 asks, so a lane
+   deletes them: dropping a monthly partition would keep rows for 30 to 61 days. Unfinished runs are
+   never touched, and each row below has a remover, a lane that reads its term (YC88), and a test.
 
-| Store                                            | Term                                                          | Remover              |
-| ------------------------------------------------ | ------------------------------------------------------------- | -------------------- |
-| usage events (`platform.usage_events`)           | 395 days                                                      | DROP PARTITION       |
-| usage rollups (`platform.usage_daily`)           | 760 days                                                      | lane DELETE          |
-| `platform.budget_leases`                         | 30 days after close                                           | lane DELETE          |
-| run steps (`platform.run_steps`)                 | 90 days                                                       | DROP PARTITION       |
-| step payload objects                             | 30 days                                                       | lane deletes objects |
-| run payload columns (`input`, `result`, `error`) | 90 days after terminal                                        | lane clears          |
-| run rows (`platform.worker_runs`)                | 395 days after terminal, skipping runs that memory references | lane DELETE          |
-| tool outputs (`platform.tool_executions.output`) | 30 days                                                       | lane clears          |
-| Langfuse data                                    | 30 days                                                       | mechanism open       |
-| inbound events (`studio.inbound_events`)         | 30 days                                                       | lane DELETE          |
-| checkpoints                                      | 24 hours after the run ends                                   | lane DELETE          |
-| inbound event dedupe keys                        | 72 hours                                                      | lane DELETE          |
-| audit log (`platform.audit_events`)              | 1095 days, unchanged                                          | DROP PARTITION       |
+| Store                                                                  | Term                                                                                     | Remover                                 |
+| ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | --------------------------------------- |
+| usage events (`platform.usage_events`)                                 | 395 days                                                                                 | DROP PARTITION                          |
+| usage rollups (`platform.usage_daily`)                                 | 760 days                                                                                 | lane DELETE                             |
+| `platform.budget_leases`                                               | 30 days after close                                                                      | lane DELETE                             |
+| run steps (`platform.run_steps`)                                       | 30 days (YC88)                                                                           | lane DELETE                             |
+| step payload objects                                                   | 30 days                                                                                  | lane deletes objects                    |
+| run payload columns (`input`, `result`, `error`)                       | 90 days after terminal                                                                   | lane clears                             |
+| run rows (`platform.worker_runs`)                                      | 395 days after terminal, skipping runs that memory references                            | lane DELETE                             |
+| tool outputs (`platform.tool_executions.output`)                       | 30 days                                                                                  | lane clears                             |
+| Langfuse data                                                          | 30 days                                                                                  | mechanism open                          |
+| inbound events (`studio.inbound_events`)                               | 30 days                                                                                  | lane DELETE                             |
+| trigger deliveries (`studio.trigger_deliveries`)                       | 90 days                                                                                  | lane DELETE                             |
+| checkpoints                                                            | 24 hours after the run ends                                                              | lane DELETE                             |
+| inbound event dedupe keys                                              | 72 hours                                                                                 | lane DELETE                             |
+| contact suppressions (`platform.contact_suppressions`, address hashes) | while the tenant is a customer; only offboarding or a data subject's request removes one | offboarding purge, data-subject erasure |
+| conversations (`studio.conversations`, `studio.conversation_messages`) | a provisional term Đạt sets, owed                                                        | lane DELETE                             |
+| audit log (`platform.audit_events`)                                    | 1095 days, unchanged                                                                     | DROP PARTITION                          |
 
 ## Alternatives considered
 
@@ -117,7 +126,8 @@ ADR 0121, which owns the usage ledger whose screens and retention this ADR also 
   `workflow-builder-ui` and `agent-lifecycle` read steps instead of storing their own results.
 - Migrations: `platform.run_steps` (monthly partitions made by `platform.ensure_time_partitions`,
   RLS enabled and forced on parent, DEFAULT and each partition), `platform.audit_exports`,
-  `platform.outbox_events.trace_parent` and the two audit indexes.
+  `platform.outbox_events.trace_parent` and `ix_audit_events_action`; the run index on
+  `platform.audit_events` is app-standards 03's, and telemetry-and-audit 02 waits for it.
 - Tests that must exist, each red with its guard removed: the semconv contract test and the AST
   emitter test; a log test that fails on an email-shaped value or a query string; cross-tenant
   negative tests on `/api/v1/runs` and the steps route; a viewer without read on a `sensitive`
@@ -130,7 +140,7 @@ ADR 0121, which owns the usage ledger whose screens and retention this ADR also 
 
 ### Contradictions and divergences
 
-- Keeps `CLAUDE.md:114` ("optional Langfuse") and narrows it to an operator-only tool; no
+- Keeps `CLAUDE.md:127` ("optional Langfuse") and narrows it to an operator-only tool; no
   contradiction.
 - _Contradicts `configs/policies/retention@1.7.0.yaml:116-118`, which grounds the audit term in
   Decree 13/2023, but worth reopening because that decree no longer governs: the citation is
@@ -141,15 +151,36 @@ ADR 0121, which owns the usage ledger whose screens and retention this ADR also 
   logs with identifiers only, `traceparent` from browser to worker), re-derived here and keeping the
   OTLP span export this repository already has; diverges from si-platform
   `docs/adr/0044-approval-runs-narrowed-by-the-record-workspace-history-append-only-unpartitioned.md`,
-  because step volume is unbounded (`CLAUDE.md:250`) and D1's workspace tree is narrowed in
+  because step volume is unbounded (`CLAUDE.md:288`) and D1's workspace tree is narrowed in
   queries rather than by a workspace RLS boundary.
 
 ## Open
 
 1. **DO-52, counsel and Đạt.** Retention terms, and erasure of `user_id` in the usage ledger and
    run history. DO-52's own proposal keeps terminal run rows 180 days and tool outputs with the
-   run, where decision 7 says 395 days and 30 days; counsel's answer settles both.
+   run, where decision 7 says 395 days and 30 days; counsel's answer settles both. Partly answered
+   2026-10-23 (DO-52 (a)): decision 7's table is the provisional set, its own numbers standing where
+   it names a store and DO-52's filling the stores it lacked, plus the two rows it was missing
+   (contact suppressions, conversations). Still with counsel: the final terms and the erasure of
+   `user_id`; still owed by Đạt: the conversation term.
 2. **DO-51, counsel and the requester.** Is content capture allowed, who enables it, and for how
-   long (at most 7 days here)?
+   long (at most 7 days here)? Answered 2026-10-23 (DO-51.1 (a)): allowed as decision 5 says, in
+   W2, the tenant opting in, audited, for at most 7 days and read only within the tenant; counsel
+   only confirms the processing notice to leads.
 3. **DO-51, counsel and the requester.** May tenant admins see usage per named user (behind
-   `usage.read` at tenant depth)?
+   `usage.read` at tenant depth)? Answered 2026-10-23 (DO-51.2 (c)): not in W1, where usage groups
+   by workspace, agent, workflow and purpose only; per named user in W2 with YC79, once counsel
+   confirms the notice to employees.
+
+## Acceptance (2026-10-23)
+
+Accepted by Đạt on 2026-10-23 with these amendments from the decision brief:
+
+- Decision 5: content capture is W2 (DO-51.1 (a)).
+- Decision 6: one run index on `platform.audit_events`, owned by app-standards 03, replaces
+  `ix_audit_events_run` (OPS-b).
+- Decision 7: one owner of the retention file (telemetry-and-audit, 1.8.0; compliance-pdpl adds
+  1.9.0); the terms are provisional versioned data that counsel changes by a new version; run steps
+  go from 90 to 30 days by lane (YC88); rows added for trigger deliveries, contact suppressions and
+  conversations (DO-52 (a)).
+- Open: DO-52 partly answered; both DO-51 questions answered.

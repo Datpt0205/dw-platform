@@ -1,5 +1,5 @@
 ---
-status: Proposed (direction chosen by the requester on 2026-10-22 and 2026-10-23; not yet reviewed by Đạt)
+status: Accepted (Đạt, 2026-10-23; amendments from the decision brief applied; the C++ binding stays the default only if the FOG-50 measurement holds)
 date: 2026-10-23
 source:
     - ../../.claude/plans/studio/workflow-nodes/spec.md
@@ -45,8 +45,9 @@ S7.
    events are CEL. Tenant text never reaches `str.format`, `format_map`, `string.Template`, Jinja2, f-strings, `eval`
    or JavaScript; an architecture test fails a `dw_studio` module that imports `jinja2` or calls `.format(` on anything
    but a literal. No expression is evaluated in the browser: the builder calls
-   `POST /api/v1/studio/expressions:check` and `POST /api/v1/studio/expressions:evaluate` (against a sample the caller
-   typed, or a recorded step output the caller may read, masked), rate-limited per user.
+   `POST /api/v1/studio/expressions/check` and `POST /api/v1/studio/expressions/evaluate` (sub-resources, ADR-0108's
+   convention; against a sample the caller typed, or a recorded step output the caller may read, masked),
+   rate-limited per user.
 2. **The port.** `ExpressionEngine` lives in `dw_kernel.expressions` (stdlib only): `check(source, env)` returns a
    checked expression (type, references, cost estimate) or issues; `evaluate(checked, activation)` returns a value or
    an error; one closed type algebra (`null`, `bool`, `int`, `double`, `string`, `bytes`, `timestamp`, `duration`,
@@ -55,6 +56,9 @@ S7.
    `common-expression-language==0.10.0` is the fallback, behind an AST pre-check (comprehension nesting at most 2,
    list literals at most 1,000 elements). Both pass one contract suite (a cel-spec conformance subset, the function
    library, budget and size cases, si-platform's validation test vectors); the composition root picks one by setting.
+   The C++ binding stays the default only if FOG-50's prototype shows it registers Python functions and typed objects
+   with fields; if it cannot, the Rust binding becomes the default behind the AST pre-check, and if both fail, work
+   stops and Đạt is told (DO-38 (a)).
 3. **One library, pinned per run.** `dw.cel/v1`, pinned on the run manifest (ADR-0109), is the CEL standard with the
    `strings`, `math`, `optional`, `encoders` and `bindings` extensions plus the platform functions `text.nfc`,
    `text.unaccent`, `text.mask_contacts`, `phone.e164`, `email.normalize`, `fmt.money_vnd`, `fmt.datetime`, `fmt.date`
@@ -84,9 +88,11 @@ S7.
 6. **Validation rules port si-platform's structure; selection and audiences keep their own forms.** A validation rule
    means "must hold" (true is valid; the UI says "Điều kiện để lưu được") and ports the order, the all-errors result
    and the message shape of si-platform's `rules.py`, with its test vectors; since si-platform's rules mean "error when
-   true", each ported vector's expected outcome is inverted. Record selection stays on the JSON filter AST (ADR-0108)
-   and audiences stay a typed condition list (ADR-0102): CEL decides whether something holds, not which records a
-   query returns.
+   true", each ported vector's expected outcome is inverted. Validation rules ship in W2 with YC28 (DO-37 (a)). Record
+   selection stays on the JSON filter AST (ADR-0108): CEL decides whether something holds, not which records a query
+   returns. Audiences stay a typed condition list (ADR-0102), a reasoned exception to decision 1: the reverse screen
+   "who may use this agent" must generate positive SQL, which a CEL expression cannot give, and a list without
+   arithmetic is not a second expression language (DO-40 (a)).
 
 ## Alternatives considered
 
@@ -108,8 +114,9 @@ S7.
   same port and build their own environments on it.
 - A C++ wheel enters the images, and a 0.1.x dependency sits behind a port with a tested fallback; whether it registers
   Python functions and typed objects is measured first (FOG-50).
-- The kernel purity contract (`pyproject.toml:251-276`) is a denylist: `cel` and `common_expression_language` join its
-  `forbidden_modules`, or the guard cannot see the new libraries.
+- The kernel purity contract (`pyproject.toml:251-276`) is a denylist: the import names of both bindings join its
+  `forbidden_modules`, or the guard cannot see the new libraries. The names are read from the installed wheels in
+  FOG-50's prototype, not guessed (failure-modes #4); `cel` and `common_expression_language` are the expected ones.
 - Tests that must exist, each red when its guard is removed: the contract suite against both adapters; a 10,000-element
   map refused by the budget; the architecture test on `jinja2` and `.format(`; per sink, a value containing `</input>`,
   a header value with CR or LF and a templated host, each refused; a hidden field failing the render closed; the
@@ -118,7 +125,8 @@ S7.
   (ADR-0110) must refuse any `string.Formatter().parse` field other than a declared plain name.
 - Extends `docs/adr/0010-prompt-variables-are-untrusted-by-default.md` to every template sink, through the same
   `contain_untrusted` and never a second containment function.
-- `CLAUDE.md:111-116` (Required stack) names no expression language; this ADR adds CEL, pinned exactly.
+- `CLAUDE.md:124-129` (Required stack) names no expression language; on acceptance it gains "CEL for tenant
+  expressions (`cel-expr-python`, pinned exactly), reached only through `dw_kernel.expressions`".
 - si-platform: ports the structure (order, all-errors result, messages) of si-platform
   `packages/python/platform/si_metadata/src/si_metadata/rules.py` and diverges on predicate syntax (CEL) and on
   meaning ("must hold" rather than "error when true").
@@ -127,12 +135,32 @@ S7.
 
 1. **DO-38 (Đạt).** Accept a 0.1.x C++ binding (`cel-expr-python`), pinned exactly, as the default engine, with the
    Rust binding as the fallback behind the same contract suite, and workflow-nodes as the port's owner?
+   Answered 2026-10-23: yes (DO-38 (a)), on decision 2's condition that FOG-50 holds; workflow-nodes owns the port, as
+   Đạt confirmed in its spec.
 2. **DO-37 (requester for the meaning, Đạt for the engine).** CEL with si-platform's `rules.py` semantics and test
-   vectors rather than porting the evaluator (D5 versus S7)? Provisional call (agent, 2026-10-23): validation rules
-   mean "must hold", in CEL with ported test vectors.
-3. **DO-40 (Đạt and requester).** Audiences as a typed condition list or as CEL? This ADR keeps the typed list
-   (ADR-0102) until it is answered.
+   vectors rather than porting the evaluator (D5 versus S7)? Answered 2026-10-23 (DO-37 (a)): validation rules mean
+   "must hold", in CEL, with si-platform's vectors ported and each one's polarity checked (decision 6); they ship in W2
+   with YC28.
+3. **DO-40 (Đạt and requester).** Audiences as a typed condition list or as CEL? Answered 2026-10-23: a typed
+   condition list (DO-40 (a)), recorded in decision 6 as a reasoned exception to CEL.
 4. **DO-03 (Đạt, with si-platform's PO and SA).** The terms for porting si-platform code and test
-   vectors: a written agreement, a pinned commit per port, provenance headers.
+   vectors: a written agreement, a pinned commit per port, provenance headers. They are settled before anything is
+   ported.
 5. **FOG-50 (prototype).** Which runtime registers Python functions and typed objects and enforces cost limits, and is
-   the Rust fallback bounded by the AST pre-check alone, given a native call cannot be interrupted from Python?
+   the Rust fallback bounded by the AST pre-check alone, given a native call cannot be interrupted from Python? Its
+   answer is the condition this ADR was accepted on (decision 2).
+
+## Acceptance (2026-10-23)
+
+Accepted by Đạt on 2026-10-23, on condition that the C++ binding stays the default only if the FOG-50 measurement
+holds, with these amendments from the decision brief:
+
+- Decision 1: the builder's routes are the sub-resources `/expressions/check` and `/expressions/evaluate`, not
+  `expressions:check` (ADR-0108, DO-16 (a)).
+- Decision 2: the rule that picks the default after FOG-50, Rust as the fallback, and a stop if both bindings fail
+  (DO-38 (a)).
+- Decision 6: validation rules ship in W2 with YC28 (DO-37 (a)); audiences as a typed condition list are recorded as
+  a reasoned exception, with its reason (DO-40 (a)).
+- Consequences: the bindings' import names are measured in FOG-50 before they join `forbidden_modules`; the sentence
+  `CLAUDE.md:124-129` gains is written out.
+- Open: DO-38, DO-37 and DO-40 answered; DO-03 and FOG-50 stay open.

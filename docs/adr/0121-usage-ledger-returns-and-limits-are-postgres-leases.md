@@ -1,5 +1,5 @@
 ---
-status: Proposed (direction chosen by the requester on 2026-10-22 and 2026-10-23; not yet reviewed by Đạt)
+status: Accepted (Đạt, 2026-10-23; amendments from the decision brief applied)
 date: 2026-10-23
 source:
     - ../../.claude/plans/studio/usage-and-limits/spec.md
@@ -15,7 +15,9 @@ Numbered in the block 0100-0199 reserved for Studio (ADR-0100 records the block)
 owner decision: migration `aefe7c1f5d9b` dropped the per-call ledger on 2026-09-21, misdescribed
 as invoicing evidence and read only by a spend cap and an admin dashboard, because "Đạt asked for
 the whole feature gone" (`0013_drop_model_usage_ledger.py:3-14`). The first point stays true,
-named readers answer the second, and the migration bringing it back waits for Đạt (DO-21).
+named readers answer the second, and Đạt signed the return on 2026-10-23 (DO-21.1): the ledger comes
+back through a new revision, never a downgrade of `aefe7c1f5d9b`. ADR-0113, whose claim admits runs
+through this ADR's `LimitsPort`, was accepted with it.
 
 ## Context
 
@@ -43,16 +45,18 @@ named readers answer the second, and the migration bringing it back waits for Đ
    partitions with a DEFAULT one, RLS forced on each, append-only for `dw_app`, kept 13 months (395
    days). Settlement is idempotent (`id` and `occurred_at` set before the call, insert
    `ON CONFLICT DO NOTHING`). It meters consumption and is never invoicing evidence.
-2. **Its readers ship with it** (`failure-modes.md` #1): lease settlement and the reaper;
-   `GET /api/v1/runs/{run_id}/usage`; the `usage_rollup` lane feeding `platform.usage_daily`,
-   `GET /api/v1/usage/summary` and the usage dashboard; the operator reconciliation aggregate
-   `platform.usage_provider_daily(day)` (SECURITY DEFINER, by provider and model, no tenant ids);
-   the evaluation cost bound `agent-lifecycle` reads from `eval_offline` and `eval_online` rows; and
-   cost per workflow outcome over the runs of one `root_run_id` (fees a tenant pays a provider
-   directly, such as ZNS on its own account, stay outside it).
+2. **Its readers ship with it** (`failure-modes.md` #1), three in W1: lease settlement and the
+   reaper, which also bound evaluation spend, since a gate run holds a lease of purpose
+   `eval_offline` (DO-21.4); `GET /api/v1/runs/{run_id}/usage`; and the `usage_rollup` lane feeding
+   `platform.usage_daily`, `GET /api/v1/usage/summary` and the usage dashboard. The operator
+   reconciliation aggregate `platform.usage_provider_daily(day)` (SECURITY DEFINER, by provider and
+   model, no tenant ids) and cost per workflow outcome over the runs of one `root_run_id` (which needs
+   an outcome event no spec emits yet; fees a tenant pays a provider directly, such as ZNS on its own
+   account, stay outside it) are not readers until a ticket ships each with its consumer (DO-21.1).
 3. **One price book.** `configs/pricing/price_book@<semver>.yaml`, pinned in the release manifest,
    prices every metered operation by effective-dated entries per provider, model and usage type,
-   cache state, sandbox CPU seconds and server tool calls included. Tenant BYOM entries live in
+   cache state, code sandbox time by profile (reserved vCPU and GB times wall time, ADR 0119) and
+   server tool calls included. Tenant BYOM entries live in
    `platform.tenant_price_entries`, resolved like `TenantOverlay`: the tenant's own, else the
    platform's, never another tenant's. Model profiles lose their prices in the same change; history
    is never re-priced. When `settings.is_deployed`, a platform-paid route without a price refuses
@@ -73,41 +77,54 @@ named readers answer the second, and the migration bringing it back waits for Đ
    each model call's `max_tokens`; each call settles idempotently into the ledger and the lease;
    counters move only at admission, top-up, a 60-second heartbeat roll and close. A wait for a
    person releases the lease and the resume opens a new one. A `ReapTarget` on the reaper lane
-   settles crashed runs' leases as `system:reaper` (ADR 0011). Code sandbox CPU seconds and
-   concurrency use the same leases (ADR 0119).
-6. **When a limit is hit.** At admission an interactive conversation turn is refused with
-   `QuotaExceededError` (HTTP 429, `details.reason_code = limit_exceeded`, metric, scope, window
-   and reset time); a queued trigger run waits for the window or a raised limit (ADR 0113), never
-   dropped. Mid-run the run stops at the next model call, tool call or node boundary with
-   `limit_exceeded` and no retry, executed effects kept and audited; never a silent downgrade.
-7. **One owner, no back door.** `RunBudgetLedger`, `RunBudgetMiddleware`, `DailyAllowance`,
-   `RuntimeSeam.budget` and `platform.tenant_daily_spend_guard` are replaced in the same slice by a
-   new package, `packages/python/dw_usage`; the runtime declares `LimitsPort` and knowledge
-   `UsageMeterPort`, wired at the composition root as `RunAllowancePort` is today.
+   settles crashed runs' leases as `system:reaper` (ADR 0011). Code sandbox time, in the unit of
+   decision 3, and concurrency use the same leases (ADR 0119). A lane prunes the counters of past
+   windows, since each window adds a row (`failure-modes.md` #6).
+6. **When a limit is hit.** Admission happens in one place, the runner, when the `studio_runs`
+   lane claims the run (ADR 0113 decision 3); no API dependency answers 429 for a Studio run, and
+   429 stays only on the old inline path (`langgraph_runner.py:246-264`). Missing concurrency
+   re-queues every kind. A spent window ends an interactive run (`chat`, `manual`, `test`) `failed`
+   with `details.reason_code = limit_exceeded`, the metric, scope, window and `resets_at`; holds a
+   `datahub`, `provider_app` or `record_event` run `queued` until `resets_at` or a raised limit,
+   never dropped; records a `schedule` fire (W2) as `limit_refused` instead of holding it; and ends
+   a gate run `error` with `limit_exceeded` and no HTTP status. A child run shares its root's lease
+   and is not admitted again (DO-21.3). Mid-run the run stops at the next model call, tool call or
+   node boundary with `limit_exceeded` and no retry, executed effects kept and audited; never a
+   silent downgrade.
+7. **One owner, no back door.** `RunBudgetLedger`, `RunBudgetMiddleware`, `RunAllowancePort`,
+   `DailyAllowance`, `RuntimeSeam.budget` and `platform.tenant_daily_spend_guard` are replaced in the
+   same slice by a new package, `packages/python/dw_usage`; the runtime declares `LimitsPort` and
+   knowledge `UsageMeterPort`, wired at the composition root where `RunAllowancePort` is today
+   (DO-21.2).
    `MeteredModelGateway`, `LimitedChatModelFactory`, `MeteredEmbeddingPort` and `MeteredRerankPort`
    are the only model-reaching doors; import-linter forbids the concrete adapters elsewhere.
 8. **Valkey holds rate, never money or concurrency.** `RateLimiterPort` keeps GCRA buckets keyed
    by tenant and workspace, a provider governor with fair shares per tenant by plan, and dispatch
-   pacing; without Valkey it falls back to per-process buckets (limit divided by replicas).
+   pacing; without Valkey it falls back to per-process buckets (limit divided by replicas), so a
+   lost replica lowers the total and never raises it. W1 ships the port with that per-process
+   adapter, which the 60 inbound events per minute of YC44 need; GCRA on Valkey follows in W2
+   (DO-49 (a), requirements Q3 (a)).
 9. **One plan catalogue, in the database.** `platform.plans` and a typed `platform.plan_limits` (no
    RLS, `dw_app` SELECT only; NULL means no limit, a missing row refuses, per-run maxima NOT NULL)
    replace `DEFAULT_PLANS` and the `quotas` jsonb. Windows follow the tenant's time zone (default
    `Asia/Ho_Chi_Minh`) through one function, `window_for(tenant_id, window_kind, at)`; the ledger
    is kept in USD.
 
-### Provisional calls (agent, 2026-10-23: option (a) of DO-50 and DO-43, pending the requester)
+### Calls confirmed on 2026-10-23 (option (a) of DO-50 and DO-43)
 
-- Windows are cut in the tenant's time zone; a hard limit hit mid-run stops the run.
+- Windows are cut in the tenant's time zone; a hard limit hit mid-run stops the run at the next
+  boundary.
 - Builder assistance, test runs and evaluations count against the tenant's limits under separate
-  purpose caps and not toward runs per day; only root runs count toward runs per day.
+  purpose caps (W2, YC79) and not toward runs per day; only root runs count toward runs per day. The
+  tenant pays its own evaluations, and the platform the re-evaluations it triggers (DO-29.2 (a)).
 - BYOM tokens count only against caps the tenant sets, and a failing tenant model never falls back
-  to a platform-paid route (ADR 0118). If any of these is wrong, only that rule changes.
+  to a platform-paid route (ADR 0118).
 
 ## Alternatives considered
 
 - **Keep the ledger removed.** Rejected: limits, the usage dashboard, the evaluation cost bound and
   reconciliation would have no source.
-- **Counters in Valkey.** Rejected: Valkey is never a source of truth (`CLAUDE.md:60`); LiteLLM's
+- **Counters in Valkey.** Rejected: Valkey is never a source of truth (`CLAUDE.md:64`); LiteLLM's
   budgets read a Redis counter on the hot path whose restart can under-read spend
   (https://docs.litellm.ai/docs/proxy/users, fetched 2026-10-22).
 - **Check spend after the call.** Rejected: it overspends by one loop's length, the agent loop's
@@ -131,8 +148,14 @@ named readers answer the second, and the migration bringing it back waits for Đ
   `plan_limits` row refuses; with Valkey stopped, money and concurrency limits still hold.
 - Harder: two small writes per model call (to be measured); a resumed run can be stopped by an
   exhausted month; model profiles change shape; `test_only_the_platform_lanes_are_wired` changes;
-  offboarding exports the ledger and never purges it; its `user_id` is personal data, so erasure
-  needs a decision (DO-52). `usage-and-limits` lands before any deployed Studio run is admitted.
+  offboarding exports the ledger and then purges it with the rest of the tenant's Studio data
+  (YC6); its `user_id` is personal data, so erasing it on a data subject's request still needs
+  counsel's decision (DO-52, ADR 0122). `usage-and-limits` lands before any deployed Studio run is
+  admitted.
+- The pruning lane of decision 5 needs a term for `platform.budget_counters` in the retention
+  policy (ADR 0122). A limit left behind by an archived workspace or a departed user needs either a
+  cleanup rule or typed foreign-key columns per scope with `num_nonnulls(...) = 1` and
+  `ON DELETE CASCADE`, as ADR 0115 keys secret subjects; usage-and-limits weighs the two.
 
 ### Contradictions and divergences
 
@@ -140,12 +163,18 @@ named readers answer the second, and the migration bringing it back waits for Đ
   of `2b5ff2bceb06_tenant_daily_spend_guard.py:14-17` and `DEFAULT_PLANS`, but worth reopening
   because Studio needs a per-call source, now shipped with its readers, and a code copy of the plan
   catalogue drifts (`failure-modes.md` #2)._ `configs/policies/retention@1.7.0.yaml:72-73` goes too.
-- Generalises `CLAUDE.md:220-224` (the plan's limit enforced where a run begins, through
-  `RunAllowancePort`) into the `LimitsPort` scope chain; the runner stays the place.
-- _Contradicts `CLAUDE.md:163` (every tenant-scoped table has `workspace_id`) for the tenant-level
+- Generalises `CLAUDE.md:256-261` (the plan's limit enforced where a run begins, through
+  `RunAllowancePort`) into the `LimitsPort` scope chain; the runner stays the place. The sentence is
+  amended on acceptance (DO-21.2): a run's limits are still enforced where it begins, in the runner,
+  and a Studio run begins when the `studio_runs` lane hands it over; every limit on the scope chain
+  comes through `LimitsPort`, which the runtime declares and `dw_usage` satisfies, and
+  `RunAllowancePort` goes.
+- _Contradicts `CLAUDE.md:181` (every tenant-scoped table has `workspace_id`) for the tenant-level
   `platform.limit_policies` and `platform.budget_counters`, but worth reopening because a workspace
   is one scope of the chain, as with `platform.policy_overrides`
-  (`45dc1b5e0125_platform_policy_overrides.py:35-38`)._
+  (`45dc1b5e0125_platform_policy_overrides.py:35-38`)._ Settled by amendment A6 (ADR 0100): both
+  tables are tenant-wide, keyed by `(scope_type, scope_id)`, and listed with this reason in
+  `test_rls_coverage.py`.
 - _Contradicts `dw_agent_runtime/adapters/langgraph_runner.py:255-257` (no limit refuses a
   resume), but worth reopening because money spent after a resume is new spend; runs per day is
   still not counted again._
@@ -160,11 +189,47 @@ named readers answer the second, and the migration bringing it back waits for Đ
 ## Open
 
 1. **DO-21, Đạt.** Accept the per-call ledger, reversing `aefe7c1f5d9b`, with decision 2's readers?
+   Answered 2026-10-23: yes, a per-call ledger kept 13 months, metering and never invoicing
+   evidence, back through a new revision, with the three W1 readers of decision 2 (DO-21.1 (a)).
 2. **DO-59, the requester with Đạt.** Plan numbers for cost, tokens, concurrency, RPM and TPM, and
-   the unit tenants see and set (a USD estimate in the pilot, credits before selling).
+   the unit tenants see and set (a USD estimate in the pilot, credits before selling). Answered
+   2026-10-23: in W1 a USD estimate, plan rows seeded with today's numbers and money left NULL (no
+   plan-level money cap, as today), the pilot's caps as `platform.limit_policies` rows the requester
+   names for the demo tenant before the demo, a pilot tenant holding its own cap before its first
+   `live` run, and per-run maxima still NOT NULL (DO-59.1 (a)); before GA a fixed plan fee with a
+   monthly AI cost ceiling, `cost_usd_per_month`, and no credits in v1 (DO-59.2 (a)).
 3. **DO-50, the requester.** Mid-run stop in v1, approval kind in v1.5, never a silent downgrade;
    who pays builder assistance, test runs and evaluations (provisional (a) above; DO-29, Đạt).
+   Answered 2026-10-23: the calls above stand (DO-50 (a)); windows fall back to `Asia/Ho_Chi_Minh`
+   when the tenant's time zone is NULL, and purpose caps come in W2; who pays evaluations is
+   DO-29.2 (a).
 4. **DO-43, the requester.** Do BYOM tokens count against plan caps? Provisional (a) above.
+   Answered 2026-10-23: no, only against caps the tenant sets (DO-43 (a)).
 5. **DO-49, Đạt.** Per-process rate buckets while Valkey is unreachable, rather than failing closed.
+   Answered 2026-10-23: yes, through the one `RateLimiterPort`, shipped in W1 with that adapter
+   (decision 8; DO-49 (a)).
 6. **DO-07, Đạt with the requester.** D11 gives every tenant configuration change a maker and a
    checker; whether that covers every `platform.limit_policies` change or only loosening is open.
+   Answered 2026-10-23 by the requester and Đạt: lowering a limit takes one person and an audit
+   event, and raising one always takes a maker and a different checker.
+
+## Acceptance (2026-10-23)
+
+Accepted by Đạt on 2026-10-23, together with ADR-0113, with these amendments from the decision
+brief:
+
+- Decision 2: three W1 readers ship with the ledger; operator reconciliation and cost per outcome
+  wait for a ticket each, and evaluation spend is bounded through its `eval_offline` lease (DO-21.1,
+  DO-21.4).
+- Decisions 3 and 5: code sandbox time is priced and leased as the profile's reserved vCPU and GB
+  times wall time (DO-45.1 (a)); a lane prunes past windows' counters (the limit-tables CRITICAL,
+  option (a)).
+- Decision 6: admission happens once, at the `studio_runs` claim, with the refusal shapes of
+  ADR 0113 decision 3; the 429 for a conversation turn goes (DO-21.3 (a)).
+- Decision 7: `RunAllowancePort` goes with `DailyAllowance` (DO-21.2 (a)).
+- Decision 8: the per-process adapter ships in W1, GCRA on Valkey in W2 (DO-49 (a), Q3 (a)).
+- Confirmed calls: DO-50 and DO-43 confirmed, DO-29.2 added.
+- Consequences and Contradictions: offboarding purges the ledger after the export (YC6); the
+  counters' term and orphaned limits owed; the `CLAUDE.md:256-261` amendment written out; both
+  limit tables tenant-wide under amendment A6.
+- Open: DO-21, DO-59, DO-50, DO-43, DO-49 and DO-07 answered.

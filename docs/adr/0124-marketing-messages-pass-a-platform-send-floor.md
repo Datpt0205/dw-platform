@@ -1,5 +1,5 @@
 ---
-status: Proposed (direction chosen by the requester on 2026-10-22 and 2026-10-23; not yet reviewed by Đạt)
+status: Accepted (Đạt, 2026-10-23; amendments from the decision brief applied)
 date: 2026-10-23
 source:
     - ../../.claude/plans/studio/compliance-pdpl/spec.md
@@ -14,7 +14,7 @@ source:
 Numbered in the block 0100-0199 reserved for Studio (ADR-0100 records the block). It rests on requester decision D4
 (2026-10-22): the Marketing pilot takes leads from forms, Facebook and Zalo, scores and assigns them, and ends in a
 Zalo or email message to the lead after a human approval; Marketing is the first domain pack. The mechanism is
-agent-proposed, and it takes the provisional calls on DO-18 and DO-48 (agent, 2026-10-23). The `compliance-pdpl`
+agent-proposed, and it takes the calls on DO-18 and DO-48, both confirmed by Đạt on 2026-10-23. The `compliance-pdpl`
 spec owns the floor and the consent records, `tools-and-skills` consumes the floor in the executor, and
 `marketing-pilot` reads it.
 
@@ -52,13 +52,18 @@ spec owns the floor and the consent records, `tools-and-skills` consumes the flo
 3. **`notify.send` reaches members only.** Its recipients are principals; an address-shaped value is a publish error
    and a non-member at run time is dropped and counted (ADR-0112). Notifications to members (ADR-0006) do not pass
    this floor. A message to anyone else is a connector message action.
-4. **Consent records are platform data.** `platform.consent_records`, append-only under tenant RLS: subject key
-   (E.164 phone, lowercase email or Zalo user id), purpose (`marketing`, `transactional`), channel (`zns`, `email`,
-   `sms`, `messenger`, `zalo_oa`), state, `captured_at`, `source`, `evidence_ref` (a Data Hub event id or an import
-   batch), `notice_version` and `withdrawn_at`; the current consent is the latest row per subject, purpose and
-   channel. `platform.contact_suppressions` holds an address hash per channel. `platform.marketing_send_log` is
-   range-partitioned by month through `platform.ensure_time_partitions`. The Marketing pack's Consent object is a
-   read view over the records: object CRUD can neither edit nor delete a consent.
+4. **Consent records are platform data, tenant-wide.** `platform.consent_records`, append-only under tenant-only
+   RLS, range-partitioned by month with a DEFAULT partition through one row in `platform.time_partitioned_tables`:
+   subject key (E.164 phone, lowercase email or Zalo user id), purpose (`marketing`, `transactional`), channel
+   (`zns`, `email`, `sms`, `messenger`, `zalo_oa`), state, `captured_at`, `source`, `evidence_ref` (a Data Hub event
+   id or an import batch), `notice_version` and `withdrawn_at`; the current consent is the latest row per subject,
+   purpose and channel. `platform.contact_suppressions` holds an address hash per channel. Both tables are tenant-wide
+   under amendment A6 (ADR-0100), with this reason: the tenant is the controller (ADR-0123 decision 1), so a person who
+   declined in one workspace gets no message from another, and a withdrawal recorded anywhere stops sends in every
+   workspace within 5 minutes (YC86). `platform.marketing_send_log` is narrowed by workspace and range-partitioned by
+   month through `platform.ensure_time_partitions`; like every registered table, its partitions grant `dw_app`
+   nothing, so its rows are reached only through the parent (DO-02.2). The Marketing pack's Consent object is a read
+   view over the records: object CRUD can neither edit nor delete a consent.
 5. **Opt-out takes effect at once.** An email carries a signed one-address unsubscribe link (a public route with an
    HMAC token, rate-limited and idempotent); a Zalo message carries a keyword instruction that the inbound router
    handles. Either writes a suppression row at once, and a queued message is checked again before it sends.
@@ -67,10 +72,11 @@ spec owns the floor and the consent records, `tools-and-skills` consumes the flo
    validated as tighten-only. The defaults are conservative placeholders marked UNVERIFIED until counsel confirms
    (DO-55): 1 message per address per channel per 24 hours, and sending only between 08:00 and 20:00
    `Asia/Ho_Chi_Minh`. B12 proposed 2 per 24 hours and quiet hours from 21:00 to 08:00; the stricter set ships.
-7. **A person approves every outbound message in the pilot** (P1, D4; DO-18, provisional): one approval per message
-   in a fast keyboard queue, never a bulk action (`.claude/rules/ui-quality.md:225`). An AI-drafted message carries
-   its provenance (the drafting run and model) on the send log. In a `test` run a message reaches only the
-   workspace's test recipients (ADR-0111), and the floor applies to them too.
+7. **A person approves every outbound message in the pilot** (P1, D4; DO-18 (a)): one approval per message in a
+   fast keyboard queue, never a bulk action (`.claude/rules/ui-quality.md:225`). An AI-drafted message to a lead
+   carries an "AI-drafted" label, on by default until counsel answers DO-60, and its provenance (the drafting run and
+   model) on the send log. In a `test` run a message reaches only the tenant's test recipients (the tenant-wide
+   `studio.test_recipients`, ADR-0111), and the floor applies to them too.
 
 ## Alternatives considered
 
@@ -95,7 +101,10 @@ spec owns the floor and the consent records, `tools-and-skills` consumes the flo
 - Tests that must exist (MP1, MP12, MP15), each shown red with its guard removed: a direct tool call, an agent tool
   call and a workflow-as-tool call to a message action without consent are each refused on their own path; a
   withdrawn consent stops a queued message; a tenant overlay looser than the floor is refused.
-- Erasure must decide what of the consent records survives as proof (counsel; ADR-0122's retention).
+- Consent records are removed row by row, never by dropping a partition, since the row in force may be old. Their
+  term (DO-52 proposes the relationship plus 5 years) and what survives an erasure as proof are counsel's
+  (ADR-0122's retention). Contact suppressions stay while the tenant is a customer, and only offboarding or a data
+  subject's request removes one (DO-52): a suppression that expired would reopen the path to a person who opted out.
 
 ### Contradictions and amendments
 
@@ -111,15 +120,38 @@ spec owns the floor and the consent records, `tools-and-skills` consumes the flo
 
 1. **DO-55** (counsel and the requester): the statutory numbers for frequency, sending hours and recipients per run
    (the placeholders above stay UNVERIFIED; FOG-75), and the test recipients' consent wording, validity (90 days
-   recommended) and who may add them (tenant admins recommended).
+   recommended) and who may add them (tenant admins recommended). Partly answered 2026-10-23 (DO-55 (a)): decision
+   6's set ships, UNVERIFIED until counsel confirms it before shadow runs; a tenant only tightens it, and a change is
+   a new policy version. Still owed: a placeholder for the maximum recipients per run, and, by W2 when the `test` mode
+   opens, the test recipients' consent wording, validity and who may add them.
 2. **DO-60** (counsel): must an AI-drafted, human-approved message be labelled? Recommended: provenance logged for
-   email and ZNS, AI disclosure in chat channels from v1.5.
+   email and ZNS, AI disclosure in chat channels from v1.5. Answered 2026-10-23 until counsel replies: the label is on
+   by default and the provenance is on the send log (decision 7); counsel's answer may switch the label off.
 3. **DO-54** (counsel and the requester): consent and controller roles for the pilot (the platform as processor, the
    tenant as controller attesting at onboarding, a DPA signed before shadow runs) and the anti-spam position; DO-53
-   gates real lead data.
+   gates real lead data. Answered 2026-10-23 for the roles, as stated (DO-54.2 (a)); the anti-spam position stays
+   with counsel (FOG-75), and DO-53 still gates real lead data.
 4. **DO-18** (requester): provisional call (agent, 2026-10-23, option (a)): nurture waits for W2; every outbound
    message in the pilot is approved, one approval per message in a fast keyboard queue; an approval whose subject is a
-   whole batch only as a recorded exception. If wrong, decision 7 changes, never the floor.
+   whole batch only as a recorded exception. If wrong, decision 7 changes, never the floor. Answered 2026-10-23
+   (DO-18 (a)): nurture waits for W2, and every message takes its own approval, never a batch; approval by template
+   with sampling is weighed only after shadow-run figures (BS29).
 5. **DO-48** (requester; counsel on fan-out): provisional call (agent, 2026-10-23, option (a)): generic SMTP is the P1
    email path (FOG-06), connections are workspace-shared only, and the same Page or OA connected by two tenants fans
-   out to both, which counsel confirms.
+   out to both, which counsel confirms. Answered 2026-10-23: SMTP and workspace-shared connections as stated
+   (DO-48.1 (a)); the fan-out provisionally, with provider-event routing (W2) off until counsel's opinion
+   (DO-48.2 (a), ADR-0113).
+
+## Acceptance (2026-10-23)
+
+Accepted by Đạt on 2026-10-23 with these amendments from the decision brief:
+
+- Decision 4: consent records and contact suppressions are tenant-wide under amendment A6, so a withdrawal anywhere
+  stops sends everywhere in the tenant; `consent_records` is partitioned by month with a DEFAULT partition; the send
+  log stays narrowed by workspace, its partitions granting `dw_app` nothing (the consent-records CRITICAL, option
+  (a); DO-02.2).
+- Decision 7: an "AI-drafted" label on by default (DO-60); test recipients are the tenant-wide list of ADR-0111, no
+  longer the workspace's; DO-18 confirmed.
+- Consequences: consent records removed by row, never by partition; contact suppressions kept while the tenant is a
+  customer (DO-52).
+- Open: DO-55 partly answered; DO-60, DO-54, DO-18 and DO-48 answered.

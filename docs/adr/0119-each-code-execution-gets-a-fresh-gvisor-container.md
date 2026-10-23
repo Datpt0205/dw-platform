@@ -1,5 +1,5 @@
 ---
-status: Proposed (direction chosen by the requester on 2026-10-22 and 2026-10-23; not yet reviewed by Đạt)
+status: Proposed (held until code-sandbox/01 reports its numbers; Đạt, 2026-10-23)
 date: 2026-10-23
 source:
     - ../../.claude/plans/studio/code-sandbox/spec.md
@@ -17,8 +17,9 @@ container with no network and with CPU, memory, pids, disk and wall-clock limits
 document generation is not acceptable for it; infrastructure beyond the current 2 vCPU / 8 GB host is expected. D2
 (2026-10-22): a code node exists only behind a dedicated permission and a plan entitlement. D14 (2026-10-23): the
 primary host grows to at least 4 vCPU / 16 GB before OpenBao and the egress proxy ship, and a separate VM carries the
-sandbox-runner before any tenant code runs in uat or production, sized by measurement first. It records the
-provisional call on DO-45. The `code-sandbox` spec owns it.
+sandbox-runner before any tenant code runs in uat or production, sized by measurement first. Its call on DO-45 was
+confirmed on 2026-10-23 for languages and billing (DO-45.1), and the lifetime of agent code tools moved to Open for W3
+(DO-45.2). The `code-sandbox` spec owns it.
 
 ## Context
 
@@ -71,15 +72,17 @@ provisional call on DO-45. The `code-sandbox` spec owns it.
    10 MiB); stdout carries one result frame of at most 1 MiB plus stdout and stderr tails of at most 64 KiB, counted
    while reading and killed past the cap. Status: `ok`, `error`, `timeout`, `oom`, `output_limit`, `killed` or
    `rejected`. The caller validates the output against its schema and wraps it as untrusted (ADR-0116).
-5. **Admitted by the platform, enforced by the runner and the kernel.** A tenant's concurrency and monthly CPU seconds
-   come from its plan and are admitted before the call through ADR-0121's leases, each sized at the profile's CPU
-   times its timeout and settled after; a refusal is `sandbox_quota_exceeded`. The runner's per-tenant semaphore (2)
-   is the backstop. The kernel caps the whole class: `dw-sandbox.slice` with `CPUQuota` and `MemoryMax` (v1 host: one
-   vCPU, 1.5 GiB) and a lower CPU weight than platform services, under a global semaphore equal to pool capacity.
-   Usage comes from the container's cgroup (`usage_usec` in `cpu.stat`, `memory.peak`) after the result frame and
-   before removal, as the harness blocks on stdin until then, else from the profile's allotment times wall time; it
-   is reported through `SandboxUsagePort` as a `sandbox_exec` usage event with `units.cpu_seconds`. Numbers printed
-   inside the container are never trusted.
+5. **Admitted by the platform, enforced by the runner and the kernel.** One unit meters, limits and prices tenant
+   code: the profile's reserved vCPU and GB times wall time, since a container holds its pool slot until it ends
+   whether it uses the CPU or not (DO-45.1 (a)). A tenant's concurrency and monthly allowance in that unit come from
+   its plan and are admitted before the call through ADR-0121's leases, each sized at the profile's reservation times
+   its timeout and settled after; a refusal is `sandbox_quota_exceeded`. The runner's per-tenant semaphore (2) is the
+   backstop. The kernel caps the whole class: `dw-sandbox.slice` with `CPUQuota` and `MemoryMax` (v1 host: one vCPU,
+   1.5 GiB) and a lower CPU weight than platform services, under a global semaphore equal to pool capacity. Each
+   execution is reported through `SandboxUsagePort` as a `sandbox_exec` usage event carrying the profile and the wall
+   time. The measured use from the container's cgroup (`usage_usec` in `cpu.stat`, `memory.peak`), read after the
+   result frame and before removal, as the harness blocks on stdin until then, is kept for abuse detection. Numbers
+   printed inside the container are never trusted.
 6. **One door.** `CodeExecutionService.execute(ctx, code_ref, input)` checks the `code_node` plan feature, admits,
    checks the source SHA-256, calls `CodeSandboxPort` (declared in `dw_agent_runtime.ports`, used by the code node and
    the `code` tool kind), meters, and audits `sandbox.execute` with the code hash, image digest, profile and status.
@@ -94,7 +97,7 @@ provisional call on DO-45. The `code-sandbox` spec owns it.
    its guard removed (failure-modes #3).
 8. **Who may write code, and in what.** Adding a code node or changing its source needs `studio.code.author`;
    publish and admission need the `code_node` plan entitlement (ADR-0112, D2). v1 runs Python 3.12 only, packages
-   arrive only as new image versions, and there is no JavaScript and no skill script (DO-45, provisional).
+   arrive only as new image versions, and there is no JavaScript and no skill script (DO-45.1 (a)).
 9. **Where it runs.** `apps/docgen` never runs tenant code. Per D14 the runner and its engine move to a second VM
    (2 to 4 vCPU, 4 to 8 GB, sized by code-sandbox 01) that holds no PostgreSQL, Qdrant, object store or secret,
    before any tenant code runs in uat or production (`settings.is_deployed`); only the runner URL and token change.
@@ -102,9 +105,8 @@ provisional call on DO-45. The `code-sandbox` spec owns it.
    `overhead.podFixed`, Pod Security "restricted", a deny-all NetworkPolicy, a ResourceQuota,
    `automountServiceAccountToken: false`, a ValidatingAdmissionPolicy pinning the pod template, and
    kubernetes-sigs/agent-sandbox warm pools without reuse.
-10. **Agent code tools get one fresh container per agent run** (DO-45, provisional), never shared across threads,
-    tenants or workspaces, destroyed at run end, after 15 idle minutes or at 2 hours, each command audited by
-    `AuditedSandbox`, through a `RunnerSandbox(BaseSandbox)` beside `DocgenSandbox`.
+10. **Agent code tools: moved to Open (W3).** v1 runs one fresh container per code execution (D7, decision 3); the
+    lifetime of a container behind an agent's code tools is decided in W3 (Open 5, DO-45.2).
 
 ## Alternatives considered
 
@@ -118,8 +120,6 @@ provisional call on DO-45. The `code-sandbox` spec owns it.
 - **WASM or Pyodide.** Rejected: package compatibility gaps and a second Python runtime to reason about.
 - **Reusing warm containers.** Rejected: residue from one tenant's execution reaches the next.
 - **A hosted code sandbox.** Rejected: tenant data would leave Vietnam (ADR-0123).
-- **A fresh container per agent command.** Rejected: every `ls` pays a container start, and `BaseSandbox` needs files
-  to persist across calls.
 
 ## Consequences
 
@@ -139,9 +139,9 @@ provisional call on DO-45. The `code-sandbox` spec owns it.
 
 ### Contradictions and amendments
 
-- _Contradicts CLAUDE.md:111-116 (the required stack), worth reopening because D7 asks for isolation stronger than
+- _Contradicts CLAUDE.md:124-129 (the required stack), worth reopening because D7 asks for isolation stronger than
   runc on a host without `/dev/kvm`: the stack gains gVisor `runsc` behind a first-party runner (amendment A10, with
-  ADR-0118's LiteLLM)._ It stays within CLAUDE.md:115-116 ("never `latest`"): the image and runtime are pinned.
+  ADR-0118's LiteLLM)._ It stays within CLAUDE.md:128-129 ("never `latest`"): the image and runtime are pinned.
 - `apps/docgen/src/dw_docgen/settings.py:40` points at a residual-risk ADR this repository does not have; this ADR
   does not stand in for it, and docgen keeps its own container for document generation.
 - si-platform: none; re-derived.
@@ -153,11 +153,35 @@ provisional call on DO-45. The `code-sandbox` spec owns it.
    and no skill scripts in v1; one container per agent run, destroyed at run end, after 15 idle minutes or at 2 hours;
    billing by the profile's vCPU and GB times wall time, with measured CPU seconds kept for abuse detection. If wrong:
    JavaScript adds an image and a harness, not a runner; per-command containers change decision 10 only; billing by
-   measured CPU changes the price-book entry (ADR-0121), not the metering.
+   measured CPU changes the price-book entry (ADR-0121), not the metering. Answered 2026-10-23: Python 3.12 only,
+   packages only as new image versions, no JavaScript and no skill scripts in v1, and billing by the profile's
+   reserved vCPU and GB times wall time with measured CPU kept for abuse detection (DO-45.1 (a); decisions 5 and 8).
+   The container lifetime of agent code tools moved to Open 5 for W3 (DO-45.2 (A)).
 2. **DO-24** (requester for the hardware budget, operator): direction answered by D14 on 2026-10-23. Still owed: the
    second VM's size and the primary host's final size once measured (FOG-23, code-sandbox 01), and the money for both.
 3. **FOG-24** (prototype, code-sandbox 01): does `runsc` on systrap run on the second host's kernel and hypervisor,
    honour `--cpus`, `--memory` and `--pids-limit` under a rootless engine with delegated cgroup v2, fill
-   `memory.peak` before removal, and run on the CI runners; does the host expose `/dev/kvm`?
+   `memory.peak` before removal, and run on the CI runners; does the host expose `/dev/kvm`? This ADR stays Proposed
+   until code-sandbox 01 answers it.
 4. **The package list of `dw-code-python`** (requester, part of DO-45): the research's data set minus parsers is the
    starting point, each addition a new image version that the hostile-script suite gates.
+5. **Agent code tools (W3; the requester, then Đạt).** Moved from decision 10 on 2026-10-23 (DO-45.2 (A)). Does an
+   agent session count as one code execution under D7, and do an agent's code tools get one fresh container per agent
+   run (the earlier provisional call: never shared across threads, tenants or workspaces, destroyed at run end, after
+   15 idle minutes or at 2 hours, each command audited by `AuditedSandbox`, through a `RunnerSandbox(BaseSandbox)`
+   beside `DocgenSandbox`) or one per command (every `ls` pays a container start, and `BaseSandbox` needs files to
+   persist across calls)?
+
+## Review (2026-10-23)
+
+Reviewed by Đạt on 2026-10-23 and held as Proposed until code-sandbox 01 reports its numbers: the whole direction
+rests on `runsc` behaving on hosts it has not yet run on (FOG-24), and no W1 ticket but the spike needs this ADR.
+Amendments from the decision brief, applied above:
+
+- Decision 5: one unit meters, limits and prices tenant code, the profile's reserved vCPU and GB times wall time; the
+  `sandbox_exec` event carries the profile and the wall time, and measured CPU is kept for abuse detection
+  (DO-45.1 (a)). It replaces `units.cpu_seconds` as the billed unit.
+- Decision 8: Python 3.12 only, no JavaScript and no skill scripts in v1, confirmed (DO-45.1 (a)).
+- Decision 10: moved to Open 5 for W3; v1 runs one fresh container per code execution, as D7 says, and the title
+  stays (DO-45.2 (A)). The alternative it rejected moved with it.
+- Open: DO-45 answered; Open 5 added.

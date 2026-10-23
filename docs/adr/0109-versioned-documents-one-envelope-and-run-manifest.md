@@ -1,5 +1,5 @@
 ---
-status: Proposed (agent-proposed on 2026-10-23; not yet reviewed by Đạt)
+status: Accepted (Đạt, 2026-10-23; amendments from the decision brief applied)
 date: 2026-10-23
 source:
     - ../../.claude/plans/studio/tenant-config/spec.md
@@ -21,8 +21,8 @@ contract of ADR 0120.
 - Every Studio kind (object, workflow, agent, tool, skill, toolset) needs a draft, immutable numbered
   versions, a hash, where-used, packages, and runs that finish on what they started with. Five copies of
   that lifecycle would drift (failure-modes #2).
-- A run's provenance today is the release manifest (`CLAUDE.md:63-64`), built from the checkout and reading
-  the platform layer only (`CLAUDE.md:195-196`), plus four `varchar(16)` labels for code-defined workers
+- A run's provenance today is the release manifest (`CLAUDE.md:70-71`), built from the checkout and reading
+  the platform layer only (`CLAUDE.md:227-228`), plus four `varchar(16)` labels for code-defined workers
   (`db/migrations/versions/0005_run_artifact_versions.py:41-51`). A tenant's Studio version is data in
   PostgreSQL, and neither can pin it.
 - Hashing today is `json.dumps(sort_keys=True)` in `executor.canonical_hash`
@@ -40,19 +40,22 @@ contract of ADR 0120.
 ## Decision
 
 1. **One envelope for every kind.** `studio.artifacts` holds `tenant_id`, `id` (UUIDv7, the portable id
-   packages and promotion carry), `kind` (CHECK, one value per registered kind), `api_name`
-   (`^[a-z][a-z0-9_]{1,62}$`, unique per tenant and kind among undeleted rows, immutable after the first
-   publish), `owning_workspace_id` (composite FK to `platform.workspaces (tenant_id, id)`, which gains
-   `uq_workspaces_tenant_id_id`), `labels`, `origin` (pack provenance), `last_version_no`, `row_version` and
-   `deleted_at`. `studio.artifact_versions` holds `artifact_id`, `version_no` (taken from `last_version_no`
-   at submit and never reused), `document_schema` (`^dw\.[a-z_]+/v[0-9]+$`, that is `dw.<kind>/vN`),
+   packages and promotion carry), `kind` (a foreign key to the reference table `studio.artifact_kinds`, one row
+   per registered kind), `api_name` (`^[a-z][a-z0-9_]{1,39}$` for every kind, the rule ADR 0107 uses for objects
+   and fields, so generated tool names stay within 64 characters; unique per tenant and kind among undeleted rows,
+   immutable after the first publish), `owning_workspace_id` (composite FK to `platform.workspaces (tenant_id, id)`
+   through `uq_workspaces_tenant_id_id`, which org-and-principals/01 creates, ADR 0102), `labels`, `origin` (pack
+   provenance), `last_version_no`, `row_version` and `deleted_at`. `studio.artifact_versions` holds `artifact_id`,
+   `version_no` (taken from `last_version_no` at submit and never reused), `document_schema`
+   (`^dw\.[a-z_]+/v[0-9]+$`, that is `dw.<kind>/vN`),
    `document` (a jsonb object of at most 1 MiB with `CHECK (document::text IS NFC NORMALIZED)`),
    `content_hash`, `definition_hash`, `based_on_version_id` and `change_note`. Rows are tenant-wide with
    tenant-only RLS; `owning_workspace_id` is data that role depth reads (ADR 0104). A kind is an
    `ArtifactKindRegistry` entry at the composition root (document model, all-errors validator, pure
-   dependency extractor, publish service), never a table family, and a test asserts the registry's kinds
-   equal the CHECK's values read from `pg_constraint`. There is no `studio.agent_versions`,
-   `studio.workflow_versions` or `studio.tool_versions`.
+   dependency extractor, publish service), never a table family; the ticket that registers a kind inserts its one
+   row of `studio.artifact_kinds` in its own revision, so no two tickets edit one CHECK, and a test asserts the
+   registry's kinds equal that table's rows. There is no `studio.agent_versions`, `studio.workflow_versions` or
+   `studio.tool_versions`.
 2. **"Live" is stored once.** Content changes only in `draft` (one draft per artifact, saved with
    `row_version`; a stale save is 409 `stale_version`). The `stage` column and its guard trigger belong to
    ADR 0120; "live" is that stage, with one partial unique index per artifact (`WHERE stage = 'live'`), so
@@ -84,7 +87,8 @@ contract of ADR 0120.
    `dw.run_manifest/v1` stored once in `platform.run_manifests` (primary key `(tenant_id, hash)`, inserted
    with `ON CONFLICT DO NOTHING`): release manifest ref, run mode (ADR 0111), root (kind, artifact id,
    `version_no`, `definition_hash`), closure, overlay entries (layer `platform` or `tenant`, config version
-   id, hash), binding entries (ADR 0110), object schema versions and an engine section.
+   id, hash), binding entries (the binding-set version, each connection id and credential version, and a hash
+   of each variable value, never the value; ADR 0110), object schema versions and an engine section.
    `platform.run_manifest_keys`, with FK RESTRICT to `studio.artifact_versions` and
    `platform.config_versions`, keeps anything a retained run pinned from being purged. A manifest holds no
    secret. `effective_hash` is the `definition_hash` plus the overlay entries, and evaluation evidence is
@@ -116,7 +120,7 @@ contract of ADR 0120.
   package (0.1.4 dates from 2024-09-27, https://pypi.org/project/rfc8785/, read 2026-10-22).
 - **Hashing the document alone.** Rejected: a changed dependency would not invalidate evaluation evidence.
 - **Resolving overlays live during a run.** Rejected: a resume after an override would run something nobody
-  evaluated. Tenant layers in the release manifest would break the inventory rule (`CLAUDE.md:195-196`), and
+  evaluated. Tenant layers in the release manifest would break the inventory rule (`CLAUDE.md:227-228`), and
   more `varchar(16)` run columns cannot hold refs or hashes.
 
 ## Consequences
@@ -126,40 +130,70 @@ contract of ADR 0120.
   ships an extractor fixture test: break the extractor, and the test turns red.
 - custom-objects' field delete gate (ADR 0107) and agent-lifecycle's drift findings read
   `studio.dependencies`; every Studio resolution takes the run's manifest, not only the tenant.
-- Migrations: Alembic revisions create the envelope tables, `studio.dependencies`,
+- Migrations: Alembic revisions create `studio.artifact_kinds`, the envelope tables, `studio.dependencies`,
   `studio.definition_manifests`, `platform.run_manifests` and `platform.run_manifest_keys`, and add
-  `platform.worker_runs.run_manifest_hash` and `uq_workspaces_tenant_id_id`, each with RLS and grants that
-  `test_rls_coverage.py` and `test_privileges.py` assert. Offboarding purges `studio.dependencies` before
-  `studio.artifacts` before `studio.artifact_versions`, and `worker_runs` before `run_manifests`.
-- Tests that must exist: the registry-equals-CHECK test; an UPDATE of a non-draft document is refused; a soft
+  `platform.worker_runs.run_manifest_hash`, each tenant table with RLS and every table with the grants that
+  `test_rls_coverage.py` and `test_privileges.py` assert; `uq_workspaces_tenant_id_id` comes from
+  org-and-principals/01, not from here. Offboarding purges `studio.dependencies` before `studio.artifacts` before
+  `studio.artifact_versions`, and `worker_runs` before `run_manifests`.
+- `studio.artifacts`, `studio.artifact_versions`, `studio.dependencies`, `studio.definition_manifests`,
+  `platform.run_manifests` and `platform.run_manifest_keys` are tenant-wide rows under the `CLAUDE.md:181` class that
+  ADR 0100 records (A6), each listed with its reason in `test_rls_coverage.py`.
+- Tests that must exist: the registry-equals-rows test; an UPDATE of a non-draft document is refused; a soft
   delete of a depended-on target answers 409; a run asking for an unpinned key fails; each of the five
   resume checks, removed, lets an incompatible resume through and turns its test red.
 - Run admission gains one insert pair (target 20 ms p95, to measure). Model profiles carry floats
   (`packages/python/dw_agent_runtime/src/dw_agent_runtime/model/profiles.py:54-55`) and must move to
   `Decimal` before they can be hashed tenant configuration. A second-language verifier can reproduce every
   hash.
-- Contradicts `CLAUDE.md:63-64` ("a release manifest pins the set a run used"), worth reopening because a
-  Studio version is tenant data outside the repository-derived release manifest: the release manifest keeps
-  pinning the platform layer, and a Studio run also pins its run manifest and definition hash. It also
-  refines `CLAUDE.md:182-184` (every versioned artifact resolves through `TenantOverlay`): Studio artifacts
-  have no platform layer to fall back to and resolve through the run manifest. Both amendments are owed on
-  acceptance. Keeps `CLAUDE.md:195-196`.
+- Contradicts `CLAUDE.md:70-71` ("a release manifest pins the set a run used"), worth reopening because a
+  Studio version is tenant data outside the repository-derived release manifest. The amendment: every run pins
+  what it used, the release manifest pinning the platform layer, and a run with a Studio root also pinning one run
+  manifest (`platform.worker_runs.run_manifest_hash`) with its definition hash, the tenant config versions and
+  binding values it resolved, and its engine, from which alone it resolves, on resume too. It also refines
+  `CLAUDE.md:210-212` (every versioned artifact resolves through `TenantOverlay`): a Studio run resolves every
+  artifact it uses, platform-layer components in its closure included, only from its run manifest, and nothing
+  falls back at run time; an artifact a tenant builds has no platform layer, while a tenant's own version of a
+  platform artifact still resolves through `TenantOverlay` outside a run, its tenant layer the approved
+  `platform.config_versions` row (ADR 0110). Both amendments apply on acceptance. Keeps `CLAUDE.md:227-228`.
 - si-platform (D5): diverges from its per-engine version tables (`si.approval_versions`); ports from
   `docs/adr/0044-approval-runs-narrowed-by-the-record-workspace-history-append-only-unpartitioned.md` the
-  CHECK read back against the enum and version numbers never reused; re-derives the dependency index (si
+  kind list read back from the database against the code (here the rows of `studio.artifact_kinds`, there a CHECK)
+  and version numbers never reused; re-derives the dependency index (si
   has none) with the response pattern of `docs/adr/0041-references-checked-and-on-delete-enforced-by-the-engine.md`
   (counts, never records).
 
 ## Open
 
 1. **One envelope with ADR 0120's stage contract and no `active_version_id`**, instead of per-kind version
-   tables (DO-05, Đạt).
+   tables (DO-05, Đạt). Answered 2026-10-23: one envelope (DO-05 (a)); Đạt confirmed the agent-lifecycle line
+   that records it.
 2. **API names immutable after the first publish** (DO-08, the requester). Provisional agent call of
    2026-10-23, option (a): immutable, so a rename is a new Studio artifact plus a migration. If wrong, an
-   alias map gives one Studio artifact two names in packages and in the dependency index.
+   alias map gives one Studio artifact two names in packages and in the dependency index. Answered 2026-10-23:
+   immutable after the first publish, under the `{1,39}` rule of decision 1 (DO-08 (a)).
 3. **Retention of retired versions, run manifests and abandoned proposals** (DO-52, counsel and Đạt):
    proposed run manifests and pinned versions kept with their runs' retention, open proposals 14 days.
+   Answered 2026-10-23, provisionally: a store that ADR 0122's decision 7 does not list takes DO-52's own terms,
+   these above, as UNVERIFIED values in the retention policy; counsel confirms them before shadow running
+   (DO-52 (a)).
 4. **Children pinned or following live** (DO-30, the requester). Provisional agent call of 2026-10-23,
-   option (a): pinned at submit, drift proposes the update; decision 9 rests on it.
+   option (a): pinned at submit, drift proposes the update; decision 9 rests on it. Answered 2026-10-23:
+   pinned at submit (DO-30 (a)).
 5. **Which run-time-resolved dependencies make a live version "not evaluated"**: a tenant override, an MCP
    definition, knowledge content, a provider's model alias (FOG-66, a grilling owed by agent-lifecycle).
+   Answered 2026-10-23 for a tenant override: evaluation evidence is keyed by the effective hash, which an
+   override changes, so evidence keyed by the old hash no longer counts (ADR 0110, ADR 0120). The other three
+   stay with FOG-66.
+
+## Acceptance (2026-10-23)
+
+- Status Accepted by Đạt with evidence keyed by the effective hash (decision 6), which ADR 0120 follows.
+- Decision 1: `api_name` takes ADR 0107's `{1,39}` rule for every kind; `kind` references `studio.artifact_kinds`
+  instead of a CHECK (OPS-b edge 4); `uq_workspaces_tenant_id_id` is created by org-and-principals/01, not here
+  (OPS-a.2).
+- Decision 6: the binding entries name what the run manifest holds and never a value (ADR-0109+ADR-0120).
+- Consequences: the `uq_workspaces_tenant_id_id` creation dropped from Migrations; the envelope's tables named as
+  tenant-wide (A6); the amendments to `CLAUDE.md:70-71` and `:182-184` restated so platform components in a closure
+  resolve from the run manifest too (DO-05 (a)).
+- Open 1, 2 and 4 answered; Open 3 answered provisionally (DO-52 (a)); Open 5 answered for tenant overrides.

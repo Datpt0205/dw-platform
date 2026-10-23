@@ -4,7 +4,9 @@ This repository is a **platform backbone**, not a product. It carries everything
 that is not a business domain: the agent runtime, tenancy and authorization,
 knowledge, memory, connectors, observability, evaluations, and the api/worker/
 sandbox/web shells. A product adds one or more bounded contexts as packages
-under `packages/python/dw_<name>` and inherits the rest.
+under `packages/python/dw_<name>` and inherits the rest. Studio, where a tenant
+builds its own objects, workflows, agents and tools as versioned data, is
+platform code too; its domain content ships as configuration packs (ADR 0100).
 
 This file is the architecture of record. Do not silently deviate from it —
 record a decision instead.
@@ -16,6 +18,8 @@ Run `make new-context NAME=<name>` rather than working the list by hand:
 job generates a throwaway context on every push so a seam that moves fails there
 instead of in someone's first week. The list below is what it does, kept because
 a generator whose steps nobody can read is a different kind of unchecked claim.
+Studio is not added this way: wired before the context seams (ADR 0100), it is
+consumed through a Protocol the context declares and never imports a context.
 
 1. Package `packages/python/dw_<name>` with layers
    `domain/ application/ workflows/ adapters/ presentation/`.
@@ -58,19 +62,26 @@ a generator whose steps nobody can read is a different kind of unchecked claim.
 - Qdrant retrieval always receives trusted tenant/workspace/ACL filters from
   backend context; filter injection happens only inside the knowledge gateway.
 - Redis/Valkey is never a source of truth.
+- Every model call passes one `ResidencyGate`: the strictest route class wins,
+  `vn_only` by default, a model alias with no declared location is foreign, and
+  loosening a class takes two people and tightening one, audited (ADR 0123).
 - Side effects require policy evaluation, idempotency and audit; critical
   effects require approval.
 - Every worker, graph, prompt, tool, policy, event schema and evaluation dataset
-  is versioned, and a release manifest pins the set a run used.
+  is versioned, and a release manifest pins the platform set a run used. A
+  Studio run also pins a content-addressed run manifest (ADR 0109): definition
+  hash, overlay versions, connection ids, credential versions and hashes of
+  variable values, never a value. The run resolves only from it, on resume too.
 - Human-in-command.
 
 ## A second language, and where its boundary has to be
 
-This repository is an **AI platform**, not a general application framework. What
-belongs here is the agent runtime, memory, knowledge, the trust boundary around
-them, and the seams a business context plugs into. A CRUD-heavy application
-layer does not have to be Python, and saying so is cheaper than pretending
-Python is the right tool for every tier.
+This repository is an **AI platform**; its one general application layer is
+Studio's records engine (ADR 0100), the system of record digital workers act on.
+What belongs here is the agent runtime, memory, knowledge, the trust boundary
+around them, and the seams a business context plugs into. Any other CRUD-heavy
+application layer does not have to be Python, and saying so is cheaper than
+pretending Python is the right tool for every tier.
 
 **A service in another language (Go was the case discussed) is allowed, under
 one condition that is not negotiable: it must not re-implement tenant
@@ -89,9 +100,11 @@ following hold, and a reviewer can check every one:
 3. It owns no migrations. The schema has one owner and it is `db/migrations`.
 4. It re-derives no authorization. Scopes, roles and plan entitlements are
    resolved by the platform and reach it as a verified context or through the
-   platform's API — never by reading `platform.roles` and deciding for itself.
-   Two implementations of who-may-do-what is the drift that ends as a
-   disclosure.
+   platform's API — never by reading role tables and deciding for itself
+   (`platform.effective_grants` is the one answer, ADR 0104). Two
+   implementations of who-may-do-what is the drift that ends as a disclosure.
+5. It reads Studio record values only through the platform API, where field
+   security applies (ADR 0106); for `dw_app` only review enforces this.
 
 What makes this safe is not the list; it is that the list is TESTED.
 `test_rls_coverage.py` asks the catalog, not the source: every tenant table has
@@ -113,7 +126,8 @@ Alembic. LangGraph for orchestration/checkpoint/HITL. PostgreSQL, Qdrant,
 Redis/Valkey. S3-compatible object storage (SeaweedFS in compose). Next.js, TypeScript strict, Ant Design v6 (below),
 Tailwind for layout only. OpenTelemetry, optional Langfuse. Ruff, mypy, pytest,
 import-linter, pre-commit. pnpm workspace and lockfile. Pin versions; commit
-lockfiles; never `latest`.
+lockfiles; never `latest`. In deployed profiles OpenBao (Transit) holds tenant
+keys and smokescreen is the egress proxy, once spike 21 passes (ADR 0115).
 
 ## Web UI
 
@@ -121,14 +135,18 @@ Ant Design v6 (`antd`) is the component library, decided 2026-09-28 in place
 of shadcn/ui; the measurements behind it are in `.claude/plans/web-ui.md`.
 
 - **One component system.** UI uses `antd`, `@ant-design/icons`, and
-  `@ant-design/nextjs-registry` for server-rendered styles, and nothing else:
-  on 2026-10-08 Đạt asked for antd everywhere, and shadcn/ui, Radix, sonner,
-  lucide and class-variance-authority left the platform in one sweep (the
-  page-by-page rule before it is retired). `apps/web/lib/__tests__/antd-only.test.ts`
-  fails on an import or a manifest entry that brings one back, in `apps/web`
-  and in `@dw/ui`; ESLint says the same in the app. Notices go through
-  `App.useApp()`. ProComponents waits for a stable release that supports v6
-  (its v6 line was still beta on 2026-09-27).
+  `@ant-design/nextjs-registry` for server-rendered styles, and nothing else
+  but a module an ADR admits for one path: the Studio canvas uses
+  `@xyflow/react` and `@dagrejs/dagre`, pinned exactly, only under
+  `apps/web/app/studio/**/canvas/**` (ADR 0101; Đạt, 2026-10-23), and antd
+  still draws every node body, panel, form and notice. On 2026-10-08 Đạt asked
+  for antd everywhere, and shadcn/ui, Radix, sonner, lucide and
+  class-variance-authority left the platform in one sweep.
+  `apps/web/lib/__tests__/antd-only.test.ts` is an allowlist of the dependencies
+  of `apps/web` and `@dw/ui`, each exception a `{module, glob, adr}` entry: an
+  unlisted module, or an excepted one outside its glob, fails; ESLint says the
+  same in the app. Notices go through `App.useApp()`. ProComponents waits for a
+  stable release that supports v6 (its v6 line was still beta on 2026-09-27).
 - **Tailwind is for layout only** (flex, grid, spacing). Colour, type and
   radius come from the antd theme.
 - **One owner of the tokens:** the antd theme (`ConfigProvider`, `vi_VN`
@@ -160,7 +178,11 @@ adapter. Constructor injection — no service locator, no mutable global client.
 
 ## Tenancy and authorization
 
-- Every tenant-scoped table has `tenant_id` and `workspace_id`.
+- Every tenant-scoped table has `tenant_id`, and `workspace_id` when each row
+  belongs to one workspace. A tenant-wide table (ADR 0100), such as a Studio
+  definition, a role, a member, configuration, limits or consent, has none;
+  `test_rls_coverage.py` lists each with its reason and fails an unlisted one.
+  Such a row's owning workspace is `owning_workspace_id`, which RLS never reads.
 - PostgreSQL RLS is enabled, FORCEd, and tested. The application role must not
   hold `BYPASSRLS`; only the migrator does.
 - Tenant context is set per transaction from a verified server-side access
@@ -171,17 +193,27 @@ adapter. Constructor injection — no service locator, no mutable global client.
 - Hiding a control is not authorization. Enforce where the mutation happens.
 - A table narrowed by workspace as well uses one policy shape on both sides:
   `tenant AND (workspace OR current_setting('app.workspace_scope') = 'tenant')`.
-  Only the offboarding lane sets `app.workspace_scope`, per transaction, to
-  export and purge every workspace of one tenant; `test_rls_coverage.py` fails
-  a policy that reads it outside that shape and a workspace-narrowed table that
-  does not read it.
+  A table private to one person adds a RESTRICTIVE `tenant AND (owner OR scope)`
+  (ADR 0117). A Studio record table and its partitions use one template
+  (ADR 0105): a RESTRICTIVE tenant policy plus PERMISSIVE `record_access_*`
+  policies, `tenant AND (scope OR (actor_ok AND reach))`, over `studio.acl_*`
+  functions. Only `tenant_wide_scope()` sets `app.workspace_scope`, per
+  transaction, for a lane listed with its reason in a registry frozen at the
+  composition root (W1: offboarding only), the entry saying whether the lane
+  needs the private rows it can read. A source scan fails any other setter, and
+  `test_rls_coverage.py` any other policy set, any read of the scope outside
+  these shapes and a narrowed table that does not read it.
 
 ## Per-tenant artifacts
 
 One deployment serves many customers whose processes differ, and it does that
-without a branch per customer. Every versioned artifact — prompt, tool spec,
+without a branch per customer. Every platform artifact — prompt, tool spec,
 toolset, model profile — resolves through `dw_kernel.overlay.TenantOverlay`:
-the tenant's own version if it has one, the platform's otherwise.
+the tenant's own version if it has one (its approved `platform.config_versions`
+row, ADR 0110), the platform's otherwise. A Studio artifact (an object,
+workflow, agent, tool, skill or toolset a tenant builds) is tenant data, and a
+Studio run resolves everything it uses, platform artifacts included, only from
+its run manifest, never through `TenantOverlay` at run time (ADR 0109).
 
 - `tenant_id=None` is the platform layer: what ships in `configs/`.
 - A concrete tenant id is an override, loaded at runtime from storage, never
@@ -205,23 +237,29 @@ kind of change nobody makes and everybody works around.
   an escaped `<input name="...">` block. A template opts a variable out with
   `raw_variables` and a reason, only for a value code builds (ADR 0010).
 - Graph state is typed and versioned; LLM output is always validated into a
-  Pydantic schema.
+  schema: a Pydantic model in code, and in Studio the tenant's JSON Schema from
+  the sealed version, checked by the platform's validator (ADR 0112, ADR 0116).
 - Workflow nodes contain no provider SDK and no SQL, and never import a concrete
   adapter — they take what they need by injection.
-- A tool definition carries version, schemas, scopes, side-effect level,
-  approval policy, timeout and idempotency. The executor authorizes, validates,
-  executes, validates the output and audits.
+- A tool definition carries version, schemas, scopes, side-effect level, data
+  classification, output trust, approval policy, timeout and idempotency; a
+  tenant tool is data of a registered kind whose policy only tightens its
+  kind's floor (ADR 0116). One `ToolExecutor`, the door to every tool effect,
+  authorizes, validates, executes, validates the output and audits.
 - All side effects use idempotency keys.
-- A background lane audits as itself, never as a person:
-  `dw_platform.domain.audit.lane_audit_event`, whose actor is
-  `system_actor(<lane>)`, a fixed id from the lane's worker registry name, and
-  whose `details.actor` reads `system:<lane>`. From a cross-tenant drain, write
-  with `lane_audit.append_across_tenants` (ADR 0011).
-- A tenant's plan quota is enforced where a run begins — in the runner, not in
-  an API dependency. The API is not the only door: a worker reacting to an
-  inbound event starts runs no request ever touched. The limit comes from the
-  plan through `RunAllowancePort`, which the runtime declares and the platform
-  satisfies, so neither package reads the other's table.
+- A background lane acting on its own (a sweep, an expiry, a retry) audits as
+  itself, never as a person: `dw_platform.domain.audit.lane_audit_event`, whose
+  actor is `system_actor(<lane>)`, a fixed id from the lane's worker registry
+  name, and whose `details.actor` reads `system:<lane>`. A lane carrying out one
+  person's recorded decision (an approval's settlement, an offboarding purge, a
+  kill) audits that person and names itself in `details.lane`. From a
+  cross-tenant drain, write with `lane_audit.append_across_tenants` (ADR 0011).
+- A run's limits are enforced where a run begins — in the runner, not in an API
+  dependency. The API is not the only door: a worker reacting to an inbound
+  event starts runs no request ever touched. Every limit comes through
+  `LimitsPort`, which the runtime declares and the platform satisfies, so
+  neither package reads the other's table. An interactive run over a limit is
+  refused; a triggered one waits in the queue, never dropped (ADR 0121).
 - Channels are reached through a port, never a provider's client. `ChatSenderPort`
   is the narrow intersection every channel can satisfy; code needing one
   provider's own features takes that provider's client and says so in its type.
@@ -265,10 +303,13 @@ kind of change nobody makes and everybody works around.
 - Partitioned tables need next month's partition before rows need it, and
   creating one is not just `CREATE TABLE ... PARTITION OF`: row security is NOT
   inherited by a partition made later, and `ALTER DEFAULT PRIVILEGES` hands it
-  the write grants the audit log must not have. So creation, `ENABLE`/`FORCE`
-  RLS, the tenant policy and the audit revoke are one function
-  (`platform.ensure_time_partitions`), called from the worker's `partitions`
-  lane — never a script, which is a place to forget one of the four.
+  `dw_app` grants it must not have: its rows are read and written through the
+  parent. So creation, `ENABLE`/`FORCE` RLS, the tenant policy and the revoke of
+  every `dw_app` privilege on the partition (the audit revoke included) are one
+  function (`platform.ensure_time_partitions`) over every table registered in
+  `platform.time_partitioned_tables`, called from the worker's `partitions` lane
+  — never a script, which is a place to forget one of them. A table joins with
+  one row in its creating revision, never by editing the function (ADR 0100).
   The DEFAULT partition is a safety net, not the plan: rows that land there
   block that month's partition from ever being created, which the function
   recovers from by relocating them.

@@ -1,5 +1,5 @@
 ---
-status: Proposed (direction chosen by the requester on 2026-10-22 and 2026-10-23; not yet reviewed by Đạt)
+status: Accepted (Đạt, 2026-10-23; amendments from the decision brief applied)
 date: 2026-10-23
 source:
     - ../../.claude/plans/studio/workflow-engine/spec.md
@@ -25,7 +25,7 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
   an unconnected router port fails only at run time; two plain edges from parallel branches run a node twice; code
   placed before `interrupt()` runs again on resume; `recursion_limit` is 1,000 in the docs and 10,007 in the code; the
   `error_handler` is skipped when two tasks share a superstep; `RetryPolicy` has no idempotency key per iteration.
-- `CLAUDE.md:209-210` keeps SQL and SDKs out of workflow nodes; `CLAUDE.md:61-62` puts every effect through policy,
+- `CLAUDE.md:242-243` keeps SQL and SDKs out of workflow nodes; `CLAUDE.md:68-69` puts every effect through policy,
   idempotency and audit. The pilot (D4) messages a lead only after a person approves.
 
 ## Decision
@@ -77,18 +77,24 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
    send floor inside the executor); `RecordsPort` (ADR-0107's `RecordService`); `MemberNotificationPort` for
    `notify.send`, which reaches tenant members only (an address-shaped recipient is a publish error, a non-member at
    run time is dropped and counted); the `ModelResolver` (ADR-0118); `CodeSandboxPort` (ADR-0119); waits and child runs
-   through ADR-0113's doors. A node holds no SQL, no provider SDK and no concrete adapter.
+   through ADR-0113's doors, child runs (sub-workflows, workflow tools, agent nodes, linked agents) nesting at most 3
+   deep, as ADR-0113 decision 9 and ADR-0117 decision 7 state (requirements Q1, YC45, YC57). A node holds no SQL, no
+   provider SDK and no concrete adapter, and it hands the run mode to its door, which applies it (ADR-0111): a node
+   never simulates an effect itself.
 7. **Approval steps and human tasks are enforced on the server.** `human.approval` opens an approval of type
    `studio.step.approval`. The API composition root adds `studio.step.` to `strict_approval_prefixes` with `|=`
    (beside `memory.`, `apps/api/src/dw_api/bootstrap/runtime.py:237-239`), so neither the run's requester nor its
    run-as principal decides, and registers `decision_guards["studio.step.approval"]`: the decider is a current
-   assignee and still holds the stamped permission. `required_scope` is mandatory (ADR-0004); assignees (users, teams
-   or a CEL expression) only narrow it; candidates come from `effective_grants` (ADR-0104), never a copy; none left is
-   `no_approver`, and publish refuses a version whose permission only the run-as principal holds. Expiry never
-   approves: the run follows an `expired` edge or fails with `approval_expired`. The approved node's arguments are
-   rendered when the approval opens, stored with `subject_hash`, shown raw and executed exactly (`subject_changed`
-   otherwise). Tasks reach people through a `/studio/tasks` inbox (`POST /api/v1/studio/tasks/{id}:submit` with
-   If-Match and Idempotency-Key); a submission or decision resolves the wait and re-queues the run (ADR-0113).
+   assignee, still holds the stamped permission and can read every field the step stamped (ADR-0106 decision 6).
+   `required_scope` is mandatory (ADR-0004); assignees (users, teams or a CEL expression) only narrow it; candidates
+   come from `effective_grants` (ADR-0104), never a copy; none left is `no_approver`, and publish refuses a version
+   whose permission only the run-as principal holds. Expiry never approves: from W2, with YC52's deadlines and the
+   timer lane, the run follows an `expired` edge or fails with `approval_expired`; in W1 an approval waits with no
+   deadline, so nothing is sent until someone decides. The approved node's arguments are rendered when the approval
+   opens, stored with `subject_hash`, shown raw and executed exactly (`subject_changed` otherwise). Tasks reach people
+   through a `/studio/tasks` inbox (`POST /api/v1/studio/tasks/{id}/submit`, a sub-resource as ADR-0108 spells
+   custom methods, with If-Match and Idempotency-Key); a submission or decision resolves the wait and re-queues the
+   run (ADR-0113).
 8. **AI nodes validate on the server.** `ai.llm` gets its model per call from the `ModelResolver`; its structured
    output is validated against the tenant's JSON Schema (ADR-0116's profile, at most 32 KiB and depth 5,
    `additionalProperties: false` forced) by the platform validator, with one repair attempt, then `output_invalid`.
@@ -122,7 +128,7 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
 - **LangGraph's own retry policy and error handler.** Rejected: no idempotency key per iteration, so a retried effect
   repeats; the handler's behaviour depends on topology (measured).
 - **An effect inside a node (SQL, an SDK).** Rejected: it bypasses policy, run mode, idempotency and audit
-  (`CLAUDE.md:209-210`).
+  (`CLAUDE.md:242-243`).
 - **Trusting `StateGraph.compile()`, or checks in the canvas only.** Rejected: the measured gaps; a check the API does
   not run is bypassable (failure-modes #5).
 - **Tenant-defined node types.** Rejected: a second, unreviewed runtime; tools cover the need.
@@ -134,7 +140,8 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
 - A LangGraph upgrade is gated by golden parked-run fixtures resumed forward and backward in CI (ADR-0109's engine
   pin; LangGraph 1.2.11 and 1.2.16 resumed each other's runs when measured).
 - Migrations (Alembic, random revision ids): `studio.step_assignments`, `studio.step_approvals` and
-  `studio.human_tasks` in the CLAUDE.md workspace policy shape; the approval status CHECK gains `expired`; later the
+  `studio.human_tasks` in the CLAUDE.md workspace policy shape; the approval status CHECK gains `expired`, which
+  workflow-engine writes from W2; later the
   per-run checkpoint tables under RLS. `studio.code.author` and `studio.tasks.manage` join the catalogue (ADR-0104).
 - Tests that must exist, each red when its guard is removed: a failing fixture per validator code; an architecture
   test that no node module imports SQLAlchemy, an SDK or a concrete adapter; a negative test at each door called
@@ -143,12 +150,15 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
   checkpoint refusing to load.
 - Harder: every `NodeTypeSpec` attribute needs a named reader (failure-modes #1); node outputs must stay JSON-shaped;
   a node type's major version stays registered while any run or live version pins it.
-- Reinforces `CLAUDE.md:209-210`; extends `docs/adr/0010-prompt-variables-are-untrusted-by-default.md` to workflow AI
-  nodes through ADR-0114. `CLAUDE.md:63-64` (a release manifest pins graphs) gives way for tenant versions to the run
+- Reinforces `CLAUDE.md:242-243`; extends `docs/adr/0010-prompt-variables-are-untrusted-by-default.md` to workflow AI
+  nodes through ADR-0114. `CLAUDE.md:70-71` (a release manifest pins graphs) gives way for tenant versions to the run
   manifest, the amendment ADR-0109 carries.
-- Contradicts `CLAUDE.md:207-208` ("LLM output is always validated into a Pydantic schema") for tenant-defined schemas,
-  which the platform's JSON Schema validator checks instead; worth amending to "a schema the platform owns", because
-  a Pydantic model made at run time comes back as a plain dict after a checkpoint (measured by the tools research).
+- Contradicts `CLAUDE.md:239-240` ("LLM output is always validated into a Pydantic schema") for tenant-defined schemas,
+  which the platform's JSON Schema validator checks instead, because a Pydantic model made at run time comes back as a
+  plain dict after a checkpoint (measured by the tools research). The amendment, due on acceptance and before
+  workflow-nodes/05 is ready, reads: "LLM output is always validated into a schema the platform owns: a Pydantic model
+  for code-defined schemas, the platform's JSON Schema validator for tenant-defined ones." ADR-0116 carries the same
+  amendment.
 - si-platform: re-derives the engine on LangGraph (D5) instead of si-platform's phase-A approval walker (si-platform
   `docs/adr/0043-record-approval-engine-is-a-platform-package-served-by-one-module.md`), keeping its structural
   checker (issue codes, Vietnamese and English messages) as a pattern reference.
@@ -156,12 +166,30 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
 ## Open
 
 1. **DO-30 (requester).** Are sub-workflow and agent-node versions pinned, drift proposing the update, or do they
-   follow the live version? Provisional call (agent, 2026-10-23): pinned at submit.
+   follow the live version? Provisional call (agent, 2026-10-23): pinned at submit. Answered 2026-10-23: pinned at
+   submit (DO-30 (a)).
 2. **DO-31 (requester).** Does an expired approval with no `expired` edge end the run failed with `approval_expired`?
-   Provisional call: yes; nothing approves on time-out.
+   Provisional call: yes; nothing approves on time-out. Answered 2026-10-23: yes (DO-31 (a)); expiry itself arrives
+   in W2 with YC52 and the timer lane, and a W1 approval waits with no deadline.
 3. **DO-18 (requester, then Đạt).** May nurture use a batch approval against `.claude/rules/ui-quality.md:225`
    ("Verification, correction and approval are never bulk actions")? Provisional call: nurture in W2, every outbound
-   message approved in the pilot, one approval per message in a fast keyboard queue.
+   message approved in the pilot, one approval per message in a fast keyboard queue. Answered 2026-10-23: nurture in
+   W2 and one approval per message, never a batch; approval by sampled template is weighed only on shadow-run data
+   (DO-18 (a)).
 4. **DO-45 (requester for languages and billing, Đạt for container lifetime).** Code node languages and packages in
-   v1? Provisional call: Python 3.12 only, no JavaScript, the package list set with code-sandbox.
+   v1? Provisional call: Python 3.12 only, no JavaScript, the package list set with code-sandbox. Answered 2026-10-23:
+   Python 3.12 only, no JavaScript and no skill scripts, billed by reserved vCPU and GB over run time (DO-45.1 (a));
+   one container per code execution in v1, a per-agent-session container decided only in W3 (DO-45.2 (a)).
 5. **FOG-37 (prototype).** Which msgpack allowlist the platform's real checkpoint state types need.
+
+## Acceptance (2026-10-23)
+
+- Status Accepted by Đạt with the decision brief's amendments.
+- Decision 6: child runs nest at most 3 deep, answering requirements Q1 as ADR-0113 and ADR-0117 do; a node hands
+  the run mode to its door (D:custom-objects:R5.4~workflow-nodes:R5.3 (a)).
+- Decision 7: the task route is `POST /api/v1/studio/tasks/{id}/submit` (DO-16.2 (a)); the step approval's guard
+  adds the field-read condition (DO-36 (a)); expiry arrives in W2 and a W1 approval waits with no deadline
+  (DO-31 (a)).
+- Consequences: the `CLAUDE.md:239-240` amendment text recorded; the `expired` status written by workflow-engine from
+  W2.
+- Open 1 to 4 answered.

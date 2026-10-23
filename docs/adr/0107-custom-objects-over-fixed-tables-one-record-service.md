@@ -1,5 +1,5 @@
 ---
-status: Proposed (direction chosen by the requester on 2026-10-22 and 2026-10-23; not yet reviewed by Đạt)
+status: Accepted (Đạt, 2026-10-23; amendments from the decision brief applied; partition modulus confirmed by the custom-objects/01 measurement, modulus 4 as the fallback)
 date: 2026-10-23
 source:
     - ../../.claude/plans/studio/custom-objects/spec.md
@@ -41,8 +41,13 @@ obvious designs (measured by the Studio research on 2026-10-22 on PostgreSQL 16.
    `studio.field_defs` and `studio.picklist_options` have no `workspace_id`, RLS ENABLE and FORCE, and one
    tenant policy each in the InitPlan form
    `tenant_id = (SELECT NULLIF(current_setting('app.tenant_id', true), '')::uuid)`. `field_defs.id` is the
-   immutable field key that slot maps, history, the dependency index, packages and generated tools use, and
-   `api_name` (`^[a-z][a-z0-9_]{1,39}$`) is immutable from creation. `studio.records` has system columns (`id` UUIDv7, `object_id`, owning `workspace_id`, record owner,
+   immutable field key that slot maps, history, the dependency index, packages and generated tools use. An object's
+   or a field's `api_name` follows the one rule of the version envelope (ADR 0109): `^[a-z][a-z0-9_]{1,39}$`,
+   immutable after the first publish (DO-08), so generated tool names (`obj_<api_name>__search`, an agent's
+   `ask__<api_name>`) stay within 64 characters (ADR 0116, ADR 0117). An object version (`dw.object/v1`) carries the
+   object's `default_access` (ADR 0105) and each field's `access_mode` (ADR 0106), and publishing it takes a second
+   person (D11; ADR 0120's `studio.publish.object`).
+   `studio.records` has system columns (`id` UUIDv7, `object_id`, owning `workspace_id`, record owner,
    `name`, `name_key`, `version`, `create_key`, `created_*`, `updated_*`, `deleted_*`), a `data jsonb`
    capped at 32 KB for unindexed fields keyed by a per-object `field_no` never reused, and a fixed set of
    typed slots, each with the partial btree
@@ -53,14 +58,15 @@ obvious designs (measured by the Studio research on 2026-10-22 on PostgreSQL 16.
    master-detail uuid. No `numeric`, `jsonb` or array holds anything filterable. The proposed P1 set per
    object, `t01-t24, i01-i12, f01-f08, d01-d08, z01-z08, b01-b08`, is fixed by custom-objects/01. Only
    slot-backed fields filter and sort. No table, column or index is created at runtime.
-2. **Hash partitions by tenant, if the measurement holds.** As D12 asks, `studio.records` is
-   `PARTITION BY HASH (tenant_id)` with modulus 8 from its first revision (`studio.records_p0` to
-   `studio.records_p7`, each ENABLE and FORCE with the parent's policies), provided custom-objects/01 keeps
-   planning p95 at or under 5 ms for a three-predicate query with every slot index present and
-   `CacheMemoryContext` at or under 64 MB per backend; otherwise it ships unpartitioned with the same
-   composite keys. Either way the primary key is `(tenant_id, id)`, every UNIQUE and foreign key carries
-   `tenant_id`, and the query compiler states `tenant_id = :tenant` in every statement (RLS still decides;
-   the predicate lets the planner prune and pick the index).
+2. **Hash partitions by tenant, the modulus fixed by measurement.** As D12 asks, `studio.records` is
+   `PARTITION BY HASH (tenant_id)` from its first revision, on PostgreSQL 16: modulus 8 (`studio.records_p0` to
+   `studio.records_p7`) provided custom-objects/01 keeps planning p95 at or under 5 ms for a three-predicate query
+   with every slot index present and `CacheMemoryContext` at or under 64 MB per backend, else modulus 4, which the
+   same ticket measures as the fallback; if both miss, the question goes back to the requester. There is no
+   unpartitioned form (DO-15). Each partition is ENABLE and FORCE with the parent's policies and gives `dw_app` no
+   privilege, so rows are reached only through the parent (ADR 0100). The primary key is `(tenant_id, id)`, every
+   UNIQUE and foreign key carries `tenant_id`, and the query compiler states `tenant_id = :tenant` in every statement
+   (RLS still decides; the predicate lets the planner prune and pick the index).
 3. **One RecordService.** REST routes, workflow data nodes (workflow-nodes' `RecordsPort`), agent object
    tools (tools-and-skills' `ObjectDataPort`, run as the caller), import, export and bulk operations, purge
    lanes and domain-pack seeding all call one service; each consumer declares its narrow Protocol and the
@@ -71,14 +77,15 @@ obvious designs (measured by the Studio research on 2026-10-22 on PostgreSQL 16.
    tables and search terms; history; outbox; audit; `create_key` idempotency
    (`UNIQUE (tenant_id, object_id, create_key)`). Every error of one save comes back at once in `errors[]`
    (ADR 0108). In `simulate`, and in v1 `test`, it validates fully and returns the would-be record without
-   writing (ADR 0111). No business-hook registry in v1. An architecture test fails any SQL naming
-   `studio.records` or a side table outside the records adapter module.
+   writing (ADR 0111); a caller only passes the run mode through its Protocol (workflow-nodes' `RecordsPort`
+   included), so every write path is simulated here and nowhere else. No business-hook registry in v1. An
+   architecture test fails any SQL naming `studio.records` or a side table outside the records adapter module.
 4. **Lookups are composite foreign keys the database checks.** An `lNN` slot references
    `studio.records (tenant_id, id)` through `(tenant_id, lNN)` with `ON DELETE SET NULL (lNN)`; an `mNN`
    slot does the same with `ON DELETE CASCADE`. A lookup into another tenant cannot exist.
 5. **Field keys are immutable.** Adding an optional field is free (`schema_version` plus 1; the smallest
    free slot, taken under a per-tenant advisory lock); a retype is expand, migrate, contract with a new field
-   key and a gated cutover; renaming `api_name` or moving a lookup's target is refused. A field delete is
+   key and a gated cutover; renaming a published `api_name` or moving a lookup's target is refused. A field delete is
    refused while any live version, run in flight, list view, validation rule, sharing rule or layout
    references it, read from the dependency index (ADR 0109) plus a service check for what the index cannot
    see; then soft delete, then purge. A slot is released only after a verified purge: the field row moves
@@ -100,8 +107,9 @@ obvious designs (measured by the Studio research on 2026-10-22 on PostgreSQL 16.
 8. **One generic records API.** `GET|POST /api/v1/studio/objects/{api_name}/records` and
    `GET|PATCH|DELETE .../records/{record_id}`, with custom methods as `POST` sub-resources (`query`,
    `batch-create`, `upsert`, `{record_id}/assign`, `{record_id}/undelete`, `{record_id}/expunge`, ADR 0108).
-   `GET /api/v1/studio/objects/{api_name}/describe` answers for the caller: only fields the caller may read,
-   and which of them filter and sort. Tenant fields sit under `fields`; a lookup is `{id, name, readable}`
+   `GET /api/v1/studio/objects/{api_name}/describe` answers for the caller: the fields the caller may read and
+   which of them filter and sort, and every hidden field as `access: hidden`, so lists and forms show "Đã ẩn" the
+   same way (ADR 0106). Tenant fields sit under `fields`; a lookup is `{id, name, readable}`
    with `name: null` when the target is unreadable. Another tenant's record and a record the caller cannot
    read both answer 404; a readable record the caller cannot change answers 403. A support context reaches
    none of these routes until one is added to `SUPPORT_ALLOWED_ROUTES`
@@ -110,7 +118,7 @@ obvious designs (measured by the Studio research on 2026-10-22 on PostgreSQL 16.
 ## Alternatives considered
 
 - **Runtime DDL per object.** Rejected: the application would need DDL rights, and `db/migrations` would
-  stop being the one owner of the schema (`CLAUDE.md:89`).
+  stop being the one owner of the schema (`CLAUDE.md:100`).
 - **One shared value table (EAV), or typed pivot index tables.** Rejected: every filter becomes a join and
   no value has a typed index; the pivot measured 3 times the index storage and 3.4 times the write cost.
 - **A jsonb document with GIN or expression indexes.** Rejected: no typed range or sort, indexes unused
@@ -137,14 +145,15 @@ obvious designs (measured by the Studio research on 2026-10-22 on PostgreSQL 16.
   of tenant A's object answers 404; every compiled filter and sort passes the plan-shape test of ADR 0108.
 - Harder: about 80 partial indexes on one table; reusing a slot needs a purge; exact numbers stop at 18
   digits with scale at most 6; search is word-prefix only in v1; an ICU collation version change needs a
-  REINDEX of collated indexes; formulas and roll-ups come later.
-- Contradicts `CLAUDE.md:69-73` ("an AI platform, not a general application framework ... A CRUD-heavy
+  REINDEX of collated indexes; formulas and roll-ups come later; a tenant with one admin cannot create or change
+  an object, since every object version is published through a second person (D11).
+- Contradicts `CLAUDE.md:79-83` ("an AI platform, not a general application framework ... A CRUD-heavy
   application layer does not have to be Python"), worth reopening because Studio puts a records engine in
   the platform (stance S1); amended through ADR 0100 on acceptance.
-- Contradicts `CLAUDE.md:163` ("Every tenant-scoped table has `tenant_id` and `workspace_id`."), worth
+- Contradicts `CLAUDE.md:181` ("Every tenant-scoped table has `tenant_id` and `workspace_id`."), worth
   reopening because definitions are tenant-wide by D1 and S3 while records keep an owning workspace;
   `platform.policy_overrides` is a tenant-only precedent. Amended through ADR 0100.
-- Keeps `CLAUDE.md:89` ("The schema has one owner and it is `db/migrations`."), and clarifies `CLAUDE.md:250`:
+- Keeps `CLAUDE.md:100` ("The schema has one owner and it is `db/migrations`."), and clarifies `CLAUDE.md:288`:
   a HASH-partitioned table has no DEFAULT partition, which that line asks of append-only RANGE tables. The
   planning brief's route prefix `/api/v1/objects/...` gives way to `/api/v1/studio/objects/...` (ADR 0100).
 - si-platform (D5): re-derives `docs/adr/0029-tenant-field-values-in-one-shared-table.md` and
@@ -157,14 +166,37 @@ obvious designs (measured by the Studio research on 2026-10-22 on PostgreSQL 16.
 ## Open
 
 1. **The storage model and its CLAUDE.md amendments** (DO-01, Đạt): tenant-wide definitions and a records
-   engine in the platform.
+   engine in the platform. Answered 2026-10-23: accepted with ADR 0100, through its amendments A2 and A6
+   (DO-01 (a)).
 2. **Hash partitions from the first revision with modulus 8, and PostgreSQL 16 in v1** (DO-15, Đạt), once
    custom-objects/01 (FOG-41) has measured planning time and relcache. D12 asks for partitions from the
-   first revision; the unpartitioned form in decision 2 exists only for a failed measurement.
+   first revision; the unpartitioned form in decision 2 exists only for a failed measurement. Answered
+   2026-10-23: partitions from the first revision on PostgreSQL 16, modulus 8 if custom-objects/01 meets the
+   thresholds of decision 2, modulus 4 as the fallback measured in the same ticket, the requester asked again
+   only if both miss; the unpartitioned form is dropped (DO-15 (a)).
 3. **Uniqueness scope of unique and external-id fields** (DO-35, Đạt with the requester): proposed
    object-wide, a duplicate answering 409 `duplicate_value` with the field pointer and no record id unless
-   the caller can read the duplicate.
+   the caller can read the duplicate. Answered 2026-10-23: object-wide; the 409 `duplicate_value` names the
+   field and never a record id, even for a caller who can read the duplicate, as ADR 0105 decision 8 says, under
+   a per-user rate limit and an audit event (DO-35 (a)).
 4. **What a validation rule means** (DO-37, the requester for the meaning, Đạt for the engine). Provisional
    agent call of 2026-10-23, option (a): a rule must hold (true means valid), written in CEL with
    si-platform's test vectors ported. If wrong, the evaluator's polarity and the builder's wording flip;
-   the rule keeps its place in the pipeline.
+   the rule keeps its place in the pipeline. Answered 2026-10-23: option (a), each ported vector's polarity
+   checked as ADR 0114 decision 6 says; rules arrive in W2 with YC28 (DO-37 (a)).
+
+## Acceptance (2026-10-23)
+
+- Status Accepted by Đạt, on the condition that custom-objects/01 confirms the partition modulus, modulus 4 being
+  the fallback.
+- Decision 1: one `api_name` rule shared with the version envelope (`{1,39}`, immutable after the first publish),
+  and the object version carries `default_access` and `access_mode`, published through a second person (DO-08 (a),
+  D:field-security:R1.4~requirements.md:D11 (a)).
+- Decision 2: modulus 8 on PostgreSQL 16 or modulus 4, no unpartitioned branch, no `dw_app` privilege on a partition
+  (DO-15 (a), DO-02.2 (a)).
+- Decision 3: the run mode reaches RecordService through its callers' Protocols, the one place writes are simulated
+  (D:custom-objects:R5.4~workflow-nodes:R5.3 (a)).
+- Decision 5: only a published `api_name` is frozen; decision 8: describe lists hidden fields as `access: hidden`
+  (B:custom-objects:R6.5~field-security:R3.3 (a)).
+- Consequences: a tenant with one admin cannot create an object (D11).
+- Open 1 to 4 answered; Open 3's readable-duplicate exception dropped.

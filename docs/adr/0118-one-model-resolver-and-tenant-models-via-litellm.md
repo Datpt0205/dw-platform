@@ -1,5 +1,5 @@
 ---
-status: Proposed (direction chosen by the requester on 2026-10-22 and 2026-10-23; not yet reviewed by Đạt)
+status: Accepted (Đạt, 2026-10-23; amendments from the decision brief applied)
 date: 2026-10-23
 source:
     - ../../.claude/plans/studio/model-connections/spec.md
@@ -44,7 +44,7 @@ repository root. External facts were gathered by the Studio research on 2026-10-
   under a salt key that "must never change" (GHSA-7hp6-4w63-5g45). Client-side credentials and
   cooldowns are documented at https://docs.litellm.ai/docs/proxy/clientside_auth and
   https://docs.litellm.ai/docs/routing.
-- CLAUDE.md:192 lets resolution fall back to the platform, never sideways. For a model, falling back to
+- CLAUDE.md:224 lets resolution fall back to the platform, never sideways. For a model, falling back to
   the platform spends platform money and sends data to a processor the tenant did not choose.
 
 ## Decision
@@ -103,7 +103,9 @@ purpose) -> ResolvedRoute` serves `StudioModelSelection`, `RunBudgetMiddleware`,
 8. **The model proxy is a stateless translation lane, never imported.** Compose service `litellm-byom`
    is built in CI from a digest-pinned Python base with `pip install --require-hashes` of one exact
    LiteLLM version, never a vendor tag; its digest is in the release manifest, and a LiteLLM version is
-   adopted only after 14 days and an advisory check. Configuration: no `DATABASE_URL`, no provider
+   adopted only after 14 days and an advisory check. Under that rule v1 pins 1.106.1, from before the
+   incident of 2026-10-21, until the vendor's final incident report lets a later version through the
+   same rule (FOG-19). Configuration: no `DATABASE_URL`, no provider
    variable, `cache: false`, `disable_cooldowns: true`, `num_retries: 0`,
    `turn_off_message_logging: true`, spend and error logs off, `allow_client_side_credentials: false`,
    and `configurable_clientside_auth_params` only for `api_base` under regexes anchored at both ends.
@@ -130,7 +132,7 @@ purpose) -> ResolvedRoute` serves `StudioModelSelection`, `RunBudgetMiddleware`,
   data location and processor.
 - **Native provider adapters only.** Not now: kept as the exit plan behind the same OpenAI-compatible
   port.
-- **Adding the tenant to `chat_route` later.** Rejected by CLAUDE.md:198 (new registries take
+- **Adding the tenant to `chat_route` later.** Rejected by CLAUDE.md:230 (new registries take
   `tenant_id` from the start).
 
 ## Consequences
@@ -153,13 +155,15 @@ purpose) -> ResolvedRoute` serves `StudioModelSelection`, `RunBudgetMiddleware`,
   only, and its memory is part of the host measurement (FOG-23) behind D14's resize.
 - Harder: a tenant whose only route fails has no model until it adds a second route of its own; nobody
   can bring a personal model key in v1.
+- Every tenant starts at `vn_only` and an undeclared alias counts as foreign (ADR-0123), so the pilot
+  slice needs a route declared as processed in Vietnam before its first AI step (FOG-10, FOG-18).
 
 ### Contradictions and amendments
 
 - Model profiles stop carrying prices (`model/profiles.py:54-55`), moved to the price book (ADR-0121).
-- _Contradicts CLAUDE.md:111-116 (the required stack), worth reopening because tenant models through
+- _Contradicts CLAUDE.md:124-129 (the required stack), worth reopening because tenant models through
   LiteLLM are a requester decision (D8, D13): the stack gains LiteLLM, stateless and for tenant models
-  only (amendment A10). It stays within CLAUDE.md:116 ("never `latest`"): digest and hashes pin it._
+  only (amendment A10). It stays within CLAUDE.md:129 ("never `latest`"): digest and hashes pin it._
 - `adapters/chat_model.py:59-64` is false for tenant models, and `adapters/model_stack.py:92-113`
   remains the platform-paid path only.
 - Diverges from si-platform docs/adr/0033-the-agent-reaches-crm-tools-over-mcp.md, where a personal
@@ -171,12 +175,30 @@ purpose) -> ResolvedRoute` serves `StudioModelSelection`, `RunBudgetMiddleware`,
 1. **DO-19** (requester): direction answered by D13 on 2026-10-23. Still owed: the exact LiteLLM
    version (1.106.1, from before the incident day, until the vendor's final incident report; FOG-19),
    and, per alias, whether the models behind the requester's existing gateway are processed in Vietnam
-   or abroad; until declared they count as foreign (FOG-18).
+   or abroad; until declared they count as foreign (FOG-18). Answered 2026-10-23 for the version:
+   1.106.1 under decision 8's rule of 14 days and an advisory check. Still owed: the location of each
+   alias (FOG-18).
 2. **DO-43** (requester for fallback, on-premises endpoints and caps; Đạt for tools): provisional call
    by the agent on 2026-10-23 following the recommendation: no fallback but a second route on the
    tenant's own connections; workspace-owned tenant models get tools; no on-premises endpoints in v1;
    tenant-model tokens count only against tenant-set caps. If overturned, points 5, 6 and 9 change; the
-   resolver and the model proxy do not.
+   resolver and the model proxy do not. Answered 2026-10-23: as provisionally called (DO-43 (a)); BYOM
+   ships in W2 under decisions 6 and 9.
 3. Prerequisites owned elsewhere: DO-47 (Đạt and the operator: OpenBao and the egress proxy, without
    which the model proxy has no vault and no way out) and DO-54 (counsel and the requester: `vn_only`
    by default, and who files the DPIA and CTIA when a tenant picks a foreign model; ADR-0123).
+   Answered 2026-10-23: OpenBao from P1, and the egress proxy before the first tenant-defined HTTP
+   destination, which a tenant model's base URL is (DO-47.1 (a), DO-47.2 (a); ADR-0115); `vn_only` by
+   default, loosening only with two people and a live attestation, and counsel decides who files the
+   DPIA and the CTIA (DO-54.1 (a), DO-54.2 (a); ADR-0123).
+
+## Acceptance (2026-10-23)
+
+Accepted by Đạt on 2026-10-23 with these amendments from the decision brief:
+
+- Decision 8: LiteLLM is pinned under the rule of 14 days and an advisory check, at 1.106.1 for v1, rather
+  than left open.
+- Consequences: an undeclared alias counts as foreign, so the pilot needs a route declared as
+  processed in Vietnam before its first AI step (FOG-10).
+- Open: DO-19 answered for the version (the location of each alias still owed, FOG-18); DO-43 and the
+  prerequisites DO-47 and DO-54 answered.

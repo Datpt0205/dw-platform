@@ -1,5 +1,5 @@
 ---
-status: Proposed (direction chosen by the requester on 2026-10-22 and 2026-10-23; not yet reviewed by Đạt)
+status: Accepted (Đạt, 2026-10-23; amendments from the decision brief applied)
 date: 2026-10-23
 source:
     - ../../.claude/plans/studio/org-and-principals/spec.md
@@ -40,13 +40,16 @@ None of these facts has a home today:
 ## Decision
 
 1. **One tree, one copy.** `platform.workspaces` gains `parent_id`. Every workspace but one root per tenant has a
-   parent in the same tenant, by the composite foreign key `fk_workspaces_parent` on `(tenant_id, parent_id)`
-   referencing `uq_workspaces_tenant_id UNIQUE (tenant_id, id)`, `ON DELETE RESTRICT`, with `uq_workspaces_one_root`
-   on `(tenant_id) WHERE parent_id IS NULL` and `ck_workspaces_parent_not_self`. Each tenant's `main` workspace becomes
-   its root, never moved or archived. Trigger `platform.guard_workspace_tree()` takes
-   `pg_advisory_xact_lock(hashtext('ws_tree:' || tenant_id))` (two moves each valid alone can close a cycle together)
-   and refuses with `ck_workspaces_tree_acyclic`, `ck_workspaces_tree_depth` (more than six levels, root included) or
-   `ck_workspaces_parent_live`. `parent_id` is the tree's only stored copy; every reader calls
+   parent in the same tenant, by the composite foreign key `fk_workspaces_tenant_id_workspaces` on
+   `(tenant_id, parent_id)` referencing `uq_workspaces_tenant_id_id UNIQUE (tenant_id, id)`, `ON DELETE RESTRICT`,
+   with `uq_workspaces_one_root` on `(tenant_id) WHERE parent_id IS NULL` and `ck_workspaces_parent_not_self`. Both
+   key names come from `NAMING_CONVENTION` (`packages/python/dw_kernel/src/dw_kernel/naming.py:25-27`), and
+   org-and-principals/01 is the one creator of `uq_workspaces_tenant_id_id`, which every composite foreign key to a
+   workspace uses. Each tenant's `main` workspace becomes its root, never moved or archived. Trigger
+   `platform.guard_workspace_tree()` takes `pg_advisory_xact_lock(hashtext('ws_tree:' || tenant_id))` (two moves each
+   valid alone can close a cycle together) and refuses with `ck_workspaces_tree_acyclic`, `ck_workspaces_tree_depth`
+   (more than six levels, root included) or `ck_workspaces_parent_live`. `parent_id` is the tree's only stored copy;
+   every reader calls
    `platform.workspace_ancestors(p_tenant_id, p_workspace_id)` or `platform.workspace_subtree(p_tenant_id, p_workspace_id)`
    (SQL, STABLE, SECURITY INVOKER, returning `(workspace_id, distance)` with self at 0), and no other code walks
    `parent_id`. A move (`POST /api/v1/admin/workspaces/{id}/move`, with a reason) audits `platform.workspace.moved`;
@@ -59,12 +62,13 @@ None of these facts has a home today:
    CHECK IN (`admin`, `csv`, `scim`, `jit`); tenant RLS plus a self-select policy so a person sees their own status in
    each tenant. `platform.memberships` references it `ON DELETE CASCADE`, so removing a person from a tenant removes
    every membership, team membership and attribute value in one statement. One line manager per person per tenant:
-   `fk_tenant_members_manager (tenant_id, manager_user_id)` `ON DELETE SET NULL (manager_user_id)`, guarded by
+   `fk_tenant_members_tenant_id_tenant_members` on `(tenant_id, manager_user_id)`
+   `ON DELETE SET NULL (manager_user_id)`, guarded by
    `platform.guard_reporting_line()` (no self, no manager who is not an active human member, no service principal on
    either side, no cycle). `platform.subordinates(p_tenant_id, p_manager_user_id)` is the only reader record access
    calls. `memberships.manager_user_id` and `memberships.department` retire, each dropped by the change that moves its
    last reader, with no dual-write window.
-4. **Teams.** `platform.teams` (an owning `workspace_id`, a name unique among that workspace's live teams,
+4. **Teams.** `platform.teams` (an `owning_workspace_id`, a name unique among that workspace's live teams,
    `archived_at`) and `platform.team_members` (any member of the tenant, from any workspace; never a service principal)
    are tenant-wide rows. A team owns records, receives shares and pools assignments; v1 has one kind, owner teams.
    `platform.teams.manage` (risk `elevated`) needs reach over the team's workspace; audit `platform.team.created`,
@@ -73,15 +77,18 @@ None of these facts has a home today:
    reads team ids from the access context.
 5. **Owner and owning workspace.** Every record of a tenant-defined object has a record owner (`owner_kind` user or
    team, `owner_id`) and an owning workspace, both NOT NULL (D1, D3a).
-6. **Lock, offboarding and archive live in the two owners of "may this act".** They are enforced only through
-   `platform.effective_grants` (ADR 0104) and `RunControlPort` (ADR 0120), with reason codes `tenant_locked`,
-   `tenant_offboarding` and `workspace_archived`; no third "is this tenant live" function is written. A lock refuses
-   every member, stops running runs at the next door, keeps paused runs paused with every decision refused, skips
-   schedules, and answers inbound events 503 with `Retry-After`, storing nothing. Offboarding does the same and, in its
-   filing transaction, revokes every API key and suspends every service principal. Archive is refused for the root and
-   for a workspace with live children; an archived workspace refuses new members, role assignments, teams, records,
-   artifacts, connections and triggers (`ck_workspace_archived`), outbox `platform.workspace.archived` disables its
-   triggers and cancels its paused runs with their approvals, and its records stay, reached only from elsewhere.
+6. **Lock, offboarding and archive live in the owners of "may this act".** They are enforced only at the AccessContext
+   build, which refuses a tenant or a tenant member that is not active at every route (`/me` included), through
+   `platform.effective_grants` (ADR 0104) on the SQL path, and through `RunControlPort` (ADR 0120) for runs, with reason
+   codes `tenant_locked`, `tenant_offboarding`, `workspace_archived` and `principal_inactive` (a run whose principal is
+   no longer an active member stops at its next door); no third "is this tenant live" function is written. A lock
+   refuses every member, stops running runs at the next door, keeps paused runs paused with every decision refused,
+   skips schedules, and answers inbound events 503 with `Retry-After`, storing nothing. Offboarding does the same
+   and, in its filing transaction, revokes every API key and suspends every service principal. Archive is refused for
+   the root and for a workspace with live children; an archived workspace refuses new members, role assignments,
+   teams, records, artifacts, connections and triggers (`ck_workspace_archived`), outbox `platform.workspace.archived`
+   disables its triggers and cancels its paused runs with their approvals, and its records stay, reached only from
+   elsewhere.
 7. **Attributes and audiences.** Each member attribute has one declared writer (`platform.member_attribute_defs.writer`:
    `admin`, `csv`, `scim` or `idp_claim`); a trigger refuses a value from any other source (409
    `attribute_managed_by_<writer>`). v1 writers are the admin API and a CSV import; SCIM and IdP claims arrive in v2.
@@ -114,8 +121,12 @@ None of these facts has a home today:
   frequent value, conflicts printed by the migration; dev and seed data only today).
 - record-access and tenant-rbac read the tree only through the two functions; record access's principal keys grow by
   at most six sub-tree markers per membership.
-- Phasing: W1 ships `uq_workspaces_tenant_id` and `tenant_members` with its status (org-and-principals 01 and 02); the
-  tree, teams, the manager relation, archive enforcement, attributes and audiences are W2.
+- Phasing: W1 ships `uq_workspaces_tenant_id_id` and `tenant_members` with its status (org-and-principals 01 and 02),
+  the 503 answer to a locked or offboarding tenant's inbound events (workflow-triggers), and a minimal audience: a
+  `dw.audience/v1` holding the workspace condition only (W1's tree is flat, so a workspace's sub-tree is itself),
+  answered by `platform.audience_matches` from a W1 ticket of org-and-principals that agent-builder calls (an empty
+  audience 422, no match 404). The tree, teams, the manager relation, archive enforcement, attributes and the other
+  audience conditions are W2, with no change to the document format.
 - Tests, each shown red by removing its guard: a parent in another tenant is impossible; two concurrent moves that
   would close a cycle are refused; a seventh level is refused; a suspended member's effective permissions are empty;
   tenant B reads none of tenant A's members, teams or attributes; a value written by the wrong source is refused; a
@@ -127,15 +138,16 @@ None of these facts has a home today:
 
 ### Contradictions
 
-- Contradicts `CLAUDE.md:163` ("Every tenant-scoped table has `tenant_id` and `workspace_id`"), worth reopening because
+- Contradicts `CLAUDE.md:181` ("Every tenant-scoped table has `tenant_id` and `workspace_id`"), worth reopening because
   tenant members, teams and attribute definitions belong to the tenant, not to one workspace; ADR 0100 carries the
-  amendment (A6).
+  amendment (A6), and `test_rls_coverage.py` lists each such table with its reason.
 - Retires `memberships.manager_user_id` and `memberships.department` (`0001_platform_baseline.sql:270-271`) and the
   per-workspace walk of `hierarchy_repo.py`, worth reopening because a person has one line manager per tenant.
 - Removes `AccessContext.groups` (`access_context.py:38`) and turns archive from the label of
   `admin_console_repo.py:140-142` into a control.
 - Contradicts ADR 0114 (CEL is the one expression language for tenant text) for audiences only, worth reopening
-  because an audience must also be answered in reverse; recorded here as an explicit exception, as DO-40 recommends.
+  because an audience must also be answered in reverse; recorded here as an explicit exception, as DO-40 decided on
+  2026-10-23, and in ADR 0114 too.
 - Plans the per-tenant lock that `.claude/plans/platform-runtime/tenant-members-and-invitations/spec.md:44` left out.
 
 ### Relation to si-platform
@@ -150,12 +162,31 @@ None of these facts has a home today:
    per tenant; kept here for the trace, no longer blocking.
 2. **DO-10 (requester for the team depth; Đạt for separation of duties).** Does the team depth cover only records owned
    by me and my teams, or also fellow members' own records? Provisional (agent, tạm theo khuyến nghị, 2026-10-23):
-   me and my teams only. If wrong, record access's closure gains a member arm and its benchmark is re-run.
+   me and my teams only. If wrong, record access's closure gains a member arm and its benchmark is re-run. Answered
+   2026-10-23: me and my teams only (DO-10.1 (a)); separation of duties is judged per person across the tenant
+   (DO-10.2 (a), ADR 0104).
 3. **FOG-45 (grilling).** Does each team belong to exactly one workspace, as a total depth order requires? Point 4
    assumes it does; the grilling confirms it, with where the manager relation for task escalation comes from.
 4. **DO-39 (requester).** While a tenant is locked, answer inbound events 503 and store nothing, or hold them like a
    freeze? Provisional (agent, tạm theo khuyến nghị): 503 and store nothing. If wrong, a lock holds events, and their
-   retention for a tenant that may never return goes to counsel.
-5. **DO-40 (Đạt and requester).** Audience format: the typed condition list of point 7 (recommended) or CEL?
+   retention for a tenant that may never return goes to counsel. Answered 2026-10-23: 503 with `Retry-After`, nothing
+   stored, from W1 (DO-39.1 (a)).
+5. **DO-40 (Đạt and requester).** Audience format: the typed condition list of point 7 (recommended) or CEL? Answered
+   2026-10-23: the typed condition list (DO-40 (a)).
 6. **DO-04 (requester).** Keep "workspace" as the Vietnamese UI term? Provisional: keep it. If wrong, screens rename to
-   the chosen term and code keeps `workspace`.
+   the chosen term and code keeps `workspace`. Answered 2026-10-23: keep "workspace" (DO-04 (a)); the "(phòng ban)"
+   gloss leaves the two screens that ship it.
+
+## Acceptance (2026-10-23)
+
+- Status Accepted by Đạt with the decision brief's amendments.
+- Key names follow `NAMING_CONVENTION`: `uq_workspaces_tenant_id_id`, created only by org-and-principals/01,
+  `fk_workspaces_tenant_id_workspaces` and `fk_tenant_members_tenant_id_tenant_members` (OPS-a.2).
+- Decision 4: a team's owning workspace is `owning_workspace_id`, the one name ADR 0100 fixes for tenant-wide rows
+  (DO-01 (a)).
+- Decision 6: the AccessContext build joins the owners of "may this act" and refuses a member who is not active
+  (A:org-and-principals:R4.3 (b)); `RunControlPort` gains the reason `principal_inactive`
+  (H:org-and-principals:R4.6 (b)).
+- Phasing: the minimal workspace-only audience through `platform.audience_matches` moves into W1
+  (H:agent-builder:R5.1 (a)), and the lock's 503 for inbound events ships in W1 (DO-39.1 (a)).
+- Open 2, 4, 5 and 6 answered; DO-40's exception recorded as decided.
