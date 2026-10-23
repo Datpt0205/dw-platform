@@ -16,7 +16,8 @@ trường, và không giữ công cụ gửi tin hay sửa bản ghi (spec R6). 
 1. Khai `ObjectDataPort` (`search`, `get`, `describe_for_tools`; `create`, `update` về sau), chạy với
    `AccessContext` của người gọi; custom-objects cài qua RecordService (custom-objects/04).
 2. `ObjectToolGenerator`: phiên bản đối tượng × thao tác bật → `dw.tool/v1` `kind: object_crud`, tên
-   `obj.<api_name>.search` và `obj.<api_name>.get` (W1 chỉ đọc); ánh xạ kiểu trường từ bộ chiếu lược đồ;
+   `obj_<api_name>__search` và `obj_<api_name>__get` theo dạng `namespace__name` của ADR-0116 (Accepted)
+   quyết 5, tối đa 64 ký tự, không đổi vì tên API bất biến (DO-08) (W1 chỉ đọc); ánh xạ kiểu trường từ bộ chiếu lược đồ;
    `additionalProperties: false`; DSL lọc với `op` thuộc danh sách đóng; `limit` tối đa 50.
 3. Mức sàn: `search`, `get` → `none` (không bao giờ `never`); công cụ đọc trả id bản ghi và chỉ trường
    người gọi đọc được.
@@ -27,23 +28,23 @@ trường, và không giữ công cụ gửi tin hay sửa bản ghi (spec R6). 
 
 ## Tiêu chí chấp nhận
 
-- [ ] R6.1: ghim một phiên bản đối tượng vào Bộ công cụ → sinh `obj.<api_name>.search` và
-      `obj.<api_name>.get` từ bộ chiếu lược đồ theo `schema_version`.
-- [ ] R6.2: `obj.lead_search` chạy qua RecordService với `AccessContext` của người gọi; người gọi ở mức
+- [ ] R6.1: ghim một phiên bản đối tượng vào Bộ công cụ → sinh `obj_<api_name>__search` và
+      `obj_<api_name>__get` từ bộ chiếu lược đồ theo `schema_version`.
+- [ ] R6.2: `obj_lead__search` chạy qua RecordService với `AccessContext` của người gọi; người gọi ở mức
       truy cập Của tôi chỉ thấy bản ghi mình phụ trách.
-- [ ] R6.3 (TS8): người không đọc được `phone` gọi `obj.lead_search` → đầu ra không có `phone`, lược đồ
+- [ ] R6.3 (TS8): người không đọc được `phone` gọi `obj_lead__search` → đầu ra không có `phone`, lược đồ
       model thấy không có `phone`; gỡ `FieldSecurityToolSchemaMiddleware` → test đỏ.
 - [ ] R6.4 (TS9): trợ lý của công ty B gọi công cụ hỏi lead của công ty A → `not_found`, không lộ bản
       ghi; gỡ kiểm tenant → test đỏ.
 - [ ] R6.5 (TS9): đối tượng xuất bản phiên bản xóa một trường → công cụ ghim bản cũ báo lệch.
 - [ ] R6.7 (TS9): lời gọi công cụ dùng trường đã xóa → RecordService từ chối; gỡ kiểm lệch → test đỏ.
-- [ ] R6.6: `obj.lead_search` và `obj.lead_get` mang Mức tác động `none` và trả id bản ghi; bản ghi
+- [ ] R6.6: `obj_lead__search` và `obj_lead__get` mang Mức tác động `none` và trả id bản ghi; bản ghi
       không thấy được → `not_found`, không 403.
 - [ ] Xong: `make ci && make test-integration` xanh.
 
 ## Nguồn
 
-- spec: R6, TS8, TS9; ADR-0116 (Proposed) quyết 1; custom-objects/04 (`RecordQueryCompiler`,
+- spec: R6, TS8, TS9; ADR-0116 (Accepted) quyết 1; custom-objects/04 (`RecordQueryCompiler`,
   custom-objects:R8.1; bộ chiếu lược đồ, custom-objects:R3.6; cách ly tenant, custom-objects:R4.3);
   field-security/01 (giá trị Đã ẩn); tenant-config/02 qua ticket 02 (ghim Bộ công cụ).
 
@@ -51,3 +52,6 @@ trường, và không giữ công cụ gửi tin hay sửa bản ghi (spec R6). 
 
 - 2026-10-23 (agent): W1 chỉ công cụ đọc (`search`, `get`) cho trợ lý; `create`, `update` của công cụ
   đối tượng là W2. Phủ YC96 (trợ lý Marketing chỉ đọc) cùng YC19 và YC23.
+- 2026-10-23 (agent): theo ADR-0116 (Accepted) quyết 5, Đạt chấp nhận ngày 23/10/2026, tên công cụ đổi từ
+  `obj.<api_name>.search` sang `obj_<api_name>__search` (cùng với `__get`); tên API bất biến (DO-08) nên
+  tên công cụ không bao giờ đổi.

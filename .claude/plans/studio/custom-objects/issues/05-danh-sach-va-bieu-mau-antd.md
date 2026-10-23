@@ -1,6 +1,6 @@
 # 05 — Danh sách và biểu mẫu antd sinh từ describe
 
-Status: needs-info (DO-16)
+Status: needs-triage
 Blocked by: 04, .claude/plans/studio/studio-skeleton/issues/03-seam-web-va-allowlist-antd.md
 Area: studio
 Yêu cầu: R10.1, R10.2, R10.3, R10.4, R10.5, R10.6, R10.7
@@ -24,8 +24,9 @@ trống.
    `InputNumber`; `date`, `datetime` → `DatePicker` qua `apps/web/lib/dates.ts`; `boolean` → `Switch`; `picklist`
    → `Select` các lựa chọn đang bật. Tiền hiển thị qua một hàm định dạng nhận chuỗi, thêm vào `apps/web/lib/money.ts`,
    không đổi sang số JS.
-3. `HiddenValue` trong `@dw/ui`: chữ "Đã ẩn" với `LockOutlined`, cho mọi tên trong `hidden_fields`
-   (ADR-0106 (Proposed) quyết định 4). Trường describe đánh dấu không sửa được → control `disabled` với lý do trong
+3. `HiddenValue` trong `@dw/ui`: chữ "Đã ẩn" với `LockOutlined`, cho mọi tên trong `hidden_fields` và mọi trường
+   describe đánh dấu `access: hidden`, ở cả ô của danh sách lẫn trang bản ghi, kể cả khi trường trống
+   (ADR-0106 (Accepted) quyết định 4). Trường describe đánh dấu không sửa được → control `disabled` với lý do trong
    `Tooltip`.
 4. `RecordForm` trên antd `Form` theo quy ước biểu mẫu của `.claude/rules/ui-quality.md`: `validateTrigger="onBlur"`,
    `scrollToFirstError`, một `Alert` tổng hợp; `errors[].pointer` → `form.setFields`; lưu gửi `If-Match` bằng ETag
@@ -43,7 +44,8 @@ trống.
       nạp trang kế mà không lặp dòng nào.
 - [ ] R10.2: nhân viên Sales chỉ thấy lead được giao cho mình; lead kia không có trong danh sách, và mở thẳng URL của
       nó → trạng thái "không tìm thấy".
-- [ ] R10.3: trường Đã ẩn hiện "Đã ẩn" có biểu tượng khóa; giá trị không có trong DOM lẫn trong phản hồi mạng.
+- [ ] R10.3: trường Đã ẩn hiện "Đã ẩn" có biểu tượng khóa ở danh sách và trang bản ghi, kể cả trường trống; giá trị
+      không có trong DOM lẫn trong phản hồi mạng.
 - [ ] R10.4: trường chỉ đọc bị khóa và `Tooltip` nêu lý do.
 - [ ] R10.5: lưu một biểu mẫu có ba lỗi 422 → ba trường hiện lỗi đúng chỗ và `Alert` báo còn 3 trường cần sửa; vitest
       cho ánh xạ con trỏ đỏ khi bỏ ánh xạ.
@@ -60,9 +62,11 @@ trống.
 - `.claude/rules/ui-quality.md:126-128`; `.claude/rules/ui-quality.md:266`; spec: R10.1, R10.2.
 - `packages/typescript/ui/src/region-state.tsx:34-43`; spec: R10.6.
 - `apps/web/playwright.config.ts:46-48`; spec: R10.7.
-- ADR-0106 (Proposed) quyết định 4.
+- ADR-0106 (Accepted) quyết định 4.
 
 ## Comments
 
 - 2026-10-23 (agent): `make test-web` chưa chạy trong CI (Makefile ghi rõ); đưa nó vào CI là quyết định Đạt còn nợ,
   nên dòng Xong chạy tay cho tới khi có quyết định đó.
+- 2026-10-23 (agent): DO-16.1 (a) đã có lời đáp (Đạt, 23/10/2026); Status về needs-triage. "Đã ẩn" hiện ở cả danh sách
+  theo describe `access: hidden` (`B:custom-objects:R6.5~field-security:R3.3`).

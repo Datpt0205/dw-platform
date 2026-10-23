@@ -1,9 +1,9 @@
 # 04 — Chat: hội thoại, tin nhắn, cửa nhận run, polling và màn chat
 
-Status: needs-info (DO-44)
-Blocked by: 03, .claude/plans/studio/studio-skeleton/issues/03-seam-web-va-allowlist-antd.md
+Status: needs-triage
+Blocked by: 03, .claude/plans/studio/studio-skeleton/issues/03-seam-web-va-allowlist-antd.md, .claude/plans/studio/org-and-principals/issues/04-nguoi-duoc-dung-toi-thieu.md
 Area: studio
-Yêu cầu: R4.1, R4.2, R4.3, R4.4, R4.5, R5.1, R5.2, AB3, AB4, AB8
+Yêu cầu: R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R4.7, R4.8, R5.1, R5.2, AB3, AB4, AB8
 
 ## Mục tiêu
 
@@ -11,9 +11,9 @@ Cho nhân viên trong `Người được dùng` trò chuyện với một trợ 
 
 ## Việc cần làm
 
-1. Migration hai bảng `studio.conversations` và `studio.conversation_messages` (revision hex): RLS bật và FORCE với một policy permissive theo hình workspace và một policy RESTRICTIVE siết `owner_user_id = current_setting('app.user_id')` theo tiền lệ `platform.notifications`; `active_run_id` unique cục bộ để chiếm chỗ một lượt; chỉ mục phân trang dẫn đầu `(tenant_id, owner_user_id, created_at DESC)`.
-2. Route chat: `POST /api/v1/studio/agents/{id}/conversations`, `POST .../conversations/{conversation_id}/messages` (chiếm `active_run_id`, 202 khi nhận, 409 `reason_code=conversation_busy` khi đang chạy), `GET .../messages` (polling của chủ). Cửa nhận run `trigger_kind=chat` qua `RunRequestService`; `worker_runs.input` chỉ mang id; hook hoàn tất ghi tin nhắn trợ lý; xóa hội thoại audit `studio.conversation.deleted`.
-3. Lọc agent theo `Người được dùng`: `GET /api/v1/studio/agents` và `/chat` chỉ trả agent mà `platform.audience_matches` của `org-and-principals` khớp người gọi; người ngoài audience mở hội thoại hay gửi tin trả 404.
+1. Migration hai bảng `studio.conversations` và `studio.conversation_messages` (revision hex) theo mục Dữ liệu của spec: `studio.conversations` có `workspace_id NOT NULL` và UNIQUE `(tenant_id, id, workspace_id, owner_user_id)`; `studio.conversation_messages` mang `workspace_id`, `owner_user_id` NOT NULL với khóa ngoại ghép `(tenant_id, conversation_id, workspace_id, owner_user_id)` tới `studio.conversations` (`ON DELETE` tường minh, có chỉ mục), phân vùng theo tháng trên `created_at` có partition DEFAULT, và một dòng `platform.time_partitioned_tables` trong cùng revision, không sửa mảng của hàm; partition không cấp quyền nào cho `dw_app` (studio-skeleton:R3.6). RLS bật và FORCE trên cả hai bảng với một policy permissive theo hình workspace và một policy RESTRICTIVE `tenant_id = app.tenant_id AND (owner_user_id = app.user_id OR app.workspace_scope = 'tenant')` theo tiền lệ `platform.notifications`; `active_run_id` unique cục bộ để chiếm chỗ một lượt; chỉ mục phân trang dẫn đầu `(tenant_id, owner_user_id, created_at DESC)`.
+2. Route chat: `POST /api/v1/studio/agents/{id}/conversations`, `POST .../conversations/{conversation_id}/messages` (chiếm `active_run_id`, 202 khi nhận, 409 `reason_code=conversation_busy` khi đang chạy; không trả 429, hạn mức kiểm ở làn `studio_runs` lúc dispatch theo DO-21.3), `GET .../messages` (polling của chủ). Cửa nhận run `trigger_kind=chat` qua `RunRequestService`; `worker_runs.input` chỉ mang id; hook hoàn tất ghi tin nhắn trợ lý; lượt chạy chat `failed` ghi một tin `notice` mang `reason_code` của lượt (với `limit_exceeded` kèm `resets_at`); xóa hội thoại audit `studio.conversation.deleted`.
+3. Lọc agent theo `Người được dùng`: `GET /api/v1/studio/agents` và `/chat` chỉ trả agent mà `platform.audience_matches` của `org-and-principals` khớp người gọi (org-and-principals:R8.3, org-and-principals:R8.4); người ngoài audience mở hội thoại hay gửi tin trả 404. Ticket này chỉ gọi hàm, không tự viết luật khớp.
 4. Màn `/chat` antd (`vi_VN`, seam web và allowlist của `studio-skeleton`): danh sách agent theo audience, danh sách hội thoại của chủ, khung tin nhắn cập nhật qua polling, "Đang suy nghĩ · n bước", nhãn AI cố định, lời chào và tối đa sáu gợi ý.
 
 ## Tiêu chí chấp nhận
@@ -23,12 +23,17 @@ Cho nhân viên trong `Người được dùng` trò chuyện với một trợ 
 - [ ] R4.3 (AB8): hai `POST .../messages` song song cho một hội thoại cho đúng một 202 và một 409; gỡ chiếm `active_run_id` → hai lượt chạy.
 - [ ] R4.4: `worker_runs.input` của lượt chạy chat chỉ chứa id; sai nếu chứa nội dung tin nhắn.
 - [ ] R4.5: lượt chạy chat hoàn tất ở worker làm lần `GET .../messages` tiếp theo của chủ trả tin nhắn trợ lý mới; sai nếu không trả qua polling.
+- [ ] R4.6: lượt chạy chat kết thúc `failed` với `limit_exceeded` → lần `GET .../messages` tiếp theo trả một tin `notice` có `reason_code` `limit_exceeded` và `resets_at`; `POST .../messages` khi hạn mức đã cạn vẫn trả 202, không 429; sai nếu người dùng không thấy lý do.
+- [ ] R4.7 (AB4): `dw_app` đọc một partition của `studio.conversation_messages` theo tên → `permission denied`, không dòng nào; cấp lại SELECT trên partition trong migration thử → test đỏ.
+- [ ] R4.8 (AB4): chèn tin nhắn mang `workspace_id` hay `owner_user_id` khác hội thoại của nó → lỗi khóa ngoại, không ghi; gỡ khóa ngoại ghép → test đỏ.
 - [ ] R5.1 (AB3): `GET /api/v1/studio/agents` chỉ trả agent mà audience của người gọi khớp; sai nếu trả agent ngoài audience.
 - [ ] R5.2 (AB3): người ngoài `Người được dùng` gọi một agent nhận 404; gỡ kiểm audience ở cửa chat → người ngoài thấy agent.
 - [ ] Xong: `uv run pytest packages/python/dw_studio/tests -k "chat or conversation" && pnpm --filter web test:e2e -- chat` xanh.
 
 ## Nguồn
 
-- `apps/api/src/dw_api/routes/v1/runs.py:41`; `db/migrations/versions/855ae928c3fa_platform_in_app_notifications.py:46`; `packages/python/dw_platform/src/dw_platform/adapters/persistence/tenant_session.py:26`; spec: R4.1, R4.2, R4.3, R4.4, R4.5, R5.1, R5.2, AB3, AB4, AB8.
+- `apps/api/src/dw_api/routes/v1/runs.py:41`; `db/migrations/versions/855ae928c3fa_platform_in_app_notifications.py:46`; `packages/python/dw_platform/src/dw_platform/adapters/persistence/tenant_session.py:26`; spec: R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R4.7, R4.8, R5.1, R5.2, AB3, AB4, AB8; org-and-principals:R8.3, org-and-principals:R8.4.
 
 ## Comments
+
+- 2026-10-23 (agent): Đạt xác nhận ngày 23/10/2026 dòng DO-44 của spec (chat ở worker, polling ở P1; không ai đọc hội thoại của người khác), nên ticket về `needs-triage`. Theo quyết định cùng ngày: tin nhắn mang `workspace_id`, `owner_user_id` qua khóa ngoại ghép và phân vùng tháng (R4.7, R4.8, bước 1); lượt chat thất bại hiện tin `notice` (DO-21.3, R4.6); `Người được dùng` khớp bằng hàm của lát W1 ở org-and-principals (bước 3), ticket này chờ ticket đó.

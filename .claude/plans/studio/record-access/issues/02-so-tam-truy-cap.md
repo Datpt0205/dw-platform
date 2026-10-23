@@ -9,7 +9,7 @@ Yêu cầu: R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, RA12, RA13, RA14, RA15, RA16
 
 Mỗi chủ thể có một dòng sổ tầm do đúng một hàm SQL tính từ quyền hiệu lực, đọc qua các hàm `studio.acl_*` mà policy
 bản ghi của ticket 03 sẽ dùng, và mất hiệu lực trong cùng giao dịch với mọi thay đổi đầu vào, nên một thu hồi có tác
-dụng từ câu lệnh kế tiếp (spec R5, ADR-0105 (Proposed) mục 4). Nhánh nhóm, cây workspace và quản lý thêm ở W2.
+dụng từ câu lệnh kế tiếp (spec R5, ADR-0105 (Accepted) mục 4). Nhánh nhóm, cây workspace và quản lý thêm ở W2.
 
 ## Việc cần làm
 
@@ -27,13 +27,19 @@ dụng từ câu lệnh kế tiếp (spec R5, ADR-0105 (Proposed) mục 4). Nhá
       setting đọc ở dạng `(SELECT ...)`.
     - `dw_app` chỉ SELECT trên hai bảng; `dw_provisioner` và `dw_agent_ro` không quyền nào; khẳng định trong
       `packages/python/dw_platform/tests/integration/test_privileges.py`.
+    - Hai bảng không có `workspace_id`: mỗi bảng một dòng trong danh sách bảng toàn tenant của
+      `packages/python/dw_platform/tests/integration/test_rls_coverage.py` với lý do "sổ tầm dẫn xuất của một chủ thể và
+      epoch của cả tenant" (DO-01).
+    - Hai bảng vào `STUDIO_EXCLUSIONS` của test phủ offboarding (studio-skeleton/01) với lý do "dữ liệu dẫn xuất, không
+      xóa bằng `dw_app`; `studio.principal_scopes` đi theo cascade từ `platform.tenant_members`, `studio.access_epochs`
+      từ `platform.tenants`" (`B:record-access:R5.5~studio-skeleton:R4.1`).
 2. View đầu vào là hợp đồng với tenant-rbac và org-and-principals: `studio.v_principal_grants` (dòng của
    `platform.effective_grants` cho tenant và chủ thể lấy từ setting, khóa `obj.<api_name>.<action>` đổi ra `object_id`
    qua `studio.object_defs`) và `studio.v_principal_workspaces` (workspace mà chủ thể là thành viên, chỉ khi thành viên
    công ty ở trạng thái `active`).
 3. `studio.compute_principal_scope()`: `LANGUAGE sql STABLE`, không tham số, tenant từ `app.tenant_id` và chủ thể từ
    `app.user_id`, lọc `tenant_id` tường minh ở mọi truy vấn con; tính các mức `own`, `workspace`, `tenant` mà
-   ADR-0104 (Proposed) giao cho W1; mức khác không cho tầm nào ở W1.
+   ADR-0104 (Accepted) giao cho W1; mức khác không cho tầm nào ở W1.
 4. `studio.ensure_principal_scope()`: SECURITY DEFINER thuộc `dw_migrator`, không tham số, `search_path` cố định,
    EXECUTE thu khỏi PUBLIC và cấp cho `dw_app`; tạo dòng epoch của tenant khi thiếu (`ON CONFLICT DO NOTHING`); khi
    dòng của chủ thể thiếu, `stale` hay khác epoch thì tính lại và upsert có compare-and-set theo `version` và `epoch`
@@ -45,7 +51,7 @@ dụng từ câu lệnh kế tiếp (spec R5, ADR-0105 (Proposed) mục 4). Nhá
    `studio.mark_principal_stale()` cho thay đổi của một chủ thể (trạng thái thành viên công ty, thành viên workspace,
    gán vai trò của người đó: `state = 'stale'`, `version + 1`) và `studio.bump_access_epoch()` cho thay đổi cấu trúc
    (quyền trong vai trò, xóa vai trò, lưu trữ hay xóa workspace: `epoch + 1`). Gắn trên mọi bảng đang mang trigger của
-   `platform.bump_access_version()` (ADR-0104 (Proposed) mục 7).
+   `platform.bump_access_version()` (ADR-0104 (Accepted) mục 7).
 7. Test catalog: mọi bảng mang trigger của `platform.bump_access_version()` cũng mang một trigger sổ tầm; một bảng
    thiếu thì test nêu tên bảng.
 8. Oracle Python chỉ dùng trong test, trong gói `testing` của `dw_studio`: sinh tổ chức ngẫu nhiên (người, workspace,
@@ -66,18 +72,21 @@ dụng từ câu lệnh kế tiếp (spec R5, ADR-0105 (Proposed) mục 4). Nhá
 - [ ] R5.5 (RA16): `dw_app` INSERT, UPDATE, DELETE trên `studio.principal_scopes` và `studio.access_epochs` →
       permission denied; `test_privileges.py` khẳng định chỉ có SELECT.
 - [ ] R5.6: xóa thành viên công ty của một chủ thể → dòng sổ tầm của người đó biến mất trong cùng giao dịch; thành viên
-      bị tạm khóa → dòng thành `stale` và tầm tính lại rỗng.
+      bị tạm khóa → dòng thành `stale` và tầm tính lại rỗng; offboarding một tenant → 0 dòng sổ tầm của tenant đó, và
+      test phủ offboarding xanh với hai bảng trong `STUDIO_EXCLUSIONS` kèm lý do; bỏ một bảng khỏi danh sách → test đỏ.
 - [ ] Xong: `make ci test-integration` xanh.
 
 ## Nguồn
 
 - `packages/python/dw_platform/src/dw_platform/adapters/persistence/caching_lookup.py:27`; spec: R5.2.
 - `db/migrations/sql/0012_partition_maintenance.sql:45-48`; spec: R5.5.
-- `docs/adr/0105-record-reach-is-decided-by-postgresql.md:75-82`; spec: R5.1, R5.3, R5.4.
-- `docs/adr/0104-tenant-roles-with-depth-and-one-effective-grants-owner.md:67-73`; spec: R5.1.
-- `docs/adr/0104-tenant-roles-with-depth-and-one-effective-grants-owner.md:84-89`; spec: R5.2.
+- `docs/adr/0105-record-reach-is-decided-by-postgresql.md:77-84`; spec: R5.1, R5.3, R5.4.
+- `docs/adr/0104-tenant-roles-with-depth-and-one-effective-grants-owner.md:70-80`; spec: R5.1.
+- `docs/adr/0104-tenant-roles-with-depth-and-one-effective-grants-owner.md:94-101`; spec: R5.2.
 
 ## Comments
 
 - 2026-10-23 (agent): DO-14 đã quyết bằng D12 (người yêu cầu, 23/10/2026); DO-11 theo khuyến nghị (a), tạm: mặc định
   công khai là toàn tenant (nhánh của nó thêm ở ticket 03).
+- 2026-10-23 (agent): DO-11 (a) đã được Đạt xác nhận ngày 23/10/2026; thêm dòng lớp bảng toàn tenant (DO-01) và
+  `STUDIO_EXCLUSIONS` cho hai bảng sổ tầm.

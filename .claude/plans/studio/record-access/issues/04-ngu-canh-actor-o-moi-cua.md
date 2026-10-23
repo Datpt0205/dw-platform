@@ -1,6 +1,6 @@
 # 04 — Ngữ cảnh actor ở mọi cửa và biên dữ liệu của agent và workflow
 
-Status: needs-info (DO-12)
+Status: needs-triage
 Blocked by: 03, .claude/plans/studio/org-and-principals/issues/03-tai-khoan-dich-vu-run-as.md
 Area: studio
 Yêu cầu: R6.3, R6.4, R6.5, R6.6, R6.7, R6.8, R6.9, RA18, RA19, RA20, RA21
@@ -9,7 +9,7 @@ Yêu cầu: R6.3, R6.4, R6.5, R6.6, R6.7, R6.8, R6.9, RA18, RA19, RA20, RA21
 
 Agent và quy trình đọc, ghi bản ghi bằng tầm sống của người kích hoạt hay tài khoản dịch vụ chạy dưới danh nghĩa,
 giao với giới hạn dữ liệu cố định khi phát hành, nên một yêu cầu bị chèn prompt đòi lead của người khác thất bại ở
-RLS, không ở prompt (spec R6.3 tới R6.9; ADR-0103 (Proposed) mục 4 và 5; ADR-0105 (Proposed) mục 6).
+RLS, không ở prompt (spec R6.3 tới R6.9; ADR-0103 (Accepted) mục 4 và 5; ADR-0105 (Accepted) mục 6).
 
 ## Việc cần làm
 
@@ -29,6 +29,9 @@ RLS, không ở prompt (spec R6.3 tới R6.9; ADR-0103 (Proposed) mục 4 và 5;
       bảng này.
     - Trigger BEFORE UPDATE OR DELETE trên ba bảng gọi lỗi 23514 `ck_actor_boundaries_frozen`: UPDATE luôn bị từ chối,
       DELETE chỉ qua khi giao dịch ở phạm vi toàn tenant của lane offboarding.
+    - Ba bảng không có `workspace_id`: mỗi bảng một dòng trong danh sách bảng toàn tenant của
+      `packages/python/dw_platform/tests/integration/test_rls_coverage.py` với lý do "giới hạn dữ liệu của một phiên bản
+      agent hay quy trình đã phát hành, thuộc định nghĩa toàn tenant" (DO-01).
 2. `ActorBoundaryPort` (Protocol trong gói truy cập của `dw_studio`) với một phương thức
    `record(kind, source_id, source_version, objects, fields) -> boundary_id` chạy trong giao dịch của người gọi, và
    adapter SQL; nối ở composition root. Dịch vụ phát hành của agent-lifecycle và workflow-engine gọi nó trong giao dịch
@@ -44,8 +47,9 @@ RLS, không ở prompt (spec R6.3 tới R6.9; ADR-0103 (Proposed) mục 4 và 5;
    object của giới hạn có cờ ứng với lệnh khi `app.boundary_id` trỏ tới một giới hạn của tenant đang gắn, `'{}'` khi
    không. Dựng lại policy từ module mẫu của ticket 03 với `actor_ok` mới: loại `user`, hoặc loại `agent` hay `workflow`
    với `object_id` trong `studio.acl_boundary_objects(<lệnh>)`.
-6. Lượt chạy không người kích hoạt: chủ thể là tài khoản dịch vụ của org-and-principals ticket 03 với loại actor
-   `workflow`; sổ tầm của nó tính như của một người, không nhánh riêng.
+6. Lượt chạy không người kích hoạt: chủ thể là tài khoản dịch vụ của org-and-principals ticket 03, gắn theo phiên bản
+   qua điểm gắn `principal` đã duyệt (DO-12 (a); chưa gắn thì workflow-triggers từ chối phát hành với `binding_unset`),
+   với loại actor `workflow`; sổ tầm của nó tính như của một người, không nhánh riêng.
 
 ## Tiêu chí chấp nhận
 
@@ -76,9 +80,11 @@ RLS, không ở prompt (spec R6.3 tới R6.9; ADR-0103 (Proposed) mục 4 và 5;
 - `packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py:160-174`; spec: R6.4.
 - `packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/checkpoint.py:67-68`; spec: R6.3.
 - `docs/adr/0103-runs-act-as-a-principal-within-a-boundary.md:67-82`; spec: R6.4, R6.6, R6.9.
-- `docs/adr/0105-record-reach-is-decided-by-postgresql.md:88-91`; spec: R6.
+- `docs/adr/0105-record-reach-is-decided-by-postgresql.md:93-96`; spec: R6.
 
 ## Comments
 
 - 2026-10-23 (agent): needs-info chờ DO-12 (Đạt và người yêu cầu): lượt chạy không người kích hoạt chạy dưới danh
   nghĩa tài khoản dịch vụ gắn theo phiên bản, không bao giờ người phát hành; R6.9 và RA21 viết theo khuyến nghị đó.
+- 2026-10-23 (agent): DO-12 (a) đã có lời đáp (Đạt, 23/10/2026); Status về needs-triage; thêm dòng lớp bảng toàn tenant
+  cho ba bảng giới hạn dữ liệu (DO-01).

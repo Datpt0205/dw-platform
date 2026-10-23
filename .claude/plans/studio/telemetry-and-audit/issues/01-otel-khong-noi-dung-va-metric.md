@@ -49,7 +49,7 @@ Một chủ cho mọi tên span, khóa thuộc tính và tên metric GenAI, ghim
 
 - `packages/python/dw_observability/src/dw_observability/metrics.py:12-22`; spec: R1.3.
 - `packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/telemetry_usage.py:60`; spec: R1.1.
-- ADR-0122 (Proposed) quyết 1, 2, 3.
+- ADR-0122 (Accepted) quyết 1, 2, 3.
 
 ## Comments
 

@@ -7,8 +7,8 @@ Area: studio · Viết: 23/10/2026
 Bản đồ wayfinder cho phần Studio còn chưa biết. Blueprint gom 80 ticket khám phá `FOG-NN` từ mục fog của 15 brief; ở
 đây chúng thành 29 ticket con trong `issues/` và 4 mục còn ở mục Fog cuối file. Id `FOG-NN` giữ nguyên vì
 [research.md](research.md), [teardown-chang.md](teardown-chang.md) và các ADR 01NN đã trích chúng. `requirements.md`
-nằm ở `.claude/plans/studio/requirements.md`; ADR ở `docs/adr/01NN-*.md`, trong đó 0103, 0110, 0111, 0119, 0120 và
-0123-0125 đang viết.
+nằm ở `.claude/plans/studio/requirements.md`; ADR ở `docs/adr/01NN-*.md`. Đạt chấp nhận mọi ADR 0100-0125 ngày
+23/10/2026, trừ 0119 giữ Proposed tới khi `code-sandbox/01` báo số.
 
 ## Notes
 
@@ -16,8 +16,8 @@ nằm ở `.claude/plans/studio/requirements.md`; ADR ở `docs/adr/01NN-*.md`, 
 
 Theo mục "Wayfinding operations" của `docs/agents/issue-tracker.md`:
 
-- **Frontier:** ticket trong `issues/` còn mở, không bị chặn, chưa ai nhận; số nhỏ nhất thắng. Chưa ticket nào có dòng
-  `Blocked by:`; thứ tự bên trong một ticket ghi ở thân ticket.
+- **Frontier:** theo thứ tự chạy ở mục "Thứ tự"; trong cùng một nhóm, ticket trong `issues/` còn mở, không bị chặn, chưa
+  ai nhận, số nhỏ nhất thắng. Chưa ticket nào có dòng `Blocked by:`; thứ tự bên trong một ticket ghi ở thân ticket.
 - **Nhận:** đặt `Status: claimed` và lưu trước khi làm.
 - **Xong:** thêm `## Answer` (kết luận; số đo kèm phiên bản và máy đo; nguồn kèm loại và ngày), đặt `Status: resolved`,
   rồi thêm một dòng (ý chính và link) vào "Trả lời từ ticket" dưới Decisions so far.
@@ -31,8 +31,23 @@ Số nhỏ là hệ quả lớn. 01 là chang.fpt.net (D10). 02-04 có thời gi
 `studio-skeleton/01` tới `custom-objects/04`, hoặc trả lời DO-12 trước W1. 11-12 là sàn gửi tin và phê duyệt của lát
 thí điểm. 13-25 là công cụ, runtime, model, hạ tầng và các spike P0. 26-29 chủ yếu phục vụ W2.
 
-Câu trả lời của 01, 02, 03 và 06 đổi được `requirements.md` hay một DO trước W1, nên đi trước; 04 bắt đầu tuần một vì
-thời gian duyệt. Nguyên mẫu trùng ticket P0 không chặn việc cắt W1, vì phép đo nằm trong W1.
+Thứ tự chạy, Đạt chốt ngày 23/10/2026 (OPS-j):
+
+- Thân đường găng trước: 07, 05, 08, 09, rồi 16. Số đo của chúng (nền lưu trữ bản ghi và modulus phân vùng, quyền trên
+  bản ghi ở quy mô D12, quyền hiệu lực và trigger chống leo thang, quyền ghi và partition tạo sau, runtime CEL) là điều
+  kiện kèm của ADR 0107 và 0114 và đầu vào cho mẫu policy của ADR 0105 và trigger của ADR 0104; chúng xác nhận DO-15
+  và DO-38.
+- Chạy ngay, song song với thân: 02, 03 và 04, bắt đầu tuần này vì thời gian chờ (khách thí điểm, luật, duyệt ứng dụng
+  của nhà cung cấp); grilling 06; 18 (một buổi hỏi bên yêu cầu) và phần FOG-10 của 19, vì hai việc này quyết bước AI
+  đầu tiên của P1 dưới `vn_only`.
+- 24 chạy cùng `workflow-builder-ui/01`, vì Đạt đã cho thư viện sơ đồ (DO-42).
+- 23 chạy trước `foundations-hardening/02` nếu kịp, vì luật nối danh tính tạm dựa vào `email_verified`.
+- 22 chạy trước khi chấp nhận ADR 0119.
+- 21 chạy trước khi OpenBao và smokescreen ra, vì ADR 0115 được nhận kèm điều kiện số đo của nó (FOG-25).
+- 01 chạy khi tài khoản thử của D10 có, theo luật quan sát của DO-23.
+
+Nguyên mẫu trùng ticket P0 không chặn việc cắt W1, vì phép đo nằm trong W1: phép đo chạy một lần trong ticket W1, và
+ticket khám phá đóng bằng một dòng trỏ tới kết quả (mục dưới).
 
 ### Một câu hỏi, một chỗ trả lời
 
@@ -96,7 +111,7 @@ Bảng là chỉ mục; trạng thái nằm ở dòng `Status:` của từng tic
 
 ### Quyết định của bên yêu cầu
 
-Hướng đã chọn, chưa qua Đạt duyệt (`docs/agents/domain.md`); mọi ADR dựa trên chúng ở trạng thái Proposed.
+Hướng đã chọn. Đạt chấp nhận các ADR dựa trên chúng ngày 23/10/2026, trừ ADR 0119 giữ Proposed (`docs/agents/domain.md`).
 
 - D1 (22/10/2026): dữ liệu thuộc về workspace, và workspace lồng thành cây; bản ghi có người phụ trách (người hay nhóm) và workspace sở hữu; vai trò cấp quyền theo mức truy cập. ADR 0102, 0104, 0105.
 - D2 (22/10/2026): người dựng là quản trị nghiệp vụ làm no-code; bước mã chỉ có sau một quyền riêng và quyền lợi của gói dịch vụ. ADR 0101, 0112, 0117, 0119.
@@ -109,32 +124,34 @@ Hướng đã chọn, chưa qua Đạt duyệt (`docs/agents/domain.md`); mọi 
 - D9 (22/10/2026): mọi tài liệu kế hoạch Studio nằm trong repo này, area `studio`. ADR 0100.
 - D10 (22/10/2026): bên yêu cầu sẽ có tài khoản thử trên chang.fpt.net; teardown mang danh sách kiểm. Ticket 01, [teardown-chang.md](teardown-chang.md).
 - D11 (23/10/2026, DO-07): hai người luôn luôn cho mọi thay đổi cấu hình, phát hành, bật lại sau tắt khẩn cấp, duyệt công cụ MCP và nới lộ trình dữ liệu; công ty một quản trị viên không phát hành được. ADR 0110, 0120.
+- Phạm vi D11 (23/10/2026, người đặt yêu cầu và Đạt): "đóng một người, mở hai người". Mọi thay đổi và gán vai trò từ W1 cần hai người, kể cả gán khi mời, và công ty một chủ sở hữu không đổi được vai trò tới khi có người thứ hai; mở trường dữ liệu cá nhân Cơ bản, đổi mặc định truy cập và phát hành định nghĩa đối tượng cần hai người; siết quyền (thu hẹp quyền, đóng trường, hạ hạn mức, siết lộ trình dữ liệu, tắt khẩn cấp) cần một người cộng audit. ADR 0104, 0106, 0110.
 - D12 (23/10/2026, DO-14): quy mô v1 là 10 triệu bản ghi mỗi đối tượng, 50 triệu mỗi tenant, 5.000 người dùng, 200 workspace, cây sâu 6; bản ghi partition băm theo tenant từ revision đầu. ADR 0102, 0105, 0107.
 - D13 (23/10/2026, DO-19): model của tenant đi qua một lane LiteLLM riêng, không trạng thái (model proxy), không khóa trong môi trường; gateway hiện có chỉ phục vụ model của nền tảng; alias chưa khai nơi xử lý coi là nước ngoài. ADR 0118.
 - D14 (23/10/2026, DO-24): nâng host chính lên ít nhất 4 vCPU / 16 GB trước khi OpenBao và egress proxy ra, thêm VM riêng cho `sandbox-runner` trước khi mã tenant chạy ở uat hay production; đo trước khi chốt cỡ. ADR 0115, 0119.
 
 ### Lựa chọn tạm của agent
 
-"agent, tạm theo khuyến nghị" ngày 23/10/2026, phương án (a) của DO trong blueprint. Bên yêu cầu lật được mà không chặn
-kế hoạch; tài liệu ghi mỗi lựa chọn kèm dòng "nếu sai thì".
+"agent, tạm theo khuyến nghị" ngày 23/10/2026, phương án được khuyến nghị của DO trong blueprint (19 mục là (a), DO-20
+là (c)). Đạt chốt ngày 23/10/2026: giữ nguyên 15 mục, đổi hay làm rõ 5 mục (DO-20, DO-26, DO-28, DO-31, DO-45); các dòng
+dưới đã theo bản chốt, và mỗi quyết định có dòng của Đạt ở mục Quyết định của `requirements.md`.
 
 - DO-04: giữ "workspace" làm từ trên giao diện. ADR 0102.
 - DO-08: tên API bất biến sau lần phát hành đầu. ADR 0109.
 - DO-10: bộ quyền bổ sung là một loại vai trò; mức "Của nhóm tôi" là bản ghi của tôi và nhóm tôi; tách nhiệm xét theo người trên cả công ty. ADR 0102, 0104.
 - DO-11: mặc định truy cập công khai có nghĩa toàn công ty; quản lý trực tiếp xem và sửa bắc cầu, không xóa, có công tắc theo đối tượng; khi giao, người giao chọn, mặc định giữ workspace sở hữu; chia sẻ tay còn sau khi đổi người phụ trách. ADR 0105.
 - DO-18: chăm sóc lead ở W2; mọi tin gửi ra trong thí điểm đều được duyệt, mỗi tin một phê duyệt trong hàng chờ thao tác nhanh bằng bàn phím. ADR 0112; spec `marketing-pilot`.
-- DO-20: ứng dụng nền tảng cho Meta và Zalo, Page và OA của khách nối bằng OAuth, ứng dụng Google nội bộ của khách; duyệt bắt đầu tuần một. Spec `connections-and-vault`.
+- DO-20 (phương án (c)): ứng dụng nền tảng cho Meta và Zalo, Page và OA của khách nối bằng OAuth, ứng dụng Google nội bộ của khách, nền tảng không giữ ứng dụng Google nào; pháp nhân vận hành nộp App Review và Business Verification từ tuần một. Spec `connections-and-vault`.
 - DO-22: khách thí điểm là một đội marketing thật, dữ liệu giả lập tới khi ký DPA; đích xác nhận với khách trước chạy bóng. Spec `marketing-pilot`.
 - DO-23: chang.fpt.net chỉ quan sát như người dùng thường; không quét, tải hay dò; không chép dữ liệu cá nhân. Ticket 01, [teardown-chang.md](teardown-chang.md).
-- DO-26: chế độ chạy `test` chặn ghi như Mô phỏng ở P1; vùng tạm theo lượt chạy ở v1.5. ADR 0111; spec `tenant-config`.
-- DO-28: đóng băng hủy lượt đang chạy ở cửa kế tiếp, giữ lượt đang chờ, từ chối quyết định. ADR 0113, 0120.
+- DO-26: W1 chỉ mở chế độ Mô phỏng; `test` trả 422 tới W2, khi có Danh sách người nhận thử; từ W1 lời gọi ra ngoài của mọi chế độ khác `live` bị chặn; tên `test` giữ; vùng tạm theo lượt chạy ở v1.5. ADR 0111; spec `workflow-triggers`, `tenant-config`.
+- DO-28 (phương án C): đóng băng tách theo loại lượt như hạn mức: lượt tương tác bị từ chối ngay với `tenant_frozen`, lượt do trình kích hoạt giữ `queued` như sự kiện đã giữ và chạy theo thứ tự sau khi gỡ; tắt khẩn cấp vẫn hủy lượt đang chờ. ADR 0113, 0120.
 - DO-30: phiên bản quy trình con và bước agent ghim lúc gửi kiểm định; lệch cấu hình đề xuất cập nhật. ADR 0109, 0112, 0117.
-- DO-31: phê duyệt hết hạn làm lượt chạy thất bại với `approval_expired`; không gì tự duyệt khi hết giờ. ADR 0112.
+- DO-31: phê duyệt hết hạn làm lượt chạy thất bại với `approval_expired`; không gì tự duyệt khi hết giờ; hết hạn đến ở W2 cùng YC52 và lane hẹn giờ, W1 phê duyệt chờ không hạn. ADR 0112.
 - DO-36: người duyệt phải đọc được các trường phê duyệt hiển thị; ứng viên duyệt theo mức truy cập của vai trò. ADR 0106.
 - DO-37: điều kiện để lưu được nghĩa là "phải đúng", viết bằng CEL với vector thử port từ si-platform. ADR 0107, 0114.
 - DO-39: link nhận lời mời do quản trị viên chép; MFA cho người vận hành, nhân viên hỗ trợ và người giữ quyền trọng yếu; sự kiện nhận trả 503 khi công ty bị khóa; người chịu trách nhiệm rời đi thì chặn phát hành, phiên bản đang dùng vẫn chạy. ADR 0102, 0113.
 - DO-43: không chuyển từ model của tenant sang model nền tảng trả phí; model của tenant cấp công ty được dùng công cụ; không endpoint tại chỗ ở v1; token BYOM chỉ tính vào trần do công ty đặt. ADR 0118, 0121.
-- DO-45: chỉ Python 3.12, không JavaScript, không chạy script của kỹ năng ở v1; mỗi phiên agent một container, hủy khi lượt chạy xong, sau 15 phút rảnh hay 2 giờ; tính phí theo vCPU và GB đặt trước nhân thời gian. ADR 0112, 0116, 0119.
+- DO-45: chỉ Python 3.12, không JavaScript, không chạy script của kỹ năng ở v1; ở v1 mỗi lần chạy mã một container mới (D7), container theo phiên agent chỉ ở W3 và quyết lúc đó; tính phí theo vCPU và GB đặt trước nhân thời gian. ADR 0112, 0116, 0119.
 - DO-48: SMTP chung là đường email P1; chỉ kết nối dùng chung theo workspace; cùng Page hay OA nối bởi hai công ty thì gửi tới cả hai, luật sư xác nhận. ADR 0113, 0115.
 - DO-50: kỳ tính theo múi giờ công ty; chạm hạn mức cứng giữa lượt chạy thì dừng; dựng có AI, chạy thử và kiểm định trả từ ngân sách công ty với trần mục đích riêng; chỉ lượt chạy gốc tính vào số lượt mỗi ngày. ADR 0121.
 - DO-57: chỉ giao diện tiếng Việt, dùng khóa thông điệp từ đầu; demo và thí điểm trên host uat ở Việt Nam có chứng chỉ hợp lệ và HSTS. Spec `marketing-pilot`, `studio-skeleton`.
@@ -148,7 +165,7 @@ Chưa có. Mỗi ticket xong thêm một dòng: số ticket, ý chính, link t�
 Bốn mục chưa nói được chính xác; mỗi mục ghi vì sao và khi nào quay lại.
 
 - **FOG-60 `test-scratch` (prototype).** Vùng tạm theo lượt chạy cho các lần ghi bản ghi bị chặn, để lượt chạy thử đọc
-  lại thứ mình vừa ghi giả lập qua cổng bản ghi. DO-26 (agent, tạm) để nó ở v1.5, và hình của nó phụ thuộc
+  lại thứ mình vừa ghi giả lập qua cổng bản ghi. DO-26 (Đạt chốt 23/10/2026) để nó ở v1.5, và hình của nó phụ thuộc
   `RecordService` (`custom-objects/03`) và executor Mô phỏng (`tenant-config/03`) chưa có. Quay lại khi lập kế hoạch
   v1.5; spec chủ `tenant-config`.
 - **FOG-61 `pack-merge` (prototype).** Độ mịn của hợp nhất ba chiều cho `dw.workflow/v1` và tài liệu agent (theo bước
@@ -158,7 +175,8 @@ Bốn mục chưa nói được chính xác; mỗi mục ghi vì sao và khi nà
   gói nghiệp vụ Marketing có phiên bản thứ hai; spec chủ `domain-packs`.
 - **FOG-62 `v2-transport` (prototype).** Làn chuyển gói cài đặt từ công ty thử nghiệm sang công ty thật dưới hai giao
   dịch RLS và một mối nối giữa hai công ty do người vận hành tạo; sẽ là làn ghi chéo công ty đầu tiên ngoài offboarding. Thuộc v2
-  (W3); công ty thử nghiệm chưa được thiết kế (DO-62, trước GA). Quay lại khi spec công ty thử nghiệm mở.
+  (W3); công ty thử nghiệm mới có nguyên tắc của DO-62 (chỉ người vận hành tạo, chỉ dữ liệu giả lập, hạn mức riêng),
+  chưa có spec. Quay lại khi spec công ty thử nghiệm mở.
 - **FOG-80 `agent-identities` (grilling).** Danh tính agent có quyền riêng (Entra Agent ID, bản nháp SCIM cho agent) có
   thành yêu cầu không, kéo theo mở lại việc tài khoản dịch vụ là một dòng `platform.users` (DO-17, ADR 0103). Câu trả
   lời phụ thuộc các chuẩn còn ở dạng nháp (chưa kiểm); W3. Quay lại khi một khách đòi hay một chuẩn ra bản chính

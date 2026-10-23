@@ -1,16 +1,18 @@
 # 01 — Đóng băng toàn nền tảng và theo tenant, kiểm ở mọi cửa của runtime
 
 Status: needs-triage
+Blocked by: .claude/plans/studio/org-and-principals/issues/02-thanh-vien-cap-tenant.md
 Area: studio
-Yêu cầu: R7.1, R7.2, R7.3, R7.4, R7.5, R7.6, AL11, AL12, AL16
+Yêu cầu: R7.1, R7.2, R7.3, R7.4, R7.5, R7.6, R7.7, R7.8, R7.10, R7.11, R9.1, AL11, AL12, AL16, AL17, AL18
 
 ## Mục tiêu
 
 Đóng băng (nền tảng, tenant) là công tắc trong Postgres, đọc qua một cache đóng khi lỗi mà NOTIFY làm
 mới, và mọi cửa của runtime hỏi một `RunControlPort` trước khi làm. Lát này dựng bảng công tắc, port,
-adapter và các cửa; ticket 05 dùng chính bảng và các cửa này cho Tắt khẩn cấp (spec R7). Kèm một
-nguyên mẫu đo việc tiếp tục một lượt chạy sau khi bị chặn ở một cửa, để quyết Đóng băng có thể tiếp
-tục ở W2 (DO-28).
+adapter và các cửa; ticket 05 dùng chính bảng và các cửa này cho Tắt khẩn cấp (spec R7). Cửa nhận tách
+theo `trigger_kind` (DO-28 C), gỡ Đóng băng của công ty cần người thứ hai (D11), và port từ chối chủ thể
+không còn `active` (spec R9). Kèm một nguyên mẫu đo việc tiếp tục một lượt chạy sau khi bị chặn ở một
+cửa, để quyết Đóng băng có thể tiếp tục cho lượt đang chạy ở W2.
 
 ## Việc cần làm
 
@@ -32,41 +34,65 @@ tục ở W2 (DO-28).
       vào vai `org_admin` (vai còn do migration sở hữu).
 2. `RunControlPort` (bên dùng khai trong `dw_agent_runtime.ports`): `require_open(run_context, *, artifacts=())`
    ném `RunHaltedError` (một `ConflictError`, HTTP 409, `details.reason_code` trong `platform_frozen`,
-   `tenant_frozen`, `artifact_killed`, `control_state_unavailable`), và `admission_state(tenant_id, artifacts)`
-   cho ingress. `SqlRunControl` giữ ảnh chụp theo tenant TTL 5 giây, nghe `dw_control_switch` (dựng như
-   listener của `run_events.py`), và quá 30 giây không làm mới thì từ chối (đóng khi lỗi; trái cache
-   AccessContext mở khi lỗi, ADR-0024 (Proposed) quyết 4). `RuntimeSeam.run_control` một instance.
+   `tenant_frozen`, `artifact_killed`, `control_state_unavailable`, `principal_inactive`), và
+   `admission_state(tenant_id, artifacts)` cho làn nhận. `SqlRunControl` giữ ảnh chụp theo tenant TTL 5 giây,
+   nghe `dw_control_switch` (dựng như listener của `run_events.py`), và quá 30 giây không làm mới thì từ chối
+   (đóng khi lỗi; trái cache AccessContext mở khi lỗi, ADR-0024 (Proposed) quyết 4). `principal_inactive`:
+   `SqlRunControl` đọc `platform.tenant_members.status` của chủ thể chạy (người kích hoạt hay tài khoản dịch
+   vụ) ở cửa nhận và cửa tiếp tục; không `active` thì từ chối (spec R9.1). `RuntimeSeam.run_control` một
+   instance.
 3. Gắn cửa (mỗi cửa nhận port bằng injection, không mặc định): runner `start`, `stream`, `resume`;
    `ApproveAndResumeService.decide` trước khi quyết; `RunControlMiddleware` trong `platform_middleware`
-   và stack con `sub_agent_spec`; gateway có cấu trúc trước `budget.check`; middleware tóm tắt trước
-   `budget.check`; `ToolExecutor._execute` trước kiểm quyền (audit `tool.denied`, `policy_decision`
-   `deny_frozen`). Runner map `RunHaltedError` sang `_fail(status=CANCELLED, event="run.cancelled")`;
-   middleware lỗi công cụ ném lại `RunHaltedError` thay vì báo model.
-4. Route `POST /api/v1/admin/freeze`, `POST /api/v1/admin/unfreeze` (`studio.lifecycle.freeze`,
-   `Idempotency-Key`, body `reason_code`, `reason`); `GET /api/v1/control-state` (mọi thành viên; chỉ
-   mã, không lý do chữ); nhà vận hành `POST /api/v1/platform/freeze`, `POST /api/v1/platform/unfreeze`,
+   và stack con `sub_agent_spec` (thứ tự ngăn xếp middleware do agent-builder/03 giữ; ticket này cấp
+   middleware); gateway có cấu trúc trước `budget.check`; middleware tóm tắt trước `budget.check`;
+   `ToolExecutor._execute` trước kiểm quyền (audit `tool.denied`, `policy_decision` `deny_frozen`). Runner
+   map `RunHaltedError` sang `_fail(status=CANCELLED, event="run.cancelled")`; middleware lỗi công cụ ném lại
+   `RunHaltedError` thay vì báo model. Cửa nhận theo `trigger_kind` (spec R7.7, R7.8): lượt `chat`,
+   `manual`, `test` và lần thử của Lượt kiểm định kết thúc `cancelled`; lượt `datahub`, `provider_app`,
+   `schedule`, `record_event` đã xếp hàng giữ `queued` và chạy theo thứ tự xếp hàng sau khi gỡ. Làn
+   `studio_runs` của workflow-engine/04 thi hành hợp đồng này; ticket này giao hợp đồng kèm test với làn giả.
+4. Route `POST /api/v1/admin/freeze` (`studio.lifecycle.freeze`, `Idempotency-Key`, body `reason_code`,
+   `reason`; một người cộng audit) và `POST /api/v1/admin/unfreeze` (`studio.lifecycle.freeze`): mở một yêu
+   cầu phê duyệt không lượt chạy `studio.lifecycle.unfreeze` nghiêm, tem `studio.lifecycle.freeze`; handler
+   `studio.lifecycle.unfreeze.decided` gỡ Đóng băng khi một người khác người xin duyệt (D11; spec R7.10,
+   R7.11). Thêm `studio.lifecycle.` vào `strict_approval_prefixes` bằng `|=` ở composition root (kèm chú
+   thích); ticket 04 thêm `studio.publish.`, ticket 05 dùng lại tiền tố này cho `studio.lifecycle.revive`.
+   `GET /api/v1/control-state` (mọi thành viên; chỉ mã, không lý do chữ); nhà vận hành
+   `POST /api/v1/platform/freeze`, `POST /api/v1/platform/unfreeze`,
    `POST /api/v1/platform/tenants/{tenant_id}/freeze`, `POST /api/v1/platform/tenants/{tenant_id}/unfreeze`
    (ngữ cảnh provisioning).
-5. Audit `control.freeze.set`, `control.freeze.lifted` (tenant), `platform.freeze.set`,
-   `platform.freeze.lifted`, `platform.tenant_freeze.set`, `platform.tenant_freeze.lifted` (provisioning),
-   mỗi sự kiện trong giao dịch của thay đổi; metric `dw_control_refusals_total{door, reason_code}` không
-   nhãn tenant. Hợp đồng `admission_state` cho ingress của workflow-engine (giữ sự kiện khi đóng băng),
-   kèm test hợp đồng với ingress giả.
+5. Audit `control.freeze.set`, `control.freeze.lifted` (tenant; khi gỡ qua phê duyệt, actor là người quyết
+   định và `details.lane` là tên lane, ADR-0011 (Accepted)), `platform.freeze.set`, `platform.freeze.lifted`,
+   `platform.tenant_freeze.set`, `platform.tenant_freeze.lifted` (provisioning), mỗi sự kiện trong giao dịch
+   của thay đổi; metric `dw_control_refusals_total{door, reason_code}` không nhãn tenant. Hợp đồng
+   `admission_state` cho làn `studio_inbound` của workflow-triggers (spec R7.2) và làn `studio_runs` của
+   workflow-engine (spec R7.7, R7.8), kèm test hợp đồng với làn giả; làn thật là việc của hai spec đó.
 6. Nguyên mẫu (nghiên cứu) trên `langgraph==1.2.11`, `langchain==1.4.1`, `SqlAlchemyCheckpointSaver`:
    một graph `create_agent` được runner chứa, ném `RunHaltedError` ở middleware model và ở executor;
    gọi lại với `None` trên cùng thread có tiếp tục từ checkpoint cuối không, công cụ đã chạy có chạy lại
    không, khóa chống lặp có giữ không, có cần trạng thái `frozen` riêng không. Ghi kết quả vào Comments;
-   kết quả quyết Đóng băng có thể tiếp tục ở W2 (DO-28).
+   kết quả quyết Đóng băng có thể tiếp tục cho lượt đang chạy ở W2.
 
 ## Tiêu chí chấp nhận
 
-- [ ] R7.1 (AL11): đặt đóng băng giữa một run, lời gọi kế tiếp qua mỗi cửa trong 7 cửa bị từ chối, run
-      kết thúc `cancelled` với `reason_code`; tiến trình B thấy công tắc do tiến trình A đặt trong 5 giây
-      (NOTIFY), và trong TTL khi NOTIFY mất; gỡ kiểm ở một cửa → test của cửa đó đỏ.
+- [ ] R7.1 (AL11): đặt đóng băng giữa một run, lời gọi kế tiếp qua mỗi cửa trong 6 cửa của R7.1 bị từ
+      chối, run kết thúc `cancelled` với `reason_code`; tiến trình B thấy công tắc do tiến trình A đặt trong
+      5 giây (NOTIFY), và trong TTL khi NOTIFY mất; gỡ kiểm ở một cửa → test của cửa đó đỏ.
 - [ ] R7.3 (AL11): database ngắt quá 30 giây → lời gọi công cụ bị từ chối `control_state_unavailable`.
-- [ ] R7.2: với ingress giả, một sự kiện trình kích hoạt khi đóng băng bị giữ, không bắt đầu run, và
-      chạy theo thứ tự đến sau khi gỡ.
+- [ ] R7.2: test hợp đồng với làn `studio_inbound` giả: khi đóng băng `admission_state` trả `tenant_frozen`
+      và làn để nguyên sự kiện; sau khi gỡ trả mở và làn xin lượt chạy theo `received_at`.
+- [ ] R7.7 (AL11): với làn giả, lượt `chat` và lần thử của Lượt kiểm định tới cửa nhận khi đóng băng →
+      `cancelled` `tenant_frozen`, 0 lời gọi model; gỡ nhánh tương tác → test đỏ.
+- [ ] R7.8 (AL11): với làn giả, lượt `datahub` đã xếp hàng khi đóng băng giữ `queued`, không `cancelled`;
+      sau khi gỡ chạy theo thứ tự xếp hàng.
 - [ ] R7.4 (AL12): `org_admin` gỡ đóng băng nguồn `platform` qua `POST /api/v1/admin/unfreeze` → 403.
+- [ ] R7.10 (AL18): `POST /api/v1/admin/unfreeze` mở yêu cầu `studio.lifecycle.unfreeze`, Đóng băng còn;
+      người khác người xin duyệt → Đóng băng gỡ, audit `control.freeze.lifted` với actor là người duyệt.
+- [ ] R7.11 (AL18): người xin gỡ tự duyệt → 409, Đóng băng còn; gỡ `studio.lifecycle.` khỏi tiền tố nghiêm →
+      test đỏ.
+- [ ] R9.1 (AL17): gỡ thành viên khỏi công ty rồi tiếp tục lượt chạy chờ duyệt của người đó → `cancelled`
+      `principal_inactive`, 0 lời gọi model; đặt `suspended` bằng SQL rồi nhận lượt mới của người đó → như
+      trên; gỡ kiểm trong `require_open` → test đỏ.
 - [ ] R7.5 (AL12): `dw_app` UPDATE trực tiếp để gỡ hay đổi một công tắc ngoài bước gỡ hợp lệ → 23514; gỡ
       trigger → test đỏ.
 - [ ] R7.6: đặt và gỡ đóng băng ghi đúng một audit trong cùng giao dịch; rollback thì audit không còn.
@@ -80,10 +106,14 @@ tục ở W2 (DO-28).
 - `packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py:160`; spec: R7.1 (cửa công cụ).
 - `packages/python/dw_agent_runtime/src/dw_agent_runtime/model/gateway.py:164`; spec: R7.1 (cửa có cấu trúc).
 - `packages/python/dw_platform/src/dw_platform/adapters/persistence/caching_lookup.py:27`; spec: R7.3
-  (cache đóng khi lỗi, trái cache khóa tenant mở khi lỗi); ADR-0120 (Proposed) quyết 5.
+  (cache đóng khi lỗi, trái cache khóa tenant mở khi lỗi); ADR-0120 (Accepted) quyết 5.
 
 ## Comments
 
 - 2026-10-23 (agent): gộp B10a agent-lifecycle 01 và 12 (nguyên mẫu), cộng phần đóng băng ở executor của
   B8b tools-and-skills 08. DO-28 đã quyết tạm theo khuyến nghị (a): đóng băng hủy run đang chạy ở cửa kế
   tiếp, giữ run chờ duyệt ở nguyên.
+- 2026-10-23 (agent): áp quyết định của Đạt ngày 23/10/2026: DO-28 theo C (cửa nhận tách theo
+  `trigger_kind`), R7.2 thành hợp đồng với làn `studio_inbound` của workflow-triggers, `principal_inactive`
+  (H:org-and-principals:R4.6, chờ org-and-principals/02 cho `platform.tenant_members`), gỡ Đóng băng hai
+  người (D11), tiền tố nghiêm `studio.lifecycle.` thêm ở ticket này.

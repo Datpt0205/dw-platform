@@ -1,9 +1,9 @@
 # 05 — Điểm gắn: giá trị là phiên bản cấu hình có người đề xuất và người duyệt khác nhau
 
-Status: needs-info (DO-06)
-Blocked by: 04, .claude/plans/studio/connections-and-vault/issues/04-ket-noi-dung-chung-theo-workspace.md
+Status: needs-triage
+Blocked by: 04, .claude/plans/studio/connections-and-vault/issues/04-ket-noi-dung-chung-theo-workspace.md, .claude/plans/studio/foundations-hardening/issues/06-run-va-outbox-khong-ket.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md
 Area: studio
-Yêu cầu: R7.1, R7.2, R7.3, R7.4, R7.5, R8.1, R8.2, R8.3, R8.4, R8.5, R8.6, R8.7, R8.8, R8.9, R8.10, R8.11, R8.12, R8.13, R8.14, R8.15, R3.6, G4, TC15, TC16, TC17, TC18, TC19, TC20, TC21, TC22, TC23, TC25, TC26
+Yêu cầu: R7.1, R7.2, R7.3, R7.4, R7.5, R8.1, R8.2, R8.3, R8.4, R8.5, R8.6, R8.7, R8.8, R8.9, R8.10, R8.11, R8.12, R8.13, R8.14, R8.15, R3.6, R3.7, G4, TC15, TC16, TC17, TC18, TC19, TC20, TC21, TC22, TC23, TC25, TC26
 
 ## Mục tiêu
 
@@ -18,8 +18,11 @@ kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7,
 1. Lược đồ `bindings[]` dùng chung trong lõi `dw_studio`: mỗi mục `{name, kind, required, description}`,
    `name` khớp `^[a-z][a-z0-9_]{0,62}$` và không trùng trong tài liệu; `kind` ở W1 là `connection`
    (`connector_key`, phiên bản chính, `required_scopes`), `variable` (kiểu, ràng buộc, `default` mã hóa
-   thành chuỗi) và `principal` (người chạy của lượt không người, ADR-0103 (Proposed)); `secret`,
-   `webhook_endpoint`, `schedule` vào cùng bên đọc của chúng (ADR-0110 (Proposed) quyết 6).
+   thành chuỗi) và `principal` (một chủ thể của tenant: tài khoản dịch vụ khi điểm gắn là danh tính chạy,
+   ADR-0103 (Accepted) và workflow-triggers:R3.1; thành viên khi điểm gắn là người dự phòng của bước giao,
+   workflow-nodes:R6.3); `secret`, `webhook_endpoint`, `schedule` vào cùng bên đọc của chúng
+   (ADR-0110 (Accepted) quyết 6). Bộ kiểu Điểm gắn này là chỗ duy nhất các spec khác đăng ký kiểm riêng
+   của một kind (như `grants_cover` của workflow-triggers/01), không phải `ConfigKindRegistry`.
     - Bộ trích xuất của mọi loại ghi mỗi điểm gắn khai báo thành một dòng `studio.dependencies` với
       `to_kind` `binding`, `usage` `bind`, `to_key` là tên.
     - Bước niêm phong của ticket 02 quét mọi chuỗi của tài liệu: chuỗi trùng id của một dòng
@@ -34,7 +37,9 @@ kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7,
    `decided_by`, `decided_at`, `decision_comment`, `superseded_at`. Thêm:
     - `proposed_by`, `proposed_at`, `decided_by`, `decided_at`, `decision_comment`, `superseded_at`;
       `ck_config_versions_checker_not_maker` là `decided_by IS NULL OR decided_by <> proposed_by`; FK tới
-      yêu cầu phê duyệt ON DELETE RESTRICT qua `uq_approval_requests_tenant_id_workspace_id_id`.
+      yêu cầu phê duyệt ON DELETE RESTRICT qua `uq_approval_requests_tenant_id_workspace_id_id`, ràng buộc
+      đã có (`db/migrations/versions/e399be8c0a2d_platform_approval_view_receipts_and_.py:127-129`), ticket
+      này chỉ dùng.
     - Trigger `approved_by_approval` từ chối chuyển sang `approved` khi yêu cầu phê duyệt liên kết chưa ở
       `approved`, và từ chối mọi đổi `status` ngoài `proposed` sang `approved`, `rejected`, `withdrawn`
       và `approved` sang `superseded` (TC17); grant cột cho `dw_app` như trên, không DELETE.
@@ -46,7 +51,7 @@ kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7,
       phần xóa theo chữ cái (nơi có `platform.approval_requests`).
     - Đăng ký khóa `studio.bindings.propose` và `studio.bindings.approve` vào danh mục quyền của
       tenant-rbac/01 trong cùng migration.
-3. `ConfigKindRegistry` và `ConfigVersionService` trong `dw_platform` (ADR-0110 (Proposed) quyết 3-4);
+3. `ConfigKindRegistry` và `ConfigVersionService` trong `dw_platform` (ADR-0110 (Accepted) quyết 3-4);
    mục `binding_set` do `dw_studio` đăng ký ở composition root: JSON Schema sinh từ khai báo của phiên
    bản niêm phong mới nhất của thành phần; bộ kiểm (kết nối cùng tenant, không thì 404; đúng trình kết
    nối và phiên bản chính, đủ `required_scopes`, `connection_usable` đúng với Người đề xuất theo
@@ -54,12 +59,14 @@ kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7,
    quyền duyệt `studio.bindings.approve`; test bên đọc: bộ dựng bản kê đọc bản `approved`. Loại không
    đăng ký → 422.
 4. `ConfigVersionService.propose`, một giao dịch: kiểm quyền đề xuất ở workspace đang làm việc (403);
-   kiểm giá trị (404, 422); một đề xuất mở mỗi khóa (409 `proposal_open`); `SqlScopeHolders.holding` với
-   quyền duyệt, trừ Người đề xuất, rỗng → 409 `no_checker_available`; ghi phiên bản `proposed` với
+   kiểm giá trị (404, 422); một đề xuất mở mỗi khóa (409 `proposal_open`); hàm SQL chung
+   `platform.checker_candidates(tenant, 'studio.bindings.approve', người đề xuất, workspace của đề xuất)` của
+   tenant-rbac/02 trên `platform.effective_grants` (cùng hàm `no_checker_available` của tenant-rbac:R7.3 dùng)
+   trả rỗng → 409 `no_checker_available`; ghi phiên bản `proposed` với
    `base_version` là `version_no` của phiên bản niêm phong mới nhất đã dùng để kiểm; tạo yêu cầu phê
    duyệt không lượt chạy `config.version` ở workspace đang làm việc, `required_scope` là quyền duyệt
    (ADR-0004 (Accepted)), payload chỉ gồm id, `kind`, `key`, `version_no`, `document_hash`; audit
-   `config.version.proposed`. `Idempotency-Key` theo ADR-0108 (Proposed) quyết 4.
+   `config.version.proposed`. `Idempotency-Key` theo ADR-0108 (Accepted) quyết 4.
 5. Phê duyệt: `config.` vào `strict_approval_prefixes` bằng `|=` ở API
    (`apps/api/src/dw_api/bootstrap/runtime.py`) và worker (`apps/worker/src/dw_worker/main.py`). Port
    `ApprovalDecisionGuard` async và `ProposedDecision` từ dw-proterial (`dw_agent_runtime/approval_flow.py`)
@@ -83,12 +90,16 @@ kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7,
    giá trị gắn, với mỗi kết nối id kết nối và phiên bản credential, với mỗi biến `content_hash` của giá
    trị (không ghi giá trị), với `principal` id của người chạy; thêm dòng `platform.run_manifest_keys` cho
    phiên bản cấu hình. Trước khi ghim, `connection_usable` cho người chạy sai → từ chối nhận với
-   `binding_degraded`, không node nào chạy. Handler đọc giá trị qua `RunBindingsPort` mà workflow-engine
-   và agent-builder đáp ứng từ bản kê.
+   `binding_degraded`, không node nào chạy. Ticket này đáp ứng `RunBindingsPort` (connections-and-vault và
+   handler của lượt chạy khai): đọc giá trị từ mục `bindings` của bản kê đã ghim, không từ Bộ giá trị gắn
+   hiện hành; workflow-engine và agent-builder không cài port này.
 10. Route: `GET /api/v1/studio/artifacts/{id}/bindings` (khai báo, giá trị hiện hành với tên kết nối người
     gọi đọc được, đề xuất mở, trạng thái từng điểm gắn), `POST /api/v1/studio/artifacts/{id}/bindings/proposals`,
     `POST /api/v1/studio/artifacts/{id}/bindings/proposals/{config_version_id}/withdraw`. Mọi id là UUID.
     `make generate-contracts`.
+11. `ConnectionDependentsPort` (connections-and-vault khai) do ticket này đáp ứng ở composition root: một
+    Kết nối đang được dùng khi một Bộ giá trị gắn `approved` có giá trị là Kết nối đó, hoặc một dòng
+    `studio.dependencies` trỏ tới nó; trả số đếm và tên theo quyền người gọi như R3.4 (R3.7).
 
 ## Tiêu chí chấp nhận
 
@@ -131,6 +142,9 @@ kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7,
       guard async.
 - [ ] R3.6 (TC21): purge tenant có phiên bản cấu hình riêng được bản kê ghim và yêu cầu phê duyệt của nó
       → xong, tenant khác nguyên; gỡ mục `platform.config_versions` khỏi `_ORDERED_FIRST` → test đỏ.
+- [ ] R3.7: Kết nối là giá trị của một Bộ giá trị gắn `approved` → `ConnectionDependentsPort` báo đang
+      dùng; bản đó sang `superseded` bởi bản không dùng Kết nối → báo không dùng; bỏ đọc
+      `platform.config_versions` → ca đầu đỏ.
 - [ ] Xong: `make ci && make test-integration` xanh.
 
 ## Nguồn
@@ -139,7 +153,7 @@ kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7,
 - `packages/python/dw_agent_runtime/src/dw_agent_runtime/approval_flow.py:118-124`; spec: R8.8, R8.13.
 - `apps/api/src/dw_api/bootstrap/runtime.py:237`; `apps/worker/src/dw_worker/main.py:175`; spec: TC16.
 - `packages/python/dw_platform/src/dw_platform/adapters/persistence/scope_holders.py:77`; spec: R8.5.
-- `packages/python/dw_platform/src/dw_platform/domain/audit.py:67`; spec: R8.10; ADR-0110 (Proposed)
+- `packages/python/dw_platform/src/dw_platform/domain/audit.py:67`; spec: R8.10; ADR-0110 (Accepted)
   quyết 1-2, 6-8.
 
 ## Comments
@@ -147,3 +161,7 @@ kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7,
 - 2026-10-23 (agent): gộp từ B6 tenant-config 08 và 09. Chờ DO-06 (Đạt). Tên khóa quyền và cách rút đề
   xuất là quyết định tạm của spec. Outbox `config.version.approved` ra cùng bên đọc của nó (lệch cấu
   hình, W2).
+- 2026-10-23 (agent): DO-06 đã có lời đáp (Đạt 23/10/2026, tài liệu giữ tên điểm gắn), nên ticket về
+  `needs-triage`. Theo phiếu cùng ngày: chờ foundations-hardening/06 (OPS-b) và tenant-rbac/02 (hàm tìm
+  người duyệt chung); `principal` nhận cả người dự phòng của bước giao (Q6); ticket này đáp ứng
+  `RunBindingsPort` và `ConnectionDependentsPort`.

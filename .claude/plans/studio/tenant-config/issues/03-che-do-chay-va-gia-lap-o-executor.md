@@ -9,9 +9,9 @@ Yêu cầu: R4.1, R4.2, R4.3, R4.4, R4.5, R5.1, R5.2, R5.3, R5.4, R5.5, G1, TC9,
 
 Mỗi lượt chạy mang một chế độ chạy do máy chủ đặt, cột không có giá trị mặc định, và chế độ giữ nguyên
 khi tiếp tục; ToolExecutor giả lập mọi lệnh gọi không `simulate_safe` ở `simulate` và `test`, ngay tại
-executor chứ không trong node (spec R4, R5). W1 chỉ mở `simulate` cho chạy thử: cửa chạy thử của
-workflow-engine từ chối `test` tới W2, và nếu một lượt `test` tới executor thì bị giả lập như
-`simulate`. Lượt chạy của worker định nghĩa bằng code chạy `live` như hôm nay (G1).
+executor chứ không trong node (spec R4, R5). W1 chỉ mở `simulate` cho chạy thử: route chạy thử của
+workflow-triggers từ chối `test` tới W2 (workflow-triggers:R2.6), và nếu một lượt `test` tới executor thì
+bị giả lập như `simulate`. Lượt chạy của worker định nghĩa bằng code chạy `live` như hôm nay (G1).
 
 ## Việc cần làm
 
@@ -31,11 +31,11 @@ workflow-engine từ chối `test` tới W2, và nếu một lượt `test` tớ
    `live`, `SET NOT NULL`, `ck_worker_runs_run_mode CHECK (run_mode IN ('live', 'test', 'simulate'))`,
    không DEFAULT. Cập nhật `runtime_tables.py`; `SqlWorkerRunStore.create` nhận `run_mode` bắt buộc,
    không giá trị mặc định ở tham số.
-4. Runner: mọi lần bắt đầu hiện có của worker định nghĩa bằng code ghi `live` (ADR-0111 (Proposed) quyết
+4. Runner: mọi lần bắt đầu hiện có của worker định nghĩa bằng code ghi `live` (ADR-0111 (Accepted) quyết
    2); thêm thuộc tính `dw.run_mode` vào span bắt đầu và tiếp tục; thêm `details.run_mode` vào audit
    `run.started`.
 5. `ToolDefinition.simulate_safe: bool = False`. Assembler của lớp nền tảng đặt `True` chỉ cho spec có
-   `side_effect_level` là `none`; loại công cụ của tools-and-skills tự khai sau (ADR-0116 (Proposed)).
+   `side_effect_level` là `none`; loại công cụ của tools-and-skills tự khai sau (ADR-0116 (Accepted)).
    `test_capable` không thêm ở ticket này: bên đọc của nó là chế độ `test` có Danh sách người nhận thử,
    thuộc W2.
 6. Bước chế độ trong `ToolExecutor._execute`, sau kiểm quyền và phê duyệt, trước khi giành lượt và gọi
@@ -43,9 +43,9 @@ workflow-engine từ chối `test` tới W2, và nếu một lượt `test` tớ
     - không gọi handler, không giành lượt; ghi dòng `platform.tool_executions` với `status` `simulated`;
     - audit `tool.simulated` với `details.run_mode` và `details.reason` (`not_simulate_safe`) trong cùng
       giao dịch với dòng đó;
-    - trả đầu ra giả lập: mock đi kèm lời gọi nếu có (mock ghim theo node của workflow-engine, cùng dạng
-      mock của câu kiểm định), không thì giá trị nhỏ nhất sinh từ output schema; kiểm theo output schema
-      như đầu ra thật; thêm `simulated: true`.
+    - trả đầu ra giả lập: giá trị nhỏ nhất sinh từ output schema, kiểm theo output schema như đầu ra thật,
+      thêm `simulated: true`. Kết quả giả lập ghim theo Bước là W2 của workflow-nodes, không làm ở ticket
+      này.
     - phê duyệt của công cụ `critical` vẫn hỏi người như cũ; chỉ hiệu ứng bị giả lập.
 7. Revision Alembic mới: thay `ck_tool_executions_status` (foundations-hardening/04 tạo) bằng cùng tập
    giá trị cộng `simulated`; migration dừng với lỗi nếu có dòng mang giá trị ngoài tập mới. Index chống
@@ -68,8 +68,8 @@ workflow-engine từ chối `test` tới W2, và nếu một lượt `test` tớ
       không chạy, dòng có `status` `simulated`; gỡ bước chế độ → test đỏ.
 - [ ] R5.2 (TC11): audit `tool.simulated` có `details.run_mode` và `details.reason`; rollback giao dịch
       thì cả dòng lệnh gọi lẫn audit đều không còn.
-- [ ] R5.3 (TC11): đầu ra giả lập qua kiểm output schema và mang `simulated: true`; mock sai schema →
-      `validation_failed` như đầu ra thật.
+- [ ] R5.3 (TC11): đầu ra giả lập sinh từ output schema, qua kiểm output schema và mang `simulated: true`;
+      làm hỏng bộ sinh để trả giá trị sai schema → `validation_failed` như đầu ra thật.
 - [ ] R5.4: công cụ `simulate_safe` ở `simulate` chạy handler và ghi `succeeded`.
 - [ ] R5.5 (TC11): `ToolDefinition` không nêu `simulate_safe` → bị giả lập ở `simulate`.
 - [ ] G1: `test_happy_path_returns_typed_output_and_audits` xanh với `run_mode = 'live'`; mọi test
@@ -82,10 +82,13 @@ workflow-engine từ chối `test` tới W2, và nếu một lượt `test` tớ
 - `packages/python/dw_agent_runtime/src/dw_agent_runtime/approval_flow.py:269`; spec: R4.5, TC10.
 - `packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py:135`; spec: R5, TC11.
 - `packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langgraph_runner.py:283`; spec: R4.3.
-- `db/migrations/sql/0001_platform_baseline.sql:423`; spec: R5.1; ADR-0111 (Proposed) quyết 1-3.
+- `db/migrations/sql/0001_platform_baseline.sql:423`; spec: R5.1; ADR-0111 (Accepted) quyết 1-3.
 
 ## Comments
 
 - 2026-10-23 (agent): gộp từ B6 tenant-config 04 và 06. Ở W1 executor giả lập `test` như `simulate`
   (DO-26, tạm theo khuyến nghị a); egress client từ chối `simulate` là lớp thứ hai của
   connections-and-vault/03, ticket đó chờ ticket này.
+- 2026-10-23 (agent): DO-26.1 (A) và DO-26.2 (a) đã có lời đáp (Đạt 23/10/2026): route chạy thử là của
+  workflow-triggers và trả 422 với `test` tới W2; egress client từ chối mọi chế độ khác `live`. Kết quả giả
+  lập ghim theo Bước dời sang W2 của workflow-nodes, nên ticket này chỉ sinh đầu ra từ output schema.

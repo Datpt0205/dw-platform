@@ -7,14 +7,14 @@ Yêu cầu: R9.1, R9.2, R9.3, R9.4, R9.5, R9.6, R9.7, R9.8, R9.9
 ## Mục tiêu
 
 Mẫu policy của ticket 03 chỉ được khóa khi đã đo ở quy mô D12. Ticket này đo bộ policy RESTRICTIVE tenant cộng
-PERMISSIVE theo lệnh của ADR-0105 (Proposed) mục 1, với đủ sáu nhánh tầm (mặc định toàn tenant, khóa workspace, của
+PERMISSIVE theo lệnh của ADR-0105 (Accepted) mục 1, với đủ sáu nhánh tầm (mặc định toàn tenant, khóa workspace, của
 tôi, của nhóm, cấp dưới, khóa chia sẻ) dù W1 chỉ dùng ba, để W2 thêm nhánh mà không đổi hình. Kết quả cho từng dòng
 R9.1 tới R9.9 một con số, hay một phương án đã đo đạt ngưỡng.
 
 ## Việc cần làm
 
 1. Tạo `db/bench/record-access/` (ngoài CI) với target `make bench-record-access`; script dựng một schema nháp riêng,
-   không dùng migration của repo: bảng bản ghi `PARTITION BY HASH (tenant_id)` modulus 8 (ADR-0107 (Proposed) mục 2),
+   không dùng migration của repo: bảng bản ghi `PARTITION BY HASH (tenant_id)` modulus 8 (ADR-0107 (Accepted) mục 2),
    cột `object_id`, `workspace_id`, `owner_id`, `owner_kind`, `access_key` (hai biến thể: `uuid` từ md5 của object và
    workspace sở hữu, và `bigint` ghép hai số nhỏ theo tenant), `read_grants`, `edit_grants`, `grants_valid_until`, các
    cột slot kiểu `text`, `bigint`, `date`; sổ tầm và các hàm `studio.acl_*` (`LANGUAGE sql STABLE`, SECURITY INVOKER,
@@ -64,7 +64,7 @@ R9.1 tới R9.9 một con số, hay một phương án đã đo đạt ngưỡng
 ## Nguồn
 
 - `docs/adr/0105-record-reach-is-decided-by-postgresql.md:31-33`; spec: R9.
-- `docs/adr/0105-record-reach-is-decided-by-postgresql.md:118-121`; spec: R9.1, R9.2.
+- `docs/adr/0105-record-reach-is-decided-by-postgresql.md:125-128`; spec: R9.1, R9.2.
 - `db/migrations/sql/0001_platform_baseline.sql:770` (policy tenant chưa ở dạng InitPlan); spec: R9.1.
 
 ## Comments

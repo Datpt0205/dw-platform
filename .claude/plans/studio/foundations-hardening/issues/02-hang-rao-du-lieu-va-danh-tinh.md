@@ -1,6 +1,6 @@
 # 02 — Hàng rào dữ liệu bị quên, vòng đời tenant, nối danh tính và checkpoint an toàn
 
-Status: needs-info (DO-17)
+Status: needs-triage
 Blocked by: 01
 Area: studio
 Yêu cầu: R2.1, R2.2, R2.3, R2.4, R2.5, R3.1, R3.2, R3.3, R4.1, R4.2, R4.3, R4.4, G1, G2, G3, G4, G5, FH2, FH3, FH4, FH5, FH6, FH7, FH8, FH9, FH10, FH11
@@ -9,9 +9,9 @@ Yêu cầu: R2.1, R2.2, R2.3, R2.4, R2.5, R3.1, R3.2, R3.3, R4.1, R4.2, R4.3, R4
 
 Ba đường đã quên hàng rào (xóa tài liệu tri thức, liệt kê bộ nhớ, dọn checkpoint) được rào theo
 tenant và workspace; checkpoint chỉ dựng lại kiểu trong allowlist; tenant đang offboarding không mở
-lại được và khóa có hiệu lực từ request kế tiếp; nối danh tính theo quy tắc tạm của ADR-0103 (Proposed)
-(Proposed) quyết định 8 (R2, R3, R4, G1-G5, FH2-FH11). Phần R4 chờ Q1 (DO-17); phần còn lại không phụ
-thuộc câu trả lời đó.
+lại được và khóa có hiệu lực từ request kế tiếp; nối danh tính theo quy tắc tạm của ADR-0103 (Accepted)
+quyết định 8, áp ngay từ P0 (DO-17.1) (R2, R3, R4, G1-G5, FH2-FH11). Xóa cache ở route khóa là cách tạm
+tới tenant-rbac/02; ticket đó và org-and-principals/02 chờ ticket này (OPS-b).
 
 ## Việc cần làm
 
@@ -44,10 +44,12 @@ Checkpoint (R2.4, R2.5, G5):
    composition root (`apps/api/src/dw_api/bootstrap/runtime.py`, nơi duy nhất dựng saver hôm nay)
    dựng `JsonPlusSerializer(allowed_msgpack_modules=ALLOWED)` với `ALLOWED` là một tuple tường minh
    các cặp (module, tên kiểu) đặt ở một module của composition root. Không dùng biến môi trường
-   `LANGGRAPH_STRICT_MSGPACK` (ADR-0112 (Proposed) quyết định 10).
+   `LANGGRAPH_STRICT_MSGPACK` (ADR-0112 (Accepted) quyết định 10).
 7. Lập `ALLOWED` bằng đo, không đoán (FOG-37): chạy integration của `dw_agent_runtime` và
    `apps/worker` với một serializer ghi lại mọi kiểu được nạp, rồi liệt kê đúng các kiểu đó; ghi danh
-   sách và cách đo vào Comments.
+   sách và cách đo vào Comments. Đây là phép đo của discovery/14 phần FOG-37: discovery/14 đã có
+   `## Answer` thì trỏ về đó, chưa có thì discovery/14 đóng phần này bằng một dòng trỏ tới Comments ở
+   đây (OPS-j).
 8. Xác minh advisory CVE-2025-64439 đối với langgraph-checkpoint 4.2.0 đã khóa; ghi kết luận vào
    Comments.
 
@@ -64,14 +66,16 @@ Vòng đời tenant (R3.1, R3.2, R3.3):
 11. Route `POST /api/v1/platform/tenants/{tenant_id}/lock`, `POST /api/v1/platform/tenants/{tenant_id}/unlock`
     và `POST /api/v1/platform/tenants/{tenant_id}/offboard` gọi
     `CachePort.delete_pattern(tenant_cache_pattern(tenant_id))` sau khi trạng thái đổi; container của
-    API truyền cache cho các route này như `admin_console.py` đang làm.
+    API truyền cache cho các route này như `admin_console.py` đang làm. Ba lời gọi này là cách tạm tới
+    tenant-rbac/02: ticket đó đưa phiên bản quyền vào khóa cache, gỡ ba lời gọi và đổi phép đột biến
+    của FH8 sang gỡ trigger `bump_access_version` trên `platform.tenants`.
 
-Nối danh tính (R4.1-R4.4, G2-G4), làm sau khi Q1 có câu trả lời:
+Nối danh tính (R4.1-R4.4, G2-G4), áp ngay theo DO-17.1:
 
 12. `VerifiedClaims` thêm `email_verified: bool = False`; `KeycloakTokenVerifier` đặt
     `claims.get("email_verified") is True`; `DevTokenVerifier` phát `email_verified: true` (chỉ issuer
     `dw-dev`).
-13. `SqlIdentityBootstrap._resolve_user` theo thứ tự của ADR-0103 (Proposed) quyết định 8: (a) danh
+13. `SqlIdentityBootstrap._resolve_user` theo thứ tự của ADR-0103 (Accepted) quyết định 8: (a) danh
     tính đăng nhập `(issuer, subject)`; (b) subject lưu trên user chỉ khi issuer là `dw-dev`; (c) email
     chỉ khi `email_verified` đúng, user chưa có danh tính đăng nhập nào và không là người vận hành hay
     nhân viên `support_staff` (đọc như `bootstrap` đang đọc hai danh sách đó); (d) email trùng một
@@ -89,7 +93,14 @@ Nối danh tính (R4.1-R4.4, G2-G4), làm sau khi Q1 có câu trả lời:
     `_resolve_user` và comment quyền đầu `zalo_link_repo.py` cho đúng quy tắc và quyền mới.
 17. Token của `test_email_links_a_keycloak_login_to_the_imported_user` và token dev của các test lời
     mời mang `email_verified=True`.
-18. Đo token thật của realm `dw` có mang `email_verified` không; ghi kết quả vào Comments.
+18. Đo token thật của realm `dw` có mang `email_verified` không; ghi kết quả vào Comments. Phép đo trùng
+    discovery/23 (FOG-78), chạy trước ticket này nếu kịp mà ticket không chờ nó: có `## Answer` thì trỏ
+    về đó, chưa có thì discovery/23 đóng phần này bằng một dòng trỏ tới Comments ở đây (OPS-j).
+19. Song song, và trước khi ticket này merge, hỏi dw-proterial (DO-17.1): importer của họ có tạo user
+    `<source>:<name>` rồi trông vào nối email ở lần đăng nhập đầu không, và IdP của họ có gửi
+    `email_verified` không; ghi câu trả lời vào Comments. Nếu IdP không gửi, những người đó nhận 403
+    `identity_email_in_use`: báo Đạt chọn mã nhận lời mời sớm hơn W2 hay một đường nối do quản trị viên
+    làm; quy tắc của ticket này không đổi.
 
 ## Tiêu chí chấp nhận
 

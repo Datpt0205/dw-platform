@@ -16,7 +16,9 @@ phần bootstrap của foundations-hardening 05 (brief B11).
    (`identity_provisioning.py:252-269`) và gọi `effective_scopes(session, role_keys, permission_set_keys)`
    (`membership_lookup.py:33-55`) cho từng membership trong cùng phiên. Sửa docstring sai của route bootstrap
    (`apps/api/src/dw_api/routes/v1/auth.py:1-6` nói người mới thành member; mặc định là từ chối). Không đổi hợp đồng API,
-   không đổi web (ticket 02 chuyển web sang `GET /api/v1/me`).
+   không đổi web (ticket 02 chuyển web sang `GET /api/v1/me`). Ticket này sở hữu cách bootstrap tính quyền;
+   org-and-principals/02 chờ ticket này (OPS-b cạnh 10) và chỉ thêm điều kiện thành viên `active` vào cùng
+   `_read_memberships`.
 2. **Danh mục.** Migration (id hex của `alembic revision`, tên tệp mang số thứ tự): `platform.permissions`:
     - `key text PRIMARY KEY CHECK (key ~ '^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+$')`;
     - `area text NOT NULL`, `label_vi text NOT NULL CHECK (btrim(label_vi) <> '')`, `description_vi text`;
@@ -31,6 +33,8 @@ phần bootstrap của foundations-hardening 05 (brief B11).
     - bất thường mang trạng thái và lý do: `runs.cancel`, `knowledge.publish_global` (`unassigned`), `approvals.pending`,
       `feedback.inbox`, `platform.usage.read`, `crm.records.all.read` (`retired` hoặc `unassigned`, ghi lý do);
       không đổi hành vi route nào, việc sửa từng bất thường ghi ở Comments thành đề xuất;
+    - `platform.usage.read` là khóa đọc sử dụng duy nhất: ghi `unassigned` với lý do "usage-and-limits dùng lại và đưa
+      về `active` trong migration của nó", không có khóa `usage.read` thứ hai (Quyết định 23/10/2026 của spec);
     - `risk = 'critical'` cho `platform.admin` và `platform.sod_waivers.write`, `elevated` cho các khóa `platform.*`
       khác, `standard` cho phần còn lại (spec, Quyết định 23/10/2026);
     - `scope_kind = 'tenant'` cho khóa route đọc toàn tenant (`platform.*`, `support.*`), `workspace` cho khóa còn lại;
@@ -66,6 +70,6 @@ phần bootstrap của foundations-hardening 05 (brief B11).
 - `db/migrations/versions/648e2f7c3edb_roles_and_permission_sets_read_only_to_.py:51-57`; spec: R1.3.
 - `packages/python/dw_platform/src/dw_platform/application/admin_console.py:32`; spec: R1.4.
 - `packages/python/dw_platform/src/dw_platform/application/support_access.py:63-72`; spec: R1.5.
-- ADR-0104 (Proposed) mục 1; brief B3 mục 1.10 và ticket 02.
+- ADR-0104 (Accepted) mục 1; brief B3 mục 1.10 và ticket 02.
 
 ## Comments

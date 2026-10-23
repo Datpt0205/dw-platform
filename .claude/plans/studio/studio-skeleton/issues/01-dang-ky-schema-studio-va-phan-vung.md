@@ -1,12 +1,12 @@
 # 01 — Kiểm tra đăng ký phân phối, schema studio chỉ SELECT mặc định và sổ bảng phân vùng
 
-Status: needs-info (DO-01, DO-02)
+Status: needs-triage
 Area: studio
-Yêu cầu: R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R2.4, R2.5, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R4.1, R4.2, G1, G2, SKEL1, SKEL2, SKEL3, SKEL4, SKEL5, SKEL6, SKEL7, SKEL8
+Yêu cầu: R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R2.4, R2.5, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R4.1, R4.2, R9.1, R9.2, R9.3, R9.4, R10.1, G1, G2, SKEL1, SKEL2, SKEL3, SKEL4, SKEL5, SKEL6, SKEL7, SKEL8, SKEL18, SKEL19, SKEL20
 
 ## Mục tiêu
 
-Lát này cho người viết mọi spec Studio sau một nền đã được kiểm: gói mới không lọt khỏi chỗ đăng ký nào (R1), schema `studio` đóng quyền ghi khi không ai cấp (R2), bảng phân vùng theo tháng vào qua một sổ thay vì viết lại hàm (R3), và offboarding không bỏ sót bảng `studio` nào (R4). Chưa có bảng Studio thật ở đây; các test chạy trên bảng thử để chứng minh chúng đỏ được.
+Lát này cho người viết mọi spec Studio sau một nền đã được kiểm: gói mới không lọt khỏi chỗ đăng ký nào (R1), schema `studio` đóng quyền ghi khi không ai cấp (R2), bảng phân vùng theo tháng vào qua một sổ thay vì viết lại hàm và dòng của nó chỉ đọc, ghi qua bảng cha (R3), offboarding không bỏ sót bảng `studio` nào (R4), bảng tenant không có `workspace_id` có tên và lý do (R9), và hai ADR trùng số làm CI đỏ (R10). Chưa có bảng Studio thật ở đây; các test chạy trên bảng thử để chứng minh chúng đỏ được. foundations-hardening/03 chờ ticket này và viết lại bản ba tham số của hàm partition.
 
 ## Việc cần làm
 
@@ -14,13 +14,17 @@ Lát này cho người viết mọi spec Studio sau một nền đã được ki
 2. `pyproject.toml`: thêm `dw_docgen` vào `root_packages`; `uv run lint-imports` vẫn xanh.
 3. `scripts/test_verify_architecture.sh` theo mẫu `scripts/test_check_plans.sh`: ca đầu chạy kiểm tra trên checkout và phải xanh; mỗi ca sau chép `pyproject.toml`, ba Dockerfile Python và `scripts/verify_architecture.py` vào thư mục tạm, trồng đúng một chỗ thiếu và đòi kiểm tra thoát 1 với dòng nêu chỗ đó; ca nào không trồng được lỗi thì cả test đỏ (failure-modes #3). Gọi nó từ `make test-architecture` và bước "Architecture tests" của CI.
 4. Migration mới, id hex ngẫu nhiên của `alembic revision -m "studio schema and grants"`, theo kiểu khối DO cảnh báo khi thiếu `dw_app`: `CREATE SCHEMA studio`; `REVOKE ALL ON SCHEMA studio FROM PUBLIC`; `GRANT USAGE ON SCHEMA studio TO dw_app`; `ALTER DEFAULT PRIVILEGES IN SCHEMA studio GRANT SELECT ON TABLES TO dw_app`. Không gì cho `dw_provisioner`, `dw_agent_ro` hay PUBLIC.
-5. Migration mới thứ hai, `alembic revision -m "time partition registry"`: bảng `platform.time_partitioned_tables` với `schema_name text NOT NULL`, `table_name text NOT NULL`, `append_only boolean NOT NULL`, `registered_by text NOT NULL`, khóa chính `(schema_name, table_name)`; không `tenant_id`, không RLS, chỉ migration ghi, `REVOKE ALL ON platform.time_partitioned_tables FROM dw_app`; dòng đầu `('platform', 'audit_events', true, 'platform')`. Viết lại `platform._ensure_one_partition(schema_name text, parent text, month date)` và bỏ bản hai tham số: `%I.%I` ở mọi chỗ đang ghi cứng `platform.`; ENABLE, FORCE, policy tenant của partition và việc chuyển dòng kẹt ở DEFAULT vẫn ở trong một hàm; thu hồi UPDATE, DELETE của `dw_app` khi dòng sổ có `append_only = true`, thay cho phép so tên `audit_events`. Viết lại `platform.ensure_time_partitions(months_ahead integer)` lặp sổ theo `schema_name, table_name`. `REVOKE EXECUTE ... FROM PUBLIC` trên hai hàm, `GRANT EXECUTE` hàm `ensure_time_partitions` cho `dw_app` như migration `0012`. `platform.drop_expired_partitions` giữ nguyên, nên thời hạn `audit_events` vẫn đọc từ tệp chính sách.
-6. `packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py`: thêm `STUDIO_EXCLUSIONS` (tên bảng sang lý do), rỗng ở ticket này, cạnh `_ORDERED_FIRST`; offboarding không đọc nó, test phủ đọc nó.
-7. Test tích hợp trong `packages/python/dw_platform/tests/integration/`:
+5. Trước bước 6, đọc `## Answer` của discovery/09 (FOG-31, FOG-32, FOG-33) nếu đã có và chỉ đo phần còn thiếu; chưa có thì phép đo về quyền ghi, partition tạo sau và offboarding ở bước 8 là phép đo của discovery/09: ghi số đo và phiên bản PostgreSQL vào Comments để discovery/09 đóng bằng một dòng trỏ tới đây (OPS-j).
+6. Migration mới thứ hai, `alembic revision -m "time partition registry"`: bảng `platform.time_partitioned_tables` với `schema_name text NOT NULL`, `table_name text NOT NULL`, `append_only boolean NOT NULL`, `registered_by text NOT NULL`, khóa chính `(schema_name, table_name)`; không `tenant_id`, không RLS, chỉ migration ghi, `REVOKE ALL ON platform.time_partitioned_tables FROM dw_app`; dòng đầu `('platform', 'audit_events', true, 'platform')`. Viết lại `platform._ensure_one_partition(schema_name text, parent text, month date)` và bỏ bản hai tham số: `%I.%I` ở mọi chỗ đang ghi cứng `platform.`; ENABLE, FORCE, policy tenant của partition theo dạng `test_rls_coverage.py` đòi lúc merge, và việc chuyển dòng kẹt ở DEFAULT vẫn ở trong một hàm; `REVOKE ALL` của `dw_app` trên partition mới, ở mọi schema, thay cho phép so tên `audit_events` (DO-02.2). Cùng migration: `REVOKE ALL` của `dw_app` trên mọi partition hiện có của bảng trong sổ, kể cả `platform.audit_events_default`. Viết lại `platform.ensure_time_partitions(months_ahead integer)` lặp sổ theo `schema_name, table_name`. `REVOKE EXECUTE ... FROM PUBLIC` trên hai hàm, `GRANT EXECUTE` hàm `ensure_time_partitions` cho `dw_app` như migration `0012`. `platform.drop_expired_partitions` giữ nguyên, nên thời hạn `audit_events` vẫn đọc từ tệp chính sách. Trước khi thu quyền, grep mã và test tìm câu lệnh đọc partition theo tên dưới `dw_app`; mỗi chỗ đổi sang bảng cha.
+7. `packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py`: thêm `STUDIO_EXCLUSIONS` (tên bảng sang lý do), rỗng ở ticket này, cạnh `_ORDERED_FIRST`; offboarding không đọc nó, test phủ đọc nó.
+8. Test tích hợp trong `packages/python/dw_platform/tests/integration/`:
     - `test_privileges.py`: bảng thử `studio.grant_probe` do migrator tạo, `dw_app` SELECT được, INSERT, UPDATE, DELETE bị từ chối; truy vấn catalog (`has_schema_privilege`, `has_table_privilege`, `has_function_privilege`, `aclexplode`) trả rỗng cho PUBLIC, `dw_provisioner`, `dw_agent_ro` trên schema `studio` và mọi đối tượng trong đó; không hàm `studio` nào PUBLIC chạy được; không sequence hay cột identity nào trong `studio`; `dw_app` không giữ quyền nào trên sổ.
-    - `test_partition_maintenance.py`: bảng thử `studio.partition_probe` (phân vùng theo khoảng trên `created_at`, có `tenant_id`, policy tenant và DEFAULT) đăng ký trong giao dịch test; lượt bảo trì tạo tháng hiện tại và `months_ahead` tháng sau với RLS ENABLE, FORCE và policy; bảng thử `append_only = true` từ chối UPDATE, DELETE của `dw_app`; bảng thử ở `platform` với `append_only = false` giữ UPDATE; `PARENTS` đọc từ sổ thay vì hằng.
-    - Test catalog trong cùng tệp: tập bảng phân vùng theo khoảng có DEFAULT bằng đúng tập dòng của sổ; mọi bảng trong sổ chỉ mang policy tenant mà hàm nhân bản.
+    - `test_partition_maintenance.py`: bảng thử `studio.partition_probe` (phân vùng theo khoảng trên `created_at`, có `tenant_id`, policy tenant và DEFAULT) và một bảng thử ở `platform` với `append_only = false` đăng ký trong giao dịch test; lượt bảo trì tạo tháng hiện tại và `months_ahead` tháng sau với RLS ENABLE, FORCE và policy; `dw_app` đọc partition mới theo tên nhận permission denied, còn đọc và ghi qua bảng cha được; một vai thử NOBYPASSRLS có SELECT trên partition mới, không đặt `app.tenant_id`, đọc 0 dòng; `PARENTS` đọc từ sổ thay vì hằng.
+    - Test catalog trong cùng tệp: tập bảng phân vùng theo khoảng có DEFAULT bằng đúng tập dòng của sổ; `dw_app` không giữ quyền nào trên partition nào của bảng trong sổ, kể cả DEFAULT; mọi dòng sổ `append_only = true` có thời hạn trong tệp chính sách retention mà lane `partitions` nạp, đọc qua cùng mô hình chính sách của `partition_maintenance.py` (hôm nay `audit.tables.audit_events` của `configs/policies/retention@1.7.0.yaml`).
+    - `test_rls_coverage.py`: `test_a_partition_cannot_be_read_around_its_parent` đổi kỳ vọng: đọc `platform.audit_events_default` theo tên dưới `dw_app` nhận permission denied; đọc qua bảng cha khi chưa đặt tenant vẫn 0 dòng.
     - `test_offboarding_coverage.py`: duyệt `pg_class` tìm bảng tenant của `studio` (có `tenant_id`, `relkind IN ('r', 'p')`, bỏ partition con); mỗi bảng phải xuất được và xóa được theo đúng hai truy vấn catalog của offboarding, hoặc nằm trong `STUDIO_EXCLUSIONS`; mỗi khóa ngoại `RESTRICT` hay `NO ACTION` chạm một bảng tenant của `studio` phải được `_ORDERED_FIRST` xếp bảng tham chiếu trước.
+9. `packages/python/dw_platform/tests/integration/test_rls_coverage.py`: `_TENANT_WIDE_ON_PURPOSE: dict[tuple[str, str], str]` theo mẫu `_PRINCIPAL_ONLY_ON_PURPOSE`. Test hỏi catalog mọi bảng cha (`relkind IN ('r', 'p') AND NOT relispartition`) có `tenant_id` mà không có `workspace_id` và so bằng với danh sách, đỏ cả hai chiều. Gieo tám bảng đếm trên văn bản migration (`platform.agent_store`, `platform.entitlements`, `platform.workspaces`, `memory.item_evidence`, `platform.tenant_daily_spend_guard`, `platform.policy_overrides`, `platform.tenant_offboarding_requests`, `platform.sod_waivers`), mỗi bảng một dòng lý do nói vì sao dòng thuộc cả công ty; lần chạy đầu so với catalog và sửa danh sách theo catalog. Cùng tệp: không policy nào của bảng trong danh sách đọc `app.workspace_id`; mọi bảng có cột `owning_workspace_id` có khóa ngoại ghép `(tenant_id, owning_workspace_id)` tới `platform.workspaces`; ca trồng lỗi tạo `public.tw_probe (tenant_id uuid)`, một bảng thử trong danh sách có policy đọc `app.workspace_id` và một bảng thử có `owning_workspace_id` không khóa ngoại, trong giao dịch rollback theo mẫu `test_the_scope_rules_catch_the_wrong_shapes`.
+10. `scripts/check_plans.py`: thêm cờ `--check <tên luật>` chạy riêng một luật của `CHECKS`, mặc định chạy mọi luật như hôm nay. CI: một bước chặn `uv run python scripts/check_plans.py --check adr`, không `--advisory`, cạnh bước chạy checker hiện có. `scripts/test_check_plans.sh` thêm một ca: cây thử có hai tệp ADR cùng tiền tố bốn chữ số làm bước đó thoát 1 và nêu hai tệp.
 
 ## Tiêu chí chấp nhận
 
@@ -33,16 +37,22 @@ Lát này cho người viết mọi spec Studio sau một nền đã được ki
 - [ ] R2.4 (SKEL4): hàm thử `studio.probe_fn()` tạo không kèm `REVOKE EXECUTE ... FROM PUBLIC` làm test đỏ.
 - [ ] R2.5: sequence thử `studio.probe_seq` làm test đỏ.
 - [ ] R3.1: lượt bảo trì tạo partition tháng hiện tại và 3 tháng sau cho `studio.partition_probe` đã đăng ký; bảng thử không đăng ký không được tạo gì.
-- [ ] R3.2 (SKEL5): partition mới có `relrowsecurity`, `relforcerowsecurity` và policy tenant của nó; bỏ ENABLE trong hàm thì `dw_app` đọc partition theo tên mà không đặt `app.tenant_id` thấy dòng và test đỏ; bỏ FORCE thì kiểm `relforcerowsecurity` đỏ.
-- [ ] R3.3 (SKEL5): partition mới của bảng `append_only = true` từ chối UPDATE và DELETE của `dw_app`; partition của bảng thử `append_only = false` ở `platform` vẫn cho UPDATE.
+- [ ] R3.2 (SKEL5): partition mới có `relrowsecurity`, `relforcerowsecurity` và policy tenant của nó; với vai thử NOBYPASSRLS có SELECT trên partition, không đặt `app.tenant_id`, bỏ ENABLE trong hàm thì vai thử thấy dòng và test đỏ; bỏ FORCE thì kiểm `relforcerowsecurity` đỏ.
+- [ ] R3.3 (SKEL5): `dw_app` đọc partition mới của `studio.partition_probe` và của bảng thử ở `platform` theo tên nhận permission denied, còn đọc và ghi qua bảng cha được; bỏ `REVOKE` khỏi hàm thì test đỏ.
 - [ ] R3.4 (SKEL6): bảng phân vùng thử có DEFAULT mà không có dòng trong sổ làm test catalog đỏ, nêu tên bảng.
 - [ ] R3.5 (SKEL7): INSERT của `dw_app` vào `platform.time_partitioned_tables` bị từ chối; `GRANT INSERT` cho `dw_app` thì test quyền đỏ.
-- [ ] R3.6 (SKEL5): bảng thử trong sổ mang thêm một policy ngoài policy tenant làm test catalog đỏ, nêu tên bảng.
+- [ ] R3.6 (SKEL5): `GRANT SELECT ON platform.audit_events_default TO dw_app` trong giao dịch test làm test catalog đỏ, nêu tên partition; `test_a_partition_cannot_be_read_around_its_parent` nhận permission denied khi đọc partition theo tên.
+- [ ] R3.7 (SKEL18): bảng thử đăng ký `append_only = true` mà tệp chính sách không có thời hạn cho nó làm test đỏ, nêu tên bảng; `platform.audit_events` qua vì có thời hạn 1095 ngày.
 - [ ] R4.1 (SKEL8): bảng thử `studio.offboarding_probe` có `tenant_id`, policy `tenant_isolation_offboarding_probe` và chỉ SELECT theo cột cho `dw_app` làm test phủ đỏ, nêu tên bảng; thêm nó vào `STUDIO_EXCLUSIONS` kèm lý do thì xanh.
 - [ ] R4.2 (SKEL8): hai bảng thử `studio` nối bằng khóa ngoại `ON DELETE RESTRICT` mà `_ORDERED_FIRST` không xếp làm test phủ đỏ, nêu tên khóa ngoại.
+- [ ] R9.1 (SKEL19): `public.tw_probe (tenant_id uuid)` tạo trong giao dịch rollback làm test đỏ, nêu tên bảng; trên checkout, tám bảng gieo có lý do và test xanh.
+- [ ] R9.2 (SKEL19): một dòng danh sách cho bảng không tồn tại làm test đỏ, nêu tên bảng.
+- [ ] R9.3 (SKEL20): bảng thử trong danh sách mang policy đọc `app.workspace_id` làm test đỏ, nêu bảng và policy.
+- [ ] R9.4 (SKEL20): bảng thử có `owning_workspace_id` mà không có khóa ngoại ghép tới `platform.workspaces` làm test đỏ, nêu tên bảng.
+- [ ] R10.1: cây thử có `docs/adr/0999-a.md` và `docs/adr/0999-b.md` làm `scripts/check_plans.py --check adr` thoát 1, nêu hai tệp; trên checkout bước đó thoát 0.
 - [ ] G1: `test_a_term_drops_only_the_months_entirely_behind_it` xanh trước và sau thay đổi.
 - [ ] G2: `test_a_partition_made_at_runtime_keeps_the_audit_log_append_only` xanh trước và sau thay đổi.
-- [ ] Xong: `make test-architecture test-integration` xanh.
+- [ ] Xong: `make test-architecture test-integration test-plans` xanh.
 
 ## Nguồn
 
@@ -53,8 +63,12 @@ Lát này cho người viết mọi spec Studio sau một nền đã được ki
 - `packages/python/dw_platform/tests/integration/test_privileges.py:187-205`; spec: SKEL2.
 - `db/migrations/sql/0013_partition_maintenance.sql:21-104`, `db/migrations/sql/0013_partition_maintenance.sql:106-134`, `db/migrations/sql/0012_partition_maintenance.sql:209-226`; spec: R3.
 - `packages/python/dw_platform/tests/integration/test_partition_maintenance.py:54`; spec: R3.1.
+- `packages/python/dw_platform/tests/integration/test_rls_coverage.py:187-225`; spec: R3.6.
+- `packages/python/dw_platform/src/dw_platform/adapters/persistence/partition_maintenance.py:93-95`, `configs/policies/retention@1.7.0.yaml:111-122`; spec: R3.7.
 - `packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:68-114`; spec: R4.
+- `packages/python/dw_platform/tests/integration/test_rls_coverage.py:44-59`, `packages/python/dw_platform/tests/integration/test_rls_coverage.py:108-131`, `packages/python/dw_platform/tests/integration/test_rls_coverage.py:450-496`; spec: R9.
+- `scripts/check_plans.py:1748-1751`, `.github/workflows/ci.yml:74-75`; spec: R10.1.
 - `configs/policies/retention@1.7.0.yaml:91-122`; spec: G1.
-- ADR-0100 (Proposed) điểm 4 và 7.
+- ADR-0100 (Accepted) điểm 4, 5, 7 và 9.
 
 ## Comments

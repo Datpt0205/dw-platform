@@ -1,16 +1,18 @@
 # 06 — Run không kẹt ở waiting_approval, CHECK trạng thái, outbox lùi thời gian và thư chết
 
-Status: needs-info (DO-56)
-Blocked by: 01
+Status: needs-triage
+Blocked by: 01, .claude/plans/studio/tenant-config/issues/03-che-do-chay-va-gia-lap-o-executor.md
 Area: studio
-Yêu cầu: R9.1, R9.2, R9.3, R10.1, R10.2, R10.3, R10.4, G5, FH25, FH26, FH27, FH28, FH29
+Yêu cầu: R9.1, R9.2, R9.3, R10.1, R10.2, R10.3, R10.4, R10.5, G5, FH25, FH26, FH27, FH28, FH29
 
 ## Mục tiêu
 
 Resume chết giữa chừng không còn làm thread kẹt mãi; PostgreSQL từ chối trạng thái lạ của run, yêu
 cầu phê duyệt và quyết định, với các giá trị Studio sẽ ghi đã có sẵn; outbox lùi thời gian khi thử lại
-và thư chết hiện trên số đo và cảnh báo (R9, R10, G5, FH25-FH29). Phần phát lại thư chết (R10.4,
-FH29) chờ Q2 (DO-56); phần còn lại không phụ thuộc câu trả lời đó.
+và thư chết hiện trên số đo và cảnh báo (R9, R10, G5, FH25-FH29). Người vận hành phát lại thư chết
+bằng một script có audit đứng tên mình; công ty thấy lượt chạy lỗi của mình trong Lịch sử chạy, không
+có route mới (DO-56.1). Ticket này chờ tenant-config/03, cùng ALTER `platform.worker_runs` và cùng sửa
+đường resume, và tenant-config/05 chờ ticket này (OPS-b).
 
 ## Việc cần làm
 
@@ -22,7 +24,8 @@ Run không kẹt (R9.1, R9.2, G5):
 2. `LangGraphWorkflowRunner.resume` gọi `begin_resume` sau kiểm `hosts` và trước khi chạy graph; bắt
    `BaseException` quanh lần chạy graph, ghi `failed` (lỗi `ResumeInterrupted` khi bị hủy) rồi ném
    lại. Tiến trình bị giết hẳn để run ở `running`; reaper của đường claim thread dọn nó sau ngưỡng
-   `stale_run_after_seconds` (3600 giây) như mọi run `running` khác.
+   `stale_run_after_seconds` (3600 giây) như mọi run `running` khác. Đường resume dựng trên bản của
+   tenant-config/03, nơi chế độ chạy được dựng lại khi resume; giữ nguyên chỗ dựng lại đó.
 
 CHECK trạng thái (R9.3):
 
@@ -33,9 +36,10 @@ CHECK trạng thái (R9.3):
    `ck_approval_requests_status` cho `status IN ('pending', 'approved', 'rejected', 'cancelled', 'expired')`
    trên `platform.approval_requests`, và `ck_approval_decisions_outcome` cho
    `outcome IN ('approved', 'rejected')` trên `platform.approval_decisions`.
-4. `RunStatus` thêm `QUEUED`, `WAITING`, `BLOCKED` (ADR-0113 (Proposed)) và `ApprovalStatus` thêm
-   `EXPIRED` (ADR-0112 (Proposed)), mỗi giá trị kèm comment nói chưa có người ghi cho tới
-   `workflow-engine`; test catalog so tập giá trị của mỗi CHECK với enum chủ của nó (`RunStatus`,
+4. `RunStatus` thêm `QUEUED`, `WAITING`, `BLOCKED` (ADR-0113 (Accepted)) và `ApprovalStatus` thêm
+   `EXPIRED` (ADR-0112 (Accepted)), mỗi giá trị kèm comment nói chưa có người ghi cho tới
+   `workflow-engine`; người ghi `EXPIRED` là workflow-engine ở W2, và ở W1 phê duyệt chờ không hạn
+   (DO-31). Test catalog so tập giá trị của mỗi CHECK với enum chủ của nó (`RunStatus`,
    `ApprovalStatus`, `DecisionOutcome`). Nếu enum lộ qua API, chạy `make generate-contracts`.
 
 Outbox (R10.1, R10.2, R10.3):
@@ -56,12 +60,16 @@ Outbox (R10.1, R10.2, R10.3):
    chưa chết; luật `DwOutboxDeadLetters` khi `dw_outbox_dead_letters > 0` trong
    `infra/prometheus/alerts.yml`, cùng dạng `DwOutboxBacklogAboveThreshold`.
 
-Phát lại thư chết (R10.4), làm sau khi Q2 có câu trả lời:
+Phát lại thư chết (R10.4, R10.5), theo DO-56.1:
 
-10. Công cụ phát lại một sự kiện chết theo `event_id`: xóa `dead_at`, đặt `attempts = 0` và
-    `available_at = now()`, ghi một audit trong cùng giao dịch. Ai được chạy nó, qua đường nào và
-    audit ghi actor nào theo câu trả lời Q2 (khuyến nghị: người vận hành qua một script trong
-    `scripts/`).
+10. `scripts/replay_dead_outbox.py --operator <email> <event_id>...`, người vận hành chạy bằng thông tin
+    của `dw_app`: tìm user của `--operator` trong bảng người vận hành của nền tảng, không có thì thoát 1
+    và không đổi gì; đọc `id`, `tenant_id`, `workspace_id` của từng sự kiện chết dưới
+    `set_config('app.worker_drain', 'on', true)`, không đọc `payload`; mỗi sự kiện một giao dịch đặt
+    tenant bằng `set_config('app.tenant_id', <tenant của sự kiện>, true)`, xóa `dead_at`, đặt
+    `attempts = 0` và `available_at = now()`, rồi ghi audit `platform.outbox.replayed` (actor là người
+    vận hành, `resource_id` là id sự kiện) trong cùng giao dịch. Không có route cho công ty: công ty thấy
+    lượt chạy lỗi của mình trong Lịch sử chạy.
 
 ## Tiêu chí chấp nhận
 
@@ -81,8 +89,11 @@ Phát lại thư chết (R10.4), làm sau khi Q2 có câu trả lời:
       → đỏ.
 - [ ] R10.3 (FH28): một sự kiện chết → gauge `dw_outbox_dead_letters` bằng 1, không có → 0; `backlog`
       không đếm sự kiện chết.
-- [ ] R10.4 (FH29): theo câu trả lời Q2, người được phép phát lại → sự kiện về hàng đợi và có đúng một
-      audit; người không được phép → từ chối, sự kiện vẫn mang `dead_at`.
+- [ ] R10.4 (FH29): người vận hành chạy script cho một sự kiện chết → sự kiện về hàng đợi (`dead_at`
+      rỗng, `attempts` 0) và có đúng một audit `platform.outbox.replayed` đứng tên người đó, trong cùng
+      giao dịch; audit ném lỗi → sự kiện vẫn mang `dead_at`.
+- [ ] R10.5 (FH29): `--operator` không có trong `platform.platform_operators` → script thoát 1, sự kiện
+      vẫn mang `dead_at`, không có audit; gỡ kiểm người vận hành → test đỏ.
 - [ ] G5: `test_pause_restart_resume_approved` xanh với compare-and-set.
 - [ ] Xong: `make ci && make test-integration` xanh.
 

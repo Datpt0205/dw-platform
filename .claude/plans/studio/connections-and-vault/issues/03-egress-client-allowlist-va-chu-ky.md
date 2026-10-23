@@ -1,7 +1,7 @@
 # 03 — Egress client ghim IP, danh sách máy chủ được phép và module chữ ký webhook
 
 Status: needs-triage
-Blocked by: .claude/plans/studio/foundations-hardening/issues/05-bien-mang-va-kho-du-lieu.md, .claude/plans/studio/tenant-config/issues/03-che-do-chay-va-gia-lap-o-executor.md
+Blocked by: .claude/plans/studio/foundations-hardening/issues/05-bien-mang-va-kho-du-lieu.md, .claude/plans/studio/tenant-config/issues/03-che-do-chay-va-gia-lap-o-executor.md, .claude/plans/studio/tenant-rbac/issues/01-mot-chu-cho-quyen.md, .claude/plans/studio/org-and-principals/issues/01-khoa-don-vi-va-siet-realm.md, .claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md
 Area: studio
 Yêu cầu: R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R4.1, R4.2, R4.3, R4.4, CV7, CV8, CV9, CV10, CV11, CV19
 
@@ -9,9 +9,9 @@ Yêu cầu: R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R4.1, R4.2, R4.3, R4
 
 Mọi lời gọi ra ngoài của lưu lượng tới tenant đi qua một bộ gọi ghim địa chỉ đã kiểm, chỉ tới địa chỉ
 Internet toàn cầu trong danh sách được phép, kể cả sau chuyển hướng hay đổi DNS; và một module thuần
-kiểm chữ ký cho mọi cửa nhận sự kiện (spec R3, R4). W1 từ chối `simulate` ở egress làm lớp thứ hai sau
-executor của tenant-config/03. Gộp từ B8a-connections connections-and-vault 02, 08 và 13 (phần module
-chữ ký).
+kiểm chữ ký cho mọi cửa nhận sự kiện (spec R3, R4). W1 từ chối mọi chế độ khác `live` ở egress làm lớp
+thứ hai sau executor của tenant-config/03 (DO-26.1). Gộp từ B8a-connections connections-and-vault 02, 08 và
+13 (phần module chữ ký).
 
 ## Việc cần làm
 
@@ -27,17 +27,20 @@ run_mode, purpose, connector_key, connection_id)`, `EgressResponse`, `EgressPort
 3. Chuyển hướng theo manifest (`none` mặc định, `same_origin`, `revalidate`), tối đa 3 bước, mỗi bước
    `resolve_checked` lại và kiểm danh sách; bỏ `Authorization`, `Cookie` khi đổi origin; trần body 2 MiB
    đếm khi stream; tổng thời gian trong `timeout_seconds` của công cụ.
-4. `run_mode == 'simulate'` → từ chối mọi purpose trừ `model` và hành động chỉ đọc đã phân loại, với mã
-   `egress_blocked:run_mode`; `run_mode` đọc từ `EgressContext` (tenant-config/03 đặt trên ngữ cảnh lượt
-   chạy).
+4. `run_mode` khác `live` (`simulate`, và `test` mà W1 chưa mở) → từ chối mọi purpose trừ `model` và hành
+   động chỉ đọc đã phân loại, với mã `egress_blocked:run_mode`; `run_mode` đọc từ `EgressContext`
+   (tenant-config/03 đặt trên ngữ cảnh lượt chạy); W2 mới mở `test` cho Danh sách người nhận thử (DO-26.1).
 5. Span `dw.egress.request`, metric `dw_egress_requests_total`, `dw_egress_blocked_total`; che bí mật
    theo giá trị (thô, mã hóa URL, base64) trong body, lỗi và log; filter logger `httpx` bỏ query string.
 6. Test kiến trúc (AST): `httpx.AsyncClient(` và `httpx.Client(` chỉ ở các adapter vận hành liệt kê
    (`openai_compatible.py`, `openai_responses.py`, `zalo_bot.py`, `api_parsers.py`, `cohere_rerank.py`,
    `openai_embedding.py`) và gói egress.
-7. Migration (revision hex): `platform.egress_allowed_hosts` theo mục Dữ liệu của spec, kiểm Public
-   Suffix List (wildcard không đặt trên hậu tố công cộng, không IP literal); RLS ENABLE và FORCE theo
-   tenant, grant cột; routes `GET`, `POST`, `DELETE /api/v1/egress/allowed-hosts` (`integrations.admin`),
+7. Migration (revision hex): `platform.egress_allowed_hosts` theo mục Dữ liệu của spec (`owning_workspace_id`
+   với FK ghép tới `uq_workspaces_tenant_id_id` của org-and-principals/01), kiểm Public Suffix List
+   (wildcard không đặt trên hậu tố công cộng, không IP literal); RLS ENABLE và FORCE theo tenant, grant
+   cột; một dòng có lý do cho bảng trong `_TENANT_WIDE_ON_PURPOSE` của `test_rls_coverage.py` (studio-skeleton/01); đăng ký
+   khóa `integrations.admin` vào Danh mục quyền trong cùng migration, có nhãn, `scope_kind` và `risk` theo
+   tenant-rbac/01; routes `GET`, `POST`, `DELETE /api/v1/egress/allowed-hosts` (`integrations.admin`),
    audit `egress.allowlist.added`, `egress.allowlist.removed`; Bộ gọi ra ngoài kiểm danh sách cho mọi
    purpose khác `connector` và `oauth`.
 8. Module thuần `dw_connectors.webhooks`: `InboundMessage`, `VerifierKey`, `Verdict`, `SignatureVerifier`,
@@ -54,8 +57,9 @@ run_mode, purpose, connector_key, connection_id)`, `EgressResponse`, `EgressPort
 - [ ] R3.3 (CV8): redirect tới `http://169.254.169.254/` hay host ngoài danh sách → chặn, không gửi; gỡ
       kiểm lại chuyển hướng → test đỏ.
 - [ ] R3.4 (CV8): redirect đổi origin → mock origin khác không thấy `Authorization` hay `Cookie`.
-- [ ] R3.5 (CV10): gọi egress với `run_mode='simulate'`, purpose `connector` → `egress_blocked:run_mode`,
-      không gọi nhà cung cấp; purpose `model` vẫn qua; gỡ bước kiểm chế độ → test đỏ.
+- [ ] R3.5 (CV10): gọi egress với `run_mode` `simulate` và `test`, purpose `connector` →
+      `egress_blocked:run_mode`, không gọi nhà cung cấp; purpose `model` vẫn qua; `live` → qua; gỡ bước kiểm
+      chế độ → test đỏ.
 - [ ] R3.6 (CV9): thêm `httpx.AsyncClient(` vào một module mới ngoài danh sách → test kiến trúc đỏ.
 - [ ] R3.7 (CV19): đích host ngoài danh sách (purpose `http_tool`) → `egress_blocked:host_not_allowed`;
       gỡ kiểm danh sách → test đỏ.
@@ -75,10 +79,14 @@ run_mode, purpose, connector_key, connection_id)`, `EgressResponse`, `EgressPort
 - `packages/python/dw_kernel/src/dw_kernel/net_guard.py:49-75`; spec: R3.3, R3.4.
 - `packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/openai_compatible.py:61`; spec: R3.6.
 - `apps/api/src/dw_api/settings.py:206`; spec: R3.2 (danh sách máy chủ được phép).
-- spec: R3, R4, CV7-CV11; ADR-0115 (Proposed) quyết 5, 6; si-platform `si_kernel/net_guard.py` có cùng
+- spec: R3, R4, CV7-CV11; ADR-0115 (Accepted) quyết 5, 6; si-platform `si_kernel/net_guard.py` có cùng
   lỗ (luồng ngược, ghi area file).
 
 ## Comments
 
 - 2026-10-23 (agent): egress từ chối `simulate` là lớp thứ hai sau executor của tenant-config/03; ticket
   này chờ `run_mode` trên ngữ cảnh lượt chạy từ ticket đó.
+- 2026-10-23 (agent): Đạt chốt DO-26.1 (A) ngày 23/10/2026: egress từ chối mọi chế độ khác `live` từ W1
+  (bước 4, R3.5). Theo DO-01, bảng dùng `owning_workspace_id` với FK ghép nên chờ org-and-principals/01; khóa
+  `integrations.admin` đăng ký trong migration của ticket này nên chờ Danh mục quyền của tenant-rbac/01; bảng
+  ghi một dòng vào danh sách bảng toàn tenant nên chờ studio-skeleton/01.

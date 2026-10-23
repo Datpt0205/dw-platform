@@ -13,7 +13,7 @@ Biên dịch phần P1 của một phiên bản quy trình (tuần tự, router,
 
 1. Trình biên dịch (`dw_studio.workflows.workflows.compiler`) dựng từ `WorkflowIR` của ticket 01: một kênh cho mỗi đầu ra node (không dùng một dict `vars` chung), router bằng cạnh điều kiện, node chờ là `interrupt()` đứng đầu, `recursion_limit` tính từ `limits.max_steps`, không bao giờ để mặc định thư viện. LangGraph chỉ ở module này và `dw_studio.agents.workflows` (studio-skeleton:R5.5).
 2. Cache LRU trần 256 theo `(tenant_id, artifact_version_id, compiler_version)` trong `dw_agent_runtime.adapters`; hash schema state tính một lần.
-3. Wrapper nút: `asyncio.timeout` từng lần, `retry` có backoff, `on_error` `fail` và `continue`; đúng một hiệu ứng mỗi node qua đúng cửa (`ToolExecutor`, `RecordsPort`, `ModelResolver`); khóa chống lặp `wf:{run_id}:{node_id}:{iteration_path}` (qua executor giành-lượt-trước của foundations-hardening/04); trần đầu ra 64 KiB; kiểm `RunControlPort` ở đầu node; span `dw.node`; gắn `app.actor_kind = 'workflow'` và `app.boundary_id` mỗi giao dịch (record-access/04).
+3. Wrapper nút: `asyncio.timeout` từng lần, `retry` có backoff, `on_error` `fail` và `continue`; đúng một hiệu ứng mỗi node qua đúng cửa (`ToolExecutor`, `RecordsPort`, `ModelResolver`), chuyển `run_mode` của lượt chạy tới cửa đó để chính cửa giả lập ở `simulate`; khóa chống lặp `wf:{run_id}:{node_id}:{iteration_path}` (qua executor giành-lượt-trước của foundations-hardening/04); trần đầu ra 64 KiB; kiểm `RunControlPort` ở đầu node; span `dw.node`; gắn `app.actor_kind = 'workflow'` và `app.boundary_id` mỗi giao dịch (record-access/04).
 4. Node không chứa SQL hay SDK nhà cung cấp; nhận cổng bằng tiêm (studio-skeleton:R5.4).
 
 ## Tiêu chí chấp nhận
@@ -24,8 +24,8 @@ Biên dịch phần P1 của một phiên bản quy trình (tuần tự, router,
 - [ ] R4.4: node gọi hai hiệu ứng ra ngoài → wrapper nút chặn hiệu ứng thứ hai; mỗi loại hiệu ứng đi qua đúng cửa của nó.
 - [ ] R4.5 (WE7): hai worker chạy cùng node do lease giả hết hạn → nhà cung cấp giả nhận đúng một lần; bỏ khóa chống lặp → test đỏ.
 - [ ] R4.6 (WE13): đầu ra 65.537 byte → node lỗi `output_too_large`, không ghi checkpoint lớn; 65.536 byte → nhận.
-- [ ] R4.7: lượt chạy `simulate` gọi công cụ `external` → `ToolExecutor` giả lập, handler không chạy (tenant-config:R5.1); wrapper không có đường vòng.
-- [ ] R4.8 (WE5): tắt khẩn giữa lượt chạy → node kế tiếp không chạy trong ≤ 5 giây; bỏ kiểm `RunControlPort` ở wrapper → test đỏ.
+- [ ] R4.7: lượt chạy `simulate` gọi công cụ `external` → `ToolExecutor` giả lập, handler không chạy (tenant-config:R5.1); một bước bản ghi ở `simulate` → `RecordsPort` nhận `run_mode` `simulate` và RecordService không ghi dòng nào (custom-objects:R5.4); wrapper không có đường vòng.
+- [ ] R4.8 (WE5): tắt khẩn giữa lượt chạy, hay chủ thể chạy bị tạm khóa giữa lượt chạy → node kế tiếp không chạy trong ≤ 5 giây; bỏ kiểm `RunControlPort` ở wrapper → test đỏ.
 - [ ] R4.9: bước ghi qua `StepRecorderPort` có đầu vào và đầu ra đã che theo quyền người xem, span `dw.node`; `app.actor_kind = 'workflow'` gắn mỗi giao dịch.
 - [ ] R4.10: thêm một module node có chuỗi SQL hay import SDK nhà cung cấp → test kiến trúc đỏ.
 - [ ] Xong: `make test-integration` xanh.
@@ -33,6 +33,8 @@ Biên dịch phần P1 của một phiên bản quy trình (tuần tự, router,
 ## Nguồn
 
 - `packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langgraph_runner.py:127`; spec: R4, WE5, WE7, WE13.
-- foundations-hardening:R6.1 (executor giành-lượt-trước); record-access:R6.4 (actor và biên dữ liệu); tenant-config:R5.1 (giả lập); ADR-0112 (Proposed) quyết 4-5.
+- foundations-hardening:R6.1 (executor giành-lượt-trước); record-access:R6.4 (actor và biên dữ liệu); tenant-config:R5.1 (giả lập); ADR-0112 (Accepted) quyết 4-5.
 
 ## Comments
+
+- 2026-10-23 (agent): theo phiếu 23/10/2026: giả lập ghi bản ghi ở RecordService, không trong Bước (D:custom-objects:R5.4~workflow-nodes:R5.3); `RunControlPort` có thêm lý do chủ thể chạy không `active` (H:org-and-principals:R4.6).

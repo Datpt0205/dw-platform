@@ -5,7 +5,7 @@ Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: chưa
 Sẵn sàng: chưa kiểm
 
-Mọi route mới của Studio và của nền tảng nói cùng một quy ước HTTP: một mô tả lỗi problem+json, khóa chống lặp gắn người gọi đã xác minh, ETag với `If-Match`, phân trang keyset có kiểu, cây lọc JSON và một kiểm hình kế hoạch truy vấn trong CI (ADR-0108 (Proposed)). API bản ghi của custom-objects, vỏ phiên bản của tenant-config và mọi API quản trị của lát Marketing dùng các quy ước này, nên spec này đi trước chúng. Ý định: một quy ước HTTP cho mọi route, để không spec nào tự đặt hình lỗi, khóa hay con trỏ của riêng nó.
+Mọi route mới của Studio và của nền tảng nói cùng một quy ước HTTP: một mô tả lỗi problem+json, khóa chống lặp gắn người gọi đã xác minh, ETag với `If-Match`, phân trang keyset có kiểu, cây lọc JSON và một kiểm hình kế hoạch truy vấn trong CI (ADR-0108 (Accepted)). API bản ghi của custom-objects, vỏ phiên bản của tenant-config và mọi API quản trị của lát Marketing dùng các quy ước này, nên spec này đi trước chúng. Ý định: một quy ước HTTP cho mọi route, để không spec nào tự đặt hình lỗi, khóa hay con trỏ của riêng nó.
 
 ## Hiện trạng (đã kiểm ở `ab33703` ngày 23/10/2026)
 
@@ -89,13 +89,14 @@ Người đọc danh sách sắp theo một trường, tăng hay giảm, nhận 
 
 ### R5 — Cây lọc JSON, `order_by` và `fields`
 
-Route danh sách nhận một ngôn ngữ chọn bản ghi có giới hạn, với lỗi trỏ đúng chỗ (ADR-0108 (Proposed) điểm 2).
+Route danh sách nhận một ngôn ngữ chọn bản ghi có giới hạn, với lỗi trỏ đúng chỗ (ADR-0108 (Accepted) điểm 2).
 
 - R5.1 NẾU cây lọc vượt một giới hạn (độ sâu quá 5, quá 50 lá, `$in` quá 500 giá trị, chuỗi quá 1.024 byte UTF-8), THÌ route danh sách PHẢI trả 422 với `errors[].pointer` trỏ vào nút vượt và không chạy truy vấn; cây đúng bằng giới hạn được nhận.
 - R5.2 NẾU cây lọc nêu trường không lọc được hay toán tử không hợp kiểu của trường, THÌ route danh sách PHẢI trả 422 với `errors[].pointer` trỏ vào lá đó.
 - R5.3 KHI người gọi gửi `order_by` theo AIP-132, ví dụ `name desc, created_at`, route danh sách PHẢI sắp theo đúng các trường đó và luôn thêm `id` làm khóa cuối.
 - R5.4 NẾU `order_by` nêu trường không sắp được, THÌ route danh sách PHẢI trả 422 với `errors[].parameter` bằng `order_by`.
 - R5.5 KHI người gọi gửi `fields`, route danh sách PHẢI chỉ trả các trường được nêu cùng `id`.
+- R5.6 KHI route danh sách trả 422 cho cây lọc, `order_by` hay `fields`, route danh sách PHẢI đặt `code` là `validation_failed` và mã lý do của từng lỗi, như `field_not_readable` hay `field_not_filterable`, vào `errors[].code`.
 
 ### R6 — Kiểm hình kế hoạch truy vấn trong CI
 
@@ -125,26 +126,27 @@ Một truy vấn phân trang không có index mang trọn làm CI đỏ, kể c�
 
 ## Ngoài phạm vi
 
-| Việc                                                                                     | Vì sao                                                                    | Chủ                                     |
-| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | --------------------------------------- |
-| R2.7: từng route bắt buộc `Idempotency-Key` (`POST` khởi tác vụ chạy nền, batch, upsert) | mỗi route chứng minh ở spec mở nó; spec này giao dependency khóa bắt buộc | custom-objects, tenant-config           |
-| Tác vụ chạy nền chuẩn                                                                    | W2                                                                        | app-standards, đợt sau (W2)             |
-| 429, header RateLimit và chính sách ngừng hỗ trợ                                         | W2                                                                        | app-standards, đợt sau (W2)             |
-| Giới hạn kích thước body                                                                 | W2; nhóm `/api/v1/studio` có trần riêng từ W1                             | app-standards, đợt sau (W2)             |
-| OpenAPI theo tenant và HTTP QUERY                                                        | W3                                                                        | app-standards, đợt sau (W3)             |
-| Khóa chống lặp của tool, nhận trước (`platform.tool_execution_claims`)                   | ADR-0108 (Proposed) điểm 5                                                | foundations-hardening, ticket 04        |
-| Ngữ pháp khóa cho hiệu ứng của lượt chạy                                                 | ADR-0108 (Proposed) điểm 6                                                | workflow-engine                         |
-| Biến trong cây lọc, chuỗi lọc OData hay AIP-160                                          | chưa route nào đọc; chuỗi có thể đến sau và dịch về cây                   | custom-objects                          |
-| `Cache-Control: no-store` cho tài nguyên có bảo vệ theo trường                           | thuộc route bản ghi                                                       | custom-objects, field-security          |
-| Bộ đếm giới hạn theo tenant, sửa bộ giới hạn tốc độ                                      | không thuộc quy ước HTTP chung                                            | usage-and-limits, foundations-hardening |
-| Dịch văn bản lỗi phía máy chủ (`Accept-Language`)                                        | web dựng văn bản từ `code`                                                | không làm                               |
-| OData, GraphQL                                                                           | ngôn ngữ chọn bản ghi là cây lọc                                          | không làm                               |
+| Việc                                                                                     | Vì sao                                                                                                                            | Chủ                                     |
+| ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| R2.7: từng route bắt buộc `Idempotency-Key` (`POST` khởi tác vụ chạy nền, batch, upsert) | mỗi route chứng minh ở spec mở nó; spec này giao dependency khóa bắt buộc                                                         | custom-objects, tenant-config           |
+| Tác vụ chạy nền chuẩn                                                                    | W2                                                                                                                                | app-standards, đợt sau (W2)             |
+| Quy ước 429 và header RateLimit chung                                                    | W2; ngoại lệ W1: bộ giới hạn của custom-objects:R7.6 trả 429 kèm `Retry-After` qua `RateLimiterPort` của usage-and-limits (DO-49) | app-standards, đợt sau (W2)             |
+| Chính sách ngừng hỗ trợ: báo trước ít nhất 6 tháng trước khi gỡ một route                | W2 (DO-16)                                                                                                                        | app-standards, đợt sau (W2)             |
+| Giới hạn kích thước body                                                                 | W2; nhóm `/api/v1/studio` có trần riêng từ W1                                                                                     | app-standards, đợt sau (W2)             |
+| OpenAPI theo tenant và HTTP QUERY                                                        | W3                                                                                                                                | app-standards, đợt sau (W3)             |
+| Khóa chống lặp của tool, nhận trước (`platform.tool_execution_claims`)                   | ADR-0108 (Accepted) điểm 5                                                                                                        | foundations-hardening, ticket 04        |
+| Ngữ pháp khóa cho hiệu ứng của lượt chạy                                                 | ADR-0108 (Accepted) điểm 6                                                                                                        | workflow-engine                         |
+| Biến trong cây lọc, chuỗi lọc OData hay AIP-160                                          | chưa route nào đọc; chuỗi có thể đến sau và dịch về cây                                                                           | custom-objects                          |
+| `Cache-Control: no-store` cho tài nguyên có bảo vệ theo trường                           | thuộc route bản ghi                                                                                                               | custom-objects, field-security          |
+| Bộ đếm giới hạn theo tenant (`RateLimiterPort`), sửa bộ giới hạn tốc độ theo địa chỉ     | không thuộc quy ước HTTP chung (DO-49)                                                                                            | usage-and-limits, foundations-hardening |
+| Dịch văn bản lỗi phía máy chủ (`Accept-Language`)                                        | web dựng văn bản từ `code`                                                                                                        | không làm                               |
+| OData, GraphQL                                                                           | ngôn ngữ chọn bản ghi là cây lọc                                                                                                  | không làm                               |
 
 ## Dữ liệu
 
 - `platform.idempotency_keys` thêm `caller_ref text NOT NULL DEFAULT ''` (`user:` nối `principal_id`, hay `support:` nối `grant_id` khi người gọi làm việc dưới grant của ADR-0024 (Proposed)), `reservation_token uuid NOT NULL DEFAULT gen_random_uuid()`, `response_headers jsonb` với `CHECK (response_headers IS NULL OR jsonb_typeof(response_headers) = 'object')`, chỉ giữ `ETag` và `Location`. Dòng cũ mang `caller_ref = ''`, không bằng người gọi thật nào.
 - Policy `worker_drain_idempotency_keys` đọc `app.worker_drain`, theo mẫu lane dọn checkpoint.
-- Index cho kiểm hình kế hoạch do test quyết; dự kiến `platform.feedback (tenant_id, created_at DESC, id DESC)` thay `ix_feedback_tenant_created`, và `platform.audit_events (tenant_id, run_id, occurred_at)` trên bảng cha.
+- Index cho kiểm hình kế hoạch do test quyết; dự kiến `platform.feedback (tenant_id, created_at DESC, id DESC)` thay `ix_feedback_tenant_created`. Index `platform.audit_events (tenant_id, run_id, occurred_at)` trên bảng cha là index audit theo lượt chạy duy nhất của nền tảng, chủ là ticket 03 (ADR-0122 (Accepted) bỏ `ix_audit_events_run`).
 
 ## API
 
@@ -177,20 +179,25 @@ Một truy vấn phân trang không có index mang trọn làm CI đỏ, kể c�
 - foundations-hardening: lỗi idempotency mà hai spec cùng thấy chỉ được sửa ở ticket 02 của spec này; walker của APS1 đọc `app.openapi()`, thấy router lồng dưới FastAPI 0.141.1.
 - telemetry-and-audit: span OpenTelemetry mà `trace_id` đọc.
 - `AccessContext` do nền tảng dựng từ token đã xác minh: nguồn duy nhất của `caller_ref` (`principal_id`, grant của ADR-0024 (Proposed)).
-- Kiểm lại khi: ADR-0108 (Proposed) đổi trạng thái hay nội dung → cả spec; custom-objects đổi hình cây lọc hay danh sách → R4, R5, ticket 03; một route phân trang mới → R6.2; một spec mở route bắt buộc khóa → R2.7.
+- telemetry-and-audit ticket 02 chờ ticket 03, vì index audit theo lượt chạy có một chủ ở đây (OPS-b).
+- Kiểm lại khi: ADR-0108 (Accepted) đổi trạng thái hay nội dung → cả spec; custom-objects đổi hình cây lọc hay danh sách → R4, R5, ticket 03; custom-objects hay field-security thêm mã lý do cho cây lọc → R5.6, ticket 03; một route phân trang mới → R6.2; một spec mở route bắt buộc khóa → R2.7.
 
 ## Câu hỏi còn mở
-
-- Q1. DO-16: Dùng problem+json của RFC 9457 cộng thêm cho toàn nền tảng, viết custom method kiểu `/records/batch-create` với ngữ nghĩa AIP, và báo trước ít nhất 6 tháng khi ngừng một route? Chủ: Đạt. Chặn: R1.1, R1.2, R3.1, R3.2, ticket 01, 03.
 
 ## Quyết định
 
 - 22/10/2026 (người đặt yêu cầu): D5: port sửa đổi ngày 20/10/2026 về idempotency và token giữ chỗ của si-platform (`docs/adr/0045-one-idempotency-key-store-handed-to-modules-by-the-host.md`, `db/si/migrations/0041_idempotency_reservation_token.sql` trong repo si-platform), dựng lại thành migration Alembic trên `platform`.
 - 23/10/2026 (người đặt yêu cầu): D12: 10 triệu bản ghi mỗi đối tượng và 50 triệu mỗi tenant; vì vậy kiểm hình kế hoạch là cổng CI chạy mỗi lần, không là một lần đo.
-- 23/10/2026 (agent, tạm): Mâu thuẫn nguồn: ADR-0108 (Proposed) điểm 4 lưu người gọi thành cột `caller_ref` so riêng, thiết kế ban đầu của spec băm người gọi vào dấu vân tay; theo ADR-0108 (Proposed), để 409 nói được phần nào khác.
+- 23/10/2026 (agent, tạm): Mâu thuẫn nguồn: ADR-0108 (Accepted) điểm 4 lưu người gọi thành cột `caller_ref` so riêng, thiết kế ban đầu của spec băm người gọi vào dấu vân tay; theo ADR-0108 (Accepted), để 409 nói được phần nào khác.
 - 23/10/2026 (agent, tạm): DO-57 theo khuyến nghị (a): giao diện v1 chỉ tiếng Việt qua khóa thông điệp; web dựng văn bản từ `code` và `errors[].code`, còn `title` giữ tiếng Anh cố định cho máy đọc. Nếu sai thì: thêm bản dịch theo cùng khóa ở web, không đổi mô tả lỗi.
 - 23/10/2026 (agent, tạm): lane tên `idempotency_sweep`; thời hạn 24 giờ là hằng trong mã cạnh `STALE_RESERVATION`, không vào `retention@1.7.0.yaml`, vì đây là bộ đệm phát lại chứ không là câu hỏi tuân thủ (tiền lệ `channel_link_nonces_retention`). Nếu sai thì: thời hạn vào tệp chính sách và lane đọc nó.
 - 23/10/2026 (agent, tạm): giới hạn chuỗi 1 KB của cây lọc là 1.024 byte UTF-8. Nếu sai thì: đổi một hằng và test APS9.
+- 23/10/2026 (Đạt): DO-16 theo (a): problem+json của RFC 9457 cộng trường mở rộng cho toàn nền tảng, custom method là `POST` sub-resource như `/records/batch-create`, và báo trước ít nhất 6 tháng khi ngừng một route (W2); với 422, member `detail` đổi từ mảng của FastAPI thành chuỗi và chi tiết nằm ở `errors[]`, và không client nào trong repo đọc `detail` cũ. Hỏi: Q1. Sửa: hàng ngừng hỗ trợ ở Ngoài phạm vi; ticket 01 và 03 hết chờ.
+- 23/10/2026 (Đạt): DO-57 theo (a), xác nhận dòng tạm cùng ngày: web dựng văn bản tiếng Việt từ `code` và `errors[].code`, `title` giữ tiếng Anh cố định cho máy đọc.
+- 23/10/2026 (Đạt): ADR-0122 (Accepted) và OPS-b: index audit theo lượt chạy `platform.audit_events (tenant_id, run_id, occurred_at)` có một chủ là ticket 03; ADR-0122 (Accepted) bỏ `ix_audit_events_run`, và telemetry-and-audit/02 chờ ticket 03. Sửa: Dữ liệu, Phụ thuộc, ticket 03.
+- 23/10/2026 (Đạt): DO-49 theo (a): giới hạn theo tenant đi qua `RateLimiterPort` của usage-and-limits; ở W1 bộ giới hạn của custom-objects:R7.6 trả 429 kèm `Retry-After` qua port đó, là ngoại lệ W1 của hàng 429 ở Ngoài phạm vi. Sửa: Ngoài phạm vi.
+- 23/10/2026 (Đạt): DO-03.2 theo (a): port mã thuần của si-platform cần thỏa thuận viết, ghim commit và dòng đầu `Ported from si-platform`; ticket 02 dựng lại thiết kế idempotency của si-platform thành migration và mã mới, không chép mã, nên không chờ thỏa thuận.
+- 23/10/2026 (agent, tạm): mã lý do của từng lỗi cây lọc, `order_by` hay `fields` (`field_not_readable`, `field_not_filterable`) nằm ở `errors[].code`, còn `code` cấp trên là `validation_failed`, theo cách sửa thứ nhất của phát hiện B:app-standards:R1.3~custom-objects:R8.4; custom-objects và field-security trích nguyên văn R5.6. Sửa: thêm R5.6, ticket 03. Nếu sai thì: hai mã thành `code` cấp trên và R1.3 nêu ngoại lệ.
 
 ## Danh sách ticket
 

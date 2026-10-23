@@ -25,9 +25,11 @@ TC15). Ticket 05 thêm mục điểm gắn vào cùng bản kê.
     - `platform.worker_runs.run_manifest_hash` NULL, khớp `^sha256:[0-9a-f]{64}$`, FK
       `(tenant_id, run_manifest_hash)` tới `platform.run_manifests` ON DELETE RESTRICT, index
       `(tenant_id, run_manifest_hash)`. CHECK buộc lượt chạy có gốc Studio phải có bản kê đi cùng cột gốc
-      Studio mà workflow-engine thêm (ADR-0113 (Proposed)).
+      Studio mà workflow-engine thêm (ADR-0113 (Accepted)).
     - RLS ENABLE và FORCE theo tenant cho hai bảng mới; grant khẳng định trong `test_privileges.py`;
-      `test_rls_coverage.py` thấy cả hai.
+      `test_rls_coverage.py` thấy cả hai, và mỗi bảng có một dòng lý do trong danh sách bảng toàn tenant
+      của test đó (bản kê định danh theo nội dung, dùng chung cho mọi lượt chạy cùng nội dung; khóa bản kê
+      là con của bản kê; DO-01).
     - Offboarding: `platform.run_manifests` vào `_ORDERED_FIRST` ngay sau `platform.worker_runs` (cạnh
       RESTRICT từ lượt chạy) và trước các mục `studio` của ticket 02 (`platform.run_manifest_keys` đi theo
       CASCADE, gỡ cạnh RESTRICT tới phiên bản).
@@ -35,7 +37,7 @@ TC15). Ticket 05 thêm mục điểm gắn vào cùng bản kê.
    `release_manifest_ref`, `run_mode`, `root` (`kind`, `artifact_id`, `version_no`, `definition_hash`),
    `closure` (mỗi mục `kind`, `key`, `version`, `content_hash`, lấy từ `studio.definition_manifests` của
    gốc), `engine` (lấy từ mục registry của loại gốc; workflow-engine và agent-builder điền mục của họ,
-   ADR-0109 (Proposed) quyết 8). Mã băm là `content_hash` của thân qua `dw_kernel.canonical`. Thân không
+   ADR-0109 (Accepted) quyết 8). Mã băm là `content_hash` của thân qua `dw_kernel.canonical`. Thân không
    chứa bí mật nào.
 3. `RunManifestPort` khai trong `dw_agent_runtime` (bên dùng là cửa nhận lượt chạy), `RunManifestBuilder`
    của `dw_studio` đáp ứng, nối ở composition root: `build(tenant_id, root_version_id, run_mode)` ghi bản
@@ -45,7 +47,7 @@ TC15). Ticket 05 thêm mục điểm gắn vào cùng bản kê.
    bản kê → `ConfigError` với `details.key`, không truy vấn phiên bản hiện hành. Mọi phân giải Studio
    trong lượt chạy Studio đi qua nó. Khi tiếp tục ở bất kỳ tiến trình nào, dựng lại từ
    `platform.worker_runs.run_manifest_hash`; `WorkflowRunnerPort.hosts` trả đúng cho lượt chạy Studio khi
-   mọi phiên bản bản kê ghim đọc được từ database (ADR-0109 (Proposed) quyết 7).
+   mọi phiên bản bản kê ghim đọc được từ database (ADR-0109 (Accepted) quyết 7).
 5. Đo p95 thời gian dựng và ghi bản kê lúc nhận lượt chạy trên compose, bao đóng 50 thành phần, 1.000
    lượt; ghi số đo và cấu hình máy vào Comments (R6.6).
 
@@ -72,7 +74,7 @@ TC15). Ticket 05 thêm mục điểm gắn vào cùng bản kê.
 - `packages/python/dw_agent_runtime/src/dw_agent_runtime/ports.py:132`; spec: R6.4.
 - `db/migrations/versions/0005_run_artifact_versions.py:41-51`; spec: R6.1.
 - `packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:108-114`; spec: R3.6,
-  TC21; ADR-0109 (Proposed) quyết 6-7.
+  TC21; ADR-0109 (Accepted) quyết 6-7.
 
 ## Comments
 

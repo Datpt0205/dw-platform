@@ -10,7 +10,7 @@ Yêu cầu: R7.1, R7.2, R8.1, R8.2, R8.3, R8.4, G7, FH20, FH21, FH22, FH23, FH24
 Một client không lách giới hạn tốc độ bằng bearer ngẫu nhiên; nền tảng có một chính sách địa chỉ ra
 ngoài mà egress client của `connections-and-vault` dùng lại; Qdrant và Valkey đòi xác thực ở mọi
 profile, profile triển khai không khởi động khi thiếu; ảnh bên thứ ba ghim digest (R7, R8, G7,
-FH20-FH24; ADR-0115 (Proposed) quyết định 5). Triển khai cần người đặt bí mật mới trên host uat và
+FH20-FH24; ADR-0115 (Accepted) quyết định 5). Triển khai cần người đặt bí mật mới trên host uat và
 production.
 
 ## Việc cần làm
@@ -22,8 +22,9 @@ Giới hạn tốc độ (R7.1, G7):
    header `Authorization` đếm thêm vào xô của bearer (khóa `tok:` cộng SHA-256) với ngưỡng
    `requests_per_minute`; trả 429 kèm `Retry-After` khi một trong hai xô vượt; đường quét 10.000 khóa
    giữ nguyên.
-2. Docstring của middleware nói bearer chưa được xác minh ở tầng này và bộ đếm theo tiến trình; bộ
-   đếm dùng chung giữa bản sao thuộc `usage-and-limits`.
+2. Docstring của middleware nói bearer chưa được xác minh ở tầng này và bộ đếm theo tiến trình;
+   middleware này chỉ chặn ở cửa API, còn giới hạn theo tenant dùng chung giữa bản sao thuộc
+   `RateLimiterPort` của `usage-and-limits` (DO-49).
 
 Chính sách địa chỉ (R7.2):
 

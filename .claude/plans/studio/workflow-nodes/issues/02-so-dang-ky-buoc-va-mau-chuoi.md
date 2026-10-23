@@ -3,13 +3,14 @@
 Status: needs-triage
 Blocked by: 01, .claude/plans/studio/tools-and-skills/issues/01-executor-kiem-schema-va-nha-may.md
 Area: studio
-Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R4.1, R4.2, R4.3, WN1, WN2, WN13, WN15
+Yêu cầu: R1.1, R1.2, R1.4, R1.5, R4.1, R4.2, R4.3, WN1, WN2, WN13, WN15
 
 ## Mục tiêu
 
 Một `NodeTypeRegistry` là nguồn duy nhất cho bảng bước, bộ kiểm, trình biên dịch và phân tích bộ ba, với
 API danh mục và bộ dựng Chuỗi có biến `{{ }}` render theo sáu đích, prompt bao chứa (workflow-nodes R1.1,
-R1.2, R1.3, R1.4, R1.5, R4.1, R4.2, R4.3).
+R1.2, R1.4, R1.5, R4.1, R4.2, R4.3). Kiểm `type@major` chưa đăng ký là `wf.unknown_node_type` của
+workflow-engine/01, đọc tập loại từ registry của ticket này.
 
 ## Việc cần làm
 
@@ -35,7 +36,6 @@ R1.2, R1.3, R1.4, R1.5, R4.1, R4.2, R4.3).
 - [ ] R1.1: băm danh mục của `GET /api/v1/studio/node-types` bằng băm của danh mục worker dựng.
 - [ ] R1.2: danh mục trả đủ schema cấu hình, đầu ra, Nhánh ra, nhãn, Mức tác động, giới hạn và lý do
       khoá cho mỗi loại.
-- [ ] R1.3: lưu một tài liệu dùng `type@major` chưa đăng ký → `unknown_node_type`, không niêm phong.
 - [ ] R1.4 (WN15): thêm một thuộc tính vào `NodeTypeSpec` mà không có nơi đọc → test bảng
       thuộc-tính-tới-nơi-đọc đỏ.
 - [ ] R1.5: một loại có `error` trong schema đầu ra chỉ khi Khi lỗi `continue`; loại mặc định `fail`
@@ -52,6 +52,8 @@ R1.2, R1.3, R1.4, R1.5, R4.1, R4.2, R4.3).
 - `packages/python/dw_agent_runtime/src/dw_agent_runtime/contracts.py:19`; spec: R1.2 (Mức tác động).
 - `packages/python/dw_agent_runtime/src/dw_agent_runtime/model/prompts.py:35`; spec: R4.2
   (`contain_untrusted`).
-- ADR-0112 (Proposed) quyết 2; spec: R1, R4.
+- ADR-0112 (Accepted) quyết 2; spec: R1, R4.
 
 ## Comments
+
+- 2026-10-23 (agent): theo phiếu 23/10/2026, R1.3 rút: kiểm `type@major` chưa đăng ký là hàng `wf.unknown_node_type` của bảng mã workflow-engine:R2.14, làm ở workflow-engine/01.

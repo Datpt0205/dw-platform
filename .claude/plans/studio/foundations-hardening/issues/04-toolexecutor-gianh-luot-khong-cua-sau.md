@@ -9,7 +9,7 @@ Yêu cầu: R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.7, FH15, FH16, FH17, FH18, FH
 
 Mỗi hiệu ứng của một công cụ chạy một lần dù hai lời gọi cùng khóa đến đồng thời, claim mồ côi có
 người dọn, bản ghi lần gọi chỉ thêm và có CHECK, và không mục nào tới model mà không qua ToolExecutor
-(R6.1-R6.7, FH15-FH19; ADR-0108 (Proposed) quyết định 5; ADR-0116 (Proposed) quyết định 3 và 7).
+(R6.1-R6.7, FH15-FH19; ADR-0108 (Accepted) quyết định 5; ADR-0116 (Accepted) quyết định 3 và 7).
 Mọi loại công cụ Studio sau này thừa hưởng việc chạy một lần từ đây.
 
 ## Việc cần làm
@@ -17,7 +17,7 @@ Mọi loại công cụ Studio sau này thừa hưởng việc chạy một lầ
 Claim trước hiệu ứng (R6.1, R6.2, R6.3, R6.7):
 
 1. Revision Alembic mới `db/migrations/versions/*_tool_execution_claims.py` (id ngẫu nhiên): bảng
-   `platform.tool_execution_claims` theo ADR-0108 (Proposed) quyết định 5:
+   `platform.tool_execution_claims` theo ADR-0108 (Accepted) quyết định 5:
     - cột `tenant_id uuid NOT NULL` (FK tới tenant, `ON DELETE CASCADE`), `workspace_id uuid NOT NULL`
       (FK tới workspace, `ON DELETE CASCADE`, có index riêng), `tool_name text NOT NULL`,
       `idempotency_key text NOT NULL`, `run_id uuid NOT NULL`,
@@ -57,8 +57,8 @@ Không còn cửa sau (R6.4, R6.5, R6.6):
    `write_todos`.
 10. Sửa comment liệt kê công cụ dựng sẵn ở `langchain_tools.py` cho khớp comment đã đo ở
     `agent_factory.py`; sửa `configs/workers/README.md`: runner đọc `autonomy_level` qua
-    `lower_autonomy` và bảng của `autonomy.py`, câu "read by nothing" không còn đúng (ADR-0117 (Proposed)
-    (Proposed), ADR-0125 (Proposed)).
+    `lower_autonomy` và bảng của `autonomy.py`, câu "read by nothing" không còn đúng (ADR-0117 (Accepted),
+    ADR-0125 (Accepted)).
 
 ## Tiêu chí chấp nhận
 

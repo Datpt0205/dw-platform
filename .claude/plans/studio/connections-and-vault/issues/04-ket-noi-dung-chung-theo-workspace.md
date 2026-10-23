@@ -20,13 +20,17 @@ từ B8a-connections connections-and-vault 07. P1 chỉ kết nối dùng chung 
 2. `connection_usable(connection_id, principal, workspace_id)` một hàm: trả false khi Connection status
    không `active`, khi Phạm vi dùng chung `workspace` không phủ workspace của lượt chạy, hay khi credential
    version đã thu hồi; dùng ở ba chỗ (phát hành điểm gắn, nhận lượt chạy, trước mỗi lời gọi egress).
-3. `ConnectionDependentsPort` khai ở đây (workflow-engine và agent-builder cài), cho "Được dùng bởi" và
-   chặn xóa.
+3. `ConnectionDependentsPort` khai ở đây, cho "Được dùng bởi" và chặn xóa. Bên đáp ứng là tenant-config
+   (đọc `studio.dependencies` cộng giá trị Bộ giá trị gắn đã duyệt trong `platform.config_versions`);
+   workflow-engine và agent-builder không cài nó (tenant-config:R3.7). tenant-config/05 chờ ticket này, nên R5.8 ở đây kiểm qua
+   một bản giả theo đúng hợp đồng port (trả danh sách phụ thuộc của fixture).
 4. Routes `GET`, `POST /api/v1/connections`, `GET`, `PATCH`, `DELETE /api/v1/connections/{id}`,
    `POST /api/v1/connections/{id}/test`, `.../disable`, `.../enable`,
-   `GET /api/v1/connections/{id}/dependents`; quyền `connections.read`, `connections.manage` (tenant-rbac
-   ánh xạ); trường bí mật `writeOnly` lưu qua `platform.put_secret` (ticket 02); `Idempotency-Key` cho
-   `POST`; DELETE còn phụ thuộc → 409 `connection_in_use`; id của công ty khác ở mọi route → 404.
+   `GET /api/v1/connections/{id}/dependents`; quyền `connections.read`, `connections.manage`, đăng ký vào
+   Danh mục quyền trong migration của ticket này (nhãn, `scope_kind`, `risk` theo tenant-rbac/01), độ sâu
+   qua `platform.effective_grants` của tenant-rbac/02; trường bí mật `writeOnly` lưu qua
+   `platform.put_secret` (ticket 02); `Idempotency-Key` cho `POST`; DELETE còn phụ thuộc → 409
+   `connection_in_use`; id của công ty khác ở mọi route → 404.
 5. Audit `connection.created`, `connection.updated`, `connection.disabled`, `connection.revoked`,
    `connection.tested`; outbox `connection.status_changed` v1; thông báo `needs_reauth` qua
    `platform.deliver_notification`.
@@ -61,10 +65,13 @@ từ B8a-connections connections-and-vault 07. P1 chỉ kết nối dùng chung 
 
 - `packages/python/dw_platform/src/dw_platform/adapters/persistence/scope_holders.py:77`; spec: R5.1
   (quyền theo độ sâu).
-- spec: R5, CV12-CV15; ADR-0115 (Proposed) quyết 2; ticket 02 (`platform.connections`,
+- spec: R5, CV12-CV15; ADR-0115 (Accepted) quyết 2; ticket 02 (`platform.connections`,
   `platform.put_secret`), ticket 03 (Bộ gọi ra ngoài).
 
 ## Comments
 
 - 2026-10-23 (agent): DO-48 (tạm khuyến nghị a) chốt P1 chỉ kết nối dùng chung theo workspace; kết nối cá
   nhân và ủy quyền là W2 (B8a ticket 17).
+- 2026-10-23 (agent): Đạt chốt DO-48.1 (a) ngày 23/10/2026, ticket giữ như đang viết. Theo phát hiện kiểm
+  nhất quán cùng ngày: `ConnectionDependentsPort` do tenant-config đáp ứng (bước 3); khóa `connections.read`,
+  `connections.manage` đăng ký trong migration của ticket này (bước 4).

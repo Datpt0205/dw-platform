@@ -1,9 +1,9 @@
 # 02 — Vỏ phiên bản dùng chung và chỉ mục phụ thuộc ghi trong giao dịch gửi kiểm định
 
-Status: needs-info (DO-05)
-Blocked by: 01, .claude/plans/studio/studio-skeleton/issues/02-goi-dw-studio-va-seam-api.md
+Status: needs-triage
+Blocked by: 01, .claude/plans/studio/studio-skeleton/issues/02-goi-dw-studio-va-seam-api.md, .claude/plans/studio/org-and-principals/issues/01-khoa-don-vi-va-siet-realm.md
 Area: studio
-Yêu cầu: R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R2.7, R2.8, R2.9, R2.10, R2.11, R2.12, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, TC1, TC2, TC3, TC4, TC5, TC6, TC7, TC21, TC24
+Yêu cầu: R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R2.7, R2.8, R2.9, R2.10, R2.11, R2.12, R2.13, R2.14, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, TC1, TC2, TC3, TC4, TC5, TC6, TC7, TC21, TC24, TC27
 
 ## Mục tiêu
 
@@ -17,8 +17,13 @@ viết chuyển giai đoạn nào khác.
 
 1. Revision Alembic mới (id hex ngẫu nhiên) trong schema `studio` của studio-skeleton/01, chép nguyên
    văn ràng buộc ở mục Dữ liệu của spec:
-    - `studio.artifacts`: `id` UUIDv7; `kind` CHECK đúng các loại của `ArtifactKindRegistry`;
-      `api_name` `^[a-z][a-z0-9_]{1,62}$`, unique `(tenant_id, kind, api_name)` khi
+    - `studio.artifact_kinds`: danh mục loại của nền tảng, không có `tenant_id`; `kind text` là khóa
+      chính; `dw_app` chỉ SELECT. Ticket này tạo bảng rỗng; mỗi spec đăng ký một loại INSERT một dòng bằng
+      migration của nó, cùng lúc với mục registry (OPS-b). Test tích hợp của ticket này thêm dòng
+      `fixture` và `fixture_gateless` bằng vai migrator trong một fixture pytest phạm vi session và gỡ khi
+      xong; migration không bao giờ chứa hai dòng đó.
+    - `studio.artifacts`: `id` UUIDv7; `kind` FK tới `studio.artifact_kinds (kind)` ON DELETE RESTRICT, có
+      index; `api_name` `^[a-z][a-z0-9_]{1,39}$`, unique `(tenant_id, kind, api_name)` khi
       `deleted_at IS NULL`; FK `(tenant_id, owning_workspace_id)` tới `platform.workspaces (tenant_id, id)`
       ON DELETE RESTRICT; `labels text[] NOT NULL DEFAULT '{}'` (bộ lọc `label` của danh sách đọc);
       `origin jsonb` NULL (domain-packs ghi và đọc nguồn gốc gói); `last_version_no integer NOT NULL DEFAULT 0`; `row_version integer NOT NULL`;
@@ -39,17 +44,14 @@ viết chuyển giai đoạn nào khác.
       FK một index; `usage` CHECK (`read`, `write`, `compare`, `invoke`, `bind`, `display`); `path` con
       trỏ JSON; index `(tenant_id, to_kind, to_key)`. `to_field_id` không có ở đây: custom-objects thêm
       cột và FK cùng bảng field của nó.
-    - `uq_workspaces_tenant_id_id` trên `platform.workspaces (tenant_id, id)` cho FK ghép.
-    - Ticket này chưa có loại thật: `ck_artifacts_kind` tạo với tập rỗng
-      (`kind = ANY ('{}'::text[])`); mỗi spec đăng ký loại thêm giá trị của nó bằng migration riêng, cùng
-      lúc với mục registry. Test tích hợp của ticket này thêm giá trị `fixture` bằng vai migrator trong
-      một fixture pytest phạm vi session và gỡ khi xong; migration không bao giờ chứa `fixture`.
+    - FK ghép tới `platform.workspaces` dùng `uq_workspaces_tenant_id_id` do org-and-principals/01 tạo;
+      ticket này không tạo ràng buộc đó (OPS-a.2).
 2. Trigger trong cùng revision, tên ràng buộc theo `NAMING_CONVENTION`, ánh xạ ra lỗi API theo tên:
     - `studio.refuse_sealed_content_change()`: BEFORE UPDATE trên `studio.artifact_versions`, từ chối đổi
       `document`, `document_schema`, `content_hash`, `definition_hash`, `version_no`, `artifact_id` khi
       `OLD.stage <> 'draft'` (TC1).
     - `studio.refuse_api_name_change()`: BEFORE UPDATE OF `api_name` trên `studio.artifacts`, từ chối khi
-      thành phần có phiên bản ở `live` hay `retired` (TC4; DO-08, tạm).
+      thành phần có phiên bản ở `live` hay `retired` (TC4; DO-08).
     - `studio.refuse_soft_delete_in_use()`: BEFORE UPDATE OF `deleted_at`, khi `deleted_at` chuyển từ
       NULL sang có giá trị mà một dòng `studio.dependencies` của thành phần khác trỏ tới nó từ một phiên
       bản `evaluating`, `awaiting_approval` hay `live`: `ERRCODE 23503`, ràng buộc
@@ -57,28 +59,30 @@ viết chuyển giai đoạn nào khác.
     - `updated_at` do `platform.touch_updated_at()` giữ, nhường giá trị câu lệnh nêu (CLAUDE.md "Data
       model rules").
 3. RLS ENABLE và FORCE, policy `tenant_isolation_<bảng>` chỉ theo `app.tenant_id` (định nghĩa toàn
-   tenant, ADR-0100 (Proposed) quyết 5). Grant: `dw_app` SELECT, INSERT, UPDATE trên `studio.artifacts`
+   tenant, ADR-0100 (Accepted) quyết 5). Grant: `dw_app` SELECT, INSERT, UPDATE trên `studio.artifacts`
    và `studio.artifact_versions` (không DELETE); SELECT, INSERT trên `studio.dependencies` và
-   `studio.definition_manifests`. Khẳng định trong `test_privileges.py`; `test_rls_coverage.py` thấy cả
-   bốn bảng.
+   `studio.definition_manifests`; SELECT trên `studio.artifact_kinds`. Khẳng định trong
+   `test_privileges.py`; `test_rls_coverage.py` thấy cả bốn bảng có `tenant_id`, và mỗi bảng có một dòng lý
+   do trong danh sách bảng toàn tenant của test đó (định nghĩa có `owning_workspace_id`, phiên bản và chỉ mục
+   phụ thuộc là con của thành phần, bản kê định nghĩa định danh theo nội dung; DO-01).
 4. Offboarding: `_ORDERED_FIRST` thêm theo thứ tự `studio.dependencies`, `studio.artifacts`,
    `studio.artifact_versions` (đã đo: xóa `studio.artifacts` trước khi gỡ cạnh phụ thuộc thì hỏng);
    `test_offboarding.py` purge một tenant có hai thành phần phụ thuộc nhau ở hai workspace (TC21).
-5. `ArtifactKindRegistry` trong lõi `dw_studio`, đăng ký ở `build_studio` (ADR-0100 (Proposed) quyết 6):
+5. `ArtifactKindRegistry` trong lõi `dw_studio`, đăng ký ở `build_studio` (ADR-0100 (Accepted) quyết 6):
    mỗi mục có `kind`, `document_schema`, khóa quyền đọc và ghi của loại (tenant-rbac/01 đăng ký khóa),
-   `validate(document)` trả mọi lỗi kèm con trỏ JSON, `extract(document)` thuần trả các phụ thuộc. Test
-   ở composition root: tập loại của registry bằng tập giá trị của `ck_artifacts_kind` đọc từ
-   `pg_constraint`.
+   cờ `has_quality_gate` mặc định `True` (R2.14), `validate(document)` trả mọi lỗi kèm con trỏ JSON,
+   `extract(document)` thuần trả các phụ thuộc. Test ở composition root: tập loại của registry bằng tập dòng
+   của `studio.artifact_kinds`.
 6. `ArtifactService` (lõi `dw_studio`, constructor injection), mỗi thao tác một kiểm quyền: quyền đọc
    hay ghi của loại ở độ sâu chạm tới `owning_workspace_id`, đọc từ `platform.effective_grants`
-   (tenant-rbac/02, ADR-0104 (Proposed) quyết 5); tenant khác hay không đọc được → 404, đọc được mà
+   (tenant-rbac/02, ADR-0104 (Accepted) quyết 5); tenant khác hay không đọc được → 404, đọc được mà
    không ghi được → 403 `permission_denied` (TC24).
     - `create`: thành phần, nháp đầu và audit `studio.artifact.created` trong một giao dịch; Tên API sai
       mẫu → 422 `validation_failed`; vi phạm unique `(tenant_id, kind, api_name)` ánh xạ theo tên ràng
       buộc → 409 `conflict`, `details.reason_code` `api_name_taken`.
     - `save_draft`: `to_nfc` ở biên, `If-Match` so với `row_version`; khớp → thay tài liệu, tăng
       `row_version`, trả ETag mới; lệch → 412 `precondition_failed`, `details.reason_code`
-      `stale_version`; thiếu → 428 (ADR-0108 (Proposed) quyết 3). Audit `studio.artifact.draft_saved`
+      `stale_version`; thiếu → 428 (ADR-0108 (Accepted) quyết 3). Audit `studio.artifact.draft_saved`
       chỉ mang `row_version`.
     - `update`: `api_name`, `labels` với `If-Match`; `api_name` khi đã có phiên bản từng `live` → 409
       `api_name_immutable` trước khi trigger phải chặn; audit `studio.artifact.updated` với tên trường.
@@ -87,28 +91,31 @@ viết chuyển giai đoạn nào khác.
       liệt kê mọi lỗi trong `errors[]`), `version_no = last_version_no + 1`, `content_hash` qua
       `dw_kernel.canonical`, bao đóng qua `extract` (mỗi thành phần ghim
       `(kind, key, version, content_hash)`), `definition_hash` là mã băm của bao đóng, ghi `studio.definition_manifests`
-      `ON CONFLICT DO NOTHING`, ghi các dòng `studio.dependencies`, rồi chuyển `stage` sang `evaluating`.
-      Không audit: route gửi kiểm định của agent-lifecycle/03 audit trong cùng giao dịch.
+      `ON CONFLICT DO NOTHING`, ghi các dòng `studio.dependencies`, rồi chuyển `stage` sang `evaluating`,
+      hoặc sang `awaiting_approval` khi mục registry của loại có `has_quality_gate = False` (R2.13; bên gọi
+      mở yêu cầu phê duyệt phát hành trong cùng giao dịch, ADR-0120 (Accepted) quyết 2). Không audit: route
+      gửi kiểm định của agent-lifecycle/03 audit trong cùng giao dịch.
     - `soft_delete`: đặt `deleted_at`; `ck_artifacts_not_in_use` → 409 `conflict`, `details.reason_code`
       `artifact_in_use`, `details` gồm số đếm theo giai đoạn; audit `studio.artifact.deleted`.
     - `dependents`: nhóm theo giai đoạn (`live`, ứng viên); tên chỉ cho bên người gọi đọc được theo cùng
       kiểm quyền, còn lại chỉ đếm (TC7). `draft_dependencies`: chạy `extract` trên nháp, không ghi dòng
       nào.
 7. Route trong nhóm `/api/v1/studio` của studio-skeleton/02, lỗi theo vỏ problem+json
-   (ADR-0108 (Proposed)): `POST /api/v1/studio/artifacts`, `GET /api/v1/studio/artifacts` (keyset trên index danh
+   (ADR-0108 (Accepted)): `POST /api/v1/studio/artifacts`, `GET /api/v1/studio/artifacts` (keyset trên index danh
    sách, lọc `kind`, `label`), `GET /api/v1/studio/artifacts/{id}`, `PATCH /api/v1/studio/artifacts/{id}`,
    `PUT /api/v1/studio/artifacts/{id}/draft`, `GET /api/v1/studio/artifacts/{id}/versions`,
    `GET /api/v1/studio/artifacts/{id}/versions/{version_no}`, `DELETE /api/v1/studio/artifacts/{id}`,
    `GET /api/v1/studio/artifacts/{id}/dependents`, `GET /api/v1/studio/artifacts/{id}/draft/dependencies`.
    Mọi id là UUID. `make generate-contracts`.
 8. Loại `fixture` chỉ trong test: tài liệu có trường `uses` trỏ tới thành phần khác, `extract` trả một
-   phụ thuộc `artifact` cho mỗi phần tử; test fixture khẳng định đúng tập dòng ghi ra.
+   phụ thuộc `artifact` cho mỗi phần tử; test fixture khẳng định đúng tập dòng ghi ra. Loại
+   `fixture_gateless` chỉ trong test, cùng tài liệu, khai `has_quality_gate = False`.
 
 ## Tiêu chí chấp nhận
 
 - [ ] R2.1: `POST` tạo thành phần có id UUIDv7, một nháp và một audit `studio.artifact.created` trong một
       giao dịch; lỗi giữa chừng không để lại dòng nào.
-- [ ] R2.2: Tên API 63 ký tự được nhận; 64 ký tự, 1 ký tự, `Lead` hay `1lead` → 422, không dòng nào.
+- [ ] R2.2: Tên API 40 ký tự được nhận; 41 ký tự, 1 ký tự, `Lead` hay `1lead` → 422, không dòng nào.
 - [ ] R2.3: Tên API trùng thành phần chưa xóa cùng loại → 409 `api_name_taken`; sau khi thành phần cũ bị
       xóa mềm, cùng tên tạo được; tenant khác dùng cùng tên được.
 - [ ] R2.4: `PUT` nháp với `If-Match` đúng → tài liệu mới, `row_version` tăng 1, ETag mới.
@@ -129,6 +136,10 @@ viết chuyển giai đoạn nào khác.
       thành phần của tenant A → 404; gỡ kiểm quyền ở service → test đỏ.
 - [ ] R2.12 (TC24): người đọc được mà không có quyền ghi `PUT` nháp → 403 `permission_denied`, nháp không
       đổi.
+- [ ] R2.13 (TC27): niêm phong nháp hợp lệ của `fixture_gateless` cấp số phiên bản và hai mã băm như R2.7 và
+      để phiên bản ở `awaiting_approval`, không qua `evaluating`.
+- [ ] R2.14 (TC27): mục `fixture` không nêu cờ cổng → niêm phong sang `evaluating`; đổi giá trị mặc định của
+      `has_quality_gate` thành `False` → test đỏ.
 - [ ] R3.1 (TC6): lỗi chèn giữa giao dịch niêm phong → không số phiên bản, không dòng
       `studio.dependencies`, không dòng `studio.definition_manifests`; làm hỏng `extract` của `fixture`
       → test fixture đỏ.
@@ -150,11 +161,15 @@ viết chuyển giai đoạn nào khác.
 - `packages/python/dw_platform/src/dw_platform/adapters/persistence/tables.py:46`; spec: Dữ liệu.
 - `packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:108-114`; spec: R3.6,
   TC21.
-- `db/migrations/sql/0001_platform_grants.sql:27`; spec: R2, R3; ADR-0109 (Proposed) quyết 1-2, 4-5;
-  ADR-0120 (Proposed) quyết 1.
+- `db/migrations/sql/0001_platform_grants.sql:27`; spec: R2, R3; ADR-0109 (Accepted) quyết 1-2, 4-5;
+  ADR-0120 (Accepted) quyết 1.
 
 ## Comments
 
 - 2026-10-23 (agent): gộp từ B6 tenant-config 02 và 03. Không có con trỏ `active_version_id`
-  (ADR-0109 (Proposed) quyết 2). Ticket dùng ETag, `If-Match`, 412 và 428 của app-standards/03 và
+  (ADR-0109 (Accepted) quyết 2). Ticket dùng ETag, `If-Match`, 412 và 428 của app-standards/03 và
   `platform.effective_grants` của tenant-rbac/02, hai ticket chưa có ở Blocked by của gói nguồn.
+- 2026-10-23 (agent): DO-05 đã có lời đáp (Đạt 23/10/2026, một vỏ chung), nên ticket về `needs-triage`.
+  Theo phiếu cùng ngày: Tên API `{1,39}` (ADR-0107 (Accepted)), `studio.artifact_kinds` thay `ck_artifacts_kind`
+  (OPS-b), `uq_workspaces_tenant_id_id` do org-and-principals/01 tạo (OPS-a.2), loại không có Cổng chất
+  lượng sang `awaiting_approval` (R2.13), danh sách bảng toàn tenant (DO-01).

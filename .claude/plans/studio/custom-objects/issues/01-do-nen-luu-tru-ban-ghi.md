@@ -2,13 +2,13 @@
 
 Status: needs-triage
 Area: studio
-Yêu cầu: R9.1, R9.2, R9.3, R9.4
+Yêu cầu: R9.1, R9.2, R9.4, R9.5
 
 ## Mục tiêu
 
-Cho Đạt số đo để chốt hai quyết định của ADR-0107 (Proposed) trước khi viết migration đầu của `studio.records`:
-partition băm modulus 8 theo `tenant_id` hay không (R9.2, R9.3; DO-15, Q2 của spec) và ngân sách slot mỗi đối
-tượng (R9.4), cùng một lần đọc sớm YC20 (R9.1) trên lược đồ ứng viên. Mọi số đo ở quy mô D12: 10 triệu bản ghi một
+Cho Đạt số đo để chốt hai quyết định của ADR-0107 (Accepted) trước khi viết migration đầu của `studio.records`:
+partition băm theo `tenant_id` modulus 8 hay đường lui modulus 4 (R9.2, R9.5; DO-15 đã quyết theo khuyến nghị (a),
+Đạt 23/10/2026) và ngân sách slot mỗi đối tượng (R9.4), cùng một lần đọc sớm YC20 (R9.1) trên lược đồ ứng viên. Mọi số đo ở quy mô D12: 10 triệu bản ghi một
 đối tượng, 50 triệu một công ty, 5.000 người dùng, 200 workspace, cây workspace sâu 6. Đây là phép đo FOG-41 và
 FOG-55 mà `.claude/plans/studio/discovery/issues/07-records-storage.md` giao cho ticket này.
 
@@ -23,17 +23,17 @@ FOG-55 mà `.claude/plans/studio/discovery/issues/07-records-storage.md` giao ch
    `d01`-`d08`, `z01`-`z08`, `b01`-`b08`, `u01`-`u04`, mỗi slot một chỉ mục từng phần
    `(tenant_id, object_id, <slot>, id) WHERE <slot> IS NOT NULL AND deleted_at IS NULL`, mỗi slot `u` thêm UNIQUE
    từng phần `(tenant_id, object_id, uNN) WHERE uNN IS NOT NULL AND deleted_at IS NULL`; policy RESTRICTIVE
-   `tenant_isolation_records` dạng InitPlan trên bảng cha và mỗi partition. Hai biến thể:
-   `PARTITION BY HASH (tenant_id)` modulus 8 (`studio.records_p0` tới `studio.records_p7`) và không partition với
-   cùng khóa tổng hợp.
+   `tenant_isolation_records` dạng InitPlan trên bảng cha và mỗi partition. Hai biến thể, cả hai hợp D12:
+   `PARTITION BY HASH (tenant_id)` modulus 8 (`studio.records_p0` tới `studio.records_p7`) và modulus 4
+   (`studio.records_p0` tới `studio.records_p3`), đường lui của DO-15; không đo biến thể không partition.
 3. Bộ gieo có hạt giống, viết thành hàm `seed(scale)` dùng lại được để record-access/01 đo quyền trên cùng dữ liệu:
    một công ty lớn có 5 đối tượng giống Lead, mỗi đối tượng 10 triệu bản ghi (50 triệu), 5.000 người dùng làm người
-   phụ trách, 200 workspace trong cây sâu 6; 99 công ty nhỏ, mỗi công ty 10.000 bản ghi, rải trên cả 8 partition;
+   phụ trách, 200 workspace trong cây sâu 6; 99 công ty nhỏ, mỗi công ty 10.000 bản ghi, rải trên mọi partition;
    tên tiếng Việt có dấu, có giá trị trùng và NULL ở mỗi họ slot.
 4. Đo bằng `dw_app` dưới FORCE RLS, mỗi giao dịch đặt `app.tenant_id`:
     - thời gian lập kế hoạch p50 và p95 của truy vấn ba vị từ trên ba slot khác họ, với custom plan và generic plan,
       có và không có `tenant_id = $1`;
-    - `CacheMemoryContext` mỗi backend sau khi chạm cả 8 partition (`pg_backend_memory_contexts`);
+    - `CacheMemoryContext` mỗi backend sau khi chạm mọi partition (`pg_backend_memory_contexts`);
     - trang đầu 50 dòng sắp `created_at DESC, id DESC`, sắp `name`, lọc một slot `t` và một slot `i`, và `GET` theo
       `(tenant_id, id)`: p50, p95, p99 phía máy chủ;
     - `ORDER BY name` với `COLLATE "vi-VN-x-icu"` dưới RLS: có dùng chỉ mục không, và thứ tự "An, Ánh, Ân, Bình,
@@ -51,15 +51,17 @@ FOG-55 mà `.claude/plans/studio/discovery/issues/07-records-storage.md` giao ch
     - đếm bản ghi cho hạn mức lưu trữ: dòng bộ đếm so với ước lượng `reltuples` (câu 4 của discovery/07).
 5. Ghi kết quả vào Comments của ticket này và của discovery/07: bảng số đo, lệnh chạy, `EXPLAIN (ANALYZE, BUFFERS)`
    cho mỗi khẳng định "dùng chỉ mục", ngưỡng nào đạt và ngưỡng nào trượt. Đề xuất sửa quyết định 1 (ngân sách slot)
-   và 2 (partition) của ADR-0107 (Proposed) theo số, qua `mattpocock-skills:domain-modeling`; Đạt quyết DO-15.
+   và 2 (partition) của ADR-0107 (Accepted) theo số, qua `mattpocock-skills:domain-modeling`. Modulus chọn theo DO-15
+   (a): 8 khi modulus 8 đạt cả hai ngưỡng, 4 khi chỉ modulus 4 đạt; cả hai trượt thì quay lại người đặt yêu cầu. Số đo
+   vào Comments trước khi ticket 02 lên ready-for-agent.
 
 ## Tiêu chí chấp nhận
 
 - [ ] R9.2: planning p95 của truy vấn ba vị từ (custom và generic plan) và `CacheMemoryContext` mỗi backend với 8
       partition có trong Comments kèm lệnh đo, và kết luận đạt hay trượt so với 5 ms và 64 MB; sai nếu một số
       không có lệnh hay kế hoạch đi kèm.
-- [ ] R9.3: cùng các số đó đo trên biến thể không partition, đặt cạnh biến thể 8 partition trong một bảng; sai nếu
-      chỉ một biến thể được đo.
+- [ ] R9.5: cùng các số đó đo trên biến thể modulus 4, đặt cạnh biến thể modulus 8 trong một bảng, kèm modulus được
+      chọn theo DO-15; sai nếu chỉ một biến thể được đo.
 - [ ] R9.4: ngân sách slot đề xuất cho mỗi họ, kèm số chỉ mục trên một bảng, tỉ lệ HOT và WAL đã đo; sai nếu ngân
       sách không dẫn số đo nào.
 - [ ] R9.4: UNIQUE từng phần trên `u01` của bảng partition, `ON CONFLICT` dưới policy theo lệnh, trigger
@@ -73,10 +75,12 @@ FOG-55 mà `.claude/plans/studio/discovery/issues/07-records-storage.md` giao ch
 
 ## Nguồn
 
-- `.claude/plans/studio/discovery/issues/07-records-storage.md:10-18`; spec: R9.1, R9.2, R9.3, R9.4, Q2.
+- `.claude/plans/studio/discovery/issues/07-records-storage.md:10-18`; spec: R9.1, R9.2, R9.4, R9.5.
 - `.claude/plans/studio/discovery/issues/10-dedupe-and-upsert.md:14-15`; spec: R7.3.
 - `db/migrations/sql/0001_platform_grants.sql:27-46`; `db/migrations/sql/0001_platform_baseline.sql:770`.
 - `db/migrations/versions/0004_touch_updated_at_yields.py:44`; `infra/compose/docker-compose.yml:45`.
-- ADR-0107 (Proposed) quyết định 1, 2 và Open 2.
+- ADR-0107 (Accepted) quyết định 1, 2 và Open 2.
 
 ## Comments
+
+- 2026-10-23 (agent): DO-15 (a) đã quyết (Đạt, 23/10/2026): biến thể không partition thay bằng modulus 4, đường lui hợp D12; R9.3 bỏ, R9.5 thêm.

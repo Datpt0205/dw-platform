@@ -1,7 +1,7 @@
 # 05 — Giao người phụ trách và đổi workspace sở hữu
 
 Status: needs-triage
-Blocked by: 03, 04
+Blocked by: 03, 04, .claude/plans/studio/app-standards/issues/01-vo-loi-problem-json.md, .claude/plans/studio/app-standards/issues/02-khoa-chong-lap-gan-nguoi-goi.md
 Area: studio
 Yêu cầu: R8.1, R8.2, R8.3, R8.4, R8.5, R8.6, R8.7, R8.8, R8.9, R8.10, RA24, RA25, RA26
 
@@ -9,7 +9,7 @@ Yêu cầu: R8.1, R8.2, R8.3, R8.4, R8.5, R8.6, R8.7, R8.8, R8.9, R8.10, RA24, R
 
 Trưởng kinh doanh, hay bước "Giao cho" của quy trình tiếp nhận, giao một lead của Marketing cho một nhân viên Sales
 qua một hàm duy nhất được đổi người phụ trách, giữ workspace sở hữu trừ khi người giao chọn khác, có audit và outbox
-trong cùng giao dịch (spec R8; ADR-0105 (Proposed) mục 2 và 3; DO-11 theo khuyến nghị (a), tạm).
+trong cùng giao dịch (spec R8; ADR-0105 (Accepted) mục 2 và 3; DO-11 theo khuyến nghị (a), tạm).
 
 ## Việc cần làm
 
@@ -64,10 +64,12 @@ trong cùng giao dịch (spec R8; ADR-0105 (Proposed) mục 2 và 3; DO-11 theo 
 - `apps/api/src/dw_api/dependencies/idempotency.py:217`; spec: R8.10.
 - `db/migrations/sql/0001_platform_baseline.sql:304`; spec: R8.8.
 - `db/migrations/sql/0012_partition_maintenance.sql:45-48`; spec: R8.1.
-- `docs/adr/0104-tenant-roles-with-depth-and-one-effective-grants-owner.md:62-66`; spec: R8.4, R8.5.
-- `docs/adr/0105-record-reach-is-decided-by-postgresql.md:67-74`; spec: R8.1, R8.2.
+- `docs/adr/0104-tenant-roles-with-depth-and-one-effective-grants-owner.md:65-69`; spec: R8.4, R8.5.
+- `docs/adr/0105-record-reach-is-decided-by-postgresql.md:67-76`; spec: R8.1, R8.2.
 
 ## Comments
 
 - 2026-10-23 (agent): DO-11 theo khuyến nghị (a), tạm: lần giao giữ workspace sở hữu mặc định, người giao chọn khác
   được; người phụ trách được ở workspace khác (lead của Marketing, người phụ trách ở Sales).
+- 2026-10-23 (agent): DO-11 (a) đã được Đạt xác nhận ngày 23/10/2026; thêm app-standards/01, /02 vào Blocked by vì route
+  giao dùng problem+json và `Idempotency-Key` gắn người gọi; người dự phòng khi giao là của workflow-nodes (Q6).

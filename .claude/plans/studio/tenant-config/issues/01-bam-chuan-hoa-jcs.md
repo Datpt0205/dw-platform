@@ -22,7 +22,7 @@ nguyên (G2, G3). Ticket này là chủ duy nhất của băm RFC 8785 cho cả 
       2^53−1 → `integer_out_of_range` (2^53−1 nhận, 2^53 từ chối); chuỗi hay khóa không ở NFC →
       `not_nfc`; khóa không phải `str` → `key_not_string`; surrogate lẻ → `lone_surrogate`; kiểu khác
       (`Decimal`, `bytes`, `datetime`) → `type_forbidden`. Số không nguyên đi trong tài liệu dưới dạng
-      chuỗi thập phân (ADR-0109 (Proposed) quyết 3).
+      chuỗi thập phân (ADR-0109 (Accepted) quyết 3).
     - `canonical_bytes(value) -> bytes`: gọi `ensure_hashable`, sắp khóa theo đơn vị mã UTF-16 (RFC 8785
       mục 3.2.3), rồi `json.dumps(..., ensure_ascii=False, separators=(",", ":"))` trên khóa đã sắp,
       mã hóa UTF-8.
@@ -45,7 +45,7 @@ nguyên (G2, G3). Ticket này là chủ duy nhất của băm RFC 8785 cho cả 
 4. Test đối chiếu: `canonical_bytes` của `contracts/release/manifest.json` bỏ `git_sha` bằng đúng bytes
    mà `manifest_ref` băm (`scripts/release_manifest.py:249-254`). Không sửa `manifest_ref` và
    `canonical_hash` của executor (`packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py:69-73`):
-   khóa chống lặp của lượt chạy đang dở dựa vào nó (ADR-0108 (Proposed)).
+   khóa chống lặp của lượt chạy đang dở dựa vào nó (ADR-0108 (Accepted)).
 5. `make test-architecture` xanh: kernel vẫn chỉ dùng stdlib.
 
 ## Tiêu chí chấp nhận
@@ -68,7 +68,7 @@ nguyên (G2, G3). Ticket này là chủ duy nhất của băm RFC 8785 cho cả 
 
 - `packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py:69-73`; spec: G2.
 - `scripts/release_manifest.py:249-254`; spec: R1.5, G3.
-- `pyproject.toml:252`; spec: R1, TC8; ADR-0109 (Proposed) quyết 3.
+- `pyproject.toml:252`; spec: R1, TC8; ADR-0109 (Accepted) quyết 3.
 
 ## Comments
 

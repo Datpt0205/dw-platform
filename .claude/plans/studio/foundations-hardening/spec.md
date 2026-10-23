@@ -9,8 +9,8 @@ Studio đặt dữ liệu do tenant định nghĩa, agent do tenant dựng và v
 nền đang có lỗi cô lập tenant, cô lập người gọi, hiệu ứng chạy hai lần và test không thể đỏ. Spec
 này sửa các lỗi đã đo trong code ngày 23/10/2026, mỗi bản vá kèm một test âm đã thấy đỏ trước bản vá
 và đỏ lại khi hoàn tác; không thêm tính năng. Nó phục vụ YC4, YC41 (phần mỗi tác động được nhận đúng
-một lần), YC63 và phần công cụ của YC5; mọi spec Studio khác đứng sau nó (ADR-0103 (Proposed),
-ADR-0108 (Proposed)).
+một lần), YC63 và phần công cụ của YC5; ticket của spec khác chạm cùng hàm, bảng hay tệp với một ticket
+ở đây chờ ticket đó qua dòng Blocked by của chúng (ADR-0103 (Accepted), ADR-0108 (Accepted)).
 
 ## Hiện trạng (đã kiểm ở `ab33703` ngày 23/10/2026)
 
@@ -196,7 +196,7 @@ ADR-0108 (Proposed)).
   `infra/compose/docker-compose.yml:510`, `infra/compose/docker-compose.yml:532`,
   `infra/compose/docker-compose.yml:563`, `infra/compose/docker-compose.yml:611`; các ảnh bên thứ ba
   khác có tag phiên bản nhưng không digest; chỉ Caddy có digest
-  (`infra/compose/docker-compose.host.yml:48`). Ràng buộc: `CLAUDE.md:115-116` đòi ghim phiên bản.
+  (`infra/compose/docker-compose.host.yml:48`). Ràng buộc: `CLAUDE.md:128-129` đòi ghim phiên bản.
 - `resume` kiểm `waiting_approval` rồi chạy graph mà không đổi trạng thái
   (`packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langgraph_runner.py:508-513`) và
   chỉ bắt `Exception`
@@ -229,6 +229,19 @@ ADR-0108 (Proposed)).
   `.claude/plans/platform-runtime.md:88-91`.
 - Không câu lệnh nào ngoài test xóa dòng outbox đã xử lý (grep), và chính sách retention không có lớp
   cho outbox (`configs/policies/retention@1.7.0.yaml:23`). Thiếu: hạn giữ chưa ai quyết.
+- Danh mục xuất của offboarding lấy mọi bảng có policy `tenant_isolation_%` mà `dw_app` đọc được
+  (`packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:68-89`), và hàm tạo
+  partition cho mỗi partition một policy cùng tiền tố
+  (`db/migrations/sql/0013_partition_maintenance.sql:73-76`). Thiếu: dòng của bảng phân vùng được xuất
+  hai lần, một qua bảng cha và một qua partition (đọc mã, chưa chạy).
+- `export_rows` đọc mỗi bảng bằng một `SELECT` và giữ mọi dòng trong bộ nhớ
+  (`packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:162-181`), rồi lane
+  dựng gói zip trong `BytesIO` (`apps/worker/src/dw_worker/consumers/offboarding.py:175-192`). Thiếu: bộ
+  nhớ của lane tăng theo số dòng của công ty (D12: 50 triệu bản ghi mỗi công ty).
+- Audit `tenant.offboarding.purged` đứng tên người vận hành đã yêu cầu
+  (`packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:217-247`), như
+  ADR-0011 (Accepted) cho phép (`docs/adr/0011-a-background-lane-audits-as-itself.md:44-45`).
+  Ràng buộc: actor đó giữ nguyên.
 - Walker `support_routes` chỉ duyệt `APIRoute` cấp đầu
   (`apps/api/tests/unit/test_support_routes.py:44-52`) rồi so với tập rỗng
   (`apps/api/tests/unit/test_support_routes.py:65-67`, `apps/api/src/dw_api/bootstrap/wiring.py:110`).
@@ -294,7 +307,7 @@ Trước đây: mở khóa đặt `active` cho tenant ở mọi trạng thái (`
 ### R4 — Nối danh tính theo quy tắc tạm [Sửa]
 
 Một token không chiếm được tài khoản có sẵn qua email chưa xác minh hay qua subject của issuer khác;
-quy tắc là quyết định 8 của ADR-0103 (Proposed), chờ Đạt chấp nhận [CAN LAM RO: Q1].
+quy tắc là quyết định 8 của ADR-0103 (Accepted), Đạt cho áp ngay từ P0 (DO-17.1).
 Trước đây: nối theo subject của mọi issuer rồi theo email của bất kỳ user nào (`packages/python/dw_platform/src/dw_platform/adapters/persistence/identity_provisioning.py:138-166`).
 
 - R4.1 NẾU email của token trùng email của một user có sẵn mà `email_verified` của token khác
@@ -321,12 +334,12 @@ Trước đây: `dw_app` giữ INSERT, UPDATE, DELETE trên mọi bảng (`db/mi
 - R5.2 Script dựng vai `dw_provisioner` PHẢI cấp cho vai đó đúng tập quyền mà migration cấp trên
   từng bảng, không thêm và không bớt.
 - R5.3 Mọi policy RLS trong catalog, kể cả policy của partition tạo sau, PHẢI đọc mỗi setting phiên
-  trong một sub-SELECT theo dạng của ADR-0105 (Proposed) quyết định 1.
+  trong một sub-SELECT theo dạng của ADR-0105 (Accepted) quyết định 1.
 
 ### R6 — Công cụ có hiệu ứng chạy đúng một lần và không có cửa sau [Sửa]
 
 Mỗi hiệu ứng của một công cụ chạy một lần dù lời gọi trùng nhau, và mọi thứ model gọi được đều đi qua
-ToolExecutor (ADR-0108 (Proposed) quyết định 5, ADR-0116 (Proposed) quyết định 3 và 7).
+ToolExecutor (ADR-0108 (Accepted) quyết định 5, ADR-0116 (Accepted) quyết định 3 và 7).
 Trước đây: executor tìm lần thành công rồi mới chạy handler (`packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py:202-222`).
 
 - R6.1 NẾU hai lời gọi cùng khóa chống lặp tới một công cụ có `side_effect_level` khác `none` chạy
@@ -347,7 +360,7 @@ Trước đây: executor tìm lần thành công rồi mới chạy handler (`pa
 ### R7 — Giới hạn tốc độ theo địa chỉ và một chính sách địa chỉ ra ngoài [Sửa]
 
 Một client không lách giới hạn tốc độ bằng bearer ngẫu nhiên, và không lời gọi ra ngoài nào của nền
-tảng tới địa chỉ không global (ADR-0115 (Proposed) quyết định 5).
+tảng tới địa chỉ không global (ADR-0115 (Accepted) quyết định 5).
 Trước đây: khóa đếm là bearer khi có header (`apps/api/src/dw_api/middleware/rate_limit.py:36-41`).
 
 - R7.1 NẾU một địa chỉ client gửi quá `10 × L` request trong một cửa sổ 60 giây tới một tiến trình
@@ -401,9 +414,22 @@ Trước đây: claim mọi dòng còn lượt theo `occurred_at` (`packages/pyt
   THÌ lane `outbox` PHẢI đặt `dead_at` và không claim lại sự kiện đó.
 - R10.3 Worker PHẢI xuất gauge `dw_outbox_dead_letters` bằng số sự kiện đang mang `dead_at`, bằng 0
   khi không có.
-- R10.4 KHI một người được phép phát lại một sự kiện mang `dead_at` [CAN LAM RO: Q2], công cụ phát
-  lại PHẢI đưa sự kiện về hàng đợi (xóa `dead_at`, `attempts` về 0) và ghi một audit trong cùng giao
-  dịch.
+- R10.4 KHI người vận hành chạy script phát lại cho một sự kiện mang `dead_at`, script phát lại PHẢI
+  đưa sự kiện về hàng đợi (xóa `dead_at`, `attempts` về 0) và ghi một audit đứng tên người vận hành đó
+  trong cùng giao dịch.
+- R10.5 NẾU `--operator` của script phát lại không phải một người vận hành, THÌ script phát lại PHẢI
+  thoát với mã 1 và không đổi sự kiện nào.
+
+### R11 — Offboarding xuất mỗi dòng đúng một lần, theo lô [Sửa]
+
+Người vận hành nhận gói xuất của một công ty có mỗi dòng đúng một lần, và lane xuất không giữ cả bảng
+trong bộ nhớ (YC6, D12).
+Trước đây: danh mục xuất gồm cả partition, và mỗi bảng được đọc bằng một câu lệnh giữ mọi dòng (`packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:162-181`).
+
+- R11.1 KHI lane `offboarding` xuất dữ liệu của một tenant, lane `offboarding` PHẢI đưa mỗi dòng của
+  mỗi bảng tenant, kể cả bảng phân vùng, vào gói xuất đúng một lần.
+- R11.2 KHI lane `offboarding` đọc một bảng để xuất, mỗi câu lệnh đọc của lane `offboarding` PHẢI trả
+  không quá 1.000 dòng, theo thứ tự khóa chính.
 
 ## Hành vi giữ nguyên
 
@@ -424,74 +450,82 @@ Trước đây: claim mọi dòng còn lượt theo `occurred_at` (`packages/pyt
   bảng tenant (test: `test_a_connection_that_never_scopes_itself_reads_nothing`).
 - G7 KHI request tới `/api/v1/health` hay `/api/v1/ready`, middleware giới hạn tốc độ PHẢI TIẾP TỤC
   không đếm request đó (test: `test_health_is_exempt_and_zero_disables`).
+- G8 KHI lane `offboarding` xóa dữ liệu của một tenant, lane `offboarding` PHẢI TIẾP TỤC ghi audit
+  `tenant.offboarding.purged` đứng tên người vận hành đã yêu cầu (test:
+  `test_purge_records_an_audit_event_before_deleting_anything`).
 
 ## Trong phạm vi
 
 - Hàng rào tenant và workspace của `DELETE /api/v1/knowledge/documents/{document_id}`,
   `GET /api/v1/memory/items` và lane `checkpoint_retention`; audit `knowledge.document.deleted`;
   allowlist của serializer checkpoint ở composition root.
-- Trigger trạng thái tenant, xóa cache khi khóa, mở khóa và offboard; quy tắc nối danh tính tạm,
+- Trigger trạng thái tenant; xóa cache khi khóa, mở khóa và offboard, là cách tạm tới tenant-rbac/02,
+  nơi phiên bản quyền vào khóa cache và ba lời gọi xóa cache được gỡ; quy tắc nối danh tính tạm,
   trigger và quyền của `dw_app` trên `platform.external_identities`.
 - Thu quyền ghi của `dw_app` trên `platform.users`, `platform.platform_operators`, `platform.plans`;
   một nguồn cho quyền của `dw_provisioner`; dạng sub-SELECT cho mọi policy RLS.
-- Bảng `platform.tool_execution_claims` (ADR-0108 (Proposed) quyết định 5), lane
+- Bảng `platform.tool_execution_claims` (ADR-0108 (Accepted) quyết định 5), lane
   `tool_claims_retention`, CHECK và quyền của `platform.tool_executions`, lọc mục không phải
   `BaseTool`, che bí mật trong mảng, ghim `deepagents`, test hợp đồng danh sách công cụ.
 - Xô giới hạn tốc độ theo địa chỉ; một chính sách địa chỉ trong `net_guard`; xác thực Qdrant và
   Valkey ở mọi profile; vai `dw_monitor`; digest cho ảnh bên thứ ba và kiểm CI của nó.
 - Compare-and-set khi resume; CHECK trạng thái run, yêu cầu phê duyệt, quyết định; `available_at`,
-  `dead_at`, gauge `dw_outbox_dead_letters` và cảnh báo `DwOutboxDeadLetters`.
+  `dead_at`, gauge `dw_outbox_dead_letters`, cảnh báo `DwOutboxDeadLetters` và script phát lại thư chết
+  của người vận hành.
 - Hai test không thể đỏ và việc rà các mẫu cùng họ.
+- Danh mục xuất của offboarding chỉ gồm bảng cha, đọc theo lô keyset trên khóa chính.
 
 ## Ngoài phạm vi
 
-| Việc                                                           | Vì sao                                                                                | Chủ                                            |
-| -------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| Idempotency HTTP gắn người gọi, fencing token, lane quét khóa  | Một chủ cho idempotency HTTP (ADR-0108 (Proposed) quyết định 4)                       | `app-standards` ticket 02                      |
-| Quyền trả về ở `GET /api/v1/auth/bootstrap` gồm permission set | Thuộc vai và quyền của tenant                                                         | `tenant-rbac` ticket 01                        |
-| Egress client ghim địa chỉ lúc kết nối, smokescreen            | Kiểm DNS chỉ trước khi dùng là việc của egress client; ticket 05 sửa vị từ dùng chung | `connections-and-vault` (ADR-0115 (Proposed))  |
-| IdP theo tenant, mã nhận lời mời thay bước email               | Ticket 02 là quy tắc tạm                                                              | `org-and-principals`, W2 (ADR-0103 (Proposed)) |
-| Bộ đếm giới hạn tốc độ dùng chung giữa các bản sao API         | Bộ đếm hôm nay theo tiến trình                                                        | `usage-and-limits`                             |
-| Lease và tiếp quản run trong 90 giây (YC41)                    | Hàng đợi run chưa có                                                                  | `workflow-engine` (ADR-0113 (Proposed))        |
-| Ghi `expired` khi yêu cầu phê duyệt hết hạn                    | Ticket 06 chỉ mở CHECK cho giá trị này                                                | `workflow-engine` (ADR-0112 (Proposed))        |
-| Mã hóa checkpoint bằng khóa theo tenant                        | Cần KMS và saver mới (ADR-0112 (Proposed) quyết định 10)                              | `connections-and-vault`, `workflow-engine`     |
-| TLS chặng nội bộ, sao lưu mã hóa, SLA báo sự cố                | W2 theo ADR-0123 (Proposed)                                                           | `compliance-pdpl`                              |
-| Hai chủ của quyền đăng tri thức toàn cục                       | Hôm nay từ chối an toàn; R2.1 không mở thêm đường xóa tài liệu toàn cục               | đợt sau                                        |
-| Xóa dòng outbox đã xử lý và hạn giữ của nó                     | Hạn giữ là chủ đề không đoán và chưa ai quyết                                         | đợt sau                                        |
+| Việc                                                                                                                                       | Vì sao                                                                                                                                                                        | Chủ                                            |
+| ------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| Idempotency HTTP gắn người gọi, fencing token, lane quét khóa                                                                              | Một chủ cho idempotency HTTP (ADR-0108 (Accepted) quyết định 4)                                                                                                               | `app-standards` ticket 02                      |
+| Quyền trả về ở `GET /api/v1/auth/bootstrap` gồm permission set                                                                             | Thuộc vai và quyền của tenant                                                                                                                                                 | `tenant-rbac` ticket 01                        |
+| Egress client ghim địa chỉ lúc kết nối, smokescreen                                                                                        | Kiểm DNS chỉ trước khi dùng là việc của egress client; ticket 05 sửa vị từ dùng chung                                                                                         | `connections-and-vault` (ADR-0115 (Accepted))  |
+| IdP theo tenant, mã nhận lời mời thay bước email                                                                                           | Ticket 02 là quy tắc tạm; câu trả lời của dw-proterial có thể đẩy mã nhận lời mời sớm hơn W2 (DO-17.1)                                                                        | `org-and-principals`, W2 (ADR-0103 (Accepted)) |
+| Giới hạn theo tenant dùng chung giữa các bản sao API qua `RateLimiterPort`; mất Valkey thì mỗi tiến trình giữ xô ở hạn mức chia số bản sao | DO-49: usage-and-limits là chủ duy nhất của giới hạn theo tenant; middleware của ticket 05 chỉ chặn ở cửa API theo địa chỉ và bearer                                          | `usage-and-limits`                             |
+| Lease và tiếp quản run trong 90 giây (YC41)                                                                                                | Hàng đợi run chưa có                                                                                                                                                          | `workflow-engine` (ADR-0113 (Accepted))        |
+| Ghi `expired` khi yêu cầu phê duyệt hết hạn, cùng YC52 và lane hẹn giờ                                                                     | Ticket 06 chỉ mở CHECK cho giá trị này; ở W1 phê duyệt chờ không hạn, nên phê duyệt mở và lượt chạy đỗ không có gì dọn khi không ai quyết, chấp nhận với lead giả lập (DO-31) | `workflow-engine`, W2 (ADR-0112 (Accepted))    |
+| Mã hóa checkpoint bằng khóa theo tenant                                                                                                    | Cần KMS và saver mới (ADR-0112 (Accepted) quyết định 10)                                                                                                                      | `connections-and-vault`, `workflow-engine`     |
+| TLS chặng nội bộ, sao lưu mã hóa, SLA báo sự cố 24 giờ từ khi nền tảng biết (DO-56.2)                                                      | W2 theo ADR-0123 (Accepted); runbook và sổ sự cố có trước chạy bóng                                                                                                           | `compliance-pdpl`                              |
+| Hai chủ của quyền đăng tri thức toàn cục                                                                                                   | Hôm nay từ chối an toàn; R2.1 không mở thêm đường xóa tài liệu toàn cục                                                                                                       | đợt sau                                        |
+| Xóa dòng outbox đã xử lý và hạn giữ của nó                                                                                                 | Hạn giữ là chủ đề không đoán và chưa ai quyết; bảng thời hạn của DO-52 không có outbox                                                                                        | đợt sau                                        |
+| Gói xuất offboarding ghi ra đĩa và tải lên theo phần, để bộ nhớ của lane không tăng theo kích thước gói                                    | Ticket 07 chỉ đọc theo lô keyset như quyết định offboarding chọn; gói zip còn dựng trong bộ nhớ, và W1 chỉ có dữ liệu giả lập (YC89)                                          | `foundations-hardening`, đợt sau               |
 
 ## Kiểm soát
 
-| #    | Kiểm soát                                                       | Yêu cầu      | Test âm                                                                                                                                                                            |
-| ---- | --------------------------------------------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| FH1  | Test phủ route của grant và test tiến trình nền đỏ được         | R1.1, R1.2   | Thêm phụ thuộc ngữ cảnh grant vào `GET /api/v1/runs/{run_id}` → test phủ route đỏ; khẳng định "không còn tiến trình" trên lần quét cùng request với `sleep 300 &` → đỏ             |
-| FH2  | Xóa tài liệu chỉ trong workspace của người gọi, vector của mình | R2.1         | Qdrant thật: tenant B xóa id của A, workspace 2 xóa tài liệu workspace 1, mọi tenant xóa tài liệu toàn cục → 404, tài liệu vẫn tìm được; gỡ `tenant_id` khỏi filter tombstone → đỏ |
-| FH3  | Xóa mềm có audit cùng giao dịch                                 | R2.2         | Audit ném lỗi → tài liệu không mang `status='deleted'`; ghi audit sau commit → đỏ                                                                                                  |
-| FH4  | Danh sách bộ nhớ theo clearance                                 | R2.3         | Clearance `internal` gọi `GET /api/v1/memory/items` → không có mục `confidential`; bỏ lọc → đỏ                                                                                     |
-| FH5  | Dọn checkpoint không chạm tenant khác                           | R2.4         | Hai tenant chung `thread_id`, B có checkpoint mới hơn → checkpoint mới nhất của A còn; bỏ so `tenant_id` ở `newer` → đỏ                                                            |
-| FH6  | Checkpoint không dựng kiểu ngoài allowlist                      | R2.5         | Dòng có kiểu ngoài allowlist → nạp ra dict, không object nào được dựng; allowlist `True` → đỏ                                                                                      |
-| FH7  | Tenant offboarding không quay lại `active`, `locked`            | R3.1, R3.2   | `unlock` tenant `offboarding` → 409, trạng thái giữ; UPDATE `offboarded → active` bằng `dw_provisioner` → trigger từ chối; gỡ trigger → đỏ                                         |
-| FH8  | Khóa tenant có hiệu lực từ request kế tiếp                      | R3.3         | Cache giả trung thực, thành viên có context trong cache, khóa tenant → request kế tiếp 403; bỏ xóa cache → đỏ                                                                      |
-| FH9  | Chỉ nối qua email đã xác minh tới user chưa từng đăng nhập      | R4.1, R4.2   | Token `email_verified=false` trùng email lời mời → 403, không thêm danh tính; email đã xác minh của user đã đăng nhập → 403; gỡ kiểm → đỏ                                          |
-| FH10 | Subject không khớp chéo issuer                                  | R4.3         | Issuer X, `sub` bằng subject của user chỉ biết qua issuer Y → 403, không AccessContext                                                                                             |
-| FH11 | Danh tính đăng nhập của người vận hành chỉ qua `dw_provisioner` | R4.4         | Bằng `dw_app`: INSERT danh tính đăng nhập cho người vận hành → từ chối; UPDATE danh tính → `permission denied`; DELETE danh tính đăng nhập → từ chối                               |
-| FH12 | `dw_app` không ghi bảng quyền lực                               | R5.1         | Bằng `dw_app`: INSERT `platform.platform_operators`, UPDATE `platform.plans`, UPDATE `platform.users` → `permission denied`; khôi phục một GRANT → đỏ                              |
-| FH13 | Quyền của `dw_provisioner` có một nguồn                         | R5.2         | Thêm một bảng vào danh sách của script mà migration không cấp → test so quyền đỏ                                                                                                   |
-| FH14 | Policy đọc setting một lần mỗi câu lệnh                         | R5.3         | ALTER một policy về dạng theo dòng → test catalog đỏ                                                                                                                               |
-| FH15 | Công cụ có hiệu ứng chạy một lần                                | R6.1, R6.2   | Hai lời gọi `external` cùng khóa trên executor, handler ngủ 0,5 giây → handler chạy một lần; nhả bằng token cũ → claim mới còn; gỡ claim → đỏ                                      |
-| FH16 | Lần gọi công cụ chỉ thêm, trạng thái có CHECK                   | R6.3         | Bằng `dw_app`: UPDATE `platform.tool_executions` → `permission denied`; INSERT `status='bogus'` → CHECK từ chối                                                                    |
-| FH17 | Không có cửa sau quanh ToolExecutor                             | R6.4, R6.6   | Mục dict trong danh sách công cụ → model không nhận; agent từ factory thật với toolset rỗng → model chỉ thấy `write_todos`; thêm một công cụ dựng sẵn → đỏ                         |
-| FH18 | Bí mật trong mảng bị che                                        | R6.5         | Input `{"items": [{"api_key": "sk-123"}]}` thất bại → audit `tool.failed` mang `[REDACTED]`; bỏ đệ quy vào list → đỏ                                                               |
-| FH19 | Claim mồ côi có người dọn                                       | R6.7         | Claim quá hạn → hết sau một lượt lane, claim chưa hạn còn; không đăng ký lane → đỏ                                                                                                 |
-| FH20 | Giới hạn tốc độ không lách bằng bearer ngẫu nhiên               | R7.1         | `10 × L + 1` request từ một địa chỉ, mỗi request một bearer → request cuối 429; bỏ xô địa chỉ → đỏ                                                                                 |
-| FH21 | Không gọi ra địa chỉ không global                               | R7.2         | Resolver giả trả `100.64.0.1`, `100.100.100.200`, `224.0.0.1`, `ff02::1`, `64:ff9b::a9fe:a9fe` → `OutboundUrlError`; vị từ cũ → đỏ                                                 |
-| FH22 | Kho dữ liệu đòi xác thực                                        | R8.1, R8.2   | Settings `uat` thiếu `qdrant_api_key` → không khởi động; compose smoke gọi Qdrant không khóa → 401, Valkey không mật khẩu → `NOAUTH`                                               |
-| FH23 | Ảnh bên thứ ba ghim digest                                      | R8.3         | Gỡ `@sha256:` khỏi một `image:` → kiểm CI đỏ                                                                                                                                       |
-| FH24 | Exporter không dùng vai ứng dụng                                | R8.4         | `DATA_SOURCE_NAME` dùng `dw_app` → kiểm compose đỏ; `dw_monitor` SELECT bảng tenant → `permission denied`                                                                          |
-| FH25 | Run không kẹt ở `waiting_approval`                              | R9.1, R9.2   | Resume chết sau khi rời `waiting_approval`, `updated_at` lùi quá ngưỡng → lượt mới chạy; hai resume đồng thời → một chạy, một 409; bỏ compare-and-set → đỏ                         |
-| FH26 | Trạng thái có CHECK theo enum                                   | R9.3         | `status='bogus'` → CHECK từ chối; thêm giá trị vào enum mà không vào CHECK → test catalog đỏ                                                                                       |
-| FH27 | Outbox lùi thời gian                                            | R10.1        | Lỗi lần một → không claim lại khi `available_at` còn ở tương lai, lùi nó về quá khứ → claim lại; bỏ điều kiện `available_at` → đỏ                                                  |
-| FH28 | Thư chết không bị claim lại và thấy được                        | R10.2, R10.3 | Hết lượt → `dead_at` đặt, gauge 1, không claim lại; `UndeliverableEventError` → `dead_at` ngay lần đầu; bỏ điều kiện `dead_at` → đỏ                                                |
-| FH29 | Chỉ người được phép phát lại thư chết                           | R10.4        | Người không được phép theo Q2 phát lại → từ chối, sự kiện vẫn mang `dead_at`                                                                                                       |
+| #    | Kiểm soát                                                       | Yêu cầu      | Test âm                                                                                                                                                                                                                                  |
+| ---- | --------------------------------------------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| FH1  | Test phủ route của grant và test tiến trình nền đỏ được         | R1.1, R1.2   | Thêm phụ thuộc ngữ cảnh grant vào `GET /api/v1/runs/{run_id}` → test phủ route đỏ; khẳng định "không còn tiến trình" trên lần quét cùng request với `sleep 300 &` → đỏ                                                                   |
+| FH2  | Xóa tài liệu chỉ trong workspace của người gọi, vector của mình | R2.1         | Qdrant thật: tenant B xóa id của A, workspace 2 xóa tài liệu workspace 1, mọi tenant xóa tài liệu toàn cục → 404, tài liệu vẫn tìm được; gỡ `tenant_id` khỏi filter tombstone → đỏ                                                       |
+| FH3  | Xóa mềm có audit cùng giao dịch                                 | R2.2         | Audit ném lỗi → tài liệu không mang `status='deleted'`; ghi audit sau commit → đỏ                                                                                                                                                        |
+| FH4  | Danh sách bộ nhớ theo clearance                                 | R2.3         | Clearance `internal` gọi `GET /api/v1/memory/items` → không có mục `confidential`; bỏ lọc → đỏ                                                                                                                                           |
+| FH5  | Dọn checkpoint không chạm tenant khác                           | R2.4         | Hai tenant chung `thread_id`, B có checkpoint mới hơn → checkpoint mới nhất của A còn; bỏ so `tenant_id` ở `newer` → đỏ                                                                                                                  |
+| FH6  | Checkpoint không dựng kiểu ngoài allowlist                      | R2.5         | Dòng có kiểu ngoài allowlist → nạp ra dict, không object nào được dựng; allowlist `True` → đỏ                                                                                                                                            |
+| FH7  | Tenant offboarding không quay lại `active`, `locked`            | R3.1, R3.2   | `unlock` tenant `offboarding` → 409, trạng thái giữ; UPDATE `offboarded → active` bằng `dw_provisioner` → trigger từ chối; gỡ trigger → đỏ                                                                                               |
+| FH8  | Khóa tenant có hiệu lực từ request kế tiếp                      | R3.3         | Cache giả trung thực, thành viên có context trong cache, khóa tenant → request kế tiếp 403; tới khi tenant-rbac/02 merge: bỏ xóa cache → đỏ; từ tenant-rbac/02: gỡ trigger `bump_access_version` trên `platform.tenants` → đỏ            |
+| FH9  | Chỉ nối qua email đã xác minh tới user chưa từng đăng nhập      | R4.1, R4.2   | Token `email_verified=false` trùng email lời mời → 403, không thêm danh tính; email đã xác minh của user đã đăng nhập → 403; gỡ kiểm → đỏ                                                                                                |
+| FH10 | Subject không khớp chéo issuer                                  | R4.3         | Issuer X, `sub` bằng subject của user chỉ biết qua issuer Y → 403, không AccessContext                                                                                                                                                   |
+| FH11 | Danh tính đăng nhập của người vận hành chỉ qua `dw_provisioner` | R4.4         | Bằng `dw_app`: INSERT danh tính đăng nhập cho người vận hành → từ chối; UPDATE danh tính → `permission denied`; DELETE danh tính đăng nhập → từ chối                                                                                     |
+| FH12 | `dw_app` không ghi bảng quyền lực                               | R5.1         | Bằng `dw_app`: INSERT `platform.platform_operators`, UPDATE `platform.plans`, UPDATE `platform.users` → `permission denied`; khôi phục một GRANT → đỏ                                                                                    |
+| FH13 | Quyền của `dw_provisioner` có một nguồn                         | R5.2         | Thêm một bảng vào danh sách của script mà migration không cấp → test so quyền đỏ                                                                                                                                                         |
+| FH14 | Policy đọc setting một lần mỗi câu lệnh                         | R5.3         | ALTER một policy về dạng theo dòng → test catalog đỏ                                                                                                                                                                                     |
+| FH15 | Công cụ có hiệu ứng chạy một lần                                | R6.1, R6.2   | Hai lời gọi `external` cùng khóa trên executor, handler ngủ 0,5 giây → handler chạy một lần; nhả bằng token cũ → claim mới còn; gỡ claim → đỏ                                                                                            |
+| FH16 | Lần gọi công cụ chỉ thêm, trạng thái có CHECK                   | R6.3         | Bằng `dw_app`: UPDATE `platform.tool_executions` → `permission denied`; INSERT `status='bogus'` → CHECK từ chối                                                                                                                          |
+| FH17 | Không có cửa sau quanh ToolExecutor                             | R6.4, R6.6   | Mục dict trong danh sách công cụ → model không nhận; agent từ factory thật với toolset rỗng → model chỉ thấy `write_todos`; thêm một công cụ dựng sẵn → đỏ                                                                               |
+| FH18 | Bí mật trong mảng bị che                                        | R6.5         | Input `{"items": [{"api_key": "sk-123"}]}` thất bại → audit `tool.failed` mang `[REDACTED]`; bỏ đệ quy vào list → đỏ                                                                                                                     |
+| FH19 | Claim mồ côi có người dọn                                       | R6.7         | Claim quá hạn → hết sau một lượt lane, claim chưa hạn còn; không đăng ký lane → đỏ                                                                                                                                                       |
+| FH20 | Giới hạn tốc độ không lách bằng bearer ngẫu nhiên               | R7.1         | `10 × L + 1` request từ một địa chỉ, mỗi request một bearer → request cuối 429; bỏ xô địa chỉ → đỏ                                                                                                                                       |
+| FH21 | Không gọi ra địa chỉ không global                               | R7.2         | Resolver giả trả `100.64.0.1`, `100.100.100.200`, `224.0.0.1`, `ff02::1`, `64:ff9b::a9fe:a9fe` → `OutboundUrlError`; vị từ cũ → đỏ                                                                                                       |
+| FH22 | Kho dữ liệu đòi xác thực                                        | R8.1, R8.2   | Settings `uat` thiếu `qdrant_api_key` → không khởi động; compose smoke gọi Qdrant không khóa → 401, Valkey không mật khẩu → `NOAUTH`                                                                                                     |
+| FH23 | Ảnh bên thứ ba ghim digest                                      | R8.3         | Gỡ `@sha256:` khỏi một `image:` → kiểm CI đỏ                                                                                                                                                                                             |
+| FH24 | Exporter không dùng vai ứng dụng                                | R8.4         | `DATA_SOURCE_NAME` dùng `dw_app` → kiểm compose đỏ; `dw_monitor` SELECT bảng tenant → `permission denied`                                                                                                                                |
+| FH25 | Run không kẹt ở `waiting_approval`                              | R9.1, R9.2   | Resume chết sau khi rời `waiting_approval`, `updated_at` lùi quá ngưỡng → lượt mới chạy; hai resume đồng thời → một chạy, một 409; bỏ compare-and-set → đỏ                                                                               |
+| FH26 | Trạng thái có CHECK theo enum                                   | R9.3         | `status='bogus'` → CHECK từ chối; thêm giá trị vào enum mà không vào CHECK → test catalog đỏ                                                                                                                                             |
+| FH27 | Outbox lùi thời gian                                            | R10.1        | Lỗi lần một → không claim lại khi `available_at` còn ở tương lai, lùi nó về quá khứ → claim lại; bỏ điều kiện `available_at` → đỏ                                                                                                        |
+| FH28 | Thư chết không bị claim lại và thấy được                        | R10.2, R10.3 | Hết lượt → `dead_at` đặt, gauge 1, không claim lại; `UndeliverableEventError` → `dead_at` ngay lần đầu; bỏ điều kiện `dead_at` → đỏ                                                                                                      |
+| FH29 | Chỉ người vận hành phát lại thư chết, có audit                  | R10.4, R10.5 | `--operator` không có trong `platform.platform_operators` → thoát 1, sự kiện vẫn mang `dead_at`, không có audit; người vận hành phát lại → sự kiện về hàng đợi và đúng một audit đứng tên người đó; bỏ kiểm người vận hành → đỏ          |
+| FH30 | Gói xuất không lặp dòng của bảng phân vùng                      | R11.1        | Bảng phân vùng thử có partition tháng và DEFAULT mà `dw_app` đọc được theo tên, mỗi nơi một dòng của tenant → mỗi dòng có đúng một lần trong kết quả xuất; test viết trước, đỏ trên mã hiện có; bỏ lọc partition khỏi danh mục xuất → đỏ |
 
 ## Tiêu chí xong
 
@@ -504,26 +538,27 @@ Trước đây: claim mọi dòng còn lượt theo `occurred_at` (`packages/pyt
 
 ## Phụ thuộc
 
-- Không phụ thuộc spec nào; mọi spec Studio khác đứng sau spec này.
+- studio-skeleton: bản ba tham số của `platform._ensure_one_partition` và việc thu mọi quyền của `dw_app`
+  trên partition (studio-skeleton:R3.1, studio-skeleton:R3.3); ticket 03 chờ studio-skeleton/01.
+- tenant-config: cột `run_mode` của `platform.worker_runs` và đường resume dựng lại nó (tenant-config:R4.1,
+  tenant-config:R4.5); ticket 06 chờ tenant-config/03 vì cùng ALTER bảng đó và cùng sửa đường resume
+  (OPS-b).
+- Ticket của spec khác chờ ticket ở đây theo dòng Blocked by của chính chúng (OPS-b);
+  `scripts/check_plans.py --table` in bảng sống, spec này không chép lại.
 - Seam: `ConsumerRegistry.register` và `build_retention_consumer` ở composition root của worker cho
   lane mới; `CachePort.delete_pattern` với `tenant_cache_pattern`; `classifications_for_clearance` là
   chủ duy nhất của clearance.
-- Hợp đồng: ADR-0103 (Proposed) quyết định 8; ADR-0105 (Proposed) quyết định 1; ADR-0108 (Proposed)
-  quyết định 5; ADR-0112 (Proposed) quyết định 10; ADR-0113 (Proposed) quyết định 1; ADR-0115 (Proposed)
-  (Proposed) quyết định 5; ADR-0116 (Proposed) quyết định 3 và 7.
-- Kiểm lại khi: Q1 hay ADR-0103 (Proposed) đổi quyết định 8 → R4, ticket 02; FOG-34 chọn bản
-  `deepagents` → R6.6, ticket 04; FOG-37 chốt allowlist → R2.5, ticket 02; ADR-0113 (Proposed) đổi
-  tập trạng thái run → R9.3, ticket 06; phép đo của ticket 03 dưới ngưỡng → R5.3 rút.
+- Hợp đồng: ADR-0103 (Accepted) quyết định 8; ADR-0105 (Accepted) quyết định 1; ADR-0108 (Accepted)
+  quyết định 5; ADR-0112 (Accepted) quyết định 10; ADR-0113 (Accepted) quyết định 1; ADR-0115 (Accepted)
+  quyết định 5; ADR-0116 (Accepted) quyết định 3 và 7.
+- Kiểm lại khi: ADR-0103 (Accepted) đổi quyết định 8 → R4, ticket 02; FOG-34 chọn bản `deepagents` →
+  R6.6, ticket 04; FOG-37 chốt allowlist → R2.5, ticket 02; ADR-0113 (Accepted) đổi tập trạng thái run →
+  R9.3, ticket 06; phép đo của ticket 03 dưới ngưỡng → R5.3 rút, custom-objects và record-access kiểm
+  lại dạng policy mà chúng bắt buộc cho bảng Studio; tenant-rbac/02 merge → R3.3, FH8, ticket 02 (ba lời
+  gọi xóa cache được gỡ); studio-skeleton/01 đổi chữ ký hàm partition → ticket 03; tenant-config/03 đổi
+  đường resume → ticket 06.
 
 ## Câu hỏi còn mở
-
-- Q1. DO-17: Đạt có chấp nhận ngay quy tắc nối danh tính tạm của ADR-0103 (Proposed) quyết định 8
-  (email đã xác minh, user chưa từng đăng nhập, subject trong cùng issuer), và có đường nhập user nào
-  của dw-proterial dựa vào nối email chưa xác minh không? Chủ: Đạt. Chặn: R4.1, R4.2, R4.3, R4.4,
-  ticket 02.
-- Q2. DO-56: ai được xem và phát lại thư chết của outbox (khuyến nghị: người vận hành qua script;
-  quản trị viên công ty xem sự kiện lỗi của chính mình trong lịch sử lượt chạy)? Chủ: Đạt. Chặn:
-  R10.4, ticket 06.
 
 ## Quyết định
 
@@ -543,24 +578,63 @@ Trước đây: claim mọi dòng còn lượt theo `occurred_at` (`packages/pyt
   `offboarded` về `active`, `locked`); `offboarded` có phải trạng thái cuối hay không chưa ai quyết
   nên không đoán. Nếu sai thì: trigger chặn thêm bước rời `offboarded`.
 - 23/10/2026 (agent, tạm): 403 `identity_email_in_use` dùng chung cho email chưa xác minh, người vận
-  hành và nhân viên `support_staff`; ADR-0103 (Proposed) quyết định 8 chỉ đặt mã cho user đã đăng
+  hành và nhân viên `support_staff`; ADR-0103 (Accepted) quyết định 8 chỉ đặt mã cho user đã đăng
   nhập. Nếu sai thì: tách mã riêng cho email chưa xác minh.
 - 23/10/2026 (agent, tạm): ticket 04 ghim `deepagents==0.7.15`, bản đang khóa; bản từ 0.7.23 trở lên
-  mà ADR-0116 (Proposed) quyết định 7 đòi đi cùng `SkillsMiddleware` ở `tools-and-skills`, chọn qua
+  mà ADR-0116 (Accepted) quyết định 7 đòi đi cùng `SkillsMiddleware` ở `tools-and-skills`, chọn qua
   FOG-34 và phải qua test của R6.6. Nếu sai thì: ticket 04 nâng thẳng lên bản FOG-34 chọn, kéo theo
   `langchain`, `langchain-core`, `langsmith`.
-- 23/10/2026 (agent, tạm): claim quá `expires_at` không còn canh gì (ADR-0108 (Proposed) quyết định 5
+- 23/10/2026 (agent, tạm): claim quá `expires_at` không còn canh gì (ADR-0108 (Accepted) quyết định 5
   cho tiếp quản nó), nên lane `tool_claims_retention` xóa nó không cần hạn giữ thêm. Nếu sai thì: thêm
   hạn giữ vào `retention@1.7.0.yaml`.
 - 23/10/2026 (agent, tạm): outbox lùi `min(30 × 2^(n-1), 3600)` giây sau lần thất bại thứ n rồi cộng
   jitter ngẫu nhiên từ 0 tới 20% khoảng đó, tính bằng `now()` của PostgreSQL như claim; jitter chỉ
   cộng nên mốc "không trước" của R10.1 giữ được. Nếu sai thì: đổi công thức ở R10.1 và test của nó.
 - 23/10/2026 (agent, tạm): DO-31 theo khuyến nghị (a): yêu cầu phê duyệt hết hạn không bao giờ thành
-  duyệt; CHECK ở R9.3 nhận `expired` cho `workflow-engine` ghi (ADR-0112 (Proposed)). Nếu sai thì:
+  duyệt; CHECK ở R9.3 nhận `expired` cho `workflow-engine` ghi (ADR-0112 (Accepted)). Nếu sai thì:
   bỏ `expired` khỏi CHECK.
 - 23/10/2026 (agent, tạm): README của worker (`configs/workers/README.md:14-17`) sửa ở ticket 04, vì
-  ADR-0117 (Proposed) và ADR-0125 (Proposed) giao việc đó cho spec này. Nếu sai thì: chuyển sang
+  ADR-0117 (Accepted) và ADR-0125 (Accepted) giao việc đó cho spec này. Nếu sai thì: chuyển sang
   spec đang giữ README.
+- 23/10/2026 (Đạt): DO-17.1 theo (a): quy tắc nối danh tính tạm của ADR-0103 (Accepted) quyết định 8
+  áp ngay từ P0; hỏi dw-proterial song song, trước khi ticket 02 merge, xem importer có dựa vào nối
+  email chưa xác minh không và IdP của họ có gửi `email_verified` không; câu trả lời chỉ quyết việc
+  đẩy mã nhận lời mời sớm hơn W2, không chặn ticket 02. Hỏi: Q1. Sửa: R4, ticket 02.
+- 23/10/2026 (Đạt): DO-56.1 theo (a): người vận hành phát lại thư chết bằng một script có audit đứng
+  tên mình, script đặt `app.tenant_id` theo từng sự kiện và chỉ đọc id; công ty chỉ xem lượt chạy lỗi
+  trong Lịch sử chạy, không có route mới. Hỏi: Q2. Sửa: R10.4, thêm R10.5, FH29, ticket 06.
+- 23/10/2026 (Đạt): DO-56.2 theo (a): SLA báo sự cố trong DPA là 24 giờ từ khi nền tảng biết, việc
+  của compliance-pdpl ở W2. Sửa: hàng TLS và SLA ở Ngoài phạm vi.
+- 23/10/2026 (Đạt): DO-31 theo (a), xác nhận dòng tạm cùng ngày: hết hạn phê duyệt sang W2 cùng YC52
+  và lane hẹn giờ; ở W1 phê duyệt chờ không hạn; CHECK ở R9.3 giữ `expired`, người ghi là
+  workflow-engine ở W2. Sửa: hàng ghi `expired` ở Ngoài phạm vi, ticket 06.
+- 23/10/2026 (Đạt): Khóa tenant có hiệu lực ngay theo (a): xóa cache ở route khóa, mở khóa và
+  offboard là cách tạm tới tenant-rbac/02; ticket đó gỡ ba lời gọi, đổi phép đột biến của FH8 sang gỡ
+  trigger `bump_access_version` trên `platform.tenants` và chờ ticket 02 này; FH8 giữ hành vi. Sửa:
+  Trong phạm vi, FH8, Phụ thuộc, ticket 02.
+- 23/10/2026 (Đạt): H:studio-skeleton:offboarding theo (a): offboarding xuất qua bảng cha, bỏ
+  partition con và đọc theo lô keyset ở ticket mới 07; actor của audit `tenant.offboarding.purged` giữ
+  là người vận hành đã yêu cầu (ADR-0011 (Accepted)). Sửa: Hiện trạng, thêm R11, G8, FH30, ticket 07.
+- 23/10/2026 (Đạt): DO-49 theo (a): một `RateLimiterPort` của usage-and-limits là chủ của giới hạn
+  theo tenant; middleware của ticket 05 là chặn ở cửa API, không phải chủ thứ hai. Sửa: hàng giới hạn
+  dùng chung ở Ngoài phạm vi, ticket 05.
+- 23/10/2026 (Đạt): OPS-b: ticket 06 chờ tenant-config/03 (cùng ALTER `platform.worker_runs` và cùng
+  đường resume); studio-skeleton/04 chờ ticket 05; org-and-principals/02 chờ ticket 02. Sửa: Phụ thuộc,
+  ticket 06.
+- 23/10/2026 (Đạt): OPS-j: phép đo trùng ticket khám phá chạy một lần: discovery/23 (FOG-78) chạy
+  trước ticket 02 nếu kịp, ticket 02 không chờ nó; discovery/05 chạy trước ticket 03 trên thân đường
+  găng; có `## Answer` thì ticket trỏ về đó, chưa có thì phép đo ở ticket là phép đo của ticket khám
+  phá. Sửa: ticket 02, ticket 03.
+- 23/10/2026 (agent, tạm): ticket 03 chờ studio-skeleton/01 và viết lại bản ba tham số của
+  `platform._ensure_one_partition`, giữ việc thu quyền `dw_app` trên partition, theo cách sửa thứ nhất
+  của phát hiện C:foundations-hardening/03~studio-skeleton/01; OPS-b không xét cặp này. Nếu sai thì:
+  đảo chiều, studio-skeleton/01 chờ ticket 03 và giữ dạng policy của nó.
+- 23/10/2026 (Đạt): DO-03.2 theo (a): port mã thuần của si-platform cần thỏa thuận viết, ghim commit
+  và dòng đầu `Ported from si-platform`; spec này dựng lại thiết kế của si-platform (claim trước,
+  `email_verified`, xô địa chỉ `10 × L`, dạng InitPlan) chứ không chép mã, nên không chờ thỏa thuận.
+- 23/10/2026 (agent, tạm): lô đọc của offboarding là 1.000 dòng theo khóa chính, và danh mục xuất bỏ
+  partition bằng điều kiện `relispartition`, độc lập với việc thu quyền partition của studio-skeleton/01.
+  Nếu sai thì: đổi hằng ở R11.2 và test của nó.
 
 ## Danh sách ticket
 
@@ -572,3 +646,4 @@ Trước đây: claim mọi dòng còn lượt theo `occurred_at` (`packages/pyt
 | 04  | [ToolExecutor giành lượt trước hiệu ứng, không còn cửa sau](issues/04-toolexecutor-gianh-luot-khong-cua-sau.md)                           |
 | 05  | [Biên mạng: rate limit theo địa chỉ, net_guard chỉ địa chỉ toàn cầu, Qdrant và Valkey có xác thực](issues/05-bien-mang-va-kho-du-lieu.md) |
 | 06  | [Run không kẹt ở waiting_approval, CHECK trạng thái, outbox lùi thời gian và thư chết](issues/06-run-va-outbox-khong-ket.md)              |
+| 07  | [Offboarding xuất mỗi dòng một lần, đọc theo lô keyset](issues/07-offboarding-xuat-mot-lan-theo-lo.md)                                    |

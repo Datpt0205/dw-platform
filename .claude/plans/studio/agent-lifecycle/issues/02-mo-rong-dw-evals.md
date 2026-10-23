@@ -50,7 +50,7 @@ R3, G1).
 - `packages/python/dw_evals/src/dw_evals/dataset.py:14-31`; spec: R3.3, G1.
 - `packages/python/dw_evals/src/dw_evals/graders.py:56`; spec: R3.1, R3.2.
 - `packages/python/dw_evals/src/dw_evals/__init__.py:1-2`; spec: R3.4 (docstring claim without code);
-  ADR-0120 (Proposed) quyết 4.
+  ADR-0120 (Accepted) quyết 4.
 
 ## Comments
 

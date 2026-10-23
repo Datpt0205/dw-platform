@@ -1,14 +1,14 @@
 # Gói miền: định dạng dw.package/v1, cài vào tenant thành bản sao có nguồn gốc
 
-Status: needs-info (DO-25)
+Status: needs-info (Q2)
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: chưa
 Sẵn sàng: chưa kiểm
 
 Nền tảng giao nội dung nghiệp vụ dưới dạng dữ liệu, không thành context hay gói Python: một Gói nghiệp vụ (Marketing
 trước tiên, D4) là thư mục `dw.package/v1` trong `configs/packs/<key>@<semver>/`, cài vào công ty chỉ qua API công
-khai thành Bản sao từ gói, và phiên bản mới của gói chỉ đến như Đề xuất cập nhật gói vào bản nháp (ADR-0100 (Proposed)
-(Proposed) quyết định 2). Spec này không có ticket W1: lát W1 gieo Lead và Campaign bằng một script gọi API công khai
+khai thành Bản sao từ gói, và phiên bản mới của gói chỉ đến như Đề xuất cập nhật gói vào bản nháp (ADR-0100 (Accepted)
+quyết định 2). Spec này không có ticket W1: lát W1 gieo Lead và Campaign bằng một script gọi API công khai
 (marketing-pilot/02), và chính script đó là nguồn của gói Marketing 1.0 ở W2. Mọi yêu cầu dưới đây là phạm vi W2;
 hàng W3 nằm ở Ngoài phạm vi.
 
@@ -19,25 +19,25 @@ hàng W3 nằm ở Ngoài phạm vi.
   Ràng buộc: trình cài gói không chép dạng cài lặng lẽ này (failure-modes #1).
 - Release manifest dựng từ `configs/` và không có mục gói (`scripts/release_manifest.py:205-232`). Thiếu: chưa có
   `configs/packs/` và chưa có mục `packs` ghim gói.
-- Mọi thứ có phiên bản được release manifest ghim (`CLAUDE.md:63-64`). Ràng buộc: mỗi gói nền tảng vào release
+- Mọi thứ có phiên bản được release manifest ghim (`CLAUDE.md:70-71`). Ràng buộc: mỗi gói nền tảng vào release
   manifest bằng phiên bản và hash.
-- Câu trả lời kiểm kê chỉ đọc lớp nền tảng (`CLAUDE.md:195-196`). Ràng buộc: danh mục gói không phụ thuộc người hỏi.
+- Câu trả lời kiểm kê chỉ đọc lớp nền tảng (`CLAUDE.md:227-228`). Ràng buộc: danh mục gói không phụ thuộc người hỏi.
 - `TenantOverlay` là lớp nền tảng cộng lớp công ty, không bao giờ lấy ngang sang công ty khác
   (`packages/python/dw_kernel/src/dw_kernel/overlay.py:29-34`,
   `packages/python/dw_agent_runtime/tests/unit/test_tenant_overlay.py:72`). Ràng buộc: gói không là một lớp overlay;
   Bản sao từ gói là dữ liệu của công ty.
-- Entitlement tách khỏi phân quyền (`CLAUDE.md:169`); gói dịch vụ nằm trong mã ở `DEFAULT_PLANS`
+- Entitlement tách khỏi phân quyền (`CLAUDE.md:191`); gói dịch vụ nằm trong mã ở `DEFAULT_PLANS`
   (`packages/python/dw_platform/src/dw_platform/application/entitlement.py:17-36`) và được hỏi qua `has_feature`
   (`packages/python/dw_platform/src/dw_platform/application/entitlement.py:45-49`). Ràng buộc: quyền cài và
   entitlement `studio.pack.<key>` là hai lần kiểm riêng.
 - Chỉ có ba schema `knowledge`, `memory`, `platform` (`db/migrations/sql/0001_platform_baseline.sql:1-7`). Thiếu:
-  vỏ thành phần `studio.artifacts` có cột `origin` do tenant-config/02 tạo (ADR-0109 (Proposed)).
+  vỏ thành phần `studio.artifacts` có cột `origin` do tenant-config/02 tạo (ADR-0109 (Accepted)).
 
 ## Mục tiêu
 
 ### R1 — Định dạng gói `dw.package/v1` và gói nền tảng
 
-Nền tảng giao gói nghiệp vụ dưới dạng thư mục có phiên bản, kiểm được ở CI (ADR-0100 (Proposed)).
+Nền tảng giao gói nghiệp vụ dưới dạng thư mục có phiên bản, kiểm được ở CI (ADR-0100 (Accepted)).
 
 - R1.1 Bộ nạp gói PHẢI chỉ nhận thư mục `configs/packs/<key>@<semver>/` có `package.json` hợp lệ theo JSON Schema
   `dw.package/v1`, schema không cho khóa nào ngoài định nghĩa.
@@ -60,10 +60,9 @@ Quản trị viên công ty cài một gói nghiệp vụ rồi tự sửa, khô
   nào.
 - R2.4 KHI cài xong, trình cài PHẢI để mọi thành phần của gói ở Nháp, không thành phần nào ở Đang dùng, và không tạo
   lượt chạy nào.
-- R2.5 NẾU gói dịch vụ của công ty không gồm gói đó, THÌ route cài PHẢI trả 403 `entitlement_denied` và không cài
-  gì.
-- R2.6 NẾU người gọi thiếu quyền cài gói [CAN LAM RO: Q1], THÌ route cài PHẢI trả 403 `permission_denied` và không
-  cài gì.
+- R2.5 NẾU gói dịch vụ của công ty không có quyền lợi `studio.pack.<key>` của gói đó, THÌ route cài PHẢI trả 403
+  `entitlement_denied` và không cài gì.
+- R2.6 NẾU người gọi thiếu `studio.packs.install`, THÌ route cài PHẢI trả 403 `permission_denied` và không cài gì.
 - R2.7 KHI cùng `Idempotency-Key` của cùng người gọi được gửi lại, route cài PHẢI trả cùng kết quả và chỉ cài một
   lần.
 - R2.8 NẾU gói đã được cài ở công ty, THÌ route cài PHẢI trả 409 `pack_already_installed` và không cài gì.
@@ -92,30 +91,32 @@ Một công ty mới có ngay bộ đối tượng, vai trò mẫu, quy trình v
 
 Công ty mang thành phần của mình giữa các công ty của nó mà không mất gì.
 
-- R5.1 KHI một yêu cầu xuất qua được kiểm quyền, API gói PHẢI trả một Gói cài đặt `dw.package/v1` chứa bao đóng của
-  các thành phần được chọn theo chỉ mục phụ thuộc.
+- R5.1 KHI người giữ `studio.packages.export` gửi một yêu cầu xuất, API gói PHẢI trả một Gói cài đặt `dw.package/v1`
+  chứa bao đóng của các thành phần được chọn theo chỉ mục phụ thuộc.
 - R5.2 KHI một Gói cài đặt vừa xuất được nhập vào một công ty trắng, API gói PHẢI tạo thành phần có cùng
   `content_hash` với bản đã xuất.
 - R5.3 NẾU gói nhập có đường dẫn chứa `../`, nặng hơn 20 MiB, có hơn 2.000 tệp hay hash sai (đúng bằng giới hạn thì
   nhận), THÌ API gói PHẢI từ chối và không giải nén tệp nào ra ngoài thư mục tạm.
-- R5.4 NẾU người gọi thiếu quyền nhập gói [CAN LAM RO: Q1], THÌ API gói PHẢI trả 403 và không nhập gì.
+- R5.4 NẾU người gọi thiếu `studio.packages.import`, THÌ API gói PHẢI trả 403 và không nhập gì.
 
 ### R6 — Cập nhật bằng Đề xuất cập nhật gói
 
-Phiên bản mới của gói đến như đề xuất vào bản nháp, không đè phần công ty đã sửa (ADR-0100 (Proposed)).
+Phiên bản mới của gói đến như đề xuất vào bản nháp, không đè phần công ty đã sửa (ADR-0100 (Accepted)).
 
 - R6.1 KHI một phiên bản mới của gói đã cài có trong release, trình cập nhật PHẢI tạo một Đề xuất cập nhật gói cho mỗi
   thành phần đã đổi, xếp loại `fast_forward`, `conflict`, `add` hay `deprecate`, và không đổi thành phần nào.
 - R6.2 NẾU thành phần đã bị công ty sửa khác `base_content_hash`, THÌ trình cập nhật PHẢI xếp đề xuất loại
   `conflict` và giữ cả ba bản: gốc, của công ty và mới.
-- R6.3 KHI một người có quyền cập nhật gói [CAN LAM RO: Q1] áp một đề xuất, trình cập nhật PHẢI chỉ ghi vào bản Nháp
-  của thành phần, phiên bản Đang dùng giữ nguyên.
+- R6.3 KHI người giữ `studio.packs.update` áp một đề xuất, trình cập nhật PHẢI chỉ ghi vào bản Nháp của thành phần,
+  phiên bản Đang dùng giữ nguyên.
 - R6.4 Trình cập nhật PHẢI không áp đề xuất nào khi không có người áp.
 
 ## Trong phạm vi
 
 - JSON Schema và model `dw.package/v1` (`contracts/jsonschema/dw.package.v1.json`); thư mục
   `configs/packs/<key>@<semver>/`; mục `packs` của release manifest; registry Tiền tố dành riêng.
+- Khóa quyền `studio.packs.install`, `studio.packs.update`, `studio.packages.export`, `studio.packages.import`
+  đăng ký trong danh mục quyền một chủ, và quyền lợi `studio.pack.<key>` theo gói dịch vụ (DO-25).
 - Bảng `studio.pack_installs`, `studio.pack_install_components`, `studio.pack_update_proposals`.
 - Route `GET /api/v1/studio/packs`, `POST /api/v1/studio/packs/{key}/install`, `GET /api/v1/studio/packs/installs/{id}`;
   xuất, nhập Gói cài đặt của công ty; áp Đề xuất cập nhật gói; audit và outbox `studio.pack.installed`.
@@ -123,18 +124,18 @@ Phiên bản mới của gói đến như đề xuất vào bản nháp, không 
 
 ## Ngoài phạm vi
 
-| Việc                                                                | Vì sao                                                                   | Chủ                             |
-| ------------------------------------------------------------------- | ------------------------------------------------------------------------ | ------------------------------- |
-| Định dạng gói `dw.package/v1` và gói nền tảng trong `configs/packs` | Không có ticket W1; R1 cắt ticket khi W2 bắt đầu                         | domain-packs, đợt sau (W2)      |
-| Cài gói nền tảng vào tenant thành bản sao có nguồn gốc              | R2, R3; cần vỏ thành phần và loại `object`, quy trình, trợ lý đã có      | domain-packs, đợt sau (W2)      |
-| Gói Marketing 1.0.0 và trình "Bắt đầu với Marketing"                | R4; nguồn là script gieo W1 của marketing-pilot/02                       | domain-packs, đợt sau (W2)      |
-| Xuất và nhập gói của tenant; cập nhật bằng đề xuất ba bên           | R5, R6; cần chỉ mục phụ thuộc và nguyên mẫu đề xuất ba bên               | domain-packs, đợt sau (W2)      |
-| Đưa gói từ Công ty thử nghiệm lên; ký gói cho data plane tự host    | Cần Công ty thử nghiệm (DO-62) và data plane do khách tự host            | domain-packs, đợt sau (W3)      |
-| Lát gieo Lead và Campaign bằng script gọi API công khai             | W1 dựng bằng script, chưa cần định dạng gói                              | marketing-pilot (W1, ticket 02) |
-| Nội dung đối tượng, quy trình, trợ lý của gói Marketing             | marketing-pilot định nghĩa; spec này đóng gói                            | marketing-pilot                 |
-| Chợ gói của bên thứ ba; công ty bán gói cho công ty khác            | Không có nhu cầu ở v1                                                    | không làm                       |
-| Tự cập nhật phiên bản Đang dùng                                     | Cập nhật luôn là đề xuất vào bản nháp (ADR-0100 (Proposed) quyết định 2) | không làm                       |
-| Dữ liệu mẫu cài vào công ty chính                                   | Chỉ dữ liệu tổng hợp, chỉ ở Công ty thử nghiệm                           | không làm                       |
+| Việc                                                                | Vì sao                                                                                                                                                | Chủ                             |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| Định dạng gói `dw.package/v1` và gói nền tảng trong `configs/packs` | Không có ticket W1; R1 cắt ticket khi W2 bắt đầu                                                                                                      | domain-packs, đợt sau (W2)      |
+| Cài gói nền tảng vào tenant thành bản sao có nguồn gốc              | R2, R3; cần vỏ thành phần và loại `object`, quy trình, trợ lý đã có                                                                                   | domain-packs, đợt sau (W2)      |
+| Gói Marketing 1.0.0 và trình "Bắt đầu với Marketing"                | R4; nguồn là script gieo W1 của marketing-pilot/02                                                                                                    | domain-packs, đợt sau (W2)      |
+| Xuất và nhập gói của tenant; cập nhật bằng đề xuất ba bên           | R5, R6; cần chỉ mục phụ thuộc và nguyên mẫu đề xuất ba bên                                                                                            | domain-packs, đợt sau (W2)      |
+| Đưa gói từ Công ty thử nghiệm lên; ký gói cho data plane tự host    | Cần Công ty thử nghiệm (DO-62: chỉ người vận hành tạo, chỉ dữ liệu giả lập, hạn mức riêng không trừ vào công ty chính) và data plane do khách tự host | domain-packs, đợt sau (W3)      |
+| Lát gieo Lead và Campaign bằng script gọi API công khai             | W1 dựng bằng script, chưa cần định dạng gói                                                                                                           | marketing-pilot (W1, ticket 02) |
+| Nội dung đối tượng, quy trình, trợ lý của gói Marketing             | marketing-pilot định nghĩa; spec này đóng gói                                                                                                         | marketing-pilot                 |
+| Chợ gói của bên thứ ba; công ty bán gói cho công ty khác            | Không có nhu cầu ở v1                                                                                                                                 | không làm                       |
+| Tự cập nhật phiên bản Đang dùng                                     | Cập nhật luôn là đề xuất vào bản nháp (ADR-0100 (Accepted) quyết định 2)                                                                              | không làm                       |
+| Dữ liệu mẫu cài vào công ty chính                                   | Chỉ dữ liệu tổng hợp, chỉ ở Công ty thử nghiệm                                                                                                        | không làm                       |
 
 ## Kiểm soát
 
@@ -160,26 +161,23 @@ Phiên bản mới của gói đến như đề xuất vào bản nháp, không 
 
 ## Phụ thuộc
 
-- Vỏ thành phần với `origin`, dịch vụ phát hành và `studio.dependencies` (tenant-config/02, ADR-0109 (Proposed));
-  Điểm gắn và phiên bản cấu hình (tenant-config, ADR-0110 (Proposed)).
-- Máy giai đoạn và cổng phát hành (ADR-0120 (Proposed)): gói không đưa thành phần nào lên Đang dùng.
+- Vỏ thành phần với `origin`, dịch vụ phát hành và `studio.dependencies` (tenant-config/02, ADR-0109 (Accepted));
+  Điểm gắn và phiên bản cấu hình (tenant-config, ADR-0110 (Accepted)).
+- Máy giai đoạn và cổng phát hành (ADR-0120 (Accepted)): gói không đưa thành phần nào lên Đang dùng.
 - Loại `object` và đường phát hành của nó (`custom-objects:R1.1`, `custom-objects:R1.2`); vai trò mẫu của
   tenant-rbac; loại quy trình của workflow-engine; loại trợ lý của agent-builder.
-- `Idempotency-Key` gắn người gọi (app-standards/02); entitlement theo gói dịch vụ (usage-and-limits).
-- Kiểm lại khi: trả lời Q1 (DO-25) → toàn spec; trả lời Q1 của custom-objects về phát hành đối tượng → R2.4;
-  ADR-0109 (Proposed) đổi `origin` → R2.1; ADR-0110 (Proposed) đổi Điểm gắn → R4.1.
+- `Idempotency-Key` gắn người gọi (app-standards/02); quyền lợi `studio.pack.<key>` đọc từ tính năng của gói dịch
+  vụ một chủ (usage-and-limits:R1.1).
+- tenant-config: route tạo thành phần gọi registry Tiền tố dành riêng mà spec này cấp (R3.1); tenant-config chưa có
+  điểm kiểm đó, và luật chỉ bật sau khi trả lời Q2.
+- Kiểm lại khi: trả lời Q1 của custom-objects về phát hành đối tượng → R2.4; ADR-0109 (Accepted) đổi `origin` → R2.1;
+  ADR-0110 (Accepted) đổi Điểm gắn → R4.1; trả lời Q2 → R3.1, R4.1.
 
 ## Câu hỏi còn mở
 
-- Q1. DO-25: Gói nghiệp vụ sống trong repo này dưới dạng cấu hình, mỗi công ty cài một gói một lần, entitlement
-  `studio.pack.<key>` theo gói dịch vụ, và ai được cài, cập nhật, xuất, nhập gói (đề xuất các khóa
-  `studio.packs.install`, `studio.packs.update`, `studio.packages.export`, `studio.packages.import`)? Chủ: người đặt
-  yêu cầu và Đạt. Chặn: R2.6, R5.4, R6.3, toàn spec.
 - Q2. Công ty thí điểm đã có `mkt_lead`, `mkt_campaign` do script W1 của marketing-pilot/02 gieo: khi gói Marketing
   1.0 ra ở W2, cài gói vào công ty đó thì gắn nguồn gốc cho thành phần đang có, hay chỉ cài vào công ty mới? Chủ:
   Đạt. Chặn: R3.1, R4.1.
-- Q3. DO-62: Công ty thử nghiệm ở v2 do ai tạo, tính phí ra sao và được giữ dữ liệu gì? Chủ: người đặt yêu cầu và
-  luật sư. Không đổi: phạm vi W2 của spec này; chỉ hàng W3 Đưa lên phụ thuộc câu trả lời.
 
 ## Quyết định
 
@@ -191,6 +189,16 @@ Phiên bản mới của gói đến như đề xuất vào bản nháp, không 
   không kích hoạt gì; theo YC38.
 - 23/10/2026 (agent, tạm): Mâu thuẫn nguồn: roadmap viết hàng W3 là "tổ chức thử nghiệm", glossary dùng "Công ty thử
   nghiệm" và tránh "tổ chức"; theo glossary.
+- 23/10/2026 (Đạt): DO-25 theo (a): gói là cấu hình `configs/packs/<key>@<semver>` trong repo này
+  (ADR-0100 (Accepted) quyết 2), mỗi công ty cài một gói một lần, quyền lợi `studio.pack.<key>` theo gói dịch
+  vụ, phiên bản mới là Đề xuất cập nhật gói vào bản nháp, gói của khách đi qua nhập ở v2; khóa quyền
+  `studio.packs.install`, `studio.packs.update`, `studio.packages.export`, `studio.packages.import`. Hỏi: Q1.
+  Sửa: Status, R2.5, R2.6, R5.1, R5.4, R6.3, Trong phạm vi, Phụ thuộc.
+- 23/10/2026 (Đạt): DO-62 theo (a): Công ty thử nghiệm chỉ người vận hành tạo, chỉ dữ liệu giả lập, hạn mức riêng.
+  Hỏi: Q3. Sửa: Ngoài phạm vi.
+- 23/10/2026 (agent, tạm): A:domain-packs:R3.1~tenant-config:R2.2: spec này cấp registry Tiền tố dành riêng, route
+  tạo thành phần của tenant-config gọi nó; luật bật sau khi trả lời Q2. Sửa: Phụ thuộc. Nếu sai thì: trình cài của
+  spec này tự kiểm tiền tố và tenant-config không đổi.
 
 ## Danh sách ticket
 

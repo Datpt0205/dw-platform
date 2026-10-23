@@ -6,7 +6,7 @@ Yêu cầu: R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R2.8, R2.9, G4, G5, G6, APS3, AP
 
 ## Mục tiêu
 
-Lát này cho người gọi thử lại một yêu cầu ghi mà không sợ ghi hai lần, và chỉ chính họ nhận lại câu trả lời đã lưu (R2, YC5): khóa gắn người gọi đã xác minh, lượt giành lại có token rào, lần phát lại kèm `ETag` và `Location`, và khóa bị xóa sau 24 giờ (ADR-0108 (Proposed) điểm 4). Đây là ticket duy nhất sửa lỗi phát lại cho người khác, kể cả khi foundations-hardening cũng ghi lỗi đó.
+Lát này cho người gọi thử lại một yêu cầu ghi mà không sợ ghi hai lần, và chỉ chính họ nhận lại câu trả lời đã lưu (R2, YC5): khóa gắn người gọi đã xác minh, lượt giành lại có token rào, lần phát lại kèm `ETag` và `Location`, và khóa bị xóa sau 24 giờ (ADR-0108 (Accepted) điểm 4). Đây là ticket duy nhất sửa lỗi phát lại cho người khác, kể cả khi foundations-hardening cũng ghi lỗi đó.
 
 ## Việc cần làm
 
@@ -43,6 +43,6 @@ Lát này cho người gọi thử lại một yêu cầu ghi mà không sợ gh
 - `apps/worker/src/dw_worker/main.py:472-531`, `apps/worker/tests/unit/test_worker.py:103-158`; spec: R2.8.
 - `docs/adr/0011-a-background-lane-audits-as-itself.md:38-43`; spec: R2.9.
 - `README.md:124-158`; spec: R2.1.
-- ADR-0108 (Proposed) điểm 4.
+- ADR-0108 (Accepted) điểm 4.
 
 ## Comments

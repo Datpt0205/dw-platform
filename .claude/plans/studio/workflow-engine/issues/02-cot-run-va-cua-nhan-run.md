@@ -30,6 +30,6 @@ Cho `platform.worker_runs` các cột một lượt chạy Studio cần và đ�
 ## Nguồn
 
 - `db/migrations/sql/0001_platform_baseline.sql:447`; `packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/run_store.py:388`; spec: R3, WE1.
-- foundations-hardening:R9.3 (CHECK `status`); tenant-config:R4, R6.1 (chế độ chạy, bản kê); ADR-0113 (Proposed) quyết 1.
+- foundations-hardening:R9.3 (CHECK `status`); tenant-config:R4, R6.1 (chế độ chạy, bản kê); ADR-0113 (Accepted) quyết 1.
 
 ## Comments

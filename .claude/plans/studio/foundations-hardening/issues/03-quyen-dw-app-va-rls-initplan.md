@@ -1,7 +1,7 @@
 # 03 — Thu quyền ghi thừa của dw_app và RLS đọc setting một lần mỗi câu lệnh
 
 Status: needs-triage
-Blocked by: 01
+Blocked by: 01, .claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md
 Area: studio
 Yêu cầu: R5.1, R5.2, R5.3, G6, FH12, FH13, FH14
 
@@ -18,7 +18,9 @@ việc tạo user khi đăng nhập lần đầu; quyền của `dw_provisioner`
 
 1. Trên DB của `make infra-up`, tạo trong phiên đo (không qua migration) một bảng thử 200.000 dòng
    của một tenant, cùng dạng cột, index và policy với một bảng tenant có trang danh sách; kết nối bằng
-   `dw_app`, đặt `app.tenant_id` theo giao dịch bằng `set_config(..., true)`.
+   `dw_app`, đặt `app.tenant_id` theo giao dịch bằng `set_config(..., true)`. discovery/05 chạy trước
+   trên thân đường găng (OPS-j): có `## Answer` với số đo dạng sub-SELECT thì trỏ về đó và chỉ đo phần
+   còn thiếu.
 2. `EXPLAIN (ANALYZE, BUFFERS)` một trang danh sách (ORDER BY theo index, LIMIT 50) với policy dạng
    theo dòng hiện có và với dạng `(SELECT NULLIF(current_setting('app.tenant_id', true), '')::uuid)`;
    5 lần mỗi dạng, lấy trung vị; ghi số, plan và phiên bản PostgreSQL vào Comments.
@@ -46,7 +48,10 @@ Chuyển policy (R5.3), chỉ khi bước 3 qua ngưỡng:
    policy từ `pg_policies` lúc viết revision (27 ở baseline, các revision sau, mọi partition hiện có)
    và viết lại từng cái bằng `ALTER POLICY ... USING (...) WITH CHECK (...)`, mỗi
    `current_setting(...)` nằm trong một sub-SELECT; không thay chuỗi lúc chạy.
-8. Cùng revision: thay `platform._ensure_one_partition` để partition tạo sau nhận policy dạng mới.
+8. Cùng revision: viết lại bản ba tham số `platform._ensure_one_partition(schema_name, parent, month)` của
+   studio-skeleton/01 để partition tạo sau nhận policy dạng mới; giữ nguyên việc thu mọi quyền của
+   `dw_app` trên partition (DO-02.2), việc đọc sổ `platform.time_partitioned_tables` và việc chuyển dòng
+   kẹt ở DEFAULT.
 9. `packages/python/dw_platform/tests/integration/test_rls_coverage.py`: test mới đỏ khi một
    `current_setting(` trong `qual` hay `with_check` của `pg_policies` nằm ngoài sub-SELECT; bộ khớp
    hình workspace nhận dạng bọc; `_TRUSTED_SETTINGS` vẫn thấy tên setting.
@@ -82,7 +87,7 @@ Chuyển policy (R5.3), chỉ khi bước 3 qua ngưỡng:
 - `db/migrations/sql/0013_partition_maintenance.sql:74`
 - `packages/python/dw_platform/tests/integration/test_rls_coverage.py:95`
 - `packages/python/dw_platform/tests/integration/test_rls_coverage.py:427-447`
-- spec: R5, G6, FH12-FH14; ADR-0105 (Proposed) quyết định 1; si-platform
+- spec: R5, G6, FH12-FH14; ADR-0105 (Accepted) quyết định 1; si-platform
   `db/si/migrations/0057_record_tenant_policies_initplan.sql` (dạng và số đo).
 
 ## Comments

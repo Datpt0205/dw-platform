@@ -38,7 +38,7 @@ Một module kernel sở hữu từ vựng `pd_category`, `sensitive_type` và T
 
 - `packages/python/dw_agent_runtime/src/dw_agent_runtime/contracts.py:167`; spec: R1.1 (`data_classification`
   khai mà không đọc, thay bằng `pd_category` theo thuộc tính).
-- ADR-0106 (Proposed) quyết 1.
+- ADR-0106 (Accepted) quyết 1.
 
 ## Comments
 

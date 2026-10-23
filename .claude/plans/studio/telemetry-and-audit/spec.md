@@ -10,7 +10,7 @@ Người dựng cần xem một lượt chạy đã làm gì theo từng bước
 dưới RLS; telemetry hiện phát tên lệch spec GenAI và có thể mang nội dung. Lát này đưa một module ánh xạ
 OTel GenAI ghim commit chỉ mang định danh, một trace id đi từ trình duyệt tới worker, và một kho Lịch sử
 chạy theo bước che bí mật khi ghi và che theo quyền đọc trường của người xem khi đọc
-(ADR-0122 (Proposed), ADR-0106 (Proposed)). W1 phục vụ YC23, YC80, YC81 và một phần YC82 (ghi `run.payload.viewed`)
+(ADR-0122 (Accepted), ADR-0106 (Accepted)). W1 phục vụ YC23, YC80, YC81 và một phần YC82 (ghi `run.payload.viewed`)
 và YC88; lọc và xuất Nhật ký kiểm toán (YC83), Langfuse cho Người vận hành và Ghi nội dung theo công ty
 thuộc W2.
 
@@ -69,8 +69,8 @@ Người vận hành truy được một lượt chạy qua một trace id duy n
   trên span, `platform.worker_runs`, `platform.audit_events` và dòng `platform.outbox_events`.
 - R2.3 `RunContext.trace_id` PHẢI khớp `^[0-9a-f]{32}$`, thay cho tiền tố `api-`, `resume-` và `lookup-`
   hiện tại.
-- R2.4 KHI một phản hồi lỗi `application/problem+json` trả về, API PHẢI đặt `trace_id` của request vào
-  thân phản hồi.
+- R2.4 KHI một phản hồi lỗi `application/problem+json` trả về, API PHẢI đặt vào trường `trace_id` của vỏ
+  lỗi (app-standards:R1.2) đúng trace id 32 ký tự hex của request.
 
 ### R3 — Kho Lịch sử chạy theo bước, che khi ghi và khi đọc
 
@@ -83,7 +83,7 @@ trường của người xem khi đọc.
 - R3.2 KHI ghi một Bước chạy, `StepRecorderPort` PHẢI bỏ trường bí mật và tham chiếu credential, che trường
   `Nhạy cảm`, và ghi lại từng quyết định che.
 - R3.3 KHI một người đọc payload của một Bước chạy, Lịch sử chạy PHẢI che mỗi trường người đó không có
-  quyền đọc và trả dấu `Đã ẩn` tại chỗ (ADR-0106 (Proposed) quyết 4).
+  quyền đọc và trả dấu `Đã ẩn` tại chỗ (ADR-0106 (Accepted) quyết 4).
 - R3.4 ĐỐI VỚI một payload trên 4 KB, `StepRecorderPort` PHẢI lưu phần thân theo tham chiếu dưới đường dẫn
   đối tượng gắn công ty và workspace (4 KB thì giữ trong dòng, 4 KB cộng một byte thì theo tham chiếu).
 - R3.5 KHI một người mở payload của một Bước chạy, API Lịch sử chạy PHẢI ghi đúng một sự kiện
@@ -104,13 +104,20 @@ Người giữ `runs.read` xem danh sách lượt chạy và chi tiết từng b
 
 ### R5 — Lưu giữ có bộ xóa cho mỗi kho, không xóa lượt chạy còn sống
 
-Mỗi kho lát này tạo có một thời hạn và một bộ xóa, và lượt chạy chưa kết thúc hay còn được tham chiếu
-không bị xóa (ADR-0122 (Proposed) quyết 7).
+Mỗi kho lát này tạo, và các kho sự kiện vào mà lane lưu giữ của lát này đọc hạn, có một thời hạn và một
+bộ xóa; lượt chạy chưa kết thúc hay còn được tham chiếu không bị xóa. Lát này là chủ duy nhất của
+`retention@1.8.0`, với số tạm UNVERIFIED tới khi luật sư xác nhận trước chạy bóng (ADR-0122 (Accepted)
+quyết 7; DO-52).
 
 - R5.1 ĐỐI VỚI mỗi kho dữ liệu cá nhân mới (`platform.run_steps`, payload đối tượng, cột payload của lượt
-  chạy, Sổ sử dụng), `configs/policies/retention@1.8.0.yaml` PHẢI khai một thời hạn và một bộ xóa đã đăng ký.
+  chạy, Sổ sử dụng, `studio.inbound_events`, `studio.trigger_deliveries`), `configs/policies/retention@1.8.0.yaml`
+  PHẢI khai một thời hạn và một bộ xóa đã đăng ký.
 - R5.2 NẾU một kho dữ liệu cá nhân không có bộ xóa đăng ký, THÌ test tập bộ xóa PHẢI đỏ.
 - R5.3 NẾU một lượt chạy chưa kết thúc hay còn được `memory.items` trỏ tới, THÌ lane lưu giữ PHẢI bỏ qua
+  nó và vẫn đếm nó.
+- R5.4 ĐỐI VỚI một Bước chạy quá 30 ngày (YC88), lane lưu giữ PHẢI xóa payload của bước (preview trong dòng
+  và đối tượng theo tham chiếu) dù partition của tháng đó chưa tới lúc DROP.
+- R5.5 NẾU một sự kiện vào quá 30 ngày còn được một lượt chạy `queued` trỏ tới, THÌ lane lưu giữ PHẢI bỏ qua
   nó và vẫn đếm nó.
 
 ## Trong phạm vi
@@ -120,26 +127,30 @@ không bị xóa (ADR-0122 (Proposed) quyết 7).
   `TelemetryPort.record_histogram` với `OtelTelemetry`, `RecordingTelemetry`, `NullTelemetry`; span
   processor Langfuse; formatter log JSON có danh sách trường cho phép; `StepRecorderPort` và adapter ghi
   `platform.run_steps`; đọc Sổ sử dụng cho token và chi phí mỗi Bước chạy;
-  `configs/policies/retention@1.8.0.yaml` (lớp run, bước, payload, Sổ sử dụng) và các lane xóa.
+  `configs/policies/retention@1.8.0.yaml` (chủ duy nhất của bản này: lớp run, bước, payload, Sổ sử dụng, sự
+  kiện vào, lần giao kích hoạt, khóa chống trùng; DO-52) và các lane xóa.
 - Thêm cột `trace_parent` cho `platform.outbox_events`; CHECK `trace_id` cho `platform.worker_runs` và
-  `platform.audit_events`; thêm `run_steps` vào `platform.ensure_time_partitions`.
+  `platform.audit_events`; đăng ký `run_steps` bằng một dòng `platform.time_partitioned_tables`.
 - Audit: `run.payload.viewed`.
 
 ## Ngoài phạm vi
 
-| Việc                                                                                      | Vì sao                                                            | Chủ                               |
-| ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------- | --------------------------------- |
-| W2: Lọc Nhật ký kiểm toán phía máy chủ, index theo run, danh mục hành động một chủ (YC83) | cần bộ lọc và index; cơ chế của W1 không chặn                     | telemetry-and-audit, đợt sau (W2) |
-| W2: Xuất Nhật ký kiểm toán qua tác vụ nền, link hết hạn 7 ngày (YC83)                     | đọc tính năng `audit_export`; chờ danh mục hành động              | telemetry-and-audit, đợt sau (W2) |
-| W2: Langfuse chỉ cho Người vận hành, ghim theo digest, lên v4                             | không gửi nội dung thì không cần bản Enterprise                   | telemetry-and-audit, đợt sau (W2) |
-| W2: Ghi nội dung theo công ty, giữ ≤ 7 ngày, chỉ công ty đọc                              | cần chính sách `telemetry.content_capture` của tenant-config      | telemetry-and-audit, đợt sau (W2) |
-| W3: Collector, lấy mẫu đuôi, bảng Grafana; chuỗi băm chống sửa, đẩy SIEM                  | v1.5 trở đi                                                       | telemetry-and-audit, đợt sau (W3) |
-| Bộ bọc node phát span và gọi `StepRecorderPort`                                           | lát này cấp `dw_observability.semconv` và `StepRecorderPort`      | workflow-engine                   |
-| Nhận diện dữ liệu cá nhân tiếng Việt ở exporter (Presidio)                                | bộ dò là kiểm soát phụ, có số đo trước khi dựa vào                | compliance-pdpl, đợt sau (W2)     |
-| Điểm đánh giá trực tuyến (`gen_ai.evaluation.result`)                                     | dùng sự kiện GenAI nhưng thuộc cổng kiểm định                     | agent-lifecycle                   |
-| Sổ sử dụng theo lượt gọi, Bảng giá và hàm phân vùng                                       | lát này đọc token và chi phí từ sổ, không tạo sổ                  | usage-and-limits                  |
-| Hàm quyết quyền đọc trường và dấu `Đã ẩn`                                                 | lát này gọi hàm đó khi đọc payload                                | field-security                    |
-| Trace thô cho công ty đọc                                                                 | span ở backend không có RLS theo công ty; công ty đọc từ Postgres | không làm                         |
+| Việc                                                                                                             | Vì sao                                                                              | Chủ                                           |
+| ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------- |
+| W2: Lọc Nhật ký kiểm toán phía máy chủ, danh mục hành động một chủ (YC83)                                        | cần bộ lọc; cơ chế của W1 không chặn                                                | telemetry-and-audit, đợt sau (W2)             |
+| Index Nhật ký kiểm toán theo lượt chạy `platform.audit_events (tenant_id, run_id, occurred_at)` trên bảng cha    | một chủ (OPS-b); `ix_audit_events_run` của ADR-0122 (Accepted) bỏ; ticket 02 chờ nó | app-standards                                 |
+| W2: Xuất Nhật ký kiểm toán qua tác vụ nền, link hết hạn 7 ngày (YC83)                                            | đọc tính năng `audit_export`; chờ danh mục hành động                                | telemetry-and-audit, đợt sau (W2)             |
+| W2: Langfuse chỉ cho Người vận hành, ghim theo digest, lên v4                                                    | không gửi nội dung thì không cần bản Enterprise                                     | telemetry-and-audit, đợt sau (W2)             |
+| W2: Ghi nội dung theo công ty qua chính sách `telemetry.content_capture` có audit, giữ ≤ 7 ngày, chỉ công ty đọc | DO-51.1; cần chính sách của tenant-config                                           | telemetry-and-audit, đợt sau (W2)             |
+| W2: `traceparent` tới Cổng MCP (chặng nội bộ) nhưng không tới máy chủ MCP nào, không bao giờ `baggage`           | DO-46.3; mcp-client là W2; chỉ mở lại khi có nhà cung cấp trả span về nền tảng      | mcp-client; telemetry-and-audit, đợt sau (W2) |
+| W3: Collector, lấy mẫu đuôi, bảng Grafana; chuỗi băm chống sửa, đẩy SIEM                                         | v1.5 trở đi                                                                         | telemetry-and-audit, đợt sau (W3)             |
+| Bộ bọc node phát span và gọi `StepRecorderPort`                                                                  | lát này cấp `dw_observability.semconv` và `StepRecorderPort`                        | workflow-engine                               |
+| Nhận diện dữ liệu cá nhân tiếng Việt ở exporter (Presidio)                                                       | bộ dò là kiểm soát phụ, có số đo trước khi dựa vào                                  | compliance-pdpl, đợt sau (W2)                 |
+| Điểm đánh giá trực tuyến (`gen_ai.evaluation.result`)                                                            | dùng sự kiện GenAI nhưng thuộc cổng kiểm định                                       | agent-lifecycle                               |
+| Sổ sử dụng theo lượt gọi và Bảng giá                                                                             | lát này đọc token và chi phí từ sổ, không tạo sổ                                    | usage-and-limits                              |
+| Sổ `platform.time_partitioned_tables` và hàm tạo partition                                                       | lát này chỉ đăng ký `run_steps` bằng một dòng sổ (studio-skeleton:R3.1)             | studio-skeleton                               |
+| Hàm quyết quyền đọc trường và dấu `Đã ẩn`                                                                        | lát này gọi hàm đó khi đọc payload                                                  | field-security                                |
+| Trace thô cho công ty đọc                                                                                        | span ở backend không có RLS theo công ty; công ty đọc từ Postgres                   | không làm                                     |
 
 ## Dữ liệu
 
@@ -152,15 +163,22 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
 timestamptz`, `duration_ms`, `error_type`; `input_preview` và `result_preview` (≤ 4 KB), `input_ref` và
   `result_ref` (đường dẫn đối tượng, NULL khi giữ trong dòng); token, `cost_usd numeric(18,8)`,
   `price_book_version`, `redaction_log jsonb NOT NULL DEFAULT '[]'`, `fls_version`; không cột nội dung thô;
-  `dw_app` không UPDATE, DELETE trên cha và mọi phân vùng; vào mảng chỉ-thêm của
-  `platform.ensure_time_partitions` cùng ENABLE/FORCE RLS và policy công ty trên cha và DEFAULT; giữ 90
-  ngày; index `ix_run_steps_run (tenant_id, run_id, seq)`.
+  `dw_app` không UPDATE, DELETE trên cha và không giữ quyền nào trên phân vùng nào, kể cả DEFAULT, nên đọc
+  ghi qua bảng cha (DO-02.2); đăng ký bằng một dòng `platform.time_partitioned_tables` (`append_only = true`,
+  studio-skeleton:R3.1), ENABLE/FORCE RLS và policy công ty trên cha và DEFAULT; giữ 30 ngày (YC88): lane
+  lưu giữ xóa payload của bước quá 30 ngày (R5.4), DROP PARTITION khi cả tháng quá 30 ngày (thực tế 30-61
+  ngày); index `ix_run_steps_run (tenant_id, run_id, seq)`.
 - `platform.outbox_events`: thêm `trace_parent text` CHECK định dạng W3C `traceparent`; dispatcher worker
   tiếp trace từ cột đó.
 - `platform.worker_runs`, `platform.audit_events`: CHECK `trace_id ~ '^[0-9a-f]{32}$'` dạng `NOT VALID`.
-- `configs/policies/retention@1.8.0.yaml` thay `1.7.0`: `run_steps` 90 ngày (DROP PARTITION), payload đối
-  tượng 30 ngày (lane xóa đối tượng), cột payload lượt chạy 90 ngày sau kết thúc (lane xóa), lượt chạy 395
-  ngày sau kết thúc bỏ qua dòng `memory.items` trỏ tới (lane xóa).
+- `configs/policies/retention@1.8.0.yaml` thay `1.7.0`, chủ duy nhất là lát này (DO-52; compliance-pdpl nâng
+  lên `1.9.0` sau), mọi số UNVERIFIED tới khi luật sư xác nhận trước chạy bóng: `run_steps` 30 ngày (lane xóa
+  payload ở ngày 30, DROP PARTITION khi cả tháng quá hạn), payload đối tượng 30 ngày (lane xóa đối tượng), cột
+  payload lượt chạy 90 ngày sau kết thúc (lane xóa), lượt chạy 395 ngày sau kết thúc bỏ qua dòng
+  `memory.items` trỏ tới (lane xóa), `usage_events` 395 ngày (DROP PARTITION), `usage_daily` 760 ngày (lane
+  xóa), `studio.inbound_events` 30 ngày (lane xóa, bỏ qua sự kiện mà lượt `queued` còn trỏ tới),
+  `studio.trigger_deliveries` 90 ngày (lane xóa), khóa chống trùng của sự kiện vào 72 giờ (lane xóa); bỏ chú
+  thích "model_usage_ledger đã bị bỏ" của bản 1.7.0.
 
 ## API
 
@@ -169,7 +187,7 @@ timestamptz`, `duration_ms`, `error_type`; `input_preview` và `result_preview` 
 - `GET /api/v1/runs/{run_id}/steps` (`runs.read`): các Bước chạy theo `seq`.
 - `GET /api/v1/runs/{run_id}/steps/{step_id}/payload?part=in|out` (`runs.read_payloads`): payload che theo
   quyền đọc trường của người xem; audit `run.payload.viewed` trong cùng giao dịch.
-- Lỗi theo vỏ `application/problem+json` của ADR-0108 (Proposed), mang `trace_id`; `details.reason_code`
+- Lỗi theo vỏ `application/problem+json` của ADR-0108 (Accepted), mang `trace_id`; `details.reason_code`
   cho 404 cách ly.
 
 ## Màn hình
@@ -181,21 +199,21 @@ timestamptz`, `duration_ms`, `error_type`; `input_preview` và `result_preview` 
 
 ## Kiểm soát
 
-| #    | Kiểm soát                                           | Yêu cầu    | Test âm                                                                                                                                                           |
-| ---- | --------------------------------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| TA1  | Span, log, audit không mang nội dung                | R1.2       | Input có số điện thoại → không span, log hay sự kiện Nhật ký kiểm toán nào chứa giá trị đó; bật Ghi nội dung cho công ty A không làm span công ty B mang nội dung |
-| TA2  | Tên phát khớp ảnh đã ghim                           | R1.1       | Đổi một tên span trong `semconv` → test hợp đồng đỏ                                                                                                               |
-| TA3  | Mỗi metric khai có nơi phát                         | R1.3       | Thêm một hằng vào `ALL_METRICS` không có lời gọi phát → test AST đỏ                                                                                               |
-| TA4  | Lịch sử chạy cách ly công ty và bản ghi             | R3.6       | `GET` Bước chạy của lượt chạy công ty B từ A → 404; danh sách `GET /api/v1/runs` không có lượt chạy công ty khác                                                  |
-| TA5  | Che theo quyền đọc trường khi đọc payload           | R3.3       | Người không có quyền đọc `phone` → payload trả dấu `Đã ẩn`; gỡ che → test đỏ                                                                                      |
-| TA6  | Bí mật không vào Lịch sử chạy                       | R3.2       | Input mang một khóa bí mật → preview không có giá trị, `redaction_log` ghi lý do; gỡ bỏ bí mật → test đỏ                                                          |
-| TA7  | Trace id 32 hex xuyên tiến trình                    | R2.2, R2.3 | Request mang `traceparent` → cùng trace id ở span API, span worker, `platform.worker_runs` và dòng outbox; ghi `trace_id` dạng `api-...` → CHECK từ chối          |
-| TA8  | Log chỉ id                                          | R1.5       | Một dòng log mang giá trị dạng email hay query string → `test_logs_carry_ids_only` đỏ                                                                             |
-| TA9  | Langfuse không nhận user id hay nội dung            | R1.4       | Span processor bỏ `user.id` và `gen_ai.input.messages`; gỡ bỏ → test exporter đỏ                                                                                  |
-| TA10 | Mở payload có ghi Nhật ký kiểm toán                 | R3.5       | Mở payload → đúng một sự kiện `run.payload.viewed`; gỡ ghi audit → test đỏ                                                                                        |
-| TA11 | Lưu giữ không xóa lượt chạy sống hay còn tham chiếu | R5.3       | Lượt chạy `waiting_approval` 400 ngày còn nguyên; lượt chạy được `memory.items` trỏ tới → bỏ qua, được đếm                                                        |
-| TA12 | Payload cần `runs.read_payloads`                    | R4.3       | Thiếu `runs.read_payloads` gọi payload → 403, không trả payload; gỡ kiểm → test đỏ                                                                                |
-| TA13 | Mỗi kho mới có bộ xóa đăng ký                       | R5.1, R5.2 | Một lớp retention thiếu bộ xóa → test tập bộ xóa đỏ                                                                                                               |
+| #    | Kiểm soát                                           | Yêu cầu    | Test âm                                                                                                                                                                                                     |
+| ---- | --------------------------------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TA1  | Span, log, audit không mang nội dung                | R1.2       | Input có số điện thoại → không span, log hay sự kiện Nhật ký kiểm toán nào chứa giá trị đó; bật Ghi nội dung cho công ty A không làm span công ty B mang nội dung                                           |
+| TA2  | Tên phát khớp ảnh đã ghim                           | R1.1       | Đổi một tên span trong `semconv` → test hợp đồng đỏ                                                                                                                                                         |
+| TA3  | Mỗi metric khai có nơi phát                         | R1.3       | Thêm một hằng vào `ALL_METRICS` không có lời gọi phát → test AST đỏ                                                                                                                                         |
+| TA4  | Lịch sử chạy cách ly công ty và bản ghi             | R3.6       | `GET` Bước chạy của lượt chạy công ty B từ A → 404; danh sách `GET /api/v1/runs` không có lượt chạy công ty khác                                                                                            |
+| TA5  | Che theo quyền đọc trường khi đọc payload           | R3.3       | Người không có quyền đọc `phone` → payload trả dấu `Đã ẩn`; gỡ che → test đỏ                                                                                                                                |
+| TA6  | Bí mật không vào Lịch sử chạy                       | R3.2       | Input mang một khóa bí mật → preview không có giá trị, `redaction_log` ghi lý do; gỡ bỏ bí mật → test đỏ                                                                                                    |
+| TA7  | Trace id 32 hex xuyên tiến trình                    | R2.2, R2.3 | Request mang `traceparent` → cùng trace id ở span API, span worker, `platform.worker_runs` và dòng outbox; ghi `trace_id` dạng `api-...` → CHECK từ chối                                                    |
+| TA8  | Log chỉ id                                          | R1.5       | Một dòng log mang giá trị dạng email hay query string → `test_logs_carry_ids_only` đỏ                                                                                                                       |
+| TA9  | Langfuse không nhận user id hay nội dung            | R1.4       | Span processor bỏ `user.id` và `gen_ai.input.messages`; gỡ bỏ → test exporter đỏ                                                                                                                            |
+| TA10 | Mở payload có ghi Nhật ký kiểm toán                 | R3.5       | Mở payload → đúng một sự kiện `run.payload.viewed`; gỡ ghi audit → test đỏ                                                                                                                                  |
+| TA11 | Lưu giữ không xóa lượt chạy sống hay còn tham chiếu | R5.3, R5.5 | Lượt chạy `waiting_approval` 400 ngày còn nguyên; lượt chạy được `memory.items` trỏ tới → bỏ qua, được đếm; sự kiện vào 31 ngày mà một lượt `queued` còn trỏ tới → bỏ qua, được đếm; gỡ điều kiện → test đỏ |
+| TA12 | Payload cần `runs.read_payloads`                    | R4.3       | Thiếu `runs.read_payloads` gọi payload → 403, không trả payload; gỡ kiểm → test đỏ                                                                                                                          |
+| TA13 | Mỗi kho mới có bộ xóa đăng ký                       | R5.1, R5.2 | Một lớp retention thiếu bộ xóa → test tập bộ xóa đỏ                                                                                                                                                         |
 
 ## Tiêu chí xong
 
@@ -205,27 +223,31 @@ timestamptz`, `duration_ms`, `error_type`; `input_preview` và `result_preview` 
 
 ## Phụ thuộc
 
-- usage-and-limits: hàm phân vùng `platform.ensure_time_partitions` và Sổ sử dụng theo lượt gọi, định giá
-  theo ADR-0121 (Proposed)
-  (`.claude/plans/studio/usage-and-limits/issues/02-bang-gia-so-su-dung-va-man-hinh.md`).
+- usage-and-limits: Sổ sử dụng theo lượt gọi, định giá theo ADR-0121 (Accepted)
+  (`.claude/plans/studio/usage-and-limits/issues/02-bang-gia-so-su-dung-va-man-hinh.md`), và `LimitsMiddleware`
+  nơi mở span `chat` và ghi Bước chạy `model_call`
+  (`.claude/plans/studio/usage-and-limits/issues/03-han-muc-giu-truoc-va-quyet-toan.md`).
+- app-standards: trường `trace_id` của vỏ lỗi (app-standards:R1.2) và index audit theo lượt chạy
+  (`.claude/plans/studio/app-standards/issues/03-quy-uoc-api-danh-sach-va-sua.md`).
+- workflow-triggers: bảng `studio.inbound_events`, `studio.trigger_deliveries` và khóa chống trùng mà lane lưu
+  giữ của lát này xóa theo hạn của `retention@1.8.0`
+  (`.claude/plans/studio/workflow-triggers/issues/02-data-hub-endpoint-va-ingress.md`).
 - workflow-engine: bộ bọc node phát span và gọi `StepRecorderPort`, `root_run_id` và cửa nhận lượt chạy
   (`.claude/plans/studio/workflow-engine/issues/03-bien-dich-va-wrapper-nut.md`).
 - field-security: hàm quyết quyền đọc trường và dấu `Đã ẩn`, đang viết đợt này — dẫn theo đường dẫn
-  (`.claude/plans/studio/field-security/issues/01-mo-hinh-bao-mat-truong.md`); ADR-0106 (Proposed).
+  (`.claude/plans/studio/field-security/issues/01-mo-hinh-bao-mat-truong.md`); ADR-0106 (Accepted).
 - tenant-rbac: quyền `runs.read`, `runs.read_payloads` trong danh mục quyền một chủ
   (`.claude/plans/studio/tenant-rbac/issues/01-mot-chu-cho-quyen.md`).
-- studio-skeleton: schema và điều hướng
+- studio-skeleton: schema, điều hướng và sổ `platform.time_partitioned_tables` (studio-skeleton:R3.1)
   (`.claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md`).
-- `configs/policies/retention@1.8.0.yaml` đồng sở hữu với compliance-pdpl: lát này giữ lớp run, Bước chạy,
-  payload và Sổ sử dụng; compliance-pdpl thêm lớp Bản ghi đồng ý, nhật ký gửi và sự cố
+- `configs/policies/retention@1.8.0.yaml` có một chủ là lát này (DO-52); compliance-pdpl nâng lên
+  `retention@1.9.0` với lớp Bản ghi đồng ý, Danh sách chặn gửi, nhật ký gửi và hội thoại, sau ticket 03
   (`.claude/plans/studio/compliance-pdpl/issues/06-lop-luu-giu-du-lieu-ca-nhan.md`).
 - Kiểm lại khi: hợp đồng `StepRecorderPort` hay bộ bọc node của workflow-engine đổi → R3; hàm quyền đọc
-  trường của field-security đổi → R3.3; ADR-0122 (Proposed) bị Đạt bác → toàn lát.
+  trường của field-security đổi → R3.3; ADR-0122 (Accepted) bị Đạt bác → toàn lát; workflow-triggers đổi bảng
+  sự kiện vào → R5.1, R5.5; luật sư đổi số thời hạn → `retention@1.8.0`, không đổi tiêu chí.
 
 ## Câu hỏi còn mở
-
-- Q1. Thời hạn lưu cho lượt chạy kết thúc, Bước chạy và payload là bao nhiêu, theo PDPL và Nghị định 356?
-  Chủ: Đạt và luật sư. Chặn: R5.1, ticket 03 (DO-52).
 
 ## Quyết định
 
@@ -238,7 +260,25 @@ timestamptz`, `duration_ms`, `error_type`; `input_preview` và `result_preview` 
   vận hành không đọc — W2. Sửa: Ngoài phạm vi. Nếu sai thì: bỏ Ghi nội dung khỏi lộ trình.
 - 23/10/2026 (agent, tạm): config-chang.md ghi đối thủ phơi "Nhật ký audit" và "Lịch sử" làm bề mặt quan
   sát (mục 7); Studio cải tiến là công ty đọc Lịch sử chạy từ `platform.run_steps` dưới RLS, span không nội
-  dung, không đọc từ trace (ADR-0122 (Proposed)) — quan sát học được, không phải mã của họ. Sửa: R1, R3.
+  dung, không đọc từ trace (ADR-0122 (Accepted)) — quan sát học được, không phải mã của họ. Sửa: R1, R3.
+- 23/10/2026 (Đạt): DO-21.1 ký: Sổ sử dụng theo lượt gọi quay lại; dòng D6 ở trên không còn chờ chữ ký.
+  Sửa: Phụ thuộc, ticket 03.
+- 23/10/2026 (Đạt): DO-52 theo (a) cộng hai dòng, thay dòng DO-52 tạm ở trên: bảng tạm UNVERIFIED theo
+  ADR-0122 (Accepted) quyết 7; Bước chạy và sự kiện vào 30 ngày (YC88 thắng 90 ngày của ADR); lát này là chủ
+  duy nhất của `retention@1.8.0` và lane lưu giữ của nó đọc hạn `studio.inbound_events`,
+  `studio.trigger_deliveries`; lane không xóa sự kiện vào mà lượt `queued` còn trỏ tới; luật sư xác nhận số
+  trước chạy bóng (compliance-pdpl/02). Hỏi: Q1. Sửa: R5, R5.1, R5.4, R5.5, TA11, Dữ liệu, Trong phạm vi,
+  Phụ thuộc, ticket 03.
+- 23/10/2026 (Đạt): DO-51.1 theo (a) và DO-51.2 theo (c), thay dòng DO-51 tạm ở trên: Ghi nội dung ở W2 qua
+  chính sách có audit, ≤ 7 ngày, chỉ công ty đọc; sử dụng theo tên người là W2. DO-46.3 theo (b): không gửi
+  `traceparent` tới máy chủ MCP nào, không bao giờ `baggage`. Sửa: Ngoài phạm vi.
+- 23/10/2026 (Đạt): OPS-b và ADR-0122 (Accepted) nhận kèm sửa: index audit theo lượt chạy có một chủ là
+  app-standards/03, ticket 02 chờ nó; ticket 02 và 03 chờ usage-and-limits/03 vì `LimitsMiddleware` ghi span
+  `chat` và Bước chạy `model_call`. DO-02.2 theo (a): partition của `run_steps` không cấp quyền nào cho
+  `dw_app`, bảng đăng ký bằng một dòng sổ. Sửa: Ngoài phạm vi, Dữ liệu, Trong phạm vi, Phụ thuộc, ticket 02, 03.
+- 23/10/2026 (agent, tạm): A:app-standards:R1.2~telemetry-and-audit:R2.4: lát này chỉ bảo đảm `trace_id`
+  32 hex trong vỏ lỗi của app-standards, không dựng vỏ. Sửa: R2.4, ticket 02. Nếu sai thì: lát này giữ cả
+  việc dựng trường `trace_id`.
 
 ## Danh sách ticket
 

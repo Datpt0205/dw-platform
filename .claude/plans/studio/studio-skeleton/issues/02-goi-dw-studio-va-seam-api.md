@@ -1,13 +1,13 @@
 # 02 — Gói dw_studio, hợp đồng import và seam API /api/v1/studio
 
-Status: needs-info (DO-02, DO-16)
+Status: needs-triage
 Blocked by: 01
 Area: studio
 Yêu cầu: R2.6, R5.1, R5.4, R5.5, R5.7, R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.7, SKEL9, SKEL10, SKEL11, SKEL12, SKEL13, SKEL14
 
 ## Mục tiêu
 
-Lát này cho Studio một distribution và một cửa vào API: `dw_studio` đăng ký đủ chỗ với các hợp đồng import mà lõi nền tảng không vượt được (R5), và nhóm route `/api/v1/studio` dựng từ `container.runtime` trên seam context (R6). Ticket này vào cùng nhánh với tenant-config ticket 02, nơi có module thật đầu tiên của `dw_studio.core`, bảng tenant đầu tiên của `studio` và route `GET /api/v1/studio/artifacts`, nên seam không vào `main` khi rỗng (ADR-0100 (Proposed), Consequences).
+Lát này cho Studio một distribution và một cửa vào API: `dw_studio` đăng ký đủ chỗ với các hợp đồng import mà lõi nền tảng không vượt được (R5), và nhóm route `/api/v1/studio` dựng từ `container.runtime` trên seam context (R6). Ticket này vào cùng nhánh với tenant-config ticket 02, nơi có module thật đầu tiên của `dw_studio.core`, bảng tenant đầu tiên của `studio` và route `GET /api/v1/studio/artifacts`, nên seam không vào `main` khi rỗng (ADR-0100 (Accepted), Consequences).
 
 ## Việc cần làm
 
@@ -20,7 +20,7 @@ Lát này cho Studio một distribution và một cửa vào API: `dw_studio` đ
 7. Test đơn vị và hợp đồng trong `apps/api/tests/`: lấy mọi đường dưới `/api/v1/studio/` từ `app.openapi()`, không duyệt `app.routes`; gọi không token mỗi đường với method của nó và khẳng định 401; khẳng định có ít nhất một đường; khẳng định mọi operation tag `studio` có tiền tố đó; dựng app không cơ sở dữ liệu thì `GET /api/v1/studio/artifacts` trả 404 và không đường nào trả 500; body 1048577 byte trả 413 `payload_too_large` mà handler giả không được gọi, body 1048576 byte qua được trần.
 8. CI, job `containers`: bước "Smoke: Studio answers 401" sau "Smoke: API health", gọi `curl` không token tới `http://localhost:8000/api/v1/studio/artifacts` và đòi mã 401.
 9. `packages/python/dw_studio/tests/integration/test_metadata_matches_catalog.py`: so mô tả bảng của `dw_studio` với database sau `alembic upgrade head` bằng `compare_metadata` của alembic, lọc schema `studio`, và khẳng định không có khác biệt. Đo trước những gì `compare_metadata` không thấy (policy, quyền theo cột, index một phần) và ghi chúng vào docstring của test.
-10. `packages/python/dw_platform/tests/integration/test_rls_coverage.py`: thêm `studio` vào `_PLATFORM_SCHEMAS` trong cùng nhánh với bảng tenant đầu tiên của tenant-config ticket 02.
+10. `packages/python/dw_platform/tests/integration/test_rls_coverage.py`: thêm `studio` vào `_PLATFORM_SCHEMAS` trong cùng nhánh với bảng tenant đầu tiên của tenant-config ticket 02; bảng đó là bảng toàn tenant, nên tenant-config ticket 02 thêm dòng của nó vào `_TENANT_WIDE_ON_PURPOSE` của ticket 01 (R9.1).
 
 ## Tiêu chí chấp nhận
 
@@ -48,6 +48,6 @@ Lát này cho Studio một distribution và một cửa vào API: `dw_studio` đ
 - `packages/python/dw_kernel/src/dw_kernel/naming.py:23`, `packages/python/dw_platform/src/dw_platform/adapters/persistence/tables.py:15`; spec: R6.7.
 - `packages/python/dw_platform/tests/integration/test_rls_coverage.py:61-74`; spec: R2.6.
 - `.github/workflows/ci.yml:281-290`; spec: R6.6.
-- ADR-0100 (Proposed) điểm 3 và 6.
+- ADR-0100 (Accepted) điểm 3 và 6.
 
 ## Comments

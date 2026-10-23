@@ -1,12 +1,12 @@
 # 01 — Một vỏ lỗi problem+json cho mọi route
 
-Status: needs-info (DO-16)
+Status: needs-triage
 Area: studio
 Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R1.8, G1, G2, G3, APS1, APS2
 
 ## Mục tiêu
 
-Lát này cho client, người tích hợp và trang web một hình lỗi duy nhất: mọi route, kể cả lỗi schema, đường lạ và sai method, trả mô tả lỗi problem+json giữ nguyên bốn trường đang được đọc (R1, G1 đến G3, ADR-0108 (Proposed) điểm 1). Biểu mẫu đọc được lỗi của từng trường thay vì "HTTP 422".
+Lát này cho client, người tích hợp và trang web một hình lỗi duy nhất: mọi route, kể cả lỗi schema, đường lạ và sai method, trả mô tả lỗi problem+json giữ nguyên bốn trường đang được đọc (R1, G1 đến G3, ADR-0108 (Accepted) điểm 1). Biểu mẫu đọc được lỗi của từng trường thay vì "HTTP 422".
 
 ## Việc cần làm
 
@@ -42,6 +42,6 @@ Lát này cho client, người tích hợp và trang web một hình lỗi duy n
 - `packages/python/dw_kernel/src/dw_kernel/errors.py:13-30`; spec: R1.5.
 - `packages/typescript/api-client/src/client.ts:270-282`, `packages/typescript/contracts/src/error.ts:7-12`, `packages/typescript/ui/src/region-state.tsx:29-48`; spec: R1.8.
 - `apps/api/tests/contract/test_error_codes.py:41`; spec: G3.
-- ADR-0108 (Proposed) điểm 1.
+- ADR-0108 (Accepted) điểm 1.
 
 ## Comments

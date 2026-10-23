@@ -44,17 +44,17 @@ Mỗi lần chạy mã dùng một container mới dùng một lần, không m�
 
 ## Ngoài phạm vi
 
-| Việc                                                                                                                         | Vì sao                                                | Chủ                                   |
-| ---------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- | ------------------------------------- |
-| R2.1: ảnh `dw-code-python`, harness, container mới dùng một lần, không mạng, không bí mật, trần tài nguyên                   | Dựng cùng runner sau khi spike chốt                   | đợt sau (W2)                          |
-| R2.4: bộ script thù địch 100% ở cổng phát hành, service `sandbox-runner`, job CI `sandbox-hostile`                           | Dựng sau ảnh                                          | đợt sau (W2)                          |
-| R2.3: `CodeExecutionService`, `CodeSandboxPort`, quyền lợi `code_node`, quyền `studio.code.author`, hạn mức, đo usage, audit | Dựng sau runner                                       | đợt sau (W2)                          |
-| R2.2: hạ tầng engine rootless, slice `dw-sandbox.slice`, VM thứ hai khi `settings.is_deployed`                               | Đặt mua VM mất thời gian                              | đợt sau (W2), đặt mua ready-for-human |
-| Phiên container cho công cụ mã của agent; backend Kubernetes với RuntimeClass `gvisor`; kill dừng container                  | Ngoài v1                                              | đợt sau (W3)                          |
-| Loại công cụ `code`                                                                                                          | Công cụ là dữ liệu tenant qua một executor            | tools-and-skills                      |
-| Node mã trong quy trình                                                                                                      | Node gọi `CodeSandboxPort` qua `CodeExecutionService` | workflow-nodes                        |
-| Sổ usage, lease `sandbox_cpu_seconds`, `SandboxUsagePort`                                                                    | Hạn mức và đo                                         | usage-and-limits                      |
-| Lối ra mạng cho mã                                                                                                           | Cần proxy và duyệt                                    | đợt sau (W2)                          |
+| Việc                                                                                                                         | Vì sao                                                                                                                                                  | Chủ                                   |
+| ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| R2.1: ảnh `dw-code-python`, harness, container mới dùng một lần, không mạng, không bí mật, trần tài nguyên                   | Dựng cùng runner sau khi spike chốt                                                                                                                     | đợt sau (W2)                          |
+| R2.4: bộ script thù địch 100% ở cổng phát hành, service `sandbox-runner`, job CI `sandbox-hostile`                           | Dựng sau ảnh                                                                                                                                            | đợt sau (W2)                          |
+| R2.3: `CodeExecutionService`, `CodeSandboxPort`, quyền lợi `code_node`, quyền `studio.code.author`, hạn mức, đo usage, audit | Dựng sau runner                                                                                                                                         | đợt sau (W2)                          |
+| R2.2: hạ tầng engine rootless, slice `dw-sandbox.slice`, VM thứ hai khi `settings.is_deployed`                               | Đặt mua VM mất thời gian                                                                                                                                | đợt sau (W2), đặt mua ready-for-human |
+| Container theo phiên agent cho công cụ mã của agent; backend Kubernetes với RuntimeClass `gvisor`; kill dừng container       | Ngoài v1: v1 mỗi lần chạy mã một container mới (D7); vòng đời container theo phiên agent quyết ở W3 (DO-45.2)                                           | đợt sau (W3)                          |
+| Loại công cụ `code`                                                                                                          | Công cụ là dữ liệu tenant qua một executor                                                                                                              | tools-and-skills                      |
+| Node mã trong quy trình                                                                                                      | Node gọi `CodeSandboxPort` qua `CodeExecutionService`                                                                                                   | workflow-nodes                        |
+| Sổ usage, lease, `SandboxUsagePort`                                                                                          | Hạn mức và đo; đơn vị tính tiền là vCPU và GB đặt trước theo Cấu hình chạy mã nhân thời gian chạy, CPU đo từ cgroup chỉ để phát hiện lạm dụng (DO-45.1) | usage-and-limits                      |
+| Lối ra mạng cho mã                                                                                                           | Cần proxy và duyệt                                                                                                                                      | đợt sau (W2)                          |
 
 ## Kiểm soát
 
@@ -65,22 +65,28 @@ Mỗi lần chạy mã dùng một container mới dùng một lần, không m�
 
 ## Tiêu chí xong
 
-- Mọi tiêu chí R có test; mọi kiểm soát CS1, CS2 có test âm đã thấy đỏ khi gỡ guard; bộ script thù địch đạt 100% ở cổng phát hành.
-- `make ci` xanh, gồm job `sandbox-hostile` và `/health` của runner trên VM báo `rootless: true` và `runtime: runsc-dw`.
+- Bảng số đo mười mục của R1.1 trên host mục tiêu và trên runner CI có trong tài liệu quyết định của spike; mọi tiêu chí R1 có test; CS1, CS2 có test âm đã thấy đỏ khi gỡ guard (ghi ở Comments của ticket 01).
+- ADR-0119 (Proposed) và ngân sách hạ tầng (VM thứ hai, cỡ host) được chốt theo số đo; trần nào không được tôn trọng thì ghi là điều kiện chặn bước mã (R1.2).
+- `uv run pytest packages/python/dw_studio/tests/spike -k sandbox` xanh.
+- Tiêu chí W2 (bộ script thù địch đạt 100% ở cổng phát hành, job `sandbox-hostile`, `/health` của runner trên VM báo `rootless: true` và `runtime: runsc-dw`) thuộc R2 ở Ngoài phạm vi và không chặn việc đóng spec này ở W1.
 
 ## Phụ thuộc
 
 - `studio-skeleton`: seam hạ tầng compose và danh sách mạng cho một service mới.
-- Seam do bên khác dựng, tham chiếu bằng slug: `usage-and-limits` (`SandboxUsagePort` báo CPU từ cgroup, lease `sandbox_cpu_seconds`, cột `sandbox_cpu_seconds_per_month` và `max_concurrent_sandbox_executions` trong `platform.plan_limits`).
-- Kiểm lại khi: DO-24/D14 chốt máy thứ hai và cỡ host → R2.2; DO-45 chốt ngôn ngữ, bộ gói và vòng đời container → R2.1, Ngoài phạm vi; kết quả spike F1, F3, F4 → R1, ADR-0119 (Proposed).
+- Seam do bên khác dựng, tham chiếu bằng slug: `usage-and-limits` (`SandboxUsagePort` ghi sự kiện `sandbox_exec` mang Cấu hình chạy mã và thời gian chạy, một đơn vị cho cả hạn mức và hóa đơn là vCPU và GB đặt trước nhân thời gian (DO-45.1), cộng CPU đo từ cgroup để phát hiện lạm dụng; lease và giới hạn chạy đồng thời trong `platform.plan_limits`).
+- Kiểm lại khi: DO-24/D14 chốt máy thứ hai và cỡ host → R2.2; kết quả spike F1, F3, F4 → R1, ADR-0119 (Proposed); người đặt yêu cầu quyết vòng đời container theo phiên agent ở W3 → Ngoài phạm vi.
 
 ## Câu hỏi còn mở
 
 ## Quyết định
 
 - 23/10/2026 (agent, tạm theo D14): một VM riêng cho `sandbox-runner` trước khi chạy mã của công ty ở môi trường triển khai (DO-24, O11, `settings.is_deployed`), đo cỡ trước. Sửa: R2.2. Nếu sai thì: nếu dùng chung host với engine rootless, bỏ R2.2.
-- 23/10/2026 (agent, tạm): Python 3.12, bộ gói dữ liệu tối thiểu thêm bằng phiên bản ảnh mới, không JavaScript, không chạy skill script ở v1; một container mỗi phiên agent, hủy lúc hết lượt chạy hoặc sau 15 phút rảnh hoặc 2 giờ; đơn vị tính tiền là vCPU và GB giữ trước nhân thời gian treo (DO-45 khuyến nghị a). Sửa: Ngoài phạm vi. Nếu sai thì: theo ghi chú DO-45.
+- 23/10/2026 (agent, tạm): Python 3.12, bộ gói dữ liệu tối thiểu thêm bằng phiên bản ảnh mới, không JavaScript, không chạy skill script ở v1; đơn vị tính tiền là vCPU và GB giữ trước nhân thời gian treo (DO-45 khuyến nghị a). Vế "một container mỗi phiên agent, hủy lúc hết lượt chạy hoặc sau 15 phút rảnh hoặc 2 giờ" đã bỏ theo DO-45.2 ngày 23/10/2026 bên dưới. Sửa: Ngoài phạm vi. Nếu sai thì: theo ghi chú DO-45.
 - 23/10/2026 (agent, tạm): bộ script thù địch phải đạt 100% ở cổng phát hành với mỗi test kèm bản chứng minh đỏ khi gỡ guard (`failure-modes.md` #0, #3). Sửa: R1.2, R2.4. Nếu sai thì: giữ nguyên.
+- 23/10/2026 (Đạt): DO-45.1 theo (a): chỉ Python 3.12, không JavaScript, không script của kỹ năng; tính tiền theo vCPU và GB đặt trước nhân thời gian, vì container giữ một chỗ trong pool suốt lúc chạy; CPU đo được để phát hiện lạm dụng; sự kiện usage mang Cấu hình chạy mã và thời gian chạy. Sửa: Ngoài phạm vi, Phụ thuộc.
+- 23/10/2026 (Đạt): DO-45.2 theo (A): v1 mỗi lần chạy mã một container mới (D7); container theo phiên agent chỉ ở W3 và quyết lúc đó. Sửa: dòng tạm DO-45 cùng ngày (bỏ vế container theo phiên agent), Ngoài phạm vi, Phụ thuộc.
+- 23/10/2026 (Đạt): Tiêu chí xong của W1 theo (a): viết lại theo R1 (bảng số đo, CS1, CS2 thấy đỏ, ADR-0119 (Proposed) và ngân sách hạ tầng chốt); phần còn lại là tiêu chí W2 của R2, không đổi phạm vi. Sửa: Tiêu chí xong.
+- 23/10/2026 (Đạt): ADR-0119 (Proposed) giữ Proposed tới khi ticket 01 báo số; khi chấp nhận, quyết 10 chuyển sang Open W3. Spec giữ trích dẫn ADR-0119 (Proposed).
 
 ## Danh sách ticket
 

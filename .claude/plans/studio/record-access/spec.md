@@ -6,8 +6,8 @@ Duyệt: chưa
 Sẵn sàng: chưa kiểm
 
 Ai thấy bản ghi nào được quyết định trong PostgreSQL bằng RLS trên một sổ tầm truy cập, không ở ứng dụng, nên API,
-agent, quy trình, xuất, lane và dịch vụ viết bằng ngôn ngữ khác nhận cùng một câu trả lời (ADR-0105 (Proposed),
-ADR-0103 (Proposed)). Chủ thể là người dùng hay tài khoản dịch vụ; agent và quy trình chỉ là giới hạn dữ liệu. W1 làm
+agent, quy trình, xuất, lane và dịch vụ viết bằng ngôn ngữ khác nhận cùng một câu trả lời (ADR-0105 (Accepted),
+ADR-0103 (Accepted)). Chủ thể là người dùng hay tài khoản dịch vụ; agent và quy trình chỉ là giới hạn dữ liệu. W1 làm
 lớp (a) của D3: người phụ trách và workspace sở hữu trên mọi bản ghi, mặc định truy cập theo object, mức truy cập Của
 tôi, Workspace của tôi và Toàn công ty, giao một lead của Marketing cho Sales, ngữ cảnh actor ở mọi cửa. Ba lớp còn lại
 (quản lý thấy bản ghi của cấp dưới, chia sẻ thủ công có hạn, quy tắc chia sẻ) là dòng W2 ở Ngoài phạm vi; bảo mật
@@ -24,7 +24,8 @@ trường là spec `field-security`.
   policy bản ghi dùng dạng đó.
 - Chỉ lane offboarding đặt `app.workspace_scope = 'tenant'`
   (`packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:51-54`), đúng quy tắc của
-  `CLAUDE.md:174-175`. Ràng buộc: lane Studio dùng lại setting này là sửa CLAUDE.md, chờ DO-13.
+  `CLAUDE.md:196-198`. Ràng buộc: theo DO-13.1 (Đạt, 23/10/2026), chỉ helper `tenant_wide_scope` đặt setting này, cho
+  lane có tên trong danh sách đăng ký đóng băng ở composition root (W1: offboarding); CLAUDE.md mục Tenancy ghi luật đó.
 - Offboarding tìm bảng để xuất theo policy tên `tenant_isolation_%` và quyền SELECT của `dw_app`
   (`packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:68-86`). Ràng buộc: bảng bản ghi
   giữ tên policy đó và SELECT của `dw_app` ở bảng cha, không ở partition, để mỗi dòng được xuất một lần.
@@ -39,6 +40,11 @@ trường là spec `field-security`.
   (`packages/python/dw_platform/tests/integration/test_rls_coverage.py:95-99`) và chỉ nhận `app.workspace_scope` đứng
   cạnh một mệnh đề tenant thuần (`packages/python/dw_platform/tests/integration/test_rls_coverage.py:395-411`).
   Ràng buộc: test đọc văn bản policy nên không thấy thu hẹp nằm trong một hàm (failure-modes #0).
+- Cùng test chỉ dò cột `tenant_id`, không kiểm cột `workspace_id`
+  (`packages/python/dw_platform/tests/integration/test_rls_coverage.py:44-59`). Ràng buộc: `studio.access_epochs`,
+  `studio.principal_scopes`, `studio.actor_boundaries`, `studio.actor_boundary_objects` và
+  `studio.actor_boundary_fields` không có `workspace_id`; chúng vào lớp bảng toàn tenant mà CLAUDE.md mục Tenancy ghi
+  (DO-01, ADR-0100 (Accepted)), mỗi bảng một dòng lý do trong danh sách của test đó.
 - `tenants.record_visibility` mặc định `'open'`, không CHECK (`db/migrations/sql/0001_platform_baseline.sql:409`);
   `visible_owners` đi theo `AccessContext`
   (`packages/python/dw_platform/src/dw_platform/application/access_context.py:43-50`), vào lượt chạy
@@ -47,7 +53,7 @@ trường là spec `field-security`.
   chúng. Ràng buộc: W1 không đọc chúng; gỡ ở W2.
 - Vai trò `platform_admin` qua mọi kiểm quyền
   (`packages/python/dw_platform/src/dw_platform/application/authorization.py:68-71`). Ràng buộc: không vai trò nào
-  thay quyền trên bản ghi (ADR-0105 (Proposed) mục 2).
+  thay quyền trên bản ghi (ADR-0105 (Accepted) mục 2).
 - Cổng công cụ chỉ so tập scope (`packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py:160-174`) và
   `RunContext` không mang giới hạn dữ liệu (`packages/python/dw_agent_runtime/src/dw_agent_runtime/contracts.py:106-128`).
   Thiếu: giới hạn dữ liệu của agent và quy trình.
@@ -67,8 +73,8 @@ trường là spec `field-security`.
 
 Mọi đường đọc biết ai phụ trách một bản ghi và workspace nào sở hữu nó (YC17).
 
-- R1.1 `studio.records` PHẢI giữ `owner_id`, `owner_kind` (`user` hoặc `team`), `workspace_id` và `object_id` khác
-  NULL trên mọi bản ghi của bảng cha và mọi partition.
+- R1.1 [Bỏ] 23/10/2026: cột `owner_id`, `owner_kind`, `workspace_id`, `object_id` và NOT NULL có một người tạo là
+  custom-objects/02 (`custom-objects:R4.1`); spec này chỉ đọc chúng.
 - R1.2 NẾU một lần ghi đặt người phụ trách không phải thành viên công ty đang hoạt động của tenant đang gắn, THÌ
   `studio.records` PHẢI từ chối với SQLSTATE 23514 `ck_records_owner_in_tenant` và không ghi gì.
 - R1.3 NẾU kết nối `dw_app` cập nhật thẳng `owner_id`, `owner_kind`, `workspace_id` hay `object_id`, THÌ PostgreSQL
@@ -76,20 +82,20 @@ Mọi đường đọc biết ai phụ trách một bản ghi và workspace nào
 
 ### R2 — Mặc định truy cập theo object
 
-Quản trị viên công ty mở một object cho cả công ty xem hoặc sửa mà không phải cấp thêm vai trò (YC17).
+Quản trị viên công ty mở một object cho cả công ty xem hoặc sửa mà không phải cấp thêm vai trò (YC17); mặc định truy
+cập chỉ đổi qua phiên bản `dw.object/v1` của custom-objects (`custom-objects:R1.4`).
 
-- R2.1 `studio.object_defs` PHẢI giữ cho mỗi object đúng một `default_access` trong `private`, `public_read`,
-  `public_read_write`, với `private` cho object mới.
+- R2.1 [Bỏ] 23/10/2026: cột `default_access` và `ck_object_defs_default_access` có một người tạo là custom-objects/02
+  (`custom-objects:R1.4`); spec này chỉ đọc và gắn trigger tăng epoch.
 - R2.2 TRONG KHI object ở `public_read`, policy đọc của `studio.records` PHẢI cho người giữ quyền `read` object ở bất
   kỳ mức truy cập nào đọc mọi bản ghi của object đó trong tenant.
 - R2.3 TRONG KHI object ở `public_read_write`, policy sửa của `studio.records` PHẢI cho người giữ quyền `update`
   object ở bất kỳ mức truy cập nào sửa mọi bản ghi của object đó trong tenant.
 - R2.4 NẾU người dùng chỉ với tới một bản ghi qua mặc định truy cập, THÌ policy xóa của `studio.records` PHẢI không
   xóa bản ghi đó (0 dòng bị ảnh hưởng).
-- R2.5 KHI người giữ `studio.sharing.manage` gửi `PATCH /api/v1/studio/objects/{api_name}/access` với `default_access`
-  hợp lệ, API object PHẢI lưu giá trị mới cùng đúng một sự kiện audit `studio.object.access_changed` trong một giao
-  dịch [CAN LAM RO: Q3].
-- R2.6 NẾU người gọi không giữ `studio.sharing.manage`, THÌ API object PHẢI trả 403 và không đổi gì.
+- R2.5 [Bỏ] 23/10/2026: route `PATCH /api/v1/studio/objects/{api_name}/access` bỏ; mặc định truy cập chỉ đổi qua
+  phát hành `dw.object/v1`, mở cần người thứ hai, siết một người (`custom-objects:R1.2`, `custom-objects:R1.7`).
+- R2.6 [Bỏ] 23/10/2026: cùng lý do với R2.5; khóa `studio.sharing.manage` không có người đọc ở W1 nên không đăng ký.
 
 ### R3 — Mức truy cập Của tôi, Workspace của tôi, Toàn công ty
 
@@ -113,7 +119,7 @@ Mọi đường đọc và ghi nhận cùng một câu trả lời về bản gh
 
 - R4.1 Bảng `studio.records` và mỗi partition của nó PHẢI mang đúng một policy RESTRICTIVE
   `tenant_isolation_records` và bốn policy PERMISSIVE `record_access_records_select`, `_insert`, `_update`,
-  `_delete` theo mẫu của ADR-0105 (Proposed) mục 1, và không policy nào khác.
+  `_delete` theo mẫu của ADR-0105 (Accepted) mục 1, và không policy nào khác.
 - R4.2 NẾU kết nối `dw_app` gắn tenant A đọc hay ghi bản ghi của tenant B, THÌ `studio.records` PHẢI trả 0 dòng khi
   đọc và lỗi WITH CHECK khi ghi, không đổi dòng nào.
 - R4.3 NẾU kết nối `dw_app` đọc hay ghi một partition của bảng bản ghi theo tên partition, THÌ PostgreSQL PHẢI từ
@@ -128,7 +134,7 @@ Mọi đường đọc và ghi nhận cùng một câu trả lời về bản gh
 
 Một thay đổi quyền có hiệu lực ở câu lệnh đầu tiên sau commit, kể cả khi nó đến từ lane nền hay nhập dữ liệu (YC14).
 
-- R5.1 Sổ tầm của mỗi chủ thể PHẢI do đúng một hàm SQL tính từ `platform.effective_grants` (ADR-0104 (Proposed)
+- R5.1 Sổ tầm của mỗi chủ thể PHẢI do đúng một hàm SQL tính từ `platform.effective_grants` (ADR-0104 (Accepted)
   mục 5) và mặc định truy cập của object, lấy tenant và chủ thể từ setting của giao dịch, không từ tham số.
 - R5.2 KHI một giao dịch commit việc gỡ hay tạm khóa thành viên công ty, gỡ thành viên workspace, gỡ lần gán vai trò,
   hạ mức truy cập trong vai trò hay đổi mặc định truy cập, sổ tầm PHẢI cho tầm mới từ câu lệnh đầu tiên của mọi giao
@@ -165,8 +171,7 @@ với giới hạn dữ liệu của phiên bản đã phát hành, đánh giá 
   của phiên bản đã phát hành, THÌ `studio.actor_boundaries` PHẢI từ chối với SQLSTATE 23514
   `ck_actor_boundaries_frozen` và không đổi gì.
 - R6.9 ĐỐI VỚI lượt chạy quy trình không người kích hoạt, policy của `studio.records` PHẢI áp tầm của tài khoản dịch
-  vụ chạy dưới danh nghĩa của phiên bản, giao với giới hạn dữ liệu, như cho một người giữ cùng vai trò
-  [CAN LAM RO: Q2].
+  vụ chạy dưới danh nghĩa của phiên bản, giao với giới hạn dữ liệu, như cho một người giữ cùng vai trò.
 
 ### R7 — Phạm vi toàn tenant cho offboarding và lane đã đăng ký [Sửa]
 
@@ -175,7 +180,7 @@ Trước đây: chỉ lane offboarding đặt phạm vi toàn tenant (`packages/
 - R7.1 TRONG KHI một giao dịch ở phạm vi toàn tenant của tenant đang gắn, policy của `studio.records` PHẢI cho đọc và
   ghi mọi bản ghi của tenant đó và 0 bản ghi của tenant khác.
 - R7.2 NẾU một lane không có trong danh sách đăng ký đóng băng ở composition root xin phạm vi toàn tenant, THÌ helper
-  phạm vi toàn tenant PHẢI từ chối trước khi đặt `app.workspace_scope` [CAN LAM RO: Q1].
+  phạm vi toàn tenant PHẢI từ chối trước khi đặt `app.workspace_scope`.
 - R7.3 KHI lane offboarding xuất một tenant, lane offboarding PHẢI xuất mỗi bản ghi của tenant đúng một lần, kể cả bản
   ghi của người đã rời tenant.
 
@@ -236,10 +241,8 @@ máy tham chiếu, với mọi hồ sơ quyền của ticket 01.
 
 - Policy `tenant_isolation_records` và bốn policy `record_access_records_<lệnh>` trên `studio.records` và mọi
   partition, dựng từ một module mẫu; quy tắc mới trong `test_rls_coverage.py`.
-- Cột `owner_kind`, `access_key`, ràng buộc, index, trigger `ck_records_owner_in_tenant` và quyền theo cột trên
-  `studio.records`.
-- `studio.object_defs.default_access`; route `PATCH /api/v1/studio/objects/{api_name}/access`; audit
-  `studio.object.access_changed`; khóa quyền `studio.sharing.manage`.
+- Cột sinh `access_key`, index tầm, trigger `ck_records_owner_in_tenant` và quyền theo cột trên `studio.records`.
+- Trigger AFTER UPDATE OF `default_access` trên `studio.object_defs` tăng epoch; cột và CHECK của nó thuộc custom-objects.
 - Sổ tầm: `studio.access_epochs`, `studio.principal_scopes`, `studio.compute_principal_scope()`,
   `studio.ensure_principal_scope()`, các hàm `studio.acl_*` và trigger vô hiệu hóa.
 - Setting `app.actor_kind`, `app.boundary_id`; helper gắn ngữ cảnh actor và helper phạm vi toàn tenant trong
@@ -252,122 +255,119 @@ máy tham chiếu, với mọi hồ sơ quyền của ticket 01.
 
 ## Ngoài phạm vi
 
-| Việc                                                                                    | Vì sao                                                                                                    | Chủ                                       |
-| --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
-| Quản lý thấy và sửa bản ghi cấp dưới (phân cấp)                                         | lớp (b) của D3; cần quan hệ quản lý toàn tenant của org-and-principals                                    | W2, record-access                         |
-| Chia sẻ thủ công một bản ghi, có hạn                                                    | lớp (c); cột `read_grants`, `edit_grants`, `grants_valid_until` đến cùng người ghi và người đọc của chúng | W2, record-access                         |
-| Mẫu policy cho bảng con của bản ghi                                                     | lịch sử, liên kết và chia sẻ chưa có ở W1                                                                 | W2, record-access                         |
-| Bản ghi trong knowledge giữ quyền                                                       | chờ foundations-hardening sửa xóa mềm không theo tenant; ADR-0105 (Proposed) mục 7                        | W2, record-access                         |
-| Gỡ `record_visibility` và `visible_owners`                                              | khai báo mà không đường nào đọc; gỡ cùng mọi nơi mang chúng                                               | W2, record-access                         |
-| Quy tắc chia sẻ theo tiêu chí, có phiên bản; ai thấy bản ghi này và vì sao              | lớp (c), cần CEL của ADR-0114 (Proposed)                                                                  | W2, record-access                         |
-| Chuyển hàng loạt người phụ trách; lane làm ấm sổ tầm và quét dòng không dùng 30 ngày    | W1 tính lại ở cửa và xóa dòng cùng thành viên công ty; lane chỉ làm ấm                                    | W2, record-access                         |
-| Biên agent theo phạm vi; hỗ trợ theo một bản ghi; kênh chat đọc bản ghi                 | v2 trong ADR-0105 (Proposed) và ADR-0024 (Proposed)                                                       | W3, record-access                         |
-| Nhóm làm người phụ trách; mức Của nhóm tôi và Workspace của tôi và cấp dưới             | nhóm và cây workspace đến ở W2 (ADR-0104 (Proposed))                                                      | W2, record-access cùng org-and-principals |
-| Tab "Quyền truy cập" trong thiết lập object                                             | màn thiết lập object chưa có ở W1; một tab cho mặc định truy cập và quản lý thấy cấp dưới                 | W2, record-access                         |
-| Hộp thoại "Giao cho" trên trang bản ghi                                                 | trang bản ghi thuộc custom-objects; hộp thoại gọi route giao của spec này                                 | custom-objects                            |
-| Xoay vòng người nhận và người dự phòng khi giao (YC50)                                  | quy tắc phân bổ là của lát Marketing                                                                      | marketing-pilot                           |
-| Đổi kết quả RLS thành 404 và 403 ở API bản ghi; tham chiếu tới bản ghi không thấy       | RecordService là cửa duy nhất của bản ghi (ADR-0107 (Proposed))                                           | custom-objects                            |
-| Chọn tài khoản dịch vụ cho lượt chạy không người kích hoạt; từ chối phát hành khi thiếu | điểm gắn `principal` của ADR-0110 (Proposed)                                                              | workflow-triggers                         |
-| Bảo mật trường                                                                          | một hàm ứng dụng (ADR-0106 (Proposed))                                                                    | field-security                            |
-| Từ chối (deny), quy tắc hạn chế; chia sẻ ra ngoài tenant                                | v1 chỉ cộng dồn, như ADR-0105 (Proposed) mục 2                                                            | không làm                                 |
+| Việc                                                                                    | Vì sao                                                                                                                                      | Chủ                                       |
+| --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| Quản lý thấy và sửa bản ghi cấp dưới (phân cấp)                                         | lớp (b) của D3; cần quan hệ quản lý toàn tenant của org-and-principals                                                                      | W2, record-access                         |
+| Chia sẻ thủ công một bản ghi, có hạn                                                    | lớp (c); cột `read_grants`, `edit_grants`, `grants_valid_until` đến cùng người ghi và người đọc của chúng                                   | W2, record-access                         |
+| Mẫu policy cho bảng con của bản ghi                                                     | lịch sử, liên kết và chia sẻ chưa có ở W1                                                                                                   | W2, record-access                         |
+| Bản ghi trong knowledge giữ quyền                                                       | chờ foundations-hardening sửa xóa mềm không theo tenant; ADR-0105 (Accepted) mục 7                                                          | W2, record-access                         |
+| Gỡ `record_visibility` và `visible_owners`                                              | khai báo mà không đường nào đọc; gỡ cùng mọi nơi mang chúng                                                                                 | W2, record-access                         |
+| Quy tắc chia sẻ theo tiêu chí, có phiên bản; ai thấy bản ghi này và vì sao              | lớp (c), cần CEL của ADR-0114 (Accepted)                                                                                                    | W2, record-access                         |
+| Chuyển hàng loạt người phụ trách; lane làm ấm sổ tầm và quét dòng không dùng 30 ngày    | W1 tính lại ở cửa và xóa dòng cùng thành viên công ty; lane chỉ làm ấm                                                                      | W2, record-access                         |
+| Biên agent theo phạm vi; hỗ trợ theo một bản ghi; kênh chat đọc bản ghi                 | v2 trong ADR-0105 (Accepted) và ADR-0024 (Proposed)                                                                                         | W3, record-access                         |
+| Nhóm làm người phụ trách; mức Của nhóm tôi và Workspace của tôi và cấp dưới             | nhóm và cây workspace đến ở W2 (ADR-0104 (Accepted))                                                                                        | W2, record-access cùng org-and-principals |
+| Tab "Quyền truy cập" trong thiết lập object                                             | màn thiết lập object chưa có ở W1; một tab cho mặc định truy cập và quản lý thấy cấp dưới                                                   | W2, record-access                         |
+| Hộp thoại "Giao cho" trên trang bản ghi                                                 | trang bản ghi thuộc custom-objects; hộp thoại gọi route giao của spec này                                                                   | custom-objects                            |
+| Xoay vòng người nhận và người dự phòng khi giao (YC50)                                  | quy tắc giao là của bước giao; người dự phòng là một điểm gắn `principal` kiểm bằng `platform.effective_grants`, nhóm ở W2 (Q6)             | workflow-nodes                            |
+| RA3: chỉ người giữ quyền đổi mặc định truy cập, có audit                                | mặc định truy cập chỉ đổi qua phát hành `dw.object/v1`; quyền phát hành, người thứ hai và audit là kiểm soát của custom-objects (CO3, CO23) | custom-objects                            |
+| Đổi kết quả RLS thành 404 và 403 ở API bản ghi; tham chiếu tới bản ghi không thấy       | RecordService là cửa duy nhất của bản ghi (ADR-0107 (Accepted))                                                                             | custom-objects                            |
+| Chọn tài khoản dịch vụ cho lượt chạy không người kích hoạt; từ chối phát hành khi thiếu | điểm gắn `principal` của ADR-0110 (Accepted)                                                                                                | workflow-triggers                         |
+| Bảo mật trường                                                                          | một hàm ứng dụng (ADR-0106 (Accepted))                                                                                                      | field-security                            |
+| Từ chối (deny), quy tắc hạn chế; chia sẻ ra ngoài tenant                                | v1 chỉ cộng dồn, như ADR-0105 (Accepted) mục 2                                                                                              | không làm                                 |
 
 ## Dữ liệu
 
-- `studio.records` (custom-objects ticket 02 tạo): spec này thêm `owner_kind text NOT NULL DEFAULT 'user'` với
-  `ck_records_owner_kind` (`user`, `team`), cột sinh `access_key` kiểu `uuid` từ
+- `studio.records` (custom-objects ticket 02 tạo, kể cả `owner_kind` với CHECK `user`, `team` và NOT NULL,
+  `custom-objects:R4.1`): spec này thêm cột sinh `access_key` kiểu `uuid` từ
   `md5(object_id::text || '/' || workspace_id::text)` (hay biến thể `bigint` nếu ticket 01 chọn), index
   `(tenant_id, access_key, created_at DESC, id DESC)` và `(tenant_id, owner_id, object_id, created_at DESC, id DESC)`,
   trigger `ck_records_owner_in_tenant`; `dw_app` không UPDATE `owner_id`, `owner_kind`, `workspace_id`, `object_id` và
-  không có quyền nào trên partition.
-- `studio.object_defs.default_access text NOT NULL DEFAULT 'private'` với `ck_object_defs_default_access`.
+  không có quyền nào trên partition (DO-02.2).
+- `studio.object_defs.default_access` với `ck_object_defs_default_access` (custom-objects ticket 02 tạo,
+  `custom-objects:R1.4`); spec này chỉ đọc nó trong hàm tính sổ tầm và gắn trigger tăng epoch.
 - `studio.access_epochs` (`tenant_id` PK, FK `platform.tenants` `ON DELETE CASCADE`, `epoch bigint`,
   `changed_at timestamptz`) và `studio.principal_scopes` (PK `(tenant_id, principal_id)`, FK tới
   `platform.tenant_members` `ON DELETE CASCADE`, `epoch`, `version`, `state` với `ck_principal_scopes_state` (`valid`,
   `stale`), `computed_at`, `workspace_ids` và một `uuid[]` cho mỗi cặp hành động `read`, `create`, `update`, `delete`,
-  `assign` và nhánh `own`, `keys`, `tenant`); `dw_app` chỉ SELECT.
+  `assign` và nhánh `own`, `keys`, `tenant`); `dw_app` chỉ SELECT. Hai bảng là dữ liệu dẫn xuất, không có
+  `workspace_id` (lớp bảng toàn tenant, DO-01); offboarding không xóa chúng bằng `dw_app` mà chúng đi theo cascade
+  (`studio.principal_scopes` cùng `platform.tenant_members`, `studio.access_epochs` cùng `platform.tenants`), nên chúng
+  nằm trong `STUDIO_EXCLUSIONS` của test phủ offboarding kèm lý do đó.
 - `studio.actor_boundaries` (`kind` `agent` hay `workflow`, `source_id`, `source_version`),
   `studio.actor_boundary_objects` (`can_read`, `can_create`, `can_update`, `can_delete`, `can_assign`),
-  `studio.actor_boundary_fields` (`access` là `read` hay `edit`); RLS tenant; trigger `ck_actor_boundaries_frozen`.
+  `studio.actor_boundary_fields` (`access` là `read` hay `edit`); RLS tenant; trigger `ck_actor_boundaries_frozen`; ba
+  bảng thuộc phiên bản đã phát hành, không có `workspace_id` (lớp bảng toàn tenant, DO-01).
 - Setting mỗi giao dịch: `app.actor_kind` (`user`, `agent`, `workflow`) và `app.boundary_id`, cạnh `app.tenant_id`,
   `app.user_id`, `app.workspace_scope` đã có.
 
 ## API
 
-- `PATCH /api/v1/studio/objects/{api_name}/access`: quyền `studio.sharing.manage` ở mức Toàn công ty,
-  `Idempotency-Key`, thân `{"default_access": "..."}`; 200, 403, 404 khi object không có trong tenant, 422 khi giá trị
-  lạ.
 - `POST /api/v1/studio/objects/{api_name}/records/{record_id}/assign`: `Idempotency-Key`, thân
   `{"owner_id": "...", "workspace_id": "..."}` với `workspace_id` tùy chọn; 200 với `record_id`, `version`,
   `owner_id`, `workspace_id`; 403 `assign_not_permitted`, 403 `assign_target_out_of_reach`, 404.
-- Mã lý do RecordService của custom-objects trả từ kết quả RLS: 404 khi bản ghi không thấy, 403 `record_not_editable`,
-  403 `object_not_permitted`, 422 `unknown_reference`.
+- Mã RecordService của custom-objects trả từ kết quả RLS, do custom-objects đặt: 404 như id không tồn tại
+  (`custom-objects:R5.7`), 403 `permission_denied` khi thiếu quyền đối tượng (`custom-objects:R3.4`), 403 khi đọc được
+  mà không sửa hay xóa được (`custom-objects:R5.8`).
 
 ## Kiểm soát
 
-| #    | Kiểm soát                                                             | Yêu cầu           | Test âm                                                                                                                                                                                    |
-| ---- | --------------------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| RA1  | Người phụ trách thuộc tenant                                          | R1.2              | INSERT với `owner_id` là người của tenant B, hay thành viên bị tạm khóa → 23514 `ck_records_owner_in_tenant`; gỡ trigger → test đỏ                                                         |
-| RA2  | Chỉ hàm định nghĩa đổi người phụ trách và workspace sở hữu            | R1.3              | `dw_app` UPDATE thẳng `owner_id` hay `workspace_id` → permission denied; cấp lại UPDATE trên cột → test đỏ                                                                                 |
-| RA3  | Chỉ người giữ `studio.sharing.manage` đổi mặc định truy cập, có audit | R2.5, R2.6        | `PATCH .../access` không có quyền → 403, `default_access` không đổi, 0 audit; lỗi sau khi ghi audit → giao dịch lùi, 0 audit                                                               |
-| RA4  | Mặc định truy cập                                                     | R2.2, R2.3, R2.4  | object `private`: bản ghi của người khác → 0 dòng; `public_read`: SELECT 1 dòng, UPDATE 0 dòng; `public_read_write`: UPDATE 1 dòng, DELETE 0 dòng                                          |
-| RA5  | Mức Của tôi                                                           | R3.1              | vai trò `read` mức Của tôi: SELECT bản ghi của đồng nghiệp cùng workspace → 0 dòng, bản ghi của mình → 1 dòng                                                                              |
-| RA6  | Mức Workspace của tôi và Toàn công ty, hợp các lần gán                | R3.2, R3.3, R3.4  | mức Workspace ở Marketing: bản ghi của Sales → 0 dòng; thêm lần gán Toàn công ty → cả hai; đổi workspace đang làm việc → cùng kết quả                                                      |
-| RA7  | Tạo trong tầm `create`                                                | R3.5              | INSERT với workspace sở hữu ngoài tầm `create` → 42501, 0 dòng mới                                                                                                                         |
-| RA8  | Bộ policy cố định, hàm policy kiểm được                               | R4.1              | thêm một policy PERMISSIVE trên `studio.records` → test catalog đỏ; văn bản lệch mẫu → đỏ; một hàm `studio.acl_*` mất STABLE hay `search_path` cố định → đỏ                                |
-| RA9  | Cách ly tenant trên bản ghi                                           | R4.2, R4.6        | `dw_app` gắn tenant A: SELECT theo id bản ghi của B → 0 dòng; INSERT với `tenant_id` của B → lỗi WITH CHECK; không gắn tenant → 0 dòng; bỏ mệnh đề tenant khỏi policy RESTRICTIVE → đỏ     |
-| RA10 | Partition không mở đường vòng                                         | R4.3              | `dw_app` SELECT `studio.records_p0` theo tên → permission denied; cấp lại SELECT trên partition → test đỏ                                                                                  |
-| RA11 | Không vai trò nào thay quyền                                          | R4.4, R4.5        | chủ thể chỉ có `platform_admin` → 0 bản ghi; `support_staff` → 0 bản ghi; `has_table_privilege('dw_provisioner', 'studio.records', 'SELECT')` → false                                      |
-| RA12 | Một hàm tính sổ tầm, không lẫn tenant                                 | R5.1              | hai tenant có cấu trúc giống hệt → mảng không lẫn id của nhau; bỏ lọc tenant trong hàm tính → đỏ; test vi sai với oracle trên ≥ 500 tổ chức ngẫu nhiên                                     |
-| RA13 | Thu hồi từ câu lệnh kế tiếp                                           | R5.2              | mỗi loại thay đổi commit ở giao dịch A → câu lệnh đầu của giao dịch B → 0 dòng; gỡ trigger vô hiệu hóa trên một bảng → test của loại đó và test catalog đỏ                                 |
-| RA14 | Sổ tầm thiếu hay cũ thì tầm rỗng                                      | R5.3              | xóa dòng sổ tầm rồi đọc không qua cửa → 0 dòng; tăng epoch mà không tính lại → 0 dòng                                                                                                      |
-| RA15 | Lần tính cũ không ghi đè thu hồi                                      | R5.4              | hai kết nối: lần tính bắt đầu, thu hồi commit, lần tính ghi → dòng khác `valid`; bỏ compare-and-set → đỏ                                                                                   |
-| RA16 | Chỉ hàm định nghĩa ghi sổ tầm                                         | R5.5              | `dw_app` INSERT hay UPDATE `studio.principal_scopes` → permission denied                                                                                                                   |
-| RA17 | Thiếu ngữ cảnh actor thì không thấy gì                                | R6.1              | gắn tenant và chủ thể đúng, không gắn `app.actor_kind` → 0 dòng, INSERT bị từ chối; `app.actor_kind = 'admin'` → 0 dòng                                                                    |
-| RA18 | Chỉ cửa được phép gắn loại actor                                      | R6.2, R6.3        | test kiến trúc: module ngoài danh sách gọi helper với `agent` → đỏ; cửa API bỏ gắn `user` → yêu cầu Studio đọc 0 bản ghi                                                                   |
-| RA19 | Agent và quy trình trong giới hạn dữ liệu, tầm sống                   | R6.4, R6.5, R6.6  | giới hạn chỉ có `mkt_lead` → object khác 0 dòng dù chủ thể thấy; `agent` thiếu `app.boundary_id` → 0 dòng; chủ thể mất quyền trước khi lượt chạy tiếp tục → 0 dòng; gỡ nhánh giới hạn → đỏ |
-| RA20 | Giới hạn dữ liệu bất biến                                             | R6.8              | UPDATE `studio.actor_boundary_objects` của phiên bản đã phát hành → 23514 `ck_actor_boundaries_frozen`; DELETE ngoài phạm vi toàn tenant → 23514                                           |
-| RA21 | Lượt chạy không người kích hoạt dùng tầm của tài khoản dịch vụ        | R6.9              | tài khoản dịch vụ chỉ có `read` mức Của tôi: lượt chạy thấy 0 bản ghi của người phát hành; gắn người phát hành làm chủ thể → test đỏ                                                       |
-| RA22 | Phạm vi toàn tenant chỉ qua một helper                                | R7.1, R7.2        | thêm `set_config('app.workspace_scope', ...)` ngoài helper → test quét mã đỏ; lane ngoài danh sách → lỗi, setting không đổi; phạm vi toàn tenant đọc 0 bản ghi của tenant khác             |
-| RA23 | Offboarding xuất mỗi bản ghi một lần                                  | R7.3, G1          | tenant có bản ghi của ba người phụ trách trên partition hash → bản xuất đủ, mỗi bản ghi đúng một lần; sau purge còn 0; tenant khác không đổi                                               |
-| RA24 | Giao chỉ trong tầm                                                    | R8.4, R8.5, R8.6  | không có tầm `assign`, kể cả khi chỉ với tới qua `public_read_write` → 403 `assign_not_permitted`; người nhận không đọc được object → 403; người nhận của tenant khác → 404; 0 dòng đổi    |
-| RA25 | Giao có audit và outbox cùng giao dịch, chống lặp                     | R8.7, R8.8, R8.10 | lỗi sau khi ghi audit → giao dịch lùi, 0 audit, 0 outbox; gửi lại cùng `Idempotency-Key` → một audit, một outbox                                                                           |
-| RA26 | Người phụ trách cũ mất quyền theo Của tôi; giao không lùi vì đọc lại  | R8.1, R8.9        | giao xong, người phụ trách cũ chỉ có mức Của tôi SELECT → 0 dòng; người giao mất quyền thấy sau lần giao → API vẫn 200                                                                     |
+| #    | Kiểm soát                                                                              | Yêu cầu           | Test âm                                                                                                                                                                                                                                                                                                                                             |
+| ---- | -------------------------------------------------------------------------------------- | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| RA1  | Người phụ trách thuộc tenant                                                           | R1.2              | INSERT với `owner_id` là người của tenant B, hay thành viên bị tạm khóa → 23514 `ck_records_owner_in_tenant`; gỡ trigger → test đỏ                                                                                                                                                                                                                  |
+| RA2  | Chỉ hàm định nghĩa đổi người phụ trách và workspace sở hữu                             | R1.3              | `dw_app` UPDATE thẳng `owner_id` hay `workspace_id` → permission denied; cấp lại UPDATE trên cột → test đỏ                                                                                                                                                                                                                                          |
+| RA3  | [Bỏ] 23/10/2026: chỉ người giữ `studio.sharing.manage` đổi mặc định truy cập, có audit | R2.5, R2.6        | Không còn route để thử: mặc định truy cập chỉ đổi qua phát hành `dw.object/v1`, kiểm soát ở custom-objects (CO3, CO23)                                                                                                                                                                                                                              |
+| RA4  | Mặc định truy cập                                                                      | R2.2, R2.3, R2.4  | object `private`: bản ghi của người khác → 0 dòng; `public_read`: SELECT 1 dòng, UPDATE 0 dòng; `public_read_write`: UPDATE 1 dòng, DELETE 0 dòng                                                                                                                                                                                                   |
+| RA5  | Mức Của tôi                                                                            | R3.1              | vai trò `read` mức Của tôi: SELECT bản ghi của đồng nghiệp cùng workspace → 0 dòng, bản ghi của mình → 1 dòng                                                                                                                                                                                                                                       |
+| RA6  | Mức Workspace của tôi và Toàn công ty, hợp các lần gán                                 | R3.2, R3.3, R3.4  | mức Workspace ở Marketing: bản ghi của Sales → 0 dòng; thêm lần gán Toàn công ty → cả hai; đổi workspace đang làm việc → cùng kết quả                                                                                                                                                                                                               |
+| RA7  | Tạo trong tầm `create`                                                                 | R3.5              | INSERT với workspace sở hữu ngoài tầm `create` → 42501, 0 dòng mới                                                                                                                                                                                                                                                                                  |
+| RA8  | Bộ policy cố định, hàm policy kiểm được                                                | R4.1              | thêm một policy PERMISSIVE trên `studio.records` → test catalog đỏ; văn bản lệch mẫu → đỏ; một hàm `studio.acl_*` mất STABLE hay `search_path` cố định → đỏ; bảng thử mang hình sai (thêm PERMISSIVE chỉ theo tenant, `tenant_isolation` thành PERMISSIVE, `studio.acl_*` VOLATILE hay SECURITY DEFINER), dựng rồi lùi → test catalog bắt từng hình |
+| RA9  | Cách ly tenant trên bản ghi                                                            | R4.2, R4.6        | `dw_app` gắn tenant A: SELECT theo id bản ghi của B → 0 dòng; INSERT với `tenant_id` của B → lỗi WITH CHECK; không gắn tenant → 0 dòng; bỏ mệnh đề tenant khỏi policy RESTRICTIVE → đỏ                                                                                                                                                              |
+| RA10 | Partition không mở đường vòng                                                          | R4.3              | `dw_app` SELECT `studio.records_p0` theo tên → permission denied; cấp lại SELECT trên partition → test đỏ                                                                                                                                                                                                                                           |
+| RA11 | Không vai trò nào thay quyền                                                           | R4.4, R4.5        | chủ thể chỉ có `platform_admin` → 0 bản ghi; `support_staff` → 0 bản ghi; `has_table_privilege('dw_provisioner', 'studio.records', 'SELECT')` → false                                                                                                                                                                                               |
+| RA12 | Một hàm tính sổ tầm, không lẫn tenant                                                  | R5.1              | hai tenant có cấu trúc giống hệt → mảng không lẫn id của nhau; bỏ lọc tenant trong hàm tính → đỏ; test vi sai với oracle trên ≥ 500 tổ chức ngẫu nhiên                                                                                                                                                                                              |
+| RA13 | Thu hồi từ câu lệnh kế tiếp                                                            | R5.2              | mỗi loại thay đổi commit ở giao dịch A → câu lệnh đầu của giao dịch B → 0 dòng; gỡ trigger vô hiệu hóa trên một bảng → test của loại đó và test catalog đỏ                                                                                                                                                                                          |
+| RA14 | Sổ tầm thiếu hay cũ thì tầm rỗng                                                       | R5.3              | xóa dòng sổ tầm rồi đọc không qua cửa → 0 dòng; tăng epoch mà không tính lại → 0 dòng                                                                                                                                                                                                                                                               |
+| RA15 | Lần tính cũ không ghi đè thu hồi                                                       | R5.4              | hai kết nối: lần tính bắt đầu, thu hồi commit, lần tính ghi → dòng khác `valid`; bỏ compare-and-set → đỏ                                                                                                                                                                                                                                            |
+| RA16 | Chỉ hàm định nghĩa ghi sổ tầm                                                          | R5.5              | `dw_app` INSERT hay UPDATE `studio.principal_scopes` → permission denied                                                                                                                                                                                                                                                                            |
+| RA17 | Thiếu ngữ cảnh actor thì không thấy gì                                                 | R6.1              | gắn tenant và chủ thể đúng, không gắn `app.actor_kind` → 0 dòng, INSERT bị từ chối; `app.actor_kind = 'admin'` → 0 dòng                                                                                                                                                                                                                             |
+| RA18 | Chỉ cửa được phép gắn loại actor                                                       | R6.2, R6.3        | test kiến trúc: module ngoài danh sách gọi helper với `agent` → đỏ; cửa API bỏ gắn `user` → yêu cầu Studio đọc 0 bản ghi                                                                                                                                                                                                                            |
+| RA19 | Agent và quy trình trong giới hạn dữ liệu, tầm sống                                    | R6.4, R6.5, R6.6  | giới hạn chỉ có `mkt_lead` → object khác 0 dòng dù chủ thể thấy; `agent` thiếu `app.boundary_id` → 0 dòng; chủ thể mất quyền trước khi lượt chạy tiếp tục → 0 dòng; gỡ nhánh giới hạn → đỏ                                                                                                                                                          |
+| RA20 | Giới hạn dữ liệu bất biến                                                              | R6.8              | UPDATE `studio.actor_boundary_objects` của phiên bản đã phát hành → 23514 `ck_actor_boundaries_frozen`; DELETE ngoài phạm vi toàn tenant → 23514                                                                                                                                                                                                    |
+| RA21 | Lượt chạy không người kích hoạt dùng tầm của tài khoản dịch vụ                         | R6.9              | tài khoản dịch vụ chỉ có `read` mức Của tôi: lượt chạy thấy 0 bản ghi của người phát hành; gắn người phát hành làm chủ thể → test đỏ                                                                                                                                                                                                                |
+| RA22 | Phạm vi toàn tenant chỉ qua một helper                                                 | R7.1, R7.2        | thêm `set_config('app.workspace_scope', ...)` ngoài helper → test quét mã đỏ; lane ngoài danh sách → lỗi, setting không đổi; một dòng danh sách thiếu lý do hay thiếu ghi lane có đọc bảng riêng tư theo chủ không → test đỏ; phạm vi toàn tenant đọc 0 bản ghi của tenant khác                                                                     |
+| RA23 | Offboarding xuất mỗi bản ghi một lần                                                   | R7.3, G1          | tenant có bản ghi của ba người phụ trách trên partition hash → bản xuất đủ, mỗi bản ghi đúng một lần; sau purge còn 0; tenant khác không đổi                                                                                                                                                                                                        |
+| RA24 | Giao chỉ trong tầm                                                                     | R8.4, R8.5, R8.6  | không có tầm `assign`, kể cả khi chỉ với tới qua `public_read_write` → 403 `assign_not_permitted`; người nhận không đọc được object → 403; người nhận của tenant khác → 404; 0 dòng đổi                                                                                                                                                             |
+| RA25 | Giao có audit và outbox cùng giao dịch, chống lặp                                      | R8.7, R8.8, R8.10 | lỗi sau khi ghi audit → giao dịch lùi, 0 audit, 0 outbox; gửi lại cùng `Idempotency-Key` → một audit, một outbox                                                                                                                                                                                                                                    |
+| RA26 | Người phụ trách cũ mất quyền theo Của tôi; giao không lùi vì đọc lại                   | R8.1, R8.9        | giao xong, người phụ trách cũ chỉ có mức Của tôi SELECT → 0 dòng; người giao mất quyền thấy sau lần giao → API vẫn 200                                                                                                                                                                                                                              |
 
 ## Tiêu chí xong
 
 - Mọi tiêu chí R và G có test; mọi kiểm soát có test âm đã thấy đỏ khi gỡ kiểm soát, ghi ở Comments của ticket cài nó.
 - `make ci test-integration` xanh; `make bench-record-access` đạt mọi dòng R9 hay ghi phương án đã đo đạt ngưỡng.
-- ADR-0105 (Proposed) ghi số đo của ticket 01; bản sửa `CLAUDE.md:172-175` (hình policy bản ghi, người được đặt
-  `app.workspace_scope`) gửi Đạt cùng câu trả lời DO-13.
+- ADR-0105 (Accepted) ghi số đo của ticket 01; test catalog giữ hình policy thứ hai và người được đặt
+  `app.workspace_scope` mà CLAUDE.md mục Tenancy ghi (DO-13.1, DO-13.2).
 
 ## Phụ thuộc
 
 - tenant-rbac ticket 04: khóa `obj.<api_name>.<action>` có mức truy cập qua `platform.effective_grants`
-  (ADR-0104 (Proposed) mục 4 và 5); các bảng mang trigger của `platform.bump_access_version()` (mục 7) là danh sách
+  (ADR-0104 (Accepted) mục 4 và 5); các bảng mang trigger của `platform.bump_access_version()` (mục 7) là danh sách
   bảng đầu vào mà trigger sổ tầm theo.
 - org-and-principals ticket 02 (`platform.tenant_members` có trạng thái) và ticket 03 (tài khoản dịch vụ có thành
-  viên và vai trò như người, ADR-0103 (Proposed) mục 2).
-- custom-objects ticket 02 (`studio.object_defs`, `studio.records` phân vùng hash theo tenant với cột hệ thống người
-  phụ trách); RecordService của ticket 03 của họ trả các mã lý do ở mục API.
+  viên và vai trò như người, ADR-0103 (Accepted) mục 2).
+- custom-objects ticket 02 (`studio.object_defs` với `default_access` và `ck_object_defs_default_access`,
+  `studio.records` phân vùng hash theo tenant với cột hệ thống `owner_id`, `owner_kind`, `workspace_id`, `object_id`
+  NOT NULL; `custom-objects:R1.4`, `custom-objects:R4.1`); RecordService của ticket 03 của họ trả các mã ở mục API.
 - foundations-hardening ticket 03 (dạng InitPlan, quyền thừa của `dw_app`); studio-skeleton (schema `studio`, USAGE
-  và quyền mặc định chỉ cho `dw_app`).
+  và quyền mặc định chỉ cho `dw_app`, test phủ offboarding đọc `STUDIO_EXCLUSIONS`).
 - agent-builder ticket 03 dùng cửa gắn actor cho agent Studio; workflow-engine gắn `workflow` qua cùng helper ở mỗi
   bước; agent-lifecycle và workflow-engine ghi giới hạn dữ liệu qua `ActorBoundaryPort` khi phát hành; field-security
   đọc `studio.actor_boundary_fields`.
-- Kiểm lại khi: ADR-0105 (Proposed) hay ADR-0103 (Proposed) đổi trạng thái, `platform.effective_grants` đổi hình,
-  custom-objects bỏ phân vùng hash, hay DO-11, DO-12, DO-13 có câu trả lời → ticket 01 tới 05.
+- app-standards: problem+json và `Idempotency-Key` gắn người gọi cho route giao (ticket 05 chờ app-standards/01, /02).
+- Kiểm lại khi: `platform.effective_grants` đổi hình → ticket 02 tới 05; custom-objects đổi số partition (đường lui
+  modulus 4, `custom-objects:R9.5`) → ticket 01, 03; số đo của ticket 01 trượt ngưỡng R9 → mẫu policy của ticket 03 và
+  ADR-0105 (Accepted); foundations-hardening/03 rút `foundations-hardening:R5.3` (dạng InitPlan) → ticket 02, 03.
 
 ## Câu hỏi còn mở
-
-- Q1. Lane bảo trì Studio có dùng lại `app.workspace_scope` qua một helper có danh sách đăng ký (sửa
-  `CLAUDE.md:174-175`), dịch vụ viết bằng ngôn ngữ khác có chỉ đọc giá trị bản ghi qua API, và nhân viên hỗ trợ có
-  không đọc bản ghi Studio nào ở v1 không (DO-13)? Chủ: Đạt. Chặn: R4.4, R7.2, ticket 03.
-- Q2. Lượt chạy không người kích hoạt (biểu mẫu, webhook của nhà cung cấp, lịch, sự kiện bản ghi) có chạy dưới danh
-  nghĩa tài khoản dịch vụ gắn theo phiên bản qua điểm gắn `principal`, không bao giờ người phát hành (DO-12)? Chủ:
-  Đạt và người yêu cầu. Chặn: R6.9, ticket 04.
-- Q3. Đổi mặc định truy cập của một object có là thay đổi cấu hình của tenant cần người đề xuất và người duyệt khác
-  nhau theo D11, hay chỉ cần `studio.sharing.manage` và audit như ADR-0110 (Proposed) đọc D11? Chủ: người yêu cầu và
-  Đạt. Chặn: R2.5, ticket 03.
 
 ## Quyết định
 
@@ -387,15 +387,58 @@ máy tham chiếu, với mọi hồ sơ quyền của ticket 01.
   W2 cùng người ghi và người đọc của chúng (failure-modes #1); ticket 01 vẫn đo đủ sáu nhánh để mẫu policy không đổi
   hình. Nếu sai thì: ticket 03 thêm ba cột và một nhánh đọc mảng rỗng.
 - 23/10/2026 (agent, tạm): `owner_kind = 'team'` bị trigger người phụ trách từ chối cho tới khi nhóm có ở W2, vì W1
-  chỉ có mức `own`, `workspace`, `tenant` (ADR-0104 (Proposed)). Nếu sai thì: ticket 03 nhận nhóm của
+  chỉ có mức `own`, `workspace`, `tenant` (ADR-0104 (Accepted)). Nếu sai thì: ticket 03 nhận nhóm của
   org-and-principals và thêm nhánh `team`.
 - 23/10/2026 (agent, tạm): Mâu thuẫn nguồn: YC20 nói 10 triệu bản ghi mỗi tenant, D12 nói 10 triệu mỗi object và 50
   triệu mỗi tenant; theo D12.
-- 23/10/2026 (agent, tạm): Mâu thuẫn nguồn: glossary Studio ghi lệnh giao là `:assign`, ADR-0108 (Proposed) mục 3
-  nói phương thức tùy biến là sub-resource `POST`; theo ADR-0108 (Proposed).
-- 23/10/2026 (agent, tạm): Mâu thuẫn nguồn: ADR-0105 (Proposed) mục 2 nói `ck_objects_default_access`,
-  ADR-0107 (Proposed) mục 1 đặt tên bảng `studio.object_defs` và `NAMING_CONVENTION` sinh
+- 23/10/2026 (agent, tạm): Mâu thuẫn nguồn: glossary Studio ghi lệnh giao là `:assign`, ADR-0108 (Accepted) mục 3
+  nói phương thức tùy biến là sub-resource `POST`; theo ADR-0108 (Accepted).
+- 23/10/2026 (agent, tạm): Mâu thuẫn nguồn: ADR-0105 (Accepted) mục 2 nói `ck_objects_default_access`,
+  ADR-0107 (Accepted) mục 1 đặt tên bảng `studio.object_defs` và `NAMING_CONVENTION` sinh
   `ck_object_defs_default_access`; theo quy ước tên của CLAUDE.md "Data model rules".
+- 23/10/2026 (Đạt): DO-13.1 (a): chỉ `tenant_wide_scope()` trong `tenant_session.py` đặt `app.workspace_scope`, cho lane
+  có tên trong danh sách đóng băng ở composition root của worker (W1: offboarding), audit là `system:<lane>`; mỗi dòng
+  danh sách có lý do và nêu lane có cần đọc bảng riêng tư theo chủ không, vì lane trong danh sách thấy cả các bảng đó
+  (ADR-0105 (Accepted) mục 5); test quét mã chặn mọi chỗ đặt khác. Hỏi: Q1. Sửa: Hiện trạng, R7.2, RA22, ticket 03.
+- 23/10/2026 (Đạt): DO-13.2 (a): bảng bản ghi mang một policy RESTRICTIVE theo tenant cộng bốn PERMISSIVE
+  `record_access_*` dựng từ một module mẫu, hình thứ hai mà CLAUDE.md mục Tenancy ghi; test so đúng tập policy, bắt bảng
+  thử mang hình sai, kiểm hàm qua `pg_depend` và chạy dưới `dw_app` cùng test vi sai với oracle; mẫu chỉ chốt sau số
+  đo của ticket 01. Hỏi: Q1. Sửa: RA8, Tiêu chí xong, ticket 03.
+- 23/10/2026 (Đạt): DO-13.3 (a): dịch vụ viết bằng ngôn ngữ khác chỉ đọc giá trị bản ghi Studio qua API của nền tảng;
+  nhân viên hỗ trợ đọc 0 bản ghi Studio ở v1 (R4.4 giữ nguyên). Hỏi: Q1.
+- 23/10/2026 (Đạt): DO-12 (a): lượt chạy không người kích hoạt chạy dưới tài khoản dịch vụ gắn theo phiên bản qua điểm
+  gắn `principal` đã duyệt, không rộng hơn người đề xuất; chưa gắn thì không phát hành (`binding_unset`); tầm sống giao
+  giới hạn dữ liệu ở mỗi câu lệnh. Hỏi: Q2. Sửa: R6.9, ticket 04.
+- 23/10/2026 (Đạt): `A:custom-objects:R1.4~record-access:R2.5` (a): `default_access` chỉ ghi qua tài liệu
+  `dw.object/v1`; route `PATCH .../access` bỏ; custom-objects/02 là người tạo duy nhất cột và
+  `ck_object_defs_default_access`, spec này chỉ đọc và gắn trigger tăng epoch; khóa `studio.sharing.manage` không đăng ký
+  vì không có người đọc ở W1. Sửa: R2.1, R2.5, R2.6, RA3, Trong phạm vi, Ngoài phạm vi, Dữ liệu, API, ticket 03.
+- 23/10/2026 (người đặt yêu cầu và Đạt): Phạm vi D11: đổi `default_access` là thay đổi cấu hình cần người thứ hai khi
+  nới, một người cộng audit khi chỉ siết, qua phát hành `dw.object/v1` (`custom-objects:R1.2`, `custom-objects:R1.7`).
+  Hỏi: Q3.
+- 23/10/2026 (Đạt): DO-11 (a): xác nhận quyết tạm DO-11 cả bốn ý; R2.2, R2.3, R8.2, R8.3 giữ nguyên ở W1, cấp trên bắc
+  cầu và chia sẻ sống qua đổi người phụ trách vào W2.
+- 23/10/2026 (Đạt): Q6 (a): người dự phòng khi giao là một điểm gắn `principal` trong bộ giá trị gắn hai người duyệt,
+  kiểm bằng `platform.effective_grants` như mọi ứng viên, không hợp lệ thì bước đi Nhánh ra lỗi; nhóm ở W2; chủ của quy
+  tắc giao là workflow-nodes. Sửa: Ngoài phạm vi.
+- 23/10/2026 (Đạt): DO-01 (a) và `E:CLAUDE.md#tenancy-and-authorization~tenant-rbac:platform.tenant_roles` (a):
+  `studio.access_epochs`, `studio.principal_scopes` và ba bảng giới hạn dữ liệu vào lớp bảng toàn tenant, mỗi bảng một
+  dòng lý do trong danh sách của `test_rls_coverage.py`. Sửa: Hiện trạng, Dữ liệu, ticket 02, 04.
+- 23/10/2026 (agent, tạm): `owner_kind` có một người tạo là custom-objects/02 với CHECK `user`, `team`, không default;
+  ticket 03 ở đây chỉ thêm trigger `ck_records_owner_in_tenant`, `access_key`, index và quyền cột
+  (`A:custom-objects:R4.1~record-access:R1.1`, cùng nguyên tắc một người tạo cột của quyết định về `default_access`). Sửa:
+  R1.1, Trong phạm vi, Dữ liệu, ticket 03. Nếu sai thì: ticket 03 thêm lại cột và custom-objects/02 bỏ nó.
+- 23/10/2026 (agent, tạm): mục API trích mã RecordService từ custom-objects (`permission_denied`, 404 chung, 403 của
+  R5.8) thay vì tự đặt; `unknown_reference` bỏ khỏi W1 vì tham chiếu bản ghi ở W2 (`B:custom-objects:R3.4~record-access:spec`).
+  Sửa: API. Nếu sai thì: custom-objects đặt mã riêng và mục API trích lại.
+- 23/10/2026 (agent, tạm): `studio.access_epochs`, `studio.principal_scopes` vào `STUDIO_EXCLUSIONS` của test phủ
+  offboarding với lý do "dữ liệu dẫn xuất, xóa theo cascade" (`B:record-access:R5.5~studio-skeleton:R4.1`). Sửa: Dữ liệu,
+  ticket 02. Nếu sai thì: lane offboarding có một hàm SECURITY DEFINER xóa hai bảng.
+- 23/10/2026 (agent, tạm): dạng InitPlan của policy bản ghi đi theo ADR-0105 (Accepted) mục 1; foundations-hardening/03
+  rút `foundations-hardening:R5.3` thì kiểm lại ticket 02, 03 (`F:custom-objects:spec~foundations-hardening:R5.3`). Sửa:
+  Phụ thuộc.
+- 23/10/2026 (agent, tạm): ticket 05 chờ app-standards/01, /02 vì route giao dùng problem+json và `Idempotency-Key` gắn
+  người gọi (`I:app-standards/02~tenant-rbac/03`). Sửa: Phụ thuộc, ticket 05. Nếu sai thì: bỏ cạnh.
 
 ## Danh sách ticket
 
