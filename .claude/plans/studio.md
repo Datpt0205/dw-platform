@@ -180,19 +180,22 @@ Khối số dành riêng: 0100-0199.
 
 ## Đợt
 
-Kiểm nhất quán 23/10/2026: 15 CRITICAL, 50 HIGH, 65 MEDIUM, 9 LOW; phủ YC 100/100, tiêu chí 825/890.
+Kiểm nhất quán 24/10/2026: 7 CRITICAL, 48 HIGH, 37 MEDIUM, 7 LOW; phủ YC 100/100, tiêu chí 901/967.
 
 - Đợt 1 (W1: P0 nền móng và lát Marketing P1): 23 spec, 95 ticket, chưa ticket nào `ready-for-agent`.
-    - Ngày 23-24/10/2026 Đạt quyết, và quyết định đã áp, cho cả 15 dòng CRITICAL ở trên: 13 dòng đóng bằng
-      ADR được chấp nhận cùng sửa đổi `CLAUDE.md`; dòng actor của `agent-lifecycle/05` hóa ra theo đúng
-      ADR-0011, nên câu của `CLAUDE.md` được sửa thay cho spec; tên ràng buộc ở `org-and-principals` đã sửa.
-    - Lần kiểm vòng 2 xác nhận việc đóng, và chấm 82 mâu thuẫn mới cùng các dòng HIGH chưa có quyết định
-      (khóa chống lặp hai ngữ pháp, thứ tự bước của executor, chủ cột `inbound_endpoint_id`, đăng ký khóa
-      quyền, hai test của `marketing-pilot`).
-    - Hai lỗi chặn W1 do lần rà độ phủ tìm ra, chờ N1 và N2: không ai cấp được `fld.*` đầu tiên; bước
-      duyệt của lượt Mô phỏng chờ chính người thử, mà tiền tố nghiêm cấm người đó quyết.
-    - Đi trước được sau vòng 2: `foundations-hardening` và `app-standards`.
-- Đợt 2 (W2: v1 GA): phần W2 của mọi spec ở trên, cùng `domain-packs` và `mcp-client` (chỉ có phạm vi W2: 65
+    - Vòng 1 (23/10) có 15 dòng CRITICAL; Đạt quyết cả 15 và quyết định đã áp. Vòng 2 (24/10) là lần kiểm
+      sau lượt áp: 57 mục do các agent sửa báo đã hết, còn 99 phát hiện.
+    - Sửa được ngay theo ADR và `CLAUDE.md` đã chấp nhận (5 CRITICAL): `connection_usable` kiểm
+      `connections.use` (ADR-0115); offboarding và `config.version.approved` audit đứng tên người quyết
+      (ADR-0011); `studio.agent_settings` theo ADR-0117; ADR-0120 quyết 3 bỏ mã 422 ở lane cổng. Cùng
+      lượt: khoảng 38 dòng HIGH sửa máy móc (cạnh Blocked by, mã lỗi, chủ của hàm, cột và tên khóa).
+    - Chờ Đạt (2 CRITICAL): phát hành một người cho phiên bản đối tượng chỉ siết (ca D11 thu hẹp
+      `default_access`, cần một nhánh trong ADR-0120 quyết 1); lượt do lịch kích hoạt khi hết hạn mức (câu
+      `CLAUDE.md` nói không bao giờ bỏ, DO-21.3 ghi `limit_refused`). Cùng chờ: N1, N2, N4, bốn con số,
+      năm ca D11, chủ FOG-49.
+    - Đi trước được sau lượt sửa vòng 3: `foundations-hardening` và `app-standards`, không dòng CRITICAL
+      nào chạm.
+- Đợt 2 (W2: v1 GA): phần W2 của mọi spec ở trên, cùng `domain-packs` và `mcp-client` (chỉ có phạm vi W2: 66
   tiêu chí chưa ticket trong số đo ở trên). Cắt ticket khi đợt 1 hết dòng CRITICAL và lần kiểm nhất quán sau
   đó không còn dòng HIGH nào chưa có quyết định.
 - Đợt 3 (W3: v1.5, v2): mỗi mục thành spec riêng khi tới lượt; ghi ở mục Ngoài phạm vi của từng spec.
