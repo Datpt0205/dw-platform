@@ -1,0 +1,151 @@
+# 02 — Hàng rào dữ liệu bị quên, vòng đời tenant, nối danh tính và checkpoint an toàn
+
+Status: needs-info (DO-17)
+Blocked by: 01
+Area: studio
+Yêu cầu: R2.1, R2.2, R2.3, R2.4, R2.5, R3.1, R3.2, R3.3, R4.1, R4.2, R4.3, R4.4, G1, G2, G3, G4, G5, FH2, FH3, FH4, FH5, FH6, FH7, FH8, FH9, FH10, FH11
+
+## Mục tiêu
+
+Ba đường đã quên hàng rào (xóa tài liệu tri thức, liệt kê bộ nhớ, dọn checkpoint) được rào theo
+tenant và workspace; checkpoint chỉ dựng lại kiểu trong allowlist; tenant đang offboarding không mở
+lại được và khóa có hiệu lực từ request kế tiếp; nối danh tính theo quy tắc tạm của ADR-0103 (Proposed)
+(Proposed) quyết định 8 (R2, R3, R4, G1-G5, FH2-FH11). Phần R4 chờ Q1 (DO-17); phần còn lại không phụ
+thuộc câu trả lời đó.
+
+## Việc cần làm
+
+Tri thức (R2.1, R2.2, G1):
+
+1. Viết trước bản vá test hồi quy `test_a_member_deletes_a_document_of_their_own_workspace` (xóa
+   tài liệu của workspace mình → 204, tìm kiếm của workspace đó không còn trả nó); test xanh trước và
+   sau bản vá.
+2. `KnowledgeGateway.soft_delete_document`: UPDATE `knowledge.documents` thêm điều kiện `tenant_id`
+   và `workspace_id` của AccessContext và `scope = 'tenant'`, có `RETURNING id`; 0 dòng →
+   `NotFoundError` (route trả 404, không phân biệt "không có" với "không phải của bạn"); chỉ khi có
+   dòng mới cập nhật `knowledge.chunks` và ghi audit `knowledge.document.deleted` (tenant, workspace,
+   người gọi, `document_id`) trong cùng giao dịch; tombstone vector sau khi giao dịch commit.
+3. `VectorIndexPort.tombstone_document` và `delete_document` nhận thêm `tenant_id`; filter Qdrant của
+   tài liệu là `must=[source_document_id, tenant_id]` trong adapter Qdrant, cùng điều kiện trong
+   `InMemoryVectorIndexAdapter`; mọi nơi gọi (ingest trong `gateway.py`, purge trong `retention.py`)
+   truyền tenant của dòng tài liệu.
+
+Bộ nhớ (R2.3):
+
+4. `MemoryService.list_items`: thêm điều kiện phân loại thuộc `classifications_for_clearance` của
+   clearance trong AccessContext, cùng chủ với `recall`; thứ tự và con trỏ giữ nguyên.
+
+Checkpoint (R2.4, R2.5, G5):
+
+5. `SqlCheckpointRetention.prune`: `newer` và `recent` so thêm `tenant_id`; truy vấn chọn thêm
+   `tenant_id`; DELETE trên `platform.run_checkpoint_writes` và `platform.run_checkpoints` theo bộ bốn
+   `(tenant_id, thread_id, checkpoint_ns, checkpoint_id)`.
+6. `SqlAlchemyCheckpointSaver` nhận serializer qua constructor thay vì dựng cứng `JsonPlusSerializer()`;
+   composition root (`apps/api/src/dw_api/bootstrap/runtime.py`, nơi duy nhất dựng saver hôm nay)
+   dựng `JsonPlusSerializer(allowed_msgpack_modules=ALLOWED)` với `ALLOWED` là một tuple tường minh
+   các cặp (module, tên kiểu) đặt ở một module của composition root. Không dùng biến môi trường
+   `LANGGRAPH_STRICT_MSGPACK` (ADR-0112 (Proposed) quyết định 10).
+7. Lập `ALLOWED` bằng đo, không đoán (FOG-37): chạy integration của `dw_agent_runtime` và
+   `apps/worker` với một serializer ghi lại mọi kiểu được nạp, rồi liệt kê đúng các kiểu đó; ghi danh
+   sách và cách đo vào Comments.
+8. Xác minh advisory CVE-2025-64439 đối với langgraph-checkpoint 4.2.0 đã khóa; ghi kết luận vào
+   Comments.
+
+Vòng đời tenant (R3.1, R3.2, R3.3):
+
+9. `ProvisioningService.set_tenant_status` và `SqlProvisioningRepository.set_tenant_status`: UPDATE
+   `platform.tenants` thêm `status IN ('active', 'locked')`; 0 dòng mà tenant tồn tại →
+   `ConflictError` với `details.reason_code = "tenant_offboarding"` (409); tenant không tồn tại vẫn 404.
+10. Revision Alembic mới `db/migrations/versions/*_tenant_status_and_identity_guards.py` (id ngẫu
+    nhiên của alembic): hàm `platform.guard_tenant_status()` và trigger BEFORE UPDATE OF status trên
+    `platform.tenants` từ chối mọi bước từ `offboarding` hoặc `offboarded` sang `active` hoặc
+    `locked`, với mọi vai, bằng `RAISE ... USING ERRCODE = 'check_violation'` và tên
+    `ck_tenants_status_transition`. Các bước khác giữ như hôm nay (Quyết định của spec).
+11. Route `POST /api/v1/platform/tenants/{tenant_id}/lock`, `POST /api/v1/platform/tenants/{tenant_id}/unlock`
+    và `POST /api/v1/platform/tenants/{tenant_id}/offboard` gọi
+    `CachePort.delete_pattern(tenant_cache_pattern(tenant_id))` sau khi trạng thái đổi; container của
+    API truyền cache cho các route này như `admin_console.py` đang làm.
+
+Nối danh tính (R4.1-R4.4, G2-G4), làm sau khi Q1 có câu trả lời:
+
+12. `VerifiedClaims` thêm `email_verified: bool = False`; `KeycloakTokenVerifier` đặt
+    `claims.get("email_verified") is True`; `DevTokenVerifier` phát `email_verified: true` (chỉ issuer
+    `dw-dev`).
+13. `SqlIdentityBootstrap._resolve_user` theo thứ tự của ADR-0103 (Proposed) quyết định 8: (a) danh
+    tính đăng nhập `(issuer, subject)`; (b) subject lưu trên user chỉ khi issuer là `dw-dev`; (c) email
+    chỉ khi `email_verified` đúng, user chưa có danh tính đăng nhập nào và không là người vận hành hay
+    nhân viên `support_staff` (đọc như `bootstrap` đang đọc hai danh sách đó); (d) email trùng một
+    user có sẵn mà không qua (c) → `PermissionDeniedError` 403 với
+    `details.reason_code = "identity_email_in_use"`, không ghi dòng nào; (e) còn lại tạo user mới.
+14. `SqlMembershipLookup.find_access` bỏ nhánh khớp `users.subject` khi issuer khác `dw-dev`.
+15. Cùng revision ở bước 10: trigger `platform.guard_privileged_login_identity()` BEFORE INSERT trên
+    `platform.external_identities` từ chối danh tính đăng nhập (provider không thuộc liên kết chat)
+    cho người vận hành hay nhân viên `support_staff` khi vai là `dw_app`
+    (`ck_external_identities_privileged_relink`); trigger BEFORE DELETE từ chối xóa danh tính đăng
+    nhập khi vai là `dw_app` (`ck_external_identities_login_kept`); REVOKE UPDATE, TRUNCATE trên
+    `platform.external_identities` khỏi `dw_app`. Một test giữ danh sách provider chat trong hai
+    trigger bằng `tables.CHANNEL_LINK_PROVIDERS`; quyền mới được khẳng định trong `test_privileges.py`.
+16. Sửa docstring đầu `identity_provisioning.py`, comment "Email-based account linking" trong
+    `_resolve_user` và comment quyền đầu `zalo_link_repo.py` cho đúng quy tắc và quyền mới.
+17. Token của `test_email_links_a_keycloak_login_to_the_imported_user` và token dev của các test lời
+    mời mang `email_verified=True`.
+18. Đo token thật của realm `dw` có mang `email_verified` không; ghi kết quả vào Comments.
+
+## Tiêu chí chấp nhận
+
+- [ ] R2.1 (FH2): mở rộng `packages/python/dw_knowledge/tests/integration/test_qdrant_tenant_filter.py`
+      với Qdrant thật: tenant B xóa id của A → 404 và tìm kiếm của A vẫn trả tài liệu; workspace 2
+      xóa tài liệu workspace 1 → 404; mọi tenant xóa id tài liệu toàn cục → 404 và tài liệu vẫn tìm
+      được; gỡ `tenant_id` khỏi filter tombstone → đỏ (ghi Comments).
+- [ ] R2.2 (FH3): xóa thành công ghi đúng một `knowledge.document.deleted`; audit ném lỗi → tài liệu
+      không mang `status='deleted'`; chuyển ghi audit ra sau commit → đỏ.
+- [ ] R2.3 (FH4): `GET /api/v1/memory/items` với clearance `internal` không trả mục `confidential`
+      hay `restricted`; bỏ điều kiện phân loại → đỏ.
+- [ ] R2.4 (FH5): hai tenant chung `thread_id`, B có checkpoint mới hơn → sau `prune` checkpoint mới
+      nhất của A còn; bỏ so `tenant_id` ở `newer` → đỏ.
+- [ ] R2.5 (FH6): một dòng checkpoint có kiểu ngoài `ALLOWED` → nạp ra dict, không object nào của
+      kiểu đó được dựng; đổi allowlist thành `True` → đỏ.
+- [ ] R3.1 (FH7): `POST /api/v1/platform/tenants/{tenant_id}/unlock` và `/lock` cho tenant
+      `offboarding` → 409 `tenant_offboarding`, `status` giữ nguyên; gỡ điều kiện trạng thái → đỏ.
+- [ ] R3.2 (FH7): UPDATE thẳng `offboarded → active` bằng `dw_provisioner` → trigger từ chối với
+      `ck_tenants_status_transition`; gỡ trigger → test SQL đỏ.
+- [ ] R3.3 (FH8): với cache giả trung thực (`delete_pattern` xóa thật), thành viên có context trong
+      cache, người vận hành khóa tenant → request kế tiếp 403; bỏ lời gọi xóa cache → đỏ.
+- [ ] R4.1 (FH9): token `email_verified=false` có email trùng user được mời → 403
+      `identity_email_in_use`, không thêm dòng danh tính nào; gỡ kiểm `email_verified` → đỏ.
+- [ ] R4.2 (FH9): email đã xác minh của user đã có danh tính đăng nhập → 403; email đã xác minh của
+      người vận hành chưa từng đăng nhập → 403; gỡ từng điều kiện → đỏ.
+- [ ] R4.3 (FH10): token issuer X có `sub` bằng subject lưu trên user chỉ biết qua issuer Y → 403,
+      không AccessContext; token `dw-dev` theo subject vẫn vào.
+- [ ] R4.4 (FH11): bằng `dw_app`: INSERT danh tính đăng nhập cho người vận hành → trigger từ chối;
+      UPDATE một danh tính → `permission denied`; DELETE danh tính đăng nhập → trigger từ chối; DELETE
+      danh tính `zalo` vẫn nhận.
+- [ ] G1: `test_a_member_deletes_a_document_of_their_own_workspace` xanh trước và sau bản vá.
+- [ ] G2: `test_an_invited_person_signs_in_and_finds_their_workspace` xanh với token dev mang
+      `email_verified`.
+- [ ] G3: `test_email_links_a_keycloak_login_to_the_imported_user` xanh với `email_verified=True`.
+- [ ] G4: `test_relinking_a_user_replaces_their_old_chat` xanh dưới quyền mới.
+- [ ] G5: `test_pause_restart_resume_approved` xanh với serializer có `ALLOWED`.
+- [ ] Xong: `make ci && make test-integration` xanh.
+
+## Nguồn
+
+- `packages/python/dw_knowledge/src/dw_knowledge/gateway.py:549-566`
+- `packages/python/dw_knowledge/src/dw_knowledge/adapters/qdrant_index.py:186-194`
+- `packages/python/dw_knowledge/src/dw_knowledge/adapters/qdrant_index.py:230-241`
+- `packages/python/dw_memory/src/dw_memory/service.py:776-786`
+- `packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/checkpoint_retention.py:92-100`
+- `packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/checkpoint.py:59-60`
+- `packages/python/dw_platform/src/dw_platform/adapters/persistence/provisioning_repo.py:173-181`
+- `packages/python/dw_platform/src/dw_platform/application/provisioning.py:310-314`
+- `apps/api/src/dw_api/routes/v1/admin_console.py:303`
+- `packages/python/dw_platform/src/dw_platform/adapters/persistence/identity_provisioning.py:121-199`
+- `packages/python/dw_platform/src/dw_platform/adapters/persistence/membership_lookup.py:200-211`
+- `packages/python/dw_platform/src/dw_platform/adapters/identity/keycloak.py:63-70`
+- `packages/python/dw_platform/src/dw_platform/adapters/persistence/zalo_link_repo.py:187-222`
+- `docs/adr/0103-runs-act-as-a-principal-within-a-boundary.md:95-99`
+- spec: R2, R3, R4, G1-G5, FH2-FH11; si-platform
+  `packages/python/platform/si_core/src/si_core/application/identity.py` (ngữ nghĩa
+  `email_verified`).
+
+## Comments

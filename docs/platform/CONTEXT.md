@@ -1,0 +1,342 @@
+# Platform glossary
+
+This is the platform context's glossary: the shared vocabulary of the platform ADRs (`docs/adr/0100`–`0125`) and the Studio planning specs and tickets under `.claude/plans/studio/`. Studio is platform code, not a separate bounded context (ADR-0100), so its terms belong here — in the platform `CONTEXT.md` that `CONTEXT-MAP.md` names, never a `GLOSSARY.md` (`docs/agents/domain.md`).
+
+**UI text uses the Vietnamese term, never the English one.** Each entry gives the English name in bold (for code comments, docs and discussion), its `code name` in backticks (what code and the schema use), and the Vietnamese UI label in italics (what the product shows a user). A term marked _(internal)_ has no UI label because users never see it. _Owner_ names the spec under `.claude/plans/studio/` (or the platform) that owns the term; _Tránh_ lists the synonyms not to use.
+
+## Platform terms (already in the repository)
+
+- **Tenant** (`tenant_id`) · _Công ty_ — One customer of the deployment; the outer isolation boundary enforced by PostgreSQL RLS on `app.tenant_id`. _Owner_: platform. _Tránh_: organisation (in code), customer (in code), tổ chức (in UI).
+- **Workspace** (`workspace_id, platform.workspaces`) · _workspace_ — A data-owning business unit of a tenant (company, division, department) that may nest in a tree (D1); records carry an owning workspace and roles reach across workspaces by depth, never by copying. _Owner_: org-and-principals. _Tránh_: department (as the term), business unit (in code), environment, Không gian làm việc, Phòng ban, Đơn vị (as the UI term).
+- **Root workspace** (`parent_id IS NULL`) · _Workspace gốc_ — The top of a tenant's workspace tree, usually the company itself. _Owner_: org-and-principals. _Tránh_: main workspace, default workspace.
+- **Workspace sub-tree** (`workspace_subtree`) · _Workspace và các workspace con_ — A workspace together with every workspace below it in the tree, at most six levels deep (recommended). _Owner_: org-and-principals. _Tránh_: branch, division tree, descendants (in UI).
+- **Archived workspace** (`archived_at`) · _Workspace đã lưu trữ_ — A workspace closed to new records and assignments whose existing records keep their owning workspace. _Owner_: org-and-principals. _Tránh_: deleted workspace, disabled workspace.
+- **Membership** (`platform.memberships`) · _Thành viên workspace_ — A user's presence in one workspace; role assignments anchor to it. _Owner_: tenant-rbac. _Tránh_: seat, enrolment.
+- **Tenant member** (`tenant_members`) · _Thành viên công ty_ — A user who belongs to a tenant at all, independent of any workspace membership. _Owner_: org-and-principals. _Tránh_: employee, staff, user account (in UI).
+- **Tenant admin** (`holder of platform.tenant.* permissions`) · _Quản trị viên công ty_ — A tenant member holding the permissions to administer the tenant's configuration. _Owner_: tenant-rbac. _Tránh_: super user, owner (unless tenant_owner).
+- **Operator** (`platform operator, support staff`) · _Người vận hành_ — Staff of the platform provider; never reads a tenant's business data except through customer-granted support access (ADR 0024). _Owner_: telemetry-and-audit. _Tránh_: admin (alone), platform admin.
+- **Role** (`tenant_role (kind='role'), platform.roles`) · _Vai trò_ — A named bundle of permissions, each with an access depth (Dataverse security role); never a position in a hierarchy. _Owner_: tenant-rbac. _Tránh_: profile, position, hierarchy node, group.
+- **Permission** (`permission_key (legacy identifier: scope)`) · _Quyền_ — One code-owned key from the permission catalogue, such as `studio.records.read`; granted only through roles. _Owner_: tenant-rbac. _Tránh_: scope (in new docs and UI), privilege (in code), right.
+- **Permission catalogue** (`platform.permissions`) · _Danh mục quyền_ — The single code- and migration-owned list of permission keys with their scope kind and risk tier; tenants never author keys. _Owner_: tenant-rbac. _Tránh_: scope list, permission registry.
+- **Permission set** (`tenant_role (kind='permission_set')`) · _Bộ quyền bổ sung_ — A role that is assigned in addition to a person's main role to add a few permissions; same table and semantics as a role. _Owner_: tenant-rbac. _Tránh_: profile, add-on role, extra role.
+- **Role template** (`platform.roles row`) · _Vai trò mẫu_ — A platform- or pack-shipped role a tenant copies into its own roles. _Owner_: tenant-rbac. _Tránh_: default role, built-in role.
+- **System role** (`is_system`) · _Vai trò hệ thống_ — A tenant role the platform keeps (such as tenant owner) that admins may assign but not edit or delete. _Owner_: tenant-rbac. _Tránh_: built-in role, locked role.
+- **Tenant owner** (`tenant_owner`) · _Chủ sở hữu công ty_ — The system role that cannot lose its last holder and that holds every permission at tenant depth. _Owner_: tenant-rbac. _Tránh_: owner (alone), super admin.
+- **Access depth** (`depth: own, team, workspace, workspace_subtree, tenant`) · _Mức truy cập: Của tôi / Của nhóm tôi / Workspace của tôi / Workspace của tôi và cấp dưới / Toàn công ty_ — How far one granted privilege reaches over records: records I own, my teams own, my workspace owns, my workspace sub-tree owns, or the whole tenant. _Owner_: tenant-rbac. _Tránh_: scope, level, range, Phạm vi (as the term), Phòng ban (as a value).
+- **Role assignment** (`role_assignment`) · _Gán vai trò_ — One person (or team) holding one role, anchored at a workspace, optionally until an expiry. _Owner_: tenant-rbac. _Tránh_: grant (alone), binding, membership role_keys.
+- **Anchor workspace** (`anchor_workspace_id`) · _Workspace được gán vai trò_ — The workspace a role assignment's depth is measured from. _Owner_: tenant-rbac. _Tránh_: home workspace, base workspace.
+- **Acting workspace** (`AccessContext.workspace_id`) · _Workspace đang làm việc_ — The workspace the current request works in; it selects defaults, not the reach of effective permissions. _Owner_: tenant-rbac. _Tránh_: current workspace (in code), active workspace.
+- **Effective permissions** (`platform.effective_grants`) · _Quyền hiệu lực_ — The union over all of a person's role assignments in the tenant of permission and depth, each depth anchored at its assignment's workspace. _Owner_: tenant-rbac. _Tránh_: computed scopes, resolved roles.
+- **AccessContext** (`AccessContext`) · _(internal — not shown in the UI)_ — The verified server-side context of one request: tenant, acting workspace, principal and effective permissions; the only source of `app.tenant_id`. _Owner_: tenant-rbac. _Tránh_: session, request user, auth context.
+- **Access version** (`access_version`) · _(internal — not shown in the UI)_ — A counter bumped when anything that changes effective permissions changes; part of the cached AccessContext key. _Owner_: tenant-rbac. _Tránh_: permission epoch (for this one), cache version.
+- **Privilege escalation** (`rbac_escalation`) · _Leo thang quyền_ — Granting or editing a role so that someone gains a permission or depth the actor does not hold; refused by the hold rule. _Owner_: tenant-rbac. _Tránh_: escalation (alone), elevation.
+- **Bind permission** (`platform.roles.bind`) · _Quyền gán vai trò_ — The permission to assign non-critical roles the actor does not hold. _Owner_: tenant-rbac. _Tránh_: delegate admin, grant right.
+- **Critical permission** (`risk='critical'`) · _Quyền trọng yếu_ — A permission whose grant needs a second person once the tenant has two or more owners. _Owner_: tenant-rbac. _Tránh_: sensitive permission, admin permission.
+- **Separation of duties** (`sod_rule`) · _Tách nhiệm_ — A rule that no one person may hold both sides of a pair of duties, evaluated per person across the tenant. _Owner_: tenant-rbac. _Tránh_: four-eyes (alone), SoD conflict list.
+- **Waiver** (`sod_waiver`) · _Miễn trừ_ — A recorded, second-person-confirmed exception to a waivable separation-of-duties rule. _Owner_: tenant-rbac. _Tránh_: exemption, override.
+- **Platform admin grant** (`platform_admin`) · _Quyền vượt của nền tảng_ — A platform-written, time-bound break-glass grant, retired once customer-granted support access ships. _Owner_: tenant-rbac. _Tránh_: platform_admin role (as a tenant role), god mode.
+- **Run** (`platform.worker_runs, run_id`) · _Lượt chạy_ — One execution of a worker, agent or workflow version, admitted once, checkpointed and auditable. _Owner_: workflow-engine. _Tránh_: execution, job, instance, session.
+- **Worker** (`configs/workers/<name>.yaml`) · _worker_ — A platform-defined, versioned digital worker configuration shipped in `configs/workers`; tenant-built ones are agents. _Owner_: studio-skeleton. _Tránh_: bot, assistant, Nhân sự số (as the code term).
+- **Tool spec** (`ToolSpec, configs/tools`) · _Đặc tả công cụ_ — The versioned contract the ToolExecutor runs: schemas, scopes, side-effect level, approval policy, timeout, idempotency. _Owner_: tools-and-skills. _Tránh_: tool definition (for this), function schema.
+- **ToolExecutor** (`ToolExecutor`) · _(internal — not shown in the UI)_ — The one place a tool call is authorized, validated, executed, output-validated and audited. _Owner_: tools-and-skills. _Tránh_: tool runner, tool wrapper.
+- **Toolset** (`dw.toolset/v1, configs/toolsets`) · _Bộ công cụ_ — A versioned selection of tools offered to an agent together. _Owner_: tools-and-skills. _Tránh_: toolkit, tool bundle, plugin.
+- **Side-effect level** (`side_effect_level`) · _Mức tác động_ — The tool contract's classification of what a call changes outside the run; drives approval and run-mode interception. _Owner_: tools-and-skills. _Tránh_: effect class, risk level.
+- **Approval** (`platform.approvals`) · _Yêu cầu phê duyệt_ — A durable request for a human decision that pauses a run or, with no run, announces `<approval_type>.decided`. _Owner_: workflow-engine. _Tránh_: confirmation, sign-off, review (alone).
+- **Approver** (`decided_by`) · _Người duyệt_ — The person who decides an approval; never the person who requested it where a strict prefix applies. _Owner_: workflow-engine. _Tránh_: checker (outside tenant config), reviewer.
+- **Autonomy level** (`autonomy_level (A0 to A4)`) · _Mức tự chủ_ — How much a worker or agent may do without asking; the tenant ceiling only lowers it, never raises it. _Owner_: agent-builder. _Tránh_: automation level, trust level.
+- **Tenant overlay** (`dw_kernel.overlay.TenantOverlay`) · _(internal — not shown in the UI)_ — The resolver that returns a tenant's own version of a platform artifact if one exists, else the platform's; never another tenant's. _Owner_: tenant-config. _Tránh_: override layer, customization layer.
+- **Release manifest** (`release manifest`) · _(internal — not shown in the UI)_ — The platform checkout's pinned set of worker, graph, prompt, tool, policy, schema and dataset versions; reads the platform layer only. _Owner_: telemetry-and-audit. _Tránh_: run manifest, deployment manifest.
+- **Evaluation dataset** (`evals/datasets`) · _Bộ dữ liệu kiểm định nền tảng_ — A platform-shipped, versioned eval dataset with graders keyed `<context>.<gate>`. _Owner_: agent-lifecycle. _Tránh_: test set, golden set (alone).
+- **Audit log** (`platform.audit_events`) · _Nhật ký kiểm toán_ — The append-only, partitioned record of who did what, written in the action's transaction. _Owner_: telemetry-and-audit. _Tránh_: activity log, history (alone), event log.
+- **Model profile** (`profile_id, configs model profiles`) · _Hồ sơ model_ — A versioned, platform- or tenant-provided choice of model route, parameters and budgets an agent selects from what the plan allows. _Owner_: model-connections. _Tránh_: model config, LLM setting.
+- **ModelGateway** (`ModelGateway`) · _(internal — not shown in the UI)_ — The platform port every model call goes through; the only place model routing, route class and metering apply. _Owner_: model-connections. _Tránh_: gateway (alone), LLM client.
+- **Idempotency key** (`Idempotency-Key`) · _Khóa chống lặp_ — A caller-supplied key that makes a retried write or side effect happen once. _Owner_: app-standards. _Tránh_: request id, dedupe key (for this).
+- **Composition root** (`bootstrap/wiring.py`) · _(internal — not shown in the UI)_ — The only place a concrete adapter is constructed and injected. _Owner_: studio-skeleton. _Tránh_: service locator, container (alone).
+- **Seam** (`marked seam`) · _(internal — not shown in the UI)_ — A marked place in the composition roots where a capability or context plugs in. _Owner_: studio-skeleton. _Tránh_: hook, extension point.
+
+## Studio core
+
+- **Studio** (`studio, dw_studio`) · _Studio_ — The tenant-configurable no-code capability of the platform for building objects, workflows, agents and tools; a platform capability, not a bounded context. _Owner_: studio-skeleton. _Tránh_: builder, low-code app, Agent Studio (competitor name).
+- **Studio capability** (`dw_studio.<capability>`) · _(internal — not shown in the UI)_ — One part of Studio with its own package module and import contract (objects, workflows, agents, tools, connections). _Owner_: studio-skeleton. _Tránh_: capability (alone), module, feature.
+- **Domain pack** (`configs/packs/<key>@<semver>`) · _Gói nghiệp vụ_ — A platform package for one business domain (Marketing first) whose components install into a tenant as forks with provenance. _Owner_: domain-packs. _Tránh_: template pack, app, marketplace item, solution.
+- **Package** (`dw.package/v1`) · _Gói cài đặt_ — A content-addressed set of artifact documents, binding declarations, migrations and eval evidence; never records, secrets or history. _Owner_: domain-packs. _Tránh_: solution, bundle, export, Gói (alone).
+- **Fork with provenance** (`origin`) · _Bản sao từ gói_ — A tenant artifact created from a pack component, recording pack key, pack version, component key and base content hash. _Owner_: domain-packs. _Tránh_: clone, copy, instance.
+- **Pack update proposal** (`pack_update_proposal`) · _Đề xuất cập nhật gói_ — A per-component three-way comparison whose application writes a draft, never a live version. _Owner_: domain-packs. _Tránh_: upgrade, auto-update, sync.
+- **Reserved prefix** (`reserved_prefix (e.g. mkt_)`) · _Tiền tố dành riêng_ — An api-name prefix owned by a pack that tenant-created artifacts may not use. _Owner_: domain-packs. _Tránh_: namespace.
+- **Builder** (`holder of studio.*.write`) · _Người dựng_ — A business admin who builds objects, workflows and agents with no code (D2). _Owner_: studio-skeleton. _Tránh_: developer, maker (in UI), creator.
+- **Author** (`contributor_ids plus submitter`) · _Tác giả_ — Everyone who edited or submitted a candidate version; no author may approve its publish. _Owner_: agent-lifecycle. _Tránh_: owner (for this), creator.
+- **Studio artifact** (`studio.artifacts`) · _Thành phần_ — A tenant-built definition of one kind (object, workflow, agent, tool, skill, toolset, binding set) with an immutable key, an `api_name` and an owning workspace. _Owner_: tenant-config. _Tránh_: asset, resource, component (in code), template, artifact (alone, which means a platform artifact).
+- **Artifact kind** (`kind, ArtifactKindRegistry`) · _Loại thành phần_ — A registered kind with document schema `dw.<kind>/v1`, validator, dependency extractor and publish service. _Owner_: tenant-config. _Tránh_: type (alone).
+- **API name** (`api_name`) · _Tên API_ — The readable identifier of an artifact or field, unique per tenant and kind, immutable after the first publish. _Owner_: tenant-config. _Tránh_: key, slug, id (alone).
+- **Version stage** (`stage: draft, evaluating, awaiting_approval, live, retired`) · _Giai đoạn_ — The one lifecycle state of an artifact version, guarded by `guard_version_stage()`; only one version per artifact is `live`. _Owner_: agent-lifecycle. _Tránh_: state, status (for this), active flag.
+- **Draft** (`stage='draft'`) · _Nháp_ — The one mutable version of an artifact, saved with optimistic concurrency; never run by a trigger. _Owner_: tenant-config. _Tránh_: working copy, unpublished version.
+- **Candidate version** (`stage in (evaluating, awaiting_approval)`) · _Bản ứng viên_ — An immutable, numbered, hashed snapshot submitted from the draft and on its way through the quality gate and approval. _Owner_: agent-lifecycle. _Tránh_: release, commit, snapshot.
+- **Live version** (`stage='live'`) · _Đang dùng_ — The one version new runs and triggers of an artifact use. _Owner_: agent-lifecycle. _Tránh_: active version, current version, default version, Đang chạy (reserved for run status).
+- **Retired version** (`stage='retired'`) · _Đã gỡ_ — A version no new run may use, kept while retained runs reference it. _Owner_: agent-lifecycle. _Tránh_: deleted, archived, deprecated.
+- **Submit** (`submit`) · _Gửi kiểm định_ — Freezing the draft into a numbered candidate version and starting its quality gate. _Owner_: agent-lifecycle. _Tránh_: publish (for this), save version.
+- **Publish** (`publish`) · _Phát hành_ — Making a candidate version live after its gate passed and a second person approved; the kind's publish service is the only writer of `live`. _Owner_: agent-lifecycle. _Tránh_: activate, deploy, release, go live.
+- **Withdraw** (`withdraw`) · _Rút lại_ — Returning a candidate version to the author before a decision. _Owner_: agent-lifecycle. _Tránh_: cancel, revert.
+- **Canonical form** (`dw_kernel.canonical`) · _Dạng chuẩn_ — RFC 8785 JCS bytes of an NFC, float-free document; the only input to Studio hashes. _Owner_: tenant-config. _Tránh_: normalized JSON, sorted JSON.
+- **Content hash** (`content_hash`) · _Mã băm nội dung_ — SHA-256 of the canonical bytes of one version's document. _Owner_: tenant-config. _Tránh_: checksum, fingerprint.
+- **Definition hash** (`definition_hash`) · _Mã băm định nghĩa_ — SHA-256 of a version's content hash plus its pinned closure, fixed at submit; eval evidence and drift are keyed by it. _Owner_: tenant-config. _Tránh_: version hash, MCP definition hash.
+- **Effective hash** (`effective_hash`) · _Mã băm hiệu lực_ — The definition hash plus the tenant-layer resolution of the platform artifacts it pins. _Owner_: tenant-config. _Tránh_: runtime hash.
+- **Dependency index** (`studio.dependencies`) · _Nơi đang dùng_ — Rows written at submit naming everything a version pins, binds, reads, writes or invokes; the one source for where-used, delete protection and drift. _Owner_: tenant-config. _Tránh_: reference table, usage table.
+- **Impact analysis** (`impact analysis`) · _Phân tích ảnh hưởng_ — What breaks if a thing changes, read from the dependency index and open run manifests. _Owner_: tenant-config. _Tránh_: dependency check.
+- **Drift** (`drift finding (incl. mcp_tool_drifted)`) · _Lệch cấu hình_ — A live or approved thing whose pinned dependency, platform base, binding or external tool definition moved after it was approved. _Owner_: agent-lifecycle. _Tránh_: out of sync, stale config, definition drift (as a separate term).
+- **Run manifest** (`run_manifest_hash, platform.run_manifests`) · _Bản kê lượt chạy_ — The content-addressed record of everything one run resolved at admission; a Studio run resolves only what it pins. _Owner_: tenant-config. _Tránh_: release manifest, run snapshot.
+- **Run mode** (`run_mode: live, test, simulate`) · _Chế độ chạy: Thật / Chạy thử / Mô phỏng_ — A server-set property of a run, fixed at admission and only safer in child runs, deciding which effects run, are intercepted or refused. _Owner_: tenant-config. _Tránh_: environment, dry run, sandbox mode, deployment profile.
+- **Intercepted call** (`tool_executions.status='simulated'`) · _Lệnh gọi giả lập_ — A tool call the executor did not perform because of the run mode; it returns a pinned mock or a schema placeholder. _Owner_: tenant-config. _Tránh_: mocked, skipped, fake call.
+- **Mock output** (`mock`) · _Kết quả giả lập_ — A node's or tool's pinned sample output used by intercepted calls and the builder's test panel. _Owner_: workflow-nodes. _Tránh_: stub, fixture (in UI).
+- **Test recipient allowlist** (`studio.test_recipients`) · _Danh sách người nhận thử_ — Tenant-managed, expiring, normalised addresses that `test` runs may message for real. _Owner_: tenant-config. _Tránh_: whitelist, sandbox recipients.
+- **Tenant config version** (`platform.config_versions`) · _Phiên bản cấu hình riêng_ — A tenant's own immutable version of a platform artifact, policy or binding set, in force only after a second person approves it; replaces `platform.policy_overrides`. _Owner_: tenant-config. _Tránh_: override (in UI), customization, patch.
+- **Platform default** (`tenant_id=None layer`) · _Mặc định nền tảng_ — What ships in `configs/` and applies to a tenant without its own version. _Owner_: tenant-config. _Tránh_: system value, factory setting.
+- **Base version** (`base_version`) · _Phiên bản gốc_ — The platform version a tenant config version was made from; a newer platform version is drift. _Owner_: tenant-config. _Tránh_: parent version.
+- **Maker and checker** (`proposed_by, decided_by`) · _Người đề xuất, Người duyệt_ — The two different people every tenant configuration change, publish, revive and MCP tool approval needs. _Owner_: tenant-config. _Tránh_: four eyes, owner and approver.
+- **Binding** (`bindings[] (kind connection, variable, principal, schedule)`) · _Điểm gắn_ — A named need a version declares whose value is tenant configuration, not content; values are approved separately and pinned per run. _Owner_: tenant-config. _Tránh_: connection reference, alias, env var, parameter, Liên kết.
+- **Binding set** (`kind='binding_set'`) · _Bộ giá trị gắn_ — The approved values of one artifact's bindings in one tenant. _Owner_: tenant-config. _Tránh_: config file, settings.
+- **Sandbox tenant** (`tenants.kind='sandbox' (v2)`) · _Công ty thử nghiệm_ — A separate tenant linked by an operator to a production tenant, holding synthetic data and never running `live`. _Owner_: domain-packs. _Tránh_: sandbox (alone), staging, test workspace.
+- **Promotion** (`studio.deployments (v2)`) · _Đưa lên_ — Importing a package from a sandbox tenant into the production tenant with re-gating and approval. _Owner_: domain-packs. _Tránh_: release, push, publish (for this).
+
+## Identity and principals
+
+- **Principal** (`principal_kind: user, team, service`) · _(internal — not shown in the UI)_ — Anything that can own records or act: a user, a team, or a service principal. _Owner_: org-and-principals. _Tránh_: actor (for ownership), subject.
+- **Team** (`teams`) · _Nhóm_ — A set of tenant members in exactly one workspace that can own records and hold roles. _Owner_: org-and-principals. _Tránh_: group, squad, Đội.
+- **Line manager** (`manager_user_id`) · _Quản lý trực tiếp_ — The person a member reports to; feeds hierarchy access and task escalation. The edit field keeps the existing label "Báo cáo cho". _Owner_: org-and-principals. _Tránh_: supervisor, boss, parent user.
+- **Member attribute** (`member_attributes`) · _Thuộc tính nhân sự_ — An HR attribute of a tenant member (job code, branch, office) used by audiences. _Owner_: org-and-principals. _Tránh_: profile field, claim.
+- **Audience** (`dw.audience/v1`) · _Người được dùng_ — The typed condition list deciding which members may use an agent or start a workflow. _Owner_: org-and-principals. _Tránh_: target group, Đối tượng sử dụng (clashes with Object).
+- **Service principal** (`users.kind='service'`) · _Tài khoản dịch vụ_ — A non-human user row holding its own roles, used by unattended runs and API keys. _Owner_: org-and-principals. _Tránh_: bot user, system user, technical account.
+- **Run-as principal** (`run_as (binding kind principal)`) · _Chạy dưới danh nghĩa_ — The principal whose permissions an unattended run uses; a service principal approved through a binding, never the publisher. _Owner_: org-and-principals. _Tránh_: run identity, impersonated user, Chạy với quyền của.
+- **Accountable owner** (`owner_user_id (on an artifact)`) · _Người chịu trách nhiệm_ — The person answerable for a live agent or workflow; when they leave, publishing is blocked until reassigned. _Owner_: org-and-principals. _Tránh_: owner (alone), record owner.
+- **API key** (`dwk_...`) · _Khóa API_ — A tenant-issued credential bound to a service principal. _Owner_: org-and-principals. _Tránh_: token (alone), secret key.
+- **Login policy** (`sso_required`) · _Bắt buộc đăng nhập SSO_ — A tenant setting forcing members to sign in through the tenant's identity provider. _Owner_: org-and-principals. _Tránh_: SSO mode.
+- **Invitation claim** (`invitation claim link`) · _Mã nhận lời mời_ — A one-time link that binds an invited person's identity to a tenant member. _Owner_: org-and-principals. _Tránh_: invite token, magic link.
+
+## Record and field access
+
+- **Record owner** (`owner_id, owner_kind (user or team)`) · _Người phụ trách_ — The user or team that owns a record; depth `own` and `team` are measured from it. _Owner_: record-access. _Tránh_: owner (alone), Người sở hữu, assignee.
+- **Owning workspace** (`records.workspace_id`) · _Workspace sở hữu_ — The workspace a record belongs to; depth `workspace` and `workspace_subtree` are measured from it. _Owner_: record-access. _Tránh_: home workspace, Đơn vị sở hữu.
+- **Default access** (`default_access: private, public_read, public_read_write`) · _Mặc định truy cập: Riêng tư / Mọi người được xem / Mọi người được xem và sửa_ — The per-object organisation-wide default deciding who beyond owner, depth and sharing reaches a record. _Owner_: record-access. _Tránh_: org-wide default (in UI), visibility.
+- **Hierarchy access** (`grant_hierarchy`) · _Quản lý thấy bản ghi của cấp dưới_ — The per-object switch letting a line manager reach subordinates' records. _Owner_: record-access. _Tránh_: manager visibility, role hierarchy.
+- **Share** (`studio.record_shares`) · _Chia sẻ_ — A manual, expiring grant of read or edit on one record to a user, team or workspace. _Owner_: record-access. _Tránh_: permission (for this), access grant.
+- **Sharing rule** (`studio.sharing_rules`) · _Quy tắc chia sẻ_ — A versioned criteria-based rule granting read or edit on matching records to a principal set. _Owner_: record-access. _Tránh_: automatic share, access rule.
+- **Record access** (`record_access_<table>_<cmd> policies`) · _Quyền trên bản ghi_ — The RLS policies combining owner, depth, hierarchy, sharing and default access for each command. _Owner_: record-access. _Tránh_: row security (alone), ACL.
+- **Principal scope** (`studio.principal_scopes`) · _(internal — not shown in the UI)_ — The in-database closure of grant keys a principal reaches, rebuilt on an access epoch bump. _Owner_: record-access. _Tránh_: ACL cache, reach set.
+- **Access epoch** (`studio.access_epochs`) · _(internal — not shown in the UI)_ — A per-tenant counter bumped when shares, rules, the tree or managers change, invalidating principal scopes. _Owner_: record-access. _Tránh_: access version (that is RBAC).
+- **Actor kind** (`app.actor_kind`) · _Thực hiện bởi: Người dùng / Agent / Quy trình_ — The kind of actor a transaction runs for; selects the boundary applied over the principal's reach. _Owner_: record-access. _Tránh_: caller type.
+- **Boundary** (`studio.actor_boundaries`) · _Giới hạn dữ liệu_ — The ceiling an agent or workflow sets on what its run may reach, intersected with the run-as principal's reach. _Owner_: record-access. _Tránh_: sandbox, data scope.
+- **Assign** (`studio.assign_record, :assign`) · _Giao cho_ — Changing a record's owner, optionally moving its owning workspace, with audit. _Owner_: record-access. _Tránh_: transfer, reassign (in UI).
+- **Explain access** (`explain endpoint`) · _Ai thấy bản ghi này_ — The view listing which arms (owner, depth, hierarchy, share, rule, default) give whom access to a record. _Owner_: record-access. _Tránh_: access report.
+- **Field access mode** (`access_mode: open, secured`) · _Bảo mật trường: Mở / Bảo vệ_ — Whether a field is readable by everyone who reaches the record (open) or only by roles granted it (secured). _Owner_: field-security. _Tránh_: field visibility, hidden flag.
+- **Field grant** (`studio.field_permissions.access: read, edit`) · _Xem / Xem và sửa_ — A role's permission on one secured field, applied to agents and search results too. _Owner_: field-security. _Tránh_: column permission.
+- **Hidden value** (`hidden_fields`) · _Đã ẩn_ — The marker returned in place of a value the caller may not read, so absence and emptiness stay distinguishable. _Owner_: field-security. _Tránh_: masked (for this), null.
+- **Personal-data category** (`pd_category: none, basic, sensitive`) · _Loại dữ liệu cá nhân: Không / Cơ bản / Nhạy cảm_ — A field property under PDPL that drives field security, masking, routing, retention and data-subject requests. _Owner_: field-security. _Tránh_: PII flag, classification (alone).
+- **Subject identifier** (`subject_identifier`) · _Trường định danh chủ thể_ — A field that identifies the data subject a record is about, used to find records for a data-subject request. _Owner_: compliance-pdpl. _Tránh_: primary contact field.
+
+## Objects and records
+
+- **Object** (`object_def`) · _Đối tượng_ — A tenant-defined record type (such as Lead) with fields, tenant-wide definition and per-object default access. _Owner_: custom-objects. _Tránh_: entity, table, custom object (in UI), DataTable.
+- **Field** (`field_def`) · _Trường_ — One typed attribute of an object. _Owner_: custom-objects. _Tránh_: column, property, attribute.
+- **Field key** (`field_defs.id`) · _Mã trường_ — The immutable internal identifier of a field; the API name is its readable twin. _Owner_: custom-objects. _Tránh_: field id (in UI).
+- **Record** (`record, studio.records`) · _Bản ghi_ — One instance of an object, with owner, owning workspace and version. _Owner_: custom-objects. _Tránh_: row, item, entry.
+- **Record name** (`name`) · _Tên bản ghi_ — The display name of a record used in lookups and search. _Owner_: custom-objects. _Tránh_: title, label.
+- **Label** (`labels`) · _Nhãn_ — The localised display text of an object or field. _Owner_: custom-objects. _Tránh_: caption, display name.
+- **Indexed field** (`slot-backed field`) · _Trường lọc được_ — A field stored in an indexed slot so it can be filtered and sorted; limited per object by plan. _Owner_: custom-objects. _Tránh_: searchable field, key field.
+- **Slot** (`t07, i03`) · _(internal — not shown in the UI)_ — A typed physical column of `studio.records` that carries one indexed field. _Owner_: custom-objects. _Tránh_: column (in docs about fields).
+- **Picklist** (`picklist, option key`) · _Danh sách chọn_ — A field whose value is one of a fixed list of options keyed by stable option keys. _Owner_: custom-objects. _Tránh_: enum, dropdown.
+- **Lookup** (`lookup`) · _Trường tham chiếu_ — A field referencing a record of another object. _Owner_: custom-objects. _Tránh_: foreign key (in UI), reference (alone).
+- **Master-detail** (`master_detail`) · _Quan hệ chủ – chi tiết_ — A lookup whose child inherits access and is deleted with its parent. _Owner_: custom-objects. _Tránh_: parent-child, cascade lookup.
+- **External ID** (`external_id`) · _Mã ngoài_ — A unique field holding an identifier from another system, used for upsert. _Owner_: custom-objects. _Tránh_: source id, legacy id.
+- **Upsert** (`upsert`) · _Tạo hoặc cập nhật_ — Creating a record or updating the one matched by an external ID. _Owner_: custom-objects. _Tránh_: merge, sync.
+- **Validation rule** (`validation_rule (CEL)`) · _Điều kiện để lưu được_ — A CEL condition that must hold for a record to be saved (true means valid). _Owner_: custom-objects. _Tránh_: error condition, check (alone), Quy tắc kiểm tra.
+- **Filter** (`filter AST`) · _Bộ lọc_ — The typed filter tree that selects records; the language of record selection, distinct from CEL. _Owner_: custom-objects. _Tránh_: query (alone), where clause.
+- **List view** (`list_view`) · _Dạng xem danh sách_ — A saved filter, columns and sort over one object. _Owner_: custom-objects. _Tránh_: report, saved search.
+- **Layout** (`layout`) · _Bố cục biểu mẫu_ — The arrangement of fields on a record form. _Owner_: custom-objects. _Tránh_: page layout, template.
+- **Schema version** (`schema_version`) · _Phiên bản lược đồ_ — The version number of an object's field set, bumped on each definition change. _Owner_: custom-objects. _Tránh_: object version.
+- **Record history** (`record_history`) · _Lịch sử thay đổi_ — Field-level changes of tracked fields on a record, erased with the record on a data-subject request. _Owner_: custom-objects. _Tránh_: audit trail (that is the audit log), changelog.
+- **Recycle bin** (`deleted_at`) · _Thùng rác_ — Soft-deleted records kept for the plan's bin period before purge. _Owner_: custom-objects. _Tránh_: trash, archive.
+- **Restore** (`undelete`) · _Khôi phục_ — Returning a record from the recycle bin. _Owner_: custom-objects. _Tránh_: undo delete, revive.
+- **Expunge** (`purge`) · _Xóa vĩnh viễn_ — Removing a record and its history for good. _Owner_: custom-objects. _Tránh_: hard delete (in UI), wipe.
+- **Long-running operation** (`operation`) · _Tác vụ chạy nền_ — A tracked asynchronous job (import, export, bulk change) polled by id. _Owner_: app-standards. _Tránh_: job, task, operation (in usage docs).
+- **Problem details** (`application/problem+json`) · _Mô tả lỗi_ — The RFC 9457 error envelope, added to the existing code, message, details and request_id fields. _Owner_: app-standards. _Tránh_: error object.
+- **Record version** (`ETag, version`) · _Phiên bản bản ghi_ — The optimistic-concurrency token of a record. _Owner_: app-standards. _Tránh_: revision, lock.
+
+## Workflows
+
+- **Workflow** (`dw.workflow/v1, kind='workflow'`) · _Quy trình_ — A tenant-built, versioned graph of nodes compiled per version to a LangGraph StateGraph and run by the runner. _Owner_: workflow-engine. _Tránh_: flow, automation, scenario, pipeline.
+- **Node** (`nodes[]`) · _Bước_ — One step of a workflow, of a node type, with at most one side effect through the ToolExecutor. _Owner_: workflow-nodes. _Tránh_: block, action (for this), task.
+- **Node type** (`type@major`) · _Loại bước_ — A catalogue entry defining a node's configuration schema, ports and behaviour. _Owner_: workflow-nodes. _Tránh_: node kind, operator.
+- **Port** (`ports`) · _Nhánh ra_ — A named exit of a node (such as success, error, expired) that edges leave from. _Owner_: workflow-nodes. _Tránh_: output, handle, Cổng ra.
+- **Edge** (`edges[]`) · _Đường nối_ — A connection from a node's port to the next node. _Owner_: workflow-nodes. _Tránh_: link, arrow, transition.
+- **Error policy** (`on_error`) · _Khi lỗi_ — What a node does on failure: retry, follow the error port, or fail the run. _Owner_: workflow-nodes. _Tránh_: catch, fallback.
+- **Approval step** (`human.approval`) · _Bước phê duyệt_ — A node that opens an approval and waits; an expiry without an `expired` edge fails the run. _Owner_: workflow-nodes. _Tránh_: confirm node, gate (alone).
+- **Human task** (`human.task`) · _Việc cần làm_ — A node that assigns a form or job to a person and waits for completion. _Owner_: workflow-nodes. _Tránh_: todo, ticket.
+- **Assignee** (`assignee`) · _Người xử lý_ — The person or role a human task is assigned to. _Owner_: workflow-nodes. _Tránh_: owner (for this), handler.
+- **Task escalation** (`escalation`) · _Chuyển cấp_ — Reassigning an overdue human task or approval, for example to the assignee's line manager. _Owner_: workflow-nodes. _Tránh_: escalation (alone), privilege escalation.
+- **Code node** (`code.python`) · _Bước mã Python_ — A node that runs tenant-written Python in a fresh code sandbox, behind a dedicated permission and plan entitlement. _Owner_: workflow-nodes. _Tránh_: script node, function node.
+- **Expression** (`CEL, ExpressionEngine`) · _Biểu thức_ — A CEL expression evaluated server-side, type-checked at submit and cost-bounded. _Owner_: workflow-nodes. _Tránh_: formula (alone), script, code.
+- **Text template** (`{{ }}`) · _Chuỗi có biến_ — Text with `{{ }}` CEL placeholders, rendered server-side. _Owner_: workflow-nodes. _Tránh_: template (alone), Jinja, format string.
+- **Canvas** (`@xyflow/react`) · _Sơ đồ_ — The builder's graph view, laid out by dagre with no stored positions. _Owner_: workflow-builder-ui. _Tránh_: board, diagram editor.
+- **Outline view** (`outline view`) · _Dạng danh sách_ — The accessible list view of a workflow, equivalent to the canvas. _Owner_: workflow-builder-ui. _Tránh_: tree view.
+- **Variable picker** (`variable picker`) · _Chọn biến_ — The UI that inserts a typed path to an earlier node's output into an expression. _Owner_: workflow-builder-ui. _Tránh_: field picker.
+- **Run request** (`RunRequestService`) · _Yêu cầu chạy_ — The one admission path that turns a trigger, chat or API call into a queued run. _Owner_: workflow-engine. _Tránh_: enqueue, start call.
+- **Wait** (`platform.run_waits`) · _Điểm chờ_ — A parked run waiting for a time, an event or a human decision. _Owner_: workflow-engine. _Tránh_: sleep, pause (alone).
+- **Blocked run** (`status='blocked'`) · _Bị chặn khi tiếp tục_ — A run that could not resume because a check refused it (such as a frozen version). _Owner_: workflow-engine. _Tránh_: stuck run, failed run.
+- **Dead-lettered run** (`dead_at on a run`) · _Hỏng sau nhiều lần thử_ — A run that exhausted its retries and needs a person. _Owner_: workflow-engine. _Tránh_: dead run, poison run.
+- **Replay** (`replay`) · _Chạy lại_ — Starting a new run with the same input on a chosen version. _Owner_: workflow-engine. _Tránh_: re-run, retry.
+- **Fork** (`fork from step`) · _Chạy tách từ bước_ — Starting a new run from a past run's checkpoint at a chosen step. _Owner_: workflow-engine. _Tránh_: branch, clone run.
+- **Chain depth** (`chain_depth`) · _Độ sâu chuỗi_ — How many runs deep a run sits in a chain of runs starting runs; capped to stop loops. _Owner_: workflow-engine. _Tránh_: recursion level, nesting.
+- **Trigger** (`triggers[]`) · _Trình kích hoạt_ — What starts a workflow: a record event, a schedule, a Data Hub endpoint or a manual start. _Owner_: workflow-triggers. _Tránh_: event (alone), hook, starter.
+- **Trigger delivery** (`studio.trigger_deliveries`) · _Lần kích hoạt_ — One firing of one trigger for one version, deduplicated, with its outcome. _Owner_: workflow-triggers. _Tránh_: delivery (alone), invocation.
+- **Data Hub endpoint** (`kind='endpoint'`) · _Nguồn dữ liệu_ — A tenant inbound URL that accepts signed events into a workflow (ADR 0008, Standard Webhooks). _Owner_: workflow-triggers. _Tránh_: webhook (alone), API endpoint, Data Hub (alone).
+- **Inbound event** (`studio.inbound_events`) · _Sự kiện nhận_ — One accepted request to a Data Hub endpoint or provider-app webhook, stored before processing. _Owner_: workflow-triggers. _Tránh_: webhook payload, message.
+- **Quarantine** (`quarantine`) · _Cách ly_ — Holding an inbound event that failed schema or signature checks for review, never processing it. _Owner_: workflow-triggers. _Tránh_: reject queue, spam.
+- **Schedule** (`schedule binding`) · _Lịch chạy_ — A trigger firing at times given by a schedule binding, in the tenant's time zone. _Owner_: workflow-triggers. _Tránh_: cron (in UI), timer.
+
+## Agents and models
+
+- **Agent** (`dw.agent/v1`) · _Agent_ — A tenant-built, versioned conversational or task agent run on the platform's create_agent stack. _Owner_: agent-builder. _Tránh_: bot, chatbot, assistant, worker (that is platform-defined), Nhân sự số.
+- **Digital worker** (`digital worker (product)`) · _Nhân sự số_ — The product umbrella for agents and workers seen by business users; never a code term. _Owner_: marketing-pilot. _Tránh_: in code: use agent or worker.
+- **Instructions** (`instructions`) · _Chỉ dẫn_ — The agent's own system-prompt text, rendered through the PromptRegistry with untrusted values escaped. _Owner_: agent-builder. _Tránh_: system prompt (in UI), persona.
+- **Platform variable** (`platform_variables`) · _Biến hệ thống_ — A value the platform injects into instructions (date, tenant name, user name). _Owner_: agent-builder. _Tránh_: global variable, macro.
+- **Agent settings** (`studio.agent_settings`) · _Cài đặt sử dụng_ — Per-tenant usage settings of an agent outside its version (surfaces, audience). _Owner_: agent-builder. _Tránh_: config (alone).
+- **Conversation** (`studio.conversations`) · _Hội thoại_ — A chat thread between a user and an agent; readable only by its participant in v1. _Owner_: agent-builder. _Tránh_: session, chat (alone), thread (in UI).
+- **Citation** (`citations`) · _Trích dẫn_ — A pointer from an agent answer to the evidence it used. _Owner_: agent-builder. _Tránh_: source, reference (alone).
+- **Ask before** (`delegation.ask_before`) · _Hỏi trước_ — The agent setting listing actions it must confirm with the user before calling. _Owner_: agent-builder. _Tránh_: confirm mode, Ủy quyền hành động (competitor).
+- **Linked agent** (`links`) · _Agent liên kết_ — Another published agent this agent may call as a tool, pinned at submit. _Owner_: agent-builder. _Tránh_: sub-agent (for this), delegate.
+- **Sub-agent** (`sub_agents`) · _Agent con_ — An agent defined inside this agent's version and run as its child. _Owner_: agent-builder. _Tránh_: linked agent, helper.
+- **Surface** (`surfaces`) · _Nơi dùng_ — Where an agent is offered: web chat, Zalo, an API. _Owner_: agent-builder. _Tránh_: channel (alone), placement.
+- **Model connection** (`platform.model_connections`) · _Kết nối model_ — A tenant's own model endpoint and key (BYOM, D8) reached through the model proxy, with declared data location. _Owner_: model-connections. _Tránh_: connection (alone), BYOK, provider account.
+- **Model capability** (`capabilities`) · _Năng lực model_ — A probed feature of a model (tools, structured output, vision, context size). _Owner_: model-connections. _Tránh_: capability (alone), feature.
+- **Probe** (`model_probe`) · _Thăm dò_ — A test call that records a model connection's capabilities and health. _Owner_: model-connections. _Tránh_: ping, health check.
+- **Model proxy** (`model-proxy (LiteLLM BYOM lane)`) · _(internal — not shown in the UI)_ — The isolated LiteLLM deployable through which tenant-connected models are called, with keys injected per request and never stored. _Owner_: model-connections. _Tránh_: BYOM lane, gateway, LiteLLM gateway (that is the requester's existing service).
+- **Code sandbox** (`sandbox-runner, runsc-dw`) · _Môi trường chạy mã_ — The service that runs each code execution in its own fresh gVisor container with no network and hard resource limits (D7). _Owner_: code-sandbox. _Tránh_: sandbox (alone), docgen sandbox, container.
+- **Code execution** (`code_execution`) · _Lần chạy mã_ — One run of tenant code in the code sandbox. _Owner_: code-sandbox. _Tránh_: script run, job.
+- **Sandbox profile** (`py-small, py-medium`) · _Cấu hình chạy mã_ — A named limit set (CPU, memory, pids, disk, wall clock) for a code execution. _Owner_: code-sandbox. _Tránh_: tier, size.
+
+## Tools, skills and MCP
+
+- **Tool** (`Tool (tenant data)`) · _Công cụ_ — A tenant-defined, versioned tool of one kind compiled to a tool spec; executed only through the ToolExecutor. _Owner_: tools-and-skills. _Tránh_: function, action (alone), plugin.
+- **Tool kind** (`kind: http, openapi, mcp, workflow, object_crud, code, builtin`) · _Loại công cụ_ — The kind that selects the generic factory building a tool spec and its policy floor. _Owner_: tools-and-skills. _Tránh_: tool type.
+- **Tool contract** (`contract`) · _Hợp đồng công cụ_ — A tool version's input and output schemas, side-effect level and idempotency. _Owner_: tools-and-skills. _Tránh_: signature, interface.
+- **Tool policy** (`policy`) · _Chính sách công cụ_ — The tenant's approval and limit settings on a tool, which may tighten, never loosen, the kind floor. _Owner_: tools-and-skills. _Tránh_: rule, permission (for this).
+- **Tool implementation** (`implementation`) · _Cách thực thi_ — What a tool version calls: an HTTP request, an MCP tool, a workflow, a record operation or code. _Owner_: tools-and-skills. _Tránh_: binding (that is a declared need), target.
+- **Kind floor** (`KIND_FLOORS`) · _Mức sàn theo loại_ — The minimum policy a tool kind always carries, which tenants cannot loosen. _Owner_: tools-and-skills. _Tránh_: default policy, baseline.
+- **Output trust** (`output_trust`) · _Độ tin cậy kết quả_ — Whether a tool's output is trusted or untrusted content; untrusted output taints the run. _Owner_: tools-and-skills. _Tránh_: safety level.
+- **Run taint** (`tainted_at`) · _Đã tiếp xúc nội dung ngoài_ — The mark on a run that has read untrusted content, after which high-impact tools need approval. _Owner_: tools-and-skills. _Tránh_: context taint, Ngữ cảnh đã nhiễm.
+- **Lethal trifecta** (`trifecta`) · _Bộ ba nguy hiểm_ — Private data access, untrusted content and an outbound channel in one agent; refused or forced to approval at publish. _Owner_: agent-lifecycle. _Tránh_: Bộ ba rủi ro, Rule of Two (that is a pack design choice).
+- **Toolkit** (`namespace`) · _Nhóm công cụ_ — A namespace grouping a provider's tools in the UI. _Owner_: tools-and-skills. _Tránh_: toolset (that is versioned), category.
+- **Model-facing view** (`model-view`) · _Bản mô hình nhìn thấy_ — The name, description and schema of a tool as sent to the model, narrowed by field security. _Owner_: tools-and-skills. _Tránh_: prompt schema.
+- **Object tool** (`object_crud`) · _Công cụ dữ liệu đối tượng_ — A tool kind that reads or writes records of one object under the run's access. _Owner_: tools-and-skills. _Tránh_: CRUD tool, DB tool.
+- **Workflow tool** (`kind='workflow'`) · _Quy trình dùng như công cụ_ — A published workflow offered to an agent as a tool. _Owner_: tools-and-skills. _Tránh_: sub-workflow (for this).
+- **Platform tool** (`builtin`) · _Công cụ nền tảng_ — A tool shipped by the platform and offered to tenants read-only. _Owner_: tools-and-skills. _Tránh_: system tool, native tool.
+- **Skill** (`SKILL.md`) · _Kỹ năng_ — An Agent Skills package of instructions (text only in v1) served read-only per tenant. _Owner_: tools-and-skills. _Tránh_: prompt snippet, plugin, capability.
+- **Pinned skill** (`pinned_skills`) · _Kỹ năng ghim_ — A skill always loaded into an agent's context rather than disclosed on demand. _Owner_: tools-and-skills. _Tránh_: default skill.
+- **MCP server registration** (`McpServer`) · _Máy chủ MCP_ — A tenant's registered MCP server URL with auth, allowed tools and pinned definitions. _Owner_: mcp-client. _Tránh_: MCP connection, plugin.
+- **MCP gateway** (`mcp-gateway`) · _Cổng MCP_ — The isolated service holding no secrets at rest through which every MCP call leaves. _Owner_: mcp-client. _Tránh_: MCP proxy, gateway (alone).
+- **Pinned tool definition** (`pinned_definition_sha256`) · _Định nghĩa đã ghim_ — The SHA-256 of an MCP tool's definition at admin approval; a change is drift needing re-approval. _Owner_: mcp-client. _Tránh_: definition hash (that is the version hash).
+- **Tool approval** (`studio.mcp.tool_approval`) · _Duyệt công cụ_ — The second-person approval of an MCP tool definition before agents may call it. _Owner_: mcp-client. _Tránh_: tool review, whitelisting.
+- **Server hints** (`annotations`) · _Gợi ý của máy chủ_ — An MCP server's self-declared tool annotations, informational only and never trusted for policy. _Owner_: mcp-client. _Tránh_: tool flags.
+- **Elicitation** (`mcp.elicitation`) · _Yêu cầu bổ sung thông tin_ — An MCP server's request for user input, routed to the human-task inbox (v1.5). _Owner_: mcp-client. _Tránh_: prompt (alone), question.
+
+## Connections and egress
+
+- **Connection** (`platform.connections`) · _Kết nối_ — An authorized link from one workspace (or one user) to one account at an external provider, holding its credentials in the vault. _Owner_: connections-and-vault. _Tránh_: credential, integration, account, tài khoản liên kết.
+- **Connector** (`connector_key`) · _Trình kết nối_ — A provider capability described by a versioned manifest: auth scheme, actions, triggers, hosts, data location. _Owner_: connections-and-vault. _Tránh_: plugin, app, integration.
+- **Connector manifest** (`dw.connector/v1`) · _Bản mô tả trình kết nối_ — The versioned YAML artifact defining a connector; the platform layer ships in `configs/connectors/`. _Owner_: connections-and-vault. _Tránh_: spec (alone), definition.
+- **Action** (`<connector>.<action>@<semver>`) · _Hành động_ — One provider operation compiled to a tool spec, carrying a side-effect level and a `message` flag that triggers consent and suppression gates. _Owner_: connections-and-vault. _Tránh_: endpoint, API call, effect class.
+- **Provider app** (`provider_app_key`) · _Ứng dụng nhà cung cấp_ — The OAuth client and webhook subscription registered at a provider (a Meta app, a Zalo app, a Google client). _Owner_: connections-and-vault. _Tránh_: app (alone), BYO app.
+- **OAuth flow** (`platform.oauth_flows`) · _Phiên cấp quyền_ — One authorization-code attempt with hashed state, PKCE verifier, expiry and initiator. _Owner_: connections-and-vault. _Tránh_: session (alone).
+- **Connection status** (`pending, active, needs_reauth, disabled, revoked`) · _Đang chờ / Hoạt động / Cần kết nối lại / Đã tắt / Đã thu hồi_ — The stored state of a connection; expiring is derived, never stored. _Owner_: connections-and-vault. _Tránh_: error (as a status), expired.
+- **Share scope** (`share_scope: owner, workspace, workspace_subtree`) · _Phạm vi dùng chung_ — Where in the workspace tree a connection may be used. _Owner_: connections-and-vault. _Tránh_: visibility, access depth (that is for records).
+- **Delegation** (`platform.connection_delegations`) · _Ủy quyền dùng kết nối_ — An owner's expiring, revocable permission for one workflow or agent to use their personal connection in background runs. _Owner_: connections-and-vault. _Tránh_: Ủy quyền (alone), impersonation.
+- **Vault** (`SecretStore, platform.secret_envelopes`) · _Kho bí mật_ — The store of tenant secrets as AES-256-GCM envelopes, readable only through the credential broker. _Owner_: connections-and-vault. _Tránh_: secret manager, Vault (product name).
+- **Secret** (`Secret`) · _Thông tin bí mật_ — A value that grants access or signs messages; write-only in the API and shown as configured. _Owner_: connections-and-vault. _Tránh_: password, key (alone).
+- **Tenant key** (`KEK, tenant-<uuid> in Transit`) · _Khóa của công ty_ — The per-tenant OpenBao Transit key that wraps data keys and is destroyed at offboarding. _Owner_: connections-and-vault. _Tránh_: master key.
+- **Crypto-shredding** (`destroy tenant key`) · _Xóa bằng hủy khóa_ — Destroying a tenant key so every copy of that tenant's ciphertext, backups included, becomes unreadable. _Owner_: connections-and-vault. _Tránh_: xóa bí mật, Hủy khóa (alone).
+- **Egress client** (`EgressClient, EgressPort`) · _(internal — not shown in the UI)_ — The only HTTP client for tenant-directed traffic: address policy, IP pinning, allowlists, limits, breakers, spans. _Owner_: connections-and-vault. _Tránh_: HTTP client, proxy.
+- **Egress proxy** (`smokescreen`) · _(internal — not shown in the UI)_ — The network-level second layer on its own network refusing non-global addresses and hosts outside its role. _Owner_: connections-and-vault. _Tránh_: firewall, proxy (alone).
+- **Allowed host** (`platform.egress_allowed_hosts`) · _Máy chủ được phép_ — A host a tenant admin allows for tenant-defined destinations (HTTP tools, MCP, webhooks, BYOM endpoints). _Owner_: connections-and-vault. _Tránh_: whitelist.
+- **Outbound webhook endpoint** (`platform.webhook_endpoints`) · _Webhook gửi đi_ — A tenant-registered HTTPS URL subscribed to event types and signed per Standard Webhooks. _Owner_: connections-and-vault. _Tránh_: callback, hook.
+- **Webhook delivery** (`platform.webhook_deliveries`) · _Lượt gửi webhook_ — One send of one event to one outbound endpoint with its attempts and outcome. _Owner_: connections-and-vault. _Tránh_: delivery (alone), message.
+- **Signature verifier** (`SignatureVerifier`) · _Bộ kiểm chữ ký_ — A pure function checking an inbound request's signature by scheme, shared with workflow triggers. _Owner_: connections-and-vault. _Tránh_: auth (alone).
+
+## Lifecycle and evaluation
+
+- **Quality gate** (`gate`) · _Cổng chất lượng_ — The submit-time check a candidate version must pass: tenant evaluation set and platform security suites at 100%. _Owner_: agent-lifecycle. _Tránh_: test step, CI.
+- **Gate run** (`gate_run`) · _Lượt kiểm định_ — One execution of the quality gate on one candidate's definition hash. _Owner_: agent-lifecycle. _Tránh_: test run (that is run mode test).
+- **Dry evaluation** (`purpose dry`) · _Kiểm định thử_ — An evaluation of a draft that cannot lead to publish. _Owner_: agent-lifecycle. _Tránh_: preview test.
+- **Gate policy** (`GatePolicy`) · _Chính sách cổng_ — The numbers a gate applies: minimum cases, pass rate, k, cost ceilings. _Owner_: agent-lifecycle. _Tránh_: threshold config.
+- **Evaluation set** (`eval_dataset (purpose gate)`) · _Bộ đề kiểm định_ — A tenant's versioned set of cases a version must pass at submit. _Owner_: agent-lifecycle. _Tránh_: test set, golden set, Question bank.
+- **Question bank** (`purpose question_bank`) · _Ngân hàng câu hỏi_ — A tenant's pool of sample questions used to draft cases and for online evaluation. _Owner_: agent-lifecycle. _Tránh_: evaluation set.
+- **Case** (`eval_case`) · _Câu kiểm định_ — One input with expectations in an evaluation set. _Owner_: agent-lifecycle. _Tránh_: test case (in UI), sample.
+- **pass^k** (`pass_k`) · _Đạt cả k lần_ — A case passes only if all k trials pass. _Owner_: agent-lifecycle. _Tránh_: pass@k.
+- **Platform security suite** (`studio_security_suite`) · _Bộ kiểm định an ninh nền tảng_ — The platform-owned prompt-injection, cross-tenant and missing-evidence cases every version must pass at 100%. _Owner_: agent-lifecycle. _Tránh_: red-team set.
+- **Grader** (`grader_key`) · _Bộ chấm_ — A deterministic or judge-based function scoring an observation against a case. _Owner_: agent-lifecycle. _Tránh_: scorer, evaluator.
+- **Judge rubric** (`judge_rubric_version`) · _Tiêu chí chấm_ — The versioned rubric a model judge applies. _Owner_: agent-lifecycle. _Tránh_: prompt (alone).
+- **Online evaluation** (`online evaluation`) · _Kiểm định trực tuyến_ — Sampled grading of live runs, off by default and opt-in per version. _Owner_: agent-lifecycle. _Tránh_: monitoring (alone).
+- **Capability analysis** (`version_assessments`) · _Phân tích năng lực_ — The submit-time analysis of what a version can reach (data, untrusted input, outbound channels) that detects the lethal trifecta and suggests an AI risk tier. _Owner_: agent-lifecycle. _Tránh_: capability_report, risk scan.
+- **AI risk tier** (`ai_risk_tier`) · _Mức rủi ro AI_ — The AI Law 134/2025/QH15 risk class recorded on a version; a tenant may not declare below the suggestion in v1. _Owner_: agent-lifecycle. _Tránh_: risk level (alone).
+- **Control switch** (`control_switch`) · _Công tắc điều khiển_ — A freeze or kill switch checked at ingress, admission, every model call and every tool call. _Owner_: agent-lifecycle. _Tránh_: feature flag, toggle.
+- **Freeze** (`freeze`) · _Đóng băng_ — A system- or tenant-wide stop of new effects; running runs cancel at the next check. _Owner_: agent-lifecycle. _Tránh_: pause (alone), maintenance mode.
+- **Kill** (`kill`) · _Tắt khẩn cấp_ — An immediate stop of one agent or workflow; lifting it needs a second person. _Owner_: agent-lifecycle. _Tránh_: disable, delete.
+- **Revive** (`studio.lifecycle.revive`) · _Bật lại_ — Lifting a kill through a strict second-person approval. _Owner_: agent-lifecycle. _Tránh_: restore, Khôi phục (that is undelete).
+- **Run halted** (`RunHaltedError`) · _Lượt chạy bị dừng_ — A run stopped at a check by freeze, kill or a hard limit. _Owner_: agent-lifecycle. _Tránh_: crashed, aborted (in UI).
+
+## Usage and limits
+
+- **Usage ledger** (`platform.usage_events`) · _Sổ sử dụng_ — The per-call, monthly-partitioned, 13-month record of metered use (model, embedding, rerank, sandbox) that limits, the usage dashboard and cost reconciliation read (D6). _Owner_: usage-and-limits. _Tránh_: billing table, cost log, ledger (alone).
+- **Usage event** (`usage_event`) · _Bản ghi sử dụng_ — One metered call in the usage ledger. _Owner_: usage-and-limits. _Tránh_: charge, transaction.
+- **Metered operation** (`usage_events.operation`) · _Thao tác tính phí_ — What a usage event metered (chat, embed, rerank, code execution). _Owner_: usage-and-limits. _Tránh_: operation (alone; that is a long-running operation).
+- **Purpose** (`purpose`) · _Mục đích sử dụng_ — Why a call was made (run, builder assistance, evaluation, probe), so budgets can cap each. _Owner_: usage-and-limits. _Tránh_: reason, category.
+- **Payer** (`payer`) · _Bên trả phí_ — Who pays a usage event: platform or tenant (BYOM). _Owner_: usage-and-limits. _Tránh_: billing party.
+- **Price book** (`price_book`) · _Bảng giá_ — The effective-dated prices per usage type used to cost usage events. _Owner_: usage-and-limits. _Tránh_: rate card, pricing table.
+- **Limit** (`limit_policy`) · _Hạn mức_ — A hard or soft cap on usage at one scope of the limit scope chain. _Owner_: usage-and-limits. _Tránh_: quota (alone), budget (alone).
+- **Plan ceiling** (`platform.plan_limits`) · _Trần của gói_ — The maximum a plan allows that tenant-set limits may not exceed. _Owner_: usage-and-limits. _Tránh_: plan quota.
+- **Plan** (`platform.plans`) · _Gói dịch vụ_ — The commercial plan of a tenant that fixes entitlements and ceilings. _Owner_: usage-and-limits. _Tránh_: tier, subscription, Gói (alone).
+- **Limit scope chain** (`scope chain`) · _Chuỗi phạm vi hạn mức_ — The ordered scopes a limit can sit at: plan, tenant, workspace, agent or workflow, user, run. _Owner_: usage-and-limits. _Tránh_: scope (alone), hierarchy.
+- **Window** (`window_kind`) · _Kỳ tính_ — The period a limit counts over, cut in the tenant's time zone. _Owner_: usage-and-limits. _Tránh_: period, cycle.
+- **Budget counter** (`platform.budget_counters`) · _Bộ đếm hạn mức_ — The Postgres counter a limit is checked against. _Owner_: usage-and-limits. _Tránh_: meter.
+- **Lease** (`platform.budget_leases`) · _Khoản giữ trước_ — An amount reserved at admission or before a call and settled after it. _Owner_: usage-and-limits. _Tránh_: reservation, hold, lock.
+- **Settle** (`settle`) · _Quyết toán_ — Replacing a lease with the measured cost of the call. _Owner_: usage-and-limits. _Tránh_: commit, charge.
+- **Rate limit** (`RateLimiterPort`) · _Giới hạn tốc độ_ — A Valkey-backed requests-per-interval cap that never decides money or concurrency. _Owner_: usage-and-limits. _Tránh_: throttle, quota.
+- **Concurrency limit** (`concurrency limit`) · _Giới hạn chạy đồng thời_ — The maximum runs in flight at one scope, enforced by Postgres leases. _Owner_: usage-and-limits. _Tránh_: parallelism.
+- **Threshold alert** (`usage.limit.threshold_crossed`) · _Cảnh báo ngưỡng_ — A notice when usage crosses a share (50%, 80%) of a limit. _Owner_: usage-and-limits. _Tránh_: warning, alarm.
+- **Run history** (`platform.run_steps`) · _Lịch sử chạy_ — The tenant-facing, RLS-scoped record of a run's steps. _Owner_: telemetry-and-audit. _Tránh_: trace (that is OpenTelemetry), logs.
+- **Run step** (`run_step`) · _Bước chạy_ — One recorded step of a run (a node, a model call, a tool call). _Owner_: telemetry-and-audit. _Tránh_: node (that is the definition), span.
+- **Content capture** (`content capture`) · _Ghi nội dung_ — Tenant-enabled, time-limited storage of prompts and outputs for debugging, readable only by the tenant. _Owner_: telemetry-and-audit. _Tránh_: full logging, debug mode.
+- **Audit export** (`platform.audit_exports`) · _Xuất nhật ký kiểm toán_ — A tenant's requested export of its audit log. _Owner_: telemetry-and-audit. _Tránh_: audit download.
+- **Usage dashboard** (`usage dashboard`) · _Mức độ sử dụng_ — The tenant page showing usage and cost against limits, read from the usage ledger. _Owner_: usage-and-limits. _Tránh_: billing page, analytics.
+
+## Compliance
+
+- **Residency route class** (`data_route_class: vn_only, cross_border_minimised, cross_border_full`) · _Lộ trình dữ liệu: Chỉ trong Việt Nam / Ra nước ngoài, đã tối thiểu hóa / Ra nước ngoài, đầy đủ_ — The class per tenant, workspace or agent that the model gateway and egress enforce for where personal data may be processed. _Owner_: compliance-pdpl. _Tránh_: region, data zone.
+- **Data location** (`data_location: VN, foreign`) · _Nơi xử lý dữ liệu_ — Where a connector's provider or a model alias processes data; undeclared means foreign. _Owner_: compliance-pdpl. _Tránh_: region, hosting.
+- **Cross-border attestation** (`cross_border_attestation`) · _Xác nhận chuyển dữ liệu ra nước ngoài_ — A tenant's signed, audited statement enabling a cross-border route class, naming the processor and its CTIA. _Owner_: compliance-pdpl. _Tránh_: consent (for this), waiver.
+- **Data-subject request** (`dsr_request`) · _Yêu cầu của chủ thể dữ liệu_ — A person's PDPL request to access, correct, delete or restrict their data, tracked to deadline. _Owner_: compliance-pdpl. _Tránh_: GDPR request, DSAR.
+- **Processing restriction** (`processing_restricted`) · _Hạn chế xử lý_ — A flag stopping processing of a subject's records except storage. _Owner_: compliance-pdpl. _Tránh_: freeze (that is lifecycle), lock.
+- **Automated-processing opt-out** (`ai_opt_out`) · _Từ chối xử lý tự động_ — A subject's objection to AI processing, honoured by agents and workflows. _Owner_: compliance-pdpl. _Tránh_: unsubscribe.
+- **Consent record** (`consent_record`) · _Bản ghi đồng ý_ — Evidence of one subject's consent for one purpose and channel, captured at intake. _Owner_: compliance-pdpl. _Tránh_: consent ledger, opt-in flag.
+- **Suppression list** (`contact_suppression`) · _Danh sách chặn gửi_ — Addresses that must never be messaged, checked before every message action. _Owner_: compliance-pdpl. _Tránh_: blacklist, Danh sách không liên hệ.
+- **Send floor** (`MarketingSendPolicy`) · _Sàn gửi tin_ — The platform minimum on marketing messages (consent, suppression, quiet hours, frequency cap) a tenant can only tighten. _Owner_: compliance-pdpl. _Tránh_: send policy (alone).
+- **Quiet hours** (`quiet_hours`) · _Khung giờ không gửi_ — Local hours in which no marketing message is sent. _Owner_: compliance-pdpl. _Tránh_: do-not-disturb, Giờ không gửi.
+- **Frequency cap** (`frequency_cap`) · _Giới hạn tần suất gửi_ — The maximum messages per address per channel per period. _Owner_: compliance-pdpl. _Tránh_: rate limit (that is technical).
+- **Controller and processor** (`controller, processor`) · _Bên kiểm soát, bên xử lý dữ liệu cá nhân_ — PDPL roles: the tenant controls its data; the platform processes it on the tenant's behalf. _Owner_: compliance-pdpl. _Tránh_: owner, vendor.
+- **DPIA** (`DPIA`) · _Hồ sơ đánh giá tác động xử lý dữ liệu cá nhân_ — The PDPL impact assessment dossier for processing personal data. _Owner_: compliance-pdpl. _Tránh_: privacy review.
+- **CTIA** (`CTIA`) · _Hồ sơ đánh giá tác động chuyển dữ liệu cá nhân ra nước ngoài_ — The PDPL impact assessment dossier for cross-border transfer. _Owner_: compliance-pdpl. _Tránh_: transfer form.
+- **Personal-data incident** (`pd_incident`) · _Sự cố dữ liệu cá nhân_ — A breach or suspected breach of personal data, tracked to the notice deadline. _Owner_: compliance-pdpl. _Tránh_: security incident (alone), leak.
+- **AI-interaction disclosure** (`ai_disclosure`) · _Thông báo đang tương tác với AI_ — The notice that a person is interacting with or receiving content from AI. _Owner_: compliance-pdpl. _Tránh_: AI label (alone), watermark.
+- **Explanation sheet** (`explanation sheet`) · _Tờ giải thích cách quyết định_ — A per-agent document explaining how automated decisions are made. _Owner_: compliance-pdpl. _Tránh_: model card.
+
+## Marketing pilot (first domain pack)
+
+- **Pilot** (`marketing pilot`) · _Thí điểm_ — The first vertical slice: Marketing lead intake to an approved Zalo or email message (D4). _Owner_: marketing-pilot. _Tránh_: POC, trial.
+- **Synthetic data** (`synthetic data`) · _Dữ liệu giả lập_ — Generated data containing no real person, used until a data-processing agreement is signed. _Owner_: marketing-pilot. _Tránh_: test data, fake data.
+- **Shadow run** (`shadow run`) · _Chạy bóng_ — Running the pilot beside the customer's current process without sending anything. _Owner_: marketing-pilot. _Tránh_: parallel run, dry run.
+- **Lead** (`lead (object mkt_lead)`) · _Lead_ — A prospective customer record created from a form, Facebook or Zalo. _Owner_: marketing-pilot. _Tránh_: contact, prospect, khách hàng tiềm năng (in UI).
+- **Lead source** (`lead_source`) · _Nguồn lead_ — Where a lead came from (form, Meta Lead Ads, Zalo OA). _Owner_: marketing-pilot. _Tránh_: channel (alone), origin.
+- **Campaign** (`campaign`) · _Chiến dịch_ — A marketing campaign leads are attributed to. _Owner_: marketing-pilot. _Tránh_: program.
+- **Touchpoint** (`touchpoint`) · _Tương tác_ — One recorded interaction with a lead. _Owner_: marketing-pilot. _Tránh_: activity, event (alone).
+- **Lead score and tier** (`lead_score, lead_tier: hot, warm, cold, unknown`) · _Điểm lead, Hạng lead: Nóng / Ấm / Lạnh / Chưa rõ_ — The AI-produced score and its tier, validated into a schema with evidence. _Owner_: marketing-pilot. _Tránh_: rating, grade.
+- **Assignment rule** (`assignment_rule`) · _Quy tắc phân bổ_ — The rule choosing which sales rep or team a qualified lead is assigned to. _Owner_: marketing-pilot. _Tránh_: routing rule, round robin (alone).
+- **Dedupe** (`dedupe`) · _Kiểm trùng_ — Detecting an existing lead by normalised phone or email before creating a new one. _Owner_: marketing-pilot. _Tránh_: merge (alone), dedup.
+- **Outcome event** (`outcome`) · _Kết quả_ — A business result attributed to a run (qualified, contacted, won) used for cost per outcome. _Owner_: marketing-pilot. _Tránh_: conversion, KPI.

@@ -8,6 +8,9 @@ and its own decisions; the platform's decisions apply to every context.
 | -------- | --------------------------------------------------------------------------------------------------------- | -------------------------- | ----------- |
 | Platform | Tenancy and authorization, the agent runtime, model gateway, knowledge, memory, audit, notifications, ops | `docs/platform/CONTEXT.md` | `docs/adr/` |
 
+Studio is platform code, not a separate bounded context (ADR-0100); its
+decisions take the block 0100–0199 in `docs/adr/`.
+
 This checkout ships no business context. A product adds one with
 `make new-context NAME=<name>` and gives it a row here, with its glossary at
 `packages/python/dw_<name>/CONTEXT.md` and its decisions at
