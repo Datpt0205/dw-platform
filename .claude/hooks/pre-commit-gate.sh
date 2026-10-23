@@ -57,28 +57,34 @@ if ! invariants=$(uv run python scripts/verify_invariants.py 2>&1); then
 fi
 
 # --- the judgement half: only the questions this diff actually raises ---------
-staged=$(git diff --cached --name-only 2>/dev/null)
-[ -z "$staged" ] && staged=$(git diff --name-only HEAD 2>/dev/null)
-[ -z "$staged" ] && exit 0
+# Every path the commit could carry: staged, changed against HEAD, untracked.
+# Untracked counts because this hook runs BEFORE the command: in
+# `git add x && git commit`, x is still untracked here, and reading the index
+# alone the gate asked nothing about it (failure-modes #0). A path the commit
+# leaves out may raise a question it did not need; that costs one round.
+changed=$( { git -c core.quotePath=false diff --cached --name-only
+             git -c core.quotePath=false diff --name-only HEAD
+             git -c core.quotePath=false ls-files --others --exclude-standard; } 2>/dev/null | sort -u)
+[ -z "$changed" ] && exit 0
 
 questions=""
 add() { questions="${questions}  - $1"$'\n'; }
 
-if printf '%s' "$staged" | grep -q '^db/migrations/'; then
+if printf '%s' "$changed" | grep -q '^db/migrations/'; then
   add "A migration changed. Does every new tenant table have RLS enabled, forced
     and a policy, and a cross-tenant negative test? Does every new column with a
     fixed set of values have a CHECK constraint? Is every foreign key indexed on
     its own side, and is its ON DELETE deliberate?"
 fi
 
-if printf '%s' "$staged" | grep -qE 'executor\.py|autonomy\.py|langchain_tools\.py|sub_agents\.py|agent_factory\.py|approval'; then
+if printf '%s' "$changed" | grep -qE 'executor\.py|autonomy\.py|langchain_tools\.py|sub_agents\.py|agent_factory\.py|approval'; then
   add "An approval or autonomy path changed. Does this widen what an agent does
     unasked? Is the gate tested where the effect happens, not only through the
     layer above it that would have caught it anyway? Mutation-check it: revert the
     gate and confirm a test goes red."
 fi
 
-if printf '%s' "$staged" | grep -qE 'membership_lookup|caching_lookup|access_context|identity\.py|auth|^apps/api/src/dw_api/routes/'; then
+if printf '%s' "$changed" | grep -qE 'membership_lookup|caching_lookup|access_context|identity\.py|auth|^apps/api/src/dw_api/routes/'; then
   add "An authorization path changed. Is the new field carried through the cache
     serialiser, and does a cache entry written before it existed read as the
     RESTRICTIVE value? Is there a negative test for the caller who should be
@@ -87,19 +93,19 @@ if printf '%s' "$staged" | grep -qE 'membership_lookup|caching_lookup|access_con
     the same as 'never existed'?"
 fi
 
-if printf '%s' "$staged" | grep -qE 'memory|knowledge|evidence'; then
+if printf '%s' "$changed" | grep -qE 'memory|knowledge|evidence'; then
   add "Memory or knowledge changed. Is the write on the audit trail? Can the
     provenance chain still be walked in SQL from the stored item to the source?"
 fi
 
-if printf '%s' "$staged" | grep -qE 'Dockerfile|docker-compose'; then
+if printf '%s' "$changed" | grep -qE 'Dockerfile|docker-compose'; then
   add "An image or compose file changed. Did you scan the built image
     (trivy, HIGH+ with a fix available)? Is every referenced image actually
     pullable, and does every service that runs submitted code still have its
     pids limit, read-only root and init?"
 fi
 
-if printf '%s' "$staged" | grep -qE '^\.github/workflows/|^Makefile$'; then
+if printf '%s' "$changed" | grep -qE '^\.github/workflows/|^Makefile$'; then
   add "A CI step changed. Did you watch a real run of it, or only read the YAML?
     A step can read as configured and never execute — the trivy gate downloaded a
     release tag that did not exist, curl without --fail piped the 404 page into
@@ -107,7 +113,7 @@ if printf '%s' "$staged" | grep -qE '^\.github/workflows/|^Makefile$'; then
     the step both RAN and can still go red."
 fi
 
-if printf '%s' "$staged" | grep -qE 'pyproject\.toml|package\.json|uv\.lock|pnpm-lock'; then
+if printf '%s' "$changed" | grep -qE 'pyproject\.toml|package\.json|uv\.lock|pnpm-lock'; then
   add "A dependency changed. Did you RUN the new version rather than trust its
     docs — the list of what a library installs, and the behaviour you are
     relying on, are both free to change between releases."
@@ -124,7 +130,8 @@ fi
 # forgotten. It cannot guarantee they were answered honestly, and pretending
 # otherwise would be the same decoration this repository keeps finding.
 seen_file="$root/.claude/.commit-gate-seen"
-fingerprint=$( (printf '%s' "$staged"; git diff --cached 2>/dev/null; git diff HEAD 2>/dev/null) | sha256sum | cut -d' ' -f1)
+# worktree_state (lib.sh) hashes untracked content too, which no `git diff` shows.
+fingerprint=$( (printf '%s' "$changed"; git diff --cached 2>/dev/null; worktree_state) | sha256sum | cut -d' ' -f1)
 if [ -f "$seen_file" ] && [ "$(cat "$seen_file")" = "$fingerprint" ]; then
   exit 0
 fi

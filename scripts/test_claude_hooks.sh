@@ -123,6 +123,31 @@ for path in .claude/no-commit-gate .claude/no-stop-gate .claude/.session-head.ab
   check "$path is gitignored" 0 $?
 done
 
+# The questions see a file added and committed in ONE command. The hook runs
+# before the command, while that file is still untracked: reading the index
+# alone, `git add approval_flow.py && git commit` raised no question at all.
+g="$work/gate-questions"
+new_repo "$g"
+mkdir -p "$g/.claude" "$work/okbin"
+printf '.claude/.commit-gate-seen\n' > "$g/.gitignore"
+git -C "$g" add .gitignore
+git -C "$g" commit -q -m ignore
+printf '#!/usr/bin/env bash\nexit 0\n' > "$work/okbin/uv"
+chmod +x "$work/okbin/uv"
+ask() { # command -> the gate's exit code, with the invariants passing
+  printf '{"session_id":"t","hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":%s,"description":"x"}}' \
+    "$(json_string "$1")" \
+    | CLAUDE_PROJECT_DIR="$g" PATH="$work/okbin:$PATH" bash "$hooks/pre-commit-gate.sh" >/dev/null 2>&1
+  echo $?
+}
+printf 'x\n' > "$g/notes.txt"
+check "an untracked file no question covers: committed without asking" 0 "$(ask 'git add notes.txt && git commit -m x')"
+printf 'x\n' > "$g/approval_flow.py"
+check "an untracked approval file added in the commit's own command: asked" 2 "$(ask 'git add approval_flow.py && git commit -m x')"
+check "...once: the same change then commits" 0 "$(ask 'git add approval_flow.py && git commit -m x')"
+printf 'y\n' >> "$g/approval_flow.py"
+check "...and asked again once that untracked file changes" 2 "$(ask 'git add approval_flow.py && git commit -m x')"
+
 # --- the session baseline and the Stop hook --------------------------------------
 
 s="$work/session"
@@ -192,6 +217,20 @@ stop A >/dev/null
 start C startup
 check "a baseline untouched for 7 days is removed" no "$([ -f "$s/.claude/.session-head.B" ] && echo yes || echo no)"
 check "one whose session is still stopping turns is kept" yes "$([ -f "$s/.claude/.session-head.A" ] && echo yes || echo no)"
+
+# A session that starts on a clean tree has an empty baseline. grep 3.0 (Git for
+# Windows) prints nothing for `grep -c -f <empty file>`, so the count of files
+# already dirty came out empty and the report ended in "integer expected".
+# Ubuntu's grep prints 0, so on CI this case is green with or without the fix.
+c="$work/clean"
+new_repo "$c"
+printf '{"session_id":"C","hook_event_name":"SessionStart","source":"startup"}' \
+  | CLAUDE_PROJECT_DIR="$c" bash "$hooks/session-start.sh" >/dev/null 2>&1
+printf 'new\n' > "$c/new.txt"
+clean=$(printf '{"session_id":"C","hook_event_name":"Stop","stop_hook_active":false}' \
+  | CLAUDE_PROJECT_DIR="$c" bash "$hooks/session-stop.sh" 2>&1 >/dev/null; echo "exit $?")
+check "clean start, session adds a file: asked" yes "$(printf '%s' "$clean" | grep -qF 'exit 2' && echo yes || echo no)"
+check "...without a shell error in the report" no "$(printf '%s' "$clean" | grep -qF 'integer expected' && echo yes || echo no)"
 
 # A session id is reduced to [A-Za-z0-9_-] before it names a file.
 start 'ab/../cd' startup

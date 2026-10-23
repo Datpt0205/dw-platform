@@ -47,7 +47,10 @@ if [ -n "$mark" ] && [ -f "$mark" ]; then
   # A line is "<hash><TAB><path>"; one the baseline already holds is untouched
   # since the session began.
   ours=$(printf '%s\n' "$current" | grep -vxF -f <(sed 1d "$mark") | grep . | cut -f2-)
-  [ -n "$current" ] && already=$(printf '%s\n' "$current" | grep -cxF -f <(sed 1d "$mark"))
+  # Counted with `grep -c .`, not `grep -c -f`: grep 3.0 (Git for Windows) prints
+  # nothing at all for -c with an empty pattern file, i.e. a session that began
+  # on a clean tree.
+  [ -n "$current" ] && already=$(printf '%s\n' "$current" | grep -xF -f <(sed 1d "$mark") | grep -c .)
   baseline="known"
 else
   ours=$(worktree_state | cut -f2-)

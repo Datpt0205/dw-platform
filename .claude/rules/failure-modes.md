@@ -16,7 +16,7 @@ checklist as sufficient would miss exactly the dangerous half.
 
 ---
 
-## 0. A check that cannot see the thing it checks (found 1×)
+## 0. A check that cannot see the thing it checks (found 2×)
 
 Numbered zero because it comes before the rest: a check you trust that is blind
 to part of what it covers makes every finding below it unreliable.
@@ -31,6 +31,10 @@ spend were one table name away from any connection, with no `app.tenant_id` set.
 Enabling RLS on a partitioned parent applies its policies to rows reached THROUGH
 the parent. A partition addressed by its own name is an ordinary table using its
 own settings.
+
+The second was the commit gate. It chose its questions from the index, and it runs
+before the command, so `git add approval_flow.py && git commit` in one call showed it
+nothing to ask about (2026-10-23). It now reads staged, changed and untracked paths.
 
 **Ask:** what can this check NOT see? A check over source text cannot see what the
 database creates on its own. Where the truth lives in a running system, ask the
@@ -86,7 +90,7 @@ move on.
 
 A new guard ships with a demonstration that removing the guard turns a test red.
 
-## 4. Trusting a library instead of measuring it — NOT THINKABLE (found 5×)
+## 4. Trusting a library instead of measuring it — NOT THINKABLE (found 6×)
 
 MinIO withdrew both its images from Docker Hub; the error read as a credentials
 problem. The move to quay.io held until MinIO withdrew them there too: twelve
@@ -95,7 +99,9 @@ because its cache still held the image. The store is SeaweedFS now, behind a
 contract test any replacement must pass first. deepagents changed which builtin tools it installs. Three of five
 documented assumptions about `SummarizationMiddleware` were wrong when run. mypy
 narrowed `sys.platform` differently per machine, so a typecheck passed locally and
-failed in CI.
+failed in CI. The reverse also happens: grep 3.0 in Git for Windows prints nothing
+for `grep -c -f <empty file>` where Ubuntu's grep prints 0, so the Stop hook failed
+on the Windows machine while its tests, run on Ubuntu, stayed green.
 
 No amount of care catches these. The habit that does:
 
