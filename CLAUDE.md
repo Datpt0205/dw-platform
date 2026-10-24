@@ -138,13 +138,15 @@ Ant Design v6 (`antd`) is the component library, decided 2026-09-28 in place
 of shadcn/ui; the measurements behind it are in `.claude/plans/web-ui.md`.
 
 - **One component system.** UI uses `antd`, `@ant-design/icons`, and
-  `@ant-design/nextjs-registry` for server-rendered styles, and nothing else
-  but a module an ADR admits for one path: the Studio canvas uses
-  `@xyflow/react` and `@dagrejs/dagre`, pinned exactly, only under
-  `apps/web/app/studio/**/canvas/**` (ADR 0101; Đạt, 2026-10-23), and antd
-  still draws every node body, panel, form and notice. On 2026-10-08 Đạt asked
-  for antd everywhere, and shadcn/ui, Radix, sonner, lucide and
-  class-variance-authority left the platform in one sweep.
+  `@ant-design/nextjs-registry` for server-rendered styles. A library that
+  supports antd without bringing a component set of its own may join through
+  its own ADR and an allowlist entry, app-wide or for one path (Đạt,
+  2026-10-24): the Studio canvas uses `@xyflow/react`, pinned exactly, only
+  under `apps/web/app/studio/**/canvas/**`, laid out by the app's own module
+  from the workflow's step tree (ADR 0101; Đạt, 2026-10-23 and 2026-10-24),
+  and antd still draws every node body, panel, form and notice. On 2026-10-08
+  Đạt asked for antd everywhere, and shadcn/ui, Radix, sonner, lucide and
+  class-variance-authority left the platform in one sweep; they stay out.
   `apps/web/lib/__tests__/antd-only.test.ts` is an allowlist of the dependencies
   of `apps/web` and `@dw/ui`, each exception a `{module, glob, adr}` entry: an
   unlisted module, or an excepted one outside its glob, fails; ESLint says the
