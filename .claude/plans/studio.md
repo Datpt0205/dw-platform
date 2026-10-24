@@ -70,10 +70,14 @@ is built yet. Đạt accepted the ADR block on 2026-10-23 (0126 and 0127 on
     narrow function, both CEL bindings ship as ADR-0114 says, a simulated
     draft passes the submit validator first, and the V4 labels replaced the
     colliding ones. Its verifiers raised a seventh question (old secret
-    versions) and mechanical rows a third pass applies (publish hooks, one
-    `data-sources` route, `ON DELETE` on every FK, composite FKs between
-    tenant tables, a no-argument purge as `platform.prune_notifications`
-    does). Then Đạt's answers, the split, a fourth consistency check, and the
+    versions) and mechanical rows the third pass applied (committed: publish
+    hooks, one `data-sources` route, `ON DELETE` on every FK, composite FKs
+    between tenant tables). Its verifiers found an index missing on some
+    FKs, cross-tenant negative tests missing for the new composite keys, and
+    two errors of the planner's own: the agent read key moved against Đạt's
+    line, and the purge's term in code against ADR-0122 d7 (question 8). A
+    fourth pass, the last mechanical one of round 4, fixes the first three.
+    Then Đạt's answers, the split, a fourth consistency check, and the
     readiness gate for app-standards, foundations-hardening and
     runtime-hardening.
 
@@ -158,6 +162,8 @@ is built yet. Đạt accepted the ADR block on 2026-10-23 (0126 and 0127 on
     4. One draft per artifact, yet a candidate returning to draft while a new
        draft exists breaks that index. Recommended: one unpublished version
        (draft or candidate) per artifact; withdraw the candidate to edit.
+       Taking it withdraws the race case of custom-objects CO23 and
+       tenant-config TC27, which needs a draft beside a waiting candidate.
     5. An approved publish that cannot be applied (tenant frozen, a binding
        not approved) stays `awaiting_approval` with no retry rule.
        Recommended: return it to draft with the reason, as V4.2 does.
@@ -170,8 +176,16 @@ is built yet. Đạt accepted the ADR block on 2026-10-23 (0126 and 0127 on
        connection secret revokes the old version at once (a run that pinned
        it fails closed at its next use); a lane deletes refused and revoked
        versions once no unfinished run pins them.
-       Question 4, if taken, withdraws the race case of custom-objects CO23 and
-       tenant-config TC27, which needs a draft beside a waiting candidate.
+    8. The conversation purge, `studio.purge_expired_conversations()`, takes
+       no argument so that no caller can widen it to recent rows (as
+       `platform.prune_notifications()` does), which puts its 90-day term in
+       code, against ADR-0122 d7: counsel changes a number with a new policy
+       version, never with code. Recommended: the terms counsel controls live
+       in a table the provisioner loads from the pinned policy at deploy
+       (`dw_app` reads it only), each narrow purge function takes no argument
+       and reads its term there, and a test fails when the table and the
+       pinned file differ. The alternative, a cutoff passed by the lane with a
+       floor in the function, lets any `dw_app` path purge down to the floor.
 - **Đạt, for W2 (domain-packs, `needs-info`):** Q4, whether the pack
   installer may use its own reserved prefix through the public routes, and
   Q5, which route writes `origin` on components that already exist.
