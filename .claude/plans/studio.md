@@ -171,6 +171,24 @@ is built yet. Đạt accepted the ADR block on 2026-10-23 (0126 and 0127 on
 - **Đạt:** nothing open from round 4. The ten questions its verifiers raised
   were decided on 2026-10-24 as recommended ("cứ làm theo khuyến nghị"):
   V4.14-V4.23 under State, being applied.
+- **Đạt, canvas and control flow (research of 2026-10-24, Đạt asked for a
+  pick):** keep `@xyflow/react`, with AntV X6, Rete.js and bpmn-js rejected on
+  sourced reasons (no ARIA, size and packaging; a non-commercial licence; a
+  watermark, non-antd shapes and free placement). Questions, each with a
+  recommendation:
+    1. A step tree drawn as a structured canvas (steps placed in slots,
+       never wired by hand), reversing ADR-0112 d1's graph document. Yes.
+    2. Drop dagre for a pure deterministic layout module. Yes.
+    3. Parallel with an all-join compiled as subgraph lanes, a bounded loop
+       with waits and a break, and resume-from-failed-step as an incident:
+       (a) extend W1 by about two to three weeks, (b) cut other W1 scope, or
+       (c) make them W2's first tickets with the grammar built in W1.
+       Recommended (a). Waits inside parallel lanes stay out; "every approver
+       must approve" is one approval step with several required approvers.
+    4. Who draws the canvas vocabulary (category colours, icons, card size):
+       an agent draft in the spike for Đạt's review.
+    5. BPMN import or export: not in v1; a server-side importer of a subset
+       in W3 if a customer asks.
 - **Đạt, for W2 (domain-packs, `needs-info`):** Q4, whether the pack
   installer may use its own reserved prefix through the public routes, and
   Q5, which route writes `origin` on components that already exist.
