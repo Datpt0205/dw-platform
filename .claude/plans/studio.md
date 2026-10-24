@@ -60,6 +60,24 @@ is built yet. Đạt accepted the ADR block on 2026-10-23 (0126 and 0127 on
     `cel-expr-python`; V4.P14 tenant-config/04 waits for
     foundations-hardening/06.
 
+    Đạt's decisions on the verifiers' ten questions (2026-10-24, as
+    recommended): V4.14 `deadline_at` in W1 as ADR-0113 d3 first wrote it,
+    the cancel route still W2; V4.15 a held run of an inactive service
+    account notifies the tenant-depth holders of `platform.members.write`;
+    V4.16 `binding_needs_review` holds trigger runs queued instead of
+    rejecting them; V4.17 one unpublished version (draft or candidate) per
+    artifact, `candidate_pending` otherwise; V4.18 an approved publish that
+    cannot apply returns to draft with its reason; V4.19
+    `studio.agents.manage_settings` confirmed; V4.20 an old signing secret
+    is refused 24 hours after rotation, a replaced connection secret is
+    revoked at once, a lane deletes both once no unfinished run pins them;
+    V4.21 counsel's retention terms live in `platform.retention_terms`,
+    loaded by the provisioner from the pinned policy, read by every
+    no-argument purge; V4.22 a simulated draft reads under a provisional
+    boundary derived from its closure, intersected with the tester's
+    access, never used live; V4.23 while a publish approval is pending, its
+    stamp holder reads the candidate and its diff through agent-lifecycle.
+
     Nine editors, each followed by a verifier, applied them with every round-3
     row on 2026-10-24 (checker 24/24 in every folder). Their verifiers found
     where a decision had not reached a spec it never named, a few design
@@ -150,60 +168,9 @@ is built yet. Đạt accepted the ADR block on 2026-10-23 (0126 and 0127 on
 
 ## Decisions owed
 
-- **Đạt, from round 4's verifiers (2026-10-24)**, each with a recommendation:
-    1. Nothing ends a waiting W1 run but a kill: no `deadline_at` until W2 and
-       no expiry on a step approval. Recommended: `deadline_at` and its checks
-       at node start, resume and the reaper in W1 (ADR-0113 d3 as first
-       written); the cancel route stays W2.
-    2. V4.9's alert has no W1 recipient (a service account gets an owner only
-       in W2), and held runs cannot be cancelled one by one before W2.
-       Recommended: in W1 alert the tenant-depth holders of
-       `platform.members.write`, who can reactivate the account; one-by-one
-       cancel stays W2 (a kill still clears them).
-    3. `binding_needs_review` rejects a trigger delivery, so a lead that
-       arrives while a service account's grants are re-reviewed starts no run.
-       Recommended: hold it queued like V4.9 until the binding is approved.
-    4. One draft per artifact, yet a candidate returning to draft while a new
-       draft exists breaks that index. Recommended: one unpublished version
-       (draft or candidate) per artifact; withdraw the candidate to edit.
-       Taking it withdraws the race case of custom-objects CO23 and
-       tenant-config TC27, which needs a draft beside a waiting candidate.
-    5. An approved publish that cannot be applied (tenant frozen, a binding
-       not approved) stays `awaiting_approval` with no retry rule.
-       Recommended: return it to draft with the reason, as V4.2 does.
-    6. Confirm V4.P10's rename of `studio.agents.settings.manage`, which a
-       24/10 line of Đạt's had approved, to `studio.agents.manage_settings`.
-    7. Nothing ends an old secret version: the signing secret's 24-hour
-       overlap has no end, and a replaced connection secret stays usable, so
-       the revoked branch of `connection_usable` never fires. Recommended: the
-       old signing secret is refused 24 hours after rotation; replacing a
-       connection secret revokes the old version at once (a run that pinned
-       it fails closed at its next use); a lane deletes refused and revoked
-       versions once no unfinished run pins them.
-    8. The conversation purge, `studio.purge_expired_conversations()`, takes
-       no argument so that no caller can widen it to recent rows (as
-       `platform.prune_notifications()` does), which puts its 90-day term in
-       code, against ADR-0122 d7: counsel changes a number with a new policy
-       version, never with code. Recommended: the terms counsel controls live
-       in a table the provisioner loads from the pinned policy at deploy
-       (`dw_app` reads it only), each narrow purge function takes no argument
-       and reads its term there, and a test fails when the table and the
-       pinned file differ. The alternative, a cutoff passed by the lane with a
-       floor in the function, lets any `dw_app` path purge down to the floor.
-    9. A simulated draft (V4.4, and an agent draft's dry evaluation) has no
-       data boundary: only publishing writes `studio.actor_boundaries`
-       (ADR-0103 d5), so its reads find nothing, though ADR-0111 d3 says a
-       simulation reads for real under the tester's access. Recommended:
-       the request derives a provisional boundary from the draft's closure,
-       the same derivation the publish hook runs, kept under the pinned hash
-       for that run only; reach is its intersection with the tester's access;
-       no live run ever uses it.
-    10. A publish approver who holds `studio.publish.approve` but not the
-        kind's author key cannot read the candidate on tenant-config's
-        routes, so "two people" approves unread. Recommended: while a publish
-        approval is pending, the holder of its stamp reads the candidate and
-        its diff against live through agent-lifecycle's approval route,
-        audited; outside a pending approval, definitions need the author key.
+- **Đạt:** nothing open from round 4. The ten questions its verifiers raised
+  were decided on 2026-10-24 as recommended ("cứ làm theo khuyến nghị"):
+  V4.14-V4.23 under State, being applied.
 - **Đạt, for W2 (domain-packs, `needs-info`):** Q4, whether the pack
   installer may use its own reserved prefix through the public routes, and
   Q5, which route writes `origin` on components that already exist.
