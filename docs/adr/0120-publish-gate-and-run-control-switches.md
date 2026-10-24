@@ -48,9 +48,9 @@ envelope leaves "which version runs" to this stage contract. The `agent-lifecycl
    `studio.guard_version_stage()`, allows only: insert as `draft`; `draft` to `evaluating`; `evaluating` back to
    `draft` (gate failed, errored, cancelled or withdrawn); `evaluating` to `awaiting_approval` (gate passed on this
    version's effective hash, approval pending); `awaiting_approval` back to `draft` (rejected, cancelled, expired, or
-   approved after the live version changed, decision 2); `awaiting_approval` to `live` (approved by a decider who is
-   neither submitter nor contributor, the gate's evidence still matching, and `compared_live_hash` still the hash of
-   the live version this publish replaces, which the same transaction retires first, both NULL when it replaces
+   approved on a moved base or unable to apply, decision 2); `awaiting_approval` to `live` (approved by a decider who
+   is neither submitter nor contributor, the gate's evidence still matching, and `compared_live_hash` still the hash
+   of the live version this publish replaces, which the same transaction retires first, both NULL when it replaces
    none); `live` to `retired`. Its rule is per kind: a kind without a quality gate, an object definition (ADR-0107),
    a tool (ADR-0116, from W2, when the `tool` kind registers) or a Data Hub endpoint (ADR-0113 decision 6), goes from
    `draft` to `awaiting_approval` directly and needs only the second person. One branch serves a kind
@@ -68,42 +68,52 @@ envelope leaves "which version runs" to this stage contract. The `agent-lifecycl
    `awaiting_approval`; a tool and an endpoint never take the branch, neither kind registering a comparator (a second
    person approves every tool version, ADR-0116 decision 9). A refusal raises SQLSTATE 23514 on
    `ck_artifact_versions_stage_transition`, mapped by name as ADR-0012 does.
-   Partial unique indexes allow one `live` and one candidate per artifact; publishing retires the previous live
-   version in the same transaction. Version numbers come from `last_version_no`, never reused. A rollback is a new
-   version copied from an old one, reusing its gate evidence when the effective hash is equal. `LifecycleService`
-   writes; the trigger is the backstop.
+   Partial unique indexes allow one `live` version and one unpublished version, in `draft`, `evaluating` or
+   `awaiting_approval`, per artifact: a new draft beside a pending candidate is refused 409 `conflict` with
+   `details.reason_code` `candidate_pending`, a builder who wants to change the candidate withdraws it to `draft`
+   first, and the `compared_live_hash` rule above stays as the fence. Publishing retires the previous live version in
+   the same transaction. Version numbers come from `last_version_no`, never reused. A rollback is a new version copied
+   from an old one, reusing its gate evidence when the effective hash is equal. `LifecycleService` writes; the trigger
+   is the backstop.
 2. **Publishing takes a passing gate and a second person (D11).** Moving a version to `awaiting_approval` opens, in
    the same transaction, a run-less approval `studio.publish.agent`, `studio.publish.workflow`,
-   `studio.publish.object` (an object definition, under D11), `studio.publish.endpoint` (a Data Hub endpoint) or,
-   from W2, `studio.publish.tool` (a tool of any kind but `mcp`, whose approval is ADR-0116 decision 9's
+   `studio.publish.object` (an object definition, under D11), `studio.publish.endpoint` (a Data Hub endpoint) or, from
+   W2, `studio.publish.tool` (a tool of any kind but `mcp`, whose approval is ADR-0116 decision 9's
    `studio.mcp.tool_approval`) whose payload holds identifiers only: version, `version_no`, `definition_hash`, for a
    gated kind `gate_run_id` with the AI risk tier and analysis outcome (ADR-0125), and `author_ids`. It is stamped
    `required_scope = 'studio.publish.approve'` (ADR-0004: no role stands in, `platform_admin` included; support
-   contexts never carry `approvals.*`, ADR-0024 decision 6). That one permission answers who publishes every kind,
-   an MCP tool being ADR-0116's one named exception: an endpoint's submit needs `studio.datahub.manage`, a key to
-   submit with and never a second stamp; a kind's own condition (workflow-nodes' for workflows) is a check
-   registered through a Protocol at the composition root, like `decision_guards`, never a permission key of its own.
-   The strict prefixes `studio.publish.` and `studio.lifecycle.` are added with `|=` where Studio is wired, and the
-   decision guard `require_not_author` refuses a decider in `payload.author_ids` and a payload without them (fail
-   closed). The submitter is the approval's `requested_by`, and the strict prefix's check runs before any guard
-   (ADR-0104 decision 11), so a submitter deciding is refused 409 `conflict` with `second_person_required` and only a
-   contributor who did not submit meets the guard's `author_cannot_approve`; a requester deciding their own
-   `studio.lifecycle.revive` or `studio.lifecycle.unfreeze` gets `second_person_required` too. A worker handler for
-   each `studio.publish.<kind>.decided` settles idempotently on the approval id:
-   approved retires the previous live version and makes this one `live` in one transaction, audits
-   `studio.version.published` with the decider as actor, the lane in `details.lane` (ADR-0011: a lane carrying out
-   one person's decision audits that person) and `details.path = 'approved'`, and emits `studio.version.live`;
-   approved on a base that has moved, its `compared_live_hash` no longer the hash of the live version the publish
-   would replace (decision 1), publishes nothing and returns the candidate to `draft` with `details.reason_code`
-   `base_changed`, audited `studio.version.returned_to_draft` with the decider as actor and the lane in
-   `details.lane`, so the builder submits it again against the new live version; rejected returns it to `draft`. On
-   decision 1's tighten-only branch no approval opens: `LifecycleService` retires the previous live version and makes
-   this one `live` in the submit transaction, audits `studio.version.published` with the submitter as actor and
-   `details.path = 'tighten_only'`, and emits `studio.version.live` the same way.
-   `POST .../versions/{id}/withdraw` cancels the pending approval with `ApprovalRequest.cancel()` and returns the
-   version to `draft`; a lane cancels expired publish approvals, auditing as `system:<lane>` because it acts on its
-   own. Publish also needs every required binding approved (ADR-0110) and an accountable owner (ADR-0103; else 409
-   `owner_missing`, live versions still running).
+   contexts never carry `approvals.*`, ADR-0024 decision 6). That one permission answers who publishes every kind, an
+   MCP tool being ADR-0116's one named exception: an endpoint's submit needs `studio.datahub.manage`, a key to submit
+   with and never a second stamp; a kind's own condition (workflow-nodes' for workflows) is a check registered through
+   a Protocol at the composition root, like `decision_guards`, never a permission key of its own. While the approval
+   is pending, a person who may decide it, holding `approvals.decide` and its stamp and, where the type assigns
+   people, among its assignees, reads the candidate and its difference from the `live` version through
+   agent-lifecycle's approval route, audited; outside that window reading a definition needs the kind's author key,
+   and anyone else, or any caller once the approval is decided, gets 404 `not_found` as if the approval did not exist
+   (ADR-0104 decision 11). The strict prefixes `studio.publish.` and `studio.lifecycle.` are added with `|=` where
+   Studio is wired, and the decision guard `require_not_author` refuses a decider in `payload.author_ids` and a
+   payload without them (fail closed). The submitter is the approval's `requested_by`, and the strict prefix's check
+   runs before any guard (ADR-0104 decision 11), so a submitter deciding is refused 409 `conflict` with
+   `second_person_required` and only a contributor who did not submit meets the guard's `author_cannot_approve`; a
+   requester deciding their own `studio.lifecycle.revive` or `studio.lifecycle.unfreeze` gets `second_person_required`
+   too. A worker handler for each `studio.publish.<kind>.decided` settles idempotently on the approval id: approved
+   retires the previous live version and makes this one `live` in one transaction, audits `studio.version.published`
+   with the decider as actor, the lane in `details.lane` (ADR-0011: a lane carrying out one person's decision audits
+   that person) and `details.path = 'approved'`, and emits `studio.version.live`; approved on a base that has moved,
+   its `compared_live_hash` no longer the hash of the live version the publish would replace (decision 1), publishes
+   nothing and returns the candidate to `draft` with `details.reason_code` `base_changed`, audited
+   `studio.version.returned_to_draft` with the decider as actor and the lane in `details.lane`, so the builder submits
+   it again against the new live version; approved but unable to apply, the tenant or the platform frozen
+   (decision 7), a required binding without an approved value or, from W2, no accountable owner (both below), likewise
+   publishes nothing and returns the version to `draft` with that reason's code, `tenant_frozen`, `platform_frozen`,
+   `binding_unset` or `owner_missing`, audited `studio.version.returned_to_draft` the same way, so no version stays
+   `awaiting_approval` under a decided approval; rejected returns it to `draft`. On decision 1's tighten-only branch
+   no approval opens: `LifecycleService` retires the previous live version and makes this one `live` in the submit
+   transaction, audits `studio.version.published` with the submitter as actor and `details.path = 'tighten_only'`, and
+   emits `studio.version.live` the same way. `POST .../versions/{id}/withdraw` cancels the pending approval with
+   `ApprovalRequest.cancel()` and returns the version to `draft`; a lane cancels expired publish approvals, auditing
+   as `system:<lane>` because it acts on its own. Publish also needs every required binding approved (ADR-0110) and an
+   accountable owner (ADR-0103; else 409 `owner_missing`, live versions still running).
 3. **The quality gate.** A gate run executes the version's sealed tenant evaluation sets (from W2; in W1 only the
    security suite runs, and the key's dataset list is empty) and a platform security suite generated from its closure
    by `configs/evals/studio_security_suite@1.0.0.yaml` (prompt injection through the user message, untrusted tool
@@ -303,3 +313,16 @@ D11 cases scoped by the requester and Đạt:
   foreign keys `(tenant_id, <column>)` to their targets' `UNIQUE (tenant_id, id)`, added in the same revision where
   `studio.gate_runs` or `platform.approval_requests` lacks it, because a foreign key check does not pass through RLS
   and a one-column key would let a version name another tenant's gate run or approval.
+- Third consistency check (round 4), sixth pass, Đạt's V4.17, V4.18 and V4.23 and the planner's provisional call:
+  decision 1 allows one unpublished version beside the `live` one, where the index allowed a candidate beside a draft,
+  so a new draft beside a pending candidate gets 409 `conflict` with `candidate_pending` and a candidate is withdrawn
+  to be changed, which ends the race of a tighten-only version going live while a loosening one waits,
+  `compared_live_hash` staying as the fence; decision 2 returns an approved publish that cannot apply, under a tenant
+  freeze, without an approved binding or, from W2, without an accountable owner, to `draft` with its reason's code and
+  `studio.version.returned_to_draft`, as it does for `base_changed`, instead of leaving it `awaiting_approval` under a
+  decided approval, decision 1 naming that return among its transitions, and under a platform freeze the same way with
+  `platform_frozen`, the planner's call, as agent-lifecycle states it (if it is wrong, an approved publish under a
+  platform freeze stays `awaiting_approval` until the freeze lifts); and decision 2 lets a person who may decide the
+  pending approval, holding `approvals.decide` and its stamp, read the candidate and its difference from the `live`
+  version through agent-lifecycle's approval route, audited, while everyone else, and every caller once the approval
+  is decided, gets 404.

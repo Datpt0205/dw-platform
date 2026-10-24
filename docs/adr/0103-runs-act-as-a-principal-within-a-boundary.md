@@ -70,17 +70,23 @@ layers, field security applied to agents and search too), and on the call on DO-
    as the publisher; publish refuses such a version without an approved value (`binding_unset`). The proposer of that
    binding needs `platform.service_principals.use` over the service principal's owning workspace and must hold every
    grant it holds (`platform.grants_cover`, answered by ADR 0104's anti-escalation rule, not a second copy). When its
-   grants grow, the run door refuses its runs before any is requested (`binding_needs_review`, ADR 0113 decision 3)
-   until someone who covers them approves the binding again.
+   grants grow, admission holds its trigger runs `queued`, in the shape ADR 0113 decision 3 gives
+   `binding_needs_review`, until someone who covers them approves the binding again, the held runs then starting in
+   arrival order, and the hold notifies those who may approve the binding set (`studio.bindings.approve`).
    `worker_runs.requested_by` keeps the person who asked or the trigger lane's system actor; `run_as_principal_id`
    (ADR 0113) names whose reach the run uses.
 5. **Reach is the principal's live reach intersected with the version's boundary.** A published version fixes its
    boundary in `studio.actor_boundaries` (ADR 0105), immutable after publish: an agent's is derived from its toolset's
-   object tools and field caps (ADR 0117), a workflow's from the data nodes of its document (ADR 0112). It is evaluated
-   at every statement, never read from a stamp, so a run resumed after an approval narrows if access was lost. The
-   database refuses every Studio record read and write when the actor context is missing or names an unknown kind. A
-   child run (agent node, workflow tool, linked agent) carries the root's principal intersected with every boundary on
-   its chain. Audit names the principal as `actor_id` and the agent or workflow version in `details`.
+   object tools and field caps (ADR 0117), a workflow's from the data nodes of its document (ADR 0112). It is
+   evaluated at every statement, never read from a stamp, so a run resumed after an approval narrows if access was
+   lost. A draft that roots a `simulate` run (ADR 0109 decision 6) has no published boundary, so `RunRequestService`
+   derives a provisional one from the draft's closure by the derivation the kind's publish hook runs, records it under
+   `(version_id, pinned_hash)` for that run alone and deletes it when the run ends; the run reaches what the tester
+   reaches intersected with it (ADR 0111 decision 3), and the database admits a provisional boundary only in
+   `simulate`, so no `live` run reads under one. The database refuses every Studio record read and write when the
+   actor context is missing or names an unknown kind. A child run (agent node, workflow tool, linked agent) carries
+   the root's principal intersected with every boundary on its chain. Audit names the principal as `actor_id` and the
+   agent or workflow version in `details`.
 6. **An integrator authenticates with an API key of one service principal.** `dwk_<key_id>_<secret>`: the secret
    HMAC-SHA-256-hashed under a server pepper, shown once, `expires_at` at most 366 days after creation, at most two live
    keys per principal. `platform.resolve_service_key(key_id)` (SECURITY DEFINER) returns the key's tenant and never its
@@ -128,8 +134,8 @@ layers, field security applied to agents and search too), and on the call on DO-
 - Phasing: the interim linking rule (foundations-hardening/02) and the 300 s realm (org-and-principals/01) in W1 P0;
   service principals and run-as (org-and-principals/03), the actor context at every door with the boundaries
   (record-access/04), the principal binding on manual and Data Hub runs (workflow-triggers/01), and workflow-triggers'
-  reader of outbox `platform.service_principal.grants_changed`, through which the run door refuses
-  `binding_needs_review` before any run is requested (decision 4; after org-and-principals/03), in W1 P1;
+  reader of outbox `platform.service_principal.grants_changed`, through which admission holds a trigger run `queued`
+  with `binding_needs_review` (decision 4; after org-and-principals/03), in W1 P1;
   Organizations, invitation claims, per-tenant SSO, MFA, step-up and API keys in W2.
 - A version with an unattended trigger cannot be published until a service principal is bound (workflow-triggers);
   record-access keys its closure by principal, so a service principal gets a `studio.principal_scopes` row (ADR 0105).
@@ -140,7 +146,8 @@ layers, field security applied to agents and search too), and on the call on DO-
   without cover cannot bind one; an unattended version without an approved principal fails publish; a prompt-injected
   request for another user's record fails at RLS, not in the prompt; a transaction without an actor kind reads no
   record; a child run never reaches more than its parent; a verified email of a signed-in user is refused; a suspended
-  member reaches nothing at the next request; an API key sent with a disagreeing tenant header gets 403.
+  member reaches nothing at the next request; an API key sent with a disagreeing tenant header gets 403; a provisional
+  boundary bound to a run outside `simulate` reaches no record.
 - Harder: provisioning holds a Keycloak admin credential limited to `manage-organizations`, kept in the vault; Keycloak
   sessions are left to their idle expiry, because logging them out needs a realm-wide `manage-users` credential the
   platform does not hold; a person whose IdP sends no `email_verified` cannot claim an invitation until claims ship.
@@ -193,3 +200,10 @@ layers, field security applied to agents and search too), and on the call on DO-
 - Third consistency check (round 4), Đạt's V4.9: decision 4's `binding_needs_review` refuses at the run door before any
   run is requested, its trigger delivery recorded `rejected`, the row ADR 0113 decision 3 now gives it
   (F:ADR-0113~org-and-principals:R4.6); "admission", ADR 0113's word for the claim, no longer names it.
+- Third consistency check (round 4), sixth pass, Đạt's V4.16 and V4.22: decision 4's `binding_needs_review` no longer
+  refuses at the run door before any run is requested, as the V4.9 line above records, but holds a trigger run
+  `queued` at admission in the shape ADR 0113 decision 3 gives it, until someone who covers the new grants approves
+  the binding again, the hold notifying those who may approve the binding set, so "admission" names it again;
+  decision 5 gives a draft that roots a `simulate` run a provisional boundary, which the run door derives from the
+  draft's closure, binds to that run and deletes when it ends, the tester's access intersected with it and the
+  database admitting it only in `simulate` (ADR 0109 decision 6, ADR 0111 decision 3).

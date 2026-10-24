@@ -66,11 +66,13 @@ repository root. External facts were gathered by the Studio research on 2026-10-
    contract), `enabled boolean NOT NULL` with no default, `row_version`. A change is audited as
    `studio.agent.settings_changed` and makes no version: who may invoke an agent is not what it does.
    The data boundary is derived at publish from the toolset's object tools (object, action) and
-   `field_caps`, and the `agent` kind's publish hook (ADR-0109 decision 1), which agent-builder supplies,
-   writes it into `studio.actor_boundaries` (ADR-0103, ADR-0105) through record-access's
-   `ActorBoundaryPort`, inside the publish transaction that agent-lifecycle opens. agent-builder registers
-   `studio.agents.read`, `studio.agents.author` and `studio.agents.manage_settings`; submit, approve,
-   retire, kill and freeze stay with ADR-0120.
+   `field_caps`, and the `agent` kind's publish hook (ADR-0109 decision 1), which agent-builder
+   supplies, writes it into `studio.actor_boundaries` (ADR-0103, ADR-0105) through record-access's
+   `ActorBoundaryPort`, inside the publish transaction that agent-lifecycle opens. The same derivation
+   gives a draft that roots a `simulate` run, agent-lifecycle's dry evaluation of a draft among them,
+   its provisional boundary at the run door (ADR-0103 decision 5), which no `live` run reads under.
+   agent-builder registers `studio.agents.read`, `studio.agents.author` and
+   `studio.agents.manage_settings`; submit, approve, retire, kill and freeze stay with ADR-0120.
 4. **Instructions are linted text inside a platform frame, never a text template.** The system
    message is the frame prompt `studio.agent_frame@1.0.0` (under `configs/prompts/studio/`, rendered by
    `PromptRegistry`, every value contained per ADR-0010; only the code-built `current_date` and
@@ -269,3 +271,8 @@ open:
   rows in `studio.actor_boundaries`, the `agent` kind's publish hook that agent-builder supplies, through
   record-access's `ActorBoundaryPort` in the publish transaction, as record-access states (if it is wrong,
   agent-lifecycle calls the port after the kind's hook).
+- Third consistency check (round 4), sixth pass, Đạt's V4.19 and V4.22: Đạt confirms the settings key
+  `studio.agents.manage_settings`, so the first round-4 line above records his decision, no longer the
+  planner's provisional V4.P10, and its fallback to a four-segment name lapses; decision 3's derivation
+  of the boundary also gives an agent draft that roots a `simulate` run its provisional boundary at the
+  run door (ADR-0103 decision 5), never used by a `live` run.

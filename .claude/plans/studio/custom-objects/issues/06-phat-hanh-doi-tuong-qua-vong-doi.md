@@ -32,12 +32,15 @@ ghi, quyền và bảo mật trường chờ ticket 02 mà không phải chờ C
    (`agent-lifecycle:R5.1`); handler `studio.publish.object.decided` (`agent-lifecycle:R5.5`) đưa phiên bản lên Đang
    dùng, ghi `studio.version.published` có người duyệt là actor và chạy móc phát hành trong cùng giao dịch, móc không ghi
    sự kiện đó lần nữa; bị từ chối thì phiên bản về Nháp và định nghĩa không đổi; phiên bản Đang dùng mà lần phát hành
-   này thay không còn là bản đã so lúc gửi (một phiên bản chỉ siết lên trước) thì handler không phát hành mà đưa phiên
-   bản về Nháp với `details.reason_code` `base_changed`, định nghĩa giữ bản Đang dùng mới (`agent-lifecycle:R5.9`,
-   ADR-0120 (Accepted) quyết 2).
+   này thay không còn là bản đã so lúc gửi thì handler không phát hành mà đưa phiên bản về Nháp với
+   `details.reason_code` `base_changed` (`agent-lifecycle:R5.9`, ADR-0120 (Accepted) quyết 2), một hàng rào mà đường W1
+   không còn dẫn tới: mỗi thành phần có tối đa một phiên bản ở `draft`, `evaluating` hay `awaiting_approval`, nên trong
+   lúc phiên bản nới chờ duyệt, lần tạo bản Nháp mới trả 409 `conflict` với `details.reason_code` `candidate_pending`
+   (`tenant-config:R2.20`, `tenant-config:R2.22`), và người dựng muốn chỉ siết thì rút Bản ứng viên về Nháp
+   (`agent-lifecycle:R2.4`) rồi sửa nó (ADR-0120 (Accepted) quyết 1, V4.17).
 4. Test tích hợp đầu-cuối với hai người dùng thật của một tenant, cùng giữ `studio.objects.manage` và
-   `studio.publish.approve`, không dùng fixture phê duyệt, gồm ca của V4.2: một phiên bản chỉ siết lên Đang dùng trong
-   lúc một phiên bản nới chờ duyệt, rồi người thứ hai duyệt phiên bản nới.
+   `studio.publish.approve`, không dùng fixture phê duyệt, gồm ca của V4.17: trong lúc một phiên bản nới chờ duyệt, tạo
+   bản Nháp mới cho đối tượng bị từ chối `candidate_pending`; rút phiên bản nới về Nháp, sửa thành chỉ siết rồi gửi.
 
 ## Tiêu chí chấp nhận
 
@@ -55,11 +58,12 @@ ghi, quyền và bảo mật trường chờ ticket 02 mà không phải chờ C
       `tenant_frozen`, giữ Nháp; nền tảng Đóng băng: phiên bản chỉ đóng `phone` → 409 `platform_frozen`, giữ Nháp;
       phiên bản vừa đóng `phone` vừa đổi nhãn → Chờ duyệt; coi thay đổi trộn là chỉ siết, cho nhánh chỉ siết qua Đóng
       băng của nền tảng hay để móc phát hành ghi thêm `studio.version.published` → test đỏ.
-- [ ] R1.2 (CO23): ca của V4.2, phiên bản thêm một trường ở Chờ duyệt; trong lúc chờ, một phiên bản chỉ đóng
-      `phone` lên Đang dùng; người thứ hai duyệt phiên bản thêm trường → phiên bản đó về Nháp với `details.reason_code`
-      `base_changed` và đúng một audit `studio.version.returned_to_draft` có người duyệt là actor (`agent-lifecycle:R5.9`),
-      không thêm dòng `studio.version.published`, định nghĩa và bản Đang dùng vẫn là bản chỉ siết; để handler phát hành
-      khi bản Đang dùng đã đổi → test đỏ.
+- [ ] R1.2 (CO23): ca của V4.17, phiên bản thêm một trường ở Chờ duyệt; trong lúc chờ, người giữ
+      `studio.objects.manage` tạo bản Nháp mới cho đối tượng (để chỉ đóng `phone`) → 409 `conflict` với
+      `details.reason_code` `candidate_pending`, không dòng `studio.artifact_versions` mới, Bản ứng viên vẫn Chờ duyệt và
+      định nghĩa không đổi; người đó rút Bản ứng viên về Nháp (`agent-lifecycle:R2.4`), sửa nó thành chỉ đóng `phone` rồi
+      Gửi kiểm định → Đang dùng ngay qua nhánh chỉ siết, phê duyệt `studio.publish.object` cũ đã hủy; cho tạo bản Nháp
+      khi Bản ứng viên chờ → test đỏ.
 - [ ] R1.3 (CO3): người thiếu `studio.objects.manage` gọi lệnh Gửi kiểm định → 403 `permission_denied`, phiên bản giữ
       Nháp, không phê duyệt nào mở; gỡ kiểm khóa gửi ở mục đăng ký của loại → test đỏ.
 - [ ] Xong: `make test-integration` xanh.
@@ -68,9 +72,10 @@ ghi, quyền và bảo mật trường chờ ticket 02 mà không phải chờ C
 
 - `docs/adr/0120-publish-gate-and-run-control-switches.md:39-84`; spec: R1.2, R1.7 (quyết 1 với nhánh chỉ siết, quyết 2).
 - ADR-0120 (Accepted) quyết 7 (Đóng băng của công ty để nhánh chỉ siết đi qua); spec: R1.7.
-- `agent-lifecycle:R1.7`, `agent-lifecycle:R2.8`, `agent-lifecycle:R2.9`, `agent-lifecycle:R5.1`,
-  `agent-lifecycle:R5.5`, `agent-lifecycle:R5.9`, `agent-lifecycle:R7.9`; `tenant-config:R2.15`, `tenant-config:R2.16`;
-  spec: R1.8 (bộ so sánh của ticket 02).
+- `agent-lifecycle:R1.7`, `agent-lifecycle:R2.4`, `agent-lifecycle:R2.8`, `agent-lifecycle:R2.9`, `agent-lifecycle:R5.1`,
+  `agent-lifecycle:R5.5`, `agent-lifecycle:R5.9`, `agent-lifecycle:R7.9`; `tenant-config:R2.15`, `tenant-config:R2.16`,
+  `tenant-config:R2.20`, `tenant-config:R2.22`; spec: R1.8 (bộ so sánh của ticket 02).
+- ADR-0120 (Accepted) quyết 1 (một bản `live` và tối đa một bản chưa phát hành mỗi thành phần, V4.17); spec: CO23.
 - ADR-0104 (Accepted) quyết 11 (tiền tố nghiêm kiểm trước guard tác giả); spec: R1.2.
 
 ## Comments
@@ -97,3 +102,10 @@ ghi, quyền và bảo mật trường chờ ticket 02 mà không phải chờ C
 - 2026-10-24 (agent): kiểm lượt hai của vòng sửa 4: tiêu chí ca V4.2 nêu tên audit `studio.version.returned_to_draft`
   của `agent-lifecycle:R5.9`; Mục tiêu nói móc phát hành nằm trong mục `ArtifactKindRegistry` của loại và
   agent-lifecycle gọi nó (ADR-0109 (Accepted) quyết 1), như bước 4 của ticket 02.
+- 2026-10-24 (agent): vòng sửa 4, lượt sáu: Đạt quyết một bản chưa phát hành mỗi thành phần (V4.17), nên ca tranh chấp
+  của V4.2 (phiên bản chỉ siết lên Đang dùng trong lúc phiên bản nới chờ duyệt) không còn xảy ra được: bước 4 và tiêu
+  chí của ca đó đổi sang ca 409 `candidate_pending` rồi rút về Nháp (`agent-lifecycle:R2.4`); bước 3 giữ kiểm gốc
+  `base_changed` của handler như hàng rào (Quyết định 24/10/2026 của spec).
+- 2026-10-24 (agent): kiểm lượt sáu của vòng sửa 4: đột biến của tiêu chí ca V4.17 là "cho tạo bản Nháp khi Bản ứng
+  viên chờ" (bỏ kiểm `candidate_pending` của `tenant-config:R2.22`), không phải "bản Nháp thứ hai", vốn là ca
+  `draft_exists` của `tenant-config:R2.23` và không làm test này đỏ; CO23 của spec sửa cùng.

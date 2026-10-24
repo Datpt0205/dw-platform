@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: 03, .claude/plans/studio/workflow-engine/issues/05-cho-nguoi-va-ghim-phien-ban.md, .claude/plans/studio/tools-and-skills/issues/02-toolset-va-cong-cu-ghim.md, .claude/plans/studio/compliance-pdpl/issues/04-san-gui-tin-marketing.md, .claude/plans/studio/tenant-config/issues/05-lien-ket-va-phien-ban-cau-hinh.md, .claude/plans/studio/agent-lifecycle/issues/03-hop-dong-vong-doi-va-niem-phong.md
 Area: studio
-Yêu cầu: R8.1, R8.2, R8.3, R8.4, R9.1, R9.2, R9.3, R9.5, R9.6, R9.7, R9.8, R9.9, R9.10, R9.11, R9.12, R9.13, R9.14, WN6, WN7, WN8, WN9, WN17, WN18, WN20
+Yêu cầu: R8.1, R8.2, R8.3, R8.4, R9.1, R9.2, R9.3, R9.5, R9.6, R9.7, R9.8, R9.9, R9.10, R9.11, R9.12, R9.13, R9.14, R9.15, WN6, WN7, WN8, WN9, WN17, WN18, WN20, WN21
 
 ## Mục tiêu
 
@@ -12,7 +12,8 @@ với quyền bắt buộc, người duyệt khác người tạo lượt, tham 
 mô phỏng thì đi theo quyết định giả lập mà không chờ người, còn dòng giao và dòng phê duyệt của Bước không trỏ được
 tới lượt chạy hay yêu cầu của công ty khác
 (workflow-nodes R8.1, R8.2, R8.3, R8.4, R9.1, R9.2, R9.3, R9.5, R9.6, R9.7, R9.8, R9.9, R9.10, R9.11, R9.12, R9.13,
-R9.14, WN6, WN7, WN8, WN9, WN17, WN18, WN20). Hết hạn phê duyệt (R9.4, WN10) ở W2.
+R9.14, R9.15, WN6, WN7, WN8, WN9, WN17, WN18, WN20, WN21). Hết hạn riêng của Bước phê duyệt (R9.4, WN10) ở W2; phê duyệt
+đang mở của một lượt bị hủy, kể cả lượt quá hạn chót của workflow-engine, bị hủy cùng lượt (R9.15).
 
 ## Việc cần làm
 
@@ -60,8 +61,12 @@ R9.14, WN6, WN7, WN8, WN9, WN17, WN18, WN20). Hết hạn phê duyệt (R9.4, WN
    `studio.step.approval.simulated` với `details.run_mode`, `details.decision` và nguồn, trong cùng giao dịch ghi kết
    quả của Bước (R9.9, R9.10); không có quyết định cho Bước → lượt chạy `failed` với `simulated_decision_missing`
    (R9.12). Ở `live`, Bước bỏ qua mọi quyết định giả lập trong đầu vào và mở yêu cầu thật (R9.11).
-6. Bộ trả phiên bản chủ thể cho mã quyết định Zalo (W2 nối thêm nhắc, chuyển cấp và hết hạn; W1 phê duyệt
-   chờ không hạn, DO-31). Huỷ lượt chạy huỷ phê duyệt đang mở trong cùng giao dịch.
+6. Bộ trả phiên bản chủ thể cho mã quyết định Zalo (W2 nối thêm nhắc, chuyển cấp và hết hạn; ở W1 Bước phê duyệt
+   không có hạn riêng, DO-31, còn lượt chạy có hạn chót `deadline_at` của workflow-engine, V4.14). Huỷ lượt chạy theo
+   bất kỳ đường nào, kể cả Tắt khẩn và quá hạn chót (`deadline_exceeded`, workflow-engine:R5.23), huỷ phê duyệt đang mở
+   trong cùng giao dịch (R9.15): một trigger AFTER UPDATE OF `status` trên `platform.run_waits` nghe dòng chờ sang
+   `cancelled`, việc mà trigger của workflow-engine/05 làm khi lượt chạy sang `cancelled` (workflow-engine:R6.13), và
+   đặt yêu cầu `pending` nối qua `studio.step_approvals` sang `cancelled`.
 
 ## Tiêu chí chấp nhận
 
@@ -80,8 +85,8 @@ R9.14, WN6, WN7, WN8, WN9, WN17, WN18, WN20). Hết hạn phê duyệt (R9.4, WN
       `details.reason_code` `second_person_required`; bỏ `studio.step.` khỏi tiền tố nghiêm → test đỏ.
 - [ ] R9.13 (WN8): người được giao duy nhất giữ `required_scope` rời công ty sau khi phát hành, rồi một lượt `live`
       tới Bước phê duyệt → Bước đi Nhánh ra lỗi với `no_approver`, không dòng `platform.approval_requests` nào; cùng
-      tài liệu không nối Nhánh ra lỗi → lượt chạy `failed` với `no_approver`; gỡ kiểm ứng viên lúc mở → yêu cầu mở và
-      lượt chờ mãi, test đỏ.
+      tài liệu không nối Nhánh ra lỗi → lượt chạy `failed` với `no_approver`; gỡ kiểm ứng viên lúc mở → yêu cầu mở mà
+      không ai duyệt được và lượt chờ tới hạn chót, test đỏ.
 - [ ] R9.7: yêu cầu phê duyệt bước mang danh sách tên Trường mà trang duyệt hiển thị.
 - [ ] R9.8 (WN17): người được giao không đọc được `phone` đã đóng dấu quyết → 403, yêu cầu vẫn `pending`;
       gỡ điều kiện đọc trường khỏi guard → test đỏ.
@@ -89,7 +94,9 @@ R9.14, WN6, WN7, WN8, WN9, WN17, WN18, WN20). Hết hạn phê duyệt (R9.4, WN
       `subject_changed`.
 - [ ] R9.5 (WN8): chỉ người chạy giữ `required_scope` → lệnh gửi kiểm định của agent-lifecycle trả 422
       `no_second_approver`, phiên bản ở Nháp; gỡ đăng ký kiểm → test đỏ.
-- [ ] R9.2: huỷ lượt chạy huỷ phê duyệt đang mở trong cùng giao dịch.
+- [ ] R9.15 (WN21): Tắt khẩn một lượt đang chờ ở Bước phê duyệt → yêu cầu `studio.step.` của nó `cancelled` trong cùng
+      giao dịch; lượt chờ bị reaper kết thúc vì `deadline_exceeded` → như vậy, người được giao quyết sau đó bị từ chối,
+      yêu cầu vẫn `cancelled`; gỡ trigger hủy yêu cầu → yêu cầu còn `pending`, test đỏ.
 - [ ] R9.9: lượt `simulate` với quyết định giả lập `rejected` cho Bước phê duyệt → Nhánh ra từ chối chạy, không dòng
       `platform.approval_requests` hay `platform.run_waits` nào, lượt chạy không chờ; quyết định `approved` → Nhánh ra
       duyệt chạy.
@@ -125,3 +132,7 @@ R9.14, WN6, WN7, WN8, WN9, WN17, WN18, WN20). Hết hạn phê duyệt (R9.4, WN
 - 2026-10-24 (agent): lượt c của vòng 4: `step_assignments.run_id` thành FK ghép tới `uq_worker_runs_tenant_id_id`, và `step_approvals.approval_request_id` thành FK ghép `(tenant_id, workspace_id, approval_request_id)` qua `uq_approval_requests_tenant_id_workspace_id_id` đã có, nên ticket này không thêm UNIQUE nào lên `platform.approval_requests`; R9.1 thêm ca chéo tenant (CLAUDE.md, Tenancy and authorization).
 - 2026-10-24 (agent): kiểm lượt c của vòng 4: dòng `Xong:` thêm `make test-integration`, vì ca chéo tenant và ca CASCADE của R9.1 cần PostgreSQL thật, mà hai tệp test bước không chạy (failure-modes #1: ai chạy test này).
 - 2026-10-24 (agent): lượt d của vòng 4: dòng Comments của lượt c thôi dẫn mã mục của lượt; ca chéo tenant của hai FK ghép rời tiêu chí R9.1 sang R9.14 (WN20), kèm test đột biến đổi mỗi FK về một cột (CLAUDE.md, Tenancy and authorization; failure-modes #3), vẫn chạy trong `make test-integration` của dòng `Xong:`, và Mục tiêu nêu R9.14, WN20 cạnh các mã khác; bước 2 nêu chỉ mục của hai FK (CLAUDE.md, Data model rules). Không thêm cạnh.
+- 2026-10-24 (agent): theo V4.14 của Đạt: lượt chạy có hạn chót ở W1, nên bước 6 thôi ghi "W1 phê duyệt chờ không hạn" và
+  việc huỷ phê duyệt đang mở cùng lượt thành tiêu chí R9.15 (WN21), có ca quá hạn chót, thay dòng tiêu chí cũ mang mã R9.2;
+  tiêu chí R9.13 thôi nói "lượt chờ mãi". Không thêm cạnh: ticket này đã chờ workflow-engine/05, nơi trigger hủy dòng chờ
+  ra đời, và workflow-engine/04, nơi reaper kết thúc lượt quá hạn, qua ticket đó.

@@ -3,13 +3,15 @@
 Status: needs-triage
 Blocked by: 02, 03, .claude/plans/studio/workflow-engine/issues/04-lan-studio-runs.md, .claude/plans/studio/compliance-pdpl/issues/05-phan-tich-bo-ba-khi-xuat-ban.md, .claude/plans/studio/tenant-config/issues/03-che-do-chay-va-gia-lap-o-executor.md, .claude/plans/studio/tenant-config/issues/05-lien-ket-va-phien-ban-cau-hinh.md, .claude/plans/studio/usage-and-limits/issues/03-han-muc-giu-truoc-va-quyet-toan.md, .claude/plans/studio/telemetry-and-audit/issues/03-lich-su-chay-theo-buoc.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md
 Area: studio
-Yêu cầu: R1.9, R2.8, R2.9, R2.10, R2.11, R2.12, R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R4.7, R4.8, R4.9, R4.10, R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R5.8, R5.9, R5.10, R6.1, R6.2, R6.3, R7.9, R7.12, R7.13, R10.2, R10.3, AL4, AL5, AL6, AL7, AL8, AL9, AL10, AL11, AL19, AL20, AL21, AL22, AL23, AL24
+Yêu cầu: R1.9, R2.8, R2.9, R2.10, R2.11, R2.12, R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R4.7, R4.8, R4.9, R4.10, R4.11, R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R5.8, R5.9, R5.10, R5.11, R5.12, R6.1, R6.2, R6.3, R7.9, R7.12, R7.13, R10.2, R10.3, AL4, AL5, AL6, AL7, AL8, AL9, AL10, AL11, AL19, AL20, AL21, AL22, AL23, AL24, AL25, AL26
 
 ## Mục tiêu
 
 Lượt kiểm định chạy ở chế độ Mô phỏng với Bộ kiểm định an ninh nền tảng (đạt 100%; bộ đề của tenant là
-W2) dưới trần chi phí giữ trước qua `LimitsPort`; phát hành cần một người không phải Tác giả duyệt, mọi Điểm gắn
-bắt buộc đã có giá trị duyệt, và không đè một bản Đang dùng mới hơn bản đã so lúc gửi; cổng không mở phê duyệt khi
+W2) dưới trần chi phí giữ trước qua `LimitsPort`; Kiểm định thử bản Nháp đọc dưới giới hạn tạm của bản Nháp, giao với
+quyền người xin; phát hành cần một người không phải Tác giả duyệt, người đó đọc được Bản ứng viên và phần khác với
+bản Đang dùng trong lúc yêu cầu còn chờ, mọi Điểm gắn bắt buộc đã có giá trị duyệt, và không đè một bản Đang dùng khác
+bản đã so lúc gửi; phê duyệt đã duyệt mà không áp được đưa phiên bản về Nháp với lý do; cổng không mở phê duyệt khi
 Phân tích năng lực thiếu hay chưa đạt; Lượt kiểm định chỉ đọc được theo workspace sở hữu của thành phần và chỉ lượt
 xóa của offboarding xóa được nó (spec R2, R4, R5, R6, R10). Phân tích năng lực do
 compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ đọc kết quả đã ghi làm chốt chặn.
@@ -43,13 +45,16 @@ compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ �
    tệp, bản của ticket này đứng ngay sau bản của telemetry-and-audit/03, ticket này chờ ticket đó; một dòng
    `STUDIO_EXCLUSIONS` cho `studio.gate_case_results` với lý do "xóa khi offboarding bằng
    `platform.purge_tenant_append_only`" (usage-and-limits:R3.10); hàm đó chạy trước mọi bảng thường
-   (usage-and-limits:R3.11), nên khóa ngoại `gate_run_id` (RESTRICT) của `studio.gate_case_results` được thỏa không
-   cần dòng `_ORDERED_FIRST`, còn khóa ngoại `gate_run_id` (RESTRICT) của `studio.artifact_versions` cần
-   `_ORDERED_FIRST` xóa `studio.artifact_versions` trước `studio.gate_runs`, và khóa ngoại `artifact_id` (RESTRICT) của
-   `studio.gate_runs` cần xóa `studio.gate_runs` trước `studio.artifacts`: ticket này đặt mục `studio.artifact_versions`
-   mà tenant-config/02 thêm lên trước `studio.artifacts` (phiên bản là bảng con của thành phần nên xóa trước được;
-   thứ tự thành phần trước phiên bản chỉ chạy nhờ khóa ngoại `artifact_id` CASCADE của phiên bản) và `studio.gate_runs`
-   giữa hai mục đó (spec R10.2; studio-skeleton:R4.2).
+   (usage-and-limits:R3.11), nên `studio.gate_case_results` đứng trước `studio.gate_runs` trong thứ tự xóa duy nhất mà
+   không cần dòng `_ORDERED_FIRST`. Thứ tự đó liệt kê mỗi bảng sau mọi bảng giữ một khóa ngoại RESTRICT tới nó
+   (studio-skeleton:R4.2; ADR-0109 (Accepted) Consequences), nên nhóm định nghĩa đi: các bảng trỏ tới phiên bản (như
+   `platform.worker_runs`, `studio.trigger_subscriptions`, `platform.run_manifest_keys` và `studio.dependencies`, mà
+   `to_version_id` là khóa RESTRICT tới phiên bản), `studio.artifact_versions`, rồi `studio.artifacts`, trong đó ba mục
+   `studio.dependencies`, `studio.artifact_versions`, `studio.artifacts` do tenant-config/02 khai: ticket này chèn đúng
+   một mục `studio.gate_runs` sau `studio.artifact_versions` (khóa ngoại `gate_run_id` RESTRICT của phiên bản) và trước
+   `studio.artifacts` (khóa ngoại `artifact_id` RESTRICT của chính nó), không đổi vị trí mục nào của tenant-config/02,
+   và test phủ của studio-skeleton:R4.2, đọc các cạnh RESTRICT từ `pg_constraint`, thấy ba cạnh mới của ticket này
+   (spec R10.2).
    `studio.gate_runs` và `studio.gate_case_results` không có `workspace_id`: mỗi bảng một dòng trong danh sách bảng
    toàn tenant của `test_rls_coverage.py`, với lý do "Lượt kiểm định đi theo thành phần toàn tenant mà nó kiểm định,
    đọc theo `owning_workspace_id` của thành phần ở `artifact_id`" và "kết quả từng câu là con của Lượt kiểm định
@@ -82,7 +87,15 @@ compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ �
    bản Nháp, xin qua `RunRequestService`, nơi bản kê ghim giai đoạn `draft` và mã băm tạm của nội dung nháp và bộ kiểm
    trả mọi lỗi của loại chạy trên nội dung đó (workflow-engine:R3.9, workflow-engine:R3.11; tenant-config:R6.1;
    ADR-0109 (Accepted) quyết 6); graph biên dịch theo mã băm ghim (workflow-engine:R4.2 cho quy trình;
-   agent-builder:R3.1, agent-builder:R3.3 cho agent, ADR-0117 (Accepted) quyết 5). `RunRequestService` từ chối lần thử
+   agent-builder:R3.1, agent-builder:R3.3 cho agent, ADR-0117 (Accepted) quyết 5). Lane xin mỗi lần thử dưới danh nghĩa
+   người xin Kiểm định thử (ngữ cảnh truy cập đóng dấu của người đó, không của lane hay người gửi nào khác), để
+   `RunRequestService` dẫn ra giới hạn tạm từ bao đóng của bản Nháp, ghi dưới `(version_id, pinned_hash)` cho riêng lượt
+   đó, và lần thử đọc dưới giới hạn tạm giao với quyền của người xin; việc dẫn, ghi, xóa giới hạn tạm và luật RLS chỉ
+   nhận nó ở `simulate` là của workflow-engine và record-access (spec R4.11; workflow-engine:R3.13,
+   workflow-engine:R3.14, record-access:R6.12, record-access:R6.13; ADR-0111 (Accepted) quyết 3). Test danh
+   nghĩa của lần thử với một cửa giả ghi danh nghĩa nó nhận, và phần đọc trên `RunRequestService` thật với một bản Nháp
+   quy trình có Bước `data.object.*` (loại node giả của fixture, như workflow-engine/03 dùng, vì ticket này không chờ
+   workflow-nodes/04, nơi đăng ký loại thật). `RunRequestService` từ chối lần thử
    → Kiểm định thử `error` kèm mọi lỗi, không xin thêm lần thử (spec R4.9). Kiểm định thử không niêm phong, không đổi
    giai đoạn, không mở phê duyệt. Test dùng bản Nháp quy trình thật và một nguồn graph agent giả theo khóa
    `(tenant_id, agent_version_id, mã băm ghim)`; đường thật của agent là agent-builder/03.
@@ -111,13 +124,14 @@ compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ �
    `author_cannot_approve` (spec R5.2; V4.P9). Người xin đọc được yêu cầu của mình với `can_decide` false qua
    `ApprovalAudience` của ADR-0004 (Accepted) sửa đổi 07/10/2026 (spec R5.8). Handler worker
    `studio.publish.<kind>.decided` đăng ký cho mọi loại trong `ArtifactKindRegistry`, idempotent trên id yêu cầu:
-   hỏi `RunControlPort`, Đóng băng của công ty hay nền tảng đang mở thì không đưa phiên bản sang `live` và từ
-   chối lần xử lý với `tenant_frozen` hay `platform_frozen` (spec R7.12); hỏi lại `PublishBindingsCheck` (bước 8),
-   `binding_unset` thì không đưa phiên bản sang `live` và từ chối lần xử lý với `binding_unset` (spec R5.10);
-   `compared_live_hash` khác mã của phiên bản Đang dùng mà lần phát hành này sẽ thay, hay khác NULL khi không có bản
-   nào, thì không phát hành: phiên bản về `draft` với
-   `details.reason_code` `base_changed`, audit `studio.version.returned_to_draft` với actor là người quyết định và
-   `details.lane` là tên lane, cùng giao dịch (spec R5.9); không thì, actor là người quyết định
+   một phê duyệt đã `approved` mà handler không áp được thì không phát hành và không để phiên bản ở
+   `awaiting_approval`: phiên bản về `draft` với `details.reason_code` của lý do, audit
+   `studio.version.returned_to_draft` với actor là người quyết định và `details.lane` là tên lane, cùng giao dịch, và
+   lần xử lý kết thúc xong, không giao lại. Theo thứ tự: hỏi `RunControlPort`, Đóng băng của công ty hay nền tảng đang
+   mở → `tenant_frozen` hay `platform_frozen` (spec R7.12); hỏi lại `PublishBindingsCheck` (bước 8), `binding_unset` →
+   `binding_unset` (spec R5.10); `compared_live_hash` khác mã của phiên bản Đang dùng mà lần phát hành này sẽ thay, hay
+   khác NULL khi không có bản nào → `base_changed` (spec R5.9); `owner_missing` của người chịu trách nhiệm theo cùng
+   hình là W2 (Ngoài phạm vi của spec). Không lý do nào thì, actor là người quyết định
    với `details.lane` là tên lane và `details.path` `approved` (ADR-0011 (Accepted)), `LifecycleService`, bên duy nhất
    ghi `live` (ADR-0120 (Accepted) quyết 1), gỡ bản cũ (`superseded`) rồi đưa phiên bản sang Đang dùng và gọi móc
    phát hành `publish_hook` mà mục `ArtifactKindRegistry` của loại mang (tenant-config:R2.15, tenant-config/02;
@@ -126,7 +140,7 @@ compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ �
    giới hạn dữ liệu của `agent`, `workflow` vào `studio.actor_boundaries` qua `ActorBoundaryPort` của record-access,
    agent-builder:R1.9, workflow-engine:R1.7, ADR-0117 (Accepted) quyết 3, và không ghi audit), outbox
    `studio.version.live`; từ chối → `draft`. Nhãn loại approval và liên kết "Xem diff" ở điểm cắm
-   `apps/web/components/tool-approval.tsx`. Lane hết hạn phê duyệt phát hành: hủy yêu cầu quá
+   `apps/web/components/tool-approval.tsx`, mở route của bước 9. Lane hết hạn phê duyệt phát hành: hủy yêu cầu quá
    `publish_approval_ttl_days`, đưa phiên bản về `draft`, audit qua `lane_audit_event` với actor
    `system:<lane>` vì lane tự làm (spec R5.7).
 6. Chốt chặn Phân tích năng lực: trước khi mở yêu cầu phê duyệt, lane đọc kết quả Phân tích năng lực mà
@@ -157,6 +171,18 @@ compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ �
    tenant-config/05 đáp ứng bằng `BindingStatus.satisfied` ở composition root (tenant-config:R7.2). Route gửi của
    ticket 03 hỏi nó cho mọi loại trước khi chuyển phiên bản khỏi `draft`: `binding_unset` → 409 `binding_unset` với
    tên các Điểm gắn trong `details`, giao dịch lùi, phiên bản giữ `draft` (spec R2.11); handler của bước 5 hỏi lại.
+9. Route `GET /api/v1/studio/publish-approvals/{approval_id}/candidate` cho người duyệt (spec R5.11, R5.12;
+   ADR-0120 (Accepted) quyết 2): đọc yêu cầu qua `get` đã lọc theo `ApprovalAudience` của ADR-0004 (Accepted) sửa đổi
+   07/10/2026 và chỉ nhận khi người gọi được quyết định nó (`approvals.decide` cùng tem `studio.publish.approve`), loại
+   có tiền tố `studio.publish.` và trạng thái `pending`; người xin chỉ được thấy yêu cầu (spec R5.8) mà không giữ tem,
+   yêu cầu đã quyết, loại khác hay công ty khác → 404 như không tồn tại, không trả nội dung và không audit. Khi nhận:
+   trả `version_id`, `version_no`, `definition_hash` và `document` niêm phong của Bản ứng viên, `live_version_id` của
+   phiên bản Đang dùng mà nó sẽ thay (NULL khi chưa có) và `changes[]`, phần khác giữa hai tài liệu chuẩn hóa bằng
+   `dw_kernel.canonical` theo con trỏ JSON (`path`, `before`, `after`; mọi trường là thêm khi chưa có bản Đang dùng),
+   và ghi đúng một audit `studio.version.candidate_read` (actor là người đọc, `details` chỉ id yêu cầu và id phiên bản)
+   trong giao dịch đọc; tên action vào catalog `configs/copy/audit_actions@*.yaml` (ADR-0122 (Accepted) quyết 6) theo
+   cách telemetry-and-audit/03 đặt, mà ticket này chờ. Route không đọc qua khóa đọc của loại: ngoài lúc yêu cầu còn
+   chờ, định nghĩa chỉ đọc được trên route của tenant-config với khóa đọc của loại (tenant-config:R2.11).
 
 ## Tiêu chí chấp nhận
 
@@ -182,6 +208,11 @@ compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ �
       test đỏ.
 - [ ] R4.9 (AL22): `RunRequestService` từ chối lần thử vì nội dung nháp trượt bộ kiểm của loại → Kiểm định thử `error`
       kèm mọi lỗi, 0 `worker_runs`, không lần thử nào được xin thêm; nuốt lần từ chối rồi xin lần thử kế → test đỏ.
+- [ ] R4.11 (AL26): với cửa giả ghi danh nghĩa, mỗi lần thử của Kiểm định thử được xin dưới danh nghĩa người xin; xin
+      dưới danh nghĩa lane hay người gửi khác người xin → test khớp đỏ; trên `RunRequestService` thật, Kiểm định thử bản
+      Nháp quy trình có Bước `data.object.*` đọc đối tượng X mà người xin đọc được bản ghi x1, không đọc được x2 → lần
+      thử thấy x1, không thấy x2, và đọc đối tượng Y ngoài bao đóng → 0 bản ghi; bỏ giới hạn tạm khỏi lần thử → x1 cũng
+      không thấy, test đỏ.
 - [ ] R4.10 (AL23): người giữ `studio.lifecycle.read` ở độ sâu `workspace` của ws1 gọi `GET /api/v1/studio/gate-runs`
       → chỉ Lượt kiểm định của thành phần có `owning_workspace_id` là ws1, không dòng nào của thành phần thuộc ws2, kể cả
       dòng `dry`; `GET .../gate-runs/{id}` và `/{id}/cases` của Lượt kiểm định thuộc ws2 → 404; người của tenant B dùng
@@ -207,13 +238,23 @@ compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ �
       `ArtifactKindRegistry` của loại chạy trong cùng giao dịch và có đúng một dòng `studio.version.published`; bỏ lời
       gọi móc khỏi handler → móc giả không được gọi, test đỏ; giao hai lần cùng sự kiện → một kết quả;
       từ chối → `draft`.
-- [ ] R5.9 (AL19): một phiên bản `object` chỉ siết lên `live` trong lúc một Bản ứng viên của cùng thành phần chờ
-      duyệt, rồi duyệt Bản ứng viên → nó về `draft` với `details.reason_code` `base_changed` và một audit
-      `studio.version.returned_to_draft` đứng tên người quyết định, bản `live` vẫn là bản chỉ siết; gỡ kiểm khỏi
-      handler → handler hỏng ở 23514 của trigger, phiên bản không về `draft`, test đỏ.
+- [ ] R5.9 (AL19): gỡ (`explicit`, route của ticket 03) phiên bản Đang dùng của một agent trong lúc một Bản ứng viên
+      của cùng thành phần chờ duyệt, rồi duyệt Bản ứng viên → nó về `draft` với `details.reason_code` `base_changed` và
+      một audit `studio.version.returned_to_draft` đứng tên người quyết định, không phiên bản nào lên `live`; gỡ kiểm
+      khỏi handler → handler hỏng ở 23514 của trigger, phiên bản không về `draft`, test đỏ.
 - [ ] R5.10 (AL20): `PublishBindingsCheck` giả trả `binding_unset` khi giao `studio.publish.workflow.decided` của một
-      quyết định duyệt → phiên bản vẫn `awaiting_approval`, lần xử lý từ chối `binding_unset`; gỡ kiểm trong handler
-      → test đỏ.
+      quyết định duyệt → phiên bản về `draft` với `details.reason_code` `binding_unset` và một audit
+      `studio.version.returned_to_draft` đứng tên người quyết định, không lên `live`, không còn ở `awaiting_approval`;
+      giao lại cùng sự kiện → không audit thứ hai; gỡ kiểm trong handler → test đỏ.
+- [ ] R5.11 (AL25): người giữ `approvals.decide` và tem `studio.publish.approve`, không giữ khóa tác giả của loại, gọi
+      `GET /api/v1/studio/publish-approvals/{approval_id}/candidate` khi yêu cầu `pending` → 200 với `document` niêm
+      phong và `changes[]` so với bản Đang dùng (khi chưa có bản Đang dùng, mọi trường là thêm), đúng một audit
+      `studio.version.candidate_read`; gỡ ghi audit → test đỏ.
+- [ ] R5.12 (AL25): người xin không giữ tem, người chỉ giữ khóa tác giả và `platform_admin` không giữ tem → 404, không
+      audit; cùng người giữ tem sau khi yêu cầu đã duyệt hay bị từ chối → 404; id của một yêu cầu
+      `studio.lifecycle.unfreeze` còn `pending`, gọi bởi người được quyết định nó (`approvals.decide` cùng tem
+      `studio.lifecycle.freeze`) → 404; người của tenant B dùng id của tenant A → 404; gỡ kiểm `pending` hay kiểm tem
+      khỏi route → test đỏ.
 - [ ] R5.6 (AL4): chuyển `live` với `gate_run_id` của mã băm khác, hoặc approval còn `pending` → 23514;
       `draft → live` của `object` với `tighten_only` false, hay với `compared_live_hash` cũ sau khi bản `live`
       đổi → 23514; gỡ CHECK hay luật nhánh → test đỏ.
@@ -236,8 +277,10 @@ compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ �
       bản vẫn `draft`; Đóng băng của nền tảng rồi gửi một phiên bản `object` chỉ siết → 409 `platform_frozen`.
 - [ ] R7.13 (AL11): chỉ Đóng băng của công ty đang mở, gửi một phiên bản `object` chỉ siết → `live` theo nhánh chỉ
       siết, audit `details.path` `tighten_only`; gỡ ngoại lệ chỉ siết khỏi kiểm Đóng băng → 409, test đỏ.
-- [ ] R7.12 (AL11): Đóng băng công ty rồi giao `studio.publish.agent.decided` của một quyết định duyệt →
-      phiên bản vẫn `awaiting_approval`, lần xử lý từ chối `tenant_frozen`; gỡ kiểm trong handler → test đỏ.
+- [ ] R7.12 (AL11): Đóng băng công ty rồi giao `studio.publish.agent.decided` của một quyết định duyệt → phiên bản về
+      `draft` với `details.reason_code` `tenant_frozen` và một audit `studio.version.returned_to_draft` đứng tên người
+      quyết định, không lên `live`, không còn ở `awaiting_approval`; Đóng băng của nền tảng → như trên với
+      `platform_frozen`; gỡ kiểm trong handler → test đỏ.
 - [ ] R5.7: yêu cầu phê duyệt phát hành quá 14 ngày → lane hủy nó, phiên bản về `draft`, audit với actor
       `system:<lane>`; yêu cầu 13 ngày tuổi còn nguyên.
 - [ ] R6.1 (AL10): `dw_app` ghi thẳng một Bản ứng viên không có dòng `studio.version_assessments` sang
@@ -247,7 +290,8 @@ compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ �
 - [ ] R6.3 (AL10): cấu hình công ty không hạ được mức sàn duyệt của công cụ trọng yếu; chỉ siết thêm được.
 - [ ] R10.2: `test_offboarding.py` purge một tenant có một Lượt kiểm định `gate` mà một phiên bản trỏ tới, kèm kết quả
       từng câu, và một Lượt kiểm định `dry` → mọi dòng `studio.gate_runs` của tenant đó bị xóa, tenant khác giữ nguyên;
-      đặt `studio.gate_runs` sau `studio.artifacts` trong `_ORDERED_FIRST` → lỗi khóa ngoại, test đỏ.
+      đặt `studio.gate_runs` sau `studio.artifacts` hay trước `studio.artifact_versions` trong thứ tự xóa → test phủ của
+      studio-skeleton:R4.2 đỏ trên cạnh RESTRICT đọc từ `pg_constraint`, và lần purge gặp lỗi khóa ngoại.
 - [ ] R10.3 (AL24): `dw_app` DELETE một Lượt kiểm định của công ty `active` → 23514, dòng còn; cùng lệnh khi công ty
       `offboarding`, trên Lượt kiểm định không còn dòng nào trỏ tới → xóa được; gỡ kiểm khỏi trigger → test đỏ.
 - [ ] Xong: `make ci && make test-integration` xanh.
@@ -319,3 +363,21 @@ compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ �
   `studio.gate_runs` chỉ cho lượt xóa của offboarding nhờ trigger, và `_ORDERED_FIRST` xóa phiên bản rồi Lượt kiểm định
   trước thành phần (spec R10.2, R10.3, AL24). Không thêm cạnh: `uq_artifacts_tenant_id_id` có từ tenant-config/02, mà
   ticket này chờ qua ticket 03.
+- 2026-10-24 (agent): vòng sửa thứ tư, lượt f, theo các quyết định của Đạt V4.17, V4.18, V4.22, V4.23 và các Quyết định
+  tạm cùng ngày của spec: handler `.decided` không áp được một phê duyệt đã duyệt (Đóng băng, Điểm gắn chưa duyệt) đưa
+  phiên bản về `draft` với mã của lý do và audit thay việc từ chối lần giao (spec R5.10, R7.12, AL11, AL20); tiêu chí
+  R5.9 thử gốc đổi bằng lần gỡ bản `live` trong lúc Bản ứng viên chờ, vì một phiên bản chưa phát hành mỗi thành phần làm
+  ca bản chỉ siết lên `live` trong lúc Bản ứng viên chờ không dựng được (AL19); bước 4 xin lần thử của Kiểm định thử
+  dưới danh nghĩa người xin, để lần thử đọc dưới giới hạn tạm của bản Nháp (spec R4.11, AL26); bước 9 thêm route đọc
+  Bản ứng viên cho người duyệt (spec R5.11, R5.12, AL25); bước 1 chèn `studio.gate_runs` vào thứ tự xóa duy nhất theo
+  luật mỗi bảng sau mọi bảng giữ khóa ngoại RESTRICT tới nó, và tenant-config/02 nay khai nhóm định nghĩa theo luật đó,
+  nên ticket này không đổi vị trí mục nào của ticket đó. Không thêm cạnh: `RunRequestService` (workflow-engine/02) và
+  luật RLS của giới hạn dữ liệu (record-access/04) đứng trước workflow-engine/04, mà ticket này chờ, và tenant-config/02
+  đứng trước ticket 03; nếu workflow-engine hay record-access đặt giới hạn tạm ở một ticket khác, cạnh tới ticket đó do
+  lần kiểm nhất quán vòng 4 thêm.
+- 2026-10-24 (agent): kiểm lượt f: bước 1 chỉ gán cho tenant-config/02 ba mục nó khai trong nhóm định nghĩa
+  (`studio.dependencies`, `studio.artifact_versions`, `studio.artifacts`), như Phụ thuộc của spec, không gán cho ticket
+  đó các bảng trỏ tới phiên bản của spec khác; ca âm loại khác `studio.publish.*` của tiêu chí R5.12 (AL25) nêu người
+  gọi được quyết định yêu cầu `studio.lifecycle.unfreeze` đó, để 404 đến từ kiểm loại chứ không từ kiểm tem
+  (failure-modes #3); test đọc của R4.11 ở bước 4 dùng loại node `data.object.*` giả của fixture như workflow-engine/03,
+  nên không cần cạnh tới workflow-nodes/04.

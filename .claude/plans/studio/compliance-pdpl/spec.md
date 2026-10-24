@@ -146,7 +146,9 @@ sang Nghị định 356 (YC88). Lát này thêm dòng của kho mình vào tệp
 `schema.table` của telemetry-and-audit (telemetry-and-audit:R5.6): ticket 04 thêm hai bảng `append_only` trong
 cùng thay đổi đăng ký, ticket 06 thêm phần còn lại, mỗi ticket một bản trong chuỗi các ticket sửa tệp ở mục Phụ
 thuộc; thời hạn của sự kiện vào Data Hub do workflow-triggers/02 thêm, lane của telemetry-and-audit thi hành
-(DO-52).
+(DO-52). Mỗi hàm xóa hẹp của lát không nhận đối số và đọc thời hạn của mình ở `platform.retention_terms`, bảng mà bộ
+nạp của telemetry-and-audit nạp từ bản tệp đang ghim lúc triển khai (telemetry-and-audit:R5.9), nên luật sư đổi số
+bằng một bản mới của tệp, không bằng migration (V4.21).
 
 - R5.1 ĐỐI VỚI mỗi kho dữ liệu cá nhân mới của lát (Bản ghi đồng ý, Danh sách chặn gửi, nhật ký gửi
   marketing, hội thoại 90 ngày), tệp chính sách retention đang ghim PHẢI khai dưới khóa của kho một thời hạn và
@@ -163,15 +165,18 @@ thuộc; thời hạn của sự kiện vào Data Hub do workflow-triggers/02 th
 - R5.6 NẾU `dw_app` xóa một dòng `platform.contact_suppressions` của một công ty có `platform.tenants.status` khác
   `offboarding`, THÌ PostgreSQL PHẢI từ chối với SQLSTATE 23514 và không xóa dòng nào.
 - R5.7 KHI lane lưu giữ gọi bộ xóa hội thoại, lane lưu giữ PHẢI xóa ở mọi công ty mọi tin nhắn
-  `studio.conversation_messages` tạo trước mốc 90 ngày tính trong thân `studio.purge_expired_conversations()`, rồi mọi
-  hội thoại `studio.conversations` không còn tin nào và có hoạt động cuối trước mốc, và giữ nguyên mọi tin và hội thoại
-  có hoạt động từ mốc trở đi (DO-52; ADR-0122 (Accepted) quyết 7).
+  `studio.conversation_messages` tạo trước mốc mà thời hạn dưới khóa `studio.conversation_messages` của
+  `platform.retention_terms` cho (90 ngày), rồi mọi hội thoại `studio.conversations` không còn tin nào và có hoạt động
+  cuối trước mốc, và giữ nguyên mọi tin và hội thoại có hoạt động từ mốc trở đi (DO-52; ADR-0122 (Accepted) quyết 7).
 - R5.8 KHI lane lưu giữ xóa tin nhắn hay hội thoại của một workspace theo R5.7, lane lưu giữ PHẢI ghi trong cùng
   giao dịch, ở công ty và workspace đó, một sự kiện audit `studio.conversation.expired` đứng tên chính lane
   (`system:<lane>`), mang số tin và số hội thoại đã xóa ở workspace đó (ADR-0011 (Accepted)).
-- R5.9 NẾU thời hạn viết trong thân `studio.purge_expired_conversations()` khác thời hạn dưới khóa
-  `studio.conversation_messages` hay `studio.conversations` của tệp chính sách retention đang ghim, THÌ test ranh
-  giới của bộ xóa hội thoại PHẢI đỏ, để hai bản sao của một thời hạn lệch ồn ào (`failure-modes.md` #2).
+- R5.9 Mỗi hàm xóa hẹp của lát (bộ xóa Bản ghi đồng ý, `studio.purge_expired_conversations()`) PHẢI tính mốc bằng
+  `now()` trừ thời hạn dưới khóa của bảng nó xóa ở `platform.retention_terms`, không giữ hằng thời hạn nào trong thân
+  hàm (V4.21; ADR-0122 (Accepted) quyết 7).
+- R5.10 NẾU `platform.retention_terms` thiếu dòng của khóa mà một hàm xóa hẹp của lát đọc, hay hai dòng
+  `studio.conversation_messages` và `studio.conversations` mang hai thời hạn khác nhau, THÌ hàm xóa hẹp đó PHẢI báo
+  lỗi và không xóa dòng nào (telemetry-and-audit:R5.12; `failure-modes.md` #7).
 
 ## Trong phạm vi
 
@@ -182,8 +187,9 @@ thuộc; thời hạn của sự kiện vào Data Hub do workflow-triggers/02 th
   đăng ký vào bảng kiểm theo loại lúc gửi kiểm định của agent-lifecycle (agent-lifecycle:R2.7);
   `configs/policies/marketing_send@1.0.0.yaml` (gồm số người nhận tối đa mỗi lượt), `configs/policies/studio_risk@1.0.0.yaml`
   và dòng thời hạn của kho lát này trong tệp chính sách retention; bộ xóa hội thoại hết hạn, hàm SECURITY DEFINER
-  hẹp không đối số `studio.purge_expired_conversations()` mà lane lưu giữ gọi, và test ranh giới so hạn trong thân
-  hàm với tệp chính sách retention (R5.7, R5.8, R5.9).
+  hẹp không đối số `studio.purge_expired_conversations()` mà lane lưu giữ gọi, và bộ xóa Bản ghi đồng ý, hai hàm đọc
+  thời hạn ở `platform.retention_terms` của telemetry-and-audit, cùng test ranh giới của chúng (R5.7, R5.8, R5.9,
+  R5.10).
 - Bảng mới ở W1: `platform.consent_records`, `platform.contact_suppressions`, `platform.marketing_send_log`,
   `studio.version_assessments`; cột `data_route_class` trên `platform.tenants` và `platform.workspaces`.
   `platform.cross_border_attestations` đến ở W2 cùng R2.5 (Ngoài phạm vi).
@@ -239,7 +245,8 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
   `captured_at`, `source`, `evidence_ref`, `notice_version`, `withdrawn_at`; đồng ý hiện hành là dòng mới
   nhất theo `(subject_ref, purpose, channel)`; index `(tenant_id, subject_ref, channel, purpose, captured_at DESC)`;
   thời hạn theo quan hệ cộng 5 năm (số tạm UNVERIFIED) dưới khóa `platform.consent_records`, thêm trong cùng thay
-  đổi đăng ký (ticket 04), bộ xóa xóa theo dòng, không bằng DROP PARTITION.
+  đổi đăng ký (ticket 04), bộ xóa xóa theo dòng, không bằng DROP PARTITION, qua một hàm SECURITY DEFINER hẹp không
+  đối số của ticket 06 đọc hạn dưới khóa đó ở `platform.retention_terms` (R5.9, R5.10).
 - `platform.contact_suppressions`: PK `(tenant_id, channel, address_hash)`; không hết hạn theo thời gian,
   chỉ offboarding hay yêu cầu của chủ thể dữ liệu (W2) xóa (R5.4); `dw_app` có DELETE chỉ dùng được ở lượt xóa của
   offboarding (R5.5): trigger `platform.guard_contact_suppression()` BEFORE DELETE từ chối với SQLSTATE 23514 mọi
@@ -270,16 +277,19 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
   quyết 6).
 - `studio.purge_expired_conversations()`: hàm SECURITY DEFINER hẹp của ticket 06 theo mẫu xóa dữ liệu hết hạn của
   ADR-0122 (Accepted) quyết 7, vì `dw_app` chỉ SELECT, INSERT trên `studio.conversation_messages` (agent-builder);
-  hàm không nhận đối số và giữ hạn 90 ngày trong thân (mốc `now() - interval '90 days'`), theo tiền lệ
-  `platform.prune_notifications()` ("It takes no argument, so no caller can widen it to recent rows",
-  `db/migrations/versions/855ae928c3fa_platform_in_app_notifications.py:28-29`), nên không bên gọi nào nới hàm tới tin
-  còn hạn; REVOKE ALL FROM PUBLIC rồi GRANT EXECUTE cho `dw_app`, vai mà lane lưu giữ của worker dùng. Ở mọi công ty,
-  hàm xóa tin nhắn có `created_at` trước mốc, rồi xóa hội thoại không còn tin nào và có `created_at` trước mốc (hoạt
-  động cuối của nó trước mốc, vì mọi tin của nó đã quá hạn), theo thứ tự đó vì FK ghép của tin nhắn tới
-  `studio.conversations` là `ON DELETE RESTRICT`; trả một dòng mỗi workspace có dòng bị xóa (`tenant_id`,
-  `workspace_id`, số tin, số hội thoại), vì một sự kiện audit luôn mang `workspace_id`. Hạn trong thân hàm là bản sao
-  thứ hai của thời hạn dưới khóa `studio.conversation_messages` và `studio.conversations` trong tệp chính sách
-  retention, nên một test ranh giới đỏ khi hai bên khác nhau (R5.9; `failure-modes.md` #2). Lane lưu giữ gọi hàm
+  hàm không nhận đối số, theo tiền lệ `platform.prune_notifications()` ("It takes no argument, so no caller can widen
+  it to recent rows", `db/migrations/versions/855ae928c3fa_platform_in_app_notifications.py:28-29`), nên không bên gọi
+  nào nới hàm tới tin còn hạn; REVOKE ALL FROM PUBLIC rồi GRANT EXECUTE cho `dw_app`, vai mà lane lưu giữ của worker
+  dùng. Hàm không giữ hằng thời hạn nào: nó đọc hạn dưới khóa `studio.conversation_messages` và
+  `studio.conversations` qua `platform.retention_term_days` của telemetry-and-audit (telemetry-and-audit:R5.12), báo
+  lỗi và không xóa gì khi thiếu một dòng hay hai hạn khác nhau (R5.10), vì hội thoại chỉ bị xóa khi không còn tin, nên
+  một hạn hội thoại khác hạn tin nhắn là lời hứa bộ xóa không giữ được, và đặt mốc bằng `now()` trừ hạn đó (R5.9;
+  V4.21). Ở mọi công ty, hàm xóa tin nhắn có `created_at` trước mốc, rồi xóa hội thoại không còn tin nào và có
+  `created_at` trước mốc (hoạt động cuối của nó trước mốc, vì mọi tin của nó đã quá hạn), theo thứ tự đó vì FK ghép
+  của tin nhắn tới `studio.conversations` là `ON DELETE RESTRICT`; trả một dòng mỗi workspace có dòng bị xóa
+  (`tenant_id`, `workspace_id`, số tin, số hội thoại), vì một sự kiện audit luôn mang `workspace_id`. Thời hạn chỉ có
+  một bản ở runtime, bảng mà bộ nạp của telemetry-and-audit nạp từ bản tệp đang ghim, và test lệch bảng của lát đó đỏ
+  khi bảng khác tệp (telemetry-and-audit:R5.10; `failure-modes.md` #2). Lane lưu giữ gọi hàm
   (R5.7) và, trong cùng giao dịch, ghi cho mỗi dòng trả về một sự kiện `studio.conversation.expired` của chính lane, ở
   công ty và workspace của dòng đó, qua `lane_audit.append_across_tenants`; không ghi được sự kiện thì không dòng nào
   bị xóa (R5.8; ADR-0011 (Accepted)).
@@ -324,7 +334,8 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
 | CP19 | Chỉ lượt xóa của offboarding xóa được dòng chặn gửi                                     | R5.6             | `dw_app` DELETE một dòng chặn gửi của công ty `active` → 23514, dòng còn, lần gửi sau vẫn `blocked:suppressed`; cùng lệnh khi công ty `offboarding` → xóa được; gỡ phép kiểm DELETE khỏi trigger → test đỏ                                                                                                                                                                                                                                                                     |
 | CP20 | Bộ xóa hội thoại chỉ xóa phần quá hạn, có audit, không trả DELETE tin nhắn cho `dw_app` | R5.7, R5.8       | Hai công ty, mỗi công ty có tin 91 ngày và 89 ngày: một lượt lane xóa tin 91 ngày của cả hai, tin 89 ngày còn; hội thoại còn một tin 89 ngày giữ nguyên; hội thoại tạo 10 ngày trước chưa có tin giữ nguyên; mỗi workspace có dòng bị xóa một sự kiện `studio.conversation.expired` đứng tên lane ở đúng công ty và workspace đó, với đúng hai số; `dw_app` DELETE thẳng một tin → `permission denied`; ghi audit hỏng → không dòng nào bị xóa; hàm bỏ điều kiện mốc → test đỏ |
 | CP21 | Dòng đánh giá không trỏ được tới phiên bản của công ty khác                             | R4.7             | Chèn một dòng `studio.version_assessments` mang `tenant_id` của công ty A và `version_id` của một phiên bản công ty B → 23503, không dòng nào; đổi FK ghép về FK một cột `version_id` → test đỏ                                                                                                                                                                                                                                                                                |
-| CP22 | Hạn trong hàm xóa hội thoại khớp tệp chính sách retention                               | R5.9             | Thân `studio.purge_expired_conversations()` giữ 60 ngày trong khi khóa `studio.conversation_messages` của tệp ghi 90 → test ranh giới đỏ, nêu khóa; khóa `studio.conversations` ghi 120 trong khi khóa tin nhắn ghi 90 → đỏ; thân hàm và hai khóa cùng 90 → xanh                                                                                                                                                                                                               |
+| CP22 | Hàm xóa hẹp của lát đọc hạn ở bảng thời hạn, không giữ hằng                             | R5.9             | Đặt hai dòng hội thoại của `platform.retention_terms` thành 60 ngày trong bảng thử → tin 61 ngày bị xóa, tin 59 ngày còn; đặt lại 90 → tin 61 ngày còn; thân hàm giữ hằng 90 ngày → test đỏ; đổi hạn của `platform.consent_records` trong bảng thử → mốc của bộ xóa Bản ghi đồng ý đổi theo; bộ xóa giữ hằng 5 năm → test đỏ                                                                                                                                                   |
+| CP23 | Thiếu hạn, hay hai hạn hội thoại khác nhau, thì không xóa                               | R5.10            | Xóa dòng `studio.conversations` khỏi bảng thử → `studio.purge_expired_conversations()` báo lỗi, không tin hay hội thoại nào bị xóa; hai dòng hội thoại 90 và 120 → báo lỗi, không dòng nào bị xóa; xóa dòng `platform.consent_records` → bộ xóa Bản ghi đồng ý báo lỗi, không dòng nào bị xóa; hàm dùng hạn mặc định khi thiếu dòng → test đỏ                                                                                                                                  |
 
 ## Tiêu chí xong
 
@@ -383,6 +394,10 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
   `.claude/plans/studio/workflow-triggers/issues/02-data-hub-endpoint-va-ingress.md`, ticket thêm thời hạn của sự
   kiện vào Data Hub), rồi của Danh sách chặn gửi và `studio.conversations` ở ticket 06, bản cuối của chuỗi, sau
   `.claude/plans/studio/agent-builder/issues/04-chat-va-man-chat.md` (DO-52).
+- telemetry-and-audit: bảng `platform.retention_terms`, bộ nạp chạy lúc triển khai và hàm đọc hạn
+  `platform.retention_term_days` mà hai hàm xóa hẹp của ticket 06 gọi (telemetry-and-audit:R5.9,
+  telemetry-and-audit:R5.12; V4.21), đều ở
+  `.claude/plans/studio/telemetry-and-audit/issues/03-lich-su-chay-theo-buoc.md`, ticket mà ticket 06 đã chờ.
 - studio-skeleton: R3.7 đọc thời hạn của mỗi bảng `append_only` (studio-skeleton:R3.7); test phủ offboarding và
   `STUDIO_EXCLUSIONS` cho bảng `platform` (studio-skeleton:R4.3) và cho `studio.version_assessments`
   (studio-skeleton:R4.1).
@@ -394,9 +409,9 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
   sửa tệp chính sách retention đổi thứ tự → ticket 04, 06; tenant-config đổi khóa hay cách xóa
   `studio.artifact_versions` → R4.7, R5.5, ticket 05; agent-lifecycle đổi hình trigger chặn DELETE của nó
   (agent-lifecycle:R7.5) → R5.6, ticket 04; agent-builder đổi quyền của `dw_app`, cột hay FK của hai bảng hội thoại →
-  R5.7, R5.8, ticket 06; luật sư hay Đạt đổi thời hạn hội thoại (DO-52) → một migration sửa thân
-  `studio.purge_expired_conversations()` cùng bản mới của tệp chính sách retention, vì test của R5.9 đỏ tới khi hai
-  bên khớp, ticket 06.
+  R5.7, R5.8, ticket 06; luật sư hay Đạt đổi thời hạn hội thoại hay Bản ghi đồng ý (DO-52) → chỉ một bản mới của
+  tệp chính sách retention mà bộ nạp của telemetry-and-audit nạp lúc triển khai, không migration (V4.21);
+  telemetry-and-audit đổi hình `platform.retention_terms` hay `platform.retention_term_days` → R5.9, R5.10, ticket 06.
 
 ## Câu hỏi còn mở
 
@@ -551,16 +566,22 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
   `platform.purge_tenant_append_only` trên mọi bảng `append_only` của sổ, thay usage-and-limits:R3.8, tiêu chí
   offboarding của chính các bảng usage-and-limits. Sửa: R5.5, Phụ thuộc. Nếu sai thì: R5.5 dẫn lại số tiêu chí mà
   usage-and-limits đặt cho hàm.
-- 24/10/2026 (agent, tạm): `studio.purge_expired_conversations()` không nhận đối số và giữ hạn 90 ngày trong thân
-  hàm, theo tiền lệ `platform.prune_notifications()` ("It takes no argument, so no caller can widen it to recent rows",
-  `db/migrations/versions/855ae928c3fa_platform_in_app_notifications.py:28-29`), nên không bên gọi nào nới hàm tới tin
-  còn hạn; REVOKE ALL FROM PUBLIC rồi EXECUTE cho `dw_app`, vai mà lane lưu giữ của worker dùng, như tiền lệ đó làm.
-  Hạn trong thân hàm là bản sao thứ hai của thời hạn dưới khóa `studio.conversation_messages` và
-  `studio.conversations` của tệp chính sách retention, nên một test ranh giới đỏ khi hai bên khác nhau
-  (`failure-modes.md` #2). Dòng tạm cùng ngày về hội thoại hết hạn ở trên bỏ chữ ký `(p_cutoff timestamptz)` theo
-  dòng này. Sửa: R5.7, thêm R5.9, CP22, Trong phạm vi, Dữ liệu, Phụ thuộc, ticket 06. Nếu sai thì: hàm nhận lại mốc do lane
-  tính từ tệp chính sách retention, kèm một kiểm từ chối mốc muộn hơn thời hạn của tệp, và R5.9, CP22 thành test của
-  kiểm đó.
+- 24/10/2026 (Đạt): V4.21: các thời hạn do luật sư quyết nằm trong bảng `platform.retention_terms` (khóa
+  `schema.table`, hạn), do provisioner nạp từ bản tệp chính sách retention đã ghim lúc triển khai, `dw_app` chỉ đọc,
+  và một test đỏ khi bảng lệch tệp; telemetry-and-audit làm chủ bảng, bộ nạp và test. Mỗi hàm xóa hẹp không nhận đối
+  số và đọc hạn của mình ở bảng đó, nên `studio.purge_expired_conversations()` vẫn không đối số theo tiền lệ
+  `platform.prune_notifications()` (`db/migrations/versions/855ae928c3fa_platform_in_app_notifications.py:28-29`),
+  REVOKE ALL FROM PUBLIC rồi EXECUTE cho `dw_app`, nhưng không còn giữ hạn 90 ngày trong thân: nó đọc hạn dưới hai
+  khóa hội thoại, và bộ xóa Bản ghi đồng ý đọc khóa `platform.consent_records` cùng cách; luật sư đổi số bằng một bản
+  mới của tệp, không bằng migration (ADR-0122 (Accepted) quyết 7; DO-52 (a)). Câu này thay cách giữ hạn trong thân
+  hàm kèm test so thân hàm với tệp mà lượt sửa thứ ba của vòng 4 đã chọn tạm. Sửa: R5, R5.7, R5.9, CP22, Trong phạm
+  vi, Dữ liệu, Phụ thuộc, ticket 06.
+- 24/10/2026 (agent, tạm): V4.21 ở lát này: `studio.purge_expired_conversations()` đọc cả hai khóa hội thoại và báo
+  lỗi, không xóa gì, khi thiếu một dòng hay hai hạn khác nhau, vì hội thoại chỉ bị xóa khi không còn tin, nên một hạn
+  hội thoại khác hạn tin nhắn là lời hứa bộ xóa không giữ được; câu này giữ ý của ca "hai khóa ghi hai thời hạn khác
+  nhau → đỏ" trước đây, nay ở chỗ hàm đọc hạn (`failure-modes.md` #5, #7). Sửa: thêm R5.10, CP23, Dữ liệu, ticket 06.
+  Nếu sai thì: hàm đọc riêng mỗi khóa cho bảng của nó, và `studio.conversations` mang một cột hoạt động cuối để hạn
+  hội thoại tính từ đó.
 
 ## Danh sách ticket
 

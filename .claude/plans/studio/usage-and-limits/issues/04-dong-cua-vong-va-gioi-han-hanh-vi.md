@@ -9,8 +9,10 @@ Yêu cầu: R6.1, R6.2, R6.3, R6.4, UL4
 
 Mọi cửa chạm model đi qua một kiểu có đo đòi lease, không cửa nào vòng qua hạn mức; giới hạn hành vi
 (số bước, lời gọi model, lời gọi công cụ mỗi lượt chạy) là kẹp của giá trị trong phiên bản và Trần của
-gói, dừng sạch ở ranh giới kế tiếp với một dạng từ chối (spec R6). Giới hạn thời gian `max_run_seconds`
-là W2, vì hạn chót bền của workflow-engine là W2.
+gói, dừng sạch ở ranh giới kế tiếp với một dạng từ chối (spec R6). Giới hạn thời gian theo gói (`max_run_seconds`)
+là W2 cùng bên đọc của nó: hạn chót `deadline_at` của W1 là của workflow-engine và dùng trần mặc định 30 ngày khi
+`limits.max_run_seconds` chưa có ở W1, không đọc số nào của gói (workflow-engine:R5.22; V4.14; Ngoài phạm vi của
+spec).
 
 ## Việc cần làm
 
@@ -51,3 +53,7 @@ là W2, vì hạn chót bền của workflow-engine là W2.
   tools-and-skills 08. Cùng helper kiểm soát rồi hạn mức với cửa đóng băng của agent-lifecycle.
 - 2026-10-23 (agent): bỏ `max_run_seconds` khỏi W1 (phát hiện H:usage-and-limits/04~workflow-engine, ghi ở
   Ngoài phạm vi của spec).
+- 2026-10-24 (agent): vòng sửa thứ tư, lượt f, theo V4.14 của Đạt: `deadline_at` có từ W1 ở workflow-engine, với trần
+  mặc định 30 ngày khi `limits.max_run_seconds` chưa có ở W1, nên Mục tiêu đổi lý do: giới hạn thời gian theo gói vẫn
+  là W2 vì không bên nào ở W1 đọc nó, không phải vì hạn chót là W2. Ticket này không đổi việc cần làm và không thêm
+  cạnh.

@@ -122,7 +122,10 @@ retention (một khóa `schema.table` mỗi kho) và các lane lưu giữ; mỗi
 thêm thời hạn của bảng mình vào một bản mới của tệp trong cùng thay đổi, nên studio-skeleton:R3.7 xanh ngay khi
 đăng ký; thời hạn và bộ xóa của sự kiện vào, lần giao kích hoạt và khóa chống trùng do workflow-triggers/02 thêm,
 lane của lát này thi hành (workflow-triggers:R6.3, workflow-triggers:R6.4, workflow-triggers:R6.7); mọi số là số
-tạm UNVERIFIED tới khi luật sư xác nhận trước chạy bóng (ADR-0122 (Accepted) quyết 7; DO-52).
+tạm UNVERIFIED tới khi luật sư xác nhận trước chạy bóng (ADR-0122 (Accepted) quyết 7; DO-52). Lát này cũng là chủ của
+`platform.retention_terms`, bản ở runtime của các thời hạn trong bản tệp đang ghim, mà bộ nạp của lát nạp lúc triển
+khai và mỗi hàm xóa hẹp không đối số đọc hạn của mình ở đó, nên luật sư đổi số bằng một bản mới của tệp, không bằng
+code hay migration (V4.21).
 
 - R5.1 ĐỐI VỚI mỗi kho dữ liệu cá nhân mới (`platform.run_steps`, payload đối tượng, cột payload của lượt
   chạy, Sổ sử dụng, `studio.inbound_events`, `studio.trigger_deliveries`), tệp chính sách retention đang ghim
@@ -138,12 +141,22 @@ tạm UNVERIFIED tới khi luật sư xác nhận trước chạy bóng (ADR-012
 - R5.6 Mỗi thời hạn trong tệp chính sách retention PHẢI nằm dưới khóa `schema.table` của bảng nó canh (kho không
   phải bảng dùng tên kho có tiền tố của nó), nên hai bảng cùng tên ở hai schema không đụng nhau và một khóa không
   khớp bảng nào làm test của tệp đỏ (ADR-0100 (Accepted) quyết 7).
-- R5.7 KHI `output` của một dòng `platform.tool_executions` quá 30 ngày, lane lưu giữ PHẢI xóa trắng cột đó qua
-  một hàm SECURITY DEFINER hẹp chỉ đặt NULL `output`, mà không trả UPDATE trên bảng cho `dw_app`
-  (foundations-hardening:R6.3; ADR-0122 (Accepted) quyết 7).
+- R5.7 KHI `output` của một dòng `platform.tool_executions` quá thời hạn dưới khóa `platform.tool_executions` của
+  `platform.retention_terms` (30 ngày), lane lưu giữ PHẢI xóa trắng cột đó qua một hàm SECURITY DEFINER hẹp không
+  nhận đối số, chỉ đặt NULL `output` và đọc thời hạn ở bảng đó, mà không trả UPDATE trên bảng cho `dw_app`
+  (foundations-hardening:R6.3; ADR-0122 (Accepted) quyết 7; V4.21).
 - R5.8 KHI lane `offboarding` xóa dữ liệu của một công ty đang `offboarding`, lane `offboarding` PHẢI xuất rồi
   xóa mọi dòng `platform.run_steps` của công ty đó qua `platform.purge_tenant_append_only`
   (usage-and-limits:R3.10; YC6).
+- R5.9 KHI một lần triển khai chạy migration, bộ nạp thời hạn PHẢI làm `platform.retention_terms` đúng bằng bản tệp
+  chính sách retention đang ghim trước khi `api` và `worker` khởi động: một dòng cho mỗi khóa có thời hạn theo ngày
+  và `enforced`, mang đúng thời hạn đó, không dòng nào khác (V4.21).
+- R5.10 NẾU `platform.retention_terms` thiếu một khóa, thừa một khóa hay mang một thời hạn khác bản tệp chính sách
+  retention đang ghim, THÌ test lệch bảng PHẢI đỏ và nêu khóa đó (`failure-modes.md` #2).
+- R5.11 NẾU `dw_app` chèn, sửa hay xóa một dòng `platform.retention_terms`, THÌ PostgreSQL PHẢI từ chối với
+  `permission denied` và không đổi dòng nào (V4.21).
+- R5.12 NẾU `platform.retention_terms` không có dòng của khóa mà một hàm xóa hẹp không đối số đọc, THÌ hàm xóa hẹp
+  đó PHẢI báo lỗi và không xóa hay xóa trắng dòng nào (`failure-modes.md` #7).
 
 ## Trong phạm vi
 
@@ -154,7 +167,11 @@ tạm UNVERIFIED tới khi luật sư xác nhận trước chạy bóng (ADR-012
   `platform.run_steps`; đọc Sổ sử dụng cho token và chi phí mỗi Bước chạy; định dạng tệp chính sách retention
   (khóa `schema.table`, R5.6) và các lane lưu giữ; dòng thời hạn của kho lát này tạo hay xóa mà không ticket
   đăng ký nào khác thêm (lớp run, bước, payload, `tool_executions.output`, `usage_daily`; DO-52); hàm SECURITY
-  DEFINER hẹp xóa trắng `platform.tool_executions.output` (R5.7).
+  DEFINER hẹp không đối số xóa trắng `platform.tool_executions.output` (R5.7) và hàm SECURITY DEFINER hẹp không đối
+  số xóa payload của Bước chạy quá hạn (R5.4), cả hai đọc hạn ở `platform.retention_terms`.
+- Bảng `platform.retention_terms`, bộ nạp của nó chạy lúc triển khai dưới vai `dw_provisioner`, hàm đọc hạn
+  `platform.retention_term_days(text)` mà mọi hàm xóa hẹp không đối số gọi, và test lệch bảng (R5.9, R5.10, R5.11,
+  R5.12; V4.21).
 - Khóa quyền `runs.read_payloads` đăng ký ở ticket 03 theo quy ước của tenant-rbac/01.
 - Thêm cột `trace_parent` cho `platform.outbox_events`; CHECK `trace_id` cho `platform.worker_runs` và
   `platform.audit_events`; đăng ký `run_steps` bằng một dòng `platform.time_partitioned_tables`.
@@ -197,9 +214,10 @@ timestamptz`, `duration_ms`, `error_type`; `input_preview` và `result_preview` 
   `dw_app` không UPDATE, DELETE trên cha và không giữ quyền nào trên phân vùng nào, kể cả DEFAULT, nên đọc
   ghi qua bảng cha (DO-02.2); đăng ký bằng một dòng `platform.time_partitioned_tables` (`append_only = true`,
   studio-skeleton:R3.1), ENABLE/FORCE RLS và policy công ty trên cha và DEFAULT; giữ 30 ngày (YC88) dưới khóa
-  `platform.run_steps` mà ticket 03 thêm cùng thay đổi đăng ký: lane lưu giữ xóa payload của bước quá 30 ngày
-  (R5.4), DROP PARTITION khi cả tháng quá 30 ngày (thực tế 30-61 ngày); vì `dw_app` không DELETE, bảng có một
-  dòng `STUDIO_EXCLUSIONS` nêu cách xóa khi offboarding, `platform.purge_tenant_append_only` (R5.8;
+  `platform.run_steps` mà ticket 03 thêm cùng thay đổi đăng ký: lane lưu giữ xóa payload của bước quá 30 ngày qua
+  một hàm SECURITY DEFINER hẹp không đối số đọc hạn dưới khóa đó ở `platform.retention_terms`, vì `dw_app` không
+  UPDATE (R5.4, R5.12), DROP PARTITION khi cả tháng quá 30 ngày (thực tế 30-61 ngày); vì `dw_app` không DELETE,
+  bảng có một dòng `STUDIO_EXCLUSIONS` nêu cách xóa khi offboarding, `platform.purge_tenant_append_only` (R5.8;
   studio-skeleton:R4.3); index `ix_run_steps_run (tenant_id, run_id, seq)`.
 - `platform.outbox_events`: thêm `trace_parent text` CHECK định dạng W3C `traceparent`; dispatcher worker
   tiếp trace từ cột đó.
@@ -208,16 +226,29 @@ timestamptz`, `duration_ms`, `error_type`; `input_preview` và `result_preview` 
   một tệp có phiên bản `configs/policies/retention@<semver>.yaml`; mỗi kho một khóa `schema.table` (kho không phải
   bảng dùng tên có tiền tố, như `objects.run_step_payloads`), mỗi khóa mang thời hạn, bộ xóa (DROP PARTITION qua
   `platform.drop_expired_partitions`, lane xóa dòng, lane xóa đối tượng, xóa trắng cột) và cổng `enforced`; mỗi lần
-  thêm hay đổi một khóa là một bản mới của tệp, ghim trong release manifest, và các ticket sửa tệp đi thành một
-  chuỗi theo `Blocked by`, mỗi ticket ra một bản (mục Phụ thuộc); mọi số UNVERIFIED tới khi luật sư xác nhận trước
-  chạy bóng. Ticket 03 thêm: `run_steps` 30 ngày (lane xóa payload ở ngày 30, DROP PARTITION khi cả tháng quá hạn),
-  payload đối tượng 30 ngày (lane xóa đối tượng), cột payload lượt chạy 90 ngày sau kết thúc (lane xóa), lượt chạy
-  395 ngày sau kết thúc bỏ qua dòng `memory.items` trỏ tới (lane xóa), `platform.tool_executions.output` 30 ngày
+  thêm hay đổi một khóa là một bản mới của tệp, ghim trong release manifest, mà bộ nạp của R5.9 nạp vào
+  `platform.retention_terms` lúc triển khai, và các ticket sửa tệp đi thành một chuỗi theo `Blocked by`, mỗi ticket
+  ra một bản (mục Phụ thuộc); mọi số UNVERIFIED tới khi luật sư xác nhận trước chạy bóng. Ticket 03 thêm: `run_steps`
+  30 ngày (lane xóa payload ở ngày 30, DROP PARTITION khi cả tháng quá hạn), payload đối tượng 30 ngày (lane xóa đối
+  tượng), cột payload lượt chạy 90 ngày sau kết thúc (lane xóa), lượt chạy 395 ngày sau kết thúc bỏ qua dòng
+  `memory.items` trỏ tới (lane xóa), `platform.tool_executions.output` 30 ngày dưới khóa `platform.tool_executions`
   (xóa trắng qua hàm của R5.7), `usage_daily` 760 ngày (lane xóa); bỏ chú thích "model_usage_ledger đã bị bỏ" của
   bản 1.7.0. Thời hạn của bảng mà spec khác tạo do ticket tạo bảng thêm (usage-and-limits/02, usage-and-limits/03,
   agent-lifecycle/04, workflow-triggers/02 với `studio.inbound_events`, `studio.trigger_deliveries` và
   `studio.inbound_dedupe`, compliance-pdpl/04, agent-builder/04), và compliance-pdpl/06 thêm lớp của nó; lát này
   không khai lại số đó.
+- `platform.retention_terms` (V4.21; ADR-0122 (Accepted) quyết 7): bản ở runtime của các thời hạn trong bản tệp
+  chính sách retention đang ghim; bảng của lớp nền tảng, không `tenant_id` nên không RLS, như
+  `platform.time_partitioned_tables` (studio-skeleton:R3.1); `store_key text PRIMARY KEY` (khóa của R5.6),
+  `term_days integer NOT NULL` CHECK `term_days > 0`; một dòng cho mỗi khóa của bản tệp có thời hạn theo ngày và
+  `enforced: true`, nên khóa chưa `enforced` hay khóa không có hạn theo thời gian (`platform.contact_suppressions`)
+  không có dòng. Bộ nạp của ticket 03 ghi bảng lúc triển khai dưới vai `dw_provisioner` (SELECT, INSERT, UPDATE,
+  DELETE), trong một giao dịch thêm, sửa và xóa dòng tới khi bảng đúng bằng bản tệp đang ghim (R5.9); `dw_app` chỉ
+  SELECT, thu lại INSERT, UPDATE và DELETE mà quyền mặc định của schema `platform` cấp (R5.11); không vai nào khác có
+  quyền. `platform.retention_term_days(p_store_key text)` trả `term_days` của khóa và báo lỗi khi không
+  có dòng (R5.12), REVOKE ALL FROM PUBLIC; mọi hàm xóa hẹp không đối số, của lát này (R5.4, R5.7) và của
+  compliance-pdpl/06, gọi nó và đặt mốc bằng `now()` trừ hạn đó. Test lệch bảng so bảng với bản tệp đang ghim
+  (R5.10), nên bản ở runtime không lệch tệp lặng lẽ (`failure-modes.md` #2).
 
 ## API
 
@@ -243,24 +274,27 @@ timestamptz`, `duration_ms`, `error_type`; `input_preview` và `result_preview` 
 
 ## Kiểm soát
 
-| #    | Kiểm soát                                           | Yêu cầu    | Test âm                                                                                                                                                                                                                                                                                                                                                                                                     |
-| ---- | --------------------------------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| TA1  | Span, log, audit không mang nội dung                | R1.2       | Input có số điện thoại → không span, log hay sự kiện Nhật ký kiểm toán nào chứa giá trị đó; bật Ghi nội dung cho công ty A không làm span công ty B mang nội dung                                                                                                                                                                                                                                           |
-| TA2  | Tên phát khớp ảnh đã ghim                           | R1.1       | Đổi một tên span trong `semconv` → test hợp đồng đỏ                                                                                                                                                                                                                                                                                                                                                         |
-| TA3  | Mỗi metric khai có nơi phát                         | R1.3       | Thêm một hằng vào `ALL_METRICS` không có lời gọi phát → test AST đỏ                                                                                                                                                                                                                                                                                                                                         |
-| TA4  | Lịch sử chạy cách ly công ty và bản ghi             | R3.6       | `GET` Bước chạy của lượt chạy công ty B từ A → 404; danh sách `GET /api/v1/runs` không có lượt chạy công ty khác                                                                                                                                                                                                                                                                                            |
-| TA5  | Che theo quyền đọc trường khi đọc payload           | R3.3       | Người không có quyền đọc `phone` → payload trả dấu `Đã ẩn`; gỡ che → test đỏ                                                                                                                                                                                                                                                                                                                                |
-| TA6  | Bí mật không vào Lịch sử chạy                       | R3.2       | Input mang một khóa bí mật → preview không có giá trị, `redaction_log` ghi lý do; gỡ bỏ bí mật → test đỏ                                                                                                                                                                                                                                                                                                    |
-| TA7  | Trace id 32 hex xuyên tiến trình                    | R2.2, R2.3 | Request mang `traceparent` → cùng trace id ở span API, span worker, `platform.worker_runs` và dòng outbox; ghi `trace_id` dạng `api-...` → CHECK từ chối                                                                                                                                                                                                                                                    |
-| TA8  | Log chỉ id                                          | R1.5       | Một dòng log mang giá trị dạng email hay query string → `test_logs_carry_ids_only` đỏ                                                                                                                                                                                                                                                                                                                       |
-| TA9  | Langfuse không nhận user id hay nội dung            | R1.4       | Span processor bỏ `user.id` và `gen_ai.input.messages`; gỡ bỏ → test exporter đỏ                                                                                                                                                                                                                                                                                                                            |
-| TA10 | Mở payload có ghi Nhật ký kiểm toán                 | R3.5       | Mở payload → đúng một sự kiện `run.payload.viewed`; gỡ ghi audit → test đỏ                                                                                                                                                                                                                                                                                                                                  |
-| TA11 | Lưu giữ không xóa lượt chạy sống hay còn tham chiếu | R5.3, R5.5 | Lượt chạy `waiting_approval` 400 ngày còn nguyên; lượt chạy được `memory.items` trỏ tới → bỏ qua, được đếm; sự kiện vào 31 ngày mà một lượt `queued` còn trỏ tới → bỏ qua, được đếm; sự kiện vào 45 ngày đang bị giữ khi Đóng băng → bỏ qua, metric bỏ qua tăng; gỡ điều kiện → test đỏ                                                                                                                     |
-| TA12 | Payload cần `runs.read_payloads`                    | R4.3       | Thiếu `runs.read_payloads` gọi payload → 403, không trả payload; gỡ kiểm → test đỏ                                                                                                                                                                                                                                                                                                                          |
-| TA13 | Mỗi kho mới có bộ xóa đăng ký                       | R5.1, R5.2 | Một lớp retention thiếu bộ xóa → test tập bộ xóa đỏ                                                                                                                                                                                                                                                                                                                                                         |
-| TA14 | Xóa output công cụ không trả UPDATE cho `dw_app`    | R5.7       | Lane chạy qua dòng `tool_executions` 31 ngày → `output` NULL, cột khác giữ nguyên; dòng 29 ngày giữ `output`; `dw_app` UPDATE thẳng → `permission denied`; hàm đặt NULL thêm một cột khác → test đỏ                                                                                                                                                                                                         |
-| TA15 | Mỗi action audit có trong catalog                   | R1.6       | Thêm một lời ghi audit với `action` không có trong `configs/copy/audit_actions@1.0.0.yaml` → test AST đỏ, nêu tên action; một khóa của catalog có nhãn tiếng Việt rỗng → test đỏ                                                                                                                                                                                                                            |
-| TA16 | Nhãn action có một chủ                              | R1.7, R1.8 | Đổi nhãn của `run.started` trong một catalog thử → `GET /api/v1/audit/events` trả nhãn mới trong `action_label` và màn `/audit` hiện nhãn đó; `action` không có khóa trong catalog → `action_label` NULL, màn hiện `Hoạt động hệ thống`, dòng vẫn hiện; giữ lại bảng `ACTIONS` của màn → nhãn mới không hiện, test màn đỏ; bỏ `action_label` khỏi bản zod của `@dw/contracts` → `client.ts` không biên dịch |
+| #    | Kiểm soát                                           | Yêu cầu     | Test âm                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ---- | --------------------------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TA1  | Span, log, audit không mang nội dung                | R1.2        | Input có số điện thoại → không span, log hay sự kiện Nhật ký kiểm toán nào chứa giá trị đó; bật Ghi nội dung cho công ty A không làm span công ty B mang nội dung                                                                                                                                                                                                                                           |
+| TA2  | Tên phát khớp ảnh đã ghim                           | R1.1        | Đổi một tên span trong `semconv` → test hợp đồng đỏ                                                                                                                                                                                                                                                                                                                                                         |
+| TA3  | Mỗi metric khai có nơi phát                         | R1.3        | Thêm một hằng vào `ALL_METRICS` không có lời gọi phát → test AST đỏ                                                                                                                                                                                                                                                                                                                                         |
+| TA4  | Lịch sử chạy cách ly công ty và bản ghi             | R3.6        | `GET` Bước chạy của lượt chạy công ty B từ A → 404; danh sách `GET /api/v1/runs` không có lượt chạy công ty khác                                                                                                                                                                                                                                                                                            |
+| TA5  | Che theo quyền đọc trường khi đọc payload           | R3.3        | Người không có quyền đọc `phone` → payload trả dấu `Đã ẩn`; gỡ che → test đỏ                                                                                                                                                                                                                                                                                                                                |
+| TA6  | Bí mật không vào Lịch sử chạy                       | R3.2        | Input mang một khóa bí mật → preview không có giá trị, `redaction_log` ghi lý do; gỡ bỏ bí mật → test đỏ                                                                                                                                                                                                                                                                                                    |
+| TA7  | Trace id 32 hex xuyên tiến trình                    | R2.2, R2.3  | Request mang `traceparent` → cùng trace id ở span API, span worker, `platform.worker_runs` và dòng outbox; ghi `trace_id` dạng `api-...` → CHECK từ chối                                                                                                                                                                                                                                                    |
+| TA8  | Log chỉ id                                          | R1.5        | Một dòng log mang giá trị dạng email hay query string → `test_logs_carry_ids_only` đỏ                                                                                                                                                                                                                                                                                                                       |
+| TA9  | Langfuse không nhận user id hay nội dung            | R1.4        | Span processor bỏ `user.id` và `gen_ai.input.messages`; gỡ bỏ → test exporter đỏ                                                                                                                                                                                                                                                                                                                            |
+| TA10 | Mở payload có ghi Nhật ký kiểm toán                 | R3.5        | Mở payload → đúng một sự kiện `run.payload.viewed`; gỡ ghi audit → test đỏ                                                                                                                                                                                                                                                                                                                                  |
+| TA11 | Lưu giữ không xóa lượt chạy sống hay còn tham chiếu | R5.3, R5.5  | Lượt chạy `waiting_approval` 400 ngày còn nguyên; lượt chạy được `memory.items` trỏ tới → bỏ qua, được đếm; sự kiện vào 31 ngày mà một lượt `queued` còn trỏ tới → bỏ qua, được đếm; sự kiện vào 45 ngày đang bị giữ khi Đóng băng → bỏ qua, metric bỏ qua tăng; gỡ điều kiện → test đỏ                                                                                                                     |
+| TA12 | Payload cần `runs.read_payloads`                    | R4.3        | Thiếu `runs.read_payloads` gọi payload → 403, không trả payload; gỡ kiểm → test đỏ                                                                                                                                                                                                                                                                                                                          |
+| TA13 | Mỗi kho mới có bộ xóa đăng ký                       | R5.1, R5.2  | Một lớp retention thiếu bộ xóa → test tập bộ xóa đỏ                                                                                                                                                                                                                                                                                                                                                         |
+| TA14 | Xóa output công cụ không trả UPDATE cho `dw_app`    | R5.7        | Lane chạy qua dòng `tool_executions` 31 ngày → `output` NULL, cột khác giữ nguyên; dòng 29 ngày giữ `output`; `dw_app` UPDATE thẳng → `permission denied`; hàm đặt NULL thêm một cột khác → test đỏ; hạ dòng `platform.tool_executions` của `platform.retention_terms` còn 20 ngày trong bảng thử → dòng 21 ngày bị xóa trắng; hàm giữ hằng 30 ngày hay nhận mốc làm đối số → test đỏ                       |
+| TA15 | Mỗi action audit có trong catalog                   | R1.6        | Thêm một lời ghi audit với `action` không có trong `configs/copy/audit_actions@1.0.0.yaml` → test AST đỏ, nêu tên action; một khóa của catalog có nhãn tiếng Việt rỗng → test đỏ                                                                                                                                                                                                                            |
+| TA16 | Nhãn action có một chủ                              | R1.7, R1.8  | Đổi nhãn của `run.started` trong một catalog thử → `GET /api/v1/audit/events` trả nhãn mới trong `action_label` và màn `/audit` hiện nhãn đó; `action` không có khóa trong catalog → `action_label` NULL, màn hiện `Hoạt động hệ thống`, dòng vẫn hiện; giữ lại bảng `ACTIONS` của màn → nhãn mới không hiện, test màn đỏ; bỏ `action_label` khỏi bản zod của `@dw/contracts` → `client.ts` không biên dịch |
+| TA17 | Bảng thời hạn khớp tệp đã ghim                      | R5.9, R5.10 | Bộ nạp chạy trên tệp thử A rồi tệp thử B (một hạn đổi, một khóa bỏ, một khóa thêm, một khóa `enforced: false`) → bảng đúng bằng B, không dòng của khóa bỏ hay khóa chưa `enforced`; bộ nạp bỏ bước xóa dòng → test đỏ; sửa tay hạn một dòng, chèn một khóa thừa hay xóa một dòng → test lệch bảng đỏ, nêu khóa; bỏ bộ nạp khỏi job `migrate`, hay `api`, `worker` không chờ job đó → kiểm compose đỏ        |
+| TA18 | `dw_app` không ghi bảng thời hạn                    | R5.11       | `dw_app` INSERT, UPDATE, DELETE trên `platform.retention_terms` → `permission denied`, bảng không đổi; `test_privileges.py` khẳng định `dw_app` chỉ SELECT, `dw_provisioner` SELECT, INSERT, UPDATE, DELETE; để lại quyền mặc định của schema cho `dw_app` → test đỏ                                                                                                                                        |
+| TA19 | Thiếu hạn thì hàm xóa hẹp không xóa                 | R5.12       | Xóa dòng `platform.tool_executions` khỏi bảng thử → hàm xóa trắng `output` báo lỗi, không dòng nào đổi; xóa dòng `platform.run_steps` → hàm xóa payload bước báo lỗi, không payload nào mất; `platform.retention_term_days` trả hạn mặc định hay NULL khi thiếu dòng → test đỏ                                                                                                                              |
 
 ## Tiêu chí xong
 
@@ -309,13 +343,20 @@ timestamptz`, `duration_ms`, `error_type`; `input_preview` và `result_preview` 
   `.claude/plans/studio/compliance-pdpl/issues/06-lop-luu-giu-du-lieu-ca-nhan.md` với hội thoại và Danh sách chặn
   gửi (DO-52; V4.P1). studio-skeleton/01 không thuộc chuỗi vì không sửa tệp: nó dựng hàm tra theo khóa
   `schema.table` và đọc `retention@1.7.0` qua ánh xạ tạm.
+- Bộ nạp của R5.9: vai `dw_provisioner` (`scripts/create_provisioner_role.py`), cấp quyền theo từng bảng, và job một
+  lần `migrate` của compose mà `api` và `worker` chờ với `service_completed_successfully`; bộ nạp chạy trong job đó
+  ngay sau `alembic upgrade head` và đọc bản tệp đang ghim qua mô hình `dw_platform.retention_policy` (V4.21).
 - Kiểm lại khi: hợp đồng `StepRecorderPort` hay bộ bọc node của workflow-engine đổi → R3; hàm quyền đọc
   trường của field-security đổi → R3.3; ADR-0122 (Accepted) bị Đạt bác → toàn lát; workflow-triggers đổi bảng
   sự kiện vào hay cách giữ sự kiện khi Đóng băng → R5.1, R5.5; luật sư đổi số thời hạn → một bản mới của tệp
-  chính sách retention, không đổi tiêu chí; usage-and-limits đổi hai hàm của sổ → R5.8, ticket 03; một ticket mới
-  sửa tệp chính sách retention, hay chuỗi các ticket sửa tệp đổi thứ tự → mục Phụ thuộc, ticket 03; workflow-engine
-  bỏ hay dời trigger trên `platform.worker_runs` → ticket 02; một ticket khác sửa `GET /api/v1/audit/events` hay màn
-  `/audit` → R1.7, R1.8, ticket 03.
+  chính sách retention mà bộ nạp nạp lúc triển khai, không đổi tiêu chí, không migration (V4.21); usage-and-limits
+  đổi hai hàm của sổ → R5.8, ticket 03; một ticket mới sửa tệp chính sách retention, hay chuỗi các ticket sửa tệp đổi
+  thứ tự → mục Phụ thuộc, ticket 03; workflow-engine bỏ hay dời trigger trên `platform.worker_runs` → ticket 02; một
+  ticket khác sửa `GET /api/v1/audit/events` hay màn `/audit` → R1.7, R1.8, ticket 03; một spec thêm một hàm xóa
+  hẹp không đối số → R5.12, và hàm đó đọc hạn qua `platform.retention_term_days`; lát này đổi hình
+  `platform.retention_terms`, hàm đọc hạn hay bộ nạp → compliance-pdpl:R5.9, compliance-pdpl:R5.10, ticket 03 và
+  `.claude/plans/studio/compliance-pdpl/issues/06-lop-luu-giu-du-lieu-ca-nhan.md`; vai `dw_provisioner` hay job
+  `migrate` đổi → R5.9, ticket 03.
 
 ## Câu hỏi còn mở
 
@@ -409,6 +450,21 @@ timestamptz`, `duration_ms`, `error_type`; `input_preview` và `result_preview` 
   tới màn. Sửa: Hiện trạng, thêm R1.7, R1.8, TA16, Trong phạm vi, API, Màn hình, Phụ thuộc, ticket 03. Nếu sai thì:
   màn đọc catalog qua một route riêng (ví dụ `GET /api/v1/audit/actions`) và ghép nhãn theo `action`, R1.7, R1.8 và
   TA16 đổi theo route đó; catalog vẫn là chủ duy nhất của nhãn.
+- 24/10/2026 (Đạt): V4.21: các thời hạn do luật sư quyết nằm trong bảng `platform.retention_terms` (khóa
+  `schema.table`, hạn), do provisioner nạp từ bản tệp chính sách retention đã ghim lúc triển khai, `dw_app` chỉ đọc;
+  mỗi hàm xóa hẹp (hội thoại của compliance-pdpl/06, xóa `output` công cụ) không nhận đối số và đọc hạn của mình ở
+  bảng đó; một test đỏ khi bảng lệch tệp đã ghim; luật sư vẫn đổi số bằng một bản mới của tệp, không bằng code
+  (ADR-0122 (Accepted) quyết 7; DO-52 (a)); lát này làm chủ bảng, bộ nạp và test. Sửa: R5, R5.7, thêm R5.9, R5.10,
+  R5.11, R5.12, TA14, thêm TA17, TA18, TA19, Trong phạm vi, Dữ liệu, Phụ thuộc, ticket 03.
+- 24/10/2026 (agent, tạm): V4.21 ở lát này: bảng mang một dòng cho mỗi khóa của bản tệp đang ghim có thời hạn theo
+  ngày và `enforced: true`, nên hàm xóa hẹp của một khóa chưa `enforced` báo lỗi thay vì xóa trước khi cổng mở; mọi
+  hàm xóa hẹp không đối số, kể cả hàm xóa payload của Bước chạy (R5.4), đọc hạn qua một hàm
+  `platform.retention_term_days(text)` báo lỗi khi thiếu dòng, một chủ cho cách đọc (`failure-modes.md` #7); bộ nạp
+  chạy dưới vai `dw_provisioner` trong job `migrate` của compose ngay sau `alembic upgrade head`, nên `api` và
+  `worker`, vốn chờ job đó, khởi động sau khi bảng khớp tệp; bộ nạp và worker đọc cùng một hằng ghim bản tệp
+  (`failure-modes.md` #2). Sửa: R5.9, R5.12, TA17, TA19, Dữ liệu, Phụ thuộc, ticket 03. Nếu sai thì: bảng mang mọi
+  khóa có hạn kèm cột `enforced` mà hàm xóa hẹp tự kiểm, mỗi hàm tự đọc dòng của mình, hay bộ nạp chạy ở một job
+  compose riêng theo luật dịch vụ mới của studio-skeleton (studio-skeleton:R8.2 tới studio-skeleton:R8.7).
 
 ## Danh sách ticket
 

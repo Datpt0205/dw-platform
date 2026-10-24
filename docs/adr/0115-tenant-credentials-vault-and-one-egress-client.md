@@ -41,7 +41,12 @@ platform's vault and are injected per call into the model proxy) and D14 (the pr
    `secret_version integer NOT NULL`, numbered per subject and field, which rises when the secret's value changes and
    never on a rewrap; a run manifest pins one for each connection and field it uses (ADR-0109 decision 6), and a row
    is unique per tenant, subject, field and secret version, so a rotation with an overlap, such as a signing secret's
-   24 hours, holds two versions side by side. The
+   24 hours, holds two versions side by side. Writing a secret anew sets `revoked_at` on its previous versions in the
+   same transaction: at once for a connection's field, and 24 hours later for an inbound endpoint's `signing_secret`,
+   which is accepted until then. A run whose manifest pinned a version past its `revoked_at`, or one whose row is
+   gone, stops at its next use with `credential_revoked` (closed while missing), and the `credential_purge` lane
+   deletes such versions once no unfinished run pins them; `connection_usable` reads the same column for a run's
+   pinned versions (decision 2). The
    AAD, `dw.secret.v1|<tenant_id>|<owning_workspace_id>|<subject_kind>:<subject_id>|<field>|<secret_version>` (the
    subject kind being its FK column's name without `_id`, such as `connection` or `inbound_endpoint`), binds tenant,
    owning workspace, subject, field and the version of the secret, unchanged by rewrap: a rewrap wraps only the data
@@ -49,22 +54,22 @@ platform's vault and are injected per call into the model proxy) and D14 (the pr
    version or subject fails the tag check. Because the AAD binds the owning workspace, a trigger refuses an UPDATE of
    `owning_workspace_id` on `platform.connections` and on every row of `studio.artifacts`, from which a subject that
    belongs to an artifact, such as an inbound endpoint, takes its owning workspace, so a change of owner, if one is
-   ever offered, encrypts the subject's envelopes again. The key is chosen from the
-   run's or access context's tenant, never from the row. `dw_app` holds no privilege on the table: four SECURITY
-   DEFINER functions (`platform.put_secret`, `platform.open_secret`, `platform.secret_status`,
-   `platform.delete_secret`), each narrowing by `app.tenant_id`, are
-   the one database door, and only the credential broker decrypts. A secret never enters graph state, tool arguments,
-   checkpoints, traces, logs or audit, and the API never returns one (write-only fields; a signing secret the platform
-   generates is shown once). Each subject is one nullable composite FK `(tenant_id, <subject>_id)` to its table's
-   `UNIQUE (tenant_id, id)` (for `connection_id`, `uq_connections_tenant_id_id`, which `platform.connections` gains for
-   it), `ON DELETE CASCADE` because an envelope is a child row of its subject, and indexed, since a foreign key check
-   does not pass through RLS; a new subject (OAuth client, outbound webhook endpoint, inbound endpoint, MCP server
-   registration, model connection) adds one such key and widens the `num_nonnulls(...) = 1` CHECK. An unreachable KMS
-   fails the call with `kms_unavailable`; nothing falls back to plaintext or to a Valkey cache. A tenant key rotates
-   every 90 days (`rewrap`), and tenant-supplied keys (BYOK) come after v1. Offboarding destroys the tenant key
-   (crypto-shredding). The shredding takes effect once the oldest key-store backup that still holds the key has
-   expired, since an older OpenBao backup could still decrypt an older database backup: the key store's backups are
-   kept under a written term no longer than the data backups', and the restore drill checks both.
+   ever offered, encrypts the subject's envelopes again. The key is chosen from the run's or access context's tenant,
+   never from the row. `dw_app` holds no privilege on the table: four SECURITY DEFINER functions
+   (`platform.put_secret`, `platform.open_secret`, `platform.secret_status`, `platform.delete_secret`), each narrowing
+   by `app.tenant_id`, and the `credential_purge` lane's `platform.purge_retired_secrets()`, which takes no argument,
+   are the one database door, and only the credential broker decrypts. A secret never enters graph state, tool
+   arguments, checkpoints, traces, logs or audit, and the API never returns one (write-only fields; a signing secret
+   the platform generates is shown once). Each subject is one nullable composite FK `(tenant_id, <subject>_id)` to its
+   table's `UNIQUE (tenant_id, id)` (for `connection_id`, `uq_connections_tenant_id_id`, which `platform.connections`
+   gains for it), `ON DELETE CASCADE` because an envelope is a child row of its subject, and indexed, since a foreign
+   key check does not pass through RLS; a new subject (OAuth client, outbound webhook endpoint, inbound endpoint, MCP
+   server registration, model connection) adds one such key and widens the `num_nonnulls(...) = 1` CHECK. An
+   unreachable KMS fails the call with `kms_unavailable`; nothing falls back to plaintext or to a Valkey cache. A
+   tenant key rotates every 90 days (`rewrap`), and tenant-supplied keys (BYOK) come after v1. Offboarding destroys
+   the tenant key (crypto-shredding). The shredding takes effect once the oldest key-store backup that still holds the
+   key has expired, since an older OpenBao backup could still decrypt an older database backup: the key store's
+   backups are kept under a written term no longer than the data backups', and the restore drill checks both.
 2. **Connections and the one rule.** `platform.connections` holds one authorized link to one external account, owned
    by a workspace (`share_scope` `owner`, `workspace` or `workspace_subtree`) or, from v1, by one user. RLS is
    tenant-only, because reach crosses the workspaces of a tenant by design (D1), and the table is listed as tenant-wide
@@ -73,11 +78,12 @@ platform's vault and are injected per call into the model proxy) and D14 (the pr
    the request opens a strict run-less approval `connections.enable`, stamped `required_scope = connections.manage`
    (ADR-0004), and only its `.decided` handler moves the connection from `disabled` to `active`, auditing the decider
    with the lane in `details.lane` (ADR-0011; D11, closing with one person and opening with two).
-   `connection_usable(connection, context, purpose)`, one function in the platform's connections application layer,
-   is the single answer to "may this run use this connection now": same tenant, `status = 'active'`, the run's
-   workspace equal to the owning one or inside its sub-tree under `workspace_subtree`, `connections.use` held there,
-   and for a personal connection the owner acting or a delegation covering the run's definition. It is asked when a
-   binding value is approved (ADR-0110), at run admission and before every egress call.
+   `connection_usable(connection, context, purpose)`, one function in the platform's connections application layer, is
+   the single answer to "may this run use this connection now": same tenant, `status = 'active'`, the run's workspace
+   equal to the owning one or inside its sub-tree under `workspace_subtree`, `connections.use` held there, for a
+   personal connection the owner acting or a delegation covering the run's definition, and, before a run's egress
+   call, every `secret_version` its manifest pins for the connection still present and not revoked (decision 1). It is
+   asked when a binding value is approved (ADR-0110), at run admission and before every egress call.
 3. **Personal connections.** A personal connection acts in a background run only through a revocable delegation
    (`platform.connection_delegations`: one workflow or agent, granted by the owner, expiring at most 365 days after
    the grant, its effective state derived by one function). P1 ships workspace-shared connections only, so no
@@ -168,7 +174,9 @@ platform's vault and are injected per call into the model proxy) and D14 (the pr
   agent against a mock provider that echoes the `Authorization` header and the key, then finding no secret in
   checkpoint blobs, `platform.tool_executions`, `platform.audit_events`, spans or logs; the address policy over
   mapped, 6to4, Teredo and NAT64 forms; a DNS answer changed after the check still reaching only the pinned address; a
-  replayed `state` doing nothing; the OAuth client never resolved sideways (mirroring `test_tenant_overlay.py`).
+  replayed `state` doing nothing; the OAuth client never resolved sideways (mirroring `test_tenant_overlay.py`); a run
+  whose pinned secret version is revoked, or gone, stopping at its next use with `credential_revoked`; an inbound
+  endpoint's previous signing secret refused once 24 hours have passed since its rotation.
 - Harder: an extra hop per call, a Go image to maintain, an unseal after every OpenBao restart; an operator endpoint on
   CGNAT space (`100.64.0.0/10`) is refused after the change unless allow-listed.
 - The existing outbound URL check folds into the one address policy, so startup checks and the egress client cannot
@@ -248,3 +256,14 @@ Amended on 2026-10-24 by the requester and Đạt, who scoped the remaining D11 
   row of `studio.artifacts`, which gives a subject belonging to an artifact, such as an inbound endpoint, its owning
   workspace, so that a change of owner encrypts the subject's envelopes again (if it is wrong, the AAD drops the
   owning workspace and a subject may change owner without touching its envelopes).
+- Third consistency check (round 4), sixth pass, Đạt's V4.20 and the planner's provisional call: decision 1 ends a
+  secret version's life with `revoked_at`, set when the secret is written anew, at once for a connection's field and
+  24 hours later for an inbound endpoint's signing secret, a run that pinned a revoked or missing version stopping at
+  its next use with `credential_revoked`, closed while missing, and the `credential_purge` lane deleting revoked
+  versions through a fifth definer function once no unfinished run pins them; decision 2's `connection_usable` reads
+  that column for a run's pinned versions, a branch that had no source until now, and Consequences name the tests of
+  both. One column for both cases, which `platform.put_secret` sets 24 hours ahead for a signing secret, and the fifth
+  function are the planner's call, as connections-and-vault states it (if it is wrong, a signing secret keeps
+  `revoked_at` NULL and its 24 hours count from the new version's `created_at` in one function that the signature
+  verifier and the lane both call, or the lane deletes through `platform.delete_secret` tenant by tenant and the
+  database door keeps its four functions).

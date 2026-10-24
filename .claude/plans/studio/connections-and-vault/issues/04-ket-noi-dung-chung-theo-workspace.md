@@ -3,13 +3,14 @@
 Status: needs-triage
 Blocked by: 02, 03, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md, .claude/plans/studio/studio-skeleton/issues/03-seam-web-va-allowlist-antd.md
 Area: studio
-Yêu cầu: R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R5.8, R5.9, R5.10, R5.11, R5.12, R5.13, R5.14, CV12, CV13, CV14, CV15, CV21
+Yêu cầu: R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R5.8, R5.9, R5.10, R5.11, R5.12, R5.13, R5.14, R5.15, CV12, CV13, CV14, CV15, CV21, CV24
 
 ## Mục tiêu
 
 Quản trị viên thêm, kiểm, tắt và thu hồi Kết nối dùng chung của một workspace trên trang Kết nối; một
 quy tắc `connection_usable` quyết mọi lượt dùng ở phát hành, lúc nhận lượt chạy và trước mỗi lời gọi ra
-ngoài; tắt hay thu hồi có hiệu lực trước lần gọi kế tiếp; và bí mật không bao giờ trả về (spec R5). Gộp
+ngoài; tắt hay thu hồi có hiệu lực trước lần gọi kế tiếp, và thay bí mật dừng lượt đã ghim phiên bản cũ ở lần dùng
+kế tiếp (spec R5.15; V4.20); và bí mật không bao giờ trả về (spec R5). Gộp
 từ B8a-connections connections-and-vault 07. P1 chỉ kết nối dùng chung theo workspace (DO-48).
 
 ## Việc cần làm
@@ -26,9 +27,10 @@ từ B8a-connections connections-and-vault 07. P1 chỉ kết nối dùng chung 
    Connection status không `active`, khi Phạm vi dùng chung `workspace` không phủ workspace của lượt chạy, khi
    chủ thể không giữ `connections.use` ở workspace đó (qua `platform.effective_grants` của tenant-rbac/02;
    ADR-0115 (Accepted) quyết 2), hay, trước lời gọi egress của một lượt chạy, khi một `secret_version` trong
-   `pinned_secret_versions` không còn dòng trong `platform.secret_envelopes`, tức phiên bản bí mật đã thu hồi,
-   đọc qua `platform.secret_status` của ticket 02; dùng ở ba chỗ (duyệt giá trị Điểm gắn với người đề xuất, nhận
-   lượt chạy, trước mỗi lời gọi egress).
+   `pinned_secret_versions` đã thu hồi (`revoked_at <= now()`, mà ticket 02 ghi khi bí mật được thay) hay không còn
+   dòng nào trong `platform.secret_envelopes` (đóng khi thiếu), đọc qua `platform.secret_status` của ticket 02, với
+   lý do `credential_revoked` mà Bộ gọi ra ngoài trả khi từ chối, không gửi byte nào và không thử lại (spec R5.15;
+   V4.20); dùng ở ba chỗ (duyệt giá trị Điểm gắn với người đề xuất, nhận lượt chạy, trước mỗi lời gọi egress).
 3. `ConnectionDependentsPort` khai ở đây, cho "Được dùng bởi" và chặn xóa. Bên đáp ứng là tenant-config
    (đọc `studio.dependencies` cộng giá trị Bộ giá trị gắn đã duyệt trong `platform.config_versions`);
    workflow-engine và agent-builder không cài nó (tenant-config:R3.7). tenant-config/05 chờ ticket này, nên R5.8 ở đây kiểm qua
@@ -100,14 +102,20 @@ từ B8a-connections connections-and-vault 07. P1 chỉ kết nối dùng chung 
       duyệt → test đỏ.
 - [ ] R5.14 (CV14): kết nối `active`, chủ thể giữ `connections.use` ở workspace của lượt chạy: `purpose='tool'` →
       true; `purpose='model'` hay một chuỗi lạ → false; gỡ kiểm `purpose` → test đỏ.
+- [ ] R5.15 (CV24): một lượt chạy có `pinned_secret_versions` ghim phiên bản 1 của `api_key`, rồi quản trị viên lưu
+      giá trị mới → `connection_usable` trả false với lý do `credential_revoked` trước lời gọi ra ngoài kế tiếp của
+      lượt, Bộ gọi ra ngoài trả `credential_revoked`, mock nhà cung cấp không nhận gì; xóa dòng phiên bản 1 qua
+      `platform.delete_secret` → vẫn `credential_revoked`; một lượt mới ghim phiên bản 2 → qua; gỡ nhánh thu hồi khỏi
+      `connection_usable` → hàm trả true cho lượt cũ, test đỏ (hỏi thẳng hàm, vì `platform.open_secret` của ticket 02
+      vẫn chặn lời gọi ở lớp sau, failure-modes #5).
 - [ ] Xong: `make ci && make test-integration` xanh.
 
 ## Nguồn
 
 - `packages/python/dw_platform/src/dw_platform/adapters/persistence/scope_holders.py:77`; spec: R5.1
   (quyền theo độ sâu).
-- spec: R5, CV12-CV15; ADR-0115 (Accepted) quyết 2; ticket 02 (`platform.connections`,
-  `platform.put_secret`), ticket 03 (Bộ gọi ra ngoài).
+- spec: R5, CV12-CV15, CV24; ADR-0115 (Accepted) quyết 2; ticket 02 (`platform.connections`,
+  `platform.put_secret`, `revoked_at`, `platform.secret_status`), ticket 03 (Bộ gọi ra ngoài).
 
 ## Comments
 
@@ -135,3 +143,7 @@ từ B8a-connections connections-and-vault 07. P1 chỉ kết nối dùng chung 
   bản kê ghim một `secret_version` cho mỗi (kết nối, trường), vì phiên bản đếm theo (chủ thể, trường)
   (tenant-config:R7.4) (bước 2); `PATCH` không nhận `owning_workspace_id`, cột mà ticket 02 giữ không đổi (bước
   4).
+- 2026-10-24 (agent): vòng sửa thứ tư, lượt f: theo V4.20 (Đạt), nhánh thu hồi của `connection_usable` nay có nguồn:
+  thay bí mật của một Kết nối ghi `revoked_at` cho phiên bản cũ (ticket 02), và một `secret_version` đã ghim mà đã
+  thu hồi hay không còn dòng nào làm hàm trả false với lý do `credential_revoked` trước lời gọi ra ngoài kế tiếp của
+  lượt (bước 2; spec R5.15, CV24), thay câu cũ gọi phiên bản đã thu hồi là phiên bản không còn dòng.

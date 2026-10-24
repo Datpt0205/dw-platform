@@ -151,7 +151,7 @@ DO-45); các dòng dưới đã theo bản chốt, và mỗi quyết định có
 - DO-26: W1 chỉ mở chế độ Mô phỏng; `test` trả 422 tới W2, khi có Danh sách người nhận thử; từ W1 lời gọi ra ngoài của mọi chế độ khác `live` bị chặn; tên `test` giữ; vùng tạm theo lượt chạy ở v1.5. ADR 0111; spec `workflow-triggers`, `tenant-config`.
 - DO-28 (phương án C): đóng băng tách theo loại lượt như hạn mức: lượt tương tác bị từ chối ngay với `tenant_frozen`, lượt do trình kích hoạt giữ `queued` như sự kiện đã giữ và chạy theo thứ tự sau khi gỡ; tắt khẩn cấp vẫn hủy lượt đang chờ. ADR 0113, 0120.
 - DO-30: phiên bản quy trình con và bước agent ghim lúc gửi kiểm định; lệch cấu hình đề xuất cập nhật. ADR 0109, 0112, 0117.
-- DO-31: phê duyệt hết hạn làm lượt chạy thất bại với `approval_expired`; không gì tự duyệt khi hết giờ; hết hạn đến ở W2 cùng YC52 và lane hẹn giờ, W1 phê duyệt chờ không hạn. ADR 0112.
+- DO-31: phê duyệt hết hạn làm lượt chạy thất bại với `approval_expired`; không gì tự duyệt khi hết giờ; hết hạn đến ở W2 cùng YC52 và lane hẹn giờ; ở W1 phê duyệt của Bước phê duyệt không có hạn riêng, nhưng hạn chót của lượt chạy (mặc định 30 ngày, có từ W1 theo V4.14 ngày 24/10/2026) kết thúc lượt với `deadline_exceeded` và hủy phê duyệt đang mở cùng nó. ADR 0112, 0113.
 - DO-36: người duyệt phải đọc được các trường phê duyệt hiển thị; ứng viên duyệt theo mức truy cập của vai trò. ADR 0106.
 - DO-37: điều kiện để lưu được nghĩa là "phải đúng", viết bằng CEL với vector thử port từ si-platform. ADR 0107, 0114.
 - DO-39: link nhận lời mời do quản trị viên chép; MFA cho người vận hành, nhân viên hỗ trợ và người giữ quyền trọng yếu; sự kiện nhận trả 503 khi công ty bị khóa; người chịu trách nhiệm rời đi thì chặn phát hành, phiên bản đang dùng vẫn chạy. ADR 0102, 0113.

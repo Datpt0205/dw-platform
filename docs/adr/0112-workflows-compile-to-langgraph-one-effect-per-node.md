@@ -73,7 +73,7 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
    manifest (`CLAUDE.md`, Non-negotiable architecture), so a key without the hash would hand a new simulation the
    graph of older content. LangGraph is imported only in the runtime's adapters.
 5. **A platform node wrapper, not LangGraph, owns retry, timeout, `on_error` and the one effect.** At start it asks
-   `RunControlPort.require_open` (ADR-0120) and, from W2, checks cancellation and the deadline (ADR-0113 decision 3);
+   `RunControlPort.require_open` (ADR-0120), checks the run's deadline and, from W2, cancellation (ADR-0113 decision 3);
    it resolves inputs by CEL, runs each attempt under `asyncio.timeout`, retries with backoff (each attempt a run
    step), then applies `on_error`: `fail` raises, `continue` writes `{status: "error", error}` to the node's channel,
    `route` also takes the `error` port. An effect node calls its door once per attempt with the idempotency key
@@ -103,12 +103,12 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
    `required_scope` is mandatory (ADR-0004); assignees (users, teams or a CEL expression) only narrow it; candidates
    come from `effective_grants` (ADR-0104), never a copy; none left is `no_approver`, and publish refuses a version
    whose permission only the run-as principal holds. Expiry never approves: from W2, with YC52's deadlines and the
-   timer lane, the run follows an `expired` edge or fails with `approval_expired`; in W1 an approval waits with no
-   deadline, so nothing is sent until someone decides. The approved node's arguments are rendered when the approval
-   opens, stored with `subject_hash`, shown raw and executed exactly (`subject_changed` otherwise). Tasks reach people
-   through a `/studio/tasks` inbox (`POST /api/v1/studio/tasks/{id}/submit`, a sub-resource as ADR-0108 spells
-   custom methods, with If-Match and Idempotency-Key); a submission or decision resolves the wait and re-queues the
-   run (ADR-0113).
+   timer lane, the run follows an `expired` edge or fails with `approval_expired`; in W1 an approval has no deadline
+   of its own, so nothing is sent until someone decides, and the run's deadline (ADR-0113 decision 3) ends a run still
+   waiting, the approval cancelled with it. The approved node's arguments are rendered when the approval opens, stored
+   with `subject_hash`, shown raw and executed exactly (`subject_changed` otherwise). Tasks reach people through a
+   `/studio/tasks` inbox (`POST /api/v1/studio/tasks/{id}/submit`, a sub-resource as ADR-0108 spells custom methods,
+   with If-Match and Idempotency-Key); a submission or decision resolves the wait and re-queues the run (ADR-0113).
 8. **AI nodes validate on the server.** `ai.llm` gets its model per call from the `ModelResolver`; its structured
    output is validated against the tenant's JSON Schema (ADR-0116's profile, at most 32 KiB and depth 5,
    `additionalProperties: false` forced) by the platform validator, with one repair attempt, then `output_invalid`.
@@ -231,3 +231,7 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
   `definition_hash` or a draft's provisional hash, as workflow-engine R4.2 does, because a draft keeps its id while
   it is edited and a run resolves only from its manifest (if it is wrong, the key keeps the version id alone and
   every draft save evicts that draft's graph).
+- Third consistency check (round 4), sixth pass, Đạt's V4.14: decision 5 checks the run's deadline from W1 and
+  cancellation from W2, since ADR-0113 decision 3 now ships `deadline_at` in W1 and keeps only the cancel route in W2,
+  which replaces the first round-4 line above that placed both in W2; decision 7 adds that in W1 the run's deadline
+  ends a run still waiting on an approval, which has no expiry of its own until W2 (DO-31).

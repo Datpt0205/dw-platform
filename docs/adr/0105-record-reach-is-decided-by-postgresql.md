@@ -50,7 +50,9 @@ and D12 (the scale target), and on the call on DO-11, decided 2026-10-23.
    closure arrays as `(SELECT f())::uuid[]` (InitPlan form), through STABLE SECURITY INVOKER SQL functions with a fixed
    `search_path` that read only the caller's closure row and return an empty array when anything is missing. `dw_app`
    holds no privilege on a partition. Per-transaction settings: `app.tenant_id`, `app.user_id`, `app.workspace_scope`,
-   and new `app.actor_kind` (`user`, `agent`, `workflow`) and `app.boundary_id`; an unknown actor kind reaches nothing.
+   and new `app.actor_kind` (`user`, `agent`, `workflow`), `app.boundary_id` and `app.run_mode`, the run's mode, which
+   only a provisional boundary reads (decision 6) and which counts as not `simulate` when missing; an unknown actor kind
+   reaches nothing.
 2. **Reach is the union of five additive grants; nothing denies in v1.** (a) Per-object `default_access`: `private`
    (default), `public_read`, `public_read_write` (`ck_object_defs_default_access`), tenant-wide for every holder of the
    object's read (update) privilege, never granting delete, assign or share; it is set only in the object's
@@ -93,10 +95,13 @@ and D12 (the scale target), and on the call on DO-11, decided 2026-10-23.
    data-subject-request lane join in W2. The cost is stated: a registered lane also sees every table narrowed to its
    owner, conversations included (ADR-0117), so each entry says whether the lane needs those tables, and a lane that
    needs records only is reviewed as if it opened conversations, or waits for a narrower setting if that review fails.
-6. **A run's actor context is required, and reach is live.** The API sets `app.actor_kind = 'user'`; the runtime's tool
-   session sets `agent` with the agent version's `app.boundary_id`; the workflow runner sets `workflow` with its
-   version's boundary (ADR-0103, `studio.actor_boundaries`, immutable after publish). Reach is evaluated at each
-   statement: a run resumed after an approval reads with its principal's current reach and narrows if access was lost.
+6. **A run's actor context is required, and reach is live.** The API sets `app.actor_kind = 'user'`; the runtime's
+   tool session sets `agent` with the agent version's `app.boundary_id`; the workflow runner sets `workflow` with its
+   version's boundary (ADR-0103, `studio.actor_boundaries`, immutable after publish). A draft rooting a `simulate` run
+   binds instead the provisional boundary its run door derived (ADR-0103 decision 5), which `ActorBoundaryPort`
+   records for that run alone and the record policies admit only while `app.run_mode` is `simulate`, so no `live` run
+   reads under it. Reach is evaluated at each statement: a run resumed after an approval reads with its principal's
+   current reach and narrows if access was lost.
 7. **A record indexed into knowledge keeps the record's access.** One document per record in domain `studio.record`,
    payload keys `tenant_id`, `workspace_id`, `object_id`, `record_id`, `owner_id`, `access_key`, `read_grants` and
    `fls_version`. The knowledge gateway builds the vector pre-filter from the caller's closure (no filter value comes
@@ -235,3 +240,10 @@ and D12 (the scale target), and on the call on DO-11, decided 2026-10-23.
 - Consequences: the record partitions' policy set comes from the migration that creates `studio.records` and the
   template, checked by the catalog test; `platform._ensure_one_partition` is for range-partitioned tables only
   (F:ADR-0105~studio-skeleton:R3.2).
+- Third consistency check (round 4), sixth pass, Đạt's V4.22 and the planner's provisional call: decision 6 lets a
+  draft that roots a `simulate` run bind the provisional boundary its run door derives from the draft's closure
+  (ADR-0103 decision 5), recorded through `ActorBoundaryPort` for that run alone and admitted by the record policies
+  only in `simulate`, where until now such a run had no boundary to bind and read nothing. The policies learn the mode
+  from the new setting `app.run_mode` of decision 1, a missing value counting as any other mode, the planner's call,
+  as record-access states it (if it is wrong, they read the mode from the run's `platform.worker_runs` row through a
+  setting `app.run_id`).

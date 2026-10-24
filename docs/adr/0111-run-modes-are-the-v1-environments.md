@@ -55,10 +55,12 @@ v1 and v2, and on the provisional call on DO-26.
    declares `simulate_safe` (read kinds, and platform tools with `side_effect_level = none`), the RecordService
    validates a write fully and returns the would-be record without persisting it (ADR 0107), the egress client refuses
    every purpose except `model` and read-only actions (`egress_blocked:run_mode`, ADR 0115), and reads and model calls
-   run for real, under the tester's access and allowance. Every other tool call is an intercepted call: recorded in
-   `tool_executions` with status `simulated` (that column's first CHECK), audited as `tool.simulated` with the reason,
-   and answered with the node's or tool's mock output, validated against its output schema and shaped like the mocks
-   of evaluation cases, or with a placeholder generated from the schema, marked `simulated: true`.
+   run for real, under the tester's access intersected with the run's boundary and under the tester's allowance; a
+   draft root's boundary is the provisional one its run door derives (ADR 0103 decision 5), which no `live` run reads
+   under. Every other tool call is an intercepted call: recorded in `tool_executions` with status `simulated` (that
+   column's first CHECK), audited as `tool.simulated` with the reason, and answered with the node's or tool's mock
+   output, validated against its output schema and shaped like the mocks of evaluation cases, or with a placeholder
+   generated from the schema, marked `simulated: true`.
 4. **`test` adds real messages to allowlisted people only.** It also executes connector actions whose kind declares
    `test_capable`, on test-enabled connections, to recipients on the test recipient allowlist: `studio.test_recipients`,
    tenant-wide normalised addresses (E.164, lower-case email, provider user id), expiring within 90 days and
@@ -174,3 +176,6 @@ v1 and v2, and on the provisional call on DO-26.
 - Third consistency check (round 4), fourth pass: Acceptance cites `CLAUDE.md` by its section, Environments, and
   says that section held at acceptance, instead of the lines `:278-283`, which after the `CLAUDE.md` amendments made
   at acceptance held Data model rules.
+- Third consistency check (round 4), sixth pass, Đạt's V4.22: decision 3's reads run under the tester's access
+  intersected with the run's boundary, a draft root's being the provisional boundary its run door derives from the
+  draft's closure (ADR 0103 decision 5), which no `live` run reads under.

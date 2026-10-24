@@ -50,8 +50,10 @@ database và "đã kiểm định" tính được (spec R1, R2). Đứng trên v
    vừa đưa sang `retired` với `superseded`, vì chỉ mục một Đang dùng buộc `LifecycleService`, bên duy nhất ghi `live`,
    gỡ bản cũ trước (ADR-0120 (Accepted) quyết 1). Từ chối: SQLSTATE 23514, ràng buộc
    `ck_artifact_versions_stage_transition`.
-   Chỉ mục từng phần một Đang dùng (`WHERE stage='live'`) và một Bản ứng viên
-   (`WHERE stage IN ('evaluating','awaiting_approval')`), và `(tenant_id, stage, stage_changed_at DESC, id DESC)`.
+   Chỉ mục từng phần một Đang dùng (`WHERE stage='live'`) và `(tenant_id, stage, stage_changed_at DESC, id DESC)`.
+   Không tạo chỉ mục một Bản ứng viên: một phiên bản chưa phát hành mỗi thành phần
+   (`WHERE stage IN ('draft','evaluating','awaiting_approval')`) là chỉ mục duy nhất từng phần của tenant-config/02,
+   đã phủ luật đó (spec R1.2; tenant-config:R2.20; ADR-0120 (Accepted) quyết 1).
 3. `VersionStage` StrEnum soi CHECK và bảng chuyển đổi thuần; `LifecycleService` chỉ dùng chuyển đổi hợp
    lệ, dịch 23514 theo tên ràng buộc (như `ConflictError` theo tên ở ADR-0012 (Accepted)); view
    `studio.artifact_display_stage` tính Giai đoạn hiển thị theo thứ tự Bị kill, Đang dùng, Chờ duyệt,
@@ -78,12 +80,17 @@ database và "đã kiểm định" tính được (spec R1, R2). Đứng trên v
    từ chối → 422 với `reason_code` của nó, giao dịch lùi, phiên bản giữ `draft`; spec R2.7), ghi `compared_live_hash`
    (spec R2.10), `LifecycleService` chuyển `draft → evaluating` (spec R2.1; ADR-0120 (Accepted) quyết 1), xếp Lượt
    kiểm định hoặc dùng lại bằng chứng (ticket 04), audit `studio.version.submitted`.
-   Ticket 04 thêm vào route này kiểm `PublishBindingsCheck` cho mọi loại (spec R2.11). `POST .../withdraw`: hủy yêu cầu phê duyệt phát hành treo bằng
-   `ApprovalRequest.cancel()` và về `draft`, audit `studio.version.returned_to_draft`. `POST .../retire`
+   Lần gửi thứ hai song song với một lần gửi đã chuyển bản Nháp khỏi `draft` thấy phiên bản không còn ở `draft` và
+   nhận 409 `candidate_exists`, giao dịch lùi (spec R1.3). Ticket 04 thêm vào route này kiểm `PublishBindingsCheck` cho
+   mọi loại (spec R2.11). `POST .../withdraw`, cách người dựng sửa tiếp khi route tạo nháp của tenant-config trả 409
+   `candidate_pending` vì thành phần đang có Bản ứng viên (tenant-config:R2.22): hủy yêu cầu phê duyệt phát hành treo
+   bằng `ApprovalRequest.cancel()` và về `draft`, thành bản chưa phát hành duy nhất của thành phần, audit
+   `studio.version.returned_to_draft` (spec R2.4). `POST .../retire`
    (`studio.versions.retire`, lý do): `live → retired` (`explicit`), 409 `artifact_in_use` kèm danh sách
    khi phiên bản Đang dùng khác phụ thuộc, audit `studio.version.retired`.
 6. Test catalog `test_version_stage_contract.py`: hỏi `pg_catalog` rằng mọi bảng `studio.*` có cột
-   `stage` đều có trigger, các CHECK và hai chỉ mục từng phần; test đọc CHECK so với `VersionStage`.
+   `stage` đều có trigger, các CHECK và hai chỉ mục từng phần (một Đang dùng của ticket này, một phiên bản chưa phát
+   hành của tenant-config/02); test đọc CHECK so với `VersionStage`.
 7. Cùng migration: đăng ký khóa `studio.versions.submit` và `studio.versions.retire` trong `platform.permissions`
    của tenant-rbac/01 (nhãn tiếng Việt, `scope_kind` `workspace`, `risk` `standard` theo bảng phân loại của ticket
    đó); INSERT nêu mọi cột NOT NULL của bảng lúc đó, gồm `risk` của tenant-rbac/01 và `tenant_grantable` (`true`)
@@ -98,7 +105,9 @@ database và "đã kiểm định" tính được (spec R1, R2). Đứng trên v
       bảng → test catalog đỏ.
 - [ ] R1.2 (AL2): INSERT phiên bản `live` thứ hai cho một thành phần → lỗi chỉ mục từng phần; gỡ chỉ
       mục → test đỏ.
-- [ ] R1.3 (AL2): hai lệnh gửi kiểm định song song một thành phần → một 202, một 409 `candidate_exists`.
+- [ ] R1.3 (AL2): hai lệnh gửi kiểm định song song bản Nháp duy nhất của một thành phần → một 202, một 409
+      `candidate_exists`, đúng một audit `studio.version.submitted`; gỡ kiểm giai đoạn `draft` của lệnh gửi → lần thứ
+      hai không nhận 409, test đỏ.
 - [ ] R1.4: duyệt phát hành (giả lập bước chuyển) → phiên bản Đang dùng cũ sang Đã gỡ (`superseded`)
       trong cùng giao dịch.
 - [ ] R1.5: view Giai đoạn hiển thị cho đúng thứ tự ưu tiên; không cột nào lưu Giai đoạn hiển thị.
@@ -124,8 +133,9 @@ database và "đã kiểm định" tính được (spec R1, R2). Đứng trên v
       công cụ ghim → Mã băm định nghĩa khác.
 - [ ] R2.3 (AL3): rollback giữa giao dịch gửi kiểm định → không bản kê, phụ thuộc hay audit; bỏ một loại
       khỏi bao đóng của extractor fixture → test đỏ.
-- [ ] R2.4: rút một Bản ứng viên → về `draft`, yêu cầu phê duyệt phát hành bị hủy, audit; người không
-      phải người gửi gọi `withdraw` → 403.
+- [ ] R2.4: rút một Bản ứng viên → về `draft`, yêu cầu phê duyệt phát hành bị hủy, audit; với thành phần mà route tạo
+      nháp của tenant-config vừa trả 409 `candidate_pending`, rút Bản ứng viên rồi lưu nháp → lưu được trên chính phiên
+      bản vừa rút, không thêm dòng `draft` nào; người không phải người gửi gọi `withdraw` → 403.
 - [ ] R2.5: gỡ một phiên bản Đang dùng không bị phụ thuộc → `retired` (`explicit`) với audit.
 - [ ] R2.6: gỡ một phiên bản mà phiên bản Đang dùng của thành phần khác phụ thuộc → 409 `artifact_in_use`
       kèm danh sách; tenant B gửi id của tenant A → 404.
@@ -183,3 +193,8 @@ database và "đã kiểm định" tính được (spec R1, R2). Đứng trên v
 - 2026-10-24 (agent): vòng sửa thứ tư, lượt d, theo Quyết định tạm cùng ngày của spec: bước 5 nói bước niêm phong của
   tenant-config không đổi giai đoạn và `LifecycleService` chuyển `draft → evaluating` (spec R2.1; ADR-0120 (Accepted)
   quyết 1), để việc chuyển giai đoạn có một bên ghi.
+- 2026-10-24 (agent): vòng sửa thứ tư, lượt f, theo V4.17 của Đạt (spec R1.2, R1.3, R2.4): một phiên bản chưa phát hành
+  mỗi thành phần là chỉ mục của tenant-config/02, nên bước 2 bỏ chỉ mục một Bản ứng viên, và test catalog của bước 6
+  đọc chỉ mục một Đang dùng của ticket này cùng chỉ mục của tenant-config/02; lần gửi song song thứ hai nhận 409
+  `candidate_exists` vì bản Nháp duy nhất đã rời `draft`; lệnh rút là cách sửa tiếp khi route tạo nháp trả 409
+  `candidate_pending`. Không thêm cạnh: ticket này đã chờ tenant-config/02 qua tenant-config/04.

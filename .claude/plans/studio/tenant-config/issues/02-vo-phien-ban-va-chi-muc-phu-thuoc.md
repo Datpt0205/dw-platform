@@ -3,13 +3,14 @@
 Status: needs-triage
 Blocked by: 01, .claude/plans/studio/studio-skeleton/issues/02-goi-dw-studio-va-seam-api.md, .claude/plans/studio/org-and-principals/issues/01-khoa-don-vi-va-siet-realm.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md, .claude/plans/studio/app-standards/issues/01-vo-loi-problem-json.md, .claude/plans/studio/app-standards/issues/03-quy-uoc-api-danh-sach-va-sua.md
 Area: studio
-Yêu cầu: R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R2.7, R2.8, R2.9, R2.10, R2.11, R2.12, R2.13, R2.14, R2.15, R2.16, R2.17, R2.18, R2.19, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.8, TC1, TC2, TC3, TC4, TC5, TC6, TC7, TC21, TC24, TC27, TC29, TC30, TC31
+Yêu cầu: R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R2.7, R2.8, R2.9, R2.10, R2.11, R2.12, R2.13, R2.14, R2.15, R2.16, R2.17, R2.18, R2.19, R2.20, R2.21, R2.22, R2.23, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.8, TC1, TC2, TC3, TC4, TC5, TC6, TC7, TC21, TC24, TC27, TC29, TC30, TC31
 
 ## Mục tiêu
 
 Mọi loại thành phần Studio có một vỏ phiên bản chung trong `dw_studio`: một nháp lưu bằng khóa lạc
-quan, bước niêm phong cấp số không dùng lại và mã băm, như nhau cho mọi loại và không đổi giai đoạn, Nơi đang dùng
-ghi trong cùng giao dịch niêm phong, chặn xóa thứ đang được dùng, và không lộ tên ngoài quyền (spec R2, R3). Route
+quan, tối đa một phiên bản chưa phát hành mỗi thành phần (bản Nháp hay Bản ứng viên) cùng route tạo bản Nháp mới, bước
+niêm phong cấp số không dùng lại và mã băm, như nhau cho mọi loại và không đổi giai đoạn, Nơi đang dùng ghi trong cùng
+giao dịch niêm phong, chặn xóa thứ đang được dùng, và không lộ tên ngoài quyền (spec R2, R3). Route
 gửi kiểm định của agent-lifecycle/03 gọi bước niêm phong này, rồi `LifecycleService` của agent-lifecycle chuyển giai
 đoạn trong cùng giao dịch (`evaluating`, `awaiting_approval` với loại không có Cổng chất lượng, hay `live` ở nhánh
 chỉ siết của `dw.object/v1`); ticket này không viết chuyển giai đoạn nào.
@@ -39,7 +40,9 @@ chỉ siết của `dw.object/v1`); ticket này không viết chuyển giai đo�
       khi không lọc `kind` (trang `/studio`).
     - `studio.artifact_versions`: `stage` NOT NULL CHECK (`draft`, `evaluating`, `awaiting_approval`,
       `live`, `retired`), không DEFAULT; `version_no` NULL chỉ khi `stage = 'draft'`, unique
-      `(artifact_id, version_no)`; một dòng `draft` mỗi thành phần (partial unique); `document_schema`
+      `(artifact_id, version_no)`; một phiên bản chưa phát hành mỗi thành phần: chỉ mục duy nhất một phần trên
+      `(artifact_id)` khi `stage IN ('draft', 'evaluating', 'awaiting_approval')` (R2.20), chỉ mục một Đang dùng là của
+      agent-lifecycle/03 (agent-lifecycle:R1.2); `document_schema`
       `^dw\.[a-z_]+/v[0-9]+$`; `document` là jsonb object tối đa 1 MiB,
       `CHECK (document::text IS NFC NORMALIZED)`; `content_hash`, `definition_hash` khớp
       `^sha256:[0-9a-f]{64}$`, `definition_hash` NOT NULL ngoài `draft`; `row_version integer NOT NULL`;
@@ -95,12 +98,15 @@ chỉ siết của `dw.object/v1`); ticket này không viết chuyển giai đo�
    do trong danh sách bảng toàn tenant của test đó (định nghĩa có `owning_workspace_id`, phiên bản và chỉ mục
    phụ thuộc là con của thành phần, bản kê định nghĩa định danh theo nội dung; DO-01).
 4. Offboarding, trên `offboarding.py` và `test_offboarding.py` mà foundations-hardening/07 đã viết lại
-   (`_CATALOG_COLUMNS`, `export_rows`): `_ORDERED_FIRST` thêm theo thứ tự `studio.dependencies`, `studio.artifacts`,
-   `studio.artifact_versions` (ADR-0109 (Accepted) Consequences), bảng tham chiếu trước bảng mà FK ON DELETE RESTRICT
-   của nó giữ (studio-skeleton:R4.2): `studio.dependencies` trước vì `to_artifact_id` và `to_version_id` giữ hai bảng
-   kia (đã đo: xóa `studio.artifacts` trước khi gỡ cạnh phụ thuộc thì hỏng), `studio.artifacts` trước phần xóa theo chữ
-   cái vì `owning_workspace_id` giữ `platform.workspaces`; `studio.definition_manifests` không có FK RESTRICT nào nên ở
-   phần xóa theo chữ cái. `purge_rows` bỏ qua mục `_ORDERED_FIRST` của bảng không có trong `_CATALOG_PURGEABLE`
+   (`_CATALOG_COLUMNS`, `export_rows`): `_ORDERED_FIRST` thêm theo thứ tự `studio.dependencies`,
+   `studio.artifact_versions`, `studio.artifacts`, mỗi bảng sau mọi bảng giữ một FK ON DELETE RESTRICT tới nó, không dựa
+   vào CASCADE (studio-skeleton:R4.2; spec Dữ liệu): `studio.dependencies` trước vì `to_version_id` và `to_artifact_id`
+   giữ hai bảng kia (đã đo: xóa `studio.artifacts` trước khi gỡ cạnh phụ thuộc thì hỏng); `studio.artifact_versions`
+   trước `studio.artifacts`, không xóa theo CASCADE từ thành phần, vì agent-lifecycle/04 chèn mục `studio.gate_runs` giữa
+   hai mục đó (`studio.artifact_versions.gate_run_id` và `studio.gate_runs.artifact_id` là FK RESTRICT,
+   agent-lifecycle:R10.2); `studio.artifacts` trước phần xóa theo chữ cái vì `owning_workspace_id` giữ
+   `platform.workspaces`; `studio.definition_manifests` không có FK RESTRICT nào nên ở phần xóa theo chữ cái.
+   `purge_rows` bỏ qua mục `_ORDERED_FIRST` của bảng không có trong `_CATALOG_PURGEABLE`
    (`packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:187-188`), nên bốn bảng xóa được
    nhờ DELETE của bước 3, không bảng nào có dòng `STUDIO_EXCLUSIONS`; `test_offboarding.py` purge một tenant có hai
    thành phần phụ thuộc nhau ở hai workspace (TC21).
@@ -128,6 +134,14 @@ chỉ siết của `dw.object/v1`); ticket này không viết chuyển giai đo�
       `row_version`, trả ETag mới; lệch → 412 `precondition_failed`, `details.reason_code`
       `stale_version`; thiếu → 428 (ADR-0108 (Accepted) quyết 3). Audit `studio.artifact.draft_saved`
       chỉ mang `row_version`.
+    - `create_draft`: trong một giao dịch, khóa dòng thành phần (`SELECT ... FOR UPDATE`, như `seal`) rồi đọc phiên bản
+      chưa phát hành của nó: Bản ứng viên ở `evaluating` hay `awaiting_approval` → 409 `conflict`, `details.reason_code`
+      `candidate_pending` (R2.22; muốn sửa thì rút qua lệnh rút của agent-lifecycle/03, agent-lifecycle:R2.4); bản Nháp
+      → 409 `conflict`, `details.reason_code` `draft_exists` (R2.23); không có → chèn một dòng `draft` (`version_no`
+      NULL) chép `document_schema` và `document` của phiên bản `live`, hay của phiên bản có `version_no` lớn nhất khi
+      không có bản `live`, `based_on_version_id` trỏ phiên bản đó, audit `studio.artifact.draft_created` mang
+      `based_on_version_id`, rồi trả ETag (R2.21). Chỉ mục của bước 1 là hàng rào cuối cho lệnh ghi đi vòng qua service
+      (R2.20).
     - `update`: `api_name`, `labels` với `If-Match`; `api_name` khi đã có phiên bản từng `live` → 409
       `api_name_immutable` trước khi trigger phải chặn; audit `studio.artifact.updated` với tên trường.
     - `seal(uow, artifact_id, expected_row_version)`: trong giao dịch của bên gọi, khóa dòng thành phần
@@ -142,8 +156,8 @@ chỉ siết của `dw.object/v1`); ticket này không viết chuyển giai đo�
       R2.8, rồi ghi bộ mới), tăng `row_version` của nháp (lần niêm phong thứ hai cùng `expected_row_version` nhận
       `stale_version`), rồi trả id phiên bản cùng hai mã băm. `seal` như nhau cho mọi loại: không đọc
       `has_quality_gate`, không đổi `stage` (phiên bản ra khỏi `seal` vẫn ở `draft`) và không đổi dòng phiên bản nào
-      khác của thành phần, kể cả Bản ứng viên đang chờ ở `awaiting_approval`, mà `compared_live_hash` cũ của nó chặn nó
-      thay một bản chỉ siết lên `live` sau nó (R2.13, R2.16; agent-lifecycle:R1.8, agent-lifecycle:R5.9). Chuyển giai
+      khác của thành phần (R2.13, R2.16); không Bản ứng viên nào chờ cạnh bản Nháp được niêm phong, vì chỉ mục một
+      phiên bản chưa phát hành của bước 1 (R2.20). Chuyển giai
       đoạn sau `seal` là của `LifecycleService` của agent-lifecycle/03 và agent-lifecycle/04 trong cùng giao dịch
       (`draft → evaluating` khi `has_quality_gate` là true, `draft → awaiting_approval` khi false, `draft → live` ở
       nhánh chỉ siết sau khi gỡ bản `live` trước), với `studio.guard_version_stage()` là hàng rào cuối
@@ -161,6 +175,7 @@ chỉ siết của `dw.object/v1`); ticket này không viết chuyển giai đo�
    `updated_at DESC, id DESC`, lọc `kind`, `label`; index danh sách có `kind` khi lọc theo loại, index không `kind`
    khi không lọc), `GET /api/v1/studio/artifacts/{id}`,
    `PATCH /api/v1/studio/artifacts/{id}`, `PUT /api/v1/studio/artifacts/{id}/draft`,
+   `POST /api/v1/studio/artifacts/{id}/draft` (`create_draft`),
    `GET /api/v1/studio/artifacts/{id}/versions`, `GET /api/v1/studio/artifacts/{id}/versions/{version_no}`,
    `DELETE /api/v1/studio/artifacts/{id}`, `GET /api/v1/studio/artifacts/{id}/dependents`,
    `GET /api/v1/studio/artifacts/{id}/draft/dependencies`. Mọi id là UUID. `make generate-contracts`.
@@ -171,8 +186,9 @@ chỉ siết của `dw.object/v1`); ticket này không viết chuyển giai đo�
    `platform.permissions` bằng vai migrator trong cùng fixture pytest phạm vi session và gỡ khi xong; câu INSERT nêu mọi
    cột NOT NULL có lúc đó, gồm `risk` của tenant-rbac/01 và `tenant_grantable` của tenant-rbac/02
    (ADR-0104 (Accepted) quyết 1), nên ticket này chờ tenant-rbac/02. Ca cần một phiên bản ở giai đoạn khác `draft`
-   (R2.8, R2.9, R2.10, R2.16, R3.3, R3.4) đặt `stage` bằng vai migrator trong test, vì bên chuyển giai đoạn là
-   `LifecycleService` của agent-lifecycle/03, ticket chờ ticket này.
+   (R2.8, R2.9, R2.10, R2.16, R2.20, R2.21, R2.22, R3.3, R3.4) đặt `stage` bằng vai migrator trong test, và vẫn chịu chỉ
+   mục một phiên bản chưa phát hành của bước 1, vì bên chuyển giai đoạn là `LifecycleService` của agent-lifecycle/03,
+   ticket chờ ticket này.
 
 ## Tiêu chí chấp nhận
 
@@ -208,10 +224,11 @@ chỉ siết của `dw.object/v1`); ticket này không viết chuyển giai đo�
 - [ ] R2.15 (TC24): mỗi mục registry khai đủ khóa đọc, ghi và gửi, mỗi khóa có trong danh mục quyền, và một
       `publish_hook`; gỡ khóa đọc hay móc của `fixture` → test registry đỏ; test kiểm quyền tham số hóa chạy cho mọi
       loại đã đăng ký.
-- [ ] R2.16 (TC27): `fixture_gateless` có một Bản ứng viên ở `awaiting_approval`; niêm phong một nháp mới của cùng
-      thành phần → bản mới ở `draft` có số và hai mã băm, dòng Bản ứng viên giữ nguyên giai đoạn và mọi cột; để `seal`
-      đổi Bản ứng viên → test đỏ. Nhánh chỉ siết `draft → live` là của `LifecycleService` (agent-lifecycle:R2.9, AL4),
-      và ca duyệt Bản ứng viên đó rồi về `draft` với `base_changed` là AL19, hai ca chạy ở agent-lifecycle/04.
+- [ ] R2.16 (TC27): `fixture_gateless` có một phiên bản `live`; niêm phong một nháp mới của cùng thành phần → bản mới ở
+      `draft` có số và hai mã băm, dòng `live` giữ nguyên giai đoạn và mọi cột; để `seal` đổi dòng `live` → test đỏ.
+      Nhánh chỉ siết `draft → live`, gồm bước gỡ bản `live` cũ, là của `LifecycleService` (agent-lifecycle:R2.9, AL4),
+      và ca duyệt một Bản ứng viên có gốc đã đổi rồi về `draft` với `base_changed` là AL19, hai ca chạy ở
+      agent-lifecycle/04.
 - [ ] R2.17 (TC3): lưu nháp một lần rồi `seal` với `expected_row_version` cũ (lệnh gửi mang `If-Match` cũ) →
       `stale_version`, không số phiên bản, không dòng `studio.dependencies` hay `studio.definition_manifests`; bỏ so
       `expected_row_version` → test đỏ.
@@ -228,6 +245,19 @@ chỉ siết của `dw.object/v1`); ticket này không viết chuyển giai đo�
 - [ ] R2.19 (TC30): `dw_app` UPDATE `owning_workspace_id` của một thành phần sang workspace khác cùng tenant → trigger
       từ chối, cột giữ nguyên; cùng lệnh bằng vai migrator → từ chối; UPDATE `labels` của cùng dòng → được; gỡ trigger
       → test đỏ.
+- [ ] R2.20 (TC27): bằng `dw_app`, INSERT một dòng `draft` cho thành phần đã có bản Nháp, rồi cho thành phần có Bản ứng
+      viên ở `awaiting_approval` (đặt bằng vai migrator) → chỉ mục duy nhất một phần từ chối cả hai; thành phần chỉ có
+      phiên bản `live` và `retired` nhận một dòng `draft`; thu chỉ mục về `stage = 'draft'` → ca Bản ứng viên đỏ.
+- [ ] R2.21: thành phần có v1 `retired` và v2 `live` → `POST .../draft` trả 201 với ETag, bản Nháp mới chép
+      `document_schema` và `document` của v2, `based_on_version_id` là v2, `version_no` NULL, một audit
+      `studio.artifact.draft_created`; v1 và v2 đều `retired` → bản Nháp chép v2; người đọc được mà không có quyền ghi →
+      403 `permission_denied`, tenant khác → 404, không dòng nào (R2.11, R2.12).
+- [ ] R2.22 (TC27): `fixture_gateless` có Bản ứng viên ở `awaiting_approval`, và `fixture` có Bản ứng viên ở
+      `evaluating` → `POST .../draft` trả 409 `conflict` với `details.reason_code` `candidate_pending` ở cả hai, không
+      dòng nào, không audit; bỏ kiểm Bản ứng viên ở `create_draft` → test đỏ.
+- [ ] R2.23 (TC27): thành phần đã có bản Nháp → `POST .../draft` trả 409 `conflict` với `details.reason_code`
+      `draft_exists`, bản Nháp giữ `document` và `row_version`; hai lệnh `POST .../draft` đồng thời trên thành phần chỉ có
+      bản `live` → một 201, một 409 `draft_exists`; bỏ khóa dòng thành phần của `create_draft` → test đồng thời đỏ.
 - [ ] R3.1 (TC6): lỗi chèn giữa giao dịch niêm phong → không số phiên bản, không dòng
       `studio.dependencies`, không dòng `studio.definition_manifests`; làm hỏng `extract` của `fixture`
       → test fixture đỏ.
@@ -244,9 +274,10 @@ chỉ siết của `dw.object/v1`); ticket này không viết chuyển giai đo�
 - [ ] R3.5: `GET .../draft/dependencies` trả phụ thuộc của nháp và số dòng `studio.dependencies` không
       đổi.
 - [ ] R3.6 (TC21): `test_offboarding.py` purge tenant có hai thành phần phụ thuộc nhau, tenant khác giữ
-      nguyên mọi dòng; gỡ mục `studio.dependencies` khỏi `_ORDERED_FIRST` → test đỏ; test phủ offboarding
-      (studio-skeleton:R4.1, studio-skeleton:R4.2) xanh với bốn bảng không có trong `STUDIO_EXCLUSIONS`; thu DELETE của
-      `dw_app` trên một trong bốn bảng → test phủ đỏ, nêu tên bảng.
+      nguyên mọi dòng; gỡ mục `studio.dependencies` khỏi `_ORDERED_FIRST` → test đỏ; đặt `studio.dependencies` sau
+      `studio.artifact_versions` → test phủ offboarding (studio-skeleton:R4.2) đỏ, nêu FK ghép của `to_version_id`; test
+      phủ offboarding (studio-skeleton:R4.1, studio-skeleton:R4.2) xanh với bốn bảng không có trong `STUDIO_EXCLUSIONS`;
+      thu DELETE của `dw_app` trên một trong bốn bảng → test phủ đỏ, nêu tên bảng.
 - [ ] R3.8 (TC31): `dw_app` DELETE một dòng `studio.artifacts`, `studio.artifact_versions` hay
       `studio.definition_manifests` của công ty `active` → 23514, dòng còn; cùng lệnh khi công ty ở `offboarding` → xóa
       được; gỡ phép kiểm trạng thái khỏi `platform.refuse_delete_outside_offboarding()` → test đỏ.
@@ -305,3 +336,10 @@ chỉ siết của `dw.object/v1`); ticket này không viết chuyển giai đo�
   công ty khác `offboarding`; R3.8, TC31), còn `studio.dependencies` có DELETE thường vì `seal` thay dòng của phiên bản
   niêm phong lại sau khi về `draft` (R2.8, R3.1); thứ tự `_ORDERED_FIRST` giữ theo ADR-0109 (Accepted) Consequences,
   kèm lý do của từng FK RESTRICT; ca xóa cứng để thấy lỗi FK (R2.18, R3.3) chạy khi công ty ở `offboarding`.
+- 2026-10-24 (agent): vòng sửa thứ tư, lượt f, theo quyết định V4.17 của Đạt và các quyết định tạm cùng ngày của spec:
+  chỉ mục duy nhất một phần giữ một phiên bản chưa phát hành mỗi thành phần, thay chỉ mục một nháp (R2.20); route
+  `POST /api/v1/studio/artifacts/{id}/draft` tạo bản Nháp từ bản `live` hay phiên bản có số lớn nhất, trả 409
+  `candidate_pending` khi có Bản ứng viên và `draft_exists` khi đã có bản Nháp (R2.21, R2.22, R2.23); ca bản Nháp niêm
+  phong cạnh một Bản ứng viên rời R2.16, vì không còn xảy ra được; `_ORDERED_FIRST` thành `studio.dependencies`,
+  `studio.artifact_versions`, `studio.artifacts`, mỗi bảng sau mọi bảng giữ một FK RESTRICT tới nó, để agent-lifecycle/04
+  chèn mục `studio.gate_runs` giữa hai mục sau (TC21). Không thêm cạnh Blocked by.

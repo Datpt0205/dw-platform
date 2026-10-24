@@ -23,8 +23,9 @@ kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7,
    workflow-nodes:R6.3); `secret`, `webhook_endpoint`, `schedule` vào cùng bên đọc của chúng
    (ADR-0110 (Accepted) quyết 6). Bộ kiểu Điểm gắn này là chỗ duy nhất các spec khác đăng ký kiểm riêng
    của một kind, không phải `ConfigKindRegistry`: mỗi kind có một kiểm lúc đề xuất (như `grants_cover` của
-   workflow-triggers/01) và một kiểm lúc nhận lượt chạy mà bước 9 gọi (như `binding_needs_review` của
-   workflow-triggers/03).
+   workflow-triggers/01). Không kind nào ở W1 có kiểm lúc nhận lượt chạy riêng, nên bộ kiểu không có chỗ cho kiểm đó
+   tới khi kind đầu tiên cần nó (failure-modes #1): kết nối qua `connection_usable` ở bước 9, còn `binding_needs_review`
+   của kind `principal` do `BindingReviewPort` hỏi ở dispatch (workflow-engine:R5.19; workflow-triggers:R3.7; V4.16).
     - Bộ trích xuất của mọi loại ghi mỗi điểm gắn khai báo thành một dòng `studio.dependencies` với
       `to_kind` `binding`, `usage` `bind`, `to_key` là tên.
     - Bước niêm phong của ticket 02 quét mọi chuỗi của tài liệu: chuỗi trùng id của một dòng
@@ -122,8 +123,12 @@ kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7,
    không đọc giá trị; ADR-0115 (Accepted) quyết 1), với mỗi biến `content_hash` của giá trị (không ghi giá trị), với
    `principal` id của người chạy; thêm dòng `platform.run_manifest_keys` cho phiên bản cấu hình. Trước khi ghim,
    `connection_usable` với `purpose` `tool` cho người chạy sai (kể cả thiếu `connections.use` ở workspace của lượt
-   chạy, ADR-0115 (Accepted) quyết 2) → từ chối nhận với `binding_degraded`, không node nào chạy; rồi chạy kiểm lúc
-   nhận lượt chạy mà mỗi kind đăng ký ở bước 1, kiểm trượt → từ chối nhận với mã của kiểm đó. Ticket này đáp ứng
+   chạy, ADR-0115 (Accepted) quyết 2) → từ chối nhận với `binding_degraded`, không node nào chạy. Bước này không từ
+   chối lượt nào vì `binding_needs_review`: lượt được xin như mọi lượt, rồi ở lại `queued` tới khi Bộ giá trị gắn được
+   duyệt lại, theo hàng của mã đó ở bảng từ chối của workflow-engine (workflow-engine:R5.19; ADR-0113 (Accepted) quyết
+   3; workflow-triggers:R3.7; V4.16), với kiểm đọc `decided_at` của các Bộ giá trị gắn đã duyệt (bước 6), và lần giữ báo
+   người giữ `studio.bindings.approve`, khóa duyệt của bước 3 (workflow-engine:R5.21); ticket này không giữ lượt nào và
+   không gửi lời báo đó. Ticket này đáp ứng
    `RunBindingsPort` (connections-and-vault và handler của lượt chạy khai): đọc giá trị từ mục `bindings` của bản kê
    đã ghim, không từ Bộ giá trị gắn hiện hành; workflow-engine và agent-builder không cài port này.
 10. Route: `GET /api/v1/studio/artifacts/{id}/bindings` (khai báo, giá trị hiện hành với tên kết nối người
@@ -245,3 +250,9 @@ kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7,
   `dw_app` có DELETE trên `platform.config_versions`, chỉ dùng được ở lượt xóa của offboarding nhờ trigger của ticket 02
   (R3.8, TC31), vì không có DELETE thì `purge_rows` bỏ qua mục `_ORDERED_FIRST` của bảng và lần xóa
   `platform.approval_requests` hỏng ở FK RESTRICT; mục đó đứng sau `platform.run_manifest_keys` của ticket 04.
+- 2026-10-24 (agent): vòng sửa thứ tư, lượt f, theo quyết định V4.16 của Đạt cùng ngày: bước 9 không còn từ chối lượt
+  gặp `binding_needs_review`; lượt ở lại `queued` theo hàng của mã đó ở bảng từ chối của workflow-engine
+  (workflow-engine:R5.19) tới khi Bộ giá trị gắn được duyệt lại, và người nhận báo của lần giữ là người giữ
+  `studio.bindings.approve` (workflow-engine:R5.21). Kiểm đó rời bộ kiểu Điểm gắn sang `BindingReviewPort` ở dispatch
+  (workflow-triggers:R3.7), nên bước 1 bỏ chỗ cho kiểm lúc nhận lượt chạy theo kind, chỗ không còn kind nào của W1
+  đăng ký (failure-modes #1). Không thêm cạnh Blocked by.

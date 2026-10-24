@@ -3,14 +3,15 @@
 Status: needs-triage
 Blocked by: .claude/plans/studio/workflow-engine/issues/03-bien-dich-va-wrapper-nut.md, .claude/plans/studio/field-security/issues/01-mo-hinh-bao-mat-truong.md, .claude/plans/studio/usage-and-limits/issues/02-bang-gia-so-su-dung-va-man-hinh.md, .claude/plans/studio/usage-and-limits/issues/03-han-muc-giu-truoc-va-quyet-toan.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md
 Area: studio
-Yêu cầu: R1.6, R1.7, R1.8, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R4.1, R4.2, R4.3, R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R5.8, TA4, TA5, TA6, TA10, TA11, TA12, TA13, TA14, TA15, TA16
+Yêu cầu: R1.6, R1.7, R1.8, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R4.1, R4.2, R4.3, R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R5.8, R5.9, R5.10, R5.11, R5.12, TA4, TA5, TA6, TA10, TA11, TA12, TA13, TA14, TA15, TA16, TA17, TA18, TA19
 
 ## Mục tiêu
 
 Một kho `platform.run_steps` cho mỗi Bước chạy, che bí mật khi ghi và che theo quyền đọc trường của người
 xem khi đọc; màn Lịch sử chạy đọc dưới `runs.read` theo độ sâu; một chính sách lưu giữ có bộ xóa cho mỗi
-kho mới; một catalog hành động audit có test AST, chủ duy nhất của nhãn action mà màn `/audit` đọc qua API (spec
-R1.6, R1.7, R1.8, R3, R4, R5).
+kho mới, với bảng `platform.retention_terms` mà bộ nạp nạp từ bản tệp đang ghim lúc triển khai và mọi hàm xóa hẹp
+không đối số đọc hạn (V4.21); một catalog hành động audit có test AST, chủ duy nhất của nhãn action mà màn `/audit`
+đọc qua API (spec R1.6, R1.7, R1.8, R3, R4, R5).
 
 ## Việc cần làm
 
@@ -51,12 +52,14 @@ timestamptz`, `duration_ms`, `error_type`, `input_preview` và `result_preview` 
    bảng thêm, ticket này không khai lại), là bản kế tiếp sau bản của usage-and-limits/03 trong chuỗi các ticket sửa
    tệp ở mục Phụ thuộc của spec, mọi số ghi UNVERIFIED tới khi luật sư xác nhận trước chạy bóng (DO-52). Ticket này
    thêm khóa và bộ xóa cho
-   `platform.run_steps` (30 ngày; lane xóa payload trong dòng và đối tượng của bước quá 30 ngày qua một hàm riêng
-   của lane vì `dw_app` không UPDATE bảng, DROP PARTITION khi cả tháng quá 30 ngày), payload đối tượng (30 ngày,
+   `platform.run_steps` (30 ngày; lane xóa payload trong dòng và đối tượng của bước quá 30 ngày qua một hàm SECURITY
+   DEFINER hẹp không đối số của lane, đọc hạn dưới khóa `platform.run_steps` qua `platform.retention_term_days` của
+   bước 10, vì `dw_app` không UPDATE bảng; DROP PARTITION khi cả tháng quá 30 ngày), payload đối tượng (30 ngày,
    lane xóa đối tượng), cột payload lượt chạy (90 ngày sau kết thúc, lane xóa), lượt chạy (395 ngày sau kết
    thúc, lane xóa, bỏ qua dòng `memory.items` trỏ tới theo `db/migrations/versions/0007_evidence.py:113-115`),
-   `platform.tool_executions.output` (30 ngày, xóa trắng qua hàm SECURITY DEFINER hẹp chỉ đặt NULL `output` của
-   dòng quá hạn, `dw_app` không nhận UPDATE; spec R5.7), `usage_daily` (760 ngày, lane xóa); lane đếm mỗi dòng quá
+   `platform.tool_executions.output` (30 ngày dưới khóa `platform.tool_executions`, xóa trắng qua hàm SECURITY
+   DEFINER hẹp không đối số chỉ đặt NULL `output` của dòng quá hạn, đọc hạn qua `platform.retention_term_days` của
+   bước 10, `dw_app` không nhận UPDATE; spec R5.7), `usage_daily` (760 ngày, lane xóa); lane đếm mỗi dòng quá
    hạn mà một bộ xóa đăng ký bỏ qua trên `dw_retention_skipped_total{store, reason}` theo lý do bộ xóa trả (spec
    R5.3, R5.5); bỏ chú thích "model_usage_ledger đã bị bỏ" của bản 1.7.0
    (`configs/policies/retention@1.7.0.yaml:72`); test tập bộ xóa, test khóa của tệp (mỗi khóa khớp một bảng có thật
@@ -82,6 +85,34 @@ timestamptz`, `duration_ms`, `error_type`, `input_preview` và `result_preview` 
    thích PLUG-IN POINT của nó ở `apps/web/app/audit/page.tsx:15-25`. Bước 8 chép nguyên chữ sáu nhãn của bảng đó vào
    catalog, nên chữ của sáu action đó trên màn không đổi; một action mới thêm nhãn vào catalog (Q2 của spec), không
    vào mã web.
+10. Bảng thời hạn ở runtime (spec R5.9, R5.10, R5.11, R5.12; V4.21):
+    - Revision Alembic mới (id hex ngẫu nhiên): `platform.retention_terms` (`store_key text PRIMARY KEY`,
+      `term_days integer NOT NULL` CHECK `term_days > 0`, tên ràng buộc theo `NAMING_CONVENTION`), không
+      `tenant_id`, không RLS; `REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON platform.retention_terms FROM dw_app` như
+      migration `648e2f7c3edb`, vì quyền mặc định của schema cấp INSERT, UPDATE, DELETE, và `dw_app` giữ SELECT;
+      `GRANT SELECT, INSERT, UPDATE, DELETE` cho `dw_provisioner` theo bảng, bọc trong kiểm vai tồn tại như các
+      migration cấp quyền cho vai đó; dòng của bảng trong
+      `packages/python/dw_platform/tests/integration/test_privileges.py`. Cùng revision: hàm
+      `platform.retention_term_days(p_store_key text) RETURNS integer` STABLE, `search_path` cố định, trả
+      `term_days` của khóa và RAISE với SQLSTATE `P0002` khi không có dòng; REVOKE ALL FROM PUBLIC, không vai nào
+      nhận EXECUTE, vì chỉ các hàm xóa hẹp SECURITY DEFINER gọi nó.
+    - Bộ nạp trong `dw_platform`, cạnh `dw_platform.retention_policy`: đọc bản tệp đang ghim qua mô hình chính
+      sách, lấy mỗi khóa có `days` và `enforced: true`, rồi trong một giao dịch dưới vai `dw_provisioner` thêm, sửa
+      và xóa dòng tới khi bảng đúng bằng tập đó; đọc tệp hay nối CSDL hỏng thì thoát mã khác 0 và không đổi dòng
+      nào. Hằng `RETENTION_POLICY_PATH` ở `apps/worker/src/dw_worker/main.py:114` chuyển vào
+      `dw_platform.retention_policy`, nên worker và bộ nạp đọc cùng một chỗ ghim bản tệp.
+    - Job `migrate` của `infra/compose/docker-compose.yml` chạy bộ nạp ngay sau `alembic upgrade head`, với
+      `DW_PROVISIONER_DATABASE_URL`; `api` và `worker` đã chờ job đó với `service_completed_successfully`, nên khởi
+      động sau khi bảng khớp tệp. Fixture tích hợp chạy bộ nạp ngay sau `alembic upgrade head`. Bộ nạp cần vai
+      `dw_provisioner`, mà mọi cụm compose tạo lúc khởi tạo và một cụm cũ hơn nhận qua
+      `scripts/create_provisioner_role.py`; script đó thêm SELECT, INSERT, UPDATE, DELETE trên
+      `platform.retention_terms` vào các quyền nó cấp lại, vì revision bỏ qua lệnh GRANT khi vai chưa có lúc migration
+      chạy, mà script hứa chạy được trước hay sau migration (`scripts/create_provisioner_role.py:1-18`); thiếu vai thì
+      bộ nạp không nối được và job `migrate` thoát mã khác 0, nên lần triển khai dừng thay vì chạy với một bảng thời
+      hạn rỗng.
+    - Test lệch bảng so `platform.retention_terms` với tập khóa có `days` và `enforced: true` của bản tệp đang ghim,
+      đỏ và nêu khóa khi một khóa thiếu, thừa hay khác hạn; một test đọc tệp compose đỏ khi lệnh của `migrate` không
+      chạy bộ nạp sau migration, hay `api`, `worker` không chờ `migrate`.
 
 ## Tiêu chí chấp nhận
 
@@ -115,7 +146,21 @@ timestamptz`, `duration_ms`, `error_type`, `input_preview` và `result_preview` 
       test khóa của tệp đỏ; hai bảng thử cùng tên ở `platform` và `studio` mang hai thời hạn khác nhau, mỗi bảng
       đọc đúng thời hạn của mình.
 - [ ] R5.7 (TA14): dòng `tool_executions` 31 ngày tuổi → sau một lượt lane, `output` NULL, cột khác giữ nguyên;
-      dòng 29 ngày giữ `output`; `dw_app` UPDATE thẳng → `permission denied`; hàm đặt NULL thêm một cột → test đỏ.
+      dòng 29 ngày giữ `output`; `dw_app` UPDATE thẳng → `permission denied`; hàm đặt NULL thêm một cột → test đỏ;
+      hạ dòng `platform.tool_executions` của `platform.retention_terms` còn 20 ngày → dòng 21 ngày bị xóa trắng; hàm
+      giữ hằng 30 ngày hay nhận mốc làm đối số → test đỏ.
+- [ ] R5.9 (TA17): bộ nạp chạy trên tệp thử A rồi tệp thử B (một hạn đổi, một khóa bỏ, một khóa thêm, một khóa
+      `enforced: false`) → `platform.retention_terms` đúng bằng tập khóa có `days` và `enforced: true` của B; bộ nạp
+      bỏ bước xóa dòng → dòng của khóa bỏ còn, test đỏ; lệnh của job `migrate` không chạy bộ nạp sau
+      `alembic upgrade head`, hay `api`, `worker` không chờ `migrate` → test tệp compose đỏ.
+- [ ] R5.10 (TA17): sửa tay hạn một dòng, chèn một khóa thừa hay xóa một dòng → test lệch bảng đỏ, nêu khóa; bảng
+      vừa nạp từ bản tệp đang ghim → xanh.
+- [ ] R5.11 (TA18): `dw_app` INSERT, UPDATE, DELETE trên `platform.retention_terms` → `permission denied`, bảng
+      không đổi; `test_privileges.py` khẳng định `dw_app` chỉ SELECT, `dw_provisioner` SELECT, INSERT, UPDATE,
+      DELETE; bỏ lệnh REVOKE của revision → test đỏ.
+- [ ] R5.12 (TA19): xóa dòng `platform.tool_executions` khỏi bảng thử → hàm xóa trắng `output` báo lỗi `P0002`,
+      không dòng nào đổi; xóa dòng `platform.run_steps` → hàm xóa payload bước báo lỗi, không payload nào mất;
+      `platform.retention_term_days` trả hạn mặc định hay NULL khi thiếu dòng → test đỏ.
 - [ ] R5.8: công ty `offboarding` có dòng `run_steps` → lane `offboarding` xuất mỗi dòng một lần rồi xóa hết qua
       `platform.purge_tenant_append_only`; test phủ offboarding (studio-skeleton:R4.3) xanh với dòng
       `STUDIO_EXCLUSIONS` của `platform.run_steps`.
@@ -139,6 +184,21 @@ timestamptz`, `duration_ms`, `error_type`, `input_preview` và `result_preview` 
   nhãn action riêng, route chỉ trả mã `action`).
 - `packages/typescript/contracts/src/audit.ts:3-12`, `packages/typescript/api-client/src/client.ts:200-244`; spec:
   R1.8 (bản zod của sự kiện audit chưa có dòng `SameType` nào so với route, và zod bỏ khóa nó không khai).
+- `apps/worker/src/dw_worker/main.py:114`, `packages/python/dw_platform/src/dw_platform/retention_policy.py:191-192`;
+  spec: R5.9 (worker ghim bản tệp bằng một hằng đường dẫn và đọc nó qua mô hình chính sách).
+- `infra/compose/docker-compose.yml:229-245`, `infra/compose/docker-compose.yml:311-312`,
+  `infra/compose/docker-compose.yml:469-470`; spec: R5.9 (job một lần `migrate` chạy `alembic upgrade head` dưới
+  `dw_migrator`; `api` và `worker` chờ nó với `service_completed_successfully`).
+- `packages/python/dw_platform/tests/integration/conftest.py:25`; spec: R5.9 (fixture tích hợp chạy migration, nơi bộ
+  nạp chạy tiếp).
+- `infra/compose/init/init-databases.sh:23`, `scripts/create_provisioner_role.py:1-18`,
+  `db/migrations/sql/0001_platform_grants.sql:52-55`; spec: R5.9 (cụm compose tạo `dw_provisioner` lúc khởi tạo,
+  cụm cũ nhận vai qua script, và 0001 coi vai là tùy chọn, nên bộ nạp phải đỏ khi thiếu vai).
+- `db/migrations/sql/0001_platform_grants.sql:45-46`,
+  `db/migrations/versions/5d9d89ffc716_tenant_offboarding_requests.py:71-78`,
+  `db/migrations/versions/648e2f7c3edb_roles_and_permission_sets_read_only_to_.py:39-48`; spec: R5.11 (quyền mặc
+  định của schema cho `dw_app` phải thu hẹp theo bảng; `dw_provisioner` nhận quyền theo từng bảng, bọc kiểm vai tồn
+  tại).
 - ADR-0122 (Accepted) quyết 4, 6, 7; ADR-0106 (Accepted) quyết 4.
 
 ## Comments
@@ -169,3 +229,11 @@ timestamptz`, `duration_ms`, `error_type`, `input_preview` và `result_preview` 
   của nhãn action, nên `GET /api/v1/audit/events` trả `action_label` từ catalog và màn `/audit` bỏ bảng `ACTIONS` riêng
   (bước 9; spec R1.7, R1.8, TA16; `failure-modes.md` #2); bản zod `auditEventSchema` của `@dw/contracts` mang trường
   đó cùng một dòng `SameType` so với route, vì zod bỏ khóa nó không khai, nên thiếu bản zod thì nhãn không tới màn.
+- 2026-10-24 (agent): lượt f của vòng 4, theo V4.21 của Đạt và dòng tạm cùng ngày của spec: ticket này tạo bảng
+  `platform.retention_terms`, bộ nạp chạy trong job `migrate` dưới vai `dw_provisioner`, hàm đọc hạn
+  `platform.retention_term_days` và test lệch bảng (bước 10; spec R5.9-R5.12, TA17-TA19); hàm xóa trắng `output`
+  công cụ và hàm xóa payload của Bước chạy không nhận đối số và đọc hạn ở bảng đó (bước 7); compliance-pdpl/06, đã
+  chờ ticket này, gọi cùng hàm đọc hạn, nên không cần cạnh mới.
+- 2026-10-24 (agent): kiểm lượt f của vòng 4: bước 10 thêm quyền trên `platform.retention_terms` vào các quyền mà
+  `scripts/create_provisioner_role.py` cấp lại cho `dw_provisioner`, vì revision chỉ cấp quyền cho vai khi vai đã có,
+  nên một cụm nhận vai qua script sau migration sẽ có vai mà bộ nạp vẫn không ghi được bảng; tiêu chí không đổi.

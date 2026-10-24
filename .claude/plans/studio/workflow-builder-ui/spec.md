@@ -87,6 +87,9 @@ tự phát hành (YC33, YC40; BUI-03, BUI-04, BUI-06).
 - R3.9 KHI người dựng gửi kiểm định, trang builder PHẢI gửi `If-Match` bằng ETag của Nháp đã đọc tới route gửi kiểm
   định, như khi tự lưu (R2.3), để lệnh gửi một Nháp đã đổi ở tab khác nhận 412 thay vì niêm phong nội dung người dựng
   chưa thấy (agent-lifecycle:R2.12, agent-lifecycle:R2.13; ADR-0108 (Accepted) quyết 3).
+- R3.10 TRONG KHI Quy trình có Bản ứng viên ở `evaluating` hay `awaiting_approval`, trang builder PHẢI hiện Bản ứng viên
+  chỉ đọc, không gọi lưu nháp hay route tạo bản Nháp, nêu rằng muốn sửa thì rút bản đang chờ về Nháp, và chỉ gọi lệnh
+  rút của agent-lifecycle khi người dựng chọn rút (agent-lifecycle:R2.4; tenant-config:R2.20, tenant-config:R2.22).
 
 ## Trong phạm vi
 
@@ -95,7 +98,8 @@ tự phát hành (YC33, YC40; BUI-03, BUI-04, BUI-06).
   Đường nối, chèn giữa, nối Nhánh ra, xóa, thứ tự phím theo đồ thị, diff theo id Bước. Hàm bố cục dagre nằm
   dưới `apps/web/app/studio/**/canvas/**`.
 - Ô Biểu thức với Chọn biến có kiểu; huy hiệu lỗi trên Bước; nút gửi kiểm định; biểu mẫu và bảng chạy mô phỏng,
-  với một lựa chọn duyệt hay từ chối cho mỗi Bước phê duyệt.
+  với một lựa chọn duyệt hay từ chối cho mỗi Bước phê duyệt; trạng thái chỉ đọc khi Quy trình có Bản ứng viên đang chờ,
+  với lời mời rút bản đang chờ về Nháp để sửa.
 - Dạng danh sách (antd `Tree`) đồng bộ với Sơ đồ.
 - Ngoại lệ antd-only: hai mục `EXCEPTIONS` `{module, glob, adr}` trong allowlist của `antd-only.test.ts`
   (studio-skeleton/03 đổi guard thành allowlist) và override ESLint.
@@ -126,20 +130,22 @@ tự phát hành (YC33, YC40; BUI-03, BUI-04, BUI-06).
   Bước chạy, nút Gửi kiểm định (khóa có lý do). Dưới `lg`: cột cấu
   hình thành Drawer. Ở 320 px: không cuộn ngang. Dạng danh sách là đường cho trình đọc màn hình, đồng
   bộ với Sơ đồ. Giai đoạn vòng đời hiện ở đầu trang (đọc từ `agent-lifecycle`); trang không tự phát
-  hành.
+  hành. Khi Quy trình có Bản ứng viên đang chờ: Sơ đồ và cấu hình chỉ đọc, tự lưu tắt, một thông báo nêu "rút bản đang
+  chờ về Nháp để sửa" kèm nút Rút về Nháp; trang chỉ gọi lệnh rút khi người dựng bấm nút đó.
 
 ## Kiểm soát
 
-| #   | Kiểm soát                                                                                                                        | Yêu cầu    | Test âm                                                                                                                                            |
-| --- | -------------------------------------------------------------------------------------------------------------------------------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| BU1 | Hai gói đồ thị chỉ ở `apps/web`, chỉ tệp builder import                                                                          | R1.2       | Import từ `app/approvals` → `antd-only.test.ts` đỏ; `@dw/ui` khai báo gói → đỏ                                                                     |
-| BU2 | Không tính Biểu thức trong trình duyệt                                                                                           | R3.2       | Thư viện CEL có mặt trong bundle route builder → test manifest đỏ                                                                                  |
-| BU3 | Nút Gửi kiểm định khóa có lý do; máy chủ vẫn từ chối; builder không tự phát hành                                                 | R3.3, R3.5 | Gửi kiểm định một Nháp lỗi qua API → 422; không đường nào trong builder gọi phát hành                                                              |
-| BU4 | Tự lưu dùng `If-Match`                                                                                                           | R2.4       | Hai tab → 412, nội dung đang gõ giữ nguyên                                                                                                         |
-| BU5 | Chạy mô phỏng từ builder chỉ gửi `simulate`; route vẫn từ chối `live` và `test` (workflow-triggers:R2.2, workflow-triggers:R2.6) | R3.6       | Test thành phần: builder không gửi chế độ nào khác `simulate`; gọi thẳng route với `live` → 422; bỏ giới hạn chế độ ở builder → test thành phần đỏ |
-| BU6 | Kết quả Bước chạy che theo bảo mật trường                                                                                        | R3.7       | Người không đọc được `phone` không thấy số trong DOM và trong mạng; gỡ che → test đỏ                                                               |
-| BU7 | Mọi thao tác chuột có đường bàn phím; Dạng danh sách cho trình đọc màn hình                                                      | R2.5, R2.6 | Playwright dựng một Quy trình chỉ bằng bàn phím                                                                                                    |
-| BU8 | Không lưu vị trí Bước                                                                                                            | R1.4       | Kéo một Bước không đổi tài liệu, Mã băm nội dung không đổi                                                                                         |
+| #   | Kiểm soát                                                                                                                        | Yêu cầu    | Test âm                                                                                                                                                                                                                                                                                                              |
+| --- | -------------------------------------------------------------------------------------------------------------------------------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| BU1 | Hai gói đồ thị chỉ ở `apps/web`, chỉ tệp builder import                                                                          | R1.2       | Import từ `app/approvals` → `antd-only.test.ts` đỏ; `@dw/ui` khai báo gói → đỏ                                                                                                                                                                                                                                       |
+| BU2 | Không tính Biểu thức trong trình duyệt                                                                                           | R3.2       | Thư viện CEL có mặt trong bundle route builder → test manifest đỏ                                                                                                                                                                                                                                                    |
+| BU3 | Nút Gửi kiểm định khóa có lý do; máy chủ vẫn từ chối; builder không tự phát hành                                                 | R3.3, R3.5 | Gửi kiểm định một Nháp lỗi qua API → 422; không đường nào trong builder gọi phát hành                                                                                                                                                                                                                                |
+| BU4 | Tự lưu dùng `If-Match`                                                                                                           | R2.4       | Hai tab → 412, nội dung đang gõ giữ nguyên                                                                                                                                                                                                                                                                           |
+| BU5 | Chạy mô phỏng từ builder chỉ gửi `simulate`; route vẫn từ chối `live` và `test` (workflow-triggers:R2.2, workflow-triggers:R2.6) | R3.6       | Test thành phần: builder không gửi chế độ nào khác `simulate`; gọi thẳng route với `live` → 422; bỏ giới hạn chế độ ở builder → test thành phần đỏ                                                                                                                                                                   |
+| BU6 | Kết quả Bước chạy che theo bảo mật trường                                                                                        | R3.7       | Người không đọc được `phone` không thấy số trong DOM và trong mạng; gỡ che → test đỏ                                                                                                                                                                                                                                 |
+| BU7 | Mọi thao tác chuột có đường bàn phím; Dạng danh sách cho trình đọc màn hình                                                      | R2.5, R2.6 | Playwright dựng một Quy trình chỉ bằng bàn phím                                                                                                                                                                                                                                                                      |
+| BU8 | Không lưu vị trí Bước                                                                                                            | R1.4       | Kéo một Bước không đổi tài liệu, Mã băm nội dung không đổi                                                                                                                                                                                                                                                           |
+| BU9 | Bản ứng viên đang chờ thì builder chỉ đọc, chỉ rút về Nháp khi người dựng chọn                                                   | R3.10      | Test thành phần: Quy trình có Bản ứng viên ở `awaiting_approval` → Sơ đồ và biểu mẫu chỉ đọc, trang nêu "rút bản đang chờ về Nháp để sửa", không lời gọi `PUT .../draft` hay `POST .../draft`, không lời gọi `withdraw` khi chưa bấm Rút về Nháp; bấm → đúng một lời gọi `withdraw`; bỏ trạng thái chỉ đọc → test đỏ |
 
 ## Tiêu chí xong
 
@@ -170,16 +176,21 @@ tự phát hành (YC33, YC40; BUI-03, BUI-04, BUI-06).
   (workflow-nodes:R9.9).
 - `tenant-config`: Chế độ chạy do máy chủ đặt (tenant-config:R4.1), Mô phỏng chặn tác động
   (tenant-config:R5.1), bản kê của lượt mô phỏng trên bản Nháp ghim mã băm tạm của nội dung nháp
-  (tenant-config:R6.1); Nháp với ETag.
+  (tenant-config:R6.1); Nháp với ETag; một phiên bản chưa phát hành mỗi thành phần, nên không có bản Nháp nào khi một
+  Bản ứng viên còn chờ (tenant-config:R2.20, tenant-config:R2.22).
 - `telemetry-and-audit` (batch 2): `run_steps` cho bảng chạy mô phỏng và lớp phủ.
 - `agent-lifecycle` (batch 2): giai đoạn vòng đời và cổng phát hành mà builder không tự gọi; route gửi kiểm định
-  nhận `If-Match` là ETag của Nháp, 412 khi lệch và 428 khi thiếu (agent-lifecycle:R2.12, agent-lifecycle:R2.13).
+  nhận `If-Match` là ETag của Nháp, 412 khi lệch và 428 khi thiếu (agent-lifecycle:R2.12, agent-lifecycle:R2.13); lệnh
+  rút Bản ứng viên về Nháp `POST .../withdraw` (agent-lifecycle:R2.4), mà trang chỉ gọi khi người dựng chọn rút (R3.10),
+  và 409 `candidate_exists` cho lần gửi thua khi hai tab cùng gửi bản Nháp duy nhất (agent-lifecycle:R1.3), sau đó trang
+  vào trạng thái của R3.10.
 - Kiểm lại khi: `workflow-nodes` đổi hình API `node-types`/`/expressions/check`/`draft/scope`;
   `workflow-engine` đổi hợp đồng `dw.workflow/v1` hay `workflow-triggers` đổi route `.../test-runs` hay hình của
   quyết định giả lập → kiểm lại 01-03; `workflow-triggers` hay `tenant-config` thôi nhận bản Nháp ở chế độ
   `simulate`, hay `RunRequestService` thôi kiểm nội dung nháp trước khi xin lượt (workflow-engine:R3.11) → R3.6, R3.8,
-  ticket 03; `agent-lifecycle` đổi điều kiện ghi của route gửi kiểm định → R3.9, ticket 03; W2 mở chế độ `test` → R3.6,
-  R3.8, BU5, ticket 03.
+  ticket 03; `agent-lifecycle` đổi điều kiện ghi của route gửi kiểm định → R3.9, ticket 03; `agent-lifecycle` đổi lệnh
+  rút hay mã của lần gửi song song, hay `tenant-config` thôi giữ một phiên bản chưa phát hành mỗi thành phần → R3.10,
+  BU9, ticket 03; W2 mở chế độ `test` → R3.6, R3.8, BU5, ticket 03.
 
 ## Câu hỏi còn mở
 
@@ -259,6 +270,10 @@ tự phát hành (YC33, YC40; BUI-03, BUI-04, BUI-06).
   "route chạy mô phỏng chạy bộ kiểm một lượt của lúc gửi kiểm định trên nội dung nháp trước khi xin lượt" của dòng
   hoàn tất V4.4 cùng ngày. Sửa: R3.6, Phụ thuộc. Nếu sai thì: route nộp kết quả kiểm kèm mã băm của nội dung đã kiểm
   cho `RunRequestService`, và R3.6 dẫn lại workflow-triggers:R2.9 cho lần kiểm.
+- 24/10/2026 (Đạt): V4.17: mỗi thành phần có tối đa một phiên bản chưa phát hành (bản Nháp hay Bản ứng viên); tạo bản
+  Nháp mới khi đang có Bản ứng viên → 409 `conflict` với `details.reason_code` `candidate_pending`, muốn sửa thì rút Bản
+  ứng viên về Nháp, nên trang builder hiện Bản ứng viên chỉ đọc, nêu "rút bản đang chờ về Nháp để sửa" và chỉ rút khi
+  người dựng chọn. Sửa: R3.10, Trong phạm vi, Màn hình, BU9, Phụ thuộc, ticket 03.
 
 ## Danh sách ticket
 

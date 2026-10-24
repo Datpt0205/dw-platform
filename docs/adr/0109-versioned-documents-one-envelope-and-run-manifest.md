@@ -107,7 +107,10 @@ contract of ADR 0120.
    checks on that content itself, whichever route asked, before it builds a run manifest or inserts a run row,
    and an error refuses the request, so no caller reaches a draft run unchecked (failure-modes #5). The run's
    root then records the version id, the stage `draft` and a provisional hash of that content, computed when the
-   request is accepted the way decision 4 computes `definition_hash`.
+   request is accepted the way decision 4 computes `definition_hash`. The door also derives from the draft's
+   closure a provisional boundary (ADR 0103 decision 5), by the derivation the kind's publish hook runs,
+   recorded under `(version_id, pinned_hash)` for that run alone and deleted when the run ends; the database
+   admits it only in `simulate`, so no `live` run reads under it.
    `platform.run_manifest_keys` names each version a retained run pinned in exactly one of `artifact_version_id`
    and `config_version_id` (CHECK `num_nonnulls(artifact_version_id, config_version_id) = 1`), each a composite FK
    `ON DELETE RESTRICT` to `studio.artifact_versions` or `platform.config_versions`, so nothing such a run pinned
@@ -156,8 +159,16 @@ contract of ADR 0120.
   `studio.definition_manifests`, `platform.run_manifests` and `platform.run_manifest_keys`, and add
   `platform.worker_runs.run_manifest_hash`, each tenant table with RLS and every table with the grants that
   `test_rls_coverage.py` and `test_privileges.py` assert; `uq_workspaces_tenant_id_id` comes from
-  org-and-principals/01, not from here. Offboarding purges `studio.dependencies` before `studio.artifacts` before
-  `studio.artifact_versions`, and `worker_runs` before `run_manifests`.
+  org-and-principals/01, not from here. Offboarding deletes in the one order of `offboarding.py`, which lists
+  every table after each table that holds an `ON DELETE RESTRICT` or `NO ACTION` key to it. For the definitions,
+  the tables that point at a version come first, among them `platform.worker_runs`,
+  `studio.trigger_subscriptions`, `platform.run_manifest_keys` and `studio.dependencies`, whose `to_version_id`
+  and `to_artifact_id` are such keys (decision 5); then `studio.artifact_versions`, `studio.gate_case_results`,
+  `studio.gate_runs` and `studio.artifacts`; and `worker_runs` goes before `run_manifests`. A dependency row also
+  leaves by cascade with its `from_version_id`, but that does not let it follow the versions: measured on
+  PostgreSQL 16.15, deleting the versions first fails on `to_version_id` whenever the depended-on version is
+  reached before the one that depends on it. studio-skeleton R4.2's coverage test reads those edges from
+  `pg_constraint` and fails when the declared order contradicts one (failure-modes #0).
 - `studio.artifacts`, `studio.artifact_versions`, `studio.dependencies`, `studio.definition_manifests`,
   `platform.run_manifests` and `platform.run_manifest_keys` are tenant-wide rows under the `CLAUDE.md:185` class that
   ADR 0100 records (A6), each listed with its reason in `test_rls_coverage.py`.
@@ -254,3 +265,14 @@ contract of ADR 0120.
   draft is simulated and the sentence names ADR 0112 alone); Consequences leave `to_field_id` and its composite
   foreign key to custom-objects, which adds them with `studio.field_defs`, the table they reference, as tenant-config
   states (if it is wrong, tenant-config adds them in a revision after custom-objects' own).
+- Third consistency check (round 4), sixth pass, Đạt's V4.22 and the planner's provisional call: decision 6 has
+  the door derive a draft root's provisional boundary from the draft's closure by the kind's publish-hook
+  derivation (ADR 0103 decision 5), recorded for that run alone, admitted only in `simulate` and deleted when the
+  run ends; Consequences replace the purge order "dependencies, artifacts, artifact_versions", which relied on an
+  artifact cascading to its versions and broke once `studio.gate_runs.artifact_id` and
+  `studio.artifact_versions.gate_run_id` became `ON DELETE RESTRICT`, with the one order of `offboarding.py`, each
+  table after every table holding a `RESTRICT` or `NO ACTION` key to it, read back from `pg_constraint` by
+  studio-skeleton R4.2's test, `studio.dependencies` coming before the versions because its `to_version_id` is one
+  of those keys (if it is wrong, those keys become `NO ACTION DEFERRABLE INITIALLY DEFERRED`, checked at commit,
+  and leave the order, so the purge's one transaction deletes the group in any order; measured on PostgreSQL
+  16.15, a key that is not deferrable fails as `RESTRICT` does).

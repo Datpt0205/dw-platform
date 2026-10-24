@@ -42,7 +42,7 @@ with the amendments listed under Acceptance; the calls it leaned on are answered
    `platform.worker_runs`, which gains `trigger_kind`, `trigger_ref` (from W2, since nothing in W1 reads it),
    `inbound_event_id`, `request_key` (partial unique per tenant), `parent_run_id`, `root_run_id`, `chain_depth`,
    `run_as_principal_id`, `priority` (0 interactive, 1 background, 2 eval), `available_at`, `lease_owner`,
-   `lease_until`, `attempt`, `deadline_at` and `cancel_requested_at` (both from W2, decision 3), and the statuses
+   `lease_until`, `attempt`, `deadline_at` and, from W2, `cancel_requested_at` (decision 3), and the statuses
    `queued`, `waiting`, `blocked` and `dead_lettered`. An architecture test allows no other writer of a queued Studio
    row.
 2. **A fair claim without BYPASSRLS.** SECURITY DEFINER `platform.studio_run_scopes_due(p_limit)` returns the tenant
@@ -51,7 +51,7 @@ with the amendments listed under Acceptance; the calls it leaned on are answered
    `set_config('app.tenant_id', ..., true)`, an RLS-bound claim (an `UPDATE` over `SELECT ... FOR UPDATE SKIP LOCKED`)
    takes at most `ceil(batch / tenants)` rows by `(priority, available_at)`. Measured on 2026-10-22: behind one
    tenant's 100,000-row backlog, another tenant's first claim took 0.9 s, against 4.8 s first-in-first-out.
-3. **Admission at dispatch, fenced claims, and from W2 a deadline for every run.** At claim the `studio_runs` lane asks
+3. **Admission at dispatch, fenced claims, and a deadline for every run.** At claim the `studio_runs` lane asks
    `RunControlPort.require_open` (ADR-0120), then `LimitsPort.admit` (ADR-0121). That claim is the one place a Studio
    run is admitted; a child run shares its root's lease and is not admitted again (decision 9). One table keyed by
    `trigger_kind` shapes every refusal, for freezes and limits alike, and gives every kind of decision 1 its row:
@@ -60,34 +60,38 @@ with the amendments listed under Acceptance; the calls it leaned on are answered
    `agent_link`, `agent_tool`) is never admitted on its own, so only its root's row applies. From W2 (YC79), missing
    concurrency re-queues every kind with a later `available_at`. A freeze re-queues a trigger run with a later
    `available_at`, so that it starts in arrival order once the freeze lifts, and ends an interactive run or an
-   evaluation trial at once as `cancelled` with `tenant_frozen` or `platform_frozen`. A spent hard limit
-   re-queues a `datahub`, `provider_app` or `record_event` run until the window's `resets_at`, never dropping it;
-   records a `schedule` fire (W2) as `limit_refused` and skips it instead of holding it, because holding every missed
-   fire would release them all at once when the next window begins; ends an interactive run `failed` with
-   `limit_exceeded` and `resets_at` (a conversation shows it as a `notice`); and ends an evaluation's gate run `error`
-   with `limit_exceeded` (ADR-0120). `principal_inactive`, the run-as principal no longer `active`, keeps a
-   `datahub`, `provider_app` or `record_event` run `queued`, as a freeze holds a trigger run, and alerts the
-   accountable owner (ADR-0103); once the principal is active again the held runs start in arrival order, and a
-   person may cancel them, audited, their inbound events staying replayable (one at a time through the cancel route
-   from W2; in W1 a kill of the artifact cancels them, ADR-0120 decision 7); it ends a run of every other kind
-   `cancelled`, a `schedule` fire included. `binding_needs_review` refuses an unattended run before it is requested
-   while its service principal's grants have grown since its `principal` binding was approved, its trigger delivery
-   recorded `rejected`, until someone who covers the new grants approves the binding again (ADR-0103 decision 4).
-   `control_state_unavailable` re-queues any kind with a later `available_at`, refusing it without dropping it. A
-   killed artifact's queued runs are cancelled, never held. A claim lease
-   (`lease_owner`, `lease_until`; not ADR-0121's budget lease) lasts 60 s with a 15 s heartbeat; state and
-   checkpoint writes are fenced by `(lease_owner, attempt)`, so a stale holder's writes fail. Lane
-   `studio_run_reaper` re-queues expired claims with backoff `min(2^attempt * 5 s, 10 min)` plus jitter; after 5
-   attempts the run is dead-lettered (`dead_lettered`,
-   audit `run.dead_lettered`, outbox `studio.run.dead_lettered`). From W2, with workflow-engine's W2 row,
+   evaluation trial at once as `cancelled` with `tenant_frozen` or `platform_frozen`. A spent hard limit re-queues a
+   `datahub`, `provider_app` or `record_event` run until the window's `resets_at`, never dropping it; records a
+   `schedule` fire (W2) as `limit_refused` and skips it instead of holding it, because holding every missed fire would
+   release them all at once when the next window begins; ends an interactive run `failed` with `limit_exceeded` and
+   `resets_at` (a conversation shows it as a `notice`); and ends an evaluation's gate run `error` with
+   `limit_exceeded` (ADR-0120). `principal_inactive`, the run-as principal no longer `active`, keeps a `datahub`,
+   `provider_app` or `record_event` run `queued`, as a freeze holds a trigger run, and the `studio_runs` lane holding
+   it notifies, through the platform's notification service, the tenant-depth holders of `platform.members.write`, who
+   can make the account active again, once each time the account stops being `active`; once the principal is active
+   again the held runs start in arrival order, and a person may cancel them, audited, their inbound events staying
+   replayable (one at a time through the cancel route from W2; in W1 a kill of the artifact cancels them, ADR-0120
+   decision 7); it ends a run of every other kind `cancelled`, a `schedule` fire included. `binding_needs_review`, the
+   run-as service principal's grants having grown since its `principal` binding was approved, is shaped as
+   `principal_inactive` is: it keeps a `datahub`, `provider_app` or `record_event` run `queued` until someone who
+   covers the new grants approves the binding again (ADR-0103 decision 4), the held runs then starting in arrival
+   order, and ends a `schedule` fire `cancelled`; the hold notifies the holders of `studio.bindings.approve`, the key
+   tenant-config stamps on a binding set's approval. `control_state_unavailable` re-queues any kind with a later
+   `available_at`, refusing it without dropping it. A killed artifact's queued runs are cancelled, never held. A claim
+   lease (`lease_owner`, `lease_until`; not ADR-0121's budget lease) lasts 60 s with a 15 s heartbeat; state and
+   checkpoint writes are fenced by `(lease_owner, attempt)`, so a stale holder's writes fail. Lane `studio_run_reaper`
+   re-queues expired claims with backoff `min(2^attempt * 5 s, 10 min)` plus jitter; after 5 attempts the run is
+   dead-lettered (`dead_lettered`, audit `run.dead_lettered`, outbox `studio.run.dead_lettered`). Every run has
+   `deadline_at = admitted_at + min(limits.max_run_seconds, plan ceiling)`, the plan ceiling alone where the version
+   sets no `limits.max_run_seconds`, waits included (default 30 days, at most 90), checked at node start, at resume
+   and by `studio_run_reaper`; a run past it ends `cancelled` with `deadline_exceeded`, its open waits and approvals
+   with it. That bounds every W1 wait, although a step approval has no expiry of its own until W2 (ADR-0112
+   decision 7, DO-31), and the bound stays: a process that lasts months is a chain of short runs over one record's
+   lifecycle in stages (ADR-0126 (Accepted)), never one run. From W2, with workflow-engine's W2 row,
    `POST /api/v1/runs/{run_id}/cancel` (`runs.cancel`) sets `cancel_requested_at` and notifies on `dw_run_state`
-   (`run_store.py:51-53`), which `RunStateListener` (`adapters/run_events.py:96`) turns into a task cancel, queued
-   and waiting runs being cancelled in the database with their open waits and approvals; and, as ADR-0126 (Accepted)
-   states, `deadline_at = admitted_at + min(limits.max_run_seconds, plan ceiling)`, waits included (default 30 days,
-   at most 90), is checked at node start, at resume and by the reaper (`deadline_exceeded`). W1 has neither, and nothing
-   there bounds a wait: a step approval waits with no deadline (ADR-0112 decision 7, DO-31), and only a kill cancels
-   an artifact's waiting runs (ADR-0120 decision 7). Once the deadline ships its bound stays: a process that lasts
-   months is a chain of short runs over one record's lifecycle in stages (ADR-0126 (Accepted)), never one run.
+   (`run_store.py:51-53`), which `RunStateListener` (`adapters/run_events.py:96`) turns into a task cancel, queued and
+   waiting runs being cancelled in the database with their open waits and approvals; until then only a kill cancels an
+   artifact's waiting runs before their deadline (ADR-0120 decision 7).
 4. **A run waits in place.** Each wait is an `interrupt()` plus a durable `platform.run_waits` row (RLS ENABLE and
    FORCE; `kind` `approval`, `task`, `timer`, `child_run`; `status` `open`, `resolved`, `consumed`, `expired`,
    `cancelled`; unique `(tenant_id, run_id, interrupt_id)`); several may be open. A decision, a due timer or a child
@@ -187,7 +191,8 @@ with the amendments listed under Acceptance; the calls it leaned on are answered
   not starving another; a stale holder's write refused by the fence; a decided approval surviving a crash before
   resume; an empty resume map refused; a forged provider event never routed; tenant A's Page never reaching tenant B;
   a schedule fired by two replicas running once; a record-event chain stopping at depth 8; a waiting child reporting
-  `waiting`.
+  `waiting`; a run past its deadline ending `cancelled` with `deadline_exceeded` and its open approval cancelled; a
+  `datahub` run held `queued` under `binding_needs_review` until the binding is approved again, then started.
 - Harder: every new start path must go through the door; each linked-agent call pays queue latency; P1 has no token
   streaming.
 - Reinforces `CLAUDE.md:260-265`, whose port becomes `LimitsPort` with ADR-0121. Follows
@@ -281,3 +286,15 @@ Amended by Đạt on 2026-10-24, who accepted every recommendation the second co
   `studio.step_assignments`, which cascade with their run, where the sentence before named `parent_run_id`'s key
   alone and no action (if it is wrong, the key of `parent_run_id` is `ON DELETE CASCADE`, so deleting a run deletes its
   subtree, and ADR-0122 decision 7's lane deletes a run tree by its root).
+- Third consistency check (round 4), sixth pass, Đạt's V4.14, V4.15 and V4.16 and the planner's provisional call:
+  `deadline_at` ships in W1, as decision 3 first wrote it, checked at node start, at resume and by
+  `studio_run_reaper`, a run past it ending with `deadline_exceeded`, its open waits and approvals with it, so every
+  W1 wait is bounded, while the cancel route and `cancel_requested_at` stay W2 (decisions 1 and 3); this replaces the
+  W2 deadline and the unbounded W1 wait that the first round-4 line above records (F:ADR-0113\~workflow-engine:R3.1).
+  That such a run ends `cancelled` is the planner's call, as workflow-engine states it, since what cancels a run's
+  open waits and approvals already listens for `cancelled` (if it is wrong, it ends `failed` with `deadline_exceeded`,
+  and those listeners hear `failed` too). A run held under `principal_inactive` notifies the tenant-depth holders of
+  `platform.members.write`, who can make the account active again, once each time the account stops being `active`, in
+  place of the accountable owner, whose column on a service principal arrives in W2; and `binding_needs_review` no
+  longer refuses before the request but is shaped as `principal_inactive`, holding a trigger run `queued` until the
+  binding is approved again and notifying the holders of `studio.bindings.approve` (ADR-0103 decision 4).

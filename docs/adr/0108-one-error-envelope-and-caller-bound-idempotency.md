@@ -92,14 +92,15 @@ without it, and Studio's tools and workflow nodes are the first effects that ret
 5. **Tool idempotency is claim-first.** `platform.tool_execution_claims` (`tenant_id`, `workspace_id`,
    `tool_name`, `idempotency_key`, `run_id`, `claim_token`, `claimed_at`, `expires_at`; primary key
    `(tenant_id, tool_name, idempotency_key)`) is inserted before the executor looks for a succeeded call. A
-   duplicate while the first runs gets `ConflictError`; a duplicate after success replays; an expired claim
-   is taken over by `DELETE ... WHERE claim_token = :old AND expires_at < now()` then `INSERT`; release
-   deletes only its own token; `expires_at = now() + timeout_seconds * (1 + max_retries) + 30 s`. Two calls
-   with one key can never both run the effect. `uq_tool_executions_idempotency` stays as the backstop (an
-   `IntegrityError` there becomes a replay), and `dw_app` loses UPDATE on `platform.tool_executions`. ADR 0122's
-   30-day clearing of `output` therefore runs in the retention lane through a SECURITY DEFINER function that nulls
-   `output` past its term and changes nothing else, the term a line of the retention policy, so UPDATE never returns
-   to `dw_app`.
+   duplicate while the first runs gets `ConflictError`; a duplicate after success replays; an expired claim is
+   taken over by `DELETE ... WHERE claim_token = :old AND expires_at < now()` then `INSERT`; release deletes
+   only its own token; `expires_at = now() + timeout_seconds * (1 + max_retries) + 30 s`. Two calls with one
+   key can never both run the effect. `uq_tool_executions_idempotency` stays as the backstop (an
+   `IntegrityError` there becomes a replay), and `dw_app` loses UPDATE on `platform.tool_executions`.
+   ADR 0122's 30-day clearing of `output` therefore runs in the retention lane through a SECURITY DEFINER
+   function that takes no argument, reads its term from `platform.retention_terms`, the provisioner's copy of
+   the pinned retention policy (ADR 0122 decision 7), nulls `output` past it and changes nothing else, so
+   UPDATE never returns to `dw_app`.
 6. **One key grammar for run effects.** A workflow node's effect carries `wf:{run_id}:{node_id}:{iteration_path}`
    (map index and loop counter path, never the attempt; the node catalogue's `run_id:node_id:iteration` is
    this key), derived through the existing `executor.canonical_hash`, which stays unchanged so in-flight runs
@@ -180,3 +181,6 @@ All three are DO-16, owned by Đạt:
 - Decision 5: ADR 0122's 30-day clearing of `platform.tool_executions.output` goes through a SECURITY DEFINER
   function of the retention lane, with its term in the retention policy, so `dw_app` regains no UPDATE on the table
   (H:ADR-0122~foundations-hardening:R6.3).
+- Third consistency check (round 4), sixth pass, Đạt's V4.21: decision 5's function that clears `output` takes
+  no argument and reads its term from `platform.retention_terms`, which the provisioner loads from the pinned
+  retention policy (ADR 0122 decision 7), so a new term from counsel takes a policy version and no code.

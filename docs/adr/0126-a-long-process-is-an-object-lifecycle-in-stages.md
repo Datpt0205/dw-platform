@@ -21,8 +21,9 @@ YC102. The `workflow-engine` spec owns it; custom-objects and workflow-builder-u
 
 ## Context
 
-- **A run cannot hold a process that lasts months.** From W2 every run has `deadline_at = admitted_at +
-min(limits.max_run_seconds, plan ceiling)`, waits included, 30 days by default and at most 90 (ADR-0113 decision 3).
+- **A run cannot hold a process that lasts months.** Every run has
+  `deadline_at = admitted_at + min(limits.max_run_seconds, plan ceiling)`, waits included, 30 days by default and at
+  most 90 (ADR-0113 decision 3).
   A run finishes on the version and run manifest it started with (ADR-0109 decision 6), and moving a waiting run to a
   new version is a W3 row of workflow-engine, so a fix to a workflow reaches no record already inside one of its runs.
 - **Sub-workflows do not stretch it.** A child run shares its root's run-as principal, budget lease and limits and
@@ -143,3 +144,9 @@ min(limits.max_run_seconds, plan ceiling)`, waits included, 30 days by default a
    starts).
 2. **What a Stage label holds**: free text, or the option key of a Stage of the object the workflow's trigger names,
    checked at submit (workflow-builder-ui, when W2 starts).
+
+## Amendments (2026-10-24)
+
+- Third consistency check (round 4), sixth pass, Đạt's V4.14: Context says that every run has its deadline, no longer
+  from W2, since ADR-0113 decision 3 now ships `deadline_at` in W1 as it first wrote it; this ADR stays W2 (YC102),
+  and the bound it rests on holds from W1.

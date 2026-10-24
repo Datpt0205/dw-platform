@@ -165,8 +165,9 @@ describe và bộ chiếu theo quyền của người gọi, và ticket 06 nối
 - [ ] R4.2 (CO21): thêm policy PERMISSIVE `USING (true)` lên `studio.records` → test catalog đỏ.
 - [ ] R4.4: offboarding một công ty có hai đối tượng xuất mỗi dòng định nghĩa đúng một lần, sau purge còn 0 dòng ở
       bốn bảng, kể cả khi một dòng `studio.dependencies` của công ty đó có `to_field_id` trỏ tới một trường của nó; bỏ
-      một bảng `studio` khỏi `_ORDERED_FIRST` hay xếp `studio.field_defs` trước `studio.dependencies` → test walk
-      `pg_class` của studio-skeleton/01 đỏ.
+      một bảng `studio` khỏi `_ORDERED_FIRST` hay xếp `studio.field_defs` trước `studio.dependencies` → test phủ
+      offboarding của studio-skeleton/01 đỏ, vì nó đọc các khóa ngoại `RESTRICT` từ `pg_constraint`
+      (studio-skeleton:R4.1, studio-skeleton:R4.2).
 - [ ] R4.6 (CO1): bằng `dw_migrator`, vai bỏ qua RLS nên chỉ khóa ngoại chặn được (ở ticket này `studio.records` chưa
       có policy PERMISSIVE nào cho `dw_app` ghi), INSERT dòng của công ty A vào `studio.records` hay `studio.field_defs`
       với `object_id` của công ty B, vào `studio.picklist_options` với `field_id` của B, vào `studio.object_defs` với
@@ -231,3 +232,6 @@ describe và bộ chiếu theo quyền của người gọi, và ticket 06 nối
   3 đặt bốn bảng giữa `studio.dependencies` và `studio.artifacts`; ca FK ghép của công ty khác rời tiêu chí R4.2 sang
   tiêu chí mới R4.6 (CO1), thêm ca `field_id` của lựa chọn, `id` của định nghĩa đối tượng, `workspace_id` của bản ghi và
   `to_field_id`; tiêu chí R4.4 thêm dòng phụ thuộc trỏ tới trường (ba dòng Quyết định 24/10/2026 của spec).
+- 2026-10-24 (agent): vòng sửa 4, lượt sáu: tiêu chí R4.4 nêu test phủ offboarding của studio-skeleton/01, nay đọc khóa
+  ngoại `RESTRICT` từ `pg_constraint` và đòi thứ tự xóa duy nhất liệt kê mỗi bảng sau mọi bảng giữ khóa tới nó
+  (studio-skeleton:R4.2), thay cho "test walk `pg_class`"; bước 3 đã đúng luật đó.
