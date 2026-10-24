@@ -131,12 +131,17 @@ by copying") and D3 (record-level access in four layers), and on the call on DO-
     - 404 `not_found` when the request lies outside what they may see: another workspace's request, or a stamped one
       they may not decide and did not ask for (ADR-0004, amendment of 2026-10-07), answered as a request that never
       existed.
-    - 409 `conflict` for every separation-of-duties rule, the rule in `details.reason_code` where it names one: the
-      strict prefix's refusal of a requester or run-as principal, `second_person_required` for a proposer deciding
-      their own proposal (decision 10, ADR-0110), `author_cannot_approve` for an author approving their own version's
-      publish (ADR-0120).
+    - 409 `conflict` for every separation-of-duties rule, the rule in `details.reason_code`:
+      `second_person_required` for the strict prefix's refusal of a requester or run-as principal deciding, for every
+      approval type, and for a proposer deciding their own proposal (decision 10, ADR-0110); `author_cannot_approve`
+      for an author approving their own version's publish, the guard of `studio.publish.` (ADR-0120). The strict
+      prefix's check runs before any guard, so an author who is also the request's requester gets
+      `second_person_required`.
     - 403 `permission_denied` when they see the request but lack `approvals.decide` or its stamp (ADR-0004), are not
-      among its assignees, or cannot read a field it stamped (ADR-0106 decision 6, ADR-0112 decision 7).
+      among its assignees, or cannot read a field it stamped (ADR-0106 decision 6, ADR-0112 decision 7). From W2 an
+      approval delegation (YC104) lets a person decide in an assignee's place only while they hold the type's stamp
+      and `approvals.decide`, are not the run's requester (YC51) and act between the delegation's start and end,
+      audited; outside those conditions the answer stays 403.
 
     ADR-0004 keeps the stamp and the visibility rule that these answers follow.
 
@@ -269,3 +274,9 @@ by copying") and D3 (record-level access in four layers), and on the call on DO-
   carries the lane's own actor in `app.user_id` (E:CLAUDE.md#agent-and-tool-rules~tenant-config:R8.10).
 - Open 5 answered in part: dw-proterial's maintainer moves its writes off `memberships.role_keys` before
   tenant-rbac/03 locks the column (FOG-49).
+- Third consistency check (round 4): decision 11 gives the strict prefix's refusal of a requester or run-as principal
+  the code `second_person_required` for every approval type, `author_cannot_approve` staying the `studio.publish.`
+  guard's, and since the strict check runs first an author who requested the approval gets the former (P9, the
+  planner's provisional call, B:packages:spec~~tenant-config/05; if it is wrong, each approval type names its own code
+  through its `decision_guards` entry); it also states from W2 the conditions under which an approval delegation
+  decides, 403 outside them (Đạt's D10; D:ADR-0112~~workflow-nodes:spec).

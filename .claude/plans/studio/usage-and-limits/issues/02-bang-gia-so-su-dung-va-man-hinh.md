@@ -1,7 +1,7 @@
 # 02 — Bảng giá theo ngày hiệu lực, sổ sử dụng theo lượt gọi và màn Mức độ sử dụng
 
 Status: needs-triage
-Blocked by: .claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md, .claude/plans/studio/tenant-rbac/issues/01-mot-chu-cho-quyen.md, .claude/plans/studio/model-connections/issues/02-model-resolver-theo-tenant.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md
+Blocked by: .claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md, .claude/plans/studio/tenant-rbac/issues/01-mot-chu-cho-quyen.md, .claude/plans/studio/model-connections/issues/02-model-resolver-theo-tenant.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md
 Area: studio
 Yêu cầu: R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R3.9, R3.10, UL5, UL7, UL12, UL16
 
@@ -37,9 +37,12 @@ model với đủ thuộc tính gán, chỉ thêm và idempotent; màn Mức đ�
    `partitions` nạp; `test_a_partition_made_at_runtime_keeps_the_audit_log_append_only` (G1 của studio-skeleton)
    xanh qua bản viết lại. Cùng thay đổi đăng ký, thêm khóa `platform.usage_events` (395 ngày, số tạm UNVERIFIED,
    DROP PARTITION) vào bản kế tiếp của tệp chính sách retention theo định dạng của telemetry-and-audit:R5.6, nên
-   studio-skeleton:R3.7 xanh ngay khi đăng ký; nếu tệp chưa có mục khóa `schema.table`, ticket này thêm mục đó và
-   chuyển thời hạn của `audit_events` sang khóa `platform.audit_events` (1095 ngày, `enforced` giữ nguyên), rồi bỏ
-   ánh xạ tạm của mô hình chính sách mà studio-skeleton/01 dùng.
+   studio-skeleton:R3.7 xanh ngay khi đăng ký. Tệp đi theo một chuỗi ticket, mỗi ticket một phiên bản mới
+   (studio-skeleton/01, ticket này, ticket 03, telemetry-and-audit/03, agent-lifecycle/04, workflow-triggers/02,
+   compliance-pdpl/04, agent-builder/04, compliance-pdpl/06; Quyết định tạm của spec), và bản của ticket này là bản đầu
+   có mục khóa `schema.table`: ticket này thêm mục đó, chuyển thời hạn của `audit_events` sang khóa
+   `platform.audit_events` (1095 ngày, `enforced` giữ nguyên), rồi bỏ ánh xạ tạm của mô hình chính sách mà
+   studio-skeleton/01 dùng.
 4. Hàm `platform.purge_tenant_append_only(p_tenant uuid)` SECURITY DEFINER (search_path cố định, thu
    EXECUTE khỏi `PUBLIC`, cấp EXECUTE cho `dw_app`): từ chối với SQLSTATE 23514 khi `platform.tenants.status` của
    `p_tenant` khác `offboarding` (spec R3.9); không thì xóa dòng `tenant_id = p_tenant` ở mọi bảng có
@@ -55,7 +58,7 @@ model với đủ thuộc tính gán, chỉ thêm và idempotent; màn Mức đ�
    thao tác, model, nguồn chi phí; `platform.usage_daily` cuộn ngày và lane `usage_rollup` (5 phút, tính
    lại hôm nay và hôm qua cho tenant có hoạt động, ngày theo `window_for`); `GET /api/v1/usage/summary`
    (`platform.usage.read`, đưa về `active` trong `platform.permissions` bằng migration của ticket này theo quy
-   ước của tenant-rbac/01; gộp theo workspace, agent, quy trình, mục
+   ước của tenant-rbac/01, sau tenant-rbac/02 mà ticket này chờ; gộp theo workspace, agent, quy trình, mục
    đích, không theo người ở W1, DO-51.2); màn `/usage` antd (Statistic, Table, Progress; không thư viện biểu
    đồ ở v1, DO-42.3), nhúng tab ở trang agent và quy trình.
 
@@ -110,3 +113,8 @@ model với đủ thuộc tính gán, chỉ thêm và idempotent; màn Mức đ�
   `configs/models/*.yaml`: hồ sơ v2 trước, rồi dời giá) và foundations-hardening/07 (cùng sửa lane `offboarding`).
   Ticket này là ticket đầu sau studio-skeleton/01 thêm khóa vào tệp retention; các ticket sau (ticket 03,
   agent-lifecycle/04, telemetry-and-audit/03, compliance-pdpl/04, compliance-pdpl/06) mỗi ticket thêm một bản mới.
+- 2026-10-24 (agent): vòng sửa thứ tư: thứ tự của chuỗi tệp retention theo Quyết định tạm của spec, thay danh sách ở
+  dòng trên: studio-skeleton/01, ticket này, ticket 03, telemetry-and-audit/03, agent-lifecycle/04,
+  workflow-triggers/02, compliance-pdpl/04, agent-builder/04, compliance-pdpl/06; bản của ticket này chắc chắn là bản
+  đầu có mục khóa `schema.table` (kể cả `platform.audit_events`). Chờ tenant-rbac/02 (Quyết định tạm của spec về
+  đăng ký khóa).

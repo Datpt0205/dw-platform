@@ -1,15 +1,16 @@
 # 04 — Cổng chất lượng mô phỏng với bộ an ninh nền tảng và duyệt phát hành hai người
 
 Status: needs-triage
-Blocked by: 02, 03, .claude/plans/studio/workflow-engine/issues/04-lan-studio-runs.md, .claude/plans/studio/compliance-pdpl/issues/05-phan-tich-bo-ba-khi-xuat-ban.md, .claude/plans/studio/tenant-config/issues/03-che-do-chay-va-gia-lap-o-executor.md, .claude/plans/studio/tenant-config/issues/05-lien-ket-va-phien-ban-cau-hinh.md, .claude/plans/studio/usage-and-limits/issues/03-han-muc-giu-truoc-va-quyet-toan.md
+Blocked by: 02, 03, .claude/plans/studio/workflow-engine/issues/04-lan-studio-runs.md, .claude/plans/studio/compliance-pdpl/issues/05-phan-tich-bo-ba-khi-xuat-ban.md, .claude/plans/studio/tenant-config/issues/03-che-do-chay-va-gia-lap-o-executor.md, .claude/plans/studio/tenant-config/issues/05-lien-ket-va-phien-ban-cau-hinh.md, .claude/plans/studio/usage-and-limits/issues/03-han-muc-giu-truoc-va-quyet-toan.md, .claude/plans/studio/telemetry-and-audit/issues/03-lich-su-chay-theo-buoc.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md
 Area: studio
-Yêu cầu: R2.8, R2.9, R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R4.7, R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R5.8, R6.1, R6.2, R6.3, R7.12, AL4, AL5, AL6, AL7, AL8, AL9, AL10, AL11
+Yêu cầu: R2.8, R2.9, R2.10, R2.11, R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R4.7, R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R5.8, R5.9, R5.10, R6.1, R6.2, R6.3, R7.9, R7.12, R7.13, AL4, AL5, AL6, AL7, AL8, AL9, AL10, AL11, AL19, AL20
 
 ## Mục tiêu
 
 Lượt kiểm định chạy ở chế độ Mô phỏng với Bộ kiểm định an ninh nền tảng (đạt 100%; bộ đề của tenant là
-W2) dưới trần chi phí giữ trước qua `LimitsPort`; phát hành cần một người không phải Tác giả duyệt; cổng
-không mở phê duyệt khi Phân tích năng lực thiếu hay chưa đạt (spec R4, R5, R6). Phân tích năng lực do
+W2) dưới trần chi phí giữ trước qua `LimitsPort`; phát hành cần một người không phải Tác giả duyệt, mọi Điểm gắn
+bắt buộc đã có giá trị duyệt, và không đè một bản Đang dùng mới hơn bản đã so lúc gửi; cổng không mở phê duyệt khi
+Phân tích năng lực thiếu hay chưa đạt (spec R2, R4, R5, R6). Phân tích năng lực do
 compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ đọc kết quả đã ghi làm chốt chặn.
 
 ## Việc cần làm
@@ -18,25 +19,28 @@ compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ �
    `passed`, `failed`, `error`, `cancelled`; `purpose` CHECK `gate`, `dry`; khóa bằng chứng
    `effective_hash`, `gate_policy_ref`, `security_suite_ref`, danh sách mã băm bộ đề của tenant (rỗng ở
    W1); `definition_hash` cho trigger giai đoạn; `spend_cap_usd`, `spent_usd`, `resolved_at_gate` jsonb,
-   `verdict` jsonb); `studio.gate_case_results` phân vùng theo tháng với DEFAULT, đăng ký bằng một dòng
+   `verdict` jsonb; `created_at timestamptz NOT NULL`; index `(tenant_id, created_at DESC, id DESC)` cho keyset của
+   `GET /api/v1/studio/gate-runs`); `studio.gate_case_results` có index `(tenant_id, gate_run_id, case_id)` trên bảng
+   cha cho keyset của `GET .../{id}/cases` (CLAUDE.md, Data model rules), phân vùng theo tháng với DEFAULT, đăng ký bằng một dòng
    `platform.time_partitioned_tables` (`append_only = true`), không sửa thân hàm; ENABLE/FORCE RLS và policy
    tenant trên cha và DEFAULT cùng migration; `dw_app` không giữ quyền nào trên partition nào, kể cả
    DEFAULT (DO-02.2), chỉ SELECT, INSERT trên bảng cha. `studio.gate_run_datasets` là W2 cùng bộ đề của tenant.
    Policy drain `app.worker_drain` để lane nhận việc. Cùng thay đổi đăng ký: thêm khóa
    `studio.gate_case_results` (395 ngày, số tạm UNVERIFIED, DROP PARTITION qua
    `platform.drop_expired_partitions` của usage-and-limits/02) vào bản kế tiếp của tệp chính sách retention theo
-   định dạng của telemetry-and-audit:R5.6, nên studio-skeleton:R3.7 xanh ngay khi đăng ký; một dòng
+   định dạng của telemetry-and-audit:R5.6, nên studio-skeleton:R3.7 xanh ngay khi đăng ký; trong chuỗi phiên bản của
+   tệp, bản của ticket này đứng ngay sau bản của telemetry-and-audit/03, ticket này chờ ticket đó; một dòng
    `STUDIO_EXCLUSIONS` cho `studio.gate_case_results` với lý do "xóa khi offboarding bằng
    `platform.purge_tenant_append_only`" (usage-and-limits:R3.8); khóa ngoại `gate_run_id` (RESTRICT) của
    `studio.artifact_versions` cần `_ORDERED_FIRST` xóa `studio.artifact_versions` trước `studio.gate_runs`
    (studio-skeleton:R4.2).
 2. Lane `studio_gate` (tối đa một Lượt kiểm định mỗi tenant, một `ReapTarget` cho lượt treo): mỗi lần
    thử là một run `run_mode='simulate'` dùng ngữ cảnh truy cập đóng dấu của người gửi; lane cấp cho mỗi Bước
-   `human.approval` của lần thử quyết định duyệt hay từ chối mà Câu kiểm định khai trong `input`, Bước không chờ
-   người thật, ghi `studio.step.approval.simulated` và không mở dòng `platform.approval_requests` nào (spec R4.7;
-   hành vi của Bước là của workflow-nodes, ticket này thử hợp đồng với một Bước giả); ở ToolExecutor chế độ chạy
-   đứng trước phê duyệt của công cụ (tools-and-skills:R2.6), nên công cụ `approval_policy: always` trong lần thử
-   không mở yêu cầu phê duyệt thật (spec R4.3). Lượt kiểm định xin
+   `human.approval` của lần thử quyết định `approved` hay `rejected` (từ vựng của workflow-nodes:R9.9, bước 3) mà Câu
+   kiểm định khai trong `input`, Bước không chờ người thật, ghi `studio.step.approval.simulated` và không mở dòng
+   `platform.approval_requests` nào (spec R4.7; hành vi của Bước là của workflow-nodes, ticket này thử hợp đồng với
+   một Bước giả); ở ToolExecutor chế độ chạy đứng trước phê duyệt của công cụ (tools-and-skills:R2.6), nên công cụ
+   `approval_policy: always` trong lần thử không mở yêu cầu phê duyệt thật (spec R4.3). Lượt kiểm định xin
    lease `purpose` `eval_offline` qua `LimitsPort` của usage-and-limits/03 với trần mỗi lượt
    `max_gate_worst_case_usd`, mỗi lần thử dùng lease đó với trần `max_trial_cost_usd`; không đọc
    `profile.max_cost_usd_per_run` (DO-21.4). Trước lời gọi model đầu tiên: chi phí xấu nhất vượt trần mỗi
@@ -49,13 +53,16 @@ compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ �
    = 10, `publish_approval_ttl_days` = 14; `min_cases_total`, `pass_rate_min`, `stale_draft_days` vào chính
    sách ở W2 cùng bên đọc. Cả hai ghim trong release manifest; `scripts/release_manifest.py` đã được
    usage-and-limits/02 sửa trước (nối qua usage-and-limits/03). Mỗi Câu kiểm định chạm một Bước `human.approval`
-   khai quyết định giả lập (`approve` hay `reject`) trong `input`; câu thiếu khai báo đó bị bộ sinh từ chối. Bộ chấm
+   khai quyết định giả lập trong `input` theo từ vựng `approved` hay `rejected` mà workflow-nodes:R9.9 làm chủ; câu
+   thiếu khai báo đó bị bộ sinh từ chối. Bộ chấm
    `studio.*` hợp nhất bằng `merge_graders` ở composition root của worker; `dw_evals` không biết chúng.
 4. Route `POST /api/v1/studio/{agents|workflows}/{artifact_id}/versions/{version_id}/dry-evaluations`
-   (`studio.evals.run`); `GET /api/v1/studio/gate-runs`, `/{id}`, `/{id}/cases` (`studio.lifecycle.read`). Cùng
-   migration của ticket: đăng ký khóa `studio.publish.approve`, `studio.lifecycle.read`, `studio.evals.run` trong
-   `platform.permissions` của tenant-rbac/01 (nhãn tiếng Việt, `scope_kind` `workspace`, `risk` `standard` theo
-   bảng phân loại của ticket đó).
+   (`studio.evals.run`); `GET /api/v1/studio/gate-runs` (keyset `(created_at DESC, id DESC)`), `/{id}`, `/{id}/cases`
+   (keyset `case_id`) (`studio.lifecycle.read`), mỗi thứ tự đi trên index của bước 1. Cùng migration của ticket: đăng
+   ký khóa `studio.publish.approve`, `studio.lifecycle.read`, `studio.evals.run` trong `platform.permissions` của
+   tenant-rbac/01 (nhãn tiếng Việt, `scope_kind` `workspace`, `risk` `standard` theo bảng phân loại của ticket đó);
+   INSERT nêu mọi cột NOT NULL của bảng lúc đó, gồm `risk` của tenant-rbac/01 và `tenant_grantable` (`true`) của
+   tenant-rbac/02, ticket này chờ ticket đó.
 5. Phát hành hai người: mọi chuyển sang `awaiting_approval` (lane khi gate đạt, bước 7 với loại không cổng) đi
    qua `LifecycleService`, mở trong cùng giao dịch một yêu cầu phê duyệt `studio.publish.<kind>` (`agent`,
    `workflow`, `object`; loại phê duyệt `studio.publish.object` là của custom-objects), `requested_by` là
@@ -69,10 +76,15 @@ compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ �
    `ApprovalAudience` của ADR-0004 (Accepted) sửa đổi 07/10/2026 (spec R5.8). Handler worker
    `studio.publish.<kind>.decided` đăng ký cho mọi loại trong `ArtifactKindRegistry`, idempotent trên id yêu cầu:
    hỏi `RunControlPort`, Đóng băng của công ty hay nền tảng đang mở thì không đưa phiên bản sang `live` và từ
-   chối lần xử lý với `tenant_frozen` hay `platform_frozen` (spec R7.12); không thì, actor là người quyết định
+   chối lần xử lý với `tenant_frozen` hay `platform_frozen` (spec R7.12); hỏi lại `PublishBindingsCheck` (bước 8),
+   `binding_unset` thì không đưa phiên bản sang `live` và từ chối lần xử lý với `binding_unset` (spec R5.10);
+   `compared_live_hash` không còn là mã của bản `live` hiện tại thì không phát hành: phiên bản về `draft` với
+   `details.reason_code` `base_changed`, audit `studio.version.returned_to_draft` với actor là người quyết định và
+   `details.lane` là tên lane, cùng giao dịch (spec R5.9); không thì, actor là người quyết định
    với `details.lane` là tên lane và `details.path` `approved` (ADR-0011 (Accepted)), đưa phiên bản Đang dùng qua
-   dịch vụ phát hành của tenant-config cùng móc phát hành của loại, bản cũ Đã gỡ (`superseded`), audit
-   `studio.version.published`, outbox `studio.version.live`; từ chối → `draft`. Nhãn loại approval và liên kết "Xem diff" ở điểm cắm
+   dịch vụ phát hành của tenant-config cùng móc phát hành của loại, bản cũ Đã gỡ (`superseded`), đúng một audit
+   `studio.version.published` (móc phát hành của loại chỉ áp định nghĩa, không ghi audit), outbox
+   `studio.version.live`; từ chối → `draft`. Nhãn loại approval và liên kết "Xem diff" ở điểm cắm
    `apps/web/components/tool-approval.tsx`. Lane hết hạn phê duyệt phát hành: hủy yêu cầu quá
    `publish_approval_ttl_days`, đưa phiên bản về `draft`, audit qua `lane_audit_event` với actor
    `system:<lane>` vì lane tự làm (spec R5.7).
@@ -86,11 +98,20 @@ compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ �
    ADR-0120 (Accepted) quyết 1-2): trong giao dịch gửi, niêm phong qua tenant-config (tenant-config:R2.13,
    tenant-config:R2.16), gọi bộ so sánh mà mục `ArtifactKindRegistry` của loại cấp (của custom-objects cho
    `object`; loại không có bộ so sánh, như công cụ, luôn `tighten_only` false) rồi ghi `tighten_only` và
-   `compared_live_hash`. Chỉ siết → `draft → live` trong giao dịch của người gửi, bản cũ Đã gỡ (`superseded`),
-   audit `studio.version.published` với actor là người gửi và `details.path` `tighten_only`, outbox
-   `studio.version.live`, không mở phê duyệt. Không chỉ siết, hay chưa có bản `live` → sang
-   `awaiting_approval` với yêu cầu phê duyệt của bước 5. Test với loại `object` đăng ký trong test cùng một bộ so
-   sánh giả; đường thật với loại và bộ so sánh của custom-objects/02 là custom-objects/06, ticket chờ ticket này.
+   `compared_live_hash` (spec R2.10). Hỏi `RunControlPort` sau khi so: Đóng băng của nền tảng → 409
+   `platform_frozen`; Đóng băng của công ty → 409 `tenant_frozen` trừ khi bộ so sánh báo chỉ siết, vì nhánh chỉ siết
+   đi qua được Đóng băng của công ty (spec R7.9, R7.13); giao dịch lùi, phiên bản giữ `draft`. Chỉ siết →
+   `draft → live` trong giao dịch của người gửi, bản cũ Đã gỡ (`superseded`), đúng một audit
+   `studio.version.published` với actor là người gửi và `details.path` `tighten_only`, outbox `studio.version.live`,
+   không mở phê duyệt. Không chỉ
+   siết, hay chưa có bản `live` → sang `awaiting_approval` với yêu cầu phê duyệt của bước 5. Test với loại `object`
+   đăng ký trong test cùng một bộ so sánh giả; đường thật với loại và bộ so sánh của custom-objects/02 là
+   custom-objects/06, ticket chờ ticket này.
+8. Protocol `PublishBindingsCheck` do spec này khai, cạnh Protocol `SubmitCheck` của ticket 03: `satisfied(version_id)`
+   trả đạt, hay `binding_unset` kèm tên các Điểm gắn bắt buộc chưa có giá trị trong Bộ giá trị gắn đã duyệt;
+   tenant-config/05 đáp ứng bằng `BindingStatus.satisfied` ở composition root (tenant-config:R7.2). Route gửi của
+   ticket 03 hỏi nó cho mọi loại trước khi chuyển phiên bản khỏi `draft`: `binding_unset` → 409 `binding_unset` với
+   tên các Điểm gắn trong `details`, giao dịch lùi, phiên bản giữ `draft` (spec R2.11); handler của bước 5 hỏi lại.
 
 ## Tiêu chí chấp nhận
 
@@ -101,8 +122,9 @@ compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ �
       nhận lời gọi, 0 dòng `platform.approval_requests` mới; gỡ chặn `simulate` ở executor hay đặt phê duyệt trước
       chế độ chạy → test đỏ.
 - [ ] R4.7 (AL8): lần thử của quy trình có một Bước `human.approval` (Bước giả theo hợp đồng của workflow-nodes)
-      với Câu kiểm định khai `reject` → nhánh từ chối chạy, audit `studio.step.approval.simulated` mang `reject`,
-      0 dòng `platform.approval_requests`; Câu thiếu khai báo → bộ sinh từ chối câu đó.
+      với Câu kiểm định khai `rejected` → nhánh từ chối chạy, audit `studio.step.approval.simulated` mang
+      `rejected`, 0 dòng `platform.approval_requests`; Câu khai `approved` → nhánh duyệt chạy; Câu thiếu khai báo →
+      bộ sinh từ chối câu đó.
 - [ ] R4.4 (AL9): chi phí xấu nhất vượt trần mỗi lượt → Lượt kiểm định `error` `limit_exceeded` trước mọi
       `worker_runs`; `LimitsPort` giả từ chối lease `eval_offline` → như trên, 0 lời gọi model.
 - [ ] R4.5 (AL9): một lần thử chạm trần mỗi lần thử → Câu đó trượt với `cost_bound`, các câu khác vẫn
@@ -120,15 +142,32 @@ compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ �
       gỡ luật người xin → 404, test đỏ.
 - [ ] R5.5: duyệt → bản mới Đang dùng qua dịch vụ phát hành của tenant-config, bản cũ Đã gỡ (`superseded`)
       trong một vòng outbox, audit có `details.path` `approved`; với loại `object` móc phát hành của loại chạy
-      trong cùng giao dịch; giao hai lần cùng sự kiện → một kết quả; từ chối → `draft`.
+      trong cùng giao dịch và có đúng một dòng `studio.version.published`; giao hai lần cùng sự kiện → một kết quả;
+      từ chối → `draft`.
+- [ ] R5.9 (AL19): một phiên bản `object` chỉ siết lên `live` trong lúc một Bản ứng viên của cùng thành phần chờ
+      duyệt, rồi duyệt Bản ứng viên → nó về `draft` với `details.reason_code` `base_changed` và một audit
+      `studio.version.returned_to_draft` đứng tên người quyết định, bản `live` vẫn là bản chỉ siết; gỡ kiểm khỏi
+      handler → handler hỏng ở 23514 của trigger, phiên bản không về `draft`, test đỏ.
+- [ ] R5.10 (AL20): `PublishBindingsCheck` giả trả `binding_unset` khi giao `studio.publish.workflow.decided` của một
+      quyết định duyệt → phiên bản vẫn `awaiting_approval`, lần xử lý từ chối `binding_unset`; gỡ kiểm trong handler
+      → test đỏ.
 - [ ] R5.6 (AL4): chuyển `live` với `gate_run_id` của mã băm khác, hoặc approval còn `pending` → 23514;
       `draft → live` của `object` với `tighten_only` false, hay với `compared_live_hash` cũ sau khi bản `live`
       đổi → 23514; gỡ CHECK hay luật nhánh → test đỏ.
 - [ ] R2.8 (AL4): phiên bản `object` mà bộ so sánh giả báo chỉ siết → `live` trong giao dịch gửi với
       `tighten_only` và `compared_live_hash` đã ghi; báo không chỉ siết, hay chưa có bản `live` → `awaiting_approval`
       kèm yêu cầu phê duyệt; công cụ (không bộ so sánh) → luôn `awaiting_approval`.
-- [ ] R2.9: nhánh chỉ siết → bản cũ Đã gỡ (`superseded`), audit `studio.version.published` với actor là người
-      gửi và `details.path` `tighten_only`, outbox `studio.version.live`, cùng giao dịch; rollback → không audit.
+- [ ] R2.9: nhánh chỉ siết → bản cũ Đã gỡ (`superseded`), đúng một dòng `studio.version.published` với actor là
+      người gửi và `details.path` `tighten_only`, outbox `studio.version.live`, cùng giao dịch; rollback → không audit.
+- [ ] R2.10: gửi một phiên bản `object` khi đã có bản `live` → `compared_live_hash` bằng `definition_hash` của bản đó
+      ở cả nhánh chỉ siết lẫn nhánh Chờ duyệt; phiên bản đầu → NULL, sang `awaiting_approval`.
+- [ ] R2.11 (AL20): phiên bản quy trình khai Điểm gắn `principal` bắt buộc chưa có giá trị đã duyệt → gửi kiểm định
+      409 `binding_unset` nêu `principal`, phiên bản vẫn `draft`, không audit; có giá trị đã duyệt → gửi được; gỡ
+      kiểm ở route → test đỏ.
+- [ ] R7.9 (AL11): Đóng băng của công ty rồi gửi một phiên bản `object` không chỉ siết → 409 `tenant_frozen`, phiên
+      bản vẫn `draft`; Đóng băng của nền tảng rồi gửi một phiên bản `object` chỉ siết → 409 `platform_frozen`.
+- [ ] R7.13 (AL11): chỉ Đóng băng của công ty đang mở, gửi một phiên bản `object` chỉ siết → `live` theo nhánh chỉ
+      siết, audit `details.path` `tighten_only`; gỡ ngoại lệ chỉ siết khỏi kiểm Đóng băng → 409, test đỏ.
 - [ ] R7.12 (AL11): Đóng băng công ty rồi giao `studio.publish.agent.decided` của một quyết định duyệt →
       phiên bản vẫn `awaiting_approval`, lần xử lý từ chối `tenant_frozen`; gỡ kiểm trong handler → test đỏ.
 - [ ] R5.7: yêu cầu phê duyệt phát hành quá 14 ngày → lane hủy nó, phiên bản về `draft`, audit với actor
@@ -167,3 +206,11 @@ compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ �
   `studio.evals.run`, thời hạn và dòng `STUDIO_EXCLUSIONS` của `studio.gate_case_results`. Một dòng `|=` cho
   `studio.publish.` kèm test tập tiền tố thay cho cạnh tới workflow-nodes/06, cùng cách tenant-config/05 làm, để
   ticket này không phải chờ Bước `tool.call` và `human.approval`.
+- 2026-10-24 (agent): vòng sửa thứ tư, quyết định của Đạt ngày 24/10/2026: handler đưa phiên bản về `draft` với
+  `base_changed` khi bản `live` đã đổi kể từ lúc gửi (spec R5.9, AL19), và nhánh chỉ siết đi qua được Đóng băng của
+  công ty, không qua Đóng băng của nền tảng (spec R7.9, R7.13). Áp thêm: Protocol `PublishBindingsCheck` hỏi ở lệnh
+  gửi và ở handler (spec R2.11, R5.10, AL20; tenant-config/05 đáp, cạnh giữ nguyên); đúng một dòng
+  `studio.version.published` mỗi lần phát hành, móc phát hành của loại không ghi audit; từ vựng `approved`,
+  `rejected` của workflow-nodes:R9.9 cho quyết định giả lập; index cho keyset của hai route danh sách. Chờ
+  telemetry-and-audit/03 (bản tệp retention của ticket này đứng sau bản của ticket đó) và tenant-rbac/02 (INSERT khóa
+  nêu `tenant_grantable`), theo hai Quyết định tạm của spec.

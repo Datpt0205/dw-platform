@@ -1,16 +1,17 @@
-# 03 — RecordService: tạo, đọc, sửa, xóa mềm, trường duy nhất và upsert
+# 03 — RecordService: tạo, đọc, sửa, xóa mềm, trường duy nhất, upsert và describe theo người gọi
 
 Status: needs-triage
 Blocked by: 02, .claude/plans/studio/record-access/issues/03-policy-ban-ghi-va-mac-dinh-truy-cap.md, .claude/plans/studio/field-security/issues/01-mo-hinh-bao-mat-truong.md, .claude/plans/studio/app-standards/issues/02-khoa-chong-lap-gan-nguoi-goi.md, .claude/plans/studio/app-standards/issues/03-quy-uoc-api-danh-sach-va-sua.md, .claude/plans/studio/tenant-config/issues/03-che-do-chay-va-gia-lap-o-executor.md, .claude/plans/studio/usage-and-limits/issues/05-cong-gioi-han-toc-do-theo-tien-trinh.md
 Area: studio
-Yêu cầu: R3.4, R4.3, R4.4, R4.5, R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R5.8, R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.7, R6.8, R7.1, R7.2, R7.3, R7.4, R7.5, R7.6, R7.7, R7.8, CO1, CO7, CO8, CO9, CO10, CO11, CO12, CO13, CO14, CO15, CO16, CO17, CO18, CO20, CO22
+Yêu cầu: R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R4.3, R4.4, R4.5, R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R5.8, R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.7, R6.8, R7.1, R7.2, R7.3, R7.4, R7.5, R7.6, R7.7, R7.8, CO1, CO7, CO8, CO9, CO10, CO11, CO12, CO13, CO14, CO15, CO16, CO17, CO18, CO20, CO22, CO25
 
 ## Mục tiêu
 
 Một đường ghi duy nhất cho bản ghi (R5), ép kiểu và chuẩn hóa một lần (R6), và trường duy nhất cùng Tạo hoặc cập
 nhật để quy trình Tiếp nhận lead kiểm trùng theo số điện thoại rồi email mà không lộ bản ghi trùng (R7, YC95).
 Route REST, bước quy trình (`RecordsPort` của workflow-nodes/04) và công cụ agent (`ObjectDataPort` của
-tools-and-skills/03) gọi cùng một `RecordService`.
+tools-and-skills/03) gọi cùng một `RecordService`. Describe, danh mục đối tượng và bộ chiếu lược đồ theo quyền của
+người gọi (R3) đến ở đây, sau khóa đọc đối tượng của tenant-rbac/04 và `resolve_field_access` của field-security/01.
 
 ## Việc cần làm
 
@@ -44,12 +45,13 @@ tools-and-skills/03) gọi cùng một `RecordService`.
       `hidden_fields` (ADR-0106 (Accepted) quyết định 4), `permissions` (`update`, `delete`); `Cache-Control: no-store`.
     - `PATCH .../records/{record_id}`: JSON Merge Patch trên `name` và `fields` (`application/merge-patch+json` và
       `application/json`); `If-Match` so mạnh, lệch → 412 `precondition_failed`; `owner`, `workspace_id` → 422
-      `field_not_writable`; thuộc tính chỉ để đọc bị bỏ qua.
+      `validation_failed` với `errors[].code` `field_not_writable` và con trỏ `/owner` hay `/workspace_id`; thuộc tính
+      chỉ để đọc bị bỏ qua.
     - `DELETE .../records/{record_id}`: xóa mềm (`deleted_at`, `deleted_by`), `If-Match` như trên, trả bản ghi có
       `deleted_at`.
     - `POST .../records/upsert`: thân `{match_field, name, fields}`, `match_field` là một trường `is_unique`;
-      `Idempotency-Key` bắt buộc (thiếu → 422 `idempotency_key_required`); 201 `created: true` hay 200
-      `created: false`.
+      `Idempotency-Key` bắt buộc (thiếu → 422 với `details.reason_code` `idempotency_key_required` của
+      app-standards/02); 201 `created: true` hay 200 `created: false`.
     - Không tồn tại, công ty khác, không đọc được → cùng 404; đọc được mà không sửa, xóa được → 403.
     - Không route nào vào `SUPPORT_ALLOWED_ROUTES` (`apps/api/src/dw_api/bootstrap/wiring.py:110`).
 4. Trường duy nhất và Tạo hoặc cập nhật:
@@ -81,9 +83,19 @@ tools-and-skills/03) gọi cùng một `RecordService`.
    chỉ chuyển `RunMode` qua `RecordsPort` (`D:custom-objects:R5.4~workflow-nodes:R5.3`); W1 chỉ mở `simulate` ở cửa chạy
    thử, nhưng service vẫn giả lập `test` như `simulate` nếu một lượt `test` tới (DO-26.1 (A)).
 7. Ở `build_studio`, gốc ghép đáp `RecordsPort` (workflow-nodes/04) và `ObjectDataPort` (tools-and-skills/03) bằng
-   `RecordService`; chuyển `GET /api/v1/studio/objects` và describe của ticket 02 sang đọc qua cùng service.
+   `RecordService`; route `GET /api/v1/studio/objects` và describe của bước 9 đọc qua cùng service.
 8. Test kiến trúc: chuỗi SQL nhắc `studio.records` trong mã Python ngoài `dw_studio.records.adapters` → đỏ; hợp đồng
    import-linter: chỉ gốc ghép import adapter bản ghi.
+9. Describe và bộ chiếu theo người gọi (R3.1 tới R3.7, chuyển từ ticket 02 theo Quyết định 24/10/2026 của spec), trong
+   nhóm `/api/v1/studio`, `Cache-Control: no-store`:
+    - `GET /api/v1/studio/objects` trả đúng các đối tượng người gọi giữ `obj.<api_name>.read` (tenant-rbac/04);
+    - `GET /api/v1/studio/objects/{api_name}/describe`: thiếu `obj.<api_name>.read` → 403 `permission_denied` trước khi
+      đọc gì, `api_name` của công ty khác → 404; quyền trường qua `resolve_field_access` (field-security/01); trả
+      `ai_description` của đối tượng và của mỗi trường đọc được với nhãn `vi`, kiểu, `access`, các cờ và lựa chọn đang
+      bật, và trường Đã ẩn chỉ với `api_name`, nhãn và `access: hidden`;
+    - `ObjectSchemaProjector` của ticket 02 nhận quyết định trường của người gọi: lược đồ không có trường Đã ẩn, lược
+      đồ tạo, sửa chỉ có trường người gọi sửa được, và bảng `ai_description` tách riêng không có trường Đã ẩn (R3.6,
+      R3.7).
 
 ## Tiêu chí chấp nhận
 
@@ -101,8 +113,18 @@ tools-and-skills/03) gọi cùng một `RecordService`.
 - [ ] R5.7 (CO9): `GET`, `PATCH`, `DELETE` với id không tồn tại và id có mà người gọi không đọc được → cùng 404, cùng
       thông điệp.
 - [ ] R5.8: người có đọc mà không có sửa gọi thẳng `PATCH` (không qua giao diện) → 403, `version` không đổi.
-- [ ] R3.4 (CO8): người thiếu `obj.<api_name>.read` gọi `GET` một id có và một id không có → cùng 403
+- [ ] R3.1: describe cho người đọc được trả `ai_description` của đối tượng và mỗi trường với nhãn `vi`,
+      `ai_description`, kiểu, `access`, các cờ và lựa chọn đang bật; lựa chọn đã tắt không có.
+- [ ] R3.2 (CO7): người gọi mà `phone` Đã ẩn gọi describe → `phone` chỉ có `api_name`, nhãn và `access: hidden`, không
+      kiểu, cờ hay lựa chọn; lược đồ truy vấn của bộ chiếu không có `phone`.
+- [ ] R3.3: người của công ty B gọi describe với `api_name` chỉ công ty A có → 404.
+- [ ] R3.4 (CO8): người thiếu `obj.<api_name>.read` gọi describe, `GET` một id có và một id không có → cùng 403
       `permission_denied`.
+- [ ] R3.5: `GET /api/v1/studio/objects` trả đúng các đối tượng người gọi giữ khóa đọc, không thừa không thiếu.
+- [ ] R3.6: lược đồ tạo của bộ chiếu không có trường người gọi không sửa được; lược đồ truy vấn không có trường Đã
+      ẩn; `schema_version` tăng → lược đồ mới.
+- [ ] R3.7 (CO25): trường Đã ẩn với người gọi không có `ai_description` ở describe lẫn bảng `ai_description` của bộ
+      chiếu; trả `ai_description` của trường Đã ẩn → test đỏ.
 - [ ] R4.3 (CO1): người của công ty A `GET`, `PATCH`, `DELETE` một bản ghi của công ty B → 404, dòng của B không đổi.
 - [ ] R4.4 (CO20): công ty có bản ghi ở hai workspace → offboarding xuất số dòng bằng số dòng đã tạo, sau purge còn 0;
       cấp SELECT trên `studio.records_p0` cho `dw_app` → test thấy đếm đôi, đỏ.
@@ -117,8 +139,8 @@ tools-and-skills/03) gọi cùng một `RecordService`.
       `/fields/khong_co`, không ghi.
 - [ ] R6.6 (CO7): ghi trường chỉ đọc hay trường Đã ẩn `phone` với người gọi → 403 `field_not_editable` có con trỏ, không
       ghi; giá trị của `phone` không có trong thân lỗi.
-- [ ] R6.7 (CO14): `PATCH` có `owner` → 422 `field_not_writable`; `dw_app` chạy `UPDATE studio.records SET owner_id`
-      → permission denied.
+- [ ] R6.7 (CO14): `PATCH` có `owner` → 422 `validation_failed` với `errors[].code` `field_not_writable` và con trỏ
+      `/owner`, không ghi; `dw_app` chạy `UPDATE studio.records SET owner_id` → permission denied.
 - [ ] R6.8 (CO15): hai `PATCH` cùng `If-Match: "3"` → một 200, một 412, `version` tăng đúng 1; bỏ bước so phiên bản
       → test đỏ.
 - [ ] R7.1 (CO16): tạo Lead có số đã có ở một Lead người gọi không đọc được → 409 `duplicate_value`, thân không có id
@@ -133,7 +155,8 @@ tools-and-skills/03) gọi cùng một `RecordService`.
       409; lần ghi kế tiếp, trùng hay không, → 429 có `Retry-After`, không ghi; sau khi lần 409 cũ nhất ra khỏi cửa sổ
       10 phút → ghi lại được; người gọi khác, hay cùng người trên đối tượng khác, không bị chặn; gỡ lời gọi
       `RateLimiterPort` → test đỏ.
-- [ ] R7.7: Tạo hoặc cập nhật thiếu `Idempotency-Key` → 422 `idempotency_key_required`, không dòng nào.
+- [ ] R7.7: Tạo hoặc cập nhật thiếu `Idempotency-Key` → 422 với `details.reason_code` `idempotency_key_required`,
+      không dòng nào.
 - [ ] R7.8 (CO18): mỗi lần 429 vì giới hạn dò trùng → đúng một audit `studio.record.duplicate_throttled` chỉ có
       `object_id` và người gọi, không giá trị, không id bản ghi; gỡ ghi audit → test đỏ.
 - [ ] Xong: `make test-integration` xanh.
@@ -152,3 +175,4 @@ tools-and-skills/03) gọi cùng một `RecordService`.
 
 - 2026-10-23 (agent): DO-35 (a), DO-49 (a), DO-03.2 (a), DO-26.1 (A) và `B:custom-objects:R6.5~field-security:R3.3` (a) đã có lời đáp (Đạt, 23/10/2026). Còn needs-info vì ngưỡng và cửa sổ của R7.6 chưa có số (Q3 của spec). Thêm usage-and-limits/05 (`RateLimiterPort` W1) vào Blocked by theo DO-49.
 - 2026-10-24 (agent): Q3 (DO-35) có số (Đạt, 24/10/2026; tạm, UNVERIFIED, chờ luật sư khi có dữ liệu thật): tối đa 20 lần 409 `duplicate_value` mỗi người, mỗi đối tượng, trong cửa sổ trượt 10 phút; vượt thì 429 và audit. Status về needs-triage; thêm R7.8. Cạnh tới usage-and-limits/05 giữ nguyên; port cần khóa có kiểu (tenant, người gọi, đối tượng), cửa sổ 10 phút (`usage-and-limits:R7.2`) và lần hỏi không tính lượt (`usage-and-limits:R7.3`).
+- 2026-10-24 (agent): vòng sửa 4: nhận R3.1 tới R3.6, phần trường Đã ẩn của R3.7 và CO25 từ ticket 02 (bước 9; Quyết định 24/10/2026 của spec, `I:custom-objects/02~tenant-rbac/01`), vì ticket này đã chờ field-security/01 và qua đó tenant-rbac/04; Blocked by không đổi. R6.7 thành 422 `validation_failed` với `errors[].code` `field_not_writable`, R7.7 mang `details.reason_code` `idempotency_key_required` (`B:app-standards:R1.3~custom-objects:R6.7`).

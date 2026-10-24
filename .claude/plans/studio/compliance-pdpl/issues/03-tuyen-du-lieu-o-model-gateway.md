@@ -25,10 +25,14 @@ ADR-0123 (Accepted)).
 3. `effective_route_class(tenant, workspace, agent)` một chủ, trả lộ trình chặt nhất.
 4. `ResidencyGate.check(route_class, route)` gọi trong `RoutingModelGateway`
    (`packages/python/dw_agent_runtime/src/dw_agent_runtime/model/gateway.py:85-124`), sau cửa công tắc mà
-   agent-lifecycle/01 đặt đầu gateway (ticket này chờ nó) và trước `LimitsMiddleware`, và factory chat model
-   của agent (model-connections làm theo công ty); cho mọi adapter chạm model (embedding, rerank, trích
-   xuất tài liệu, chép lời, tóm tắt, chấm eval) nhận cổng qua constructor; lỗi `ResidencyRefusedError` có
-   thông điệp tiếng Việt; `cross_border_minimised` từ chối tới ticket 13 (W2).
+   agent-lifecycle/01 đặt đầu gateway (ticket này chờ nó) và trước `LimitsMiddleware`; ở vòng agent, cổng là một
+   middleware ngay sau `StudioModelSelection` và trước `LimitsMiddleware`, theo thứ tự ngăn xếp mà
+   `.claude/plans/studio/agent-builder/issues/03-runtime-agent.md` bước 2 ghi (ADR-0117 (Accepted) quyết 5), không
+   nằm trong factory chat model, lớp trong cùng chạy sau khi lease đã giữ (usage-and-limits:R6.5); ticket này cấp
+   `ResidencyGate` cho ngăn xếp đó, agent-builder/03 chờ nó và mang test của usage-and-limits:R6.5 ở cửa vòng agent;
+   cho mọi adapter chạm model (embedding, rerank, trích xuất tài liệu, chép lời, tóm tắt, chấm eval) nhận cổng qua
+   constructor; lỗi `ResidencyRefusedError` có thông điệp tiếng Việt; `cross_border_minimised` từ chối tới ticket 13
+   (W2).
 5. `PATCH /api/v1/admin/tenant` thêm `data_route_class` (`platform.tenant.settings.write`): siết áp ngay với
    một người, audit `residency.class_changed` trong cùng giao dịch (spec R2.8); nới về phía ra nước ngoài →
    409 `second_person_required`, lộ trình giữ nguyên (spec R2.7; D11). Đường nới hai người với Xác nhận chuyển
@@ -77,3 +81,6 @@ ADR-0123 (Accepted)).
   `model/gateway.py`, thứ tự cửa là công tắc, Lộ trình dữ liệu, rồi hạn mức (C:agent-lifecycle/01\~compliance-pdpl/03);
   `platform.cross_border_attestations` sang W2 cùng R2.5
   (H:compliance-pdpl:dữ-liệu\~compliance-pdpl:ngoài-phạm-vi).
+- 2026-10-24 (agent): áp kiểm nhất quán vòng 3 (B:agent-builder/03\~compliance-pdpl/03): ở vòng agent, cổng không
+  nằm trong factory chat model mà là một middleware ngay sau `StudioModelSelection`, trước `LimitsMiddleware`, theo
+  thứ tự ngăn xếp của agent-builder/03 bước 2, để cổng chạy trước lease như usage-and-limits:R6.5 đòi (bước 4).

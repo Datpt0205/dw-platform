@@ -42,8 +42,11 @@ spec owns the floor and the consent records, `tools-and-skills` consumes the flo
    consent record of the matching purpose and channel is in force, the frequency cap allows it and the time is
    outside quiet hours; the message must carry an opt-out instruction, and its send-log row names the
    `consent_record_id` it relied on. Refusal reasons: `suppressed`, `no_consent`, `consent_withdrawn`,
-   `frequency_cap`, `quiet_hours` and `processing_restricted` (ADR-0106). A refusal is a typed `blocked:<reason>`
-   result on the node's error port and an audit event; nothing is sent.
+   `frequency_cap`, `quiet_hours`, `processing_restricted` (ADR-0106) and `recipient_cap`, a message to one more
+   distinct recipient once its root run (counted by `root_run_id`) has reached decision 6's maximum recipients per
+   run, 200 in the pilot, which a tenant may only lower. A refusal is a typed `blocked:<reason>` result on the node's
+   error port and an audit event, and it also writes one send-log row with `outcome` `blocked` (N4); nothing is
+   sent.
 2. **Checked once, in the ToolExecutor.** `SendAdmissionPort` is declared by its consumer and satisfied by the
    platform's `MarketingSendPolicy`. The ToolExecutor consults it on every connector action that its manifest marks
    as sending a message (ADR-0116), before the egress client sends (ADR-0115), so a `tool.call` node, an agent's tool
@@ -167,3 +170,6 @@ Amended by Đạt on 2026-10-24, who accepted every recommendation the second co
   confirms it, which a tenant may only lower (DO-55; H:ADR-0124~compliance-pdpl/04); a test recipient's validity is
   ADR-0111's 90 days, so Open 1 owes only the consent wording and who may add test recipients.
 - Decision 5: the lane that sends a queued message is connections-and-vault's.
+- Third consistency check (round 4), Đạt's D11: decision 1 adds the reason `recipient_cap`, counted by `root_run_id`
+  against decision 6's maximum, and a send-log row with `outcome` `blocked` for every refusal (N4)
+  (F:ADR-0124~compliance-pdpl:R3.8).

@@ -13,7 +13,8 @@ và thư chết hiện trên số đo và cảnh báo (R9, R10, G5, FH25-FH29). 
 bằng một script có audit đứng tên mình; công ty thấy lượt chạy lỗi của mình trong Lịch sử chạy, không
 có route mới (DO-56.1). Ticket này chờ tenant-config/03, cùng ALTER `platform.worker_runs` và cùng sửa
 đường resume, và tenant-config/05 chờ ticket này (OPS-b); agent-lifecycle/01 chờ ticket này, vì nó chèn phép
-kiểm công tắc vào cùng đường resume.
+kiểm công tắc vào cùng đường resume; tenant-config/04 chờ ticket này, vì cùng ALTER `platform.worker_runs` và CHECK
+`ck_worker_runs_status` có trước cột `run_manifest_hash` của nó.
 
 ## Việc cần làm
 
@@ -32,12 +33,12 @@ CHECK trạng thái (R9.3):
 
 3. Revision Alembic mới `db/migrations/versions/*_run_status_checks_and_outbox_backoff.py` (id ngẫu
    nhiên): `SELECT DISTINCT` trên dữ liệu hiện có (ghi Comments), rồi thêm
-   `ck_worker_runs_status` cho `status IN ('pending', 'running', 'waiting_approval', 'completed', 'failed', 'cancelled', 'queued', 'waiting', 'blocked')`
+   `ck_worker_runs_status` cho `status IN ('pending', 'running', 'waiting_approval', 'completed', 'failed', 'cancelled', 'queued', 'waiting', 'blocked', 'dead_lettered')`
    trên `platform.worker_runs`,
    `ck_approval_requests_status` cho `status IN ('pending', 'approved', 'rejected', 'cancelled', 'expired')`
    trên `platform.approval_requests`, và `ck_approval_decisions_outcome` cho
    `outcome IN ('approved', 'rejected')` trên `platform.approval_decisions`.
-4. `RunStatus` thêm `QUEUED`, `WAITING`, `BLOCKED` (ADR-0113 (Accepted)) và `ApprovalStatus` thêm
+4. `RunStatus` thêm `QUEUED`, `WAITING`, `BLOCKED`, `DEAD_LETTERED` (ADR-0113 (Accepted) quyết 1, 3) và `ApprovalStatus` thêm
    `EXPIRED` (ADR-0112 (Accepted)), mỗi giá trị kèm comment nói chưa có người ghi cho tới
    `workflow-engine`; người ghi `EXPIRED` là workflow-engine ở W2, và ở W1 phê duyệt chờ không hạn
    (DO-31). Test catalog so tập giá trị của mỗi CHECK với enum chủ của nó (`RunStatus`,
@@ -115,3 +116,11 @@ Phát lại thư chết (R10.4, R10.5), theo DO-56.1:
 - spec: R9, R10, G5, FH25-FH29.
 
 ## Comments
+
+- 2026-10-24 (agent): tenant-config/04 chờ ticket này (cạnh ở dòng Blocked by của tenant-config/04), vì hai
+  ticket cùng ALTER `platform.worker_runs` và CHECK `ck_worker_runs_status` có trước cột `run_manifest_hash`; migration
+  của tenant-config/04 nối tiếp revision của ticket này, nên cây Alembic chỉ có một head
+  (C:foundations-hardening/06~tenant-config/04).
+- 2026-10-24 (agent): `ck_worker_runs_status` và `RunStatus` nhận thêm `dead_lettered` (bước 3, 4; spec R9.3), trạng thái
+  thư chết mà lane `studio_run_reaper` của workflow-engine/04 ghi (ADR-0113 (Accepted) quyết 3; workflow-engine:R3.2,
+  workflow-engine:R5.7); workflow-engine/02 đã chờ ticket này.

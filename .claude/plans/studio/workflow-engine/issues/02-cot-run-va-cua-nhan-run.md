@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: .claude/plans/studio/foundations-hardening/issues/06-run-va-outbox-khong-ket.md, .claude/plans/studio/tenant-config/issues/04-ban-ke-luot-chay.md, .claude/plans/studio/agent-lifecycle/issues/01-dong-bang-va-kiem-o-moi-cua.md
 Area: studio
-Yêu cầu: R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, WE1, WE18
+Yêu cầu: R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R3.9, R3.10, WE1, WE18, WE19
 
 ## Mục tiêu
 
@@ -11,16 +11,19 @@ Cho `platform.worker_runs` các cột một lượt chạy Studio cần và đ�
 
 ## Việc cần làm
 
-1. Migration (revision hex ngẫu nhiên) thêm các cột R3.1 vào `platform.worker_runs`: `root_run_id`, `parent_run_id`, `chain_depth`, `artifact_kind`, `artifact_id`, `artifact_version_id`, `definition_hash`, `trigger_kind`, `run_as_principal_id`, `request_key`, `priority`, `available_at`, `lease_expires_at`, `attempts`, `dead_at`. CHECK `status` là của foundations-hardening/06 (gồm `queued`, `waiting`, `blocked`); ticket này không tạo lại CHECK đó.
-2. `ck_worker_runs_trigger_kind CHECK (trigger_kind IN ('chat', 'manual', 'test', 'eval', 'datahub'))` (tập W1 của ADR-0113 (Accepted) quyết 1; mỗi loại W2 mở CHECK cùng bên ghi của nó) và `ck_worker_runs_studio_trigger_kind CHECK (artifact_kind IS NULL OR trigger_kind IS NOT NULL)` (R3.8, WE18); `uq_worker_runs_tenant_id_id UNIQUE (tenant_id, id)`; partial unique `(tenant_id, request_key) WHERE request_key IS NOT NULL`; index `(tenant_id, priority, available_at) WHERE status = 'queued'`, `(tenant_id, artifact_id, created_at DESC, id DESC)`, `(tenant_id, root_run_id)`. FK `(tenant_id, run_manifest_hash)` tới `platform.run_manifests` là của tenant-config/04. Grant trong migration.
-3. `RunRequestService` (`dw_studio.core.run_request`): nhận một yêu cầu chạy của mọi loại (chat, manual, agent_node, agent_link, workflow-as-tool, eval, trigger), đặt `run_mode` do cửa quyết (tenant-config/03), dựng và ghi `run_manifest_hash` qua `RunManifestBuilder` (tenant-config/04), đặt `run_as_principal_id`, `trigger_kind`, `request_key`, chèn dòng `worker_runs` ở `queued` trong một giao dịch; không gọi runner.
-4. Test kiến trúc `RunRequestService` là chỗ duy nhất chèn `worker_runs` `status='queued'` mang `artifact_kind` Studio (WE1).
+1. Migration (revision hex ngẫu nhiên) thêm các cột R3.1 vào `platform.worker_runs`, đúng tên của mục Dữ liệu, cột hàng đợi theo ADR-0113 (Accepted) quyết 1: `root_run_id`, `parent_run_id`, `chain_depth`, `artifact_kind`, `artifact_id`, `artifact_version_id`, `definition_hash`, `trigger_kind`, `inbound_event_id`, `run_as_principal_id`, `request_key`, `priority`, `available_at`, `lease_owner`, `lease_until`, `attempt`, với kiểu, NULL và DEFAULT nguyên văn mục Dữ liệu của spec (`priority smallint NOT NULL DEFAULT 0`, `attempt smallint NOT NULL DEFAULT 0`, `inbound_event_id uuid` NULL không FK). Không tạo `trigger_ref`, `deadline_at`, `cancel_requested_at` (W2) và không cột thư chết riêng: thư chết là `status = 'dead_lettered'`. CHECK `status` là của foundations-hardening/06 (gồm `queued`, `waiting`, `blocked`, và phải nhận `dead_lettered` mà workflow-engine/04 ghi); ticket này không tạo lại CHECK đó.
+2. `ck_worker_runs_trigger_kind CHECK (trigger_kind IN ('chat', 'manual', 'test', 'eval', 'datahub'))` (tập W1 của ADR-0113 (Accepted) quyết 1; mỗi loại W2 mở CHECK cùng bên ghi của nó), `ck_worker_runs_studio_trigger_kind CHECK (artifact_kind IS NULL OR trigger_kind IS NOT NULL)` (R3.8, WE18) và `ck_worker_runs_priority CHECK (priority IN (0, 1, 2))`; `uq_worker_runs_tenant_id_id UNIQUE (tenant_id, id)`; partial unique `(tenant_id, request_key) WHERE request_key IS NOT NULL`; index `(tenant_id, priority, available_at) WHERE status = 'queued'`, `(tenant_id, artifact_id, created_at DESC, id DESC)`, `(tenant_id, root_run_id)`, `(tenant_id, inbound_event_id) WHERE inbound_event_id IS NOT NULL`. FK `(tenant_id, run_manifest_hash)` tới `platform.run_manifests` là của tenant-config/04. Grant trong migration.
+3. `RunRequestService` (`dw_studio.core.run_request`): nhận một yêu cầu chạy của mọi loại (chat, manual, agent_node, agent_link, workflow-as-tool, eval, trigger), đặt `run_mode` do cửa quyết (tenant-config/03), dựng và ghi `run_manifest_hash` qua `RunManifestBuilder` (tenant-config/04), đặt `run_as_principal_id`, `trigger_kind`, `priority` theo `trigger_kind` (0 cho `chat`, `manual`, `test`; 1 cho `datahub`; 2 cho `eval`), `request_key` và `inbound_event_id` khi yêu cầu nêu một sự kiện nhận, chèn dòng `worker_runs` ở `queued` trong một giao dịch; không gọi runner.
+4. Lượt mô phỏng một bản Nháp (R3.9; D4 của Đạt ngày 24/10/2026): yêu cầu `simulate` nêu phiên bản `draft` thì `RunManifestBuilder` ghi giai đoạn `draft` và mã băm tạm của nội dung nháp đọc trong cùng giao dịch nhận yêu cầu, bằng đúng bước băm mà bước niêm phong của tenant-config dùng (ADR-0109 (Accepted) quyết 4; tenant-config/04 làm chủ thân bản kê), và dòng lượt chạy để `definition_hash` NULL. Yêu cầu `live` nêu phiên bản không ở `live` bị từ chối trước khi chèn dòng nào (R3.10); bản Nháp ở chế độ khác `simulate` thì `RunManifestBuilder` từ chối theo tenant-config:R6.7, ticket này không viết kiểm thứ hai cho ca đó.
+5. Test kiến trúc `RunRequestService` là chỗ duy nhất chèn `worker_runs` `status='queued'` mang `artifact_kind` Studio (WE1).
 
 ## Tiêu chí chấp nhận
 
-- [ ] R3.1: migration thêm đủ 15 cột; mô tả bảng khớp catalog sau `alembic upgrade head`.
+- [ ] R3.1: migration thêm đủ 16 cột đúng tên của mục Dữ liệu, cột hàng đợi theo ADR-0113 (Accepted) quyết 1; mô tả bảng khớp catalog sau `alembic upgrade head`; không có cột `lease_expires_at`, `attempts`, `dead_at`; `priority = 3` → CHECK từ chối.
 - [ ] R3.2: `dw_app` ghi `status='bogus'` → CHECK của foundations-hardening/06 từ chối (ticket này không đặt lại CHECK, chỉ dựa vào nó).
-- [ ] R3.3: `RunRequestService` tạo một dòng `queued` mang `run_mode`, `run_manifest_hash`, `run_as_principal_id`, `trigger_kind`, `request_key` đúng; thiếu `run_manifest_hash` → giao dịch lùi.
+- [ ] R3.3: `RunRequestService` tạo một dòng `queued` mang `run_mode`, `run_manifest_hash`, `run_as_principal_id`, `trigger_kind`, `priority`, `request_key` đúng, và `inbound_event_id` khi yêu cầu nêu một sự kiện nhận; thiếu `run_manifest_hash` → giao dịch lùi.
+- [ ] R3.9: yêu cầu `simulate` cho một bản Nháp → một dòng `queued` có `definition_hash` NULL, bản kê ghi giai đoạn `draft` và mã băm tạm bằng mã băm niêm phong sẽ cho nội dung nháp lúc nhận; sửa bản Nháp sau đó không đổi bản kê.
+- [ ] R3.10 (WE19): yêu cầu `live` nêu một phiên bản `awaiting_approval` hay `retired` → bị từ chối, 0 dòng `worker_runs`; yêu cầu `live` nêu một bản Nháp → bị từ chối, 0 dòng, 0 bản kê; gỡ kiểm giai đoạn ở `RunRequestService` → ca `awaiting_approval` qua, test đỏ.
 - [ ] R3.4: `RunRequestService` không gọi runner hay `graph.ainvoke` (kiểm bằng spy ở test).
 - [ ] R3.5 (WE1): thêm một module chèn `worker_runs` `status='queued'` với `artifact_kind` Studio ngoài `RunRequestService` → test kiến trúc đỏ; gỡ khẳng định → ca trồng lỗi qua.
 - [ ] R3.6: hai yêu cầu cùng `request_key` song song → đúng một dòng `worker_runs`.
@@ -36,3 +39,5 @@ Cho `platform.worker_runs` các cột một lượt chạy Studio cần và đ�
 ## Comments
 
 - 2026-10-24 (agent): theo quyết định của Đạt ngày 24/10/2026: CHECK `trigger_kind` theo tập W1 và bắt buộc trên dòng có `artifact_kind` (R3.8, WE18).
+- 2026-10-24 (agent): vòng sửa thứ tư: cột hàng đợi đổi theo ADR-0113 (Accepted) quyết 1, 3 (`lease_owner`, `lease_until`, `attempt`, `priority` 0, 1, 2, `inbound_event_id`; thư chết là trạng thái `dead_lettered`), `trigger_ref`, `deadline_at`, `cancel_requested_at` ở W2 (phát hiện F về ADR-0113 (Accepted) và R3.1); theo D4 của Đạt, lượt mô phỏng một bản Nháp ghim mã băm tạm và lượt `live` không bao giờ (R3.9, R3.10, WE19).
+- 2026-10-24 (agent): kiểm sau vòng sửa thứ tư: bước 1 và tiêu chí R3.1 lấy tên cột từ mục Dữ liệu, vì `artifact_kind`, `artifact_id`, `artifact_version_id`, `definition_hash` không có trong ADR-0113 (Accepted) quyết 1; chỉ cột hàng đợi theo quyết định đó. Bước 4 ghi rõ D4 của Đạt ngày 24/10/2026, vì D4 của requirements là thí điểm Marketing.

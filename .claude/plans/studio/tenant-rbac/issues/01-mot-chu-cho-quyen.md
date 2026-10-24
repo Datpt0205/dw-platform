@@ -2,7 +2,7 @@
 
 Status: needs-triage
 Area: studio
-Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, RB1, RB2, RB3, RB4
+Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, RB1, RB2, RB3, RB4
 
 ## Mục tiêu
 
@@ -46,11 +46,17 @@ phần bootstrap của foundations-hardening 05 (brief B11).
    (a) mọi khóa trong `platform.roles` và `platform.permission_sets` có dòng `active`;
    (b) mọi khóa mà code kiểm (`action="..."` trong route của `apps/api/src`, hằng `*_SCOPE`, `required_scopes` trong
    `configs/tools`, `scope` và `anyScope` trong `apps/web/lib/nav/registry.ts`) có trong danh mục;
-   (c) mọi khóa `active` có ít nhất một chỗ kiểm, trừ danh sách ngoại lệ trong test, mỗi mục một lý do.
-   Từ nay mỗi cụm Studio đăng ký mọi khóa nó kiểm trong migration của chính nó, và test này giữ chúng: khóa
-   `studio.<areas>.<verb>` với khu vực số nhiều (`studio.agents.read`, `studio.workflows.run`) và khóa ngoài tiền tố
-   `studio.` mà cụm đó kiểm (`platform.limits.manage` của usage-and-limits, `runs.read_payloads` của
-   telemetry-and-audit); ticket này không đăng ký khóa của cụm khác.
+   (c) mọi khóa `active` có ít nhất một chỗ kiểm, trừ danh sách ngoại lệ trong test, mỗi mục một lý do;
+   (d) mọi khóa `studio.*` của danh mục và mọi khóa `studio.*` mà code kiểm có đúng ba đoạn `studio.<area>.<verb>`
+   (R1.6), với khu vực nằm trong danh sách khu vực của test: dạng số nhiều của danh từ đếm được (`agents`, `workflows`,
+   `objects`, `versions`, `bindings`, `tools`, `packs`, `evals`; khu vực mới vào danh sách ở dạng số nhiều cùng khóa
+   đầu tiên của nó) và năm khu vực số ít, mỗi mục một lý do: `publish` (một hành động), `lifecycle` (một quá trình),
+   `datahub` (tên sản phẩm), `code` (danh từ không đếm), `mcp` (tên giao thức). (d) chỉ đọc khóa quyền, không đọc loại
+   phê duyệt hay tên sự kiện audit.
+   Từ nay mỗi cụm Studio đăng ký mọi khóa nó kiểm trong migration của chính nó, và test này giữ chúng, kể cả khóa ngoài
+   tiền tố `studio.` mà cụm đó kiểm (`platform.limits.manage` của usage-and-limits, `runs.read_payloads` của
+   telemetry-and-audit); ticket đăng ký chờ ticket 02 (cột `tenant_grantable`) và câu INSERT nêu mọi cột NOT NULL
+   của danh mục lúc đó (Quyết định 24/10/2026 của spec); ticket này không đăng ký khóa của cụm khác.
 6. **Người vận hành.** Thêm `studio.`, `obj.`, `fld.`, `connections.`, `integrations.` vào `FORBIDDEN_SCOPE_PREFIXES`
    (`support_access.py:63-72`), để người vận hành không được cấp `connections.manage` hay `integrations.admin` của
    tenant.
@@ -64,6 +70,7 @@ phần bootstrap của foundations-hardening 05 (brief B11).
 - [ ] R1.2 (RB2): thêm khóa `active` không ai kiểm → (c) đỏ; khóa đó ở danh sách ngoại lệ có lý do → xanh.
 - [ ] R1.4: `GET /api/v1/admin/permissions` trả đủ sáu trường cho mọi dòng; người không có `platform.roles.read` → 403.
 - [ ] R1.5 (RB3): đăng ký `obj.lead.read`, `studio.agents.publish`, `connections.manage` hay `integrations.admin` cho truy cập người vận hành → bị từ chối; gỡ từng tiền tố khỏi `FORBIDDEN_SCOPE_PREFIXES` → test của tiền tố đó đỏ.
+- [ ] R1.6: dòng danh mục thử `studio.agents.settings.manage` (bốn đoạn) hay `studio.agent.read` (khu vực số ít ngoài năm ngoại lệ) → (d) đỏ và nêu khóa; `studio.agents.manage_settings`, `studio.publish.approve`, `studio.datahub.manage` → xanh; loại phê duyệt `studio.publish.object` và tên audit `studio.version.published` không nằm trong tập (d) đọc.
 - [ ] Xong: `make ci` xanh.
 
 ## Nguồn
@@ -80,3 +87,4 @@ phần bootstrap của foundations-hardening 05 (brief B11).
 ## Comments
 
 - 2026-10-24 (agent): Đạt nhận các khuyến nghị vòng 2 (24/10/2026): thêm `connections.`, `integrations.` vào `FORBIDDEN_SCOPE_PREFIXES` (`D:connections-and-vault:trong-phạm-vi~tenant-rbac:R1.5`); quy ước đăng ký khóa ghi rõ khu vực số nhiều và phủ cả khóa ngoài tiền tố `studio.` (`B:agent-lifecycle:phụ-thuộc~tenant-rbac/01`).
+- 2026-10-24 (agent): vòng sửa 4: thêm R1.6 và kiểm (d) của bước 5 cho quy ước ba đoạn `studio.<area>.<verb>` mà spec là chủ (Quyết định 24/10/2026 của spec, khóa bốn đoạn của ADR-0117 (Accepted) đổi tên); ticket đăng ký khóa của cụm khác chờ tenant-rbac/02 và nêu mọi cột NOT NULL trong INSERT (`C:custom-objects/02~tenant-rbac/02`), nên cột `tenant_grantable` vẫn ra đời ở ticket 02, không ở đây.

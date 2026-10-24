@@ -16,7 +16,8 @@ quyền và duyệt bởi người khác (R3.6, R3.7, TR17 của spec; ADR-0103 
 
 1. Revision Alembic mới (id hex ngẫu nhiên, tạo bằng `alembic revision -m "..."`), chép nguyên văn mục Dữ liệu của
    spec: `studio.principal_grant_changes` với PK `(tenant_id, service_principal_id)`; `service_principal_id uuid NOT NULL`
-   FK tới `platform.service_principals (user_id)` ON DELETE CASCADE; `grants_changed_at timestamptz NOT NULL`;
+   FK tới `platform.service_principals (user_id)` ON DELETE CASCADE, có index `(service_principal_id)` vì khóa chính
+   bắt đầu bằng `tenant_id`; `grants_changed_at timestamptz NOT NULL`;
    `last_event_id uuid NOT NULL`; RLS ENABLE và FORCE chỉ theo tenant; `dw_app` SELECT, INSERT, UPDATE chỉ
    `grants_changed_at`, `last_event_id`, không DELETE; một dòng lý do trong danh sách bảng toàn tenant của
    `test_rls_coverage.py` (dấu thời điểm theo tài khoản dịch vụ, một chủ thể của cả công ty; DO-01); khẳng định
@@ -55,3 +56,5 @@ quyền và duyệt bởi người khác (R3.6, R3.7, TR17 của spec; ADR-0103 
 
 - 2026-10-24 (agent): ticket mới theo quyết định của Đạt ngày 24/10/2026 (H:org-and-principals:R6.6~workflow-triggers:R3.4):
   sự kiện `grants_changed` có người đọc ở W1, nên tài khoản dịch vụ tăng quyền sau khi gắn dừng ở cửa nhận.
+- 2026-10-24 (agent): kiểm sau vòng sửa thứ tư: khóa ngoại `service_principal_id` có index riêng, vì khóa chính bắt đầu
+  bằng `tenant_id` (CLAUDE.md, Data model rules; phát hiện E về CLAUDE.md và Dữ liệu của spec).

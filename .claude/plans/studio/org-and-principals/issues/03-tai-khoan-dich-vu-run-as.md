@@ -1,9 +1,9 @@
 # 03 — Tài khoản dịch vụ làm chủ thể chạy
 
 Status: needs-triage
-Blocked by: 02, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md, .claude/plans/studio/foundations-hardening/issues/02-hang-rao-du-lieu-va-danh-tinh.md, .claude/plans/studio/foundations-hardening/issues/03-quyen-dw-app-va-rls-initplan.md, .claude/plans/studio/app-standards/issues/01-vo-loi-problem-json.md, .claude/plans/studio/app-standards/issues/02-khoa-chong-lap-gan-nguoi-goi.md
+Blocked by: 02, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md, .claude/plans/studio/foundations-hardening/issues/02-hang-rao-du-lieu-va-danh-tinh.md, .claude/plans/studio/foundations-hardening/issues/03-quyen-dw-app-va-rls-initplan.md, .claude/plans/studio/app-standards/issues/01-vo-loi-problem-json.md, .claude/plans/studio/app-standards/issues/02-khoa-chong-lap-gan-nguoi-goi.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md
 Area: studio
-Yêu cầu: R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R7.1, R7.2, OP8, OP9, OP10, OP11
+Yêu cầu: R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.8, R6.9, R7.1, R7.2, OP8, OP9, OP10, OP11, OP14
 
 ## Mục tiêu
 
@@ -11,7 +11,9 @@ Công ty có tài khoản dịch vụ: một dòng `platform.users` loại `serv
 người, không bao giờ đăng nhập, không bao giờ giữ quyền trọng yếu, và chỉ được gắn làm chủ thể chạy bởi người giữ mọi quyền
 của nó (R6, R7, YC8; ADR-0103 (Accepted) mục 2, 4). Việc gắn vào phiên bản và chạy lượt chạy dưới danh nghĩa nó thuộc
 workflow-triggers và workflow-engine (R6.7); workflow-triggers đọc sự kiện `platform.service_principal.grants_changed` của
-ticket này, và ticket đọc sự kiện đó của workflow-triggers chờ ticket này (DO-12). Từ brief B2 ticket 07; DO-12 và DO-17 đã có câu trả lời ngày 23/10/2026.
+ticket này, và ticket đọc sự kiện đó của workflow-triggers chờ ticket này (DO-12). Công ty rời nền tảng thì lane
+offboarding xóa người dùng loại `service` của nó qua một hàm SECURITY DEFINER hẹp (R6.8, R6.9); ticket này chờ
+foundations-hardening/07 vì cùng sửa lane offboarding và `test_offboarding.py`. Từ brief B2 ticket 07; DO-12 và DO-17 đã có câu trả lời ngày 23/10/2026.
 
 ## Việc cần làm
 
@@ -68,10 +70,18 @@ ticket này, và ticket đọc sự kiện đó của workflow-triggers chờ ti
 8. **Mặt danh tính lọc loại.** `/directory/candidates` (`directory.py:65-78` và adapter của nó),
    `GET /api/v1/platform/users` (`platform.py:94`) và bootstrap chỉ trả `kind = 'human'`; test liệt kê mọi câu đọc
    `platform.users` mà một route dùng.
-9. Offboarding: `test_offboarding.py` purge một tenant có tài khoản dịch vụ và khẳng định không còn dòng
-   `platform.service_principals` nào của tenant đó, nên thứ tự xóa phải xóa `platform.tenant_members` trước
-   `platform.workspaces` (khóa ngoại tới workspace sở hữu là `ON DELETE RESTRICT`); người dùng loại `service` đi cùng
-   tenant (`owner_tenant_id` CASCADE khi provisioner xóa tenant).
+9. **Offboarding.** Migration của bước 1 thêm `platform.purge_tenant_service_users(p_tenant uuid) RETURNS integer`,
+   SECURITY DEFINER, `search_path` cố định, thu EXECUTE khỏi `PUBLIC`, cấp EXECUTE cho `dw_app`: từ chối với SQLSTATE
+   23514 khi `platform.tenants.status` của `p_tenant` khác `offboarding` (R6.9); không thì xóa dòng `platform.users` có
+   `kind = 'service' AND owner_tenant_id = p_tenant` và trả số dòng đã xóa; `test_privileges.py` khẳng định `dw_app` có
+   EXECUTE còn `PUBLIC` thì không (CLAUDE.md, Data model rules). `SqlTenantOffboarding.purge_rows` gọi hàm
+   trong giao dịch xóa, sau khi đã xóa mọi bảng tenant: `dw_app` không có DELETE trên `platform.users`
+   (foundations-hardening:R5.1), và dòng `platform.tenants` ở lại `offboarded` nên CASCADE của `owner_tenant_id` không
+   bao giờ chạy. `_ORDERED_FIRST` xóa `platform.tenant_members` trước `platform.workspaces` (khóa ngoại tới workspace sở
+   hữu là `ON DELETE RESTRICT`), nên `platform.service_principals` đi theo cascade trước khi workspace bị xóa.
+   `test_offboarding.py` purge một tenant có tài khoản dịch vụ và khẳng định không còn dòng `platform.service_principals`
+   nào và không còn người dùng loại `service` nào của tenant đó, còn người dùng loại `human` và tài khoản dịch vụ của
+   tenant khác giữ nguyên.
 
 ## Tiêu chí chấp nhận
 
@@ -81,6 +91,8 @@ ticket này, và ticket đọc sự kiện đó của workflow-triggers chờ ti
 - [ ] R6.4 (OP9): dưới `dw_migrator` gán `tenant_owner` cho tài khoản dịch vụ → 23514; thêm khóa `critical` vào vai trò đang gán cho nó → 23514; test catalog thấy trigger `guard_service_principal_grants` trên `platform.role_assignments` và `platform.tenant_role_permissions`; gỡ trigger → đỏ.
 - [ ] R6.5 (OP10): người gọi thiếu một khóa tài khoản đang giữ → 403 `rbac_escalation` nêu khóa đó; thiếu `platform.service_principals.use` → 403; thay `platform.grants_cover` bằng `true` → đỏ; `bindable_by_me` bằng đúng kết quả của bộ kiểm.
 - [ ] R6.6: gán vai trò cho tài khoản dịch vụ → đúng một sự kiện outbox `platform.service_principal.grants_changed` cùng giao dịch; giao dịch lùi → không sự kiện.
+- [ ] R6.8 (OP14): purge một tenant `offboarding` có một tài khoản dịch vụ → không còn dòng `platform.users` loại `service` có `owner_tenant_id` của tenant đó, không còn dòng `platform.service_principals` của nó, người dùng loại `human` và tài khoản dịch vụ của tenant khác còn; bỏ lời gọi hàm khỏi `purge_rows` → `test_offboarding.py` đỏ.
+- [ ] R6.9 (OP14): gọi `platform.purge_tenant_service_users` dưới `dw_app` cho tenant `active` → 23514 và 0 dòng bị xóa; gỡ kiểm trạng thái khỏi hàm → test đỏ.
 - [ ] R7.1 (OP11): quản trị viên tenant B gọi `GET /api/v1/directory/candidates` → không có tài khoản dịch vụ của A hay B; gỡ lọc `kind` → đỏ.
 - [ ] R7.2 (OP11): `GET /api/v1/platform/users` → không dòng `service`.
 - [ ] Xong: `make ci` xanh.
@@ -93,6 +105,7 @@ ticket này, và ticket đọc sự kiện đó của workflow-triggers chờ ti
 - `apps/api/src/dw_api/routes/v1/directory.py:65-78`; spec: R7.1.
 - `apps/api/src/dw_api/routes/v1/platform.py:94`; spec: R7.2.
 - `packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/runtime_tables.py:38`; spec: R6.7.
+- `packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:108-114`, `packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:183-194`; spec: R6.8, R6.9.
 - ADR-0103 (Accepted) mục 1, 2, 4; brief B2 ticket 07 và mục 9.
 
 ## Comments

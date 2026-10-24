@@ -180,6 +180,7 @@ Một truy vấn phân trang không có index mang trọn làm CI đỏ, kể c�
 - telemetry-and-audit: span OpenTelemetry mà `trace_id` đọc.
 - `AccessContext` do nền tảng dựng từ token đã xác minh: nguồn duy nhất của `caller_ref` (`principal_id`, grant của ADR-0024 (Proposed)).
 - telemetry-and-audit ticket 02 chờ ticket 03, vì index audit theo lượt chạy có một chủ ở đây (OPS-b).
+- Ticket 02 chờ ticket 01: 422 `idempotency_key_required` của R2.6 và handler phát lại của R2.1 trả qua vỏ problem+json của R1, và hai ticket cùng sửa `apps/api/src/dw_api/exception_handlers.py` (C:app-standards/01~app-standards/02).
 - Kiểm lại khi: ADR-0108 (Accepted) đổi trạng thái hay nội dung → cả spec; custom-objects đổi hình cây lọc hay danh sách → R4, R5, ticket 03; custom-objects hay field-security thêm mã lý do cho cây lọc → R5.6, ticket 03; một route phân trang mới → R6.2; một spec mở route bắt buộc khóa → R2.7.
 
 ## Câu hỏi còn mở

@@ -1,9 +1,9 @@
 # 04 — Sàn gửi tin marketing: đồng ý, chặn gửi, khung giờ, tần suất
 
 Status: needs-triage
-Blocked by: .claude/plans/studio/custom-objects/issues/03-record-service.md, .claude/plans/studio/tools-and-skills/issues/01-executor-kiem-schema-va-nha-may.md, .claude/plans/studio/telemetry-and-audit/issues/03-lich-su-chay-theo-buoc.md
+Blocked by: .claude/plans/studio/custom-objects/issues/03-record-service.md, .claude/plans/studio/tools-and-skills/issues/01-executor-kiem-schema-va-nha-may.md, .claude/plans/studio/telemetry-and-audit/issues/03-lich-su-chay-theo-buoc.md, .claude/plans/studio/workflow-triggers/issues/02-data-hub-endpoint-va-ingress.md
 Area: studio
-Yêu cầu: R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R5.1, R5.5, CP7, CP8, CP9, CP10, CP11, CP18
+Yêu cầu: R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R5.1, R5.5, R5.6, CP7, CP8, CP9, CP10, CP11, CP18, CP19
 
 ## Mục tiêu
 
@@ -22,19 +22,22 @@ gửi; hủy đăng ký có hiệu lực ngay (spec R3; ADR-0124 (Accepted)).
 subject_ref, channel, purpose, captured_at DESC)`; đồng ý hiện hành là dòng mới nhất theo
       `(subject_ref, purpose, channel)`, nên một lần rút ghi ở workspace nào cũng chặn ở mọi workspace.
     - `platform.contact_suppressions`: PK `(tenant_id, channel, address_hash)`; bảng toàn tenant (RLS chỉ
-      theo công ty).
+      theo công ty); trigger `platform.guard_contact_suppression()` BEFORE DELETE từ chối với SQLSTATE 23514 mọi
+      DELETE khi `platform.tenants.status` của công ty khác `offboarding` (spec R5.6), cùng hình với
+      `platform.guard_control_switch()` của agent-lifecycle/01 (agent-lifecycle:R7.5).
     - `platform.marketing_send_log`: phân vùng tháng, đăng ký bằng một dòng `platform.time_partitioned_tables`
       (`append_only = true`); RLS dạng workspace của `CLAUDE.md` trên bảng cha; một dòng mỗi Tương tác ở W1
       (N4): `outcome` CHECK (`sent`, `blocked`), `blocked_reason` (NULL khi `sent`, CHECK theo tập lý do của
       bước 2), `root_run_id`, `consent_record_id` khi `sent`, nguồn gốc tin AI soạn (lượt chạy soạn, model).
     - `dw_app` không giữ quyền nào trên partition nào của hai bảng phân vùng, kể cả DEFAULT; đọc ghi qua
       bảng cha (DO-02.2), không DELETE trên cha. `consent_records` và `contact_suppressions` có tên và lý do trong
-      danh sách bảng toàn tenant của `test_rls_coverage.py`; `contact_suppressions` có DELETE cho `dw_app` để lane
-      `offboarding` xóa như bảng thường.
+      danh sách bảng toàn tenant của `test_rls_coverage.py`; `contact_suppressions` có DELETE cho `dw_app`, chỉ dùng
+      được ở lượt xóa của lane `offboarding` nhờ trigger trên.
     - Cùng thay đổi đăng ký: khóa `platform.consent_records` (theo quan hệ cộng 5 năm, xóa theo dòng; bộ xóa đăng
       ký ở ticket 06) và `platform.marketing_send_log` (13 tháng, DROP PARTITION qua
       `platform.drop_expired_partitions`), số tạm UNVERIFIED, vào bản kế tiếp của tệp chính sách retention theo
-      định dạng của telemetry-and-audit:R5.6, nên studio-skeleton:R3.7 xanh ngay khi đăng ký (spec R5.1); hai dòng
+      định dạng của telemetry-and-audit:R5.6, sau bản của workflow-triggers/02 trong chuỗi các ticket sửa tệp ở mục
+      Phụ thuộc của spec, nên studio-skeleton:R3.7 xanh ngay khi đăng ký (spec R5.1); hai dòng
       `STUDIO_EXCLUSIONS` cho hai bảng với lý do "`dw_app` không DELETE; xóa khi offboarding bằng
       `platform.purge_tenant_append_only`" (spec R5.5; studio-skeleton:R4.3).
 2. `MarketingSendPolicy` thỏa `SendAdmissionPort` của ToolExecutor; thứ tự kiểm: chặn gửi, đồng ý, tần
@@ -60,12 +63,16 @@ subject_ref, channel, purpose, captured_at DESC)`; đồng ý hiện hành là d
 - [ ] R3.7 (CP7): cùng lần chặn đó ghi đúng một dòng nhật ký gửi `outcome` `blocked`, `blocked_reason`
       `no_consent`, trong cùng giao dịch với `marketing.send_refused`; rollback giao dịch → không dòng nào.
 - [ ] R3.8 (CP18): một lượt chạy gốc đã gửi tới 200 người nhận khác nhau, tin tới người thứ 201 →
-      `blocked:recipient_cap`, SMTP giả 0 lời gọi; tin thứ hai tới một người đã nhận trong lượt đó không tính thêm
-      người nhận; overlay hạ còn 50 → người thứ 51 bị chặn; gỡ kiểm → test đỏ.
+      `blocked:recipient_cap`, SMTP giả 0 lời gọi, một dòng nhật ký gửi `outcome` `blocked` với `blocked_reason`
+      `recipient_cap` (ADR-0124 (Accepted) quyết 1); tin tới người thứ 200 → gửi; tin thứ hai tới một người đã nhận
+      trong lượt đó không tính thêm người nhận; overlay hạ còn 50 → người thứ 51 bị chặn; gỡ kiểm → test đỏ.
 - [ ] R5.1: đăng ký `consent_records` và `marketing_send_log` → test catalog của studio-skeleton:R3.7 xanh vì hai
       khóa đã có trong bản tệp của thay đổi này; bỏ một khóa → test đó đỏ, nêu tên bảng.
 - [ ] R5.5: công ty `offboarding` có dòng trong ba bảng → lane `offboarding` xuất mỗi dòng một lần rồi xóa hết;
       test phủ offboarding (studio-skeleton:R4.3) xanh với hai dòng `STUDIO_EXCLUSIONS`.
+- [ ] R5.6 (CP19): `dw_app` DELETE một dòng `platform.contact_suppressions` của công ty `active` → SQLSTATE 23514,
+      dòng còn, lần gửi sau tới địa chỉ đó vẫn `blocked:suppressed`; cùng lệnh khi công ty `offboarding` → xóa được;
+      gỡ phép kiểm DELETE khỏi trigger → test đỏ.
 - [ ] R3.2 (CP8): gọi hành động gửi qua node `tool.call`, qua công cụ agent, qua quy trình-như-công-cụ khi
       thiếu đồng ý → cả ba bị chặn ở executor; gỡ kiểm ở executor → test đỏ.
 - [ ] R3.3: một tin rời đi → một dòng nhật ký gửi mang `consent_record_id` và một sự kiện `marketing.sent`.
@@ -97,3 +104,12 @@ subject_ref, channel, purpose, captured_at DESC)`; đồng ý hiện hành là d
   nguyên (H:ADR-0124 (Accepted)\~compliance-pdpl/04); mỗi lần chặn ghi một dòng nhật ký gửi `blocked` vì ở W1 Tương
   tác là dòng nhật ký gửi (N4); thêm thời hạn của hai bảng `append_only` trong cùng thay đổi đăng ký và chờ
   telemetry-and-audit/03 để các ticket sửa tệp retention có một thứ tự; dòng `STUDIO_EXCLUSIONS` cho offboarding.
+- 2026-10-24 (agent): áp quyết định của Đạt ngày 24/10/2026 cho kiểm nhất quán vòng 3: `recipient_cap` là lý do
+  chặn của ADR-0124 (Accepted) quyết 1 và lần chặn ghi một dòng nhật ký gửi `blocked`
+  (F:ADR-0124 (Accepted)\~compliance-pdpl:R3.8), nên bước 2 và R3.8 giữ nguyên tên. Theo các dòng tạm cùng ngày
+  của spec: chờ workflow-triggers/02, ticket đứng trước trong chuỗi các ticket sửa tệp retention
+  (C:configs:spec\~telemetry-and-audit/03); trigger `platform.guard_contact_suppression()` chỉ cho lượt xóa của
+  offboarding xóa dòng chặn gửi (spec R5.6, CP19; D:agent-lifecycle:R7.5\~compliance-pdpl:R5.4).
+- 2026-10-24 (agent): kiểm sau lượt sửa: tiêu chí R3.8 (CP18) nay khẳng định cả dòng nhật ký gửi `outcome` `blocked`
+  với `blocked_reason` `recipient_cap` và tin tới người thứ 200 vẫn gửi, như CP18 của spec và ADR-0124 (Accepted)
+  quyết 1 sau D11 (F:ADR-0124 (Accepted)\~compliance-pdpl:R3.8).

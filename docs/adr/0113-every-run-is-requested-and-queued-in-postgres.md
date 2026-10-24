@@ -41,15 +41,16 @@ with the amendments listed under Acceptance; the calls it leaned on are answered
    `ON CONFLICT (tenant_id, request_key) DO NOTHING`, returning the existing run. The queue is `platform.worker_runs`,
    which gains `trigger_kind`, `trigger_ref`, `inbound_event_id`, `request_key` (partial unique per tenant),
    `parent_run_id`, `root_run_id`, `chain_depth`, `run_as_principal_id`, `priority` (0 interactive, 1 background, 2
-   eval), `available_at`, `lease_owner`, `lease_until`, `attempt`, `deadline_at`, `cancel_requested_at` and the
-   statuses `queued`, `waiting` and `blocked`. An architecture test allows no other writer of a queued Studio row.
+   eval), `available_at`, `lease_owner`, `lease_until`, `attempt`, `deadline_at` and `cancel_requested_at` (both
+   from W2, decision 3), and the statuses `queued`, `waiting` and `blocked`. An architecture test allows no other
+   writer of a queued Studio row.
 2. **A fair claim without BYPASSRLS.** SECURITY DEFINER `platform.studio_run_scopes_due(p_limit)` returns the tenant
    ids with due work, identifiers only (the pattern of `platform.channel_delivery_scopes_due`,
    `packages/python/dw_platform/src/dw_platform/adapters/persistence/channel_deliveries.py:47`). Per tenant, under
    `set_config('app.tenant_id', ..., true)`, an RLS-bound claim (an `UPDATE` over `SELECT ... FOR UPDATE SKIP LOCKED`)
    takes at most `ceil(batch / tenants)` rows by `(priority, available_at)`. Measured on 2026-10-22: behind one
    tenant's 100,000-row backlog, another tenant's first claim took 0.9 s, against 4.8 s first-in-first-out.
-3. **Admission at dispatch, fenced claims, a deadline for every run.** At claim the `studio_runs` lane asks
+3. **Admission at dispatch, fenced claims, and from W2 a deadline for every run.** At claim the `studio_runs` lane asks
    `RunControlPort.require_open` (ADR-0120), then `LimitsPort.admit` (ADR-0121). That claim is the one place a Studio
    run is admitted; a child run shares its root's lease and is not admitted again (decision 9). One table keyed by
    `trigger_kind` shapes every refusal, for freezes and limits alike, and gives every kind of decision 1 its row:
@@ -63,20 +64,29 @@ with the amendments listed under Acceptance; the calls it leaned on are answered
    records a `schedule` fire (W2) as `limit_refused` and skips it instead of holding it, because holding every missed
    fire would release them all at once when the next window begins; ends an interactive run `failed` with
    `limit_exceeded` and `resets_at` (a conversation shows it as a `notice`); and ends an evaluation's gate run `error`
-   with `limit_exceeded` (ADR-0120). `principal_inactive` ends a run of any kind `cancelled`, and
+   with `limit_exceeded` (ADR-0120). `principal_inactive`, the run-as principal no longer `active`, keeps a
+   `datahub`, `provider_app` or `record_event` run `queued`, as a freeze holds a trigger run, and alerts the
+   accountable owner (ADR-0103); once the principal is active again the held runs start in arrival order, and a
+   person may cancel them, audited, their inbound events staying replayable (one at a time through the cancel route
+   from W2; in W1 a kill of the artifact cancels them, ADR-0120 decision 7); it ends a run of every other kind
+   `cancelled`, a `schedule` fire included. `binding_needs_review` refuses an unattended run before it is requested
+   while its service principal's grants have grown since its `principal` binding was approved, its trigger delivery
+   recorded `rejected`, until someone who covers the new grants approves the binding again (ADR-0103 decision 4).
    `control_state_unavailable` re-queues any kind with a later `available_at`, refusing it without dropping it. A
    killed artifact's queued runs are cancelled, never held. A claim lease
    (`lease_owner`, `lease_until`; not ADR-0121's budget lease) lasts 60 s with a 15 s heartbeat; state and
    checkpoint writes are fenced by `(lease_owner, attempt)`, so a stale holder's writes fail. Lane
    `studio_run_reaper` re-queues expired claims with backoff `min(2^attempt * 5 s, 10 min)` plus jitter; after 5
    attempts the run is dead-lettered (`dead_lettered`,
-   audit `run.dead_lettered`, outbox `studio.run.dead_lettered`). `POST /api/v1/runs/{run_id}/cancel` (`runs.cancel`)
-   sets `cancel_requested_at` and notifies on `dw_run_state` (`run_store.py:51-53`), which `RunStateListener`
-   (`adapters/run_events.py:96`) turns into a task cancel; queued and waiting runs are cancelled in the database with
-   their open waits and approvals. `deadline_at = admitted_at + min(limits.max_run_seconds, plan ceiling)`, waits
-   included (default 30 days, at most 90), is checked at node start, at resume and by the reaper (`deadline_exceeded`).
-   The bound stays: a process that lasts months is a chain of short runs over one record's lifecycle in stages
-   (ADR-0126 (Accepted)), never one run.
+   audit `run.dead_lettered`, outbox `studio.run.dead_lettered`). From W2, with workflow-engine's W2 row,
+   `POST /api/v1/runs/{run_id}/cancel` (`runs.cancel`) sets `cancel_requested_at` and notifies on `dw_run_state`
+   (`run_store.py:51-53`), which `RunStateListener` (`adapters/run_events.py:96`) turns into a task cancel, queued
+   and waiting runs being cancelled in the database with their open waits and approvals; and, as ADR-0126 (Accepted)
+   states, `deadline_at = admitted_at + min(limits.max_run_seconds, plan ceiling)`, waits included (default 30 days,
+   at most 90), is checked at node start, at resume and by the reaper (`deadline_exceeded`). W1 has neither, and nothing
+   there bounds a wait: a step approval waits with no deadline (ADR-0112 decision 7, DO-31), and only a kill cancels
+   an artifact's waiting runs (ADR-0120 decision 7). Once the deadline ships its bound stays: a process that lasts
+   months is a chain of short runs over one record's lifecycle in stages (ADR-0126 (Accepted)), never one run.
 4. **A run waits in place.** Each wait is an `interrupt()` plus a durable `platform.run_waits` row (RLS ENABLE and
    FORCE; `kind` `approval`, `task`, `timer`, `child_run`; `status` `open`, `resolved`, `consumed`, `expired`,
    `cancelled`; unique `(tenant_id, run_id, interrupt_id)`); several may be open. A decision, a due timer or a child
@@ -126,7 +136,7 @@ with the amendments listed under Acceptance; the calls it leaned on are answered
    run context, never from input.
 9. **Child runs.** A sub-workflow, a workflow tool, a linked agent and an agent node start a child run through the same
    door. The child shares the root's run-as principal, budget lease and limits; depth is at most 3 and cycles are
-   refused at publish; run taint flows both ways; its run mode is never less safe than its parent's; a child waiting
+   refused at submit; run taint flows both ways; its run mode is never less safe than its parent's; a child waiting
    for a person reports `waiting`, never success. Only root runs count toward runs per day (ADR-0121).
 10. **Chat runs in the worker.** A conversation turn is a run of trigger kind `chat` requested through the door and
     executed by the worker; the client polls in P1, and streaming arrives in P2 over an ephemeral Valkey relay that is
@@ -228,9 +238,16 @@ Amended by Đạt on 2026-10-24, who accepted every recommendation the second co
   `CLAUDE.md` (Agent and tool rules) now names this exception beside "a triggered one waits in the queue, never
   dropped" (Q-R7, DO-21.3).
 - Decision 3: the refusal table gives every `trigger_kind` of decision 1 a row: `replay` and `fork` are shaped as
-  interactive runs, a child run is never admitted on its own, `principal_inactive` cancels and
-  `control_state_unavailable` re-queues (B:ADR-0113~workflow-engine:R3.1).
+  interactive runs, a child run is never admitted on its own, and `principal_inactive` and
+  `control_state_unavailable` have their rows (B:ADR-0113~workflow-engine:R3.1).
 - Decision 3: the run deadline stays at 30 days by default and 90 at most; a long process is a chain of short runs
   over a record's lifecycle (N5, ADR-0126 (Accepted)).
 - Decision 5: a freeze has no time limit, and the retention lane skips the events it holds and counts them
   (B:agent-lifecycle:R7.2~telemetry-and-audit:R5.5).
+- Third consistency check (round 4): decision 3's `principal_inactive` holds a `datahub`, `provider_app` or
+  `record_event` run `queued` and alerts the accountable owner, ending only the other kinds, and
+  `binding_needs_review` gets its row (Đạt's D9; B:ADR-0120~~workflow-engine:R5.15,
+  F:ADR-0113~~org-and-principals:R4.6); the cancel route, `cancel_requested_at` and `deadline_at` are W2, the
+  deadline matching ADR-0126 (Accepted), so a held run is cancelled one at a time from W2 and by a kill in W1, and
+  decision 3 states that nothing bounds a W1 wait (F:ADR-0113~~workflow-engine:R3.1, a CRITICAL row); decision 9
+  refuses cycles at submit, where ADR-0112 decision 3's validator runs (G:ADR-0112~~ADR-0113).

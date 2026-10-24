@@ -1,7 +1,7 @@
 # 02 — Kho bí mật: KmsPort, LocalDevKms, secret_envelopes và cửa một chiều
 
 Status: needs-triage
-Blocked by: .claude/plans/studio/foundations-hardening/issues/03-quyen-dw-app-va-rls-initplan.md, .claude/plans/studio/org-and-principals/issues/01-khoa-don-vi-va-siet-realm.md, .claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md
+Blocked by: .claude/plans/studio/foundations-hardening/issues/03-quyen-dw-app-va-rls-initplan.md, .claude/plans/studio/org-and-principals/issues/01-khoa-don-vi-va-siet-realm.md, .claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md
 Area: studio
 Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.2, CV1, CV2, CV3, CV4, CV5
 
@@ -31,8 +31,12 @@ kho khóa ở ticket 06 (DO-47.1). Gộp từ B8a-connections connections-and-va
    `platform.open_secret`, `platform.secret_status`, `platform.delete_secret` lấy công ty từ
    `app.tenant_id` (không nhận tham số công ty), EXECUTE cho `dw_app`; grant cột cho `platform.connections`.
 3. `KmsPort`, `LocalDevKms` (HKDF-SHA256 từ `DW_LOCAL_KMS_MASTER_KEY`, AES key wrap); `SecretStore`
-   (AES-256-GCM, AAD `dw.secret.v1|<tenant_id>|<connection_id>`); kiểu `Secret` (`repr` ẩn, `reveal()`
-   chỉ ở module cho phép, có test kiến trúc).
+   (AES-256-GCM) với AAD
+   `dw.secret.v1|<tenant_id>|<owning_workspace_id>|<subject_kind>:<subject_id>|<field>|<kek_version>` theo
+   ADR-0115 (Accepted) quyết 1: công ty lấy từ `app.tenant_id` của ngữ cảnh, không từ dòng; workspace sở hữu
+   của chủ thể; `<subject_kind>` là tên cột chủ thể bỏ `_id` (`connection`, và `inbound_endpoint` từ
+   workflow-triggers/02) với id trong cột đó; `<field>` là tên trường bí mật bên gọi nêu; `<kek_version>` của
+   dòng. Kiểu `Secret` (`repr` ẩn, `reveal()` chỉ ở module cho phép, có test kiến trúc).
 4. `DW_KMS_PROVIDER=none|local` (giá trị `openbao` thêm ở ticket 06, cùng thay đổi với bên đọc của nó);
    `validate_for_profile` của api và worker từ chối `local` khi `settings.is_deployed`.
 5. `kek_ref` suy từ công ty của ngữ cảnh; một dòng mang `kek_ref` của công ty khác → từ chối, audit
@@ -50,8 +54,9 @@ kho khóa ở ticket 06 (DO-47.1). Gộp từ B8a-connections connections-and-va
       `platform.tool_executions`, audit, span, log; tắt che → test đỏ.
 - [ ] R1.3 (CV2): `SELECT * FROM platform.secret_envelopes` bằng `dw_app` → `permission denied`; khẳng
       định catalog trong `test_privileges.py`.
-- [ ] R1.4 (CV1): chép một phong bì sang `connection_id` khác (cùng công ty và công ty khác) rồi giải mã
-      → lỗi; gỡ AAD khỏi `SecretStore` → test đỏ.
+- [ ] R1.4 (CV1): chép một phong bì sang `connection_id` khác (cùng công ty và công ty khác), sang trường khác
+      của cùng kết nối, hay sang dòng có `kek_version` khác rồi giải mã → lỗi; gỡ AAD khỏi `SecretStore` → test
+      đỏ. Ca chủ thể `inbound_endpoint_id` chạy ở workflow-triggers/02, nơi thêm cột đó.
 - [ ] R1.5 (CV3): đặt công ty A, `open_secret` với chủ thể của công ty B → không dòng; một dòng mang
       `kek_ref` của công ty khác → từ chối, audit `secret.key_mismatch`; chưa đặt `app.tenant_id` → không
       dòng.
@@ -84,3 +89,7 @@ kho khóa ở ticket 06 (DO-47.1). Gộp từ B8a-connections connections-and-va
 - 2026-10-24 (agent): theo quyết định Đạt ngày 24/10/2026 (ADR-0115 (Accepted) quyết 1): CHECK
   `num_nonnulls` của bước 1 là chỗ mỗi chủ thể mới nới rộng; cột `inbound_endpoint_id` và CHECK nới rộng thuộc
   migration của workflow-triggers/02, ticket đó chờ ticket này.
+- 2026-10-24 (agent): theo kiểm nhất quán vòng 3 (vòng sửa thứ tư): AAD của bước 3 gắn công ty, workspace sở
+  hữu, chủ thể, trường và phiên bản như ADR-0115 (Accepted) quyết 1, và CV1 thêm ca chép sang trường khác, phiên
+  bản khác (R1.4); thêm Blocked by foundations-hardening/07, vì ticket đó viết lại `_CATALOG_COLUMNS` và
+  `export_rows` của `offboarding.py`, mà bước 6 cùng sửa (catalog xuất không liệt kê `secret_envelopes`).

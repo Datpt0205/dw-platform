@@ -16,9 +16,11 @@ trị viên, `platform.roles.bind` gán vai trò không trọng yếu.
 
 ## Việc cần làm
 
-1. **Khóa mới.** Migration thêm vào `platform.permissions`: `platform.roles.write` và `platform.roles.bind` (loại
-   `tenant`, `critical`, `tenant_grantable`), và thêm `platform.roles.bind` mức `tenant` vào vai trò `org_admin` đã nhân
-   bản của mọi tenant (ADR-0104 (Accepted), Consequences); `tenant_owner` có cả hai qua quyền tính động.
+1. **Khóa mới.** Migration thêm vào `platform.permissions`: `platform.roles.write` và `platform.roles.bind`, câu INSERT
+   nêu mọi cột NOT NULL của danh mục (`label_vi`, `area`, `scope_kind` `tenant`, `risk` `critical`, `status`
+   `active`, `owner_package`, `tenant_grantable` `true`; Quyết định 24/10/2026 của spec), và thêm `platform.roles.bind`
+   mức `tenant` vào vai trò `org_admin` đã nhân bản của mọi tenant (ADR-0104 (Accepted), Consequences); `tenant_owner`
+   có cả hai qua quyền tính động.
 2. **Một hàm từ chối.** `platform.rbac_refusals(p_tenant_id uuid, p_actor_id uuid, p_change jsonb)` trả
    `(reason_code, permission_key, depth)`: luật giữ quyền qua cùng phép so của `platform.grants_cover` (ticket 02) trên
    workspace được gán vai trò của người nhận; `platform.roles.bind` phủ vai trò không có khóa `critical` (DO-32.1;
@@ -152,3 +154,4 @@ trị viên, `platform.roles.bind` gán vai trò không trọng yếu.
 - 2026-10-23 (agent): DO-32.1 và phạm vi D11 đã có lời đáp (Đạt và người đặt yêu cầu, 23/10/2026); Status về needs-triage. Thêm R7.6 (siết một người), R8.7, R8.8 (ETag theo ADR-0108 (Accepted)), cạnh Blocked by tới app-standards/01, /02, /03.
 - 2026-10-24 (agent): Đạt quyết ngày 24/10/2026: xóa mềm vai trò là thay đổi chỉ siết, một người cộng audit (D11); mã hai người là 409 `conflict` với `details.reason_code`; vai trò đổi `version` giữa đề xuất và xác nhận trả `proposal_stale`; loại đề xuất bỏ `role_delete` và `assignment_revoke` vì không còn thay đổi nào đi qua đề xuất với hai loại đó.
 - 2026-10-24 (agent): Điều kiện tiên quyết FOG-49 (Đạt, 24/10/2026): người giữ dw-proterial chuyển dw-proterial khỏi `memberships.role_keys` trước khi bước 9 khóa cột; ticket này chờ điều kiện đó ngoài Blocked by vì nó không phải một ticket của area.
+- 2026-10-24 (agent): vòng sửa 4: câu INSERT của bước 1 nêu mọi cột NOT NULL của danh mục, `tenant_grantable` của ticket 02 gồm (`C:custom-objects/02~tenant-rbac/02`); ticket này đã chờ ticket 02 nên Blocked by không đổi.

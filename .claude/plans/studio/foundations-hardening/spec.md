@@ -346,8 +346,9 @@ Trước đây: executor tìm lần thành công rồi mới chạy handler (`pa
   đồng thời, THÌ ToolExecutor PHẢI chạy handler đúng một lần.
 - R6.2 NẾU người giữ một claim đã bị tiếp quản sau `expires_at` nhả claim, THÌ ToolExecutor PHẢI giữ
   nguyên claim của người giữ mới.
-- R6.3 NẾU vai `dw_app` UPDATE một dòng `platform.tool_executions` hay ghi `status` ngoài
-  `succeeded`, `failed`, THÌ PostgreSQL PHẢI từ chối câu lệnh và không đổi dòng nào.
+- R6.3 NẾU vai `dw_app` UPDATE một dòng `platform.tool_executions` hay ghi `status` ngoài tập mà
+  CHECK `ck_tool_executions_status` cho phép (W1: `succeeded`, `failed`, cộng `simulated` từ
+  tenant-config/03), THÌ PostgreSQL PHẢI từ chối câu lệnh và không đổi dòng nào.
 - R6.4 NẾU danh sách công cụ của một lượt gọi model có mục không phải `BaseTool` của nền tảng (dict
   hay công cụ phía nhà cung cấp), THÌ runner PHẢI gọi model mà không có mục đó.
 - R6.5 NẾU input của một lần gọi công cụ có khóa bí mật nằm trong mảng ở độ sâu bất kỳ, THÌ
@@ -398,7 +399,7 @@ Trước đây: resume chạy graph mà không đổi trạng thái (`packages/p
 - R9.2 NẾU hai yêu cầu resume cùng một run đến đồng thời, THÌ runner PHẢI chạy graph cho đúng một
   yêu cầu và trả 409 cho yêu cầu kia.
 - R9.3 NẾU một câu lệnh ghi `status` của run ngoài `pending`, `running`, `waiting_approval`,
-  `completed`, `failed`, `cancelled`, `queued`, `waiting`, `blocked`, `status` của yêu cầu phê duyệt
+  `completed`, `failed`, `cancelled`, `queued`, `waiting`, `blocked`, `dead_lettered`, `status` của yêu cầu phê duyệt
   ngoài `pending`, `approved`, `rejected`, `cancelled`, `expired`, hay `outcome` của quyết định ngoài
   `approved`, `rejected`, THÌ PostgreSQL PHẢI từ chối câu lệnh và không đổi dòng nào.
 
@@ -565,7 +566,8 @@ Trước đây: danh mục xuất gồm cả partition, và mỗi bảng đượ
   lại dạng policy mà chúng bắt buộc cho bảng Studio; tenant-rbac/02 merge → R3.3, FH8, ticket 02 (ba lời
   gọi xóa cache được gỡ); studio-skeleton/01 đổi chữ ký hàm partition → ticket 03; tenant-config/03 đổi
   đường resume → ticket 06; studio-skeleton/01 đổi test phủ offboarding hay `STUDIO_EXCLUSIONS` → ticket 07;
-  telemetry-and-audit đổi cách xóa `platform.tool_executions.output` → R6.3, ticket 04.
+  telemetry-and-audit đổi cách xóa `platform.tool_executions.output` → R6.3, ticket 04; tenant-config/03 đổi
+  tập trạng thái của `platform.tool_executions` → R6.3, ticket 04.
 
 ## Câu hỏi còn mở
 
@@ -662,6 +664,16 @@ Trước đây: danh mục xuất gồm cả partition, và mỗi bảng đượ
   của lane lưu giữ của telemetry-and-audit, chủ tệp chính sách retention và lane đó, qua một hàm riêng của
   lane; R6.3 giữ và `dw_app` không nhận lại UPDATE (phát hiện vòng 2 giữa ADR-0122 (Accepted) và
   foundations-hardening:R6.3). Sửa: Ngoài phạm vi, Phụ thuộc, ticket 04.
+- 24/10/2026 (agent, tạm): tenant-config/04 chờ ticket 06, vì cả hai ALTER `platform.worker_runs` và CHECK
+  `ck_worker_runs_status` có trước cột `run_manifest_hash`; cạnh nằm ở dòng Blocked by của tenant-config/04, ghi ở
+  Comments của hai ticket (C:foundations-hardening/06~tenant-config/04). Sửa: ticket 06. Nếu sai thì: đảo chiều,
+  ticket 06 chờ tenant-config/04 và tenant-config/04 bỏ cạnh của nó.
+- 24/10/2026 (agent, tạm): CHECK `ck_worker_runs_status` của ticket 06 nhận thêm `dead_lettered`, trạng thái thư chết mà
+  lane `studio_run_reaper` ghi (ADR-0113 (Accepted) quyết 3; workflow-engine:R5.7), như `queued`, `waiting`, `blocked`,
+  vì workflow-engine:R3.2 để spec này là chủ duy nhất của CHECK đó (phát hiện CRITICAL vòng 3 giữa ADR-0113 (Accepted) và
+  workflow-engine:R3.1). Sửa: R9.3, ticket 06. Nếu sai thì: R9.3 và ticket 06 bỏ `dead_lettered`, ticket của
+  workflow-engine ghi giá trị đó thay CHECK bằng cùng tập cộng `dead_lettered` như tenant-config/03 làm với
+  `ck_tool_executions_status`, và workflow-engine:R3.2 bỏ câu về chủ.
 
 ## Danh sách ticket
 

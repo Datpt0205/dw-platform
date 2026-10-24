@@ -68,10 +68,10 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
    supersteps the compiler counts). Compiled graphs sit in a bounded per-process LRU of 256 keyed
    `(tenant_id, artifact_version_id, compiler_version)`. LangGraph is imported only in the runtime's adapters.
 5. **A platform node wrapper, not LangGraph, owns retry, timeout, `on_error` and the one effect.** At start it asks
-   `RunControlPort.require_open` (ADR-0120) and checks cancellation and the deadline; it resolves inputs by CEL, runs
-   each attempt under `asyncio.timeout`, retries with backoff (each attempt a run step), then applies `on_error`:
-   `fail` raises, `continue` writes `{status: "error", error}` to the node's channel, `route` also takes the `error`
-   port. An effect node calls its door once per attempt with the idempotency key
+   `RunControlPort.require_open` (ADR-0120) and, from W2, checks cancellation and the deadline (ADR-0113 decision 3);
+   it resolves inputs by CEL, runs each attempt under `asyncio.timeout`, retries with backoff (each attempt a run
+   step), then applies `on_error`: `fail` raises, `continue` writes `{status: "error", error}` to the node's channel,
+   `route` also takes the `error` port. An effect node calls its door once per attempt with the idempotency key
    `wf:{run_id}:{node_id}:{iteration_path}` (map index and loop counter, never the attempt), claimed first and fenced
    per ADR-0108, so a retry after a crash replays the stored result. Outputs are validated against the node's output
    schema off the event loop and capped at 64 KiB inline.
@@ -91,6 +91,10 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
    with `|=` (beside `memory.`, `apps/api/src/dw_api/bootstrap/runtime.py:237-239`), so neither the run's requester
    nor its run-as principal decides, and registers `decision_guards["studio.step.approval"]`: the decider is a current
    assignee, still holds the stamped permission and can read every field the step stamped (ADR-0106 decision 6).
+   From W2 the guard accepts, in place of a current assignee, a person holding that assignee's approval delegation
+   (YC104) only while the person holds the stamped permission and `approvals.decide`, is not the run's requester
+   (YC51) and acts between the delegation's start and end, audited; outside those conditions it still answers 403
+   (ADR-0104 decision 11).
    `required_scope` is mandatory (ADR-0004); assignees (users, teams or a CEL expression) only narrow it; candidates
    come from `effective_grants` (ADR-0104), never a copy; none left is `no_approver`, and publish refuses a version
    whose permission only the run-as principal holds. Expiry never approves: from W2, with YC52's deadlines and the
@@ -207,3 +211,7 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
   graph has no cycle before W2 (N7).
 - Decision 7: a `human.approval` step outside a `live` run waits for no decider and takes a simulated decision, as
   ADR-0111 decision 5 states (N2).
+- Third consistency check (round 4): decision 7 states from W2 the conditions under which an approval delegation
+  stands in for a current assignee, 403 outside them (Đạt's D10; D:ADR-0112~~workflow-nodes:spec); decision 5 checks
+  cancellation and the deadline from W2, when ADR-0113 decision 3's cancel route and `deadline_at` arrive
+  (F:ADR-0113~~workflow-engine:R3.1).

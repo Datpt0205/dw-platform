@@ -1,4 +1,4 @@
-# Trình dựng quy trình: sơ đồ, cấu hình bước, chạy thử, phiên bản
+# Trình dựng quy trình: sơ đồ, cấu hình bước, chạy mô phỏng, phiên bản
 
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
@@ -74,14 +74,15 @@ tự phát hành (YC33, YC40; BUI-03, BUI-04, BUI-06).
   bị khóa.
 - R3.5 Trang builder PHẢI không bao giờ tự phát hành; nó chỉ gửi kiểm định, còn vòng đời quyết định việc
   phát hành.
-- R3.6 KHI người dựng chạy mô phỏng, trang builder PHẢI gửi chế độ `simulate` tới route `.../test-runs` và hiện lỗi
-  422 của route nếu có; quyền và chế độ được nhận là của workflow-triggers:R2.2, workflow-triggers:R2.3 và
+- R3.6 KHI người dựng chạy mô phỏng, trang builder PHẢI gửi chế độ `simulate` tới route
+  `.../versions/{version_id}/test-runs` với id của phiên bản Nháp đang mở và hiện lỗi 422 của route nếu có; quyền,
+  chế độ được nhận và việc nhận bản Nháp là của workflow-triggers:R2.2, workflow-triggers:R2.3 và
   workflow-triggers:R2.6.
 - R3.7 KHI lượt mô phỏng trả kết quả từng Bước chạy, trang builder PHẢI hiện "Đã ẩn" cho mỗi trường người
   xem không đọc được, không rò giá trị trong DOM hay payload mạng.
 - R3.8 KHI người dựng chạy mô phỏng một Quy trình có Bước phê duyệt, biểu mẫu chạy mô phỏng PHẢI đòi một lựa chọn
-  duyệt hay từ chối cho mỗi Bước phê duyệt và gửi các lựa chọn đó trong thân yêu cầu, để không Bước phê duyệt nào
-  chờ người quyết (workflow-triggers:R2.7, workflow-triggers:R2.8, workflow-nodes:R9.9).
+  duyệt hay từ chối cho mỗi Bước phê duyệt của Nháp và gửi các lựa chọn đó trong thân yêu cầu, để không Bước phê
+  duyệt nào chờ người quyết (workflow-triggers:R2.7, workflow-triggers:R2.8, workflow-nodes:R9.9).
 
 ## Trong phạm vi
 
@@ -154,19 +155,21 @@ tự phát hành (YC33, YC40; BUI-03, BUI-04, BUI-06).
   `.claude/plans/studio/workflow-nodes/issues/03-pham-vi-bien-va-buoc-logic.md`.
 - `workflow-engine` (batch 2, đang viết song song): tài liệu `dw.workflow/v1` và bảng mã `wf.*` mà trang
   builder gắn lỗi về Bước (workflow-engine:R2.11).
-- `workflow-triggers`: route `.../test-runs`, quyền `studio.workflows.test`, chế độ được nhận và quyết định giả lập
-  cho mỗi Bước phê duyệt trong thân (workflow-triggers:R2.2, workflow-triggers:R2.3, workflow-triggers:R2.6,
-  workflow-triggers:R2.7, workflow-triggers:R2.8;
-  `.claude/plans/studio/workflow-triggers/issues/01-so-kich-hoat-chay-tay-va-danh-tinh.md`).
+- `workflow-triggers`: route `.../test-runs`, quyền `studio.workflows.test`, chế độ được nhận, việc nhận phiên bản
+  `draft` ở chế độ `simulate` và quyết định giả lập cho mỗi Bước phê duyệt của chính nội dung đó trong thân
+  (workflow-triggers:R2.2, workflow-triggers:R2.3, workflow-triggers:R2.6, workflow-triggers:R2.7,
+  workflow-triggers:R2.8; `.claude/plans/studio/workflow-triggers/issues/01-so-kich-hoat-chay-tay-va-danh-tinh.md`).
 - `workflow-nodes`: Bước phê duyệt của lượt mô phỏng đi theo quyết định giả lập, không chờ người
   (workflow-nodes:R9.9).
 - `tenant-config`: Chế độ chạy do máy chủ đặt (tenant-config:R4.1), Mô phỏng chặn tác động
-  (tenant-config:R5.1); Nháp với ETag.
-- `telemetry-and-audit` (batch 2): `run_steps` cho bảng chạy thử và lớp phủ.
+  (tenant-config:R5.1), bản kê của lượt mô phỏng trên bản Nháp ghim mã băm tạm của nội dung nháp
+  (tenant-config:R6.1); Nháp với ETag.
+- `telemetry-and-audit` (batch 2): `run_steps` cho bảng chạy mô phỏng và lớp phủ.
 - `agent-lifecycle` (batch 2): giai đoạn vòng đời và cổng phát hành mà builder không tự gọi.
 - Kiểm lại khi: `workflow-nodes` đổi hình API `node-types`/`/expressions/check`/`draft/scope`;
   `workflow-engine` đổi hợp đồng `dw.workflow/v1` hay `workflow-triggers` đổi route `.../test-runs` hay hình của
-  quyết định giả lập → kiểm lại 01-03; W2 mở chế độ `test` → R3.6, R3.8, BU5, ticket 03.
+  quyết định giả lập → kiểm lại 01-03; `workflow-triggers` hay `tenant-config` thôi nhận bản Nháp ở chế độ
+  `simulate` → R3.6, R3.8, ticket 03; W2 mở chế độ `test` → R3.6, R3.8, BU5, ticket 03.
 
 ## Câu hỏi còn mở
 
@@ -225,11 +228,16 @@ tự phát hành (YC33, YC40; BUI-03, BUI-04, BUI-06).
 - 24/10/2026 (Đạt): N5 và ADR-0126 (Accepted): nhãn Chặng trên Bước, chỉ để nhóm và thu gọn Sơ đồ, là W2 của spec
   này (YC102). N10: báo cáo đi qua API tổng hợp của nền tảng ở W3 (ADR-0127 (Accepted)), và một thư viện biểu đồ cần
   ADR ngoại lệ riêng theo ADR-0101 (Accepted) quyết 6. Sửa: Ngoài phạm vi.
+- 24/10/2026 (Đạt): route `.../versions/{version_id}/test-runs` ở chế độ `simulate` nhận cả phiên bản `draft`, bản kê
+  ghim mã băm tạm của nội dung nháp lúc nhận và tập Bước phê duyệt đọc từ đúng nội dung đó, nên builder chạy mô phỏng
+  chính bản Nháp đang mở và đòi lựa chọn cho mỗi Bước phê duyệt của Nháp; nháp đổi trước khi lượt mô phỏng xong thì
+  lần tiếp tục bị từ chối `incompatible_resume` (ADR-0109 (Accepted) quyết 8)
+  (B:workflow-builder-ui:R3.6~workflow-triggers:R2.8). Sửa: R3.6, R3.8, Phụ thuộc, ticket 03.
 
 ## Danh sách ticket
 
-| #   | Ticket                                                                             |
-| --- | ---------------------------------------------------------------------------------- |
-| 01  | [xyflow và ngoại lệ antd-only](issues/01-xyflow-va-ngoai-le-antd.md)               |
-| 02  | [Đồ thị thuần và trang builder](issues/02-do-thi-va-trang-builder.md)              |
-| 03  | [Biểu thức, gửi kiểm định và chạy thử](issues/03-bieu-thuc-publish-va-chay-thu.md) |
+| #   | Ticket                                                                                  |
+| --- | --------------------------------------------------------------------------------------- |
+| 01  | [xyflow và ngoại lệ antd-only](issues/01-xyflow-va-ngoai-le-antd.md)                    |
+| 02  | [Đồ thị thuần và trang builder](issues/02-do-thi-va-trang-builder.md)                   |
+| 03  | [Biểu thức, gửi kiểm định và chạy mô phỏng](issues/03-bieu-thuc-publish-va-chay-thu.md) |

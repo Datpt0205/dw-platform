@@ -1,9 +1,9 @@
 # 03 — Hợp đồng vòng đời phiên bản và gửi kiểm định niêm phong
 
 Status: needs-triage
-Blocked by: 01, .claude/plans/studio/tenant-config/issues/04-ban-ke-luot-chay.md, .claude/plans/studio/studio-skeleton/issues/02-goi-dw-studio-va-seam-api.md
+Blocked by: 01, .claude/plans/studio/tenant-config/issues/04-ban-ke-luot-chay.md, .claude/plans/studio/studio-skeleton/issues/02-goi-dw-studio-va-seam-api.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md
 Area: studio
-Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R2.7, R7.9, AL1, AL2, AL3, AL10
+Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R1.8, R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R2.7, R2.10, R7.9, AL1, AL2, AL3, AL10, AL19
 
 ## Mục tiêu
 
@@ -20,9 +20,10 @@ database và "đã kiểm định" tính được (spec R1, R2). Đứng trên v
    luôn NULL với loại có `has_quality_gate = false`); `publish_approval_id uuid`
    NULL FK `platform.approval_requests` ON DELETE RESTRICT (bắt buộc cùng điều kiện, trừ phiên bản lên Đang
    dùng theo nhánh chỉ siết); `tighten_only boolean NOT NULL DEFAULT false` và `compared_live_hash text` NULL
-   với CHECK `NOT tighten_only OR compared_live_hash IS NOT NULL`, do `LifecycleService` ghi lúc gửi (ticket 04
-   tính chúng bằng bộ so sánh của loại); `contributor_ids
-uuid[] NOT NULL CHECK (cardinality(contributor_ids) >= 1)`; `submitted_by`, `submitted_at`,
+   với CHECK `NOT tighten_only OR compared_live_hash IS NOT NULL`, do `LifecycleService` ghi lúc gửi:
+   `compared_live_hash` ở mọi lần gửi, là `definition_hash` của bản `live` lúc gửi, NULL khi chưa có (spec R2.10),
+   còn `tighten_only` do ticket 04 tính bằng bộ so sánh của loại;
+   `contributor_ids uuid[] NOT NULL CHECK (cardinality(contributor_ids) >= 1)`; `submitted_by`, `submitted_at`,
    `published_by`, `published_at`, `retired_by`, `retired_at`; `retire_reason_code` CHECK (`superseded`,
    `explicit`); `stage_changed_at timestamptz NOT NULL`. Cột `gate_run_id` FK tạm để NULL tới khi ticket
    04 tạo `studio.gate_runs`, hoặc migration này đứng sau migration bảng cổng của ticket 04 (ticket 04
@@ -37,8 +38,11 @@ uuid[] NOT NULL CHECK (cardinality(contributor_ids) >= 1)`; `submitted_by`, `sub
    `evaluating` và không đòi `gate_run_id`; `awaiting_approval → live` vẫn đòi approval `approved` và người
    quyết ngoài `contributor_ids`. Nhánh chỉ siết (spec R1.7): chỉ với loại `object`, cho `draft → live` khi
    `tighten_only` là true và `compared_live_hash` bằng `definition_hash` của phiên bản `live` hiện tại của cùng
-   thành phần; công cụ không bao giờ đi nhánh này (ADR-0120 (Accepted) quyết 1). Từ chối: SQLSTATE 23514, ràng
-   buộc `ck_artifact_versions_stage_transition`.
+   thành phần; công cụ không bao giờ đi nhánh này (ADR-0120 (Accepted) quyết 1). Mọi `awaiting_approval → live`,
+   ở mọi loại, còn đòi `compared_live_hash IS NOT DISTINCT FROM` `definition_hash` của bản `live` hiện tại (spec
+   R1.8). Ở cả hai luật, "bản `live` hiện tại" là bản còn `live`, hay bản mà cùng giao dịch vừa đưa sang `retired`
+   với `superseded`, vì chỉ mục một Đang dùng buộc dịch vụ phát hành gỡ bản cũ trước (tenant-config:R2.16); không
+   có bản nào thì so với NULL. Từ chối: SQLSTATE 23514, ràng buộc `ck_artifact_versions_stage_transition`.
    Chỉ mục từng phần một Đang dùng (`WHERE stage='live'`) và một Bản ứng viên
    (`WHERE stage IN ('evaluating','awaiting_approval')`), và `(tenant_id, stage, stage_changed_at DESC, id DESC)`.
 3. `VersionStage` StrEnum soi CHECK và bảng chuyển đổi thuần; `LifecycleService` chỉ dùng chuyển đổi hợp
@@ -60,8 +64,9 @@ uuid[] NOT NULL CHECK (cardinality(contributor_ids) >= 1)`; `submitted_by`, `sub
    đóng băng thì 409 `tenant_frozen` hay `platform_frozen` (spec R7.9); tính bao đóng bằng extractor của
    loại, gọi bước niêm phong của tenant-config (cấp `version_no`, ghi `content_hash`, `definition_hash`,
    Nơi đang dùng), chạy các kiểm của bảng kiểm theo loại (một kiểm từ chối → 422 với `reason_code` của nó,
-   giao dịch lùi, phiên bản giữ `draft`; spec R2.7), chuyển `draft → evaluating`, xếp Lượt kiểm định hoặc
-   dùng lại bằng chứng (ticket 04), audit `studio.version.submitted`. `POST .../withdraw`: hủy yêu cầu phê duyệt phát hành treo bằng
+   giao dịch lùi, phiên bản giữ `draft`; spec R2.7), ghi `compared_live_hash` (spec R2.10), chuyển
+   `draft → evaluating`, xếp Lượt kiểm định hoặc dùng lại bằng chứng (ticket 04), audit `studio.version.submitted`.
+   Ticket 04 thêm vào route này kiểm `PublishBindingsCheck` cho mọi loại (spec R2.11). `POST .../withdraw`: hủy yêu cầu phê duyệt phát hành treo bằng
    `ApprovalRequest.cancel()` và về `draft`, audit `studio.version.returned_to_draft`. `POST .../retire`
    (`studio.versions.retire`, lý do): `live → retired` (`explicit`), 409 `artifact_in_use` kèm danh sách
    khi phiên bản Đang dùng khác phụ thuộc, audit `studio.version.retired`.
@@ -69,8 +74,10 @@ uuid[] NOT NULL CHECK (cardinality(contributor_ids) >= 1)`; `submitted_by`, `sub
    `stage` đều có trigger, các CHECK và hai chỉ mục từng phần; test đọc CHECK so với `VersionStage`.
 7. Cùng migration: đăng ký khóa `studio.versions.submit` và `studio.versions.retire` trong `platform.permissions`
    của tenant-rbac/01 (nhãn tiếng Việt, `scope_kind` `workspace`, `risk` `standard` theo bảng phân loại của ticket
-   đó). Khóa ngoại `publish_approval_id` (RESTRICT) tới `platform.approval_requests` cần lane `offboarding` xóa
-   `studio.artifact_versions` trước: thêm thứ tự đó vào `_ORDERED_FIRST` (studio-skeleton:R4.2).
+   đó); INSERT nêu mọi cột NOT NULL của bảng lúc đó, gồm `risk` của tenant-rbac/01 và `tenant_grantable` (`true`)
+   của tenant-rbac/02, ticket này chờ ticket đó. Khóa ngoại `publish_approval_id` (RESTRICT) tới
+   `platform.approval_requests` cần lane `offboarding` xóa `studio.artifact_versions` trước: thêm thứ tự đó vào
+   `_ORDERED_FIRST` (studio-skeleton:R4.2), sau bản viết lại lane của foundations-hardening/07 mà ticket này chờ.
 
 ## Tiêu chí chấp nhận
 
@@ -89,6 +96,12 @@ uuid[] NOT NULL CHECK (cardinality(contributor_ids) >= 1)`; `submitted_by`, `sub
 - [ ] R1.7: phiên bản `object` có `tighten_only` true và `compared_live_hash` bằng `definition_hash` của bản
       `live` → `draft → live` nhận, không approval; cùng giá trị với loại fixture không cổng khác `object` →
       23514; bỏ nhánh khỏi trigger → test đỏ.
+- [ ] R1.8 (AL19): `dw_app` UPDATE `awaiting_approval → live` (approval `approved`) sau khi bản `live` đã đổi kể từ
+      lúc gửi (`compared_live_hash` cũ) → 23514; bản `live` cũ vừa gỡ `superseded` trong cùng giao dịch và
+      `compared_live_hash` là mã của nó → nhận; chưa có bản `live` lúc gửi lẫn lúc chuyển (cùng NULL) → nhận; gỡ luật
+      khỏi trigger → test đỏ.
+- [ ] R2.10: gửi một phiên bản `agent` khi thành phần đã có bản `live` → `compared_live_hash` bằng `definition_hash`
+      của bản đó; chưa có bản `live` → NULL.
 - [ ] R2.1 (AL3): gửi kiểm định một nháp hợp lệ → bao đóng, Mã băm định nghĩa, Nơi đang dùng và audit
       `studio.version.submitted` ghi trong một giao dịch, phiên bản sang `evaluating`; người thiếu khóa gửi mà
       mục registry của loại khai → 403, không đổi gì.
@@ -130,3 +143,8 @@ uuid[] NOT NULL CHECK (cardinality(contributor_ids) >= 1)`; `submitted_by`, `sub
   offboarding cho khóa ngoại `publish_approval_id`. Nhánh gửi của loại không cổng (so sánh, chỉ siết, mở phê
   duyệt) ở ticket 04, nơi có guard và handler phát hành; custom-objects/06 nối loại `object` vào đường này và chờ cả
   hai ticket.
+- 2026-10-24 (agent): vòng sửa thứ tư: mọi lần gửi ghi `compared_live_hash` và trigger chỉ cho sang `live` khi mã đó
+  vẫn là của bản `live` mà lần phát hành thay (quyết định của Đạt ngày 24/10/2026; spec R1.8, R2.10, AL19); chờ
+  foundations-hardening/07 (cùng sửa `_ORDERED_FIRST`) và tenant-rbac/02 (INSERT khóa nêu `tenant_grantable`).
+  workflow-engine/01 chờ ticket này vì ticket này đăng ký khóa gửi `studio.versions.submit` mà mục
+  `ArtifactKindRegistry` của loại `workflow` khai; cạnh nằm ở ticket đó (Quyết định tạm của spec).

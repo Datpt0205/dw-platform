@@ -1,7 +1,7 @@
 # 05 — Điểm gắn: giá trị là phiên bản cấu hình có người đề xuất và người duyệt khác nhau
 
 Status: needs-triage
-Blocked by: 04, .claude/plans/studio/connections-and-vault/issues/04-ket-noi-dung-chung-theo-workspace.md, .claude/plans/studio/foundations-hardening/issues/06-run-va-outbox-khong-ket.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md
+Blocked by: 04, .claude/plans/studio/connections-and-vault/issues/04-ket-noi-dung-chung-theo-workspace.md, .claude/plans/studio/foundations-hardening/issues/06-run-va-outbox-khong-ket.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md
 Area: studio
 Yêu cầu: R7.1, R7.2, R7.3, R7.4, R7.5, R8.1, R8.2, R8.3, R8.4, R8.5, R8.6, R8.7, R8.8, R8.9, R8.10, R8.11, R8.12, R8.13, R8.14, R8.15, R3.6, R3.7, G4, TC15, TC16, TC17, TC18, TC19, TC20, TC21, TC22, TC23, TC25, TC26
 
@@ -9,7 +9,7 @@ Yêu cầu: R7.1, R7.2, R7.3, R7.4, R7.5, R8.1, R8.2, R8.3, R8.4, R8.5, R8.6, R8
 
 Tài liệu chỉ nêu tên điểm gắn; giá trị (kết nối, biến, người chạy) là một Bộ giá trị gắn, tức phiên bản
 cấu hình riêng loại `binding_set`, do một người đề xuất và một người khác duyệt trên yêu cầu phê duyệt
-không lượt chạy của nền tảng. Phát hành từ chối khi thiếu giá trị bắt buộc, nhận lượt chạy từ chối khi
+không lượt chạy của nền tảng. Lệnh gửi và phát hành từ chối khi thiếu giá trị bắt buộc, nhận lượt chạy từ chối khi
 kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7, R8; D11). Pilot Marketing cần điểm gắn
 `zalo_oa`, `email_sender` và `score_threshold` theo đúng đường này.
 
@@ -49,10 +49,14 @@ kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7,
       `test_rls_coverage.py` thấy bảng.
     - `platform.run_manifest_keys` thêm `config_version_id` FK RESTRICT có index, và CHECK
       `num_nonnulls(artifact_version_id, config_version_id) = 1`.
-    - Offboarding: `platform.config_versions` vào `_ORDERED_FIRST` sau `platform.run_manifests` và trước
-      phần xóa theo chữ cái (nơi có `platform.approval_requests`).
-    - Đăng ký khóa `studio.bindings.propose` và `studio.bindings.approve` vào danh mục quyền của
-      tenant-rbac/01 trong cùng migration.
+    - Offboarding, trên `offboarding.py` và `test_offboarding.py` mà foundations-hardening/07 đã viết lại:
+      `platform.config_versions` vào `_ORDERED_FIRST` sau `platform.run_manifests` và trước phần xóa theo chữ cái
+      (nơi có `platform.approval_requests`).
+    - Đăng ký khóa `studio.bindings.propose` và `studio.bindings.approve` vào `platform.permissions` (danh mục của
+      tenant-rbac/01) trong cùng migration. Câu INSERT nêu mọi cột NOT NULL có lúc đó: `area`, `label_vi`,
+      `scope_kind` (`workspace`), `risk`, `status` (`active`), `owner_package` của tenant-rbac/01 và
+      `tenant_grantable` của tenant-rbac/02 (ADR-0104 (Accepted) quyết 1), với `risk` `standard` theo bảng phân loại
+      của tenant-rbac/01 và `tenant_grantable` `true` theo tenant-rbac/02.
 3. `ConfigKindRegistry` và `ConfigVersionService` trong `dw_platform` (ADR-0110 (Accepted) quyết 3-4);
    mục `binding_set` do `dw_studio` đăng ký ở composition root: JSON Schema sinh từ khai báo của phiên
    bản niêm phong mới nhất của thành phần; bộ kiểm (kết nối cùng tenant, không thì 404; đúng trình kết
@@ -72,7 +76,11 @@ kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7,
 5. Phê duyệt: `config.` vào `strict_approval_prefixes` bằng `|=` ở API
    (`apps/api/src/dw_api/bootstrap/runtime.py`) và worker (`apps/worker/src/dw_worker/main.py`); ticket này chỉ thêm
    đúng một dòng `|=` cho `config.` ở mỗi chỗ và không sửa dòng của ticket khác (agent-lifecycle/01 thêm
-   `studio.lifecycle.` cũng ở đó), và test khẳng định tập tiền tố nghiêm ở cả hai chỗ chứa `config.`. Người đề
+   `studio.lifecycle.` cũng ở đó), và test khẳng định tập tiền tố nghiêm ở cả hai chỗ chứa `config.`.
+   `_enforce_strict_rules` (`packages/python/dw_agent_runtime/src/dw_agent_runtime/approval_flow.py:115-125`) thêm
+   `details.reason_code` `second_person_required` vào `ConflictError` nó ném khi người yêu cầu tự quyết, một lần cho
+   mọi loại phê duyệt dưới tiền tố nghiêm (người tạo lượt chạy là người yêu cầu của Bước phê duyệt), không nhánh
+   theo loại trong `decide`; `author_cannot_approve` vẫn là mã của guard tác giả dưới `studio.publish.`. Người đề
    xuất quyết yêu cầu `config.version` của mình → 409 `conflict` với `details.reason_code`
    `second_person_required` (ADR-0104 (Accepted) quyết 11). Port
    `ApprovalDecisionGuard` async và `ProposedDecision` từ dw-proterial (`dw_agent_runtime/approval_flow.py`)
@@ -90,9 +98,10 @@ kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7,
 7. Rút đề xuất: chỉ Người đề xuất (khác → 403); một giao dịch đặt `withdrawn`, gọi
    `ApprovalRequest.cancel()` trên yêu cầu liên kết, audit `config.version.withdrawn` (prefix nghiêm chặn
    đường tự từ chối, Quyết định của spec).
-8. `BindingStatus.satisfied(version_id)` đáp ứng Protocol kiểm điểm gắn mà việc phát hành của
-   agent-lifecycle khai: mọi điểm gắn `required` của phiên bản có giá trị trong bản `approved` của thành
-   phần và qua bộ kiểm; không thì trả `binding_unset` kèm tên (việc phát hành trả 409).
+8. `BindingStatus.satisfied(version_id)` đáp ứng `PublishBindingsCheck` mà agent-lifecycle khai, nối ở composition
+   root; lệnh gửi và handler `.decided` của agent-lifecycle gọi nó (agent-lifecycle:R2.11, agent-lifecycle:R5.10):
+   mọi điểm gắn `required` của phiên bản có giá trị trong bản `approved` của thành phần và qua bộ kiểm; không thì
+   trả `binding_unset` kèm tên điểm gắn (lệnh gửi trả 409, handler không đưa phiên bản lên `live`).
 9. Nhận lượt chạy: `RunManifestBuilder` của ticket 04 thêm mục `bindings` vào bản kê: id phiên bản Bộ
    giá trị gắn, với mỗi kết nối id kết nối và phiên bản credential, với mỗi biến `content_hash` của giá
    trị (không ghi giá trị), với `principal` id của người chạy; thêm dòng `platform.run_manifest_keys` cho
@@ -114,8 +123,8 @@ kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7,
 
 - [ ] R7.1 (TC23): niêm phong tài liệu `fixture` có id của một kết nối của tenant ở một trường tự do → 422,
       mỗi chỗ một con trỏ; gỡ bước quét → test đỏ.
-- [ ] R7.2 (TC22): phiên bản khai `zalo_oa` bắt buộc chưa có giá trị đã duyệt → `binding_unset` nêu
-      `zalo_oa`; có giá trị đã duyệt → đạt.
+- [ ] R7.2 (TC22): gọi `PublishBindingsCheck` cho phiên bản khai `zalo_oa` bắt buộc chưa có giá trị đã duyệt →
+      `binding_unset` nêu `zalo_oa`; có giá trị đã duyệt → đạt; gỡ kiểm `required` → test đỏ.
 - [ ] R7.3 (TC22): thu hồi kết nối đã gắn rồi nhận lượt chạy → từ chối `binding_degraded`, không dòng
       `platform.run_manifests` mới, không node nào chạy.
 - [ ] R7.4 (TC15): bản kê có id phiên bản Bộ giá trị gắn, id và phiên bản credential của kết nối, mã băm
@@ -135,6 +144,8 @@ kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7,
 - [ ] R8.8 (TC16): Người đề xuất quyết yêu cầu của mình → 409 `conflict` với `details.reason_code`
       `second_person_required`; UPDATE `decided_by = proposed_by` → CHECK từ chối; bỏ `config.` khỏi prefix nghiêm
       ở API → test đỏ.
+- [ ] R8.8 (TC16): người yêu cầu tự quyết một yêu cầu `memory.review` → 409 `conflict` với cùng `details.reason_code`
+      `second_person_required`; bỏ mã khỏi `_enforce_strict_rules` → cả hai ca đỏ.
 - [ ] R8.9 (TC20): niêm phong phiên bản đổi khai báo điểm gắn sau khi đề xuất, rồi quyết định → 409
       `decision_stale`, yêu cầu vẫn `pending`; gỡ guard → test đỏ.
 - [ ] R8.10 (TC17): duyệt → handler đặt `approved`, bản trước `superseded`, audit `config.version.approved` có
@@ -183,3 +194,8 @@ kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7,
   `binding_set` ở W1 không có nhánh chỉ siết (ADR-0110 (Accepted) quyết 2). Theo cách sửa thứ hai của
   C:agent-lifecycle:R7.10~tenant-config:R8.8, như agent-lifecycle/01, ticket này chỉ thêm dòng `|=` của `config.`,
   không thêm cạnh Blocked by.
+- 2026-10-24 (agent): vòng sửa thứ tư, theo Quyết định cùng ngày của spec: `BindingStatus` đáp ứng
+  `PublishBindingsCheck` mà lệnh gửi và handler `.decided` của agent-lifecycle gọi (R7.2); `second_person_required`
+  đặt một lần ở `_enforce_strict_rules` cho mọi loại dưới tiền tố nghiêm (R8.8, TC16; quyết định tạm của spec); câu
+  INSERT khóa quyền nêu mọi cột NOT NULL, gồm `tenant_grantable` (quyết định tạm của spec); chờ
+  foundations-hardening/07, vì cùng sửa `offboarding.py` và `test_offboarding.py`.

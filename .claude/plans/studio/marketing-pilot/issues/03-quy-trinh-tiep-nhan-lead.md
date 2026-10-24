@@ -44,10 +44,11 @@ Người dựng có một quy trình Tiếp nhận lead vẽ trên canvas chạy
 - `packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/runtime_tables.py:38`; spec: R3.8.
 - `packages/python/dw_agent_runtime/src/dw_agent_runtime/autonomy.py:14-18`; spec: R4.1, R4.2.
 - spec: R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R4.3, R4.4, R4.5, R4.7, R4.8, R4.9.
-- workflow-triggers:R2.3, R3.2, R4.3, R5.7, R5.8; workflow-nodes:R5.4, R6.1, R7.1, R7.4, R8.4, R9.1, R9.2; compliance-pdpl:R2.6, R4.2; workflow-builder-ui:R3.6; record-access:R6.9; YC94, YC47, YC87; ADR-0124 (Accepted), ADR-0125 (Accepted), ADR-0123 (Accepted).
+- workflow-triggers:R2.3, R3.2, R4.3, R5.7, R5.8; workflow-nodes:R5.4, R6.1, R7.1, R7.4, R8.4, R9.1, R9.2, R9.6; compliance-pdpl:R2.6, R4.2; workflow-builder-ui:R3.6; record-access:R6.9; YC94, YC47, YC87; ADR-0124 (Accepted), ADR-0125 (Accepted), ADR-0123 (Accepted).
 
 ## Comments
 
 - 2026-10-23 (agent): DO-54 còn mở (vai trò bên kiểm soát/bên xử lý và cư trú dữ liệu); tới khi ký DPA, ticket chỉ chạy trên lead giả lập (spec R2.3). Mọi tin ra có một phê duyệt của người ở P1 (DO-18, đã quyết tạm). Phần hoãn tin tới 08:00 (R4.3) và chứng minh huỷ đăng ký qua nurture (R4.4) là W2.
 - 2026-10-23 (agent): DO-54.1 có lời đáp cho W1 (Đạt, 23/10/2026), nên `needs-triage`. Áp: từ chối lúc gửi kiểm định với 422 (B:agent-lifecycle:R6.1~compliance-pdpl:R4.2), bảng mã người quyết định (404 ngoài tầm thấy, 409 tự duyệt), `test` trả 422 ở W1 (DO-26.1, R4.6 sang W2), R3.9 sang W2 (Q5), tuyến model khai `vn` cho demo.
 - 2026-10-24 (agent): áp quyết định của Đạt ngày 24/10/2026: chờ connections-and-vault/06 vì kết nối SMTP của công ty demo trên uat (`is_deployed`) cần OpenBao Transit (I:connections-and-vault/06\~marketing-pilot/03); ở W1 mỗi Tương tác là một dòng `platform.marketing_send_log`, nên R4.1 và R4.7 kiểm theo nhật ký gửi (N4).
+- 2026-10-24 (agent): kiểm nhất quán vòng 3, phía marketing-pilot của F:ADR-0104 (Accepted)\~marketing-pilot:spec: R4.8 (người tạo lượt chạy giữ quyền tự duyệt → 409) dẫn workflow-nodes:R9.6 thay R9.2, vì R9.2 chỉ cho 403 và 404 mà R4.2 dùng; Nguồn thêm R9.6. Tiêu chí R4.8 không đổi.

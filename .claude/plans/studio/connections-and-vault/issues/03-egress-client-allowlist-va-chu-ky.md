@@ -1,9 +1,9 @@
 # 03 — Egress client ghim IP, danh sách máy chủ được phép và module chữ ký webhook
 
 Status: needs-triage
-Blocked by: .claude/plans/studio/foundations-hardening/issues/05-bien-mang-va-kho-du-lieu.md, .claude/plans/studio/tenant-config/issues/03-che-do-chay-va-gia-lap-o-executor.md, .claude/plans/studio/tenant-rbac/issues/01-mot-chu-cho-quyen.md, .claude/plans/studio/org-and-principals/issues/01-khoa-don-vi-va-siet-realm.md, .claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md
+Blocked by: .claude/plans/studio/foundations-hardening/issues/05-bien-mang-va-kho-du-lieu.md, .claude/plans/studio/tenant-config/issues/03-che-do-chay-va-gia-lap-o-executor.md, .claude/plans/studio/tenant-rbac/issues/01-mot-chu-cho-quyen.md, .claude/plans/studio/org-and-principals/issues/01-khoa-don-vi-va-siet-realm.md, .claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md
 Area: studio
-Yêu cầu: R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R3.9, R3.10, R3.11, R4.1, R4.2, R4.3, R4.4, CV7, CV8, CV9, CV10, CV11, CV19, CV22
+Yêu cầu: R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R3.9, R3.10, R3.11, R3.12, R4.1, R4.2, R4.3, R4.4, CV7, CV8, CV9, CV10, CV11, CV19, CV22
 
 ## Mục tiêu
 
@@ -41,12 +41,17 @@ run_mode, purpose, connector_key, connection_id, simulate_safe)` (`simulate_safe
    với FK ghép tới `uq_workspaces_tenant_id_id` của org-and-principals/01), kiểm Public Suffix List
    (wildcard không đặt trên hậu tố công cộng, không IP literal); RLS ENABLE và FORCE theo tenant, grant
    cột; một dòng có lý do cho bảng trong `_TENANT_WIDE_ON_PURPOSE` của `test_rls_coverage.py` (studio-skeleton/01); đăng ký
-   khóa `integrations.admin` vào Danh mục quyền trong cùng migration, có nhãn, `scope_kind` và `risk` theo
-   tenant-rbac/01; routes `GET`, `POST`, `DELETE /api/v1/egress/allowed-hosts` (`integrations.admin`);
-   Bộ gọi ra ngoài kiểm danh sách cho mọi purpose khác `connector` và `oauth`.
-    - `POST` kiểm R3.8 rồi trả 202 với một yêu cầu phê duyệt không lượt chạy `egress.allowed_host`,
-      `required_scope` `integrations.admin`, payload chỉ mang mẫu máy chủ, cổng, purpose và ghi chú; chưa ghi
-      dòng nào. `egress.allowed_host` vào `strict_approval_prefixes` bằng `|=` ở API và worker.
+   khóa `integrations.admin` vào Danh mục quyền trong cùng migration, câu INSERT nêu mọi cột NOT NULL có lúc đó,
+   gồm nhãn, `scope_kind` và `risk` theo tenant-rbac/01 cùng `tenant_grantable` của tenant-rbac/02; routes `GET`,
+   `POST`, `DELETE /api/v1/egress/allowed-hosts` (`integrations.admin`); Bộ gọi ra ngoài kiểm danh sách cho mọi
+   purpose khác `connector` và `oauth`.
+    - `POST` kiểm R3.8, rồi hỏi `platform.checker_candidates` của tenant-rbac/02 với khóa `integrations.admin`,
+      người gửi và workspace đang làm việc: rỗng → 409 `conflict` với `details.reason_code`
+      `no_checker_available`, không mở yêu cầu (R3.12); không thì trả 202 với một yêu cầu phê duyệt không lượt
+      chạy `egress.allowed_host`, `required_scope` `integrations.admin`, payload chỉ mang mẫu máy chủ, cổng,
+      purpose và ghi chú; chưa ghi dòng nào. `egress.allowed_host` vào `strict_approval_prefixes` bằng `|=` ở API
+      và worker, nên người gửi tự quyết nhận 409 `conflict` với `details.reason_code` `second_person_required`
+      của tiền tố nghiêm (R3.10; ADR-0104 (Accepted) quyết 11).
     - Handler `egress.allowed_host.decided` đăng ký ở composition root của worker, chạy lặp lại không đổi kết
       quả theo id phê duyệt: duyệt → thêm đúng một dòng cùng audit `egress.allowlist.added` đứng tên người quyết,
       `details.lane` `outbox`, trong một giao dịch; từ chối → không ghi gì.
@@ -76,11 +81,16 @@ run_mode, purpose, connector_key, connection_id, simulate_safe)` (`simulate_safe
 - [ ] R3.9 (CV22): `POST /api/v1/egress/allowed-hosts` hợp lệ → 202 kèm id phê duyệt `egress.allowed_host`
       có `required_scope` `integrations.admin`, không dòng nào, đích đó vẫn `egress_blocked:host_not_allowed`;
       ghi dòng ngay ở `POST` → test đỏ.
-- [ ] R3.10 (CV22): người gửi tự duyệt → 409 `conflict`, không dòng nào; người không giữ
-      `integrations.admin` quyết → 404; bỏ `egress.allowed_host` khỏi tiền tố nghiêm → test đỏ.
+- [ ] R3.10 (CV22): người gửi tự duyệt → 409 `conflict` với `details.reason_code` `second_person_required`, không
+      dòng nào; người không giữ `integrations.admin` quyết → 404; bỏ `egress.allowed_host` khỏi tiền tố nghiêm →
+      test đỏ.
 - [ ] R3.11 (CV22): người thứ hai giữ `integrations.admin` duyệt → đúng một dòng, audit
       `egress.allowlist.added` đứng tên người đó với `details.lane` `outbox`; handler chạy lại cùng quyết định →
       vẫn một dòng; đích vừa thêm qua kiểm danh sách.
+- [ ] R3.12 (CV22): công ty chỉ người gửi giữ `integrations.admin` với tới workspace đang làm việc → `POST` trả
+      409 `conflict` với `details.reason_code` `no_checker_available`, không dòng `platform.approval_requests` nào,
+      không dòng `platform.egress_allowed_hosts` nào; thêm người thứ hai giữ khóa → 202; gỡ kiểm người duyệt →
+      test đỏ.
 - [ ] R4.1: vector Standard Webhooks 1.0 đúng, dấu thời gian trong ±5 phút → `verified` (`standardwebhooks`
       làm oracle).
 - [ ] R4.2 (CV11): sửa một byte trượt; dấu thời gian lệch quá ±5 phút trượt; chữ ký thiếu trượt; gỡ kiểm
@@ -110,3 +120,8 @@ run_mode, purpose, connector_key, connection_id, simulate_safe)` (`simulate_safe
   từ chối ở chế độ khác `live` mọi purpose trừ `model` và Hành động chỉ đọc, nêu rõ `mcp` và `oauth`; phạm vi
   D11 (người đặt yêu cầu và Đạt): thêm một Máy chủ được phép cần người thứ hai qua phê duyệt nghiêm
   `egress.allowed_host`, xóa vẫn một người (bước 7; R3.9, R3.10, R3.11, CV22).
+- 2026-10-24 (agent): theo kiểm nhất quán vòng 3 (vòng sửa thứ tư): `POST` hỏi `platform.checker_candidates` và
+  trả 409 `no_checker_available` khi không còn người duyệt khác người gửi (R3.12, CV22); người gửi tự quyết nhận
+  `second_person_required` (P9, R3.10); câu INSERT đăng ký khóa nêu `tenant_grantable` (P2); thêm Blocked by
+  tenant-rbac/02, chủ của `platform.checker_candidates` và cột `tenant_grantable` (bước 7). Khóa duyệt
+  `integrations.admin` của `egress.allowed_host` nay là quyết định của Đạt (D5), ADR-0115 (Accepted) quyết 6 ghi.

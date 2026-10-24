@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: 02, 03, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md, .claude/plans/studio/studio-skeleton/issues/03-seam-web-va-allowlist-antd.md
 Area: studio
-Yêu cầu: R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R5.8, R5.9, R5.10, R5.11, R5.12, CV12, CV13, CV14, CV15, CV21
+Yêu cầu: R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R5.8, R5.9, R5.10, R5.11, R5.12, R5.13, CV12, CV13, CV14, CV15, CV21
 
 ## Mục tiêu
 
@@ -30,14 +30,19 @@ từ B8a-connections connections-and-vault 07. P1 chỉ kết nối dùng chung 
    `POST /api/v1/connections/{id}/test`, `.../disable`, `.../enable`,
    `GET /api/v1/connections/{id}/dependents`; quyền `connections.read`, `connections.manage` và khóa
    `connections.use` mà `connection_usable` đọc, cả ba đăng ký vào Danh mục quyền trong migration của ticket
-   này (nhãn, `scope_kind`, `risk` theo tenant-rbac/01), độ sâu qua `platform.effective_grants` của
-   tenant-rbac/02; trường bí mật `writeOnly` lưu qua `platform.put_secret` (ticket 02); `Idempotency-Key` cho
+   này với câu INSERT nêu mọi cột NOT NULL có lúc đó (gồm nhãn, `scope_kind`, `risk` theo tenant-rbac/01 và
+   `tenant_grantable` của tenant-rbac/02), độ sâu qua `platform.effective_grants` của tenant-rbac/02; trường bí
+   mật `writeOnly` lưu qua `platform.put_secret` (ticket 02); `Idempotency-Key` cho
    `POST`; DELETE còn phụ thuộc → 409 `connection_in_use`; id của công ty khác ở mọi route → 404; `PATCH` không
    nhận `status`.
-5. Bật lại hai người (D11): `POST .../enable` cho một Kết nối `disabled` trả 202 với một yêu cầu phê duyệt
-   không lượt chạy `connections.enable`, `required_scope` `connections.manage`, payload chỉ mang id kết nối;
-   Connection status giữ `disabled`. `connections.enable` vào `strict_approval_prefixes` bằng `|=` ở API và
-   worker. Handler `connections.enable.decided` đăng ký ở composition root của worker, chạy lặp lại không đổi kết
+5. Bật lại hai người (D11): `POST .../enable` cho một Kết nối `disabled` hỏi trước `platform.checker_candidates`
+   của tenant-rbac/02 với khóa `connections.manage`, người gửi và workspace sở hữu của Kết nối: rỗng → 409
+   `conflict` với `details.reason_code` `no_checker_available`, không mở yêu cầu, status
+   giữ `disabled` (R5.13); không thì trả 202 với một yêu cầu phê duyệt không lượt chạy `connections.enable`,
+   `required_scope` `connections.manage`, payload chỉ mang id kết nối; Connection status giữ `disabled`.
+   `connections.enable` vào `strict_approval_prefixes` bằng `|=` ở API và worker, nên người gửi tự quyết nhận 409
+   `conflict` với `details.reason_code` `second_person_required` (R5.11; ADR-0104 (Accepted) quyết 11). Handler
+   `connections.enable.decided` đăng ký ở composition root của worker, chạy lặp lại không đổi kết
    quả theo id phê duyệt: duyệt → `disabled → active` cùng audit `connection.enabled` đứng tên người quyết,
    `details.lane` `outbox`, trong một giao dịch; từ chối → không đổi gì. `.../disable` vẫn một người, có hiệu
    lực ngay.
@@ -77,10 +82,15 @@ từ B8a-connections connections-and-vault 07. P1 chỉ kết nối dùng chung 
       `required_scope` `connections.manage`; Connection status vẫn `disabled`, egress vẫn
       `connection_disabled`; `PATCH` mang `status: active` không đổi status; đổi status ngay ở `POST` → test
       đỏ.
-- [ ] R5.11 (CV21): người gửi tự duyệt → 409 `conflict`, status không đổi; người không giữ
-      `connections.manage` quyết → 404; bỏ `connections.enable` khỏi tiền tố nghiêm → test đỏ.
+- [ ] R5.11 (CV21): người gửi tự duyệt → 409 `conflict` với `details.reason_code` `second_person_required`, status
+      không đổi; người không giữ `connections.manage` quyết → 404; bỏ `connections.enable` khỏi tiền tố nghiêm →
+      test đỏ.
 - [ ] R5.12 (CV21): người thứ hai giữ `connections.manage` duyệt → `active`, audit `connection.enabled` đứng
       tên người đó với `details.lane` `outbox`; handler chạy lại cùng quyết định → không đổi gì thêm.
+- [ ] R5.13 (CV21): chỉ người gửi giữ `connections.manage` với tới workspace sở hữu của Kết nối →
+      `POST .../enable` trả 409 `conflict` với `details.reason_code` `no_checker_available`, không dòng
+      `platform.approval_requests` nào, status vẫn `disabled`; thêm người thứ hai giữ khóa → 202; gỡ kiểm người
+      duyệt → test đỏ.
 - [ ] Xong: `make ci && make test-integration` xanh.
 
 ## Nguồn
@@ -101,3 +111,8 @@ từ B8a-connections connections-and-vault 07. P1 chỉ kết nối dùng chung 
   (ADR-0115 (Accepted) quyết 2; bước 2, bước 4, R5.9, CV14); phạm vi D11 (người đặt yêu cầu và Đạt): bật lại
   một kết nối cần người thứ hai qua phê duyệt nghiêm `connections.enable`, tắt vẫn một người (bước 5; R5.10,
   R5.11, R5.12, CV21). Các bước sau đó đánh số lại từ 6.
+- 2026-10-24 (agent): theo kiểm nhất quán vòng 3 (vòng sửa thứ tư): `POST .../enable` hỏi
+  `platform.checker_candidates` và trả 409 `no_checker_available` khi không còn người duyệt khác người gửi (bước
+  5; R5.13, CV21); người gửi tự quyết nhận `second_person_required` (P9, R5.11); câu INSERT đăng ký khóa nêu
+  `tenant_grantable` (P2, bước 4). Blocked by đã có tenant-rbac/02. Khóa duyệt `connections.manage` của
+  `connections.enable` nay là quyết định của Đạt (D5), ADR-0115 (Accepted) quyết 2 ghi.

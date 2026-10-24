@@ -70,7 +70,8 @@ layers, field security applied to agents and search too), and on the call on DO-
    as the publisher; publish refuses such a version without an approved value (`binding_unset`). The proposer of that
    binding needs `platform.service_principals.use` over the service principal's owning workspace and must hold every
    grant it holds (`platform.grants_cover`, answered by ADR 0104's anti-escalation rule, not a second copy). When its
-   grants grow, admission refuses (`binding_needs_review`) until someone who covers them approves the binding again.
+   grants grow, the run door refuses its runs before any is requested (`binding_needs_review`, ADR 0113 decision 3)
+   until someone who covers them approves the binding again.
    `worker_runs.requested_by` keeps the person who asked or the trigger lane's system actor; `run_as_principal_id`
    (ADR 0113) names whose reach the run uses.
 5. **Reach is the principal's live reach intersected with the version's boundary.** A published version fixes its
@@ -127,8 +128,9 @@ layers, field security applied to agents and search too), and on the call on DO-
 - Phasing: the interim linking rule (foundations-hardening/02) and the 300 s realm (org-and-principals/01) in W1 P0;
   service principals and run-as (org-and-principals/03), the actor context at every door with the boundaries
   (record-access/04), the principal binding on manual and Data Hub runs (workflow-triggers/01), and workflow-triggers'
-  reader of outbox `platform.service_principal.grants_changed`, through which admission refuses
-  `binding_needs_review` (decision 4; after org-and-principals/03), in W1 P1; Organizations, invitation claims,
+  reader of outbox `platform.service_principal.grants_changed`, through which the run door refuses
+  `binding_needs_review` before any run is requested (decision 4; after org-and-principals/03), in W1 P1;
+  Organizations, invitation claims,
   per-tenant SSO, MFA, step-up and API keys in W2.
 - A version with an unattended trigger cannot be published until a service principal is bound (workflow-triggers);
   record-access keys its closure by principal, so a service principal gets a `studio.principal_scopes` row (ADR 0105).
@@ -187,5 +189,8 @@ layers, field security applied to agents and search too), and on the call on DO-
 
 - Đạt accepted the open recommendations of the second consistency check; the status stays Accepted.
 - Phasing: decision 4's `binding_needs_review` has its W1 reader, workflow-triggers' handler of
-  `platform.service_principal.grants_changed`, so a service principal whose grants grew after binding stops at
-  admission (H:org-and-principals:R6.6~workflow-triggers:R3.4).
+  `platform.service_principal.grants_changed`, so a service principal whose grants grew after binding stops at the
+  run door before any run is requested (H:org-and-principals:R6.6~workflow-triggers:R3.4).
+- Third consistency check (round 4), Đạt's D9: decision 4's `binding_needs_review` refuses at the run door before any
+  run is requested, its trigger delivery recorded `rejected`, the row ADR 0113 decision 3 now gives it
+  (F:ADR-0113~org-and-principals:R4.6); "admission", ADR 0113's word for the claim, no longer names it.

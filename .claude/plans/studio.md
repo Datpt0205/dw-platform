@@ -14,7 +14,10 @@ is built yet. Đạt accepted the ADR block on 2026-10-23 (0126 and 0127 on
   `writing-plan-specs` when it reaches `checking-plan-readiness`
   (foundations-hardening first: R6-R10 and tickets 04-06 become
   `runtime-hardening`, numbers kept), and a fourth remediation round past the
-  three-round limit of `checking-plan-consistency`. The decisions:
+  three-round limit of `checking-plan-consistency`. Documents cite the
+  decisions as `V4.1`-`V4.13` (numbered as below) and the planner's choices
+  for rows with several fixes as `V4.P1`-`V4.P14`, never as bare `D<n>`,
+  which names the requester's directions D1-D14 below. The decisions:
     1. `endpoint` has no quality gate and goes live on a second person's
        approval, `studio.publish.endpoint` stamped `studio.publish.approve`
        like every kind (ADR-0120 d2); `studio.datahub.manage` is the key to
@@ -39,9 +42,32 @@ is built yet. Đạt accepted the ADR block on 2026-10-23 (0126 and 0127 on
     12. `platform.limit_policies` keeps its `scope_*` columns (ADR-0121 d4).
     13. Message content at most 16 KiB; citations and feedback in W2.
 
-    Nine editors, each followed by a verifier, apply them with every round-3
-    row; then the split, a fourth consistency check, and the readiness gate for
-    app-standards, foundations-hardening and runtime-hardening.
+    The planner's choices, each logged `(agent, tạm)` with `Nếu sai thì:`:
+    V4.P1 one versioned retention file, its editing tickets chained from
+    usage-and-limits/02; V4.P2 key-registering tickets wait for tenant-rbac/02;
+    V4.P3 studio-skeleton/03 waits for tenant-rbac/02; V4.P4
+    telemetry-and-audit/02 waits for workflow-engine/05; V4.P5 offboarding
+    deletes a tenant's service users through a narrow SECURITY DEFINER
+    function; V4.P6 user-scoped limits, concurrency caps, purposes and
+    thresholds move to W2 (YC79); V4.P7 custom-objects R3.1-R3.6 move to its
+    ticket 03; V4.P8 no conversation delete route in W1; V4.P9 a strict-prefix
+    self-decision is `second_person_required` for every type; V4.P10
+    `studio.*` keys have exactly three segments, plural areas but `publish`,
+    `lifecycle`, `datahub`, `code`, `mcp`; V4.P11 `logic.loop` at its cap
+    takes `max_reached`, else `loop_limit_reached` (W2); V4.P12
+    workflow-engine/01 waits for agent-lifecycle/03; V4.P13 both CEL bindings
+    behind `ExpressionEngine` as ADR-0114 d2 says, deployed profiles pinned to
+    `cel-expr-python`; V4.P14 tenant-config/04 waits for
+    foundations-hardening/06.
+
+    Nine editors, each followed by a verifier, applied them with every round-3
+    row on 2026-10-24 (checker 24/24 in every folder). Their verifiers found
+    where a decision had not reached a spec it never named, a few design
+    errors the fixes exposed (the envelope AAD carried the KEK version, which
+    the rewrap lane changes), and six state-transition questions for Đạt
+    (Decisions owed). A second pass fixes all but those six; then the split, a
+    fourth consistency check, and the readiness gate for app-standards,
+    foundations-hardening and runtime-hardening.
 
 - **Round 3 applied on 2026-10-24:** Đạt took every recommendation still open
   (`studio/discovery` coverage review N1-N10, the two CRITICAL rows of round 2,
@@ -108,8 +134,28 @@ is built yet. Đạt accepted the ADR block on 2026-10-23 (0126 and 0127 on
 
 ## Decisions owed
 
-- **Đạt:** nothing open from consistency round 3 (decided 2026-10-24, State
-  above). Next: `Duyệt` of each spec and of its ticket breakdown once it passes
+- **Đạt, from round 4's verifiers (2026-10-24)**, each with a recommendation:
+    1. Nothing ends a waiting W1 run but a kill: no `deadline_at` until W2 and
+       no expiry on a step approval. Recommended: `deadline_at` and its checks
+       at node start, resume and the reaper in W1 (ADR-0113 d3 as first
+       written); the cancel route stays W2.
+    2. V4.9's alert has no W1 recipient (a service account gets an owner only
+       in W2), and held runs cannot be cancelled one by one before W2.
+       Recommended: in W1 alert the tenant-depth holders of
+       `platform.members.write`, who can reactivate the account; one-by-one
+       cancel stays W2 (a kill still clears them).
+    3. `binding_needs_review` rejects a trigger delivery, so a lead that
+       arrives while a service account's grants are re-reviewed starts no run.
+       Recommended: hold it queued like V4.9 until the binding is approved.
+    4. One draft per artifact, yet a candidate returning to draft while a new
+       draft exists breaks that index. Recommended: one unpublished version
+       (draft or candidate) per artifact; withdraw the candidate to edit.
+    5. An approved publish that cannot be applied (tenant frozen, a binding
+       not approved) stays `awaiting_approval` with no retry rule.
+       Recommended: return it to draft with the reason, as V4.2 does.
+    6. Confirm V4.P10's rename of `studio.agents.settings.manage`, which a
+       24/10 line of Đạt's had approved, to `studio.agents.manage_settings`.
+- **Then:** `Duyệt` of each spec and of its ticket breakdown once it passes
   `checking-plan-readiness`, which no ticket reaches `ready-for-agent` without.
 - **Acted on, not decided:** the platform team curates the MCP catalogue
   (DO-46.1), and whoever
@@ -233,11 +279,8 @@ Kiểm nhất quán 24/10/2026: 8 CRITICAL, 25 HIGH, 38 MEDIUM, 2 LOW; phủ YC 
       khi gửi và khi phát hành theo ADR-0120, index cho route danh sách lượt kiểm định, kết quả ca và tin
       nhắn (Data model rules), lane promotion của ADR-0111 audit đứng tên người duyệt (ADR-0011). Cùng loại:
       các cạnh Blocked by (`offboarding.py`, tệp retention, danh mục quyền) và phần lớn dòng HIGH, MEDIUM.
-    - Chờ Đạt (13 câu, có khuyến nghị ở mục Decisions owed): vòng đời của loại `endpoint` (CRITICAL); mất cập
-      nhật ở nhánh chỉ siết; loại phê duyệt cho phiên bản công cụ; chạy mô phỏng trên bản Nháp; khóa duyệt
-      của hai phê duyệt mới; 412 cho `stale_version`; Q2 của `domain-packs`; nhánh chỉ siết khi Đóng băng;
-      lượt của tài khoản dịch vụ bị tạm khóa; người duyệt thay (W2); lý do chặn `recipient_cap`; tên cột hạn
-      mức; trần nội dung tin nhắn.
+    - 13 câu đã chờ Đạt (vòng đời của `endpoint` là dòng CRITICAL) được Đạt quyết ngày 24/10/2026 (V4.1-V4.13)
+      và đang áp ở vòng sửa thứ tư mà Đạt cho phép; dòng kết quả trên đây đổi sau lần kiểm nhất quán vòng 4.
     - Về lại roadmap (4 dòng MEDIUM): cột Phụ thuộc lệch các cạnh ticket; YC101 thiếu ở hai hàng, YC102 ở hàng
       `workflow-triggers`; chữ "simulate" và "gửi phát hành" ở hàng `workflow-builder-ui`; 17 trong 25 spec quá
       250 dòng (10 spec vẫn quá khi bỏ Hiện trạng và Quyết định), `foundations-hardening` có 11 nhóm yêu cầu.

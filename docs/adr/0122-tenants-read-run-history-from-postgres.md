@@ -82,13 +82,17 @@ ADR 0121, which owns the usage ledger whose screens and retention this ADR also 
    (`POST /api/v1/audit/exports`, permission `audit.export`, rows in `platform.audit_exports`,
    written by the worker lane `audit_export`) is gated by the `audit_export` feature, its first
    reader.
-7. **One retention policy, one owner, a remover for every store.**
-   `configs/policies/retention@1.8.0.yaml` replaces 1.7.0. telemetry-and-audit owns the file's
-   format, one entry per `schema.table`, and its retention lane; each ticket that registers a table
-   adds that table's term to the file in the same change, so the catalog test that every registered
-   table has a term (studio-skeleton R3.7) passes from the registration on. compliance-pdpl adds its
-   stores' rows that way in 1.9.0, after 1.8.0, and a store that ships later brings its row with it,
-   the per-tenant analytics store of ADR-0127 (Accepted) included (W3). The terms are provisional,
+7. **One retention policy, one owner, a remover for every store.** The policy stays one versioned
+   file, `configs/policies/retention@<semver>.yaml`, so a compliance question gets one numbered
+   answer. telemetry-and-audit owns the file's format, one entry per `schema.table`, and its
+   retention lane; each ticket that registers a table adds that table's term to the file in the same
+   change and releases a new version in that format, so the catalog test that every registered table
+   has a term (studio-skeleton R3.7) passes from the registration on. The tickets that edit the file
+   form one chain, each releasing the next version: studio-skeleton/01, usage-and-limits/02 (the
+   first version keyed by `schema.table`, `platform.audit_events` included), usage-and-limits/03,
+   telemetry-and-audit/03, agent-lifecycle/04, workflow-triggers/02, compliance-pdpl/04,
+   agent-builder/04 and compliance-pdpl/06. A store that ships later brings its row with it, the
+   per-tenant analytics store of ADR-0127 (Accepted) included (W3). The terms are provisional,
    versioned data, UNVERIFIED until counsel confirms them before shadow runs; counsel changes a
    number with a new policy version, never with code (DO-52 (a)). Run steps keep 30 days, as YC88
    asks, so a lane deletes them: dropping a monthly partition would keep rows for 30 to 61 days.
@@ -194,10 +198,10 @@ Accepted by Đạt on 2026-10-23 with these amendments from the decision brief:
 - Decision 5: content capture is W2 (DO-51.1 (a)).
 - Decision 6: one run index on `platform.audit_events`, owned by app-standards 03, replaces
   `ix_audit_events_run` (OPS-b).
-- Decision 7: one owner of the retention file (telemetry-and-audit, 1.8.0; compliance-pdpl adds
-  1.9.0); the terms are provisional versioned data that counsel changes by a new version; run steps
-  go from 90 to 30 days by lane (YC88); rows added for trigger deliveries, contact suppressions and
-  conversations (DO-52 (a)).
+- Decision 7: one owner of the retention file's format (telemetry-and-audit), each ticket that
+  registers a table releasing a new version; the terms are provisional versioned data that counsel
+  changes by a new version; run steps go from 90 to 30 days by lane (YC88); rows added for trigger
+  deliveries, contact suppressions and conversations (DO-52 (a)).
 - Open: DO-52 partly answered; both DO-51 questions answered.
 
 ## Amendments (2026-10-24)
@@ -217,3 +221,8 @@ open:
   limit (B:agent-lifecycle:R7.2~telemetry-and-audit:R5.5).
 - Decision 7: DROP PARTITION goes through `platform.drop_expired_partitions(cutoffs jsonb)`, which
   usage-and-limits 02 owns in W1.
+- Third consistency check (round 4): decision 7 and the Acceptance line drop the numbers 1.8.0 and
+  1.9.0, since every ticket that registers a table releases a new version in telemetry-and-audit's
+  format, and decision 7 names the chain of tickets that edit the file, usage-and-limits/02's version
+  being the first keyed by `schema.table` (F:ADR-0122~telemetry-and-audit:spec); the chain is P1, the
+  planner's provisional call, and if it is wrong the file splits per table and decision 7 changes.

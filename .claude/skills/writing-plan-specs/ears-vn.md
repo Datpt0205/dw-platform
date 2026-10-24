@@ -255,4 +255,5 @@ gracefully
 !ít nhất
 !nhiều nhất
 !chính xác một
+!số nhiều
 ```

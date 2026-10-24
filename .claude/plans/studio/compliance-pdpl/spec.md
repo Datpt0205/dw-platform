@@ -112,7 +112,7 @@ Một tin marketing tới một người chỉ rời đi khi qua Sàn gửi tin 
   chặn trong cùng giao dịch với `marketing.send_refused`, vì ở W1 mỗi Tương tác là một dòng nhật ký gửi (N4).
 - R3.8 NẾU một lượt chạy gốc đã gửi tới số người nhận tối đa mỗi lượt (200 ở thí điểm, số tạm UNVERIFIED, hay số
   thấp hơn công ty đặt) mà một tin tới thêm một người nhận khác, THÌ ToolExecutor PHẢI trả
-  `blocked:recipient_cap` và không gọi nhà cung cấp (ADR-0124 (Accepted) quyết 6).
+  `blocked:recipient_cap` và không gọi nhà cung cấp (ADR-0124 (Accepted) quyết 1, 6).
 
 ### R4 — Phân tích bộ ba nguy hiểm khi gửi kiểm định
 
@@ -141,7 +141,9 @@ dữ liệu riêng và tác động ra ngoài phải qua người trước tác 
 Mỗi kho dữ liệu cá nhân lát này thêm có một thời hạn và một bộ xóa, và dẫn chiếu đổi từ Nghị định 13/2023
 sang Nghị định 356 (YC88). Lát này thêm dòng của kho mình vào tệp chính sách retention theo định dạng khóa
 `schema.table` của telemetry-and-audit (telemetry-and-audit:R5.6): ticket 04 thêm hai bảng `append_only` trong
-cùng thay đổi đăng ký, ticket 06 thêm phần còn lại; sự kiện vào Data Hub do telemetry-and-audit khai (DO-52).
+cùng thay đổi đăng ký, ticket 06 thêm phần còn lại, mỗi ticket một bản trong chuỗi các ticket sửa tệp ở mục Phụ
+thuộc; thời hạn của sự kiện vào Data Hub do workflow-triggers/02 thêm, lane của telemetry-and-audit thi hành
+(DO-52).
 
 - R5.1 ĐỐI VỚI mỗi kho dữ liệu cá nhân mới của lát (Bản ghi đồng ý, Danh sách chặn gửi, nhật ký gửi
   marketing, hội thoại 90 ngày), tệp chính sách retention đang ghim PHẢI khai dưới khóa của kho một thời hạn và
@@ -153,7 +155,10 @@ cùng thay đổi đăng ký, ticket 06 thêm phần còn lại; sự kiện và
   của công ty hay yêu cầu của chủ thể dữ liệu (W2) xóa dòng chặn gửi.
 - R5.5 KHI lane `offboarding` xóa dữ liệu của một công ty đang `offboarding`, lane `offboarding` PHẢI xuất rồi
   xóa mọi dòng của công ty đó trong `platform.consent_records`, `platform.marketing_send_log` (hai bảng qua
-  `platform.purge_tenant_append_only`, usage-and-limits:R3.8) và `platform.contact_suppressions` (YC6).
+  `platform.purge_tenant_append_only`, usage-and-limits:R3.8), `platform.contact_suppressions` và
+  `studio.version_assessments` (theo FK ON DELETE CASCADE khi `studio.artifact_versions` của công ty bị xóa) (YC6).
+- R5.6 NẾU `dw_app` xóa một dòng `platform.contact_suppressions` của một công ty có `platform.tenants.status` khác
+  `offboarding`, THÌ PostgreSQL PHẢI từ chối với SQLSTATE 23514 và không xóa dòng nào.
 
 ## Trong phạm vi
 
@@ -181,13 +186,13 @@ cùng thay đổi đăng ký, ticket 06 thêm phần còn lại; sự kiện và
 | R3.4 phần từ khóa hủy trả lời trên Zalo qua inbound router                                                                                                                                                                                                                                  | router sự kiện nhà cung cấp và kênh Zalo là W2 (connections-and-vault)                                                                    | compliance-pdpl; connections-and-vault, đợt sau (W2) |
 | W2: Sổ sự cố dữ liệu cá nhân `platform.pd_incidents` và runbook 72 giờ (YC90); DPA hứa báo công ty trong 24 giờ từ khi nền tảng biết (DO-56.2)                                                                                                                                              | trước dữ liệu thật; chỉ Người vận hành đọc                                                                                                | compliance-pdpl, đợt sau (W2)                        |
 | W2: Presidio tiếng Việt có số đo; tối thiểu hóa trước khi gọi (`cross_border_minimised`)                                                                                                                                                                                                    | bộ dò là kiểm soát phụ, đo recall trước khi dựa vào                                                                                       | compliance-pdpl, đợt sau (W2)                        |
-| W2: Yêu cầu của chủ thể dữ liệu — màn, API, cổng xóa theo kho (YC90)                                                                                                                                                                                                                        | `DataSubjectPort` đăng ký một bản theo kho ở composition root                                                                             | compliance-pdpl, đợt sau (W2)                        |
+| W2: Yêu cầu của chủ thể dữ liệu — màn, API, cổng xóa theo kho (YC90), gồm đường xóa dòng chặn gửi thêm vào trigger `platform.guard_contact_suppression()` của R5.6                                                                                                                          | `DataSubjectPort` đăng ký một bản theo kho ở composition root                                                                             | compliance-pdpl, đợt sau (W2)                        |
 | W2: Mã hóa checkpoint theo khóa công ty; TLS chặng nội bộ; cache chia theo công ty (YC92)                                                                                                                                                                                                   | sau khóa vault; đo nhà cung cấp cache trước                                                                                               | compliance-pdpl; connections-and-vault               |
 | W2: Mức rủi ro AI trên `studio.version_assessments` (công ty tự phân hạng từ mặc định, không khai thấp hơn ở v1), tờ giải thích, thông báo AI ở kênh chat (v1.5), nhãn "do AI soạn" bật mặc định trên tin AI soạn gửi lead tới khi luật sư trả lời (YC93); sổ xử lý (YC91)                  | DO-60; tiêu chí tầng và nhãn chờ luật sư; bảng có từ W1 cho kết quả Phân tích năng lực (R4.6); nguồn gốc tin AI soạn đã ghi ở nhật ký gửi | compliance-pdpl; agent-lifecycle                     |
 | W2: Khoanh vùng sự cố, audit đọc trường `Nhạy cảm`, taint động; gửi hoãn tới Khung giờ không gửi                                                                                                                                                                                            | sau sổ sự cố và taint ở executor                                                                                                          | compliance-pdpl, đợt sau (W2)                        |
 | W3: Hồ sơ công ty được quản lý, gói bằng chứng, khóa do khách quản lý, báo cáo sự cố AI                                                                                                                                                                                                     | v2                                                                                                                                        | compliance-pdpl, đợt sau (W3)                        |
 | Ép lát Marketing chỉ chạy trên lead giả lập tới khi đủ điều kiện rời dữ liệu giả lập của YC99 (DO-53, DO-54.2 gồm DPA, sổ sự cố, cờ Hạn chế xử lý)                                                                                                                                          | YC89; ý kiến luật sư ở ticket 02; sổ sự cố và cờ là W2                                                                                    | marketing-pilot; tenant-config                       |
-| Thời hạn và bộ xóa của sự kiện vào Data Hub                                                                                                                                                                                                                                                 | telemetry-and-audit khai thời hạn đó trong tệp chính sách retention và giữ lane lưu giữ đọc nó (DO-52)                                    | telemetry-and-audit                                  |
+| Thời hạn và bộ xóa của sự kiện vào Data Hub (`studio.inbound_events`, `studio.trigger_deliveries`, `studio.inbound_dedupe`)                                                                                                                                                                 | workflow-triggers/02 thêm thời hạn và bộ xóa đó vào tệp chính sách retention, lane lưu giữ của telemetry-and-audit thi hành (DO-52)       | workflow-triggers; telemetry-and-audit               |
 | Telemetry và log không mang nội dung                                                                                                                                                                                                                                                        | một chủ là telemetry-and-audit/01                                                                                                         | telemetry-and-audit                                  |
 | Checkpoint chỉ dựng lại kiểu trong allowlist                                                                                                                                                                                                                                                | gộp vào foundations-hardening/02                                                                                                          | foundations-hardening                                |
 | RecordService, bảng bản ghi và cờ trên đầu bản ghi                                                                                                                                                                                                                                          | lát này đọc bản ghi qua Object Service                                                                                                    | custom-objects                                       |
@@ -221,8 +226,11 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
   thời hạn theo quan hệ cộng 5 năm (số tạm UNVERIFIED) dưới khóa `platform.consent_records`, thêm trong cùng thay
   đổi đăng ký (ticket 04), bộ xóa xóa theo dòng, không bằng DROP PARTITION.
 - `platform.contact_suppressions`: PK `(tenant_id, channel, address_hash)`; không hết hạn theo thời gian,
-  chỉ offboarding hay yêu cầu của chủ thể dữ liệu xóa (R5.4); `dw_app` có DELETE để lane `offboarding` xóa như
-  bảng thường (R5.5).
+  chỉ offboarding hay yêu cầu của chủ thể dữ liệu (W2) xóa (R5.4); `dw_app` có DELETE chỉ dùng được ở lượt xóa của
+  offboarding (R5.5): trigger `platform.guard_contact_suppression()` BEFORE DELETE từ chối với SQLSTATE 23514 mọi
+  DELETE khi `platform.tenants.status` của công ty khác `offboarding` (R5.6), cùng hình với
+  `platform.guard_control_switch()` của agent-lifecycle (agent-lifecycle:R7.5); đường xóa theo yêu cầu của chủ thể
+  dữ liệu thêm vào trigger đó ở W2.
 - `platform.marketing_send_log`: phân vùng theo tháng, đăng ký bằng một dòng `platform.time_partitioned_tables`
   (`append_only = true`); RLS dạng workspace của `CLAUDE.md` trên bảng cha; `dw_app` không giữ quyền nào trên
   phân vùng nào, đọc ghi qua bảng cha, nên đọc một phân vùng theo tên không lộ dòng của workspace khác
@@ -236,8 +244,11 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
   studio-skeleton:R4.3).
 - `studio.version_assessments`: một dòng mỗi phiên bản và Mã băm định nghĩa, ghi trong giao dịch gửi kiểm
   định: tín hiệu A, B, C, đường vi phạm, kết luận, phiên bản bộ phân tích; RLS theo công ty như vỏ phiên
-  bản; `dw_app` SELECT, INSERT; Mức rủi ro AI (`suggested_tier`, `declared_tier`) thêm ở W2
-  (ADR-0125 (Accepted) quyết 6).
+  bản; `version_id` FK tới `studio.artifact_versions` ON DELETE CASCADE, có index, như `from_version_id` của
+  `studio.dependencies` (tenant-config), nên lượt xóa `studio.artifact_versions` khi offboarding xóa luôn dòng đánh
+  giá; `dw_app` SELECT, INSERT, không DELETE, nên bảng có một dòng `STUDIO_EXCLUSIONS` nêu cách xóa đó, cascade từ
+  `studio.artifact_versions` (R5.5; studio-skeleton:R4.1); Mức rủi ro AI (`suggested_tier`, `declared_tier`) thêm
+  ở W2 (ADR-0125 (Accepted) quyết 6).
 
 ## API
 
@@ -247,8 +258,8 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
 - `GET /api/v1/public/unsubscribe/{token}`: route công khai, HMAC một địa chỉ, idempotent, rate-limited,
   không lộ địa chỉ có tồn tại.
 - Lỗi theo vỏ `application/problem+json` của ADR-0108 (Accepted); `details.reason_code`:
-  `pd_category_required`, `residency_refused`, `blocked:<lý do>` (lý do của Sàn gửi tin cộng `recipient_cap`),
-  `capability_trifecta_autonomy`,
+  `pd_category_required`, `residency_refused`, `blocked:<lý do>` (lý do của Sàn gửi tin ở ADR-0124 (Accepted)
+  quyết 1, gồm `recipient_cap`; `processing_restricted` đến ở W2 cùng Hạn chế xử lý), `capability_trifecta_autonomy`,
   `tool_unclassified`, `trifecta_path_unapproved`, `second_person_required`. Mã 422 lúc gửi kiểm định đi qua
   route gửi kiểm định của agent-lifecycle (agent-lifecycle:R2.7).
 
@@ -274,6 +285,7 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
 | CP16 | Mỗi lớp retention mới có bộ xóa                                              | R5.1, R5.2       | Một lớp retention thiếu bộ xóa đăng ký → test tập bộ xóa đỏ                                                                                                                                                              |
 | CP17 | Danh sách chặn gửi không tự hết hạn                                          | R5.4             | Dòng chặn gửi 10 năm tuổi qua một lượt lane lưu giữ → dòng còn, lần gửi sau vẫn `blocked:suppressed`; thêm hạn theo thời gian cho lớp chặn gửi → test đỏ                                                                 |
 | CP18 | Một lượt chạy không gửi quá số người nhận tối đa                             | R3.8             | Lượt chạy gốc đã gửi tới 200 người nhận, tin tới người thứ 201 → `blocked:recipient_cap`, SMTP giả 0 lời gọi, dòng nhật ký gửi `blocked`; tin thứ 200 → gửi; overlay hạ còn 50 → người thứ 51 bị chặn; gỡ kiểm → test đỏ |
+| CP19 | Chỉ lượt xóa của offboarding xóa được dòng chặn gửi                          | R5.6             | `dw_app` DELETE một dòng chặn gửi của công ty `active` → 23514, dòng còn, lần gửi sau vẫn `blocked:suppressed`; cùng lệnh khi công ty `offboarding` → xóa được; gỡ phép kiểm DELETE khỏi trigger → test đỏ               |
 
 ## Tiêu chí xong
 
@@ -299,6 +311,9 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
 - Thứ tự cửa trong gateway có cấu trúc: công tắc Đóng băng và Tắt khẩn cấp của
   `.claude/plans/studio/agent-lifecycle/issues/01-dong-bang-va-kiem-o-moi-cua.md` đứng đầu, rồi `ResidencyGate`
   của ticket 03, rồi `LimitsMiddleware`; ticket 03 chờ agent-lifecycle/01.
+- Thứ tự ngăn xếp agent: `ResidencyGate` là một middleware ngay sau `StudioModelSelection` và trước
+  `LimitsMiddleware`, theo thứ tự mà `.claude/plans/studio/agent-builder/issues/03-runtime-agent.md` bước 2 ghi
+  (ADR-0117 (Accepted) quyết 5; usage-and-limits:R6.5); ticket 03 cấp cổng, agent-builder/03 chờ nó.
 - custom-objects: RecordService và tham chiếu chủ thể cho đồng ý
   (`.claude/plans/studio/custom-objects/issues/03-record-service.md`).
 - tools-and-skills: ToolExecutor tiêu `SendAdmissionPort` và phân loại công cụ theo ADR-0116 (Accepted),
@@ -318,16 +333,23 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
 - connections-and-vault: egress client và `data_location` trên manifest kết nối, đang viết đợt này; dẫn
   theo đường dẫn.
 - Tệp chính sách retention: telemetry-and-audit là chủ định dạng (khóa `schema.table`, telemetry-and-audit:R5.6)
-  và lane lưu giữ; lát này thêm dòng của Bản ghi đồng ý và nhật ký gửi ở ticket 04 (cùng thay đổi đăng ký, sau
-  `.claude/plans/studio/telemetry-and-audit/issues/03-lich-su-chay-theo-buoc.md` để các ticket sửa tệp có một
-  thứ tự), rồi của Danh sách chặn gửi và hội thoại ở ticket 06 (DO-52).
+  và lane lưu giữ, và các ticket sửa tệp đi thành một chuỗi ở mục Phụ thuộc của spec đó
+  (`.claude/plans/studio/telemetry-and-audit/issues/03-lich-su-chay-theo-buoc.md` đứng trước); lát này thêm dòng
+  của Bản ghi đồng ý và nhật ký gửi ở ticket 04 (cùng thay đổi đăng ký, sau
+  `.claude/plans/studio/workflow-triggers/issues/02-data-hub-endpoint-va-ingress.md`, ticket thêm thời hạn của sự
+  kiện vào Data Hub), rồi của Danh sách chặn gửi và `studio.conversations` ở ticket 06, bản cuối của chuỗi, sau
+  `.claude/plans/studio/agent-builder/issues/04-chat-va-man-chat.md` (DO-52).
 - studio-skeleton: R3.7 đọc thời hạn của mỗi bảng `append_only` (studio-skeleton:R3.7); test phủ offboarding và
-  `STUDIO_EXCLUSIONS` (studio-skeleton:R4.3).
+  `STUDIO_EXCLUSIONS` cho bảng `platform` (studio-skeleton:R4.3) và cho `studio.version_assessments`
+  (studio-skeleton:R4.1).
 - Kiểm lại khi: `pd_category` của `dw_kernel.personal_data` đổi hình → R1, field-security; cửa model của
   model-connections đổi hợp đồng → R2; ToolExecutor của tools-and-skills đổi điểm chèn → R3.2; bảng kiểm theo
   loại hay lane `studio_gate` của agent-lifecycle đổi → R2.6, R4; ý kiến luật sư (DO-53, DO-54.2, DO-55,
   DO-60) → số trong `marketing_send@1.0.0.yaml`, một bản mới của tệp chính sách retention và điều kiện vào chạy
-  bóng (YC99), không đổi tiêu chí W1.
+  bóng (YC99), không đổi tiêu chí W1; agent-builder đổi thứ tự ngăn xếp agent → R2.3, ticket 03; chuỗi các ticket
+  sửa tệp chính sách retention đổi thứ tự → ticket 04, 06; tenant-config đổi khóa hay cách xóa
+  `studio.artifact_versions` → R5.5, ticket 05; agent-lifecycle đổi hình trigger chặn DELETE của nó
+  (agent-lifecycle:R7.5) → R5.6, ticket 04.
 
 ## Câu hỏi còn mở
 
@@ -417,9 +439,10 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
   nhận mỗi lượt chạy ở thí điểm, công ty chỉ hạ thấp hơn (ADR-0124 (Accepted) quyết 6); số này có bên đọc ở
   ToolExecutor (H:ADR-0124 (Accepted)\~compliance-pdpl/04). Hỏi: Q2. Sửa: R3.5, thêm R3.8, CP11, CP18, Trong
   phạm vi, API, Q2, ticket 04.
-- 24/10/2026 (agent, tạm): lý do chặn khi vượt số người nhận mỗi lượt là `recipient_cap`, đếm người nhận khác
-  nhau đã gửi theo `root_run_id` của lượt chạy trên nhật ký gửi. Sửa: R3.8, Dữ liệu, ticket 04. Nếu sai thì:
-  đổi tên mã lý do trong `marketing_send@1.0.0.yaml` và ADR-0124 (Accepted) quyết 1.
+- 24/10/2026 (Đạt): lý do chặn khi vượt số người nhận mỗi lượt là `recipient_cap`, một lý do của
+  ADR-0124 (Accepted) quyết 1 cho trần 200 người nhận mỗi lượt của quyết 6, đếm người nhận khác nhau đã gửi theo
+  `root_run_id` trên nhật ký gửi, công ty chỉ hạ thấp hơn; lần chặn cũng ghi một dòng nhật ký gửi `outcome`
+  `blocked` (N4) (F:ADR-0124 (Accepted)\~compliance-pdpl:R3.8). Sửa: R3.8, Dữ liệu, API, ticket 04.
 - 24/10/2026 (Đạt): DO-52, số tạm UNVERIFIED chờ luật sư khi có dữ liệu thật: hội thoại với trợ lý giữ 90 ngày;
   ticket 06 về `needs-triage` (H:compliance-pdpl:R5.1\~requirements.md:419). Sửa: R5.1, ticket 06.
 - 24/10/2026 (Đạt): N4: ở W1 mỗi Tương tác là một dòng `platform.marketing_send_log` của lát này, nên một lần Sàn
@@ -441,6 +464,25 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
 - 24/10/2026 (người đặt yêu cầu và Đạt): D11, W1 chưa có đường hai người cho việc nới Lộ trình dữ liệu, nên lệnh
   nới bị khóa ở W1 (R2.7 như đã viết). Sửa: không đổi R2.7.
 - 24/10/2026 (Đạt): dịch vụ proxy model của tenant tên `model-proxy` ở mọi nơi. Sửa: dòng D13.
+- 24/10/2026 (agent, tạm): tệp chính sách retention giữ là một tệp có phiên bản
+  `configs/policies/retention@<semver>.yaml`; các ticket sửa tệp đi thành một chuỗi theo `Blocked by`, mỗi ticket
+  ra một bản mới: ticket 04 đứng sau workflow-triggers/02 và trước agent-builder/04, ticket 06 là bản cuối sau
+  agent-builder/04 (C:configs:spec\~telemetry-and-audit/03). Sửa: R5, Phụ thuộc, ticket 04, 06. Nếu sai thì: tách
+  tệp thành một tệp mỗi bảng, sửa telemetry-and-audit:R5.6 và ADR-0122 (Accepted) quyết 7, và ticket 04 bỏ cạnh chờ
+  workflow-triggers/02.
+- 24/10/2026 (agent, tạm): `studio.version_assessments` bị xóa khi offboarding qua FK `version_id` tới
+  `studio.artifact_versions` ON DELETE CASCADE, có index; vì `dw_app` chỉ SELECT, INSERT, bảng nằm ngoài tập
+  `_CATALOG_PURGEABLE` và có một dòng `STUDIO_EXCLUSIONS` nêu cách xóa đó, theo luật của studio-skeleton/01 cho
+  bảng `dw_app` không DELETE (H:compliance-pdpl:spec\~studio-skeleton:R4.1); FK một cột như `from_version_id` của
+  `studio.dependencies`, vì `studio.artifact_versions` không có khóa unique `(tenant_id, id)` cho một FK ghép. Sửa:
+  R5.5, Dữ liệu, Phụ thuộc, ticket 05. Nếu sai thì: tenant-config/02 thêm khóa unique `(tenant_id, id)` để FK thành
+  `(tenant_id, version_id)`, hay offboarding xóa bảng qua một hàm riêng mà dòng `STUDIO_EXCLUSIONS` nêu.
+- 24/10/2026 (agent, tạm): chỉ lượt xóa của offboarding xóa được dòng `platform.contact_suppressions`, bằng trigger
+  `platform.guard_contact_suppression()` từ chối DELETE với 23514 khi công ty khác `offboarding`, cùng hình với
+  trigger công tắc của agent-lifecycle:R7.5, thay cho một hàm SECURITY DEFINER của offboarding
+  (D:agent-lifecycle:R7.5\~compliance-pdpl:R5.4). Sửa: thêm R5.6, CP19, Dữ liệu, Ngoài phạm vi, Phụ thuộc,
+  ticket 04. Nếu sai thì: thu DELETE của `dw_app` trên bảng, offboarding xóa qua một hàm SECURITY DEFINER hẹp và
+  bảng vào `STUDIO_EXCLUSIONS`.
 
 ## Danh sách ticket
 

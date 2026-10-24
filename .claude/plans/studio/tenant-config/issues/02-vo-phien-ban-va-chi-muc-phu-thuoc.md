@@ -1,7 +1,7 @@
 # 02 — Vỏ phiên bản dùng chung và chỉ mục phụ thuộc ghi trong giao dịch gửi kiểm định
 
 Status: needs-triage
-Blocked by: 01, .claude/plans/studio/studio-skeleton/issues/02-goi-dw-studio-va-seam-api.md, .claude/plans/studio/org-and-principals/issues/01-khoa-don-vi-va-siet-realm.md
+Blocked by: 01, .claude/plans/studio/studio-skeleton/issues/02-goi-dw-studio-va-seam-api.md, .claude/plans/studio/org-and-principals/issues/01-khoa-don-vi-va-siet-realm.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md
 Area: studio
 Yêu cầu: R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R2.7, R2.8, R2.9, R2.10, R2.11, R2.12, R2.13, R2.14, R2.15, R2.16, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, TC1, TC2, TC3, TC4, TC5, TC6, TC7, TC21, TC24, TC27
 
@@ -24,8 +24,10 @@ viết chuyển giai đoạn nào khác.
       với mục registry (OPS-b). Test tích hợp của ticket này thêm dòng `fixture` (`has_quality_gate = true`) và
       `fixture_gateless` (`false`) bằng vai migrator trong một fixture pytest phạm vi session và gỡ khi xong;
       migration không bao giờ chứa hai dòng đó.
-    - `studio.artifacts`: `id` UUIDv7; `kind` FK tới `studio.artifact_kinds (kind)` ON DELETE RESTRICT, có
-      index; `api_name` `^[a-z][a-z0-9_]{1,39}$`, unique `(tenant_id, kind, api_name)` khi
+    - `studio.artifacts`: `id` UUIDv7; `uq_artifacts_tenant_id_id UNIQUE (tenant_id, id)`, đích của FK ghép
+      `(tenant_id, artifact_id)` mà bên dùng đặt (`studio.agent_settings` của agent-builder, `scope_artifact_id`
+      của usage-and-limits), như `uq_workspaces_tenant_id_id`; `kind` FK tới `studio.artifact_kinds (kind)` ON
+      DELETE RESTRICT, có index; `api_name` `^[a-z][a-z0-9_]{1,39}$`, unique `(tenant_id, kind, api_name)` khi
       `deleted_at IS NULL`; FK `(tenant_id, owning_workspace_id)` tới `platform.workspaces (tenant_id, id)`
       ON DELETE RESTRICT; `labels text[] NOT NULL DEFAULT '{}'` (bộ lọc `label` của danh sách đọc);
       `origin jsonb` NULL (domain-packs ghi và đọc nguồn gốc gói); `last_version_no integer NOT NULL DEFAULT 0`; `row_version integer NOT NULL`;
@@ -67,12 +69,13 @@ viết chuyển giai đoạn nào khác.
    `test_privileges.py`; `test_rls_coverage.py` thấy cả bốn bảng có `tenant_id`, và mỗi bảng có một dòng lý
    do trong danh sách bảng toàn tenant của test đó (định nghĩa có `owning_workspace_id`, phiên bản và chỉ mục
    phụ thuộc là con của thành phần, bản kê định nghĩa định danh theo nội dung; DO-01).
-4. Offboarding: `_ORDERED_FIRST` thêm theo thứ tự `studio.dependencies`, `studio.artifacts`,
+4. Offboarding, trên `offboarding.py` và `test_offboarding.py` mà foundations-hardening/07 đã viết lại
+   (`_CATALOG_COLUMNS`, `export_rows`): `_ORDERED_FIRST` thêm theo thứ tự `studio.dependencies`, `studio.artifacts`,
    `studio.artifact_versions` (đã đo: xóa `studio.artifacts` trước khi gỡ cạnh phụ thuộc thì hỏng);
    `test_offboarding.py` purge một tenant có hai thành phần phụ thuộc nhau ở hai workspace (TC21).
 5. `ArtifactKindRegistry` trong lõi `dw_studio`, đăng ký ở `build_studio` (ADR-0100 (Accepted) quyết 6):
    mỗi mục có `kind`, `document_schema`, khóa đọc, khóa ghi và khóa gửi của loại, không giá trị mặc định
-   (R2.15; mỗi spec đăng ký khóa của mình theo quy ước `studio.<areas>.<verb>` của tenant-rbac/01),
+   (R2.15; mỗi spec đăng ký khóa của mình theo quy ước `studio.<area>.<verb>` của tenant-rbac:R1.6),
    `validate(document)` trả mọi lỗi kèm con trỏ JSON, `extract(document)` thuần trả các phụ thuộc. Mục không
    giữ cờ cổng: cờ chỉ ở cột `has_quality_gate` của `studio.artifact_kinds`. Test ở composition root: tập loại
    của registry bằng tập dòng của `studio.artifact_kinds`, và mỗi khóa của mỗi mục có trong danh mục quyền.
@@ -100,9 +103,11 @@ viết chuyển giai đoạn nào khác.
       `has_quality_gate` của dòng `studio.artifact_kinds` của loại, đọc trong cùng giao dịch: `true` → `evaluating`;
       `false` và bên gọi không đặt `tighten_only` → `awaiting_approval` (R2.13; bên gọi mở yêu cầu phê duyệt phát
       hành trong cùng giao dịch, ADR-0120 (Accepted) quyết 2); `false` và bên gọi đặt `tighten_only` → `live`, sau
-      khi bên gọi đưa phiên bản `live` trước sang `retired` trong cùng giao dịch (R2.16, agent-lifecycle:R1.4); cột
-      `tighten_only` và `compared_live_hash` mà trigger của agent-lifecycle/03 đọc do bên gọi thêm và ghi, không do
-      ticket này, nên ở đây `tighten_only` là một tham số của `seal`;
+      khi bên gọi đưa phiên bản `live` trước sang `retired` trong cùng giao dịch (R2.16, agent-lifecycle:R1.4), và không
+      đổi dòng nào khác của thành phần, kể cả Bản ứng viên đang chờ ở `awaiting_approval`, mà `compared_live_hash` cũ
+      của nó từ đó chặn nó lên `live` (agent-lifecycle:R1.8, agent-lifecycle:R5.9); cột `tighten_only` và
+      `compared_live_hash` mà trigger của agent-lifecycle/03 đọc do bên gọi thêm và ghi ở mọi lần gửi
+      (agent-lifecycle:R2.10), không do ticket này, nên ở đây `tighten_only` là một tham số của `seal`;
       `tighten_only` với loại `true` → từ chối, không niêm phong. Không audit: route gửi kiểm định của
       agent-lifecycle/03 audit trong cùng giao dịch, kể cả `studio.version.published` của nhánh chỉ siết.
     - `soft_delete`: đặt `deleted_at`; `ck_artifacts_not_in_use` → 409 `conflict`, `details.reason_code`
@@ -120,7 +125,10 @@ viết chuyển giai đoạn nào khác.
 8. Loại `fixture` chỉ trong test: tài liệu có trường `uses` trỏ tới thành phần khác, `extract` trả một
    phụ thuộc `artifact` cho mỗi phần tử; test fixture khẳng định đúng tập dòng ghi ra. Loại
    `fixture_gateless` chỉ trong test, cùng tài liệu, dòng `studio.artifact_kinds` của nó nêu
-   `has_quality_gate = false`.
+   `has_quality_gate = false`. Khóa đọc, ghi và gửi của hai loại là khóa chỉ trong test, chèn vào
+   `platform.permissions` bằng vai migrator trong cùng fixture pytest phạm vi session và gỡ khi xong; câu INSERT nêu mọi
+   cột NOT NULL có lúc đó, gồm `risk` của tenant-rbac/01 và `tenant_grantable` của tenant-rbac/02
+   (ADR-0104 (Accepted) quyết 1), nên ticket này chờ tenant-rbac/02.
 
 ## Tiêu chí chấp nhận
 
@@ -156,6 +164,10 @@ viết chuyển giai đoạn nào khác.
 - [ ] R2.16 (TC27): niêm phong `fixture_gateless` với `tighten_only` sau khi bên gọi đưa phiên bản `live` trước
       sang `retired` → phiên bản mới ở `live`, không yêu cầu phê duyệt nào; `fixture` với `tighten_only` → từ chối,
       không số phiên bản nào được cấp.
+- [ ] R2.16 (TC27): `fixture_gateless` có một Bản ứng viên ở `awaiting_approval`; niêm phong một bản chỉ siết →
+      bản mới `live`, dòng Bản ứng viên giữ nguyên giai đoạn và mọi cột; `seal` đổi Bản ứng viên → test đỏ. Ca duyệt
+      Bản ứng viên đó rồi về `draft` với `base_changed` là AL19 của agent-lifecycle, chạy ở agent-lifecycle/04, nơi có
+      handler `.decided`.
 - [ ] R3.1 (TC6): lỗi chèn giữa giao dịch niêm phong → không số phiên bản, không dòng
       `studio.dependencies`, không dòng `studio.definition_manifests`; làm hỏng `extract` của `fixture`
       → test fixture đỏ.
@@ -192,3 +204,8 @@ viết chuyển giai đoạn nào khác.
 - 2026-10-24 (agent): theo quyết định của Đạt ngày 24/10/2026: cột `has_quality_gate` không DEFAULT là chỗ duy
   nhất của cờ cổng (R2.14); mục registry khai khóa đọc, ghi và gửi (R2.15); nhánh chỉ siết `draft` sang `live`
   của `dw.object/v1` (Q-R6, R2.16).
+- 2026-10-24 (agent): vòng sửa thứ tư, theo Quyết định cùng ngày của spec: bản chỉ siết không đổi Bản ứng viên
+  đang chờ, và lệnh duyệt Bản ứng viên có gốc đã đổi đưa nó về `draft` với `base_changed` (R2.16, TC27; quyết định
+  của Đạt); thêm `uq_artifacts_tenant_id_id`; khóa của loại fixture chèn với mọi cột NOT NULL, nên ticket chờ
+  tenant-rbac/02 (quyết định tạm của spec); chờ foundations-hardening/07, vì cùng sửa `offboarding.py` và
+  `test_offboarding.py`; quy ước khóa của bước 5 dẫn tenant-rbac:R1.6 (quyết định tạm của spec).

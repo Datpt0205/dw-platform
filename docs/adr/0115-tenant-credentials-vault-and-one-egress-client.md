@@ -55,14 +55,14 @@ platform's vault and are injected per call into the model proxy) and D14 (the pr
    tenant-only, because reach crosses the workspaces of a tenant by design (D1), and the table is listed as tenant-wide
    with that reason under amendment A6 (ADR-0100); the status machine is the database's
    (`platform.guard_connection_status`). Disabling a connection takes one person, audited; enabling it again takes two:
-   the request opens a strict run-less approval `connections.enable`, and only its `.decided` handler moves the
-   connection from `disabled` to `active`, auditing the decider with the lane in `details.lane` (ADR-0011; D11,
-   closing with one person and opening with two). `connection_usable(connection, context, purpose)`, one function in the
-   platform's connections application layer, is the single answer to "may this run use this connection now": same
-   tenant, `status = 'active'`, the run's workspace equal to the owning one or inside its sub-tree under
-   `workspace_subtree`, `connections.use` held there, and for a personal connection the owner acting or a delegation
-   covering the run's definition. It is asked when a binding value is approved (ADR-0110), at run admission and before
-   every egress call.
+   the request opens a strict run-less approval `connections.enable`, stamped `required_scope = connections.manage`
+   (ADR-0004), and only its `.decided` handler moves the connection from `disabled` to `active`, auditing the decider
+   with the lane in `details.lane` (ADR-0011; D11, closing with one person and opening with two).
+   `connection_usable(connection, context, purpose)`, one function in the platform's connections application layer,
+   is the single answer to "may this run use this connection now": same tenant, `status = 'active'`, the run's
+   workspace equal to the owning one or inside its sub-tree under `workspace_subtree`, `connections.use` held there,
+   and for a personal connection the owner acting or a delegation covering the run's definition. It is asked when a
+   binding value is approved (ADR-0110), at run admission and before every egress call.
 3. **Personal connections.** A personal connection acts in a background run only through a revocable delegation
    (`platform.connection_delegations`: one workflow or agent, granted by the owner, expiring at most 365 days after
    the grant, its effective state derived by one function). P1 ships workspace-shared connections only, so no
@@ -89,12 +89,12 @@ platform's vault and are injected per call into the model proxy) and D14 (the pr
    origin change; allows only `https` when deployed; caps a response at 2 MiB while streaming; limits catalogue
    connectors to their manifest `egress_hosts` and tenant-defined destinations to `platform.egress_allowed_hosts`
    (managed with `integrations.admin`; no IP literals; one wildcard level, never on a public suffix; a host is added
-   only by the `.decided` handler of a strict run-less approval `egress.allowed_host` that a second person decides,
-   and removed by one person, audited); keys rate limits
-   by provider app, connection and tenant; owns retries (a timed-out non-idempotent POST is `outcome_unknown`, never
-   retried); scrubs the call's secrets from bodies, errors and logs; and in `simulate` refuses every purpose except
-   `model` and read-only actions (`egress_blocked:run_mode`). An architecture test allows `httpx.AsyncClient(` only in
-   the egress package and the existing operator-configured adapters.
+   only by the `.decided` handler of a strict run-less approval `egress.allowed_host`, stamped
+   `required_scope = integrations.admin` (ADR-0004), that a second person decides, and removed by one person,
+   audited); keys rate limits by provider app, connection and tenant; owns retries (a timed-out non-idempotent POST
+   is `outcome_unknown`, never retried); scrubs the call's secrets from bodies, errors and logs; and in `simulate`
+   refuses every purpose except `model` and read-only actions (`egress_blocked:run_mode`). An architecture test
+   allows `httpx.AsyncClient(` only in the egress package and the existing operator-configured adapters.
 7. **The egress proxy.** In deployed profiles smokescreen (<https://github.com/stripe/smokescreen>, MIT, built from a
    pinned commit) runs on networks of its own (`dw-egress-in`, internal, shared with api, worker, the MCP gateway and
    the model proxy; `dw-egress-out`, smokescreen alone; never `dw-edge`) as a second layer that decides nothing
@@ -213,3 +213,6 @@ Amended on 2026-10-24 by the requester and Đạt, who scoped the remaining D11 
 - Decisions 2 and 6: enabling a disabled connection again and adding an allowed host each take a second person,
   through the strict run-less approvals `connections.enable` and `egress.allowed_host`, whose `.decided` handlers
   apply the change; disabling a connection and removing an allowed host take one person, audited.
+- Third consistency check (round 4), Đạt's D5: `connections.enable` is stamped `connections.manage` and
+  `egress.allowed_host` is stamped `integrations.admin`, each the key that manages that change (decisions 2 and 6;
+  D:ADR-0115~connections-and-vault:spec).

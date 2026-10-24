@@ -27,7 +27,7 @@ audit đọc nhạy cảm là W2 ở Ngoài phạm vi. Ý định: không đư�
   quyền của người xem.
 - `studio.field_defs` giữ `pd_category`, `sensitive_type`, `subject_identifier` nhưng không có `access_mode`; custom-objects
   đẩy `access_mode`, quyền trường và `resolve_field_access` sang spec này
-  (`.claude/plans/studio/custom-objects/spec.md:301`). Ràng buộc: spec này thêm `access_mode` và hàm quyết định.
+  (`.claude/plans/studio/custom-objects/spec.md:303`). Ràng buộc: spec này thêm `access_mode` và hàm quyết định.
 - tenant-rbac tạo `studio.field_permissions` và cho `platform.effective_grants` trả `fld.<object>.<field>.read|edit`
   cộng dồn qua mọi vai (`.claude/plans/studio/tenant-rbac/issues/04-quyen-doi-tuong-va-truong-co-do-sau.md:30-44`).
   Ràng buộc: spec này đọc quyền trường hiệu lực, không tạo bảng quyền trường hay route cấp quyền.
@@ -142,7 +142,7 @@ duy nhất đọc giá trị bản ghi (YC23).
 | Nội dung chỉ mục truy xuất chỉ gồm trường được phép; `fls_version` đánh chỉ mục lại                                                         | Chỉ mục truy xuất đến cùng knowledge; `fls_version` theo object (ADR-0106 (Accepted) mục 4)                                                                                                                                                      | field-security, đợt sau (W2)             |
 | Màn cấu hình bảo mật trường (ma trận vai × trường), "Xem như vai"                                                                           | Cần đo hiệu năng ma trận ở 320 px; W1 giao route và hàm trước                                                                                                                                                                                    | field-security, đợt sau (W2)             |
 | Export, lịch sử bản ghi, webhook theo quyền người xem lúc gửi                                                                               | Cần tác vụ nền export và endpoint webhook; chiếu theo principal của endpoint                                                                                                                                                                     | field-security, đợt sau (W2)             |
-| Công thức thừa hưởng mức chặt nhất; audit `studio.record.sensitive_read`                                                                    | Trường công thức cần CEL; audit đọc nhạy cảm theo từng phản hồi là YC24 (W2)                                                                                                                                                                     | field-security, đợt sau (W2)             |
+| Công thức thừa hưởng mức chặt nhất; audit `pd.read` cho phản hồi mang giá trị nhạy cảm, chỉ id bản ghi và tên trường                        | Trường công thức cần CEL; audit đọc nhạy cảm theo từng phản hồi là YC24 (W2), tên sự kiện theo ADR-0106 (Accepted) quyết 5                                                                                                                       | field-security, đợt sau (W2)             |
 | Che một phần (bốn số cuối) và quyền "xem không che"                                                                                         | Cần một trục quyền mới; chưa có nhu cầu ở lát Marketing                                                                                                                                                                                          | field-security, đợt sau (W3)             |
 | Không giá trị trường trong telemetry, log, audit và lỗi                                                                                     | Một chủ cho "không nội dung" dùng cùng hàm này (packet không cắt ticket riêng)                                                                                                                                                                   | telemetry-and-audit                      |
 | `studio.field_permissions`; route cấp `fld.*` cho vai; chống cấp vượt quyền mình; người thứ hai khi cấp `fld.*`; người cấp `fld.*` đầu tiên | Quyền trường trong vai và chống leo thang có một chủ (ADR-0104 (Accepted), ADR-0106 (Accepted) mục 3); cấp `fld.*` là thay đổi vai trò hai người từ W1, kể cả trường nhạy cảm (DO-09.2); `tenant_owner` giữ mọi `fld.*` qua quyền tính động (N1) | tenant-rbac (R6.8, R7, R9.5, R9.6, R9.7) |
@@ -218,7 +218,7 @@ duy nhất đọc giá trị bản ghi (YC23).
 
 - custom-objects: `studio.field_defs` với `pd_category`, `sensitive_type`, `subject_identifier` và `(tenant_id, id)`
   là mã trường (ticket 02); adapter bản ghi, bộ biên dịch truy vấn, `describe` và bộ chiếu lược đồ gọi
-  `resolve_field_access` (`custom-objects:R3.2`, `custom-objects:R6.6`, `custom-objects:R8.4`, ticket 04);
+  `resolve_field_access` (`custom-objects:R3.2`, `custom-objects:R6.6`, `custom-objects:R8.4`, ticket 03, 04);
   `access_mode` là thuộc tính trường của `dw.object/v1`, mở hay đóng trường đi qua phát hành của custom-objects
   (`custom-objects:R1.2`, `custom-objects:R1.7`, `custom-objects:R2.5`).
 - tenant-rbac: `platform.effective_grants` trả `fld.<object>.<field>.read|edit` cộng dồn (`tenant-rbac:R9.6`), chống

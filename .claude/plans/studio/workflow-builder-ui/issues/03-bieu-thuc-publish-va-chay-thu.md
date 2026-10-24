@@ -24,9 +24,11 @@ quả từng Bước chạy che theo bảo mật trường
    đường nào trong trang gọi phát hành. Giai đoạn vòng đời hiện ở đầu trang (đọc từ `agent-lifecycle`).
 4. Chạy mô phỏng: biểu mẫu theo `input_schema` hoặc payload mẫu, cộng một lựa chọn bắt buộc "Duyệt" hay "Từ chối"
    (antd `Radio.Group`, nhãn từ khóa thông điệp) cho mỗi Bước phê duyệt của Nháp, gửi thành `simulated_decisions`
-   theo id Bước (workflow-triggers:R2.7); trang chỉ gửi `simulate` ở W1, tới route `.../test-runs` của
-   workflow-triggers (người gọi cần `studio.workflows.test`; route trả 422 với `live`, với `test` tới W2, và khi thiếu
-   quyết định cho một Bước phê duyệt, workflow-triggers:R2.2, workflow-triggers:R2.6, workflow-triggers:R2.8). Không
+   theo id Bước (workflow-triggers:R2.7); trang chỉ gửi `simulate` ở W1, tới route `.../versions/{version_id}/test-runs`
+   của workflow-triggers với id của phiên bản Nháp đang mở (route nhận bản `draft` ở chế độ `simulate`, bản kê ghim mã
+   băm tạm của nội dung nháp, workflow-triggers:R2.3, tenant-config:R6.1; người gọi cần `studio.workflows.test`; route
+   trả 422 với `live`, với `test` tới W2, và khi thiếu quyết định cho một Bước phê duyệt,
+   workflow-triggers:R2.2, workflow-triggers:R2.6, workflow-triggers:R2.8). Không
    Bước phê duyệt nào của lượt mô phỏng chờ người quyết (workflow-nodes:R9.9). Lớp phủ trạng thái, thời gian, token,
    chi phí theo từng Bước chạy từ `run_steps`, kể cả quyết định giả lập mà mỗi Bước phê duyệt đã đi theo.
 5. Che theo bảo mật trường: một trường người xem không đọc được hiện "Đã ẩn" ở cả kết quả Bước và lớp
@@ -41,8 +43,8 @@ quả từng Bước chạy che theo bảo mật trường
 - [ ] R3.4: khi có 422, mỗi lỗi gắn về đúng Bước và nút gửi kiểm định nêu lý do bị khóa.
 - [ ] R3.5 (BU3): không đường nào trong trang builder gọi phát hành; grep mã trang không thấy lời gọi
       phát hành.
-- [ ] R3.6 (BU5): trang builder chỉ gửi `simulate`; gọi thẳng route với `live` hay `test` → 422; bỏ giới
-      hạn chế độ ở builder → test thành phần đỏ.
+- [ ] R3.6 (BU5): trang builder chỉ gửi `simulate`, tới `.../versions/{version_id}/test-runs` với id của phiên bản
+      Nháp đang mở; gọi thẳng route với `live` hay `test` → 422; bỏ giới hạn chế độ ở builder → test thành phần đỏ.
 - [ ] R3.7 (BU6): người không đọc được `phone` thấy "Đã ẩn" ở kết quả Bước, và số không có trong DOM
       hay payload mạng; gỡ che → test đỏ.
 - [ ] R3.8: Nháp có hai Bước phê duyệt → biểu mẫu chạy mô phỏng có hai lựa chọn bắt buộc; chưa chọn một Bước thì
@@ -54,10 +56,12 @@ quả từng Bước chạy che theo bảo mật trường
 
 - workflow-nodes:R3.2, workflow-nodes:R3.5;
   `.claude/plans/studio/workflow-nodes/issues/03-pham-vi-bien-va-buoc-logic.md`.
-- workflow-triggers:R2.2, workflow-triggers:R2.3, workflow-triggers:R2.6, tenant-config:R5.1; spec: R3.6.
+- workflow-triggers:R2.2, workflow-triggers:R2.3, workflow-triggers:R2.6, tenant-config:R5.1, tenant-config:R6.1;
+  spec: R3.6.
 - ADR-0101 (Accepted), ADR-0114 (Accepted); spec: R3.2.
 
 ## Comments
 
 - 2026-10-23 (agent): theo phiếu 23/10/2026: W1 chỉ chạy thử `simulate` và route chạy thử là của workflow-triggers (DO-26.1); route kiểm biểu thức theo dạng sub-resource của ADR-0108 (Accepted); nút là "Gửi kiểm định" và gọi route của agent-lifecycle.
 - 2026-10-24 (agent): theo quyết định N2 của Đạt ngày 24/10/2026: biểu mẫu chạy mô phỏng đòi một lựa chọn duyệt hay từ chối cho mỗi Bước phê duyệt (R3.8), thay câu "người duyệt trong lượt chạy thử là chính người thử"; lượt `simulate` gọi là chạy mô phỏng.
+- 2026-10-24 (agent): vòng sửa thứ tư, theo quyết định của Đạt cùng ngày: route `.../test-runs` nhận bản Nháp ở chế độ `simulate`, nên trang chạy mô phỏng chính phiên bản Nháp đang mở và giữ lựa chọn cho mỗi Bước phê duyệt của Nháp (R3.6, R3.8).

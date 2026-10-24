@@ -99,11 +99,12 @@ Một công cụ MCP chỉ tới mô hình sau khi một người khác người
 (YC68; D11; ADR-0116 (Accepted) quyết 4, 9).
 
 - R3.1 KHI một ảnh có công cụ mới hay công cụ đổi định nghĩa, API Studio PHẢI tạo cho mỗi công cụ đó một
-  phiên bản loại `tool` ở `awaiting_approval` kèm một yêu cầu phê duyệt không lượt chạy
-  `studio.mcp.tool_approval` có `required_scope` `studio.mcp.approve`, hiện tên `mcp_<alias>__<tool>` tối
-  đa 64 ký tự, mô tả mô hình sẽ đọc, schema đã dựng, Gợi ý của máy chủ, kết quả lint và mã băm.
+  phiên bản loại `tool` ở `draft` rồi gửi nó qua lệnh gửi của agent-lifecycle trong cùng giao dịch, với người
+  đăng ký máy chủ là người gửi có trong `author_ids`, để phiên bản vào `awaiting_approval` kèm một yêu cầu phê
+  duyệt không lượt chạy `studio.mcp.tool_approval` có `required_scope` `studio.mcp.approve`.
 - R3.2 NẾU người quyết định là người đã đăng ký máy chủ và giữ `approvals.decide` cùng tem
-  `studio.mcp.approve`, THÌ luồng phê duyệt PHẢI trả 409 và không ghi quyết định nào.
+  `studio.mcp.approve`, THÌ luồng phê duyệt PHẢI trả 409 `conflict` với `details.reason_code`
+  `second_person_required` và không ghi quyết định nào.
 - R3.3 NẾU người quyết định không giữ `studio.mcp.approve`, THÌ luồng phê duyệt PHẢI trả 404 và không
   ghi quyết định nào.
 - R3.4 KHI yêu cầu `studio.mcp.tool_approval` được duyệt kèm ghi chú, dịch vụ phát hành của loại `tool`
@@ -112,6 +113,9 @@ Một công cụ MCP chỉ tới mô hình sau khi một người khác người
   `annotations`.
 - R3.5 NẾU công cụ thiếu Gợi ý của máy chủ, THÌ API Studio PHẢI đề xuất mức tác động `external` với chính
   sách duyệt `always`, và không bao giờ để `readOnlyHint: true` tự hạ mức tác động xuống `none`.
+- R3.6 KHI lệnh gửi mở một yêu cầu `studio.mcp.tool_approval`, API Studio PHẢI ghi vào yêu cầu tên
+  `mcp_<alias>__<tool>` tối đa 64 ký tự, mô tả mô hình sẽ đọc, schema đã dựng, Gợi ý của máy chủ, kết quả lint
+  và mã băm.
 
 ### R4 — Gọi công cụ MCP và phát hiện lệch
 
@@ -128,8 +132,8 @@ Mỗi lời gọi đi qua ToolExecutor và chỉ chạy trên định nghĩa đ�
 - R4.4 TRONG KHI công tắc của một công cụ đang mở, ToolExecutor PHẢI từ chối mọi lời gọi tới công cụ đó
   trước khi phân giải, với `artifact_killed`.
 - R4.5 KHI lane `mcp_drift` liệt kê lại một máy chủ có công cụ đã duyệt, lane `mcp_drift` PHẢI ghi lệch
-  cấu hình cho công cụ thêm, bớt, đổi định nghĩa, đổi đời giao thức hay đổi máy chủ cấp quyền, với
-  actor `system:mcp_drift`.
+  cấu hình loại `mcp_definition_changed` cho công cụ thêm, bớt, đổi định nghĩa, đổi đời giao thức hay đổi máy
+  chủ cấp quyền, với actor `system:mcp_drift`.
 - R4.6 NẾU `structuredContent` không khớp `outputSchema` đã ghim, THÌ ToolExecutor PHẢI trả lượt chạy
   lỗi `tool_output_invalid` và không đưa kết quả tới mô hình.
 - R4.7 KHI một công cụ MCP trả kết quả, ToolExecutor PHẢI bọc nội dung là dữ liệu ngoài theo
@@ -222,7 +226,7 @@ bao giờ bằng token của nền tảng (ADR-0116 (Accepted) quyết 8; ADR-01
 | MC2  | Cổng cô lập                                 | R1.1, R1.2             | Từ container `mcp-gateway`: TCP tới `postgres:5432`, `valkey:6379`, `qdrant:6333` thất bại; môi trường không có biến database; request bỏ qua proxy thất bại                                                           |
 | MC3  | Chặn SSRF                                   | R1.6                   | URL, metadata tài nguyên hay metadata máy chủ cấp quyền phân giải tới `169.254.169.254`, `10.0.0.0/8`, `100.64.0.0/10`, `::1`, hoặc DNS đổi giữa kiểm và dùng → từ chối                                                |
 | MC4  | Ghim băm                                    | R4.2, R4.3, R4.4, R4.9 | Máy chủ đổi mô tả → lời gọi bị từ chối trước `tools/call`, công tắc `tool` mở, audit `studio.mcp_tool.drift_detected`; lời gọi sau đó → `artifact_killed`; duyệt định nghĩa mới → công tắc vẫn mở; gỡ so băm → test đỏ |
-| MC5  | Hai người duyệt                             | R3.2, R3.3             | Người đăng ký giữ `approvals.decide` và tem tự duyệt → 409; người không có `studio.mcp.approve` → 404; bỏ `studio.mcp.` khỏi prefix nghiêm → test đỏ                                                                   |
+| MC5  | Hai người duyệt                             | R3.2, R3.3             | Người đăng ký giữ `approvals.decide` và tem tự duyệt → 409 `second_person_required`; người không có `studio.mcp.approve` → 404; bỏ `studio.mcp.` khỏi prefix nghiêm → test đỏ                                          |
 | MC6  | Gợi ý của máy chủ không được tin            | R3.5                   | Công cụ thiếu `annotations` → đề xuất `external` và `always`; `readOnlyHint: true` không tự đặt `none`                                                                                                                 |
 | MC7  | Không sampling, roots, logging, elicitation | R1.4, R1.5             | Capabilities gửi đi không có bốn mục đó; máy chủ gửi yêu cầu sampling hay elicitation → từ chối, lượt chạy nhận lỗi có kiểu                                                                                            |
 | MC8  | Không chuyển tiếp token                     | R5.5                   | Transport ghi lại: header `Authorization` tới máy chủ MCP không bao giờ là token Keycloak của người dùng                                                                                                               |
@@ -252,17 +256,18 @@ bao giờ bằng token của nền tảng (ADR-0116 (Accepted) quyết 8; ADR-01
   egress proxy và mạng của nó (ADR-0115 (Accepted)); foundations-hardening/05: một chính sách địa chỉ từ
   chối `not is_global`.
 - agent-lifecycle: máy giai đoạn với luật theo loại cho loại không có Cổng chất lượng (`awaiting_approval`
-  chỉ cần người thứ hai, không `gate_run_id`), công tắc `scope_type` `tool` và Bật lại hai người
-  (agent-lifecycle:R8.6, agent-lifecycle:R8.7), lệch cấu hình loại `mcp_tool_drifted` và công tắc đóng băng
-  ở mọi cửa (ADR-0120 (Accepted)); usage-and-limits: `RateLimiterPort` và giới hạn chạy đồng thời theo
-  `(tenant, server)`; telemetry-and-audit: thuộc tính span; compliance-pdpl: lớp tuyến cư trú và Xác nhận
-  chuyển dữ liệu ra nước ngoài (ADR-0123 (Accepted)).
+  chỉ cần người thứ hai, không `gate_run_id`) và lệnh gửi `draft → awaiting_approval` mà R3.1 gọi, công tắc
+  `scope_type` `tool` và Bật lại hai người (agent-lifecycle:R8.6, agent-lifecycle:R8.7), lệch cấu hình loại
+  `mcp_definition_changed` (ADR-0120 (Accepted) quyết 8; mã từ chối lời gọi vẫn là `mcp_tool_drifted` của
+  R4.2) và công tắc đóng băng ở mọi cửa (ADR-0120 (Accepted)); usage-and-limits: `RateLimiterPort` và giới hạn
+  chạy đồng thời theo `(tenant, server)`; telemetry-and-audit: thuộc tính span; compliance-pdpl: lớp tuyến cư
+  trú và Xác nhận chuyển dữ liệu ra nước ngoài (ADR-0123 (Accepted)).
 - Protocol do bên dùng khai: `McpGatewayPort` (runtime khai, adapter HTTP đáp ứng ở composition root).
 - Kiểm lại khi: checklist an ninh của danh mục hay người thẩm định đổi → R2.4, `configs/mcp/catalog/`;
   kết quả FOG-25, FOG-26 đổi egress
   proxy hay kho bí mật → R1.2, R1.3, R5; luật sư đổi kết luận DO-54.2 → R2.5; một advisory mới của SDK
   `mcp` hay bản ghim đổi → R1; tools-and-skills đổi `dw.tool/v1` hay `approval_required` → R3, R4;
-  agent-lifecycle đổi luật theo loại hay Bật lại → R3.4, R4.9.
+  agent-lifecycle đổi luật theo loại, lệnh gửi hay Bật lại → R3.1, R3.4, R4.9.
 
 ## Câu hỏi còn mở
 
@@ -304,6 +309,22 @@ bao giờ bằng token của nền tảng (ADR-0116 (Accepted) quyết 8; ADR-01
 - 24/10/2026 (Đạt): bảng mã từ chối người quyết nằm ở ADR-0104 (Accepted) quyết 11, không ở ADR-0004 (Accepted)
   vốn không có bảng đó; dòng ngày 23/10/2026 về bảng mã ở trên đổi chỗ dẫn, nội dung giữ nguyên. Sửa:
   Quyết định.
+- 24/10/2026 (Đạt): D3: công cụ MCP giữ ngoại lệ có tên của ADR-0116 (Accepted) quyết 9, phê duyệt
+  `studio.mcp.tool_approval` đóng dấu `studio.mcp.approve` dưới tiền tố nghiêm `studio.mcp.`; mọi loại công cụ
+  khác mở `studio.publish.tool` đóng dấu `studio.publish.approve` (tools-and-skills, ADR-0120 (Accepted) quyết 2).
+  Sửa: không mục nào ngoài dòng này; R3.1, R3.2, R3.3 giữ loại phê duyệt và khóa duyệt đang viết.
+- 24/10/2026 (agent, tạm): phiên bản công cụ MCP được tạo ở `draft` rồi gửi qua lệnh gửi của agent-lifecycle trong
+  cùng giao dịch, vì trigger giai đoạn chỉ cho chèn ở `draft` (ADR-0120 (Accepted) quyết 1); người đăng ký máy chủ
+  là người gửi có trong `author_ids`, nên tiền tố nghiêm và R3.2 cùng đọc một người (kiểm nhất quán vòng 3).
+  Phần hiện trong yêu cầu tách sang R3.6. Sửa: R3.1, thêm R3.6, Phụ thuộc. Nếu sai thì: người yêu cầu khám phá là
+  người gửi, và R3.2 đổi theo người đó.
+- 24/10/2026 (agent, tạm): một tên cho mỗi việc: phát hiện lệch của công cụ MCP là `mcp_definition_changed` của
+  ADR-0120 (Accepted) quyết 8, còn `mcp_tool_drifted` chỉ là mã từ chối lời gọi của ADR-0116 (Accepted) quyết 9
+  (kiểm nhất quán vòng 3). Sửa: R4.5, Phụ thuộc. Nếu sai thì: glossary và ADR-0120 (Accepted) quyết 8 đổi tên
+  phát hiện, R4.5 theo.
+- 24/10/2026 (agent, tạm): P9: người đăng ký tự quyết `studio.mcp.tool_approval` bị tiền tố nghiêm `studio.mcp.` từ
+  chối với `details.reason_code` `second_person_required`, một mã cho mọi loại phê duyệt mà ADR-0104 (Accepted)
+  quyết 11 ghi tên. Sửa: R3.2, MC5. Nếu sai thì: đổi mã ở R3.2 và test MC5 theo tên ADR-0104 (Accepted) ghi.
 
 ## Danh sách ticket
 

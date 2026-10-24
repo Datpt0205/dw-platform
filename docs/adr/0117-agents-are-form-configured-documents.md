@@ -67,7 +67,7 @@ repository root. External facts were gathered by the Studio research on 2026-10-
    `studio.agent.settings_changed` and makes no version: who may invoke an agent is not what it does.
    The data boundary is derived at publish from the toolset's object tools (object, action) and
    `field_caps` into `studio.actor_boundaries` (ADR-0103, ADR-0105). agent-builder registers
-   `studio.agents.read`, `studio.agents.author` and `studio.agents.settings.manage`; submit, approve,
+   `studio.agents.read`, `studio.agents.author` and `studio.agents.manage_settings`; submit, approve,
    retire, kill and freeze stay with ADR-0120.
 4. **Instructions are linted text inside a platform frame, never a text template.** The system
    message is the frame prompt `studio.agent_frame@1.0.0` (under `configs/prompts/studio/`, rendered by
@@ -96,8 +96,10 @@ repository root. External facts were gathered by the Studio research on 2026-10-
 6. **Conversation content has one store, private to its owner.** `studio.conversations`
    (`workspace_id`, `agent_artifact_id`, `owner_user_id`, `status` CHECK (`active`, `archived`) with no
    default, `active_run_id`) and `studio.conversation_messages` (`seq`, `role` CHECK (`user`,
-   `assistant`, `notice`, `summary`), capped `content`, `run_id`, `agent_version_id`, `citations`,
-   `activity` naming tools and workflows, never arguments). A message carries its conversation's
+   `assistant`, `notice`, `summary`), `content` capped at 16 KiB (16,384 bytes of UTF-8, CHECK
+   `octet_length(content) <= 16384`; a longer message is answered 422 `validation_failed` pointing at
+   `content`), `run_id`, `agent_version_id`, `citations` (W2), `activity` naming tools and workflows,
+   never arguments). A message carries its conversation's
    `workspace_id` and `owner_user_id` through a composite foreign key, so the two copies cannot differ.
    Messages are range-partitioned by month with a DEFAULT partition, registered by one row in
    `platform.time_partitioned_tables`, and no partition grants `dw_app` anything, so a partition read
@@ -112,19 +114,20 @@ repository root. External facts were gathered by the Studio research on 2026-10-
    the messages concerning that data subject through a SECURITY DEFINER function that returns content
    by data subject, audits the call, notifies the person whose conversation it reads, and never sets
    `app.workspace_scope` (DO-44.2 (c)). Run rows hold ids only. One run per conversation turn, claimed
-   on `active_run_id`, else 409 `conversation_busy`. Citation markers (`[[rec:<id>]]`,
-   `[[doc:<evidence_id>]]`) are checked against the evidence the turn
-   recorded and an unmatched one is dropped and counted. Feedback goes to `studio.message_feedback`
-   (`up` or `down` with a `reason_code`), read by the quality panel and online evaluation sampling.
+   on `active_run_id`, else 409 `conversation_busy`. From W2, with citations (YC56), citation markers
+   (`[[rec:<id>]]`, `[[doc:<evidence_id>]]`) are checked against the evidence the turn recorded and an
+   unmatched one is dropped and counted, and feedback goes to `studio.message_feedback` (`up` or
+   `down` with a `reason_code`), read by the quality panel and online evaluation sampling.
 7. **A linked agent is a child run; an agent with links orchestrates.** Each link becomes a platform
    tool `ask__<api_name>` (kind `builtin`) run by the `ToolExecutor`: it requests a child run of the
    linked version pinned in the root run manifest, parks the parent on a `child_run` wait, and resumes
    it with the answer wrapped as untrusted output. The child keeps its own toolset and boundary, acts
    for the root's user, shares the root's lease, runs at chain depth at most 3 and never less safe in
-   run mode; taint flows both ways. Publish refuses a cycle in `studio.dependencies` and a link to an
-   agent without the `link` surface. An in-process sub-agent names a subset of its parent's tools, its
-   own stack carrying run control, `StudioModelSelection` and the budget. An agent with `links` pins
-   only tools of side-effect level `none` or `read` plus workflow tools (`links.effect_tool_on_router`).
+   run mode; taint flows both ways. Submit refuses a cycle in `studio.dependencies` (ADR-0113
+   decision 9), and publish refuses a link to an agent without the `link` surface. An in-process
+   sub-agent names a subset of its parent's tools, its own stack carrying run control,
+   `StudioModelSelection` and the budget. An agent with `links` pins only tools of side-effect level
+   `none` or `read` plus workflow tools (`links.effect_tool_on_router`).
 
 ## Alternatives considered
 
@@ -146,8 +149,9 @@ repository root. External facts were gathered by the Studio research on 2026-10-
 - agent-builder owns `studio.agent_settings`, the agents' rows in `studio.actor_boundaries` (the table
   is record-access's, ADR-0105), the frame prompt and the conversation store. ModelResolver (ADR-0118)
   and freezes (ADR-0120) reach every model call, sub-agents included, through middleware.
-- Migrations: revisions for `studio.agent_settings`, `studio.conversations`,
-  `studio.conversation_messages` and `studio.message_feedback`, RLS forced, grants in the same revision.
+- Migrations: revisions for `studio.agent_settings`, `studio.conversations` and
+  `studio.conversation_messages`, and in W2 `studio.message_feedback`, RLS forced, grants in the same
+  revision.
 - Tests that must exist, each shown red with its guard removed: a second person in the same workspace
   reads none of another's conversation; a transaction with no `app.user_id` reads nothing; a partition
   of `studio.conversation_messages` read by name returns nothing to `dw_app`; text holding
@@ -215,7 +219,14 @@ open:
 
 - Decision 3: permission keys name their area in the plural, `studio.<areas>.<verb>`, so
   agent-builder registers `studio.agents.read`, `studio.agents.author` and
-  `studio.agents.settings.manage`; `studio.agent_settings` keeps `artifact_id`, `owner_user_id` and
+  `studio.agents.manage_settings`; `studio.agent_settings` keeps `artifact_id`, `owner_user_id` and
   tenant-only RLS as decision 3 says, and joins the list of tenant-wide tables with its reason
   (F:ADR-0117~agent-builder:dữ-liệu).
 - Consequences: conversations are kept 90 days, provisional and UNVERIFIED (DO-52).
+- Third consistency check (round 4): the settings key is `studio.agents.manage_settings` in decision 3
+  and above, since tenant-rbac's convention allows exactly three segments, `studio.<area>.<verb>`
+  (P10, the planner's provisional call, G:ADR-0117~~tenant-rbac:trong-phạm-vi; if it is wrong,
+  tenant-rbac admits four segments and the key keeps its earlier four-segment name); decision 6 caps
+  `content` at 16 KiB with a CHECK and a 422, and places `citations`, the citation check and
+  `studio.message_feedback` in W2 (Đạt's D13; F:ADR-0117~~agent-builder:spec); decision 7 refuses a
+  cycle at submit, as ADR-0113 decision 9 now says (G:ADR-0112~ADR-0113).

@@ -173,8 +173,11 @@ YC96, YC101; ADR-0116 (Accepted) quyết 1).
   `marketing.send_refused` khi sàn gửi tin từ chối là của compliance-pdpl:R3.1; cả hai ghi trong giao dịch
   của executor, spec này không ghi audit thứ hai cho hai việc đó.
 - Khóa quyền W2 `studio.tools.read`, `studio.tools.author`, đăng ký ở ticket W2 đầu tiên dùng chúng (quy ước
-  của tenant-rbac/01); phát hành và tắt công cụ dùng khóa chung `studio.publish.approve` và
-  `studio.lifecycle.kill` của agent-lifecycle (ADR-0120 (Accepted)).
+  của tenant-rbac/01). Phát hành một phiên bản công cụ loại khác `mcp` (`http`, `object_crud`, `workflow` từ W2
+  và các loại sau) mở phê duyệt không lượt chạy `studio.publish.tool` đóng dấu `studio.publish.approve`, như mọi
+  loại của ADR-0120 (Accepted) quyết 2; công cụ MCP là ngoại lệ có tên: `studio.mcp.tool_approval` đóng dấu
+  `studio.mcp.approve` dưới tiền tố nghiêm `studio.mcp.` (ADR-0116 (Accepted) quyết 9; mcp-client:R3.1). Tắt
+  công cụ dùng khóa chung `studio.lifecycle.kill` của agent-lifecycle (ADR-0120 (Accepted)).
 - Không tạo bảng mới: công cụ đọc đối tượng sinh từ phiên bản lược đồ; Bộ công cụ nhúng trong phiên bản
   agent; `platform.tool_executions` và `platform.tool_execution_claims` là của foundations-hardening/04.
 
@@ -252,7 +255,8 @@ YC96, YC101; ADR-0116 (Accepted) quyết 1).
 - Kiểm lại khi: `ObjectSchemaProjector` đổi hình hay đổi cách trả `ai_description` → R6, R6.8, ticket 03;
   `SendAdmissionPort` của compliance-pdpl đổi hình → R3, ticket 01; tenant-config đổi chỗ bước chế độ chạy
   hay agent-lifecycle đổi chỗ bước công tắc → R2.6, ticket 01; connections-and-vault đổi hình Hành động
-  `connector_action` → R2.2.
+  `connector_action` → R2.2; ADR-0116 (Accepted) quyết 9 hay ADR-0120 (Accepted) quyết 2 đổi loại phê duyệt hay
+  khóa duyệt của phiên bản công cụ → Trong phạm vi.
 
 ## Câu hỏi còn mở
 
@@ -292,7 +296,8 @@ YC96, YC101; ADR-0116 (Accepted) quyết 1).
   theo byte UTF-8, mặc định 8 000 ký tự, chỉ `contain_tool_output` bọc và cắt. Sửa: R5.1, R5.3, TS7, Phụ
   thuộc (bỏ dòng kiểm lại theo trần 32 000 ký tự).
 - 23/10/2026 (Đạt): khóa phát hành chung của agent-lifecycle (`studio.publish.approve`) theo (a), bỏ khóa
-  theo loại: `studio.tool.publish` không còn; `studio.tool.suspend` cũng bỏ vì ngưng một công cụ là công tắc
+  theo loại: `studio.tool.publish` không còn, còn công cụ MCP giữ ngoại lệ có tên của ADR-0116 (Accepted) quyết 9
+  (`studio.mcp.approve`, dòng D3 ngày 24/10/2026); `studio.tool.suspend` cũng bỏ vì ngưng một công cụ là công tắc
   `scope_type` `tool` dưới `studio.lifecycle.kill`. Sửa: Trong phạm vi; khóa của dòng tạm cùng ngày còn
   `studio.tool.read`, `studio.tool.author`.
 - 23/10/2026 (Đạt): DO-05 theo (a) và ADR-0116 (Accepted) kèm sửa: công cụ và kỹ năng là loại trong vỏ
@@ -326,6 +331,11 @@ YC96, YC101; ADR-0116 (Accepted) quyết 1).
   ở trên thành `studio.tools.read`, `studio.tools.author`. Sửa: Trong phạm vi.
 - 24/10/2026 (Đạt): ticket đăng ký loại `tool` ở W2 khai `has_quality_gate` false trong `studio.artifact_kinds`,
   vì công cụ là loại không có Cổng chất lượng (ADR-0120 (Accepted) quyết 1). Sửa: Ngoài phạm vi.
+- 24/10/2026 (Đạt): D3: công cụ MCP giữ ngoại lệ có tên của ADR-0116 (Accepted) quyết 9, phê duyệt
+  `studio.mcp.tool_approval` đóng dấu `studio.mcp.approve` dưới tiền tố nghiêm `studio.mcp.`; mọi loại công cụ
+  khác (`http`, `object_crud`, `workflow` từ W2 và các loại sau) mở `studio.publish.tool` đóng dấu
+  `studio.publish.approve` như mọi loại của ADR-0120 (Accepted) quyết 2. Sửa: Trong phạm vi, Phụ thuộc (Kiểm lại
+  khi), dòng 23/10/2026 về khóa phát hành chung.
 
 ## Danh sách ticket
 

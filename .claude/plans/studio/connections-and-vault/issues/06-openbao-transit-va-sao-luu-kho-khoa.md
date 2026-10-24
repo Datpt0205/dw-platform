@@ -1,7 +1,7 @@
 # 06 — OpenBao Transit: khóa khi triển khai, xoay khóa, hủy khóa, sao lưu và diễn tập khôi phục
 
 Status: needs-triage
-Blocked by: 02, .claude/plans/studio/studio-skeleton/issues/04-chinh-sach-compose-dich-vu-moi.md
+Blocked by: 02, .claude/plans/studio/studio-skeleton/issues/04-chinh-sach-compose-dich-vu-moi.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md
 Area: studio
 Yêu cầu: R2.1, R2.3, R2.4, R2.5, R2.6, R2.7, R2.8, CV6, CV20
 
@@ -65,3 +65,5 @@ FOG-25 ở bước 1 đạt (ADR-0115 (Accepted)); `KmsPort`, `LocalDevKms` và 
   điều kiện OpenBao chỉ ship sau khi FOG-25 đo mở niêm phong không người và tương đương Transit, nên bước 1
   là phép đo; ticket khám phá 21 đóng bằng một dòng trỏ tới kết quả ghi ở đây. D14: host chính lên ít nhất
   4 vCPU / 16 GB trước khi OpenBao ship.
+- 2026-10-24 (agent): theo kiểm nhất quán vòng 3 (vòng sửa thứ tư): thêm Blocked by foundations-hardening/07, vì
+  bước 5 sửa lane `offboarding` (`offboarding.py` và `test_offboarding.py`) mà ticket đó viết lại.

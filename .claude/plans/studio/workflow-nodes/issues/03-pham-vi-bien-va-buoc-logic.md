@@ -19,8 +19,8 @@ WN11).
 2. `GET /api/v1/studio/workflows/{id}/draft/scope?node=` (quyền `studio.workflows.edit`): cây biến có
    kiểu chỉ gồm bước trội, Trường đọc được với chủ thể chạy (dùng `visible_fields` của field-security).
 3. Bộ kiểm khi gửi kiểm định (đưa vào bộ kiểm toàn đồ thị của workflow-engine, mã theo bảng `wf.*` của
-   workflow-engine:R2): tham chiếu chưa khai hoặc không trội → `wf.reference_not_dominated`; điều kiện không
-   `bool` → `wf.cel_type_error`; Trường người chạy không
+   workflow-engine:R2, tên theo ADR-0112 (Accepted) quyết 3): tham chiếu chưa khai hoặc không trội →
+   `wf.ref_not_dominating`; điều kiện không `bool` → `wf.type_mismatch`; Trường người chạy không
    đọc được → `field_not_readable`; bảng ánh xạ kiểu dùng chung, keyed theo kiểu trường của
    custom-objects.
 4. Ba loại bước: `data.transform` (tối đa 50 khoá), `logic.switch` (thành Đường nối có điều kiện, Nhánh
@@ -31,9 +31,9 @@ WN11).
 
 ## Tiêu chí chấp nhận
 
-- [ ] R3.2: một Biểu thức tham chiếu một bước phía sau (không trội) → `wf.reference_not_dominated`, không
+- [ ] R3.2: một Biểu thức tham chiếu một bước phía sau (không trội) → `wf.ref_not_dominating`, không
       niêm phong.
-- [ ] R3.3: một điều kiện trả `string` → `wf.cel_type_error`, không niêm phong.
+- [ ] R3.3: một điều kiện trả `string` → `wf.type_mismatch`, không niêm phong.
 - [ ] R4.4 (WN5): tham chiếu `phone` không đọc được với chủ thể chạy → `field_not_readable` lúc gửi kiểm
       định và `field_hidden` lúc render; gỡ kiểm `visible_fields` → test đỏ.
 - [ ] R2.3 (WN11): một bước không khai Khi lỗi biên dịch ra `fail`, không `continue`.
@@ -50,3 +50,4 @@ WN11).
 ## Comments
 
 - 2026-10-23 (agent): theo phiếu 23/10/2026: mã của các kiểm này là bảng `wf.*` của workflow-engine:R2 (phát hiện A về hai bảng mã); "phát hành" đổi thành "gửi kiểm định" cho bước niêm phong theo bảng thuật ngữ.
+- 2026-10-24 (agent): vòng sửa thứ tư: hai mã đổi theo ADR-0112 (Accepted) quyết 3, `wf.ref_not_dominating` và `wf.type_mismatch` (phát hiện CRITICAL F về ADR-0112 (Accepted) và workflow-engine:R2).

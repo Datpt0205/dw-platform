@@ -108,8 +108,9 @@ Mỗi kho lát này tạo, và các kho sự kiện vào mà lane lưu giữ c�
 xóa; lượt chạy chưa kết thúc hay còn được tham chiếu không bị xóa. Lát này là chủ định dạng của tệp chính sách
 retention (một khóa `schema.table` mỗi kho) và các lane lưu giữ; mỗi ticket đăng ký một bảng `append_only` tự
 thêm thời hạn của bảng mình vào một bản mới của tệp trong cùng thay đổi, nên studio-skeleton:R3.7 xanh ngay khi
-đăng ký; mọi số là số tạm UNVERIFIED tới khi luật sư xác nhận trước chạy bóng (ADR-0122 (Accepted) quyết 7;
-DO-52).
+đăng ký; thời hạn và bộ xóa của sự kiện vào, lần giao kích hoạt và khóa chống trùng do workflow-triggers/02 thêm,
+lane của lát này thi hành (workflow-triggers:R6.3, workflow-triggers:R6.4, workflow-triggers:R6.7); mọi số là số
+tạm UNVERIFIED tới khi luật sư xác nhận trước chạy bóng (ADR-0122 (Accepted) quyết 7; DO-52).
 
 - R5.1 ĐỐI VỚI mỗi kho dữ liệu cá nhân mới (`platform.run_steps`, payload đối tượng, cột payload của lượt
   chạy, Sổ sử dụng, `studio.inbound_events`, `studio.trigger_deliveries`), tệp chính sách retention đang ghim
@@ -140,9 +141,8 @@ DO-52).
   processor Langfuse; formatter log JSON có danh sách trường cho phép; `StepRecorderPort` và adapter ghi
   `platform.run_steps`; đọc Sổ sử dụng cho token và chi phí mỗi Bước chạy; định dạng tệp chính sách retention
   (khóa `schema.table`, R5.6) và các lane lưu giữ; dòng thời hạn của kho lát này tạo hay xóa mà không ticket
-  đăng ký nào khác thêm (lớp run, bước, payload, `tool_executions.output`, `usage_daily`, sự kiện vào, lần giao
-  kích hoạt, khóa chống trùng; DO-52); hàm SECURITY DEFINER hẹp xóa trắng `platform.tool_executions.output`
-  (R5.7).
+  đăng ký nào khác thêm (lớp run, bước, payload, `tool_executions.output`, `usage_daily`; DO-52); hàm SECURITY
+  DEFINER hẹp xóa trắng `platform.tool_executions.output` (R5.7).
 - Khóa quyền `runs.read_payloads` đăng ký ở ticket 03 theo quy ước của tenant-rbac/01.
 - Thêm cột `trace_parent` cho `platform.outbox_events`; CHECK `trace_id` cho `platform.worker_runs` và
   `platform.audit_events`; đăng ký `run_steps` bằng một dòng `platform.time_partitioned_tables`.
@@ -189,18 +189,19 @@ timestamptz`, `duration_ms`, `error_type`; `input_preview` và `result_preview` 
   tiếp trace từ cột đó.
 - `platform.worker_runs`, `platform.audit_events`: CHECK `trace_id ~ '^[0-9a-f]{32}$'` dạng `NOT VALID`.
 - Tệp chính sách retention (lát này là chủ định dạng, ADR-0100 (Accepted) quyết 7, ADR-0122 (Accepted) quyết 7):
-  mỗi kho một khóa `schema.table` (kho không phải bảng dùng tên có tiền tố, như `objects.run_step_payloads`), mỗi
-  khóa mang thời hạn, bộ xóa (DROP PARTITION qua `platform.drop_expired_partitions`, lane xóa dòng, lane xóa đối
-  tượng, xóa trắng cột) và cổng `enforced`; mỗi lần thêm hay đổi một khóa là một bản mới của tệp, ghim trong
-  release manifest; mọi số UNVERIFIED tới khi luật sư xác nhận trước chạy bóng. Ticket 03 thêm: `run_steps` 30
-  ngày (lane xóa payload ở ngày 30, DROP PARTITION khi cả tháng quá hạn), payload đối tượng 30 ngày (lane xóa đối
-  tượng), cột payload lượt chạy 90 ngày sau kết thúc (lane xóa), lượt chạy 395 ngày sau kết thúc bỏ qua dòng
-  `memory.items` trỏ tới (lane xóa), `platform.tool_executions.output` 30 ngày (xóa trắng qua hàm của R5.7),
-  `usage_daily` 760 ngày (lane xóa), `studio.inbound_events` 30 ngày (lane xóa, bỏ qua sự kiện mà lượt `queued`
-  còn trỏ tới hay đang bị giữ khi Đóng băng), `studio.trigger_deliveries` 90 ngày (lane xóa), khóa chống trùng
-  của sự kiện vào 72 giờ (lane xóa); bỏ chú thích "model_usage_ledger đã bị bỏ" của bản 1.7.0. Thời hạn của
-  bảng `append_only` mà spec khác đăng ký do ticket đăng ký thêm (usage-and-limits/02, usage-and-limits/03,
-  agent-lifecycle/04, compliance-pdpl/04), và compliance-pdpl/06 thêm lớp của nó; lát này không khai lại số đó.
+  một tệp có phiên bản `configs/policies/retention@<semver>.yaml`; mỗi kho một khóa `schema.table` (kho không phải
+  bảng dùng tên có tiền tố, như `objects.run_step_payloads`), mỗi khóa mang thời hạn, bộ xóa (DROP PARTITION qua
+  `platform.drop_expired_partitions`, lane xóa dòng, lane xóa đối tượng, xóa trắng cột) và cổng `enforced`; mỗi lần
+  thêm hay đổi một khóa là một bản mới của tệp, ghim trong release manifest, và các ticket sửa tệp đi thành một
+  chuỗi theo `Blocked by`, mỗi ticket ra một bản (mục Phụ thuộc); mọi số UNVERIFIED tới khi luật sư xác nhận trước
+  chạy bóng. Ticket 03 thêm: `run_steps` 30 ngày (lane xóa payload ở ngày 30, DROP PARTITION khi cả tháng quá hạn),
+  payload đối tượng 30 ngày (lane xóa đối tượng), cột payload lượt chạy 90 ngày sau kết thúc (lane xóa), lượt chạy
+  395 ngày sau kết thúc bỏ qua dòng `memory.items` trỏ tới (lane xóa), `platform.tool_executions.output` 30 ngày
+  (xóa trắng qua hàm của R5.7), `usage_daily` 760 ngày (lane xóa); bỏ chú thích "model_usage_ledger đã bị bỏ" của
+  bản 1.7.0. Thời hạn của bảng mà spec khác tạo do ticket tạo bảng thêm (usage-and-limits/02, usage-and-limits/03,
+  agent-lifecycle/04, workflow-triggers/02 với `studio.inbound_events`, `studio.trigger_deliveries` và
+  `studio.inbound_dedupe`, compliance-pdpl/04, agent-builder/04), và compliance-pdpl/06 thêm lớp của nó; lát này
+  không khai lại số đó.
 
 ## API
 
@@ -252,15 +253,23 @@ timestamptz`, `duration_ms`, `error_type`; `input_preview` và `result_preview` 
   (`.claude/plans/studio/usage-and-limits/issues/03-han-muc-giu-truoc-va-quyet-toan.md`).
 - app-standards: trường `trace_id` của vỏ lỗi (app-standards:R1.2) và index audit theo lượt chạy
   (`.claude/plans/studio/app-standards/issues/03-quy-uoc-api-danh-sach-va-sua.md`).
-- workflow-triggers: bảng `studio.inbound_events`, `studio.trigger_deliveries` và khóa chống trùng mà lane lưu
-  giữ của lát này xóa theo hạn trong tệp chính sách retention, cùng tín hiệu sự kiện đang bị giữ khi Đóng băng
-  cho R5.5 (`.claude/plans/studio/workflow-triggers/issues/02-data-hub-endpoint-va-ingress.md`).
+- workflow-triggers: bảng `studio.inbound_events`, `studio.trigger_deliveries`, `studio.inbound_dedupe`, thời hạn
+  của chúng trong tệp chính sách retention và bộ xóa mà lane lưu giữ của lát này chạy, cùng tín hiệu sự kiện đang
+  bị giữ khi Đóng băng cho R5.5, đều do
+  `.claude/plans/studio/workflow-triggers/issues/02-data-hub-endpoint-va-ingress.md` thêm (workflow-triggers:R6.3,
+  workflow-triggers:R6.4, workflow-triggers:R6.7); test của R5.5 trên các bảng đó chạy ở ticket đó
+  (workflow-triggers:R1.7, workflow-triggers:R6.8).
 - workflow-engine: bộ bọc node phát span và gọi `StepRecorderPort`, `root_run_id` và cửa nhận lượt chạy
-  (`.claude/plans/studio/workflow-engine/issues/03-bien-dich-va-wrapper-nut.md`).
+  (`.claude/plans/studio/workflow-engine/issues/03-bien-dich-va-wrapper-nut.md`); trigger trên
+  `platform.worker_runs` của workflow-engine:R6.13
+  (`.claude/plans/studio/workflow-engine/issues/05-cho-nguoi-va-ghim-phien-ban.md`), mà ticket 02 chờ vì CHECK
+  `trace_id` cũng đặt trên bảng đó.
 - field-security: hàm quyết quyền đọc trường và dấu `Đã ẩn`, đang viết đợt này — dẫn theo đường dẫn
   (`.claude/plans/studio/field-security/issues/01-mo-hinh-bao-mat-truong.md`); ADR-0106 (Accepted).
 - tenant-rbac: quyền `runs.read` trong danh mục quyền một chủ; `runs.read_payloads` đăng ký ở ticket 03 theo quy
-  ước của `.claude/plans/studio/tenant-rbac/issues/01-mot-chu-cho-quyen.md`.
+  ước của `.claude/plans/studio/tenant-rbac/issues/01-mot-chu-cho-quyen.md`, với cột `tenant_grantable` của
+  `.claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md` trong cùng INSERT, nên ticket 03 chờ
+  tenant-rbac/02.
 - studio-skeleton: schema, điều hướng và sổ `platform.time_partitioned_tables` (studio-skeleton:R3.1)
   (`.claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md`); R3.7 đọc thời hạn
   theo định dạng của R5.6 (studio-skeleton:R3.7); test phủ offboarding và `STUDIO_EXCLUSIONS`
@@ -271,14 +280,18 @@ timestamptz`, `duration_ms`, `error_type`; `input_preview` và `result_preview` 
   định dạng của R5.6.
 - foundations-hardening: `dw_app` không có UPDATE trên `platform.tool_executions` (foundations-hardening:R6.3),
   nên R5.7 đi qua hàm riêng của lane.
-- Tệp chính sách retention: các ticket thêm khóa của mình, mỗi lần một bản mới của tệp: usage-and-limits/02,
-  usage-and-limits/03, agent-lifecycle/04, ticket 03 của lát này, compliance-pdpl/04 (chờ ticket 03) và
+- Tệp chính sách retention: các ticket sửa tệp đi thành một chuỗi, mỗi ticket chờ ticket đứng trước:
+  studio-skeleton/01 → usage-and-limits/02 → usage-and-limits/03 → ticket 03 của lát này → agent-lifecycle/04 →
+  workflow-triggers/02 → compliance-pdpl/04 → agent-builder/04 →
   `.claude/plans/studio/compliance-pdpl/issues/06-lop-luu-giu-du-lieu-ca-nhan.md` với hội thoại và Danh sách chặn
-  gửi (DO-52).
+  gửi (DO-52). studio-skeleton/01 đứng đầu chuỗi mà không ra bản nào (dựng hàm tra theo khóa `schema.table`, đọc
+  `retention@1.7.0` qua ánh xạ tạm); mỗi ticket sau nó ra đúng một bản mới.
 - Kiểm lại khi: hợp đồng `StepRecorderPort` hay bộ bọc node của workflow-engine đổi → R3; hàm quyền đọc
   trường của field-security đổi → R3.3; ADR-0122 (Accepted) bị Đạt bác → toàn lát; workflow-triggers đổi bảng
   sự kiện vào hay cách giữ sự kiện khi Đóng băng → R5.1, R5.5; luật sư đổi số thời hạn → một bản mới của tệp
-  chính sách retention, không đổi tiêu chí; usage-and-limits đổi hai hàm của sổ → R5.8, ticket 03.
+  chính sách retention, không đổi tiêu chí; usage-and-limits đổi hai hàm của sổ → R5.8, ticket 03; một ticket mới
+  sửa tệp chính sách retention, hay chuỗi các ticket sửa tệp đổi thứ tự → mục Phụ thuộc, ticket 03; workflow-engine
+  bỏ hay dời trigger trên `platform.worker_runs` → ticket 02.
 
 ## Câu hỏi còn mở
 
@@ -329,6 +342,21 @@ timestamptz`, `duration_ms`, `error_type`; `input_preview` và `result_preview` 
   ticket 03.
 - 24/10/2026 (Đạt): `runs.read_payloads` đăng ký ở ticket 03 theo quy ước của tenant-rbac/01
   (B:agent-lifecycle:phụ-thuộc\~tenant-rbac/01). Sửa: Trong phạm vi, Phụ thuộc, ticket 03.
+- 24/10/2026 (agent, tạm): tệp chính sách retention giữ là một tệp có phiên bản
+  `configs/policies/retention@<semver>.yaml`, một câu trả lời có số hiệu cho câu hỏi tuân thủ; các ticket sửa tệp đi
+  thành một chuỗi theo `Blocked by`, mỗi ticket ra một bản mới, theo thứ tự ở mục Phụ thuộc
+  (C:configs:spec\~telemetry-and-audit/03). Sửa: Dữ liệu, Phụ thuộc, ticket 03. Nếu sai thì: tách tệp thành một tệp
+  mỗi bảng, sửa R5.6 và ADR-0122 (Accepted) quyết 7.
+- 24/10/2026 (agent, tạm): ticket 02 chờ workflow-engine/05, theo chiều của lộ trình (lát này đi sau
+  workflow-engine), vì cả hai đặt DDL trên `platform.worker_runs` (trigger của workflow-engine:R6.13 và CHECK
+  `trace_id`); qua workflow-engine/05, ticket 02 cũng chờ workflow-engine/04
+  (C:telemetry-and-audit/02\~workflow-engine/05). Sửa: Phụ thuộc, ticket 02. Nếu sai thì: workflow-engine/05 chờ
+  ticket 02 và cạnh này bỏ.
+- 24/10/2026 (agent, tạm): mọi ticket chèn dòng vào `platform.permissions` chờ tenant-rbac/02 và nêu trong INSERT mọi
+  cột NOT NULL có lúc đó, nên ticket 03 chờ tenant-rbac/02 và dòng `runs.read_payloads` mang cả `tenant_grantable`
+  (C:custom-objects/02\~tenant-rbac/02; ADR-0104 (Accepted) quyết 1). Sửa: Phụ thuộc, ticket 03. Nếu sai thì:
+  tenant-rbac/01 tạo cột `tenant_grantable` kèm sửa ADR-0104 (Accepted) quyết 1, và ticket 03 chỉ chờ
+  tenant-rbac/01.
 
 ## Danh sách ticket
 

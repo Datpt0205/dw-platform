@@ -1,7 +1,7 @@
 # 02 — Thành viên cấp tenant và trạng thái
 
 Status: needs-triage
-Blocked by: 01, .claude/plans/studio/foundations-hardening/issues/02-hang-rao-du-lieu-va-danh-tinh.md, .claude/plans/studio/tenant-rbac/issues/01-mot-chu-cho-quyen.md
+Blocked by: 01, .claude/plans/studio/foundations-hardening/issues/02-hang-rao-du-lieu-va-danh-tinh.md, .claude/plans/studio/tenant-rbac/issues/01-mot-chu-cho-quyen.md, .claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md
 Area: studio
 Yêu cầu: R4.1, R4.2, R4.3, R4.4, R4.5, R4.7, R4.8, R5.1, G1, G2, OP4, OP5, OP6, OP7
 
@@ -11,7 +11,8 @@ Vị thế của một người trong công ty thành một dòng `platform.tena
 `suspended`; mọi membership treo vào dòng đó, và người không `active` bị cửa dựng AccessContext từ chối ở mọi workspace
 của công ty (R4, R5, YC7). Cửa đó là chủ của câu "được hành động trong tenant"; `platform.effective_grants` của
 tenant-rbac/02 là chủ của câu "giữ quyền gì". Ticket này dựng trên `_resolve_user` của foundations-hardening/02 và
-bootstrap của tenant-rbac/01 (OPS-b). Từ brief B2 ticket 05, không có quan hệ quản lý (W2).
+bootstrap của tenant-rbac/01 (OPS-b), và chờ studio-skeleton/01, nơi `_TENANT_WIDE_ON_PURPOSE` và test phủ offboarding
+ra đời, cùng foundations-hardening/07, vì cùng sửa lane offboarding và `test_offboarding.py`. Từ brief B2 ticket 05, không có quan hệ quản lý (W2).
 
 ## Việc cần làm
 

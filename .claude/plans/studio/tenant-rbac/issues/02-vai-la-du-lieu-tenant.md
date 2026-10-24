@@ -1,7 +1,7 @@
 # 02 — Vai trò của tenant là dữ liệu: gán vai trò, vai trò mẫu, hàm quyền hiệu lực và phiên bản quyền
 
 Status: needs-triage
-Blocked by: 01, .claude/plans/studio/org-and-principals/issues/02-thanh-vien-cap-tenant.md, .claude/plans/studio/foundations-hardening/issues/02-hang-rao-du-lieu-va-danh-tinh.md
+Blocked by: 01, .claude/plans/studio/org-and-principals/issues/02-thanh-vien-cap-tenant.md, .claude/plans/studio/foundations-hardening/issues/02-hang-rao-du-lieu-va-danh-tinh.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md, .claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md
 Area: studio
 Yêu cầu: R2.2, R2.3, R2.4, R2.5, R2.6, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R4.1, R4.2, R5.1, R5.2, G1, RB5, RB6, RB7, RB8, RB9, RB10, RB11, RB12, RB13, RB14
 
@@ -15,7 +15,9 @@ xóa cache ở route khóa của foundations-hardening/02 là tạm và ticket n
 ## Việc cần làm
 
 1. **Danh mục.** `platform.permissions` thêm `tenant_grantable boolean NOT NULL` (migration ghi giá trị cho mọi dòng:
-   `false` cho `platform.admin`, `true` cho phần còn lại; không default). Đọc bởi quyền tính động của `tenant_owner` (bước 5) và trigger của ticket 03.
+   `false` cho `platform.admin`, `true` cho phần còn lại; không default). Đọc bởi quyền tính động của `tenant_owner` (bước 7) và trigger của ticket 03.
+   Mọi ticket khác chèn dòng vào `platform.permissions` chờ ticket này và nêu `tenant_grantable` cùng mọi cột NOT NULL
+   khác trong câu INSERT (Quyết định 24/10/2026 của spec).
 2. **Bảng vai trò.** `platform.tenant_roles`: `id uuid PRIMARY KEY`, `tenant_id uuid NOT NULL` FK `platform.tenants`
    `ON DELETE CASCADE`, `key text NOT NULL CHECK (key ~ '^[a-z][a-z0-9_]{1,62}$')`,
    `name text NOT NULL CHECK (btrim(name) <> '')`, `description text`,
@@ -46,8 +48,8 @@ xóa cache ở route khóa của foundations-hardening/02 là tạm và ticket n
    SELECT, INSERT, UPDATE, DELETE; `dw_provisioner` SELECT, INSERT; `dw_agent_ro` không gì; khẳng định trong
    `test_privileges.py`, `test_rls_coverage.py`. `platform.tenant_roles`, `platform.tenant_role_permissions` và
    `platform.tenant_access_versions` (bước 9) không có `workspace_id`: mỗi bảng một dòng trong danh sách bảng toàn tenant
-   của `test_rls_coverage.py` với lý do "vai trò, quyền của vai trò và phiên bản quyền thuộc cả công ty; neo workspace nằm
-   ở `platform.role_assignments`" (DO-01).
+   `_TENANT_WIDE_ON_PURPOSE` của `test_rls_coverage.py` (studio-skeleton/01, `studio-skeleton:R9.1`) với lý do "vai trò,
+   quyền của vai trò và phiên bản quyền thuộc cả công ty; neo workspace nằm ở `platform.role_assignments`" (DO-01).
 6. **Cài vai trò.** `platform.install_system_roles(p_tenant_id uuid)`: `tenant_owner` (`is_system`, không dòng quyền:
    tính động) và `member` (`is_system`, quyền nhân bản từ mẫu `member`). `platform.install_role_template(p_tenant_id uuid, p_template_key text) RETURNS uuid`:
    nhân bản `platform.roles` (loại `role`) hay `platform.permission_sets` (loại `permission_set`), mức theo `scope_kind`
@@ -65,8 +67,10 @@ xóa cache ở route khóa của foundations-hardening/02 là tạm và ticket n
    bằng hoặc rộng hơn, cùng neo khi mức `workspace`), và
    `platform.checker_candidates(p_tenant_id uuid, p_permission_key text, p_proposer_id uuid, p_workspace_id uuid DEFAULT NULL) RETURNS SETOF uuid`
    (người `active` giữ khóa đó trên `platform.effective_grants`, khác người đề xuất; có `p_workspace_id` thì chỉ người
-   giữ khóa với tới workspace đó), hàm SQL dùng chung cho `no_checker_available` của ticket 03 (toàn tenant) và của
-   tenant-config R8.5 (theo workspace của đề xuất) (`D:tenant-config/05~tenant-rbac:R7.1`). Không bản sao Python.
+   giữ khóa với tới workspace đó), hàm SQL dùng chung cho `no_checker_available` của ticket 03 (toàn tenant), của
+   tenant-config R8.5 (theo workspace của đề xuất) (`D:tenant-config/05~tenant-rbac:R7.1`) và của hai phê duyệt nghiêm
+   `egress.allowed_host`, `connections.enable` của connections-and-vault (`connections-and-vault:R3.9`,
+   `connections-and-vault:R5.10`). Không bản sao Python.
 8. **Người đọc.** `effective_scopes` thành adapter gọi `platform.scopes_in`; `_access_in` (`membership_lookup.py:80-106`)
    lấy quyền qua nó; `AccessContext.roles` là khóa vai trò gán ở workspace đang làm việc (W1 thêm `platform_admin` còn
    trong `role_keys`); `scope_holders.py` đọc `platform.effective_grants` và gỡ bộ lọc thành viên không `active` riêng mà
@@ -105,7 +109,10 @@ xóa cache ở route khóa của foundations-hardening/02 là tạm và ticket n
     cũ tới khi ticket 03 khóa cột; khóa lạ thì từ chối (lỗi to).
 14. **Giới hạn.** Trigger BEFORE INSERT trên `platform.tenant_roles` với `pg_advisory_xact_lock(hashtext('tenant_roles:' || tenant_id))`:
     200 vai trò chưa xóa (gồm bộ quyền bổ sung) thì nhận, vai trò thứ 201 thì 23514 `role_limit_reached`.
-15. Offboarding xuất và xóa năm bảng mới (`test_offboarding.py`).
+15. Offboarding xuất và xóa bốn bảng mới (`platform.tenant_roles`, `platform.tenant_role_permissions`,
+    `platform.role_assignments`, `platform.tenant_access_versions`; `test_offboarding.py`), trên phần đọc catalog
+    và `export_rows` mà foundations-hardening/07 đã viết lại, dưới test phủ offboarding của studio-skeleton/01
+    (`studio-skeleton:R4.3`).
 
 ## Tiêu chí chấp nhận
 
@@ -149,3 +156,5 @@ xóa cache ở route khóa của foundations-hardening/02 là tạm và ticket n
 ## Comments
 
 - 2026-10-23 (agent): DO-09.1, DO-32.2, `A:org-and-principals:R4.3~tenant-rbac:R2.5`, `A:foundations-hardening:R3.3~tenant-rbac:R4.1`, `D:tenant-config/05~tenant-rbac:R7.1` và DO-01 đã có lời đáp (Đạt, 23/10/2026); Status về needs-triage, thêm foundations-hardening/02 vào Blocked by.
+- 2026-10-24 (agent): vòng sửa 4: Blocked by thêm foundations-hardening/07 (cùng sửa `offboarding.py` và `test_offboarding.py`, `C:foundations-hardening/07~tenant-rbac/02`) và studio-skeleton/01 (danh sách `_TENANT_WIDE_ON_PURPOSE` và test phủ offboarding, `I:org-and-principals/02~studio-skeleton/01`); bước 1 ghi rằng mọi ticket đăng ký khóa chờ ticket này và nêu `tenant_grantable` trong INSERT (`C:custom-objects/02~tenant-rbac/02`); studio-skeleton/03 chờ ticket này (`C:studio-skeleton/03~tenant-rbac/01`), nên bước 11 viết lại `apps/web/lib/nav/visibility.ts` trước khi mục Studio có mặt; `platform.checker_candidates` của bước 7 cũng trả lời `no_checker_available` của connections-and-vault (`connections-and-vault:R3.9`, `connections-and-vault:R5.10`).
+- 2026-10-24 (agent): kiểm vòng sửa 4: bước 15 đếm lại thành bốn bảng mới và nêu tên chúng (bước 2, 3, 4, 9), thay cho "năm bảng" cũ; dòng Phụ thuộc của spec sửa cùng.

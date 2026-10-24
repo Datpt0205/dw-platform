@@ -1,17 +1,17 @@
-# 02 — Định nghĩa object và trường, bảng bản ghi, describe và chiếu JSON Schema
+# 02 — Định nghĩa object và trường, bảng bản ghi và chiếu JSON Schema từ định nghĩa
 
 Status: needs-triage
-Blocked by: 01, .claude/plans/studio/studio-skeleton/issues/02-goi-dw-studio-va-seam-api.md, .claude/plans/studio/tenant-config/issues/02-vo-phien-ban-va-chi-muc-phu-thuoc.md, .claude/plans/studio/org-and-principals/issues/01-khoa-don-vi-va-siet-realm.md, .claude/plans/studio/compliance-pdpl/issues/01-tu-vung-du-lieu-ca-nhan.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md
+Blocked by: 01, .claude/plans/studio/studio-skeleton/issues/02-goi-dw-studio-va-seam-api.md, .claude/plans/studio/tenant-config/issues/02-vo-phien-ban-va-chi-muc-phu-thuoc.md, .claude/plans/studio/org-and-principals/issues/01-khoa-don-vi-va-siet-realm.md, .claude/plans/studio/compliance-pdpl/issues/01-tu-vung-du-lieu-ca-nhan.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md, .claude/plans/studio/tenant-rbac/issues/01-mot-chu-cho-quyen.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md
 Area: studio
-Yêu cầu: R1.1, R1.3, R1.4, R1.5, R1.6, R1.8, R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R4.1, R4.2, R4.4, R9.2, R9.4, R9.5, CO1, CO2, CO3, CO4, CO5, CO6, CO7, CO8, CO21, CO23, CO24, CO25
+Yêu cầu: R1.1, R1.3, R1.4, R1.5, R1.6, R1.8, R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R3.7, R4.1, R4.2, R4.4, R9.2, R9.4, R9.5, CO1, CO2, CO3, CO4, CO5, CO6, CO21, CO23, CO24, CO25
 
 ## Mục tiêu
 
 Lát nền của spec: định nghĩa đối tượng và trường của công ty thành dữ liệu (R1, R2), bảng bản ghi có người phụ
-trách và workspace sở hữu với partition và slot theo số đo của ticket 01 (R4.1, R4.2, R9.2 tới R9.4), describe
-theo người gọi và bộ chiếu lược đồ (R3). Sau ticket này tenant-rbac/04 sinh khóa `obj.<api_name>.<action>`,
-field-security/01 thêm `access_mode`, record-access/03 thêm policy tầm, và ticket 06 nối loại `object` vào đường phát
-hành của agent-lifecycle để marketing-pilot/02 tạo Lead, Campaign qua API công khai.
+trách và workspace sở hữu với partition và slot theo số đo của ticket 01 (R4.1, R4.2, R9.2 tới R9.4), bộ chiếu lược
+đồ dựng từ định nghĩa với `ai_description` tách khỏi lược đồ (R3.7). Sau ticket này tenant-rbac/04 sinh khóa
+`obj.<api_name>.<action>`, field-security/01 thêm `access_mode`, record-access/03 thêm policy tầm, ticket 03 dựng
+describe và bộ chiếu theo quyền của người gọi, và ticket 06 nối loại `object` vào đường phát hành của agent-lifecycle.
 
 ## Việc cần làm
 
@@ -58,8 +58,11 @@ hành của agent-lifecycle để marketing-pilot/02 tạo Lead, Campaign qua AP
     - `studio.object_defs`, `studio.field_defs`, `studio.picklist_options` không có `workspace_id`: mỗi bảng một dòng
       trong danh sách bảng toàn tenant của `packages/python/dw_platform/tests/integration/test_rls_coverage.py` với lý
       do "định nghĩa đối tượng của cả công ty" (DO-01).
-2. Cùng revision đăng ký khóa `studio.objects.manage` (chỉ mức `tenant`) trong danh mục quyền của tenant-rbac/01
-   (ADR-0104 (Accepted)); vai nào giữ khóa là việc của tenant-rbac.
+2. Cùng revision đăng ký khóa `studio.objects.manage` trong `platform.permissions` của tenant-rbac/01
+   (ADR-0104 (Accepted)): câu INSERT nêu mọi cột NOT NULL của danh mục lúc đó, gồm `label_vi`, `area`,
+   `scope_kind` `tenant` (chỉ mức `tenant`), `risk` `standard` theo bảng phân loại của tenant-rbac/01, `status`
+   `active`, `owner_package` và `tenant_grantable` `true` của tenant-rbac/02 (Quyết định 24/10/2026 của spec); vai
+   nào giữ khóa là việc của tenant-rbac.
 3. Thêm `("studio", "records")`, `("studio", "picklist_options")`, `("studio", "field_defs")`,
    `("studio", "object_defs")` theo thứ tự đó vào `_ORDERED_FIRST` của
    `packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py`, trên phần đọc catalog và
@@ -80,7 +83,7 @@ hành của agent-lifecycle để marketing-pilot/02 tạo Lead, Campaign qua AP
     - Bộ so sánh chỉ siết của loại `object` (R1.8), hàm thuần: báo chỉ siết khi và chỉ khi đối tượng có phiên bản Đang
       dùng và mọi khác biệt là một trường từ `open` sang `secured` hay `default_access` hẹp hơn theo thứ tự
       `public_read_write`, `public_read`, `private`; mọi khác biệt khác, kể cả `ai_description` hay nhãn, là không chỉ
-      siết. Ticket 06 nối nó vào lệnh gửi của agent-lifecycle, nơi `LifecycleService` ghi `tighten_only` và
+      siết. Ticket 06 nối nó vào lệnh Gửi kiểm định của agent-lifecycle, nơi `LifecycleService` ghi `tighten_only` và
       `compared_live_hash` theo kết quả của nó (R1.2, R1.7; `agent-lifecycle:R2.8`).
     - Bộ trích phụ thuộc thuần, trả danh sách rỗng ở W1 (chưa có trường tham chiếu), có test fixture.
     - Móc phát hành `MetadataService.apply`, chạy trong giao dịch đưa phiên bản lên Đang dùng mà dịch vụ phát hành của
@@ -88,20 +91,21 @@ hành của agent-lifecycle để marketing-pilot/02 tạo Lead, Campaign qua AP
       `studio.object_defs` ở lần đầu; với mỗi trường mới lấy `pg_advisory_xact_lock` theo công ty rồi chọn slot trống
       nhỏ nhất của họ (trường lọc được) hoặc `next_field_no` (trường trong `data`); thêm lựa chọn; sửa nhãn và
       `ai_description`; `schema_version` cộng 1; audit `studio.object.created`, `studio.object.updated`,
-      `studio.field.created`, `studio.field.updated`, `studio.picklist.updated` chỉ mang khóa và phiên bản.
+      `studio.field.created`, `studio.field.updated`, `studio.picklist.updated` chỉ mang khóa và phiên bản. Móc chỉ áp
+      định nghĩa: nó không đổi giai đoạn phiên bản và không ghi `studio.version.published`, sự kiện mà agent-lifecycle
+      ghi đúng một lần mỗi lần phát hành (`agent-lifecycle:R2.9`, `agent-lifecycle:R5.5`).
     - Đăng ký loại `object` vào `ArtifactKindRegistry` ở `build_studio`: `studio.objects.manage` (mức `tenant`) là khóa
-      đọc, khóa ghi và khóa gửi của loại cho đọc, tạo, lưu nháp và gửi phát hành (`tenant-config:R2.11`,
+      đọc, khóa ghi và khóa gửi của loại cho đọc, tạo, lưu nháp và Gửi kiểm định (`tenant-config:R2.11`,
       `tenant-config:R2.12`, `tenant-config:R2.15`), không có Cổng chất lượng, bộ so sánh chỉ siết và móc phát hành ở
       trên; migration thêm dòng `object` với
       `has_quality_gate = false` vào `studio.artifact_kinds` (`ck_artifacts_kind` thành FK tới bảng này, OPS-b cạnh 4,
       `tenant-config:R2.14`), và test ở composition root so registry với các dòng.
-5. Route trong nhóm `/api/v1/studio`, `Cache-Control: no-store`: `GET /api/v1/studio/objects` và
-   `GET /api/v1/studio/objects/{api_name}/describe`, đọc quyền đối tượng qua khóa `obj.<api_name>.read`
-   (tenant-rbac/04) và quyền trường qua `resolve_field_access` (field-security/01); describe trả `ai_description` của
-   đối tượng và của mỗi trường đọc được, và trả trường Đã ẩn chỉ với `api_name`, nhãn và `access: hidden`;
-   `ObjectSchemaProjector` dựng JSON Schema 2020-12 cho tạo, sửa, truy vấn, khóa theo `(object_id, schema_version)` và
-   quyết định trường của người gọi, không có trường Đã ẩn, và trả `ai_description` của đối tượng và mỗi trường đọc được
-   trong một bảng tách khỏi lược đồ, không đặt vào `title`, `description` hay nhãn (R3.7, YC48).
+5. `ObjectSchemaProjector` trong `dw_studio.records`: dựng JSON Schema 2020-12 cho tạo, sửa, truy vấn từ định nghĩa,
+   khóa theo `(object_id, schema_version)`, và trả `ai_description` của đối tượng và mỗi trường trong một bảng tách khỏi
+   lược đồ, không đặt vào `title`, `description` hay nhãn (R3.7, YC48). Route `GET /api/v1/studio/objects`, describe và
+   phần lọc theo khóa đọc đối tượng và quyết định trường của người gọi (R3.1 tới R3.6, phần trường Đã ẩn của R3.7)
+   thuộc ticket 03, vì chúng cần tenant-rbac/04 và field-security/01, mà cả hai chờ ticket này (Quyết định 24/10/2026
+   của spec).
 
 ## Tiêu chí chấp nhận
 
@@ -115,7 +119,7 @@ hành của agent-lifecycle để marketing-pilot/02 tạo Lead, Campaign qua AP
       coi thay đổi trộn đó là chỉ siết → test đỏ.
 - [ ] R1.3 (CO3): người thiếu `studio.objects.manage` tạo hay lưu nháp thành phần loại `object` → 403
       `permission_denied`, không dòng mới trong `studio.artifact_versions`; gỡ kiểm khóa ở mục đăng ký của loại → test
-      đỏ (lệnh gửi phát hành kiểm ở ticket 06).
+      đỏ (lệnh Gửi kiểm định kiểm ở ticket 06).
 - [ ] R1.4: tài liệu không nêu `default_access` → dòng có `private`; giá trị ngoài CHECK bị từ chối theo tên ràng
       buộc.
 - [ ] R1.5 (CO4): hai phát hành song song cùng thêm trường lọc được họ `t` vào một đối tượng → hai slot khác nhau;
@@ -124,8 +128,9 @@ hành của agent-lifecycle để marketing-pilot/02 tạo Lead, Campaign qua AP
       `/fields/<n>`, định nghĩa không đổi.
 - [ ] R2.1: giá trị CHECK của `type` đọc từ `pg_constraint` bằng `FieldType`, theo mẫu
       `test_fixed_set_checks_db.py`; kiểu `json` → 422.
-- [ ] R2.2 (CO5): trường thiếu `pd_category` → 422 `pd_category_required`, không áp gì; CHECK của `pd_category`
-      bằng danh sách của `dw_kernel.personal_data`; gỡ kiểm → test đỏ.
+- [ ] R2.2 (CO5): trường thiếu `pd_category` → 422 `validation_failed` với `errors[].code` `pd_category_required` và
+      con trỏ `/fields/<n>`, không áp gì; CHECK của `pd_category` bằng danh sách của `dw_kernel.personal_data`; gỡ kiểm
+      → test đỏ.
 - [ ] R2.3: `api_name` 40 ký tự thì nhận, 41 thì 422; `Lead` có chữ hoa → 422.
 - [ ] R2.4 (CO6): phiên bản đổi `api_name` hay kiểu của một trường đã phát hành → 422, không phát hành gì; gỡ bước
       so với phiên bản Đang dùng → test đỏ.
@@ -134,19 +139,9 @@ hành của agent-lifecycle để marketing-pilot/02 tạo Lead, Campaign qua AP
 - [ ] R2.6: `ai_description` 500 ký tự (chuỗi NFC, có dấu tiếng Việt) thì nhận, 501 thì 422 có con trỏ
       `/ai_description` hay `/fields/<n>/ai_description`, không phát hành gì; bỏ trống thì nhận; CHECK độ dài của hai
       cột từ chối 501 ký tự ghi thẳng bằng SQL.
-- [ ] R3.1: describe cho người đọc được trả `ai_description` của đối tượng và mỗi trường với nhãn `vi`,
-      `ai_description`, kiểu, `access`, các cờ và lựa chọn đang bật; lựa chọn đã tắt không có.
-- [ ] R3.2 (CO7): người gọi mà `phone` Đã ẩn gọi describe → `phone` chỉ có `api_name`, nhãn và `access: hidden`, không
-      kiểu, cờ hay lựa chọn; lược đồ truy vấn của bộ chiếu không có `phone`.
-- [ ] R3.3: người của công ty B gọi describe với `api_name` chỉ công ty A có → 404.
-- [ ] R3.4 (CO8): người thiếu `obj.<api_name>.read` gọi describe → 403 `permission_denied`.
-- [ ] R3.5: `GET /api/v1/studio/objects` trả đúng các đối tượng người gọi giữ khóa đọc, không thừa không thiếu.
-- [ ] R3.6: lược đồ tạo của bộ chiếu không có trường người gọi không sửa được; lược đồ truy vấn không có trường Đã
-      ẩn; `schema_version` tăng → lược đồ mới.
 - [ ] R3.7 (CO25): trường có `ai_description` chứa `</input>` và "bỏ qua mọi chỉ dẫn" → JSON Schema của bộ chiếu không
-      có chuỗi đó ở `title`, `description` hay nhãn, giá trị chỉ có trong bảng `ai_description` tách riêng; trường Đã
-      ẩn với người gọi không có `ai_description` ở describe lẫn bộ chiếu; ghép `ai_description` vào `description` của
-      lược đồ → test đỏ.
+      có chuỗi đó ở `title`, `description` hay nhãn, giá trị chỉ có trong bảng `ai_description` tách riêng; ghép
+      `ai_description` vào `description` của lược đồ → test đỏ (trường Đã ẩn với người gọi kiểm ở ticket 03).
 - [ ] R4.1: INSERT vào `studio.records` thiếu `owner_kind`, `owner_id` hay `workspace_id` → vi phạm NOT NULL.
 - [ ] R4.2 (CO1): kết nối không đặt `app.tenant_id` đọc 0 dòng ở bốn bảng; INSERT với `tenant_id` của công ty khác
       → RLS từ chối; `dw_app` đọc thẳng `studio.records_p3` → permission denied; một vai thử NOBYPASSRLS có SELECT
@@ -190,3 +185,10 @@ hành của agent-lifecycle để marketing-pilot/02 tạo Lead, Campaign qua AP
   phần gửi của R1.3) chuyển sang ticket 06, nơi có cạnh tới agent-lifecycle/03, /04: đặt cạnh tới agent-lifecycle/04 ở
   đây khép vòng qua workflow-engine/03 và record-access/04. Hai đề xuất ngày 23/10/2026 ở trên chưa nằm trong quyết
   định của vòng này nên giữ nguyên.
+- 2026-10-24 (agent): vòng sửa 4 áp hai đề xuất ngày 23/10/2026 (Quyết định 24/10/2026 của spec): R3.1 tới R3.6, phần
+  trường Đã ẩn của R3.7, CO7, CO8 và route describe, `GET /api/v1/studio/objects` chuyển sang ticket 03; bộ chiếu dựng
+  từ định nghĩa và phần tách `ai_description` của R3.7 ở lại đây (`I:custom-objects/02~tenant-rbac/01`); Blocked by
+  thêm tenant-rbac/01, /02 và bước 2 nêu mọi cột NOT NULL của danh mục trong INSERT (`C:custom-objects/02~tenant-rbac/02`).
+  Cùng vòng: R2.2 thành 422 `validation_failed` với `errors[].code` `pd_category_required`
+  (`B:app-standards:R1.3~custom-objects:R6.7`); móc phát hành không ghi `studio.version.published`
+  (`B:agent-lifecycle:R2.9~custom-objects:R1.7`); "gửi phát hành" thành "Gửi kiểm định" (`G:CONTEXT.md#submit~custom-objects:R1.2`).

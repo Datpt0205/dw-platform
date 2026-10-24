@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: 03, .claude/plans/studio/workflow-engine/issues/01-tai-lieu-workflow-va-kiem-xuat-ban.md, .claude/plans/studio/agent-lifecycle/issues/03-hop-dong-vong-doi-va-niem-phong.md, .claude/plans/studio/agent-builder/issues/02-loai-agent-va-khung-prompt.md
 Area: studio
-Yêu cầu: R2.6, R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, CP6, CP12, CP13, CP14, CP15
+Yêu cầu: R2.6, R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R5.5, CP6, CP12, CP13, CP14, CP15
 
 ## Mục tiêu
 
@@ -27,9 +27,13 @@ chủ ≤ A2; trường dữ liệu cá nhân không vào prompt trên tuyến r
    trên A2 → 422 `capability_trifecta_autonomy` kèm hai cách sửa (hạ tự chủ, hoặc tách phần đọc nội dung
    không tin cậy khỏi phần giữ tác động); công cụ thiếu một phân loại → 422 `tool_unclassified`.
 4. Migration (id hex ngẫu nhiên) tạo `studio.version_assessments` (một dòng mỗi phiên bản và Mã băm định
-   nghĩa; tín hiệu, đường vi phạm, kết luận, phiên bản bộ phân tích; RLS theo công ty; `dw_app` SELECT,
-   INSERT); ghi kết quả trong giao dịch gửi kiểm định, không thêm cột lên dòng phiên bản; kết quả đi trong
-   payload phê duyệt phát hành (ADR-0120 (Accepted)); không cấu hình nào hạ sàn.
+   nghĩa; tín hiệu, đường vi phạm, kết luận, phiên bản bộ phân tích; RLS theo công ty; `version_id` FK tới
+   `studio.artifact_versions` ON DELETE CASCADE với index trên `version_id`, nên lượt xóa phiên bản khi offboarding
+   xóa luôn dòng đánh giá; `dw_app` SELECT, INSERT, không DELETE, nên cùng thay đổi thêm một dòng
+   `STUDIO_EXCLUSIONS` cho bảng với lý do "`dw_app` không DELETE; xóa khi offboarding theo FK CASCADE từ
+   `studio.artifact_versions`" (spec R5.5; studio-skeleton:R4.1)); ghi kết quả trong giao dịch gửi kiểm định, không
+   thêm cột lên dòng phiên bản; kết quả đi trong payload phê duyệt phát hành (ADR-0120 (Accepted)); không cấu hình
+   nào hạ sàn.
 5. Kiểm R2.6 trong cùng phân tích: một đường đưa giá trị trường dữ liệu cá nhân vào prompt khi
    `effective_route_class` của ticket 03 là ra nước ngoài → 422 `residency_refused` kèm đường (MP7).
 6. `configs/policies/studio_risk@1.0.0.yaml`: dữ liệu gợi ý tầng rủi ro (cột tầng trên
@@ -49,6 +53,10 @@ chủ ≤ A2; trường dữ liệu cá nhân không vào prompt trên tuyến r
       kiểm định 422, phiên bản vẫn Nháp.
 - [ ] R4.6: gửi kiểm định một quy trình hợp lệ → đúng một dòng `studio.version_assessments` cho Mã băm định
       nghĩa của phiên bản, ghi trong cùng giao dịch; rollback giao dịch gửi kiểm định → không dòng nào.
+- [ ] R5.5: công ty `offboarding` có dòng `studio.version_assessments` → lane `offboarding` xuất mỗi dòng một lần,
+      rồi lượt xóa `studio.artifact_versions` của công ty xóa hết các dòng đó qua FK CASCADE, dòng của công ty khác
+      còn nguyên; test phủ offboarding (studio-skeleton:R4.1) xanh với dòng `STUDIO_EXCLUSIONS` của bảng, bỏ dòng đó
+      → test phủ đỏ, nêu tên bảng; đổi FK sang `RESTRICT` → test đỏ.
 - [ ] R2.6 (CP6): gắn `full_name` vào prompt trên tuyến `cross_border_full` → gửi kiểm định 422
       `residency_refused` kèm đường, phiên bản vẫn Nháp; gỡ kiểm → test đỏ.
 - [ ] Xong: `make ci && make test-integration` xanh.
@@ -68,3 +76,11 @@ chủ ≤ A2; trường dữ liệu cá nhân không vào prompt trên tuyến r
   ADR-0125 (Accepted)): tiêu đề "khi gửi kiểm định"; kết quả ghi vào `studio.version_assessments` do ticket
   này tạo (cột tầng rủi ro là W2), không cột `capability_report`; tên theo glossary; đăng ký qua bảng kiểm
   theo loại của agent-lifecycle/03; kiểm R2.6 chuyển từ ticket 03 về đây nên chờ ticket 03.
+- 2026-10-24 (agent): theo dòng tạm cùng ngày của spec (H:compliance-pdpl:spec\~studio-skeleton:R4.1):
+  `studio.version_assessments` có FK `version_id` tới `studio.artifact_versions` ON DELETE CASCADE, nên offboarding
+  xóa nó cùng phiên bản (bước 4; spec R5.5); `dw_app` vẫn chỉ SELECT, INSERT.
+- 2026-10-24 (agent): kiểm sau lượt sửa: vì `dw_app` chỉ SELECT, INSERT, bảng nằm ngoài `_CATALOG_PURGEABLE` của
+  adapter offboarding, nên test phủ của studio-skeleton:R4.1 đỏ nếu thiếu dòng `STUDIO_EXCLUSIONS`; bước 4 nay thêm
+  dòng đó với cascade từ `studio.artifact_versions` làm cách xóa, theo bước 7 của studio-skeleton/01 (như
+  `platform.service_principals` của org-and-principals), và tiêu chí R5.5 thử nó; câu "không cần dòng
+  `STUDIO_EXCLUSIONS`" bỏ.

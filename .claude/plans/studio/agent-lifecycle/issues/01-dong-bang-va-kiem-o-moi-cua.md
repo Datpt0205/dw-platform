@@ -1,7 +1,7 @@
 # 01 — Đóng băng toàn nền tảng và theo tenant, kiểm ở mọi cửa của runtime
 
 Status: needs-triage
-Blocked by: .claude/plans/studio/org-and-principals/issues/02-thanh-vien-cap-tenant.md, .claude/plans/studio/foundations-hardening/issues/06-run-va-outbox-khong-ket.md
+Blocked by: .claude/plans/studio/org-and-principals/issues/02-thanh-vien-cap-tenant.md, .claude/plans/studio/foundations-hardening/issues/06-run-va-outbox-khong-ket.md, .claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md
 Area: studio
 Yêu cầu: R7.1, R7.2, R7.3, R7.4, R7.5, R7.6, R7.7, R7.8, R7.10, R7.11, R9.1, R9.2, R10.1, AL11, AL12, AL16, AL17, AL18
 
@@ -35,8 +35,9 @@ cửa, để quyết Đóng băng có thể tiếp tục cho lượt đang chạ
       `test_rls_coverage.py` thấy `control_switches`; policy `tenant_isolation_control_switches` để lane
       `offboarding` xuất và xóa bảng (studio-skeleton:R4.3). Đăng ký khóa `studio.lifecycle.freeze` trong
       `platform.permissions` của tenant-rbac/01 (nhãn "Đóng băng công ty", `scope_kind` `tenant`, `risk`
-      `standard` theo bảng phân loại của ticket đó) và thêm khóa vào vai `org_admin` (vai còn do migration sở
-      hữu).
+      `standard` theo bảng phân loại của ticket đó); INSERT nêu mọi cột NOT NULL của bảng lúc đó, gồm `risk` của
+      tenant-rbac/01 và `tenant_grantable` (`true`) của tenant-rbac/02, ticket này chờ ticket đó; và thêm khóa vào
+      vai `org_admin` (vai còn do migration sở hữu).
 2. `RunControlPort` (bên dùng khai trong `dw_agent_runtime.ports`): `require_open(run_context, *, artifacts=())`
    ném `RunHaltedError` (một `ConflictError`, HTTP 409, `details.reason_code` trong `platform_frozen`,
    `tenant_frozen`, `artifact_killed`, `control_state_unavailable`, `principal_inactive`, `tenant_locked`,
@@ -60,8 +61,12 @@ cửa, để quyết Đóng băng có thể tiếp tục cho lượt đang chạ
    map `RunHaltedError` sang `_fail(status=CANCELLED, event="run.cancelled")`; middleware lỗi công cụ ném lại
    `RunHaltedError` thay vì báo model. Cửa nhận theo `trigger_kind` (spec R7.7, R7.8): lượt `chat`,
    `manual`, `test` và lần thử của Lượt kiểm định kết thúc `cancelled`; lượt `datahub`, `provider_app`,
-   `schedule`, `record_event` đã xếp hàng giữ `queued` và chạy theo thứ tự xếp hàng sau khi gỡ. Làn
-   `studio_runs` của workflow-engine/04 thi hành hợp đồng này; ticket này giao hợp đồng kèm test với làn giả.
+   `schedule`, `record_event` đã xếp hàng giữ `queued` và chạy theo thứ tự xếp hàng sau khi gỡ. Với
+   `principal_inactive` (spec R9.1; workflow-engine:R5.15, workflow-engine:R5.17): lượt `datahub`, `provider_app`,
+   `record_event` đang `queued` của tài khoản dịch vụ không `active` giữ `queued` và chạy theo thứ tự đến khi tài
+   khoản `active` lại (org-and-principals:R4.9), mọi lượt khác kết thúc `cancelled`; `tenant_locked`,
+   `tenant_offboarding` kết thúc mọi loại `cancelled` (spec R9.2; workflow-engine:R5.18). Làn `studio_runs` của
+   workflow-engine/04 thi hành hợp đồng này; ticket này giao hợp đồng kèm test với làn giả.
 4. Route `POST /api/v1/admin/freeze` (`studio.lifecycle.freeze`, `Idempotency-Key`, body `reason_code`,
    `reason`; một người cộng audit) và `POST /api/v1/admin/unfreeze` (`studio.lifecycle.freeze`): mở một yêu
    cầu phê duyệt không lượt chạy `studio.lifecycle.unfreeze` nghiêm, tem `studio.lifecycle.freeze`; handler
@@ -106,6 +111,9 @@ cửa, để quyết Đóng băng có thể tiếp tục cho lượt đang chạ
 - [ ] R9.1 (AL17): gỡ thành viên khỏi công ty rồi tiếp tục lượt chạy chờ duyệt của người đó → `cancelled`
       `principal_inactive`, 0 lời gọi model; đặt `suspended` bằng SQL rồi nhận lượt mới của người đó → như
       trên; gỡ kiểm trong `require_open` → test đỏ.
+- [ ] R9.1 (AL17): với làn giả, tài khoản dịch vụ `suspended` rồi lượt `datahub` của nó tới cửa nhận → giữ `queued`
+      với `principal_inactive`, không `cancelled`, 0 lời gọi model; kích hoạt lại tài khoản → lượt chạy theo thứ tự
+      đến; đặt nhánh `cancelled` cho lượt `datahub` → test đỏ.
 - [ ] R9.2 (AL17): khóa công ty rồi nhận một lượt chạy mới của nó → `cancelled` `tenant_locked`, 0 lời gọi
       model; công ty `offboarding` rồi tiếp tục một lượt chạy chờ duyệt → `cancelled` `tenant_offboarding`; gỡ
       phép đọc trạng thái công ty khỏi `require_open` → test đỏ.
@@ -142,3 +150,10 @@ cửa, để quyết Đóng băng có thể tiếp tục cho lượt đang chạ
   (spec R9.2); DELETE trên `control_switches` chỉ cho offboarding (spec R7.5, R10.1); một dòng `|=` cho tiền tố
   của ticket này kèm test tập tiền tố, không thêm cạnh tới tenant-config/05. tools-and-skills/01 chờ ticket này
   để chuỗi bước của `ToolExecutor._execute` có một thứ tự viết (cạnh nằm ở ticket đó).
+- 2026-10-24 (agent): vòng sửa thứ tư: lượt `datahub`, `provider_app`, `record_event` của tài khoản dịch vụ không
+  `active` giữ `queued` thay vì `cancelled` (quyết định của Đạt ngày 24/10/2026, spec R9.1); chờ studio-skeleton/01
+  (test phủ offboarding mà spec R10.1 dựa vào) và tenant-rbac/02 (INSERT khóa nêu `tenant_grantable`, Quyết định tạm
+  của spec).
+- 2026-10-24 (agent): kiểm vòng sửa thứ tư: bước 3 và spec R9.1 nêu rõ lượt được giữ là lượt `datahub`,
+  `provider_app`, `record_event` đang `queued`, khớp org-and-principals:R4.6, R4.9; lượt tới cửa tiếp tục kết thúc
+  `cancelled` như lượt khác.

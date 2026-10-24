@@ -14,14 +14,16 @@ ADR-0123 (Accepted)).
 
 ## Việc cần làm
 
-1. Một bản mới của tệp chính sách retention, sau các bản của telemetry-and-audit/03 và ticket 04 (DO-52), số ghi
-   UNVERIFIED tới khi luật sư xác nhận trước chạy bóng: bộ xóa theo dòng của Bản ghi đồng ý (thời hạn theo quan hệ
-   cộng 5 năm mà ticket 04 đã thêm dưới khóa `platform.consent_records`; một hàm riêng của lane vì `dw_app` không
-   DELETE bảng, không DROP PARTITION), khóa `platform.contact_suppressions` không hạn theo thời gian (bộ xóa là
-   offboarding của công ty và, ở W2, yêu cầu của chủ thể dữ liệu), khóa `studio.conversations` và
-   `studio.conversation_messages` 90 ngày (DO-52, Đạt 24/10/2026; lane xóa), đăng ký bộ xóa với lane lưu giữ của
-   telemetry-and-audit. Nhật ký gửi marketing (13 tháng, DROP PARTITION) đã có khóa từ ticket 04; lịch sử sự kiện
-   Data Hub do telemetry-and-audit/03 khai.
+1. Một bản mới của tệp chính sách retention, bản cuối của chuỗi các ticket sửa tệp ở mục Phụ thuộc của spec, sau
+   bản của agent-builder/04 (DO-52), số ghi UNVERIFIED tới khi luật sư xác nhận trước chạy bóng: bộ xóa theo dòng
+   của Bản ghi đồng ý (thời hạn theo quan hệ cộng 5 năm mà ticket 04 đã thêm dưới khóa `platform.consent_records`;
+   một hàm riêng của lane vì `dw_app` không DELETE bảng, không DROP PARTITION), khóa `platform.contact_suppressions`
+   không hạn theo thời gian (bộ xóa là offboarding của công ty, lượt xóa duy nhất mà trigger của ticket 04 cho qua,
+   spec R5.6, và, ở W2, yêu cầu của chủ thể dữ liệu), khóa `studio.conversations` 90 ngày (DO-52, Đạt 24/10/2026;
+   lane xóa) cùng bộ xóa của hai bảng hội thoại, vì khóa `studio.conversation_messages` 90 ngày đã có từ
+   agent-builder/04, đăng ký bộ xóa với lane lưu giữ của telemetry-and-audit. Nhật ký gửi marketing (13 tháng, DROP
+   PARTITION) đã có khóa từ ticket 04; thời hạn của sự kiện vào Data Hub do workflow-triggers/02 thêm, lane của
+   telemetry-and-audit thi hành.
 2. Sửa chú thích thời hạn Nhật ký kiểm toán trong bản đó của tệp chính sách retention và
    `.claude/plans/ops-hardening.md:22` sang PDPL và Nghị định 356 (điều khoản do luật sư xác nhận), bỏ dẫn
    Nghị định 13/2023.
@@ -58,3 +60,7 @@ ADR-0123 (Accepted)).
   liệu thật (DO-52; H:compliance-pdpl:R5.1\~requirements.md:419), nên `needs-triage`. Theo quyết định cùng ngày về
   tệp retention, thời hạn của Bản ghi đồng ý và nhật ký gửi vào ở ticket 04 cùng thay đổi đăng ký; ticket này
   đăng ký bộ xóa của Bản ghi đồng ý, thêm Danh sách chặn gửi và hội thoại, không ghi cứng số phiên bản tệp.
+- 2026-10-24 (agent): theo dòng tạm cùng ngày của spec (C:configs:spec\~telemetry-and-audit/03), ticket này ra bản
+  cuối của chuỗi các ticket sửa tệp retention, sau agent-builder/04, nên chỉ thêm khóa `studio.conversations`; khóa
+  `studio.conversation_messages` đã vào ở agent-builder/04 cùng lúc đăng ký bảng. Thời hạn của sự kiện vào Data Hub
+  do workflow-triggers/02 thêm (A:telemetry-and-audit:spec\~workflow-triggers/02).

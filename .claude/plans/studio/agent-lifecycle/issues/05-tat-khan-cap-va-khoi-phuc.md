@@ -1,7 +1,7 @@
 # 05 — Tắt khẩn cấp agent và quy trình, bật lại cần hai người, hủy việc đang chờ
 
 Status: needs-triage
-Blocked by: 01, 03
+Blocked by: 01, 03, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md
 Area: studio
 Yêu cầu: R8.1, R8.2, R8.3, R8.4, R8.5, R8.6, R8.7, R8.8, AL13, AL14, AL15
 
@@ -23,7 +23,8 @@ ticket 03.
    với actor là người quyết định, `details` có khóa `lane` là tên lane (ADR-0011 (Accepted)). Migration của
    ticket đăng ký khóa `studio.lifecycle.kill` và `studio.lifecycle.revive` trong `platform.permissions` của
    tenant-rbac/01 (nhãn tiếng Việt, `scope_kind` `workspace`, `risk` `standard` theo bảng phân loại của ticket
-   đó).
+   đó); INSERT nêu mọi cột NOT NULL của bảng lúc đó, gồm `risk` của tenant-rbac/01 và `tenant_grantable` (`true`)
+   của tenant-rbac/02, ticket này chờ ticket đó.
 2. Kiểm `artifact_killed` ở mọi cửa của ticket 01 với thành phần của run và thành phần sau công cụ dùng
    quy trình hay agent liên kết; ở cửa nhận, lượt `live` và `test` của thành phần kết thúc `cancelled` kể cả
    lượt do trình kích hoạt đã xếp hàng (Tắt khẩn cấp không giữ `queued`, DO-28 C); lượt `simulate` không bị
@@ -78,3 +79,5 @@ ticket 03.
   connections-and-vault ở W2, ticket này giữ test hợp đồng với lane giả; đăng ký hai khóa của ticket theo quy
   ước của tenant-rbac/01. workflow-engine/04 và workflow-triggers/01 chờ ticket này cho test `artifact_killed`
   ở làn thật (cạnh nằm ở hai ticket đó); ticket này không chờ ticket nào của hai spec đó.
+- 2026-10-24 (agent): vòng sửa thứ tư: chờ tenant-rbac/02, vì INSERT hai khóa của ticket nêu mọi cột NOT NULL có lúc
+  đó, gồm `tenant_grantable` (Quyết định tạm của spec).

@@ -5,14 +5,15 @@ Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: chưa
 Sẵn sàng: chưa kiểm
 
-Studio cần đo và chặn chi tiêu ở mức công ty, workspace, agent, quy trình và người dùng, việc mà một
-tổng theo ngày của cả tenant không làm được. Lát này đưa lại Sổ sử dụng theo lượt gọi (D6) làm nguồn
+Studio cần đo và chặn chi tiêu ở mức công ty, workspace, agent và quy trình (theo người dùng từ W2), việc
+mà một tổng theo ngày của cả tenant không làm được. Lát này đưa lại Sổ sử dụng theo lượt gọi (D6) làm nguồn
 cho hạn mức, sử dụng theo lượt chạy và màn Mức độ sử dụng, ba bên đọc ship cùng lát (đối soát cho người
 vận hành là W2); đặt một Bảng giá theo ngày hiệu lực làm chủ duy nhất của "cái này tốn bao nhiêu"; biến
 mọi Hạn mức cứng thành Khoản giữ trước bằng lease Postgres mở lúc nhận lượt chạy, kẹp `max_tokens` từng
 lời gọi, quyết toán từng lượt gọi (ADR-0121 (Accepted)); và giữ một `RateLimiterPort` cho mọi giới hạn tốc
 độ theo công ty. W1 phục vụ YC76, YC77, YC78, một chủ cho số của gói và giới hạn tốc độ của YC44 bằng bộ
-đếm theo tiến trình (DO-49); GCRA trên Valkey và YC79 (hạn mức theo người và mục đích) thuộc W2.
+đếm theo tiến trình (DO-49); GCRA trên Valkey, trần đồng thời và YC79 (hạn mức theo người và mục đích)
+thuộc W2.
 
 ## Hiện trạng (đã kiểm ở `ab33703` ngày 23/10/2026)
 
@@ -123,15 +124,15 @@ mục đích và bên trả phí; màn Mức độ sử dụng đọc chính s�
 
 Cửa nhận lượt chạy là một chỗ: runner, do làn `studio_runs` gọi lúc dispatch (DO-21.3). Spec này là chủ câu
 trả lời của `LimitsPort.admit`; cách làn xử lý từng `trigger_kind` khi bị từ chối là bảng của workflow-engine
-(workflow-engine:R5.4, workflow-engine:R5.9, workflow-engine:R5.10, workflow-engine:R5.11): lượt tương tác kết
+(workflow-engine:R5.9, workflow-engine:R5.10, workflow-engine:R5.11): lượt tương tác kết
 thúc, lượt do sự kiện vào chờ tới kỳ sau và không bao giờ bị bỏ, còn một lần kích hoạt của lịch khi đã hết hạn
 mức ghi `limit_refused` rồi bỏ qua (W2), vì dồn mọi lần lỡ sẽ xả cả loạt khi kỳ mới bắt đầu (YC77; `CLAUDE.md`
 mục 'Agent and tool rules'; ADR-0121 (Accepted) quyết 3). Lượt kiểm định xin lease qua lane `studio_gate`
 (agent-lifecycle:R4.4).
 
 - R4.1 KHI một lượt chạy xin bắt đầu, cửa nhận lượt chạy PHẢI kiểm mọi phạm vi có chính sách trong Chuỗi
-  phạm vi hạn mức (gói, công ty, workspace và tổ tiên, agent hoặc quy trình, người dùng, lượt chạy) và
-  chỉ cho qua khi mọi phạm vi có chính sách đều còn đủ.
+  phạm vi hạn mức (gói, công ty, workspace và tổ tiên, agent hoặc quy trình, lượt chạy) và chỉ cho qua khi mọi
+  phạm vi có chính sách đều còn đủ.
 - R4.2 [Bỏ] 24/10/2026: hình từ chối lượt tương tác khi hết kỳ thuộc bảng của workflow-engine:R5.9; spec này
   trả câu trả lời của `LimitsPort.admit` (R4.10).
 - R4.3 [Bỏ] 24/10/2026: giữ `queued` tới `resets_at` lượt do sự kiện vào khi hết kỳ thuộc workflow-engine:R5.10;
@@ -142,8 +143,8 @@ mục 'Agent and tool rules'; ADR-0121 (Accepted) quyết 3). Lượt kiểm đ�
   trả 422 `limit_above_plan` và không đổi dòng nào.
 - R4.6 NẾU người gọi thiếu `platform.limits.manage`, hoặc nhắm workspace của công ty khác, THÌ API hạn mức
   PHẢI trả 403 hoặc 404 và không đổi gì.
-- R4.7 [Bỏ] 24/10/2026: xếp lại lượt chạy khi thiếu chỗ đồng thời thuộc workflow-engine:R5.4; spec này trả câu
-  trả lời thiếu đồng thời (R4.11).
+- R4.7 [Bỏ] 24/10/2026: xếp lại lượt chạy khi thiếu chỗ đồng thời thuộc workflow-engine:R5.4, và trần đồng thời
+  là W2 (R4.11).
 - R4.8 KHI người giữ `platform.limits.manage` hạ một Hạn mức hay đặt Hạn mức cho một phạm vi chưa có, API
   hạn mức PHẢI áp thay đổi với một người và ghi audit `limits.policy.set` trong cùng giao dịch (D11: siết
   một người).
@@ -153,10 +154,10 @@ mục 'Agent and tool rules'; ADR-0121 (Accepted) quyết 3). Lượt kiểm đ�
 - R4.10 NẾU phần còn lại của một Hạn mức cứng theo kỳ không đủ lúc nhận một lượt chạy, THÌ `LimitsPort.admit`
   PHẢI trả từ chối `limit_exceeded` kèm `metric`, `scope_type`, `window`, `limit`, `used` và `resets_at`, không mở
   lease và không đổi bộ đếm nào.
-- R4.11 NẾU thiếu chỗ đồng thời lúc nhận một lượt chạy, THÌ `LimitsPort.admit` PHẢI trả từ chối kèm `metric`
-  `max_concurrent_runs` và thời điểm thử lại, phân biệt được với hết hạn mức của kỳ, và không mở lease.
-- R4.12 NẾU workspace, người dùng hay thành phần mà một chính sách hạn mức nhắm tới bị xóa, THÌ PostgreSQL PHẢI
-  xóa chính sách đó trong cùng lệnh xóa, nên không còn chính sách mồ côi (ADR-0121 (Accepted) quyết 4).
+- R4.11 [Bỏ] 24/10/2026: câu trả lời thiếu chỗ đồng thời của `LimitsPort.admit` đến ở W2 cùng trần đồng thời
+  (Ngoài phạm vi; YC79).
+- R4.12 NẾU workspace hay thành phần mà một chính sách hạn mức nhắm tới bị xóa, THÌ PostgreSQL PHẢI xóa chính
+  sách đó trong cùng lệnh xóa, nên không còn chính sách mồ côi (ADR-0121 (Accepted) quyết 4).
 
 ### R5 — Hạn mức cứng giữ trước bằng lease, quyết toán từng lượt gọi, thu hồi lease mồ côi
 
@@ -243,21 +244,21 @@ W1 dùng bộ đếm theo tiến trình, GCRA trên Valkey vào ở W2 (YC44; DO
 
 ## Ngoài phạm vi
 
-| Việc                                                                                                                                                                                             | Vì sao                                                                                                                                                                             | Chủ                                               |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| Hóa đơn, tín dụng, bảng giá bán cho khách; hiển thị VND và tỷ giá                                                                                                                                | Sổ là đo lường, không phải hóa đơn (D6); v1 bán phí gói cố định kèm trần chi phí AI mỗi tháng (`cost_usd_per_month`), không tín dụng (DO-59.2); VND với bảng tỷ giá có ngày ở v1.5 | không làm (v1); usage-and-limits, đợt sau         |
-| W2: nới Hạn mức (nâng, gỡ, đổi `hard` sang `soft`) qua đề xuất một người và duyệt của người thứ hai trong tenant-config                                                                          | D11 (mở hai người); W1 chỉ siết, lệnh nới trả 409 (R4.9)                                                                                                                           | usage-and-limits; tenant-config, đợt sau (W2)     |
-| W2: đối soát cho người vận hành và chi phí theo kết quả                                                                                                                                          | không có bên đọc ở W1 (DO-21.1); chi phí mỗi lead (KQ12) cần sự kiện kết quả của marketing-pilot                                                                                   | usage-and-limits; marketing-pilot, đợt sau (W2)   |
-| W2: lượt `schedule` thiếu hạn mức ghi lần kích hoạt `limit_refused` rồi bỏ qua, không giữ tới `resets_at`                                                                                        | trình kích hoạt lịch là W2 (DO-21.3); dồn mọi lần lỡ sẽ xả cả loạt khi kỳ mới bắt đầu (`CLAUDE.md` mục 'Agent and tool rules'; ADR-0113 (Accepted))                                | workflow-triggers, đợt sau (W2)                   |
-| W2: cột `max_run_seconds` của `platform.plan_limits` và giới hạn thời gian mỗi lượt chạy theo nó                                                                                                 | cột vào cùng bên đọc của nó (failure-modes #1); cần hạn chót bền và hủy xuyên tiến trình của workflow-engine, đều W2                                                               | usage-and-limits; workflow-engine, đợt sau (W2)   |
-| W2: cảnh báo ngưỡng 80% và 100% mỗi chính sách và kỳ qua outbox (`usage.limit.threshold_crossed`)                                                                                                | YC79; cần bộ đếm và chính sách của W1 trước                                                                                                                                        | usage-and-limits, đợt sau (W2)                    |
-| W2: giới hạn tốc độ GCRA trên Valkey (adapter thứ hai của `RateLimiterPort`) và bộ điều tốc nhà cung cấp                                                                                         | YC44; W1 đã có port và bộ đếm theo tiến trình (R7); Valkey chỉ giữ trạng thái tốc độ; mất Valkey lùi về bộ đếm mỗi tiến trình (DO-49)                                              | usage-and-limits, đợt sau (W2)                    |
-| W2: hạn mức theo người dùng, theo mục đích (dựng có AI, chạy thử, kiểm định), theo đồng thời; hiển thị sử dụng theo tên người; phần nền tảng trả có trần cho lượt kiểm định lại do nền tảng kích | YC79; mẫu cấu hình limit theo agent học từ phân tích đối thủ (config-chang.md mẫu 4); theo tên người sau khi luật sư xác nhận thông báo cho nhân viên (DO-51.2); DO-29.2           | usage-and-limits, đợt sau (W2)                    |
-| W2: BYOM (bên trả phí, giá riêng tenant, hạn mức token); đo bước mã theo vCPU và GB đặt trước nhân thời gian chạy, rerank, trích xuất, chuyển giọng nói                                          | YC79; chờ `model-connections` và `code-sandbox` (DO-43; DO-45.1 chọn đơn vị đặt trước)                                                                                             | usage-and-limits; model-connections; code-sandbox |
-| W3: hạn mức kiểu xin nâng, dự báo tốc độ đốt, phát hiện bất thường                                                                                                                               | v1.5 trở đi                                                                                                                                                                        | usage-and-limits, đợt sau (W3)                    |
-| Hàng đợi lượt chạy và điều phối công bằng; cổng đánh giá và ngưỡng chi phí phát hành                                                                                                             | spec này cấp bộ đếm đồng thời và `LimitsPort`; cổng xin lease `eval_offline` (DO-21.4)                                                                                             | workflow-engine; agent-lifecycle                  |
-| Kết nối model của công ty và `model-proxy`; runtime sandbox                                                                                                                                      | spec này định nghĩa cổng báo vCPU và GB đặt trước nhân thời gian chạy (DO-45.1) và bên trả phí                                                                                     | model-connections; code-sandbox                   |
-| Đóng băng, Tắt khẩn cấp                                                                                                                                                                          | cùng middleware hỏi thêm câu của agent-lifecycle                                                                                                                                   | agent-lifecycle                                   |
+| Việc                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Vì sao                                                                                                                                                                                                                                                                | Chủ                                               |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| Hóa đơn, tín dụng, bảng giá bán cho khách; hiển thị VND và tỷ giá                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Sổ là đo lường, không phải hóa đơn (D6); v1 bán phí gói cố định kèm trần chi phí AI mỗi tháng (`cost_usd_per_month`), không tín dụng (DO-59.2); VND với bảng tỷ giá có ngày ở v1.5                                                                                    | không làm (v1); usage-and-limits, đợt sau         |
+| W2: nới Hạn mức (nâng, gỡ, đổi `hard` sang `soft`) và nâng giới hạn 60 sự kiện mỗi phút của một Nguồn dữ liệu (workflow-triggers:R5.9) qua đề xuất một người và duyệt của người thứ hai trong tenant-config                                                                                                                                                                                                                                                                                                         | D11 (mở hai người); W1 chỉ siết, lệnh nới trả 409 (R4.9); W1 chưa có đường hai người để nâng một hạn mức (ADR-0110 (Accepted) quyết 2)                                                                                                                                | usage-and-limits; tenant-config, đợt sau (W2)     |
+| W2: đối soát cho người vận hành và chi phí theo kết quả                                                                                                                                                                                                                                                                                                                                                                                                                                                             | không có bên đọc ở W1 (DO-21.1); chi phí mỗi lead (KQ12) cần sự kiện kết quả của marketing-pilot                                                                                                                                                                      | usage-and-limits; marketing-pilot, đợt sau (W2)   |
+| W2: lượt `schedule` thiếu hạn mức ghi lần kích hoạt `limit_refused` rồi bỏ qua, không giữ tới `resets_at`                                                                                                                                                                                                                                                                                                                                                                                                           | trình kích hoạt lịch là W2 (DO-21.3); dồn mọi lần lỡ sẽ xả cả loạt khi kỳ mới bắt đầu (`CLAUDE.md` mục 'Agent and tool rules'; ADR-0113 (Accepted))                                                                                                                   | workflow-triggers, đợt sau (W2)                   |
+| W2: cột `max_run_seconds` của `platform.plan_limits` và giới hạn thời gian mỗi lượt chạy theo nó                                                                                                                                                                                                                                                                                                                                                                                                                    | cột vào cùng bên đọc của nó (failure-modes #1); cần hạn chót bền và hủy xuyên tiến trình của workflow-engine, đều W2                                                                                                                                                  | usage-and-limits; workflow-engine, đợt sau (W2)   |
+| W2: cảnh báo ngưỡng 80% và 100% mỗi chính sách và kỳ qua outbox (`usage.limit.threshold_crossed`), cùng cột `thresholds` của `platform.limit_policies`                                                                                                                                                                                                                                                                                                                                                              | YC79; cột vào cùng bên đọc của nó (failure-modes #1); cần bộ đếm và chính sách của W1 trước                                                                                                                                                                           | usage-and-limits, đợt sau (W2)                    |
+| W2: giới hạn tốc độ GCRA trên Valkey (adapter thứ hai của `RateLimiterPort`) và bộ điều tốc nhà cung cấp                                                                                                                                                                                                                                                                                                                                                                                                            | YC44; W1 đã có port và bộ đếm theo tiến trình (R7); Valkey chỉ giữ trạng thái tốc độ; mất Valkey lùi về bộ đếm mỗi tiến trình (DO-49)                                                                                                                                 | usage-and-limits, đợt sau (W2)                    |
+| W2: hạn mức theo người dùng (giá trị `user` của `scope_type`, cột `scope_user_id` FK ghép `(tenant_id, scope_user_id)` tới `platform.tenant_members` `ON DELETE CASCADE`), theo mục đích (cột `purposes`; dựng có AI, chạy thử, kiểm định), theo đồng thời (cột `max_concurrent_runs` của `platform.plan_limits`, câu trả lời thiếu chỗ đồng thời của `LimitsPort.admit` kèm thời điểm thử lại, trước là R4.11); hiển thị sử dụng theo tên người; phần nền tảng trả có trần cho lượt kiểm định lại do nền tảng kích | YC79, và phần người dùng của chuỗi trong YC77; mỗi cột vào cùng bên đọc của nó (failure-modes #1); mẫu cấu hình limit theo agent học từ phân tích đối thủ (config-chang.md mẫu 4); theo tên người sau khi luật sư xác nhận thông báo cho nhân viên (DO-51.2); DO-29.2 | usage-and-limits, đợt sau (W2)                    |
+| W2: BYOM (bên trả phí, giá riêng tenant, hạn mức token); đo bước mã theo vCPU và GB đặt trước nhân thời gian chạy, rerank, trích xuất, chuyển giọng nói                                                                                                                                                                                                                                                                                                                                                             | YC79; chờ `model-connections` và `code-sandbox` (DO-43; DO-45.1 chọn đơn vị đặt trước)                                                                                                                                                                                | usage-and-limits; model-connections; code-sandbox |
+| W3: hạn mức kiểu xin nâng, dự báo tốc độ đốt, phát hiện bất thường                                                                                                                                                                                                                                                                                                                                                                                                                                                  | v1.5 trở đi                                                                                                                                                                                                                                                           | usage-and-limits, đợt sau (W3)                    |
+| Hàng đợi lượt chạy và điều phối công bằng; cổng đánh giá và ngưỡng chi phí phát hành                                                                                                                                                                                                                                                                                                                                                                                                                                | spec này cấp `LimitsPort` (bộ đếm đồng thời đến ở W2 cùng trần đồng thời); cổng xin lease `eval_offline` (DO-21.4)                                                                                                                                                    | workflow-engine; agent-lifecycle                  |
+| Kết nối model của công ty và `model-proxy`; runtime sandbox                                                                                                                                                                                                                                                                                                                                                                                                                                                         | spec này định nghĩa cổng báo vCPU và GB đặt trước nhân thời gian chạy (DO-45.1) và bên trả phí                                                                                                                                                                        | model-connections; code-sandbox                   |
+| Đóng băng, Tắt khẩn cấp                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | cùng middleware hỏi thêm câu của agent-lifecycle                                                                                                                                                                                                                      | agent-lifecycle                                   |
 
 ## Dữ liệu
 
@@ -266,10 +267,10 @@ Mọi bảng tenant: RLS ENABLE và FORCE theo tenant, grant cùng migration, t�
 
 - `platform.plan_limits`: `plan_id text` khóa chính và FK `platform.plans ON DELETE CASCADE`; không
   `tenant_id`, không RLS; `dw_app` chỉ SELECT; cột `CHECK (>= 0)`: `runs_per_day`, `cost_usd_per_day`,
-  `cost_usd_per_month`, `tokens_per_month`, `max_concurrent_runs`, `requests_per_minute`,
-  `tokens_per_minute` (NULL = không giới hạn); trần mỗi lượt NOT NULL: `max_cost_usd_per_run`,
-  `max_tokens_per_run`, `max_steps_per_run` CHECK (1..500), `max_model_calls_per_run`,
-  `max_tool_calls_per_run`; `max_run_seconds` thêm ở W2 cùng bên đọc (Ngoài phạm vi). `platform.plans.quotas`
+  `cost_usd_per_month`, `tokens_per_month`, `requests_per_minute`, `tokens_per_minute` (NULL = không giới
+  hạn); trần mỗi lượt NOT NULL: `max_cost_usd_per_run`, `max_tokens_per_run`, `max_steps_per_run` CHECK
+  (1..500), `max_model_calls_per_run`, `max_tool_calls_per_run`; `max_run_seconds` và `max_concurrent_runs`
+  thêm ở W2 cùng bên đọc (Ngoài phạm vi). `platform.plans.quotas`
   jsonb bị gỡ ở migration sau khi dời dữ liệu; tính năng đọc từ `platform.plans.features`.
 - `platform.usage_events`: phân vùng theo tháng trên `occurred_at` với DEFAULT; `PRIMARY KEY (id, occurred_at)`;
   `operation` CHECK (`chat`, `embeddings`, `rerank`, `extraction`, `transcription`, `sandbox_exec`,
@@ -295,18 +296,18 @@ Mọi bảng tenant: RLS ENABLE và FORCE theo tenant, grant cùng migration, t�
 - `platform.usage_daily`: RLS tenant; `UNIQUE NULLS NOT DISTINCT (tenant_id, workspace_id, day, artifact_kind, artifact_id, user_id, provider, model, operation, purpose, payer)`;
   index `(tenant_id, day)`, `(tenant_id, workspace_id, day)`; cuộn lại hôm nay và hôm qua cho tenant có
   hoạt động, ngày theo `window_for`.
-- `platform.limit_policies`: RLS tenant; `scope_type` CHECK (`tenant`, `workspace`, `agent`, `workflow`,
-  `user`) cho API và Chuỗi phạm vi hạn mức; phạm vi cụ thể nằm ở cột khóa ngoại có kiểu `scope_workspace_id`
-  (FK ghép `(tenant_id, scope_workspace_id)` tới `platform.workspaces`), `scope_user_id` (FK ghép
-  `(tenant_id, scope_user_id)` tới `platform.tenant_members`), `scope_artifact_id` (FK ghép tới
-  `studio.artifacts`, agent hay quy trình), mỗi FK `ON DELETE CASCADE` và có index riêng; CHECK
-  `num_nonnulls(scope_workspace_id, scope_user_id, scope_artifact_id) = 1` khi `scope_type` khác `tenant`, với
-  đúng cột của `scope_type`, và `= 0` khi `tenant`, như chủ thể của Kho bí mật (ADR-0115 (Accepted);
-  ADR-0121 (Accepted) quyết 4), để chính sách mồ côi tự gỡ (R4.12); `metric`, `window_kind`, `kind` CHECK
-  (`hard`, `soft`); `limit_value numeric(20,8) CHECK (>= 0)`; `thresholds smallint[]` CHECK con của {50, 80,
-  90, 100}; `purposes text[]`; `version`; `created_by`; UNIQUE NULLS NOT DISTINCT trên `tenant_id`,
-  `scope_workspace_id`, `scope_user_id`, `scope_artifact_id`, `metric`, `window_kind`; trigger `updated_at`
-  nhường giá trị lệnh nêu. Bảng toàn tenant: không cột `workspace_id` (phạm vi nằm ở cột có kiểu), có tên và lý do trong
+- `platform.limit_policies`: RLS tenant; `scope_type` CHECK (`tenant`, `workspace`, `agent`, `workflow`) cho API
+  và Chuỗi phạm vi hạn mức (`user` ở W2, Ngoài phạm vi); phạm vi cụ thể nằm ở cột khóa ngoại có kiểu
+  `scope_workspace_id` (FK ghép `(tenant_id, scope_workspace_id)` tới `platform.workspaces`) và `scope_artifact_id`
+  (FK ghép `(tenant_id, scope_artifact_id)` tới `studio.artifacts (tenant_id, id)`, đích là ràng buộc
+  `uq_artifacts_tenant_id_id` của tenant-config, agent hay quy trình), mỗi FK `ON DELETE CASCADE` và có index
+  riêng; CHECK `num_nonnulls(scope_workspace_id, scope_artifact_id) = 1` khi `scope_type` khác `tenant`, với đúng
+  cột của `scope_type`, và `= 0` khi `tenant`, như chủ thể của Kho bí mật (ADR-0115 (Accepted); ADR-0121 (Accepted)
+  quyết 4), để chính sách mồ côi tự gỡ (R4.12); `metric`, `window_kind`, `kind` CHECK (`hard`, `soft`);
+  `limit_value numeric(20,8) CHECK (>= 0)`; `version`; `created_by`; UNIQUE NULLS NOT DISTINCT trên `tenant_id`,
+  `scope_workspace_id`, `scope_artifact_id`, `metric`, `window_kind`; trigger `updated_at` nhường giá trị lệnh nêu;
+  `scope_user_id`, `thresholds` và `purposes` đến ở W2 cùng bên đọc (Ngoài phạm vi). Bảng toàn tenant: không cột
+  `workspace_id` (phạm vi nằm ở cột có kiểu, tên `scope_*` như ADR-0121 (Accepted) quyết 4), có tên và lý do trong
   danh sách bảng toàn tenant mà `test_rls_coverage.py` giữ (`CLAUDE.md` mục 'Tenancy and authorization',
   ngoại lệ của DO-01).
 - `platform.budget_counters`: khóa chính `(tenant_id, scope_type, scope_id, metric, window_kind, window_start)`;
@@ -328,7 +329,8 @@ Mọi bảng tenant: RLS ENABLE và FORCE theo tenant, grant cùng migration, t�
   agent, quy trình và mục đích; W1 không có chiều gộp theo người (DO-51.2).
 - `GET /api/v1/limits` (`platform.usage.read`): mỗi chính sách kèm Hạn mức hiệu lực, bộ đếm của kỳ hiện tại
   và giờ đặt lại; không có route `/api/v1/usage/limits` riêng. `PUT /api/v1/limits/{scope_type}/{scope_id}`
-  và `DELETE` (`platform.limits.manage`, `Idempotency-Key`): siết áp ngay với một người (R4.8); nới trả 409
+  và `DELETE` (`platform.limits.manage`, `Idempotency-Key`; `{scope_type}` là `tenant`, `workspace`, `agent` hay
+  `workflow`, `user` đến ở W2): siết áp ngay với một người (R4.8); nới trả 409
   `second_person_required` ở W1 (R4.9); cao hơn Trần của gói → 422 `limit_above_plan`.
 - Lỗi theo vỏ problem+json của ADR-0108 (Accepted); `details.reason_code`: `limit_exceeded`,
   `limit_above_plan`, `second_person_required`.
@@ -349,7 +351,7 @@ Mọi bảng tenant: RLS ENABLE và FORCE theo tenant, grant cùng migration, t�
 | #    | Kiểm soát                                            | Yêu cầu           | Test âm                                                                                                                                                                                                                                                                                                     |
 | ---- | ---------------------------------------------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | UL1  | Số của gói có một chủ trong database                 | R1.1, R1.2        | Xóa dòng `platform.plan_limits` của một gói → nhận lượt chạy bị từ chối, không hiểu thành "không giới hạn"; khai lại dict gói trong mã → test kiến trúc đỏ                                                                                                                                                  |
-| UL2  | Hạn mức cứng giữ trước khi chi                       | R5.1              | 10 lượt chạy đồng thời, chỗ cho 3 → đúng 3 được nhận; gỡ khóa bộ đếm theo thứ tự → test đỏ                                                                                                                                                                                                                  |
+| UL2  | Hạn mức cứng giữ trước khi chi                       | R5.1              | `runs_per_day` của tenant còn đúng 3 lượt: 10 lượt chạy gốc nhận song song → đúng 3 được nhận và mở lease, 7 lượt nhận `limit_exceeded`, bộ đếm không vượt trần; gỡ khóa bộ đếm theo thứ tự → test đỏ                                                                                                       |
 | UL3  | `max_tokens` kẹp theo lease                          | R5.2              | Lease còn đủ cho 100 token output → lời gọi mang `max_tokens <= 100`; gỡ kẹp → test đỏ                                                                                                                                                                                                                      |
 | UL4  | Không cửa nào vòng qua hạn mức                       | R6.1, R6.2        | Lease cạn: gọi thẳng gateway có cấu trúc, chat, embedding, rerank, lane nạp → mỗi cửa bị từ chối; `RuntimeSeam` lộ gateway thô → test field đỏ                                                                                                                                                              |
 | UL5  | Thiếu số dùng không thành 0                          | R3.3              | Adapter không báo usage → dòng `estimated` bằng ước tính; gỡ → test đỏ                                                                                                                                                                                                                                      |
@@ -382,7 +384,12 @@ Mọi bảng tenant: RLS ENABLE và FORCE theo tenant, grant cùng migration, t�
 - tenant-rbac: danh mục quyền là một chủ (tenant-rbac:R1.1), bảng do
   `.claude/plans/studio/tenant-rbac/issues/01-mot-chu-cho-quyen.md` tạo; `platform.usage.read` đưa về `active` ở
   ticket 02 và `platform.limits.manage` đăng ký ở ticket 03, mỗi khóa trong migration của ticket dùng nó theo quy
-  ước của ticket đó; độ sâu workspace qua `platform.effective_grants` (tenant-rbac:R2.1).
+  ước của ticket đó; độ sâu workspace qua `platform.effective_grants` (tenant-rbac:R2.1); ticket 02 và 03 chờ
+  `.claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md`, và INSERT khóa của ticket 03 nêu mọi cột NOT
+  NULL của bảng lúc đó, gồm `risk` của tenant-rbac/01 và `tenant_grantable` của tenant-rbac/02.
+- tenant-config: `studio.artifacts` với `uq_artifacts_tenant_id_id UNIQUE (tenant_id, id)` làm đích của FK ghép
+  `scope_artifact_id` (`.claude/plans/studio/tenant-config/issues/02-vo-phien-ban-va-chi-muc-phu-thuoc.md`); ticket
+  03 nối tới ticket đó qua workflow-engine/02 và tenant-config/04.
 - foundations-hardening: ticket 01 chờ
   `.claude/plans/studio/foundations-hardening/issues/03-quyen-dw-app-va-rls-initplan.md` để quyền ghi và cột của
   `platform.plans` đổi theo một thứ tự; ticket 02 chờ
@@ -391,8 +398,8 @@ Mọi bảng tenant: RLS ENABLE và FORCE theo tenant, grant cùng migration, t�
 - org-and-principals: cây workspace và workspace gốc cho Chuỗi phạm vi hạn mức
   (`.claude/plans/studio/org-and-principals/issues/02-thanh-vien-cap-tenant.md`).
 - workflow-engine: làn `studio_runs` giao lượt chạy cho runner lúc dispatch, chỗ duy nhất gọi
-  `LimitsPort.admit`, và là chủ bảng xử lý từ chối theo `trigger_kind` (workflow-engine:R5.4,
-  workflow-engine:R5.9, workflow-engine:R5.10, workflow-engine:R5.11), nên workflow-engine/04 chờ ticket 03
+  `LimitsPort.admit`, và là chủ bảng xử lý từ chối theo `trigger_kind` (workflow-engine:R5.9,
+  workflow-engine:R5.10, workflow-engine:R5.11), nên workflow-engine/04 chờ ticket 03
   (DO-21.3; `.claude/plans/studio/workflow-engine/issues/04-lan-studio-runs.md`),
   `root_run_id` và ranh giới node (`.claude/plans/studio/workflow-engine/issues/02-cot-run-va-cua-nhan-run.md`,
   `.claude/plans/studio/workflow-engine/issues/03-bien-dich-va-wrapper-nut.md`); agent-builder: giới hạn
@@ -400,17 +407,21 @@ Mọi bảng tenant: RLS ENABLE và FORCE theo tenant, grant cùng migration, t�
   03 vì `LimitsMiddleware` thay `RunBudgetMiddleware` trong ngăn xếp mà nó giữ thứ tự (ADR-0117 (Accepted) quyết 5).
 - agent-lifecycle: cùng danh sách cửa hỏi thêm câu Đóng băng (agent-lifecycle:R7.1); Lượt kiểm định xin
   lease `purpose` `eval_offline` qua `LimitsPort` (agent-lifecycle:R4.4).
-- compliance-pdpl: `ResidencyGate` đứng trước `LimitsMiddleware` (R6.5) và ghi lộ trình lên Bản ghi sử dụng
-  (`.claude/plans/studio/compliance-pdpl/issues/03-tuyen-du-lieu-o-model-gateway.md`).
+- compliance-pdpl: `ResidencyGate` đứng trước `LimitsMiddleware` ở mọi cửa chạm model (R6.5) và ghi lộ trình lên
+  Bản ghi sử dụng (`.claude/plans/studio/compliance-pdpl/issues/03-tuyen-du-lieu-o-model-gateway.md`); ở cửa vòng
+  agent, vị trí của nó trong ngăn xếp (ngay sau `StudioModelSelection`, trước `LimitsMiddleware`) do agent-builder/03
+  giữ, vì ticket đó giữ thứ tự ngăn xếp (ADR-0117 (Accepted) quyết 5).
 - telemetry-and-audit: chủ định dạng tệp chính sách retention (khóa `schema.table`, telemetry-and-audit:R5.6) và
   lane lưu giữ; spec này thêm thời hạn của `usage_events` (ticket 02) và của `budget_counters`, `budget_leases`
   (ticket 03) trong cùng thay đổi tạo bảng, còn thời hạn `usage_daily` (760 ngày) do telemetry-and-audit/03 khai
-  (DO-52).
+  (DO-52). Tệp đi theo một chuỗi ticket, mỗi ticket một phiên bản mới: studio-skeleton/01, ticket 02 (bản đầu có mục
+  khóa `schema.table`, kể cả `platform.audit_events`), ticket 03, rồi telemetry-and-audit/03 chờ ticket 03.
 - model-connections: `ModelProfile` v2 không mang giá, chỉ dẫn chiếu Bảng giá (DO-21.5); ticket 02 chờ
   `.claude/plans/studio/model-connections/issues/02-model-resolver-theo-tenant.md` vì cả hai sửa
   `model/profiles.py` và `configs/models/*.yaml`.
-- Bên dùng `RateLimiterPort`: Data Hub (workflow-triggers:R5.9, khóa nguồn dữ liệu, 60 mỗi phút), kiểm trùng
-  của custom-objects (custom-objects:R7.6, khóa người gọi và đối tượng, 20 trong 10 phút trượt, DO-35).
+- Bên dùng `RateLimiterPort`: Data Hub (workflow-triggers:R5.9, khóa nguồn dữ liệu, 60 mỗi phút cố định ở W1, việc
+  nâng là W2 qua đường hai người ở Ngoài phạm vi), kiểm trùng của custom-objects (custom-objects:R7.6, khóa người gọi
+  và đối tượng, 20 trong 10 phút trượt, DO-35).
 - Bảng toàn tenant `platform.limit_policies`, `platform.budget_counters` theo ngoại lệ DO-01 của `CLAUDE.md`
   mục 'Tenancy and authorization'; `LimitsPort` thay `RunAllowancePort` trong câu hạn mức của `CLAUDE.md`
   mục 'Agent and tool rules' (DO-21.2) khi Đạt nhận ADR-0121 (Accepted). `resume` nay kiểm lease tiền (chi
@@ -418,8 +429,9 @@ Mọi bảng tenant: RLS ENABLE và FORCE theo tenant, grant cùng migration, t�
   `langgraph_runner.py:255-257`).
 - Kiểm lại khi: danh mục quyền của tenant-rbac đổi tên → R3.5, R4.5, R4.6; cây workspace của
   org-and-principals đổi hình → R4.1, R4.4; workflow-engine đổi chỗ gọi `admit` hay bảng từ chối → R4, R4.10,
-  R4.11, R5; telemetry-and-audit đổi định dạng tệp retention → R5.7, Dữ liệu; tenant-config mở
-  đường đề xuất hai người cho Hạn mức → R4.9; `RateLimiterPort` có adapter Valkey → R7.
+  R5; telemetry-and-audit đổi định dạng tệp retention → R5.7, Dữ liệu; tenant-config mở
+  đường đề xuất hai người cho Hạn mức → R4.9; tenant-config đổi khóa duy nhất của `studio.artifacts` → Dữ liệu,
+  ticket 03; agent-builder/03 đổi thứ tự ngăn xếp agent → R6.5; `RateLimiterPort` có adapter Valkey → R7.
 
 ## Câu hỏi còn mở
 
@@ -544,6 +556,27 @@ Mọi bảng tenant: RLS ENABLE và FORCE theo tenant, grant cùng migration, t�
   (marketing-pilot:R1.6). Sửa: không đổi R4.9.
 - 24/10/2026 (Đạt): dịch vụ proxy model của tenant tên `model-proxy` ở mọi nơi; thư viện biểu đồ cần một ADR ngoại
   lệ riêng theo ADR-0101 (Accepted) quyết 6 (N10). Sửa: Ngoài phạm vi, dòng D13, Màn hình.
+- 24/10/2026 (Đạt): tên cột phạm vi có kiểu của `platform.limit_policies` giữ như spec, `scope_workspace_id`,
+  `scope_user_id`, `scope_artifact_id`, và ADR-0121 (Accepted) quyết 4 đổi theo, vì bảng toàn tenant không mang cột
+  `workspace_id` (`CLAUDE.md` mục 'Tenancy and authorization'; F:ADR-0121 (Accepted)\~usage-and-limits:spec). Sửa:
+  Dữ liệu.
+- 24/10/2026 (agent, tạm): theo YC79 và ADR-0121 (Accepted), W1 bỏ phạm vi `user` (giá trị `user` của CHECK
+  `scope_type`, R4.1, `PUT`) và trần đồng thời (rút R4.11, UL2 thử bằng `runs_per_day`); `purposes`, `thresholds`
+  sang W2 cùng bên đọc, và cũng vậy cột `scope_user_id` (tên giữ theo dòng trên) và `max_concurrent_runs` của
+  `platform.plan_limits`, vì không bên đọc nào ở W1 (H:usage-and-limits:R4.1\~usage-and-limits:spec). Sửa: mở đầu, R4,
+  R4.1, R4.7, R4.11, R4.12, Ngoài phạm vi, Dữ liệu, API, UL2, Phụ thuộc, ticket 01, 03. Nếu sai thì: W1 nhận phạm vi
+  người dùng và trần đồng thời, khôi phục R4.11, cột `scope_user_id` và `max_concurrent_runs`, và ghi YC79 một phần ở
+  W1.
+- 24/10/2026 (agent, tạm): tệp chính sách retention giữ một tệp có phiên bản `configs/policies/retention@<semver>.yaml`;
+  các ticket sửa tệp đi thành một chuỗi, mỗi ticket ra một phiên bản mới: studio-skeleton/01, ticket 02, ticket 03,
+  telemetry-and-audit/03, agent-lifecycle/04, workflow-triggers/02, compliance-pdpl/04, agent-builder/04,
+  compliance-pdpl/06; ticket 02 là bản đầu có mục khóa `schema.table` (C:configs:spec\~telemetry-and-audit/03). Sửa:
+  Phụ thuộc, ticket 02, 03. Nếu sai thì: tách tệp theo bảng, sửa telemetry-and-audit:R5.6 và ADR-0122 (Accepted)
+  quyết 7.
+- 24/10/2026 (agent, tạm): ticket 02 và 03 chờ tenant-rbac/02; INSERT khóa `platform.limits.manage` của ticket 03 nêu
+  mọi cột NOT NULL có lúc đó, gồm `tenant_grantable` của tenant-rbac/02 và `risk` của tenant-rbac/01, theo
+  ADR-0104 (Accepted) quyết 1 (C:custom-objects/02\~tenant-rbac/02). Sửa: Phụ thuộc, ticket 02, 03. Nếu sai thì:
+  tenant-rbac/01 tạo cột kèm sửa ADR-0104 (Accepted) quyết 1.
 
 ## Danh sách ticket
 

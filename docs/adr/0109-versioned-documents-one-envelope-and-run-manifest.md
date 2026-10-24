@@ -57,7 +57,8 @@ contract of ADR 0120.
    registry's kinds equal that table's rows. There is no `studio.agent_versions`, `studio.workflow_versions` or
    `studio.tool_versions`.
 2. **"Live" is stored once.** Content changes only in `draft` (one draft per artifact, saved with
-   `row_version`; a stale save is 409 `stale_version`). The `stage` column and its guard trigger belong to
+   `row_version`; a stale save is 412 `precondition_failed` with `details.reason_code` `stale_version`, as
+   ADR 0108 decision 3 answers an `If-Match` mismatch). The `stage` column and its guard trigger belong to
    ADR 0120; "live" is that stage, with one partial unique index per artifact (`WHERE stage = 'live'`), so
    there is no `active_version_id` pointer.
 3. **One canonical function.** `dw_kernel.canonical` is the only producer of Studio hashes. `ensure_hashable`
@@ -197,3 +198,9 @@ contract of ADR 0120.
   tenant-wide (A6); the amendments to `CLAUDE.md:70-71` and `:182-184` restated so platform components in a closure
   resolve from the run manifest too (DO-05 (a)).
 - Open 1, 2 and 4 answered; Open 3 answered provisionally (DO-52 (a)); Open 5 answered for tenant overrides.
+
+## Amendments (2026-10-24)
+
+- Third consistency check (round 4), Đạt's D6: decision 2's stale draft save is 412 `precondition_failed` with
+  `details.reason_code` `stale_version`, as ADR 0108 decision 3 answers an `If-Match` mismatch, no longer 409
+  (F:ADR-0109~tenant-config:R2.5); the status stays Accepted.

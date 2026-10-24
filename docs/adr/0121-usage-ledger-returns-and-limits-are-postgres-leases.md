@@ -68,10 +68,12 @@ through this ADR's `LimitsPort`, was accepted with it.
    clock, per-run cost and tokens) live in the agent or workflow version, clamped by plan maxima;
    operational limits on money, tokens, runs and concurrency per window live in audited
    `platform.limit_policies` rows a tenant admin changes without republishing. A row names its scope
-   through typed foreign keys, `workspace_id`, `user_id` and `artifact_id` (an agent or workflow),
-   each `ON DELETE CASCADE`, exactly one of them set below the tenant (`num_nonnulls(...) = 1`) and
-   none for a tenant-wide limit, the way ADR 0115 keys secret subjects, so a limit whose workspace,
-   user or artifact is deleted goes with it. Lowering a limit takes one person and an audit event;
+   through typed foreign keys, `scope_workspace_id`, `scope_user_id` and `scope_artifact_id` (an
+   agent or workflow), each `ON DELETE CASCADE`, exactly one of them set below the tenant
+   (`num_nonnulls(...) = 1`) and none for a tenant-wide limit, the way ADR 0115 keys secret subjects,
+   so a limit whose workspace, user or artifact is deleted goes with it; the `scope_` prefix is there
+   because the table is tenant-wide and so carries no `workspace_id` column (`CLAUDE.md`, Tenancy and
+   authorization). Lowering a limit takes one person and an audit event;
    raising one takes a maker and a different checker (DO-07), a path W1 does not have, so W1 refuses
    every raise (closed while missing) and the pilot's caps are seeded at the right numbers
    (DO-59.1). A policy may name its purposes, so builder assistance, test runs and evaluations get
@@ -263,3 +265,6 @@ open, with the D11 cases scoped by the requester and Đạt:
 - Decision 6 and Contradictions: the `schedule` exception states its reason, and `CLAUDE.md`
   (Agent and tool rules) now names it (Q-R7); `replay` and `fork` are interactive runs, as
   ADR 0113 decision 3 now lists them.
+- Third consistency check (round 4), Đạt's D12: decision 4's scope columns are
+  `scope_workspace_id`, `scope_user_id` and `scope_artifact_id`, as usage-and-limits names them,
+  since a tenant-wide table carries no `workspace_id` (F:ADR-0121~usage-and-limits:spec).

@@ -13,8 +13,9 @@ Audit `tenant.offboarding.purged` vẫn đứng tên người vận hành đã y
 `offboarding` (R11.3; `CLAUDE.md`, "Agent and tool rules"; ADR-0011 (Accepted)). Bản vá xuất một lần
 không dựa vào việc studio-skeleton/01 làm partition không đọc được theo tên dưới `dw_app`, nhưng ticket
 này chờ studio-skeleton/01 vì cả hai sửa `offboarding.py` và test của nó: studio-skeleton/01 thêm
-`STUDIO_EXCLUSIONS` và test phủ dùng chính hai truy vấn catalog mà ticket này đổi. record-access/03 và
-custom-objects/02 chờ ticket này.
+`STUDIO_EXCLUSIONS` và test phủ dùng chính hai truy vấn catalog mà ticket này đổi. Mọi ticket khác sửa
+`offboarding.py`, danh mục xuất hay `test_offboarding.py` chờ ticket này qua dòng Blocked by của chính nó
+(`scripts/check_plans.py --table` in bảng sống), nên `_CATALOG_COLUMNS` và `export_rows` có một thứ tự sửa.
 
 ## Việc cần làm
 

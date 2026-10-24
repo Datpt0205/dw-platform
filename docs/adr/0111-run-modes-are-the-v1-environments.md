@@ -68,8 +68,9 @@ v1 and v2, and on the provisional call on DO-26.
    `partial` or `none`; unknown is `none`) and, per messaging action, its recipient argument.
 5. **A non-live run stays with its tester.** Its notifications, and any approval it opens, reach only the tester, in
    the app, never through a chat channel. A `human.approval` step of a `simulate` run, and of a `test` run from W2,
-   waits for no real decider: its decision is simulated, taken from the test-run form (the tester chooses approve or
-   reject) or from the quality gate's evaluation case, audited `studio.step.approval.simulated`, and it never
+   waits for no real decider: its decision is simulated, taken from the test-run form (the tester chooses `approved`
+   or `rejected`, the values workflow-nodes owns) or from the quality gate's evaluation case, audited
+   `studio.step.approval.simulated`, and it never
    satisfies a `live` approval. In a mode other than `live` the ToolExecutor applies the run mode before a tool's
    approval policy, so a call it intercepts opens no approval and only a call that really executes meets its approval
    (decision 4). Spans, audit events and the usage ledger carry `run_mode`; business metrics exclude non-live runs and
@@ -81,8 +82,9 @@ v1 and v2, and on the provisional call on DO-26.
    `platform.tenant_links`. A sandbox tenant is seeded from a `dw.package/v1` of production's live versions plus
    synthetic data only, and never runs `live`. Promotion is by package: requested in production, re-gated against
    production's dependency index, open runs and plan limits, approved by someone other than the requester (strict
-   prefix `studio.promotion.`), imported by the lane `system:studio-promotion` (ADR 0011), and published only when
-   every required binding has a production value (ADR 0110).
+   prefix `studio.promotion.`), imported by the lane `studio_promotion`, which carries out that recorded approval and
+   so audits in the name of the person who approved the promotion, with `details.lane = studio_promotion`
+   (ADR 0011), and published only when every required binding has a production value (ADR 0110).
 
 ## Alternatives considered
 
@@ -160,3 +162,8 @@ v1 and v2, and on the provisional call on DO-26.
   and ADR 0115 decision 6 say, not every call of every mode but `live`
   (B:connections-and-vault:R3.5~tenant-config:R5.4); the run-scoped scratch is W3 (v1.5) in Open 1 and in
   Consequences alike.
+- Third consistency check (round 4): decision 7's promotion import audits the person who approved the promotion,
+  naming the lane in `details.lane = studio_promotion`, because the lane carries out that person's recorded decision
+  (ADR 0011; `CLAUDE.md`, Agent and tool rules), no longer as `system:studio-promotion`
+  (E:ADR-0111~~CLAUDE.md#agent-and-tool-rules, one of that check's CRITICAL rows); decision 5's simulated decision
+  takes the values `approved` and `rejected` that workflow-nodes owns (B:agent-lifecycle:R4.7~~workflow-nodes:R9.9).

@@ -1,6 +1,6 @@
 # Gói miền: định dạng dw.package/v1, cài vào tenant thành bản sao có nguồn gốc
 
-Status: needs-info (Q2)
+Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: chưa
 Sẵn sàng: chưa kiểm
@@ -73,19 +73,25 @@ Quản trị viên công ty cài một gói nghiệp vụ rồi tự sửa, khô
 Tên mà gói nền tảng dùng không bị công ty chiếm trước.
 
 - R3.1 NẾU người dùng tạo thành phần có `api_name` bắt đầu bằng Tiền tố dành riêng của một gói nền tảng (`mkt_`),
-  THÌ API thành phần PHẢI trả 422 và không tạo gì.
+  THÌ API thành phần PHẢI trả 422 và không tạo gì; thành phần đã mang tiền tố trước khi luật bật ở W2 (`mkt_lead`,
+  `mkt_campaign` do marketing-pilot/02 gieo) giữ tên và được gói nhận làm Bản sao từ gói khi cài (R4.5).
 
 ### R4 — Gói Marketing 1.0.0 và "Bắt đầu với Marketing"
 
 Một công ty mới có ngay bộ đối tượng, vai trò mẫu, quy trình và trợ lý của lát Marketing (D4).
 
-- R4.1 KHI gói `marketing@1.0.0` được cài vào một công ty trắng, trình cài PHẢI tạo mọi thành phần của gói hợp lệ
-  và liệt kê mọi Điểm gắn còn thiếu (`zalo_oa`, `email_sender`, `score_threshold`).
+- R4.1 KHI gói `marketing@1.0.0` được cài vào một công ty trắng (chưa có thành phần nào mang `api_name` của gói),
+  trình cài PHẢI tạo mọi thành phần của gói hợp lệ và liệt kê mọi Điểm gắn còn thiếu (`zalo_oa`, `email_sender`,
+  `score_threshold`).
 - R4.2 Gói `marketing@1.0.0` PHẢI cho cùng đối tượng, trường và vai trò mẫu như script gieo của marketing-pilot/02.
 - R4.3 Gói `marketing@1.0.0` PHẢI mang bộ eval tổng hợp có prompt injection, tấn công chéo công ty và thiếu bằng
   chứng, chạy ở chế độ `simulate`.
 - R4.4 KHI quản trị viên công ty mở "Bắt đầu với Marketing", trang PHẢI hiện thành phần sẽ tạo và Điểm gắn cần đặt
   sau khi cài, trước khi cài.
+- R4.5 KHI gói `marketing@1.0.0` được cài vào công ty đã có thành phần cùng `api_name` của gói (`mkt_lead`,
+  `mkt_campaign` do marketing-pilot/02 gieo), trình cài PHẢI gắn `origin` của gói cho thành phần đang có và đưa mọi
+  chỗ khác phiên bản của gói thành Đề xuất cập nhật gói vào bản Nháp như R6.1, R6.2, không tạo thành phần thứ hai
+  và không đổi phiên bản Đang dùng nào.
 
 ### R5 — Xuất và nhập Gói cài đặt của công ty
 
@@ -120,7 +126,8 @@ Phiên bản mới của gói đến như đề xuất vào bản nháp, không 
 - Bảng `studio.pack_installs`, `studio.pack_install_components`, `studio.pack_update_proposals`.
 - Route `GET /api/v1/studio/packs`, `POST /api/v1/studio/packs/{key}/install`, `GET /api/v1/studio/packs/installs/{id}`;
   xuất, nhập Gói cài đặt của công ty; áp Đề xuất cập nhật gói; audit và outbox `studio.pack.installed`.
-- Gói `configs/packs/marketing@1.0.0/`; màn "Gói nghiệp vụ" và trình "Bắt đầu với Marketing".
+- Gói `configs/packs/marketing@1.0.0/`; màn "Gói nghiệp vụ" và trình "Bắt đầu với Marketing"; nhận thành phần đã
+  gieo cùng `api_name` làm Bản sao từ gói khi cài (R4.5).
 
 ## Ngoài phạm vi
 
@@ -141,20 +148,21 @@ Phiên bản mới của gói đến như đề xuất vào bản nháp, không 
 
 ## Kiểm soát
 
-| #    | Kiểm soát                            | Yêu cầu    | Test âm                                                                                                                   |
-| ---- | ------------------------------------ | ---------- | ------------------------------------------------------------------------------------------------------------------------- |
-| DP1  | Gói không chứa dữ liệu cấm           | R1.2       | `package.json` có khóa ngoài schema, thành phần bản ghi hay bí mật → bị từ chối khi nạp ở CI và khi nhập                  |
-| DP2  | Hash gói đúng                        | R1.3, R1.4 | Sửa một tệp thành phần mà không đổi phiên bản → kiểm release manifest đỏ; hash tính lại khác khai báo → cài bị từ chối    |
-| DP3  | Cài là một giao dịch                 | R2.3       | Một thành phần không hợp lệ → không thành phần nào được tạo, 422 liệt kê đủ lỗi; bỏ giao dịch → test đỏ                   |
-| DP4  | Cài đi qua cùng đường như người dùng | R2.2       | Thành phần vi phạm trình kiểm của loại → bị từ chối như khi người dùng tạo; mô-đun cài ghi thẳng bảng → test kiến trúc đỏ |
-| DP5  | Không tự kích hoạt                   | R2.4       | Sau cài, không thành phần nào ở Đang dùng; gửi sự kiện tới quy trình của gói → không lượt chạy nào                        |
-| DP6  | Tiền tố dành riêng                   | R1.6, R3.1 | Công ty tạo `api_name` `mkt_x` → 422; gói dùng tiền tố khác tiền tố khai báo → nạp lỗi                                    |
-| DP7  | Quyền và entitlement tách rời        | R2.5, R2.6 | Có quyền, gói dịch vụ không gồm gói → 403 `entitlement_denied`; có entitlement, thiếu quyền → 403 `permission_denied`     |
-| DP8  | Cài đúng một lần                     | R2.7, R2.8 | Gửi lại cùng `Idempotency-Key` → cùng kết quả, một lần cài; khóa khác khi đã cài → 409 `pack_already_installed`           |
-| DP9  | Cô lập công ty                       | R2.9       | Cài ở A không tạo và không lộ gì ở B; `GET` bản cài của A từ B → 404                                                      |
-| DP10 | Cập nhật không bao giờ tự phát hành  | R6.3, R6.4 | Áp đề xuất → chỉ bản nháp đổi, phiên bản Đang dùng giữ nguyên; thêm một lane tự áp → test đỏ                              |
-| DP11 | Gói nhập bị coi là dữ liệu lạ        | R5.3       | Zip có `../`, 20 MiB cộng một byte, 2.001 tệp, hash sai → từ chối; không tệp nào ra ngoài thư mục tạm                     |
-| DP12 | Chỉ người có quyền nhập              | R5.4       | Người thiếu quyền nhập gửi gói hợp lệ → 403, không thành phần nào được tạo                                                |
+| #    | Kiểm soát                                                    | Yêu cầu    | Test âm                                                                                                                                                                                                                                                                                       |
+| ---- | ------------------------------------------------------------ | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| DP1  | Gói không chứa dữ liệu cấm                                   | R1.2       | `package.json` có khóa ngoài schema, thành phần bản ghi hay bí mật → bị từ chối khi nạp ở CI và khi nhập                                                                                                                                                                                      |
+| DP2  | Hash gói đúng                                                | R1.3, R1.4 | Sửa một tệp thành phần mà không đổi phiên bản → kiểm release manifest đỏ; hash tính lại khác khai báo → cài bị từ chối                                                                                                                                                                        |
+| DP3  | Cài là một giao dịch                                         | R2.3       | Một thành phần không hợp lệ → không thành phần nào được tạo, 422 liệt kê đủ lỗi; bỏ giao dịch → test đỏ                                                                                                                                                                                       |
+| DP4  | Cài đi qua cùng đường như người dùng                         | R2.2       | Thành phần vi phạm trình kiểm của loại → bị từ chối như khi người dùng tạo; mô-đun cài ghi thẳng bảng → test kiến trúc đỏ                                                                                                                                                                     |
+| DP5  | Không tự kích hoạt                                           | R2.4       | Sau cài, không thành phần nào ở Đang dùng; gửi sự kiện tới quy trình của gói → không lượt chạy nào                                                                                                                                                                                            |
+| DP6  | Tiền tố dành riêng                                           | R1.6, R3.1 | Công ty tạo `api_name` `mkt_x` → 422; gói dùng tiền tố khác tiền tố khai báo → nạp lỗi                                                                                                                                                                                                        |
+| DP7  | Quyền và entitlement tách rời                                | R2.5, R2.6 | Có quyền, gói dịch vụ không gồm gói → 403 `entitlement_denied`; có entitlement, thiếu quyền → 403 `permission_denied`                                                                                                                                                                         |
+| DP8  | Cài đúng một lần                                             | R2.7, R2.8 | Gửi lại cùng `Idempotency-Key` → cùng kết quả, một lần cài; khóa khác khi đã cài → 409 `pack_already_installed`                                                                                                                                                                               |
+| DP9  | Cô lập công ty                                               | R2.9       | Cài ở A không tạo và không lộ gì ở B; `GET` bản cài của A từ B → 404                                                                                                                                                                                                                          |
+| DP10 | Cập nhật không bao giờ tự phát hành                          | R6.3, R6.4 | Áp đề xuất → chỉ bản nháp đổi, phiên bản Đang dùng giữ nguyên; thêm một lane tự áp → test đỏ                                                                                                                                                                                                  |
+| DP11 | Gói nhập bị coi là dữ liệu lạ                                | R5.3       | Zip có `../`, 20 MiB cộng một byte, 2.001 tệp, hash sai → từ chối; không tệp nào ra ngoài thư mục tạm                                                                                                                                                                                         |
+| DP12 | Chỉ người có quyền nhập                                      | R5.4       | Người thiếu quyền nhập gửi gói hợp lệ → 403, không thành phần nào được tạo                                                                                                                                                                                                                    |
+| DP13 | Gói nhận thành phần đã gieo, không tạo bản thứ hai, không đè | R4.5       | Cài `marketing@1.0.0` vào công ty có `mkt_lead` đã sửa sau khi gieo → không thành phần thứ hai cùng `api_name`, `origin` gắn vào `mkt_lead`, phiên bản Đang dùng và nội dung của công ty giữ nguyên, chỗ khác thành Đề xuất cập nhật gói; trình cài tạo bản mới hay ghi đè nội dung → test đỏ |
 
 ## Tiêu chí xong
 
@@ -170,16 +178,12 @@ Phiên bản mới của gói đến như đề xuất vào bản nháp, không 
   tenant-rbac; loại quy trình của workflow-engine; loại trợ lý của agent-builder.
 - `Idempotency-Key` gắn người gọi (app-standards/02); quyền lợi `studio.pack.<key>` đọc từ tính năng của gói dịch
   vụ một chủ (usage-and-limits:R1.1).
-- tenant-config: route tạo thành phần gọi registry Tiền tố dành riêng mà spec này cấp (R3.1); tenant-config chưa có
-  điểm kiểm đó, và luật chỉ bật sau khi trả lời Q2.
+- tenant-config: route tạo thành phần gọi registry Tiền tố dành riêng mà spec này cấp (R3.1), một dòng W2 của
+  tenant-config; luật bật cùng gói Marketing 1.0 ở W2, và thành phần đã mang tiền tố được gói nhận khi cài (R4.5).
 - Kiểm lại khi: trả lời Q1 của custom-objects về phát hành đối tượng → R2.4; ADR-0109 (Accepted) đổi `origin` → R2.1;
-  ADR-0110 (Accepted) đổi Điểm gắn → R4.1; trả lời Q2 → R3.1, R4.1.
+  ADR-0110 (Accepted) đổi Điểm gắn → R4.1; marketing-pilot/02 đổi tên hay tập thành phần gieo → R3.1, R4.2, R4.5.
 
 ## Câu hỏi còn mở
-
-- Q2. Công ty thí điểm đã có `mkt_lead`, `mkt_campaign` do script W1 của marketing-pilot/02 gieo: khi gói Marketing
-  1.0 ra ở W2, cài gói vào công ty đó thì gắn nguồn gốc cho thành phần đang có, hay chỉ cài vào công ty mới? Chủ:
-  Đạt. Chặn: R3.1, R4.1.
 
 ## Quyết định
 
@@ -199,12 +203,16 @@ Phiên bản mới của gói đến như đề xuất vào bản nháp, không 
 - 23/10/2026 (Đạt): DO-62 theo (a): Công ty thử nghiệm chỉ người vận hành tạo, chỉ dữ liệu giả lập, hạn mức riêng.
   Hỏi: Q3. Sửa: Ngoài phạm vi.
 - 23/10/2026 (agent, tạm): A:domain-packs:R3.1~tenant-config:R2.2: spec này cấp registry Tiền tố dành riêng, route
-  tạo thành phần của tenant-config gọi nó; luật bật sau khi trả lời Q2. Sửa: Phụ thuộc. Nếu sai thì: trình cài của
-  spec này tự kiểm tiền tố và tenant-config không đổi.
+  tạo thành phần của tenant-config gọi nó; luật bật cùng gói Marketing 1.0 ở W2. Sửa: Phụ thuộc. Nếu sai thì: trình
+  cài của spec này tự kiểm tiền tố và tenant-config không đổi.
 - 24/10/2026 (Đạt): N9: gói nghiệp vụ thứ hai là Bán hàng ở W3, nối tiếp lead của gói Marketing; Nhân sự, Mua hàng
   và Tài chính đi sau gói Bán hàng, cùng nguyên liệu chung có chủ (kiểu trường tệp đính kèm của custom-objects;
   duyệt song song k trên n của workflow-engine và workflow-nodes; bảng quyết định hay ma trận duyệt theo ngưỡng của
   workflow-nodes; đều W3); DO-25 giữ phương án (a). Sửa: Ngoài phạm vi.
+- 24/10/2026 (Đạt): cài gói Marketing 1.0 ở W2 vào công ty đã có `mkt_lead`, `mkt_campaign` do marketing-pilot/02
+  gieo thì gắn nguồn gốc gói cho thành phần đang có; chỗ nào khác phiên bản của gói thành một Đề xuất cập nhật gói
+  vào bản Nháp, như mọi bản cập nhật gói (H:domain-packs:spec~tenant-config:spec). Hỏi: Q2. Sửa: Status, R3.1, R4.1,
+  R4.5, DP13, Trong phạm vi, Phụ thuộc.
 
 ## Danh sách ticket
 
