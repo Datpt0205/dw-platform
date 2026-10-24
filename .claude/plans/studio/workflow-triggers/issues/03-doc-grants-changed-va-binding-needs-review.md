@@ -60,4 +60,5 @@ quyền và duyệt bởi người khác (R3.6, R3.7, TR17 của spec; ADR-0103 
 - 2026-10-24 (agent): kiểm sau vòng sửa thứ tư, sửa ở lượt b: khóa ngoại `service_principal_id` thành FK ghép
   `(tenant_id, service_principal_id)` tới UNIQUE `(tenant_id, user_id)` của `platform.service_principals`, để cơ sở dữ
   liệu chặn tham chiếu chéo tenant, và khóa chính là index của nó, nên index riêng `(service_principal_id)` mà lượt a
-  thêm bỏ (B14; CLAUDE.md, Data model rules; phát hiện E về CLAUDE.md và Dữ liệu của spec).
+  thêm bỏ (CLAUDE.md, Data model rules; phát hiện E về CLAUDE.md và Dữ liệu của spec).
+- 2026-10-24 (agent): lượt d của vòng 4: dòng Comments của lượt b thôi dẫn mã mục của lượt, nội dung giữ nguyên.

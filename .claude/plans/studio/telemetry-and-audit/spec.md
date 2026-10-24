@@ -35,6 +35,10 @@ thuộc W2.
 - Nhật ký kiểm toán `list_for_run` chặn cứng 100 dòng, không lọc phía máy chủ
   (`packages/python/dw_platform/src/dw_platform/adapters/persistence/repositories.py:234-244`); trang
   `/audit` lọc phía client (`apps/web/app/audit/page.tsx:40`). Ràng buộc: lọc và xuất là W2.
+- Màn `/audit` giữ bảng nhãn và màu riêng `ACTIONS` cho sáu action, action ngoài bảng hiện `Hoạt động hệ thống`
+  (`apps/web/app/audit/page.tsx:15-25`), còn `GET /api/v1/audit/events` chỉ trả mã `action`
+  (`apps/api/src/dw_api/routes/v1/audit.py:27`). Thiếu: một chủ cho nhãn action; khi có catalog hành động của
+  ADR-0122 (Accepted) quyết 6, bảng đó là bản sao thứ hai (`failure-modes.md` #2).
 - Tính năng `audit_export` khai trong gói nhưng không mã sản xuất nào đọc
   (`packages/python/dw_platform/src/dw_platform/application/entitlement.py:33`). Thiếu: bên đọc
   (`failure-modes.md` #1); xuất là W2.
@@ -59,6 +63,12 @@ Người vận hành và hệ thống quan sát nhận span, log và metric ch�
 - R1.5 Một dòng log JSON của API hay worker PHẢI chỉ mang các trường trong danh sách định danh cho phép.
 - R1.6 NẾU mã trong `src/` ghi một sự kiện Nhật ký kiểm toán với một `action` không có khóa và nhãn tiếng Việt trong
   catalog hành động `configs/copy/audit_actions@<semver>.yaml`, THÌ test AST PHẢI đỏ (ADR-0122 (Accepted) quyết 6).
+- R1.7 KHI `GET /api/v1/audit/events` trả một trang sự kiện, API Nhật ký kiểm toán PHẢI mang trên mỗi sự kiện
+  `action_label`, nhãn tiếng Việt của `action` đó trong catalog hành động đang ghim, hay NULL khi catalog không có
+  khóa của `action` đó (ADR-0122 (Accepted) quyết 6).
+- R1.8 KHI màn `/audit` hiện một sự kiện Nhật ký kiểm toán, màn `/audit` PHẢI hiện ở cột Thao tác đúng
+  `action_label` mà API trả cho sự kiện đó, hay `Hoạt động hệ thống` khi trường đó NULL, vì catalog là chủ duy nhất
+  của nhãn action (`failure-modes.md` #2).
 
 ### R2 — Một trace id từ trình duyệt tới worker, cây span thật
 
@@ -151,7 +161,8 @@ tạm UNVERIFIED tới khi luật sư xác nhận trước chạy bóng (ADR-012
 - Audit: `run.payload.viewed`.
 - Catalog hành động audit `configs/copy/audit_actions@1.0.0.yaml` (ADR-0122 (Accepted) quyết 6), tạo ở ticket 03: một
   khóa mang nhãn tiếng Việt cho mỗi `action` mà mã ghi lúc đó, và test AST của R1.6; cách các ticket sau thêm tên
-  action là Q2.
+  action là Q2. Catalog là chủ duy nhất của nhãn action: trường `action_label` của `GET /api/v1/audit/events` đọc từ
+  nó (R1.7), và màn `/audit` hiện trường đó thay bảng nhãn riêng của màn (R1.8).
 
 ## Ngoài phạm vi
 
@@ -215,6 +226,8 @@ timestamptz`, `duration_ms`, `error_type`; `input_preview` và `result_preview` 
 - `GET /api/v1/runs/{run_id}/steps` (`runs.read`): các Bước chạy theo `seq`.
 - `GET /api/v1/runs/{run_id}/steps/{step_id}/payload?part=in|out` (`runs.read_payloads`): payload che theo
   quyền đọc trường của người xem; audit `run.payload.viewed` trong cùng giao dịch.
+- `GET /api/v1/audit/events` (route có sẵn, kiểm quyền và phân trang giữ nguyên): mỗi sự kiện thêm `action_label`,
+  nhãn của catalog hành động đang ghim cho `action` đó, NULL khi catalog không có khóa (R1.7).
 - Lỗi theo vỏ `application/problem+json` của ADR-0108 (Accepted), mang `trace_id`; `details.reason_code`
   cho 404 cách ly.
 
@@ -224,26 +237,30 @@ timestamptz`, `duration_ms`, `error_type`; `input_preview` và `result_preview` 
   phí; bộ lọc theo `artifact`, trạng thái, nguồn kích hoạt, khoảng thời gian), đọc `GET /api/v1/runs`.
 - Màn `/runs/[id]` (antd: Steps cho các Bước chạy, Descriptions, xem JSON có dấu `Đã ẩn`, token và chi phí
   mỗi Bước chạy, nút "Sao chép trace id").
+- Màn `/audit` (có sẵn): cột Thao tác hiện `action_label` của `GET /api/v1/audit/events` trong một antd Tag chung cho
+  mọi action, `Hoạt động hệ thống` khi trường đó NULL, dòng vẫn hiện; màn bỏ bảng nhãn và màu theo từng action của nó
+  (R1.8).
 
 ## Kiểm soát
 
-| #    | Kiểm soát                                           | Yêu cầu    | Test âm                                                                                                                                                                                                                                                                                 |
-| ---- | --------------------------------------------------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| TA1  | Span, log, audit không mang nội dung                | R1.2       | Input có số điện thoại → không span, log hay sự kiện Nhật ký kiểm toán nào chứa giá trị đó; bật Ghi nội dung cho công ty A không làm span công ty B mang nội dung                                                                                                                       |
-| TA2  | Tên phát khớp ảnh đã ghim                           | R1.1       | Đổi một tên span trong `semconv` → test hợp đồng đỏ                                                                                                                                                                                                                                     |
-| TA3  | Mỗi metric khai có nơi phát                         | R1.3       | Thêm một hằng vào `ALL_METRICS` không có lời gọi phát → test AST đỏ                                                                                                                                                                                                                     |
-| TA4  | Lịch sử chạy cách ly công ty và bản ghi             | R3.6       | `GET` Bước chạy của lượt chạy công ty B từ A → 404; danh sách `GET /api/v1/runs` không có lượt chạy công ty khác                                                                                                                                                                        |
-| TA5  | Che theo quyền đọc trường khi đọc payload           | R3.3       | Người không có quyền đọc `phone` → payload trả dấu `Đã ẩn`; gỡ che → test đỏ                                                                                                                                                                                                            |
-| TA6  | Bí mật không vào Lịch sử chạy                       | R3.2       | Input mang một khóa bí mật → preview không có giá trị, `redaction_log` ghi lý do; gỡ bỏ bí mật → test đỏ                                                                                                                                                                                |
-| TA7  | Trace id 32 hex xuyên tiến trình                    | R2.2, R2.3 | Request mang `traceparent` → cùng trace id ở span API, span worker, `platform.worker_runs` và dòng outbox; ghi `trace_id` dạng `api-...` → CHECK từ chối                                                                                                                                |
-| TA8  | Log chỉ id                                          | R1.5       | Một dòng log mang giá trị dạng email hay query string → `test_logs_carry_ids_only` đỏ                                                                                                                                                                                                   |
-| TA9  | Langfuse không nhận user id hay nội dung            | R1.4       | Span processor bỏ `user.id` và `gen_ai.input.messages`; gỡ bỏ → test exporter đỏ                                                                                                                                                                                                        |
-| TA10 | Mở payload có ghi Nhật ký kiểm toán                 | R3.5       | Mở payload → đúng một sự kiện `run.payload.viewed`; gỡ ghi audit → test đỏ                                                                                                                                                                                                              |
-| TA11 | Lưu giữ không xóa lượt chạy sống hay còn tham chiếu | R5.3, R5.5 | Lượt chạy `waiting_approval` 400 ngày còn nguyên; lượt chạy được `memory.items` trỏ tới → bỏ qua, được đếm; sự kiện vào 31 ngày mà một lượt `queued` còn trỏ tới → bỏ qua, được đếm; sự kiện vào 45 ngày đang bị giữ khi Đóng băng → bỏ qua, metric bỏ qua tăng; gỡ điều kiện → test đỏ |
-| TA12 | Payload cần `runs.read_payloads`                    | R4.3       | Thiếu `runs.read_payloads` gọi payload → 403, không trả payload; gỡ kiểm → test đỏ                                                                                                                                                                                                      |
-| TA13 | Mỗi kho mới có bộ xóa đăng ký                       | R5.1, R5.2 | Một lớp retention thiếu bộ xóa → test tập bộ xóa đỏ                                                                                                                                                                                                                                     |
-| TA14 | Xóa output công cụ không trả UPDATE cho `dw_app`    | R5.7       | Lane chạy qua dòng `tool_executions` 31 ngày → `output` NULL, cột khác giữ nguyên; dòng 29 ngày giữ `output`; `dw_app` UPDATE thẳng → `permission denied`; hàm đặt NULL thêm một cột khác → test đỏ                                                                                     |
-| TA15 | Mỗi action audit có trong catalog                   | R1.6       | Thêm một lời ghi audit với `action` không có trong `configs/copy/audit_actions@1.0.0.yaml` → test AST đỏ, nêu tên action; một khóa của catalog có nhãn tiếng Việt rỗng → test đỏ                                                                                                        |
+| #    | Kiểm soát                                           | Yêu cầu    | Test âm                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ---- | --------------------------------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TA1  | Span, log, audit không mang nội dung                | R1.2       | Input có số điện thoại → không span, log hay sự kiện Nhật ký kiểm toán nào chứa giá trị đó; bật Ghi nội dung cho công ty A không làm span công ty B mang nội dung                                                                                                                                                                                                                                           |
+| TA2  | Tên phát khớp ảnh đã ghim                           | R1.1       | Đổi một tên span trong `semconv` → test hợp đồng đỏ                                                                                                                                                                                                                                                                                                                                                         |
+| TA3  | Mỗi metric khai có nơi phát                         | R1.3       | Thêm một hằng vào `ALL_METRICS` không có lời gọi phát → test AST đỏ                                                                                                                                                                                                                                                                                                                                         |
+| TA4  | Lịch sử chạy cách ly công ty và bản ghi             | R3.6       | `GET` Bước chạy của lượt chạy công ty B từ A → 404; danh sách `GET /api/v1/runs` không có lượt chạy công ty khác                                                                                                                                                                                                                                                                                            |
+| TA5  | Che theo quyền đọc trường khi đọc payload           | R3.3       | Người không có quyền đọc `phone` → payload trả dấu `Đã ẩn`; gỡ che → test đỏ                                                                                                                                                                                                                                                                                                                                |
+| TA6  | Bí mật không vào Lịch sử chạy                       | R3.2       | Input mang một khóa bí mật → preview không có giá trị, `redaction_log` ghi lý do; gỡ bỏ bí mật → test đỏ                                                                                                                                                                                                                                                                                                    |
+| TA7  | Trace id 32 hex xuyên tiến trình                    | R2.2, R2.3 | Request mang `traceparent` → cùng trace id ở span API, span worker, `platform.worker_runs` và dòng outbox; ghi `trace_id` dạng `api-...` → CHECK từ chối                                                                                                                                                                                                                                                    |
+| TA8  | Log chỉ id                                          | R1.5       | Một dòng log mang giá trị dạng email hay query string → `test_logs_carry_ids_only` đỏ                                                                                                                                                                                                                                                                                                                       |
+| TA9  | Langfuse không nhận user id hay nội dung            | R1.4       | Span processor bỏ `user.id` và `gen_ai.input.messages`; gỡ bỏ → test exporter đỏ                                                                                                                                                                                                                                                                                                                            |
+| TA10 | Mở payload có ghi Nhật ký kiểm toán                 | R3.5       | Mở payload → đúng một sự kiện `run.payload.viewed`; gỡ ghi audit → test đỏ                                                                                                                                                                                                                                                                                                                                  |
+| TA11 | Lưu giữ không xóa lượt chạy sống hay còn tham chiếu | R5.3, R5.5 | Lượt chạy `waiting_approval` 400 ngày còn nguyên; lượt chạy được `memory.items` trỏ tới → bỏ qua, được đếm; sự kiện vào 31 ngày mà một lượt `queued` còn trỏ tới → bỏ qua, được đếm; sự kiện vào 45 ngày đang bị giữ khi Đóng băng → bỏ qua, metric bỏ qua tăng; gỡ điều kiện → test đỏ                                                                                                                     |
+| TA12 | Payload cần `runs.read_payloads`                    | R4.3       | Thiếu `runs.read_payloads` gọi payload → 403, không trả payload; gỡ kiểm → test đỏ                                                                                                                                                                                                                                                                                                                          |
+| TA13 | Mỗi kho mới có bộ xóa đăng ký                       | R5.1, R5.2 | Một lớp retention thiếu bộ xóa → test tập bộ xóa đỏ                                                                                                                                                                                                                                                                                                                                                         |
+| TA14 | Xóa output công cụ không trả UPDATE cho `dw_app`    | R5.7       | Lane chạy qua dòng `tool_executions` 31 ngày → `output` NULL, cột khác giữ nguyên; dòng 29 ngày giữ `output`; `dw_app` UPDATE thẳng → `permission denied`; hàm đặt NULL thêm một cột khác → test đỏ                                                                                                                                                                                                         |
+| TA15 | Mỗi action audit có trong catalog                   | R1.6       | Thêm một lời ghi audit với `action` không có trong `configs/copy/audit_actions@1.0.0.yaml` → test AST đỏ, nêu tên action; một khóa của catalog có nhãn tiếng Việt rỗng → test đỏ                                                                                                                                                                                                                            |
+| TA16 | Nhãn action có một chủ                              | R1.7, R1.8 | Đổi nhãn của `run.started` trong một catalog thử → `GET /api/v1/audit/events` trả nhãn mới trong `action_label` và màn `/audit` hiện nhãn đó; `action` không có khóa trong catalog → `action_label` NULL, màn hiện `Hoạt động hệ thống`, dòng vẫn hiện; giữ lại bảng `ACTIONS` của màn → nhãn mới không hiện, test màn đỏ; bỏ `action_label` khỏi bản zod của `@dw/contracts` → `client.ts` không biên dịch |
 
 ## Tiêu chí xong
 
@@ -297,7 +314,8 @@ timestamptz`, `duration_ms`, `error_type`; `input_preview` và `result_preview` 
   sự kiện vào hay cách giữ sự kiện khi Đóng băng → R5.1, R5.5; luật sư đổi số thời hạn → một bản mới của tệp
   chính sách retention, không đổi tiêu chí; usage-and-limits đổi hai hàm của sổ → R5.8, ticket 03; một ticket mới
   sửa tệp chính sách retention, hay chuỗi các ticket sửa tệp đổi thứ tự → mục Phụ thuộc, ticket 03; workflow-engine
-  bỏ hay dời trigger trên `platform.worker_runs` → ticket 02.
+  bỏ hay dời trigger trên `platform.worker_runs` → ticket 02; một ticket khác sửa `GET /api/v1/audit/events` hay màn
+  `/audit` → R1.7, R1.8, ticket 03.
 
 ## Câu hỏi còn mở
 
@@ -381,6 +399,16 @@ timestamptz`, `duration_ms`, `error_type`; `input_preview` và `result_preview` 
   của tệp chính sách retention (V4.P1), ghi ở Q2. Sửa: thêm R1.6, TA15, Trong phạm vi, Ngoài phạm vi, Q2, ticket 03.
   Nếu sai thì: catalog về W2 cùng bộ lọc của YC83, R1.6 và TA15 sang dòng W2 đó, và các spec dẫn catalog ở W1 đổi
   theo.
+- 24/10/2026 (agent, tạm): catalog hành động audit là chủ duy nhất của nhãn action: `GET /api/v1/audit/events` trả mỗi
+  sự kiện kèm `action_label` đọc từ catalog đang ghim (NULL khi catalog không có khóa), và màn `/audit` hiện trường đó
+  và bỏ bảng `ACTIONS` riêng của nó (nhãn và màu theo từng action, `apps/web/app/audit/page.tsx:15-25`), vì hai bản
+  nhãn của một action lệch nhau mà không ai thấy (`failure-modes.md` #2) và ADR-0122 (Accepted) quyết 6 giao nhãn
+  tiếng Việt của mọi action cho catalog; nhãn đi qua một trường của route có sẵn thay một route riêng, nên màn chỉ gọi
+  một route; bản zod viết tay của sự kiện ở `@dw/contracts` mang trường đó cùng một dòng `SameType` so với route, vì
+  zod bỏ khóa nó không khai (`packages/typescript/api-client/src/client.ts:200-205`), nên thiếu bản zod thì nhãn không
+  tới màn. Sửa: Hiện trạng, thêm R1.7, R1.8, TA16, Trong phạm vi, API, Màn hình, Phụ thuộc, ticket 03. Nếu sai thì:
+  màn đọc catalog qua một route riêng (ví dụ `GET /api/v1/audit/actions`) và ghép nhãn theo `action`, R1.7, R1.8 và
+  TA16 đổi theo route đó; catalog vẫn là chủ duy nhất của nhãn.
 
 ## Danh sách ticket
 

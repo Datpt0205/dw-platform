@@ -53,8 +53,9 @@ trị viên, `platform.roles.bind` gán vai trò không trọng yếu.
    `status text NOT NULL CHECK (status IN ('proposed','confirmed','withdrawn'))`, `confirmed_by uuid NULL`,
    `decided_at timestamptz NULL`, `ck_role_change_requests_second_person CHECK (confirmed_by IS NULL OR confirmed_by <> proposed_by)`;
    FK `(tenant_id, role_id)` tới `platform.tenant_roles` `ON DELETE CASCADE`; index `(tenant_id, status, proposed_at, id)`
-   cho danh sách. RLS tenant; `dw_app` SELECT, INSERT và UPDATE chỉ trên `status`, `confirmed_by`, `decided_at`. Hết hạn
-   đọc từ `expires_at`, không có trạng thái thứ hai; dòng giữ làm hồ sơ tới khi offboarding xóa tenant.
+   cho danh sách và `(tenant_id, role_id)` cho FK tới vai trò. RLS tenant; `dw_app` SELECT, INSERT và UPDATE chỉ trên
+   `status`, `confirmed_by`, `decided_at`. Hết hạn đọc từ `expires_at`, không có trạng thái thứ hai; dòng giữ làm hồ sơ
+   tới khi offboarding xóa tenant.
     - Mutation nới quyền ở bước 5 và 6 ghi một đề xuất (202 kèm `id`) sau khi `platform.rbac_refusals` cho người đề xuất
       không trả gì; `platform.checker_candidates` (ticket 02) không trả ai cho `required_permission` → 409 `conflict` với
       `details.reason_code` `no_checker_available`, không ghi.
@@ -155,3 +156,4 @@ trị viên, `platform.roles.bind` gán vai trò không trọng yếu.
 - 2026-10-24 (agent): Đạt quyết ngày 24/10/2026: xóa mềm vai trò là thay đổi chỉ siết, một người cộng audit (D11); mã hai người là 409 `conflict` với `details.reason_code`; vai trò đổi `version` giữa đề xuất và xác nhận trả `proposal_stale`; loại đề xuất bỏ `role_delete` và `assignment_revoke` vì không còn thay đổi nào đi qua đề xuất với hai loại đó.
 - 2026-10-24 (agent): Điều kiện tiên quyết FOG-49 (Đạt, 24/10/2026): người giữ dw-proterial chuyển dw-proterial khỏi `memberships.role_keys` trước khi bước 9 khóa cột; ticket này chờ điều kiện đó ngoài Blocked by vì nó không phải một ticket của area.
 - 2026-10-24 (agent): vòng sửa 4: câu INSERT của bước 1 nêu mọi cột NOT NULL của danh mục, `tenant_grantable` của ticket 02 gồm (`C:custom-objects/02~tenant-rbac/02`); ticket này đã chờ ticket 02 nên Blocked by không đổi.
+- 2026-10-24 (agent): vòng sửa 4, lượt bốn: bước 4 thêm index `(tenant_id, role_id)` của `platform.role_change_requests` cho FK tới vai trò, vì index danh sách không dẫn bằng hai cột đó (CLAUDE.md, Data model rules; Quyết định 24/10/2026 của spec).

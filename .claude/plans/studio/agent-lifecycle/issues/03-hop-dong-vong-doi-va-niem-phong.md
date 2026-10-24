@@ -74,9 +74,10 @@ database và "đã kiểm định" tính được (spec R1, R2). Đứng trên v
    gửi của ticket 04 (spec R2.8). Với loại có cổng, trong một giao dịch: hỏi `RunControlPort` của ticket 01,
    đóng băng thì 409 `tenant_frozen` hay `platform_frozen` (spec R7.9); tính bao đóng bằng extractor của
    loại, gọi bước niêm phong của tenant-config (cấp `version_no`, ghi `content_hash`, `definition_hash`,
-   Nơi đang dùng), chạy các kiểm của bảng kiểm theo loại (một kiểm từ chối → 422 với `reason_code` của nó,
-   giao dịch lùi, phiên bản giữ `draft`; spec R2.7), ghi `compared_live_hash` (spec R2.10), chuyển
-   `draft → evaluating`, xếp Lượt kiểm định hoặc dùng lại bằng chứng (ticket 04), audit `studio.version.submitted`.
+   Nơi đang dùng; bước đó không đổi giai đoạn, tenant-config:R2.7), chạy các kiểm của bảng kiểm theo loại (một kiểm
+   từ chối → 422 với `reason_code` của nó, giao dịch lùi, phiên bản giữ `draft`; spec R2.7), ghi `compared_live_hash`
+   (spec R2.10), `LifecycleService` chuyển `draft → evaluating` (spec R2.1; ADR-0120 (Accepted) quyết 1), xếp Lượt
+   kiểm định hoặc dùng lại bằng chứng (ticket 04), audit `studio.version.submitted`.
    Ticket 04 thêm vào route này kiểm `PublishBindingsCheck` cho mọi loại (spec R2.11). `POST .../withdraw`: hủy yêu cầu phê duyệt phát hành treo bằng
    `ApprovalRequest.cancel()` và về `draft`, audit `studio.version.returned_to_draft`. `POST .../retire`
    (`studio.versions.retire`, lý do): `live → retired` (`explicit`), 409 `artifact_in_use` kèm danh sách
@@ -179,3 +180,6 @@ database và "đã kiểm định" tính được (spec R1, R2). Đứng trên v
 - 2026-10-24 (agent): kiểm lượt c: bước 1 nói FK ghép cho mọi FK tới một bảng theo tenant, vì luật của area để FK tới
   bảng không theo tenant (như `platform.users`) giữ một cột; dẫn thêm ADR-0120 (Accepted) quyết 1, nơi hai cột
   `gate_run_id`, `publish_approval_id` được nêu là FK ghép.
+- 2026-10-24 (agent): vòng sửa thứ tư, lượt d, theo Quyết định tạm cùng ngày của spec: bước 5 nói bước niêm phong của
+  tenant-config không đổi giai đoạn và `LifecycleService` chuyển `draft → evaluating` (spec R2.1; ADR-0120 (Accepted)
+  quyết 1), để việc chuyển giai đoạn có một bên ghi.

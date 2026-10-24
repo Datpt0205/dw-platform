@@ -3,13 +3,14 @@
 Status: needs-triage
 Blocked by: .claude/plans/studio/workflow-engine/issues/03-bien-dich-va-wrapper-nut.md, .claude/plans/studio/field-security/issues/01-mo-hinh-bao-mat-truong.md, .claude/plans/studio/usage-and-limits/issues/02-bang-gia-so-su-dung-va-man-hinh.md, .claude/plans/studio/usage-and-limits/issues/03-han-muc-giu-truoc-va-quyet-toan.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md
 Area: studio
-Yêu cầu: R1.6, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R4.1, R4.2, R4.3, R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R5.8, TA4, TA5, TA6, TA10, TA11, TA12, TA13, TA14, TA15
+Yêu cầu: R1.6, R1.7, R1.8, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R4.1, R4.2, R4.3, R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R5.8, TA4, TA5, TA6, TA10, TA11, TA12, TA13, TA14, TA15, TA16
 
 ## Mục tiêu
 
 Một kho `platform.run_steps` cho mỗi Bước chạy, che bí mật khi ghi và che theo quyền đọc trường của người
 xem khi đọc; màn Lịch sử chạy đọc dưới `runs.read` theo độ sâu; một chính sách lưu giữ có bộ xóa cho mỗi
-kho mới; một catalog hành động audit có test AST (spec R1.6, R3, R4, R5).
+kho mới; một catalog hành động audit có test AST, chủ duy nhất của nhãn action mà màn `/audit` đọc qua API (spec
+R1.6, R1.7, R1.8, R3, R4, R5).
 
 ## Việc cần làm
 
@@ -67,12 +68,33 @@ timestamptz`, `duration_ms`, `error_type`, `input_preview` và `result_preview` 
    tiếng Việt; test AST đọc mọi lời ghi sự kiện Nhật ký kiểm toán trong `src/` và đỏ khi một `action` không có khóa
    trong catalog (spec R1.6). Cách các ticket sau thêm tên action là Q2 của spec; ticket này không thêm tên cho action
    chưa có mã ghi.
+9. Nhãn action có một chủ, catalog của bước 8 (spec R1.7, R1.8; `failure-modes.md` #2): `AuditEventView` của
+   `GET /api/v1/audit/events` (`apps/api/src/dw_api/routes/v1/audit.py:17`) thêm `action_label: str | None`, nhãn
+   của `action` trong bản catalog đang ghim, NULL khi catalog không có khóa; kiểm quyền và phân trang của route giữ
+   nguyên, và client sinh ra (`packages/typescript/api-client/src/generated/platform.d.ts`) mang trường mới. Màn đọc
+   trang qua `listAuditEvents`, nơi bản zod viết tay `auditEventSchema` của `@dw/contracts`
+   (`packages/typescript/contracts/src/audit.ts:3-12`) parse phản hồi, và zod bỏ mọi khóa bản zod không khai, nên
+   `auditEventSchema` thêm `action_label: z.string().nullable()` và `packages/typescript/api-client/src/client.ts`
+   thêm một dòng `SameType` so `AuditEvent` với `Generated["AuditEventView"]` theo kiểu và theo tập khóa, như các
+   dòng ở `client.ts:200-244`: bản zod thiếu trường thì biên dịch đỏ, thay vì mọi dòng lặng lẽ hiện
+   `Hoạt động hệ thống`. Màn `/audit` hiện `action_label` ở cột Thao tác trong một antd Tag chung cho mọi action,
+   `Hoạt động hệ thống` khi trường đó NULL, dòng vẫn hiện; bỏ bảng `ACTIONS` (nhãn và màu theo từng action) cùng chú
+   thích PLUG-IN POINT của nó ở `apps/web/app/audit/page.tsx:15-25`. Bước 8 chép nguyên chữ sáu nhãn của bảng đó vào
+   catalog, nên chữ của sáu action đó trên màn không đổi; một action mới thêm nhãn vào catalog (Q2 của spec), không
+   vào mã web.
 
 ## Tiêu chí chấp nhận
 
 - [ ] R1.6 (TA15): thêm một lời ghi audit với `action` không có khóa trong `configs/copy/audit_actions@1.0.0.yaml` →
       test AST đỏ, nêu tên action; một khóa của catalog có nhãn tiếng Việt rỗng → test đỏ; `run.payload.viewed` có
       khóa và nhãn.
+- [ ] R1.7 (TA16): đổi nhãn của `run.started` trong một catalog thử → `GET /api/v1/audit/events` trả nhãn mới trong
+      `action_label` của sự kiện `run.started`; sự kiện có `action` không có khóa trong catalog → `action_label` NULL,
+      dòng vẫn trả.
+- [ ] R1.8 (TA16): màn `/audit` nhận qua `listAuditEvents` (phản hồi HTTP giả, parse bằng `auditEventSchema`) một
+      trang có sự kiện `run.started` với `action_label` khác nhãn mà bảng `ACTIONS` cũ ghi → cột Thao tác hiện đúng
+      `action_label`; `action_label` NULL → hiện `Hoạt động hệ thống`, dòng vẫn hiện; giữ lại bảng `ACTIONS` → test
+      màn đỏ; bỏ `action_label` khỏi `auditEventSchema` → dòng `SameType` của `client.ts` không biên dịch.
 - [ ] R3.1: một node kết thúc → đúng một Bước chạy mang trạng thái, thời điểm, thời lượng, token, chi phí.
 - [ ] R3.2 (TA6): input mang một khóa bí mật → preview không có giá trị, `redaction_log` ghi lý do; gỡ bỏ
       bí mật → test đỏ.
@@ -113,6 +135,10 @@ timestamptz`, `duration_ms`, `error_type`, `input_preview` và `result_preview` 
 - `apps/api/src/dw_api/routes/v1/runs.py:41-68`; spec: R4.1 (có `get_run` và `timeline`; thêm danh sách,
   bước, payload).
 - `configs/policies/retention@1.7.0.yaml:118-120`; spec: R5.3 (dẫn Nghị định 13 cần bỏ, chuyển compliance-pdpl).
+- `apps/web/app/audit/page.tsx:15-25`, `apps/api/src/dw_api/routes/v1/audit.py:27`; spec: R1.7, R1.8 (màn giữ bảng
+  nhãn action riêng, route chỉ trả mã `action`).
+- `packages/typescript/contracts/src/audit.ts:3-12`, `packages/typescript/api-client/src/client.ts:200-244`; spec:
+  R1.8 (bản zod của sự kiện audit chưa có dòng `SameType` nào so với route, và zod bỏ khóa nó không khai).
 - ADR-0122 (Accepted) quyết 4, 6, 7; ADR-0106 (Accepted) quyết 4.
 
 ## Comments
@@ -139,3 +165,7 @@ timestamptz`, `duration_ms`, `error_type`, `input_preview` và `result_preview` 
 - 2026-10-24 (agent): lượt sửa thứ ba của vòng 4, theo dòng tạm cùng ngày của spec: ticket này tạo catalog hành động
   audit `configs/copy/audit_actions@1.0.0.yaml` của ADR-0122 (Accepted) quyết 6 cùng test AST (bước 8; spec R1.6,
   TA15), vì catalog chưa có chủ; cách các ticket sau thêm tên action chờ lượt `checking-plan-readiness` của spec (Q2).
+- 2026-10-24 (agent): lượt sửa thứ tư của vòng 4, theo dòng tạm cùng ngày của spec: catalog hành động là chủ duy nhất
+  của nhãn action, nên `GET /api/v1/audit/events` trả `action_label` từ catalog và màn `/audit` bỏ bảng `ACTIONS` riêng
+  (bước 9; spec R1.7, R1.8, TA16; `failure-modes.md` #2); bản zod `auditEventSchema` của `@dw/contracts` mang trường
+  đó cùng một dòng `SameType` so với route, vì zod bỏ khóa nó không khai, nên thiếu bản zod thì nhãn không tới màn.

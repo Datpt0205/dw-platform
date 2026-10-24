@@ -16,7 +16,8 @@ FOG: FOG-34 `deepagents-pin`, FOG-35 `middleware-compose`, FOG-36 `agent-hosting
    `ToolCallLimitMiddleware` và `ModelCallLimitMiddleware` làm gì với lời gọi công cụ song song (FOG-35)?
 4. Runner có host được một graph `create_agent` đã biên dịch với checkpointer SQL, resume sạch sau khi lượt chạy bị
    dừng ở middleware hay executor mà không chạy lại lời gọi công cụ đã xong không; thời gian biên dịch, bộ nhớ và cỡ
-   LRU theo (tenant, phiên bản) mà worker trên host 2 vCPU chịu được (FOG-36)?
+   LRU theo (tenant, phiên bản, mã băm đã ghim) mà worker trên host 2 vCPU chịu được, khi mỗi nội dung của một bản Nháp
+   đem chạy mô phỏng là một mục riêng (FOG-36)?
 
 ## Vì sao
 
@@ -45,7 +46,7 @@ hai thứ tự; chạy trong runner hiện có với checkpointer SQL; nâng dee
 | Interrupt phê duyệt ở cả hai thứ tự middleware | Luôn tới runner; test đỏ khi wrapper nuốt nó                                             | Thứ tự middleware cố định                         |
 | Lời gọi công cụ chạy lại sau resume            | 0                                                                                        | Đóng băng dừng rồi tiếp tục (W3) có khả thi không |
 | Middleware kiểm soát trong agent liên kết      | Có mặt ở mọi lời gọi                                                                     | Bản deepagents và cách gắn                        |
-| Biên dịch: thời gian, RSS mỗi graph            | Ghi số dưới giới hạn worker 1 CPU / 1 GB (`infra/compose/docker-compose.prod.yml:40-41`) | Cỡ LRU theo (tenant, phiên bản)                   |
+| Biên dịch: thời gian, RSS mỗi graph            | Ghi số dưới giới hạn worker 1 CPU / 1 GB (`infra/compose/docker-compose.prod.yml:40-41`) | Cỡ LRU theo (tenant, phiên bản, mã băm đã ghim)   |
 
 ## Nguồn
 
@@ -54,3 +55,11 @@ hai thứ tự; chạy trong runner hiện có với checkpointer SQL; nâng dee
   kiểm).
 
 ## Comments
+
+- 2026-10-24 (agent, tạm): câu 4 và dòng biên dịch của Phép đo quyết định đo cache graph agent theo khóa
+  `(tenant_id, agent_version_id, pinned_hash)`, vì Kiểm định thử nhận bản Nháp của agent, và một bản Nháp chỉ được
+  biên dịch dưới mã băm tạm mà bản kê của lượt `simulate` ghim (ADR-0117 (Accepted) quyết 5, ADR-0109 (Accepted)
+  quyết 6), nên mỗi nội dung nháp đem chạy mô phỏng là một mục cache riêng; quy trình đã khóa cache như vậy
+  (ADR-0112 (Accepted) quyết 4). Sửa: Câu hỏi (câu 4), Phép đo quyết định (dòng biên dịch). Nếu sai thì: bản Nháp
+  của agent không chạy được, cache giữ khóa `(tenant_id, agent_version_id)`, và câu 4 đo cỡ LRU theo (tenant, phiên
+  bản) như trước.

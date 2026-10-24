@@ -16,16 +16,16 @@ kho khóa ở ticket 06 (DO-47.1). Gộp từ B8a-connections connections-and-va
 
 1. Một migration (revision hex ngẫu nhiên của alembic): `platform.secret_envelopes` và
    `platform.connections` theo mục Dữ liệu của spec:
-    - `secret_envelopes`: `id` uuid, `tenant_id` FK `platform.tenants` ON DELETE CASCADE,
+    - `secret_envelopes`: `id` uuid, `tenant_id` NOT NULL FK `platform.tenants` ON DELETE CASCADE,
       `connection_id` uuid NULL với FK ghép `(tenant_id, connection_id)` tới `platform.connections (tenant_id, id)`
       ON DELETE CASCADE (phong bì là dòng con của chủ thể; R1.8), `field text NOT NULL`,
-      `secret_version integer NOT NULL`, `alg text` CHECK
-      (`aes-256-gcm`), `nonce bytea` CHECK độ dài 12, `kek_ref text`, `ciphertext bytea` CHECK độ dài ≤ 64 KiB,
+      `secret_version integer NOT NULL`, `alg text NOT NULL` CHECK (`aes-256-gcm`), `nonce bytea NOT NULL` CHECK
+      độ dài 12, `kek_ref text NOT NULL`, `ciphertext bytea NOT NULL` CHECK độ dài ≤ 64 KiB,
       `wrapped_data_key bytea NOT NULL` (khóa dữ liệu bọc bởi Khóa của công ty, giữ cạnh `ciphertext`),
-      `kek_version int`, timestamps, không cột `aad_hint`; UNIQUE
+      `kek_version int NOT NULL`, `created_at`, `updated_at timestamptz NOT NULL`, không cột `aad_hint`; UNIQUE
       `(tenant_id, connection_id, field, secret_version)`, dạng của UNIQUE
       `(tenant_id, subject_kind, subject_id, field, secret_version)` cho cột chủ thể `connection_id`, dẫn đầu bằng
-      hai cột của FK ghép nên cũng là chỉ mục của FK đó; loại trừ chủ thể qua CHECK
+      hai cột của FK ghép nên cũng là chỉ mục của FK đó và của FK `tenant_id`; loại trừ chủ thể qua CHECK
       `num_nonnulls(connection_id) = 1`, mà mỗi chủ thể mới nới rộng bằng một cột NULL có FK ghép
       `(tenant_id, <cột chủ thể>)` tới UNIQUE `(tenant_id, id)` của bảng chủ thể ON DELETE CASCADE, cùng UNIQUE
       của cột đó, trong migration của ticket thêm nó (`inbound_endpoint_id` ở workflow-triggers/02,
@@ -70,7 +70,9 @@ kho khóa ở ticket 06 (DO-47.1). Gộp từ B8a-connections connections-and-va
 - [ ] R1.1: ghi một bí mật rồi `open_secret` trả đúng giá trị; phong bì trong database không chứa giá
       trị rõ; ghi giá trị mới cho cùng (chủ thể, trường) → một dòng mới với `secret_version` kế tiếp, dòng cũ không
       đổi, `open_secret` với phiên bản cũ vẫn trả giá trị cũ và với phiên bản mới trả giá trị mới; chèn trùng
-      (chủ thể, `field`, `secret_version`) → UNIQUE từ chối.
+      (chủ thể, `field`, `secret_version`) → UNIQUE từ chối; `platform.put_secret` với `nonce` hay `ciphertext`
+      NULL → lỗi NOT NULL (23502), không dòng nào; gỡ NOT NULL của hai cột trong migration thử → phong bì thiếu bản
+      mã được ghi, test đỏ.
 - [ ] R1.2 (CV4): mock nhà cung cấp vọng header và key trong body lỗi → 0 lần xuất hiện ở checkpoint,
       `platform.tool_executions`, audit, span, log; tắt che → test đỏ.
 - [ ] R1.3 (CV2): `SELECT * FROM platform.secret_envelopes` bằng `dw_app` → `permission denied`; khẳng
@@ -137,3 +139,7 @@ kho khóa ở ticket 06 (DO-47.1). Gộp từ B8a-connections connections-and-va
   sau dùng cùng FK ghép, vì kiểm khóa ngoại không qua RLS (R1.8, CV23); `owning_workspace_id` của Kết nối không đổi
   sau khi tạo, vì AAD của bước 3 gắn nó (trigger `platform.guard_connection_owning_workspace()`, R1.7, CV1;
   ADR-0115 (Accepted) quyết 1) (bước 1).
+- 2026-10-24 (agent): vòng sửa thứ tư, lượt d: `nonce` và `ciphertext` NOT NULL, vì CHECK độ dài nhận NULL
+  (failure-modes #7), và bước 1 chép nguyên văn ràng buộc của mục Dữ liệu cho `tenant_id`, `alg`, `kek_ref`,
+  `kek_version` và hai cột thời gian (failure-modes #2); UNIQUE theo chủ thể, trường, phiên bản cũng là chỉ mục của
+  FK `tenant_id` (CLAUDE.md, Data model rules); R1.1 thêm ca phong bì thiếu `nonce` hay `ciphertext` (bước 1).

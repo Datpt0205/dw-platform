@@ -215,6 +215,10 @@ thực thi (YC51; NODE-13, NODE-14, NODE-16).
   (giữ `required_scope`, được giao, khác người tạo lượt chạy và chủ thể chạy), THÌ Bước phê duyệt PHẢI đi Nhánh ra
   lỗi với `no_approver`, không nối Nhánh ra đó thì làm lượt chạy `failed` với `no_approver`, và không mở yêu cầu
   phê duyệt nào (ADR-0112 (Accepted) quyết 7).
+- R9.14 NẾU một lệnh ghi của `dw_app` gắn tenant A đặt `run_id` của một dòng `studio.step_assignments` bằng id một
+  lượt chạy của tenant B, hay `approval_request_id` của một dòng `studio.step_approvals` bằng id một yêu cầu phê duyệt
+  của tenant B, THÌ PostgreSQL PHẢI từ chối lệnh đó bằng FK ghép của cột đó và không ghi dòng nào, vì kiểm khóa ngoại
+  không qua RLS (CLAUDE.md, Tenancy and authorization).
 
 ## Trong phạm vi
 
@@ -283,8 +287,9 @@ thực thi (YC51; NODE-13, NODE-14, NODE-16).
   `ck_step_approvals_subject_hash` (mã băm khác null khi đã khoá). FK ghép `(tenant_id, workspace_id, approval_request_id)`
   tới `platform.approval_requests (tenant_id, workspace_id, id)` qua `uq_approval_requests_tenant_id_workspace_id_id`,
   ràng buộc đã có mà `platform.approval_view_receipts` và tenant-config/05 cũng dùng, nên ticket 06 không thêm UNIQUE
-  nào lên bảng đó, `ON DELETE CASCADE`, có chỉ mục `(tenant_id, workspace_id, approval_request_id)`; FK `(tenant_id, run_id, interrupt_id)` tới
-  `platform.run_waits (tenant_id, run_id, interrupt_id)` `ON DELETE CASCADE`, có chỉ mục, nên dòng chờ không giữ id
+  nào lên bảng đó, `ON DELETE CASCADE`, có chỉ mục `(tenant_id, workspace_id, approval_request_id)`; FK
+  `(tenant_id, run_id, interrupt_id)` tới `platform.run_waits (tenant_id, run_id, interrupt_id)` `ON DELETE CASCADE`,
+  có chỉ mục `(tenant_id, run_id, interrupt_id)`, nên dòng chờ không giữ id
   yêu cầu nào (workflow-engine:R6.2). RLS bật và FORCE. `updated_at` do trigger giữ, nhường giá trị câu lệnh nêu.
 
 ## API
@@ -330,6 +335,7 @@ thực thi (YC51; NODE-13, NODE-14, NODE-16).
 | WN17 | Người duyệt đọc được mọi Trường mà trang duyệt hiển thị                                                                                        | R9.7, R9.8              | Bước phê duyệt đóng dấu `phone`; người được giao không đọc được `phone` quyết → 403 tại `decide`, yêu cầu vẫn `pending`; gỡ điều kiện đọc trường khỏi guard → test đỏ                                                                                                                                                                                                                                                                                                                                                                            |
 | WN18 | Quyết định giả lập không bao giờ thỏa một phê duyệt `live`, và thiếu thì không coi là đã duyệt                                                 | R9.11, R9.12            | Lượt `live` có quyết định giả lập `approved` trong đầu vào → yêu cầu phê duyệt thật được mở, lượt chạy chờ; lượt `simulate` thiếu quyết định cho một Bước phê duyệt → `failed` `simulated_decision_missing`, Nhánh ra duyệt không chạy; gỡ kiểm chế độ ở Bước → test đỏ                                                                                                                                                                                                                                                                          |
 | WN19 | Profile triển khai chỉ tính Biểu thức bằng `cel-expr-python`                                                                                   | R3.6                    | Setting chọn `CelRustEngine` khi `settings.is_deployed` → bị từ chối, test đỏ khi giá trị của profile triển khai trỏ sang bản Rust; ngoài profile triển khai setting chọn được `CelRustEngine` và bộ test hợp đồng chạy với nó; gỡ kiểm `settings.is_deployed` → profile triển khai dựng được bản Rust, test đỏ                                                                                                                                                                                                                                  |
+| WN20 | Giao và phê duyệt của Bước không trỏ được tới lượt chạy hay yêu cầu của công ty khác                                                           | R9.14                   | `dw_app` gắn tenant A chèn dòng `step_assignments` mang `run_id` của một lượt chạy tenant B, hay dòng `step_approvals` mang `approval_request_id` của một yêu cầu tenant B → lỗi FK, không dòng nào được ghi; đổi một trong hai FK về FK một cột → ca của nó qua, test đỏ                                                                                                                                                                                                                                                                        |
 
 ## Tiêu chí xong
 
@@ -542,7 +548,7 @@ thực thi (YC51; NODE-13, NODE-14, NODE-16).
   composition root chọn theo setting, như ADR-0114 (Accepted) quyết 2; ở profile triển khai (`settings.is_deployed`)
   setting phải chọn `cel-expr-python`, và một test đỏ khi nó trỏ sang bản Rust; chuyển profile triển khai sang bản
   Rust thì sửa CLAUDE.md mục Required stack trong cùng thay đổi (phát hiện E về CLAUDE.md mục Required stack và
-  ticket 01). Lượt b của vòng 4 (B1) sửa dòng này: bản lượt a, W1 chỉ ship `cel-expr-python` và không setting, trái
+  ticket 01). Lượt b của vòng 4 sửa dòng này: bản lượt a, W1 chỉ ship `cel-expr-python` và không setting, trái
   ADR-0114 (Accepted) quyết 2. Sửa: Hiện trạng, R3.6, Trong phạm vi, WN12, WN19, Phụ thuộc, ticket 01. Nếu sai thì: ticket 01
   chỉ ship `CelCppEngine`, không setting, và ADR-0114 (Accepted) quyết 2 bỏ bản dự phòng cùng setting.
 - 24/10/2026 (agent, tạm): sửa phát hiện CRITICAL F về ADR-0112 (Accepted) và workflow-engine:R2: R3.2, R3.3 và
@@ -560,7 +566,7 @@ thực thi (YC51; NODE-13, NODE-14, NODE-16).
 - 24/10/2026 (agent, tạm): sửa phát hiện A:code-sandbox:R2.3~workflow-nodes:spec: spec này đăng ký khóa
   `studio.code.author` cùng Loại bước `code.python` ở W2, còn `CodeExecutionService` của code-sandbox kiểm quyền
   lợi `code_node` trước runner. Sửa: Ngoài phạm vi.
-- 24/10/2026 (agent, tạm): lượt c của vòng 4, C8: `studio.step_assignments.run_id` là FK ghép `(tenant_id, run_id)` tới
+- 24/10/2026 (agent, tạm): lượt c của vòng 4: `studio.step_assignments.run_id` là FK ghép `(tenant_id, run_id)` tới
   `uq_worker_runs_tenant_id_id` của workflow-engine/02, và `studio.step_approvals.approval_request_id` là FK ghép
   `(tenant_id, workspace_id, approval_request_id)` qua `uq_approval_requests_tenant_id_workspace_id_id` đã có
   (`db/migrations/versions/e399be8c0a2d_platform_approval_view_receipts_and_.py:127-129`), vì kiểm khóa ngoại không qua
@@ -571,12 +577,23 @@ thực thi (YC51; NODE-13, NODE-14, NODE-16).
   toàn tenant không mang cột đó, nên agent-lifecycle/03 thêm `uq_approval_requests_tenant_id_id` cho FK của
   `publish_approval_id`. Sửa: Dữ liệu, Phụ thuộc, ticket 06. Nếu sai thì: FK hai cột `(tenant_id, approval_request_id)`
   qua `uq_approval_requests_tenant_id_id` mà agent-lifecycle/03 thêm, ticket 06 đã chờ ticket đó.
-- 24/10/2026 (agent, tạm): lượt c của vòng 4, C23: `CelCppEngine` và `CelRustEngine` ở `dw_studio.core.adapters.cel`, vì
+- 24/10/2026 (agent, tạm): lượt c của vòng 4: `CelCppEngine` và `CelRustEngine` ở `dw_studio.core.adapters.cel`, vì
   studio-skeleton làm chủ bố cục gói và R5.6 của nó chỉ cho gói đó import thư viện CEL; ticket 01 viết hợp đồng
   import-linter đó với tên module import thật của hai binding, như Ngoài phạm vi của studio-skeleton giao
   (studio-skeleton:R5.6); Protocol vẫn ở `dw_kernel.expressions` như dòng của Đạt ngày 23/10/2026. Sửa: Trong phạm vi,
   Phụ thuộc, ticket 01. Nếu sai thì: adapter ở một gói khác của `dw_studio`, và studio-skeleton:R5.6 đổi tên gói trong
   cùng thay đổi.
+- 24/10/2026 (agent, tạm): các dòng Quyết định của spec này và Comments của ticket 01, 06 mà lượt b, c của vòng 4
+  viết thôi dẫn mã mục riêng của hai lượt đó, nội dung giữ nguyên, vì nhãn duy nhất của vòng 4 là `V4.n` và `V4.Pn`
+  mà area file định nghĩa (`.claude/plans/studio.md`, mục State, Round 4). Sửa: Quyết định, ticket 01, 06. Nếu sai
+  thì: các dòng đó dẫn lại mã mục, kèm một bảng mã trong area file.
+- 24/10/2026 (agent, tạm): hai FK ghép mới, `studio.step_assignments.run_id` và
+  `studio.step_approvals.approval_request_id`, có một tiêu chí từ chối chéo tenant và một kiểm soát với test đột biến,
+  vì test âm cho đọc và ghi chéo tenant là bắt buộc (CLAUDE.md, Tenancy and authorization) và một FK ghép chưa thấy đỏ
+  khi đổi về FK một cột là test không hỏng được (failure-modes #3); ca âm của ticket 06 rời tiêu chí R9.1 sang tiêu chí
+  mới; FK của `studio.step_approvals` tới dòng chờ nêu chỉ mục `(tenant_id, run_id, interrupt_id)`, vì mọi khóa ngoại
+  có chỉ mục dẫn bằng cột của nó (CLAUDE.md, Data model rules). Sửa: thêm R9.14, thêm WN20, Dữ liệu, ticket 06. Nếu
+  sai thì: ca âm về tiêu chí R9.1 của ticket 06, không kiểm soát riêng.
 
 ## Danh sách ticket
 

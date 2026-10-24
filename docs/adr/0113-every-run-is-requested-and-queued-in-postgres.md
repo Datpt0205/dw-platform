@@ -173,11 +173,16 @@ with the amendments listed under Acceptance; the calls it leaned on are answered
 - agent-builder, workflow-triggers, agent-lifecycle (gate trials) and tools-and-skills (workflow tools) all enter
   through workflow-engine's door. connections-and-vault supplies the provider route function and the
   signature-verifier module; workflow-triggers owns the ingress path.
-- Migrations: the new `platform.worker_runs` columns and CHECKs (with `uq_worker_runs_tenant_id_id` for the composite
-  foreign key of `parent_run_id`); `platform.run_waits`; `studio.trigger_subscriptions`, `studio.inbound_endpoints`,
-  `studio.inbound_dedupe`; `studio.trigger_deliveries` and `studio.inbound_events` partitioned monthly through
-  `platform.ensure_time_partitions`; the definer functions. Lanes `studio_runs`, `studio_run_reaper`,
-  `studio_inbound`, `studio_schedules` and, in P2, `studio_timers`.
+- Migrations: the new `platform.worker_runs` columns and CHECKs, with `uq_worker_runs_tenant_id_id`, the
+  `UNIQUE (tenant_id, id)` that three foreign keys reference, composite because a foreign key check does not pass
+  through RLS, each indexed on its own side and naming its `ON DELETE` (`CLAUDE.md`, Data model rules):
+  `(tenant_id, parent_run_id)` of `platform.worker_runs` itself, `ON DELETE RESTRICT`, because a run tree leaves
+  under ADR-0122 decision 7's retention rule, its lane deleting a child run before its parent and skipping a run
+  that still has a child, and `(tenant_id, run_id)` of `platform.run_waits` and of workflow-nodes'
+  `studio.step_assignments`, which cascade with their run; `platform.run_waits`; `studio.trigger_subscriptions`,
+  `studio.inbound_endpoints`, `studio.inbound_dedupe`; `studio.trigger_deliveries` and `studio.inbound_events`
+  partitioned monthly through `platform.ensure_time_partitions`; the definer functions. Lanes `studio_runs`,
+  `studio_run_reaper`, `studio_inbound`, `studio_schedules` and, in P2, `studio_timers`.
 - Tests that must exist, each red when its guard is removed: no second writer of queued rows; one tenant's backlog
   not starving another; a stale holder's write refused by the fence; a decided approval surviving a crash before
   resume; an empty resume map refused; a forged provider event never routed; tenant A's Page never reaching tenant B;
@@ -269,3 +274,10 @@ Amended by Đạt on 2026-10-24, who accepted every recommendation the second co
   `TriggerActivationPort` that workflow-engine, its consumer, declares and workflow-triggers satisfies, the
   composition root joining the two (`CLAUDE.md`, Non-negotiable architecture); the `endpoint` kind's hook stays
   workflow-triggers' own.
+- Third consistency check (round 4), fourth pass, the planner's provisional call: Consequences name the three
+  composite foreign keys that reference `uq_worker_runs_tenant_id_id`, each indexed and naming its `ON DELETE`
+  (`CLAUDE.md`, Data model rules): `parent_run_id`'s `ON DELETE RESTRICT`, as workflow-engine states it, since ADR-0122
+  decision 7's lane deletes a run tree child before parent, and the `run_id` keys of `platform.run_waits` and
+  `studio.step_assignments`, which cascade with their run, where the sentence before named `parent_run_id`'s key
+  alone and no action (if it is wrong, the key of `parent_run_id` is `ON DELETE CASCADE`, so deleting a run deletes its
+  subtree, and ADR-0122 decision 7's lane deletes a run tree by its root).

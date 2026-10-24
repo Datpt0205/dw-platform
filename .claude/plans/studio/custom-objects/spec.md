@@ -138,6 +138,9 @@ Bản ghi của một công ty không đọc, ghi hay xuất được từ công
   bảng của spec này đúng một lần rồi xóa hết các dòng đó.
 - R4.5 NẾU một yêu cầu mang header `X-DW-Support-Grant` tới một route bản ghi, THÌ API bản ghi PHẢI trả 403
   `support_context_not_allowed` và không đọc bản ghi nào (ADR-0107 (Accepted) quyết định 8).
+- R4.6 NẾU một lần ghi của công ty A vào bảng của spec này, hay vào cột `to_field_id` của `studio.dependencies`, trỏ qua
+  khóa ngoại tới thành phần, định nghĩa, trường hay workspace của công ty B, THÌ PostgreSQL PHẢI từ chối lần ghi đó và
+  không ghi dòng nào.
 
 ### R5 — Ghi bản ghi qua một RecordService
 
@@ -265,7 +268,8 @@ Người dùng xem, tạo và sửa bản ghi trên màn sinh từ describe, the
 ## Trong phạm vi
 
 - Bảng `studio.object_defs`, `studio.field_defs`, `studio.picklist_options`, `studio.records` và các partition
-  `studio.records_p0` tới `studio.records_p7` (tới `p3` theo đường lui R9.5); khóa quyền `studio.objects.manage`.
+  `studio.records_p0` tới `studio.records_p7` (tới `p3` theo đường lui R9.5); cột `to_field_id` của
+  `studio.dependencies` cùng FK ghép và index của nó; khóa quyền `studio.objects.manage`.
 - Loại thành phần `object` (`dw.object/v1`) trong `ArtifactKindRegistry` và dòng `object` của `studio.artifact_kinds`
   (không có Cổng chất lượng): mục đăng ký nêu `studio.objects.manage` là khóa đọc, khóa ghi và khóa gửi của loại,
   bộ so sánh chỉ siết (R1.8) và dịch vụ metadata là móc phát hành, chỉ áp định nghĩa và không ghi
@@ -349,7 +353,11 @@ ghi (DO-01, ADR-0100 (Accepted)), mỗi bảng một dòng lý do trong danh sá
   `octet_length ≤ 1024`, `i` bigint, `f` float8, `d` date, `z` timestamptz, `b` boolean; UNIQUE
   `(tenant_id, object_id, uNN) WHERE uNN IS NOT NULL AND deleted_at IS NULL`; `deleted_at`, `deleted_by`; chỉ
   mục `(tenant_id, object_id, created_at DESC, id DESC)`, `(tenant_id, object_id, updated_at DESC, id DESC)`,
-  `(tenant_id, object_id, name, id)` và chỉ mục từng phần của mỗi slot (R9.4).
+  `(tenant_id, object_id, name, id)`, `(tenant_id, workspace_id)` cho FK tới workspace sở hữu, và chỉ mục từng phần
+  của mỗi slot (R9.4).
+- `studio.dependencies` (bảng của tenant-config/02): spec này thêm `to_field_id uuid` NULL, FK ghép
+  `(tenant_id, to_field_id)` tới `studio.field_defs (tenant_id, id)` ON DELETE RESTRICT, index `(tenant_id, to_field_id)`
+  (ADR-0109 (Accepted) quyết 5), trong revision tạo `studio.field_defs`.
 - Quyền: `dw_app` có SELECT, INSERT, DELETE trên bốn bảng (DELETE cho offboarding); UPDATE trên định nghĩa trừ
   cột khóa; UPDATE trên `studio.records` chỉ ở `name`, `data`, slot, `version`, `updated_*`, `deleted_*`; không
   quyền nào trên partition, kể cả SELECT mà quyền mặc định của schema `studio` cấp (DO-02.2); không gì cho
@@ -360,7 +368,7 @@ ghi (DO-01, ADR-0100 (Accepted)), mỗi bảng một dòng lý do trong danh sá
 
 | #    | Kiểm soát                                                           | Yêu cầu          | Test âm                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | ---- | ------------------------------------------------------------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| CO1  | Cô lập công ty trên mọi bảng của spec, kể cả partition              | R4.2, R4.3       | A đọc, sửa, xóa bản ghi của B → 404; INSERT với `tenant_id` của B → RLS từ chối; INSERT bản ghi hay trường của A với `object_id` của B → lỗi FK ghép; vai thử NOBYPASSRLS có SELECT đọc thẳng `studio.records_p3` không đặt tenant → 0 dòng; `dw_app` đọc thẳng partition → permission denied (`record-access:R4.3`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| CO1  | Cô lập công ty trên mọi bảng của spec, kể cả partition              | R4.2, R4.3, R4.6 | A đọc, sửa, xóa bản ghi của B → 404; INSERT với `tenant_id` của B → RLS từ chối; INSERT bản ghi hay trường của A với `object_id` của B, lựa chọn của A với `field_id` của B, định nghĩa đối tượng của A với `id` của thành phần của B, bản ghi của A với `workspace_id` của B, hay dòng `studio.dependencies` của A với `to_field_id` của B → lỗi FK ghép, không dòng nào; đổi một FK ghép thành FK một cột → test đỏ; vai thử NOBYPASSRLS có SELECT đọc thẳng `studio.records_p3` không đặt tenant → 0 dòng; `dw_app` đọc thẳng partition → permission denied (`record-access:R4.3`)                                                                                                                                                                                                                                                                                                                                                                |
 | CO2  | Không DDL lúc chạy                                                  | R1.1             | `dw_app` chạy `CREATE TABLE`, `CREATE INDEX` trong `studio` → bị từ chối; phát hành đối tượng 20 trường không đổi số quan hệ của `studio` trong `pg_class`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | CO3  | Chỉ người giữ `studio.objects.manage` sửa định nghĩa                | R1.3             | Người thiếu khóa lưu nháp, Gửi kiểm định `dw.object/v1` → 403, không dòng nào mới trong `studio.artifact_versions`; gỡ kiểm khóa → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | CO4  | Hai trường không chung slot                                         | R1.5             | Hai phát hành song song thêm trường lọc được → hai slot khác; gỡ UNIQUE từng phần trên `slot` → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
@@ -399,8 +407,10 @@ ghi (DO-01, ADR-0100 (Accepted)), mỗi bảng một dòng lý do trong danh sá
   `studio` và test thứ tự offboarding (studio-skeleton/01); mục điều hướng và allowlist antd (studio-skeleton/03).
 - Vỏ phiên bản, `ArtifactKindRegistry` (khóa đọc, khóa ghi, khóa gửi, cờ Cổng chất lượng và móc phát hành của mỗi
   loại, ADR-0109 (Accepted) quyết 1; `tenant-config:R2.11`, `tenant-config:R2.12`, `tenant-config:R2.14`,
-  `tenant-config:R2.15`; nhánh chỉ siết của vỏ phiên bản, `tenant-config:R2.16`), `studio.artifact_kinds`,
-  `studio.dependencies` (tenant-config/02, ADR-0109 (Accepted)); `RunMode` trên lượt chạy
+  `tenant-config:R2.15`; bước niêm phong của nhánh chỉ siết, `tenant-config:R2.16`, còn việc chuyển giai đoạn là của
+  `LifecycleService` ở agent-lifecycle dưới đây), `studio.artifact_kinds`,
+  `studio.dependencies` (tenant-config/02, ADR-0109 (Accepted); cột `to_field_id` mà mục Dữ liệu của tenant-config giao
+  cho spec này vào ticket 02, cùng bảng field); `RunMode` trên lượt chạy
   (tenant-config/03, ADR-0111 (Accepted)); Bước bản
   ghi của workflow-nodes chỉ chuyển `RunMode` qua `RecordsPort`, RecordService là chỗ giả lập duy nhất (R5.4).
 - agent-lifecycle (ticket 06 chờ agent-lifecycle/03, /04): route Gửi kiểm định
@@ -446,7 +456,8 @@ ghi (DO-01, ADR-0100 (Accepted)), mỗi bảng một dòng lý do trong danh sá
   `studio.publish.object.decided` → R1.2, R1.7, ticket 06; ADR-0120 (Accepted) mục 7 đổi luật Đóng băng của nhánh chỉ
   siết → R1.7, CO23, ticket 06; tenant-rbac đổi cột NOT NULL của danh mục → ticket 02; workflow-engine/03 bỏ cạnh tới record-access/04 và
   custom-objects/03 → ticket 06 có thể nhập lại ticket 02; foundations-hardening/03 rút `foundations-hardening:R5.3`
-  (dạng InitPlan) → mục Dữ liệu, ticket 02.
+  (dạng InitPlan) → mục Dữ liệu, ticket 02; tenant-config/02 đổi hình `studio.dependencies` hay thứ tự xóa của nó
+  trong `_ORDERED_FIRST` → mục Dữ liệu, R4.6, ticket 02.
 
 ## Câu hỏi còn mở
 
@@ -629,6 +640,28 @@ ghi (DO-01, ADR-0100 (Accepted)), mỗi bảng một dòng lý do trong danh sá
   (CLAUDE.md, Tenancy and authorization: test âm cho ghi chéo tenant là bắt buộc; Data model rules); CO1 thêm ca
   `object_id` của công ty khác. Sửa: Dữ liệu, CO1, ticket 02. Nếu sai thì: Dữ liệu và ticket 02 trở lại FK theo cột của
   bảng đích, và CO1 bỏ ca đó.
+- 24/10/2026 (agent, tạm): `studio.records` có index `(tenant_id, workspace_id)` cho FK ghép tới `platform.workspaces`,
+  vì khóa ngoại nào cũng có index ở phía mình (CLAUDE.md, Data model rules) và không index nào của bảng dẫn bằng hai cột
+  đó; index vào DDL ứng viên của ticket 01, nên số chỉ mục, thời gian lập kế hoạch, HOT và WAL mà ticket đó đo đã gồm nó
+  (R9.2, R9.4). Sửa: Dữ liệu, ticket 01, 02. Nếu sai thì: một index danh sách dẫn bằng `(tenant_id, workspace_id)` thay
+  index riêng này, theo số đo của ticket 01.
+- 24/10/2026 (agent, tạm): các FK ghép của spec này có tiêu chí riêng R4.6 dưới kiểm soát CO1, với một ca âm cho mỗi FK:
+  `object_id` của bản ghi và trường, `field_id` của lựa chọn (chưa có ca âm nào trước đây), `id` của định nghĩa đối tượng
+  tới thành phần, `workspace_id` của bản ghi và `to_field_id` của `studio.dependencies`; trong ticket 02 ca `object_id`
+  rời tiêu chí R4.2, vì R4.2 nói về kết nối không đặt tenant chứ không về khóa ngoại (CLAUDE.md, Tenancy and
+  authorization: test âm cho ghi chéo tenant là bắt buộc; failure-modes #3). Sửa: R4.6, CO1, ticket 02. Nếu sai thì:
+  R4.6 rút bằng `[Bỏ]` và ca âm về tiêu chí R4.2 của ticket 02.
+- 24/10/2026 (agent, tạm): spec này làm chủ cột `to_field_id` của `studio.dependencies` cùng FK ghép
+  `(tenant_id, to_field_id)` tới `studio.field_defs (tenant_id, id)` ON DELETE RESTRICT và index
+  `(tenant_id, to_field_id)` (ADR-0109 (Accepted) quyết 5), trong revision của ticket 02, ticket tạo `studio.field_defs`,
+  như mục Dữ liệu và ticket 02 của tenant-config giao; bốn bảng của spec này vào `_ORDERED_FIRST` sau
+  `studio.dependencies`, để lane `offboarding` xóa dòng phụ thuộc trước trường mà FK RESTRICT giữ
+  (studio-skeleton:R4.2). Sửa: Trong phạm vi, Dữ liệu, R4.6, CO1, Phụ thuộc, ticket 02. Nếu sai thì: cột và FK vào một
+  ticket sau của tenant-config chờ ticket 02 ở đây, và câu giao của tenant-config đổi theo.
+- 24/10/2026 (agent, tạm): Phụ thuộc nêu `tenant-config:R2.16` là bước niêm phong của nhánh chỉ siết, không phải bước
+  chuyển giai đoạn: dịch vụ vỏ phiên bản của tenant-config niêm phong (`seal`, mã băm, `row_version`), `LifecycleService`
+  của agent-lifecycle chuyển `draft → live` và trigger là hàng rào cuối (ADR-0120 (Accepted) quyết 1). Sửa: Phụ thuộc.
+  Nếu sai thì: Phụ thuộc nêu lại nhánh chỉ siết là của vỏ phiên bản, theo `tenant-config:R2.16`.
 
 ## Danh sách ticket
 

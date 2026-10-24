@@ -149,7 +149,8 @@ v1 and v2, and on the provisional call on DO-26.
 ## Acceptance (2026-10-23)
 
 - Status Accepted by Đạt; the decisions are accepted as written, since the phasing already opens `simulate` only in
-  W1 and `test` with its recipient list in W2 (DO-26.1 (a)). No `CLAUDE.md` line changes (`:278-283` holds).
+  W1 and `test` with its recipient list in W2 (DO-26.1 (a)). No `CLAUDE.md` line changes (`CLAUDE.md`,
+  Environments, held as written at acceptance).
 - Open 1 answered (DO-26.1 (a), DO-26.2 (a)) and Open 3 answered (DO-62 (a)); Open 2 waits until `test` opens in W2.
 
 ## Amendments (2026-10-24)
@@ -170,3 +171,6 @@ v1 and v2, and on the provisional call on DO-26.
 - Third consistency check (round 4), second pass: Consequences place the purpose caps that test runs and
   evaluations spend under in W2, as ADR 0121 decision 4 now does (V4.P6, the planner's provisional call; if it is
   wrong, W1 takes the purpose caps and this sentence loses its "from W2").
+- Third consistency check (round 4), fourth pass: Acceptance cites `CLAUDE.md` by its section, Environments, and
+  says that section held at acceptance, instead of the lines `:278-283`, which after the `CLAUDE.md` amendments made
+  at acceptance held Data model rules.

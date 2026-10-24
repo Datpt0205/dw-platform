@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: 01, .claude/plans/studio/tenant-rbac/issues/04-quyen-doi-tuong-va-truong-co-do-sau.md, .claude/plans/studio/org-and-principals/issues/02-thanh-vien-cap-tenant.md
 Area: studio
-Yêu cầu: R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, RA12, RA13, RA14, RA15, RA16
+Yêu cầu: R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, RA12, RA13, RA14, RA15, RA16
 
 ## Mục tiêu
 
@@ -16,7 +16,7 @@ dụng từ câu lệnh kế tiếp (spec R5, ADR-0105 (Accepted) mục 4). Nhá
 1. Migration Alembic (id là hex ngẫu nhiên của alembic) trong schema `studio` của studio-skeleton:
     - `studio.access_epochs`: `tenant_id uuid` PK, FK `platform.tenants` `ON DELETE CASCADE`,
       `epoch bigint NOT NULL DEFAULT 0`, `changed_at timestamptz NOT NULL DEFAULT now()`.
-    - `studio.principal_scopes`: `tenant_id`, `principal_id` (PK `(tenant_id, principal_id)`, FK tới
+    - `studio.principal_scopes`: `tenant_id`, `principal_id` (PK `(tenant_id, principal_id)`, FK ghép tới
       `platform.tenant_members (tenant_id, user_id)` `ON DELETE CASCADE`), `epoch bigint NOT NULL`,
       `version bigint NOT NULL`, `state text NOT NULL` với `ck_principal_scopes_state` (`valid`, `stale`),
       `computed_at timestamptz NOT NULL`, `workspace_ids uuid[] NOT NULL`, và một `uuid[] NOT NULL DEFAULT '{}'` cho
@@ -77,6 +77,9 @@ dụng từ câu lệnh kế tiếp (spec R5, ADR-0105 (Accepted) mục 4). Nhá
       bị tạm khóa → dòng thành `stale` và tầm tính lại rỗng; offboarding một tenant → 0 dòng `studio.principal_scopes`
       của tenant đó và đúng một dòng `studio.access_epochs` của nó còn lại, và test phủ offboarding xanh với hai bảng
       trong `STUDIO_EXCLUSIONS` kèm đúng lý do của mỗi bảng; bỏ một bảng khỏi danh sách → test đỏ.
+- [ ] R5.7 (RA12): `app.tenant_id` của tenant A, `app.user_id` của người chỉ là thành viên công ty B, gọi
+      `studio.ensure_principal_scope()` → lỗi khóa ngoại 23503 trên FK ghép, không dòng `studio.principal_scopes` nào;
+      migration thử đổi FK ghép thành FK một cột `principal_id` tới `platform.users` → test đỏ.
 - [ ] Xong: `make ci test-integration` xanh.
 
 ## Nguồn
@@ -95,3 +98,6 @@ dụng từ câu lệnh kế tiếp (spec R5, ADR-0105 (Accepted) mục 4). Nhá
   `STUDIO_EXCLUSIONS` cho hai bảng sổ tầm.
 - 2026-10-24 (agent): lý do loại trừ của `studio.access_epochs` sửa thành dòng đếm giữ có chủ ý (Đạt, 24/10/2026):
   offboarding giữ dòng `platform.tenants` ở `offboarded`, nên không cascade nào xóa dòng epoch của tenant đó.
+- 2026-10-24 (agent): vòng sửa 4, lượt bốn: tiêu chí R5.7 dưới RA12 là ca âm chéo tenant của FK ghép
+  `(tenant_id, principal_id)` mà bước 1 tạo: sổ tầm của tenant A cho người chỉ là thành viên công ty B bị từ chối
+  (Quyết định 24/10/2026 của spec).

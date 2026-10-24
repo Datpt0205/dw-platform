@@ -8,11 +8,11 @@ Yêu cầu: R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R2.7, R2.8, R2.9, R2.10, R2.11, 
 ## Mục tiêu
 
 Mọi loại thành phần Studio có một vỏ phiên bản chung trong `dw_studio`: một nháp lưu bằng khóa lạc
-quan, bước niêm phong cấp số không dùng lại và mã băm rồi đưa phiên bản sang `evaluating`, sang
-`awaiting_approval` với loại không có Cổng chất lượng, hay sang `live` ở nhánh chỉ siết của `dw.object/v1`, Nơi
-đang dùng ghi trong cùng giao dịch niêm phong, chặn xóa thứ đang được dùng, và không lộ tên ngoài quyền
-(spec R2, R3). Route gửi kiểm định của agent-lifecycle/03 gọi bước niêm phong này; ticket này không
-viết chuyển giai đoạn nào khác.
+quan, bước niêm phong cấp số không dùng lại và mã băm, như nhau cho mọi loại và không đổi giai đoạn, Nơi đang dùng
+ghi trong cùng giao dịch niêm phong, chặn xóa thứ đang được dùng, và không lộ tên ngoài quyền (spec R2, R3). Route
+gửi kiểm định của agent-lifecycle/03 gọi bước niêm phong này, rồi `LifecycleService` của agent-lifecycle chuyển giai
+đoạn trong cùng giao dịch (`evaluating`, `awaiting_approval` với loại không có Cổng chất lượng, hay `live` ở nhánh
+chỉ siết của `dw.object/v1`); ticket này không viết chuyển giai đoạn nào.
 
 ## Việc cần làm
 
@@ -24,17 +24,19 @@ viết chuyển giai đoạn nào khác.
       với mục registry (OPS-b). Test tích hợp của ticket này thêm dòng `fixture` (`has_quality_gate = true`) và
       `fixture_gateless` (`false`) bằng vai migrator trong một fixture pytest phạm vi session và gỡ khi xong;
       migration không bao giờ chứa hai dòng đó.
-    - `studio.artifacts`: `id` UUIDv7; `uq_artifacts_tenant_id_id UNIQUE (tenant_id, id)`, đích của mọi FK ghép
-      `(tenant_id, <cột thành phần>)` trỏ tới thành phần (R2.18): `artifact_id` của `studio.artifact_versions`,
-      `from_artifact_id` và `to_artifact_id` của `studio.dependencies` ở ticket này, và FK của bên dùng
-      (`studio.agent_settings` của agent-builder, `scope_artifact_id` của usage-and-limits), như
-      `uq_workspaces_tenant_id_id`; `kind` FK tới `studio.artifact_kinds (kind)` ON DELETE RESTRICT, có index;
-      `api_name` `^[a-z][a-z0-9_]{1,39}$`, unique `(tenant_id, kind, api_name)` khi `deleted_at IS NULL`; FK
-      `(tenant_id, owning_workspace_id)` tới `platform.workspaces (tenant_id, id)` ON DELETE RESTRICT, có index
-      `(tenant_id, owning_workspace_id)`; `labels text[] NOT NULL DEFAULT '{}'` (bộ lọc `label` của danh sách đọc);
-      `origin jsonb` NULL (domain-packs ghi và đọc nguồn gốc gói); `last_version_no integer NOT NULL DEFAULT 0`;
-      `row_version integer NOT NULL`; `deleted_at timestamptz` NULL; `created_at`, `updated_at` `timestamptz NOT NULL`;
-      index danh sách `(tenant_id, kind, updated_at DESC, id DESC)`.
+    - `studio.artifacts`: `id` UUIDv7; `uq_artifacts_tenant_id_id UNIQUE (tenant_id, id)`, như
+      `uq_workspaces_tenant_id_id`, đích của FK ghép `(tenant_id, <cột thành phần>)` trỏ tới thành phần: ở ticket này
+      là `artifact_id` của `studio.artifact_versions`, `from_artifact_id` và `to_artifact_id` của
+      `studio.dependencies` (R2.18); FK của spec khác, ví dụ `studio.agent_settings` của agent-builder hay
+      `scope_artifact_id` của usage-and-limits, do spec tạo FK làm chủ cùng ca âm chéo tenant của nó; `kind` FK tới
+      `studio.artifact_kinds (kind)` ON DELETE RESTRICT, có index `(kind)`; `api_name` `^[a-z][a-z0-9_]{1,39}$`, unique
+      `(tenant_id, kind, api_name)` khi `deleted_at IS NULL`; FK ghép `(tenant_id, owning_workspace_id)` tới
+      `platform.workspaces (tenant_id, id)` ON DELETE RESTRICT, có index `(tenant_id, owning_workspace_id)` (R2.18);
+      `labels text[] NOT NULL DEFAULT '{}'` (bộ lọc `label` của danh sách đọc); `origin jsonb` NULL (domain-packs ghi
+      và đọc nguồn gốc gói); `last_version_no integer NOT NULL DEFAULT 0`; `row_version integer NOT NULL`;
+      `deleted_at timestamptz` NULL; `created_at`, `updated_at` `timestamptz NOT NULL`; index danh sách
+      `(tenant_id, kind, updated_at DESC, id DESC)` khi lọc theo `kind`, và `(tenant_id, updated_at DESC, id DESC)`
+      khi không lọc `kind` (trang `/studio`).
     - `studio.artifact_versions`: `stage` NOT NULL CHECK (`draft`, `evaluating`, `awaiting_approval`,
       `live`, `retired`), không DEFAULT; `version_no` NULL chỉ khi `stage = 'draft'`, unique
       `(artifact_id, version_no)`; một dòng `draft` mỗi thành phần (partial unique); `document_schema`
@@ -42,11 +44,12 @@ viết chuyển giai đoạn nào khác.
       `CHECK (document::text IS NFC NORMALIZED)`; `content_hash`, `definition_hash` khớp
       `^sha256:[0-9a-f]{64}$`, `definition_hash` NOT NULL ngoài `draft`; `row_version integer NOT NULL`;
       `artifact_id` FK ghép `(tenant_id, artifact_id)` tới `uq_artifacts_tenant_id_id` ON DELETE CASCADE, có index
-      `(tenant_id, artifact_id)`; `uq_artifact_versions_tenant_id_id UNIQUE (tenant_id, id)`, đích của mọi FK ghép
-      `(tenant_id, <cột phiên bản>)` trỏ tới phiên bản (R2.18), kể cả `version_id` của `studio.version_assessments`
-      mà compliance-pdpl/05 đặt; `based_on_version_id` FK ghép `(tenant_id, based_on_version_id)`
-      `ON DELETE SET NULL (based_on_version_id)` có index `(tenant_id, based_on_version_id)`, chỉ đặt NULL cột đó vì
-      `tenant_id` NOT NULL; `change_note` NULL.
+      `(tenant_id, artifact_id)`; `uq_artifact_versions_tenant_id_id UNIQUE (tenant_id, id)`, đích của FK ghép
+      `(tenant_id, <cột phiên bản>)` trỏ tới phiên bản: của spec này là `based_on_version_id`, `from_version_id`,
+      `to_version_id` và `artifact_version_id` của ticket 04 (R2.18); FK của spec khác, ví dụ `version_id` của
+      `studio.version_assessments` mà compliance-pdpl/05 đặt, do spec tạo FK làm chủ; `based_on_version_id` FK ghép
+      `(tenant_id, based_on_version_id)` `ON DELETE SET NULL (based_on_version_id)` có index
+      `(tenant_id, based_on_version_id)`, chỉ đặt NULL cột đó vì `tenant_id` NOT NULL; `change_note` NULL.
     - `studio.definition_manifests`: khóa chính `(tenant_id, hash)`, `body` jsonb NFC tối đa 1 MiB, chỉ
       INSERT.
     - `studio.dependencies`: `from_version_id` FK ghép `(tenant_id, from_version_id)` và `from_artifact_id` FK ghép
@@ -111,25 +114,25 @@ viết chuyển giai đoạn nào khác.
       chỉ mang `row_version`.
     - `update`: `api_name`, `labels` với `If-Match`; `api_name` khi đã có phiên bản từng `live` → 409
       `api_name_immutable` trước khi trigger phải chặn; audit `studio.artifact.updated` với tên trường.
-    - `seal(uow, artifact_id, expected_row_version, tighten_only=False)` (mặc định là nhánh có người thứ hai): trong
-      giao dịch của bên gọi, khóa dòng thành phần (`SELECT ... FOR UPDATE`), so `expected_row_version` với `row_version`
-      của nháp, lệch → từ chối với `details.reason_code` `stale_version` trước khi cấp số (R2.17; `expected_row_version`
-      là giá trị `If-Match`, ETag của bản Nháp, mà lệnh gửi của agent-lifecycle nhận, trả 412 `precondition_failed` khi
-      lệch và 428 khi thiếu, agent-lifecycle:R2.12, agent-lifecycle:R2.13; ADR-0109 (Accepted) quyết 2), `validate`
-      (lỗi → 422 `validation_failed` liệt kê mọi lỗi trong `errors[]`), `version_no = last_version_no + 1`,
-      `content_hash` qua `dw_kernel.canonical`, bao đóng qua `extract`
-      (mỗi thành phần ghim `(kind, key, version, content_hash)`), `definition_hash` là mã băm của bao đóng, ghi
-      `studio.definition_manifests` `ON CONFLICT DO NOTHING`, ghi các dòng `studio.dependencies`, rồi chuyển `stage`
-      theo cột `has_quality_gate` của dòng `studio.artifact_kinds` của loại, đọc trong cùng giao dịch: `true` →
-      `evaluating`; `false` và bên gọi không đặt `tighten_only` → `awaiting_approval` (R2.13; bên gọi mở yêu cầu phê
-      duyệt phát hành trong cùng giao dịch, ADR-0120 (Accepted) quyết 2); `false` và bên gọi đặt `tighten_only` →
-      `live`, sau khi bên gọi đưa phiên bản `live` trước sang `retired` trong cùng giao dịch (R2.16,
-      agent-lifecycle:R1.4), và không đổi dòng nào khác của thành phần, kể cả Bản ứng viên đang chờ ở
-      `awaiting_approval`, mà `compared_live_hash` cũ của nó, khác mã băm của bản chỉ siết mà lần phát hành của nó sẽ
-      thay, từ đó chặn nó lên `live` (agent-lifecycle:R1.8, agent-lifecycle:R5.9); cột `tighten_only` và
-      `compared_live_hash` mà trigger của agent-lifecycle/03 đọc do bên gọi thêm và ghi ở mọi lần gửi
-      (agent-lifecycle:R2.10), không do ticket này, nên ở đây `tighten_only` là một tham số của `seal`; `tighten_only`
-      với loại `true` → từ chối, không niêm phong. Không audit: route gửi kiểm định của agent-lifecycle/03 audit trong
+    - `seal(uow, artifact_id, expected_row_version)`: trong giao dịch của bên gọi, khóa dòng thành phần
+      (`SELECT ... FOR UPDATE`), so `expected_row_version` với `row_version` của nháp, lệch → từ chối với
+      `details.reason_code` `stale_version` trước khi cấp số (R2.17; `expected_row_version` là giá trị `If-Match`, ETag
+      của bản Nháp, mà lệnh gửi của agent-lifecycle nhận, trả 412 `precondition_failed` khi lệch và 428 khi thiếu,
+      agent-lifecycle:R2.12, agent-lifecycle:R2.13; ADR-0109 (Accepted) quyết 2), `validate` (lỗi → 422
+      `validation_failed` liệt kê mọi lỗi trong `errors[]`), `version_no = last_version_no + 1`, `content_hash` qua
+      `dw_kernel.canonical`, bao đóng qua `extract` (mỗi thành phần ghim `(kind, key, version, content_hash)`),
+      `definition_hash` là mã băm của bao đóng, ghi `studio.definition_manifests` `ON CONFLICT DO NOTHING`, ghi các
+      dòng `studio.dependencies`, tăng `row_version` của nháp (lần niêm phong thứ hai cùng `expected_row_version` nhận
+      `stale_version`), rồi trả id phiên bản cùng hai mã băm. `seal` như nhau cho mọi loại: không đọc
+      `has_quality_gate`, không đổi `stage` (phiên bản ra khỏi `seal` vẫn ở `draft`) và không đổi dòng phiên bản nào
+      khác của thành phần, kể cả Bản ứng viên đang chờ ở `awaiting_approval`, mà `compared_live_hash` cũ của nó chặn nó
+      thay một bản chỉ siết lên `live` sau nó (R2.13, R2.16; agent-lifecycle:R1.8, agent-lifecycle:R5.9). Chuyển giai
+      đoạn sau `seal` là của `LifecycleService` của agent-lifecycle/03 và agent-lifecycle/04 trong cùng giao dịch
+      (`draft → evaluating` khi `has_quality_gate` là true, `draft → awaiting_approval` khi false, `draft → live` ở
+      nhánh chỉ siết sau khi gỡ bản `live` trước), với `studio.guard_version_stage()` là hàng rào cuối
+      (agent-lifecycle:R1.4, agent-lifecycle:R1.6, agent-lifecycle:R2.8, agent-lifecycle:R2.9; ADR-0120 (Accepted)
+      quyết 1); cột `tighten_only` và `compared_live_hash` do agent-lifecycle thêm và ghi ở mọi lần gửi
+      (agent-lifecycle:R2.10), không do ticket này. Không audit: route gửi kiểm định của agent-lifecycle/03 audit trong
       cùng giao dịch, kể cả `studio.version.published` của nhánh chỉ siết.
     - `soft_delete`: đặt `deleted_at`; `ck_artifacts_not_in_use` → 409 `conflict`, `details.reason_code`
       `artifact_in_use`, `details` gồm số đếm theo giai đoạn; audit `studio.artifact.deleted`.
@@ -138,7 +141,8 @@ viết chuyển giai đoạn nào khác.
       nào.
 7. Route trong nhóm `/api/v1/studio` của studio-skeleton/02, lỗi theo vỏ problem+json
    (ADR-0108 (Accepted)): `POST /api/v1/studio/artifacts`, `GET /api/v1/studio/artifacts` (keyset theo
-   `updated_at DESC, id DESC` trên index danh sách, lọc `kind`, `label`), `GET /api/v1/studio/artifacts/{id}`,
+   `updated_at DESC, id DESC`, lọc `kind`, `label`; index danh sách có `kind` khi lọc theo loại, index không `kind`
+   khi không lọc), `GET /api/v1/studio/artifacts/{id}`,
    `PATCH /api/v1/studio/artifacts/{id}`, `PUT /api/v1/studio/artifacts/{id}/draft`,
    `GET /api/v1/studio/artifacts/{id}/versions`, `GET /api/v1/studio/artifacts/{id}/versions/{version_no}`,
    `DELETE /api/v1/studio/artifacts/{id}`, `GET /api/v1/studio/artifacts/{id}/dependents`,
@@ -149,7 +153,9 @@ viết chuyển giai đoạn nào khác.
    `has_quality_gate = false`. Khóa đọc, ghi và gửi của hai loại là khóa chỉ trong test, chèn vào
    `platform.permissions` bằng vai migrator trong cùng fixture pytest phạm vi session và gỡ khi xong; câu INSERT nêu mọi
    cột NOT NULL có lúc đó, gồm `risk` của tenant-rbac/01 và `tenant_grantable` của tenant-rbac/02
-   (ADR-0104 (Accepted) quyết 1), nên ticket này chờ tenant-rbac/02.
+   (ADR-0104 (Accepted) quyết 1), nên ticket này chờ tenant-rbac/02. Ca cần một phiên bản ở giai đoạn khác `draft`
+   (R2.8, R2.9, R2.10, R2.16, R3.3, R3.4) đặt `stage` bằng vai migrator trong test, vì bên chuyển giai đoạn là
+   `LifecycleService` của agent-lifecycle/03, ticket chờ ticket này.
 
 ## Tiêu chí chấp nhận
 
@@ -164,8 +170,9 @@ viết chuyển giai đoạn nào khác.
 - [ ] R2.6: tài liệu `fixture` có ba lỗi → 422 với đủ ba mục `errors[]`, mỗi mục một con trỏ; không số
       phiên bản nào được cấp.
 - [ ] R2.7 (TC2): niêm phong nháp hợp lệ cấp `last_version_no + 1`, ghi hai mã băm khớp
-      `^sha256:[0-9a-f]{64}$` và để phiên bản ở `evaluating`; hai lần niêm phong đồng thời một nháp → một
-      thành công, một `stale_version`; bỏ khóa dòng thành phần → test đồng thời đỏ.
+      `^sha256:[0-9a-f]{64}$` và để phiên bản ở `draft`; hai lần niêm phong đồng thời một nháp với cùng
+      `expected_row_version` → một thành công, một `stale_version`; bỏ khóa dòng thành phần, hay bỏ bước tăng
+      `row_version` của `seal` → test đồng thời đỏ.
 - [ ] R2.8 (TC2): đưa phiên bản v3 về `draft` trong test rồi niêm phong lại → v4, không phiên bản nào
       mang lại số 3.
 - [ ] R2.9 (TC1): `dw_app` UPDATE `document` của phiên bản `evaluating` hay `live` → trigger từ chối; gỡ
@@ -176,20 +183,18 @@ viết chuyển giai đoạn nào khác.
       thành phần của tenant A → 404; gỡ kiểm quyền ở service → test đỏ.
 - [ ] R2.12 (TC24): người đọc được mà không có quyền ghi `PUT` nháp → 403 `permission_denied`, nháp không
       đổi.
-- [ ] R2.13 (TC27): niêm phong nháp hợp lệ của `fixture_gateless` không `tighten_only` cấp số phiên bản và hai
-      mã băm như R2.7 và để phiên bản ở `awaiting_approval`, không qua `evaluating`.
+- [ ] R2.13 (TC27): niêm phong nháp hợp lệ của `fixture` (`true`) và của `fixture_gateless` (`false`) cấp số
+      phiên bản và hai mã băm như R2.7 và để cả hai ở `draft`, không yêu cầu phê duyệt nào; để `seal` đổi `stage`
+      theo `has_quality_gate` → test đỏ.
 - [ ] R2.14 (TC27): INSERT dòng `studio.artifact_kinds` không nêu `has_quality_gate` bằng vai migrator → lỗi NOT
       NULL; thêm DEFAULT cho cột → test đỏ.
 - [ ] R2.15 (TC24): mỗi mục registry khai đủ khóa đọc, ghi và gửi, mỗi khóa có trong danh mục quyền, và một
       `publish_hook`; gỡ khóa đọc hay móc của `fixture` → test registry đỏ; test kiểm quyền tham số hóa chạy cho mọi
       loại đã đăng ký.
-- [ ] R2.16 (TC27): niêm phong `fixture_gateless` với `tighten_only` sau khi bên gọi đưa phiên bản `live` trước
-      sang `retired` → phiên bản mới ở `live`, không yêu cầu phê duyệt nào; `fixture` với `tighten_only` → từ chối,
-      không số phiên bản nào được cấp.
-- [ ] R2.16 (TC27): `fixture_gateless` có một Bản ứng viên ở `awaiting_approval`; niêm phong một bản chỉ siết →
-      bản mới `live`, dòng Bản ứng viên giữ nguyên giai đoạn và mọi cột; `seal` đổi Bản ứng viên → test đỏ. Ca duyệt
-      Bản ứng viên đó rồi về `draft` với `base_changed` là AL19 của agent-lifecycle, chạy ở agent-lifecycle/04, nơi có
-      handler `.decided`.
+- [ ] R2.16 (TC27): `fixture_gateless` có một Bản ứng viên ở `awaiting_approval`; niêm phong một nháp mới của cùng
+      thành phần → bản mới ở `draft` có số và hai mã băm, dòng Bản ứng viên giữ nguyên giai đoạn và mọi cột; để `seal`
+      đổi Bản ứng viên → test đỏ. Nhánh chỉ siết `draft → live` là của `LifecycleService` (agent-lifecycle:R2.9, AL4),
+      và ca duyệt Bản ứng viên đó rồi về `draft` với `base_changed` là AL19, hai ca chạy ở agent-lifecycle/04.
 - [ ] R2.17 (TC3): lưu nháp một lần rồi `seal` với `expected_row_version` cũ (lệnh gửi mang `If-Match` cũ) →
       `stale_version`, không số phiên bản, không dòng `studio.dependencies` hay `studio.definition_manifests`; bỏ so
       `expected_row_version` → test đỏ.
@@ -200,6 +205,8 @@ viết chuyển giai đoạn nào khác.
 - [ ] R2.18 (TC29): bằng vai migrator, INSERT phiên bản của tenant A có `artifact_id` là thành phần của tenant B, rồi
       dòng `studio.dependencies` của tenant A có `from_artifact_id`, rồi `to_artifact_id`, là thành phần của tenant B →
       lỗi FK ghép; đổi một trong ba FK ghép về FK một cột → test đỏ.
+- [ ] R2.18 (TC29): bằng vai migrator, INSERT thành phần của tenant A có `owning_workspace_id` là workspace của tenant B
+      → lỗi FK ghép tới `uq_workspaces_tenant_id_id`; đổi FK đó về FK một cột tới `platform.workspaces (id)` → test đỏ.
 - [ ] R2.19 (TC30): `dw_app` UPDATE `owning_workspace_id` của một thành phần sang workspace khác cùng tenant → trigger
       từ chối, cột giữ nguyên; cùng lệnh bằng vai migrator → từ chối; UPDATE `labels` của cùng dòng → được; gỡ trigger
       → test đỏ.
@@ -258,3 +265,8 @@ viết chuyển giai đoạn nào khác.
   (R2.19, TC30); FK tới `platform.workspaces` có index; index danh sách phá hòa `id DESC` và route phân trang theo
   `updated_at DESC, id DESC`; móc phát hành của `workflow` do workflow-engine cấp; `to_field_id` mà custom-objects thêm
   là FK ghép ON DELETE RESTRICT có index (ADR-0109 (Accepted) quyết 5).
+- 2026-10-24 (agent): vòng sửa thứ tư, lượt d, theo các quyết định tạm cùng ngày của spec: `seal` như nhau cho mọi
+  loại, không đổi `stage`, không nhận `tighten_only` và tăng `row_version`, còn `LifecycleService` của agent-lifecycle
+  chuyển giai đoạn trong cùng giao dịch (R2.7, R2.13, R2.16, TC27; ADR-0120 (Accepted) quyết 1); FK ghép tới
+  `platform.workspaces` có ca âm chéo tenant (R2.18, TC29); `kind` có index `(kind)`; index danh sách không `kind`
+  cho trang `/studio`; FK của spec khác tới hai bảng của ticket này chỉ là ví dụ, chủ là spec tạo FK.

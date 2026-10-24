@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: 02, 03, .claude/plans/studio/workflow-engine/issues/04-lan-studio-runs.md, .claude/plans/studio/compliance-pdpl/issues/05-phan-tich-bo-ba-khi-xuat-ban.md, .claude/plans/studio/tenant-config/issues/03-che-do-chay-va-gia-lap-o-executor.md, .claude/plans/studio/tenant-config/issues/05-lien-ket-va-phien-ban-cau-hinh.md, .claude/plans/studio/usage-and-limits/issues/03-han-muc-giu-truoc-va-quyet-toan.md, .claude/plans/studio/telemetry-and-audit/issues/03-lich-su-chay-theo-buoc.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md
 Area: studio
-Yêu cầu: R1.9, R2.8, R2.9, R2.10, R2.11, R2.12, R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R4.7, R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R5.8, R5.9, R5.10, R6.1, R6.2, R6.3, R7.9, R7.12, R7.13, AL4, AL5, AL6, AL7, AL8, AL9, AL10, AL11, AL19, AL20, AL21
+Yêu cầu: R1.9, R2.8, R2.9, R2.10, R2.11, R2.12, R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R4.7, R4.8, R4.9, R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R5.8, R5.9, R5.10, R6.1, R6.2, R6.3, R7.9, R7.12, R7.13, AL4, AL5, AL6, AL7, AL8, AL9, AL10, AL11, AL19, AL20, AL21, AL22
 
 ## Mục tiêu
 
@@ -62,7 +62,16 @@ compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ �
    thiếu khai báo đó bị bộ sinh từ chối. Bộ chấm
    `studio.*` hợp nhất bằng `merge_graders` ở composition root của worker; `dw_evals` không biết chúng.
 4. Route `POST /api/v1/studio/{agents|workflows}/{artifact_id}/versions/{version_id}/dry-evaluations`
-   (`studio.evals.run`); `GET /api/v1/studio/gate-runs` (keyset `(created_at DESC, id DESC)`), `/{id}`, `/{id}/cases`
+   (`studio.evals.run`) nhận phiên bản `draft` (spec R4.8): lane chạy Kiểm định thử, dòng `studio.gate_runs` có
+   `purpose` `dry`, với trần và lease `eval_offline` của bước 2; mỗi lần thử là một run `run_mode='simulate'` có gốc là
+   bản Nháp, xin qua `RunRequestService`, nơi bản kê ghim giai đoạn `draft` và mã băm tạm của nội dung nháp và bộ kiểm
+   trả mọi lỗi của loại chạy trên nội dung đó (workflow-engine:R3.9, workflow-engine:R3.11; tenant-config:R6.1;
+   ADR-0109 (Accepted) quyết 6); graph biên dịch theo mã băm ghim (workflow-engine:R4.2 cho quy trình;
+   agent-builder:R3.1, agent-builder:R3.3 cho agent, ADR-0117 (Accepted) quyết 5). `RunRequestService` từ chối lần thử
+   → Kiểm định thử `error` kèm mọi lỗi, không xin thêm lần thử (spec R4.9). Kiểm định thử không niêm phong, không đổi
+   giai đoạn, không mở phê duyệt. Test dùng bản Nháp quy trình thật và một nguồn graph agent giả theo khóa
+   `(tenant_id, agent_version_id, mã băm ghim)`; đường thật của agent là agent-builder/03.
+   `GET /api/v1/studio/gate-runs` (keyset `(created_at DESC, id DESC)`), `/{id}`, `/{id}/cases`
    (keyset `case_id`) (`studio.lifecycle.read`), mỗi thứ tự đi trên index của bước 1. Cùng migration của ticket: đăng
    ký khóa `studio.publish.approve`, `studio.lifecycle.read`, `studio.evals.run` trong `platform.permissions` của
    tenant-rbac/01 (nhãn tiếng Việt, `scope_kind` `workspace`, `risk` `standard` theo bảng phân loại của ticket đó);
@@ -95,7 +104,9 @@ compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ �
    ghi `live` (ADR-0120 (Accepted) quyết 1), gỡ bản cũ (`superseded`) rồi đưa phiên bản sang Đang dùng và gọi móc
    phát hành `publish_hook` mà mục `ArtifactKindRegistry` của loại mang (tenant-config:R2.15, tenant-config/02;
    ADR-0109 (Accepted) quyết 1), đúng một audit
-   `studio.version.published` (móc phát hành của loại chỉ áp định nghĩa, không ghi audit), outbox
+   `studio.version.published` (móc phát hành của loại làm phần việc của loại, như áp định nghĩa của `object` hay ghi
+   giới hạn dữ liệu của `agent`, `workflow` vào `studio.actor_boundaries` qua `ActorBoundaryPort` của record-access,
+   agent-builder:R1.9, workflow-engine:R1.7, ADR-0117 (Accepted) quyết 3, và không ghi audit), outbox
    `studio.version.live`; từ chối → `draft`. Nhãn loại approval và liên kết "Xem diff" ở điểm cắm
    `apps/web/components/tool-approval.tsx`. Lane hết hạn phê duyệt phát hành: hủy yêu cầu quá
    `publish_approval_ttl_days`, đưa phiên bản về `draft`, audit qua `lane_audit_event` với actor
@@ -107,8 +118,9 @@ compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ �
    (compliance-pdpl:R4.2, R4.3, R4.4). Mức sàn duyệt của công cụ không bị hạ bởi cấu hình công ty, người
    dựng hay Mức tự chủ (ADR-0125 (Accepted)).
 7. Nhánh gửi của loại có `has_quality_gate = false` trên route của ticket 03 (spec R2.8, R2.9;
-   ADR-0120 (Accepted) quyết 1-2): trong giao dịch gửi, niêm phong qua tenant-config (tenant-config:R2.13,
-   tenant-config:R2.16) với `expected_row_version` là giá trị `If-Match` mà route của ticket 03 nhận, như nhánh có
+   ADR-0120 (Accepted) quyết 1-2): trong giao dịch gửi, gọi bước niêm phong của tenant-config, bước cấp `version_no`,
+   ghi mã băm và so `row_version` mà không đổi giai đoạn (tenant-config:R2.7, tenant-config:R2.17), với
+   `expected_row_version` là giá trị `If-Match` mà route của ticket 03 nhận, như nhánh có
    cổng (spec R2.12), gọi bộ so sánh mà mục `ArtifactKindRegistry` của loại cấp (của custom-objects cho
    `object`; loại không có bộ so sánh, như Nguồn dữ liệu `endpoint`, luôn `tighten_only` false) rồi ghi
    `tighten_only` và `compared_live_hash` (spec R2.10). Hỏi `RunControlPort` sau khi so: Đóng băng của nền tảng → 409
@@ -117,8 +129,8 @@ compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ �
    `LifecycleService` gỡ bản cũ (`superseded`) rồi đưa phiên bản `draft → live` trong giao dịch của người gửi,
    `publish_hook` của mục `ArtifactKindRegistry` của loại chạy trong cùng giao dịch, đúng một audit
    `studio.version.published` với actor là người gửi và `details.path` `tighten_only`, outbox `studio.version.live`,
-   không mở phê duyệt (spec R2.9). Không chỉ siết, hay chưa có bản `live` → sang `awaiting_approval` với yêu cầu phê
-   duyệt của bước 5. Test với loại `object`
+   không mở phê duyệt (spec R2.9). Không chỉ siết, hay chưa có bản `live` → `LifecycleService` đưa phiên bản sang
+   `awaiting_approval` với yêu cầu phê duyệt của bước 5. Test với loại `object`
    đăng ký trong test cùng một bộ so sánh giả, và một loại không cổng đăng ký trong test không có bộ so sánh (hình của
    `endpoint`); đường thật với loại và bộ so sánh của custom-objects/02 là custom-objects/06, với loại `endpoint` là
    workflow-triggers/02, hai ticket chờ ticket này.
@@ -145,6 +157,13 @@ compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ �
 - [ ] R4.5 (AL9): một lần thử chạm trần mỗi lần thử → Câu đó trượt với `cost_bound`, các câu khác vẫn
       chấm; gỡ trần mỗi lần thử → test đỏ.
 - [ ] R4.6: hai Lượt kiểm định cùng khóa bằng chứng → lượt sau dùng lại, không tạo run.
+- [ ] R4.8 (AL22): Kiểm định thử một bản Nháp quy trình → mỗi lần thử là run `simulate` mà bản kê ghim giai đoạn
+      `draft` và mã băm tạm, phiên bản vẫn `draft`, `gate_run_id` NULL, 0 dòng `platform.approval_requests`; sửa nháp
+      rồi Kiểm định thử lại → lần thử ghim mã băm tạm mới và chạy nội dung mới; cùng hai ca với một bản Nháp agent
+      qua nguồn graph giả theo khóa có mã băm ghim; bỏ mã băm ghim khỏi khóa cache graph → lần sau chạy nội dung cũ,
+      test đỏ.
+- [ ] R4.9 (AL22): `RunRequestService` từ chối lần thử vì nội dung nháp trượt bộ kiểm của loại → Kiểm định thử `error`
+      kèm mọi lỗi, 0 `worker_runs`, không lần thử nào được xin thêm; nuốt lần từ chối rồi xin lần thử kế → test đỏ.
 - [ ] R1.9 (AL21): bằng vai migrator, dòng phiên bản của tenant A đặt `gate_run_id` là id một Lượt kiểm định của
       tenant B, và một dòng `studio.gate_case_results` của A trỏ tới Lượt kiểm định đó → FK ghép từ chối cả hai, không
       ghi; cùng id của tenant A → nhận; đổi một FK sang một cột → test đỏ.
@@ -258,3 +277,10 @@ compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ �
   usage-and-limits:R3.10 cho hợp đồng xóa và usage-and-limits:R3.11 cho thứ tự, thay R3.8.
 - 2026-10-24 (agent): kiểm lượt c: spec R2.8, R2.9, R7.13 nay nêu `LifecycleService` là bên đưa phiên bản lên `live` ở
   nhánh chỉ siết, và R5.5 nêu thứ tự gỡ bản cũ rồi đặt bản mới, khớp bước 5 và bước 7; bước 7 dẫn spec R2.9.
+- 2026-10-24 (agent): vòng sửa thứ tư, lượt d, theo các Quyết định tạm cùng ngày của spec: bước 7 gọi bước niêm phong
+  của tenant-config chỉ để cấp số, ghi mã băm và so `row_version` (tenant-config:R2.7, tenant-config:R2.17), còn
+  `LifecycleService` đưa phiên bản sang `live` hay `awaiting_approval`, thay dẫn chiếu tenant-config:R2.13,
+  tenant-config:R2.16 cho việc chuyển giai đoạn (ADR-0120 (Accepted) quyết 1); bước 4 nhận bản Nháp ở route
+  `dry-evaluations` với tiêu chí R4.8, R4.9 (AL22), không thêm cạnh: phần agent thử bằng nguồn graph giả, đường thật ở
+  agent-builder/03; bước 5 nói móc của loại `agent` và `workflow` ghi giới hạn dữ liệu của phiên bản
+  (agent-builder:R1.9, workflow-engine:R1.7; ADR-0117 (Accepted) quyết 3).

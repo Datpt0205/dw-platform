@@ -357,6 +357,8 @@ Trước đây: executor tìm lần thành công rồi mới chạy handler (`pa
   `write_todos`, không có công cụ dựng sẵn nào của thư viện agent.
 - R6.7 KHI một claim đã quá `expires_at` mà không lời gọi nào tiếp quản, lane `tool_claims_retention`
   PHẢI xóa claim đó ở lượt chạy kế tiếp của lane.
+- R6.8 NẾU một lần ghi claim của tenant A mang `workspace_id` của một workspace thuộc tenant B, THÌ
+  PostgreSQL PHẢI từ chối lần ghi đó và không ghi dòng nào.
 
 ### R7 — Giới hạn tốc độ theo địa chỉ và một chính sách địa chỉ ra ngoài [Sửa]
 
@@ -533,6 +535,7 @@ Trước đây: danh mục xuất gồm cả partition, và mỗi bảng đượ
 | FH29 | Chỉ người vận hành phát lại thư chết, có audit                   | R10.4, R10.5 | `--operator` không có trong `platform.platform_operators` → thoát 1, sự kiện vẫn mang `dead_at`, không có audit; người vận hành phát lại → sự kiện về hàng đợi và đúng một audit đứng tên người đó; bỏ kiểm người vận hành → đỏ               |
 | FH30 | Gói xuất không lặp dòng của bảng phân vùng                       | R11.1        | Bảng phân vùng thử có partition tháng và DEFAULT mà `dw_app` đọc được theo tên, mỗi nơi một dòng của tenant → mỗi dòng có đúng một lần trong kết quả xuất; test viết trước, đỏ trên mã hiện có; bỏ lọc partition khỏi danh mục xuất → đỏ      |
 | FH31 | Audit của lần xóa đứng tên người yêu cầu và nêu lane đã thi hành | G8, R11.3    | Purge một tenant có yêu cầu offboarding → audit `tenant.offboarding.purged` có actor là người yêu cầu và `details.lane` bằng `offboarding`; đổi actor sang `system_actor('offboarding')` → test G8 đỏ; ghi lại `details` rỗng → test R11.3 đỏ |
+| FH32 | Claim không trỏ sang workspace của tenant khác                   | R6.8         | Bằng `dw_app` gắn tenant A: INSERT `platform.tool_execution_claims` với `workspace_id` của một workspace tenant B → lỗi khóa ngoại, không dòng nào; đổi FK ghép thành FK một cột `workspace_id` → test đỏ                                     |
 
 ## Tiêu chí xong
 
@@ -553,7 +556,7 @@ Trước đây: danh mục xuất gồm cả partition, và mỗi bảng đượ
   tenant-config:R4.5); ticket 06 chờ tenant-config/03 vì cùng ALTER bảng đó và cùng sửa đường resume
   (OPS-b).
 - org-and-principals: `uq_workspaces_tenant_id_id` (org-and-principals:R1.1, ticket 01), đích của FK ghép
-  `(tenant_id, workspace_id)` của `platform.tool_execution_claims` ở ticket 04.
+  `(tenant_id, workspace_id)` của `platform.tool_execution_claims` ở ticket 04; ticket 04 chờ org-and-principals/01.
 - Ticket của spec khác chờ ticket ở đây theo dòng Blocked by của chính chúng (OPS-b);
   `scripts/check_plans.py --table` in bảng sống, spec này không chép lại.
 - Seam: `ConsumerRegistry.register` và `build_retention_consumer` ở composition root của worker cho
@@ -569,7 +572,8 @@ Trước đây: danh mục xuất gồm cả partition, và mỗi bảng đượ
   gọi xóa cache được gỡ); studio-skeleton/01 đổi chữ ký hàm partition → ticket 03; tenant-config/03 đổi
   đường resume → ticket 06; studio-skeleton/01 đổi test phủ offboarding hay `STUDIO_EXCLUSIONS` → ticket 07;
   telemetry-and-audit đổi cách xóa `platform.tool_executions.output` → R6.3, ticket 04; tenant-config/03 đổi
-  tập trạng thái của `platform.tool_executions` → R6.3, ticket 04.
+  tập trạng thái của `platform.tool_executions` → R6.3, ticket 04; org-and-principals/01 đổi
+  `uq_workspaces_tenant_id_id` → R6.8, FH32, ticket 04.
 
 ## Câu hỏi còn mở
 
@@ -680,9 +684,19 @@ Trước đây: danh mục xuất gồm cả partition, và mỗi bảng đượ
   `platform.workspaces (tenant_id, id)` qua `uq_workspaces_tenant_id_id` của org-and-principals/01, `ON DELETE CASCADE`,
   với chỉ mục `(tenant_id, workspace_id)`, thay cho FK một cột, vì kiểm khóa ngoại không đi qua RLS nên FK một cột để
   claim của một công ty trỏ tới workspace của công ty khác (CLAUDE.md, Tenancy and authorization và Data model rules;
-  org-and-principals:R1.1); ticket 04 cần org-and-principals/01 đi trước, đề xuất cạnh ghi ở Comments của ticket. Sửa:
-  Phụ thuộc, ticket 04. Nếu sai thì: claim bỏ khóa ngoại tới workspace kèm lý do (dòng chỉ sống tới `expires_at`, như
-  `platform.tool_executions` hôm nay không có khóa ngoại nào), và ticket 04 không chờ org-and-principals/01.
+  org-and-principals:R1.1); ticket 04 cần org-and-principals/01 đi trước. Sửa: Phụ thuộc, ticket 04. Nếu sai thì:
+  claim bỏ khóa ngoại tới workspace kèm lý do (dòng chỉ sống tới `expires_at`, như `platform.tool_executions` hôm nay
+  không có khóa ngoại nào), và ticket 04 không chờ org-and-principals/01.
+- 24/10/2026 (agent, tạm): ticket 04 chờ org-and-principals/01 ở dòng Blocked by, vì `uq_workspaces_tenant_id_id`, đích
+  của FK ghép `(tenant_id, workspace_id)` của `platform.tool_execution_claims`, chỉ ticket đó tạo
+  (org-and-principals:R1.1); cạnh đã kiểm không tạo vòng trên đồ thị ticket của area, và dòng trên thôi nói cạnh chỉ là
+  đề xuất ở Comments. Sửa: Phụ thuộc, Quyết định, ticket 04. Nếu sai thì: claim bỏ khóa ngoại tới workspace kèm lý do,
+  và ticket 04 bỏ cạnh.
+- 24/10/2026 (agent, tạm): FK ghép `(tenant_id, workspace_id)` của `platform.tool_execution_claims` có ca âm chéo tenant ở
+  R6.8 với kiểm soát FH32: claim của tenant A mang `workspace_id` của tenant B bị PostgreSQL từ chối, và đổi FK ghép thành
+  FK một cột làm test đỏ, vì test âm cho ghi chéo tenant là bắt buộc (CLAUDE.md, Tenancy and authorization) và một kiểm
+  soát mà test chưa từng thấy đỏ không chứng minh gì (failure-modes #3). Sửa: R6.8, FH32, Phụ thuộc, ticket 04. Nếu sai
+  thì: R6.8 và FH32 rút bằng `[Bỏ]` cùng lúc claim bỏ khóa ngoại tới workspace kèm lý do.
 
 ## Danh sách ticket
 

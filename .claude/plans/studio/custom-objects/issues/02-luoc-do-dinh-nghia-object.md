@@ -3,20 +3,21 @@
 Status: needs-triage
 Blocked by: 01, .claude/plans/studio/studio-skeleton/issues/02-goi-dw-studio-va-seam-api.md, .claude/plans/studio/tenant-config/issues/02-vo-phien-ban-va-chi-muc-phu-thuoc.md, .claude/plans/studio/org-and-principals/issues/01-khoa-don-vi-va-siet-realm.md, .claude/plans/studio/compliance-pdpl/issues/01-tu-vung-du-lieu-ca-nhan.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md, .claude/plans/studio/tenant-rbac/issues/01-mot-chu-cho-quyen.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md
 Area: studio
-Yêu cầu: R1.1, R1.3, R1.4, R1.5, R1.6, R1.8, R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R3.7, R4.1, R4.2, R4.4, R9.2, R9.4, R9.5, CO1, CO2, CO3, CO4, CO5, CO6, CO21, CO23, CO24, CO25
+Yêu cầu: R1.1, R1.3, R1.4, R1.5, R1.6, R1.8, R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R3.7, R4.1, R4.2, R4.4, R4.6, R9.2, R9.4, R9.5, CO1, CO2, CO3, CO4, CO5, CO6, CO21, CO23, CO24, CO25
 
 ## Mục tiêu
 
 Lát nền của spec: định nghĩa đối tượng và trường của công ty thành dữ liệu (R1, R2), bảng bản ghi có người phụ
-trách và workspace sở hữu với partition và slot theo số đo của ticket 01 (R4.1, R4.2, R9.2 tới R9.4), bộ chiếu lược
+trách và workspace sở hữu với partition và slot theo số đo của ticket 01 (R4.1, R4.2, R9.2 tới R9.4), khóa ngoại ghép
+không trỏ sang công ty khác, kể cả `to_field_id` của `studio.dependencies` (R4.6), bộ chiếu lược
 đồ dựng từ định nghĩa với `ai_description` tách khỏi lược đồ (R3.7). Sau ticket này tenant-rbac/04 sinh khóa
 `obj.<api_name>.<action>`, field-security/01 thêm `access_mode`, record-access/03 thêm policy tầm, ticket 03 dựng
 describe và bộ chiếu theo quyền của người gọi, và ticket 06 nối loại `object` vào đường phát hành của agent-lifecycle.
 
 ## Việc cần làm
 
-1. Một revision Alembic (id ngẫu nhiên do `alembic revision -m "..."` sinh) tạo bốn bảng, chép nguyên văn ràng buộc
-   từ mục Dữ liệu của spec:
+1. Một revision Alembic (id ngẫu nhiên do `alembic revision -m "..."` sinh) tạo bốn bảng và cột `to_field_id` của
+   `studio.dependencies`, chép nguyên văn ràng buộc từ mục Dữ liệu của spec:
     - `studio.object_defs`: PK `(tenant_id, id)`; FK `(tenant_id, id)` tới `studio.artifacts (tenant_id, id)`
       (`uq_artifacts_tenant_id_id` của tenant-config/02) ON DELETE RESTRICT;
       `api_name` CHECK `^[a-z][a-z0-9_]{1,39}$`, UNIQUE `(tenant_id, api_name)`; `labels` jsonb có khóa `vi` khác
@@ -48,9 +49,14 @@ describe và bộ chiếu theo quyền của người gọi, và ticket 06 nối
       `octet_length ≤ 1024`, `i` bigint, `f` float8, `d` date, `z` timestamptz, `b` boolean; UNIQUE
       `(tenant_id, object_id, uNN) WHERE uNN IS NOT NULL AND deleted_at IS NULL`; `deleted_at`, `deleted_by`; chỉ
       mục `(tenant_id, object_id, created_at DESC, id DESC)`, `(tenant_id, object_id, updated_at DESC, id DESC)`,
-      `(tenant_id, object_id, name, id)` và chỉ mục từng phần của mỗi slot. Tập slot là tập ticket 01 chốt;
+      `(tenant_id, object_id, name, id)`, `(tenant_id, workspace_id)` cho FK tới workspace sở hữu, và chỉ mục từng
+      phần của mỗi slot. Tập slot là tập ticket 01 chốt;
       `PARTITION BY HASH (tenant_id)` modulus 8 với `studio.records_p0` tới `studio.records_p7`, hay modulus 4 với
       `studio.records_p0` tới `studio.records_p3` khi số đo của ticket 01 chọn đường lui (DO-15 (a)).
+    - `studio.dependencies` (bảng của tenant-config/02): `ALTER TABLE` thêm `to_field_id uuid` NULL, FK ghép
+      `(tenant_id, to_field_id)` tới `studio.field_defs (tenant_id, id)` ON DELETE RESTRICT, index
+      `(tenant_id, to_field_id)` (ADR-0109 (Accepted) quyết 5); quyền của `dw_app` trên bảng giữ như
+      tenant-config/02 cấp.
     - Mỗi bảng và mỗi partition: RLS ENABLE và FORCE; `tenant_isolation_object_defs`, `tenant_isolation_field_defs`,
       `tenant_isolation_picklist_options` FOR ALL dạng InitPlan; `tenant_isolation_records` AS RESTRICTIVE FOR ALL
       dạng InitPlan trên bảng cha và mỗi partition. Policy PERMISSIVE theo tầm là của record-access/03.
@@ -58,7 +64,7 @@ describe và bộ chiếu theo quyền của người gọi, và ticket 06 nối
     - Quyền: `dw_app` có SELECT, INSERT, DELETE trên bốn bảng; UPDATE trên định nghĩa trừ cột khóa; UPDATE trên
       `studio.records` chỉ ở `name`, `data`, slot, `version`, `updated_*`, `deleted_*`; `REVOKE ALL` của `dw_app` trên
       từng partition, vì quyền mặc định của schema `studio` cấp SELECT cho mọi bảng mới (DO-02.2); không gì cho
-      `dw_provisioner`, `dw_agent_ro`, `PUBLIC`. Downgrade xóa bốn bảng, giữ schema `studio`.
+      `dw_provisioner`, `dw_agent_ro`, `PUBLIC`. Downgrade gỡ cột `to_field_id` rồi xóa bốn bảng, giữ schema `studio`.
     - `studio.object_defs`, `studio.field_defs`, `studio.picklist_options` không có `workspace_id`: mỗi bảng một dòng
       trong danh sách bảng toàn tenant của `packages/python/dw_platform/tests/integration/test_rls_coverage.py` với lý
       do "định nghĩa đối tượng của cả công ty" (DO-01).
@@ -69,8 +75,10 @@ describe và bộ chiếu theo quyền của người gọi, và ticket 06 nối
    nào giữ khóa là việc của tenant-rbac.
 3. Thêm `("studio", "records")`, `("studio", "picklist_options")`, `("studio", "field_defs")`,
    `("studio", "object_defs")` theo thứ tự đó vào `_ORDERED_FIRST` của
-   `packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py`, trên phần đọc catalog và
-   `export_rows` mà foundations-hardening/07 đã viết lại.
+   `packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py`, giữa `studio.dependencies` và
+   `studio.artifacts` mà tenant-config/02 thêm: sau `studio.dependencies` vì `to_field_id` giữ `studio.field_defs` bằng
+   FK RESTRICT, trước `studio.artifacts` vì FK của `studio.object_defs` tới thành phần là RESTRICT
+   (studio-skeleton:R4.2); trên phần đọc catalog và `export_rows` mà foundations-hardening/07 đã viết lại.
 4. Trong `dw_studio.records` (gói của studio-skeleton/02):
     - `domain/field_types.py`: Literal `FieldType` với 13 giá trị của CHECK và bảng kiểu sang họ slot; thêm tệp vào
       `WATCHED_LITERALS` của `scripts/verify_invariants.py`.
@@ -151,13 +159,20 @@ describe và bộ chiếu theo quyền của người gọi, và ticket 06 nối
       `ai_description` vào `description` của lược đồ → test đỏ (trường Đã ẩn với người gọi kiểm ở ticket 03).
 - [ ] R4.1: INSERT vào `studio.records` thiếu `owner_kind`, `owner_id` hay `workspace_id` → vi phạm NOT NULL.
 - [ ] R4.2 (CO1): kết nối không đặt `app.tenant_id` đọc 0 dòng ở bốn bảng; INSERT với `tenant_id` của công ty khác
-      → RLS từ chối; INSERT `studio.records` hay `studio.field_defs` của công ty A với `object_id` của công ty B → lỗi
-      FK ghép, không dòng nào; `dw_app` đọc thẳng `studio.records_p3` → permission denied; một vai thử NOBYPASSRLS
+      → RLS từ chối; `dw_app` đọc thẳng `studio.records_p3` → permission denied; một vai thử NOBYPASSRLS
       có SELECT trên `studio.records_p3`, không đặt tenant → 0 dòng; `test_rls_coverage.py` thấy mọi partition và so
       policy của mỗi partition với bảng cha.
 - [ ] R4.2 (CO21): thêm policy PERMISSIVE `USING (true)` lên `studio.records` → test catalog đỏ.
 - [ ] R4.4: offboarding một công ty có hai đối tượng xuất mỗi dòng định nghĩa đúng một lần, sau purge còn 0 dòng ở
-      bốn bảng; bỏ một bảng `studio` khỏi `_ORDERED_FIRST` → test walk `pg_class` của studio-skeleton/01 đỏ.
+      bốn bảng, kể cả khi một dòng `studio.dependencies` của công ty đó có `to_field_id` trỏ tới một trường của nó; bỏ
+      một bảng `studio` khỏi `_ORDERED_FIRST` hay xếp `studio.field_defs` trước `studio.dependencies` → test walk
+      `pg_class` của studio-skeleton/01 đỏ.
+- [ ] R4.6 (CO1): bằng `dw_migrator`, vai bỏ qua RLS nên chỉ khóa ngoại chặn được (ở ticket này `studio.records` chưa
+      có policy PERMISSIVE nào cho `dw_app` ghi), INSERT dòng của công ty A vào `studio.records` hay `studio.field_defs`
+      với `object_id` của công ty B, vào `studio.picklist_options` với `field_id` của B, vào `studio.object_defs` với
+      `id` của một thành phần của B, vào `studio.records` với `workspace_id` của B, và vào `studio.dependencies` với
+      `to_field_id` của một trường của B → lỗi FK ghép (23503), không dòng nào; migration thử đổi một FK ghép thành FK
+      một cột → test đỏ.
 - [ ] R9.2: khi ticket 01 chọn modulus 8, test catalog thấy `studio.records` là `PARTITION BY HASH (tenant_id)` với 8
       partition, mỗi partition ENABLE và FORCE RLS, không quyền nào của `dw_app`.
 - [ ] R9.5: khi ticket 01 chọn đường lui modulus 4, test catalog thấy 4 partition `studio.records_p0` tới
@@ -174,7 +189,8 @@ describe và bộ chiếu theo quyền của người gọi, và ticket 06 nối
 - `packages/python/dw_memory/tests/integration/test_fixed_set_checks_db.py:135`; `scripts/verify_invariants.py:109-112`;
   spec: R2.1.
 - `db/migrations/versions/0004_touch_updated_at_yields.py:44`; spec: Dữ liệu.
-- ADR-0107 (Accepted) quyết định 1, 2, 5; ADR-0109 (Accepted) quyết định 1; ADR-0106 (Accepted) quyết định 1.
+- ADR-0107 (Accepted) quyết định 1, 2, 5; ADR-0109 (Accepted) quyết định 1, 5 (`to_field_id`); ADR-0106 (Accepted)
+  quyết định 1.
 - `docs/adr/0120-publish-gate-and-run-control-switches.md:39-84`; spec: R1.8 (quyết 1, nhánh chỉ siết).
 
 ## Comments
@@ -209,3 +225,9 @@ describe và bộ chiếu theo quyền của người gọi, và ticket 06 nối
   1 nêu mọi khóa ngoại giữa hai bảng của tenant là FK ghép tới `(tenant_id, id)` của bảng đích, kể cả `object_id` của
   `studio.records` và `field_id` của `studio.picklist_options`, và tiêu chí R4.2 (CO1) thêm ca `object_id` của công ty
   khác (hai dòng Quyết định 24/10/2026 của spec).
+- 2026-10-24 (agent): vòng sửa 4, lượt bốn: bước 1 thêm cột `to_field_id` của `studio.dependencies` với FK ghép ON
+  DELETE RESTRICT tới `studio.field_defs` và index `(tenant_id, to_field_id)`, như tenant-config giao
+  (ADR-0109 (Accepted) quyết 5), cùng index `(tenant_id, workspace_id)` của `studio.records` cho FK tới workspace; bước
+  3 đặt bốn bảng giữa `studio.dependencies` và `studio.artifacts`; ca FK ghép của công ty khác rời tiêu chí R4.2 sang
+  tiêu chí mới R4.6 (CO1), thêm ca `field_id` của lựa chọn, `id` của định nghĩa đối tượng, `workspace_id` của bản ghi và
+  `to_field_id`; tiêu chí R4.4 thêm dòng phụ thuộc trỏ tới trường (ba dòng Quyết định 24/10/2026 của spec).

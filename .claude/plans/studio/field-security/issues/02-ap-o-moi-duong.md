@@ -78,11 +78,12 @@ lịch sử chạy (R4), và một hàm là chủ duy nhất với test kiến t
 ## Nguồn
 
 - `docs/adr/0106-field-access-follows-personal-data-category.md:62-77`; spec: R3, R4, R5.
-- `.claude/plans/studio/custom-objects/spec.md:158`; spec: R5.2 (chỉ adapter bản ghi nhắc `studio.records`).
-- `.claude/plans/studio/custom-objects/spec.md:220`; spec: R3.2 (lọc, sắp trên trường Đã ẩn → 422 `field_not_readable`).
+- `.claude/plans/studio/custom-objects/spec.md:161`; spec: R5.2 (chỉ adapter bản ghi nhắc `studio.records`).
+- `.claude/plans/studio/custom-objects/spec.md:223`; spec: R3.2 (lọc, sắp trên trường Đã ẩn → 422 `field_not_readable`).
 - `packages/python/dw_observability/src/dw_observability/redaction.py:1`; spec: R4.6 (bộ che chỉ che bí mật, không che giá trị trường theo quyền).
 
 ## Comments
 
 - 2026-10-23 (agent): `Blocked by` trỏ tới tools-and-skills ticket 03 và telemetry-and-audit ticket 03 đang viết cùng đợt; tệp sẽ có khi đợt này xong.
 - 2026-10-23 (agent): DO-36 (a) và `B:custom-objects:R6.5~field-security:R3.3` (a) đã có lời đáp (Đạt, 23/10/2026): thêm R4.7 (guard tại `decide`), describe liệt kê trường ẩn với `access: hidden`, lỗi lọc là `errors[].code` `field_not_readable` dưới `validation_failed`.
+- 2026-10-24 (agent): vòng sửa 4, lượt bốn: hai neo tới spec của custom-objects ở Nguồn trỏ lại đúng dòng (R5.6 và R8.4 của spec đó), vì lượt bốn thêm dòng vào spec đó; nội dung được neo không đổi.

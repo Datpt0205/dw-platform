@@ -31,7 +31,8 @@ xóa cache ở route khóa của foundations-hardening/02 là tạm và ticket n
    `permission_key text NOT NULL` FK `platform.permissions (key)` `ON DELETE RESTRICT`,
    `depth text NOT NULL CHECK (depth IN ('own','workspace','tenant'))` (W2 mở `team`, `workspace_subtree`),
    `PRIMARY KEY (role_id, permission_key)`; FK `(tenant_id, role_id)` tới `platform.tenant_roles (tenant_id, id)`
-   `ON DELETE CASCADE`; index `(tenant_id, role_id)` và `(tenant_id, permission_key)`; trigger
+   `ON DELETE CASCADE`; index `(tenant_id, role_id)` và `(permission_key, tenant_id)`, dẫn bằng `permission_key` cho FK
+   tới `platform.permissions` và vẫn phục vụ tra một khóa trong một tenant; trigger
    `ck_tenant_role_permissions_depth_kind` (R3.4: `tenant` chỉ `tenant`; `workspace` nhận `workspace`, `tenant`; `record`
    nhận cả ba), SQLSTATE 23514.
 4. **Gán vai trò.** `platform.memberships` thêm `uq_memberships_tenant_id_workspace_id_id UNIQUE (tenant_id, workspace_id, id)`.
@@ -161,3 +162,4 @@ xóa cache ở route khóa của foundations-hardening/02 là tạm và ticket n
 - 2026-10-24 (agent): kiểm vòng sửa 4: bước 15 đếm lại thành bốn bảng mới và nêu tên chúng (bước 2, 3, 4, 9), thay cho "năm bảng" cũ; dòng Phụ thuộc của spec sửa cùng.
 - 2026-10-24 (agent): vòng sửa 4, lượt hai: bước 7 dẫn `connections-and-vault:R3.12`, `connections-and-vault:R5.13`, hai tiêu chí `no_checker_available` của connections-and-vault, thay cho R3.9, R5.10 là lệnh gửi (Quyết định 24/10/2026 của spec).
 - 2026-10-24 (agent): vòng sửa 4, lượt ba: luật quyền tính động của `tenant_owner` ở bước 7 là tiêu chí R2.7 của spec với kiểm soát RB34; dòng `Yêu cầu:` và một tiêu chí chấp nhận thêm theo, bước 7 không đổi (Quyết định 24/10/2026 của spec).
+- 2026-10-24 (agent): vòng sửa 4, lượt bốn: bước 3 đổi index `(tenant_id, permission_key)` thành `(permission_key, tenant_id)`, để FK `permission_key` tới `platform.permissions` có index dẫn bằng cột của nó (CLAUDE.md, Data model rules; Quyết định 24/10/2026 của spec).

@@ -102,11 +102,12 @@ contract of ADR 0120.
    decision 1), and a hash of each variable value, never the value; ADR 0110), object schema versions and an
    engine section.
    A `simulate` run, and a run of no other mode, may have a draft as its root, requested only once the checks
-   that submit runs (ADR 0112 decision 3) pass on the draft's content. `RunRequestService`, the one door
-   (ADR 0113 decision 1), runs those checks on that content itself, whichever route asked, before it builds a run
-   manifest or inserts a run row, and an error refuses the request, so no caller reaches a draft run unchecked
-   (failure-modes #5). The run's root then records the version id, the stage `draft` and a provisional hash of that
-   content, computed when the request is accepted the way decision 4 computes `definition_hash`.
+   that submit runs for the draft's kind (ADR 0112 decision 3 for a workflow, ADR 0117 decisions 2, 4 and 7 for
+   an agent) pass on the draft's content. `RunRequestService`, the one door (ADR 0113 decision 1), runs those
+   checks on that content itself, whichever route asked, before it builds a run manifest or inserts a run row,
+   and an error refuses the request, so no caller reaches a draft run unchecked (failure-modes #5). The run's
+   root then records the version id, the stage `draft` and a provisional hash of that content, computed when the
+   request is accepted the way decision 4 computes `definition_hash`.
    `platform.run_manifest_keys` names each version a retained run pinned in exactly one of `artifact_version_id`
    and `config_version_id` (CHECK `num_nonnulls(artifact_version_id, config_version_id) = 1`), each a composite FK
    `ON DELETE RESTRICT` to `studio.artifact_versions` or `platform.config_versions`, so nothing such a run pinned
@@ -145,9 +146,10 @@ contract of ADR 0120.
 
 ## Consequences
 
-- tenant-config owns the envelope, the canonical kernel, the dependency index and the run manifest;
-  agent-builder, workflow-engine and tools-and-skills register kinds and create no version tables. Every kind
-  ships an extractor fixture test: break the extractor, and the test turns red.
+- tenant-config owns the envelope, the canonical kernel, the dependency index and the run manifest, save decision 5's
+  `to_field_id` and its composite foreign key, which custom-objects adds in the revision that creates
+  `studio.field_defs`, the table that key references; agent-builder, workflow-engine and tools-and-skills register kinds
+  and create no version tables. Every kind ships an extractor fixture test: break the extractor, and the test turns red.
 - custom-objects' field delete gate (ADR 0107) and agent-lifecycle's drift findings read
   `studio.dependencies`; every Studio resolution takes the run's manifest, not only the tenant.
 - Migrations: Alembic revisions create `studio.artifact_kinds`, the envelope tables, `studio.dependencies`,
@@ -246,3 +248,9 @@ contract of ADR 0120.
   instead of running the checks). The second pass's line above now names only the publish hook that agent-lifecycle
   calls, no longer the per-kind path it replaced, `LifecycleService` being the one writer of `live` (ADR 0120
   decision 1).
+- Third consistency check (round 4), fourth pass, the planner's provisional calls: decision 6 names by kind the
+  checks a draft passes before it roots a `simulate` run, ADR 0112 decision 3 for a workflow and ADR 0117 decisions 2,
+  4 and 7 for an agent, whose draft ADR 0117 decision 5 now compiles for such a run (if it is wrong, only a workflow
+  draft is simulated and the sentence names ADR 0112 alone); Consequences leave `to_field_id` and its composite
+  foreign key to custom-objects, which adds them with `studio.field_defs`, the table they reference, as tenant-config
+  states (if it is wrong, tenant-config adds them in a revision after custom-objects' own).

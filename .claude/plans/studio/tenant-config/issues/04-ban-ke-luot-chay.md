@@ -21,9 +21,10 @@ TC28). Ticket 05 thêm mục điểm gắn vào cùng bản kê.
       `INSERT ... ON CONFLICT DO NOTHING`; `dw_app` chỉ SELECT và INSERT.
     - `platform.run_manifest_keys`: `(tenant_id, manifest_hash)` FK tới `platform.run_manifests` ON
       DELETE CASCADE; `artifact_version_id` NOT NULL, FK ghép `(tenant_id, artifact_version_id)` ON DELETE RESTRICT
-      tới `studio.artifact_versions (tenant_id, id)` qua `uq_artifact_versions_tenant_id_id` của ticket 02 (R2.18); mỗi
-      FK một index, FK ghép thì index `(tenant_id, artifact_version_id)`; unique
-      `(tenant_id, manifest_hash, artifact_version_id)`. Ticket 05 thêm `config_version_id` (FK ghép ON DELETE RESTRICT
+      tới `studio.artifact_versions (tenant_id, id)` qua `uq_artifact_versions_tenant_id_id` của ticket 02 (R2.18);
+      unique `(tenant_id, manifest_hash, artifact_version_id)`; mỗi FK một index dẫn bằng cột của nó: FK
+      `(tenant_id, manifest_hash)` qua unique đó, FK ghép của `artifact_version_id` qua index
+      `(tenant_id, artifact_version_id)`. Ticket 05 thêm `config_version_id` (FK ghép ON DELETE RESTRICT
       tới `uq_config_versions_tenant_id_id`), CHECK `num_nonnulls(artifact_version_id, config_version_id) = 1` và unique
       `(tenant_id, manifest_hash, config_version_id)`, và trong cùng bước bỏ NOT NULL của `artifact_version_id` mà
       revision này đặt.
@@ -117,3 +118,6 @@ TC28). Ticket 05 thêm mục điểm gắn vào cùng bản kê.
   NULL ở ticket này; ticket 05 bỏ NOT NULL đó cùng bước thêm `config_version_id`, CHECK `num_nonnulls` và unique của
   cột mới; FK của `artifact_version_id`, và FK của `config_version_id` mà ticket 05 thêm, nêu `ON DELETE RESTRICT`
   tường minh.
+- 2026-10-24 (agent): vòng sửa thứ tư, lượt d, theo quyết định tạm cùng ngày của spec: FK `(tenant_id, manifest_hash)`
+  dùng unique `(tenant_id, manifest_hash, artifact_version_id)` làm index dẫn bằng hai cột của nó (`CLAUDE.md`, Data
+  model rules).

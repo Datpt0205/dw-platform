@@ -22,7 +22,8 @@ cửa, để quyết Đóng băng có thể tiếp tục cho lượt đang chạ
       `abuse`, `test`, `other`), `reason` 1..500 ký tự; `workspace_id`, `target_id` NULL chỉ khi
       `scope_type='tenant'`; chỉ mục một công tắc mở
       `(tenant_id, scope_type, coalesce(target_id, '00000000-0000-0000-0000-000000000000'::uuid)) WHERE lifted_at IS NULL`;
-      FK `tenant_id → platform.tenants ON DELETE CASCADE`; RLS ENABLE và FORCE theo tenant.
+      FK `tenant_id → platform.tenants ON DELETE CASCADE` có index `(tenant_id)` riêng, vì chỉ mục một công tắc mở là
+      từng phần và không phủ dòng đã gỡ (CLAUDE.md, Data model rules); RLS ENABLE và FORCE theo tenant.
     - Trigger `platform.guard_control_switch()` (chèn chỉ mở; một dòng gỡ một lần, không đổi gì khác;
       dòng `origin='platform'` chỉ `dw_provisioner` gỡ; DELETE chỉ khi `platform.tenants.status` của công ty là
       `offboarding`, mọi DELETE khác → 23514, spec R7.5, R10.1) và trigger
@@ -175,3 +176,6 @@ cửa, để quyết Đóng băng có thể tiếp tục cho lượt đang chạ
   "không thêm cạnh tới tenant-config/05" và câu "chưa thêm ở đây" của các dòng trên, còn dòng `|=` của ticket này
   vẫn không là lý do cho cạnh nào. Đóng băng có thể tiếp tục cho lượt đang chạy là W3 (Mục tiêu, bước 6), khớp
   requirements.md và ADR-0120 (Accepted). Bước 1 dẫn tenant-rbac:R2.7 cho luật động của `tenant_owner`.
+- 2026-10-24 (agent): vòng sửa thứ tư, lượt d, theo Quyết định tạm cùng ngày của spec: bước 1 thêm index `(tenant_id)`
+  cho FK `tenant_id` của `platform.control_switches`, vì chỉ mục một công tắc mở là từng phần (CLAUDE.md, Data model
+  rules: mọi khóa ngoại có chỉ mục ở phía mình).

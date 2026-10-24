@@ -49,7 +49,7 @@ lead.
 
 ## Comments
 
-- 2026-10-24 (agent, tạm): vòng sửa thứ tư, lượt c: câu 4 bỏ phần spreadsheets, vì Google Sheets không ở v1
+- 2026-10-24 (agent, tạm): vòng sửa thứ tư: câu 4 bỏ phần spreadsheets, vì Google Sheets không ở v1
   (`requirements.md` mục Không làm, N8), và ghi thời gian Google xác minh `gmail.send` là của khách, vì nền tảng không
   giữ ứng dụng Google nào (DO-20 (c), `connections-and-vault/01` bước 4). Sửa: Câu hỏi (câu 4). Nếu sai thì: nền tảng
   giữ một ứng dụng Google, và câu 4 hỏi lại thời gian xác minh cho hồ sơ của nền tảng.

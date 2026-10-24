@@ -10,7 +10,7 @@ Yêu cầu: không (nguyên mẫu đo đạc, chốt ADR B9-3 trước khi cắt
 
 ## Việc cần làm
 
-1. Dựng `StudioGraphSource` thử đọc một fixture JSON thay cho tài liệu phiên bản, trả graph chưa biên dịch, cache LRU có trần theo khóa `(tenant_id, agent_version_id)`.
+1. Dựng `StudioGraphSource` thử đọc một fixture JSON thay cho tài liệu phiên bản, trả graph chưa biên dịch, cache LRU có trần theo khóa `(tenant_id, agent_version_id, pinned_hash)`, `pinned_hash` lấy từ fixture như bản kê ghim (spec R3.1).
 2. Dựng `StudioModelSelection` thử với một resolver giả, đặt nó trước bước `RunBudget` trong ngăn xếp middleware; xác nhận thứ tự bằng phép đo M2 (middleware đứng trước là lớp ngoài).
 3. Thêm một agent con có `RunControl` thử, truyền ngân sách của cha xuống con.
 4. Đo thời gian và bộ nhớ biên dịch ở 10 và 100 phiên bản; đo tiếp tục một lượt chạy ở một tiến trình thứ hai (resume). Ghi bảng số đo vào mục Quyết định của `spec.md`.
@@ -29,3 +29,5 @@ Yêu cầu: không (nguyên mẫu đo đạc, chốt ADR B9-3 trước khi cắt
 - `packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/agent_factory.py:28-36`; `packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langgraph_runner.py:127`; spec: không.
 
 ## Comments
+
+- 2026-10-24 (agent): vòng sửa thứ tư, lượt d: khóa cache của nguyên mẫu mang `pinned_hash` như runtime thật (spec R3.1; ADR-0117 (Accepted) quyết 5), vì bản Nháp của agent chạy được ở `simulate` dưới mã băm tạm và giữ id khi sửa (bước 1).

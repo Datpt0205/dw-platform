@@ -1,20 +1,21 @@
 # 04 — ToolExecutor giành lượt trước hiệu ứng, không còn cửa sau
 
 Status: needs-triage
-Blocked by: 01
+Blocked by: 01, .claude/plans/studio/org-and-principals/issues/01-khoa-don-vi-va-siet-realm.md
 Area: studio
-Yêu cầu: R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.7, FH15, FH16, FH17, FH18, FH19
+Yêu cầu: R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.7, R6.8, FH15, FH16, FH17, FH18, FH19, FH32
 
 ## Mục tiêu
 
 Mỗi hiệu ứng của một công cụ chạy một lần dù hai lời gọi cùng khóa đến đồng thời, claim mồ côi có
-người dọn, bản ghi lần gọi chỉ thêm và có CHECK, và không mục nào tới model mà không qua ToolExecutor
-(R6.1-R6.7, FH15-FH19; ADR-0108 (Accepted) quyết định 5; ADR-0116 (Accepted) quyết định 3 và 7).
+người dọn, claim không trỏ được sang workspace của tenant khác, bản ghi lần gọi chỉ thêm và có CHECK, và
+không mục nào tới model mà không qua ToolExecutor (R6.1-R6.8, FH15-FH19, FH32; ADR-0108 (Accepted) quyết
+định 5; ADR-0116 (Accepted) quyết định 3 và 7).
 Mọi loại công cụ Studio sau này thừa hưởng việc chạy một lần từ đây.
 
 ## Việc cần làm
 
-Claim trước hiệu ứng (R6.1, R6.2, R6.3, R6.7):
+Claim trước hiệu ứng (R6.1, R6.2, R6.3, R6.7, R6.8):
 
 1. Revision Alembic mới `db/migrations/versions/*_tool_execution_claims.py` (id ngẫu nhiên): bảng
    `platform.tool_execution_claims` theo ADR-0108 (Accepted) quyết định 5:
@@ -82,6 +83,9 @@ Không còn cửa sau (R6.4, R6.5, R6.6):
       agent → đỏ.
 - [ ] R6.7 (FH19): một claim quá hạn và một claim chưa hạn → sau một lượt `tool_claims_retention` chỉ
       claim chưa hạn còn; bỏ đăng ký lane → test tập lane đỏ.
+- [ ] R6.8 (FH32): bằng `dw_app` gắn tenant A, INSERT `platform.tool_execution_claims` với `workspace_id` của một
+      workspace tenant B → lỗi khóa ngoại 23503, không dòng nào; migration thử đổi FK ghép thành FK một cột
+      `workspace_id` → test đỏ.
 - [ ] Xong: `make ci && make test-integration` xanh.
 
 ## Nguồn
@@ -99,7 +103,8 @@ Không còn cửa sau (R6.4, R6.5, R6.6):
 - `configs/workers/README.md:14-17`
 - `db/migrations/sql/0001_platform_baseline.sql:698`
 - `docs/adr/0108-one-error-envelope-and-caller-bound-idempotency.md:90-97`
-- spec: R6, FH15-FH19; si-platform `db/si/migrations/0040_tool_call_claims.sql`.
+- spec: R6, FH15-FH19, FH32; org-and-principals:R1.1 (`uq_workspaces_tenant_id_id`); si-platform
+  `db/si/migrations/0040_tool_call_claims.sql`.
 
 ## Comments
 
@@ -107,3 +112,6 @@ Không còn cửa sau (R6.4, R6.5, R6.6):
   `platform.workspaces (tenant_id, id)` thay cho FK một cột, vì kiểm khóa ngoại không đi qua RLS (Quyết định 24/10/2026
   của spec). Đề xuất thêm `.claude/plans/studio/org-and-principals/issues/01-khoa-don-vi-va-siet-realm.md` vào Blocked
   by: `uq_workspaces_tenant_id_id`, đích của FK đó, chỉ ticket đó tạo (org-and-principals:R1.1).
+- 2026-10-24 (agent): vòng sửa 4, lượt bốn: Blocked by thêm org-and-principals/01 như đề xuất ở dòng trên (cạnh đã kiểm
+  không tạo vòng); tiêu chí R6.8 với kiểm soát FH32 là ca âm của FK ghép đó: claim của tenant A mang `workspace_id` của
+  tenant B bị từ chối (hai dòng Quyết định 24/10/2026 của spec).

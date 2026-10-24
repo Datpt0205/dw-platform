@@ -279,8 +279,9 @@ không `workspace_id`, mỗi bảng một dòng có lý do trong `_TENANT_WIDE_O
   không đổi nó; UNIQUE `(tenant_id, subject_kind, subject_id, field, secret_version)`, mà vì đúng một cột chủ thể
   khác NULL nên là một UNIQUE `(tenant_id, <cột chủ thể>, field, secret_version)` cho mỗi cột chủ thể,
   `(tenant_id, connection_id, field, secret_version)` ở ticket 02, dẫn đầu bằng hai cột của FK ghép nên cũng là
-  chỉ mục của FK đó; `alg text NOT NULL` CHECK (`aes-256-gcm`);
-  `nonce bytea` CHECK độ dài 12; `kek_ref text NOT NULL`; `ciphertext bytea` CHECK độ dài ≤ 64 KiB;
+  chỉ mục của FK đó và của FK `tenant_id`; `alg text NOT NULL` CHECK (`aes-256-gcm`);
+  `nonce bytea NOT NULL` CHECK độ dài 12; `kek_ref text NOT NULL`; `ciphertext bytea NOT NULL` CHECK độ dài
+  ≤ 64 KiB;
   `wrapped_data_key bytea NOT NULL`, khóa dữ liệu riêng của phong bì bọc bởi Khóa của công ty, giữ cạnh
   `ciphertext` (ADR-0115 (Accepted) quyết 1), cột duy nhất lane `credential_rewrap` ghi lại;
   `kek_version int NOT NULL`, phiên bản Khóa của công ty đã bọc `wrapped_data_key`, lane `credential_rewrap` tăng
@@ -589,6 +590,18 @@ không `workspace_id`, mỗi bảng một dòng có lý do trong `_TENANT_WIDE_O
   dưới AAD mới, và `PATCH /api/v1/connections/{id}` không nhận cột đó. Sửa: thêm R1.7, Dữ liệu, CV1, ticket 02, 04.
   Nếu sai thì: UPDATE cột đó được phép trong một giao dịch mã hóa lại mọi phong bì của Kết nối, và R1.7 đổi thành
   kiểm giao dịch đó.
+- 24/10/2026 (agent, tạm): `nonce` và `ciphertext` của `platform.secret_envelopes` là NOT NULL, vì CHECK độ dài nhận
+  NULL, nên thiếu NOT NULL thì một phong bì không có nonce hay bản mã qua được mọi ràng buộc của bảng
+  (failure-modes #7: giá trị thiếu không được mở cửa); ticket 02 bước 1 chép nguyên văn ràng buộc của mục Dữ liệu cho
+  các cột của bảng, gồm `tenant_id`, `alg`, `kek_ref`, `kek_version` NOT NULL, để hai bản không lệch nhau
+  (failure-modes #2), và R1.1 có ca phong bì thiếu `nonce` hay `ciphertext` bị từ chối. Sửa: Dữ liệu, ticket 02. Nếu
+  sai thì: một trong hai cột được NULL có chủ ý (ví dụ một phong bì giữ chỗ trước khi có giá trị), Dữ liệu nêu
+  trường hợp đó và CHECK độ dài viết rõ vế `IS NULL` kèm lý do.
+- 24/10/2026 (agent, tạm): khóa ngoại `tenant_id` của `platform.secret_envelopes` tới `platform.tenants` nêu chỉ mục
+  của nó, UNIQUE `(tenant_id, connection_id, field, secret_version)` dẫn đầu bằng `tenant_id`, vì mọi khóa ngoại có
+  chỉ mục ở phía của nó (CLAUDE.md, Data model rules); các khóa ngoại khác của spec này đã nêu chỉ mục của mình. Sửa:
+  Dữ liệu, ticket 02. Nếu sai thì: FK đó có chỉ mục riêng dẫn bằng `tenant_id`, và Dữ liệu cùng ticket 02 nêu chỉ
+  mục đó.
 
 ## Danh sách ticket
 

@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: 04, .claude/plans/studio/connections-and-vault/issues/04-ket-noi-dung-chung-theo-workspace.md, .claude/plans/studio/foundations-hardening/issues/06-run-va-outbox-khong-ket.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md, .claude/plans/studio/app-standards/issues/02-khoa-chong-lap-gan-nguoi-goi.md
 Area: studio
-Yêu cầu: R7.1, R7.2, R7.3, R7.4, R7.5, R8.1, R8.2, R8.3, R8.4, R8.5, R8.6, R8.7, R8.8, R8.9, R8.10, R8.11, R8.12, R8.13, R8.14, R8.15, R2.18, R3.6, R3.7, G4, TC15, TC16, TC17, TC18, TC19, TC20, TC21, TC22, TC23, TC25, TC26, TC29
+Yêu cầu: R7.1, R7.2, R7.3, R7.4, R7.5, R8.1, R8.2, R8.3, R8.4, R8.5, R8.6, R8.7, R8.8, R8.9, R8.10, R8.11, R8.12, R8.13, R8.14, R8.15, R8.16, R2.18, R3.6, R3.7, G4, TC15, TC16, TC17, TC18, TC19, TC20, TC21, TC22, TC23, TC25, TC26, TC29
 
 ## Mục tiêu
 
@@ -34,11 +34,11 @@ kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7,
    `config_version_id` của `platform.run_manifest_keys` (R2.18); `kind` CHECK (`binding_set`); `key` là id thành
    phần; `action` CHECK (`set`); `version_no` tăng theo khóa, không dùng lại; `base_version`; `document` jsonb object
    tối đa 256 KiB, NFC; `document_hash`; `status` CHECK (`proposed`, `approved`, `rejected`, `withdrawn`,
-   `superseded`); partial unique một `approved` và một `proposed` mỗi khóa; `workspace_id` là nơi đề xuất; FK
+   `superseded`); partial unique một `approved` và một `proposed` mỗi khóa; `workspace_id` là nơi đề xuất; FK ghép
    `(tenant_id, workspace_id, approval_id)` tới `platform.approval_requests` ON DELETE RESTRICT, qua
-   `uq_approval_requests_tenant_id_workspace_id_id`, có index; `ck_config_versions_checker_not_maker`; trigger
-   `approved_by_approval`; `dw_app` chỉ UPDATE `status`, `decided_by`, `decided_at`, `decision_comment`,
-   `superseded_at`. Thêm:
+   `uq_approval_requests_tenant_id_workspace_id_id`, có index `(tenant_id, workspace_id, approval_id)` (R8.16);
+   `ck_config_versions_checker_not_maker`; trigger `approved_by_approval`; `dw_app` chỉ UPDATE `status`, `decided_by`,
+   `decided_at`, `decision_comment`, `superseded_at`. Thêm:
     - `proposed_by`, `proposed_at`, `decided_by`, `decided_at`, `decision_comment`, `superseded_at`;
       `ck_config_versions_checker_not_maker` là `decided_by IS NULL OR decided_by <> proposed_by`; FK tới
       yêu cầu phê duyệt ON DELETE RESTRICT qua `uq_approval_requests_tenant_id_workspace_id_id`, ràng buộc
@@ -93,7 +93,10 @@ kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7,
    `ApprovalDecisionGuard` async và `ProposedDecision` từ dw-proterial (`dw_agent_runtime/approval_flow.py`)
    thay `DecisionGuard` đồng bộ, giữ guard `memory.review` (G4). Guard `ConfigVersionDecisions.check` trả
    409 `decision_stale` khi `base_version` không còn là phiên bản niêm phong mới nhất hay bản `approved`
-   đang hiệu lực đã đổi, trước khi quyết định được ghi.
+   đang hiệu lực đã đổi, và, với quyết định duyệt, khi `connection_usable` với `purpose` `tool` trả false cho Người đề
+   xuất ở workspace của đề xuất với một kết nối của đề xuất (hỏi lại lúc duyệt như lúc đề xuất ở bước 3;
+   ADR-0110 (Accepted) quyết 7; ADR-0115 (Accepted) quyết 2; connections-and-vault:R5.9), trước khi quyết định được
+   ghi; quyết định từ chối không hỏi lại kết nối.
 6. Worker: handler outbox cho `config.version.decided` (tên từ `decided_event_type`), đăng ký trong
    `apps/worker/src/dw_worker/main.py`. `ConfigSettlement.settle` idempotent theo id yêu cầu phê duyệt:
    duyệt → `approved` và bản trước `superseded` trong một giao dịch, audit `config.version.approved` đứng tên
@@ -162,6 +165,9 @@ kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7,
       `second_person_required`; bỏ mã khỏi `_enforce_strict_rules` → cả hai ca đỏ.
 - [ ] R8.9 (TC20): niêm phong phiên bản đổi khai báo điểm gắn sau khi đề xuất, rồi quyết định → 409
       `decision_stale`, yêu cầu vẫn `pending`; gỡ guard → test đỏ.
+- [ ] R8.9 (TC20): sau khi đề xuất, tắt kết nối của đề xuất, hay thu hồi `connections.use` của Người đề xuất ở
+      workspace của đề xuất, rồi người thứ hai duyệt → 409 `decision_stale`, yêu cầu vẫn `pending`, không dòng nào
+      đổi; người đó từ chối cùng đề xuất → được; bỏ lần hỏi lại `connection_usable` lúc duyệt → ca duyệt đỏ.
 - [ ] R8.10 (TC17): duyệt → handler đặt `approved`, bản trước `superseded`, audit `config.version.approved` có
       actor là `decided_by` và `details.lane` `outbox`; ghi audit qua `lane_audit_event` (actor `system:outbox`) →
       test đỏ.
@@ -175,6 +181,9 @@ kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7,
       `config.version.withdrawn`, trong một giao dịch.
 - [ ] R8.14 (TC26): người khác rút → 403, đề xuất và yêu cầu không đổi; bỏ so `proposed_by` → test đỏ.
 - [ ] R8.15 (TC17): outbox giao lại sự kiện đã quyết toán → không dòng nào đổi, không audit thứ hai.
+- [ ] R8.16 (TC29): bằng vai migrator, INSERT `platform.config_versions` của tenant A có `approval_id` là yêu cầu phê
+      duyệt của tenant B, rồi của một workspace khác cùng tenant A → lỗi FK ghép; đổi FK ghép về FK một cột tới
+      `platform.approval_requests (id)` → test đỏ.
 - [ ] G4: `test_the_api_decides_memory_reviews_strictly_and_only_with_clearance` vẫn xanh sau khi đổi sang
       guard async.
 - [ ] R3.6 (TC21): purge tenant có phiên bản cấu hình riêng được bản kê ghim và yêu cầu phê duyệt của nó
@@ -219,3 +228,7 @@ kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7,
   `uq_config_versions_tenant_id_id` và `config_version_id` là FK ghép, kèm CHECK `num_nonnulls`, unique của cột mới và
   bỏ NOT NULL của `artifact_version_id` trong cùng bước (R2.18, TC29); FK tới yêu cầu phê duyệt có index; bản kê ghim
   một `secret_version` cho mỗi (kết nối, trường) (R7.4); `connection_usable` gọi với `purpose` `tool`.
+- 2026-10-24 (agent): vòng sửa thứ tư, lượt d, theo quyết định tạm cùng ngày của spec: guard quyết định hỏi lại
+  `connection_usable` lúc duyệt cho mọi kết nối của đề xuất, false → 409 `decision_stale` và yêu cầu giữ `pending`
+  (R8.9, TC20; ADR-0110 (Accepted) quyết 7; connections-and-vault:R5.9), nên `connection_usable` có ba chỗ gọi: lúc
+  đề xuất, lúc duyệt và lúc nhận lượt chạy; FK ghép tới yêu cầu phê duyệt có ca âm chéo tenant (R8.16, TC29).

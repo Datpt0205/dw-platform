@@ -3,15 +3,16 @@
 Status: needs-triage
 Blocked by: 03, .claude/plans/studio/workflow-engine/issues/05-cho-nguoi-va-ghim-phien-ban.md, .claude/plans/studio/tools-and-skills/issues/02-toolset-va-cong-cu-ghim.md, .claude/plans/studio/compliance-pdpl/issues/04-san-gui-tin-marketing.md, .claude/plans/studio/tenant-config/issues/05-lien-ket-va-phien-ban-cau-hinh.md, .claude/plans/studio/agent-lifecycle/issues/03-hop-dong-vong-doi-va-niem-phong.md
 Area: studio
-Yêu cầu: R8.1, R8.2, R8.3, R8.4, R9.1, R9.2, R9.3, R9.5, R9.6, R9.7, R9.8, R9.9, R9.10, R9.11, R9.12, R9.13, WN6, WN7, WN8, WN9, WN17, WN18
+Yêu cầu: R8.1, R8.2, R8.3, R8.4, R9.1, R9.2, R9.3, R9.5, R9.6, R9.7, R9.8, R9.9, R9.10, R9.11, R9.12, R9.13, R9.14, WN6, WN7, WN8, WN9, WN17, WN18, WN20
 
 ## Mục tiêu
 
 Bước `tool.call` đi qua `ToolExecutor` với khoá chống lặp; Bước phê duyệt là cổng do máy chủ thực thi,
 với quyền bắt buộc, người duyệt khác người tạo lượt, tham số đã duyệt đúng là tham số được gửi, và trong lượt
-mô phỏng thì đi theo quyết định giả lập mà không chờ người
+mô phỏng thì đi theo quyết định giả lập mà không chờ người, còn dòng giao và dòng phê duyệt của Bước không trỏ được
+tới lượt chạy hay yêu cầu của công ty khác
 (workflow-nodes R8.1, R8.2, R8.3, R8.4, R9.1, R9.2, R9.3, R9.5, R9.6, R9.7, R9.8, R9.9, R9.10, R9.11, R9.12, R9.13,
-WN6, WN7, WN8, WN9, WN17, WN18). Hết hạn phê duyệt (R9.4, WN10) ở W2.
+R9.14, WN6, WN7, WN8, WN9, WN17, WN18, WN20). Hết hạn phê duyệt (R9.4, WN10) ở W2.
 
 ## Việc cần làm
 
@@ -29,7 +30,8 @@ WN6, WN7, WN8, WN9, WN17, WN18). Hết hạn phê duyệt (R9.4, WN10) ở W2.
    `platform.approval_requests (tenant_id, workspace_id, id)` qua `uq_approval_requests_tenant_id_workspace_id_id`,
    ràng buộc đã có nên ticket này chỉ dùng và không sửa `platform.approval_requests`, và FK
    `(tenant_id, run_id, interrupt_id)` tới `platform.run_waits (tenant_id, run_id, interrupt_id)` của workflow-engine/05,
-   cả hai `ON DELETE CASCADE` có chỉ mục; RLS bật và FORCE; `updated_at` do trigger giữ nhường giá trị câu lệnh nêu). Migration sinh bằng
+   cả hai `ON DELETE CASCADE`, với chỉ mục `(tenant_id, workspace_id, approval_request_id)` và
+   `(tenant_id, run_id, interrupt_id)`; RLS bật và FORCE; `updated_at` do trigger giữ nhường giá trị câu lệnh nêu). Migration sinh bằng
    `alembic revision -m "..."` nối tiếp baseline `0001`, id hex ngẫu nhiên. Đáp ứng `StepWaitLookupPort` mà
    workflow-engine/05 khai: từ id yêu cầu trả `(run_id, interrupt_id)` của dòng `step_approvals`, nối ở composition
    root.
@@ -98,9 +100,10 @@ WN6, WN7, WN8, WN9, WN17, WN18). Hết hạn phê duyệt (R9.4, WN10) ở W2.
 - [ ] R9.12 (WN18): lượt `simulate` thiếu quyết định cho một Bước phê duyệt → lượt chạy `failed` với
       `simulated_decision_missing`, Nhánh ra duyệt không chạy; coi thiếu là đã duyệt → test đỏ.
 - [ ] R9.1: `StepWaitLookupPort` trả đúng `(run_id, interrupt_id)` cho id yêu cầu; dòng chờ của workflow-engine bị xóa
-      theo lượt chạy thì dòng `step_approvals` đi theo CASCADE; `dw_app` gắn tenant A chèn dòng `step_approvals` mang
-      `approval_request_id` của yêu cầu tenant B, hay dòng `step_assignments` mang `run_id` của lượt chạy tenant B →
-      FK ghép từ chối; đổi một trong hai FK về FK một cột → test đỏ.
+      theo lượt chạy thì dòng `step_approvals` đi theo CASCADE.
+- [ ] R9.14 (WN20): `dw_app` gắn tenant A chèn dòng `step_approvals` mang `approval_request_id` của một yêu cầu tenant
+      B, hay dòng `step_assignments` mang `run_id` của một lượt chạy tenant B → lỗi FK, không dòng nào được ghi; đổi
+      một trong hai FK về FK một cột → ca của nó qua, test đỏ.
 - [ ] Xong: `uv run pytest packages/python/dw_studio/tests/workflows/test_tool_call_node.py packages/python/dw_studio/tests/workflows/test_human_approval_node.py && make test-integration` xanh.
 
 ## Nguồn
@@ -119,5 +122,6 @@ WN6, WN7, WN8, WN9, WN17, WN18). Hết hạn phê duyệt (R9.4, WN10) ở W2.
 - 2026-10-23 (agent): theo phiếu 23/10/2026: hết hạn phê duyệt sang W2 (DO-31); bảng mã từ chối người quyết ở ADR-0004 (Accepted) tách R9.2 (403) và R9.6 (409); người duyệt phải đọc được Trường đóng dấu qua guard async (DO-36), nên ticket chờ tenant-config/05; khóa phát hành chung, R9.5 là kiểm đăng ký qua Protocol; chờ compliance-pdpl/04 và test WN7 dùng `email.send` của `smtp@1.0.0` (DO-48.1).
 - 2026-10-24 (agent): theo quyết định của Đạt ngày 24/10/2026: bảng ba mã ở ADR-0104 (Accepted) quyết 11, người khác không giữ tem nhận 404 (R9.2); R9.5 là kiểm lúc gửi kiểm định trả 422 `no_second_approver`, ticket chờ agent-lifecycle/03; khoá chống lặp của workflow-engine:R4.5; W1 không giao theo nhóm; `step_approvals` là chủ liên kết tới yêu cầu và đáp ứng `StepWaitLookupPort`; Bước phê duyệt ở `simulate` theo quyết định giả lập (N2: R9.9-R9.12, WN18).
 - 2026-10-24 (agent): vòng sửa thứ tư: luật tiền tố nghiêm trả 409 với `second_person_required` do tenant-config/05 đặt (V4.P9, agent tạm); lúc mở phê duyệt không còn ứng viên thì `no_approver` (R9.13, phát hiện F về ADR-0112 (Accepted) và R9.5); từ vựng `approved`, `rejected` của R9.9 là chủ cho route `test-runs` và Câu kiểm định.
-- 2026-10-24 (agent): lượt c của vòng 4: `step_assignments.run_id` thành FK ghép tới `uq_worker_runs_tenant_id_id`, và `step_approvals.approval_request_id` thành FK ghép `(tenant_id, workspace_id, approval_request_id)` qua `uq_approval_requests_tenant_id_workspace_id_id` đã có, nên ticket này không thêm UNIQUE nào lên `platform.approval_requests`; R9.1 thêm ca chéo tenant (C8; CLAUDE.md, Tenancy and authorization).
+- 2026-10-24 (agent): lượt c của vòng 4: `step_assignments.run_id` thành FK ghép tới `uq_worker_runs_tenant_id_id`, và `step_approvals.approval_request_id` thành FK ghép `(tenant_id, workspace_id, approval_request_id)` qua `uq_approval_requests_tenant_id_workspace_id_id` đã có, nên ticket này không thêm UNIQUE nào lên `platform.approval_requests`; R9.1 thêm ca chéo tenant (CLAUDE.md, Tenancy and authorization).
 - 2026-10-24 (agent): kiểm lượt c của vòng 4: dòng `Xong:` thêm `make test-integration`, vì ca chéo tenant và ca CASCADE của R9.1 cần PostgreSQL thật, mà hai tệp test bước không chạy (failure-modes #1: ai chạy test này).
+- 2026-10-24 (agent): lượt d của vòng 4: dòng Comments của lượt c thôi dẫn mã mục của lượt; ca chéo tenant của hai FK ghép rời tiêu chí R9.1 sang R9.14 (WN20), kèm test đột biến đổi mỗi FK về một cột (CLAUDE.md, Tenancy and authorization; failure-modes #3), vẫn chạy trong `make test-integration` của dòng `Xong:`, và Mục tiêu nêu R9.14, WN20 cạnh các mã khác; bước 2 nêu chỉ mục của hai FK (CLAUDE.md, Data model rules). Không thêm cạnh.

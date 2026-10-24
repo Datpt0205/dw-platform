@@ -27,12 +27,12 @@ audit đọc nhạy cảm là W2 ở Ngoài phạm vi. Ý định: không đư�
   quyền của người xem.
 - `studio.field_defs` giữ `pd_category`, `sensitive_type`, `subject_identifier` nhưng không có `access_mode`; custom-objects
   đẩy `access_mode`, quyền trường và `resolve_field_access` sang spec này
-  (`.claude/plans/studio/custom-objects/spec.md:303`). Ràng buộc: spec này thêm `access_mode` và hàm quyết định.
+  (`.claude/plans/studio/custom-objects/spec.md:307`). Ràng buộc: spec này thêm `access_mode` và hàm quyết định.
 - tenant-rbac tạo `studio.field_permissions` và cho `platform.effective_grants` trả `fld.<object>.<field>.read|edit`
   cộng dồn qua mọi vai (`.claude/plans/studio/tenant-rbac/issues/04-quyen-doi-tuong-va-truong-co-do-sau.md:30-45`).
   Ràng buộc: spec này đọc quyền trường hiệu lực, không tạo bảng quyền trường hay route cấp quyền.
 - record-access giữ `studio.actor_boundary_fields` với `access` là `read` hay `edit` cho mỗi phiên bản agent hay quy
-  trình, và ghi "field-security đọc `studio.actor_boundary_fields`" (`.claude/plans/studio/record-access/spec.md:369-370`).
+  trình, và ghi "field-security đọc `studio.actor_boundary_fields`" (`.claude/plans/studio/record-access/spec.md:371-372`).
   Ràng buộc: giao với giới hạn dữ liệu đọc bảng đó, không tự tính.
 - Cấm truy cập của người vận hành theo tiền tố khóa, đã thêm `studio.`, `obj.`, `fld.`
   (`.claude/plans/studio/tenant-rbac/spec.md:30`). Ràng buộc: `fld.*` nằm ngoài tầm của người vận hành

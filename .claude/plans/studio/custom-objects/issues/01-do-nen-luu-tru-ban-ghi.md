@@ -19,7 +19,8 @@ FOG-55 mà `.claude/plans/studio/discovery/issues/07-records-storage.md` giao ch
 2. Viết harness `scripts/bench_records_storage.py` và DDL ứng viên `scripts/bench_records_storage.sql` (không phải
    revision Alembic), giữ trong repo để ticket 04 đo lại R9.1 trên mã thật. Harness tạo database `dw_bench` bằng
    `dw_migrator` từ migration head rồi chạy DDL ứng viên: `studio.object_defs`, `studio.field_defs` và
-   `studio.records` theo mục Dữ liệu của spec, với tập slot đề xuất `t01`-`t24`, `i01`-`i12`, `f01`-`f08`,
+   `studio.records` theo mục Dữ liệu của spec, kể cả index `(tenant_id, workspace_id)` của FK tới workspace sở hữu,
+   với tập slot đề xuất `t01`-`t24`, `i01`-`i12`, `f01`-`f08`,
    `d01`-`d08`, `z01`-`z08`, `b01`-`b08`, `u01`-`u04`, mỗi slot một chỉ mục từng phần
    `(tenant_id, object_id, <slot>, id) WHERE <slot> IS NOT NULL AND deleted_at IS NULL`, mỗi slot `u` thêm UNIQUE
    từng phần `(tenant_id, object_id, uNN) WHERE uNN IS NOT NULL AND deleted_at IS NULL`; policy RESTRICTIVE
@@ -62,8 +63,8 @@ FOG-55 mà `.claude/plans/studio/discovery/issues/07-records-storage.md` giao ch
       không có lệnh hay kế hoạch đi kèm.
 - [ ] R9.5: cùng các số đó đo trên biến thể modulus 4, đặt cạnh biến thể modulus 8 trong một bảng, kèm modulus được
       chọn theo DO-15; sai nếu chỉ một biến thể được đo.
-- [ ] R9.4: ngân sách slot đề xuất cho mỗi họ, kèm số chỉ mục trên một bảng, tỉ lệ HOT và WAL đã đo; sai nếu ngân
-      sách không dẫn số đo nào.
+- [ ] R9.4: ngân sách slot đề xuất cho mỗi họ, kèm số chỉ mục trên một bảng (mọi chỉ mục của DDL ứng viên, kể cả index
+      `(tenant_id, workspace_id)` của FK tới workspace), tỉ lệ HOT và WAL đã đo; sai nếu ngân sách không dẫn số đo nào.
 - [ ] R9.4: UNIQUE từng phần trên `u01` của bảng partition, `ON CONFLICT` dưới policy theo lệnh, trigger
       `updated_at` trên partition, `CREATE EXTENSION unaccent` dưới `dw_migrator` và cột sinh `COLLATE "C"`: mỗi
       mục ghi chạy được hay không, kèm lỗi nguyên văn khi không.
@@ -85,3 +86,5 @@ FOG-55 mà `.claude/plans/studio/discovery/issues/07-records-storage.md` giao ch
 
 - 2026-10-23 (agent): DO-15 (a) đã quyết (Đạt, 23/10/2026): biến thể không partition thay bằng modulus 4, đường lui hợp D12; R9.3 bỏ, R9.5 thêm.
 - 2026-10-24 (agent): máy đo trích YC20 (Đạt, 24/10/2026), một chủ cho máy tham chiếu mà record-access/01 cũng đo trên đó.
+- 2026-10-24 (agent): vòng sửa 4, lượt bốn: DDL ứng viên của bước 2 gồm index `(tenant_id, workspace_id)` của FK tới workspace sở hữu, nên số chỉ mục, thời gian lập kế hoạch, HOT và WAL đo ở đây đã tính nó (Quyết định 24/10/2026 của spec).
+- 2026-10-24 (agent): kiểm vòng sửa 4, lượt bốn: tiêu chí R9.4 đếm mọi chỉ mục của DDL ứng viên, kể cả index `(tenant_id, workspace_id)`, thay cho danh sách ba nhóm (chỉ mục danh sách, index đó, chỉ mục slot) bỏ sót khóa chính và UNIQUE từng phần của `create_key`, vì số chỉ mục, HOT và WAL đo trên cả bảng.

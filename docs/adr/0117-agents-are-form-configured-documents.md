@@ -66,7 +66,9 @@ repository root. External facts were gathered by the Studio research on 2026-10-
    contract), `enabled boolean NOT NULL` with no default, `row_version`. A change is audited as
    `studio.agent.settings_changed` and makes no version: who may invoke an agent is not what it does.
    The data boundary is derived at publish from the toolset's object tools (object, action) and
-   `field_caps` into `studio.actor_boundaries` (ADR-0103, ADR-0105). agent-builder registers
+   `field_caps`, and the `agent` kind's publish hook (ADR-0109 decision 1), which agent-builder supplies,
+   writes it into `studio.actor_boundaries` (ADR-0103, ADR-0105) through record-access's
+   `ActorBoundaryPort`, inside the publish transaction that agent-lifecycle opens. agent-builder registers
    `studio.agents.read`, `studio.agents.author` and `studio.agents.manage_settings`; submit, approve,
    retire, kill and freeze stay with ADR-0120.
 4. **Instructions are linted text inside a platform frame, never a text template.** The system
@@ -81,9 +83,14 @@ repository root. External facts were gathered by the Studio research on 2026-10-
    refused; sub-agents obey the same rules. One assembler, `assemble_system_prompt`, beside
    `contain_untrusted`, serves agents and workflow AI nodes.
 5. **Compiled per version inside the existing runner, in the worker.** A `StudioGraphSource` beside
-   `GraphRegistry` answers `hosts()` for any `RunContext.artifact` of kind `agent`. A version compiles
-   per `(tenant_id, agent_version_id)` into an LRU of at most 256 entries (CLAUDE.md:234), loads under
-   RLS, and is refused when its stored `definition_hash` differs from a recomputed one. It is assembled
+   `GraphRegistry` answers `hosts()` for any `RunContext.artifact` of kind `agent`. A sealed version, and a
+   draft only as the root of a `simulate` run (ADR-0109 decision 6), compiles per
+   `(tenant_id, agent_version_id, pinned_hash)` into an LRU of at most 256 entries, keyed by tenant from the
+   start (`CLAUDE.md`, Per-tenant artifacts), `pinned_hash` being the hash the run manifest pins: a sealed
+   version's `definition_hash`, or the provisional hash of a draft's content. A draft keeps its id while it
+   is edited and a run resolves only from its manifest (`CLAUDE.md`, Non-negotiable architecture), so a key
+   without the hash would hand a new simulation the graph of older content. A version loads under RLS and is
+   refused when the hash recomputed from what it loaded differs from `pinned_hash`. It is assembled
    on the platform's `create_agent` stack: pinned tools (ADR-0116), run control (ADR-0120),
    `StudioModelSelection` outermost, then `ResidencyGate` (ADR-0123), then limits and the run budget
    (`LimitsMiddleware`, ADR-0121), one approval per step, tool errors, model retry and compaction;
@@ -252,3 +259,13 @@ open:
   turn (with `limit_exceeded`, its `resets_at`) and the `reply_truncated` notice use, so no code travels
   inside `content` (if it is wrong, a notice's code and reset time are text in `content` that a reader
   parses).
+- Third consistency check (round 4), fourth pass, the planner's provisional calls: decision 5 compiles an
+  agent draft too, only as the root of a `simulate` run (ADR-0109 decision 6), agent-lifecycle's dry
+  evaluation of a draft among them, as Đạt's V4.4 lets a workflow draft run, and keys the compiled-graph
+  cache `(tenant_id, agent_version_id, pinned_hash)`, `pinned_hash` being the run manifest's
+  `definition_hash` or the draft's provisional hash, as ADR-0112 decision 4 keys a workflow's, because a
+  draft keeps its id while it is edited (if it is wrong, an agent draft runs nothing, dry evaluations take
+  sealed versions only, and the key keeps the version id alone); decision 3 names who writes an agent's
+  rows in `studio.actor_boundaries`, the `agent` kind's publish hook that agent-builder supplies, through
+  record-access's `ActorBoundaryPort` in the publish transaction, as record-access states (if it is wrong,
+  agent-lifecycle calls the port after the kind's hook).
