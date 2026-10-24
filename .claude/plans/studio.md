@@ -65,9 +65,17 @@ is built yet. Đạt accepted the ADR block on 2026-10-23 (0126 and 0127 on
     where a decision had not reached a spec it never named, a few design
     errors the fixes exposed (the envelope AAD carried the KEK version, which
     the rewrap lane changes), and six state-transition questions for Đạt
-    (Decisions owed). A second pass fixes all but those six; then the split, a
-    fourth consistency check, and the readiness gate for app-standards,
-    foundations-hardening and runtime-hardening.
+    (Decisions owed). The second pass (committed) fixed all but those six:
+    the AAD binds the secret's own version, conversations delete through one
+    narrow function, both CEL bindings ship as ADR-0114 says, a simulated
+    draft passes the submit validator first, and the V4 labels replaced the
+    colliding ones. Its verifiers raised a seventh question (old secret
+    versions) and mechanical rows a third pass applies (publish hooks, one
+    `data-sources` route, `ON DELETE` on every FK, composite FKs between
+    tenant tables, a no-argument purge as `platform.prune_notifications`
+    does). Then Đạt's answers, the split, a fourth consistency check, and the
+    readiness gate for app-standards, foundations-hardening and
+    runtime-hardening.
 
 - **Round 3 applied on 2026-10-24:** Đạt took every recommendation still open
   (`studio/discovery` coverage review N1-N10, the two CRITICAL rows of round 2,
@@ -155,6 +163,18 @@ is built yet. Đạt accepted the ADR block on 2026-10-23 (0126 and 0127 on
        Recommended: return it to draft with the reason, as V4.2 does.
     6. Confirm V4.P10's rename of `studio.agents.settings.manage`, which a
        24/10 line of Đạt's had approved, to `studio.agents.manage_settings`.
+    7. Nothing ends an old secret version: the signing secret's 24-hour
+       overlap has no end, and a replaced connection secret stays usable, so
+       the revoked branch of `connection_usable` never fires. Recommended: the
+       old signing secret is refused 24 hours after rotation; replacing a
+       connection secret revokes the old version at once (a run that pinned
+       it fails closed at its next use); a lane deletes refused and revoked
+       versions once no unfinished run pins them.
+       Question 4, if taken, withdraws the race case of custom-objects CO23 and
+       tenant-config TC27, which needs a draft beside a waiting candidate.
+- **Đạt, for W2 (domain-packs, `needs-info`):** Q4, whether the pack
+  installer may use its own reserved prefix through the public routes, and
+  Q5, which route writes `origin` on components that already exist.
 - **Then:** `Duyệt` of each spec and of its ticket breakdown once it passes
   `checking-plan-readiness`, which no ticket reaches `ready-for-agent` without.
 - **Acted on, not decided:** the platform team curates the MCP catalogue
