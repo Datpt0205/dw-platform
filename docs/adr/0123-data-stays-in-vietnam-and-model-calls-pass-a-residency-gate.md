@@ -64,7 +64,9 @@ and `model-connections` the gate on the model path.
       it. The table is tenant-wide under amendment A6 (ADR-0100), since the tenant is the controller.
     - Tightening takes one person, audited. Loosening a tenant's or a workspace's class takes a maker and a different
       checker (D11), audited, and toward a cross-border class a live attestation naming the processor. The requester
-      and Đạt scoped D11 this way on 2026-10-23: closing takes one person, opening two.
+      and Đạt scoped D11 this way on 2026-10-23: closing takes one person, opening two. W1 has no two-person path for
+      a loosening, so W1 refuses every one (closed while missing), and each tenant keeps the class it was seeded
+      with, `vn_only`, until that path exists.
 4. **One gate before any byte leaves.** `ResidencyGate.check(route_class, route)` is injected by constructor into
    every adapter that sends content to a model: the ModelResolver's doors (ADR-0118: the agent chat model and the
    structured gateway), embeddings and rerank, document extraction and transcription, compaction and evaluation
@@ -113,7 +115,7 @@ and `model-connections` the gate on the model path.
 
 ### Contradictions and amendments
 
-- Extends CLAUDE.md:327-330 (trace metadata, safe identifiers only) with route class, location and processor.
+- Extends CLAUDE.md:333-336 (trace metadata, safe identifiers only) with route class, location and processor.
   CLAUDE.md had no residency rule; with this acceptance it gains "Personal data is processed in Vietnam unless the
   tenant's route class and a live attestation allow otherwise; every model call passes `ResidencyGate`."
 - `.claude/plans/platform-runtime.md:221` (the chat path reads the platform profile, not the tenant's) must be fixed by
@@ -157,3 +159,10 @@ stay open:
   FOG-10's part of discovery 19 run now (OPS-j); building does not wait for counsel.
 - Contradictions: the residency rule `CLAUDE.md` gains is written out.
 - Open: DO-54 and DO-07 answered; DO-53's handling decided while counsel's answer is owed; DO-19 and FOG-74 stay open.
+
+## Amendments (2026-10-24)
+
+Amended on 2026-10-24 by the requester and Đạt, who scoped the remaining D11 cases:
+
+- Decision 3: W1 has no two-person path, so it refuses every loosening of a tenant's or a workspace's route class,
+  while tightening stays one person with an audit event; every tenant keeps `vn_only` in W1.

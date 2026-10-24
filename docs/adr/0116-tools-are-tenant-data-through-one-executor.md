@@ -46,10 +46,10 @@ approves an MCP tool definition is also the requester's D11 (2026-10-23).
    or `builtin`. Which version runs is ADR-0120's stage `live`, never a status column, and a suspension is a control
    switch of scope `tool` (ADR-0120 decision 5). `openapi` is an import source frozen into `http`
    (`source: imported_openapi`), so a run never re-reads the OpenAPI document. The policy may tighten but never loosen
-   its kind floor: one function checks floors and platform-tool overrides, refusing at save and at publish, never
-   upgrading silently. Every policy field enters the schema (`extra="forbid"`) in the same change as its reader. A
-   Studio run resolves every tool it uses, platform-layer tools from `configs/tools/` in its closure included, only
-   from its run manifest (ADR-0109), and nothing falls back at run time.
+   its kind floor: one function checks floors and platform-tool overrides, refusing at save and at submit, when the
+   version is sealed, never upgrading silently. Every policy field enters the schema (`extra="forbid"`) in the same
+   change as its reader. A Studio run resolves every tool it uses, platform-layer tools from `configs/tools/` in its
+   closure included, only from its run manifest (ADR-0109), and nothing falls back at run time.
 2. **Connector actions.** `dw.connector/v1` manifests in `configs/connectors/<key>@<semver>.yaml` are the platform
    layer of the connector catalogue. Each action compiles to a `ToolSpec` with JSON Schema input and output and a
    declarative HTTP mapping (structured references such as `{"$ref": "input.user_id"}`, never string templates), run
@@ -75,7 +75,7 @@ approves an MCP tool definition is also the requester's D11 (2026-10-23).
    `tool_unclassified`; ADR-0125's capability analysis reads all three. MCP server hints may only raise a
    classification, and their absence means destructive and open-world.
 5. **The model-facing view.** A pinned version reaches the model as a `StructuredTool` named `namespace__name` in at
-   most 64 characters (refused at publish and at build) with `response_format="content_and_artifact"`. The content is
+   most 64 characters (refused at submit and at build) with `response_format="content_and_artifact"`. The content is
    projected by `response.fields` (JSON Pointers), capped at `response.max_output_chars` (default 8,000 characters)
    under a hard ceiling of 16 KiB of UTF-8 bytes (YC48; a Vietnamese letter takes up to 3 bytes), and wrapped as
    `<tool_output source="..." trust="untrusted">` by `contain_tool_output`, beside `contain_untrusted`, with ADR-0010's
@@ -84,9 +84,10 @@ approves an MCP tool definition is also the requester's D11 (2026-10-23).
    output marks the run tainted (`tainted_at`, `taint_source`); from then on `external` and `critical` tools ask a
    person, whatever the autonomy level.
 6. **Toolsets are pinned inside the agent version.** An agent version pins its tools and skills by version id and
-   content hash in an embedded `dw.toolset/v1` section, validated at agent publish (every pin published, of the same
-   tenant or the platform layer, its hash matching, one version per tool name). At most 20 tools are visible per turn
-   by default, 40 at the ceiling. There is no `studio.toolsets` table; code-defined workers keep `configs/toolsets`.
+   content hash in an embedded `dw.toolset/v1` section, validated when the agent version is submitted and sealed
+   (every pin published, of the same tenant or the platform layer, its hash matching, one version per tool name). At
+   most 20 tools are visible per turn by default, 40 at the ceiling. There is no `studio.toolsets` table; code-defined
+   workers keep `configs/toolsets`.
 7. **Skills.** Versioned packages in the open Agent Skills format (<https://agentskills.io/specification>: `SKILL.md`
    plus text files, at most 64 KiB, 50 files and 5 MiB), served read-only per tenant through deepagents'
    `SkillsMiddleware` and `FilesystemMiddleware(tools=["read_file", "ls"])` with eviction disabled, on a backend that
@@ -103,21 +104,24 @@ approves an MCP tool definition is also the requester's D11 (2026-10-23).
    (<https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning>), a new client per call, and never
    sampling, roots, logging or stdio; a server's `instructions` never reach the model. The runtime calls it through
    `McpGatewayPort`, which the runtime declares; MCP authorization runs on ADR-0115's OAuth broker. In v1 a tenant
-   registers only servers from the platform catalogue (`configs/mcp/catalog/`), still pinned by hash and approved by a
-   second person (decision 9); arbitrary server URLs wait for v1.5, behind the plan entitlement `mcp_custom_servers`,
-   once the W2 prototype has passed a hostile-server suite and the gateway is split per tenant (DO-46.1 (b)).
+   registers only servers from the platform catalogue (`configs/mcp/catalog/`, whose entries the platform team chooses
+   and vets against a security checklist, DO-46.1), still pinned by hash and approved by a second person (decision
+   9); arbitrary server URLs wait for v1.5, behind the plan entitlement `mcp_custom_servers`, once the W2 prototype
+   has passed a hostile-server suite and the gateway is split per tenant (DO-46.1 (b)).
    `traceparent` reaches the gateway, an internal hop, and never an MCP server, and no `baggage` is sent (DO-46.3 (b)).
 9. **An MCP tool runs only as a definition a second person approved.** An MCP tool version passes ADR-0120's stage
    machine with no quality gate, and the tool kind's publish service makes it `live` only after a person other than
    the registrant approves the exact model-facing text: a run-less approval `studio.mcp.tool_approval` stamped
    `required_scope = studio.mcp.approve` (ADR-0004), under a strict prefix so the registrant cannot decide it, a
-   comment required, its decision announced as `studio.mcp.tool_approval.decided` (`CLAUDE.md:268-273`). It is pinned
+   comment required, its decision announced as `studio.mcp.tool_approval.decided` (`CLAUDE.md:274-279`). It is pinned
    by the SHA-256 of the server's definition (`name`, `title`, `description`, `inputSchema`, `outputSchema`,
    `annotations`, in RFC 8785 form). Drift refuses the call before `tools/call` (`mcp_tool_drifted`) and suspends the
-   tool through its switch until a re-approved version is live; the `mcp_drift` lane re-lists approved servers. A
-   server's request for input (elicitation) becomes a human task for the person the run acts for (ADR-0112's form),
-   never an answer from the model. Elicitation arrives in v1.5 (DO-46.2 (a)): until that form exists the gateway does
-   not declare the capability, and a run with no person declines.
+   tool through its switch. A re-approved version goes live with the switch still open, and only ADR-0120's strict
+   `studio.lifecycle.revive`, decided by a person other than its requester, lifts it (ADR-0120 decision 7); the
+   `mcp_drift` lane re-lists approved servers. A server's request for input (elicitation) becomes a human task for the
+   person the run acts for (ADR-0112's form), never an answer from the model. Elicitation arrives in v1.5
+   (DO-46.2 (a)): until that form exists the gateway does not declare the capability, and a run with no person
+   declines.
 
 ## Alternatives considered
 
@@ -151,17 +155,19 @@ approves an MCP tool definition is also the requester's D11 (2026-10-23).
   skill write refused.
 - Harder: tenant-authored descriptions are model-facing text that needs lint and approval; server updates need
   re-approval; untrusted reads bring more approvals; whether `FilesystemMiddleware` lets approval interrupts through is
-  measured before it ships (FOG-35). Lifting a tool's switch and approving its redefined version are two approvals,
-  and mcp-client says how they chain. The platform still owes an owner for choosing and vetting catalogue servers.
-- `CLAUDE.md:244-247` (what a tool definition carries) gains `data_classification` with a reader and output trust;
+  measured before it ships (FOG-35). Lifting a tool's switch and approving its redefined version are two approvals:
+  when the definition changed, the redefined version is approved first and goes live with the switch still open, and
+  the revive then lifts the switch (decision 9). The platform team chooses and vets the catalogue servers against a
+  security checklist (DO-46.1).
+- `CLAUDE.md:248-251` (what a tool definition carries) gains `data_classification` with a reader and output trust;
   amendment A11 adds "tenant tools are data of a registered kind; tenant policy may tighten, never loosen, a kind's
   floor". `CLAUDE.md:124-129` (Required stack) gains the `mcp` SDK (inside `mcp-gateway` only) and `jsonschema`.
-- Contradicts `CLAUDE.md:239-240` ("LLM output is always validated into a Pydantic schema"): the arguments a model
+- Contradicts `CLAUDE.md:243-244` ("LLM output is always validated into a Pydantic schema"): the arguments a model
   writes for a tenant tool are validated against JSON Schema by the executor, while code tools keep their Pydantic
   models. Amended on acceptance, with ADR-0112, to "LLM output is always validated into a schema the platform owns: a
   Pydantic model for code-defined schemas, the platform's JSON Schema validator for tenant-defined ones", for the
   measured reason above.
-- `CLAUDE.md:209-212` resolves toolsets through `TenantOverlay`; for Studio agents the toolset is a section of the
+- `CLAUDE.md:213-216` resolves toolsets through `TenantOverlay`; for Studio agents the toolset is a section of the
   immutable agent version (amended on acceptance). `.claude/plans/platform-runtime.md:307-309` and
   `agent_factory.py:28-36` are amended narrowly: two read-only deepagents tools on a read-only backend, never the deep
   agent. Extends ADR-0010 to tool output; uses ADR-0004's stamped `required_scope` as written.
@@ -176,8 +182,9 @@ approves an MCP tool definition is also the requester's D11 (2026-10-23).
    to third-party servers; and do we diverge from si-platform `docs/adr/0033-the-agent-reaches-crm-tools-over-mcp.md`
    as stated? Answered 2026-10-23: platform-catalogue servers only in v1, arbitrary URLs in v1.5 behind
    `mcp_custom_servers` (DO-46.1 (b)); elicitation in v1.5 (DO-46.2 (a)); `traceparent` never sent to an MCP server
-   (DO-46.3 (b)); and yes, we diverge as stated, with our own MCP server in v2 (DO-46.4 (a)). Still owed: who chooses
-   and vets the servers that enter the catalogue.
+   (DO-46.3 (b)); and yes, we diverge as stated, with our own MCP server in v2 (DO-46.4 (a)). Who chooses and vets
+   the servers that enter the catalogue was answered on 2026-10-24: the platform team, against a security checklist
+   (DO-46.1).
 2. **DO-45 (requester for languages, Đạt for container lifetime).** Skill scripts do not run in v1? Answered
    2026-10-23: no skill scripts in v1 (DO-45.1 (a)).
 3. **DO-07.** Answered 2026-10-23 by D11: the approver of an MCP tool definition differs from its registrant
@@ -206,5 +213,17 @@ Accepted by Đạt on 2026-10-23 with these amendments from the decision brief:
 - Decision 9: an MCP tool version passes the stage machine with no quality gate; elicitation arrives in v1.5
   (DO-46.2 (a)).
 - Alternatives and Consequences: our own MCP server in v2 (DO-46.4 (a)); the migrations follow decision 1; the
-  `CLAUDE.md:239-240` wording written out.
+  `CLAUDE.md:243-244` wording written out.
 - Open: DO-46, DO-45, DO-07 and DO-54 answered; FOG-34 stays open.
+
+## Amendments (2026-10-24)
+
+Amended by Đạt on 2026-10-24, who accepted every recommendation the second consistency check left open:
+
+- Decisions 1, 5 and 6: a tool's floor, its model-facing name and an agent's pinned toolset are checked at save and
+  at submit, when the version is sealed, never first at publish (G:CONTEXT.md#submit~tools-and-skills:R4.5).
+- Decision 8, Consequences and Open 1: the platform team chooses the servers of `configs/mcp/catalog/` and vets each
+  against a security checklist (DO-46.1; H:mcp-client:R2.4~mcp-client:spec).
+- Decision 9 and Consequences: a drifted tool's switch stays open when its re-approved version goes live, and only a
+  `studio.lifecycle.revive` decided by a second person lifts it (D11 as the requester and Đạt scoped it, opening with
+  two people), as mcp-client already chains them.

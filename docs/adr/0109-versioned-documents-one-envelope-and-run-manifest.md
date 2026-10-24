@@ -22,7 +22,7 @@ contract of ADR 0120.
   versions, a hash, where-used, packages, and runs that finish on what they started with. Five copies of
   that lifecycle would drift (failure-modes #2).
 - A run's provenance today is the release manifest (`CLAUDE.md:70-71`), built from the checkout and reading
-  the platform layer only (`CLAUDE.md:227-228`), plus four `varchar(16)` labels for code-defined workers
+  the platform layer only (`CLAUDE.md:231-232`), plus four `varchar(16)` labels for code-defined workers
   (`db/migrations/versions/0005_run_artifact_versions.py:41-51`). A tenant's Studio version is data in
   PostgreSQL, and neither can pin it.
 - Hashing today is `json.dumps(sort_keys=True)` in `executor.canonical_hash`
@@ -120,7 +120,7 @@ contract of ADR 0120.
   package (0.1.4 dates from 2024-09-27, https://pypi.org/project/rfc8785/, read 2026-10-22).
 - **Hashing the document alone.** Rejected: a changed dependency would not invalidate evaluation evidence.
 - **Resolving overlays live during a run.** Rejected: a resume after an override would run something nobody
-  evaluated. Tenant layers in the release manifest would break the inventory rule (`CLAUDE.md:227-228`), and
+  evaluated. Tenant layers in the release manifest would break the inventory rule (`CLAUDE.md:231-232`), and
   more `varchar(16)` run columns cannot hold refs or hashes.
 
 ## Consequences
@@ -137,7 +137,7 @@ contract of ADR 0120.
   org-and-principals/01, not from here. Offboarding purges `studio.dependencies` before `studio.artifacts` before
   `studio.artifact_versions`, and `worker_runs` before `run_manifests`.
 - `studio.artifacts`, `studio.artifact_versions`, `studio.dependencies`, `studio.definition_manifests`,
-  `platform.run_manifests` and `platform.run_manifest_keys` are tenant-wide rows under the `CLAUDE.md:181` class that
+  `platform.run_manifests` and `platform.run_manifest_keys` are tenant-wide rows under the `CLAUDE.md:185` class that
   ADR 0100 records (A6), each listed with its reason in `test_rls_coverage.py`.
 - Tests that must exist: the registry-equals-rows test; an UPDATE of a non-draft document is refused; a soft
   delete of a depended-on target answers 409; a run asking for an unpinned key fails; each of the five
@@ -151,11 +151,11 @@ contract of ADR 0120.
   what it used, the release manifest pinning the platform layer, and a run with a Studio root also pinning one run
   manifest (`platform.worker_runs.run_manifest_hash`) with its definition hash, the tenant config versions and
   binding values it resolved, and its engine, from which alone it resolves, on resume too. It also refines
-  `CLAUDE.md:210-212` (every versioned artifact resolves through `TenantOverlay`): a Studio run resolves every
+  `CLAUDE.md:214-216` (every versioned artifact resolves through `TenantOverlay`): a Studio run resolves every
   artifact it uses, platform-layer components in its closure included, only from its run manifest, and nothing
   falls back at run time; an artifact a tenant builds has no platform layer, while a tenant's own version of a
   platform artifact still resolves through `TenantOverlay` outside a run, its tenant layer the approved
-  `platform.config_versions` row (ADR 0110). Both amendments apply on acceptance. Keeps `CLAUDE.md:227-228`.
+  `platform.config_versions` row (ADR 0110). Both amendments apply on acceptance. Keeps `CLAUDE.md:231-232`.
 - si-platform (D5): diverges from its per-engine version tables (`si.approval_versions`); ports from
   `docs/adr/0044-approval-runs-narrowed-by-the-record-workspace-history-append-only-unpartitioned.md` the
   kind list read back from the database against the code (here the rows of `studio.artifact_kinds`, there a CHECK)

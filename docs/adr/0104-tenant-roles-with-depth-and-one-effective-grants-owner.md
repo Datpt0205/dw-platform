@@ -56,8 +56,10 @@ by copying") and D3 (record-level access in four layers), and on the call on DO-
    admin service. A permission set is a tenant
    role of kind `permission_set`. `platform.roles` and `platform.permission_sets` stay global and migration-only as role
    templates, cloned into a tenant at provisioning, backfill or on request, never resolved by overlay fallback; a
-   template edit never changes a clone. System roles: `tenant_owner` (privileges computed: every tenant-grantable key
-   and enforced object action at `tenant` depth) and `member` (the editable default for invitations).
+   template edit never changes a clone. System roles: `tenant_owner` (privileges computed: every tenant-grantable key,
+   every enforced object action and every `fld.*` key of every live field (decision 4), all at `tenant` depth) and
+   `member` (the editable default for invitations). The computation is the owner's alone: a `fld.*` key added to any
+   other role is still a change that widens, and takes two people (decision 10).
 3. **Every privilege carries a depth.** `own < team < workspace < workspace_subtree < tenant`, anchored at the workspace
    of the membership holding the assignment; `team` covers records owned by me or by a team I belong to (DO-10,
    decided 2026-10-23). Effective permissions are the union of all of a person's assignments in the tenant.
@@ -111,17 +113,32 @@ by copying") and D3 (record-level access in four layers), and on the call on DO-
    the role privilege tables refuse a change leaving any holder in breach of an unwaived rule (SQLSTATE 23514); the
    service answers 409 naming up to 20 holders.
 10. **Two people unless a change only narrows (D11).** Every role change that does not only narrow (creating,
-    renaming, re-describing or soft-deleting a role, adding a privilege or deepening one) and every assignment, an
-    invitation's `member` assignment included, is a proposal in `platform.role_change_requests` that takes effect only
-    when another active holder of the same permission confirms it, and it is applied in the confirming person's own
-    transaction, so the triggers of decision 6 read that person in `app.user_id`. This keeps the pattern of ADR-0012
-    rather than ADR-0110's settlement, which runs in a lane that the triggers would see instead of a person. A tenant
-    where nobody else could confirm gets 409 `no_checker_available` and no proposal, so a tenant with one owner changes
-    no role, and invites nobody, until an operator installs a second owner through
-    `POST /api/v1/platform/tenants/{tenant_id}/org-admins`. A change that only narrows (an assignment revoked,
-    privileges removed or made shallower with nothing added) is applied in its sender's transaction with one audit
-    event and no proposal. One SQL function over `platform.effective_grants` finds a checker (an active holder of the
-    permission other than the proposer) for this mechanism and ADR-0110's, which also share the proposal expiry rule.
+    renaming or re-describing a role, adding a privilege or deepening one) and every assignment, an invitation's
+    `member` assignment included, is a proposal in `platform.role_change_requests` that takes effect only when another
+    active holder of the same permission confirms it, and it is applied in the confirming person's own transaction, so
+    the triggers of decision 6 read that person in `app.user_id`. This keeps the pattern of ADR-0012 rather than
+    ADR-0110's settlement, which runs in a lane that the triggers would see instead of a person. A tenant where nobody
+    else could confirm gets 409 `conflict` with `details.reason_code` `no_checker_available` and no proposal, so a
+    tenant with one owner changes no role, and invites nobody, until an operator installs a second owner through
+    `POST /api/v1/platform/tenants/{tenant_id}/org-admins`; a proposer who confirms their own proposal gets 409
+    `conflict` with `second_person_required`. A change that only narrows (an assignment revoked, privileges removed or
+    made shallower with nothing added, a role soft-deleted) is applied in its sender's transaction with one audit event
+    and no proposal. One SQL function over `platform.effective_grants` finds a checker (an active holder of the
+    permission other than the proposer) for this mechanism and ADR-0110's, which also share the proposal expiry rule
+    and both reason codes.
+11. **Three answers to a refused decider.** A person refused the decision of an approval, or the confirmation of a
+    role change under decision 10, gets one of three answers, and specs cite them from here:
+    - 404 `not_found` when the request lies outside what they may see: another workspace's request, or a stamped one
+      they may not decide and did not ask for (ADR-0004, amendment of 2026-10-07), answered as a request that never
+      existed.
+    - 409 `conflict` for every separation-of-duties rule, the rule in `details.reason_code` where it names one: the
+      strict prefix's refusal of a requester or run-as principal, `second_person_required` for a proposer deciding
+      their own proposal (decision 10, ADR-0110), `author_cannot_approve` for an author approving their own version's
+      publish (ADR-0120).
+    - 403 `permission_denied` when they see the request but lack `approvals.decide` or its stamp (ADR-0004), are not
+      among its assignees, or cannot read a field it stamped (ADR-0106 decision 6, ADR-0112 decision 7).
+
+    ADR-0004 keeps the stamp and the visibility rule that these answers follow.
 
 ## Alternatives considered
 
@@ -137,9 +154,10 @@ by copying") and D3 (record-level access in four layers), and on the call on DO-
   tenant's role, the risk `648e2f7c3edb_roles_and_permission_sets_read_only_to_.py:11-13` closed.
 - **NOTIFY-based cache eviction.** Rejected: a writer outside the API (a lane, a migration) would leave stale contexts;
   kept as the fallback if the per-request version read costs too much (FOG-38).
-- **Role changes as ADR-0110 configuration versions.** Rejected: a decision there settles in a lane that audits as
-  `system:outbox`, so the anti-escalation triggers would see the lane, never the person (CLAUDE.md:250-255); role
-  changes keep ADR-0012's request table, applied in the checker's transaction (decision 10).
+- **Role changes as ADR-0110 configuration versions.** Rejected: a decision there settles in the outbox lane, whose
+  audit names the decider but whose transaction carries the lane's own actor in `app.user_id`, so the anti-escalation
+  triggers would see the lane, never the person (CLAUDE.md:254-259); role changes keep ADR-0012's request table,
+  applied in the checker's transaction (decision 10).
 
 ## Consequences
 
@@ -158,11 +176,12 @@ by copying") and D3 (record-level access in four layers), and on the call on DO-
   and `workspace_subtree` arrive in W2 with teams and the workspace tree.
 - **Harder.** An admin holding the administrative keys can make another admin (today only `platform_admin` can), and
   tenant owners reach all data (DO-32); admin writes serialise on the version row; each request pays one key read.
-  Products that insert into `platform.roles` now insert templates; one writing `memberships.role_keys` fails (FOG-49).
+  Products that insert into `platform.roles` now insert templates; one writing `memberships.role_keys` fails (FOG-49),
+  so dw-proterial's maintainer moves its writes off that column before tenant-rbac/03 refuses them.
   A tenant with one owner changes no role and invites nobody until an operator installs a second owner (decision 10),
   so the migration prints the tenants with fewer than two owners and those with no `org_admin` in their root
   workspace.
-- Contradicts `CLAUDE.md:181` ("Every tenant-scoped table has `tenant_id` and `workspace_id`") for
+- Contradicts `CLAUDE.md:185` ("Every tenant-scoped table has `tenant_id` and `workspace_id`") for
   `platform.tenant_roles`, `platform.tenant_role_permissions`, `platform.tenant_access_versions`,
   `platform.role_change_requests` and `platform.tenant_role_object_privileges`, worth reopening because a role, its
   privileges, its change requests and the access version belong to the whole tenant: tenant-wide rows under the class
@@ -211,7 +230,9 @@ by copying") and D3 (record-level access in four layers), and on the call on DO-
    If wrong: a wider `team` adds a closure arm, measured first; per-membership judging reopens the two-workspace gap.
    Answered 2026-10-23: option (a) as stated (DO-10.1 (a), DO-10.2 (a)).
 5. **FOG-49 (grilling).** Who migrates downstream products (dw-proterial) that write `memberships.role_keys` and insert
-   roles, and when; how a domain pack's role templates name the pack's object keys.
+   roles, and when; how a domain pack's role templates name the pack's object keys. Answered in part 2026-10-24:
+   dw-proterial's maintainer moves it off `memberships.role_keys` before tenant-rbac/03 locks the column; how a pack's
+   role templates name its object keys stays open.
 6. **FOG-38 (prototype).** Cost of `effective_grants` and the version read per request; triggers under bulk assignment
    and on a role with 1,000 holders; whether `FOR SHARE` closes the revoke-while-assigning race on PostgreSQL 16.
 
@@ -231,5 +252,20 @@ by copying") and D3 (record-level access in four layers), and on the call on DO-
   (A:foundations-hardening:R3.3~tenant-rbac:R4.1 (a)).
 - Decision 8: a `platform_admin` grant lasts at most 8 hours (DO-33 (a)).
 - Alternatives and Consequences: role changes through ADR-0110 rejected with the reason; the one-owner consequence and
-  the migration's printout; the tenant-wide tables of this ADR named against `CLAUDE.md:181` (A6).
+  the migration's printout; the tenant-wide tables of this ADR named against `CLAUDE.md:185` (A6).
 - Open 1 to 4 answered; Open 3 no longer reads D11 as configuration only.
+
+## Amendments (2026-10-24)
+
+- Đạt accepted the open recommendations of the second consistency check; the status stays Accepted.
+- Decision 2: `tenant_owner`'s computed privileges include every `fld.*` key of every live field, and a `fld.*` key
+  added to any other role still takes two people (N1).
+- Decision 10: soft-deleting a role only narrows, so it takes one person and an audit event (D11, 2026-10-24); the
+  two refusals are 409 `conflict` with `details.reason_code` `no_checker_available` or `second_person_required`,
+  shared with ADR-0110 (B:tenant-config:R8.8~tenant-rbac:R7.2).
+- Decision 11 added: the three answers to a refused decider (404, 409, 403), which specs had cited from ADR-0004,
+  where no such table is written (F:ADR-0004~workflow-engine:quyết-định).
+- Alternatives: the outbox lane now audits the decider (ADR-0011), and the reason stands because its transaction
+  carries the lane's own actor in `app.user_id` (E:CLAUDE.md#agent-and-tool-rules~tenant-config:R8.10).
+- Open 5 answered in part: dw-proterial's maintainer moves its writes off `memberships.role_keys` before
+  tenant-rbac/03 locks the column (FOG-49).

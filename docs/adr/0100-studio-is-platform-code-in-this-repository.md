@@ -81,7 +81,7 @@ Sales and sends a message once a person approves; all of it answers to the one a
    act on their own, and as the person whose recorded decision they carry out, naming themselves in `details.lane`
    (ADR 0011). `dw_studio.testing` registers `studio.<gate>` graders at `scripts/run_evals.py:38`; the web entry is
    `apps/web/app/studio/` with one top-level nav item. Each seam lands with the first real route, lane or suite it
-   carries (`CLAUDE.md:355-356`), tested by behaviour (OpenAPI lists `/api/v1/studio/` paths; an anonymous call gets 401,
+   carries (`CLAUDE.md:361-362`), tested by behaviour (OpenAPI lists `/api/v1/studio/` paths; an anonymous call gets 401,
    not 404, also in the built container), never by walking `app.routes`, blind to included routers under FastAPI 0.141
    (reported by the sibling product dw-proterial; not re-measured here).
 7. **One partition registry.** Range-partitioned append-only tables join `platform.time_partitioned_tables`
@@ -93,7 +93,10 @@ Sales and sends a message once a person approves; all of it answers to the one a
    the registry, and offboarding, which exports only what `dw_app` can read, exports each row once. Nobody redefines
    it; its revision registers `platform.audit_events` first. A retention term is never a registry column: the
    versioned retention policy (`configs/policies/retention@<semver>.yaml`, keyed `schema.table`, with its `enforced`
-   gate) owns every term, so a changed term is a new policy version, never a migration.
+   gate) owns every term, so a changed term is a new policy version, never a migration. telemetry-and-audit owns the
+   policy's format and its lane; the ticket that registers a table writes that table's term under its `schema.table`
+   key in the same change, so the test that every registered append-only table has a term is green from the
+   registering change on.
 8. **si-platform is reference and selective port source (D5).** Pure code is ported at a pinned commit, with its
    tests, under a first line `Ported from si-platform <path> at <commit> (<date>). Changes: <one line>. Decision: ADR 01NN.`
    Those headers are the ledger (`git grep "Ported from si-platform"`); there is no sync, and a later si fix is a new
@@ -122,7 +125,7 @@ Sales and sends a message once a person approves; all of it answers to the one a
   never imports Studio" could not be stated.
 - **Full-DML default privileges on `studio`.** Rejected: fails open by omission (failure-modes #7), voids column grants.
 - **Highest-number-plus-one, or continuing from 0025.** Rejected: it collides as hand-picked revision ids did
-  (`CLAUDE.md:292-298`; si-platform renumbered migrations and ADRs within two days, si-platform commits `b444666` and
+  (`CLAUDE.md:298-304`; si-platform renumbered migrations and ADRs within two days, si-platform commits `b444666` and
   `566c551`), and 0025-0050 collide in citation with si-platform.
 - **ADR 0101 holding a draft-id-to-number mapping table.** Rejected: the planning drafts' ids never enter the
   repository, so it would map to nothing a reader can open; the area file owns the numbers (one owner per fact).
@@ -159,13 +162,13 @@ Sales and sends a message once a person approves; all of it answers to the one a
   business data an agent must reach under the platform's own access model; amendment A1 appends Studio there.
 - Contradicts `CLAUDE.md:79-83` ("an AI platform, not a general application framework"), worth reopening because
   Studio carries generated CRUD as the system of record digital workers act on; amendment A2 replaces the paragraph.
-- Contradicts `CLAUDE.md:181` ("Every tenant-scoped table has `tenant_id` and `workspace_id`"), worth reopening
+- Contradicts `CLAUDE.md:185` ("Every tenant-scoped table has `tenant_id` and `workspace_id`"), worth reopening
   because definitions and the other rows of decision 5 belong to the whole tenant, and tables without `workspace_id`
   already run unnoticed (`test_rls_coverage.py:44-59` looks for `tenant_id` only); amendment A6 writes the tenant-wide
   class with examples and names `test_rls_coverage.py` as the one owner of its list.
 - Contradicts `CLAUDE.md:14-48` (contexts are the only plug-in), worth reopening because Studio is wired before the
   context seams so contexts can consume it; amendment A9.
-- Keeps `CLAUDE.md:303-315` but supersedes the array and `platform`-only schema of `0013_partition_maintenance.sql`,
+- Keeps `CLAUDE.md:309-321` but supersedes the array and `platform`-only schema of `0013_partition_maintenance.sql`,
   worth reopening because five clusters need parents; amendment A8 names the registry and adds the revoke of every
   `dw_app` privilege on a new partition to the one function.
 - Contradicts `db/migrations/sql/0001_platform_grants.sql:43-46` (full-DML defaults) for schema `studio` only, worth
@@ -224,3 +227,9 @@ Sales and sends a message once a person approves; all of it answers to the one a
 - Citations of `.claude/PLAN.md` corrected to `:26` and `:32-34`; Consequences gain the tenant-wide, partition and
   retention tests; the pack graders' amendment text recorded.
 - Open 1 to 5 answered.
+
+## Amendments (2026-10-24)
+
+- Đạt accepted the open recommendations of the second consistency check; the status stays Accepted.
+- Decision 7: telemetry-and-audit owns the retention policy's format (keys `schema.table`) and its lane, and each
+  ticket that registers a table adds that table's term in the same change (F:ADR-0100~studio-skeleton:R3.7).

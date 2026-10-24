@@ -52,8 +52,11 @@ Numbered in the block 0100-0199 reserved for Studio (ADR-0100 records the block)
 2. **Fields are open or secured.** `access_mode` is `open` or `secured`, a property of the field in its object's
    `dw.object/v1` version. A field with `pd_category <> 'none'` starts secured, `basic` and `sensitive` alike. Opening a
    `basic` field widens access, so it is a new object version published through a second person (D11, ADR-0120),
-   never a one-person switch and never a route of its own; securing a field again narrows, and takes one person and an
-   audit event. A sensitive field is always secured (`ck_field_defs_sensitive_is_secured`) and can never be opened.
+   never a one-person switch and never a route of its own; securing a field again only tightens: it is a new object
+   version too, which the comparator marks tighten-only, so its submitter publishes it alone through ADR-0120
+   decision 1's one-person branch, and `studio.version.published` names the submitter with
+   `details.path = tighten_only`. A sensitive field is always secured (`ck_field_defs_sensitive_is_secured`) and can
+   never be opened.
 3. **Roles add read or edit on secured fields.** `studio.field_permissions` (`tenant_id`, `role_id`, `field_id`,
    `access`, `granted_by`, `granted_at`; `ck_field_permissions_access` read or edit; PK `(tenant_id, role_id, field_id)`;
    FKs `ON DELETE CASCADE` to the role and the field) carries `fld.<object>.<field>.read|edit` (ADR-0104), additively
@@ -117,7 +120,7 @@ Numbered in the block 0100-0199 reserved for Studio (ADR-0100 records the block)
 - **A data-subject request code path per store.** Rejected: the store nobody remembered is the breach; registration at
   the composition root makes the list checkable.
 - **Per-role "hidden" overrides on open fields; SQL views with a CASE per slot; hiding in the UI only.** Rejected: not
-  additive (a second role silently undoes the first), a second implementation, and CLAUDE.md:193.
+  additive (a second role silently undoes the first), a second implementation, and CLAUDE.md:197.
 
 ## Consequences
 
@@ -188,3 +191,10 @@ Numbered in the block 0100-0199 reserved for Studio (ADR-0100 records the block)
   `bind` (DO-09.2 (a), DO-32.1).
 - Decision 6: field security owns the approver rule and the step approval's decision guard applies it (DO-36 (a)).
 - Open 1 to 4 answered, Open 6 answered in part.
+
+## Amendments (2026-10-24)
+
+- Đạt accepted the open recommendations of the second consistency check; the status stays Accepted.
+- Decision 2: securing a field is a `dw.object/v1` version that only tightens, published by its submitter alone through
+  ADR-0120 decision 1's one-person branch with an audit event; opening a `basic` field still takes a second person
+  (Q-R6, B:agent-lifecycle:R1.6~custom-objects:R1.7).

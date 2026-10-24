@@ -28,7 +28,7 @@ envelope leaves "which version runs" to this stage contract. The `agent-lifecycl
   (`packages/python/dw_agent_runtime/src/dw_agent_runtime/approval_flow.py:115-130`), also on a rejection, so its
   requester cannot withdraw it through `decide` (`:226-227`); per-type `decision_guards` run before anything is written
   (`:228-230`), as memory review does (`apps/api/src/dw_api/bootstrap/runtime.py:237-239`); a run-less approval
-  announces `<type>.decided` through the outbox (CLAUDE.md:268-273). `ApprovalRequest.cancel()` exists with no
+  announces `<type>.decided` through the outbox (CLAUDE.md:274-279). `ApprovalRequest.cancel()` exists with no
   production caller (`packages/python/dw_platform/src/dw_platform/domain/approval.py:132`).
 - **The gap.** The competitor teardown shows a Publish button on versions that failed evaluation: a gate in the UI
   only. Repeated trials (pass^k) and abstaining judges follow
@@ -40,18 +40,29 @@ envelope leaves "which version runs" to this stage contract. The `agent-lifecycl
    `retired` live on `studio.artifact_versions` (ADR-0109): `stage` NOT NULL with a CHECK and no default, read back
    from `pg_constraint` against a `VersionStage` StrEnum; `definition_hash` required outside `draft`; `gate_run_id`
    (FK `studio.gate_runs`) and `publish_approval_id` (FK `platform.approval_requests`), ON DELETE RESTRICT and
-   required from `awaiting_approval` on, `gate_run_id` only for a kind with a quality gate; `contributor_ids` never
-   empty. One trigger, `studio.guard_version_stage()`, allows only: insert as `draft`; `draft` to `evaluating`;
-   `evaluating` back to `draft` (gate failed, errored, cancelled or withdrawn); `evaluating` to `awaiting_approval`
-   (gate passed on this version's effective hash, approval pending); `awaiting_approval` back to `draft` (rejected,
-   cancelled or expired); `awaiting_approval` to `live` (approved by a decider who is neither submitter nor
-   contributor, the gate's evidence still matching); `live` to `retired`. Its rule is per kind: a kind without a
-   quality gate, an object definition (ADR-0107) or a tool (ADR-0116), goes from `draft` to `awaiting_approval`
-   directly and needs only the second person. A refusal raises SQLSTATE 23514 on
-   `ck_artifact_versions_stage_transition`, mapped by name as ADR-0012 does. Partial unique indexes allow one `live`
-   and one candidate per artifact; publishing retires the previous live version in the same transaction. Version
-   numbers come from `last_version_no`, never reused. A rollback is a new version copied from an old one, reusing its
-   gate evidence when the effective hash is equal. `LifecycleService` writes; the trigger is the backstop.
+   required from `awaiting_approval` on (a version published on the tighten-only branch below keeps it NULL),
+   `gate_run_id` only for a kind with a quality gate; `contributor_ids` never empty. One trigger,
+   `studio.guard_version_stage()`, allows only: insert as `draft`; `draft` to `evaluating`; `evaluating` back to
+   `draft` (gate failed, errored, cancelled or withdrawn); `evaluating` to `awaiting_approval` (gate passed on this
+   version's effective hash, approval pending); `awaiting_approval` back to `draft` (rejected, cancelled or expired);
+   `awaiting_approval` to `live` (approved by a decider who is neither submitter nor contributor, the gate's evidence
+   still matching); `live` to `retired`. Its rule is per kind: a kind without a quality gate, an object definition
+   (ADR-0107) or a tool (ADR-0116), goes from `draft` to `awaiting_approval` directly and needs only the second
+   person. One branch serves a kind without a quality gate whose kind registers a tighten-only comparator, in v1 the
+   object definition alone: a `dw.object/v1` version whose comparator reports that every change against the live
+   version only tightens (a field closed, `default_access` narrowed, a permission removed) goes from `draft` to
+   `live` at submit, by one person, audited (D11 as the requester and Đạt scoped it, closing with one person;
+   ADR-0106 decision 2). `LifecycleService` records the comparison at submit in `tighten_only boolean` and
+   `compared_live_hash`, the `definition_hash` of the live version it compared, and the trigger allows `draft` to
+   `live` only for a kind without a quality gate, with `tighten_only` true and `compared_live_hash` still the live
+   version's hash, so a stale or missing comparison takes the approval. A version that loosens anything, and a first
+   version with nothing live to compare against, go through `awaiting_approval`; a tool never takes the branch, its
+   kind registering no comparator because a second person approves its model-facing text (ADR-0116 decision 9). A
+   refusal raises SQLSTATE 23514 on `ck_artifact_versions_stage_transition`, mapped by name as ADR-0012 does.
+   Partial unique indexes allow one `live` and one candidate per artifact; publishing retires the previous live
+   version in the same transaction. Version numbers come from `last_version_no`, never reused. A rollback is a new
+   version copied from an old one, reusing its gate evidence when the effective hash is equal. `LifecycleService`
+   writes; the trigger is the backstop.
 2. **Publishing takes a passing gate and a second person (D11).** Moving a version to `awaiting_approval` opens, in
    the same transaction, a run-less approval `studio.publish.agent`, `studio.publish.workflow` or
    `studio.publish.object` (an object definition, under D11; a tool's approval is ADR-0116's) whose payload holds
@@ -64,8 +75,11 @@ envelope leaves "which version runs" to this stage contract. The `agent-lifecycl
    the decision guard `require_not_author` refuses a decider in `payload.author_ids` and a payload without them (fail
    closed). A worker handler for each `studio.publish.<kind>.decided` settles idempotently on the approval id:
    approved retires the previous live version and makes this one `live` in one transaction, audits
-   `studio.version.published` with the decider as actor and the lane in `details.lane` (ADR-0011: a lane carrying out
-   one person's decision audits that person) and emits `studio.version.live`; rejected returns it to `draft`.
+   `studio.version.published` with the decider as actor, the lane in `details.lane` (ADR-0011: a lane carrying out
+   one person's decision audits that person) and `details.path = 'approved'`, and emits `studio.version.live`;
+   rejected returns it to `draft`. On decision 1's tighten-only branch no approval opens: `LifecycleService` retires
+   the previous live version and makes this one `live` in the submit transaction, audits `studio.version.published`
+   with the submitter as actor and `details.path = 'tighten_only'`, and emits `studio.version.live` the same way.
    `POST .../versions/{id}/withdraw` cancels the pending approval with `ApprovalRequest.cancel()` and returns the
    version to `draft`; a lane cancels expired publish approvals, auditing as `system:<lane>` because it acts on its
    own. Publish also needs every required binding approved (ADR-0110) and an accountable owner (ADR-0103; else 409
@@ -79,14 +93,15 @@ envelope leaves "which version runs" to this stage contract. The `agent-lifecycl
    that declares only fields with a reader: in W1 `pass_k` = 3 (a case tagged `consistency` passes only if all k
    trials pass), a per-trial cost ceiling of USD 0.10, a worst-case cap of USD 10 per gate run and publish approval
    expiry after 14 days; minimum cases, pass rate and stale-draft days join in W2 with their readers (DO-29.1). The
-   numbers are revisited after FOG-64, by a new policy version. Before the first model call the lane refuses a worst
-   case above the cap (422). The gate run takes its lease through `LimitsPort` with purpose `eval_offline` (ADR-0121,
-   DO-21.4); refused for the tenant's remaining evaluation limit, it ends `error` with `limit_exceeded` and no HTTP
-   status, since no caller waits on the lane (DO-21.3). Verdicts are `pass`, `fail`, `unknown` (blocks like `fail`)
-   and `error`. Evidence counts only for its exact key: the effective hash of ADR-0109 decision 6 (the definition hash
-   plus the overlay entries, so a tenant override of a platform prompt voids older evidence, DO-27.1), the gate
-   policy, the security suite and the dataset content hashes; a passing run with the same key is reused. The gate run
-   records the run-time resolutions it saw (tenant overrides, MCP definitions, bindings, knowledge index).
+   numbers are revisited after FOG-64, by a new policy version. Before the first model call the lane ends a gate run
+   whose worst case is above the cap `error` with `limit_exceeded`. The gate run takes its lease through `LimitsPort`
+   with purpose `eval_offline` (ADR-0121, DO-21.4); refused for the tenant's remaining evaluation limit, it ends the
+   same way. Neither refusal carries an HTTP status, since no caller waits on the lane (DO-21.3). Verdicts are
+   `pass`, `fail`, `unknown` (blocks like `fail`) and `error`. Evidence counts only for its exact key: the effective
+   hash of ADR-0109 decision 6 (the definition hash plus the overlay entries, so a tenant override of a platform
+   prompt voids older evidence, DO-27.1), the gate policy, the security suite and the dataset content hashes; a
+   passing run with the same key is reused. The gate run records the run-time resolutions it saw (tenant overrides,
+   MCP definitions, bindings, knowledge index).
 4. **`dw_evals` is extended, not replaced.** `Observation`, `ObservationGrader`, `JudgePort`, `EvalTargetPort`, an
    async `run_cases` with trials and a pure `gate.py` (`GatePolicy`, `evaluate_gate`, the one function deciding
    "does this pass") are added; `SECURITY_CATEGORIES` (`packages/python/dw_evals/src/dw_evals/dataset.py:25`),
@@ -106,8 +121,9 @@ envelope leaves "which version runs" to this stage contract. The `agent-lifecycl
    `workspace_archived`). The doors: ingress and the run queue claim
    (ADR-0113), runner start, stream and resume, node start (ADR-0112), `ApproveAndResumeService.decide`, a
    `RunControlMiddleware` in agent and sub-agent stacks, the structured gateway and compaction, the `ToolExecutor`
-   before its scope check (`deny_frozen`, `deny_killed`), and every lane sending a queued effect, each given the port
-   by injection, never a default (as `langgraph_runner.py:108-112` gets `allowance` and `budget`). The answer comes
+   before its scope check (`deny_frozen`, `deny_killed`), and every lane sending a queued effect (among them
+   connections-and-vault's lane that sends queued messages, agent-lifecycle R8.4), each given the port by injection,
+   never a default (as `langgraph_runner.py:108-112` gets `allowance` and `budget`). The answer comes
    from a per-tenant snapshot with a 5 s TTL, invalidated by `pg_notify('dw_control_switch', ...)`, that refuses
    after 30 s without a refresh: fail closed, unlike the access-context cache (ADR-0024 decision 4).
 7. **What each switch does.** A kill (one holder of `studio.lifecycle.kill` in the artifact's workspace) refuses new
@@ -117,13 +133,16 @@ envelope leaves "which version runs" to this stage contract. The `agent-lifecycl
    be evaluated. Lifting it is a strict `studio.lifecycle.revive` run-less approval stamped `studio.lifecycle.kill`: a
    second person (D11). A tenant freeze (one holder of `studio.lifecycle.freeze` at tenant depth, reason required)
    and a platform freeze (operators through the provisioning context, which a tenant admin cannot lift) refuse
-   interactive runs not yet started (`chat`, `manual`, `test`), submissions, gate runs and publishes with
-   `tenant_frozen` or `platform_frozen`; keep a queued trigger run (`datahub`, `provider_app`, `schedule`,
-   `record_event`) queued, as a held inbound event is, to start in arrival order once lifted (ADR-0113 decision 3);
-   cancel running runs at the next door; keep paused runs paused and refuse decisions on them; and hold inbound
-   events to start in arrival order once lifted (ADR-0113) (DO-28 (C)). A provider call already in flight finishes
-   and is recorded. Each change is audited in its own transaction (platform freezes in
-   `platform.provisioning_audit`), and `dw_control_refusals_total{door, reason_code}` counts refusals.
+   interactive runs not yet started (`chat`, `manual`, `test`, `replay`, `fork`; ADR-0113 decision 3), submissions,
+   gate runs and publishes with `tenant_frozen` or `platform_frozen`; keep a queued trigger run (`datahub`,
+   `provider_app`, `schedule`, `record_event`) queued, as a held inbound event is, to start in arrival order once
+   lifted (ADR-0113 decision 3); cancel running runs at the next door; keep paused runs paused and refuse decisions
+   on them; and hold inbound events to start in arrival order once lifted (ADR-0113) (DO-28 (C)). Lifting a tenant
+   freeze is a strict `studio.lifecycle.unfreeze` run-less approval stamped `studio.lifecycle.freeze`, whose
+   `.decided` handler lifts it: a second person (D11). A freeze has no time limit, so the retention lane skips the
+   inbound events it holds and counts them (ADR-0122 decision 7). A provider call already in flight finishes and is
+   recorded. Each change is audited in its own transaction (platform freezes in `platform.provisioning_audit`), and
+   `dw_control_refusals_total{door, reason_code}` counts refusals.
 8. **Lifecycle findings** derive from the dependency index (ADR-0109) by events plus an hourly sweep: a component
    newer, retired or killed, `mcp_definition_changed`, `tenant_override_stale`, `eval_stale`, `eval_below_threshold`,
    `binding_degraded` and `publish_failed`; an acknowledgement needs a reason and expires within 30 days.
@@ -163,7 +182,7 @@ envelope leaves "which version runs" to this stage contract. The `agent-lifecycl
 - Agrees with ADR-0109 decision 6 since 2026-10-23: evidence is keyed by the effective hash, the key question of
   FOG-66 that DO-27.1 settled, and the gate run still records the run-time resolutions it saw.
 - Studio evaluation sets live in PostgreSQL, not `evals/datasets/` (CLAUDE.md:37-41 stays the rule for code
-  contexts); the platform suite extends CLAUDE.md:329-330 to every Studio version. CLAUDE.md:268-273, ADR-0004,
+  contexts); the platform suite extends CLAUDE.md:335-336 to every Studio version. CLAUDE.md:274-279, ADR-0004,
   ADR-0011 and ADR-0012 are reused unchanged; S13's "killed" beside the stages is refined, not contradicted.
 - si-platform: ports the CHECK read back against the enum and never-reused version numbers from si-platform
   `docs/adr/0044-approval-runs-narrowed-by-the-record-workspace-history-append-only-unpartitioned.md`; diverges from
@@ -218,3 +237,20 @@ Accepted by Đạt on 2026-10-23 with these amendments from the decision brief:
   kill still cancels; this replaces "refuse new runs" (DO-28 (C)).
 - Alternatives and Contradictions: DO-28's rejected options recorded; the difference with ADR-0109 is gone.
 - Open: DO-07, DO-28, DO-29, DO-05 and DO-39 answered; FOG-66 answered for the evidence key; FOG-65 stays open.
+
+## Amendments (2026-10-24)
+
+Amended by Đạt on 2026-10-24, who accepted every recommendation the second consistency check left open, with the
+D11 cases scoped by the requester and Đạt:
+
+- Decision 1: a `dw.object/v1` version that only tightens goes from `draft` to `live` by one person, audited; the
+  trigger reads `tighten_only` and `compared_live_hash`, and every version that loosens anything still waits for a
+  second person (Q-R6; the D11 case on narrowing `default_access`; B:agent-lifecycle:R1.6~custom-objects:R1.7).
+- Decision 2: `studio.version.published` names the decider on the approved path and the submitter on the
+  tighten-only path, with `details.path` `approved` or `tighten_only`.
+- Decision 3: a worst case above the gate run's cap ends the run `error` with `limit_exceeded`; the 422 goes, since
+  no caller waits on the lane (F:ADR-0120~agent-lifecycle:R4.4).
+- Decision 6: the lane that sends queued messages is connections-and-vault's, and it asks the port like every door.
+- Decision 7: lifting a tenant freeze takes a second person through `studio.lifecycle.unfreeze`, as agent-lifecycle
+  R7.10 and R7.11 already say (D:ADR-0120~agent-lifecycle:R7.10); a freeze has no time limit, and the retention lane
+  skips the events it holds; `replay` and `fork` are interactive runs (ADR-0113 decision 3).

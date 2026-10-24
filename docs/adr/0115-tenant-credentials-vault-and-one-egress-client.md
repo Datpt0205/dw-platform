@@ -54,7 +54,10 @@ platform's vault and are injected per call into the model proxy) and D14 (the pr
    by a workspace (`share_scope` `owner`, `workspace` or `workspace_subtree`) or, from v1, by one user. RLS is
    tenant-only, because reach crosses the workspaces of a tenant by design (D1), and the table is listed as tenant-wide
    with that reason under amendment A6 (ADR-0100); the status machine is the database's
-   (`platform.guard_connection_status`). `connection_usable(connection, context, purpose)`, one function in the
+   (`platform.guard_connection_status`). Disabling a connection takes one person, audited; enabling it again takes two:
+   the request opens a strict run-less approval `connections.enable`, and only its `.decided` handler moves the
+   connection from `disabled` to `active`, auditing the decider with the lane in `details.lane` (ADR-0011; D11,
+   closing with one person and opening with two). `connection_usable(connection, context, purpose)`, one function in the
    platform's connections application layer, is the single answer to "may this run use this connection now": same
    tenant, `status = 'active'`, the run's workspace equal to the owning one or inside its sub-tree under
    `workspace_subtree`, `connections.use` held there, and for a personal connection the owner acting or a delegation
@@ -85,7 +88,9 @@ platform's vault and are injected per call into the model proxy) and D14 (the pr
    follows no redirect unless a connector manifest allows up to 3, each re-validated, dropping auth headers on an
    origin change; allows only `https` when deployed; caps a response at 2 MiB while streaming; limits catalogue
    connectors to their manifest `egress_hosts` and tenant-defined destinations to `platform.egress_allowed_hosts`
-   (managed with `integrations.admin`; no IP literals; one wildcard level, never on a public suffix); keys rate limits
+   (managed with `integrations.admin`; no IP literals; one wildcard level, never on a public suffix; a host is added
+   only by the `.decided` handler of a strict run-less approval `egress.allowed_host` that a second person decides,
+   and removed by one person, audited); keys rate limits
    by provider app, connection and tenant; owns retries (a timed-out non-idempotent POST is `outcome_unknown`, never
    retried); scrubs the call's secrets from bodies, errors and logs; and in `simulate` refuses every purpose except
    `model` and read-only actions (`egress_blocked:run_mode`). An architecture test allows `httpx.AsyncClient(` only in
@@ -200,3 +205,11 @@ unattended unseal and Transit parity, with these amendments from the decision br
   fields and the residency route applied (DO-58 (b)).
 - Consequences: what waits for the spike and what goes ahead now; the A10 sentence written out.
 - Open: DO-47, DO-48, DO-24 and DO-58 answered; FOG-25 and FOG-26 stay open as the condition.
+
+## Amendments (2026-10-24)
+
+Amended on 2026-10-24 by the requester and Đạt, who scoped the remaining D11 cases:
+
+- Decisions 2 and 6: enabling a disabled connection again and adding an allowed host each take a second person,
+  through the strict run-less approvals `connections.enable` and `egress.allowed_host`, whose `.decided` handlers
+  apply the change; disabling a connection and removing an allowed host take one person, audited.

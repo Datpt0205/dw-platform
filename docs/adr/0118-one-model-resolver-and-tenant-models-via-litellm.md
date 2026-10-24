@@ -44,7 +44,7 @@ repository root. External facts were gathered by the Studio research on 2026-10-
   under a salt key that "must never change" (GHSA-7hp6-4w63-5g45). Client-side credentials and
   cooldowns are documented at https://docs.litellm.ai/docs/proxy/clientside_auth and
   https://docs.litellm.ai/docs/routing.
-- CLAUDE.md:224 lets resolution fall back to the platform, never sideways. For a model, falling back to
+- CLAUDE.md:228 lets resolution fall back to the platform, never sideways. For a model, falling back to
   the platform spends platform money and sends data to a processor the tenant did not choose.
 
 ## Decision
@@ -100,7 +100,7 @@ purpose) -> ResolvedRoute` serves `StudioModelSelection`, `RunBudgetMiddleware`,
 7. **`model_connections.manage` is a critical permission**, because it decides where tenant data goes.
    Beside it: `model_connections.read`, the plan feature `byom` and the plan ceiling
    `max_model_connections` in `platform.plan_limits`.
-8. **The model proxy is a stateless translation lane, never imported.** Compose service `litellm-byom`
+8. **The model proxy is a stateless translation lane, never imported.** Compose service `model-proxy`
    is built in CI from a digest-pinned Python base with `pip install --require-hashes` of one exact
    LiteLLM version, never a vendor tag; its digest is in the release manifest, and a LiteLLM version is
    adopted only after 14 days and an advisory check. Under that rule v1 pins 1.106.1, from before the
@@ -132,7 +132,7 @@ purpose) -> ResolvedRoute` serves `StudioModelSelection`, `RunBudgetMiddleware`,
   data location and processor.
 - **Native provider adapters only.** Not now: kept as the exit plan behind the same OpenAI-compatible
   port.
-- **Adding the tenant to `chat_route` later.** Rejected by CLAUDE.md:230 (new registries take
+- **Adding the tenant to `chat_route` later.** Rejected by CLAUDE.md:234 (new registries take
   `tenant_id` from the start).
 
 ## Consequences
@@ -202,3 +202,12 @@ Accepted by Đạt on 2026-10-23 with these amendments from the decision brief:
   processed in Vietnam before its first AI step (FOG-10).
 - Open: DO-19 answered for the version (the location of each alias still owed, FOG-18); DO-43 and the
   prerequisites DO-47 and DO-54 answered.
+
+## Amendments (2026-10-24)
+
+Amended by Đạt on 2026-10-24, who accepted every recommendation the second consistency check left
+open:
+
+- Decision 8: the compose service is `model-proxy` in every document, the glossary's name, and no
+  longer `litellm-byom`, so its compose profile carries that one name (studio-skeleton R8.6;
+  G:ADR-0118~studio-skeleton:ngoài-phạm-vi, decided for the glossary).

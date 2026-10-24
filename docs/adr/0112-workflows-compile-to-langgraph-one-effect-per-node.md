@@ -25,7 +25,7 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
   an unconnected router port fails only at run time; two plain edges from parallel branches run a node twice; code
   placed before `interrupt()` runs again on resume; `recursion_limit` is 1,000 in the docs and 10,007 in the code; the
   `error_handler` is skipped when two tasks share a superstep; `RetryPolicy` has no idempotency key per iteration.
-- `CLAUDE.md:242-243` keeps SQL and SDKs out of workflow nodes; `CLAUDE.md:68-69` puts every effect through policy,
+- `CLAUDE.md:246-247` keeps SQL and SDKs out of workflow nodes; `CLAUDE.md:68-69` puts every effect through policy,
   idempotency and audit. The pilot (D4) messages a lead only after a person approves.
 
 ## Decision
@@ -43,17 +43,21 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
    carries `type@major`, config and output schemas, a `side_effect_level` from the existing vocabulary
    (`packages/python/dw_agent_runtime/src/dw_agent_runtime/contracts.py:19`), capability labels for ADR-0125, the
    error policies it allows, limits clamped by the plan, a `permission` and an `entitlement`, its behaviour per run
-   mode (ADR-0111), a dependency extractor and `compile(config)`. The v1 catalogue has 31 types: six `trigger.*`,
-   `ai.llm`, `ai.agent`, eight `data.*`, `tool.call`, `http.request`, `notify.send`, four `logic.*`, two `time.*`,
-   `human.approval`, `human.task`, three `flow.*` and `code.python`. Tenants add tools (ADR-0116), never node types.
+   mode (ADR-0111), a dependency extractor and `compile(config)`. The v1 catalogue has 32 types: six `trigger.*`,
+   `ai.llm`, `ai.agent`, eight `data.*`, `tool.call`, `http.request`, `notify.send`, five `logic.*`, two `time.*`,
+   `human.approval`, `human.task`, three `flow.*` and `code.python`. The fifth `logic.*` is `logic.loop`, whose
+   `max_iterations` is required and clamped by the plan; it arrives in W2 (YC105), workflow-nodes registering the type
+   and workflow-engine owning the loop's structure in the IR and the compiler. Tenants add tools (ADR-0116), never
+   node types.
 3. **One validator over the graph the compiler uses.** Publishing runs one all-errors validator over a `WorkflowIR`
    (nodes, ports, edges, dominator tree, branch-exclusivity sets) that the compiler also consumes. It runs at submit,
    the first step of ADR-0120's path to live, and as warnings on every draft save. It checks that every node is
    reachable from a trigger; every router is total (a `default` port, every port connected or ended); cycles pass
-   only through a `loop` with `max_iterations`; parallel branches merge only through a join; every `{{ }}` reference
-   names a dominating node or is guarded by `has()`; CEL types hold (ADR-0114); a variable has one writer per
-   superstep; no wait sits inside a `map` body or a parallel branch in v1; plan limits hold; every connection,
-   principal and endpoint is a declared binding. It returns `[{path, code, message_vi, message_en}]` with stable codes
+   only through a `logic.loop` with `max_iterations`, so a graph has none before W2; parallel branches merge only
+   through a join; every `{{ }}` reference names a dominating node or is guarded by `has()`; CEL types hold
+   (ADR-0114); a variable has one writer per superstep; no wait sits inside a `map` body or a parallel branch in v1;
+   plan limits hold; every connection, principal and endpoint is a declared binding. It returns
+   `[{path, code, message_vi, message_en}]` with stable codes
    (`wf.unreachable_node`, `wf.router_not_total`, `wf.join_required`, `wf.ref_not_dominating`, `wf.type_mismatch`,
    `wf.wait_in_map`, `wf.limit_above_plan`, `wf.binding_undeclared`). Its graph module (`reachable`, `dominators`,
    `paths_to`) also serves ADR-0125's capability analysis, so the two cannot see different graphs.
@@ -81,10 +85,11 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
    deep, as ADR-0113 decision 9 and ADR-0117 decision 7 state (requirements Q1, YC45, YC57). A node holds no SQL, no
    provider SDK and no concrete adapter, and it hands the run mode to its door, which applies it (ADR-0111): a node
    never simulates an effect itself.
-7. **Approval steps and human tasks are enforced on the server.** `human.approval` opens an approval of type
-   `studio.step.approval`. The API composition root adds `studio.step.` to `strict_approval_prefixes` with `|=`
-   (beside `memory.`, `apps/api/src/dw_api/bootstrap/runtime.py:237-239`), so neither the run's requester nor its
-   run-as principal decides, and registers `decision_guards["studio.step.approval"]`: the decider is a current
+7. **Approval steps and human tasks are enforced on the server.** In a `live` run `human.approval` opens an approval
+   of type `studio.step.approval` and waits for its decision; in any other run it waits for no decider and takes a
+   simulated decision (ADR-0111 decision 5). The API composition root adds `studio.step.` to `strict_approval_prefixes`
+   with `|=` (beside `memory.`, `apps/api/src/dw_api/bootstrap/runtime.py:237-239`), so neither the run's requester
+   nor its run-as principal decides, and registers `decision_guards["studio.step.approval"]`: the decider is a current
    assignee, still holds the stamped permission and can read every field the step stamped (ADR-0106 decision 6).
    `required_scope` is mandatory (ADR-0004); assignees (users, teams or a CEL expression) only narrow it; candidates
    come from `effective_grants` (ADR-0104), never a copy; none left is `no_approver`, and publish refuses a version
@@ -128,7 +133,7 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
 - **LangGraph's own retry policy and error handler.** Rejected: no idempotency key per iteration, so a retried effect
   repeats; the handler's behaviour depends on topology (measured).
 - **An effect inside a node (SQL, an SDK).** Rejected: it bypasses policy, run mode, idempotency and audit
-  (`CLAUDE.md:242-243`).
+  (`CLAUDE.md:246-247`).
 - **Trusting `StateGraph.compile()`, or checks in the canvas only.** Rejected: the measured gaps; a check the API does
   not run is bypassable (failure-modes #5).
 - **Tenant-defined node types.** Rejected: a second, unreviewed runtime; tools cover the need.
@@ -150,10 +155,10 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
   checkpoint refusing to load.
 - Harder: every `NodeTypeSpec` attribute needs a named reader (failure-modes #1); node outputs must stay JSON-shaped;
   a node type's major version stays registered while any run or live version pins it.
-- Reinforces `CLAUDE.md:242-243`; extends `docs/adr/0010-prompt-variables-are-untrusted-by-default.md` to workflow AI
+- Reinforces `CLAUDE.md:246-247`; extends `docs/adr/0010-prompt-variables-are-untrusted-by-default.md` to workflow AI
   nodes through ADR-0114. `CLAUDE.md:70-71` (a release manifest pins graphs) gives way for tenant versions to the run
   manifest, the amendment ADR-0109 carries.
-- Contradicts `CLAUDE.md:239-240` ("LLM output is always validated into a Pydantic schema") for tenant-defined schemas,
+- Contradicts `CLAUDE.md:243-244` ("LLM output is always validated into a Pydantic schema") for tenant-defined schemas,
   which the platform's JSON Schema validator checks instead, because a Pydantic model made at run time comes back as a
   plain dict after a checkpoint (measured by the tools research). The amendment, due on acceptance and before
   workflow-nodes/05 is ready, reads: "LLM output is always validated into a schema the platform owns: a Pydantic model
@@ -190,6 +195,15 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
 - Decision 7: the task route is `POST /api/v1/studio/tasks/{id}/submit` (DO-16.2 (a)); the step approval's guard
   adds the field-read condition (DO-36 (a)); expiry arrives in W2 and a W1 approval waits with no deadline
   (DO-31 (a)).
-- Consequences: the `CLAUDE.md:239-240` amendment text recorded; the `expired` status written by workflow-engine from
+- Consequences: the `CLAUDE.md:243-244` amendment text recorded; the `expired` status written by workflow-engine from
   W2.
 - Open 1 to 4 answered.
+
+## Amendments (2026-10-24)
+
+- Đạt accepted the open recommendations of the second consistency check; the status stays Accepted.
+- Decisions 2 and 3: the step type `logic.loop`, with a required `max_iterations`, joins the catalogue in W2 (YC105),
+  registered by workflow-nodes, its loop structure owned by workflow-engine; the v1 catalogue has 32 types, and a
+  graph has no cycle before W2 (N7).
+- Decision 7: a `human.approval` step outside a `live` run waits for no decider and takes a simulated decision, as
+  ADR-0111 decision 5 states (N2).

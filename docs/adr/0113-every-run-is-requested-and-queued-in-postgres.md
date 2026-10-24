@@ -17,7 +17,7 @@ with the amendments listed under Acceptance; the calls it leaned on are answered
 
 ## Context
 
-- Agent runs execute inline in the API, and the plan quota is enforced where a run begins (`CLAUDE.md:256-261`). The
+- Agent runs execute inline in the API, and the plan quota is enforced where a run begins (`CLAUDE.md:260-265`). The
   worker "hosts no graph" (`apps/worker/src/dw_worker/main.py:203-205`). A stale `platform.worker_runs` row is reaped
   only on the claim path, because "a cross-tenant reaper needs `BYPASSRLS`"
   (`packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/run_store.py:216-220`).
@@ -52,15 +52,20 @@ with the amendments listed under Acceptance; the calls it leaned on are answered
 3. **Admission at dispatch, fenced claims, a deadline for every run.** At claim the `studio_runs` lane asks
    `RunControlPort.require_open` (ADR-0120), then `LimitsPort.admit` (ADR-0121). That claim is the one place a Studio
    run is admitted; a child run shares its root's lease and is not admitted again (decision 9). One table keyed by
-   `trigger_kind` shapes every refusal, for freezes and limits alike. Missing concurrency re-queues every kind with a
-   later `available_at`. A freeze re-queues a trigger run (`datahub`, `provider_app`, `schedule`, `record_event`)
-   with a later `available_at`, so that it starts in arrival order once the freeze lifts, and ends an interactive run
-   (`chat`, `manual`, `test`) or an evaluation trial (`eval`) at once as `cancelled` with `tenant_frozen` or
-   `platform_frozen`. A spent hard limit
+   `trigger_kind` shapes every refusal, for freezes and limits alike, and gives every kind of decision 1 its row:
+   `chat`, `manual`, `test`, `replay` and `fork` are interactive runs; `datahub`, `provider_app`, `schedule` and
+   `record_event` are trigger runs; `eval` is an evaluation trial; and a child run (`subworkflow`, `agent_node`,
+   `agent_link`, `agent_tool`) is never admitted on its own, so only its root's row applies. Missing concurrency
+   re-queues every kind with a later `available_at`. A freeze re-queues a trigger run with a later `available_at`, so
+   that it starts in arrival order once the freeze lifts, and ends an interactive run or an evaluation trial at once
+   as `cancelled` with `tenant_frozen` or `platform_frozen`. A spent hard limit
    re-queues a `datahub`, `provider_app` or `record_event` run until the window's `resets_at`, never dropping it;
-   records a `schedule` fire (W2) as `limit_refused` instead of holding it; ends an interactive run `failed` with
+   records a `schedule` fire (W2) as `limit_refused` and skips it instead of holding it, because holding every missed
+   fire would release them all at once when the next window begins; ends an interactive run `failed` with
    `limit_exceeded` and `resets_at` (a conversation shows it as a `notice`); and ends an evaluation's gate run `error`
-   with `limit_exceeded` (ADR-0120). A killed artifact's queued runs are cancelled, never held. A claim lease
+   with `limit_exceeded` (ADR-0120). `principal_inactive` ends a run of any kind `cancelled`, and
+   `control_state_unavailable` re-queues any kind with a later `available_at`, refusing it without dropping it. A
+   killed artifact's queued runs are cancelled, never held. A claim lease
    (`lease_owner`, `lease_until`; not ADR-0121's budget lease) lasts 60 s with a 15 s heartbeat; state and
    checkpoint writes are fenced by `(lease_owner, attempt)`, so a stale holder's writes fail. Lane
    `studio_run_reaper` re-queues expired claims with backoff `min(2^attempt * 5 s, 10 min)` plus jitter; after 5
@@ -70,6 +75,8 @@ with the amendments listed under Acceptance; the calls it leaned on are answered
    (`adapters/run_events.py:96`) turns into a task cancel; queued and waiting runs are cancelled in the database with
    their open waits and approvals. `deadline_at = admitted_at + min(limits.max_run_seconds, plan ceiling)`, waits
    included (default 30 days, at most 90), is checked at node start, at resume and by the reaper (`deadline_exceeded`).
+   The bound stays: a process that lasts months is a chain of short runs over one record's lifecycle in stages
+   (ADR-0126 (Accepted)), never one run.
 4. **A run waits in place.** Each wait is an `interrupt()` plus a durable `platform.run_waits` row (RLS ENABLE and
    FORCE; `kind` `approval`, `task`, `timer`, `child_run`; `status` `open`, `resolved`, `consumed`, `expired`,
    `cancelled`; unique `(tenant_id, run_id, interrupt_id)`); several may be open. A decision, a due timer or a child
@@ -91,7 +98,8 @@ with the amendments listed under Acceptance; the calls it leaned on are answered
    `sched:<subscription_id>:<nominal UTC time>`, so a second replica's fire of one occurrence is refused. Under a
    freeze (ADR-0120) an inbound event is stored and held, with one `held_frozen` delivery written when the hold
    starts: the `studio_inbound` lane asks `RunControlPort` each cycle, leaves held events alone while the freeze holds
-   and, once it lifts, requests their runs in `received_at` order. A killed workflow's events are refused
+   and, once it lifts, requests their runs in `received_at` order. A freeze has no time limit, so the retention lane
+   skips a held event whatever its age and counts it (ADR-0122 decision 7). A killed workflow's events are refused
    (`refused_killed`) while the sender is still answered 2xx, so it keeps the endpoint.
 6. **Inbound ingress stores and answers, and starts nothing.** A Data Hub endpoint is a Studio artifact of kind
    `endpoint` (`dw.endpoint/v1`) with a public id of `ep_` and 26 Crockford base32 characters (130 random bits),
@@ -162,7 +170,7 @@ with the amendments listed under Acceptance; the calls it leaned on are answered
   `waiting`.
 - Harder: every new start path must go through the door; each linked-agent call pays queue latency; P1 has no token
   streaming.
-- Reinforces `CLAUDE.md:256-261`, whose port becomes `LimitsPort` with ADR-0121. Follows
+- Reinforces `CLAUDE.md:260-265`, whose port becomes `LimitsPort` with ADR-0121. Follows
   `docs/adr/0008-chat-updates-poll-locally-webhook-when-hosted.md` for inbound endpoints and
   `docs/adr/0006-provider-neutral-channel-delivery-outbox.md` for the outbox shape; neither changes.
   ADR-0008's queue is identity plane without RLS
@@ -211,3 +219,18 @@ Accepted by Đạt on 2026-10-23, together with ADR-0121, with these amendments 
   dedupe keys and trigger configuration are tenant-wide under amendment A6 (the CRITICAL on `platform.run_waits`,
   option (a)).
 - Open: DO-41, DO-44, DO-48, DO-52, DO-28 and DO-39 answered.
+
+## Amendments (2026-10-24)
+
+Amended by Đạt on 2026-10-24, who accepted every recommendation the second consistency check left open:
+
+- Decision 3: a `schedule` fire on a spent window is recorded `limit_refused` and skipped, with its reason, and
+  `CLAUDE.md` (Agent and tool rules) now names this exception beside "a triggered one waits in the queue, never
+  dropped" (Q-R7, DO-21.3).
+- Decision 3: the refusal table gives every `trigger_kind` of decision 1 a row: `replay` and `fork` are shaped as
+  interactive runs, a child run is never admitted on its own, `principal_inactive` cancels and
+  `control_state_unavailable` re-queues (B:ADR-0113~workflow-engine:R3.1).
+- Decision 3: the run deadline stays at 30 days by default and 90 at most; a long process is a chain of short runs
+  over a record's lifecycle (N5, ADR-0126 (Accepted)).
+- Decision 5: a freeze has no time limit, and the retention lane skips the events it holds and counts them
+  (B:agent-lifecycle:R7.2~telemetry-and-audit:R5.5).

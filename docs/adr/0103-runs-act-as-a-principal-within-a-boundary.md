@@ -117,7 +117,7 @@ layers, field security applied to agents and search too), and on the call on DO-
   Rejected: cost and configuration grow with every realm (measured in planning on Keycloak 26.7.2, on a contended host,
   ratios only), while Organizations route within one realm.
 - **The organization claim as the tenant binding.** Rejected: a token claim would become tenant context
-  (CLAUDE.md:188-189), and a membership list kept in Keycloak would have to agree with the platform's (failure-modes #2).
+  (CLAUDE.md:192-193), and a membership list kept in Keycloak would have to agree with the platform's (failure-modes #2).
 - **A separate principal table.** Rejected for v1: every foreign key to `platform.users` would move, and two identity
   tables would answer one question; revisit if agent identities with their own grants arrive (FOG-80).
 - **Remove email linking at once.** Rejected: invitations rely on it until claims ship; the interim rule narrows it.
@@ -126,8 +126,10 @@ layers, field security applied to agents and search too), and on the call on DO-
 
 - Phasing: the interim linking rule (foundations-hardening/02) and the 300 s realm (org-and-principals/01) in W1 P0;
   service principals and run-as (org-and-principals/03), the actor context at every door with the boundaries
-  (record-access/04) and the principal binding on manual and Data Hub runs (workflow-triggers/01) in W1 P1;
-  Organizations, invitation claims, per-tenant SSO, MFA, step-up and API keys in W2.
+  (record-access/04), the principal binding on manual and Data Hub runs (workflow-triggers/01), and workflow-triggers'
+  reader of outbox `platform.service_principal.grants_changed`, through which admission refuses
+  `binding_needs_review` (decision 4; after org-and-principals/03), in W1 P1; Organizations, invitation claims,
+  per-tenant SSO, MFA, step-up and API keys in W2.
 - A version with an unattended trigger cannot be published until a service principal is bound (workflow-triggers);
   record-access keys its closure by principal, so a service principal gets a `studio.principal_scopes` row (ADR 0105).
 - `platform.users` holds tenant-owned rows and stays without RLS, stated: offboarding suspends them at filing and
@@ -145,7 +147,7 @@ layers, field security applied to agents and search too), and on the call on DO-
   `membership_lookup.py:200-202`, worth reopening because an email is not a stable identifier and a `sub` is unique
   only within its issuer; contradicts `infra/keycloak/dw-realm.json:12-14` (8-hour tokens). Closes ADR 0024's Open 2 in
   two steps (the interim rule, then claims). Retires the stamped reach of `contracts.py:126-127` with ADR 0105.
-  Reinforces CLAUDE.md:188-189; consistent with ADR 0011 (a lane audits as itself) and ADR 0024.
+  Reinforces CLAUDE.md:192-193; consistent with ADR 0011 (a lane audits as itself) and ADR 0024.
 - si-platform: diverges from si-platform `docs/adr/0035-each-tenant-signs-in-with-its-own-idp.md` (one realm with
   Organizations and a platform-side binding, not an issuer per tenant), porting its `amr` check and the
   `email_verified` semantics of `packages/python/platform/si_core/src/si_core/application/identity.py`.
@@ -180,3 +182,10 @@ layers, field security applied to agents and search too), and on the call on DO-
   that rested on a provisional DO-39 now names it decided.
 - dw-proterial is asked, before foundations-hardening/02 merges, whether an import path depends on unverified email
   linking (DO-17.1 (a)).
+
+## Amendments (2026-10-24)
+
+- Đạt accepted the open recommendations of the second consistency check; the status stays Accepted.
+- Phasing: decision 4's `binding_needs_review` has its W1 reader, workflow-triggers' handler of
+  `platform.service_principal.grants_changed`, so a service principal whose grants grew after binding stops at
+  admission (H:org-and-principals:R6.6~workflow-triggers:R3.4).

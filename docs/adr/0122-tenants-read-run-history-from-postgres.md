@@ -83,31 +83,45 @@ ADR 0121, which owns the usage ledger whose screens and retention this ADR also 
    written by the worker lane `audit_export`) is gated by the `audit_export` feature, its first
    reader.
 7. **One retention policy, one owner, a remover for every store.**
-   `configs/policies/retention@1.8.0.yaml` replaces 1.7.0, and telemetry-and-audit owns the file:
-   compliance-pdpl adds its stores' rows in 1.9.0, after it. The terms are provisional, versioned
-   data, UNVERIFIED until counsel confirms them before shadow runs; counsel changes a number with a
-   new policy version, never with code (DO-52 (a)). Run steps keep 30 days, as YC88 asks, so a lane
-   deletes them: dropping a monthly partition would keep rows for 30 to 61 days. Unfinished runs are
-   never touched, and each row below has a remover, a lane that reads its term (YC88), and a test.
+   `configs/policies/retention@1.8.0.yaml` replaces 1.7.0. telemetry-and-audit owns the file's
+   format, one entry per `schema.table`, and its retention lane; each ticket that registers a table
+   adds that table's term to the file in the same change, so the catalog test that every registered
+   table has a term (studio-skeleton R3.7) passes from the registration on. compliance-pdpl adds its
+   stores' rows that way in 1.9.0, after 1.8.0, and a store that ships later brings its row with it,
+   the per-tenant analytics store of ADR-0127 (Accepted) included (W3). The terms are provisional,
+   versioned data, UNVERIFIED until counsel confirms them before shadow runs; counsel changes a
+   number with a new policy version, never with code (DO-52 (a)). Run steps keep 30 days, as YC88
+   asks, so a lane deletes them: dropping a monthly partition would keep rows for 30 to 61 days.
+   Unfinished runs are never touched, and each row below has a remover, a lane that reads its term
+   (YC88), and a test.
 
-| Store                                                                  | Term                                                                                     | Remover                                 |
-| ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | --------------------------------------- |
-| usage events (`platform.usage_events`)                                 | 395 days                                                                                 | DROP PARTITION                          |
-| usage rollups (`platform.usage_daily`)                                 | 760 days                                                                                 | lane DELETE                             |
-| `platform.budget_leases`                                               | 30 days after close                                                                      | lane DELETE                             |
-| run steps (`platform.run_steps`)                                       | 30 days (YC88)                                                                           | lane DELETE                             |
-| step payload objects                                                   | 30 days                                                                                  | lane deletes objects                    |
-| run payload columns (`input`, `result`, `error`)                       | 90 days after terminal                                                                   | lane clears                             |
-| run rows (`platform.worker_runs`)                                      | 395 days after terminal, skipping runs that memory references                            | lane DELETE                             |
-| tool outputs (`platform.tool_executions.output`)                       | 30 days                                                                                  | lane clears                             |
-| Langfuse data                                                          | 30 days                                                                                  | mechanism open                          |
-| inbound events (`studio.inbound_events`)                               | 30 days                                                                                  | lane DELETE                             |
-| trigger deliveries (`studio.trigger_deliveries`)                       | 90 days                                                                                  | lane DELETE                             |
-| checkpoints                                                            | 24 hours after the run ends                                                              | lane DELETE                             |
-| inbound event dedupe keys                                              | 72 hours                                                                                 | lane DELETE                             |
-| contact suppressions (`platform.contact_suppressions`, address hashes) | while the tenant is a customer; only offboarding or a data subject's request removes one | offboarding purge, data-subject erasure |
-| conversations (`studio.conversations`, `studio.conversation_messages`) | a provisional term Đạt sets, owed                                                        | lane DELETE                             |
-| audit log (`platform.audit_events`)                                    | 1095 days, unchanged                                                                     | DROP PARTITION                          |
+| Store                                                                  | Term                                                                                     | Remover                                         |
+| ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| usage events (`platform.usage_events`)                                 | 395 days                                                                                 | DROP PARTITION                                  |
+| usage rollups (`platform.usage_daily`)                                 | 760 days                                                                                 | lane DELETE                                     |
+| `platform.budget_counters`                                             | 395 days (13 months) after the window ends                                               | lane DELETE                                     |
+| `platform.budget_leases`                                               | 30 days after close                                                                      | lane DELETE                                     |
+| run steps (`platform.run_steps`)                                       | 30 days (YC88)                                                                           | lane DELETE                                     |
+| step payload objects                                                   | 30 days                                                                                  | lane deletes objects                            |
+| run payload columns (`input`, `result`, `error`)                       | 90 days after terminal                                                                   | lane clears                                     |
+| run rows (`platform.worker_runs`)                                      | 395 days after terminal, skipping runs that memory references                            | lane DELETE                                     |
+| tool outputs (`platform.tool_executions.output`)                       | 30 days                                                                                  | lane clears through a SECURITY DEFINER function |
+| Langfuse data                                                          | 30 days                                                                                  | mechanism open                                  |
+| inbound events (`studio.inbound_events`)                               | 30 days                                                                                  | lane DELETE                                     |
+| trigger deliveries (`studio.trigger_deliveries`)                       | 90 days                                                                                  | lane DELETE                                     |
+| checkpoints                                                            | 24 hours after the run ends                                                              | lane DELETE                                     |
+| inbound event dedupe keys                                              | 72 hours                                                                                 | lane DELETE                                     |
+| contact suppressions (`platform.contact_suppressions`, address hashes) | while the tenant is a customer; only offboarding or a data subject's request removes one | offboarding purge, data-subject erasure         |
+| conversations (`studio.conversations`, `studio.conversation_messages`) | 90 days (DO-52)                                                                          | lane DELETE                                     |
+| audit log (`platform.audit_events`)                                    | 1095 days, unchanged                                                                     | DROP PARTITION                                  |
+
+The lane deleting inbound events skips one that a `queued` run still points to or that a freeze
+holds, and counts the held ones on a metric: a freeze has no time limit (ADR 0120 decision 7), and
+a held event's sender was already answered 2xx. `dw_app` holds no UPDATE on
+`platform.tool_executions` (foundations-hardening R6.3), so the lane clears `output` through a
+narrow SECURITY DEFINER function that nulls that one column, and only past its term. The DROP
+PARTITION rows go through `platform.drop_expired_partitions(cutoffs jsonb)`, one cutoff per parent
+read from this file, which usage-and-limits 02 owns in W1.
 
 ## Alternatives considered
 
@@ -151,7 +165,7 @@ ADR 0121, which owns the usage ledger whose screens and retention this ADR also 
   logs with identifiers only, `traceparent` from browser to worker), re-derived here and keeping the
   OTLP span export this repository already has; diverges from si-platform
   `docs/adr/0044-approval-runs-narrowed-by-the-record-workspace-history-append-only-unpartitioned.md`,
-  because step volume is unbounded (`CLAUDE.md:288`) and D1's workspace tree is narrowed in
+  because step volume is unbounded (`CLAUDE.md:294`) and D1's workspace tree is narrowed in
   queries rather than by a workspace RLS boundary.
 
 ## Open
@@ -162,7 +176,8 @@ ADR 0121, which owns the usage ledger whose screens and retention this ADR also 
    2026-10-23 (DO-52 (a)): decision 7's table is the provisional set, its own numbers standing where
    it names a store and DO-52's filling the stores it lacked, plus the two rows it was missing
    (contact suppressions, conversations). Still with counsel: the final terms and the erasure of
-   `user_id`; still owed by Đạt: the conversation term.
+   `user_id`. Answered 2026-10-24 by Đạt for the conversation term: 90 days, provisional and
+   UNVERIFIED like the rest (DO-52).
 2. **DO-51, counsel and the requester.** Is content capture allowed, who enables it, and for how
    long (at most 7 days here)? Answered 2026-10-23 (DO-51.1 (a)): allowed as decision 5 says, in
    W2, the tenant opting in, audited, for at most 7 days and read only within the tenant; counsel
@@ -184,3 +199,21 @@ Accepted by Đạt on 2026-10-23 with these amendments from the decision brief:
   go from 90 to 30 days by lane (YC88); rows added for trigger deliveries, contact suppressions and
   conversations (DO-52 (a)).
 - Open: DO-52 partly answered; both DO-51 questions answered.
+
+## Amendments (2026-10-24)
+
+Amended by Đạt on 2026-10-24, who accepted every recommendation the second consistency check left
+open:
+
+- Decision 7: telemetry-and-audit owns the file's format (one entry per `schema.table`) and its
+  lane, and each ticket that registers a table adds that table's term in the same change.
+- Decision 7 and Open 1: conversations are kept 90 days, provisional and UNVERIFIED (DO-52;
+  H:compliance-pdpl:R5.1~requirements.md:419).
+- Decision 7: `platform.budget_counters` is kept 13 months, provisional and UNVERIFIED (ADR 0121;
+  D:ADR-0121~usage-and-limits:R5.7).
+- Decision 7: tool outputs are cleared through a narrow SECURITY DEFINER function, since `dw_app`
+  holds no UPDATE on `platform.tool_executions` (H:ADR-0122~foundations-hardening:R6.3).
+- Decision 7: the lane skips inbound events a freeze holds and counts them, a freeze having no time
+  limit (B:agent-lifecycle:R7.2~telemetry-and-audit:R5.5).
+- Decision 7: DROP PARTITION goes through `platform.drop_expired_partitions(cutoffs jsonb)`, which
+  usage-and-limits 02 owns in W1.

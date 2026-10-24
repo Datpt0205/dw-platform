@@ -67,9 +67,16 @@ through this ADR's `LimitsPort`, was accepted with it.
    and `soft` in v1, `approval` in v1.5. Behavioural limits (steps, model and tool calls, wall
    clock, per-run cost and tokens) live in the agent or workflow version, clamped by plan maxima;
    operational limits on money, tokens, runs and concurrency per window live in audited
-   `platform.limit_policies` rows a tenant admin changes without republishing. A policy may name its
-   purposes, so builder assistance, test runs and evaluations get caps of their own. Threshold
-   alerts emit `usage.limit.threshold_crossed` once per policy, window and threshold.
+   `platform.limit_policies` rows a tenant admin changes without republishing. A row names its scope
+   through typed foreign keys, `workspace_id`, `user_id` and `artifact_id` (an agent or workflow),
+   each `ON DELETE CASCADE`, exactly one of them set below the tenant (`num_nonnulls(...) = 1`) and
+   none for a tenant-wide limit, the way ADR 0115 keys secret subjects, so a limit whose workspace,
+   user or artifact is deleted goes with it. Lowering a limit takes one person and an audit event;
+   raising one takes a maker and a different checker (DO-07), a path W1 does not have, so W1 refuses
+   every raise (closed while missing) and the pilot's caps are seeded at the right numbers
+   (DO-59.1). A policy may name its purposes, so builder assistance, test runs and evaluations get
+   caps of their own. Threshold alerts emit `usage.limit.threshold_crossed` once per policy, window
+   and threshold.
 5. **Hard money and token limits are leases.** At admission, in one database transaction, the
    runner locks the chain's `platform.budget_counters` rows in canonical order (scope rank, then id,
    so admissions cannot deadlock), counts runs and concurrent runs, and opens one
@@ -79,18 +86,21 @@ through this ADR's `LimitsPort`, was accepted with it.
    person releases the lease and the resume opens a new one. A `ReapTarget` on the reaper lane
    settles crashed runs' leases as `system:reaper` (ADR 0011). Code sandbox time, in the unit of
    decision 3, and concurrency use the same leases (ADR 0119). A lane prunes the counters of past
-   windows, since each window adds a row (`failure-modes.md` #6).
+   windows, since each window adds a row (`failure-modes.md` #6), reading its terms from the
+   retention policy: a counter goes 13 months after its window ends, as the ledger does, and a
+   lease 30 days after it closes (ADR 0122).
 6. **When a limit is hit.** Admission happens in one place, the runner, when the `studio_runs`
    lane claims the run (ADR 0113 decision 3); no API dependency answers 429 for a Studio run, and
    429 stays only on the old inline path (`langgraph_runner.py:246-264`). Missing concurrency
-   re-queues every kind. A spent window ends an interactive run (`chat`, `manual`, `test`) `failed`
-   with `details.reason_code = limit_exceeded`, the metric, scope, window and `resets_at`; holds a
-   `datahub`, `provider_app` or `record_event` run `queued` until `resets_at` or a raised limit,
-   never dropped; records a `schedule` fire (W2) as `limit_refused` instead of holding it; and ends
-   a gate run `error` with `limit_exceeded` and no HTTP status. A child run shares its root's lease
-   and is not admitted again (DO-21.3). Mid-run the run stops at the next model call, tool call or
-   node boundary with `limit_exceeded` and no retry, executed effects kept and audited; never a
-   silent downgrade.
+   re-queues every kind. A spent window ends an interactive run (`chat`, `manual`, `test`, `replay`,
+   `fork`; ADR 0113 decision 3) `failed` with `details.reason_code = limit_exceeded`, the metric,
+   scope, window and `resets_at`; holds a `datahub`, `provider_app` or `record_event` run `queued`
+   until `resets_at` or a raised limit, never dropped; records a `schedule` fire (W2) as
+   `limit_refused` and skips it instead of holding it, because holding every missed fire would
+   release them all at once when the window resets; and ends a gate run `error` with
+   `limit_exceeded` and no HTTP status. A child run shares its root's lease and is not admitted
+   again (DO-21.3). Mid-run the run stops at the next model call, tool call or node boundary with
+   `limit_exceeded` and no retry, executed effects kept and audited; never a silent downgrade.
 7. **One owner, no back door.** `RunBudgetLedger`, `RunBudgetMiddleware`, `RunAllowancePort`,
    `DailyAllowance`, `RuntimeSeam.budget` and `platform.tenant_daily_spend_guard` are replaced in the
    same slice by a new package, `packages/python/dw_usage`; the runtime declares `LimitsPort` and
@@ -152,10 +162,11 @@ through this ADR's `LimitsPort`, was accepted with it.
   (YC6); its `user_id` is personal data, so erasing it on a data subject's request still needs
   counsel's decision (DO-52, ADR 0122). `usage-and-limits` lands before any deployed Studio run is
   admitted.
-- The pruning lane of decision 5 needs a term for `platform.budget_counters` in the retention
-  policy (ADR 0122). A limit left behind by an archived workspace or a departed user needs either a
-  cleanup rule or typed foreign-key columns per scope with `num_nonnulls(...) = 1` and
-  `ON DELETE CASCADE`, as ADR 0115 keys secret subjects; usage-and-limits weighs the two.
+- The pruning lane of decision 5 reads its terms from the retention policy (ADR 0122):
+  `platform.budget_counters` 13 months (395 days) after a window ends and `platform.budget_leases`
+  30 days after close, provisional and UNVERIFIED like every term there. A limit whose workspace,
+  user or artifact is deleted goes with it through decision 4's typed foreign keys, so no cleanup
+  rule is needed.
 
 ### Contradictions and divergences
 
@@ -163,18 +174,20 @@ through this ADR's `LimitsPort`, was accepted with it.
   of `2b5ff2bceb06_tenant_daily_spend_guard.py:14-17` and `DEFAULT_PLANS`, but worth reopening
   because Studio needs a per-call source, now shipped with its readers, and a code copy of the plan
   catalogue drifts (`failure-modes.md` #2)._ `configs/policies/retention@1.7.0.yaml:72-73` goes too.
-- Generalises `CLAUDE.md:256-261` (the plan's limit enforced where a run begins, through
+- Generalises `CLAUDE.md:260-265` (the plan's limit enforced where a run begins, through
   `RunAllowancePort`) into the `LimitsPort` scope chain; the runner stays the place. The sentence is
   amended on acceptance (DO-21.2): a run's limits are still enforced where it begins, in the runner,
   and a Studio run begins when the `studio_runs` lane hands it over; every limit on the scope chain
   comes through `LimitsPort`, which the runtime declares and `dw_usage` satisfies, and
-  `RunAllowancePort` goes.
-- _Contradicts `CLAUDE.md:181` (every tenant-scoped table has `workspace_id`) for the tenant-level
+  `RunAllowancePort` goes. Since 2026-10-24 the same rule names decision 6's `schedule` exception
+  beside "a triggered one waits in the queue, never dropped" (Q-R7).
+- _Contradicts `CLAUDE.md:185` (every tenant-scoped table has `workspace_id`) for the tenant-level
   `platform.limit_policies` and `platform.budget_counters`, but worth reopening because a workspace
   is one scope of the chain, as with `platform.policy_overrides`
   (`45dc1b5e0125_platform_policy_overrides.py:35-38`)._ Settled by amendment A6 (ADR 0100): both
-  tables are tenant-wide, keyed by `(scope_type, scope_id)`, and listed with this reason in
-  `test_rls_coverage.py`.
+  tables are tenant-wide and listed with this reason in `test_rls_coverage.py`;
+  `platform.budget_counters` is keyed by `(scope_type, scope_id)`, and `platform.limit_policies` by
+  decision 4's typed scope columns.
 - _Contradicts `dw_agent_runtime/adapters/langgraph_runner.py:255-257` (no limit refuses a
   resume), but worth reopening because money spent after a resume is new spend; runs per day is
   still not counted again._
@@ -211,7 +224,8 @@ through this ADR's `LimitsPort`, was accepted with it.
 6. **DO-07, Đạt with the requester.** D11 gives every tenant configuration change a maker and a
    checker; whether that covers every `platform.limit_policies` change or only loosening is open.
    Answered 2026-10-23 by the requester and Đạt: lowering a limit takes one person and an audit
-   event, and raising one always takes a maker and a different checker.
+   event, and raising one always takes a maker and a different checker. On 2026-10-24 they added
+   that W1, having no two-person path for a raise, refuses every raise (decision 4).
 
 ## Acceptance (2026-10-23)
 
@@ -230,6 +244,22 @@ brief:
 - Decision 8: the per-process adapter ships in W1, GCRA on Valkey in W2 (DO-49 (a), Q3 (a)).
 - Confirmed calls: DO-50 and DO-43 confirmed, DO-29.2 added.
 - Consequences and Contradictions: offboarding purges the ledger after the export (YC6); the
-  counters' term and orphaned limits owed; the `CLAUDE.md:256-261` amendment written out; both
+  counters' term and orphaned limits owed; the `CLAUDE.md:260-265` amendment written out; both
   limit tables tenant-wide under amendment A6.
 - Open: DO-21, DO-59, DO-50, DO-43, DO-49 and DO-07 answered.
+
+## Amendments (2026-10-24)
+
+Amended by Đạt on 2026-10-24, who accepted every recommendation the second consistency check left
+open, with the D11 cases scoped by the requester and Đạt:
+
+- Decision 4: `platform.limit_policies` names its scope through typed foreign keys with
+  `ON DELETE CASCADE` instead of `(scope_type, scope_id)`, so an orphaned limit removes itself
+  (F:ADR-0121~usage-and-limits:dữ-liệu); lowering a limit takes one person and raising one two,
+  and W1, which has no two-person path, refuses every raise while the pilot's caps are seeded
+  right.
+- Decision 5 and Consequences: counters are kept 13 months and leases 30 days after close, both
+  read from the retention policy, provisional and UNVERIFIED (D:ADR-0121~usage-and-limits:R5.7).
+- Decision 6 and Contradictions: the `schedule` exception states its reason, and `CLAUDE.md`
+  (Agent and tool rules) now names it (Q-R7); `replay` and `fork` are interactive runs, as
+  ADR 0113 decision 3 now lists them.

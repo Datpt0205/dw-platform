@@ -59,14 +59,15 @@ repository root. External facts were gathered by the Studio research on 2026-10-
    `delegation.ask_before` and `route_class` (both tighten-only), `conversation`, `surfaces` (a subset
    of `chat`, `workflow_node`, `link`), `output_schema`, `ai_risk_tier`, `purpose`. There is no
    `studio.agent_versions` table.
-3. **Settings beside the versions.** `studio.agent_settings` (tenant-only RLS like the envelope):
+3. **Settings beside the versions.** `studio.agent_settings` (tenant-only RLS like the envelope, and
+   listed as tenant-wide with that reason under amendment A6, ADR-0100):
    `artifact_id` (composite FK to `studio.artifacts`, `ON DELETE CASCADE`), `audience` jsonb
    (`dw.audience/v1`, ADR-0102), `owner_user_id` (the accountable owner under ADR-0103's column
    contract), `enabled boolean NOT NULL` with no default, `row_version`. A change is audited as
    `studio.agent.settings_changed` and makes no version: who may invoke an agent is not what it does.
    The data boundary is derived at publish from the toolset's object tools (object, action) and
    `field_caps` into `studio.actor_boundaries` (ADR-0103, ADR-0105). agent-builder registers
-   `studio.agent.read`, `studio.agent.author` and `studio.agent.settings.manage`; submit, approve,
+   `studio.agents.read`, `studio.agents.author` and `studio.agents.settings.manage`; submit, approve,
    retire, kill and freeze stay with ADR-0120.
 4. **Instructions are linted text inside a platform frame, never a text template.** The system
    message is the frame prompt `studio.agent_frame@1.0.0` (under `configs/prompts/studio/`, rendered by
@@ -81,7 +82,7 @@ repository root. External facts were gathered by the Studio research on 2026-10-
    `contain_untrusted`, serves agents and workflow AI nodes.
 5. **Compiled per version inside the existing runner, in the worker.** A `StudioGraphSource` beside
    `GraphRegistry` answers `hosts()` for any `RunContext.artifact` of kind `agent`. A version compiles
-   per `(tenant_id, agent_version_id)` into an LRU of at most 256 entries (CLAUDE.md:230), loads under
+   per `(tenant_id, agent_version_id)` into an LRU of at most 256 entries (CLAUDE.md:234), loads under
    RLS, and is refused when its stored `definition_hash` differs from a recomputed one. It is assembled
    on the platform's `create_agent` stack: pinned tools (ADR-0116), run control (ADR-0120),
    `StudioModelSelection` outermost, then limits and the run budget (ADR-0121), one approval per step,
@@ -100,7 +101,7 @@ repository root. External facts were gathered by the Studio research on 2026-10-
    `workspace_id` and `owner_user_id` through a composite foreign key, so the two copies cannot differ.
    Messages are range-partitioned by month with a DEFAULT partition, registered by one row in
    `platform.time_partitioned_tables`, and no partition grants `dw_app` anything, so a partition read
-   by name shows nobody's messages (DO-02.2). RLS: the workspace shape of CLAUDE.md:194-203 as the
+   by name shows nobody's messages (DO-02.2). RLS: the workspace shape of CLAUDE.md:198-207 as the
    PERMISSIVE policy plus a RESTRICTIVE policy of the form `tenant AND (owner OR scope)`,
    `tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid AND (owner_user_id = NULLIF(current_setting('app.user_id', true), '')::uuid OR current_setting('app.workspace_scope', true) = 'tenant')`,
    so an unset user reads nothing and only a lane listed in the registry of `tenant_wide_scope()` (in
@@ -157,19 +158,19 @@ repository root. External facts were gathered by the Studio research on 2026-10-
   is the precedent); P2 relays events over an ephemeral Valkey channel, the transcript staying the truth
   (CLAUDE.md:64). The first use of a version pays its compile (agent-builder 01, FOG-36).
 - Harder: no tenant role reads a person's conversation to investigate a complaint in v1; every link
-  call pays queue latency; a tenant cannot change the frame; the conversation retention term, a
-  provisional UNVERIFIED number Đạt sets in the retention policy (DO-52, ADR-0122), is still owed.
+  call pays queue latency; a tenant cannot change the frame; conversations are kept 90 days, a
+  provisional UNVERIFIED term in the retention policy until counsel confirms it (DO-52, ADR-0122).
 
 ### Contradictions and amendments
 
 - Reinforces CLAUDE.md:54 ("never a super-agent").
-- _Contradicts CLAUDE.md:194-203 (`app.workspace_scope` read only inside `tenant AND (workspace OR scope)`,
+- _Contradicts CLAUDE.md:198-207 (`app.workspace_scope` read only inside `tenant AND (workspace OR scope)`,
   enforced by `packages/python/dw_platform/tests/integration/test_rls_coverage.py:427-433`), worth
   reopening because a conversation is narrowed to its owner while offboarding must still export it. The
   owner policy keeps the tenant clause beside the scope, `tenant AND (owner OR scope)`, so the test that
   holds the scope beside a pure tenant clause passes it as written; CLAUDE.md is amended to name the
   owner form beside the workspace form._
-- _Contradicts CLAUDE.md:209-212 (every versioned prompt resolves through `TenantOverlay`), worth
+- _Contradicts CLAUDE.md:213-216 (every versioned prompt resolves through `TenantOverlay`), worth
   reopening because the frame is the containment: `studio.agent_frame` resolves at the platform layer
   only, the question ADR-0110 already asks about tenant overrides of platform prompts._
 - `configs/workers/README.md:14-17` is stale on autonomy and is corrected by foundations-hardening.
@@ -206,3 +207,15 @@ Accepted by Đạt on 2026-10-23 with these amendments from the decision brief:
   conversation retention term is DO-52's to set.
 - Contradictions: the owner policy passes the scope test as written; CLAUDE.md names the owner form.
 - Open: DO-44 answered except counsel's part; DO-05, DO-40 and DO-30 answered.
+
+## Amendments (2026-10-24)
+
+Amended by Đạt on 2026-10-24, who accepted every recommendation the second consistency check left
+open:
+
+- Decision 3: permission keys name their area in the plural, `studio.<areas>.<verb>`, so
+  agent-builder registers `studio.agents.read`, `studio.agents.author` and
+  `studio.agents.settings.manage`; `studio.agent_settings` keeps `artifact_id`, `owner_user_id` and
+  tenant-only RLS as decision 3 says, and joins the list of tenant-wide tables with its reason
+  (F:ADR-0117~agent-builder:dữ-liệu).
+- Consequences: conversations are kept 90 days, provisional and UNVERIFIED (DO-52).

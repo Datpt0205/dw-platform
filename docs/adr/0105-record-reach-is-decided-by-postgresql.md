@@ -33,7 +33,7 @@ and D12 (the scale target), and on the call on DO-11, decided 2026-10-23.
   took 1.1-1.4 s; exceptions as an OR'd subquery took 855-898 ms where an indexable array on the record took 5-42 ms.
 - **What would open a record table today.** A runtime partition gets a tenant-only policy and `dw_app` default
   privileges (`db/migrations/sql/0013_partition_maintenance.sql:63-83`); `app.workspace_scope` is set only by offboarding
-  (`packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:51-54`, as CLAUDE.md:196-198 says);
+  (`packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:51-54`, as CLAUDE.md:200-202 says);
   knowledge principals come from global role keys fixed at ingest (`packages/python/dw_knowledge/src/dw_knowledge/gateway.py:156-167`).
 - **Prior art.** Dataverse privileges are cumulative ("another role can't hide a specific contact") and sharing is for
   exceptions (https://learn.microsoft.com/en-us/power-platform/admin/wp-security-cds, 2026-10-05). Salesforce documents
@@ -54,10 +54,11 @@ and D12 (the scale target), and on the call on DO-11, decided 2026-10-23.
 2. **Reach is the union of five additive grants; nothing denies in v1.** (a) Per-object `default_access`: `private`
    (default), `public_read`, `public_read_write` (`ck_object_defs_default_access`), tenant-wide for every holder of the
    object's read (update) privilege, never granting delete, assign or share; it is set only in the object's
-   `dw.object/v1` version, whose publish takes a second person (D11, ADR-0107), never through a route of its own, and
-   a trigger bumps the tenant's access epoch when it changes. (b) Depth (ADR-0104) over the record's
-   owner (`owner_id`, `owner_kind` user or team) and owning workspace (`workspace_id`, matched through `access_key`,
-   a stored column generated from object and owning workspace), unioned over every membership.
+   `dw.object/v1` version, never through a route of its own: a version that widens it is published through a second
+   person (D11, ADR-0107), one that only narrows it by its submitter alone with an audit event (ADR-0120 decision 1's
+   tighten-only branch), and a trigger bumps the tenant's access epoch when it changes. (b) Depth (ADR-0104) over the
+   record's owner (`owner_id`, `owner_kind` user or team) and owning workspace (`workspace_id`, matched through
+   `access_key`, a stored column generated from object and owning workspace), unioned over every membership.
    (c) Hierarchy access, switchable per object (`grant_hierarchy boolean NOT NULL DEFAULT true`): a line manager holding
    read (update) on the object at `own` or more reads (updates) records owned by any transitive subordinate, never
    deleting, assigning or sharing them. (d) Manual shares of one record to a user, team, workspace or workspace
@@ -85,7 +86,9 @@ and D12 (the scale target), and on the call on DO-11, decided 2026-10-23.
 5. **One tenant-wide scope, one setter.** `app.workspace_scope = 'tenant'` means every row of the bound tenant, record
    reach included. Only `tenant_wide_scope(session, tenant_id, lane)` in `tenant_session.py` sets it, per transaction,
    for a lane in a registry frozen at the worker's composition root, each entry one reviewed line with its reason; a
-   source scan fails any other setter, and lanes audit as `system:<lane>` (ADR-0011). W1 registers `offboarding` only;
+   source scan fails any other setter. A registered lane audits by ADR-0011's rule: as `system:<lane>` when it acts on
+   its own, and as the person whose recorded decision it carries out, naming itself in `details.lane`. W1 registers
+   `offboarding` only, whose purge audits the operator who requested it with `details.lane = offboarding`;
    `record_sharing`, `record_index`, custom-objects' field purge and index backfill and compliance-pdpl's
    data-subject-request lane join in W2. The cost is stated: a registered lane also sees every table narrowed to its
    owner, conversations included (ADR-0117), so each entry says whether the lane needs those tables, and a lane that
@@ -102,9 +105,10 @@ and D12 (the scale target), and on the call on DO-11, decided 2026-10-23.
    non-personal fields (ADR-0106), and filters every index mutation on `tenant_id` and `record_id`.
 8. **Uniqueness checks bypass RLS by design.** A unique index sees every row, so a refusal tells that some record holds
    the value. Accepted as a residual oracle (DO-35): uniqueness is object-wide, and a duplicate gets a generic 409
-   naming neither value nor record, even for a caller who can read it, under a per-user rate limit whose threshold and
-   window start as a constant marked as an assumption (FOG-11 re-measures it), with an audit event; de-duplication
-   runs as the intake service principal.
+   naming neither value nor record, even for a caller who can read it, under a per-user rate limit: at most 20
+   `duplicate_value` refusals per person and object in a sliding 10-minute window, beyond which the API answers 429
+   with an audit event. Both numbers are provisional and UNVERIFIED until counsel reviews them on real data (DO-35)
+   and FOG-11 re-measures them; de-duplication runs as the intake service principal.
 
 ## Alternatives considered
 
@@ -139,8 +143,11 @@ and D12 (the scale target), and on the call on DO-11, decided 2026-10-23.
   The `pg_depend` and `dw_app` tests are not optional: a check that reads policy text cannot see narrowing inside a
   function (failure-modes #0).
 - **Migrations.** Record columns and indexes leading with `tenant_id`, the policy template, the closure tables, views,
-  functions and triggers, `studio.record_shares`; a child-table template (`tenant AND (scope OR EXISTS (parent))`);
-  `platform._ensure_one_partition` must give a record partition the full policy set, not the tenant-only one (FOG-32).
+  functions and triggers, `studio.record_shares`; a child-table template (`tenant AND (scope OR EXISTS (parent))`).
+  The record partitions are the hash partitions that the migration creating `studio.records` makes (custom-objects/02,
+  ADR-0107 decision 2), each given the full policy set from the template (record-access/03), which the catalog test
+  compares with the parent's; `platform._ensure_one_partition` serves only the range-partitioned tables of the
+  registry (ADR-0100 decision 7), never makes a record partition, and so gains no record policy (FOG-32).
   Retired with record-access 12: `record_visibility`,
   `visible_owners`, `worker_runs.actor_record_visibility` and `actor_visible_owners` (baseline lines 470-471).
 - **Phasing.** W1 ships the owner, owning workspace, default access and depth with the actor at every door; the
@@ -148,16 +155,17 @@ and D12 (the scale target), and on the call on DO-11, decided 2026-10-23.
 - **Harder.** About 1 ms per statement for closure reads (planning measurement); exact counts become capped counts;
   writes pay WITH CHECK and definer functions; triggers sit on tables other specs own; upserts under per-command
   policies need care (FOG-42).
-- Contradicts CLAUDE.md:196-198 ("Only the offboarding lane sets `app.workspace_scope`"): amendment A7 makes
+- Contradicts CLAUDE.md:200-202 ("Only the offboarding lane sets `app.workspace_scope`"): amendment A7 makes
   `tenant_wide_scope()` the only setter, for the lanes of a registry frozen at the worker's composition root (today
-  offboarding), each auditing as `system:<lane>`, with a source scan failing any other setter; worth reopening because
+  offboarding), each auditing by ADR-0011's rule (offboarding's purge in the name of the operator who requested it,
+  `details.lane = offboarding`), with a source scan failing any other setter; worth reopening because
   Studio lanes must read every record of a tenant, and one widening setting keeps one shape rule and one place to audit
-  setters. CLAUDE.md:194-195 gains a second policy shape for record tables (one RESTRICTIVE tenant policy plus the
+  setters. CLAUDE.md:198-199 gains a second policy shape for record tables (one RESTRICTIVE tenant policy plus the
   PERMISSIVE `record_access_*` set from one template, and no other policy), held by the same test.
 - Extends CLAUDE.md:62-63 (Qdrant receives trusted tenant, workspace and ACL filters from backend context) to the record
   closure, and supersedes the stamped reach of `approval_flow.py:289-294` and `container.py:223-226`.
   `studio.principal_scopes`, `studio.access_epochs` and `studio.record_shares` are tenant-wide rows under the
-  CLAUDE.md:181 exception that ADR-0100 records (amendment A6).
+  CLAUDE.md:185 exception that ADR-0100 records (amendment A6).
 - **si-platform.** Ports `packages/python/platform/si_security/src/si_security/application/record_access.py` (a
   restrictive record layer over the tenant boundary; "a share never deletes"; a superior reaches by `owner_id` only)
   and the InitPlan form of si-platform `db/si/migrations/0057_record_tenant_policies_initplan.sql`, re-deriving the
@@ -182,7 +190,7 @@ and D12 (the scale target), and on the call on DO-11, decided 2026-10-23.
    2026-10-23: option (a) on all four points; transitive hierarchy reach and shares that survive a change of owner
    ship in W2 (DO-11 (a)).
 2. **DO-13 (Đạt, before W1).** Studio maintenance lanes reuse `app.workspace_scope` through the allowlisted helper
-   (amends CLAUDE.md:196); second-language services read record values only through the API (ADR-0106); support staff
+   (amends CLAUDE.md:200); second-language services read record values only through the API (ADR-0106); support staff
    read no Studio record in v1 (a per-record support grant is a v2 question). Answered 2026-10-23: yes to all three.
    One setter and a frozen registry, offboarding only in W1, with the cost stated in decision 5 (DO-13.1 (a)); the
    RESTRICTIVE tenant policy plus PERMISSIVE `record_access_*` set from one template (DO-13.2 (a)); record values only
@@ -213,3 +221,17 @@ and D12 (the scale target), and on the call on DO-11, decided 2026-10-23.
   (DO-13.2 (a)); amendment A7 and the record shape restated; the divergence from si-platform's RESTRICTIVE record layer
   stated (DO-13.2 (a), D5).
 - Open 1 to 4 answered.
+
+## Amendments (2026-10-24)
+
+- Đạt accepted the open recommendations of the second consistency check; the status stays Accepted.
+- Decision 2: a version that only narrows `default_access` is published by its submitter alone with an audit event,
+  through ADR-0120 decision 1's tighten-only branch; widening still takes a second person (Q-R6, D11, 2026-10-24).
+- Decision 5 and Consequences: a lane carrying out a person's recorded decision audits that person and names itself
+  in `details.lane`, so offboarding's purge audits the operator who requested it with `details.lane = offboarding`;
+  `system:<lane>` is for a lane acting on its own (E:CLAUDE.md#agent-and-tool-rules~record-access:DO-13).
+- Decision 8: the rate limit's constant is 20 `duplicate_value` refusals per person and object in a sliding
+  10-minute window, then 429 with an audit event, provisional and UNVERIFIED (DO-35, 2026-10-24).
+- Consequences: the record partitions' policy set comes from the migration that creates `studio.records` and the
+  template, checked by the catalog test; `platform._ensure_one_partition` is for range-partitioned tables only
+  (F:ADR-0105~studio-skeleton:R3.2).

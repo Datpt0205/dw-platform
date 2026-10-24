@@ -66,9 +66,14 @@ v1 and v2, and on the provisional call on DO-26.
    included, are intercepted as in `simulate`, with nothing persisted in v1 (DO-26). A `critical` effect keeps its
    approval (CLAUDE.md:68-69), routed to the tester. Connector manifests declare `test_isolation` (`isolated`,
    `partial` or `none`; unknown is `none`) and, per messaging action, its recipient argument.
-5. **A non-live run stays with its tester.** Its notifications and approvals reach only the tester, in the app, never
-   through a chat channel. Spans, audit events and the usage ledger carry `run_mode`; business metrics exclude non-live
-   runs and cost metrics include them (ADR 0121, ADR 0122).
+5. **A non-live run stays with its tester.** Its notifications, and any approval it opens, reach only the tester, in
+   the app, never through a chat channel. A `human.approval` step of a `simulate` run, and of a `test` run from W2,
+   waits for no real decider: its decision is simulated, taken from the test-run form (the tester chooses approve or
+   reject) or from the quality gate's evaluation case, audited `studio.step.approval.simulated`, and it never
+   satisfies a `live` approval. In a mode other than `live` the ToolExecutor applies the run mode before a tool's
+   approval policy, so a call it intercepts opens no approval and only a call that really executes meets its approval
+   (decision 4). Spans, audit events and the usage ledger carry `run_mode`; business metrics exclude non-live runs and
+   cost metrics include them (ADR 0121, ADR 0122).
 6. **No environment container in v1.** Draft, submit and publish (ADR 0120) plus run modes are the v1 environments.
    Tenant-level changes (roles, tenant config versions, object schema) are not staged; they pass approval, version
    history and rollback (ADR 0104, ADR 0110, ADR 0107). A workspace is never an environment (D1, ADR 0102).
@@ -101,8 +106,8 @@ v1 and v2, and on the provisional call on DO-26.
   test-enabled connections, the allowlist and the egress checks (ADR 0115); workflow-builder-ui and agent-lifecycle
   share one mock output shape; workflow-engine fixes the mode at the door (ADR 0113).
 - Phasing: `simulate` with interception in the executor in W1 P0 (tenant-config/03); `test` with the allowlist and the
-  egress check in W2; a run-scoped scratch for reading a run's own intercepted writes (FOG-60) and sandbox tenants in
-  W3.
+  egress check in W2; a run-scoped scratch for reading a run's own intercepted writes (FOG-60) in W3 (v1.5), and
+  sandbox tenants in W3 (v2, decision 7).
 - Tests, each shown red by removing its guard: a test run requested as `live` is 422; a `simulate` run of a workflow
   with a Zalo step sends nothing (a recording egress double sees no call); a child of a `simulate` run asking for
   `live` runs `simulate`; a `RunContext` built without a mode intercepts; a replay of a run that sent a message sends
@@ -111,10 +116,10 @@ v1 and v2, and on the provisional call on DO-26.
   analysis mitigate); a workflow that creates a record and reads it back cannot be tested end to end until the scratch
   ships; test runs and evaluations still spend model tokens, paid from the tenant budget under purpose caps (DO-50,
   provisional; ADR 0121); v2 adds the first cross-tenant write lane besides offboarding.
-- The value `test` collides with the deployment profile `test` (CLAUDE.md:319-324): a different concept, kept apart by
+- The value `test` collides with the deployment profile `test` (CLAUDE.md:325-330): a different concept, kept apart by
   the typed `RunMode` and the glossary and never compared with the settings profile; deployment gates stay on
   `settings.is_deployed` (`apps/api/src/dw_api/settings.py:323`). Worth keeping because the UI says "Chạy thử", never
-  the code value. Nothing else is contradicted: the policy shape of CLAUDE.md:194-203 is unchanged, and the research
+  the code value. Nothing else is contradicted: the policy shape of CLAUDE.md:198-207 is unchanged, and the research
   recommendation set aside above is planning, not a decision of record.
 - si-platform: none; si-platform has no run modes. Our workspace is neither an RLS boundary nor an environment, unlike
   si-platform `docs/adr/0030-workspace-is-the-rls-boundary-accounts-are-tenant-wide.md` (ADR 0102 records that
@@ -124,12 +129,12 @@ v1 and v2, and on the provisional call on DO-26.
 
 1. **DO-26 (requester for the behaviour, Đạt for the name; before P1).** Provisional (agent, tạm theo khuyến nghị,
    2026-10-23, option (a)): a record write in a `test` run is intercepted like `simulate` and the run keeps its would-be
-   writes, a run-scoped scratch follows in v1.5, and `test` keeps its name with a typed `RunMode`. If wrong: (b) real
-   records tagged `test` need a purge lane and a filter in every list; (c) the run-scoped scratch is built now and the
-   value becomes `trial`. Answered 2026-10-23: option (a); W1 opens `simulate` only, the test-run door answering 422
-   to `test` until W2, egress refusing every mode but `live`, and the executor still intercepting a `test` run like
-   `simulate` if one arrives (DO-26.1 (a)); `test` keeps its name with a typed `RunMode`, the UI saying "Chạy thử"
-   (DO-26.2 (a)).
+   writes, a run-scoped scratch follows in W3 (v1.5), and `test` keeps its name with a typed `RunMode`. If wrong: (b)
+   real records tagged `test` need a purge lane and a filter in every list; (c) the run-scoped scratch is built now and
+   the value becomes `trial`. Answered 2026-10-23: option (a); W1 opens `simulate` only, the test-run door answering
+   422 to `test` until W2, the egress client refusing in `simulate` every purpose except `model` and read-only actions
+   (decision 3, ADR 0115 decision 6), and the executor still intercepting a `test` run like `simulate` if one arrives
+   (DO-26.1 (a)); `test` keeps its name with a typed `RunMode`, the UI saying "Chạy thử" (DO-26.2 (a)).
 2. **DO-55 (counsel and requester, before P1).** Consent wording and validity for employees' contact data used as test
    recipients, and who may add them (proposed: tenant admins, 90 days).
 3. **DO-62 (requester and counsel, before GA).** v2 sandbox tenants: billing and quota, who creates them (proposed:
@@ -144,3 +149,14 @@ v1 and v2, and on the provisional call on DO-26.
 - Status Accepted by Đạt; the decisions are accepted as written, since the phasing already opens `simulate` only in
   W1 and `test` with its recipient list in W2 (DO-26.1 (a)). No `CLAUDE.md` line changes (`:278-283` holds).
 - Open 1 answered (DO-26.1 (a), DO-26.2 (a)) and Open 3 answered (DO-62 (a)); Open 2 waits until `test` opens in W2.
+
+## Amendments (2026-10-24)
+
+- Đạt accepted the open recommendations of the second consistency check; the status stays Accepted.
+- Decision 5: a `human.approval` step of a `simulate` run, and of a `test` run from W2, takes a simulated decision
+  from the test-run form or the gate's evaluation case, audited `studio.step.approval.simulated`, never satisfying a
+  `live` approval; outside `live` the executor applies the run mode before a tool's approval policy (N2).
+- Open 1: in `simulate` the egress client refuses every purpose except `model` and read-only actions, as decision 3
+  and ADR 0115 decision 6 say, not every call of every mode but `live`
+  (B:connections-and-vault:R3.5~tenant-config:R5.4); the run-scoped scratch is W3 (v1.5) in Open 1 and in
+  Consequences alike.

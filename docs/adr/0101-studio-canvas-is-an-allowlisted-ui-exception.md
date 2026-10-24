@@ -18,7 +18,7 @@ Numbered in the block 0100-0199 reserved for Studio (ADR 0100 records the block)
 D2 makes builders business admins who work without code: they drag nodes onto a canvas, configure each node in a form
 and connect them. A workflow builder therefore needs a graph canvas: pan, zoom, edges, drop targets and keyboard paths.
 
-`CLAUDE.md:137-148` allows `antd`, `@ant-design/icons` and `@ant-design/nextjs-registry` "and nothing else", the rule
+`CLAUDE.md:140-151` allows `antd`, `@ant-design/icons` and `@ant-design/nextjs-registry` "and nothing else", the rule
 Đạt set on 2026-10-08 when he asked for antd everywhere. antd ships no graph canvas. The guard behind the rule cannot
 see a library it does not name: `apps/web/lib/__tests__/antd-only.test.ts:16-18` is a denylist of the removed modules,
 its manifest check (`:128-141`) reads the same list, and ESLint names the same modules (`apps/web/.eslintrc.json:4-37`).
@@ -87,7 +87,7 @@ it, which the spike measures rather than assumes.
   spike in `apps/web` (CSP with the nonce, the CSS layer order, bundle size, the jsdom shim, a 100-node workflow) and
   adds the canvas `{module, glob, adr}` entries in the same commit as the first canvas import.
 - The first-load cost of the canvas route is measured on its own by workflow-builder-ui ticket 01 and recorded here
-  and in the workflow-builder-ui spec: the roughly 250 kB first-load budget accepted for antd (`CLAUDE.md:159`) does
+  and in the workflow-builder-ui spec: the roughly 250 kB first-load budget accepted for antd (`CLAUDE.md:162`) does
   not cover it.
 - Tests, each shown red by removing its guard: either library imported outside `apps/web/app/studio/**/canvas/**`
   fails; a manifest other than `apps/web/package.json` declaring either fails; an unlisted runtime dependency fails;
@@ -105,7 +105,7 @@ it, which the spike measures rather than assumes.
 
 ### Contradictions (the amendment applies only when this ADR is accepted)
 
-- Contradicts `CLAUDE.md:137-148` ("and nothing else"), Đạt's 2026-10-08 antd-everywhere decision, worth reopening
+- Contradicts `CLAUDE.md:140-151` ("and nothing else"), Đạt's 2026-10-08 antd-everywhere decision, worth reopening
   because antd has no graph canvas and D2 asks for one. Amendment A3 replaces "and nothing else:" with "and nothing
   else unless an ADR admits a module for one path", names the canvas exception (`@xyflow/react` and `@dagrejs/dagre`,
   pinned exactly, only under `apps/web/app/studio/**/canvas/**`, antd still drawing every node body, panel, form and

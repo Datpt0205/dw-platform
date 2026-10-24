@@ -17,7 +17,7 @@ DO-07), so the status names the requester's direction.
 
 ## Context
 
-- **The tenant layer is promised and absent.** CLAUDE.md:219-220 says a tenant's override is "loaded at runtime from
+- **The tenant layer is promised and absent.** CLAUDE.md:223-224 says a tenant's override is "loaded at runtime from
   storage, never from the checkout". `TenantOverlay` holds both layers in memory
   (`packages/python/dw_kernel/src/dw_kernel/overlay.py:30-70`), and the prompt, tool spec, toolset and model profile
   registries are filled from `configs/` only: "nothing loads a tenant layer into them in production"
@@ -32,7 +32,7 @@ DO-07), so the status names the requester's direction.
   every tenant's copy, and every swap of a connection, a new version through the quality gate (ADR 0120).
 - **The two-person mechanics exist.** A run-less approval announces its decision as `<approval_type>.decided` in the
   decision's transaction, a strict prefix refuses the requester as decider, and a `decision_guards` entry adds a
-  per-type condition (CLAUDE.md:268-273; `packages/python/dw_agent_runtime/src/dw_agent_runtime/approval_flow.py:88-101`,
+  per-type condition (CLAUDE.md:274-279; `packages/python/dw_agent_runtime/src/dw_agent_runtime/approval_flow.py:88-101`,
   `:115-120`, `:244-245`). ADR 0012 kept separation-of-duties waivers out of it, in a table of their own. dw-proterial,
   a product built on this platform, decides tenant rule versions on the platform approval (its migrations
   `57a241ea182b` and `218118b8f0e5`).
@@ -58,16 +58,31 @@ DO-07), so the status names the requester's direction.
    a run-less approval of type `config.version` stamped with the kind's approve permission as `required_scope`
    (ADR 0004) and the audit event
    `config.version.proposed`; a proposal nobody but its maker could decide is refused before it exists (409
-   `no_checker_available`). `config.` joins `strict_approval_prefixes` with `|=` in the API and the worker, and a
-   decision guard refuses a moved base (`decision_stale`) before the decision is written. The database holds the rest
-   for every writer: `ck_config_versions_checker_not_maker`; a trigger that lets a row become `approved` only when its
-   linked approval is approved; a column grant limiting `dw_app` UPDATE to `status`, `decided_by`, `decided_at`,
-   `decision_comment` and `superseded_at`. The worker's idempotent handler for `config.version.decided` supersedes the
-   previous approved row in the same transaction, audits `config.version.approved` or `config.version.rejected`, emits
-   outbox `config.version.approved` for cache invalidation and drift, and marks a row whose world moved `rejected` with
-   `settlement_conflict`. Rollback is a new proposal, approved like any other. D11 as the requester and Đạt scoped it
-   on 2026-10-23 is "close with one, open with two": every change that widens takes the second person above, and a
-   change that only tightens, such as a narrower data route, takes one person and an audit event.
+   `conflict`, `details.reason_code` `no_checker_available`). `config.` joins `strict_approval_prefixes` with `|=` in
+   the API and the worker, so a maker deciding their own proposal gets 409 `conflict` with `second_person_required`,
+   and a decision guard refuses a moved base (`decision_stale`) before the decision is written. The database holds
+   the rest for every writer: `ck_config_versions_checker_not_maker`; a trigger that lets a row become `approved` only
+   when its linked approval is approved; a column grant limiting `dw_app` UPDATE to `status`, `decided_by`,
+   `decided_at`, `decision_comment` and `superseded_at`. The worker's idempotent handler for `config.version.decided`
+   supersedes the previous approved row in the same transaction, audits `config.version.approved` or
+   `config.version.rejected` in the decider's name (`decided_by`) with `details.lane = outbox` (ADR 0011), emits
+   outbox `config.version.approved` for cache invalidation and drift, and marks a row whose world moved `rejected`
+   with `settlement_conflict`. Rollback is a new proposal, approved like any other. D11 as the requester and Đạt
+   scoped it on 2026-10-23 is "close with one, open with two": every change that widens takes the second person
+   above, and a change that only tightens, such as a narrower data route, takes one person and an audit event. The
+   database holds that branch too: the row carries `tighten_only`, which the kind's registered comparator computes at
+   proposal against the approved row whose `document_hash` the row records; `ck_config_versions_checker_not_maker`
+   admits the maker as decider only on a `tighten_only` row; the trigger lets such a row become `approved` with no
+   linked approval only while that compared row is still the approved one; and the audit names the maker with
+   `details.path = tighten_only`, as ADR 0120 decision 1's branch does for versions. A kind with no comparator has no
+   such branch: W1's one kind, `binding_set`, registers none, so every binding-set change takes two people in W1, and
+   the first comparator ships with kind `policy` in W2. Đạt placed D11's remaining cases on 2026-10-24: re-enabling a
+   connection and adding an allowed host each take two people, through a strict run-less approval of type
+   `connections.enable` or `egress.allowed_host` whose `.decided` handler applies the change (ADR 0115); lifting a
+   tenant's freeze takes two (ADR 0120 decision 7); soft-deleting a role (ADR 0104 decision 10) and narrowing
+   `default_access` (ADR 0120 decision 1) take one person and an audit event. W1 has no two-person path for raising a
+   limit or widening the data route, so both are refused in W1 (409 `conflict`, `second_person_required`), and the
+   pilot's ceilings are set right when it is seeded.
 3. **Kinds are registered, and only readable ones exist.** `binding_set` (key: the Studio artifact id) in W1 P1;
    `prompt`, `tool_spec`, `toolset`, `model_profile` (ADR 0118) and `policy` in W2; tenant settings, the tenant's
    data route among them (YC91), are policy documents, not a kind. The kind CHECK lists only kinds that ship. A
@@ -117,10 +132,11 @@ DO-07), so the status names the requester's direction.
   second inbox, where one approval type, one strict prefix and one guard serve every kind. Role changes are the one
   exception (ADR 0104 decision 10): they keep ADR 0012's pattern, a request table applied in the checker's own
   transaction, because the anti-escalation triggers read the acting person from `app.user_id`, while this table's
-  settlement runs in a lane that audits as `system:outbox` and would be the actor they see. The two mechanisms share
-  the SQL function that finds a checker over `platform.effective_grants` (tenant-wide for roles, the proposal's
-  workspace here), `no_checker_available` and the proposal expiry rule.
-- **Decide and apply in one transaction** (si-platform's choice). Rejected for now: CLAUDE.md:268-273 prescribes the
+  settlement runs in the outbox lane, whose audit names the decider (ADR 0011) but whose transaction carries the
+  lane's own actor in `app.user_id`, the actor the triggers would see. The two mechanisms share the SQL function that
+  finds a checker over `platform.effective_grants` (tenant-wide for roles, the proposal's workspace here), the reason
+  codes `no_checker_available` and `second_person_required`, and the proposal expiry rule.
+- **Decide and apply in one transaction** (si-platform's choice). Rejected for now: CLAUDE.md:274-279 prescribes the
   outbox announcement for run-less approvals, and the guard, one open proposal per key and an idempotent settlement
   narrow the window between decision and settlement; revisit if `settlement_conflict` is ever observed.
 - **A third layer per workspace, or a field-level merge with the platform default.** Rejected: the overlay stays two
@@ -133,16 +149,16 @@ DO-07), so the status names the requester's direction.
   implements `connection_usable` and `ConnectionDependentsPort`; workflow-engine and agent-builder implement
   `RunBindingsPort` over the run manifest, not over their documents. Phasing: binding sets with maker and checker in
   W1 P1 (tenant-config/05); the five artifact kinds and the removal of `platform.policy_overrides` in W2.
-- A tenant with one admin cannot change configuration or publish until it adds a second checker (D11), and sales must
-  say that Studio needs at least two admins. Tenant-wide configuration is proposed from the maker's workspace and
-  decided there, because an approval is a workspace row.
+- A tenant with one admin changes configuration and publishes only what tightens (decision 2, ADR 0120 decision 1)
+  until it adds a second checker (D11), and sales must say that Studio needs at least two admins. Tenant-wide
+  configuration is proposed from the maker's workspace and decided there, because an approval is a workspace row.
 - Ports: `DecisionGuard` is synchronous (`approval_flow.py:47`), so the stale-base guard needs the async
   `ApprovalDecisionGuard` and `ProposedDecision` of dw-proterial's `dw_agent_runtime/approval_flow.py`, ported with its
   rule-version pattern (`dw_sales/application/rules.py`: `OVERRIDABLE`, `read_over`, `TenantRuleBook`,
   `RuleSettlement`). `ModelProfile` needs a version and `Decimal` fields before it is a hashed tenant kind (ADR 0109).
 - Migrations: an Alembic revision creates `platform.config_versions` with RLS, grants and constraints that
   `test_rls_coverage.py` and `test_privileges.py` assert; it is a tenant-wide row, tenant-only RLS as
-  `platform.policy_overrides` has today, listed with its reason under the `CLAUDE.md:181` class ADR 0100 records (A6).
+  `platform.policy_overrides` has today, listed with its reason under the `CLAUDE.md:185` class ADR 0100 records (A6).
   A later revision, in W2 with kind `policy`, drops `platform.policy_overrides`, `PolicyOverridePort` and
   `SqlPolicyOverrideRepository` once a count shows no rows in uat and production, and the table leaves the
   tenant-wide list of `test_rls_coverage.py` in the same change.
@@ -154,8 +170,8 @@ DO-07), so the status names the requester's direction.
   approved.
 - Contradicts `db/migrations/versions/45dc1b5e0125_platform_policy_overrides.py` (a mutable upsert, retired), worth
   reopening because a tenant's value must be approvable and reversible; its whole-document rule is kept. Makes
-  CLAUDE.md:219-220 true, declared and never loaded today; uses CLAUDE.md:268-273 as written and keeps
-  CLAUDE.md:224-228. Departs from the reasoning of ADR 0012 (lines 31-34) for configuration only; ADR 0012's
+  CLAUDE.md:223-224 true, declared and never loaded today; uses CLAUDE.md:274-279 as written and keeps
+  CLAUDE.md:228-232. Departs from the reasoning of ADR 0012 (lines 31-34) for configuration only; ADR 0012's
   pattern stands for waivers and for role changes (ADR 0104).
   Replaces the connections planning's map from a name to a connection id inside the document, so a connection is
   checked when its binding value is approved (ADR 0115) instead of when a version is published.
@@ -198,3 +214,20 @@ DO-07), so the status names the requester's direction.
 - Consequences: `platform.config_versions` listed as tenant-wide (A6); the removal of `platform.policy_overrides`
   timed to kind `policy` and a zero-row count (DO-27.2 (a)).
 - Open 1 to 3 answered.
+
+## Amendments (2026-10-24)
+
+- Đạt accepted the open recommendations of the second consistency check; the status stays Accepted.
+- Decision 2: the settlement audits `config.version.approved` and `config.version.rejected` in the decider's name
+  with `details.lane = outbox` (ADR 0011), not as `system:outbox`
+  (E:CLAUDE.md#agent-and-tool-rules~tenant-config:R8.10).
+- Decision 2: both refusals are 409 `conflict`, with `details.reason_code` `no_checker_available` or
+  `second_person_required`, shared with ADR 0104 (B:tenant-config:R8.8~tenant-rbac:R7.2).
+- Decision 2: the database holds the one-person branch for a change that only tightens (`tighten_only` from the
+  kind's comparator, checked against the approved row it was compared with); `binding_set` has no comparator, so W1
+  binding-set changes take two people and the branch ships with kind `policy` in W2 (F:ADR-0110~tenant-config:R8.12).
+- Decision 2: D11's remaining cases placed: re-enabling a connection and adding an allowed host take two people through
+  strict run-less approvals, lifting a freeze two, soft-deleting a role and narrowing `default_access` one; raising a
+  limit and widening the data route are refused in W1 (D:ADR-0110~connections-and-vault:api, D11, 2026-10-24).
+- Alternatives: role changes keep ADR 0012's pattern for the stated reason, restated now that the outbox lane audits
+  the decider: its transaction still carries the lane's own actor in `app.user_id`.

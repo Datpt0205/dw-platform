@@ -122,11 +122,14 @@ None of these facts has a home today:
 - record-access and tenant-rbac read the tree only through the two functions; record access's principal keys grow by
   at most six sub-tree markers per membership.
 - Phasing: W1 ships `uq_workspaces_tenant_id_id` and `tenant_members` with its status (org-and-principals 01 and 02),
-  the 503 answer to a locked or offboarding tenant's inbound events (workflow-triggers), and a minimal audience: a
+  the 503 answer to a locked or offboarding tenant's inbound events (workflow-triggers), the refusal of a locked or
+  offboarding tenant's runs at every `RunControlPort` door with `tenant_locked` and `tenant_offboarding`
+  (agent-lifecycle, reading the tenant status that foundations-hardening/02 guards), and a minimal audience: a
   `dw.audience/v1` holding the workspace condition only (W1's tree is flat, so a workspace's sub-tree is itself),
   answered by `platform.audience_matches` from a W1 ticket of org-and-principals that agent-builder calls (an empty
-  audience 422, no match 404). The tree, teams, the manager relation, archive enforcement, attributes and the other
-  audience conditions are W2, with no change to the document format.
+  audience 422, no match 404). The tree, teams, the manager relation, archive enforcement with its reason
+  `workspace_archived` (org-and-principals), attributes and the other audience conditions are W2, with no change to
+  the document format.
 - Tests, each shown red by removing its guard: a parent in another tenant is impossible; two concurrent moves that
   would close a cycle are refused; a seventh level is refused; a suspended member's effective permissions are empty;
   tenant B reads none of tenant A's members, teams or attributes; a value written by the wrong source is refused; a
@@ -138,7 +141,7 @@ None of these facts has a home today:
 
 ### Contradictions
 
-- Contradicts `CLAUDE.md:181` ("Every tenant-scoped table has `tenant_id` and `workspace_id`"), worth reopening because
+- Contradicts `CLAUDE.md:185` ("Every tenant-scoped table has `tenant_id` and `workspace_id`"), worth reopening because
   tenant members, teams and attribute definitions belong to the tenant, not to one workspace; ADR 0100 carries the
   amendment (A6), and `test_rls_coverage.py` lists each such table with its reason.
 - Retires `memberships.manager_user_id` and `memberships.department` (`0001_platform_baseline.sql:270-271`) and the
@@ -190,3 +193,10 @@ None of these facts has a home today:
 - Phasing: the minimal workspace-only audience through `platform.audience_matches` moves into W1
   (H:agent-builder:R5.1 (a)), and the lock's 503 for inbound events ships in W1 (DO-39.1 (a)).
 - Open 2, 4, 5 and 6 answered; DO-40's exception recorded as decided.
+
+## Amendments (2026-10-24)
+
+- Đạt accepted the open recommendations of the second consistency check; the status stays Accepted.
+- Phasing: `RunControlPort` refuses a locked or offboarding tenant's runs from W1 (`tenant_locked`,
+  `tenant_offboarding`), and `workspace_archived` arrives in W2 with archive enforcement
+  (F:ADR-0120~agent-lifecycle:api).

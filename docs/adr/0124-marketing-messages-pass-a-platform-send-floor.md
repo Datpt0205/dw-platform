@@ -66,12 +66,14 @@ spec owns the floor and the consent records, `tools-and-skills` consumes the flo
    view over the records: object CRUD can neither edit nor delete a consent.
 5. **Opt-out takes effect at once.** An email carries a signed one-address unsubscribe link (a public route with an
    HMAC token, rate-limited and idempotent); a Zalo message carries a keyword instruction that the inbound router
-   handles. Either writes a suppression row at once, and a queued message is checked again before it sends.
+   handles. Either writes a suppression row at once, and a queued message is checked again before the send lane,
+   which connections-and-vault owns, sends it.
 6. **The floor is policy data that a tenant only tightens.** `configs/policies/marketing_send@1.0.0.yaml` holds the
    cap per address and channel per window, the quiet hours and the maximum recipients per run; a tenant overlay is
    validated as tighten-only. The defaults are conservative placeholders marked UNVERIFIED until counsel confirms
-   (DO-55): 1 message per address per channel per 24 hours, and sending only between 08:00 and 20:00
-   `Asia/Ho_Chi_Minh`. B12 proposed 2 per 24 hours and quiet hours from 21:00 to 08:00; the stricter set ships.
+   (DO-55): 1 message per address per channel per 24 hours, sending only between 08:00 and 20:00
+   `Asia/Ho_Chi_Minh`, and at most 200 recipients per run in the pilot, which a tenant may only lower. B12 proposed
+   2 per 24 hours and quiet hours from 21:00 to 08:00; the stricter set ships.
 7. **A person approves every outbound message in the pilot** (P1, D4; DO-18 (a)): one approval per message in a
    fast keyboard queue, never a bulk action (`.claude/rules/ui-quality.md:225`). An AI-drafted message to a lead
    carries an "AI-drafted" label, on by default until counsel answers DO-60, and its provenance (the drafting run and
@@ -122,8 +124,9 @@ spec owns the floor and the consent records, `tools-and-skills` consumes the flo
    (the placeholders above stay UNVERIFIED; FOG-75), and the test recipients' consent wording, validity (90 days
    recommended) and who may add them (tenant admins recommended). Partly answered 2026-10-23 (DO-55 (a)): decision
    6's set ships, UNVERIFIED until counsel confirms it before shadow runs; a tenant only tightens it, and a change is
-   a new policy version. Still owed: a placeholder for the maximum recipients per run, and, by W2 when the `test` mode
-   opens, the test recipients' consent wording, validity and who may add them.
+   a new policy version. Answered 2026-10-24 for the placeholder: at most 200 recipients per run in the pilot,
+   UNVERIFIED, a tenant only lowering it (DO-55). A test recipient expires within 90 days (ADR-0111 decision 4), so
+   still owed by W2, when the `test` mode opens: the test recipients' consent wording and who may add them.
 2. **DO-60** (counsel): must an AI-drafted, human-approved message be labelled? Recommended: provenance logged for
    email and ZNS, AI disclosure in chat channels from v1.5. Answered 2026-10-23 until counsel replies: the label is on
    by default and the provenance is on the send log (decision 7); counsel's answer may switch the label off.
@@ -155,3 +158,12 @@ Accepted by Đạt on 2026-10-23 with these amendments from the decision brief:
 - Consequences: consent records removed by row, never by partition; contact suppressions kept while the tenant is a
   customer (DO-52).
 - Open: DO-55 partly answered; DO-60, DO-54, DO-18 and DO-48 answered.
+
+## Amendments (2026-10-24)
+
+Amended by Đạt on 2026-10-24, who accepted every recommendation the second consistency check left open:
+
+- Decision 6 and Open 1: the maximum is 200 recipients per run in the pilot, a placeholder UNVERIFIED until counsel
+  confirms it, which a tenant may only lower (DO-55; H:ADR-0124~compliance-pdpl/04); a test recipient's validity is
+  ADR-0111's 90 days, so Open 1 owes only the consent wording and who may add test recipients.
+- Decision 5: the lane that sends a queued message is connections-and-vault's.

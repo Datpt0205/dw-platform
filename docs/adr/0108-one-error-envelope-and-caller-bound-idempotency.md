@@ -26,7 +26,7 @@ without it, and Studio's tools and workflow nodes are the first effects that ret
   and the keyset helper pages descending only
   (`packages/python/dw_platform/src/dw_platform/adapters/persistence/keyset.py:22-27`), while records sort on
   typed fields both ways, with NULLs. Under RLS a predicate whose operator is not LEAKPROOF silently loses its
-  index (ADR 0107), so `CLAUDE.md:284-287` needs a mechanical check.
+  index (ADR 0107), so `CLAUDE.md:290-293` needs a mechanical check.
 - **HTTP idempotency.** `RequestFingerprint` holds method, path, workspace and body hash, not the caller
   (`packages/python/dw_platform/src/dw_platform/application/idempotency.py:45-67`): a second member who sends
   the same key and body in the same workspace receives the first member's stored answer, and the handler with
@@ -37,7 +37,7 @@ without it, and Studio's tools and workflow nodes are the first effects that ret
 - **Tool idempotency.** The executor looks for a succeeded call and only then runs the handler
   (`packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py:202-204`); the backstop
   `uq_tool_executions_idempotency` covers succeeded rows only (`db/migrations/sql/0001_platform_baseline.sql:698`),
-  so two concurrent calls with one key both run the effect. `CLAUDE.md:249`: "All side effects use
+  so two concurrent calls with one key both run the effect. `CLAUDE.md:253`: "All side effects use
   idempotency keys."
 - si-platform found and fixed both idempotency defects in its copy of this code: the 2026-10-20 amendment of
   `docs/adr/0045-one-idempotency-key-store-handed-to-modules-by-the-host.md`,
@@ -96,7 +96,10 @@ without it, and Studio's tools and workflow nodes are the first effects that ret
    is taken over by `DELETE ... WHERE claim_token = :old AND expires_at < now()` then `INSERT`; release
    deletes only its own token; `expires_at = now() + timeout_seconds * (1 + max_retries) + 30 s`. Two calls
    with one key can never both run the effect. `uq_tool_executions_idempotency` stays as the backstop (an
-   `IntegrityError` there becomes a replay), and `dw_app` loses UPDATE on `platform.tool_executions`.
+   `IntegrityError` there becomes a replay), and `dw_app` loses UPDATE on `platform.tool_executions`. ADR 0122's
+   30-day clearing of `output` therefore runs in the retention lane through a SECURITY DEFINER function that nulls
+   `output` past its term and changes nothing else, the term a line of the retention policy, so UPDATE never returns
+   to `dw_app`.
 6. **One key grammar for run effects.** A workflow node's effect carries `wf:{run_id}:{node_id}:{iteration_path}`
    (map index and loop counter path, never the attempt; the node catalogue's `run_id:node_id:iteration` is
    this key), derived through the existing `executor.canonical_hash`, which stays unchanged so in-flight runs
@@ -106,7 +109,7 @@ without it, and Studio's tools and workflow nodes are the first effects that ret
 
 - **Keep today's envelope and let Studio routes extend it.** Rejected: each spec would invent its own
   `errors[]` and pointers. A Studio-only problem+json is two envelopes; RFC 7807 is obsoleted by RFC 9457.
-- **Offset pagination.** Rejected: page 50 costs what the whole match set costs (`CLAUDE.md:284-287`). OData
+- **Offset pagination.** Rejected: page 50 costs what the whole match set costs (`CLAUDE.md:290-293`). OData
   `$filter` or AIP-160 strings as the primary syntax: a string parser may come later and compile to the AST.
 - **Replay a stored answer to anyone holding the key.** Rejected: a leaked key discloses another caller's
   answer, and the replay skips that caller's authorization.
@@ -138,12 +141,13 @@ without it, and Studio's tools and workflow nodes are the first effects that ret
   blocks its key until `expires_at`, which is bounded. The 24-hour key term follows common vendor practice
   (unverified). The worker's lane-set test (`apps/worker/tests/unit/test_worker.py`) gains the retention lane.
 - No ADR is contradicted. The current envelope is extended additively, so the claim at
-  `apps/api/src/dw_api/errors.py:28-34` becomes true rather than broken; `CLAUDE.md:249` and
-  `CLAUDE.md:284-287` gain tests; ADR 0024's refusal shape holds (a feature's reason stays in
+  `apps/api/src/dw_api/errors.py:28-34` becomes true rather than broken; `CLAUDE.md:253` and
+  `CLAUDE.md:290-293` gain tests; ADR 0024's refusal shape holds (a feature's reason stays in
   `details.reason_code`, and `ErrorCode` grows only by three HTTP-level codes). The "Append-only" docstring
   of `packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/tool_execution_store.py:1` becomes true
-  for UPDATE, which the default privileges grant today (`db/migrations/sql/0001_platform_grants.sql:44-46`);
-  DELETE stays for offboarding.
+  for UPDATE by `dw_app`, which the default privileges grant today
+  (`db/migrations/sql/0001_platform_grants.sql:44-46`); DELETE stays for offboarding, and clearing `output` past its
+  term goes only through decision 5's function.
 - si-platform (D5): ports `docs/adr/0045-one-idempotency-key-store-handed-to-modules-by-the-host.md` with its
   2026-10-20 amendment and the claim-first design of `db/si/migrations/0040_tool_call_claims.sql`, re-derived
   as Alembic revisions on `platform.*` for `dw_app`. It diverges by storing the caller as a column
@@ -169,3 +173,10 @@ All three are DO-16, owned by Đạt:
   (DO-16.2 (a)).
 - The colon spellings in ADR 0112 and ADR 0114 give way to sub-resources (`/tasks/{id}/submit`, `/expressions/check`,
   `/expressions/evaluate`); no `CLAUDE.md` line changes (`:214` and `:246-249` gain tests).
+
+## Amendments (2026-10-24)
+
+- Đạt accepted the open recommendations of the second consistency check; the status stays Accepted.
+- Decision 5: ADR 0122's 30-day clearing of `platform.tool_executions.output` goes through a SECURITY DEFINER
+  function of the retention lane, with its term in the retention policy, so `dw_app` regains no UPDATE on the table
+  (H:ADR-0122~foundations-hardening:R6.3).

@@ -46,7 +46,9 @@ obvious designs (measured by the Studio research on 2026-10-22 on PostgreSQL 16.
    immutable after the first publish (DO-08), so generated tool names (`obj_<api_name>__search`, an agent's
    `ask__<api_name>`) stay within 64 characters (ADR 0116, ADR 0117). An object version (`dw.object/v1`) carries the
    object's `default_access` (ADR 0105) and each field's `access_mode` (ADR 0106), and publishing it takes a second
-   person (D11; ADR 0120's `studio.publish.object`).
+   person (D11; ADR 0120's `studio.publish.object`), unless the version only tightens (it secures a field, narrows
+   `default_access` or removes a permission): its submitter then publishes it alone with an audit event, through
+   ADR 0120 decision 1's tighten-only branch.
    `studio.records` has system columns (`id` UUIDv7, `object_id`, owning `workspace_id`, record owner,
    `name`, `name_key`, `version`, `create_key`, `created_*`, `updated_*`, `deleted_*`), a `data jsonb`
    capped at 32 KB for unindexed fields keyed by a per-object `field_no` never reused, and a fixed set of
@@ -145,17 +147,19 @@ obvious designs (measured by the Studio research on 2026-10-22 on PostgreSQL 16.
   of tenant A's object answers 404; every compiled filter and sort passes the plan-shape test of ADR 0108.
 - Harder: about 80 partial indexes on one table; reusing a slot needs a purge; exact numbers stop at 18
   digits with scale at most 6; search is word-prefix only in v1; an ICU collation version change needs a
-  REINDEX of collated indexes; formulas and roll-ups come later; a tenant with one admin cannot create or change
-  an object, since every object version is published through a second person (D11).
+  REINDEX of collated indexes; formulas and roll-ups come later; a tenant with one admin cannot create an object or
+  change one except to tighten it, since every other object version is published through a second person (D11).
 - Contradicts `CLAUDE.md:79-83` ("an AI platform, not a general application framework ... A CRUD-heavy
   application layer does not have to be Python"), worth reopening because Studio puts a records engine in
   the platform (stance S1); amended through ADR 0100 on acceptance.
-- Contradicts `CLAUDE.md:181` ("Every tenant-scoped table has `tenant_id` and `workspace_id`."), worth
+- Contradicts `CLAUDE.md:185` ("Every tenant-scoped table has `tenant_id` and `workspace_id`."), worth
   reopening because definitions are tenant-wide by D1 and S3 while records keep an owning workspace;
   `platform.policy_overrides` is a tenant-only precedent. Amended through ADR 0100.
-- Keeps `CLAUDE.md:100` ("The schema has one owner and it is `db/migrations`."), and clarifies `CLAUDE.md:288`:
-  a HASH-partitioned table has no DEFAULT partition, which that line asks of append-only RANGE tables. The
-  planning brief's route prefix `/api/v1/objects/...` gives way to `/api/v1/studio/objects/...` (ADR 0100).
+- Keeps `CLAUDE.md:100` ("The schema has one owner and it is `db/migrations`."). That `studio.records`,
+  HASH-partitioned and not append-only, has no DEFAULT partition is this ADR's own fact (decision 2): `CLAUDE.md`'s
+  Data model rules ask a DEFAULT partition only of append-only tables partitioned by range, as
+  `studio.record_history` is (decision 6). The planning brief's route prefix `/api/v1/objects/...` gives way to
+  `/api/v1/studio/objects/...` (ADR 0100).
 - si-platform (D5): re-derives `docs/adr/0029-tenant-field-values-in-one-shared-table.md` and
   `docs/adr/0040-tenant-defined-custom-objects-on-si-data.md` with no `numeric` slots, every slot natively
   indexed (si indexes through a pivot), no workspace-scoped objects, Alembic and `dw_*` roles; diverges from
@@ -200,3 +204,13 @@ obvious designs (measured by the Studio research on 2026-10-22 on PostgreSQL 16.
   (B:custom-objects:R6.5~field-security:R3.3 (a)).
 - Consequences: a tenant with one admin cannot create an object (D11).
 - Open 1 to 4 answered; Open 3's readable-duplicate exception dropped.
+
+## Amendments (2026-10-24)
+
+- Đạt accepted the open recommendations of the second consistency check; the status stays Accepted.
+- Decision 1 and Consequences: a `dw.object/v1` version that only tightens (a field secured, `default_access`
+  narrowed, a permission removed) is published by its submitter alone with an audit event, through ADR 0120 decision 1's
+  tighten-only branch; every other version still takes a second person
+  (Q-R6, B:agent-lifecycle:R1.6~custom-objects:R1.7).
+- Consequences: the line that read as clarifying `CLAUDE.md` is gone; a HASH-partitioned table without a DEFAULT
+  partition is this ADR's own fact, and `CLAUDE.md`'s Data model rules ask a DEFAULT only of append-only range tables.

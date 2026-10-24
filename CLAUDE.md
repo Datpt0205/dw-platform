@@ -127,7 +127,10 @@ Redis/Valkey. S3-compatible object storage (SeaweedFS in compose). Next.js, Type
 Tailwind for layout only. OpenTelemetry, optional Langfuse. Ruff, mypy, pytest,
 import-linter, pre-commit. pnpm workspace and lockfile. Pin versions; commit
 lockfiles; never `latest`. In deployed profiles OpenBao (Transit) holds tenant
-keys and smokescreen is the egress proxy, once spike 21 passes (ADR 0115).
+keys and smokescreen is the egress proxy, once spike 21 passes (ADR 0115). CEL
+only behind `ExpressionEngine`, on `cel-expr-python` pinned exactly (ADR 0114);
+`jsonschema`, and the `mcp` SDK only in `mcp-gateway` (ADR 0116); stateless
+LiteLLM only for tenant models, in `model-proxy`, never imported (ADR 0118).
 
 ## Web UI
 
@@ -157,7 +160,8 @@ of shadcn/ui; the measurements behind it are in `.claude/plans/web-ui.md`.
   order fails silently (Tailwind classes on antd components are ignored), so
   the switch ships with a test that fails without it.
 - **Bundle:** about +250 kB first-load JS on a page using Table, Form, Select
-  and DatePicker is accepted.
+  and DatePicker is accepted; it does not cover the Studio canvas route, which
+  is measured on its own (ADR 0101).
 - **Dates:** dayjs with the `vi` locale, behind `lib/dates.ts` — one
   formatter, not two.
 - **One shared shell:** `@dw/ui` owns the theme, the top-navbar layout (a
@@ -259,7 +263,9 @@ kind of change nobody makes and everybody works around.
   event starts runs no request ever touched. Every limit comes through
   `LimitsPort`, which the runtime declares and the platform satisfies, so
   neither package reads the other's table. An interactive run over a limit is
-  refused; a triggered one waits in the queue, never dropped (ADR 0121).
+  refused; a `datahub`, `provider_app` or `record_event` run waits in the queue,
+  never dropped; a `schedule` fire on a spent window is recorded `limit_refused`
+  and skipped, so no backlog bursts out when it resets (ADR 0113, ADR 0121).
 - Channels are reached through a port, never a provider's client. `ChatSenderPort`
   is the narrow intersection every channel can satisfy; code needing one
   provider's own features takes that provider's client and says so in its type.
