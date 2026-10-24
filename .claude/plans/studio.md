@@ -7,7 +7,41 @@ departments, starting with Marketing. It is platform code in this repository
 is built yet. Đạt accepted the ADR block on 2026-10-23 (0126 and 0127 on
 2026-10-24), all but ADR-0119, which waits for the code-sandbox spike.
 
-## State (2026-10-24): three remediation rounds done; 13 questions for Đạt
+## State (2026-10-24): round 4 being applied after Đạt's decisions
+
+- **Round 4 in progress (2026-10-24):** Đạt accepted the 13 recommendations
+  of consistency round 3, splitting a spec past the size of
+  `writing-plan-specs` when it reaches `checking-plan-readiness`
+  (foundations-hardening first: R6-R10 and tickets 04-06 become
+  `runtime-hardening`, numbers kept), and a fourth remediation round past the
+  three-round limit of `checking-plan-consistency`. The decisions:
+    1. `endpoint` has no quality gate and goes live on a second person's
+       approval, `studio.publish.endpoint` stamped `studio.publish.approve`
+       like every kind (ADR-0120 d2); `studio.datahub.manage` is the key to
+       submit. The report had said "stamped `studio.datahub.manage`"; the stamp
+       follows ADR-0120 d2 so as not to open a second answer to who publishes.
+    2. Every submit records `compared_live_hash`; approving a candidate whose
+       base changed returns it to draft with `base_changed` (ADR-0120 d1-d2).
+    3. MCP tools keep `studio.mcp.tool_approval`; every other tool kind opens
+       `studio.publish.tool` (ADR-0116 d9).
+    4. A draft can be simulated, pinned under a provisional content hash.
+    5. `connections.enable` stamped `connections.manage`,
+       `egress.allowed_host` stamped `integrations.admin` (ADR-0115).
+    6. A stale save is 412 `precondition_failed`, reason `stale_version`.
+    7. domain-packs Q2: installing a pack over existing `mkt_` objects attaches
+       provenance; differences arrive as a proposal in a draft.
+    8. The tighten-only branch of an object version passes a tenant freeze.
+    9. Trigger runs of an inactive service account stay queued and alert the
+       owner; `binding_needs_review` joins ADR-0113 d3's table.
+    10. Approval delegation (W2): stamped key, not the run's creator,
+        time-boxed.
+    11. `recipient_cap` joins ADR-0124 d1's block reasons.
+    12. `platform.limit_policies` keeps its `scope_*` columns (ADR-0121 d4).
+    13. Message content at most 16 KiB; citations and feedback in W2.
+
+    Nine editors, each followed by a verifier, apply them with every round-3
+    row; then the split, a fourth consistency check, and the readiness gate for
+    app-standards, foundations-hardening and runtime-hardening.
 
 - **Round 3 applied on 2026-10-24:** Đạt took every recommendation still open
   (`studio/discovery` coverage review N1-N10, the two CRITICAL rows of round 2,
@@ -74,38 +108,9 @@ is built yet. Đạt accepted the ADR block on 2026-10-23 (0126 and 0127 on
 
 ## Decisions owed
 
-- **Đạt, from consistency round 3 (2026-10-24)**, each with the
-  recommendation sent in the report:
-    1. `endpoint` lifecycle (the CRITICAL one): a kind with no quality gate
-       that goes live on a second person's approval, `studio.publish.endpoint`
-       stamped `studio.datahub.manage` (ADR-0120 d1-d2).
-    2. Lost update on the tighten-only branch: a candidate records the `live`
-       hash it was compared with, and approving one whose base has changed
-       returns it to draft with `base_changed` (ADR-0120 d1).
-    3. Tool approvals: MCP keeps its named `studio.mcp.tool_approval`; every
-       other tool kind uses `studio.publish.approve` (ADR-0116 d9).
-    4. A simulated run of a draft, under a provisional content hash.
-    5. Approver keys: `connections.enable` stamped `connections.manage`,
-       `egress.allowed_host` stamped `integrations.admin` (ADR-0115 d2, d6).
-    6. A stale save is 412 with reason `stale_version`; ADR-0109 d2 follows
-       ADR-0108 d3.
-    7. domain-packs Q2: installing Marketing into a tenant that already has the
-       `mkt_` objects attaches provenance; differences arrive as a proposal in
-       a draft, like any pack update.
-    8. The tighten-only branch of an object version passes a tenant freeze
-       (ADR-0120 d7).
-    9. A triggered run of a service account that is not active stays queued
-       and alerts its owner instead of being cancelled; `binding_needs_review`
-       joins the refusal table (ADR-0113 d3).
-    10. Approval delegation (W2): the delegate holds the stamped key, is not
-        the run's creator, and the assignment is time-boxed (ADR-0112 d7,
-        ADR-0104 d11).
-    11. `recipient_cap` joins the block reasons, counted per `root_run_id`
-        (ADR-0124 d1).
-    12. `platform.limit_policies` keeps `scope_*` column names, since a
-        tenant-wide table carries no `workspace_id` (ADR-0121 d4).
-    13. Message content capped at 16 KiB with a length CHECK; citations and
-        message feedback in W2 (ADR-0117 d6).
+- **Đạt:** nothing open from consistency round 3 (decided 2026-10-24, State
+  above). Next: `Duyệt` of each spec and of its ticket breakdown once it passes
+  `checking-plan-readiness`, which no ticket reaches `ready-for-agent` without.
 - **Acted on, not decided:** the platform team curates the MCP catalogue
   (DO-46.1), and whoever
   keeps dw-proterial moves it off `memberships.role_keys` before
