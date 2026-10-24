@@ -1,6 +1,6 @@
 # Đối tượng tùy biến: định nghĩa, một dịch vụ bản ghi, API và giao diện sinh từ metadata
 
-Status: needs-info (DO-35)
+Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: chưa
 Sẵn sàng: chưa kiểm
@@ -61,26 +61,30 @@ Quản trị viên công ty tạo đối tượng và trường mà không cần
 
 - R1.1 KHI một phiên bản `dw.object/v1` lên giai đoạn Đang dùng, dịch vụ metadata PHẢI áp đối tượng, trường và
   danh sách chọn của phiên bản đó vào định nghĩa của công ty trong cùng giao dịch, không tạo bảng, cột hay chỉ mục.
-- R1.2 KHI người giữ `studio.objects.manage` gửi phát hành một bản nháp `dw.object/v1` hợp lệ có ít nhất một thay
-  đổi không chỉ siết so với phiên bản Đang dùng, hay khi đối tượng chưa có phiên bản Đang dùng, API thành phần PHẢI đưa
-  phiên bản sang Chờ duyệt với một phê duyệt `studio.publish.object`, không qua Cổng chất lượng, để phiên bản chỉ lên
-  Đang dùng khi một người thứ hai duyệt theo ADR-0120 (Accepted) mục 2.
-- R1.3 NẾU người gọi không giữ `studio.objects.manage`, THÌ API thành phần PHẢI trả 403 `permission_denied` khi
-  tạo, lưu nháp hay phát hành thành phần loại `object` và không ghi gì.
+- R1.2 KHI người giữ `studio.objects.manage` gửi phát hành một bản nháp `dw.object/v1` hợp lệ qua
+  `POST /api/v1/studio/objects/{artifact_id}/versions/{version_id}/submit` mà bộ so sánh của loại `object` không báo
+  chỉ siết, lệnh gửi phát hành PHẢI đưa phiên bản sang Chờ duyệt với một phê duyệt `studio.publish.object`, không qua
+  Cổng chất lượng, để phiên bản chỉ lên Đang dùng khi một người thứ hai duyệt theo ADR-0120 (Accepted) mục 2.
+- R1.3 NẾU người gọi không giữ `studio.objects.manage`, THÌ API Studio PHẢI trả 403 `permission_denied` khi tạo,
+  lưu nháp hay gửi phát hành thành phần loại `object` và không ghi gì.
 - R1.4 KHI tài liệu tạo đối tượng không nêu mặc định truy cập, dịch vụ metadata PHẢI đặt `default_access` là
   `private`.
 - R1.5 KHI hai phiên bản thêm trường lọc được vào cùng một đối tượng đồng thời, dịch vụ metadata PHẢI cấp cho
   mỗi trường một slot khác nhau.
 - R1.6 NẾU đối tượng không còn slot trống thuộc họ mà một trường lọc được đòi, THÌ dịch vụ metadata PHẢI từ chối
   phiên bản bằng 422 có con trỏ tới trường và không đổi định nghĩa nào.
-- R1.7 KHI người giữ `studio.objects.manage` gửi phát hành một bản nháp `dw.object/v1` mà mọi thay đổi so với phiên
-  bản Đang dùng chỉ siết (một trường từ `open` sang `secured`; `default_access` hẹp hơn theo thứ tự
-  `public_read_write`, `public_read`, `private`), API thành phần PHẢI đưa phiên bản lên Đang dùng trong giao dịch của
-  người gửi với audit `studio.version.published` mang người gửi là actor, không mở phê duyệt.
+- R1.7 KHI người giữ `studio.objects.manage` gửi phát hành một bản nháp `dw.object/v1` mà bộ so sánh của loại `object`
+  báo chỉ siết, lệnh gửi phát hành PHẢI đưa phiên bản từ Nháp lên Đang dùng trong giao dịch của người gửi, ghi
+  `tighten_only` cùng mã băm của phiên bản Đang dùng đã so và audit `studio.version.published` có người gửi là actor,
+  `details.path` là `tighten_only`, không mở phê duyệt.
+- R1.8 Bộ so sánh của loại `object` PHẢI báo một phiên bản là chỉ siết khi và chỉ khi đối tượng đã có phiên bản Đang
+  dùng và mọi khác biệt với phiên bản đó là một trường từ `open` sang `secured` hay `default_access` hẹp hơn theo thứ tự
+  `public_read_write`, `public_read`, `private`.
 
 ### R2 — Trường có tên bất biến, kiểu cố định và loại dữ liệu cá nhân
 
-Mỗi trường mang tên API bất biến, một kiểu của nền tảng và loại dữ liệu cá nhân (YC25, YC84).
+Mỗi trường mang tên API bất biến, một kiểu của nền tảng và loại dữ liệu cá nhân, và đối tượng cùng mỗi trường có thể
+mang một Mô tả cho AI (YC25, YC84, YC101).
 
 - R2.1 Trình kiểm của loại `object` PHẢI chỉ nhận kiểu `text`, `number` (`exact` hoặc `float`), `currency`,
   `date`, `datetime`, `boolean`, `picklist`, `email`, `phone`, `url` cho trường công ty định nghĩa, và trả 422
@@ -94,14 +98,17 @@ Mỗi trường mang tên API bất biến, một kiểu của nền tảng và 
 - R2.5 NẾU một phiên bản đặt `access_mode` là `open` cho một trường có `pd_category` là `sensitive`, hay cho một trường
   mới có `pd_category` khác `none`, THÌ trình kiểm của loại `object` PHẢI trả 422 có con trỏ tới trường và không phát
   hành gì.
+- R2.6 NẾU `ai_description` của đối tượng hay của một trường dài hơn 500 ký tự tính trên chuỗi NFC (500 thì nhận, 501
+  thì 422; bỏ trống thì nhận), THÌ trình kiểm của loại `object` PHẢI trả 422 có con trỏ tới chỗ đó và không phát hành
+  gì.
 
 ### R3 — Describe và danh mục đối tượng theo người gọi
 
 Người dùng, giao diện, công cụ và bước quy trình biết đúng những trường người gọi được thấy (YC23, YC27).
 
 - R3.1 KHI người giữ `obj.<api_name>.read` gọi `GET /api/v1/studio/objects/{api_name}/describe`, API bản ghi
-  PHẢI trả mỗi trường người đó đọc được với `api_name`, nhãn `vi`, kiểu, `access` (`read` hay `edit`), các cờ bắt
-  buộc, sửa được, lọc được, sắp được, và các lựa chọn đang bật.
+  PHẢI trả `ai_description` của đối tượng và mỗi trường người đó đọc được với `api_name`, nhãn `vi`, `ai_description`,
+  kiểu, `access` (`read` hay `edit`), các cờ bắt buộc, sửa được, lọc được, sắp được, và các lựa chọn đang bật.
 - R3.2 KHI một trường Đã ẩn với người gọi, describe PHẢI trả trường đó chỉ với `api_name`, nhãn `vi` và `access` là
   `hidden`.
 - R3.3 NẾU `api_name` không phải đối tượng của công ty người gọi, THÌ describe PHẢI trả 404.
@@ -112,6 +119,9 @@ Người dùng, giao diện, công cụ và bước quy trình biết đúng nh�
 - R3.6 KHI một công cụ hay bước quy trình xin lược đồ của một đối tượng, bộ chiếu lược đồ PHẢI trả JSON Schema
   2020-12 cho tạo, sửa và truy vấn theo `schema_version`, chỉ gồm trường người gọi đọc được, và với tạo, sửa chỉ
   trường người gọi sửa được.
+- R3.7 KHI một công cụ hay bước quy trình xin lược đồ của một đối tượng, bộ chiếu lược đồ PHẢI trả `ai_description` của
+  đối tượng và của mỗi trường người gọi đọc được tách khỏi JSON Schema, không đặt vào `title`, `description` hay nhãn
+  của lược đồ, để bên dùng bao nó là dữ liệu từ bên ngoài (YC48, YC101).
 
 ### R4 — Lưu trữ bản ghi cô lập theo công ty
 
@@ -187,10 +197,13 @@ Quy trình Tiếp nhận lead kiểm trùng theo số điện thoại rồi emai
   `duplicate_value` như R7.1 và không đổi gì.
 - R7.5 KHI RecordService trả 409 `duplicate_value`, RecordService PHẢI ghi audit `studio.record.duplicate_refused`
   chỉ gồm đối tượng, khóa trường và người gọi.
-- R7.6 NẾU một người gọi nhận 409 `duplicate_value` quá số lần cho phép trên một đối tượng trong một cửa sổ
-  [CAN LAM RO: Q3], THÌ API bản ghi PHẢI trả 429 kèm `Retry-After` cho lần ghi kế tiếp và không ghi gì.
+- R7.6 NẾU một người gọi đã nhận 20 lần 409 `duplicate_value` trên một đối tượng trong 10 phút trượt gần nhất (theo
+  công ty, người gọi và đối tượng; lần thứ 20 vẫn là 409), THÌ API bản ghi PHẢI trả 429 kèm `Retry-After` cho mọi lần
+  ghi kế tiếp của người đó lên đối tượng đó, trùng hay không, tới khi cửa sổ còn dưới 20 lần, và không ghi gì.
 - R7.7 NẾU `POST .../records/upsert` thiếu `Idempotency-Key`, THÌ API bản ghi PHẢI trả 422
   `idempotency_key_required` và không ghi gì.
+- R7.8 KHI API bản ghi trả 429 vì giới hạn dò trùng, API bản ghi PHẢI ghi đúng một audit
+  `studio.record.duplicate_throttled` chỉ gồm đối tượng và người gọi.
 
 ### R8 — Truy vấn bản ghi có chỉ mục dưới RLS
 
@@ -220,8 +233,8 @@ Danh sách lọc và sắp theo trường lọc được, theo thứ tự tiến
 Lưu trữ được chốt bằng số đo ở quy mô D12, không bằng ước đoán (YC20, D12).
 
 - R9.1 Ở quy mô D12 (10 triệu bản ghi một đối tượng, 50 triệu một công ty), API bản ghi PHẢI trả trang đầu 50
-  dòng trong p95 ≤ 50 ms và `GET` một bản ghi trong p95 ≤ 5 ms, đo phía máy chủ trên máy tham chiếu, ở mỗi mức
-  truy cập của ADR-0104 (Accepted).
+  dòng trong p95 ≤ 50 ms và `GET` một bản ghi trong p95 ≤ 5 ms, đo phía máy chủ trên máy tham chiếu mà YC20 định
+  nghĩa (host chính sau D14), ở mỗi mức truy cập của ADR-0104 (Accepted).
 - R9.2 ĐỐI VỚI phép đo giữ được planning p95 ≤ 5 ms cho truy vấn ba vị từ với đủ chỉ mục slot và
   `CacheMemoryContext` ≤ 64 MB mỗi backend, migration PHẢI tạo `studio.records` với
   `PARTITION BY HASH (tenant_id)` modulus 8 từ revision đầu.
@@ -252,39 +265,47 @@ Người dùng xem, tạo và sửa bản ghi trên màn sinh từ describe, the
 
 - Bảng `studio.object_defs`, `studio.field_defs`, `studio.picklist_options`, `studio.records` và các partition
   `studio.records_p0` tới `studio.records_p7` (tới `p3` theo đường lui R9.5); khóa quyền `studio.objects.manage`.
-- Loại thành phần `object` (`dw.object/v1`) trong `ArtifactKindRegistry` và dòng `object` của `studio.artifact_kinds`,
-  với dịch vụ metadata là móc phát hành; tài liệu mang `default_access` của đối tượng và `access_mode` của mỗi trường;
-  phát hành nới qua phê duyệt `studio.publish.object` (R1.2), phát hành chỉ siết một người (R1.7).
+- Loại thành phần `object` (`dw.object/v1`) trong `ArtifactKindRegistry` và dòng `object` của `studio.artifact_kinds`
+  (không có Cổng chất lượng): mục đăng ký nêu `studio.objects.manage` là khóa đọc, khóa ghi và khóa gửi của loại,
+  bộ so sánh chỉ siết (R1.8) và dịch vụ metadata là móc phát hành; tài liệu mang `default_access`, `ai_description`
+  của đối tượng và `access_mode`, `ai_description` của mỗi trường; loại phê duyệt `studio.publish.object` cho phát hành
+  nới (R1.2), phát hành chỉ siết một người (R1.7).
 - `RecordService`, bộ chiếu lược đồ `ObjectSchemaProjector`, trình biên dịch truy vấn; route
   `GET /api/v1/studio/objects`, `GET .../{api_name}/describe`, `GET|POST .../records`, `POST .../records/query`,
   `POST .../records/upsert`, `GET|PATCH|DELETE .../records/{record_id}`.
 - Sự kiện `studio.record.created|updated|deleted`; audit `studio.object.created`, `studio.object.updated`,
   `studio.field.created`, `studio.field.updated`, `studio.picklist.updated`, `studio.record.created`,
-  `studio.record.updated`, `studio.record.deleted`, `studio.record.duplicate_refused`.
+  `studio.record.updated`, `studio.record.deleted`, `studio.record.duplicate_refused`,
+  `studio.record.duplicate_throttled`.
 - Màn `/studio/objects/[api_name]`, chi tiết, tạo và sửa; harness đo `scripts/bench_records_storage.py`.
 
 ## Ngoài phạm vi
 
-| Việc                                                                     | Vì sao                                                                                                                                                                                                                                    | Chủ                            |
-| ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
-| Tìm tên tiếng Việt không dấu theo tiền tố từ                             | Cần `unaccent`, `name_key`, bảng từ khóa; W1 không có ô tìm                                                                                                                                                                               | custom-objects, đợt sau (W2)   |
-| Lịch sử thay đổi theo trường                                             | Cần `ensure_time_partitions` tổng quát và hạn lưu (DO-52)                                                                                                                                                                                 | custom-objects, đợt sau (W2)   |
-| Trường tham chiếu, chủ – chi tiết, ràng buộc khi xóa                     | Slot `l`, `m` và FK tổng hợp chưa cần cho Lead, Campaign                                                                                                                                                                                  | custom-objects, đợt sau (W2)   |
-| Thùng rác và purge lane; nút xóa trên giao diện                          | Bản ghi xóa mềm ở W1 nằm tới purge W2 hay offboarding; chưa có khôi phục                                                                                                                                                                  | custom-objects, đợt sau (W2)   |
-| Mã ngoài, số tự động, batch ≤ 200                                        | W1 chỉ cần trường duy nhất và Tạo hoặc cập nhật                                                                                                                                                                                           | custom-objects, đợt sau (W2)   |
-| Văn bản dài, chọn nhiều; quy tắc kiểm tra bằng CEL                       | `ExpressionEngine` của workflow-nodes (DO-38); Điều kiện để lưu được nghĩa "phải đúng", vector port từ si-platform, cùng YC28 (DO-37)                                                                                                     | custom-objects, đợt sau (W2)   |
-| Nhập, xuất CSV qua tác vụ nền; dạng xem và bộ lọc đã lưu                 | Tác vụ nền của app-standards; xuất cần quyền riêng `obj.<api_name>.export` có audit, trường Bảo vệ chỉ xuất cho người đọc được không che (DO-61)                                                                                          | custom-objects, đợt sau (W2)   |
-| Tiến hóa lược đồ; trình dựng đối tượng, trường và bố cục                 | Xóa, purge, đổi kiểu trường cần chỉ mục phụ thuộc và lane purge; hướng dẫn tạo trường của trình dựng ghi rằng tên trường là công khai với người đọc được đối tượng, kể cả khi giá trị bị ẩn (`B:custom-objects:R6.5~field-security:R3.3`) | custom-objects, đợt sau (W2)   |
-| Nguồn gốc và nhãn "AI" cho trường do AI ghi (YC29)                       | W1 chỉ chạy trên dữ liệu giả lập (YC89) nên không người thật nào thấy điểm AI; W1 truy nguồn điểm qua Lịch sử chạy (Q5)                                                                                                                   | custom-objects, đợt sau (W2)   |
-| Loại bản ghi, công thức và roll-up, tìm toàn văn, XLSX, tenant cá voi    | Chưa có nhu cầu ở lát Marketing                                                                                                                                                                                                           | custom-objects, đợt sau (W3)   |
-| Hạn mức gói cho số đối tượng và trường                                   | Mặc định gói chưa quyết (DO-59); W1 chặn bằng ngân sách slot (R1.6)                                                                                                                                                                       | usage-and-limits, đợt sau (W2) |
-| Policy tầm, `access_key`, chia sẻ, giao người phụ trách                  | Quyền trên bản ghi có một chủ (ADR-0105 (Accepted))                                                                                                                                                                                       | record-access                  |
-| `access_mode`, quyền trường, `resolve_field_access`                      | Quyết định trường có một chủ (ADR-0106 (Accepted))                                                                                                                                                                                        | field-security                 |
-| Khóa `obj.<api_name>.<action>`, vai và độ sâu                            | Danh mục quyền có một chủ (ADR-0104 (Accepted))                                                                                                                                                                                           | tenant-rbac                    |
-| Vỏ phiên bản, chỉ mục phụ thuộc, route `/api/v1/studio/artifacts`        | Một vỏ cho mọi loại (ADR-0109 (Accepted))                                                                                                                                                                                                 | tenant-config                  |
-| Bọc giá trị bản ghi khi vào prompt; công cụ dữ liệu đối tượng            | Giá trị bản ghi là đầu vào không tin; chủ là đường công cụ                                                                                                                                                                                | tools-and-skills               |
-| Tạo bảng, cột, chỉ mục lúc chạy; đối tượng theo workspace; business hook | ADR-0107 (Accepted) bác; hook không có người đăng ký (failure-modes #1)                                                                                                                                                                   | không làm                      |
-| Đa tiền tệ trên một bản ghi; báo cáo và tổng hợp group-by                | Cần quyết quyết định trường cho số tổng hợp                                                                                                                                                                                               | đợt sau (v2)                   |
+| Việc                                                                                                                  | Vì sao                                                                                                                                                                                                                                    | Chủ                                                 |
+| --------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| Tìm tên tiếng Việt không dấu theo tiền tố từ                                                                          | Cần `unaccent`, `name_key`, bảng từ khóa; W1 không có ô tìm                                                                                                                                                                               | custom-objects, đợt sau (W2)                        |
+| Lịch sử thay đổi theo trường                                                                                          | Cần `ensure_time_partitions` tổng quát và hạn lưu (DO-52)                                                                                                                                                                                 | custom-objects, đợt sau (W2)                        |
+| Trường tham chiếu, chủ – chi tiết, ràng buộc khi xóa                                                                  | Slot `l`, `m` và FK tổng hợp chưa cần cho Lead, Campaign                                                                                                                                                                                  | custom-objects, đợt sau (W2)                        |
+| Thùng rác và purge lane; nút xóa trên giao diện                                                                       | Bản ghi xóa mềm ở W1 nằm tới purge W2 hay offboarding; chưa có khôi phục                                                                                                                                                                  | custom-objects, đợt sau (W2)                        |
+| Mã ngoài, số tự động, batch ≤ 200                                                                                     | W1 chỉ cần trường duy nhất và Tạo hoặc cập nhật                                                                                                                                                                                           | custom-objects, đợt sau (W2)                        |
+| Văn bản dài, chọn nhiều; quy tắc kiểm tra bằng CEL                                                                    | `ExpressionEngine` của workflow-nodes (DO-38); Điều kiện để lưu được nghĩa "phải đúng", vector port từ si-platform, cùng YC28 (DO-37)                                                                                                     | custom-objects, đợt sau (W2)                        |
+| Nhập, xuất CSV qua tác vụ nền; dạng xem và bộ lọc đã lưu                                                              | Tác vụ nền của app-standards; xuất cần quyền riêng `obj.<api_name>.export` có audit, trường Bảo vệ chỉ xuất cho người đọc được không che (DO-61)                                                                                          | custom-objects, đợt sau (W2)                        |
+| Tiến hóa lược đồ; trình dựng đối tượng, trường và bố cục                                                              | Xóa, purge, đổi kiểu trường cần chỉ mục phụ thuộc và lane purge; hướng dẫn tạo trường của trình dựng ghi rằng tên trường là công khai với người đọc được đối tượng, kể cả khi giá trị bị ẩn (`B:custom-objects:R6.5~field-security:R3.3`) | custom-objects, đợt sau (W2)                        |
+| Nguồn gốc và nhãn "AI" cho trường do AI ghi (YC29)                                                                    | W1 chỉ chạy trên dữ liệu giả lập (YC89) nên không người thật nào thấy điểm AI; W1 truy nguồn điểm qua Lịch sử chạy (Q5)                                                                                                                   | custom-objects, đợt sau (W2)                        |
+| Màn xem theo Chặng: danh sách bản ghi nhóm theo giá trị của trường trạng thái (YC102)                                 | Quy trình lớn là vòng đời của một đối tượng có trường trạng thái, mỗi giá trị là một Chặng, vào một Chặng thì sự kiện bản ghi chạy quy trình ngắn (ADR-0126 (Accepted)); nhãn Chặng trên Bước là của workflow-builder-ui                  | custom-objects, đợt sau (W2)                        |
+| Nút "Chạy quy trình" trên trang bản ghi (YC103)                                                                       | Trình kích hoạt Biểu mẫu nội bộ dựng trên `trigger.manual` của workflow-triggers, biểu mẫu antd sinh từ `input_schema`, mở cho thành viên giữ `studio.workflows.run`                                                                      | custom-objects cùng workflow-triggers, đợt sau (W2) |
+| Loại bản ghi, công thức và roll-up, tìm toàn văn, XLSX, tenant cá voi                                                 | Chưa có nhu cầu ở lát Marketing                                                                                                                                                                                                           | custom-objects, đợt sau (W3)                        |
+| Kiểu trường tệp đính kèm                                                                                              | Nguyên liệu chung của gói Nhân sự, Mua hàng, Tài chính, vốn ở Không làm sau gói Bán hàng của domain-packs (W3); W1 không có kiểu trường này (R2.1)                                                                                        | custom-objects, đợt sau (W3)                        |
+| Hạn mức gói cho số đối tượng và trường                                                                                | Mặc định gói chưa quyết (DO-59); W1 chặn bằng ngân sách slot (R1.6)                                                                                                                                                                       | usage-and-limits, đợt sau (W2)                      |
+| Policy tầm, `access_key`, chia sẻ, giao người phụ trách                                                               | Quyền trên bản ghi có một chủ (ADR-0105 (Accepted))                                                                                                                                                                                       | record-access                                       |
+| `access_mode`, quyền trường, `resolve_field_access`                                                                   | Quyết định trường có một chủ (ADR-0106 (Accepted))                                                                                                                                                                                        | field-security                                      |
+| Khóa `obj.<api_name>.<action>`, vai và độ sâu                                                                         | Danh mục quyền có một chủ (ADR-0104 (Accepted))                                                                                                                                                                                           | tenant-rbac                                         |
+| Vỏ phiên bản, chỉ mục phụ thuộc, route `/api/v1/studio/artifacts`                                                     | Một vỏ cho mọi loại (ADR-0109 (Accepted))                                                                                                                                                                                                 | tenant-config                                       |
+| Bọc giá trị bản ghi khi vào prompt; công cụ dữ liệu đối tượng                                                         | Giá trị bản ghi là đầu vào không tin; chủ là đường công cụ                                                                                                                                                                                | tools-and-skills                                    |
+| Tạo bảng, cột, chỉ mục lúc chạy; đối tượng theo workspace; business hook                                              | ADR-0107 (Accepted) bác; hook không có người đăng ký (failure-modes #1)                                                                                                                                                                   | không làm                                           |
+| Báo cáo qua API tổng hợp của nền tảng trên RecordService: measure, dimension, time dimension, filter trên khóa trường | Giữ nguyên RLS bản ghi và bảo mật trường cho số tổng hợp (ADR-0127 (Accepted)); đo truy vấn tổng hợp dưới RLS ở cỡ D12 trước (`.claude/plans/studio/discovery/issues/30-aggregate-queries-under-rls.md`)                                  | custom-objects, đợt sau (W3, v1.5)                  |
+| Kho phân tích riêng theo tenant cho lớp ngữ nghĩa như Cube; ETL, đồng bộ hay kho dữ liệu                              | Không bộ máy phân tích nào nối PostgreSQL hệ thống ghi chép; kho chỉ do một lane xuất qua RecordService và v1 không làm ETL hay kho dữ liệu (ADR-0127 (Accepted))                                                                         | đợt sau (sau v1)                                    |
+| Đa tiền tệ trên một bản ghi                                                                                           | Chưa có nhu cầu ở lát Marketing                                                                                                                                                                                                           | đợt sau (v2)                                        |
 
 ## Dữ liệu
 
@@ -298,9 +319,11 @@ ghi (DO-01, ADR-0100 (Accepted)), mỗi bảng một dòng lý do trong danh sá
 - `studio.object_defs`: PK `(tenant_id, id)`; FK `(tenant_id, id)` tới `studio.artifacts` ON DELETE RESTRICT;
   `api_name` CHECK `^[a-z][a-z0-9_]{1,39}$`, UNIQUE `(tenant_id, api_name)`; `labels` jsonb có khóa `vi` khác
   rỗng; `default_access` NOT NULL DEFAULT `'private'` CHECK `private`, `public_read`, `public_read_write`;
-  `schema_version` integer ≥ 1; `next_field_no` integer ≥ 1.
+  `ai_description` text NULL CHECK `char_length(ai_description) <= 500`; `schema_version` integer ≥ 1; `next_field_no`
+  integer ≥ 1.
 - `studio.field_defs`: PK `(tenant_id, id)`, `id` là mã trường; FK `(tenant_id, object_id)` ON DELETE CASCADE;
-  `api_name` như trên, UNIQUE `(tenant_id, object_id, api_name)`; `type` CHECK `text`, `number`, `currency`,
+  `api_name` như trên, UNIQUE `(tenant_id, object_id, api_name)`; `ai_description` text NULL CHECK
+  `char_length(ai_description) <= 500`; `type` CHECK `text`, `number`, `currency`,
   `date`, `datetime`, `boolean`, `picklist`, `email`, `phone`, `url`, `owner`, `workspace`, `user` (bằng enum
   trong mã); `pd_category` NOT NULL CHECK `none`, `basic`, `sensitive`, cùng `sensitive_type` và
   `subject_identifier` theo `dw_kernel.personal_data`; `required`, `is_unique`, `indexed` boolean NOT NULL;
@@ -329,52 +352,64 @@ ghi (DO-01, ADR-0100 (Accepted)), mỗi bảng một dòng lý do trong danh sá
 
 ## Kiểm soát
 
-| #    | Kiểm soát                                                           | Yêu cầu          | Test âm                                                                                                                                                                                                                                                             |
-| ---- | ------------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| CO1  | Cô lập công ty trên mọi bảng của spec, kể cả partition              | R4.2, R4.3       | A đọc, sửa, xóa bản ghi của B → 404; INSERT với `tenant_id` của B → RLS từ chối; vai thử NOBYPASSRLS có SELECT đọc thẳng `studio.records_p3` không đặt tenant → 0 dòng; `dw_app` đọc thẳng partition → permission denied (`record-access:R4.3`)                     |
-| CO2  | Không DDL lúc chạy                                                  | R1.1             | `dw_app` chạy `CREATE TABLE`, `CREATE INDEX` trong `studio` → bị từ chối; phát hành đối tượng 20 trường không đổi số quan hệ của `studio` trong `pg_class`                                                                                                          |
-| CO3  | Chỉ người giữ `studio.objects.manage` sửa định nghĩa                | R1.3             | Người thiếu khóa lưu nháp, phát hành `dw.object/v1` → 403, không dòng nào mới trong `studio.artifact_versions`; gỡ kiểm khóa → test đỏ                                                                                                                              |
-| CO4  | Hai trường không chung slot                                         | R1.5             | Hai phát hành song song thêm trường lọc được → hai slot khác; gỡ UNIQUE từng phần trên `slot` → test đỏ                                                                                                                                                             |
-| CO5  | Trường luôn có loại dữ liệu cá nhân                                 | R2.2             | Trường thiếu `pd_category` → 422 `pd_category_required`, không áp gì; CHECK khác danh sách của kernel → test đỏ                                                                                                                                                     |
-| CO6  | Tên API và kiểu trường bất biến                                     | R2.4             | Phiên bản đổi `api_name` hay kiểu của trường đã phát hành → 422; gỡ bước so với phiên bản đang dùng → test đỏ                                                                                                                                                       |
-| CO7  | Giá trị trường Đã ẩn không lọt qua describe, lọc, sắp, ghi          | R3.2, R6.6, R8.4 | Lọc, sắp, `fields` trên trường Đã ẩn → 422 `field_not_readable` trước SQL; ghi trường Đã ẩn → 403 `field_not_editable`; describe trả trường Đã ẩn chỉ với `api_name`, nhãn, `access: hidden`; một giá trị của trường Đã ẩn có trong phản hồi → test đỏ              |
-| CO8  | Từ chối ở mức đối tượng đứng trước tồn tại                          | R3.4             | Người thiếu `obj.<api_name>.read` gọi describe, GET một id có và một id không có → cùng 403                                                                                                                                                                         |
-| CO9  | Bản ghi không đọc được không lộ tồn tại                             | R5.7             | GET, PATCH, DELETE id không đọc được và id không tồn tại → cùng 404, cùng thông điệp                                                                                                                                                                                |
-| CO10 | Một đường ghi                                                       | R5.6             | Thêm một mô-đun có SQL nhắc `studio.records` ngoài adapter bản ghi → test kiến trúc đỏ                                                                                                                                                                              |
-| CO11 | Ghi, sự kiện và audit trong một giao dịch                           | R5.2             | Ép lỗi khi chèn outbox → không bản ghi, không audit; tách ghi outbox ra giao dịch khác → test đỏ                                                                                                                                                                    |
-| CO12 | Gửi lại không tạo trùng                                             | R5.3             | Hai lần tạo song song cùng `create_key` → một dòng; gỡ UNIQUE `create_key` → test đỏ                                                                                                                                                                                |
-| CO13 | Mô phỏng và Chạy thử không ghi                                      | R5.4             | RecordService ở `simulate` và `test` → 0 dòng, 0 outbox, 0 audit; gỡ bước chế độ chạy → test đỏ                                                                                                                                                                     |
-| CO14 | Người phụ trách và workspace sở hữu không đổi qua `PATCH`           | R6.7             | `PATCH` có `owner` → 422 `field_not_writable`; `dw_app` UPDATE cột `owner_id` → permission denied                                                                                                                                                                   |
-| CO15 | Khóa lạc quan                                                       | R6.8             | `If-Match` cũ → 412, `version` giữ nguyên; bỏ so phiên bản → test đỏ                                                                                                                                                                                                |
-| CO16 | Trùng không lộ bản ghi                                              | R7.1, R7.4       | Trùng với bản ghi người gọi không đọc được → 409 không id, không giá trị, có audit; trả id → test đỏ                                                                                                                                                                |
-| CO17 | Tạo hoặc cập nhật không đua                                         | R7.3             | Hai lần upsert song song cùng số đã chuẩn hóa → một dòng; bỏ UNIQUE của slot `u` → test đỏ                                                                                                                                                                          |
-| CO18 | Giới hạn dò trùng theo người                                        | R7.6             | Vượt ngưỡng 409 → 429 kèm `Retry-After`; gỡ lời gọi `RateLimiterPort` → test đỏ                                                                                                                                                                                     |
-| CO19 | Truy vấn sinh ra luôn có chỉ mục dưới RLS                           | R8.9             | Ma trận toán tử × họ slot × chiều sắp qua harness hình kế hoạch; biên dịch một vị từ qua `data->>` → test đỏ                                                                                                                                                        |
-| CO20 | Offboarding xuất đúng một lần                                       | R4.4             | Công ty có bản ghi ở hai workspace → số dòng xuất bằng số dòng tạo, sau purge 0; cấp SELECT trên một partition cho `dw_app` → đếm đôi, test đỏ                                                                                                                      |
-| CO21 | Policy tenant là RESTRICTIVE                                        | R4.2             | Thêm policy PERMISSIVE `USING (true)` lên `studio.records` → test catalog đỏ                                                                                                                                                                                        |
-| CO22 | Ngữ cảnh hỗ trợ không tới route bản ghi                             | R4.5             | Yêu cầu có header `X-DW-Support-Grant` hợp lệ gọi `GET .../records/{record_id}` → 403 `support_context_not_allowed`; thêm route vào `SUPPORT_ALLOWED_ROUTES` → test đỏ                                                                                              |
-| CO23 | Nới định nghĩa cần người thứ hai, chỉ siết một người                | R1.2, R1.7       | Phiên bản thêm một trường hay mở một trường `basic` → Chờ duyệt, định nghĩa không đổi tới khi người khác duyệt; phiên bản chỉ đóng `phone` → Đang dùng ngay, có audit; phiên bản vừa đóng `phone` vừa đổi nhãn → Chờ duyệt; coi thay đổi trộn là chỉ siết → test đỏ |
-| CO24 | Không mở trường nhạy cảm, không tạo trường dữ liệu cá nhân ở `open` | R2.5             | Phiên bản đặt `open` cho trường `sensitive` hay cho trường mới `basic` → 422 có con trỏ, không phát hành; gỡ bước kiểm → test đỏ                                                                                                                                    |
+| #    | Kiểm soát                                                           | Yêu cầu          | Test âm                                                                                                                                                                                                                                                                                                                                                            |
+| ---- | ------------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| CO1  | Cô lập công ty trên mọi bảng của spec, kể cả partition              | R4.2, R4.3       | A đọc, sửa, xóa bản ghi của B → 404; INSERT với `tenant_id` của B → RLS từ chối; vai thử NOBYPASSRLS có SELECT đọc thẳng `studio.records_p3` không đặt tenant → 0 dòng; `dw_app` đọc thẳng partition → permission denied (`record-access:R4.3`)                                                                                                                    |
+| CO2  | Không DDL lúc chạy                                                  | R1.1             | `dw_app` chạy `CREATE TABLE`, `CREATE INDEX` trong `studio` → bị từ chối; phát hành đối tượng 20 trường không đổi số quan hệ của `studio` trong `pg_class`                                                                                                                                                                                                         |
+| CO3  | Chỉ người giữ `studio.objects.manage` sửa định nghĩa                | R1.3             | Người thiếu khóa lưu nháp, phát hành `dw.object/v1` → 403, không dòng nào mới trong `studio.artifact_versions`; gỡ kiểm khóa → test đỏ                                                                                                                                                                                                                             |
+| CO4  | Hai trường không chung slot                                         | R1.5             | Hai phát hành song song thêm trường lọc được → hai slot khác; gỡ UNIQUE từng phần trên `slot` → test đỏ                                                                                                                                                                                                                                                            |
+| CO5  | Trường luôn có loại dữ liệu cá nhân                                 | R2.2             | Trường thiếu `pd_category` → 422 `pd_category_required`, không áp gì; CHECK khác danh sách của kernel → test đỏ                                                                                                                                                                                                                                                    |
+| CO6  | Tên API và kiểu trường bất biến                                     | R2.4             | Phiên bản đổi `api_name` hay kiểu của trường đã phát hành → 422; gỡ bước so với phiên bản đang dùng → test đỏ                                                                                                                                                                                                                                                      |
+| CO7  | Giá trị trường Đã ẩn không lọt qua describe, lọc, sắp, ghi          | R3.2, R6.6, R8.4 | Lọc, sắp, `fields` trên trường Đã ẩn → 422 `field_not_readable` trước SQL; ghi trường Đã ẩn → 403 `field_not_editable`; describe trả trường Đã ẩn chỉ với `api_name`, nhãn, `access: hidden`; một giá trị của trường Đã ẩn có trong phản hồi → test đỏ                                                                                                             |
+| CO8  | Từ chối ở mức đối tượng đứng trước tồn tại                          | R3.4             | Người thiếu `obj.<api_name>.read` gọi describe, GET một id có và một id không có → cùng 403                                                                                                                                                                                                                                                                        |
+| CO9  | Bản ghi không đọc được không lộ tồn tại                             | R5.7             | GET, PATCH, DELETE id không đọc được và id không tồn tại → cùng 404, cùng thông điệp                                                                                                                                                                                                                                                                               |
+| CO10 | Một đường ghi                                                       | R5.6             | Thêm một mô-đun có SQL nhắc `studio.records` ngoài adapter bản ghi → test kiến trúc đỏ                                                                                                                                                                                                                                                                             |
+| CO11 | Ghi, sự kiện và audit trong một giao dịch                           | R5.2             | Ép lỗi khi chèn outbox → không bản ghi, không audit; tách ghi outbox ra giao dịch khác → test đỏ                                                                                                                                                                                                                                                                   |
+| CO12 | Gửi lại không tạo trùng                                             | R5.3             | Hai lần tạo song song cùng `create_key` → một dòng; gỡ UNIQUE `create_key` → test đỏ                                                                                                                                                                                                                                                                               |
+| CO13 | Mô phỏng và Chạy thử không ghi                                      | R5.4             | RecordService ở `simulate` và `test` → 0 dòng, 0 outbox, 0 audit; gỡ bước chế độ chạy → test đỏ                                                                                                                                                                                                                                                                    |
+| CO14 | Người phụ trách và workspace sở hữu không đổi qua `PATCH`           | R6.7             | `PATCH` có `owner` → 422 `field_not_writable`; `dw_app` UPDATE cột `owner_id` → permission denied                                                                                                                                                                                                                                                                  |
+| CO15 | Khóa lạc quan                                                       | R6.8             | `If-Match` cũ → 412, `version` giữ nguyên; bỏ so phiên bản → test đỏ                                                                                                                                                                                                                                                                                               |
+| CO16 | Trùng không lộ bản ghi                                              | R7.1, R7.4       | Trùng với bản ghi người gọi không đọc được → 409 không id, không giá trị, có audit; trả id → test đỏ                                                                                                                                                                                                                                                               |
+| CO17 | Tạo hoặc cập nhật không đua                                         | R7.3             | Hai lần upsert song song cùng số đã chuẩn hóa → một dòng; bỏ UNIQUE của slot `u` → test đỏ                                                                                                                                                                                                                                                                         |
+| CO18 | Giới hạn dò trùng theo người                                        | R7.6, R7.8       | 20 lần 409 trong 10 phút trượt → lần 409 thứ 20 vẫn 409; lần ghi kế tiếp, trùng hay không, → 429 kèm `Retry-After`, không ghi, đúng một audit `studio.record.duplicate_throttled`; người gọi khác hay đối tượng khác không bị chặn; gỡ lời gọi `RateLimiterPort` → test đỏ                                                                                         |
+| CO19 | Truy vấn sinh ra luôn có chỉ mục dưới RLS                           | R8.9             | Ma trận toán tử × họ slot × chiều sắp qua harness hình kế hoạch; biên dịch một vị từ qua `data->>` → test đỏ                                                                                                                                                                                                                                                       |
+| CO20 | Offboarding xuất đúng một lần                                       | R4.4             | Công ty có bản ghi ở hai workspace → số dòng xuất bằng số dòng tạo, sau purge 0; cấp SELECT trên một partition cho `dw_app` → đếm đôi, test đỏ                                                                                                                                                                                                                     |
+| CO21 | Policy tenant là RESTRICTIVE                                        | R4.2             | Thêm policy PERMISSIVE `USING (true)` lên `studio.records` → test catalog đỏ                                                                                                                                                                                                                                                                                       |
+| CO22 | Ngữ cảnh hỗ trợ không tới route bản ghi                             | R4.5             | Yêu cầu có header `X-DW-Support-Grant` hợp lệ gọi `GET .../records/{record_id}` → 403 `support_context_not_allowed`; thêm route vào `SUPPORT_ALLOWED_ROUTES` → test đỏ                                                                                                                                                                                             |
+| CO23 | Nới định nghĩa cần người thứ hai, chỉ siết một người                | R1.2, R1.7, R1.8 | Phiên bản thêm một trường, mở một trường `basic` hay đổi `ai_description` → Chờ duyệt, định nghĩa không đổi tới khi người khác duyệt; phiên bản chỉ đóng `phone` → Đang dùng ngay, `tighten_only` đúng, audit có người gửi là actor và `details.path` `tighten_only`; phiên bản vừa đóng `phone` vừa đổi nhãn → Chờ duyệt; coi thay đổi trộn là chỉ siết → test đỏ |
+| CO24 | Không mở trường nhạy cảm, không tạo trường dữ liệu cá nhân ở `open` | R2.5             | Phiên bản đặt `open` cho trường `sensitive` hay cho trường mới `basic` → 422 có con trỏ, không phát hành; gỡ bước kiểm → test đỏ                                                                                                                                                                                                                                   |
+| CO25 | Mô tả cho AI là dữ liệu, tách khỏi lược đồ và không lộ trường Đã ẩn | R3.7             | Trường có `ai_description` chứa `</input>` và "bỏ qua mọi chỉ dẫn" → JSON Schema của bộ chiếu không có chuỗi đó ở `title`, `description` hay nhãn, giá trị chỉ có trong `ai_description` tách riêng; trường Đã ẩn với người gọi không có `ai_description` ở describe lẫn bộ chiếu; ghép `ai_description` vào `description` của lược đồ → test đỏ                   |
 
 ## Tiêu chí xong
 
 - Mọi tiêu chí R có test; mọi kiểm soát có test âm đã thấy đỏ khi gỡ kiểm soát, ghi ở Comments của ticket.
 - `make ci` và `make test-integration` xanh; `make test-web` xanh cho ticket 05; số đo R9.1 ghi ở Comments của
   ticket 01 và 04.
-- `reviewing-feature-security` và `reviewing-deployment-security` đã chạy cho ticket 02 tới 05.
+- `reviewing-feature-security` và `reviewing-deployment-security` đã chạy cho ticket 02 tới 06.
 
 ## Phụ thuộc
 
 - Gói và seam: `dw_studio.records`, `build_studio`, nhóm route `/api/v1/studio` (studio-skeleton/02); schema
   `studio` và test thứ tự offboarding (studio-skeleton/01); mục điều hướng và allowlist antd (studio-skeleton/03).
-- Vỏ phiên bản, `ArtifactKindRegistry`, `studio.artifact_kinds`, dịch vụ phát hành, `studio.dependencies`
+- Vỏ phiên bản, `ArtifactKindRegistry` (khóa đọc, khóa ghi, khóa gửi và cờ Cổng chất lượng của mỗi loại;
+  `tenant-config:R2.11`, `tenant-config:R2.12`, `tenant-config:R2.14`, `tenant-config:R2.15`; nhánh chỉ siết của vỏ
+  phiên bản, `tenant-config:R2.16`), `studio.artifact_kinds`, dịch vụ phát hành, `studio.dependencies`
   (tenant-config/02, ADR-0109 (Accepted)); `RunMode` trên lượt chạy (tenant-config/03, ADR-0111 (Accepted)); Bước bản
   ghi của workflow-nodes chỉ chuyển `RunMode` qua `RecordsPort`, RecordService là chỗ giả lập duy nhất (R5.4).
-- agent-lifecycle: máy giai đoạn `studio.guard_version_stage()` và phê duyệt phát hành (ADR-0120 (Accepted) mục 1, 2)
-  với loại duyệt `studio.publish.object` không qua Cổng chất lượng cho R1.2, và đường một người cho phiên bản chỉ siết
-  cho R1.7 (agent-lifecycle/03, /04).
-- usage-and-limits: `RateLimiterPort` W1 cho R7.6 (usage-and-limits/05); mất Valkey thì mỗi tiến trình giữ một xô ở hạn mức chia số replica
-  (DO-49).
+- agent-lifecycle (ticket 06 chờ agent-lifecycle/03, /04): route gửi phát hành
+  `POST /api/v1/studio/objects/{artifact_id}/versions/{version_id}/submit` kiểm khóa gửi mà `ArtifactKindRegistry` khai
+  cho loại (`studio.objects.manage`; `agent-lifecycle:R2.1`); máy giai đoạn `studio.guard_version_stage()` với
+  `draft → awaiting_approval` cho loại không có Cổng chất lượng và nhánh chỉ siết `draft → live` kiểm `tighten_only`
+  cùng `compared_live_hash` mà `LifecycleService` ghi lúc gửi theo bộ so sánh của loại (`agent-lifecycle:R1.6`,
+  `agent-lifecycle:R1.7`, `agent-lifecycle:R2.8`, `agent-lifecycle:R2.9`, `agent-lifecycle:R5.6`, ADR-0120 (Accepted)
+  mục 1); phê duyệt `studio.publish.object` mở trong giao dịch gửi với `author_ids`, và handler
+  `studio.publish.object.decided` đưa phiên bản lên Đang dùng rồi chạy móc phát hành của loại trong cùng giao dịch
+  (`agent-lifecycle:R5.1`, `agent-lifecycle:R5.5`, ADR-0120 (Accepted) mục 2).
+- usage-and-limits: `RateLimiterPort` W1 cho R7.6 (usage-and-limits/05) với khóa có kiểu (công ty, người gọi, đối
+  tượng), cửa sổ trượt 10 phút (`usage-and-limits:R7.2`) và một lần hỏi trước mỗi lần ghi không tính vào giới hạn
+  (`usage-and-limits:R7.3`); mất
+  Valkey thì mỗi tiến trình giữ một xô ở hạn mức chia số replica (DO-49).
+- foundations-hardening/07 (offboarding đọc theo lô): ticket 02 chờ nó vì cùng sửa `offboarding.py` (`_ORDERED_FIRST`).
 - `uq_workspaces_tenant_id_id` (org-and-principals/01); `dw_kernel.personal_data` (compliance-pdpl/01,
   ADR-0106 (Accepted)).
 - Khóa `obj.<api_name>.<action>` sinh từ định nghĩa của spec này (tenant-rbac/04); policy PERMISSIVE, cột tầm,
@@ -382,17 +417,20 @@ ghi (DO-01, ADR-0100 (Accepted)), mỗi bảng một dòng lý do trong danh sá
 - `Idempotency-Key` gắn người gọi (app-standards/02); ETag, `If-Match`, con trỏ keyset có kiểu, cây lọc JSON,
   harness hình kế hoạch (app-standards/03); problem+json (app-standards/01).
 - Bên dùng khai Protocol, gốc ghép đáp bằng `RecordService`: `RecordsPort` (workflow-nodes/04),
-  `ObjectDataPort` và bộ chiếu lược đồ (tools-and-skills/03); gieo Lead, Campaign qua API công khai
-  (marketing-pilot/02).
+  `ObjectDataPort` và bộ chiếu lược đồ (tools-and-skills/03; `ai_description` bao là dữ liệu từ bên ngoài, YC48);
+  gieo Lead, Campaign qua API công khai: `POST /api/v1/studio/artifacts` (kind `object`),
+  `PUT /api/v1/studio/artifacts/{id}/draft` rồi route gửi phát hành ở trên, không có `POST /api/v1/studio/objects`
+  (marketing-pilot/02, sau ticket 06).
 - Kiểm lại khi: một trong ADR-0104 (Accepted), ADR-0105 (Accepted), ADR-0106 (Accepted), ADR-0108 (Accepted),
-  ADR-0109 (Accepted), ADR-0120 (Accepted) đổi hình hợp đồng → ticket 02 tới 05; số đo ticket 01 trượt cả modulus 8
-  lẫn modulus 4 → quay lại người đặt yêu cầu (DO-15), R9.2, R9.5, ticket 02; trả lời Q3 → R7.6, ticket 03;
-  foundations-hardening/03 rút `foundations-hardening:R5.3` (dạng InitPlan) → mục Dữ liệu, ticket 02.
+  ADR-0109 (Accepted), ADR-0120 (Accepted) đổi hình hợp đồng → ticket 02 tới 06; số đo ticket 01 trượt cả modulus 8
+  lẫn modulus 4 → quay lại người đặt yêu cầu (DO-15), R9.2, R9.5, ticket 02; usage-and-limits đổi hình
+  `RateLimiterPort` → R7.6, R7.8, ticket 03; agent-lifecycle đổi route gửi phát hành, `tighten_only` hay handler
+  `studio.publish.object.decided` → R1.2, R1.7, ticket 06; workflow-engine/03 bỏ cạnh tới record-access/04 và
+  custom-objects/03 → ticket 06 có thể nhập lại ticket 02; foundations-hardening/03 rút `foundations-hardening:R5.3`
+  (dạng InitPlan) → mục Dữ liệu, ticket 02.
 
 ## Câu hỏi còn mở
 
-- Q3. DO-35: ngưỡng và cửa sổ ban đầu của giới hạn 409 `duplicate_value` theo (người gọi, đối tượng) ở R7.6 là bao
-  nhiêu, ghi là giả định để FOG-11 (discovery/10) đo lại? Chủ: Đạt. Chặn: R7.6, ticket 03.
 - Q7. DO-52: hạn của thùng rác và lịch sử thay đổi? Chủ: luật sư và Đạt. Không đổi: W1 không xóa vĩnh viễn bản
   ghi nào ngoài offboarding; hạn chỉ đặt cho purge lane của W2.
 
@@ -486,13 +524,55 @@ ghi (DO-01, ADR-0100 (Accepted)), mỗi bảng một dòng lý do trong danh sá
   (`A:custom-objects:spec~record-access:spec`). Sửa: Trong phạm vi.
 - 23/10/2026 (agent, tạm): describe trả trường Đã ẩn chỉ với `api_name`, nhãn và `access`, không kiểu, cờ hay lựa chọn,
   để lộ ít nhất về một trường người gọi không đọc được. Sửa: R3.2. Nếu sai thì: thêm kiểu và cờ vào trường Đã ẩn.
+- 24/10/2026 (Đạt): Q-R6, phát hành chỉ siết: phiên bản `dw.object/v1` mà bộ so sánh của loại báo chỉ siết (đóng
+  trường, thu hẹp `default_access`) đi `draft → live` bởi một người có audit, mọi phiên bản có nới quyền vẫn
+  `draft → awaiting_approval → live` qua người thứ hai; điều kiện trigger kiểm được là cột `tighten_only` do
+  LifecycleService tính khi gửi, kèm mã băm của phiên bản Đang dùng đã so; `studio.version.published` ghi người gửi là
+  actor và `details.path` `tighten_only` ở nhánh này, người duyệt và `approved` khi qua phê duyệt; ADR-0120 (Accepted)
+  mục 1 có nhánh này, D11 "thu hẹp `default_access`" là một người cộng audit (`B:agent-lifecycle:R1.6~custom-objects:R1.7`).
+  Sửa: R1.2, R1.7, R1.8, CO23, Trong phạm vi, Phụ thuộc, ticket 02, 06.
+- 24/10/2026 (Đạt): agent-lifecycle là chủ route gửi phát hành của loại không có Cổng chất lượng
+  (`POST /api/v1/studio/objects/{artifact_id}/versions/{version_id}/submit`, khóa của loại do `ArtifactKindRegistry`
+  khai), của payload `author_ids` và handler `studio.publish.object.decided` cho mọi loại theo ADR-0120 (Accepted) mục
+  2; spec này giữ loại phê duyệt `studio.publish.object`, bộ so sánh và móc phát hành; ticket nối loại `object` vào
+  đường đó chờ agent-lifecycle/03, /04 (`B:agent-lifecycle:api~custom-objects:R1.2`,
+  `B:agent-lifecycle:R5.1~custom-objects/02`). Sửa: R1.2, R1.3, Phụ thuộc, ticket 06.
+- 24/10/2026 (Đạt): mục `ArtifactKindRegistry` của loại `object` khai `studio.objects.manage` là khóa đọc, khóa ghi và
+  khóa gửi, và dòng `object` của `studio.artifact_kinds` khai không có Cổng chất lượng (`has_quality_gate = false`)
+  (`B:tenant-config:R2.11~workflow-engine:trong-phạm-vi`, `B:agent-lifecycle:R1.6~tenant-config:dữ-liệu`). Sửa: Trong
+  phạm vi, Phụ thuộc, ticket 02.
+- 24/10/2026 (Đạt): N3: đối tượng và mỗi trường có Mô tả cho AI (`ai_description`, tối đa 500 ký tự, không bắt buộc) từ
+  W1; describe và bộ chiếu lược đồ trả nó tách khỏi lược đồ để công cụ đối tượng (tools-and-skills/03) và bước `ai.llm`
+  bao nó là dữ liệu từ bên ngoài theo YC48; đổi `ai_description` không phải thay đổi chỉ siết. YC101. Sửa: R2.6, R3.1,
+  R3.7, CO23, CO25, Dữ liệu, Trong phạm vi, ticket 02.
+- 24/10/2026 (Đạt): DO-35, số tạm (UNVERIFIED, chờ luật sư khi có dữ liệu thật): tối đa 20 lần 409 `duplicate_value` mỗi
+  người, mỗi đối tượng, trong cửa sổ trượt 10 phút; vượt thì 429 và audit. `RateLimiterPort` nhận khóa có kiểu (công ty,
+  người gọi, đối tượng) (`B:custom-objects:R7.6~usage-and-limits:R7.2`). Hỏi: Q3. Sửa: R7.6, R7.8, CO18, Trong phạm vi,
+  Phụ thuộc, Câu hỏi còn mở, ticket 03.
+- 24/10/2026 (Đạt): máy tham chiếu có một chủ là YC20 của requirements.md, theo D14; R9.1 và ticket 01 trích YC20
+  (`A:custom-objects:quyết-định~record-access:quyết-định`). Sửa: R9.1, ticket 01.
+- 24/10/2026 (Đạt): N5, N6, N9, N10: màn xem theo Chặng (YC102, ADR-0126 (Accepted)) và nút "Chạy quy trình" trên trang
+  bản ghi (YC103) ở W2; kiểu trường tệp đính kèm ở W3, nguyên liệu chung của các gói sau gói Bán hàng; báo cáo qua API
+  tổng hợp trên RecordService ở W3 (v1.5), không ETL, đồng bộ hay kho dữ liệu ở v1 (ADR-0127 (Accepted)). Sửa: Ngoài
+  phạm vi.
+- 24/10/2026 (Đạt): ticket 02 chờ foundations-hardening/07, vì cả hai sửa `offboarding.py` và cần một thứ tự sửa
+  (`C:foundations-hardening/07~record-access/03`). Sửa: Phụ thuộc, ticket 02.
+- 24/10/2026 (agent, tạm): đường phát hành qua agent-lifecycle (R1.2, R1.7 và phần gửi của R1.3) tách khỏi ticket 02
+  sang ticket 06 mới, chờ ticket 02 và agent-lifecycle/03, /04: đặt cạnh agent-lifecycle/04 ở ticket 02 khép vòng
+  ticket 02 → agent-lifecycle/04 → workflow-engine/04 → workflow-engine/03 → record-access/04 → record-access/03 →
+  record-access/02 → tenant-rbac/04 → ticket 02, vì workflow-engine/03 chờ record-access/04 và custom-objects/03
+  (`I:record-access:R6.4~workflow-engine:R4.9`); ticket 02 giữ bộ so sánh (R1.8) và móc phát hành, kiểm R1.1 bằng
+  fixture phê duyệt `approved`, nên các ticket bản ghi, quyền và bảo mật trường không chờ Cổng chất lượng. Sửa: Phụ
+  thuộc, Tiêu chí xong, ticket 02, 06. Nếu sai thì: ticket 02 nhận lại R1.2, R1.7 và cạnh tới agent-lifecycle/03, /04
+  khi workflow-engine/03 không còn chờ record-access/04 hay custom-objects/03, và ticket 06 rút.
 
 ## Danh sách ticket
 
-| #   | Ticket                                                                                                                           |
-| --- | -------------------------------------------------------------------------------------------------------------------------------- |
-| 01  | [Đo nền lưu trữ bản ghi trước khi chốt ADR (partition, ngân sách slot, unaccent, InitPlan)](issues/01-do-nen-luu-tru-ban-ghi.md) |
-| 02  | [Định nghĩa object và trường, bảng bản ghi, describe và chiếu JSON Schema](issues/02-luoc-do-dinh-nghia-object.md)               |
-| 03  | [RecordService: tạo, đọc, sửa, xóa mềm, trường duy nhất và upsert](issues/03-record-service.md)                                  |
-| 04  | [Truy vấn bản ghi: cây lọc, sắp keyset có kiểu, đếm có trần](issues/04-truy-van-ban-ghi.md)                                      |
-| 05  | [Danh sách và biểu mẫu antd sinh từ describe](issues/05-danh-sach-va-bieu-mau-antd.md)                                           |
+| #   | Ticket                                                                                                                                 |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| 01  | [Đo nền lưu trữ bản ghi trước khi chốt ADR (partition, ngân sách slot, unaccent, InitPlan)](issues/01-do-nen-luu-tru-ban-ghi.md)       |
+| 02  | [Định nghĩa object và trường, bảng bản ghi, describe và chiếu JSON Schema](issues/02-luoc-do-dinh-nghia-object.md)                     |
+| 03  | [RecordService: tạo, đọc, sửa, xóa mềm, trường duy nhất và upsert](issues/03-record-service.md)                                        |
+| 04  | [Truy vấn bản ghi: cây lọc, sắp keyset có kiểu, đếm có trần](issues/04-truy-van-ban-ghi.md)                                            |
+| 05  | [Danh sách và biểu mẫu antd sinh từ describe](issues/05-danh-sach-va-bieu-mau-antd.md)                                                 |
+| 06  | [Phát hành đối tượng qua vòng đời phiên bản: chỉ siết một người, nới qua người thứ hai](issues/06-phat-hanh-doi-tuong-qua-vong-doi.md) |

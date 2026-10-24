@@ -17,8 +17,8 @@ xử lý mà ticket 03, 04, 06 chờ, và trả lời Q1, Q2 của spec.
       phí đầu tiên (Nghị định 356 Điều 21-27), và bên nào giữ?
     - DO-54: nền tảng là bên xử lý, công ty khách là bên kiểm soát, DPA ký trước khi chạy ngầm, mặc định
       `vn_only`, ai nộp DPIA và CTIA?
-    - DO-55: số chống spam (tần suất, khung giờ, số người nhận mỗi lượt), lời văn đồng ý của người nhận
-      thử, thời hạn hiệu lực và ai được thêm?
+    - DO-55: số chống spam (tần suất, khung giờ, số người nhận mỗi lượt; số tạm 200 người nhận mỗi lượt ở thí
+      điểm, Đạt 24/10/2026), lời văn đồng ý của người nhận thử, thời hạn hiệu lực và ai được thêm?
     - DO-60: ai là nhà cung cấp một agent do công ty khách dựng theo Luật AI, agent marketing có phải rủi
       ro trung bình, công ty được khai tầng dưới đề xuất không, tin AI soạn có người duyệt có phải gắn
       nhãn? (Tới khi có lời đáp: công ty không khai thấp hơn ở v1, nhãn "do AI soạn" bật mặc định.)
@@ -27,9 +27,12 @@ xử lý mà ticket 03, 04, 06 chờ, và trả lời Q1, Q2 của spec.
       nhạy cảm? (Câu trả lời chỉ đổi `pd_category` của trường thí điểm qua một phiên bản `dw.object/v1` mới.)
     - DO-48: cùng một Page hay OA do hai công ty nối thì sự kiện tới cả hai; hai lần cấp quyền OAuth đó có đủ
       căn cứ xử lý cho cả hai công ty không? (Không bật định tuyến sự kiện nhà cung cấp ở W2 trước lời đáp.)
-    - DO-52: thời hạn tạm UNVERIFIED của `retention@1.8.0` và `retention@1.9.0` (Bước chạy và sự kiện vào 30
+    - DO-52: thời hạn tạm UNVERIFIED trong tệp chính sách retention (Bước chạy và sự kiện vào 30
       ngày, Bản ghi đồng ý theo quan hệ cộng 5 năm, Danh sách chặn gửi suốt quan hệ, nhật ký gửi 13 tháng,
-      hội thoại) và xóa `user_id` ở Sổ sử dụng theo yêu cầu của chủ thể.
+      hội thoại 90 ngày, bộ đếm hạn mức 13 tháng; số tạm của Đạt ngày 24/10/2026) và xóa `user_id` ở Sổ sử dụng
+      theo yêu cầu của chủ thể.
+    - DO-35: giới hạn dò trùng tạm (tối đa 20 lần 409 `duplicate_value` mỗi người, mỗi đối tượng, trong 10 phút
+      trượt; Đạt 24/10/2026) có đủ để lần ghi trùng không thành cách dò dữ liệu cá nhân của người khác không?
     - DO-56: hạn 72 giờ báo cơ quan khi có sự cố, và DPA hứa báo công ty trong 24 giờ từ khi nền tảng biết
       có đủ không?
     - DO-51: nội dung thông báo xử lý cho lead khi công ty bật Ghi nội dung, và thông báo cho nhân viên trước
@@ -41,7 +44,7 @@ xử lý mà ticket 03, 04, 06 chờ, và trả lời Q1, Q2 của spec.
 
 ## Tiêu chí chấp nhận
 
-- [ ] Mỗi câu (DO-53, DO-54, DO-55, DO-60, DO-34, DO-48, DO-52, DO-56, DO-51) có câu trả lời bằng văn bản
+- [ ] Mỗi câu (DO-53, DO-54, DO-55, DO-60, DO-34, DO-48, DO-52, DO-35, DO-56, DO-51) có câu trả lời bằng văn bản
       hoặc "chưa có hướng dẫn" kèm ngày, ghi ở Comments.
 - [ ] Mỗi câu trả lời được chuyển vào ADR liên quan hoặc dòng Quyết định của spec, kèm ngày.
 - [ ] Xong: `python -I scripts/check_plans.py --advisory --path .claude/plans/studio/compliance-pdpl` xanh.
@@ -59,3 +62,4 @@ xử lý mà ticket 03, 04, 06 chờ, và trả lời Q1, Q2 của spec.
 - 2026-10-23 (agent): Đạt quyết tạm DO-53, DO-54.1, DO-54.2, DO-55, DO-52, DO-56.2, DO-60 ngày 23/10/2026;
   luật sư xác nhận trước chạy bóng. Thêm câu DO-34 (DO-34.2), DO-48 (DO-48.2), DO-52, DO-56 và DO-51 theo
   quyết định cùng ngày.
+- 2026-10-24 (agent): Đạt đặt bốn số tạm ngày 24/10/2026, mọi số UNVERIFIED chờ luật sư khi có dữ liệu thật: hội thoại 90 ngày (DO-52), 200 người nhận mỗi lượt ở thí điểm (DO-55), giới hạn dò trùng (DO-35), bộ đếm hạn mức 13 tháng; thêm vào câu hỏi tương ứng.

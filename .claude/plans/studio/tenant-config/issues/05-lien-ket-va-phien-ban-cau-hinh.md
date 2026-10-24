@@ -22,7 +22,9 @@ kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7,
    ADR-0103 (Accepted) và workflow-triggers:R3.1; thành viên khi điểm gắn là người dự phòng của bước giao,
    workflow-nodes:R6.3); `secret`, `webhook_endpoint`, `schedule` vào cùng bên đọc của chúng
    (ADR-0110 (Accepted) quyết 6). Bộ kiểu Điểm gắn này là chỗ duy nhất các spec khác đăng ký kiểm riêng
-   của một kind (như `grants_cover` của workflow-triggers/01), không phải `ConfigKindRegistry`.
+   của một kind, không phải `ConfigKindRegistry`: mỗi kind có một kiểm lúc đề xuất (như `grants_cover` của
+   workflow-triggers/01) và một kiểm lúc nhận lượt chạy mà bước 9 gọi (như `binding_needs_review` của
+   workflow-triggers/03).
     - Bộ trích xuất của mọi loại ghi mỗi điểm gắn khai báo thành một dòng `studio.dependencies` với
       `to_kind` `binding`, `usage` `bind`, `to_key` là tên.
     - Bước niêm phong của ticket 02 quét mọi chuỗi của tài liệu: chuỗi trùng id của một dòng
@@ -68,18 +70,23 @@ kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7,
    (ADR-0004 (Accepted)), payload chỉ gồm id, `kind`, `key`, `version_no`, `document_hash`; audit
    `config.version.proposed`. `Idempotency-Key` theo ADR-0108 (Accepted) quyết 4.
 5. Phê duyệt: `config.` vào `strict_approval_prefixes` bằng `|=` ở API
-   (`apps/api/src/dw_api/bootstrap/runtime.py`) và worker (`apps/worker/src/dw_worker/main.py`). Port
+   (`apps/api/src/dw_api/bootstrap/runtime.py`) và worker (`apps/worker/src/dw_worker/main.py`); ticket này chỉ thêm
+   đúng một dòng `|=` cho `config.` ở mỗi chỗ và không sửa dòng của ticket khác (agent-lifecycle/01 thêm
+   `studio.lifecycle.` cũng ở đó), và test khẳng định tập tiền tố nghiêm ở cả hai chỗ chứa `config.`. Người đề
+   xuất quyết yêu cầu `config.version` của mình → 409 `conflict` với `details.reason_code`
+   `second_person_required` (ADR-0104 (Accepted) quyết 11). Port
    `ApprovalDecisionGuard` async và `ProposedDecision` từ dw-proterial (`dw_agent_runtime/approval_flow.py`)
    thay `DecisionGuard` đồng bộ, giữ guard `memory.review` (G4). Guard `ConfigVersionDecisions.check` trả
    409 `decision_stale` khi `base_version` không còn là phiên bản niêm phong mới nhất hay bản `approved`
    đang hiệu lực đã đổi, trước khi quyết định được ghi.
 6. Worker: handler outbox cho `config.version.decided` (tên từ `decided_event_type`), đăng ký trong
    `apps/worker/src/dw_worker/main.py`. `ConfigSettlement.settle` idempotent theo id yêu cầu phê duyệt:
-   duyệt → `approved` và bản trước `superseded` trong một giao dịch, audit `config.version.approved` qua
-   `lane_audit_event` của lane `outbox` (actor `system:outbox`, `details.decided_by`); từ chối →
-   `rejected`, audit `config.version.rejected`; dòng không còn `proposed` hay khóa đã có bản khác được
-   duyệt → `rejected` với `details.reason` `settlement_conflict`; giao lại sau khi đã quyết toán → không
-   đổi gì, không audit thứ hai.
+   duyệt → `approved` và bản trước `superseded` trong một giao dịch, audit `config.version.approved` đứng tên
+   người quyết (`decided_by`) với `details.lane` `outbox`, không qua `lane_audit_event`, vì lane thi hành quyết
+   định đã ghi của một người (ADR-0011 (Accepted); `CLAUDE.md`, Agent and tool rules); từ chối → `rejected`,
+   audit `config.version.rejected` đứng tên người quyết với `details.lane` `outbox`; dòng không còn `proposed`
+   hay khóa đã có bản khác được duyệt → `rejected` với `details.reason` `settlement_conflict`, cùng người đứng
+   tên; giao lại sau khi đã quyết toán → không đổi gì, không audit thứ hai.
 7. Rút đề xuất: chỉ Người đề xuất (khác → 403); một giao dịch đặt `withdrawn`, gọi
    `ApprovalRequest.cancel()` trên yêu cầu liên kết, audit `config.version.withdrawn` (prefix nghiêm chặn
    đường tự từ chối, Quyết định của spec).
@@ -89,8 +96,10 @@ kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7,
 9. Nhận lượt chạy: `RunManifestBuilder` của ticket 04 thêm mục `bindings` vào bản kê: id phiên bản Bộ
    giá trị gắn, với mỗi kết nối id kết nối và phiên bản credential, với mỗi biến `content_hash` của giá
    trị (không ghi giá trị), với `principal` id của người chạy; thêm dòng `platform.run_manifest_keys` cho
-   phiên bản cấu hình. Trước khi ghim, `connection_usable` cho người chạy sai → từ chối nhận với
-   `binding_degraded`, không node nào chạy. Ticket này đáp ứng `RunBindingsPort` (connections-and-vault và
+   phiên bản cấu hình. Trước khi ghim, `connection_usable` cho người chạy sai (kể cả thiếu `connections.use` ở
+   workspace của lượt chạy, ADR-0115 (Accepted) quyết 2) → từ chối nhận với `binding_degraded`, không node nào
+   chạy; rồi chạy kiểm lúc nhận lượt chạy mà mỗi kind đăng ký ở bước 1, kiểm trượt → từ chối nhận với mã của kiểm
+   đó. Ticket này đáp ứng `RunBindingsPort` (connections-and-vault và
    handler của lượt chạy khai): đọc giá trị từ mục `bindings` của bản kê đã ghim, không từ Bộ giá trị gắn
    hiện hành; workflow-engine và agent-builder không cài port này.
 10. Route: `GET /api/v1/studio/artifacts/{id}/bindings` (khai báo, giá trị hiện hành với tên kết nối người
@@ -123,14 +132,17 @@ kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7,
       `no_checker_available`, không dòng nào.
 - [ ] R8.6 (TC18): đề xuất thứ hai cùng khóa khi đề xuất đầu còn mở → 409 `proposal_open`.
 - [ ] R8.7 (TC19): đề xuất loại `prompt` → 422; INSERT thẳng `kind = 'prompt'` → CHECK từ chối.
-- [ ] R8.8 (TC16): Người đề xuất quyết yêu cầu của mình → 409; UPDATE `decided_by = proposed_by` → CHECK
-      từ chối; bỏ `config.` khỏi prefix nghiêm ở API → test đỏ.
+- [ ] R8.8 (TC16): Người đề xuất quyết yêu cầu của mình → 409 `conflict` với `details.reason_code`
+      `second_person_required`; UPDATE `decided_by = proposed_by` → CHECK từ chối; bỏ `config.` khỏi prefix nghiêm
+      ở API → test đỏ.
 - [ ] R8.9 (TC20): niêm phong phiên bản đổi khai báo điểm gắn sau khi đề xuất, rồi quyết định → 409
       `decision_stale`, yêu cầu vẫn `pending`; gỡ guard → test đỏ.
-- [ ] R8.10 (TC17): duyệt → handler đặt `approved`, bản trước `superseded`, audit có actor
-      `system:outbox`.
-- [ ] R8.11 (TC20): từ chối → `rejected`; quyết toán gặp khóa đã có bản khác được duyệt → `rejected` với
-      `settlement_conflict`.
+- [ ] R8.10 (TC17): duyệt → handler đặt `approved`, bản trước `superseded`, audit `config.version.approved` có
+      actor là `decided_by` và `details.lane` `outbox`; ghi audit qua `lane_audit_event` (actor `system:outbox`) →
+      test đỏ.
+- [ ] R8.11 (TC17): từ chối → `rejected`, audit `config.version.rejected` có actor là `decided_by` và
+      `details.lane` `outbox`; ghi actor `system:outbox` → test đỏ.
+- [ ] R8.11 (TC20): quyết toán gặp khóa đã có bản khác được duyệt → `rejected` với `settlement_conflict`.
 - [ ] R8.12 (TC17): UPDATE `status = 'approved'` khi yêu cầu còn `pending` → trigger từ chối; UPDATE
       `superseded` về `proposed` → trigger từ chối; `dw_app` UPDATE `document` → permission denied; gỡ
       trigger → test đỏ.
@@ -165,3 +177,9 @@ kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7,
   `needs-triage`. Theo phiếu cùng ngày: chờ foundations-hardening/06 (OPS-b) và tenant-rbac/02 (hàm tìm
   người duyệt chung); `principal` nhận cả người dự phòng của bước giao (Q6); ticket này đáp ứng
   `RunBindingsPort` và `ConnectionDependentsPort`.
+- 2026-10-24 (agent): theo quyết định của Đạt ngày 24/10/2026: audit quyết toán đứng tên `decided_by` với
+  `details.lane` `outbox` (R8.10, R8.11); người đề xuất tự quyết nhận 409 `conflict` `second_person_required`
+  (R8.8); bộ kiểu Điểm gắn có thêm kiểm lúc nhận lượt chạy cho `binding_needs_review` của workflow-triggers/03;
+  `binding_set` ở W1 không có nhánh chỉ siết (ADR-0110 (Accepted) quyết 2). Theo cách sửa thứ hai của
+  C:agent-lifecycle:R7.10~tenant-config:R8.8, như agent-lifecycle/01, ticket này chỉ thêm dòng `|=` của `config.`,
+  không thêm cạnh Blocked by.

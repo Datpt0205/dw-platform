@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: 02, 03, .claude/plans/studio/custom-objects/issues/02-luoc-do-dinh-nghia-object.md
 Area: studio
-Yêu cầu: R6.8, R9.1, R9.2, R9.3, R9.4, R9.5, R9.6, RB28, RB29, RB30, RB31, RB33
+Yêu cầu: R6.8, R9.1, R9.2, R9.3, R9.4, R9.5, R9.6, R9.7, RB28, RB29, RB30, RB31, RB33
 
 ## Mục tiêu
 
@@ -39,12 +39,15 @@ ticket 09, 14; ngữ nghĩa quyền trường thuộc field-security (ADR-0106 (
 5. **Quyền hiệu lực.** `platform.effective_grants` trả thêm `obj.<api_name>.<action>` với mức và neo của gán vai trò, và
    `fld.<object api_name>.<field api_name>.read|edit` mang mức `tenant` (quyền trường không tự thu hẹp; tầm với do quyền
    đối tượng quyết định, ADR-0106 (Accepted) mục 3); quyền tính động của `tenant_owner` gồm mọi đối tượng sống và mọi hành
-   động `enforced` ở mức `tenant`. `platform.workspace_reach` trả rỗng cho mức `own`. `platform.scopes_in` có khóa `obj.*`
-   ở mọi mức.
+   động `enforced` ở mức `tenant`, và `fld.<object>.<field>.read`, `.edit` của mọi trường sống của các đối tượng đó, sinh
+   từ `studio.field_defs`, không lưu dòng nào trong `studio.field_permissions` (R9.7, N1; ADR-0104 (Accepted) mục 2).
+   `platform.workspace_reach` trả rỗng cho mức `own`. `platform.scopes_in` có khóa `obj.*` ở mọi mức.
 6. **Danh mục sinh.** `GET /api/v1/admin/permissions` liệt kê khóa sinh theo đối tượng sống và hành động `enforced`, nhãn
    "tên đối tượng — tên hành động", loại `record`; không lưu bản sao trong `platform.permissions`.
 7. **Chống leo thang quyền** trên hai bảng mới: trigger BEFORE INSERT, UPDATE gọi `platform.rbac_refusals` của ticket 03 với
-   mức của quyền đối tượng; quyền trường chỉ vào vai trò khi người làm giữ đúng khóa `fld.*` đó. `platform.rbac_refusals`
+   mức của quyền đối tượng; quyền trường chỉ vào vai trò khi người làm giữ đúng khóa `fld.*` đó, nên chủ sở hữu công ty
+   (giữ mọi `fld.*` qua quyền tính động) là người cấp được `fld.*` đầu tiên, và người xác nhận đề xuất cũng phải giữ khóa
+   đó vì thay đổi áp trong giao dịch của người xác nhận. `platform.rbac_refusals`
    coi vai trò mang `fld.*` trên một trường có `pd_category = 'sensitive'` là có quyền trọng yếu, nên
    `platform.roles.bind` không gán hay gỡ được vai trò đó khi người làm không giữ khóa `fld.*` ấy (R6.8, DO-32.1). API ghi
    hai loại quyền qua `PUT /api/v1/admin/roles/{role_id}/permissions` của ticket 03
@@ -59,8 +62,9 @@ ticket 09, 14; ngữ nghĩa quyền trường thuộc field-security (ADR-0106 (
 - [ ] R9.2 (RB28): cấp `share` trên `lead` khi `share` chưa `enforced` → 23514 `ck_role_object_privileges_action_enforced`; gỡ trigger → đỏ.
 - [ ] R9.3 (RB31): xóa định nghĩa `lead` hay một trường của nó → không còn dòng quyền nào trỏ tới chúng; `/me` kế tiếp không có `obj.lead.*`; `object_id` của tenant khác → FK kép từ chối.
 - [ ] R9.4 (RB29): vai trò có `obj.lead.read` mức `own` → `platform.workspace_reach` rỗng cho người giữ; đổi hàm coi `own` như `workspace` → đỏ.
-- [ ] R9.5 (RB30): người giữ `obj.lead.read` mức `workspace` đặt mức `tenant` → 23514; thêm `fld.lead.phone.edit` mình không giữ → 23514; gỡ trigger → test SQL thô đỏ.
+- [ ] R9.5 (RB30): người giữ `obj.lead.read` mức `workspace` đặt mức `tenant` → 23514; thêm `fld.lead.phone.edit` mình không giữ → 23514; `tenant_owner` đề xuất thêm `fld.lead.phone.read` vào vai Marketing → 202, quyền chưa đổi; một `tenant_owner` khác xác nhận → áp, `/me` của người giữ vai Marketing có `fld.lead.phone.read`; người xác nhận không giữ khóa đó → 403 `rbac_escalation`; gỡ trigger → test SQL thô đỏ.
 - [ ] R9.6: vai trò A cho `fld.lead.phone.read`, vai trò B cho `fld.lead.phone.edit`, cùng một người → `/me` trả cả hai khóa.
+- [ ] R9.7: tạo trường `phone` trên `lead` → `/me` của người giữ `tenant_owner` có `fld.lead.phone.read` và `fld.lead.phone.edit` mức `tenant`, `studio.field_permissions` không có dòng nào cho trường đó; xóa trường → hai khóa vắng ở `/me` kế tiếp; bỏ nhánh `fld.*` khỏi quyền tính động của `tenant_owner` → test đỏ.
 - [ ] R6.8 (RB33): người chỉ giữ `platform.roles.bind` đề xuất gán vai trò có `fld.lead.cccd.read` trên trường `sensitive` mà mình không giữ → 403 `rbac_escalation`, không dòng đề xuất; cùng thao tác bằng SQL thô dưới `dw_app` → 23514; vai trò chỉ có `fld.*` trên trường `basic` → nhận; bỏ nhánh `sensitive` khỏi `platform.rbac_refusals` → test đỏ.
 - [ ] Xong: `make ci` xanh.
 
@@ -76,3 +80,4 @@ ticket 09, 14; ngữ nghĩa quyền trường thuộc field-security (ADR-0106 (
 
 - 2026-10-23 (agent): Bước 7 mở rộng `platform.rbac_refusals` và route của ticket 03 trong khi `Blocked by:` chép đúng gói (02 và custom-objects/02); đề xuất thêm 03 vào `Blocked by:`.
 - 2026-10-23 (agent): DO-09.1 và DO-32.1 đã có lời đáp (Đạt, 23/10/2026); Status về needs-triage; thêm R6.8 (RB33) và luật siết một người của R7.6 vào bước 7.
+- 2026-10-24 (agent): N1 (Đạt, 24/10/2026): quyền tính động của `tenant_owner` gồm mọi `fld.*` trên mọi trường sống, nên `fld.*` đầu tiên trên một trường `secured` cấp được; đưa `fld.*` vào vai khác vẫn đi đề xuất hai người. Thêm R9.7 vào bước 5 và tiêu chí; RB30 thêm đường của `tenant_owner`.

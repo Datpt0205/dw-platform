@@ -38,3 +38,4 @@ Thay ba chỗ đọc hồ sơ lệch nhau bằng một `ModelResolver` theo côn
 ## Comments
 
 - 2026-10-23 (agent): Đạt chốt DO-21.5 (a) ngày 23/10/2026: R2.4 rút, ticket không đổi giá trên hồ sơ (bước 2). Theo phát hiện kiểm nhất quán cùng ngày: thêm Blocked by tenant-config/04 vì bước 5 ghim route vào bản kê lượt chạy; trường tuyến dữ liệu chỉ thêm ở đây, compliance-pdpl/03 chỉ đọc.
+- 2026-10-24 (agent): thứ tự với usage-and-limits/02 theo quyết định Đạt ngày 24/10/2026: cả hai ticket sửa `packages/python/dw_agent_runtime/src/dw_agent_runtime/model/profiles.py` và `configs/models/*.yaml`, nên ticket này đi trước và dựng `ModelProfile` v2 (bước 2); usage-and-limits/02 ghi Blocked by ticket này rồi dời giá sang Bảng giá trên bản v2. Ticket này không chờ usage-and-limits/02.

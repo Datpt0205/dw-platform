@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: 01, 02, .claude/plans/studio/workflow-engine/issues/02-cot-run-va-cua-nhan-run.md, .claude/plans/studio/org-and-principals/issues/02-thanh-vien-cap-tenant.md, .claude/plans/studio/compliance-pdpl/issues/03-tuyen-du-lieu-o-model-gateway.md
 Area: studio
-Yêu cầu: R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R4.7, R4.8, R4.9, R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R6.5, UL2, UL3, UL6, UL8, UL9, UL10, UL11, UL13, UL15
+Yêu cầu: R3.8, R4.1, R4.4, R4.5, R4.6, R4.8, R4.9, R4.10, R4.11, R4.12, R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R6.5, UL2, UL3, UL6, UL8, UL9, UL10, UL11, UL13, UL15
 
 ## Mục tiêu
 
@@ -14,23 +14,35 @@ chạy chết được thu hồi (spec R4, R5). Thay `RunBudgetLedger` và `tena
 ## Việc cần làm
 
 1. Revision Alembic mới (id hex ngẫu nhiên): `platform.limit_policies` (RLS tenant; `scope_type` CHECK
-   `tenant`, `workspace`, `agent`, `workflow`, `user`; `metric`, `window_kind`, `kind` CHECK `hard`,
-   `soft`; `limit_value numeric(20,8) CHECK (>= 0)`; `thresholds smallint[]` CHECK con của {50, 80, 90,
-   100}; `purposes text[]`; `version`; `created_by`; `UNIQUE (tenant_id, scope_type, scope_id, metric, window_kind)`;
-   trigger `updated_at` nhường giá trị lệnh nêu); `platform.budget_counters` (khóa chính sáu cột đầu,
-   `CHECK (used >= 0 AND reserved >= 0)`, RLS tenant và policy drain); `platform.budget_leases`
-   (`UNIQUE (tenant_id, root_run_id) WHERE state='open'`, index từng phần `expires_at WHERE state='open'`).
+   `tenant`, `workspace`, `agent`, `workflow`, `user`; cột khóa ngoại có kiểu `scope_workspace_id` (FK ghép tới
+   `platform.workspaces`), `scope_user_id` (FK ghép tới `platform.tenant_members`), `scope_artifact_id` (FK ghép
+   tới `studio.artifacts`), mỗi FK `ON DELETE CASCADE` và có index riêng; CHECK `num_nonnulls` của ba cột đó
+   bằng 1 với đúng cột của `scope_type` khác `tenant` và bằng 0 khi `tenant`
+   (spec R4.12; ADR-0121 (Accepted) quyết 4); `metric`, `window_kind`, `kind` CHECK `hard`, `soft`;
+   `limit_value numeric(20,8) CHECK (>= 0)`; `thresholds smallint[]` CHECK con của {50, 80, 90, 100};
+   `purposes text[]`; `version`; `created_by`; UNIQUE NULLS NOT DISTINCT trên `tenant_id`, `scope_workspace_id`,
+   `scope_user_id`, `scope_artifact_id`, `metric`, `window_kind`; trigger `updated_at` nhường giá trị lệnh nêu);
+   `platform.budget_counters` (khóa chính sáu cột đầu, `CHECK (used >= 0 AND reserved >= 0)`, RLS tenant và
+   policy drain); `platform.budget_leases` (`UNIQUE (tenant_id, root_run_id) WHERE state='open'`, index từng phần
+   `expires_at WHERE state='open'`). Ba bảng có policy `tenant_isolation_*` và DELETE cho `dw_app`, nên lane
+   `offboarding` xuất rồi xóa chúng như bảng thường (spec R3.8; studio-skeleton:R4.3). Cùng migration: đăng ký
+   khóa `platform.limits.manage` trong `platform.permissions` của tenant-rbac/01 (nhãn tiếng Việt, `scope_kind`
+   `tenant`, `risk` `elevated` theo bảng phân loại của ticket đó). Cùng thay đổi: thêm khóa
+   `platform.budget_counters` (395 ngày sau `window_end`) và `platform.budget_leases` (30 ngày sau khi đóng), số tạm
+   UNVERIFIED, vào bản kế tiếp của tệp chính sách retention theo định dạng của telemetry-and-audit:R5.6.
 2. `EffectiveLimits.for_admission(run_context, artifact)` gộp gói, tenant, workspace và tổ tiên, agent
    hoặc quy trình, người dùng; cache theo tenant, xóa khi ghi. Một hàm `window_for(tenant_id, window_kind, at)`
    đọc `platform.tenants.timezone` cho ranh giới, NULL thì Asia/Ho_Chi_Minh (DO-50; ADR-0121 (Accepted)
    quyết 9); ảnh worker mang dữ liệu múi giờ (tzdata).
 3. `LimitsPort` (runtime khai, `dw_usage` đáp): `admit`, `resume`, `RunLease.before_call(estimate) -> CallPermit(max_output_tokens, call_id, occurred_at)`,
    `after_call`, `release(reason)`. Nhận run một giao dịch, khóa bộ đếm theo thứ tự chuẩn (scope rank
-   rồi `scope_id`); hụt → `QuotaExceededError` `limit_exceeded` kèm `metric`, `scope_type`, `window`,
-   `limit`, `used`, `resets_at`; audit `limits.refused`; metric `dw_limit_refusals_total`. Hình từ chối theo
-   `trigger_kind` (DO-21.3): hết kỳ thì `chat`, `manual`, `test` thành `failed`, `datahub`, `record_event`,
-   `provider_app` giữ `queued` với `available_at` bằng `resets_at`; thiếu chỗ đồng thời thì mọi loại xếp lại
-   với `available_at` sau; không 429 (429 chỉ còn ở đường chạy inline cũ `langgraph_runner.py:246-264`).
+   rồi `scope_id`); hết kỳ → `QuotaExceededError` `limit_exceeded` kèm `metric`, `scope_type`, `window`,
+   `limit`, `used`, `resets_at`, không mở lease và không đổi bộ đếm (spec R4.10); thiếu chỗ đồng thời → từ chối
+   kèm `metric` `max_concurrent_runs` và thời điểm thử lại, phân biệt được với hết kỳ (spec R4.11); audit
+   `limits.refused`; metric `dw_limit_refusals_total`. Ticket này chỉ trả câu trả lời; hình từ chối theo
+   `trigger_kind` (đặt `failed`, giữ `queued` tới `resets_at`, xếp lại) là của làn `studio_runs` trong
+   workflow-engine/04 (workflow-engine:R5.4, workflow-engine:R5.9, workflow-engine:R5.10, workflow-engine:R5.11),
+   ticket đó chờ ticket này; không 429 (429 chỉ còn ở đường chạy inline cũ `langgraph_runner.py:246-264`).
 4. Runner, do làn `studio_runs` gọi lúc dispatch, là chỗ duy nhất gọi `admit`: `_require_allowance` →
    `limits.admit`; lượt chạy con và lần thử của Lượt kiểm định dùng lease của lượt gốc hay của Lượt kiểm
    định, không gọi `admit` (ADR-0113 (Accepted) quyết 9); kết thúc → `release`; `waiting_approval` →
@@ -41,9 +53,10 @@ chạy chết được thu hồi (spec R4, R5). Thay `RunBudgetLedger` và `tena
    ghi Bản ghi sử dụng (spec R6.5).
 5. `ReapTarget(name="budget_leases")` trên lane `reaper` (hôm nay không đăng ký gì): quét dưới
    `app.worker_drain`, đặt tenant theo từng sự kiện; dòng `unsettled_estimate`; cuộn bộ đếm; audit
-   `limits.lease.expired` bằng `lane_audit_event` và `append_across_tenants`. Lane `retention_limits`
-   (lease đóng quá 30 ngày, bộ đếm quá `window_end` cộng 35 ngày; spec R5.7). Sửa
-   `test_only_the_platform_lanes_are_wired`.
+   `limits.lease.expired` bằng `lane_audit_event` và `append_across_tenants`. Lane `retention_limits` đọc thời
+   hạn dưới khóa `platform.budget_counters` và `platform.budget_leases` của tệp chính sách retention mà lane
+   `partitions` nạp (bộ đếm quá `window_end` cộng 395 ngày, lease đóng quá 30 ngày; spec R5.7), không ghi cứng số
+   nào trong mã; thiếu khóa thì không xóa gì và báo lỗi cấu hình. Sửa `test_only_the_platform_lanes_are_wired`.
 6. Route `GET /api/v1/limits` (`platform.usage.read`): mỗi chính sách kèm Hạn mức hiệu lực, bộ đếm của kỳ
    hiện tại và giờ đặt lại (không route `/api/v1/usage/limits` riêng). `PUT /api/v1/limits/{scope_type}/{scope_id}`
    và `DELETE` (`platform.limits.manage`, `Idempotency-Key`): hạ hay đặt mới áp ngay với một người, audit
@@ -61,15 +74,20 @@ chạy chết được thu hồi (spec R4, R5). Thay `RunBudgetLedger` và `tena
 ## Tiêu chí chấp nhận
 
 - [ ] R4.1: một lượt chạy có chính sách ở gói, tenant và workspace cha → qua chỉ khi cả ba còn đủ.
-- [ ] R4.2: trần kỳ của tenant cạn, lượt chạy `chat` tới dispatch → `failed` `limit_exceeded` kèm `metric`,
-      `scope_type`, `window`, `resets_at`, 0 lời gọi model, không phản hồi 429 nào.
-- [ ] R4.3: trần kỳ cạn, lượt chạy `datahub` → giữ `queued` với `available_at` bằng `resets_at`, sự kiện còn,
-      0 lời gọi model (MP13).
+- [ ] R4.10: trần kỳ của tenant cạn → `LimitsPort.admit` trả `limit_exceeded` kèm `metric`, `scope_type`,
+      `window`, `limit`, `used`, `resets_at`, không dòng `budget_leases` mới, `budget_counters` không đổi, không
+      phản hồi 429 nào.
+- [ ] R4.11: hết chỗ đồng thời → `LimitsPort.admit` trả từ chối với `metric` `max_concurrent_runs` và thời điểm
+      thử lại, khác câu trả lời của R4.10, không lease mới.
+- [ ] R4.12: xóa workspace mà một chính sách hạn mức nhắm tới → chính sách đó biến mất cùng lệnh xóa; xóa dòng
+      `platform.tenant_members` của một người → chính sách theo người của họ biến mất; dòng đặt hai cột phạm vi, hay
+      `scope_type` `workspace` mà cột workspace NULL → CHECK từ chối.
+- [ ] R3.8: công ty `offboarding` có dòng trong `limit_policies`, `budget_counters`, `budget_leases` → lane
+      `offboarding` xuất mỗi dòng một lần rồi xóa hết; test phủ offboarding (studio-skeleton:R4.3) xanh không cần
+      dòng `STUDIO_EXCLUSIONS` cho ba bảng.
 - [ ] R4.4 (UL8): cha cap USD 10 đã hết, con cap USD 50 → lượt chạy ở con bị chặn; gỡ vòng tổ tiên → test đỏ.
 - [ ] R4.5 (UL9): `PUT` hạn mức tenant cao hơn gói → 422 `limit_above_plan`, không dòng nào đổi.
 - [ ] R4.6 (UL10): thiếu `platform.limits.manage` → 403; workspace tenant khác → 404.
-- [ ] R4.7: hết chỗ đồng thời → lượt `chat` và lượt `datahub` đều xếp lại `queued` với `available_at` sau,
-      không lượt nào `failed`.
 - [ ] R4.8: một người hạ trần tenant từ USD 50 xuống USD 10 → áp ngay, audit `limits.policy.set` có `before`,
       `after` trong cùng giao dịch.
 - [ ] R4.9 (UL15): một người nâng trần từ USD 10 lên USD 50 → 409 `second_person_required`, Hạn mức hiệu lực
@@ -84,8 +102,9 @@ chạy chết được thu hồi (spec R4, R5). Thay `RunBudgetLedger` và `tena
       không hạ ngầm xuống model rẻ hơn; gỡ kiểm ranh giới → test đỏ.
 - [ ] R5.6: lượt chạy con của một lượt gốc chạy trên lease của lượt gốc, không có dòng `budget_leases` thứ
       hai và không gọi `admit`.
-- [ ] R5.7: lane `retention_limits` xóa bộ đếm có `window_end` 36 ngày trước và lease đóng 31 ngày trước;
-      giữ bộ đếm 34 ngày và lease còn mở.
+- [ ] R5.7: với thời hạn 395 và 30 ngày trong tệp chính sách retention, lane `retention_limits` xóa bộ đếm có
+      `window_end` 396 ngày trước và lease đóng 31 ngày trước; giữ bộ đếm 394 ngày và lease còn mở; đổi số trong
+      tệp thử → lane theo số mới, không sửa mã.
 - [ ] R6.5: `ResidencyGate` giả từ chối một lời gọi → `reserved` của lease không đổi, 0 dòng
       `usage_events` cho lời gọi đó.
 - [ ] Xong: `make ci && make test-integration` xanh.
@@ -109,3 +128,10 @@ chạy chết được thu hồi (spec R4, R5). Thay `RunBudgetLedger` và `tena
   D11 phạm vi (siết một người, nới hai người), bảng toàn tenant cho hạn mức và bộ đếm, và cạnh OPS-b chờ
   compliance-pdpl/03 (thứ tự cửa `ResidencyGate` trước `LimitsMiddleware`). agent-lifecycle/04 chờ ticket
   này (DO-21.4).
+- 2026-10-24 (agent): áp quyết định của Đạt ngày 24/10/2026: ticket này chỉ trả câu trả lời của
+  `LimitsPort.admit` (spec R4.10, R4.11), hình từ chối theo `trigger_kind` là của workflow-engine/04 và ticket đó
+  chờ ticket này (A:usage-and-limits:R4.2\~workflow-engine:R5.9); cột khóa ngoại có kiểu cho phạm vi của hạn mức
+  (spec R4.12); thời hạn của bộ đếm (13 tháng) và lease (30 ngày) đọc từ tệp retention mà ticket này thêm khóa;
+  đăng ký `platform.limits.manage` ở đây theo quy ước của tenant-rbac/01; ba bảng xóa được khi offboarding.
+  agent-builder/03 chờ ticket này vì `LimitsMiddleware` thay `RunBudgetMiddleware` trong ngăn xếp mà agent-builder/03
+  giữ thứ tự (ADR-0117 (Accepted) quyết 5; cạnh nằm ở ticket đó).

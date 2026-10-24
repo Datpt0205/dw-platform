@@ -30,7 +30,9 @@ Claim trước hiệu ứng (R6.1, R6.2, R6.3, R6.7):
     - `dw_app` giữ SELECT, INSERT, DELETE; REVOKE UPDATE mà default privileges cấp.
 2. Cùng revision: REVOKE UPDATE trên `platform.tool_executions` khỏi `dw_app` (DELETE giữ vì
    offboarding xóa theo tenant); CHECK `ck_tool_executions_status` cho `status IN ('succeeded', 'failed')`,
-   sau khi `SELECT DISTINCT status` trên dữ liệu hiện có không thấy giá trị khác (ghi Comments).
+   sau khi `SELECT DISTINCT status` trên dữ liệu hiện có không thấy giá trị khác (ghi Comments). Cột
+   `output` quá 30 ngày do lane lưu giữ của telemetry-and-audit xóa qua một hàm riêng của lane
+   (ADR-0122 (Accepted) quyết 7), nên không trả UPDATE cho `dw_app` để lane đó dùng.
 3. Port `ToolClaimPort` do `dw_agent_runtime` khai (claim, tiếp quản claim quá hạn, nhả theo token),
    adapter SQL nối ở composition root; `ToolExecutor` nhận port qua constructor.
 4. `ToolExecutor._execute`, khi có khóa chống lặp: INSERT claim trước `find_succeeded`, với

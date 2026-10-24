@@ -1,6 +1,7 @@
 # 01 — Một chủ cho danh mục gói dịch vụ: platform.plan_limits thay DEFAULT_PLANS
 
 Status: needs-triage
+Blocked by: .claude/plans/studio/foundations-hardening/issues/03-quyen-dw-app-va-rls-initplan.md
 Area: studio
 Yêu cầu: R1.1, R1.2, R1.3, R1.4, UL1
 
@@ -17,11 +18,11 @@ Số giới hạn của một Gói dịch vụ về một chủ trong database, 
    `cost_usd_per_month`, `tokens_per_month`, `max_concurrent_runs`, `requests_per_minute`,
    `tokens_per_minute` (NULL = không giới hạn); trần mỗi lượt NOT NULL `max_cost_usd_per_run`,
    `max_tokens_per_run`, `max_steps_per_run` CHECK (BETWEEN 1 AND 500), `max_model_calls_per_run`,
-   `max_tool_calls_per_run`, `max_run_seconds`.
+   `max_tool_calls_per_run`. Không có cột `max_run_seconds` ở W1: cột vào ở W2 cùng bên đọc của nó (Ngoài phạm
+   vi của spec).
 2. Seed giữ số hiện tại: `runs_per_day` 20, 200, 2000; tiền NULL (DO-59.1: số tiền của gói chỉ cần trước
    GA; trần của công ty thí điểm đặt qua `platform.limit_policies`, usage-and-limits/03); trần mỗi lượt lấy
-   từ mặc định `ModelBudgets` (USD 2.0, 120000 token), 50 bước, số giây và số lời gọi theo đề xuất ghi ở
-   Comments.
+   từ mặc định `ModelBudgets` (USD 2.0, 120000 token), 50 bước, số lời gọi theo đề xuất ghi ở Comments.
 3. Migration mới chuyển dữ liệu `platform.plans.quotas` sang cột rồi bỏ cột `quotas` (không sửa
    baseline); tính năng đọc từ `platform.plans.features`.
 4. `PlanCatalogPort` đọc database (cache tiến trình, TTL ngắn); `PlanEntitlementService` lấy số và tính
@@ -53,3 +54,6 @@ Số giới hạn của một Gói dịch vụ về một chủ trong database, 
   trường, index) làm cột của cùng bảng — một danh mục gói cho nền tảng.
 - 2026-10-23 (agent): DO-59.1 (Đạt, 23/10/2026): tiền NULL ở gói giữ như hôm nay; DO-59.2: v1 bán phí gói
   cố định kèm trần chi phí AI mỗi tháng (`cost_usd_per_month`), không tín dụng.
+- 2026-10-24 (agent): áp quyết định của Đạt ngày 24/10/2026: chờ foundations-hardening/03 để quyền ghi và cột của
+  `platform.plans` đổi theo một thứ tự (C:foundations-hardening/03\~usage-and-limits/01); bỏ `max_run_seconds`
+  khỏi W1 vì chưa có bên đọc (H:usage-and-limits:dữ-liệu\~usage-and-limits:ngoài-phạm-vi).

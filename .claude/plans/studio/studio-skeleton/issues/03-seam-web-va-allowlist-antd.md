@@ -1,13 +1,13 @@
 # 03 — Seam web Studio và guard antd-only thành allowlist
 
 Status: needs-triage
-Blocked by: 02
+Blocked by: 02, .claude/plans/studio/tenant-config/issues/02-vo-phien-ban-va-chi-muc-phu-thuoc.md
 Area: studio
 Yêu cầu: R7.1, R7.2, R7.3, R7.4, R7.5, R7.6, R7.7, G3, SKEL15
 
 ## Mục tiêu
 
-Lát này cho người dùng đúng một mục "Studio" trên thanh điều hướng và một trang `/studio` có nội dung thật (R7.1 đến R7.4, YC1), và biến guard antd-only thành allowlist mà không nới: thư viện UI nào chưa có ADR vẫn đỏ, và một ngoại lệ chỉ hợp lệ trong glob của nó (R7.5 đến R7.7, ADR-0101 (Accepted) điểm 4). Ticket này chưa thêm ngoại lệ nào; ngoại lệ canvas vào cùng import canvas đầu tiên ở workflow-builder-ui.
+Lát này cho người dùng đúng một mục "Studio" trên thanh điều hướng và một trang `/studio` có nội dung thật (R7.1 đến R7.4, YC1), và biến guard antd-only thành allowlist mà không nới: thư viện UI nào chưa có ADR vẫn đỏ, và một ngoại lệ chỉ hợp lệ trong glob của nó (R7.5 đến R7.7, ADR-0101 (Accepted) điểm 4). Ticket này chưa thêm ngoại lệ nào; ngoại lệ canvas vào cùng import canvas đầu tiên ở workflow-builder-ui. Ticket này chờ tenant-config/02, nơi `GET /api/v1/studio/artifacts` và khóa đọc của nó ra đời, nên `@dw/api-client` sinh từ OpenAPI chỉ có phương thức của route đó từ ticket ấy.
 
 ## Việc cần làm
 

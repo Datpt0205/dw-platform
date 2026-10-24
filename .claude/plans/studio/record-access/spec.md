@@ -23,9 +23,10 @@ trường là spec `field-security`.
   (`db/migrations/sql/0001_platform_baseline.sql:770`). Ràng buộc: foundations-hardening ticket 03 đo dạng InitPlan;
   policy bản ghi dùng dạng đó.
 - Chỉ lane offboarding đặt `app.workspace_scope = 'tenant'`
-  (`packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:51-54`), đúng quy tắc của
-  `CLAUDE.md:196-198`. Ràng buộc: theo DO-13.1 (Đạt, 23/10/2026), chỉ helper `tenant_wide_scope` đặt setting này, cho
-  lane có tên trong danh sách đăng ký đóng băng ở composition root (W1: offboarding); CLAUDE.md mục Tenancy ghi luật đó.
+  (`packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:51-54`), đúng quy tắc của CLAUDE.md
+  mục Tenancy and authorization. Ràng buộc: theo DO-13.1 (Đạt, 23/10/2026), chỉ helper `tenant_wide_scope` đặt setting
+  này, cho lane có tên trong danh sách đăng ký đóng băng ở composition root (W1: offboarding); CLAUDE.md mục Tenancy ghi
+  luật đó.
 - Offboarding tìm bảng để xuất theo policy tên `tenant_isolation_%` và quyền SELECT của `dw_app`
   (`packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:68-86`). Ràng buộc: bảng bản ghi
   giữ tên policy đó và SELECT của `dw_app` ở bảng cha, không ở partition, để mỗi dòng được xuất một lần.
@@ -214,7 +215,7 @@ hay không (YC50, YC82).
 
 Danh sách và bản ghi giữ ngân sách thời gian với mọi hồ sơ quyền ở quy mô D12: 10 triệu bản ghi mỗi object, 50 triệu
 mỗi tenant, 5.000 người, 200 workspace, cây workspace sâu 6 (YC20). Mỗi dòng là p95 của 20 lần, đo phía máy chủ trên
-máy tham chiếu, với mọi hồ sơ quyền của ticket 01.
+máy tham chiếu mà YC20 định nghĩa (host chính sau D14), với mọi hồ sơ quyền của ticket 01.
 
 | Mã   | Thao tác dưới policy bản ghi                                   | p95 tối đa |
 | ---- | -------------------------------------------------------------- | ---------- |
@@ -290,9 +291,11 @@ máy tham chiếu, với mọi hồ sơ quyền của ticket 01.
   `platform.tenant_members` `ON DELETE CASCADE`, `epoch`, `version`, `state` với `ck_principal_scopes_state` (`valid`,
   `stale`), `computed_at`, `workspace_ids` và một `uuid[]` cho mỗi cặp hành động `read`, `create`, `update`, `delete`,
   `assign` và nhánh `own`, `keys`, `tenant`); `dw_app` chỉ SELECT. Hai bảng là dữ liệu dẫn xuất, không có
-  `workspace_id` (lớp bảng toàn tenant, DO-01); offboarding không xóa chúng bằng `dw_app` mà chúng đi theo cascade
-  (`studio.principal_scopes` cùng `platform.tenant_members`, `studio.access_epochs` cùng `platform.tenants`), nên chúng
-  nằm trong `STUDIO_EXCLUSIONS` của test phủ offboarding kèm lý do đó.
+  `workspace_id` (lớp bảng toàn tenant, DO-01), và offboarding không xóa chúng bằng `dw_app`: `studio.principal_scopes`
+  đi theo cascade khi offboarding xóa `platform.tenant_members`; `studio.access_epochs` giữ có chủ ý một dòng đếm mỗi
+  tenant, kể cả tenant đã offboard, vì offboarding giữ dòng `platform.tenants` ở `offboarded` (`foundations-hardening:R3.2`)
+  và dòng đếm không mang dữ liệu nào của tenant. Mỗi bảng nằm trong `STUDIO_EXCLUSIONS` của test phủ offboarding kèm
+  đúng lý do của nó.
 - `studio.actor_boundaries` (`kind` `agent` hay `workflow`, `source_id`, `source_version`),
   `studio.actor_boundary_objects` (`can_read`, `can_create`, `can_update`, `can_delete`, `can_assign`),
   `studio.actor_boundary_fields` (`access` là `read` hay `edit`); RLS tenant; trigger `ck_actor_boundaries_frozen`; ba
@@ -357,8 +360,9 @@ máy tham chiếu, với mọi hồ sơ quyền của ticket 01.
 - custom-objects ticket 02 (`studio.object_defs` với `default_access` và `ck_object_defs_default_access`,
   `studio.records` phân vùng hash theo tenant với cột hệ thống `owner_id`, `owner_kind`, `workspace_id`, `object_id`
   NOT NULL; `custom-objects:R1.4`, `custom-objects:R4.1`); RecordService của ticket 03 của họ trả các mã ở mục API.
-- foundations-hardening ticket 03 (dạng InitPlan, quyền thừa của `dw_app`); studio-skeleton (schema `studio`, USAGE
-  và quyền mặc định chỉ cho `dw_app`, test phủ offboarding đọc `STUDIO_EXCLUSIONS`).
+- foundations-hardening ticket 03 (dạng InitPlan, quyền thừa của `dw_app`) và ticket 07 (offboarding đọc theo lô; ticket
+  03 ở đây chờ nó để `offboarding.py` có một thứ tự sửa); studio-skeleton (schema `studio`, USAGE và quyền mặc định chỉ
+  cho `dw_app`, test phủ offboarding đọc `STUDIO_EXCLUSIONS`).
 - agent-builder ticket 03 dùng cửa gắn actor cho agent Studio; workflow-engine gắn `workflow` qua cùng helper ở mỗi
   bước; agent-lifecycle và workflow-engine ghi giới hạn dữ liệu qua `ActorBoundaryPort` khi phát hành; field-security
   đọc `studio.actor_boundary_fields`.
@@ -439,6 +443,21 @@ máy tham chiếu, với mọi hồ sơ quyền của ticket 01.
   Phụ thuộc.
 - 23/10/2026 (agent, tạm): ticket 05 chờ app-standards/01, /02 vì route giao dùng problem+json và `Idempotency-Key` gắn
   người gọi (`I:app-standards/02~tenant-rbac/03`). Sửa: Phụ thuộc, ticket 05. Nếu sai thì: bỏ cạnh.
+- 24/10/2026 (Đạt): sửa câu audit của dòng DO-13.1 ngày 23/10/2026: lane trong danh sách phạm vi toàn tenant chạy việc
+  của chính nó thì audit `system:<lane>`; lane thi hành quyết định đã ghi của một người, như lần purge của offboarding,
+  audit đứng tên người vận hành đã yêu cầu offboarding và ghi `details.lane` là `offboarding` (CLAUDE.md, Agent and tool
+  rules; ADR-0011 (Accepted)); ADR-0105 (Accepted) mục 5 sửa cùng (`E:CLAUDE.md#agent-and-tool-rules~record-access:DO-13`).
+  RA22 và ticket 03 không đổi. Sửa: Quyết định (dòng DO-13.1).
+- 24/10/2026 (Đạt): máy tham chiếu có một chủ là YC20 của requirements.md, theo D14 (host chính sau khi nâng lên ít nhất 4
+  vCPU, 16 GB); R9 và ticket 01 trích YC20, bỏ quyết tạm 2 vCPU, 8 GB ngày 23/10/2026
+  (`A:custom-objects:quyết-định~record-access:quyết-định`). Sửa: R9, ticket 01.
+- 24/10/2026 (Đạt): lý do loại trừ của `studio.access_epochs` khỏi test phủ offboarding là một dòng đếm mỗi tenant được
+  giữ có chủ ý, vì dòng `platform.tenants` của tenant đã offboard còn ở `offboarded` nên không cascade nào xóa nó; bỏ lý do
+  "xóa theo cascade" cho bảng này (`B:foundations-hardening:R3.2~record-access:dữ-liệu`). Sửa: Dữ liệu, ticket 02.
+- 24/10/2026 (Đạt): ticket 03 chờ foundations-hardening/07, vì cả hai sửa `offboarding.py` (`SqlTenantOffboarding`, đọc
+  catalog, `export_rows`) và cần một thứ tự sửa (`C:foundations-hardening/07~record-access/03`). Sửa: Phụ thuộc, ticket 03.
+- 24/10/2026 (Đạt): Hiện trạng trích CLAUDE.md theo tên mục thay vì số dòng, vì số dòng đã dời khi CLAUDE.md sửa
+  (`G:CLAUDE.md#tenancy-and-authorization~record-access:spec`). Sửa: Hiện trạng.
 
 ## Danh sách ticket
 

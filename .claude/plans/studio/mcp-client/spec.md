@@ -164,7 +164,8 @@ bao giờ bằng token của nền tảng (ADR-0116 (Accepted) quyết 8; ADR-01
   HTTP ở composition root), hợp đồng import-linter cấm `dw_platform`, `dw_agent_runtime` và SQLAlchemy
   trong cổng.
 - Bảng, route và sự kiện ở mục Dữ liệu và API; danh mục nền tảng `configs/mcp/catalog/`, ở v1 là nguồn
-  duy nhất của máy chủ được đăng ký (DO-46.1); ai chọn và thẩm định từng mục còn ở Q5.
+  duy nhất của máy chủ được đăng ký (DO-46.1); đội nền tảng chọn máy chủ vào danh mục và thẩm định từng mục
+  theo một checklist an ninh trước khi mục đó vào (ADR-0116 (Accepted) quyết 8).
 - Khóa quyền `studio.mcp.manage`, `studio.mcp.approve`, đăng ký ở ticket W2 đầu tiên dùng chúng (quy ước của
   tenant-rbac/01).
 - Factory công cụ `kind: mcp` trong executor của tools-and-skills; lane `mcp_drift`; mục span
@@ -257,14 +258,13 @@ bao giờ bằng token của nền tảng (ADR-0116 (Accepted) quyết 8; ADR-01
   `(tenant, server)`; telemetry-and-audit: thuộc tính span; compliance-pdpl: lớp tuyến cư trú và Xác nhận
   chuyển dữ liệu ra nước ngoài (ADR-0123 (Accepted)).
 - Protocol do bên dùng khai: `McpGatewayPort` (runtime khai, adapter HTTP đáp ứng ở composition root).
-- Kiểm lại khi: Q5 có câu trả lời → R2.4, `configs/mcp/catalog/`; kết quả FOG-25, FOG-26 đổi egress
+- Kiểm lại khi: checklist an ninh của danh mục hay người thẩm định đổi → R2.4, `configs/mcp/catalog/`;
+  kết quả FOG-25, FOG-26 đổi egress
   proxy hay kho bí mật → R1.2, R1.3, R5; luật sư đổi kết luận DO-54.2 → R2.5; một advisory mới của SDK
   `mcp` hay bản ghim đổi → R1; tools-and-skills đổi `dw.tool/v1` hay `approval_required` → R3, R4;
   agent-lifecycle đổi luật theo loại hay Bật lại → R3.4, R4.9.
 
 ## Câu hỏi còn mở
-
-- Q5. Máy chủ MCP nào vào danh mục nền tảng `configs/mcp/catalog/` ở v1, và ai chọn, ai thẩm định từng máy chủ trước khi vào? Chủ: Đạt và người đặt yêu cầu. Không đổi: R2.4 chỉ nhận máy chủ có mục trong danh mục; W1 không có công cụ MCP.
 
 ## Quyết định
 
@@ -288,7 +288,7 @@ bao giờ bằng token của nền tảng (ADR-0116 (Accepted) quyết 8; ADR-01
 - 23/10/2026 (Đạt): công cụ MCP đi qua máy giai đoạn theo (a): dịch vụ phát hành của loại `tool` ghi
   `live` sau duyệt, không `gate_run_id`; ngưng do lệch là công tắc `scope_type` `tool`; bỏ cột `status`.
   Sửa: R3.1, R3.4, R4.3, R4.4, R4.9, Dữ liệu, API, MC4, Phụ thuộc.
-- 23/10/2026 (Đạt): bảng mã từ chối người quyết, ghi một lần ở ADR-0004 (Accepted): ngoài tầm thấy 404;
+- 23/10/2026 (Đạt): bảng mã từ chối người quyết, ghi một lần ở ADR-0104 (Accepted) quyết 11: ngoài tầm thấy 404;
   mọi luật tách nhiệm 409; thấy được mà thiếu `approvals.decide` hay tem, hoặc không được giao, 403. Sửa:
   R3.2 (409 khi người đăng ký giữ tem), MC5.
 - 23/10/2026 (agent, tạm): sau lệch, công cụ chạy lại qua hai phê duyệt nối tiếp: trước hết người thứ hai
@@ -298,6 +298,12 @@ bao giờ bằng token của nền tảng (ADR-0116 (Accepted) quyết 8; ADR-01
   R4.9. Nếu sai thì: lần duyệt định nghĩa mới gỡ luôn công tắc, R4.9 đổi theo.
 - 23/10/2026 (Đạt): DO-01 theo (a): bảng không có `workspace_id` là bảng toàn tenant, ghi lý do trong danh sách của
   test phủ RLS. Sửa: Dữ liệu (ba bảng MCP).
+- 24/10/2026 (Đạt): DO-46.1: đội nền tảng chọn máy chủ vào `configs/mcp/catalog/` và thẩm định từng mục theo
+  một checklist an ninh trước khi mục đó vào (ADR-0116 (Accepted) quyết 8). Hỏi: Q5. Sửa: Trong phạm vi, Phụ
+  thuộc, Câu hỏi còn mở.
+- 24/10/2026 (Đạt): bảng mã từ chối người quyết nằm ở ADR-0104 (Accepted) quyết 11, không ở ADR-0004 (Accepted)
+  vốn không có bảng đó; dòng ngày 23/10/2026 về bảng mã ở trên đổi chỗ dẫn, nội dung giữ nguyên. Sửa:
+  Quyết định.
 
 ## Danh sách ticket
 

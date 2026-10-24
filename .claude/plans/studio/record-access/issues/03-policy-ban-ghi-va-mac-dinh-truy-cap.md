@@ -1,7 +1,7 @@
 # 03 — Cột truy cập, bộ policy trên bảng bản ghi, mặc định truy cập theo object và phạm vi toàn tenant cho lane
 
 Status: needs-triage
-Blocked by: 02, .claude/plans/studio/custom-objects/issues/02-luoc-do-dinh-nghia-object.md, .claude/plans/studio/foundations-hardening/issues/03-quyen-dw-app-va-rls-initplan.md
+Blocked by: 02, .claude/plans/studio/custom-objects/issues/02-luoc-do-dinh-nghia-object.md, .claude/plans/studio/foundations-hardening/issues/03-quyen-dw-app-va-rls-initplan.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md
 Area: studio
 Yêu cầu: G1, R1.2, R1.3, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4, R3.5, R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R5.2, R6.1, R6.2, R7.1, R7.2, R7.3, R9.10, RA1, RA2, RA4, RA5, RA6, RA7, RA8, RA9, RA10, RA11, RA13, RA17, RA22, RA23
 
@@ -138,3 +138,7 @@ tenant qua một helper duy nhất (spec R1 tới R4, R7, R9.10; ADR-0105 (Accep
 - 2026-10-23 (agent): DO-13.1, DO-13.2, DO-13.3 và `A:custom-objects:R1.4~record-access:R2.5` đã có lời đáp (Đạt,
   23/10/2026); Status về needs-triage. Bỏ R1.1, R2.1, R2.5, R2.6, RA3 khỏi ticket: cột `owner_kind`, `default_access`
   thuộc custom-objects/02, route `PATCH .../access` không làm.
+- 2026-10-24 (agent): thêm foundations-hardening/07 vào Blocked by (Đạt, 24/10/2026): bước 6 chuyển
+  `SqlTenantOffboarding` sang `tenant_wide_scope` trong `offboarding.py`, tệp mà ticket đó viết lại phần đọc catalog và
+  `export_rows`. Lane offboarding audit đứng tên người vận hành đã yêu cầu, `details.lane` là `offboarding` (Quyết định
+  24/10/2026 của spec); helper của bước 6 không đổi vì nó không ghi audit.

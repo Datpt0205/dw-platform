@@ -74,9 +74,9 @@ nghị (a) (Đạt, 23/10/2026); `access_mode` đổi qua phát hành `dw.object
 
 - `packages/python/dw_agent_runtime/src/dw_agent_runtime/contracts.py:167`; spec: R2.1 (thay `data_classification`).
 - `docs/adr/0106-field-access-follows-personal-data-category.md:52-61`; spec: R1, R2.
-- `.claude/plans/studio/custom-objects/issues/02-luoc-do-dinh-nghia-object.md:27`; spec: R1.2 (`pd_category` của `studio.field_defs`).
-- `.claude/plans/studio/tenant-rbac/issues/04-quyen-doi-tuong-va-truong-co-do-sau.md:39-43`; spec: R2.4 (`fld.*` qua `platform.effective_grants`).
-- `.claude/plans/studio/record-access/spec.md:364`; spec: R2.5 (`studio.actor_boundary_fields`).
+- `.claude/plans/studio/custom-objects/issues/02-luoc-do-dinh-nghia-object.md:29`; spec: R1.2 (`pd_category` của `studio.field_defs`).
+- `.claude/plans/studio/tenant-rbac/issues/04-quyen-doi-tuong-va-truong-co-do-sau.md:39-44`; spec: R2.4 (`fld.*` qua `platform.effective_grants`).
+- `.claude/plans/studio/record-access/spec.md:367-368`; spec: R2.5 (`studio.actor_boundary_fields`).
 
 ## Comments
 

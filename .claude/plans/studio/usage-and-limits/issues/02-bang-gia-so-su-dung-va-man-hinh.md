@@ -1,9 +1,9 @@
 # 02 — Bảng giá theo ngày hiệu lực, sổ sử dụng theo lượt gọi và màn Mức độ sử dụng
 
 Status: needs-triage
-Blocked by: .claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md, .claude/plans/studio/tenant-rbac/issues/01-mot-chu-cho-quyen.md
+Blocked by: .claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md, .claude/plans/studio/tenant-rbac/issues/01-mot-chu-cho-quyen.md, .claude/plans/studio/model-connections/issues/02-model-resolver-theo-tenant.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md
 Area: studio
-Yêu cầu: R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, UL5, UL7, UL12
+Yêu cầu: R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R3.9, R3.10, UL5, UL7, UL12, UL16
 
 ## Mục tiêu
 
@@ -20,7 +20,8 @@ model với đủ thuộc tính gán, chỉ thêm và idempotent; màn Mức đ�
    `sandbox_vcpu_second`, `sandbox_gb_second`, `server_tool_call`; bước mã tính vCPU và GB đặt trước nhân
    thời gian chạy, DO-45.1); `input_uncached = input_tokens − cache_read − cache_write`.
    Bộ nạp từ chối mục chồng thời gian cùng khóa, loại sử dụng lạ, giá âm. Dời giá khỏi `ModelRoute`
-   (`model/profiles.py:54-55`) và `configs/models/*.yaml` trong cùng thay đổi; thay `route_cost`;
+   (`model/profiles.py:54-55`) và `configs/models/*.yaml` trong cùng thay đổi, sau `ModelProfile` v2 của
+   model-connections/02 (ticket này chờ nó vì cả hai sửa hai tệp đó); thay `route_cost`;
    `scripts/release_manifest.py` ghim Bảng giá (id, version, sha256); `settings.is_deployed`: tuyến nền
    tảng trả phí không có mục giá → từ chối khởi động.
 2. Revision Alembic mới (id hex ngẫu nhiên; không downgrade `aefe7c1f5d9b`): `platform.usage_events` như
@@ -30,16 +31,31 @@ model với đủ thuộc tính gán, chỉ thêm và idempotent; màn Mức đ�
    `(lease_id) WHERE lease_id IS NOT NULL`; `dw_app` không UPDATE, DELETE trên cha và không giữ quyền nào
    trên partition nào, kể cả DEFAULT (DO-02.2).
 3. Đăng ký `usage_events` bằng một dòng `platform.time_partitioned_tables` (`append_only = true`) trong
-   migration này; không sửa thân `platform.ensure_time_partitions` (studio-skeleton/01 là chủ hàm).
-   `drop_expired_partitions(cutoffs jsonb)` mỗi cha một mốc (NULL = không xóa). Thời hạn 395 ngày của
-   `usage_events` do telemetry-and-audit/03 khai trong `retention@1.8.0` (một chủ tệp, DO-52); ticket này
-   không sửa tệp retention.
-4. `UsageLedgerPort.settle(event) -> bool` (`INSERT ... ON CONFLICT DO NOTHING`); `id`, `occurred_at`
+   migration này; không sửa thân `platform.ensure_time_partitions` (studio-skeleton/01 là chủ hàm). Ticket này là
+   chủ duy nhất ở W1 của `platform.drop_expired_partitions(cutoffs jsonb)`: viết lại thân hàm, mỗi bảng cha một
+   mốc (NULL = không xóa), mốc dựng từ thời hạn dưới khóa `schema.table` của tệp chính sách retention mà lane
+   `partitions` nạp; `test_a_partition_made_at_runtime_keeps_the_audit_log_append_only` (G1 của studio-skeleton)
+   xanh qua bản viết lại. Cùng thay đổi đăng ký, thêm khóa `platform.usage_events` (395 ngày, số tạm UNVERIFIED,
+   DROP PARTITION) vào bản kế tiếp của tệp chính sách retention theo định dạng của telemetry-and-audit:R5.6, nên
+   studio-skeleton:R3.7 xanh ngay khi đăng ký; nếu tệp chưa có mục khóa `schema.table`, ticket này thêm mục đó và
+   chuyển thời hạn của `audit_events` sang khóa `platform.audit_events` (1095 ngày, `enforced` giữ nguyên), rồi bỏ
+   ánh xạ tạm của mô hình chính sách mà studio-skeleton/01 dùng.
+4. Hàm `platform.purge_tenant_append_only(p_tenant uuid)` SECURITY DEFINER (search_path cố định, thu
+   EXECUTE khỏi `PUBLIC`, cấp EXECUTE cho `dw_app`): từ chối với SQLSTATE 23514 khi `platform.tenants.status` của
+   `p_tenant` khác `offboarding` (spec R3.9); không thì xóa dòng `tenant_id = p_tenant` ở mọi bảng có
+   `append_only = true` trong sổ `platform.time_partitioned_tables`, trừ `platform.audit_events`, và trả số dòng
+   theo bảng (spec R3.10). Lane `offboarding` gọi hàm sau khi xuất, trong giao dịch xóa của nó (ticket này chờ
+   foundations-hardening/07 vì cùng sửa lane đó). `STUDIO_EXCLUSIONS` thêm `platform.usage_events` với lý do
+   "`dw_app` không DELETE; xóa khi offboarding bằng `platform.purge_tenant_append_only`" (studio-skeleton:R4.3);
+   `platform.usage_daily` có policy `tenant_isolation_usage_daily` và DELETE cho `dw_app` để lane `offboarding` xóa
+   như bảng thường (spec R3.8).
+5. `UsageLedgerPort.settle(event) -> bool` (`INSERT ... ON CONFLICT DO NOTHING`); `id`, `occurred_at`
    cấp trước lời gọi; thiếu số dùng của nhà cung cấp → `cost_source = 'estimated'` bằng ước tính, không 0.
-5. Bên đọc từ ngày đầu: `GET /api/v1/runs/{run_id}/usage` (`runs.read`, RLS và workspace) trả tổng theo
+6. Bên đọc từ ngày đầu: `GET /api/v1/runs/{run_id}/usage` (`runs.read`, RLS và workspace) trả tổng theo
    thao tác, model, nguồn chi phí; `platform.usage_daily` cuộn ngày và lane `usage_rollup` (5 phút, tính
    lại hôm nay và hôm qua cho tenant có hoạt động, ngày theo `window_for`); `GET /api/v1/usage/summary`
-   (`platform.usage.read`, đưa về `active` trong danh mục quyền; gộp theo workspace, agent, quy trình, mục
+   (`platform.usage.read`, đưa về `active` trong `platform.permissions` bằng migration của ticket này theo quy
+   ước của tenant-rbac/01; gộp theo workspace, agent, quy trình, mục
    đích, không theo người ở W1, DO-51.2); màn `/usage` antd (Statistic, Table, Progress; không thư viện biểu
    đồ ở v1, DO-42.3), nhúng tab ở trang agent và quy trình.
 
@@ -61,6 +77,13 @@ model với đủ thuộc tính gán, chỉ thêm và idempotent; màn Mức đ�
       `GET /api/v1/runs/{run_id}/usage` của run tenant B từ A → 404.
 - [ ] R3.7 (UL7): `dw_app` đọc hay ghi một partition của `usage_events` theo tên → `permission denied`, cả
       partition do lane tạo lẫn DEFAULT; cấp lại SELECT trên partition → test đỏ.
+- [ ] R3.8: công ty `offboarding` có dòng trong `usage_events`, `usage_daily` → lane `offboarding` xuất mỗi dòng
+      một lần rồi xóa hết; test phủ offboarding (studio-skeleton:R4.3) xanh với dòng `STUDIO_EXCLUSIONS` của
+      `platform.usage_events`; bỏ lời gọi hàm khỏi lane → dòng `usage_events` còn, test đỏ.
+- [ ] R3.9 (UL16): gọi `platform.purge_tenant_append_only` cho công ty `active` → 23514, 0 dòng xóa; gỡ kiểm
+      trạng thái → test đỏ.
+- [ ] R3.10 (UL16): với công ty `offboarding`, hàm xóa dòng của nó ở mọi bảng `append_only` của sổ, kể cả một
+      bảng thử đăng ký trong test, còn dòng của công ty khác và mọi dòng `platform.audit_events` giữ nguyên.
 - [ ] Xong: `make ci && make test-integration` xanh.
 
 ## Nguồn
@@ -79,3 +102,11 @@ model với đủ thuộc tính gán, chỉ thêm và idempotent; màn Mức đ�
   quyền `dw_app`, R3.7), DO-52 (thời hạn ở tệp của telemetry-and-audit/03), DO-45.1 (đơn vị bước mã), DO-42.3,
   DO-51.2 và cột lộ trình của ADR-0123 (Accepted) cho compliance-pdpl/03. Xóa `user_id` theo yêu cầu chủ thể
   vẫn mở (ADR-0122 (Accepted) Open 1).
+- 2026-10-24 (agent): áp quyết định của Đạt ngày 24/10/2026: ticket này là chủ duy nhất của
+  `platform.drop_expired_partitions(cutoffs jsonb)` ở W1; thêm thời hạn của `platform.usage_events` vào tệp
+  retention trong cùng thay đổi đăng ký, theo định dạng khóa `schema.table` của telemetry-and-audit (bản tệp đầu
+  có mục đó nếu chưa có); hàm `platform.purge_tenant_append_only` và dòng `STUDIO_EXCLUSIONS` cho offboarding
+  (H:ADR-0121 (Accepted)\~usage-and-limits:dữ-liệu); chờ model-connections/02 (cùng sửa `model/profiles.py`,
+  `configs/models/*.yaml`: hồ sơ v2 trước, rồi dời giá) và foundations-hardening/07 (cùng sửa lane `offboarding`).
+  Ticket này là ticket đầu sau studio-skeleton/01 thêm khóa vào tệp retention; các ticket sau (ticket 03,
+  agent-lifecycle/04, telemetry-and-audit/03, compliance-pdpl/04, compliance-pdpl/06) mỗi ticket thêm một bản mới.

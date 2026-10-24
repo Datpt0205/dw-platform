@@ -1,17 +1,17 @@
 # 02 — Định nghĩa object và trường, bảng bản ghi, describe và chiếu JSON Schema
 
 Status: needs-triage
-Blocked by: 01, .claude/plans/studio/studio-skeleton/issues/02-goi-dw-studio-va-seam-api.md, .claude/plans/studio/tenant-config/issues/02-vo-phien-ban-va-chi-muc-phu-thuoc.md, .claude/plans/studio/org-and-principals/issues/01-khoa-don-vi-va-siet-realm.md, .claude/plans/studio/compliance-pdpl/issues/01-tu-vung-du-lieu-ca-nhan.md
+Blocked by: 01, .claude/plans/studio/studio-skeleton/issues/02-goi-dw-studio-va-seam-api.md, .claude/plans/studio/tenant-config/issues/02-vo-phien-ban-va-chi-muc-phu-thuoc.md, .claude/plans/studio/org-and-principals/issues/01-khoa-don-vi-va-siet-realm.md, .claude/plans/studio/compliance-pdpl/issues/01-tu-vung-du-lieu-ca-nhan.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md
 Area: studio
-Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R2.1, R2.2, R2.3, R2.4, R2.5, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R4.1, R4.2, R4.4, R9.2, R9.4, R9.5, CO1, CO2, CO3, CO4, CO5, CO6, CO7, CO8, CO21, CO23, CO24
+Yêu cầu: R1.1, R1.3, R1.4, R1.5, R1.6, R1.8, R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R4.1, R4.2, R4.4, R9.2, R9.4, R9.5, CO1, CO2, CO3, CO4, CO5, CO6, CO7, CO8, CO21, CO23, CO24, CO25
 
 ## Mục tiêu
 
 Lát nền của spec: định nghĩa đối tượng và trường của công ty thành dữ liệu (R1, R2), bảng bản ghi có người phụ
 trách và workspace sở hữu với partition và slot theo số đo của ticket 01 (R4.1, R4.2, R9.2 tới R9.4), describe
 theo người gọi và bộ chiếu lược đồ (R3). Sau ticket này tenant-rbac/04 sinh khóa `obj.<api_name>.<action>`,
-field-security/01 thêm `access_mode`, record-access/03 thêm policy tầm, và marketing-pilot/02 tạo Lead, Campaign
-qua API công khai.
+field-security/01 thêm `access_mode`, record-access/03 thêm policy tầm, và ticket 06 nối loại `object` vào đường phát
+hành của agent-lifecycle để marketing-pilot/02 tạo Lead, Campaign qua API công khai.
 
 ## Việc cần làm
 
@@ -20,9 +20,11 @@ qua API công khai.
     - `studio.object_defs`: PK `(tenant_id, id)`; FK `(tenant_id, id)` tới `studio.artifacts` ON DELETE RESTRICT;
       `api_name` CHECK `^[a-z][a-z0-9_]{1,39}$`, UNIQUE `(tenant_id, api_name)`; `labels` jsonb có khóa `vi` khác
       rỗng; `default_access` NOT NULL DEFAULT `'private'` CHECK `private`, `public_read`, `public_read_write`;
-      `schema_version` integer ≥ 1; `next_field_no` integer ≥ 1.
+      `ai_description` text NULL CHECK `char_length(ai_description) <= 500`; `schema_version` integer ≥ 1;
+      `next_field_no` integer ≥ 1.
     - `studio.field_defs`: PK `(tenant_id, id)`, `id` là mã trường; FK `(tenant_id, object_id)` ON DELETE CASCADE;
-      `api_name` như trên, UNIQUE `(tenant_id, object_id, api_name)`; `type` CHECK `text`, `number`, `currency`,
+      `api_name` như trên, UNIQUE `(tenant_id, object_id, api_name)`; `ai_description` text NULL CHECK
+      `char_length(ai_description) <= 500`; `type` CHECK `text`, `number`, `currency`,
       `date`, `datetime`, `boolean`, `picklist`, `email`, `phone`, `url`, `owner`, `workspace`, `user` (bằng enum
       trong mã); `pd_category` NOT NULL CHECK `none`, `basic`, `sensitive`, cùng `sensitive_type` và
       `subject_identifier` theo `dw_kernel.personal_data`; `required`, `is_unique`, `indexed` boolean NOT NULL;
@@ -60,51 +62,60 @@ qua API công khai.
    (ADR-0104 (Accepted)); vai nào giữ khóa là việc của tenant-rbac.
 3. Thêm `("studio", "records")`, `("studio", "picklist_options")`, `("studio", "field_defs")`,
    `("studio", "object_defs")` theo thứ tự đó vào `_ORDERED_FIRST` của
-   `packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py`.
+   `packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py`, trên phần đọc catalog và
+   `export_rows` mà foundations-hardening/07 đã viết lại.
 4. Trong `dw_studio.records` (gói của studio-skeleton/02):
     - `domain/field_types.py`: Literal `FieldType` với 13 giá trị của CHECK và bảng kiểu sang họ slot; thêm tệp vào
       `WATCHED_LITERALS` của `scripts/verify_invariants.py`.
-    - Mô hình tài liệu `dw.object/v1` (Pydantic v2, `extra="forbid"`): `api_name`, `labels`, `default_access`,
-      `name_field` (`labels`, `pd_category`), `fields[]` (`api_name`, `labels`, `type`, `number_mode`, `scale`,
-      `currency_code`, `max_length`, `required`, `is_unique`, `indexed`, `pd_category`, `sensitive_type`,
-      `subject_identifier`, `access_mode`, `options[]`); `access_mode` mặc định `secured` khi `pd_category` khác `none`,
-      `open` khi `none`; field-security/01 thêm cột và để dịch vụ metadata ghi nó.
+    - Mô hình tài liệu `dw.object/v1` (Pydantic v2, `extra="forbid"`): `api_name`, `labels`, `ai_description`,
+      `default_access`, `name_field` (`labels`, `pd_category`), `fields[]` (`api_name`, `labels`, `ai_description`,
+      `type`, `number_mode`, `scale`, `currency_code`, `max_length`, `required`, `is_unique`, `indexed`, `pd_category`,
+      `sensitive_type`, `subject_identifier`, `access_mode`, `options[]`); `ai_description` không bắt buộc, tối đa 500
+      ký tự tính trên chuỗi NFC; `access_mode` mặc định `secured` khi `pd_category` khác `none`, `open` khi `none`;
+      field-security/01 thêm cột và để dịch vụ metadata ghi nó.
     - Trình kiểm trả mọi lỗi một lần (`{path, code, message}`): kiểu (R2.1), `pd_category` qua
       `dw_kernel.personal_data` (R2.2), `api_name` (R2.3), so với phiên bản Đang dùng (R2.4), `access_mode` của trường
-      `sensitive` hay trường mới có dữ liệu cá nhân (R2.5), ngân sách slot (R1.6), nhãn `vi` khác rỗng.
-    - Phân loại phát hành so với phiên bản Đang dùng: phiên bản chỉ siết (trường từ `open` sang `secured`;
-      `default_access` hẹp hơn theo thứ tự `public_read_write`, `public_read`, `private`; mọi phần khác của tài liệu bằng
-      nhau) lên Đang dùng trong giao dịch của người gửi, audit `studio.version.published` với người gửi là actor (R1.7);
-      mọi phiên bản khác, kể cả phiên bản đầu, sang Chờ duyệt với phê duyệt `studio.publish.object` không qua Cổng chất
-      lượng, theo máy giai đoạn của agent-lifecycle (R1.2; ADR-0120 (Accepted) mục 2).
+      `sensitive` hay trường mới có dữ liệu cá nhân (R2.5), `ai_description` của đối tượng và mỗi trường (R2.6), ngân
+      sách slot (R1.6), nhãn `vi` khác rỗng.
+    - Bộ so sánh chỉ siết của loại `object` (R1.8), hàm thuần: báo chỉ siết khi và chỉ khi đối tượng có phiên bản Đang
+      dùng và mọi khác biệt là một trường từ `open` sang `secured` hay `default_access` hẹp hơn theo thứ tự
+      `public_read_write`, `public_read`, `private`; mọi khác biệt khác, kể cả `ai_description` hay nhãn, là không chỉ
+      siết. Ticket 06 nối nó vào lệnh gửi của agent-lifecycle, nơi `LifecycleService` ghi `tighten_only` và
+      `compared_live_hash` theo kết quả của nó (R1.2, R1.7; `agent-lifecycle:R2.8`).
     - Bộ trích phụ thuộc thuần, trả danh sách rỗng ở W1 (chưa có trường tham chiếu), có test fixture.
-    - Móc phát hành `MetadataService.apply`, chạy trong giao dịch phát hành của tenant-config/02: tạo dòng
+    - Móc phát hành `MetadataService.apply`, chạy trong giao dịch đưa phiên bản lên Đang dùng mà dịch vụ phát hành của
+      tenant-config/02 mở (ticket 06 nối nó vào handler `studio.publish.object.decided` và nhánh chỉ siết): tạo dòng
       `studio.object_defs` ở lần đầu; với mỗi trường mới lấy `pg_advisory_xact_lock` theo công ty rồi chọn slot trống
-      nhỏ nhất của họ (trường lọc được) hoặc `next_field_no` (trường trong `data`); thêm lựa chọn; sửa nhãn;
-      `schema_version` cộng 1; audit `studio.object.created`, `studio.object.updated`, `studio.field.created`,
-      `studio.field.updated`, `studio.picklist.updated` chỉ mang khóa và phiên bản.
-    - Đăng ký loại `object` vào `ArtifactKindRegistry` ở `build_studio`, nêu `studio.objects.manage` là khóa cho tạo,
-      lưu nháp và phát hành; migration thêm dòng `object` vào `studio.artifact_kinds` (`ck_artifacts_kind` thành FK tới
-      bảng này, OPS-b cạnh 4), và test ở composition root so registry với các dòng.
+      nhỏ nhất của họ (trường lọc được) hoặc `next_field_no` (trường trong `data`); thêm lựa chọn; sửa nhãn và
+      `ai_description`; `schema_version` cộng 1; audit `studio.object.created`, `studio.object.updated`,
+      `studio.field.created`, `studio.field.updated`, `studio.picklist.updated` chỉ mang khóa và phiên bản.
+    - Đăng ký loại `object` vào `ArtifactKindRegistry` ở `build_studio`: `studio.objects.manage` (mức `tenant`) là khóa
+      đọc, khóa ghi và khóa gửi của loại cho đọc, tạo, lưu nháp và gửi phát hành (`tenant-config:R2.11`,
+      `tenant-config:R2.12`, `tenant-config:R2.15`), không có Cổng chất lượng, bộ so sánh chỉ siết và móc phát hành ở
+      trên; migration thêm dòng `object` với
+      `has_quality_gate = false` vào `studio.artifact_kinds` (`ck_artifacts_kind` thành FK tới bảng này, OPS-b cạnh 4,
+      `tenant-config:R2.14`), và test ở composition root so registry với các dòng.
 5. Route trong nhóm `/api/v1/studio`, `Cache-Control: no-store`: `GET /api/v1/studio/objects` và
    `GET /api/v1/studio/objects/{api_name}/describe`, đọc quyền đối tượng qua khóa `obj.<api_name>.read`
-   (tenant-rbac/04) và quyền trường qua `resolve_field_access` (field-security/01); describe trả trường Đã ẩn chỉ với
-   `api_name`, nhãn và `access: hidden`; `ObjectSchemaProjector` dựng JSON Schema 2020-12 cho tạo, sửa, truy vấn,
-   khóa theo `(object_id, schema_version)` và quyết định trường của người gọi, không có trường Đã ẩn.
+   (tenant-rbac/04) và quyền trường qua `resolve_field_access` (field-security/01); describe trả `ai_description` của
+   đối tượng và của mỗi trường đọc được, và trả trường Đã ẩn chỉ với `api_name`, nhãn và `access: hidden`;
+   `ObjectSchemaProjector` dựng JSON Schema 2020-12 cho tạo, sửa, truy vấn, khóa theo `(object_id, schema_version)` và
+   quyết định trường của người gọi, không có trường Đã ẩn, và trả `ai_description` của đối tượng và mỗi trường đọc được
+   trong một bảng tách khỏi lược đồ, không đặt vào `title`, `description` hay nhãn (R3.7, YC48).
 
 ## Tiêu chí chấp nhận
 
-- [ ] R1.1 (CO2): phát hành một `dw.object/v1` 20 trường áp định nghĩa trong cùng giao dịch, số quan hệ của schema
-      `studio` trong `pg_class` không đổi; `dw_app` chạy `CREATE TABLE studio.x` hay `CREATE INDEX ON studio.records`
-      → bị từ chối; cấp `CREATE` trên `studio` cho `dw_app` → test đỏ.
-- [ ] R1.2 (CO23): người giữ `studio.objects.manage` gửi phát hành bản nháp hợp lệ thêm một trường → phiên bản Chờ duyệt
-      với phê duyệt `studio.publish.object`, định nghĩa chưa đổi; một người khác giữ `studio.publish.approve` duyệt →
-      Đang dùng và định nghĩa đã áp; phiên bản mở một trường `basic` → Chờ duyệt.
-- [ ] R1.7 (CO23): phiên bản chỉ đóng `phone` (hay chỉ hạ `default_access` từ `public_read` về `private`) → Đang dùng
-      ngay trong giao dịch của người gửi, có audit `studio.version.published` với người gửi là actor, không phê duyệt;
-      phiên bản vừa đóng `phone` vừa đổi nhãn → Chờ duyệt; coi thay đổi trộn là chỉ siết → test đỏ.
-- [ ] R1.3 (CO3): người thiếu `studio.objects.manage` tạo, lưu nháp, phát hành → 403 `permission_denied`, không
-      dòng mới trong `studio.artifact_versions`; gỡ kiểm khóa ở mục đăng ký của loại → test đỏ.
+- [ ] R1.1 (CO2): móc phát hành chạy cho một `dw.object/v1` 20 trường trong giao dịch đưa phiên bản lên Đang dùng của
+      dịch vụ phát hành (tenant-config/02; phê duyệt `approved` dựng bằng fixture) áp định nghĩa trong cùng giao dịch, số
+      quan hệ của schema `studio` trong `pg_class` không đổi; `dw_app` chạy `CREATE TABLE studio.x` hay
+      `CREATE INDEX ON studio.records` → bị từ chối; cấp `CREATE` trên `studio` cho `dw_app` → test đỏ.
+- [ ] R1.8 (CO23): test thuộc tính trên cặp tài liệu sinh ngẫu nhiên: bộ so sánh báo chỉ siết đúng khi mọi khác biệt
+      là đóng trường hay hạ `default_access`; phiên bản đầu (chưa có Đang dùng) → không chỉ siết; nâng `default_access`,
+      mở một trường, đổi nhãn hay `ai_description` → không chỉ siết; vừa đóng `phone` vừa đổi nhãn → không chỉ siết, và
+      coi thay đổi trộn đó là chỉ siết → test đỏ.
+- [ ] R1.3 (CO3): người thiếu `studio.objects.manage` tạo hay lưu nháp thành phần loại `object` → 403
+      `permission_denied`, không dòng mới trong `studio.artifact_versions`; gỡ kiểm khóa ở mục đăng ký của loại → test
+      đỏ (lệnh gửi phát hành kiểm ở ticket 06).
 - [ ] R1.4: tài liệu không nêu `default_access` → dòng có `private`; giá trị ngoài CHECK bị từ chối theo tên ràng
       buộc.
 - [ ] R1.5 (CO4): hai phát hành song song cùng thêm trường lọc được họ `t` vào một đối tượng → hai slot khác nhau;
@@ -120,8 +131,11 @@ qua API công khai.
       so với phiên bản Đang dùng → test đỏ.
 - [ ] R2.5 (CO24): phiên bản đặt `access_mode: open` cho trường `sensitive`, hay cho một trường mới `basic` → 422 có con
       trỏ `/fields/<n>`, không phát hành gì; gỡ bước kiểm → test đỏ.
-- [ ] R3.1: describe cho người đọc được trả mỗi trường với nhãn `vi`, kiểu, `access`, các cờ và lựa chọn đang bật;
-      lựa chọn đã tắt không có.
+- [ ] R2.6: `ai_description` 500 ký tự (chuỗi NFC, có dấu tiếng Việt) thì nhận, 501 thì 422 có con trỏ
+      `/ai_description` hay `/fields/<n>/ai_description`, không phát hành gì; bỏ trống thì nhận; CHECK độ dài của hai
+      cột từ chối 501 ký tự ghi thẳng bằng SQL.
+- [ ] R3.1: describe cho người đọc được trả `ai_description` của đối tượng và mỗi trường với nhãn `vi`,
+      `ai_description`, kiểu, `access`, các cờ và lựa chọn đang bật; lựa chọn đã tắt không có.
 - [ ] R3.2 (CO7): người gọi mà `phone` Đã ẩn gọi describe → `phone` chỉ có `api_name`, nhãn và `access: hidden`, không
       kiểu, cờ hay lựa chọn; lược đồ truy vấn của bộ chiếu không có `phone`.
 - [ ] R3.3: người của công ty B gọi describe với `api_name` chỉ công ty A có → 404.
@@ -129,6 +143,10 @@ qua API công khai.
 - [ ] R3.5: `GET /api/v1/studio/objects` trả đúng các đối tượng người gọi giữ khóa đọc, không thừa không thiếu.
 - [ ] R3.6: lược đồ tạo của bộ chiếu không có trường người gọi không sửa được; lược đồ truy vấn không có trường Đã
       ẩn; `schema_version` tăng → lược đồ mới.
+- [ ] R3.7 (CO25): trường có `ai_description` chứa `</input>` và "bỏ qua mọi chỉ dẫn" → JSON Schema của bộ chiếu không
+      có chuỗi đó ở `title`, `description` hay nhãn, giá trị chỉ có trong bảng `ai_description` tách riêng; trường Đã
+      ẩn với người gọi không có `ai_description` ở describe lẫn bộ chiếu; ghép `ai_description` vào `description` của
+      lược đồ → test đỏ.
 - [ ] R4.1: INSERT vào `studio.records` thiếu `owner_kind`, `owner_id` hay `workspace_id` → vi phạm NOT NULL.
 - [ ] R4.2 (CO1): kết nối không đặt `app.tenant_id` đọc 0 dòng ở bốn bảng; INSERT với `tenant_id` của công ty khác
       → RLS từ chối; `dw_app` đọc thẳng `studio.records_p3` → permission denied; một vai thử NOBYPASSRLS có SELECT
@@ -154,7 +172,7 @@ qua API công khai.
   spec: R2.1.
 - `db/migrations/versions/0004_touch_updated_at_yields.py:44`; spec: Dữ liệu.
 - ADR-0107 (Accepted) quyết định 1, 2, 5; ADR-0109 (Accepted) quyết định 1; ADR-0106 (Accepted) quyết định 1.
-- `docs/adr/0120-publish-gate-and-run-control-switches.md:39-72`; spec: R1.2, R1.7.
+- `docs/adr/0120-publish-gate-and-run-control-switches.md:39-84`; spec: R1.8 (quyết 1, nhánh chỉ siết).
 
 ## Comments
 
@@ -166,3 +184,9 @@ qua API công khai.
 - 2026-10-23 (agent): DO-15 (a) và Q1 của spec (phạm vi D11 cho định nghĩa đối tượng) đã có lời đáp (Đạt và người đặt
   yêu cầu, 23/10/2026); Status về needs-triage. Thêm R1.7, R2.5, R9.5, CO23, CO24; bỏ R9.3. Phát hành qua
   `studio.publish.object` cần máy giai đoạn và phê duyệt phát hành của agent-lifecycle, mà Blocked by chưa có cạnh tới.
+- 2026-10-24 (agent): Đạt nhận các khuyến nghị ngày 24/10/2026: Blocked by thêm foundations-hardening/07 (cùng sửa
+  `offboarding.py`); thêm R1.8 (bộ so sánh chỉ siết), R2.6, R3.7 và CO25 (`ai_description`, YC101); mục đăng ký của
+  loại khai khóa đọc, khóa ghi, khóa gửi và `has_quality_gate = false`. Đường phát hành qua agent-lifecycle (R1.2, R1.7,
+  phần gửi của R1.3) chuyển sang ticket 06, nơi có cạnh tới agent-lifecycle/03, /04: đặt cạnh tới agent-lifecycle/04 ở
+  đây khép vòng qua workflow-engine/03 và record-access/04. Hai đề xuất ngày 23/10/2026 ở trên chưa nằm trong quyết
+  định của vòng này nên giữ nguyên.

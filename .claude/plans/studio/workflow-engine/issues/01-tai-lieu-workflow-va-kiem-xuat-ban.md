@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: .claude/plans/studio/tenant-config/issues/02-vo-phien-ban-va-chi-muc-phu-thuoc.md, .claude/plans/studio/workflow-nodes/issues/02-so-dang-ky-buoc-va-mau-chuoi.md
 Area: studio
-Yêu cầu: R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R2.7, R2.8, R2.9, R2.10, R2.11, R2.12, R2.13, R2.14, WE14
+Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R2.7, R2.8, R2.9, R2.10, R2.11, R2.12, R2.13, R2.14, WE14
 
 ## Mục tiêu
 
@@ -15,7 +15,7 @@ Cho loại thành phần `workflow` một mô hình tài liệu kiểu hóa và 
 2. `WorkflowIR` (`ir.py`) và module đồ thị (`graph.py`): `reachable(entry)`, `dominators()`, `paths_to(node)`, tập nhánh loại trừ của router; trình biên dịch của ticket 03 dựng từ cùng `WorkflowIR` này (R2.12, WE14).
 3. Bộ kiểm khi gửi kiểm định (`validator.py`) trả mọi lỗi của bảng R2 (R2.1-R2.10, R2.14) trong `errors[]`, mỗi lỗi một con trỏ JSON, không dừng ở lỗi đầu (R2.11); chế độ cảnh báo khi lưu nháp (R2.13). Mã lỗi `wf.*` song ngữ vi/en là bảng mã duy nhất: workflow-nodes dẫn chiếu mã này, không đặt mã thứ hai. `wf.unknown_node_type` đọc tập `type@major` từ `NodeTypeRegistry` của workflow-nodes/02.
 4. Bộ trích phụ thuộc thuần (`dependencies.py`) ghi `node_type`, `artifact` (kể cả Nguồn dữ liệu kind `endpoint` mà trình kích hoạt dùng) và `binding` vào `studio.dependencies` của tenant-config (R1.3); `wf.inline_binding` khi gặp UUID kết nối hay principal ở chỗ phải là tên điểm gắn (R2.9).
-5. Đăng ký `workflow` vào `ArtifactKindRegistry` tại seam composition root của tenant-config, gắn bộ kiểm và bộ trích; bước niêm phong của tenant-config/02 gọi bộ kiểm này (R1.4). Migration của ticket này INSERT dòng `workflow` vào `studio.artifact_kinds` (OPS-b) và đăng ký khóa `studio.workflows.edit` (quyền ghi của loại `workflow`) vào danh mục quyền theo quy ước của tenant-rbac/01.
+5. Đăng ký `workflow` vào `ArtifactKindRegistry` tại seam composition root của tenant-config, gắn bộ kiểm và bộ trích, với khóa đọc `studio.workflows.read`, khóa ghi `studio.workflows.edit` và khóa gửi `studio.versions.submit` (R1.5, tenant-config:R2.15); bước niêm phong của tenant-config/02 gọi bộ kiểm này (R1.4). Migration của ticket này INSERT dòng `workflow` vào `studio.artifact_kinds` với `has_quality_gate = true` (OPS-b, tenant-config:R2.14) và đăng ký `studio.workflows.read`, `studio.workflows.edit` vào danh mục quyền theo quy ước `studio.<areas>.<verb>` của tenant-rbac/01; `studio.versions.submit` là của agent-lifecycle.
 6. `NodeTypeRegistry` của workflow-nodes cấp schema config, output và chính sách lỗi của từng `type@major`; ticket này dùng ba loại node giả cho fixture cho tới khi loại thật tới.
 7. Fixture: tài liệu mẫu của quy trình Tiếp nhận lead làm fixture biên dịch và chạy ở ticket 03.
 
@@ -25,6 +25,7 @@ Cho loại thành phần `workflow` một mô hình tài liệu kiểu hóa và 
 - [ ] R1.2: tài liệu có `{"score": 1.0}` → từ chối tại model với `float_forbidden`; chuỗi NFD → `not_nfc`; không mã băm nào.
 - [ ] R1.3: niêm phong một nháp có trình kích hoạt dùng một Nguồn dữ liệu → `studio.dependencies` có dòng `node_type`, `artifact` (kể cả Nguồn dữ liệu đó), `binding` đúng của tài liệu; làm hỏng bộ trích của loại fixture → test fixture đỏ.
 - [ ] R1.4: `ArtifactKindRegistry` và các dòng `studio.artifact_kinds` cùng có `workflow` (test so hai tập của tenant-config/02); niêm phong `workflow` gọi bộ kiểm của ticket này.
+- [ ] R1.5: mục `workflow` khai ba khóa đúng tên và dòng `studio.artifact_kinds` có `has_quality_gate = true`; test kiểm quyền tham số hóa của tenant-config/02 chạy cho `workflow`: thiếu `studio.workflows.read` → `GET` thành phần 404, có khóa đọc mà thiếu `studio.workflows.edit` → `PUT` nháp 403; gỡ khóa đọc khỏi mục → test registry đỏ.
 - [ ] R2.1: node không tới được từ node vào → `wf.unreachable` có con trỏ tới node.
 - [ ] R2.2: router không phủ một giá trị → `wf.router_not_total`.
 - [ ] R2.3 (WE14): hai cạnh thường vào một node không qua điểm nối → `wf.join_required`; bỏ kiểm này → test "hai cạnh vào một node chạy hai lần" của ticket 03 đỏ.
@@ -49,3 +50,4 @@ Cho loại thành phần `workflow` một mô hình tài liệu kiểu hóa và 
 ## Comments
 
 - 2026-10-23 (agent): DO-05 và DO-06 đã có lời đáp (Đạt 23/10/2026), nên ticket về `needs-triage`. Theo phiếu cùng ngày: bảng mã `wf.*` duy nhất kể cả `wf.unknown_node_type` (A:workflow-engine:R2.2~workflow-nodes:R1.3), dòng `workflow` trong `studio.artifact_kinds` (OPS-b), khóa `studio.workflows.edit` đăng ký ở đây.
+- 2026-10-24 (agent): theo quyết định của Đạt ngày 24/10/2026: loại `workflow` khai khóa đọc `studio.workflows.read` mà ticket này đăng ký, khóa ghi và khóa gửi (R1.5), và dòng `studio.artifact_kinds` nêu `has_quality_gate`.

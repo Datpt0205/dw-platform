@@ -30,9 +30,11 @@ dụng từ câu lệnh kế tiếp (spec R5, ADR-0105 (Accepted) mục 4). Nhá
     - Hai bảng không có `workspace_id`: mỗi bảng một dòng trong danh sách bảng toàn tenant của
       `packages/python/dw_platform/tests/integration/test_rls_coverage.py` với lý do "sổ tầm dẫn xuất của một chủ thể và
       epoch của cả tenant" (DO-01).
-    - Hai bảng vào `STUDIO_EXCLUSIONS` của test phủ offboarding (studio-skeleton/01) với lý do "dữ liệu dẫn xuất, không
-      xóa bằng `dw_app`; `studio.principal_scopes` đi theo cascade từ `platform.tenant_members`, `studio.access_epochs`
-      từ `platform.tenants`" (`B:record-access:R5.5~studio-skeleton:R4.1`).
+    - Hai bảng vào `STUDIO_EXCLUSIONS` của test phủ offboarding (studio-skeleton/01), mỗi bảng một lý do
+      (`B:record-access:R5.5~studio-skeleton:R4.1`, `B:foundations-hardening:R3.2~record-access:dữ-liệu`):
+      `studio.principal_scopes` "dữ liệu dẫn xuất, không xóa bằng `dw_app`; đi theo cascade khi offboarding xóa
+      `platform.tenant_members`"; `studio.access_epochs` "một dòng đếm mỗi tenant giữ có chủ ý, không mang dữ liệu của
+      tenant; dòng `platform.tenants` của tenant đã offboard còn ở `offboarded` nên dòng đếm còn theo".
 2. View đầu vào là hợp đồng với tenant-rbac và org-and-principals: `studio.v_principal_grants` (dòng của
    `platform.effective_grants` cho tenant và chủ thể lấy từ setting, khóa `obj.<api_name>.<action>` đổi ra `object_id`
    qua `studio.object_defs`) và `studio.v_principal_workspaces` (workspace mà chủ thể là thành viên, chỉ khi thành viên
@@ -72,8 +74,9 @@ dụng từ câu lệnh kế tiếp (spec R5, ADR-0105 (Accepted) mục 4). Nhá
 - [ ] R5.5 (RA16): `dw_app` INSERT, UPDATE, DELETE trên `studio.principal_scopes` và `studio.access_epochs` →
       permission denied; `test_privileges.py` khẳng định chỉ có SELECT.
 - [ ] R5.6: xóa thành viên công ty của một chủ thể → dòng sổ tầm của người đó biến mất trong cùng giao dịch; thành viên
-      bị tạm khóa → dòng thành `stale` và tầm tính lại rỗng; offboarding một tenant → 0 dòng sổ tầm của tenant đó, và
-      test phủ offboarding xanh với hai bảng trong `STUDIO_EXCLUSIONS` kèm lý do; bỏ một bảng khỏi danh sách → test đỏ.
+      bị tạm khóa → dòng thành `stale` và tầm tính lại rỗng; offboarding một tenant → 0 dòng `studio.principal_scopes`
+      của tenant đó và đúng một dòng `studio.access_epochs` của nó còn lại, và test phủ offboarding xanh với hai bảng
+      trong `STUDIO_EXCLUSIONS` kèm đúng lý do của mỗi bảng; bỏ một bảng khỏi danh sách → test đỏ.
 - [ ] Xong: `make ci test-integration` xanh.
 
 ## Nguồn
@@ -90,3 +93,5 @@ dụng từ câu lệnh kế tiếp (spec R5, ADR-0105 (Accepted) mục 4). Nhá
   công khai là toàn tenant (nhánh của nó thêm ở ticket 03).
 - 2026-10-23 (agent): DO-11 (a) đã được Đạt xác nhận ngày 23/10/2026; thêm dòng lớp bảng toàn tenant (DO-01) và
   `STUDIO_EXCLUSIONS` cho hai bảng sổ tầm.
+- 2026-10-24 (agent): lý do loại trừ của `studio.access_epochs` sửa thành dòng đếm giữ có chủ ý (Đạt, 24/10/2026):
+  offboarding giữ dòng `platform.tenants` ở `offboarded`, nên không cascade nào xóa dòng epoch của tenant đó.

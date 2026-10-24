@@ -11,7 +11,7 @@ Công ty có tài khoản dịch vụ: một dòng `platform.users` loại `serv
 người, không bao giờ đăng nhập, không bao giờ giữ quyền trọng yếu, và chỉ được gắn làm chủ thể chạy bởi người giữ mọi quyền
 của nó (R6, R7, YC8; ADR-0103 (Accepted) mục 2, 4). Việc gắn vào phiên bản và chạy lượt chạy dưới danh nghĩa nó thuộc
 workflow-triggers và workflow-engine (R6.7); workflow-triggers đọc sự kiện `platform.service_principal.grants_changed` của
-ticket này (DO-12). Từ brief B2 ticket 07; DO-12 và DO-17 đã có câu trả lời ngày 23/10/2026.
+ticket này, và ticket đọc sự kiện đó của workflow-triggers chờ ticket này (DO-12). Từ brief B2 ticket 07; DO-12 và DO-17 đã có câu trả lời ngày 23/10/2026.
 
 ## Việc cần làm
 
@@ -29,7 +29,9 @@ ticket này (DO-12). Từ brief B2 ticket 07; DO-12 và DO-17 đã có câu tr�
    `uq_workspaces_tenant_id_id` của ticket 01) `ON DELETE RESTRICT`; index `(tenant_id, owning_workspace_id)`,
    `created_by`. RLS ENABLE và FORCE, chỉ policy tenant; bảng toàn tenant, nên thêm `platform.service_principals` vào
    `_TENANT_WIDE_ON_PURPOSE` của studio-skeleton/01 kèm lý do (một tài khoản dịch vụ thuộc cả công ty, workspace sở hữu chỉ
-   để kiểm quyền quản lý và gắn). `dw_app` SELECT, INSERT, UPDATE, không DELETE (dòng đi cùng tenant khi offboarding).
+   để kiểm quyền quản lý và gắn). `dw_app` SELECT, INSERT, UPDATE, không DELETE: offboarding xóa dòng theo cascade của
+   khóa ngoại tới `platform.tenant_members` khi xóa bảng đó, nên `platform.service_principals` vào `STUDIO_EXCLUSIONS` của
+   studio-skeleton/01 với lý do ấy (studio-skeleton:R4.3).
    Hoạt động hay tạm khóa là `platform.tenant_members.status`, một sự thật một chỗ. Trigger từ chối dòng thành viên công
    ty của người dùng loại `service` ở tenant khác `owner_tenant_id`.
 3. **Không đăng nhập.** Mở rộng `platform.guard_privileged_login_identity()` (foundations-hardening/02): từ chối dòng
@@ -66,8 +68,10 @@ ticket này (DO-12). Từ brief B2 ticket 07; DO-12 và DO-17 đã có câu tr�
 8. **Mặt danh tính lọc loại.** `/directory/candidates` (`directory.py:65-78` và adapter của nó),
    `GET /api/v1/platform/users` (`platform.py:94`) và bootstrap chỉ trả `kind = 'human'`; test liệt kê mọi câu đọc
    `platform.users` mà một route dùng.
-9. Offboarding: người dùng loại `service` đi cùng tenant (`owner_tenant_id` CASCADE khi provisioner xóa tenant);
-   `test_offboarding.py`.
+9. Offboarding: `test_offboarding.py` purge một tenant có tài khoản dịch vụ và khẳng định không còn dòng
+   `platform.service_principals` nào của tenant đó, nên thứ tự xóa phải xóa `platform.tenant_members` trước
+   `platform.workspaces` (khóa ngoại tới workspace sở hữu là `ON DELETE RESTRICT`); người dùng loại `service` đi cùng
+   tenant (`owner_tenant_id` CASCADE khi provisioner xóa tenant).
 
 ## Tiêu chí chấp nhận
 

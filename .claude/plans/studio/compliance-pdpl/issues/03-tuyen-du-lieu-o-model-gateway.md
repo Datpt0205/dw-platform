@@ -1,7 +1,7 @@
 # 03 — Lớp lộ trình dữ liệu ở model gateway, mọi lời gọi qua cùng cổng
 
 Status: needs-triage
-Blocked by: .claude/plans/studio/model-connections/issues/02-model-resolver-theo-tenant.md, .claude/plans/studio/usage-and-limits/issues/02-bang-gia-so-su-dung-va-man-hinh.md
+Blocked by: .claude/plans/studio/model-connections/issues/02-model-resolver-theo-tenant.md, .claude/plans/studio/usage-and-limits/issues/02-bang-gia-so-su-dung-va-man-hinh.md, .claude/plans/studio/agent-lifecycle/issues/01-dong-bang-va-kiem-o-moi-cua.md
 Area: studio
 Yêu cầu: R2.1, R2.2, R2.3, R2.4, R2.7, R2.8, CP2, CP3, CP4, CP5
 
@@ -20,12 +20,12 @@ ADR-0123 (Accepted)).
 2. Migration (id hex ngẫu nhiên): `platform.tenants` thêm `data_route_class text NOT NULL DEFAULT 'vn_only'`
    CHECK (`vn_only`, `cross_border_minimised`, `cross_border_full`), chỉ thêm cột, không thêm trigger nào
    trên `platform.tenants` (OPS-b); `platform.workspaces` thêm `data_route_class text NULL` cùng CHECK (NULL
-   kế thừa, chỉ siết); `platform.cross_border_attestations` (bảng toàn tenant, RLS chỉ theo công ty, có tên
-   và lý do trong danh sách bảng toàn tenant của `test_rls_coverage.py`; `processor`, `ctia_ref`,
-   `attested_by`, `expires_at`, `revoked_at`).
+   kế thừa, chỉ siết). `platform.cross_border_attestations` không tạo ở ticket này: bên ghi và bên đọc duy nhất
+   của nó là đường nới R2.5 ở W2.
 3. `effective_route_class(tenant, workspace, agent)` một chủ, trả lộ trình chặt nhất.
 4. `ResidencyGate.check(route_class, route)` gọi trong `RoutingModelGateway`
-   (`packages/python/dw_agent_runtime/src/dw_agent_runtime/model/gateway.py:85-124`) và factory chat model
+   (`packages/python/dw_agent_runtime/src/dw_agent_runtime/model/gateway.py:85-124`), sau cửa công tắc mà
+   agent-lifecycle/01 đặt đầu gateway (ticket này chờ nó) và trước `LimitsMiddleware`, và factory chat model
    của agent (model-connections làm theo công ty); cho mọi adapter chạm model (embedding, rerank, trích
    xuất tài liệu, chép lời, tóm tắt, chấm eval) nhận cổng qua constructor; lỗi `ResidencyRefusedError` có
    thông điệp tiếng Việt; `cross_border_minimised` từ chối tới ticket 13 (W2).
@@ -67,9 +67,13 @@ ADR-0123 (Accepted)).
 ## Comments
 
 - 2026-10-23 (agent): gộp B11-security compliance-pdpl 02, 03. `needs-info` vì DO-54 (vai trò bên xử lý,
-  pilot dùng model nào, đặt ở đâu) chờ luật sư và người yêu cầu. DO-19 đã quyết bằng D13 (lane LiteLLM
+  pilot dùng model nào, đặt ở đâu) chờ luật sư và người yêu cầu. DO-19 đã quyết bằng D13 (`model-proxy`
   riêng, `data_location` theo bí danh).
 - 2026-10-23 (agent): DO-54.1 có lời đáp cho W1 (Đạt, 23/10/2026), nên `needs-triage`; demo trên uat cần một
   tuyến khai `vn` (FOG-10, FOG-18). W1 bỏ đường nới (D:tenant-config/05~tenant-rbac:R7.1), R2.5 sang W2; R2.6
   chuyển sang ticket 05; trường lộ trình của model-connections/02 chỉ đọc; ghi lộ trình lên Sổ sử dụng nên chờ
   usage-and-limits/02.
+- 2026-10-24 (agent): áp quyết định của Đạt ngày 24/10/2026: chờ agent-lifecycle/01 vì cùng sửa
+  `model/gateway.py`, thứ tự cửa là công tắc, Lộ trình dữ liệu, rồi hạn mức (C:agent-lifecycle/01\~compliance-pdpl/03);
+  `platform.cross_border_attestations` sang W2 cùng R2.5
+  (H:compliance-pdpl:dữ-liệu\~compliance-pdpl:ngoài-phạm-vi).

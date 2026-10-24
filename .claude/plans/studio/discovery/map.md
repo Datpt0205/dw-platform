@@ -1,14 +1,15 @@
 # Bản đồ khám phá Studio
 
-**Đích:** requirements.md được duyệt, bộ ADR 0100-0125 được Đạt xem, và W1 sẵn sàng cắt ticket.
+**Đích:** requirements.md được duyệt, bộ ADR 0100-0127 được Đạt xem, và W1 sẵn sàng cắt ticket.
 
 Area: studio · Viết: 23/10/2026
 
-Bản đồ wayfinder cho phần Studio còn chưa biết. Blueprint gom 80 ticket khám phá `FOG-NN` từ mục fog của 15 brief; ở
-đây chúng thành 29 ticket con trong `issues/` và 4 mục còn ở mục Fog cuối file. Id `FOG-NN` giữ nguyên vì
-[research.md](research.md), [teardown-chang.md](teardown-chang.md) và các ADR 01NN đã trích chúng. `requirements.md`
-nằm ở `.claude/plans/studio/requirements.md`; ADR ở `docs/adr/01NN-*.md`. Đạt chấp nhận mọi ADR 0100-0125 ngày
-23/10/2026, trừ 0119 giữ Proposed tới khi `code-sandbox/01` báo số.
+Bản đồ wayfinder cho phần Studio còn chưa biết. Blueprint gom 80 ticket khám phá `FOG-NN` từ mục fog của 15 brief, và
+Đạt thêm hai mục ngày 24/10/2026 (FOG-81 theo N10, FOG-82 theo N8); ở đây chúng thành 30 ticket con trong `issues/` và
+5 mục còn ở mục Fog cuối file. Id `FOG-NN` giữ nguyên vì [research.md](research.md),
+[teardown-chang.md](teardown-chang.md) và các ADR 01NN đã trích chúng. `requirements.md` nằm ở
+`.claude/plans/studio/requirements.md`; ADR ở `docs/adr/01NN-*.md`. Đạt chấp nhận mọi ADR 0100-0125 ngày 23/10/2026,
+trừ 0119 giữ Proposed tới khi `code-sandbox/01` báo số, và 0126, 0127 ngày 24/10/2026.
 
 ## Notes
 
@@ -29,7 +30,8 @@ Theo mục "Wayfinding operations" của `docs/agents/issue-tracker.md`:
 Số nhỏ là hệ quả lớn. 01 là chang.fpt.net (D10). 02-04 có thời gian chờ dài: khách thí điểm, tình trạng luật, duyệt
 ứng dụng của nhà cung cấp (thời gian duyệt là đường găng thật của W2). 05-10 nằm trên thân chung của đường găng,
 `studio-skeleton/01` tới `custom-objects/04`, hoặc trả lời DO-12 trước W1. 11-12 là sàn gửi tin và phê duyệt của lát
-thí điểm. 13-25 là công cụ, runtime, model, hạ tầng và các spike P0. 26-29 chủ yếu phục vụ W2.
+thí điểm. 13-25 là công cụ, runtime, model, hạ tầng và các spike P0. 26-29 chủ yếu phục vụ W2, và 30 phục vụ báo cáo
+tổng hợp ở W3.
 
 Thứ tự chạy, Đạt chốt ngày 23/10/2026 (OPS-j):
 
@@ -45,6 +47,8 @@ Thứ tự chạy, Đạt chốt ngày 23/10/2026 (OPS-j):
 - 22 chạy trước khi chấp nhận ADR 0119.
 - 21 chạy trước khi OpenBao và smokescreen ra, vì ADR 0115 được nhận kèm điều kiện số đo của nó (FOG-25).
 - 01 chạy khi tài khoản thử của D10 có, theo luật quan sát của DO-23.
+- 30 thêm ngày 24/10/2026 (N10), ngoài thứ tự OPS-j: nó dùng lại bộ dữ liệu gieo D12 của 05 nên chạy sau 05, và xong
+  trước khi spec báo cáo W3 được viết (ADR 0127 quyết định 2).
 
 Nguyên mẫu trùng ticket P0 không chặn việc cắt W1, vì phép đo nằm trong W1: phép đo chạy một lần trong ticket W1, và
 ticket khám phá đóng bằng một dòng trỏ tới kết quả (mục dưới).
@@ -94,8 +98,9 @@ Bảng là chỉ mục; trạng thái nằm ở dòng `Status:` của từng tic
 | 27  | [Dữ liệu tham chiếu Việt Nam](issues/27-vietnam-reference-data.md)                             | research  | FOG-08, FOG-16, FOG-17                 | 0113, 0121                   | `usage-and-limits/03`                                                |
 | 28  | [SDK `mcp` 2.x sau cổng MCP](issues/28-mcp-sdk.md)                                             | prototype | FOG-69                                 | 0116                         | - (W2)                                                               |
 | 29  | [Màn quản trị W2](issues/29-w2-admin-screens.md)                                               | prototype | FOG-39, FOG-52, FOG-53                 | 0104, 0110, 0120             | - (W2)                                                               |
+| 30  | [Truy vấn tổng hợp dưới RLS ở quy mô D12](issues/30-aggregate-queries-under-rls.md)            | prototype | FOG-81                                 | 0105, 0107, 0127             | - (W3)                                                               |
 
-76 FOG nằm trong 29 ticket; FOG-60, FOG-61, FOG-62 và FOG-80 ở mục Fog. Không FOG nào nằm ở hai chỗ.
+77 FOG nằm trong 30 ticket; FOG-60, FOG-61, FOG-62, FOG-80 và FOG-82 ở mục Fog. Không FOG nào nằm ở hai chỗ.
 
 ### Quy tắc chung
 
@@ -129,11 +134,11 @@ Hướng đã chọn. Đạt chấp nhận các ADR dựa trên chúng ngày 23/
 - D13 (23/10/2026, DO-19): model của tenant đi qua một lane LiteLLM riêng, không trạng thái (model proxy), không khóa trong môi trường; gateway hiện có chỉ phục vụ model của nền tảng; alias chưa khai nơi xử lý coi là nước ngoài. ADR 0118.
 - D14 (23/10/2026, DO-24): nâng host chính lên ít nhất 4 vCPU / 16 GB trước khi OpenBao và egress proxy ra, thêm VM riêng cho `sandbox-runner` trước khi mã tenant chạy ở uat hay production; đo trước khi chốt cỡ. ADR 0115, 0119.
 
-### Lựa chọn tạm của agent
+### DO Đạt đã chốt
 
-"agent, tạm theo khuyến nghị" ngày 23/10/2026, phương án được khuyến nghị của DO trong blueprint (19 mục là (a), DO-20
-là (c)). Đạt chốt ngày 23/10/2026: giữ nguyên 15 mục, đổi hay làm rõ 5 mục (DO-20, DO-26, DO-28, DO-31, DO-45); các dòng
-dưới đã theo bản chốt, và mỗi quyết định có dòng của Đạt ở mục Quyết định của `requirements.md`.
+Hai mươi DO mà agent ghi tạm ngày 23/10/2026 ("agent, tạm theo khuyến nghị") theo phương án khuyến nghị của blueprint
+(19 mục là (a), DO-20 là (c)). Đạt chốt cùng ngày: giữ nguyên 15 mục, đổi hay làm rõ 5 mục (DO-20, DO-26, DO-28, DO-31,
+DO-45); các dòng dưới đã theo bản chốt, và mỗi quyết định có dòng của Đạt ở mục Quyết định của `requirements.md`.
 
 - DO-04: giữ "workspace" làm từ trên giao diện. ADR 0102.
 - DO-08: tên API bất biến sau lần phát hành đầu. ADR 0109.
@@ -162,7 +167,7 @@ Chưa có. Mỗi ticket xong thêm một dòng: số ticket, ý chính, link t�
 
 ## Fog
 
-Bốn mục chưa nói được chính xác; mỗi mục ghi vì sao và khi nào quay lại.
+Năm mục chưa nói được chính xác; mỗi mục ghi vì sao và khi nào quay lại.
 
 - **FOG-60 `test-scratch` (prototype).** Vùng tạm theo lượt chạy cho các lần ghi bản ghi bị chặn, để lượt chạy thử đọc
   lại thứ mình vừa ghi giả lập qua cổng bản ghi. DO-26 (Đạt chốt 23/10/2026) để nó ở v1.5, và hình của nó phụ thuộc
@@ -181,3 +186,8 @@ Bốn mục chưa nói được chính xác; mỗi mục ghi vì sao và khi nà
   thành yêu cầu không, kéo theo mở lại việc tài khoản dịch vụ là một dòng `platform.users` (DO-17, ADR 0103). Câu trả
   lời phụ thuộc các chuẩn còn ở dạng nháp (chưa kiểm); W3. Quay lại khi một khách đòi hay một chuẩn ra bản chính
   thức; spec chủ `org-and-principals`.
+- **FOG-82 `tiktok-leadgen` (research).** TikTok Lead Generation có API hay webhook nhận lead mà một công ty dùng được
+  không, cần duyệt ứng dụng và xác minh doanh nghiệp gì, xử lý dữ liệu ở đâu (`data_location`), và có đối soát được để
+  không mất lead khi webhook rớt như Meta Lead Ads không; [research.md](research.md) ghi API của TikTok Lead Gen chưa
+  kiểm. Đạt rút TikTok khỏi phần W2 của YC97 và cho vào W3 chỉ sau một ticket khám phá kiểm API (N8, 24/10/2026); mục
+  này thành ticket khi lập kế hoạch W3. Spec chủ `connections-and-vault`, cùng `marketing-pilot` cho nguồn lead.

@@ -14,8 +14,8 @@ FOG-55 mà `.claude/plans/studio/discovery/issues/07-records-storage.md` giao ch
 
 ## Việc cần làm
 
-1. Máy đo là máy tham chiếu của spec (host chính sau D14, ít nhất 4 vCPU, 16 GB) với `postgres:16-alpine` của
-   compose. Ghi vào Comments: CPU, RAM, loại đĩa, digest của image, `shared_buffers`, `work_mem`.
+1. Máy đo là máy tham chiếu mà YC20 định nghĩa (host chính sau D14), cùng máy của record-access/01, với
+   `postgres:16-alpine` của compose. Ghi vào Comments: CPU, RAM, loại đĩa, digest của image, `shared_buffers`, `work_mem`.
 2. Viết harness `scripts/bench_records_storage.py` và DDL ứng viên `scripts/bench_records_storage.sql` (không phải
    revision Alembic), giữ trong repo để ticket 04 đo lại R9.1 trên mã thật. Harness tạo database `dw_bench` bằng
    `dw_migrator` từ migration head rồi chạy DDL ứng viên: `studio.object_defs`, `studio.field_defs` và
@@ -84,3 +84,4 @@ FOG-55 mà `.claude/plans/studio/discovery/issues/07-records-storage.md` giao ch
 ## Comments
 
 - 2026-10-23 (agent): DO-15 (a) đã quyết (Đạt, 23/10/2026): biến thể không partition thay bằng modulus 4, đường lui hợp D12; R9.3 bỏ, R9.5 thêm.
+- 2026-10-24 (agent): máy đo trích YC20 (Đạt, 24/10/2026), một chủ cho máy tham chiếu mà record-access/01 cũng đo trên đó.

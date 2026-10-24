@@ -83,8 +83,8 @@ khóa cũ nhất còn giữ khóa đó hết hạn (YC61; D14; DO-47.1; ADR-0115
 ### R3 — Bộ gọi ra ngoài ghim địa chỉ, chặn địa chỉ không toàn cầu
 
 Mọi lời gọi ra ngoài của lưu lượng tới tenant đi qua một bộ gọi ghim địa chỉ đã kiểm, chỉ tới địa chỉ
-Internet toàn cầu trong danh sách được phép, kể cả sau chuyển hướng hay đổi DNS (YC63, YC34;
-ADR-0115 (Accepted) quyết 5).
+Internet toàn cầu trong danh sách được phép, kể cả sau chuyển hướng hay đổi DNS; thêm một Máy chủ được phép cần
+người thứ hai (YC63, YC34; D11; ADR-0115 (Accepted) quyết 5, 6; ADR-0111 (Accepted) quyết 3).
 
 - R3.1 KHI mở một kết nối TCP ra ngoài, Bộ gọi ra ngoài PHẢI phân giải host một lần, ghim địa chỉ IP đã
   kiểm cho kết nối đó, và xác minh TLS theo hostname.
@@ -96,14 +96,22 @@ ADR-0115 (Accepted) quyết 5).
 - R3.4 KHI một chuyển hướng đổi origin, Bộ gọi ra ngoài PHẢI bỏ header `Authorization` và `Cookie`
   trước khi gửi bước kế.
 - R3.5 TRONG KHI lượt chạy ở chế độ khác `live` (`simulate`, hay `test` mà W1 chưa mở), NẾU một lời gọi
-  mang purpose `connector`, `http_tool` hay `webhook`, THÌ Bộ gọi ra ngoài PHẢI từ chối với
-  `egress_blocked:run_mode` và không gọi nhà cung cấp.
+  mang purpose khác `model` và không đến từ một Hành động khai chỉ đọc hay `simulate_safe`, kể cả purpose
+  `mcp` và `oauth`, THÌ Bộ gọi ra ngoài PHẢI từ chối với `egress_blocked:run_mode` và không gọi nhà cung cấp.
 - R3.6 Test kiến trúc PHẢI đỏ khi một module ngoài danh sách adapter vận hành tạo `httpx.AsyncClient`
   trực tiếp.
 - R3.7 NẾU đích của một purpose khác `connector` và `oauth` không nằm trong Máy chủ được phép của công
   ty, THÌ Bộ gọi ra ngoài PHẢI từ chối với `egress_blocked:host_not_allowed` và không gửi byte nào.
 - R3.8 NẾU một mẫu Máy chủ được phép đặt wildcard trên một hậu tố công cộng, hoặc là một IP literal, THÌ
   API quản trị PHẢI trả 422 và không thêm dòng.
+- R3.9 KHI người giữ `integrations.admin` gửi `POST /api/v1/egress/allowed-hosts` hợp lệ, API quản trị PHẢI
+  trả 202 với một yêu cầu phê duyệt không lượt chạy loại `egress.allowed_host` có `required_scope`
+  `integrations.admin`, mà chưa thêm dòng nào vào `platform.egress_allowed_hosts`.
+- R3.10 NẾU người quyết một yêu cầu `egress.allowed_host` là người đã gửi nó, THÌ luồng phê duyệt PHẢI trả
+  409 `conflict` và không thêm dòng nào.
+- R3.11 KHI một yêu cầu `egress.allowed_host` được người thứ hai duyệt, handler `egress.allowed_host.decided`
+  PHẢI thêm đúng một dòng `platform.egress_allowed_hosts` cùng audit `egress.allowlist.added` đứng tên người
+  quyết, `details.lane` là `outbox`, trong một giao dịch.
 
 ### R4 — Bộ kiểm chữ ký webhook
 
@@ -121,8 +129,8 @@ ADR-0115 (Accepted) quyết 6).
 ### R5 — Kết nối dùng chung theo workspace
 
 Quản trị viên thêm, kiểm, tắt và thu hồi Kết nối dùng chung của một workspace, một quy tắc
-`connection_usable` quyết mọi lượt dùng, và tắt hay thu hồi có hiệu lực trước lần gọi ra ngoài kế tiếp
-(YC62; DO-48; ADR-0115 (Accepted) quyết 2).
+`connection_usable` quyết mọi lượt dùng, tắt hay thu hồi có hiệu lực trước lần gọi ra ngoài kế tiếp, và bật
+lại cần người thứ hai (YC62; DO-48; D11; ADR-0115 (Accepted) quyết 2).
 
 - R5.1 KHI người giữ `connections.manage` ở workspace đang làm việc tạo một Kết nối, API kết nối PHẢI
   lưu bí mật vào Kho bí mật, tạo dòng Kết nối với Connection status `pending` hoặc `active`, và audit
@@ -142,6 +150,17 @@ Quản trị viên thêm, kiểm, tắt và thu hồi Kết nối dùng chung c�
   khoản ngoài, Phạm vi dùng chung, Connection status bằng chữ và "Được dùng bởi".
 - R5.8 NẾU người gọi xóa một Kết nối còn thành phần đang dùng, THÌ API kết nối PHẢI trả 409
   `connection_in_use` và không xóa.
+- R5.9 NẾU chủ thể của ngữ cảnh (chủ thể mà lượt chạy hành động thay, hay người đề xuất giá trị Điểm gắn)
+  không giữ `connections.use` ở workspace của lượt chạy hay của giá trị đang duyệt, THÌ `connection_usable`
+  PHẢI trả false, nên lời gọi bị từ chối lúc duyệt giá trị Điểm gắn, lúc nhận lượt chạy và ở Bộ gọi ra ngoài.
+- R5.10 KHI người giữ `connections.manage` gửi `POST /api/v1/connections/{id}/enable` cho một Kết nối
+  `disabled`, API kết nối PHẢI trả 202 với một yêu cầu phê duyệt không lượt chạy loại `connections.enable` có
+  `required_scope` `connections.manage`, mà Connection status vẫn là `disabled`.
+- R5.11 NẾU người quyết một yêu cầu `connections.enable` là người đã gửi nó, THÌ luồng phê duyệt PHẢI trả 409
+  `conflict` và không đổi Connection status.
+- R5.12 KHI một yêu cầu `connections.enable` được người thứ hai duyệt, handler `connections.enable.decided`
+  PHẢI đổi Connection status từ `disabled` sang `active` cùng audit `connection.enabled` đứng tên người quyết,
+  `details.lane` là `outbox`, trong một giao dịch.
 
 ### R6 — Bản mô tả trình kết nối biên dịch thành công cụ
 
@@ -185,29 +204,39 @@ trong Bản mô tả trình kết nối (YC64; DO-48; ADR-0116 (Accepted) quyế
   Bộ giá trị gắn đã duyệt trong `platform.config_versions`; workflow-engine và agent-builder không cài);
   lane `credential_rewrap`.
 - Khóa quyền, đăng ký vào Danh mục quyền trong migration của ticket dùng nó (quy ước của tenant-rbac/01):
-  `connections.read`, `connections.manage` ở ticket 04; `integrations.admin` ở ticket 03.
-- Audit: `connection.created`, `connection.updated`, `connection.disabled`, `connection.revoked`,
-  `connection.tested`, `secret.key_mismatch`, `egress.allowlist.added`, `egress.allowlist.removed`.
+  `connections.read`, `connections.manage`, `connections.use` ở ticket 04; `integrations.admin` ở ticket 03.
+  Tên giữ như ADR-0115 (Accepted); tiền tố `connections.` và `integrations.` nằm trong
+  `FORBIDDEN_SCOPE_PREFIXES` của truy cập người vận hành (tenant-rbac:R1.5).
+- Phê duyệt không lượt chạy `egress.allowed_host` (ticket 03) và `connections.enable` (ticket 04): cả hai vào
+  `strict_approval_prefixes` bằng `|=` ở API và worker, mỗi loại một handler `.decided` đăng ký ở composition
+  root của worker; tắt kết nối và xóa Máy chủ được phép vẫn một người cộng audit (D11).
+- Audit: `connection.created`, `connection.updated`, `connection.disabled`, `connection.enabled`,
+  `connection.revoked`, `connection.tested`, `secret.key_mismatch`, `egress.allowlist.added`,
+  `egress.allowlist.removed`.
 - Outbox: `connection.status_changed` v1.
 
 ## Ngoài phạm vi
 
-| Việc                                                                                                                      | Vì sao                                                                                                                                                                                                                           | Chủ                                                   |
-| ------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| R4: cửa nhận Data Hub, ép lược đồ, định danh nguồn ≥128 bit, chống trùng, không tạo lượt chạy khi từ chối                 | YC42 phần endpoint; module này chỉ cấp Bộ kiểm chữ ký                                                                                                                                                                            | workflow-triggers                                     |
-| W2: giới hạn tốc độ, Retry-After, backoff, cầu dao, công tắc tắt egress                                                   | `from_briefs` B8a 06; qua `RateLimiterPort` của usage-and-limits, không bộ giới hạn riêng; mất Valkey thì xô mỗi tiến trình ở hạn mức chia số replica (DO-49)                                                                    | usage-and-limits đợt sau (W2)                         |
-| W2: smokescreen là lớp thứ hai trên mạng riêng, bắt buộc trước đích HTTP đầu tiên do công ty định nghĩa                   | DO-47.2: `validate_for_profile` từ chối profile triển khai bật đích HTTP của công ty khi thiếu `DW_EGRESS_PROXY_URL`; host SMTP của P1 chỉ ghim địa chỉ (R7.3); chỉ ship sau spike 21 (FOG-25, FOG-26) và khi host đã nâng (D14) | connections-and-vault đợt sau (W2)                    |
-| W2: bộ điều phối OAuth và làm mới token một luồng                                                                         | YC65; `from_briefs` B8a 10, 11; P1 chỉ kết nối dùng chung, chưa có luồng cấp quyền                                                                                                                                               | connections-and-vault đợt sau (W2)                    |
-| W2: định tuyến sự kiện ứng dụng nhà cung cấp theo tài khoản ngoài; cùng Page hay OA do hai công ty nối thì gửi tới cả hai | YC97; `from_briefs` B8a 13 (phần định tuyến); cần cửa `provider_app` của workflow-triggers; DO-48.2: không bật trước ý kiến luật sư (compliance-pdpl/02, câu 3 của discovery/18)                                                 | connections-and-vault đợt sau (W2); workflow-triggers |
-| W2: trình kết nối Zalo OA và ZNS; Meta Lead Ads                                                                           | YC97; `from_briefs` B8a 14, 15; cần OAuth và duyệt ứng dụng                                                                                                                                                                      | connections-and-vault đợt sau (W2)                    |
-| W2: kết nối cá nhân và ủy quyền; ứng dụng OAuth riêng của tổ chức                                                         | DO-48.1 chốt P1 chỉ dùng chung theo workspace; `from_briefs` B8a 17, 18                                                                                                                                                          | connections-and-vault đợt sau (W2)                    |
-| W2: webhook gửi đi theo Standard Webhooks; mở rộng danh mục trình kết nối                                                 | YC24; `from_briefs` B8a 19, 20; đọc từ outbox, cần endpoint đã đăng ký; DO-58: mặc định sự kiện mỏng, dữ liệu cá nhân chỉ khi bật cho từng endpoint, có audit, áp Đã ẩn và Lộ trình dữ liệu                                      | connections-and-vault đợt sau (W2)                    |
-| W2: chế độ `test` gửi thật tới Danh sách người nhận thử                                                                   | DO-26.1: W1 chỉ mở `simulate`; tới khi đó R3.5 và R7.5 từ chối mọi chế độ khác `live`                                                                                                                                            | tenant-config đợt sau (W2); connections-and-vault     |
-| W3: giải mã chỉ trong dịch vụ `dw-egress`; manifest tầng tenant; BYOK (sau v1, DO-47.1) và HSM                            | `from_briefs` B8a 21, 22, 23; cần tách dịch vụ egress và PKCS#11                                                                                                                                                                 | connections-and-vault đợt sau (W3)                    |
-| Sàn gửi tin kiểm đồng ý ở executor cho Hành động `effect_class: message`                                                  | ADR-0124 (Accepted); executor là một cửa, sổ đồng ý là của compliance-pdpl                                                                                                                                                       | tools-and-skills; compliance-pdpl                     |
-| Khung loại công cụ, kiểm JSON Schema trong executor, bọc đầu ra không tin cậy                                             | ADR-0116 (Accepted); spec này cấp Bộ gọi ra ngoài và Kết nối cho loại `connector_action`                                                                                                                                         | tools-and-skills                                      |
-| Chế độ chạy do máy chủ đặt và `run_mode` trên ngữ cảnh lượt chạy                                                          | ADR-0111 (Accepted); Bộ gọi ra ngoài và `SmtpEgress` đọc `run_mode` để từ chối mọi chế độ khác `live`                                                                                                                            | tenant-config                                         |
-| Cấu hình model của tenant (BYOM qua model proxy); khóa model là bí mật                                                    | ADR-0118 (Accepted); khóa model lưu trong Kho bí mật này                                                                                                                                                                         | model-connections                                     |
+| Việc                                                                                                                            | Vì sao                                                                                                                                                                                                                           | Chủ                                                   |
+| ------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| R4: cửa nhận Data Hub, ép lược đồ, định danh nguồn ≥128 bit, chống trùng, không tạo lượt chạy khi từ chối                       | YC42 phần endpoint; module này chỉ cấp Bộ kiểm chữ ký                                                                                                                                                                            | workflow-triggers                                     |
+| W2: giới hạn tốc độ, Retry-After, backoff, cầu dao, công tắc tắt egress                                                         | `from_briefs` B8a 06; qua `RateLimiterPort` của usage-and-limits, không bộ giới hạn riêng; mất Valkey thì xô mỗi tiến trình ở hạn mức chia số replica (DO-49)                                                                    | usage-and-limits đợt sau (W2)                         |
+| W2: smokescreen là lớp thứ hai trên mạng riêng, bắt buộc trước đích HTTP đầu tiên do công ty định nghĩa                         | DO-47.2: `validate_for_profile` từ chối profile triển khai bật đích HTTP của công ty khi thiếu `DW_EGRESS_PROXY_URL`; host SMTP của P1 chỉ ghim địa chỉ (R7.3); chỉ ship sau spike 21 (FOG-25, FOG-26) và khi host đã nâng (D14) | connections-and-vault đợt sau (W2)                    |
+| W2: bộ điều phối OAuth và làm mới token một luồng                                                                               | YC65; `from_briefs` B8a 10, 11; P1 chỉ kết nối dùng chung, chưa có luồng cấp quyền                                                                                                                                               | connections-and-vault đợt sau (W2)                    |
+| W2: định tuyến sự kiện ứng dụng nhà cung cấp theo tài khoản ngoài; cùng Page hay OA do hai công ty nối thì gửi tới cả hai       | YC97; `from_briefs` B8a 13 (phần định tuyến); cần cửa `provider_app` của workflow-triggers; DO-48.2: không bật trước ý kiến luật sư (compliance-pdpl/02, câu 3 của discovery/18)                                                 | connections-and-vault đợt sau (W2); workflow-triggers |
+| W2: trình kết nối Zalo OA và ZNS; Meta Lead Ads                                                                                 | YC97; `from_briefs` B8a 14, 15; cần OAuth và duyệt ứng dụng                                                                                                                                                                      | connections-and-vault đợt sau (W2)                    |
+| W2: gửi email qua Gmail của công ty bằng ứng dụng Google nội bộ của khách, như một Hành động khai trong Bản mô tả trình kết nối | YC107; N8; DO-20 (c): nền tảng không giữ ứng dụng Google nào (ticket 01 bước 4); cần bộ điều phối OAuth (YC65); P1 gửi qua SMTP (R7)                                                                                             | connections-and-vault đợt sau (W2)                    |
+| W2: lane gửi tin đã xếp hàng, hỏi công tắc Tắt khẩn cấp trước khi gọi nhà cung cấp (hợp đồng agent-lifecycle:R8.4)              | Đạt giao chủ lane cho spec này ngày 24/10/2026; tin chỉ được hoãn và xếp hàng từ W2, nên W1 chỉ có lane giả trong test của agent-lifecycle                                                                                       | connections-and-vault đợt sau (W2)                    |
+| W3: trình kết nối TikTok Lead Generation                                                                                        | N8: rút khỏi phần W2 của YC97; chỉ làm sau một ticket khám phá kiểm API (FOG-82)                                                                                                                                                 | connections-and-vault đợt sau (W3); marketing-pilot   |
+| Trình kết nối Google Sheets                                                                                                     | N8: không yêu cầu nào của thí điểm cần nó                                                                                                                                                                                        | không làm ở v1; ứng viên W3                           |
+| W2: kết nối cá nhân và Ủy quyền dùng kết nối; ứng dụng OAuth riêng của tổ chức                                                  | DO-48.1 chốt P1 chỉ dùng chung theo workspace; `from_briefs` B8a 17, 18                                                                                                                                                          | connections-and-vault đợt sau (W2)                    |
+| W2: webhook gửi đi theo Standard Webhooks; mở rộng danh mục trình kết nối                                                       | YC24; `from_briefs` B8a 19, 20; đọc từ outbox, cần endpoint đã đăng ký; DO-58: mặc định sự kiện mỏng, dữ liệu cá nhân chỉ khi bật cho từng endpoint, có audit, áp Đã ẩn và Lộ trình dữ liệu                                      | connections-and-vault đợt sau (W2)                    |
+| W2: chế độ `test` gửi thật tới Danh sách người nhận thử                                                                         | DO-26.1: W1 chỉ mở `simulate`; tới khi đó R3.5 và R7.5 từ chối ở mọi chế độ khác `live`, trừ purpose `model` và Hành động chỉ đọc (R3.5)                                                                                         | tenant-config đợt sau (W2); connections-and-vault     |
+| W3: giải mã chỉ trong dịch vụ `dw-egress`; manifest tầng tenant; BYOK (sau v1, DO-47.1) và HSM                                  | `from_briefs` B8a 21, 22, 23; cần tách dịch vụ egress và PKCS#11                                                                                                                                                                 | connections-and-vault đợt sau (W3)                    |
+| Sàn gửi tin kiểm đồng ý ở executor cho Hành động `effect_class: message`                                                        | ADR-0124 (Accepted); executor là một cửa, sổ đồng ý là của compliance-pdpl                                                                                                                                                       | tools-and-skills; compliance-pdpl                     |
+| Khung loại công cụ, kiểm JSON Schema trong executor, bọc đầu ra không tin cậy                                                   | ADR-0116 (Accepted); spec này cấp Bộ gọi ra ngoài và Kết nối cho loại `connector_action`                                                                                                                                         | tools-and-skills                                      |
+| Chế độ chạy do máy chủ đặt và `run_mode` trên ngữ cảnh lượt chạy                                                                | ADR-0111 (Accepted); Bộ gọi ra ngoài và `SmtpEgress` đọc `run_mode` để từ chối theo R3.5 và R7.5                                                                                                                                 | tenant-config                                         |
+| Cấu hình model của tenant (BYOM qua model proxy); khóa model là bí mật                                                          | ADR-0118 (Accepted); khóa model lưu trong Kho bí mật này                                                                                                                                                                         | model-connections                                     |
 
 ## Dữ liệu
 
@@ -220,7 +249,9 @@ không `workspace_id`, mỗi bảng một dòng có lý do trong `_TENANT_WIDE_O
 `platform.workspaces (tenant_id, id)` (`uq_workspaces_tenant_id_id` của org-and-principals/01).
 
 - `platform.secret_envelopes`: `id` uuid; `tenant_id` NOT NULL FK `platform.tenants` ON DELETE CASCADE;
-  `connection_id` uuid NULL (cung loại trừ với chủ thể khác qua CHECK); `alg text NOT NULL` CHECK
+  `connection_id` uuid NULL, loại trừ với chủ thể khác qua CHECK `num_nonnulls(...) = 1`; mỗi chủ thể mới
+  (ADR-0115 (Accepted) quyết 1) là một cột FK NULL cộng CHECK đó nới rộng, thêm trong migration của ticket thêm
+  chủ thể: `inbound_endpoint_id` (FK tới `studio.inbound_endpoints`) ở workflow-triggers/02; `alg text NOT NULL` CHECK
   (`aes-256-gcm`); `nonce bytea` CHECK độ dài 12; `kek_ref text NOT NULL`; `ciphertext bytea` CHECK độ
   dài ≤ 64 KiB; `aad_hint text` CHECK độ dài ≤ 64; `kek_version int NOT NULL`; `created_at`,
   `updated_at timestamptz NOT NULL`. `REVOKE ALL FROM dw_app`; chỉ các hàm SECURITY DEFINER
@@ -241,7 +272,7 @@ không `workspace_id`, mỗi bảng một dòng có lý do trong `_TENANT_WIDE_O
   (`^(\*\.)?[a-z0-9.-]+$`, ≤ 253 ký tự), kiểm Public Suffix List (wildcard không đặt trên hậu tố công
   cộng), không IP literal; `ports int[] NOT NULL DEFAULT '{443}'`; `purpose text` CHECK (`http_tool`,
   `mcp`, `webhook`, `model`, `any`); `note`, `created_by`, `created_at`; UNIQUE
-  `(tenant_id, host_pattern, purpose)`.
+  `(tenant_id, host_pattern, purpose)`. Dòng chỉ được thêm bởi handler `egress.allowed_host.decided` (R3.11).
 
 ## API
 
@@ -249,45 +280,52 @@ không `workspace_id`, mỗi bảng một dòng có lý do trong `_TENANT_WIDE_O
   `POST /api/v1/connections/{id}/test`, `.../disable`, `.../enable`;
   `GET /api/v1/connections/{id}/dependents`. Quyền `connections.read`, `connections.manage` (ticket 04 đăng
   ký); trường bí mật `writeOnly`; `Idempotency-Key` cho `POST`; DELETE còn phụ thuộc → 409
-  `connection_in_use`.
+  `connection_in_use`. `.../enable` trả 202 kèm id yêu cầu `connections.enable` (R5.10); `.../disable` có
+  hiệu lực ngay.
 - `GET /api/v1/connectors` (`connections.read`), đọc lớp nền tảng.
-- `GET`, `POST`, `DELETE /api/v1/egress/allowed-hosts` (`integrations.admin`, ticket 03 đăng ký).
+- `GET`, `POST`, `DELETE /api/v1/egress/allowed-hosts` (`integrations.admin`, ticket 03 đăng ký): `POST` trả
+  202 kèm id yêu cầu `egress.allowed_host` (R3.9); `DELETE` có hiệu lực ngay.
 - Lỗi theo vỏ problem+json của ADR-0108 (Accepted); `details.reason_code`: `connection_in_use`,
   `connection_disabled`, `egress_blocked`, `kms_unavailable`, `kms_key_destroyed`, `secret_key_mismatch`.
-  Id của công ty khác ở mọi route → 404.
+  Id của công ty khác ở mọi route → 404. Người quyết bị từ chối nhận mã theo ADR-0104 (Accepted) quyết 11:
+  người gửi tự quyết → 409 `conflict`, không giữ `required_scope` → 404.
 
 ## Màn hình
 
 - `/studio/connections`: antd `Table` (tên, trình kết nối, tài khoản ngoài, Phạm vi dùng chung,
   Connection status bằng chữ, lần dùng gần nhất); `Drawer` thêm kết nối (API key, basic); trang chi tiết
   (sức khỏe, mã lỗi gần nhất, phạm vi đã cấp, "Được dùng bởi"); xác nhận xóa nêu tên kết nối và danh
-  sách phụ thuộc; người thiếu `connections.manage` thấy nút bị tắt kèm lý do, và API vẫn chặn.
-- `/studio/egress-hosts`: màn quản trị Máy chủ được phép (`integrations.admin`).
+  sách phụ thuộc; người thiếu `connections.manage` thấy nút bị tắt kèm lý do, và API vẫn chặn; nút "Bật lại"
+  gửi yêu cầu cho người thứ hai duyệt, và trang chi tiết hiện yêu cầu đang chờ.
+- `/studio/egress-hosts`: màn quản trị Máy chủ được phép (`integrations.admin`); thêm một máy chủ tạo yêu cầu
+  chờ người thứ hai duyệt, xóa có hiệu lực ngay.
 
 ## Kiểm soát
 
-| #    | Kiểm soát                                                                                     | Yêu cầu          | Test âm                                                                                                                                                                                                                     |
-| ---- | --------------------------------------------------------------------------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| CV1  | Phong bì gắn danh tính bằng AAD                                                               | R1.4             | Chép phong bì sang kết nối khác cùng công ty hay công ty khác → giải mã lỗi; gỡ AAD khỏi `SecretStore` → test đỏ                                                                                                            |
-| CV2  | Một cửa cơ sở dữ liệu, `dw_app` không đọc thẳng                                               | R1.3, R1.6       | `SELECT * FROM platform.secret_envelopes` bằng `dw_app` → permission denied; catalog export của offboarding không liệt kê `secret_envelopes`                                                                                |
-| CV3  | Khóa suy từ công ty của ngữ cảnh                                                              | R1.5             | Dòng mang `kek_ref` của công ty khác → từ chối, audit `secret.key_mismatch`; bỏ kiểm `kek_ref` → test đỏ                                                                                                                    |
-| CV4  | Bí mật không rò ra response, trạng thái, trace, log, audit                                    | R1.2             | Mock nhà cung cấp vọng header và key trong body lỗi → 0 lần xuất hiện ở checkpoint, `tool_executions`, audit, span, log; tắt che → test đỏ                                                                                  |
-| CV5  | LocalDevKms chỉ chạy ngoài profile triển khai                                                 | R2.2             | `DW_KMS_PROVIDER=local` với profile `uat` → `RuntimeError` lúc khởi động; gỡ `validate_for_profile` → test đỏ                                                                                                               |
-| CV6  | Xóa bằng hủy khóa khi offboarding                                                             | R2.3             | Sau offboarding, giải mã một phong bì từ dump trước đó → `kms_key_destroyed`; bỏ bước hủy khóa → giải mã vẫn được, test đỏ                                                                                                  |
-| CV7  | Egress chặn địa chỉ không toàn cầu lúc ghim                                                   | R3.1, R3.2       | Resolver giả trả IP công khai lần đầu, IP nội bộ lần sau → bị chặn lúc kết nối; `100.64.0.1`, `224.0.0.1`, `::ffff:169.254.169.254` → chặn; gỡ ghim → test đỏ                                                               |
-| CV8  | Chuyển hướng kiểm lại, bỏ header xác thực khi đổi origin                                      | R3.3, R3.4       | Redirect tới `http://169.254.169.254/` hay host ngoài danh sách → chặn, không gửi; mock origin khác không thấy `Authorization`                                                                                              |
-| CV9  | Không có client HTTP thô                                                                      | R3.6             | Thêm `httpx.AsyncClient(` vào một module mới ngoài danh sách → test kiến trúc đỏ                                                                                                                                            |
-| CV10 | Chế độ khác `live` không gọi ra ngoài                                                         | R3.5, R7.5       | Gọi egress với `run_mode` `simulate` và `test`, purpose `connector` → `egress_blocked:run_mode`; `email.send` tới `SmtpEgress` ở `test` → từ chối, không mở kết nối SMTP; gỡ bước kiểm chế độ ở một trong hai lớp → test đỏ |
-| CV11 | Bộ kiểm chữ ký từ chối sai chữ ký, lệch giờ, token sai                                        | R4.2, R4.3       | Vector Standard Webhooks qua; sửa một byte trượt; dấu thời gian lệch quá 5 phút trượt; token tĩnh sai trượt; gỡ kiểm dấu thời gian → test đỏ                                                                                |
-| CV12 | API kết nối không trả bí mật                                                                  | R5.2             | Duyệt mọi schema 2xx của router kết nối: không trường bí mật; `GET` sau khi tạo không chứa giá trị canary                                                                                                                   |
-| CV13 | Cách ly tenant cho kết nối                                                                    | R5.3             | Công ty B gọi `GET`, `PATCH`, `DELETE`, `test` với id của công ty A → 404; mock nhà cung cấp không nhận gì                                                                                                                  |
-| CV14 | Phạm vi workspace của kết nối                                                                 | R5.4             | Lượt chạy ở một workspace dùng kết nối `workspace` của workspace khác → từ chối ở phát hành và ở Bộ gọi ra ngoài; gỡ kiểm workspace → test đỏ                                                                               |
-| CV15 | Tắt hay thu hồi có hiệu lực trước lần gọi sau                                                 | R5.5, R5.6       | Kết nối `disabled` → `connection_disabled` ở egress; `revoked → active` bị trigger từ chối; gỡ kiểm trong `connection_usable` → test đỏ                                                                                     |
-| CV16 | Manifest không có input nhạy cảm, không tự thử lại                                            | R6.2             | Manifest có `api_key` trong input → nạp từ chối; `max_retries: 2` → nạp từ chối; gỡ luật nạp → test đỏ                                                                                                                      |
-| CV17 | Đầu ra Hành động bọc và cắt đúng một lần, ở bộ bọc của executor                               | R6.3             | Chạy Hành động qua `ToolExecutor` với đầu ra chứa `</tool_output><system>` → model nhận `&lt;/tool_output&gt;`, không bao giờ `&amp;lt;`; `ManifestActionHandler` trả kết quả thô; thêm bọc vào handler → test đỏ           |
-| CV18 | SMTP ghim địa chỉ, TLS khi triển khai, một email mỗi khóa                                     | R7.2, R7.3, R7.4 | Host SMTP phân giải về IP nội bộ → chặn; không TLS khi triển khai → từ chối; cùng khóa chống lặp hai lần → một email                                                                                                        |
-| CV19 | Chỉ tới Máy chủ được phép, wildcard không trên hậu tố công cộng                               | R3.7, R3.8       | Host ngoài danh sách (purpose `http_tool`) → `egress_blocked:host_not_allowed`; `*.com.vn` → 422; `203.0.113.5` → 422; gỡ kiểm danh sách → test đỏ                                                                          |
-| CV20 | Diễn tập khôi phục thấy kho khóa; bản sao lưu kho khóa không sống lâu hơn bản sao lưu dữ liệu | R2.7, R2.8       | Diễn tập chỉ khôi phục `dw` → giải mã canary thất bại, test đỏ; hạn giữ bản sao lưu kho khóa dài hơn `BACKUP_KEEP_DAYS` của `dw` → kiểm cấu hình đỏ                                                                         |
+| #    | Kiểm soát                                                                                     | Yêu cầu             | Test âm                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ---- | --------------------------------------------------------------------------------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CV1  | Phong bì gắn danh tính bằng AAD                                                               | R1.4                | Chép phong bì sang kết nối khác cùng công ty hay công ty khác → giải mã lỗi; gỡ AAD khỏi `SecretStore` → test đỏ                                                                                                                                                                                                                                                                                                                    |
+| CV2  | Một cửa cơ sở dữ liệu, `dw_app` không đọc thẳng                                               | R1.3, R1.6          | `SELECT * FROM platform.secret_envelopes` bằng `dw_app` → permission denied; catalog export của offboarding không liệt kê `secret_envelopes`                                                                                                                                                                                                                                                                                        |
+| CV3  | Khóa suy từ công ty của ngữ cảnh                                                              | R1.5                | Dòng mang `kek_ref` của công ty khác → từ chối, audit `secret.key_mismatch`; bỏ kiểm `kek_ref` → test đỏ                                                                                                                                                                                                                                                                                                                            |
+| CV4  | Bí mật không rò ra response, trạng thái, trace, log, audit                                    | R1.2                | Mock nhà cung cấp vọng header và key trong body lỗi → 0 lần xuất hiện ở checkpoint, `tool_executions`, audit, span, log; tắt che → test đỏ                                                                                                                                                                                                                                                                                          |
+| CV5  | LocalDevKms chỉ chạy ngoài profile triển khai                                                 | R2.2                | `DW_KMS_PROVIDER=local` với profile `uat` → `RuntimeError` lúc khởi động; gỡ `validate_for_profile` → test đỏ                                                                                                                                                                                                                                                                                                                       |
+| CV6  | Xóa bằng hủy khóa khi offboarding                                                             | R2.3                | Sau offboarding, giải mã một phong bì từ dump trước đó → `kms_key_destroyed`; bỏ bước hủy khóa → giải mã vẫn được, test đỏ                                                                                                                                                                                                                                                                                                          |
+| CV7  | Egress chặn địa chỉ không toàn cầu lúc ghim                                                   | R3.1, R3.2          | Resolver giả trả IP công khai lần đầu, IP nội bộ lần sau → bị chặn lúc kết nối; `100.64.0.1`, `224.0.0.1`, `::ffff:169.254.169.254` → chặn; gỡ ghim → test đỏ                                                                                                                                                                                                                                                                       |
+| CV8  | Chuyển hướng kiểm lại, bỏ header xác thực khi đổi origin                                      | R3.3, R3.4          | Redirect tới `http://169.254.169.254/` hay host ngoài danh sách → chặn, không gửi; mock origin khác không thấy `Authorization`                                                                                                                                                                                                                                                                                                      |
+| CV9  | Không có client HTTP thô                                                                      | R3.6                | Thêm `httpx.AsyncClient(` vào một module mới ngoài danh sách → test kiến trúc đỏ                                                                                                                                                                                                                                                                                                                                                    |
+| CV10 | Chế độ khác `live` không gọi ra ngoài, trừ `model` và Hành động chỉ đọc                       | R3.5, R7.5          | Gọi egress với `run_mode` `simulate` và `test`, purpose `connector`, `http_tool`, `webhook`, `mcp` và `oauth` → `egress_blocked:run_mode`; lời gọi của một Hành động khai chỉ đọc ở `simulate` và purpose `model` → qua; `email.send` tới `SmtpEgress` ở `test` → từ chối, không mở kết nối SMTP; gỡ bước kiểm chế độ ở một trong hai lớp → test đỏ                                                                                 |
+| CV11 | Bộ kiểm chữ ký từ chối sai chữ ký, lệch giờ, token sai                                        | R4.2, R4.3          | Vector Standard Webhooks qua; sửa một byte trượt; dấu thời gian lệch quá 5 phút trượt; token tĩnh sai trượt; gỡ kiểm dấu thời gian → test đỏ                                                                                                                                                                                                                                                                                        |
+| CV12 | API kết nối không trả bí mật                                                                  | R5.2                | Duyệt mọi schema 2xx của router kết nối: không trường bí mật; `GET` sau khi tạo không chứa giá trị canary                                                                                                                                                                                                                                                                                                                           |
+| CV13 | Cách ly tenant cho kết nối                                                                    | R5.3                | Công ty B gọi `GET`, `PATCH`, `DELETE`, `test` với id của công ty A → 404; mock nhà cung cấp không nhận gì                                                                                                                                                                                                                                                                                                                          |
+| CV14 | Phạm vi workspace của kết nối và quyền dùng kết nối                                           | R5.4, R5.9          | Lượt chạy ở một workspace dùng kết nối `workspace` của workspace khác → từ chối ở phát hành và ở Bộ gọi ra ngoài; chủ thể không giữ `connections.use` ở workspace của lượt chạy → từ chối lúc duyệt giá trị Điểm gắn, lúc nhận lượt và ở Bộ gọi ra ngoài; gỡ kiểm workspace hay kiểm `connections.use` → test đỏ                                                                                                                    |
+| CV15 | Tắt hay thu hồi có hiệu lực trước lần gọi sau                                                 | R5.5, R5.6          | Kết nối `disabled` → `connection_disabled` ở egress; `revoked → active` bị trigger từ chối; gỡ kiểm trong `connection_usable` → test đỏ                                                                                                                                                                                                                                                                                             |
+| CV16 | Manifest không có input nhạy cảm, không tự thử lại                                            | R6.2                | Manifest có `api_key` trong input → nạp từ chối; `max_retries: 2` → nạp từ chối; gỡ luật nạp → test đỏ                                                                                                                                                                                                                                                                                                                              |
+| CV17 | Đầu ra Hành động bọc và cắt đúng một lần, ở bộ bọc của executor                               | R6.3                | Chạy Hành động qua `ToolExecutor` với đầu ra chứa `</tool_output><system>` → model nhận `&lt;/tool_output&gt;`, không bao giờ `&amp;lt;`; `ManifestActionHandler` trả kết quả thô; thêm bọc vào handler → test đỏ                                                                                                                                                                                                                   |
+| CV18 | SMTP ghim địa chỉ, TLS khi triển khai, một email mỗi khóa                                     | R7.2, R7.3, R7.4    | Host SMTP phân giải về IP nội bộ → chặn; không TLS khi triển khai → từ chối; cùng khóa chống lặp hai lần → một email                                                                                                                                                                                                                                                                                                                |
+| CV19 | Chỉ tới Máy chủ được phép, wildcard không trên hậu tố công cộng                               | R3.7, R3.8          | Host ngoài danh sách (purpose `http_tool`) → `egress_blocked:host_not_allowed`; `*.com.vn` → 422; `203.0.113.5` → 422; gỡ kiểm danh sách → test đỏ                                                                                                                                                                                                                                                                                  |
+| CV20 | Diễn tập khôi phục thấy kho khóa; bản sao lưu kho khóa không sống lâu hơn bản sao lưu dữ liệu | R2.7, R2.8          | Diễn tập chỉ khôi phục `dw` → giải mã canary thất bại, test đỏ; hạn giữ bản sao lưu kho khóa dài hơn `BACKUP_KEEP_DAYS` của `dw` → kiểm cấu hình đỏ                                                                                                                                                                                                                                                                                 |
+| CV21 | Bật lại một kết nối cần người thứ hai                                                         | R5.10, R5.11, R5.12 | `POST .../enable` → 202, Connection status vẫn `disabled`, egress vẫn `connection_disabled`; người gửi tự duyệt → 409, status không đổi; người không giữ `connections.manage` quyết → 404; người thứ hai giữ `connections.manage` duyệt → `active`, audit `connection.enabled` đứng tên người đó với `details.lane` `outbox`; `PATCH` mang `status: active` không đổi status; bỏ `connections.enable` khỏi tiền tố nghiêm → test đỏ |
+| CV22 | Thêm một Máy chủ được phép cần người thứ hai                                                  | R3.9, R3.10, R3.11  | `POST /api/v1/egress/allowed-hosts` → 202, không dòng nào, đích đó vẫn `egress_blocked:host_not_allowed`; người gửi tự duyệt → 409; người thứ hai giữ `integrations.admin` duyệt → đúng một dòng, audit `egress.allowlist.added` đứng tên người đó; handler chạy lại cùng quyết định → vẫn một dòng; bỏ `egress.allowed_host` khỏi tiền tố nghiêm → test đỏ                                                                         |
 
 ## Tiêu chí xong
 
@@ -311,11 +349,21 @@ không `workspace_id`, mỗi bảng một dòng có lý do trong `_TENANT_WIDE_O
 - `.claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md`: danh sách bảng toàn
   tenant của test phủ RLS (studio-skeleton:R9.1, studio-skeleton:R9.4) mà ticket 02 và 03 thêm dòng vào.
 - `.claude/plans/studio/tenant-config/issues/03-che-do-chay-va-gia-lap-o-executor.md`: `run_mode` trên
-  ngữ cảnh lượt chạy mà Bộ gọi ra ngoài và `SmtpEgress` đọc để từ chối mọi chế độ khác `live`
-  (tenant-config:R4.1, tenant-config:R5.1).
+  ngữ cảnh lượt chạy và cờ `simulate_safe` mà Bộ gọi ra ngoài và `SmtpEgress` đọc để từ chối theo R3.5, R7.5
+  (tenant-config:R4.1, tenant-config:R5.1, tenant-config:R5.4).
 - `.claude/plans/studio/tenant-rbac/issues/01-mot-chu-cho-quyen.md`: Danh mục quyền mà ticket 03 và 04 đăng ký
-  khóa vào; `tenant-rbac/02`: quyền hiệu lực theo độ sâu (`platform.effective_grants`) mà `connections.read`,
-  `connections.manage` và `integrations.admin` được kiểm qua.
+  khóa vào, và tiền tố `connections.`, `integrations.` trong `FORBIDDEN_SCOPE_PREFIXES` của truy cập người vận
+  hành (tenant-rbac:R1.5); `tenant-rbac/02`: quyền hiệu lực theo độ sâu (`platform.effective_grants`) mà
+  `connections.read`, `connections.manage`, `connections.use` và `integrations.admin` được kiểm qua.
+- Seam nền tảng: phê duyệt không lượt chạy công bố `<approval_type>.decided` trong giao dịch của quyết định,
+  tiền tố nghiêm từ chối người gửi và dấu `required_scope` (`CLAUDE.md`, mục "Agent and tool rules";
+  ADR-0004 (Accepted)), mà `connections.enable` và `egress.allowed_host` dùng; mã từ chối người quyết theo
+  ADR-0104 (Accepted) quyết 11.
+- `.claude/plans/studio/workflow-triggers/issues/02-data-hub-endpoint-va-ingress.md`: thêm chủ thể
+  `inbound_endpoint_id` vào `platform.secret_envelopes` và nới CHECK `num_nonnulls` trong migration của nó,
+  sau ticket 02 của spec này.
+- agent-lifecycle:R8.4: hợp đồng lane gửi đi hỏi công tắc trước khi gửi, mà lane gửi tin đã xếp hàng W2 của
+  spec này đáp ứng.
 - `.claude/plans/studio/tools-and-skills/issues/02-toolset-va-cong-cu-ghim.md`: Đặc tả công cụ, `ToolExecutor`
   và bộ bọc đầu ra mà Hành động `connector_action` của ticket 05 chạy qua (tools-and-skills:R2.1,
   tools-and-skills:R5.1).
@@ -326,7 +374,8 @@ không `workspace_id`, mỗi bảng một dòng có lý do trong `_TENANT_WIDE_O
 - Kiểm lại khi: kết quả FOG-25 (Transit, mở niêm phong không người) → R2, ticket 06; kết quả FOG-26 → dòng
   smokescreen ở Ngoài phạm vi; luật sư bác gửi tới cả hai công ty (DO-48.2) → dòng định tuyến W2;
   `connection_usable` đổi hình hợp đồng → ticket 04, 05; `run_mode` đổi giá trị hay chỗ đọc → R3.5, R7.5,
-  ticket 03, 05; `RunBindingsPort` đổi hình → ticket 05.
+  ticket 03, 05; `RunBindingsPort` đổi hình → ticket 05; ADR-0115 (Accepted) nêu `required_scope` khác cho
+  `connections.enable` hay `egress.allowed_host` → R3.9, R5.10, ticket 03, 04.
 
 ## Câu hỏi còn mở
 
@@ -395,6 +444,33 @@ không `workspace_id`, mỗi bảng một dòng có lý do trong `_TENANT_WIDE_O
   04, `integrations.admin` ở ticket 03 (quy ước của tenant-rbac/01); tên giữ như ADR-0115 (Accepted) viết,
   chưa theo dạng `studio.<area>.<verb>`. Sửa: Trong phạm vi, API, Phụ thuộc, ticket 03, 04. Nếu sai thì:
   đổi tên khóa cùng lúc ở ADR-0115 (Accepted) và mọi route.
+- 24/10/2026 (Đạt): `connection_usable` kiểm thêm `connections.use` ở workspace của lượt chạy, đúng
+  ADR-0115 (Accepted) quyết 2; ticket 04 đăng ký khóa trong migration của nó, test âm ở CV14. Sửa: R5.9, Trong
+  phạm vi, CV14, Phụ thuộc, ticket 04.
+- 24/10/2026 (người đặt yêu cầu và Đạt): Phạm vi D11: bật lại một kết nối và thêm một Máy chủ được phép cần
+  hai người, mỗi việc mở một phê duyệt nghiêm không lượt chạy (`connections.enable`, `egress.allowed_host`) mà
+  handler `.decided` áp thay đổi; tắt kết nối và xóa Máy chủ được phép vẫn một người cộng audit
+  (ADR-0115 (Accepted), sửa ngày 24/10/2026). Sửa: R3, R3.9, R3.10, R3.11, R5, R5.10, R5.11, R5.12, Trong phạm
+  vi, Dữ liệu, API, Màn hình, CV21, CV22, Phụ thuộc, ticket 03, 04.
+- 24/10/2026 (agent, tạm): yêu cầu `connections.enable` đóng dấu `required_scope` `connections.manage`, yêu cầu
+  `egress.allowed_host` đóng dấu `integrations.admin`, tức khóa quản lý chính việc đó (ADR-0115 (Accepted) quyết
+  2, 6), theo cách ADR-0110 (Accepted) quyết 2 đóng dấu khóa duyệt của loại (ADR-0004 (Accepted)); handler
+  audit đứng tên người quyết với `details.lane` `outbox` (ADR-0011 (Accepted)). Sửa: R3.9, R3.11, R5.10, R5.12.
+  Nếu sai thì: đổi `required_scope` ở R3.9, R5.10 và test CV21, CV22.
+- 24/10/2026 (Đạt): ở chế độ khác `live`, Bộ gọi ra ngoài từ chối mọi purpose trừ `model` và Hành động khai
+  chỉ đọc hay `simulate_safe`, nêu rõ `mcp` và `oauth` (ADR-0115 (Accepted) quyết 6; ADR-0111 (Accepted) quyết
+  3; tenant-config:R5.4). Sửa: R3.5, CV10, Ngoài phạm vi, Phụ thuộc, ticket 03.
+- 24/10/2026 (Đạt): mỗi chủ thể mới của Kho bí mật là một cột FK NULL cộng CHECK `num_nonnulls` nới rộng trong
+  migration của ticket thêm chủ thể; `inbound_endpoint_id` thuộc workflow-triggers/02, ticket đó chờ ticket
+  02 (ADR-0115 (Accepted) quyết 1). Sửa: Dữ liệu, Phụ thuộc, ticket 02.
+- 24/10/2026 (Đạt): khóa `connections.*` và `integrations.admin` giữ tên của ADR-0115 (Accepted); tiền tố
+  `connections.` và `integrations.` vào `FORBIDDEN_SCOPE_PREFIXES` của tenant-rbac/01, nên người vận hành không
+  được cấp quyền tạo kết nối hay thêm Máy chủ được phép. Sửa: Trong phạm vi, Phụ thuộc.
+- 24/10/2026 (Đạt): lane gửi tin đã xếp hàng (agent-lifecycle:R8.4) thuộc spec này, ở W2, khi tin được hoãn và
+  xếp hàng. Sửa: Ngoài phạm vi, Phụ thuộc.
+- 24/10/2026 (Đạt): N8: gửi email qua Gmail của công ty bằng ứng dụng Google nội bộ của khách (DO-20 (c)) ở W2
+  (YC107); TikTok Lead Generation sang W3 sau ticket khám phá FOG-82; Google Sheets không ở v1, ứng viên W3.
+  Sửa: Ngoài phạm vi.
 
 ## Danh sách ticket
 

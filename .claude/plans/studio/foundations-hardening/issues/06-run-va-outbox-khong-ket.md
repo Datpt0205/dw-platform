@@ -12,7 +12,8 @@ cầu phê duyệt và quyết định, với các giá trị Studio sẽ ghi đ
 và thư chết hiện trên số đo và cảnh báo (R9, R10, G5, FH25-FH29). Người vận hành phát lại thư chết
 bằng một script có audit đứng tên mình; công ty thấy lượt chạy lỗi của mình trong Lịch sử chạy, không
 có route mới (DO-56.1). Ticket này chờ tenant-config/03, cùng ALTER `platform.worker_runs` và cùng sửa
-đường resume, và tenant-config/05 chờ ticket này (OPS-b).
+đường resume, và tenant-config/05 chờ ticket này (OPS-b); agent-lifecycle/01 chờ ticket này, vì nó chèn phép
+kiểm công tắc vào cùng đường resume.
 
 ## Việc cần làm
 

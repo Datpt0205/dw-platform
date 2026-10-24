@@ -9,7 +9,7 @@ Mọi thứ công ty tự dựng trong Studio (đối tượng, quy trình, agen
 một vỏ phiên bản chung: đúng một nháp sửa được, phiên bản niêm phong bất biến có số và mã băm tái tạo
 được, và Nơi đang dùng chặn xóa thứ đang được dùng. Mỗi lượt chạy ghim mọi thứ nó dùng vào một bản kê,
 kể cả khi tiếp tục sau nhiều ngày chờ duyệt; chế độ chạy do máy chủ đặt và được kiểm ở executor, nên
-người dựng chạy thử ở chế độ Mô phỏng mà không tác động nào rời nền tảng; giá trị của điểm gắn chỉ có
+người dựng chạy mô phỏng mà không tác động nào rời nền tảng; giá trị của điểm gắn chỉ có
 hiệu lực khi một người khác Người đề xuất duyệt. Đợt W1 phục vụ YC30-YC35; YC36, YC37 và YC75 thuộc
 W2. Các spec dựng thành phần (custom-objects, workflow-engine, agent-builder, tools-and-skills) và
 agent-lifecycle đứng trên vỏ này (ADR-0109 (Accepted), ADR-0110 (Accepted), ADR-0111 (Accepted)).
@@ -118,11 +118,19 @@ Người dựng của mọi loại thành phần có đúng một nháp sửa đ
   workspace sở hữu, THÌ API Studio PHẢI trả 404 và không lộ thành phần đó.
 - R2.12 NẾU người gọi đọc được thành phần nhưng không giữ quyền ghi của loại ở độ sâu đó, THÌ API Studio
   PHẢI trả 403 `permission_denied` và không đổi gì.
-- R2.13 ĐỐI VỚI loại thành phần không có Cổng chất lượng (`object` ở W1, `tool` ở W2), dịch vụ vỏ phiên bản
-  PHẢI niêm phong như R2.7 nhưng chuyển phiên bản từ `draft` thẳng sang `awaiting_approval`, để bên gọi mở
-  yêu cầu phê duyệt phát hành trong cùng giao dịch (ADR-0120 (Accepted) quyết 2).
-- R2.14 NẾU đăng ký của một loại thành phần không nêu loại đó có Cổng chất lượng hay không, THÌ dịch vụ vỏ
-  phiên bản PHẢI coi loại đó là có Cổng chất lượng.
+- R2.13 ĐỐI VỚI loại thành phần không có Cổng chất lượng (`object` ở W1, `tool` ở W2), khi lệnh gửi không đặt
+  `tighten_only`, dịch vụ vỏ phiên bản PHẢI niêm phong như R2.7 nhưng chuyển phiên bản từ `draft` thẳng sang
+  `awaiting_approval`, để bên gọi mở yêu cầu phê duyệt phát hành trong cùng giao dịch (ADR-0120 (Accepted)
+  quyết 1-2).
+- R2.14 NẾU một dòng đăng ký loại vào `studio.artifact_kinds` không nêu `has_quality_gate`, THÌ PostgreSQL PHẢI
+  từ chối dòng đó, để không loại nào bỏ qua kiểm định chỉ vì thiếu khai báo.
+- R2.15 Mỗi mục `ArtifactKindRegistry` PHẢI khai khóa đọc, khóa ghi và khóa gửi của loại, mỗi khóa có trong danh
+  mục quyền một chủ của tenant-rbac, để R2.11, R2.12 và lệnh gửi của agent-lifecycle (agent-lifecycle:R2.1) kiểm
+  đúng khóa của loại đó.
+- R2.16 ĐỐI VỚI phiên bản `dw.object/v1` mà lệnh gửi của agent-lifecycle đặt `tighten_only` vì bộ so sánh của loại
+  báo mọi thay đổi so với phiên bản `live` chỉ siết (custom-objects:R1.7), dịch vụ vỏ phiên bản PHẢI niêm phong như
+  R2.7 và chuyển phiên bản từ `draft` thẳng sang `live` trong giao dịch của bên gọi, không mở yêu cầu phê duyệt
+  nào (ADR-0120 (Accepted) quyết 1).
 
 ### R3 — Nơi đang dùng và chặn xóa
 
@@ -166,7 +174,7 @@ ADR-0111 (Accepted) quyết 1-2).
 
 ### R5 — Mô phỏng chặn tác động tại executor
 
-Người dựng chạy thử ở chế độ Mô phỏng mà không lệnh gọi có tác động nào rời nền tảng (YC34;
+Người dựng chạy mô phỏng mà không lệnh gọi có tác động nào rời nền tảng (YC34;
 ADR-0111 (Accepted) quyết 3).
 
 - R5.1 TRONG KHI lượt chạy ở chế độ `simulate` hoặc `test`, NẾU công cụ được gọi không khai
@@ -179,6 +187,9 @@ ADR-0111 (Accepted) quyết 3).
   công cụ như ở chế độ `live`.
 - R5.5 NẾU định nghĩa công cụ không nêu `simulate_safe`, THÌ ToolExecutor PHẢI coi giá trị đó là
   `false`.
+- R5.6 TRONG KHI lượt chạy ở chế độ `simulate` hoặc `test`, NẾU công cụ không khai `simulate_safe` có chính sách
+  đòi phê duyệt, THÌ ToolExecutor PHẢI giả lập lệnh gọi trước bước phê duyệt và không mở yêu cầu phê duyệt nào,
+  theo thứ tự bước của tools-and-skills:R2.6 (ADR-0111 (Accepted) quyết 5).
 
 ### R6 — Bản kê lượt chạy
 
@@ -226,25 +237,25 @@ ADR-0110 (Accepted) quyết 1-2, 7).
 
 Đề xuất bị từ chối, không ghi dòng nào, khi:
 
-| Mã   | Điều kiện                                                                                                                                       | API Studio trả                               |
-| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
-| R8.2 | người gọi thiếu `studio.bindings.propose` ở workspace đang làm việc                                                                             | 403 `permission_denied`                      |
-| R8.3 | thành phần hay kết nối thuộc tenant khác                                                                                                        | 404                                          |
-| R8.4 | giá trị sai kiểu khai báo; kết nối khác trình kết nối hay phiên bản chính khai báo, thiếu quyền khai báo, hoặc Người đề xuất không dùng được nó | 422 `validation_failed`, mỗi lỗi một con trỏ |
-| R8.5 | không ai khác Người đề xuất giữ `studio.bindings.approve` ở workspace của đề xuất                                                               | 409 `conflict`, `no_checker_available`       |
-| R8.6 | khóa đã có một đề xuất mở                                                                                                                       | 409 `conflict`, `proposal_open`              |
-| R8.7 | loại cấu hình chưa đăng ký                                                                                                                      | 422 `validation_failed`                      |
+| Mã   | Điều kiện                                                                                                                                       | API Studio trả                                               |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| R8.2 | người gọi thiếu `studio.bindings.propose` ở workspace đang làm việc                                                                             | 403 `permission_denied`                                      |
+| R8.3 | thành phần hay kết nối thuộc tenant khác                                                                                                        | 404                                                          |
+| R8.4 | giá trị sai kiểu khai báo; kết nối khác trình kết nối hay phiên bản chính khai báo, thiếu quyền khai báo, hoặc Người đề xuất không dùng được nó | 422 `validation_failed`, mỗi lỗi một con trỏ                 |
+| R8.5 | không ai khác Người đề xuất giữ `studio.bindings.approve` ở workspace của đề xuất                                                               | 409 `conflict`, `details.reason_code` `no_checker_available` |
+| R8.6 | khóa đã có một đề xuất mở                                                                                                                       | 409 `conflict`, `details.reason_code` `proposal_open`        |
+| R8.7 | loại cấu hình chưa đăng ký                                                                                                                      | 422 `validation_failed`                                      |
 
-- R8.8 NẾU người quyết định là Người đề xuất, THÌ luồng phê duyệt PHẢI trả 409 và không ghi quyết định
-  nào.
+- R8.8 NẾU người quyết định là Người đề xuất, THÌ luồng phê duyệt PHẢI trả 409 `conflict` với
+  `details.reason_code` `second_person_required` và không ghi quyết định nào (ADR-0104 (Accepted) quyết 11).
 - R8.9 NẾU Phiên bản gốc của đề xuất đã đổi trước lúc quyết định, THÌ luồng phê duyệt PHẢI trả 409
   `conflict` với `details.reason_code` `decision_stale` và giữ yêu cầu phê duyệt ở `pending`.
 - R8.10 KHI yêu cầu phê duyệt `config.version` được duyệt, lane `outbox` PHẢI đặt phiên bản sang
   `approved` và bản đã duyệt trước của cùng khóa sang `superseded` trong một giao dịch có audit
-  `config.version.approved` với actor `system:outbox`.
+  `config.version.approved` đứng tên người quyết (`decided_by`) với `details.lane` `outbox` (ADR-0011 (Accepted)).
 - R8.11 KHI yêu cầu phê duyệt bị từ chối, hoặc lúc quyết toán đã có bản khác được duyệt cho cùng khóa,
   lane `outbox` PHẢI đặt phiên bản sang `rejected` (lý do `settlement_conflict` ở trường hợp sau) trong
-  một giao dịch có audit `config.version.rejected`.
+  một giao dịch có audit `config.version.rejected` đứng tên người quyết với `details.lane` `outbox`.
 - R8.12 NẾU một lệnh ghi đặt `approved` khi yêu cầu phê duyệt liên kết chưa duyệt, đổi `document` của
   phiên bản cấu hình riêng, hoặc đổi `status` ngoài các bước `proposed` sang `approved`, `rejected`,
   `withdrawn` và `approved` sang `superseded`, THÌ PostgreSQL PHẢI từ chối lệnh đó.
@@ -274,9 +285,10 @@ ADR-0110 (Accepted) quyết 1-2, 7).
 
 - Bảng và cột ở mục Dữ liệu; route ở mục API.
 - Mã: `dw_kernel.canonical`; `RunMode` và luật chế độ lượt con trong kernel; `ArtifactKindRegistry`
-  (mô hình tài liệu, bộ kiểm trả mọi lỗi, bộ trích xuất phụ thuộc thuần) và bước niêm phong của vỏ phiên
-  bản; bước chế độ chạy trong ToolExecutor; `RunManifestPort` (runtime khai, Studio đáp ứng) và
-  `PinnedResolver`; `ConfigKindRegistry` với loại `binding_set`; kiểm điểm gắn cho việc phát hành và
+  (mô hình tài liệu, bộ kiểm trả mọi lỗi, bộ trích xuất phụ thuộc thuần, khóa đọc, ghi và gửi của loại) và bước
+  niêm phong của vỏ phiên bản; bước chế độ chạy trong ToolExecutor; `RunManifestPort` (runtime khai, Studio đáp
+  ứng) và `PinnedResolver`; `ConfigKindRegistry` với loại `binding_set`; bộ kiểu Điểm gắn, nơi mỗi kind đăng ký
+  kiểm lúc đề xuất và kiểm lúc nhận lượt chạy của nó; kiểm điểm gắn cho việc phát hành và
   lúc nhận lượt chạy; port async `ApprovalDecisionGuard` thay `DecisionGuard`; handler
   `config.version.decided` ở lane `outbox`; `RunBindingsPort` đáp ứng từ bản kê và
   `ConnectionDependentsPort` đáp ứng từ Nơi đang dùng (hai port do connections-and-vault khai).
@@ -286,21 +298,23 @@ ADR-0110 (Accepted) quyết 1-2, 7).
 
 ## Ngoài phạm vi
 
-| Việc                                                                                                                                                                  | Vì sao                                                                                                                                                                                                                                                                                                                       | Chủ                                                   |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| W2: người nhận thử và kiểm ở egress, mở chế độ `test` (kiểm soát TC12-TC14: egress, Danh sách người nhận thử, thông báo của lượt không `live` chỉ tới người chạy thử) | YC36; cần `studio.test_recipients`, kết nối bật chế độ thử và lời đồng ý của DO-55                                                                                                                                                                                                                                           | tenant-config, đợt sau (W2); connections-and-vault    |
-| W2: biểu mẫu sinh từ schema, so sánh từng trường, xem thay đổi ở hộp duyệt; màn hình thành phần, Nơi đang dùng và Bộ giá trị gắn                                      | W1 chỉ mở API; độ vừa của biểu mẫu dw-proterial chờ FOG-53                                                                                                                                                                                                                                                                   | tenant-config, đợt sau (W2)                           |
-| W2: lớp riêng của tenant cho prompt, tool spec, toolset, model profile, chính sách; `effective_hash`; gỡ `platform.policy_overrides`                                  | YC37; DO-27 (Đạt 23/10/2026): ghi đè prompt chỉ khi prompt có bên đọc theo công ty, không `raw_variables`, không prompt khung, và đổi Mã băm hiệu lực; gỡ `platform.policy_overrides` cùng lúc `platform.config_versions` nhận kind `policy`, sau khi đếm 0 dòng ở mọi môi trường; `ModelProfile` cần phiên bản và `Decimal` | tenant-config, đợt sau (W2)                           |
-| W2: tín hiệu lệch cấu hình (gồm outbox `config.version.approved`); lưu giữ và dọn; CI chặn xóa artifact nền tảng đã phát hành                                         | YC75; chưa có bên đọc ở W1; thời hạn lưu giữ là số tạm của DO-52 trong tệp `retention` do telemetry-and-audit/03 làm chủ                                                                                                                                                                                                     | tenant-config, đợt sau (W2); agent-lifecycle đọc lệch |
-| W3: phụ thuộc quan sát được; đọc lại ghi giả lập trong cùng lượt chạy thử (v1.5)                                                                                      | Cần records gateway và nguyên mẫu FOG-60                                                                                                                                                                                                                                                                                     | tenant-config, đợt sau (W3)                           |
-| W3: công ty thử nghiệm (sandbox tenant), đưa phiên bản sang công ty chính bằng gói                                                                                    | ADR-0111 (Accepted) quyết 7; DO-62 (Đạt 23/10/2026): chỉ người vận hành tạo, chỉ dữ liệu giả lập, hạn mức riêng                                                                                                                                                                                                              | tenant-config, đợt sau (W3)                           |
-| Trigger chuyển giai đoạn, cổng chất lượng, lệnh gửi kiểm định và phát hành                                                                                            | ADR-0120 (Accepted) quyết 1-2 giao cho vòng đời                                                                                                                                                                                                                                                                              | agent-lifecycle                                       |
-| Cửa nhận lượt chạy, lượt con, năm kiểm trước khi tiếp tục                                                                                                             | ADR-0113 (Accepted); ADR-0109 (Accepted) quyết 8                                                                                                                                                                                                                                                                             | workflow-engine                                       |
-| Route chạy thử (422 với `live`, và với `test` tới W2)                                                                                                                 | Hợp đồng duy nhất của route chạy thử (DO-26.1; workflow-triggers:R2.3)                                                                                                                                                                                                                                                       | workflow-triggers                                     |
-| W2: Kết quả giả lập ghim theo Bước cho lệnh gọi giả lập                                                                                                               | W1 dùng giá trị sinh từ output schema (R5.3); bảng thuật ngữ đặt chủ là workflow-nodes                                                                                                                                                                                                                                       | workflow-nodes, đợt sau (W2)                          |
-| Egress client từ chối mọi chế độ khác `live` (W2 mở ngoại lệ cho Danh sách người nhận thử); phân loại `simulate_safe` theo loại công cụ                               | Lớp thứ hai sau executor (ADR-0111 (Accepted) quyết 3; DO-26.1); ADR-0116 (Accepted)                                                                                                                                                                                                                                         | connections-and-vault; tools-and-skills               |
-| Đưa `record_visibility`, `max_autonomy_level`, `timezone`, `locale` của `platform.tenants` vào phiên bản có duyệt                                                     | Đổi hành vi ngoài Studio                                                                                                                                                                                                                                                                                                     | không làm                                             |
-| Lớp cấu hình thứ ba theo workspace                                                                                                                                    | `TenantOverlay` giữ hai lớp; thành phần của một workspace là thành phần Studio riêng (ADR-0110 (Accepted))                                                                                                                                                                                                                   | không làm                                             |
+| Việc                                                                                                                                                                                                                                                              | Vì sao                                                                                                                                                                                                                                                                                                                       | Chủ                                                   |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| W2: người nhận thử và kiểm ở egress, mở chế độ `test` (kiểm soát TC12-TC14: egress, Danh sách người nhận thử, thông báo của lượt không `live` chỉ tới người chạy thử)                                                                                             | YC36; cần `studio.test_recipients`, kết nối bật chế độ thử và lời đồng ý của DO-55                                                                                                                                                                                                                                           | tenant-config, đợt sau (W2); connections-and-vault    |
+| W2: biểu mẫu sinh từ schema, so sánh từng trường, xem thay đổi ở hộp duyệt; màn hình thành phần, Nơi đang dùng và Bộ giá trị gắn                                                                                                                                  | W1 chỉ mở API; độ vừa của biểu mẫu dw-proterial chờ FOG-53                                                                                                                                                                                                                                                                   | tenant-config, đợt sau (W2)                           |
+| W2: lớp riêng của tenant cho prompt, tool spec, toolset, model profile, chính sách; `effective_hash`; gỡ `platform.policy_overrides`                                                                                                                              | YC37; DO-27 (Đạt 23/10/2026): ghi đè prompt chỉ khi prompt có bên đọc theo công ty, không `raw_variables`, không prompt khung, và đổi Mã băm hiệu lực; gỡ `platform.policy_overrides` cùng lúc `platform.config_versions` nhận kind `policy`, sau khi đếm 0 dòng ở mọi môi trường; `ModelProfile` cần phiên bản và `Decimal` | tenant-config, đợt sau (W2)                           |
+| W2: tín hiệu lệch cấu hình (gồm outbox `config.version.approved`); lưu giữ và dọn; CI chặn xóa artifact nền tảng đã phát hành                                                                                                                                     | YC75; chưa có bên đọc ở W1; thời hạn lưu giữ là số tạm của DO-52 trong tệp `retention` do telemetry-and-audit/03 làm chủ                                                                                                                                                                                                     | tenant-config, đợt sau (W2); agent-lifecycle đọc lệch |
+| W3: phụ thuộc quan sát được; đọc lại ghi giả lập trong cùng lượt chạy thử (v1.5)                                                                                                                                                                                  | Cần records gateway và nguyên mẫu FOG-60                                                                                                                                                                                                                                                                                     | tenant-config, đợt sau (W3)                           |
+| W3: công ty thử nghiệm (sandbox tenant), đưa phiên bản sang công ty chính bằng gói                                                                                                                                                                                | ADR-0111 (Accepted) quyết 7; DO-62 (Đạt 23/10/2026): chỉ người vận hành tạo, chỉ dữ liệu giả lập, hạn mức riêng                                                                                                                                                                                                              | tenant-config, đợt sau (W3)                           |
+| Trigger chuyển giai đoạn (kể cả nhánh chỉ siết của `dw.object/v1`), cột `tighten_only`, cổng chất lượng, lệnh gửi kiểm định và phát hành                                                                                                                          | ADR-0120 (Accepted) quyết 1-2 giao cho vòng đời                                                                                                                                                                                                                                                                              | agent-lifecycle                                       |
+| Cửa nhận lượt chạy, lượt con, năm kiểm trước khi tiếp tục                                                                                                                                                                                                         | ADR-0113 (Accepted); ADR-0109 (Accepted) quyết 8                                                                                                                                                                                                                                                                             | workflow-engine                                       |
+| Route `.../test-runs` (chạy mô phỏng ở W1; 422 với `live`, và với `test` tới W2)                                                                                                                                                                                  | Hợp đồng duy nhất của route này (DO-26.1; workflow-triggers:R2.3)                                                                                                                                                                                                                                                            | workflow-triggers                                     |
+| W2: Kết quả giả lập ghim theo Bước cho lệnh gọi giả lập                                                                                                                                                                                                           | W1 dùng giá trị sinh từ output schema (R5.3); bảng thuật ngữ đặt chủ là workflow-nodes                                                                                                                                                                                                                                       | workflow-nodes, đợt sau (W2)                          |
+| Egress client ở chế độ khác `live` từ chối mọi purpose trừ `model` và Hành động chỉ đọc hay `simulate_safe` (W2 mở ngoại lệ cho Danh sách người nhận thử); phân loại `simulate_safe` theo loại công cụ                                                            | Lớp thứ hai sau executor (ADR-0111 (Accepted) quyết 3; ADR-0115 (Accepted) quyết 6; DO-26.1); ADR-0116 (Accepted)                                                                                                                                                                                                            | connections-and-vault; tools-and-skills               |
+| W2: nhánh một người có audit cho thay đổi cấu hình chỉ siết: cột `tighten_only` do bộ so sánh của kind tính lúc đề xuất, kèm `document_hash` của bản đã duyệt được so, mà `ck_config_versions_checker_not_maker` và trigger `approved_by_approval` mở cho dòng đó | ADR-0110 (Accepted) quyết 2; `binding_set` ở W1 không đăng ký bộ so sánh nào, nên mọi đề xuất `binding_set` qua hai người (R8.8, R8.12); bộ so sánh đầu tiên ra cùng kind `policy`                                                                                                                                           | tenant-config, đợt sau (W2)                           |
+| W2: route tạo thành phần từ chối Tiền tố dành riêng của gói nền tảng (domain-packs:R3.1)                                                                                                                                                                          | Luật bật khi gói Marketing ra ở W2; cách xử lý `mkt_lead`, `mkt_campaign` mà marketing-pilot đã gieo chờ Q2 của domain-packs                                                                                                                                                                                                 | tenant-config, đợt sau (W2); domain-packs             |
+| Đưa `record_visibility`, `max_autonomy_level`, `timezone`, `locale` của `platform.tenants` vào phiên bản có duyệt                                                                                                                                                 | Đổi hành vi ngoài Studio                                                                                                                                                                                                                                                                                                     | không làm                                             |
+| Lớp cấu hình thứ ba theo workspace                                                                                                                                                                                                                                | `TenantOverlay` giữ hai lớp; thành phần của một workspace là thành phần Studio riêng (ADR-0110 (Accepted))                                                                                                                                                                                                                   | không làm                                             |
 
 ## Dữ liệu
 
@@ -311,8 +325,9 @@ không có `workspace_id` có một dòng lý do trong danh sách bảng toàn t
 `studio.dependencies`, `platform.run_manifests`, `platform.run_manifest_keys`.
 
 - `studio.artifact_kinds`: danh mục loại của nền tảng, không có `tenant_id`; `kind text` là khóa chính;
-  ticket đăng ký một loại INSERT một dòng trong migration của nó, cùng lúc với mục `ArtifactKindRegistry`;
-  `dw_app` chỉ SELECT.
+  `has_quality_gate boolean NOT NULL`, không DEFAULT, mà bước niêm phong và `studio.guard_version_stage()` của
+  agent-lifecycle cùng đọc (R2.13, R2.14); ticket đăng ký một loại INSERT một dòng nêu cờ đó trong migration của
+  nó, cùng lúc với mục `ArtifactKindRegistry`; `dw_app` chỉ SELECT.
 - `studio.artifacts`: `id` UUIDv7; `kind` FK tới `studio.artifact_kinds (kind)` ON DELETE RESTRICT, có
   index; `api_name` `^[a-z][a-z0-9_]{1,39}$`, unique `(tenant_id, kind, api_name)` khi `deleted_at IS NULL`;
   FK `(tenant_id, owning_workspace_id)` tới `platform.workspaces (tenant_id, id)` ON DELETE RESTRICT, qua
@@ -362,37 +377,38 @@ không có `workspace_id` có một dòng lý do trong danh sách bảng toàn t
 - `GET /api/v1/studio/artifacts/{id}/bindings`, `POST /api/v1/studio/artifacts/{id}/bindings/proposals`,
   `POST /api/v1/studio/artifacts/{id}/bindings/proposals/{config_version_id}/withdraw`.
 - Lỗi theo vỏ problem+json của ADR-0108 (Accepted); `details.reason_code`: `stale_version`,
-  `api_name_taken`, `api_name_immutable`, `artifact_in_use`, `no_checker_available`, `proposal_open`, `decision_stale`,
-  `binding_unset`, `binding_degraded`. `Idempotency-Key` theo ADR-0108 (Accepted) quyết 4.
+  `api_name_taken`, `api_name_immutable`, `artifact_in_use`, `no_checker_available`, `second_person_required`,
+  `proposal_open`, `decision_stale`, `binding_unset`, `binding_degraded`. `Idempotency-Key` theo ADR-0108 (Accepted)
+  quyết 4.
 
 ## Kiểm soát
 
-| #    | Kiểm soát                                                           | Yêu cầu                      | Test âm                                                                                                                                                                                |
-| ---- | ------------------------------------------------------------------- | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| TC1  | Nội dung phiên bản chỉ đổi khi ở `draft`                            | R2.9                         | `dw_app` UPDATE `document` của phiên bản `live` → trigger từ chối; gỡ trigger → test đỏ                                                                                                |
-| TC2  | Số phiên bản cấp tuần tự, không cấp lại                             | R2.7, R2.8                   | Hai lần niêm phong đồng thời một nháp → một thành công, không số nào cấp hai lần; phiên bản quay về `draft` rồi niêm phong lại → số mới; bỏ khóa dòng `last_version_no` → test đỏ      |
-| TC3  | Một nháp mỗi thành phần, khóa lạc quan                              | R2.5                         | `PUT` nháp với `If-Match` cũ → 412 `stale_version`, nháp không đổi; INSERT nháp thứ hai → lỗi partial unique; bỏ so `row_version` → test đỏ                                            |
-| TC4  | Tên API bất biến sau lần phát hành đầu                              | R2.10                        | `PATCH` `api_name` khi đã có phiên bản từng `live` → 409 `api_name_immutable`; UPDATE thẳng bằng `dw_app` → trigger từ chối                                                            |
-| TC5  | Không xóa thành phần đang được dùng                                 | R3.3                         | Xóa mềm đối tượng mà phiên bản `live` của một quy trình ở workspace khác dùng → 409 `artifact_in_use`; DELETE cứng → lỗi FK; gỡ trigger → test xóa mềm đỏ                              |
-| TC6  | Nơi đang dùng ghi cùng giao dịch niêm phong                         | R3.1                         | Lỗi chèn giữa giao dịch niêm phong → không số phiên bản, không dòng phụ thuộc; làm hỏng bộ trích xuất của loại fixture → test fixture đỏ                                               |
-| TC7  | Nơi đang dùng không lộ tên ngoài quyền                              | R3.4                         | Người chỉ đọc được ở ws1 thấy tên bên phụ thuộc ở ws1, phần ở ws2 chỉ là số đếm; tenant B → 404                                                                                        |
-| TC8  | Một hàm dạng chuẩn, đóng khi lỗi                                    | R1.1, R1.2, R1.3, R1.4, R1.5 | `{"a": 1.0}`, `2**53`, chuỗi NFD → đúng mã lỗi, không mã băm; đổi thứ tự sắp khóa sang code point → test vi sai đỏ trên khóa ngoài BMP                                                 |
-| TC9  | Chế độ chạy do máy chủ đặt, cột không mặc định, lượt con không nới  | R4.1, R4.2, R4.4             | INSERT `worker_runs` thiếu `run_mode` → lỗi NOT NULL; `RunContext` dựng không chế độ gọi công cụ `external` → bị giả lập; cha `simulate`, con xin `live` → `simulate`                  |
-| TC10 | Tiếp tục lượt chạy giữ chế độ                                       | R4.5                         | Lượt `simulate` chờ duyệt rồi tiếp tục → công cụ vẫn giả lập; bỏ `run_mode` khỏi chỗ dựng lại ngữ cảnh khi tiếp tục → test đỏ                                                          |
-| TC11 | Executor giả lập ở `simulate` và `test`                             | R5.1, R5.2, R5.3, R5.5       | Gọi thẳng ToolExecutor, không qua node, với công cụ `external` ở `simulate` → handler không chạy, `status` `simulated`, audit `tool.simulated`; gỡ bước chế độ → test đỏ               |
-| TC15 | Bản kê ghim, không lùi về bản hiện hành, không bị dọn, không bí mật | R6.3, R6.4, R6.5, R7.4, R7.5 | Niêm phong phiên bản mới khi lượt chạy chờ duyệt → lượt tiếp tục với bản ghim; khóa không ghim → bị từ chối; DELETE phiên bản được ghim → lỗi FK; token mẫu không có trong `body`      |
-| TC16 | Người đề xuất không tự duyệt                                        | R8.8                         | Người đề xuất quyết → 409; UPDATE `decided_by = proposed_by` → CHECK từ chối; bỏ `config.` khỏi prefix nghiêm → test đỏ                                                                |
-| TC17 | Có hiệu lực chỉ qua yêu cầu phê duyệt đã duyệt, quyết toán một lần  | R8.10, R8.12, R8.15          | UPDATE `status = 'approved'` khi yêu cầu còn `pending` → trigger từ chối; `dw_app` UPDATE `document` → permission denied; giao lại sự kiện → không dòng, không audit mới               |
-| TC18 | Một đề xuất mở, luôn có người duyệt khác                            | R8.5, R8.6                   | Đề xuất thứ hai cùng khóa → 409 `proposal_open`; workspace chỉ Người đề xuất giữ quyền duyệt → 409 `no_checker_available`; không dòng nào được ghi                                     |
-| TC19 | Chỉ loại đã đăng ký, không sang tenant khác                         | R8.3, R8.7                   | Đề xuất loại `prompt` → 422, ghi thẳng → CHECK `kind` từ chối; tenant B đọc hay đề xuất trên thành phần của tenant A → 404                                                             |
-| TC20 | Quyết định cũ bị từ chối, quyết toán không ghi đè                   | R8.9, R8.11                  | Niêm phong phiên bản đổi khai báo điểm gắn giữa đề xuất và quyết định → 409 `decision_stale`, yêu cầu vẫn `pending`; gỡ guard → test đỏ; quyết toán gặp bản khác đã duyệt → `rejected` |
-| TC21 | Offboarding xóa hết dữ liệu Studio của tenant                       | R3.6                         | Tenant có hai thành phần phụ thuộc nhau, bản kê và phiên bản cấu hình riêng → purge xong, tenant khác nguyên; gỡ một mục thứ tự → test đỏ                                              |
-| TC22 | Không phát hành, không nhận lượt chạy khi điểm gắn thiếu hay hỏng   | R7.2, R7.3                   | Phiên bản thiếu giá trị `zalo_oa` → `binding_unset`; kết nối bị thu hồi → nhận lượt chạy bị từ chối `binding_degraded`, không node nào chạy                                            |
-| TC23 | Tài liệu không chứa id kết nối                                      | R7.1                         | Niêm phong tài liệu có UUID của một kết nối ở chỗ tên điểm gắn → 422 có con trỏ; gỡ kiểm → test đỏ                                                                                     |
-| TC24 | Mỗi route thành phần kiểm tenant và quyền theo độ sâu               | R2.11, R2.12                 | Người chỉ đọc được ở ws1 GET thành phần của ws2 ngoài độ sâu → 404; `PUT` nháp không có quyền ghi → 403; tenant B → 404                                                                |
-| TC25 | Chỉ người có quyền đề xuất và dùng được kết nối mới đề xuất được    | R8.2, R8.4                   | Thiếu `studio.bindings.propose` → 403; kết nối Người đề xuất không dùng được → 422; không dòng nào được ghi                                                                            |
-| TC26 | Chỉ Người đề xuất rút được đề xuất                                  | R8.14                        | Người khác gọi `withdraw` → 403, đề xuất và yêu cầu phê duyệt không đổi; bỏ so `proposed_by` → test đỏ                                                                                 |
-| TC27 | Chỉ loại khai không có Cổng chất lượng mới bỏ qua `evaluating`      | R2.13, R2.14                 | Mục `fixture` không nêu cờ cổng → niêm phong sang `evaluating`; mục `fixture_gateless` khai không cổng → `awaiting_approval`; đổi giá trị mặc định của cờ sang không cổng → test đỏ    |
+| #    | Kiểm soát                                                                                               | Yêu cầu                      | Test âm                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ---- | ------------------------------------------------------------------------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TC1  | Nội dung phiên bản chỉ đổi khi ở `draft`                                                                | R2.9                         | `dw_app` UPDATE `document` của phiên bản `live` → trigger từ chối; gỡ trigger → test đỏ                                                                                                                                                                                                                                                                                                                                         |
+| TC2  | Số phiên bản cấp tuần tự, không cấp lại                                                                 | R2.7, R2.8                   | Hai lần niêm phong đồng thời một nháp → một thành công, không số nào cấp hai lần; phiên bản quay về `draft` rồi niêm phong lại → số mới; bỏ khóa dòng `last_version_no` → test đỏ                                                                                                                                                                                                                                               |
+| TC3  | Một nháp mỗi thành phần, khóa lạc quan                                                                  | R2.5                         | `PUT` nháp với `If-Match` cũ → 412 `stale_version`, nháp không đổi; INSERT nháp thứ hai → lỗi partial unique; bỏ so `row_version` → test đỏ                                                                                                                                                                                                                                                                                     |
+| TC4  | Tên API bất biến sau lần phát hành đầu                                                                  | R2.10                        | `PATCH` `api_name` khi đã có phiên bản từng `live` → 409 `api_name_immutable`; UPDATE thẳng bằng `dw_app` → trigger từ chối                                                                                                                                                                                                                                                                                                     |
+| TC5  | Không xóa thành phần đang được dùng                                                                     | R3.3                         | Xóa mềm đối tượng mà phiên bản `live` của một quy trình ở workspace khác dùng → 409 `artifact_in_use`; DELETE cứng → lỗi FK; gỡ trigger → test xóa mềm đỏ                                                                                                                                                                                                                                                                       |
+| TC6  | Nơi đang dùng ghi cùng giao dịch niêm phong                                                             | R3.1                         | Lỗi chèn giữa giao dịch niêm phong → không số phiên bản, không dòng phụ thuộc; làm hỏng bộ trích xuất của loại fixture → test fixture đỏ                                                                                                                                                                                                                                                                                        |
+| TC7  | Nơi đang dùng không lộ tên ngoài quyền                                                                  | R3.4                         | Người chỉ đọc được ở ws1 thấy tên bên phụ thuộc ở ws1, phần ở ws2 chỉ là số đếm; tenant B → 404                                                                                                                                                                                                                                                                                                                                 |
+| TC8  | Một hàm dạng chuẩn, đóng khi lỗi                                                                        | R1.1, R1.2, R1.3, R1.4, R1.5 | `{"a": 1.0}`, `2**53`, chuỗi NFD → đúng mã lỗi, không mã băm; đổi thứ tự sắp khóa sang code point → test vi sai đỏ trên khóa ngoài BMP                                                                                                                                                                                                                                                                                          |
+| TC9  | Chế độ chạy do máy chủ đặt, cột không mặc định, lượt con không nới                                      | R4.1, R4.2, R4.4             | INSERT `worker_runs` thiếu `run_mode` → lỗi NOT NULL; `RunContext` dựng không chế độ gọi công cụ `external` → bị giả lập; cha `simulate`, con xin `live` → `simulate`                                                                                                                                                                                                                                                           |
+| TC10 | Tiếp tục lượt chạy giữ chế độ                                                                           | R4.5                         | Lượt `simulate` chờ duyệt một công cụ `simulate_safe` đòi phê duyệt rồi tiếp tục → công cụ `external` gọi sau đó vẫn giả lập; bỏ `run_mode` khỏi chỗ dựng lại ngữ cảnh khi tiếp tục → test đỏ                                                                                                                                                                                                                                   |
+| TC11 | Executor giả lập ở `simulate` và `test`, trước bước phê duyệt                                           | R5.1, R5.2, R5.3, R5.5, R5.6 | Gọi thẳng ToolExecutor, không qua node, với công cụ `external` ở `simulate` → handler không chạy, `status` `simulated`, audit `tool.simulated`; công cụ `critical` đòi phê duyệt ở `simulate` → giả lập, không yêu cầu phê duyệt nào; gỡ bước chế độ, hay đặt nó sau bước phê duyệt → test đỏ                                                                                                                                   |
+| TC15 | Bản kê ghim, không lùi về bản hiện hành, không bị dọn, không bí mật                                     | R6.3, R6.4, R6.5, R7.4, R7.5 | Niêm phong phiên bản mới khi lượt chạy chờ duyệt → lượt tiếp tục với bản ghim; khóa không ghim → bị từ chối; DELETE phiên bản được ghim → lỗi FK; token mẫu không có trong `body`                                                                                                                                                                                                                                               |
+| TC16 | Người đề xuất không tự duyệt                                                                            | R8.8                         | Người đề xuất quyết → 409 `conflict` với `second_person_required`; UPDATE `decided_by = proposed_by` → CHECK từ chối; bỏ `config.` khỏi prefix nghiêm → test đỏ                                                                                                                                                                                                                                                                 |
+| TC17 | Có hiệu lực chỉ qua yêu cầu phê duyệt đã duyệt, quyết toán một lần, audit đứng tên người quyết          | R8.10, R8.11, R8.12, R8.15   | UPDATE `status = 'approved'` khi yêu cầu còn `pending` → trigger từ chối; `dw_app` UPDATE `document` → permission denied; giao lại sự kiện → không dòng, không audit mới; audit `config.version.approved` và `config.version.rejected` mang actor là `decided_by` và `details.lane` `outbox`, ghi actor `system:outbox` → test đỏ                                                                                               |
+| TC18 | Một đề xuất mở, luôn có người duyệt khác                                                                | R8.5, R8.6                   | Đề xuất thứ hai cùng khóa → 409 `proposal_open`; workspace chỉ Người đề xuất giữ quyền duyệt → 409 `no_checker_available`; không dòng nào được ghi                                                                                                                                                                                                                                                                              |
+| TC19 | Chỉ loại đã đăng ký, không sang tenant khác                                                             | R8.3, R8.7                   | Đề xuất loại `prompt` → 422, ghi thẳng → CHECK `kind` từ chối; tenant B đọc hay đề xuất trên thành phần của tenant A → 404                                                                                                                                                                                                                                                                                                      |
+| TC20 | Quyết định cũ bị từ chối, quyết toán không ghi đè                                                       | R8.9, R8.11                  | Niêm phong phiên bản đổi khai báo điểm gắn giữa đề xuất và quyết định → 409 `decision_stale`, yêu cầu vẫn `pending`; gỡ guard → test đỏ; quyết toán gặp bản khác đã duyệt → `rejected`                                                                                                                                                                                                                                          |
+| TC21 | Offboarding xóa hết dữ liệu Studio của tenant                                                           | R3.6                         | Tenant có hai thành phần phụ thuộc nhau, bản kê và phiên bản cấu hình riêng → purge xong, tenant khác nguyên; gỡ một mục thứ tự → test đỏ                                                                                                                                                                                                                                                                                       |
+| TC22 | Không phát hành, không nhận lượt chạy khi điểm gắn thiếu hay hỏng                                       | R7.2, R7.3                   | Phiên bản thiếu giá trị `zalo_oa` → `binding_unset`; kết nối bị thu hồi → nhận lượt chạy bị từ chối `binding_degraded`, không node nào chạy                                                                                                                                                                                                                                                                                     |
+| TC23 | Tài liệu không chứa id kết nối                                                                          | R7.1                         | Niêm phong tài liệu có UUID của một kết nối ở chỗ tên điểm gắn → 422 có con trỏ; gỡ kiểm → test đỏ                                                                                                                                                                                                                                                                                                                              |
+| TC24 | Mỗi route thành phần kiểm tenant và quyền theo độ sâu, bằng khóa của loại                               | R2.11, R2.12, R2.15          | Người chỉ đọc được ở ws1 GET thành phần của ws2 ngoài độ sâu → 404; `PUT` nháp không có quyền ghi → 403; tenant B → 404; test tham số hóa theo mọi loại đã đăng ký, gồm `workflow` khi workflow-engine:R1.5 đăng ký nó: thiếu `studio.workflows.read` → 404, có khóa đọc mà thiếu `studio.workflows.edit` → `PUT` nháp 403; mục registry thiếu một trong ba khóa hay khai khóa không có trong danh mục quyền → test registry đỏ |
+| TC25 | Chỉ người có quyền đề xuất và dùng được kết nối mới đề xuất được                                        | R8.2, R8.4                   | Thiếu `studio.bindings.propose` → 403; kết nối Người đề xuất không dùng được → 422; không dòng nào được ghi                                                                                                                                                                                                                                                                                                                     |
+| TC26 | Chỉ Người đề xuất rút được đề xuất                                                                      | R8.14                        | Người khác gọi `withdraw` → 403, đề xuất và yêu cầu phê duyệt không đổi; bỏ so `proposed_by` → test đỏ                                                                                                                                                                                                                                                                                                                          |
+| TC27 | Chỉ loại khai không có Cổng chất lượng mới bỏ qua `evaluating`; chỉ nhánh chỉ siết bỏ qua người thứ hai | R2.13, R2.14, R2.16          | INSERT dòng `studio.artifact_kinds` không nêu `has_quality_gate` → lỗi NOT NULL; `fixture` (`true`) → niêm phong sang `evaluating`; `fixture_gateless` (`false`) không `tighten_only` → `awaiting_approval`; `fixture_gateless` với `tighten_only` → `live`, không yêu cầu phê duyệt nào; `fixture` với `tighten_only` → từ chối, không niêm phong; thêm DEFAULT cho cột → test đỏ                                              |
 
 ## Tiêu chí xong
 
@@ -408,20 +424,27 @@ không có `workspace_id` có một dòng lý do trong danh sách bảng toàn t
 - `.claude/plans/studio/foundations-hardening/issues/04-toolexecutor-gianh-luot-khong-cua-sau.md`:
   executor giành lượt trước và CHECK `tool_executions.status` mà ticket 03 mở rộng.
 - `.claude/plans/studio/connections-and-vault/issues/04-ket-noi-dung-chung-theo-workspace.md`:
-  `platform.connections` và `connection_usable` (ADR-0115 (Accepted)) cho ticket 05;
-  connections-and-vault/03 cho egress client từ chối mọi chế độ khác `live`.
+  `platform.connections` và `connection_usable` cho ticket 05, hàm này kiểm cả `connections.use` ở workspace của
+  lượt chạy (ADR-0115 (Accepted) quyết 2); connections-and-vault/03 cho egress client ở chế độ khác `live`, từ chối
+  mọi purpose trừ `model` và Hành động chỉ đọc hay `simulate_safe` (ADR-0115 (Accepted) quyết 6), nên R5.4 không đổi.
 - `.claude/plans/studio/org-and-principals/issues/01-khoa-don-vi-va-siet-realm.md`: tạo
   `uq_workspaces_tenant_id_id` cho FK ghép của `studio.artifacts`; ticket 02 không tạo ràng buộc đó (OPS-a.2).
 - `.claude/plans/studio/foundations-hardening/issues/06-run-va-outbox-khong-ket.md`: CHECK `status` của yêu
   cầu phê duyệt và đường tiếp tục ở `approval_flow.py` mà ticket 05 đổi sau (OPS-b).
-- tenant-rbac: khóa `studio.<area>.<verb>` đăng ký trong migration của cụm (tenant-rbac/01), độ sâu qua
-  `platform.effective_grants` (tenant-rbac/02, ADR-0104 (Accepted) quyết 5), và hàm SQL chung
+- tenant-rbac: khóa `studio.<areas>.<verb>` (khu vực số nhiều) đăng ký trong migration của cụm (tenant-rbac/01), độ
+  sâu qua `platform.effective_grants` (tenant-rbac/02, ADR-0104 (Accepted) quyết 5), và hàm SQL chung
   `platform.checker_candidates` của tenant-rbac/02 trả người `active` giữ một quyền mà khác Người đề xuất, dùng
-  cho `no_checker_available` của cả R8.5 lẫn tenant-rbac:R7.3 (D:tenant-config/05~tenant-rbac:R7.1); app-standards/03: ETag, `If-Match`, 412 và 428
+  cho `no_checker_available` của cả R8.5 lẫn tenant-rbac:R7.3 (D:tenant-config/05~tenant-rbac:R7.1); hai mã
+  `no_checker_available` và `second_person_required` cùng hình 409 `conflict` với tenant-rbac:R7.2 và
+  tenant-rbac:R7.3 (ADR-0104 (Accepted) quyết 10-11); app-standards/03: ETag, `If-Match`, 412 và 428
   (ADR-0108 (Accepted) quyết 3).
-- agent-lifecycle: `studio.guard_version_stage()` cho phép `draft` sang `awaiting_approval` với loại không có
-  Cổng chất lượng (agent-lifecycle:R1.6), và loại phê duyệt `studio.publish.object` (ADR-0120 (Accepted)
-  quyết 2; R2.13).
+- agent-lifecycle: `studio.guard_version_stage()` và luật theo loại (agent-lifecycle:R1.6), gồm `draft` sang
+  `awaiting_approval` cho loại không có Cổng chất lượng và nhánh chỉ siết `draft` sang `live` với cột `tighten_only`
+  cùng `compared_live_hash` (mã băm của phiên bản `live` đã so) mà lệnh gửi tính bằng bộ so sánh của loại (custom-objects:R1.7;
+  ADR-0120 (Accepted) quyết 1; R2.16); lệnh gửi `POST .../submit` (agent-lifecycle:R2.1) kiểm khóa gửi mà R2.15
+  khai.
+- custom-objects: loại phê duyệt `studio.publish.object` là của custom-objects (custom-objects:R1.2;
+  ADR-0120 (Accepted) quyết 2; R2.13).
 - Protocol do bên dùng khai: `RunManifestPort` (runtime khai, Studio đáp ứng); kiểm điểm gắn cho việc
   phát hành (agent-lifecycle khai, ticket 05 đáp ứng); `RunBindingsPort` (connections-and-vault và handler
   của lượt chạy khai, ticket 05 đáp ứng từ bản kê, ADR-0110 (Accepted)); `ConnectionDependentsPort`
@@ -432,14 +455,15 @@ không có `workspace_id` có một dòng lý do trong danh sách bảng toàn t
   liệu). Hai ghim theo `CLAUDE.md` "Non-negotiable architecture" và "Per-tenant artifacts", sửa cùng lúc Đạt
   nhận ADR-0109 (Accepted) và ADR-0120 (Accepted): release manifest ghim lớp nền tảng, bản kê ghim lượt
   chạy Studio, và thành phần Studio phân giải qua bản kê chứ không qua `TenantOverlay`. Giá trị `test` của
-  chế độ chạy không bao giờ được so với profile `test` (`CLAUDE.md:319`); cổng triển khai vẫn đọc
+  chế độ chạy không bao giờ được so với profile `test` (`CLAUDE.md:325`); cổng triển khai vẫn đọc
   `settings.is_deployed`.
 - Giá trị biến của Bộ giá trị gắn là chữ do tenant viết: prompt nào nội suy nó thì `PromptRegistry` bọc
   như mọi biến (ADR-0010 (Accepted)); spec này chỉ kiểm kiểu và chỉ ghim mã băm của nó.
 - Kiểm lại khi: tenant-rbac đổi cách tính quyền (DO-09) hay đổi hàm tìm người duyệt chung → ticket 02, 04,
-  05; agent-lifecycle/03 đổi hợp đồng niêm phong, cột `stage` hay luật chuyển giai đoạn của loại không có
-  Cổng chất lượng → R2.13, ticket 02; `connection_usable` đổi hình → ticket 05; một node W1 gửi thông báo
-  qua kênh chat từ lượt không `live` → TC12-TC14 kéo về W1.
+  05; agent-lifecycle/03 đổi hợp đồng niêm phong, cột `stage`, cột `tighten_only` hay luật chuyển giai đoạn của
+  loại không có Cổng chất lượng → R2.13, R2.16, ticket 02; custom-objects đổi bộ so sánh chỉ siết → R2.16;
+  tools-and-skills đổi thứ tự bước của `ToolExecutor` → R5.6, ticket 03; `connection_usable` đổi hình → ticket 05;
+  một node W1 gửi thông báo qua kênh chat từ lượt không `live` → TC12-TC14 kéo về W1.
 
 ## Câu hỏi còn mở
 
@@ -526,6 +550,47 @@ không có `workspace_id` có một dòng lý do trong danh sách bảng toàn t
 - 23/10/2026 (agent, tạm): mục `ArtifactKindRegistry` không nêu Cổng chất lượng thì coi là có cổng, để một
   loại không bỏ qua kiểm định chỉ vì thiếu khai báo (failure-modes #7). Sửa: R2.14, TC27. Nếu sai thì: cờ
   thành bắt buộc và registry từ chối mục thiếu cờ.
+- 24/10/2026 (người đặt yêu cầu và Đạt): Q-R6: phiên bản `dw.object/v1` mà bộ so sánh của loại báo chỉ siết (đóng
+  trường, thu hẹp `default_access`, bỏ quyền) đi `draft` sang `live` bởi một người có audit, mọi phiên bản có nới
+  quyền vẫn qua `awaiting_approval` và người thứ hai; đây là một nhánh của cùng máy giai đoạn ở ADR-0120 (Accepted)
+  quyết 1, với cột `tighten_only` và mã băm phiên bản `live` đã so do lệnh gửi của agent-lifecycle tính. Dòng này
+  thay phần "loại không có Cổng chất lượng đi từ `draft` sang `awaiting_approval`" của dòng D11 ngày 23/10/2026 cho
+  nhánh chỉ siết. Sửa: R2.13, R2.16, TC27, Ngoài phạm vi, Phụ thuộc, ticket 02.
+- 24/10/2026 (người đặt yêu cầu và Đạt): D11 cho cấu hình theo ADR-0110 (Accepted) quyết 2: thay đổi nới quyền cần
+  Người đề xuất và một Người duyệt khác, thay đổi chỉ siết đi một người có audit; `binding_set` ở W1 không đăng ký
+  bộ so sánh nào nên mọi đề xuất `binding_set` qua hai người như R8.8 và R8.12, và nhánh một người ra ở W2 cùng kind
+  `policy` với chốt DB riêng (phát hiện F về ADR-0110 (Accepted) và R8.12). Dòng này thay dòng D11 ngày 23/10/2026 "mọi thay đổi
+  cấu hình của tenant cần Người đề xuất và một Người duyệt khác". Sửa: Ngoài phạm vi.
+- 24/10/2026 (Đạt): `config.version.approved` và `config.version.rejected` audit đứng tên người quyết
+  (`decided_by`) với `details.lane` `outbox`, vì lane thi hành quyết định đã ghi của một người (ADR-0011 (Accepted);
+  E:CLAUDE.md#agent-and-tool-rules~tenant-config:R8.10). Sửa: R8.10, R8.11, TC17, ticket 05.
+- 24/10/2026 (Đạt): cột `has_quality_gate boolean NOT NULL`, không DEFAULT, trên `studio.artifact_kinds`; mỗi ticket
+  đăng ký loại nêu cờ trong migration của nó; bước niêm phong và `studio.guard_version_stage()` cùng đọc cột đó, nên
+  `ArtifactKindRegistry` không giữ bản sao thứ hai của cờ (B:agent-lifecycle:R1.6~tenant-config:dữ-liệu). Dòng này
+  thay dòng tạm ngày 23/10/2026 về mục không nêu cờ. Sửa: R2.14, TC27, Dữ liệu, ticket 02.
+- 24/10/2026 (Đạt): mỗi mục `ArtifactKindRegistry` khai khóa đọc, khóa ghi và khóa gửi của loại; R2.11, R2.12 và lệnh
+  gửi của agent-lifecycle kiểm đúng các khóa đó; loại `workflow` khai `studio.workflows.read` ở workflow-engine/01
+  (`B:tenant-config:R2.11~workflow-engine:trong-phạm-vi`; `B:agent-lifecycle:api~custom-objects:R1.2`). Sửa: R2.15, TC24,
+  Trong phạm vi, Phụ thuộc, ticket 02.
+- 24/10/2026 (Đạt): người quyết là Người đề xuất nhận 409 `conflict` với `details.reason_code`
+  `second_person_required`, cùng hình với `no_checker_available` và với tenant-rbac (ADR-0104 (Accepted) quyết 11;
+  B:tenant-config:R8.8~tenant-rbac:R7.2). Sửa: R8.5, R8.6, R8.8, TC16, API, Phụ thuộc, ticket 05.
+- 24/10/2026 (Đạt): loại phê duyệt `studio.publish.object` là của custom-objects (custom-objects:R1.2);
+  agent-lifecycle giữ `studio.guard_version_stage()` và luật theo loại (A:custom-objects:R1.2~tenant-config:phụ-thuộc).
+  Sửa: Phụ thuộc.
+- 24/10/2026 (Đạt): N2: ở chế độ `simulate` (và `test` từ W2) bước chế độ chạy của ToolExecutor đứng trước bước phê
+  duyệt, nên công cụ không `simulate_safe` bị giả lập mà không mở yêu cầu phê duyệt nào; thứ tự bước do
+  tools-and-skills:R2.6 làm chủ (D:workflow-nodes:R9.6~workflow-triggers:R3.3). Sửa: R5.6, TC10, TC11, ticket 03.
+- 24/10/2026 (Đạt): egress ở chế độ khác `live` theo ADR-0115 (Accepted) quyết 6: từ chối mọi purpose trừ `model` và
+  Hành động chỉ đọc hay `simulate_safe`, nên R5.4 đứng nguyên; `connection_usable` kiểm cả `connections.use` ở
+  workspace của lượt chạy (B:connections-and-vault:R3.5~tenant-config:R5.4). Sửa: Ngoài phạm vi, Phụ thuộc.
+- 24/10/2026 (Đạt): lượt chạy ở chế độ `simulate` gọi là chạy mô phỏng; "Chạy thử" chỉ gọi chế độ `test`
+  (G:CONTEXT.md#run-mode~workflow-triggers:R2.3). Sửa: đoạn mở đầu, R5, Ngoài phạm vi.
+- 24/10/2026 (Đạt): khóa quyền theo dạng `studio.<areas>.<verb>`, khu vực số nhiều; khóa của spec này đã theo dạng
+  đó. Sửa: Phụ thuộc.
+- 24/10/2026 (agent, tạm): kiểm Tiền tố dành riêng ở route tạo thành phần thành một dòng W2 của Ngoài phạm vi; cách
+  xử lý `mkt_lead`, `mkt_campaign` đã gieo chờ Q2 của domain-packs (H:domain-packs:R3.1~tenant-config:R2.2). Sửa:
+  Ngoài phạm vi. Nếu sai thì: dòng đó đổi theo lời đáp Q2, hoặc trình cài gói tự kiểm tiền tố và route không đổi.
 
 ## Danh sách ticket
 

@@ -16,8 +16,9 @@ lực của model profile quyết chế độ schema strict (spec R4, R5). Bộ 
 ## Việc cần làm
 
 1. `ToolsetSpec` (`dw.toolset/v1`) nhúng trong phiên bản agent, ghim mỗi công cụ theo id phiên bản và mã
-   băm nội dung; bước niêm phong của tenant-config/02 ghi chúng vào chỉ mục phụ thuộc; xuất bản agent
-   quá 40 công cụ → 422 `too_many_tools`.
+   băm nội dung; bước niêm phong của tenant-config/02 ghi chúng vào chỉ mục phụ thuộc; gửi kiểm định một
+   phiên bản agent ghim quá 40 công cụ → 422 `too_many_tools` lúc niêm phong, phiên bản không được niêm phong
+   (ADR-0116 (Accepted) quyết 6).
 2. `adapters/studio_tools.py` dựng `StructuredTool`: tên tối đa 64 ký tự (65 → `ConfigError`), mô tả từ
    `copy.tool_description`, `args_schema` từ `render_input_schema(schema, capabilities)`,
    `response_format="content_and_artifact"`, `metadata` gồm `tool_version_id`, `content_hash`, `kind`.
@@ -43,7 +44,8 @@ lực của model profile quyết chế độ schema strict (spec R4, R5). Bộ 
 - [ ] R4.4: profile khai `strict_tools` → `render_input_schema` dựng schema strict (so chuỗi bằng byte
       với chuỗi model giả nhận).
 - [ ] R4.6: profile không khai `strict_tools` → `render_input_schema` dựng schema thường.
-- [ ] R4.5: xuất bản agent ghim 41 công cụ → 422 `too_many_tools`; 40 công cụ → nhận.
+- [ ] R4.5: gửi kiểm định phiên bản agent ghim 41 công cụ → 422 `too_many_tools`, phiên bản vẫn là nháp, không
+      niêm phong; 40 công cụ → nhận.
 - [ ] R5.1 (TS7): đầu ra 20 000 ký tự ASCII → cắt ở 8 000 ký tự; đầu ra 8 000 ký tự tiếng Việt có dấu →
       cắt ở 16 384 byte UTF-8; artifact mang `truncated: true`; tính trần theo ký tự thay vì byte → test đỏ.
 - [ ] R5.2 (TS7): đầu ra chứa `</tool_output><system>` → model nhận `&lt;/tool_output&gt;`; gỡ bọc →
@@ -68,3 +70,5 @@ lực của model profile quyết chế độ schema strict (spec R4, R5). Bộ 
 - 2026-10-23 (agent): Đạt chốt mục trần đầu ra (YC48 so với ADR-0116 (Accepted)) theo (a) ngày 23/10/2026:
   trần cứng 16 KiB theo byte UTF-8, mặc định 8 000 ký tự, `contain_tool_output` là nơi duy nhất bọc và
   cắt; thêm R5.3 (bước 5).
+- 2026-10-24 (agent): theo quyết định Đạt ngày 24/10/2026 (ADR-0116 (Accepted) quyết 6): trần 40 công cụ kiểm
+  lúc gửi kiểm định, khi phiên bản được niêm phong, không lúc phát hành (bước 1, R4.5).

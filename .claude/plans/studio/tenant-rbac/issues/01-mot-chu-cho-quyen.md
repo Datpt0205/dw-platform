@@ -47,8 +47,13 @@ phần bootstrap của foundations-hardening 05 (brief B11).
    (b) mọi khóa mà code kiểm (`action="..."` trong route của `apps/api/src`, hằng `*_SCOPE`, `required_scopes` trong
    `configs/tools`, `scope` và `anyScope` trong `apps/web/lib/nav/registry.ts`) có trong danh mục;
    (c) mọi khóa `active` có ít nhất một chỗ kiểm, trừ danh sách ngoại lệ trong test, mỗi mục một lý do.
-   Từ nay mỗi cụm Studio đăng ký khóa `studio.<area>.<verb>` của mình trong migration của chính nó, và test này giữ chúng.
-6. **Người vận hành.** Thêm `studio.`, `obj.`, `fld.` vào `FORBIDDEN_SCOPE_PREFIXES` (`support_access.py:63-72`).
+   Từ nay mỗi cụm Studio đăng ký mọi khóa nó kiểm trong migration của chính nó, và test này giữ chúng: khóa
+   `studio.<areas>.<verb>` với khu vực số nhiều (`studio.agents.read`, `studio.workflows.run`) và khóa ngoài tiền tố
+   `studio.` mà cụm đó kiểm (`platform.limits.manage` của usage-and-limits, `runs.read_payloads` của
+   telemetry-and-audit); ticket này không đăng ký khóa của cụm khác.
+6. **Người vận hành.** Thêm `studio.`, `obj.`, `fld.`, `connections.`, `integrations.` vào `FORBIDDEN_SCOPE_PREFIXES`
+   (`support_access.py:63-72`), để người vận hành không được cấp `connections.manage` hay `integrations.admin` của
+   tenant.
 7. `test_privileges.py` khẳng định quyền DB của `platform.permissions` cho từng vai ứng dụng.
 
 ## Tiêu chí chấp nhận
@@ -58,7 +63,7 @@ phần bootstrap của foundations-hardening 05 (brief B11).
 - [ ] R1.1 (RB2): thêm một route kiểm `x.y` không có dòng danh mục → (b) đỏ; xóa một dòng danh mục đang được kiểm → (b) đỏ.
 - [ ] R1.2 (RB2): thêm khóa `active` không ai kiểm → (c) đỏ; khóa đó ở danh sách ngoại lệ có lý do → xanh.
 - [ ] R1.4: `GET /api/v1/admin/permissions` trả đủ sáu trường cho mọi dòng; người không có `platform.roles.read` → 403.
-- [ ] R1.5 (RB3): đăng ký `obj.lead.read` hay `studio.agents.publish` cho truy cập người vận hành → bị từ chối; gỡ tiền tố khỏi `FORBIDDEN_SCOPE_PREFIXES` → test đỏ.
+- [ ] R1.5 (RB3): đăng ký `obj.lead.read`, `studio.agents.publish`, `connections.manage` hay `integrations.admin` cho truy cập người vận hành → bị từ chối; gỡ từng tiền tố khỏi `FORBIDDEN_SCOPE_PREFIXES` → test của tiền tố đó đỏ.
 - [ ] Xong: `make ci` xanh.
 
 ## Nguồn
@@ -73,3 +78,5 @@ phần bootstrap của foundations-hardening 05 (brief B11).
 - ADR-0104 (Accepted) mục 1; brief B3 mục 1.10 và ticket 02.
 
 ## Comments
+
+- 2026-10-24 (agent): Đạt nhận các khuyến nghị vòng 2 (24/10/2026): thêm `connections.`, `integrations.` vào `FORBIDDEN_SCOPE_PREFIXES` (`D:connections-and-vault:trong-phạm-vi~tenant-rbac:R1.5`); quy ước đăng ký khóa ghi rõ khu vực số nhiều và phủ cả khóa ngoài tiền tố `studio.` (`B:agent-lifecycle:phụ-thuộc~tenant-rbac/01`).

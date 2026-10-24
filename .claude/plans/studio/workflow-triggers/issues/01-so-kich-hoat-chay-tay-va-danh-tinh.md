@@ -1,19 +1,19 @@
 # 01 — Sổ kích hoạt, chạy tay và chạy mô phỏng, chạy dưới danh nghĩa tài khoản dịch vụ qua điểm gắn
 
 Status: needs-triage
-Blocked by: .claude/plans/studio/workflow-engine/issues/04-lan-studio-runs.md, .claude/plans/studio/org-and-principals/issues/03-tai-khoan-dich-vu-run-as.md, .claude/plans/studio/tenant-config/issues/05-lien-ket-va-phien-ban-cau-hinh.md
+Blocked by: .claude/plans/studio/workflow-engine/issues/04-lan-studio-runs.md, .claude/plans/studio/org-and-principals/issues/03-tai-khoan-dich-vu-run-as.md, .claude/plans/studio/tenant-config/issues/05-lien-ket-va-phien-ban-cau-hinh.md, .claude/plans/studio/agent-lifecycle/issues/05-tat-khan-cap-va-khoi-phuc.md
 Area: studio
-Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R3.1, R3.2, R3.3, R3.4, R3.5, TR8, TR9, TR12
+Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R2.7, R2.8, R3.1, R3.2, R3.3, R3.4, R3.5, TR8, TR9, TR12, TR16
 
 ## Mục tiêu
 
-Dựng sổ kích hoạt (đăng ký và lần kích hoạt), chạy tay và chạy thử qua `RunRequestService`, và danh tính chạy là tài khoản dịch vụ gắn qua điểm gắn `principal` duyệt bởi người khác, không bao giờ người phát hành (R1, R2, R3 của spec).
+Dựng sổ kích hoạt (đăng ký và lần kích hoạt), chạy tay và chạy mô phỏng qua `RunRequestService`, với một quyết định giả lập cho mỗi Bước phê duyệt của lượt mô phỏng, và danh tính chạy là tài khoản dịch vụ gắn qua điểm gắn `principal` duyệt bởi người khác, không bao giờ người phát hành (R1, R2, R3 của spec).
 
 ## Việc cần làm
 
 1. `studio.trigger_subscriptions` sinh khi phiên bản thành Đang dùng và thu hồi (`retired`) đăng ký của phiên bản trước trong cùng giao dịch; `trigger_kind` CHECK (`datahub`, `provider_app`, `schedule`, `record_event`, `agent_tool`) theo ADR-0113 (Accepted) quyết 5; bảng không có `workspace_id` và có một dòng lý do trong danh sách bảng toàn tenant của `test_rls_coverage.py` (cấu hình của thành phần; DO-01). `studio.trigger_deliveries` có `workspace_id uuid NOT NULL`, ảnh chụp workspace sở hữu của quy trình lúc ghi; phân vùng tháng có DEFAULT và RLS chỉ theo tenant từng phân vùng; đăng ký bảng cha vào `platform.time_partitioned_tables` (studio-skeleton/01). Freeze giữ (`held_frozen`, một dòng mỗi sự kiện lúc bắt đầu giữ), kill từ chối (`refused_killed`).
 2. Trình kích hoạt xin lượt chạy qua `RunRequestService` (workflow-engine/02) và ghi một dòng `trigger_deliveries` mỗi kết quả; chống trùng là `request_key` của dòng lượt chạy (workflow-engine/04).
-3. `POST /api/v1/studio/workflows/{artifact_id}/runs` (quyền `studio.workflows.run`, bản đang dùng, chế độ `live`) và `POST .../versions/{version_id}/test-runs` (quyền `studio.workflows.test`; W1 chỉ nhận `simulate`, `test` trả 422 tới W2, `live` trả 422); form đầu vào từ schema của trình kích hoạt; `Idempotency-Key` bắt buộc (app-standards/02). Migration của ticket này đăng ký `studio.workflows.run` và `studio.workflows.test` vào danh mục quyền theo quy ước của tenant-rbac/01.
+3. `POST /api/v1/studio/workflows/{artifact_id}/runs` (quyền `studio.workflows.run`, bản đang dùng, chế độ `live`) và `POST .../versions/{version_id}/test-runs` (quyền `studio.workflows.test`; W1 chỉ nhận `simulate`, `test` trả 422 tới W2, `live` trả 422); form đầu vào từ schema của trình kích hoạt; `Idempotency-Key` bắt buộc (app-standards/02). Thân `test-runs` mang `simulated_decisions`, một quyết định `approved` hay `rejected` cho mỗi id Bước phê duyệt (`human.approval@1`) của tài liệu đã niêm phong; thiếu một id hay nêu một id không phải Bước phê duyệt → 422, mỗi id một lỗi, không xin lượt chạy (R2.8); đủ thì đưa vào đầu vào của lượt mô phỏng để Bước phê duyệt đọc (R2.7, workflow-nodes:R9.9). Tập id Bước phê duyệt đọc từ `type` của các node trong tài liệu; test dùng một loại bước giả `human.approval@1` đăng ký trong fixture tới khi workflow-nodes/06 đăng ký loại thật. Migration của ticket này đăng ký `studio.workflows.run` và `studio.workflows.test` vào danh mục quyền theo quy ước `studio.<areas>.<verb>` của tenant-rbac/01.
 4. Kiểm `grants_cover` của điểm gắn kind `principal` dùng làm danh tính chạy đăng ký vào bộ kiểu Điểm gắn của `binding_set` (tenant-config/05), không vào `ConfigKindRegistry`; kiểm chạy khi đề xuất giá trị (org-and-principals/03); phát hành phiên bản thiếu giá trị trả 409 `binding_unset` (tenant-config:R7.2) và không đăng ký nào được tạo; runner gắn tài khoản dịch vụ làm chủ thể mỗi giao dịch; `requested_by` là người hoặc actor của làn, không bao giờ người phát hành (MP18).
 
 ## Tiêu chí chấp nhận
@@ -27,11 +27,13 @@ Dựng sổ kích hoạt (đăng ký và lần kích hoạt), chạy tay và ch�
 - [ ] R2.2 (TR12): `test-runs` với chế độ `live` → 422, không lượt chạy; bỏ kiểm chế độ → test đỏ.
 - [ ] R2.3: `test-runs` với `simulate` của người giữ `studio.workflows.test` → một lượt chạy ở `simulate`.
 - [ ] R2.6: `test-runs` với `test` → 422, không lượt chạy.
+- [ ] R2.7: `test-runs` với `simulate` cho phiên bản có hai Bước phê duyệt, thân nêu `approved` và `rejected` → lượt mô phỏng mang đúng hai quyết định đó trong đầu vào, theo id Bước.
+- [ ] R2.8 (TR16): thân thiếu quyết định cho một Bước phê duyệt → 422 có lỗi nêu id đó, không lượt chạy; thân nêu quyết định cho id của một Bước khác loại → 422 nêu id đó; bỏ kiểm → test đỏ.
 - [ ] R2.4: đầu vào sai schema của trình kích hoạt → 422 theo trường, không lượt chạy.
 - [ ] R2.5: tenant B gọi `artifact_id` của tenant A → 404, không lượt chạy.
 - [ ] R3.1: đề xuất điểm gắn `principal` cho một tài khoản dịch vụ mà Người đề xuất không giữ đủ quyền → 403 `rbac_escalation`.
 - [ ] R3.2 (TR8): người phát hành rời tenant → lượt chạy vẫn chạy bằng tài khoản dịch vụ; gắn người phát hành làm chủ thể → test đỏ.
-- [ ] R3.3: lượt chạy thử `simulate` → runner chạy dưới danh nghĩa người thử.
+- [ ] R3.3: lượt mô phỏng → runner chạy dưới danh nghĩa người thử.
 - [ ] R3.4 (TR8): phát hành một phiên bản thiếu giá trị điểm gắn `principal` → 409 `binding_unset`, không tạo đăng ký.
 - [ ] R3.5: tài khoản dịch vụ mất quyền đọc trường điều kiện của trình kích hoạt → không tạo đăng ký cho phiên bản đó.
 - [ ] Xong: `make test-integration` xanh.
@@ -45,3 +47,4 @@ Dựng sổ kích hoạt (đăng ký và lần kích hoạt), chạy tay và ch�
 
 - 2026-10-23 (agent): ticket còn needs-info vì DO-12 (chủ thể của lượt chạy không người) và DO-06 (tên điểm gắn so với id trong phiên bản) chưa được Đạt chốt; thiết kế theo khuyến nghị (a) của cả hai.
 - 2026-10-23 (agent): DO-06 và DO-12 (cùng DO-17.2) đã có lời đáp (Đạt 23/10/2026), nên ticket về `needs-triage`. Theo phiếu cùng ngày: W1 chỉ chạy thử `simulate` (DO-26.1), khóa đổi theo dạng `studio.<area>.<verb>`, kiểm `principal` đăng ký vào bộ kiểu Điểm gắn của `binding_set`, `trigger_kind` theo ADR-0113 (Accepted), `workspace_id` trên `studio.trigger_deliveries` (DO-01).
+- 2026-10-24 (agent): theo quyết định của Đạt ngày 24/10/2026: ticket chờ agent-lifecycle/05 (Tắt khẩn của R1.4, TR9); lượt `simulate` gọi là chạy mô phỏng và mang một quyết định giả lập cho mỗi Bước phê duyệt (N2: R2.7, R2.8, TR16); khóa theo dạng `studio.<areas>.<verb>`.

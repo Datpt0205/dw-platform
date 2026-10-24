@@ -420,16 +420,19 @@ Trước đây: claim mọi dòng còn lượt theo `occurred_at` (`packages/pyt
 - R10.5 NẾU `--operator` của script phát lại không phải một người vận hành, THÌ script phát lại PHẢI
   thoát với mã 1 và không đổi sự kiện nào.
 
-### R11 — Offboarding xuất mỗi dòng đúng một lần, theo lô [Sửa]
+### R11 — Offboarding xuất mỗi dòng đúng một lần, theo lô, và audit nêu tên lane [Sửa]
 
-Người vận hành nhận gói xuất của một công ty có mỗi dòng đúng một lần, và lane xuất không giữ cả bảng
-trong bộ nhớ (YC6, D12).
-Trước đây: danh mục xuất gồm cả partition, và mỗi bảng được đọc bằng một câu lệnh giữ mọi dòng (`packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:162-181`).
+Người vận hành nhận gói xuất của một công ty có mỗi dòng đúng một lần, lane xuất không giữ cả bảng
+trong bộ nhớ (YC6, D12), và audit của lần xóa đứng tên người vận hành đã yêu cầu kèm tên lane đã thi
+hành quyết định đó (`CLAUDE.md`, "Agent and tool rules"; ADR-0011 (Accepted)).
+Trước đây: danh mục xuất gồm cả partition, và mỗi bảng được đọc bằng một câu lệnh giữ mọi dòng (`packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:162-181`); audit `tenant.offboarding.purged` ghi `details` rỗng (`packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:236`).
 
 - R11.1 KHI lane `offboarding` xuất dữ liệu của một tenant, lane `offboarding` PHẢI đưa mỗi dòng của
   mỗi bảng tenant, kể cả bảng phân vùng, vào gói xuất đúng một lần.
 - R11.2 KHI lane `offboarding` đọc một bảng để xuất, mỗi câu lệnh đọc của lane `offboarding` PHẢI trả
   không quá 1.000 dòng, theo thứ tự khóa chính.
+- R11.3 KHI lane `offboarding` ghi audit `tenant.offboarding.purged`, lane `offboarding` PHẢI đặt
+  `details.lane` của audit đó bằng `offboarding`.
 
 ## Hành vi giữ nguyên
 
@@ -473,7 +476,8 @@ Trước đây: danh mục xuất gồm cả partition, và mỗi bảng đượ
   `dead_at`, gauge `dw_outbox_dead_letters`, cảnh báo `DwOutboxDeadLetters` và script phát lại thư chết
   của người vận hành.
 - Hai test không thể đỏ và việc rà các mẫu cùng họ.
-- Danh mục xuất của offboarding chỉ gồm bảng cha, đọc theo lô keyset trên khóa chính.
+- Danh mục xuất của offboarding chỉ gồm bảng cha, đọc theo lô keyset trên khóa chính; `details.lane`
+  của audit `tenant.offboarding.purged`.
 
 ## Ngoài phạm vi
 
@@ -491,41 +495,43 @@ Trước đây: danh mục xuất gồm cả partition, và mỗi bảng đượ
 | Hai chủ của quyền đăng tri thức toàn cục                                                                                                   | Hôm nay từ chối an toàn; R2.1 không mở thêm đường xóa tài liệu toàn cục                                                                                                       | đợt sau                                        |
 | Xóa dòng outbox đã xử lý và hạn giữ của nó                                                                                                 | Hạn giữ là chủ đề không đoán và chưa ai quyết; bảng thời hạn của DO-52 không có outbox                                                                                        | đợt sau                                        |
 | Gói xuất offboarding ghi ra đĩa và tải lên theo phần, để bộ nhớ của lane không tăng theo kích thước gói                                    | Ticket 07 chỉ đọc theo lô keyset như quyết định offboarding chọn; gói zip còn dựng trong bộ nhớ, và W1 chỉ có dữ liệu giả lập (YC89)                                          | `foundations-hardening`, đợt sau               |
+| Xóa `platform.tool_executions.output` sau 30 ngày (ADR-0122 (Accepted) quyết 7) qua một hàm riêng của lane lưu giữ                         | R6.3 thu UPDATE của `dw_app` trên bảng này và không trả lại; telemetry-and-audit là chủ tệp chính sách retention và lane lưu giữ, như với payload của `run_steps`             | `telemetry-and-audit`                          |
 
 ## Kiểm soát
 
-| #    | Kiểm soát                                                       | Yêu cầu      | Test âm                                                                                                                                                                                                                                  |
-| ---- | --------------------------------------------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| FH1  | Test phủ route của grant và test tiến trình nền đỏ được         | R1.1, R1.2   | Thêm phụ thuộc ngữ cảnh grant vào `GET /api/v1/runs/{run_id}` → test phủ route đỏ; khẳng định "không còn tiến trình" trên lần quét cùng request với `sleep 300 &` → đỏ                                                                   |
-| FH2  | Xóa tài liệu chỉ trong workspace của người gọi, vector của mình | R2.1         | Qdrant thật: tenant B xóa id của A, workspace 2 xóa tài liệu workspace 1, mọi tenant xóa tài liệu toàn cục → 404, tài liệu vẫn tìm được; gỡ `tenant_id` khỏi filter tombstone → đỏ                                                       |
-| FH3  | Xóa mềm có audit cùng giao dịch                                 | R2.2         | Audit ném lỗi → tài liệu không mang `status='deleted'`; ghi audit sau commit → đỏ                                                                                                                                                        |
-| FH4  | Danh sách bộ nhớ theo clearance                                 | R2.3         | Clearance `internal` gọi `GET /api/v1/memory/items` → không có mục `confidential`; bỏ lọc → đỏ                                                                                                                                           |
-| FH5  | Dọn checkpoint không chạm tenant khác                           | R2.4         | Hai tenant chung `thread_id`, B có checkpoint mới hơn → checkpoint mới nhất của A còn; bỏ so `tenant_id` ở `newer` → đỏ                                                                                                                  |
-| FH6  | Checkpoint không dựng kiểu ngoài allowlist                      | R2.5         | Dòng có kiểu ngoài allowlist → nạp ra dict, không object nào được dựng; allowlist `True` → đỏ                                                                                                                                            |
-| FH7  | Tenant offboarding không quay lại `active`, `locked`            | R3.1, R3.2   | `unlock` tenant `offboarding` → 409, trạng thái giữ; UPDATE `offboarded → active` bằng `dw_provisioner` → trigger từ chối; gỡ trigger → đỏ                                                                                               |
-| FH8  | Khóa tenant có hiệu lực từ request kế tiếp                      | R3.3         | Cache giả trung thực, thành viên có context trong cache, khóa tenant → request kế tiếp 403; tới khi tenant-rbac/02 merge: bỏ xóa cache → đỏ; từ tenant-rbac/02: gỡ trigger `bump_access_version` trên `platform.tenants` → đỏ            |
-| FH9  | Chỉ nối qua email đã xác minh tới user chưa từng đăng nhập      | R4.1, R4.2   | Token `email_verified=false` trùng email lời mời → 403, không thêm danh tính; email đã xác minh của user đã đăng nhập → 403; gỡ kiểm → đỏ                                                                                                |
-| FH10 | Subject không khớp chéo issuer                                  | R4.3         | Issuer X, `sub` bằng subject của user chỉ biết qua issuer Y → 403, không AccessContext                                                                                                                                                   |
-| FH11 | Danh tính đăng nhập của người vận hành chỉ qua `dw_provisioner` | R4.4         | Bằng `dw_app`: INSERT danh tính đăng nhập cho người vận hành → từ chối; UPDATE danh tính → `permission denied`; DELETE danh tính đăng nhập → từ chối                                                                                     |
-| FH12 | `dw_app` không ghi bảng quyền lực                               | R5.1         | Bằng `dw_app`: INSERT `platform.platform_operators`, UPDATE `platform.plans`, UPDATE `platform.users` → `permission denied`; khôi phục một GRANT → đỏ                                                                                    |
-| FH13 | Quyền của `dw_provisioner` có một nguồn                         | R5.2         | Thêm một bảng vào danh sách của script mà migration không cấp → test so quyền đỏ                                                                                                                                                         |
-| FH14 | Policy đọc setting một lần mỗi câu lệnh                         | R5.3         | ALTER một policy về dạng theo dòng → test catalog đỏ                                                                                                                                                                                     |
-| FH15 | Công cụ có hiệu ứng chạy một lần                                | R6.1, R6.2   | Hai lời gọi `external` cùng khóa trên executor, handler ngủ 0,5 giây → handler chạy một lần; nhả bằng token cũ → claim mới còn; gỡ claim → đỏ                                                                                            |
-| FH16 | Lần gọi công cụ chỉ thêm, trạng thái có CHECK                   | R6.3         | Bằng `dw_app`: UPDATE `platform.tool_executions` → `permission denied`; INSERT `status='bogus'` → CHECK từ chối                                                                                                                          |
-| FH17 | Không có cửa sau quanh ToolExecutor                             | R6.4, R6.6   | Mục dict trong danh sách công cụ → model không nhận; agent từ factory thật với toolset rỗng → model chỉ thấy `write_todos`; thêm một công cụ dựng sẵn → đỏ                                                                               |
-| FH18 | Bí mật trong mảng bị che                                        | R6.5         | Input `{"items": [{"api_key": "sk-123"}]}` thất bại → audit `tool.failed` mang `[REDACTED]`; bỏ đệ quy vào list → đỏ                                                                                                                     |
-| FH19 | Claim mồ côi có người dọn                                       | R6.7         | Claim quá hạn → hết sau một lượt lane, claim chưa hạn còn; không đăng ký lane → đỏ                                                                                                                                                       |
-| FH20 | Giới hạn tốc độ không lách bằng bearer ngẫu nhiên               | R7.1         | `10 × L + 1` request từ một địa chỉ, mỗi request một bearer → request cuối 429; bỏ xô địa chỉ → đỏ                                                                                                                                       |
-| FH21 | Không gọi ra địa chỉ không global                               | R7.2         | Resolver giả trả `100.64.0.1`, `100.100.100.200`, `224.0.0.1`, `ff02::1`, `64:ff9b::a9fe:a9fe` → `OutboundUrlError`; vị từ cũ → đỏ                                                                                                       |
-| FH22 | Kho dữ liệu đòi xác thực                                        | R8.1, R8.2   | Settings `uat` thiếu `qdrant_api_key` → không khởi động; compose smoke gọi Qdrant không khóa → 401, Valkey không mật khẩu → `NOAUTH`                                                                                                     |
-| FH23 | Ảnh bên thứ ba ghim digest                                      | R8.3         | Gỡ `@sha256:` khỏi một `image:` → kiểm CI đỏ                                                                                                                                                                                             |
-| FH24 | Exporter không dùng vai ứng dụng                                | R8.4         | `DATA_SOURCE_NAME` dùng `dw_app` → kiểm compose đỏ; `dw_monitor` SELECT bảng tenant → `permission denied`                                                                                                                                |
-| FH25 | Run không kẹt ở `waiting_approval`                              | R9.1, R9.2   | Resume chết sau khi rời `waiting_approval`, `updated_at` lùi quá ngưỡng → lượt mới chạy; hai resume đồng thời → một chạy, một 409; bỏ compare-and-set → đỏ                                                                               |
-| FH26 | Trạng thái có CHECK theo enum                                   | R9.3         | `status='bogus'` → CHECK từ chối; thêm giá trị vào enum mà không vào CHECK → test catalog đỏ                                                                                                                                             |
-| FH27 | Outbox lùi thời gian                                            | R10.1        | Lỗi lần một → không claim lại khi `available_at` còn ở tương lai, lùi nó về quá khứ → claim lại; bỏ điều kiện `available_at` → đỏ                                                                                                        |
-| FH28 | Thư chết không bị claim lại và thấy được                        | R10.2, R10.3 | Hết lượt → `dead_at` đặt, gauge 1, không claim lại; `UndeliverableEventError` → `dead_at` ngay lần đầu; bỏ điều kiện `dead_at` → đỏ                                                                                                      |
-| FH29 | Chỉ người vận hành phát lại thư chết, có audit                  | R10.4, R10.5 | `--operator` không có trong `platform.platform_operators` → thoát 1, sự kiện vẫn mang `dead_at`, không có audit; người vận hành phát lại → sự kiện về hàng đợi và đúng một audit đứng tên người đó; bỏ kiểm người vận hành → đỏ          |
-| FH30 | Gói xuất không lặp dòng của bảng phân vùng                      | R11.1        | Bảng phân vùng thử có partition tháng và DEFAULT mà `dw_app` đọc được theo tên, mỗi nơi một dòng của tenant → mỗi dòng có đúng một lần trong kết quả xuất; test viết trước, đỏ trên mã hiện có; bỏ lọc partition khỏi danh mục xuất → đỏ |
+| #    | Kiểm soát                                                        | Yêu cầu      | Test âm                                                                                                                                                                                                                                       |
+| ---- | ---------------------------------------------------------------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| FH1  | Test phủ route của grant và test tiến trình nền đỏ được          | R1.1, R1.2   | Thêm phụ thuộc ngữ cảnh grant vào `GET /api/v1/runs/{run_id}` → test phủ route đỏ; khẳng định "không còn tiến trình" trên lần quét cùng request với `sleep 300 &` → đỏ                                                                        |
+| FH2  | Xóa tài liệu chỉ trong workspace của người gọi, vector của mình  | R2.1         | Qdrant thật: tenant B xóa id của A, workspace 2 xóa tài liệu workspace 1, mọi tenant xóa tài liệu toàn cục → 404, tài liệu vẫn tìm được; gỡ `tenant_id` khỏi filter tombstone → đỏ                                                            |
+| FH3  | Xóa mềm có audit cùng giao dịch                                  | R2.2         | Audit ném lỗi → tài liệu không mang `status='deleted'`; ghi audit sau commit → đỏ                                                                                                                                                             |
+| FH4  | Danh sách bộ nhớ theo clearance                                  | R2.3         | Clearance `internal` gọi `GET /api/v1/memory/items` → không có mục `confidential`; bỏ lọc → đỏ                                                                                                                                                |
+| FH5  | Dọn checkpoint không chạm tenant khác                            | R2.4         | Hai tenant chung `thread_id`, B có checkpoint mới hơn → checkpoint mới nhất của A còn; bỏ so `tenant_id` ở `newer` → đỏ                                                                                                                       |
+| FH6  | Checkpoint không dựng kiểu ngoài allowlist                       | R2.5         | Dòng có kiểu ngoài allowlist → nạp ra dict, không object nào được dựng; allowlist `True` → đỏ                                                                                                                                                 |
+| FH7  | Tenant offboarding không quay lại `active`, `locked`             | R3.1, R3.2   | `unlock` tenant `offboarding` → 409, trạng thái giữ; UPDATE `offboarded → active` bằng `dw_provisioner` → trigger từ chối; gỡ trigger → đỏ                                                                                                    |
+| FH8  | Khóa tenant có hiệu lực từ request kế tiếp                       | R3.3         | Cache giả trung thực, thành viên có context trong cache, khóa tenant → request kế tiếp 403; tới khi tenant-rbac/02 merge: bỏ xóa cache → đỏ; từ tenant-rbac/02: gỡ trigger `bump_access_version` trên `platform.tenants` → đỏ                 |
+| FH9  | Chỉ nối qua email đã xác minh tới user chưa từng đăng nhập       | R4.1, R4.2   | Token `email_verified=false` trùng email lời mời → 403, không thêm danh tính; email đã xác minh của user đã đăng nhập → 403; gỡ kiểm → đỏ                                                                                                     |
+| FH10 | Subject không khớp chéo issuer                                   | R4.3         | Issuer X, `sub` bằng subject của user chỉ biết qua issuer Y → 403, không AccessContext                                                                                                                                                        |
+| FH11 | Danh tính đăng nhập của người vận hành chỉ qua `dw_provisioner`  | R4.4         | Bằng `dw_app`: INSERT danh tính đăng nhập cho người vận hành → từ chối; UPDATE danh tính → `permission denied`; DELETE danh tính đăng nhập → từ chối                                                                                          |
+| FH12 | `dw_app` không ghi bảng quyền lực                                | R5.1         | Bằng `dw_app`: INSERT `platform.platform_operators`, UPDATE `platform.plans`, UPDATE `platform.users` → `permission denied`; khôi phục một GRANT → đỏ                                                                                         |
+| FH13 | Quyền của `dw_provisioner` có một nguồn                          | R5.2         | Thêm một bảng vào danh sách của script mà migration không cấp → test so quyền đỏ                                                                                                                                                              |
+| FH14 | Policy đọc setting một lần mỗi câu lệnh                          | R5.3         | ALTER một policy về dạng theo dòng → test catalog đỏ                                                                                                                                                                                          |
+| FH15 | Công cụ có hiệu ứng chạy một lần                                 | R6.1, R6.2   | Hai lời gọi `external` cùng khóa trên executor, handler ngủ 0,5 giây → handler chạy một lần; nhả bằng token cũ → claim mới còn; gỡ claim → đỏ                                                                                                 |
+| FH16 | Lần gọi công cụ chỉ thêm, trạng thái có CHECK                    | R6.3         | Bằng `dw_app`: UPDATE `platform.tool_executions` → `permission denied`; INSERT `status='bogus'` → CHECK từ chối                                                                                                                               |
+| FH17 | Không có cửa sau quanh ToolExecutor                              | R6.4, R6.6   | Mục dict trong danh sách công cụ → model không nhận; agent từ factory thật với toolset rỗng → model chỉ thấy `write_todos`; thêm một công cụ dựng sẵn → đỏ                                                                                    |
+| FH18 | Bí mật trong mảng bị che                                         | R6.5         | Input `{"items": [{"api_key": "sk-123"}]}` thất bại → audit `tool.failed` mang `[REDACTED]`; bỏ đệ quy vào list → đỏ                                                                                                                          |
+| FH19 | Claim mồ côi có người dọn                                        | R6.7         | Claim quá hạn → hết sau một lượt lane, claim chưa hạn còn; không đăng ký lane → đỏ                                                                                                                                                            |
+| FH20 | Giới hạn tốc độ không lách bằng bearer ngẫu nhiên                | R7.1         | `10 × L + 1` request từ một địa chỉ, mỗi request một bearer → request cuối 429; bỏ xô địa chỉ → đỏ                                                                                                                                            |
+| FH21 | Không gọi ra địa chỉ không global                                | R7.2         | Resolver giả trả `100.64.0.1`, `100.100.100.200`, `224.0.0.1`, `ff02::1`, `64:ff9b::a9fe:a9fe` → `OutboundUrlError`; vị từ cũ → đỏ                                                                                                            |
+| FH22 | Kho dữ liệu đòi xác thực                                         | R8.1, R8.2   | Settings `uat` thiếu `qdrant_api_key` → không khởi động; compose smoke gọi Qdrant không khóa → 401, Valkey không mật khẩu → `NOAUTH`                                                                                                          |
+| FH23 | Ảnh bên thứ ba ghim digest                                       | R8.3         | Gỡ `@sha256:` khỏi một `image:` → kiểm CI đỏ                                                                                                                                                                                                  |
+| FH24 | Exporter không dùng vai ứng dụng                                 | R8.4         | `DATA_SOURCE_NAME` dùng `dw_app` → kiểm compose đỏ; `dw_monitor` SELECT bảng tenant → `permission denied`                                                                                                                                     |
+| FH25 | Run không kẹt ở `waiting_approval`                               | R9.1, R9.2   | Resume chết sau khi rời `waiting_approval`, `updated_at` lùi quá ngưỡng → lượt mới chạy; hai resume đồng thời → một chạy, một 409; bỏ compare-and-set → đỏ                                                                                    |
+| FH26 | Trạng thái có CHECK theo enum                                    | R9.3         | `status='bogus'` → CHECK từ chối; thêm giá trị vào enum mà không vào CHECK → test catalog đỏ                                                                                                                                                  |
+| FH27 | Outbox lùi thời gian                                             | R10.1        | Lỗi lần một → không claim lại khi `available_at` còn ở tương lai, lùi nó về quá khứ → claim lại; bỏ điều kiện `available_at` → đỏ                                                                                                             |
+| FH28 | Thư chết không bị claim lại và thấy được                         | R10.2, R10.3 | Hết lượt → `dead_at` đặt, gauge 1, không claim lại; `UndeliverableEventError` → `dead_at` ngay lần đầu; bỏ điều kiện `dead_at` → đỏ                                                                                                           |
+| FH29 | Chỉ người vận hành phát lại thư chết, có audit                   | R10.4, R10.5 | `--operator` không có trong `platform.platform_operators` → thoát 1, sự kiện vẫn mang `dead_at`, không có audit; người vận hành phát lại → sự kiện về hàng đợi và đúng một audit đứng tên người đó; bỏ kiểm người vận hành → đỏ               |
+| FH30 | Gói xuất không lặp dòng của bảng phân vùng                       | R11.1        | Bảng phân vùng thử có partition tháng và DEFAULT mà `dw_app` đọc được theo tên, mỗi nơi một dòng của tenant → mỗi dòng có đúng một lần trong kết quả xuất; test viết trước, đỏ trên mã hiện có; bỏ lọc partition khỏi danh mục xuất → đỏ      |
+| FH31 | Audit của lần xóa đứng tên người yêu cầu và nêu lane đã thi hành | G8, R11.3    | Purge một tenant có yêu cầu offboarding → audit `tenant.offboarding.purged` có actor là người yêu cầu và `details.lane` bằng `offboarding`; đổi actor sang `system_actor('offboarding')` → test G8 đỏ; ghi lại `details` rỗng → test R11.3 đỏ |
 
 ## Tiêu chí xong
 
@@ -539,7 +545,9 @@ Trước đây: danh mục xuất gồm cả partition, và mỗi bảng đượ
 ## Phụ thuộc
 
 - studio-skeleton: bản ba tham số của `platform._ensure_one_partition` và việc thu mọi quyền của `dw_app`
-  trên partition (studio-skeleton:R3.1, studio-skeleton:R3.3); ticket 03 chờ studio-skeleton/01.
+  trên partition (studio-skeleton:R3.1, studio-skeleton:R3.3); ticket 03 chờ studio-skeleton/01. Test phủ
+  offboarding và `STUDIO_EXCLUSIONS` (studio-skeleton:R4.1, studio-skeleton:R4.3) dùng chính hai truy vấn
+  catalog của `SqlTenantOffboarding`, nên ticket 07 chờ studio-skeleton/01 vì cùng sửa `offboarding.py`.
 - tenant-config: cột `run_mode` của `platform.worker_runs` và đường resume dựng lại nó (tenant-config:R4.1,
   tenant-config:R4.5); ticket 06 chờ tenant-config/03 vì cùng ALTER bảng đó và cùng sửa đường resume
   (OPS-b).
@@ -548,7 +556,7 @@ Trước đây: danh mục xuất gồm cả partition, và mỗi bảng đượ
 - Seam: `ConsumerRegistry.register` và `build_retention_consumer` ở composition root của worker cho
   lane mới; `CachePort.delete_pattern` với `tenant_cache_pattern`; `classifications_for_clearance` là
   chủ duy nhất của clearance.
-- Hợp đồng: ADR-0103 (Accepted) quyết định 8; ADR-0105 (Accepted) quyết định 1; ADR-0108 (Accepted)
+- Hợp đồng: ADR-0011 (Accepted); ADR-0103 (Accepted) quyết định 8; ADR-0105 (Accepted) quyết định 1; ADR-0108 (Accepted)
   quyết định 5; ADR-0112 (Accepted) quyết định 10; ADR-0113 (Accepted) quyết định 1; ADR-0115 (Accepted)
   quyết định 5; ADR-0116 (Accepted) quyết định 3 và 7.
 - Kiểm lại khi: ADR-0103 (Accepted) đổi quyết định 8 → R4, ticket 02; FOG-34 chọn bản `deepagents` →
@@ -556,7 +564,8 @@ Trước đây: danh mục xuất gồm cả partition, và mỗi bảng đượ
   R9.3, ticket 06; phép đo của ticket 03 dưới ngưỡng → R5.3 rút, custom-objects và record-access kiểm
   lại dạng policy mà chúng bắt buộc cho bảng Studio; tenant-rbac/02 merge → R3.3, FH8, ticket 02 (ba lời
   gọi xóa cache được gỡ); studio-skeleton/01 đổi chữ ký hàm partition → ticket 03; tenant-config/03 đổi
-  đường resume → ticket 06.
+  đường resume → ticket 06; studio-skeleton/01 đổi test phủ offboarding hay `STUDIO_EXCLUSIONS` → ticket 07;
+  telemetry-and-audit đổi cách xóa `platform.tool_executions.output` → R6.3, ticket 04.
 
 ## Câu hỏi còn mở
 
@@ -635,6 +644,24 @@ Trước đây: danh mục xuất gồm cả partition, và mỗi bảng đượ
 - 23/10/2026 (agent, tạm): lô đọc của offboarding là 1.000 dòng theo khóa chính, và danh mục xuất bỏ
   partition bằng điều kiện `relispartition`, độc lập với việc thu quyền partition của studio-skeleton/01.
   Nếu sai thì: đổi hằng ở R11.2 và test của nó.
+- 24/10/2026 (Đạt): lane `offboarding` thi hành quyết định đã ghi của người vận hành, nên audit
+  `tenant.offboarding.purged` đứng tên người đó và ghi `details.lane` bằng `offboarding` (`CLAUDE.md`,
+  "Agent and tool rules"; ADR-0011 (Accepted); E:CLAUDE.md#agent-and-tool-rules~record-access:DO-13); G8
+  giữ actor như mã hôm nay, còn `details.lane` là hành vi mới nên vào R11.3. Sửa: R11, thêm R11.3, FH31,
+  Trong phạm vi, Phụ thuộc, ticket 07.
+- 24/10/2026 (Đạt): ticket 07 chờ studio-skeleton/01, còn record-access/03 và custom-objects/02 chờ ticket
+  07, để `offboarding.py` có một thứ tự sửa (C:foundations-hardening/07~record-access/03, cách thứ nhất).
+  Sửa: Phụ thuộc, ticket 07.
+- 24/10/2026 (Đạt): usage-and-limits/01 chờ ticket 03, để quyền ghi và cột của `platform.plans` đổi theo một
+  thứ tự (C:foundations-hardening/03~usage-and-limits/01). Sửa: ticket 03.
+- 24/10/2026 (agent, tạm): agent-lifecycle/01 chờ ticket 06, không theo chiều ngược, vì ticket 06 dựng
+  compare-and-set trên đường resume, nơi agent-lifecycle/01 chèn phép kiểm công tắc, và cạnh nằm ở dòng
+  Blocked by của agent-lifecycle/01 (C:agent-lifecycle/01~compliance-pdpl/03). Sửa: ticket 06. Nếu sai thì: ticket 06
+  chờ agent-lifecycle/01 và agent-lifecycle/01 bỏ cạnh của nó.
+- 24/10/2026 (Đạt): xóa `platform.tool_executions.output` sau 30 ngày (ADR-0122 (Accepted) quyết 7) là việc
+  của lane lưu giữ của telemetry-and-audit, chủ tệp chính sách retention và lane đó, qua một hàm riêng của
+  lane; R6.3 giữ và `dw_app` không nhận lại UPDATE (phát hiện vòng 2 giữa ADR-0122 (Accepted) và
+  foundations-hardening:R6.3). Sửa: Ngoài phạm vi, Phụ thuộc, ticket 04.
 
 ## Danh sách ticket
 

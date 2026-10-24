@@ -21,12 +21,12 @@ hàng W3 nằm ở Ngoài phạm vi.
   `configs/packs/` và chưa có mục `packs` ghim gói.
 - Mọi thứ có phiên bản được release manifest ghim (`CLAUDE.md:70-71`). Ràng buộc: mỗi gói nền tảng vào release
   manifest bằng phiên bản và hash.
-- Câu trả lời kiểm kê chỉ đọc lớp nền tảng (`CLAUDE.md:227-228`). Ràng buộc: danh mục gói không phụ thuộc người hỏi.
+- Câu trả lời kiểm kê chỉ đọc lớp nền tảng (`CLAUDE.md:231-232`). Ràng buộc: danh mục gói không phụ thuộc người hỏi.
 - `TenantOverlay` là lớp nền tảng cộng lớp công ty, không bao giờ lấy ngang sang công ty khác
   (`packages/python/dw_kernel/src/dw_kernel/overlay.py:29-34`,
   `packages/python/dw_agent_runtime/tests/unit/test_tenant_overlay.py:72`). Ràng buộc: gói không là một lớp overlay;
   Bản sao từ gói là dữ liệu của công ty.
-- Entitlement tách khỏi phân quyền (`CLAUDE.md:191`); gói dịch vụ nằm trong mã ở `DEFAULT_PLANS`
+- Entitlement tách khỏi phân quyền (`CLAUDE.md:195`); gói dịch vụ nằm trong mã ở `DEFAULT_PLANS`
   (`packages/python/dw_platform/src/dw_platform/application/entitlement.py:17-36`) và được hỏi qua `has_feature`
   (`packages/python/dw_platform/src/dw_platform/application/entitlement.py:45-49`). Ràng buộc: quyền cài và
   entitlement `studio.pack.<key>` là hai lần kiểm riêng.
@@ -124,18 +124,20 @@ Phiên bản mới của gói đến như đề xuất vào bản nháp, không 
 
 ## Ngoài phạm vi
 
-| Việc                                                                | Vì sao                                                                                                                                                | Chủ                             |
-| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
-| Định dạng gói `dw.package/v1` và gói nền tảng trong `configs/packs` | Không có ticket W1; R1 cắt ticket khi W2 bắt đầu                                                                                                      | domain-packs, đợt sau (W2)      |
-| Cài gói nền tảng vào tenant thành bản sao có nguồn gốc              | R2, R3; cần vỏ thành phần và loại `object`, quy trình, trợ lý đã có                                                                                   | domain-packs, đợt sau (W2)      |
-| Gói Marketing 1.0.0 và trình "Bắt đầu với Marketing"                | R4; nguồn là script gieo W1 của marketing-pilot/02                                                                                                    | domain-packs, đợt sau (W2)      |
-| Xuất và nhập gói của tenant; cập nhật bằng đề xuất ba bên           | R5, R6; cần chỉ mục phụ thuộc và nguyên mẫu đề xuất ba bên                                                                                            | domain-packs, đợt sau (W2)      |
-| Đưa gói từ Công ty thử nghiệm lên; ký gói cho data plane tự host    | Cần Công ty thử nghiệm (DO-62: chỉ người vận hành tạo, chỉ dữ liệu giả lập, hạn mức riêng không trừ vào công ty chính) và data plane do khách tự host | domain-packs, đợt sau (W3)      |
-| Lát gieo Lead và Campaign bằng script gọi API công khai             | W1 dựng bằng script, chưa cần định dạng gói                                                                                                           | marketing-pilot (W1, ticket 02) |
-| Nội dung đối tượng, quy trình, trợ lý của gói Marketing             | marketing-pilot định nghĩa; spec này đóng gói                                                                                                         | marketing-pilot                 |
-| Chợ gói của bên thứ ba; công ty bán gói cho công ty khác            | Không có nhu cầu ở v1                                                                                                                                 | không làm                       |
-| Tự cập nhật phiên bản Đang dùng                                     | Cập nhật luôn là đề xuất vào bản nháp (ADR-0100 (Accepted) quyết định 2)                                                                              | không làm                       |
-| Dữ liệu mẫu cài vào công ty chính                                   | Chỉ dữ liệu tổng hợp, chỉ ở Công ty thử nghiệm                                                                                                        | không làm                       |
+| Việc                                                                     | Vì sao                                                                                                                                                                                                                                                  | Chủ                                      |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| Định dạng gói `dw.package/v1` và gói nền tảng trong `configs/packs`      | Không có ticket W1; R1 cắt ticket khi W2 bắt đầu                                                                                                                                                                                                        | domain-packs, đợt sau (W2)               |
+| Cài gói nền tảng vào tenant thành bản sao có nguồn gốc                   | R2, R3; cần vỏ thành phần và loại `object`, quy trình, trợ lý đã có                                                                                                                                                                                     | domain-packs, đợt sau (W2)               |
+| Gói Marketing 1.0.0 và trình "Bắt đầu với Marketing"                     | R4; nguồn là script gieo W1 của marketing-pilot/02                                                                                                                                                                                                      | domain-packs, đợt sau (W2)               |
+| Xuất và nhập gói của tenant; cập nhật bằng đề xuất ba bên                | R5, R6; cần chỉ mục phụ thuộc và nguyên mẫu đề xuất ba bên                                                                                                                                                                                              | domain-packs, đợt sau (W2)               |
+| Đưa gói từ Công ty thử nghiệm lên; ký gói cho data plane tự host         | Cần Công ty thử nghiệm (DO-62: chỉ người vận hành tạo, chỉ dữ liệu giả lập, hạn mức riêng không trừ vào công ty chính) và data plane do khách tự host                                                                                                   | domain-packs, đợt sau (W3)               |
+| W3: gói nghiệp vụ Bán hàng, gói thứ hai, nối tiếp lead của gói Marketing | N9; cần gói Marketing 1.0 và Trường tham chiếu (W2) chạy trước                                                                                                                                                                                          | domain-packs, đợt sau (W3)               |
+| Gói nghiệp vụ Nhân sự, Mua hàng và Tài chính                             | N9; đi sau gói Bán hàng, chưa có đợt; cần nguyên liệu chung có chủ: kiểu trường tệp đính kèm (custom-objects, W3), duyệt song song k trên n (workflow-engine và workflow-nodes, W3), bảng quyết định hay ma trận duyệt theo ngưỡng (workflow-nodes, W3) | domain-packs, đợt sau (sau gói Bán hàng) |
+| Lát gieo Lead và Campaign bằng script gọi API công khai                  | W1 dựng bằng script, chưa cần định dạng gói                                                                                                                                                                                                             | marketing-pilot (W1, ticket 02)          |
+| Nội dung đối tượng, quy trình, trợ lý của gói Marketing                  | marketing-pilot định nghĩa; spec này đóng gói                                                                                                                                                                                                           | marketing-pilot                          |
+| Chợ gói của bên thứ ba; công ty bán gói cho công ty khác                 | Không có nhu cầu ở v1                                                                                                                                                                                                                                   | không làm                                |
+| Tự cập nhật phiên bản Đang dùng                                          | Cập nhật luôn là đề xuất vào bản nháp (ADR-0100 (Accepted) quyết định 2)                                                                                                                                                                                | không làm                                |
+| Dữ liệu mẫu cài vào công ty chính                                        | Chỉ dữ liệu tổng hợp, chỉ ở Công ty thử nghiệm                                                                                                                                                                                                          | không làm                                |
 
 ## Kiểm soát
 
@@ -199,6 +201,10 @@ Phiên bản mới của gói đến như đề xuất vào bản nháp, không 
 - 23/10/2026 (agent, tạm): A:domain-packs:R3.1~tenant-config:R2.2: spec này cấp registry Tiền tố dành riêng, route
   tạo thành phần của tenant-config gọi nó; luật bật sau khi trả lời Q2. Sửa: Phụ thuộc. Nếu sai thì: trình cài của
   spec này tự kiểm tiền tố và tenant-config không đổi.
+- 24/10/2026 (Đạt): N9: gói nghiệp vụ thứ hai là Bán hàng ở W3, nối tiếp lead của gói Marketing; Nhân sự, Mua hàng
+  và Tài chính đi sau gói Bán hàng, cùng nguyên liệu chung có chủ (kiểu trường tệp đính kèm của custom-objects;
+  duyệt song song k trên n của workflow-engine và workflow-nodes; bảng quyết định hay ma trận duyệt theo ngưỡng của
+  workflow-nodes; đều W3); DO-25 giữ phương án (a). Sửa: Ngoài phạm vi.
 
 ## Danh sách ticket
 

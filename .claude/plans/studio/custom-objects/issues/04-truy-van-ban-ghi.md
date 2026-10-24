@@ -67,7 +67,7 @@ dịch này qua `RecordService`.
 
 - `packages/python/dw_kernel/src/dw_kernel/pagination.py:108-118`; `packages/python/dw_kernel/src/dw_kernel/pagination.py:47-48`;
   spec: R8.1, R8.3.
-- `CLAUDE.md:284-287`; spec: R8.9.
+- `CLAUDE.md:290-293`; spec: R8.9.
 - `packages/python/dw_platform/src/dw_platform/adapters/persistence/tenant_members.py:46`; spec: R8.2.
 - ADR-0108 (Accepted) quyết định 2; ADR-0107 (Accepted) quyết định 2, 7; ADR-0106 (Accepted) quyết định 4.
 

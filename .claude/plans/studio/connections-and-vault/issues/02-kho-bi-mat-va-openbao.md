@@ -19,7 +19,9 @@ kho khóa ở ticket 06 (DO-47.1). Gộp từ B8a-connections connections-and-va
     - `secret_envelopes`: `id` uuid, `tenant_id` FK `platform.tenants` ON DELETE CASCADE,
       `connection_id` uuid NULL, `alg text` CHECK (`aes-256-gcm`), `nonce bytea` CHECK độ dài 12,
       `kek_ref text`, `ciphertext bytea` CHECK độ dài ≤ 64 KiB, `aad_hint text` CHECK độ dài ≤ 64,
-      `kek_version int`, timestamps; cung loại trừ chủ thể qua CHECK;
+      `kek_version int`, timestamps; loại trừ chủ thể qua CHECK `num_nonnulls(connection_id) = 1`, mà mỗi
+      chủ thể mới nới rộng bằng một cột FK NULL trong migration của ticket thêm nó (`inbound_endpoint_id` ở
+      workflow-triggers/02, ADR-0115 (Accepted) quyết 1);
     - `connections`: toàn cột của spec (bao gồm `share_scope` CHECK, `status` CHECK không DEFAULT,
       `owning_workspace_id` NOT NULL với FK ghép `(tenant_id, owning_workspace_id)` tới `platform.workspaces`
       ON DELETE RESTRICT trên `uq_workspaces_tenant_id_id` của org-and-principals/01, index danh sách);
@@ -79,3 +81,6 @@ kho khóa ở ticket 06 (DO-47.1). Gộp từ B8a-connections connections-and-va
   ticket 06. Thêm org-and-principals/01: FK ghép `(tenant_id, owning_workspace_id)` cần
   `uq_workspaces_tenant_id_id`, mà org-and-principals/01 là chủ duy nhất (DO-01); thêm studio-skeleton/01 vì
   hai bảng ghi dòng vào danh sách bảng toàn tenant mà ticket đó dựng.
+- 2026-10-24 (agent): theo quyết định Đạt ngày 24/10/2026 (ADR-0115 (Accepted) quyết 1): CHECK
+  `num_nonnulls` của bước 1 là chỗ mỗi chủ thể mới nới rộng; cột `inbound_endpoint_id` và CHECK nới rộng thuộc
+  migration của workflow-triggers/02, ticket đó chờ ticket này.

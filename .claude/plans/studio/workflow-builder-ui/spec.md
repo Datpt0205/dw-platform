@@ -6,17 +6,17 @@ Duyệt: chưa
 Sẵn sàng: chưa kiểm
 
 Người dựng không viết mã vẽ một Quy trình trên một Sơ đồ, cấu hình mỗi Bước bằng biểu mẫu antd sinh từ
-schema, viết Biểu thức với một bộ Chọn biến có kiểu, chạy thử ở chế độ Mô phỏng và gửi kiểm định. Sơ đồ
+schema, viết Biểu thức với một bộ Chọn biến có kiểu, chạy mô phỏng và gửi kiểm định. Sơ đồ
 là ngoại lệ duy nhất của luật "chỉ antd": antd không có canvas đồ thị, nên `@xyflow/react` cùng dagre
 vào `apps/web` chỉ ở đường dẫn canvas `apps/web/app/studio/**/canvas/**`, có test giữ ranh giới. Biểu thức tính ở máy chủ, lỗi kiểm về từ
 bộ kiểm của máy chủ; trang builder không bao giờ tự phát hành. Lát W1 là canvas tối thiểu đủ dựng, chạy
-thử và gửi kiểm định quy trình Tiếp nhận lead.
+mô phỏng và gửi kiểm định quy trình Tiếp nhận lead.
 
 ## Hiện trạng (đã kiểm ở `ab33703` ngày 23/10/2026)
 
 - `apps/web` dùng `antd` ^6.6.5 và không có thư viện đồ thị hay layout nào (`apps/web/package.json:20`).
   Thiếu: một Sơ đồ đồ thị.
-- `CLAUDE.md:137` bắt UI dùng `antd` và không gì khác; guard là một denylist của hệ đã gỡ
+- `CLAUDE.md:140` bắt UI dùng `antd` và không gì khác; guard là một denylist của hệ đã gỡ
   (`apps/web/lib/__tests__/antd-only.test.ts:20`) cộng ESLint `no-restricted-imports`. Một thư viện
   canvas sẽ qua cả hai mà vẫn trái `CLAUDE.md` — một check không thấy được phần nó phủ
   (`failure-modes.md` #0). Ràng buộc: ngoại lệ phải đổi test, không chỉ đổi chữ.
@@ -59,9 +59,9 @@ Người dựng cấu hình Bước bằng biểu mẫu, ở màn hẹp và ch�
 - R2.5 Mỗi thao tác chuột trên Sơ đồ PHẢI có một đường bàn phím tương đương, kể cả thêm, nối và xóa Bước.
 - R2.6 Dạng danh sách PHẢI đồng bộ với Sơ đồ và dùng được với trình đọc màn hình tiếng Việt.
 
-### R3 — Ô biểu thức, lỗi tại chỗ, gửi kiểm định, chạy thử Mô phỏng
+### R3 — Ô biểu thức, lỗi tại chỗ, gửi kiểm định, chạy mô phỏng
 
-Biểu thức kiểm ở máy chủ, lỗi về đúng Bước, chạy thử không rời chế độ an toàn, và trang builder không
+Biểu thức kiểm ở máy chủ, lỗi về đúng Bước, chạy mô phỏng không rời chế độ an toàn, và trang builder không
 tự phát hành (YC33, YC40; BUI-03, BUI-04, BUI-06).
 
 - R3.1 KHI người dựng gõ trong ô Biểu thức, Chọn biến PHẢI chỉ hiện biến có kiểu của Bước trội tại vị
@@ -74,11 +74,14 @@ tự phát hành (YC33, YC40; BUI-03, BUI-04, BUI-06).
   bị khóa.
 - R3.5 Trang builder PHẢI không bao giờ tự phát hành; nó chỉ gửi kiểm định, còn vòng đời quyết định việc
   phát hành.
-- R3.6 KHI người dựng chạy thử, trang builder PHẢI gửi chế độ `simulate` tới route chạy thử và hiện lỗi 422
-  của route nếu có; quyền và chế độ được nhận là của workflow-triggers:R2.2, workflow-triggers:R2.3 và
+- R3.6 KHI người dựng chạy mô phỏng, trang builder PHẢI gửi chế độ `simulate` tới route `.../test-runs` và hiện lỗi
+  422 của route nếu có; quyền và chế độ được nhận là của workflow-triggers:R2.2, workflow-triggers:R2.3 và
   workflow-triggers:R2.6.
-- R3.7 KHI chạy thử trả kết quả từng Bước chạy, trang builder PHẢI hiện "Đã ẩn" cho mỗi trường người
+- R3.7 KHI lượt mô phỏng trả kết quả từng Bước chạy, trang builder PHẢI hiện "Đã ẩn" cho mỗi trường người
   xem không đọc được, không rò giá trị trong DOM hay payload mạng.
+- R3.8 KHI người dựng chạy mô phỏng một Quy trình có Bước phê duyệt, biểu mẫu chạy mô phỏng PHẢI đòi một lựa chọn
+  duyệt hay từ chối cho mỗi Bước phê duyệt và gửi các lựa chọn đó trong thân yêu cầu, để không Bước phê duyệt nào
+  chờ người quyết (workflow-triggers:R2.7, workflow-triggers:R2.8, workflow-nodes:R9.9).
 
 ## Trong phạm vi
 
@@ -86,49 +89,52 @@ tự phát hành (YC33, YC40; BUI-03, BUI-04, BUI-06).
 - `apps/web/lib/workflow-graph.ts`: mô-đun thuần, không import gói nào: tài liệu `dw.workflow/v1` ↔ Bước và
   Đường nối, chèn giữa, nối Nhánh ra, xóa, thứ tự phím theo đồ thị, diff theo id Bước. Hàm bố cục dagre nằm
   dưới `apps/web/app/studio/**/canvas/**`.
-- Ô Biểu thức với Chọn biến có kiểu; huy hiệu lỗi trên Bước; nút gửi kiểm định; bảng chạy thử.
+- Ô Biểu thức với Chọn biến có kiểu; huy hiệu lỗi trên Bước; nút gửi kiểm định; biểu mẫu và bảng chạy mô phỏng,
+  với một lựa chọn duyệt hay từ chối cho mỗi Bước phê duyệt.
 - Dạng danh sách (antd `Tree`) đồng bộ với Sơ đồ.
 - Ngoại lệ antd-only: hai mục `EXCEPTIONS` `{module, glob, adr}` trong allowlist của `antd-only.test.ts`
   (studio-skeleton/03 đổi guard thành allowlist) và override ESLint.
 
 ## Ngoài phạm vi
 
-| Việc                                                                                           | Vì sao                                                        | Chủ                                 |
-| ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | ----------------------------------- |
-| Danh sách Quy trình và điều hướng `/studio/*`                                                  | Khung và điều hướng Studio                                    | `studio-skeleton`                   |
-| Sổ đăng ký loại bước, API `node-types`, `/expressions/check`, `draft/scope`, bộ dựng mẫu       | Loại bước là mã nền tảng (ADR-0112 (Accepted))                | `workflow-nodes`                    |
-| Tài liệu `dw.workflow/v1`, bộ kiểm khi gửi kiểm định và bảng mã `wf.*`, máy chạy của Quy trình | Hợp đồng và máy chạy của Quy trình                            | `workflow-engine`                   |
-| Route chạy thử, quyền và chế độ chạy thử                                                       | Hợp đồng duy nhất của route (workflow-triggers:R2.3; DO-26.1) | `workflow-triggers`                 |
-| Thư viện biểu đồ cho dashboard                                                                 | Đạt 23/10/2026: không thư viện biểu đồ nào ở v1 (DO-42)       | không làm ở v1                      |
-| Màn "Lịch sử chạy" và `run_steps`                                                              | Đọc từ Postgres dưới RLS (ADR-0122 (Accepted))                | `telemetry-and-audit`               |
-| Vòng đời và màn duyệt phát hành                                                                | Giai đoạn và cổng phát hành (ADR-0120 (Accepted))             | `agent-lifecycle`                   |
-| Biểu mẫu bản ghi                                                                               | Thuộc trình bày của đối tượng                                 | `custom-objects`                    |
-| Lịch sử chạy trên Sơ đồ                                                                        | B7b-nodes workflow-builder-ui 09                              | đợt sau (W2, `workflow-builder-ui`) |
-| Phiên bản và so sánh từng Bước, khôi phục thành Nháp                                           | B7b-nodes workflow-builder-ui 10                              | đợt sau (W2, `workflow-builder-ui`) |
-| Trình soạn schema không cần code, chọn người duyệt                                             | B7b-nodes workflow-builder-ui 11                              | đợt sau (W2, `workflow-builder-ui`) |
-| Trợ lý dựng Quy trình bằng AI                                                                  | B7b-nodes workflow-builder-ui 12                              | đợt sau (W3, `workflow-builder-ui`) |
+| Việc                                                                                                                                                      | Vì sao                                                                                                                                                                                                        | Chủ                                                    |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| Danh sách Quy trình và điều hướng `/studio/*`                                                                                                             | Khung và điều hướng Studio                                                                                                                                                                                    | `studio-skeleton`                                      |
+| Sổ đăng ký loại bước, API `node-types`, `/expressions/check`, `draft/scope`, bộ dựng mẫu                                                                  | Loại bước là mã nền tảng (ADR-0112 (Accepted))                                                                                                                                                                | `workflow-nodes`                                       |
+| Tài liệu `dw.workflow/v1`, bộ kiểm khi gửi kiểm định và bảng mã `wf.*`, máy chạy của Quy trình                                                            | Hợp đồng và máy chạy của Quy trình                                                                                                                                                                            | `workflow-engine`                                      |
+| Route `.../test-runs`, quyền và chế độ của chạy mô phỏng                                                                                                  | Hợp đồng duy nhất của route (workflow-triggers:R2.3; DO-26.1)                                                                                                                                                 | `workflow-triggers`                                    |
+| Thư viện biểu đồ cho dashboard và báo cáo                                                                                                                 | Đạt 23/10/2026: không thư viện biểu đồ nào ở v1 (DO-42); báo cáo đi qua API tổng hợp của nền tảng ở W3 (ADR-0127 (Accepted)), và một thư viện biểu đồ cần ADR ngoại lệ riêng theo ADR-0101 (Accepted) quyết 6 | không làm ở v1                                         |
+| W2: nhãn Chặng trên Bước, một thuộc tính của Bước trong `dw.workflow/v1` mà Sơ đồ và Dạng danh sách đọc để nhóm và thu gọn, không mang nghĩa chạy (YC102) | ADR-0126 (Accepted); trình biên dịch không đọc nhãn, nên hai tài liệu chỉ khác nhãn biên dịch ra cùng đồ thị                                                                                                  | đợt sau (W2, `workflow-builder-ui`); `workflow-engine` |
+| Màn "Lịch sử chạy" và `run_steps`                                                                                                                         | Đọc từ Postgres dưới RLS (ADR-0122 (Accepted))                                                                                                                                                                | `telemetry-and-audit`                                  |
+| Vòng đời và màn duyệt phát hành                                                                                                                           | Giai đoạn và cổng phát hành (ADR-0120 (Accepted))                                                                                                                                                             | `agent-lifecycle`                                      |
+| Biểu mẫu bản ghi                                                                                                                                          | Thuộc trình bày của đối tượng                                                                                                                                                                                 | `custom-objects`                                       |
+| Lịch sử chạy trên Sơ đồ                                                                                                                                   | B7b-nodes workflow-builder-ui 09                                                                                                                                                                              | đợt sau (W2, `workflow-builder-ui`)                    |
+| Phiên bản và so sánh từng Bước, khôi phục thành Nháp                                                                                                      | B7b-nodes workflow-builder-ui 10                                                                                                                                                                              | đợt sau (W2, `workflow-builder-ui`)                    |
+| Trình soạn schema không cần code, chọn người duyệt                                                                                                        | B7b-nodes workflow-builder-ui 11                                                                                                                                                                              | đợt sau (W2, `workflow-builder-ui`)                    |
+| Trợ lý dựng Quy trình bằng AI                                                                                                                             | B7b-nodes workflow-builder-ui 12                                                                                                                                                                              | đợt sau (W3, `workflow-builder-ui`)                    |
 
 ## Màn hình
 
 - `/studio/workflows/[id]/builder` (người giữ `studio.workflows.edit`): ba cột bảng Loại bước, Sơ đồ,
   cấu hình. Trạng thái: xem và sửa Nháp, tự lưu ("Đang lưu… / Đã lưu / Lưu thất bại"), huy hiệu lỗi
-  trên Bước, chạy thử `simulate` với kết quả từng Bước chạy, nút Gửi kiểm định (khóa có lý do). Dưới `lg`: cột cấu
+  trên Bước, chạy mô phỏng (`simulate`) với một lựa chọn duyệt hay từ chối cho mỗi Bước phê duyệt và kết quả từng
+  Bước chạy, nút Gửi kiểm định (khóa có lý do). Dưới `lg`: cột cấu
   hình thành Drawer. Ở 320 px: không cuộn ngang. Dạng danh sách là đường cho trình đọc màn hình, đồng
   bộ với Sơ đồ. Giai đoạn vòng đời hiện ở đầu trang (đọc từ `agent-lifecycle`); trang không tự phát
   hành.
 
 ## Kiểm soát
 
-| #   | Kiểm soát                                                                                                                   | Yêu cầu    | Test âm                                                                                                                                            |
-| --- | --------------------------------------------------------------------------------------------------------------------------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| BU1 | Hai gói đồ thị chỉ ở `apps/web`, chỉ tệp builder import                                                                     | R1.2       | Import từ `app/approvals` → `antd-only.test.ts` đỏ; `@dw/ui` khai báo gói → đỏ                                                                     |
-| BU2 | Không tính Biểu thức trong trình duyệt                                                                                      | R3.2       | Thư viện CEL có mặt trong bundle route builder → test manifest đỏ                                                                                  |
-| BU3 | Nút Gửi kiểm định khóa có lý do; máy chủ vẫn từ chối; builder không tự phát hành                                            | R3.3, R3.5 | Gửi kiểm định một Nháp lỗi qua API → 422; không đường nào trong builder gọi phát hành                                                              |
-| BU4 | Tự lưu dùng `If-Match`                                                                                                      | R2.4       | Hai tab → 412, nội dung đang gõ giữ nguyên                                                                                                         |
-| BU5 | Chạy thử từ builder chỉ gửi `simulate`; route vẫn từ chối `live` và `test` (workflow-triggers:R2.2, workflow-triggers:R2.6) | R3.6       | Test thành phần: builder không gửi chế độ nào khác `simulate`; gọi thẳng route với `live` → 422; bỏ giới hạn chế độ ở builder → test thành phần đỏ |
-| BU6 | Kết quả Bước chạy che theo bảo mật trường                                                                                   | R3.7       | Người không đọc được `phone` không thấy số trong DOM và trong mạng; gỡ che → test đỏ                                                               |
-| BU7 | Mọi thao tác chuột có đường bàn phím; Dạng danh sách cho trình đọc màn hình                                                 | R2.5, R2.6 | Playwright dựng một Quy trình chỉ bằng bàn phím                                                                                                    |
-| BU8 | Không lưu vị trí Bước                                                                                                       | R1.4       | Kéo một Bước không đổi tài liệu, Mã băm nội dung không đổi                                                                                         |
+| #   | Kiểm soát                                                                                                                        | Yêu cầu    | Test âm                                                                                                                                            |
+| --- | -------------------------------------------------------------------------------------------------------------------------------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| BU1 | Hai gói đồ thị chỉ ở `apps/web`, chỉ tệp builder import                                                                          | R1.2       | Import từ `app/approvals` → `antd-only.test.ts` đỏ; `@dw/ui` khai báo gói → đỏ                                                                     |
+| BU2 | Không tính Biểu thức trong trình duyệt                                                                                           | R3.2       | Thư viện CEL có mặt trong bundle route builder → test manifest đỏ                                                                                  |
+| BU3 | Nút Gửi kiểm định khóa có lý do; máy chủ vẫn từ chối; builder không tự phát hành                                                 | R3.3, R3.5 | Gửi kiểm định một Nháp lỗi qua API → 422; không đường nào trong builder gọi phát hành                                                              |
+| BU4 | Tự lưu dùng `If-Match`                                                                                                           | R2.4       | Hai tab → 412, nội dung đang gõ giữ nguyên                                                                                                         |
+| BU5 | Chạy mô phỏng từ builder chỉ gửi `simulate`; route vẫn từ chối `live` và `test` (workflow-triggers:R2.2, workflow-triggers:R2.6) | R3.6       | Test thành phần: builder không gửi chế độ nào khác `simulate`; gọi thẳng route với `live` → 422; bỏ giới hạn chế độ ở builder → test thành phần đỏ |
+| BU6 | Kết quả Bước chạy che theo bảo mật trường                                                                                        | R3.7       | Người không đọc được `phone` không thấy số trong DOM và trong mạng; gỡ che → test đỏ                                                               |
+| BU7 | Mọi thao tác chuột có đường bàn phím; Dạng danh sách cho trình đọc màn hình                                                      | R2.5, R2.6 | Playwright dựng một Quy trình chỉ bằng bàn phím                                                                                                    |
+| BU8 | Không lưu vị trí Bước                                                                                                            | R1.4       | Kéo một Bước không đổi tài liệu, Mã băm nội dung không đổi                                                                                         |
 
 ## Tiêu chí xong
 
@@ -148,16 +154,19 @@ tự phát hành (YC33, YC40; BUI-03, BUI-04, BUI-06).
   `.claude/plans/studio/workflow-nodes/issues/03-pham-vi-bien-va-buoc-logic.md`.
 - `workflow-engine` (batch 2, đang viết song song): tài liệu `dw.workflow/v1` và bảng mã `wf.*` mà trang
   builder gắn lỗi về Bước (workflow-engine:R2.11).
-- `workflow-triggers`: route chạy thử, quyền `studio.workflows.test` và chế độ được nhận (workflow-triggers:R2.2,
-  workflow-triggers:R2.3, workflow-triggers:R2.6;
+- `workflow-triggers`: route `.../test-runs`, quyền `studio.workflows.test`, chế độ được nhận và quyết định giả lập
+  cho mỗi Bước phê duyệt trong thân (workflow-triggers:R2.2, workflow-triggers:R2.3, workflow-triggers:R2.6,
+  workflow-triggers:R2.7, workflow-triggers:R2.8;
   `.claude/plans/studio/workflow-triggers/issues/01-so-kich-hoat-chay-tay-va-danh-tinh.md`).
+- `workflow-nodes`: Bước phê duyệt của lượt mô phỏng đi theo quyết định giả lập, không chờ người
+  (workflow-nodes:R9.9).
 - `tenant-config`: Chế độ chạy do máy chủ đặt (tenant-config:R4.1), Mô phỏng chặn tác động
   (tenant-config:R5.1); Nháp với ETag.
 - `telemetry-and-audit` (batch 2): `run_steps` cho bảng chạy thử và lớp phủ.
 - `agent-lifecycle` (batch 2): giai đoạn vòng đời và cổng phát hành mà builder không tự gọi.
 - Kiểm lại khi: `workflow-nodes` đổi hình API `node-types`/`/expressions/check`/`draft/scope`;
-  `workflow-engine` đổi hợp đồng `dw.workflow/v1` hay `workflow-triggers` đổi route chạy thử → kiểm lại
-  01-03; W2 mở chế độ `test` → R3.6, BU5, ticket 03.
+  `workflow-engine` đổi hợp đồng `dw.workflow/v1` hay `workflow-triggers` đổi route `.../test-runs` hay hình của
+  quyết định giả lập → kiểm lại 01-03; W2 mở chế độ `test` → R3.6, R3.8, BU5, ticket 03.
 
 ## Câu hỏi còn mở
 
@@ -205,6 +214,17 @@ tự phát hành (YC33, YC40; BUI-03, BUI-04, BUI-06).
   thử dẫn workflow-triggers:R2.2, workflow-triggers:R2.3, workflow-triggers:R2.6 thay tenant-config:R4.1, và
   Phụ thuộc nêu workflow-triggers.
   Sửa: Phụ thuộc, ticket 03.
+- 24/10/2026 (Đạt): N2: biểu mẫu chạy mô phỏng đòi người thử chọn duyệt hay từ chối cho mỗi Bước phê duyệt và gửi
+  các lựa chọn đó trong thân yêu cầu, nên không Bước phê duyệt nào của lượt mô phỏng chờ người quyết; dòng này thay
+  câu "người duyệt trong lượt chạy thử là chính người thử" của ticket 03. Sửa: R3.8, Trong phạm vi, Màn hình, Phụ
+  thuộc, ticket 03.
+- 24/10/2026 (Đạt): lượt chế độ `simulate` gọi là chạy mô phỏng, "Chạy thử" chỉ gọi chế độ `test`
+  (G:CONTEXT.md#run-mode~workflow-triggers:R2.3). Sửa: đoạn mở đầu, R3, R3.6, R3.7, Ngoài phạm vi, Màn hình, BU5.
+- 24/10/2026 (Đạt): Biểu thức được kiểm kiểu lúc gửi kiểm định, không "khi phát hành"; dòng này thay cách gọi của
+  dòng 23/10/2026 về bố cục ba cột (G:requirements.md:YC40~workflow-builder-ui:quyết-định). Sửa: Quyết định.
+- 24/10/2026 (Đạt): N5 và ADR-0126 (Accepted): nhãn Chặng trên Bước, chỉ để nhóm và thu gọn Sơ đồ, là W2 của spec
+  này (YC102). N10: báo cáo đi qua API tổng hợp của nền tảng ở W3 (ADR-0127 (Accepted)), và một thư viện biểu đồ cần
+  ADR ngoại lệ riêng theo ADR-0101 (Accepted) quyết 6. Sửa: Ngoài phạm vi.
 
 ## Danh sách ticket
 

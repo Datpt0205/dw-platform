@@ -104,10 +104,15 @@ Một tin marketing tới một người chỉ rời đi khi qua Sàn gửi tin 
   và một sự kiện `marketing.sent`.
 - R3.4 KHI một người bấm link hủy đăng ký, route công khai hủy đăng ký PHẢI ghi một dòng Danh sách chặn gửi
   trong vòng 5 phút, để Sàn gửi tin kiểm lại một tin đang chờ trước khi gửi (từ khóa hủy trên Zalo là W2).
-- R3.5 NẾU một overlay công ty đặt Giới hạn tần suất gửi hay Khung giờ không gửi lỏng hơn Sàn gửi tin, THÌ
-  bộ nạp overlay PHẢI trả 422 và không nhận overlay.
+- R3.5 NẾU một overlay công ty đặt Giới hạn tần suất gửi, Khung giờ không gửi hay số người nhận tối đa mỗi lượt
+  lỏng hơn Sàn gửi tin, THÌ bộ nạp overlay PHẢI trả 422 và không nhận overlay.
 - R3.6 NẾU `GET /api/v1/public/unsubscribe/{token}` nhận một token sai chữ ký HMAC, THÌ route công khai
   PHẢI trả 404 và không ghi dòng nào, không lộ địa chỉ có tồn tại hay không.
+- R3.7 KHI Sàn gửi tin chặn một tin, ToolExecutor PHẢI ghi một dòng nhật ký gửi với `outcome` `blocked` và lý do
+  chặn trong cùng giao dịch với `marketing.send_refused`, vì ở W1 mỗi Tương tác là một dòng nhật ký gửi (N4).
+- R3.8 NẾU một lượt chạy gốc đã gửi tới số người nhận tối đa mỗi lượt (200 ở thí điểm, số tạm UNVERIFIED, hay số
+  thấp hơn công ty đặt) mà một tin tới thêm một người nhận khác, THÌ ToolExecutor PHẢI trả
+  `blocked:recipient_cap` và không gọi nhà cung cấp (ADR-0124 (Accepted) quyết 6).
 
 ### R4 — Phân tích bộ ba nguy hiểm khi gửi kiểm định
 
@@ -134,17 +139,21 @@ dữ liệu riêng và tác động ra ngoài phải qua người trước tác 
 ### R5 — Lưu giữ cho kho dữ liệu cá nhân của lát, dẫn Nghị định 356
 
 Mỗi kho dữ liệu cá nhân lát này thêm có một thời hạn và một bộ xóa, và dẫn chiếu đổi từ Nghị định 13/2023
-sang Nghị định 356 (YC88). Lát này nâng `retention@1.8.0` của telemetry-and-audit lên `1.9.0`; sự kiện vào
-Data Hub do telemetry-and-audit khai (DO-52).
+sang Nghị định 356 (YC88). Lát này thêm dòng của kho mình vào tệp chính sách retention theo định dạng khóa
+`schema.table` của telemetry-and-audit (telemetry-and-audit:R5.6): ticket 04 thêm hai bảng `append_only` trong
+cùng thay đổi đăng ký, ticket 06 thêm phần còn lại; sự kiện vào Data Hub do telemetry-and-audit khai (DO-52).
 
 - R5.1 ĐỐI VỚI mỗi kho dữ liệu cá nhân mới của lát (Bản ghi đồng ý, Danh sách chặn gửi, nhật ký gửi
-  marketing, hội thoại), `configs/policies/retention@1.9.0.yaml` PHẢI khai một thời hạn và một bộ xóa đã
-  đăng ký.
+  marketing, hội thoại 90 ngày), tệp chính sách retention đang ghim PHẢI khai dưới khóa của kho một thời hạn và
+  một bộ xóa đã đăng ký.
 - R5.2 NẾU một kho dữ liệu cá nhân không có bộ xóa đăng ký, THÌ test tập bộ xóa PHẢI đỏ.
-- R5.3 Chú thích thời hạn Nhật ký kiểm toán trong `configs/policies/retention@1.9.0.yaml` PHẢI dẫn PDPL và
-  Nghị định 356, không dẫn Nghị định 13/2023.
+- R5.3 Chú thích thời hạn Nhật ký kiểm toán trong tệp chính sách retention đang ghim PHẢI dẫn PDPL và Nghị
+  định 356, không dẫn Nghị định 13/2023.
 - R5.4 Lane lưu giữ PHẢI không xóa dòng `platform.contact_suppressions` nào theo thời gian; chỉ offboarding
   của công ty hay yêu cầu của chủ thể dữ liệu (W2) xóa dòng chặn gửi.
+- R5.5 KHI lane `offboarding` xóa dữ liệu của một công ty đang `offboarding`, lane `offboarding` PHẢI xuất rồi
+  xóa mọi dòng của công ty đó trong `platform.consent_records`, `platform.marketing_send_log` (hai bảng qua
+  `platform.purge_tenant_append_only`, usage-and-limits:R3.8) và `platform.contact_suppressions` (YC6).
 
 ## Trong phạm vi
 
@@ -153,11 +162,11 @@ Data Hub do telemetry-and-audit khai (DO-52).
   CHECK và helper test catalog); `ResidencyGate` và `effective_route_class`; `MarketingSendPolicy` thỏa
   `SendAdmissionPort`; module thuần `capability_analysis`, bảng điều phối nhãn ở composition root và kiểm
   đăng ký vào bảng kiểm theo loại lúc gửi kiểm định của agent-lifecycle (agent-lifecycle:R2.7);
-  `configs/policies/marketing_send@1.0.0.yaml`, `configs/policies/studio_risk@1.0.0.yaml` và lớp mới trong
-  `configs/policies/retention@1.9.0.yaml`.
-- Bảng mới: `platform.cross_border_attestations`, `platform.consent_records`,
-  `platform.contact_suppressions`, `platform.marketing_send_log`, `studio.version_assessments`; cột
-  `data_route_class` trên `platform.tenants` và `platform.workspaces`.
+  `configs/policies/marketing_send@1.0.0.yaml` (gồm số người nhận tối đa mỗi lượt), `configs/policies/studio_risk@1.0.0.yaml`
+  và dòng thời hạn của kho lát này trong tệp chính sách retention.
+- Bảng mới ở W1: `platform.consent_records`, `platform.contact_suppressions`, `platform.marketing_send_log`,
+  `studio.version_assessments`; cột `data_route_class` trên `platform.tenants` và `platform.workspaces`.
+  `platform.cross_border_attestations` đến ở W2 cùng R2.5 (Ngoài phạm vi).
 - Route công khai `GET /api/v1/public/unsubscribe/{token}`; `PATCH /api/v1/admin/tenant` thêm
   `data_route_class` (W1 chỉ siết).
 - Audit: `marketing.sent`, `marketing.send_refused` (chỉ lát này ghi, trong giao dịch của executor),
@@ -165,26 +174,26 @@ Data Hub do telemetry-and-audit khai (DO-52).
 
 ## Ngoài phạm vi
 
-| Việc                                                                                                                                                                                                                                                                       | Vì sao                                                                                                                                    | Chủ                                                  |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| W2: Hạn chế xử lý và Từ chối xử lý tự động trên bản ghi (YC49, YC67)                                                                                                                                                                                                       | cần đầu bản ghi của custom-objects và node của workflow-nodes                                                                             | compliance-pdpl, đợt sau (W2)                        |
-| R2.5: nới Lộ trình dữ liệu của công ty hay workspace qua kind `policy` của tenant-config, với người duyệt thứ hai và Xác nhận chuyển dữ liệu ra nước ngoài còn hạn nêu `processor`; audit `residency.attested`                                                             | YC91 là W2; W1 không có đường nới (R2.7; D:tenant-config/05~tenant-rbac:R7.1)                                                             | compliance-pdpl; tenant-config, đợt sau (W2)         |
-| R3.4 phần từ khóa hủy trả lời trên Zalo qua inbound router                                                                                                                                                                                                                 | router sự kiện nhà cung cấp và kênh Zalo là W2 (connections-and-vault)                                                                    | compliance-pdpl; connections-and-vault, đợt sau (W2) |
-| W2: Sổ sự cố dữ liệu cá nhân `platform.pd_incidents` và runbook 72 giờ (YC90); DPA hứa báo công ty trong 24 giờ từ khi nền tảng biết (DO-56.2)                                                                                                                             | trước dữ liệu thật; chỉ Người vận hành đọc                                                                                                | compliance-pdpl, đợt sau (W2)                        |
-| W2: Presidio tiếng Việt có số đo; tối thiểu hóa trước khi gọi (`cross_border_minimised`)                                                                                                                                                                                   | bộ dò là kiểm soát phụ, đo recall trước khi dựa vào                                                                                       | compliance-pdpl, đợt sau (W2)                        |
-| W2: Yêu cầu của chủ thể dữ liệu — màn, API, cổng xóa theo kho (YC90)                                                                                                                                                                                                       | `DataSubjectPort` đăng ký một bản theo kho ở composition root                                                                             | compliance-pdpl, đợt sau (W2)                        |
-| W2: Mã hóa checkpoint theo khóa công ty; TLS chặng nội bộ; cache chia theo công ty (YC92)                                                                                                                                                                                  | sau khóa vault; đo nhà cung cấp cache trước                                                                                               | compliance-pdpl; connections-and-vault               |
-| W2: Mức rủi ro AI trên `studio.version_assessments` (công ty tự phân hạng từ mặc định, không khai thấp hơn ở v1), tờ giải thích, thông báo AI ở kênh chat (v1.5), nhãn "do AI soạn" bật mặc định trên tin AI soạn gửi lead tới khi luật sư trả lời (YC93); sổ xử lý (YC91) | DO-60; tiêu chí tầng và nhãn chờ luật sư; bảng có từ W1 cho kết quả Phân tích năng lực (R4.6); nguồn gốc tin AI soạn đã ghi ở nhật ký gửi | compliance-pdpl; agent-lifecycle                     |
-| W2: Khoanh vùng sự cố, audit đọc trường `Nhạy cảm`, taint động; gửi hoãn tới Khung giờ không gửi                                                                                                                                                                           | sau sổ sự cố và taint ở executor                                                                                                          | compliance-pdpl, đợt sau (W2)                        |
-| W3: Hồ sơ công ty được quản lý, gói bằng chứng, khóa do khách quản lý, báo cáo sự cố AI                                                                                                                                                                                    | v2                                                                                                                                        | compliance-pdpl, đợt sau (W3)                        |
-| Ép lát Marketing chỉ chạy trên lead giả lập tới khi đủ điều kiện rời dữ liệu giả lập của YC99 (DO-53, DO-54.2 gồm DPA, sổ sự cố, cờ Hạn chế xử lý)                                                                                                                         | YC89; ý kiến luật sư ở ticket 02; sổ sự cố và cờ là W2                                                                                    | marketing-pilot; tenant-config                       |
-| Thời hạn và bộ xóa của sự kiện vào Data Hub                                                                                                                                                                                                                                | telemetry-and-audit là chủ `retention@1.8.0` và lane lưu giữ đọc hạn đó (DO-52)                                                           | telemetry-and-audit                                  |
-| Telemetry và log không mang nội dung                                                                                                                                                                                                                                       | một chủ là telemetry-and-audit/01                                                                                                         | telemetry-and-audit                                  |
-| Checkpoint chỉ dựng lại kiểu trong allowlist                                                                                                                                                                                                                               | gộp vào foundations-hardening/02                                                                                                          | foundations-hardening                                |
-| RecordService, bảng bản ghi và cờ trên đầu bản ghi                                                                                                                                                                                                                         | lát này đọc bản ghi qua Object Service                                                                                                    | custom-objects                                       |
-| ToolExecutor, loại công cụ, bọc StructuredTool, cờ taint lượt chạy                                                                                                                                                                                                         | lát này tiêu `SendAdmissionPort` trong executor                                                                                           | tools-and-skills                                     |
-| Egress client, vault và kết nối                                                                                                                                                                                                                                            | lát này khai `data_location` trên manifest kết nối                                                                                        | connections-and-vault                                |
-| Nộp hồ sơ, xin giấy chứng nhận, bổ nhiệm DPO; SOC 2, ISO 27001/27701/42001                                                                                                                                                                                                 | quy trình pháp lý; sản phẩm chỉ sinh bằng chứng                                                                                           | không làm                                            |
+| Việc                                                                                                                                                                                                                                                                                        | Vì sao                                                                                                                                    | Chủ                                                  |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| W2: Hạn chế xử lý và Từ chối xử lý tự động trên bản ghi (YC49, YC67)                                                                                                                                                                                                                        | cần đầu bản ghi của custom-objects và node của workflow-nodes                                                                             | compliance-pdpl, đợt sau (W2)                        |
+| R2.5: nới Lộ trình dữ liệu của công ty hay workspace qua kind `policy` của tenant-config, với người duyệt thứ hai và Xác nhận chuyển dữ liệu ra nước ngoài còn hạn nêu `processor` (bảng `platform.cross_border_attestations`, chỉ có bên ghi và bên đọc ở đây); audit `residency.attested` | YC91 là W2; W1 không có đường nới (R2.7; D:tenant-config/05~tenant-rbac:R7.1)                                                             | compliance-pdpl; tenant-config, đợt sau (W2)         |
+| R3.4 phần từ khóa hủy trả lời trên Zalo qua inbound router                                                                                                                                                                                                                                  | router sự kiện nhà cung cấp và kênh Zalo là W2 (connections-and-vault)                                                                    | compliance-pdpl; connections-and-vault, đợt sau (W2) |
+| W2: Sổ sự cố dữ liệu cá nhân `platform.pd_incidents` và runbook 72 giờ (YC90); DPA hứa báo công ty trong 24 giờ từ khi nền tảng biết (DO-56.2)                                                                                                                                              | trước dữ liệu thật; chỉ Người vận hành đọc                                                                                                | compliance-pdpl, đợt sau (W2)                        |
+| W2: Presidio tiếng Việt có số đo; tối thiểu hóa trước khi gọi (`cross_border_minimised`)                                                                                                                                                                                                    | bộ dò là kiểm soát phụ, đo recall trước khi dựa vào                                                                                       | compliance-pdpl, đợt sau (W2)                        |
+| W2: Yêu cầu của chủ thể dữ liệu — màn, API, cổng xóa theo kho (YC90)                                                                                                                                                                                                                        | `DataSubjectPort` đăng ký một bản theo kho ở composition root                                                                             | compliance-pdpl, đợt sau (W2)                        |
+| W2: Mã hóa checkpoint theo khóa công ty; TLS chặng nội bộ; cache chia theo công ty (YC92)                                                                                                                                                                                                   | sau khóa vault; đo nhà cung cấp cache trước                                                                                               | compliance-pdpl; connections-and-vault               |
+| W2: Mức rủi ro AI trên `studio.version_assessments` (công ty tự phân hạng từ mặc định, không khai thấp hơn ở v1), tờ giải thích, thông báo AI ở kênh chat (v1.5), nhãn "do AI soạn" bật mặc định trên tin AI soạn gửi lead tới khi luật sư trả lời (YC93); sổ xử lý (YC91)                  | DO-60; tiêu chí tầng và nhãn chờ luật sư; bảng có từ W1 cho kết quả Phân tích năng lực (R4.6); nguồn gốc tin AI soạn đã ghi ở nhật ký gửi | compliance-pdpl; agent-lifecycle                     |
+| W2: Khoanh vùng sự cố, audit đọc trường `Nhạy cảm`, taint động; gửi hoãn tới Khung giờ không gửi                                                                                                                                                                                            | sau sổ sự cố và taint ở executor                                                                                                          | compliance-pdpl, đợt sau (W2)                        |
+| W3: Hồ sơ công ty được quản lý, gói bằng chứng, khóa do khách quản lý, báo cáo sự cố AI                                                                                                                                                                                                     | v2                                                                                                                                        | compliance-pdpl, đợt sau (W3)                        |
+| Ép lát Marketing chỉ chạy trên lead giả lập tới khi đủ điều kiện rời dữ liệu giả lập của YC99 (DO-53, DO-54.2 gồm DPA, sổ sự cố, cờ Hạn chế xử lý)                                                                                                                                          | YC89; ý kiến luật sư ở ticket 02; sổ sự cố và cờ là W2                                                                                    | marketing-pilot; tenant-config                       |
+| Thời hạn và bộ xóa của sự kiện vào Data Hub                                                                                                                                                                                                                                                 | telemetry-and-audit khai thời hạn đó trong tệp chính sách retention và giữ lane lưu giữ đọc nó (DO-52)                                    | telemetry-and-audit                                  |
+| Telemetry và log không mang nội dung                                                                                                                                                                                                                                                        | một chủ là telemetry-and-audit/01                                                                                                         | telemetry-and-audit                                  |
+| Checkpoint chỉ dựng lại kiểu trong allowlist                                                                                                                                                                                                                                                | gộp vào foundations-hardening/02                                                                                                          | foundations-hardening                                |
+| RecordService, bảng bản ghi và cờ trên đầu bản ghi                                                                                                                                                                                                                                          | lát này đọc bản ghi qua Object Service                                                                                                    | custom-objects                                       |
+| ToolExecutor, loại công cụ, bọc StructuredTool, cờ taint lượt chạy                                                                                                                                                                                                                          | lát này tiêu `SendAdmissionPort` trong executor                                                                                           | tools-and-skills                                     |
+| Egress client, vault và kết nối                                                                                                                                                                                                                                                             | lát này khai `data_location` trên manifest kết nối                                                                                        | connections-and-vault                                |
+| Nộp hồ sơ, xin giấy chứng nhận, bổ nhiệm DPO; SOC 2, ISO 27001/27701/42001                                                                                                                                                                                                                  | quy trình pháp lý; sản phẩm chỉ sinh bằng chứng                                                                                           | không làm                                            |
 
 ## Dữ liệu
 
@@ -199,26 +208,32 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
 - `platform.tenants`: thêm `data_route_class text NOT NULL DEFAULT 'vn_only'` CHECK (`vn_only`,
   `cross_border_minimised`, `cross_border_full`).
 - `platform.workspaces`: thêm `data_route_class text NULL` cùng CHECK (NULL kế thừa công ty; chỉ siết).
-- Ba bảng `platform.cross_border_attestations`, `platform.consent_records`, `platform.contact_suppressions`
-  thuộc lớp bảng toàn tenant: RLS chỉ theo công ty, không cột `workspace_id`, có tên và lý do trong danh sách
-  bảng toàn tenant mà `test_rls_coverage.py` giữ (`CLAUDE.md` mục 'Tenancy and authorization', ngoại lệ của
-  DO-01); công ty là bên kiểm soát nên một lần rút đồng ý ghi ở workspace nào cũng chặn gửi ở mọi workspace
-  trong ≤ 5 phút (YC86).
-- `platform.cross_border_attestations`: `processor`, `ctia_ref`, `attested_by`, `expires_at`, `revoked_at`;
-  dùng khi Lộ trình là ra nước ngoài.
+- Hai bảng `platform.consent_records`, `platform.contact_suppressions` thuộc lớp bảng toàn tenant: RLS chỉ theo
+  công ty, không cột `workspace_id`, có tên và lý do trong danh sách bảng toàn tenant mà `test_rls_coverage.py`
+  giữ (`CLAUDE.md` mục 'Tenancy and authorization', ngoại lệ của DO-01); công ty là bên kiểm soát nên một lần rút
+  đồng ý ghi ở workspace nào cũng chặn gửi ở mọi workspace trong ≤ 5 phút (YC86).
 - `platform.consent_records`: chỉ thêm; phân vùng theo tháng trên `captured_at` với DEFAULT, đăng ký bằng một
   dòng `platform.time_partitioned_tables` (`append_only = true`), `dw_app` không giữ quyền nào trên phân vùng
   nào, kể cả DEFAULT (DO-02.2); `subject_ref` (E.164, email thường hay Zalo user id), `purpose` CHECK
   (`marketing`, `transactional`), `channel` CHECK (`zns`, `email`, `sms`, `messenger`, `zalo_oa`), `state`,
   `captured_at`, `source`, `evidence_ref`, `notice_version`, `withdrawn_at`; đồng ý hiện hành là dòng mới
   nhất theo `(subject_ref, purpose, channel)`; index `(tenant_id, subject_ref, channel, purpose, captured_at DESC)`;
-  bộ xóa xóa theo dòng khi hết quan hệ cộng 5 năm, không bằng DROP PARTITION.
+  thời hạn theo quan hệ cộng 5 năm (số tạm UNVERIFIED) dưới khóa `platform.consent_records`, thêm trong cùng thay
+  đổi đăng ký (ticket 04), bộ xóa xóa theo dòng, không bằng DROP PARTITION.
 - `platform.contact_suppressions`: PK `(tenant_id, channel, address_hash)`; không hết hạn theo thời gian,
-  chỉ offboarding hay yêu cầu của chủ thể dữ liệu xóa (R5.4).
+  chỉ offboarding hay yêu cầu của chủ thể dữ liệu xóa (R5.4); `dw_app` có DELETE để lane `offboarding` xóa như
+  bảng thường (R5.5).
 - `platform.marketing_send_log`: phân vùng theo tháng, đăng ký bằng một dòng `platform.time_partitioned_tables`
   (`append_only = true`); RLS dạng workspace của `CLAUDE.md` trên bảng cha; `dw_app` không giữ quyền nào trên
   phân vùng nào, đọc ghi qua bảng cha, nên đọc một phân vùng theo tên không lộ dòng của workspace khác
-  (DO-02.2); mang `consent_record_id`, nguồn gốc tin AI soạn (lượt chạy soạn, model).
+  (DO-02.2); một dòng mỗi Tương tác ở W1 (N4): `outcome` CHECK (`sent`, `blocked`), `blocked_reason` (NULL khi
+  `sent`, CHECK theo lý do của Sàn gửi tin), `root_run_id` để đếm người nhận mỗi lượt (R3.8), `consent_record_id`
+  khi `sent`, nguồn gốc tin AI soạn (lượt chạy soạn, model); thời hạn 13 tháng (số tạm UNVERIFIED) dưới khóa
+  `platform.marketing_send_log`, thêm trong cùng thay đổi đăng ký (ticket 04), xóa bằng DROP PARTITION qua
+  `platform.drop_expired_partitions`.
+- Khi offboarding, `dw_app` không có DELETE trên `platform.consent_records` và `platform.marketing_send_log`, nên
+  mỗi bảng có một dòng `STUDIO_EXCLUSIONS` nêu cách xóa, `platform.purge_tenant_append_only` (R5.5;
+  studio-skeleton:R4.3).
 - `studio.version_assessments`: một dòng mỗi phiên bản và Mã băm định nghĩa, ghi trong giao dịch gửi kiểm
   định: tín hiệu A, B, C, đường vi phạm, kết luận, phiên bản bộ phân tích; RLS theo công ty như vỏ phiên
   bản; `dw_app` SELECT, INSERT; Mức rủi ro AI (`suggested_tier`, `declared_tier`) thêm ở W2
@@ -232,31 +247,33 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
 - `GET /api/v1/public/unsubscribe/{token}`: route công khai, HMAC một địa chỉ, idempotent, rate-limited,
   không lộ địa chỉ có tồn tại.
 - Lỗi theo vỏ `application/problem+json` của ADR-0108 (Accepted); `details.reason_code`:
-  `pd_category_required`, `residency_refused`, `blocked:<lý do>`, `capability_trifecta_autonomy`,
+  `pd_category_required`, `residency_refused`, `blocked:<lý do>` (lý do của Sàn gửi tin cộng `recipient_cap`),
+  `capability_trifecta_autonomy`,
   `tool_unclassified`, `trifecta_path_unapproved`, `second_person_required`. Mã 422 lúc gửi kiểm định đi qua
   route gửi kiểm định của agent-lifecycle (agent-lifecycle:R2.7).
 
 ## Kiểm soát
 
-| #    | Kiểm soát                                                                    | Yêu cầu          | Test âm                                                                                                                                                                 |
-| ---- | ---------------------------------------------------------------------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| CP1  | Trường thiếu `pd_category` không tạo được                                    | R1.1, R1.2, R1.3 | POST một trường không có `pd_category` → 422 `pd_category_required`; thêm một giá trị CHECK ngoài enum kernel → test drift đỏ                                           |
-| CP2  | `vn_only` không gửi byte nào ra nước ngoài                                   | R2.2             | Agent `vn_only` với tuyến `foreign` → từ chối trước khi gửi, adapter giả ghi 0 lời gọi; gỡ cổng → test đỏ                                                               |
-| CP3  | Mọi đường gọi model qua cùng cổng                                            | R2.3             | Chép lời khi `vn_only` tới URL `foreign` → job `failed` lý do `residency_refused`, 0 request; gỡ cổng ở embedding → test đỏ                                             |
-| CP4  | Workspace, agent không nới lộ trình                                          | R2.4             | Đặt `cross_border_full` ở workspace khi công ty `vn_only` → 422, không đổi dòng                                                                                         |
-| CP5  | Không nới lộ trình bằng một người                                            | R2.5, R2.7       | W1: `PATCH` nới công ty sang `cross_border_full` → 409 `second_person_required`, lộ trình giữ nguyên; gỡ chặn → test đỏ (đường hai người và Xác nhận của R2.5 thử ở W2) |
-| CP6  | Trường cá nhân vào prompt trên tuyến ra nước ngoài bị chặn lúc gửi kiểm định | R2.6             | Gắn `full_name` vào prompt trên tuyến `cross_border_full` → gửi kiểm định 422 `residency_refused`, phiên bản vẫn Nháp; gỡ kiểm → test đỏ (MP7)                          |
-| CP7  | Không gửi marketing khi thiếu đồng ý                                         | R3.1             | Lead không có Bản ghi đồng ý → `blocked:no_consent`, 0 tin, `marketing.send_refused`; gỡ kiểm → test đỏ                                                                 |
-| CP8  | Sàn gửi kiểm trong ToolExecutor, không ở node                                | R3.2             | Gọi hành động gửi qua node, qua công cụ agent, qua quy trình-như-công-cụ không đồng ý → cả ba bị chặn; gỡ kiểm ở executor → test đỏ (MP1, MP12, MP15)                   |
-| CP9  | Hủy đăng ký có hiệu lực trong 5 phút                                         | R3.4             | Bấm link hủy → lần gửi sau `blocked:suppressed` trong ≤ 5 phút; tin đang chờ bị kiểm lại                                                                                |
-| CP10 | Token hủy sai trả 404 không lộ tồn tại                                       | R3.6             | `GET /api/v1/public/unsubscribe/{token}` token sai chữ ký → 404, không dòng nào, không lộ địa chỉ                                                                       |
-| CP11 | Công ty không nới sàn gửi                                                    | R3.5             | Overlay đặt tần suất lỏng hơn Sàn gửi tin → 422; gỡ kiểm → test đỏ                                                                                                      |
-| CP12 | Bộ ba nguy hiểm không gửi kiểm định được                                     | R4.2             | Bỏ node phê duyệt khỏi workflow pilot → gửi kiểm định 422 `trifecta_path_unapproved` nêu đường; đường `score → send` không qua `approve` → 422 nêu đường (MP2)          |
-| CP13 | Agent bộ ba phải tự chủ ≤ A2                                                 | R4.3             | Agent có cả ba nhãn ở A3 → 422 `capability_trifecta_autonomy`; gỡ kiểm → test đỏ                                                                                        |
-| CP14 | Công cụ thiếu phân loại không gửi kiểm định được                             | R4.4             | Dùng công cụ thiếu một phân loại → 422 `tool_unclassified`; node loại lạ → coi như cả ba nhãn                                                                           |
-| CP15 | Không cấu hình nào hạ sàn bộ ba                                              | R4.5             | Overlay bỏ node phê duyệt hay nâng Mức tự chủ trên A2 cho phiên bản bộ ba → gửi kiểm định 422, phiên bản vẫn Nháp                                                       |
-| CP16 | Mỗi lớp retention mới có bộ xóa                                              | R5.1, R5.2       | Một lớp retention thiếu bộ xóa đăng ký → test tập bộ xóa đỏ                                                                                                             |
-| CP17 | Danh sách chặn gửi không tự hết hạn                                          | R5.4             | Dòng chặn gửi 10 năm tuổi qua một lượt lane lưu giữ → dòng còn, lần gửi sau vẫn `blocked:suppressed`; thêm hạn theo thời gian cho lớp chặn gửi → test đỏ                |
+| #    | Kiểm soát                                                                    | Yêu cầu          | Test âm                                                                                                                                                                                                                  |
+| ---- | ---------------------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| CP1  | Trường thiếu `pd_category` không tạo được                                    | R1.1, R1.2, R1.3 | POST một trường không có `pd_category` → 422 `pd_category_required`; thêm một giá trị CHECK ngoài enum kernel → test drift đỏ                                                                                            |
+| CP2  | `vn_only` không gửi byte nào ra nước ngoài                                   | R2.2             | Agent `vn_only` với tuyến `foreign` → từ chối trước khi gửi, adapter giả ghi 0 lời gọi; gỡ cổng → test đỏ                                                                                                                |
+| CP3  | Mọi đường gọi model qua cùng cổng                                            | R2.3             | Chép lời khi `vn_only` tới URL `foreign` → job `failed` lý do `residency_refused`, 0 request; gỡ cổng ở embedding → test đỏ                                                                                              |
+| CP4  | Workspace, agent không nới lộ trình                                          | R2.4             | Đặt `cross_border_full` ở workspace khi công ty `vn_only` → 422, không đổi dòng                                                                                                                                          |
+| CP5  | Không nới lộ trình bằng một người                                            | R2.5, R2.7       | W1: `PATCH` nới công ty sang `cross_border_full` → 409 `second_person_required`, lộ trình giữ nguyên; gỡ chặn → test đỏ (đường hai người và Xác nhận của R2.5 thử ở W2)                                                  |
+| CP6  | Trường cá nhân vào prompt trên tuyến ra nước ngoài bị chặn lúc gửi kiểm định | R2.6             | Gắn `full_name` vào prompt trên tuyến `cross_border_full` → gửi kiểm định 422 `residency_refused`, phiên bản vẫn Nháp; gỡ kiểm → test đỏ (MP7)                                                                           |
+| CP7  | Không gửi marketing khi thiếu đồng ý; lần chặn để lại Tương tác              | R3.1, R3.7       | Lead không có Bản ghi đồng ý → `blocked:no_consent`, 0 tin, `marketing.send_refused` và một dòng nhật ký gửi `outcome` `blocked` cùng giao dịch; gỡ kiểm → test đỏ                                                       |
+| CP8  | Sàn gửi kiểm trong ToolExecutor, không ở node                                | R3.2             | Gọi hành động gửi qua node, qua công cụ agent, qua quy trình-như-công-cụ không đồng ý → cả ba bị chặn; gỡ kiểm ở executor → test đỏ (MP1, MP12, MP15)                                                                    |
+| CP9  | Hủy đăng ký có hiệu lực trong 5 phút                                         | R3.4             | Bấm link hủy → lần gửi sau `blocked:suppressed` trong ≤ 5 phút; tin đang chờ bị kiểm lại                                                                                                                                 |
+| CP10 | Token hủy sai trả 404 không lộ tồn tại                                       | R3.6             | `GET /api/v1/public/unsubscribe/{token}` token sai chữ ký → 404, không dòng nào, không lộ địa chỉ                                                                                                                        |
+| CP11 | Công ty không nới sàn gửi                                                    | R3.5             | Overlay đặt tần suất lỏng hơn Sàn gửi tin → 422; overlay đặt 300 người nhận mỗi lượt → 422, đặt 50 → nhận; gỡ kiểm → test đỏ                                                                                             |
+| CP12 | Bộ ba nguy hiểm không gửi kiểm định được                                     | R4.2             | Bỏ node phê duyệt khỏi workflow pilot → gửi kiểm định 422 `trifecta_path_unapproved` nêu đường; đường `score → send` không qua `approve` → 422 nêu đường (MP2)                                                           |
+| CP13 | Agent bộ ba phải tự chủ ≤ A2                                                 | R4.3             | Agent có cả ba nhãn ở A3 → 422 `capability_trifecta_autonomy`; gỡ kiểm → test đỏ                                                                                                                                         |
+| CP14 | Công cụ thiếu phân loại không gửi kiểm định được                             | R4.4             | Dùng công cụ thiếu một phân loại → 422 `tool_unclassified`; node loại lạ → coi như cả ba nhãn                                                                                                                            |
+| CP15 | Không cấu hình nào hạ sàn bộ ba                                              | R4.5             | Overlay bỏ node phê duyệt hay nâng Mức tự chủ trên A2 cho phiên bản bộ ba → gửi kiểm định 422, phiên bản vẫn Nháp                                                                                                        |
+| CP16 | Mỗi lớp retention mới có bộ xóa                                              | R5.1, R5.2       | Một lớp retention thiếu bộ xóa đăng ký → test tập bộ xóa đỏ                                                                                                                                                              |
+| CP17 | Danh sách chặn gửi không tự hết hạn                                          | R5.4             | Dòng chặn gửi 10 năm tuổi qua một lượt lane lưu giữ → dòng còn, lần gửi sau vẫn `blocked:suppressed`; thêm hạn theo thời gian cho lớp chặn gửi → test đỏ                                                                 |
+| CP18 | Một lượt chạy không gửi quá số người nhận tối đa                             | R3.8             | Lượt chạy gốc đã gửi tới 200 người nhận, tin tới người thứ 201 → `blocked:recipient_cap`, SMTP giả 0 lời gọi, dòng nhật ký gửi `blocked`; tin thứ 200 → gửi; overlay hạ còn 50 → người thứ 51 bị chặn; gỡ kiểm → test đỏ |
 
 ## Tiêu chí xong
 
@@ -276,7 +293,12 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
   (`.claude/plans/studio/model-connections/issues/02-model-resolver-theo-tenant.md`); ADR-0118 (Accepted).
 - usage-and-limits: cột `data_route_class`, `data_location`, `processor` của `platform.usage_events`
   (`.claude/plans/studio/usage-and-limits/issues/02-bang-gia-so-su-dung-va-man-hinh.md`); `ResidencyGate` đứng
-  trước `LimitsMiddleware` (usage-and-limits:R6.5), và usage-and-limits/03 chờ ticket 03 (OPS-b).
+  trước `LimitsMiddleware` (usage-and-limits:R6.5), và usage-and-limits/03 chờ ticket 03 (OPS-b);
+  `platform.drop_expired_partitions` và `platform.purge_tenant_append_only` cho nhật ký gửi và Bản ghi đồng ý
+  (usage-and-limits:R3.8).
+- Thứ tự cửa trong gateway có cấu trúc: công tắc Đóng băng và Tắt khẩn cấp của
+  `.claude/plans/studio/agent-lifecycle/issues/01-dong-bang-va-kiem-o-moi-cua.md` đứng đầu, rồi `ResidencyGate`
+  của ticket 03, rồi `LimitsMiddleware`; ticket 03 chờ agent-lifecycle/01.
 - custom-objects: RecordService và tham chiếu chủ thể cho đồng ý
   (`.claude/plans/studio/custom-objects/issues/03-record-service.md`).
 - tools-and-skills: ToolExecutor tiêu `SendAdmissionPort` và phân loại công cụ theo ADR-0116 (Accepted),
@@ -295,15 +317,17 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
   (`.claude/plans/studio/agent-builder/issues/02-loai-agent-va-khung-prompt.md`).
 - connections-and-vault: egress client và `data_location` trên manifest kết nối, đang viết đợt này; dẫn
   theo đường dẫn.
-- `configs/policies/retention@1.8.0.yaml` có một chủ là telemetry-and-audit (lớp run, Bước chạy, payload,
-  Sổ sử dụng, sự kiện vào Data Hub); lát này nâng lên `retention@1.9.0` với lớp Bản ghi đồng ý, Danh sách chặn
-  gửi, nhật ký gửi, hội thoại, sau
-  `.claude/plans/studio/telemetry-and-audit/issues/03-lich-su-chay-theo-buoc.md` (DO-52).
+- Tệp chính sách retention: telemetry-and-audit là chủ định dạng (khóa `schema.table`, telemetry-and-audit:R5.6)
+  và lane lưu giữ; lát này thêm dòng của Bản ghi đồng ý và nhật ký gửi ở ticket 04 (cùng thay đổi đăng ký, sau
+  `.claude/plans/studio/telemetry-and-audit/issues/03-lich-su-chay-theo-buoc.md` để các ticket sửa tệp có một
+  thứ tự), rồi của Danh sách chặn gửi và hội thoại ở ticket 06 (DO-52).
+- studio-skeleton: R3.7 đọc thời hạn của mỗi bảng `append_only` (studio-skeleton:R3.7); test phủ offboarding và
+  `STUDIO_EXCLUSIONS` (studio-skeleton:R4.3).
 - Kiểm lại khi: `pd_category` của `dw_kernel.personal_data` đổi hình → R1, field-security; cửa model của
   model-connections đổi hợp đồng → R2; ToolExecutor của tools-and-skills đổi điểm chèn → R3.2; bảng kiểm theo
   loại hay lane `studio_gate` của agent-lifecycle đổi → R2.6, R4; ý kiến luật sư (DO-53, DO-54.2, DO-55,
-  DO-60) → số trong `marketing_send@1.0.0.yaml`, `retention@1.9.0.yaml` và điều kiện vào chạy bóng (YC99),
-  không đổi tiêu chí W1.
+  DO-60) → số trong `marketing_send@1.0.0.yaml`, một bản mới của tệp chính sách retention và điều kiện vào chạy
+  bóng (YC99), không đổi tiêu chí W1.
 
 ## Câu hỏi còn mở
 
@@ -311,7 +335,8 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
   tiên, và bên nào giữ? Chủ: luật sư. Không đổi: W1 chỉ dùng dữ liệu giả lập hay nội bộ; câu trả lời là điều
   kiện vào chạy bóng (YC99), hỏi ở ticket 02 (DO-53).
 - Q2. Số chống spam cuối cùng (tần suất, khung giờ, số người nhận mỗi lượt) và ai nộp DPIA, CTIA? Chủ: luật
-  sư. Không đổi: số tạm UNVERIFIED nằm ở `marketing_send@1.0.0.yaml` và công ty chỉ siết; nền tảng là bên xử
+  sư. Không đổi: số tạm UNVERIFIED nằm ở `marketing_send@1.0.0.yaml` (gồm tối đa 200 người nhận mỗi lượt ở thí
+  điểm) và công ty chỉ siết; nền tảng là bên xử
   lý, công ty là bên kiểm soát, DPA trước chạy bóng; câu trả lời chỉ đổi số và hồ sơ, hỏi ở ticket 02
   (DO-54.2, DO-55).
 
@@ -321,8 +346,8 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
   tin Zalo hay email sau một phê duyệt của người. Sửa: R3, R4.
 - 23/10/2026 (người yêu cầu): D11 (DO-07): nới Lộ trình dữ liệu cần một người đề xuất và một người duyệt
   khác. Sửa: R2.5.
-- 23/10/2026 (người yêu cầu): D13 (DO-19): model của công ty khách đi qua một lane LiteLLM riêng, không
-  trạng thái; `data_location` khai theo bí danh, không khai thì coi là nước ngoài. Sửa: R2.1, R2.2.
+- 23/10/2026 (người yêu cầu): D13 (DO-19): model của công ty khách đi qua `model-proxy` riêng (bản LiteLLM
+  không trạng thái); `data_location` khai theo bí danh, không khai thì coi là nước ngoài. Sửa: R2.1, R2.2.
 - 23/10/2026 (agent, tạm): DO-54 theo khuyến nghị (a): nền tảng là bên xử lý, công ty là bên kiểm soát,
   xác nhận lúc onboarding với DPA ký trước khi chạy ngầm; mặc định `vn_only` cho mọi công ty. Hỏi: Q2.
   Sửa: R2. Nếu sai thì: đổi mặc định lộ trình và ai nộp DPIA, CTIA.
@@ -388,6 +413,34 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
   ticket 06 chờ agent-builder/04 và ticket 04. B:agent-builder:R1.1\~compliance-pdpl:R2.4: kiểm R2.6 chạy
   trong Phân tích năng lực lúc gửi kiểm định với `residency_refused`. Sửa: R2.6, ticket 05, 06. Nếu sai thì:
   kiểm R2.6 thành một kiểm riêng của bảng kiểm theo loại.
+- 24/10/2026 (Đạt): DO-55, số tạm UNVERIFIED chờ luật sư khi có dữ liệu thật: Sàn gửi tin cho tối đa 200 người
+  nhận mỗi lượt chạy ở thí điểm, công ty chỉ hạ thấp hơn (ADR-0124 (Accepted) quyết 6); số này có bên đọc ở
+  ToolExecutor (H:ADR-0124 (Accepted)\~compliance-pdpl/04). Hỏi: Q2. Sửa: R3.5, thêm R3.8, CP11, CP18, Trong
+  phạm vi, API, Q2, ticket 04.
+- 24/10/2026 (agent, tạm): lý do chặn khi vượt số người nhận mỗi lượt là `recipient_cap`, đếm người nhận khác
+  nhau đã gửi theo `root_run_id` của lượt chạy trên nhật ký gửi. Sửa: R3.8, Dữ liệu, ticket 04. Nếu sai thì:
+  đổi tên mã lý do trong `marketing_send@1.0.0.yaml` và ADR-0124 (Accepted) quyết 1.
+- 24/10/2026 (Đạt): DO-52, số tạm UNVERIFIED chờ luật sư khi có dữ liệu thật: hội thoại với trợ lý giữ 90 ngày;
+  ticket 06 về `needs-triage` (H:compliance-pdpl:R5.1\~requirements.md:419). Sửa: R5.1, ticket 06.
+- 24/10/2026 (Đạt): N4: ở W1 mỗi Tương tác là một dòng `platform.marketing_send_log` của lát này, nên một lần Sàn
+  gửi tin chặn cũng ghi một dòng nhật ký gửi `blocked` kèm lý do (YC86); đối tượng Tương tác đến ở W2. Sửa: thêm
+  R3.7, CP7, Dữ liệu, ticket 04.
+- 24/10/2026 (Đạt): telemetry-and-audit sở hữu định dạng tệp chính sách retention (khóa `schema.table`) và lane;
+  mỗi ticket đăng ký một bảng `append_only` tự thêm thời hạn của bảng mình, nên ticket 04 thêm Bản ghi đồng ý và
+  nhật ký gửi, ticket 06 thêm Danh sách chặn gửi và hội thoại; ticket 04 chờ telemetry-and-audit/03 để các ticket
+  sửa tệp có một thứ tự (I:studio-skeleton:R3.7\~usage-and-limits/02). Sửa: R5, R5.1, R5.3, Dữ liệu, Trong phạm
+  vi, Phụ thuộc, ticket 04, 06.
+- 24/10/2026 (Đạt): offboarding xuất rồi xóa Bản ghi đồng ý, nhật ký gửi và Danh sách chặn gửi; hai bảng chỉ thêm
+  vào `STUDIO_EXCLUSIONS` với cách xóa `platform.purge_tenant_append_only`, theo cách sửa mà studio-skeleton:R4.3
+  nhận (H:ADR-0121 (Accepted)\~usage-and-limits:dữ-liệu). Sửa: thêm R5.5, Dữ liệu, ticket 04.
+- 24/10/2026 (Đạt): `platform.cross_border_attestations` chỉ có bên ghi và bên đọc ở đường nới R2.5 nên sang W2
+  cùng R2.5 (H:compliance-pdpl:dữ-liệu\~compliance-pdpl:ngoài-phạm-vi). Sửa: Trong phạm vi, Ngoài phạm vi, Dữ
+  liệu, ticket 03.
+- 24/10/2026 (Đạt): thứ tự cửa trong gateway có cấu trúc là công tắc, Lộ trình dữ liệu, rồi hạn mức; ticket 03 chờ
+  agent-lifecycle/01 (C:agent-lifecycle/01\~compliance-pdpl/03). Sửa: Phụ thuộc, ticket 03.
+- 24/10/2026 (người đặt yêu cầu và Đạt): D11, W1 chưa có đường hai người cho việc nới Lộ trình dữ liệu, nên lệnh
+  nới bị khóa ở W1 (R2.7 như đã viết). Sửa: không đổi R2.7.
+- 24/10/2026 (Đạt): dịch vụ proxy model của tenant tên `model-proxy` ở mọi nơi. Sửa: dòng D13.
 
 ## Danh sách ticket
 

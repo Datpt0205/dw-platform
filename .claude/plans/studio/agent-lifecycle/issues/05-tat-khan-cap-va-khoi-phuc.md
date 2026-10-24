@@ -20,7 +20,10 @@ ticket 03.
    `POST /api/v1/studio/{agents|workflows}/{artifact_id}/revive-requests`: mở một yêu cầu phê duyệt
    `studio.lifecycle.revive` nghiêm (tem `studio.lifecycle.kill`; tiền tố `studio.lifecycle.` của ticket
    01); handler gỡ công tắc khi duyệt, ghi outbox `control.switch.changed` và audit `control.kill.lifted`
-   với actor là người quyết định, `details` có khóa `lane` là tên lane (ADR-0011 (Accepted)).
+   với actor là người quyết định, `details` có khóa `lane` là tên lane (ADR-0011 (Accepted)). Migration của
+   ticket đăng ký khóa `studio.lifecycle.kill` và `studio.lifecycle.revive` trong `platform.permissions` của
+   tenant-rbac/01 (nhãn tiếng Việt, `scope_kind` `workspace`, `risk` `standard` theo bảng phân loại của ticket
+   đó).
 2. Kiểm `artifact_killed` ở mọi cửa của ticket 01 với thành phần của run và thành phần sau công cụ dùng
    quy trình hay agent liên kết; ở cửa nhận, lượt `live` và `test` của thành phần kết thúc `cancelled` kể cả
    lượt do trình kích hoạt đã xếp hàng (Tắt khẩn cấp không giữ `queued`, DO-28 C); lượt `simulate` không bị
@@ -32,7 +35,8 @@ ticket 03.
    với workflow-triggers).
 4. Hợp đồng `admission_state` cho lane gửi đi: trước khi gửi một tin đã xếp hàng, lane kiểm công tắc
    `artifact_killed` của thành phần gốc và không gọi nhà cung cấp nếu bị tắt; kèm test hợp đồng với lane
-   giả. Đường gửi và trình kích hoạt thật được chứng minh ở marketing-pilot/05 (marketing-pilot:R6.4).
+   giả. Lane gửi tin đã xếp hàng thật là của connections-and-vault ở W2 (spec R8.4); đường gửi W1 của lát đi qua
+   cửa công cụ và được chứng minh ở marketing-pilot/05 (marketing-pilot:R6.4).
 5. Người xin bật lại không tự duyệt được: luồng phê duyệt nghiêm từ chối 409 khi người quyết là người
    xin, và công tắc không gỡ.
 
@@ -70,3 +74,7 @@ ticket 03.
   `control.switch.changed` (B:agent-lifecycle/05\~dữ-liệu), Tắt khẩn cấp hủy cả lượt đã xếp hàng (DO-28 C);
   test với lane gửi và trình kích hoạt thật chuyển sang marketing-pilot/05
   (I:agent-lifecycle/05\~workflow-triggers/01).
+- 2026-10-24 (agent): áp quyết định của Đạt ngày 24/10/2026: lane gửi tin đã xếp hàng của R8.4 thuộc
+  connections-and-vault ở W2, ticket này giữ test hợp đồng với lane giả; đăng ký hai khóa của ticket theo quy
+  ước của tenant-rbac/01. workflow-engine/04 và workflow-triggers/01 chờ ticket này cho test `artifact_killed`
+  ở làn thật (cạnh nằm ở hai ticket đó); ticket này không chờ ticket nào của hai spec đó.

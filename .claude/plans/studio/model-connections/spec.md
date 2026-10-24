@@ -54,17 +54,17 @@ Hồ sơ model khai nơi xử lý dữ liệu; thiếu khai là nước ngoài, 
 
 ## Ngoài phạm vi
 
-| Việc                                                                        | Vì sao                                                                   | Chủ                   |
-| --------------------------------------------------------------------------- | ------------------------------------------------------------------------ | --------------------- |
-| Bảng `platform.model_connections`, API quản trị, quyền lợi `byom`           | Kết nối model đầy đủ dựng sau bộ phân giải                               | đợt sau (W2)          |
-| Service `litellm-byom` (model proxy), transport tiêm khóa, breaker, lọc lỗi | Model proxy dựng sau spike ở ticket 01                                   | đợt sau (W2)          |
-| Lane `model_probe`, đo usage BYOM, màn "Kết nối model"                      | Phụ thuộc kết nối model và sổ usage                                      | đợt sau (W2)          |
-| Route dự phòng trong cùng công ty                                           | Cần breaker theo kết nối trước                                           | đợt sau (W3)          |
-| Embedding BYOM cho tri thức                                                 | Độ rộng vector mới cần collection mới                                    | đợt sau (W2)          |
-| Kho bí mật, kết nối, `egress_allowed_hosts`, smokescreen                    | Kết nối và lối ra mạng                                                   | connections-and-vault |
-| Bảng giá, sổ usage, lease                                                   | Hạn mức và đo; Bảng giá là chủ duy nhất của giá (DO-21.5)                | usage-and-limits      |
-| `ResidencyGate` và chính sách lớp tuyến dữ liệu                             | Cổng tuyến dữ liệu; chỉ đọc `data_location`, `processor` mà spec này giữ | compliance-pdpl       |
-| Lưu và duyệt phiên bản cấu hình kind `model_profile`                        | Vỏ phiên bản và hai người duyệt                                          | tenant-config         |
+| Việc                                                                               | Vì sao                                                                   | Chủ                            |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | ------------------------------ |
+| Bảng `platform.model_connections`, API quản trị, quyền lợi `byom`                  | YC58; kết nối model đầy đủ dựng sau bộ phân giải                         | model-connections đợt sau (W2) |
+| Dịch vụ compose `model-proxy` (Model proxy), transport tiêm khóa, breaker, lọc lỗi | YC58; Model proxy dựng sau spike ở ticket 01                             | model-connections đợt sau (W2) |
+| Lane `model_probe`, đo usage BYOM, màn "Kết nối model"                             | YC58; phụ thuộc kết nối model và sổ usage                                | model-connections đợt sau (W2) |
+| Route dự phòng trong cùng công ty                                                  | Cần breaker theo kết nối trước                                           | đợt sau (W3)                   |
+| Embedding BYOM cho tri thức                                                        | Độ rộng vector mới cần collection mới                                    | đợt sau (W2)                   |
+| Kho bí mật, kết nối, `egress_allowed_hosts`, smokescreen                           | Kết nối và lối ra mạng                                                   | connections-and-vault          |
+| Bảng giá, sổ usage, lease                                                          | Hạn mức và đo; Bảng giá là chủ duy nhất của giá (DO-21.5)                | usage-and-limits               |
+| `ResidencyGate` và chính sách lớp tuyến dữ liệu                                    | Cổng tuyến dữ liệu; chỉ đọc `data_location`, `processor` mà spec này giữ | compliance-pdpl                |
+| Lưu và duyệt phiên bản cấu hình kind `model_profile`                               | Vỏ phiên bản và hai người duyệt                                          | tenant-config                  |
 
 ## Dữ liệu
 
@@ -105,6 +105,10 @@ Hồ sơ model khai nơi xử lý dữ liệu; thiếu khai là nước ngoài, 
 - 23/10/2026 (Đạt): ADR-0118 (Accepted) kèm sửa: LiteLLM ghim 1.106.1 và chỉ nâng sau 14 ngày cùng một lần kiểm advisory; alias chưa khai nơi xử lý là nước ngoài; lát thí điểm cần một route xử lý tại Việt Nam trước bước AI đầu tiên (FOG-10). Dòng tạm về bản LiteLLM cùng ngày ở trên thành quyết định có ngày. Sửa: Phụ thuộc, ticket 01.
 - 23/10/2026 (agent, tạm): spec và ticket 01 gọi lane LiteLLM là model proxy, đúng thuật ngữ glossary; tên tệp ticket 01 giữ nguyên để không gãy liên kết (phát hiện kiểm nhất quán 23/10/2026). Sửa: tiêu đề, đoạn đầu, Ngoài phạm vi, ticket 01. Nếu sai thì: đổi lại tên trong cùng các chỗ đó.
 - 23/10/2026 (agent, tạm): trường tuyến dữ liệu (`data_location`, `processor`, `retention_days`, `no_training`) và luật "không khai là nước ngoài" chỉ ở spec này (R2.3, R3); compliance-pdpl chỉ đọc; ticket 02 chờ tenant-config/04 vì ghim route vào bản kê lượt chạy (phát hiện kiểm nhất quán 23/10/2026). Sửa: Trong phạm vi, Ngoài phạm vi, Phụ thuộc, ticket 02. Nếu sai thì: chuyển trường sang compliance-pdpl và đổi chiều Blocked by của compliance-pdpl/03.
+- 24/10/2026 (Đạt): dịch vụ compose của Model proxy tên `model-proxy` ở mọi tài liệu, tên của glossary, không còn `litellm-byom`; ADR-0118 (Accepted) quyết 8 sửa cùng ngày. Sửa: Ngoài phạm vi.
+- 24/10/2026 (Đạt): YC58 ghi ở các dòng W2 của Ngoài phạm vi, để lần ngược được từ roadmap. Sửa: Ngoài phạm vi.
+- 24/10/2026 (Đạt): ticket 02 đi trước usage-and-limits/02, vì cả hai sửa `model/profiles.py` và `configs/models/*.yaml`: ticket 02 dựng `ModelProfile` v2, usage-and-limits/02 chờ nó rồi mới dời giá sang Bảng giá. Sửa: ticket 02.
+- 24/10/2026 (người đặt yêu cầu và Đạt): Phạm vi D11: W1 chưa có đường hai người cho việc nới lộ trình dữ liệu, nên thao tác đó bị khóa ở W1 (409 `conflict`, `second_person_required`; ADR-0110 (Accepted) quyết 2); vế "nới lộ trình dữ liệu cần hai người" của dòng DO-54.2 ở trên chỉ có đường từ W2. Spec này không có thao tác nới lộ trình nào. Sửa: không mục nào ngoài dòng này; áp ở compliance-pdpl và tenant-config.
 
 ## Danh sách ticket
 

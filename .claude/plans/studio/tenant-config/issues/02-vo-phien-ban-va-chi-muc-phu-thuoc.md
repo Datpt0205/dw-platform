@@ -3,13 +3,14 @@
 Status: needs-triage
 Blocked by: 01, .claude/plans/studio/studio-skeleton/issues/02-goi-dw-studio-va-seam-api.md, .claude/plans/studio/org-and-principals/issues/01-khoa-don-vi-va-siet-realm.md
 Area: studio
-Yêu cầu: R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R2.7, R2.8, R2.9, R2.10, R2.11, R2.12, R2.13, R2.14, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, TC1, TC2, TC3, TC4, TC5, TC6, TC7, TC21, TC24, TC27
+Yêu cầu: R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R2.7, R2.8, R2.9, R2.10, R2.11, R2.12, R2.13, R2.14, R2.15, R2.16, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, TC1, TC2, TC3, TC4, TC5, TC6, TC7, TC21, TC24, TC27
 
 ## Mục tiêu
 
 Mọi loại thành phần Studio có một vỏ phiên bản chung trong `dw_studio`: một nháp lưu bằng khóa lạc
-quan, bước niêm phong cấp số không dùng lại và mã băm rồi đưa phiên bản sang `evaluating`, Nơi đang
-dùng ghi trong cùng giao dịch niêm phong, chặn xóa thứ đang được dùng, và không lộ tên ngoài quyền
+quan, bước niêm phong cấp số không dùng lại và mã băm rồi đưa phiên bản sang `evaluating`, sang
+`awaiting_approval` với loại không có Cổng chất lượng, hay sang `live` ở nhánh chỉ siết của `dw.object/v1`, Nơi
+đang dùng ghi trong cùng giao dịch niêm phong, chặn xóa thứ đang được dùng, và không lộ tên ngoài quyền
 (spec R2, R3). Route gửi kiểm định của agent-lifecycle/03 gọi bước niêm phong này; ticket này không
 viết chuyển giai đoạn nào khác.
 
@@ -18,10 +19,11 @@ viết chuyển giai đoạn nào khác.
 1. Revision Alembic mới (id hex ngẫu nhiên) trong schema `studio` của studio-skeleton/01, chép nguyên
    văn ràng buộc ở mục Dữ liệu của spec:
     - `studio.artifact_kinds`: danh mục loại của nền tảng, không có `tenant_id`; `kind text` là khóa
-      chính; `dw_app` chỉ SELECT. Ticket này tạo bảng rỗng; mỗi spec đăng ký một loại INSERT một dòng bằng
-      migration của nó, cùng lúc với mục registry (OPS-b). Test tích hợp của ticket này thêm dòng
-      `fixture` và `fixture_gateless` bằng vai migrator trong một fixture pytest phạm vi session và gỡ khi
-      xong; migration không bao giờ chứa hai dòng đó.
+      chính; `has_quality_gate boolean NOT NULL`, không DEFAULT (R2.14); `dw_app` chỉ SELECT. Ticket này tạo
+      bảng rỗng; mỗi spec đăng ký một loại INSERT một dòng nêu `has_quality_gate` bằng migration của nó, cùng lúc
+      với mục registry (OPS-b). Test tích hợp của ticket này thêm dòng `fixture` (`has_quality_gate = true`) và
+      `fixture_gateless` (`false`) bằng vai migrator trong một fixture pytest phạm vi session và gỡ khi xong;
+      migration không bao giờ chứa hai dòng đó.
     - `studio.artifacts`: `id` UUIDv7; `kind` FK tới `studio.artifact_kinds (kind)` ON DELETE RESTRICT, có
       index; `api_name` `^[a-z][a-z0-9_]{1,39}$`, unique `(tenant_id, kind, api_name)` khi
       `deleted_at IS NULL`; FK `(tenant_id, owning_workspace_id)` tới `platform.workspaces (tenant_id, id)`
@@ -69,14 +71,16 @@ viết chuyển giai đoạn nào khác.
    `studio.artifact_versions` (đã đo: xóa `studio.artifacts` trước khi gỡ cạnh phụ thuộc thì hỏng);
    `test_offboarding.py` purge một tenant có hai thành phần phụ thuộc nhau ở hai workspace (TC21).
 5. `ArtifactKindRegistry` trong lõi `dw_studio`, đăng ký ở `build_studio` (ADR-0100 (Accepted) quyết 6):
-   mỗi mục có `kind`, `document_schema`, khóa quyền đọc và ghi của loại (tenant-rbac/01 đăng ký khóa),
-   cờ `has_quality_gate` mặc định `True` (R2.14), `validate(document)` trả mọi lỗi kèm con trỏ JSON,
-   `extract(document)` thuần trả các phụ thuộc. Test ở composition root: tập loại của registry bằng tập dòng
-   của `studio.artifact_kinds`.
-6. `ArtifactService` (lõi `dw_studio`, constructor injection), mỗi thao tác một kiểm quyền: quyền đọc
-   hay ghi của loại ở độ sâu chạm tới `owning_workspace_id`, đọc từ `platform.effective_grants`
-   (tenant-rbac/02, ADR-0104 (Accepted) quyết 5); tenant khác hay không đọc được → 404, đọc được mà
-   không ghi được → 403 `permission_denied` (TC24).
+   mỗi mục có `kind`, `document_schema`, khóa đọc, khóa ghi và khóa gửi của loại, không giá trị mặc định
+   (R2.15; mỗi spec đăng ký khóa của mình theo quy ước `studio.<areas>.<verb>` của tenant-rbac/01),
+   `validate(document)` trả mọi lỗi kèm con trỏ JSON, `extract(document)` thuần trả các phụ thuộc. Mục không
+   giữ cờ cổng: cờ chỉ ở cột `has_quality_gate` của `studio.artifact_kinds`. Test ở composition root: tập loại
+   của registry bằng tập dòng của `studio.artifact_kinds`, và mỗi khóa của mỗi mục có trong danh mục quyền.
+6. `ArtifactService` (lõi `dw_studio`, constructor injection), mỗi thao tác một kiểm quyền: khóa đọc
+   hay khóa ghi mà mục registry của loại khai, ở độ sâu chạm tới `owning_workspace_id`, đọc từ
+   `platform.effective_grants` (tenant-rbac/02, ADR-0104 (Accepted) quyết 5); tenant khác hay không đọc được →
+   404, đọc được mà không ghi được → 403 `permission_denied` (TC24). Test kiểm quyền tham số hóa theo mọi loại
+   đã đăng ký, để loại sau (như `workflow` của workflow-engine/01) chạy cùng test.
     - `create`: thành phần, nháp đầu và audit `studio.artifact.created` trong một giao dịch; Tên API sai
       mẫu → 422 `validation_failed`; vi phạm unique `(tenant_id, kind, api_name)` ánh xạ theo tên ràng
       buộc → 409 `conflict`, `details.reason_code` `api_name_taken`.
@@ -86,15 +90,21 @@ viết chuyển giai đoạn nào khác.
       chỉ mang `row_version`.
     - `update`: `api_name`, `labels` với `If-Match`; `api_name` khi đã có phiên bản từng `live` → 409
       `api_name_immutable` trước khi trigger phải chặn; audit `studio.artifact.updated` với tên trường.
-    - `seal(uow, artifact_id, expected_row_version)`: trong giao dịch của bên gọi, khóa dòng thành phần
+    - `seal(uow, artifact_id, expected_row_version, tighten_only=False)` (mặc định là nhánh có người thứ hai):
+      trong giao dịch của bên gọi, khóa dòng thành phần
       (`SELECT ... FOR UPDATE`), kiểm `row_version` của nháp, `validate` (lỗi → 422 `validation_failed`
       liệt kê mọi lỗi trong `errors[]`), `version_no = last_version_no + 1`, `content_hash` qua
       `dw_kernel.canonical`, bao đóng qua `extract` (mỗi thành phần ghim
       `(kind, key, version, content_hash)`), `definition_hash` là mã băm của bao đóng, ghi `studio.definition_manifests`
-      `ON CONFLICT DO NOTHING`, ghi các dòng `studio.dependencies`, rồi chuyển `stage` sang `evaluating`,
-      hoặc sang `awaiting_approval` khi mục registry của loại có `has_quality_gate = False` (R2.13; bên gọi
-      mở yêu cầu phê duyệt phát hành trong cùng giao dịch, ADR-0120 (Accepted) quyết 2). Không audit: route
-      gửi kiểm định của agent-lifecycle/03 audit trong cùng giao dịch.
+      `ON CONFLICT DO NOTHING`, ghi các dòng `studio.dependencies`, rồi chuyển `stage` theo cột
+      `has_quality_gate` của dòng `studio.artifact_kinds` của loại, đọc trong cùng giao dịch: `true` → `evaluating`;
+      `false` và bên gọi không đặt `tighten_only` → `awaiting_approval` (R2.13; bên gọi mở yêu cầu phê duyệt phát
+      hành trong cùng giao dịch, ADR-0120 (Accepted) quyết 2); `false` và bên gọi đặt `tighten_only` → `live`, sau
+      khi bên gọi đưa phiên bản `live` trước sang `retired` trong cùng giao dịch (R2.16, agent-lifecycle:R1.4); cột
+      `tighten_only` và `compared_live_hash` mà trigger của agent-lifecycle/03 đọc do bên gọi thêm và ghi, không do
+      ticket này, nên ở đây `tighten_only` là một tham số của `seal`;
+      `tighten_only` với loại `true` → từ chối, không niêm phong. Không audit: route gửi kiểm định của
+      agent-lifecycle/03 audit trong cùng giao dịch, kể cả `studio.version.published` của nhánh chỉ siết.
     - `soft_delete`: đặt `deleted_at`; `ck_artifacts_not_in_use` → 409 `conflict`, `details.reason_code`
       `artifact_in_use`, `details` gồm số đếm theo giai đoạn; audit `studio.artifact.deleted`.
     - `dependents`: nhóm theo giai đoạn (`live`, ứng viên); tên chỉ cho bên người gọi đọc được theo cùng
@@ -109,7 +119,8 @@ viết chuyển giai đoạn nào khác.
    Mọi id là UUID. `make generate-contracts`.
 8. Loại `fixture` chỉ trong test: tài liệu có trường `uses` trỏ tới thành phần khác, `extract` trả một
    phụ thuộc `artifact` cho mỗi phần tử; test fixture khẳng định đúng tập dòng ghi ra. Loại
-   `fixture_gateless` chỉ trong test, cùng tài liệu, khai `has_quality_gate = False`.
+   `fixture_gateless` chỉ trong test, cùng tài liệu, dòng `studio.artifact_kinds` của nó nêu
+   `has_quality_gate = false`.
 
 ## Tiêu chí chấp nhận
 
@@ -136,10 +147,15 @@ viết chuyển giai đoạn nào khác.
       thành phần của tenant A → 404; gỡ kiểm quyền ở service → test đỏ.
 - [ ] R2.12 (TC24): người đọc được mà không có quyền ghi `PUT` nháp → 403 `permission_denied`, nháp không
       đổi.
-- [ ] R2.13 (TC27): niêm phong nháp hợp lệ của `fixture_gateless` cấp số phiên bản và hai mã băm như R2.7 và
-      để phiên bản ở `awaiting_approval`, không qua `evaluating`.
-- [ ] R2.14 (TC27): mục `fixture` không nêu cờ cổng → niêm phong sang `evaluating`; đổi giá trị mặc định của
-      `has_quality_gate` thành `False` → test đỏ.
+- [ ] R2.13 (TC27): niêm phong nháp hợp lệ của `fixture_gateless` không `tighten_only` cấp số phiên bản và hai
+      mã băm như R2.7 và để phiên bản ở `awaiting_approval`, không qua `evaluating`.
+- [ ] R2.14 (TC27): INSERT dòng `studio.artifact_kinds` không nêu `has_quality_gate` bằng vai migrator → lỗi NOT
+      NULL; thêm DEFAULT cho cột → test đỏ.
+- [ ] R2.15 (TC24): mỗi mục registry khai đủ khóa đọc, ghi và gửi, mỗi khóa có trong danh mục quyền; gỡ khóa đọc
+      của `fixture` → test registry đỏ; test kiểm quyền tham số hóa chạy cho mọi loại đã đăng ký.
+- [ ] R2.16 (TC27): niêm phong `fixture_gateless` với `tighten_only` sau khi bên gọi đưa phiên bản `live` trước
+      sang `retired` → phiên bản mới ở `live`, không yêu cầu phê duyệt nào; `fixture` với `tighten_only` → từ chối,
+      không số phiên bản nào được cấp.
 - [ ] R3.1 (TC6): lỗi chèn giữa giao dịch niêm phong → không số phiên bản, không dòng
       `studio.dependencies`, không dòng `studio.definition_manifests`; làm hỏng `extract` của `fixture`
       → test fixture đỏ.
@@ -173,3 +189,6 @@ viết chuyển giai đoạn nào khác.
   Theo phiếu cùng ngày: Tên API `{1,39}` (ADR-0107 (Accepted)), `studio.artifact_kinds` thay `ck_artifacts_kind`
   (OPS-b), `uq_workspaces_tenant_id_id` do org-and-principals/01 tạo (OPS-a.2), loại không có Cổng chất
   lượng sang `awaiting_approval` (R2.13), danh sách bảng toàn tenant (DO-01).
+- 2026-10-24 (agent): theo quyết định của Đạt ngày 24/10/2026: cột `has_quality_gate` không DEFAULT là chỗ duy
+  nhất của cờ cổng (R2.14); mục registry khai khóa đọc, ghi và gửi (R2.15); nhánh chỉ siết `draft` sang `live`
+  của `dw.object/v1` (Q-R6, R2.16).

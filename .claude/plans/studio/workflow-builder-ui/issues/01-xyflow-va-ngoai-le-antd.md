@@ -46,7 +46,7 @@ components, utilities`; bundle route builder (kB gzip); shim jsdom `ResizeObserv
 - `apps/web/package.json:20`; spec: R1.1 (chưa có gói đồ thị).
 - `apps/web/lib/__tests__/antd-only.test.ts:14`; spec: R1.2 (đọc cả `@dw/ui`).
 - `apps/web/lib/csp.ts:16-21`; spec: R1.1 (nonce, `strict-dynamic`).
-- `CLAUDE.md:137`; spec: R1.2 (luật chỉ antd). ADR-0101 (Accepted).
+- `CLAUDE.md:140`; spec: R1.2 (luật chỉ antd). ADR-0101 (Accepted).
 
 ## Comments
 

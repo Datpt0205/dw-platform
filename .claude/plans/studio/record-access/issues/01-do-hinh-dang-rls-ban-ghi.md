@@ -36,10 +36,10 @@ R9.1 tới R9.9 một con số, hay một phương án đã đo đạt ngưỡng
    hành động; join bảng sổ tầm, `EXISTS` và mảng khóa trên bản ghi; có và không có câu gợi ý cho planner
    (`AND owner_id = <chủ thể>` dựng từ cùng hàm `studio.acl_*`); hành vi cắt partition và InitPlan dưới RESTRICTIVE
    cộng PERMISSIVE.
-6. Máy tham chiếu theo Quyết định ngày 23/10/2026 của spec: 2 vCPU, 8 GB RAM, SSD, PostgreSQL 16. Ghi máy, phiên bản,
-   cấu hình `postgresql.conf` khác mặc định, số đo và kế hoạch vào `db/bench/record-access/RESULTS.md`; chép bảng số đo
-   và hình dạng được chọn vào mục Consequences của `docs/adr/0105-record-reach-is-decided-by-postgresql.md` và vào
-   Comments của ticket này.
+6. Máy tham chiếu là máy YC20 định nghĩa (host chính sau D14, `postgres:16-alpine` của compose; Quyết định ngày
+   24/10/2026 của spec). Ghi máy, phiên bản, cấu hình `postgresql.conf` khác mặc định, số đo và kế hoạch vào
+   `db/bench/record-access/RESULTS.md`; chép bảng số đo và hình dạng được chọn vào mục Consequences của
+   `docs/adr/0105-record-reach-is-decided-by-postgresql.md` và vào Comments của ticket này.
 7. Tự kiểm trong script: thoát mã khác 0 khi một phiên không gắn tenant, không gắn loại actor, không có dòng sổ tầm,
    mang epoch cũ, hay chạy trên một policy tạo hỏng mà vẫn ra dòng, và khi một dòng của T2 xuất hiện trong phiên của
    T1.
@@ -71,3 +71,5 @@ R9.1 tới R9.9 một con số, hay một phương án đã đo đạt ngưỡng
 
 - 2026-10-23 (agent): cỡ dữ liệu theo D12 (người yêu cầu, 23/10/2026), trả lời DO-14: 10 triệu bản ghi mỗi object,
   50 triệu mỗi tenant, 5.000 người, 200 workspace, cây sâu 6.
+- 2026-10-24 (agent): máy đo là máy tham chiếu của YC20 (host chính sau D14), cùng máy của custom-objects/01, thay máy
+  2 vCPU, 8 GB của quyết tạm ngày 23/10/2026 (Đạt, 24/10/2026).

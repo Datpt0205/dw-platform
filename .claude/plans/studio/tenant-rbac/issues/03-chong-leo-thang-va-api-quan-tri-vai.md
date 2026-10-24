@@ -36,14 +36,15 @@ trị viên, `platform.roles.bind` gán vai trò không trọng yếu.
    `platform.tenant_members`, DELETE của `platform.users`: tenant `active` phải còn ít nhất một gán `tenant_owner` của thành
    viên `active`, cascade cũng tính. Gán `tenant_owner` có `expires_at` → 23514.
 4. **Hai người khi nới, một người khi chỉ siết (D11, ADR-0104 (Accepted) mục 10).** Thay đổi chỉ siết quyền: gỡ gán vai
-   trò; bỏ khóa hay hạ mức trong vai trò mà không thêm khóa hay nâng mức nào. Nó áp ngay trong giao dịch của người gửi
-   (200, đúng một audit, không dòng đề xuất), vẫn qua `platform.rbac_refusals` và `ck_role_assignments_last_owner`
-   (R7.6). Mọi thay đổi khác, kể cả xóa mềm vai trò và một lần `PUT .../permissions` vừa bỏ vừa thêm, đi qua đề xuất
-   dưới đây (R7.1).
+   trò; bỏ khóa hay hạ mức trong vai trò mà không thêm khóa hay nâng mức nào; xóa mềm một vai trò không còn người giữ
+   (Quyết định 24/10/2026 của spec). Nó áp ngay trong giao dịch của người gửi (200, đúng một audit, không dòng đề xuất),
+   vẫn qua `platform.rbac_refusals` và `ck_role_assignments_last_owner` (R7.6). Mọi thay đổi khác, kể cả một lần
+   `PUT .../permissions` vừa bỏ vừa thêm, đi qua đề xuất dưới đây (R7.1).
    `platform.role_change_requests` (bảng toàn tenant: một dòng lý do trong danh sách của `test_rls_coverage.py`, DO-01):
    `id uuid PRIMARY KEY`, `tenant_id uuid NOT NULL` FK
    `platform.tenants` `ON DELETE CASCADE`,
-   `kind text NOT NULL CHECK (kind IN ('role_create','role_update','role_permissions','role_delete','assignment_grant','assignment_revoke'))`,
+   `kind text NOT NULL CHECK (kind IN ('role_create','role_update','role_permissions','assignment_grant'))` (xóa mềm vai
+   trò và gỡ gán vai trò không qua đề xuất, nên không có loại đề xuất cho chúng),
    `payload jsonb NOT NULL`, `role_id uuid NULL`, `base_version integer NULL`, `required_permission text NOT NULL`,
    `proposed_by uuid NOT NULL`, `proposed_at timestamptz NOT NULL DEFAULT now()`,
    `expires_at timestamptz NOT NULL`, `ck_role_change_requests_expiry CHECK (expires_at = proposed_at + interval '7 days')`,
@@ -53,27 +54,30 @@ trị viên, `platform.roles.bind` gán vai trò không trọng yếu.
    cho danh sách. RLS tenant; `dw_app` SELECT, INSERT và UPDATE chỉ trên `status`, `confirmed_by`, `decided_at`. Hết hạn
    đọc từ `expires_at`, không có trạng thái thứ hai; dòng giữ làm hồ sơ tới khi offboarding xóa tenant.
     - Mutation nới quyền ở bước 5 và 6 ghi một đề xuất (202 kèm `id`) sau khi `platform.rbac_refusals` cho người đề xuất
-      không trả gì; `platform.checker_candidates` (ticket 02) không trả ai cho `required_permission` → 409
-      `no_checker_available`, không ghi.
+      không trả gì; `platform.checker_candidates` (ticket 02) không trả ai cho `required_permission` → 409 `conflict` với
+      `details.reason_code` `no_checker_available`, không ghi.
     - `POST /api/v1/admin/role-changes/{request_id}/confirm` (cùng quyền, `Idempotency-Key`): người khác người đề xuất
-      (409 `second_person_required`), chưa quá `expires_at` (409 `proposal_expired`), `base_version` còn đúng (409
-      `stale_version`, R8.7); đặt `set_config('app.role_change_id', ..., true)` rồi áp thay đổi trong giao dịch của người
-      duyệt, nên trigger bước 2 kiểm chính người duyệt. Hai mã 409 trên là `details.reason_code` dùng chung với cơ chế
-      hai người của tenant-config (Quyết định 23/10/2026 của spec).
+      (409 `conflict`, `details.reason_code` `second_person_required`), chưa quá `expires_at` (409 `conflict`,
+      `proposal_expired`), `base_version` còn đúng (409 `conflict`, `proposal_stale`, R8.7); đặt
+      `set_config('app.role_change_id', ..., true)` rồi áp thay đổi trong giao dịch của người duyệt, nên trigger bước 2
+      kiểm chính người duyệt. `second_person_required`, `no_checker_available` và `proposal_expired` là
+      `details.reason_code` dùng chung với cơ chế hai người của tenant-config, cùng hình 409 `conflict` (Quyết định
+      23/10/2026 và 24/10/2026 của spec).
     - `POST /api/v1/admin/role-changes/{request_id}/withdraw` (người đề xuất hay người giữ cùng quyền);
       `GET /api/v1/admin/role-changes` (đề xuất còn mở, phân trang theo index trên).
     - Trigger bước 2 từ chối ghi không chỉ siết quyền của `dw_app` khi `app.role_change_id` không trỏ tới đề xuất
       `proposed`, chưa hết hạn, cùng tenant, có `proposed_by` khác `app.user_id` (R7.5); ghi chỉ siết (DELETE trên
-      `platform.role_assignments` hay `platform.tenant_role_permissions`, UPDATE hạ `depth`) chỉ cần `app.user_id` và qua
-      `platform.rbac_refusals`.
+      `platform.role_assignments` hay `platform.tenant_role_permissions`, UPDATE hạ `depth`, UPDATE trên
+      `platform.tenant_roles` chỉ đặt `deleted_at` từ NULL mà không đổi cột nào khác) chỉ cần `app.user_id` và qua
+      `platform.rbac_refusals`; UPDATE đặt `deleted_at` về NULL không phải ghi chỉ siết.
 5. **Route vai trò** (mọi mutation có `Idempotency-Key`, phong bì lỗi của ADR-0108 (Accepted)):
    `GET /api/v1/admin/roles` (`platform.roles.read`; `id`, `key`, `name`, `description`, `kind`, `is_system`,
    `template_key`, `holder_count`, `version`, `assignable_by_me`, `updated_at`), `GET /api/v1/admin/roles/{role_id}` (kèm
    `ETag: "<version>"`), `GET /api/v1/admin/roles/{role_id}/assignments`, `GET /api/v1/admin/role-templates` (chỉ lớp
    nền tảng), `POST /api/v1/admin/roles` (`platform.roles.write`; `from_template` hay `clone_of`),
    `PATCH /api/v1/admin/roles/{role_id}` (`name`, `description`), `PUT /api/v1/admin/roles/{role_id}/permissions`
-   (`{permissions: [{key, depth}]}`), `DELETE /api/v1/admin/roles/{role_id}` (xóa mềm; 409 `role_in_use` kèm số người
-   giữ, 409 `role_is_system`). Mutation trên vai trò đã có so `If-Match` mạnh với `version` theo app-standards/03
+   (`{permissions: [{key, depth}]}`), `DELETE /api/v1/admin/roles/{role_id}` (xóa mềm, một người cộng audit
+   `platform.role.delete`, R7.6; 409 `role_in_use` kèm số người giữ, 409 `role_is_system`). Mutation trên vai trò đã có so `If-Match` mạnh với `version` theo app-standards/03
    (ADR-0108 (Accepted) mục 3): lệch → 412 `precondition_failed` (R8.5), thiếu → 428 `precondition_required` (R8.8); đề
    xuất ghi `base_version` từ `If-Match`.
    `GET /api/v1/admin/permissions` thêm `allowed_depths` và `max_grantable_depth` tính bằng SQL từ quyền của người gọi;
@@ -84,14 +88,17 @@ trị viên, `platform.roles.bind` gán vai trò không trọng yếu.
    `forbid_escalation`, `is_administrative` (`membership_admin.py:49-65`) và bản chép ở `admin_console.py:295-304`;
    `plan_memberships` giữ nguyên vai trò người gọi không quản được.
 7. **Lỗi.** 23514 của trigger dịch sang 403 `rbac_escalation`, `rbac_self_assignment`; 422 `rbac_not_grantable`; 409
-   `role_is_system`, `last_owner`, `role_limit_reached`, `stale_version`, `ck_roles_sod_memberships` (tên luật, tối đa 20
-   người giữ); chỉ qua `details.reason_code`, không thêm mã vào `ErrorCode`. 412 `precondition_failed` và 428
+   `conflict` với `role_is_system`, `role_in_use`, `last_owner`, `role_limit_reached`, `second_person_required`,
+   `no_checker_available`, `proposal_expired`, `proposal_stale`, `ck_roles_sod_memberships` (tên luật, tối đa 20 người
+   giữ); chỉ qua `details.reason_code`, không thêm mã vào `ErrorCode`. 412 `precondition_failed` và 428
    `precondition_required` là mã của `ErrorCode` mà app-standards/01 thêm (ADR-0108 (Accepted) mục 1).
 8. **Audit cùng giao dịch:** `platform.role_change.proposed`, `.confirmed`, `.withdrawn`; khi áp:
    `platform.role.create`, `.update`, `.permissions_set` (thêm, bỏ, đổi mức), `.delete`,
    `platform.role_assignment.grant`, `.revoke`. `details`: id đề xuất, id và khóa vai trò, id workspace, id người dùng;
    không email, không tên.
-9. **Cắt chuyển.** Bỏ trigger chép của ticket 02; `ck_memberships_legacy_role_columns`:
+9. **Cắt chuyển.** Điều kiện tiên quyết (FOG-49, Đạt 24/10/2026): người giữ dw-proterial đã chuyển dw-proterial khỏi
+   việc ghi `memberships.role_keys` và `permission_set_keys` trước khi migration của bước này chạy; chưa xong thì
+   ticket này không lên ready-for-agent. Bỏ trigger chép của ticket 02; `ck_memberships_legacy_role_columns`:
    `permission_set_keys = '[]'::jsonb` và `role_keys` chỉ được rỗng hay `["platform_admin"]` (giá trị script nền tảng ghi,
    giữ tới dòng W2); directory và trang thứ bậc đọc tên vai trò từ gán vai trò. Trang thành viên
    (`apps/web/components/admin/members-manager.tsx:34-39`) lấy vai trò từ `GET /api/v1/admin/roles`, khóa vai trò
@@ -110,18 +117,18 @@ trị viên, `platform.roles.bind` gán vai trò không trọng yếu.
 - [ ] R6.7 (RB20): gỡ gán `tenant_owner` cuối, xóa membership, thành viên công ty hay người dùng của chủ sở hữu công ty cuối cùng → 409 `last_owner`, không đổi gì; hai quản trị đồng thời gỡ hai chủ sở hữu cuối → đúng một bị từ chối (test đồng thời).
 - [ ] R7.1 (RB21): mutation nới quyền (tạo vai trò, thêm khóa, gán vai trò, gán `member` khi mời) trả 202 và chưa đổi gì; người thứ hai xác nhận → đổi, một audit `.confirmed` và một audit thay đổi.
 - [ ] R7.1 (RB32): `PUT .../permissions` vừa bỏ một khóa vừa thêm một khóa → 202 đề xuất, quyền chưa đổi; nâng mức `workspace` lên `tenant` → 202; phân loại thay đổi trộn là chỉ siết → test đỏ.
-- [ ] R7.2 (RB21): người đề xuất tự xác nhận → 409 `second_person_required`; gỡ `ck_role_change_requests_second_person` và kiểm của service → test đỏ.
-- [ ] R7.3 (RB22): tenant chỉ một người giữ `platform.roles.write` → thay đổi nới quyền trả 409 `no_checker_available`, không dòng đề xuất; cùng tenant gỡ một gán vai trò không phải chủ sở hữu cuối → 200.
-- [ ] R7.4 (RB23): xác nhận ở `expires_at` cộng 1 giây → 409 `proposal_expired`; ở `expires_at` trừ 1 giây → nhận.
+- [ ] R7.2 (RB21): người đề xuất tự xác nhận → 409 `conflict` với `details.reason_code` `second_person_required`; gỡ `ck_role_change_requests_second_person` và kiểm của service → test đỏ.
+- [ ] R7.3 (RB22): tenant chỉ một người giữ `platform.roles.write` → thay đổi nới quyền trả 409 `conflict` với `details.reason_code` `no_checker_available`, không dòng đề xuất; cùng tenant gỡ một gán vai trò không phải chủ sở hữu cuối → 200.
+- [ ] R7.4 (RB23): xác nhận ở `expires_at` cộng 1 giây → 409 `conflict` với `details.reason_code` `proposal_expired`; ở `expires_at` trừ 1 giây → nhận.
 - [ ] R7.5 (RB21): SQL thô dưới `dw_app` ghi gán vai trò mới không mang `app.role_change_id`, hay mang đề xuất do chính `app.user_id` đề xuất → 23514; SQL thô gỡ gán vai trò có `app.user_id` → nhận; gỡ nhánh kiểm đề xuất khỏi trigger → đỏ.
-- [ ] R7.6 (RB32): gỡ gán vai trò, bỏ một khóa hay hạ mức một khóa trong vai trò → 200, áp ngay, đúng một audit, không dòng đề xuất; xóa mềm vai trò → 202 đề xuất; gỡ gán `tenant_owner` cuối vẫn 409 `last_owner`.
+- [ ] R7.6 (RB32): gỡ gán vai trò, bỏ một khóa hay hạ mức một khóa trong vai trò → 200, áp ngay, đúng một audit, không dòng đề xuất; xóa mềm một vai trò không còn người giữ → 200, áp ngay, đúng một audit `platform.role.delete`, không dòng đề xuất; vai trò còn người giữ → 409 `role_in_use`; SQL thô dưới `dw_app` đặt lại `deleted_at` về NULL không mang đề xuất → 23514; gỡ gán `tenant_owner` cuối vẫn 409 `last_owner`.
 - [ ] R8.1: `GET /api/v1/admin/roles` trả đủ trường; `assignable_by_me` bằng đúng kết quả `platform.rbac_refusals` cho cùng người gọi (test so sánh).
 - [ ] R8.2 (RB24): người không có `platform.roles.write` gọi thẳng `PUT /api/v1/admin/roles/{role_id}/permissions`, `POST /api/v1/admin/roles` → 403, không đề xuất.
 - [ ] R8.3 (RB25): đề xuất bị 409 → không audit; mỗi audit chỉ có id và mã (test quét `details` không có `@` hay tên).
 - [ ] R8.4 (RB25): gửi lại cùng `Idempotency-Key` và thân → cùng kết quả, một audit.
 - [ ] R8.5 (RB26): `PUT .../permissions` với `If-Match` cũ → 412 `precondition_failed`, không dòng đề xuất, quyền không đổi; bỏ so `If-Match` → test đỏ.
 - [ ] R8.6 (RB27): ghi `permission_set_keys` khác rỗng hay `role_keys` chứa `member` → 23514 `ck_memberships_legacy_role_columns`.
-- [ ] R8.7 (RB26): vai trò đổi `version` sau lúc đề xuất, rồi người thứ hai xác nhận → 409 `stale_version`, quyền không đổi.
+- [ ] R8.7 (RB26): vai trò đổi `version` sau lúc đề xuất, rồi người thứ hai xác nhận → 409 `conflict` với `details.reason_code` `proposal_stale`, quyền không đổi; không route nào của ticket này trả `stale_version`.
 - [ ] R8.8 (RB26): `PATCH /api/v1/admin/roles/{role_id}` không có `If-Match` → 428 `precondition_required`, không ghi gì.
 - [ ] G2: `test_platform_admin_bypasses_scopes` xanh trước và sau cắt chuyển.
 - [ ] Xong: `make ci` xanh.
@@ -143,3 +150,5 @@ trị viên, `platform.roles.bind` gán vai trò không trọng yếu.
 ## Comments
 
 - 2026-10-23 (agent): DO-32.1 và phạm vi D11 đã có lời đáp (Đạt và người đặt yêu cầu, 23/10/2026); Status về needs-triage. Thêm R7.6 (siết một người), R8.7, R8.8 (ETag theo ADR-0108 (Accepted)), cạnh Blocked by tới app-standards/01, /02, /03.
+- 2026-10-24 (agent): Đạt quyết ngày 24/10/2026: xóa mềm vai trò là thay đổi chỉ siết, một người cộng audit (D11); mã hai người là 409 `conflict` với `details.reason_code`; vai trò đổi `version` giữa đề xuất và xác nhận trả `proposal_stale`; loại đề xuất bỏ `role_delete` và `assignment_revoke` vì không còn thay đổi nào đi qua đề xuất với hai loại đó.
+- 2026-10-24 (agent): Điều kiện tiên quyết FOG-49 (Đạt, 24/10/2026): người giữ dw-proterial chuyển dw-proterial khỏi `memberships.role_keys` trước khi bước 9 khóa cột; ticket này chờ điều kiện đó ngoài Blocked by vì nó không phải một ticket của area.

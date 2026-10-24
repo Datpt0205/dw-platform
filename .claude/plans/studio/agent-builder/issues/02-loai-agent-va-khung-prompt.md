@@ -1,9 +1,9 @@
 # 02 — Loại `agent`, cài đặt agent, khung và bộ ráp prompt
 
 Status: needs-triage
-Blocked by: 01, .claude/plans/studio/tenant-config/issues/02-vo-phien-ban-va-chi-muc-phu-thuoc.md, .claude/plans/studio/org-and-principals/issues/04-nguoi-duoc-dung-toi-thieu.md
+Blocked by: 01, .claude/plans/studio/tenant-config/issues/02-vo-phien-ban-va-chi-muc-phu-thuoc.md, .claude/plans/studio/org-and-principals/issues/04-nguoi-duoc-dung-toi-thieu.md, .claude/plans/studio/app-standards/issues/03-quy-uoc-api-danh-sach-va-sua.md, .claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md
 Area: studio
-Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, R2.2, R2.3, AB1, AB2, AB10
+Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R2.1, R2.2, R2.3, AB1, AB2, AB10
 
 ## Mục tiêu
 
@@ -11,16 +11,17 @@ Cho người dựng tạo và sửa một tài liệu `dw.agent/v1` qua API côn
 
 ## Việc cần làm
 
-1. Khai `AgentDocument` (`extra="forbid"`, số thập phân dạng chuỗi, mục `route_class` nhận `vn_only`, `cross_border_minimised`, `cross_border_full` hoặc để trống) cho kind `agent` trong vỏ phiên bản chung (DO-05); đăng ký loại vào `ArtifactKindRegistry` của `tenant-config` với validator trả mọi lỗi `{path, code, message}` cùng lúc và một extractor phụ thuộc có fixture; migration của bước 2 INSERT dòng `agent` vào `studio.artifact_kinds` cùng lúc với mục registry (OPS-b), loại có Cổng chất lượng.
-2. Migration `studio.agent_settings` (revision hex của alembic): cột `tenant_id`, `workspace_id`, `agent_id`, `audience jsonb`, `accountable_user_id`, `enabled boolean NOT NULL` (không `DEFAULT`), `row_version`, `created_at/updated_at timestamptz`; RLS bật và FORCE với policy theo `tenant_id` và hình workspace; FK khai `ON DELETE` và có chỉ mục; trigger `updated_at` nhường giá trị câu lệnh nêu; grant cho `dw_app`, `dw_agent_ro`.
-3. Đăng ký khóa quyền `studio.agent.read`, `studio.agent.author`, `studio.agent.settings.manage` vào danh mục quyền của `tenant-rbac` với test phủ.
-4. Route `/api/v1/studio/agents`: `POST` tạo (422 `{path, code, message}`; `Người được dùng` qua bộ kiểm `dw.audience/v1` của org-and-principals, rỗng → 422 `reason_code=audience_empty`, sai dạng → 422 `validation_failed`; spec này không tự kiểm audience), `GET` đọc theo `studio.agent.read`, `PATCH /{id}` sửa nháp với `row_version` (409 `reason_code=stale_row_version`), `PATCH /{id}/settings` audit `studio.agent.settings_changed`.
-5. Prompt `studio.agent_frame@1.0.0` trong `configs/prompts/studio/`; hàm `assemble_system_prompt` cạnh `contain_untrusted` đặt chỉ dẫn và mọi giá trị chèn trong một khối dữ liệu ngoài cắt ở 16 KiB, với một tập biến hệ thống đóng và một linter có mã lỗi; không đi qua `str.format` trên văn bản tenant.
+1. Khai `AgentDocument` (`extra="forbid"`, số thập phân dạng chuỗi, mục `route_class` nhận `vn_only`, `cross_border_minimised`, `cross_border_full` hoặc để trống) cho kind `agent` trong vỏ phiên bản chung (DO-05); đăng ký loại vào `ArtifactKindRegistry` của `tenant-config` với validator trả mọi lỗi `{path, code, message}` cùng lúc và một extractor phụ thuộc có fixture; migration của bước 2 INSERT dòng `agent` vào `studio.artifact_kinds` cùng lúc với mục registry (OPS-b), với `has_quality_gate` true vì `agent` là loại có Cổng chất lượng (ADR-0120 (Accepted) quyết 1).
+2. Migration `studio.agent_settings` (revision hex của alembic) theo ADR-0117 (Accepted) quyết 3: cột `tenant_id`, `artifact_id` với FK ghép `(tenant_id, artifact_id)` tới `studio.artifacts (tenant_id, id)` ON DELETE CASCADE có chỉ mục, `audience jsonb`, `owner_user_id` với FK ghép `(tenant_id, owner_user_id)` tới `platform.tenant_members` ON DELETE SET NULL (`owner_user_id`) có chỉ mục (hợp đồng cột của ADR-0103 (Accepted) quyết 3), `enabled boolean NOT NULL` (không `DEFAULT`), `row_version`, `created_at/updated_at timestamptz`; RLS bật và FORCE với policy chỉ theo tenant, như vỏ `studio.artifacts`; một dòng có lý do trong `_TENANT_WIDE_ON_PURPOSE` của `test_rls_coverage.py` (danh sách của studio-skeleton/01, studio-skeleton:R9.1): cài đặt đi theo vỏ tài liệu toàn tenant, workspace sở hữu nằm ở `studio.artifacts.owning_workspace_id`; trigger `updated_at` nhường giá trị câu lệnh nêu; grant cho `dw_app`, `dw_agent_ro`.
+3. Đăng ký khóa quyền `studio.agents.author`, `studio.agents.settings.manage` vào danh mục quyền của `tenant-rbac` với test phủ; `studio.agents.read` đăng ký ở ticket 04 cùng route danh sách đọc nó.
+4. Route `/api/v1/studio/agents`: `POST` tạo (422 `{path, code, message}`; `Người được dùng` qua bộ kiểm `dw.audience/v1` của org-and-principals, rỗng → 422 `reason_code=audience_empty`, sai dạng → 422 `validation_failed`; spec này không tự kiểm audience), `PATCH /{id}` sửa nháp với `If-Match` theo quy ước của app-standards/03 (lệch → 412 `precondition_failed` với `details.reason_code` `stale_version`, thiếu → 428 `precondition_required`), `PATCH /{id}/settings` audit `studio.agent.settings_changed`. `GET` danh sách ở ticket 04, cùng bộ lọc `Người được dùng`.
+5. Prompt `studio.agent_frame@1.0.0` trong `configs/prompts/studio/`; hàm `assemble_system_prompt` cạnh `contain_untrusted` đặt chỉ dẫn và mọi giá trị chèn trong một khối dữ liệu ngoài cắt ở 16 KiB, với một tập biến hệ thống đóng và một linter có mã lỗi (từ chối cú pháp khuôn và các dấu `<tenant_instructions`, `<input`, `<tool_output`); không đi qua `str.format` trên văn bản tenant. Hàm và linter này là một chủ cho cả agent lẫn bước `ai.llm`: workflow-nodes/05 gọi đúng chúng với khung riêng của nó (ADR-0117 (Accepted) quyết 4).
 
 ## Tiêu chí chấp nhận
 
 - [ ] R1.1: `POST /api/v1/studio/agents` hợp lệ tạo tài liệu kind `agent` và một dòng `studio.agent_settings`, ghi audit `studio.agent.created`; sai nếu không có dòng settings hoặc không có audit.
-- [ ] R1.2: `PATCH` nháp với `row_version` cũ trả 409 và không ghi; sai nếu ghi đè bản mới.
+- [ ] R1.2: `PATCH` nháp với `If-Match` cũ trả 412 `precondition_failed` với `details.reason_code` `stale_version` và không ghi; sai nếu ghi đè bản mới hay trả 409.
+- [ ] R1.7: `PATCH` nháp thiếu `If-Match` trả 428 `precondition_required` và không ghi; sai nếu ghi được.
 - [ ] R1.3: tài liệu có khóa ngoài lược đồ trả 422 kèm `{path, code, message}`; sai nếu nhận khóa lạ.
 - [ ] R1.4 (AB10): INSERT `studio.agent_settings` thiếu `enabled` bị PostgreSQL từ chối; gỡ `NOT NULL` khỏi `enabled` → test đỏ.
 - [ ] R1.5 (AB10): tạo agent với `Người được dùng` rỗng trả 422 `audience_empty` từ bộ kiểm của org-and-principals và không tạo; điều kiện `team` ở W1 → 422 `validation_failed`; sai nếu tạo được.
@@ -32,8 +33,9 @@ Cho người dựng tạo và sửa một tài liệu `dw.agent/v1` qua API côn
 
 ## Nguồn
 
-- `packages/python/dw_agent_runtime/src/dw_agent_runtime/model/prompts.py:35`; `packages/python/dw_agent_runtime/src/dw_agent_runtime/model/prompts.py:168`; `db/migrations/versions/855ae928c3fa_platform_in_app_notifications.py:46`; spec: R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, R2.2, R2.3, AB1, AB2, AB10; org-and-principals:R8.1, org-and-principals:R8.2.
+- `packages/python/dw_agent_runtime/src/dw_agent_runtime/model/prompts.py:35`; `packages/python/dw_agent_runtime/src/dw_agent_runtime/model/prompts.py:168`; `db/migrations/versions/855ae928c3fa_platform_in_app_notifications.py:46`; spec: R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R2.1, R2.2, R2.3, AB1, AB2, AB10; org-and-principals:R8.1, org-and-principals:R8.2; app-standards:R3.2, app-standards:R3.3.
 
 ## Comments
 
 - 2026-10-23 (agent): Đạt chốt DO-05 (a) ngày 23/10/2026 (vỏ chung, `live` lưu một lần), nên ticket về `needs-triage`. Theo DO-40 (a) và lát audience tối thiểu (Đạt, 23/10/2026), luật rỗng và sai dạng của `Người được dùng` là của org-and-principals; ticket này chỉ gọi bộ kiểm (bước 4), nên chờ org-and-principals/04. Thêm R1.6 (`route_class` trong `dw.agent/v1`) theo phát hiện kiểm nhất quán cùng ngày. Theo OPS-b (Đạt, 23/10/2026), loại `agent` đăng ký bằng một dòng `studio.artifact_kinds` (bước 1).
+- 2026-10-24 (agent): theo các quyết định Đạt ngày 24/10/2026: `studio.agent_settings` theo ADR-0117 (Accepted) quyết 3, bảng toàn tenant (bước 2, chờ studio-skeleton/01); lưu nháp theo `If-Match`, 412 và 428 (bước 4, R1.2, R1.7, chờ app-standards/03); `GET` danh sách và khóa `studio.agents.read` sang ticket 04 (bước 3, 4); khóa quyền khu vực số nhiều (bước 3); `has_quality_gate` true (bước 1); `assemble_system_prompt` phục vụ cả `ai.llm` (bước 5).

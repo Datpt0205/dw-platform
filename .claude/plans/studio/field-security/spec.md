@@ -27,12 +27,12 @@ audit đọc nhạy cảm là W2 ở Ngoài phạm vi. Ý định: không đư�
   quyền của người xem.
 - `studio.field_defs` giữ `pd_category`, `sensitive_type`, `subject_identifier` nhưng không có `access_mode`; custom-objects
   đẩy `access_mode`, quyền trường và `resolve_field_access` sang spec này
-  (`.claude/plans/studio/custom-objects/spec.md:282`). Ràng buộc: spec này thêm `access_mode` và hàm quyết định.
+  (`.claude/plans/studio/custom-objects/spec.md:301`). Ràng buộc: spec này thêm `access_mode` và hàm quyết định.
 - tenant-rbac tạo `studio.field_permissions` và cho `platform.effective_grants` trả `fld.<object>.<field>.read|edit`
-  cộng dồn qua mọi vai (`.claude/plans/studio/tenant-rbac/issues/04-quyen-doi-tuong-va-truong-co-do-sau.md:30-43`).
+  cộng dồn qua mọi vai (`.claude/plans/studio/tenant-rbac/issues/04-quyen-doi-tuong-va-truong-co-do-sau.md:30-44`).
   Ràng buộc: spec này đọc quyền trường hiệu lực, không tạo bảng quyền trường hay route cấp quyền.
 - record-access giữ `studio.actor_boundary_fields` với `access` là `read` hay `edit` cho mỗi phiên bản agent hay quy
-  trình, và ghi "field-security đọc `studio.actor_boundary_fields`" (`.claude/plans/studio/record-access/spec.md:364`).
+  trình, và ghi "field-security đọc `studio.actor_boundary_fields`" (`.claude/plans/studio/record-access/spec.md:367-368`).
   Ràng buộc: giao với giới hạn dữ liệu đọc bảng đó, không tự tính.
 - Cấm truy cập của người vận hành theo tiền tố khóa, đã thêm `studio.`, `obj.`, `fld.`
   (`.claude/plans/studio/tenant-rbac/spec.md:30`). Ràng buộc: `fld.*` nằm ngoài tầm của người vận hành
@@ -73,7 +73,8 @@ quyền trường hiệu lực của người gọi và giới hạn dữ liệu
 - R2.5 ĐỐI VỚI một lượt chạy loại actor `agent` hay `workflow`, quyết định truy cập trường PHẢI trả giao của quyền
   trường của chủ thể với quyền trường của giới hạn dữ liệu, không bao giờ rộng hơn một trong hai.
 - R2.6 ĐỐI VỚI một trường duy nhất, quyết định truy cập trường PHẢI trả ít nhất `read` cho mọi vai có quyền `create`
-  hoặc `update` trên đối tượng, kể cả khi trường ở `secured` và chưa được cấp.
+  hoặc `update` trên đối tượng, kể cả khi trường ở `secured` và chưa được cấp, nên một vai cần ẩn trường duy nhất thì
+  không được giữ `create` hay `update` trên đối tượng đó.
 
 ### R3 — Áp ở API bản ghi: chiếu, truy vấn, ghi và describe
 
@@ -136,22 +137,22 @@ duy nhất đọc giá trị bản ghi (YC23).
 
 ## Ngoài phạm vi
 
-| Việc                                                                                                                  | Vì sao                                                                                                                                                                                  | Chủ                                |
-| --------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
-| Nội dung chỉ mục truy xuất chỉ gồm trường được phép; `fls_version` đánh chỉ mục lại                                   | Chỉ mục truy xuất đến cùng knowledge; `fls_version` theo object (ADR-0106 (Accepted) mục 4)                                                                                             | field-security, đợt sau (W2)       |
-| Màn cấu hình bảo mật trường (ma trận vai × trường), "Xem như vai"                                                     | Cần đo hiệu năng ma trận ở 320 px; W1 giao route và hàm trước                                                                                                                           | field-security, đợt sau (W2)       |
-| Export, lịch sử bản ghi, webhook theo quyền người xem lúc gửi                                                         | Cần tác vụ nền export và endpoint webhook; chiếu theo principal của endpoint                                                                                                            | field-security, đợt sau (W2)       |
-| Công thức thừa hưởng mức chặt nhất; audit `studio.record.sensitive_read`                                              | Trường công thức cần CEL; audit đọc nhạy cảm theo từng phản hồi là YC24 (W2)                                                                                                            | field-security, đợt sau (W2)       |
-| Che một phần (bốn số cuối) và quyền "xem không che"                                                                   | Cần một trục quyền mới; chưa có nhu cầu ở lát Marketing                                                                                                                                 | field-security, đợt sau (W3)       |
-| Không giá trị trường trong telemetry, log, audit và lỗi                                                               | Một chủ cho "không nội dung" dùng cùng hàm này (packet không cắt ticket riêng)                                                                                                          | telemetry-and-audit                |
-| `studio.field_permissions`; route cấp `fld.*` cho vai; chống cấp vượt quyền mình; người thứ hai khi cấp `fld.*`       | Quyền trường trong vai và chống leo thang có một chủ (ADR-0104 (Accepted), ADR-0106 (Accepted) mục 3); cấp `fld.*` là thay đổi vai trò hai người từ W1, kể cả trường nhạy cảm (DO-09.2) | tenant-rbac (R6.8, R7, R9.5, R9.6) |
-| Đổi `access_mode` qua phát hành `dw.object/v1`: mở trường `basic` cần người thứ hai, đóng trường một người cộng audit | Một đường ghi cho định nghĩa đối tượng (`D:field-security:R1.4~requirements.md:D11`)                                                                                                    | custom-objects (R1.2, R1.7, R2.5)  |
-| Danh mục `pd_category`, `sensitive_type`, `subject_identifier`; yêu cầu chủ thể dữ liệu; phát hiện Presidio           | Từ vựng dữ liệu cá nhân và DSR có một chủ (ADR-0106 (Accepted) mục 7, 9)                                                                                                                | compliance-pdpl                    |
-| Cột `pd_category`, `sensitive_type`, `subject_identifier` trên `studio.field_defs`                                    | Định nghĩa trường có một chủ (custom-objects R2.2)                                                                                                                                      | custom-objects                     |
-| Che số điện thoại, email trong văn bản tự do (lời nhắn, email)                                                        | Che văn bản tự do là Presidio, không phải quyết định trường (ADR-0106 (Accepted) mục 9)                                                                                                 | compliance-pdpl                    |
-| Ẩn hay bắt buộc trường theo bố cục hay workspace                                                                      | Overlay hiển thị, không phải kiểm soát truy cập                                                                                                                                         | custom-objects                     |
-| Quyền trên bản ghi (ai thấy bản ghi nào)                                                                              | Quyền trên bản ghi có một chủ (ADR-0105 (Accepted))                                                                                                                                     | record-access                      |
-| Bảo mật trường bằng quyền cột của PostgreSQL                                                                          | Quyền cột theo role DB, một `dw_app` cho mọi người; che cần giá trị (ADR-0106 (Accepted))                                                                                               | không làm                          |
+| Việc                                                                                                                                        | Vì sao                                                                                                                                                                                                                                           | Chủ                                      |
+| ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------- |
+| Nội dung chỉ mục truy xuất chỉ gồm trường được phép; `fls_version` đánh chỉ mục lại                                                         | Chỉ mục truy xuất đến cùng knowledge; `fls_version` theo object (ADR-0106 (Accepted) mục 4)                                                                                                                                                      | field-security, đợt sau (W2)             |
+| Màn cấu hình bảo mật trường (ma trận vai × trường), "Xem như vai"                                                                           | Cần đo hiệu năng ma trận ở 320 px; W1 giao route và hàm trước                                                                                                                                                                                    | field-security, đợt sau (W2)             |
+| Export, lịch sử bản ghi, webhook theo quyền người xem lúc gửi                                                                               | Cần tác vụ nền export và endpoint webhook; chiếu theo principal của endpoint                                                                                                                                                                     | field-security, đợt sau (W2)             |
+| Công thức thừa hưởng mức chặt nhất; audit `studio.record.sensitive_read`                                                                    | Trường công thức cần CEL; audit đọc nhạy cảm theo từng phản hồi là YC24 (W2)                                                                                                                                                                     | field-security, đợt sau (W2)             |
+| Che một phần (bốn số cuối) và quyền "xem không che"                                                                                         | Cần một trục quyền mới; chưa có nhu cầu ở lát Marketing                                                                                                                                                                                          | field-security, đợt sau (W3)             |
+| Không giá trị trường trong telemetry, log, audit và lỗi                                                                                     | Một chủ cho "không nội dung" dùng cùng hàm này (packet không cắt ticket riêng)                                                                                                                                                                   | telemetry-and-audit                      |
+| `studio.field_permissions`; route cấp `fld.*` cho vai; chống cấp vượt quyền mình; người thứ hai khi cấp `fld.*`; người cấp `fld.*` đầu tiên | Quyền trường trong vai và chống leo thang có một chủ (ADR-0104 (Accepted), ADR-0106 (Accepted) mục 3); cấp `fld.*` là thay đổi vai trò hai người từ W1, kể cả trường nhạy cảm (DO-09.2); `tenant_owner` giữ mọi `fld.*` qua quyền tính động (N1) | tenant-rbac (R6.8, R7, R9.5, R9.6, R9.7) |
+| Đổi `access_mode` qua phát hành `dw.object/v1`: mở trường `basic` cần người thứ hai, đóng trường một người cộng audit                       | Một đường ghi cho định nghĩa đối tượng (`D:field-security:R1.4~requirements.md:D11`)                                                                                                                                                             | custom-objects (R1.2, R1.7, R2.5)        |
+| Danh mục `pd_category`, `sensitive_type`, `subject_identifier`; yêu cầu chủ thể dữ liệu; phát hiện Presidio                                 | Từ vựng dữ liệu cá nhân và DSR có một chủ (ADR-0106 (Accepted) mục 7, 9)                                                                                                                                                                         | compliance-pdpl                          |
+| Cột `pd_category`, `sensitive_type`, `subject_identifier` trên `studio.field_defs`                                                          | Định nghĩa trường có một chủ (custom-objects R2.2)                                                                                                                                                                                               | custom-objects                           |
+| Che số điện thoại, email trong văn bản tự do (lời nhắn, email)                                                                              | Che văn bản tự do là Presidio, không phải quyết định trường (ADR-0106 (Accepted) mục 9)                                                                                                                                                          | compliance-pdpl                          |
+| Ẩn hay bắt buộc trường theo bố cục hay workspace                                                                                            | Overlay hiển thị, không phải kiểm soát truy cập                                                                                                                                                                                                  | custom-objects                           |
+| Quyền trên bản ghi (ai thấy bản ghi nào)                                                                                                    | Quyền trên bản ghi có một chủ (ADR-0105 (Accepted))                                                                                                                                                                                              | record-access                            |
+| Bảo mật trường bằng quyền cột của PostgreSQL                                                                                                | Quyền cột theo role DB, một `dw_app` cho mọi người; che cần giá trị (ADR-0106 (Accepted))                                                                                                                                                        | không làm                                |
 
 ## Dữ liệu
 
@@ -222,8 +223,9 @@ duy nhất đọc giá trị bản ghi (YC23).
   (`custom-objects:R1.2`, `custom-objects:R1.7`, `custom-objects:R2.5`).
 - tenant-rbac: `platform.effective_grants` trả `fld.<object>.<field>.read|edit` cộng dồn (`tenant-rbac:R9.6`), chống
   cấp quyền trường vượt quyền mình (`tenant-rbac:R9.5`), `bind` không phủ vai trò mang `fld.*` trên trường nhạy cảm
-  (`tenant-rbac:R6.8`), hai người khi cấp `fld.*` (`tenant-rbac:R7.1`), và `platform.bump_access_version()` (ticket 02,
-  04); cấm khóa `studio.`, `fld.` khỏi người vận hành (`tenant-rbac:R1.5`).
+  (`tenant-rbac:R6.8`), hai người khi cấp `fld.*` (`tenant-rbac:R7.1`), `tenant_owner` giữ mọi `fld.*` trên mọi trường
+  sống qua quyền tính động (`tenant-rbac:R9.7`), và `platform.bump_access_version()` (ticket 02, 04); cấm khóa `studio.`,
+  `fld.` khỏi người vận hành (`tenant-rbac:R1.5`).
 - record-access: `studio.actor_boundary_fields` và ngữ cảnh actor (`app.actor_kind`, `app.boundary_id`) ở mọi cửa
   (`record-access:R6.4`, ticket 04) cho giao với giới hạn dữ liệu.
 - compliance-pdpl: `dw_kernel.personal_data` là chủ của `pd_category`, `sensitive_type`, `subject_identifier`
@@ -291,6 +293,13 @@ duy nhất đọc giá trị bản ghi (YC23).
 - 23/10/2026 (agent, tạm): ticket 01 chờ record-access/04 vì R2.5 đọc `studio.actor_boundary_fields`
   (`I:field-security/01~record-access/04`); ticket 01 không còn route nên không chờ app-standards. Sửa: ticket 01. Nếu sai
   thì: bỏ cạnh khi giới hạn dữ liệu đến từ bảng khác.
+- 24/10/2026 (Đạt): N1: quyền tính động của `tenant_owner` gồm mọi `fld.*` trên mọi trường sống (`tenant-rbac:R9.7`), nên
+  chủ sở hữu công ty cấp được `fld.*` đầu tiên trên một trường `secured`, và đưa `fld.*` vào vai khác vẫn đi đường hai
+  người của tenant-rbac; quyết định truy cập trường không đổi vì nó đọc quyền hiệu lực
+  (`D:field-security:DO-34~tenant-rbac:R9.5`). Sửa: Ngoài phạm vi, Phụ thuộc.
+- 24/10/2026 (Đạt): R2.6 nêu hệ quả của ngoại lệ trường duy nhất: vai cần ẩn trường duy nhất thì không giữ `create` hay
+  `update` trên đối tượng; marketing-pilot ghi quyền đối tượng của vai Cộng tác viên Marketing cho khớp
+  (`B:field-security:R2.6~marketing-pilot:dữ-liệu`). Sửa: R2.6.
 
 ## Danh sách ticket
 

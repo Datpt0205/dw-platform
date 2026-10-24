@@ -3,13 +3,14 @@
 Status: needs-triage
 Blocked by: .claude/plans/studio/foundations-hardening/issues/04-toolexecutor-gianh-luot-khong-cua-sau.md
 Area: studio
-Yêu cầu: R4.1, R4.2, R4.3, R4.4, R4.5, R5.1, R5.2, R5.3, R5.4, R5.5, G1, TC9, TC10, TC11
+Yêu cầu: R4.1, R4.2, R4.3, R4.4, R4.5, R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, G1, TC9, TC10, TC11
 
 ## Mục tiêu
 
 Mỗi lượt chạy mang một chế độ chạy do máy chủ đặt, cột không có giá trị mặc định, và chế độ giữ nguyên
 khi tiếp tục; ToolExecutor giả lập mọi lệnh gọi không `simulate_safe` ở `simulate` và `test`, ngay tại
-executor chứ không trong node (spec R4, R5). W1 chỉ mở `simulate` cho chạy thử: route chạy thử của
+executor chứ không trong node, và trước bước phê duyệt, nên lượt không `live` không mở yêu cầu phê duyệt nào cho
+lệnh gọi bị giả lập (spec R4, R5). W1 chỉ mở chạy mô phỏng (`simulate`): route `.../test-runs` của
 workflow-triggers từ chối `test` tới W2 (workflow-triggers:R2.6), và nếu một lượt `test` tới executor thì
 bị giả lập như `simulate`. Lượt chạy của worker định nghĩa bằng code chạy `live` như hôm nay (G1).
 
@@ -38,7 +39,8 @@ bị giả lập như `simulate`. Lượt chạy của worker định nghĩa b�
    `side_effect_level` là `none`; loại công cụ của tools-and-skills tự khai sau (ADR-0116 (Accepted)).
    `test_capable` không thêm ở ticket này: bên đọc của nó là chế độ `test` có Danh sách người nhận thử,
    thuộc W2.
-6. Bước chế độ trong `ToolExecutor._execute`, sau kiểm quyền và phê duyệt, trước khi giành lượt và gọi
+6. Bước chế độ trong `ToolExecutor._execute`, đúng chỗ thứ tự bước của tools-and-skills:R2.6 đặt: sau kiểm
+   quyền và, khi `run_mode` khác `live`, trước bước phê duyệt (N2, R5.6), luôn trước khi giành lượt và gọi
    handler. Khi `run_mode` là `simulate` hay `test` và công cụ không `simulate_safe`:
     - không gọi handler, không giành lượt; ghi dòng `platform.tool_executions` với `status` `simulated`;
     - audit `tool.simulated` với `details.run_mode` và `details.reason` (`not_simulate_safe`) trong cùng
@@ -46,7 +48,8 @@ bị giả lập như `simulate`. Lượt chạy của worker định nghĩa b�
     - trả đầu ra giả lập: giá trị nhỏ nhất sinh từ output schema, kiểm theo output schema như đầu ra thật,
       thêm `simulated: true`. Kết quả giả lập ghim theo Bước là W2 của workflow-nodes, không làm ở ticket
       này.
-    - phê duyệt của công cụ `critical` vẫn hỏi người như cũ; chỉ hiệu ứng bị giả lập.
+    - không mở yêu cầu phê duyệt nào, kể cả với công cụ `critical`: bước phê duyệt chỉ chạy cho lệnh gọi đi qua
+      bước chế độ, tức công cụ `simulate_safe` ở chế độ khác `live` và mọi công cụ ở `live`.
 7. Revision Alembic mới: thay `ck_tool_executions_status` (foundations-hardening/04 tạo) bằng cùng tập
    giá trị cộng `simulated`; migration dừng với lỗi nếu có dòng mang giá trị ngoài tập mới. Index chống
    lặp giữ điều kiện `succeeded`.
@@ -62,8 +65,9 @@ bị giả lập như `simulate`. Lượt chạy của worker định nghĩa b�
 - [ ] R4.3: lượt chạy mới của worker định nghĩa bằng code có `run_mode = 'live'` trên dòng, `dw.run_mode`
       trên span và `details.run_mode` trong audit `run.started`.
 - [ ] R4.4 (TC9): `child_mode` đúng cho cả 9 cặp; cha `simulate` xin con `live` → `simulate`.
-- [ ] R4.5 (TC10): lượt `simulate` chờ duyệt rồi tiếp tục ở runner khác → công cụ vẫn bị giả lập; lượt
-      `live` → công cụ thực thi; bỏ `run_mode` khỏi chỗ dựng lại ngữ cảnh ở `approval_flow.py` → test đỏ.
+- [ ] R4.5 (TC10): lượt `simulate` chờ duyệt một công cụ `simulate_safe` có chính sách duyệt luôn hỏi, rồi tiếp
+      tục ở runner khác → công cụ `external` gọi sau đó vẫn bị giả lập; lượt `live` → công cụ thực thi; bỏ
+      `run_mode` khỏi chỗ dựng lại ngữ cảnh ở `approval_flow.py` → test đỏ.
 - [ ] R5.1 (TC11): gọi thẳng ToolExecutor với công cụ `external` ở `simulate` và ở `test` → handler (spy)
       không chạy, dòng có `status` `simulated`; gỡ bước chế độ → test đỏ.
 - [ ] R5.2 (TC11): audit `tool.simulated` có `details.run_mode` và `details.reason`; rollback giao dịch
@@ -72,6 +76,9 @@ bị giả lập như `simulate`. Lượt chạy của worker định nghĩa b�
       làm hỏng bộ sinh để trả giá trị sai schema → `validation_failed` như đầu ra thật.
 - [ ] R5.4: công cụ `simulate_safe` ở `simulate` chạy handler và ghi `succeeded`.
 - [ ] R5.5 (TC11): `ToolDefinition` không nêu `simulate_safe` → bị giả lập ở `simulate`.
+- [ ] R5.6 (TC11): công cụ `critical` không `simulate_safe` có chính sách duyệt luôn hỏi, gọi thẳng ToolExecutor
+      ở `simulate` → `status` `simulated`, không dòng `platform.approval_requests` nào; cùng lệnh gọi ở `live` →
+      `approval_required`; đặt bước chế độ sau bước phê duyệt → ca `simulate` trả `approval_required`, test đỏ.
 - [ ] G1: `test_happy_path_returns_typed_output_and_audits` xanh với `run_mode = 'live'`; mọi test
       executor hiện có xanh.
 - [ ] Xong: `make ci && make test-integration` xanh.
@@ -92,3 +99,6 @@ bị giả lập như `simulate`. Lượt chạy của worker định nghĩa b�
 - 2026-10-23 (agent): DO-26.1 (A) và DO-26.2 (a) đã có lời đáp (Đạt 23/10/2026): route chạy thử là của
   workflow-triggers và trả 422 với `test` tới W2; egress client từ chối mọi chế độ khác `live`. Kết quả giả
   lập ghim theo Bước dời sang W2 của workflow-nodes, nên ticket này chỉ sinh đầu ra từ output schema.
+- 2026-10-24 (agent): theo quyết định N2 của Đạt ngày 24/10/2026: ở chế độ khác `live` bước chế độ đứng trước bước
+  phê duyệt (R5.6, thứ tự của tools-and-skills:R2.6), nên lệnh gọi bị giả lập không mở yêu cầu phê duyệt; egress
+  ở chế độ khác `live` theo ADR-0115 (Accepted) quyết 6 (chừa `model` và Hành động chỉ đọc).

@@ -27,7 +27,7 @@ lead của Marketing (D4) cần sáu lát bước trong P1; danh mục đầy đ
   (`packages/python/dw_platform/src/dw_platform/adapters/persistence/tables.py:217-235`). Thiếu: Bước
   phê duyệt cần dữ liệu giao, chuyển cấp và chủ thể đã khoá, nằm ở bảng Studio thêm.
 - Composition root đặt `strict_approval_prefixes=frozenset({"memory."})` và `decision_guards`
-  (`apps/api/src/dw_api/bootstrap/runtime.py:237-239`); `CLAUDE.md:268-274` bắt đây là cách duy nhất
+  (`apps/api/src/dw_api/bootstrap/runtime.py:237-239`); `CLAUDE.md:274-280` bắt đây là cách duy nhất
   điều kiện ai được quyết định một loại phê duyệt. Ràng buộc: `studio.step.` thêm bằng `|=`.
 - Mã quyết định Zalo chỉ cấp cho loại phê duyệt có tiền tố đã đăng ký người trả lời phiên bản chủ thể;
   loại không ai trả lời thì quyết định trên web
@@ -111,7 +111,8 @@ Bước bản ghi đọc và ghi bằng quyền của người kích hoạt hay 
 với giới hạn dữ liệu của phiên bản (YC19, YC94, YC95; NODE-09).
 
 - R5.1 KHI một Bước `data.object.query`, `create`, `update` hay `upsert` chạy, Bước đó PHẢI đi qua
-  `RecordsPort` với ngữ cảnh actor của lượt chạy và khoá chống lặp `run_id:node_id:iteration`.
+  `RecordsPort` với ngữ cảnh actor của lượt chạy và đúng khoá chống lặp mà wrapper nút dẫn
+  (workflow-engine:R4.5), không tự dựng khoá.
 - R5.2 NẾU cấu hình một Bước bản ghi mang khoá `run_as` hay nêu một chủ thể khác người chạy của lượt,
   THÌ schema loại bước PHẢI từ chối cấu hình đó.
 - R5.3 [Bỏ] 23/10/2026: giả lập ghi bản ghi nằm ở RecordService (custom-objects:R5.4), không trong Bước;
@@ -132,7 +133,8 @@ Bước giao chọn một nhân viên Sales đủ quyền cho một lead đã ch
   nhất chưa nhận (100 lead cho 3 ứng viên lệch tối đa 1).
 - R6.3 NẾU không ứng viên nào hợp lệ, THÌ Bước `data.object.assign` PHẢI giao cho người dự phòng, là giá
   trị đã duyệt của một điểm gắn kind `principal` trong Bộ giá trị gắn (tenant-config:R8.1), khi người đó qua
-  cùng kiểm `effective_grants` của R6.1, và ghi audit `studio.record.assigned`.
+  cùng kiểm `effective_grants` của R6.1, qua cùng dịch vụ giao của record-access, nơi ghi audit và outbox
+  `studio.record.assigned` trong một giao dịch (record-access:R8.7, record-access:R8.8), và Bước không tự ghi audit.
 - R6.4 NẾU người dự phòng cũng không hợp lệ, THÌ Bước `data.object.assign` PHẢI đi Nhánh ra lỗi và không
   giao bản ghi cho ai.
 
@@ -149,13 +151,16 @@ YC49, YC87; NODE-07, NODE-08).
   bản ghi đó và không gọi model.
 - R7.4 KHI Bước `ai.llm` chấm điểm lead, đầu vào gửi model PHẢI không chứa định danh trực tiếp (họ tên,
   số điện thoại, email, Zalo id), với số điện thoại và email trong văn bản tự do bị che.
+- R7.5 KHI Bước `ai.llm` đưa một đối tượng hay một trường vào prompt, Bước đó PHẢI đưa `Mô tả cho AI`
+  (`ai_description`) của đối tượng và của trường chỉ qua khối `<input>` thoát, cắt ở 16 KiB, như dữ liệu từ bên
+  ngoài (YC101, YC48).
 
 ### R8 — tool.call qua ToolExecutor, idempotent
 
 Bước gọi công cụ đi qua một cửa, không lặp tác động khi chạy lại (YC41; NODE-11).
 
-- R8.1 KHI Bước `tool.call` gọi một công cụ, Bước đó PHẢI gọi `ToolExecutor.execute` với khoá chống lặp
-  `run_id:node_id:iteration` và phiên bản công cụ đã ghim lúc gửi kiểm định.
+- R8.1 KHI Bước `tool.call` gọi một công cụ, Bước đó PHẢI gọi `ToolExecutor.execute` với đúng khoá chống lặp
+  mà wrapper nút dẫn (workflow-engine:R4.5) và phiên bản công cụ đã ghim lúc gửi kiểm định.
 - R8.2 KHI hai lần chạy song song dùng cùng khoá chống lặp, `ToolExecutor` PHẢI để tác động ngoài xảy
   ra đúng một lần.
 - R8.3 NẾU người chạy thiếu quyền của công cụ, THÌ `ToolExecutor` PHẢI trả `permission_denied` tại
@@ -168,23 +173,38 @@ Bước gọi công cụ đi qua một cửa, không lặp tác động khi ch�
 Trang duyệt tin chỉ nhận quyết định của người giữ quyền khác người tạo lượt chạy, trên đúng tham số sẽ
 thực thi (YC51; NODE-13, NODE-14, NODE-16).
 
-- R9.1 KHI một Bước phê duyệt mở phê duyệt, Bước đó PHẢI dùng `approval_type` dưới tiền tố nghiêm
-  `studio.step.` với một `required_scope` bắt buộc, thu hẹp theo người, nhóm hoặc Biểu thức.
-- R9.2 NẾU người quyết định thấy được yêu cầu phê duyệt bước nhưng không được giao hay không giữ
-  `required_scope`, THÌ luồng phê duyệt PHẢI trả 403 và không quyết định (bảng mã ở ADR-0004 (Accepted)).
+- R9.1 KHI một Bước phê duyệt mở phê duyệt ở chế độ `live`, Bước đó PHẢI dùng `approval_type` dưới tiền tố nghiêm
+  `studio.step.` với một `required_scope` bắt buộc, thu hẹp theo người hoặc Biểu thức ở W1.
+- R9.2 NẾU người quyết định là người yêu cầu (người tạo lượt chạy) mà không giữ `required_scope`, hay giữ
+  `required_scope` mà không được giao, THÌ luồng phê duyệt PHẢI trả 403 `permission_denied` và không quyết định;
+  mọi người khác, vốn không thấy yêu cầu có tem, nhận 404 (ADR-0104 (Accepted) quyết 11; ADR-0004 (Accepted)).
 - R9.3 NẾU mã băm chủ thể lúc thực thi khác mã băm đã duyệt, THÌ runtime PHẢI trả `subject_changed` và
   không thực thi, để tham số đã duyệt đúng là tham số được gửi.
 - R9.4 NẾU phê duyệt hết hạn, THÌ Bước phê duyệt PHẢI đi Nhánh ra `expired` hoặc làm lượt chạy `failed`
   với `approval_expired`, và không bao giờ tự duyệt.
-- R9.5 NẾU ngoài người chạy của lượt không ai giữ `required_scope` của một Bước phê duyệt, THÌ kiểm phát
-  hành theo loại `workflow` mà spec này đăng ký qua Protocol của agent-lifecycle PHẢI trả lỗi, để việc
-  phát hành bị từ chối.
+- R9.5 NẾU ngoài người chạy của lượt không ai giữ `required_scope` của một Bước phê duyệt, THÌ kiểm lúc gửi kiểm
+  định mà spec này đăng ký cho loại `workflow` vào bảng kiểm theo loại của agent-lifecycle (agent-lifecycle:R2.7)
+  PHẢI làm lệnh gửi trả 422 với `details.reason_code` `no_second_approver` và phiên bản không rời Nháp.
 - R9.6 NẾU người quyết định giữ `required_scope` và là người tạo lượt chạy, THÌ luồng phê duyệt PHẢI trả
-  409 và không quyết định, vì `studio.step.` là tiền tố nghiêm (ADR-0112 (Accepted) quyết 7).
+  409 `conflict` và không quyết định, vì `studio.step.` là tiền tố nghiêm (ADR-0112 (Accepted) quyết 7;
+  ADR-0104 (Accepted) quyết 11).
 - R9.7 KHI một Bước phê duyệt mở phê duyệt, Bước đó PHẢI đóng dấu vào yêu cầu tên mọi Trường mà trang
   duyệt hiển thị.
 - R9.8 NẾU người quyết định không đọc được một Trường đã đóng dấu (luật của field-security:R4.5), THÌ
   `decision_guards` của `studio.step.approval` PHẢI trả 403 và không quyết định.
+- R9.9 TRONG KHI lượt chạy ở chế độ `simulate`, KHI một Bước phê duyệt chạy, Bước đó PHẢI lấy quyết định giả lập
+  (`approved` hay `rejected`) cho chính Bước đó từ đầu vào của lượt mô phỏng (workflow-triggers:R2.7) hay từ Câu
+  kiểm định của Cổng chất lượng (agent-lifecycle:R4.7), đi theo Nhánh ra của quyết định đó, không mở yêu cầu phê
+  duyệt nào và không chờ người quyết (ADR-0111 (Accepted) quyết 5).
+- R9.10 KHI một Bước phê duyệt dùng một quyết định giả lập, Bước đó PHẢI ghi audit `studio.step.approval.simulated`
+  với `details.run_mode`, `details.decision` và nguồn của quyết định (biểu mẫu chạy mô phỏng hay Câu kiểm định)
+  trong cùng giao dịch ghi kết quả của Bước.
+- R9.11 NẾU lượt chạy ở chế độ `live`, THÌ Bước phê duyệt PHẢI mở yêu cầu phê duyệt thật và không đọc quyết định
+  giả lập nào, kể cả khi đầu vào của lượt chạy mang một quyết định giả lập, để quyết định giả lập không bao giờ
+  thỏa một phê duyệt `live`.
+- R9.12 NẾU lượt chạy ở chế độ `simulate` tới một Bước phê duyệt mà không có quyết định giả lập cho Bước đó, THÌ
+  Bước phê duyệt PHẢI làm lượt chạy `failed` với `details.reason_code` `simulated_decision_missing` và không bao
+  giờ coi là đã duyệt.
 
 ## Trong phạm vi
 
@@ -193,52 +213,62 @@ thực thi (YC51; NODE-13, NODE-14, NODE-16).
   `data.object.assign`, `ai.llm`, `tool.call`, `human.approval`, cùng hình chiếu `trigger.endpoint`.
 - `ExpressionEngine` (Protocol ở `dw_kernel.expressions`, adapter ở `dw_studio`) và thư viện `dw.cel/v1`;
   bảng ánh xạ kiểu; bộ dựng Chuỗi có biến `{{ }}` theo sáu đích.
-- Bảng `studio.step_assignments`, `studio.step_approvals`.
+- Bảng `studio.step_assignments`, `studio.step_approvals` (chủ duy nhất của liên kết từ Bước phê duyệt tới yêu cầu
+  phê duyệt, nối với dòng chờ của workflow-engine qua `(run_id, interrupt_id)`), và `StepWaitLookupPort` mà
+  workflow-engine khai, đáp ứng từ bảng đó.
 - Mở yêu cầu phê duyệt `studio.step.`: tiền tố nghiêm `studio.step.` thêm bằng `|=` và một mục
   `decision_guards['studio.step.approval']` (được giao, đọc được mọi Trường đóng dấu) ở composition root;
-  kiểm phát hành theo loại `workflow` đăng ký qua Protocol của agent-lifecycle (R9.5).
+  kiểm lúc gửi kiểm định của loại `workflow` (`no_second_approver`) đăng ký vào bảng kiểm theo loại của
+  agent-lifecycle (R9.5).
+- Quyết định giả lập của Bước phê duyệt trong lượt mô phỏng và audit `studio.step.approval.simulated` (R9.9-R9.12).
 - Route `GET /api/v1/studio/node-types`, `POST /api/v1/studio/expressions/check`,
   `POST /api/v1/studio/expressions/evaluate`, `GET /api/v1/studio/workflows/{id}/draft/scope`.
 
 ## Ngoài phạm vi
 
-| Việc                                                                                                                                                | Vì sao                                                                                                                                                              | Chủ                                                             |
-| --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| Tài liệu `dw.workflow/v1`, bộ kiểm toàn đồ thị và bảng mã `wf.*` của nó, trình biên dịch, hàng run, điểm chờ và handler của phê duyệt bước, hẹn giờ | Là hợp đồng và máy chạy của quy trình                                                                                                                               | `workflow-engine`                                               |
-| Trình kích hoạt và Nguồn dữ liệu (Data Hub), ánh xạ payload vào `input_schema`                                                                      | Là cửa vào của quy trình                                                                                                                                            | `workflow-triggers`                                             |
-| Định nghĩa công cụ và Bộ công cụ theo loại, `ToolExecutor`, `ToolSpec`                                                                              | Công cụ là dữ liệu tenant qua một executor (ADR-0116 (Accepted))                                                                                                    | `tools-and-skills`                                              |
-| Sàn gửi tin tiếp thị (ngưỡng, đồng ý) trong đường gửi của executor                                                                                  | Một chủ cho sàn gửi (DO-3)                                                                                                                                          | `compliance-pdpl`                                               |
-| Container mã dùng một lần, `CodeSandboxPort`                                                                                                        | Hạ tầng cách ly tách riêng                                                                                                                                          | `code-sandbox`                                                  |
-| Lịch sử chạy theo bước, span, bảng điều khiển sử dụng                                                                                               | Đọc từ Postgres dưới RLS (ADR-0122 (Accepted))                                                                                                                      | `telemetry-and-audit`                                           |
-| `notify.send` chỉ tới thành viên; run không-live chỉ Danh sách người nhận thử                                                                       | B7b-nodes 11                                                                                                                                                        | đợt sau (W2, `workflow-nodes`)                                  |
-| Bước phê duyệt: nhắc, chuyển cấp, hết hạn, mã quyết định Zalo                                                                                       | B7b-nodes 12 (phần còn lại), 16                                                                                                                                     | đợt sau (W2, `workflow-nodes`)                                  |
-| `http.request`; `ai.agent`                                                                                                                          | B7b-nodes 13, 14                                                                                                                                                    | đợt sau (W2, `workflow-nodes`)                                  |
-| `logic.parallel`, `logic.join`, `logic.map`; `time.delay`, `time.wait_until`                                                                        | B7b-nodes 15, 16                                                                                                                                                    | đợt sau (W2, `workflow-nodes`)                                  |
-| `human.task` và hộp "Việc của tôi", `studio.human_tasks`                                                                                            | B7b-nodes 17                                                                                                                                                        | đợt sau (W2, `workflow-nodes`)                                  |
-| `flow.subworkflow`, `trigger.call`, `flow.return`                                                                                                   | B7b-nodes 18                                                                                                                                                        | đợt sau (W2, `workflow-nodes`)                                  |
-| `code.python`, quyền `studio.code.author`, quyền lợi `code_node`                                                                                    | B7b-nodes 19 (D7)                                                                                                                                                   | đợt sau (W2, `workflow-nodes`)                                  |
-| `trigger.manual`, `trigger.schedule`, `trigger.record_event`; `data.object.get`, `delete`                                                           | B7b-nodes 20                                                                                                                                                        | đợt sau (W2, `workflow-nodes`)                                  |
-| R7.3: Bước `ai.llm` bỏ qua bản ghi mang cờ `ai_opt_out` hay `processing_restricted`, không gọi model                                                | Cờ Hạn chế xử lý và yêu cầu chủ thể dữ liệu là W2 của compliance-pdpl; W1 chỉ chạy trên lead giả lập (YC89; Q9 của phiếu)                                           | đợt sau (W2, `workflow-nodes`)                                  |
-| WN14: test âm của R7.3, lead `ai_opt_out` không có lời gọi model nào                                                                                | Đi cùng R7.3 sang W2 (Q9 của phiếu)                                                                                                                                 | đợt sau (W2, `workflow-nodes`)                                  |
-| R9.4: phê duyệt hết hạn đi Nhánh ra `expired` hoặc làm lượt chạy `failed` với `approval_expired`                                                    | YC52 và lane hẹn giờ ở W2; W1 phê duyệt chờ không hạn, nên phê duyệt mở và lượt chạy đỗ không có gì dọn nếu không ai quyết, chấp nhận được với lead giả lập (DO-31) | đợt sau (W2, `workflow-nodes`); `workflow-engine` ghi `expired` |
-| WN10: test âm của R9.4, quá hạn không bao giờ thành `approved`                                                                                      | Đi cùng R9.4 sang W2 (DO-31)                                                                                                                                        | đợt sau (W2, `workflow-nodes`)                                  |
-| Kết quả giả lập ghim theo Bước cho lệnh gọi giả lập và bảng chạy thử                                                                                | W1 dùng giá trị sinh từ output schema (tenant-config:R5.3); bảng thuật ngữ đặt chủ ở spec này                                                                       | đợt sau (W2, `workflow-nodes`)                                  |
-| Lịch làm việc và ngày lễ của công ty cho `time.add_workdays`                                                                                        | BS35 giao chủ ở spec này, dữ liệu từ discovery 27 (FOG-16); cần trước khi cắt ticket W2 (YC98)                                                                      | đợt sau (W2, `workflow-nodes`)                                  |
-| Giao theo nhóm: ứng viên hay người dự phòng là một nhóm                                                                                             | Nhóm của org-and-principals là W2; W1 giao trong thành viên workspace giữ quyền (Q6 của phiếu)                                                                      | đợt sau (W2, `workflow-nodes`)                                  |
-| Phiên bản chính mới của loại bước; nội dung giàu bằng python-liquid                                                                                 | B7b-nodes 21, 22                                                                                                                                                    | đợt sau (W3, `workflow-nodes`)                                  |
+| Việc                                                                                                                                                                                        | Vì sao                                                                                                                                                              | Chủ                                                             |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| Tài liệu `dw.workflow/v1`, bộ kiểm toàn đồ thị và bảng mã `wf.*` của nó, trình biên dịch, hàng run, điểm chờ và handler của phê duyệt bước, hẹn giờ                                         | Là hợp đồng và máy chạy của quy trình                                                                                                                               | `workflow-engine`                                               |
+| Trình kích hoạt và Nguồn dữ liệu (Data Hub), ánh xạ payload vào `input_schema`                                                                                                              | Là cửa vào của quy trình                                                                                                                                            | `workflow-triggers`                                             |
+| Định nghĩa công cụ và Bộ công cụ theo loại, `ToolExecutor`, `ToolSpec`                                                                                                                      | Công cụ là dữ liệu tenant qua một executor (ADR-0116 (Accepted))                                                                                                    | `tools-and-skills`                                              |
+| Sàn gửi tin tiếp thị (ngưỡng, đồng ý) trong đường gửi của executor                                                                                                                          | Một chủ cho sàn gửi (DO-3)                                                                                                                                          | `compliance-pdpl`                                               |
+| Container mã dùng một lần, `CodeSandboxPort`                                                                                                                                                | Hạ tầng cách ly tách riêng                                                                                                                                          | `code-sandbox`                                                  |
+| Lịch sử chạy theo bước, span, bảng điều khiển sử dụng                                                                                                                                       | Đọc từ Postgres dưới RLS (ADR-0122 (Accepted))                                                                                                                      | `telemetry-and-audit`                                           |
+| `notify.send` chỉ tới thành viên; run không-live chỉ Danh sách người nhận thử                                                                                                               | B7b-nodes 11                                                                                                                                                        | đợt sau (W2, `workflow-nodes`)                                  |
+| Bước phê duyệt: nhắc, chuyển cấp, hết hạn, mã quyết định Zalo                                                                                                                               | B7b-nodes 12 (phần còn lại), 16                                                                                                                                     | đợt sau (W2, `workflow-nodes`)                                  |
+| `http.request`; `ai.agent`                                                                                                                                                                  | B7b-nodes 13, 14                                                                                                                                                    | đợt sau (W2, `workflow-nodes`)                                  |
+| `logic.parallel`, `logic.join`, `logic.map`; `time.delay`, `time.wait_until`                                                                                                                | B7b-nodes 15, 16                                                                                                                                                    | đợt sau (W2, `workflow-nodes`)                                  |
+| `human.task` và hộp "Việc của tôi", `studio.human_tasks`                                                                                                                                    | B7b-nodes 17                                                                                                                                                        | đợt sau (W2, `workflow-nodes`)                                  |
+| `flow.subworkflow`, `trigger.call`, `flow.return`                                                                                                                                           | B7b-nodes 18                                                                                                                                                        | đợt sau (W2, `workflow-nodes`)                                  |
+| `code.python`, quyền `studio.code.author`, quyền lợi `code_node`                                                                                                                            | B7b-nodes 19 (D7)                                                                                                                                                   | đợt sau (W2, `workflow-nodes`)                                  |
+| `trigger.manual`, `trigger.schedule`, `trigger.record_event`; `data.object.get`, `delete`                                                                                                   | B7b-nodes 20                                                                                                                                                        | đợt sau (W2, `workflow-nodes`)                                  |
+| R7.3: Bước `ai.llm` bỏ qua bản ghi mang cờ `ai_opt_out` hay `processing_restricted`, không gọi model                                                                                        | Cờ Hạn chế xử lý và yêu cầu chủ thể dữ liệu là W2 của compliance-pdpl; W1 chỉ chạy trên lead giả lập (YC89; Q9 của phiếu)                                           | đợt sau (W2, `workflow-nodes`)                                  |
+| WN14: test âm của R7.3, lead `ai_opt_out` không có lời gọi model nào                                                                                                                        | Đi cùng R7.3 sang W2 (Q9 của phiếu)                                                                                                                                 | đợt sau (W2, `workflow-nodes`)                                  |
+| R9.4: phê duyệt hết hạn đi Nhánh ra `expired` hoặc làm lượt chạy `failed` với `approval_expired`                                                                                            | YC52 và lane hẹn giờ ở W2; W1 phê duyệt chờ không hạn, nên phê duyệt mở và lượt chạy đỗ không có gì dọn nếu không ai quyết, chấp nhận được với lead giả lập (DO-31) | đợt sau (W2, `workflow-nodes`); `workflow-engine` ghi `expired` |
+| WN10: test âm của R9.4, quá hạn không bao giờ thành `approved`                                                                                                                              | Đi cùng R9.4 sang W2 (DO-31)                                                                                                                                        | đợt sau (W2, `workflow-nodes`)                                  |
+| Kết quả giả lập ghim theo Bước cho lệnh gọi giả lập và bảng chạy thử                                                                                                                        | W1 dùng giá trị sinh từ output schema (tenant-config:R5.3); bảng thuật ngữ đặt chủ ở spec này                                                                       | đợt sau (W2, `workflow-nodes`)                                  |
+| Lịch làm việc và ngày lễ của công ty cho `time.add_workdays`                                                                                                                                | BS35 giao chủ ở spec này, dữ liệu từ discovery 27 (FOG-16); cần trước khi cắt ticket W2 (YC98)                                                                      | đợt sau (W2, `workflow-nodes`)                                  |
+| Giao theo nhóm: ứng viên hay người dự phòng là một nhóm                                                                                                                                     | Nhóm của org-and-principals là W2; W1 giao trong thành viên workspace giữ quyền (Q6 của phiếu)                                                                      | đợt sau (W2, `workflow-nodes`)                                  |
+| Bước phê duyệt thu hẹp người duyệt theo nhóm; giá trị `team` của `assignee_kind`                                                                                                            | Nhóm của org-and-principals là W2; W1 chỉ nhận người và Biểu thức (R9.1)                                                                                            | đợt sau (W2, `workflow-nodes`)                                  |
+| Duyệt thay: người duyệt đặt một người duyệt thay cho phê duyệt của mình trong một khoảng thời gian có hạn khi vắng mặt, có audit khi đặt, gỡ và mỗi quyết định của người duyệt thay (YC104) | N7 của Đạt ngày 24/10/2026; "Duyệt thay" khác "Ủy quyền" dùng kết nối của bảng thuật ngữ                                                                            | đợt sau (W2, `workflow-nodes`)                                  |
+| Bước `logic.loop` chạy lại một đoạn quy trình theo điều kiện, với `max_iterations` khai trong Bước mà lượt chạy không bao giờ vượt (YC105)                                                  | N7 của Đạt ngày 24/10/2026; cấu trúc vòng lặp có trần do workflow-engine biên dịch                                                                                  | đợt sau (W2, `workflow-nodes`); `workflow-engine`               |
+| Duyệt song song k trên n người được giao                                                                                                                                                    | Nguyên liệu chung của các gói Nhân sự, Mua hàng, Tài chính, ghi ở Không làm sau gói Bán hàng (N9 của Đạt ngày 24/10/2026)                                           | đợt sau (W3, `workflow-nodes`); `workflow-engine`               |
+| Bảng quyết định, hay ma trận duyệt chọn người duyệt theo ngưỡng                                                                                                                             | Nguyên liệu chung của các gói Nhân sự, Mua hàng, Tài chính, ghi ở Không làm sau gói Bán hàng (N9 của Đạt ngày 24/10/2026)                                           | đợt sau (W3, `workflow-nodes`)                                  |
+| Phiên bản chính mới của loại bước; nội dung giàu bằng python-liquid                                                                                                                         | B7b-nodes 21, 22                                                                                                                                                    | đợt sau (W3, `workflow-nodes`)                                  |
 
 ## Dữ liệu
 
-- `studio.step_assignments`: giao của một Bước phê duyệt cho người hoặc nhóm. Cột `tenant_id`,
-  `workspace_id`, `run_id`, `node_id`, `assignee_kind` (`user`, `team`), `assignee_id`, `required_scope`,
-  `created_at timestamptz`. RLS bật và FORCE; policy thu hẹp theo `app.tenant_id`. FK `run_id` tới dòng
-  lượt chạy `ON DELETE CASCADE`, có chỉ mục; chỉ mục `(tenant_id, run_id, node_id)`.
-- `studio.step_approvals`: liên kết một Bước phê duyệt với `platform.approval_requests` và giữ mã băm
-  chủ thể đã khoá. Cột `tenant_id`, `workspace_id`, `run_id`, `node_id`, `approval_request_id`,
-  `subject_node_id`, `subject_hash`, `created_at timestamptz`. CHECK `ck_step_approvals_subject_hash`
-  (mã băm khác null khi đã khoá). FK `approval_request_id` tới `platform.approval_requests`
-  `ON DELETE CASCADE`, có chỉ mục. RLS bật và FORCE. `updated_at` do trigger giữ, nhường giá trị câu
-  lệnh nêu.
+- `studio.step_assignments`: giao của một Bước phê duyệt cho người. Cột `tenant_id`,
+  `workspace_id`, `run_id`, `node_id`, `assignee_kind` CHECK (`user`) ở W1, không DEFAULT (nhóm là W2),
+  `assignee_id`, `required_scope`, `created_at timestamptz`. RLS bật và FORCE; policy thu hẹp theo `app.tenant_id`.
+  FK `run_id` tới dòng lượt chạy `ON DELETE CASCADE`, có chỉ mục; chỉ mục `(tenant_id, run_id, node_id)`.
+- `studio.step_approvals`: chủ duy nhất của liên kết một Bước phê duyệt với `platform.approval_requests`, và giữ
+  mã băm chủ thể đã khoá. Cột `tenant_id`, `workspace_id`, `run_id`, `node_id`, `interrupt_id text NOT NULL`,
+  `approval_request_id`, `subject_node_id`, `subject_hash`, `created_at timestamptz`. CHECK
+  `ck_step_approvals_subject_hash` (mã băm khác null khi đã khoá). FK `approval_request_id` tới
+  `platform.approval_requests` `ON DELETE CASCADE`, có chỉ mục; FK `(tenant_id, run_id, interrupt_id)` tới
+  `platform.run_waits (tenant_id, run_id, interrupt_id)` `ON DELETE CASCADE`, có chỉ mục, nên dòng chờ không giữ id
+  yêu cầu nào (workflow-engine:R6.2). RLS bật và FORCE. `updated_at` do trigger giữ, nhường giá trị câu lệnh nêu.
 
 ## API
 
@@ -255,28 +285,32 @@ thực thi (YC51; NODE-13, NODE-14, NODE-16).
 - Quyền dùng lại: `studio.workflows.edit` do workflow-engine/01 đăng ký; phát hành quy trình dùng khóa
   chung `studio.publish.approve` của agent-lifecycle, không có khóa phát hành riêng theo loại;
   `studio.tasks.manage` và `studio.code.author` thuộc W2.
+- Mã spec này thêm: `no_second_approver` (422 ở lệnh gửi kiểm định của agent-lifecycle, R9.5),
+  `simulated_decision_missing` (lượt mô phỏng `failed`, R9.12); người quyết bị từ chối nhận 404, 409 `conflict` hay
+  403 `permission_denied` theo ADR-0104 (Accepted) quyết 11 (R9.2, R9.6, R9.8).
 
 ## Kiểm soát
 
-| #    | Kiểm soát                                                                                                   | Yêu cầu          | Test âm                                                                                                                                                                        |
-| ---- | ----------------------------------------------------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| WN1  | Văn bản công ty không qua `str.format`, Jinja2 hay eval                                                     | R3.1             | Mẫu `{0}{x.__class__}` ra nguyên văn; gỡ tokenizer nhận biết CEL → test kiến trúc đỏ                                                                                           |
-| WN2  | Mọi giá trị vào prompt được bao chứa và cắt 16 KiB                                                          | R4.2, R7.2       | `</input>` trong lời nhắn lead không đóng được khối; gỡ `contain_untrusted` ở đích prompt → đỏ                                                                                 |
-| WN3  | Đầu ra model kiểm phía server                                                                               | R7.1             | Model giả trả `score=150` hai lần → `output_invalid` và đi Nhánh ra lỗi; gỡ kiểm JSON Schema → đỏ                                                                              |
-| WN4  | Bước bản ghi chỉ là chủ thể chạy; không khoá `run_as`                                                       | R5.2             | Cấu hình có `run_as` → schema từ chối; chủ thể thiếu quyền → `permission_denied`                                                                                               |
-| WN5  | Trường bị ẩn không vào mẫu hay Biểu thức                                                                    | R4.4             | Tham chiếu `phone` không đọc được → `field_not_readable` lúc gửi kiểm định, `field_hidden` lúc render; gỡ kiểm → đỏ                                                            |
-| WN6  | Tác động ngoài qua `ToolExecutor`, idempotent                                                               | R8.2             | Hai lần chạy song song cùng khoá `run_id:node_id:iteration` → một lần gửi                                                                                                      |
-| WN7  | Quyền công cụ và sàn gửi tin kiểm ở executor, không ở Bước                                                  | R8.3, R8.4       | Thiếu quyền → `permission_denied` từ executor; `email.send` của `smtp@1.0.0` tới địa chỉ chưa đồng ý → `blocked:no_consent`; gọi thẳng công cụ cũng bị chặn                    |
-| WN8  | Người duyệt giữ quyền, được giao, khác người tạo lượt; không phát hành khi không có người thứ hai giữ scope | R9.2, R9.5, R9.6 | Người tạo lượt giữ scope tự duyệt → 409; không được giao hay thiếu scope → 403; chỉ người chạy giữ scope → kiểm theo loại đã đăng ký làm phát hành từ chối; gỡ guard → test đỏ |
-| WN9  | Tham số đã duyệt là tham số được thực thi                                                                   | R9.3             | Chen một Bước sau khi duyệt → gửi kiểm định từ chối; mã băm chủ thể khác → `subject_changed`                                                                                   |
-| WN10 | Hết hạn không bao giờ tự duyệt                                                                              | R9.4             | Quá hạn → Nhánh ra `expired` hoặc `approval_expired`, không bao giờ có `approved`                                                                                              |
-| WN11 | Mặc định đóng: Khi lỗi và nhánh switch                                                                      | R2.3, R2.4       | Không khai Khi lỗi → `fail`; `logic.switch` thiếu nhánh mặc định → `wf.router_not_total`, không niêm phong                                                                     |
-| WN12 | Biểu thức có trần chi phí, không treo                                                                       | R3.4             | Map lồng 3 cấp 22 phần tử → `expression_budget_exceeded`; gỡ tiền-kiểm AST ở adapter Rust → đỏ                                                                                 |
-| WN13 | Host không nằm trong mẫu                                                                                    | R4.3             | `https://{{ trigger.input.host }}/` → `templated_host`, không render                                                                                                           |
-| WN14 | Bước AI tôn trọng opt-out                                                                                   | R7.3             | Lead `ai_opt_out` → không có lời gọi model nào                                                                                                                                 |
-| WN15 | Mỗi thuộc tính loại bước có nơi đọc                                                                         | R1.4             | Thêm một thuộc tính không ai đọc vào `NodeTypeRegistry` → test bảng thuộc-tính-tới-nơi-đọc đỏ                                                                                  |
-| WN16 | Ứng viên giao và người dự phòng đủ quyền theo `effective_grants`                                            | R6.1, R6.3, R6.4 | Người không giữ quyền làm người phụ trách bản ghi không bao giờ được chọn, kể cả khi là người dự phòng; người dự phòng không hợp lệ → Nhánh ra lỗi; gỡ kiểm quyền → đỏ         |
-| WN17 | Người duyệt đọc được mọi Trường mà trang duyệt hiển thị                                                     | R9.7, R9.8       | Bước phê duyệt đóng dấu `phone`; người được giao không đọc được `phone` quyết → 403 tại `decide`, yêu cầu vẫn `pending`; gỡ điều kiện đọc trường khỏi guard → test đỏ          |
+| #    | Kiểm soát                                                                                                       | Yêu cầu          | Test âm                                                                                                                                                                                                                                                                                   |
+| ---- | --------------------------------------------------------------------------------------------------------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| WN1  | Văn bản công ty không qua `str.format`, Jinja2 hay eval                                                         | R3.1             | Mẫu `{0}{x.__class__}` ra nguyên văn; gỡ tokenizer nhận biết CEL → test kiến trúc đỏ                                                                                                                                                                                                      |
+| WN2  | Mọi giá trị vào prompt được bao chứa và cắt 16 KiB, kể cả `Mô tả cho AI`                                        | R4.2, R7.2, R7.5 | `</input>` trong lời nhắn lead hay trong `ai_description` của một trường không đóng được khối; gỡ `contain_untrusted` ở đích prompt hay ở mục bối cảnh → đỏ                                                                                                                               |
+| WN3  | Đầu ra model kiểm phía server                                                                                   | R7.1             | Model giả trả `score=150` hai lần → `output_invalid` và đi Nhánh ra lỗi; gỡ kiểm JSON Schema → đỏ                                                                                                                                                                                         |
+| WN4  | Bước bản ghi chỉ là chủ thể chạy; không khoá `run_as`                                                           | R5.2             | Cấu hình có `run_as` → schema từ chối; chủ thể thiếu quyền → `permission_denied`                                                                                                                                                                                                          |
+| WN5  | Trường bị ẩn không vào mẫu hay Biểu thức                                                                        | R4.4             | Tham chiếu `phone` không đọc được → `field_not_readable` lúc gửi kiểm định, `field_hidden` lúc render; gỡ kiểm → đỏ                                                                                                                                                                       |
+| WN6  | Tác động ngoài qua `ToolExecutor`, idempotent                                                                   | R8.2             | Hai lần chạy song song cùng khoá do wrapper nút dẫn (workflow-engine:R4.5) → một lần gửi; Bước tự dựng khoá khác → test đỏ                                                                                                                                                                |
+| WN7  | Quyền công cụ và sàn gửi tin kiểm ở executor, không ở Bước                                                      | R8.3, R8.4       | Thiếu quyền → `permission_denied` từ executor; `email.send` của `smtp@1.0.0` tới địa chỉ chưa đồng ý → `blocked:no_consent`; gọi thẳng công cụ cũng bị chặn                                                                                                                               |
+| WN8  | Người duyệt giữ quyền, được giao, khác người tạo lượt; không gửi kiểm định khi không có người thứ hai giữ scope | R9.2, R9.5, R9.6 | Người tạo lượt giữ scope tự duyệt → 409; người tạo lượt thiếu scope, hay người giữ scope mà không được giao → 403; người khác không giữ tem → 404; chỉ người chạy giữ scope → lệnh gửi kiểm định trả 422 `no_second_approver`, phiên bản ở Nháp; gỡ guard hay gỡ đăng ký kiểm → test đỏ   |
+| WN9  | Tham số đã duyệt là tham số được thực thi                                                                       | R9.3             | Chen một Bước sau khi duyệt → gửi kiểm định từ chối; mã băm chủ thể khác → `subject_changed`                                                                                                                                                                                              |
+| WN10 | Hết hạn không bao giờ tự duyệt                                                                                  | R9.4             | Quá hạn → Nhánh ra `expired` hoặc `approval_expired`, không bao giờ có `approved`                                                                                                                                                                                                         |
+| WN11 | Mặc định đóng: Khi lỗi và nhánh switch                                                                          | R2.3, R2.4       | Không khai Khi lỗi → `fail`; `logic.switch` thiếu nhánh mặc định → `wf.router_not_total`, không niêm phong                                                                                                                                                                                |
+| WN12 | Biểu thức có trần chi phí, không treo                                                                           | R3.4             | Map lồng 3 cấp 22 phần tử → `expression_budget_exceeded`; gỡ tiền-kiểm AST ở adapter Rust → đỏ                                                                                                                                                                                            |
+| WN13 | Host không nằm trong mẫu                                                                                        | R4.3             | `https://{{ trigger.input.host }}/` → `templated_host`, không render                                                                                                                                                                                                                      |
+| WN14 | Bước AI tôn trọng opt-out                                                                                       | R7.3             | Lead `ai_opt_out` → không có lời gọi model nào                                                                                                                                                                                                                                            |
+| WN15 | Mỗi thuộc tính loại bước có nơi đọc                                                                             | R1.4             | Thêm một thuộc tính không ai đọc vào `NodeTypeRegistry` → test bảng thuộc-tính-tới-nơi-đọc đỏ                                                                                                                                                                                             |
+| WN16 | Ứng viên giao và người dự phòng đủ quyền theo `effective_grants`, giao qua một dịch vụ                          | R6.1, R6.3, R6.4 | Người không giữ quyền làm người phụ trách bản ghi không bao giờ được chọn, kể cả khi là người dự phòng; người dự phòng không hợp lệ → Nhánh ra lỗi; lần giao của Bước có đúng một audit và một outbox `studio.record.assigned`, do dịch vụ giao của record-access ghi; gỡ kiểm quyền → đỏ |
+| WN17 | Người duyệt đọc được mọi Trường mà trang duyệt hiển thị                                                         | R9.7, R9.8       | Bước phê duyệt đóng dấu `phone`; người được giao không đọc được `phone` quyết → 403 tại `decide`, yêu cầu vẫn `pending`; gỡ điều kiện đọc trường khỏi guard → test đỏ                                                                                                                     |
+| WN18 | Quyết định giả lập không bao giờ thỏa một phê duyệt `live`, và thiếu thì không coi là đã duyệt                  | R9.11, R9.12     | Lượt `live` có quyết định giả lập `approved` trong đầu vào → yêu cầu phê duyệt thật được mở, lượt chạy chờ; lượt `simulate` thiếu quyết định cho một Bước phê duyệt → `failed` `simulated_decision_missing`, Nhánh ra duyệt không chạy; gỡ kiểm chế độ ở Bước → test đỏ                   |
 
 ## Tiêu chí xong
 
@@ -293,14 +327,24 @@ thực thi (YC51; NODE-13, NODE-14, NODE-16).
 - `tools-and-skills` (batch 2, đang viết song song): `ToolExecutor`, `ToolSpec`, hồ sơ schema và Bộ
   công cụ ghim; không định nghĩa bảng của nó ở đây.
 - `workflow-engine` (batch 2): tài liệu `dw.workflow/v1`, bộ kiểm toàn đồ thị với hàm dominator và bảng mã
-  `wf.*` (workflow-engine:R2.2, R2.5, R2.6, R2.14), bộ bọc node áp `retry`/`timeout`/Khi lỗi, điểm chờ và
-  handler phê duyệt bước (workflow-engine:R6.2), ghim phiên bản, khóa `studio.workflows.edit`
-  (workflow-engine/01).
+  `wf.*` (workflow-engine:R2.2, R2.5, R2.6, R2.14), bộ bọc node áp `retry`/`timeout`/Khi lỗi và dẫn khóa chống
+  lặp duy nhất của mọi hiệu ứng (workflow-engine:R4.5), điểm chờ và handler phê duyệt bước
+  (workflow-engine:R6.2) với `platform.run_waits` mà `studio.step_approvals` trỏ tới và `StepWaitLookupPort` mà
+  spec này đáp ứng, ghim phiên bản, khóa `studio.workflows.edit` (workflow-engine/01).
 - `custom-objects`: `RecordService` đáp ứng `RecordsPort`, giả lập ghi ở `simulate` (custom-objects:R5.4) và
   cây lọc (custom-objects:R5.6, custom-objects:R8.9;
-  `.claude/plans/studio/custom-objects/issues/04-truy-van-ban-ghi.md`).
+  `.claude/plans/studio/custom-objects/issues/04-truy-van-ban-ghi.md`); `Mô tả cho AI` của đối tượng và trường
+  mà R7.5 đọc (YC101; `.claude/plans/studio/custom-objects/issues/02-luoc-do-dinh-nghia-object.md`).
 - `record-access`: ngữ cảnh actor và Giới hạn dữ liệu ở mọi cửa (record-access:R6.4), và giao người phụ
-  trách (record-access:R8.1; `.claude/plans/studio/record-access/issues/05-giao-nguoi-phu-trach.md`).
+  trách qua một dịch vụ giao ghi audit và outbox `studio.record.assigned` (record-access:R8.1, record-access:R8.7,
+  record-access:R8.8; `.claude/plans/studio/record-access/issues/05-giao-nguoi-phu-trach.md`), mà Bước giao gọi
+  qua một Protocol spec này khai.
+- `agent-builder`: bộ ráp `assemble_system_prompt` cạnh `contain_untrusted` và linter chặn `<input`,
+  `<tenant_instructions`, phục vụ cả Bước `ai.llm` (ADR-0117 (Accepted) quyết 4;
+  `.claude/plans/studio/agent-builder/issues/02-loai-agent-va-khung-prompt.md`); spec này dùng khung prompt riêng,
+  không linter riêng.
+- `workflow-triggers`: route `.../test-runs` đưa quyết định giả lập của mỗi Bước phê duyệt vào đầu vào của lượt mô
+  phỏng (workflow-triggers:R2.7, workflow-triggers:R2.8).
 - `tenant-config`: Chế độ chạy `live`/`test`/`simulate` và chặn tác động ở executor (tenant-config:R5.1),
   Bản kê lượt chạy ghim `dw.cel/v1` (tenant-config:R6.1), điểm gắn kind `principal` cho người dự phòng và
   guard async `ApprovalDecisionGuard` (`.claude/plans/studio/tenant-config/issues/05-lien-ket-va-phien-ban-cau-hinh.md`).
@@ -313,12 +357,18 @@ thực thi (YC51; NODE-13, NODE-14, NODE-16).
 - `org-and-principals`: tài khoản dịch vụ làm chủ thể chạy (org-and-principals:R6.7); nhóm cho người xử
   lý và ứng viên giao ở W2.
 - `tenant-rbac`: `effective_grants` (tenant-rbac:R2) cho ứng viên giao, người dự phòng và ứng viên duyệt.
-- `agent-lifecycle`: khóa phát hành chung `studio.publish.approve`, Protocol kiểm phát hành theo loại đăng ký
-  ở composition root (ADR-0120 (Accepted) quyết 2), D11 hai người cho phát hành (agent-lifecycle:R5.2).
-- Kiểm lại khi: `workflow-engine` đổi hình hàm dominator, bảng mã `wf.*` hay hợp đồng `dw.workflow/v1`;
-  `tools-and-skills` đổi chữ ký `ToolExecutor.execute`; `record-access` đổi hình `RecordsPort` hay ngữ cảnh
-  actor → kiểm lại 01-06; agent-lifecycle đổi Protocol kiểm phát hành theo loại → R9.5, ticket 06;
-  số đo FOG-50 trượt (ADR-0114 (Accepted)) → ticket 01.
+- `agent-lifecycle`: khóa phát hành chung `studio.publish.approve`, bảng kiểm theo loại chạy lúc gửi kiểm định
+  mà R9.5 đăng ký vào (agent-lifecycle:R2.7; `.claude/plans/studio/agent-lifecycle/issues/03-hop-dong-vong-doi-va-niem-phong.md`,
+  ticket 06 chờ ticket đó; ADR-0120 (Accepted) quyết 2), Câu kiểm định của Cổng chất lượng mang quyết định giả
+  lập cho Bước phê duyệt (agent-lifecycle:R4.7), D11 hai người cho phát hành (agent-lifecycle:R5.2).
+- Mã từ chối người quyết: 404 ngoài tầm thấy, 409 `conflict` cho luật tách nhiệm, 403 `permission_denied` khi thấy
+  mà thiếu quyền, không được giao hay không đọc được Trường đóng dấu (ADR-0104 (Accepted) quyết 11; tem và tầm
+  thấy của ADR-0004 (Accepted)).
+- Kiểm lại khi: `workflow-engine` đổi hình hàm dominator, bảng mã `wf.*`, khóa chống lặp, `StepWaitLookupPort`
+  hay hợp đồng `dw.workflow/v1`; `tools-and-skills` đổi chữ ký `ToolExecutor.execute`; `record-access` đổi hình
+  `RecordsPort`, dịch vụ giao hay ngữ cảnh actor → kiểm lại 01-06; agent-lifecycle đổi bảng kiểm theo loại hay
+  cách Câu kiểm định mang quyết định giả lập → R9.5, R9.9, ticket 06; agent-builder đổi `assemble_system_prompt`
+  hay linter → R7, ticket 05; số đo FOG-50 trượt (ADR-0114 (Accepted)) → ticket 01.
 
 ## Câu hỏi còn mở
 
@@ -404,6 +454,49 @@ thực thi (YC51; NODE-13, NODE-14, NODE-16).
   compliance-pdpl/04 (sàn gửi tin thật). Sửa: ticket 06.
 - 23/10/2026 (agent, tạm): Phụ thuộc trỏ D11 cho phát hành về agent-lifecycle:R5.2 thay tenant-rbac:R7.1, vì
   tenant-rbac:R7.1 là luật hai người cho đổi vai trò. Sửa: Phụ thuộc.
+- 24/10/2026 (Đạt): N2: trong lượt `simulate` (và `test` từ W2) Bước phê duyệt không chờ người quyết thật; quyết
+  định giả lập lấy từ biểu mẫu chạy mô phỏng (người thử chọn duyệt hay từ chối) hay từ Câu kiểm định của Cổng chất
+  lượng, ghi audit `studio.step.approval.simulated`, không bao giờ thỏa một phê duyệt `live`
+  (D:workflow-nodes:R9.6~workflow-triggers:R3.3). Sửa: R9.1, R9.9, R9.10, R9.11, WN18, Trong phạm vi, Phụ thuộc,
+  ticket 06.
+- 24/10/2026 (agent, tạm): lượt mô phỏng tới một Bước phê duyệt mà không có quyết định giả lập cho Bước đó thì
+  `failed` với `simulated_decision_missing`, không chọn nhánh nào thay người thử (failure-modes #7); route
+  `.../test-runs` đã từ chối thân thiếu quyết định (workflow-triggers:R2.8), nên ca này chỉ tới từ một Câu kiểm định
+  thiếu quyết định. Sửa: R9.12, WN18, API, ticket 06. Nếu sai thì: Bước đi Nhánh ra từ chối thay vì làm lượt
+  `failed`.
+- 24/10/2026 (Đạt): N3: Bước `ai.llm` đọc `Mô tả cho AI` của đối tượng và trường như dữ liệu từ bên ngoài, bao như
+  YC48 (YC101, W1). Sửa: R7.5, WN2, Phụ thuộc, ticket 05.
+- 24/10/2026 (Đạt): Bước `ai.llm` dùng `assemble_system_prompt` và linter của agent-builder/02 (ADR-0117 (Accepted)
+  quyết 4): khung prompt riêng thì được, linter riêng thì không; ticket 05 chờ agent-builder/02
+  (A:agent-builder:R2.2~workflow-nodes/05). Sửa: Phụ thuộc, ticket 05.
+- 24/10/2026 (Đạt): R9.5 là kiểm lúc gửi kiểm định đăng ký vào bảng kiểm theo loại của agent-lifecycle:R2.7, trả 422
+  `no_second_approver`; dòng này thay cách gọi "kiểm phát hành" của dòng ngày 23/10/2026 về khóa phát hành chung;
+  ticket 06 chờ agent-lifecycle/03 (B:agent-lifecycle:R2.7~workflow-nodes:R9.5). Sửa: R9.5, WN8, API, Trong phạm
+  vi, Phụ thuộc, ticket 06.
+- 24/10/2026 (Đạt): người yêu cầu thiếu `required_scope`, hay người giữ `required_scope` mà không được giao, nhận
+  403; mọi người khác không thấy yêu cầu có tem nên nhận 404; bảng ba mã nằm ở ADR-0104 (Accepted) quyết 11, còn
+  ADR-0004 (Accepted) giữ tem và tầm thấy; dòng ngày 23/10/2026 dẫn bảng ở ADR-0004 (Accepted) đọc theo chỗ mới
+  (phát hiện D về ADR-0004 (Accepted) và R9.2; phát hiện F về ADR-0004 (Accepted) và workflow-engine). Sửa: R9.2,
+  R9.6, WN8, API, Phụ thuộc, ticket 06.
+- 24/10/2026 (Đạt): khóa chống lặp của mọi hiệu ứng có một ngữ pháp do workflow-engine:R4.5 làm chủ, vì wrapper nút
+  dẫn khóa; Bước không tự viết khóa (B:workflow-engine:R4.5~workflow-nodes:R5.1). Sửa: R5.1, R8.1, WN6, ticket 04, 06.
+- 24/10/2026 (Đạt): Bước giao gọi dịch vụ giao của record-access qua một Protocol spec này khai, không gọi
+  `studio.assign_record` và không tự ghi audit, nên audit và outbox `studio.record.assigned` có một người ghi
+  (B:record-access:R8.7~workflow-nodes:R6.3). Sửa: R6.3, WN16, Phụ thuộc, ticket 04.
+- 24/10/2026 (Đạt): ở W1 Bước phê duyệt chỉ thu hẹp theo người và Biểu thức, `assignee_kind` CHECK chỉ `user`;
+  nhóm vào dòng W2 (H:workflow-nodes:R9.1~workflow-nodes:ngoài-phạm-vi). Sửa: R9.1, Dữ liệu, Ngoài phạm vi,
+  ticket 06.
+- 24/10/2026 (Đạt): `studio.step_approvals.approval_request_id` là chủ duy nhất của liên kết từ Bước phê duyệt tới
+  yêu cầu, nối với dòng chờ qua FK `(tenant_id, run_id, interrupt_id)`, và spec này đáp ứng `StepWaitLookupPort` của
+  workflow-engine (A:workflow-engine:dữ-liệu~workflow-nodes:dữ-liệu). Sửa: Dữ liệu, Trong phạm vi, Phụ thuộc,
+  ticket 06.
+- 24/10/2026 (Đạt): N7: Duyệt thay (YC104) và Bước `logic.loop` có `max_iterations` (YC105) là W2 của spec này,
+  vòng lặp cùng workflow-engine; N9: duyệt song song k trên n, cùng workflow-engine, và bảng quyết định hay ma trận
+  duyệt theo ngưỡng là W3, nguyên liệu chung của các gói sau gói Bán hàng. Sửa: Ngoài phạm vi.
+- 24/10/2026 (Đạt): ticket 06 chỉ thêm đúng một dòng `|=` cho `studio.step.` và một mục `decision_guards` của
+  `studio.step.approval`, không sửa dòng của ticket khác, kèm test khẳng định tập tiền tố có `studio.step.`; theo cách
+  sửa thứ hai của C:agent-lifecycle:R7.10~tenant-config:R8.8, như agent-lifecycle/04, không thêm cạnh Blocked by vì
+  cạnh agent-lifecycle/04 tới ticket 06 tạo vòng. Sửa: ticket 06.
 
 ## Danh sách ticket
 

@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: .claude/plans/studio/workflow-engine/issues/03-bien-dich-va-wrapper-nut.md, .claude/plans/studio/field-security/issues/01-mo-hinh-bao-mat-truong.md, .claude/plans/studio/usage-and-limits/issues/02-bang-gia-so-su-dung-va-man-hinh.md, .claude/plans/studio/usage-and-limits/issues/03-han-muc-giu-truoc-va-quyet-toan.md
 Area: studio
-Yêu cầu: R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R4.1, R4.2, R4.3, R5.1, R5.2, R5.3, R5.4, R5.5, TA4, TA5, TA6, TA10, TA11, TA12, TA13
+Yêu cầu: R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R4.1, R4.2, R4.3, R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R5.8, TA4, TA5, TA6, TA10, TA11, TA12, TA13, TA14
 
 ## Mục tiêu
 
@@ -24,7 +24,10 @@ timestamptz`, `duration_ms`, `error_type`, `input_preview` và `result_preview` 
    (DO-02.2); index `ix_run_steps_run (tenant_id, run_id, seq)`.
 2. Đăng ký `run_steps` bằng một dòng `platform.time_partitioned_tables` (`append_only = true`) trong cùng
    migration; không sửa thân `platform.ensure_time_partitions` (studio-skeleton/01 là chủ hàm, hàm tạo
-   partition kèm ENABLE/FORCE RLS và policy công ty).
+   partition kèm ENABLE/FORCE RLS và policy công ty), cũng không sửa thân hai hàm của usage-and-limits/02. Cùng
+   thay đổi: khóa `platform.run_steps` vào tệp chính sách retention (bước 7), nên studio-skeleton:R3.7 xanh ngay
+   khi đăng ký; một dòng `STUDIO_EXCLUSIONS` cho `platform.run_steps` với lý do "`dw_app` không DELETE; xóa khi
+   offboarding bằng `platform.purge_tenant_append_only`" (spec R5.8; studio-skeleton:R4.3).
 3. `StepRecorderPort.step_started`, `step_finished`; đường che `redact_mapping` bỏ trường bí mật và tham
    chiếu credential, che trường `Nhạy cảm` bằng hàm quyết quyền đọc trường của field-security, preview
    ≤ 4 KB, payload lớn gzip ở đường dẫn `tenants/{tenant_id}/workspaces/{workspace_id}/run-steps/`, ghi
@@ -35,23 +38,28 @@ timestamptz`, `duration_ms`, `error_type`, `input_preview` và `result_preview` 
    với index `ix_worker_runs_page (tenant_id, workspace_id, created_at DESC, id DESC)`;
    `GET /api/v1/runs/{run_id}/steps`; `GET /api/v1/runs/{run_id}/steps/{step_id}/payload?part=in|out`
    (`runs.read_payloads`, che theo quyền đọc trường của người xem, audit `run.payload.viewed` trong cùng
-   giao dịch). Một lượt chạy chạm bản ghi người xem không thấy → 404.
+   giao dịch). Một lượt chạy chạm bản ghi người xem không thấy → 404. Migration của ticket đăng ký khóa
+   `runs.read_payloads` trong `platform.permissions` của tenant-rbac/01 (nhãn tiếng Việt, `scope_kind`
+   `workspace`, `risk` `standard` theo bảng phân loại của ticket đó).
 6. Màn `/runs` (antd Table: thời điểm, agent hoặc quy trình, trạng thái, nguồn kích hoạt, thời lượng, chi
    phí, bộ lọc) và `/runs/[id]` (Steps, Descriptions, xem JSON có dấu `Đã ẩn`, token và chi phí mỗi Bước
    chạy, nút "Sao chép trace id").
-7. `configs/policies/retention@1.8.0.yaml` thay `1.7.0`; ticket này là chủ duy nhất của bản 1.8.0
-   (compliance-pdpl/06 nâng lên 1.9.0 sau), mọi số ghi UNVERIFIED tới khi luật sư xác nhận trước chạy bóng
-   (DO-52): lớp và bộ xóa cho `run_steps` (30 ngày; lane xóa payload trong dòng và đối tượng của bước quá 30
-   ngày qua một hàm riêng của lane vì `dw_app` không UPDATE bảng, DROP PARTITION khi cả tháng quá 30 ngày),
-   payload đối tượng (30 ngày, lane xóa đối tượng), cột payload lượt chạy (90 ngày sau kết thúc, lane xóa),
-   lượt chạy (395 ngày sau kết thúc, lane xóa, bỏ qua dòng `memory.items` trỏ tới theo
-   `db/migrations/versions/0007_evidence.py:113-115`), `usage_events` (395 ngày, DROP PARTITION bằng
-   `drop_expired_partitions` của usage-and-limits/02), `usage_daily` (760 ngày, lane xóa),
-   `studio.inbound_events` (30 ngày, lane xóa, bỏ qua sự kiện mà lượt `queued` còn trỏ tới),
-   `studio.trigger_deliveries` (90 ngày, lane xóa), khóa chống trùng của sự kiện vào (72 giờ, lane xóa); bỏ
-   chú thích "model_usage_ledger đã bị bỏ" của bản 1.7.0 (`configs/policies/retention@1.7.0.yaml:72`); test
-   tập bộ xóa và `test_the_pinned_retention_policy_promises_only_classes_code_can_assign`. Test xóa trên bảng
-   sự kiện vào chạy ở workflow-triggers/02, nơi tạo bảng.
+7. Tệp chính sách retention, một bản mới theo định dạng của spec R5.6 (mỗi kho một khóa `schema.table` với thời
+   hạn, bộ xóa và `enforced`; khóa của bảng mà spec khác đăng ký do ticket đăng ký thêm, ticket này không khai lại),
+   mọi số ghi UNVERIFIED tới khi luật sư xác nhận trước chạy bóng (DO-52). Ticket này thêm khóa và bộ xóa cho
+   `platform.run_steps` (30 ngày; lane xóa payload trong dòng và đối tượng của bước quá 30 ngày qua một hàm riêng
+   của lane vì `dw_app` không UPDATE bảng, DROP PARTITION khi cả tháng quá 30 ngày), payload đối tượng (30 ngày,
+   lane xóa đối tượng), cột payload lượt chạy (90 ngày sau kết thúc, lane xóa), lượt chạy (395 ngày sau kết
+   thúc, lane xóa, bỏ qua dòng `memory.items` trỏ tới theo `db/migrations/versions/0007_evidence.py:113-115`),
+   `platform.tool_executions.output` (30 ngày, xóa trắng qua hàm SECURITY DEFINER hẹp chỉ đặt NULL `output` của
+   dòng quá hạn, `dw_app` không nhận UPDATE; spec R5.7), `usage_daily` (760 ngày, lane xóa),
+   `studio.inbound_events` (30 ngày, lane xóa, bỏ qua và đếm trên `dw_retention_skipped_total{store, reason}` sự
+   kiện mà lượt `queued` còn trỏ tới hay mà làn `studio_inbound` đang giữ khi Đóng băng; spec R5.5),
+   `studio.trigger_deliveries` (90 ngày, lane xóa), khóa chống trùng của sự kiện vào (72 giờ, lane xóa); bỏ chú
+   thích "model_usage_ledger đã bị bỏ" của bản 1.7.0 (`configs/policies/retention@1.7.0.yaml:72`); test tập bộ
+   xóa, test khóa của tệp (mỗi khóa khớp một bảng có thật hay một kho có tên; spec R5.6) và
+   `test_the_pinned_retention_policy_promises_only_classes_code_can_assign`. Test xóa trên bảng sự kiện vào chạy ở
+   workflow-triggers/02, nơi tạo bảng.
 
 ## Tiêu chí chấp nhận
 
@@ -68,15 +76,24 @@ timestamptz`, `duration_ms`, `error_type`, `input_preview` và `result_preview` 
 - [ ] R4.2: `GET /api/v1/runs/{run_id}/steps` → các Bước chạy theo thứ tự `seq`.
 - [ ] R4.3 (TA12): thiếu `runs.read_payloads` gọi payload → 403, không trả payload; gỡ kiểm → test đỏ.
 - [ ] R5.1 (TA13): mỗi kho (`run_steps`, payload đối tượng, cột payload, `usage_events`, `usage_daily`,
-      `studio.inbound_events`, `studio.trigger_deliveries`, khóa chống trùng) có một thời hạn trong
-      `retention@1.8.0` và một bộ xóa đã đăng ký.
+      `studio.inbound_events`, `studio.trigger_deliveries`, khóa chống trùng) có một thời hạn dưới khóa của nó trong
+      tệp chính sách retention đang ghim và một bộ xóa đã đăng ký.
+- [ ] R5.6: tệp có một khóa không khớp bảng hay kho có tên nào, hay một thời hạn đặt dưới tên bảng thiếu schema →
+      test khóa của tệp đỏ; hai bảng thử cùng tên ở `platform` và `studio` mang hai thời hạn khác nhau, mỗi bảng
+      đọc đúng thời hạn của mình.
+- [ ] R5.7 (TA14): dòng `tool_executions` 31 ngày tuổi → sau một lượt lane, `output` NULL, cột khác giữ nguyên;
+      dòng 29 ngày giữ `output`; `dw_app` UPDATE thẳng → `permission denied`; hàm đặt NULL thêm một cột → test đỏ.
+- [ ] R5.8: công ty `offboarding` có dòng `run_steps` → lane `offboarding` xuất mỗi dòng một lần rồi xóa hết qua
+      `platform.purge_tenant_append_only`; test phủ offboarding (studio-skeleton:R4.3) xanh với dòng
+      `STUDIO_EXCLUSIONS` của `platform.run_steps`.
 - [ ] R5.2 (TA13): một lớp retention thiếu bộ xóa → test tập bộ xóa đỏ.
 - [ ] R5.3 (TA11): lượt chạy `waiting_approval` 400 ngày còn nguyên; lượt chạy được `memory.items` trỏ tới
       → bỏ qua, được đếm.
 - [ ] R5.4: Bước chạy 31 ngày tuổi trong tháng chưa tới lúc DROP → lane xóa preview và đối tượng của nó, dòng
       bước còn trạng thái và chi phí; bước 29 ngày còn nguyên payload.
-- [ ] R5.5 (TA11): sự kiện vào 31 ngày mà một lượt `queued` còn trỏ tới → lane bỏ qua, được đếm; sự kiện 31
-      ngày không còn ai trỏ tới → bị xóa.
+- [ ] R5.5 (TA11): sự kiện vào 31 ngày mà một lượt `queued` còn trỏ tới → lane bỏ qua, được đếm; sự kiện 45
+      ngày mà làn `studio_inbound` đang giữ khi Đóng băng → bỏ qua, `dw_retention_skipped_total` tăng; sự kiện 31
+      ngày không còn ai trỏ tới và không bị giữ → bị xóa.
 - [ ] Xong: `make ci && make test-integration` xanh.
 
 ## Nguồn
@@ -94,3 +111,10 @@ timestamptz`, `duration_ms`, `error_type`, `input_preview` và `result_preview` 
 - 2026-10-23 (agent): DO-52 có lời đáp cho W1 (Đạt, 23/10/2026), nên `needs-triage`. Ticket này là chủ
   duy nhất của `retention@1.8.0`; chờ usage-and-limits/03 vì Bước chạy `model_call` ghi từ
   `LimitsMiddleware`; compliance-pdpl/06 chờ ticket này.
+- 2026-10-24 (agent): áp quyết định của Đạt ngày 24/10/2026: ticket này là chủ định dạng tệp retention (khóa
+  `schema.table`) và các lane, không còn là chủ duy nhất của mọi dòng; thời hạn `usage_events` do
+  usage-and-limits/02 thêm, của `budget_counters`, `budget_leases` do usage-and-limits/03, của
+  `studio.gate_case_results` do agent-lifecycle/04, của Bản ghi đồng ý và nhật ký gửi do compliance-pdpl/04 (chờ
+  ticket này); lane bỏ qua và đếm sự kiện bị giữ khi Đóng băng; xóa trắng `tool_executions.output` qua hàm riêng
+  của lane (H:ADR-0122 (Accepted)\~foundations-hardening:R6.3); dòng `STUDIO_EXCLUSIONS` của `run_steps`; đăng ký
+  `runs.read_payloads` ở đây.

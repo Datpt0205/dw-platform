@@ -10,7 +10,9 @@ Yêu cầu: R5.1, R5.2, R5.3, G6, FH12, FH13, FH14
 Thông tin đăng nhập của ứng dụng không còn ghi được bảng người vận hành, gói dịch vụ và user ngoài
 việc tạo user khi đăng nhập lần đầu; quyền của `dw_provisioner` có một nguồn; và nếu phép đo lặp lại
 được lợi ích, mọi policy RLS đọc setting một lần mỗi câu lệnh, thành mẫu cho mọi policy Studio
-(R5.1-R5.3, G6, FH12-FH14). Đo trước; dưới ngưỡng thì ghi "không áp dụng".
+(R5.1-R5.3, G6, FH12-FH14). Đo trước; dưới ngưỡng thì ghi "không áp dụng". usage-and-limits/01 chờ ticket
+này, vì cả hai viết migration cho `platform.plans`: ticket này thu quyền ghi của `dw_app`, ticket kia thêm
+khóa ngoại rồi gỡ cột `quotas`.
 
 ## Việc cần làm
 

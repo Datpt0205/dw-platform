@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: 01, .claude/plans/studio/tenant-config/issues/04-ban-ke-luot-chay.md, .claude/plans/studio/studio-skeleton/issues/02-goi-dw-studio-va-seam-api.md
 Area: studio
-Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R2.7, R7.9, AL1, AL2, AL3, AL10
+Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R2.7, R7.9, AL1, AL2, AL3, AL10
 
 ## Mục tiêu
 
@@ -17,8 +17,11 @@ database và "đã kiểm định" tính được (spec R1, R2). Đứng trên v
 1. Revision Alembic mới (id hex ngẫu nhiên), thêm cột vòng đời trên `studio.artifact_versions` (vỏ chung
    của tenant-config, DO-05 chọn vỏ chung): `gate_run_id uuid` NULL FK `studio.gate_runs` ON DELETE
    RESTRICT (bắt buộc khi `stage IN ('awaiting_approval','live','retired')` với loại có Cổng chất lượng,
-   luôn NULL với loại không cổng); `publish_approval_id uuid`
-   NULL FK `platform.approval_requests` ON DELETE RESTRICT (bắt buộc cùng điều kiện); `contributor_ids
+   luôn NULL với loại có `has_quality_gate = false`); `publish_approval_id uuid`
+   NULL FK `platform.approval_requests` ON DELETE RESTRICT (bắt buộc cùng điều kiện, trừ phiên bản lên Đang
+   dùng theo nhánh chỉ siết); `tighten_only boolean NOT NULL DEFAULT false` và `compared_live_hash text` NULL
+   với CHECK `NOT tighten_only OR compared_live_hash IS NOT NULL`, do `LifecycleService` ghi lúc gửi (ticket 04
+   tính chúng bằng bộ so sánh của loại); `contributor_ids
 uuid[] NOT NULL CHECK (cardinality(contributor_ids) >= 1)`; `submitted_by`, `submitted_at`,
    `published_by`, `published_at`, `retired_by`, `retired_at`; `retire_reason_code` CHECK (`superseded`,
    `explicit`); `stage_changed_at timestamptz NOT NULL`. Cột `gate_run_id` FK tạm để NULL tới khi ticket
@@ -29,10 +32,13 @@ uuid[] NOT NULL CHECK (cardinality(contributor_ids) >= 1)`; `submitted_by`, `sub
    `definition_hash` của gate bằng của phiên bản, approval `pending`); `awaiting_approval → draft`;
    `awaiting_approval → live` (approval `approved`, người quyết không trong `contributor_ids` và không
    là `submitted_by`, gate vẫn `passed` trên cùng mã băm); `live → retired`; cột nội dung đổi chỉ khi
-   `draft`. Luật theo loại (spec R1.6): với loại mà sổ loại `studio.artifact_kinds` của tenant-config ghi là
-   không có Cổng chất lượng (đối tượng `dw.object/v1`, công cụ), cho `draft → awaiting_approval` không qua
+   `draft`. Luật theo loại (spec R1.6): với loại mà cột `has_quality_gate` của `studio.artifact_kinds`
+   (tenant-config:R2.14) là false (đối tượng `dw.object/v1`, công cụ), cho `draft → awaiting_approval` không qua
    `evaluating` và không đòi `gate_run_id`; `awaiting_approval → live` vẫn đòi approval `approved` và người
-   quyết ngoài `contributor_ids`. Từ chối: SQLSTATE 23514, ràng buộc `ck_artifact_versions_stage_transition`.
+   quyết ngoài `contributor_ids`. Nhánh chỉ siết (spec R1.7): chỉ với loại `object`, cho `draft → live` khi
+   `tighten_only` là true và `compared_live_hash` bằng `definition_hash` của phiên bản `live` hiện tại của cùng
+   thành phần; công cụ không bao giờ đi nhánh này (ADR-0120 (Accepted) quyết 1). Từ chối: SQLSTATE 23514, ràng
+   buộc `ck_artifact_versions_stage_transition`.
    Chỉ mục từng phần một Đang dùng (`WHERE stage='live'`) và một Bản ứng viên
    (`WHERE stage IN ('evaluating','awaiting_approval')`), và `(tenant_id, stage, stage_changed_at DESC, id DESC)`.
 3. `VersionStage` StrEnum soi CHECK và bảng chuyển đổi thuần; `LifecycleService` chỉ dùng chuyển đổi hợp
@@ -46,8 +52,11 @@ uuid[] NOT NULL CHECK (cardinality(contributor_ids) >= 1)`; `submitted_by`, `sub
    gửi kiểm định (Protocol `SubmitCheck` của spec này, mỗi kiểm trả từ chối với `reason_code` hay cho qua);
    compliance-pdpl/05 đăng ký Phân tích năng lực, workflow-nodes đăng ký kiểm người duyệt (workflow-nodes:R9.5);
    ticket này kiểm bằng một kiểm fixture.
-5. Route `POST /api/v1/studio/{agents|workflows}/{artifact_id}/versions/{version_id}/submit`
-   (`studio.versions.submit`, `Idempotency-Key`) trong một giao dịch: hỏi `RunControlPort` của ticket 01,
+5. Route `POST /api/v1/studio/{agents|workflows|objects}/{artifact_id}/versions/{version_id}/submit`
+   (`Idempotency-Key`), kiểm khóa gửi mà mục `ArtifactKindRegistry` của loại khai (tenant-config:R2.15:
+   `studio.versions.submit` cho agent và quy trình, `studio.objects.manage` cho đối tượng; thiếu khóa → 403
+   `permission_denied`); loại có `has_quality_gate = false` đi nhánh gửi của ticket 04 (spec R2.8). Với loại có
+   cổng, trong một giao dịch: hỏi `RunControlPort` của ticket 01,
    đóng băng thì 409 `tenant_frozen` hay `platform_frozen` (spec R7.9); tính bao đóng bằng extractor của
    loại, gọi bước niêm phong của tenant-config (cấp `version_no`, ghi `content_hash`, `definition_hash`,
    Nơi đang dùng), chạy các kiểm của bảng kiểm theo loại (một kiểm từ chối → 422 với `reason_code` của nó,
@@ -58,6 +67,10 @@ uuid[] NOT NULL CHECK (cardinality(contributor_ids) >= 1)`; `submitted_by`, `sub
    khi phiên bản Đang dùng khác phụ thuộc, audit `studio.version.retired`.
 6. Test catalog `test_version_stage_contract.py`: hỏi `pg_catalog` rằng mọi bảng `studio.*` có cột
    `stage` đều có trigger, các CHECK và hai chỉ mục từng phần; test đọc CHECK so với `VersionStage`.
+7. Cùng migration: đăng ký khóa `studio.versions.submit` và `studio.versions.retire` trong `platform.permissions`
+   của tenant-rbac/01 (nhãn tiếng Việt, `scope_kind` `workspace`, `risk` `standard` theo bảng phân loại của ticket
+   đó). Khóa ngoại `publish_approval_id` (RESTRICT) tới `platform.approval_requests` cần lane `offboarding` xóa
+   `studio.artifact_versions` trước: thêm thứ tự đó vào `_ORDERED_FIRST` (studio-skeleton:R4.2).
 
 ## Tiêu chí chấp nhận
 
@@ -70,10 +83,15 @@ uuid[] NOT NULL CHECK (cardinality(contributor_ids) >= 1)`; `submitted_by`, `sub
 - [ ] R1.4: duyệt phát hành (giả lập bước chuyển) → phiên bản Đang dùng cũ sang Đã gỡ (`superseded`)
       trong cùng giao dịch.
 - [ ] R1.5: view Giai đoạn hiển thị cho đúng thứ tự ưu tiên; không cột nào lưu Giai đoạn hiển thị.
-- [ ] R1.6: một phiên bản loại không cổng đi `draft → awaiting_approval → live` không có `gate_run_id`; cùng
-      đường với loại `agent` → 23514; `→ live` khi approval còn `pending` → 23514 ở cả hai loại.
+- [ ] R1.6: một phiên bản loại fixture có `has_quality_gate = false` đi `draft → awaiting_approval → live`
+      không có `gate_run_id`; cùng đường với loại `agent` → 23514; `→ live` khi approval còn `pending` → 23514 ở
+      cả hai loại; đổi cờ của loại fixture sang true → `draft → awaiting_approval` bị từ chối.
+- [ ] R1.7: phiên bản `object` có `tighten_only` true và `compared_live_hash` bằng `definition_hash` của bản
+      `live` → `draft → live` nhận, không approval; cùng giá trị với loại fixture không cổng khác `object` →
+      23514; bỏ nhánh khỏi trigger → test đỏ.
 - [ ] R2.1 (AL3): gửi kiểm định một nháp hợp lệ → bao đóng, Mã băm định nghĩa, Nơi đang dùng và audit
-      `studio.version.submitted` ghi trong một giao dịch, phiên bản sang `evaluating`.
+      `studio.version.submitted` ghi trong một giao dịch, phiên bản sang `evaluating`; người thiếu khóa gửi mà
+      mục registry của loại khai → 403, không đổi gì.
 - [ ] R2.2 (AL3): hai phiên bản cùng nội dung và bao đóng → cùng Mã băm định nghĩa; đổi phiên bản một
       công cụ ghim → Mã băm định nghĩa khác.
 - [ ] R2.3 (AL3): rollback giữa giao dịch gửi kiểm định → không bản kê, phụ thuộc hay audit; bỏ một loại
@@ -106,3 +124,9 @@ uuid[] NOT NULL CHECK (cardinality(contributor_ids) >= 1)`; `submitted_by`, `sub
 - 2026-10-23 (agent): DO-05 đã quyết theo (a) (Đạt, 23/10/2026), nên `needs-triage`. Thêm luật theo loại
   không cổng (R1.6), bảng kiểm theo loại lúc gửi kiểm định (R2.7) và từ chối gửi kiểm định khi đóng băng
   (R7.9, chờ ticket 01).
+- 2026-10-24 (agent): áp quyết định của Đạt ngày 24/10/2026: cột `has_quality_gate` của tenant-config, cột
+  `tighten_only` và `compared_live_hash` với nhánh chỉ siết của `object` trong trigger (Q-R6, spec R1.7), route
+  gửi chung cho mọi loại với khóa do registry khai (tenant-config:R2.15), đăng ký khóa của ticket này, thứ tự
+  offboarding cho khóa ngoại `publish_approval_id`. Nhánh gửi của loại không cổng (so sánh, chỉ siết, mở phê
+  duyệt) ở ticket 04, nơi có guard và handler phát hành; custom-objects/06 nối loại `object` vào đường này và chờ cả
+  hai ticket.

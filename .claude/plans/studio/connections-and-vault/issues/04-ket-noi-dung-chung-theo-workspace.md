@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: 02, 03, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md, .claude/plans/studio/studio-skeleton/issues/03-seam-web-va-allowlist-antd.md
 Area: studio
-Yêu cầu: R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R5.8, CV12, CV13, CV14, CV15
+Yêu cầu: R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R5.8, R5.9, R5.10, R5.11, R5.12, CV12, CV13, CV14, CV15, CV21
 
 ## Mục tiêu
 
@@ -18,27 +18,38 @@ từ B8a-connections connections-and-vault 07. P1 chỉ kết nối dùng chung 
    `platform.guard_connection_status()` theo bảng chuyển trạng thái (cấm `revoked → active`); partial
    unique một kết nối `active` cho mỗi `(tenant_id, connector_key, external_account)`.
 2. `connection_usable(connection_id, principal, workspace_id)` một hàm: trả false khi Connection status
-   không `active`, khi Phạm vi dùng chung `workspace` không phủ workspace của lượt chạy, hay khi credential
-   version đã thu hồi; dùng ở ba chỗ (phát hành điểm gắn, nhận lượt chạy, trước mỗi lời gọi egress).
+   không `active`, khi Phạm vi dùng chung `workspace` không phủ workspace của lượt chạy, khi chủ thể không giữ
+   `connections.use` ở workspace đó (qua `platform.effective_grants` của tenant-rbac/02; ADR-0115 (Accepted)
+   quyết 2), hay khi credential version đã thu hồi; dùng ở ba chỗ (duyệt giá trị Điểm gắn với người đề xuất,
+   nhận lượt chạy, trước mỗi lời gọi egress).
 3. `ConnectionDependentsPort` khai ở đây, cho "Được dùng bởi" và chặn xóa. Bên đáp ứng là tenant-config
    (đọc `studio.dependencies` cộng giá trị Bộ giá trị gắn đã duyệt trong `platform.config_versions`);
    workflow-engine và agent-builder không cài nó (tenant-config:R3.7). tenant-config/05 chờ ticket này, nên R5.8 ở đây kiểm qua
    một bản giả theo đúng hợp đồng port (trả danh sách phụ thuộc của fixture).
 4. Routes `GET`, `POST /api/v1/connections`, `GET`, `PATCH`, `DELETE /api/v1/connections/{id}`,
    `POST /api/v1/connections/{id}/test`, `.../disable`, `.../enable`,
-   `GET /api/v1/connections/{id}/dependents`; quyền `connections.read`, `connections.manage`, đăng ký vào
-   Danh mục quyền trong migration của ticket này (nhãn, `scope_kind`, `risk` theo tenant-rbac/01), độ sâu
-   qua `platform.effective_grants` của tenant-rbac/02; trường bí mật `writeOnly` lưu qua
-   `platform.put_secret` (ticket 02); `Idempotency-Key` cho `POST`; DELETE còn phụ thuộc → 409
-   `connection_in_use`; id của công ty khác ở mọi route → 404.
-5. Audit `connection.created`, `connection.updated`, `connection.disabled`, `connection.revoked`,
+   `GET /api/v1/connections/{id}/dependents`; quyền `connections.read`, `connections.manage` và khóa
+   `connections.use` mà `connection_usable` đọc, cả ba đăng ký vào Danh mục quyền trong migration của ticket
+   này (nhãn, `scope_kind`, `risk` theo tenant-rbac/01), độ sâu qua `platform.effective_grants` của
+   tenant-rbac/02; trường bí mật `writeOnly` lưu qua `platform.put_secret` (ticket 02); `Idempotency-Key` cho
+   `POST`; DELETE còn phụ thuộc → 409 `connection_in_use`; id của công ty khác ở mọi route → 404; `PATCH` không
+   nhận `status`.
+5. Bật lại hai người (D11): `POST .../enable` cho một Kết nối `disabled` trả 202 với một yêu cầu phê duyệt
+   không lượt chạy `connections.enable`, `required_scope` `connections.manage`, payload chỉ mang id kết nối;
+   Connection status giữ `disabled`. `connections.enable` vào `strict_approval_prefixes` bằng `|=` ở API và
+   worker. Handler `connections.enable.decided` đăng ký ở composition root của worker, chạy lặp lại không đổi kết
+   quả theo id phê duyệt: duyệt → `disabled → active` cùng audit `connection.enabled` đứng tên người quyết,
+   `details.lane` `outbox`, trong một giao dịch; từ chối → không đổi gì. `.../disable` vẫn một người, có hiệu
+   lực ngay.
+6. Audit `connection.created`, `connection.updated`, `connection.disabled`, `connection.revoked`,
    `connection.tested`; outbox `connection.status_changed` v1; thông báo `needs_reauth` qua
    `platform.deliver_notification`.
-6. Web `/studio/connections` (seam và allowlist antd của studio-skeleton/03): `Table` (tên, trình kết
+7. Web `/studio/connections` (seam và allowlist antd của studio-skeleton/03): `Table` (tên, trình kết
    nối, tài khoản ngoài, Phạm vi dùng chung, Connection status bằng chữ, lần dùng gần nhất); `Drawer`
    thêm kết nối (API key, basic); trang chi tiết (sức khỏe, mã lỗi gần nhất, phạm vi đã cấp, "Được dùng
-   bởi"); xác nhận xóa nêu tên kết nối và danh sách phụ thuộc; bí mật đã lưu hiện "Đã cấu hình".
-7. `make generate-contracts`.
+   bởi", yêu cầu bật lại đang chờ); xác nhận xóa nêu tên kết nối và danh sách phụ thuộc; bí mật đã lưu hiện
+   "Đã cấu hình".
+8. `make generate-contracts`.
 
 ## Tiêu chí chấp nhận
 
@@ -59,6 +70,17 @@ từ B8a-connections connections-and-vault 07. P1 chỉ kết nối dùng chung 
       trạng thái bằng chữ và "Được dùng bởi"; người thiếu `connections.manage` thấy nút bị tắt kèm lý do
       và API `POST` vẫn trả 403.
 - [ ] R5.8: xóa kết nối còn thành phần phụ thuộc → 409 `connection_in_use`, không xóa.
+- [ ] R5.9 (CV14): chủ thể không giữ `connections.use` ở workspace của lượt chạy → `connection_usable` false,
+      từ chối lúc duyệt giá trị Điểm gắn, lúc nhận lượt và ở Bộ gọi ra ngoài; cấp `connections.use` → qua; gỡ
+      kiểm `connections.use` trong `connection_usable` → test đỏ.
+- [ ] R5.10 (CV21): `POST .../enable` cho kết nối `disabled` → 202 kèm id phê duyệt `connections.enable` có
+      `required_scope` `connections.manage`; Connection status vẫn `disabled`, egress vẫn
+      `connection_disabled`; `PATCH` mang `status: active` không đổi status; đổi status ngay ở `POST` → test
+      đỏ.
+- [ ] R5.11 (CV21): người gửi tự duyệt → 409 `conflict`, status không đổi; người không giữ
+      `connections.manage` quyết → 404; bỏ `connections.enable` khỏi tiền tố nghiêm → test đỏ.
+- [ ] R5.12 (CV21): người thứ hai giữ `connections.manage` duyệt → `active`, audit `connection.enabled` đứng
+      tên người đó với `details.lane` `outbox`; handler chạy lại cùng quyết định → không đổi gì thêm.
 - [ ] Xong: `make ci && make test-integration` xanh.
 
 ## Nguồn
@@ -75,3 +97,7 @@ từ B8a-connections connections-and-vault 07. P1 chỉ kết nối dùng chung 
 - 2026-10-23 (agent): Đạt chốt DO-48.1 (a) ngày 23/10/2026, ticket giữ như đang viết. Theo phát hiện kiểm
   nhất quán cùng ngày: `ConnectionDependentsPort` do tenant-config đáp ứng (bước 3); khóa `connections.read`,
   `connections.manage` đăng ký trong migration của ticket này (bước 4).
+- 2026-10-24 (agent): theo quyết định Đạt ngày 24/10/2026: `connection_usable` kiểm thêm `connections.use`
+  (ADR-0115 (Accepted) quyết 2; bước 2, bước 4, R5.9, CV14); phạm vi D11 (người đặt yêu cầu và Đạt): bật lại
+  một kết nối cần người thứ hai qua phê duyệt nghiêm `connections.enable`, tắt vẫn một người (bước 5; R5.10,
+  R5.11, R5.12, CV21). Các bước sau đó đánh số lại từ 6.

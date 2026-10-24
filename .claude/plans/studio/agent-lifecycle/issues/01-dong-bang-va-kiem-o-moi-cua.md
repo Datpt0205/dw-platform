@@ -1,9 +1,9 @@
 # 01 — Đóng băng toàn nền tảng và theo tenant, kiểm ở mọi cửa của runtime
 
 Status: needs-triage
-Blocked by: .claude/plans/studio/org-and-principals/issues/02-thanh-vien-cap-tenant.md
+Blocked by: .claude/plans/studio/org-and-principals/issues/02-thanh-vien-cap-tenant.md, .claude/plans/studio/foundations-hardening/issues/06-run-va-outbox-khong-ket.md
 Area: studio
-Yêu cầu: R7.1, R7.2, R7.3, R7.4, R7.5, R7.6, R7.7, R7.8, R7.10, R7.11, R9.1, AL11, AL12, AL16, AL17, AL18
+Yêu cầu: R7.1, R7.2, R7.3, R7.4, R7.5, R7.6, R7.7, R7.8, R7.10, R7.11, R9.1, R9.2, R10.1, AL11, AL12, AL16, AL17, AL18
 
 ## Mục tiêu
 
@@ -24,27 +24,38 @@ cửa, để quyết Đóng băng có thể tiếp tục cho lượt đang chạ
       `(tenant_id, scope_type, coalesce(target_id, '00000000-0000-0000-0000-000000000000'::uuid)) WHERE lifted_at IS NULL`;
       FK `tenant_id → platform.tenants ON DELETE CASCADE`; RLS ENABLE và FORCE theo tenant.
     - Trigger `platform.guard_control_switch()` (chèn chỉ mở; một dòng gỡ một lần, không đổi gì khác;
-      dòng `origin='platform'` chỉ `dw_provisioner` gỡ) và trigger `pg_notify('dw_control_switch', ...)`
-      payload chỉ id.
+      dòng `origin='platform'` chỉ `dw_provisioner` gỡ; DELETE chỉ khi `platform.tenants.status` của công ty là
+      `offboarding`, mọi DELETE khác → 23514, spec R7.5, R10.1) và trigger
+      `pg_notify('dw_control_switch', ...)` payload chỉ id.
     - `platform.platform_freezes` (mặt danh tính, không `tenant_id`): tối đa một dòng mở; `dw_app` chỉ
       SELECT; do `dw_provisioner` ghi, audit trong `platform.provisioning_audit`.
-    - Grant: `dw_app` SELECT, INSERT, UPDATE (`lifted_by, lifted_at, lift_reason, lift_approval_id`) trên
-      `control_switches`, chỉ SELECT trên `platform_freezes`; `dw_provisioner` ghi cả hai; khẳng định ở
-      `test_privileges.py`; `test_rls_coverage.py` thấy `control_switches`. Thêm `studio.lifecycle.freeze`
-      vào vai `org_admin` (vai còn do migration sở hữu).
+    - Grant: `dw_app` SELECT, INSERT, UPDATE (`lifted_by, lifted_at, lift_reason, lift_approval_id`) và
+      DELETE (chỉ dùng được qua lượt xóa của offboarding, nhờ trigger trên) trên `control_switches`, chỉ
+      SELECT trên `platform_freezes`; `dw_provisioner` ghi cả hai; khẳng định ở `test_privileges.py`;
+      `test_rls_coverage.py` thấy `control_switches`; policy `tenant_isolation_control_switches` để lane
+      `offboarding` xuất và xóa bảng (studio-skeleton:R4.3). Đăng ký khóa `studio.lifecycle.freeze` trong
+      `platform.permissions` của tenant-rbac/01 (nhãn "Đóng băng công ty", `scope_kind` `tenant`, `risk`
+      `standard` theo bảng phân loại của ticket đó) và thêm khóa vào vai `org_admin` (vai còn do migration sở
+      hữu).
 2. `RunControlPort` (bên dùng khai trong `dw_agent_runtime.ports`): `require_open(run_context, *, artifacts=())`
    ném `RunHaltedError` (một `ConflictError`, HTTP 409, `details.reason_code` trong `platform_frozen`,
-   `tenant_frozen`, `artifact_killed`, `control_state_unavailable`, `principal_inactive`), và
+   `tenant_frozen`, `artifact_killed`, `control_state_unavailable`, `principal_inactive`, `tenant_locked`,
+   `tenant_offboarding`), và
    `admission_state(tenant_id, artifacts)` cho làn nhận. `SqlRunControl` giữ ảnh chụp theo tenant TTL 5 giây,
    nghe `dw_control_switch` (dựng như listener của `run_events.py`), và quá 30 giây không làm mới thì từ chối
    (đóng khi lỗi; trái cache AccessContext mở khi lỗi, ADR-0024 (Proposed) quyết 4). `principal_inactive`:
    `SqlRunControl` đọc `platform.tenant_members.status` của chủ thể chạy (người kích hoạt hay tài khoản dịch
-   vụ) ở cửa nhận và cửa tiếp tục; không `active` thì từ chối (spec R9.1). `RuntimeSeam.run_control` một
+   vụ) ở cửa nhận và cửa tiếp tục; không `active` thì từ chối (spec R9.1). Cùng chỗ, `SqlRunControl` đọc
+   `platform.tenants.status` của công ty: `locked` → `tenant_locked`, `offboarding` hay `offboarded` →
+   `tenant_offboarding` (spec R9.2; trạng thái do foundations-hardening/02 canh). `RuntimeSeam.run_control` một
    instance.
 3. Gắn cửa (mỗi cửa nhận port bằng injection, không mặc định): runner `start`, `stream`, `resume`;
    `ApproveAndResumeService.decide` trước khi quyết; `RunControlMiddleware` trong `platform_middleware`
    và stack con `sub_agent_spec` (thứ tự ngăn xếp middleware do agent-builder/03 giữ; ticket này cấp
-   middleware); gateway có cấu trúc trước `budget.check`; middleware tóm tắt trước `budget.check`;
+   middleware); gateway có cấu trúc trước `budget.check`, và là cửa đầu tiên của gateway: sau nó là
+   `ResidencyGate` của compliance-pdpl/03 (ticket đó chờ ticket này), rồi `LimitsMiddleware` của
+   usage-and-limits/03; middleware tóm tắt trước `budget.check`; cửa `resume` chèn trên compare-and-set của
+   foundations-hardening/06, ticket này chờ nó;
    `ToolExecutor._execute` trước kiểm quyền (audit `tool.denied`, `policy_decision` `deny_frozen`). Runner
    map `RunHaltedError` sang `_fail(status=CANCELLED, event="run.cancelled")`; middleware lỗi công cụ ném lại
    `RunHaltedError` thay vì báo model. Cửa nhận theo `trigger_kind` (spec R7.7, R7.8): lượt `chat`,
@@ -55,8 +66,10 @@ cửa, để quyết Đóng băng có thể tiếp tục cho lượt đang chạ
    `reason`; một người cộng audit) và `POST /api/v1/admin/unfreeze` (`studio.lifecycle.freeze`): mở một yêu
    cầu phê duyệt không lượt chạy `studio.lifecycle.unfreeze` nghiêm, tem `studio.lifecycle.freeze`; handler
    `studio.lifecycle.unfreeze.decided` gỡ Đóng băng khi một người khác người xin duyệt (D11; spec R7.10,
-   R7.11). Thêm `studio.lifecycle.` vào `strict_approval_prefixes` bằng `|=` ở composition root (kèm chú
-   thích); ticket 04 thêm `studio.publish.`, ticket 05 dùng lại tiền tố này cho `studio.lifecycle.revive`.
+   R7.11). Thêm `studio.lifecycle.` vào `strict_approval_prefixes` bằng đúng một dòng `|=` ở composition root
+   của API và worker (kèm chú thích), không sửa dòng của ticket khác (tenant-config/05 thêm `config.`, ticket 04
+   thêm `studio.publish.` cũng ở đó), và test khẳng định tập tiền tố nghiêm ở cả hai chỗ chứa
+   `studio.lifecycle.`; ticket 05 dùng lại tiền tố này cho `studio.lifecycle.revive`.
    `GET /api/v1/control-state` (mọi thành viên; chỉ mã, không lý do chữ); nhà vận hành
    `POST /api/v1/platform/freeze`, `POST /api/v1/platform/unfreeze`,
    `POST /api/v1/platform/tenants/{tenant_id}/freeze`, `POST /api/v1/platform/tenants/{tenant_id}/unfreeze`
@@ -93,8 +106,14 @@ cửa, để quyết Đóng băng có thể tiếp tục cho lượt đang chạ
 - [ ] R9.1 (AL17): gỡ thành viên khỏi công ty rồi tiếp tục lượt chạy chờ duyệt của người đó → `cancelled`
       `principal_inactive`, 0 lời gọi model; đặt `suspended` bằng SQL rồi nhận lượt mới của người đó → như
       trên; gỡ kiểm trong `require_open` → test đỏ.
-- [ ] R7.5 (AL12): `dw_app` UPDATE trực tiếp để gỡ hay đổi một công tắc ngoài bước gỡ hợp lệ → 23514; gỡ
-      trigger → test đỏ.
+- [ ] R9.2 (AL17): khóa công ty rồi nhận một lượt chạy mới của nó → `cancelled` `tenant_locked`, 0 lời gọi
+      model; công ty `offboarding` rồi tiếp tục một lượt chạy chờ duyệt → `cancelled` `tenant_offboarding`; gỡ
+      phép đọc trạng thái công ty khỏi `require_open` → test đỏ.
+- [ ] R7.5 (AL12): `dw_app` UPDATE trực tiếp để gỡ hay đổi một công tắc ngoài bước gỡ hợp lệ → 23514; `dw_app`
+      DELETE một công tắc `kill` mở của công ty `active` → 23514, công tắc còn; gỡ trigger → test đỏ.
+- [ ] R10.1: công ty có một công tắc `kill` mở và một Đóng băng đã gỡ chuyển sang `offboarding` → lane
+      `offboarding` xuất cả hai dòng một lần rồi xóa chúng; test phủ offboarding (studio-skeleton:R4.3) xanh với
+      `platform.control_switches` không có trong `STUDIO_EXCLUSIONS`.
 - [ ] R7.6: đặt và gỡ đóng băng ghi đúng một audit trong cùng giao dịch; rollback thì audit không còn.
 - [ ] R7.1 (AL16): đóng băng tenant A không chạm run tenant B; đọc công tắc của B từ A → 404; gỡ FORCE
       RLS khỏi `control_switches` → `test_rls_coverage.py` đỏ.
@@ -117,3 +136,9 @@ cửa, để quyết Đóng băng có thể tiếp tục cho lượt đang chạ
   `trigger_kind`), R7.2 thành hợp đồng với làn `studio_inbound` của workflow-triggers, `principal_inactive`
   (H:org-and-principals:R4.6, chờ org-and-principals/02 cho `platform.tenant_members`), gỡ Đóng băng hai
   người (D11), tiền tố nghiêm `studio.lifecycle.` thêm ở ticket này.
+- 2026-10-24 (agent): áp quyết định của Đạt ngày 24/10/2026: chờ foundations-hardening/06 vì cùng sửa đường
+  resume, và compliance-pdpl/03 chờ ticket này (thứ tự cửa gateway: công tắc, Lộ trình dữ liệu, hạn mức); đăng
+  ký khóa `studio.lifecycle.freeze` ở đây theo quy ước của tenant-rbac/01; `tenant_locked`, `tenant_offboarding`
+  (spec R9.2); DELETE trên `control_switches` chỉ cho offboarding (spec R7.5, R10.1); một dòng `|=` cho tiền tố
+  của ticket này kèm test tập tiền tố, không thêm cạnh tới tenant-config/05. tools-and-skills/01 chờ ticket này
+  để chuỗi bước của `ToolExecutor._execute` có một thứ tự viết (cạnh nằm ở ticket đó).

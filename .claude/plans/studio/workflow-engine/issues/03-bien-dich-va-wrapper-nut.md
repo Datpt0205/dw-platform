@@ -1,7 +1,7 @@
 # 03 — Biên dịch sang StateGraph, cache LRU và wrapper nút
 
 Status: needs-triage
-Blocked by: 01, 02
+Blocked by: 01, 02, .claude/plans/studio/record-access/issues/04-ngu-canh-actor-o-moi-cua.md, .claude/plans/studio/custom-objects/issues/03-record-service.md
 Area: studio
 Yêu cầu: R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R4.7, R4.8, R4.9, R4.10, WE5, WE7, WE13
 
@@ -38,3 +38,4 @@ Biên dịch phần P1 của một phiên bản quy trình (tuần tự, router,
 ## Comments
 
 - 2026-10-23 (agent): theo phiếu 23/10/2026: giả lập ghi bản ghi ở RecordService, không trong Bước (D:custom-objects:R5.4~workflow-nodes:R5.3); `RunControlPort` có thêm lý do chủ thể chạy không `active` (H:org-and-principals:R4.6).
+- 2026-10-24 (agent): theo quyết định của Đạt ngày 24/10/2026 (I:record-access:R6.4~workflow-engine:R4.9): ticket chờ record-access/04 (helper `app.actor_kind`, `app.boundary_id` của R4.9) và custom-objects/03 (RecordService giả lập ở `simulate` của R4.7), nên test R4.7 và R4.9 chạy với bản thật.
