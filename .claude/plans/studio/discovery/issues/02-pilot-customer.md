@@ -32,8 +32,8 @@ chờ câu trả lời này.
 - Spec: `marketing-pilot` (02, 03), `custom-objects` (ngân sách slot, nhập), `usage-and-limits` (trần của thí điểm),
   `connections-and-vault` (05, email), `org-and-principals` (nhập CSV, W2), `agent-builder` (04, chat).
 - ADR: 0107, 0117, 0121.
-- DO: DO-22 (agent, tạm: một đội marketing thật, dữ liệu giả lập tới khi ký DPA), DO-48 (agent, tạm: SMTP chung là
-  đường email P1), DO-44 (polling hay streaming ở P1), DO-59 (đơn vị chi phí mỗi lead).
+- DO: DO-22 (Đạt chốt 23/10/2026: một đội marketing thật, dữ liệu giả lập tới khi ký DPA), DO-48 (Đạt chốt
+  23/10/2026: SMTP chung là đường email P1), DO-44 (polling hay streaming ở P1), DO-59 (đơn vị chi phí mỗi lead).
 
 ## Đầu ra
 

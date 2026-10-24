@@ -70,12 +70,12 @@ and `model-connections` the gate on the model path.
 4. **One gate before any byte leaves.** `ResidencyGate.check(route_class, route)` is injected by constructor into
    every adapter that sends content to a model: the ModelResolver's doors (ADR-0118: the agent chat model and the
    structured gateway), embeddings and rerank, document extraction and transcription, compaction and evaluation
-   judges. It refuses before the request is built. A profile the effective class forbids is also refused at publish
+   judges. It refuses before the request is built. A profile the effective class forbids is also refused at submit
    and at admission (ADR-0118), so a refusal at the gate is the backstop, not the first answer.
 5. **Every destination declares where it processes.** Every platform profile route, tenant model alias (ADR-0118,
    D13) and connector manifest declares `data_location` (`vn` or `foreign`) and `processor` with no default; a route
    without them fails to load, and an undeclared alias counts as foreign. A tool, connector action or MCP server
-   whose processing is foreign is refused under `vn_only`, at publish and in the ToolExecutor (ADR-0116) before the
+   whose processing is foreign is refused under `vn_only`, at submit and in the ToolExecutor (ADR-0116) before the
    egress client sends, unless the tenant holds a live attestation for that connector and processor (one admin
    attestation per tenant and connector).
 6. **Recorded on every call and run.** `route_class`, `data_location` and `processor` on every usage event
@@ -111,7 +111,7 @@ and `model-connections` the gate on the model path.
 - Tests that must exist, each shown red with its guard removed: a `vn_only` call to a foreign or undeclared route is
   refused before the request is sent, separately for every adapter of decision 4 (failure-modes #5); a workspace
   cannot loosen past its tenant; one person cannot loosen; MP7, a personal field reaching a prompt on a cross-border
-  route, is refused at publish.
+  route, is refused at submit.
 
 ### Contradictions and amendments
 
@@ -166,3 +166,6 @@ Amended on 2026-10-24 by the requester and Đạt, who scoped the remaining D11 
 
 - Decision 3: W1 has no two-person path, so it refuses every loosening of a tenant's or a workspace's route class,
   while tightening stays one person with an audit event; every tenant keeps `vn_only` in W1.
+- Third consistency check (round 4), second pass: decisions 4 and 5 and the tests refuse a forbidden profile, a
+  foreign tool, connector action or MCP server, and MP7's personal field on a cross-border route at submit, when the
+  version is sealed, no longer "at publish" (ADR-0116 decision 1, ADR-0118 decision 1).

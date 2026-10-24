@@ -17,11 +17,15 @@ từ B8a-connections connections-and-vault 07. P1 chỉ kết nối dùng chung 
 1. Migration (revision hex) trên `platform.connections` (ticket 02 tạo bảng): trigger
    `platform.guard_connection_status()` theo bảng chuyển trạng thái (cấm `revoked → active`); partial
    unique một kết nối `active` cho mỗi `(tenant_id, connector_key, external_account)`.
-2. `connection_usable(connection_id, principal, workspace_id)` một hàm: trả false khi Connection status
-   không `active`, khi Phạm vi dùng chung `workspace` không phủ workspace của lượt chạy, khi chủ thể không giữ
-   `connections.use` ở workspace đó (qua `platform.effective_grants` của tenant-rbac/02; ADR-0115 (Accepted)
-   quyết 2), hay khi credential version đã thu hồi; dùng ở ba chỗ (duyệt giá trị Điểm gắn với người đề xuất,
-   nhận lượt chạy, trước mỗi lời gọi egress).
+2. `connection_usable(connection_id, principal, workspace_id, pinned_secret_versions)` một hàm, tham số cuối là
+   các `secret_version` mà bản kê của lượt ghim cho kết nối (phiên bản credential của tenant-config:R7.4, đọc qua
+   `RunBindingsPort`), rỗng khi chưa có bản kê (lúc duyệt giá trị Điểm gắn và lúc nhận lượt chạy): trả false khi
+   Connection status không `active`, khi Phạm vi dùng chung `workspace` không phủ workspace của lượt chạy, khi
+   chủ thể không giữ `connections.use` ở workspace đó (qua `platform.effective_grants` của tenant-rbac/02;
+   ADR-0115 (Accepted) quyết 2), hay, trước lời gọi egress của một lượt chạy, khi một `secret_version` trong
+   `pinned_secret_versions` không còn dòng trong `platform.secret_envelopes`, tức phiên bản bí mật đã thu hồi,
+   đọc qua `platform.secret_status` của ticket 02; dùng ở ba chỗ (duyệt giá trị Điểm gắn với người đề xuất, nhận
+   lượt chạy, trước mỗi lời gọi egress).
 3. `ConnectionDependentsPort` khai ở đây, cho "Được dùng bởi" và chặn xóa. Bên đáp ứng là tenant-config
    (đọc `studio.dependencies` cộng giá trị Bộ giá trị gắn đã duyệt trong `platform.config_versions`);
    workflow-engine và agent-builder không cài nó (tenant-config:R3.7). tenant-config/05 chờ ticket này, nên R5.8 ở đây kiểm qua
@@ -113,6 +117,10 @@ từ B8a-connections connections-and-vault 07. P1 chỉ kết nối dùng chung 
   R5.11, R5.12, CV21). Các bước sau đó đánh số lại từ 6.
 - 2026-10-24 (agent): theo kiểm nhất quán vòng 3 (vòng sửa thứ tư): `POST .../enable` hỏi
   `platform.checker_candidates` và trả 409 `no_checker_available` khi không còn người duyệt khác người gửi (bước
-  5; R5.13, CV21); người gửi tự quyết nhận `second_person_required` (P9, R5.11); câu INSERT đăng ký khóa nêu
-  `tenant_grantable` (P2, bước 4). Blocked by đã có tenant-rbac/02. Khóa duyệt `connections.manage` của
-  `connections.enable` nay là quyết định của Đạt (D5), ADR-0115 (Accepted) quyết 2 ghi.
+  5; R5.13, CV21); người gửi tự quyết nhận `second_person_required` (V4.P9, R5.11); câu INSERT đăng ký khóa nêu
+  `tenant_grantable` (V4.P2, bước 4). Blocked by đã có tenant-rbac/02. Khóa duyệt `connections.manage` của
+  `connections.enable` nay là quyết định của Đạt (V4.5), ADR-0115 (Accepted) quyết 2 ghi.
+- 2026-10-24 (agent): vòng sửa thứ tư, lượt b: `connection_usable` đọc phiên bản bí mật đã thu hồi từ cột
+  `secret_version` của `platform.secret_envelopes` (ticket 02), một `secret_version` mà bản kê ghim không còn
+  dòng nào, thay "credential version" mà không bảng nào khai, và nhận các `secret_version` đã ghim qua tham số
+  `pinned_secret_versions`, vì hàm không tự đọc bản kê (bước 2; ADR-0115 (Accepted) quyết 1).

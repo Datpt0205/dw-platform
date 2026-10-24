@@ -26,7 +26,9 @@ FOG-25 ở bước 1 đạt (ADR-0115 (Accepted)); `KmsPort`, `LocalDevKms` và 
    `scripts/openbao_bootstrap.py` (không in secret ra stdout, thu hồi root token sau bootstrap); đường mở
    niêm phong không người theo kết quả bước 1.
 4. Khóa `tenant-<tenant_uuid>` (`aes256-gcm96`, không xuất được) xoay mỗi 90 ngày; lane
-   `credential_rewrap` (hằng ngày, lô 500, `transit/rewrap`), actor `system:credential_rewrap`.
+   `credential_rewrap` (hằng ngày, lô 500, `transit/rewrap`), actor `system:credential_rewrap`: lane chỉ bọc
+   lại khóa dữ liệu của phong bì (`wrapped_data_key`) và tăng `kek_version`, không mã hóa lại `ciphertext` và
+   không đổi `field`, `secret_version`, nên AAD của ticket 02 bước 3 không đổi.
 5. Lane `offboarding` gọi hủy Khóa của công ty ở bước cuối với AppRole `dw-offboarding`.
 6. Sao lưu kho OpenBao trong cùng job off-box với `scripts/backup_postgres.sh`; thời hạn giữ cả bản trên
    máy lẫn bản off-box ghi trong cấu hình và không dài hơn `BACKUP_KEEP_DAYS` của `dw`, có một kiểm cấu
@@ -43,8 +45,10 @@ FOG-25 ở bước 1 đạt (ADR-0115 (Accepted)); `KmsPort`, `LocalDevKms` và 
 - [ ] R2.5: khởi động lại container `openbao` ở profile `uat` → `GET /api/v1/ready` báo `kms` ok mà không
       có lệnh mở niêm phong tay; sai nếu cần thao tác tay.
 - [ ] R2.6: chu kỳ xoay của khóa đọc lại từ OpenBao bằng 90 ngày; xoay khóa sang phiên bản mới → phong bì
-      cũ vẫn giải mã được; sau lane `credential_rewrap`, plaintext giữ nguyên, `kek_version` tăng, log lane
-      không chứa giá trị canary.
+      cũ vẫn giải mã được; sau lane `credential_rewrap`, plaintext giữ nguyên, `wrapped_data_key` đổi còn
+      `ciphertext` và `nonce` giữ nguyên, `kek_version` tăng, `secret_version` không đổi, phong bì vẫn giải mã được
+      với cùng AAD, log lane không chứa giá trị canary;
+      đưa `kek_version` vào AAD → giải mã sau lane thất bại, test đỏ.
 - [ ] R2.7 (CV20): thời hạn giữ bản sao lưu kho khóa dài hơn `BACKUP_KEEP_DAYS` của `dw` → kiểm cấu hình
       đỏ; bằng hay ngắn hơn → xanh.
 - [ ] R2.8 (CV20): diễn tập khôi phục cả `dw` lẫn kho khóa từ cùng một lượt sao lưu giải mã được bí mật
@@ -67,3 +71,7 @@ FOG-25 ở bước 1 đạt (ADR-0115 (Accepted)); `KmsPort`, `LocalDevKms` và 
   4 vCPU / 16 GB trước khi OpenBao ship.
 - 2026-10-24 (agent): theo kiểm nhất quán vòng 3 (vòng sửa thứ tư): thêm Blocked by foundations-hardening/07, vì
   bước 5 sửa lane `offboarding` (`offboarding.py` và `test_offboarding.py`) mà ticket đó viết lại.
+- 2026-10-24 (agent): vòng sửa thứ tư, lượt b: lane `credential_rewrap` chỉ bọc lại khóa dữ liệu
+  (`wrapped_data_key` của ticket 02) và tăng `kek_version`, không đổi `ciphertext` hay `secret_version`, nên AAD
+  của ticket 02 (vế phiên bản là `secret_version`, ADR-0115 (Accepted) quyết 1) không đổi và phong bì vẫn giải mã
+  sau lane (bước 4, R2.6).

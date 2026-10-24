@@ -35,7 +35,8 @@ phụ thuộc. Taint quá thô buộc duyệt ở mọi nơi; quá mịn thì t�
 - Spec: `workflow-nodes` (06, bước phê duyệt), `tenant-config` (05, người đề xuất và người duyệt), `agent-lifecycle`
   (03, 04), `tools-and-skills` (run taint, W2), `compliance-pdpl` (05, bộ ba nguy hiểm), `marketing-pilot`.
 - ADR: 0109 (Open 5), 0110, 0112, 0120, 0125.
-- DO: DO-07 (D11), DO-29, DO-36 (agent, tạm), DO-31 (agent, tạm: hết hạn thì thất bại với `approval_expired`).
+- DO: DO-07 (D11), DO-29, DO-36 (Đạt chốt 23/10/2026), DO-31 (Đạt chốt 23/10/2026: hết hạn thì thất bại với
+  `approval_expired`).
 
 ## Đầu ra
 

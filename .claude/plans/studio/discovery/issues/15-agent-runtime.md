@@ -29,7 +29,8 @@ không, và đặt trần cho cache biên dịch (failure-modes #6).
 - Spec: `agent-builder` (01, 03), `agent-lifecycle` (01, công tắc), `tools-and-skills` (02, kỹ năng),
   `usage-and-limits` (04, trần số bước), `workflow-engine` (bước agent).
 - ADR: 0116 (Open 5), 0117, 0120.
-- DO: DO-28 (agent, tạm: đóng băng hủy ở cửa kế tiếp; đóng băng tiếp tục được ở W2), DO-45.
+- DO: DO-28 (Đạt chốt 23/10/2026, phương án C: đóng băng hủy lượt đang chạy ở cửa kế tiếp, từ chối ngay lượt tương
+  tác và giữ lượt do trình kích hoạt tới khi gỡ; đóng băng tiếp tục được ở W3, `requirements.md` mục Không làm), DO-45.
 - Ticket W1: `agent-builder/01`, `agent-lifecycle/01` (P0).
 
 ## Dựng tối thiểu
@@ -42,7 +43,7 @@ hai thứ tự; chạy trong runner hiện có với checkpointer SQL; nâng dee
 | Đo                                             | Ngưỡng                                                                                   | Quyết định                                        |
 | ---------------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------- |
 | Interrupt phê duyệt ở cả hai thứ tự middleware | Luôn tới runner; test đỏ khi wrapper nuốt nó                                             | Thứ tự middleware cố định                         |
-| Lời gọi công cụ chạy lại sau resume            | 0                                                                                        | Đóng băng dừng rồi tiếp tục (W2) có khả thi không |
+| Lời gọi công cụ chạy lại sau resume            | 0                                                                                        | Đóng băng dừng rồi tiếp tục (W3) có khả thi không |
 | Middleware kiểm soát trong agent liên kết      | Có mặt ở mọi lời gọi                                                                     | Bản deepagents và cách gắn                        |
 | Biên dịch: thời gian, RSS mỗi graph            | Ghi số dưới giới hạn worker 1 CPU / 1 GB (`infra/compose/docker-compose.prod.yml:40-41`) | Cỡ LRU theo (tenant, phiên bản)                   |
 

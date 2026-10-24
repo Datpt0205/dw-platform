@@ -36,14 +36,15 @@ with the amendments listed under Acceptance; the calls it leaned on are answered
 1. **One door, and the queue is the run row.** `RunRequestService.request(RunRequest)` is the only way a Studio run
    starts, for `trigger_kind` `chat`, `manual`, `test`, `agent_node`, `agent_link`, `agent_tool` (a workflow tool),
    `subworkflow`, `eval`, `replay`, `fork` and the triggers `datahub`, `provider_app`, `schedule`, `record_event`. It
-   resolves the version (only the live version runs `live`), fixes the run mode (ADR-0111), resolves the run-as
-   principal (ADR-0103), builds the run manifest (ADR-0109) and inserts the row `queued`
-   `ON CONFLICT (tenant_id, request_key) DO NOTHING`, returning the existing run. The queue is `platform.worker_runs`,
-   which gains `trigger_kind`, `trigger_ref`, `inbound_event_id`, `request_key` (partial unique per tenant),
-   `parent_run_id`, `root_run_id`, `chain_depth`, `run_as_principal_id`, `priority` (0 interactive, 1 background, 2
-   eval), `available_at`, `lease_owner`, `lease_until`, `attempt`, `deadline_at` and `cancel_requested_at` (both
-   from W2, decision 3), and the statuses `queued`, `waiting` and `blocked`. An architecture test allows no other
-   writer of a queued Studio row.
+   resolves the version (only the live version runs `live`, and a draft only `simulate`, ADR-0109 decision 6), fixes
+   the run mode (ADR-0111), resolves the run-as principal (ADR-0103), builds the run manifest (ADR-0109) and inserts
+   the row `queued` `ON CONFLICT (tenant_id, request_key) DO NOTHING`, returning the existing run. The queue is
+   `platform.worker_runs`, which gains `trigger_kind`, `trigger_ref` (from W2, since nothing in W1 reads it),
+   `inbound_event_id`, `request_key` (partial unique per tenant), `parent_run_id`, `root_run_id`, `chain_depth`,
+   `run_as_principal_id`, `priority` (0 interactive, 1 background, 2 eval), `available_at`, `lease_owner`,
+   `lease_until`, `attempt`, `deadline_at` and `cancel_requested_at` (both from W2, decision 3), and the statuses
+   `queued`, `waiting`, `blocked` and `dead_lettered`. An architecture test allows no other writer of a queued Studio
+   row.
 2. **A fair claim without BYPASSRLS.** SECURITY DEFINER `platform.studio_run_scopes_due(p_limit)` returns the tenant
    ids with due work, identifiers only (the pattern of `platform.channel_delivery_scopes_due`,
    `packages/python/dw_platform/src/dw_platform/adapters/persistence/channel_deliveries.py:47`). Per tenant, under
@@ -56,10 +57,10 @@ with the amendments listed under Acceptance; the calls it leaned on are answered
    `trigger_kind` shapes every refusal, for freezes and limits alike, and gives every kind of decision 1 its row:
    `chat`, `manual`, `test`, `replay` and `fork` are interactive runs; `datahub`, `provider_app`, `schedule` and
    `record_event` are trigger runs; `eval` is an evaluation trial; and a child run (`subworkflow`, `agent_node`,
-   `agent_link`, `agent_tool`) is never admitted on its own, so only its root's row applies. Missing concurrency
-   re-queues every kind with a later `available_at`. A freeze re-queues a trigger run with a later `available_at`, so
-   that it starts in arrival order once the freeze lifts, and ends an interactive run or an evaluation trial at once
-   as `cancelled` with `tenant_frozen` or `platform_frozen`. A spent hard limit
+   `agent_link`, `agent_tool`) is never admitted on its own, so only its root's row applies. From W2 (YC79), missing
+   concurrency re-queues every kind with a later `available_at`. A freeze re-queues a trigger run with a later
+   `available_at`, so that it starts in arrival order once the freeze lifts, and ends an interactive run or an
+   evaluation trial at once as `cancelled` with `tenant_frozen` or `platform_frozen`. A spent hard limit
    re-queues a `datahub`, `provider_app` or `record_event` run until the window's `resets_at`, never dropping it;
    records a `schedule` fire (W2) as `limit_refused` and skips it instead of holding it, because holding every missed
    fire would release them all at once when the next window begins; ends an interactive run `failed` with
@@ -114,13 +115,14 @@ with the amendments listed under Acceptance; the calls it leaned on are answered
 6. **Inbound ingress stores and answers, and starts nothing.** A Data Hub endpoint is a Studio artifact of kind
    `endpoint` (`dw.endpoint/v1`) with a public id of `ep_` and 26 Crockford base32 characters (130 random bits),
    resolved before any tenant context by SECURITY DEFINER `studio.resolve_inbound_endpoint(p_public_id)` (ids and
-   settings only). `POST /api/v1/hooks/in/{public_id}` resolves (unknown or disabled: the same 404), rate-limits (429
+   settings only). `POST /api/v1/hooks/in/{public_id}` resolves (unknown, disabled, or with no `live` version yet: the
+   same 404 `not_found`, nothing stored, the last case counted on a metric, closed while missing), rate-limits (429
    with `Retry-After`), caps the body (65,536 bytes by default, 262,144 at most; 413), verifies through the one
    signature-verifier module (ADR-0115) over the exact bytes with a 5-minute tolerance (a static token before the body
-   is read, ADR-0008's order), validates (422 without echo, or quarantine), deduplicates in `studio.inbound_dedupe` for
-   at least 72 hours and stores the `studio.inbound_events` row in one transaction, then answers 2xx in under 1 s at
-   p99, measured at 100 requests per second. No model or provider call runs on this path; the `studio_inbound` lane
-   hands accepted events to the door.
+   is read, ADR-0008's order), validates against the `live` version's schema (422 without echo, or quarantine),
+   deduplicates in `studio.inbound_dedupe` for at least 72 hours and stores the `studio.inbound_events` row in one
+   transaction, then answers 2xx in under 1 s at p99, measured at 100 requests per second. No model or provider call
+   runs on this path; the `studio_inbound` lane hands accepted events to the door.
 7. **Provider-app events are routed by the account they name.** `POST /api/v1/hooks/providers/{provider_app_key}`
    (with Meta's `GET` handshake) verifies with the provider app's secret before anything else, then routes each entry
    by its external account (a Page, an OA) through SECURITY DEFINER
@@ -246,8 +248,16 @@ Amended by Đạt on 2026-10-24, who accepted every recommendation the second co
   (B:agent-lifecycle:R7.2~telemetry-and-audit:R5.5).
 - Third consistency check (round 4): decision 3's `principal_inactive` holds a `datahub`, `provider_app` or
   `record_event` run `queued` and alerts the accountable owner, ending only the other kinds, and
-  `binding_needs_review` gets its row (Đạt's D9; B:ADR-0120~~workflow-engine:R5.15,
-  F:ADR-0113~~org-and-principals:R4.6); the cancel route, `cancel_requested_at` and `deadline_at` are W2, the
+  `binding_needs_review` gets its row (Đạt's V4.9; B:ADR-0120\~workflow-engine:R5.15,
+  F:ADR-0113\~org-and-principals:R4.6); the cancel route, `cancel_requested_at` and `deadline_at` are W2, the
   deadline matching ADR-0126 (Accepted), so a held run is cancelled one at a time from W2 and by a kill in W1, and
-  decision 3 states that nothing bounds a W1 wait (F:ADR-0113~~workflow-engine:R3.1, a CRITICAL row); decision 9
-  refuses cycles at submit, where ADR-0112 decision 3's validator runs (G:ADR-0112~~ADR-0113).
+  decision 3 states that nothing bounds a W1 wait (F:ADR-0113\~workflow-engine:R3.1, a CRITICAL row); decision 9
+  refuses cycles at submit, where ADR-0112 decision 3's validator runs (G:ADR-0112\~ADR-0113).
+- Third consistency check (round 4), second pass, the planner's provisional calls: decision 3's re-queue for missing
+  concurrency arrives from W2 with the concurrency caps of YC79, ADR-0121 decisions 4 to 6 now saying the same
+  (V4.P6; if it is wrong, W1 takes the concurrency caps and this row with them); decision 1's `trigger_ref` comes
+  from W2, nothing in W1 reading it (failure-modes #1), its statuses name `dead_lettered`, which decision 3's
+  reaper already writes, and the door resolves a draft for `simulate` only, as ADR-0109 decision 6 now admits
+  (completing Đạt's V4.4); decision 6 answers an event for an endpoint with no `live` version the same 404, storing
+  nothing and counting it, and validates against the `live` version's schema (if it is wrong, such an event is held
+  until a version goes live).

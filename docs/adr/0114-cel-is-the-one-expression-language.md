@@ -8,7 +8,7 @@ source:
     - ../../pyproject.toml # the kernel purity contract
 ---
 
-# 0114. CEL is the one expression language for tenant text, behind an ExpressionEngine port, type-checked at publish, cost-bounded and evaluated only on the server
+# 0114. CEL is the one expression language for tenant text, behind an ExpressionEngine port, type-checked at submit, cost-bounded and evaluated only on the server
 
 Numbered 0114 in the block 0100-0199 that ADR-0100 reserves for Studio. It rests on the requester's D2 (business
 admins write simple expressions; tenant code exists only in the code node) and D5 (si-platform's validation evaluator is
@@ -58,19 +58,22 @@ S7.
    library, budget and size cases, si-platform's validation test vectors); the composition root picks one by setting.
    The C++ binding stays the default only if FOG-50's prototype shows it registers Python functions and typed objects
    with fields; if it cannot, the Rust binding becomes the default behind the AST pre-check, and if both fail, work
-   stops and Đạt is told (DO-38 (a)).
+   stops and Đạt is told (DO-38 (a)). In deployed profiles (`settings.is_deployed`) the setting picks
+   `cel-expr-python`, the binding `CLAUDE.md` (Required stack) names, and a test fails when it points at the Rust
+   binding; moving deployed profiles to the Rust binding, that fallback included, amends that section in the same
+   change.
 3. **One library, pinned per run.** `dw.cel/v1`, pinned on the run manifest (ADR-0109), is the CEL standard with the
    `strings`, `math`, `optional`, `encoders` and `bindings` extensions plus the platform functions `text.nfc`,
    `text.unaccent`, `text.mask_contacts`, `phone.e164`, `email.normalize`, `fmt.money_vnd`, `fmt.datetime`, `fmt.date`
    (in `Asia/Ho_Chi_Minh`) and `time.add_workdays`. There is no `now()`: time comes from `run` or a node output, so a
    retried node evaluates the same way. A new function is a minor version, a changed one a major. An environment never
    holds a secret: connection bindings are not addressable from an expression.
-4. **One type mapping, checked at publish, bounded at evaluation.** One table maps field types (ADR-0107) and the tool
+4. **One type mapping, checked at submit, bounded at evaluation.** One table maps field types (ADR-0107) and the tool
    schema profile (ADR-0116) to CEL: text-like to `string`; integer and money (integer VND) to `int`; decimal and
    percent to `double`; boolean to `bool`; datetime to `timestamp`; date-only to a `string` `YYYY-MM-DD`; picklist to
    `string`; multi-picklist to `list[string]`; lookup and owner to `string` (a UUID); json to `dyn`, refused in a
-   condition without a `type()` guard. At publish (inside ADR-0112's validator, which runs at submit) the checks
-   refuse undeclared or non-dominating references, type mismatches (a condition must be `bool`), a field the run
+   condition without a `type()` guard. At submit (inside ADR-0112's validator, the first step of the path to live) the
+   checks refuse undeclared or non-dominating references, type mismatches (a condition must be `bool`), a field the run
    principal cannot read (`field_not_readable`, ADR-0106), source over 2 KiB for a condition or 16 KiB for a text
    template, AST depth over 32 and comprehension nesting over 2. At evaluation the engine's iteration budget (about
    10,000) and a 256 KiB cap on the serialized result apply, and an evaluation error becomes `expression_error` naming
@@ -83,7 +86,7 @@ S7.
    literal markup from a fixed list; `url` templates only path segments and query values, each percent-encoded, never
    a scheme or a host (`templated_host`); `header` refuses CR and LF in a value and never templates a header name;
    `json` puts typed values in as leaves, never by concatenation. A list or map inside text is `non_scalar_in_text`. A
-   reference to a hidden field fails at publish and, if access changed since, fails the render with `field_hidden`
+   reference to a hidden field fails at submit and, if access changed since, fails the render with `field_hidden`
    instead of rendering empty. A text template holds at most 16 KiB and 50 expressions and renders at most 64 KiB.
 6. **Validation rules port si-platform's structure; selection and audiences keep their own forms.** A validation rule
    means "must hold" (true is valid; the UI says "Điều kiện để lưu được") and ports the order, the all-errors result
@@ -96,7 +99,7 @@ S7.
 
 ## Alternatives considered
 
-- **JSONata or JMESPath.** Rejected: no type checker, so errors surface at run time instead of publish; JSONata also
+- **JSONata or JMESPath.** Rejected: no type checker, so errors surface at run time instead of submit; JSONata also
   recursed without bound when measured, and JMESPath has no arithmetic.
 - **A JavaScript sandbox.** Rejected: a code-execution surface behind every condition, with n8n's escapes as the record;
   D7 keeps tenant code to a fresh container per code execution (ADR-0119).
@@ -117,10 +120,11 @@ S7.
 - The kernel purity contract (`pyproject.toml:251-276`) is a denylist: the import names of both bindings join its
   `forbidden_modules`, or the guard cannot see the new libraries. The names are read from the installed wheels in
   FOG-50's prototype, not guessed (failure-modes #4); `cel` and `common_expression_language` are the expected ones.
-- Tests that must exist, each red when its guard is removed: the contract suite against both adapters; a 10,000-element
-  map refused by the budget; the architecture test on `jinja2` and `.format(`; per sink, a value containing `</input>`,
-  a header value with CR or LF and a templated host, each refused; a hidden field failing the render closed; the
-  ported si-platform vectors passing.
+- Tests that must exist, each red when its guard is removed: the contract suite against both adapters; a deployed
+  profile whose setting points at the Rust binding refused (decision 2); a 10,000-element map refused by the budget;
+  the architecture test on `jinja2` and `.format(`; per sink, a value containing `</input>`, a header value with CR
+  or LF and a templated host, each refused; a hidden field failing the render closed; the ported si-platform vectors
+  passing.
 - Harder: a library change is a versioned `dw.cel/v1` bump that runs pin; tenant overrides of platform prompts
   (ADR-0110) must refuse any `string.Formatter().parse` field other than a declared plain name.
 - Extends `docs/adr/0010-prompt-variables-are-untrusted-by-default.md` to every template sink, through the same
@@ -164,3 +168,14 @@ holds, with these amendments from the decision brief:
 - Consequences: the bindings' import names are measured in FOG-50 before they join `forbidden_modules`; the sentence
   `CLAUDE.md:124-129` gains is written out.
 - Open: DO-38, DO-37 and DO-40 answered; DO-03 and FOG-50 stay open.
+
+## Amendments (2026-10-24)
+
+- Third consistency check (round 4), second pass: decision 2 adds that deployed profiles (`settings.is_deployed`) pick
+  `cel-expr-python`, with a test that fails when the setting points at the Rust binding, and that moving them to the
+  Rust binding amends `CLAUDE.md` (Required stack) in the same change, so workflow-nodes/01 ships both bindings
+  behind `ExpressionEngine`, one contract suite and the setting, as decision 2 already said (V4.P13, the planner's
+  provisional call, revised so as not to contradict decision 2; E:CLAUDE.md#required-stack\~workflow-nodes/01; if it
+  is wrong, Đạt amends decision 2 so that W1 ships `cel-expr-python` alone). The title, decisions 4 and 5 and the
+  first alternative say "at submit", where ADR-0112's validator runs these checks, no longer "at publish". The status
+  stays Accepted.

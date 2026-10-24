@@ -1,9 +1,9 @@
 # 05 — Phân tích bộ ba nguy hiểm và năng lực khi gửi kiểm định
 
 Status: needs-triage
-Blocked by: 03, .claude/plans/studio/workflow-engine/issues/01-tai-lieu-workflow-va-kiem-xuat-ban.md, .claude/plans/studio/agent-lifecycle/issues/03-hop-dong-vong-doi-va-niem-phong.md, .claude/plans/studio/agent-builder/issues/02-loai-agent-va-khung-prompt.md
+Blocked by: 03, .claude/plans/studio/workflow-engine/issues/01-tai-lieu-workflow-va-kiem-xuat-ban.md, .claude/plans/studio/agent-lifecycle/issues/03-hop-dong-vong-doi-va-niem-phong.md, .claude/plans/studio/agent-builder/issues/02-loai-agent-va-khung-prompt.md, .claude/plans/studio/tenant-config/issues/02-vo-phien-ban-va-chi-muc-phu-thuoc.md
 Area: studio
-Yêu cầu: R2.6, R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R5.5, CP6, CP12, CP13, CP14, CP15
+Yêu cầu: R2.6, R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R4.7, R5.5, CP6, CP12, CP13, CP14, CP15, CP21
 
 ## Mục tiêu
 
@@ -27,10 +27,14 @@ chủ ≤ A2; trường dữ liệu cá nhân không vào prompt trên tuyến r
    trên A2 → 422 `capability_trifecta_autonomy` kèm hai cách sửa (hạ tự chủ, hoặc tách phần đọc nội dung
    không tin cậy khỏi phần giữ tác động); công cụ thiếu một phân loại → 422 `tool_unclassified`.
 4. Migration (id hex ngẫu nhiên) tạo `studio.version_assessments` (một dòng mỗi phiên bản và Mã băm định
-   nghĩa; tín hiệu, đường vi phạm, kết luận, phiên bản bộ phân tích; RLS theo công ty; `version_id` FK tới
-   `studio.artifact_versions` ON DELETE CASCADE với index trên `version_id`, nên lượt xóa phiên bản khi offboarding
-   xóa luôn dòng đánh giá; `dw_app` SELECT, INSERT, không DELETE, nên cùng thay đổi thêm một dòng
-   `STUDIO_EXCLUSIONS` cho bảng với lý do "`dw_app` không DELETE; xóa khi offboarding theo FK CASCADE từ
+   nghĩa; tín hiệu, đường vi phạm, kết luận, phiên bản bộ phân tích; RLS chỉ theo công ty, không cột
+   `workspace_id`, nên cùng thay đổi thêm một dòng cho bảng vào danh sách bảng toàn tenant của
+   `test_rls_coverage.py` với lý do "đánh giá đi theo phiên bản toàn tenant của nó" (studio-skeleton:R9.1); FK ghép
+   `(tenant_id, version_id)` tới `studio.artifact_versions (tenant_id, id)`, đích là
+   `uq_artifact_versions_tenant_id_id` của tenant-config/02 (ticket này chờ nó), ON DELETE CASCADE với index
+   `(tenant_id, version_id)`, nên một dòng không trỏ được tới phiên bản của công ty khác (spec R4.7) và lượt xóa
+   phiên bản khi offboarding xóa luôn dòng đánh giá; `dw_app` SELECT, INSERT, không DELETE, nên cùng thay đổi thêm
+   một dòng `STUDIO_EXCLUSIONS` cho bảng với lý do "`dw_app` không DELETE; xóa khi offboarding theo FK CASCADE từ
    `studio.artifact_versions`" (spec R5.5; studio-skeleton:R4.1)); ghi kết quả trong giao dịch gửi kiểm định, không
    thêm cột lên dòng phiên bản; kết quả đi trong payload phê duyệt phát hành (ADR-0120 (Accepted)); không cấu hình
    nào hạ sàn.
@@ -53,6 +57,10 @@ chủ ≤ A2; trường dữ liệu cá nhân không vào prompt trên tuyến r
       kiểm định 422, phiên bản vẫn Nháp.
 - [ ] R4.6: gửi kiểm định một quy trình hợp lệ → đúng một dòng `studio.version_assessments` cho Mã băm định
       nghĩa của phiên bản, ghi trong cùng giao dịch; rollback giao dịch gửi kiểm định → không dòng nào.
+- [ ] R4.7 (CP21): chèn một dòng `studio.version_assessments` mang `tenant_id` của công ty A và `version_id` của một
+      phiên bản công ty B → SQLSTATE 23503, không dòng nào; đổi FK ghép về FK một cột `version_id` → test đỏ.
+- [ ] R4.6: test phủ RLS (studio-skeleton:R9.1) xanh với dòng của `studio.version_assessments` trong danh sách bảng
+      toàn tenant, bỏ dòng đó → test phủ đỏ, nêu tên bảng.
 - [ ] R5.5: công ty `offboarding` có dòng `studio.version_assessments` → lane `offboarding` xuất mỗi dòng một lần,
       rồi lượt xóa `studio.artifact_versions` của công ty xóa hết các dòng đó qua FK CASCADE, dòng của công ty khác
       còn nguyên; test phủ offboarding (studio-skeleton:R4.1) xanh với dòng `STUDIO_EXCLUSIONS` của bảng, bỏ dòng đó
@@ -66,6 +74,7 @@ chủ ≤ A2; trường dữ liệu cá nhân không vào prompt trên tuyến r
 - `packages/python/dw_agent_runtime/src/dw_agent_runtime/autonomy.py:14-33`; spec: R4.3 (thang tự chủ, hai
   sàn `critical` và `approval_policy: always`).
 - ADR-0125 (Accepted) quyết 1, 2, 3, 5.
+- tenant-config:R2.18 (FK ghép tới `uq_artifact_versions_tenant_id_id`); spec: R4.7.
 
 ## Comments
 
@@ -84,3 +93,9 @@ chủ ≤ A2; trường dữ liệu cá nhân không vào prompt trên tuyến r
   dòng đó với cascade từ `studio.artifact_versions` làm cách xóa, theo bước 7 của studio-skeleton/01 (như
   `platform.service_principals` của org-and-principals), và tiêu chí R5.5 thử nó; câu "không cần dòng
   `STUDIO_EXCLUSIONS`" bỏ.
+- 2026-10-24 (agent): lượt sửa thứ hai của vòng 4, theo dòng tạm của spec về `studio.version_assessments`: FK thành
+  FK ghép `(tenant_id, version_id)` tới `uq_artifact_versions_tenant_id_id` mà tenant-config/02 thêm, để chặn tham
+  chiếu chéo công ty, nên ticket này chờ tenant-config/02; bảng không có `workspace_id` nên thêm một dòng lý do vào
+  danh sách bảng toàn tenant của `test_rls_coverage.py` (`CLAUDE.md` mục 'Tenancy and authorization'); bước 4 làm
+  cả hai, tiêu chí R4.7 (CP21) thử FK ghép (spec R4.7, theo tenant-config:R2.18) và tiêu chí R4.6 thứ hai thử dòng
+  danh sách.

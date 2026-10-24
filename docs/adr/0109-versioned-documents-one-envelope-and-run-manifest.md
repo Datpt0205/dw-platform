@@ -52,15 +52,18 @@ contract of ADR 0120.
    `content_hash`, `definition_hash`, `based_on_version_id` and `change_note`. Rows are tenant-wide with
    tenant-only RLS; `owning_workspace_id` is data that role depth reads (ADR 0104). A kind is an
    `ArtifactKindRegistry` entry at the composition root (document model, all-errors validator, pure
-   dependency extractor, publish service), never a table family; the ticket that registers a kind inserts its one
+   dependency extractor and publish hook, each supplied by the kind's owner, the hook called by agent-lifecycle
+   inside ADR 0120's publish transaction), never a table family; the ticket that registers a kind inserts its one
    row of `studio.artifact_kinds` in its own revision, so no two tickets edit one CHECK, and a test asserts the
    registry's kinds equal that table's rows. There is no `studio.agent_versions`, `studio.workflow_versions` or
    `studio.tool_versions`.
 2. **"Live" is stored once.** Content changes only in `draft` (one draft per artifact, saved with
    `row_version`; a stale save is 412 `precondition_failed` with `details.reason_code` `stale_version`, as
-   ADR 0108 decision 3 answers an `If-Match` mismatch). The `stage` column and its guard trigger belong to
-   ADR 0120; "live" is that stage, with one partial unique index per artifact (`WHERE stage = 'live'`), so
-   there is no `active_version_id` pointer.
+   ADR 0108 decision 3 answers an `If-Match` mismatch). Submitting a draft is conditional the same way: the
+   submit route takes the draft's ETag in `If-Match`, answers a mismatch 412 `precondition_failed` with
+   `stale_version` and a missing one 428 `precondition_required`, and seals only the `row_version` that ETag
+   names. The `stage` column and its guard trigger belong to ADR 0120; "live" is that stage, with one partial
+   unique index per artifact (`WHERE stage = 'live'`), so there is no `active_version_id` pointer.
 3. **One canonical function.** `dw_kernel.canonical` is the only producer of Studio hashes. `ensure_hashable`
    refuses floats, NaN, Infinity, integers outside plus or minus (2^53 - 1), non-string keys, lone surrogates
    and text not in NFC; `canonical_bytes` writes RFC 8785 (JCS) bytes; `content_hash` returns
@@ -90,6 +93,10 @@ contract of ADR 0120.
    `version_no`, `definition_hash`), closure, overlay entries (layer `platform` or `tenant`, config version
    id, hash), binding entries (the binding-set version, each connection id and credential version, and a hash
    of each variable value, never the value; ADR 0110), object schema versions and an engine section.
+   A `simulate` run, and a run of no other mode, may have a draft as its root, requested only once the checks
+   that submit runs pass on the draft's content (ADR 0112 decision 3); its root then records the version id,
+   the stage `draft` and a provisional hash of that content, computed when the request is accepted the way
+   decision 4 computes `definition_hash`.
    `platform.run_manifest_keys`, with FK RESTRICT to `studio.artifact_versions` and
    `platform.config_versions`, keeps anything a retained run pinned from being purged. A manifest holds no
    secret. `effective_hash` is the `definition_hash` plus the overlay entries, and evaluation evidence is
@@ -100,11 +107,12 @@ contract of ADR 0120.
    to database-backed versions.
 8. **The engine is pinned too.** The engine section pins `compiler_version`, each node's `type@major`, the
    state-schema hash, the storage format, the LangGraph version, the CEL library `dw.cel/v1` (ADR 0114) and
-   the model route (ADR 0118). Five checks run before every resume or re-claim: the pinned node types and
+   the model route (ADR 0118). Six checks run before every resume or re-claim: the pinned node types and
    compiler are registered in this build; the parked node exists in the pinned graph and equals
    `run_waits.node_id`; the state-schema hash matches; the storage format is readable; the resume value is a
-   non-empty envelope. A failure parks the run as `blocked` with `error.code` `incompatible_resume` and
-   audit `run.blocked`.
+   non-empty envelope; and for a draft root (decision 6), the root version's content, hashed again the same
+   way, still equals the pinned provisional hash. A failure parks the run as `blocked` with `error.code`
+   `incompatible_resume` and audit `run.blocked`.
 9. **Children are pinned, never followed.** Sub-workflow and agent-node references are pinned in the
    version's closure at submit and stay pinned when it is published; drift proposes an update and never
    follows the child's live version.
@@ -141,8 +149,9 @@ contract of ADR 0120.
   `platform.run_manifests` and `platform.run_manifest_keys` are tenant-wide rows under the `CLAUDE.md:185` class that
   ADR 0100 records (A6), each listed with its reason in `test_rls_coverage.py`.
 - Tests that must exist: the registry-equals-rows test; an UPDATE of a non-draft document is refused; a soft
-  delete of a depended-on target answers 409; a run asking for an unpinned key fails; each of the five
-  resume checks, removed, lets an incompatible resume through and turns its test red.
+  delete of a depended-on target answers 409; a run asking for an unpinned key fails; each of the six
+  resume checks, removed, lets an incompatible resume through and turns its test red; a draft root requested
+  for any mode but `simulate` is refused.
 - Run admission gains one insert pair (target 20 ms p95, to measure). Model profiles carry floats
   (`packages/python/dw_agent_runtime/src/dw_agent_runtime/model/profiles.py:54-55`) and must move to
   `Decimal` before they can be hashed tenant configuration. A second-language verifier can reproduce every
@@ -201,6 +210,15 @@ contract of ADR 0120.
 
 ## Amendments (2026-10-24)
 
-- Third consistency check (round 4), Đạt's D6: decision 2's stale draft save is 412 `precondition_failed` with
+- Third consistency check (round 4), Đạt's V4.6: decision 2's stale draft save is 412 `precondition_failed` with
   `details.reason_code` `stale_version`, as ADR 0108 decision 3 answers an `If-Match` mismatch, no longer 409
   (F:ADR-0109~tenant-config:R2.5); the status stays Accepted.
+- Third consistency check (round 4), second pass, the planner's provisional calls: decision 6 lets a `simulate`
+  run, and a run of no other mode, take a draft as its root under a provisional hash once the checks that submit
+  runs pass on the draft's content, and decision 8 adds a sixth check before a resume, the draft's content still
+  hashing to that pin, else `incompatible_resume`, which completes Đạt's V4.4 (if it is wrong, both sentences
+  leave this ADR and the specs cite V4.4 alone); decision 2 makes the submit conditional on the draft's
+  `If-Match`, 412 with `stale_version` on a mismatch and 428 `precondition_required` without one (V4.6, ADR 0108
+  decision 3; if it is wrong, a submit seals whatever draft was saved last); decision 1 names the publish hook a
+  kind's registry entry carries, which agent-lifecycle calls in the publish transaction, in place of a "publish
+  service" a reader could take for a second path to live.

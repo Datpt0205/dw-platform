@@ -30,8 +30,8 @@ FOG: FOG-09 `scoring-quality`, FOG-10 `vn-models`, FOG-64 `gate-flakiness`, FOG-
   lượng), `model-connections` (danh mục), `compliance-pdpl` (03, lộ trình dữ liệu), `tools-and-skills`,
   `agent-builder`.
 - ADR: 0120, 0123, 0118, 0116, 0117.
-- DO: DO-29 (số của cổng, ai trả chi phí kiểm định), DO-50 (agent, tạm: kiểm định trả từ ngân sách công ty), DO-54,
-  DO-59. Ticket W1: `agent-lifecycle/02` (P0) dựng khung chạy lặp k lần dùng ở đây.
+- DO: DO-29 (số của cổng, ai trả chi phí kiểm định), DO-50 (Đạt chốt 23/10/2026: kiểm định trả từ ngân sách công
+  ty), DO-54, DO-59. Ticket W1: `agent-lifecycle/02` (P0) dựng khung chạy lặp k lần dùng ở đây.
 
 ## Dựng tối thiểu
 

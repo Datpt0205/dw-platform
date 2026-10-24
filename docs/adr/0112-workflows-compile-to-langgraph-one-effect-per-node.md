@@ -51,12 +51,13 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
    node types.
 3. **One validator over the graph the compiler uses.** Publishing runs one all-errors validator over a `WorkflowIR`
    (nodes, ports, edges, dominator tree, branch-exclusivity sets) that the compiler also consumes. It runs at submit,
-   the first step of ADR-0120's path to live, and as warnings on every draft save. It checks that every node is
-   reachable from a trigger; every router is total (a `default` port, every port connected or ended); cycles pass
-   only through a `logic.loop` with `max_iterations`, so a graph has none before W2; parallel branches merge only
-   through a join; every `{{ }}` reference names a dominating node or is guarded by `has()`; CEL types hold
-   (ADR-0114); a variable has one writer per superstep; no wait sits inside a `map` body or a parallel branch in v1;
-   plan limits hold; every connection, principal and endpoint is a declared binding. It returns
+   the first step of ADR-0120's path to live, as warnings on every draft save, and before a `simulate` run of a
+   draft, where an error answers 422 with its `wf.*` codes and requests no run (ADR-0109 decision 6). It checks that
+   every node is reachable from a trigger; every router is total (a `default` port, every port connected or ended);
+   cycles pass only through a `logic.loop` with `max_iterations`, so a graph has none before W2; parallel branches
+   merge only through a join; every `{{ }}` reference names a dominating node or is guarded by `has()`; CEL types
+   hold (ADR-0114); a variable has one writer per superstep; no wait sits inside a `map` body or a parallel branch in
+   v1; plan limits hold; every connection, principal and endpoint is a declared binding. It returns
    `[{path, code, message_vi, message_en}]` with stable codes
    (`wf.unreachable_node`, `wf.router_not_total`, `wf.join_required`, `wf.ref_not_dominating`, `wf.type_mismatch`,
    `wf.wait_in_map`, `wf.limit_above_plan`, `wf.binding_undeclared`). Its graph module (`reachable`, `dominators`,
@@ -77,14 +78,14 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
    schema off the event loop and capped at 64 KiB inline.
 6. **Every effect leaves through its kind's door**, each a narrow Protocol the consumer declares and the composition
    root satisfies: the ToolExecutor (connector actions and `tool.call`; `http.request` as an inline `http` tool frozen
-   at publish so its kind floor applies; a message to a non-member is a connector `message` action meeting ADR-0124's
-   send floor inside the executor); `RecordsPort` (ADR-0107's `RecordService`); `MemberNotificationPort` for
-   `notify.send`, which reaches tenant members only (an address-shaped recipient is a publish error, a non-member at
-   run time is dropped and counted); the `ModelResolver` (ADR-0118); `CodeSandboxPort` (ADR-0119); waits and child runs
-   through ADR-0113's doors, child runs (sub-workflows, workflow tools, agent nodes, linked agents) nesting at most 3
-   deep, as ADR-0113 decision 9 and ADR-0117 decision 7 state (requirements Q1, YC45, YC57). A node holds no SQL, no
-   provider SDK and no concrete adapter, and it hands the run mode to its door, which applies it (ADR-0111): a node
-   never simulates an effect itself.
+   at submit, when the version is sealed, so its kind floor applies; a message to a non-member is a connector
+   `message` action meeting ADR-0124's send floor inside the executor); `RecordsPort` (ADR-0107's `RecordService`);
+   `MemberNotificationPort` for `notify.send`, which reaches tenant members only (an address-shaped recipient is
+   refused at submit, a non-member at run time is dropped and counted); the `ModelResolver` (ADR-0118);
+   `CodeSandboxPort` (ADR-0119); waits and child runs through ADR-0113's doors, child runs (sub-workflows, workflow
+   tools, agent nodes, linked agents) nesting at most 3 deep, as ADR-0113 decision 9 and ADR-0117 decision 7 state
+   (requirements Q1, YC45, YC57). A node holds no SQL, no provider SDK and no concrete adapter, and it hands the run
+   mode to its door, which applies it (ADR-0111): a node never simulates an effect itself.
 7. **Approval steps and human tasks are enforced on the server.** In a `live` run `human.approval` opens an approval
    of type `studio.step.approval` and waits for its decision; in any other run it waits for no decider and takes a
    simulated decision (ADR-0111 decision 5). The API composition root adds `studio.step.` to `strict_approval_prefixes`
@@ -116,7 +117,7 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
    `output_schema`, no network, no environment, sandbox profiles `py-small` (0.5 vCPU, 256 MiB, 30 s) and `py-medium`
    (1 vCPU, 512 MiB, 120 s). Adding a code node or changing its source in a draft needs `studio.code.author`,
    enforced in the draft-save service by comparing code nodes with the stored draft; the `code_node` entitlement is
-   checked at publish and at admission (`entitlement_denied`). Each code execution is audited with `code_sha256` and
+   checked at submit and at admission (`entitlement_denied`). Each code execution is audited with `code_sha256` and
    the image digest (D2, D7).
 10. **Checkpoints.** P1 keeps the current saver with a 64 KiB state cap enforced as a refusal (`output_too_large`) and
     deserialization against an explicit allowlist: the composition root builds the serializer with an explicit
@@ -212,6 +213,11 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
 - Decision 7: a `human.approval` step outside a `live` run waits for no decider and takes a simulated decision, as
   ADR-0111 decision 5 states (N2).
 - Third consistency check (round 4): decision 7 states from W2 the conditions under which an approval delegation
-  stands in for a current assignee, 403 outside them (Đạt's D10; D:ADR-0112~~workflow-nodes:spec); decision 5 checks
-  cancellation and the deadline from W2, when ADR-0113 decision 3's cancel route and `deadline_at` arrive
-  (F:ADR-0113~~workflow-engine:R3.1).
+  stands in for a current assignee, 403 outside them (Đạt's V4.10; D:ADR-0112\~workflow-nodes:spec); decision 5
+  checks cancellation and the deadline from W2, when ADR-0113 decision 3's cancel route and `deadline_at` arrive
+  (F:ADR-0113\~workflow-engine:R3.1).
+- Third consistency check (round 4), second pass: decision 3's validator also runs before a `simulate` run of a
+  draft, refusing it 422 with its `wf.*` codes and requesting no run, as ADR-0109 decision 6 now admits a draft root
+  (completing Đạt's V4.4, YC40); decisions 6 and 9 freeze an inline `http` tool, refuse an address-shaped recipient
+  and check the `code_node` entitlement at submit, when the version is sealed and this validator runs, no longer
+  "at publish" (ADR-0116 decision 1).

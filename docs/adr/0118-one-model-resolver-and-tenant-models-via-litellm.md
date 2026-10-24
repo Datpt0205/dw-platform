@@ -59,7 +59,7 @@ purpose) -> ResolvedRoute` serves `StudioModelSelection`, `RunBudgetMiddleware`,
    `platform.plan_model_profiles (plan_id, profile_id)` lists it for the tenant's plan; never another
    tenant; no answer refuses with `model_profile_unavailable`. The answer is pinned at admission in the
    run manifest (ADR-0109); the residency gate (ADR-0123) runs before content leaves, and a profile the
-   effective route class forbids is refused at publish and at admission.
+   effective route class forbids is refused at submit and at admission.
 2. **ModelProfile v2, in one change** (`model/profiles.py`): a `version`; per route the model
    capabilities plus `data_location`, `processor`, `retention_days` and `no_training` with no defaults;
    `model_connection_model_id` on a tenant route. Model capabilities are a closed set (`tool_calling`,
@@ -86,7 +86,7 @@ purpose) -> ResolvedRoute` serves `StudioModelSelection`, `RunBudgetMiddleware`,
    are out of v1. The worker lane `model_probe`, auditing as itself (ADR-0011), probes on create, edit,
    rotation and weekly: reachability (a five-token call), usage reporting, tool calling, structured
    output and reasoning parameters. A model without usage reporting or tool calling cannot back an
-   agent (a publish error), so a token limit never meets an unmetered model. Probes spend the tenant's
+   agent (refused at submit), so a token limit never meets an unmetered model. Probes spend the tenant's
    tokens, and the form says so.
 5. **Metered with its payer.** One usage ledger row per call (ADR-0121) with `payer = 'tenant'` and
    `model_connection_id`: tokens always, cost from the tenant's price-book entries or
@@ -211,3 +211,7 @@ open:
 - Decision 8: the compose service is `model-proxy` in every document, the glossary's name, and no
   longer `litellm-byom`, so its compose profile carries that one name (studio-skeleton R8.6;
   G:ADR-0118~studio-skeleton:ngoài-phạm-vi, decided for the glossary).
+- Third consistency check (round 4), second pass: decision 1 refuses a profile the effective route
+  class forbids at submit, when the version is sealed, and at admission, and decision 4 refuses at
+  submit an agent backed by a model without usage reporting or tool calling, no longer "at publish"
+  or "a publish error", matching ADR-0123 decision 4 and ADR-0116 decision 1.

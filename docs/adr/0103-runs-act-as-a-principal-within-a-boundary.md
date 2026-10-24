@@ -130,8 +130,7 @@ layers, field security applied to agents and search too), and on the call on DO-
   (record-access/04), the principal binding on manual and Data Hub runs (workflow-triggers/01), and workflow-triggers'
   reader of outbox `platform.service_principal.grants_changed`, through which the run door refuses
   `binding_needs_review` before any run is requested (decision 4; after org-and-principals/03), in W1 P1;
-  Organizations, invitation claims,
-  per-tenant SSO, MFA, step-up and API keys in W2.
+  Organizations, invitation claims, per-tenant SSO, MFA, step-up and API keys in W2.
 - A version with an unattended trigger cannot be published until a service principal is bound (workflow-triggers);
   record-access keys its closure by principal, so a service principal gets a `studio.principal_scopes` row (ADR 0105).
 - `platform.users` holds tenant-owned rows and stays without RLS, stated: offboarding suspends them at filing and
@@ -191,6 +190,6 @@ layers, field security applied to agents and search too), and on the call on DO-
 - Phasing: decision 4's `binding_needs_review` has its W1 reader, workflow-triggers' handler of
   `platform.service_principal.grants_changed`, so a service principal whose grants grew after binding stops at the
   run door before any run is requested (H:org-and-principals:R6.6~workflow-triggers:R3.4).
-- Third consistency check (round 4), Đạt's D9: decision 4's `binding_needs_review` refuses at the run door before any
+- Third consistency check (round 4), Đạt's V4.9: decision 4's `binding_needs_review` refuses at the run door before any
   run is requested, its trigger delivery recorded `rejected`, the row ADR 0113 decision 3 now gives it
   (F:ADR-0113~org-and-principals:R4.6); "admission", ADR 0113's word for the claim, no longer names it.

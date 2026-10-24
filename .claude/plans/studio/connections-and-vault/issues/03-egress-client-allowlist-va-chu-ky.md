@@ -122,6 +122,6 @@ run_mode, purpose, connector_key, connection_id, simulate_safe)` (`simulate_safe
   `egress.allowed_host`, xóa vẫn một người (bước 7; R3.9, R3.10, R3.11, CV22).
 - 2026-10-24 (agent): theo kiểm nhất quán vòng 3 (vòng sửa thứ tư): `POST` hỏi `platform.checker_candidates` và
   trả 409 `no_checker_available` khi không còn người duyệt khác người gửi (R3.12, CV22); người gửi tự quyết nhận
-  `second_person_required` (P9, R3.10); câu INSERT đăng ký khóa nêu `tenant_grantable` (P2); thêm Blocked by
-  tenant-rbac/02, chủ của `platform.checker_candidates` và cột `tenant_grantable` (bước 7). Khóa duyệt
-  `integrations.admin` của `egress.allowed_host` nay là quyết định của Đạt (D5), ADR-0115 (Accepted) quyết 6 ghi.
+  `second_person_required` (V4.P9, R3.10); câu INSERT đăng ký khóa nêu `tenant_grantable` (V4.P2); thêm Blocked
+  by tenant-rbac/02, chủ của `platform.checker_candidates` và cột `tenant_grantable` (bước 7). Khóa duyệt
+  `integrations.admin` của `egress.allowed_host` nay là quyết định của Đạt (V4.5), ADR-0115 (Accepted) quyết 6 ghi.

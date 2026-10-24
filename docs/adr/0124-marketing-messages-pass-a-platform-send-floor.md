@@ -52,7 +52,7 @@ spec owns the floor and the consent records, `tools-and-skills` consumes the flo
    as sending a message (ADR-0116), before the egress client sends (ADR-0115), so a `tool.call` node, an agent's tool
    call and a workflow-as-tool call pass the same check. No node checks it, and workflow-nodes adds no second check
    (ADR-0112 decision 6).
-3. **`notify.send` reaches members only.** Its recipients are principals; an address-shaped value is a publish error
+3. **`notify.send` reaches members only.** Its recipients are principals; an address-shaped value is refused at submit
    and a non-member at run time is dropped and counted (ADR-0112). Notifications to members (ADR-0006) do not pass
    this floor. A message to anyone else is a connector message action.
 4. **Consent records are platform data, tenant-wide.** `platform.consent_records`, append-only under tenant-only
@@ -170,6 +170,8 @@ Amended by Đạt on 2026-10-24, who accepted every recommendation the second co
   confirms it, which a tenant may only lower (DO-55; H:ADR-0124~compliance-pdpl/04); a test recipient's validity is
   ADR-0111's 90 days, so Open 1 owes only the consent wording and who may add test recipients.
 - Decision 5: the lane that sends a queued message is connections-and-vault's.
-- Third consistency check (round 4), Đạt's D11: decision 1 adds the reason `recipient_cap`, counted by `root_run_id`
+- Third consistency check (round 4), Đạt's V4.11: decision 1 adds the reason `recipient_cap`, counted by `root_run_id`
   against decision 6's maximum, and a send-log row with `outcome` `blocked` for every refusal (N4)
   (F:ADR-0124~compliance-pdpl:R3.8).
+- Third consistency check (round 4), second pass: decision 3 refuses an address-shaped `notify.send` recipient at
+  submit, where ADR-0112 decision 3's validator runs, no longer as "a publish error", as ADR-0112 decision 6 now says.

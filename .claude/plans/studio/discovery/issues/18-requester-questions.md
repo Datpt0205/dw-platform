@@ -28,7 +28,7 @@ hai hay từ chối, và cây khóa có cần khóa theo workspace không.
 - Spec: `model-connections`, `compliance-pdpl` (03, lộ trình dữ liệu; sổ xử lý), `usage-and-limits` (đối soát chi
   phí), `connections-and-vault` (định tuyến sự kiện nhận, cây khóa), `telemetry-and-audit`.
 - ADR: 0118 (Open 1), 0123, 0115.
-- DO: DO-19 (D13), DO-48 (agent, tạm: gửi tới cả hai, luật sư xác nhận), DO-54.
+- DO: DO-19 (D13), DO-48 (Đạt chốt 23/10/2026: gửi tới cả hai, luật sư xác nhận), DO-54.
 
 ## Đầu ra
 

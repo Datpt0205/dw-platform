@@ -51,8 +51,9 @@ bao giờ rời Kho bí mật ra một đường ra nào (YC61; ADR-0115 (Accept
   số công cụ, bản kê lượt chạy, trace, log hay Nhật ký kiểm toán.
 - R1.3 NẾU `dw_app` đọc, sửa hay xóa thẳng `platform.secret_envelopes`, THÌ PostgreSQL PHẢI từ chối với
   `permission denied` và không trả dòng nào.
-- R1.4 NẾU một phong bì được giải mã với công ty, workspace sở hữu, chủ thể, trường hay phiên bản khác với lúc
-  mã hóa, THÌ Kho bí mật PHẢI giải mã lỗi và không trả giá trị rõ.
+- R1.4 NẾU một phong bì được giải mã với công ty, workspace sở hữu, chủ thể, trường hay phiên bản bí mật
+  (`secret_version`, không đổi khi bọc lại khóa dữ liệu) khác với lúc mã hóa, THÌ Kho bí mật PHẢI giải mã lỗi và
+  không trả giá trị rõ.
 - R1.5 NẾU một dòng mang `kek_ref` của công ty khác với công ty trong ngữ cảnh, THÌ Kho bí mật PHẢI từ
   chối và ghi audit `secret.key_mismatch`.
 - R1.6 KHI lane `offboarding` xuất dữ liệu một công ty, danh sách bảng xuất PHẢI không gồm
@@ -260,13 +261,25 @@ không `workspace_id`, mỗi bảng một dòng có lý do trong `_TENANT_WIDE_O
 
 - `platform.secret_envelopes`: `id` uuid; `tenant_id` NOT NULL FK `platform.tenants` ON DELETE CASCADE;
   `connection_id` uuid NULL, loại trừ với chủ thể khác qua CHECK `num_nonnulls(...) = 1`; mỗi chủ thể mới
-  (ADR-0115 (Accepted) quyết 1) là một cột FK NULL cộng CHECK đó nới rộng, thêm trong migration của ticket thêm
-  chủ thể: `inbound_endpoint_id` (FK tới `studio.inbound_endpoints`) ở workflow-triggers/02; `alg text NOT NULL` CHECK
-  (`aes-256-gcm`); `nonce bytea` CHECK độ dài 12; `kek_ref text NOT NULL`; `ciphertext bytea` CHECK độ
-  dài ≤ 64 KiB; `aad_hint text` CHECK độ dài ≤ 64; `kek_version int NOT NULL`; `created_at`,
-  `updated_at timestamptz NOT NULL`. `REVOKE ALL FROM dw_app`; chỉ các hàm SECURITY DEFINER
-  `platform.put_secret`, `platform.open_secret`, `platform.secret_status`, `platform.delete_secret` (lấy
-  công ty từ `app.tenant_id`, không nhận tham số công ty) có EXECUTE cho `dw_app`.
+  (ADR-0115 (Accepted) quyết 1) là một cột FK NULL cộng CHECK đó nới rộng và một UNIQUE của cột đó (dưới đây),
+  thêm trong migration của ticket thêm chủ thể: `inbound_endpoint_id` (FK tới `studio.inbound_endpoints`) ở
+  workflow-triggers/02; `field text NOT NULL`, tên trường bí mật của chủ thể (`api_key`, `password`,
+  `signing_secret`); `secret_version integer NOT NULL`, phiên bản của bí mật: `platform.put_secret` ghi giá trị
+  mới của (chủ thể, trường) thành một dòng với số kế tiếp và không sửa dòng cũ, còn lane `credential_rewrap`
+  không đổi nó; UNIQUE `(tenant_id, subject_kind, subject_id, field, secret_version)`, mà vì đúng một cột chủ thể
+  khác NULL nên là một UNIQUE `(tenant_id, <cột chủ thể>, field, secret_version)` cho mỗi cột chủ thể,
+  `(tenant_id, connection_id, field, secret_version)` ở ticket 02; `alg text NOT NULL` CHECK (`aes-256-gcm`);
+  `nonce bytea` CHECK độ dài 12; `kek_ref text NOT NULL`; `ciphertext bytea` CHECK độ dài ≤ 64 KiB;
+  `wrapped_data_key bytea NOT NULL`, khóa dữ liệu riêng của phong bì bọc bởi Khóa của công ty, giữ cạnh
+  `ciphertext` (ADR-0115 (Accepted) quyết 1), cột duy nhất lane `credential_rewrap` ghi lại;
+  `kek_version int NOT NULL`, phiên bản Khóa của công ty đã bọc `wrapped_data_key`, lane `credential_rewrap` tăng
+  nó và nó không vào AAD; `created_at`, `updated_at timestamptz NOT NULL`. AAD của phong bì dựng từ công ty của
+  ngữ cảnh, workspace sở hữu của chủ thể, cột chủ thể, `field` và `secret_version` (ticket 02 bước 3), nên bảng
+  không có cột gợi ý AAD nào. `REVOKE ALL FROM dw_app`; chỉ các hàm SECURITY DEFINER `platform.put_secret`,
+  `platform.open_secret`, `platform.secret_status`, `platform.delete_secret` (lấy công ty từ `app.tenant_id`,
+  không nhận tham số công ty) có EXECUTE cho `dw_app`. Một phiên bản bí mật đã thu hồi là một `secret_version`
+  không còn dòng nào (đã xóa qua `platform.delete_secret`), điều `connection_usable` đọc qua
+  `platform.secret_status` (ticket 04 bước 2).
 - `platform.connections`: `id` uuid; `tenant_id` NOT NULL; `owning_workspace_id` NOT NULL, FK ghép
   `(tenant_id, owning_workspace_id)` tới `platform.workspaces` ON DELETE RESTRICT, có index; `connector_key text NOT NULL`,
   `connector_major int NOT NULL`; `share_scope text NOT NULL` CHECK (`owner`, `workspace`,
@@ -316,7 +329,7 @@ không `workspace_id`, mỗi bảng một dòng có lý do trong `_TENANT_WIDE_O
 
 | #    | Kiểm soát                                                                                     | Yêu cầu                    | Test âm                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | ---- | --------------------------------------------------------------------------------------------- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| CV1  | Phong bì gắn danh tính bằng AAD                                                               | R1.4                       | Chép phong bì sang kết nối khác cùng công ty hay công ty khác, sang trường khác của cùng kết nối, sang phiên bản khác, hay sang chủ thể `inbound_endpoint_id` (ca này chạy ở workflow-triggers/02, nơi thêm cột) → giải mã lỗi; gỡ AAD khỏi `SecretStore` → test đỏ                                                                                                                                                                                                                                                                                                                                                               |
+| CV1  | Phong bì gắn danh tính bằng AAD                                                               | R1.4                       | Chép phong bì sang kết nối khác cùng công ty hay công ty khác, sang trường khác của cùng kết nối, sang `secret_version` khác, hay sang chủ thể `inbound_endpoint_id` (ca này chạy ở workflow-triggers/02, nơi thêm cột) → giải mã lỗi; bọc lại khóa dữ liệu (`kek_version` tăng) → vẫn giải mã; gỡ AAD khỏi `SecretStore`, hay đưa `kek_version` vào AAD → test đỏ                                                                                                                                                                                                                                                                |
 | CV2  | Một cửa cơ sở dữ liệu, `dw_app` không đọc thẳng                                               | R1.3, R1.6                 | `SELECT * FROM platform.secret_envelopes` bằng `dw_app` → permission denied; catalog export của offboarding không liệt kê `secret_envelopes`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | CV3  | Khóa suy từ công ty của ngữ cảnh                                                              | R1.5                       | Dòng mang `kek_ref` của công ty khác → từ chối, audit `secret.key_mismatch`; bỏ kiểm `kek_ref` → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | CV4  | Bí mật không rò ra response, trạng thái, trace, log, audit                                    | R1.2                       | Mock nhà cung cấp vọng header và key trong body lỗi → 0 lần xuất hiện ở checkpoint, `tool_executions`, audit, span, log; tắt che → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
@@ -378,8 +391,10 @@ không `workspace_id`, mỗi bảng một dòng có lý do trong `_TENANT_WIDE_O
   ADR-0104 (Accepted) quyết 11, với `second_person_required` là mã chung của lần từ chối theo tiền tố nghiêm
   cho mọi loại phê duyệt.
 - `.claude/plans/studio/workflow-triggers/issues/02-data-hub-endpoint-va-ingress.md`: thêm chủ thể
-  `inbound_endpoint_id` vào `platform.secret_envelopes` và nới CHECK `num_nonnulls` trong migration của nó,
-  sau ticket 02 của spec này.
+  `inbound_endpoint_id` vào `platform.secret_envelopes`, nới CHECK `num_nonnulls` và thêm UNIQUE
+  `(tenant_id, inbound_endpoint_id, field, secret_version)` trong migration của nó, sau ticket 02 của spec này;
+  bí mật ký của Nguồn dữ liệu dùng AAD của ticket 02 với `subject_kind` `inbound_endpoint` và `field`
+  `signing_secret`, và hai bí mật chồng 24 giờ là hai `secret_version`.
 - agent-lifecycle:R8.4: hợp đồng lane gửi đi hỏi công tắc trước khi gửi, mà lane gửi tin đã xếp hàng W2 của
   spec này đáp ứng.
 - `.claude/plans/studio/tools-and-skills/issues/02-toolset-va-cong-cu-ghim.md`: Đặc tả công cụ, `ToolExecutor`
@@ -395,7 +410,8 @@ không `workspace_id`, mỗi bảng một dòng có lý do trong `_TENANT_WIDE_O
   ticket 03, 05; `RunBindingsPort` đổi hình → ticket 05; ADR-0115 (Accepted) quyết 2, 6 đổi `required_scope`
   của `connections.enable` hay `egress.allowed_host` → R3.9, R5.10, ticket 03, 04; tenant-rbac/02 đổi hình
   `platform.checker_candidates` hay ADR-0104 (Accepted) quyết 11 đổi mã từ chối → R3.10, R3.12, R5.11, R5.13,
-  ticket 03, 04.
+  ticket 03, 04; tenant-config đổi cách bản kê ghim phiên bản credential của kết nối (tenant-config:R7.4) → ticket
+  04 bước 2.
 
 ## Câu hỏi còn mở
 
@@ -472,7 +488,7 @@ không `workspace_id`, mỗi bảng một dòng có lý do trong `_TENANT_WIDE_O
   handler `.decided` áp thay đổi; tắt kết nối và xóa Máy chủ được phép vẫn một người cộng audit
   (ADR-0115 (Accepted), sửa ngày 24/10/2026). Sửa: R3, R3.9, R3.10, R3.11, R5, R5.10, R5.11, R5.12, Trong phạm
   vi, Dữ liệu, API, Màn hình, CV21, CV22, Phụ thuộc, ticket 03, 04.
-- 24/10/2026 (Đạt): D5: yêu cầu `connections.enable` đóng dấu `required_scope` `connections.manage`, yêu cầu
+- 24/10/2026 (Đạt): V4.5: yêu cầu `connections.enable` đóng dấu `required_scope` `connections.manage`, yêu cầu
   `egress.allowed_host` đóng dấu `integrations.admin`, tức khóa quản lý chính việc đó, theo cách
   ADR-0110 (Accepted) quyết 2 đóng dấu khóa duyệt của loại (ADR-0004 (Accepted)); ADR-0115 (Accepted) quyết 2
   và 6 ghi hai khóa duyệt này; handler audit đứng tên người quyết với `details.lane` `outbox`
@@ -491,12 +507,12 @@ không `workspace_id`, mỗi bảng một dòng có lý do trong `_TENANT_WIDE_O
 - 24/10/2026 (Đạt): N8: gửi email qua Gmail của công ty bằng ứng dụng Google nội bộ của khách (DO-20 (c)) ở W2
   (YC107); TikTok Lead Generation sang W3 sau ticket khám phá FOG-82; Google Sheets không ở v1, ứng viên W3.
   Sửa: Ngoài phạm vi.
-- 24/10/2026 (agent, tạm): P2: ticket đăng ký khóa vào `platform.permissions` chờ tenant-rbac/02 và nêu trong câu
+- 24/10/2026 (agent, tạm): V4.P2: ticket đăng ký khóa vào `platform.permissions` chờ tenant-rbac/02 và nêu trong câu
   INSERT mọi cột NOT NULL có lúc đó, gồm `risk` của tenant-rbac/01 và `tenant_grantable` của tenant-rbac/02
   (ADR-0104 (Accepted) quyết 1). Sửa: Trong phạm vi, Phụ thuộc, ticket 03, 04. Nếu sai thì: tenant-rbac/01 tạo
   cột `tenant_grantable` kèm sửa ADR-0104 (Accepted) quyết 1; ticket 03 vẫn chờ tenant-rbac/02 vì
   `platform.checker_candidates` (R3.12).
-- 24/10/2026 (agent, tạm): P9: người gửi tự quyết `egress.allowed_host` hay `connections.enable` bị tiền tố nghiêm
+- 24/10/2026 (agent, tạm): V4.P9: người gửi tự quyết `egress.allowed_host` hay `connections.enable` bị tiền tố nghiêm
   từ chối với `details.reason_code` `second_person_required`, một mã cho mọi loại phê duyệt mà
   ADR-0104 (Accepted) quyết 11 ghi tên. Sửa: R3.10, R5.11, API, Phụ thuộc, CV21, CV22, ticket 03, 04. Nếu sai
   thì: đổi mã ở R3.10, R5.11, API và test CV21, CV22 theo tên ADR-0104 (Accepted) ghi.
@@ -506,11 +522,20 @@ không `workspace_id`, mỗi bảng một dòng có lý do trong `_TENANT_WIDE_O
   R5.13, Trong phạm vi, API, CV21, CV22, Phụ thuộc, ticket 03, 04. Nếu sai thì: bỏ R3.12, R5.13 và hai ca âm đó
   của CV21, CV22.
 - 24/10/2026 (agent, tạm): AAD của phong bì là
-  `dw.secret.v1|<tenant_id>|<owning_workspace_id>|<subject_kind>:<subject_id>|<field>|<kek_version>`, gắn công
-  ty, workspace sở hữu, chủ thể, trường và phiên bản như ADR-0115 (Accepted) quyết 1 đòi; workflow-triggers/02
-  dùng cùng dạng cho chủ thể `inbound_endpoint_id` (kiểm nhất quán vòng 3). Sửa: R1.4, CV1, ticket 02. Nếu sai
-  thì: vế phiên bản của AAD là phiên bản của bí mật thay `kek_version`, nếu lane `credential_rewrap` chỉ bọc lại
-  khóa dữ liệu mà không mã hóa lại phong bì (ticket 06 bước 4).
+  `dw.secret.v1|<tenant_id>|<owning_workspace_id>|<subject_kind>:<subject_id>|<field>|<secret_version>`, gắn công
+  ty, workspace sở hữu, chủ thể, trường và phiên bản như ADR-0115 (Accepted) quyết 1 đòi, mà phiên bản ở đó là
+  của bí mật, không đổi khi bọc lại: `secret_version` tăng khi giá trị bí mật đổi, còn lane `credential_rewrap`
+  chỉ bọc lại khóa dữ liệu (`transit/rewrap`, ticket 06 bước 4) và tăng `kek_version`, nên AAD mang `kek_version`
+  làm hỏng mọi phong bì sau lần bọc lại đầu tiên (kiểm nhất quán vòng 3, lỗi của bản sửa vòng 3). Bảng có cột
+  `field`, `secret_version` và UNIQUE `(tenant_id, subject_kind, subject_id, field, secret_version)`, cùng cột
+  `wrapped_data_key`, khóa dữ liệu đã bọc mà ADR-0115 (Accepted) quyết 1 giữ cạnh `ciphertext` và lane
+  `credential_rewrap` bọc lại, và bỏ `aad_hint` không bên đọc (failure-modes #1); `connection_usable` đọc phiên
+  bản bí mật đã thu hồi từ `secret_version`; bí mật ký của workflow-triggers/02 dùng cùng dạng với `subject_kind`
+  `inbound_endpoint`, `field` `signing_secret`. Sửa: R1.4, Dữ liệu, CV1, Phụ thuộc, ticket 02, 04, 06. Nếu sai
+  thì: lane `credential_rewrap` mã hóa lại mọi phong bì dưới một khóa dữ liệu mới thay vì bọc lại, nhánh mà phần
+  sửa đổi vòng 4 của ADR-0115 (Accepted) ghi cho trường hợp sai, và khi đó AAD có thể mang phiên bản khóa;
+  ticket 06 bước 4, R2.6 và ca bọc lại của CV1 đổi theo, còn `secret_version` vẫn là phiên bản credential mà bản
+  kê lượt chạy ghim (ADR-0110 (Accepted) quyết 8).
 
 ## Danh sách ticket
 

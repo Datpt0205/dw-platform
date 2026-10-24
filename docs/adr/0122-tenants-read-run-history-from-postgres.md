@@ -88,10 +88,13 @@ ADR 0121, which owns the usage ledger whose screens and retention this ADR also 
    retention lane; each ticket that registers a table adds that table's term to the file in the same
    change and releases a new version in that format, so the catalog test that every registered table
    has a term (studio-skeleton R3.7) passes from the registration on. The tickets that edit the file
-   form one chain, each releasing the next version: studio-skeleton/01, usage-and-limits/02 (the
-   first version keyed by `schema.table`, `platform.audit_events` included), usage-and-limits/03,
-   telemetry-and-audit/03, agent-lifecycle/04, workflow-triggers/02, compliance-pdpl/04,
-   agent-builder/04 and compliance-pdpl/06. A store that ships later brings its row with it, the
+   form one chain, each releasing the next version: usage-and-limits/02 (the first version keyed by
+   `schema.table`, `platform.audit_events` included), usage-and-limits/03, telemetry-and-audit/03,
+   agent-lifecycle/04, workflow-triggers/02, compliance-pdpl/04, agent-builder/04 and
+   compliance-pdpl/06. studio-skeleton/01, which registers `platform.audit_events` before the chain
+   starts, is the one registration that edits no file: until usage-and-limits/02 moves that term
+   under its `schema.table` key, the policy model maps `retention@1.7.0`'s `audit.tables.audit_events`
+   to it (ADR-0100 decision 7). A store that ships later brings its row with it, the
    per-tenant analytics store of ADR-0127 (Accepted) included (W3). The terms are provisional,
    versioned data, UNVERIFIED until counsel confirms them before shadow runs; counsel changes a
    number with a new policy version, never with code (DO-52 (a)). Run steps keep 30 days, as YC88
@@ -116,14 +119,20 @@ ADR 0121, which owns the usage ledger whose screens and retention this ADR also 
 | checkpoints                                                            | 24 hours after the run ends                                                              | lane DELETE                                     |
 | inbound event dedupe keys                                              | 72 hours                                                                                 | lane DELETE                                     |
 | contact suppressions (`platform.contact_suppressions`, address hashes) | while the tenant is a customer; only offboarding or a data subject's request removes one | offboarding purge, data-subject erasure         |
-| conversations (`studio.conversations`, `studio.conversation_messages`) | 90 days (DO-52)                                                                          | lane DELETE                                     |
+| conversations (`studio.conversations`, `studio.conversation_messages`) | 90 days (DO-52)                                                                          | lane through a SECURITY DEFINER function        |
 | audit log (`platform.audit_events`)                                    | 1095 days, unchanged                                                                     | DROP PARTITION                                  |
 
 The lane deleting inbound events skips one that a `queued` run still points to or that a freeze
 holds, and counts the held ones on a metric: a freeze has no time limit (ADR 0120 decision 7), and
 a held event's sender was already answered 2xx. `dw_app` holds no UPDATE on
 `platform.tool_executions` (foundations-hardening R6.3), so the lane clears `output` through a
-narrow SECURITY DEFINER function that nulls that one column, and only past its term. The DROP
+narrow SECURITY DEFINER function that nulls that one column, and only past its term. Conversation
+messages are append-only for `dw_app` and point at their conversation through a composite foreign
+key `ON DELETE RESTRICT` (ADR 0117 decision 6), so the lane removes expired conversations through
+one narrow SECURITY DEFINER function, `studio.purge_expired_conversations(p_cutoff timestamptz)`,
+owned by compliance-pdpl 06: in every tenant it deletes the messages created before the cutoff,
+then the conversations left with no message whose last activity is before it, and the lane audits
+as itself (`system:<lane>`, ADR 0011) with the row counts. The DROP
 PARTITION rows go through `platform.drop_expired_partitions(cutoffs jsonb)`, one cutoff per parent
 read from this file, which usage-and-limits 02 owns in W1.
 
@@ -224,5 +233,15 @@ open:
 - Third consistency check (round 4): decision 7 and the Acceptance line drop the numbers 1.8.0 and
   1.9.0, since every ticket that registers a table releases a new version in telemetry-and-audit's
   format, and decision 7 names the chain of tickets that edit the file, usage-and-limits/02's version
-  being the first keyed by `schema.table` (F:ADR-0122~telemetry-and-audit:spec); the chain is P1, the
+  being the first keyed by `schema.table` (F:ADR-0122~telemetry-and-audit:spec); the chain is V4.P1, the
   planner's provisional call, and if it is wrong the file splits per table and decision 7 changes.
+- Third consistency check (round 4), second pass, the planner's provisional calls: decision 7's chain
+  under V4.P1 starts at usage-and-limits/02, and studio-skeleton/01, which registers
+  `platform.audit_events` first, edits no file but reads that term from `retention@1.7.0` through a
+  mapping that usage-and-limits/02 removes, the one exception, stated in ADR-0100 decision 7 too (if
+  this head is wrong, studio-skeleton/01 releases the first version with `platform.audit_events`
+  keyed by `schema.table`, and usage-and-limits/02 adds only its own tables); conversations leave
+  through `studio.purge_expired_conversations(p_cutoff)`, a narrow SECURITY DEFINER function of
+  compliance-pdpl 06, since their messages are append-only for `dw_app` and the messages' foreign key
+  to their conversation is `ON DELETE RESTRICT` (if it is wrong, `dw_app` deletes conversations
+  through a cascading foreign key and the messages stop being append-only).

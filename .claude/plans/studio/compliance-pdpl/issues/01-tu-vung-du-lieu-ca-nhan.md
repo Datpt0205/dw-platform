@@ -20,12 +20,15 @@ Một module kernel sở hữu từ vựng `pd_category`, `sensitive_type` và T
 4. Helper test catalog `assert_field_tables_classified(...)` để custom-objects, workflow-triggers và
    tools-and-skills dùng: mỗi bảng định nghĩa trường có cột `pd_category`, `sensitive_type`,
    `subject_identifier`, và ràng buộc CHECK bằng đúng enum của `dw_kernel.personal_data`.
-5. Mã lỗi `pd_category_required` và helper validate cho các spec chủ bảng; thiếu `pd_category` khi tạo
-   trường → 422 (spec chủ bảng thực thi điểm chèn, lát này cấp mã và helper).
+5. Mã lỗi `pd_category_required` và helper validate cho các spec chủ bảng: thiếu `pd_category` khi tạo trường →
+   422 `validation_failed` với một phần tử `errors[]` mang `code` `pd_category_required` và `pointer` tới trường
+   (app-standards:R1.3), không ở `details.reason_code` (spec chủ bảng thực thi điểm chèn, lát này cấp mã và
+   helper).
 
 ## Tiêu chí chấp nhận
 
-- [ ] R1.1 (CP1): POST một trường không có `pd_category` → 422 `pd_category_required`, không tạo trường.
+- [ ] R1.1 (CP1): POST một trường không có `pd_category` → 422 `validation_failed` với `errors[].code`
+      `pd_category_required` và `pointer` tới trường, `details.reason_code` không mang mã đó, không tạo trường.
 - [ ] R1.2 (CP1): ràng buộc CHECK `pd_category` của một bảng định nghĩa trường bằng đúng enum của
       `dw_kernel.personal_data`.
 - [ ] R1.3 (CP1): thêm một giá trị CHECK ngoài enum kernel → test drift đỏ; một giá trị thiếu nhãn tiếng
@@ -44,3 +47,6 @@ Một module kernel sở hữu từ vựng `pd_category`, `sensitive_type` và T
 
 - 2026-10-23 (agent): B11-security compliance-pdpl 01. field-security, custom-objects và Data Hub đọc từ
   đây; field-security sở hữu chế độ `Mở`/`Bảo vệ` và mặc định bảo vệ.
+- 2026-10-24 (agent): theo dòng tạm cùng ngày của spec, `pd_category_required` là một `errors[].code` của 422
+  `validation_failed` có con trỏ tới trường (app-standards:R1.3), không phải `details.reason_code`, cùng hình với
+  custom-objects:R2.2 và workflow-triggers:R4.1 (bước 5, tiêu chí R1.1).

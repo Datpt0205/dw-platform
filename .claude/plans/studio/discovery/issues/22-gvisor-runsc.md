@@ -23,8 +23,9 @@ của docgen là một container, một uid, tmpfs dùng chung và `max_concurre
 
 - Spec: `code-sandbox` (01), `usage-and-limits` (đo phí lần chạy mã), `workflow-nodes` (bước mã Python, W2).
 - ADR: 0119 (đang viết).
-- DO: DO-24 (D14: VM riêng cho `sandbox-runner` trước khi mã tenant chạy ở uat hay production), DO-45 (agent, tạm: chỉ
-  Python 3.12; mỗi phiên agent một container; tính phí theo vCPU và GB đặt trước nhân thời gian).
+- DO: DO-24 (D14: VM riêng cho `sandbox-runner` trước khi mã tenant chạy ở uat hay production), DO-45 (Đạt chốt
+  23/10/2026: chỉ Python 3.12; ở v1 mỗi lần chạy mã một container mới theo D7, container theo phiên agent chỉ ở W3; tính
+  phí theo vCPU và GB đặt trước nhân thời gian).
 - Ticket W1: `code-sandbox/01` (P0) là phép đo này.
 
 ## Dựng tối thiểu
@@ -39,7 +40,7 @@ không mạng chạy bộ script tấn công (fork bomb, cấp phát bộ nhớ,
 | Runtime thật của container                  | `runsc`, kiểm từ trong container; test đỏ khi chạy trên `runc` | Host thứ hai dùng được không                 |
 | Trần CPU, bộ nhớ, pids, đĩa, thời gian      | Mỗi trần chặn đúng script tương ứng                            | Cấu hình chạy mã                             |
 | `memory.peak`, `docker stats` trước khi xóa | Có số                                                          | Cách đo phí của `usage-and-limits`           |
-| Thời gian khởi động một container           | Chưa có ngưỡng; ghi p95                                        | Chi phí mỗi phiên (DO-45)                    |
+| Thời gian khởi động một container           | Chưa có ngưỡng; ghi p95                                        | Chi phí mỗi lần chạy mã (DO-45)              |
 | `runsc` trên runner CI                      | Chạy hay không                                                 | Bộ test tấn công chạy trong CI hay trên host |
 
 ## Nguồn

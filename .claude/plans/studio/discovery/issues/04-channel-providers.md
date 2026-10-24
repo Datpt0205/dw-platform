@@ -30,8 +30,8 @@ lead.
   công ty bị khóa), `tenant-config` (cách ly ZNS khi chạy thử), `org-and-principals` (khóa công ty),
   `marketing-pilot` (lịch).
 - ADR: 0113 (công thức `X-ZEvent-Signature` chưa kiểm), 0115, 0008 (trần 64 KB).
-- DO: DO-20 (agent, tạm: ứng dụng nền tảng cho Meta và Zalo, ứng dụng Google nội bộ của khách), DO-39 (agent, tạm: trả
-  503 và không lưu khi công ty bị khóa).
+- DO: DO-20 (Đạt chốt 23/10/2026, phương án (c): ứng dụng nền tảng cho Meta và Zalo, ứng dụng Google nội bộ của
+  khách, nền tảng không giữ ứng dụng Google nào), DO-39 (Đạt chốt 23/10/2026: trả 503 và không lưu khi công ty bị khóa).
 - Ticket W1: `connections-and-vault/01` (ready-for-human, tuần một) nộp hồ sơ duyệt; ticket này cấp dữ kiện cho hồ sơ.
 
 ## Đầu ra

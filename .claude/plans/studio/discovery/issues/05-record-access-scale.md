@@ -30,7 +30,7 @@ Quyền trên bản ghi là cược hiệu năng rủi ro nhất của Studio: p
 - Spec: `record-access` (01, 02, 03), `foundations-hardening` (03, RLS đọc setting dạng InitPlan),
   `org-and-principals` (hàm cây), `agent-builder` (truy hồi, W2).
 - ADR: 0105 (Consequences, Open 6), 0102.
-- DO: DO-14 (D12), DO-15, DO-11 (agent, tạm). Ticket W1: `record-access/01` (P0) là phép đo này.
+- DO: DO-14 (D12), DO-15, DO-11 (Đạt chốt 23/10/2026). Ticket W1: `record-access/01` (P0) là phép đo này.
 
 ## Dựng tối thiểu
 

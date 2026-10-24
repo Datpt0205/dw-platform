@@ -45,7 +45,8 @@ Numbered in the block 0100-0199 reserved for Studio (ADR-0100 records the block)
    `sensitive`, a sensitive field also carrying `sensitive_type` from the Decree 356 Art. 4.1 list, plus the optional
    `subject_identifier` kind (email, phone, national_id, zalo_user_id, facebook_psid, tax_code, bank_account). One owner,
    `dw_kernel.personal_data`, holds the vocabulary; each table's CHECK equals the kernel list (a test). A field without
-   a category is refused with 422 `pd_category_required`; the UI preselects from the field type and the admin confirms.
+   a category is refused with 422 `validation_failed`, `errors[].code` `pd_category_required` pointing at the field
+   (ADR-0108 decision 1); the UI preselects from the field type and the admin confirms.
    The category drives field-security defaults, masking, model routing (ADR-0123: `sensitive` never leaves under
    `cross_border_minimised`), retention and data-subject requests. It is a separate axis from the clearance ladder, and
    per-property `pd_category` replaces `ToolDefinition.data_classification`.
@@ -198,3 +199,7 @@ Numbered in the block 0100-0199 reserved for Studio (ADR-0100 records the block)
 - Decision 2: securing a field is a `dw.object/v1` version that only tightens, published by its submitter alone through
   ADR-0120 decision 1's one-person branch with an audit event; opening a `basic` field still takes a second person
   (Q-R6, B:agent-lifecycle:R1.6~custom-objects:R1.7).
+- Third consistency check (round 4), second pass: decision 1's refusal of a field without a category is 422
+  `validation_failed` with `errors[].code` `pd_category_required` and a pointer, the shape app-standards R1.3 and
+  ADR-0108 decision 1 give a validation error, not a top-level code of its own (the planner's provisional call; if it
+  is wrong, `pd_category_required` joins `ErrorCode` and every spec citing it changes).

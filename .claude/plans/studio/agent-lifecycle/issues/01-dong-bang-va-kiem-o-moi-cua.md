@@ -35,9 +35,11 @@ cửa, để quyết Đóng băng có thể tiếp tục cho lượt đang chạ
       `test_rls_coverage.py` thấy `control_switches`; policy `tenant_isolation_control_switches` để lane
       `offboarding` xuất và xóa bảng (studio-skeleton:R4.3). Đăng ký khóa `studio.lifecycle.freeze` trong
       `platform.permissions` của tenant-rbac/01 (nhãn "Đóng băng công ty", `scope_kind` `tenant`, `risk`
-      `standard` theo bảng phân loại của ticket đó); INSERT nêu mọi cột NOT NULL của bảng lúc đó, gồm `risk` của
-      tenant-rbac/01 và `tenant_grantable` (`true`) của tenant-rbac/02, ticket này chờ ticket đó; và thêm khóa vào
-      vai `org_admin` (vai còn do migration sở hữu).
+      `standard` theo bảng phân loại của ticket đó); INSERT nêu mọi cột NOT NULL của bảng lúc đó, gồm `risk` và `status`
+      (`active`) của tenant-rbac/01 và `tenant_grantable` (`true`) của tenant-rbac/02, ticket này chờ ticket đó. Khóa đến
+      `tenant_owner` theo quyền tính động của tenant-rbac (mọi khóa `active` có `tenant_grantable` ở mức `tenant`,
+      tenant-rbac/02 bước 7), không cần dòng quyền nào; cùng migration thêm khóa vào vai mẫu `org_admin` cho công ty
+      nhân bản mẫu đó về sau, không chạm vai đã nhân bản (tenant-rbac:R3.2).
 2. `RunControlPort` (bên dùng khai trong `dw_agent_runtime.ports`): `require_open(run_context, *, artifacts=())`
    ném `RunHaltedError` (một `ConflictError`, HTTP 409, `details.reason_code` trong `platform_frozen`,
    `tenant_frozen`, `artifact_killed`, `control_state_unavailable`, `principal_inactive`, `tenant_locked`,
@@ -62,9 +64,9 @@ cửa, để quyết Đóng băng có thể tiếp tục cho lượt đang chạ
    `RunHaltedError` thay vì báo model. Cửa nhận theo `trigger_kind` (spec R7.7, R7.8): lượt `chat`,
    `manual`, `test` và lần thử của Lượt kiểm định kết thúc `cancelled`; lượt `datahub`, `provider_app`,
    `schedule`, `record_event` đã xếp hàng giữ `queued` và chạy theo thứ tự xếp hàng sau khi gỡ. Với
-   `principal_inactive` (spec R9.1; workflow-engine:R5.15, workflow-engine:R5.17): lượt `datahub`, `provider_app`,
-   `record_event` đang `queued` của tài khoản dịch vụ không `active` giữ `queued` và chạy theo thứ tự đến khi tài
-   khoản `active` lại (org-and-principals:R4.9), mọi lượt khác kết thúc `cancelled`; `tenant_locked`,
+   `principal_inactive` (spec R9.1): lượt `datahub`, `provider_app`, `record_event` đang `queued` của tài khoản dịch vụ
+   không `active` giữ `queued` và chạy theo thứ tự đến khi tài khoản `active` lại (workflow-engine:R5.17,
+   org-and-principals:R4.9), mọi lượt khác kết thúc `cancelled` (workflow-engine:R5.15); `tenant_locked`,
    `tenant_offboarding` kết thúc mọi loại `cancelled` (spec R9.2; workflow-engine:R5.18). Làn `studio_runs` của
    workflow-engine/04 thi hành hợp đồng này; ticket này giao hợp đồng kèm test với làn giả.
 4. Route `POST /api/v1/admin/freeze` (`studio.lifecycle.freeze`, `Idempotency-Key`, body `reason_code`,
@@ -106,8 +108,9 @@ cửa, để quyết Đóng băng có thể tiếp tục cho lượt đang chạ
 - [ ] R7.4 (AL12): `org_admin` gỡ đóng băng nguồn `platform` qua `POST /api/v1/admin/unfreeze` → 403.
 - [ ] R7.10 (AL18): `POST /api/v1/admin/unfreeze` mở yêu cầu `studio.lifecycle.unfreeze`, Đóng băng còn;
       người khác người xin duyệt → Đóng băng gỡ, audit `control.freeze.lifted` với actor là người duyệt.
-- [ ] R7.11 (AL18): người xin gỡ tự duyệt → 409, Đóng băng còn; gỡ `studio.lifecycle.` khỏi tiền tố nghiêm →
-      test đỏ.
+- [ ] R7.11 (AL18): người xin gỡ tự duyệt → 409 `conflict` với `details.reason_code` `second_person_required` (mã mà
+      `_enforce_strict_rules` của tenant-config/05 đặt cho mọi loại dưới tiền tố nghiêm), Đóng băng còn; gỡ
+      `studio.lifecycle.` khỏi tiền tố nghiêm → test đỏ.
 - [ ] R9.1 (AL17): gỡ thành viên khỏi công ty rồi tiếp tục lượt chạy chờ duyệt của người đó → `cancelled`
       `principal_inactive`, 0 lời gọi model; đặt `suspended` bằng SQL rồi nhận lượt mới của người đó → như
       trên; gỡ kiểm trong `require_open` → test đỏ.
@@ -157,3 +160,12 @@ cửa, để quyết Đóng băng có thể tiếp tục cho lượt đang chạ
 - 2026-10-24 (agent): kiểm vòng sửa thứ tư: bước 3 và spec R9.1 nêu rõ lượt được giữ là lượt `datahub`,
   `provider_app`, `record_event` đang `queued`, khớp org-and-principals:R4.6, R4.9; lượt tới cửa tiếp tục kết thúc
   `cancelled` như lượt khác.
+- 2026-10-24 (agent): vòng sửa thứ tư, lượt b, theo các Quyết định tạm cùng ngày của spec: người xin tự quyết
+  `studio.lifecycle.unfreeze` nhận 409 `second_person_required` (V4.P9; spec R7.11, AL18); bước 3 dẫn
+  workflow-engine:R5.17 cho lượt được giữ `queued` và workflow-engine:R5.15 cho lượt bị hủy; bước 1 nói khóa
+  `studio.lifecycle.freeze` đến `tenant_owner` theo quyền tính động của tenant-rbac và vai mẫu nhận nó qua migration
+  sửa mẫu, thay câu "vai còn do migration sở hữu".
+- 2026-10-24 (agent): kiểm lượt b: INSERT của bước 1 nêu `status` `active`, vì quyền tính động của `tenant_owner` chỉ
+  tính khóa `active` (tenant-rbac/02 bước 7). Tiêu chí R7.11 khẳng định mã `second_person_required` mà tenant-config/05
+  đặt, trong khi ticket này không chờ ticket đó (Quyết định tạm của spec về tiền tố nghiêm); cạnh hay cách khác do
+  người lập kế hoạch quyết, chưa thêm ở đây.

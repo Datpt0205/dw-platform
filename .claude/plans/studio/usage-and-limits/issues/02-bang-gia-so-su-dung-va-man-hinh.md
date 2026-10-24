@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: .claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md, .claude/plans/studio/tenant-rbac/issues/01-mot-chu-cho-quyen.md, .claude/plans/studio/model-connections/issues/02-model-resolver-theo-tenant.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md
 Area: studio
-Yêu cầu: R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R3.9, R3.10, UL5, UL7, UL12, UL16
+Yêu cầu: R2.1, R2.2, R2.3, R2.4, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R3.9, R3.10, R3.11, UL5, UL7, UL12, UL16
 
 ## Mục tiêu
 
@@ -37,18 +37,22 @@ model với đủ thuộc tính gán, chỉ thêm và idempotent; màn Mức đ�
    `partitions` nạp; `test_a_partition_made_at_runtime_keeps_the_audit_log_append_only` (G1 của studio-skeleton)
    xanh qua bản viết lại. Cùng thay đổi đăng ký, thêm khóa `platform.usage_events` (395 ngày, số tạm UNVERIFIED,
    DROP PARTITION) vào bản kế tiếp của tệp chính sách retention theo định dạng của telemetry-and-audit:R5.6, nên
-   studio-skeleton:R3.7 xanh ngay khi đăng ký. Tệp đi theo một chuỗi ticket, mỗi ticket một phiên bản mới
-   (studio-skeleton/01, ticket này, ticket 03, telemetry-and-audit/03, agent-lifecycle/04, workflow-triggers/02,
-   compliance-pdpl/04, agent-builder/04, compliance-pdpl/06; Quyết định tạm của spec), và bản của ticket này là bản đầu
-   có mục khóa `schema.table`: ticket này thêm mục đó, chuyển thời hạn của `audit_events` sang khóa
-   `platform.audit_events` (1095 ngày, `enforced` giữ nguyên), rồi bỏ ánh xạ tạm của mô hình chính sách mà
-   studio-skeleton/01 dùng.
+   studio-skeleton:R3.7 xanh ngay khi đăng ký. Tệp đi theo một chuỗi ticket bắt đầu từ ticket này, mỗi ticket một
+   phiên bản mới (ticket này, ticket 03, telemetry-and-audit/03, agent-lifecycle/04, workflow-triggers/02,
+   compliance-pdpl/04, agent-builder/04, compliance-pdpl/06; V4.P1, Quyết định tạm của spec); studio-skeleton/01 không
+   sửa tệp mà đọc `retention@1.7.0` qua ánh xạ tạm của mô hình chính sách. Bản của ticket này là bản đầu có mục khóa
+   `schema.table`: ticket này thêm mục đó, chuyển thời hạn của `audit_events` sang khóa `platform.audit_events` (1095
+   ngày, `enforced` giữ nguyên), rồi bỏ ánh xạ tạm mà studio-skeleton/01 dùng.
 4. Hàm `platform.purge_tenant_append_only(p_tenant uuid)` SECURITY DEFINER (search_path cố định, thu
    EXECUTE khỏi `PUBLIC`, cấp EXECUTE cho `dw_app`): từ chối với SQLSTATE 23514 khi `platform.tenants.status` của
    `p_tenant` khác `offboarding` (spec R3.9); không thì xóa dòng `tenant_id = p_tenant` ở mọi bảng có
    `append_only = true` trong sổ `platform.time_partitioned_tables`, trừ `platform.audit_events`, và trả số dòng
-   theo bảng (spec R3.10). Lane `offboarding` gọi hàm sau khi xuất, trong giao dịch xóa của nó (ticket này chờ
-   foundations-hardening/07 vì cùng sửa lane đó). `STUDIO_EXCLUSIONS` thêm `platform.usage_events` với lý do
+   theo bảng (spec R3.10). `SqlTenantOffboarding.purge_rows` của lane `offboarding` gọi hàm sau khi xuất, trong giao
+   dịch xóa của nó và trước vòng DELETE bảng thường (`_ORDERED_FIRST` rồi phần còn lại), vì một bảng chỉ thêm có thể
+   mang khóa ngoại `ON DELETE RESTRICT` tới một bảng thường, như `studio.conversation_messages` tới
+   `studio.conversations` của agent-builder (spec R3.11); hàm xóa người dùng `service` của org-and-principals/03 đứng
+   sau cùng, sau mọi bảng của công ty, và ticket đó chờ ticket này. Ticket này chờ foundations-hardening/07 vì cùng sửa
+   lane đó. `STUDIO_EXCLUSIONS` thêm `platform.usage_events` với lý do
    "`dw_app` không DELETE; xóa khi offboarding bằng `platform.purge_tenant_append_only`" (studio-skeleton:R4.3);
    `platform.usage_daily` có policy `tenant_isolation_usage_daily` và DELETE cho `dw_app` để lane `offboarding` xóa
    như bảng thường (spec R3.8).
@@ -87,6 +91,9 @@ model với đủ thuộc tính gán, chỉ thêm và idempotent; màn Mức đ�
       trạng thái → test đỏ.
 - [ ] R3.10 (UL16): với công ty `offboarding`, hàm xóa dòng của nó ở mọi bảng `append_only` của sổ, kể cả một
       bảng thử đăng ký trong test, còn dòng của công ty khác và mọi dòng `platform.audit_events` giữ nguyên.
+- [ ] R3.11: một bảng `append_only` thử đăng ký trong test có khóa ngoại `ON DELETE RESTRICT` tới một bảng thường
+      thử, công ty `offboarding` có dòng ở cả hai → lane `offboarding` xóa hết cả hai trong một giao dịch; dời lời gọi
+      hàm ra sau vòng DELETE bảng thường → lỗi khóa ngoại, giao dịch xóa lùi, test đỏ.
 - [ ] Xong: `make ci && make test-integration` xanh.
 
 ## Nguồn
@@ -118,3 +125,7 @@ model với đủ thuộc tính gán, chỉ thêm và idempotent; màn Mức đ�
   workflow-triggers/02, compliance-pdpl/04, agent-builder/04, compliance-pdpl/06; bản của ticket này chắc chắn là bản
   đầu có mục khóa `schema.table` (kể cả `platform.audit_events`). Chờ tenant-rbac/02 (Quyết định tạm của spec về
   đăng ký khóa).
+- 2026-10-24 (agent): vòng sửa thứ tư, lượt b, theo các Quyết định tạm cùng ngày của spec: chuỗi tệp retention bắt
+  đầu từ ticket này, studio-skeleton/01 không sửa tệp mà đọc `retention@1.7.0` qua ánh xạ tạm (V4.P1), thay danh
+  sách của hai dòng trên; lời gọi `platform.purge_tenant_append_only` đứng trước vòng DELETE bảng thường trong giao
+  dịch xóa (spec R3.11), và org-and-principals/03 chờ ticket này vì hàm xóa người dùng `service` của nó chạy sau cùng.

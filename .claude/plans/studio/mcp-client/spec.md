@@ -107,15 +107,20 @@ Một công cụ MCP chỉ tới mô hình sau khi một người khác người
   `second_person_required` và không ghi quyết định nào.
 - R3.3 NẾU người quyết định không giữ `studio.mcp.approve`, THÌ luồng phê duyệt PHẢI trả 404 và không
   ghi quyết định nào.
-- R3.4 KHI yêu cầu `studio.mcp.tool_approval` được duyệt kèm ghi chú, dịch vụ phát hành của loại `tool`
-  PHẢI đưa phiên bản đó lên `live` qua máy giai đoạn, không cần `gate_run_id`, với Định nghĩa đã ghim là
-  SHA-256 trên dạng RFC 8785 của `name`, `title`, `description`, `inputSchema`, `outputSchema`,
-  `annotations`.
+- R3.4 KHI yêu cầu `studio.mcp.tool_approval` được duyệt kèm ghi chú mà gốc của phiên bản chưa đổi (gốc đã đổi
+  thì R3.7), handler phát hành của agent-lifecycle PHẢI đưa phiên bản đó lên `live` qua máy giai đoạn, không cần
+  `gate_run_id`, với Định nghĩa đã ghim là SHA-256 trên dạng RFC 8785 của `name`, `title`, `description`,
+  `inputSchema`, `outputSchema`, `annotations` (agent-lifecycle:R5.5).
 - R3.5 NẾU công cụ thiếu Gợi ý của máy chủ, THÌ API Studio PHẢI đề xuất mức tác động `external` với chính
   sách duyệt `always`, và không bao giờ để `readOnlyHint: true` tự hạ mức tác động xuống `none`.
 - R3.6 KHI lệnh gửi mở một yêu cầu `studio.mcp.tool_approval`, API Studio PHẢI ghi vào yêu cầu tên
   `mcp_<alias>__<tool>` tối đa 64 ký tự, mô tả mô hình sẽ đọc, schema đã dựng, Gợi ý của máy chủ, kết quả lint
   và mã băm.
+- R3.7 NẾU yêu cầu `studio.mcp.tool_approval` được duyệt khi `compared_live_hash` ghi lúc gửi không còn khớp
+  phiên bản Đang dùng mà lần phát hành này thay (mã băm khác, hay chỉ một bên có bản Đang dùng), THÌ handler
+  phát hành của agent-lifecycle PHẢI không đưa phiên bản lên `live`, đưa nó về `draft` với `details.reason_code`
+  `base_changed` và ghi audit `studio.version.returned_to_draft` trong cùng giao dịch (agent-lifecycle:R5.9;
+  ADR-0120 (Accepted) quyết 2).
 
 ### R4 — Gọi công cụ MCP và phát hiện lệch
 
@@ -140,8 +145,8 @@ Mỗi lời gọi đi qua ToolExecutor và chỉ chạy trên định nghĩa đ�
   ADR-0010 (Accepted) và đánh dấu lượt chạy Đã tiếp xúc nội dung ngoài.
 - R4.8 KHI gọi công cụ MCP, Cổng MCP PHẢI áp thời hạn mặc định 30 giây mỗi lời gọi, cấu hình được tới
   trần 120 giây (121 giây thì từ chối cấu hình).
-- R4.9 KHI phiên bản mới của một công cụ đang có công tắc mở được duyệt và lên `live`, dịch vụ phát hành
-  của loại `tool` PHẢI giữ công tắc đó mở, để chỉ một yêu cầu Bật lại do người khác người xin quyết gỡ được
+- R4.9 KHI phiên bản mới của một công cụ đang có công tắc mở được duyệt và lên `live`, handler phát hành của
+  agent-lifecycle PHẢI giữ công tắc đó mở, để chỉ một yêu cầu Bật lại do người khác người xin quyết gỡ được
   nó (agent-lifecycle:R8.6, agent-lifecycle:R8.7).
 
 ### R5 — Cấp quyền MCP trên broker của kết nối
@@ -220,29 +225,30 @@ bao giờ bằng token của nền tảng (ADR-0116 (Accepted) quyết 8; ADR-01
 
 ## Kiểm soát
 
-| #    | Kiểm soát                                   | Yêu cầu                | Test âm                                                                                                                                                                                                                |
-| ---- | ------------------------------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| MC1  | Chỉ Streamable HTTP qua HTTPS               | R1.4, R2.2             | Đăng ký `http://`, `file://`, IP literal, URL có userinfo → 422; schema đăng ký không có trường lệnh                                                                                                                   |
-| MC2  | Cổng cô lập                                 | R1.1, R1.2             | Từ container `mcp-gateway`: TCP tới `postgres:5432`, `valkey:6379`, `qdrant:6333` thất bại; môi trường không có biến database; request bỏ qua proxy thất bại                                                           |
-| MC3  | Chặn SSRF                                   | R1.6                   | URL, metadata tài nguyên hay metadata máy chủ cấp quyền phân giải tới `169.254.169.254`, `10.0.0.0/8`, `100.64.0.0/10`, `::1`, hoặc DNS đổi giữa kiểm và dùng → từ chối                                                |
-| MC4  | Ghim băm                                    | R4.2, R4.3, R4.4, R4.9 | Máy chủ đổi mô tả → lời gọi bị từ chối trước `tools/call`, công tắc `tool` mở, audit `studio.mcp_tool.drift_detected`; lời gọi sau đó → `artifact_killed`; duyệt định nghĩa mới → công tắc vẫn mở; gỡ so băm → test đỏ |
-| MC5  | Hai người duyệt                             | R3.2, R3.3             | Người đăng ký giữ `approvals.decide` và tem tự duyệt → 409 `second_person_required`; người không có `studio.mcp.approve` → 404; bỏ `studio.mcp.` khỏi prefix nghiêm → test đỏ                                          |
-| MC6  | Gợi ý của máy chủ không được tin            | R3.5                   | Công cụ thiếu `annotations` → đề xuất `external` và `always`; `readOnlyHint: true` không tự đặt `none`                                                                                                                 |
-| MC7  | Không sampling, roots, logging, elicitation | R1.4, R1.5             | Capabilities gửi đi không có bốn mục đó; máy chủ gửi yêu cầu sampling hay elicitation → từ chối, lượt chạy nhận lỗi có kiểu                                                                                            |
-| MC8  | Không chuyển tiếp token                     | R5.5                   | Transport ghi lại: header `Authorization` tới máy chủ MCP không bao giờ là token Keycloak của người dùng                                                                                                               |
-| MC9  | OAuth đúng spec                             | R5.1, R5.2, R5.3, R5.4 | AS không quảng bá `S256` → từ chối; `iss` sai → từ chối trước khi đổi mã; credential của issuer cũ không tới AS mới; bỏ `resource` → test đỏ                                                                           |
-| MC10 | Đệm theo tenant và người gọi                | R1.9                   | Danh sách `cacheScope: private` của người A không phục vụ người B; khóa đệm thiếu tenant → test đỏ                                                                                                                     |
-| MC11 | Đầu ra là dữ liệu ngoài                     | R1.8, R4.6, R4.7       | `structuredContent` sai `outputSchema` → `tool_output_invalid`; `outputSchema` có `$ref` ngoài → không tải, lỗi đóng                                                                                                   |
-| MC12 | Đóng băng và tắt chặn mọi request           | R1.11, R4.4            | Máy chủ `disabled` hay nền tảng đóng băng → không request nào rời cổng (proxy ghi lại không thấy gì)                                                                                                                   |
-| MC13 | Không theo chuyển hướng khác origin         | R1.7                   | Máy chủ trả 302 sang origin khác → không theo; header khóa API không tới origin đó                                                                                                                                     |
-| MC15 | Chỉ người giữ `studio.mcp.manage` đăng ký   | R2.3                   | Người thiếu `studio.mcp.manage` đăng ký hay khám phá → 403, không dòng nào; tenant B đọc máy chủ của tenant A → 404                                                                                                    |
-| MC16 | Không gửi ngữ cảnh trace tới máy chủ MCP    | R1.12                  | Transport ghi lại mọi request tới máy chủ MCP, kể cả máy chủ danh mục: không có `traceparent` hay `baggage`; request tới Cổng MCP vẫn có `traceparent`; gỡ bộ lọc header → test đỏ                                     |
-| MC17 | Ở v1 chỉ máy chủ trong danh mục nền tảng    | R2.4                   | Đăng ký URL không có mục trong `configs/mcp/catalog/` → 422, không dòng nào; URL của một mục → nhận; gỡ kiểm danh mục → test đỏ                                                                                        |
-| MC18 | Máy chủ xử lý ngoài Việt Nam cần Xác nhận   | R2.5                   | Máy chủ có `region` nước ngoài, công ty không có Xác nhận còn hiệu lực cho bên xử lý đó → 422, không dòng nào; có Xác nhận → nhận; Xác nhận hết hạn → 422; gỡ kiểm → test đỏ                                           |
+| #    | Kiểm soát                                   | Yêu cầu                | Test âm                                                                                                                                                                                                                                                                       |
+| ---- | ------------------------------------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MC1  | Chỉ Streamable HTTP qua HTTPS               | R1.4, R2.2             | Đăng ký `http://`, `file://`, IP literal, URL có userinfo → 422; schema đăng ký không có trường lệnh                                                                                                                                                                          |
+| MC2  | Cổng cô lập                                 | R1.1, R1.2             | Từ container `mcp-gateway`: TCP tới `postgres:5432`, `valkey:6379`, `qdrant:6333` thất bại; môi trường không có biến database; request bỏ qua proxy thất bại                                                                                                                  |
+| MC3  | Chặn SSRF                                   | R1.6                   | URL, metadata tài nguyên hay metadata máy chủ cấp quyền phân giải tới `169.254.169.254`, `10.0.0.0/8`, `100.64.0.0/10`, `::1`, hoặc DNS đổi giữa kiểm và dùng → từ chối                                                                                                       |
+| MC4  | Ghim băm                                    | R4.2, R4.3, R4.4, R4.9 | Máy chủ đổi mô tả → lời gọi bị từ chối trước `tools/call`, công tắc `tool` mở, audit `studio.mcp_tool.drift_detected`; lời gọi sau đó → `artifact_killed`; duyệt định nghĩa mới → công tắc vẫn mở; gỡ so băm → test đỏ                                                        |
+| MC5  | Hai người duyệt                             | R3.2, R3.3             | Người đăng ký giữ `approvals.decide` và tem tự duyệt → 409 `second_person_required`; người không có `studio.mcp.approve` → 404; bỏ `studio.mcp.` khỏi prefix nghiêm → test đỏ                                                                                                 |
+| MC6  | Gợi ý của máy chủ không được tin            | R3.5                   | Công cụ thiếu `annotations` → đề xuất `external` và `always`; `readOnlyHint: true` không tự đặt `none`                                                                                                                                                                        |
+| MC7  | Không sampling, roots, logging, elicitation | R1.4, R1.5             | Capabilities gửi đi không có bốn mục đó; máy chủ gửi yêu cầu sampling hay elicitation → từ chối, lượt chạy nhận lỗi có kiểu                                                                                                                                                   |
+| MC8  | Không chuyển tiếp token                     | R5.5                   | Transport ghi lại: header `Authorization` tới máy chủ MCP không bao giờ là token Keycloak của người dùng                                                                                                                                                                      |
+| MC9  | OAuth đúng spec                             | R5.1, R5.2, R5.3, R5.4 | AS không quảng bá `S256` → từ chối; `iss` sai → từ chối trước khi đổi mã; credential của issuer cũ không tới AS mới; bỏ `resource` → test đỏ                                                                                                                                  |
+| MC10 | Đệm theo tenant và người gọi                | R1.9                   | Danh sách `cacheScope: private` của người A không phục vụ người B; khóa đệm thiếu tenant → test đỏ                                                                                                                                                                            |
+| MC11 | Đầu ra là dữ liệu ngoài                     | R1.8, R4.6, R4.7       | `structuredContent` sai `outputSchema` → `tool_output_invalid`; `outputSchema` có `$ref` ngoài → không tải, lỗi đóng                                                                                                                                                          |
+| MC12 | Đóng băng và tắt chặn mọi request           | R1.11, R4.4            | Máy chủ `disabled` hay nền tảng đóng băng → không request nào rời cổng (proxy ghi lại không thấy gì)                                                                                                                                                                          |
+| MC13 | Không theo chuyển hướng khác origin         | R1.7                   | Máy chủ trả 302 sang origin khác → không theo; header khóa API không tới origin đó                                                                                                                                                                                            |
+| MC15 | Chỉ người giữ `studio.mcp.manage` đăng ký   | R2.3                   | Người thiếu `studio.mcp.manage` đăng ký hay khám phá → 403, không dòng nào; tenant B đọc máy chủ của tenant A → 404                                                                                                                                                           |
+| MC16 | Không gửi ngữ cảnh trace tới máy chủ MCP    | R1.12                  | Transport ghi lại mọi request tới máy chủ MCP, kể cả máy chủ danh mục: không có `traceparent` hay `baggage`; request tới Cổng MCP vẫn có `traceparent`; gỡ bộ lọc header → test đỏ                                                                                            |
+| MC17 | Ở v1 chỉ máy chủ trong danh mục nền tảng    | R2.4                   | Đăng ký URL không có mục trong `configs/mcp/catalog/` → 422, không dòng nào; URL của một mục → nhận; gỡ kiểm danh mục → test đỏ                                                                                                                                               |
+| MC18 | Máy chủ xử lý ngoài Việt Nam cần Xác nhận   | R2.5                   | Máy chủ có `region` nước ngoài, công ty không có Xác nhận còn hiệu lực cho bên xử lý đó → 422, không dòng nào; có Xác nhận → nhận; Xác nhận hết hạn → 422; gỡ kiểm → test đỏ                                                                                                  |
+| MC19 | Duyệt trên gốc đã đổi không phát hành       | R3.4, R3.7             | Phiên bản Đang dùng lúc duyệt khác phiên bản đã so lúc gửi → phiên bản về `draft` với `base_changed`, audit `studio.version.returned_to_draft`, bản Đang dùng không đổi; gốc không đổi → `live`; gỡ so `compared_live_hash` khỏi handler → trigger giai đoạn từ chối, test đỏ |
 
 ## Tiêu chí xong
 
-- Mọi tiêu chí R có test; MC1-MC13 và MC15-MC18 có test âm đã thấy đỏ khi gỡ kiểm soát (ghi ở Comments
+- Mọi tiêu chí R có test; MC1-MC13 và MC15-MC19 có test âm đã thấy đỏ khi gỡ kiểm soát (ghi ở Comments
   của ticket).
 - Image `mcp-gateway` được quét; `reviewing-deployment-security` đã chạy cho route CIMD, JWKS, callback
   và dịch vụ mới; `make ci && make test-integration` xanh.
@@ -256,7 +262,11 @@ bao giờ bằng token của nền tảng (ADR-0116 (Accepted) quyết 8; ADR-01
   egress proxy và mạng của nó (ADR-0115 (Accepted)); foundations-hardening/05: một chính sách địa chỉ từ
   chối `not is_global`.
 - agent-lifecycle: máy giai đoạn với luật theo loại cho loại không có Cổng chất lượng (`awaiting_approval`
-  chỉ cần người thứ hai, không `gate_run_id`) và lệnh gửi `draft → awaiting_approval` mà R3.1 gọi, công tắc
+  chỉ cần người thứ hai, không `gate_run_id`) và lệnh gửi `draft → awaiting_approval` mà R3.1 gọi, mở
+  `studio.mcp.tool_approval` cho công cụ MCP như ngoại lệ có tên của ADR-0116 (Accepted) quyết 9 (dòng W2 loại
+  `tool` ở Ngoài phạm vi của agent-lifecycle); handler phát hành của mọi loại, kể cả
+  `studio.mcp.tool_approval.decided`, mà R3.4, R3.7 và R4.9 nêu, theo cùng luật với agent-lifecycle:R5.5 và nhánh
+  `base_changed` của agent-lifecycle:R5.9, công tắc
   `scope_type` `tool` và Bật lại hai người (agent-lifecycle:R8.6, agent-lifecycle:R8.7), lệch cấu hình loại
   `mcp_definition_changed` (ADR-0120 (Accepted) quyết 8; mã từ chối lời gọi vẫn là `mcp_tool_drifted` của
   R4.2) và công tắc đóng băng ở mọi cửa (ADR-0120 (Accepted)); usage-and-limits: `RateLimiterPort` và giới hạn
@@ -267,7 +277,9 @@ bao giờ bằng token của nền tảng (ADR-0116 (Accepted) quyết 8; ADR-01
   kết quả FOG-25, FOG-26 đổi egress
   proxy hay kho bí mật → R1.2, R1.3, R5; luật sư đổi kết luận DO-54.2 → R2.5; một advisory mới của SDK
   `mcp` hay bản ghim đổi → R1; tools-and-skills đổi `dw.tool/v1` hay `approval_required` → R3, R4;
-  agent-lifecycle đổi luật theo loại, lệnh gửi hay Bật lại → R3.1, R3.4, R4.9.
+  agent-lifecycle đổi luật theo loại, lệnh gửi, handler phát hành hay Bật lại → R3.1, R3.4, R3.7, R4.9; ticket
+  W2 đăng ký loại `tool` (tools-and-skills) khai khóa gửi của loại, mà lệnh gửi của R3.1 kiểm với người đăng ký
+  máy chủ → R3.1.
 
 ## Câu hỏi còn mở
 
@@ -309,7 +321,7 @@ bao giờ bằng token của nền tảng (ADR-0116 (Accepted) quyết 8; ADR-01
 - 24/10/2026 (Đạt): bảng mã từ chối người quyết nằm ở ADR-0104 (Accepted) quyết 11, không ở ADR-0004 (Accepted)
   vốn không có bảng đó; dòng ngày 23/10/2026 về bảng mã ở trên đổi chỗ dẫn, nội dung giữ nguyên. Sửa:
   Quyết định.
-- 24/10/2026 (Đạt): D3: công cụ MCP giữ ngoại lệ có tên của ADR-0116 (Accepted) quyết 9, phê duyệt
+- 24/10/2026 (Đạt): V4.3: công cụ MCP giữ ngoại lệ có tên của ADR-0116 (Accepted) quyết 9, phê duyệt
   `studio.mcp.tool_approval` đóng dấu `studio.mcp.approve` dưới tiền tố nghiêm `studio.mcp.`; mọi loại công cụ
   khác mở `studio.publish.tool` đóng dấu `studio.publish.approve` (tools-and-skills, ADR-0120 (Accepted) quyết 2).
   Sửa: không mục nào ngoài dòng này; R3.1, R3.2, R3.3 giữ loại phê duyệt và khóa duyệt đang viết.
@@ -322,9 +334,17 @@ bao giờ bằng token của nền tảng (ADR-0116 (Accepted) quyết 8; ADR-01
   ADR-0120 (Accepted) quyết 8, còn `mcp_tool_drifted` chỉ là mã từ chối lời gọi của ADR-0116 (Accepted) quyết 9
   (kiểm nhất quán vòng 3). Sửa: R4.5, Phụ thuộc. Nếu sai thì: glossary và ADR-0120 (Accepted) quyết 8 đổi tên
   phát hiện, R4.5 theo.
-- 24/10/2026 (agent, tạm): P9: người đăng ký tự quyết `studio.mcp.tool_approval` bị tiền tố nghiêm `studio.mcp.` từ
+- 24/10/2026 (agent, tạm): V4.P9: người đăng ký tự quyết `studio.mcp.tool_approval` bị tiền tố nghiêm `studio.mcp.` từ
   chối với `details.reason_code` `second_person_required`, một mã cho mọi loại phê duyệt mà ADR-0104 (Accepted)
   quyết 11 ghi tên. Sửa: R3.2, MC5. Nếu sai thì: đổi mã ở R3.2 và test MC5 theo tên ADR-0104 (Accepted) ghi.
+- 24/10/2026 (agent, tạm): agent-lifecycle là chủ lệnh gửi và handler phát hành của mọi loại, kể cả ngoại lệ có
+  tên `studio.mcp.tool_approval` (agent-lifecycle:R5.5 và dòng W2 loại `tool` của agent-lifecycle), nên R3.4 và
+  R4.9 nêu handler đó thay "dịch vụ phát hành của loại `tool`"; R3.4 chỉ phát hành khi gốc chưa đổi, và nhánh của V4.2 thành R3.7:
+  duyệt khi `compared_live_hash` không còn khớp phiên bản Đang dùng mà lần phát hành này thay thì phiên bản về
+  `draft` với `base_changed`, audit `studio.version.returned_to_draft`, tên action đã có cho lần về Nháp
+  (agent-lifecycle:R5.9; ADR-0120 (Accepted) quyết 2). Sửa: R3.4, thêm R3.7, R4.9, thêm MC19, Tiêu chí xong,
+  Phụ thuộc. Nếu sai thì: công cụ MCP có handler riêng ngoài agent-lifecycle, và R3.4, R3.7, R4.9 nêu handler đó;
+  nhánh `base_changed` vẫn theo V4.2.
 
 ## Danh sách ticket
 

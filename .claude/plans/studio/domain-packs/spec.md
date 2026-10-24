@@ -1,6 +1,6 @@
 # Gói miền: định dạng dw.package/v1, cài vào tenant thành bản sao có nguồn gốc
 
-Status: needs-triage
+Status: needs-info (Q4, Q5)
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: chưa
 Sẵn sàng: chưa kiểm
@@ -171,8 +171,9 @@ Phiên bản mới của gói đến như đề xuất vào bản nháp, không 
 
 ## Phụ thuộc
 
-- Vỏ thành phần với `origin`, dịch vụ phát hành và `studio.dependencies` (tenant-config/02, ADR-0109 (Accepted));
-  Điểm gắn và phiên bản cấu hình (tenant-config, ADR-0110 (Accepted)).
+- Vỏ thành phần với `origin`, mục `ArtifactKindRegistry` mang móc phát hành của loại (tenant-config:R2.15) và
+  `studio.dependencies` (tenant-config/02, ADR-0109 (Accepted)); việc phát hành là của agent-lifecycle, và trình cài
+  không gọi nó (R2.4); Điểm gắn và phiên bản cấu hình (tenant-config, ADR-0110 (Accepted)).
 - Máy giai đoạn và cổng phát hành (ADR-0120 (Accepted)): gói không đưa thành phần nào lên Đang dùng.
 - Loại `object` và đường phát hành của nó (`custom-objects:R1.1`, `custom-objects:R1.2`); vai trò mẫu của
   tenant-rbac; loại quy trình của workflow-engine; loại trợ lý của agent-builder.
@@ -180,10 +181,18 @@ Phiên bản mới của gói đến như đề xuất vào bản nháp, không 
   vụ một chủ (usage-and-limits:R1.1).
 - tenant-config: route tạo thành phần gọi registry Tiền tố dành riêng mà spec này cấp (R3.1), một dòng W2 của
   tenant-config; luật bật cùng gói Marketing 1.0 ở W2, và thành phần đã mang tiền tố được gói nhận khi cài (R4.5).
-- Kiểm lại khi: trả lời Q1 của custom-objects về phát hành đối tượng → R2.4; ADR-0109 (Accepted) đổi `origin` → R2.1;
-  ADR-0110 (Accepted) đổi Điểm gắn → R4.1; marketing-pilot/02 đổi tên hay tập thành phần gieo → R3.1, R4.2, R4.5.
+- Kiểm lại khi: custom-objects đổi đường phát hành đối tượng (custom-objects:R1.2) → R2.4; ADR-0109 (Accepted) đổi
+  `origin` → R2.1; ADR-0110 (Accepted) đổi Điểm gắn → R4.1; marketing-pilot/02 đổi tên hay tập thành phần gieo → R3.1,
+  R4.2, R4.5.
 
 ## Câu hỏi còn mở
+
+- Q4. Trình cài của gói tạo thành phần mang Tiền tố dành riêng của chính gói (`mkt_`) qua route công khai của R2.2
+  thế nào, khi R3.1 bắt route đó từ chối tiền tố này: route nhận dấu của trình cài, hay trình cài đi một đường riêng
+  qua cùng trình kiểm của loại? Chủ: Đạt. Chặn: R2.2, R3.1, R4.5.
+- Q5. Route công khai nào ghi `origin` của một thành phần, khi trình cài tạo Bản sao từ gói (R2.1) và gắn nguồn gốc
+  cho thành phần đã gieo (R4.5), trong khi `PATCH` của tenant-config chỉ nhận `api_name`, `labels` và R2.2 cấm ghi
+  thẳng bảng? Chủ: Đạt. Chặn: R2.1, R2.2, R4.5.
 
 ## Quyết định
 
@@ -213,6 +222,13 @@ Phiên bản mới của gói đến như đề xuất vào bản nháp, không 
   gieo thì gắn nguồn gốc gói cho thành phần đang có; chỗ nào khác phiên bản của gói thành một Đề xuất cập nhật gói
   vào bản Nháp, như mọi bản cập nhật gói (H:domain-packs:spec~tenant-config:spec). Hỏi: Q2. Sửa: Status, R3.1, R4.1,
   R4.5, DP13, Trong phạm vi, Phụ thuộc.
+- 24/10/2026 (agent, tạm): tenant-config/02 không có dịch vụ phát hành: mục `ArtifactKindRegistry` mang móc phát hành
+  của loại và agent-lifecycle gọi nó trong giao dịch phát hành (tenant-config:R2.15; ADR-0109 (Accepted) quyết 1), nên
+  Phụ thuộc dẫn mục đó. Sửa: Phụ thuộc. Nếu sai thì: tenant-config có dịch vụ phát hành, và Phụ thuộc dẫn lại nó.
+- 24/10/2026 (agent, tạm): Kiểm lại khi dẫn custom-objects:R1.2 thay Q1 của custom-objects, câu đã có lời đáp; hai
+  câu W2 chưa có lời đáp thành Q4 (trình cài dùng tiền tố của gói qua route công khai) và Q5 (route nào ghi
+  `origin`), nên Status thành `needs-info` tới khi Đạt trả lời. Sửa: Status, Phụ thuộc, Câu hỏi còn mở. Nếu sai thì:
+  hai câu đã có lời đáp ở tenant-config, Phụ thuộc dẫn tiêu chí đó và Status về `needs-triage`.
 
 ## Danh sách ticket
 

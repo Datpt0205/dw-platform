@@ -25,8 +25,8 @@ Chính sách MFA cần `amr`. research.md mục 13 ghi một đường chiếm t
 
 - Spec: `foundations-hardening` (02, nối danh tính), `org-and-principals` (01, 02, 03).
 - ADR: 0102, 0103.
-- DO: DO-17 (Organizations trong một realm; tài khoản dịch vụ là một dòng `platform.users`), DO-39 (agent, tạm: link
-  nhận lời mời do quản trị viên chép; MFA cho người vận hành, nhân viên hỗ trợ và người giữ quyền trọng yếu).
+- DO: DO-17 (Organizations trong một realm; tài khoản dịch vụ là một dòng `platform.users`), DO-39 (Đạt chốt 23/10/2026:
+  link nhận lời mời do quản trị viên chép; MFA cho người vận hành, nhân viên hỗ trợ và người giữ quyền trọng yếu).
 - Ticket W1: `foundations-hardening/02`, `org-and-principals/01` (P0).
 
 ## Dựng tối thiểu

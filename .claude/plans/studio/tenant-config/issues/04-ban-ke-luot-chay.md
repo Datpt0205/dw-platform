@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: 02, 03, .claude/plans/studio/foundations-hardening/issues/06-run-va-outbox-khong-ket.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md
 Area: studio
-Yêu cầu: R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.7, R3.6, TC15, TC21, TC28
+Yêu cầu: R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.7, R3.6, R2.18, TC15, TC21, TC28, TC29
 
 ## Mục tiêu
 
@@ -20,9 +20,11 @@ TC28). Ticket 05 thêm mục điểm gắn vào cùng bản kê.
       `body` jsonb NFC tối đa 1 MiB, `created_at timestamptz NOT NULL`; ghi bằng
       `INSERT ... ON CONFLICT DO NOTHING`; `dw_app` chỉ SELECT và INSERT.
     - `platform.run_manifest_keys`: `(tenant_id, manifest_hash)` FK tới `platform.run_manifests` ON
-      DELETE CASCADE; `artifact_version_id` NOT NULL, FK RESTRICT tới `studio.artifact_versions`; mỗi FK
-      một index; unique `(tenant_id, manifest_hash, artifact_version_id)`. Ticket 05 thêm
-      `config_version_id` và CHECK đúng một cột khác NULL.
+      DELETE CASCADE; `artifact_version_id` NOT NULL, FK ghép `(tenant_id, artifact_version_id)` RESTRICT tới
+      `studio.artifact_versions (tenant_id, id)` qua `uq_artifact_versions_tenant_id_id` của ticket 02 (R2.18); mỗi
+      FK một index, FK ghép thì index `(tenant_id, artifact_version_id)`; unique
+      `(tenant_id, manifest_hash, artifact_version_id)`. Ticket 05 thêm `config_version_id` và CHECK đúng một cột
+      khác NULL.
     - `platform.worker_runs.run_manifest_hash` NULL, khớp `^sha256:[0-9a-f]{64}$`, FK
       `(tenant_id, run_manifest_hash)` tới `platform.run_manifests` ON DELETE RESTRICT, index
       `(tenant_id, run_manifest_hash)`. CHECK buộc lượt chạy có gốc Studio phải có bản kê đi cùng cột gốc
@@ -37,15 +39,15 @@ TC28). Ticket 05 thêm mục điểm gắn vào cùng bản kê.
       RESTRICT tới phiên bản).
     - Cột mới đi sau `ck_worker_runs_status` của foundations-hardening/06 trên cùng `platform.worker_runs`, nên
       revision này nối sau revision của ticket đó.
-2. Thân `dw.run_manifest/v1` (mô hình trong lõi `dw_studio`, `extra="forbid"`): `schema`,
-   `release_manifest_ref`, `run_mode`, `root` (`kind`, `artifact_id`, `version_no`, `definition_hash`, và
-   `stage` `draft` chỉ khi gốc là bản Nháp), `closure` (mỗi mục `kind`, `key`, `version`, `content_hash`, lấy từ
-   `studio.definition_manifests` của gốc), `engine` (lấy từ mục registry của loại gốc; workflow-engine và
-   agent-builder điền mục của họ, ADR-0109 (Accepted) quyết 8). Mã băm là `content_hash` của thân qua
-   `dw_kernel.canonical`. Thân không chứa bí mật nào. Gốc ở `draft` (chỉ lượt `simulate`, R6.7): `closure` lấy từ
-   `extract` của loại trên nội dung nháp lúc nhận, `definition_hash` là mã băm tạm tính trên nội dung đó và bao đóng
-   đó bằng cùng bước băm mà `seal` của ticket 02 dùng (ADR-0109 (Accepted) quyết 4), `version_no` là giá trị của
-   dòng nháp, có thể null; không ghi gì vào dòng nháp hay `studio.definition_manifests`.
+2. Thân `dw.run_manifest/v1` (mô hình trong lõi `dw_studio`, `extra="forbid"`): `schema`, `release_manifest_ref`,
+   `run_mode`, `root` (`kind`, `artifact_id`, `version_no`, `definition_hash`, và `stage` `draft` chỉ khi gốc là bản
+   Nháp), `closure` (mỗi mục `kind`, `key`, `version`, `content_hash`, lấy từ `studio.definition_manifests` của gốc),
+   `engine` (lấy từ mục registry của loại gốc; workflow-engine và agent-builder điền mục của họ, ADR-0109 (Accepted)
+   quyết 8). Mã băm là `content_hash` của thân qua `dw_kernel.canonical`. Thân không chứa bí mật nào. Gốc ở `draft` (chỉ
+   lượt `simulate`, R6.7; ADR-0109 (Accepted) quyết 6): `closure` lấy từ `extract` của loại trên nội dung nháp lúc nhận,
+   `definition_hash` là mã băm tạm tính trên nội dung đó và bao đóng đó bằng cùng bước băm mà `seal` của ticket 02 dùng
+   (ADR-0109 (Accepted) quyết 4), `version_no` là giá trị của dòng nháp, có thể null; không ghi gì vào dòng nháp hay
+   `studio.definition_manifests`.
 3. `RunManifestPort` khai trong `dw_agent_runtime` (bên dùng là cửa nhận lượt chạy), `RunManifestBuilder`
    của `dw_studio` đáp ứng, nối ở composition root: `build(tenant_id, root_version_id, run_mode)` ghi bản
    kê và các dòng `platform.run_manifest_keys` (gốc và mọi phiên bản trong bao đóng) rồi trả mã băm, trong
@@ -59,8 +61,8 @@ TC28). Ticket 05 thêm mục điểm gắn vào cùng bản kê.
    `platform.worker_runs.run_manifest_hash`; `WorkflowRunnerPort.hosts` trả đúng cho lượt chạy Studio khi
    mọi phiên bản bản kê ghim đọc được từ database (ADR-0109 (Accepted) quyết 7). Gốc `draft` là dòng duy nhất
    không bất biến: nội dung của nó chỉ được dùng khi mã băm tính lại bằng cùng bước băm vẫn bằng mã băm tạm đã ghim;
-   lệch → từ chối phân giải, không đọc nội dung mới, và lần tiếp tục bị từ chối `incompatible_resume`
-   (workflow-engine; ADR-0109 (Accepted) quyết 8).
+   lệch → từ chối phân giải, không đọc nội dung mới, và lần tiếp tục bị từ chối `incompatible_resume` theo kiểm thứ
+   sáu của ADR-0109 (Accepted) quyết 8 (workflow-engine:R6.14).
 5. Đo p95 thời gian dựng và ghi bản kê lúc nhận lượt chạy trên compose, bao đóng 50 thành phần, 1.000
    lượt; ghi số đo và cấu hình máy vào Comments (R6.6).
 
@@ -84,6 +86,8 @@ TC28). Ticket 05 thêm mục điểm gắn vào cùng bản kê.
       nhận số đo mới.
 - [ ] R6.7 (TC28): `build` với gốc ở `draft` và `run_mode` `live` hay `test` → từ chối, không dòng
       `platform.run_manifests` hay `platform.run_manifest_keys` nào; bỏ kiểm chế độ → test đỏ.
+- [ ] R2.18 (TC29): bằng vai migrator, INSERT dòng `platform.run_manifest_keys` của tenant A có `artifact_version_id`
+      là phiên bản của tenant B → lỗi FK ghép; đổi FK ghép về FK một cột → test đỏ.
 - [ ] R3.6 (TC21): `test_offboarding.py` purge tenant có lượt chạy ghim bản kê lên phiên bản Studio, tenant
       khác giữ nguyên; gỡ mục `platform.run_manifests` khỏi `_ORDERED_FIRST` → test đỏ.
 - [ ] Xong: `make ci && make test-integration` xanh.
@@ -104,3 +108,6 @@ TC28). Ticket 05 thêm mục điểm gắn vào cùng bản kê.
   của Đạt). Ticket này chờ foundations-hardening/06, vì `ck_worker_runs_status` có trước cột `run_manifest_hash`
   trên cùng `platform.worker_runs` (quyết định tạm của spec; ticket kia ghi cùng cạnh ở Comments của nó), và chờ
   foundations-hardening/07, vì cùng sửa `offboarding.py` và `test_offboarding.py`.
+- 2026-10-24 (agent): vòng sửa thứ tư, lượt b, theo các quyết định tạm cùng ngày của spec: `artifact_version_id` là FK
+  ghép tới `uq_artifact_versions_tenant_id_id` của ticket 02 (R2.18, TC29); gốc bản Nháp dẫn ADR-0109 (Accepted)
+  quyết 6, và lần tiếp tục bị từ chối theo kiểm thứ sáu của quyết 8.

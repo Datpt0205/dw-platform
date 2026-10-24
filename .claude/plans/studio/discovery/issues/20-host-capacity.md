@@ -31,7 +31,7 @@ và giữ 1095 ngày (`configs/policies/retention@1.7.0.yaml:120-121`).
 - Spec: `usage-and-limits` (01, 03: số của gói dịch vụ, khoản giữ trước), `agent-lifecycle` (01, 05), `connections-and-vault`,
   `mcp-client`, `model-connections`, `telemetry-and-audit`, `marketing-pilot`.
 - ADR: 0115 (Open 3), 0118, 0120, 0121, 0122.
-- DO: DO-24 (D14), DO-50 (agent, tạm). Ticket W1: `agent-lifecycle/01` (NOTIFY cho cache công tắc),
+- DO: DO-24 (D14), DO-50 (Đạt chốt 23/10/2026). Ticket W1: `agent-lifecycle/01` (NOTIFY cho cache công tắc),
   `usage-and-limits/03`.
 
 ## Dựng tối thiểu

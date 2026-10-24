@@ -103,7 +103,8 @@ thấy bước nào gắn audience với phạm vi dữ liệu mà agent truy c�
   (fileId, chunkId, fileName, link); `toolCalls` lộ tool/input/output/isSuccess để quan sát; `error` chỉ có khi chọn
   chính sách lỗi "Bỏ qua và trả lỗi làm kết quả" (suy luận: chính sách lỗi theo bước, chọn rồi mới có biến `error`).
 - Chèn biến `{{nodeId.ten_bien}}` là **chuỗi mẫu**, không thấy kiểm kiểu khi lưu (suy luận). Studio khác: CEL kiểm
-  kiểu khi phát hành (ADR 0114), giá trị bọc trong khối `<input>` (ADR 0010, YC48), đầu ra kiểm phía server (YC47).
+  kiểu khi gửi kiểm định (ADR 0114), giá trị bọc trong khối `<input>` (ADR 0010, YC48), đầu ra kiểm phía server
+  (YC47).
 - "Dữ liệu bổ sung" mỗi mục là (biến nguồn + nhãn mô tả cho AI) — **cùng ý "mô tả ngữ nghĩa cho AI"** như Data Hub
   (suy luận): nhãn đi vào prompt để model hiểu bối cảnh.
 - Giới hạn tệp là **kiểm cụ thể**: cắt 100.000 ký tự (mất dữ liệu âm thầm — rủi ro), ảnh base64 5 MB.
@@ -267,7 +268,7 @@ khác vì nền tảng đã giải (đa tenant, workspace, quyền trên bản g
 | Bộ đề kiểm định + Quản lý phiên bản trong cài đặt agent (1)                            | `agent-lifecycle`       | Học theo                     | Có bộ đề + phiên bản; Studio gắn bằng chứng vào mã băm định nghĩa, đổi phụ thuộc là mất bằng chứng (ADR 0120, 0109)                                     |
 | Phân quyền & hành vi: audience theo mã ban / chức danh / văn phòng (2)                 | `tenant-rbac`           | Cải tiến                     | Audience chỉ quyết **ai mở** agent (YC55); đọc gì theo quyền người hỏi trên bản ghi (ADR 0105) và trường (ADR 0106); thuộc tính là `org-and-principals` |
 | Bước "AI Agent": Input/Setup/Output, đầu ra kiểu hóa, chính sách lỗi, tệp đính kèm (3) | `workflow-nodes`        | Học theo                     | Đầu ra kiểu hóa + chính sách lỗi khai ở sổ loại bước (ADR 0112); Studio kiểm server và bọc `<input>` (YC47, YC48)                                       |
-| Ba cột node + chèn `{{nodeId.var}}` (3)                                                | `workflow-builder-ui`   | Học theo                     | Canvas là ngoại lệ UI được duyệt (ADR 0101), YC39; nhưng biểu thức là CEL kiểm kiểu khi phát hành (ADR 0114)                                            |
+| Ba cột node + chèn `{{nodeId.var}}` (3)                                                | `workflow-builder-ui`   | Học theo                     | Canvas là ngoại lệ UI được duyệt (ADR 0101), YC39; nhưng biểu thức là CEL kiểm kiểu khi gửi kiểm định (ADR 0114)                                        |
 | Danh sách quy trình + 4 trình kích hoạt + cờ "Công khai" (4)                           | `workflow-triggers`     | Cải tiến + Bỏ qua            | Trình kích hoạt chỉ xin lượt chạy (ADR 0113); **bỏ cờ "Công khai"** — tầm thấy theo vai và workspace sở hữu                                             |
 | Data Hub: schema + mô tả ngữ nghĩa AI + Sao chép CURL + Lịch sử Event (5)              | `workflow-triggers`     | Học theo + Cải tiến          | Học mô tả ngữ nghĩa AI; thêm chữ ký/chống trùng, id ≥128 bit, `pd_category` trên trường (YC42, YC43, YC84)                                              |
 | Control plane: ô giai đoạn, 8/52, chip cảnh báo, Publish, đóng băng (6)                | `agent-lifecycle`       | Học theo + Cải tiến          | Học "đã kiểm định thật" + drift + Xem diff; cổng chặn ở server + hai người (YC70, YC73); tổng quan đọc theo quyền (YC75)                                |
@@ -295,8 +296,8 @@ Các mẫu cấu hình đáng lấy, kèm chỗ đưa vào spec:
    dưới ngưỡng" là một phân loại cảnh báo gọn. Đưa vào `agent-lifecycle` (tổng quan đội ngũ, YC75) — nhưng đọc theo
    quyền người xem và cổng chặn ở server.
 4. **Cấu hình limit và mức độ sử dụng theo agent** đặt ngay trong cài đặt agent. Đưa vào `usage-and-limits` (YC76,
-   YC77) — Studio mở rộng thành một chuỗi phạm vi (gói, tenant, workspace, agent/quy trình, người dùng, lượt chạy)
-   giữ trước bằng lease Postgres (ADR 0121).
+   YC77) — Studio mở rộng thành một chuỗi phạm vi (gói, tenant, workspace, agent/quy trình, người dùng từ W2,
+   lượt chạy) giữ trước bằng lease Postgres (ADR 0121).
 5. **Audience bằng thuộc tính tổ chức** (mã ban / chức danh / văn phòng) dưới dạng chọn-nhiều có tìm kiếm và chọn
    tất cả — một UX mục tiêu tốt. Đưa vào `agent-builder` làm bộ chọn "Người được dùng" (YC54) — nhưng ở Studio nó
    **chỉ quyết ai mở agent** (YC55), và mặc định phải đóng (không khớp = không tìm thấy), không fail-open.

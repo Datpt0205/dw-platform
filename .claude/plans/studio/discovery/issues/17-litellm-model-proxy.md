@@ -31,7 +31,7 @@ D6 đo cả embedding và rerank.
 - Spec: `model-connections` (01, 02), `usage-and-limits` (02 sổ sử dụng, 03 quyết toán và trần mỗi lời gọi),
   `tools-and-skills` (hồ sơ lược đồ).
 - ADR: 0118 (Open 1: bản LiteLLM ghim), 0121.
-- DO: DO-19 (D13), DO-43 (agent, tạm: không chuyển sang model nền tảng trả phí), DO-21.
+- DO: DO-19 (D13), DO-43 (Đạt chốt 23/10/2026: không chuyển sang model nền tảng trả phí), DO-21.
 - Ticket W1: `model-connections/01` (P0) đo câu 1-3; `usage-and-limits/03` dùng câu 4, `usage-and-limits/02` dùng
   câu 5.
 

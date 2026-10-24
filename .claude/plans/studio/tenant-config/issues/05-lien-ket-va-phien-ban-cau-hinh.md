@@ -1,7 +1,7 @@
 # 05 — Điểm gắn: giá trị là phiên bản cấu hình có người đề xuất và người duyệt khác nhau
 
 Status: needs-triage
-Blocked by: 04, .claude/plans/studio/connections-and-vault/issues/04-ket-noi-dung-chung-theo-workspace.md, .claude/plans/studio/foundations-hardening/issues/06-run-va-outbox-khong-ket.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md
+Blocked by: 04, .claude/plans/studio/connections-and-vault/issues/04-ket-noi-dung-chung-theo-workspace.md, .claude/plans/studio/foundations-hardening/issues/06-run-va-outbox-khong-ket.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md, .claude/plans/studio/app-standards/issues/02-khoa-chong-lap-gan-nguoi-goi.md
 Area: studio
 Yêu cầu: R7.1, R7.2, R7.3, R7.4, R7.5, R8.1, R8.2, R8.3, R8.4, R8.5, R8.6, R8.7, R8.8, R8.9, R8.10, R8.11, R8.12, R8.13, R8.14, R8.15, R3.6, R3.7, G4, TC15, TC16, TC17, TC18, TC19, TC20, TC21, TC22, TC23, TC25, TC26
 
@@ -72,7 +72,8 @@ kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7,
    `base_version` là `version_no` của phiên bản niêm phong mới nhất đã dùng để kiểm; tạo yêu cầu phê
    duyệt không lượt chạy `config.version` ở workspace đang làm việc, `required_scope` là quyền duyệt
    (ADR-0004 (Accepted)), payload chỉ gồm id, `kind`, `key`, `version_no`, `document_hash`; audit
-   `config.version.proposed`. `Idempotency-Key` theo ADR-0108 (Accepted) quyết 4.
+   `config.version.proposed`. `Idempotency-Key` gắn người gọi của app-standards/02 (app-standards:R2.1;
+   ADR-0108 (Accepted) quyết 4).
 5. Phê duyệt: `config.` vào `strict_approval_prefixes` bằng `|=` ở API
    (`apps/api/src/dw_api/bootstrap/runtime.py`) và worker (`apps/worker/src/dw_worker/main.py`); ticket này chỉ thêm
    đúng một dòng `|=` cho `config.` ở mỗi chỗ và không sửa dòng của ticket khác (agent-lifecycle/01 thêm
@@ -199,3 +200,5 @@ kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7,
   đặt một lần ở `_enforce_strict_rules` cho mọi loại dưới tiền tố nghiêm (R8.8, TC16; quyết định tạm của spec); câu
   INSERT khóa quyền nêu mọi cột NOT NULL, gồm `tenant_grantable` (quyết định tạm của spec); chờ
   foundations-hardening/07, vì cùng sửa `offboarding.py` và `test_offboarding.py`.
+- 2026-10-24 (agent): vòng sửa thứ tư, lượt b: chờ app-standards/02, vì route đề xuất dùng `Idempotency-Key` gắn
+  người gọi (quyết định tạm cùng ngày của spec).

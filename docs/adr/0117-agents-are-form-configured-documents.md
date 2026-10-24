@@ -75,7 +75,7 @@ repository root. External facts were gathered by the Studio research on 2026-10-
    `current_time` are `raw_variables`, with a reason), then a `<tenant_instructions>` block holding the
    tenant's text verbatim, escaped so it cannot close its block. Platform variables are a closed set of
    chips (`current_date`, `current_time`, `user_display_name`, `workspace_name`, `agent_name`, `locale`)
-   rendered in the frame only. The validator, at save and publish, reports every error at once: at most
+   rendered in the frame only. The validator, at save and submit, reports every error at once: at most
    16,000 characters, NFC, no C0 control but newline and tab, `{{` or `{name}`-shaped text refused as
    `instructions.template_syntax`, the delimiters `<tenant_instructions`, `<input` and `<tool_output`
    refused; sub-agents obey the same rules. One assembler, `assemble_system_prompt`, beside
@@ -85,22 +85,28 @@ repository root. External facts were gathered by the Studio research on 2026-10-
    per `(tenant_id, agent_version_id)` into an LRU of at most 256 entries (CLAUDE.md:234), loads under
    RLS, and is refused when its stored `definition_hash` differs from a recomputed one. It is assembled
    on the platform's `create_agent` stack: pinned tools (ADR-0116), run control (ADR-0120),
-   `StudioModelSelection` outermost, then limits and the run budget (ADR-0121), one approval per step,
-   tool errors, model retry and compaction. The model is chosen per call from the route pinned in the
-   run manifest (ADR-0118), through a client keyed `(tenant_id, route, secret_version)`; the compiled
-   graph holds no credential. Every run is requested through `RunRequestService` (ADR-0113) with
-   `trigger_kind` `chat`, `agent_node`, `agent_link` or `eval`; the API never executes an agent inline.
-   Tool approvals use the non-strict prefix `studio.agent.tool.`, so the invoker may approve their own
-   ask-before step. `RunContext` gains `artifact`, `run_mode` (ADR-0111) and `route_class` (ADR-0123);
-   the tool session binds `app.actor_kind = 'agent'` and `app.boundary_id`.
+   `StudioModelSelection` outermost, then `ResidencyGate` (ADR-0123), then limits and the run budget
+   (`LimitsMiddleware`, ADR-0121), one approval per step, tool errors, model retry and compaction;
+   with the residency gate before the limits, a call it refuses holds no lease. The model is chosen
+   per call from the route pinned in the run manifest (ADR-0118), through a client keyed
+   `(tenant_id, route, secret_version)`; the compiled graph holds no credential. Every run is
+   requested through `RunRequestService` (ADR-0113) with `trigger_kind` `chat`, `agent_node`,
+   `agent_link` or `eval`; the API never executes an agent inline. Tool approvals use the non-strict
+   prefix `studio.agent.tool.`, so the invoker may approve their own ask-before step. `RunContext`
+   gains `artifact`, `run_mode` (ADR-0111) and `route_class` (ADR-0123); the tool session binds
+   `app.actor_kind = 'agent'` and `app.boundary_id`.
 6. **Conversation content has one store, private to its owner.** `studio.conversations`
    (`workspace_id`, `agent_artifact_id`, `owner_user_id`, `status` CHECK (`active`, `archived`) with no
    default, `active_run_id`) and `studio.conversation_messages` (`seq`, `role` CHECK (`user`,
    `assistant`, `notice`, `summary`), `content` capped at 16 KiB (16,384 bytes of UTF-8, CHECK
    `octet_length(content) <= 16384`; a longer message is answered 422 `validation_failed` pointing at
    `content`), `run_id`, `agent_version_id`, `citations` (W2), `activity` naming tools and workflows,
-   never arguments). A message carries its conversation's
-   `workspace_id` and `owner_user_id` through a composite foreign key, so the two copies cannot differ.
+   never arguments). A model reply longer than the cap has no request to answer, so it is stored cut
+   to its first 16,384 bytes at a UTF-8 character boundary and followed by a `notice` message with
+   `reason_code` `reply_truncated`; the chat agent's output-token cap is set so a reply normally fits.
+   A message carries its conversation's `workspace_id` and `owner_user_id` through a composite foreign
+   key, `ON DELETE RESTRICT`, so the two copies cannot differ and no `dw_app` delete of a conversation
+   removes its append-only messages (ADR-0122 decision 7 removes expired ones).
    Messages are range-partitioned by month with a DEFAULT partition, registered by one row in
    `platform.time_partitioned_tables`, and no partition grants `dw_app` anything, so a partition read
    by name shows nobody's messages (DO-02.2). RLS: the workspace shape of CLAUDE.md:198-207 as the
@@ -124,10 +130,10 @@ repository root. External facts were gathered by the Studio research on 2026-10-
    it with the answer wrapped as untrusted output. The child keeps its own toolset and boundary, acts
    for the root's user, shares the root's lease, runs at chain depth at most 3 and never less safe in
    run mode; taint flows both ways. Submit refuses a cycle in `studio.dependencies` (ADR-0113
-   decision 9), and publish refuses a link to an agent without the `link` surface. An in-process
-   sub-agent names a subset of its parent's tools, its own stack carrying run control,
-   `StudioModelSelection` and the budget. An agent with `links` pins only tools of side-effect level
-   `none` or `read` plus workflow tools (`links.effect_tool_on_router`).
+   decision 9) and a link to an agent without the `link` surface. An in-process sub-agent names a
+   subset of its parent's tools, its own stack carrying run control, `StudioModelSelection`,
+   `ResidencyGate` and the budget in decision 5's order. An agent with `links` pins only tools of
+   side-effect level `none` or `read` plus workflow tools (`links.effect_tool_on_router`).
 
 ## Alternatives considered
 
@@ -156,7 +162,7 @@ repository root. External facts were gathered by the Studio research on 2026-10-
   reads none of another's conversation; a transaction with no `app.user_id` reads nothing; a partition
   of `studio.conversation_messages` read by name returns nothing to `dw_app`; text holding
   `{{`, `{name}` or `</tenant_instructions>` is refused or contained; a compiled version is never served
-  to another tenant; an agent with links pinning a write tool is refused at publish; a killed linked
+  to another tenant; an agent with links pinning a write tool is refused at submit; a killed linked
   agent is refused inside its running parent.
 - P1 polls instead of streaming tokens (docs/adr/0008-chat-updates-poll-locally-webhook-when-hosted.md
   is the precedent); P2 relays events over an ephemeral Valkey channel, the transcript staying the truth
@@ -225,8 +231,17 @@ open:
 - Consequences: conversations are kept 90 days, provisional and UNVERIFIED (DO-52).
 - Third consistency check (round 4): the settings key is `studio.agents.manage_settings` in decision 3
   and above, since tenant-rbac's convention allows exactly three segments, `studio.<area>.<verb>`
-  (P10, the planner's provisional call, G:ADR-0117~~tenant-rbac:trong-phạm-vi; if it is wrong,
+  (V4.P10, the planner's provisional call, G:ADR-0117\~tenant-rbac:trong-phạm-vi; if it is wrong,
   tenant-rbac admits four segments and the key keeps its earlier four-segment name); decision 6 caps
   `content` at 16 KiB with a CHECK and a 422, and places `citations`, the citation check and
-  `studio.message_feedback` in W2 (Đạt's D13; F:ADR-0117~~agent-builder:spec); decision 7 refuses a
-  cycle at submit, as ADR-0113 decision 9 now says (G:ADR-0112~ADR-0113).
+  `studio.message_feedback` in W2 (Đạt's V4.13; F:ADR-0117\~agent-builder:spec); decision 7 refuses a
+  cycle at submit, as ADR-0113 decision 9 now says (G:ADR-0112\~ADR-0113).
+- Third consistency check (round 4), second pass, the planner's provisional calls: decision 5 places
+  `ResidencyGate` right after `StudioModelSelection` and before `LimitsMiddleware`, and decision 7
+  gives a sub-agent's own stack the same gate, so no model call passes around it; decisions 4 and 7
+  and the tests check at submit, where the version is sealed and ADR-0116 decision 1 checks, no longer
+  "at publish"; decision 6 gives the message foreign key `ON DELETE RESTRICT`, so no `dw_app` delete
+  of a conversation removes its messages and expired ones leave through ADR-0122 decision 7's purge
+  function (if it is wrong, the foreign key cascades and the messages stop being append-only), and
+  stores a model reply over 16 KiB cut at a character boundary with a `reply_truncated` notice (if it
+  is wrong, the turn ends `failed` with `reply_too_long`).

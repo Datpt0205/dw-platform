@@ -75,14 +75,18 @@ tự phát hành (YC33, YC40; BUI-03, BUI-04, BUI-06).
 - R3.5 Trang builder PHẢI không bao giờ tự phát hành; nó chỉ gửi kiểm định, còn vòng đời quyết định việc
   phát hành.
 - R3.6 KHI người dựng chạy mô phỏng, trang builder PHẢI gửi chế độ `simulate` tới route
-  `.../versions/{version_id}/test-runs` với id của phiên bản Nháp đang mở và hiện lỗi 422 của route nếu có; quyền,
-  chế độ được nhận và việc nhận bản Nháp là của workflow-triggers:R2.2, workflow-triggers:R2.3 và
-  workflow-triggers:R2.6.
+  `.../versions/{version_id}/test-runs` với id của phiên bản Nháp đang mở và hiện lỗi 422 của route, gắn về đúng Bước
+  như R3.4 mỗi lỗi `wf.*` mà bộ kiểm khi gửi kiểm định báo trên nội dung nháp (ADR-0112 (Accepted) quyết 3); quyền,
+  chế độ được nhận, việc nhận bản Nháp và lần kiểm đó là của workflow-triggers:R2.2, workflow-triggers:R2.3,
+  workflow-triggers:R2.6 và workflow-triggers:R2.9.
 - R3.7 KHI lượt mô phỏng trả kết quả từng Bước chạy, trang builder PHẢI hiện "Đã ẩn" cho mỗi trường người
   xem không đọc được, không rò giá trị trong DOM hay payload mạng.
 - R3.8 KHI người dựng chạy mô phỏng một Quy trình có Bước phê duyệt, biểu mẫu chạy mô phỏng PHẢI đòi một lựa chọn
   duyệt hay từ chối cho mỗi Bước phê duyệt của Nháp và gửi các lựa chọn đó trong thân yêu cầu, để không Bước phê
   duyệt nào chờ người quyết (workflow-triggers:R2.7, workflow-triggers:R2.8, workflow-nodes:R9.9).
+- R3.9 KHI người dựng gửi kiểm định, trang builder PHẢI gửi `If-Match` bằng ETag của Nháp đã đọc tới route gửi kiểm
+  định, như khi tự lưu (R2.3), để lệnh gửi một Nháp đã đổi ở tab khác nhận 412 thay vì niêm phong nội dung người dựng
+  chưa thấy (agent-lifecycle:R2.12, agent-lifecycle:R2.13; ADR-0108 (Accepted) quyết 3).
 
 ## Trong phạm vi
 
@@ -156,20 +160,24 @@ tự phát hành (YC33, YC40; BUI-03, BUI-04, BUI-06).
 - `workflow-engine` (batch 2, đang viết song song): tài liệu `dw.workflow/v1` và bảng mã `wf.*` mà trang
   builder gắn lỗi về Bước (workflow-engine:R2.11).
 - `workflow-triggers`: route `.../test-runs`, quyền `studio.workflows.test`, chế độ được nhận, việc nhận phiên bản
-  `draft` ở chế độ `simulate` và quyết định giả lập cho mỗi Bước phê duyệt của chính nội dung đó trong thân
+  `draft` ở chế độ `simulate` sau khi bộ kiểm khi gửi kiểm định đạt trên nội dung nháp (422 với mã `wf.*` khi không
+  đạt, ADR-0112 (Accepted) quyết 3), và quyết định giả lập cho mỗi Bước phê duyệt của chính nội dung đó trong thân
   (workflow-triggers:R2.2, workflow-triggers:R2.3, workflow-triggers:R2.6, workflow-triggers:R2.7,
-  workflow-triggers:R2.8; `.claude/plans/studio/workflow-triggers/issues/01-so-kich-hoat-chay-tay-va-danh-tinh.md`).
+  workflow-triggers:R2.8, workflow-triggers:R2.9;
+  `.claude/plans/studio/workflow-triggers/issues/01-so-kich-hoat-chay-tay-va-danh-tinh.md`).
 - `workflow-nodes`: Bước phê duyệt của lượt mô phỏng đi theo quyết định giả lập, không chờ người
   (workflow-nodes:R9.9).
 - `tenant-config`: Chế độ chạy do máy chủ đặt (tenant-config:R4.1), Mô phỏng chặn tác động
   (tenant-config:R5.1), bản kê của lượt mô phỏng trên bản Nháp ghim mã băm tạm của nội dung nháp
   (tenant-config:R6.1); Nháp với ETag.
 - `telemetry-and-audit` (batch 2): `run_steps` cho bảng chạy mô phỏng và lớp phủ.
-- `agent-lifecycle` (batch 2): giai đoạn vòng đời và cổng phát hành mà builder không tự gọi.
+- `agent-lifecycle` (batch 2): giai đoạn vòng đời và cổng phát hành mà builder không tự gọi; route gửi kiểm định
+  nhận `If-Match` là ETag của Nháp, 412 khi lệch và 428 khi thiếu (agent-lifecycle:R2.12, agent-lifecycle:R2.13).
 - Kiểm lại khi: `workflow-nodes` đổi hình API `node-types`/`/expressions/check`/`draft/scope`;
   `workflow-engine` đổi hợp đồng `dw.workflow/v1` hay `workflow-triggers` đổi route `.../test-runs` hay hình của
   quyết định giả lập → kiểm lại 01-03; `workflow-triggers` hay `tenant-config` thôi nhận bản Nháp ở chế độ
-  `simulate` → R3.6, R3.8, ticket 03; W2 mở chế độ `test` → R3.6, R3.8, BU5, ticket 03.
+  `simulate`, hay route thôi kiểm nội dung nháp trước khi xin lượt → R3.6, R3.8, ticket 03; `agent-lifecycle` đổi
+  điều kiện ghi của route gửi kiểm định → R3.9, ticket 03; W2 mở chế độ `test` → R3.6, R3.8, BU5, ticket 03.
 
 ## Câu hỏi còn mở
 
@@ -233,6 +241,15 @@ tự phát hành (YC33, YC40; BUI-03, BUI-04, BUI-06).
   chính bản Nháp đang mở và đòi lựa chọn cho mỗi Bước phê duyệt của Nháp; nháp đổi trước khi lượt mô phỏng xong thì
   lần tiếp tục bị từ chối `incompatible_resume` (ADR-0109 (Accepted) quyết 8)
   (B:workflow-builder-ui:R3.6~workflow-triggers:R2.8). Sửa: R3.6, R3.8, Phụ thuộc, ticket 03.
+- 24/10/2026 (agent, tạm): hoàn tất V4.4: route chạy mô phỏng chạy bộ kiểm một lượt của lúc gửi kiểm định trên nội
+  dung nháp trước khi xin lượt và trả 422 với mã `wf.*` khi có lỗi (workflow-triggers:R2.9; ADR-0112 (Accepted)
+  quyết 3; YC40), nên trang builder gắn các lỗi đó về Bước như R3.4. Sửa: R3.6, Phụ thuộc, ticket 03. Nếu sai thì:
+  route nhận nội dung nháp có lỗi và lượt mô phỏng hỏng khi chạy, trang chỉ hiện lỗi của lượt chạy.
+- 24/10/2026 (agent, tạm): route gửi kiểm định của agent-lifecycle nhận `If-Match` là ETag của Nháp, 412
+  `precondition_failed` với `stale_version` khi lệch (V4.6) và 428 khi thiếu (agent-lifecycle:R2.12,
+  agent-lifecycle:R2.13; ADR-0108 (Accepted) quyết 3; ADR-0109 (Accepted) quyết 2; app-standards:R3.2,
+  app-standards:R3.3), nên nút Gửi kiểm định gửi ETag của Nháp đã đọc như tự lưu. Sửa: R3.9, Phụ thuộc, ticket 03.
+  Nếu sai thì: route không mang điều kiện ghi, và R3.9 rút.
 
 ## Danh sách ticket
 

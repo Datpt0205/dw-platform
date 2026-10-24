@@ -276,7 +276,7 @@ by copying") and D3 (record-level access in four layers), and on the call on DO-
   tenant-rbac/03 locks the column (FOG-49).
 - Third consistency check (round 4): decision 11 gives the strict prefix's refusal of a requester or run-as principal
   the code `second_person_required` for every approval type, `author_cannot_approve` staying the `studio.publish.`
-  guard's, and since the strict check runs first an author who requested the approval gets the former (P9, the
-  planner's provisional call, B:packages:spec~~tenant-config/05; if it is wrong, each approval type names its own code
+  guard's, and since the strict check runs first an author who requested the approval gets the former (V4.P9, the
+  planner's provisional call, B:packages:spec\~tenant-config/05; if it is wrong, each approval type names its own code
   through its `decision_guards` entry); it also states from W2 the conditions under which an approval delegation
-  decides, 403 outside them (Đạt's D10; D:ADR-0112~~workflow-nodes:spec).
+  decides, 403 outside them (Đạt's V4.10; D:ADR-0112\~workflow-nodes:spec).

@@ -30,8 +30,8 @@ thêm policy theo mức truy cập như bảng bản ghi, ngoài RLS chỉ theo 
 - Spec: `record-access` (04, giới hạn dữ liệu), `org-and-principals` (03), `workflow-engine`, `agent-builder`,
   `tools-and-skills`, `connections-and-vault` (phạm vi dùng chung), `tenant-rbac` (02), `domain-packs`.
 - ADR: 0103 (đang viết), 0102 (Open 3), 0104 (Open 5), 0105, 0116.
-- DO: DO-12 (chủ thể của lượt chạy không người, trước W1), DO-10 (agent, tạm: mức "Của nhóm tôi" là tôi và nhóm tôi),
-  DO-09, DO-25.
+- DO: DO-12 (chủ thể của lượt chạy không người, trước W1), DO-10 (Đạt chốt 23/10/2026: mức "Của nhóm tôi" là tôi
+  và nhóm tôi), DO-09, DO-25.
 
 ## Đầu ra
 

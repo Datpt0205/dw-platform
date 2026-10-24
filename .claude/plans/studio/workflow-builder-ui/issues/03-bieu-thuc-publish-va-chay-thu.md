@@ -3,14 +3,14 @@
 Status: needs-triage
 Blocked by: 02, .claude/plans/studio/workflow-nodes/issues/03-pham-vi-bien-va-buoc-logic.md, .claude/plans/studio/workflow-triggers/issues/01-so-kich-hoat-chay-tay-va-danh-tinh.md, .claude/plans/studio/telemetry-and-audit/issues/03-lich-su-chay-theo-buoc.md, .claude/plans/studio/agent-lifecycle/issues/03-hop-dong-vong-doi-va-niem-phong.md
 Area: studio
-Yêu cầu: R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, BU2, BU3, BU5, BU6
+Yêu cầu: R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R3.9, BU2, BU3, BU5, BU6
 
 ## Mục tiêu
 
 Ô Biểu thức có Chọn biến có kiểu kiểm ở máy chủ, lỗi kiểm gắn về đúng Bước, nút gửi kiểm định nêu lý do
 khi khóa và không tự phát hành, và chạy mô phỏng với một lựa chọn duyệt hay từ chối cho mỗi Bước phê duyệt, kết
 quả từng Bước chạy che theo bảo mật trường
-(workflow-builder-ui R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, BU2, BU3, BU5, BU6).
+(workflow-builder-ui R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R3.9, BU2, BU3, BU5, BU6).
 
 ## Việc cần làm
 
@@ -20,17 +20,20 @@ quả từng Bước chạy che theo bảo mật trường
 2. Lỗi tại chỗ: huy hiệu lỗi trên Bước (chữ và màu, không chỉ màu); lỗi trường qua antd `Form.setFields`;
    ngăn kéo "Còn N lỗi" (`role="status"`); bấm một lỗi đưa focus tới Bước. Lỗi lấy từ 422 của máy chủ,
    mỗi lỗi mang mã Bước.
-3. Nút Gửi kiểm định: gọi route gửi kiểm định của agent-lifecycle (agent-lifecycle:R2.1); khi bị khóa, nêu lý do; không có
-   đường nào trong trang gọi phát hành. Giai đoạn vòng đời hiện ở đầu trang (đọc từ `agent-lifecycle`).
-4. Chạy mô phỏng: biểu mẫu theo `input_schema` hoặc payload mẫu, cộng một lựa chọn bắt buộc "Duyệt" hay "Từ chối"
-   (antd `Radio.Group`, nhãn từ khóa thông điệp) cho mỗi Bước phê duyệt của Nháp, gửi thành `simulated_decisions`
-   theo id Bước (workflow-triggers:R2.7); trang chỉ gửi `simulate` ở W1, tới route `.../versions/{version_id}/test-runs`
-   của workflow-triggers với id của phiên bản Nháp đang mở (route nhận bản `draft` ở chế độ `simulate`, bản kê ghim mã
-   băm tạm của nội dung nháp, workflow-triggers:R2.3, tenant-config:R6.1; người gọi cần `studio.workflows.test`; route
-   trả 422 với `live`, với `test` tới W2, và khi thiếu quyết định cho một Bước phê duyệt,
-   workflow-triggers:R2.2, workflow-triggers:R2.6, workflow-triggers:R2.8). Không
-   Bước phê duyệt nào của lượt mô phỏng chờ người quyết (workflow-nodes:R9.9). Lớp phủ trạng thái, thời gian, token,
-   chi phí theo từng Bước chạy từ `run_steps`, kể cả quyết định giả lập mà mỗi Bước phê duyệt đã đi theo.
+3. Nút Gửi kiểm định: gọi route gửi kiểm định của agent-lifecycle (agent-lifecycle:R2.1) với `If-Match` là ETag của
+   Nháp đã đọc (R3.9; agent-lifecycle:R2.12, agent-lifecycle:R2.13), như tự lưu của ticket 02; 412 thì giữ nội dung
+   đang gõ và mời tải lại; khi bị khóa, nêu lý do; không có đường nào trong trang gọi phát hành. Giai đoạn vòng đời
+   hiện ở đầu trang (đọc từ `agent-lifecycle`).
+4. Chạy mô phỏng: biểu mẫu theo `input_schema` hoặc payload mẫu, cộng một lựa chọn bắt buộc "Duyệt" hay "Từ chối" (antd
+   `Radio.Group`, nhãn từ khóa thông điệp) cho mỗi Bước phê duyệt của Nháp, gửi thành `simulated_decisions` theo id Bước
+   (workflow-triggers:R2.7); trang chỉ gửi `simulate` ở W1, tới route `.../versions/{version_id}/test-runs` của
+   workflow-triggers với id của phiên bản Nháp đang mở (route nhận bản `draft` ở chế độ `simulate`, bản kê ghim mã băm
+   tạm của nội dung nháp, workflow-triggers:R2.3, tenant-config:R6.1; người gọi cần `studio.workflows.test`; route trả
+   422 với `live`, với `test` tới W2, khi thiếu quyết định cho một Bước phê duyệt, và khi bộ kiểm khi gửi kiểm định báo
+   lỗi `wf.*` trên nội dung nháp, ADR-0112 (Accepted) quyết 3, workflow-triggers:R2.2, workflow-triggers:R2.6,
+   workflow-triggers:R2.8, workflow-triggers:R2.9). Mỗi lỗi `wf.*` của 422 đó gắn về đúng Bước như bước 2. Không Bước
+   phê duyệt nào của lượt mô phỏng chờ người quyết (workflow-nodes:R9.9). Lớp phủ trạng thái, thời gian, token, chi
+   phí theo từng Bước chạy từ `run_steps`, kể cả quyết định giả lập mà mỗi Bước phê duyệt đã đi theo.
 5. Che theo bảo mật trường: một trường người xem không đọc được hiện "Đã ẩn" ở cả kết quả Bước và lớp
    phủ, không rò trong DOM hay payload mạng.
 
@@ -45,6 +48,10 @@ quả từng Bước chạy che theo bảo mật trường
       phát hành.
 - [ ] R3.6 (BU5): trang builder chỉ gửi `simulate`, tới `.../versions/{version_id}/test-runs` với id của phiên bản
       Nháp đang mở; gọi thẳng route với `live` hay `test` → 422; bỏ giới hạn chế độ ở builder → test thành phần đỏ.
+- [ ] R3.6: route trả 422 với một lỗi `wf.unreachable_node` có `path` của một Bước → lỗi gắn về đúng Bước đó và ngăn
+      kéo "Còn N lỗi" đếm nó (test thành phần với route giả).
+- [ ] R3.9: nút Gửi kiểm định gửi `If-Match` bằng ETag của Nháp đã đọc; route trả 412 vì một tab khác đã lưu → nội
+      dung đang gõ giữ nguyên và trang mời tải lại; bỏ header → test thành phần đỏ.
 - [ ] R3.7 (BU6): người không đọc được `phone` thấy "Đã ẩn" ở kết quả Bước, và số không có trong DOM
       hay payload mạng; gỡ che → test đỏ.
 - [ ] R3.8: Nháp có hai Bước phê duyệt → biểu mẫu chạy mô phỏng có hai lựa chọn bắt buộc; chưa chọn một Bước thì
@@ -56,8 +63,9 @@ quả từng Bước chạy che theo bảo mật trường
 
 - workflow-nodes:R3.2, workflow-nodes:R3.5;
   `.claude/plans/studio/workflow-nodes/issues/03-pham-vi-bien-va-buoc-logic.md`.
-- workflow-triggers:R2.2, workflow-triggers:R2.3, workflow-triggers:R2.6, tenant-config:R5.1, tenant-config:R6.1;
-  spec: R3.6.
+- workflow-triggers:R2.2, workflow-triggers:R2.3, workflow-triggers:R2.6, workflow-triggers:R2.9, tenant-config:R5.1,
+  tenant-config:R6.1; ADR-0112 (Accepted) quyết 3; spec: R3.6.
+- agent-lifecycle:R2.1, agent-lifecycle:R2.12, agent-lifecycle:R2.13; ADR-0108 (Accepted) quyết 3; spec: R3.9.
 - ADR-0101 (Accepted), ADR-0114 (Accepted); spec: R3.2.
 
 ## Comments
@@ -65,3 +73,4 @@ quả từng Bước chạy che theo bảo mật trường
 - 2026-10-23 (agent): theo phiếu 23/10/2026: W1 chỉ chạy thử `simulate` và route chạy thử là của workflow-triggers (DO-26.1); route kiểm biểu thức theo dạng sub-resource của ADR-0108 (Accepted); nút là "Gửi kiểm định" và gọi route của agent-lifecycle.
 - 2026-10-24 (agent): theo quyết định N2 của Đạt ngày 24/10/2026: biểu mẫu chạy mô phỏng đòi một lựa chọn duyệt hay từ chối cho mỗi Bước phê duyệt (R3.8), thay câu "người duyệt trong lượt chạy thử là chính người thử"; lượt `simulate` gọi là chạy mô phỏng.
 - 2026-10-24 (agent): vòng sửa thứ tư, theo quyết định của Đạt cùng ngày: route `.../test-runs` nhận bản Nháp ở chế độ `simulate`, nên trang chạy mô phỏng chính phiên bản Nháp đang mở và giữ lựa chọn cho mỗi Bước phê duyệt của Nháp (R3.6, R3.8).
+- 2026-10-24 (agent): vòng sửa thứ tư, lượt b, theo các quyết định tạm cùng ngày của spec: lỗi `wf.*` mà route chạy mô phỏng trả khi nội dung nháp trượt bộ kiểm khi gửi kiểm định gắn về Bước (R3.6); nút Gửi kiểm định gửi `If-Match` là ETag của Nháp (R3.9).

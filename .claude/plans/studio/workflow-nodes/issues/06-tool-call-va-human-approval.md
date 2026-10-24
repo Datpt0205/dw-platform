@@ -39,7 +39,7 @@ WN6, WN7, WN8, WN9, WN17, WN18). Hết hạn phê duyệt (R9.4, WN10) ở W2.
    chạy thiếu `required_scope` nhận 403 ở kiểm tem, mọi người khác không giữ tem nhận 404 vì không thấy yêu cầu; người
    tạo lượt chạy giữ scope nhận 409 `conflict` với `details.reason_code` `second_person_required` ở luật tiền tố
    nghiêm, mã mà `_enforce_strict_rules` của tenant-config/05 đặt cho mọi loại phê duyệt, nên ticket này không đặt mã
-   riêng (P9; ADR-0104 (Accepted) quyết 11; ADR-0004 (Accepted)). Mã băm chủ thể khoá ở `subject_node`. Trước khi mở
+   riêng (V4.P9; ADR-0104 (Accepted) quyết 11; ADR-0004 (Accepted)). Mã băm chủ thể khoá ở `subject_node`. Trước khi mở
    yêu cầu, Bước tính ứng viên từ `effective_grants` của tenant-rbac: người giữ `required_scope`, thu hẹp theo người
    được giao hay Biểu thức, bỏ người tạo lượt chạy và chủ thể chạy; không còn ai thì Bước đi Nhánh ra lỗi với
    `no_approver`, không nối Nhánh ra đó thì lượt chạy `failed` với `no_approver`, và không yêu cầu nào mở (R9.13;
@@ -110,4 +110,4 @@ WN6, WN7, WN8, WN9, WN17, WN18). Hết hạn phê duyệt (R9.4, WN10) ở W2.
 
 - 2026-10-23 (agent): theo phiếu 23/10/2026: hết hạn phê duyệt sang W2 (DO-31); bảng mã từ chối người quyết ở ADR-0004 (Accepted) tách R9.2 (403) và R9.6 (409); người duyệt phải đọc được Trường đóng dấu qua guard async (DO-36), nên ticket chờ tenant-config/05; khóa phát hành chung, R9.5 là kiểm đăng ký qua Protocol; chờ compliance-pdpl/04 và test WN7 dùng `email.send` của `smtp@1.0.0` (DO-48.1).
 - 2026-10-24 (agent): theo quyết định của Đạt ngày 24/10/2026: bảng ba mã ở ADR-0104 (Accepted) quyết 11, người khác không giữ tem nhận 404 (R9.2); R9.5 là kiểm lúc gửi kiểm định trả 422 `no_second_approver`, ticket chờ agent-lifecycle/03; khoá chống lặp của workflow-engine:R4.5; W1 không giao theo nhóm; `step_approvals` là chủ liên kết tới yêu cầu và đáp ứng `StepWaitLookupPort`; Bước phê duyệt ở `simulate` theo quyết định giả lập (N2: R9.9-R9.12, WN18).
-- 2026-10-24 (agent): vòng sửa thứ tư: luật tiền tố nghiêm trả 409 với `second_person_required` do tenant-config/05 đặt (P9, agent tạm); lúc mở phê duyệt không còn ứng viên thì `no_approver` (R9.13, phát hiện F về ADR-0112 (Accepted) và R9.5); từ vựng `approved`, `rejected` của R9.9 là chủ cho route `test-runs` và Câu kiểm định.
+- 2026-10-24 (agent): vòng sửa thứ tư: luật tiền tố nghiêm trả 409 với `second_person_required` do tenant-config/05 đặt (V4.P9, agent tạm); lúc mở phê duyệt không còn ứng viên thì `no_approver` (R9.13, phát hiện F về ADR-0112 (Accepted) và R9.5); từ vựng `approved`, `rejected` của R9.9 là chủ cho route `test-runs` và Câu kiểm định.

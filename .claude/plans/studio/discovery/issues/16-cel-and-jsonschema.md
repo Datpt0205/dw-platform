@@ -26,8 +26,8 @@ vào runtime này. Kiểm lược đồ chạy ở mọi lời gọi công cụ 
 - Spec: `workflow-nodes` (01, `ExpressionEngine`), `custom-objects` (điều kiện để lưu được), `record-access` (quy tắc
   chia sẻ, W2), `tools-and-skills` (01, executor tự kiểm JSON Schema), `workflow-triggers` (02, ingress).
 - ADR: 0114 (Open 5), 0116.
-- DO: DO-38 (bản C++ 0.1.x ghim chính xác làm mặc định, bản Rust dự phòng qua cùng bộ test hợp đồng), DO-37 (agent,
-  tạm: "phải đúng", CEL với vector thử port từ si-platform).
+- DO: DO-38 (bản C++ 0.1.x ghim chính xác làm mặc định, bản Rust dự phòng qua cùng bộ test hợp đồng), DO-37 (Đạt
+  chốt 23/10/2026: "phải đúng", CEL với vector thử port từ si-platform).
 - Ticket W1: `workflow-nodes/01`, `tools-and-skills/01` (P0).
 
 ## Dựng tối thiểu

@@ -23,7 +23,7 @@ trigger có an toàn không. `tenant-rbac/04` nằm trên đường găng và ch
 
 - Spec: `tenant-rbac` (02, 03; 04 trên đường găng).
 - ADR: 0104 (Open 6; phương án dự phòng nếu đọc access version mỗi request quá đắt).
-- DO: DO-09 (vai trò là dữ liệu), DO-10 (agent, tạm: tách nhiệm xét theo người trên cả công ty), DO-32.
+- DO: DO-09 (vai trò là dữ liệu), DO-10 (Đạt chốt 23/10/2026: tách nhiệm xét theo người trên cả công ty), DO-32.
 
 ## Dựng tối thiểu
 

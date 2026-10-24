@@ -26,7 +26,7 @@ Quy tắc phân bổ theo tỉnh cũ giao lead sai người. Hạn trả lời y
   của yêu cầu chủ thể dữ liệu, YC90: 2 ngày làm việc), `workflow-triggers` (lịch chạy, YC98), `usage-and-limits` (03,
   kỳ tính), `studio-skeleton` (YC1: giờ theo `Asia/Ho_Chi_Minh`).
 - ADR: 0121, 0113.
-- DO: DO-50 (agent, tạm: kỳ tính theo múi giờ công ty).
+- DO: DO-50 (Đạt chốt 23/10/2026: kỳ tính theo múi giờ công ty).
 
 ## Đầu ra
 

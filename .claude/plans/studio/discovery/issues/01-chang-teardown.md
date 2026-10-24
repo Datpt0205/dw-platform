@@ -39,7 +39,7 @@ cấu hình trong các brief hiện được chỉnh theo phỏng đoán từ t�
   mức), `workflow-nodes` (danh mục bước), `connections-and-vault` (phạm vi), `tenant-config` (tín hiệu lệch cấu hình).
 - ADR: 0104, 0110, 0112, 0115, 0120, 0121. Tài liệu: [teardown-chang.md](../teardown-chang.md), phần so sánh đối thủ
   của `requirements.md`.
-- DO: DO-23 (luật dùng tài khoản; agent, tạm theo khuyến nghị (a)).
+- DO: DO-23 (luật dùng tài khoản; khuyến nghị (a), Đạt chốt 23/10/2026).
 
 ## Quy tắc và đầu ra
 

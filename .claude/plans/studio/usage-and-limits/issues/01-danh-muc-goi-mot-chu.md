@@ -15,10 +15,10 @@ Số giới hạn của một Gói dịch vụ về một chủ trong database, 
 1. Revision Alembic mới (id hex ngẫu nhiên) tạo `platform.plan_limits`: `plan_id text` khóa chính và FK
    `platform.plans ON DELETE CASCADE`; không `tenant_id`, không RLS; `dw_app` chỉ SELECT (grant trong
    migration, khẳng định ở `test_privileges.py`); cột `CHECK (>= 0)` `runs_per_day`, `cost_usd_per_day`,
-   `cost_usd_per_month`, `tokens_per_month`, `requests_per_minute`, `tokens_per_minute` (NULL = không giới
-   hạn); trần mỗi lượt NOT NULL `max_cost_usd_per_run`, `max_tokens_per_run`, `max_steps_per_run` CHECK
-   (BETWEEN 1 AND 500), `max_model_calls_per_run`, `max_tool_calls_per_run`. Không có cột `max_run_seconds` hay
-   `max_concurrent_runs` ở W1: mỗi cột vào ở W2 cùng bên đọc của nó (Ngoài phạm vi của spec).
+   `cost_usd_per_month`, `tokens_per_month` (NULL = không giới hạn); trần mỗi lượt NOT NULL `max_cost_usd_per_run`,
+   `max_tokens_per_run`, `max_steps_per_run` CHECK (BETWEEN 1 AND 500), `max_model_calls_per_run`,
+   `max_tool_calls_per_run`. Không có cột `max_run_seconds`, `max_concurrent_runs`, `requests_per_minute` hay
+   `tokens_per_minute` ở W1: mỗi cột vào ở W2 cùng bên đọc của nó, hai cột tốc độ cùng GCRA (Ngoài phạm vi của spec).
 2. Seed giữ số hiện tại: `runs_per_day` 20, 200, 2000; tiền NULL (DO-59.1: số tiền của gói chỉ cần trước
    GA; trần của công ty thí điểm đặt qua `platform.limit_policies`, usage-and-limits/03); trần mỗi lượt lấy
    từ mặc định `ModelBudgets` (USD 2.0, 120000 token), 50 bước, số lời gọi theo đề xuất ghi ở Comments.
@@ -58,3 +58,5 @@ Số giới hạn của một Gói dịch vụ về một chủ trong database, 
   khỏi W1 vì chưa có bên đọc (H:usage-and-limits:dữ-liệu\~usage-and-limits:ngoài-phạm-vi).
 - 2026-10-24 (agent): vòng sửa thứ tư: trần đồng thời sang W2 (Quyết định tạm của spec theo YC79), nên cột
   `max_concurrent_runs` cũng ra khỏi W1 cùng bên đọc của nó.
+- 2026-10-24 (agent): vòng sửa thứ tư, lượt b: `requests_per_minute`, `tokens_per_minute` cũng ra khỏi W1 và vào W2
+  cùng bên đọc GCRA, vì `RateLimiterPort` của W1 nhận giới hạn do bên gọi nêu (V4.P6, Quyết định tạm của spec).

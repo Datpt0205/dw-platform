@@ -37,8 +37,15 @@ platform's vault and are injected per call into the model proxy) and D14 (the pr
    write, kept wrapped beside the ciphertext by the tenant key `tenant-<tenant_uuid>` (`aes256-gcm96`, not exportable)
    in self-hosted OpenBao Transit behind `KmsPort` (`ensure_tenant_key`, `generate_data_key`, `decrypt_data_key`,
    `rewrap`, `destroy_tenant_key`); `LocalDevKms` serves only outside deployed profiles (`validate_for_profile`
-   refuses it when `is_deployed`). The AAD binds tenant, workspace, subject, field and version, so an envelope copied
-   to another row fails the tag check, and the key is chosen from the run's or access context's tenant, never from the
+   refuses it when `is_deployed`). Each row names its secret's `field text NOT NULL` and
+   `secret_version integer NOT NULL`, the credential version a run manifest pins (ADR-0109 decision 6), which rises
+   when the secret's value changes and never on a rewrap; a row is unique per tenant, subject, field and secret
+   version, so a rotation with an overlap, such as a signing secret's 24 hours, holds two versions side by side. The
+   AAD, `dw.secret.v1|<tenant_id>|<owning_workspace_id>|<subject_kind>:<subject_id>|<field>|<secret_version>` (the
+   subject kind being its FK column's name without `_id`, such as `connection` or `inbound_endpoint`), binds tenant,
+   owning workspace, subject, field and the version of the secret, unchanged by rewrap: a rewrap wraps only the data
+   key again, so the AAD stays the same and the envelope still opens, while an envelope copied to another row, field,
+   version or subject fails the tag check. The key is chosen from the run's or access context's tenant, never from the
    row. `dw_app` holds no privilege on the table: four SECURITY DEFINER functions (`platform.put_secret`,
    `platform.open_secret`, `platform.secret_status`, `platform.delete_secret`), each narrowing by `app.tenant_id`, are
    the one database door, and only the credential broker decrypts. A secret never enters graph state, tool arguments,
@@ -148,11 +155,12 @@ platform's vault and are injected per call into the model proxy) and D14 (the pr
   `platform.oauth_flows`, `platform.oauth_clients`, `platform.egress_allowed_hosts`, `platform.webhook_endpoints`,
   `platform.webhook_deliveries` and the definer functions; `platform.connection_delegations` with personal connections.
 - Tests that must exist, each red when its guard is removed: `test_privileges.py` asserting `dw_app` holds nothing on
-  `platform.secret_envelopes`; RLS coverage of every new table; a canary running a workflow and an agent against a
-  mock provider that echoes the `Authorization` header and the key, then finding no secret in checkpoint blobs,
-  `platform.tool_executions`, `platform.audit_events`, spans or logs; the address policy over mapped, 6to4, Teredo and
-  NAT64 forms; a DNS answer changed after the check still reaching only the pinned address; a replayed `state` doing
-  nothing; the OAuth client never resolved sideways (mirroring `test_tenant_overlay.py`).
+  `platform.secret_envelopes`; an envelope copied to another field, secret version or subject failing to decrypt
+  while a rewrapped one still opens (decision 1); RLS coverage of every new table; a canary running a workflow and an
+  agent against a mock provider that echoes the `Authorization` header and the key, then finding no secret in
+  checkpoint blobs, `platform.tool_executions`, `platform.audit_events`, spans or logs; the address policy over
+  mapped, 6to4, Teredo and NAT64 forms; a DNS answer changed after the check still reaching only the pinned address; a
+  replayed `state` doing nothing; the OAuth client never resolved sideways (mirroring `test_tenant_overlay.py`).
 - Harder: an extra hop per call, a Go image to maintain, an unseal after every OpenBao restart; an operator endpoint on
   CGNAT space (`100.64.0.0/10`) is refused after the change unless allow-listed.
 - The existing outbound URL check folds into the one address policy, so startup checks and the egress client cannot
@@ -213,6 +221,13 @@ Amended on 2026-10-24 by the requester and Đạt, who scoped the remaining D11 
 - Decisions 2 and 6: enabling a disabled connection again and adding an allowed host each take a second person,
   through the strict run-less approvals `connections.enable` and `egress.allowed_host`, whose `.decided` handlers
   apply the change; disabling a connection and removing an allowed host take one person, audited.
-- Third consistency check (round 4), Đạt's D5: `connections.enable` is stamped `connections.manage` and
+- Third consistency check (round 4), Đạt's V4.5: `connections.enable` is stamped `connections.manage` and
   `egress.allowed_host` is stamped `integrations.admin`, each the key that manages that change (decisions 2 and 6;
   D:ADR-0115~connections-and-vault:spec).
+- Third consistency check (round 4), second pass: decision 1 writes out the AAD, whose version is the secret's
+  `secret_version`, unchanged by rewrap, and the columns `field` and `secret_version` with their uniqueness, because
+  the round-3 fix had put the key's version in the AAD, which every `transit/rewrap` would change, so the first
+  rotation would have broken every envelope (F:ADR-0115\~connections-and-vault:R1.4); a test copies an envelope to
+  another field, secret version and subject and rewraps one. The planner's provisional call; if it is wrong, the
+  rotation lane encrypts every envelope again under a new data key instead of rewrapping it, and the AAD may then
+  carry the key's version.

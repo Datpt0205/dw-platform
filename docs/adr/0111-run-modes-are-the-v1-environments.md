@@ -116,8 +116,8 @@ v1 and v2, and on the provisional call on DO-26.
   nothing; a `test` message to an address off the allowlist is intercepted; a resumed run keeps its mode.
 - Harder: a schema change to a tenant-wide object cannot be rehearsed in v1 (custom-objects' gated rules and impact
   analysis mitigate); a workflow that creates a record and reads it back cannot be tested end to end until the scratch
-  ships; test runs and evaluations still spend model tokens, paid from the tenant budget under purpose caps (DO-50,
-  provisional; ADR 0121); v2 adds the first cross-tenant write lane besides offboarding.
+  ships; test runs and evaluations still spend model tokens, paid from the tenant budget, under purpose caps from W2
+  (DO-50, provisional; ADR 0121 decision 4); v2 adds the first cross-tenant write lane besides offboarding.
 - The value `test` collides with the deployment profile `test` (CLAUDE.md:325-330): a different concept, kept apart by
   the typed `RunMode` and the glossary and never compared with the settings profile; deployment gates stay on
   `settings.is_deployed` (`apps/api/src/dw_api/settings.py:323`). Worth keeping because the UI says "Chạy thử", never
@@ -165,5 +165,8 @@ v1 and v2, and on the provisional call on DO-26.
 - Third consistency check (round 4): decision 7's promotion import audits the person who approved the promotion,
   naming the lane in `details.lane = studio_promotion`, because the lane carries out that person's recorded decision
   (ADR 0011; `CLAUDE.md`, Agent and tool rules), no longer as `system:studio-promotion`
-  (E:ADR-0111~~CLAUDE.md#agent-and-tool-rules, one of that check's CRITICAL rows); decision 5's simulated decision
-  takes the values `approved` and `rejected` that workflow-nodes owns (B:agent-lifecycle:R4.7~~workflow-nodes:R9.9).
+  (E:ADR-0111\~CLAUDE.md#agent-and-tool-rules, one of that check's CRITICAL rows); decision 5's simulated decision
+  takes the values `approved` and `rejected` that workflow-nodes owns (B:agent-lifecycle:R4.7\~workflow-nodes:R9.9).
+- Third consistency check (round 4), second pass: Consequences place the purpose caps that test runs and
+  evaluations spend under in W2, as ADR 0121 decision 4 now does (V4.P6, the planner's provisional call; if it is
+  wrong, W1 takes the purpose caps and this sentence loses its "from W2").

@@ -24,11 +24,11 @@ Lát có một bộ kiểm thử đầu-cuối trên hai công ty với nhà cun
 - [ ] R6.3: mỗi trong 13 lỗi P0 có một test âm đã thấy đỏ khi hoàn tác bản vá của nó.
 - [ ] R6.4: Đóng băng công ty demo sau bước chấm điểm và trước bước gửi → 0 email rời SMTP giả; Tắt khẩn cấp quy trình Tiếp nhận lead ở cùng chỗ → 0 email.
 - [ ] R6.5: trần kỳ của workspace Marketing đã cạn → sự kiện kế tiếp được lưu, lượt chạy do Data Hub kích hoạt giữ `queued` tới `resets_at` với `limit_exceeded`, 0 lời gọi model.
-- [ ] R6.6: phát hành khi một câu an ninh nền tảng trượt bị chặn ở máy chủ; Tác giả tự duyệt phát hành trả 409 `author_cannot_approve`.
+- [ ] R6.6: phát hành khi một câu an ninh nền tảng trượt bị chặn ở máy chủ; người gửi phiên bản tự duyệt phát hành trả 409 `conflict` với `second_person_required`; một người đóng góp của phiên bản không phải người gửi duyệt trả 409 `author_cannot_approve`; phiên bản không lên Đang dùng ở cả hai lần.
 - [ ] R6.7: màn Mức độ sử dụng và lịch sử lượt chạy của lượt Tiếp nhận lead đọc được theo quyền người xem; một người ngoài tầm không thấy lượt chạy.
 - [ ] MP1: lead có đồng ý `withdrawn` → bước gửi trả `blocked:consent_withdrawn`, 0 lời gọi SMTP giả, có một dòng nhật ký gửi `outcome` `blocked`; gỡ sàn gửi tin ở executor → tin gửi, đỏ.
 - [ ] MP2: gửi kiểm định quy trình có `score → send` không qua `approve` → 422 `trifecta_path_unapproved` nêu đường; trợ lý có công cụ gửi trực tiếp khai A3 → gửi kiểm định 422 `capability_trifecta_autonomy`; gỡ phân tích năng lực → phiên bản lọt sang Đang kiểm định, đỏ.
-- [ ] MP3: một nhân viên Sales ngoài tầm thấy mở phê duyệt gửi tin → 404; người tạo lượt chạy giữ quyền duyệt tự duyệt → 409; gỡ kiểm quyền người quyết định → đỏ.
+- [ ] MP3: một nhân viên Sales ngoài tầm thấy mở phê duyệt gửi tin → 404; người tạo lượt chạy giữ quyền duyệt tự duyệt → 409 `second_person_required`; gỡ kiểm quyền người quyết định → đỏ.
 - [ ] MP4: admin công ty B `GET` Lead của A → 404; trợ lý của B hỏi tên lead của A → không có; webhook tới endpoint của A ký bằng bí mật của B → 401, không lưu; gỡ một policy RLS → đỏ.
 - [ ] MP5: nhân viên Sales C liệt kê Lead → không Lead ngoài tầm; `GET` theo id ngoài tầm → 404; trưởng Marketing thấy mọi Lead của workspace Marketing, không Lead nào của workspace Sales; gỡ policy bản ghi → đỏ.
 - [ ] MP6: vai Cộng tác viên Marketing: API không trả `name`, `phone_e164`, `email`, `message`; lọc theo `phone_e164` → 422; trợ lý trả lời không có số; cấp `update` trên `mkt_lead` cho vai đó → `phone_e164` hiện (field-security:R2.6), đỏ; gỡ áp quyền trường một đường → rò đúng đường đó, đỏ.
@@ -50,10 +50,11 @@ Lát có một bộ kiểm thử đầu-cuối trên hai công ty với nhà cun
 
 - `packages/python/dw_agent_runtime/src/dw_agent_runtime/autonomy.py:14-18`; spec: MP1, MP2.
 - spec: R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.7, và MP1 tới MP18.
-- agent-lifecycle:R7.1, R8.1; usage-and-limits:R4.10, R5.5, R6.2; workflow-engine:R5.10; workflow-triggers:R1.3, R1.4; telemetry-and-audit (đang viết đợt này); `.claude/rules/failure-modes.md`; YC3, YC4; ADR-0124 (Accepted), ADR-0125 (Accepted).
+- agent-lifecycle:R5.2, R7.1, R8.1; usage-and-limits:R4.10, R5.5, R6.2; workflow-engine:R5.10; workflow-triggers:R1.3, R1.4; telemetry-and-audit (đang viết đợt này); `.claude/rules/failure-modes.md`; YC3, YC4; ADR-0124 (Accepted), ADR-0125 (Accepted).
 
 ## Comments
 
 - 2026-10-23 (agent): bộ đột biến là nơi ghi lần thấy đỏ của 18 kiểm soát MP1-MP18 (spec R6.2); ticket 01-04 dựng phần chức năng, ticket này chứng minh gỡ kiểm làm đỏ (`.claude/rules/failure-modes.md` #3). MP14 phần tiếp tục sau mở băng và MP12 phần hoãn tới 08:00 là W2.
 - 2026-10-23 (agent): áp quyết định của Đạt ngày 23/10/2026: 422 lúc gửi kiểm định cho MP2, MP7; bảng mã người quyết định cho MP3 và R6.6 (409 `author_cannot_approve`); `test` trả 422 ở W1 cho MP11 (DO-26.1); lượt do Data Hub thiếu hạn mức kỳ giữ `queued` cho R6.5, MP13 (DO-21.3); MP6 phủ cả bốn trường `basic` (DO-34.1). Ticket này cũng là nơi chứng minh trên đường thật của agent-lifecycle:R8.4 (I:agent-lifecycle/05~workflow-triggers/01).
 - 2026-10-24 (agent): áp quyết định của Đạt ngày 24/10/2026: MP14 và R6.4 thử Đóng băng công ty demo hay Tắt khẩn cấp quy trình (G:agent-lifecycle:dữ-liệu\~marketing-pilot:MP14); MP5 ở mức W1, MP6 bỏ vế xuất; Tương tác ở W1 là dòng nhật ký gửi (N4) cho MP1, MP10, MP16; R6.5 và MP13 dẫn bảng từ chối của workflow-engine (A:usage-and-limits:R4.2\~workflow-engine:R5.9); đường gửi W1 là lời gọi công cụ qua `ToolExecutor`, lane gửi tin đã xếp hàng là W2 của connections-and-vault.
+- 2026-10-24 (agent): lượt sửa thứ hai của vòng 4, theo dòng tạm cùng ngày của spec (V4.P9; ADR-0104 (Accepted) quyết 11): kiểm tiền tố nghiêm chạy trước mọi guard, nên MP3 khẳng định `second_person_required` cho người tạo lượt chạy tự duyệt, và R6.6 tách hai mã: người gửi tự duyệt phát hành nhận `second_person_required`, chỉ người đóng góp không phải người gửi nhận `author_cannot_approve`; câu "Tác giả tự duyệt phát hành trả 409 `author_cannot_approve`" bỏ.

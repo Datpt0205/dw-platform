@@ -96,7 +96,10 @@ Sales and sends a message once a person approves; all of it answers to the one a
    gate) owns every term, so a changed term is a new policy version, never a migration. telemetry-and-audit owns the
    policy's format and its lane; the ticket that registers a table writes that table's term under its `schema.table`
    key in the same change, so the test that every registered append-only table has a term is green from the
-   registering change on.
+   registering change on. The one exception is the registry's first row: its revision (studio-skeleton/01) edits no
+   policy file, and until usage-and-limits/02, the first ticket of ADR-0122 decision 7's chain, moves the term under
+   the `platform.audit_events` key, the policy model maps `audit.tables.audit_events` of `retention@1.7.0` to that
+   key, so the test is green from the registry's own revision on.
 8. **si-platform is reference and selective port source (D5).** Pure code is ported at a pinned commit, with its
    tests, under a first line `Ported from si-platform <path> at <commit> (<date>). Changes: <one line>. Decision: ADR 01NN.`
    Those headers are the ledger (`git grep "Ported from si-platform"`); there is no sync, and a later si fix is a new
@@ -233,3 +236,8 @@ Sales and sends a message once a person approves; all of it answers to the one a
 - Đạt accepted the open recommendations of the second consistency check; the status stays Accepted.
 - Decision 7: telemetry-and-audit owns the retention policy's format (keys `schema.table`) and its lane, and each
   ticket that registers a table adds that table's term in the same change (F:ADR-0100~studio-skeleton:R3.7).
+- Third consistency check (round 4), second pass: decision 7 names its one exception, the registry's first row,
+  `platform.audit_events`, whose revision edits no policy file and whose term the policy model maps from
+  `retention@1.7.0` until usage-and-limits/02, the head of ADR-0122 decision 7's chain, moves it under its
+  `schema.table` key (V4.P1, the planner's provisional call; if it is wrong, studio-skeleton/01 releases the first
+  version with that key and the exception goes).

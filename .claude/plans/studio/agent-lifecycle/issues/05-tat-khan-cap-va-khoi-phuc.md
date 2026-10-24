@@ -38,8 +38,9 @@ ticket 03.
    `artifact_killed` của thành phần gốc và không gọi nhà cung cấp nếu bị tắt; kèm test hợp đồng với lane
    giả. Lane gửi tin đã xếp hàng thật là của connections-and-vault ở W2 (spec R8.4); đường gửi W1 của lát đi qua
    cửa công cụ và được chứng minh ở marketing-pilot/05 (marketing-pilot:R6.4).
-5. Người xin bật lại không tự duyệt được: luồng phê duyệt nghiêm từ chối 409 khi người quyết là người
-   xin, và công tắc không gỡ.
+5. Người xin bật lại không tự duyệt được: luồng phê duyệt nghiêm từ chối 409 `conflict` với `details.reason_code`
+   `second_person_required` khi người quyết là người xin, mã mà `_enforce_strict_rules` của tenant-config/05 đặt một
+   lần cho mọi loại dưới tiền tố nghiêm (V4.P9; ADR-0104 (Accepted) quyết 11), và công tắc không gỡ.
 
 ## Tiêu chí chấp nhận
 
@@ -55,7 +56,8 @@ ticket 03.
       stack con.
 - [ ] R8.6 (AL14): xin bật lại → mở yêu cầu phê duyệt `studio.lifecycle.revive` nghiêm; duyệt bởi người
       khác → công tắc gỡ.
-- [ ] R8.7 (AL14): người xin bật lại tự duyệt → 409, công tắc không gỡ.
+- [ ] R8.7 (AL14): người xin bật lại tự duyệt → 409 `conflict` với `details.reason_code` `second_person_required`,
+      công tắc không gỡ.
 - [ ] R8.8: kill và bật lại ghi đúng một audit trong cùng giao dịch; rollback thì audit không còn.
 - [ ] Xong: `make ci && make test-integration` xanh.
 
@@ -81,3 +83,7 @@ ticket 03.
   ở làn thật (cạnh nằm ở hai ticket đó); ticket này không chờ ticket nào của hai spec đó.
 - 2026-10-24 (agent): vòng sửa thứ tư: chờ tenant-rbac/02, vì INSERT hai khóa của ticket nêu mọi cột NOT NULL có lúc
   đó, gồm `tenant_grantable` (Quyết định tạm của spec).
+- 2026-10-24 (agent): vòng sửa thứ tư, lượt b: người xin tự quyết `studio.lifecycle.revive` nhận 409
+  `second_person_required` (V4.P9; spec R8.7, AL14, Quyết định tạm cùng ngày).
+- 2026-10-24 (agent): kiểm lượt b: bước 5 và tiêu chí R8.7 khẳng định mã mà tenant-config/05 đặt, trong khi ticket này
+  không chờ ticket đó, trực tiếp hay qua ticket 01, 03; cạnh hay cách khác do người lập kế hoạch quyết, chưa thêm ở đây.

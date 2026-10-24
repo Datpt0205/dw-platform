@@ -110,22 +110,24 @@ approves an MCP tool definition is also the requester's D11 (2026-10-23).
    has passed a hostile-server suite and the gateway is split per tenant (DO-46.1 (b)).
    `traceparent` reaches the gateway, an internal hop, and never an MCP server, and no `baggage` is sent (DO-46.3 (b)).
 9. **An MCP tool runs only as a definition a second person approved.** An MCP tool version passes ADR-0120's stage
-   machine with no quality gate, and the tool kind's publish service makes it `live` only after a person other than
-   the registrant approves the exact model-facing text: a run-less approval `studio.mcp.tool_approval` stamped
-   `required_scope = studio.mcp.approve` (ADR-0004), under a strict prefix so the registrant cannot decide it, a
-   comment required, its decision announced as `studio.mcp.tool_approval.decided` (`CLAUDE.md:274-279`). It is pinned
-   by the SHA-256 of the server's definition (`name`, `title`, `description`, `inputSchema`, `outputSchema`,
-   `annotations`, in RFC 8785 form). Drift refuses the call before `tools/call` (`mcp_tool_drifted`) and suspends the
-   tool through its switch. A re-approved version goes live with the switch still open, and only ADR-0120's strict
-   `studio.lifecycle.revive`, decided by a person other than its requester, lifts it (ADR-0120 decision 7); the
-   `mcp_drift` lane re-lists approved servers. A server's request for input (elicitation) becomes a human task for the
-   person the run acts for (ADR-0112's form), never an answer from the model. Elicitation arrives in v1.5
-   (DO-46.2 (a)): until that form exists the gateway does not declare the capability, and a run with no person
-   declines. The MCP tool's approval is the one named exception: every other tool kind (`object_crud`, from W2
-   `http` and `workflow`, and any kind registered after them) passes the same stage machine with no quality gate but
-   opens ADR-0120's run-less approval `studio.publish.tool`, stamped `required_scope = studio.publish.approve` like
-   every kind of ADR-0120 decision 2, its author refused by the `require_not_author` guard under the strict prefix
-   `studio.publish.`.
+   machine with no quality gate and goes `live`, through ADR-0120's publish transaction and the tool kind's publish
+   hook (ADR-0109 decision 1), only after a person other than the registrant approves the exact model-facing text: a
+   run-less approval `studio.mcp.tool_approval` stamped `required_scope = studio.mcp.approve` (ADR-0004), under a
+   strict prefix so the registrant cannot decide it, a comment required, its decision announced as
+   `studio.mcp.tool_approval.decided` (`CLAUDE.md:274-279`). It is pinned by the SHA-256 of the server's definition
+   (`name`, `title`, `description`, `inputSchema`, `outputSchema`, `annotations`, in RFC 8785 form). Drift refuses
+   the call before `tools/call` (`mcp_tool_drifted`) and suspends the tool through its switch. A re-approved version
+   goes live with the switch still open, and only ADR-0120's strict `studio.lifecycle.revive`, decided by a person
+   other than its requester, lifts it (ADR-0120 decision 7); the `mcp_drift` lane re-lists approved servers. A
+   server's request for input (elicitation) becomes a human task for the person the run acts for (ADR-0112's form),
+   never an answer from the model. Elicitation arrives in v1.5 (DO-46.2 (a)): until that form exists the gateway
+   does not declare the capability, and a run with no person declines. The MCP tool's approval is the one named
+   exception. From W2, when tenant tools register as kind `tool`, a version of every other tool kind
+   (`object_crud`, which the executor already runs in W1, `http` and `workflow`, and any kind registered after them)
+   passes the same stage machine with no quality gate but opens ADR-0120's run-less approval `studio.publish.tool`,
+   stamped `required_scope = studio.publish.approve` like every kind of ADR-0120 decision 2, under the strict prefix
+   `studio.publish.`: its submitter deciding meets `second_person_required` before the `require_not_author` guard
+   refuses any other author with `author_cannot_approve` (ADR-0104 decision 11).
 
 ## Alternatives considered
 
@@ -231,6 +233,12 @@ Amended by Đạt on 2026-10-24, who accepted every recommendation the second co
 - Decision 9 and Consequences: a drifted tool's switch stays open when its re-approved version goes live, and only a
   `studio.lifecycle.revive` decided by a second person lifts it (D11 as the requester and Đạt scoped it, opening with
   two people), as mcp-client already chains them.
-- Third consistency check (round 4), Đạt's D3: decision 9 keeps the MCP tool's `studio.mcp.tool_approval`, stamped
+- Third consistency check (round 4), Đạt's V4.3: decision 9 keeps the MCP tool's `studio.mcp.tool_approval`, stamped
   `studio.mcp.approve`, as a named exception and gives every other tool kind ADR-0120's `studio.publish.tool`,
   stamped `studio.publish.approve` (A:mcp-client:R3.1~tools-and-skills:spec).
+- Third consistency check (round 4), second pass, the planner's provisional calls: decision 9 makes a version `live`
+  through ADR-0120's publish transaction and the tool kind's publish hook, the registry entry ADR-0109 decision 1
+  names, instead of a "publish service" of the kind's own; places `studio.publish.tool` in W2, when tenant tools
+  register as kind `tool`, while the executor runs `object_crud` from W1 (completing V4.3; if it is wrong, the kind
+  and its approval move to W1); and orders its refusals as ADR-0104 decision 11 does, the submitter meeting
+  `second_person_required` first and any other author `author_cannot_approve` (V4.P9).

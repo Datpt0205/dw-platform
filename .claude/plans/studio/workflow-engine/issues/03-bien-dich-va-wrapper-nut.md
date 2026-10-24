@@ -12,14 +12,14 @@ Biên dịch phần P1 của một phiên bản quy trình (tuần tự, router,
 ## Việc cần làm
 
 1. Trình biên dịch (`dw_studio.workflows.workflows.compiler`) dựng từ `WorkflowIR` của ticket 01: một kênh cho mỗi đầu ra node (không dùng một dict `vars` chung), router bằng cạnh điều kiện, node chờ là `interrupt()` đứng đầu, `recursion_limit` tính từ `limits.max_steps`, không bao giờ để mặc định thư viện. LangGraph chỉ ở module này và `dw_studio.agents.workflows` (studio-skeleton:R5.5).
-2. Cache LRU trần 256 theo `(tenant_id, artifact_version_id, compiler_version)` trong `dw_agent_runtime.adapters`; hash schema state tính một lần.
+2. Cache LRU trần 256 theo `(tenant_id, artifact_version_id, mã băm ghim, compiler_version)` trong `dw_agent_runtime.adapters`, mã băm ghim là `definition_hash` của bản đã niêm phong hay mã băm tạm của bản Nháp trong bản kê của lượt mô phỏng (workflow-engine/02, R3.9), vì bản Nháp đổi nội dung mà giữ id; hash schema state tính một lần.
 3. Wrapper nút: `asyncio.timeout` từng lần, `retry` có backoff, `on_error` `fail` và `continue`; đúng một hiệu ứng mỗi node qua đúng cửa (`ToolExecutor`, `RecordsPort`, `ModelResolver`), chuyển `run_mode` của lượt chạy tới cửa đó để chính cửa giả lập ở `simulate`; khóa chống lặp `wf:{run_id}:{node_id}:{iteration_path}` (qua executor giành-lượt-trước của foundations-hardening/04); trần đầu ra 64 KiB; kiểm `RunControlPort` ở đầu node; span `dw.node`; gắn `app.actor_kind = 'workflow'` và `app.boundary_id` mỗi giao dịch (record-access/04).
 4. Node không chứa SQL hay SDK nhà cung cấp; nhận cổng bằng tiêm (studio-skeleton:R5.4).
 
 ## Tiêu chí chấp nhận
 
 - [ ] R4.1: config biên dịch không bao giờ thiếu `recursion_limit`; tài liệu lead mẫu của ticket 01 biên dịch và chạy với node giả.
-- [ ] R4.2: 300 phiên bản biên dịch → cache ≤ 256; khóa gồm `compiler_version`.
+- [ ] R4.2: 300 phiên bản biên dịch → cache ≤ 256; khóa gồm mã băm ghim và `compiler_version`; sửa một bản Nháp rồi xin lượt mô phỏng mới → graph biên dịch lại từ nội dung mới, không lấy graph của nội dung cũ trong cache.
 - [ ] R4.3: node lỗi ba lần với `on_error: continue` → nhánh tiếp chạy; `on_error: fail` → lượt chạy `failed`, nhánh tiếp không chạy.
 - [ ] R4.4: node gọi hai hiệu ứng ra ngoài → wrapper nút chặn hiệu ứng thứ hai; mỗi loại hiệu ứng đi qua đúng cửa của nó.
 - [ ] R4.5 (WE7): hai worker chạy cùng node do lease giả hết hạn → nhà cung cấp giả nhận đúng một lần; bỏ khóa chống lặp → test đỏ.
@@ -39,3 +39,4 @@ Biên dịch phần P1 của một phiên bản quy trình (tuần tự, router,
 
 - 2026-10-23 (agent): theo phiếu 23/10/2026: giả lập ghi bản ghi ở RecordService, không trong Bước (D:custom-objects:R5.4~workflow-nodes:R5.3); `RunControlPort` có thêm lý do chủ thể chạy không `active` (H:org-and-principals:R4.6).
 - 2026-10-24 (agent): theo quyết định của Đạt ngày 24/10/2026 (I:record-access:R6.4~workflow-engine:R4.9): ticket chờ record-access/04 (helper `app.actor_kind`, `app.boundary_id` của R4.9) và custom-objects/03 (RecordService giả lập ở `simulate` của R4.7), nên test R4.7 và R4.9 chạy với bản thật.
+- 2026-10-24 (agent): lượt b của vòng 4: khóa cache mang mã băm mà lượt chạy ghim, vì từ V4.4 một bản Nháp chạy mô phỏng được mà giữ id khi sửa, nên khóa theo id phiên bản cho lượt mới graph của nội dung cũ (B6; workflow-engine:R3.9, CLAUDE.md, Non-negotiable architecture: lượt chạy chỉ phân giải từ bản kê).

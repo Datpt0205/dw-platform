@@ -54,8 +54,8 @@ giả lập hay nội bộ, và câu trả lời là một điều kiện vào c
 Mọi trường (đối tượng, nguồn dữ liệu, thuộc tính lược đồ công cụ) mang một Loại dữ liệu cá nhân từ một
 module kernel, và tạo trường thiếu loại bị từ chối (YC84).
 
-- R1.1 NẾU một yêu cầu tạo một trường không có `pd_category`, THÌ API chủ bảng PHẢI trả 422
-  `pd_category_required` và không tạo trường.
+- R1.1 NẾU một yêu cầu tạo một trường không có `pd_category`, THÌ API chủ bảng PHẢI trả 422 `validation_failed`
+  với `errors[].code` `pd_category_required` và con trỏ tới trường đó (app-standards:R1.3), và không tạo trường.
 - R1.2 Một ràng buộc CHECK `pd_category` của một bảng định nghĩa trường PHẢI bằng đúng danh sách của
   `dw_kernel.personal_data` (`none`, `basic`, `sensitive`).
 - R1.3 NẾU một bảng định nghĩa trường nhận một giá trị `pd_category` hay `sensitive_type` ngoài danh sách
@@ -135,6 +135,9 @@ dữ liệu riêng và tác động ra ngoài phải qua người trước tác 
 - R4.6 KHI Phân tích năng lực chạy cho một phiên bản lúc gửi kiểm định, `capability_analysis` PHẢI ghi kết
   quả (tín hiệu, đường, kết luận, phiên bản bộ phân tích) vào `studio.version_assessments` theo Mã băm định
   nghĩa của phiên bản trong giao dịch gửi kiểm định, để lane `studio_gate` đọc (agent-lifecycle:R6.1).
+- R4.7 NẾU một dòng `studio.version_assessments` mang `tenant_id` của một công ty mà `version_id` trỏ tới phiên bản
+  của công ty khác, THÌ PostgreSQL PHẢI từ chối dòng đó với SQLSTATE 23503 qua FK ghép `(tenant_id, version_id)` tới
+  `uq_artifact_versions_tenant_id_id` (tenant-config:R2.18).
 
 ### R5 — Lưu giữ cho kho dữ liệu cá nhân của lát, dẫn Nghị định 356
 
@@ -155,10 +158,17 @@ thuộc; thời hạn của sự kiện vào Data Hub do workflow-triggers/02 th
   của công ty hay yêu cầu của chủ thể dữ liệu (W2) xóa dòng chặn gửi.
 - R5.5 KHI lane `offboarding` xóa dữ liệu của một công ty đang `offboarding`, lane `offboarding` PHẢI xuất rồi
   xóa mọi dòng của công ty đó trong `platform.consent_records`, `platform.marketing_send_log` (hai bảng qua
-  `platform.purge_tenant_append_only`, usage-and-limits:R3.8), `platform.contact_suppressions` và
+  `platform.purge_tenant_append_only`, usage-and-limits:R3.10), `platform.contact_suppressions` và
   `studio.version_assessments` (theo FK ON DELETE CASCADE khi `studio.artifact_versions` của công ty bị xóa) (YC6).
 - R5.6 NẾU `dw_app` xóa một dòng `platform.contact_suppressions` của một công ty có `platform.tenants.status` khác
   `offboarding`, THÌ PostgreSQL PHẢI từ chối với SQLSTATE 23514 và không xóa dòng nào.
+- R5.7 KHI lane lưu giữ chạy với mốc 90 ngày của hội thoại, lane lưu giữ PHẢI xóa ở mọi công ty mọi tin nhắn
+  `studio.conversation_messages` tạo trước mốc, rồi mọi hội thoại `studio.conversations` không còn tin nào và có
+  hoạt động cuối trước mốc, và giữ nguyên mọi tin và hội thoại có hoạt động từ mốc trở đi (DO-52; ADR-0122 (Accepted)
+  quyết 7).
+- R5.8 KHI lane lưu giữ xóa tin nhắn hay hội thoại của một workspace theo R5.7, lane lưu giữ PHẢI ghi trong cùng
+  giao dịch, ở công ty và workspace đó, một sự kiện audit `studio.conversation.expired` đứng tên chính lane
+  (`system:<lane>`), mang số tin và số hội thoại đã xóa ở workspace đó (ADR-0011 (Accepted)).
 
 ## Trong phạm vi
 
@@ -168,14 +178,15 @@ thuộc; thời hạn của sự kiện vào Data Hub do workflow-triggers/02 th
   `SendAdmissionPort`; module thuần `capability_analysis`, bảng điều phối nhãn ở composition root và kiểm
   đăng ký vào bảng kiểm theo loại lúc gửi kiểm định của agent-lifecycle (agent-lifecycle:R2.7);
   `configs/policies/marketing_send@1.0.0.yaml` (gồm số người nhận tối đa mỗi lượt), `configs/policies/studio_risk@1.0.0.yaml`
-  và dòng thời hạn của kho lát này trong tệp chính sách retention.
+  và dòng thời hạn của kho lát này trong tệp chính sách retention; bộ xóa hội thoại hết hạn, hàm SECURITY DEFINER
+  hẹp `studio.purge_expired_conversations(p_cutoff timestamptz)` mà lane lưu giữ gọi (R5.7, R5.8).
 - Bảng mới ở W1: `platform.consent_records`, `platform.contact_suppressions`, `platform.marketing_send_log`,
   `studio.version_assessments`; cột `data_route_class` trên `platform.tenants` và `platform.workspaces`.
   `platform.cross_border_attestations` đến ở W2 cùng R2.5 (Ngoài phạm vi).
 - Route công khai `GET /api/v1/public/unsubscribe/{token}`; `PATCH /api/v1/admin/tenant` thêm
   `data_route_class` (W1 chỉ siết).
 - Audit: `marketing.sent`, `marketing.send_refused` (chỉ lát này ghi, trong giao dịch của executor),
-  `residency.class_changed`.
+  `residency.class_changed`, `studio.conversation.expired` (lane lưu giữ ghi, đứng tên chính lane; R5.8).
 
 ## Ngoài phạm vi
 
@@ -243,12 +254,25 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
   mỗi bảng có một dòng `STUDIO_EXCLUSIONS` nêu cách xóa, `platform.purge_tenant_append_only` (R5.5;
   studio-skeleton:R4.3).
 - `studio.version_assessments`: một dòng mỗi phiên bản và Mã băm định nghĩa, ghi trong giao dịch gửi kiểm
-  định: tín hiệu A, B, C, đường vi phạm, kết luận, phiên bản bộ phân tích; RLS theo công ty như vỏ phiên
-  bản; `version_id` FK tới `studio.artifact_versions` ON DELETE CASCADE, có index, như `from_version_id` của
-  `studio.dependencies` (tenant-config), nên lượt xóa `studio.artifact_versions` khi offboarding xóa luôn dòng đánh
-  giá; `dw_app` SELECT, INSERT, không DELETE, nên bảng có một dòng `STUDIO_EXCLUSIONS` nêu cách xóa đó, cascade từ
-  `studio.artifact_versions` (R5.5; studio-skeleton:R4.1); Mức rủi ro AI (`suggested_tier`, `declared_tier`) thêm
-  ở W2 (ADR-0125 (Accepted) quyết 6).
+  định: tín hiệu A, B, C, đường vi phạm, kết luận, phiên bản bộ phân tích; bảng toàn tenant như vỏ phiên bản (RLS
+  chỉ theo công ty, không cột `workspace_id`), có tên và lý do trong danh sách bảng toàn tenant mà
+  `test_rls_coverage.py` giữ, lý do là đánh giá đi theo phiên bản toàn tenant của nó (`CLAUDE.md` mục 'Tenancy and
+  authorization'; studio-skeleton:R9.1); FK ghép `(tenant_id, version_id)` tới
+  `studio.artifact_versions (tenant_id, id)`, đích là `uq_artifact_versions_tenant_id_id` của tenant-config/02, ON
+  DELETE CASCADE, có index `(tenant_id, version_id)`, nên một dòng không trỏ được tới phiên bản của công ty khác
+  (R4.7) và lượt xóa `studio.artifact_versions` khi offboarding xóa luôn dòng đánh giá; `dw_app` SELECT, INSERT,
+  không DELETE, nên bảng có một dòng `STUDIO_EXCLUSIONS` nêu cách xóa đó, cascade từ `studio.artifact_versions`
+  (R5.5; studio-skeleton:R4.1); Mức rủi ro AI (`suggested_tier`, `declared_tier`) thêm ở W2 (ADR-0125 (Accepted)
+  quyết 6).
+- `studio.purge_expired_conversations(p_cutoff timestamptz)`: hàm SECURITY DEFINER hẹp của ticket 06 theo mẫu xóa
+  dữ liệu hết hạn của ADR-0122 (Accepted) quyết 7, vì `dw_app` chỉ SELECT, INSERT trên `studio.conversation_messages`
+  (agent-builder): ở mọi công ty, xóa tin nhắn có `created_at < p_cutoff`, rồi xóa hội thoại không còn tin nào và
+  có `created_at < p_cutoff` (hoạt động cuối của nó trước mốc, vì mọi tin của nó đã quá hạn), theo thứ tự đó vì FK
+  ghép của tin nhắn tới `studio.conversations` là `ON DELETE RESTRICT`; trả một dòng mỗi workspace có dòng bị xóa
+  (`tenant_id`, `workspace_id`, số tin, số hội thoại), vì một sự kiện audit luôn mang `workspace_id`. Lane lưu giữ
+  gọi hàm với mốc 90 ngày (R5.7) và, trong cùng giao dịch, ghi cho mỗi dòng trả về một sự kiện
+  `studio.conversation.expired` của chính lane, ở công ty và workspace của dòng đó, qua
+  `lane_audit.append_across_tenants`; không ghi được sự kiện thì không dòng nào bị xóa (R5.8; ADR-0011 (Accepted)).
 
 ## API
 
@@ -257,35 +281,39 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
   (R2.7); đường nới hai người với Xác nhận là W2 qua tenant-config (R2.5).
 - `GET /api/v1/public/unsubscribe/{token}`: route công khai, HMAC một địa chỉ, idempotent, rate-limited,
   không lộ địa chỉ có tồn tại.
-- Lỗi theo vỏ `application/problem+json` của ADR-0108 (Accepted); `details.reason_code`:
-  `pd_category_required`, `residency_refused`, `blocked:<lý do>` (lý do của Sàn gửi tin ở ADR-0124 (Accepted)
+- Lỗi theo vỏ `application/problem+json` của ADR-0108 (Accepted). Lát này là chủ mã `pd_category_required`, một
+  `errors[].code` của 422 `validation_failed` có con trỏ tới trường thiếu loại (app-standards:R1.3), không phải
+  `details.reason_code`; spec chủ bảng trả nó cùng hình (custom-objects:R2.2, workflow-triggers:R4.1).
+  `details.reason_code`: `residency_refused`, `blocked:<lý do>` (lý do của Sàn gửi tin ở ADR-0124 (Accepted)
   quyết 1, gồm `recipient_cap`; `processing_restricted` đến ở W2 cùng Hạn chế xử lý), `capability_trifecta_autonomy`,
   `tool_unclassified`, `trifecta_path_unapproved`, `second_person_required`. Mã 422 lúc gửi kiểm định đi qua
   route gửi kiểm định của agent-lifecycle (agent-lifecycle:R2.7).
 
 ## Kiểm soát
 
-| #    | Kiểm soát                                                                    | Yêu cầu          | Test âm                                                                                                                                                                                                                  |
-| ---- | ---------------------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| CP1  | Trường thiếu `pd_category` không tạo được                                    | R1.1, R1.2, R1.3 | POST một trường không có `pd_category` → 422 `pd_category_required`; thêm một giá trị CHECK ngoài enum kernel → test drift đỏ                                                                                            |
-| CP2  | `vn_only` không gửi byte nào ra nước ngoài                                   | R2.2             | Agent `vn_only` với tuyến `foreign` → từ chối trước khi gửi, adapter giả ghi 0 lời gọi; gỡ cổng → test đỏ                                                                                                                |
-| CP3  | Mọi đường gọi model qua cùng cổng                                            | R2.3             | Chép lời khi `vn_only` tới URL `foreign` → job `failed` lý do `residency_refused`, 0 request; gỡ cổng ở embedding → test đỏ                                                                                              |
-| CP4  | Workspace, agent không nới lộ trình                                          | R2.4             | Đặt `cross_border_full` ở workspace khi công ty `vn_only` → 422, không đổi dòng                                                                                                                                          |
-| CP5  | Không nới lộ trình bằng một người                                            | R2.5, R2.7       | W1: `PATCH` nới công ty sang `cross_border_full` → 409 `second_person_required`, lộ trình giữ nguyên; gỡ chặn → test đỏ (đường hai người và Xác nhận của R2.5 thử ở W2)                                                  |
-| CP6  | Trường cá nhân vào prompt trên tuyến ra nước ngoài bị chặn lúc gửi kiểm định | R2.6             | Gắn `full_name` vào prompt trên tuyến `cross_border_full` → gửi kiểm định 422 `residency_refused`, phiên bản vẫn Nháp; gỡ kiểm → test đỏ (MP7)                                                                           |
-| CP7  | Không gửi marketing khi thiếu đồng ý; lần chặn để lại Tương tác              | R3.1, R3.7       | Lead không có Bản ghi đồng ý → `blocked:no_consent`, 0 tin, `marketing.send_refused` và một dòng nhật ký gửi `outcome` `blocked` cùng giao dịch; gỡ kiểm → test đỏ                                                       |
-| CP8  | Sàn gửi kiểm trong ToolExecutor, không ở node                                | R3.2             | Gọi hành động gửi qua node, qua công cụ agent, qua quy trình-như-công-cụ không đồng ý → cả ba bị chặn; gỡ kiểm ở executor → test đỏ (MP1, MP12, MP15)                                                                    |
-| CP9  | Hủy đăng ký có hiệu lực trong 5 phút                                         | R3.4             | Bấm link hủy → lần gửi sau `blocked:suppressed` trong ≤ 5 phút; tin đang chờ bị kiểm lại                                                                                                                                 |
-| CP10 | Token hủy sai trả 404 không lộ tồn tại                                       | R3.6             | `GET /api/v1/public/unsubscribe/{token}` token sai chữ ký → 404, không dòng nào, không lộ địa chỉ                                                                                                                        |
-| CP11 | Công ty không nới sàn gửi                                                    | R3.5             | Overlay đặt tần suất lỏng hơn Sàn gửi tin → 422; overlay đặt 300 người nhận mỗi lượt → 422, đặt 50 → nhận; gỡ kiểm → test đỏ                                                                                             |
-| CP12 | Bộ ba nguy hiểm không gửi kiểm định được                                     | R4.2             | Bỏ node phê duyệt khỏi workflow pilot → gửi kiểm định 422 `trifecta_path_unapproved` nêu đường; đường `score → send` không qua `approve` → 422 nêu đường (MP2)                                                           |
-| CP13 | Agent bộ ba phải tự chủ ≤ A2                                                 | R4.3             | Agent có cả ba nhãn ở A3 → 422 `capability_trifecta_autonomy`; gỡ kiểm → test đỏ                                                                                                                                         |
-| CP14 | Công cụ thiếu phân loại không gửi kiểm định được                             | R4.4             | Dùng công cụ thiếu một phân loại → 422 `tool_unclassified`; node loại lạ → coi như cả ba nhãn                                                                                                                            |
-| CP15 | Không cấu hình nào hạ sàn bộ ba                                              | R4.5             | Overlay bỏ node phê duyệt hay nâng Mức tự chủ trên A2 cho phiên bản bộ ba → gửi kiểm định 422, phiên bản vẫn Nháp                                                                                                        |
-| CP16 | Mỗi lớp retention mới có bộ xóa                                              | R5.1, R5.2       | Một lớp retention thiếu bộ xóa đăng ký → test tập bộ xóa đỏ                                                                                                                                                              |
-| CP17 | Danh sách chặn gửi không tự hết hạn                                          | R5.4             | Dòng chặn gửi 10 năm tuổi qua một lượt lane lưu giữ → dòng còn, lần gửi sau vẫn `blocked:suppressed`; thêm hạn theo thời gian cho lớp chặn gửi → test đỏ                                                                 |
-| CP18 | Một lượt chạy không gửi quá số người nhận tối đa                             | R3.8             | Lượt chạy gốc đã gửi tới 200 người nhận, tin tới người thứ 201 → `blocked:recipient_cap`, SMTP giả 0 lời gọi, dòng nhật ký gửi `blocked`; tin thứ 200 → gửi; overlay hạ còn 50 → người thứ 51 bị chặn; gỡ kiểm → test đỏ |
-| CP19 | Chỉ lượt xóa của offboarding xóa được dòng chặn gửi                          | R5.6             | `dw_app` DELETE một dòng chặn gửi của công ty `active` → 23514, dòng còn, lần gửi sau vẫn `blocked:suppressed`; cùng lệnh khi công ty `offboarding` → xóa được; gỡ phép kiểm DELETE khỏi trigger → test đỏ               |
+| #    | Kiểm soát                                                                               | Yêu cầu          | Test âm                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ---- | --------------------------------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| CP1  | Trường thiếu `pd_category` không tạo được                                               | R1.1, R1.2, R1.3 | POST một trường không có `pd_category` → 422 `validation_failed`, `errors[].code` `pd_category_required` có con trỏ tới trường; thêm một giá trị CHECK ngoài enum kernel → test drift đỏ                                                                                                                                                                                                                                                                                       |
+| CP2  | `vn_only` không gửi byte nào ra nước ngoài                                              | R2.2             | Agent `vn_only` với tuyến `foreign` → từ chối trước khi gửi, adapter giả ghi 0 lời gọi; gỡ cổng → test đỏ                                                                                                                                                                                                                                                                                                                                                                      |
+| CP3  | Mọi đường gọi model qua cùng cổng                                                       | R2.3             | Chép lời khi `vn_only` tới URL `foreign` → job `failed` lý do `residency_refused`, 0 request; gỡ cổng ở embedding → test đỏ                                                                                                                                                                                                                                                                                                                                                    |
+| CP4  | Workspace, agent không nới lộ trình                                                     | R2.4             | Đặt `cross_border_full` ở workspace khi công ty `vn_only` → 422, không đổi dòng                                                                                                                                                                                                                                                                                                                                                                                                |
+| CP5  | Không nới lộ trình bằng một người                                                       | R2.5, R2.7       | W1: `PATCH` nới công ty sang `cross_border_full` → 409 `second_person_required`, lộ trình giữ nguyên; gỡ chặn → test đỏ (đường hai người và Xác nhận của R2.5 thử ở W2)                                                                                                                                                                                                                                                                                                        |
+| CP6  | Trường cá nhân vào prompt trên tuyến ra nước ngoài bị chặn lúc gửi kiểm định            | R2.6             | Gắn `full_name` vào prompt trên tuyến `cross_border_full` → gửi kiểm định 422 `residency_refused`, phiên bản vẫn Nháp; gỡ kiểm → test đỏ (MP7)                                                                                                                                                                                                                                                                                                                                 |
+| CP7  | Không gửi marketing khi thiếu đồng ý; lần chặn để lại Tương tác                         | R3.1, R3.7       | Lead không có Bản ghi đồng ý → `blocked:no_consent`, 0 tin, `marketing.send_refused` và một dòng nhật ký gửi `outcome` `blocked` cùng giao dịch; gỡ kiểm → test đỏ                                                                                                                                                                                                                                                                                                             |
+| CP8  | Sàn gửi kiểm trong ToolExecutor, không ở node                                           | R3.2             | Gọi hành động gửi qua node, qua công cụ agent, qua quy trình-như-công-cụ không đồng ý → cả ba bị chặn; gỡ kiểm ở executor → test đỏ (MP1, MP12, MP15)                                                                                                                                                                                                                                                                                                                          |
+| CP9  | Hủy đăng ký có hiệu lực trong 5 phút                                                    | R3.4             | Bấm link hủy → lần gửi sau `blocked:suppressed` trong ≤ 5 phút; tin đang chờ bị kiểm lại                                                                                                                                                                                                                                                                                                                                                                                       |
+| CP10 | Token hủy sai trả 404 không lộ tồn tại                                                  | R3.6             | `GET /api/v1/public/unsubscribe/{token}` token sai chữ ký → 404, không dòng nào, không lộ địa chỉ                                                                                                                                                                                                                                                                                                                                                                              |
+| CP11 | Công ty không nới sàn gửi                                                               | R3.5             | Overlay đặt tần suất lỏng hơn Sàn gửi tin → 422; overlay đặt 300 người nhận mỗi lượt → 422, đặt 50 → nhận; gỡ kiểm → test đỏ                                                                                                                                                                                                                                                                                                                                                   |
+| CP12 | Bộ ba nguy hiểm không gửi kiểm định được                                                | R4.2             | Bỏ node phê duyệt khỏi workflow pilot → gửi kiểm định 422 `trifecta_path_unapproved` nêu đường; đường `score → send` không qua `approve` → 422 nêu đường (MP2)                                                                                                                                                                                                                                                                                                                 |
+| CP13 | Agent bộ ba phải tự chủ ≤ A2                                                            | R4.3             | Agent có cả ba nhãn ở A3 → 422 `capability_trifecta_autonomy`; gỡ kiểm → test đỏ                                                                                                                                                                                                                                                                                                                                                                                               |
+| CP14 | Công cụ thiếu phân loại không gửi kiểm định được                                        | R4.4             | Dùng công cụ thiếu một phân loại → 422 `tool_unclassified`; node loại lạ → coi như cả ba nhãn                                                                                                                                                                                                                                                                                                                                                                                  |
+| CP15 | Không cấu hình nào hạ sàn bộ ba                                                         | R4.5             | Overlay bỏ node phê duyệt hay nâng Mức tự chủ trên A2 cho phiên bản bộ ba → gửi kiểm định 422, phiên bản vẫn Nháp                                                                                                                                                                                                                                                                                                                                                              |
+| CP16 | Mỗi lớp retention mới có bộ xóa                                                         | R5.1, R5.2       | Một lớp retention thiếu bộ xóa đăng ký → test tập bộ xóa đỏ                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| CP17 | Danh sách chặn gửi không tự hết hạn                                                     | R5.4             | Dòng chặn gửi 10 năm tuổi qua một lượt lane lưu giữ → dòng còn, lần gửi sau vẫn `blocked:suppressed`; thêm hạn theo thời gian cho lớp chặn gửi → test đỏ                                                                                                                                                                                                                                                                                                                       |
+| CP18 | Một lượt chạy không gửi quá số người nhận tối đa                                        | R3.8             | Lượt chạy gốc đã gửi tới 200 người nhận, tin tới người thứ 201 → `blocked:recipient_cap`, SMTP giả 0 lời gọi, dòng nhật ký gửi `blocked`; tin thứ 200 → gửi; overlay hạ còn 50 → người thứ 51 bị chặn; gỡ kiểm → test đỏ                                                                                                                                                                                                                                                       |
+| CP19 | Chỉ lượt xóa của offboarding xóa được dòng chặn gửi                                     | R5.6             | `dw_app` DELETE một dòng chặn gửi của công ty `active` → 23514, dòng còn, lần gửi sau vẫn `blocked:suppressed`; cùng lệnh khi công ty `offboarding` → xóa được; gỡ phép kiểm DELETE khỏi trigger → test đỏ                                                                                                                                                                                                                                                                     |
+| CP20 | Bộ xóa hội thoại chỉ xóa phần quá hạn, có audit, không trả DELETE tin nhắn cho `dw_app` | R5.7, R5.8       | Hai công ty, mỗi công ty có tin 91 ngày và 89 ngày: một lượt lane xóa tin 91 ngày của cả hai, tin 89 ngày còn; hội thoại còn một tin 89 ngày giữ nguyên; hội thoại tạo 10 ngày trước chưa có tin giữ nguyên; mỗi workspace có dòng bị xóa một sự kiện `studio.conversation.expired` đứng tên lane ở đúng công ty và workspace đó, với đúng hai số; `dw_app` DELETE thẳng một tin → `permission denied`; ghi audit hỏng → không dòng nào bị xóa; hàm bỏ điều kiện mốc → test đỏ |
+| CP21 | Dòng đánh giá không trỏ được tới phiên bản của công ty khác                             | R4.7             | Chèn một dòng `studio.version_assessments` mang `tenant_id` của công ty A và `version_id` của một phiên bản công ty B → 23503, không dòng nào; đổi FK ghép về FK một cột `version_id` → test đỏ                                                                                                                                                                                                                                                                                |
 
 ## Tiêu chí xong
 
@@ -307,7 +335,7 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
   (`.claude/plans/studio/usage-and-limits/issues/02-bang-gia-so-su-dung-va-man-hinh.md`); `ResidencyGate` đứng
   trước `LimitsMiddleware` (usage-and-limits:R6.5), và usage-and-limits/03 chờ ticket 03 (OPS-b);
   `platform.drop_expired_partitions` và `platform.purge_tenant_append_only` cho nhật ký gửi và Bản ghi đồng ý
-  (usage-and-limits:R3.8).
+  (usage-and-limits:R3.10).
 - Thứ tự cửa trong gateway có cấu trúc: công tắc Đóng băng và Tắt khẩn cấp của
   `.claude/plans/studio/agent-lifecycle/issues/01-dong-bang-va-kiem-o-moi-cua.md` đứng đầu, rồi `ResidencyGate`
   của ticket 03, rồi `LimitsMiddleware`; ticket 03 chờ agent-lifecycle/01.
@@ -325,8 +353,13 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
   R2.6 (agent-lifecycle:R2.7), và phát hành hai người
   (`.claude/plans/studio/agent-lifecycle/issues/03-hop-dong-vong-doi-va-niem-phong.md`); lane `studio_gate`
   đọc kết quả ở `studio.version_assessments` làm chốt chặn (agent-lifecycle:R6.1).
-- tenant-config: kind `policy` cho đường nới Lộ trình dữ liệu hai người ở W2 (R2.5).
-- agent-builder: hội thoại `studio.conversations` mà lớp lưu giữ của ticket 06 xóa
+- tenant-config: khóa đích `uq_artifact_versions_tenant_id_id UNIQUE (tenant_id, id)` của
+  `studio.artifact_versions` cho FK ghép của `studio.version_assessments`
+  (`.claude/plans/studio/tenant-config/issues/02-vo-phien-ban-va-chi-muc-phu-thuoc.md`, mà ticket 05 chờ); kind
+  `policy` cho đường nới Lộ trình dữ liệu hai người ở W2 (R2.5).
+- agent-builder: hai bảng hội thoại mà hàm xóa của ticket 06 xóa, với `dw_app` chỉ SELECT, INSERT trên
+  `studio.conversation_messages`, `workspace_id NOT NULL` trên cả hai bảng (R5.8 đếm theo workspace) và FK ghép của
+  tin nhắn tới `studio.conversations` `ON DELETE RESTRICT`
   (`.claude/plans/studio/agent-builder/issues/04-chat-va-man-chat.md`).
 - agent-builder: loại agent và khung prompt cho nhãn năng lực
   (`.claude/plans/studio/agent-builder/issues/02-loai-agent-va-khung-prompt.md`).
@@ -348,8 +381,9 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
   DO-60) → số trong `marketing_send@1.0.0.yaml`, một bản mới của tệp chính sách retention và điều kiện vào chạy
   bóng (YC99), không đổi tiêu chí W1; agent-builder đổi thứ tự ngăn xếp agent → R2.3, ticket 03; chuỗi các ticket
   sửa tệp chính sách retention đổi thứ tự → ticket 04, 06; tenant-config đổi khóa hay cách xóa
-  `studio.artifact_versions` → R5.5, ticket 05; agent-lifecycle đổi hình trigger chặn DELETE của nó
-  (agent-lifecycle:R7.5) → R5.6, ticket 04.
+  `studio.artifact_versions` → R4.7, R5.5, ticket 05; agent-lifecycle đổi hình trigger chặn DELETE của nó
+  (agent-lifecycle:R7.5) → R5.6, ticket 04; agent-builder đổi quyền của `dw_app`, cột hay FK của hai bảng hội thoại →
+  R5.7, R5.8, ticket 06.
 
 ## Câu hỏi còn mở
 
@@ -470,19 +504,40 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
   agent-builder/04 (C:configs:spec\~telemetry-and-audit/03). Sửa: R5, Phụ thuộc, ticket 04, 06. Nếu sai thì: tách
   tệp thành một tệp mỗi bảng, sửa telemetry-and-audit:R5.6 và ADR-0122 (Accepted) quyết 7, và ticket 04 bỏ cạnh chờ
   workflow-triggers/02.
-- 24/10/2026 (agent, tạm): `studio.version_assessments` bị xóa khi offboarding qua FK `version_id` tới
-  `studio.artifact_versions` ON DELETE CASCADE, có index; vì `dw_app` chỉ SELECT, INSERT, bảng nằm ngoài tập
-  `_CATALOG_PURGEABLE` và có một dòng `STUDIO_EXCLUSIONS` nêu cách xóa đó, theo luật của studio-skeleton/01 cho
-  bảng `dw_app` không DELETE (H:compliance-pdpl:spec\~studio-skeleton:R4.1); FK một cột như `from_version_id` của
-  `studio.dependencies`, vì `studio.artifact_versions` không có khóa unique `(tenant_id, id)` cho một FK ghép. Sửa:
-  R5.5, Dữ liệu, Phụ thuộc, ticket 05. Nếu sai thì: tenant-config/02 thêm khóa unique `(tenant_id, id)` để FK thành
-  `(tenant_id, version_id)`, hay offboarding xóa bảng qua một hàm riêng mà dòng `STUDIO_EXCLUSIONS` nêu.
+- 24/10/2026 (agent, tạm): `studio.version_assessments` bị xóa khi offboarding qua FK ghép
+  `(tenant_id, version_id)` tới `studio.artifact_versions` ON DELETE CASCADE, có index; vì `dw_app` chỉ SELECT,
+  INSERT, bảng nằm ngoài tập `_CATALOG_PURGEABLE` và có một dòng `STUDIO_EXCLUSIONS` nêu cách xóa đó, theo luật của
+  studio-skeleton/01 cho bảng `dw_app` không DELETE (H:compliance-pdpl:spec\~studio-skeleton:R4.1). FK ghép trỏ tới
+  `uq_artifact_versions_tenant_id_id UNIQUE (tenant_id, id)` mà tenant-config/02 thêm, để một dòng đánh giá không
+  trỏ được tới phiên bản của công ty khác, nên ticket 05 chờ tenant-config/02; bảng không có `workspace_id` nên có
+  một dòng lý do trong danh sách bảng toàn tenant của `test_rls_coverage.py` (`CLAUDE.md` mục 'Tenancy and
+  authorization'). Sửa: thêm R4.7, CP21, R5.5, Dữ liệu, Phụ thuộc, ticket 05. Nếu sai thì: offboarding xóa bảng qua
+  một hàm riêng mà dòng `STUDIO_EXCLUSIONS` nêu, FK ghép và R4.7 giữ nguyên.
 - 24/10/2026 (agent, tạm): chỉ lượt xóa của offboarding xóa được dòng `platform.contact_suppressions`, bằng trigger
   `platform.guard_contact_suppression()` từ chối DELETE với 23514 khi công ty khác `offboarding`, cùng hình với
   trigger công tắc của agent-lifecycle:R7.5, thay cho một hàm SECURITY DEFINER của offboarding
   (D:agent-lifecycle:R7.5\~compliance-pdpl:R5.4). Sửa: thêm R5.6, CP19, Dữ liệu, Ngoài phạm vi, Phụ thuộc,
   ticket 04. Nếu sai thì: thu DELETE của `dw_app` trên bảng, offboarding xóa qua một hàm SECURITY DEFINER hẹp và
   bảng vào `STUDIO_EXCLUSIONS`.
+- 24/10/2026 (agent, tạm): hội thoại hết hạn (90 ngày, DO-52) xóa qua hàm SECURITY DEFINER hẹp
+  `studio.purge_expired_conversations(p_cutoff timestamptz)` của ticket 06, theo mẫu xóa dữ liệu hết hạn của
+  ADR-0122 (Accepted) quyết 7, vì `dw_app` không DELETE trên `studio.conversation_messages` và FK ghép của tin nhắn
+  tới `studio.conversations` là `ON DELETE RESTRICT` (agent-builder): hàm xóa tin quá mốc rồi hội thoại không còn
+  tin nào và có hoạt động cuối trước mốc, ở mọi công ty; lane lưu giữ gọi hàm và ghi trong cùng giao dịch một sự
+  kiện `studio.conversation.expired` đứng tên chính lane kèm số dòng cho mỗi workspace có dòng bị xóa, ở công ty và
+  workspace đó, vì `platform.audit_events.workspace_id` là NOT NULL
+  (`packages/python/dw_platform/src/dw_platform/adapters/persistence/tables.py:299`) (ADR-0011 (Accepted)). Sửa:
+  thêm R5.7, R5.8, CP20, Trong phạm vi, Dữ liệu, Phụ thuộc, ticket 06. Nếu sai thì: hàm và ticket 06 đổi cách xóa
+  (ví dụ DROP PARTITION của tháng đã quá hạn) mà R5.7 giữ nguyên; audit mỗi hội thoại một sự kiện thì hàm trả một
+  dòng mỗi hội thoại và R5.8, CP20 đổi theo.
+- 24/10/2026 (agent, tạm): `pd_category_required` là một `errors[].code` của 422 `validation_failed` có con trỏ tới
+  trường (app-standards:R1.3), không phải `details.reason_code`; lát này là chủ mã, custom-objects:R2.2,
+  workflow-triggers:R4.1 và marketing-pilot/02 dẫn cùng hình. Sửa: R1.1, CP1, API, ticket 01. Nếu sai thì: mã về
+  `details.reason_code` của 422 và bốn chỗ dẫn đổi theo.
+- 24/10/2026 (agent, tạm): R5.5 và mục Phụ thuộc dẫn usage-and-limits:R3.10, hợp đồng của
+  `platform.purge_tenant_append_only` trên mọi bảng `append_only` của sổ, thay usage-and-limits:R3.8, tiêu chí
+  offboarding của chính các bảng usage-and-limits. Sửa: R5.5, Phụ thuộc. Nếu sai thì: R5.5 dẫn lại số tiêu chí mà
+  usage-and-limits đặt cho hàm.
 
 ## Danh sách ticket
 

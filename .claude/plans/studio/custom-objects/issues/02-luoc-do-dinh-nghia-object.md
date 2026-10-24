@@ -86,9 +86,11 @@ describe và bộ chiếu theo quyền của người gọi, và ticket 06 nối
       siết. Ticket 06 nối nó vào lệnh Gửi kiểm định của agent-lifecycle, nơi `LifecycleService` ghi `tighten_only` và
       `compared_live_hash` theo kết quả của nó (R1.2, R1.7; `agent-lifecycle:R2.8`).
     - Bộ trích phụ thuộc thuần, trả danh sách rỗng ở W1 (chưa có trường tham chiếu), có test fixture.
-    - Móc phát hành `MetadataService.apply`, chạy trong giao dịch đưa phiên bản lên Đang dùng mà dịch vụ phát hành của
-      tenant-config/02 mở (ticket 06 nối nó vào handler `studio.publish.object.decided` và nhánh chỉ siết): tạo dòng
-      `studio.object_defs` ở lần đầu; với mỗi trường mới lấy `pg_advisory_xact_lock` theo công ty rồi chọn slot trống
+    - Móc phát hành `MetadataService.apply`, khai ở mục `ArtifactKindRegistry` của loại (trường móc phát hành mà
+      tenant-config/02 thêm; ADR-0109 (Accepted) quyết 1), và agent-lifecycle gọi nó trong giao dịch đưa phiên bản lên
+      Đang dùng, ở handler `studio.publish.object.decided` và ở nhánh chỉ siết (`agent-lifecycle:R5.5`,
+      `agent-lifecycle:R2.9`; ticket 06 kiểm hai đường đó đầu-cuối): tạo dòng `studio.object_defs` ở lần đầu; với
+      mỗi trường mới lấy `pg_advisory_xact_lock` theo công ty rồi chọn slot trống
       nhỏ nhất của họ (trường lọc được) hoặc `next_field_no` (trường trong `data`); thêm lựa chọn; sửa nhãn và
       `ai_description`; `schema_version` cộng 1; audit `studio.object.created`, `studio.object.updated`,
       `studio.field.created`, `studio.field.updated`, `studio.picklist.updated` chỉ mang khóa và phiên bản. Móc chỉ áp
@@ -192,3 +194,7 @@ describe và bộ chiếu theo quyền của người gọi, và ticket 06 nối
   Cùng vòng: R2.2 thành 422 `validation_failed` với `errors[].code` `pd_category_required`
   (`B:app-standards:R1.3~custom-objects:R6.7`); móc phát hành không ghi `studio.version.published`
   (`B:agent-lifecycle:R2.9~custom-objects:R1.7`); "gửi phát hành" thành "Gửi kiểm định" (`G:CONTEXT.md#submit~custom-objects:R1.2`).
+- 2026-10-24 (agent): vòng sửa 4, lượt hai: móc phát hành khai ở mục `ArtifactKindRegistry` của loại (trường mà
+  tenant-config/02 thêm) và agent-lifecycle gọi nó trong giao dịch phát hành, nên bước 4 thôi nói ticket 06 nối móc vào
+  handler; R2.2 của spec dẫn compliance-pdpl:R1.1 (chủ mã) và app-standards:R1.3 (hình lỗi), tiêu chí R2.2 ở đây không
+  đổi (Quyết định 24/10/2026 của spec).

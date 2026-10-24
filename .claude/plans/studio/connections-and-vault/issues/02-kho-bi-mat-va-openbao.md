@@ -17,11 +17,15 @@ kho khóa ở ticket 06 (DO-47.1). Gộp từ B8a-connections connections-and-va
 1. Một migration (revision hex ngẫu nhiên của alembic): `platform.secret_envelopes` và
    `platform.connections` theo mục Dữ liệu của spec:
     - `secret_envelopes`: `id` uuid, `tenant_id` FK `platform.tenants` ON DELETE CASCADE,
-      `connection_id` uuid NULL, `alg text` CHECK (`aes-256-gcm`), `nonce bytea` CHECK độ dài 12,
-      `kek_ref text`, `ciphertext bytea` CHECK độ dài ≤ 64 KiB, `aad_hint text` CHECK độ dài ≤ 64,
-      `kek_version int`, timestamps; loại trừ chủ thể qua CHECK `num_nonnulls(connection_id) = 1`, mà mỗi
-      chủ thể mới nới rộng bằng một cột FK NULL trong migration của ticket thêm nó (`inbound_endpoint_id` ở
-      workflow-triggers/02, ADR-0115 (Accepted) quyết 1);
+      `connection_id` uuid NULL, `field text NOT NULL`, `secret_version integer NOT NULL`, `alg text` CHECK
+      (`aes-256-gcm`), `nonce bytea` CHECK độ dài 12, `kek_ref text`, `ciphertext bytea` CHECK độ dài ≤ 64 KiB,
+      `wrapped_data_key bytea NOT NULL` (khóa dữ liệu bọc bởi Khóa của công ty, giữ cạnh `ciphertext`),
+      `kek_version int`, timestamps, không cột `aad_hint`; UNIQUE
+      `(tenant_id, connection_id, field, secret_version)`, dạng của UNIQUE
+      `(tenant_id, subject_kind, subject_id, field, secret_version)` cho cột chủ thể `connection_id`; loại trừ chủ
+      thể qua CHECK `num_nonnulls(connection_id) = 1`, mà mỗi chủ thể mới nới rộng bằng một cột FK NULL cùng
+      UNIQUE của cột đó trong migration của ticket thêm nó (`inbound_endpoint_id` ở workflow-triggers/02,
+      ADR-0115 (Accepted) quyết 1);
     - `connections`: toàn cột của spec (bao gồm `share_scope` CHECK, `status` CHECK không DEFAULT,
       `owning_workspace_id` NOT NULL với FK ghép `(tenant_id, owning_workspace_id)` tới `platform.workspaces`
       ON DELETE RESTRICT trên `uq_workspaces_tenant_id_id` của org-and-principals/01, index danh sách);
@@ -29,14 +33,22 @@ kho khóa ở ticket 06 (DO-47.1). Gộp từ B8a-connections connections-and-va
 2. RLS ENABLE và FORCE, policy tenant theo dạng `test_rls_coverage.py` đòi lúc merge trên cả hai bảng;
    `REVOKE ALL ON platform.secret_envelopes FROM dw_app`; hàm SECURITY DEFINER `platform.put_secret`,
    `platform.open_secret`, `platform.secret_status`, `platform.delete_secret` lấy công ty từ
-   `app.tenant_id` (không nhận tham số công ty), EXECUTE cho `dw_app`; grant cột cho `platform.connections`.
+   `app.tenant_id` (không nhận tham số công ty), EXECUTE cho `dw_app`; `platform.put_secret` ghi giá trị mới
+   của (chủ thể, trường) thành một dòng mới và không sửa dòng cũ, với `secret_version` là số kế tiếp mà
+   `SecretStore` đã đưa vào AAD trước khi mã hóa (bước 3), nên hai lần ghi đồng thời cùng số thì UNIQUE từ chối
+   lần sau; `platform.open_secret` mở đúng (chủ thể, trường, `secret_version`) bên gọi nêu, tức phiên bản mà bản
+   kê của lượt ghim (ticket 04 bước 2); `platform.secret_status` trả các `secret_version` còn dòng của (chủ thể,
+   trường), không trả giá trị; grant cột cho `platform.connections`.
 3. `KmsPort`, `LocalDevKms` (HKDF-SHA256 từ `DW_LOCAL_KMS_MASTER_KEY`, AES key wrap); `SecretStore`
    (AES-256-GCM) với AAD
-   `dw.secret.v1|<tenant_id>|<owning_workspace_id>|<subject_kind>:<subject_id>|<field>|<kek_version>` theo
+   `dw.secret.v1|<tenant_id>|<owning_workspace_id>|<subject_kind>:<subject_id>|<field>|<secret_version>` theo
    ADR-0115 (Accepted) quyết 1: công ty lấy từ `app.tenant_id` của ngữ cảnh, không từ dòng; workspace sở hữu
    của chủ thể; `<subject_kind>` là tên cột chủ thể bỏ `_id` (`connection`, và `inbound_endpoint` từ
-   workflow-triggers/02) với id trong cột đó; `<field>` là tên trường bí mật bên gọi nêu; `<kek_version>` của
-   dòng. Kiểu `Secret` (`repr` ẩn, `reveal()` chỉ ở module cho phép, có test kiến trúc).
+   workflow-triggers/02) với id trong cột đó; `<field>` và `<secret_version>` là cột `field`, `secret_version`
+   của dòng, tức tên trường bí mật bên gọi nêu và phiên bản của bí mật. `kek_version` không vào AAD: bọc lại
+   khóa dữ liệu (`KmsPort.rewrap`, lane `credential_rewrap` của ticket 06) chỉ đổi `wrapped_data_key` và
+   `kek_version`, nên AAD không đổi và phong bì vẫn giải mã. Kiểu `Secret` (`repr` ẩn, `reveal()` chỉ ở module
+   cho phép, có test kiến trúc).
 4. `DW_KMS_PROVIDER=none|local` (giá trị `openbao` thêm ở ticket 06, cùng thay đổi với bên đọc của nó);
    `validate_for_profile` của api và worker từ chối `local` khi `settings.is_deployed`.
 5. `kek_ref` suy từ công ty của ngữ cảnh; một dòng mang `kek_ref` của công ty khác → từ chối, audit
@@ -49,14 +61,18 @@ kho khóa ở ticket 06 (DO-47.1). Gộp từ B8a-connections connections-and-va
 ## Tiêu chí chấp nhận
 
 - [ ] R1.1: ghi một bí mật rồi `open_secret` trả đúng giá trị; phong bì trong database không chứa giá
-      trị rõ.
+      trị rõ; ghi giá trị mới cho cùng (chủ thể, trường) → một dòng mới với `secret_version` kế tiếp, dòng cũ không
+      đổi, `open_secret` với phiên bản cũ vẫn trả giá trị cũ và với phiên bản mới trả giá trị mới; chèn trùng
+      (chủ thể, `field`, `secret_version`) → UNIQUE từ chối.
 - [ ] R1.2 (CV4): mock nhà cung cấp vọng header và key trong body lỗi → 0 lần xuất hiện ở checkpoint,
       `platform.tool_executions`, audit, span, log; tắt che → test đỏ.
 - [ ] R1.3 (CV2): `SELECT * FROM platform.secret_envelopes` bằng `dw_app` → `permission denied`; khẳng
       định catalog trong `test_privileges.py`.
 - [ ] R1.4 (CV1): chép một phong bì sang `connection_id` khác (cùng công ty và công ty khác), sang trường khác
-      của cùng kết nối, hay sang dòng có `kek_version` khác rồi giải mã → lỗi; gỡ AAD khỏi `SecretStore` → test
-      đỏ. Ca chủ thể `inbound_endpoint_id` chạy ở workflow-triggers/02, nơi thêm cột đó.
+      của cùng kết nối, hay sang dòng có `secret_version` khác rồi giải mã → lỗi; bọc lại khóa dữ liệu qua
+      `KmsPort.rewrap` của `LocalDevKms` (`kek_version` tăng) → vẫn giải mã; gỡ AAD khỏi `SecretStore`, hay đưa
+      `kek_version` vào AAD → test đỏ. Ca chủ thể `inbound_endpoint_id` chạy ở workflow-triggers/02, nơi thêm cột
+      đó.
 - [ ] R1.5 (CV3): đặt công ty A, `open_secret` với chủ thể của công ty B → không dòng; một dòng mang
       `kek_ref` của công ty khác → từ chối, audit `secret.key_mismatch`; chưa đặt `app.tenant_id` → không
       dòng.
@@ -93,3 +109,12 @@ kho khóa ở ticket 06 (DO-47.1). Gộp từ B8a-connections connections-and-va
   hữu, chủ thể, trường và phiên bản như ADR-0115 (Accepted) quyết 1, và CV1 thêm ca chép sang trường khác, phiên
   bản khác (R1.4); thêm Blocked by foundations-hardening/07, vì ticket đó viết lại `_CATALOG_COLUMNS` và
   `export_rows` của `offboarding.py`, mà bước 6 cùng sửa (catalog xuất không liệt kê `secret_envelopes`).
+- 2026-10-24 (agent): vòng sửa thứ tư, lượt b: vế phiên bản của AAD là `secret_version` của bí mật thay
+  `kek_version`, vì lane `credential_rewrap` (ticket 06 bước 4) chỉ bọc lại khóa dữ liệu và tăng `kek_version`,
+  nên AAD mang `kek_version` làm hỏng mọi phong bì sau lần bọc lại đầu tiên (ADR-0115 (Accepted) quyết 1, phiên
+  bản của bí mật); bước 1 thêm `field`, `secret_version` và UNIQUE theo chủ thể, trường, phiên bản, thêm
+  `wrapped_data_key`, khóa dữ liệu đã bọc mà ADR-0115 (Accepted) quyết 1 giữ cạnh `ciphertext` và lane bọc lại
+  ghi lại, bỏ `aad_hint` không bên đọc; bước 2 nêu `secret_version` của `platform.put_secret`, số mà
+  `SecretStore` đã đưa vào AAD trước khi mã hóa, của `platform.open_secret`, phiên bản bản kê ghim, và của
+  `platform.secret_status`, mà `connection_usable` của ticket 04 đọc; R1.1 thêm ca mở phiên bản cũ, R1.4 thêm
+  ca bọc lại vẫn giải mã (bước 3, CV1).

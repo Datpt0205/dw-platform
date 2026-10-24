@@ -69,8 +69,8 @@ xóa cache ở route khóa của foundations-hardening/02 là tạm và ticket n
    (người `active` giữ khóa đó trên `platform.effective_grants`, khác người đề xuất; có `p_workspace_id` thì chỉ người
    giữ khóa với tới workspace đó), hàm SQL dùng chung cho `no_checker_available` của ticket 03 (toàn tenant), của
    tenant-config R8.5 (theo workspace của đề xuất) (`D:tenant-config/05~tenant-rbac:R7.1`) và của hai phê duyệt nghiêm
-   `egress.allowed_host`, `connections.enable` của connections-and-vault (`connections-and-vault:R3.9`,
-   `connections-and-vault:R5.10`). Không bản sao Python.
+   `egress.allowed_host`, `connections.enable` của connections-and-vault (`connections-and-vault:R3.12`,
+   `connections-and-vault:R5.13`). Không bản sao Python.
 8. **Người đọc.** `effective_scopes` thành adapter gọi `platform.scopes_in`; `_access_in` (`membership_lookup.py:80-106`)
    lấy quyền qua nó; `AccessContext.roles` là khóa vai trò gán ở workspace đang làm việc (W1 thêm `platform_admin` còn
    trong `role_keys`); `scope_holders.py` đọc `platform.effective_grants` và gỡ bộ lọc thành viên không `active` riêng mà
@@ -158,3 +158,4 @@ xóa cache ở route khóa của foundations-hardening/02 là tạm và ticket n
 - 2026-10-23 (agent): DO-09.1, DO-32.2, `A:org-and-principals:R4.3~tenant-rbac:R2.5`, `A:foundations-hardening:R3.3~tenant-rbac:R4.1`, `D:tenant-config/05~tenant-rbac:R7.1` và DO-01 đã có lời đáp (Đạt, 23/10/2026); Status về needs-triage, thêm foundations-hardening/02 vào Blocked by.
 - 2026-10-24 (agent): vòng sửa 4: Blocked by thêm foundations-hardening/07 (cùng sửa `offboarding.py` và `test_offboarding.py`, `C:foundations-hardening/07~tenant-rbac/02`) và studio-skeleton/01 (danh sách `_TENANT_WIDE_ON_PURPOSE` và test phủ offboarding, `I:org-and-principals/02~studio-skeleton/01`); bước 1 ghi rằng mọi ticket đăng ký khóa chờ ticket này và nêu `tenant_grantable` trong INSERT (`C:custom-objects/02~tenant-rbac/02`); studio-skeleton/03 chờ ticket này (`C:studio-skeleton/03~tenant-rbac/01`), nên bước 11 viết lại `apps/web/lib/nav/visibility.ts` trước khi mục Studio có mặt; `platform.checker_candidates` của bước 7 cũng trả lời `no_checker_available` của connections-and-vault (`connections-and-vault:R3.9`, `connections-and-vault:R5.10`).
 - 2026-10-24 (agent): kiểm vòng sửa 4: bước 15 đếm lại thành bốn bảng mới và nêu tên chúng (bước 2, 3, 4, 9), thay cho "năm bảng" cũ; dòng Phụ thuộc của spec sửa cùng.
+- 2026-10-24 (agent): vòng sửa 4, lượt hai: bước 7 dẫn `connections-and-vault:R3.12`, `connections-and-vault:R5.13`, hai tiêu chí `no_checker_available` của connections-and-vault, thay cho R3.9, R5.10 là lệnh gửi (Quyết định 24/10/2026 của spec).

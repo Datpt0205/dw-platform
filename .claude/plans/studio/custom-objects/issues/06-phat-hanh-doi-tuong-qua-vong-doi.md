@@ -10,10 +10,11 @@ Yêu cầu: R1.2, R1.3, R1.7, CO3, CO23
 Quản trị viên công ty phát hành một phiên bản `dw.object/v1` qua lệnh Gửi kiểm định của agent-lifecycle: phiên bản chỉ
 siết lên Đang dùng bởi một người có audit, kể cả khi công ty Đóng băng (R1.7), mọi phiên bản khác qua Chờ duyệt và một
 người thứ hai (R1.2), và chỉ người giữ `studio.objects.manage` gửi được (R1.3). Ticket 02 dựng loại `object`, bộ so
-sánh chỉ siết (R1.8) và móc phát hành; ticket này nối chúng vào route gửi, máy giai đoạn, phê duyệt
-`studio.publish.object` và handler của agent-lifecycle
-(ADR-0120 (Accepted) mục 1, 2). Đường này tách khỏi ticket 02 để các ticket bản ghi, quyền và bảo mật trường chờ ticket
-02 mà không phải chờ Cổng chất lượng của agent-lifecycle/04 (Quyết định 24/10/2026 của spec).
+sánh chỉ siết (R1.8) và móc phát hành trong mục `ArtifactKindRegistry` của loại; ticket này nối loại đó vào route gửi,
+máy giai đoạn, phê duyệt `studio.publish.object` và handler của agent-lifecycle, nơi agent-lifecycle gọi móc của mục
+đăng ký (ADR-0120 (Accepted) mục 1, 2; ADR-0109 (Accepted) quyết 1). Đường này tách khỏi ticket 02 để các ticket bản
+ghi, quyền và bảo mật trường chờ ticket 02 mà không phải chờ Cổng chất lượng của agent-lifecycle/04 (Quyết định
+24/10/2026 của spec).
 
 ## Việc cần làm
 
@@ -30,11 +31,13 @@ sánh chỉ siết (R1.8) và móc phát hành; ticket này nối chúng vào ro
 3. Nhánh nới: phiên bản sang Chờ duyệt với phê duyệt `studio.publish.object` có `author_ids`
    (`agent-lifecycle:R5.1`); handler `studio.publish.object.decided` (`agent-lifecycle:R5.5`) đưa phiên bản lên Đang
    dùng, ghi `studio.version.published` có người duyệt là actor và chạy móc phát hành trong cùng giao dịch, móc không ghi
-   sự kiện đó lần nữa; bị từ chối thì phiên bản về Nháp và định nghĩa không đổi; bản Đang dùng đã đổi kể từ lúc gửi
-   (một phiên bản chỉ siết lên trước) thì handler không phát hành mà đưa phiên bản về Nháp với `details.reason_code`
-   `base_changed`, định nghĩa giữ bản Đang dùng mới (`agent-lifecycle:R5.9`, ADR-0120 (Accepted) quyết 2).
+   sự kiện đó lần nữa; bị từ chối thì phiên bản về Nháp và định nghĩa không đổi; phiên bản Đang dùng mà lần phát hành
+   này thay không còn là bản đã so lúc gửi (một phiên bản chỉ siết lên trước) thì handler không phát hành mà đưa phiên
+   bản về Nháp với `details.reason_code` `base_changed`, định nghĩa giữ bản Đang dùng mới (`agent-lifecycle:R5.9`,
+   ADR-0120 (Accepted) quyết 2).
 4. Test tích hợp đầu-cuối với hai người dùng thật của một tenant, cùng giữ `studio.objects.manage` và
-   `studio.publish.approve`, không dùng fixture phê duyệt.
+   `studio.publish.approve`, không dùng fixture phê duyệt, gồm ca của V4.2: một phiên bản chỉ siết lên Đang dùng trong
+   lúc một phiên bản nới chờ duyệt, rồi người thứ hai duyệt phiên bản nới.
 
 ## Tiêu chí chấp nhận
 
@@ -52,6 +55,11 @@ sánh chỉ siết (R1.8) và móc phát hành; ticket này nối chúng vào ro
       `tenant_frozen`, giữ Nháp; nền tảng Đóng băng: phiên bản chỉ đóng `phone` → 409 `platform_frozen`, giữ Nháp;
       phiên bản vừa đóng `phone` vừa đổi nhãn → Chờ duyệt; coi thay đổi trộn là chỉ siết, cho nhánh chỉ siết qua Đóng
       băng của nền tảng hay để móc phát hành ghi thêm `studio.version.published` → test đỏ.
+- [ ] R1.2 (CO23): ca của V4.2, phiên bản thêm một trường ở Chờ duyệt; trong lúc chờ, một phiên bản chỉ đóng
+      `phone` lên Đang dùng; người thứ hai duyệt phiên bản thêm trường → phiên bản đó về Nháp với `details.reason_code`
+      `base_changed` và đúng một audit `studio.version.returned_to_draft` có người duyệt là actor (`agent-lifecycle:R5.9`),
+      không thêm dòng `studio.version.published`, định nghĩa và bản Đang dùng vẫn là bản chỉ siết; để handler phát hành
+      khi bản Đang dùng đã đổi → test đỏ.
 - [ ] R1.3 (CO3): người thiếu `studio.objects.manage` gọi lệnh Gửi kiểm định → 403 `permission_denied`, phiên bản giữ
       Nháp, không phê duyệt nào mở; gỡ kiểm khóa gửi ở mục đăng ký của loại → test đỏ.
 - [ ] Xong: `make test-integration` xanh.
@@ -83,3 +91,9 @@ sánh chỉ siết (R1.8) và móc phát hành; ticket này nối chúng vào ro
   tác giả (ADR-0104 (Accepted) quyết 11, `B:packages:spec~tenant-config/05`); bước 3 nêu ngoại lệ `base_changed` của
   handler khi bản Đang dùng đã đổi kể từ lúc gửi (Đạt, 24/10/2026; ADR-0120 (Accepted) quyết 2,
   `agent-lifecycle:R5.9`).
+- 2026-10-24 (agent): vòng sửa 4, lượt hai: test đầu-cuối (bước 4) và một tiêu chí mới phủ ca của V4.2, một phiên bản
+  chỉ siết lên Đang dùng trong lúc phiên bản nới chờ duyệt, rồi người thứ hai duyệt phiên bản nới → về Nháp với
+  `base_changed`; bước 3 so với phiên bản Đang dùng mà lần phát hành thay (Quyết định 24/10/2026 của spec).
+- 2026-10-24 (agent): kiểm lượt hai của vòng sửa 4: tiêu chí ca V4.2 nêu tên audit `studio.version.returned_to_draft`
+  của `agent-lifecycle:R5.9`; Mục tiêu nói móc phát hành nằm trong mục `ArtifactKindRegistry` của loại và
+  agent-lifecycle gọi nó (ADR-0109 (Accepted) quyết 1), như bước 4 của ticket 02.

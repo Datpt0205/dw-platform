@@ -158,7 +158,7 @@ DO-45); các dòng dưới đã theo bản chốt, và mỗi quyết định có
 - DO-43: không chuyển từ model của tenant sang model nền tảng trả phí; model của tenant cấp công ty được dùng công cụ; không endpoint tại chỗ ở v1; token BYOM chỉ tính vào trần do công ty đặt. ADR 0118, 0121.
 - DO-45: chỉ Python 3.12, không JavaScript, không chạy script của kỹ năng ở v1; ở v1 mỗi lần chạy mã một container mới (D7), container theo phiên agent chỉ ở W3 và quyết lúc đó; tính phí theo vCPU và GB đặt trước nhân thời gian. ADR 0112, 0116, 0119.
 - DO-48: SMTP chung là đường email P1; chỉ kết nối dùng chung theo workspace; cùng Page hay OA nối bởi hai công ty thì gửi tới cả hai, luật sư xác nhận. ADR 0113, 0115.
-- DO-50: kỳ tính theo múi giờ công ty; chạm hạn mức cứng giữa lượt chạy thì dừng; dựng có AI, chạy thử và kiểm định trả từ ngân sách công ty với trần mục đích riêng; chỉ lượt chạy gốc tính vào số lượt mỗi ngày. ADR 0121.
+- DO-50: kỳ tính theo múi giờ công ty; chạm hạn mức cứng giữa lượt chạy thì dừng; dựng có AI, chạy mô phỏng và chạy thử, kiểm định trả từ ngân sách công ty với trần mục đích riêng; chỉ lượt chạy gốc tính vào số lượt mỗi ngày. ADR 0121.
 - DO-57: chỉ giao diện tiếng Việt, dùng khóa thông điệp từ đầu; demo và thí điểm trên host uat ở Việt Nam có chứng chỉ hợp lệ và HSTS. Spec `marketing-pilot`, `studio-skeleton`.
 
 ### Trả lời từ ticket

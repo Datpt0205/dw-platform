@@ -112,4 +112,4 @@ subject_ref, channel, purpose, captured_at DESC)`; đồng ý hiện hành là d
   offboarding xóa dòng chặn gửi (spec R5.6, CP19; D:agent-lifecycle:R7.5\~compliance-pdpl:R5.4).
 - 2026-10-24 (agent): kiểm sau lượt sửa: tiêu chí R3.8 (CP18) nay khẳng định cả dòng nhật ký gửi `outcome` `blocked`
   với `blocked_reason` `recipient_cap` và tin tới người thứ 200 vẫn gửi, như CP18 của spec và ADR-0124 (Accepted)
-  quyết 1 sau D11 (F:ADR-0124 (Accepted)\~compliance-pdpl:R3.8).
+  quyết 1 sau V4.11 (F:ADR-0124 (Accepted)\~compliance-pdpl:R3.8).

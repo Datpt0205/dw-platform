@@ -47,9 +47,10 @@ envelope leaves "which version runs" to this stage contract. The `agent-lifecycl
    version's effective hash, approval pending); `awaiting_approval` back to `draft` (rejected, cancelled, expired, or
    approved after the live version changed, decision 2); `awaiting_approval` to `live` (approved by a decider who is
    neither submitter nor contributor, the gate's evidence still matching, and `compared_live_hash` still the hash of
-   the current live version, both NULL while none is live); `live` to `retired`. Its rule is per kind: a kind without
-   a quality gate, an object definition (ADR-0107), a tool (ADR-0116) or a Data Hub endpoint (ADR-0113 decision 6),
-   goes from `draft` to `awaiting_approval` directly and needs only the second person. One branch serves a kind
+   the live version this publish replaces, which the same transaction retires first, both NULL when it replaces
+   none); `live` to `retired`. Its rule is per kind: a kind without a quality gate, an object definition (ADR-0107),
+   a tool (ADR-0116, from W2, when the `tool` kind registers) or a Data Hub endpoint (ADR-0113 decision 6), goes from
+   `draft` to `awaiting_approval` directly and needs only the second person. One branch serves a kind
    without a quality gate whose kind registers a tighten-only comparator, in v1 the object definition alone: a
    `dw.object/v1` version whose comparator reports that every change against the live version only tightens (a field
    closed, `default_access` narrowed, a permission removed) goes from `draft` to `live` at submit, by one person,
@@ -57,11 +58,12 @@ envelope leaves "which version runs" to this stage contract. The `agent-lifecycl
    records at every submit, of every kind, `compared_live_hash`, the `definition_hash` of the version live at submit
    (NULL while none is), and for a kind that registers a comparator its result in `tighten_only boolean`; the trigger
    allows `draft` to `live` only for a kind without a quality gate, with `tighten_only` true and `compared_live_hash`
-   still the live version's hash, so a stale or missing comparison takes the approval, and it holds
-   `awaiting_approval` to `live` to the same `compared_live_hash` rule, so a candidate never replaces a live version
-   it was not compared with. A version that loosens anything, and a first version with nothing live to compare
-   against, go through `awaiting_approval`; a tool and an endpoint never take the branch, neither kind registering a
-   comparator (a second person approves every tool version, ADR-0116 decision 9). A refusal raises SQLSTATE 23514 on
+   still the hash of the live version this publish replaces (retired in the same transaction), so a stale or missing
+   comparison takes the approval, and it holds `awaiting_approval` to `live` to the same `compared_live_hash` rule,
+   both NULL when the publish replaces none, so a candidate never replaces a live version it was not compared with.
+   A version that loosens anything, and a first version with nothing live to compare against, go through
+   `awaiting_approval`; a tool and an endpoint never take the branch, neither kind registering a comparator (a second
+   person approves every tool version, ADR-0116 decision 9). A refusal raises SQLSTATE 23514 on
    `ck_artifact_versions_stage_transition`, mapped by name as ADR-0012 does.
    Partial unique indexes allow one `live` and one candidate per artifact; publishing retires the previous live
    version in the same transaction. Version numbers come from `last_version_no`, never reused. A rollback is a new
@@ -69,8 +71,8 @@ envelope leaves "which version runs" to this stage contract. The `agent-lifecycl
    writes; the trigger is the backstop.
 2. **Publishing takes a passing gate and a second person (D11).** Moving a version to `awaiting_approval` opens, in
    the same transaction, a run-less approval `studio.publish.agent`, `studio.publish.workflow`,
-   `studio.publish.object` (an object definition, under D11), `studio.publish.endpoint` (a Data Hub endpoint) or
-   `studio.publish.tool` (a tool of any kind but `mcp`, whose approval is ADR-0116 decision 9's
+   `studio.publish.object` (an object definition, under D11), `studio.publish.endpoint` (a Data Hub endpoint) or,
+   from W2, `studio.publish.tool` (a tool of any kind but `mcp`, whose approval is ADR-0116 decision 9's
    `studio.mcp.tool_approval`) whose payload holds identifiers only: version, `version_no`, `definition_hash`, for a
    gated kind `gate_run_id` with the AI risk tier and analysis outcome (ADR-0125), and `author_ids`. It is stamped
    `required_scope = 'studio.publish.approve'` (ADR-0004: no role stands in, `platform_admin` included; support
@@ -80,13 +82,18 @@ envelope leaves "which version runs" to this stage contract. The `agent-lifecycl
    registered through a Protocol at the composition root, like `decision_guards`, never a permission key of its own.
    The strict prefixes `studio.publish.` and `studio.lifecycle.` are added with `|=` where Studio is wired, and the
    decision guard `require_not_author` refuses a decider in `payload.author_ids` and a payload without them (fail
-   closed). A worker handler for each `studio.publish.<kind>.decided` settles idempotently on the approval id:
+   closed). The submitter is the approval's `requested_by`, and the strict prefix's check runs before any guard
+   (ADR-0104 decision 11), so a submitter deciding is refused 409 `conflict` with `second_person_required` and only a
+   contributor who did not submit meets the guard's `author_cannot_approve`; a requester deciding their own
+   `studio.lifecycle.revive` or `studio.lifecycle.unfreeze` gets `second_person_required` too. A worker handler for
+   each `studio.publish.<kind>.decided` settles idempotently on the approval id:
    approved retires the previous live version and makes this one `live` in one transaction, audits
    `studio.version.published` with the decider as actor, the lane in `details.lane` (ADR-0011: a lane carrying out
    one person's decision audits that person) and `details.path = 'approved'`, and emits `studio.version.live`;
-   approved on a base that has moved, its `compared_live_hash` no longer the current live version's (decision 1),
-   publishes nothing and returns the candidate to `draft` with `details.reason_code` `base_changed` and an audit
-   event, so the builder submits it again against the new live version; rejected returns it to `draft`. On
+   approved on a base that has moved, its `compared_live_hash` no longer the hash of the live version the publish
+   would replace (decision 1), publishes nothing and returns the candidate to `draft` with `details.reason_code`
+   `base_changed`, audited `studio.version.returned_to_draft` with the decider as actor and the lane in
+   `details.lane`, so the builder submits it again against the new live version; rejected returns it to `draft`. On
    decision 1's tighten-only branch no approval opens: `LifecycleService` retires the previous live version and makes
    this one `live` in the submit transaction, audits `studio.version.published` with the submitter as actor and
    `details.path = 'tighten_only'`, and emits `studio.version.live` the same way.
@@ -105,13 +112,13 @@ envelope leaves "which version runs" to this stage contract. The `agent-lifecycl
    expiry after 14 days; minimum cases, pass rate and stale-draft days join in W2 with their readers (DO-29.1). The
    numbers are revisited after FOG-64, by a new policy version. Before the first model call the lane ends a gate run
    whose worst case is above the cap `error` with `limit_exceeded`. The gate run takes its lease through `LimitsPort`
-   with purpose `eval_offline` (ADR-0121, DO-21.4); refused for the tenant's remaining evaluation limit, it ends the
-   same way. Neither refusal carries an HTTP status, since no caller waits on the lane (DO-21.3). Verdicts are
-   `pass`, `fail`, `unknown` (blocks like `fail`) and `error`. Evidence counts only for its exact key: the effective
-   hash of ADR-0109 decision 6 (the definition hash plus the overlay entries, so a tenant override of a platform
-   prompt voids older evidence, DO-27.1), the gate policy, the security suite and the dataset content hashes; a
-   passing run with the same key is reused. The gate run records the run-time resolutions it saw (tenant overrides,
-   MCP definitions, bindings, knowledge index).
+   with purpose `eval_offline` (ADR-0121, DO-21.4); refused for what is left of the tenant's limits, an evaluation
+   purpose cap among them from W2 (ADR-0121 decision 4), it ends the same way. Neither refusal carries an HTTP
+   status, since no caller waits on the lane (DO-21.3). Verdicts are `pass`, `fail`, `unknown` (blocks like `fail`)
+   and `error`. Evidence counts only for its exact key: the effective hash of ADR-0109 decision 6 (the definition
+   hash plus the overlay entries, so a tenant override of a platform prompt voids older evidence, DO-27.1), the gate
+   policy, the security suite and the dataset content hashes; a passing run with the same key is reused. The gate run
+   records the run-time resolutions it saw (tenant overrides, MCP definitions, bindings, knowledge index).
 4. **`dw_evals` is extended, not replaced.** `Observation`, `ObservationGrader`, `JudgePort`, `EvalTargetPort`, an
    async `run_cases` with trials and a pure `gate.py` (`GatePolicy`, `evaluate_gate`, the one function deciding
    "does this pass") are added; `SECURITY_CATEGORIES` (`packages/python/dw_evals/src/dw_evals/dataset.py:25`),
@@ -267,10 +274,25 @@ D11 cases scoped by the requester and Đạt:
 - Decision 7: lifting a tenant freeze takes a second person through `studio.lifecycle.unfreeze`, as agent-lifecycle
   R7.10 and R7.11 already say (D:ADR-0120~agent-lifecycle:R7.10); a freeze has no time limit, and the retention lane
   skips the events it holds; `replay` and `fork` are interactive runs (ADR-0113 decision 3).
-- Third consistency check (round 4), Đạt's D1, D2, D3, D8 and D9: decisions 1 and 2 add the Data Hub endpoint as a
-  kind without a quality gate, published through `studio.publish.endpoint` (D:ADR-0120~~workflow-triggers:spec),
-  `compared_live_hash` on every submit with `base_changed` for a candidate approved after its base moved
-  (D:ADR-0120~~tenant-config:R2.16), and `studio.publish.tool` for every tool kind but `mcp`, the one named exception
-  to the one publish permission (A:mcp-client:R3.1~~tools-and-skills:spec); decision 7 lets the object definition's tighten-only branch through a
-  tenant freeze, never a platform one (F:ADR-0120~~custom-objects:R1.7); decision 6's `principal_inactive` names a
-  service principal too, which ADR-0113 decision 3 now holds for trigger runs (B:ADR-0120~workflow-engine:R5.15).
+- Third consistency check (round 4), Đạt's V4.1, V4.2, V4.3, V4.8 and V4.9: decisions 1 and 2 add the Data Hub
+  endpoint as a kind without a quality gate, published through `studio.publish.endpoint`
+  (D:ADR-0120\~workflow-triggers:spec), `compared_live_hash` on every submit with `base_changed` for a candidate
+  approved after its base moved (D:ADR-0120\~tenant-config:R2.16), and `studio.publish.tool` for every tool kind but
+  `mcp`, the one named exception to the one publish permission (A:mcp-client:R3.1\~tools-and-skills:spec); decision
+  7 lets the object definition's tighten-only branch through a tenant freeze, never a platform one
+  (F:ADR-0120\~custom-objects:R1.7); decision 6's `principal_inactive` names a service principal too, which ADR-0113
+  decision 3 now holds for trigger runs (B:ADR-0120\~workflow-engine:R5.15).
+- Third consistency check (round 4), second pass, the planner's provisional calls: decision 1's `compared_live_hash`
+  rule compares with the live version this publish replaces, or, on the approval path, with none (the tighten-only
+  branch always replaces one), because the partial unique index on `live` makes the publish retire that version
+  before the candidate becomes `live`, so when the trigger runs no "current" live version is left to compare with
+  (if it is wrong, the rule follows the order in which the publish transaction retires and sets); decision 2
+  states that a submitter deciding meets the strict prefix's `second_person_required` before the
+  `require_not_author` guard, which answers `author_cannot_approve` to any other author, in the order ADR-0104
+  decision 11 gives (V4.P9; if it is wrong, each approval type names its own code through its `decision_guards`
+  entry), and names the audit of a `base_changed` return, `studio.version.returned_to_draft`, the action
+  agent-lifecycle already writes for a return to `draft`; decisions 1 and 2 place the `tool` kind and
+  `studio.publish.tool` in W2, when that kind registers, completing V4.1 and V4.3 (if it is wrong, the ticket that
+  registers the `tool` kind, with the submit key it declares, moves to W1); decision 3's gate run is refused for what
+  is left of the tenant's limits, an evaluation purpose cap among them only from W2, as ADR-0121 decision 4 now says
+  (V4.P6).

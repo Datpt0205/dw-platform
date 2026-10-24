@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: 01, .claude/plans/studio/tenant-config/issues/04-ban-ke-luot-chay.md, .claude/plans/studio/studio-skeleton/issues/02-goi-dw-studio-va-seam-api.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md
 Area: studio
-Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R1.8, R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R2.7, R2.10, R7.9, AL1, AL2, AL3, AL10, AL19
+Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R1.8, R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R2.7, R2.10, R2.12, R2.13, R7.9, AL1, AL2, AL3, AL10, AL19
 
 ## Mục tiêu
 
@@ -34,15 +34,16 @@ database và "đã kiểm định" tính được (spec R1, R2). Đứng trên v
    `awaiting_approval → live` (approval `approved`, người quyết không trong `contributor_ids` và không
    là `submitted_by`, gate vẫn `passed` trên cùng mã băm); `live → retired`; cột nội dung đổi chỉ khi
    `draft`. Luật theo loại (spec R1.6): với loại mà cột `has_quality_gate` của `studio.artifact_kinds`
-   (tenant-config:R2.14) là false (đối tượng `dw.object/v1`, công cụ), cho `draft → awaiting_approval` không qua
-   `evaluating` và không đòi `gate_run_id`; `awaiting_approval → live` vẫn đòi approval `approved` và người
-   quyết ngoài `contributor_ids`. Nhánh chỉ siết (spec R1.7): chỉ với loại `object`, cho `draft → live` khi
-   `tighten_only` là true và `compared_live_hash` bằng `definition_hash` của phiên bản `live` hiện tại của cùng
-   thành phần; công cụ không bao giờ đi nhánh này (ADR-0120 (Accepted) quyết 1). Mọi `awaiting_approval → live`,
-   ở mọi loại, còn đòi `compared_live_hash IS NOT DISTINCT FROM` `definition_hash` của bản `live` hiện tại (spec
-   R1.8). Ở cả hai luật, "bản `live` hiện tại" là bản còn `live`, hay bản mà cùng giao dịch vừa đưa sang `retired`
-   với `superseded`, vì chỉ mục một Đang dùng buộc dịch vụ phát hành gỡ bản cũ trước (tenant-config:R2.16); không
-   có bản nào thì so với NULL. Từ chối: SQLSTATE 23514, ràng buộc `ck_artifact_versions_stage_transition`.
+   (tenant-config:R2.14) là false (đối tượng `dw.object/v1` và Nguồn dữ liệu `dw.endpoint/v1` ở W1, công cụ ở W2),
+   cho `draft → awaiting_approval` không qua `evaluating` và không đòi `gate_run_id`; `awaiting_approval → live`
+   vẫn đòi approval `approved` và người quyết ngoài `contributor_ids`. Nhánh chỉ siết (spec R1.7): chỉ với loại
+   `object`, cho `draft → live` khi `tighten_only` là true và `compared_live_hash` bằng `definition_hash` của phiên
+   bản Đang dùng mà lần phát hành này thay; Nguồn dữ liệu và công cụ không bao giờ đi nhánh này, vì hai loại đó không
+   đăng ký bộ so sánh (ADR-0120 (Accepted) quyết 1). Mọi `awaiting_approval → live`, ở mọi loại, còn đòi
+   `compared_live_hash IS NOT DISTINCT FROM` `definition_hash` của phiên bản Đang dùng mà lần phát hành này thay, hay
+   NULL khi không có bản nào (spec R1.8). Ở cả hai luật, phiên bản mà lần phát hành này thay là bản mà cùng giao dịch
+   vừa đưa sang `retired` với `superseded`, vì chỉ mục một Đang dùng buộc dịch vụ phát hành gỡ bản cũ trước
+   (tenant-config:R2.16). Từ chối: SQLSTATE 23514, ràng buộc `ck_artifact_versions_stage_transition`.
    Chỉ mục từng phần một Đang dùng (`WHERE stage='live'`) và một Bản ứng viên
    (`WHERE stage IN ('evaluating','awaiting_approval')`), và `(tenant_id, stage, stage_changed_at DESC, id DESC)`.
 3. `VersionStage` StrEnum soi CHECK và bảng chuyển đổi thuần; `LifecycleService` chỉ dùng chuyển đổi hợp
@@ -56,11 +57,15 @@ database và "đã kiểm định" tính được (spec R1, R2). Đứng trên v
    gửi kiểm định (Protocol `SubmitCheck` của spec này, mỗi kiểm trả từ chối với `reason_code` hay cho qua);
    compliance-pdpl/05 đăng ký Phân tích năng lực, workflow-nodes đăng ký kiểm người duyệt (workflow-nodes:R9.5);
    ticket này kiểm bằng một kiểm fixture.
-5. Route `POST /api/v1/studio/{agents|workflows|objects}/{artifact_id}/versions/{version_id}/submit`
-   (`Idempotency-Key`), kiểm khóa gửi mà mục `ArtifactKindRegistry` của loại khai (tenant-config:R2.15:
-   `studio.versions.submit` cho agent và quy trình, `studio.objects.manage` cho đối tượng; thiếu khóa → 403
-   `permission_denied`); loại có `has_quality_gate = false` đi nhánh gửi của ticket 04 (spec R2.8). Với loại có
-   cổng, trong một giao dịch: hỏi `RunControlPort` của ticket 01,
+5. Route `POST /api/v1/studio/{agents|workflows|objects|endpoints}/{artifact_id}/versions/{version_id}/submit`
+   (`Idempotency-Key`, `If-Match`), kiểm khóa gửi mà mục `ArtifactKindRegistry` của loại khai (tenant-config:R2.15:
+   `studio.versions.submit` cho agent và quy trình, `studio.objects.manage` cho đối tượng, `studio.datahub.manage`
+   cho Nguồn dữ liệu, workflow-triggers:R4.7; thiếu khóa → 403 `permission_denied`); thiếu `If-Match` → 428
+   `precondition_required` trước mọi lần ghi (spec R2.13); giá trị `If-Match`, ETag của nháp tức `row_version`, đi vào
+   `seal(..., expected_row_version)` của tenant-config/02, lệch → 412 `precondition_failed` với `details.reason_code`
+   `stale_version`, giao dịch lùi, phiên bản giữ `draft` (spec R2.12; ADR-0108 (Accepted) quyết 3); mã 412, 428 và
+   header là của app-standards/03, ticket này nhận qua tenant-config/04. Loại có `has_quality_gate = false` đi nhánh
+   gửi của ticket 04 (spec R2.8). Với loại có cổng, trong một giao dịch: hỏi `RunControlPort` của ticket 01,
    đóng băng thì 409 `tenant_frozen` hay `platform_frozen` (spec R7.9); tính bao đóng bằng extractor của
    loại, gọi bước niêm phong của tenant-config (cấp `version_no`, ghi `content_hash`, `definition_hash`,
    Nơi đang dùng), chạy các kiểm của bảng kiểm theo loại (một kiểm từ chối → 422 với `reason_code` của nó,
@@ -116,6 +121,10 @@ database và "đã kiểm định" tính được (spec R1, R2). Đứng trên v
       kèm danh sách; tenant B gửi id của tenant A → 404.
 - [ ] R2.7 (AL10): đăng ký một kiểm fixture từ chối cho loại `workflow` → gửi kiểm định 422 với
       `reason_code` của kiểm, phiên bản vẫn `draft`, không bản kê hay audit; bỏ bước chạy bảng kiểm → test đỏ.
+- [ ] R2.12: nháp được lưu lại sau khi người gửi tải nó, rồi gửi với `If-Match` cũ → 412 `precondition_failed` với
+      `stale_version`, phiên bản vẫn `draft`, không `version_no` nào được cấp, không bản kê hay audit; `If-Match`
+      đúng → gửi được; bỏ việc chuyển `If-Match` cho `seal` → test đỏ.
+- [ ] R2.13: gửi không có `If-Match` → 428 `precondition_required`, không đổi gì.
 - [ ] R7.9: đóng băng công ty rồi gửi kiểm định → 409 `tenant_frozen`, phiên bản vẫn `draft`.
 - [ ] Xong: `make ci && make test-integration` xanh.
 
@@ -148,3 +157,7 @@ database và "đã kiểm định" tính được (spec R1, R2). Đứng trên v
   foundations-hardening/07 (cùng sửa `_ORDERED_FIRST`) và tenant-rbac/02 (INSERT khóa nêu `tenant_grantable`).
   workflow-engine/01 chờ ticket này vì ticket này đăng ký khóa gửi `studio.versions.submit` mà mục
   `ArtifactKindRegistry` của loại `workflow` khai; cạnh nằm ở ticket đó (Quyết định tạm của spec).
+- 2026-10-24 (agent): vòng sửa thứ tư, lượt b, theo các Quyết định tạm cùng ngày của spec: route gửi nhận `If-Match`
+  và chuyển nó cho `seal(..., expected_row_version)`, 412 `stale_version` khi lệch, 428 khi thiếu (spec R2.12, R2.13);
+  route thêm `endpoints` với khóa gửi `studio.datahub.manage` và luật theo loại nêu Nguồn dữ liệu (V4.1); câu so
+  `compared_live_hash` nói phiên bản Đang dùng mà lần phát hành này thay, hay NULL khi không có bản nào.

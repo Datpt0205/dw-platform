@@ -131,7 +131,7 @@ tạm UNVERIFIED tới khi luật sư xác nhận trước chạy bóng (ADR-012
   (foundations-hardening:R6.3; ADR-0122 (Accepted) quyết 7).
 - R5.8 KHI lane `offboarding` xóa dữ liệu của một công ty đang `offboarding`, lane `offboarding` PHẢI xuất rồi
   xóa mọi dòng `platform.run_steps` của công ty đó qua `platform.purge_tenant_append_only`
-  (usage-and-limits:R3.8; YC6).
+  (usage-and-limits:R3.10; YC6).
 
 ## Trong phạm vi
 
@@ -275,17 +275,17 @@ timestamptz`, `duration_ms`, `error_type`; `input_preview` và `result_preview` 
   theo định dạng của R5.6 (studio-skeleton:R3.7); test phủ offboarding và `STUDIO_EXCLUSIONS`
   (studio-skeleton:R4.3).
 - usage-and-limits/02: `platform.drop_expired_partitions(cutoffs jsonb)` cho mọi khóa DROP PARTITION và
-  `platform.purge_tenant_append_only` cho R5.8 (usage-and-limits:R3.8); ticket 03 chờ nó. Bản tệp retention đầu có
-  mục khóa `schema.table` là của ticket đăng ký đầu tiên sau studio-skeleton/01 (usage-and-limits/02), viết theo
-  định dạng của R5.6.
+  `platform.purge_tenant_append_only` cho R5.8 (usage-and-limits:R3.10); ticket 03 chờ nó. Bản tệp retention đầu
+  có mục khóa `schema.table` là của usage-and-limits/02, ticket đầu của chuỗi các ticket sửa tệp, viết theo định
+  dạng của R5.6.
 - foundations-hardening: `dw_app` không có UPDATE trên `platform.tool_executions` (foundations-hardening:R6.3),
   nên R5.7 đi qua hàm riêng của lane.
-- Tệp chính sách retention: các ticket sửa tệp đi thành một chuỗi, mỗi ticket chờ ticket đứng trước:
-  studio-skeleton/01 → usage-and-limits/02 → usage-and-limits/03 → ticket 03 của lát này → agent-lifecycle/04 →
+- Tệp chính sách retention: các ticket sửa tệp đi thành một chuỗi, mỗi ticket chờ ticket đứng trước và ra đúng một
+  bản mới: usage-and-limits/02 → usage-and-limits/03 → ticket 03 của lát này → agent-lifecycle/04 →
   workflow-triggers/02 → compliance-pdpl/04 → agent-builder/04 →
   `.claude/plans/studio/compliance-pdpl/issues/06-lop-luu-giu-du-lieu-ca-nhan.md` với hội thoại và Danh sách chặn
-  gửi (DO-52). studio-skeleton/01 đứng đầu chuỗi mà không ra bản nào (dựng hàm tra theo khóa `schema.table`, đọc
-  `retention@1.7.0` qua ánh xạ tạm); mỗi ticket sau nó ra đúng một bản mới.
+  gửi (DO-52; V4.P1). studio-skeleton/01 không thuộc chuỗi vì không sửa tệp: nó dựng hàm tra theo khóa
+  `schema.table` và đọc `retention@1.7.0` qua ánh xạ tạm.
 - Kiểm lại khi: hợp đồng `StepRecorderPort` hay bộ bọc node của workflow-engine đổi → R3; hàm quyền đọc
   trường của field-security đổi → R3.3; ADR-0122 (Accepted) bị Đạt bác → toàn lát; workflow-triggers đổi bảng
   sự kiện vào hay cách giữ sự kiện khi Đóng băng → R5.1, R5.5; luật sư đổi số thời hạn → một bản mới của tệp
@@ -342,11 +342,12 @@ timestamptz`, `duration_ms`, `error_type`; `input_preview` và `result_preview` 
   ticket 03.
 - 24/10/2026 (Đạt): `runs.read_payloads` đăng ký ở ticket 03 theo quy ước của tenant-rbac/01
   (B:agent-lifecycle:phụ-thuộc\~tenant-rbac/01). Sửa: Trong phạm vi, Phụ thuộc, ticket 03.
-- 24/10/2026 (agent, tạm): tệp chính sách retention giữ là một tệp có phiên bản
+- 24/10/2026 (agent, tạm): V4.P1: tệp chính sách retention giữ là một tệp có phiên bản
   `configs/policies/retention@<semver>.yaml`, một câu trả lời có số hiệu cho câu hỏi tuân thủ; các ticket sửa tệp đi
-  thành một chuỗi theo `Blocked by`, mỗi ticket ra một bản mới, theo thứ tự ở mục Phụ thuộc
-  (C:configs:spec\~telemetry-and-audit/03). Sửa: Dữ liệu, Phụ thuộc, ticket 03. Nếu sai thì: tách tệp thành một tệp
-  mỗi bảng, sửa R5.6 và ADR-0122 (Accepted) quyết 7.
+  thành một chuỗi theo `Blocked by`, mỗi ticket ra một bản mới, theo thứ tự ở mục Phụ thuộc, bắt đầu từ
+  usage-and-limits/02; studio-skeleton/01 không thuộc chuỗi vì nó không sửa tệp, chỉ đọc `retention@1.7.0` qua ánh
+  xạ tạm (C:configs:spec\~telemetry-and-audit/03; ADR-0122 (Accepted) quyết 7). Sửa: Dữ liệu, Phụ thuộc, ticket 03.
+  Nếu sai thì: tách tệp thành một tệp mỗi bảng, sửa R5.6 và ADR-0122 (Accepted) quyết 7.
 - 24/10/2026 (agent, tạm): ticket 02 chờ workflow-engine/05, theo chiều của lộ trình (lát này đi sau
   workflow-engine), vì cả hai đặt DDL trên `platform.worker_runs` (trigger của workflow-engine:R6.13 và CHECK
   `trace_id`); qua workflow-engine/05, ticket 02 cũng chờ workflow-engine/04
@@ -357,6 +358,10 @@ timestamptz`, `duration_ms`, `error_type`; `input_preview` và `result_preview` 
   (C:custom-objects/02\~tenant-rbac/02; ADR-0104 (Accepted) quyết 1). Sửa: Phụ thuộc, ticket 03. Nếu sai thì:
   tenant-rbac/01 tạo cột `tenant_grantable` kèm sửa ADR-0104 (Accepted) quyết 1, và ticket 03 chỉ chờ
   tenant-rbac/01.
+- 24/10/2026 (agent, tạm): R5.8 và mục Phụ thuộc dẫn usage-and-limits:R3.10, hợp đồng của
+  `platform.purge_tenant_append_only` trên mọi bảng `append_only` của sổ, thay usage-and-limits:R3.8, tiêu chí
+  offboarding của chính các bảng usage-and-limits. Sửa: R5.8, Phụ thuộc. Nếu sai thì: R5.8 dẫn lại số tiêu chí mà
+  usage-and-limits đặt cho hàm.
 
 ## Danh sách ticket
 
