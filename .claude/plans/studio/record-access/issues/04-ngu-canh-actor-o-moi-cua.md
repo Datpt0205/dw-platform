@@ -3,18 +3,20 @@
 Status: needs-triage
 Blocked by: 03, .claude/plans/studio/org-and-principals/issues/03-tai-khoan-dich-vu-run-as.md
 Area: studio
-Yêu cầu: R6.3, R6.4, R6.5, R6.6, R6.7, R6.8, R6.9, RA18, RA19, RA20, RA21
+Yêu cầu: R6.3, R6.4, R6.5, R6.6, R6.7, R6.8, R6.9, R6.10, RA18, RA19, RA20, RA21
 
 ## Mục tiêu
 
 Agent và quy trình đọc, ghi bản ghi bằng tầm sống của người kích hoạt hay tài khoản dịch vụ chạy dưới danh nghĩa,
 giao với giới hạn dữ liệu cố định khi phát hành, nên một yêu cầu bị chèn prompt đòi lead của người khác thất bại ở
-RLS, không ở prompt (spec R6.3 tới R6.9; ADR-0103 (Accepted) mục 4 và 5; ADR-0105 (Accepted) mục 6).
+RLS, không ở prompt (spec R6.3 tới R6.9; ADR-0103 (Accepted) mục 4 và 5; ADR-0105 (Accepted) mục 6). Lane
+offboarding xuất rồi xóa giới hạn dữ liệu của một công ty rời nền tảng như mọi dữ liệu Studio của nó (spec R6.10).
 
 ## Việc cần làm
 
-1. Migration trong schema `studio`, RLS ENABLE và FORCE, policy `tenant_isolation_<bảng>` theo tenant, `dw_app` chỉ
-   SELECT và INSERT:
+1. Migration trong schema `studio`, RLS ENABLE và FORCE, policy `tenant_isolation_<bảng>` theo tenant, `dw_app`
+   SELECT, INSERT và DELETE (DELETE chỉ dùng được ở lượt xóa của offboarding, nhờ trigger dưới; khẳng định trong
+   `packages/python/dw_platform/tests/integration/test_privileges.py`):
     - `studio.actor_boundaries`: `tenant_id` (FK `platform.tenants` `ON DELETE CASCADE`), `id` (PK `(tenant_id, id)`),
       `kind text NOT NULL` với `ck_actor_boundaries_kind` (`agent`, `workflow`), `source_id uuid NOT NULL`,
       `source_version text NOT NULL`, `created_at timestamptz NOT NULL DEFAULT now()`, UNIQUE
@@ -28,7 +30,14 @@ RLS, không ở prompt (spec R6.3 tới R6.9; ADR-0103 (Accepted) mục 4 và 5;
       (`read`, `edit`), PK `(tenant_id, boundary_id, field_id)`, index trên `(tenant_id, field_id)`; field-security đọc
       bảng này.
     - Trigger BEFORE UPDATE OR DELETE trên ba bảng gọi lỗi 23514 `ck_actor_boundaries_frozen`: UPDATE luôn bị từ chối,
-      DELETE chỉ qua khi giao dịch ở phạm vi toàn tenant của lane offboarding.
+      DELETE chỉ qua khi `platform.tenants.status` của công ty của dòng là `offboarding`, cùng hình với
+      `platform.guard_control_switch()` của agent-lifecycle (spec R6.8; agent-lifecycle:R7.5); trigger không đọc
+      `app.workspace_scope`.
+    - Thêm `("studio", "actor_boundary_objects")`, `("studio", "actor_boundary_fields")` vào `_ORDERED_FIRST` của
+      `packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py`, ngay trước
+      `("studio", "records")` mà custom-objects/02 thêm, vì khóa ngoại `ON DELETE RESTRICT` của hai bảng giữ
+      `studio.object_defs` và `studio.field_defs` (spec R6.10; studio-skeleton:R4.2); `studio.actor_boundaries` xóa ở
+      phần còn lại của danh mục, trên phần đọc catalog và `export_rows` mà foundations-hardening/07 đã viết lại.
     - Ba bảng không có `workspace_id`: mỗi bảng một dòng trong danh sách bảng toàn tenant của
       `packages/python/dw_platform/tests/integration/test_rls_coverage.py` với lý do "giới hạn dữ liệu của một phiên bản
       agent hay quy trình đã phát hành, thuộc định nghĩa toàn tenant" (DO-01).
@@ -69,9 +78,14 @@ RLS, không ở prompt (spec R6.3 tới R6.9; ADR-0103 (Accepted) mục 4 và 5;
 - [ ] R6.7: `ActorBoundaryPort.record` ghi đúng một giới hạn cho mỗi bộ (loại, nguồn, phiên bản); ghi lần hai cho
       cùng phiên bản → 23505, không có dòng thứ hai.
 - [ ] R6.8 (RA20): UPDATE `studio.actor_boundary_objects` của phiên bản đã ghi → 23514 `ck_actor_boundaries_frozen`;
-      DELETE ngoài phạm vi toàn tenant → 23514; DELETE qua lane offboarding → thành công.
+      `dw_app` DELETE một dòng của mỗi bảng khi công ty `active` → 23514, dòng còn; cùng lệnh khi công ty `offboarding`
+      → xóa được; gỡ phép kiểm DELETE khỏi trigger → test đỏ.
 - [ ] R6.9 (RA21): tài khoản dịch vụ chỉ có `read` lead ở mức Của tôi, chạy với loại `workflow`: thấy lead của chính
       nó, 0 lead của người phát hành có mức Toàn công ty; gắn người phát hành làm chủ thể → test đỏ.
+- [ ] R6.10: công ty `offboarding` có một giới hạn dữ liệu trỏ tới một đối tượng và một trường của nó → lane
+      `offboarding` xuất mỗi dòng của ba bảng một lần rồi xóa hết, cùng định nghĩa đối tượng và trường, không lỗi khóa
+      ngoại; dòng của công ty khác còn nguyên; test phủ offboarding (studio-skeleton:R4.1, studio-skeleton:R4.2) xanh;
+      gỡ hai mục khỏi `_ORDERED_FIRST` → test đỏ.
 - [ ] Xong: `make ci test-integration` xanh.
 
 ## Nguồn
@@ -82,6 +96,7 @@ RLS, không ở prompt (spec R6.3 tới R6.9; ADR-0103 (Accepted) mục 4 và 5;
 - `packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/checkpoint.py:67-68`; spec: R6.3.
 - `docs/adr/0103-runs-act-as-a-principal-within-a-boundary.md:67-82`; spec: R6.4, R6.6, R6.9.
 - `docs/adr/0105-record-reach-is-decided-by-postgresql.md:93-96`; spec: R6.
+- `packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:98-114`; spec: R6.8, R6.10.
 
 ## Comments
 
@@ -92,3 +107,7 @@ RLS, không ở prompt (spec R6.3 tới R6.9; ADR-0103 (Accepted) mục 4 và 5;
 - 2026-10-24 (agent): vòng sửa 4, lượt ba: bước 2 thôi nói "dịch vụ phát hành của agent-lifecycle và workflow-engine":
   móc phát hành của loại `agent` và `workflow` gọi `ActorBoundaryPort` trong giao dịch phát hành mà agent-lifecycle mở
   (ADR-0109 (Accepted) quyết 1; Quyết định 24/10/2026 của spec).
+- 2026-10-24 (agent): bước 1 cấp DELETE cho `dw_app` trên ba bảng, trigger cho DELETE qua chỉ khi công ty ở
+  `offboarding` thay cho phạm vi toàn tenant, và hai bảng con vào `_ORDERED_FIRST` trước định nghĩa đối tượng và trường,
+  vì lane offboarding chỉ xóa bảng mà `dw_app` có DELETE; tiêu chí R6.8 mang ca âm của công ty `active`, tiêu chí mới
+  R6.10 thử lượt xóa (CLAUDE.md, Data model rules; Quyết định 24/10/2026 của spec).

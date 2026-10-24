@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: 02, 03, .claude/plans/studio/foundations-hardening/issues/06-run-va-outbox-khong-ket.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md
 Area: studio
-Yêu cầu: R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.7, R3.6, R2.18, TC15, TC21, TC28, TC29
+Yêu cầu: R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.7, R3.6, R3.8, R2.18, TC15, TC21, TC28, TC29, TC31
 
 ## Mục tiêu
 
@@ -18,13 +18,15 @@ TC28). Ticket 05 thêm mục điểm gắn vào cùng bản kê.
 1. Revision Alembic mới (id hex ngẫu nhiên), chép nguyên văn mục Dữ liệu của spec:
     - `platform.run_manifests`: khóa chính `(tenant_id, hash)`, `hash` khớp `^sha256:[0-9a-f]{64}$`,
       `body` jsonb NFC tối đa 1 MiB, `created_at timestamptz NOT NULL`; ghi bằng
-      `INSERT ... ON CONFLICT DO NOTHING`; `dw_app` chỉ SELECT và INSERT.
+      `INSERT ... ON CONFLICT DO NOTHING`; `dw_app` SELECT, INSERT và DELETE, DELETE chỉ dùng được ở lượt xóa của
+      offboarding (spec R3.8).
     - `platform.run_manifest_keys`: `(tenant_id, manifest_hash)` FK tới `platform.run_manifests` ON
       DELETE CASCADE; `artifact_version_id` NOT NULL, FK ghép `(tenant_id, artifact_version_id)` ON DELETE RESTRICT
       tới `studio.artifact_versions (tenant_id, id)` qua `uq_artifact_versions_tenant_id_id` của ticket 02 (R2.18);
       unique `(tenant_id, manifest_hash, artifact_version_id)`; mỗi FK một index dẫn bằng cột của nó: FK
       `(tenant_id, manifest_hash)` qua unique đó, FK ghép của `artifact_version_id` qua index
-      `(tenant_id, artifact_version_id)`. Ticket 05 thêm `config_version_id` (FK ghép ON DELETE RESTRICT
+      `(tenant_id, artifact_version_id)`; `dw_app` SELECT, INSERT và DELETE như `platform.run_manifests`. Ticket 05
+      thêm `config_version_id` (FK ghép ON DELETE RESTRICT
       tới `uq_config_versions_tenant_id_id`), CHECK `num_nonnulls(artifact_version_id, config_version_id) = 1` và unique
       `(tenant_id, manifest_hash, config_version_id)`, và trong cùng bước bỏ NOT NULL của `artifact_version_id` mà
       revision này đặt.
@@ -36,10 +38,17 @@ TC28). Ticket 05 thêm mục điểm gắn vào cùng bản kê.
       `test_rls_coverage.py` thấy cả hai, và mỗi bảng có một dòng lý do trong danh sách bảng toàn tenant
       của test đó (bản kê định danh theo nội dung, dùng chung cho mọi lượt chạy cùng nội dung; khóa bản kê
       là con của bản kê; DO-01).
+    - Trigger BEFORE DELETE `platform.refuse_delete_outside_offboarding()` của ticket 02 trên cả hai bảng mới (spec
+      R3.8, TC31): ứng dụng không xóa dòng nào của hai bảng (bản kê định danh theo nội dung, khóa ghim phiên bản cho
+      lượt chạy còn giữ), nên DELETE của `dw_app` chỉ để lane `offboarding` xóa được, vì lane chỉ xóa bảng có trong
+      `_CATALOG_PURGEABLE`.
     - Offboarding, trên `offboarding.py` và `test_offboarding.py` mà foundations-hardening/07 đã viết lại:
-      `platform.run_manifests` vào `_ORDERED_FIRST` ngay sau `platform.worker_runs` (cạnh RESTRICT từ lượt
-      chạy) và trước các mục `studio` của ticket 02 (`platform.run_manifest_keys` đi theo CASCADE, gỡ cạnh
-      RESTRICT tới phiên bản).
+      `platform.run_manifest_keys` vào `_ORDERED_FIRST` ngay sau `platform.worker_runs` và trước các mục `studio` của
+      ticket 02, vì FK RESTRICT của `artifact_version_id` giữ `studio.artifact_versions` (và FK RESTRICT của
+      `config_version_id` mà ticket 05 thêm giữ `platform.config_versions`), và test phủ offboarding đọc thứ tự các bước
+      xóa mà `offboarding.py` khai, không theo CASCADE của `platform.run_manifests` (studio-skeleton:R4.2);
+      `platform.run_manifests` ở phần xóa theo chữ cái, sau `platform.worker_runs` mà `_ORDERED_FIRST` xóa trước (cạnh
+      RESTRICT từ lượt chạy; ADR-0109 (Accepted) Consequences).
     - Cột mới đi sau `ck_worker_runs_status` của foundations-hardening/06 trên cùng `platform.worker_runs`, nên
       revision này nối sau revision của ticket đó.
 2. Thân `dw.run_manifest/v1` (mô hình trong lõi `dw_studio`, `extra="forbid"`): `schema`, `release_manifest_ref`,
@@ -83,8 +92,8 @@ TC28). Ticket 05 thêm mục điểm gắn vào cùng bản kê.
       trình khác → lượt chạy dùng v1 đã ghim.
 - [ ] R6.4 (TC15): lượt `simulate` trên bản Nháp; lưu nháp mới rồi tiếp tục ở tiến trình khác → phân giải gốc
       bị từ chối, nội dung mới không chạy; bỏ so mã băm tạm → test đỏ.
-- [ ] R6.5 (TC15): DELETE phiên bản được bản kê ghim → lỗi FK; DELETE bản kê mà `platform.worker_runs`
-      còn trỏ tới → lỗi FK.
+- [ ] R6.5 (TC15): ở một công ty đã chuyển sang `offboarding` (ngoài đó trigger của spec R3.8 từ chối lệnh xóa
+      trước): DELETE phiên bản được bản kê ghim → lỗi FK; DELETE bản kê mà `platform.worker_runs` còn trỏ tới → lỗi FK.
 - [ ] R6.6: p95 đo được ghi ở Comments và không quá 20 ms, hoặc Quyết định của spec có dòng Đạt chấp
       nhận số đo mới.
 - [ ] R6.7 (TC28): `build` với gốc ở `draft` và `run_mode` `live` hay `test` → từ chối, không dòng
@@ -92,7 +101,12 @@ TC28). Ticket 05 thêm mục điểm gắn vào cùng bản kê.
 - [ ] R2.18 (TC29): bằng vai migrator, INSERT dòng `platform.run_manifest_keys` của tenant A có `artifact_version_id`
       là phiên bản của tenant B → lỗi FK ghép; đổi FK ghép về FK một cột → test đỏ.
 - [ ] R3.6 (TC21): `test_offboarding.py` purge tenant có lượt chạy ghim bản kê lên phiên bản Studio, tenant
-      khác giữ nguyên; gỡ mục `platform.run_manifests` khỏi `_ORDERED_FIRST` → test đỏ.
+      khác giữ nguyên; gỡ mục `platform.run_manifest_keys` khỏi `_ORDERED_FIRST` → test phủ offboarding
+      (studio-skeleton:R4.2) đỏ, nêu FK ghép của `artifact_version_id`; thu DELETE của `dw_app` trên
+      `platform.run_manifests` → test phủ (studio-skeleton:R4.3) đỏ, nêu tên bảng.
+- [ ] R3.8 (TC31): `dw_app` DELETE một dòng `platform.run_manifests` hay `platform.run_manifest_keys` của công ty
+      `active` → 23514, dòng còn; cùng lệnh khi công ty ở `offboarding` → xóa được; gỡ trigger khỏi một trong hai bảng
+      → test đỏ.
 - [ ] Xong: `make ci && make test-integration` xanh.
 
 ## Nguồn
@@ -101,6 +115,7 @@ TC28). Ticket 05 thêm mục điểm gắn vào cùng bản kê.
 - `db/migrations/versions/0005_run_artifact_versions.py:41-51`; spec: R6.1.
 - `packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:108-114`; spec: R3.6,
   TC21; ADR-0109 (Accepted) quyết 6-7.
+- `packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:98-101`; spec: R3.8, TC31.
 
 ## Comments
 
@@ -121,3 +136,9 @@ TC28). Ticket 05 thêm mục điểm gắn vào cùng bản kê.
 - 2026-10-24 (agent): vòng sửa thứ tư, lượt d, theo quyết định tạm cùng ngày của spec: FK `(tenant_id, manifest_hash)`
   dùng unique `(tenant_id, manifest_hash, artifact_version_id)` làm index dẫn bằng hai cột của nó (`CLAUDE.md`, Data
   model rules).
+- 2026-10-24 (agent): vòng sửa thứ tư, theo quyết định tạm cùng ngày của spec về quyền xóa của lane `offboarding`:
+  `dw_app` có DELETE trên hai bảng của ticket này, chỉ dùng được ở lượt xóa của offboarding nhờ trigger của ticket 02
+  (R3.8, TC31); `platform.run_manifest_keys` vào `_ORDERED_FIRST` thay cho `platform.run_manifests`, vì test phủ
+  offboarding kiểm FK RESTRICT tới `studio.artifact_versions` theo thứ tự các bước xóa mà `offboarding.py` khai, không
+  theo CASCADE (studio-skeleton:R4.2), nên ca âm của R3.6 gỡ mục đó; ca xóa cứng để thấy lỗi FK (R6.5) chạy khi công ty
+  ở `offboarding`.

@@ -170,11 +170,14 @@ với giới hạn dữ liệu của phiên bản đã phát hành, đánh giá 
   lệnh kế tiếp, không áp tầm đóng dấu lúc lượt chạy bắt đầu.
 - R6.7 `studio.actor_boundaries` PHẢI giữ đúng một giới hạn dữ liệu cho mỗi phiên bản agent hay quy trình đã phát
   hành, ghi trong giao dịch phát hành.
-- R6.8 NẾU một lệnh UPDATE, hay một lệnh DELETE ngoài phạm vi toàn tenant của lane offboarding, chạm giới hạn dữ liệu
-  của phiên bản đã phát hành, THÌ `studio.actor_boundaries` PHẢI từ chối với SQLSTATE 23514
+- R6.8 NẾU một lệnh UPDATE, hay một lệnh DELETE khi `platform.tenants.status` của công ty khác `offboarding`, chạm
+  giới hạn dữ liệu của phiên bản đã phát hành, THÌ `studio.actor_boundaries` PHẢI từ chối với SQLSTATE 23514
   `ck_actor_boundaries_frozen` và không đổi gì.
 - R6.9 ĐỐI VỚI lượt chạy quy trình không người kích hoạt, policy của `studio.records` PHẢI áp tầm của tài khoản dịch
   vụ chạy dưới danh nghĩa của phiên bản, giao với giới hạn dữ liệu, như cho một người giữ cùng vai trò.
+- R6.10 KHI lane `offboarding` xóa dữ liệu của một công ty đang `offboarding`, lane `offboarding` PHẢI xuất rồi xóa
+  mọi dòng `studio.actor_boundaries`, `studio.actor_boundary_objects` và `studio.actor_boundary_fields` của công ty
+  đó, kể cả dòng trỏ tới định nghĩa đối tượng hay trường bị xóa trong cùng lượt (YC6; studio-skeleton:R4.2).
 
 ### R7 — Phạm vi toàn tenant cho offboarding và lane đã đăng ký [Sửa]
 
@@ -302,7 +305,12 @@ máy tham chiếu mà YC20 định nghĩa (host chính sau D14), với mọi h�
 - `studio.actor_boundaries` (`kind` `agent` hay `workflow`, `source_id`, `source_version`),
   `studio.actor_boundary_objects` (`can_read`, `can_create`, `can_update`, `can_delete`, `can_assign`),
   `studio.actor_boundary_fields` (`access` là `read` hay `edit`); RLS tenant; trigger `ck_actor_boundaries_frozen`; ba
-  bảng thuộc phiên bản đã phát hành, không có `workspace_id` (lớp bảng toàn tenant, DO-01).
+  bảng thuộc phiên bản đã phát hành, không có `workspace_id` (lớp bảng toàn tenant, DO-01). `dw_app` có SELECT, INSERT
+  và DELETE, DELETE chỉ dùng được ở lượt xóa của offboarding: trigger `ck_actor_boundaries_frozen` từ chối mọi UPDATE,
+  và mọi DELETE khi `platform.tenants.status` của công ty khác `offboarding` (R6.8), cùng hình với
+  `platform.guard_control_switch()` của agent-lifecycle (agent-lifecycle:R7.5). `studio.actor_boundary_objects` và
+  `studio.actor_boundary_fields` đứng trước `studio.object_defs` và `studio.field_defs` trong `_ORDERED_FIRST` của lane
+  offboarding, vì khóa ngoại của chúng tới hai bảng đó là `ON DELETE RESTRICT` (R6.10; studio-skeleton:R4.2).
 - Setting mỗi giao dịch: `app.actor_kind` (`user`, `agent`, `workflow`) và `app.boundary_id`, cạnh `app.tenant_id`,
   `app.user_id`, `app.workspace_scope` đã có.
 
@@ -338,7 +346,7 @@ máy tham chiếu mà YC20 định nghĩa (host chính sau D14), với mọi h�
 | RA17 | Thiếu ngữ cảnh actor thì không thấy gì                                                 | R6.1              | gắn tenant và chủ thể đúng, không gắn `app.actor_kind` → 0 dòng, INSERT bị từ chối; `app.actor_kind = 'admin'` → 0 dòng                                                                                                                                                                                                                                                                     |
 | RA18 | Chỉ cửa được phép gắn loại actor                                                       | R6.2, R6.3        | test kiến trúc: module ngoài danh sách gọi helper với `agent` → đỏ; cửa API bỏ gắn `user` → yêu cầu Studio đọc 0 bản ghi                                                                                                                                                                                                                                                                    |
 | RA19 | Agent và quy trình trong giới hạn dữ liệu, tầm sống                                    | R6.4, R6.5, R6.6  | giới hạn chỉ có `mkt_lead` → object khác 0 dòng dù chủ thể thấy; `agent` thiếu `app.boundary_id` → 0 dòng; chủ thể mất quyền trước khi lượt chạy tiếp tục → 0 dòng; gỡ nhánh giới hạn → đỏ                                                                                                                                                                                                  |
-| RA20 | Giới hạn dữ liệu bất biến                                                              | R6.8              | UPDATE `studio.actor_boundary_objects` của phiên bản đã phát hành → 23514 `ck_actor_boundaries_frozen`; DELETE ngoài phạm vi toàn tenant → 23514                                                                                                                                                                                                                                            |
+| RA20 | Giới hạn dữ liệu bất biến                                                              | R6.8              | UPDATE `studio.actor_boundary_objects` của phiên bản đã phát hành → 23514 `ck_actor_boundaries_frozen`; `dw_app` DELETE một dòng giới hạn của công ty `active` → 23514, dòng còn; cùng lệnh khi công ty `offboarding` → xóa được; gỡ phép kiểm DELETE khỏi trigger → test đỏ                                                                                                                |
 | RA21 | Lượt chạy không người kích hoạt dùng tầm của tài khoản dịch vụ                         | R6.9              | tài khoản dịch vụ chỉ có `read` mức Của tôi: lượt chạy thấy 0 bản ghi của người phát hành; gắn người phát hành làm chủ thể → test đỏ                                                                                                                                                                                                                                                        |
 | RA22 | Phạm vi toàn tenant chỉ qua một helper                                                 | R7.1, R7.2        | thêm `set_config('app.workspace_scope', ...)` ngoài helper → test quét mã đỏ; lane ngoài danh sách → lỗi, setting không đổi; một dòng danh sách thiếu lý do hay thiếu ghi lane có đọc bảng riêng tư theo chủ không → test đỏ; phạm vi toàn tenant đọc 0 bản ghi của tenant khác                                                                                                             |
 | RA23 | Offboarding xuất mỗi bản ghi một lần                                                   | R7.3, G1          | tenant có bản ghi của ba người phụ trách trên partition hash → bản xuất đủ, mỗi bản ghi đúng một lần; sau purge còn 0; tenant khác không đổi                                                                                                                                                                                                                                                |
@@ -373,7 +381,8 @@ máy tham chiếu mà YC20 định nghĩa (host chính sau D14), với mọi h�
 - app-standards: problem+json và `Idempotency-Key` gắn người gọi cho route giao (ticket 05 chờ app-standards/01, /02).
 - Kiểm lại khi: `platform.effective_grants` đổi hình → ticket 02 tới 05; custom-objects đổi số partition (đường lui
   modulus 4, `custom-objects:R9.5`) → ticket 01, 03; số đo của ticket 01 trượt ngưỡng R9 → mẫu policy của ticket 03 và
-  ADR-0105 (Accepted); foundations-hardening/03 rút `foundations-hardening:R5.3` (dạng InitPlan) → ticket 02, 03.
+  ADR-0105 (Accepted); foundations-hardening/03 rút `foundations-hardening:R5.3` (dạng InitPlan) → ticket 02, 03;
+  custom-objects/02 dời `studio.field_defs` hay `studio.object_defs` trong `_ORDERED_FIRST` → ticket 04.
 
 ## Câu hỏi còn mở
 
@@ -479,6 +488,20 @@ máy tham chiếu mà YC20 định nghĩa (host chính sau D14), với mọi h�
   là bắt buộc (CLAUDE.md, Tenancy and authorization) và `dw_app` không ghi bảng này nên chỉ hàm SECURITY DEFINER đi tới
   khóa ngoại đó (failure-modes #3). Sửa: R5.7, RA12, ticket 02. Nếu sai thì: R5.7 rút bằng `[Bỏ]` và ca âm thành một
   dòng của RA16.
+- 24/10/2026 (agent, tạm): `dw_app` có DELETE trên `studio.actor_boundaries`, `studio.actor_boundary_objects` và
+  `studio.actor_boundary_fields`, trigger `ck_actor_boundaries_frozen` chỉ cho DELETE qua khi `platform.tenants.status`
+  của công ty là `offboarding`, thay cho "chỉ SELECT và INSERT" cùng điều kiện phạm vi toàn tenant, và hai bảng con
+  đứng trước `studio.object_defs`, `studio.field_defs` trong `_ORDERED_FIRST`. Lane offboarding xóa bằng `dw_app`, chỉ
+  xóa bảng mà `dw_app` có DELETE (`packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:98-101`)
+  và xóa theo `_ORDERED_FIRST` rồi phần còn lại
+  (`packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:183-194`), nên thiếu DELETE thì ba
+  bảng ở lại sau offboarding và test phủ offboarding đỏ, còn thiếu thứ tự thì khóa ngoại RESTRICT chặn lần xóa định
+  nghĩa đối tượng và trường (CLAUDE.md, Data model rules; studio-skeleton:R4.1, studio-skeleton:R4.2). Điều kiện trạng
+  thái công ty theo tiền lệ `platform.guard_control_switch()` (agent-lifecycle:R7.5) và
+  `platform.guard_contact_suppression()` (compliance-pdpl:R5.6), và trigger không đọc `app.workspace_scope`, setting mà
+  CLAUDE.md mục Tenancy and authorization chỉ cho đọc trong các hình policy đã nêu. Sửa: R6.8, thêm R6.10, RA20, Dữ liệu,
+  Phụ thuộc, ticket 04. Nếu sai thì: ba bảng giữ chỉ SELECT và INSERT, lane offboarding xóa chúng qua một hàm SECURITY
+  DEFINER hẹp mà một dòng `STUDIO_EXCLUSIONS` nêu, và R6.8 cùng RA20 trở lại điều kiện phạm vi toàn tenant.
 
 ## Danh sách ticket
 

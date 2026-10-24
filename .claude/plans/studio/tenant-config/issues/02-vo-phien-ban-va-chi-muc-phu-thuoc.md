@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: 01, .claude/plans/studio/studio-skeleton/issues/02-goi-dw-studio-va-seam-api.md, .claude/plans/studio/org-and-principals/issues/01-khoa-don-vi-va-siet-realm.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md, .claude/plans/studio/app-standards/issues/01-vo-loi-problem-json.md, .claude/plans/studio/app-standards/issues/03-quy-uoc-api-danh-sach-va-sua.md
 Area: studio
-Yêu cầu: R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R2.7, R2.8, R2.9, R2.10, R2.11, R2.12, R2.13, R2.14, R2.15, R2.16, R2.17, R2.18, R2.19, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, TC1, TC2, TC3, TC4, TC5, TC6, TC7, TC21, TC24, TC27, TC29, TC30
+Yêu cầu: R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R2.7, R2.8, R2.9, R2.10, R2.11, R2.12, R2.13, R2.14, R2.15, R2.16, R2.17, R2.18, R2.19, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.8, TC1, TC2, TC3, TC4, TC5, TC6, TC7, TC21, TC24, TC27, TC29, TC30, TC31
 
 ## Mục tiêu
 
@@ -50,8 +50,8 @@ chỉ siết của `dw.object/v1`); ticket này không viết chuyển giai đo�
       `studio.version_assessments` mà compliance-pdpl/05 đặt, do spec tạo FK làm chủ; `based_on_version_id` FK ghép
       `(tenant_id, based_on_version_id)` `ON DELETE SET NULL (based_on_version_id)` có index
       `(tenant_id, based_on_version_id)`, chỉ đặt NULL cột đó vì `tenant_id` NOT NULL; `change_note` NULL.
-    - `studio.definition_manifests`: khóa chính `(tenant_id, hash)`, `body` jsonb NFC tối đa 1 MiB, chỉ
-      INSERT.
+    - `studio.definition_manifests`: khóa chính `(tenant_id, hash)`, `body` jsonb NFC tối đa 1 MiB, ứng dụng chỉ
+      INSERT, DELETE chỉ ở lượt xóa của offboarding (R3.8).
     - `studio.dependencies`: `from_version_id` FK ghép `(tenant_id, from_version_id)` và `from_artifact_id` FK ghép
       `(tenant_id, from_artifact_id)`, cả hai ON DELETE CASCADE; `to_kind` CHECK (`artifact`, `field`,
       `picklist_value`, `platform_artifact`, `connector`, `mcp_tool`, `binding`, `node_type`); `to_key`, `to_version`,
@@ -74,20 +74,36 @@ chỉ siết của `dw.object/v1`); ticket này không viết chuyển giai đo�
     - `studio.refuse_soft_delete_in_use()`: BEFORE UPDATE OF `deleted_at`, khi `deleted_at` chuyển từ
       NULL sang có giá trị mà một dòng `studio.dependencies` của thành phần khác trỏ tới nó từ một phiên
       bản `evaluating`, `awaiting_approval` hay `live`: `ERRCODE 23503`, ràng buộc
-      `ck_artifacts_not_in_use` (TC5; FK chặn DELETE cứng).
+      `ck_artifacts_not_in_use` (TC5; DELETE cứng bị trigger dưới chặn ngoài offboarding, và bị FK chặn khi dòng phụ
+      thuộc còn).
+    - `platform.refuse_delete_outside_offboarding()`: BEFORE DELETE FOR EACH ROW trên `studio.artifacts`,
+      `studio.artifact_versions` và `studio.definition_manifests`, `ERRCODE 23514` khi `platform.tenants.status` của
+      công ty của `OLD.tenant_id` khác `offboarding` hay không đọc được (so bằng `IS DISTINCT FROM`; spec R3.8, TC31);
+      ticket 04 và 05 gắn cùng hàm vào bảng của mình. Ứng dụng không xóa cứng dòng nào của ba bảng (xóa mềm, phiên bản
+      bất biến, bản kê định nghĩa định danh theo nội dung), nên DELETE của `dw_app` ở bước 3 trên ba bảng đó chỉ để lane
+      `offboarding` xóa được, cùng hình với trigger chặn xóa của compliance-pdpl:R5.6. `studio.dependencies` không có
+      trigger này, vì `seal` của bước 6 xóa dòng của một phiên bản khi niêm phong lại phiên bản đó sau khi về `draft`.
     - `updated_at` do `platform.touch_updated_at()` giữ, nhường giá trị câu lệnh nêu (CLAUDE.md "Data
       model rules").
 3. RLS ENABLE và FORCE, policy `tenant_isolation_<bảng>` chỉ theo `app.tenant_id` (định nghĩa toàn
-   tenant, ADR-0100 (Accepted) quyết 5). Grant: `dw_app` SELECT, INSERT, UPDATE trên `studio.artifacts`
-   và `studio.artifact_versions` (không DELETE); SELECT, INSERT trên `studio.dependencies` và
-   `studio.definition_manifests`; SELECT trên `studio.artifact_kinds`. Khẳng định trong
+   tenant, ADR-0100 (Accepted) quyết 5). Grant: `dw_app` SELECT, INSERT, UPDATE và DELETE trên `studio.artifacts`
+   và `studio.artifact_versions`; SELECT, INSERT và DELETE trên `studio.dependencies` và
+   `studio.definition_manifests`; SELECT trên `studio.artifact_kinds`. Cả bốn bảng có DELETE vì lane `offboarding` xóa
+   bằng `dw_app` và chỉ xóa bảng có trong `_CATALOG_PURGEABLE`; trên ba bảng của trigger ở bước 2, DELETE chỉ dùng được
+   ở lượt xóa của offboarding. Khẳng định trong
    `test_privileges.py`; `test_rls_coverage.py` thấy cả bốn bảng có `tenant_id`, và mỗi bảng có một dòng lý
    do trong danh sách bảng toàn tenant của test đó (định nghĩa có `owning_workspace_id`, phiên bản và chỉ mục
    phụ thuộc là con của thành phần, bản kê định nghĩa định danh theo nội dung; DO-01).
 4. Offboarding, trên `offboarding.py` và `test_offboarding.py` mà foundations-hardening/07 đã viết lại
    (`_CATALOG_COLUMNS`, `export_rows`): `_ORDERED_FIRST` thêm theo thứ tự `studio.dependencies`, `studio.artifacts`,
-   `studio.artifact_versions` (đã đo: xóa `studio.artifacts` trước khi gỡ cạnh phụ thuộc thì hỏng);
-   `test_offboarding.py` purge một tenant có hai thành phần phụ thuộc nhau ở hai workspace (TC21).
+   `studio.artifact_versions` (ADR-0109 (Accepted) Consequences), bảng tham chiếu trước bảng mà FK ON DELETE RESTRICT
+   của nó giữ (studio-skeleton:R4.2): `studio.dependencies` trước vì `to_artifact_id` và `to_version_id` giữ hai bảng
+   kia (đã đo: xóa `studio.artifacts` trước khi gỡ cạnh phụ thuộc thì hỏng), `studio.artifacts` trước phần xóa theo chữ
+   cái vì `owning_workspace_id` giữ `platform.workspaces`; `studio.definition_manifests` không có FK RESTRICT nào nên ở
+   phần xóa theo chữ cái. `purge_rows` bỏ qua mục `_ORDERED_FIRST` của bảng không có trong `_CATALOG_PURGEABLE`
+   (`packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:187-188`), nên bốn bảng xóa được
+   nhờ DELETE của bước 3, không bảng nào có dòng `STUDIO_EXCLUSIONS`; `test_offboarding.py` purge một tenant có hai
+   thành phần phụ thuộc nhau ở hai workspace (TC21).
 5. `ArtifactKindRegistry` trong lõi `dw_studio`, đăng ký ở `build_studio` (ADR-0100 (Accepted) quyết 6):
    mỗi mục có `kind`, `document_schema`, khóa đọc, khóa ghi và khóa gửi của loại, và `publish_hook`, không giá trị
    mặc định (R2.15; mỗi spec đăng ký khóa của mình theo quy ước `studio.<area>.<verb>` của tenant-rbac:R1.6),
@@ -121,8 +137,9 @@ chỉ siết của `dw.object/v1`); ticket này không viết chuyển giai đo�
       agent-lifecycle:R2.12, agent-lifecycle:R2.13; ADR-0109 (Accepted) quyết 2), `validate` (lỗi → 422
       `validation_failed` liệt kê mọi lỗi trong `errors[]`), `version_no = last_version_no + 1`, `content_hash` qua
       `dw_kernel.canonical`, bao đóng qua `extract` (mỗi thành phần ghim `(kind, key, version, content_hash)`),
-      `definition_hash` là mã băm của bao đóng, ghi `studio.definition_manifests` `ON CONFLICT DO NOTHING`, ghi các
-      dòng `studio.dependencies`, tăng `row_version` của nháp (lần niêm phong thứ hai cùng `expected_row_version` nhận
+      `definition_hash` là mã băm của bao đóng, ghi `studio.definition_manifests` `ON CONFLICT DO NOTHING`, thay các
+      dòng `studio.dependencies` của phiên bản (xóa dòng mà lần niêm phong trước của một phiên bản đã về `draft` ghi,
+      R2.8, rồi ghi bộ mới), tăng `row_version` của nháp (lần niêm phong thứ hai cùng `expected_row_version` nhận
       `stale_version`), rồi trả id phiên bản cùng hai mã băm. `seal` như nhau cho mọi loại: không đọc
       `has_quality_gate`, không đổi `stage` (phiên bản ra khỏi `seal` vẫn ở `draft`) và không đổi dòng phiên bản nào
       khác của thành phần, kể cả Bản ứng viên đang chờ ở `awaiting_approval`, mà `compared_live_hash` cũ của nó chặn nó
@@ -200,8 +217,9 @@ chỉ siết của `dw.object/v1`); ticket này không viết chuyển giai đo�
       `expected_row_version` → test đỏ.
 - [ ] R2.18 (TC29): bằng vai migrator, INSERT dòng `studio.dependencies` của tenant A có `to_version_id`, rồi
       `from_version_id`, là phiên bản của tenant B → lỗi FK ghép; UPDATE `based_on_version_id` của phiên bản tenant A
-      sang phiên bản tenant B → lỗi FK; xóa phiên bản gốc → `based_on_version_id` thành NULL, `tenant_id` giữ nguyên;
-      đổi một FK ghép về FK một cột → test đỏ.
+      sang phiên bản tenant B → lỗi FK; chuyển tenant A sang `offboarding` rồi xóa phiên bản gốc → `based_on_version_id`
+      thành NULL, `tenant_id` giữ nguyên (ngoài `offboarding`, trigger của R3.8 từ chối lệnh xóa trước); đổi một FK ghép
+      về FK một cột → test đỏ.
 - [ ] R2.18 (TC29): bằng vai migrator, INSERT phiên bản của tenant A có `artifact_id` là thành phần của tenant B, rồi
       dòng `studio.dependencies` của tenant A có `from_artifact_id`, rồi `to_artifact_id`, là thành phần của tenant B →
       lỗi FK ghép; đổi một trong ba FK ghép về FK một cột → test đỏ.
@@ -213,17 +231,25 @@ chỉ siết của `dw.object/v1`); ticket này không viết chuyển giai đo�
 - [ ] R3.1 (TC6): lỗi chèn giữa giao dịch niêm phong → không số phiên bản, không dòng
       `studio.dependencies`, không dòng `studio.definition_manifests`; làm hỏng `extract` của `fixture`
       → test fixture đỏ.
+- [ ] R3.1: đưa phiên bản v3 về `draft`, đổi tài liệu rồi niêm phong lại → dòng `studio.dependencies` của phiên bản là
+      bộ của lần niêm phong sau, không còn dòng nào của lần trước; bỏ bước xóa của `seal` → test đỏ.
 - [ ] R3.2: xóa mềm thành phần không ai dùng → `deleted_at` có giá trị, audit `studio.artifact.deleted`,
       thành phần biến khỏi danh sách.
 - [ ] R3.3 (TC5): xóa mềm thành phần A mà phiên bản `live` của thành phần B ở workspace khác dùng → 409
-      `artifact_in_use` kèm số đếm; DELETE cứng → lỗi FK; đưa phiên bản của B sang `retired` rồi xóa mềm
-      → được; gỡ trigger → test xóa mềm đỏ.
+      `artifact_in_use` kèm số đếm; đưa phiên bản của B sang `retired` rồi xóa mềm → được; gỡ trigger → test xóa mềm
+      đỏ; ở một công ty đã chuyển sang `offboarding`, DELETE cứng một thành phần mà dòng `studio.dependencies` còn trỏ
+      tới → lỗi FK.
 - [ ] R3.4 (TC7): người chỉ đọc được ở ws1 mở Nơi đang dùng thấy tên bên phụ thuộc ở ws1, bên ở ws2 chỉ
       là số đếm; tenant B → 404.
 - [ ] R3.5: `GET .../draft/dependencies` trả phụ thuộc của nháp và số dòng `studio.dependencies` không
       đổi.
 - [ ] R3.6 (TC21): `test_offboarding.py` purge tenant có hai thành phần phụ thuộc nhau, tenant khác giữ
-      nguyên mọi dòng; gỡ mục `studio.dependencies` khỏi `_ORDERED_FIRST` → test đỏ.
+      nguyên mọi dòng; gỡ mục `studio.dependencies` khỏi `_ORDERED_FIRST` → test đỏ; test phủ offboarding
+      (studio-skeleton:R4.1, studio-skeleton:R4.2) xanh với bốn bảng không có trong `STUDIO_EXCLUSIONS`; thu DELETE của
+      `dw_app` trên một trong bốn bảng → test phủ đỏ, nêu tên bảng.
+- [ ] R3.8 (TC31): `dw_app` DELETE một dòng `studio.artifacts`, `studio.artifact_versions` hay
+      `studio.definition_manifests` của công ty `active` → 23514, dòng còn; cùng lệnh khi công ty ở `offboarding` → xóa
+      được; gỡ phép kiểm trạng thái khỏi `platform.refuse_delete_outside_offboarding()` → test đỏ.
 - [ ] Xong: `make ci && make test-integration` xanh.
 
 ## Nguồn
@@ -231,6 +257,8 @@ chỉ siết của `dw.object/v1`); ticket này không viết chuyển giai đo�
 - `packages/python/dw_platform/src/dw_platform/adapters/persistence/tables.py:46`; spec: Dữ liệu.
 - `packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:108-114`; spec: R3.6,
   TC21.
+- `packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:98-101`; spec: R3.8, TC31;
+  `CLAUDE.md`, Data model rules.
 - `db/migrations/sql/0001_platform_grants.sql:27`; spec: R2, R3; ADR-0109 (Accepted) quyết 1-2, 4-5;
   ADR-0120 (Accepted) quyết 1; ADR-0108 (Accepted) quyết 3 (R2.17); ADR-0115 (Accepted) quyết 1 (R2.19).
 
@@ -270,3 +298,10 @@ chỉ siết của `dw.object/v1`); ticket này không viết chuyển giai đo�
   chuyển giai đoạn trong cùng giao dịch (R2.7, R2.13, R2.16, TC27; ADR-0120 (Accepted) quyết 1); FK ghép tới
   `platform.workspaces` có ca âm chéo tenant (R2.18, TC29); `kind` có index `(kind)`; index danh sách không `kind`
   cho trang `/studio`; FK của spec khác tới hai bảng của ticket này chỉ là ví dụ, chủ là spec tạo FK.
+- 2026-10-24 (agent): vòng sửa thứ tư, theo quyết định tạm cùng ngày của spec về quyền xóa của lane `offboarding`:
+  `dw_app` có DELETE trên bốn bảng của ticket này, vì lane chỉ xóa bảng có trong `_CATALOG_PURGEABLE` và bỏ qua mục
+  `_ORDERED_FIRST` của bảng khác; trên `studio.artifacts`, `studio.artifact_versions` và `studio.definition_manifests`,
+  DELETE chỉ dùng được ở lượt xóa của offboarding nhờ trigger `platform.refuse_delete_outside_offboarding()` (23514 khi
+  công ty khác `offboarding`; R3.8, TC31), còn `studio.dependencies` có DELETE thường vì `seal` thay dòng của phiên bản
+  niêm phong lại sau khi về `draft` (R2.8, R3.1); thứ tự `_ORDERED_FIRST` giữ theo ADR-0109 (Accepted) Consequences,
+  kèm lý do của từng FK RESTRICT; ca xóa cứng để thấy lỗi FK (R2.18, R3.3) chạy khi công ty ở `offboarding`.

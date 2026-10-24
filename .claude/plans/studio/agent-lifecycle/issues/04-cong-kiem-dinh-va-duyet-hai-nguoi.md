@@ -3,24 +3,31 @@
 Status: needs-triage
 Blocked by: 02, 03, .claude/plans/studio/workflow-engine/issues/04-lan-studio-runs.md, .claude/plans/studio/compliance-pdpl/issues/05-phan-tich-bo-ba-khi-xuat-ban.md, .claude/plans/studio/tenant-config/issues/03-che-do-chay-va-gia-lap-o-executor.md, .claude/plans/studio/tenant-config/issues/05-lien-ket-va-phien-ban-cau-hinh.md, .claude/plans/studio/usage-and-limits/issues/03-han-muc-giu-truoc-va-quyet-toan.md, .claude/plans/studio/telemetry-and-audit/issues/03-lich-su-chay-theo-buoc.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md
 Area: studio
-Yêu cầu: R1.9, R2.8, R2.9, R2.10, R2.11, R2.12, R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R4.7, R4.8, R4.9, R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R5.8, R5.9, R5.10, R6.1, R6.2, R6.3, R7.9, R7.12, R7.13, AL4, AL5, AL6, AL7, AL8, AL9, AL10, AL11, AL19, AL20, AL21, AL22
+Yêu cầu: R1.9, R2.8, R2.9, R2.10, R2.11, R2.12, R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R4.7, R4.8, R4.9, R4.10, R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R5.8, R5.9, R5.10, R6.1, R6.2, R6.3, R7.9, R7.12, R7.13, R10.2, R10.3, AL4, AL5, AL6, AL7, AL8, AL9, AL10, AL11, AL19, AL20, AL21, AL22, AL23, AL24
 
 ## Mục tiêu
 
 Lượt kiểm định chạy ở chế độ Mô phỏng với Bộ kiểm định an ninh nền tảng (đạt 100%; bộ đề của tenant là
 W2) dưới trần chi phí giữ trước qua `LimitsPort`; phát hành cần một người không phải Tác giả duyệt, mọi Điểm gắn
 bắt buộc đã có giá trị duyệt, và không đè một bản Đang dùng mới hơn bản đã so lúc gửi; cổng không mở phê duyệt khi
-Phân tích năng lực thiếu hay chưa đạt (spec R2, R4, R5, R6). Phân tích năng lực do
+Phân tích năng lực thiếu hay chưa đạt; Lượt kiểm định chỉ đọc được theo workspace sở hữu của thành phần và chỉ lượt
+xóa của offboarding xóa được nó (spec R2, R4, R5, R6, R10). Phân tích năng lực do
 compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ đọc kết quả đã ghi làm chốt chặn.
 
 ## Việc cần làm
 
 1. Revision Alembic mới (id hex ngẫu nhiên): `studio.gate_runs` (`status` CHECK `queued`, `running`,
-   `passed`, `failed`, `error`, `cancelled`; `purpose` CHECK `gate`, `dry`; khóa bằng chứng
+   `passed`, `failed`, `error`, `cancelled`; `purpose` CHECK `gate`, `dry`; `artifact_id uuid NOT NULL`, thành phần
+   được kiểm định, kể cả thành phần của bản Nháp ở dòng `dry`, FK ghép `(tenant_id, artifact_id)` tới
+   `studio.artifacts (tenant_id, id)` (`uq_artifacts_tenant_id_id` của tenant-config/02) ON DELETE RESTRICT, có index
+   `(tenant_id, artifact_id)` (spec R1.9, R4.10); khóa bằng chứng
    `effective_hash`, `gate_policy_ref`, `security_suite_ref`, danh sách mã băm bộ đề của tenant (rỗng ở
    W1); `definition_hash` cho trigger giai đoạn; `spend_cap_usd`, `spent_usd`, `resolved_at_gate` jsonb,
    `verdict` jsonb; `created_at timestamptz NOT NULL`; `uq_gate_runs_tenant_id_id UNIQUE (tenant_id, id)`; index
-   `(tenant_id, created_at DESC, id DESC)` cho keyset của `GET /api/v1/studio/gate-runs`); cùng revision thêm FK ghép
+   `(tenant_id, created_at DESC, id DESC)` cho keyset của `GET /api/v1/studio/gate-runs`); `dw_app` có DELETE trên
+   `studio.gate_runs` chỉ dùng được ở lượt xóa của offboarding: trigger `studio.guard_gate_run_delete()` BEFORE DELETE
+   từ chối với SQLSTATE 23514 mọi DELETE khi `platform.tenants.status` của công ty khác `offboarding` (spec R10.3),
+   cùng hình với `platform.guard_control_switch()` của ticket 01; cùng revision thêm FK ghép
    `(tenant_id, gate_run_id)` của `studio.artifact_versions` (cột của ticket 03) tới `studio.gate_runs (tenant_id, id)`
    ON DELETE RESTRICT có index riêng (spec R1.9); `studio.gate_case_results` có `gate_run_id` FK ghép
    `(tenant_id, gate_run_id)` tới `studio.gate_runs (tenant_id, id)` ON DELETE RESTRICT, để một DELETE lên Lượt kiểm
@@ -38,7 +45,15 @@ compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ �
    `platform.purge_tenant_append_only`" (usage-and-limits:R3.10); hàm đó chạy trước mọi bảng thường
    (usage-and-limits:R3.11), nên khóa ngoại `gate_run_id` (RESTRICT) của `studio.gate_case_results` được thỏa không
    cần dòng `_ORDERED_FIRST`, còn khóa ngoại `gate_run_id` (RESTRICT) của `studio.artifact_versions` cần
-   `_ORDERED_FIRST` xóa `studio.artifact_versions` trước `studio.gate_runs` (studio-skeleton:R4.2).
+   `_ORDERED_FIRST` xóa `studio.artifact_versions` trước `studio.gate_runs`, và khóa ngoại `artifact_id` (RESTRICT) của
+   `studio.gate_runs` cần xóa `studio.gate_runs` trước `studio.artifacts`: ticket này đặt mục `studio.artifact_versions`
+   mà tenant-config/02 thêm lên trước `studio.artifacts` (phiên bản là bảng con của thành phần nên xóa trước được;
+   thứ tự thành phần trước phiên bản chỉ chạy nhờ khóa ngoại `artifact_id` CASCADE của phiên bản) và `studio.gate_runs`
+   giữa hai mục đó (spec R10.2; studio-skeleton:R4.2).
+   `studio.gate_runs` và `studio.gate_case_results` không có `workspace_id`: mỗi bảng một dòng trong danh sách bảng
+   toàn tenant của `test_rls_coverage.py`, với lý do "Lượt kiểm định đi theo thành phần toàn tenant mà nó kiểm định,
+   đọc theo `owning_workspace_id` của thành phần ở `artifact_id`" và "kết quả từng câu là con của Lượt kiểm định
+   (`gate_run_id`), đọc qua nó" (studio-skeleton:R9.1; CLAUDE.md, Tenancy and authorization).
 2. Lane `studio_gate` (tối đa một Lượt kiểm định mỗi tenant, một `ReapTarget` cho lượt treo): mỗi lần
    thử là một run `run_mode='simulate'` dùng ngữ cảnh truy cập đóng dấu của người gửi; lane cấp cho mỗi Bước
    `human.approval` của lần thử quyết định `approved` hay `rejected` (từ vựng của workflow-nodes:R9.9, bước 3) mà Câu
@@ -72,7 +87,10 @@ compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ �
    giai đoạn, không mở phê duyệt. Test dùng bản Nháp quy trình thật và một nguồn graph agent giả theo khóa
    `(tenant_id, agent_version_id, mã băm ghim)`; đường thật của agent là agent-builder/03.
    `GET /api/v1/studio/gate-runs` (keyset `(created_at DESC, id DESC)`), `/{id}`, `/{id}/cases`
-   (keyset `case_id`) (`studio.lifecycle.read`), mỗi thứ tự đi trên index của bước 1. Cùng migration của ticket: đăng
+   (keyset `case_id`) (`studio.lifecycle.read`), mỗi thứ tự đi trên index của bước 1; cả ba chỉ trả Lượt kiểm định, kể
+   cả dòng `dry`, của thành phần mà `studio.lifecycle.read` của người đọc chạm tới `owning_workspace_id` ở độ sâu của
+   nó, đọc từ `platform.effective_grants` của tenant-rbac/02 (ADR-0104 (Accepted) quyết 3, quyết 5), còn ngoài độ sâu
+   hay công ty khác → 404 như id không tồn tại (spec R4.10). Cùng migration của ticket: đăng
    ký khóa `studio.publish.approve`, `studio.lifecycle.read`, `studio.evals.run` trong `platform.permissions` của
    tenant-rbac/01 (nhãn tiếng Việt, `scope_kind` `workspace`, `risk` `standard` theo bảng phân loại của ticket đó);
    INSERT nêu mọi cột NOT NULL của bảng lúc đó, gồm `risk` của tenant-rbac/01 và `tenant_grantable` (`true`) của
@@ -164,9 +182,14 @@ compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ �
       test đỏ.
 - [ ] R4.9 (AL22): `RunRequestService` từ chối lần thử vì nội dung nháp trượt bộ kiểm của loại → Kiểm định thử `error`
       kèm mọi lỗi, 0 `worker_runs`, không lần thử nào được xin thêm; nuốt lần từ chối rồi xin lần thử kế → test đỏ.
+- [ ] R4.10 (AL23): người giữ `studio.lifecycle.read` ở độ sâu `workspace` của ws1 gọi `GET /api/v1/studio/gate-runs`
+      → chỉ Lượt kiểm định của thành phần có `owning_workspace_id` là ws1, không dòng nào của thành phần thuộc ws2, kể cả
+      dòng `dry`; `GET .../gate-runs/{id}` và `/{id}/cases` của Lượt kiểm định thuộc ws2 → 404; người của tenant B dùng
+      id của tenant A → 404; bỏ lọc theo `owning_workspace_id` của thành phần → test đỏ.
 - [ ] R1.9 (AL21): bằng vai migrator, dòng phiên bản của tenant A đặt `gate_run_id` là id một Lượt kiểm định của
-      tenant B, và một dòng `studio.gate_case_results` của A trỏ tới Lượt kiểm định đó → FK ghép từ chối cả hai, không
-      ghi; cùng id của tenant A → nhận; đổi một FK sang một cột → test đỏ.
+      tenant B, một dòng `studio.gate_case_results` của A trỏ tới Lượt kiểm định đó, và một dòng `studio.gate_runs` của
+      A đặt `artifact_id` là id một thành phần của tenant B → FK ghép từ chối cả ba, không ghi; cùng id của tenant A →
+      nhận; đổi một FK sang một cột → test đỏ.
 - [ ] R5.1 (AL5): khi gate đạt, yêu cầu phê duyệt mở trong cùng giao dịch `evaluating → awaiting_approval`,
       payload chỉ id và mã, `requested_by` bằng `submitted_by`; `author_ids` bằng đúng `contributor_ids` cộng
       `submitted_by` của dòng phiên bản; dựng thiếu một người → test khớp đỏ; gửi một phiên bản `object` không chỉ
@@ -222,6 +245,11 @@ compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ �
       giải quyết → như trên; gỡ đọc kết quả ở lane → yêu cầu phê duyệt mở (đỏ).
 - [ ] R6.2 (AL10): kết quả ghi một công cụ thiếu phân loại → cổng trượt, không yêu cầu phê duyệt nào.
 - [ ] R6.3 (AL10): cấu hình công ty không hạ được mức sàn duyệt của công cụ trọng yếu; chỉ siết thêm được.
+- [ ] R10.2: `test_offboarding.py` purge một tenant có một Lượt kiểm định `gate` mà một phiên bản trỏ tới, kèm kết quả
+      từng câu, và một Lượt kiểm định `dry` → mọi dòng `studio.gate_runs` của tenant đó bị xóa, tenant khác giữ nguyên;
+      đặt `studio.gate_runs` sau `studio.artifacts` trong `_ORDERED_FIRST` → lỗi khóa ngoại, test đỏ.
+- [ ] R10.3 (AL24): `dw_app` DELETE một Lượt kiểm định của công ty `active` → 23514, dòng còn; cùng lệnh khi công ty
+      `offboarding`, trên Lượt kiểm định không còn dòng nào trỏ tới → xóa được; gỡ kiểm khỏi trigger → test đỏ.
 - [ ] Xong: `make ci && make test-integration` xanh.
 
 ## Nguồn
@@ -284,3 +312,10 @@ compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ �
   `dry-evaluations` với tiêu chí R4.8, R4.9 (AL22), không thêm cạnh: phần agent thử bằng nguồn graph giả, đường thật ở
   agent-builder/03; bước 5 nói móc của loại `agent` và `workflow` ghi giới hạn dữ liệu của phiên bản
   (agent-builder:R1.9, workflow-engine:R1.7; ADR-0117 (Accepted) quyết 3).
+- 2026-10-24 (agent): theo hai Quyết định tạm cùng ngày của spec: bước 1 thêm `artifact_id` của `studio.gate_runs`
+  (FK ghép RESTRICT tới `studio.artifacts`, có index) để ba route đọc ở bước 4 lọc theo độ sâu ở workspace sở hữu của
+  thành phần, kể cả dòng `dry` (spec R4.10, AL23; ADR-0104 (Accepted) quyết 3), với ca âm chéo tenant ở R1.9; hai bảng
+  của bước 1 có dòng lý do trong danh sách bảng toàn tenant (studio-skeleton:R9.1); `dw_app` có DELETE trên
+  `studio.gate_runs` chỉ cho lượt xóa của offboarding nhờ trigger, và `_ORDERED_FIRST` xóa phiên bản rồi Lượt kiểm định
+  trước thành phần (spec R10.2, R10.3, AL24). Không thêm cạnh: `uq_artifacts_tenant_id_id` có từ tenant-config/02, mà
+  ticket này chờ qua ticket 03.

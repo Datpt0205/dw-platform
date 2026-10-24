@@ -94,10 +94,10 @@ dùng, Đã gỡ, với PostgreSQL canh mọi chuyển tiếp (YC30, YC70; ADR-0
   khác, theo `IS DISTINCT FROM`, `definition_hash` của phiên bản Đang dùng mà lần phát hành này thay (gỡ
   `superseded` trong cùng giao dịch), hay khác NULL khi không có bản nào, THÌ PostgreSQL PHẢI từ chối với SQLSTATE
   23514 `ck_artifact_versions_stage_transition` và không đổi gì (ADR-0120 (Accepted) quyết 1).
-- R1.9 NẾU một dòng `studio.artifact_versions` trỏ `gate_run_id` hay `publish_approval_id`, hay một dòng
-  `studio.gate_case_results` trỏ `gate_run_id`, tới Lượt kiểm định hay yêu cầu phê duyệt của công ty khác, THÌ
-  PostgreSQL PHẢI từ chối dòng đó bằng FK ghép `(tenant_id, <cột>)` tới UNIQUE `(tenant_id, id)` của bảng đích, kể cả
-  khi vai ghi bỏ qua RLS.
+- R1.9 NẾU một dòng `studio.artifact_versions` trỏ `gate_run_id` hay `publish_approval_id`, một dòng
+  `studio.gate_case_results` trỏ `gate_run_id`, hay một dòng `studio.gate_runs` trỏ `artifact_id`, tới Lượt kiểm định,
+  yêu cầu phê duyệt hay thành phần của công ty khác, THÌ PostgreSQL PHẢI từ chối dòng đó bằng FK ghép
+  `(tenant_id, <cột>)` tới UNIQUE `(tenant_id, id)` của bảng đích, kể cả khi vai ghi bỏ qua RLS.
 
 ### R2 — Gửi kiểm định niêm phong nội dung và ghi chỉ mục phụ thuộc
 
@@ -201,6 +201,10 @@ khóa của nó (YC70; ADR-0120 (Accepted) quyết 3; ADR-0109 (Accepted) quyế
 - R4.9 NẾU `RunRequestService` từ chối một lần thử của Kiểm định thử vì nội dung nháp trượt bộ kiểm trả mọi lỗi của
   loại (workflow-engine:R3.11), THÌ lane `studio_gate` PHẢI kết thúc Kiểm định thử đó là `error` kèm mọi lỗi của lần
   từ chối và không xin thêm lần thử nào.
+- R4.10 NẾU người giữ `studio.lifecycle.read` đọc qua `GET /api/v1/studio/gate-runs`, `/{id}` hay `/{id}/cases` một
+  Lượt kiểm định, kể cả dòng `purpose` `dry` (R4.8), của thành phần mà khóa đó, ở độ sâu của người đọc, không chạm tới
+  `owning_workspace_id` (ADR-0104 (Accepted) quyết 3), THÌ route PHẢI coi Lượt kiểm định đó như không tồn tại: bỏ khỏi
+  danh sách và trả 404 khi đọc theo id.
 
 ### R5 — Phát hành cần một người không phải Tác giả duyệt
 
@@ -353,13 +357,18 @@ trình kích hoạt của một tài khoản dịch vụ không `active` chờ t
   theo hàng `tenant_locked`, `tenant_offboarding` của bảng từ chối ở dispatch (workflow-engine:R5.18;
   foundations-hardening:R3.3).
 
-### R10 — Offboarding xóa công tắc của công ty
+### R10 — Offboarding xóa công tắc và Lượt kiểm định của công ty
 
-Lane offboarding xuất rồi xóa công tắc điều khiển của một công ty rời nền tảng như mọi dữ liệu Studio của nó
-(YC6), mà không mở cho `dw_app` một đường xóa để gỡ Tắt khẩn cấp.
+Lane offboarding xuất rồi xóa công tắc điều khiển và Lượt kiểm định của một công ty rời nền tảng như mọi dữ liệu
+Studio của nó (YC6), mà không mở cho `dw_app` một đường xóa để gỡ Tắt khẩn cấp hay bỏ bằng chứng kiểm định.
 
 - R10.1 KHI lane `offboarding` xóa dữ liệu của một công ty đang `offboarding`, lane `offboarding` PHẢI xuất rồi
   xóa mọi dòng `platform.control_switches` của công ty đó (studio-skeleton:R4.3).
+- R10.2 KHI lane `offboarding` xóa dữ liệu của một công ty đang `offboarding`, lane `offboarding` PHẢI xuất rồi xóa mọi
+  dòng `studio.gate_runs` của công ty đó, sau `studio.artifact_versions` và `studio.gate_case_results` trỏ tới chúng
+  và trước `studio.artifacts` mà chúng trỏ tới (studio-skeleton:R4.1, studio-skeleton:R4.2).
+- R10.3 NẾU `dw_app` DELETE một dòng `studio.gate_runs` khi `platform.tenants.status` của công ty của dòng khác
+  `offboarding`, THÌ PostgreSQL PHẢI từ chối với SQLSTATE 23514 và không xóa gì.
 
 ## Hành vi giữ nguyên
 
@@ -465,12 +474,20 @@ Mọi bảng mới: RLS ENABLE và FORCE theo tenant, grant cùng migration, tê
 - `platform.platform_freezes` (mặt danh tính, không tenant): tối đa một dòng mở; `dw_app` chỉ SELECT;
   do `dw_provisioner` ghi, audit trong `platform.provisioning_audit`.
 - `studio.gate_runs`: `status` CHECK (`queued`, `running`, `passed`, `failed`, `error`, `cancelled`);
-  `purpose` CHECK (`gate`, `dry`); khóa bằng chứng (`effective_hash`, `gate_policy_ref`,
-  `security_suite_ref`, danh sách mã băm bộ đề của tenant, rỗng ở W1); `definition_hash` cho trigger giai
-  đoạn; `spend_cap_usd`, `spent_usd`, `resolved_at_gate` jsonb,
+  `purpose` CHECK (`gate`, `dry`); `artifact_id uuid NOT NULL`, thành phần được kiểm định, kể cả thành phần của bản
+  Nháp ở dòng `dry` (R4.8), FK ghép `(tenant_id, artifact_id)` tới `studio.artifacts (tenant_id, id)`
+  (`uq_artifacts_tenant_id_id` của tenant-config/02) ON DELETE RESTRICT, có index `(tenant_id, artifact_id)`, để ba
+  route đọc lọc theo độ sâu ở `owning_workspace_id` của thành phần (R4.10); khóa bằng chứng (`effective_hash`,
+  `gate_policy_ref`, `security_suite_ref`, danh sách mã băm bộ đề của tenant, rỗng ở W1); `definition_hash` cho
+  trigger giai đoạn; `spend_cap_usd`, `spent_usd`, `resolved_at_gate` jsonb,
   `verdict` jsonb; `created_at timestamptz NOT NULL`; `uq_gate_runs_tenant_id_id UNIQUE (tenant_id, id)`, đích của
   FK ghép từ `studio.artifact_versions` và `studio.gate_case_results`; index `(tenant_id, created_at DESC, id DESC)`
-  mang thứ tự keyset của `GET /api/v1/studio/gate-runs` (CLAUDE.md, Data model rules). `studio.gate_run_datasets` là
+  mang thứ tự keyset của `GET /api/v1/studio/gate-runs` (CLAUDE.md, Data model rules). `dw_app` có DELETE trên
+  `studio.gate_runs` chỉ dùng được ở lượt xóa của offboarding: trigger `studio.guard_gate_run_delete()` BEFORE DELETE
+  từ chối với SQLSTATE 23514 mọi DELETE khi `platform.tenants.status` của công ty khác `offboarding` (R10.3), cùng
+  hình với `platform.guard_control_switch()`; khóa ngoại `gate_run_id` (RESTRICT) của `studio.artifact_versions` cần
+  `_ORDERED_FIRST` xóa `studio.artifact_versions` trước `studio.gate_runs`, và khóa ngoại `artifact_id` (RESTRICT)
+  cần xóa `studio.gate_runs` trước `studio.artifacts` (R10.2; studio-skeleton:R4.2). `studio.gate_run_datasets` là
   W2 cùng bộ đề của tenant. `studio.gate_case_results`: `gate_run_id` FK ghép `(tenant_id, gate_run_id)` tới
   `studio.gate_runs (tenant_id, id)` ON DELETE RESTRICT, để một DELETE lên Lượt kiểm định không kéo theo xóa dòng
   chỉ thêm; index `(tenant_id, gate_run_id, case_id)` trên bảng cha mang khóa ngoại đó và thứ tự keyset của
@@ -484,6 +501,11 @@ Mọi bảng mới: RLS ENABLE và FORCE theo tenant, grant cùng migration, tê
   xóa qua `platform.purge_tenant_append_only` (usage-and-limits:R3.10), bước chạy trước mọi bảng thường
   (usage-and-limits:R3.11), nên khóa ngoại `RESTRICT` tới `studio.gate_runs` được thỏa, và bảng có một dòng
   `STUDIO_EXCLUSIONS` nêu cách xóa đó (studio-skeleton:R4.1).
+- `studio.gate_runs` và `studio.gate_case_results` là bảng toàn tenant như vỏ phiên bản (RLS chỉ theo công ty, không
+  cột `workspace_id`), mỗi bảng một dòng lý do trong danh sách bảng toàn tenant của `test_rls_coverage.py`
+  (CLAUDE.md, Tenancy and authorization; studio-skeleton:R9.1): Lượt kiểm định đi theo thành phần toàn tenant mà nó
+  kiểm định, kết quả từng câu là con của Lượt kiểm định, và quyền đọc cả hai theo `owning_workspace_id` của thành
+  phần ở `artifact_id` (R4.10).
 
 ## API
 
@@ -499,7 +521,9 @@ Mọi bảng mới: RLS ENABLE và FORCE theo tenant, grant cùng migration, tê
 - `POST /api/v1/studio/{agents|workflows}/{artifact_id}/versions/{version_id}/dry-evaluations` (`studio.evals.run`;
   Kiểm định thử của phiên bản `draft`, R4.8, R4.9); `GET /api/v1/studio/gate-runs` (keyset theo
   `(created_at DESC, id DESC)`), `/{id}`, `/{id}/cases` (keyset theo `case_id`) (`studio.lifecycle.read`); mỗi thứ
-  tự có index ở mục Dữ liệu.
+  tự có index ở mục Dữ liệu; ba route chỉ trả Lượt kiểm định, kể cả dòng `dry`, của thành phần mà
+  `studio.lifecycle.read` của người đọc chạm tới `owning_workspace_id` ở độ sâu của nó, đọc từ
+  `platform.effective_grants` (ADR-0104 (Accepted) quyết 3, quyết 5), còn ngoài độ sâu hay công ty khác → 404 (R4.10).
 - `POST /api/v1/admin/freeze` (`studio.lifecycle.freeze`; `Idempotency-Key`; body `reason_code`,
   `reason`; một người cộng audit), `POST /api/v1/admin/unfreeze` (`studio.lifecycle.freeze`; mở yêu cầu
   phê duyệt `studio.lifecycle.unfreeze`, gỡ khi người thứ hai duyệt); `GET /api/v1/control-state` (mọi
@@ -544,8 +568,10 @@ Mọi bảng mới: RLS ENABLE và FORCE theo tenant, grant cùng migration, tê
 | AL18 | Gỡ Đóng băng của công ty cần người thứ hai                                   | R7.10, R7.11                               | Người xin gỡ tự duyệt `studio.lifecycle.unfreeze` → 409 `second_person_required`, Đóng băng còn; người khác duyệt → gỡ; gỡ luật nghiêm của `studio.lifecycle.` → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | AL19 | Phát hành không đè phiên bản Đang dùng mới hơn bản đã so lúc gửi             | R1.8, R2.10, R5.9                          | Một phiên bản đối tượng chỉ siết lên `live` trong lúc một Bản ứng viên của cùng thành phần chờ duyệt, rồi duyệt Bản ứng viên → nó về `draft` với `base_changed` và audit, phiên bản `live` vẫn là bản chỉ siết; `dw_app` UPDATE `awaiting_approval → live` với `compared_live_hash` cũ → 23514; gỡ luật khỏi trigger hay kiểm khỏi handler → test đỏ                                                                                                                                                                                                                                                                                                                                                                                           |
 | AL20 | Phát hành cần mọi Điểm gắn bắt buộc đã có giá trị duyệt                      | R2.11, R5.10                               | Phiên bản quy trình khai Điểm gắn `principal` bắt buộc chưa có giá trị đã duyệt → gửi kiểm định 409 `binding_unset` nêu `principal`, phiên bản vẫn Nháp; handler nhận quyết định duyệt khi `PublishBindingsCheck` trả `binding_unset` → phiên bản không lên Đang dùng; gỡ kiểm ở lệnh gửi hay ở handler → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| AL21 | Khóa ngoại của vòng đời không trỏ sang công ty khác                          | R1.9                                       | Bằng vai migrator, dòng phiên bản của tenant A trỏ `publish_approval_id` tới yêu cầu phê duyệt của tenant B, hay `gate_run_id` tới Lượt kiểm định của B, và dòng `studio.gate_case_results` của A trỏ tới Lượt kiểm định của B → FK từ chối, không ghi; đổi một FK sang một cột → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| AL21 | Khóa ngoại của vòng đời không trỏ sang công ty khác                          | R1.9                                       | Bằng vai migrator, dòng phiên bản của tenant A trỏ `publish_approval_id` tới yêu cầu phê duyệt của tenant B, hay `gate_run_id` tới Lượt kiểm định của B, dòng `studio.gate_case_results` của A trỏ tới Lượt kiểm định của B, và dòng `studio.gate_runs` của A trỏ `artifact_id` tới thành phần của B → FK từ chối, không ghi; đổi một FK sang một cột → test đỏ                                                                                                                                                                                                                                                                                                                                                                                |
 | AL22 | Kiểm định thử chạy đúng nội dung nháp và không dẫn tới phát hành             | R4.8, R4.9                                 | Kiểm định thử một bản Nháp → mỗi lần thử là lượt `simulate` ghim giai đoạn `draft` và mã băm tạm, phiên bản vẫn `draft`, không `gate_run_id`, 0 dòng `platform.approval_requests`; sửa nháp rồi Kiểm định thử lại → lần thử ghim mã băm tạm mới và chạy nội dung mới; nội dung nháp trượt bộ kiểm của loại → Kiểm định thử `error` kèm các lỗi, 0 `worker_runs`; bỏ mã băm ghim khỏi khóa cache graph → lần sau chạy nội dung cũ, test đỏ                                                                                                                                                                                                                                                                                                      |
+| AL23 | Lượt kiểm định chỉ đọc được theo độ sâu ở workspace sở hữu của thành phần    | R4.10                                      | Người giữ `studio.lifecycle.read` ở độ sâu `workspace` của ws1 gọi `GET /api/v1/studio/gate-runs` → không Lượt kiểm định nào, kể cả dòng `dry`, của thành phần có `owning_workspace_id` là ws2; `GET .../gate-runs/{id}` và `/{id}/cases` của Lượt kiểm định đó → 404; người của tenant B dùng id của tenant A → 404; bỏ lọc theo `owning_workspace_id` của thành phần → test đỏ                                                                                                                                                                                                                                                                                                                                                               |
+| AL24 | Chỉ lượt xóa của offboarding xóa được Lượt kiểm định                         | R10.3                                      | `dw_app` DELETE một Lượt kiểm định của công ty `active` → 23514, dòng còn; cùng lệnh khi công ty `offboarding`, trên Lượt kiểm định không còn dòng nào trỏ tới → xóa được; gỡ kiểm khỏi trigger `studio.guard_gate_run_delete()` → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 
 ## Tiêu chí xong
 
@@ -564,7 +590,9 @@ Mọi bảng mới: RLS ENABLE và FORCE theo tenant, grant cùng migration, tê
   đọc, ghi, gửi của loại trong `ArtifactKindRegistry` cho route gửi của R2.1 (tenant-config:R2.15), móc phát hành
   của loại trên cùng mục mà R2.9 và R5.5 gọi trong giao dịch phát hành (tenant-config:R2.15; ADR-0109 (Accepted)
   quyết 1), và
-  `seal(..., expected_row_version)` nhận `row_version` từ `If-Match` của lệnh gửi (tenant-config:R2.17; R2.12)
+  `seal(..., expected_row_version)` nhận `row_version` từ `If-Match` của lệnh gửi (tenant-config:R2.17; R2.12),
+  `uq_artifacts_tenant_id_id` làm đích FK `artifact_id` của `studio.gate_runs` (R1.9; tenant-config:R2.18) và
+  `owning_workspace_id` không đổi của thành phần mà R4.10 đọc độ sâu (tenant-config:R2.19)
   (`.claude/plans/studio/tenant-config/issues/02-vo-phien-ban-va-chi-muc-phu-thuoc.md`);
   băm `dw_kernel.canonical` (`.claude/plans/studio/tenant-config/issues/01-bam-chuan-hoa-jcs.md`); chế
   độ `simulate` chặn tác động ở executor (tenant-config:R5.1,
@@ -590,7 +618,9 @@ Mọi bảng mới: RLS ENABLE và FORCE theo tenant, grant cùng migration, tê
   `.claude/plans/studio/tenant-rbac/issues/01-mot-chu-cho-quyen.md` tạo; mỗi khóa của spec này (mục Trong phạm
   vi) đăng ký trong migration của ticket dùng nó, theo quy ước khu vực số nhiều của ticket đó; mọi ticket đăng ký
   khóa (01, 03, 04, 05) chờ `.claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md` và nêu trong
-  INSERT mọi cột NOT NULL của bảng lúc đó, gồm `risk` của tenant-rbac/01 và `tenant_grantable` của tenant-rbac/02.
+  INSERT mọi cột NOT NULL của bảng lúc đó, gồm `risk` của tenant-rbac/01 và `tenant_grantable` của tenant-rbac/02;
+  R4.10 đọc độ sâu của `studio.lifecycle.read` từ `platform.effective_grants` mà tenant-rbac/02 dựng
+  (ADR-0104 (Accepted) quyết 5).
 - custom-objects: bộ so sánh chỉ siết của loại `object` (custom-objects:R1.8) và móc phát hành của loại, móc chỉ
   áp định nghĩa và không ghi audit, vì spec này ghi `studio.version.published` đúng một lần (R2.9, R5.5); loại
   phê duyệt `studio.publish.object` là của custom-objects (custom-objects:R1.2), cơ chế mở, guard và handler là
@@ -624,7 +654,9 @@ Mọi bảng mới: RLS ENABLE và FORCE theo tenant, grant cùng migration, tê
   `.claude/plans/studio/telemetry-and-audit/issues/03-lich-su-chay-theo-buoc.md`; `platform.drop_expired_partitions` và
   `platform.purge_tenant_append_only` của usage-and-limits/02 (hợp đồng xóa usage-and-limits:R3.10, thứ tự trước mọi
   bảng thường usage-and-limits:R3.11); `STUDIO_EXCLUSIONS` và
-  test phủ offboarding (studio-skeleton:R4.1, studio-skeleton:R4.3).
+  test phủ offboarding (studio-skeleton:R4.1, studio-skeleton:R4.3); mục `studio.artifact_versions` và
+  `studio.artifacts` mà tenant-config/02 thêm vào `_ORDERED_FIRST`, mà R10.2 xếp thành `studio.artifact_versions`,
+  `studio.gate_runs`, rồi `studio.artifacts` (studio-skeleton:R4.2).
 - Protocol do bên dùng khai: `RunControlPort` và `RunHaltedError` (runtime khai, spec này đáp ứng bằng
   `SqlRunControl`, đọc trạng thái thành viên của org-and-principals cho `principal_inactive`); `ClosureExtractor`
   theo loại (agent-builder, workflow-engine cung cấp); bảng kiểm theo loại lúc gửi kiểm định (spec này khai;
@@ -661,7 +693,9 @@ Mọi bảng mới: RLS ENABLE và FORCE theo tenant, grant cùng migration, tê
   của `endpoint` → R1.6, R2.1, R5.1, ticket 03, 04; tenant-config/05 đổi mã của `_enforce_strict_rules` → R5.2,
   R7.11, R8.7, ticket 01, 04, 05; agent-builder đổi khóa cache graph hay kiểm mã băm lúc nạp, hay workflow-engine đổi
   cách `RunRequestService` ghim và kiểm bản Nháp → R4.8, R4.9, ticket 04; agent-builder hay workflow-engine đổi việc
-  móc của loại ghi giới hạn dữ liệu của phiên bản → Phụ thuộc, ticket 04.
+  móc của loại ghi giới hạn dữ liệu của phiên bản → Phụ thuộc, ticket 04; tenant-config đổi `uq_artifacts_tenant_id_id`,
+  `owning_workspace_id` của thành phần hay thứ tự `_ORDERED_FIRST` của thành phần và phiên bản → R1.9, R4.10, R10.2,
+  ticket 04; tenant-rbac đổi hình `platform.effective_grants` → R4.10, ticket 04.
 
 ## Câu hỏi còn mở
 
@@ -975,6 +1009,27 @@ Mọi bảng mới: RLS ENABLE và FORCE theo tenant, grant cùng migration, tê
   trình (workflow-engine:R1.7), nên ticket 04 không còn nói móc của loại chỉ áp định nghĩa: móc làm phần việc của loại
   và không ghi audit. Sửa: Phụ thuộc, ticket 04 bước 5. Nếu sai thì: ranh giới của phiên bản được ghi ngoài móc phát
   hành, Phụ thuộc bỏ dòng agent-builder, workflow-engine và bước 5 không nêu ranh giới.
+- 24/10/2026 (agent, tạm): `dw_app` giữ DELETE trên `studio.gate_runs` chỉ cho lượt xóa của offboarding: trigger
+  `studio.guard_gate_run_delete()` BEFORE DELETE từ chối với SQLSTATE 23514 khi `platform.tenants.status` của công ty
+  của dòng khác `offboarding`, vì lane `offboarding` xóa bằng `dw_app` và chỉ thấy bảng mà `dw_app` có DELETE
+  (`_CATALOG_PURGEABLE` của `offboarding.py`), còn ứng dụng không bao giờ xóa một Lượt kiểm định, bằng chứng mà phát
+  hành dựa vào (CLAUDE.md, Data model rules: quyền là một phần của lược đồ; cùng hình với
+  `platform.guard_control_switch()` của R7.5 và `platform.guard_contact_suppression()` của compliance-pdpl:R5.6).
+  Sửa: R10, thêm R10.2, R10.3, AL24, Dữ liệu, ticket 04. Nếu sai thì: `dw_app` không có DELETE trên bảng, offboarding
+  xóa Lượt kiểm định qua một hàm SECURITY DEFINER hẹp và bảng có một dòng `STUDIO_EXCLUSIONS` nêu hàm đó.
+- 24/10/2026 (agent, tạm): `studio.gate_runs` và `studio.gate_case_results`, không cột `workspace_id`, mỗi bảng có một
+  dòng lý do trong danh sách bảng toàn tenant của `test_rls_coverage.py` (CLAUDE.md, Tenancy and authorization;
+  studio-skeleton:R9.1); `studio.gate_runs` thêm `artifact_id` NOT NULL, FK ghép `(tenant_id, artifact_id)` tới
+  `studio.artifacts` ON DELETE RESTRICT có index `(tenant_id, artifact_id)`, để ba route đọc Lượt kiểm định, kể cả dòng
+  `dry` của R4.8 mà không phiên bản nào trỏ tới, lọc theo độ sâu của người đọc ở workspace sở hữu của thành phần
+  (ADR-0104 (Accepted) quyết 3), và R1.9, AL21 thêm ca âm chéo tenant của FK đó (CLAUDE.md, Tenancy and
+  authorization). Khóa ngoại đó cùng khóa ngoại `gate_run_id` (RESTRICT) của phiên bản buộc `_ORDERED_FIRST` xóa
+  `studio.artifact_versions` rồi `studio.gate_runs` trước `studio.artifacts`, ngược thứ tự thành phần trước phiên bản
+  mà ADR-0109 (Accepted) Consequences ghi; thứ tự đó không khóa ngoại nào đòi, nó chạy được chỉ nhờ phiên bản xóa theo
+  CASCADE từ thành phần. Sửa: R1.9, thêm R4.10, AL21, thêm AL23, R10.2, Dữ liệu, API, Phụ thuộc, ticket 04. Nếu sai
+  thì: hai bảng mang `workspace_id` của thành phần với policy hình workspace của CLAUDE.md thay hai dòng danh sách và
+  R4.10 lọc bằng RLS; nếu ADR-0109 (Accepted) giữ thứ tự thành phần trước phiên bản, ON DELETE của `artifact_id` đổi và
+  R10.2, ticket 04 đổi theo.
 
 ## Danh sách ticket
 

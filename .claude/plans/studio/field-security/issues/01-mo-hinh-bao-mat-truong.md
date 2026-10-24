@@ -76,7 +76,7 @@ nghị (a) (Đạt, 23/10/2026); `access_mode` đổi qua phát hành `dw.object
 - `docs/adr/0106-field-access-follows-personal-data-category.md:52-61`; spec: R1, R2.
 - `.claude/plans/studio/custom-objects/issues/02-luoc-do-dinh-nghia-object.md:32`; spec: R1.2 (`pd_category` của `studio.field_defs`).
 - `.claude/plans/studio/tenant-rbac/issues/04-quyen-doi-tuong-va-truong-co-do-sau.md:40-45`; spec: R2.4 (`fld.*` qua `platform.effective_grants`).
-- `.claude/plans/studio/record-access/spec.md:371-372`; spec: R2.5 (`studio.actor_boundary_fields`).
+- `.claude/plans/studio/record-access/spec.md:379-380`; spec: R2.5 (`studio.actor_boundary_fields`).
 
 ## Comments
 
@@ -85,3 +85,4 @@ nghị (a) (Đạt, 23/10/2026); `access_mode` đổi qua phát hành `dw.object
 - 2026-10-24 (agent): vòng sửa 4: Blocked by thêm tenant-rbac/02 theo danh sách cạnh của vòng này, vì trigger của bước 1 gọi `platform.bump_access_version()` mà ticket đó tạo; cạnh này nói thẳng điều trước đây chỉ có qua tenant-rbac/04.
 - 2026-10-24 (agent): kiểm vòng sửa 4, lượt ba: ba neo ở Nguồn trỏ lại đúng dòng, vì lượt ba thêm dòng vào ticket 02 của custom-objects, ticket 04 của tenant-rbac và spec của record-access; nội dung được neo không đổi, và Hiện trạng của spec sửa hai neo cùng lý do.
 - 2026-10-24 (agent): vòng sửa 4, lượt bốn: neo tới ticket 02 của custom-objects và tới spec của record-access ở Nguồn trỏ lại đúng dòng, vì lượt bốn thêm dòng vào hai tệp đó; nội dung được neo không đổi, neo tới ticket 04 của tenant-rbac vẫn đúng, và Hiện trạng của spec sửa hai neo cùng lý do.
+- 2026-10-24 (agent): neo tới spec của record-access ở Nguồn trỏ lại đúng dòng, vì spec đó thêm tiêu chí R6.10 và câu quyền xóa của ba bảng giới hạn dữ liệu ở mục Dữ liệu; nội dung được neo không đổi, và Hiện trạng của spec sửa neo cùng lý do.

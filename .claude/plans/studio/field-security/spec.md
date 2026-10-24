@@ -32,7 +32,7 @@ audit đọc nhạy cảm là W2 ở Ngoài phạm vi. Ý định: không đư�
   cộng dồn qua mọi vai (`.claude/plans/studio/tenant-rbac/issues/04-quyen-doi-tuong-va-truong-co-do-sau.md:30-45`).
   Ràng buộc: spec này đọc quyền trường hiệu lực, không tạo bảng quyền trường hay route cấp quyền.
 - record-access giữ `studio.actor_boundary_fields` với `access` là `read` hay `edit` cho mỗi phiên bản agent hay quy
-  trình, và ghi "field-security đọc `studio.actor_boundary_fields`" (`.claude/plans/studio/record-access/spec.md:371-372`).
+  trình, và ghi "field-security đọc `studio.actor_boundary_fields`" (`.claude/plans/studio/record-access/spec.md:379-380`).
   Ràng buộc: giao với giới hạn dữ liệu đọc bảng đó, không tự tính.
 - Cấm truy cập của người vận hành theo tiền tố khóa, đã thêm `studio.`, `obj.`, `fld.`
   (`.claude/plans/studio/tenant-rbac/spec.md:30`). Ràng buộc: `fld.*` nằm ngoài tầm của người vận hành

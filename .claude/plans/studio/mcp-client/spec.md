@@ -92,6 +92,9 @@ quyết 8).
   ngoài còn hiệu lực nêu `processor` của máy chủ đó, THÌ API Studio PHẢI trả 422 và không ghi gì.
 - R2.6 KHI người giữ `studio.mcp.manage` yêu cầu khám phá một máy chủ đã đăng ký, API Studio PHẢI ghi
   một ảnh chỉ thêm của mọi định nghĩa công cụ máy chủ trả về.
+- R2.7 NẾU `dw_app` xóa một dòng `studio.mcp_server_snapshots` hay `studio.mcp_tool_definitions` của một
+  công ty có `platform.tenants.status` khác `offboarding`, THÌ PostgreSQL PHẢI từ chối với SQLSTATE 23514 và
+  không xóa dòng nào.
 
 ### R3 — Duyệt công cụ hai người
 
@@ -203,8 +206,15 @@ bao giờ bằng token của nền tảng (ADR-0116 (Accepted) quyết 8; ADR-01
   `oauth_user`, `oauth_shared`); `status` CHECK (`active`, `disabled`); `era`, `protocol_version`,
   `as_issuer`, `egress_origins`, `region`; `catalog_entry_key` NOT NULL ở v1, trỏ một mục của
   `configs/mcp/catalog/` (DO-46.1); RLS tenant.
-- `studio.mcp_server_snapshots`, `studio.mcp_tool_definitions`: chỉ thêm, `dw_app` chỉ SELECT và INSERT;
-  mỗi định nghĩa mang `pinned_definition_sha256`.
+- `studio.mcp_server_snapshots`, `studio.mcp_tool_definitions`: chỉ thêm với ứng dụng; mỗi định nghĩa mang
+  `pinned_definition_sha256`. `dw_app` có SELECT, INSERT và DELETE, DELETE chỉ dùng được ở lượt xóa của
+  offboarding: một trigger BEFORE DELETE trên mỗi bảng từ chối với SQLSTATE 23514 mọi DELETE khi
+  `platform.tenants.status` của công ty của dòng khác `offboarding` (R2.7), cùng hình với
+  `platform.guard_control_switch()` (agent-lifecycle:R7.5) và `platform.guard_contact_suppression()`
+  (compliance-pdpl:R5.6), vì lane `offboarding` xóa bằng `dw_app` và chỉ thấy bảng mà `dw_app` có DELETE, nên
+  thiếu DELETE thì test phủ offboarding đỏ và dữ liệu của công ty rời nền tảng ở lại (studio-skeleton:R4.1).
+  Mỗi khóa ngoại `ON DELETE RESTRICT` mà ticket W2 đặt giữa các bảng MCP có một dòng thứ tự trong
+  `_ORDERED_FIRST` của `offboarding.py`, bảng con trước (studio-skeleton:R4.2).
 - Công cụ MCP là thành phần loại `tool` trong vỏ phiên bản chung (`studio.artifacts`,
   `studio.artifact_versions`), không cột `status`: phiên bản chạy là Giai đoạn `live`, và ngưng do lệch là
   một dòng `platform.control_switches` có `scope_type` `tool` (ADR-0116 (Accepted) quyết 1;
@@ -225,30 +235,31 @@ bao giờ bằng token của nền tảng (ADR-0116 (Accepted) quyết 8; ADR-01
 
 ## Kiểm soát
 
-| #    | Kiểm soát                                   | Yêu cầu                | Test âm                                                                                                                                                                                                                                                                       |
-| ---- | ------------------------------------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| MC1  | Chỉ Streamable HTTP qua HTTPS               | R1.4, R2.2             | Đăng ký `http://`, `file://`, IP literal, URL có userinfo → 422; schema đăng ký không có trường lệnh                                                                                                                                                                          |
-| MC2  | Cổng cô lập                                 | R1.1, R1.2             | Từ container `mcp-gateway`: TCP tới `postgres:5432`, `valkey:6379`, `qdrant:6333` thất bại; môi trường không có biến database; request bỏ qua proxy thất bại                                                                                                                  |
-| MC3  | Chặn SSRF                                   | R1.6                   | URL, metadata tài nguyên hay metadata máy chủ cấp quyền phân giải tới `169.254.169.254`, `10.0.0.0/8`, `100.64.0.0/10`, `::1`, hoặc DNS đổi giữa kiểm và dùng → từ chối                                                                                                       |
-| MC4  | Ghim băm                                    | R4.2, R4.3, R4.4, R4.9 | Máy chủ đổi mô tả → lời gọi bị từ chối trước `tools/call`, công tắc `tool` mở, audit `studio.mcp_tool.drift_detected`; lời gọi sau đó → `artifact_killed`; duyệt định nghĩa mới → công tắc vẫn mở; gỡ so băm → test đỏ                                                        |
-| MC5  | Hai người duyệt                             | R3.2, R3.3             | Người đăng ký giữ `approvals.decide` và tem tự duyệt → 409 `second_person_required`; người không có `studio.mcp.approve` → 404; bỏ `studio.mcp.` khỏi prefix nghiêm → test đỏ                                                                                                 |
-| MC6  | Gợi ý của máy chủ không được tin            | R3.5                   | Công cụ thiếu `annotations` → đề xuất `external` và `always`; `readOnlyHint: true` không tự đặt `none`                                                                                                                                                                        |
-| MC7  | Không sampling, roots, logging, elicitation | R1.4, R1.5             | Capabilities gửi đi không có bốn mục đó; máy chủ gửi yêu cầu sampling hay elicitation → từ chối, lượt chạy nhận lỗi có kiểu                                                                                                                                                   |
-| MC8  | Không chuyển tiếp token                     | R5.5                   | Transport ghi lại: header `Authorization` tới máy chủ MCP không bao giờ là token Keycloak của người dùng                                                                                                                                                                      |
-| MC9  | OAuth đúng spec                             | R5.1, R5.2, R5.3, R5.4 | AS không quảng bá `S256` → từ chối; `iss` sai → từ chối trước khi đổi mã; credential của issuer cũ không tới AS mới; bỏ `resource` → test đỏ                                                                                                                                  |
-| MC10 | Đệm theo tenant và người gọi                | R1.9                   | Danh sách `cacheScope: private` của người A không phục vụ người B; khóa đệm thiếu tenant → test đỏ                                                                                                                                                                            |
-| MC11 | Đầu ra là dữ liệu ngoài                     | R1.8, R4.6, R4.7       | `structuredContent` sai `outputSchema` → `tool_output_invalid`; `outputSchema` có `$ref` ngoài → không tải, lỗi đóng                                                                                                                                                          |
-| MC12 | Đóng băng và tắt chặn mọi request           | R1.11, R4.4            | Máy chủ `disabled` hay nền tảng đóng băng → không request nào rời cổng (proxy ghi lại không thấy gì)                                                                                                                                                                          |
-| MC13 | Không theo chuyển hướng khác origin         | R1.7                   | Máy chủ trả 302 sang origin khác → không theo; header khóa API không tới origin đó                                                                                                                                                                                            |
-| MC15 | Chỉ người giữ `studio.mcp.manage` đăng ký   | R2.3                   | Người thiếu `studio.mcp.manage` đăng ký hay khám phá → 403, không dòng nào; tenant B đọc máy chủ của tenant A → 404                                                                                                                                                           |
-| MC16 | Không gửi ngữ cảnh trace tới máy chủ MCP    | R1.12                  | Transport ghi lại mọi request tới máy chủ MCP, kể cả máy chủ danh mục: không có `traceparent` hay `baggage`; request tới Cổng MCP vẫn có `traceparent`; gỡ bộ lọc header → test đỏ                                                                                            |
-| MC17 | Ở v1 chỉ máy chủ trong danh mục nền tảng    | R2.4                   | Đăng ký URL không có mục trong `configs/mcp/catalog/` → 422, không dòng nào; URL của một mục → nhận; gỡ kiểm danh mục → test đỏ                                                                                                                                               |
-| MC18 | Máy chủ xử lý ngoài Việt Nam cần Xác nhận   | R2.5                   | Máy chủ có `region` nước ngoài, công ty không có Xác nhận còn hiệu lực cho bên xử lý đó → 422, không dòng nào; có Xác nhận → nhận; Xác nhận hết hạn → 422; gỡ kiểm → test đỏ                                                                                                  |
-| MC19 | Duyệt trên gốc đã đổi không phát hành       | R3.4, R3.7             | Phiên bản Đang dùng lúc duyệt khác phiên bản đã so lúc gửi → phiên bản về `draft` với `base_changed`, audit `studio.version.returned_to_draft`, bản Đang dùng không đổi; gốc không đổi → `live`; gỡ so `compared_live_hash` khỏi handler → trigger giai đoạn từ chối, test đỏ |
+| #    | Kiểm soát                                                       | Yêu cầu                | Test âm                                                                                                                                                                                                                                                                       |
+| ---- | --------------------------------------------------------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MC1  | Chỉ Streamable HTTP qua HTTPS                                   | R1.4, R2.2             | Đăng ký `http://`, `file://`, IP literal, URL có userinfo → 422; schema đăng ký không có trường lệnh                                                                                                                                                                          |
+| MC2  | Cổng cô lập                                                     | R1.1, R1.2             | Từ container `mcp-gateway`: TCP tới `postgres:5432`, `valkey:6379`, `qdrant:6333` thất bại; môi trường không có biến database; request bỏ qua proxy thất bại                                                                                                                  |
+| MC3  | Chặn SSRF                                                       | R1.6                   | URL, metadata tài nguyên hay metadata máy chủ cấp quyền phân giải tới `169.254.169.254`, `10.0.0.0/8`, `100.64.0.0/10`, `::1`, hoặc DNS đổi giữa kiểm và dùng → từ chối                                                                                                       |
+| MC4  | Ghim băm                                                        | R4.2, R4.3, R4.4, R4.9 | Máy chủ đổi mô tả → lời gọi bị từ chối trước `tools/call`, công tắc `tool` mở, audit `studio.mcp_tool.drift_detected`; lời gọi sau đó → `artifact_killed`; duyệt định nghĩa mới → công tắc vẫn mở; gỡ so băm → test đỏ                                                        |
+| MC5  | Hai người duyệt                                                 | R3.2, R3.3             | Người đăng ký giữ `approvals.decide` và tem tự duyệt → 409 `second_person_required`; người không có `studio.mcp.approve` → 404; bỏ `studio.mcp.` khỏi prefix nghiêm → test đỏ                                                                                                 |
+| MC6  | Gợi ý của máy chủ không được tin                                | R3.5                   | Công cụ thiếu `annotations` → đề xuất `external` và `always`; `readOnlyHint: true` không tự đặt `none`                                                                                                                                                                        |
+| MC7  | Không sampling, roots, logging, elicitation                     | R1.4, R1.5             | Capabilities gửi đi không có bốn mục đó; máy chủ gửi yêu cầu sampling hay elicitation → từ chối, lượt chạy nhận lỗi có kiểu                                                                                                                                                   |
+| MC8  | Không chuyển tiếp token                                         | R5.5                   | Transport ghi lại: header `Authorization` tới máy chủ MCP không bao giờ là token Keycloak của người dùng                                                                                                                                                                      |
+| MC9  | OAuth đúng spec                                                 | R5.1, R5.2, R5.3, R5.4 | AS không quảng bá `S256` → từ chối; `iss` sai → từ chối trước khi đổi mã; credential của issuer cũ không tới AS mới; bỏ `resource` → test đỏ                                                                                                                                  |
+| MC10 | Đệm theo tenant và người gọi                                    | R1.9                   | Danh sách `cacheScope: private` của người A không phục vụ người B; khóa đệm thiếu tenant → test đỏ                                                                                                                                                                            |
+| MC11 | Đầu ra là dữ liệu ngoài                                         | R1.8, R4.6, R4.7       | `structuredContent` sai `outputSchema` → `tool_output_invalid`; `outputSchema` có `$ref` ngoài → không tải, lỗi đóng                                                                                                                                                          |
+| MC12 | Đóng băng và tắt chặn mọi request                               | R1.11, R4.4            | Máy chủ `disabled` hay nền tảng đóng băng → không request nào rời cổng (proxy ghi lại không thấy gì)                                                                                                                                                                          |
+| MC13 | Không theo chuyển hướng khác origin                             | R1.7                   | Máy chủ trả 302 sang origin khác → không theo; header khóa API không tới origin đó                                                                                                                                                                                            |
+| MC15 | Chỉ người giữ `studio.mcp.manage` đăng ký                       | R2.3                   | Người thiếu `studio.mcp.manage` đăng ký hay khám phá → 403, không dòng nào; tenant B đọc máy chủ của tenant A → 404                                                                                                                                                           |
+| MC16 | Không gửi ngữ cảnh trace tới máy chủ MCP                        | R1.12                  | Transport ghi lại mọi request tới máy chủ MCP, kể cả máy chủ danh mục: không có `traceparent` hay `baggage`; request tới Cổng MCP vẫn có `traceparent`; gỡ bộ lọc header → test đỏ                                                                                            |
+| MC17 | Ở v1 chỉ máy chủ trong danh mục nền tảng                        | R2.4                   | Đăng ký URL không có mục trong `configs/mcp/catalog/` → 422, không dòng nào; URL của một mục → nhận; gỡ kiểm danh mục → test đỏ                                                                                                                                               |
+| MC18 | Máy chủ xử lý ngoài Việt Nam cần Xác nhận                       | R2.5                   | Máy chủ có `region` nước ngoài, công ty không có Xác nhận còn hiệu lực cho bên xử lý đó → 422, không dòng nào; có Xác nhận → nhận; Xác nhận hết hạn → 422; gỡ kiểm → test đỏ                                                                                                  |
+| MC19 | Duyệt trên gốc đã đổi không phát hành                           | R3.4, R3.7             | Phiên bản Đang dùng lúc duyệt khác phiên bản đã so lúc gửi → phiên bản về `draft` với `base_changed`, audit `studio.version.returned_to_draft`, bản Đang dùng không đổi; gốc không đổi → `live`; gỡ so `compared_live_hash` khỏi handler → trigger giai đoạn từ chối, test đỏ |
+| MC20 | Chỉ lượt xóa của offboarding xóa được ảnh và định nghĩa đã ghim | R2.7                   | `dw_app` DELETE một dòng `studio.mcp_tool_definitions` hay `studio.mcp_server_snapshots` của công ty `active` → 23514, dòng còn, lời gọi sau vẫn so được Định nghĩa đã ghim; cùng lệnh khi công ty `offboarding` → xóa được; gỡ kiểm khỏi trigger → test đỏ                   |
 
 ## Tiêu chí xong
 
-- Mọi tiêu chí R có test; MC1-MC13 và MC15-MC19 có test âm đã thấy đỏ khi gỡ kiểm soát (ghi ở Comments
+- Mọi tiêu chí R có test; MC1-MC13 và MC15-MC20 có test âm đã thấy đỏ khi gỡ kiểm soát (ghi ở Comments
   của ticket).
 - Image `mcp-gateway` được quét; `reviewing-deployment-security` đã chạy cho route CIMD, JWKS, callback
   và dịch vụ mới; `make ci && make test-integration` xanh.
@@ -350,6 +361,16 @@ bao giờ bằng token của nền tảng (ADR-0116 (Accepted) quyết 8; ADR-01
   gửi kiểm khóa gửi mà mục `ArtifactKindRegistry` của loại khai (tenant-config:R2.15; agent-lifecycle:R2.1); câu
   này là một dòng W2 ở Ngoài phạm vi, không thành tiêu chí R. Sửa: Ngoài phạm vi (dòng W2 đăng ký máy chủ). Nếu sai
   thì: lệnh gửi của R3.1 đứng tên một chủ thể khác người đăng ký, và R3.1, R3.2 đổi theo chủ thể đó.
+- 24/10/2026 (agent, tạm): `studio.mcp_server_snapshots` và `studio.mcp_tool_definitions` vẫn chỉ thêm với ứng
+  dụng, nhưng `dw_app` có DELETE kèm một trigger BEFORE DELETE từ chối với SQLSTATE 23514 khi công ty của dòng
+  không ở `offboarding`, như `platform.control_switches` (agent-lifecycle:R7.5) và
+  `platform.contact_suppressions` (compliance-pdpl:R5.6), vì lane `offboarding` xóa bằng `dw_app` và chỉ thấy bảng
+  mà `dw_app` có DELETE (`_CATALOG_PURGEABLE` của `offboarding.py`), nên hai bảng chỉ SELECT và INSERT làm test phủ
+  offboarding đỏ và giữ lại dữ liệu của công ty rời nền tảng (CLAUDE.md, Data model rules; studio-skeleton:R4.1);
+  mỗi khóa ngoại `ON DELETE RESTRICT` giữa các bảng MCP có một dòng thứ tự trong `_ORDERED_FIRST`, bảng con trước
+  (studio-skeleton:R4.2). Sửa: thêm R2.7, Dữ liệu, Kiểm soát (MC20), Tiêu chí xong. Nếu sai thì: `dw_app` không
+  DELETE trên hai bảng, offboarding xóa chúng qua một hàm SECURITY DEFINER hẹp mà một dòng `STUDIO_EXCLUSIONS` nêu,
+  và R2.7, MC20 đổi theo.
 
 ## Danh sách ticket
 

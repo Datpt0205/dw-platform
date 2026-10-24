@@ -110,10 +110,13 @@ xóa cache ở route khóa của foundations-hardening/02 là tạm và ticket n
     cũ tới khi ticket 03 khóa cột; khóa lạ thì từ chối (lỗi to).
 14. **Giới hạn.** Trigger BEFORE INSERT trên `platform.tenant_roles` với `pg_advisory_xact_lock(hashtext('tenant_roles:' || tenant_id))`:
     200 vai trò chưa xóa (gồm bộ quyền bổ sung) thì nhận, vai trò thứ 201 thì 23514 `role_limit_reached`.
-15. Offboarding xuất và xóa bốn bảng mới (`platform.tenant_roles`, `platform.tenant_role_permissions`,
-    `platform.role_assignments`, `platform.tenant_access_versions`; `test_offboarding.py`), trên phần đọc catalog
-    và `export_rows` mà foundations-hardening/07 đã viết lại, dưới test phủ offboarding của studio-skeleton/01
-    (`studio-skeleton:R4.3`).
+15. Offboarding xuất bốn bảng mới (`platform.tenant_roles`, `platform.tenant_role_permissions`,
+    `platform.role_assignments`, `platform.tenant_access_versions`; `test_offboarding.py`) và xóa ba bảng đầu, trên
+    phần đọc catalog và `export_rows` mà foundations-hardening/07 đã viết lại, dưới test phủ offboarding của
+    studio-skeleton/01 (`studio-skeleton:R4.3`). `platform.tenant_access_versions` giữ `dw_app` chỉ SELECT (bước 9) và
+    vào `STUDIO_EXCLUSIONS` với lý do "một dòng đếm mỗi tenant giữ có chủ ý, không mang dữ liệu của tenant; dòng
+    `platform.tenants` của tenant đã offboard còn ở `offboarded` nên dòng đếm còn theo", như `studio.access_epochs` của
+    record-access (Quyết định 24/10/2026 của spec).
 
 ## Tiêu chí chấp nhận
 
@@ -163,3 +166,4 @@ xóa cache ở route khóa của foundations-hardening/02 là tạm và ticket n
 - 2026-10-24 (agent): vòng sửa 4, lượt hai: bước 7 dẫn `connections-and-vault:R3.12`, `connections-and-vault:R5.13`, hai tiêu chí `no_checker_available` của connections-and-vault, thay cho R3.9, R5.10 là lệnh gửi (Quyết định 24/10/2026 của spec).
 - 2026-10-24 (agent): vòng sửa 4, lượt ba: luật quyền tính động của `tenant_owner` ở bước 7 là tiêu chí R2.7 của spec với kiểm soát RB34; dòng `Yêu cầu:` và một tiêu chí chấp nhận thêm theo, bước 7 không đổi (Quyết định 24/10/2026 của spec).
 - 2026-10-24 (agent): vòng sửa 4, lượt bốn: bước 3 đổi index `(tenant_id, permission_key)` thành `(permission_key, tenant_id)`, để FK `permission_key` tới `platform.permissions` có index dẫn bằng cột của nó (CLAUDE.md, Data model rules; Quyết định 24/10/2026 của spec).
+- 2026-10-24 (agent): bước 15 thôi nói offboarding xóa `platform.tenant_access_versions`, vì `dw_app` chỉ SELECT trên bảng đó (bước 9) và lane offboarding chỉ xóa bảng mà `dw_app` có DELETE; dòng đếm được xuất, giữ có chủ ý và vào `STUDIO_EXCLUSIONS` kèm lý do, như `studio.access_epochs` của record-access (CLAUDE.md, Data model rules; Quyết định 24/10/2026 của spec).

@@ -19,7 +19,10 @@ quyền và duyệt bởi người khác (R3.6, R3.7, TR17 của spec; ADR-0103 
    FK ghép `(tenant_id, service_principal_id)` tới `platform.service_principals (tenant_id, user_id)` (UNIQUE
    `(tenant_id, user_id)` của org-and-principals/03) ON DELETE CASCADE, PK là index của nó; `grants_changed_at timestamptz NOT NULL`;
    `last_event_id uuid NOT NULL`; RLS ENABLE và FORCE chỉ theo tenant; `dw_app` SELECT, INSERT, UPDATE chỉ
-   `grants_changed_at`, `last_event_id`, không DELETE; một dòng lý do trong danh sách bảng toàn tenant của
+   `grants_changed_at`, `last_event_id`, không DELETE, nên cùng thay đổi thêm một dòng `STUDIO_EXCLUSIONS` của
+   studio-skeleton/01 cho bảng với lý do "`dw_app` không DELETE; xóa khi offboarding theo FK CASCADE từ
+   `platform.service_principals`, mà cascade từ `platform.tenant_members`" (mục Dữ liệu của spec;
+   studio-skeleton:R4.1); một dòng lý do trong danh sách bảng toàn tenant của
    `test_rls_coverage.py` (dấu thời điểm theo tài khoản dịch vụ, một chủ thể của cả công ty; DO-01); khẳng định
    grant trong `test_privileges.py`; `test_offboarding.py` purge một tenant có dòng ở bảng này, tenant khác nguyên;
    `dw_app` gắn tenant A chèn dòng mang `service_principal_id` của tài khoản dịch vụ tenant B → FK ghép từ chối.
@@ -40,7 +43,13 @@ quyền và duyệt bởi người khác (R3.6, R3.7, TR17 của spec; ADR-0103 
 
 - [ ] R3.6 (TR17): tăng quyền một tài khoản dịch vụ → handler ghi một dòng với `grants_changed_at` và `last_event_id`
       của sự kiện; outbox giao lại cùng sự kiện → dòng không đổi; sự kiện cũ hơn tới sau → `grants_changed_at` không
-      lùi; dòng gắn tenant A mang `service_principal_id` của tài khoản dịch vụ tenant B → FK ghép từ chối.
+      lùi; dòng gắn tenant A mang `service_principal_id` của tài khoản dịch vụ tenant B → FK ghép từ chối, không dòng
+      nào được ghi; đổi FK đó về FK một cột `service_principal_id` → ca đó qua, test đỏ.
+- [ ] R3.6: công ty `offboarding` có dòng `studio.principal_grant_changes` → lane `offboarding` xuất mỗi dòng một
+      lần, rồi lượt xóa `platform.tenant_members` của công ty xóa hết các dòng đó qua cascade từ
+      `platform.service_principals`, dòng của công ty khác còn nguyên; test phủ offboarding (studio-skeleton:R4.1)
+      xanh với dòng `STUDIO_EXCLUSIONS` của bảng, bỏ dòng đó → test phủ đỏ, nêu tên bảng; đổi FK
+      `service_principal_id` sang `RESTRICT` → lượt xóa lỗi, test đỏ.
 - [ ] R3.7 (TR17): tăng quyền tài khoản dịch vụ sau khi Bộ giá trị gắn được duyệt, rồi gửi một sự kiện có chữ ký tới
       Nguồn dữ liệu → lần kích hoạt `rejected` với `binding_needs_review`, không lượt chạy nào; đề xuất lại bởi người
       phủ đủ quyền và duyệt bởi người khác, rồi gửi sự kiện kế tiếp → một lượt chạy được xin; gỡ kiểm lúc nhận của kind
@@ -62,3 +71,11 @@ quyền và duyệt bởi người khác (R3.6, R3.7, TR17 của spec; ADR-0103 
   liệu chặn tham chiếu chéo tenant, và khóa chính là index của nó, nên index riêng `(service_principal_id)` mà lượt a
   thêm bỏ (CLAUDE.md, Data model rules; phát hiện E về CLAUDE.md và Dữ liệu của spec).
 - 2026-10-24 (agent): lượt d của vòng 4: dòng Comments của lượt b thôi dẫn mã mục của lượt, nội dung giữ nguyên.
+- 2026-10-24 (agent): `studio.principal_grant_changes` không có DELETE cho `dw_app`, nên bước 1 thêm một dòng
+  `STUDIO_EXCLUSIONS` nêu cách xóa theo cascade từ `platform.service_principals`, và tiêu chí R3.6 thêm ca offboarding
+  cùng ca bỏ dòng đó (studio-skeleton:R4.1; CLAUDE.md, Data model rules). Không thêm cạnh: ticket này chờ
+  org-and-principals/03, nơi FK cascade của `platform.service_principals` ra đời, và chờ studio-skeleton/01 qua
+  org-and-principals/02.
+- 2026-10-24 (agent): ca chéo tenant của FK ghép `service_principal_id` ở tiêu chí R3.6 (TR17) thêm "không dòng nào
+  được ghi" và một test đột biến đổi FK đó về FK một cột, như ca của mọi FK ghép khác của spec ở ticket 01 và 02
+  (CLAUDE.md, Tenancy and authorization; failure-modes #3). Không thêm cạnh.
