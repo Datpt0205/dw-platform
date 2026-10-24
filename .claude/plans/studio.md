@@ -7,7 +7,7 @@ departments, starting with Marketing. It is platform code in this repository
 is built yet. Đạt accepted the ADR block on 2026-10-23 (0126 and 0127 on
 2026-10-24), all but ADR-0119, which waits for the code-sandbox spike.
 
-## State (2026-10-24): decisions applied in three rounds, last check running
+## State (2026-10-24): three remediation rounds done; 13 questions for Đạt
 
 - **Round 3 applied on 2026-10-24:** Đạt took every recommendation still open
   (`studio/discovery` coverage review N1-N10, the two CRITICAL rows of round 2,
@@ -35,9 +35,15 @@ is built yet. Đạt accepted the ADR block on 2026-10-23 (0126 and 0127 on
   revoke, the tenant-wide list in `test_rls_coverage.py`, the residency gate).
   Each lands with its W1 ticket; until then they are declared, not enforced
   (failure-modes #1).
-- **Checked:** round 2 (2026-10-24) found 7 CRITICAL, 48 HIGH, 37 MEDIUM, 7
-  LOW after the first decisions; round 3 is the last check the planning skill
-  allows before what remains goes to Đạt as it stands.
+- **Checked:** round 3 (2026-10-24), the last of the three remediation rounds
+  `checking-plan-consistency` allows a wave, found 73 rows (8 CRITICAL, 25
+  HIGH, 38 MEDIUM, 2 LOW), down from 139 and 99. Seven CRITICAL rows have
+  their fix written in an accepted ADR or in `CLAUDE.md`; one CRITICAL and
+  twelve other rows need Đạt (below). Four rows go back to the roadmap: its
+  Phụ thuộc column, YC101 missing on two rows and YC102 on one, one row's
+  wording, and spec size: 17 of 25 specs pass the 250 lines of
+  `writing-plan-specs`, ten of them even without their measured state and
+  decision log, and foundations-hardening has eleven requirement groups.
 
 - **Direction from the requester** (2026-10-22 and 2026-10-23), D1-D14,
   recorded in the ADRs that rest on them: workspace is the data-owning unit
@@ -50,7 +56,7 @@ is built yet. Đạt accepted the ADR block on 2026-10-23 (0126 and 0127 on
   (D11); 10 million records per object (D12); a resized host plus a separate
   VM for tenant code (D14).
 - **Written:** `studio/requirements.md` (107 YC, 14 KQ); 28 ADRs in
-  `docs/adr/0100`-`0127`; 25 feature specs with 95 first-wave tickets;
+  `docs/adr/0100`-`0127`; 25 feature specs with 97 first-wave tickets;
   `studio/discovery/` (brainstorm, research index, the chang.fpt.net teardown
   and config analysis, the wayfinder map with 30 tickets); the platform
   glossary `docs/platform/CONTEXT.md`.
@@ -68,9 +74,40 @@ is built yet. Đạt accepted the ADR block on 2026-10-23 (0126 and 0127 on
 
 ## Decisions owed
 
-- **Đạt:** nothing the plan asked for is open after 2026-10-24; the last
-  consistency check may return rows only Đạt can settle. Acted on, not
-  decided: the platform team curates the MCP catalogue (DO-46.1), and whoever
+- **Đạt, from consistency round 3 (2026-10-24)**, each with the
+  recommendation sent in the report:
+    1. `endpoint` lifecycle (the CRITICAL one): a kind with no quality gate
+       that goes live on a second person's approval, `studio.publish.endpoint`
+       stamped `studio.datahub.manage` (ADR-0120 d1-d2).
+    2. Lost update on the tighten-only branch: a candidate records the `live`
+       hash it was compared with, and approving one whose base has changed
+       returns it to draft with `base_changed` (ADR-0120 d1).
+    3. Tool approvals: MCP keeps its named `studio.mcp.tool_approval`; every
+       other tool kind uses `studio.publish.approve` (ADR-0116 d9).
+    4. A simulated run of a draft, under a provisional content hash.
+    5. Approver keys: `connections.enable` stamped `connections.manage`,
+       `egress.allowed_host` stamped `integrations.admin` (ADR-0115 d2, d6).
+    6. A stale save is 412 with reason `stale_version`; ADR-0109 d2 follows
+       ADR-0108 d3.
+    7. domain-packs Q2: installing Marketing into a tenant that already has the
+       `mkt_` objects attaches provenance; differences arrive as a proposal in
+       a draft, like any pack update.
+    8. The tighten-only branch of an object version passes a tenant freeze
+       (ADR-0120 d7).
+    9. A triggered run of a service account that is not active stays queued
+       and alerts its owner instead of being cancelled; `binding_needs_review`
+       joins the refusal table (ADR-0113 d3).
+    10. Approval delegation (W2): the delegate holds the stamped key, is not
+        the run's creator, and the assignment is time-boxed (ADR-0112 d7,
+        ADR-0104 d11).
+    11. `recipient_cap` joins the block reasons, counted per `root_run_id`
+        (ADR-0124 d1).
+    12. `platform.limit_policies` keeps `scope_*` column names, since a
+        tenant-wide table carries no `workspace_id` (ADR-0121 d4).
+    13. Message content capped at 16 KiB with a length CHECK; citations and
+        message feedback in W2 (ADR-0117 d6).
+- **Acted on, not decided:** the platform team curates the MCP catalogue
+  (DO-46.1), and whoever
   keeps dw-proterial moves it off `memberships.role_keys` before
   tenant-rbac/03 locks the column (FOG-49). W1 cannot raise a limit or loosen
   residency (no two-person path yet), so the pilot's ceilings must be right
@@ -150,52 +187,58 @@ Khối số dành riêng: 0100-0199.
 
 ## Tiếp theo
 
-- `requirements.md`: kiểm nhất quán vòng 2 trên cả area sau lượt áp quyết định, rồi `checking-plan-readiness` (24/10/2026).
-- ADR 0100-0125: đã Accepted ngày 23/10/2026 trừ 0119; 0107, 0114, 0115 chờ số đo của custom-objects/01, FOG-50, spike 21; 0119 chờ code-sandbox/01 (24/10/2026).
+- `requirements.md`: `checking-plan-readiness` sau lượt sửa các dòng của kiểm nhất quán vòng 3 (24/10/2026).
+- ADR 0100-0127: Accepted trừ 0119 (0126, 0127 ngày 24/10/2026); 0107, 0114, 0115 chờ số đo của custom-objects/01, FOG-50, spike 21; 0119 chờ code-sandbox/01; các câu sửa ADR của vòng 3 chờ Đạt (24/10/2026).
 - `docs/platform/CONTEXT.md`: chạy reader test của `checking-plan-readiness` trên thuật ngữ dễ nhầm (23/10/2026).
-- [`studio-skeleton`](studio/studio-skeleton/spec.md): sửa các dòng của kiểm nhất quán vòng 2, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
-- [`foundations-hardening`](studio/foundations-hardening/spec.md): sửa các dòng của kiểm nhất quán vòng 2, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
-- [`app-standards`](studio/app-standards/spec.md): sửa các dòng của kiểm nhất quán vòng 2, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
-- [`org-and-principals`](studio/org-and-principals/spec.md): sửa các dòng của kiểm nhất quán vòng 2, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
-- [`tenant-rbac`](studio/tenant-rbac/spec.md): sửa các dòng của kiểm nhất quán vòng 2, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
-- [`record-access`](studio/record-access/spec.md): sửa các dòng của kiểm nhất quán vòng 2, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
-- [`field-security`](studio/field-security/spec.md): sửa các dòng của kiểm nhất quán vòng 2, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
-- [`custom-objects`](studio/custom-objects/spec.md): sửa các dòng của kiểm nhất quán vòng 2, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
-- [`tenant-config`](studio/tenant-config/spec.md): sửa các dòng của kiểm nhất quán vòng 2, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
+- [`studio-skeleton`](studio/studio-skeleton/spec.md): sửa các dòng của kiểm nhất quán vòng 3, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
+- [`foundations-hardening`](studio/foundations-hardening/spec.md): sửa các dòng của kiểm nhất quán vòng 3, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
+- [`app-standards`](studio/app-standards/spec.md): sửa các dòng của kiểm nhất quán vòng 3, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
+- [`org-and-principals`](studio/org-and-principals/spec.md): sửa các dòng của kiểm nhất quán vòng 3, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
+- [`tenant-rbac`](studio/tenant-rbac/spec.md): sửa các dòng của kiểm nhất quán vòng 3, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
+- [`record-access`](studio/record-access/spec.md): sửa các dòng của kiểm nhất quán vòng 3, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
+- [`field-security`](studio/field-security/spec.md): sửa các dòng của kiểm nhất quán vòng 3, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
+- [`custom-objects`](studio/custom-objects/spec.md): sửa các dòng của kiểm nhất quán vòng 3, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
+- [`tenant-config`](studio/tenant-config/spec.md): sửa các dòng của kiểm nhất quán vòng 3, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
 - [`domain-packs`](studio/domain-packs/spec.md): chỉ có phạm vi W2; cắt ticket khi đợt 2 bắt đầu (23/10/2026).
-- [`workflow-engine`](studio/workflow-engine/spec.md): sửa các dòng của kiểm nhất quán vòng 2, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
-- [`workflow-triggers`](studio/workflow-triggers/spec.md): sửa các dòng của kiểm nhất quán vòng 2, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
-- [`workflow-nodes`](studio/workflow-nodes/spec.md): sửa các dòng của kiểm nhất quán vòng 2, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
-- [`workflow-builder-ui`](studio/workflow-builder-ui/spec.md): sửa các dòng của kiểm nhất quán vòng 2, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
-- [`connections-and-vault`](studio/connections-and-vault/spec.md): sửa các dòng của kiểm nhất quán vòng 2, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
-- [`tools-and-skills`](studio/tools-and-skills/spec.md): sửa các dòng của kiểm nhất quán vòng 2, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
+- [`workflow-engine`](studio/workflow-engine/spec.md): sửa các dòng của kiểm nhất quán vòng 3, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
+- [`workflow-triggers`](studio/workflow-triggers/spec.md): sửa các dòng của kiểm nhất quán vòng 3, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
+- [`workflow-nodes`](studio/workflow-nodes/spec.md): sửa các dòng của kiểm nhất quán vòng 3, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
+- [`workflow-builder-ui`](studio/workflow-builder-ui/spec.md): sửa các dòng của kiểm nhất quán vòng 3, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
+- [`connections-and-vault`](studio/connections-and-vault/spec.md): sửa các dòng của kiểm nhất quán vòng 3, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
+- [`tools-and-skills`](studio/tools-and-skills/spec.md): sửa các dòng của kiểm nhất quán vòng 3, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
 - [`mcp-client`](studio/mcp-client/spec.md): chỉ có phạm vi W2; cắt ticket khi đợt 2 bắt đầu (23/10/2026).
-- [`agent-builder`](studio/agent-builder/spec.md): sửa các dòng của kiểm nhất quán vòng 2, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
-- [`model-connections`](studio/model-connections/spec.md): sửa các dòng của kiểm nhất quán vòng 2, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
-- [`code-sandbox`](studio/code-sandbox/spec.md): sửa các dòng của kiểm nhất quán vòng 2, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
-- [`agent-lifecycle`](studio/agent-lifecycle/spec.md): sửa các dòng của kiểm nhất quán vòng 2, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
-- [`usage-and-limits`](studio/usage-and-limits/spec.md): sửa các dòng của kiểm nhất quán vòng 2, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
-- [`telemetry-and-audit`](studio/telemetry-and-audit/spec.md): sửa các dòng của kiểm nhất quán vòng 2, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
-- [`compliance-pdpl`](studio/compliance-pdpl/spec.md): sửa các dòng của kiểm nhất quán vòng 2, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
-- [`marketing-pilot`](studio/marketing-pilot/spec.md): sửa các dòng của kiểm nhất quán vòng 2, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
+- [`agent-builder`](studio/agent-builder/spec.md): sửa các dòng của kiểm nhất quán vòng 3, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
+- [`model-connections`](studio/model-connections/spec.md): sửa các dòng của kiểm nhất quán vòng 3, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
+- [`code-sandbox`](studio/code-sandbox/spec.md): sửa các dòng của kiểm nhất quán vòng 3, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
+- [`agent-lifecycle`](studio/agent-lifecycle/spec.md): sửa các dòng của kiểm nhất quán vòng 3, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
+- [`usage-and-limits`](studio/usage-and-limits/spec.md): sửa các dòng của kiểm nhất quán vòng 3, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
+- [`telemetry-and-audit`](studio/telemetry-and-audit/spec.md): sửa các dòng của kiểm nhất quán vòng 3, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
+- [`compliance-pdpl`](studio/compliance-pdpl/spec.md): sửa các dòng của kiểm nhất quán vòng 3, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
+- [`marketing-pilot`](studio/marketing-pilot/spec.md): sửa các dòng của kiểm nhất quán vòng 3, rồi `checking-plan-readiness` cho từng ticket W1 (24/10/2026).
 
 ## Đợt
 
-Kiểm nhất quán 24/10/2026: 7 CRITICAL, 48 HIGH, 37 MEDIUM, 7 LOW; phủ YC 100/100, tiêu chí 901/967.
+Kiểm nhất quán 24/10/2026: 8 CRITICAL, 25 HIGH, 38 MEDIUM, 2 LOW; phủ YC 107/107, tiêu chí 955/1021.
 
-- Đợt 1 (W1: P0 nền móng và lát Marketing P1): 23 spec, 95 ticket, chưa ticket nào `ready-for-agent`.
-    - Vòng 1 (23/10) có 15 dòng CRITICAL; Đạt quyết cả 15 và quyết định đã áp. Vòng 2 (24/10) là lần kiểm
-      sau lượt áp: 57 mục do các agent sửa báo đã hết, còn 99 phát hiện.
-    - Sửa được ngay theo ADR và `CLAUDE.md` đã chấp nhận (5 CRITICAL): `connection_usable` kiểm
-      `connections.use` (ADR-0115); offboarding và `config.version.approved` audit đứng tên người quyết
-      (ADR-0011); `studio.agent_settings` theo ADR-0117; ADR-0120 quyết 3 bỏ mã 422 ở lane cổng. Cùng
-      lượt: khoảng 38 dòng HIGH sửa máy móc (cạnh Blocked by, mã lỗi, chủ của hàm, cột và tên khóa).
-    - Chờ Đạt (2 CRITICAL): phát hành một người cho phiên bản đối tượng chỉ siết (ca D11 thu hẹp
-      `default_access`, cần một nhánh trong ADR-0120 quyết 1); lượt do lịch kích hoạt khi hết hạn mức (câu
-      `CLAUDE.md` nói không bao giờ bỏ, DO-21.3 ghi `limit_refused`). Cùng chờ: N1, N2, N4, bốn con số,
-      năm ca D11, chủ FOG-49.
-    - Đi trước được sau lượt sửa vòng 3: `foundations-hardening` và `app-standards`, không dòng CRITICAL
-      nào chạm.
+- Đợt 1 (W1: P0 nền móng và lát Marketing P1): 23 spec, 97 ticket, chưa ticket nào `ready-for-agent`.
+    - Ba vòng sửa của đợt đã dùng hết (vòng 1 ngày 23/10, vòng 2 và 3 ngày 24/10): phát hiện 139, 99 rồi
+      73; CRITICAL 15, 7 rồi 8. Theo luật của `checking-plan-consistency`, phần còn lại đưa lên Đạt.
+    - Sửa theo ADR và `CLAUDE.md` đã chấp nhận (7 CRITICAL): cột hàng đợi theo ADR-0113, mã `wf.*` theo
+      ADR-0112, năm kiểm khi tiếp tục theo ADR-0109, AAD của phong bì theo ADR-0115, Protocol kiểm điểm gắn
+      khi gửi và khi phát hành theo ADR-0120, index cho route danh sách lượt kiểm định, kết quả ca và tin
+      nhắn (Data model rules), lane promotion của ADR-0111 audit đứng tên người duyệt (ADR-0011). Cùng loại:
+      các cạnh Blocked by (`offboarding.py`, tệp retention, danh mục quyền) và phần lớn dòng HIGH, MEDIUM.
+    - Chờ Đạt (13 câu, có khuyến nghị ở mục Decisions owed): vòng đời của loại `endpoint` (CRITICAL); mất cập
+      nhật ở nhánh chỉ siết; loại phê duyệt cho phiên bản công cụ; chạy mô phỏng trên bản Nháp; khóa duyệt
+      của hai phê duyệt mới; 412 cho `stale_version`; Q2 của `domain-packs`; nhánh chỉ siết khi Đóng băng;
+      lượt của tài khoản dịch vụ bị tạm khóa; người duyệt thay (W2); lý do chặn `recipient_cap`; tên cột hạn
+      mức; trần nội dung tin nhắn.
+    - Về lại roadmap (4 dòng MEDIUM): cột Phụ thuộc lệch các cạnh ticket; YC101 thiếu ở hai hàng, YC102 ở hàng
+      `workflow-triggers`; chữ "simulate" và "gửi phát hành" ở hàng `workflow-builder-ui`; 17 trong 25 spec quá
+      250 dòng (10 spec vẫn quá khi bỏ Hiện trạng và Quyết định), `foundations-hardening` có 11 nhóm yêu cầu.
+    - Đi trước được: `app-standards` (một dòng HIGH, cạnh 01 → 02) và `foundations-hardening` (hai dòng HIGH,
+      cạnh với tenant-config/04 và với chín ticket sửa `offboarding.py`), không dòng CRITICAL nào chạm. Thêm
+      các cạnh đó rồi chạy `checking-plan-readiness` cho từng ticket.
 - Đợt 2 (W2: v1 GA): phần W2 của mọi spec ở trên, cùng `domain-packs` và `mcp-client` (chỉ có phạm vi W2: 66
   tiêu chí chưa ticket trong số đo ở trên). Cắt ticket khi đợt 1 hết dòng CRITICAL và lần kiểm nhất quán sau
   đó không còn dòng HIGH nào chưa có quyết định.
