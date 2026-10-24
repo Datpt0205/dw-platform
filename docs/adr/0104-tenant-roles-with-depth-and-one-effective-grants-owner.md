@@ -68,7 +68,8 @@ by copying") and D3 (record-level access in four layers), and on the call on DO-
    enforced action: `read`, `create`, `update`, `delete`, `assign` in P1; `share` and `export` only with the migration
    that ships their reader. `fld.<object>.<field>.read|edit` exists for secured fields (ADR-0106). `assign` needs the
    record and its new record owner within reach; `export` never exceeds read. Per-object permission rows reference the
-   object or field definition `ON DELETE CASCADE`, so deleting a definition removes its privileges.
+   object or field definition through a composite foreign key, `(tenant_id, object_id)` or `(tenant_id, field_id)`,
+   `ON DELETE CASCADE`, so deleting a definition removes its privileges and no row names another tenant's definition.
 5. **One owner.** `platform.effective_grants(p_tenant_id uuid, p_user_id uuid)` returns
    `(permission_key, depth, anchor_workspace_id, role_id)`: SQL, STABLE, SECURITY INVOKER (under `dw_app`, RLS bounds it
    to the bound tenant), skipping expired assignments, deleted roles, tenant members who are not active and inactive
@@ -280,3 +281,7 @@ by copying") and D3 (record-level access in four layers), and on the call on DO-
   planner's provisional call, B:packages:spec\~tenant-config/05; if it is wrong, each approval type names its own code
   through its `decision_guards` entry); it also states from W2 the conditions under which an approval delegation
   decides, 403 outside them (Đạt's V4.10; D:ADR-0112\~workflow-nodes:spec).
+- Third consistency check (round 4), third pass: decision 4's per-object permission rows reference their definition
+  through a composite foreign key, `(tenant_id, object_id)` or `(tenant_id, field_id)`, as tenant-rbac's object and
+  field privilege tables state them, because a foreign key check does not pass through RLS and a one-column key would
+  let one tenant's privilege name another tenant's definition (`CLAUDE.md`, Data model rules).

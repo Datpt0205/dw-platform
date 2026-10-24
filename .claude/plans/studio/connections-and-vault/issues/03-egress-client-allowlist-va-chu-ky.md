@@ -38,7 +38,8 @@ run_mode, purpose, connector_key, connection_id, simulate_safe)` (`simulate_safe
    (`openai_compatible.py`, `openai_responses.py`, `zalo_bot.py`, `api_parsers.py`, `cohere_rerank.py`,
    `openai_embedding.py`) và gói egress.
 7. Migration (revision hex): `platform.egress_allowed_hosts` theo mục Dữ liệu của spec (`owning_workspace_id`
-   với FK ghép tới `uq_workspaces_tenant_id_id` của org-and-principals/01), kiểm Public Suffix List
+   với FK ghép `(tenant_id, owning_workspace_id)` tới `uq_workspaces_tenant_id_id` của org-and-principals/01,
+   ON DELETE RESTRICT, có index), kiểm Public Suffix List
    (wildcard không đặt trên hậu tố công cộng, không IP literal); RLS ENABLE và FORCE theo tenant, grant
    cột; một dòng có lý do cho bảng trong `_TENANT_WIDE_ON_PURPOSE` của `test_rls_coverage.py` (studio-skeleton/01); đăng ký
    khóa `integrations.admin` vào Danh mục quyền trong cùng migration, câu INSERT nêu mọi cột NOT NULL có lúc đó,
@@ -125,3 +126,6 @@ run_mode, purpose, connector_key, connection_id, simulate_safe)` (`simulate_safe
   `second_person_required` (V4.P9, R3.10); câu INSERT đăng ký khóa nêu `tenant_grantable` (V4.P2); thêm Blocked
   by tenant-rbac/02, chủ của `platform.checker_candidates` và cột `tenant_grantable` (bước 7). Khóa duyệt
   `integrations.admin` của `egress.allowed_host` nay là quyết định của Đạt (V4.5), ADR-0115 (Accepted) quyết 6 ghi.
+- 2026-10-24 (agent): vòng sửa thứ tư, lượt c: FK ghép `(tenant_id, owning_workspace_id)` của
+  `platform.egress_allowed_hosts` nêu `ON DELETE RESTRICT` và chỉ mục như spec ghi cho `platform.connections`
+  (CLAUDE.md, Data model rules: khóa ngoại nào cũng nêu `ON DELETE` và có chỉ mục ở phía của nó) (bước 7).

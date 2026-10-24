@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: 02, 03, .claude/plans/studio/workflow-engine/issues/04-lan-studio-runs.md, .claude/plans/studio/compliance-pdpl/issues/05-phan-tich-bo-ba-khi-xuat-ban.md, .claude/plans/studio/tenant-config/issues/03-che-do-chay-va-gia-lap-o-executor.md, .claude/plans/studio/tenant-config/issues/05-lien-ket-va-phien-ban-cau-hinh.md, .claude/plans/studio/usage-and-limits/issues/03-han-muc-giu-truoc-va-quyet-toan.md, .claude/plans/studio/telemetry-and-audit/issues/03-lich-su-chay-theo-buoc.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md
 Area: studio
-Yêu cầu: R2.8, R2.9, R2.10, R2.11, R2.12, R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R4.7, R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R5.8, R5.9, R5.10, R6.1, R6.2, R6.3, R7.9, R7.12, R7.13, AL4, AL5, AL6, AL7, AL8, AL9, AL10, AL11, AL19, AL20
+Yêu cầu: R1.9, R2.8, R2.9, R2.10, R2.11, R2.12, R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R4.7, R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R5.8, R5.9, R5.10, R6.1, R6.2, R6.3, R7.9, R7.12, R7.13, AL4, AL5, AL6, AL7, AL8, AL9, AL10, AL11, AL19, AL20, AL21
 
 ## Mục tiêu
 
@@ -19,9 +19,13 @@ compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ �
    `passed`, `failed`, `error`, `cancelled`; `purpose` CHECK `gate`, `dry`; khóa bằng chứng
    `effective_hash`, `gate_policy_ref`, `security_suite_ref`, danh sách mã băm bộ đề của tenant (rỗng ở
    W1); `definition_hash` cho trigger giai đoạn; `spend_cap_usd`, `spent_usd`, `resolved_at_gate` jsonb,
-   `verdict` jsonb; `created_at timestamptz NOT NULL`; index `(tenant_id, created_at DESC, id DESC)` cho keyset của
-   `GET /api/v1/studio/gate-runs`); `studio.gate_case_results` có index `(tenant_id, gate_run_id, case_id)` trên bảng
-   cha cho keyset của `GET .../{id}/cases` (CLAUDE.md, Data model rules), phân vùng theo tháng với DEFAULT, đăng ký bằng một dòng
+   `verdict` jsonb; `created_at timestamptz NOT NULL`; `uq_gate_runs_tenant_id_id UNIQUE (tenant_id, id)`; index
+   `(tenant_id, created_at DESC, id DESC)` cho keyset của `GET /api/v1/studio/gate-runs`); cùng revision thêm FK ghép
+   `(tenant_id, gate_run_id)` của `studio.artifact_versions` (cột của ticket 03) tới `studio.gate_runs (tenant_id, id)`
+   ON DELETE RESTRICT có index riêng (spec R1.9); `studio.gate_case_results` có `gate_run_id` FK ghép
+   `(tenant_id, gate_run_id)` tới `studio.gate_runs (tenant_id, id)` ON DELETE RESTRICT, để một DELETE lên Lượt kiểm
+   định không kéo theo xóa dòng chỉ thêm, và index `(tenant_id, gate_run_id, case_id)` trên bảng cha mang khóa ngoại
+   đó và keyset của `GET .../{id}/cases` (CLAUDE.md, Data model rules), phân vùng theo tháng với DEFAULT, đăng ký bằng một dòng
    `platform.time_partitioned_tables` (`append_only = true`), không sửa thân hàm; ENABLE/FORCE RLS và policy
    tenant trên cha và DEFAULT cùng migration; `dw_app` không giữ quyền nào trên partition nào, kể cả
    DEFAULT (DO-02.2), chỉ SELECT, INSERT trên bảng cha. `studio.gate_run_datasets` là W2 cùng bộ đề của tenant.
@@ -31,9 +35,10 @@ compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ �
    định dạng của telemetry-and-audit:R5.6, nên studio-skeleton:R3.7 xanh ngay khi đăng ký; trong chuỗi phiên bản của
    tệp, bản của ticket này đứng ngay sau bản của telemetry-and-audit/03, ticket này chờ ticket đó; một dòng
    `STUDIO_EXCLUSIONS` cho `studio.gate_case_results` với lý do "xóa khi offboarding bằng
-   `platform.purge_tenant_append_only`" (usage-and-limits:R3.8); khóa ngoại `gate_run_id` (RESTRICT) của
-   `studio.artifact_versions` cần `_ORDERED_FIRST` xóa `studio.artifact_versions` trước `studio.gate_runs`
-   (studio-skeleton:R4.2).
+   `platform.purge_tenant_append_only`" (usage-and-limits:R3.10); hàm đó chạy trước mọi bảng thường
+   (usage-and-limits:R3.11), nên khóa ngoại `gate_run_id` (RESTRICT) của `studio.gate_case_results` được thỏa không
+   cần dòng `_ORDERED_FIRST`, còn khóa ngoại `gate_run_id` (RESTRICT) của `studio.artifact_versions` cần
+   `_ORDERED_FIRST` xóa `studio.artifact_versions` trước `studio.gate_runs` (studio-skeleton:R4.2).
 2. Lane `studio_gate` (tối đa một Lượt kiểm định mỗi tenant, một `ReapTarget` cho lượt treo): mỗi lần
    thử là một run `run_mode='simulate'` dùng ngữ cảnh truy cập đóng dấu của người gửi; lane cấp cho mỗi Bước
    `human.approval` của lần thử quyết định `approved` hay `rejected` (từ vựng của workflow-nodes:R9.9, bước 3) mà Câu
@@ -86,9 +91,10 @@ compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ �
    nào, thì không phát hành: phiên bản về `draft` với
    `details.reason_code` `base_changed`, audit `studio.version.returned_to_draft` với actor là người quyết định và
    `details.lane` là tên lane, cùng giao dịch (spec R5.9); không thì, actor là người quyết định
-   với `details.lane` là tên lane và `details.path` `approved` (ADR-0011 (Accepted)), đưa phiên bản Đang dùng qua
-   dịch vụ phát hành của tenant-config cùng móc phát hành `publish_hook` mà mục `ArtifactKindRegistry` của loại mang
-   (tenant-config:R2.15, tenant-config/02; ADR-0109 (Accepted) quyết 1), bản cũ Đã gỡ (`superseded`), đúng một audit
+   với `details.lane` là tên lane và `details.path` `approved` (ADR-0011 (Accepted)), `LifecycleService`, bên duy nhất
+   ghi `live` (ADR-0120 (Accepted) quyết 1), gỡ bản cũ (`superseded`) rồi đưa phiên bản sang Đang dùng và gọi móc
+   phát hành `publish_hook` mà mục `ArtifactKindRegistry` của loại mang (tenant-config:R2.15, tenant-config/02;
+   ADR-0109 (Accepted) quyết 1), đúng một audit
    `studio.version.published` (móc phát hành của loại chỉ áp định nghĩa, không ghi audit), outbox
    `studio.version.live`; từ chối → `draft`. Nhãn loại approval và liên kết "Xem diff" ở điểm cắm
    `apps/web/components/tool-approval.tsx`. Lane hết hạn phê duyệt phát hành: hủy yêu cầu quá
@@ -108,10 +114,11 @@ compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ �
    `tighten_only` và `compared_live_hash` (spec R2.10). Hỏi `RunControlPort` sau khi so: Đóng băng của nền tảng → 409
    `platform_frozen`; Đóng băng của công ty → 409 `tenant_frozen` trừ khi bộ so sánh báo chỉ siết, vì nhánh chỉ siết
    đi qua được Đóng băng của công ty (spec R7.9, R7.13); giao dịch lùi, phiên bản giữ `draft`. Chỉ siết →
-   `draft → live` trong giao dịch của người gửi, bản cũ Đã gỡ (`superseded`), `publish_hook` của mục
-   `ArtifactKindRegistry` của loại chạy trong cùng giao dịch, đúng một audit `studio.version.published` với
-   actor là người gửi và `details.path` `tighten_only`, outbox `studio.version.live`, không mở phê duyệt. Không chỉ
-   siết, hay chưa có bản `live` → sang `awaiting_approval` với yêu cầu phê duyệt của bước 5. Test với loại `object`
+   `LifecycleService` gỡ bản cũ (`superseded`) rồi đưa phiên bản `draft → live` trong giao dịch của người gửi,
+   `publish_hook` của mục `ArtifactKindRegistry` của loại chạy trong cùng giao dịch, đúng một audit
+   `studio.version.published` với actor là người gửi và `details.path` `tighten_only`, outbox `studio.version.live`,
+   không mở phê duyệt (spec R2.9). Không chỉ siết, hay chưa có bản `live` → sang `awaiting_approval` với yêu cầu phê
+   duyệt của bước 5. Test với loại `object`
    đăng ký trong test cùng một bộ so sánh giả, và một loại không cổng đăng ký trong test không có bộ so sánh (hình của
    `endpoint`); đường thật với loại và bộ so sánh của custom-objects/02 là custom-objects/06, với loại `endpoint` là
    workflow-triggers/02, hai ticket chờ ticket này.
@@ -138,6 +145,9 @@ compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ �
 - [ ] R4.5 (AL9): một lần thử chạm trần mỗi lần thử → Câu đó trượt với `cost_bound`, các câu khác vẫn
       chấm; gỡ trần mỗi lần thử → test đỏ.
 - [ ] R4.6: hai Lượt kiểm định cùng khóa bằng chứng → lượt sau dùng lại, không tạo run.
+- [ ] R1.9 (AL21): bằng vai migrator, dòng phiên bản của tenant A đặt `gate_run_id` là id một Lượt kiểm định của
+      tenant B, và một dòng `studio.gate_case_results` của A trỏ tới Lượt kiểm định đó → FK ghép từ chối cả hai, không
+      ghi; cùng id của tenant A → nhận; đổi một FK sang một cột → test đỏ.
 - [ ] R5.1 (AL5): khi gate đạt, yêu cầu phê duyệt mở trong cùng giao dịch `evaluating → awaiting_approval`,
       payload chỉ id và mã, `requested_by` bằng `submitted_by`; `author_ids` bằng đúng `contributor_ids` cộng
       `submitted_by` của dòng phiên bản; dựng thiếu một người → test khớp đỏ; gửi một phiên bản `object` không chỉ
@@ -150,7 +160,7 @@ compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ �
       và khi quyết định.
 - [ ] R5.8 (AL6): người gửi không giữ tem mở yêu cầu phê duyệt phát hành của mình → 200 với `can_decide` false;
       gỡ luật người xin → 404, test đỏ.
-- [ ] R5.5: duyệt → bản mới Đang dùng qua dịch vụ phát hành của tenant-config, bản cũ Đã gỡ (`superseded`)
+- [ ] R5.5: duyệt → bản mới Đang dùng qua `LifecycleService`, bản cũ Đã gỡ (`superseded`)
       trong một vòng outbox, audit có `details.path` `approved`; với loại `object` móc phát hành trên mục
       `ArtifactKindRegistry` của loại chạy trong cùng giao dịch và có đúng một dòng `studio.version.published`; bỏ lời
       gọi móc khỏi handler → móc giả không được gọi, test đỏ; giao hai lần cùng sự kiện → một kết quả;
@@ -240,3 +250,11 @@ compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ �
 - 2026-10-24 (agent): kiểm lượt b: nhánh không cổng của bước 7 cũng đưa giá trị `If-Match` cho `seal` và có tiêu chí
   R2.12 riêng, để một lần gửi chỉ siết với nháp cũ không lên `live` qua nhánh này mà test của ticket 03 không thấy
   (failure-modes #5; Quyết định tạm của spec về `If-Match`).
+- 2026-10-24 (agent): vòng sửa thứ tư, lượt c, theo các Quyết định tạm cùng ngày của spec: `LifecycleService` là bên
+  duy nhất ghi `live` ở handler và ở nhánh chỉ siết, gọi `publish_hook` của mục registry, thay "dịch vụ phát hành của
+  tenant-config" ở bước 5 và tiêu chí R5.5 (ADR-0120 (Accepted) quyết 1; ADR-0109 (Accepted) quyết 1); bước 1 thêm
+  `uq_gate_runs_tenant_id_id`, FK ghép `gate_run_id` của `studio.artifact_versions` và FK ghép ON DELETE RESTRICT của
+  `studio.gate_case_results` (spec R1.9, AL21; CLAUDE.md, Data model rules); lý do `STUDIO_EXCLUSIONS` dẫn
+  usage-and-limits:R3.10 cho hợp đồng xóa và usage-and-limits:R3.11 cho thứ tự, thay R3.8.
+- 2026-10-24 (agent): kiểm lượt c: spec R2.8, R2.9, R7.13 nay nêu `LifecycleService` là bên đưa phiên bản lên `live` ở
+  nhánh chỉ siết, và R5.5 nêu thứ tự gỡ bản cũ rồi đặt bản mới, khớp bước 5 và bước 7; bước 7 dẫn spec R2.9.

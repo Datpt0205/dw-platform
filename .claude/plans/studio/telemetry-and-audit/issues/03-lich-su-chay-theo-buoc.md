@@ -3,13 +3,13 @@
 Status: needs-triage
 Blocked by: .claude/plans/studio/workflow-engine/issues/03-bien-dich-va-wrapper-nut.md, .claude/plans/studio/field-security/issues/01-mo-hinh-bao-mat-truong.md, .claude/plans/studio/usage-and-limits/issues/02-bang-gia-so-su-dung-va-man-hinh.md, .claude/plans/studio/usage-and-limits/issues/03-han-muc-giu-truoc-va-quyet-toan.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md
 Area: studio
-Yêu cầu: R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R4.1, R4.2, R4.3, R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R5.8, TA4, TA5, TA6, TA10, TA11, TA12, TA13, TA14
+Yêu cầu: R1.6, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R4.1, R4.2, R4.3, R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R5.8, TA4, TA5, TA6, TA10, TA11, TA12, TA13, TA14, TA15
 
 ## Mục tiêu
 
 Một kho `platform.run_steps` cho mỗi Bước chạy, che bí mật khi ghi và che theo quyền đọc trường của người
 xem khi đọc; màn Lịch sử chạy đọc dưới `runs.read` theo độ sâu; một chính sách lưu giữ có bộ xóa cho mỗi
-kho mới (spec R3, R4, R5).
+kho mới; một catalog hành động audit có test AST (spec R1.6, R3, R4, R5).
 
 ## Việc cần làm
 
@@ -62,9 +62,17 @@ timestamptz`, `duration_ms`, `error_type`, `input_preview` và `result_preview` 
    hay một kho có tên; spec R5.6) và `test_the_pinned_retention_policy_promises_only_classes_code_can_assign`.
    Khóa, bộ xóa và test xóa của `studio.inbound_events`, `studio.trigger_deliveries` và `studio.inbound_dedupe` ở
    workflow-triggers/02, nơi tạo bảng; ticket này không thêm khóa nào cho bảng chưa có.
+8. Catalog hành động audit `configs/copy/audit_actions@1.0.0.yaml` (ADR-0122 (Accepted) quyết 6): một khóa cho mỗi
+   `action` mà mã trong `src/` ghi lúc ticket này vào, gồm `run.payload.viewed` của bước 5, mỗi khóa mang một nhãn
+   tiếng Việt; test AST đọc mọi lời ghi sự kiện Nhật ký kiểm toán trong `src/` và đỏ khi một `action` không có khóa
+   trong catalog (spec R1.6). Cách các ticket sau thêm tên action là Q2 của spec; ticket này không thêm tên cho action
+   chưa có mã ghi.
 
 ## Tiêu chí chấp nhận
 
+- [ ] R1.6 (TA15): thêm một lời ghi audit với `action` không có khóa trong `configs/copy/audit_actions@1.0.0.yaml` →
+      test AST đỏ, nêu tên action; một khóa của catalog có nhãn tiếng Việt rỗng → test đỏ; `run.payload.viewed` có
+      khóa và nhãn.
 - [ ] R3.1: một node kết thúc → đúng một Bước chạy mang trạng thái, thời điểm, thời lượng, token, chi phí.
 - [ ] R3.2 (TA6): input mang một khóa bí mật → preview không có giá trị, `redaction_log` ghi lý do; gỡ bỏ
       bí mật → test đỏ.
@@ -105,7 +113,7 @@ timestamptz`, `duration_ms`, `error_type`, `input_preview` và `result_preview` 
 - `apps/api/src/dw_api/routes/v1/runs.py:41-68`; spec: R4.1 (có `get_run` và `timeline`; thêm danh sách,
   bước, payload).
 - `configs/policies/retention@1.7.0.yaml:118-120`; spec: R5.3 (dẫn Nghị định 13 cần bỏ, chuyển compliance-pdpl).
-- ADR-0122 (Accepted) quyết 4, 7; ADR-0106 (Accepted) quyết 4.
+- ADR-0122 (Accepted) quyết 4, 6, 7; ADR-0106 (Accepted) quyết 4.
 
 ## Comments
 
@@ -128,3 +136,6 @@ timestamptz`, `duration_ms`, `error_type`, `input_preview` và `result_preview` 
   R5.5 ở đây thử phần lane, ca trên bảng thật chạy ở ticket đó; tệp retention là một tệp có phiên bản, ticket này
   đứng sau usage-and-limits/03 trong chuỗi các ticket sửa tệp (C:configs:spec\~telemetry-and-audit/03); chờ
   tenant-rbac/02 vì dòng `runs.read_payloads` nêu cả `tenant_grantable` (C:custom-objects/02\~tenant-rbac/02).
+- 2026-10-24 (agent): lượt sửa thứ ba của vòng 4, theo dòng tạm cùng ngày của spec: ticket này tạo catalog hành động
+  audit `configs/copy/audit_actions@1.0.0.yaml` của ADR-0122 (Accepted) quyết 6 cùng test AST (bước 8; spec R1.6,
+  TA15), vì catalog chưa có chủ; cách các ticket sau thêm tên action chờ lượt `checking-plan-readiness` của spec (Q2).

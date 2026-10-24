@@ -22,10 +22,14 @@ WN6, WN7, WN8, WN9, WN17, WN18). Hết hạn phê duyệt (R9.4, WN10) ở W2.
    (compliance-pdpl), không ở bước.
 2. Bảng `studio.step_assignments` và `studio.step_approvals` (xem mục Dữ liệu của spec: `tenant_id`,
    `workspace_id`, `run_id`, `node_id`; `step_assignments.assignee_kind` CHECK (`user`) không DEFAULT ở W1;
+   `step_assignments.run_id` FK ghép `(tenant_id, run_id)` tới `platform.worker_runs (tenant_id, id)`
+   (`uq_worker_runs_tenant_id_id` của workflow-engine/02) `ON DELETE CASCADE`, chỉ mục `(tenant_id, run_id, node_id)`;
    `step_approvals` thêm `interrupt_id text NOT NULL`, `approval_request_id`, `subject_node_id`, `subject_hash`,
-   CHECK `ck_step_approvals_subject_hash`; FK `approval_request_id` và FK `(tenant_id, run_id, interrupt_id)` tới
-   `platform.run_waits (tenant_id, run_id, interrupt_id)` của workflow-engine/05, cả hai `ON DELETE CASCADE` có chỉ
-   mục; RLS bật và FORCE; `updated_at` do trigger giữ nhường giá trị câu lệnh nêu). Migration sinh bằng
+   CHECK `ck_step_approvals_subject_hash`; FK ghép `(tenant_id, workspace_id, approval_request_id)` tới
+   `platform.approval_requests (tenant_id, workspace_id, id)` qua `uq_approval_requests_tenant_id_workspace_id_id`,
+   ràng buộc đã có nên ticket này chỉ dùng và không sửa `platform.approval_requests`, và FK
+   `(tenant_id, run_id, interrupt_id)` tới `platform.run_waits (tenant_id, run_id, interrupt_id)` của workflow-engine/05,
+   cả hai `ON DELETE CASCADE` có chỉ mục; RLS bật và FORCE; `updated_at` do trigger giữ nhường giá trị câu lệnh nêu). Migration sinh bằng
    `alembic revision -m "..."` nối tiếp baseline `0001`, id hex ngẫu nhiên. Đáp ứng `StepWaitLookupPort` mà
    workflow-engine/05 khai: từ id yêu cầu trả `(run_id, interrupt_id)` của dòng `step_approvals`, nối ở composition
    root.
@@ -94,13 +98,17 @@ WN6, WN7, WN8, WN9, WN17, WN18). Hết hạn phê duyệt (R9.4, WN10) ở W2.
 - [ ] R9.12 (WN18): lượt `simulate` thiếu quyết định cho một Bước phê duyệt → lượt chạy `failed` với
       `simulated_decision_missing`, Nhánh ra duyệt không chạy; coi thiếu là đã duyệt → test đỏ.
 - [ ] R9.1: `StepWaitLookupPort` trả đúng `(run_id, interrupt_id)` cho id yêu cầu; dòng chờ của workflow-engine bị xóa
-      theo lượt chạy thì dòng `step_approvals` đi theo CASCADE.
-- [ ] Xong: `uv run pytest packages/python/dw_studio/tests/workflows/test_tool_call_node.py packages/python/dw_studio/tests/workflows/test_human_approval_node.py` xanh.
+      theo lượt chạy thì dòng `step_approvals` đi theo CASCADE; `dw_app` gắn tenant A chèn dòng `step_approvals` mang
+      `approval_request_id` của yêu cầu tenant B, hay dòng `step_assignments` mang `run_id` của lượt chạy tenant B →
+      FK ghép từ chối; đổi một trong hai FK về FK một cột → test đỏ.
+- [ ] Xong: `uv run pytest packages/python/dw_studio/tests/workflows/test_tool_call_node.py packages/python/dw_studio/tests/workflows/test_human_approval_node.py && make test-integration` xanh.
 
 ## Nguồn
 
 - `packages/python/dw_platform/src/dw_platform/adapters/persistence/tables.py:217-235`; spec: R9.1
   (`approval_requests` thiếu cột giao, hạn, chuyển cấp).
+- `db/migrations/versions/e399be8c0a2d_platform_approval_view_receipts_and_.py:127-129`; spec: Dữ liệu
+  (`uq_approval_requests_tenant_id_workspace_id_id`, đích của FK ghép của `step_approvals`).
 - `apps/api/src/dw_api/bootstrap/runtime.py:237-239`; spec: R9.2 (`strict_approval_prefixes`,
   `decision_guards`).
 - `apps/api/src/dw_api/bootstrap/wiring.py:314`; spec: R9.4 (mã Zalo chỉ cho loại có người trả lời).
@@ -111,3 +119,5 @@ WN6, WN7, WN8, WN9, WN17, WN18). Hết hạn phê duyệt (R9.4, WN10) ở W2.
 - 2026-10-23 (agent): theo phiếu 23/10/2026: hết hạn phê duyệt sang W2 (DO-31); bảng mã từ chối người quyết ở ADR-0004 (Accepted) tách R9.2 (403) và R9.6 (409); người duyệt phải đọc được Trường đóng dấu qua guard async (DO-36), nên ticket chờ tenant-config/05; khóa phát hành chung, R9.5 là kiểm đăng ký qua Protocol; chờ compliance-pdpl/04 và test WN7 dùng `email.send` của `smtp@1.0.0` (DO-48.1).
 - 2026-10-24 (agent): theo quyết định của Đạt ngày 24/10/2026: bảng ba mã ở ADR-0104 (Accepted) quyết 11, người khác không giữ tem nhận 404 (R9.2); R9.5 là kiểm lúc gửi kiểm định trả 422 `no_second_approver`, ticket chờ agent-lifecycle/03; khoá chống lặp của workflow-engine:R4.5; W1 không giao theo nhóm; `step_approvals` là chủ liên kết tới yêu cầu và đáp ứng `StepWaitLookupPort`; Bước phê duyệt ở `simulate` theo quyết định giả lập (N2: R9.9-R9.12, WN18).
 - 2026-10-24 (agent): vòng sửa thứ tư: luật tiền tố nghiêm trả 409 với `second_person_required` do tenant-config/05 đặt (V4.P9, agent tạm); lúc mở phê duyệt không còn ứng viên thì `no_approver` (R9.13, phát hiện F về ADR-0112 (Accepted) và R9.5); từ vựng `approved`, `rejected` của R9.9 là chủ cho route `test-runs` và Câu kiểm định.
+- 2026-10-24 (agent): lượt c của vòng 4: `step_assignments.run_id` thành FK ghép tới `uq_worker_runs_tenant_id_id`, và `step_approvals.approval_request_id` thành FK ghép `(tenant_id, workspace_id, approval_request_id)` qua `uq_approval_requests_tenant_id_workspace_id_id` đã có, nên ticket này không thêm UNIQUE nào lên `platform.approval_requests`; R9.1 thêm ca chéo tenant (C8; CLAUDE.md, Tenancy and authorization).
+- 2026-10-24 (agent): kiểm lượt c của vòng 4: dòng `Xong:` thêm `make test-integration`, vì ca chéo tenant và ca CASCADE của R9.1 cần PostgreSQL thật, mà hai tệp test bước không chạy (failure-modes #1: ai chạy test này).

@@ -64,13 +64,16 @@ through this ADR's `LimitsPort`, was accepted with it.
 4. **One limit scope chain.** Every limit is a policy at one scope of the chain plan, tenant,
    workspace and each ancestor (D1), agent or workflow, from W2 (YC79) user, and run (a child run
    shares its root's lease); a run proceeds only while every scope in the chain with a policy passes.
-   Kinds are `hard` and `soft` in v1, `approval` in v1.5. Behavioural limits (steps, model and tool
+   Kinds are `hard` in W1, which a CHECK holds; `soft` from W2 with its threshold reader (YC79,
+   `failure-modes.md` #1); `approval` in v1.5. Behavioural limits (steps, model and tool
    calls, wall clock, per-run cost and tokens) live in the agent or workflow version, clamped by plan
    maxima; operational limits on money, tokens and runs per window, and from W2 (YC79) on
    concurrency, live in audited `platform.limit_policies` rows a tenant admin changes without
-   republishing. A row names its scope through typed foreign keys, `scope_workspace_id`,
-   `scope_artifact_id` (an agent or workflow) and, from W2 with the user scope, `scope_user_id`,
-   each `ON DELETE CASCADE`, exactly one of them set below the tenant
+   republishing. A row names its scope through typed foreign keys, `scope_workspace_id` and
+   `scope_artifact_id` (an agent or workflow), each composite, `(tenant_id, <column>)` to the
+   `UNIQUE (tenant_id, id)` of `platform.workspaces` or `studio.artifacts`, since a foreign key check
+   does not pass through RLS, and, from W2 with the user scope, `scope_user_id`, each
+   `ON DELETE CASCADE` and indexed, exactly one of them set below the tenant
    (`num_nonnulls(...) = 1`) and none for a tenant-wide limit, the way ADR 0115 keys secret subjects,
    so a limit whose workspace, user or artifact is deleted goes with it; the `scope_` prefix is there
    because the table is tenant-wide and so carries no `workspace_id` column (`CLAUDE.md`, Tenancy and
@@ -280,3 +283,10 @@ open, with the D11 cases scoped by the requester and Đạt:
   (failure-modes #1). V4.P6, the planner's provisional call
   (H:usage-and-limits:R4.1\~usage-and-limits:spec); if it is wrong, W1 takes the user scope and the
   concurrency caps, and these sentences lose their "from W2".
+- Third consistency check (round 4), third pass: decision 4's kinds are `hard` in W1, held by a CHECK, and
+  `soft` from W2 with the threshold alerts that read it, since a `soft` kind in W1 would be a value nothing
+  reads (V4.P6, `failure-modes.md` #1; the planner's provisional call, and if it is wrong the threshold
+  reader moves to W1 with `soft`); and its `scope_workspace_id` and `scope_artifact_id` are composite
+  foreign keys to their targets' `UNIQUE (tenant_id, id)`, as usage-and-limits states them, because a
+  foreign key check does not pass through RLS and a one-column key would let one tenant's limit name
+  another tenant's workspace or artifact (`CLAUDE.md`, Data model rules).

@@ -14,8 +14,9 @@ FOG: FOG-04 `zalo-zns`, FOG-05 `meta-google`, FOG-79 `lock-retries`
 3. Meta: yêu cầu và thời gian của App Review và Business Verification cho quyền lead, Business Manager của ai, có PKCE
    không, một lô webhook nặng bao nhiêu byte so với trần 64 KB của ADR 0008, giới hạn của Lead Ads Testing Tool
    (FOG-05)?
-4. Google: thời gian xác minh cho `gmail.send` và spreadsheets, `iss` trong phản hồi cấp quyền, refresh token của ứng
-   dụng ở trạng thái Testing (FOG-05)?
+4. Google: `iss` trong phản hồi cấp quyền và refresh token của ứng dụng ở trạng thái Testing (FOG-05)? Thời gian
+   Google xác minh `gmail.send` là của khách, vì ứng dụng Google là ứng dụng nội bộ của khách và nền tảng không giữ
+   ứng dụng Google nào (DO-20 (c)); Google Sheets không ở v1 (`requirements.md` mục Không làm).
 5. Meta Lead Ads, Zalo OA và form website thử lại trong bao lâu khi nhận 503 lúc công ty bị khóa (FOG-79)?
 
 ## Vì sao
@@ -47,3 +48,8 @@ lead.
 - [research.md](../research.md) mục 8 (Zalo, Meta, Google chưa kiểm), mục 14 (chế độ phát triển của ZNS chưa kiểm).
 
 ## Comments
+
+- 2026-10-24 (agent, tạm): vòng sửa thứ tư, lượt c: câu 4 bỏ phần spreadsheets, vì Google Sheets không ở v1
+  (`requirements.md` mục Không làm, N8), và ghi thời gian Google xác minh `gmail.send` là của khách, vì nền tảng không
+  giữ ứng dụng Google nào (DO-20 (c), `connections-and-vault/01` bước 4). Sửa: Câu hỏi (câu 4). Nếu sai thì: nền tảng
+  giữ một ứng dụng Google, và câu 4 hỏi lại thời gian xác minh cho hồ sơ của nền tảng.

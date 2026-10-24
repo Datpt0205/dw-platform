@@ -19,7 +19,8 @@ connections-and-vault 12 và 16. Đường email P1 là SMTP chung (DO-48.1).
 2. Biên dịch: mỗi Hành động thành Đặc tả công cụ lớp nền tảng (`max_retries: 0`, input và output JSON
    Schema, Mức tác động, `effect_class`, `data_location`) và một `ManifestActionHandler`:
     - lấy Kết nối qua `RunBindingsPort` theo tên Điểm gắn (không id kết nối trong tài liệu, DO-06), mà
-      tenant-config/05 đáp ứng từ mục `bindings` của bản kê lượt chạy; kiểm `connection_usable` (ticket 04);
+      tenant-config/05 đáp ứng từ mục `bindings` của bản kê lượt chạy; kiểm `connection_usable` với
+      `purpose='tool'` (ticket 04 bước 2);
     - ánh xạ dữ liệu có cấu trúc, mã hóa tham số đường dẫn (`../admin` → không đổi đoạn đường dẫn);
     - gọi qua Bộ gọi ra ngoài (ticket 03); kiểm output schema; trả kết quả thô cho `ToolExecutor`, không tự
       bọc hay cắt: `contain_tool_output` của tools-and-skills/02 bọc và cắt đúng một lần (YC48: mặc định
@@ -73,3 +74,6 @@ message`, `data_location: VN`; `Message-ID` suy từ khóa chống lặp.
   bỏ bọc và cắt khỏi `ManifestActionHandler` (bước 2, R6.3); DO-26.1 (A) thêm R7.5 cho `SmtpEgress`;
   DO-49 (a) bỏ giới hạn riêng theo kết nối khỏi W1. Thêm tenant-config/05 vào Blocked by vì nó đáp ứng
   `RunBindingsPort` (phát hiện kiểm nhất quán cùng ngày).
+- 2026-10-24 (agent): vòng sửa thứ tư, lượt c: `ManifestActionHandler` gọi `connection_usable` với
+  `purpose='tool'`, giá trị W1 nhận ở chữ ký `connection_usable(connection, context, purpose)` của
+  ADR-0115 (Accepted) quyết 2 (bước 2; spec R5.14).

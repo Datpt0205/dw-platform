@@ -1,7 +1,7 @@
 # 05 — Tắt khẩn cấp agent và quy trình, bật lại cần hai người, hủy việc đang chờ
 
 Status: needs-triage
-Blocked by: 01, 03, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md
+Blocked by: 01, 03, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md, .claude/plans/studio/tenant-config/issues/05-lien-ket-va-phien-ban-cau-hinh.md
 Area: studio
 Yêu cầu: R8.1, R8.2, R8.3, R8.4, R8.5, R8.6, R8.7, R8.8, AL13, AL14, AL15
 
@@ -87,3 +87,6 @@ ticket 03.
   `second_person_required` (V4.P9; spec R8.7, AL14, Quyết định tạm cùng ngày).
 - 2026-10-24 (agent): kiểm lượt b: bước 5 và tiêu chí R8.7 khẳng định mã mà tenant-config/05 đặt, trong khi ticket này
   không chờ ticket đó, trực tiếp hay qua ticket 01, 03; cạnh hay cách khác do người lập kế hoạch quyết, chưa thêm ở đây.
+- 2026-10-24 (agent): vòng sửa thứ tư, lượt c, theo Quyết định tạm cùng ngày của spec: chờ tenant-config/05, vì bước
+  5 và tiêu chí R8.7 khẳng định mã `second_person_required` mà ticket đó đặt ở `_enforce_strict_rules`; cạnh này thay
+  câu "chưa thêm ở đây" của dòng trên.

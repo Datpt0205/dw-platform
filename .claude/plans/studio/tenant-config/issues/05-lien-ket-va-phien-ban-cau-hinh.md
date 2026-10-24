@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: 04, .claude/plans/studio/connections-and-vault/issues/04-ket-noi-dung-chung-theo-workspace.md, .claude/plans/studio/foundations-hardening/issues/06-run-va-outbox-khong-ket.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md, .claude/plans/studio/app-standards/issues/02-khoa-chong-lap-gan-nguoi-goi.md
 Area: studio
-Yêu cầu: R7.1, R7.2, R7.3, R7.4, R7.5, R8.1, R8.2, R8.3, R8.4, R8.5, R8.6, R8.7, R8.8, R8.9, R8.10, R8.11, R8.12, R8.13, R8.14, R8.15, R3.6, R3.7, G4, TC15, TC16, TC17, TC18, TC19, TC20, TC21, TC22, TC23, TC25, TC26
+Yêu cầu: R7.1, R7.2, R7.3, R7.4, R7.5, R8.1, R8.2, R8.3, R8.4, R8.5, R8.6, R8.7, R8.8, R8.9, R8.10, R8.11, R8.12, R8.13, R8.14, R8.15, R2.18, R3.6, R3.7, G4, TC15, TC16, TC17, TC18, TC19, TC20, TC21, TC22, TC23, TC25, TC26, TC29
 
 ## Mục tiêu
 
@@ -30,25 +30,30 @@ kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7,
     - Bước niêm phong của ticket 02 quét mọi chuỗi của tài liệu: chuỗi trùng id của một dòng
       `platform.connections` của tenant → lỗi 422 tại con trỏ đó (TC23).
 2. Revision Alembic mới (id hex ngẫu nhiên), chép nguyên văn mục Dữ liệu của spec:
-   `platform.config_versions`: `kind` CHECK (`binding_set`); `key` là id thành phần; `action` CHECK
-   (`set`); `version_no` tăng theo khóa, không dùng lại; `base_version`; `document` jsonb object tối đa
-   256 KiB, NFC; `document_hash`; `status` CHECK (`proposed`, `approved`, `rejected`, `withdrawn`,
-   `superseded`); partial unique một `approved` và một `proposed` mỗi khóa; `workspace_id` là nơi đề
-   xuất; FK `(tenant_id, workspace_id, approval_id)` tới `platform.approval_requests`;
-   `ck_config_versions_checker_not_maker`; trigger `approved_by_approval`; `dw_app` chỉ UPDATE `status`,
-   `decided_by`, `decided_at`, `decision_comment`, `superseded_at`. Thêm:
+   `platform.config_versions`: `uq_config_versions_tenant_id_id UNIQUE (tenant_id, id)`, đích của FK ghép
+   `config_version_id` của `platform.run_manifest_keys` (R2.18); `kind` CHECK (`binding_set`); `key` là id thành
+   phần; `action` CHECK (`set`); `version_no` tăng theo khóa, không dùng lại; `base_version`; `document` jsonb object
+   tối đa 256 KiB, NFC; `document_hash`; `status` CHECK (`proposed`, `approved`, `rejected`, `withdrawn`,
+   `superseded`); partial unique một `approved` và một `proposed` mỗi khóa; `workspace_id` là nơi đề xuất; FK
+   `(tenant_id, workspace_id, approval_id)` tới `platform.approval_requests` ON DELETE RESTRICT, qua
+   `uq_approval_requests_tenant_id_workspace_id_id`, có index; `ck_config_versions_checker_not_maker`; trigger
+   `approved_by_approval`; `dw_app` chỉ UPDATE `status`, `decided_by`, `decided_at`, `decision_comment`,
+   `superseded_at`. Thêm:
     - `proposed_by`, `proposed_at`, `decided_by`, `decided_at`, `decision_comment`, `superseded_at`;
       `ck_config_versions_checker_not_maker` là `decided_by IS NULL OR decided_by <> proposed_by`; FK tới
       yêu cầu phê duyệt ON DELETE RESTRICT qua `uq_approval_requests_tenant_id_workspace_id_id`, ràng buộc
       đã có (`db/migrations/versions/e399be8c0a2d_platform_approval_view_receipts_and_.py:127-129`), ticket
-      này chỉ dùng.
+      này chỉ dùng, với index `(tenant_id, workspace_id, approval_id)` của chính bảng này.
     - Trigger `approved_by_approval` từ chối chuyển sang `approved` khi yêu cầu phê duyệt liên kết chưa ở
       `approved`, và từ chối mọi đổi `status` ngoài `proposed` sang `approved`, `rejected`, `withdrawn`
       và `approved` sang `superseded` (TC17); grant cột cho `dw_app` như trên, không DELETE.
     - RLS ENABLE và FORCE chỉ theo tenant; `test_privileges.py` khẳng định grant cột;
       `test_rls_coverage.py` thấy bảng.
-    - `platform.run_manifest_keys` thêm `config_version_id` FK RESTRICT có index, và CHECK
-      `num_nonnulls(artifact_version_id, config_version_id) = 1`.
+    - `platform.run_manifest_keys` thêm `config_version_id` với FK ghép `(tenant_id, config_version_id)` tới
+      `uq_config_versions_tenant_id_id` ON DELETE RESTRICT (R2.18), index `(tenant_id, config_version_id)` và unique
+      `(tenant_id, manifest_hash, config_version_id)`; CHECK `num_nonnulls(artifact_version_id, config_version_id) = 1`;
+      và trong cùng bước `ALTER COLUMN artifact_version_id DROP NOT NULL`, vì ticket 04 tạo cột đó NOT NULL còn dòng
+      khóa của phiên bản cấu hình để nó NULL.
     - Offboarding, trên `offboarding.py` và `test_offboarding.py` mà foundations-hardening/07 đã viết lại:
       `platform.config_versions` vào `_ORDERED_FIRST` sau `platform.run_manifests` và trước phần xóa theo chữ cái
       (nơi có `platform.approval_requests`).
@@ -60,8 +65,9 @@ kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7,
 3. `ConfigKindRegistry` và `ConfigVersionService` trong `dw_platform` (ADR-0110 (Accepted) quyết 3-4);
    mục `binding_set` do `dw_studio` đăng ký ở composition root: JSON Schema sinh từ khai báo của phiên
    bản niêm phong mới nhất của thành phần; bộ kiểm (kết nối cùng tenant, không thì 404; đúng trình kết
-   nối và phiên bản chính, đủ `required_scopes`, `connection_usable` đúng với Người đề xuất theo
-   connections-and-vault/04, biến đúng kiểu, không thì 422); quyền đề xuất `studio.bindings.propose`,
+   nối và phiên bản chính, đủ `required_scopes`, `connection_usable` với `purpose` `tool` đúng với Người đề xuất theo
+   connections-and-vault/04 (ADR-0115 (Accepted) quyết 2; W1 chỉ có kết nối cho công cụ), biến đúng kiểu, không thì
+   422); quyền đề xuất `studio.bindings.propose`,
    quyền duyệt `studio.bindings.approve`; test bên đọc: bộ dựng bản kê đọc bản `approved`. Loại không
    đăng ký → 422.
 4. `ConfigVersionService.propose`, một giao dịch: kiểm quyền đề xuất ở workspace đang làm việc (403);
@@ -104,14 +110,15 @@ kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7,
    mọi điểm gắn `required` của phiên bản có giá trị trong bản `approved` của thành phần và qua bộ kiểm; không thì
    trả `binding_unset` kèm tên điểm gắn (lệnh gửi trả 409, handler không đưa phiên bản lên `live`).
 9. Nhận lượt chạy: `RunManifestBuilder` của ticket 04 thêm mục `bindings` vào bản kê: id phiên bản Bộ
-   giá trị gắn, với mỗi kết nối id kết nối và phiên bản credential, với mỗi biến `content_hash` của giá
-   trị (không ghi giá trị), với `principal` id của người chạy; thêm dòng `platform.run_manifest_keys` cho
-   phiên bản cấu hình. Trước khi ghim, `connection_usable` cho người chạy sai (kể cả thiếu `connections.use` ở
-   workspace của lượt chạy, ADR-0115 (Accepted) quyết 2) → từ chối nhận với `binding_degraded`, không node nào
-   chạy; rồi chạy kiểm lúc nhận lượt chạy mà mỗi kind đăng ký ở bước 1, kiểm trượt → từ chối nhận với mã của kiểm
-   đó. Ticket này đáp ứng `RunBindingsPort` (connections-and-vault và
-   handler của lượt chạy khai): đọc giá trị từ mục `bindings` của bản kê đã ghim, không từ Bộ giá trị gắn
-   hiện hành; workflow-engine và agent-builder không cài port này.
+   giá trị gắn, với mỗi kết nối id kết nối và một `secret_version` cho mỗi trường bí mật của nó (một mục cho mỗi
+   (kết nối, `field`), phiên bản hiện hành lúc nhận, đọc qua `platform.secret_status` của connections-and-vault/02,
+   không đọc giá trị; ADR-0115 (Accepted) quyết 1), với mỗi biến `content_hash` của giá trị (không ghi giá trị), với
+   `principal` id của người chạy; thêm dòng `platform.run_manifest_keys` cho phiên bản cấu hình. Trước khi ghim,
+   `connection_usable` với `purpose` `tool` cho người chạy sai (kể cả thiếu `connections.use` ở workspace của lượt
+   chạy, ADR-0115 (Accepted) quyết 2) → từ chối nhận với `binding_degraded`, không node nào chạy; rồi chạy kiểm lúc
+   nhận lượt chạy mà mỗi kind đăng ký ở bước 1, kiểm trượt → từ chối nhận với mã của kiểm đó. Ticket này đáp ứng
+   `RunBindingsPort` (connections-and-vault và handler của lượt chạy khai): đọc giá trị từ mục `bindings` của bản kê
+   đã ghim, không từ Bộ giá trị gắn hiện hành; workflow-engine và agent-builder không cài port này.
 10. Route: `GET /api/v1/studio/artifacts/{id}/bindings` (khai báo, giá trị hiện hành với tên kết nối người
     gọi đọc được, đề xuất mở, trạng thái từng điểm gắn), `POST /api/v1/studio/artifacts/{id}/bindings/proposals`,
     `POST /api/v1/studio/artifacts/{id}/bindings/proposals/{config_version_id}/withdraw`. Mọi id là UUID.
@@ -128,8 +135,14 @@ kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7,
       `binding_unset` nêu `zalo_oa`; có giá trị đã duyệt → đạt; gỡ kiểm `required` → test đỏ.
 - [ ] R7.3 (TC22): thu hồi kết nối đã gắn rồi nhận lượt chạy → từ chối `binding_degraded`, không dòng
       `platform.run_manifests` mới, không node nào chạy.
-- [ ] R7.4 (TC15): bản kê có id phiên bản Bộ giá trị gắn, id và phiên bản credential của kết nối, mã băm
-      của biến; tìm token mẫu và giá trị biến dạng rõ trong `body` → không thấy.
+- [ ] R7.4 (TC15): bản kê có id phiên bản Bộ giá trị gắn, id kết nối với một `secret_version` cho mỗi trường bí mật
+      (kết nối có hai trường bí mật ở hai `secret_version` khác nhau → hai mục, mỗi mục đúng phiên bản của trường đó),
+      mã băm của biến; tìm token mẫu và giá trị biến dạng rõ trong `body` → không thấy.
+- [ ] R7.4: dòng `platform.run_manifest_keys` của Bộ giá trị gắn đã ghim mang `config_version_id`, còn
+      `artifact_version_id` là NULL; INSERT dòng có cả hai cột, hay không cột nào → CHECK từ chối; dòng thứ hai cùng
+      `(manifest_hash, config_version_id)` → unique từ chối.
+- [ ] R2.18 (TC29): bằng vai migrator, INSERT dòng `platform.run_manifest_keys` của tenant A có `config_version_id` là
+      phiên bản cấu hình của tenant B → lỗi FK ghép; đổi FK ghép về FK một cột → test đỏ.
 - [ ] R7.5 (TC15): duyệt Bộ giá trị gắn mới khi lượt chạy chờ duyệt; tiếp tục → lượt chạy dùng bộ đã
       ghim.
 - [ ] R8.1: đề xuất hợp lệ ghi một phiên bản `proposed`, một yêu cầu `config.version` có `required_scope`
@@ -178,7 +191,7 @@ kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7,
 - `apps/api/src/dw_api/bootstrap/runtime.py:237`; `apps/worker/src/dw_worker/main.py:175`; spec: TC16.
 - `packages/python/dw_platform/src/dw_platform/adapters/persistence/scope_holders.py:77`; spec: R8.5.
 - `packages/python/dw_platform/src/dw_platform/domain/audit.py:67`; spec: R8.10; ADR-0110 (Accepted)
-  quyết 1-2, 6-8.
+  quyết 1-2, 6-8; ADR-0115 (Accepted) quyết 1-2 (R7.4, `purpose`).
 
 ## Comments
 
@@ -202,3 +215,7 @@ kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7,
   foundations-hardening/07, vì cùng sửa `offboarding.py` và `test_offboarding.py`.
 - 2026-10-24 (agent): vòng sửa thứ tư, lượt b: chờ app-standards/02, vì route đề xuất dùng `Idempotency-Key` gắn
   người gọi (quyết định tạm cùng ngày của spec).
+- 2026-10-24 (agent): vòng sửa thứ tư, lượt c, theo các quyết định tạm cùng ngày của spec:
+  `uq_config_versions_tenant_id_id` và `config_version_id` là FK ghép, kèm CHECK `num_nonnulls`, unique của cột mới và
+  bỏ NOT NULL của `artifact_version_id` trong cùng bước (R2.18, TC29); FK tới yêu cầu phê duyệt có index; bản kê ghim
+  một `secret_version` cho mỗi (kết nối, trường) (R7.4); `connection_usable` gọi với `purpose` `tool`.

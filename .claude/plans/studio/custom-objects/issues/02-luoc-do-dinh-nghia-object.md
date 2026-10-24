@@ -17,12 +17,14 @@ describe và bộ chiếu theo quyền của người gọi, và ticket 06 nối
 
 1. Một revision Alembic (id ngẫu nhiên do `alembic revision -m "..."` sinh) tạo bốn bảng, chép nguyên văn ràng buộc
    từ mục Dữ liệu của spec:
-    - `studio.object_defs`: PK `(tenant_id, id)`; FK `(tenant_id, id)` tới `studio.artifacts` ON DELETE RESTRICT;
+    - `studio.object_defs`: PK `(tenant_id, id)`; FK `(tenant_id, id)` tới `studio.artifacts (tenant_id, id)`
+      (`uq_artifacts_tenant_id_id` của tenant-config/02) ON DELETE RESTRICT;
       `api_name` CHECK `^[a-z][a-z0-9_]{1,39}$`, UNIQUE `(tenant_id, api_name)`; `labels` jsonb có khóa `vi` khác
       rỗng; `default_access` NOT NULL DEFAULT `'private'` CHECK `private`, `public_read`, `public_read_write`;
       `ai_description` text NULL CHECK `char_length(ai_description) <= 500`; `schema_version` integer ≥ 1;
       `next_field_no` integer ≥ 1.
-    - `studio.field_defs`: PK `(tenant_id, id)`, `id` là mã trường; FK `(tenant_id, object_id)` ON DELETE CASCADE;
+    - `studio.field_defs`: PK `(tenant_id, id)`, `id` là mã trường; FK `(tenant_id, object_id)` tới
+      `studio.object_defs (tenant_id, id)` ON DELETE CASCADE;
       `api_name` như trên, UNIQUE `(tenant_id, object_id, api_name)`; `ai_description` text NULL CHECK
       `char_length(ai_description) <= 500`; `type` CHECK `text`, `number`, `currency`,
       `date`, `datetime`, `boolean`, `picklist`, `email`, `phone`, `url`, `owner`, `workspace`, `user` (bằng enum
@@ -33,10 +35,12 @@ describe và bộ chiếu theo quyền của người gọi, và ticket 06 nối
       email, điện thoại, url, `t` thêm danh sách chọn; `i`: số `exact`, tiền; `f`: số `float`; `d`: ngày; `z`:
       ngày giờ; `b`: đúng sai); `field_no` không dùng lại; UNIQUE
       `(tenant_id, object_id, slot) WHERE slot IS NOT NULL` và `(tenant_id, object_id, field_no)`.
-    - `studio.picklist_options`: PK `(tenant_id, field_id, key)`; FK tới `studio.field_defs` ON DELETE CASCADE;
+    - `studio.picklist_options`: PK `(tenant_id, field_id, key)`; FK `(tenant_id, field_id)` tới
+      `studio.field_defs (tenant_id, id)` ON DELETE CASCADE;
       `key` `^[a-z0-9_]{1,40}$`; `labels` có `vi`; `position`; `active` boolean NOT NULL.
-    - `studio.records`: PK `(tenant_id, id)`; `object_id` FK tới `studio.object_defs` ON DELETE RESTRICT;
-      `workspace_id` FK `(tenant_id, workspace_id)` tới `platform.workspaces` ON DELETE RESTRICT; `owner_kind` NOT
+    - `studio.records`: PK `(tenant_id, id)`; `object_id` FK `(tenant_id, object_id)` tới
+      `studio.object_defs (tenant_id, id)` ON DELETE RESTRICT; `workspace_id` FK `(tenant_id, workspace_id)` tới
+      `platform.workspaces (tenant_id, id)` ON DELETE RESTRICT; `owner_kind` NOT
       NULL CHECK `user`, `team`; `owner_id` NOT NULL; `name` `COLLATE "vi-VN-x-icu"` NOT NULL, 1..255 ký tự;
       `version` ≥ 1; `create_key` ≤ 255 byte, UNIQUE
       `(tenant_id, object_id, create_key) WHERE create_key IS NOT NULL`; `data` jsonb object ≤ 32.768 byte; slot `t`
@@ -111,9 +115,10 @@ describe và bộ chiếu theo quyền của người gọi, và ticket 06 nối
 
 ## Tiêu chí chấp nhận
 
-- [ ] R1.1 (CO2): móc phát hành chạy cho một `dw.object/v1` 20 trường trong giao dịch đưa phiên bản lên Đang dùng của
-      dịch vụ phát hành (tenant-config/02; phê duyệt `approved` dựng bằng fixture) áp định nghĩa trong cùng giao dịch, số
-      quan hệ của schema `studio` trong `pg_class` không đổi; `dw_app` chạy `CREATE TABLE studio.x` hay
+- [ ] R1.1 (CO2): móc phát hành, gọi qua mục `ArtifactKindRegistry` của loại `object` cho một `dw.object/v1` 20
+      trường trong giao dịch đưa phiên bản lên Đang dùng mà fixture mở thay agent-lifecycle (phê duyệt `approved` dựng
+      bằng fixture; đường thật kiểm ở ticket 06), áp định nghĩa trong cùng giao dịch, số quan hệ của schema `studio`
+      trong `pg_class` không đổi; `dw_app` chạy `CREATE TABLE studio.x` hay
       `CREATE INDEX ON studio.records` → bị từ chối; cấp `CREATE` trên `studio` cho `dw_app` → test đỏ.
 - [ ] R1.8 (CO23): test thuộc tính trên cặp tài liệu sinh ngẫu nhiên: bộ so sánh báo chỉ siết đúng khi mọi khác biệt
       là đóng trường hay hạ `default_access`; phiên bản đầu (chưa có Đang dùng) → không chỉ siết; nâng `default_access`,
@@ -146,9 +151,10 @@ describe và bộ chiếu theo quyền của người gọi, và ticket 06 nối
       `ai_description` vào `description` của lược đồ → test đỏ (trường Đã ẩn với người gọi kiểm ở ticket 03).
 - [ ] R4.1: INSERT vào `studio.records` thiếu `owner_kind`, `owner_id` hay `workspace_id` → vi phạm NOT NULL.
 - [ ] R4.2 (CO1): kết nối không đặt `app.tenant_id` đọc 0 dòng ở bốn bảng; INSERT với `tenant_id` của công ty khác
-      → RLS từ chối; `dw_app` đọc thẳng `studio.records_p3` → permission denied; một vai thử NOBYPASSRLS có SELECT
-      trên `studio.records_p3`, không đặt tenant → 0 dòng; `test_rls_coverage.py` thấy mọi partition và so policy
-      của mỗi partition với bảng cha.
+      → RLS từ chối; INSERT `studio.records` hay `studio.field_defs` của công ty A với `object_id` của công ty B → lỗi
+      FK ghép, không dòng nào; `dw_app` đọc thẳng `studio.records_p3` → permission denied; một vai thử NOBYPASSRLS
+      có SELECT trên `studio.records_p3`, không đặt tenant → 0 dòng; `test_rls_coverage.py` thấy mọi partition và so
+      policy của mỗi partition với bảng cha.
 - [ ] R4.2 (CO21): thêm policy PERMISSIVE `USING (true)` lên `studio.records` → test catalog đỏ.
 - [ ] R4.4: offboarding một công ty có hai đối tượng xuất mỗi dòng định nghĩa đúng một lần, sau purge còn 0 dòng ở
       bốn bảng; bỏ một bảng `studio` khỏi `_ORDERED_FIRST` → test walk `pg_class` của studio-skeleton/01 đỏ.
@@ -198,3 +204,8 @@ describe và bộ chiếu theo quyền của người gọi, và ticket 06 nối
   tenant-config/02 thêm) và agent-lifecycle gọi nó trong giao dịch phát hành, nên bước 4 thôi nói ticket 06 nối móc vào
   handler; R2.2 của spec dẫn compliance-pdpl:R1.1 (chủ mã) và app-standards:R1.3 (hình lỗi), tiêu chí R2.2 ở đây không
   đổi (Quyết định 24/10/2026 của spec).
+- 2026-10-24 (agent): vòng sửa 4, lượt ba: tiêu chí R1.1 thôi nói "dịch vụ phát hành": móc gọi qua mục
+  `ArtifactKindRegistry` của loại trong giao dịch do fixture mở thay agent-lifecycle (ADR-0109 (Accepted) quyết 1); bước
+  1 nêu mọi khóa ngoại giữa hai bảng của tenant là FK ghép tới `(tenant_id, id)` của bảng đích, kể cả `object_id` của
+  `studio.records` và `field_id` của `studio.picklist_options`, và tiêu chí R4.2 (CO1) thêm ca `object_id` của công ty
+  khác (hai dòng Quyết định 24/10/2026 của spec).

@@ -3,14 +3,15 @@
 Status: needs-triage
 Blocked by: 04, .claude/plans/studio/telemetry-and-audit/issues/03-lich-su-chay-theo-buoc.md, .claude/plans/studio/agent-builder/issues/04-chat-va-man-chat.md
 Area: studio
-Yêu cầu: R5.1, R5.2, R5.3, R5.4, R5.7, R5.8, CP16, CP17, CP20
+Yêu cầu: R5.1, R5.2, R5.3, R5.4, R5.7, R5.8, R5.9, CP16, CP17, CP20, CP22
 
 ## Mục tiêu
 
 Mỗi kho dữ liệu cá nhân lát này thêm có một thời hạn và một bộ xóa đã đăng ký trong tệp chính sách retention,
-theo định dạng khóa `schema.table` của telemetry-and-audit; hội thoại quá 90 ngày bị xóa qua một hàm hẹp mà lane
-lưu giữ gọi và audit như chính lane; Danh sách chặn gửi không bao giờ hết hạn theo thời gian; chú thích thời hạn
-dẫn Nghị định 356 thay Nghị định 13/2023 (spec R5; ADR-0106 (Accepted), ADR-0123 (Accepted)).
+theo định dạng khóa `schema.table` của telemetry-and-audit; hội thoại quá 90 ngày bị xóa qua một hàm hẹp không đối
+số, hạn nằm trong thân hàm và khớp tệp retention, mà lane lưu giữ gọi và audit như chính lane; Danh sách chặn gửi
+không bao giờ hết hạn theo thời gian; chú thích thời hạn dẫn Nghị định 356 thay Nghị định 13/2023 (spec R5;
+ADR-0106 (Accepted), ADR-0123 (Accepted)).
 
 ## Việc cần làm
 
@@ -29,18 +30,22 @@ dẫn Nghị định 356 thay Nghị định 13/2023 (spec R5; ADR-0106 (Accepte
    Nghị định 13/2023.
 3. Test tập bộ xóa: mỗi lớp dữ liệu cá nhân có một bộ xóa đã đăng ký; một lớp thiếu bộ xóa → đỏ. Test riêng
    cho Danh sách chặn gửi: lane lưu giữ chạy qua một dòng chặn gửi 10 năm tuổi mà dòng còn (spec R5.4).
-4. Migration (id hex ngẫu nhiên): hàm `studio.purge_expired_conversations(p_cutoff timestamptz)` SECURITY DEFINER
-   (search_path cố định, thu EXECUTE khỏi `PUBLIC`, cấp EXECUTE cho `dw_app`), theo mẫu hàm xóa trắng
-   `platform.tool_executions.output` của telemetry-and-audit/03 (ADR-0122 (Accepted) quyết 7), vì `dw_app` chỉ
-   SELECT, INSERT trên `studio.conversation_messages`: ở mọi công ty, xóa dòng `studio.conversation_messages` có
-   `created_at < p_cutoff`, rồi xóa dòng `studio.conversations` không còn tin nào và có `created_at < p_cutoff`, theo
-   thứ tự đó vì FK ghép của tin nhắn tới `studio.conversations` là `ON DELETE RESTRICT` (agent-builder/04); không xóa
-   gì khác; trả một dòng mỗi workspace có dòng bị xóa (`tenant_id`, `workspace_id`, số tin, số hội thoại), vì
-   `lane_audit_event` đòi `workspace_id` và `platform.audit_events.workspace_id` là NOT NULL. Bộ xóa đăng ký với lane
-   lưu giữ gọi hàm với mốc tính từ thời hạn 90 ngày của hai khóa hội thoại trong tệp chính sách retention (spec R5.7)
-   và, trong cùng giao dịch, ghi cho mỗi dòng trả về một sự kiện `studio.conversation.expired` dựng bằng
-   `lane_audit_event` (công ty và workspace của dòng đó, actor `system_actor(<lane>)`, `details.actor`
-   `system:<lane>`, `details` mang hai số) qua `lane_audit.append_across_tenants` (spec R5.8; ADR-0011 (Accepted));
+4. Migration (id hex ngẫu nhiên): hàm `studio.purge_expired_conversations()` SECURITY DEFINER, không đối số
+   (search_path cố định; hạn 90 ngày nằm trong thân hàm, mốc `now() - interval '90 days'`; REVOKE ALL FROM PUBLIC rồi
+   GRANT EXECUTE cho `dw_app`, vai mà lane lưu giữ của worker dùng), theo tiền lệ `platform.prune_notifications()`
+   (`db/migrations/versions/855ae928c3fa_platform_in_app_notifications.py:168-190`) và mẫu xóa dữ liệu hết hạn của
+   ADR-0122 (Accepted) quyết 7, vì `dw_app` chỉ SELECT, INSERT trên `studio.conversation_messages`: ở mọi công ty, xóa
+   dòng `studio.conversation_messages` có `created_at` trước mốc, rồi xóa dòng `studio.conversations` không còn tin
+   nào và có `created_at` trước mốc, theo thứ tự đó vì FK ghép của tin nhắn tới `studio.conversations` là
+   `ON DELETE RESTRICT` (agent-builder/04); không xóa gì khác; trả một dòng mỗi workspace có dòng bị xóa (`tenant_id`,
+   `workspace_id`, số tin, số hội thoại), vì `lane_audit_event` đòi `workspace_id` và
+   `platform.audit_events.workspace_id` là NOT NULL. Test ranh giới đọc thời hạn dưới khóa
+   `studio.conversation_messages` và `studio.conversations` của bản tệp chính sách retention đang ghim và đỏ khi hai
+   khóa khác nhau hay khi hàm không xóa đúng ở mốc đó, vì hạn trong thân hàm là bản sao thứ hai của thời hạn trong tệp
+   (spec R5.9; `failure-modes.md` #2). Bộ xóa đăng ký với lane lưu giữ gọi hàm không đối số (spec R5.7) và, trong
+   cùng giao dịch, ghi cho mỗi dòng trả về một sự kiện `studio.conversation.expired` dựng bằng `lane_audit_event`
+   (công ty và workspace của dòng đó, actor `system_actor(<lane>)`, `details.actor` `system:<lane>`, `details` mang
+   hai số) qua `lane_audit.append_across_tenants` (spec R5.8; ADR-0011 (Accepted));
    không ghi được sự kiện thì giao dịch lùi và không dòng nào bị xóa.
 
 ## Tiêu chí chấp nhận
@@ -55,6 +60,10 @@ dẫn Nghị định 356 thay Nghị định 13/2023 (spec R5; ADR-0106 (Accepte
 - [ ] R5.8 (CP20): sau lượt đó, mỗi workspace có dòng bị xóa có đúng một sự kiện `studio.conversation.expired` ở
       đúng công ty và workspace đó, với actor `system_actor(<lane>)`, `details.actor` `system:<lane>` và đúng số tin,
       số hội thoại đã xóa ở workspace đó; làm hỏng ghi audit → giao dịch lùi, không dòng nào bị xóa.
+- [ ] R5.9 (CP22): test đọc thời hạn dưới khóa `studio.conversation_messages` và `studio.conversations` của bản tệp
+      chính sách retention đang ghim, tạo tin trước mốc đó một phút và sau mốc một phút, gọi hàm → tin trước mốc bị
+      xóa, tin sau mốc còn; thân hàm giữ 60 ngày trong khi tệp ghi 90 → test đỏ, nêu khóa; hai khóa ghi hai thời hạn
+      khác nhau → test đỏ.
 - [ ] R5.2 (CP16): một kho dữ liệu cá nhân không có bộ xóa đăng ký → test tập bộ xóa đỏ.
 - [ ] R5.3: chú thích thời hạn Nhật ký kiểm toán dẫn PDPL và Nghị định 356, không dẫn Nghị định 13/2023.
 - [ ] R5.4 (CP17): dòng chặn gửi 10 năm tuổi còn sau một lượt lane lưu giữ, lần gửi sau vẫn
@@ -64,6 +73,10 @@ dẫn Nghị định 356 thay Nghị định 13/2023 (spec R5; ADR-0106 (Accepte
 ## Nguồn
 
 - `configs/policies/retention@1.7.0.yaml:118-120`; spec: R5.3 (dẫn Nghị định 13/2023 đã hết hiệu lực).
+- `db/migrations/versions/855ae928c3fa_platform_in_app_notifications.py:28-29`; spec: R5.7 (hàm xóa không nhận đối
+  số, nên không bên gọi nào nới nó tới dòng còn hạn).
+- `infra/compose/docker-compose.yml:432`; spec: R5.7 (worker, nơi lane lưu giữ chạy, nối PostgreSQL bằng `dw_app`,
+  nên EXECUTE của hàm cấp cho `dw_app`).
 - `packages/python/dw_platform/src/dw_platform/domain/audit.py:72`,
   `packages/python/dw_platform/src/dw_platform/adapters/persistence/tables.py:299`; spec: R5.8 (`lane_audit_event`
   đòi `workspace_id`, cột đó NOT NULL trên `platform.audit_events`).
@@ -92,3 +105,7 @@ dẫn Nghị định 356 thay Nghị định 13/2023 (spec R5; ADR-0106 (Accepte
   SELECT, INSERT trên tin nhắn và FK ghép của tin nhắn tới hội thoại là `ON DELETE RESTRICT` (agent-builder/04);
   lane lưu giữ audit như chính nó, mỗi workspace có dòng bị xóa một sự kiện kèm số dòng, vì một sự kiện audit luôn
   mang `workspace_id` (ADR-0011 (Accepted)); thêm R5.7, R5.8, CP20.
+- 2026-10-24 (agent): lượt sửa thứ ba của vòng 4, theo dòng tạm cùng ngày của spec: hàm của bước 4 là
+  `studio.purge_expired_conversations()` không đối số, hạn 90 ngày trong thân hàm, EXECUTE chỉ cho `dw_app` sau
+  REVOKE ALL FROM PUBLIC, theo tiền lệ `platform.prune_notifications()`; lane gọi hàm không mốc; thêm R5.9 (CP22),
+  test ranh giới đỏ khi hạn trong thân hàm khác thời hạn của hai khóa hội thoại trong tệp chính sách retention.

@@ -287,8 +287,9 @@ máy tham chiếu mà YC20 định nghĩa (host chính sau D14), với mọi h�
 - `studio.object_defs.default_access` với `ck_object_defs_default_access` (custom-objects ticket 02 tạo,
   `custom-objects:R1.4`); spec này chỉ đọc nó trong hàm tính sổ tầm và gắn trigger tăng epoch.
 - `studio.access_epochs` (`tenant_id` PK, FK `platform.tenants` `ON DELETE CASCADE`, `epoch bigint`,
-  `changed_at timestamptz`) và `studio.principal_scopes` (PK `(tenant_id, principal_id)`, FK tới
-  `platform.tenant_members` `ON DELETE CASCADE`, `epoch`, `version`, `state` với `ck_principal_scopes_state` (`valid`,
+  `changed_at timestamptz`) và `studio.principal_scopes` (PK `(tenant_id, principal_id)`, FK ghép
+  `(tenant_id, principal_id)` tới `platform.tenant_members (tenant_id, user_id)` `ON DELETE CASCADE`, `epoch`,
+  `version`, `state` với `ck_principal_scopes_state` (`valid`,
   `stale`), `computed_at`, `workspace_ids` và một `uuid[]` cho mỗi cặp hành động `read`, `create`, `update`, `delete`,
   `assign` và nhánh `own`, `keys`, `tenant`); `dw_app` chỉ SELECT. Hai bảng là dữ liệu dẫn xuất, không có
   `workspace_id` (lớp bảng toàn tenant, DO-01), và offboarding không xóa chúng bằng `dw_app`: `studio.principal_scopes`
@@ -364,7 +365,8 @@ máy tham chiếu mà YC20 định nghĩa (host chính sau D14), với mọi h�
   03 ở đây chờ nó để `offboarding.py` có một thứ tự sửa); studio-skeleton (schema `studio`, USAGE và quyền mặc định chỉ
   cho `dw_app`, test phủ offboarding đọc `STUDIO_EXCLUSIONS`).
 - agent-builder ticket 03 dùng cửa gắn actor cho agent Studio; workflow-engine gắn `workflow` qua cùng helper ở mỗi
-  bước; agent-lifecycle và workflow-engine ghi giới hạn dữ liệu qua `ActorBoundaryPort` khi phát hành; field-security
+  bước; móc phát hành của loại `agent` (agent-builder) và của loại `workflow` (workflow-engine), mà agent-lifecycle gọi
+  trong giao dịch phát hành (ADR-0109 (Accepted) quyết 1), ghi giới hạn dữ liệu qua `ActorBoundaryPort`; field-security
   đọc `studio.actor_boundary_fields`.
 - app-standards: problem+json và `Idempotency-Key` gắn người gọi cho route giao (ticket 05 chờ app-standards/01, /02).
 - Kiểm lại khi: `platform.effective_grants` đổi hình → ticket 02 tới 05; custom-objects đổi số partition (đường lui
@@ -458,6 +460,17 @@ máy tham chiếu mà YC20 định nghĩa (host chính sau D14), với mọi h�
   catalog, `export_rows`) và cần một thứ tự sửa (`C:foundations-hardening/07~record-access/03`). Sửa: Phụ thuộc, ticket 03.
 - 24/10/2026 (Đạt): Hiện trạng trích CLAUDE.md theo tên mục thay vì số dòng, vì số dòng đã dời khi CLAUDE.md sửa
   (`G:CLAUDE.md#tenancy-and-authorization~record-access:spec`). Sửa: Hiện trạng.
+- 24/10/2026 (agent, tạm): không có dịch vụ phát hành nào: giới hạn dữ liệu của một phiên bản agent hay quy trình ghi qua
+  `ActorBoundaryPort` trong móc phát hành của loại `agent` (agent-builder) và của loại `workflow` (workflow-engine), mà
+  agent-lifecycle gọi trong giao dịch phát hành, vì mục `ArtifactKindRegistry` của loại mang móc do chủ loại cấp
+  (ADR-0109 (Accepted) quyết 1) và `LifecycleService` là bên duy nhất ghi `live` (ADR-0120 (Accepted) quyết 1). Sửa:
+  Phụ thuộc, ticket 04. Nếu sai thì: agent-lifecycle gọi `ActorBoundaryPort` sau móc của loại, và Phụ thuộc cùng ticket
+  04 nêu agent-lifecycle thay hai móc.
+- 24/10/2026 (agent, tạm): mục Dữ liệu nêu khóa ngoại của `studio.principal_scopes` là FK ghép
+  `(tenant_id, principal_id)` tới `platform.tenant_members (tenant_id, user_id)`, như bước 1 của ticket 02, vì kiểm khóa
+  ngoại không đi qua RLS nên khóa ngoại giữa hai bảng của tenant mang `tenant_id` (CLAUDE.md, Tenancy and
+  authorization). Sửa: Dữ liệu. Nếu sai thì: Dữ liệu và ticket 02 đổi theo khóa mà org-and-principals/02 chốt cho
+  `platform.tenant_members`.
 
 ## Danh sách ticket
 

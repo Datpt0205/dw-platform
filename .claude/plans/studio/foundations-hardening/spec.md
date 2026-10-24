@@ -552,6 +552,8 @@ Trước đây: danh mục xuất gồm cả partition, và mỗi bảng đượ
 - tenant-config: cột `run_mode` của `platform.worker_runs` và đường resume dựng lại nó (tenant-config:R4.1,
   tenant-config:R4.5); ticket 06 chờ tenant-config/03 vì cùng ALTER bảng đó và cùng sửa đường resume
   (OPS-b).
+- org-and-principals: `uq_workspaces_tenant_id_id` (org-and-principals:R1.1, ticket 01), đích của FK ghép
+  `(tenant_id, workspace_id)` của `platform.tool_execution_claims` ở ticket 04.
 - Ticket của spec khác chờ ticket ở đây theo dòng Blocked by của chính chúng (OPS-b);
   `scripts/check_plans.py --table` in bảng sống, spec này không chép lại.
 - Seam: `ConsumerRegistry.register` và `build_retention_consumer` ở composition root của worker cho
@@ -674,6 +676,13 @@ Trước đây: danh mục xuất gồm cả partition, và mỗi bảng đượ
   workflow-engine:R3.1). Sửa: R9.3, ticket 06. Nếu sai thì: R9.3 và ticket 06 bỏ `dead_lettered`, ticket của
   workflow-engine ghi giá trị đó thay CHECK bằng cùng tập cộng `dead_lettered` như tenant-config/03 làm với
   `ck_tool_executions_status`, và workflow-engine:R3.2 bỏ câu về chủ.
+- 24/10/2026 (agent, tạm): `workspace_id` của `platform.tool_execution_claims` là FK ghép `(tenant_id, workspace_id)` tới
+  `platform.workspaces (tenant_id, id)` qua `uq_workspaces_tenant_id_id` của org-and-principals/01, `ON DELETE CASCADE`,
+  với chỉ mục `(tenant_id, workspace_id)`, thay cho FK một cột, vì kiểm khóa ngoại không đi qua RLS nên FK một cột để
+  claim của một công ty trỏ tới workspace của công ty khác (CLAUDE.md, Tenancy and authorization và Data model rules;
+  org-and-principals:R1.1); ticket 04 cần org-and-principals/01 đi trước, đề xuất cạnh ghi ở Comments của ticket. Sửa:
+  Phụ thuộc, ticket 04. Nếu sai thì: claim bỏ khóa ngoại tới workspace kèm lý do (dòng chỉ sống tới `expires_at`, như
+  `platform.tool_executions` hôm nay không có khóa ngoại nào), và ticket 04 không chờ org-and-principals/01.
 
 ## Danh sách ticket
 

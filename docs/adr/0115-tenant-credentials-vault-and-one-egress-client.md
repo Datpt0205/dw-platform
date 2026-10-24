@@ -38,20 +38,28 @@ platform's vault and are injected per call into the model proxy) and D14 (the pr
    in self-hosted OpenBao Transit behind `KmsPort` (`ensure_tenant_key`, `generate_data_key`, `decrypt_data_key`,
    `rewrap`, `destroy_tenant_key`); `LocalDevKms` serves only outside deployed profiles (`validate_for_profile`
    refuses it when `is_deployed`). Each row names its secret's `field text NOT NULL` and
-   `secret_version integer NOT NULL`, the credential version a run manifest pins (ADR-0109 decision 6), which rises
-   when the secret's value changes and never on a rewrap; a row is unique per tenant, subject, field and secret
-   version, so a rotation with an overlap, such as a signing secret's 24 hours, holds two versions side by side. The
+   `secret_version integer NOT NULL`, numbered per subject and field, which rises when the secret's value changes and
+   never on a rewrap; a run manifest pins one for each connection and field it uses (ADR-0109 decision 6), and a row
+   is unique per tenant, subject, field and secret version, so a rotation with an overlap, such as a signing secret's
+   24 hours, holds two versions side by side. The
    AAD, `dw.secret.v1|<tenant_id>|<owning_workspace_id>|<subject_kind>:<subject_id>|<field>|<secret_version>` (the
    subject kind being its FK column's name without `_id`, such as `connection` or `inbound_endpoint`), binds tenant,
    owning workspace, subject, field and the version of the secret, unchanged by rewrap: a rewrap wraps only the data
    key again, so the AAD stays the same and the envelope still opens, while an envelope copied to another row, field,
-   version or subject fails the tag check. The key is chosen from the run's or access context's tenant, never from the
-   row. `dw_app` holds no privilege on the table: four SECURITY DEFINER functions (`platform.put_secret`,
-   `platform.open_secret`, `platform.secret_status`, `platform.delete_secret`), each narrowing by `app.tenant_id`, are
+   version or subject fails the tag check. Because the AAD binds the owning workspace, a trigger refuses an UPDATE of
+   `owning_workspace_id` on `platform.connections` and on every row of `studio.artifacts`, from which a subject that
+   belongs to an artifact, such as an inbound endpoint, takes its owning workspace, so a change of owner, if one is
+   ever offered, encrypts the subject's envelopes again. The key is chosen from the
+   run's or access context's tenant, never from the row. `dw_app` holds no privilege on the table: four SECURITY
+   DEFINER functions (`platform.put_secret`, `platform.open_secret`, `platform.secret_status`,
+   `platform.delete_secret`), each narrowing by `app.tenant_id`, are
    the one database door, and only the credential broker decrypts. A secret never enters graph state, tool arguments,
    checkpoints, traces, logs or audit, and the API never returns one (write-only fields; a signing secret the platform
-   generates is shown once). A new subject (OAuth client, outbound webhook endpoint, inbound endpoint, MCP server
-   registration, model connection) is one nullable FK plus a widened `num_nonnulls(...) = 1` CHECK. An unreachable KMS
+   generates is shown once). Each subject is one nullable composite FK `(tenant_id, <subject>_id)` to its table's
+   `UNIQUE (tenant_id, id)` (for `connection_id`, `uq_connections_tenant_id_id`, which `platform.connections` gains for
+   it), `ON DELETE CASCADE` because an envelope is a child row of its subject, and indexed, since a foreign key check
+   does not pass through RLS; a new subject (OAuth client, outbound webhook endpoint, inbound endpoint, MCP server
+   registration, model connection) adds one such key and widens the `num_nonnulls(...) = 1` CHECK. An unreachable KMS
    fails the call with `kms_unavailable`; nothing falls back to plaintext or to a Valkey cache. A tenant key rotates
    every 90 days (`rewrap`), and tenant-supplied keys (BYOK) come after v1. Offboarding destroys the tenant key
    (crypto-shredding). The shredding takes effect once the oldest key-store backup that still holds the key has
@@ -231,3 +239,12 @@ Amended on 2026-10-24 by the requester and Đạt, who scoped the remaining D11 
   another field, secret version and subject and rewraps one. The planner's provisional call; if it is wrong, the
   rotation lane encrypts every envelope again under a new data key instead of rewrapping it, and the AAD may then
   carry the key's version.
+- Third consistency check (round 4), third pass, the planner's provisional calls: decision 1 states that a
+  `secret_version` is numbered per subject and field and has a run manifest pin one per connection and field
+  (ADR-0109 decision 6, ADR-0110 decision 8); makes each subject's key a composite foreign key `ON DELETE CASCADE`,
+  indexed, with `UNIQUE (tenant_id, id)` on `platform.connections` as its target, because an envelope is a child row
+  of its subject and a foreign key check does not pass through RLS (`CLAUDE.md`, Data model rules); and, since the
+  AAD binds `owning_workspace_id`, refuses by trigger an UPDATE of that column on `platform.connections` and on every
+  row of `studio.artifacts`, which gives a subject belonging to an artifact, such as an inbound endpoint, its owning
+  workspace, so that a change of owner encrypts the subject's envelopes again (if it is wrong, the AAD drops the
+  owning workspace and a subject may change owner without touching its envelopes).

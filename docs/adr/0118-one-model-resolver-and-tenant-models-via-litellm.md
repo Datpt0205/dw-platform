@@ -50,7 +50,7 @@ repository root. External facts were gathered by the Studio research on 2026-10-
 ## Decision
 
 1. **One resolver for every model door.** `ModelResolver.resolve(tenant_id, workspace_id, profile_id,
-purpose) -> ResolvedRoute` serves `StudioModelSelection`, `RunBudgetMiddleware`,
+purpose) -> ResolvedRoute` serves `StudioModelSelection`, `LimitsMiddleware` (ADR-0121),
    `LangchainUsageMeter`, `RoutingModelGateway` (structured calls), compaction and evaluation judges.
    A `ResolvedRoute` names the profile id and version, provider family, model, `endpoint_kind` (the
    platform-paid gateway or the model proxy), `model_connection_id`, `secret_version`, `payer`,
@@ -73,7 +73,9 @@ purpose) -> ResolvedRoute` serves `StudioModelSelection`, `RunBudgetMiddleware`,
    `platform.connections` row (`connector_key` `llm_<provider_kind>`, `auth_scheme` `api_key`, owned by
    a workspace) whose provider API key is a secret in `platform.secret_envelopes`, and
    `connection_usable(..., purpose='model')` at profile approval, admission and every call.
-   `platform.model_connections` (tenant RLS): `connection_id` (UNIQUE, FK CASCADE), `provider_kind`
+   `platform.model_connections` (tenant RLS): `connection_id` (UNIQUE; a composite FK
+   `(tenant_id, connection_id)` to `platform.connections (tenant_id, id)`, `ON DELETE CASCADE`, since a
+   foreign key check does not pass through RLS), `provider_kind`
    CHECK (`openai`, `azure_openai`, `anthropic`, `gemini`, `bedrock`, `openai_compatible`), `base_url`
    (https, no userinfo), `data_location` CHECK (`vn`, `foreign`) and `processor` with no defaults,
    `retention_days`, `no_training boolean NOT NULL`, `status` CHECK (`pending_validation`, `active`,
@@ -145,7 +147,7 @@ purpose) -> ResolvedRoute` serves `StudioModelSelection`, `RunBudgetMiddleware`,
 - Tests that must exist, each shown red with its guard removed: a profile the plan does not list refuses
   with `model_profile_unavailable`; tenant B's profile never resolves for tenant A
   (`packages/python/dw_agent_runtime/tests/unit/test_tenant_overlay.py`, extended); an open breaker on a
-  tenant model refuses instead of reaching a platform route; the budget, the meter and the gateway
+  tenant model refuses instead of reaching a platform route; `LimitsMiddleware`, the meter and the gateway
   resolve the same route; a missing secret yields the provider's 401, never an environment fallback;
   banned body parameters are refused; no secret reaches the model proxy's logs; cooldowns are really
   off; the egress proxy holds against DNS rebinding, redirects, IPv6 and `100.64.0.0/10`.
@@ -215,3 +217,9 @@ open:
   class forbids at submit, when the version is sealed, and at admission, and decision 4 refuses at
   submit an agent backed by a model without usage reporting or tool calling, no longer "at publish"
   or "a publish error", matching ADR-0123 decision 4 and ADR-0116 decision 1.
+- Third consistency check (round 4), third pass: decision 1's resolver serves `LimitsMiddleware`, which
+  usage-and-limits ships in the place of the run budget middleware that ADR-0121 decision 7 retires, and
+  the test that the limits, the meter and the gateway resolve one route names it; decision 3's
+  `connection_id` is a composite foreign key to `platform.connections (tenant_id, id)`, because a foreign
+  key check does not pass through RLS and a one-column key would let a model connection point at another
+  tenant's connection.

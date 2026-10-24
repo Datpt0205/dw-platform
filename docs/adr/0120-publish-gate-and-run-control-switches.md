@@ -39,8 +39,11 @@ envelope leaves "which version runs" to this stage contract. The `agent-lifecycl
 1. **One stage machine, guarded by the database.** Stages `draft`, `evaluating`, `awaiting_approval`, `live` and
    `retired` live on `studio.artifact_versions` (ADR-0109): `stage` NOT NULL with a CHECK and no default, read back
    from `pg_constraint` against a `VersionStage` StrEnum; `definition_hash` required outside `draft`; `gate_run_id`
-   (FK `studio.gate_runs`) and `publish_approval_id` (FK `platform.approval_requests`), ON DELETE RESTRICT and
-   required from `awaiting_approval` on (a version published on the tighten-only branch below keeps it NULL),
+   and `publish_approval_id`, composite FKs `(tenant_id, gate_run_id)` to `studio.gate_runs` and
+   `(tenant_id, publish_approval_id)` to `platform.approval_requests`, each to its target's `UNIQUE (tenant_id, id)`
+   (added in the same revision where the target lacks it, since a foreign key check does not pass through RLS),
+   ON DELETE RESTRICT and required from `awaiting_approval` on (a version published on the tighten-only branch below
+   keeps `publish_approval_id` NULL),
    `gate_run_id` only for a kind with a quality gate; `contributor_ids` never empty. One trigger,
    `studio.guard_version_stage()`, allows only: insert as `draft`; `draft` to `evaluating`; `evaluating` back to
    `draft` (gate failed, errored, cancelled or withdrawn); `evaluating` to `awaiting_approval` (gate passed on this
@@ -296,3 +299,7 @@ D11 cases scoped by the requester and Đạt:
   registers the `tool` kind, with the submit key it declares, moves to W1); decision 3's gate run is refused for what
   is left of the tenant's limits, an evaluation purpose cap among them only from W2, as ADR-0121 decision 4 now says
   (V4.P6).
+- Third consistency check (round 4), third pass: decision 1's `gate_run_id` and `publish_approval_id` are composite
+  foreign keys `(tenant_id, <column>)` to their targets' `UNIQUE (tenant_id, id)`, added in the same revision where
+  `studio.gate_runs` or `platform.approval_requests` lacks it, because a foreign key check does not pass through RLS
+  and a one-column key would let a version name another tenant's gate run or approval.

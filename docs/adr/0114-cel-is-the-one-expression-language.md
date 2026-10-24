@@ -52,7 +52,8 @@ S7.
    checked expression (type, references, cost estimate) or issues; `evaluate(checked, activation)` returns a value or
    an error; one closed type algebra (`null`, `bool`, `int`, `double`, `string`, `bytes`, `timestamp`, `duration`,
    `list[T]`, `map[string, T]`, `object{...}`, `optional[T]`, `dyn`). workflow-nodes owns it. The adapters live in
-   `dw_studio`: `CelCppEngine` on `cel-expr-python==0.1.3`, pinned exactly, is the default; `CelRustEngine` on
+   `dw_studio.core.adapters.cel`, the one module import-linter lets import a CEL binding (ADR-0100 decision 3):
+   `CelCppEngine` on `cel-expr-python==0.1.3`, pinned exactly, is the default; `CelRustEngine` on
    `common-expression-language==0.10.0` is the fallback, behind an AST pre-check (comprehension nesting at most 2,
    list literals at most 1,000 elements). Both pass one contract suite (a cel-spec conformance subset, the function
    library, budget and size cases, si-platform's validation test vectors); the composition root picks one by setting.
@@ -129,8 +130,8 @@ S7.
   (ADR-0110) must refuse any `string.Formatter().parse` field other than a declared plain name.
 - Extends `docs/adr/0010-prompt-variables-are-untrusted-by-default.md` to every template sink, through the same
   `contain_untrusted` and never a second containment function.
-- `CLAUDE.md:124-129` (Required stack) names no expression language; on acceptance it gains "CEL for tenant
-  expressions (`cel-expr-python`, pinned exactly), reached only through `dw_kernel.expressions`".
+- `CLAUDE.md` (Required stack) named no expression language at acceptance; since 2026-10-24 it carries "CEL only
+  behind `ExpressionEngine`, on `cel-expr-python` pinned exactly (ADR 0114)".
 - si-platform: ports the structure (order, all-errors result, messages) of si-platform
   `packages/python/platform/si_metadata/src/si_metadata/rules.py` and diverges on predicate syntax (CEL) and on
   meaning ("must hold" rather than "error when true").
@@ -166,7 +167,7 @@ holds, with these amendments from the decision brief:
 - Decision 6: validation rules ship in W2 with YC28 (DO-37 (a)); audiences as a typed condition list are recorded as
   a reasoned exception, with its reason (DO-40 (a)).
 - Consequences: the bindings' import names are measured in FOG-50 before they join `forbidden_modules`; the sentence
-  `CLAUDE.md:124-129` gains is written out.
+  `CLAUDE.md` (Required stack) gains is written out.
 - Open: DO-38, DO-37 and DO-40 answered; DO-03 and FOG-50 stay open.
 
 ## Amendments (2026-10-24)
@@ -179,3 +180,7 @@ holds, with these amendments from the decision brief:
   is wrong, Đạt amends decision 2 so that W1 ships `cel-expr-python` alone). The title, decisions 4 and 5 and the
   first alternative say "at submit", where ADR-0112's validator runs these checks, no longer "at publish". The status
   stays Accepted.
+- Third consistency check (round 4), third pass: decision 2 places both adapters in `dw_studio.core.adapters.cel`,
+  the one module import-linter lets import a CEL binding, as ADR-0100 decision 3 and studio-skeleton R5.6 say;
+  Consequences and Acceptance cite `CLAUDE.md` (Required stack) by its section instead of its line numbers, say that
+  it named no expression language at acceptance, and quote the sentence it has carried since 2026-10-24.

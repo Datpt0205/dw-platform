@@ -100,8 +100,10 @@ repository root. External facts were gathered by the Studio research on 2026-10-
    default, `active_run_id`) and `studio.conversation_messages` (`seq`, `role` CHECK (`user`,
    `assistant`, `notice`, `summary`), `content` capped at 16 KiB (16,384 bytes of UTF-8, CHECK
    `octet_length(content) <= 16384`; a longer message is answered 422 `validation_failed` pointing at
-   `content`), `run_id`, `agent_version_id`, `citations` (W2), `activity` naming tools and workflows,
-   never arguments). A model reply longer than the cap has no request to answer, so it is stored cut
+   `content`), `reason_code` (CHECK over agent-builder's codes) and `resets_at`, both NULL unless `role`
+   is `notice` (CHECK), so a notice carries its code and its reset time beside `content`, never inside it,
+   `run_id`, `agent_version_id`, `citations` (W2), `activity` naming tools and workflows, never
+   arguments). A model reply longer than the cap has no request to answer, so it is stored cut
    to its first 16,384 bytes at a UTF-8 character boundary and followed by a `notice` message with
    `reason_code` `reply_truncated`; the chat agent's output-token cap is set so a reply normally fits.
    A message carries its conversation's `workspace_id` and `owner_user_id` through a composite foreign
@@ -245,3 +247,8 @@ open:
   function (if it is wrong, the foreign key cascades and the messages stop being append-only), and
   stores a model reply over 16 KiB cut at a character boundary with a `reply_truncated` notice (if it
   is wrong, the turn ends `failed` with `reply_too_long`).
+- Third consistency check (round 4), third pass, the planner's provisional call: decision 6 gives a
+  message `reason_code` and `resets_at`, set only on a `notice` (CHECK), which the notice of a failed
+  turn (with `limit_exceeded`, its `resets_at`) and the `reply_truncated` notice use, so no code travels
+  inside `content` (if it is wrong, a notice's code and reset time are text in `content` that a reader
+  parses).

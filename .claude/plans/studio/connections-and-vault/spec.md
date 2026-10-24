@@ -58,6 +58,10 @@ bao giờ rời Kho bí mật ra một đường ra nào (YC61; ADR-0115 (Accept
   chối và ghi audit `secret.key_mismatch`.
 - R1.6 KHI lane `offboarding` xuất dữ liệu một công ty, danh sách bảng xuất PHẢI không gồm
   `platform.secret_envelopes`.
+- R1.7 NẾU một lệnh UPDATE đổi `owning_workspace_id` của một Kết nối, THÌ PostgreSQL PHẢI từ chối lệnh đó và
+  không đổi dòng nào, vì AAD của mọi phong bì của Kết nối gắn workspace sở hữu (R1.4).
+- R1.8 NẾU một phong bì trỏ tới một chủ thể thuộc công ty khác với `tenant_id` của phong bì, THÌ PostgreSQL PHẢI
+  từ chối lệnh ghi bằng khóa ngoại ghép và không ghi.
 
 ### R2 — Khóa khi triển khai, xoay khóa và xóa bằng hủy khóa
 
@@ -169,6 +173,7 @@ lại cần người thứ hai (YC62; DO-48; D11; ADR-0115 (Accepted) quyết 2)
   `connections.manage` với tới workspace sở hữu của Kết nối, THÌ API kết nối PHẢI trả 409 `conflict` với
   `details.reason_code` `no_checker_available`, không mở yêu cầu phê duyệt nào và giữ Connection status
   `disabled`.
+- R5.14 NẾU `connection_usable` được hỏi với một `purpose` khác `tool`, THÌ `connection_usable` PHẢI trả false.
 
 ### R6 — Bản mô tả trình kết nối biên dịch thành công cụ
 
@@ -207,7 +212,8 @@ trong Bản mô tả trình kết nối (YC64; DO-48; ADR-0116 (Accepted) quyế
 - Mã: `KmsPort`, `LocalDevKms` (chỉ ngoài profile triển khai), `OpenBaoTransitKms`, `SecretStore` và kiểu
   `Secret`; `EgressPort`, `EgressClient`, `PinnedNetworkBackend`, mở rộng `net_guard` cho địa chỉ không
   toàn cầu; module thuần `dw_connectors.webhooks` với `SignatureVerifier`; `ConnectorManifest` và bộ biên
-  dịch sang Đặc tả công cụ, `ManifestActionHandler`; `SmtpEgress`; `connection_usable` một hàm;
+  dịch sang Đặc tả công cụ, `ManifestActionHandler`; `SmtpEgress`; `connection_usable(connection, context, purpose)`
+  một hàm, mà W1 chỉ gọi với `purpose='tool'` (ADR-0115 (Accepted) quyết 2; R5.14);
   `ConnectionDependentsPort` (spec này khai; tenant-config đáp ứng, đọc `studio.dependencies` cộng giá trị
   Bộ giá trị gắn đã duyệt trong `platform.config_versions`; workflow-engine và agent-builder không cài);
   lane `credential_rewrap`.
@@ -247,7 +253,7 @@ trong Bản mô tả trình kết nối (YC64; DO-48; ADR-0116 (Accepted) quyế
 | Sàn gửi tin kiểm đồng ý ở executor cho Hành động `effect_class: message`                                                        | ADR-0124 (Accepted); executor là một cửa, sổ đồng ý là của compliance-pdpl                                                                                                                                                       | tools-and-skills; compliance-pdpl                     |
 | Khung loại công cụ, kiểm JSON Schema trong executor, bọc đầu ra không tin cậy                                                   | ADR-0116 (Accepted); spec này cấp Bộ gọi ra ngoài và Kết nối cho loại `connector_action`                                                                                                                                         | tools-and-skills                                      |
 | Chế độ chạy do máy chủ đặt và `run_mode` trên ngữ cảnh lượt chạy                                                                | ADR-0111 (Accepted); Bộ gọi ra ngoài và `SmtpEgress` đọc `run_mode` để từ chối theo R3.5 và R7.5                                                                                                                                 | tenant-config                                         |
-| Cấu hình model của tenant (BYOM qua model proxy); khóa model là bí mật                                                          | ADR-0118 (Accepted); khóa model lưu trong Kho bí mật này                                                                                                                                                                         | model-connections                                     |
+| Cấu hình model của tenant (BYOM qua model proxy); khóa model là bí mật                                                          | ADR-0118 (Accepted); khóa model lưu trong Kho bí mật này; W2: kết nối model hỏi `connection_usable` với `purpose='model'` (ADR-0118 (Accepted) quyết 3), giá trị mà R5.14 từ chối tới đợt đó                                     | model-connections đợt sau (W2)                        |
 
 ## Dữ liệu
 
@@ -260,15 +266,20 @@ không `workspace_id`, mỗi bảng một dòng có lý do trong `_TENANT_WIDE_O
 `platform.workspaces (tenant_id, id)` (`uq_workspaces_tenant_id_id` của org-and-principals/01).
 
 - `platform.secret_envelopes`: `id` uuid; `tenant_id` NOT NULL FK `platform.tenants` ON DELETE CASCADE;
-  `connection_id` uuid NULL, loại trừ với chủ thể khác qua CHECK `num_nonnulls(...) = 1`; mỗi chủ thể mới
-  (ADR-0115 (Accepted) quyết 1) là một cột FK NULL cộng CHECK đó nới rộng và một UNIQUE của cột đó (dưới đây),
-  thêm trong migration của ticket thêm chủ thể: `inbound_endpoint_id` (FK tới `studio.inbound_endpoints`) ở
-  workflow-triggers/02; `field text NOT NULL`, tên trường bí mật của chủ thể (`api_key`, `password`,
+  `connection_id` uuid NULL với FK ghép `(tenant_id, connection_id)` tới `platform.connections (tenant_id, id)`
+  ON DELETE CASCADE, vì phong bì là dòng con của chủ thể, loại trừ với chủ thể khác qua CHECK
+  `num_nonnulls(...) = 1`; mỗi chủ thể mới (ADR-0115 (Accepted) quyết 1) là một cột NULL có FK ghép
+  `(tenant_id, <cột chủ thể>)` tới UNIQUE `(tenant_id, id)` của bảng chủ thể, ON DELETE CASCADE, cộng CHECK đó nới
+  rộng và một UNIQUE của cột đó (dưới đây), thêm trong migration của ticket thêm chủ thể: `inbound_endpoint_id`
+  (FK ghép tới `studio.inbound_endpoints (tenant_id, id)` ON DELETE CASCADE) ở workflow-triggers/02; FK một cột thì
+  không đủ, vì kiểm khóa ngoại không qua RLS nên một phong bì của công ty này trỏ được tới chủ thể của công ty
+  khác (R1.8); `field text NOT NULL`, tên trường bí mật của chủ thể (`api_key`, `password`,
   `signing_secret`); `secret_version integer NOT NULL`, phiên bản của bí mật: `platform.put_secret` ghi giá trị
   mới của (chủ thể, trường) thành một dòng với số kế tiếp và không sửa dòng cũ, còn lane `credential_rewrap`
   không đổi nó; UNIQUE `(tenant_id, subject_kind, subject_id, field, secret_version)`, mà vì đúng một cột chủ thể
   khác NULL nên là một UNIQUE `(tenant_id, <cột chủ thể>, field, secret_version)` cho mỗi cột chủ thể,
-  `(tenant_id, connection_id, field, secret_version)` ở ticket 02; `alg text NOT NULL` CHECK (`aes-256-gcm`);
+  `(tenant_id, connection_id, field, secret_version)` ở ticket 02, dẫn đầu bằng hai cột của FK ghép nên cũng là
+  chỉ mục của FK đó; `alg text NOT NULL` CHECK (`aes-256-gcm`);
   `nonce bytea` CHECK độ dài 12; `kek_ref text NOT NULL`; `ciphertext bytea` CHECK độ dài ≤ 64 KiB;
   `wrapped_data_key bytea NOT NULL`, khóa dữ liệu riêng của phong bì bọc bởi Khóa của công ty, giữ cạnh
   `ciphertext` (ADR-0115 (Accepted) quyết 1), cột duy nhất lane `credential_rewrap` ghi lại;
@@ -280,8 +291,12 @@ không `workspace_id`, mỗi bảng một dòng có lý do trong `_TENANT_WIDE_O
   không nhận tham số công ty) có EXECUTE cho `dw_app`. Một phiên bản bí mật đã thu hồi là một `secret_version`
   không còn dòng nào (đã xóa qua `platform.delete_secret`), điều `connection_usable` đọc qua
   `platform.secret_status` (ticket 04 bước 2).
-- `platform.connections`: `id` uuid; `tenant_id` NOT NULL; `owning_workspace_id` NOT NULL, FK ghép
-  `(tenant_id, owning_workspace_id)` tới `platform.workspaces` ON DELETE RESTRICT, có index; `connector_key text NOT NULL`,
+- `platform.connections`: `id` uuid; `tenant_id` NOT NULL; UNIQUE `(tenant_id, id)` (`uq_connections_tenant_id_id`),
+  đích của FK ghép từ `platform.secret_envelopes`; `owning_workspace_id` NOT NULL, FK ghép
+  `(tenant_id, owning_workspace_id)` tới `platform.workspaces` ON DELETE RESTRICT, có index, và không đổi sau khi
+  tạo: trigger `platform.guard_connection_owning_workspace()` từ chối mọi UPDATE đổi cột đó (R1.7), vì AAD của
+  phong bì gắn nó (ADR-0115 (Accepted) quyết 1), nên đổi workspace sở hữu, nếu có, là mã hóa lại mọi phong bì của
+  Kết nối dưới AAD mới chứ không phải UPDATE cột; `connector_key text NOT NULL`,
   `connector_major int NOT NULL`; `share_scope text NOT NULL` CHECK (`owner`, `workspace`,
   `workspace_subtree`); `external_account text`; `status text NOT NULL` CHECK (`pending`, `active`,
   `needs_reauth`, `disabled`, `revoked`), không DEFAULT; `scopes text[] NOT NULL DEFAULT '{}'`;
@@ -290,7 +305,8 @@ không `workspace_id`, mỗi bảng một dòng có lý do trong `_TENANT_WIDE_O
   `(tenant_id, created_at DESC, id DESC)`; partial unique một kết nối `active` cho mỗi
   `(tenant_id, connector_key, external_account)`. Trigger `touch_updated_at` nhường giá trị statement
   nêu (CLAUDE.md).
-- `platform.egress_allowed_hosts`: `id`, `tenant_id`, `owning_workspace_id` (FK ghép như
+- `platform.egress_allowed_hosts`: `id`, `tenant_id`, `owning_workspace_id` (FK ghép
+  `(tenant_id, owning_workspace_id)` tới `platform.workspaces` ON DELETE RESTRICT, có index, như
   `platform.connections`); `host_pattern text` CHECK
   (`^(\*\.)?[a-z0-9.-]+$`, ≤ 253 ký tự), kiểm Public Suffix List (wildcard không đặt trên hậu tố công
   cộng), không IP literal; `ports int[] NOT NULL DEFAULT '{443}'`; `purpose text` CHECK (`http_tool`,
@@ -329,7 +345,7 @@ không `workspace_id`, mỗi bảng một dòng có lý do trong `_TENANT_WIDE_O
 
 | #    | Kiểm soát                                                                                     | Yêu cầu                    | Test âm                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | ---- | --------------------------------------------------------------------------------------------- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| CV1  | Phong bì gắn danh tính bằng AAD                                                               | R1.4                       | Chép phong bì sang kết nối khác cùng công ty hay công ty khác, sang trường khác của cùng kết nối, sang `secret_version` khác, hay sang chủ thể `inbound_endpoint_id` (ca này chạy ở workflow-triggers/02, nơi thêm cột) → giải mã lỗi; bọc lại khóa dữ liệu (`kek_version` tăng) → vẫn giải mã; gỡ AAD khỏi `SecretStore`, hay đưa `kek_version` vào AAD → test đỏ                                                                                                                                                                                                                                                                |
+| CV1  | Phong bì gắn danh tính bằng AAD                                                               | R1.4, R1.7                 | Chép phong bì sang kết nối khác cùng công ty hay công ty khác, sang trường khác của cùng kết nối, sang `secret_version` khác, hay sang chủ thể `inbound_endpoint_id` (ca này chạy ở workflow-triggers/02, nơi thêm cột) → giải mã lỗi; bọc lại khóa dữ liệu (`kek_version` tăng) → vẫn giải mã; UPDATE `owning_workspace_id` của một Kết nối → trigger từ chối, dòng không đổi, phong bì vẫn giải mã; gỡ AAD khỏi `SecretStore`, đưa `kek_version` vào AAD, hay gỡ trigger `platform.guard_connection_owning_workspace()` → test đỏ                                                                                               |
 | CV2  | Một cửa cơ sở dữ liệu, `dw_app` không đọc thẳng                                               | R1.3, R1.6                 | `SELECT * FROM platform.secret_envelopes` bằng `dw_app` → permission denied; catalog export của offboarding không liệt kê `secret_envelopes`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | CV3  | Khóa suy từ công ty của ngữ cảnh                                                              | R1.5                       | Dòng mang `kek_ref` của công ty khác → từ chối, audit `secret.key_mismatch`; bỏ kiểm `kek_ref` → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | CV4  | Bí mật không rò ra response, trạng thái, trace, log, audit                                    | R1.2                       | Mock nhà cung cấp vọng header và key trong body lỗi → 0 lần xuất hiện ở checkpoint, `tool_executions`, audit, span, log; tắt che → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
@@ -342,7 +358,7 @@ không `workspace_id`, mỗi bảng một dòng có lý do trong `_TENANT_WIDE_O
 | CV11 | Bộ kiểm chữ ký từ chối sai chữ ký, lệch giờ, token sai                                        | R4.2, R4.3                 | Vector Standard Webhooks qua; sửa một byte trượt; dấu thời gian lệch quá 5 phút trượt; token tĩnh sai trượt; gỡ kiểm dấu thời gian → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | CV12 | API kết nối không trả bí mật                                                                  | R5.2                       | Duyệt mọi schema 2xx của router kết nối: không trường bí mật; `GET` sau khi tạo không chứa giá trị canary                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | CV13 | Cách ly tenant cho kết nối                                                                    | R5.3                       | Công ty B gọi `GET`, `PATCH`, `DELETE`, `test` với id của công ty A → 404; mock nhà cung cấp không nhận gì                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| CV14 | Phạm vi workspace của kết nối và quyền dùng kết nối                                           | R5.4, R5.9                 | Lượt chạy ở một workspace dùng kết nối `workspace` của workspace khác → từ chối ở phát hành và ở Bộ gọi ra ngoài; chủ thể không giữ `connections.use` ở workspace của lượt chạy → từ chối lúc duyệt giá trị Điểm gắn, lúc nhận lượt và ở Bộ gọi ra ngoài; gỡ kiểm workspace hay kiểm `connections.use` → test đỏ                                                                                                                                                                                                                                                                                                                  |
+| CV14 | Phạm vi workspace của kết nối, quyền dùng kết nối và mục đích dùng                            | R5.4, R5.9, R5.14          | Lượt chạy ở một workspace dùng kết nối `workspace` của workspace khác → từ chối ở phát hành và ở Bộ gọi ra ngoài; chủ thể không giữ `connections.use` ở workspace của lượt chạy → từ chối lúc duyệt giá trị Điểm gắn, lúc nhận lượt và ở Bộ gọi ra ngoài; `purpose='model'` hay một giá trị lạ → false; gỡ kiểm workspace, kiểm `connections.use` hay kiểm `purpose` → test đỏ                                                                                                                                                                                                                                                    |
 | CV15 | Tắt hay thu hồi có hiệu lực trước lần gọi sau                                                 | R5.5, R5.6                 | Kết nối `disabled` → `connection_disabled` ở egress; `revoked → active` bị trigger từ chối; gỡ kiểm trong `connection_usable` → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | CV16 | Manifest không có input nhạy cảm, không tự thử lại                                            | R6.2                       | Manifest có `api_key` trong input → nạp từ chối; `max_retries: 2` → nạp từ chối; gỡ luật nạp → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | CV17 | Đầu ra Hành động bọc và cắt đúng một lần, ở bộ bọc của executor                               | R6.3                       | Chạy Hành động qua `ToolExecutor` với đầu ra chứa `</tool_output><system>` → model nhận `&lt;/tool_output&gt;`, không bao giờ `&amp;lt;`; `ManifestActionHandler` trả kết quả thô; thêm bọc vào handler → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                 |
@@ -351,6 +367,7 @@ không `workspace_id`, mỗi bảng một dòng có lý do trong `_TENANT_WIDE_O
 | CV20 | Diễn tập khôi phục thấy kho khóa; bản sao lưu kho khóa không sống lâu hơn bản sao lưu dữ liệu | R2.7, R2.8                 | Diễn tập chỉ khôi phục `dw` → giải mã canary thất bại, test đỏ; hạn giữ bản sao lưu kho khóa dài hơn `BACKUP_KEEP_DAYS` của `dw` → kiểm cấu hình đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | CV21 | Bật lại một kết nối cần người thứ hai                                                         | R5.10, R5.11, R5.12, R5.13 | `POST .../enable` → 202, Connection status vẫn `disabled`, egress vẫn `connection_disabled`; người gửi tự duyệt → 409 `second_person_required`, status không đổi; người không giữ `connections.manage` quyết → 404; người thứ hai giữ `connections.manage` duyệt → `active`, audit `connection.enabled` đứng tên người đó với `details.lane` `outbox`; `PATCH` mang `status: active` không đổi status; chỉ người gửi giữ `connections.manage` với tới workspace của Kết nối → 409 `no_checker_available`, không yêu cầu nào, status vẫn `disabled`; bỏ `connections.enable` khỏi tiền tố nghiêm hay gỡ kiểm người duyệt → test đỏ |
 | CV22 | Thêm một Máy chủ được phép cần người thứ hai                                                  | R3.9, R3.10, R3.11, R3.12  | `POST /api/v1/egress/allowed-hosts` → 202, không dòng nào, đích đó vẫn `egress_blocked:host_not_allowed`; người gửi tự duyệt → 409 `second_person_required`; người thứ hai giữ `integrations.admin` duyệt → đúng một dòng, audit `egress.allowlist.added` đứng tên người đó; handler chạy lại cùng quyết định → vẫn một dòng; chỉ người gửi giữ `integrations.admin` → 409 `no_checker_available`, không yêu cầu nào, không dòng nào; bỏ `egress.allowed_host` khỏi tiền tố nghiêm hay gỡ kiểm người duyệt → test đỏ                                                                                                              |
+| CV23 | Phong bì chỉ trỏ tới chủ thể cùng công ty                                                     | R1.8                       | `platform.put_secret` dưới `app.tenant_id` của công ty A với `connection_id` của công ty B → lỗi khóa ngoại (23503), không dòng nào; xóa một Kết nối → mọi phong bì của nó xóa theo (CASCADE); đổi FK ghép thành FK một cột `connection_id` trong migration thử → lần ghi chéo công ty thành công, test đỏ                                                                                                                                                                                                                                                                                                                        |
 
 ## Tiêu chí xong
 
@@ -391,8 +408,9 @@ không `workspace_id`, mỗi bảng một dòng có lý do trong `_TENANT_WIDE_O
   ADR-0104 (Accepted) quyết 11, với `second_person_required` là mã chung của lần từ chối theo tiền tố nghiêm
   cho mọi loại phê duyệt.
 - `.claude/plans/studio/workflow-triggers/issues/02-data-hub-endpoint-va-ingress.md`: thêm chủ thể
-  `inbound_endpoint_id` vào `platform.secret_envelopes`, nới CHECK `num_nonnulls` và thêm UNIQUE
-  `(tenant_id, inbound_endpoint_id, field, secret_version)` trong migration của nó, sau ticket 02 của spec này;
+  `inbound_endpoint_id` vào `platform.secret_envelopes` với FK ghép tới `studio.inbound_endpoints (tenant_id, id)`
+  ON DELETE CASCADE, nới CHECK `num_nonnulls` và thêm UNIQUE `(tenant_id, inbound_endpoint_id, field, secret_version)`
+  trong migration của nó, sau ticket 02 của spec này;
   bí mật ký của Nguồn dữ liệu dùng AAD của ticket 02 với `subject_kind` `inbound_endpoint` và `field`
   `signing_secret`, và hai bí mật chồng 24 giờ là hai `secret_version`.
 - agent-lifecycle:R8.4: hợp đồng lane gửi đi hỏi công tắc trước khi gửi, mà lane gửi tin đã xếp hàng W2 của
@@ -410,8 +428,9 @@ không `workspace_id`, mỗi bảng một dòng có lý do trong `_TENANT_WIDE_O
   ticket 03, 05; `RunBindingsPort` đổi hình → ticket 05; ADR-0115 (Accepted) quyết 2, 6 đổi `required_scope`
   của `connections.enable` hay `egress.allowed_host` → R3.9, R5.10, ticket 03, 04; tenant-rbac/02 đổi hình
   `platform.checker_candidates` hay ADR-0104 (Accepted) quyết 11 đổi mã từ chối → R3.10, R3.12, R5.11, R5.13,
-  ticket 03, 04; tenant-config đổi cách bản kê ghim phiên bản credential của kết nối (tenant-config:R7.4) → ticket
-  04 bước 2.
+  ticket 03, 04; tenant-config đổi cách bản kê ghim `secret_version` theo (kết nối, trường) (tenant-config:R7.4) →
+  ticket 04 bước 2; model-connections (W2) gọi `connection_usable` với `purpose='model'` (ADR-0118 (Accepted) quyết 3)
+  → R5.14, ticket 04 bước 2.
 
 ## Câu hỏi còn mở
 
@@ -536,6 +555,40 @@ không `workspace_id`, mỗi bảng một dòng có lý do trong `_TENANT_WIDE_O
   sửa đổi vòng 4 của ADR-0115 (Accepted) ghi cho trường hợp sai, và khi đó AAD có thể mang phiên bản khóa;
   ticket 06 bước 4, R2.6 và ca bọc lại của CV1 đổi theo, còn `secret_version` vẫn là phiên bản credential mà bản
   kê lượt chạy ghim (ADR-0110 (Accepted) quyết 8).
+- 24/10/2026 (agent, tạm): `platform.secret_envelopes.connection_id` có FK ghép `(tenant_id, connection_id)` tới
+  `platform.connections (tenant_id, id)` ON DELETE CASCADE, vì phong bì là dòng con của chủ thể như
+  `inbound_endpoint_id` của workflow-triggers/02; chỉ mục của FK là UNIQUE
+  `(tenant_id, connection_id, field, secret_version)`, và `platform.connections` thêm UNIQUE `(tenant_id, id)` làm
+  đích (CLAUDE.md, Data model rules: khóa ngoại nào cũng nêu `ON DELETE` và có chỉ mục ở phía của nó); FK workspace
+  sở hữu của `platform.egress_allowed_hosts` cũng nêu rõ `ON DELETE RESTRICT` và chỉ mục, không chỉ dẫn "như
+  `platform.connections`". Sửa: Dữ liệu, ticket 02, 03. Nếu sai thì: FK của phong bì là `ON DELETE RESTRICT`, và
+  lần xóa một Kết nối (R5.8, ticket 04) gọi `platform.delete_secret` cho mọi phong bì của nó trước, trong cùng giao
+  dịch.
+- 24/10/2026 (agent, tạm): mọi khóa ngoại từ một bảng của spec này tới một bảng theo tenant là FK ghép
+  `(tenant_id, <cột>)` tới UNIQUE `(tenant_id, id)` của bảng đích, vì kiểm khóa ngoại không qua RLS nên một FK một
+  cột để phong bì của công ty này trỏ tới chủ thể của công ty khác; cột chủ thể nào thêm sau (`inbound_endpoint_id`
+  của workflow-triggers/02) theo cùng dạng, và R1.8 cùng CV23 là test âm (CLAUDE.md, Tenancy and authorization: test
+  âm cho đọc và ghi chéo tenant là bắt buộc). Sửa: thêm R1.8, Dữ liệu, Kiểm soát (CV23), Phụ thuộc (dòng
+  workflow-triggers/02), ticket 02. Nếu sai thì: cột chủ thể giữ FK một cột và `platform.put_secret` tự kiểm chủ thể
+  thuộc công ty của ngữ cảnh trước khi ghi, còn R1.8 và CV23 kiểm hàm đó thay khóa ngoại.
+- 24/10/2026 (agent, tạm): bản kê lượt chạy ghim một `secret_version` cho mỗi (kết nối, trường), vì `secret_version`
+  đếm theo (chủ thể, trường) (ADR-0115 (Accepted) quyết 1; tenant-config:R7.4), nên `pinned_secret_versions` mà
+  `connection_usable` nhận là một `secret_version` cho mỗi trường bí mật của kết nối. Sửa: Phụ thuộc (Kiểm lại
+  khi), ticket 04 bước 2. Nếu sai thì: bản kê ghim một phiên bản cho cả kết nối, `secret_version` thành phiên bản
+  của kết nối thay vì của trường, và Dữ liệu, UNIQUE cùng AAD của ticket 02 đổi theo.
+- 24/10/2026 (agent, tạm): `connection_usable(connection, context, purpose)` mang `purpose` từ W1, như
+  ADR-0115 (Accepted) quyết 2 và ADR-0118 (Accepted) quyết 3 gọi (`purpose='model'`), để W2 chỉ thêm một giá trị
+  mà không sửa chỗ gọi nào (CLAUDE.md, Per-tenant artifacts: registry mới nhận đối số từ đầu); W1 chỉ nhận
+  `purpose='tool'` và mọi giá trị khác làm hàm trả false (R5.14), để đối số có bên đọc ngay từ W1 (failure-modes
+  #1). Sửa: Trong phạm vi, thêm R5.14, Ngoài phạm vi (dòng BYOM), CV14, Phụ thuộc (Kiểm lại khi), ticket 04 bước 2,
+  ticket 05 bước 2. Nếu sai thì: hàm bỏ `purpose`, R5.14 rút, và W2 thêm đối số ở mọi chỗ gọi cùng lúc với kết nối
+  model.
+- 24/10/2026 (agent, tạm): `owning_workspace_id` của `platform.connections` không đổi sau khi tạo: trigger
+  `platform.guard_connection_owning_workspace()` từ chối mọi UPDATE đổi cột đó (R1.7), vì AAD của phong bì gắn
+  workspace sở hữu (ADR-0115 (Accepted) quyết 1), nên đổi workspace sở hữu là mã hóa lại mọi phong bì của Kết nối
+  dưới AAD mới, và `PATCH /api/v1/connections/{id}` không nhận cột đó. Sửa: thêm R1.7, Dữ liệu, CV1, ticket 02, 04.
+  Nếu sai thì: UPDATE cột đó được phép trong một giao dịch mã hóa lại mọi phong bì của Kết nối, và R1.7 đổi thành
+  kiểm giao dịch đó.
 
 ## Danh sách ticket
 

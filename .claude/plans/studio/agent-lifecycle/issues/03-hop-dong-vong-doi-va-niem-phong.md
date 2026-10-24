@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: 01, .claude/plans/studio/tenant-config/issues/04-ban-ke-luot-chay.md, .claude/plans/studio/studio-skeleton/issues/02-goi-dw-studio-va-seam-api.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md
 Area: studio
-Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R1.8, R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R2.7, R2.10, R2.12, R2.13, R7.9, AL1, AL2, AL3, AL10, AL19
+Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R1.8, R1.9, R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R2.7, R2.10, R2.12, R2.13, R7.9, AL1, AL2, AL3, AL10, AL19, AL21
 
 ## Mục tiêu
 
@@ -15,19 +15,24 @@ database và "đã kiểm định" tính được (spec R1, R2). Đứng trên v
 ## Việc cần làm
 
 1. Revision Alembic mới (id hex ngẫu nhiên), thêm cột vòng đời trên `studio.artifact_versions` (vỏ chung
-   của tenant-config, DO-05 chọn vỏ chung): `gate_run_id uuid` NULL FK `studio.gate_runs` ON DELETE
-   RESTRICT (bắt buộc khi `stage IN ('awaiting_approval','live','retired')` với loại có Cổng chất lượng,
-   luôn NULL với loại có `has_quality_gate = false`); `publish_approval_id uuid`
-   NULL FK `platform.approval_requests` ON DELETE RESTRICT (bắt buộc cùng điều kiện, trừ phiên bản lên Đang
-   dùng theo nhánh chỉ siết); `tighten_only boolean NOT NULL DEFAULT false` và `compared_live_hash text` NULL
+   của tenant-config, DO-05 chọn vỏ chung): `gate_run_id uuid` NULL (bắt buộc khi
+   `stage IN ('awaiting_approval','live','retired')` với loại có Cổng chất lượng, luôn NULL với loại có
+   `has_quality_gate = false`); `publish_approval_id uuid` NULL, FK ghép `(tenant_id, publish_approval_id)` tới
+   `platform.approval_requests (tenant_id, id)` ON DELETE RESTRICT có index riêng (bắt buộc cùng điều kiện, trừ phiên
+   bản lên Đang dùng theo nhánh chỉ siết), và cùng revision thêm
+   `uq_approval_requests_tenant_id_id UNIQUE (tenant_id, id)` trên `platform.approval_requests`, vì UNIQUE đã có của
+   bảng đó, `uq_approval_requests_tenant_id_workspace_id_id`, mang `workspace_id` mà vỏ phiên bản toàn tenant không
+   có; `tighten_only boolean NOT NULL DEFAULT false` và `compared_live_hash text` NULL
    với CHECK `NOT tighten_only OR compared_live_hash IS NOT NULL`, do `LifecycleService` ghi lúc gửi:
    `compared_live_hash` ở mọi lần gửi, là `definition_hash` của bản `live` lúc gửi, NULL khi chưa có (spec R2.10),
    còn `tighten_only` do ticket 04 tính bằng bộ so sánh của loại;
    `contributor_ids uuid[] NOT NULL CHECK (cardinality(contributor_ids) >= 1)`; `submitted_by`, `submitted_at`,
    `published_by`, `published_at`, `retired_by`, `retired_at`; `retire_reason_code` CHECK (`superseded`,
-   `explicit`); `stage_changed_at timestamptz NOT NULL`. Cột `gate_run_id` FK tạm để NULL tới khi ticket
-   04 tạo `studio.gate_runs`, hoặc migration này đứng sau migration bảng cổng của ticket 04 (ticket 04
-   không chặn ticket này vì FK thêm ở migration sau).
+   `explicit`); `stage_changed_at timestamptz NOT NULL`. Ở ticket này cột `gate_run_id` chưa có FK: ticket 04, trong
+   revision tạo `studio.gate_runs` cùng `uq_gate_runs_tenant_id_id`, thêm FK ghép `(tenant_id, gate_run_id)` tới
+   `studio.gate_runs (tenant_id, id)` ON DELETE RESTRICT có index riêng, nên ticket 04 không chặn ticket này. Mọi FK
+   tới một bảng theo tenant ở đây là FK ghép vì kiểm khóa ngoại không đi qua RLS (ADR-0109 (Accepted) quyết 1;
+   ADR-0120 (Accepted) quyết 1; tenant-config:R2.18 cùng luật).
 2. Hàm `studio.guard_version_stage()` (BEFORE INSERT OR UPDATE): chèn là `draft`; `draft → evaluating`
    (có mã băm và `gate_run_id`); `evaluating → draft`; `evaluating → awaiting_approval` (gate `passed`,
    `definition_hash` của gate bằng của phiên bản, approval `pending`); `awaiting_approval → draft`;
@@ -42,8 +47,9 @@ database và "đã kiểm định" tính được (spec R1, R2). Đứng trên v
    đăng ký bộ so sánh (ADR-0120 (Accepted) quyết 1). Mọi `awaiting_approval → live`, ở mọi loại, còn đòi
    `compared_live_hash IS NOT DISTINCT FROM` `definition_hash` của phiên bản Đang dùng mà lần phát hành này thay, hay
    NULL khi không có bản nào (spec R1.8). Ở cả hai luật, phiên bản mà lần phát hành này thay là bản mà cùng giao dịch
-   vừa đưa sang `retired` với `superseded`, vì chỉ mục một Đang dùng buộc dịch vụ phát hành gỡ bản cũ trước
-   (tenant-config:R2.16). Từ chối: SQLSTATE 23514, ràng buộc `ck_artifact_versions_stage_transition`.
+   vừa đưa sang `retired` với `superseded`, vì chỉ mục một Đang dùng buộc `LifecycleService`, bên duy nhất ghi `live`,
+   gỡ bản cũ trước (ADR-0120 (Accepted) quyết 1). Từ chối: SQLSTATE 23514, ràng buộc
+   `ck_artifact_versions_stage_transition`.
    Chỉ mục từng phần một Đang dùng (`WHERE stage='live'`) và một Bản ứng viên
    (`WHERE stage IN ('evaluating','awaiting_approval')`), và `(tenant_id, stage, stage_changed_at DESC, id DESC)`.
 3. `VersionStage` StrEnum soi CHECK và bảng chuyển đổi thuần; `LifecycleService` chỉ dùng chuyển đổi hợp
@@ -57,7 +63,7 @@ database và "đã kiểm định" tính được (spec R1, R2). Đứng trên v
    gửi kiểm định (Protocol `SubmitCheck` của spec này, mỗi kiểm trả từ chối với `reason_code` hay cho qua);
    compliance-pdpl/05 đăng ký Phân tích năng lực, workflow-nodes đăng ký kiểm người duyệt (workflow-nodes:R9.5);
    ticket này kiểm bằng một kiểm fixture.
-5. Route `POST /api/v1/studio/{agents|workflows|objects|endpoints}/{artifact_id}/versions/{version_id}/submit`
+5. Route `POST /api/v1/studio/{agents|workflows|objects|data-sources}/{artifact_id}/versions/{version_id}/submit`
    (`Idempotency-Key`, `If-Match`), kiểm khóa gửi mà mục `ArtifactKindRegistry` của loại khai (tenant-config:R2.15:
    `studio.versions.submit` cho agent và quy trình, `studio.objects.manage` cho đối tượng, `studio.datahub.manage`
    cho Nguồn dữ liệu, workflow-triggers:R4.7; thiếu khóa → 403 `permission_denied`); thiếu `If-Match` → 428
@@ -105,6 +111,9 @@ database và "đã kiểm định" tính được (spec R1, R2). Đứng trên v
       lúc gửi (`compared_live_hash` cũ) → 23514; bản `live` cũ vừa gỡ `superseded` trong cùng giao dịch và
       `compared_live_hash` là mã của nó → nhận; chưa có bản `live` lúc gửi lẫn lúc chuyển (cùng NULL) → nhận; gỡ luật
       khỏi trigger → test đỏ.
+- [ ] R1.9 (AL21): bằng vai migrator, UPDATE một dòng phiên bản của tenant A đặt `publish_approval_id` là id một yêu
+      cầu phê duyệt của tenant B → FK ghép từ chối, dòng không đổi; cùng id của một yêu cầu của tenant A → nhận; đổi FK
+      sang một cột `publish_approval_id` → test đỏ.
 - [ ] R2.10: gửi một phiên bản `agent` khi thành phần đã có bản `live` → `compared_live_hash` bằng `definition_hash`
       của bản đó; chưa có bản `live` → NULL.
 - [ ] R2.1 (AL3): gửi kiểm định một nháp hợp lệ → bao đóng, Mã băm định nghĩa, Nơi đang dùng và audit
@@ -161,3 +170,12 @@ database và "đã kiểm định" tính được (spec R1, R2). Đứng trên v
   và chuyển nó cho `seal(..., expected_row_version)`, 412 `stale_version` khi lệch, 428 khi thiếu (spec R2.12, R2.13);
   route thêm `endpoints` với khóa gửi `studio.datahub.manage` và luật theo loại nêu Nguồn dữ liệu (V4.1); câu so
   `compared_live_hash` nói phiên bản Đang dùng mà lần phát hành này thay, hay NULL khi không có bản nào.
+- 2026-10-24 (agent): vòng sửa thứ tư, lượt c, theo các Quyết định tạm cùng ngày của spec: đoạn route của Nguồn dữ
+  liệu là `data-sources`, cùng đoạn mà workflow-triggers dùng, thay `endpoints` của dòng trên; `publish_approval_id`
+  là FK ghép tới `uq_approval_requests_tenant_id_id` mà revision của ticket này thêm, còn FK ghép của `gate_run_id` do
+  ticket 04 thêm cùng `studio.gate_runs` (spec R1.9, AL21); `LifecycleService` là bên duy nhất ghi `live` và gỡ bản
+  cũ (ADR-0120 (Accepted) quyết 1), không còn dịch vụ phát hành của tenant-config ở bước 2. agent-builder/02 chờ
+  ticket này cho khóa gửi `studio.versions.submit` của loại `agent`, như workflow-engine/01 (cạnh nằm ở ticket đó).
+- 2026-10-24 (agent): kiểm lượt c: bước 1 nói FK ghép cho mọi FK tới một bảng theo tenant, vì luật của area để FK tới
+  bảng không theo tenant (như `platform.users`) giữ một cột; dẫn thêm ADR-0120 (Accepted) quyết 1, nơi hai cột
+  `gate_run_id`, `publish_approval_id` được nêu là FK ghép.

@@ -57,6 +57,8 @@ Người vận hành và hệ thống quan sát nhận span, log và metric ch�
 - R1.4 KHI Langfuse được bật, span processor PHẢI bỏ `user.id` và mọi thuộc tính nội dung trước khi gửi
   sang Langfuse.
 - R1.5 Một dòng log JSON của API hay worker PHẢI chỉ mang các trường trong danh sách định danh cho phép.
+- R1.6 NẾU mã trong `src/` ghi một sự kiện Nhật ký kiểm toán với một `action` không có khóa và nhãn tiếng Việt trong
+  catalog hành động `configs/copy/audit_actions@<semver>.yaml`, THÌ test AST PHẢI đỏ (ADR-0122 (Accepted) quyết 6).
 
 ### R2 — Một trace id từ trình duyệt tới worker, cây span thật
 
@@ -147,25 +149,28 @@ tạm UNVERIFIED tới khi luật sư xác nhận trước chạy bóng (ADR-012
 - Thêm cột `trace_parent` cho `platform.outbox_events`; CHECK `trace_id` cho `platform.worker_runs` và
   `platform.audit_events`; đăng ký `run_steps` bằng một dòng `platform.time_partitioned_tables`.
 - Audit: `run.payload.viewed`.
+- Catalog hành động audit `configs/copy/audit_actions@1.0.0.yaml` (ADR-0122 (Accepted) quyết 6), tạo ở ticket 03: một
+  khóa mang nhãn tiếng Việt cho mỗi `action` mà mã ghi lúc đó, và test AST của R1.6; cách các ticket sau thêm tên
+  action là Q2.
 
 ## Ngoài phạm vi
 
-| Việc                                                                                                             | Vì sao                                                                              | Chủ                                           |
-| ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------- |
-| W2: Lọc Nhật ký kiểm toán phía máy chủ, danh mục hành động một chủ (YC83)                                        | cần bộ lọc; cơ chế của W1 không chặn                                                | telemetry-and-audit, đợt sau (W2)             |
-| Index Nhật ký kiểm toán theo lượt chạy `platform.audit_events (tenant_id, run_id, occurred_at)` trên bảng cha    | một chủ (OPS-b); `ix_audit_events_run` của ADR-0122 (Accepted) bỏ; ticket 02 chờ nó | app-standards                                 |
-| W2: Xuất Nhật ký kiểm toán qua tác vụ nền, link hết hạn 7 ngày (YC83)                                            | đọc tính năng `audit_export`; chờ danh mục hành động                                | telemetry-and-audit, đợt sau (W2)             |
-| W2: Langfuse chỉ cho Người vận hành, ghim theo digest, lên v4                                                    | không gửi nội dung thì không cần bản Enterprise                                     | telemetry-and-audit, đợt sau (W2)             |
-| W2: Ghi nội dung theo công ty qua chính sách `telemetry.content_capture` có audit, giữ ≤ 7 ngày, chỉ công ty đọc | DO-51.1; cần chính sách của tenant-config                                           | telemetry-and-audit, đợt sau (W2)             |
-| W2: `traceparent` tới Cổng MCP (chặng nội bộ) nhưng không tới máy chủ MCP nào, không bao giờ `baggage`           | DO-46.3; mcp-client là W2; chỉ mở lại khi có nhà cung cấp trả span về nền tảng      | mcp-client; telemetry-and-audit, đợt sau (W2) |
-| W3: Collector, lấy mẫu đuôi, bảng Grafana; chuỗi băm chống sửa, đẩy SIEM                                         | v1.5 trở đi                                                                         | telemetry-and-audit, đợt sau (W3)             |
-| Bộ bọc node phát span và gọi `StepRecorderPort`                                                                  | lát này cấp `dw_observability.semconv` và `StepRecorderPort`                        | workflow-engine                               |
-| Nhận diện dữ liệu cá nhân tiếng Việt ở exporter (Presidio)                                                       | bộ dò là kiểm soát phụ, có số đo trước khi dựa vào                                  | compliance-pdpl, đợt sau (W2)                 |
-| Điểm đánh giá trực tuyến (`gen_ai.evaluation.result`)                                                            | dùng sự kiện GenAI nhưng thuộc cổng kiểm định                                       | agent-lifecycle                               |
-| Sổ sử dụng theo lượt gọi và Bảng giá                                                                             | lát này đọc token và chi phí từ sổ, không tạo sổ                                    | usage-and-limits                              |
-| Sổ `platform.time_partitioned_tables` và hàm tạo partition                                                       | lát này chỉ đăng ký `run_steps` bằng một dòng sổ (studio-skeleton:R3.1)             | studio-skeleton                               |
-| Hàm quyết quyền đọc trường và dấu `Đã ẩn`                                                                        | lát này gọi hàm đó khi đọc payload                                                  | field-security                                |
-| Trace thô cho công ty đọc                                                                                        | span ở backend không có RLS theo công ty; công ty đọc từ Postgres                   | không làm                                     |
+| Việc                                                                                                             | Vì sao                                                                                 | Chủ                                           |
+| ---------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | --------------------------------------------- |
+| W2: Lọc Nhật ký kiểm toán phía máy chủ (YC83)                                                                    | cần bộ lọc; cơ chế của W1 không chặn; catalog hành động có từ ticket 03 (R1.6)         | telemetry-and-audit, đợt sau (W2)             |
+| Index Nhật ký kiểm toán theo lượt chạy `platform.audit_events (tenant_id, run_id, occurred_at)` trên bảng cha    | một chủ (OPS-b); `ix_audit_events_run` của ADR-0122 (Accepted) bỏ; ticket 02 chờ nó    | app-standards                                 |
+| W2: Xuất Nhật ký kiểm toán qua tác vụ nền, link hết hạn 7 ngày (YC83)                                            | YC83 ở W2; bên đọc đầu tiên của tính năng `audit_export` (ADR-0122 (Accepted) quyết 6) | telemetry-and-audit, đợt sau (W2)             |
+| W2: Langfuse chỉ cho Người vận hành, ghim theo digest, lên v4                                                    | không gửi nội dung thì không cần bản Enterprise                                        | telemetry-and-audit, đợt sau (W2)             |
+| W2: Ghi nội dung theo công ty qua chính sách `telemetry.content_capture` có audit, giữ ≤ 7 ngày, chỉ công ty đọc | DO-51.1; cần chính sách của tenant-config                                              | telemetry-and-audit, đợt sau (W2)             |
+| W2: `traceparent` tới Cổng MCP (chặng nội bộ) nhưng không tới máy chủ MCP nào, không bao giờ `baggage`           | DO-46.3; mcp-client là W2; chỉ mở lại khi có nhà cung cấp trả span về nền tảng         | mcp-client; telemetry-and-audit, đợt sau (W2) |
+| W3: Collector, lấy mẫu đuôi, bảng Grafana; chuỗi băm chống sửa, đẩy SIEM                                         | v1.5 trở đi                                                                            | telemetry-and-audit, đợt sau (W3)             |
+| Bộ bọc node phát span và gọi `StepRecorderPort`                                                                  | lát này cấp `dw_observability.semconv` và `StepRecorderPort`                           | workflow-engine                               |
+| Nhận diện dữ liệu cá nhân tiếng Việt ở exporter (Presidio)                                                       | bộ dò là kiểm soát phụ, có số đo trước khi dựa vào                                     | compliance-pdpl, đợt sau (W2)                 |
+| Điểm đánh giá trực tuyến (`gen_ai.evaluation.result`)                                                            | dùng sự kiện GenAI nhưng thuộc cổng kiểm định                                          | agent-lifecycle                               |
+| Sổ sử dụng theo lượt gọi và Bảng giá                                                                             | lát này đọc token và chi phí từ sổ, không tạo sổ                                       | usage-and-limits                              |
+| Sổ `platform.time_partitioned_tables` và hàm tạo partition                                                       | lát này chỉ đăng ký `run_steps` bằng một dòng sổ (studio-skeleton:R3.1)                | studio-skeleton                               |
+| Hàm quyết quyền đọc trường và dấu `Đã ẩn`                                                                        | lát này gọi hàm đó khi đọc payload                                                     | field-security                                |
+| Trace thô cho công ty đọc                                                                                        | span ở backend không có RLS theo công ty; công ty đọc từ Postgres                      | không làm                                     |
 
 ## Dữ liệu
 
@@ -238,6 +243,7 @@ timestamptz`, `duration_ms`, `error_type`; `input_preview` và `result_preview` 
 | TA12 | Payload cần `runs.read_payloads`                    | R4.3       | Thiếu `runs.read_payloads` gọi payload → 403, không trả payload; gỡ kiểm → test đỏ                                                                                                                                                                                                      |
 | TA13 | Mỗi kho mới có bộ xóa đăng ký                       | R5.1, R5.2 | Một lớp retention thiếu bộ xóa → test tập bộ xóa đỏ                                                                                                                                                                                                                                     |
 | TA14 | Xóa output công cụ không trả UPDATE cho `dw_app`    | R5.7       | Lane chạy qua dòng `tool_executions` 31 ngày → `output` NULL, cột khác giữ nguyên; dòng 29 ngày giữ `output`; `dw_app` UPDATE thẳng → `permission denied`; hàm đặt NULL thêm một cột khác → test đỏ                                                                                     |
+| TA15 | Mỗi action audit có trong catalog                   | R1.6       | Thêm một lời ghi audit với `action` không có trong `configs/copy/audit_actions@1.0.0.yaml` → test AST đỏ, nêu tên action; một khóa của catalog có nhãn tiếng Việt rỗng → test đỏ                                                                                                        |
 
 ## Tiêu chí xong
 
@@ -294,6 +300,12 @@ timestamptz`, `duration_ms`, `error_type`; `input_preview` và `result_preview` 
   bỏ hay dời trigger trên `platform.worker_runs` → ticket 02.
 
 ## Câu hỏi còn mở
+
+- Q2. Một ticket ghi một `action` audit mới sau ticket 03 thêm tên đó vào catalog
+  `configs/copy/audit_actions@<semver>.yaml` thế nào: mỗi ticket ra một bản mới trong một chuỗi `Blocked by` như tệp
+  chính sách retention (V4.P1), hay cách khác? Chủ: người lập kế hoạch ở lượt `checking-plan-readiness` của spec này.
+  Không đổi: ticket 03 tạo `configs/copy/audit_actions@1.0.0.yaml` với mọi `action` mà mã ghi lúc đó và test AST của
+  R1.6; câu trả lời chỉ thêm cạnh `Blocked by` và cách ra bản cho các ticket ghi action mới.
 
 ## Quyết định
 
@@ -362,6 +374,13 @@ timestamptz`, `duration_ms`, `error_type`; `input_preview` và `result_preview` 
   `platform.purge_tenant_append_only` trên mọi bảng `append_only` của sổ, thay usage-and-limits:R3.8, tiêu chí
   offboarding của chính các bảng usage-and-limits. Sửa: R5.8, Phụ thuộc. Nếu sai thì: R5.8 dẫn lại số tiêu chí mà
   usage-and-limits đặt cho hàm.
+- 24/10/2026 (agent, tạm): catalog hành động audit `configs/copy/audit_actions@1.0.0.yaml` của ADR-0122 (Accepted)
+  quyết 6 chưa có chủ, trong khi spec khác dẫn nó như đã có ở W1 (agent-lifecycle, mục Quyết định), nên ticket 03 tạo
+  nó cùng test AST đỏ khi mã ghi một `action` mà catalog thiếu; catalog rời dòng W2 của bộ lọc, vì YC83 chỉ đòi lọc
+  và xuất. Cách các ticket sau thêm tên action quyết ở lượt `checking-plan-readiness` của spec này, cùng dạng chuỗi
+  của tệp chính sách retention (V4.P1), ghi ở Q2. Sửa: thêm R1.6, TA15, Trong phạm vi, Ngoài phạm vi, Q2, ticket 03.
+  Nếu sai thì: catalog về W2 cùng bộ lọc của YC83, R1.6 và TA15 sang dòng W2 đó, và các spec dẫn catalog ở W1 đổi
+  theo.
 
 ## Danh sách ticket
 

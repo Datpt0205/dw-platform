@@ -111,9 +111,11 @@ DO-07), so the status names the requester's direction.
    hold the declared scopes and pass `connection_usable` for the proposer, asked again at approval (ADR 0115). No
    version is published while a required binding has no approved value (`binding_unset`); a connection that degrades
    later fails run admission (`binding_degraded`) and raises drift.
-8. **Runs pin what they bound.** The run manifest (ADR 0109) records the binding-set version, each connection id and
-   credential version, and a hash of each variable value; handlers read them through `RunBindingsPort`, served from the
-   manifest, and `connection_usable` still runs at admission and before every egress call.
+8. **Runs pin what they bound.** The run manifest (ADR 0109) records the binding-set version, each connection id with
+   the `secret_version` it pins for each of that connection's secret fields, a secret's version being numbered per
+   subject and field (ADR 0115 decision 1), and a hash of each variable value; handlers read them through
+   `RunBindingsPort`, served from the manifest, and `connection_usable` still runs at admission and before every egress
+   call.
 9. **Packages carry declarations only.** A domain pack, and in v2 a promotion, moves binding names; every tenant, a
    sandbox tenant included, supplies its own values.
 
@@ -231,3 +233,7 @@ DO-07), so the status names the requester's direction.
   limit and widening the data route are refused in W1 (D:ADR-0110~connections-and-vault:api, D11, 2026-10-24).
 - Alternatives: role changes keep ADR 0012's pattern for the stated reason, restated now that the outbox lane audits
   the decider: its transaction still carries the lane's own actor in `app.user_id`.
+- Third consistency check (round 4), third pass, the planner's provisional call: decision 8 pins a `secret_version`
+  for each connection and secret field, no longer one credential version per connection, because ADR 0115 decision 1
+  numbers a secret's versions per subject and field (if it is wrong, ADR 0115 numbers versions per connection and
+  every field of a connection rotates together).

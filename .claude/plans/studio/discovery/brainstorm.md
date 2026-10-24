@@ -142,8 +142,9 @@ yêu cầu và Đạt xem lại có chủ đích, không để đổi lặng l�
 3. **Zalo và Facebook trong lát đầu (D4).** ZNS không công bố chế độ thử ([ZNS][zalo-zns], tài liệu của hãng,
    chưa kiểm ở phiên này); Meta cần App Review và xác minh doanh nghiệp, và gửi lại webhook trong 36 giờ
    ([Meta webhooks][meta-webhooks]). Thời gian duyệt của nhà cung cấp, không phải mã, quyết định ngày thí điểm.
-   Kế hoạch: W1 dùng form website và một email qua SMTP; hồ sơ Meta, Zalo, Google nộp từ tuần đầu
-   (`connections-and-vault/01`, ready-for-human); Facebook Lead Ads, Zalo OA và ZNS ở W2.
+   Kế hoạch: W1 dùng form website và một email qua SMTP; hồ sơ Meta và Zalo nộp từ tuần đầu
+   (`connections-and-vault/01`, ready-for-human), còn ứng dụng Google là ứng dụng nội bộ của khách, nên thời gian
+   Google xác minh nó là của khách (DO-20 (c)); Facebook Lead Ads, Zalo OA và ZNS ở W2.
 4. **Workspace là đơn vị nghiệp vụ, không phải môi trường (D1).** Thị trường dùng môi trường làm đường đổi an
    toàn: Copilot Studio khuyên ít nhất ba môi trường cùng solution và pipeline ([ALM][ms-alm], cập nhật
    12/09/2026); Workato có DEV, TEST, PROD và duyệt khi triển khai ([Environments][workato-env]); chính research

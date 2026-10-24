@@ -48,7 +48,10 @@ model với đủ thuộc tính gán, chỉ thêm và idempotent; màn Mức đ�
    `p_tenant` khác `offboarding` (spec R3.9); không thì xóa dòng `tenant_id = p_tenant` ở mọi bảng có
    `append_only = true` trong sổ `platform.time_partitioned_tables`, trừ `platform.audit_events`, và trả số dòng
    theo bảng (spec R3.10). `SqlTenantOffboarding.purge_rows` của lane `offboarding` gọi hàm sau khi xuất, trong giao
-   dịch xóa của nó và trước vòng DELETE bảng thường (`_ORDERED_FIRST` rồi phần còn lại), vì một bảng chỉ thêm có thể
+   dịch xóa của nó và trước vòng DELETE bảng thường (`_ORDERED_FIRST` rồi phần còn lại): ticket này thêm lời gọi làm
+   một bước vào thứ tự các bước xóa của `purge_rows` mà studio-skeleton/01 khai ở một chỗ trong `offboarding.py`
+   (studio-skeleton/01 bước 7), đứng trước `_ORDERED_FIRST`, và không gọi hàm từ chỗ nào khác, nên test phủ của
+   studio-skeleton:R4.2 đọc được bước đó; lời gọi đứng trước vì một bảng chỉ thêm có thể
    mang khóa ngoại `ON DELETE RESTRICT` tới một bảng thường, như `studio.conversation_messages` tới
    `studio.conversations` của agent-builder (spec R3.11); hàm xóa người dùng `service` của org-and-principals/03 đứng
    sau cùng, sau mọi bảng của công ty, và ticket đó chờ ticket này. Ticket này chờ foundations-hardening/07 vì cùng sửa
@@ -93,7 +96,8 @@ model với đủ thuộc tính gán, chỉ thêm và idempotent; màn Mức đ�
       bảng thử đăng ký trong test, còn dòng của công ty khác và mọi dòng `platform.audit_events` giữ nguyên.
 - [ ] R3.11: một bảng `append_only` thử đăng ký trong test có khóa ngoại `ON DELETE RESTRICT` tới một bảng thường
       thử, công ty `offboarding` có dòng ở cả hai → lane `offboarding` xóa hết cả hai trong một giao dịch; dời lời gọi
-      hàm ra sau vòng DELETE bảng thường → lỗi khóa ngoại, giao dịch xóa lùi, test đỏ.
+      hàm ra sau vòng DELETE bảng thường → lỗi khóa ngoại, giao dịch xóa lùi, test đỏ; gọi hàm ngoài thứ tự các bước xóa
+      mà adapter khai → test phủ của studio-skeleton:R4.2 đỏ, nêu tên khóa ngoại thử.
 - [ ] Xong: `make ci && make test-integration` xanh.
 
 ## Nguồn
@@ -129,3 +133,7 @@ model với đủ thuộc tính gán, chỉ thêm và idempotent; màn Mức đ�
   đầu từ ticket này, studio-skeleton/01 không sửa tệp mà đọc `retention@1.7.0` qua ánh xạ tạm (V4.P1), thay danh
   sách của hai dòng trên; lời gọi `platform.purge_tenant_append_only` đứng trước vòng DELETE bảng thường trong giao
   dịch xóa (spec R3.11), và org-and-principals/03 chờ ticket này vì hàm xóa người dùng `service` của nó chạy sau cùng.
+- 2026-10-24 (agent): vòng sửa thứ tư, lượt c, theo Quyết định tạm cùng ngày của spec: lời gọi
+  `platform.purge_tenant_append_only` là một bước trong thứ tự các bước xóa của `purge_rows` mà studio-skeleton/01
+  khai ở một chỗ trong `offboarding.py`, ticket này thêm bước đó vào chỗ ấy và test phủ của studio-skeleton:R4.2 đọc
+  nó (bước 4, tiêu chí R3.11).

@@ -238,7 +238,10 @@ Amended by Đạt on 2026-10-24, who accepted every recommendation the second co
   stamped `studio.publish.approve` (A:mcp-client:R3.1~tools-and-skills:spec).
 - Third consistency check (round 4), second pass, the planner's provisional calls: decision 9 makes a version `live`
   through ADR-0120's publish transaction and the tool kind's publish hook, the registry entry ADR-0109 decision 1
-  names, instead of a "publish service" of the kind's own; places `studio.publish.tool` in W2, when tenant tools
+  names, so the kind has no path of its own to live; places `studio.publish.tool` in W2, when tenant tools
   register as kind `tool`, while the executor runs `object_crud` from W1 (completing V4.3; if it is wrong, the kind
   and its approval move to W1); and orders its refusals as ADR-0104 decision 11 does, the submitter meeting
   `second_person_required` first and any other author `author_cannot_approve` (V4.P9).
+- Third consistency check (round 4), third pass: the second pass's line above names only the path it kept, ADR-0120's
+  publish transaction with the tool kind's publish hook, `LifecycleService` being the one writer of `live`
+  (ADR-0120 decision 1), and no longer the per-kind path it replaced.

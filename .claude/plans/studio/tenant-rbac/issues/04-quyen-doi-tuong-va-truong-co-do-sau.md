@@ -30,8 +30,9 @@ ticket 09, 14; ngữ nghĩa quyền trường thuộc field-security (ADR-0106 (
 3. **Quyền trường.** `studio.field_permissions` theo ADR-0106 (Accepted) mục 3: `tenant_id`, `role_id`, `field_id`,
    `access text NOT NULL` với `ck_field_permissions_access CHECK (access IN ('read','edit'))`, `granted_by uuid NULL` FK
    `platform.users` `ON DELETE SET NULL`, `granted_at timestamptz NOT NULL DEFAULT now()`,
-   `PRIMARY KEY (tenant_id, role_id, field_id)`; FK tới vai trò và tới `studio.field_defs (tenant_id, id)`
-   `ON DELETE CASCADE`; index phía FK.
+   `PRIMARY KEY (tenant_id, role_id, field_id)`; FK `(tenant_id, role_id)` tới `platform.tenant_roles (tenant_id, id)`
+   và FK `(tenant_id, field_id)` tới `studio.field_defs (tenant_id, id)`, cả hai `ON DELETE CASCADE`; index
+   `(tenant_id, field_id)` (khóa chính đã dẫn bằng `(tenant_id, role_id)`).
 4. RLS ENABLE và FORCE, policy tenant cho hai bảng quyền; `dw_app` SELECT, INSERT, UPDATE, DELETE; khẳng định trong
    `test_rls_coverage.py`, `test_privileges.py`; offboarding xuất và xóa. Hai bảng không có `workspace_id`: mỗi bảng một
    dòng trong danh sách bảng toàn tenant của `test_rls_coverage.py` với lý do "quyền của vai trò thuộc cả công ty; neo
@@ -60,7 +61,7 @@ ticket 09, 14; ngữ nghĩa quyền trường thuộc field-security (ADR-0106 (
 
 - [ ] R9.1: tạo đối tượng `lead` → `GET /api/v1/admin/permissions` có năm khóa `obj.lead.*` loại `record`; không có `obj.lead.share`, `obj.lead.export`.
 - [ ] R9.2 (RB28): cấp `share` trên `lead` khi `share` chưa `enforced` → 23514 `ck_role_object_privileges_action_enforced`; gỡ trigger → đỏ.
-- [ ] R9.3 (RB31): xóa định nghĩa `lead` hay một trường của nó → không còn dòng quyền nào trỏ tới chúng; `/me` kế tiếp không có `obj.lead.*`; `object_id` của tenant khác → FK kép từ chối.
+- [ ] R9.3 (RB31): xóa định nghĩa `lead` hay một trường của nó → không còn dòng quyền nào trỏ tới chúng; `/me` kế tiếp không có `obj.lead.*`; `object_id`, `field_id` hay `role_id` của tenant khác → FK kép từ chối.
 - [ ] R9.4 (RB29): vai trò có `obj.lead.read` mức `own` → `platform.workspace_reach` rỗng cho người giữ; đổi hàm coi `own` như `workspace` → đỏ.
 - [ ] R9.5 (RB30): người giữ `obj.lead.read` mức `workspace` đặt mức `tenant` → 23514; thêm `fld.lead.phone.edit` mình không giữ → 23514; `tenant_owner` đề xuất thêm `fld.lead.phone.read` vào vai Marketing → 202, quyền chưa đổi; một `tenant_owner` khác xác nhận → áp, `/me` của người giữ vai Marketing có `fld.lead.phone.read`; người xác nhận không giữ khóa đó → 403 `rbac_escalation`; gỡ trigger → test SQL thô đỏ.
 - [ ] R9.6: vai trò A cho `fld.lead.phone.read`, vai trò B cho `fld.lead.phone.edit`, cùng một người → `/me` trả cả hai khóa.
@@ -81,3 +82,4 @@ ticket 09, 14; ngữ nghĩa quyền trường thuộc field-security (ADR-0106 (
 - 2026-10-23 (agent): Bước 7 mở rộng `platform.rbac_refusals` và route của ticket 03 trong khi `Blocked by:` chép đúng gói (02 và custom-objects/02); đề xuất thêm 03 vào `Blocked by:`.
 - 2026-10-23 (agent): DO-09.1 và DO-32.1 đã có lời đáp (Đạt, 23/10/2026); Status về needs-triage; thêm R6.8 (RB33) và luật siết một người của R7.6 vào bước 7.
 - 2026-10-24 (agent): N1 (Đạt, 24/10/2026): quyền tính động của `tenant_owner` gồm mọi `fld.*` trên mọi trường sống, nên `fld.*` đầu tiên trên một trường `secured` cấp được; đưa `fld.*` vào vai khác vẫn đi đề xuất hai người. Thêm R9.7 vào bước 5 và tiêu chí; RB30 thêm đường của `tenant_owner`.
+- 2026-10-24 (agent): vòng sửa 4, lượt ba: bước 3 nêu hai FK ghép của `studio.field_permissions`, tới `platform.tenant_roles (tenant_id, id)` và `studio.field_defs (tenant_id, id)`, cùng chỉ mục `(tenant_id, field_id)`, thay cho "FK tới vai trò" không nêu cột; tiêu chí R9.3 (RB31) thêm ca `field_id`, `role_id` của tenant khác (Quyết định 24/10/2026 của spec).

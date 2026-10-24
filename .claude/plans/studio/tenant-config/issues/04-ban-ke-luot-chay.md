@@ -20,11 +20,13 @@ TC28). Ticket 05 thêm mục điểm gắn vào cùng bản kê.
       `body` jsonb NFC tối đa 1 MiB, `created_at timestamptz NOT NULL`; ghi bằng
       `INSERT ... ON CONFLICT DO NOTHING`; `dw_app` chỉ SELECT và INSERT.
     - `platform.run_manifest_keys`: `(tenant_id, manifest_hash)` FK tới `platform.run_manifests` ON
-      DELETE CASCADE; `artifact_version_id` NOT NULL, FK ghép `(tenant_id, artifact_version_id)` RESTRICT tới
-      `studio.artifact_versions (tenant_id, id)` qua `uq_artifact_versions_tenant_id_id` của ticket 02 (R2.18); mỗi
+      DELETE CASCADE; `artifact_version_id` NOT NULL, FK ghép `(tenant_id, artifact_version_id)` ON DELETE RESTRICT
+      tới `studio.artifact_versions (tenant_id, id)` qua `uq_artifact_versions_tenant_id_id` của ticket 02 (R2.18); mỗi
       FK một index, FK ghép thì index `(tenant_id, artifact_version_id)`; unique
-      `(tenant_id, manifest_hash, artifact_version_id)`. Ticket 05 thêm `config_version_id` và CHECK đúng một cột
-      khác NULL.
+      `(tenant_id, manifest_hash, artifact_version_id)`. Ticket 05 thêm `config_version_id` (FK ghép ON DELETE RESTRICT
+      tới `uq_config_versions_tenant_id_id`), CHECK `num_nonnulls(artifact_version_id, config_version_id) = 1` và unique
+      `(tenant_id, manifest_hash, config_version_id)`, và trong cùng bước bỏ NOT NULL của `artifact_version_id` mà
+      revision này đặt.
     - `platform.worker_runs.run_manifest_hash` NULL, khớp `^sha256:[0-9a-f]{64}$`, FK
       `(tenant_id, run_manifest_hash)` tới `platform.run_manifests` ON DELETE RESTRICT, index
       `(tenant_id, run_manifest_hash)`. CHECK buộc lượt chạy có gốc Studio phải có bản kê đi cùng cột gốc
@@ -111,3 +113,7 @@ TC28). Ticket 05 thêm mục điểm gắn vào cùng bản kê.
 - 2026-10-24 (agent): vòng sửa thứ tư, lượt b, theo các quyết định tạm cùng ngày của spec: `artifact_version_id` là FK
   ghép tới `uq_artifact_versions_tenant_id_id` của ticket 02 (R2.18, TC29); gốc bản Nháp dẫn ADR-0109 (Accepted)
   quyết 6, và lần tiếp tục bị từ chối theo kiểm thứ sáu của quyết 8.
+- 2026-10-24 (agent): vòng sửa thứ tư, lượt c, theo các quyết định tạm cùng ngày của spec: `artifact_version_id` NOT
+  NULL ở ticket này; ticket 05 bỏ NOT NULL đó cùng bước thêm `config_version_id`, CHECK `num_nonnulls` và unique của
+  cột mới; FK của `artifact_version_id`, và FK của `config_version_id` mà ticket 05 thêm, nêu `ON DELETE RESTRICT`
+  tường minh.

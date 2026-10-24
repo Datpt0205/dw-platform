@@ -60,9 +60,11 @@ Numbered in the block 0100-0199 reserved for Studio (ADR-0100 records the block)
    never be opened.
 3. **Roles add read or edit on secured fields.** `studio.field_permissions` (`tenant_id`, `role_id`, `field_id`,
    `access`, `granted_by`, `granted_at`; `ck_field_permissions_access` read or edit; PK `(tenant_id, role_id, field_id)`;
-   FKs `ON DELETE CASCADE` to the role and the field) carries `fld.<object>.<field>.read|edit` (ADR-0104), additively
-   over every role a person holds in the tenant; `edit` counts only with object update reach and `read` only with object
-   read reach (ADR-0105). Agents and workflows get the intersection with their boundary's field caps (ADR-0103).
+   composite FKs `(tenant_id, role_id)` to `platform.tenant_roles` and `(tenant_id, field_id)` to `studio.field_defs`,
+   since a foreign key check does not pass through RLS, each `ON DELETE CASCADE`) carries
+   `fld.<object>.<field>.read|edit` (ADR-0104), additively over every role a person holds in the tenant; `edit` counts
+   only with object update reach and `read` only with object read reach (ADR-0105). Agents and workflows get the
+   intersection with their boundary's field caps (ADR-0103).
 4. **One function decides; the records adapter applies it on every path.**
    `resolve_field_access(principal_roles, object_security, boundary) -> FieldAccess` is pure, lives in the Studio access
    package and answers `hidden`, `read` or `edit` per field with the field-metadata version it used; formula fields
@@ -203,3 +205,7 @@ Numbered in the block 0100-0199 reserved for Studio (ADR-0100 records the block)
   `validation_failed` with `errors[].code` `pd_category_required` and a pointer, the shape app-standards R1.3 and
   ADR-0108 decision 1 give a validation error, not a top-level code of its own (the planner's provisional call; if it
   is wrong, `pd_category_required` joins `ErrorCode` and every spec citing it changes).
+- Third consistency check (round 4), third pass: decision 3's foreign keys of `studio.field_permissions` are
+  composite, `(tenant_id, role_id)` to `platform.tenant_roles` and `(tenant_id, field_id)` to `studio.field_defs`, as
+  tenant-rbac states them, because a foreign key check does not pass through RLS and a one-column key would let one
+  tenant's privilege name another tenant's role or field (`CLAUDE.md`, Data model rules).

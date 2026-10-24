@@ -221,8 +221,10 @@ thực thi (YC51; NODE-13, NODE-14, NODE-16).
 - `NodeTypeRegistry` và `build_node_registry(ports)` dựng ở cả hai composition root; sáu lát loại bước
   W1: `data.transform`, `logic.switch`, `flow.stop`, `data.object.query|create|update|upsert`,
   `data.object.assign`, `ai.llm`, `tool.call`, `human.approval`, cùng hình chiếu `trigger.endpoint`.
-- `ExpressionEngine` (Protocol ở `dw_kernel.expressions`; hai adapter `CelCppEngine` và `CelRustEngine` ở `dw_studio`
-  qua một bộ test hợp đồng, composition root chọn theo setting, profile triển khai chỉ `cel-expr-python`, R3.6) và
+- `ExpressionEngine` (Protocol ở `dw_kernel.expressions`; hai adapter `CelCppEngine` và `CelRustEngine` ở
+  `dw_studio.core.adapters.cel`, gói duy nhất import thư viện CEL theo hợp đồng import-linter của studio-skeleton:R5.6
+  mà spec này viết, qua một bộ test hợp đồng, composition root chọn theo setting, profile triển khai chỉ
+  `cel-expr-python`, R3.6) và
   thư viện `dw.cel/v1`;
   bảng ánh xạ kiểu; bộ dựng Chuỗi có biến `{{ }}` theo sáu đích.
 - Bảng `studio.step_assignments`, `studio.step_approvals` (chủ duy nhất của liên kết từ Bước phê duyệt tới yêu cầu
@@ -273,12 +275,15 @@ thực thi (YC51; NODE-13, NODE-14, NODE-16).
 - `studio.step_assignments`: giao của một Bước phê duyệt cho người. Cột `tenant_id`,
   `workspace_id`, `run_id`, `node_id`, `assignee_kind` CHECK (`user`) ở W1, không DEFAULT (nhóm là W2),
   `assignee_id`, `required_scope`, `created_at timestamptz`. RLS bật và FORCE; policy thu hẹp theo `app.tenant_id`.
-  FK `run_id` tới dòng lượt chạy `ON DELETE CASCADE`, có chỉ mục; chỉ mục `(tenant_id, run_id, node_id)`.
+  FK ghép `(tenant_id, run_id)` tới `platform.worker_runs (tenant_id, id)` (`uq_worker_runs_tenant_id_id` của
+  workflow-engine/02) `ON DELETE CASCADE`, với chỉ mục `(tenant_id, run_id, node_id)` là chỉ mục của nó.
 - `studio.step_approvals`: chủ duy nhất của liên kết một Bước phê duyệt với `platform.approval_requests`, và giữ
   mã băm chủ thể đã khoá. Cột `tenant_id`, `workspace_id`, `run_id`, `node_id`, `interrupt_id text NOT NULL`,
   `approval_request_id`, `subject_node_id`, `subject_hash`, `created_at timestamptz`. CHECK
-  `ck_step_approvals_subject_hash` (mã băm khác null khi đã khoá). FK `approval_request_id` tới
-  `platform.approval_requests` `ON DELETE CASCADE`, có chỉ mục; FK `(tenant_id, run_id, interrupt_id)` tới
+  `ck_step_approvals_subject_hash` (mã băm khác null khi đã khoá). FK ghép `(tenant_id, workspace_id, approval_request_id)`
+  tới `platform.approval_requests (tenant_id, workspace_id, id)` qua `uq_approval_requests_tenant_id_workspace_id_id`,
+  ràng buộc đã có mà `platform.approval_view_receipts` và tenant-config/05 cũng dùng, nên ticket 06 không thêm UNIQUE
+  nào lên bảng đó, `ON DELETE CASCADE`, có chỉ mục `(tenant_id, workspace_id, approval_request_id)`; FK `(tenant_id, run_id, interrupt_id)` tới
   `platform.run_waits (tenant_id, run_id, interrupt_id)` `ON DELETE CASCADE`, có chỉ mục, nên dòng chờ không giữ id
   yêu cầu nào (workflow-engine:R6.2). RLS bật và FORCE. `updated_at` do trigger giữ, nhường giá trị câu lệnh nêu.
 
@@ -337,14 +342,17 @@ thực thi (YC51; NODE-13, NODE-14, NODE-16).
 
 ## Phụ thuộc
 
-- `studio-skeleton`: gói `dw_studio` và seam API (`.claude/plans/studio/studio-skeleton/issues/02-goi-dw-studio-va-seam-api.md`).
+- `studio-skeleton`: gói `dw_studio` và seam API (`.claude/plans/studio/studio-skeleton/issues/02-goi-dw-studio-va-seam-api.md`),
+  và bố cục gói mà studio-skeleton làm chủ: adapter CEL ở `dw_studio.core.adapters.cel` (studio-skeleton:R5.6), hợp
+  đồng import-linter của tiêu chí đó giao cho ticket 01 của spec này ở Ngoài phạm vi của studio-skeleton.
 - `tools-and-skills` (batch 2, đang viết song song): `ToolExecutor`, `ToolSpec`, hồ sơ schema và Bộ
   công cụ ghim; không định nghĩa bảng của nó ở đây.
 - `workflow-engine` (batch 2): tài liệu `dw.workflow/v1`, bộ kiểm toàn đồ thị với hàm dominator và bảng mã
   `wf.*` (workflow-engine:R2.2, R2.5, R2.6, R2.14), bộ bọc node áp `retry`/`timeout`/Khi lỗi và dẫn khóa chống
   lặp duy nhất của mọi hiệu ứng (workflow-engine:R4.5), điểm chờ và handler phê duyệt bước
   (workflow-engine:R6.2) với `platform.run_waits` mà `studio.step_approvals` trỏ tới và `StepWaitLookupPort` mà
-  spec này đáp ứng, ghim phiên bản, khóa `studio.workflows.edit` (workflow-engine/01).
+  spec này đáp ứng, `uq_worker_runs_tenant_id_id` mà FK ghép của `studio.step_assignments` trỏ tới
+  (workflow-engine/02), ghim phiên bản, khóa `studio.workflows.edit` (workflow-engine/01).
 - `custom-objects`: `RecordService` đáp ứng `RecordsPort`, giả lập ghi ở `simulate` (custom-objects:R5.4) và
   cây lọc (custom-objects:R5.6, custom-objects:R8.9;
   `.claude/plans/studio/custom-objects/issues/04-truy-van-ban-ghi.md`); `Mô tả cho AI` của đối tượng và trường
@@ -386,7 +394,7 @@ thực thi (YC51; NODE-13, NODE-14, NODE-16).
   cách Câu kiểm định mang quyết định giả lập → R9.5, R9.9, ticket 06; agent-builder đổi `assemble_system_prompt`
   hay linter → R7, ticket 05; số đo FOG-50 trượt (ADR-0114 (Accepted) quyết 2) → R3.6, ticket 01, và chuyển profile
   triển khai sang bản Rust sửa CLAUDE.md mục Required stack trong cùng thay đổi (V4.P13); tenant-config/05 đổi mã của luật tiền tố nghiêm →
-  R9.6, ticket 06.
+  R9.6, ticket 06; studio-skeleton đổi gói của adapter CEL ở R5.6 → Trong phạm vi, ticket 01.
 
 ## Câu hỏi còn mở
 
@@ -552,6 +560,23 @@ thực thi (YC51; NODE-13, NODE-14, NODE-16).
 - 24/10/2026 (agent, tạm): sửa phát hiện A:code-sandbox:R2.3~workflow-nodes:spec: spec này đăng ký khóa
   `studio.code.author` cùng Loại bước `code.python` ở W2, còn `CodeExecutionService` của code-sandbox kiểm quyền
   lợi `code_node` trước runner. Sửa: Ngoài phạm vi.
+- 24/10/2026 (agent, tạm): lượt c của vòng 4, C8: `studio.step_assignments.run_id` là FK ghép `(tenant_id, run_id)` tới
+  `uq_worker_runs_tenant_id_id` của workflow-engine/02, và `studio.step_approvals.approval_request_id` là FK ghép
+  `(tenant_id, workspace_id, approval_request_id)` qua `uq_approval_requests_tenant_id_workspace_id_id` đã có
+  (`db/migrations/versions/e399be8c0a2d_platform_approval_view_receipts_and_.py:127-129`), vì kiểm khóa ngoại không qua
+  RLS nên một FK một cột để dòng của một công ty trỏ tới lượt chạy hay yêu cầu phê duyệt của công ty khác (CLAUDE.md,
+  Tenancy and authorization); `studio.step_approvals` mang `workspace_id`, nên đi qua UNIQUE đã có mà
+  `platform.approval_view_receipts` và tenant-config/05 dùng, ticket 06 không thêm UNIQUE nào lên
+  `platform.approval_requests`, và FK ba cột còn buộc dòng `step_approvals` cùng workspace với yêu cầu; vỏ phiên bản
+  toàn tenant không mang cột đó, nên agent-lifecycle/03 thêm `uq_approval_requests_tenant_id_id` cho FK của
+  `publish_approval_id`. Sửa: Dữ liệu, Phụ thuộc, ticket 06. Nếu sai thì: FK hai cột `(tenant_id, approval_request_id)`
+  qua `uq_approval_requests_tenant_id_id` mà agent-lifecycle/03 thêm, ticket 06 đã chờ ticket đó.
+- 24/10/2026 (agent, tạm): lượt c của vòng 4, C23: `CelCppEngine` và `CelRustEngine` ở `dw_studio.core.adapters.cel`, vì
+  studio-skeleton làm chủ bố cục gói và R5.6 của nó chỉ cho gói đó import thư viện CEL; ticket 01 viết hợp đồng
+  import-linter đó với tên module import thật của hai binding, như Ngoài phạm vi của studio-skeleton giao
+  (studio-skeleton:R5.6); Protocol vẫn ở `dw_kernel.expressions` như dòng của Đạt ngày 23/10/2026. Sửa: Trong phạm vi,
+  Phụ thuộc, ticket 01. Nếu sai thì: adapter ở một gói khác của `dw_studio`, và studio-skeleton:R5.6 đổi tên gói trong
+  cùng thay đổi.
 
 ## Danh sách ticket
 

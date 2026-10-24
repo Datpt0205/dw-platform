@@ -76,8 +76,9 @@ dùng, Đã gỡ, với PostgreSQL canh mọi chuyển tiếp (YC30, YC70; ADR-0
 - R1.3 NẾU hai lệnh Gửi kiểm định song song tạo Bản ứng viên thứ hai cho cùng thành phần, THÌ dịch vụ
   vòng đời PHẢI để một lệnh thành công và trả lệnh kia 409 `candidate_exists`, không tạo Bản ứng viên
   thứ hai.
-- R1.4 KHI một phiên bản sang Đang dùng, dịch vụ phát hành PHẢI đưa phiên bản Đang dùng trước đó sang
-  Đã gỡ với lý do `superseded` trong cùng giao dịch.
+- R1.4 KHI một phiên bản sang Đang dùng, ở nhánh chỉ siết (R2.9) hay ở handler phát hành (R5.5), `LifecycleService`
+  PHẢI đưa phiên bản Đang dùng trước đó sang Đã gỡ với lý do `superseded` trong cùng giao dịch, vì nó là bên duy nhất
+  ghi `live` (ADR-0120 (Accepted) quyết 1).
 - R1.5 Giai đoạn hiển thị của một thành phần PHẢI do một view SQL tính theo thứ tự Bị kill, Đang dùng,
   Chờ duyệt, Đang kiểm định, Nháp, Đã gỡ, và không bao giờ được lưu thành cột.
 - R1.6 ĐỐI VỚI một loại thành phần mà `studio.artifact_kinds` ghi `has_quality_gate = false` (đối tượng
@@ -93,6 +94,10 @@ dùng, Đã gỡ, với PostgreSQL canh mọi chuyển tiếp (YC30, YC70; ADR-0
   khác, theo `IS DISTINCT FROM`, `definition_hash` của phiên bản Đang dùng mà lần phát hành này thay (gỡ
   `superseded` trong cùng giao dịch), hay khác NULL khi không có bản nào, THÌ PostgreSQL PHẢI từ chối với SQLSTATE
   23514 `ck_artifact_versions_stage_transition` và không đổi gì (ADR-0120 (Accepted) quyết 1).
+- R1.9 NẾU một dòng `studio.artifact_versions` trỏ `gate_run_id` hay `publish_approval_id`, hay một dòng
+  `studio.gate_case_results` trỏ `gate_run_id`, tới Lượt kiểm định hay yêu cầu phê duyệt của công ty khác, THÌ
+  PostgreSQL PHẢI từ chối dòng đó bằng FK ghép `(tenant_id, <cột>)` tới UNIQUE `(tenant_id, id)` của bảng đích, kể cả
+  khi vai ghi bỏ qua RLS.
 
 ### R2 — Gửi kiểm định niêm phong nội dung và ghi chỉ mục phụ thuộc
 
@@ -100,7 +105,7 @@ KHI gửi kiểm định, nội dung phiên bản bị niêm phong và bao đón
 "đã kiểm định" và Lệch cấu hình tính được (YC30; ADR-0109 (Accepted) quyết 4-5).
 
 - R2.1 KHI người giữ khóa gửi mà `ArtifactKindRegistry` khai cho loại (tenant-config:R2.15) gửi một nháp hợp
-  lệ qua `POST /api/v1/studio/{agents|workflows|objects|endpoints}/{artifact_id}/versions/{version_id}/submit`,
+  lệ qua `POST /api/v1/studio/{agents|workflows|objects|data-sources}/{artifact_id}/versions/{version_id}/submit`,
   dịch vụ gửi kiểm định PHẢI, trong một giao dịch, tính bao đóng bằng `ClosureExtractor` của loại, niêm phong nội
   dung qua bước niêm phong của tenant-config, ghi Mã băm định nghĩa, Nơi đang dùng và audit
   `studio.version.submitted`, rồi chuyển phiên bản khỏi Nháp theo luật giai đoạn của loại (R1).
@@ -123,13 +128,13 @@ KHI gửi kiểm định, nội dung phiên bản bị niêm phong và bao đón
   THÌ dịch vụ gửi kiểm định PHẢI trả 422 với `details.reason_code` của kiểm đó và không chuyển phiên bản
   khỏi Nháp.
 - R2.8 ĐỐI VỚI một loại có `has_quality_gate = false`, dịch vụ gửi kiểm định PHẢI ghi `tighten_only` theo bộ so
-  sánh của loại trong giao dịch gửi, rồi đưa phiên bản sang Đang dùng khi chỉ siết (R1.7) hay sang Chờ duyệt cùng
-  yêu cầu phê duyệt của R5.1 khi không chỉ siết hay chưa có phiên bản Đang dùng.
-- R2.9 KHI dịch vụ gửi kiểm định đưa một phiên bản lên Đang dùng theo nhánh chỉ siết, dịch vụ gửi kiểm định
-  PHẢI, trong giao dịch của người gửi, đưa phiên bản Đang dùng cũ sang Đã gỡ (`superseded`), chạy móc phát hành mà
-  mục `ArtifactKindRegistry` của loại mang (tenant-config:R2.15; ADR-0109 (Accepted) quyết 1), ghi đúng một audit
+  sánh của loại trong giao dịch gửi, rồi qua `LifecycleService` đưa phiên bản sang Đang dùng khi chỉ siết (R1.7,
+  R2.9) hay sang Chờ duyệt cùng yêu cầu phê duyệt của R5.1 khi không chỉ siết hay chưa có phiên bản Đang dùng.
+- R2.9 KHI một lần gửi đi nhánh chỉ siết (R1.7, R2.8), `LifecycleService` PHẢI, trong giao dịch của người gửi, đưa
+  phiên bản Đang dùng cũ sang Đã gỡ (`superseded`) rồi đưa phiên bản sang Đang dùng, chạy móc phát hành mà mục
+  `ArtifactKindRegistry` của loại mang (tenant-config:R2.15; ADR-0109 (Accepted) quyết 1), ghi đúng một audit
   `studio.version.published` với actor là người gửi và `details.path` `tighten_only`, và outbox
-  `studio.version.live`.
+  `studio.version.live` (ADR-0120 (Accepted) quyết 2).
 - R2.10 KHI người giữ khóa gửi của loại gửi một phiên bản của bất kỳ loại nào, dịch vụ gửi kiểm định PHẢI ghi
   trong giao dịch gửi `compared_live_hash` bằng `definition_hash` của phiên bản Đang dùng của thành phần lúc đó,
   NULL khi chưa có phiên bản Đang dùng (ADR-0120 (Accepted) quyết 1).
@@ -207,10 +212,10 @@ ADR-0120 (Accepted) quyết 1-2).
   `studio.publish.approve` vừa không phải người xin (`requested_by`), THÌ luồng phê duyệt PHẢI trả 404 khi đọc
   và khi quyết định, kể cả với `platform_admin` (ADR-0004 (Accepted), sửa đổi 07/10/2026).
 - R5.5 KHI một yêu cầu phê duyệt `studio.publish.<kind>` được duyệt, handler outbox
-  `studio.publish.<kind>.decided` PHẢI, trong một giao dịch và đúng một lần dù sự kiện được giao lại, đưa
-  phiên bản sang Đang dùng qua dịch vụ phát hành của tenant-config và móc phát hành mà mục `ArtifactKindRegistry`
-  của loại mang (tenant-config:R2.15; ADR-0109 (Accepted) quyết 1), phiên bản cũ sang Đã gỡ (`superseded`), ghi
-  đúng một audit
+  `studio.publish.<kind>.decided` PHẢI, trong một giao dịch và đúng một lần dù sự kiện được giao lại, qua
+  `LifecycleService`, bên duy nhất ghi `live` (ADR-0120 (Accepted) quyết 1), đưa phiên bản cũ sang Đã gỡ
+  (`superseded`) rồi đưa phiên bản sang Đang dùng, gọi móc phát hành mà mục `ArtifactKindRegistry` của loại mang
+  (tenant-config:R2.15; ADR-0109 (Accepted) quyết 1), ghi đúng một audit
   `studio.version.published` với actor là người quyết định, `details.lane` là tên lane và `details.path`
   `approved` (ADR-0011 (Accepted)), và outbox `studio.version.live`.
 - R5.6 NẾU `dw_app` đưa một phiên bản sang Đang dùng khi yêu cầu phê duyệt phát hành liên kết chưa ở
@@ -288,8 +293,8 @@ cửa kế tiếp và không tác động đang chờ nào được thực hiệ
   nhận một quyết định duyệt, handler PHẢI không đưa phiên bản sang Đang dùng và từ chối lần giao đó với
   `tenant_frozen` hay `platform_frozen` (ADR-0120 (Accepted) quyết 7).
 - R7.13 TRONG KHI Đóng băng của công ty đang mở và không có Đóng băng của nền tảng, KHI người giữ khóa gửi gửi một
-  phiên bản `dw.object/v1` mà bộ so sánh của loại báo chỉ siết, dịch vụ gửi kiểm định PHẢI đưa phiên bản sang Đang
-  dùng theo nhánh chỉ siết (R1.7, R2.9), vì nhánh đó chỉ bớt quyền (ADR-0120 (Accepted) quyết 7).
+  phiên bản `dw.object/v1` mà bộ so sánh của loại báo chỉ siết, dịch vụ gửi kiểm định PHẢI qua `LifecycleService` đưa
+  phiên bản sang Đang dùng theo nhánh chỉ siết (R1.7, R2.9), vì nhánh đó chỉ bớt quyền (ADR-0120 (Accepted) quyết 7).
 
 ### R8 — Tắt khẩn cấp agent và quy trình, hủy việc đang chờ, bật lại hai người
 
@@ -356,7 +361,7 @@ Lane offboarding xuất rồi xóa công tắc điều khiển của một công
 - Mã: cột vòng đời và `studio.guard_version_stage()` trên `studio.artifact_versions`, với luật theo loại
   cho loại không có Cổng chất lượng và nhánh chỉ siết của `dw.object/v1` (cột `tighten_only`,
   `compared_live_hash`); `VersionStage` StrEnum với bảng chuyển đổi thuần và `LifecycleService`; view Giai
-  đoạn hiển thị; dịch vụ gửi kiểm định cho mọi loại đã đăng ký (route `{agents|workflows|objects|endpoints}`,
+  đoạn hiển thị; dịch vụ gửi kiểm định cho mọi loại đã đăng ký (route `{agents|workflows|objects|data-sources}`,
   khóa gửi do `ArtifactKindRegistry` khai, `If-Match` bắt buộc) với bảng điều phối `ClosureExtractor` và bảng kiểm
   theo loại lúc gửi kiểm định (Protocol của spec này, compliance-pdpl và workflow-nodes đăng ký kiểm của mình);
   Protocol `PublishBindingsCheck` do spec này khai, hỏi ở lệnh gửi và ở handler phát hành (R2.11, R5.10;
@@ -386,7 +391,6 @@ Lane offboarding xuất rồi xóa công tắc điều khiển của một công
 | W2: bộ đề kiểm định của tenant (bảng, API, màn nhập câu không code, `studio.gate_run_datasets`), cùng `min_cases_total`, `pass_rate_min` của Chính sách cổng                                                                                                                                                                                                                                                                                                                                                                                                                               | YC74; cần gói và điều hướng của studio-skeleton; trường chính sách vào cùng bên đọc của nó (DO-29.1)                                                                                  | agent-lifecycle, đợt sau (W2)                                                         |
 | W2: Mức rủi ro AI trên `studio.version_assessments` (công ty tự phân hạng từ mặc định, không khai thấp hơn ở v1), tờ giải thích                                                                                                                                                                                                                                                                                                                                                                                                                                                            | YC93; DO-60; bảng có từ W1 cho kết quả Phân tích năng lực (compliance-pdpl:R4.6)                                                                                                      | compliance-pdpl; agent-lifecycle đọc (W2)                                             |
 | W2: tổng quan đội ngũ, "đã kiểm định thật N/M", chip cảnh báo, cảnh báo nháp để lâu (`stale_draft_days`), trang phiên bản, so sánh từng trường                                                                                                                                                                                                                                                                                                                                                                                                                                             | YC75; mẫu học từ phân tích đối thủ (config-chang.md mẫu 3); đọc theo quyền người xem, cổng chặn ở server; `stale_draft_days` vào chính sách cùng bên đọc (DO-29.1)                    | agent-lifecycle, đợt sau (W2)                                                         |
-| W2: Đóng băng có thể tiếp tục cho lượt đang chạy (`RunStatus.FROZEN`, lane tiếp tục sau khi gỡ)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | W1 hủy lượt đang chạy ở cửa kế tiếp và chỉ giữ lượt do trình kích hoạt đã xếp hàng (DO-28 C); cần nguyên mẫu của ticket 01                                                            | agent-lifecycle, đợt sau (W2)                                                         |
 | W2: phát hiện Lệch cấu hình, giám khảo LLM hiệu chuẩn, kiểm định retrieval, so với bản đang chạy                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | mẫu cảnh báo lệch học từ phân tích đối thủ (config-chang.md mẫu 3); cần `mcp-client`, `model-connections`                                                                             | agent-lifecycle, đợt sau (W2)                                                         |
 | W2: kiểm định trực tuyến lấy mẫu (tắt mặc định, model chấm cùng Lộ trình dữ liệu), phân tích năng lực theo đường đi, gói hồ sơ AI theo Luật AI                                                                                                                                                                                                                                                                                                                                                                                                                                             | YC93; chờ `usage-and-limits`, `workflow-nodes` và luật sư (DO-60)                                                                                                                     | agent-lifecycle; compliance-pdpl, đợt sau (W2)                                        |
 | W2: kiểm định lại khi ghi đè của tenant đổi Mã băm hiệu lực, phần nền tảng trả có trần cho lượt do nền tảng kích                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | bằng chứng khóa theo Mã băm hiệu lực nên bằng chứng cũ tự hết giá trị (ADR-0109 (Accepted)); DO-29.2                                                                                  | agent-lifecycle; usage-and-limits, đợt sau (W2)                                       |
@@ -395,6 +399,7 @@ Lane offboarding xuất rồi xóa công tắc điều khiển của một công
 | W2: lý do dừng `workspace_archived` của `RunControlPort` (ADR-0120 (Accepted) quyết 6)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | lưu trữ workspace đến ở W2 cùng org-and-principals; W1 dừng lượt chạy của công ty bị khóa hay đang offboarding (R9.2)                                                                 | agent-lifecycle; org-and-principals, đợt sau (W2)                                     |
 | W2: phát hành từ chối 409 `owner_missing` khi người chịu trách nhiệm rời công ty (YC10; ADR-0103 (Accepted) quyết 3)                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | ADR-0120 (Accepted) quyết 2 đòi người chịu trách nhiệm khi phát hành; người chịu trách nhiệm bắt buộc, guard và lane `principal_ownership` đến ở W2 (DO-39.2)                         | agent-lifecycle; org-and-principals (guard, lane `principal_ownership`), đợt sau (W2) |
 | W2: lane gửi tin đã xếp hàng thật thi hành hợp đồng R8.4                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | tin chỉ được hoãn và xếp hàng từ W2; W1 thử R8.4 với lane giả (ADR-0120 (Accepted) quyết 6)                                                                                           | connections-and-vault, đợt sau (W2)                                                   |
+| W3: Đóng băng có thể tiếp tục cho lượt đang chạy (`RunStatus.FROZEN`, lane tiếp tục sau khi gỡ)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | W1 hủy lượt đang chạy ở cửa kế tiếp và chỉ giữ lượt do trình kích hoạt đã xếp hàng (DO-28 C); v1.5 trở đi (ADR-0120 (Accepted), mục Open, DO-28); cần nguyên mẫu của ticket 01        | agent-lifecycle, đợt sau (W3)                                                         |
 | W3: công tắc theo workspace, kết nối, tuyến model; nhà vận hành tắt một agent; mô phỏng nhiều lượt                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | v1.5 trở đi                                                                                                                                                                           | agent-lifecycle, đợt sau (W3)                                                         |
 | Vỏ phiên bản, băm RFC 8785 (`dw_kernel.canonical`), bản kê định nghĩa và Nơi đang dùng                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | ADR-0109 (Accepted); đã có                                                                                                                                                            | tenant-config                                                                         |
 | Bảng phiên bản agent và quy trình, trình soạn, canvas; chế độ chạy, hàng đợi, lịch, Data Hub                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | spec này chỉ đặt hợp đồng cột vòng đời và hợp đồng cửa                                                                                                                                | agent-builder, workflow-engine, workflow-triggers                                     |
@@ -407,11 +412,17 @@ Mọi bảng mới: RLS ENABLE và FORCE theo tenant, grant cùng migration, tê
 `NAMING_CONVENTION`, revision id hex ngẫu nhiên.
 
 - Cột vòng đời thêm trên `studio.artifact_versions` (vỏ chung của tenant-config, ADR-0109 (Accepted)
-  quyết 2; DO-05 chọn vỏ chung): `gate_run_id uuid` NULL, FK `studio.gate_runs` ON DELETE RESTRICT,
-  bắt buộc khi `stage IN ('awaiting_approval','live','retired')` với loại có Cổng chất lượng, luôn NULL
-  với loại mà `studio.artifact_kinds` ghi `has_quality_gate = false` (R1.6); `publish_approval_id uuid` NULL, FK
-  `platform.approval_requests` ON DELETE RESTRICT, bắt buộc khi `stage IN ('awaiting_approval','live','retired')`
-  trừ phiên bản lên Đang dùng theo nhánh chỉ siết (R1.7); `tighten_only boolean NOT NULL DEFAULT false`, do
+  quyết 2; DO-05 chọn vỏ chung): `gate_run_id uuid` NULL, FK ghép `(tenant_id, gate_run_id)` tới
+  `studio.gate_runs (tenant_id, id)` ON DELETE RESTRICT có index riêng, bắt buộc khi
+  `stage IN ('awaiting_approval','live','retired')` với loại có Cổng chất lượng, luôn NULL
+  với loại mà `studio.artifact_kinds` ghi `has_quality_gate = false` (R1.6); `publish_approval_id uuid` NULL, FK ghép
+  `(tenant_id, publish_approval_id)` tới `platform.approval_requests (tenant_id, id)` ON DELETE RESTRICT có index
+  riêng, bắt buộc khi `stage IN ('awaiting_approval','live','retired')` trừ phiên bản lên Đang dùng theo nhánh chỉ
+  siết (R1.7); hai FK ghép vì kiểm khóa ngoại không đi qua RLS, nên FK một cột để một công ty trỏ tới dòng của công ty
+  khác (R1.9), và đích của chúng là `uq_gate_runs_tenant_id_id` của `studio.gate_runs` (ticket 04) và
+  `uq_approval_requests_tenant_id_id UNIQUE (tenant_id, id)` mà revision tạo FK thêm trên `platform.approval_requests`
+  (ticket 03), vì UNIQUE đã có của bảng đó, `uq_approval_requests_tenant_id_workspace_id_id`, mang `workspace_id` mà
+  vỏ phiên bản toàn tenant không có; `tighten_only boolean NOT NULL DEFAULT false`, do
   `LifecycleService` ghi lúc gửi theo bộ so sánh của loại, và `compared_live_hash text` NULL (`definition_hash` của
   phiên bản Đang dùng lúc gửi, NULL khi chưa có), do `LifecycleService` ghi ở mọi lần gửi (R2.10), CHECK
   `NOT tighten_only OR compared_live_hash IS NOT NULL`;
@@ -420,8 +431,10 @@ Mọi bảng mới: RLS ENABLE và FORCE theo tenant, grant cùng migration, tê
   CHECK (`superseded`, `explicit`); `stage_changed_at timestamptz NOT NULL`. Trigger
   `studio.guard_version_stage()` (BEFORE INSERT OR UPDATE) cho đúng các chuyển tiếp của R1, cho mọi chuyển sang
   `live` chỉ khi `compared_live_hash` vẫn là mã băm của phiên bản Đang dùng mà lần phát hành thay (bản vừa gỡ
-  `superseded` trong cùng giao dịch, vì chỉ mục một Đang dùng buộc gỡ bản cũ trước), hay cùng NULL khi không có bản
-  nào (R1.7, R1.8), và chặn đổi nội dung ngoài `draft`; chỉ mục một Đang dùng (`WHERE stage='live'`), một Bản ứng
+  `superseded` trong cùng giao dịch, vì chỉ mục một Đang dùng buộc gỡ bản cũ trước), với vế cùng NULL khi không có
+  bản nào chỉ ở `awaiting_approval → live` (R1.8), còn nhánh chỉ siết `draft → live` luôn có mã băm, vì nó cần một
+  bản Đang dùng để so (R2.8) và CHECK trên buộc `compared_live_hash` khác NULL khi `tighten_only` (R1.7), và chặn
+  đổi nội dung ngoài `draft`; chỉ mục một Đang dùng (`WHERE stage='live'`), một Bản ứng
   viên (`WHERE stage IN ('evaluating','awaiting_approval')`), và `(tenant_id, stage, stage_changed_at DESC, id DESC)`.
   View `studio.artifact_display_stage` tính Giai đoạn hiển thị, không lưu.
 - `platform.control_switches`: `tenant_id`, `id`; `scope_type` CHECK (`tenant`, `agent`, `workflow`);
@@ -443,22 +456,26 @@ Mọi bảng mới: RLS ENABLE và FORCE theo tenant, grant cùng migration, tê
   `purpose` CHECK (`gate`, `dry`); khóa bằng chứng (`effective_hash`, `gate_policy_ref`,
   `security_suite_ref`, danh sách mã băm bộ đề của tenant, rỗng ở W1); `definition_hash` cho trigger giai
   đoạn; `spend_cap_usd`, `spent_usd`, `resolved_at_gate` jsonb,
-  `verdict` jsonb; `created_at timestamptz NOT NULL`; index `(tenant_id, created_at DESC, id DESC)` mang thứ tự
-  keyset của `GET /api/v1/studio/gate-runs` (CLAUDE.md, Data model rules). `studio.gate_run_datasets` là W2 cùng bộ
-  đề của tenant. `studio.gate_case_results`: index `(tenant_id, gate_run_id, case_id)` trên bảng cha mang thứ tự
-  keyset của `GET /api/v1/studio/gate-runs/{id}/cases`;
+  `verdict` jsonb; `created_at timestamptz NOT NULL`; `uq_gate_runs_tenant_id_id UNIQUE (tenant_id, id)`, đích của
+  FK ghép từ `studio.artifact_versions` và `studio.gate_case_results`; index `(tenant_id, created_at DESC, id DESC)`
+  mang thứ tự keyset của `GET /api/v1/studio/gate-runs` (CLAUDE.md, Data model rules). `studio.gate_run_datasets` là
+  W2 cùng bộ đề của tenant. `studio.gate_case_results`: `gate_run_id` FK ghép `(tenant_id, gate_run_id)` tới
+  `studio.gate_runs (tenant_id, id)` ON DELETE RESTRICT, để một DELETE lên Lượt kiểm định không kéo theo xóa dòng
+  chỉ thêm; index `(tenant_id, gate_run_id, case_id)` trên bảng cha mang khóa ngoại đó và thứ tự keyset của
+  `GET /api/v1/studio/gate-runs/{id}/cases`;
   phân vùng theo tháng với DEFAULT, đăng ký bằng một dòng `platform.time_partitioned_tables`
   (`append_only = true`, studio-skeleton:R3.1); ENABLE/FORCE RLS và policy tenant trên cha và DEFAULT cùng
   migration; `dw_app` không giữ quyền nào trên partition nào, kể cả DEFAULT, chỉ SELECT, INSERT trên bảng cha;
   thời hạn 395 ngày (13 tháng, số tạm UNVERIFIED) dưới khóa `studio.gate_case_results` của tệp chính sách
   retention, thêm trong cùng thay đổi đăng ký (telemetry-and-audit:R5.6, studio-skeleton:R3.7), xóa bằng DROP
   PARTITION qua `platform.drop_expired_partitions` của usage-and-limits/02; khi offboarding, dòng của công ty
-  xóa qua `platform.purge_tenant_append_only` (usage-and-limits:R3.8), nên bảng có một dòng `STUDIO_EXCLUSIONS`
-  nêu cách xóa đó (studio-skeleton:R4.1).
+  xóa qua `platform.purge_tenant_append_only` (usage-and-limits:R3.10), bước chạy trước mọi bảng thường
+  (usage-and-limits:R3.11), nên khóa ngoại `RESTRICT` tới `studio.gate_runs` được thỏa, và bảng có một dòng
+  `STUDIO_EXCLUSIONS` nêu cách xóa đó (studio-skeleton:R4.1).
 
 ## API
 
-- `POST /api/v1/studio/{agents|workflows|objects|endpoints}/{artifact_id}/versions/{version_id}/submit` và
+- `POST /api/v1/studio/{agents|workflows|objects|data-sources}/{artifact_id}/versions/{version_id}/submit` và
   `POST .../withdraw` (khóa gửi mà `ArtifactKindRegistry` khai cho loại, tenant-config:R2.15:
   `studio.versions.submit` cho agent và quy trình, `studio.objects.manage` cho đối tượng, `studio.datahub.manage`
   cho Nguồn dữ liệu, workflow-triggers:R4.7; `Idempotency-Key`); lệnh gửi nhận `If-Match` là ETag của bản Nháp:
@@ -514,6 +531,7 @@ Mọi bảng mới: RLS ENABLE và FORCE theo tenant, grant cùng migration, tê
 | AL18 | Gỡ Đóng băng của công ty cần người thứ hai                                   | R7.10, R7.11                               | Người xin gỡ tự duyệt `studio.lifecycle.unfreeze` → 409 `second_person_required`, Đóng băng còn; người khác duyệt → gỡ; gỡ luật nghiêm của `studio.lifecycle.` → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | AL19 | Phát hành không đè phiên bản Đang dùng mới hơn bản đã so lúc gửi             | R1.8, R2.10, R5.9                          | Một phiên bản đối tượng chỉ siết lên `live` trong lúc một Bản ứng viên của cùng thành phần chờ duyệt, rồi duyệt Bản ứng viên → nó về `draft` với `base_changed` và audit, phiên bản `live` vẫn là bản chỉ siết; `dw_app` UPDATE `awaiting_approval → live` với `compared_live_hash` cũ → 23514; gỡ luật khỏi trigger hay kiểm khỏi handler → test đỏ                                                                                                                                                                                                                                                                                                                                                                                           |
 | AL20 | Phát hành cần mọi Điểm gắn bắt buộc đã có giá trị duyệt                      | R2.11, R5.10                               | Phiên bản quy trình khai Điểm gắn `principal` bắt buộc chưa có giá trị đã duyệt → gửi kiểm định 409 `binding_unset` nêu `principal`, phiên bản vẫn Nháp; handler nhận quyết định duyệt khi `PublishBindingsCheck` trả `binding_unset` → phiên bản không lên Đang dùng; gỡ kiểm ở lệnh gửi hay ở handler → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| AL21 | Khóa ngoại của vòng đời không trỏ sang công ty khác                          | R1.9                                       | Bằng vai migrator, dòng phiên bản của tenant A trỏ `publish_approval_id` tới yêu cầu phê duyệt của tenant B, hay `gate_run_id` tới Lượt kiểm định của B, và dòng `studio.gate_case_results` của A trỏ tới Lượt kiểm định của B → FK từ chối, không ghi; đổi một FK sang một cột → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
 ## Tiêu chí xong
 
@@ -539,7 +557,8 @@ Mọi bảng mới: RLS ENABLE và FORCE theo tenant, grant cùng migration, tê
   đáp ứng `PublishBindingsCheck` của R2.11, R5.10 (tenant-config:R7.2), nên ticket 04 chờ
   `.claude/plans/studio/tenant-config/issues/05-lien-ket-va-phien-ban-cau-hinh.md`; ticket đó cũng đặt
   `details.reason_code` `second_person_required` ở `_enforce_strict_rules` một lần cho mọi loại dưới tiền tố
-  nghiêm, mã mà R5.2, R7.11, R8.7 khẳng định (V4.P9; ADR-0104 (Accepted) quyết 11).
+  nghiêm, mã mà R5.2, R7.11, R8.7 khẳng định (V4.P9; ADR-0104 (Accepted) quyết 11), nên ticket 01 (R7.11) và ticket
+  05 (R8.7) cũng chờ nó.
 - app-standards: ETag, `If-Match`, 412 và 428 cho lệnh gửi (app-standards:R3.2, app-standards:R3.3;
   `.claude/plans/studio/app-standards/issues/03-quy-uoc-api-danh-sach-va-sua.md`), mà ticket 03 nhận qua
   tenant-config/04 và tenant-config/02.
@@ -575,7 +594,8 @@ Mọi bảng mới: RLS ENABLE và FORCE theo tenant, grant cùng migration, tê
   sự kiện bị giữ khi Đóng băng (telemetry-and-audit:R5.5); tệp retention đi theo một chuỗi ticket, mỗi ticket một
   phiên bản mới, trong đó ticket 04 đứng ngay sau
   `.claude/plans/studio/telemetry-and-audit/issues/03-lich-su-chay-theo-buoc.md`; `platform.drop_expired_partitions` và
-  `platform.purge_tenant_append_only` của usage-and-limits/02 (usage-and-limits:R3.8); `STUDIO_EXCLUSIONS` và
+  `platform.purge_tenant_append_only` của usage-and-limits/02 (hợp đồng xóa usage-and-limits:R3.10, thứ tự trước mọi
+  bảng thường usage-and-limits:R3.11); `STUDIO_EXCLUSIONS` và
   test phủ offboarding (studio-skeleton:R4.1, studio-skeleton:R4.3).
 - Protocol do bên dùng khai: `RunControlPort` và `RunHaltedError` (runtime khai, spec này đáp ứng bằng
   `SqlRunControl`, đọc trạng thái thành viên của org-and-principals cho `principal_inactive`); `ClosureExtractor`
@@ -593,8 +613,8 @@ Mọi bảng mới: RLS ENABLE và FORCE theo tenant, grant cùng migration, tê
   tài khoản dịch vụ không `active` là org-and-principals:R4.9, còn báo người chịu trách nhiệm và route hủy từng lượt
   đang giữ đến ở W2 của workflow-engine, nên ở W1 chỉ Tắt khẩn cấp hủy lượt đang giữ (R8.1); lane gửi tin đã xếp
   hàng kiểm công tắc trước khi gửi (R8.4), chủ là connections-and-vault ở W2.
-- workflow-engine/01 chờ ticket 03, vì ticket 03 đăng ký khóa gửi `studio.versions.submit` mà mục
-  `ArtifactKindRegistry` của loại `workflow` khai (cạnh nằm ở ticket đó).
+- workflow-engine/01 và agent-builder/02 chờ ticket 03, vì ticket 03 đăng ký khóa gửi `studio.versions.submit` mà
+  mục `ArtifactKindRegistry` của loại `workflow` và của loại `agent` khai (cạnh nằm ở hai ticket đó).
 - Hai ghim cho một lượt chạy Studio: release manifest ghim lớp nền tảng, Bản kê lượt chạy ghim phần Studio
   với Mã băm định nghĩa của gốc; ADR-0109 (Accepted) và ADR-0120 (Accepted) ghi điều đó, và `CLAUDE.md` mục
   'Non-negotiable architecture' sửa theo khi Đạt nhận hai ADR. Cache công tắc đóng khi lỗi, trái cache
@@ -756,10 +776,10 @@ Mọi bảng mới: RLS ENABLE và FORCE theo tenant, grant cùng migration, tê
   (C:agent-lifecycle/01\~compliance-pdpl/03). Sửa: Phụ thuộc, ticket 01.
 - 24/10/2026 (agent, tạm): `strict_approval_prefixes` và `decision_guards` theo cách sửa thứ hai của
   C:agent-lifecycle:R7.10\~tenant-config:R8.8: ticket 01 và 04 mỗi ticket chỉ thêm một dòng `|=` cho tiền tố của
-  mình và một khóa guard, kèm test khẳng định tập tiền tố đầy đủ, như tenant-config/05 đã làm, không thêm cạnh
-  tới tenant-config/05 hay workflow-nodes/06, để ticket 01 và 04 không phải chờ hai ticket đó chỉ vì một dòng ở
-  composition root. Sửa: ticket 01, 04. Nếu sai thì: ticket 01 chờ tenant-config/05 và ticket 04 chờ
-  workflow-nodes/06.
+  mình và một khóa guard, kèm test khẳng định tập tiền tố đầy đủ, như tenant-config/05 đã làm, và dòng `|=` không là
+  lý do cho cạnh nào: ticket 04 không chờ workflow-nodes/06 chỉ vì một dòng ở composition root, còn cạnh của ticket
+  01, 04 và 05 tới tenant-config/05 có lý do riêng (mã `second_person_required`, `PublishBindingsCheck`). Sửa: ticket
+  01, 04. Nếu sai thì: ticket 04 chờ workflow-nodes/06.
 - 24/10/2026 (Đạt): offboarding xuất rồi xóa `platform.control_switches` của công ty, và `studio.gate_case_results`
   có thời hạn trong tệp chính sách retention ngay khi đăng ký và một dòng `STUDIO_EXCLUSIONS` nêu cách xóa
   (H:ADR-0121 (Accepted)\~usage-and-limits:dữ-liệu theo cách sửa của studio-skeleton:R4.3;
@@ -799,9 +819,10 @@ Mọi bảng mới: RLS ENABLE và FORCE theo tenant, grant cùng migration, tê
   sai thì: workflow-engine/01 đăng ký khóa và ticket 03 chỉ dùng nó.
 - 24/10/2026 (agent, tạm): luật so `compared_live_hash` viết "so với phiên bản Đang dùng mà lần phát hành này thay
   (gỡ `superseded` trong cùng giao dịch), hay với NULL khi không có bản nào" thay cho "phiên bản Đang dùng hiện tại",
-  vì lần phát hành gỡ bản cũ trước khi đặt bản mới theo chỉ mục một Đang dùng (R1.4; tenant-config:R2.16;
-  ADR-0120 (Accepted) quyết 1). Sửa: R1.7, R1.8, R5.6, R5.9, Dữ liệu, ticket 03, 04. Nếu sai thì: câu so ở R1.7, R1.8
-  và trigger đổi theo thứ tự gỡ và đặt mà dịch vụ phát hành của tenant-config dùng.
+  vế NULL chỉ ở nhánh qua phê duyệt (R1.8) vì nhánh chỉ siết luôn thay một bản (R1.7), và lần phát hành gỡ bản cũ
+  trước khi đặt bản mới theo chỉ mục một Đang dùng (R1.4; tenant-config:R2.16; ADR-0120 (Accepted) quyết 1). Sửa:
+  R1.7, R1.8, R5.6, R5.9, Dữ liệu, ticket 03, 04. Nếu sai thì: câu so ở R1.7, R1.8 và trigger đổi theo thứ tự gỡ và
+  đặt mà `LifecycleService` dùng.
 - 24/10/2026 (agent, tạm): lệnh gửi nhận `If-Match` là ETag của bản Nháp và chuyển giá trị đó cho
   `seal(..., expected_row_version)` của tenant-config/02: lệch → 412 `precondition_failed` với `stale_version` (V4.6),
   thiếu → 428 `precondition_required` (app-standards:R3.3; ADR-0108 (Accepted) quyết 3), để người gửi niêm phong đúng
@@ -822,21 +843,77 @@ Mọi bảng mới: RLS ENABLE và FORCE theo tenant, grant cùng migration, tê
   ADR-0104 (Accepted) quyết 11.
 - 24/10/2026 (agent, tạm): V4.1 và V4.3 lan đủ, vì spec này là chủ route gửi và handler của mọi loại: R1.6 thêm Nguồn
   dữ liệu (`endpoint`) vào loại không có Cổng chất lượng ở W1, công cụ ở W2; R5.1 mở `studio.publish.endpoint`; route
-  gửi thêm `endpoints` với khóa gửi `studio.datahub.manage` (workflow-triggers:R4.7); loại `tool` (`studio.publish.tool`,
-  trừ ngoại lệ có tên `studio.mcp.tool_approval` của công cụ MCP, cả hai do handler của R5.5, R5.9 xử lý, như
-  mcp-client:R3.4 dẫn) vào một dòng W2, khóa gửi do ticket W2 đăng ký loại khai; lần về Nháp vì `base_changed` dùng
-  tên audit đã có `studio.version.returned_to_draft`, nên catalog `configs/copy/audit_actions@*.yaml` không cần tên
-  mới (ADR-0120 (Accepted) quyết 1-2; ADR-0116 (Accepted) quyết 9;
+  gửi thêm đoạn `data-sources` với khóa gửi `studio.datahub.manage` (workflow-triggers:R4.7); loại `tool`
+  (`studio.publish.tool`, trừ ngoại lệ có tên `studio.mcp.tool_approval` của công cụ MCP, cả hai do handler của R5.5,
+  R5.9 xử lý, như mcp-client:R3.4 dẫn) vào một dòng W2, khóa gửi do ticket W2 đăng ký loại khai; lần về Nháp vì
+  `base_changed` dùng tên audit đã có `studio.version.returned_to_draft`, nên catalog
+  `configs/copy/audit_actions@*.yaml` không cần tên mới (ADR-0120 (Accepted) quyết 1-2; ADR-0116 (Accepted) quyết 9;
   ADR-0122 (Accepted) quyết 6). Sửa: R1.6, R2.1, R5.1, R5.9, AL4, Trong phạm vi, Ngoài phạm vi, API, Phụ thuộc, ticket
   03, 04. Nếu sai thì: workflow-triggers giữ route gửi của `endpoint`, và R1.6, R5.1 chỉ nêu ba loại.
 - 24/10/2026 (agent, tạm): R9.1 dẫn workflow-engine:R5.17 cho lượt `datahub`, `provider_app`, `record_event` được giữ
   `queued` và workflow-engine:R5.15 cho lượt bị hủy, đúng hai hàng của bảng từ chối ở dispatch. Sửa: R9.1, Phụ thuộc,
   ticket 01. Nếu sai thì: workflow-engine đánh số lại bảng đó và R9.1 dẫn số mới.
 - 24/10/2026 (agent, tạm): khóa `studio.lifecycle.freeze` đến `tenant_owner` theo quyền tính động của tenant-rbac (mọi
-  khóa `active` có `tenant_grantable` ở mức `tenant`), còn vai mẫu cho công ty tạo về sau nhận khóa qua migration sửa
-  mẫu, không chạm vai đã nhân bản (tenant-rbac:R3.2), vì vai là dữ liệu của công ty từ tenant-rbac/02 mà ticket 01 chờ
-  (ADR-0104 (Accepted)). Sửa: ticket 01. Nếu sai thì: ticket 01 cấp khóa cho vai của từng công ty đã có bằng một
-  migration dữ liệu có audit.
+  khóa `active` có `tenant_grantable` ở mức `tenant`, tenant-rbac:R2.7), còn vai mẫu cho công ty tạo về sau nhận
+  khóa qua migration sửa mẫu, không chạm vai đã nhân bản (tenant-rbac:R3.2), vì vai là dữ liệu của công ty từ
+  tenant-rbac/02 mà ticket 01 chờ (ADR-0104 (Accepted)). Sửa: ticket 01. Nếu sai thì: ticket 01 cấp khóa cho vai của
+  từng công ty đã có bằng một migration dữ liệu có audit.
+- 24/10/2026 (agent, tạm): spec này không còn nói "dịch vụ phát hành" của tenant-config: `LifecycleService` là bên duy
+  nhất ghi `live`, gỡ bản Đang dùng cũ rồi đặt bản mới trong giao dịch phát hành, ở nhánh chỉ siết lẫn ở handler
+  `.decided`, và gọi móc phát hành mà mục `ArtifactKindRegistry` của loại mang, do chủ loại cấp; trigger giai đoạn là
+  chốt chặn sau nó (ADR-0109 (Accepted) quyết 1; ADR-0120 (Accepted) quyết 1-2). Sửa: R1.4, R2.8, R2.9, R5.5,
+  R7.13, dòng Quyết định về câu so `compared_live_hash` ở trên, ticket 03, 04. Nếu sai thì: tenant-config giữ một
+  dịch vụ phát hành mà `LifecycleService` gọi, R1.4, R2.9 và R5.5 nêu nó, và ADR-0120 (Accepted) quyết 1 ghi bên ghi
+  thứ hai.
+- 24/10/2026 (agent, tạm): đoạn route của Nguồn dữ liệu ở lệnh gửi là `data-sources`, tức
+  `POST /api/v1/studio/data-sources/{artifact_id}/versions/{version_id}/submit`, cùng đoạn mà workflow-triggers dùng cho
+  mọi route của Nguồn dữ liệu (`{id}` ở đó là `artifact_id` của thành phần) và marketing-pilot dùng khi gửi, thay
+  `endpoints`, để một loại có một đoạn route. Sửa: R2.1, Trong phạm vi, API, dòng Quyết định về V4.1 và V4.3 ở trên,
+  ticket 03. Nếu sai thì: mọi route của Nguồn dữ liệu đổi sang `endpoints`, và workflow-triggers, marketing-pilot sửa
+  theo.
+- 24/10/2026 (agent, tạm): ticket 01 và 05 chờ tenant-config/05, vì tiêu chí R7.11 và R8.7 khẳng định
+  `details.reason_code` `second_person_required` mà ticket đó đặt ở `_enforce_strict_rules` một lần cho mọi loại dưới
+  tiền tố nghiêm (V4.P9; ADR-0104 (Accepted) quyết 11), và một ticket không khẳng định mã do ticket nó không chờ đặt;
+  đồ thị ticket không có vòng với hai cạnh mới; agent-builder/02 chờ ticket 03 cho khóa gửi `studio.versions.submit`
+  của loại `agent`, cạnh nằm ở ticket đó. Sửa: Phụ thuộc, dòng Quyết định về `strict_approval_prefixes` ở trên, ticket
+  01, 03, 05. Nếu sai thì: R7.11 và R8.7 ở hai ticket chỉ khẳng định 409 `conflict`, mã để test của tenant-config/05,
+  và hai cạnh bỏ.
+- 24/10/2026 (agent, tạm): dẫn đúng tiêu chí của usage-and-limits: hợp đồng xóa của `platform.purge_tenant_append_only`
+  là usage-and-limits:R3.10 và thứ tự chạy trước mọi bảng thường là usage-and-limits:R3.11, còn usage-and-limits:R3.8
+  nói các bảng của chính spec đó. Sửa: Dữ liệu, Phụ thuộc, ticket 04. Nếu sai thì: các chỗ dẫn theo số mà
+  usage-and-limits đặt lại.
+- 24/10/2026 (agent, tạm): `studio.gate_case_results.gate_run_id` là FK ghép `(tenant_id, gate_run_id)` tới
+  `studio.gate_runs (tenant_id, id)` ON DELETE RESTRICT, vì mọi khóa ngoại nêu `ON DELETE` tường minh và có index ở
+  phía mình (CLAUDE.md, Data model rules), và một DELETE lên Lượt kiểm định không được kéo theo xóa dòng chỉ thêm;
+  offboarding thỏa khóa ngoại vì `platform.purge_tenant_append_only` chạy trước mọi bảng thường
+  (usage-and-limits:R3.11), và index `(tenant_id, gate_run_id, case_id)` đã có mang khóa ngoại. Sửa: Dữ liệu,
+  ticket 04. Nếu sai thì: ON DELETE CASCADE từ `studio.gate_runs`, mở cho `dw_app` một đường xóa dòng chỉ thêm qua
+  bảng cha.
+- 24/10/2026 (agent, tạm): `gate_run_id` và `publish_approval_id` của `studio.artifact_versions` là FK ghép
+  `(tenant_id, <cột>)` tới UNIQUE `(tenant_id, id)` của bảng đích, vì kiểm khóa ngoại không đi qua RLS nên FK một cột
+  để một công ty trỏ tới dòng của công ty khác (ADR-0109 (Accepted) quyết 1; ADR-0120 (Accepted) quyết 1, nêu đúng
+  hai cột này; cùng luật với tenant-config:R2.18), và revision thêm FK thêm UNIQUE đó khi bảng đích chưa có;
+  `uq_gate_runs_tenant_id_id` do ticket 04 tạo cùng `studio.gate_runs` và FK của `gate_run_id`;
+  `uq_approval_requests_tenant_id_id` do revision của ticket 03 thêm cùng FK của `publish_approval_id`, vì UNIQUE đã
+  có của bảng đó (`uq_approval_requests_tenant_id_workspace_id_id`, mà bảng có `workspace_id` như
+  `studio.step_approvals` của workflow-nodes dùng) mang `workspace_id` mà vỏ phiên bản toàn tenant không có; R1.9 và
+  AL21 thử cả ba FK, như tenant-config:R2.18 và TC29. Sửa: thêm R1.9, AL21, Dữ liệu, ticket 03, 04. Nếu sai thì: FK
+  của `publish_approval_id` đi qua `uq_approval_requests_tenant_id_workspace_id_id`, và vỏ phiên bản mang
+  `workspace_id` của phê duyệt.
+- 24/10/2026 (agent, tạm): ở mục Dữ liệu, vế "cùng NULL khi không có bản nào" của luật trigger chỉ áp cho
+  `awaiting_approval → live` (R1.8); nhánh chỉ siết `draft → live` luôn có mã băm, vì nó cần một bản Đang dùng để so
+  (R2.8) và CHECK `NOT tighten_only OR compared_live_hash IS NOT NULL` buộc vậy (R1.7; ADR-0120 (Accepted) quyết 1).
+  Sửa: Dữ liệu, dòng Quyết định về câu so `compared_live_hash` ở trên. Nếu sai thì: nhánh chỉ siết nhận cả phiên bản
+  đầu, và R1.7, R2.8 cùng CHECK đổi theo.
+- 24/10/2026 (agent, tạm): Đóng băng có thể tiếp tục cho lượt đang chạy là W3, không W2, như dòng của agent-lifecycle ở
+  mục Không làm của requirements.md và mục Open của ADR-0120 (Accepted), DO-28 (v1.5); nguyên mẫu của ticket 01 là số
+  đo cho quyết định đó. Sửa: Ngoài phạm vi, ticket 01. Nếu sai thì: dòng về W2, và requirements.md cùng
+  ADR-0120 (Accepted) đổi theo.
+- 24/10/2026 (agent, tạm): ticket 01 bước 1 dẫn tenant-rbac:R2.7 cho luật động của `tenant_owner` (mọi khóa `active` có
+  `tenant_grantable` ở mức `tenant`, kể cả khóa đăng ký sau lần gán vai trò), tiêu chí mà tenant-rbac đặt cho luật đã
+  dựng ở tenant-rbac/02 bước 7, để `studio.lifecycle.freeze` đến chủ sở hữu công ty theo một tiêu chí có kiểm soát
+  (RB34) chứ không theo một bước của ticket khác. Sửa: ticket 01, dòng Quyết định về `studio.lifecycle.freeze` ở trên.
+  Nếu sai thì: bước 1 dẫn lại tenant-rbac/02 bước 7 và tenant-rbac giữ luật ở ticket.
 
 ## Danh sách ticket
 

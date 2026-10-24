@@ -70,9 +70,9 @@ Sales and sends a message once a person approves; all of it answers to the one a
    consent and suppression lists, a content-addressed manifest, or a child row whose parent carries the workspace,
    carries `tenant_id` and no `workspace_id`, under tenant-only RLS. When one workspace owns such a row, it is named in
    `owning_workspace_id`, the one column name for it across Studio, which access depth reads and RLS never does, with
-   a composite foreign key `(tenant_id, owning_workspace_id)` to `platform.workspaces`. The list of these tables, each
-   with its reason, has one owner, `test_rls_coverage.py`. Rows that each belong to one workspace (records, runs,
-   inbound events, conversations) keep `workspace_id`.
+   a composite foreign key `(tenant_id, owning_workspace_id)` to `platform.workspaces`, `ON DELETE RESTRICT`. The list
+   of these tables, each with its reason, has one owner, `test_rls_coverage.py`. Rows that each belong to one
+   workspace (records, runs, inbound events, conversations) keep `workspace_id`.
 6. **Composed above the context seams.** `build_studio(container, settings)` in
    `apps/api/src/dw_api/bootstrap/studio.py` runs after `container.runtime` is set (`wiring.py:307`) and before the
    context seam (`:332`), and returns `None` without a database. Its routers form one group under `/api/v1/studio`
@@ -241,3 +241,6 @@ Sales and sends a message once a person approves; all of it answers to the one a
   `retention@1.7.0` until usage-and-limits/02, the head of ADR-0122 decision 7's chain, moves it under its
   `schema.table` key (V4.P1, the planner's provisional call; if it is wrong, studio-skeleton/01 releases the first
   version with that key and the exception goes).
+- Third consistency check (round 4), third pass: decision 5's composite foreign key to `platform.workspaces` names
+  `ON DELETE RESTRICT`, as every foreign key must name its action (`CLAUDE.md`, Data model rules) and as the tables
+  that carry it already state (tenant-config, connections-and-vault, org-and-principals).

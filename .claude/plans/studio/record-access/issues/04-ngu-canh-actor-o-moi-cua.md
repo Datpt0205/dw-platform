@@ -34,8 +34,9 @@ RLS, không ở prompt (spec R6.3 tới R6.9; ADR-0103 (Accepted) mục 4 và 5;
       agent hay quy trình đã phát hành, thuộc định nghĩa toàn tenant" (DO-01).
 2. `ActorBoundaryPort` (Protocol trong gói truy cập của `dw_studio`) với một phương thức
    `record(kind, source_id, source_version, objects, fields) -> boundary_id` chạy trong giao dịch của người gọi, và
-   adapter SQL; nối ở composition root. Dịch vụ phát hành của agent-lifecycle và workflow-engine gọi nó trong giao dịch
-   phát hành.
+   adapter SQL; nối ở composition root. Móc phát hành của loại `agent` (agent-builder) và của loại `workflow`
+   (workflow-engine) gọi nó, trong giao dịch phát hành mà agent-lifecycle mở khi gọi móc của mục `ArtifactKindRegistry`
+   (ADR-0109 (Accepted) quyết 1).
 3. Setting: `TenantScope` thêm `boundary_id`; `_BIND_SCOPE` gắn `app.boundary_id`; một helper `bind_actor` trong
    `tenant_session.py` là chỗ duy nhất đặt `app.actor_kind` và `app.boundary_id`. Test kiến trúc giữ bảng cho phép:
    `user` từ `TenantScope.from_access_context` (cửa API), `agent` từ phiên công cụ của `dw_agent_runtime`, `workflow`
@@ -88,3 +89,6 @@ RLS, không ở prompt (spec R6.3 tới R6.9; ADR-0103 (Accepted) mục 4 và 5;
   nghĩa tài khoản dịch vụ gắn theo phiên bản, không bao giờ người phát hành; R6.9 và RA21 viết theo khuyến nghị đó.
 - 2026-10-23 (agent): DO-12 (a) đã có lời đáp (Đạt, 23/10/2026); Status về needs-triage; thêm dòng lớp bảng toàn tenant
   cho ba bảng giới hạn dữ liệu (DO-01).
+- 2026-10-24 (agent): vòng sửa 4, lượt ba: bước 2 thôi nói "dịch vụ phát hành của agent-lifecycle và workflow-engine":
+  móc phát hành của loại `agent` và `workflow` gọi `ActorBoundaryPort` trong giao dịch phát hành mà agent-lifecycle mở
+  (ADR-0109 (Accepted) quyết 1; Quyết định 24/10/2026 của spec).

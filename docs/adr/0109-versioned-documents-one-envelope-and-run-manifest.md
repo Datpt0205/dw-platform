@@ -41,16 +41,22 @@ contract of ADR 0120.
 
 1. **One envelope for every kind.** `studio.artifacts` holds `tenant_id`, `id` (UUIDv7, the portable id
    packages and promotion carry), `kind` (a foreign key to the reference table `studio.artifact_kinds`, one row
-   per registered kind), `api_name` (`^[a-z][a-z0-9_]{1,39}$` for every kind, the rule ADR 0107 uses for objects
-   and fields, so generated tool names stay within 64 characters; unique per tenant and kind among undeleted rows,
-   immutable after the first publish), `owning_workspace_id` (composite FK to `platform.workspaces (tenant_id, id)`
-   through `uq_workspaces_tenant_id_id`, which org-and-principals/01 creates, ADR 0102), `labels`, `origin` (pack
-   provenance), `last_version_no`, `row_version` and `deleted_at`. `studio.artifact_versions` holds `artifact_id`,
-   `version_no` (taken from `last_version_no` at submit and never reused), `document_schema`
+   per registered kind, `ON DELETE RESTRICT`), `api_name` (`^[a-z][a-z0-9_]{1,39}$` for every kind, the rule
+   ADR 0107 uses for objects and fields, so generated tool names stay within 64 characters; unique per tenant and
+   kind among undeleted rows, immutable after the first publish), `owning_workspace_id` (composite FK to
+   `platform.workspaces (tenant_id, id)` through `uq_workspaces_tenant_id_id`, which org-and-principals/01 creates,
+   ADR 0102, `ON DELETE RESTRICT`), `labels`, `origin` (pack provenance), `last_version_no`, `row_version` and
+   `deleted_at`. `studio.artifact_versions` holds `artifact_id` (composite FK to `studio.artifacts (tenant_id, id)`,
+   `ON DELETE CASCADE`), `version_no` (taken from `last_version_no` at submit and never reused), `document_schema`
    (`^dw\.[a-z_]+/v[0-9]+$`, that is `dw.<kind>/vN`),
    `document` (a jsonb object of at most 1 MiB with `CHECK (document::text IS NFC NORMALIZED)`),
    `content_hash`, `definition_hash`, `based_on_version_id` and `change_note`. Rows are tenant-wide with
-   tenant-only RLS; `owning_workspace_id` is data that role depth reads (ADR 0104). A kind is an
+   tenant-only RLS; `owning_workspace_id` is data that role depth reads (ADR 0104). A foreign key check does not pass
+   through RLS, so every foreign key from a table of this ADR to a tenant table is composite, `(tenant_id, <column>)`
+   to a key of its target that carries `tenant_id`: `UNIQUE (tenant_id, id)` where the target is keyed by id (here
+   `uq_artifacts_tenant_id_id` and `uq_artifact_versions_tenant_id_id`; the revision that adds such a foreign key adds
+   that UNIQUE where its target lacks it), the primary key `(tenant_id, hash)` of a content-addressed one. A one-column
+   key would let one tenant's row point at another's. A kind is an
    `ArtifactKindRegistry` entry at the composition root (document model, all-errors validator, pure
    dependency extractor and publish hook, each supplied by the kind's owner, the hook called by agent-lifecycle
    inside ADR 0120's publish transaction), never a table family; the ticket that registers a kind inserts its one
@@ -77,12 +83,12 @@ contract of ADR 0120.
    release-manifest checksum. Its canonical hash is the `definition_hash`, fixed at submit, and the closure
    body is stored once per hash in `studio.definition_manifests (tenant_id, hash, body, created_at)`.
 5. **One dependency index.** `studio.dependencies` is written in the same submit transaction:
-   `from_version_id` and `from_artifact_id` (FK CASCADE), `to_kind` (CHECK `artifact`, `field`,
-   `picklist_value`, `platform_artifact`, `connector`, `mcp_tool`, `binding`, `node_type`), `to_key`,
-   `to_version`, `to_hash`, typed backstops `to_artifact_id`, `to_version_id` and `to_field_id` (each FK ON
-   DELETE RESTRICT, each indexed), `usage` (`read`, `write`, `compare`, `invoke`, `bind`, `display`) and
-   `path` (a JSON pointer), indexed on `(tenant_id, to_kind, to_key)`. It is the one source for where-used,
-   delete protection, drift and a run's closure. A trigger refuses a soft delete of a target another
+   `from_version_id` and `from_artifact_id` (composite FKs, `ON DELETE CASCADE`), `to_kind` (CHECK `artifact`,
+   `field`, `picklist_value`, `platform_artifact`, `connector`, `mcp_tool`, `binding`, `node_type`), `to_key`,
+   `to_version`, `to_hash`, typed backstops `to_artifact_id`, `to_version_id` and `to_field_id` (each a composite FK
+   `ON DELETE RESTRICT`, indexed on `(tenant_id, <column>)`), `usage` (`read`, `write`, `compare`, `invoke`,
+   `bind`, `display`) and `path` (a JSON pointer), indexed on `(tenant_id, to_kind, to_key)`. It is the one source
+   for where-used, delete protection, drift and a run's closure. A trigger refuses a soft delete of a target another
    artifact's version depends on, answered 409 `conflict` with `details.reason_code` `artifact_in_use`
    (the FK alone cannot see a soft delete); where-used names only what the caller may read and counts the
    rest. Drafts compute their dependencies on demand with the same extractor.
@@ -91,16 +97,21 @@ contract of ADR 0120.
    `dw.run_manifest/v1` stored once in `platform.run_manifests` (primary key `(tenant_id, hash)`, inserted
    with `ON CONFLICT DO NOTHING`): release manifest ref, run mode (ADR 0111), root (kind, artifact id,
    `version_no`, `definition_hash`), closure, overlay entries (layer `platform` or `tenant`, config version
-   id, hash), binding entries (the binding-set version, each connection id and credential version, and a hash
-   of each variable value, never the value; ADR 0110), object schema versions and an engine section.
+   id, hash), binding entries (the binding-set version, each connection id with the `secret_version` pinned for
+   each of that connection's secret fields, a secret's version being numbered per subject and field (ADR 0115
+   decision 1), and a hash of each variable value, never the value; ADR 0110), object schema versions and an
+   engine section.
    A `simulate` run, and a run of no other mode, may have a draft as its root, requested only once the checks
-   that submit runs pass on the draft's content (ADR 0112 decision 3); its root then records the version id,
-   the stage `draft` and a provisional hash of that content, computed when the request is accepted the way
-   decision 4 computes `definition_hash`.
-   `platform.run_manifest_keys`, with FK RESTRICT to `studio.artifact_versions` and
-   `platform.config_versions`, keeps anything a retained run pinned from being purged. A manifest holds no
-   secret. `effective_hash` is the `definition_hash` plus the overlay entries, and evaluation evidence is
-   keyed by it (ADR 0120).
+   that submit runs (ADR 0112 decision 3) pass on the draft's content. `RunRequestService`, the one door
+   (ADR 0113 decision 1), runs those checks on that content itself, whichever route asked, before it builds a run
+   manifest or inserts a run row, and an error refuses the request, so no caller reaches a draft run unchecked
+   (failure-modes #5). The run's root then records the version id, the stage `draft` and a provisional hash of that
+   content, computed when the request is accepted the way decision 4 computes `definition_hash`.
+   `platform.run_manifest_keys` names each version a retained run pinned in exactly one of `artifact_version_id`
+   and `config_version_id` (CHECK `num_nonnulls(artifact_version_id, config_version_id) = 1`), each a composite FK
+   `ON DELETE RESTRICT` to `studio.artifact_versions` or `platform.config_versions`, so nothing such a run pinned
+   is purged. A manifest holds no secret. `effective_hash` is the `definition_hash` plus the overlay entries, and
+   evaluation evidence is keyed by it (ADR 0120).
 7. **A Studio run resolves only what it pinned.** Inside a Studio run a `PinnedResolver` answers from the
    manifest alone; an unpinned key raises `ConfigError`; a resume in any process rebuilds from the
    manifest's immutable rows, extending `hosts()` (`packages/python/dw_agent_runtime/src/dw_agent_runtime/ports.py:132`)
@@ -151,7 +162,8 @@ contract of ADR 0120.
 - Tests that must exist: the registry-equals-rows test; an UPDATE of a non-draft document is refused; a soft
   delete of a depended-on target answers 409; a run asking for an unpinned key fails; each of the six
   resume checks, removed, lets an incompatible resume through and turns its test red; a draft root requested
-  for any mode but `simulate` is refused.
+  for any mode but `simulate` is refused; a `simulate` request for a draft whose content fails the submit checks,
+  sent to `RunRequestService` directly and not through a route, is refused.
 - Run admission gains one insert pair (target 20 ms p95, to measure). Model profiles carry floats
   (`packages/python/dw_agent_runtime/src/dw_agent_runtime/model/profiles.py:54-55`) and must move to
   `Decimal` before they can be hashed tenant configuration. A second-language verifier can reproduce every
@@ -220,5 +232,17 @@ contract of ADR 0120.
   leave this ADR and the specs cite V4.4 alone); decision 2 makes the submit conditional on the draft's
   `If-Match`, 412 with `stale_version` on a mismatch and 428 `precondition_required` without one (V4.6, ADR 0108
   decision 3; if it is wrong, a submit seals whatever draft was saved last); decision 1 names the publish hook a
-  kind's registry entry carries, which agent-lifecycle calls in the publish transaction, in place of a "publish
-  service" a reader could take for a second path to live.
+  kind's registry entry carries, which agent-lifecycle calls in the publish transaction, so that no kind has a path
+  of its own to live.
+- Third consistency check (round 4), third pass, the planner's provisional calls: decision 1 gives `kind` and
+  `owning_workspace_id` their `ON DELETE RESTRICT` (`CLAUDE.md`, Data model rules) and makes every foreign key from
+  this ADR's tables to a tenant table composite, `artifact_id` and the keys of decisions 5 and 6 included, because a
+  foreign key check does not pass through RLS; decision 6 makes `platform.run_manifest_keys` name exactly one of
+  `artifact_version_id` and `config_version_id`, as tenant-config states, and pins a `secret_version` per
+  connection and field, the unit in which ADR 0115 decision 1 numbers a secret's versions; and decision 6 has
+  `RunRequestService` run the submit checks on a draft's content itself, whichever route asked, with a test that
+  calls the door directly, so a check held only by the test-run route cannot be bypassed from another caller
+  (failure-modes #5; if it is wrong, the door refuses a draft root whose request carries no passing check result
+  instead of running the checks). The second pass's line above now names only the publish hook that agent-lifecycle
+  calls, no longer the per-kind path it replaced, `LifecycleService` being the one writer of `live` (ADR 0120
+  decision 1).

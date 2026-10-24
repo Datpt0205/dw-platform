@@ -101,12 +101,15 @@ with the amendments listed under Acceptance; the calls it leaned on are answered
    adopted only if measurement shows parked runs outgrowing compaction.
 5. **Triggers request runs and never start them.** When a version becomes live, its triggers are materialised as
    `studio.trigger_subscriptions` rows (`datahub`, `provider_app`, `schedule`, `record_event`, `agent_tool`), and the
-   previous live version's rows retire in the same transaction. Every outcome is one `studio.trigger_deliveries` row
-   (monthly range partitions with a DEFAULT partition, RLS on every partition): `run_requested`, `duplicate`,
-   `rejected`, `quarantined`, `held_frozen`, `refused_killed`, `skipped_overlap`, `missed`, `suppressed_self`,
-   `suppressed_loop`, `suppressed_budget`, `limit_refused`. Idempotency is the run row's `request_key`, because a
-   unique index cannot span partitions: `<subscription_id>:<event_id>`, and for a schedule fire
-   `sched:<subscription_id>:<nominal UTC time>`, so a second replica's fire of one occurrence is refused. Under a
+   previous live version's rows retire in the same transaction: the `workflow` kind's publish hook (ADR-0109
+   decision 1), which workflow-engine supplies, calls a `TriggerActivationPort` that workflow-engine declares and
+   workflow-triggers satisfies by writing those rows, the composition root joining the two. Every outcome is one
+   `studio.trigger_deliveries` row (monthly range partitions with a DEFAULT partition, RLS on every partition):
+   `run_requested`, `duplicate`, `rejected`, `quarantined`, `held_frozen`, `refused_killed`, `skipped_overlap`,
+   `missed`, `suppressed_self`, `suppressed_loop`, `suppressed_budget`, `limit_refused`. Idempotency is the run
+   row's `request_key`, because a unique index cannot span partitions: `<subscription_id>:<event_id>`, and for a
+   schedule fire `sched:<subscription_id>:<nominal UTC time>`, so a second replica's fire of one occurrence is
+   refused. Under a
    freeze (ADR-0120) an inbound event is stored and held, with one `held_frozen` delivery written when the hold
    starts: the `studio_inbound` lane asks `RunControlPort` each cycle, leaves held events alone while the freeze holds
    and, once it lifts, requests their runs in `received_at` order. A freeze has no time limit, so the retention lane
@@ -261,3 +264,8 @@ Amended by Đạt on 2026-10-24, who accepted every recommendation the second co
   (completing Đạt's V4.4); decision 6 answers an event for an endpoint with no `live` version the same 404, storing
   nothing and counting it, and validates against the `live` version's schema (if it is wrong, such an event is held
   until a version goes live).
+- Third consistency check (round 4), third pass: decision 5 names who writes a workflow version's trigger
+  subscriptions in its publish transaction, the `workflow` kind's publish hook (ADR-0109 decision 1) calling a
+  `TriggerActivationPort` that workflow-engine, its consumer, declares and workflow-triggers satisfies, the
+  composition root joining the two (`CLAUDE.md`, Non-negotiable architecture); the `endpoint` kind's hook stays
+  workflow-triggers' own.

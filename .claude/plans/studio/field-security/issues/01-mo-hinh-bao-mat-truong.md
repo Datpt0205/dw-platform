@@ -74,12 +74,13 @@ nghị (a) (Đạt, 23/10/2026); `access_mode` đổi qua phát hành `dw.object
 
 - `packages/python/dw_agent_runtime/src/dw_agent_runtime/contracts.py:167`; spec: R2.1 (thay `data_classification`).
 - `docs/adr/0106-field-access-follows-personal-data-category.md:52-61`; spec: R1, R2.
-- `.claude/plans/studio/custom-objects/issues/02-luoc-do-dinh-nghia-object.md:29`; spec: R1.2 (`pd_category` của `studio.field_defs`).
-- `.claude/plans/studio/tenant-rbac/issues/04-quyen-doi-tuong-va-truong-co-do-sau.md:39-44`; spec: R2.4 (`fld.*` qua `platform.effective_grants`).
-- `.claude/plans/studio/record-access/spec.md:367-368`; spec: R2.5 (`studio.actor_boundary_fields`).
+- `.claude/plans/studio/custom-objects/issues/02-luoc-do-dinh-nghia-object.md:31`; spec: R1.2 (`pd_category` của `studio.field_defs`).
+- `.claude/plans/studio/tenant-rbac/issues/04-quyen-doi-tuong-va-truong-co-do-sau.md:40-45`; spec: R2.4 (`fld.*` qua `platform.effective_grants`).
+- `.claude/plans/studio/record-access/spec.md:369-370`; spec: R2.5 (`studio.actor_boundary_fields`).
 
 ## Comments
 
 - 2026-10-23 (agent): `Blocked by` trỏ tới compliance-pdpl ticket 01 (từ vựng `dw_kernel.personal_data`) đang viết cùng đợt; tệp sẽ có khi đợt này xong.
 - 2026-10-23 (agent): DO-34.1 và `D:field-security:R1.4~requirements.md:D11` đã có lời đáp (Đạt và người đặt yêu cầu, 23/10/2026); Status về needs-triage. Bỏ R1.4, R1.5, khóa `studio.field_security.manage` và route; tên ràng buộc thành `ck_field_defs_*`; thêm record-access/04 vào Blocked by vì R2.5 đọc `studio.actor_boundary_fields`.
 - 2026-10-24 (agent): vòng sửa 4: Blocked by thêm tenant-rbac/02 theo danh sách cạnh của vòng này, vì trigger của bước 1 gọi `platform.bump_access_version()` mà ticket đó tạo; cạnh này nói thẳng điều trước đây chỉ có qua tenant-rbac/04.
+- 2026-10-24 (agent): kiểm vòng sửa 4, lượt ba: ba neo ở Nguồn trỏ lại đúng dòng, vì lượt ba thêm dòng vào ticket 02 của custom-objects, ticket 04 của tenant-rbac và spec của record-access; nội dung được neo không đổi, và Hiện trạng của spec sửa hai neo cùng lý do.

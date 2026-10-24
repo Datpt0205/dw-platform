@@ -1,7 +1,7 @@
 # 01 — Đóng băng toàn nền tảng và theo tenant, kiểm ở mọi cửa của runtime
 
 Status: needs-triage
-Blocked by: .claude/plans/studio/org-and-principals/issues/02-thanh-vien-cap-tenant.md, .claude/plans/studio/foundations-hardening/issues/06-run-va-outbox-khong-ket.md, .claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md
+Blocked by: .claude/plans/studio/org-and-principals/issues/02-thanh-vien-cap-tenant.md, .claude/plans/studio/foundations-hardening/issues/06-run-va-outbox-khong-ket.md, .claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md, .claude/plans/studio/tenant-config/issues/05-lien-ket-va-phien-ban-cau-hinh.md
 Area: studio
 Yêu cầu: R7.1, R7.2, R7.3, R7.4, R7.5, R7.6, R7.7, R7.8, R7.10, R7.11, R9.1, R9.2, R10.1, AL11, AL12, AL16, AL17, AL18
 
@@ -12,7 +12,7 @@ mới, và mọi cửa của runtime hỏi một `RunControlPort` trước khi l
 adapter và các cửa; ticket 05 dùng chính bảng và các cửa này cho Tắt khẩn cấp (spec R7). Cửa nhận tách
 theo `trigger_kind` (DO-28 C), gỡ Đóng băng của công ty cần người thứ hai (D11), và port từ chối chủ thể
 không còn `active` (spec R9). Kèm một nguyên mẫu đo việc tiếp tục một lượt chạy sau khi bị chặn ở một
-cửa, để quyết Đóng băng có thể tiếp tục cho lượt đang chạy ở W2.
+cửa, để quyết Đóng băng có thể tiếp tục cho lượt đang chạy ở W3.
 
 ## Việc cần làm
 
@@ -37,8 +37,9 @@ cửa, để quyết Đóng băng có thể tiếp tục cho lượt đang chạ
       `platform.permissions` của tenant-rbac/01 (nhãn "Đóng băng công ty", `scope_kind` `tenant`, `risk`
       `standard` theo bảng phân loại của ticket đó); INSERT nêu mọi cột NOT NULL của bảng lúc đó, gồm `risk` và `status`
       (`active`) của tenant-rbac/01 và `tenant_grantable` (`true`) của tenant-rbac/02, ticket này chờ ticket đó. Khóa đến
-      `tenant_owner` theo quyền tính động của tenant-rbac (mọi khóa `active` có `tenant_grantable` ở mức `tenant`,
-      tenant-rbac/02 bước 7), không cần dòng quyền nào; cùng migration thêm khóa vào vai mẫu `org_admin` cho công ty
+      `tenant_owner` theo quyền tính động của tenant-rbac (mọi khóa `active` có `tenant_grantable` ở mức `tenant`, kể cả
+      khóa đăng ký sau lần gán vai trò: tenant-rbac:R2.7, dựng ở tenant-rbac/02 bước 7), không cần dòng quyền nào; cùng
+      migration thêm khóa vào vai mẫu `org_admin` cho công ty
       nhân bản mẫu đó về sau, không chạm vai đã nhân bản (tenant-rbac:R3.2).
 2. `RunControlPort` (bên dùng khai trong `dw_agent_runtime.ports`): `require_open(run_context, *, artifacts=())`
    ném `RunHaltedError` (một `ConflictError`, HTTP 409, `details.reason_code` trong `platform_frozen`,
@@ -91,7 +92,7 @@ cửa, để quyết Đóng băng có thể tiếp tục cho lượt đang chạ
    một graph `create_agent` được runner chứa, ném `RunHaltedError` ở middleware model và ở executor;
    gọi lại với `None` trên cùng thread có tiếp tục từ checkpoint cuối không, công cụ đã chạy có chạy lại
    không, khóa chống lặp có giữ không, có cần trạng thái `frozen` riêng không. Ghi kết quả vào Comments;
-   kết quả quyết Đóng băng có thể tiếp tục cho lượt đang chạy ở W2.
+   kết quả quyết Đóng băng có thể tiếp tục cho lượt đang chạy ở W3.
 
 ## Tiêu chí chấp nhận
 
@@ -169,3 +170,8 @@ cửa, để quyết Đóng băng có thể tiếp tục cho lượt đang chạ
   tính khóa `active` (tenant-rbac/02 bước 7). Tiêu chí R7.11 khẳng định mã `second_person_required` mà tenant-config/05
   đặt, trong khi ticket này không chờ ticket đó (Quyết định tạm của spec về tiền tố nghiêm); cạnh hay cách khác do
   người lập kế hoạch quyết, chưa thêm ở đây.
+- 2026-10-24 (agent): vòng sửa thứ tư, lượt c, theo các Quyết định tạm cùng ngày của spec: chờ tenant-config/05, vì
+  tiêu chí R7.11 khẳng định mã `second_person_required` mà ticket đó đặt ở `_enforce_strict_rules`; cạnh này thay câu
+  "không thêm cạnh tới tenant-config/05" và câu "chưa thêm ở đây" của các dòng trên, còn dòng `|=` của ticket này
+  vẫn không là lý do cho cạnh nào. Đóng băng có thể tiếp tục cho lượt đang chạy là W3 (Mục tiêu, bước 6), khớp
+  requirements.md và ADR-0120 (Accepted). Bước 1 dẫn tenant-rbac:R2.7 cho luật động của `tenant_owner`.

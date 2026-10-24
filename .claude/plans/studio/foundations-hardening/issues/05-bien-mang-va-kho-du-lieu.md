@@ -102,8 +102,11 @@ Kho dữ liệu (R8.1, R8.2, R8.4):
 - `apps/api/src/dw_api/settings.py:362-366`
 - `apps/worker/src/dw_worker/settings.py:330`
 - `infra/compose/docker-compose.host.yml:48`
-- `docs/adr/0115-tenant-credentials-vault-and-one-egress-client.md:74-77`
+- `docs/adr/0115-tenant-credentials-vault-and-one-egress-client.md:96-99`
 - spec: R7, R8, G7, FH20-FH24; si-platform `packages/python/hosts/si_api/src/si_api/http/rate_limit.py`
   (xô địa chỉ `10 × L`).
 
 ## Comments
+
+- 2026-10-24 (agent): kiểm vòng sửa 4, lượt ba: neo ADR-0115 (Accepted) ở Nguồn trỏ lại quyết định 5 (một chính
+  sách địa chỉ), vì các lần sửa ADR đó đã dời quyết định 5 khỏi các dòng neo cũ.

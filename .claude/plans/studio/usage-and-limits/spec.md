@@ -151,10 +151,11 @@ mục 'Agent and tool rules'; ADR-0121 (Accepted) quyết 3). Lượt kiểm đ�
   của bảng từ chối mà workflow-engine giữ (trước là workflow-engine:R5.4).
 - R4.8 KHI người giữ `platform.limits.manage` hạ một Hạn mức hay đặt Hạn mức cho một phạm vi chưa có, API
   hạn mức PHẢI áp thay đổi với một người và ghi audit `limits.policy.set` trong cùng giao dịch (D11: siết
-  một người).
+  một người), với `kind` `hard`, giá trị duy nhất của W1 (Hạn mức mềm `soft` đến ở W2 cùng cảnh báo ngưỡng, bên đọc
+  của nó).
 - R4.9 NẾU một lệnh `PUT` hay `DELETE` làm một Hạn mức lỏng hơn chính sách đang có hiệu lực (giá trị cao
-  hơn, gỡ chính sách, đổi `hard` sang `soft`), THÌ API hạn mức PHẢI trả 409 `second_person_required` và
-  không đổi dòng nào, vì W1 chưa có đường hai người cho việc nới (D11: nới hai người).
+  hơn hay gỡ chính sách), THÌ API hạn mức PHẢI trả 409 `second_person_required` và không đổi dòng nào, vì W1 chưa có
+  đường hai người cho việc nới (D11: nới hai người).
 - R4.10 NẾU phần còn lại của một Hạn mức cứng theo kỳ không đủ lúc nhận một lượt chạy, THÌ `LimitsPort.admit`
   PHẢI trả từ chối `limit_exceeded` kèm `metric`, `scope_type`, `window`, `limit`, `used` và `resets_at`, không mở
   lease và không đổi bộ đếm nào.
@@ -233,8 +234,9 @@ W1 dùng bộ đếm theo tiến trình, GCRA trên Valkey vào ở W2 (YC44; DO
   kiểu, lần hỏi không tính lượt và adapter bộ đếm theo tiến trình trên cửa sổ trượt (W1).
 - Hàm của sổ `platform.time_partitioned_tables`, chủ duy nhất ở W1:
   `platform.drop_expired_partitions(cutoffs jsonb)` (mỗi bảng cha một mốc đọc từ tệp chính sách retention) và
-  `platform.purge_tenant_append_only(p_tenant uuid)` cho offboarding, gọi trước mọi bảng thường trong giao dịch xóa
-  (R3.8, R3.10, R3.11); spec khác không viết lại thân hai hàm này.
+  `platform.purge_tenant_append_only(p_tenant uuid)` cho offboarding, một bước trong thứ tự các bước xóa của lane
+  `offboarding` mà studio-skeleton/01 khai ở một chỗ trong `offboarding.py`, chạy trước mọi bảng thường trong giao dịch
+  xóa (R3.8, R3.10, R3.11); spec khác không viết lại thân hai hàm này.
 - Dòng thời hạn của bảng spec này tạo trong tệp chính sách retention, theo định dạng khóa `schema.table` của
   telemetry-and-audit (telemetry-and-audit:R5.6): `platform.usage_events` (ticket 02, cùng thay đổi đăng ký),
   `platform.budget_counters`, `platform.budget_leases` (ticket 03).
@@ -255,7 +257,7 @@ W1 dùng bộ đếm theo tiến trình, GCRA trên Valkey vào ở W2 (YC44; DO
 | W2: đối soát cho người vận hành và chi phí theo kết quả                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | không có bên đọc ở W1 (DO-21.1); chi phí mỗi lead (KQ12) cần sự kiện kết quả của marketing-pilot                                                                                                                                                                      | usage-and-limits; marketing-pilot, đợt sau (W2)   |
 | W2: lượt `schedule` thiếu hạn mức ghi lần kích hoạt `limit_refused` rồi bỏ qua, không giữ tới `resets_at`                                                                                                                                                                                                                                                                                                                                                                                                                            | trình kích hoạt lịch là W2 (DO-21.3); dồn mọi lần lỡ sẽ xả cả loạt khi kỳ mới bắt đầu (`CLAUDE.md` mục 'Agent and tool rules'; ADR-0113 (Accepted))                                                                                                                   | workflow-triggers, đợt sau (W2)                   |
 | W2: cột `max_run_seconds` của `platform.plan_limits` và giới hạn thời gian mỗi lượt chạy theo nó                                                                                                                                                                                                                                                                                                                                                                                                                                     | cột vào cùng bên đọc của nó (failure-modes #1); cần hạn chót bền và hủy xuyên tiến trình của workflow-engine, đều W2                                                                                                                                                  | usage-and-limits; workflow-engine, đợt sau (W2)   |
-| W2: cảnh báo ngưỡng 80% và 100% mỗi chính sách và kỳ qua outbox (`usage.limit.threshold_crossed`), cùng cột `thresholds` của `platform.limit_policies`                                                                                                                                                                                                                                                                                                                                                                               | YC79; cột vào cùng bên đọc của nó (failure-modes #1); cần bộ đếm và chính sách của W1 trước                                                                                                                                                                           | usage-and-limits, đợt sau (W2)                    |
+| W2: Hạn mức mềm (giá trị `soft` của `kind`, chỉ cảnh báo, không chặn) và cảnh báo ngưỡng 80% và 100% mỗi chính sách và kỳ qua outbox (`usage.limit.threshold_crossed`), cùng cột `thresholds` của `platform.limit_policies`                                                                                                                                                                                                                                                                                                          | YC79; cột và giá trị `soft` vào cùng bên đọc của chúng, cảnh báo ngưỡng (failure-modes #1); cần bộ đếm và chính sách của W1 trước                                                                                                                                     | usage-and-limits, đợt sau (W2)                    |
 | W2: giới hạn tốc độ GCRA trên Valkey (adapter thứ hai của `RateLimiterPort`) và bộ điều tốc nhà cung cấp, cùng cột `requests_per_minute`, `tokens_per_minute` của `platform.plan_limits` mà chúng đọc                                                                                                                                                                                                                                                                                                                                | YC44; W1 đã có port và bộ đếm theo tiến trình (R7), nhận giới hạn do bên gọi nêu (R7.2), nên không bên nào ở W1 đọc hai cột tốc độ của gói (failure-modes #1); Valkey chỉ giữ trạng thái tốc độ; mất Valkey lùi về bộ đếm mỗi tiến trình (DO-49)                      | usage-and-limits, đợt sau (W2)                    |
 | W2: hạn mức theo người dùng (giá trị `user` của `scope_type`, cột `scope_user_id` FK ghép `(tenant_id, scope_user_id)` tới `platform.tenant_members` `ON DELETE CASCADE`), theo mục đích (cột `purposes`; dựng có AI, chạy mô phỏng và chạy thử, kiểm định), theo đồng thời (cột `max_concurrent_runs` của `platform.plan_limits`, câu trả lời thiếu chỗ đồng thời của `LimitsPort.admit` kèm thời điểm thử lại, trước là R4.11); hiển thị sử dụng theo tên người; phần nền tảng trả có trần cho lượt kiểm định lại do nền tảng kích | YC79, và phần người dùng của chuỗi trong YC77; mỗi cột vào cùng bên đọc của nó (failure-modes #1); mẫu cấu hình limit theo agent học từ phân tích đối thủ (config-chang.md mẫu 4); theo tên người sau khi luật sư xác nhận thông báo cho nhân viên (DO-51.2); DO-29.2 | usage-and-limits, đợt sau (W2)                    |
 | W2: BYOM (bên trả phí, giá riêng tenant, hạn mức token); đo bước mã theo vCPU và GB đặt trước nhân thời gian chạy, rerank, trích xuất, chuyển giọng nói                                                                                                                                                                                                                                                                                                                                                                              | YC79; chờ `model-connections` và `code-sandbox` (DO-43; DO-45.1 chọn đơn vị đặt trước)                                                                                                                                                                                | usage-and-limits; model-connections; code-sandbox |
@@ -302,15 +304,17 @@ Mọi bảng tenant: RLS ENABLE và FORCE theo tenant, grant cùng migration, t�
   hoạt động, ngày theo `window_for`.
 - `platform.limit_policies`: RLS tenant; `scope_type` CHECK (`tenant`, `workspace`, `agent`, `workflow`) cho API
   và Chuỗi phạm vi hạn mức (`user` ở W2, Ngoài phạm vi); phạm vi cụ thể nằm ở cột khóa ngoại có kiểu
-  `scope_workspace_id` (FK ghép `(tenant_id, scope_workspace_id)` tới `platform.workspaces`) và `scope_artifact_id`
+  `scope_workspace_id` (FK ghép `(tenant_id, scope_workspace_id)` tới `platform.workspaces (tenant_id, id)`, đích là
+  ràng buộc `uq_workspaces_tenant_id_id` của org-and-principals/01) và `scope_artifact_id`
   (FK ghép `(tenant_id, scope_artifact_id)` tới `studio.artifacts (tenant_id, id)`, đích là ràng buộc
   `uq_artifacts_tenant_id_id` của tenant-config, agent hay quy trình), mỗi FK `ON DELETE CASCADE` và có index
   riêng; CHECK `num_nonnulls(scope_workspace_id, scope_artifact_id) = 1` khi `scope_type` khác `tenant`, với đúng
   cột của `scope_type`, và `= 0` khi `tenant`, như chủ thể của Kho bí mật (ADR-0115 (Accepted); ADR-0121 (Accepted)
-  quyết 4), để chính sách mồ côi tự gỡ (R4.12); `metric`, `window_kind`, `kind` CHECK (`hard`, `soft`);
-  `limit_value numeric(20,8) CHECK (>= 0)`; `version`; `created_by`; UNIQUE NULLS NOT DISTINCT trên `tenant_id`,
-  `scope_workspace_id`, `scope_artifact_id`, `metric`, `window_kind`; trigger `updated_at` nhường giá trị lệnh nêu;
-  `scope_user_id`, `thresholds` và `purposes` đến ở W2 cùng bên đọc (Ngoài phạm vi). Bảng toàn tenant: không cột
+  quyết 4), để chính sách mồ côi tự gỡ (R4.12); `metric`, `window_kind`; `kind` CHECK (`hard`), giá trị duy nhất ở
+  W1 (R4.8); `limit_value numeric(20,8) CHECK (>= 0)`; `version`; `created_by`; UNIQUE NULLS NOT DISTINCT trên
+  `tenant_id`, `scope_workspace_id`, `scope_artifact_id`, `metric`, `window_kind`; trigger `updated_at` nhường giá trị
+  lệnh nêu; `scope_user_id`, `thresholds`, `purposes` và giá trị `soft` của `kind` đến ở W2 cùng bên đọc (Ngoài phạm
+  vi). Bảng toàn tenant: không cột
   `workspace_id` (phạm vi nằm ở cột có kiểu, tên `scope_*` như ADR-0121 (Accepted) quyết 4), có tên và lý do trong
   danh sách bảng toàn tenant mà `test_rls_coverage.py` giữ (`CLAUDE.md` mục 'Tenancy and authorization',
   ngoại lệ của DO-01).
@@ -335,7 +339,8 @@ Mọi bảng tenant: RLS ENABLE và FORCE theo tenant, grant cùng migration, t�
   và giờ đặt lại; không có route `/api/v1/usage/limits` riêng. `PUT /api/v1/limits/{scope_type}/{scope_id}`
   và `DELETE` (`platform.limits.manage`, `Idempotency-Key`; `{scope_type}` là `tenant`, `workspace`, `agent` hay
   `workflow`, `user` đến ở W2): siết áp ngay với một người (R4.8); nới trả 409
-  `second_person_required` ở W1 (R4.9); cao hơn Trần của gói → 422 `limit_above_plan`.
+  `second_person_required` ở W1 (R4.9); cao hơn Trần của gói → 422 `limit_above_plan`; `kind` chỉ nhận `hard` ở W1,
+  giá trị khác → 422 `validation_failed` (app-standards:R1.3).
 - Lỗi theo vỏ problem+json của ADR-0108 (Accepted); `details.reason_code`: `limit_exceeded`,
   `limit_above_plan`, `second_person_required`.
 
@@ -368,7 +373,7 @@ Mọi bảng tenant: RLS ENABLE và FORCE theo tenant, grant cùng migration, t�
 | UL12 | Giá không định lại lịch sử                           | R2.4              | Đổi Bảng giá → dòng cũ giữ `price_book_version` và chi phí cũ                                                                                                                                                                                                                                               |
 | UL13 | Hạn mức giữa lượt chạy dừng sạch, không hạ ngầm      | R5.5, R6.3        | Trần cạn giữa lượt → dừng ở ranh giới kế tiếp `limit_exceeded`, không cắt giữa một bước gửi, không hạ model; gỡ kiểm ranh giới → test đỏ                                                                                                                                                                    |
 | UL14 | Giới hạn tốc độ theo khóa có kiểu, không theo bearer | R7.1, R7.2, R7.3  | Giới hạn 60, 2 replica: lần thứ 31 trong một phút ở một tiến trình bị từ chối; hai bearer khác nhau gửi tới cùng nguồn chia chung một bộ đếm; khóa (tenant, người gọi, đối tượng) 20 trong 10 phút: lần hỏi không tính lượt không đổi bộ đếm, sau lượt thứ 20 trả đã đủ; đổi khóa sang băm bearer → test đỏ |
-| UL15 | Không nới Hạn mức bằng một người                     | R4.9              | Một người `PUT` nâng trần tenant từ USD 10 lên USD 50 → 409 `second_person_required`, Hạn mức hiệu lực vẫn USD 10; `DELETE` chính sách → 409; đổi `hard` sang `soft` → 409; gỡ kiểm → test đỏ                                                                                                               |
+| UL15 | Không nới Hạn mức bằng một người                     | R4.9              | Một người `PUT` nâng trần tenant từ USD 10 lên USD 50 → 409 `second_person_required`, Hạn mức hiệu lực vẫn USD 10; `DELETE` chính sách → 409; gỡ kiểm → test đỏ                                                                                                                                             |
 | UL16 | Xóa sổ chỉ thêm chỉ khi công ty đang offboarding     | R3.8, R3.9, R3.10 | Gọi `platform.purge_tenant_append_only` cho công ty `active` → 23514, 0 dòng xóa; công ty `offboarding` → dòng của nó trong `usage_events` xóa hết, dòng của công ty khác và `audit_events` còn; gỡ kiểm trạng thái khỏi hàm → test đỏ                                                                      |
 
 ## Tiêu chí xong
@@ -384,7 +389,9 @@ Mọi bảng tenant: RLS ENABLE và FORCE theo tenant, grant cùng migration, t�
   (`.claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md`), gói và điều
   hướng (`.claude/plans/studio/studio-skeleton/issues/02-goi-dw-studio-va-seam-api.md`).
 - studio-skeleton: R3.7 đọc thời hạn của mỗi bảng `append_only` dưới khóa `schema.table` (studio-skeleton:R3.7);
-  test phủ offboarding và `STUDIO_EXCLUSIONS` cho bảng tenant mới của `platform` (studio-skeleton:R4.3).
+  test phủ offboarding và `STUDIO_EXCLUSIONS` cho bảng tenant mới của `platform` (studio-skeleton:R4.3); thứ tự các
+  bước xóa của `purge_rows` mà studio-skeleton/01 khai ở một chỗ trong `offboarding.py` và test phủ của
+  studio-skeleton:R4.2 đọc, nơi ticket 02 thêm bước `platform.purge_tenant_append_only` (R3.11).
 - tenant-rbac: danh mục quyền là một chủ (tenant-rbac:R1.1), bảng do
   `.claude/plans/studio/tenant-rbac/issues/01-mot-chu-cho-quyen.md` tạo; `platform.usage.read` đưa về `active` ở
   ticket 02 và `platform.limits.manage` đăng ký ở ticket 03, mỗi khóa trong migration của ticket dùng nó theo quy
@@ -399,10 +406,12 @@ Mọi bảng tenant: RLS ENABLE và FORCE theo tenant, grant cùng migration, t�
   `platform.plans` đổi theo một thứ tự; ticket 02 chờ
   `.claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md` vì cùng sửa lane
   `offboarding` (gọi `platform.purge_tenant_append_only` trước vòng DELETE bảng thường, R3.11).
-- org-and-principals: cây workspace và workspace gốc cho Chuỗi phạm vi hạn mức
-  (`.claude/plans/studio/org-and-principals/issues/02-thanh-vien-cap-tenant.md`); hàm xóa người dùng `service` của
-  `.claude/plans/studio/org-and-principals/issues/03-tai-khoan-dich-vu-run-as.md` chạy sau cùng trong cùng giao dịch
-  xóa, sau mọi bảng của công ty, nên ticket đó chờ ticket 02 (cạnh nằm ở ticket đó).
+- org-and-principals: `uq_workspaces_tenant_id_id` (org-and-principals:R1.1;
+  `.claude/plans/studio/org-and-principals/issues/01-khoa-don-vi-va-siet-realm.md`), đích của FK ghép
+  `scope_workspace_id`, mà ticket 03 nhận qua org-and-principals/02; cây workspace và workspace gốc cho Chuỗi phạm vi
+  hạn mức (`.claude/plans/studio/org-and-principals/issues/02-thanh-vien-cap-tenant.md`); hàm xóa người dùng
+  `service` của `.claude/plans/studio/org-and-principals/issues/03-tai-khoan-dich-vu-run-as.md` chạy sau cùng trong
+  cùng giao dịch xóa, sau mọi bảng của công ty, nên ticket đó chờ ticket 02 (cạnh nằm ở ticket đó).
 - workflow-engine: làn `studio_runs` giao lượt chạy cho runner lúc dispatch, chỗ duy nhất gọi
   `LimitsPort.admit`, và là chủ bảng xử lý từ chối theo `trigger_kind` (workflow-engine:R5.9,
   workflow-engine:R5.10, workflow-engine:R5.11), nên workflow-engine/04 chờ ticket 03
@@ -440,7 +449,7 @@ Mọi bảng tenant: RLS ENABLE và FORCE theo tenant, grant cùng migration, t�
   đường đề xuất hai người cho Hạn mức → R4.9; tenant-config đổi khóa duy nhất của `studio.artifacts` → Dữ liệu,
   ticket 03; agent-builder/03 đổi thứ tự ngăn xếp agent → R6.5; `RateLimiterPort` có adapter Valkey → R7 và hai cột
   tốc độ của `platform.plan_limits`; foundations-hardening hay org-and-principals đổi thứ tự trong giao dịch xóa của
-  offboarding → R3.11, ticket 02.
+  offboarding, hay studio-skeleton đổi chỗ khai thứ tự các bước xóa → R3.11, ticket 02.
 
 ## Câu hỏi còn mở
 
@@ -600,6 +609,24 @@ Mọi bảng tenant: RLS ENABLE và FORCE theo tenant, grant cùng migration, t�
   thử", vì lượt qua cửa chạy thử ở W1 là lượt `simulate`, mà glossary gọi là chạy mô phỏng và dành "chạy thử" cho chế
   độ `test` (`docs/platform/CONTEXT.md`, Run mode); YC79 đổi cùng chữ. Sửa: Ngoài phạm vi. Nếu sai thì: hai chỗ cùng
   giữ "chạy thử" và glossary nới nghĩa của từ đó.
+- 24/10/2026 (agent, tạm): `kind` của `platform.limit_policies` chỉ nhận `hard` ở W1 (CHECK); `soft` đến ở W2 cùng cảnh
+  báo ngưỡng, bên đọc duy nhất của Hạn mức mềm, vì một giá trị không bên nào đọc là kiểm soát trang trí
+  (failure-modes #1; V4.P6), và ADR-0121 (Accepted) quyết 4 ghi cùng đợt; lệnh `PUT` mang giá trị khác nhận 422
+  `validation_failed` (app-standards:R1.3), nên việc đổi `hard` sang `soft` ra khỏi R4.9 và UL15 ở W1 và nằm ở dòng
+  W2 về nới Hạn mức. Sửa: Dữ liệu, R4.8, R4.9, API, UL15, Ngoài phạm vi, ticket 03. Nếu sai thì: W1 nhận `soft` cùng
+  một bên đọc W1 của nó, và R4.9, UL15 khôi phục nhánh đổi `hard` sang `soft`.
+- 24/10/2026 (agent, tạm): lời gọi `platform.purge_tenant_append_only` là một bước trong thứ tự các bước xóa của
+  `purge_rows` mà studio-skeleton/01 khai ở một chỗ trong `offboarding.py`; ticket 02 thêm bước đó vào chỗ ấy, trước
+  `_ORDERED_FIRST`, và không gọi hàm từ chỗ khác, để test phủ của studio-skeleton:R4.2 đọc được bước và tính khóa ngoại
+  `ON DELETE RESTRICT` từ một bảng `append_only` tới một bảng thường là đã thỏa (failure-modes #2: thứ tự xóa có một
+  chủ). Sửa: Trong phạm vi, Phụ thuộc, ticket 02. Nếu sai thì: test phủ tự liệt kê các bước xóa bằng hàm, và một test
+  đỏ khi danh sách đó lệch thứ tự của adapter.
+- 24/10/2026 (agent, tạm): FK ghép `(tenant_id, scope_workspace_id)` nêu đích `platform.workspaces (tenant_id, id)` qua
+  `uq_workspaces_tenant_id_id` của org-and-principals/01, mà ticket 03 chờ qua org-and-principals/02, theo luật của area
+  cho FK giữa hai bảng tenant (kiểm khóa ngoại không đi qua RLS, nên FK là ghép và trỏ UNIQUE `(tenant_id, id)` của bảng
+  đích); hai cột phạm vi đã là FK ghép nên không đổi hình. Sửa: Dữ liệu, Phụ thuộc, ticket 03. Nếu sai thì: ticket 03
+  chờ thẳng org-and-principals/01, người tạo duy nhất của UNIQUE đó (OPS-a.2 của Đạt, org-and-principals), thay vì qua
+  org-and-principals/02.
 
 ## Danh sách ticket
 

@@ -8,7 +8,7 @@ Yêu cầu: R3.1, R3.4, R3.5, R3.6, WN12, WN19
 ## Mục tiêu
 
 Dựng nền biểu thức của Studio: một cổng `ExpressionEngine` thuần stdlib ở `dw_kernel` và hai bộ điều hợp CEL ở
-`dw_studio`, `CelCppEngine` trên `cel-expr-python` và `CelRustEngine` trên `common-expression-language`, qua một bộ
+`dw_studio.core.adapters.cel`, `CelCppEngine` trên `cel-expr-python` và `CelRustEngine` trên `common-expression-language`, qua một bộ
 test hợp đồng, có trần chi phí và kích thước; composition root chọn một bộ theo setting như ADR-0114 (Accepted) quyết
 2, và profile triển khai luôn chọn `cel-expr-python`, thư viện CLAUDE.md mục Required stack ghim (workflow-nodes R3.1,
 R3.4, R3.5, R3.6, WN12, WN19). Trước cổng là một nhánh thử chứng minh thư viện làm được điều cần (DO-38).
@@ -31,16 +31,20 @@ R3.4, R3.5, R3.6, WN12, WN19). Trước cổng là một nhánh thử chứng mi
    `bytes`, `timestamp`, `duration`, `list[T]`, `map[string, T]`, `object{...}`, `optional[T]`, `dyn`);
    mã lỗi. Thêm tên module import thật của hai binding, đo ở bước 1 chứ không đoán (failure-modes #4), vào
    denylist contract "Kernel is pure (stdlib only)" (`pyproject.toml:252-254`) để guard thấy được chúng.
-3. `packages/python/dw_studio/src/dw_studio/adapters/expressions/`: `CelCppEngine` trên
+3. `packages/python/dw_studio/src/dw_studio/core/adapters/cel/` (`dw_studio.core.adapters.cel`, gói mà bố cục của
+   studio-skeleton:R5.6 dành cho adapter CEL): `CelCppEngine` trên
    `cel-expr-python==0.1.3` (mặc định) và `CelRustEngine` trên `common-expression-language==0.10.0` sau một tiền-kiểm
    AST (độ lồng comprehension tối đa 2, literal list tối đa 1.000 phần tử), cả hai ghim chính xác trong
    `pyproject.toml` và `uv.lock`. Composition root của API và worker chọn một bộ bằng setting (V4.P13); khi
    `settings.is_deployed`, setting phải chọn `cel-expr-python` và giá trị trỏ sang bản Rust bị từ chối, nên một test
    đỏ khi setting của profile triển khai trỏ sang `CelRustEngine` (R3.6, CLAUDE.md mục Environments); chuyển profile
    triển khai sang bản Rust thì sửa CLAUDE.md mục Required stack trong cùng thay đổi. `evaluate` áp ngân sách vòng
-   khoảng 10.000 và trần 256 KiB cho kết quả tuần tự hóa (ADR-0114 (Accepted) quyết 4). Import-linter: chỉ adapter
-   import thư viện CEL.
-4. Bộ test hợp đồng chạy cho cả hai adapter (ADR-0114 (Accepted) quyết 2): tập con cel-spec, thư viện hàm, ca ngân
+   khoảng 10.000 và trần 256 KiB cho kết quả tuần tự hóa (ADR-0114 (Accepted) quyết 4). Import-linter: ticket này
+   viết hợp đồng của studio-skeleton:R5.6, mà Ngoài phạm vi của studio-skeleton giao cho nó: chỉ
+   `dw_studio.core.adapters.cel` được import thư viện CEL, hợp đồng nêu tên module import thật của cả hai binding đo ở
+   bước 1.
+4. Bộ test hợp đồng `packages/python/dw_studio/tests/core/adapters/cel/test_expression_contract.py`, đánh dấu `unit`
+   để `make test-unit` của `make ci` chạy nó, chạy cho cả hai adapter (ADR-0114 (Accepted) quyết 2): tập con cel-spec, thư viện hàm, ca ngân
    sách và kích thước, vector test `rules.py` của si-platform (D5) port theo thỏa thuận viết với chủ mã (DO-03.2: ghim
    commit, dòng đầu `Ported from si-platform`, không đồng bộ; chưa có thỏa thuận trước P1 thì viết lại theo
    cùng vector), mỗi vector kiểm cực tính theo ADR-0114 (Accepted) quyết 6 vì Điều kiện để lưu được nghĩa là
@@ -51,6 +55,8 @@ R3.4, R3.5, R3.6, WN12, WN19). Trước cổng là một nhánh thử chứng mi
 
 - [ ] R3.1: một Biểu thức đi qua `ExpressionEngine.evaluate`, không có đường nào gọi `str.format`,
       `jinja2` hay `eval` trên nguồn của công ty; biến chưa khai → lỗi biên dịch khi `check`.
+- [ ] R3.1: thêm một module thử ngoài `dw_studio.core.adapters.cel` import một trong hai binding CEL → `lint-imports`
+      đỏ, nêu module đó (studio-skeleton:R5.6); gỡ hợp đồng hay bỏ tên một binding khỏi nó → module thử qua, test đỏ.
 - [ ] R3.4 (WN12): map lồng 3 cấp trên 22 phần tử → `expression_budget_exceeded` trong < 50 ms ở cả hai adapter; gỡ
       ngân sách vòng ở `CelCppEngine`, hay tiền-kiểm AST ở `CelRustEngine` → ca đó chạy hết, treo hoặc không trả lỗi
       (test đỏ).
@@ -61,13 +67,14 @@ R3.4, R3.5, R3.6, WN12, WN19). Trước cổng là một nhánh thử chứng mi
       trỏ sang bản Rust; ngoài profile triển khai, setting chọn `CelRustEngine` thì composition root dựng nó.
 - [ ] WN12: cùng một bộ test hợp đồng xanh cho cả `CelCppEngine` và `CelRustEngine`; `uv.lock` ghim chính xác
       `cel-expr-python==0.1.3` và `common-expression-language==0.10.0`.
-- [ ] Xong: `uv run pytest packages/python/dw_studio/tests/adapters/test_expression_contract.py` xanh.
+- [ ] Xong: `make ci` xanh.
 
 ## Nguồn
 
 - `packages/python/dw_agent_runtime/src/dw_agent_runtime/model/prompts.py:168`; spec: R3.1 (chỗ
   `str.format` phải tránh cho văn bản tenant).
 - `pyproject.toml:252-254`; spec: R3.1 (denylist kernel).
+- studio-skeleton:R5.6 (chỉ `dw_studio.core.adapters.cel` import thư viện CEL); spec: R3.1, Trong phạm vi.
 - ADR-0114 (Accepted), ADR-0112 (Accepted); spec: R3.
 - si-platform `rules.py` (D5, trích theo repo + tên file); spec: R3.
 
@@ -77,3 +84,4 @@ R3.4, R3.5, R3.6, WN12, WN19). Trước cổng là một nhánh thử chứng mi
   needs-info.
 - 2026-10-23 (agent): DO-38 đã có lời đáp (Đạt 23/10/2026: C++ mặc định, Rust dự phòng, nếu số đo FOG-50 giữ được), nên ticket về `needs-triage`; luật chọn sau nhánh thử ở bước 1. DO-03.2 và DO-37 cũng đã có lời đáp; route theo dạng sub-resource của ADR-0108 (Accepted).
 - 2026-10-24 (agent): vòng sửa thứ tư, V4.P13 (agent, tạm), sửa ở lượt b (B1) để khớp ADR-0114 (Accepted) quyết 2: ticket ship cả `CelCppEngine` và `CelRustEngine` qua một bộ test hợp đồng, composition root chọn theo setting; ở profile triển khai (`settings.is_deployed`) setting phải chọn `cel-expr-python` và một test đỏ khi nó trỏ sang bản Rust (R3.6, WN19); chuyển profile triển khai sang bản Rust thì sửa CLAUDE.md mục Required stack trong cùng thay đổi. Bản lượt a của dòng này (chỉ ship `cel-expr-python`, không setting) trái quyết định đó (phát hiện E về CLAUDE.md mục Required stack và ticket này).
+- 2026-10-24 (agent): lượt c của vòng 4: hai adapter ở `dw_studio.core.adapters.cel`, gói mà studio-skeleton:R5.6 chỉ cho import thư viện CEL, và ticket này viết hợp đồng import-linter đó, kèm tiêu chí R3.1 thấy `lint-imports` đỏ (C23); dòng `Xong:` đổi sang `make ci`, vì `make test-architecture` của nó chạy `lint-imports` (`Makefile`, đích `test-architecture`), và bộ test hợp đồng dời theo gói sang `tests/core/adapters/cel/`, đánh dấu `unit` để `make test-unit` chạy nó (bước 4).

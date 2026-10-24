@@ -62,12 +62,16 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
    (`wf.unreachable_node`, `wf.router_not_total`, `wf.join_required`, `wf.ref_not_dominating`, `wf.type_mismatch`,
    `wf.wait_in_map`, `wf.limit_above_plan`, `wf.binding_undeclared`). Its graph module (`reachable`, `dominators`,
    `paths_to`) also serves ADR-0125's capability analysis, so the two cannot see different graphs.
-4. **Compilation.** A published version compiles to a LangGraph `StateGraph`: one `LastValue` channel per node output
-   (`out__<node_id>`) and per variable; `defer=True` for joins; a `map` as one `Send` per chunk of 20 items, with
-   `max_parallel` as `max_concurrency` and child runs per chunk beyond `max_map_items` (at most 1,000); every wait an
-   `interrupt()` as the first statement of its own node; `recursion_limit` always passed (`max_steps` plus the
-   supersteps the compiler counts). Compiled graphs sit in a bounded per-process LRU of 256 keyed
-   `(tenant_id, artifact_version_id, compiler_version)`. LangGraph is imported only in the runtime's adapters.
+4. **Compilation.** Each published version, and each draft a `simulate` run pins (ADR-0109 decision 6), compiles to a
+   LangGraph `StateGraph`: one `LastValue` channel per node output (`out__<node_id>`) and per variable; `defer=True`
+   for joins; a `map` as one `Send` per chunk of 20 items, with `max_parallel` as `max_concurrency` and child runs per
+   chunk beyond `max_map_items` (at most 1,000); every wait an `interrupt()` as the first statement of its own node;
+   `recursion_limit` always passed (`max_steps` plus the supersteps the compiler counts). Compiled graphs sit in a
+   bounded per-process LRU of 256 keyed `(tenant_id, artifact_version_id, pinned_hash, compiler_version)`, where
+   `pinned_hash` is the hash the run manifest pins: a sealed version's `definition_hash`, or the provisional hash of a
+   draft's content (ADR-0109 decision 6). A draft keeps its id while it is edited and a run resolves only from its
+   manifest (`CLAUDE.md`, Non-negotiable architecture), so a key without the hash would hand a new simulation the
+   graph of older content. LangGraph is imported only in the runtime's adapters.
 5. **A platform node wrapper, not LangGraph, owns retry, timeout, `on_error` and the one effect.** At start it asks
    `RunControlPort.require_open` (ADR-0120) and, from W2, checks cancellation and the deadline (ADR-0113 decision 3);
    it resolves inputs by CEL, runs each attempt under `asyncio.timeout`, retries with backoff (each attempt a run
@@ -221,3 +225,9 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
   (completing Đạt's V4.4, YC40); decisions 6 and 9 freeze an inline `http` tool, refuse an address-shaped recipient
   and check the `code_node` entitlement at submit, when the version is sealed and this validator runs, no longer
   "at publish" (ADR-0116 decision 1).
+- Third consistency check (round 4), third pass, the planner's provisional call: decision 4 compiles the draft a
+  `simulate` run pins too, and keys the compiled-graph cache
+  `(tenant_id, artifact_version_id, pinned_hash, compiler_version)`, `pinned_hash` being the run manifest's
+  `definition_hash` or a draft's provisional hash, as workflow-engine R4.2 does, because a draft keeps its id while
+  it is edited and a run resolves only from its manifest (if it is wrong, the key keeps the version id alone and
+  every draft save evicts that draft's graph).

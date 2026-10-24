@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: 01, .claude/plans/studio/studio-skeleton/issues/02-goi-dw-studio-va-seam-api.md, .claude/plans/studio/org-and-principals/issues/01-khoa-don-vi-va-siet-realm.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md, .claude/plans/studio/app-standards/issues/01-vo-loi-problem-json.md, .claude/plans/studio/app-standards/issues/03-quy-uoc-api-danh-sach-va-sua.md
 Area: studio
-Yêu cầu: R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R2.7, R2.8, R2.9, R2.10, R2.11, R2.12, R2.13, R2.14, R2.15, R2.16, R2.17, R2.18, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, TC1, TC2, TC3, TC4, TC5, TC6, TC7, TC21, TC24, TC27, TC29
+Yêu cầu: R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R2.7, R2.8, R2.9, R2.10, R2.11, R2.12, R2.13, R2.14, R2.15, R2.16, R2.17, R2.18, R2.19, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, TC1, TC2, TC3, TC4, TC5, TC6, TC7, TC21, TC24, TC27, TC29, TC30
 
 ## Mục tiêu
 
@@ -24,35 +24,39 @@ viết chuyển giai đoạn nào khác.
       với mục registry (OPS-b). Test tích hợp của ticket này thêm dòng `fixture` (`has_quality_gate = true`) và
       `fixture_gateless` (`false`) bằng vai migrator trong một fixture pytest phạm vi session và gỡ khi xong;
       migration không bao giờ chứa hai dòng đó.
-    - `studio.artifacts`: `id` UUIDv7; `uq_artifacts_tenant_id_id UNIQUE (tenant_id, id)`, đích của FK ghép
-      `(tenant_id, artifact_id)` mà bên dùng đặt (`studio.agent_settings` của agent-builder, `scope_artifact_id`
-      của usage-and-limits), như `uq_workspaces_tenant_id_id`; `kind` FK tới `studio.artifact_kinds (kind)` ON
-      DELETE RESTRICT, có index; `api_name` `^[a-z][a-z0-9_]{1,39}$`, unique `(tenant_id, kind, api_name)` khi
-      `deleted_at IS NULL`; FK `(tenant_id, owning_workspace_id)` tới `platform.workspaces (tenant_id, id)`
-      ON DELETE RESTRICT; `labels text[] NOT NULL DEFAULT '{}'` (bộ lọc `label` của danh sách đọc);
-      `origin jsonb` NULL (domain-packs ghi và đọc nguồn gốc gói); `last_version_no integer NOT NULL DEFAULT 0`; `row_version integer NOT NULL`;
-      `deleted_at timestamptz` NULL; `created_at`, `updated_at` `timestamptz NOT NULL`; index danh sách
-      `(tenant_id, kind, updated_at DESC, id)`.
+    - `studio.artifacts`: `id` UUIDv7; `uq_artifacts_tenant_id_id UNIQUE (tenant_id, id)`, đích của mọi FK ghép
+      `(tenant_id, <cột thành phần>)` trỏ tới thành phần (R2.18): `artifact_id` của `studio.artifact_versions`,
+      `from_artifact_id` và `to_artifact_id` của `studio.dependencies` ở ticket này, và FK của bên dùng
+      (`studio.agent_settings` của agent-builder, `scope_artifact_id` của usage-and-limits), như
+      `uq_workspaces_tenant_id_id`; `kind` FK tới `studio.artifact_kinds (kind)` ON DELETE RESTRICT, có index;
+      `api_name` `^[a-z][a-z0-9_]{1,39}$`, unique `(tenant_id, kind, api_name)` khi `deleted_at IS NULL`; FK
+      `(tenant_id, owning_workspace_id)` tới `platform.workspaces (tenant_id, id)` ON DELETE RESTRICT, có index
+      `(tenant_id, owning_workspace_id)`; `labels text[] NOT NULL DEFAULT '{}'` (bộ lọc `label` của danh sách đọc);
+      `origin jsonb` NULL (domain-packs ghi và đọc nguồn gốc gói); `last_version_no integer NOT NULL DEFAULT 0`;
+      `row_version integer NOT NULL`; `deleted_at timestamptz` NULL; `created_at`, `updated_at` `timestamptz NOT NULL`;
+      index danh sách `(tenant_id, kind, updated_at DESC, id DESC)`.
     - `studio.artifact_versions`: `stage` NOT NULL CHECK (`draft`, `evaluating`, `awaiting_approval`,
       `live`, `retired`), không DEFAULT; `version_no` NULL chỉ khi `stage = 'draft'`, unique
       `(artifact_id, version_no)`; một dòng `draft` mỗi thành phần (partial unique); `document_schema`
       `^dw\.[a-z_]+/v[0-9]+$`; `document` là jsonb object tối đa 1 MiB,
       `CHECK (document::text IS NFC NORMALIZED)`; `content_hash`, `definition_hash` khớp
       `^sha256:[0-9a-f]{64}$`, `definition_hash` NOT NULL ngoài `draft`; `row_version integer NOT NULL`;
-      `artifact_id` FK CASCADE; `uq_artifact_versions_tenant_id_id UNIQUE (tenant_id, id)`, đích của mọi FK ghép
+      `artifact_id` FK ghép `(tenant_id, artifact_id)` tới `uq_artifacts_tenant_id_id` ON DELETE CASCADE, có index
+      `(tenant_id, artifact_id)`; `uq_artifact_versions_tenant_id_id UNIQUE (tenant_id, id)`, đích của mọi FK ghép
       `(tenant_id, <cột phiên bản>)` trỏ tới phiên bản (R2.18), kể cả `version_id` của `studio.version_assessments`
       mà compliance-pdpl/05 đặt; `based_on_version_id` FK ghép `(tenant_id, based_on_version_id)`
       `ON DELETE SET NULL (based_on_version_id)` có index `(tenant_id, based_on_version_id)`, chỉ đặt NULL cột đó vì
       `tenant_id` NOT NULL; `change_note` NULL.
     - `studio.definition_manifests`: khóa chính `(tenant_id, hash)`, `body` jsonb NFC tối đa 1 MiB, chỉ
       INSERT.
-    - `studio.dependencies`: `from_version_id` FK ghép `(tenant_id, from_version_id)` và `from_artifact_id` FK,
-      cả hai CASCADE; `to_kind` CHECK (`artifact`, `field`, `picklist_value`, `platform_artifact`, `connector`,
-      `mcp_tool`, `binding`, `node_type`); `to_key`, `to_version`, `to_hash`; `to_artifact_id` FK và
-      `to_version_id` FK ghép `(tenant_id, to_version_id)`, cả hai RESTRICT; mỗi FK một index, FK ghép thì index
-      `(tenant_id, <cột>)`; `usage` CHECK (`read`, `write`, `compare`, `invoke`, `bind`, `display`); `path` con
-      trỏ JSON; index `(tenant_id, to_kind, to_key)`. `to_field_id` không có ở đây: custom-objects thêm
-      cột và FK cùng bảng field của nó.
+    - `studio.dependencies`: `from_version_id` FK ghép `(tenant_id, from_version_id)` và `from_artifact_id` FK ghép
+      `(tenant_id, from_artifact_id)`, cả hai ON DELETE CASCADE; `to_kind` CHECK (`artifact`, `field`,
+      `picklist_value`, `platform_artifact`, `connector`, `mcp_tool`, `binding`, `node_type`); `to_key`, `to_version`,
+      `to_hash`; `to_artifact_id` FK ghép `(tenant_id, to_artifact_id)` và `to_version_id` FK ghép
+      `(tenant_id, to_version_id)`, cả hai ON DELETE RESTRICT; mỗi FK ghép một index `(tenant_id, <cột>)`; `usage`
+      CHECK (`read`, `write`, `compare`, `invoke`, `bind`, `display`); `path` con trỏ JSON; index
+      `(tenant_id, to_kind, to_key)`. `to_field_id` không có ở đây: custom-objects thêm cột và FK ghép
+      `(tenant_id, to_field_id)` ON DELETE RESTRICT có index của nó cùng bảng field (ADR-0109 (Accepted) quyết 5).
     - FK ghép tới `platform.workspaces` dùng `uq_workspaces_tenant_id_id` do org-and-principals/01 tạo;
       ticket này không tạo ràng buộc đó (OPS-a.2).
 2. Trigger trong cùng revision, tên ràng buộc theo `NAMING_CONVENTION`, ánh xạ ra lỗi API theo tên:
@@ -61,6 +65,9 @@ viết chuyển giai đoạn nào khác.
       `OLD.stage <> 'draft'` (TC1).
     - `studio.refuse_api_name_change()`: BEFORE UPDATE OF `api_name` trên `studio.artifacts`, từ chối khi
       thành phần có phiên bản ở `live` hay `retired` (TC4; DO-08).
+    - `studio.refuse_owning_workspace_change()`: BEFORE UPDATE OF `owning_workspace_id` trên `studio.artifacts`, từ
+      chối khi `NEW.owning_workspace_id IS DISTINCT FROM OLD.owning_workspace_id`, vì AAD của phong bì bí mật của chủ
+      thể thuộc thành phần gắn workspace sở hữu (TC30; R2.19; ADR-0115 (Accepted) quyết 1).
     - `studio.refuse_soft_delete_in_use()`: BEFORE UPDATE OF `deleted_at`, khi `deleted_at` chuyển từ
       NULL sang có giá trị mà một dòng `studio.dependencies` của thành phần khác trỏ tới nó từ một phiên
       bản `evaluating`, `awaiting_approval` hay `live`: `ERRCODE 23503`, ràng buộc
@@ -83,12 +90,13 @@ viết chuyển giai đoạn nào khác.
    mặc định (R2.15; mỗi spec đăng ký khóa của mình theo quy ước `studio.<area>.<verb>` của tenant-rbac:R1.6),
    `validate(document)` trả mọi lỗi kèm con trỏ JSON, `extract(document)` thuần trả các phụ thuộc. `publish_hook` là
    móc phát hành mà spec của loại cấp (dịch vụ metadata của custom-objects cho `object`, custom-objects:R1.1; móc của
-   workflow-triggers cho `endpoint`), là "publish hook" của ADR-0109 (Accepted) quyết 1: agent-lifecycle gọi nó
-   trong giao dịch đưa phiên bản lên `live`, ở handler `.decided` và ở nhánh chỉ siết (agent-lifecycle:R2.9,
-   agent-lifecycle:R5.5); móc không đổi giai đoạn, không ghi `studio.version.published`, và `seal` không gọi nó. Hai
-   loại fixture khai một móc không làm gì. Mục không giữ cờ cổng: cờ chỉ ở cột `has_quality_gate` của
-   `studio.artifact_kinds`. Test ở composition root: tập loại của registry bằng tập dòng của `studio.artifact_kinds`,
-   mỗi khóa của mỗi mục có trong danh mục quyền, và mỗi mục có `publish_hook`.
+   workflow-triggers cho `endpoint`; móc của workflow-engine cho `workflow`, workflow-engine:R1.4), là "publish hook"
+   của ADR-0109 (Accepted) quyết 1: agent-lifecycle gọi nó trong giao dịch đưa phiên bản lên `live`, ở handler
+   `.decided` và ở nhánh chỉ siết (agent-lifecycle:R2.9, agent-lifecycle:R5.5); móc không đổi giai đoạn, không ghi
+   `studio.version.published`, và `seal` không gọi nó. Hai loại fixture khai một móc không làm gì. Mục không giữ cờ
+   cổng: cờ chỉ ở cột `has_quality_gate` của `studio.artifact_kinds`. Test ở composition root: tập loại của registry
+   bằng tập dòng của `studio.artifact_kinds`, mỗi khóa của mỗi mục có trong danh mục quyền, và mỗi mục có
+   `publish_hook`.
 6. `ArtifactService` (lõi `dw_studio`, constructor injection), mỗi thao tác một kiểm quyền: khóa đọc
    hay khóa ghi mà mục registry của loại khai, ở độ sâu chạm tới `owning_workspace_id`, đọc từ
    `platform.effective_grants` (tenant-rbac/02, ADR-0104 (Accepted) quyết 5); tenant khác hay không đọc được →
@@ -129,12 +137,12 @@ viết chuyển giai đoạn nào khác.
       kiểm quyền, còn lại chỉ đếm (TC7). `draft_dependencies`: chạy `extract` trên nháp, không ghi dòng
       nào.
 7. Route trong nhóm `/api/v1/studio` của studio-skeleton/02, lỗi theo vỏ problem+json
-   (ADR-0108 (Accepted)): `POST /api/v1/studio/artifacts`, `GET /api/v1/studio/artifacts` (keyset trên index danh
-   sách, lọc `kind`, `label`), `GET /api/v1/studio/artifacts/{id}`, `PATCH /api/v1/studio/artifacts/{id}`,
-   `PUT /api/v1/studio/artifacts/{id}/draft`, `GET /api/v1/studio/artifacts/{id}/versions`,
-   `GET /api/v1/studio/artifacts/{id}/versions/{version_no}`, `DELETE /api/v1/studio/artifacts/{id}`,
-   `GET /api/v1/studio/artifacts/{id}/dependents`, `GET /api/v1/studio/artifacts/{id}/draft/dependencies`.
-   Mọi id là UUID. `make generate-contracts`.
+   (ADR-0108 (Accepted)): `POST /api/v1/studio/artifacts`, `GET /api/v1/studio/artifacts` (keyset theo
+   `updated_at DESC, id DESC` trên index danh sách, lọc `kind`, `label`), `GET /api/v1/studio/artifacts/{id}`,
+   `PATCH /api/v1/studio/artifacts/{id}`, `PUT /api/v1/studio/artifacts/{id}/draft`,
+   `GET /api/v1/studio/artifacts/{id}/versions`, `GET /api/v1/studio/artifacts/{id}/versions/{version_no}`,
+   `DELETE /api/v1/studio/artifacts/{id}`, `GET /api/v1/studio/artifacts/{id}/dependents`,
+   `GET /api/v1/studio/artifacts/{id}/draft/dependencies`. Mọi id là UUID. `make generate-contracts`.
 8. Loại `fixture` chỉ trong test: tài liệu có trường `uses` trỏ tới thành phần khác, `extract` trả một
    phụ thuộc `artifact` cho mỗi phần tử; test fixture khẳng định đúng tập dòng ghi ra. Loại
    `fixture_gateless` chỉ trong test, cùng tài liệu, dòng `studio.artifact_kinds` của nó nêu
@@ -189,6 +197,12 @@ viết chuyển giai đoạn nào khác.
       `from_version_id`, là phiên bản của tenant B → lỗi FK ghép; UPDATE `based_on_version_id` của phiên bản tenant A
       sang phiên bản tenant B → lỗi FK; xóa phiên bản gốc → `based_on_version_id` thành NULL, `tenant_id` giữ nguyên;
       đổi một FK ghép về FK một cột → test đỏ.
+- [ ] R2.18 (TC29): bằng vai migrator, INSERT phiên bản của tenant A có `artifact_id` là thành phần của tenant B, rồi
+      dòng `studio.dependencies` của tenant A có `from_artifact_id`, rồi `to_artifact_id`, là thành phần của tenant B →
+      lỗi FK ghép; đổi một trong ba FK ghép về FK một cột → test đỏ.
+- [ ] R2.19 (TC30): `dw_app` UPDATE `owning_workspace_id` của một thành phần sang workspace khác cùng tenant → trigger
+      từ chối, cột giữ nguyên; cùng lệnh bằng vai migrator → từ chối; UPDATE `labels` của cùng dòng → được; gỡ trigger
+      → test đỏ.
 - [ ] R3.1 (TC6): lỗi chèn giữa giao dịch niêm phong → không số phiên bản, không dòng
       `studio.dependencies`, không dòng `studio.definition_manifests`; làm hỏng `extract` của `fixture`
       → test fixture đỏ.
@@ -211,7 +225,7 @@ viết chuyển giai đoạn nào khác.
 - `packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:108-114`; spec: R3.6,
   TC21.
 - `db/migrations/sql/0001_platform_grants.sql:27`; spec: R2, R3; ADR-0109 (Accepted) quyết 1-2, 4-5;
-  ADR-0120 (Accepted) quyết 1; ADR-0108 (Accepted) quyết 3 (R2.17).
+  ADR-0120 (Accepted) quyết 1; ADR-0108 (Accepted) quyết 3 (R2.17); ADR-0115 (Accepted) quyết 1 (R2.19).
 
 ## Comments
 
@@ -238,3 +252,9 @@ viết chuyển giai đoạn nào khác.
   `postgres:16-alpine` (PostgreSQL 16.15) ngày 24/10/2026: FK ghép `(tenant_id, based_on_version_id)` với
   `ON DELETE SET NULL (based_on_version_id)` đặt NULL đúng cột đó và từ chối dòng trỏ sang phiên bản của tenant khác;
   với `ON DELETE SET NULL` không danh sách cột, lần xóa hỏng vì PostgreSQL đặt NULL cả `tenant_id`.
+- 2026-10-24 (agent): vòng sửa thứ tư, lượt c, theo các quyết định tạm cùng ngày của spec: `artifact_id` của phiên bản,
+  `from_artifact_id` và `to_artifact_id` là FK ghép tới `uq_artifacts_tenant_id_id` (R2.18, TC29); trigger
+  `studio.refuse_owning_workspace_change()` giữ `owning_workspace_id` không đổi, vì AAD của phong bì bí mật gắn nó
+  (R2.19, TC30); FK tới `platform.workspaces` có index; index danh sách phá hòa `id DESC` và route phân trang theo
+  `updated_at DESC, id DESC`; móc phát hành của `workflow` do workflow-engine cấp; `to_field_id` mà custom-objects thêm
+  là FK ghép ON DELETE RESTRICT có index (ADR-0109 (Accepted) quyết 5).

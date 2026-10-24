@@ -19,7 +19,8 @@ Claim trước hiệu ứng (R6.1, R6.2, R6.3, R6.7):
 1. Revision Alembic mới `db/migrations/versions/*_tool_execution_claims.py` (id ngẫu nhiên): bảng
    `platform.tool_execution_claims` theo ADR-0108 (Accepted) quyết định 5:
     - cột `tenant_id uuid NOT NULL` (FK tới tenant, `ON DELETE CASCADE`), `workspace_id uuid NOT NULL`
-      (FK tới workspace, `ON DELETE CASCADE`, có index riêng), `tool_name text NOT NULL`,
+      (FK ghép `(tenant_id, workspace_id)` tới `platform.workspaces (tenant_id, id)` qua `uq_workspaces_tenant_id_id`
+      của org-and-principals/01, `ON DELETE CASCADE`, index `(tenant_id, workspace_id)`), `tool_name text NOT NULL`,
       `idempotency_key text NOT NULL`, `run_id uuid NOT NULL`,
       `claim_token uuid NOT NULL DEFAULT gen_random_uuid()`, `claimed_at timestamptz NOT NULL DEFAULT now()`,
       `expires_at timestamptz NOT NULL`;
@@ -101,3 +102,8 @@ Không còn cửa sau (R6.4, R6.5, R6.6):
 - spec: R6, FH15-FH19; si-platform `db/si/migrations/0040_tool_call_claims.sql`.
 
 ## Comments
+
+- 2026-10-24 (agent): vòng sửa 4, lượt ba: `workspace_id` của `platform.tool_execution_claims` là FK ghép tới
+  `platform.workspaces (tenant_id, id)` thay cho FK một cột, vì kiểm khóa ngoại không đi qua RLS (Quyết định 24/10/2026
+  của spec). Đề xuất thêm `.claude/plans/studio/org-and-principals/issues/01-khoa-don-vi-va-siet-realm.md` vào Blocked
+  by: `uq_workspaces_tenant_id_id`, đích của FK đó, chỉ ticket đó tạo (org-and-principals:R1.1).

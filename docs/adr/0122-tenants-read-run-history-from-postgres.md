@@ -129,10 +129,16 @@ a held event's sender was already answered 2xx. `dw_app` holds no UPDATE on
 narrow SECURITY DEFINER function that nulls that one column, and only past its term. Conversation
 messages are append-only for `dw_app` and point at their conversation through a composite foreign
 key `ON DELETE RESTRICT` (ADR 0117 decision 6), so the lane removes expired conversations through
-one narrow SECURITY DEFINER function, `studio.purge_expired_conversations(p_cutoff timestamptz)`,
-owned by compliance-pdpl 06: in every tenant it deletes the messages created before the cutoff,
-then the conversations left with no message whose last activity is before it, and the lane audits
-as itself (`system:<lane>`, ADR 0011) with the row counts. The DROP
+one narrow SECURITY DEFINER function, `studio.purge_expired_conversations()`, owned by
+compliance-pdpl 06. It takes no argument, so no caller can widen it to recent rows, as
+`platform.prune_notifications()` does
+(`db/migrations/versions/855ae928c3fa_platform_in_app_notifications.py:28-29`): the 90-day term
+lives in the function, a test fails when it differs from the `studio.conversation_messages` row of
+the retention policy (`failure-modes.md` #2), and like every Studio function it revokes all from
+PUBLIC and grants EXECUTE to the role the lane calls it as (ADR-0100 decision 4). In every tenant
+it deletes the messages created before the cutoff that term gives, then the conversations that have
+no message left and whose last activity is before it, and the lane audits as itself
+(`system:<lane>`, ADR 0011) with the row counts. The DROP
 PARTITION rows go through `platform.drop_expired_partitions(cutoffs jsonb)`, one cutoff per parent
 read from this file, which usage-and-limits 02 owns in W1.
 
@@ -149,8 +155,9 @@ read from this file, which usage-and-limits 02 owns in W1.
 
 ## Consequences
 
-- `telemetry-and-audit` owns `platform.run_steps`, `StepRecorderPort` and the retention policy;
-  `workflow-builder-ui` and `agent-lifecycle` read steps instead of storing their own results.
+- `telemetry-and-audit` owns `platform.run_steps`, `StepRecorderPort`, the retention policy and decision 6's
+  action catalogue, which its ticket 03 creates together with the AST test; `workflow-builder-ui` and
+  `agent-lifecycle` read steps instead of storing their own results.
 - Migrations: `platform.run_steps` (monthly partitions made by `platform.ensure_time_partitions`,
   RLS enabled and forced on parent, DEFAULT and each partition), `platform.audit_exports`,
   `platform.outbox_events.trace_parent` and `ix_audit_events_action`; the run index on
@@ -241,7 +248,15 @@ open:
   mapping that usage-and-limits/02 removes, the one exception, stated in ADR-0100 decision 7 too (if
   this head is wrong, studio-skeleton/01 releases the first version with `platform.audit_events`
   keyed by `schema.table`, and usage-and-limits/02 adds only its own tables); conversations leave
-  through `studio.purge_expired_conversations(p_cutoff)`, a narrow SECURITY DEFINER function of
+  through `studio.purge_expired_conversations`, a narrow SECURITY DEFINER function of
   compliance-pdpl 06, since their messages are append-only for `dw_app` and the messages' foreign key
   to their conversation is `ON DELETE RESTRICT` (if it is wrong, `dw_app` deletes conversations
   through a cascading foreign key and the messages stop being append-only).
+- Third consistency check (round 4), third pass, the planner's provisional calls: decision 7's purge
+  function takes no argument and holds the 90-day term itself, as `platform.prune_notifications()`
+  does, so no caller can widen it to recent rows, with a test that fails when that term and the
+  retention policy's `studio.conversation_messages` row differ (`failure-modes.md` #2), and it
+  removes the conversations that have no message left and whose last activity is before the cutoff
+  (if it is wrong, the function takes the cutoff as its argument again and the lane reads it from the
+  policy); Consequences name telemetry-and-audit, through its ticket 03, as the owner of decision 6's
+  action catalogue and its AST test, which no ticket created before.

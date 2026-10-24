@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: 02, 03, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md, .claude/plans/studio/studio-skeleton/issues/03-seam-web-va-allowlist-antd.md
 Area: studio
-Yêu cầu: R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R5.8, R5.9, R5.10, R5.11, R5.12, R5.13, CV12, CV13, CV14, CV15, CV21
+Yêu cầu: R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R5.8, R5.9, R5.10, R5.11, R5.12, R5.13, R5.14, CV12, CV13, CV14, CV15, CV21
 
 ## Mục tiêu
 
@@ -17,9 +17,12 @@ từ B8a-connections connections-and-vault 07. P1 chỉ kết nối dùng chung 
 1. Migration (revision hex) trên `platform.connections` (ticket 02 tạo bảng): trigger
    `platform.guard_connection_status()` theo bảng chuyển trạng thái (cấm `revoked → active`); partial
    unique một kết nối `active` cho mỗi `(tenant_id, connector_key, external_account)`.
-2. `connection_usable(connection_id, principal, workspace_id, pinned_secret_versions)` một hàm, tham số cuối là
-   các `secret_version` mà bản kê của lượt ghim cho kết nối (phiên bản credential của tenant-config:R7.4, đọc qua
-   `RunBindingsPort`), rỗng khi chưa có bản kê (lúc duyệt giá trị Điểm gắn và lúc nhận lượt chạy): trả false khi
+2. `connection_usable(connection, context, purpose)` một hàm, đúng chữ ký của ADR-0115 (Accepted) quyết 2 mà
+   ADR-0118 (Accepted) quyết 3 gọi với `purpose='model'` ở W2: `context` mang công ty và chủ thể của ngữ cảnh truy
+   cập hay lượt chạy, workspace của lượt chạy hay của giá trị đang duyệt, và `pinned_secret_versions`, một
+   `secret_version` cho mỗi (kết nối, trường) mà bản kê của lượt ghim (tenant-config:R7.4, đọc qua
+   `RunBindingsPort`), rỗng khi chưa có bản kê (lúc duyệt giá trị Điểm gắn và lúc nhận lượt chạy); W1 chỉ nhận
+   `purpose='tool'` và trả false với mọi giá trị khác (R5.14). Hàm trả false khi
    Connection status không `active`, khi Phạm vi dùng chung `workspace` không phủ workspace của lượt chạy, khi
    chủ thể không giữ `connections.use` ở workspace đó (qua `platform.effective_grants` của tenant-rbac/02;
    ADR-0115 (Accepted) quyết 2), hay, trước lời gọi egress của một lượt chạy, khi một `secret_version` trong
@@ -38,7 +41,7 @@ từ B8a-connections connections-and-vault 07. P1 chỉ kết nối dùng chung 
    `tenant_grantable` của tenant-rbac/02), độ sâu qua `platform.effective_grants` của tenant-rbac/02; trường bí
    mật `writeOnly` lưu qua `platform.put_secret` (ticket 02); `Idempotency-Key` cho
    `POST`; DELETE còn phụ thuộc → 409 `connection_in_use`; id của công ty khác ở mọi route → 404; `PATCH` không
-   nhận `status`.
+   nhận `status` hay `owning_workspace_id` (cột không đổi sau khi tạo: spec R1.7, cài ở ticket 02).
 5. Bật lại hai người (D11): `POST .../enable` cho một Kết nối `disabled` hỏi trước `platform.checker_candidates`
    của tenant-rbac/02 với khóa `connections.manage`, người gửi và workspace sở hữu của Kết nối: rỗng → 409
    `conflict` với `details.reason_code` `no_checker_available`, không mở yêu cầu, status
@@ -95,6 +98,8 @@ từ B8a-connections connections-and-vault 07. P1 chỉ kết nối dùng chung 
       `POST .../enable` trả 409 `conflict` với `details.reason_code` `no_checker_available`, không dòng
       `platform.approval_requests` nào, status vẫn `disabled`; thêm người thứ hai giữ khóa → 202; gỡ kiểm người
       duyệt → test đỏ.
+- [ ] R5.14 (CV14): kết nối `active`, chủ thể giữ `connections.use` ở workspace của lượt chạy: `purpose='tool'` →
+      true; `purpose='model'` hay một chuỗi lạ → false; gỡ kiểm `purpose` → test đỏ.
 - [ ] Xong: `make ci && make test-integration` xanh.
 
 ## Nguồn
@@ -124,3 +129,9 @@ từ B8a-connections connections-and-vault 07. P1 chỉ kết nối dùng chung 
   `secret_version` của `platform.secret_envelopes` (ticket 02), một `secret_version` mà bản kê ghim không còn
   dòng nào, thay "credential version" mà không bảng nào khai, và nhận các `secret_version` đã ghim qua tham số
   `pinned_secret_versions`, vì hàm không tự đọc bản kê (bước 2; ADR-0115 (Accepted) quyết 1).
+- 2026-10-24 (agent): vòng sửa thứ tư, lượt c: chữ ký thành `connection_usable(connection, context, purpose)` của
+  ADR-0115 (Accepted) quyết 2, `pinned_secret_versions` đi trong `context`, và W1 chỉ nhận `purpose='tool'` (R5.14,
+  CV14), để kết nối model của W2 thêm một giá trị mà không sửa chỗ gọi nào (CLAUDE.md, Per-tenant artifacts);
+  bản kê ghim một `secret_version` cho mỗi (kết nối, trường), vì phiên bản đếm theo (chủ thể, trường)
+  (tenant-config:R7.4) (bước 2); `PATCH` không nhận `owning_workspace_id`, cột mà ticket 02 giữ không đổi (bước
+  4).

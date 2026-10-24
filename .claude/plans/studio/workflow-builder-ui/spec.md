@@ -77,8 +77,8 @@ tự phát hành (YC33, YC40; BUI-03, BUI-04, BUI-06).
 - R3.6 KHI người dựng chạy mô phỏng, trang builder PHẢI gửi chế độ `simulate` tới route
   `.../versions/{version_id}/test-runs` với id của phiên bản Nháp đang mở và hiện lỗi 422 của route, gắn về đúng Bước
   như R3.4 mỗi lỗi `wf.*` mà bộ kiểm khi gửi kiểm định báo trên nội dung nháp (ADR-0112 (Accepted) quyết 3); quyền,
-  chế độ được nhận, việc nhận bản Nháp và lần kiểm đó là của workflow-triggers:R2.2, workflow-triggers:R2.3,
-  workflow-triggers:R2.6 và workflow-triggers:R2.9.
+  chế độ được nhận, việc nhận bản Nháp và 422 đó là của workflow-triggers:R2.2, workflow-triggers:R2.3,
+  workflow-triggers:R2.6 và workflow-triggers:R2.9, còn lần kiểm là của `RunRequestService` (workflow-engine:R3.11).
 - R3.7 KHI lượt mô phỏng trả kết quả từng Bước chạy, trang builder PHẢI hiện "Đã ẩn" cho mỗi trường người
   xem không đọc được, không rò giá trị trong DOM hay payload mạng.
 - R3.8 KHI người dựng chạy mô phỏng một Quy trình có Bước phê duyệt, biểu mẫu chạy mô phỏng PHẢI đòi một lựa chọn
@@ -158,7 +158,8 @@ tự phát hành (YC33, YC40; BUI-03, BUI-04, BUI-06).
   `.claude/plans/studio/workflow-nodes/issues/02-so-dang-ky-buoc-va-mau-chuoi.md`,
   `.claude/plans/studio/workflow-nodes/issues/03-pham-vi-bien-va-buoc-logic.md`.
 - `workflow-engine` (batch 2, đang viết song song): tài liệu `dw.workflow/v1` và bảng mã `wf.*` mà trang
-  builder gắn lỗi về Bước (workflow-engine:R2.11).
+  builder gắn lỗi về Bước (workflow-engine:R2.11); `RunRequestService`, cửa của mọi lượt chạy, chạy bộ kiểm khi gửi
+  kiểm định trên nội dung nháp của một yêu cầu `simulate` và từ chối khi nội dung trượt (workflow-engine:R3.11).
 - `workflow-triggers`: route `.../test-runs`, quyền `studio.workflows.test`, chế độ được nhận, việc nhận phiên bản
   `draft` ở chế độ `simulate` sau khi bộ kiểm khi gửi kiểm định đạt trên nội dung nháp (422 với mã `wf.*` khi không
   đạt, ADR-0112 (Accepted) quyết 3), và quyết định giả lập cho mỗi Bước phê duyệt của chính nội dung đó trong thân
@@ -176,8 +177,9 @@ tự phát hành (YC33, YC40; BUI-03, BUI-04, BUI-06).
 - Kiểm lại khi: `workflow-nodes` đổi hình API `node-types`/`/expressions/check`/`draft/scope`;
   `workflow-engine` đổi hợp đồng `dw.workflow/v1` hay `workflow-triggers` đổi route `.../test-runs` hay hình của
   quyết định giả lập → kiểm lại 01-03; `workflow-triggers` hay `tenant-config` thôi nhận bản Nháp ở chế độ
-  `simulate`, hay route thôi kiểm nội dung nháp trước khi xin lượt → R3.6, R3.8, ticket 03; `agent-lifecycle` đổi
-  điều kiện ghi của route gửi kiểm định → R3.9, ticket 03; W2 mở chế độ `test` → R3.6, R3.8, BU5, ticket 03.
+  `simulate`, hay `RunRequestService` thôi kiểm nội dung nháp trước khi xin lượt (workflow-engine:R3.11) → R3.6, R3.8,
+  ticket 03; `agent-lifecycle` đổi điều kiện ghi của route gửi kiểm định → R3.9, ticket 03; W2 mở chế độ `test` → R3.6,
+  R3.8, BU5, ticket 03.
 
 ## Câu hỏi còn mở
 
@@ -250,6 +252,13 @@ tự phát hành (YC33, YC40; BUI-03, BUI-04, BUI-06).
   agent-lifecycle:R2.13; ADR-0108 (Accepted) quyết 3; ADR-0109 (Accepted) quyết 2; app-standards:R3.2,
   app-standards:R3.3), nên nút Gửi kiểm định gửi ETag của Nháp đã đọc như tự lưu. Sửa: R3.9, Phụ thuộc, ticket 03.
   Nếu sai thì: route không mang điều kiện ghi, và R3.9 rút.
+- 24/10/2026 (agent, tạm): bộ kiểm khi gửi kiểm định trên bản Nháp chạy ở `RunRequestService`, cửa duy nhất của mọi
+  lượt chạy, bên gọi nào xin cũng vậy (workflow-engine:R3.11; ADR-0109 (Accepted) quyết 6; ADR-0113 (Accepted)
+  quyết 1; failure-modes #5), không ở route `.../test-runs`; route trả lần từ chối đó thành 422 với các mã `wf.*`
+  (workflow-triggers:R2.9), nên trang builder vẫn nhận đúng 422 đó và gắn lỗi về Bước như R3.4. Dòng này thay phần
+  "route chạy mô phỏng chạy bộ kiểm một lượt của lúc gửi kiểm định trên nội dung nháp trước khi xin lượt" của dòng
+  hoàn tất V4.4 cùng ngày. Sửa: R3.6, Phụ thuộc. Nếu sai thì: route nộp kết quả kiểm kèm mã băm của nội dung đã kiểm
+  cho `RunRequestService`, và R3.6 dẫn lại workflow-triggers:R2.9 cho lần kiểm.
 
 ## Danh sách ticket
 

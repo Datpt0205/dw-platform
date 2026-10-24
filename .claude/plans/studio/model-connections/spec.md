@@ -47,7 +47,7 @@ Hồ sơ model khai nơi xử lý dữ liệu; thiếu khai là nước ngoài, 
 
 ## Trong phạm vi
 
-- `ModelResolver`: một cổng cho `StudioModelSelection`, `RunBudgetMiddleware`, `LangchainUsageMeter`, `RoutingModelGateway` và nén ngữ cảnh; đọc lớp nền tảng lọc theo gói (lớp công ty khi `tenant-config` có phiên bản cấu hình).
+- `ModelResolver`: một cổng cho `StudioModelSelection`, cửa ngân sách lượt chạy (`RunBudgetMiddleware` hôm nay, rồi `LimitsMiddleware` thay nó ở usage-and-limits/03 và đọc cùng bộ phân giải, ADR-0118 (Accepted) quyết 1), `LangchainUsageMeter`, `RoutingModelGateway` và nén ngữ cảnh; đọc lớp nền tảng lọc theo gói (lớp công ty khi `tenant-config` có phiên bản cấu hình).
 - `ModelProfile` v2: số phiên bản, cờ năng lực (`strict_tools`, `max_strict_tools`, `numeric_bounds`), trường `data_location`, `processor`, `retention_days`, `no_training` (không mặc định). Spec này là chủ duy nhất của các trường tuyến dữ liệu và luật "không khai là nước ngoài" (R3); compliance-pdpl chỉ đọc. Hồ sơ không mang giá: giá ở Bảng giá (DO-21.5).
 - Bảng `platform.plan_model_profiles` (gói của công ty tới hồ sơ cho phép).
 - `make check-model` thăm dò và so cờ năng lực khai với kết quả thăm dò.
@@ -68,7 +68,7 @@ Hồ sơ model khai nơi xử lý dữ liệu; thiếu khai là nước ngoài, 
 
 ## Dữ liệu
 
-- `platform.plan_model_profiles`: `plan_id`, `profile_id`, cùng khóa chính tổng hợp; migration revision hex; RLS theo lớp nền tảng đọc được bởi `dw_app` và `dw_agent_ro`; FK `ON DELETE` tường minh và chỉ mục; tên ràng buộc theo `NAMING_CONVENTION`. Hồ sơ nền tảng ngoài gói không bao giờ phân giải cho công ty giữ gói đó.
+- `platform.plan_model_profiles`: `plan_id text NOT NULL` với FK tới `platform.plans (plan_id)` ON DELETE CASCADE, như `platform.plan_limits` của usage-and-limits (dòng của gói đi theo gói; `platform.entitlements.plan_id` giữ ON DELETE RESTRICT nên gói còn công ty dùng thì không xóa được); `profile_id text NOT NULL`, khóa văn bản của một hồ sơ trong `configs/models`, không FK vì hồ sơ nền tảng là tệp cấu hình chứ không là bảng, và một test đỏ khi một `profile_id` của bảng không có trong `configs/models` (failure-modes #2); khóa chính tổng hợp `(plan_id, profile_id)`, dẫn đầu bằng `plan_id` nên cũng là chỉ mục của FK; migration revision hex; RLS theo lớp nền tảng đọc được bởi `dw_app` và `dw_agent_ro`; tên ràng buộc theo `NAMING_CONVENTION`. Hồ sơ nền tảng ngoài gói không bao giờ phân giải cho công ty giữ gói đó.
 
 ## Kiểm soát
 
@@ -109,6 +109,8 @@ Hồ sơ model khai nơi xử lý dữ liệu; thiếu khai là nước ngoài, 
 - 24/10/2026 (Đạt): YC58 ghi ở các dòng W2 của Ngoài phạm vi, để lần ngược được từ roadmap. Sửa: Ngoài phạm vi.
 - 24/10/2026 (Đạt): ticket 02 đi trước usage-and-limits/02, vì cả hai sửa `model/profiles.py` và `configs/models/*.yaml`: ticket 02 dựng `ModelProfile` v2, usage-and-limits/02 chờ nó rồi mới dời giá sang Bảng giá. Sửa: ticket 02.
 - 24/10/2026 (người đặt yêu cầu và Đạt): Phạm vi D11: W1 chưa có đường hai người cho việc nới lộ trình dữ liệu, nên thao tác đó bị khóa ở W1 (409 `conflict`, `second_person_required`; ADR-0110 (Accepted) quyết 2); vế "nới lộ trình dữ liệu cần hai người" của dòng DO-54.2 ở trên chỉ có đường từ W2. Spec này không có thao tác nới lộ trình nào. Sửa: không mục nào ngoài dòng này; áp ở compliance-pdpl và tenant-config.
+- 24/10/2026 (agent, tạm): `platform.plan_model_profiles.plan_id` có FK tới `platform.plans (plan_id)` ON DELETE CASCADE, như `platform.plan_limits` của usage-and-limits, với chỉ mục là khóa chính `(plan_id, profile_id)`; `profile_id` là khóa văn bản kiểm theo `configs/models` bằng một test, không FK, vì hồ sơ nền tảng nằm trong tệp cấu hình (CLAUDE.md, Data model rules: khóa ngoại nào cũng nêu `ON DELETE` và có chỉ mục ở phía của nó; failure-modes #2). Sửa: Dữ liệu, ticket 02. Nếu sai thì: FK là `ON DELETE RESTRICT`, và xóa một gói phải xóa trước các dòng của nó ở bảng này.
+- 24/10/2026 (agent, tạm): cửa ngân sách lượt chạy mà `ModelResolver` phục vụ là `RunBudgetMiddleware` lúc ticket 02 dựng, rồi `LimitsMiddleware` của usage-and-limits/03 thay nó, như ADR-0118 (Accepted) quyết 1 nêu `LimitsMiddleware` thay `RunBudgetMiddleware`; R1.1 và MR1 giữ, vì cửa thay thế đọc cùng bộ phân giải. Sửa: Trong phạm vi, ticket 02. Nếu sai thì: `LimitsMiddleware` không đọc route, và danh sách cửa của R1.1 bỏ nó.
 
 ## Danh sách ticket
 

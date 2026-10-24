@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: .claude/plans/studio/foundations-hardening/issues/03-quyen-dw-app-va-rls-initplan.md, .claude/plans/studio/org-and-principals/issues/01-khoa-don-vi-va-siet-realm.md, .claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md
 Area: studio
-Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.2, CV1, CV2, CV3, CV4, CV5
+Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R1.8, R2.2, CV1, CV2, CV3, CV4, CV5, CV23
 
 ## Mục tiêu
 
@@ -17,19 +17,26 @@ kho khóa ở ticket 06 (DO-47.1). Gộp từ B8a-connections connections-and-va
 1. Một migration (revision hex ngẫu nhiên của alembic): `platform.secret_envelopes` và
    `platform.connections` theo mục Dữ liệu của spec:
     - `secret_envelopes`: `id` uuid, `tenant_id` FK `platform.tenants` ON DELETE CASCADE,
-      `connection_id` uuid NULL, `field text NOT NULL`, `secret_version integer NOT NULL`, `alg text` CHECK
+      `connection_id` uuid NULL với FK ghép `(tenant_id, connection_id)` tới `platform.connections (tenant_id, id)`
+      ON DELETE CASCADE (phong bì là dòng con của chủ thể; R1.8), `field text NOT NULL`,
+      `secret_version integer NOT NULL`, `alg text` CHECK
       (`aes-256-gcm`), `nonce bytea` CHECK độ dài 12, `kek_ref text`, `ciphertext bytea` CHECK độ dài ≤ 64 KiB,
       `wrapped_data_key bytea NOT NULL` (khóa dữ liệu bọc bởi Khóa của công ty, giữ cạnh `ciphertext`),
       `kek_version int`, timestamps, không cột `aad_hint`; UNIQUE
       `(tenant_id, connection_id, field, secret_version)`, dạng của UNIQUE
-      `(tenant_id, subject_kind, subject_id, field, secret_version)` cho cột chủ thể `connection_id`; loại trừ chủ
-      thể qua CHECK `num_nonnulls(connection_id) = 1`, mà mỗi chủ thể mới nới rộng bằng một cột FK NULL cùng
-      UNIQUE của cột đó trong migration của ticket thêm nó (`inbound_endpoint_id` ở workflow-triggers/02,
+      `(tenant_id, subject_kind, subject_id, field, secret_version)` cho cột chủ thể `connection_id`, dẫn đầu bằng
+      hai cột của FK ghép nên cũng là chỉ mục của FK đó; loại trừ chủ thể qua CHECK
+      `num_nonnulls(connection_id) = 1`, mà mỗi chủ thể mới nới rộng bằng một cột NULL có FK ghép
+      `(tenant_id, <cột chủ thể>)` tới UNIQUE `(tenant_id, id)` của bảng chủ thể ON DELETE CASCADE, cùng UNIQUE
+      của cột đó, trong migration của ticket thêm nó (`inbound_endpoint_id` ở workflow-triggers/02,
       ADR-0115 (Accepted) quyết 1);
     - `connections`: toàn cột của spec (bao gồm `share_scope` CHECK, `status` CHECK không DEFAULT,
       `owning_workspace_id` NOT NULL với FK ghép `(tenant_id, owning_workspace_id)` tới `platform.workspaces`
-      ON DELETE RESTRICT trên `uq_workspaces_tenant_id_id` của org-and-principals/01, index danh sách);
-      trigger `guard_connection_status` và `connection_usable` để ở ticket 04.
+      ON DELETE RESTRICT trên `uq_workspaces_tenant_id_id` của org-and-principals/01, index danh sách), UNIQUE
+      `(tenant_id, id)` (`uq_connections_tenant_id_id`) làm đích của FK ghép từ `secret_envelopes`, tạo trước FK
+      đó trong cùng revision; trigger `platform.guard_connection_owning_workspace()` từ chối mọi UPDATE đổi
+      `owning_workspace_id` (R1.7), vì AAD của bước 3 gắn cột đó; trigger `guard_connection_status` và
+      `connection_usable` để ở ticket 04.
 2. RLS ENABLE và FORCE, policy tenant theo dạng `test_rls_coverage.py` đòi lúc merge trên cả hai bảng;
    `REVOKE ALL ON platform.secret_envelopes FROM dw_app`; hàm SECURITY DEFINER `platform.put_secret`,
    `platform.open_secret`, `platform.secret_status`, `platform.delete_secret` lấy công ty từ
@@ -78,6 +85,12 @@ kho khóa ở ticket 06 (DO-47.1). Gộp từ B8a-connections connections-and-va
       dòng.
 - [ ] R1.6 (CV2): truy vấn catalog export của offboarding (`_CATALOG_EXPORTABLE`) không liệt kê
       `secret_envelopes` (integration).
+- [ ] R1.7 (CV1): `UPDATE platform.connections SET owning_workspace_id = <workspace khác cùng công ty>` → trigger
+      từ chối, dòng không đổi, phong bì của Kết nối vẫn giải mã; UPDATE cột khác của cùng dòng → nhận; gỡ trigger
+      `platform.guard_connection_owning_workspace()` → UPDATE thành công và phong bì giải mã lỗi, test đỏ.
+- [ ] R1.8 (CV23): đặt `app.tenant_id` của công ty A, `platform.put_secret` với `connection_id` của công ty B → lỗi
+      khóa ngoại (23503), không dòng nào; xóa một Kết nối → mọi phong bì của nó xóa theo; đổi FK ghép thành FK một
+      cột `connection_id` trong migration thử → lần ghi chéo công ty thành công, test đỏ.
 - [ ] R2.2 (CV5): `DW_KMS_PROVIDER=local` với profile `uat` → `RuntimeError` lúc khởi động; gỡ
       `validate_for_profile` → test đỏ.
 - [ ] Xong: `make ci && make test-integration` xanh.
@@ -118,3 +131,9 @@ kho khóa ở ticket 06 (DO-47.1). Gộp từ B8a-connections connections-and-va
   `SecretStore` đã đưa vào AAD trước khi mã hóa, của `platform.open_secret`, phiên bản bản kê ghim, và của
   `platform.secret_status`, mà `connection_usable` của ticket 04 đọc; R1.1 thêm ca mở phiên bản cũ, R1.4 thêm
   ca bọc lại vẫn giải mã (bước 3, CV1).
+- 2026-10-24 (agent): vòng sửa thứ tư, lượt c: `connection_id` có FK ghép `(tenant_id, connection_id)` tới
+  `platform.connections (tenant_id, id)` ON DELETE CASCADE, chỉ mục là UNIQUE theo chủ thể, trường, phiên bản, và
+  `platform.connections` thêm UNIQUE `(tenant_id, id)` làm đích (CLAUDE.md, Data model rules); mọi cột chủ thể thêm
+  sau dùng cùng FK ghép, vì kiểm khóa ngoại không qua RLS (R1.8, CV23); `owning_workspace_id` của Kết nối không đổi
+  sau khi tạo, vì AAD của bước 3 gắn nó (trigger `platform.guard_connection_owning_workspace()`, R1.7, CV1;
+  ADR-0115 (Accepted) quyết 1) (bước 1).
