@@ -75,8 +75,12 @@ is built yet. Đạt accepted the ADR block on 2026-10-23 (0126 and 0127 on
     between tenant tables). Its verifiers found an index missing on some
     FKs, cross-tenant negative tests missing for the new composite keys, and
     two errors of the planner's own: the agent read key moved against Đạt's
-    line, and the purge's term in code against ADR-0122 d7 (question 8). A
-    fourth pass, the last mechanical one of round 4, fixes the first three.
+    line, and the purge's term in code against ADR-0122 d7 (question 8). The
+    fourth pass (committed) fixed the first three; its verifiers, told to
+    report only CRITICAL and HIGH, found CLAUDE.md musts still unmet (DELETE
+    privileges that the offboarding purge needs, cross-tenant negative tests
+    on agent-builder's routes, two tenant-wide tables without a reason) and
+    questions 9 and 10. A short fifth pass applies those musts only.
     Then Đạt's answers, the split, a fourth consistency check, and the
     readiness gate for app-standards, foundations-hardening and
     runtime-hardening.
@@ -186,6 +190,20 @@ is built yet. Đạt accepted the ADR block on 2026-10-23 (0126 and 0127 on
        and reads its term there, and a test fails when the table and the
        pinned file differ. The alternative, a cutoff passed by the lane with a
        floor in the function, lets any `dw_app` path purge down to the floor.
+    9. A simulated draft (V4.4, and an agent draft's dry evaluation) has no
+       data boundary: only publishing writes `studio.actor_boundaries`
+       (ADR-0103 d5), so its reads find nothing, though ADR-0111 d3 says a
+       simulation reads for real under the tester's access. Recommended:
+       the request derives a provisional boundary from the draft's closure,
+       the same derivation the publish hook runs, kept under the pinned hash
+       for that run only; reach is its intersection with the tester's access;
+       no live run ever uses it.
+    10. A publish approver who holds `studio.publish.approve` but not the
+        kind's author key cannot read the candidate on tenant-config's
+        routes, so "two people" approves unread. Recommended: while a publish
+        approval is pending, the holder of its stamp reads the candidate and
+        its diff against live through agent-lifecycle's approval route,
+        audited; outside a pending approval, definitions need the author key.
 - **Đạt, for W2 (domain-packs, `needs-info`):** Q4, whether the pack
   installer may use its own reserved prefix through the public routes, and
   Q5, which route writes `origin` on components that already exist.
