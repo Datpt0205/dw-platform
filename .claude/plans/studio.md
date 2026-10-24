@@ -78,6 +78,28 @@ is built yet. Đạt accepted the ADR block on 2026-10-23 (0126 and 0127 on
     access, never used live; V4.23 while a publish approval is pending, its
     stamp holder reads the candidate and its diff through agent-lifecycle.
 
+    Đạt's canvas and control-flow decisions (2026-10-24, as recommended
+    after the canvas research): V4.24 a workflow is a step tree drawn as a
+    structured canvas, steps placed in slots and never wired by hand, which
+    reverses ADR-0112 d1's graph document; V4.25 `@xyflow/react` alone, with
+    dagre dropped for a pure deterministic layout module (AntV X6, Rete.js and
+    bpmn-js rejected on sourced reasons); V4.26 W1 grows by about two to
+    three weeks to hold parallel lanes with an all-join compiled as
+    subgraphs, a bounded loop with waits and a break, resume from a failed
+    step as an incident, and an approval step that needs every one of
+    several approvers, while waits inside parallel lanes stay out; V4.27 an
+    agent drafts the canvas vocabulary in the spike for Đạt's review; V4.28
+    no BPMN in v1, a server-side importer of a subset in W3 if a customer
+    asks; V4.29 (the UI direction) antd stays the one component system, the
+    Studio screens follow the references Đạt sent (the chang.fpt.net
+    teardown; Dify, Windmill, Activepieces and Camunda for the canvas) for
+    layout and interaction and look better through the antd theme, never
+    copying another product's identity, look or code; a library that
+    supports antd without a competing component set may join through its
+    own ADR and allowlist entry, app-wide or for one path (a CLAUDE.md "Web
+    UI" amendment, with V4.25's); motion beyond antd's waits for a later
+    decision, the motion research kept as its input.
+
     Nine editors, each followed by a verifier, applied them with every round-3
     row on 2026-10-24 (checker 24/24 in every folder). Their verifiers found
     where a decision had not reached a spec it never named, a few design
@@ -171,24 +193,9 @@ is built yet. Đạt accepted the ADR block on 2026-10-23 (0126 and 0127 on
 - **Đạt:** nothing open from round 4. The ten questions its verifiers raised
   were decided on 2026-10-24 as recommended ("cứ làm theo khuyến nghị"):
   V4.14-V4.23 under State, being applied.
-- **Đạt, canvas and control flow (research of 2026-10-24, Đạt asked for a
-  pick):** keep `@xyflow/react`, with AntV X6, Rete.js and bpmn-js rejected on
-  sourced reasons (no ARIA, size and packaging; a non-commercial licence; a
-  watermark, non-antd shapes and free placement). Questions, each with a
-  recommendation:
-    1. A step tree drawn as a structured canvas (steps placed in slots,
-       never wired by hand), reversing ADR-0112 d1's graph document. Yes.
-    2. Drop dagre for a pure deterministic layout module. Yes.
-    3. Parallel with an all-join compiled as subgraph lanes, a bounded loop
-       with waits and a break, and resume-from-failed-step as an incident:
-       (a) extend W1 by about two to three weeks, (b) cut other W1 scope, or
-       (c) make them W2's first tickets with the grammar built in W1.
-       Recommended (a). Waits inside parallel lanes stay out; "every approver
-       must approve" is one approval step with several required approvers.
-    4. Who draws the canvas vocabulary (category colours, icons, card size):
-       an agent draft in the spike for Đạt's review.
-    5. BPMN import or export: not in v1; a server-side importer of a subset
-       in W3 if a customer asks.
+- **Canvas and control flow, decided (2026-10-24, "theo khuyến nghị hết"):**
+  V4.24-V4.28 under State; applied after round 4's pass f, in a pass of
+  their own.
 - **Đạt, for W2 (domain-packs, `needs-info`):** Q4, whether the pack
   installer may use its own reserved prefix through the public routes, and
   Q5, which route writes `origin` on components that already exist.
