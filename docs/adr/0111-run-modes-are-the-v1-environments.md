@@ -55,12 +55,13 @@ v1 and v2, and on the provisional call on DO-26.
    declares `simulate_safe` (read kinds, and platform tools with `side_effect_level = none`), the RecordService
    validates a write fully and returns the would-be record without persisting it (ADR 0107), the egress client refuses
    every purpose except `model` and read-only actions (`egress_blocked:run_mode`, ADR 0115), and reads and model calls
-   run for real, under the tester's access intersected with the run's boundary and under the tester's allowance; a
-   draft root's boundary is the provisional one its run door derives (ADR 0103 decision 5), which no `live` run reads
-   under. Every other tool call is an intercepted call: recorded in `tool_executions` with status `simulated` (that
-   column's first CHECK), audited as `tool.simulated` with the reason, and answered with the node's or tool's mock
-   output, validated against its output schema and shaped like the mocks of evaluation cases, or with a placeholder
-   generated from the schema, marked `simulated: true`.
+   run for real, under the tester's access (for a gate trial, the access of the principal the gate lane requests it as)
+   intersected with the run's boundary and under the tester's allowance; the boundary of a root not live yet, a draft or
+   a sealed candidate in its gate run, is the provisional one its run door derives (ADR 0103 decision 5), which no
+   `live` run reads under. Every other tool call is an intercepted call: recorded in `tool_executions` with status
+   `simulated` (that column's first CHECK), audited as `tool.simulated` with the reason, and answered with the node's or
+   tool's mock output, validated against its output schema and shaped like the mocks of evaluation cases, or with a
+   placeholder generated from the schema, marked `simulated: true`.
 4. **`test` adds real messages to allowlisted people only.** It also executes connector actions whose kind declares
    `test_capable`, on test-enabled connections, to recipients on the test recipient allowlist: `studio.test_recipients`,
    tenant-wide normalised addresses (E.164, lower-case email, provider user id), expiring within 90 days and
@@ -179,3 +180,8 @@ v1 and v2, and on the provisional call on DO-26.
 - Third consistency check (round 4), sixth pass, Đạt's V4.22: decision 3's reads run under the tester's access
   intersected with the run's boundary, a draft root's being the provisional boundary its run door derives from the
   draft's closure (ADR 0103 decision 5), which no `live` run reads under.
+- Third consistency check (round 4), seventh pass, the planner's provisional call (G-1): decision 3 gives the
+  provisional boundary to every root that is not live yet, a sealed candidate in its gate run as well as a draft, and
+  names whose access a gate trial reads under, the principal the gate lane requests it as (ADR 0103 decision 5, ADR 0120
+  decision 3), extending the sixth pass's line above (if it is wrong, a version's boundary is written when it is sealed
+  and its gate trials read under it).

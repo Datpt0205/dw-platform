@@ -69,8 +69,9 @@ repository root. External facts were gathered by the Studio research on 2026-10-
    `field_caps`, and the `agent` kind's publish hook (ADR-0109 decision 1), which agent-builder
    supplies, writes it into `studio.actor_boundaries` (ADR-0103, ADR-0105) through record-access's
    `ActorBoundaryPort`, inside the publish transaction that agent-lifecycle opens. The same derivation
-   gives a draft that roots a `simulate` run, agent-lifecycle's dry evaluation of a draft among them,
-   its provisional boundary at the run door (ADR-0103 decision 5), which no `live` run reads under.
+   gives a root that is not live yet its provisional boundary at the run door (ADR-0103 decision 5),
+   which no `live` run reads under: a draft that roots a `simulate` run, agent-lifecycle's dry
+   evaluation of a draft among them, and a sealed candidate in its gate run (ADR-0120 decision 3).
    agent-builder registers `studio.agents.read`, `studio.agents.author` and
    `studio.agents.manage_settings`; submit, approve, retire, kill and freeze stay with ADR-0120.
 4. **Instructions are linted text inside a platform frame, never a text template.** The system
@@ -276,3 +277,8 @@ open:
   planner's provisional V4.P10, and its fallback to a four-segment name lapses; decision 3's derivation
   of the boundary also gives an agent draft that roots a `simulate` run its provisional boundary at the
   run door (ADR-0103 decision 5), never used by a `live` run.
+- Third consistency check (round 4), seventh pass, the planner's provisional call (G-1): decision 3's
+  derivation gives its provisional boundary to every root that is not live yet, a sealed agent candidate
+  in its gate run as well as a draft, as ADR-0103 decision 5 now says, extending the sixth pass's line
+  above (if it is wrong, an agent version's boundary is written when it is sealed and its gate trials
+  read under it).

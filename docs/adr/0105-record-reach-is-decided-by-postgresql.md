@@ -95,13 +95,13 @@ and D12 (the scale target), and on the call on DO-11, decided 2026-10-23.
    data-subject-request lane join in W2. The cost is stated: a registered lane also sees every table narrowed to its
    owner, conversations included (ADR-0117), so each entry says whether the lane needs those tables, and a lane that
    needs records only is reviewed as if it opened conversations, or waits for a narrower setting if that review fails.
-6. **A run's actor context is required, and reach is live.** The API sets `app.actor_kind = 'user'`; the runtime's
-   tool session sets `agent` with the agent version's `app.boundary_id`; the workflow runner sets `workflow` with its
-   version's boundary (ADR-0103, `studio.actor_boundaries`, immutable after publish). A draft rooting a `simulate` run
-   binds instead the provisional boundary its run door derived (ADR-0103 decision 5), which `ActorBoundaryPort`
-   records for that run alone and the record policies admit only while `app.run_mode` is `simulate`, so no `live` run
-   reads under it. Reach is evaluated at each statement: a run resumed after an approval reads with its principal's
-   current reach and narrows if access was lost.
+6. **A run's actor context is required, and reach is live.** The API sets `app.actor_kind = 'user'`; the runtime's tool
+   session sets `agent` with the agent version's `app.boundary_id`; the workflow runner sets `workflow` with its
+   version's boundary (ADR-0103, `studio.actor_boundaries`, immutable after publish). A `simulate` run whose root is not
+   live yet, a draft or a sealed candidate in its gate run, binds instead the provisional boundary its run door derived
+   (ADR-0103 decision 5), which `ActorBoundaryPort` records for that run alone and the record policies admit only while
+   `app.run_mode` is `simulate`, so no `live` run reads under it. Reach is evaluated at each statement: a run resumed
+   after an approval reads with its principal's current reach and narrows if access was lost.
 7. **A record indexed into knowledge keeps the record's access.** One document per record in domain `studio.record`,
    payload keys `tenant_id`, `workspace_id`, `object_id`, `record_id`, `owner_id`, `access_key`, `read_grants` and
    `fls_version`. The knowledge gateway builds the vector pre-filter from the caller's closure (no filter value comes
@@ -247,3 +247,8 @@ and D12 (the scale target), and on the call on DO-11, decided 2026-10-23.
   from the new setting `app.run_mode` of decision 1, a missing value counting as any other mode, the planner's call,
   as record-access states it (if it is wrong, they read the mode from the run's `platform.worker_runs` row through a
   setting `app.run_id`).
+- Third consistency check (round 4), seventh pass, the planner's provisional call (G-1): decision 6 binds the
+  provisional boundary for every `simulate` run whose root is not live yet, a sealed candidate in its gate run as well
+  as a draft, as ADR-0103 decision 5 now says, where the sixth pass's line above named a draft alone and left a gate
+  trial with no boundary to bind (if it is wrong, a version's boundary is written when it is sealed and its trials bind
+  it).

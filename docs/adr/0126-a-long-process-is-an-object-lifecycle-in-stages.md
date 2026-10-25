@@ -40,9 +40,10 @@ YC102. The `workflow-engine` spec owns it; custom-objects and workflow-builder-u
   input (ADR-0113 decision 8). Such a run acts as the version's bound service principal (ADR-0103 decision 4). A
   picklist holds one of a fixed list of option keys, and a field in an indexed slot filters and sorts (ADR-0107
   decision 1).
-- **Nothing names a part of a process.** `dw.workflow/v1` has no grouping of nodes, the canvas stores no positions
-  (ADR-0101 decision 3), and the glossary gives "Giai đoạn" to the version stage (`draft` to `retired`, ADR-0120
-  decision 1), the word a builder would otherwise reach for.
+- **Nothing names a part of a process.** `dw.workflow/v1` names no group of nodes, the lanes of its step tree being
+  control flow only (ADR-0112 (Accepted) decision 1), the canvas stores no positions (ADR-0101 decision 3), and the
+  glossary gives "Giai đoạn" to the version stage (`draft` to `retired`, ADR-0120 decision 1), the word a builder would
+  otherwise reach for.
 
 ## Decision
 
@@ -69,12 +70,14 @@ YC102. The `workflow-engine` spec owns it; custom-objects and workflow-builder-u
 5. **Sub-workflows are for reuse only.** `flow.subworkflow` (W2) runs a part that several workflows share, as a child
    run under ADR-0113 decision 9; it is never the way to divide a long process into nested parts.
 6. **Views by Stage carry no run meaning.** custom-objects shows an object's records grouped by the options of its
-   status field: one keyset list per Stage through `RecordService`, filtered on the status field and so needing it in
-   an indexed slot (ADR-0107 decision 1), with the capped count of custom-objects R8.8 and no aggregate query
+   status field: one keyset list per Stage through `RecordService`, filtered on the status field and so needing it in an
+   indexed slot (ADR-0107 decision 1), with the capped count of custom-objects R8.8 and no aggregate query
    (ADR-0127 places aggregates in W3). workflow-builder-ui lets a builder put a Stage label on a node (Bước), an
    optional property of the node in the `dw.workflow/v1` document that the canvas and the outline view read to group
-   nodes and collapse a group. Validation checks only its shape; the compiler, the run and `RecordService` never read
-   it, so a label moves no record, and two documents that differ only in labels compile to the same graph.
+   nodes and collapse a group. A label covers contiguous steps of one sequence, a run of neighbouring steps in one list
+   of the step tree (ADR-0112 (Accepted) decision 1), never steps scattered across lanes. Validation checks only its
+   shape and that contiguity; the compiler, the run and `RecordService` never read it, so a label moves no record, and
+   two documents that differ only in labels compile to the same graph.
 7. **A Stage is not a version stage.** "Chặng" is the UI term, and the glossary records it with "Giai đoạn" among the
    words to avoid, since "Giai đoạn" stays the version stage of ADR-0120 decision 1. No column or code name `stage` is
    added for a Stage: `stage` is the version stage's column on `studio.artifact_versions`.
@@ -94,8 +97,8 @@ YC102. The `workflow-engine` spec owns it; custom-objects and workflow-builder-u
   artifact kind. Rejected: a second owner of where a record stands beside the record itself (failure-modes #2), and a
   new kind with its own validator, compiler and gate for what a picklist and a record event already express.
 - **The Stage label beside the document**, in a store keyed by node id, as positions are kept out of it. Rejected:
-  positions are computed by dagre and need no store (ADR-0101 decision 3); a label is typed by a person, and a store
-  beside the version would drift from the nodes it labels and escape the review that approves them.
+  positions are computed from the step tree and need no store (ADR-0101 decision 3); a label is typed by a person,
+  and a store beside the version would drift from the nodes it labels and escape the review that approves them.
 - **"Giai đoạn" for both.** Rejected: one word for two lifecycles, the version's and the record's, on the same
   screens.
 
@@ -132,9 +135,9 @@ YC102. The `workflow-engine` spec owns it; custom-objects and workflow-builder-u
 
 - `CLAUDE.md` does not change; ADR-0103 and ADR-0113 are reused unchanged, and ADR-0112 decision 1 gains one optional
   node property, the Stage label, which has no run meaning.
-- Refines ADR-0101's reason against stored positions without contradicting it: a position changes on every drag and
-  can be derived, so storing it would churn the hash; a label is typed once, is part of what a reviewer approves, and
-  has no other home.
+- Refines ADR-0101's reason against stored positions without contradicting it: a position is derived from the step
+  tree, so storing it would only churn the hash; a label is typed once, is part of what a reviewer approves, and has
+  no other home.
 - The glossary's version stage (Giai đoạn) keeps its meaning; "Chặng" is added beside it, never in place of it.
 
 ## Open
@@ -150,3 +153,9 @@ YC102. The `workflow-engine` spec owns it; custom-objects and workflow-builder-u
 - Third consistency check (round 4), sixth pass, Đạt's V4.14: Context says that every run has its deadline, no longer
   from W2, since ADR-0113 decision 3 now ships `deadline_at` in W1 as it first wrote it; this ADR stays W2 (YC102),
   and the bound it rests on holds from W1.
+- Third consistency check (round 4), seventh pass, Đạt's V4.24 and V4.25: decision 6 adds that a Stage label covers
+  contiguous steps of one sequence, which validation checks, since in a step tree labels scattered across lanes would
+  make a group that the canvas cannot draw or collapse; the alternative of a label store and the note on ADR-0101 say
+  that positions are derived from the step tree, no longer computed by dagre, and Context says that the document names
+  no group of nodes, where it said it had none, since the lanes of a step tree group steps as control flow. Context's
+  line that no wait sits inside a parallel branch stays as it is, V4.26 keeping waits out of parallel lanes.

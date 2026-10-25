@@ -3,18 +3,18 @@
 Status: needs-triage
 Blocked by: 02, 03, .claude/plans/studio/workflow-engine/issues/04-lan-studio-runs.md, .claude/plans/studio/compliance-pdpl/issues/05-phan-tich-bo-ba-khi-xuat-ban.md, .claude/plans/studio/tenant-config/issues/03-che-do-chay-va-gia-lap-o-executor.md, .claude/plans/studio/tenant-config/issues/05-lien-ket-va-phien-ban-cau-hinh.md, .claude/plans/studio/usage-and-limits/issues/03-han-muc-giu-truoc-va-quyet-toan.md, .claude/plans/studio/telemetry-and-audit/issues/03-lich-su-chay-theo-buoc.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md
 Area: studio
-Yêu cầu: R1.9, R2.8, R2.9, R2.10, R2.11, R2.12, R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R4.7, R4.8, R4.9, R4.10, R4.11, R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R5.8, R5.9, R5.10, R5.11, R5.12, R6.1, R6.2, R6.3, R7.9, R7.12, R7.13, R10.2, R10.3, AL4, AL5, AL6, AL7, AL8, AL9, AL10, AL11, AL19, AL20, AL21, AL22, AL23, AL24, AL25, AL26
+Yêu cầu: R1.9, R2.8, R2.9, R2.10, R2.11, R2.12, R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R4.7, R4.8, R4.9, R4.10, R4.11, R4.12, R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R5.8, R5.9, R5.10, R5.11, R5.12, R6.1, R6.2, R6.3, R7.9, R7.12, R7.13, R10.2, R10.3, AL4, AL5, AL6, AL7, AL8, AL9, AL10, AL11, AL19, AL20, AL21, AL22, AL23, AL24, AL25, AL26, AL27
 
 ## Mục tiêu
 
-Lượt kiểm định chạy ở chế độ Mô phỏng với Bộ kiểm định an ninh nền tảng (đạt 100%; bộ đề của tenant là
-W2) dưới trần chi phí giữ trước qua `LimitsPort`; Kiểm định thử bản Nháp đọc dưới giới hạn tạm của bản Nháp, giao với
-quyền người xin; phát hành cần một người không phải Tác giả duyệt, người đó đọc được Bản ứng viên và phần khác với
-bản Đang dùng trong lúc yêu cầu còn chờ, mọi Điểm gắn bắt buộc đã có giá trị duyệt, và không đè một bản Đang dùng khác
-bản đã so lúc gửi; phê duyệt đã duyệt mà không áp được đưa phiên bản về Nháp với lý do; cổng không mở phê duyệt khi
-Phân tích năng lực thiếu hay chưa đạt; Lượt kiểm định chỉ đọc được theo workspace sở hữu của thành phần và chỉ lượt
-xóa của offboarding xóa được nó (spec R2, R4, R5, R6, R10). Phân tích năng lực do
-compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ đọc kết quả đã ghi làm chốt chặn.
+Lượt kiểm định chạy ở chế độ Mô phỏng với Bộ kiểm định an ninh nền tảng (đạt 100%; bộ đề của tenant là W2) dưới trần chi
+phí giữ trước qua `LimitsPort`, mỗi lần thử đọc dưới giới hạn tạm của Bản ứng viên, giao với quyền người gửi; Kiểm định
+thử bản Nháp đọc dưới giới hạn tạm của bản Nháp, giao với quyền người xin; phát hành cần một người không phải Tác giả
+duyệt, người đó đọc được Bản ứng viên và phần khác với bản Đang dùng trong lúc yêu cầu còn chờ, mọi Điểm gắn bắt buộc đã
+có giá trị duyệt, và không đè một bản Đang dùng khác bản đã so lúc gửi; phê duyệt đã duyệt mà không áp được đưa phiên
+bản về Nháp với lý do; cổng không mở phê duyệt khi Phân tích năng lực thiếu hay chưa đạt; Lượt kiểm định chỉ đọc được
+theo workspace sở hữu của thành phần và chỉ lượt xóa của offboarding xóa được nó (spec R2, R4, R5, R6, R10). Phân tích
+năng lực do compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ đọc kết quả đã ghi làm chốt chặn.
 
 ## Việc cần làm
 
@@ -60,7 +60,13 @@ compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ �
    đọc theo `owning_workspace_id` của thành phần ở `artifact_id`" và "kết quả từng câu là con của Lượt kiểm định
    (`gate_run_id`), đọc qua nó" (studio-skeleton:R9.1; CLAUDE.md, Tenancy and authorization).
 2. Lane `studio_gate` (tối đa một Lượt kiểm định mỗi tenant, một `ReapTarget` cho lượt treo): mỗi lần
-   thử là một run `run_mode='simulate'` dùng ngữ cảnh truy cập đóng dấu của người gửi; lane cấp cho mỗi Bước
+   thử là một run `run_mode='simulate'` xin qua `RunRequestService` dưới danh nghĩa người gửi Bản ứng viên
+   (`submitted_by`; ngữ cảnh truy cập đóng dấu của người đó, không của lane), để `RunRequestService` dẫn giới hạn tạm
+   từ bao đóng niêm phong của Bản ứng viên, ghi dưới `(version_id, definition_hash)` cho riêng lượt đó, và lần thử
+   đọc dưới giới hạn tạm giao với quyền của người gửi; việc dẫn, ghi, xóa giới hạn tạm và luật RLS chỉ nhận nó ở
+   `simulate` là của workflow-engine và record-access (spec R4.12; workflow-engine:R3.15, workflow-engine:R3.14,
+   record-access:R6.11, record-access:R6.12, record-access:R6.13); test danh nghĩa và phần đọc như ở bước 4, với
+   một Bản ứng viên quy trình có Bước `data.object.*` giả của fixture; lane cấp cho mỗi Bước
    `human.approval` của lần thử quyết định `approved` hay `rejected` (từ vựng của workflow-nodes:R9.9, bước 3) mà Câu
    kiểm định khai trong `input`, Bước không chờ người thật, ghi `studio.step.approval.simulated` và không mở dòng
    `platform.approval_requests` nào (spec R4.7; hành vi của Bước là của workflow-nodes, ticket này thử hợp đồng với
@@ -213,6 +219,11 @@ compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ �
       Nháp quy trình có Bước `data.object.*` đọc đối tượng X mà người xin đọc được bản ghi x1, không đọc được x2 → lần
       thử thấy x1, không thấy x2, và đọc đối tượng Y ngoài bao đóng → 0 bản ghi; bỏ giới hạn tạm khỏi lần thử → x1 cũng
       không thấy, test đỏ.
+- [ ] R4.12 (AL27): với cửa giả ghi danh nghĩa, mỗi lần thử của Lượt kiểm định được xin dưới danh nghĩa người gửi Bản
+      ứng viên; xin dưới danh nghĩa lane (`system:studio_gate`) hay một người khác người gửi → test khớp đỏ; trên
+      `RunRequestService` thật, Lượt kiểm định một Bản ứng viên quy trình có Bước `data.object.*` đọc đối tượng X mà
+      người gửi đọc được bản ghi x1, không đọc được x2 → lần thử thấy x1, không thấy x2, và đọc đối tượng Y ngoài bao
+      đóng → 0 bản ghi; bỏ giới hạn tạm khỏi lần thử → x1 cũng không thấy (record-access:R6.5), test đỏ.
 - [ ] R4.10 (AL23): người giữ `studio.lifecycle.read` ở độ sâu `workspace` của ws1 gọi `GET /api/v1/studio/gate-runs`
       → chỉ Lượt kiểm định của thành phần có `owning_workspace_id` là ws1, không dòng nào của thành phần thuộc ws2, kể cả
       dòng `dry`; `GET .../gate-runs/{id}` và `/{id}/cases` của Lượt kiểm định thuộc ws2 → 404; người của tenant B dùng
@@ -381,3 +392,9 @@ compliance-pdpl giữ và trả 422 lúc gửi kiểm định; lát này chỉ �
   gọi được quyết định yêu cầu `studio.lifecycle.unfreeze` đó, để 404 đến từ kiểm loại chứ không từ kiểm tem
   (failure-modes #3); test đọc của R4.11 ở bước 4 dùng loại node `data.object.*` giả của fixture như workflow-engine/03,
   nên không cần cạnh tới workflow-nodes/04.
+- 2026-10-24 (agent): lượt g của vòng sửa 4, theo dòng Quyết định tạm cùng ngày của spec: lần thử của Lượt kiểm định chạy
+  một Bản ứng viên chưa phát hành, nên chưa có giới hạn dữ liệu và đọc 0 bản ghi; bước 2 xin mỗi lần thử qua
+  `RunRequestService` dưới danh nghĩa người gửi, để cửa đó dẫn giới hạn tạm từ bao đóng niêm phong dưới
+  `(version_id, definition_hash)` như Kiểm định thử làm với bản Nháp (spec R4.12, AL27). Không thêm cạnh: lời gọi
+  `RunRequestService` và luật RLS của giới hạn tạm vẫn ở workflow-engine và record-access, đứng trước
+  workflow-engine/04 mà ticket này chờ.

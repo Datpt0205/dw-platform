@@ -7,7 +7,7 @@ Yêu cầu: R5.1, R5.2, R5.3, R5.5, R5.6, R5.7, R5.8, R5.9, R5.10, R5.11, R5.12,
 
 ## Mục tiêu
 
-Chạy lượt chạy Studio ở worker từ hàng `platform.worker_runs`, công bằng theo tenant, với lease có hàng rào, một reaper nhận lại lượt mồ côi và thư chết thấy được, để một tenant ồn không bỏ đói tenant khác và một worker chết không làm mất hay nhân đôi tác động; mỗi lượt có hạn chót đặt ở lần nhận đầu mà reaper thực thi, và một lượt bị giữ báo cho người gỡ được lý do giữ (R5 của spec).
+Chạy lượt chạy Studio ở worker từ hàng `platform.worker_runs`, công bằng theo tenant, với lease có hàng rào, một reaper nhận lại lượt mồ côi và thư chết thấy được, để một tenant ồn không bỏ đói tenant khác và một worker chết không làm mất hay nhân đôi tác động; mỗi lượt có hạn chót đặt ở lần nhận đầu mà reaper thực thi, và một lượt bị giữ báo cho người nhận mà R5.20, R5.21 nêu (R5 của spec).
 
 ## Việc cần làm
 
@@ -57,3 +57,4 @@ Chạy lượt chạy Studio ở worker từ hàng `platform.worker_runs`, công
 - 2026-10-24 (agent): lượt b của vòng 4: thiếu chỗ đồng thời sang W2 cùng YC79 (V4.P6; ADR-0113 (Accepted) quyết 3, ADR-0121 (Accepted) quyết 5-6), nên R5.4 rời Yêu cầu, bước 3 và tiêu chí; `platform.studio_run_scopes_due` trả id tenant và lệnh nhận việc chạy dưới RLS cho từng tenant (ADR-0113 (Accepted) quyết 2); nhãn vòng 4 đổi thành `V4.<n>`.
 - 2026-10-24 (agent): lượt d của vòng 4: dòng Comments của lượt b thôi dẫn mã mục của lượt, nội dung giữ nguyên.
 - 2026-10-24 (agent): theo V4.14, V4.15 và V4.16 của Đạt: làn đặt `deadline_at` một lần ở lần nhận đầu và reaper kết thúc lượt quá hạn qua `platform.studio_run_deadlines_due` (R5.22, R5.23, WE23); lượt do trình kích hoạt giữ `queued` khi `BindingReviewPort` báo `binding_needs_review` (R5.19), thay câu "từ chối trước khi lượt chạy được xin"; hai lời báo khi giữ đi qua `HeldRunAlertPort`, một lần cho mỗi lần chuyển trạng thái của tài khoản dịch vụ hay mỗi lần tăng quyền (R5.20, R5.21, WE24, WE25), thay câu "báo người chịu trách nhiệm là dòng W2". Không thêm cạnh: ticket này đã chờ org-and-principals/02 (`status_changed_at`), tenant-rbac/02 và tenant-config/05 qua các ticket trước, còn workflow-triggers/03, bên đáp ứng `BindingReviewPort`, chờ ticket này qua workflow-triggers/01, 02.
+- 2026-10-24 (agent): theo dòng tạm cùng ngày của spec, R5.20 bỏ vế "người kích hoạt lại được tài khoản", vì W1 không có route mở lại thành viên (org-and-principals); người nhận vẫn là người giữ `platform.members.write` ở độ sâu công ty, nên bước 3 và tiêu chí R5.20 không đổi, chỉ Mục tiêu thôi nói người nhận gỡ được lý do giữ. Ca "kích hoạt lại tài khoản" của tiêu chí R5.17, R5.20 là bước dựng của test, không phải một route. Không thêm cạnh.

@@ -30,7 +30,8 @@ nhận (workflow-nodes R2.1, R2.2, R5.1, R5.2, R5.4, R5.5, R6.1, R6.2, R6.3, R6.
    và lọc thêm, không dùng nhóm (nhóm ở W2); "lâu nhất chưa nhận" từ `owner_assigned_at` qua hàm SECURITY
    DEFINER chỉ trả thời điểm; không ai hợp lệ → người dự phòng là giá trị đã duyệt của một điểm gắn kind
    `principal` trong Bộ giá trị gắn (tenant-config/05), đọc qua `RunBindingsPort` từ bản kê, qua cùng kiểm
-   `effective_grants`; người dự phòng cũng không hợp lệ → Nhánh ra lỗi, không giao. Giao bằng `AssignRecordService`
+   `effective_grants`; người dự phòng cũng không hợp lệ → Bước kết thúc với lỗi theo Khi lỗi của nó (làn lỗi khi
+   `route`), không giao. Giao bằng `AssignRecordService`
    của record-access/05 qua Protocol `RecordAssignPort` khai trong `dw_studio.workflows` và nối ở composition root;
    Bước không gọi `studio.assign_record`, không tự ghi audit: dịch vụ đó ghi audit và outbox
    `studio.record.assigned` trong một giao dịch (record-access:R8.7, record-access:R8.8).
@@ -52,8 +53,8 @@ nhận (workflow-nodes R2.1, R2.2, R5.1, R5.2, R5.4, R5.5, R6.1, R6.2, R6.3, R6.
 - [ ] R6.3 (WN16): không ứng viên nào hợp lệ → giao cho người dự phòng đã duyệt qua `RecordAssignPort`, với đúng một
       audit và một outbox `studio.record.assigned` do `AssignRecordService` ghi; Bước ghi thêm một audit hay gọi thẳng
       `studio.assign_record` → test đỏ.
-- [ ] R6.4 (WN16): người dự phòng cũng không giữ quyền → bước đi Nhánh ra lỗi, bản ghi không có người phụ
-      trách mới; bỏ kiểm quyền của người dự phòng → test đỏ.
+- [ ] R6.4 (WN16): người dự phòng cũng không giữ quyền → Bước khai Khi lỗi `route` chạy làn lỗi, Bước khai `fail`
+      làm lượt `failed`, bản ghi không có người phụ trách mới ở cả hai; bỏ kiểm quyền của người dự phòng → test đỏ.
 - [ ] Xong: `uv run pytest packages/python/dw_studio/tests/workflows/test_data_object_nodes.py packages/python/dw_studio/tests/workflows/test_assign_node.py` xanh.
 
 ## Nguồn
@@ -66,3 +67,4 @@ nhận (workflow-nodes R2.1, R2.2, R5.1, R5.2, R5.4, R5.5, R6.1, R6.2, R6.3, R6.
 
 - 2026-10-23 (agent): theo phiếu 23/10/2026: giả lập ghi bản ghi ở RecordService, R5.3 rút và R5.5 thay (D:custom-objects:R5.4~workflow-nodes:R5.3); người dự phòng là điểm gắn kind `principal` duyệt hai người, nhóm ở W2 (Q6), nên ticket chờ tenant-config/05.
 - 2026-10-24 (agent): theo quyết định của Đạt ngày 24/10/2026: khoá chống lặp là của workflow-engine:R4.5; giao qua `AssignRecordService` (record-access/05), không qua `studio.assign_record`, không audit riêng.
+- 2026-10-24 (agent): theo V4.24 của Đạt: làn lỗi chỉ có khi Khi lỗi là `route`, nên R6.4 nói Bước kết thúc với lỗi theo Khi lỗi của nó thay "đi Nhánh ra lỗi", và tiêu chí của nó thử cả `route` lẫn `fail`. Không thêm cạnh.

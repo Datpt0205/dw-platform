@@ -22,11 +22,14 @@ spec).
    workspace và người tải tài liệu. Hợp đồng import-linter: chỉ composition root import
    `RoutingModelGateway`, adapter embedding, rerank cụ thể. Test liệt kê field của `RuntimeSeam`: mọi
    field chạm model là kiểu có đo.
-2. `RunLimits = kẹp(giá trị của phiên bản, Trần của gói)`; agent: `ModelCallLimitMiddleware(run_limit, exit_behavior="error")`,
-   `ToolCallLimitMiddleware(run_limit, exit_behavior="error")`, `recursion_limit` truyền mọi lần gọi và
-   gán lại cho subagent biên dịch sẵn; quy trình: số bước → `recursion_limit`. Mọi vi phạm →
-   `LimitExceededError(metric)` → run `failed`, `error.code = limit_exceeded`, không áp chính sách lỗi của
-   node; audit `run.limit_stopped`.
+2. `RunLimits = kẹp(giá trị của phiên bản, Trần của gói)`; agent:
+   `ModelCallLimitMiddleware(run_limit, exit_behavior="error")`,
+   `ToolCallLimitMiddleware(run_limit, exit_behavior="error")`, `recursion_limit` truyền mọi lần gọi và gán
+   lại cho subagent biên dịch sẵn; quy trình: `RunLimits.max_steps` tới bộ đếm bước theo lượt của wrapper nút
+   bằng tiêm (workflow-engine:R4.20, ở workflow-engine/06, ticket chờ ticket này), không tới
+   `recursion_limit`, vì `recursion_limit` đặt lại mỗi lần tiếp tục (đo trên LangGraph 1.2.11,
+   ADR-0112 (Accepted) Context). Mọi vi phạm → `LimitExceededError(metric)` → run `failed`,
+   `error.code = limit_exceeded`, không áp chính sách lỗi của node; audit `run.limit_stopped`.
 
 ## Tiêu chí chấp nhận
 
@@ -35,9 +38,11 @@ spec).
 - [ ] R6.2 (UL4): lease cạn, gọi thẳng gateway có cấu trúc, `metered_invoke`, chat model, embeddings,
       rerank, lane nạp → mỗi cửa từ chối `limit_exceeded` (test âm gọi thẳng từng cửa, không qua lớp đã
       chặn).
-- [ ] R6.3: lượt chạy chạm giới hạn số bước hay số lời gọi công cụ (kẹp bởi gói) → dừng ở ranh giới kế
-      tiếp `limit_exceeded`, không áp chính sách lỗi của node; subagent `create_deep_agent` không gán
-      lại `recursion_limit` → test đỏ; giới hạn công cụ với lời gọi song song dừng sạch.
+- [ ] R6.3: lượt chạy chạm giới hạn số bước hay số lời gọi công cụ (kẹp bởi gói) → dừng ở ranh giới kế tiếp
+      `limit_exceeded`, không áp chính sách lỗi của node; subagent `create_deep_agent` không gán lại
+      `recursion_limit` → test đỏ; giới hạn công cụ với lời gọi song song dừng sạch; số bước của một lượt quy
+      trình qua nhiều lần tiếp tục thử ở tiêu chí R4.20 của workflow-engine/06, trên `RunLimits` mà ticket này
+      trả.
 - [ ] R6.4: giá trị hành vi trong phiên bản cao hơn Trần của gói → bị kẹp về Trần của gói lúc chạy.
 - [ ] Xong: `make ci && make test-integration` xanh.
 
@@ -57,3 +62,7 @@ spec).
   mặc định 30 ngày khi `limits.max_run_seconds` chưa có ở W1, nên Mục tiêu đổi lý do: giới hạn thời gian theo gói vẫn
   là W2 vì không bên nào ở W1 đọc nó, không phải vì hạn chót là W2. Ticket này không đổi việc cần làm và không thêm
   cạnh.
+- 2026-10-25 (agent): bước 2 thôi nối số bước của quy trình vào `recursion_limit`: theo V4.26, trần của lượt
+  quy trình là bộ đếm bước theo lượt của workflow-engine:R4.20, mà workflow-engine/06 dựng và nhận
+  `RunLimits.max_steps` của ticket này bằng tiêm, vì `recursion_limit` đặt lại mỗi lần tiếp tục;
+  `recursion_limit` vẫn là trần của vòng agent. Không thêm cạnh: workflow-engine/06 đã chờ ticket này.

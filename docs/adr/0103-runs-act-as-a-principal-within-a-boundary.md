@@ -77,16 +77,17 @@ layers, field security applied to agents and search too), and on the call on DO-
    (ADR 0113) names whose reach the run uses.
 5. **Reach is the principal's live reach intersected with the version's boundary.** A published version fixes its
    boundary in `studio.actor_boundaries` (ADR 0105), immutable after publish: an agent's is derived from its toolset's
-   object tools and field caps (ADR 0117), a workflow's from the data nodes of its document (ADR 0112). It is
-   evaluated at every statement, never read from a stamp, so a run resumed after an approval narrows if access was
-   lost. A draft that roots a `simulate` run (ADR 0109 decision 6) has no published boundary, so `RunRequestService`
-   derives a provisional one from the draft's closure by the derivation the kind's publish hook runs, records it under
-   `(version_id, pinned_hash)` for that run alone and deletes it when the run ends; the run reaches what the tester
-   reaches intersected with it (ADR 0111 decision 3), and the database admits a provisional boundary only in
-   `simulate`, so no `live` run reads under one. The database refuses every Studio record read and write when the
-   actor context is missing or names an unknown kind. A child run (agent node, workflow tool, linked agent) carries
-   the root's principal intersected with every boundary on its chain. Audit names the principal as `actor_id` and the
-   agent or workflow version in `details`.
+   object tools and field caps (ADR 0117), a workflow's from the data nodes of its document (ADR 0112). It is evaluated
+   at every statement, never read from a stamp, so a run resumed after an approval narrows if access was lost. A
+   `simulate` run whose root is not live yet has no published boundary: a draft that roots it (ADR 0109 decision 6), or
+   a sealed candidate that a gate run tries while it is `evaluating` (ADR 0120 decision 3). For such a run
+   `RunRequestService` derives a provisional boundary from the root's closure by the derivation the kind's publish hook
+   runs, records it under `(version_id, pinned_hash)` for that run alone and deletes it when the run ends; the run
+   reaches what the tester reaches intersected with it (ADR 0111 decision 3), for a gate trial what the principal the
+   gate lane requests it as reaches, and the database admits a provisional boundary only in `simulate`, so no `live` run
+   reads under one. The database refuses every Studio record read and write when the actor context is missing or names
+   an unknown kind. A child run (agent node, workflow tool, linked agent) carries the root's principal intersected with
+   every boundary on its chain. Audit names the principal as `actor_id` and the agent or workflow version in `details`.
 6. **An integrator authenticates with an API key of one service principal.** `dwk_<key_id>_<secret>`: the secret
    HMAC-SHA-256-hashed under a server pepper, shown once, `expires_at` at most 366 days after creation, at most two live
    keys per principal. `platform.resolve_service_key(key_id)` (SECURITY DEFINER) returns the key's tenant and never its
@@ -147,7 +148,8 @@ layers, field security applied to agents and search too), and on the call on DO-
   request for another user's record fails at RLS, not in the prompt; a transaction without an actor kind reads no
   record; a child run never reaches more than its parent; a verified email of a signed-in user is refused; a suspended
   member reaches nothing at the next request; an API key sent with a disagreeing tenant header gets 403; a provisional
-  boundary bound to a run outside `simulate` reaches no record.
+  boundary bound to a run outside `simulate` reaches no record; a gate trial of a candidate in `evaluating` reads the
+  records its closure reaches and none beyond them.
 - Harder: provisioning holds a Keycloak admin credential limited to `manage-organizations`, kept in the vault; Keycloak
   sessions are left to their idle expiry, because logging them out needs a realm-wide `manage-users` credential the
   platform does not hold; a person whose IdP sends no `email_verified` cannot claim an invitation until claims ship.
@@ -207,3 +209,10 @@ layers, field security applied to agents and search too), and on the call on DO-
   decision 5 gives a draft that roots a `simulate` run a provisional boundary, which the run door derives from the
   draft's closure, binds to that run and deletes when it ends, the tester's access intersected with it and the
   database admitting it only in `simulate` (ADR 0109 decision 6, ADR 0111 decision 3).
+- Third consistency check (round 4), seventh pass, the planner's provisional call (G-1): decision 5 gives a provisional
+  boundary to every `simulate` run whose root is not live yet, a sealed candidate in its gate run as well as a draft,
+  because a candidate in `evaluating` has no `studio.actor_boundaries` row, a version's boundary being written at
+  publish, and its gate trials would otherwise read no record; a gate trial reaches what the principal the gate lane
+  requests it as reaches, intersected with that boundary (ADR 0120 decision 3), and the sixth pass's line above, which
+  named a draft root alone, gives way (if it is wrong, a version's boundary is written when the version is sealed and
+  its gate trials read under it).

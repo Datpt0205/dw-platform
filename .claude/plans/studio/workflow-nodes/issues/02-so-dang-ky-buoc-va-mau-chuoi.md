@@ -15,12 +15,19 @@ workflow-engine/01, đọc tập loại từ registry của ticket này.
 ## Việc cần làm
 
 1. `packages/python/dw_studio/src/dw_studio/workflows/node_registry.py`: `NodeTypeSpec` (type@major,
-   schema cấu hình, schema đầu ra, Nhánh ra, Mức tác động `SideEffectLevel`, nhãn năng lực, chính sách
-   Khi lỗi cho phép, giới hạn, quyền và quyền lợi, hành vi theo Chế độ chạy, bộ trích phụ thuộc, hook
-   biên dịch) và `build_node_registry(ports)` gọi ở cả hai composition root. Bảng "thuộc tính → nơi đọc"
-   có test.
-2. Schema đầu ra mỗi loại công bố đối tượng có tên và kiểu; `error` chỉ có khi Khi lỗi là `continue`
-   (R1.5, mẫu học từ config-chang.md mẫu 2).
+   schema cấu hình, schema đầu ra, Nhánh ra, mỗi Nhánh ra là một làn Bước lồng trong Bước của tài liệu dạng cây
+   (V4.24), Mức tác động `SideEffectLevel`, nhãn năng lực, chính sách Khi lỗi cho phép, giới hạn, quyền và quyền
+   lợi, hành vi theo Chế độ chạy, bộ trích phụ thuộc, hook biên dịch, và ba tính chất vị trí `opens_wait`,
+   `ends_run`, `exits_loop`: mở điểm chờ, kết thúc lượt chạy, thoát vòng lặp) và `build_node_registry(ports)` gọi ở
+   cả hai composition root. Ba tính chất vị trí là trường bắt buộc không có giá trị mặc định: mỗi ticket đăng ký một
+   loại khai cả ba cho loại đó, và một mục thiếu một tính chất thì registry không dựng được, để một loại chờ mới của
+   W2 không lọt kiểm của làn song song vì một mặc định sai (failure-modes #7). Bảng "thuộc tính → nơi đọc" có test;
+   nơi đọc ba tính chất là bộ kiểm của workflow-engine (phép hạ `lower` không nối cạnh ra khỏi một Bước `ends_run`
+   và nối lối ra của vòng lặp cho một Bước `exits_loop`, workflow-engine/01; kiểm của workflow-engine:R2.15-R2.17,
+   workflow-engine/06).
+2. Schema đầu ra mỗi loại công bố đối tượng có tên và kiểu; `error` chỉ có khi Khi lỗi là `continue` hay `route`,
+   để Bước kế tiếp (`continue`) và các Bước của làn lỗi (`route`) đọc được lỗi (R1.5, mẫu học từ config-chang.md
+   mẫu 2).
 3. Route `GET /api/v1/studio/node-types` (quyền `studio.workflows.edit`): trả cấu hình, đầu ra, Nhánh
    ra, nhãn tiếng Việt, giới hạn đã kẹp theo gói, nhãn năng lực, Mức tác động và lý do bị khoá cho người
    gọi. Băm danh mục của API bằng băm worker dựng.
@@ -37,9 +44,10 @@ workflow-engine/01, đọc tập loại từ registry của ticket này.
 - [ ] R1.2: danh mục trả đủ schema cấu hình, đầu ra, Nhánh ra, nhãn, Mức tác động, giới hạn và lý do
       khoá cho mỗi loại.
 - [ ] R1.4 (WN15): thêm một thuộc tính vào `NodeTypeSpec` mà không có nơi đọc → test bảng
-      thuộc-tính-tới-nơi-đọc đỏ.
-- [ ] R1.5: một loại có `error` trong schema đầu ra chỉ khi Khi lỗi `continue`; loại mặc định `fail`
-      không công bố `error`.
+      thuộc-tính-tới-nơi-đọc đỏ; một mục bỏ trống `opens_wait`, `ends_run` hay `exits_loop` → `build_node_registry`
+      lỗi, không giá trị mặc định nào thay; cho ba trường một mặc định `False` → mục thiếu dựng được, test đỏ.
+- [ ] R1.5: một loại có `error` trong schema đầu ra chỉ khi Khi lỗi `continue` hay `route`; một Bước khai `route`
+      có `error` mà các Bước của làn lỗi tham chiếu được; loại mặc định `fail` không công bố `error`.
 - [ ] R4.1: cùng một giá trị render khác nhau theo đích `text` và `html` (thoát HTML ở `html`).
 - [ ] R4.2 (WN2): một lời nhắn lead chứa `</input>` render ở đích `prompt` không đóng được khối; gỡ
       `contain_untrusted` ở đích prompt → test đỏ.
@@ -57,3 +65,5 @@ workflow-engine/01, đọc tập loại từ registry của ticket này.
 ## Comments
 
 - 2026-10-23 (agent): theo phiếu 23/10/2026, R1.3 rút: kiểm `type@major` chưa đăng ký là hàng `wf.unknown_node_type` của bảng mã workflow-engine:R2.14, làm ở workflow-engine/01.
+- 2026-10-24 (agent): theo V4.24 và V4.26 của Đạt: Nhánh ra của mỗi loại là một làn Bước của tài liệu dạng cây, và `on_error: route` vào W1, nên `error` có dưới cả `continue` lẫn `route` (R1.5). Ba loại điều khiển của bậc B và ba tính chất vị trí của `NodeTypeSpec` là của ticket 07. Không thêm cạnh.
+- 2026-10-25 (agent): ba tính chất vị trí của `NodeTypeSpec` chuyển từ ticket 07 về ticket này, thành trường bắt buộc không mặc định, vì bộ kiểm của workflow-engine/06 đọc chúng mà ticket 07 chờ ticket đó, và một mặc định sai là mặc định mở cho một loại chờ mới (failure-modes #7); ticket 03 khai `ends_run` của `flow.stop@1`, ticket 06 `opens_wait` của `human.approval@1`, ticket 07 `exits_loop` của `logic.break@1` (dòng Quyết định 25/10/2026 của spec, agent, tạm). Không thêm cạnh: ticket này đã là tổ tiên của workflow-engine/01 và 06.

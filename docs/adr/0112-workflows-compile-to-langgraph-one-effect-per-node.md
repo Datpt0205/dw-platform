@@ -25,61 +25,119 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
   an unconnected router port fails only at run time; two plain edges from parallel branches run a node twice; code
   placed before `interrupt()` runs again on resume; `recursion_limit` is 1,000 in the docs and 10,007 in the code; the
   `error_handler` is skipped when two tasks share a superstep; `RetryPolicy` has no idempotency key per iteration.
+- Measured again by the canvas research on 2026-10-24 against the same LangGraph 1.2.11, with langgraph-checkpoint 4.2.0
+  on the in-memory saver (the research's set S22 and its review's probes of the same day; the Postgres saver with two
+  workers is discovery 14's to measure): a waiting edge from the end of every lane (`add_edge([...], join)`) runs the
+  join once even when the lanes are uneven, where plain edges run it twice; `defer=True` holds a nested join until an
+  unrelated outer lane has finished; a switch inside a lane, closed by a no-op merge node and a waiting edge, joins
+  once. Lanes compiled as plain branches of one graph run in lock-step, each superstep waiting for its slowest task (a
+  lane of one 1.0 s step beside a lane of three 0.3 s steps took 1.61 s, and 1.01 s with each lane a subgraph), and a
+  lane subgraph that shares a reducer key with its parent adds the parent's values again. In one graph an open wait in
+  one lane holds the later steps of the others, so a second approver is asked only once the first has decided, and a
+  failure in another lane surfaces only then. A step that ends the run inside a lane completes it without an error while
+  the join and every later step never run. A loop that waits in each iteration gets a distinct interrupt id per
+  iteration and runs each effect once per iteration, but `recursion_limit` counts per invoke: such a loop ran 20
+  supersteps under a limit of 8 over 10 resumes, and raised only without the waits. After one lane raised,
+  `invoke(None)` ran the failed node again and the sibling lane and the join once.
 - `CLAUDE.md:246-247` keeps SQL and SDKs out of workflow nodes; `CLAUDE.md:68-69` puts every effect through policy,
   idempotency and audit. The pilot (D4) messages a lead only after a person approves.
 
 ## Decision
 
-1. **The document.** A workflow is a `dw.workflow/v1` document of kind `workflow` in the shared envelope (ADR-0109):
-   `triggers[]`; `nodes[]`, each with an `id` matching `^[a-z][a-z0-9_]{0,39}$` that stays stable across versions,
-   `type` as `name@major`, a `config` valid against the node type's JSON Schema, `retry` (`max_attempts` 1-5, fixed
-   or exponential backoff), `timeout_s` and `on_error` (`fail`, `continue`, `route`); `edges[]` (`from`, `port`,
-   `to`); `variables[]`; `inputs` and `outputs`; `bindings[]`; `limits` (`max_steps`, `max_parallel`, `max_map_items`,
-   `max_run_seconds`, `max_open_waits`); `outcomes[]` (a name and a CEL condition). Every tenant value (connection,
-   run-as principal, endpoint, schedule) is a binding name whose value is approved apart from the version
-   (ADR-0110). Canvas positions stay outside the document, so moving a node never changes the definition hash.
-2. **Node types are platform code** in one `NodeTypeRegistry`, built by one function, `build_node_registry(ports)`, at
+1. **The document is a tree of steps.** A workflow is a `dw.workflow/v1` document of kind `workflow` in the shared
+   envelope (ADR-0109 (Accepted)): `triggers[]` and a tree `steps[]`. A step (Bước) is
+   `{id, type, config, retry, timeout_s, on_error, description}`: an `id` matching `^[a-z][a-z0-9_]{0,39}$` that stays
+   stable across versions, `type` as `name@major`, a `config` valid against the step type's JSON Schema, `retry`
+   (`max_attempts` 1-5, fixed or exponential backoff), `timeout_s`, `on_error` (`fail`, `continue`, `route`, `incident`;
+   decision 5), an optional `description` and, from W2, an optional Stage label (ADR-0126 (Accepted) decision 6). For
+   each port its type declares, a step holds one lane, an ordered list of steps nested in it: the cases of a
+   `logic.switch` with its default lane "Khác", the outcomes of a `human.approval` ("Duyệt", "Từ chối"; "Hết hạn" from
+   W2), the lanes of a `logic.parallel`, the body of a `logic.loop`, the body of a `logic.map` (W2), and an error lane
+   ("Khi lỗi") when `on_error` is `route`. The steps of a list run in order and every lane closes at the end of its
+   step's block, so the tree is the whole topology: there is no `edges[]`, and no position enters the document, the
+   canvas computing every position from the tree (ADR-0101 (Accepted) decision 3), so the definition hash changes when
+   the tree does and never when the canvas does. The document also holds `variables[]`; `inputs` and `outputs`;
+   `bindings[]`; `limits` (`max_steps`, `max_parallel`, `max_map_items`, `max_run_seconds`, `max_open_waits`);
+   `outcomes[]` (a name and a CEL condition). Every tenant value (connection, run-as principal, endpoint, schedule) is a
+   binding name whose value is approved apart from the version (ADR-0110 (Accepted)).
+2. **Step types are platform code** in one `NodeTypeRegistry`, built by one function, `build_node_registry(ports)`, at
    both composition roots (the API for the palette and the validator, the worker for execution). A `NodeTypeSpec`
-   carries `type@major`, config and output schemas, a `side_effect_level` from the existing vocabulary
-   (`packages/python/dw_agent_runtime/src/dw_agent_runtime/contracts.py:19`), capability labels for ADR-0125, the
-   error policies it allows, limits clamped by the plan, a `permission` and an `entitlement`, its behaviour per run
-   mode (ADR-0111), a dependency extractor and `compile(config)`. The v1 catalogue has 32 types: six `trigger.*`,
-   `ai.llm`, `ai.agent`, eight `data.*`, `tool.call`, `http.request`, `notify.send`, five `logic.*`, two `time.*`,
-   `human.approval`, `human.task`, three `flow.*` and `code.python`. The fifth `logic.*` is `logic.loop`, whose
-   `max_iterations` is required and clamped by the plan; it arrives in W2 (YC105), workflow-nodes registering the type
-   and workflow-engine owning the loop's structure in the IR and the compiler. Tenants add tools (ADR-0116), never
-   node types.
-3. **One validator over the graph the compiler uses.** Publishing runs one all-errors validator over a `WorkflowIR`
-   (nodes, ports, edges, dominator tree, branch-exclusivity sets) that the compiler also consumes. It runs at submit,
-   the first step of ADR-0120's path to live, as warnings on every draft save, and before a `simulate` run of a
-   draft, where an error answers 422 with its `wf.*` codes and requests no run (ADR-0109 decision 6). It checks that
-   every node is reachable from a trigger; every router is total (a `default` port, every port connected or ended);
-   cycles pass only through a `logic.loop` with `max_iterations`, so a graph has none before W2; parallel branches
-   merge only through a join; every `{{ }}` reference names a dominating node or is guarded by `has()`; CEL types
-   hold (ADR-0114); a variable has one writer per superstep; no wait sits inside a `map` body or a parallel branch in
-   v1; plan limits hold; every connection, principal and endpoint is a declared binding. It returns
-   `[{path, code, message_vi, message_en}]` with stable codes
-   (`wf.unreachable_node`, `wf.router_not_total`, `wf.join_required`, `wf.ref_not_dominating`, `wf.type_mismatch`,
-   `wf.wait_in_map`, `wf.limit_above_plan`, `wf.binding_undeclared`). Its graph module (`reachable`, `dominators`,
-   `paths_to`) also serves ADR-0125's capability analysis, so the two cannot see different graphs.
-4. **Compilation.** Each published version, and each draft a `simulate` run pins (ADR-0109 decision 6), compiles to a
-   LangGraph `StateGraph`: one `LastValue` channel per node output (`out__<node_id>`) and per variable; `defer=True`
-   for joins; a `map` as one `Send` per chunk of 20 items, with `max_parallel` as `max_concurrency` and child runs per
-   chunk beyond `max_map_items` (at most 1,000); every wait an `interrupt()` as the first statement of its own node;
-   `recursion_limit` always passed (`max_steps` plus the supersteps the compiler counts). Compiled graphs sit in a
-   bounded per-process LRU of 256 keyed `(tenant_id, artifact_version_id, pinned_hash, compiler_version)`, where
-   `pinned_hash` is the hash the run manifest pins: a sealed version's `definition_hash`, or the provisional hash of a
-   draft's content (ADR-0109 decision 6). A draft keeps its id while it is edited and a run resolves only from its
-   manifest (`CLAUDE.md`, Non-negotiable architecture), so a key without the hash would hand a new simulation the
-   graph of older content. LangGraph is imported only in the runtime's adapters.
-5. **A platform node wrapper, not LangGraph, owns retry, timeout, `on_error` and the one effect.** At start it asks
-   `RunControlPort.require_open` (ADR-0120), checks the run's deadline and, from W2, cancellation (ADR-0113 decision 3);
-   it resolves inputs by CEL, runs each attempt under `asyncio.timeout`, retries with backoff (each attempt a run
-   step), then applies `on_error`: `fail` raises, `continue` writes `{status: "error", error}` to the node's channel,
-   `route` also takes the `error` port. An effect node calls its door once per attempt with the idempotency key
+   carries `type@major`, config and output schemas, the ports whose lanes a step of the type holds (decision 1), a
+   `side_effect_level` from the existing vocabulary
+   (`packages/python/dw_agent_runtime/src/dw_agent_runtime/contracts.py:19`), capability labels for ADR-0125, the error
+   policies it allows, limits clamped by the plan, a `permission` and an `entitlement`, its behaviour per run mode
+   (ADR-0111), a dependency extractor and `compile(config)`. The v1 catalogue has 32 types: six `trigger.*`, `ai.llm`,
+   `ai.agent`, eight `data.*`, `tool.call`, `http.request`, `notify.send`, five `logic.*` (`logic.switch`,
+   `logic.parallel`, `logic.loop`, `logic.break`, `logic.map`), two `time.*`, `human.approval`, `human.task`, three
+   `flow.*` and `code.python`. A join is no type of its own: `logic.join` folds into the end of `logic.parallel`, whose
+   join waits for every lane in W1. `logic.parallel` (YC108), `logic.loop` and `logic.break` (YC105) arrive in the W1
+   tail, after the critical path to YC94, and no pilot ticket waits for them (V4.26), workflow-nodes registering the
+   types and workflow-engine owning the block structure in the IR and the compiler; `logic.map` stays W2. `logic.loop`
+   is a bounded do-while ("Lặp lại khi …"): its body runs, then its condition decides whether the body runs again; its
+   `max_iterations` is required and clamped by the plan, and at that count the step takes its `max_reached` lane ("Đã đủ
+   N lần") or, when it declares none, fails the run with `loop_limit_reached` (V4.P11). `logic.break` ("Thoát vòng lặp")
+   leaves its loop at once. In the same tail a `human.approval` whose `approval_rule` is `all` requires every one of
+   several approvers (k = n, YC110, decision 7); k of n with k < n is W3. Tenants add tools (ADR-0116), never step
+   types.
+3. **One validator over the IR the compiler uses.** The tree lowers to one `WorkflowIR` (steps, ports, the edges the
+   tree implies, dominator tree, branch-exclusivity sets), which the validator and the compiler both consume. Publishing
+   runs one all-errors validator over it. It runs at submit, the first step of ADR-0120's path to live, as warnings on
+   every draft save, and before a `simulate` run of a draft, where an error answers 422 with its `wf.*` codes and
+   requests no run (ADR-0109 decision 6). It checks that every step is reachable (a step after a `flow.stop` or a
+   `logic.break` in its list is not); every `logic.switch` is total, its default lane present; every `{{ }}` reference
+   names a dominating step or is guarded by `has()`, a loop's body dominating what follows the loop except the steps a
+   `logic.break` can skip; CEL types hold (ADR-0114); a variable has one writer per superstep, and no two lanes of one
+   `logic.parallel` write the same variable; no wait (an approval, a task, a timer or an incident hold) sits inside a
+   `map` body or a parallel lane in v1, while a loop body may hold waits; inside a parallel lane neither a `flow.stop`
+   nor an error lane that ends the run leaves the lane before its end, so an error lane there only merges back
+   (measured: such an exit completes the run as a success while the join and every later step never run); every
+   `logic.break` sits in a loop body and in no parallel lane, even one inside that body; plan limits hold (the tree's
+   step count and nesting depth); every connection, principal and endpoint is a declared binding. It returns
+   `[{path, code, message_vi, message_en}]` with stable codes (`wf.unreachable_node`, `wf.router_not_total`,
+   `wf.ref_not_dominating`, `wf.type_mismatch`, `wf.wait_in_map`, `wf.wait_in_parallel`, `wf.stop_in_parallel`,
+   `wf.break_outside_loop`, `wf.limit_above_plan`, `wf.binding_undeclared`). Two checks of the graph form cannot fail on
+   a tree, whose lanes always meet at the end of their block and whose only way back is a loop, so their codes,
+   `wf.join_required` and workflow-engine's `wf.unbounded_cycle`, are retired and never reused. Keeping waits out of
+   parallel lanes keeps every parked node in the root graph, where ADR-0109 decision 8's resume check looks for it,
+   since each lane compiles to a subgraph with a checkpoint namespace of its own (decision 4). The validator also
+   computes the tree's worst-case step count, each loop at its `max_iterations`, and warns with
+   `wf.steps_may_exceed_limit` without refusing when it exceeds `limits.max_steps`: a product over nested loops would
+   refuse modest flows, and the node wrapper's counter is the cap (decision 5). Its graph module (`reachable`,
+   `dominators`, `paths_to`) also serves ADR-0125's capability analysis, so the two cannot see different graphs.
+4. **Compilation.** Each published version, and each draft a `simulate` run pins (ADR-0109 decision 6), compiles from
+   its `WorkflowIR` to a LangGraph `StateGraph`: one `LastValue` channel per step output (`out__<node_id>`, the step's
+   id) and per variable; a `logic.switch` as a conditional edge whose lanes meet again at a no-op merge node the
+   compiler adds; each lane of a `logic.parallel` as a subgraph node with a state schema of its own, whose outputs are
+   exported to the parent's channels, the lanes meeting at the join through one waiting edge from the end of every lane
+   (`add_edge([...], join)`), never `defer=True`, which stays only for a `map`'s fan-in, whose width only the run knows;
+   a `logic.loop` as a bounded cycle in the graph that holds it, its body first and its condition after, with its
+   iteration counter in a channel of its own, which `iteration_path` reads (decision 5), and a `logic.break` as a
+   conditional edge to the loop's exit; a `map` as one `Send` per chunk of 20 items, with `max_parallel` as
+   `max_concurrency` and child runs per chunk beyond `max_map_items` (at most 1,000); every wait, an incident hold
+   included, an `interrupt()` as the first statement of its own node; `recursion_limit` always passed (`max_steps` plus
+   the supersteps the compiler counts), though it bounds one invoke only, since it resets on every resume, so the run's
+   step cap is the node wrapper's counter (decision 5). Context records the measurements behind these choices. Compiled
+   graphs sit in a bounded per-process LRU of 256 keyed
+   `(tenant_id, artifact_version_id, pinned_hash, compiler_version)`, where `pinned_hash` is the hash the run manifest
+   pins: a sealed version's `definition_hash`, or the provisional hash of a draft's content (ADR-0109 decision 6). A
+   draft keeps its id while it is edited and a run resolves only from its manifest (`CLAUDE.md`, Non-negotiable
+   architecture), so a key without the hash would hand a new simulation the graph of older content. LangGraph is
+   imported only in the runtime's adapters.
+5. **A platform node wrapper, not LangGraph, owns retry, timeout, `on_error`, the step count and the one effect.** At
+   start it asks `RunControlPort.require_open` (ADR-0120), checks the run's deadline and, from W2, cancellation
+   (ADR-0113 decision 3), and counts the step on a counter the run keeps across every resume, stopping the run with
+   `limit_exceeded`, without applying the step's `on_error`, once `limits.max_steps`, clamped by the plan, is spent; it
+   resolves inputs by CEL, runs each attempt under `asyncio.timeout`, retries with backoff (each attempt a run step),
+   then applies `on_error`: `fail` raises; `continue` writes `{status: "error", error}` to the step's channel; `route`,
+   from W1, writes it too and takes the step's error lane, which merges back below the step or ends the run (inside a
+   parallel lane it only merges back, decision 3); `incident` ("Chờ xử lý", in the W1 tail) parks a `live` run `waiting`
+   on a wait of kind `incident` (ADR-0113 (Accepted) decision 4) once the attempts are spent, "Chạy tiếp từ Bước lỗi"
+   running the step again and "Kết thúc" failing the run, while a run in any other mode, with no person to resolve it,
+   fails as under `fail`. A step's output carries `error` under `continue` and under `route` alike (workflow-nodes
+   R1.5). An effect step calls its door once per attempt with the idempotency key
    `wf:{run_id}:{node_id}:{iteration_path}` (map index and loop counter, never the attempt), claimed first and fenced
-   per ADR-0108, so a retry after a crash replays the stored result. Outputs are validated against the node's output
-   schema off the event loop and capped at 64 KiB inline.
+   per ADR-0108, so a retry after a crash replays the stored result, and a step run again from an incident keeps its
+   key. Outputs are validated against the step's output schema off the event loop and capped at 64 KiB inline.
 6. **Every effect leaves through its kind's door**, each a narrow Protocol the consumer declares and the composition
    root satisfies: the ToolExecutor (connector actions and `tool.call`; `http.request` as an inline `http` tool frozen
    at submit, when the version is sealed, so its kind floor applies; a message to a non-member is a connector
@@ -90,25 +148,28 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
    tools, agent nodes, linked agents) nesting at most 3 deep, as ADR-0113 decision 9 and ADR-0117 decision 7 state
    (requirements Q1, YC45, YC57). A node holds no SQL, no provider SDK and no concrete adapter, and it hands the run
    mode to its door, which applies it (ADR-0111): a node never simulates an effect itself.
-7. **Approval steps and human tasks are enforced on the server.** In a `live` run `human.approval` opens an approval
-   of type `studio.step.approval` and waits for its decision; in any other run it waits for no decider and takes a
-   simulated decision (ADR-0111 decision 5). The API composition root adds `studio.step.` to `strict_approval_prefixes`
-   with `|=` (beside `memory.`, `apps/api/src/dw_api/bootstrap/runtime.py:237-239`), so neither the run's requester
-   nor its run-as principal decides, and registers `decision_guards["studio.step.approval"]`: the decider is a current
-   assignee, still holds the stamped permission and can read every field the step stamped (ADR-0106 decision 6).
-   From W2 the guard accepts, in place of a current assignee, a person holding that assignee's approval delegation
-   (YC104) only while the person holds the stamped permission and `approvals.decide`, is not the run's requester
-   (YC51) and acts between the delegation's start and end, audited; outside those conditions it still answers 403
-   (ADR-0104 decision 11).
-   `required_scope` is mandatory (ADR-0004); assignees (users, teams or a CEL expression) only narrow it; candidates
-   come from `effective_grants` (ADR-0104), never a copy; none left is `no_approver`, and publish refuses a version
-   whose permission only the run-as principal holds. Expiry never approves: from W2, with YC52's deadlines and the
-   timer lane, the run follows an `expired` edge or fails with `approval_expired`; in W1 an approval has no deadline
-   of its own, so nothing is sent until someone decides, and the run's deadline (ADR-0113 decision 3) ends a run still
-   waiting, the approval cancelled with it. The approved node's arguments are rendered when the approval opens, stored
-   with `subject_hash`, shown raw and executed exactly (`subject_changed` otherwise). Tasks reach people through a
-   `/studio/tasks` inbox (`POST /api/v1/studio/tasks/{id}/submit`, a sub-resource as ADR-0108 spells custom methods,
-   with If-Match and Idempotency-Key); a submission or decision resolves the wait and re-queues the run (ADR-0113).
+7. **Approval steps and human tasks are enforced on the server.** In a `live` run `human.approval` opens an approval of
+   type `studio.step.approval` and waits for its decision; in any other run it waits for no decider and takes a
+   simulated decision (ADR-0111 decision 5). A step whose `approval_rule` is `all` (k = n, in the W1 tail, decision 2)
+   opens one approval for each of its assignees under one wait, which resolves when the last of them approves or at the
+   first rejection, the approvals still pending then being cancelled; each is decided only by its own assignee, through
+   the guard below, and `any`, the default, keeps one approval that any assignee decides. The API composition root adds
+   `studio.step.` to `strict_approval_prefixes` with `|=` (beside `memory.`,
+   `apps/api/src/dw_api/bootstrap/runtime.py:237-239`), so neither the run's requester nor its run-as principal decides,
+   and registers `decision_guards["studio.step.approval"]`: the decider is a current assignee, still holds the stamped
+   permission and can read every field the step stamped (ADR-0106 decision 6). From W2 the guard accepts, in place of a
+   current assignee, a person holding that assignee's approval delegation (YC104) only while the person holds the
+   stamped permission and `approvals.decide`, is not the run's requester (YC51) and acts between the delegation's start
+   and end, audited; outside those conditions it still answers 403 (ADR-0104 decision 11). `required_scope` is mandatory
+   (ADR-0004); assignees (users, teams or a CEL expression) only narrow it; candidates come from `effective_grants`
+   (ADR-0104), never a copy; none left is `no_approver`, and publish refuses a version whose permission only the run-as
+   principal holds. Expiry never approves: from W2, with YC52's deadlines and the timer lane, the run takes the step's
+   `expired` lane ("Hết hạn") or fails with `approval_expired`; in W1 an approval has no deadline of its own, so nothing
+   is sent until someone decides, and the run's deadline (ADR-0113 decision 3) ends a run still waiting, the approval
+   cancelled with it. The approved node's arguments are rendered when the approval opens, stored with `subject_hash`,
+   shown raw and executed exactly (`subject_changed` otherwise). Tasks reach people through a `/studio/tasks` inbox
+   (`POST /api/v1/studio/tasks/{id}/submit`, a sub-resource as ADR-0108 spells custom methods, with If-Match and
+   Idempotency-Key); a submission or decision resolves the wait and re-queues the run (ADR-0113).
 8. **AI nodes validate on the server.** `ai.llm` gets its model per call from the `ModelResolver`; its structured
    output is validated against the tenant's JSON Schema (ADR-0116's profile, at most 32 KiB and depth 5,
    `additionalProperties: false` forced) by the platform validator, with one repair attempt, then `output_invalid`.
@@ -146,24 +207,74 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
 - **Trusting `StateGraph.compile()`, or checks in the canvas only.** Rejected: the measured gaps; a check the API does
   not run is bypassable (failure-modes #5).
 - **Tenant-defined node types.** Rejected: a second, unreviewed runtime; tools cover the need.
+- **A graph document, `nodes[]` with `edges[]`** (decision 1 as accepted on 2026-10-23). Replaced by the step tree
+  (V4.24): a free-form graph passes through unstructured states while it is edited, so its layout and its joins break
+  mid-edit; drawing it in blocks would need a TypeScript copy of the server's dominator analysis (failure-modes #2); the
+  canvas library has no keyboard path to connect a port; and n8n, whose branches run in canvas order, shows a position
+  deciding what runs
+  (<https://raw.githubusercontent.com/n8n-io/n8n-docs/main/docs/build/flow-logic/understand-execution-order.md>). Power
+  Automate, the largest builder for business admins, is block-structured: a step is added with "+" below another, and
+  scopes, conditions, switch cases and loops nest at most eight levels deep
+  (<https://learn.microsoft.com/power-automate/scopes>). Both read on 2026-10-24.
+- **Parallel lanes as plain branches of one graph, joined with `defer=True`** (decision 4's first form). Rejected:
+  uneven lanes run in lock-step and a nested join waits for an unrelated lane (measured, Context).
+- **Lane subgraphs that share the parent's state schema.** Rejected: a reducer key shared with the parent adds the
+  parent's values again (measured, Context), so each lane has a state schema of its own (decision 4).
+- **Waits inside parallel lanes**, so that each lane's approver approves. Rejected for v1: in one graph an open wait
+  holds the other lanes, so the second approver is asked only after the first decides and a failure elsewhere surfaces
+  only then (measured); a rejection cannot end the block early, and W1 has no route that cancels the approvals left open
+  (ADR-0113 (Accepted) decision 3); with subgraph lanes both waits would open together, but the parked node would sit in
+  a lane's checkpoint namespace, which ADR-0109 decision 8's resume check does not read. One `human.approval` that every
+  one of several approvers must approve reaches the same outcome with one wait, as Windmill's `suspend.required_events`
+  does (<https://www.windmill.dev/docs/flows/flow_approval>, read 2026-10-24).
+- **`recursion_limit` as a run's step cap, or a static worst-case count that refuses at submit.** Rejected:
+  `recursion_limit` resets on every resume (measured), and a product over nested loops would refuse modest flows under a
+  plan ceiling of at most 500 steps a run (usage-and-limits' `max_steps_per_run`); the wrapper's counter caps, the
+  static count warns.
+- **Reopening a `failed` run at its failed step** for "Chạy tiếp từ Bước lỗi". Rejected: `failed` is terminal for the
+  lanes that delete secret versions no unfinished run pins (ADR-0115 (Accepted) decision 1), that delete a run's
+  checkpoints after it ends (decision 10) and that return its budget lease (ADR-0121 (Accepted)), and reopening would
+  add a writer of queued rows (ADR-0113 decision 1). Camunda keeps an instance whose job has no retries left at an
+  incident and continues it once a person resolves the incident
+  (<https://docs.camunda.io/docs/components/concepts/incidents/>, read 2026-10-24), which decision 5's `incident`
+  follows.
 
 ## Consequences
 
-- workflow-nodes owns the registry and the catalogue; workflow-engine owns the IR, the validator, the compiler and the
-  node wrapper.
+- workflow-nodes owns the registry and the catalogue; workflow-engine owns the document, its lowering to the IR, the
+  validator, the compiler and the node wrapper; workflow-builder-ui draws and edits the tree (ADR-0101 (Accepted)).
 - A LangGraph upgrade is gated by golden parked-run fixtures resumed forward and backward in CI (ADR-0109's engine
   pin; LangGraph 1.2.11 and 1.2.16 resumed each other's runs when measured).
+- The constructs of the W1 tail (V4.26: `logic.parallel`, the bounded loop with `logic.break`, `incident` and the step
+  every approver must approve) come after the critical path to YC94, block no pilot ticket and lengthen W1 by about two
+  to three weeks. Discovery 14 measures them again on the Postgres saver with two workers, starting from Context's
+  in-memory results: joins by waiting edge over subgraph lanes, nested and inside a loop; a loop that waits, with the
+  step counter; an incident and its resume. Subgraph lanes carry the most risk, medium to high, since they change the
+  compile model, the checkpoint namespaces and the run steps a lane writes.
 - Migrations (Alembic, random revision ids): `studio.step_assignments`, `studio.step_approvals` and
   `studio.human_tasks` in the CLAUDE.md workspace policy shape; the approval status CHECK gains `expired`, which
   workflow-engine writes from W2; later the
   per-run checkpoint tables under RLS. `studio.code.author` and `studio.tasks.manage` join the catalogue (ADR-0104).
-- Tests that must exist, each red when its guard is removed: a failing fixture per validator code; an architecture
-  test that no node module imports SQLAlchemy, an SDK or a concrete adapter; a negative test at each door called
-  directly (failure-modes #5); a crash after an effect replaying one effect; an expiry that never approves; a decider
-  outside the assignees refused; a code node saved without `studio.code.author` refused; a non-allowlisted type in a
-  checkpoint refusing to load.
+- Tests that must exist, each red when its guard is removed: a failing fixture per validator code; an architecture test
+  that no node module imports SQLAlchemy, an SDK or a concrete adapter; a negative test at each door called directly
+  (failure-modes #5); a crash after an effect replaying one effect; an expiry that never approves; a decider outside the
+  assignees refused; a code node saved without `studio.code.author` refused; a non-allowlisted type in a checkpoint
+  refusing to load; a join running once over uneven lanes and over a switch inside a lane; a `flow.stop` and an error
+  lane that ends the run inside a parallel lane refused with `wf.stop_in_parallel`, a wait or an `incident` step there
+  with `wf.wait_in_parallel`, and a `logic.break` there or outside every loop with `wf.break_outside_loop`; a loop that
+  waits in every iteration stopped by the step counter, which `recursion_limit` alone does not stop; an effect inside a
+  loop running once per iteration; an incident resumed running its step again under the same key, and one ended failing
+  the run; a step every approver must approve resolving only after the last approval, and at the first rejection.
 - Harder: every `NodeTypeSpec` attribute needs a named reader (failure-modes #1); node outputs must stay JSON-shaped;
   a node type's major version stays registered while any run or live version pins it.
+- Harder: a tree cannot express a jump, or a merge across lanes. Returning to an earlier step is a loop around the steps
+  between, rework that returns to different earlier steps by reason is nested loops, one for each step it can return to,
+  which `logic.break` leaves early, and back-and-forth across days is a record's Stages (ADR-0126 (Accepted));
+  workflow-builder-ui's spike tests this limit (fixture F9, a three-level approval whose rejection returns to different
+  earlier steps by reason) before anything is built on the document. v1 neither imports nor exports BPMN: if a customer
+  asks for it, W3 brings a server-side importer of a subset that restructures a model into the tree or refuses it with a
+  stable code (V4.28), and `bpmn-auto-layout` (MIT) can build the diagram for an export. domain-packs' workflows (W2)
+  are tree documents too.
 - Reinforces `CLAUDE.md:246-247`; extends `docs/adr/0010-prompt-variables-are-untrusted-by-default.md` to workflow AI
   nodes through ADR-0114. `CLAUDE.md:70-71` (a release manifest pins graphs) gives way for tenant versions to the run
   manifest, the amendment ADR-0109 carries.
@@ -235,3 +346,24 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
   cancellation from W2, since ADR-0113 decision 3 now ships `deadline_at` in W1 and keeps only the cancel route in W2,
   which replaces the first round-4 line above that placed both in W2; decision 7 adds that in W1 the run's deadline
   ends a run still waiting on an approval, which has no expiry of its own until W2 (DO-31).
+- Third consistency check (round 4), seventh pass, Đạt's V4.24, V4.26 and V4.28 after the canvas research, with the
+  planner's provisional calls named at its end: decision 1's document is a tree of steps, each holding one lane per port
+  of its type, with no `edges[]` and no position, where it was a graph of `nodes[]` and `edges[]`; decision 2 folds
+  `logic.join` into the end of `logic.parallel` and adds `logic.break`, the catalogue keeping 32 types, and brings
+  `logic.parallel`, the bounded do-while `logic.loop` with `logic.break`, and a `human.approval` that every one of
+  several approvers must approve into the W1 tail after the critical path to YC94, replacing the first line above, which
+  kept `logic.loop` in W2 and every cycle out of W1 (N7); decision 3 lowers the tree to the IR, retires
+  `wf.join_required` and `wf.unbounded_cycle`, which a tree cannot produce, adds `wf.wait_in_parallel`,
+  `wf.stop_in_parallel` and `wf.break_outside_loop`, allows waits in a loop body while still refusing them in a parallel
+  lane or a `map` body, and only warns on the static worst-case step count (`wf.steps_may_exceed_limit`); decision 4
+  compiles each parallel lane as a subgraph joined by a waiting edge, where it used `defer=True`, and a loop as a
+  bounded cycle; decision 5 brings `on_error: route` into W1, adds `incident` ("Chạy tiếp từ Bước lỗi", ADR-0113
+  decision 4), which parks only a `live` run, and makes the wrapper's run-level counter the step cap, since
+  `recursion_limit` resets on every resume, Context recording the measurements; decision 7 adds the step every approver
+  must approve (`approval_rule` `all`) and names the `expired` lane; Alternatives and Consequences record what was
+  rejected, the W1 tail's new measurement in discovery 14, the tree's limit (fixture F9) and that v1 has no BPMN
+  (V4.28). The names `incident`, `wf.wait_in_parallel`, `wf.stop_in_parallel`, `wf.break_outside_loop` and
+  `wf.steps_may_exceed_limit` are the planner's (if one is wrong, workflow-engine's validator table names it and this
+  decision follows), and so are `approval_rule` and decision 7's one approval per assignee under one wait, as
+  workflow-nodes R12 states them (if that is wrong, the step opens one approval holding a decision per assignee, as
+  R12's fallback says, and decision 7 follows).

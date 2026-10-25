@@ -18,8 +18,9 @@ R7.4, R7.5, WN2, WN3). Bỏ qua bản ghi opt-out (R7.3, WN14) ở W2 cùng cờ
    mẫu. Lưu hướng dẫn qua đúng linter của agent-builder/02, nên chuỗi `<input` hay `<tenant_instructions` bị từ
    chối (tenant không tự mở khối); ticket này không viết linter thứ hai.
 2. Đầu ra `text` hoặc theo JSON Schema của tenant; kiểm phía server bằng bộ kiểm `jsonschema-rs` của
-   tools-and-skills; sửa tối đa một lần; vẫn sai → `continue` với `default_output` và đi Nhánh ra lỗi,
-   lượt chạy không dừng. Metadata: token, chi phí chuỗi thập phân, route class.
+   tools-and-skills; sửa tối đa một lần; vẫn sai → `output_invalid` ở đầu ra `error` (R1.5): Khi lỗi `continue`
+   cho Bước kế tiếp đọc `default_output` cùng `error`, `route` chạy làn lỗi, và cả hai không dừng lượt chạy (YC47).
+   Metadata: token, chi phí chuỗi thập phân, route class.
 3. Mọi giá trị bản ghi vào prompt qua đích `prompt` của bộ dựng mẫu (bao `<input>`, cắt 16 KiB); mục
    bối cảnh mang một nhãn mô tả cho model, nhãn đó cũng bao chứa (mẫu học từ config-chang.md mẫu 1). Nhãn đó là
    `Mô tả cho AI` (`ai_description`, tối đa 500 ký tự) của đối tượng và của trường mà custom-objects/02 lưu, đọc như
@@ -31,8 +32,9 @@ R7.4, R7.5, WN2, WN3). Bỏ qua bản ghi opt-out (R7.3, WN14) ở W2 cùng cờ
 
 ## Tiêu chí chấp nhận
 
-- [ ] R7.1 (WN3): model giả trả `score=150` (ngoài lược đồ) hai lần → `output_invalid`, đi Nhánh ra
-      lỗi, lượt chạy không dừng; gỡ kiểm JSON Schema → test đỏ.
+- [ ] R7.1 (WN3): model giả trả `score=150` (ngoài lược đồ) hai lần → `output_invalid` ở đầu ra `error`; với Khi
+      lỗi `route` làn lỗi chạy, với `continue` Bước kế tiếp chạy với `default_output`; lượt chạy không dừng ở cả hai;
+      gỡ kiểm JSON Schema → test đỏ.
 - [ ] R7.2 (WN2): một lời nhắn lead chứa `</input>` vào prompt không đóng được khối; gỡ bao chứa → đỏ.
 - [ ] R7.4: đầu vào chấm điểm không chứa họ tên, số điện thoại, email hay Zalo id; số và email trong
       văn bản tự do hiện dạng đã che.
@@ -52,3 +54,4 @@ R7.4, R7.5, WN2, WN3). Bỏ qua bản ghi opt-out (R7.3, WN14) ở W2 cùng cờ
 
 - 2026-10-23 (agent): theo phiếu 23/10/2026 (Q9): cờ Hạn chế xử lý ở W2, nên R7.3 và WN14 rời ticket này sang W2.
 - 2026-10-24 (agent): theo quyết định của Đạt ngày 24/10/2026: ticket dùng `assemble_system_prompt` và linter của agent-builder/02, chờ ticket đó (A:agent-builder:R2.2~workflow-nodes/05); `Mô tả cho AI` vào prompt như dữ liệu từ bên ngoài (N3, YC101), chờ custom-objects/02 nơi trường này ra đời.
+- 2026-10-24 (agent): theo V4.24 và V4.26 của Đạt: `continue` và `route` là hai Khi lỗi khác nhau của cây Bước, `continue` đi tiếp Bước kế tiếp còn `route` chạy làn lỗi, nên bước 2 và tiêu chí R7.1 thôi ghép "`continue` ... và đi Nhánh ra lỗi" và thử cả hai. Không thêm cạnh.

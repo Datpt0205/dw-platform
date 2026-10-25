@@ -305,7 +305,7 @@ lấy kỹ thuật của chúng vào quy trình `.claude/plans` sẵn có?
 | ADR  | Quyết định (rút gọn)                                                      | Mục       |
 | ---- | ------------------------------------------------------------------------- | --------- |
 | 0100 | Studio là mã nền tảng trong repo này, nội dung miền đi dưới dạng dữ liệu  | 16, 3, 1  |
-| 0101 | Canvas `@xyflow/react` và dagre là ngoại lệ có allowlist                  | 3, 16     |
+| 0101 | Canvas `@xyflow/react` là ngoại lệ có allowlist, bố cục tính từ cây Bước  | 3, 16     |
 | 0102 | Workspace là đơn vị lồng nhau sở hữu dữ liệu                              | 13, 2     |
 | 0103 | Chỉ người và tài khoản dịch vụ hành động; agent là giới hạn dữ liệu       | 13, 2     |
 | 0104 | Vai là dữ liệu của tenant, mỗi quyền có độ sâu                            | 2         |

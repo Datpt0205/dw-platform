@@ -3,22 +3,25 @@
 Status: needs-triage
 Blocked by: .claude/plans/studio/workflow-engine/issues/03-bien-dich-va-wrapper-nut.md, .claude/plans/studio/field-security/issues/01-mo-hinh-bao-mat-truong.md, .claude/plans/studio/usage-and-limits/issues/02-bang-gia-so-su-dung-va-man-hinh.md, .claude/plans/studio/usage-and-limits/issues/03-han-muc-giu-truoc-va-quyet-toan.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md
 Area: studio
-Yêu cầu: R1.6, R1.7, R1.8, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R4.1, R4.2, R4.3, R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R5.8, R5.9, R5.10, R5.11, R5.12, TA4, TA5, TA6, TA10, TA11, TA12, TA13, TA14, TA15, TA16, TA17, TA18, TA19
+Yêu cầu: R1.6, R1.7, R1.8, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R4.1, R4.2, R4.3, R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R5.8, R5.9, R5.10, R5.11, R5.12, TA4, TA5, TA6, TA10, TA11, TA12, TA13, TA14, TA15, TA16, TA17, TA18, TA19, TA20
 
 ## Mục tiêu
 
-Một kho `platform.run_steps` cho mỗi Bước chạy, che bí mật khi ghi và che theo quyền đọc trường của người
-xem khi đọc; màn Lịch sử chạy đọc dưới `runs.read` theo độ sâu; một chính sách lưu giữ có bộ xóa cho mỗi
-kho mới, với bảng `platform.retention_terms` mà bộ nạp nạp từ bản tệp đang ghim lúc triển khai và mọi hàm xóa hẹp
-không đối số đọc hạn (V4.21); một catalog hành động audit có test AST, chủ duy nhất của nhãn action mà màn `/audit`
-đọc qua API (spec R1.6, R1.7, R1.8, R3, R4, R5).
+Một kho `platform.run_steps` cho mỗi Bước chạy, che bí mật khi ghi và che theo quyền đọc trường của người xem khi đọc,
+mỗi Bước chạy mang làn và lần lặp của lần chạy Bước (V4.26); màn Lịch sử chạy đọc dưới `runs.read` theo độ sâu; một
+chính sách lưu giữ có bộ xóa cho mỗi kho mới, với bảng `platform.retention_terms` mà bộ nạp nạp từ bản tệp đang ghim lúc
+triển khai và mọi hàm xóa hẹp không đối số đọc hạn (V4.21); một catalog hành động audit có test AST, chủ duy nhất của
+nhãn action mà màn `/audit` đọc qua API (spec R1.6, R1.7, R1.8, R3, R4, R5).
 
 ## Việc cần làm
 
 1. Revision Alembic mới (id hex ngẫu nhiên): `platform.run_steps` phân vùng theo tháng trên `started_at`
    với DEFAULT, RLS ENABLE và FORCE trên cha và DEFAULT cùng migration; `PRIMARY KEY (id, started_at)`;
    cột `tenant_id`, `workspace_id`, `run_id`, `root_run_id`, `seq int`, `kind` CHECK (`node`, `model_call`,
-   `tool_call`, `approval`, `sub_run`), `node_id`, `status`, `started_at timestamptz`, `finished_at
+   `tool_call`, `approval`, `sub_run`), `node_id`, `lane_path jsonb NOT NULL` CHECK
+   `jsonb_typeof(lane_path) = 'array'` (mỗi phần tử
+   `{"step": <id Bước chứa>, "port": <tên Nhánh ra mà loại của nó khai>}`, từ chuỗi gốc tới làn chứa Bước), `iteration_path text NOT NULL` (giá trị mà wrapper dẫn vào khóa chống lặp), cả hai
+   không DEFAULT (spec R3.7), `status`, `started_at timestamptz`, `finished_at
 timestamptz`, `duration_ms`, `error_type`, `input_preview` và `result_preview` (≤ 4 KB), `input_ref` và
    `result_ref` (đường dẫn đối tượng, NULL khi giữ trong dòng), token, `cost_usd numeric(18,8)`,
    `price_book_version`, `redaction_log jsonb NOT NULL DEFAULT '[]'`, `fls_version`; không cột nội dung
@@ -30,20 +33,25 @@ timestamptz`, `duration_ms`, `error_type`, `input_preview` và `result_preview` 
    thay đổi: khóa `platform.run_steps` vào tệp chính sách retention (bước 7), nên studio-skeleton:R3.7 xanh ngay
    khi đăng ký; một dòng `STUDIO_EXCLUSIONS` cho `platform.run_steps` với lý do "`dw_app` không DELETE; xóa khi
    offboarding bằng `platform.purge_tenant_append_only`" (spec R5.8; studio-skeleton:R4.3).
-3. `StepRecorderPort.step_started`, `step_finished`; đường che `redact_mapping` bỏ trường bí mật và tham
-   chiếu credential, che trường `Nhạy cảm` bằng hàm quyết quyền đọc trường của field-security, preview
-   ≤ 4 KB, payload lớn gzip ở đường dẫn `tenants/{tenant_id}/workspaces/{workspace_id}/run-steps/`, ghi
-   đường dẫn và lý do che vào `redaction_log`.
+3. `StepRecorderPort.step_started`, `step_finished`; `step_started` nhận `lane_path` và `iteration_path` của lần chạy
+   Bước từ bên gọi và ghi nguyên, không tự tính (wrapper nút của workflow-engine/03 cấp chúng từ `WorkflowIR` của lượt,
+   `iteration_path` là giá trị nó dẫn vào khóa chống lặp, workflow-engine:R4.5; spec R3.7); đường che `redact_mapping`
+   bỏ trường bí mật và tham chiếu credential, che trường `Nhạy cảm` bằng hàm quyết quyền đọc trường của field-security,
+   preview ≤ 4 KB, payload lớn gzip ở đường dẫn `tenants/{tenant_id}/workspaces/{workspace_id}/run-steps/`, ghi đường
+   dẫn và lý do che vào `redaction_log`.
 4. Agent: Bước chạy `model_call` và `tool_call` ghi từ `LimitsMiddleware` (usage-and-limits/03) và
-   ToolExecutor; đọc token và chi phí mỗi Bước chạy từ Sổ sử dụng của usage-and-limits.
-5. Route (`runs.read`, RLS và workspace theo độ sâu): `GET /api/v1/runs?artifact_kind&artifact_id&status&trigger_kind&from&to&cursor&limit`
-   với index `ix_worker_runs_page (tenant_id, workspace_id, created_at DESC, id DESC)`;
-   `GET /api/v1/runs/{run_id}/steps`; `GET /api/v1/runs/{run_id}/steps/{step_id}/payload?part=in|out`
-   (`runs.read_payloads`, che theo quyền đọc trường của người xem, audit `run.payload.viewed` trong cùng
-   giao dịch). Một lượt chạy chạm bản ghi người xem không thấy → 404. Migration của ticket đăng ký khóa
-   `runs.read_payloads` trong `platform.permissions` của tenant-rbac/01, với INSERT nêu mọi cột NOT NULL có lúc
-   đó: nhãn tiếng Việt, `scope_kind` `workspace`, `risk` `standard` theo bảng phân loại của tenant-rbac/01, và
-   `tenant_grantable` `true` của tenant-rbac/02 (ticket này chờ tenant-rbac/02).
+   ToolExecutor; đọc token và chi phí mỗi Bước chạy từ Sổ sử dụng của usage-and-limits; Bước chạy của lượt agent không
+   nằm trong một Bước quy trình mang `lane_path` `[]` và `iteration_path` rỗng, còn Bước chạy con của một Bước quy trình
+   mang `lane_path` và `iteration_path` của lần chạy Bước đó.
+5. Route (`runs.read`, RLS và workspace theo độ sâu):
+   `GET /api/v1/runs?artifact_kind&artifact_id&status&trigger_kind&from&to&cursor&limit` với index
+   `ix_worker_runs_page (tenant_id, workspace_id, created_at DESC, id DESC)`; `GET /api/v1/runs/{run_id}/steps` (mỗi
+   Bước chạy mang `lane_path` và `iteration_path`, spec R4.2);
+   `GET /api/v1/runs/{run_id}/steps/{step_id}/payload?part=in|out` (`runs.read_payloads`, che theo quyền đọc trường của
+   người xem, audit `run.payload.viewed` trong cùng giao dịch). Một lượt chạy chạm bản ghi người xem không thấy → 404.
+   Migration của ticket đăng ký khóa `runs.read_payloads` trong `platform.permissions` của tenant-rbac/01, với INSERT
+   nêu mọi cột NOT NULL có lúc đó: nhãn tiếng Việt, `scope_kind` `workspace`, `risk` `standard` theo bảng phân loại của
+   tenant-rbac/01, và `tenant_grantable` `true` của tenant-rbac/02 (ticket này chờ tenant-rbac/02).
 6. Màn `/runs` (antd Table: thời điểm, agent hoặc quy trình, trạng thái, nguồn kích hoạt, thời lượng, chi
    phí, bộ lọc) và `/runs/[id]` (Steps, Descriptions, xem JSON có dấu `Đã ẩn`, token và chi phí mỗi Bước
    chạy, nút "Sao chép trace id").
@@ -136,7 +144,14 @@ timestamptz`, `duration_ms`, `error_type`, `input_preview` và `result_preview` 
       `GET /api/v1/runs` không có lượt chạy công ty khác.
 - [ ] R4.1: người giữ `runs.read` gọi `GET /api/v1/runs` → chỉ lượt chạy trong tập workspace được phép;
       trang 2 không trùng và không sót dòng so với trang 1.
-- [ ] R4.2: `GET /api/v1/runs/{run_id}/steps` → các Bước chạy theo thứ tự `seq`.
+- [ ] R4.2 (TA20): `GET /api/v1/runs/{run_id}/steps` → các Bước chạy theo thứ tự `seq`, mỗi Bước mang `lane_path` và
+      `iteration_path` đúng như đã ghi; bỏ hai trường khỏi mô hình trả → test đỏ.
+- [ ] R3.7 (TA20): hai lần chạy cùng một Bước ở hai lần lặp, ghi qua `StepRecorderPort` với giá trị mà bên gọi đưa như
+      wrapper đưa → hai Bước chạy có `iteration_path` khác nhau, bằng đúng giá trị trong hai khóa chống lặp
+      `wf:{run_id}:{node_id}:{iteration_path}` mà bên gọi dựng; một Bước ở làn `rejected` của một Bước phê duyệt →
+      `lane_path` nêu Bước phê duyệt và Nhánh ra `rejected`; INSERT thiếu `lane_path` hay `iteration_path` → NOT NULL
+      từ chối; bên ghi thay `iteration_path` của bên gọi bằng chuỗi rỗng → hai Bước chạy không phân biệt được, test đỏ;
+      thêm DEFAULT `'[]'` cho `lane_path` trong migration thử → INSERT thiếu cột qua, test đỏ.
 - [ ] R4.3 (TA12): thiếu `runs.read_payloads` gọi payload → 403, không trả payload; gỡ kiểm → test đỏ.
 - [ ] R5.1 (TA13): mỗi kho (`run_steps`, payload đối tượng, cột payload, `usage_events`, `usage_daily`) có một
       thời hạn dưới khóa của nó trong tệp chính sách retention đang ghim và một bộ xóa đã đăng ký; test tập bộ xóa
@@ -237,3 +252,11 @@ timestamptz`, `duration_ms`, `error_type`, `input_preview` và `result_preview` 
 - 2026-10-24 (agent): kiểm lượt f của vòng 4: bước 10 thêm quyền trên `platform.retention_terms` vào các quyền mà
   `scripts/create_provisioner_role.py` cấp lại cho `dw_provisioner`, vì revision chỉ cấp quyền cho vai khi vai đã có,
   nên một cụm nhận vai qua script sau migration sẽ có vai mà bộ nạp vẫn không ghi được bảng; tiêu chí không đổi.
+- 2026-10-24 (agent): lượt g của vòng sửa 4, theo V4.26 của Đạt và dòng tạm cùng ngày của spec: Bước chạy mang
+  `lane_path` và `iteration_path` do wrapper nút cấp, NOT NULL không DEFAULT (bước 1, 3, 4, 5; spec R3.7, R4.2, TA20);
+  ticket này thử hai cột bằng giá trị mà bên gọi đưa, còn vòng lặp và làn song song thật ghi qua wrapper ở ticket của
+  workflow-engine, nên ticket này không chờ ticket nào của bậc B và không chặn đường găng YC94. Không thêm cạnh: ticket
+  này đã chờ workflow-engine/03, nơi wrapper ra đời.
+- 2026-10-24 (agent): kiểm lượt g của vòng sửa 4: bước 1 và tiêu chí R3.7 gọi phần tử `port` của `lane_path` là Nhánh
+  ra, như glossary (`docs/platform/CONTEXT.md`, Port), không phải Cổng, chữ glossary dành cho Cổng chất lượng. Không
+  thêm cạnh.

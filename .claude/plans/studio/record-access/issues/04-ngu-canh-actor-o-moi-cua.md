@@ -11,8 +11,9 @@ Agent và quy trình đọc, ghi bản ghi bằng tầm sống của người k�
 giao với giới hạn dữ liệu cố định khi phát hành, nên một yêu cầu bị chèn prompt đòi lead của người khác thất bại ở
 RLS, không ở prompt (spec R6.3 tới R6.9; ADR-0103 (Accepted) mục 4 và 5; ADR-0105 (Accepted) mục 6). Lane
 offboarding xuất rồi xóa giới hạn dữ liệu của một công ty rời nền tảng như mọi dữ liệu Studio của nó (spec R6.10). Một
-lượt `simulate` có gốc là bản Nháp đọc dưới giới hạn tạm mà `RunRequestService` ghi qua `ActorBoundaryPort`, giao với
-tầm của người thử, và cơ sở dữ liệu không để lượt nào khác `simulate` dùng nó (spec R6.11 tới R6.15; ADR-0109 (Accepted)
+lượt `simulate` có gốc chưa phát hành (bản Nháp, hay Bản ứng viên mà một lần thử của Lượt kiểm định chạy) đọc dưới giới
+hạn tạm mà `RunRequestService` ghi qua `ActorBoundaryPort`, giao với tầm của chủ thể của lượt (người thử, hay người gửi
+Bản ứng viên), và cơ sở dữ liệu không để lượt nào khác `simulate` dùng nó (spec R6.11 tới R6.15; ADR-0109 (Accepted)
 quyết 6, ADR-0111 (Accepted) quyết 3).
 
 ## Việc cần làm
@@ -24,7 +25,8 @@ quyết 6, ADR-0111 (Accepted) quyết 3).
     - `studio.actor_boundaries`: `tenant_id` (FK `platform.tenants` `ON DELETE CASCADE`), `id` (PK `(tenant_id, id)`),
       `kind text NOT NULL` với `ck_actor_boundaries_kind` (`agent`, `workflow`), `source_id uuid NOT NULL`,
       `source_version text NOT NULL`, `run_id uuid NULL` (khác NULL đúng ở giới hạn tạm: id của lượt `simulate` mà nó
-      gắn, `source_id` là `version_id` của bản Nháp, `source_version` là `pinned_hash`),
+      gắn, `source_id` là `version_id` của gốc chưa phát hành, `source_version` là `pinned_hash` mà bản kê của lượt ghim:
+      mã băm tạm của bản Nháp, `definition_hash` của Bản ứng viên),
       `created_at timestamptz NOT NULL DEFAULT now()`, chỉ mục duy nhất `(tenant_id, kind, source_id, source_version)`
       `WHERE run_id IS NULL` và chỉ mục duy nhất `(tenant_id, run_id)` `WHERE run_id IS NOT NULL`. `run_id` không có
       khóa ngoại (Quyết định 24/10/2026 của spec): trigger BEFORE INSERT `ck_actor_boundaries_provisional_run` đọc
@@ -51,7 +53,7 @@ quyết 6, ADR-0111 (Accepted) quyết 3).
       phần còn lại của danh mục, trên phần đọc catalog và `export_rows` mà foundations-hardening/07 đã viết lại.
     - Ba bảng không có `workspace_id`: mỗi bảng một dòng trong danh sách bảng toàn tenant của
       `packages/python/dw_platform/tests/integration/test_rls_coverage.py` với lý do "giới hạn dữ liệu của một phiên bản
-      agent hay quy trình đã phát hành, hay giới hạn tạm của một lượt `simulate` có gốc là bản Nháp, thuộc định nghĩa
+      agent hay quy trình đã phát hành, hay giới hạn tạm của một lượt `simulate` có gốc chưa phát hành, thuộc định nghĩa
       toàn tenant" (DO-01).
 2. `ActorBoundaryPort` (Protocol trong gói truy cập của `dw_studio`) với hai phương thức chạy trong giao dịch của người
    gọi: `record(kind, source_id, source_version, objects, fields) -> boundary_id` cho phiên bản đã phát hành và
@@ -68,7 +70,7 @@ quyết 6, ADR-0111 (Accepted) quyết 3).
    từ module runner của workflow-engine. `_TRUSTED_SETTINGS` của `test_rls_coverage.py` nhận `app.run_mode` như hai
    setting kia.
 4. `RunContext` thêm `boundary_id: UUID | None`; phiên công cụ của runtime gắn loại actor `agent`, `app.user_id` là
-   chủ thể của lượt chạy và `app.boundary_id` của phiên bản, hay của giới hạn tạm của lượt khi gốc là bản Nháp (spec
+   chủ thể của lượt chạy và `app.boundary_id` của phiên bản, hay của giới hạn tạm của lượt khi gốc chưa phát hành (spec
    R6.11), rồi gọi cửa sổ tầm ở mỗi giao dịch, kể cả lần đầu sau khi tiếp tục từ phê duyệt; không đọc tầm đóng dấu nào
    từ dòng lượt chạy.
 5. `studio.acl_boundary_objects(cmd text)` (`LANGUAGE sql STABLE`, SECURITY INVOKER, `search_path` cố định): trả các
@@ -110,10 +112,14 @@ quyết 6, ADR-0111 (Accepted) quyết 3).
       một bản Nháp ghi đúng một giới hạn tạm có `run_id` của lượt, `source_id` là `version_id`, `source_version` là
       `pinned_hash`, cùng dòng đối tượng và trường của nó; gọi lần hai cho cùng lượt → 23505, không dòng thứ hai; hai
       lượt `simulate` của cùng bản Nháp, cùng mã băm → hai giới hạn tạm, không đụng chỉ mục duy nhất của giới hạn đã
-      phát hành.
+      phát hành; cùng lời gọi cho một lượt `simulate` có gốc là một Bản ứng viên ở `evaluating` (một lần thử của Lượt
+      kiểm định), dưới `(version_id, definition_hash)` → đúng một giới hạn tạm như trên; thu hẹp `record_provisional`
+      hay trigger về gốc ở `draft` → lần ghi cho Bản ứng viên bị từ chối, test đỏ.
 - [ ] R6.12 (RA27): lượt `simulate` có giới hạn tạm chỉ có `mkt_lead` với `can_read`, giao dịch gắn
       `app.run_mode = 'simulate'`: bản ghi `mkt_campaign` → 0 dòng dù người thử thấy nó; lead người thử không thấy →
-      0 dòng; lead người thử thấy → 1 dòng.
+      0 dòng; lead người thử thấy → 1 dòng; cùng ba ca ở lần thử của Lượt kiểm định trên một Bản ứng viên, giới hạn tạm
+      dưới `(version_id, definition_hash)`, chủ thể là người gửi: lead người gửi thấy → 1 dòng, lead người gửi không
+      thấy và bản ghi `mkt_campaign` → 0 dòng.
 - [ ] R6.13 (RA27): cùng `app.boundary_id` của giới hạn tạm trong giao dịch có `app.run_mode = 'live'`, hay không gắn
       `app.run_mode` → 0 dòng, INSERT bị từ chối; gỡ kiểm `simulate` khỏi `studio.acl_boundary_objects` → test đỏ.
 - [ ] R6.14 (RA27): `record_provisional` với `run_id` của một lượt `live`, hay của một lượt thuộc tenant B → 23514
@@ -135,7 +141,8 @@ quyết 6, ADR-0111 (Accepted) quyết 3).
 - `docs/adr/0105-record-reach-is-decided-by-postgresql.md:93-96`; spec: R6.
 - `packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:98-114`; spec: R6.8, R6.10.
 - ADR-0109 (Accepted) quyết 6 (gốc là bản Nháp chỉ ở `simulate`), ADR-0111 (Accepted) quyết 3 (đọc dưới tầm của
-  người thử), `.claude/plans/studio/tenant-config/issues/03-che-do-chay-va-gia-lap-o-executor.md` (`run_mode` trên dòng
+  người thử), ADR-0120 (Accepted) quyết 3 (lần thử của Lượt kiểm định là lượt `simulate` bình thường),
+  `.claude/plans/studio/tenant-config/issues/03-che-do-chay-va-gia-lap-o-executor.md` (`run_mode` trên dòng
   lượt và trên `RunContext`); spec: R6.11 tới R6.15.
 
 ## Comments
@@ -161,3 +168,9 @@ quyết 6, ADR-0111 (Accepted) quyết 3).
 - 2026-10-24 (agent): kiểm lượt sáu của vòng sửa 4: bước 1 thôi nói DELETE chỉ dùng được ở lượt xóa của offboarding, vì
   giới hạn tạm xóa được ở mọi lúc (spec R6.8, R6.15), và lý do trong danh sách bảng toàn tenant nêu cả giới hạn tạm,
   như mục Dữ liệu của spec (V4.22).
+- 2026-10-24 (agent): lượt g của vòng sửa 4, theo dòng Quyết định tạm cùng ngày của spec: giới hạn tạm phủ mọi lượt
+  `simulate` có gốc chưa phát hành, kể cả lần thử của Lượt kiểm định trên một Bản ứng viên đã niêm phong, ghi dưới
+  `(version_id, definition_hash)` và giao với tầm của người gửi, danh nghĩa mà lane `studio_gate` xin lần thử
+  (agent-lifecycle:R4.12); Mục tiêu, bước 1 và 4 nói gốc chưa phát hành thay bản Nháp, tiêu chí R6.11, R6.12 thêm ca
+  Bản ứng viên với đột biến thu hẹp về `draft`. Không thêm cạnh: `record_provisional` và trigger không đổi hình, chỉ
+  không được thu hẹp về `draft`.
