@@ -70,8 +70,12 @@ consumed through a Protocol the context declares and never imports a context.
 - Every worker, graph, prompt, tool, policy, event schema and evaluation dataset
   is versioned, and a release manifest pins the platform set a run used. A
   Studio run also pins a content-addressed run manifest (ADR 0109): definition
-  hash, overlay versions, connection ids, credential versions and hashes of
-  variable values, never a value. The run resolves only from it, on resume too.
+  hash, overlay versions, connection ids, the binding set version and hashes of
+  variable values, never a value and never a secret version. A call uses its
+  connection's latest unrevoked secret version and records the one it used;
+  revoking a secret for compromise stops every unfinished run of that
+  connection at its next call (Đạt, 2026-10-25). The run resolves only from
+  the manifest, on resume too.
 - Human-in-command.
 
 ## A second language, and where its boundary has to be
