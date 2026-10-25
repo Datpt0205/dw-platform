@@ -3,7 +3,7 @@ status: Accepted (Đạt, 2026-10-23; amendments from the decision brief applied
 date: 2026-10-23
 source:
     - ../../.claude/plans/studio/app-standards/spec.md
-    - ../../.claude/plans/studio/foundations-hardening/spec.md
+    - ../../.claude/plans/studio/runtime-hardening/spec.md
     - ../../apps/api/src/dw_api/exception_handlers.py
     - ../../packages/python/dw_platform/src/dw_platform/application/idempotency.py # RequestFingerprint
     - ../../packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py # canonical_hash, replay
@@ -128,7 +128,7 @@ without it, and Studio's tools and workflow nodes are the first effects that ret
 - app-standards (P0) lands before custom-objects' generic API. The OpenAPI snapshot and the generated
   TypeScript client change with the envelope, a web helper maps `errors[]` onto form fields, and every error
   changes content type.
-- foundations-hardening ports the claim-first table (its ticket 04) before tools-and-skills ships tenant
+- runtime-hardening ports the claim-first table (its ticket 01) before tools-and-skills ships tenant
   tools; every Studio tool kind then inherits single execution.
 - Migrations: one Alembic revision adds `caller_ref`, `reservation_token` and `response_headers` to
   `platform.idempotency_keys`; one creates `platform.tool_execution_claims` (RLS ENABLE and FORCE, grants)
@@ -180,7 +180,7 @@ All three are DO-16, owned by Đạt:
 - Đạt accepted the open recommendations of the second consistency check; the status stays Accepted.
 - Decision 5: ADR 0122's 30-day clearing of `platform.tool_executions.output` goes through a SECURITY DEFINER
   function of the retention lane, with its term in the retention policy, so `dw_app` regains no UPDATE on the table
-  (H:ADR-0122~foundations-hardening:R6.3).
+  (H:ADR-0122~runtime-hardening:R6.3).
 - Third consistency check (round 4), sixth pass, Đạt's V4.21: decision 5's function that clears `output` takes
   no argument and reads its term from `platform.retention_terms`, which the provisioner loads from the pinned
   retention policy (ADR 0122 decision 7), so a new term from counsel takes a policy version and no code.

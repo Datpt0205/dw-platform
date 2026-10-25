@@ -36,12 +36,12 @@ ADR-0124 (Accepted)).
   (`packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langchain_tools.py:304`);
   `_ALWAYS_ALLOWED = {"write_todos"}`
   (`packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langchain_tools.py:419`). Ràng buộc:
-  đây là cổng công cụ hiện tới model, foundations-hardening/04 siết thêm.
+  đây là cổng công cụ hiện tới model, runtime-hardening/01 siết thêm.
 - `StructuredTool` dựng ở
   `packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langchain_tools.py:495`, chưa dùng
   `response_format` `content_and_artifact`. Thiếu: bọc đầu ra là dữ liệu từ bên ngoài và artifact.
 - `deepagents>=0.7,<1` chưa ghim chính xác
-  (`packages/python/dw_agent_runtime/pyproject.toml:18`). Ràng buộc: foundations-hardening/04 ghim
+  (`packages/python/dw_agent_runtime/pyproject.toml:18`). Ràng buộc: runtime-hardening/01 ghim
   `==0.7.15`; nâng lên `>=0.7.23` cho `SkillsMiddleware` là W2.
 
 ## Mục tiêu
@@ -161,7 +161,7 @@ YC96, YC101; ADR-0116 (Accepted) quyết 1).
   2020-12 với `FormatChecker` danh sách đóng); `ToolRegistry.resolve(name, version, tenant_id)` theo công
   ty của lượt chạy, còn lượt chạy Studio chỉ dùng phiên bản đã ghim trong bản kê lượt chạy và không rơi về
   lớp nào lúc chạy (DO-05); thứ tự bước của `ToolExecutor` (R2.6), một chủ cho mọi bước mà
-  tenant-config/03, foundations-hardening/04 và agent-lifecycle/01 chèn vào; `ToolKindFactory` và bảng
+  tenant-config/03, runtime-hardening/01 và agent-lifecycle/01 chèn vào; `ToolKindFactory` và bảng
   `kind -> factory` ở composition root, với khe `connector_action` mà connections-and-vault/05 cắm vào;
   `KIND_FLOORS` và `check_policy_against_floor`; `approval_required` dùng chung bởi wrapper,
   `OneApprovalPerStepMiddleware` và executor; `SendAdmissionPort` tiêu thụ trong executor cho
@@ -180,7 +180,7 @@ YC96, YC101; ADR-0116 (Accepted) quyết 1).
   (ADR-0116 (Accepted) quyết 9; mcp-client:R3.1). Tắt công cụ dùng khóa chung `studio.lifecycle.kill` của
   agent-lifecycle (ADR-0120 (Accepted)).
 - Không tạo bảng mới: công cụ đọc đối tượng sinh từ phiên bản lược đồ; Bộ công cụ nhúng trong phiên bản
-  agent; `platform.tool_executions` và `platform.tool_execution_claims` là của foundations-hardening/04.
+  agent; `platform.tool_executions` và `platform.tool_execution_claims` là của runtime-hardening/01.
 
 ## Ngoài phạm vi
 
@@ -226,9 +226,9 @@ YC96, YC101; ADR-0116 (Accepted) quyết 1).
 
 ## Phụ thuộc
 
-- `.claude/plans/studio/foundations-hardening/issues/04-toolexecutor-gianh-luot-khong-cua-sau.md`:
+- `.claude/plans/studio/runtime-hardening/issues/01-toolexecutor-gianh-luot-khong-cua-sau.md`:
   executor giành lượt trước hiệu ứng, không còn cửa sau, CHECK `tool_executions.status`, ghim deepagents
-  (foundations-hardening:R6.4).
+  (runtime-hardening:R6.4).
 - `.claude/plans/studio/tenant-config/issues/03-che-do-chay-va-gia-lap-o-executor.md`: bước chế độ chạy
   chèn vào thứ tự R2.6, sau kiểm quyền và trước phê duyệt, sàn gửi tin, giành lượt, nên lời gọi bị giả lập
   không mở phê duyệt nào (tenant-config:R5.1, tenant-config:R5.6; ADR-0111 (Accepted) quyết 5); ticket 01 chờ

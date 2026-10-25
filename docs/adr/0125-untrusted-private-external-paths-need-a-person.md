@@ -116,7 +116,7 @@ record in `studio.version_assessments` and the risk tier; `agent-lifecycle` only
 - None with an ADR. Reinforces CLAUDE.md:68-69 ("critical effects require approval") and CLAUDE.md:75
   ("Human-in-command"). Narrows `autonomy.py:14-18` for trifecta versions the way the critical floor (`:29-33`)
   already does, a tightening.
-- `configs/workers/README.md:14-17` is stale on autonomy; foundations-hardening corrects it.
+- `configs/workers/README.md:14-17` is stale on autonomy; runtime-hardening corrects it.
 - si-platform: related to si-platform `docs/adr/0033-the-agent-reaches-crm-tools-over-mcp.md` ("proposals, not
   writes"), which is ADR-only there. Ports the principle of dw-proterial
   `docs/adr/0007-document-content-turns-cannot-call-outbound-tools.md` and diverges on the remedy (approval, not

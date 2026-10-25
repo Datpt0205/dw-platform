@@ -38,7 +38,7 @@ giả lập hay nội bộ, và câu trả lời là một điều kiện vào c
   (`packages/python/dw_agent_runtime/src/dw_agent_runtime/autonomy.py:14-33`). Ràng buộc: sàn bộ ba nguy
   hiểm chỉ siết thêm trên hai sàn này.
 - `autonomy_level` khai mà không đọc (`configs/workers/README.md:14-17`). Ràng buộc: chú thích cũ,
-  foundations-hardening sửa; sàn bộ ba đọc phân tích khi gửi kiểm định, không ở runtime.
+  runtime-hardening sửa; sàn bộ ba đọc phân tích khi gửi kiểm định, không ở runtime.
 - Chặng nội bộ chạy plaintext: DSN PostgreSQL không TLS (`infra/compose/docker-compose.yml:256`), Qdrant
   qua http (`:279`). Ràng buộc: TLS chặng nội bộ là W2.
 - Chỉ có đường gửi tới thành viên qua `platform.channel_deliveries`, kiểm lại tư cách thành viên khi gửi

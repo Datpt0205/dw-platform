@@ -7,7 +7,7 @@ Yêu cầu: R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R2.8, R2.9, G4, G5, G6, APS3, AP
 
 ## Mục tiêu
 
-Lát này cho người gọi thử lại một yêu cầu ghi mà không sợ ghi hai lần, và chỉ chính họ nhận lại câu trả lời đã lưu (R2, YC5): khóa gắn người gọi đã xác minh, lượt giành lại có token rào, lần phát lại kèm `ETag` và `Location`, và khóa bị xóa sau 24 giờ (ADR-0108 (Accepted) điểm 4). Đây là ticket duy nhất sửa lỗi phát lại cho người khác, kể cả khi foundations-hardening cũng ghi lỗi đó. Ticket này chờ ticket 01, vì 422 `idempotency_key_required` của R2.6 và lần phát lại đi qua vỏ problem+json của ticket đó, và hai ticket cùng sửa `apps/api/src/dw_api/exception_handlers.py`.
+Lát này cho người gọi thử lại một yêu cầu ghi mà không sợ ghi hai lần, và chỉ chính họ nhận lại câu trả lời đã lưu (R2, YC5): khóa gắn người gọi đã xác minh, lượt giành lại có token rào, lần phát lại kèm `ETag` và `Location`, và khóa bị xóa sau 24 giờ (ADR-0108 (Accepted) điểm 4). Đây là ticket duy nhất sửa lỗi phát lại cho người khác, kể cả khi runtime-hardening cũng ghi lỗi đó. Ticket này chờ ticket 01, vì 422 `idempotency_key_required` của R2.6 và lần phát lại đi qua vỏ problem+json của ticket đó, và hai ticket cùng sửa `apps/api/src/dw_api/exception_handlers.py`.
 
 ## Việc cần làm
 

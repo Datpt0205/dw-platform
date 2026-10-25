@@ -1,15 +1,15 @@
-# 06 — Run không kẹt ở waiting_approval, CHECK trạng thái, outbox lùi thời gian và thư chết
+# 03 — Run không kẹt ở waiting_approval, CHECK trạng thái, outbox lùi thời gian và thư chết
 
 Status: needs-triage
-Blocked by: 01, .claude/plans/studio/tenant-config/issues/03-che-do-chay-va-gia-lap-o-executor.md
+Blocked by: .claude/plans/studio/foundations-hardening/issues/01-test-khong-the-do.md, .claude/plans/studio/tenant-config/issues/03-che-do-chay-va-gia-lap-o-executor.md
 Area: studio
-Yêu cầu: R9.1, R9.2, R9.3, R10.1, R10.2, R10.3, R10.4, R10.5, G5, FH25, FH26, FH27, FH28, FH29
+Yêu cầu: R9.1, R9.2, R9.3, R10.1, R10.2, R10.3, R10.4, R10.5, G5, RH25, RH26, RH27, RH28, RH29
 
 ## Mục tiêu
 
 Resume chết giữa chừng không còn làm thread kẹt mãi; PostgreSQL từ chối trạng thái lạ của run, yêu
 cầu phê duyệt và quyết định, với các giá trị Studio sẽ ghi đã có sẵn; outbox lùi thời gian khi thử lại
-và thư chết hiện trên số đo và cảnh báo (R9, R10, G5, FH25-FH29). Người vận hành phát lại thư chết
+và thư chết hiện trên số đo và cảnh báo (R9, R10, G5, RH25-RH29). Người vận hành phát lại thư chết
 bằng một script có audit đứng tên mình; công ty thấy lượt chạy lỗi của mình trong Lịch sử chạy, không
 có route mới (DO-56.1). Ticket này chờ tenant-config/03, cùng ALTER `platform.worker_runs` và cùng sửa
 đường resume, và tenant-config/05 chờ ticket này (OPS-b); agent-lifecycle/01 chờ ticket này, vì nó chèn phép
@@ -75,26 +75,26 @@ Phát lại thư chết (R10.4, R10.5), theo DO-56.1:
 
 ## Tiêu chí chấp nhận
 
-- [ ] R9.1 (FH25): integration giả lập chết sau `begin_resume` (run ở `running`, `updated_at` đặt lùi
+- [ ] R9.1 (RH25): integration giả lập chết sau `begin_resume` (run ở `running`, `updated_at` đặt lùi
       quá `stale_run_after_seconds`) → lượt mới của cùng thread được nhận, không còn báo chờ duyệt;
       bỏ compare-and-set (resume không đổi `status`) → lượt mới bị báo chờ duyệt, test đỏ.
 - [ ] R9.1: `CancelledError` trong lần chạy graph → run `failed` với lỗi `ResumeInterrupted` và ngoại
       lệ được ném lại.
-- [ ] R9.2 (FH25): hai resume đồng thời cùng một run → đúng một lần chạy graph, lần kia 409.
-- [ ] R9.3 (FH26): ghi `status='bogus'` vào run và yêu cầu phê duyệt, `outcome='bogus'` vào quyết định
+- [ ] R9.2 (RH25): hai resume đồng thời cùng một run → đúng một lần chạy graph, lần kia 409.
+- [ ] R9.3 (RH26): ghi `status='bogus'` vào run và yêu cầu phê duyệt, `outcome='bogus'` vào quyết định
       → CHECK từ chối; thêm một giá trị vào `RunStatus` mà không vào CHECK → test catalog đỏ.
-- [ ] R10.1 (FH27): lỗi lần một → sự kiện không được claim khi `available_at` còn ở tương lai; lùi
+- [ ] R10.1 (RH27): lỗi lần một → sự kiện không được claim khi `available_at` còn ở tương lai; lùi
       `available_at` về quá khứ → được claim lại; khoảng lùi lần n nằm trong `[b, 1,2 × b]` với
       `b = min(30 × 2^(n-1), 3600)` giây; bỏ điều kiện `available_at` khỏi claim → đỏ.
-- [ ] R10.2 (FH28): thất bại ở lượt `outbox_max_attempts` → `dead_at` được đặt và sự kiện không bị
+- [ ] R10.2 (RH28): thất bại ở lượt `outbox_max_attempts` → `dead_at` được đặt và sự kiện không bị
       claim lại; `UndeliverableEventError` → `dead_at` ngay lần đầu; bỏ điều kiện `dead_at` khỏi claim
       → đỏ.
-- [ ] R10.3 (FH28): một sự kiện chết → gauge `dw_outbox_dead_letters` bằng 1, không có → 0; `backlog`
+- [ ] R10.3 (RH28): một sự kiện chết → gauge `dw_outbox_dead_letters` bằng 1, không có → 0; `backlog`
       không đếm sự kiện chết.
-- [ ] R10.4 (FH29): người vận hành chạy script cho một sự kiện chết → sự kiện về hàng đợi (`dead_at`
+- [ ] R10.4 (RH29): người vận hành chạy script cho một sự kiện chết → sự kiện về hàng đợi (`dead_at`
       rỗng, `attempts` 0) và có đúng một audit `platform.outbox.replayed` đứng tên người đó, trong cùng
       giao dịch; audit ném lỗi → sự kiện vẫn mang `dead_at`.
-- [ ] R10.5 (FH29): `--operator` không có trong `platform.platform_operators` → script thoát 1, sự kiện
+- [ ] R10.5 (RH29): `--operator` không có trong `platform.platform_operators` → script thoát 1, sự kiện
       vẫn mang `dead_at`, không có audit; gỡ kiểm người vận hành → test đỏ.
 - [ ] G5: `test_pause_restart_resume_approved` xanh với compare-and-set.
 - [ ] Xong: `make ci && make test-integration` xanh.
@@ -113,14 +113,15 @@ Phát lại thư chết (R10.4, R10.5), theo DO-56.1:
 - `packages/python/dw_observability/src/dw_observability/metrics.py:27-29`
 - `infra/prometheus/alerts.yml:53-66`
 - `docs/adr/0113-every-run-is-requested-and-queued-in-postgres.md:40-44`
-- spec: R9, R10, G5, FH25-FH29.
+- spec: R9, R10, G5, RH25-RH29.
 
 ## Comments
 
 - 2026-10-24 (agent): tenant-config/04 chờ ticket này (cạnh ở dòng Blocked by của tenant-config/04), vì hai
   ticket cùng ALTER `platform.worker_runs` và CHECK `ck_worker_runs_status` có trước cột `run_manifest_hash`; migration
   của tenant-config/04 nối tiếp revision của ticket này, nên cây Alembic chỉ có một head
-  (C:foundations-hardening/06~tenant-config/04).
+  (C:runtime-hardening/03~tenant-config/04).
 - 2026-10-24 (agent): `ck_worker_runs_status` và `RunStatus` nhận thêm `dead_lettered` (bước 3, 4; spec R9.3), trạng thái
   thư chết mà lane `studio_run_reaper` của workflow-engine/04 ghi (ADR-0113 (Accepted) quyết 3; workflow-engine:R3.2,
   workflow-engine:R5.7); workflow-engine/02 đã chờ ticket này.
+- 2026-10-25 (agent): ticket chuyển từ foundations-hardening/06 sang đây thành ticket 03 khi spec tách (hai dòng Quyết định cuối của spec); kiểm soát FH25-FH29 thành RH25-RH29, cùng số, và cạnh tới ticket 01 cùng thư mục cũ thành đường dẫn tới foundations-hardening/01. Không đổi việc cần làm, không thêm cạnh.

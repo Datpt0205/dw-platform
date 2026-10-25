@@ -1,7 +1,7 @@
 # 03 — Chế độ chạy trên mỗi lượt chạy và executor giả lập ở chế độ Mô phỏng
 
 Status: needs-triage
-Blocked by: .claude/plans/studio/foundations-hardening/issues/04-toolexecutor-gianh-luot-khong-cua-sau.md
+Blocked by: .claude/plans/studio/runtime-hardening/issues/01-toolexecutor-gianh-luot-khong-cua-sau.md
 Area: studio
 Yêu cầu: R4.1, R4.2, R4.3, R4.4, R4.5, R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, G1, TC9, TC10, TC11
 
@@ -50,7 +50,7 @@ bị giả lập như `simulate`. Lượt chạy của worker định nghĩa b�
       này.
     - không mở yêu cầu phê duyệt nào, kể cả với công cụ `critical`: bước phê duyệt chỉ chạy cho lệnh gọi đi qua
       bước chế độ, tức công cụ `simulate_safe` ở chế độ khác `live` và mọi công cụ ở `live`.
-7. Revision Alembic mới: thay `ck_tool_executions_status` (foundations-hardening/04 tạo) bằng cùng tập
+7. Revision Alembic mới: thay `ck_tool_executions_status` (runtime-hardening/01 tạo) bằng cùng tập
    giá trị cộng `simulated`; migration dừng với lỗi nếu có dòng mang giá trị ngoài tập mới. Index chống
    lặp giữ điều kiện `succeeded`.
 8. Test gọi thẳng executor, không qua graph node (failure-modes #5), và test tiếp tục sau duyệt ở một

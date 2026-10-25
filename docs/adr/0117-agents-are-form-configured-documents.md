@@ -195,7 +195,7 @@ repository root. External facts were gathered by the Studio research on 2026-10-
 - _Contradicts CLAUDE.md:213-216 (every versioned prompt resolves through `TenantOverlay`), worth
   reopening because the frame is the containment: `studio.agent_frame` resolves at the platform layer
   only, the question ADR-0110 already asks about tenant overrides of platform prompts._
-- `configs/workers/README.md:14-17` is stale on autonomy and is corrected by foundations-hardening.
+- `configs/workers/README.md:14-17` is stale on autonomy and is corrected by runtime-hardening.
 - si-platform: re-derived; si-platform has one platform agent and no tenant agents.
 
 ## Open

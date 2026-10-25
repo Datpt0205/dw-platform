@@ -1,7 +1,7 @@
 # 01 — Đóng băng toàn nền tảng và theo tenant, kiểm ở mọi cửa của runtime
 
 Status: needs-triage
-Blocked by: .claude/plans/studio/org-and-principals/issues/02-thanh-vien-cap-tenant.md, .claude/plans/studio/foundations-hardening/issues/06-run-va-outbox-khong-ket.md, .claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md, .claude/plans/studio/tenant-config/issues/05-lien-ket-va-phien-ban-cau-hinh.md
+Blocked by: .claude/plans/studio/org-and-principals/issues/02-thanh-vien-cap-tenant.md, .claude/plans/studio/runtime-hardening/issues/03-run-va-outbox-khong-ket.md, .claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md, .claude/plans/studio/tenant-config/issues/05-lien-ket-va-phien-ban-cau-hinh.md
 Area: studio
 Yêu cầu: R7.1, R7.2, R7.3, R7.4, R7.5, R7.6, R7.7, R7.8, R7.10, R7.11, R9.1, R9.2, R10.1, AL11, AL12, AL16, AL17, AL18
 
@@ -60,7 +60,7 @@ cửa, để quyết Đóng băng có thể tiếp tục cho lượt đang chạ
    middleware); gateway có cấu trúc trước `budget.check`, và là cửa đầu tiên của gateway: sau nó là
    `ResidencyGate` của compliance-pdpl/03 (ticket đó chờ ticket này), rồi `LimitsMiddleware` của
    usage-and-limits/03; middleware tóm tắt trước `budget.check`; cửa `resume` chèn trên compare-and-set của
-   foundations-hardening/06, ticket này chờ nó;
+   runtime-hardening/03, ticket này chờ nó;
    `ToolExecutor._execute` trước kiểm quyền (audit `tool.denied`, `policy_decision` `deny_frozen`). Runner
    map `RunHaltedError` sang `_fail(status=CANCELLED, event="run.cancelled")`; middleware lỗi công cụ ném lại
    `RunHaltedError` thay vì báo model. Cửa nhận theo `trigger_kind` (spec R7.7, R7.8): lượt `chat`,
@@ -149,7 +149,7 @@ cửa, để quyết Đóng băng có thể tiếp tục cho lượt đang chạ
   `trigger_kind`), R7.2 thành hợp đồng với làn `studio_inbound` của workflow-triggers, `principal_inactive`
   (H:org-and-principals:R4.6, chờ org-and-principals/02 cho `platform.tenant_members`), gỡ Đóng băng hai
   người (D11), tiền tố nghiêm `studio.lifecycle.` thêm ở ticket này.
-- 2026-10-24 (agent): áp quyết định của Đạt ngày 24/10/2026: chờ foundations-hardening/06 vì cùng sửa đường
+- 2026-10-24 (agent): áp quyết định của Đạt ngày 24/10/2026: chờ runtime-hardening/03 vì cùng sửa đường
   resume, và compliance-pdpl/03 chờ ticket này (thứ tự cửa gateway: công tắc, Lộ trình dữ liệu, hạn mức); đăng
   ký khóa `studio.lifecycle.freeze` ở đây theo quy ước của tenant-rbac/01; `tenant_locked`, `tenant_offboarding`
   (spec R9.2); DELETE trên `control_switches` chỉ cho offboarding (spec R7.5, R10.1); một dòng `|=` cho tiền tố

@@ -1,16 +1,16 @@
-# 05 — Biên mạng: rate limit theo địa chỉ, net_guard chỉ địa chỉ toàn cầu, Qdrant và Valkey có xác thực
+# 02 — Biên mạng: rate limit theo địa chỉ, net_guard chỉ địa chỉ toàn cầu, Qdrant và Valkey có xác thực
 
 Status: needs-triage
-Blocked by: 01
+Blocked by: .claude/plans/studio/foundations-hardening/issues/01-test-khong-the-do.md
 Area: studio
-Yêu cầu: R7.1, R7.2, R8.1, R8.2, R8.3, R8.4, G7, FH20, FH21, FH22, FH23, FH24
+Yêu cầu: R7.1, R7.2, R8.1, R8.2, R8.3, R8.4, G7, RH20, RH21, RH22, RH23, RH24
 
 ## Mục tiêu
 
 Một client không lách giới hạn tốc độ bằng bearer ngẫu nhiên; nền tảng có một chính sách địa chỉ ra
 ngoài mà egress client của `connections-and-vault` dùng lại; Qdrant và Valkey đòi xác thực ở mọi
 profile, profile triển khai không khởi động khi thiếu; ảnh bên thứ ba ghim digest (R7, R8, G7,
-FH20-FH24; ADR-0115 (Accepted) quyết định 5). Triển khai cần người đặt bí mật mới trên host uat và
+RH20-RH24; ADR-0115 (Accepted) quyết định 5). Triển khai cần người đặt bí mật mới trên host uat và
 production.
 
 ## Việc cần làm
@@ -65,22 +65,22 @@ Kho dữ liệu (R8.1, R8.2, R8.4):
 
 ## Tiêu chí chấp nhận
 
-- [ ] R7.1 (FH20): `10 × L + 1` request từ một địa chỉ, mỗi request một bearer ngẫu nhiên → request
+- [ ] R7.1 (RH20): `10 × L + 1` request từ một địa chỉ, mỗi request một bearer ngẫu nhiên → request
       cuối 429; bỏ xô địa chỉ → đỏ.
 - [ ] R7.1: một bearer vượt `L` request trong 60 giây → 429 dù địa chỉ còn dưới `10 × L`.
-- [ ] R7.2 (FH21): resolver giả trả `100.64.0.1`, `100.100.100.200`, `224.0.0.1`, `ff02::1`,
+- [ ] R7.2 (RH21): resolver giả trả `100.64.0.1`, `100.100.100.200`, `224.0.0.1`, `ff02::1`,
       `::ffff:169.254.169.254`, `64:ff9b::a9fe:a9fe`, `2002:a9fe:a9fe::1` và một địa chỉ Teredo nhúng
       `169.254.169.254` → `OutboundUrlError`; `8.8.8.8` giả lập → nhận; khôi phục vị từ cũ → đỏ với
       `100.64.0.1`, `100.100.100.200`, `224.0.0.1`.
 - [ ] R7.2: host có tên trong danh sách máy chủ được phép qua theo đúng tên, không phân giải;
       `docker compose -f infra/compose/docker-compose.yml config` cho thấy hai biến danh sách ở `api`
       và `worker`.
-- [ ] R8.1 (FH22): compose smoke: gọi Qdrant không kèm API key → 401; `redis-cli PING` không mật khẩu
+- [ ] R8.1 (RH22): compose smoke: gọi Qdrant không kèm API key → 401; `redis-cli PING` không mật khẩu
       → `NOAUTH`; API và worker vẫn khỏe với thông tin xác thực.
-- [ ] R8.2 (FH22): settings profile `uat` thiếu `qdrant_api_key` → `validate_for_profile` ném lỗi ở
+- [ ] R8.2 (RH22): settings profile `uat` thiếu `qdrant_api_key` → `validate_for_profile` ném lỗi ở
       API và worker; `redis_url` của API không mật khẩu → ném lỗi; profile `local` không đòi.
-- [ ] R8.3 (FH23): gỡ `@sha256:` khỏi một `image:` → `scripts/verify_invariants.py` đỏ.
-- [ ] R8.4 (FH24): `DATA_SOURCE_NAME` dùng `dw_app` → kiểm ở bước 10 đỏ; `dw_monitor` SELECT một bảng
+- [ ] R8.3 (RH23): gỡ `@sha256:` khỏi một `image:` → `scripts/verify_invariants.py` đỏ.
+- [ ] R8.4 (RH24): `DATA_SOURCE_NAME` dùng `dw_app` → kiểm ở bước 10 đỏ; `dw_monitor` SELECT một bảng
       tenant → `permission denied`; exporter vẫn xuất số đo.
 - [ ] G7: `test_health_is_exempt_and_zero_disables` xanh.
 - [ ] Xong: `make ci && make test-integration` xanh.
@@ -103,10 +103,11 @@ Kho dữ liệu (R8.1, R8.2, R8.4):
 - `apps/worker/src/dw_worker/settings.py:330`
 - `infra/compose/docker-compose.host.yml:48`
 - `docs/adr/0115-tenant-credentials-vault-and-one-egress-client.md:96-99`
-- spec: R7, R8, G7, FH20-FH24; si-platform `packages/python/hosts/si_api/src/si_api/http/rate_limit.py`
+- spec: R7, R8, G7, RH20-RH24; si-platform `packages/python/hosts/si_api/src/si_api/http/rate_limit.py`
   (xô địa chỉ `10 × L`).
 
 ## Comments
 
 - 2026-10-24 (agent): kiểm vòng sửa 4, lượt ba: neo ADR-0115 (Accepted) ở Nguồn trỏ lại quyết định 5 (một chính
   sách địa chỉ), vì các lần sửa ADR đó đã dời quyết định 5 khỏi các dòng neo cũ.
+- 2026-10-25 (agent): ticket chuyển từ foundations-hardening/05 sang đây thành ticket 02 khi spec tách (hai dòng Quyết định cuối của spec); kiểm soát FH20-FH24 thành RH20-RH24, cùng số, và cạnh tới ticket 01 cùng thư mục cũ thành đường dẫn tới foundations-hardening/01. Không đổi việc cần làm, không thêm cạnh.

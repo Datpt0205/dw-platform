@@ -1,7 +1,7 @@
 # 05 — Điểm gắn: giá trị là phiên bản cấu hình có người đề xuất và người duyệt khác nhau
 
 Status: needs-triage
-Blocked by: 04, .claude/plans/studio/connections-and-vault/issues/04-ket-noi-dung-chung-theo-workspace.md, .claude/plans/studio/foundations-hardening/issues/06-run-va-outbox-khong-ket.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md, .claude/plans/studio/app-standards/issues/02-khoa-chong-lap-gan-nguoi-goi.md
+Blocked by: 04, .claude/plans/studio/connections-and-vault/issues/04-ket-noi-dung-chung-theo-workspace.md, .claude/plans/studio/runtime-hardening/issues/03-run-va-outbox-khong-ket.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md, .claude/plans/studio/app-standards/issues/02-khoa-chong-lap-gan-nguoi-goi.md
 Area: studio
 Yêu cầu: R7.1, R7.2, R7.3, R7.4, R7.5, R8.1, R8.2, R8.3, R8.4, R8.5, R8.6, R8.7, R8.8, R8.9, R8.10, R8.11, R8.12, R8.13, R8.14, R8.15, R8.16, R2.18, R3.6, R3.7, R3.8, G4, TC15, TC16, TC17, TC18, TC19, TC20, TC21, TC22, TC23, TC25, TC26, TC29, TC31
 
@@ -222,7 +222,7 @@ kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7,
   xuất là quyết định tạm của spec. Outbox `config.version.approved` ra cùng bên đọc của nó (lệch cấu
   hình, W2).
 - 2026-10-23 (agent): DO-06 đã có lời đáp (Đạt 23/10/2026, tài liệu giữ tên điểm gắn), nên ticket về
-  `needs-triage`. Theo phiếu cùng ngày: chờ foundations-hardening/06 (OPS-b) và tenant-rbac/02 (hàm tìm
+  `needs-triage`. Theo phiếu cùng ngày: chờ runtime-hardening/03 (OPS-b) và tenant-rbac/02 (hàm tìm
   người duyệt chung); `principal` nhận cả người dự phòng của bước giao (Q6); ticket này đáp ứng
   `RunBindingsPort` và `ConnectionDependentsPort`.
 - 2026-10-24 (agent): theo quyết định của Đạt ngày 24/10/2026: audit quyết toán đứng tên `decided_by` với

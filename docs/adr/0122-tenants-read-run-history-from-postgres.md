@@ -131,7 +131,7 @@ ADR 0121, which owns the usage ledger whose screens and retention this ADR also 
 The lane deleting inbound events skips one that a `queued` run still points to or that a freeze
 holds, and counts the held ones on a metric: a freeze has no time limit (ADR 0120 decision 7), and a
 held event's sender was already answered 2xx. `dw_app` holds no UPDATE on `platform.tool_executions`
-(foundations-hardening R6.3), so the lane clears `output` through a narrow SECURITY DEFINER function
+(runtime-hardening R6.3), so the lane clears `output` through a narrow SECURITY DEFINER function
 that takes no argument, reads its term from `platform.retention_terms` and nulls that one column
 past it. Conversation messages are append-only for `dw_app` and point at their conversation through
 a composite foreign key `ON DELETE RESTRICT` (ADR 0117 decision 6), so the lane removes expired
@@ -241,7 +241,7 @@ open:
 - Decision 7: `platform.budget_counters` is kept 13 months, provisional and UNVERIFIED (ADR 0121;
   D:ADR-0121~usage-and-limits:R5.7).
 - Decision 7: tool outputs are cleared through a narrow SECURITY DEFINER function, since `dw_app`
-  holds no UPDATE on `platform.tool_executions` (H:ADR-0122~foundations-hardening:R6.3).
+  holds no UPDATE on `platform.tool_executions` (H:ADR-0122~runtime-hardening:R6.3).
 - Decision 7: the lane skips inbound events a freeze holds and counts them, a freeze having no time
   limit (B:agent-lifecycle:R7.2~telemetry-and-audit:R5.5).
 - Decision 7: DROP PARTITION goes through `platform.drop_expired_partitions(cutoffs jsonb)`, which

@@ -270,7 +270,7 @@ bao giờ bằng token của nền tảng (ADR-0116 (Accepted) quyết 8; ADR-01
   chính executor, một hàm `approval_required`, mức sàn theo loại và Bản mô hình nhìn thấy (ADR-0116 (Accepted)
   quyết 1-5).
 - connections-and-vault: kho bí mật cấp credential ngắn hạn mỗi lời gọi, broker OAuth có hồ sơ MCP,
-  egress proxy và mạng của nó (ADR-0115 (Accepted)); foundations-hardening/05: một chính sách địa chỉ từ
+  egress proxy và mạng của nó (ADR-0115 (Accepted)); runtime-hardening/02: một chính sách địa chỉ từ
   chối `not is_global`.
 - agent-lifecycle: máy giai đoạn với luật theo loại cho loại không có Cổng chất lượng (`awaiting_approval`
   chỉ cần người thứ hai, không `gate_run_id`) và lệnh gửi `draft → awaiting_approval` mà R3.1 gọi, mở

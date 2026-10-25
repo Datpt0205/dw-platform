@@ -1,7 +1,7 @@
 # 01 — Executor tự kiểm JSON Schema, phân giải theo tenant, khe nhà máy theo loại
 
 Status: needs-triage
-Blocked by: .claude/plans/studio/foundations-hardening/issues/04-toolexecutor-gianh-luot-khong-cua-sau.md, .claude/plans/studio/tenant-config/issues/03-che-do-chay-va-gia-lap-o-executor.md, .claude/plans/studio/agent-lifecycle/issues/01-dong-bang-va-kiem-o-moi-cua.md
+Blocked by: .claude/plans/studio/runtime-hardening/issues/01-toolexecutor-gianh-luot-khong-cua-sau.md, .claude/plans/studio/tenant-config/issues/03-che-do-chay-va-gia-lap-o-executor.md, .claude/plans/studio/agent-lifecycle/issues/01-dong-bang-va-kiem-o-moi-cua.md
 Area: studio
 Yêu cầu: R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R3.1, R3.2, G1, G2, TS2, TS3, TS4, TS5, TS6, TS10
 
@@ -11,7 +11,7 @@ Executor tự kiểm đầu vào và đầu ra bằng JSON Schema (LangChain kh�
 công cụ theo công ty, một nhà máy theo Loại công cụ với Mức sàn theo loại mà công ty chỉ siết, một nơi
 quyết duyệt, một hook sàn gửi tin cho Hành động `effect_class: message`, và một thứ tự bước duy nhất cho
 `ToolExecutor` (spec R1, R2, R3). Mọi loại công cụ Studio sau này thừa hưởng một cửa này. Gộp từ B8b-tools
-tools-and-skills 02; đóng đường vòng quanh executor đã nằm ở foundations-hardening/04.
+tools-and-skills 02; đóng đường vòng quanh executor đã nằm ở runtime-hardening/01.
 
 ## Việc cần làm
 
@@ -41,7 +41,7 @@ message` (compliance-pdpl cài); từ chối → không gọi handler, trả k�
    (compliance-pdpl:R3.1); ticket này không ghi audit thứ hai.
 8. Thứ tự bước trong `ToolExecutor._execute` theo R2.6: công tắc điều khiển (agent-lifecycle/01 chèn),
    phân giải, kiểm đầu vào, kiểm quyền, chế độ chạy (tenant-config/03 chèn), phê duyệt, sàn gửi tin, giành
-   lượt (foundations-hardening/04), gọi handler, kiểm đầu ra, audit; ghi thứ tự này ở docstring đầu
+   lượt (runtime-hardening/01), gọi handler, kiểm đầu ra, audit; ghi thứ tự này ở docstring đầu
    `executor.py` thay chuỗi cũ. Ở chế độ khác `live`, lời gọi bị giả lập dừng ở bước chế độ chạy, nên không
    gọi `approval_required` và không mở phê duyệt (tenant-config:R5.6; ADR-0111 (Accepted) quyết 5).
 
@@ -88,13 +88,13 @@ message` (compliance-pdpl cài); từ chối → không gọi handler, trả k�
   docstring).
 - `packages/python/dw_agent_runtime/src/dw_agent_runtime/tool_specs.py:36-50`; spec: R2.3, R2.4.
 - spec: R1, R2, R3, TS2-TS6; ADR-0116 (Accepted) quyết 3; ADR-0124 (Accepted) quyết 2;
-  foundations-hardening/04 (`ToolClaimPort`, CHECK `tool_executions.status`); tenant-config/03 (bước chế
+  runtime-hardening/01 (`ToolClaimPort`, CHECK `tool_executions.status`); tenant-config/03 (bước chế
   độ chạy, tenant-config:R5.1).
 
 ## Comments
 
 - 2026-10-23 (agent): brief ticket 01 (đóng đường vòng, ghim deepagents, test hợp đồng) đã gộp vào
-  foundations-hardening/04; ticket này là brief ticket 02 cộng hook sàn gửi tin
+  runtime-hardening/01; ticket này là brief ticket 02 cộng hook sàn gửi tin
   (YC86, ADR-0124 (Accepted)).
 - 2026-10-23 (agent): thêm R2.6 (thứ tự bước một chủ) và Blocked by tenant-config/03 theo phát hiện kiểm
   nhất quán cùng ngày, vì cả hai ticket viết lại chuỗi bước của `ToolExecutor._execute`; audit từ chối của

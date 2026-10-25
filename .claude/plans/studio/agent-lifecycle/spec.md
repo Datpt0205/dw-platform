@@ -692,9 +692,10 @@ Mọi bảng mới: RLS ENABLE và FORCE theo tenant, grant cùng migration, tê
   ranh giới dẫn ra lúc phát hành (agent-builder:R1.9,
   `.claude/plans/studio/agent-builder/issues/02-loai-agent-va-khung-prompt.md`; workflow-engine:R1.7;
   ADR-0117 (Accepted) quyết 3); móc không ghi audit, như mọi móc của loại.
-- foundations-hardening: compare-and-set trên đường resume
-  (`.claude/plans/studio/foundations-hardening/issues/06-run-va-outbox-khong-ket.md`), nơi ticket 01 chèn phép
-  kiểm công tắc nên ticket 01 chờ nó; trạng thái công ty cho R9.2 (foundations-hardening:R3.3); ticket 03 chờ
+- runtime-hardening: compare-and-set trên đường resume
+  (`.claude/plans/studio/runtime-hardening/issues/03-run-va-outbox-khong-ket.md`), nơi ticket 01 chèn phép
+  kiểm công tắc nên ticket 01 chờ nó.
+- foundations-hardening: trạng thái công ty cho R9.2 (foundations-hardening:R3.3); ticket 03 chờ
   `.claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md` vì cùng sửa
   `_ORDERED_FIRST` của lane `offboarding` (studio-skeleton:R4.2).
 - Thứ tự cửa trong gateway có cấu trúc: công tắc (ticket 01), Lộ trình dữ liệu
@@ -895,7 +896,7 @@ Mọi bảng mới: RLS ENABLE và FORCE theo tenant, grant cùng migration, tê
   `studio.lifecycle.*`, `studio.publish.approve` và `studio.versions.*` giữ tên vì khu vực không đếm được hay đã
   số nhiều. Sửa: API, Trong phạm vi, ticket 04. Nếu sai thì: giữ `studio.eval.run` trong migration đăng ký.
 - 24/10/2026 (Đạt): thứ tự cửa trong gateway có cấu trúc là công tắc, Lộ trình dữ liệu, rồi hạn mức;
-  compliance-pdpl/03 chờ ticket 01, và ticket 01 chờ foundations-hardening/06 vì cùng sửa đường resume
+  compliance-pdpl/03 chờ ticket 01, và ticket 01 chờ runtime-hardening/03 vì cùng sửa đường resume
   (C:agent-lifecycle/01\~compliance-pdpl/03). Sửa: Phụ thuộc, ticket 01.
 - 24/10/2026 (agent, tạm): `strict_approval_prefixes` và `decision_guards` theo cách sửa thứ hai của
   C:agent-lifecycle:R7.10\~tenant-config:R8.8: ticket 01 và 04 mỗi ticket chỉ thêm một dòng `|=` cho tiền tố của

@@ -147,7 +147,7 @@ code hay migration (V4.21).
 - R5.7 KHI `output` của một dòng `platform.tool_executions` quá thời hạn dưới khóa `platform.tool_executions` của
   `platform.retention_terms` (30 ngày), lane lưu giữ PHẢI xóa trắng cột đó qua một hàm SECURITY DEFINER hẹp không
   nhận đối số, chỉ đặt NULL `output` và đọc thời hạn ở bảng đó, mà không trả UPDATE trên bảng cho `dw_app`
-  (foundations-hardening:R6.3; ADR-0122 (Accepted) quyết 7; V4.21).
+  (runtime-hardening:R6.3; ADR-0122 (Accepted) quyết 7; V4.21).
 - R5.8 KHI lane `offboarding` xóa dữ liệu của một công ty đang `offboarding`, lane `offboarding` PHẢI xuất rồi
   xóa mọi dòng `platform.run_steps` của công ty đó qua `platform.purge_tenant_append_only`
   (usage-and-limits:R3.10; YC6).
@@ -389,7 +389,7 @@ timestamptz`, `duration_ms`, `error_type`; `input_preview` và `result_preview` 
   `platform.purge_tenant_append_only` cho R5.8 (usage-and-limits:R3.10); ticket 03 chờ nó. Bản tệp retention đầu
   có mục khóa `schema.table` là của usage-and-limits/02, ticket đầu của chuỗi các ticket sửa tệp, viết theo định
   dạng của R5.6.
-- foundations-hardening: `dw_app` không có UPDATE trên `platform.tool_executions` (foundations-hardening:R6.3),
+- runtime-hardening: `dw_app` không có UPDATE trên `platform.tool_executions` (runtime-hardening:R6.3),
   nên R5.7 đi qua hàm riêng của lane.
 - Tệp chính sách retention: các ticket sửa tệp đi thành một chuỗi, mỗi ticket chờ ticket đứng trước và ra đúng một
   bản mới: usage-and-limits/02 → usage-and-limits/03 → ticket 03 của lát này → agent-lifecycle/04 →
@@ -461,7 +461,7 @@ timestamptz`, `duration_ms`, `error_type`; `input_preview` và `result_preview` 
   gian (B:agent-lifecycle:R7.2\~telemetry-and-audit:R5.5). Sửa: R5.5, TA11, Dữ liệu, ticket 03.
 - 24/10/2026 (Đạt): xóa `platform.tool_executions.output` sau 30 ngày (ADR-0122 (Accepted) quyết 7) là việc của
   lane lưu giữ của lát này, qua một hàm SECURITY DEFINER hẹp chỉ đặt NULL cột đó; `dw_app` không nhận lại UPDATE
-  (foundations-hardening:R6.3; H:ADR-0122 (Accepted)\~foundations-hardening:R6.3). Sửa: thêm R5.7, TA14, Trong
+  (runtime-hardening:R6.3; H:ADR-0122 (Accepted)\~runtime-hardening:R6.3). Sửa: thêm R5.7, TA14, Trong
   phạm vi, Dữ liệu, Phụ thuộc, ticket 03.
 - 24/10/2026 (Đạt): offboarding xuất rồi xóa `platform.run_steps`; vì `dw_app` không DELETE, bảng có một dòng
   `STUDIO_EXCLUSIONS` nêu cách xóa, `platform.purge_tenant_append_only` của usage-and-limits/02, theo cách sửa mà

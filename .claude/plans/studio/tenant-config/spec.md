@@ -434,7 +434,7 @@ agent-lifecycle (agent-lifecycle:R10.2), rồi `studio.artifacts`.
   dòng cũ backfill `live`; `run_manifest_hash` NULL, khớp `^sha256:[0-9a-f]{64}$`, FK
   `(tenant_id, run_manifest_hash)` tới `platform.run_manifests` ON DELETE RESTRICT, có index
   `(tenant_id, run_manifest_hash)`.
-- `platform.tool_executions.status`: CHECK của foundations-hardening/04 thêm `simulated`.
+- `platform.tool_executions.status`: CHECK của runtime-hardening/01 thêm `simulated`.
 - `platform.run_manifests`: khóa chính `(tenant_id, hash)`, `body` jsonb NFC tối đa 1 MiB, ghi bằng
   `INSERT ... ON CONFLICT DO NOTHING`; trên bảng này và `platform.run_manifest_keys`, `dw_app` SELECT, INSERT, và
   DELETE chỉ ở lượt xóa của offboarding (R3.8). `platform.run_manifest_keys`: FK ghép
@@ -516,7 +516,7 @@ agent-lifecycle (agent-lifecycle:R10.2), rồi `studio.artifacts`.
 
 - `.claude/plans/studio/studio-skeleton/issues/02-goi-dw-studio-va-seam-api.md`: gói `dw_studio`, nhóm
   route `/api/v1/studio`, schema `studio` có USAGE và default privileges (studio-skeleton/01).
-- `.claude/plans/studio/foundations-hardening/issues/04-toolexecutor-gianh-luot-khong-cua-sau.md`:
+- `.claude/plans/studio/runtime-hardening/issues/01-toolexecutor-gianh-luot-khong-cua-sau.md`:
   executor giành lượt trước và CHECK `tool_executions.status` mà ticket 03 mở rộng.
 - `.claude/plans/studio/connections-and-vault/issues/04-ket-noi-dung-chung-theo-workspace.md`:
   `platform.connections` và `connection_usable` cho ticket 05, hàm này kiểm cả `connections.use` ở workspace của
@@ -528,9 +528,9 @@ agent-lifecycle (agent-lifecycle:R10.2), rồi `studio.artifacts`.
   đọc hay `simulate_safe` (ADR-0115 (Accepted) quyết 6), nên R5.4 không đổi.
 - `.claude/plans/studio/org-and-principals/issues/01-khoa-don-vi-va-siet-realm.md`: tạo
   `uq_workspaces_tenant_id_id` cho FK ghép của `studio.artifacts`; ticket 02 không tạo ràng buộc đó (OPS-a.2).
-- `.claude/plans/studio/foundations-hardening/issues/06-run-va-outbox-khong-ket.md`: CHECK `status` của yêu
+- `.claude/plans/studio/runtime-hardening/issues/03-run-va-outbox-khong-ket.md`: CHECK `status` của yêu
   cầu phê duyệt và đường tiếp tục ở `approval_flow.py` mà ticket 05 đổi sau (OPS-b), và `ck_worker_runs_status`
-  trên `platform.worker_runs` có trước cột `run_manifest_hash` của ticket 04 (C:foundations-hardening/06~tenant-config/04).
+  trên `platform.worker_runs` có trước cột `run_manifest_hash` của ticket 04 (C:runtime-hardening/03~tenant-config/04).
 - `.claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md`: viết lại
   `_CATALOG_COLUMNS`, `export_rows` và `test_offboarding.py`, nơi ticket 02, 04 và 05 thêm mục `_ORDERED_FIRST` và ca
   purge của mình (C:foundations-hardening/07~tenant-rbac/02).
@@ -666,7 +666,7 @@ agent-lifecycle (agent-lifecycle:R10.2), rồi `studio.artifacts`.
 - 23/10/2026 (Đạt): OPS-a.2: `uq_workspaces_tenant_id_id` chỉ do org-and-principals/01 tạo; ticket 02 bỏ
   dòng tạo ràng buộc và chờ ticket đó. Sửa: Dữ liệu, Phụ thuộc, ticket 02.
 - 23/10/2026 (Đạt): OPS-b: `ck_artifacts_kind` thành FK tới bảng danh mục `studio.artifact_kinds`, mỗi
-  ticket đăng ký loại INSERT một dòng; ticket 05 chờ foundations-hardening/06. Sửa: Dữ liệu, ticket 02, 05.
+  ticket đăng ký loại INSERT một dòng; ticket 05 chờ runtime-hardening/03. Sửa: Dữ liệu, ticket 02, 05.
 - 23/10/2026 (Đạt): DO-26.1 (A), DO-26.2 (a) và ADR-0111 (Accepted) nguyên văn: W1 chỉ mở `simulate` cho
   chạy thử, route chạy thử của workflow-triggers trả 422 với `test` tới W2; executor vẫn giả lập lượt `test`
   như `simulate` nếu một lượt như vậy tới; giữ tên `test` với `RunMode` có kiểu. Sửa: Ngoài phạm vi, ticket 03.
@@ -772,9 +772,9 @@ agent-lifecycle (agent-lifecycle:R10.2), rồi `studio.artifacts`.
   ticket 05, không nhánh theo loại trong `decide`; `author_cannot_approve` vẫn là mã của guard tác giả dưới
   `studio.publish.` (ADR-0104 (Accepted) quyết 11; B:packages:spec~tenant-config/05). Sửa: Trong phạm vi, TC16,
   ticket 05. Nếu sai thì: mỗi loại tự đặt mã qua guard của nó trong `decision_guards`, và TC16 chỉ phủ `config.`.
-- 24/10/2026 (agent, tạm): ticket 04 chờ foundations-hardening/06, vì `ck_worker_runs_status` có trước cột
-  `run_manifest_hash` trên cùng `platform.worker_runs` (C:foundations-hardening/06~tenant-config/04). Sửa: Phụ thuộc,
-  ticket 04. Nếu sai thì: foundations-hardening/06 chờ ticket 04, và dòng Phụ thuộc đổi chiều.
+- 24/10/2026 (agent, tạm): ticket 04 chờ runtime-hardening/03, vì `ck_worker_runs_status` có trước cột
+  `run_manifest_hash` trên cùng `platform.worker_runs` (C:runtime-hardening/03~tenant-config/04). Sửa: Phụ thuộc,
+  ticket 04. Nếu sai thì: runtime-hardening/03 chờ ticket 04, và dòng Phụ thuộc đổi chiều.
 - 24/10/2026 (agent, tạm): sửa các phát hiện có nguồn đã chấp nhận: kiểm điểm gắn đáp ứng Protocol
   `PublishBindingsCheck` mà agent-lifecycle khai cho lệnh gửi và handler `.decided`
   (`B:agent-lifecycle:api~tenant-config:R7.2`; ADR-0120 (Accepted) quyết 2, ADR-0103 (Accepted) quyết 4);

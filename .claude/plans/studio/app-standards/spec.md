@@ -126,21 +126,21 @@ Một truy vấn phân trang không có index mang trọn làm CI đỏ, kể c�
 
 ## Ngoài phạm vi
 
-| Việc                                                                                     | Vì sao                                                                                                                            | Chủ                                     |
-| ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
-| R2.7: từng route bắt buộc `Idempotency-Key` (`POST` khởi tác vụ chạy nền, batch, upsert) | mỗi route chứng minh ở spec mở nó; spec này giao dependency khóa bắt buộc                                                         | custom-objects, tenant-config           |
-| Tác vụ chạy nền chuẩn                                                                    | W2                                                                                                                                | app-standards, đợt sau (W2)             |
-| Quy ước 429 và header RateLimit chung                                                    | W2; ngoại lệ W1: bộ giới hạn của custom-objects:R7.6 trả 429 kèm `Retry-After` qua `RateLimiterPort` của usage-and-limits (DO-49) | app-standards, đợt sau (W2)             |
-| Chính sách ngừng hỗ trợ: báo trước ít nhất 6 tháng trước khi gỡ một route                | W2 (DO-16)                                                                                                                        | app-standards, đợt sau (W2)             |
-| Giới hạn kích thước body                                                                 | W2; nhóm `/api/v1/studio` có trần riêng từ W1                                                                                     | app-standards, đợt sau (W2)             |
-| OpenAPI theo tenant và HTTP QUERY                                                        | W3                                                                                                                                | app-standards, đợt sau (W3)             |
-| Khóa chống lặp của tool, nhận trước (`platform.tool_execution_claims`)                   | ADR-0108 (Accepted) điểm 5                                                                                                        | foundations-hardening, ticket 04        |
-| Ngữ pháp khóa cho hiệu ứng của lượt chạy                                                 | ADR-0108 (Accepted) điểm 6                                                                                                        | workflow-engine                         |
-| Biến trong cây lọc, chuỗi lọc OData hay AIP-160                                          | chưa route nào đọc; chuỗi có thể đến sau và dịch về cây                                                                           | custom-objects                          |
-| `Cache-Control: no-store` cho tài nguyên có bảo vệ theo trường                           | thuộc route bản ghi                                                                                                               | custom-objects, field-security          |
-| Bộ đếm giới hạn theo tenant (`RateLimiterPort`), sửa bộ giới hạn tốc độ theo địa chỉ     | không thuộc quy ước HTTP chung (DO-49)                                                                                            | usage-and-limits, foundations-hardening |
-| Dịch văn bản lỗi phía máy chủ (`Accept-Language`)                                        | web dựng văn bản từ `code`                                                                                                        | không làm                               |
-| OData, GraphQL                                                                           | ngôn ngữ chọn bản ghi là cây lọc                                                                                                  | không làm                               |
+| Việc                                                                                     | Vì sao                                                                                                                            | Chủ                                 |
+| ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| R2.7: từng route bắt buộc `Idempotency-Key` (`POST` khởi tác vụ chạy nền, batch, upsert) | mỗi route chứng minh ở spec mở nó; spec này giao dependency khóa bắt buộc                                                         | custom-objects, tenant-config       |
+| Tác vụ chạy nền chuẩn                                                                    | W2                                                                                                                                | app-standards, đợt sau (W2)         |
+| Quy ước 429 và header RateLimit chung                                                    | W2; ngoại lệ W1: bộ giới hạn của custom-objects:R7.6 trả 429 kèm `Retry-After` qua `RateLimiterPort` của usage-and-limits (DO-49) | app-standards, đợt sau (W2)         |
+| Chính sách ngừng hỗ trợ: báo trước ít nhất 6 tháng trước khi gỡ một route                | W2 (DO-16)                                                                                                                        | app-standards, đợt sau (W2)         |
+| Giới hạn kích thước body                                                                 | W2; nhóm `/api/v1/studio` có trần riêng từ W1                                                                                     | app-standards, đợt sau (W2)         |
+| OpenAPI theo tenant và HTTP QUERY                                                        | W3                                                                                                                                | app-standards, đợt sau (W3)         |
+| Khóa chống lặp của tool, nhận trước (`platform.tool_execution_claims`)                   | ADR-0108 (Accepted) điểm 5                                                                                                        | runtime-hardening, ticket 01        |
+| Ngữ pháp khóa cho hiệu ứng của lượt chạy                                                 | ADR-0108 (Accepted) điểm 6                                                                                                        | workflow-engine                     |
+| Biến trong cây lọc, chuỗi lọc OData hay AIP-160                                          | chưa route nào đọc; chuỗi có thể đến sau và dịch về cây                                                                           | custom-objects                      |
+| `Cache-Control: no-store` cho tài nguyên có bảo vệ theo trường                           | thuộc route bản ghi                                                                                                               | custom-objects, field-security      |
+| Bộ đếm giới hạn theo tenant (`RateLimiterPort`), sửa bộ giới hạn tốc độ theo địa chỉ     | không thuộc quy ước HTTP chung (DO-49)                                                                                            | usage-and-limits, runtime-hardening |
+| Dịch văn bản lỗi phía máy chủ (`Accept-Language`)                                        | web dựng văn bản từ `code`                                                                                                        | không làm                           |
+| OData, GraphQL                                                                           | ngôn ngữ chọn bản ghi là cây lọc                                                                                                  | không làm                           |
 
 ## Dữ liệu
 
@@ -176,7 +176,8 @@ Một truy vấn phân trang không có index mang trọn làm CI đỏ, kể c�
 
 ## Phụ thuộc
 
-- foundations-hardening: lỗi idempotency mà hai spec cùng thấy chỉ được sửa ở ticket 02 của spec này; walker của APS1 đọc `app.openapi()`, thấy router lồng dưới FastAPI 0.141.1.
+- runtime-hardening: lỗi idempotency mà hai spec cùng thấy chỉ được sửa ở ticket 02 của spec này.
+- foundations-hardening: walker của APS1 đọc `app.openapi()`, thấy router lồng dưới FastAPI 0.141.1.
 - telemetry-and-audit: span OpenTelemetry mà `trace_id` đọc.
 - `AccessContext` do nền tảng dựng từ token đã xác minh: nguồn duy nhất của `caller_ref` (`principal_id`, grant của ADR-0024 (Proposed)).
 - telemetry-and-audit ticket 02 chờ ticket 03, vì index audit theo lượt chạy có một chủ ở đây (OPS-b).

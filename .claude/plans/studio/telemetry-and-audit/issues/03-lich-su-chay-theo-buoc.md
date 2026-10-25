@@ -229,7 +229,7 @@ timestamptz`, `duration_ms`, `error_type`, `input_preview` và `result_preview` 
   usage-and-limits/02 thêm, của `budget_counters`, `budget_leases` do usage-and-limits/03, của
   `studio.gate_case_results` do agent-lifecycle/04, của Bản ghi đồng ý và nhật ký gửi do compliance-pdpl/04 (chờ
   ticket này); lane bỏ qua và đếm sự kiện bị giữ khi Đóng băng; xóa trắng `tool_executions.output` qua hàm riêng
-  của lane (H:ADR-0122 (Accepted)\~foundations-hardening:R6.3); dòng `STUDIO_EXCLUSIONS` của `run_steps`; đăng ký
+  của lane (H:ADR-0122 (Accepted)\~runtime-hardening:R6.3); dòng `STUDIO_EXCLUSIONS` của `run_steps`; đăng ký
   `runs.read_payloads` ở đây.
 - 2026-10-24 (agent): áp kiểm nhất quán vòng 3 và các dòng tạm cùng ngày của spec: bỏ khóa của
   `studio.inbound_events`, `studio.trigger_deliveries` và khóa chống trùng khỏi bước 7, vì workflow-triggers/02 tạo

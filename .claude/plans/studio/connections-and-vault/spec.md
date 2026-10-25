@@ -425,7 +425,7 @@ không `workspace_id`, mỗi bảng một dòng có lý do trong `_TENANT_WIDE_O
   dịch vụ compose mới (OpenBao ở ticket 06, sau là smokescreen) và trivy; `studio-skeleton/03`: seam web và
   allowlist antd cho `/studio/connections`.
 - `.claude/plans/studio/foundations-hardening/issues/03-quyen-dw-app-va-rls-initplan.md`: hình policy RLS
-  và grant của `dw_app`; `foundations-hardening/05`: biến mạng và kho dữ liệu;
+  và grant của `dw_app`; `runtime-hardening/02`: biến mạng và kho dữ liệu;
   `.claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md`: viết lại
   `_CATALOG_COLUMNS` và `export_rows` của `offboarding.py`, mà ticket 02 (catalog xuất không liệt kê
   `secret_envelopes`) và ticket 06 (hủy khóa ở bước cuối của offboarding) cùng sửa, nên hai ticket chờ nó.
@@ -463,7 +463,7 @@ không `workspace_id`, mỗi bảng một dòng có lý do trong `_TENANT_WIDE_O
 - `.claude/plans/studio/tenant-config/issues/05-lien-ket-va-phien-ban-cau-hinh.md`: `RunBindingsPort` đáp ứng
   từ mục `bindings` của bản kê lượt chạy, mà ticket 05 dùng, và các `secret_version` mà mục đó ghim cho mỗi (kết
   nối, trường) (tenant-config:R7.4), mà lane `credential_purge` của ticket 05 đọc ở bản kê của mọi lượt chạy chưa
-  kết thúc, tức trạng thái ngoài `completed`, `failed`, `cancelled`, `dead_lettered` của foundations-hardening:R9.3
+  kết thúc, tức trạng thái ngoài `completed`, `failed`, `cancelled`, `dead_lettered` của runtime-hardening:R9.3
   (R1.11, R1.12).
 - Protocol do bên dùng khai: `RunBindingsPort` (tenant-config/05 đáp ứng từ bản kê, ADR-0110 (Accepted));
   `ConnectionDependentsPort` (spec này khai, tenant-config/05 đáp ứng theo tenant-config:R3.7).
@@ -476,7 +476,7 @@ không `workspace_id`, mỗi bảng một dòng có lý do trong `_TENANT_WIDE_O
   ticket 03, 04; tenant-config đổi cách bản kê ghim `secret_version` theo (kết nối, trường) (tenant-config:R7.4) →
   ticket 04 bước 2; model-connections (W2) gọi `connection_usable` với `purpose='model'` (ADR-0118 (Accepted) quyết 3)
   → R5.14, ticket 04 bước 2; workflow-triggers/02 đổi khoảng chồng của bí mật ký hay cách nó đọc `revoked_at` → R1.9,
-  R4.4, Dữ liệu, ticket 02; tenant-config/05 đổi chỗ bản kê ghim `secret_version`, hay foundations-hardening:R9.3 đổi
+  R4.4, Dữ liệu, ticket 02; tenant-config/05 đổi chỗ bản kê ghim `secret_version`, hay runtime-hardening:R9.3 đổi
   tập trạng thái của lượt chạy → R1.11, R1.12, ticket 05.
 
 ## Câu hỏi còn mở

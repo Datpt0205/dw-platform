@@ -45,7 +45,7 @@ message`, `data_location: VN`; `Message-ID` suy từ khóa chống lặp.
    vì `dw_app` không có quyền nào trên `platform.secret_envelopes` (ticket 02): ở mọi công ty, xóa dòng có
    `revoked_at <= now()` mà không lượt chạy chưa kết thúc nào của cùng công ty ghim cùng chủ thể, `field` và
    `secret_version` trong mục `bindings` của bản kê (`platform.worker_runs` có `status` ngoài `completed`, `failed`,
-   `cancelled`, `dead_lettered` của foundations-hardening:R9.3, nối `run_manifest_hash` tới `platform.run_manifests`;
+   `cancelled`, `dead_lettered` của runtime-hardening:R9.3, nối `run_manifest_hash` tới `platform.run_manifests`;
    dạng ghim của tenant-config:R7.4); không xóa gì khác; trả một dòng mỗi chủ thể có dòng bị xóa (`tenant_id`,
    workspace sở hữu của chủ thể như AAD của ticket 02 bước 3 đọc: `owning_workspace_id` của `platform.connections`
    cho `connection_id`, của thành phần Nguồn dữ liệu cho `inbound_endpoint_id` khi cột đó đã có; loại và id chủ thể;
@@ -112,7 +112,7 @@ message`, `data_location: VN`; `Message-ID` suy từ khóa chống lặp.
 - `apps/worker/src/dw_worker/main.py:473-477`; spec: R1.11 (lane quét đăng ký ở composition root với
   `interval_seconds`).
 - spec: R1.11, R1.12, R1.13, R5.15, CV24, CV25; ADR-0011 (Accepted); tenant-config:R7.4;
-  foundations-hardening:R9.3; ticket 02 (`revoked_at`, `platform.open_secret`, `platform.secret_status`), ticket 04
+  runtime-hardening:R9.3; ticket 02 (`revoked_at`, `platform.open_secret`, `platform.secret_status`), ticket 04
   (lý do `credential_revoked` của `connection_usable`).
 
 ## Comments

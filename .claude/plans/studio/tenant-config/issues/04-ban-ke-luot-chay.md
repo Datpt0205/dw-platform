@@ -1,7 +1,7 @@
 # 04 — Bản kê lượt chạy: ghim mọi thứ lượt chạy dùng, phân giải theo bản kê
 
 Status: needs-triage
-Blocked by: 02, 03, .claude/plans/studio/foundations-hardening/issues/06-run-va-outbox-khong-ket.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md
+Blocked by: 02, 03, .claude/plans/studio/runtime-hardening/issues/03-run-va-outbox-khong-ket.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md
 Area: studio
 Yêu cầu: R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.7, R3.6, R3.8, R2.18, TC15, TC21, TC28, TC29, TC31
 
@@ -49,7 +49,7 @@ TC28). Ticket 05 thêm mục điểm gắn vào cùng bản kê.
       xóa mà `offboarding.py` khai, không theo CASCADE của `platform.run_manifests` (studio-skeleton:R4.2);
       `platform.run_manifests` ở phần xóa theo chữ cái, sau `platform.worker_runs` mà `_ORDERED_FIRST` xóa trước (cạnh
       RESTRICT từ lượt chạy; ADR-0109 (Accepted) Consequences).
-    - Cột mới đi sau `ck_worker_runs_status` của foundations-hardening/06 trên cùng `platform.worker_runs`, nên
+    - Cột mới đi sau `ck_worker_runs_status` của runtime-hardening/03 trên cùng `platform.worker_runs`, nên
       revision này nối sau revision của ticket đó.
 2. Thân `dw.run_manifest/v1` (mô hình trong lõi `dw_studio`, `extra="forbid"`): `schema`, `release_manifest_ref`,
    `run_mode`, `root` (`kind`, `artifact_id`, `version_no`, `definition_hash`, và `stage` `draft` chỉ khi gốc là bản
@@ -123,7 +123,7 @@ TC28). Ticket 05 thêm mục điểm gắn vào cùng bản kê.
   vào bản kê cùng lớp riêng ở W2.
 - 2026-10-24 (agent): vòng sửa thứ tư, theo Quyết định cùng ngày của spec: lượt `simulate` được có gốc là bản
   Nháp, ghim giai đoạn `draft` và mã băm tạm; lượt khác có gốc `draft` bị từ chối (R6.1, R6.7, TC28; quyết định
-  của Đạt). Ticket này chờ foundations-hardening/06, vì `ck_worker_runs_status` có trước cột `run_manifest_hash`
+  của Đạt). Ticket này chờ runtime-hardening/03, vì `ck_worker_runs_status` có trước cột `run_manifest_hash`
   trên cùng `platform.worker_runs` (quyết định tạm của spec; ticket kia ghi cùng cạnh ở Comments của nó), và chờ
   foundations-hardening/07, vì cùng sửa `offboarding.py` và `test_offboarding.py`.
 - 2026-10-24 (agent): vòng sửa thứ tư, lượt b, theo các quyết định tạm cùng ngày của spec: `artifact_version_id` là FK
