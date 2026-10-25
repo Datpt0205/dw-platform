@@ -262,6 +262,14 @@ is built yet. Đạt accepted the ADR block on 2026-10-23 (0126 and 0127 on
         `transactional` message rule before W2, after counsel.
     11. Field lineage computed at submit, checked at every destination, and
         no write from a protected field to an open one.
+    12. (raised by pass g, an authorization question) the run view reads
+        `GET /api/v1/runs/{run_id}/steps` under `runs.read`
+        (telemetry-and-audit:R4.2), and no spec says whether a builder who
+        holds only `studio.workflows.edit` and `studio.workflows.test` may
+        read the steps of a simulated run; recommended: a holder of
+        `studio.workflows.test` reads the steps of the simulated runs they
+        requested, a `live` run still needs `runs.read`, and field
+        security applies as everywhere.
 - **Đạt, for W2 (domain-packs, `needs-info`):** Q4, whether the pack
   installer may use its own reserved prefix through the public routes, and
   Q5, which route writes `origin` on components that already exist.
