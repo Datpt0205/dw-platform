@@ -58,10 +58,10 @@ ticket thí điểm nào chờ ticket này.
    của nó, và một dòng như vậy vắng `assignee_id` thì không ai quyết được, cả hai trả 403 `permission_denied` (R12.4),
    để `assignee_id` vắng không bao giờ đọc thành `any` (failure-modes #7); mọi điều kiện của R9.2, R9.6, R9.8 giữ
    nguyên cho từng yêu cầu.
-7. `StepWaitLookupPort` (workflow-engine/05 khai, workflow-engine/07 thêm kết quả vào hợp đồng, ticket 06 đáp ứng) trả
-   thêm kết quả của điểm chờ, `approved`, `rejected` hay `pending`, tính sau `SELECT ... FOR UPDATE` trên các dòng
-   `studio.step_approvals` của điểm chờ theo thứ tự `id`, để hai quyết định cuối đồng thời nối tiếp nhau (R12.5,
-   R12.6); với `any`, kết quả là chính quyết định. Handler theo tiền tố `studio.step.` của workflow-engine đọc kết quả
+7. `StepWaitLookupPort` (workflow-engine/05 khai; workflow-engine/07 thêm kết quả vào hợp đồng và cho adapter của
+   ticket 06 trả kết quả của điểm chờ một yêu cầu): adapter tính kết quả, `approved`, `rejected` hay `pending`, trên
+   mọi dòng `studio.step_approvals` của điểm chờ sau `SELECT ... FOR UPDATE` theo thứ tự `id`, để hai quyết định
+   cuối đồng thời nối tiếp nhau (R12.5, R12.6); với `any`, kết quả vẫn là chính quyết định. Handler theo tiền tố `studio.step.` của workflow-engine đọc kết quả
    này, chỉ đặt dòng chờ `resolved` và lượt `queued` khi kết quả khác `pending`, và giữ dòng chờ `open` khi là
    `pending` (Phụ thuộc của spec; ADR-0112 (Accepted) quyết 7).
 8. Lúc tiếp tục, Bước `all` đọc trạng thái n yêu cầu của điểm chờ, không đọc giá trị tiếp tục: cả n `approved` thì

@@ -146,9 +146,8 @@ BUI-04, BUI-06).
 - R3.11 KHI người dựng mở kết quả một lượt mô phỏng, trang builder PHẢI vẽ lượt đó trên cùng Sơ đồ ở chế độ chỉ đọc,
   mỗi Bước mang trạng thái, thời gian, token và chi phí của Bước chạy của nó, đường lượt đã đi được tô và Bước chưa chạy
   ghi "Chưa chạy", luôn có chữ cùng biểu tượng, không chỉ màu.
-- R3.12 KHI người xem chọn một lần lặp của một Bước vòng lặp hay một làn của một Bước song song trên màn lượt chạy, màn
-  lượt chạy PHẢI hiện cho mỗi Bước trong khung hay làn đó đúng Bước chạy có `lane_path` và `iteration_path` khớp lựa
-  chọn.
+- R3.12 KHI người xem chọn một lần lặp của một Bước vòng lặp trên màn lượt chạy, màn lượt chạy PHẢI hiện cho mỗi Bước
+  trong thân đó, ở mọi làn, đúng Bước chạy có `iteration_path` khớp lựa chọn.
 - R3.13 TRONG KHI một Quy trình không có bản Nháp hay Bản ứng viên, KHI người dựng bấm "Tạo bản Nháp", trang builder
   PHẢI gọi `POST /api/v1/studio/artifacts/{id}/draft` đúng một lần và mở bản Nháp route trả cùng ETag của bản đó
   (tenant-config:R2.21).
@@ -236,7 +235,7 @@ BUI-04, BUI-06).
 | BU13 | Bố cục tất định; chèn không dời phần đứng trước và không đổi thứ tự                                                              | R1.6                | Property test trên cây ngẫu nhiên và F1-F9: cùng tài liệu → cùng tọa độ; chèn một Bước → chỉ các Bước đi sau chỗ chèn trong làn đó và trong các chuỗi bao ngoài đổi tọa độ, và chỉ theo chiều dọc; chèn một Bước có làn → không Bước nào đứng trước chỗ chèn đổi tọa độ dọc; mọi lần chèn giữ thứ tự dọc và thứ tự làn, không hai thẻ chồng nhau; đổi bố cục để xếp làn theo độ rộng hay theo thứ hạng, hay cho `workflow-layout.ts` import một gói → test đỏ |
 | BU14 | Màu, biểu tượng, cỡ thẻ và kiểu đường nối chỉ từ bộ từ vựng của theme; không bao giờ chỉ màu                                     | R1.5, R1.8, R1.9    | Một màu literal (`#…`, `rgb(`, `hsl(`) dưới glob canvas, trong `workflow-layout.ts` hay thành phần builder → test đỏ; một màu nhóm dưới 3:1 trên nền thẻ ở chế độ sáng hay tối → `theme-contrast.test.ts` đỏ; một huy hiệu hay nhãn làn chỉ có màu, không chữ → test đỏ                                                                                                                                                                                       |
 | BU15 | Bản Nháp mới chỉ khi người dựng bấm "Tạo bản Nháp"; một 409 không bao giờ thành lời gọi thứ hai                                  | R3.13, R3.14, R3.15 | Test thành phần: mở builder của Quy trình chỉ có bản Đang dùng → không lời gọi `POST .../draft`; bấm → đúng một lời gọi, rồi trang mở bản Nháp với ETag của nó; route giả trả 409 `candidate_pending` → trạng thái chỉ đọc của R3.10, không lời gọi thứ hai; 409 `draft_exists` → mở bản Nháp đang có, không lời gọi thứ hai; tạo bản Nháp lúc mở trang → test đỏ                                                                                             |
-| BU16 | Màn lượt chạy chỉ đọc, gắn Bước chạy theo lần lặp và làn                                                                         | R3.11, R3.12        | Test thành phần trên lượt mô phỏng của F3: màn lượt chạy không gọi lưu Nháp hay thao tác cây nào; chọn lần lặp 2 → mỗi Bước của thân hiện Bước chạy có `iteration_path` của lần 2; bỏ lọc theo `iteration_path`, hay cho sửa trên màn lượt chạy → test đỏ (bỏ lọc theo `lane_path` không làm test nào đỏ được, vì id Bước là duy nhất trong cây, workflow-engine:R1.1)                                                                                        |
+| BU16 | Màn lượt chạy chỉ đọc, gắn Bước chạy theo lần lặp                                                                                | R3.11, R3.12        | Test thành phần trên lượt mô phỏng của F3: màn lượt chạy không gọi lưu Nháp hay thao tác cây nào; chọn lần lặp 2 → mỗi Bước của thân hiện Bước chạy có `iteration_path` của lần 2; bỏ lọc theo `iteration_path`, hay cho sửa trên màn lượt chạy → test đỏ (bỏ lọc theo `lane_path` không làm test nào đỏ được, vì id Bước là duy nhất trong cây, workflow-engine:R1.1)                                                                                        |
 
 ## Tiêu chí xong
 
@@ -436,6 +435,10 @@ BUI-04, BUI-06).
   R3.15, Trong phạm vi, Ngoài phạm vi, Màn hình, BU15, Phụ thuộc, ticket 03. Nếu sai thì: trang builder tạo bản Nháp
   ngay khi mở một Quy trình không có bản Nháp hay Bản ứng viên, R3.13 đổi theo và BU15 bỏ ca "không lời gọi khi chưa
   bấm".
+- 25/10/2026 (agent, tạm): R3.12 thôi có bộ chọn làn: id Bước là duy nhất trong cây (workflow-engine:R1.1) và mọi làn
+  của một Bước song song vẽ cùng lúc trên Sơ đồ, nên làn không phân biệt Bước chạy nào mà id chưa phân biệt; màn lượt
+  chạy chọn lần lặp theo `iteration_path`, còn bộ chọn chỉ số của `logic.map` đến ở W2. Sửa: R3.12, BU16, ticket 03.
+  Nếu sai thì: R3.12 giữ bộ chọn làn và nêu Bước chạy mà nó phân biệt.
 
 ## Danh sách ticket
 

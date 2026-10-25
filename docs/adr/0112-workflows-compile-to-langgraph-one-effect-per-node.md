@@ -169,7 +169,8 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
    cancelled with it. The approved node's arguments are rendered when the approval opens, stored with `subject_hash`,
    shown raw and executed exactly (`subject_changed` otherwise). Tasks reach people through a `/studio/tasks` inbox
    (`POST /api/v1/studio/tasks/{id}/submit`, a sub-resource as ADR-0108 spells custom methods, with If-Match and
-   Idempotency-Key); a submission or decision resolves the wait and re-queues the run (ADR-0113).
+   Idempotency-Key); a submission, or the decision that settles the step (under `all`, the last approval or the first
+   rejection), resolves the wait and re-queues the run (ADR-0113).
 8. **AI nodes validate on the server.** `ai.llm` gets its model per call from the `ModelResolver`; its structured
    output is validated against the tenant's JSON Schema (ADR-0116's profile, at most 32 KiB and depth 5,
    `additionalProperties: false` forced) by the platform validator, with one repair attempt, then `output_invalid`.
@@ -366,4 +367,4 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
   `wf.steps_may_exceed_limit` are the planner's (if one is wrong, workflow-engine's validator table names it and this
   decision follows), and so are `approval_rule` and decision 7's one approval per assignee under one wait, as
   workflow-nodes R12 states them (if that is wrong, the step opens one approval holding a decision per assignee, as
-  R12's fallback says, and decision 7 follows).
+  R12's fallback says, and decision 7 follows). Decision 7 also says that under `all` only the decision that settles the step resolves its wait, where it had said that any decision does.

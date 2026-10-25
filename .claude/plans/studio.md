@@ -125,7 +125,14 @@ is built yet. Đạt accepted the ADR block on 2026-10-23 (0126 and 0127 on
     required fields from workflow-nodes/02, since workflow-engine/06 reads
     them before workflow-nodes/07 exists; a decision short of the last
     approval under `all` resolves no wait (ADR-0113 d4); usage-and-limits/04
-    hands `max_steps` to the step counter, not to `recursion_limit`.
+    hands `max_steps` to the step counter, not to `recursion_limit`; the
+    outcome that workflow-engine/07 adds to `StepWaitLookupPort` reaches its
+    one real adapter in the same ticket, which now waits for
+    workflow-nodes/06; marketing-pilot/03 waits for workflow-builder-ui/04,
+    the tier-A grammar that draws its approval and switch lanes; the run
+    view selects an iteration and no longer a lane; one simulated decision
+    serves every iteration of an approval in a loop body, a list per
+    iteration being W2.
 
     Nine editors, each followed by a verifier, applied them with every round-3
     row on 2026-10-24 (checker 24/24 in every folder). Their verifiers found

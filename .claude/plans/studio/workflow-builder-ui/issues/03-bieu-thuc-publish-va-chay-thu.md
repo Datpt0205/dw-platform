@@ -46,8 +46,8 @@ R3.10, R3.11, R3.12, R3.13, R3.14, R3.15, BU2, BU3, BU5, BU6, BU9, BU15, BU16).
 7. Màn lượt chạy (R3.11, R3.12): cùng Sơ đồ của ticket 02 ở chế độ chỉ đọc, không bảng Loại bước, không ô "+", không
    menu sửa, không lưu Nháp và không thao tác cây. Mỗi thẻ Bước mang trạng thái, thời gian, token và chi phí của Bước chạy
    từ `run_steps` bằng chữ cùng biểu tượng; đường đã đi được tô, với Bước phê duyệt là làn của quyết định giả lập nó đã
-   đi; Bước chưa chạy ghi "Chưa chạy". Một bộ chọn lần lặp (antd `Select`) cho mỗi Bước vòng lặp và một bộ chọn làn cho
-   mỗi Bước song song đọc `lane_path` và `iteration_path` mà mỗi Bước chạy mang, qua `GET /api/v1/runs/{run_id}/steps`
+   đi; Bước chưa chạy ghi "Chưa chạy". Một bộ chọn lần lặp (antd `Select`) cho mỗi Bước vòng lặp đọc `iteration_path` mà
+   mỗi Bước chạy mang, mọi làn của một Bước song song vẽ cùng lúc, qua `GET /api/v1/runs/{run_id}/steps`
    (telemetry-and-audit:R3.7, telemetry-and-audit:R4.2;
    `.claude/plans/studio/telemetry-and-audit/issues/03-lich-su-chay-theo-buoc.md`). Khung, đầu làn và nhãn của từng cấu
    trúc là ticket 04; màn này dùng chúng khi có, không chờ chúng.
@@ -87,8 +87,8 @@ R3.10, R3.11, R3.12, R3.13, R3.14, R3.15, BU2, BU3, BU5, BU6, BU9, BU15, BU16).
       tô, làn kia ghi "Chưa chạy"; màn lượt chạy không gọi lưu Nháp hay thao tác cây nào; cho sửa trên màn lượt chạy →
       test thành phần đỏ.
 - [ ] R3.12 (BU16): lượt mô phỏng của F3 (test thành phần với `GET /api/v1/runs/{run_id}/steps` giả) → chọn lần lặp
-      2 → mỗi Bước của thân vòng lặp hiện Bước chạy có `iteration_path` của lần 2; chọn làn 3 của Bước song song → các
-      Bước của làn 3 hiện Bước chạy có `lane_path` của làn đó; bỏ lọc theo `iteration_path` → test đỏ.
+      2 → mỗi Bước của thân vòng lặp, ở mọi làn của một Bước song song trong thân, hiện Bước chạy có `iteration_path`
+      của lần 2; bỏ lọc theo `iteration_path` → test đỏ.
 - [ ] R3.13 (BU15): Quy trình chỉ có bản Đang dùng → trang chỉ đọc kèm "Tạo bản Nháp", không lời gọi
       `POST .../draft` khi chưa bấm; bấm → đúng một lời gọi, rồi trang mở bản Nháp với ETag route trả; gọi route lúc mở
       trang → test thành phần đỏ.
@@ -120,3 +120,4 @@ R3.10, R3.11, R3.12, R3.13, R3.14, R3.15, BU2, BU3, BU5, BU6, BU9, BU15, BU16).
 - 2026-10-24 (agent): vòng sửa thứ tư, lượt b, theo các quyết định tạm cùng ngày của spec: lỗi `wf.*` mà route chạy mô phỏng trả khi nội dung nháp trượt bộ kiểm khi gửi kiểm định gắn về Bước (R3.6); nút Gửi kiểm định gửi `If-Match` là ETag của Nháp (R3.9).
 - 2026-10-24 (agent): vòng sửa thứ tư, lượt f, theo quyết định V4.17 của Đạt cùng ngày: Quy trình có Bản ứng viên đang chờ thì trang chỉ đọc, nêu "rút bản đang chờ về Nháp để sửa" và chỉ gọi lệnh rút của agent-lifecycle khi người dựng bấm (R3.10, BU9). Không thêm cạnh: ticket đã chờ agent-lifecycle/03, nơi có lệnh rút.
 - 2026-10-25 (agent): lượt g, theo V4.24 của Đạt và G-5 ngày 24/10/2026: kết quả lượt mô phỏng mở trên màn lượt chạy cùng Sơ đồ, chỉ đọc, chọn lần lặp và làn (R3.11, R3.12, BU16), thay lớp phủ trước đây; Quy trình không có bản Nháp hay Bản ứng viên mở bản Nháp mới chỉ khi người dựng bấm Tạo bản Nháp (R3.13, R3.14, R3.15, BU15). Không thêm cạnh: ticket đã chờ telemetry-and-audit/03 (làn và `iteration_path` của Bước chạy), và tenant-config/02 (route tạo bản Nháp) đã đứng trước nó qua ticket 02.
+- 2026-10-25 (agent): màn lượt chạy thôi có bộ chọn làn (R3.12, BU16): id Bước là duy nhất trong cây (workflow-engine:R1.1) và mọi làn của một Bước song song vẽ cùng lúc, nên làn không phân biệt Bước chạy nào mà id chưa phân biệt, và ca âm của nó không đỏ được; bộ chọn chỉ số của `logic.map` đến ở W2 (dòng Quyết định 25/10/2026 của spec).
