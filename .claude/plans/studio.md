@@ -7,7 +7,7 @@ departments, starting with Marketing. It is platform code in this repository
 is built yet. Đạt accepted the ADR block on 2026-10-23 (0126 and 0127 on
 2026-10-24), all but ADR-0119, which waits for the code-sandbox spike.
 
-## State (2026-10-25): round 4's passes and the split applied; a fourth check next
+## State (2026-10-25): Đạt's V4.30-V4.41 being applied in pass h
 
 - **Round 4 in progress (2026-10-24):** Đạt accepted the 13 recommendations
   of consistency round 3, splitting a spec past the size of
@@ -161,9 +161,57 @@ is built yet. Đạt accepted the ADR block on 2026-10-23 (0126 and 0127 on
     kept and the controls kept as RH15-RH29 and RH32, its tickets
     numbered 01-03 because the checker counts every ticket folder from 01;
     G5 stays in both, since a ticket of each can break the resume of an
-    approved run. Then Đạt's answers to the review of ChatGPT's memo
-    (Decisions owed), a fourth consistency check, and the readiness gate for
-    app-standards, foundations-hardening and runtime-hardening.
+    approved run.
+
+    Đạt's decisions on the answer to ChatGPT's architecture review
+    (2026-10-25, "theo khuyến nghị hết cho tôi"), applied by pass h: V4.30
+    YC41's promise becomes levels of guarantee, internal effects exactly
+    once, an external one exactly once when its Action declares a provider
+    key or a lookup, otherwise never resent on an unknown outcome but parked
+    on an `outcome_review` wait that a holder of `runs.reconcile` settles
+    (another person than the requester for a critical effect), with a
+    `delivery` block in `dw.connector/v1`, a `dispatched` row before every
+    call and typed egress results; V4.31 the false edges go, five bundled
+    tickets split, W1 exits twice, W1a (the pilot on profile `test`,
+    `marketing-pilot/05`) and W1b (uat, the assistant, `marketing-pilot/06`),
+    behind three gates, E1 before the first effect, E2 before a deployed
+    environment, E3 before real personal data; V4.32 typed slots stay, one
+    harness and one seed measure the W1 and W2 DDL; V4.33
+    `flow.subworkflow`, up to three levels, joins tier B; V4.34 LangGraph
+    stays behind the two-week S-RT spike (discovery/14), `durability="sync"`
+    pinned and the execution semantics proved by golden traces; V4.35 the run
+    manifest pins the connection and binding set, not the secret version, and
+    revocation for compromise stops unfinished runs; V4.36 `run_steps` gains
+    `attempt`, `port` and `child_run_id`, a reason-code catalogue and no Fork
+    from a step; V4.37 deterministic scenario cases at the workflow gate and a
+    review screen with the read-only canvas, a diff layer, gate results and
+    cost; V4.38 a tenant is created with two owners and stays `setup` until
+    the second is active, a partner may be the second person, an operator
+    never; V4.39 a purchase-request probe runs in CI from W1, and a
+    `transactional` rule waits for counsel before W2; V4.40 field lineage at
+    submit, recipients checked at every destination and no write-down (W2,
+    before its destinations); V4.41 a holder of `studio.workflows.test` reads
+    the steps of the simulated runs they requested. The planner's calls of
+    pass h, each logged `(agent, tạm)` with `Nếu sai thì:`, are cited as
+    H-1-H-18: H-1 a retention fragment per store, the format, loader and
+    terms table in telemetry-and-audit/01; H-2 the offboarding steps ordered
+    from the RESTRICT edges; H-3 the executor's guard registry in
+    tools-and-skills/01; H-4 prices leave the model profiles in
+    usage-and-limits/02 first; H-5 W1 implements the internal, unkeyed and
+    concurrent levels only, the keyed level and `studio_reconcile` with the
+    first keyed connector (W2), no compensation block; H-6 an unresolved
+    effect at the deadline audits `run.effect_unresolved`; H-7 a fake
+    `RecordsPort` with a contract suite; H-8 `runs.reconcile` registered by
+    workflow-engine/08; H-9 S-RT is discovery/14; H-10 a call uses the latest
+    unrevoked secret version and records it, a replaced version is purged
+    after 24 hours; H-11 no `branch_key`; H-12 telemetry-and-audit owns the
+    reason-code catalogue; H-13 "Chạy lại mô phỏng" replaces Fork (W2); H-14
+    a run records its reached `outcomes[]`; H-15 the below-two alert goes to
+    tenant-depth holders of `platform.members.write`; H-16 a `domain-probe`
+    folder; H-17 `/runs` unchanged for builders; H-18 the node wrapper applies
+    pinned simulated results. Then a fourth consistency check, and the
+    readiness gate for app-standards, foundations-hardening and
+    runtime-hardening.
 
 - **Round 3 applied on 2026-10-24:** Đạt took every recommendation still open
   (`studio/discovery` coverage review N1-N10, the two CRITICAL rows of round 2,
@@ -236,40 +284,14 @@ is built yet. Đạt accepted the ADR block on 2026-10-23 (0126 and 0127 on
 - **Canvas and control flow, decided (2026-10-24, "theo khuyến nghị hết"):**
   V4.24-V4.29 under State, applied by round 4's seventh pass
   (2026-10-25).
-- **Đạt, from the answer to ChatGPT's architecture review (2026-10-25)**, each
-  with a recommendation:
-    1. YC41's "the provider receives each effect exactly once" cannot hold (a
-       claim taken over after its lease can send twice): three tiers of
-       guarantee and an `outcome_review` wait when the outcome is unknown.
-    2. W1 is long through its dependency graph, not its scope: remove eight
-       false edges, split four bundled tickets, and three gates (before the
-       first effect, before a deployed environment, before real personal
-       data) for W1's exit, before any ticket is `ready-for-agent`.
-    3. Typed slots stay; their measurement runs on W1 and W2's DDL with one
-       harness and seed (JSONB indexes are not leakproof under RLS).
-    4. `flow.subworkflow`, up to three levels, joins the W1 tail.
-    5. LangGraph stays, behind a two-week runtime spike with thresholds and
-       `durability="sync"` pinned; a Postgres token engine only as fallback.
-    6. The run manifest pins the connection, not the secret version;
-       rotation is separated from revocation for compromise (refines V4.20).
-    7. `run_steps` gains attempt, iteration path, port, child run and branch
-       before the table exists, with a reason-code catalogue in Vietnamese.
-    8. Deterministic scenario cases for workflows at the W1 gate, and a
-       review screen with the read-only canvas and a diff.
-    9. A tenant is created with two owners; a customer's partner may be the
-       second person, a platform operator never.
-    10. A second-domain probe (a purchase request) in CI from W1; a
-        `transactional` message rule before W2, after counsel.
-    11. Field lineage computed at submit, checked at every destination, and
-        no write from a protected field to an open one.
-    12. (raised by pass g, an authorization question) the run view reads
-        `GET /api/v1/runs/{run_id}/steps` under `runs.read`
-        (telemetry-and-audit:R4.2), and no spec says whether a builder who
-        holds only `studio.workflows.edit` and `studio.workflows.test` may
-        read the steps of a simulated run; recommended: a holder of
-        `studio.workflows.test` reads the steps of the simulated runs they
-        requested, a `live` run still needs `runs.read`, and field
-        security applies as everywhere.
+- **Review answers, decided (2026-10-25, "theo khuyến nghị hết cho tôi"):**
+  the eleven rows from the answer to ChatGPT's review and the builders' read
+  of simulated runs are V4.30-V4.41 under State, being applied in pass h.
+- **Đạt, after pass h** (V4.38's tenant `setup` state, asked in a turn of
+  their own): Q-h1, what may anyone do while a tenant is `setup`
+  (recommended: as `locked`, except the two owners' first sign-in and
+  acceptance and the operator's routes); Q-h2, may a `setup` tenant be
+  offboarded (recommended: yes, through the existing flow).
 - **Đạt, for W2 (domain-packs, `needs-info`):** Q4, whether the pack
   installer may use its own reserved prefix through the public routes, and
   Q5, which route writes `origin` on components that already exist.
@@ -287,7 +309,8 @@ is built yet. Đạt accepted the ADR block on 2026-10-23 (0126 and 0127 on
   356/2025/ND-CP, Art. 21-27) before any real personal data; roles and DPA
   (DO-54.2); the incident-notice term (DO-56.2); Art. 4 of Decree 356 for
   field defaults (DO-34.2); the AI Law (DO-60); fan-out to two tenants of one
-  Page or OA (DO-48.2).
+  Page or OA (DO-48.2); the legal basis for transactional messages under Law
+  91/2025 and Decree 356 before the `transactional` rule (V4.39).
 
 ## Lộ trình
 
