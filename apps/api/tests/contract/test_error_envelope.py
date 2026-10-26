@@ -61,13 +61,15 @@ class Item(BaseModel):
     count: int
 
 
-def make_app() -> FastAPI:
+def make_app(*, rate_limit_per_minute: int = 0) -> FastAPI:
     async def ok_probe() -> CheckState:
         return "ok"
 
     app = create_app(
         ApiContainer(
-            settings=ApiSettings(profile="test", dev_secret=SECRET),
+            settings=ApiSettings(
+                profile="test", dev_secret=SECRET, rate_limit_per_minute=rate_limit_per_minute
+            ),
             engine=None,
             health_service=HealthService(probes={"database": ok_probe}),
             token_verifier=DevTokenVerifier(SECRET),
@@ -226,6 +228,48 @@ async def test_a_401_still_challenges_with_bearer() -> None:
 
     assert_problem(response, 401, "unauthenticated")
     assert response.headers["WWW-Authenticate"] == "Bearer"
+
+
+async def test_a_caller_over_the_rate_limit_gets_a_problem_too() -> None:
+    app = make_app(rate_limit_per_minute=1)
+    async with LifespanManager(app):
+        transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            await client.get("/api/v1/khong-co")
+            limited = await client.get("/api/v1/khong-co")
+
+    body = assert_problem(limited, 429, "rate_limited")
+    assert body["details"] == {"limit_per_minute": 1}
+    assert int(limited.headers["Retry-After"]) >= 1
+
+
+@pytest.mark.parametrize(
+    "sent",
+    ["a b", "req<script>", "dấu-tiếng-việt", "", "x" * 129],
+    ids=["space", "markup", "non-ascii", "empty", "129-chars"],
+)
+async def test_a_request_id_outside_the_safe_set_is_replaced(sent: str) -> None:
+    # As bytes: a header is octets on the wire, and httpx refuses a non-ASCII str.
+    response = await send(
+        make_app(), "POST", "/api/v1/_test/refuse", headers={"X-Request-ID": sent.encode()}
+    )
+
+    body = assert_problem(response, 409, "conflict")
+    assert body["request_id"] != sent
+    assert uuid.UUID(body["request_id"])
+    if sent:
+        assert sent not in response.text
+        assert all(sent not in value for value in response.headers.values())
+
+
+async def test_a_request_id_in_the_safe_set_is_kept_up_to_128_characters() -> None:
+    sent = "Req_1.a-" + "x" * 120
+    response = await send(
+        make_app(), "POST", "/api/v1/_test/refuse", headers={"X-Request-ID": sent}
+    )
+
+    assert response.json()["request_id"] == sent
+    assert response.headers["X-Request-ID"] == sent
 
 
 def _authenticated(app: FastAPI) -> FastAPI:

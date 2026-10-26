@@ -14,7 +14,10 @@ from collections.abc import Callable
 
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
+from starlette.responses import Response
+
+from dw_api.errors import problem_response
+from dw_kernel.errors import ErrorCode
 
 _WINDOW_SECONDS = 60.0
 _EXEMPT_PATHS = ("/api/v1/health", "/api/v1/ready")
@@ -58,14 +61,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         if count > self._limit:
             retry_after = max(1, int(_WINDOW_SECONDS - (now - window_start)))
-            return JSONResponse(
-                status_code=429,
+            # Answered here, before any route or handler, so it is built by
+            # the same function every handler uses.
+            return problem_response(
+                request,
+                ErrorCode.RATE_LIMITED,
+                "too many requests, slow down",
+                details={"limit_per_minute": self._limit},
                 headers={"Retry-After": str(retry_after)},
-                content={
-                    "code": "rate_limited",
-                    "message": "too many requests, slow down",
-                    "details": {"limit_per_minute": str(self._limit)},
-                    "request_id": getattr(request.state, "request_id", None),
-                },
             )
         return await call_next(request)
