@@ -1,4 +1,4 @@
-# Hiệu ứng chạy một lần, biên mạng, run và outbox không kẹt
+# Hiệu ứng theo mức bảo đảm, biên mạng, run và outbox không kẹt
 
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 25/10/2026
@@ -9,8 +9,8 @@ Studio gọi công cụ có hiệu ứng, gọi ra ngoài và xếp run cùng s�
 chạy hai lần, một client lách giới hạn tốc độ, một URL ra ngoài tới địa chỉ nội bộ, kho vector và cache không
 đòi xác thực, một run kẹt sau khi resume chết và một sự kiện outbox đốt hết lượt thử trong hai giây. Spec này sửa
 các lỗi đã đo trong code ngày 23/10/2026, mỗi bản vá kèm một test âm đã thấy đỏ trước bản vá và đỏ lại khi hoàn
-tác; không thêm tính năng. Nó phục vụ YC4, YC41 (phần mỗi tác động được nhận đúng một lần), YC63 và phần công cụ
-của YC5. Spec tách từ foundations-hardening (Quyết định), nên số R6-R10, G5, G7 và số kiểm soát giữ nguyên,
+tác; không thêm tính năng. Nó phục vụ YC4, YC41 (mức đồng thời và nhật ký lần gửi của các mức bảo đảm, V4.30), YC63
+và phần công cụ của YC5. Spec tách từ foundations-hardening (Quyết định), nên số R6-R10, G5, G7 và số kiểm soát giữ nguyên,
 kiểm soát mang tiền tố RH; ticket của spec khác chạm cùng hàm, bảng hay tệp với một ticket ở đây chờ ticket đó
 qua dòng Blocked by của chúng (ADR-0103 (Accepted), ADR-0108 (Accepted)).
 
@@ -124,19 +124,22 @@ qua dòng Blocked by của chúng (ADR-0103 (Accepted), ADR-0108 (Accepted)).
 
 Số R6-R10 giữ nguyên từ foundations-hardening, nơi chúng được viết; spec này không có R1-R5.
 
-### R6 — Công cụ có hiệu ứng chạy đúng một lần và không có cửa sau [Sửa]
+### R6 — Công cụ có hiệu ứng không gửi trùng theo mức bảo đảm, và không có cửa sau [Sửa]
 
-Mỗi hiệu ứng của một công cụ chạy một lần dù lời gọi trùng nhau, và mọi thứ model gọi được đều đi qua
-ToolExecutor (ADR-0108 (Accepted) quyết định 5, ADR-0116 (Accepted) quyết định 3 và 7).
+Hai lời gọi cùng khóa không cùng gửi khi claim còn hạn (mức đồng thời), mỗi lần gửi ra ngoài có một dòng `dispatched`
+bền trước lời gọi, một lần gửi chưa biết kết quả không bao giờ được gửi lại mù mà giao cho `on_unknown` của Hành động
+(mức không khóa của SMTP: tự động thì tối đa một lần), và mọi thứ model gọi được đều đi qua ToolExecutor (V4.30;
+ADR-0108 (Accepted) quyết định 5, ADR-0116 (Accepted) quyết định 3 và 7). Mức có khóa hay tra cứu không ở lát này (H-5).
 Trước đây: executor tìm lần thành công rồi mới chạy handler (`packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py:202-222`).
 
 - R6.1 NẾU hai lời gọi cùng khóa chống lặp tới một công cụ có `side_effect_level` khác `none` chạy
-  đồng thời, THÌ ToolExecutor PHẢI chạy handler đúng một lần.
+  đồng thời trong khi claim của một lời gọi còn hạn, THÌ ToolExecutor PHẢI chạy handler cho đúng một lời gọi, lời
+  gọi kia nhận replay hay `ConflictError` (mức đồng thời; V4.30).
 - R6.2 NẾU người giữ một claim đã bị tiếp quản sau `expires_at` nhả claim, THÌ ToolExecutor PHẢI giữ
   nguyên claim của người giữ mới.
 - R6.3 NẾU vai `dw_app` UPDATE một dòng `platform.tool_executions` hay ghi `status` ngoài tập mà
-  CHECK `ck_tool_executions_status` cho phép (W1: `succeeded`, `failed`, cộng `simulated` từ
-  tenant-config/03), THÌ PostgreSQL PHẢI từ chối câu lệnh và không đổi dòng nào.
+  CHECK `ck_tool_executions_status` cho phép (W1: `succeeded`, `failed`, `dispatched`, `outcome_unknown` từ lần tạo,
+  cộng `simulated` từ tenant-config/03), THÌ PostgreSQL PHẢI từ chối câu lệnh và không đổi dòng nào.
 - R6.4 NẾU danh sách công cụ của một lượt gọi model có mục không phải `BaseTool` của nền tảng (dict
   hay công cụ phía nhà cung cấp), THÌ runner PHẢI gọi model mà không có mục đó.
 - R6.5 NẾU input của một lần gọi công cụ có khóa bí mật nằm trong mảng ở độ sâu bất kỳ, THÌ
@@ -147,6 +150,23 @@ Trước đây: executor tìm lần thành công rồi mới chạy handler (`pa
   PHẢI xóa claim đó ở lượt chạy kế tiếp của lane.
 - R6.8 NẾU một lần ghi claim của tenant A mang `workspace_id` của một workspace thuộc tenant B, THÌ
   PostgreSQL PHẢI từ chối lần ghi đó và không ghi dòng nào.
+- R6.9 NẾU khóa của một lời gọi có một lần gửi chưa biết kết quả (dòng `dispatched` mới nhất của khóa trong
+  `platform.tool_executions` chưa có dòng `succeeded` hay `failed` nào sau nó), THÌ ToolExecutor PHẢI không gọi handler
+  và trả kết quả có kiểu `outcome_unknown` để bên gọi làm theo `on_unknown` của Hành động, dù claim của lời gọi là
+  claim mới, claim tiếp quản hay claim mà lane đã dọn (V4.30; H-5).
+- R6.10 KHI một lời gọi gặp claim cùng khóa đã quá `expires_at` mà khóa đó không có lần gửi nào chưa biết kết quả
+  (R6.9), ToolExecutor PHẢI tiếp quản claim rồi đi tiếp bước ghi `dispatched` và gọi handler, vì mọi lần gửi trước của
+  khóa đã có kết quả biết được (V4.30).
+- R6.11 KHI ToolExecutor sắp gọi handler của một lời gọi có hiệu ứng ra ngoài nền tảng (W1: Hành động
+  `connector_action` có `side_effect_level` khác `none`) mà không bị giả lập (tenant-config:R5.1), ToolExecutor PHẢI
+  chèn một dòng `dispatched` cho khóa đó và commit nó trong một giao dịch riêng trước lời gọi ra ngoài (V4.30).
+- R6.12 KHI lời gọi handler sau một dòng `dispatched` kết thúc, ToolExecutor PHẢI ghi đúng một dòng kết thúc cho lần
+  gửi đó theo kết quả có kiểu: `succeeded` khi handler trả kết quả, `failed` mang mã khi handler báo `not_dispatched`
+  hay `rejected`, và `outcome_unknown` khi handler báo `outcome_unknown` hay ném một lỗi không có kiểu nào trong ba
+  kiểu đó (V4.30; `failure-modes.md` #7).
+- R6.13 NẾU claim của một lời gọi đã bị tiếp quản hay đã quá `expires_at` lúc lời gọi đó sắp chèn dòng `dispatched`,
+  THÌ ToolExecutor PHẢI không chèn dòng đó và không gọi handler, nên người giữ cũ treo quá hạn không gửi song song với
+  người giữ mới (V4.30).
 
 ### R7 — Giới hạn tốc độ theo địa chỉ và một chính sách địa chỉ ra ngoài [Sửa]
 
@@ -225,45 +245,58 @@ Số G giữ nguyên từ foundations-hardening; G5 ở cả hai spec (Quyết �
 - Bảng `platform.tool_execution_claims` (ADR-0108 (Accepted) quyết định 5), lane
   `tool_claims_retention`, CHECK và quyền của `platform.tool_executions`, lọc mục không phải
   `BaseTool`, che bí mật trong mảng, ghim `deepagents`, test hợp đồng danh sách công cụ.
+- Nhật ký lần gửi trong `platform.tool_executions` (V4.30): dòng `dispatched` commit trước lời gọi ra ngoài và rào bằng
+  `claim_token`, dòng kết thúc theo kết quả có kiểu, kiểm lần gửi chưa biết kết quả trước mọi lần gọi handler (R6.9
+  tới R6.13), và ba lỗi có kiểu của một lần gửi mà `dw_agent_runtime` khai cho handler ném (`not_dispatched`,
+  `rejected` mang mã, `outcome_unknown`); đây là bước giành lượt và ghi `dispatched` mà tools-and-skills/01 đưa vào sổ
+  bước của `ToolExecutor` (tools-and-skills:R2.6; H-3).
 - Xô giới hạn tốc độ theo địa chỉ; một chính sách địa chỉ trong `net_guard`; xác thực Qdrant và
   Valkey ở mọi profile; vai `dw_monitor`; digest cho ảnh bên thứ ba và kiểm CI của nó.
 - Compare-and-set khi resume; CHECK trạng thái run, yêu cầu phê duyệt, quyết định; `available_at`,
   `dead_at`, gauge `dw_outbox_dead_letters`, cảnh báo `DwOutboxDeadLetters` và script phát lại thư chết
-  của người vận hành.
+  của người vận hành, cùng mảnh `configs/copy/audit_actions.d/runtime-hardening.yaml` mang nhãn của audit
+  `platform.outbox.replayed` (telemetry-and-audit:R1.6; H-21).
 
 ## Ngoài phạm vi
 
-| Việc                                                                                                                                       | Vì sao                                                                                                                                                                                              | Chủ                                           |
-| ------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
-| Idempotency HTTP gắn người gọi, fencing token, lane quét khóa                                                                              | Một chủ cho idempotency HTTP (ADR-0108 (Accepted) quyết định 4)                                                                                                                                     | `app-standards` ticket 02                     |
-| Egress client ghim địa chỉ lúc kết nối, smokescreen                                                                                        | Kiểm DNS chỉ trước khi dùng là việc của egress client; ticket 02 sửa vị từ dùng chung                                                                                                               | `connections-and-vault` (ADR-0115 (Accepted)) |
-| Giới hạn theo tenant dùng chung giữa các bản sao API qua `RateLimiterPort`; mất Valkey thì mỗi tiến trình giữ xô ở hạn mức chia số bản sao | DO-49: usage-and-limits là chủ duy nhất của giới hạn theo tenant; middleware của ticket 02 chỉ chặn ở cửa API theo địa chỉ và bearer                                                                | `usage-and-limits`                            |
-| Lease và tiếp quản run trong 90 giây (YC41)                                                                                                | Hàng đợi run chưa có                                                                                                                                                                                | `workflow-engine` (ADR-0113 (Accepted))       |
-| Ghi `expired` khi yêu cầu phê duyệt hết hạn, cùng YC52 và lane hẹn giờ                                                                     | Ticket 03 chỉ mở CHECK cho giá trị này; ở W1 một phê duyệt không có hạn của riêng nó, và hạn chót của lượt chạy kết thúc lượt còn chờ cùng phê duyệt mở của nó (V4.14, ADR-0113 (Accepted) quyết 3) | `workflow-engine`, W2 (ADR-0112 (Accepted))   |
-| TLS chặng nội bộ, sao lưu mã hóa, SLA báo sự cố 24 giờ từ khi nền tảng biết (DO-56.2)                                                      | W2 theo ADR-0123 (Accepted); runbook và sổ sự cố có trước chạy bóng                                                                                                                                 | `compliance-pdpl`                             |
-| Xóa dòng outbox đã xử lý và hạn giữ của nó                                                                                                 | Hạn giữ là chủ đề không đoán và chưa ai quyết; bảng thời hạn của DO-52 không có outbox                                                                                                              | đợt sau                                       |
-| Xóa `platform.tool_executions.output` sau 30 ngày (ADR-0122 (Accepted) quyết 7) qua một hàm riêng của lane lưu giữ                         | R6.3 thu UPDATE của `dw_app` trên bảng này và không trả lại; telemetry-and-audit là chủ tệp chính sách retention và lane lưu giữ, như với payload của `run_steps`                                   | `telemetry-and-audit`                         |
+| Việc                                                                                                                                             | Vì sao                                                                                                                                                                                              | Chủ                                                      |
+| ------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| Idempotency HTTP gắn người gọi, fencing token, lane quét khóa                                                                                    | Một chủ cho idempotency HTTP (ADR-0108 (Accepted) quyết định 4)                                                                                                                                     | `app-standards` ticket 02                                |
+| Egress client ghim địa chỉ lúc kết nối, smokescreen                                                                                              | Kiểm DNS chỉ trước khi dùng là việc của egress client; ticket 02 sửa vị từ dùng chung                                                                                                               | `connections-and-vault` (ADR-0115 (Accepted))            |
+| Giới hạn theo tenant dùng chung giữa các bản sao API qua `RateLimiterPort`; mất Valkey thì mỗi tiến trình giữ xô ở hạn mức chia số bản sao       | DO-49: usage-and-limits là chủ duy nhất của giới hạn theo tenant; middleware của ticket 02 chỉ chặn ở cửa API theo địa chỉ và bearer                                                                | `usage-and-limits`                                       |
+| Lease và tiếp quản run trong 90 giây (YC41)                                                                                                      | Hàng đợi run chưa có                                                                                                                                                                                | `workflow-engine` (ADR-0113 (Accepted))                  |
+| Ghi `expired` khi yêu cầu phê duyệt hết hạn, cùng YC52 và lane hẹn giờ                                                                           | Ticket 03 chỉ mở CHECK cho giá trị này; ở W1 một phê duyệt không có hạn của riêng nó, và hạn chót của lượt chạy kết thúc lượt còn chờ cùng phê duyệt mở của nó (V4.14, ADR-0113 (Accepted) quyết 3) | `workflow-engine`, W2 (ADR-0112 (Accepted))              |
+| TLS chặng nội bộ, sao lưu mã hóa, SLA báo sự cố 24 giờ từ khi nền tảng biết (DO-56.2)                                                            | W2 theo ADR-0123 (Accepted); runbook và sổ sự cố có trước chạy bóng                                                                                                                                 | `compliance-pdpl`                                        |
+| Xóa dòng outbox đã xử lý và hạn giữ của nó                                                                                                       | Hạn giữ là chủ đề không đoán và chưa ai quyết; bảng thời hạn của DO-52 không có outbox                                                                                                              | đợt sau                                                  |
+| Xóa `platform.tool_executions.output` sau 30 ngày (ADR-0122 (Accepted) quyết 7) qua một hàm riêng của lane lưu giữ                               | R6.3 thu UPDATE của `dw_app` trên bảng này và không trả lại; telemetry-and-audit là chủ chính sách retention và lane lưu giữ, như với payload của `run_steps`                                       | `telemetry-and-audit`                                    |
+| Egress trả kết quả có kiểu (`not_dispatched`, `rejected`, `outcome_unknown`, `succeeded`) và ném ba lỗi có kiểu của ticket 01                    | V4.30 mục 2; egress client là chủ kết quả có kiểu (ADR-0115 (Accepted) quyết 6), ticket 01 chỉ khai ba lỗi mà executor đọc (R6.12)                                                                  | `connections-and-vault` (ticket 03)                      |
+| Điểm chờ `outcome_review`, route giải dưới `runs.reconcile`, wrapper chỉ thử lại khi `not_dispatched` hay `rejected` thử lại được                | V4.30 mục 5, 6: lát này trả `outcome_unknown` (R6.9, R6.12), động cơ đỗ lượt và giải; lần giải đóng lần gửi chưa biết kết quả bằng một dòng kết thúc (Phụ thuộc)                                    | `workflow-engine` (ticket 03, ticket 08)                 |
+| W2: mức có khóa hay tra cứu (`idempotency.mode` khác `none`, `reconciliation`, `resend_same_key`, `lookup_then_resend`, lane `studio_reconcile`) | H-5: tác động ra ngoài duy nhất của W1 là SMTP, không khóa, không tra cứu; khối `delivery` có đủ trường nhưng bộ nạp từ chối các giá trị đó tới trình kết nối đầu tiên khai chúng                   | `connections-and-vault`, `workflow-engine`, đợt sau (W2) |
+| Cột `credential_version` của `platform.tool_executions`                                                                                          | H-10: egress phân giải bí mật nên connections-and-vault là chủ cột; ticket 01 không đổi vì cột đó                                                                                                   | `connections-and-vault`                                  |
 
 ## Kiểm soát
 
-| #    | Kiểm soát                                         | Yêu cầu      | Test âm                                                                                                                                                                                                                         |
-| ---- | ------------------------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| RH15 | Công cụ có hiệu ứng chạy một lần                  | R6.1, R6.2   | Hai lời gọi `external` cùng khóa trên executor, handler ngủ 0,5 giây → handler chạy một lần; nhả bằng token cũ → claim mới còn; gỡ claim → đỏ                                                                                   |
-| RH16 | Lần gọi công cụ chỉ thêm, trạng thái có CHECK     | R6.3         | Bằng `dw_app`: UPDATE `platform.tool_executions` → `permission denied`; INSERT `status='bogus'` → CHECK từ chối                                                                                                                 |
-| RH17 | Không có cửa sau quanh ToolExecutor               | R6.4, R6.6   | Mục dict trong danh sách công cụ → model không nhận; agent từ factory thật với toolset rỗng → model chỉ thấy `write_todos`; thêm một công cụ dựng sẵn → đỏ                                                                      |
-| RH18 | Bí mật trong mảng bị che                          | R6.5         | Input `{"items": [{"api_key": "sk-123"}]}` thất bại → audit `tool.failed` mang `[REDACTED]`; bỏ đệ quy vào list → đỏ                                                                                                            |
-| RH19 | Claim mồ côi có người dọn                         | R6.7         | Claim quá hạn → hết sau một lượt lane, claim chưa hạn còn; không đăng ký lane → đỏ                                                                                                                                              |
-| RH20 | Giới hạn tốc độ không lách bằng bearer ngẫu nhiên | R7.1         | `10 × L + 1` request từ một địa chỉ, mỗi request một bearer → request cuối 429; bỏ xô địa chỉ → đỏ                                                                                                                              |
-| RH21 | Không gọi ra địa chỉ không global                 | R7.2         | Resolver giả trả `100.64.0.1`, `100.100.100.200`, `224.0.0.1`, `ff02::1`, `64:ff9b::a9fe:a9fe` → `OutboundUrlError`; vị từ cũ → đỏ                                                                                              |
-| RH22 | Kho dữ liệu đòi xác thực                          | R8.1, R8.2   | Settings `uat` thiếu `qdrant_api_key` → không khởi động; compose smoke gọi Qdrant không khóa → 401, Valkey không mật khẩu → `NOAUTH`                                                                                            |
-| RH23 | Ảnh bên thứ ba ghim digest                        | R8.3         | Gỡ `@sha256:` khỏi một `image:` → kiểm CI đỏ                                                                                                                                                                                    |
-| RH24 | Exporter không dùng vai ứng dụng                  | R8.4         | `DATA_SOURCE_NAME` dùng `dw_app` → kiểm compose đỏ; `dw_monitor` SELECT bảng tenant → `permission denied`                                                                                                                       |
-| RH25 | Run không kẹt ở `waiting_approval`                | R9.1, R9.2   | Resume chết sau khi rời `waiting_approval`, `updated_at` lùi quá ngưỡng → lượt mới chạy; hai resume đồng thời → một chạy, một 409; bỏ compare-and-set → đỏ                                                                      |
-| RH26 | Trạng thái có CHECK theo enum                     | R9.3         | `status='bogus'` → CHECK từ chối; thêm giá trị vào enum mà không vào CHECK → test catalog đỏ                                                                                                                                    |
-| RH27 | Outbox lùi thời gian                              | R10.1        | Lỗi lần một → không claim lại khi `available_at` còn ở tương lai, lùi nó về quá khứ → claim lại; bỏ điều kiện `available_at` → đỏ                                                                                               |
-| RH28 | Thư chết không bị claim lại và thấy được          | R10.2, R10.3 | Hết lượt → `dead_at` đặt, gauge 1, không claim lại; `UndeliverableEventError` → `dead_at` ngay lần đầu; bỏ điều kiện `dead_at` → đỏ                                                                                             |
-| RH29 | Chỉ người vận hành phát lại thư chết, có audit    | R10.4, R10.5 | `--operator` không có trong `platform.platform_operators` → thoát 1, sự kiện vẫn mang `dead_at`, không có audit; người vận hành phát lại → sự kiện về hàng đợi và đúng một audit đứng tên người đó; bỏ kiểm người vận hành → đỏ |
-| RH32 | Claim không trỏ sang workspace của tenant khác    | R6.8         | Bằng `dw_app` gắn tenant A: INSERT `platform.tool_execution_claims` với `workspace_id` của một workspace tenant B → lỗi khóa ngoại, không dòng nào; đổi FK ghép thành FK một cột `workspace_id` → test đỏ                       |
+| #    | Kiểm soát                                                                    | Yêu cầu      | Test âm                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ---- | ---------------------------------------------------------------------------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| RH15 | Hai lời gọi cùng khóa không cùng gửi khi claim còn hạn                       | R6.1, R6.2   | Hai lời gọi `external` cùng khóa trên executor, handler ngủ 0,5 giây → handler chạy một lần; nhả bằng token cũ → claim mới còn; gỡ claim → đỏ                                                                                                                                                                                                                                                                                                                                                             |
+| RH16 | Lần gọi công cụ chỉ thêm, trạng thái có CHECK                                | R6.3         | Bằng `dw_app`: UPDATE `platform.tool_executions` → `permission denied`; INSERT `status='bogus'` → CHECK từ chối; INSERT `dispatched` và `outcome_unknown` → nhận; CHECK thiếu một trong hai giá trị đó → ca nhận đỏ                                                                                                                                                                                                                                                                                       |
+| RH17 | Không có cửa sau quanh ToolExecutor                                          | R6.4, R6.6   | Mục dict trong danh sách công cụ → model không nhận; agent từ factory thật với toolset rỗng → model chỉ thấy `write_todos`; thêm một công cụ dựng sẵn → đỏ                                                                                                                                                                                                                                                                                                                                                |
+| RH18 | Bí mật trong mảng bị che                                                     | R6.5         | Input `{"items": [{"api_key": "sk-123"}]}` thất bại → audit `tool.failed` mang `[REDACTED]`; bỏ đệ quy vào list → đỏ                                                                                                                                                                                                                                                                                                                                                                                      |
+| RH19 | Claim mồ côi có người dọn                                                    | R6.7         | Claim quá hạn → hết sau một lượt lane, claim chưa hạn còn; không đăng ký lane → đỏ                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| RH20 | Giới hạn tốc độ không lách bằng bearer ngẫu nhiên                            | R7.1         | `10 × L + 1` request từ một địa chỉ, mỗi request một bearer → request cuối 429; bỏ xô địa chỉ → đỏ                                                                                                                                                                                                                                                                                                                                                                                                        |
+| RH21 | Không gọi ra địa chỉ không global                                            | R7.2         | Resolver giả trả `100.64.0.1`, `100.100.100.200`, `224.0.0.1`, `ff02::1`, `64:ff9b::a9fe:a9fe` → `OutboundUrlError`; vị từ cũ → đỏ                                                                                                                                                                                                                                                                                                                                                                        |
+| RH22 | Kho dữ liệu đòi xác thực                                                     | R8.1, R8.2   | Settings `uat` thiếu `qdrant_api_key` → không khởi động; compose smoke gọi Qdrant không khóa → 401, Valkey không mật khẩu → `NOAUTH`                                                                                                                                                                                                                                                                                                                                                                      |
+| RH23 | Ảnh bên thứ ba ghim digest                                                   | R8.3         | Gỡ `@sha256:` khỏi một `image:` → kiểm CI đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| RH24 | Exporter không dùng vai ứng dụng                                             | R8.4         | `DATA_SOURCE_NAME` dùng `dw_app` → kiểm compose đỏ; `dw_monitor` SELECT bảng tenant → `permission denied`                                                                                                                                                                                                                                                                                                                                                                                                 |
+| RH25 | Run không kẹt ở `waiting_approval`                                           | R9.1, R9.2   | Resume chết sau khi rời `waiting_approval`, `updated_at` lùi quá ngưỡng → lượt mới chạy; hai resume đồng thời → một chạy, một 409; bỏ compare-and-set → đỏ                                                                                                                                                                                                                                                                                                                                                |
+| RH26 | Trạng thái có CHECK theo enum                                                | R9.3         | `status='bogus'` → CHECK từ chối; thêm giá trị vào enum mà không vào CHECK → test catalog đỏ                                                                                                                                                                                                                                                                                                                                                                                                              |
+| RH27 | Outbox lùi thời gian                                                         | R10.1        | Lỗi lần một → không claim lại khi `available_at` còn ở tương lai, lùi nó về quá khứ → claim lại; bỏ điều kiện `available_at` → đỏ                                                                                                                                                                                                                                                                                                                                                                         |
+| RH28 | Thư chết không bị claim lại và thấy được                                     | R10.2, R10.3 | Hết lượt → `dead_at` đặt, gauge 1, không claim lại; `UndeliverableEventError` → `dead_at` ngay lần đầu; bỏ điều kiện `dead_at` → đỏ                                                                                                                                                                                                                                                                                                                                                                       |
+| RH29 | Chỉ người vận hành phát lại thư chết, có audit                               | R10.4, R10.5 | `--operator` không có trong `platform.platform_operators` → thoát 1, sự kiện vẫn mang `dead_at`, không có audit; người vận hành phát lại → sự kiện về hàng đợi và đúng một audit đứng tên người đó; bỏ kiểm người vận hành → đỏ                                                                                                                                                                                                                                                                           |
+| RH32 | Claim không trỏ sang workspace của tenant khác                               | R6.8         | Bằng `dw_app` gắn tenant A: INSERT `platform.tool_execution_claims` với `workspace_id` của một workspace tenant B → lỗi khóa ngoại, không dòng nào; đổi FK ghép thành FK một cột `workspace_id` → test đỏ                                                                                                                                                                                                                                                                                                 |
+| RH33 | Lần gửi chưa biết kết quả không bao giờ bị gửi lại mù                        | R6.9, R6.10  | K4 trên PostgreSQL thật: nhà cung cấp giả nhận lời gọi và trả 2xx, tiến trình chết trước dòng kết thúc → lời gọi kế tiếp cùng khóa, với claim quá hạn hay sau khi lane đã dọn claim, nhận `outcome_unknown`, handler không chạy, nhà cung cấp giả có đúng 1 lời gọi; dòng mới nhất là `outcome_unknown` → như trên; claim quá hạn mà lần gửi trước đã `failed` hay chưa có `dispatched` nào → tiếp quản, handler chạy; gỡ kiểm lần gửi chưa biết kết quả → nhà cung cấp giả nhận lời gọi thứ hai, test đỏ |
+| RH34 | Nhật ký lần gửi bền trước lời gọi ra ngoài, kết quả không rõ không thành lỗi | R6.11, R6.12 | Lúc nhà cung cấp giả nhận lời gọi, một kết nối thứ hai đọc thấy dòng `dispatched` đã commit; T: nhà cung cấp giả áp dụng rồi để lời gọi hết thời gian → dòng `outcome_unknown`, không `failed`; handler ném lỗi không có kiểu sau `dispatched` → `outcome_unknown`; `not_dispatched`, `rejected` → `failed` mang mã; gỡ bước ghi `dispatched`, hay ghi `failed` cho lỗi không có kiểu → ca K4 hay T gửi hai lần, test đỏ                                                                                  |
+| RH35 | Người giữ claim cũ không gửi sau khi bị tiếp quản                            | R6.13        | S: người giữ cũ dừng ngay trước bước ghi `dispatched` tới quá `expires_at`, người mới tiếp quản và gửi, rồi người cũ chạy tiếp → không có dòng `dispatched` thứ hai, handler của người cũ không chạy, nhà cung cấp giả có đúng 1 lời gọi; gỡ rào `claim_token` ở câu chèn `dispatched` → nhà cung cấp giả nhận 2 lời gọi, test đỏ                                                                                                                                                                         |
 
 ## Tiêu chí xong
 
@@ -285,6 +318,19 @@ Số G giữ nguyên từ foundations-hardening; G5 ở cả hai spec (Quyết �
   org-and-principals/01.
 - Ticket của spec khác chờ ticket ở đây theo dòng Blocked by của chính chúng (OPS-b);
   `scripts/check_plans.py --table` in bảng sống, spec này không chép lại.
+- tools-and-skills: thứ tự bước của `ToolExecutor` (tools-and-skills:R2.6) đặt bước giành lượt và ghi `dispatched` của
+  ticket 01 ngay trước bước gọi handler, và tools-and-skills/01, đi sau ticket 01, đưa bước đó vào sổ bước ở composition
+  root (tools-and-skills:R2.7; H-3).
+- connections-and-vault: egress client của `.claude/plans/studio/connections-and-vault/issues/03-egress-client-allowlist-va-chu-ky.md`
+  ném ba lỗi có kiểu mà ticket 01 khai, theo kết quả có kiểu của nó (ADR-0115 (Accepted) quyết 6); trước ticket đó,
+  handler nào không ném chúng thì mọi lỗi sau `dispatched` ghi `outcome_unknown` (R6.12).
+- workflow-engine: lần giải điểm chờ `outcome_review` của `.claude/plans/studio/workflow-engine/issues/08-tac-dong-khong-ro-ket-qua.md`
+  đóng lần gửi chưa biết kết quả bằng một dòng kết thúc trước khi Bước chạy lại, `succeeded` kèm bằng chứng cho "Đã
+  nhận" và `failed` cho "Chưa nhận, gửi lại cùng khóa", vì không có dòng đó thì R6.9 lại trả `outcome_unknown` (V4.30
+  mục 6).
+- telemetry-and-audit: catalog hành động gộp từ một mảnh mỗi spec (telemetry-and-audit:R1.6, telemetry-and-audit:R1.10;
+  H-21); ticket 03 thêm mảnh của spec này cho `platform.outbox.replayed`, và test AST của catalog đọc mảnh đó khi
+  `.claude/plans/studio/telemetry-and-audit/issues/03-lich-su-chay-theo-buoc.md`, đi sau ticket 01 và ticket 03, vào.
 - Seam: `ConsumerRegistry.register` và `build_retention_consumer` ở composition root của worker cho lane
   `tool_claims_retention`; `ToolExecutor` nhận `ToolClaimPort` qua constructor.
 - Hợp đồng: ADR-0108 (Accepted) quyết định 5; ADR-0113 (Accepted) quyết định 1; ADR-0115 (Accepted) quyết định
@@ -293,7 +339,12 @@ Số G giữ nguyên từ foundations-hardening; G5 ở cả hai spec (Quyết �
   R9.3, ticket 03; tenant-config/03 đổi đường resume → ticket 03; telemetry-and-audit đổi cách xóa
   `platform.tool_executions.output` → R6.3, ticket 01; tenant-config/03 đổi tập trạng thái của
   `platform.tool_executions` → R6.3, ticket 01; org-and-principals/01 đổi `uq_workspaces_tenant_id_id` → R6.8,
-  RH32, ticket 01; foundations-hardening/03 đổi dạng policy RLS → ticket 01.
+  RH32, ticket 01; foundations-hardening/03 đổi dạng policy RLS → ticket 01; connections-and-vault đổi tập kết quả có
+  kiểu của egress → R6.12, ticket 01; workflow-engine đổi cách lần giải `outcome_review` đóng lần gửi chưa biết kết quả
+  → R6.9, ticket 01; connections-and-vault thêm cột `credential_version` vào `platform.tool_executions` (H-10) → R6.3,
+  ticket 01; tools-and-skills đổi chỗ bước giành lượt và ghi `dispatched` trong sổ bước → R6.11, ticket 01; một trình
+  kết nối khai khóa hay tra cứu (W2, H-5) → R6.9, R6.10; telemetry-and-audit đổi định dạng hay chỗ của mảnh nhãn audit
+  (H-21) → Trong phạm vi, ticket 03.
 
 ## Câu hỏi còn mở
 
@@ -382,6 +433,28 @@ Số G giữ nguyên từ foundations-hardening; G5 ở cả hai spec (Quyết �
   duyệt. Sửa: Danh sách ticket, Hành vi giữ nguyên, ticket 01-03. Nếu sai thì: ba ticket giữ số 04-06 và kiểm
   `numbering` nhận một thư mục tách bắt đầu từ số khác 01; G5 chỉ ở một spec, và ticket của spec kia chạy test
   của nó ở dòng Xong.
+- 25/10/2026 (Đạt): V4.30: lời hứa "đúng một lần" thành các mức bảo đảm gọi bằng tên (nội bộ, có khóa hay tra cứu,
+  không khóa, đồng thời) cùng điểm chờ `outcome_review`; ở lát này, CHECK `ck_tool_executions_status` có `dispatched`
+  và `outcome_unknown` từ lần tạo, executor chèn một dòng `dispatched` commit trong giao dịch riêng trước lời gọi ra
+  ngoài, bảng vẫn chỉ thêm, tiếp quản claim quá hạn tách hai ca theo dòng `dispatched` (chưa có thì chạy lại, có mà
+  chưa có dòng kết thúc thì theo `on_unknown`, không bao giờ chạy lại mù), và câu "đúng một lần" của R6 viết lại theo
+  mức bảo đảm. Sửa: tiêu đề, đoạn mở, R6, R6.1, R6.3, thêm R6.9-R6.13, RH15, RH16, thêm RH33-RH35, Trong phạm vi,
+  Ngoài phạm vi, Phụ thuộc, ticket 01.
+- 25/10/2026 (agent, tạm): cách áp V4.30 ở lát này: hai ca tiếp quản là hai tiêu chí mới, R6.10 (claim quá hạn, không
+  lần gửi nào chưa biết kết quả: tiếp quản rồi gửi) và R6.9 (lần gửi chưa biết kết quả: không gọi handler, trả
+  `outcome_unknown`), còn R6.2 giữ ca nhả bằng token cũ mà nó vẫn nói, để không mã nào đổi nghĩa; "lần gửi chưa biết
+  kết quả" là dòng `dispatched` mới nhất chưa có `succeeded` hay `failed` sau nó, nên dòng kết thúc `outcome_unknown`
+  cũng chặn gửi lại, và R6.9 kiểm ở mọi lần giành claim, vì lane `tool_claims_retention` có thể đã dọn claim của lần
+  gửi đó (K4); dòng `dispatched` chỉ ghi cho lời gọi ra ngoài nền tảng không bị giả lập, vì hiệu ứng nội bộ đúng một
+  lần nhờ khóa của node lưu cùng giao dịch với lần ghi (mức nội bộ, custom-objects); câu chèn `dispatched` rào bằng
+  `claim_token` (R6.13), vì mức không khóa hứa 0 lần tự gửi lại ở cả ca S của ma trận sập; executor ghi kết quả theo
+  ba lỗi có kiểu mà `dw_agent_runtime` khai, egress client ném (bên dùng khai Protocol), và một lỗi không có kiểu sau
+  `dispatched` là `outcome_unknown`, không `failed`, vì `failed` mở đường thử lại của wrapper (ca T, `failure-modes.md`
+  #7). Sửa: R6.9-R6.13, RH33-RH35, Trong phạm vi, Ngoài phạm vi, Phụ thuộc, ticket 01. Nếu sai thì: R6.2 viết lại
+  thành ca tiếp quản và ca nhả token sang mã mới, dòng `outcome_unknown` không chặn gửi lại (chỉ `dispatched` thiếu dòng
+  kết thúc chặn), mọi lời gọi có `side_effect_level` khác `none` đều ghi `dispatched`, ca S chỉ được hứa trong hạn
+  claim (R6.13 rút), hay connections-and-vault/03 khai kiểu kết quả và phần đọc của R6.12 dời sang một ticket đi sau
+  ticket đó, vì ticket 01 đi trước nó.
 
 ## Danh sách ticket
 

@@ -81,6 +81,14 @@ record in `studio.version_assessments` and the risk tier; `agent-lifecycle` only
    message saying so in a Zalo conversation. AI incidents enter the incident register (`kind = ai_incident`), and
    suspension is one action, ADR-0120's kill. The explanation sheet for data subjects (Decree 356 Art. 10.3) and the
    AI Law documentation pack follow once counsel sets the criteria.
+8. **Field lineage at submit (W2).** Before W2's destinations ship (`notify.send`, `ai.agent`, internal messages,
+   lookup and search), the analysis computes statically, at submit, the set of fields that each value derives from,
+   the output of an `ai.llm` step or an agent carrying the union of its inputs' sets, and field security checks the
+   recipient at every destination against that set (ADR-0106 (Accepted)). A `data.object.*` step may not write a
+   protected field's value into an open field (workflow-nodes), a lookup's `name` is masked by the field permissions
+   on its target record, and `studio.record_terms` gains `field_id` (record-access) (V4.40, YC113). The analysis also
+   shows each message's purpose, which its action fixes (ADR-0124 (Accepted) decision 8). Until then the pilot
+   slice's own rule keeps W1 safe (marketing-pilot).
 
 ## Alternatives considered
 
@@ -95,21 +103,26 @@ record in `studio.version_assessments` and the risk tier; `agent-lifecycle` only
   #2).
 - **Plan-then-execute or a quarantined model.** Not in v1: an alternative remedy for v2, once a node type implements
   the pattern.
+- **Taint tracked on each value at run time, for field lineage.** Rejected (V4.40): costly, and still open to text a
+  model writes; decision 8 computes lineage statically at submit.
 
 ## Consequences
 
 - Most marketing agents land at A2 or lower, and the pilot's read-only assistant holds no effect tool at all.
   tools-and-skills classifies every tool version before it can be pinned.
-- compliance-pdpl 05 (W1) ships the analysis for workflows and agents, its catalogue of labels and the
-  `studio.version_assessments` rows that hold the outcome; the risk tier fields, the explanation sheet and runtime
-  taint at the executor are W2.
+- compliance-pdpl/05 (W1) ships the analysis for workflows, its catalogue of labels and the
+  `studio.version_assessments` rows that hold the outcome, and compliance-pdpl/07 (W1) the agent rule of decision 3
+  and the analysis hook of the `agent` kind (V4.31); the risk tier fields, the explanation sheet, runtime taint at the
+  executor and decision 8's field lineage are W2.
 - Approval fatigue is a real risk. It is met by one approval per message in a fast queue (ADR-0124), a raw view of
   the parameters, and a verdict that explains itself.
 - Tests that must exist, each shown red with its guard removed: a workflow with an A to B to C path and no dominating
   approval is refused, and so is one whose approval sits on only one branch; MP2, a `score` to `send` path without
   `approve`, is refused naming the path; an agent with A, B and C at A3 is refused with
   `capability_trifecta_autonomy`; a tainted run's external tool asks at A4; an unclassified tool refuses submit; no
-  tenant setting lowers the floor.
+  tenant setting lowers the floor; from W2, one mutation per destination in MP6's style, removing the check at one
+  destination turning that destination's leak test red, and every sample workflow of the Marketing pack passing
+  submit (V4.40).
 
 ### Contradictions and amendments
 
@@ -153,3 +166,17 @@ Accepted by Đạt on 2026-10-23 with these amendments from the decision brief:
   that fails the gate on a missing or failed outcome (the submit-time 422 item, option (a)).
 - Consequences: compliance-pdpl 05 ships the stored outcome in W1, the tier fields in W2.
 - Open: the floor confirmed; DO-60 answered except counsel's part; FOG-48 closed; FOG-47 stays open.
+
+## Amendments (2026-10-25)
+
+Amended by Đạt on 2026-10-25, who accepted the recommendation on each of the twelve decisions owed (V4.30-V4.41), eleven
+from the answer to ChatGPT's architecture review and one on a builder's read of simulated runs, applied with the
+planner's provisional calls H-1-H-18:
+
+- Third consistency check (round 4), eighth pass, Đạt's V4.31, V4.39 and V4.40: a new decision 8 computes field lineage
+  statically at submit in W2, before that wave's destinations ship, an `ai.llm` or agent output carrying the union of
+  its inputs' sets, the recipient checked at every destination, no write from a protected field into an open one, a
+  lookup's `name` masked and `field_id` added to `studio.record_terms`, and shows each message's purpose that its action
+  fixes; Consequences give the agent rule and the `agent` kind's analysis hook to compliance-pdpl/07, split from
+  compliance-pdpl/05, which keeps the analysis of workflows, and name decision 8's tests; Alternatives record taint
+  tracked per value at run time as rejected.

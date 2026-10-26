@@ -10,7 +10,8 @@ Yêu cầu: R7.1, R7.2, R7.3, R7.4, R7.5, R8.1, R8.2, R8.3, R8.4, R8.5, R8.6, R8
 Tài liệu chỉ nêu tên điểm gắn; giá trị (kết nối, biến, người chạy) là một Bộ giá trị gắn, tức phiên bản
 cấu hình riêng loại `binding_set`, do một người đề xuất và một người khác duyệt trên yêu cầu phê duyệt
 không lượt chạy của nền tảng. Lệnh gửi và phát hành từ chối khi thiếu giá trị bắt buộc, nhận lượt chạy từ chối khi
-kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7, R8; D11). Pilot Marketing cần điểm gắn
+kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng, không ghim phiên bản bí mật của kết nối, vì lời gọi dùng phiên
+bản mới nhất chưa bị thu hồi lúc gọi (spec R7, R8; D11; V4.35). Pilot Marketing cần điểm gắn
 `zalo_oa`, `email_sender` và `score_threshold` theo đúng đường này.
 
 ## Việc cần làm
@@ -59,9 +60,9 @@ kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7,
       và trong cùng bước `ALTER COLUMN artifact_version_id DROP NOT NULL`, vì ticket 04 tạo cột đó NOT NULL còn dòng
       khóa của phiên bản cấu hình để nó NULL.
     - Offboarding, trên `offboarding.py` và `test_offboarding.py` mà foundations-hardening/07 đã viết lại:
-      `platform.config_versions` vào `_ORDERED_FIRST` sau `platform.run_manifest_keys` của ticket 04, mà FK RESTRICT
-      `config_version_id` của nó giữ bảng này, và trước phần xóa theo chữ cái (nơi có `platform.approval_requests`, mà
-      FK RESTRICT `approval_id` của bảng này giữ).
+      `platform.config_versions` dùng bước mặc định của sổ bước xóa (foundations-hardening:R11.4; H-2), không đăng ký
+      bước nào; thứ tự suy từ `pg_constraint` đặt nó sau `platform.run_manifest_keys` (FK RESTRICT `config_version_id`
+      giữ nó) và trước `platform.approval_requests` (FK RESTRICT `approval_id` của nó giữ bảng đó).
     - Đăng ký khóa `studio.bindings.propose` và `studio.bindings.approve` vào `platform.permissions` (danh mục của
       tenant-rbac/01) trong cùng migration. Câu INSERT nêu mọi cột NOT NULL có lúc đó: `area`, `label_vi`,
       `scope_kind` (`workspace`), `risk`, `status` (`active`), `owner_package` của tenant-rbac/01 và
@@ -118,9 +119,11 @@ kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7,
    mọi điểm gắn `required` của phiên bản có giá trị trong bản `approved` của thành phần và qua bộ kiểm; không thì
    trả `binding_unset` kèm tên điểm gắn (lệnh gửi trả 409, handler không đưa phiên bản lên `live`).
 9. Nhận lượt chạy: `RunManifestBuilder` của ticket 04 thêm mục `bindings` vào bản kê: id phiên bản Bộ
-   giá trị gắn, với mỗi kết nối id kết nối và một `secret_version` cho mỗi trường bí mật của nó (một mục cho mỗi
-   (kết nối, `field`), phiên bản hiện hành lúc nhận, đọc qua `platform.secret_status` của connections-and-vault/02,
-   không đọc giá trị; ADR-0115 (Accepted) quyết 1), với mỗi biến `content_hash` của giá trị (không ghi giá trị), với
+   giá trị gắn, với mỗi kết nối id kết nối và không gì khác của bí mật: không `secret_version`, không giá trị (mô hình
+   mục `bindings` có `extra="forbid"`), vì lời gọi egress phân giải phiên bản mới nhất chưa bị thu hồi của kết nối lúc
+   gọi và ghi nó vào `platform.tool_executions.credential_version` cùng audit, việc của connections-and-vault (R7.4,
+   R7.5; ADR-0109 (Accepted) quyết 6; ADR-0115 (Accepted) quyết 1; V4.35, H-10), với mỗi biến `content_hash` của giá
+   trị (không ghi giá trị), với
    `principal` id của người chạy; thêm dòng `platform.run_manifest_keys` cho phiên bản cấu hình. Trước khi ghim,
    `connection_usable` với `purpose` `tool` cho người chạy sai (kể cả thiếu `connections.use` ở workspace của lượt
    chạy, ADR-0115 (Accepted) quyết 2) → từ chối nhận với `binding_degraded`, không node nào chạy. Bước này không từ
@@ -147,16 +150,17 @@ kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7,
       `binding_unset` nêu `zalo_oa`; có giá trị đã duyệt → đạt; gỡ kiểm `required` → test đỏ.
 - [ ] R7.3 (TC22): thu hồi kết nối đã gắn rồi nhận lượt chạy → từ chối `binding_degraded`, không dòng
       `platform.run_manifests` mới, không node nào chạy.
-- [ ] R7.4 (TC15): bản kê có id phiên bản Bộ giá trị gắn, id kết nối với một `secret_version` cho mỗi trường bí mật
-      (kết nối có hai trường bí mật ở hai `secret_version` khác nhau → hai mục, mỗi mục đúng phiên bản của trường đó),
-      mã băm của biến; tìm token mẫu và giá trị biến dạng rõ trong `body` → không thấy.
+- [ ] R7.4 (TC15): bản kê có id phiên bản Bộ giá trị gắn, id kết nối và mã băm của biến; tìm token mẫu, giá trị biến
+      dạng rõ và khóa `secret_version` trong `body` → không thấy; dựng mục `bindings` có `secret_version` → lỗi kiểm
+      `extra="forbid"`, không dòng `platform.run_manifests`; nới `extra` → test đỏ.
 - [ ] R7.4: dòng `platform.run_manifest_keys` của Bộ giá trị gắn đã ghim mang `config_version_id`, còn
       `artifact_version_id` là NULL; INSERT dòng có cả hai cột, hay không cột nào → CHECK từ chối; dòng thứ hai cùng
       `(manifest_hash, config_version_id)` → unique từ chối.
 - [ ] R2.18 (TC29): bằng vai migrator, INSERT dòng `platform.run_manifest_keys` của tenant A có `config_version_id` là
       phiên bản cấu hình của tenant B → lỗi FK ghép; đổi FK ghép về FK một cột → test đỏ.
 - [ ] R7.5 (TC15): duyệt Bộ giá trị gắn mới khi lượt chạy chờ duyệt; tiếp tục → lượt chạy dùng bộ đã
-      ghim.
+      ghim; xoay bí mật của kết nối đã ghim khi lượt chờ, rồi tiếp tục → bản kê không đổi và lượt không bị từ chối vì
+      phiên bản, `RunBindingsPort` trả id kết nối đã ghim (phiên bản bí mật đã dùng do connections-and-vault ghi).
 - [ ] R8.1: đề xuất hợp lệ ghi một phiên bản `proposed`, một yêu cầu `config.version` có `required_scope`
       `studio.bindings.approve` và một audit `config.version.proposed`, trong một giao dịch.
 - [ ] R8.2 (TC25): người thiếu `studio.bindings.propose` → 403, không dòng nào.
@@ -196,8 +200,10 @@ kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7,
 - [ ] G4: `test_the_api_decides_memory_reviews_strictly_and_only_with_clearance` vẫn xanh sau khi đổi sang
       guard async.
 - [ ] R3.6 (TC21): purge tenant có phiên bản cấu hình riêng được bản kê ghim và yêu cầu phê duyệt của nó
-      → xong, tenant khác nguyên; gỡ mục `platform.config_versions` khỏi `_ORDERED_FIRST` → test đỏ; thu DELETE của
-      `dw_app` trên `platform.config_versions` → test phủ offboarding (studio-skeleton:R4.3) đỏ, nêu tên bảng.
+      → xong, tenant khác nguyên; thứ tự suy ra đặt `platform.config_versions` sau `platform.run_manifest_keys` và trước
+      `platform.approval_requests`; đột biến phép suy để bỏ cạnh `approval_id` → test phủ offboarding
+      (studio-skeleton:R4.2) đỏ, nêu khóa ngoại đó; thu DELETE của `dw_app` trên `platform.config_versions` → test phủ
+      offboarding (studio-skeleton:R4.3) đỏ, nêu tên bảng.
 - [ ] R3.8 (TC31): `dw_app` DELETE một dòng `platform.config_versions` của công ty `active` → 23514, dòng và yêu cầu
       phê duyệt của nó còn; cùng lệnh khi công ty ở `offboarding` → xóa được; gỡ trigger khỏi bảng → test đỏ.
 - [ ] R3.7: Kết nối là giá trị của một Bộ giá trị gắn `approved` → `ConnectionDependentsPort` báo đang
@@ -256,3 +262,9 @@ kết nối hỏng, và mỗi lượt chạy ghim giá trị nó dùng (spec R7,
   `studio.bindings.approve` (workflow-engine:R5.21). Kiểm đó rời bộ kiểu Điểm gắn sang `BindingReviewPort` ở dispatch
   (workflow-triggers:R3.7), nên bước 1 bỏ chỗ cho kiểm lúc nhận lượt chạy theo kind, chỗ không còn kind nào của W1
   đăng ký (failure-modes #1). Không thêm cạnh Blocked by.
+- 2026-10-25 (agent): lượt h, theo V4.35 của Đạt (quyết định cùng ngày của spec): bước 9 thôi ghim `secret_version` và
+  thôi đọc `platform.secret_status`; mục `bindings` mang id kết nối, lời gọi dùng phiên bản bí mật mới nhất chưa bị thu
+  hồi lúc gọi và connections-and-vault ghi `credential_version`; tiêu chí R7.4 và R7.5 viết lại; câu Comments ngày
+  24/10/2026 "bản kê ghim một `secret_version` cho mỗi (kết nối, trường)" không còn áp. Theo H-2, `platform.config_versions`
+  dùng bước mặc định của sổ bước xóa của foundations-hardening/07, thứ tự suy từ `pg_constraint`, thay mục `_ORDERED_FIRST`.
+  Dòng Blocked by không đổi.

@@ -97,10 +97,12 @@ contract of ADR 0120.
    `dw.run_manifest/v1` stored once in `platform.run_manifests` (primary key `(tenant_id, hash)`, inserted
    with `ON CONFLICT DO NOTHING`): release manifest ref, run mode (ADR 0111), root (kind, artifact id,
    `version_no`, `definition_hash`), closure, overlay entries (layer `platform` or `tenant`, config version
-   id, hash), binding entries (the binding-set version, each connection id with the `secret_version` pinned for
-   each of that connection's secret fields, a secret's version being numbered per subject and field (ADR 0115
-   decision 1), and a hash of each variable value, never the value; ADR 0110), object schema versions and an
-   engine section.
+   id, hash), binding entries (the binding-set version, each connection id and a hash of each variable value, never
+   the value and never a secret version; ADR 0110), object schema versions and an engine section. A call resolves its
+   connection's latest secret version not revoked at the time of the call and records the version it used in
+   `platform.tool_executions.credential_version` and its audit event (ADR 0115 decision 1, V4.35, H-10), so a secret
+   rotated while a run waits reaches that run, and a secret revoked for exposure stops every unfinished run of the
+   connection at its next egress call with `credential_revoked`, a newer version notwithstanding.
    A `simulate` run, and a run of no other mode, may have a draft as its root, requested only once the checks
    that submit runs for the draft's kind (ADR 0112 decision 3 for a workflow, ADR 0117 decisions 2, 4 and 7 for
    an agent) pass on the draft's content. `RunRequestService`, the one door (ADR 0113 decision 1), runs those
@@ -121,7 +123,8 @@ contract of ADR 0120.
    manifest's immutable rows, extending `hosts()` (`packages/python/dw_agent_runtime/src/dw_agent_runtime/ports.py:132`)
    to database-backed versions.
 8. **The engine is pinned too.** The engine section pins `compiler_version`, each node's `type@major`, the
-   state-schema hash, the storage format, the LangGraph version, the CEL library `dw.cel/v1` (ADR 0114) and
+   state-schema hash, the storage format, the LangGraph version, the checkpoint durability (`sync`, which the
+   runtime passes on every invoke, ADR 0112 decision 4; V4.34), the CEL library `dw.cel/v1` (ADR 0114) and
    the model route (ADR 0118). Six checks run before every resume or re-claim: the pinned node types and
    compiler are registered in this build; the parked node exists in the pinned graph and equals
    `run_waits.node_id`; the state-schema hash matches; the storage format is readable; the resume value is a
@@ -159,8 +162,10 @@ contract of ADR 0120.
   `studio.definition_manifests`, `platform.run_manifests` and `platform.run_manifest_keys`, and add
   `platform.worker_runs.run_manifest_hash`, each tenant table with RLS and every table with the grants that
   `test_rls_coverage.py` and `test_privileges.py` assert; `uq_workspaces_tenant_id_id` comes from
-  org-and-principals/01, not from here. Offboarding deletes in the one order of `offboarding.py`, which lists
-  every table after each table that holds an `ON DELETE RESTRICT` or `NO ACTION` key to it. For the definitions,
+  org-and-principals/01, not from here. Offboarding deletes through a registry of steps at the composition root,
+  each step naming the table it deletes, run in the order the `ON DELETE RESTRICT` and `NO ACTION` edges of
+  `pg_constraint` give, never a hand-written list (foundations-hardening/07, H-2): every table after each table
+  that holds such a key to it. For the definitions,
   the tables that point at a version come first, among them `platform.worker_runs`,
   `studio.trigger_subscriptions`, `platform.run_manifest_keys` and `studio.dependencies`, whose `to_version_id`
   and `to_artifact_id` are such keys (decision 5); then `studio.artifact_versions`, `studio.gate_case_results`,
@@ -168,7 +173,7 @@ contract of ADR 0120.
   leaves by cascade with its `from_version_id`, but that does not let it follow the versions: measured on
   PostgreSQL 16.15, deleting the versions first fails on `to_version_id` whenever the depended-on version is
   reached before the one that depends on it. studio-skeleton R4.2's coverage test reads those edges from
-  `pg_constraint` and fails when the declared order contradicts one (failure-modes #0).
+  `pg_constraint` and fails when a registered step runs against one (failure-modes #0).
 - `studio.artifacts`, `studio.artifact_versions`, `studio.dependencies`, `studio.definition_manifests`,
   `platform.run_manifests` and `platform.run_manifest_keys` are tenant-wide rows under the `CLAUDE.md:185` class that
   ADR 0100 records (A6), each listed with its reason in `test_rls_coverage.py`.
@@ -178,14 +183,16 @@ contract of ADR 0120.
   for any mode but `simulate` is refused; a `simulate` request for a draft whose content fails the submit checks,
   sent to `RunRequestService` directly and not through a route, is refused.
 - Run admission gains one insert pair (target 20 ms p95, to measure). Model profiles carry floats
-  (`packages/python/dw_agent_runtime/src/dw_agent_runtime/model/profiles.py:54-55`) and must move to
-  `Decimal` before they can be hashed tenant configuration. A second-language verifier can reproduce every
-  hash.
+  (`packages/python/dw_agent_runtime/src/dw_agent_runtime/model/profiles.py:40` and `:62`) that must move to
+  `Decimal` before they can be hashed tenant configuration; the two prices at `:54-55` leave the profile instead,
+  usage-and-limits/02 moving prices to a table by effective date and model-connections/02 dropping the fields from
+  `ModelProfile` v2 (H-4). A second-language verifier can reproduce every hash.
 - Contradicts `CLAUDE.md:70-71` ("a release manifest pins the set a run used"), worth reopening because a
   Studio version is tenant data outside the repository-derived release manifest. The amendment: every run pins
   what it used, the release manifest pinning the platform layer, and a run with a Studio root also pinning one run
-  manifest (`platform.worker_runs.run_manifest_hash`) with its definition hash, the tenant config versions and
-  binding values it resolved, and its engine, from which alone it resolves, on resume too. It also refines
+  manifest (`platform.worker_runs.run_manifest_hash`) with its definition hash, the tenant config versions, the
+  binding-set version and connections it resolved, never a secret version (V4.35), and its engine, from which
+  alone it resolves, on resume too. It also refines
   `CLAUDE.md:214-216` (every versioned artifact resolves through `TenantOverlay`): a Studio run resolves every
   artifact it uses, platform-layer components in its closure included, only from its run manifest, and nothing
   falls back at run time; an artifact a tenant builds has no platform layer, while a tenant's own version of a
@@ -276,3 +283,16 @@ contract of ADR 0120.
   of those keys (if it is wrong, those keys become `NO ACTION DEFERRABLE INITIALLY DEFERRED`, checked at commit,
   and leave the order, so the purge's one transaction deletes the group in any order; measured on PostgreSQL
   16.15, a key that is not deferrable fails as `RESTRICT` does).
+
+## Amendments (2026-10-25)
+
+- Third consistency check (round 4), eighth pass, Đạt's V4.34 and V4.35 with the planner's calls H-2, H-4 and H-10:
+  decision 6's binding entries pin the binding-set version, each connection id and the hashes of variable values,
+  never a secret version, a call using its connection's latest unrevoked version and recording it in
+  `platform.tool_executions.credential_version` and audit, a revocation for exposure stopping every unfinished run of
+  the connection at its next egress call, which replaces the third pass's line above that pinned a `secret_version` per
+  connection and field (V4.35, H-10), and Consequences restate the `CLAUDE.md` amendment the same way (`CLAUDE.md`,
+  Non-negotiable architecture); decision 8's engine section pins the checkpoint durability `sync` (V4.34);
+  Consequences replace "the one order of `offboarding.py`", which the sixth pass's line above wrote, with a registry
+  of offboarding steps whose order the `RESTRICT` and `NO ACTION` edges of `pg_constraint` give (H-2), and send the
+  two price floats of the model profile out of it instead of into `Decimal` (H-4).

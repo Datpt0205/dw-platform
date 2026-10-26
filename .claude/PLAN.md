@@ -15,7 +15,7 @@ git: every slice's commit message, and the pre-split narrative at
 | Agent runtime and memory (Mốc 0–6) | `.claude/plans/platform-runtime.md` | Done but for named gaps   |
 | Web UI shell (Ant Design v6)       | `.claude/plans/web-ui.md`           | antd everywhere, CSP done |
 | Chat channels (Zalo)               | `.claude/plans/channels.md`         | Upstreamed; live run owed |
-| Studio (no-code builder)           | `.claude/plans/studio.md`           | Round 4 in progress       |
+| Studio (no-code builder)           | `.claude/plans/studio.md`           | Round 4, pass h applied   |
 
 After working in an area, update its file. Update this index only when an
 area's state, the next step or a decision owed changes. A new area gets its
@@ -56,7 +56,7 @@ own file and a row here.
 - **Platform:**
     - backfill ADRs with a status (`docs/agents/domain.md`): 46 citations of
       ADR-001..003 point at documents this repo never had.
-    - Studio (`studio.md`): Q-h1, Q-h2 after pass h, then `Duyệt`.
+    - Studio (`studio.md`): Q-h1 to Q-h11 after pass h, then `Duyệt`.
 
 ## How a feature is checked here
 

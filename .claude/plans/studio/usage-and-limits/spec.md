@@ -117,12 +117,12 @@ mục đích và bên trả phí; màn Mức độ sử dụng đọc chính s�
 - R3.9 NẾU `platform.purge_tenant_append_only` được gọi cho một công ty có `platform.tenants.status` khác
   `offboarding`, THÌ PostgreSQL PHẢI từ chối với SQLSTATE 23514 và không xóa dòng nào.
 - R3.10 `platform.purge_tenant_append_only` PHẢI chỉ xóa dòng của đúng công ty được gọi, ở mọi bảng có
-  `append_only = true` trong `platform.time_partitioned_tables` trừ `platform.audit_events`, mà thời hạn của tệp
-  chính sách retention giữ.
-- R3.11 KHI lane `offboarding` xóa dữ liệu của một công ty đang `offboarding`, lane `offboarding` PHẢI gọi
-  `platform.purge_tenant_append_only` trong giao dịch xóa trước khi DELETE dòng nào của một bảng thường, để dòng chỉ
-  thêm có khóa ngoại `ON DELETE RESTRICT` tới một bảng thường, như tin nhắn tới hội thoại (agent-builder:R4.9), đi
-  trước dòng cha của nó.
+  `append_only = true` trong `platform.time_partitioned_tables` trừ `platform.audit_events`, mà thời hạn nằm ở mảnh
+  retention của từng bảng.
+- R3.11 KHI lane `offboarding` xóa dữ liệu của một công ty đang `offboarding`, lane `offboarding` PHẢI xóa dòng của một
+  bảng `append_only` có khóa ngoại `ON DELETE RESTRICT` tới một bảng thường, như tin nhắn tới hội thoại
+  (agent-builder:R4.9), trước dòng cha của nó, trong cùng giao dịch xóa, theo thứ tự mà sổ bước xóa của lane suy từ
+  `pg_constraint` cho bước `platform.purge_tenant_append_only` (foundations-hardening:R11.4; H-2).
 
 ### R4 — Hạn mức là chính sách trên một chuỗi phạm vi, chặn ở cửa nhận lượt chạy
 
@@ -189,8 +189,8 @@ ADR-0121 (Accepted) quyết 4).
   `LimitsPort.admit` và không mở lease thứ hai (ADR-0113 (Accepted) quyết 9).
 - R5.7 KHI lane `retention_limits` chạy, lane PHẢI xóa dòng `platform.budget_counters` có `window_end` cũ hơn
   thời hạn dưới khóa `platform.budget_counters` (395 ngày, 13 tháng, bằng Sổ sử dụng) và lease
-  `platform.budget_leases` đã đóng quá thời hạn dưới khóa `platform.budget_leases` (30 ngày), đọc cả hai từ tệp
-  chính sách retention (số tạm UNVERIFIED), không chạm dòng của kỳ hay lease còn mở.
+  `platform.budget_leases` đã đóng quá thời hạn dưới khóa `platform.budget_leases` (30 ngày), đọc cả hai từ mảnh
+  retention của bảng trong tập mảnh đang ghim (số tạm UNVERIFIED), không chạm dòng của kỳ hay lease còn mở.
 
 ### R6 — Mọi cửa chạm model đều có đo và hạn mức, giới hạn hành vi kẹp theo gói
 
@@ -236,13 +236,15 @@ W1 dùng bộ đếm theo tiến trình, GCRA trên Valkey vào ở W2 (YC44; DO
   `ReapTarget` cho lease mồ côi; lane `usage_rollup`; lane `retention_limits`; `RateLimiterPort` với hai khóa có
   kiểu, lần hỏi không tính lượt và adapter bộ đếm theo tiến trình trên cửa sổ trượt (W1).
 - Hàm của sổ `platform.time_partitioned_tables`, chủ duy nhất ở W1:
-  `platform.drop_expired_partitions(cutoffs jsonb)` (mỗi bảng cha một mốc đọc từ tệp chính sách retention) và
-  `platform.purge_tenant_append_only(p_tenant uuid)` cho offboarding, một bước trong thứ tự các bước xóa của lane
-  `offboarding` mà studio-skeleton/01 khai ở một chỗ trong `offboarding.py`, chạy trước mọi bảng thường trong giao dịch
-  xóa (R3.8, R3.10, R3.11); spec khác không viết lại thân hai hàm này.
-- Dòng thời hạn của bảng spec này tạo trong tệp chính sách retention, theo định dạng khóa `schema.table` của
-  telemetry-and-audit (telemetry-and-audit:R5.6): `platform.usage_events` (ticket 02, cùng thay đổi đăng ký),
-  `platform.budget_counters`, `platform.budget_leases` (ticket 03).
+  `platform.drop_expired_partitions(cutoffs jsonb)` (mỗi bảng cha một mốc, lane `partitions` dựng từ mảnh retention
+  của bảng đó) và `platform.purge_tenant_append_only(p_tenant uuid)` cho offboarding, một bước đăng ký vào sổ bước xóa
+  của lane `offboarding` (foundations-hardening/07; H-2), thứ tự do sổ suy từ cạnh khóa ngoại `RESTRICT` trong
+  `pg_constraint` (R3.8, R3.10, R3.11); spec khác không viết lại thân hai hàm này.
+- Mảnh retention của bảng spec này tạo, `configs/policies/retention.d/<schema>.<table>.yaml` theo định dạng của
+  telemetry-and-audit (telemetry-and-audit:R5.6; H-1), mỗi mảnh trong cùng thay đổi tạo hay đăng ký bảng:
+  `platform.usage_events` (ticket 02), `platform.budget_counters`, `platform.budget_leases` (ticket 03).
+- Bảng giá (`PriceBook`) và `route_cost` đọc nó (ticket 02); ticket 02 không sửa `model/profiles.py` hay
+  `configs/models/*.yaml`, hai trường giá trên route do model-connections/02 bỏ (H-4).
 - Khóa quyền: `platform.usage.read` đưa về `active` (ticket 02), `platform.limits.manage` đăng ký (ticket 03),
   theo quy ước của tenant-rbac/01.
 - Gỡ trong cùng lát: `RunAllowancePort` và adapter của nền tảng đáp nó, `RunBudgetLedger`, `RunSpend`,
@@ -295,9 +297,9 @@ Mọi bảng tenant: RLS ENABLE và FORCE theo tenant, grant cùng migration, t�
   không cột nội dung; `dw_app` không UPDATE, DELETE trên cha và không giữ quyền nào trên phân vùng nào,
   kể cả DEFAULT, nên đọc ghi qua bảng cha (DO-02.2); đăng ký bằng một dòng `platform.time_partitioned_tables`
   (`append_only = true`, studio-skeleton:R3.1), ENABLE/FORCE RLS và policy tenant trên cha và DEFAULT; giữ
-  395 ngày (13 tháng, số tạm UNVERIFIED, DO-52) dưới khóa `platform.usage_events` mà ticket 02 thêm vào bản kế
-  tiếp của tệp chính sách retention trong cùng thay đổi đăng ký (telemetry-and-audit:R5.6, studio-skeleton:R3.7),
-  xóa bằng DROP PARTITION qua `platform.drop_expired_partitions`; vì `dw_app` không DELETE, bảng có một dòng
+  395 ngày (13 tháng, số tạm UNVERIFIED, DO-52) ở mảnh `configs/policies/retention.d/platform.usage_events.yaml` mà
+  ticket 02 thêm trong cùng thay đổi đăng ký (telemetry-and-audit:R5.6, studio-skeleton:R3.7; H-1), với `enforced`
+  chờ [CAN LAM RO: Q3], xóa bằng DROP PARTITION qua `platform.drop_expired_partitions`; vì `dw_app` không DELETE, bảng có một dòng
   `STUDIO_EXCLUSIONS` nêu cách xóa khi offboarding, `platform.purge_tenant_append_only` (R3.8;
   studio-skeleton:R4.3); index
   `(tenant_id, occurred_at)`, `(tenant_id, run_id) WHERE run_id IS NOT NULL`,
@@ -325,13 +327,13 @@ Mọi bảng tenant: RLS ENABLE và FORCE theo tenant, grant cùng migration, t�
 - `platform.budget_counters`: khóa chính `(tenant_id, scope_type, scope_id, metric, window_kind, window_start)`;
   `window_end`, `used`, `reserved`, `updated_at`; `CHECK (used >= 0 AND reserved >= 0)`; RLS tenant và
   policy drain; bảng toàn tenant, khóa `(scope_type, scope_id)` (ADR-0121 (Accepted)); lane `retention_limits`
-  xóa dòng có `window_end` cũ hơn thời hạn dưới khóa `platform.budget_counters` của tệp chính sách retention
-  (395 ngày, R5.7), do ticket 03 thêm vào tệp.
+  xóa dòng có `window_end` cũ hơn thời hạn của mảnh `platform.budget_counters` (395 ngày, R5.7), mảnh do ticket 03
+  thêm.
 - `platform.budget_leases`: `id`, `tenant_id`, `workspace_id`, `run_id`, `root_run_id`, `purpose`,
   `counter_keys jsonb`, `reserved_usd`, `reserved_tokens`, `settled_*`, `rolled_*`, `in_flight_*`,
   `state`, `close_reason`, `opened_at`, `heartbeat_at`, `expires_at`, `closed_at`; `UNIQUE (tenant_id, root_run_id) WHERE state='open'`;
-  index từng phần `expires_at WHERE state='open'`; lane `retention_limits` xóa lease đóng quá thời hạn dưới khóa
-  `platform.budget_leases` của tệp chính sách retention (30 ngày, R5.7), do ticket 03 thêm vào tệp.
+  index từng phần `expires_at WHERE state='open'`; lane `retention_limits` xóa lease đóng quá thời hạn của mảnh
+  `platform.budget_leases` (30 ngày, R5.7), mảnh do ticket 03 thêm.
 
 ## API
 
@@ -393,10 +395,10 @@ Mọi bảng tenant: RLS ENABLE và FORCE theo tenant, grant cùng migration, t�
 - studio-skeleton: sổ `platform.time_partitioned_tables` và quyền partition (studio-skeleton:R3.1; DO-02.2)
   (`.claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md`), gói và điều
   hướng (`.claude/plans/studio/studio-skeleton/issues/02-goi-dw-studio-va-seam-api.md`).
-- studio-skeleton: R3.7 đọc thời hạn của mỗi bảng `append_only` dưới khóa `schema.table` (studio-skeleton:R3.7);
-  test phủ offboarding và `STUDIO_EXCLUSIONS` cho bảng tenant mới của `platform` (studio-skeleton:R4.3); thứ tự các
-  bước xóa của `purge_rows` mà studio-skeleton/01 khai ở một chỗ trong `offboarding.py` và test phủ của
-  studio-skeleton:R4.2 đọc, nơi ticket 02 thêm bước `platform.purge_tenant_append_only` (R3.11).
+- studio-skeleton: R3.7 đòi mỗi bảng `append_only` của sổ có mảnh retention (studio-skeleton:R3.7); test phủ
+  offboarding và `STUDIO_EXCLUSIONS` cho bảng tenant mới của `platform` (studio-skeleton:R4.3); test phủ của
+  studio-skeleton:R4.2 đọc cạnh `RESTRICT` từ `pg_constraint` và đỏ khi bước `platform.purge_tenant_append_only` mà
+  ticket 02 đăng ký đi trái một cạnh (R3.11; H-2).
 - tenant-rbac: danh mục quyền là một chủ (tenant-rbac:R1.1), bảng do
   `.claude/plans/studio/tenant-rbac/issues/01-mot-chu-cho-quyen.md` tạo; `platform.usage.read` đưa về `active` ở
   ticket 02 và `platform.limits.manage` đăng ký ở ticket 03, mỗi khóa trong migration của ticket dùng nó theo quy
@@ -409,14 +411,15 @@ Mọi bảng tenant: RLS ENABLE và FORCE theo tenant, grant cùng migration, t�
 - foundations-hardening: ticket 01 chờ
   `.claude/plans/studio/foundations-hardening/issues/03-quyen-dw-app-va-rls-initplan.md` để quyền ghi và cột của
   `platform.plans` đổi theo một thứ tự; ticket 02 chờ
-  `.claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md` vì cùng sửa lane
-  `offboarding` (gọi `platform.purge_tenant_append_only` trước vòng DELETE bảng thường, R3.11).
+  `.claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md`, chủ sổ bước xóa của
+  lane `offboarding` ở composition root, nơi ticket 02 đăng ký bước `platform.purge_tenant_append_only` với các bảng nó
+  xóa; thứ tự suy từ cạnh khóa ngoại `RESTRICT` và `NO ACTION` trong `pg_constraint`, không ở ticket này (R3.11; H-2).
 - org-and-principals: `uq_workspaces_tenant_id_id` (org-and-principals:R1.1;
   `.claude/plans/studio/org-and-principals/issues/01-khoa-don-vi-va-siet-realm.md`), đích của FK ghép
   `scope_workspace_id`, mà ticket 03 nhận qua org-and-principals/02; cây workspace và workspace gốc cho Chuỗi phạm vi
-  hạn mức (`.claude/plans/studio/org-and-principals/issues/02-thanh-vien-cap-tenant.md`); hàm xóa người dùng
-  `service` của `.claude/plans/studio/org-and-principals/issues/03-tai-khoan-dich-vu-run-as.md` chạy sau cùng trong
-  cùng giao dịch xóa, sau mọi bảng của công ty, nên ticket đó chờ ticket 02 (cạnh nằm ở ticket đó).
+  hạn mức (`.claude/plans/studio/org-and-principals/issues/02-thanh-vien-cap-tenant.md`); bước xóa người dùng
+  `service` của `.claude/plans/studio/org-and-principals/issues/03-tai-khoan-dich-vu-run-as.md` đăng ký vào cùng sổ bước
+  xóa của foundations-hardening/07, nên ticket đó và ticket 02 không chờ nhau (H-2).
 - workflow-engine: làn `studio_runs` giao lượt chạy cho runner lúc dispatch, chỗ duy nhất gọi
   `LimitsPort.admit`, và là chủ bảng xử lý từ chối theo `trigger_kind` (workflow-engine:R5.9,
   workflow-engine:R5.10, workflow-engine:R5.11), nên workflow-engine/04 chờ ticket 03
@@ -424,22 +427,27 @@ Mọi bảng tenant: RLS ENABLE và FORCE theo tenant, grant cùng migration, t�
   `root_run_id` và ranh giới node (`.claude/plans/studio/workflow-engine/issues/02-cot-run-va-cua-nhan-run.md`,
   `.claude/plans/studio/workflow-engine/issues/03-bien-dich-va-wrapper-nut.md`); agent-builder: giới hạn
   hành vi trong phiên bản (`.claude/plans/studio/agent-builder/issues/03-runtime-agent.md`), ticket đó chờ ticket
-  03 vì `LimitsMiddleware` thay `RunBudgetMiddleware` trong ngăn xếp mà nó giữ thứ tự (ADR-0117 (Accepted) quyết 5).
+  03 vì `LimitsMiddleware` thay `RunBudgetMiddleware` trong ngăn xếp mà nó giữ thứ tự (ADR-0117 (Accepted) quyết 5);
+  ticket 06 (giới hạn của vòng agent) chờ agent-builder/03, còn ticket 04 (cửa có đo và giới hạn số bước của quy trình,
+  cổng E1) không chờ làn trợ lý (V4.31).
 - agent-lifecycle: cùng danh sách cửa hỏi thêm câu Đóng băng (agent-lifecycle:R7.1); Lượt kiểm định xin
-  lease `purpose` `eval_offline` qua `LimitsPort` (agent-lifecycle:R4.4).
+  lease `purpose` `eval_offline` qua `LimitsPort` (agent-lifecycle:R4.4) ở lane `studio_gate` của
+  `.claude/plans/studio/agent-lifecycle/issues/06-cong-chat-luong-va-ca-kich-ban.md`, ticket chờ ticket 03 (V4.31).
 - compliance-pdpl: `ResidencyGate` đứng trước `LimitsMiddleware` ở mọi cửa chạm model (R6.5) và ghi lộ trình lên
   Bản ghi sử dụng (`.claude/plans/studio/compliance-pdpl/issues/03-tuyen-du-lieu-o-model-gateway.md`); ở cửa vòng
   agent, vị trí của nó trong ngăn xếp (ngay sau `StudioModelSelection`, trước `LimitsMiddleware`) do agent-builder/03
   giữ, vì ticket đó giữ thứ tự ngăn xếp (ADR-0117 (Accepted) quyết 5).
-- telemetry-and-audit: chủ định dạng tệp chính sách retention (khóa `schema.table`, telemetry-and-audit:R5.6) và
-  lane lưu giữ; spec này thêm thời hạn của `usage_events` (ticket 02) và của `budget_counters`, `budget_leases`
-  (ticket 03) trong cùng thay đổi tạo bảng, còn thời hạn `usage_daily` (760 ngày) do telemetry-and-audit/03 khai
-  (DO-52). Tệp đi theo một chuỗi ticket bắt đầu từ ticket 02, mỗi ticket một phiên bản mới: ticket 02 (bản đầu có mục
-  khóa `schema.table`, kể cả `platform.audit_events`), ticket 03, rồi telemetry-and-audit/03 chờ ticket 03;
-  studio-skeleton/01 không sửa tệp, nó đọc `retention@1.7.0` qua ánh xạ tạm mà ticket 02 bỏ (V4.P1).
-- model-connections: `ModelProfile` v2 không mang giá, chỉ dẫn chiếu Bảng giá (DO-21.5); ticket 02 chờ
-  `.claude/plans/studio/model-connections/issues/02-model-resolver-theo-tenant.md` vì cả hai sửa
-  `model/profiles.py` và `configs/models/*.yaml`.
+- telemetry-and-audit: chủ định dạng mảnh retention (`configs/policies/retention.d/<schema>.<table>.yaml`,
+  telemetry-and-audit:R5.6), bộ đọc tập mảnh (telemetry-and-audit:R5.13) và lane lưu giữ; spec này thêm mảnh của
+  `usage_events` (ticket 02) và của `budget_counters`, `budget_leases` (ticket 03) trong cùng thay đổi tạo bảng, còn
+  mảnh `usage_daily` (760 ngày) do telemetry-and-audit/03 thêm (DO-52). Ticket 02 chờ
+  `.claude/plans/studio/telemetry-and-audit/issues/01-otel-khong-noi-dung-va-metric.md` vì mốc của
+  `platform.drop_expired_partitions` đọc qua bộ đọc tập mảnh (H-27); không ticket nào chờ ticket khác vì mảnh, và
+  không có chuỗi tệp retention (H-1).
+- model-connections: `ModelProfile` v2 không mang giá, chỉ dẫn chiếu Bảng giá (DO-21.5);
+  `.claude/plans/studio/model-connections/issues/02-model-resolver-theo-tenant.md` chờ ticket 02 và bỏ hai trường giá
+  của `ModelRoute` mà `route_cost` đã thôi đọc; ticket 02 không sửa `model/profiles.py` hay `configs/models/*.yaml`
+  (H-4).
 - Bên dùng `RateLimiterPort`: Data Hub (workflow-triggers:R5.9, khóa nguồn dữ liệu, 60 mỗi phút cố định ở W1, việc
   nâng là W2 qua đường hai người ở Ngoài phạm vi), kiểm trùng của custom-objects (custom-objects:R7.6, khóa người gọi
   và đối tượng, 20 trong 10 phút trượt, DO-35).
@@ -450,13 +458,19 @@ Mọi bảng tenant: RLS ENABLE và FORCE theo tenant, grant cùng migration, t�
   `langgraph_runner.py:255-257`).
 - Kiểm lại khi: danh mục quyền của tenant-rbac đổi tên → R3.5, R4.5, R4.6; cây workspace của
   org-and-principals đổi hình → R4.1, R4.4; workflow-engine đổi chỗ gọi `admit` hay bảng từ chối → R4, R4.10,
-  R5; telemetry-and-audit đổi định dạng tệp retention → R5.7, Dữ liệu; tenant-config mở
+  R5; telemetry-and-audit đổi định dạng mảnh retention hay bộ đọc tập mảnh → R5.7, Dữ liệu, ticket 02, 03; tenant-config
+  mở
   đường đề xuất hai người cho Hạn mức → R4.9; tenant-config đổi khóa duy nhất của `studio.artifacts` → Dữ liệu,
   ticket 03; agent-builder/03 đổi thứ tự ngăn xếp agent → R6.5; `RateLimiterPort` có adapter Valkey → R7 và hai cột
-  tốc độ của `platform.plan_limits`; foundations-hardening hay org-and-principals đổi thứ tự trong giao dịch xóa của
-  offboarding, hay studio-skeleton đổi chỗ khai thứ tự các bước xóa → R3.11, ticket 02.
+  tốc độ của `platform.plan_limits`; foundations-hardening đổi cách sổ bước xóa của offboarding nêu bảng hay suy thứ tự
+  → R3.11, ticket 02; agent-builder/03 đổi chỗ của middleware giới hạn trong ngăn xếp → ticket 06.
 
 ## Câu hỏi còn mở
+
+- Q3. Mảnh `platform.usage_events` có `enforced: true` từ W1, để lane `partitions` thật sự DROP tháng quá 395 ngày, hay
+  `enforced: false` tới khi luật sư xác nhận thời hạn trước chạy bóng (E3)? Chủ: Đạt. Chặn: ticket 02 (giá trị
+  `enforced` của mảnh); đề xuất: `enforced: false`, vì DROP PARTITION không lùi được, số 395 ngày còn UNVERIFIED và W1
+  chỉ có dữ liệu giả lập, còn mốc NULL không đổi gì khác.
 
 ## Quyết định
 
@@ -656,6 +670,40 @@ Mọi bảng tenant: RLS ENABLE và FORCE theo tenant, grant cùng migration, t�
   `platform.plan_limits` vẫn vào W2 cùng bên đọc của nó, với lý do này thay lý do "hạn chót bền của workflow-engine là
   W2" của dòng tạm ngày 23/10/2026 ở trên; route hủy và `cancel_requested_at` vẫn là W2 của workflow-engine. Sửa:
   Ngoài phạm vi, ticket 04.
+- 25/10/2026 (Đạt): V4.31: gỡ cạnh giả và tách ticket gộp trước khi ticket nào lên `ready-for-agent`; lối ra W1a không
+  chờ làn trợ lý, nên phần agent của ticket 04 (bước 2: `ModelCallLimitMiddleware`, `ToolCallLimitMiddleware`,
+  `recursion_limit` của subagent, và các ca agent của R6.3) tách sang ticket 06, chờ ticket 04 và agent-builder/03;
+  ticket 04 giữ R6.1, R6.2, phần quy trình của R6.3, R6.4 (cổng E1) và thôi chờ agent-builder/03. Sửa: Phụ thuộc,
+  Danh sách ticket, ticket 04, thêm ticket 06.
+- 25/10/2026 (agent, tạm): H-1: chính sách lưu giữ là một mảnh cho mỗi kho, `configs/policies/retention.d/<schema>.<table>.yaml`,
+  release manifest ghim mã băm của tập mảnh; ticket 02 thêm mảnh `platform.usage_events` và ticket 03 thêm mảnh
+  `platform.budget_counters`, `platform.budget_leases`, mỗi mảnh trong cùng thay đổi tạo bảng; lane `partitions` dựng mốc
+  của `platform.drop_expired_partitions` từ tập mảnh (chỉ mảnh có `days`, `purger: drop_partition`, `enforced: true`,
+  bảng khác mốc NULL); thay dòng V4.P1 ngày 24/10/2026 ở trên (một tệp có phiên bản và chuỗi ticket bắt đầu từ ticket
+  02), và mảnh `platform.audit_events` cùng việc gỡ ánh xạ tạm của studio-skeleton/01 là của telemetry-and-audit/01,
+  không của ticket 02. Hỏi: Q3. Sửa: R3.10, R5.7, Trong phạm vi, Dữ liệu, Phụ thuộc, ticket 02, 03. Nếu sai thì: một tệp
+  có phiên bản với chuỗi ticket như V4.P1.
+- 25/10/2026 (agent, tạm): H-2: các bước xóa của lane `offboarding` là một sổ ở composition root do
+  foundations-hardening/07 dựng, mỗi bước nêu bảng nó xóa, thứ tự suy từ cạnh khóa ngoại `RESTRICT` và `NO ACTION`
+  trong `pg_constraint`, không danh sách viết tay; ticket 02 đăng ký bước `platform.purge_tenant_append_only`, nêu các
+  bảng `append_only` của `platform.time_partitioned_tables` trừ `platform.audit_events`, và org-and-principals/03 đăng
+  ký bước của mình, hai bên không chờ nhau; thay hai dòng ngày 24/10/2026 ở trên về lời gọi đứng trước vòng DELETE bảng
+  thường và về thứ tự các bước xóa mà studio-skeleton/01 khai trong `offboarding.py`. Sửa: R3.11, Trong phạm vi, Phụ
+  thuộc, ticket 02. Nếu sai thì: thứ tự viết tay và cạnh org-and-principals/03 <- usage-and-limits/02.
+- 25/10/2026 (agent, tạm): H-4: ticket 02 dựng Bảng giá theo ngày hiệu lực và chuyển `route_cost` sang đọc nó, không sửa
+  `model/profiles.py` hay `configs/models/*.yaml`; model-connections/02, nay chờ ticket 02, bỏ hai trường giá đã không
+  còn ai đọc khi dựng `ModelProfile` v2; mỗi tệp một ticket sửa; test AST đỏ khi mã nào đọc lại hai trường đó; thay vế
+  "ticket 02 chờ model-connections/02" của dòng ngày 24/10/2026 ở trên. Sửa: Trong phạm vi, Phụ thuộc, ticket 02. Nếu
+  sai thì: ticket 02 chờ model-connections/02 như trước.
+- 25/10/2026 (agent, tạm): H-27: ticket 02 chờ telemetry-and-audit/01, vì mốc của `platform.drop_expired_partitions`
+  và R3.7 của studio-skeleton đọc qua bộ đọc tập mảnh của ticket đó (telemetry-and-audit:R5.13); đã mô phỏng: độ sâu
+  của `marketing-pilot/03` 15, chuỗi dài nhất 18. Sửa: Phụ thuộc, ticket 02. Nếu sai thì: ticket 02 tự đọc mảnh
+  `platform.usage_events` và `platform.audit_events` không qua bộ đọc chung, hai bộ đọc của một định dạng.
+- 26/10/2026 (agent, tạm): theo V4.31 và V4.37, Cổng chất lượng và Lượt kiểm định tách từ agent-lifecycle/04 sang
+  agent-lifecycle/06, nên bên xin lease `eval_offline` của Lượt kiểm định và ticket chờ ticket 03 là agent-lifecycle/06,
+  thay vế "agent-lifecycle/04 chờ ticket 03" của dòng DO-21.4 ngày 23/10/2026 ở trên; cạnh
+  agent-lifecycle/06 <- usage-and-limits/03 đã có ở ticket đó. Sửa: Phụ thuộc, ticket 03. Nếu sai thì: agent-lifecycle/04
+  vẫn chờ ticket 03.
 
 ## Danh sách ticket
 
@@ -666,3 +714,4 @@ Mọi bảng tenant: RLS ENABLE và FORCE theo tenant, grant cùng migration, t�
 | 03  | [Hạn mức theo chuỗi phạm vi: giữ trước lúc nhận run, quyết toán từng lượt gọi](issues/03-han-muc-giu-truoc-va-quyet-toan.md) |
 | 04  | [Đóng các cửa vòng qua hạn mức và giới hạn hành vi mỗi lượt chạy](issues/04-dong-cua-vong-va-gioi-han-hanh-vi.md)            |
 | 05  | [Một RateLimiterPort và bộ đếm theo tiến trình cho giới hạn tốc độ W1](issues/05-cong-gioi-han-toc-do-theo-tien-trinh.md)    |
+| 06  | [Giới hạn hành vi của vòng agent](issues/06-gioi-han-vong-agent.md)                                                          |

@@ -60,13 +60,34 @@ ADR 0121, which owns the usage ledger whose screens and retention this ADR also 
 4. **Run history is a tenant-facing product store.** `platform.run_steps`, partitioned by month on
    `started_at` with a DEFAULT partition and tenant RLS on every partition, holds one run step per
    `node`, `model_call`, `tool_call`, `approval` or `sub_run`, written through `StepRecorderPort`.
+   From the migration that creates it, a step carries `attempt` (an integer of at least 1, held by
+   a CHECK), `port` (the branch out that the step took: a `switch` branch key, an approval's
+   decision lane or the error lane) and `child_run_id` (a composite foreign key
+   `(tenant_id, child_run_id)` to `platform.worker_runs`, its `ON DELETE` declared, indexed),
+   beside `lane_path` and `iteration_path`; a parallel lane is named by its `lane_path`, so no
+   `branch_key` repeats it (V4.36, H-11). A step that waits has its row from the moment it parks,
+   so `/runs/[id]`, drawn as a tree (antd `Tree`), shows where a run waits and why it is held.
+   Every `reason_code` and `error.code` that workflow-engine, the lanes and the doors that take
+   runs write has its Vietnamese label in one catalogue, fragments `configs/copy/run_reason_codes.d/<spec>.yaml`
+   that each spec adds in the change that writes the code, merged by telemetry-and-audit's loader and pinned by the
+   hash of the set, beside decision 6's action catalogue, and a test fails a code the catalogue lacks, codes a node
+   type returns included (H-12, H-21).
    Payloads are redacted at write (secrets and credential references dropped, `sensitive` fields
    masked, each decision recorded) and masked again at read by the viewer's field permissions
    (ADR 0106). Previews up to 4 KB stay inline; larger bodies are stored by reference under
    `tenants/{tenant_id}/workspaces/{workspace_id}/run-steps/`. `GET /api/v1/runs` and
    `GET /api/v1/runs/{id}/steps` serve it; a payload needs `runs.read_payloads` and every payload
-   view is audited as `run.payload.viewed`. Builder test results and quality gate evidence are read
-   from it; neither keeps a store of its own.
+   view is audited as `run.payload.viewed`. A holder of `studio.workflows.test` reads the steps and
+   the detail of a `simulate` run they requested (`requested_by`), while a `live` run still needs
+   `runs.read` and field security applies as everywhere; without `runs.read`, another person's run
+   and a `live` run answer 404 as if absent, as another tenant's run always does. In W1
+   `GET /api/v1/runs` stays behind `runs.read`, and a builder reaches their simulated run by the
+   id the `test-runs` route returns (V4.41, H-17). Builder test results and quality gate evidence
+   are read from it; neither keeps a store of its own. No run starts again from one of a past
+   run's steps: "Chạy tách từ bước" (Fork from step) is gone, since running past steps again
+   would resend their effects under new keys; "Chạy lại mô phỏng" (W2) starts a new `simulate` run
+   of the same pinned version with the same input, and "Chạy tiếp từ Bước lỗi" continues a run in
+   place (H-13).
 5. **Content capture stays with the tenant, briefly (W2).** A tenant may opt in through the audited
    policy `telemetry.content_capture`: model messages and tool arguments of `model_call` steps are
    kept by reference in that tenant's run history for at most 7 days, readable only by holders of
@@ -76,33 +97,36 @@ ADR 0121, which owns the usage ledger whose screens and retention this ADR also 
    (action, actor, resource, run, and a window of at most 93 days, default 7) over a new index on
    the partitioned parent, `ix_audit_events_action`, and the one run index,
    `platform.audit_events (tenant_id, run_id, occurred_at)`, which app-standards 03 owns. One action
-   catalogue, `configs/copy/audit_actions@1.0.0.yaml`, gives every action its Vietnamese label, and
+   catalogue, fragments `configs/copy/audit_actions.d/<spec>.yaml` merged and hashed the same way (H-21), gives every
+   action its Vietnamese label, and
    an AST test fails an emitted action the catalogue lacks. Studio configuration changes audit
    before and after values as identifiers and numbers, never business data. An audit export
    (`POST /api/v1/audit/exports`, permission `audit.export`, rows in `platform.audit_exports`,
    written by the worker lane `audit_export`) is gated by the `audit_export` feature, its first
    reader.
-7. **One retention policy, one owner, a remover for every store.** The policy stays one versioned
-   file, `configs/policies/retention@<semver>.yaml`, so a compliance question gets one numbered
-   answer. telemetry-and-audit owns the file's format, one entry per `schema.table`, and its
-   retention lane; each ticket that registers a table adds that table's term to the file in the same
-   change and releases a new version in that format, so the catalog test that every registered table
-   has a term (studio-skeleton R3.7) passes from the registration on. The tickets that edit the file
-   form one chain, each releasing the next version: usage-and-limits/02 (the first version keyed by
-   `schema.table`, `platform.audit_events` included), usage-and-limits/03, telemetry-and-audit/03,
-   agent-lifecycle/04, workflow-triggers/02, compliance-pdpl/04, agent-builder/04 and
-   compliance-pdpl/06. studio-skeleton/01, which registers `platform.audit_events` before the chain
-   starts, is the one registration that edits no file: until usage-and-limits/02 moves that term
-   under its `schema.table` key, the policy model maps `retention@1.7.0`'s
-   `audit.tables.audit_events` to it (ADR-0100 decision 7). A store that ships later brings its row
-   with it, the per-tenant analytics store of ADR-0127 (Accepted) included (W3). The terms are
-   provisional, versioned data, UNVERIFIED until counsel confirms them before shadow runs; counsel
-   changes a number with a new policy version, never with code (DO-52 (a)). A narrow purge function
+7. **One retention policy, one owner, a remover for every store.** The policy is one fragment per
+   store, `configs/policies/retention.d/<schema>.<table>.yaml` (a store that is not a table takes a
+   prefixed name, such as `objects.run_step_payloads.yaml`), each holding the fields of today's
+   keyed entry (the term, the remover and the `enforced` gate), and the release manifest pins the
+   hash of the fragment set in place of a file's semver, so a compliance question gets one answer,
+   the set a deployment pinned (V4.31, H-1). telemetry-and-audit owns the fragments' format and the
+   retention lane (V4.21). Its ticket 01, the spec's earliest, ships the format, the loader of
+   `platform.retention_terms` with its tests (telemetry-and-audit R5.9-R5.12), the term reader
+   `platform.retention_term_days(text)` and the coverage test that every `append_only` store has a
+   fragment, and it adds the `platform.audit_events` fragment and removes studio-skeleton/01's
+   provisional mapping of `retention@1.7.0`; its ticket 03 keeps the lane and the slice's purge
+   functions. Each ticket that registers a store adds that store's fragment in the same change, so
+   the catalog test that every registered table has a term (studio-skeleton R3.7), which reads the
+   fragment set, passes from the registration on, and no chain of tickets waits on one file's
+   versions. A store that ships later brings its fragment with it, the per-tenant analytics store
+   of ADR-0127 (Accepted) included (W3). The terms are provisional data, UNVERIFIED until counsel
+   confirms them before shadow runs; counsel changes a number by changing its fragment, which the
+   next release pins in the set's new hash, never with code (DO-52 (a)). A narrow purge function
    that clears or deletes rows, such as the two below for tool outputs and for conversations, takes
    no argument, so no caller can widen it, and reads its term from `platform.retention_terms`
-   (`schema.table` and term, no tenant), which the provisioner loads at deploy from the policy
-   version the deployment pins and `dw_app` may only read; a function whose row is missing fails and
-   deletes nothing (`failure-modes.md` #7), a test fails when that table and the pinned file differ
+   (`schema.table` and term, no tenant), which the provisioner loads at deploy from the fragment
+   set the deployment pins and `dw_app` may only read; a function whose row is missing fails and
+   deletes nothing (`failure-modes.md` #7), a test fails when that table and the pinned set differ
    (`failure-modes.md` #2), and only `platform.drop_expired_partitions` below takes its cutoffs from
    the lane. Run steps keep 30 days, as YC88 asks, so a lane deletes them: dropping a monthly
    partition would keep rows for 30 to 61 days. Unfinished runs are never touched, and each row
@@ -140,13 +164,13 @@ owned by compliance-pdpl 06. It takes no argument, so no caller can widen it to 
 `platform.prune_notifications()` does
 (`db/migrations/versions/855ae928c3fa_platform_in_app_notifications.py:28-29`), and it reads its
 term, the `studio.conversation_messages` row of `platform.retention_terms`, so a new number from
-counsel reaches it with the next policy version and no code; like every Studio function it revokes
+counsel reaches it with the next pinned fragment set and no code; like every Studio function it revokes
 all from PUBLIC and grants EXECUTE to the role the lane calls it as (ADR-0100 decision 4). In every
 tenant it deletes the messages created before the cutoff that term gives, then the conversations
 that have no message left and whose last activity is before it, and the lane audits as itself
 (`system:<lane>`, ADR 0011) with the row counts. The DROP PARTITION rows go through
-`platform.drop_expired_partitions(cutoffs jsonb)`, one cutoff per parent read from this file, which
-usage-and-limits 02 owns in W1.
+`platform.drop_expired_partitions(cutoffs jsonb)`, one cutoff per parent read from its fragment,
+which usage-and-limits 02 owns in W1.
 
 ## Alternatives considered
 
@@ -161,22 +185,30 @@ usage-and-limits 02 owns in W1.
 
 ## Consequences
 
-- `telemetry-and-audit` owns `platform.run_steps`, `StepRecorderPort`, the retention policy with
-  `platform.retention_terms`, its loader and the test that holds the two equal, and decision 6's
-  action catalogue, which its ticket 03 creates together with the AST test; `workflow-builder-ui`
-  and `agent-lifecycle` read steps instead of storing their own results.
+- `telemetry-and-audit` owns `platform.run_steps`, `StepRecorderPort`, the retention fragments'
+  format with `platform.retention_terms`, its loader and the tests that hold the table, the pinned
+  set and the registered stores together (its ticket 01, H-1), decision 6's action catalogue,
+  which its ticket 03 creates together with the AST test, and the reason-code catalogue (H-12);
+  `workflow-builder-ui` and `agent-lifecycle` read steps instead of storing their own results.
 - Migrations: `platform.run_steps` (monthly partitions made by `platform.ensure_time_partitions`,
-  RLS enabled and forced on parent, DEFAULT and each partition), `platform.audit_exports`,
+  RLS enabled and forced on parent, DEFAULT and each partition, `attempt`, `port` and
+  `child_run_id` in its creating revision), `platform.audit_exports`,
   `platform.retention_terms` (SELECT only for `dw_app`), `platform.outbox_events.trace_parent` and
   `ix_audit_events_action`; the run index on `platform.audit_events` is app-standards 03's, and
   telemetry-and-audit 02 waits for it.
 - Tests that must exist, each red with its guard removed: the semconv contract test and the AST
   emitter test; a log test that fails on an email-shaped value or a query string; cross-tenant
-  negative tests on `/api/v1/runs` and the steps route; a viewer without read on a `sensitive` field
-  sees it masked in a payload; the Langfuse processor drops `user.id` and content; one test per
-  retention row proving its remover runs, with
+  negative tests on `/api/v1/runs` and the steps route; a builder holding only `studio.workflows.test`
+  reading the steps of a `simulate` run they requested, while another person's run and a `live`
+  run answer them 404 (V4.41); a viewer without read on a `sensitive` field sees it masked in a
+  payload; the Langfuse processor drops `user.id` and content; a step row with an `attempt` below
+  1 refused, a waiting step's row present from the moment it parks, and a `reason_code` or
+  `error.code` without a label failing the catalogue test (V4.36, H-12); one test per retention
+  row proving its remover runs, with
   `test_the_pinned_retention_policy_promises_only_classes_code_can_assign` changed on purpose;
-  `platform.retention_terms` holding a term other than the pinned policy file's failing its test.
+  `platform.retention_terms` holding a term other than the pinned fragment set's failing its test;
+  every `append_only` store holding a fragment, the coverage test turning red when one is removed
+  (H-1).
 - Harder: every run writes step rows and objects; a run older than its term can no longer be
   inspected; operators debugging a tenant's run see identifiers only, and any operator need to see
   content would be a new decision, since ADR 0024 stays as it is.
@@ -278,3 +310,28 @@ open:
   `platform.drop_expired_partitions` alone still takes its cutoffs from the lane. This replaces the
   third pass's 90-day term held inside the conversation function, a number only code could change,
   against decision 7's rule that counsel changes a number with a new policy version (DO-52 (a)).
+
+## Amendments (2026-10-25)
+
+Amended by Đạt on 2026-10-25, who accepted the recommendation on each of the twelve decisions owed
+(V4.30-V4.41), eleven from the answer to ChatGPT's architecture review and one on a builder's read
+of simulated runs, applied with the planner's provisional calls H-1-H-18:
+
+- Third consistency check (round 4), eighth pass, Đạt's V4.31, V4.36 and V4.41 and the planner's
+  provisional calls H-1, H-11, H-12, H-13 and H-17: decision 7's policy is one fragment per store
+  under `configs/policies/retention.d/`, the release manifest pinning the set's hash, each ticket
+  that registers a store adding its fragment in the same change, with telemetry-and-audit keeping
+  the format and the lane and its ticket 01 shipping the format, the loader, the term reader and the
+  drift and coverage tests, the `platform.audit_events` fragment and the removal of
+  studio-skeleton/01's mapping of `retention@1.7.0`; this replaces the one versioned file and the
+  chain of tickets that the lines of 2026-10-24 name under V4.P1 (if H-1 is wrong, one versioned
+  file with that chain). Decision 4 gives `platform.run_steps` `attempt`, `port` and `child_run_id`
+  from its creating migration and no `branch_key`, a row for a step that waits, the run drawn as a
+  tree with where it waits and why, one reason-code catalogue with Vietnamese labels, a builder's
+  read of the `simulate` runs they requested, and no Fork from a step, "Chạy lại mô phỏng" (W2)
+  taking its place (if H-11 is wrong, `branch_key` is the last element of `lane_path`; if H-12 is
+  wrong, the labels sit in workflow-engine's table of `wf.*` codes; if H-13 is wrong, Fork stays in
+  W2 running `simulate` only; if H-17 is wrong, `/runs` shows a holder of `studio.workflows.test`
+  the simulated runs they requested). Consequences follow.
+- Pass h, after wave 1 (H-21): the action and reason-code catalogues are fragments per spec, merged and hashed like
+  decision 7's retention fragments, so no chain of tickets edits one catalogue file.

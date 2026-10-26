@@ -3,15 +3,17 @@
 Status: needs-triage
 Blocked by: 02, .claude/plans/studio/workflow-nodes/issues/03-pham-vi-bien-va-buoc-logic.md, .claude/plans/studio/workflow-triggers/issues/01-so-kich-hoat-chay-tay-va-danh-tinh.md, .claude/plans/studio/telemetry-and-audit/issues/03-lich-su-chay-theo-buoc.md, .claude/plans/studio/agent-lifecycle/issues/03-hop-dong-vong-doi-va-niem-phong.md
 Area: studio
-Yêu cầu: R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R3.9, R3.10, R3.11, R3.12, R3.13, R3.14, R3.15, BU2, BU3, BU5, BU6, BU9, BU15, BU16
+Yêu cầu: R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R3.9, R3.10, R3.11, R3.12, R3.13, R3.14, R3.15, R3.16, R3.17, R3.18, R3.19, R3.20, BU2, BU3, BU5, BU6, BU9, BU15, BU16, BU17
 
 ## Mục tiêu
 
 Ô Biểu thức có Chọn biến có kiểu kiểm ở máy chủ, lỗi kiểm gắn về đúng Bước, nút gửi kiểm định nêu lý do
 khi khóa và không tự phát hành, trang chỉ đọc khi một Bản ứng viên còn chờ, bản Nháp mới chỉ mở khi người dựng bấm Tạo
 bản Nháp, và chạy mô phỏng với một lựa chọn duyệt hay từ chối cho mỗi Bước phê duyệt, kết quả hiện trên cùng Sơ đồ theo
-lần lặp và làn, che theo bảo mật trường (workflow-builder-ui R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R3.9,
-R3.10, R3.11, R3.12, R3.13, R3.14, R3.15, BU2, BU3, BU5, BU6, BU9, BU15, BU16).
+lần lặp và làn, che theo bảo mật trường, cho người dựng đã xin lượt đó; cùng Sơ đồ chỉ đọc có lớp phần khác so với bản
+Đang dùng theo id Bước, mà màn duyệt phát hành của agent-lifecycle/07 dùng (workflow-builder-ui R3.1, R3.2, R3.3, R3.4,
+R3.5, R3.6, R3.7, R3.8, R3.9, R3.10, R3.11, R3.12, R3.13, R3.14, R3.15, R3.16, R3.17, R3.18, R3.19, R3.20, BU2, BU3,
+BU5, BU6, BU9, BU15, BU16, BU17).
 
 ## Việc cần làm
 
@@ -45,18 +47,36 @@ R3.10, R3.11, R3.12, R3.13, R3.14, R3.15, BU2, BU3, BU5, BU6, BU9, BU15, BU16).
    nên 403 giữ trang chỉ đọc và nêu lý do; rút xong, trang đọc lại bản Nháp cùng ETag của nó.
 7. Màn lượt chạy (R3.11, R3.12): cùng Sơ đồ của ticket 02 ở chế độ chỉ đọc, không bảng Loại bước, không ô "+", không
    menu sửa, không lưu Nháp và không thao tác cây. Mỗi thẻ Bước mang trạng thái, thời gian, token và chi phí của Bước chạy
-   từ `run_steps` bằng chữ cùng biểu tượng; đường đã đi được tô, với Bước phê duyệt là làn của quyết định giả lập nó đã
-   đi; Bước chưa chạy ghi "Chưa chạy". Một bộ chọn lần lặp (antd `Select`) cho mỗi Bước vòng lặp đọc `iteration_path` mà
+   từ `run_steps` bằng chữ cùng biểu tượng; đường đã đi được tô, với làn đã đi của mỗi Bước rẽ nhánh, Bước phê duyệt
+   (làn của quyết định giả lập nó đã đi) và làn lỗi đọc từ `port` của Bước chạy (V4.36), không suy từ Bước nào đã chạy;
+   Bước chưa chạy ghi "Chưa chạy". Một bộ chọn lần lặp (antd `Select`) cho mỗi Bước vòng lặp đọc `iteration_path` mà
    mỗi Bước chạy mang, mọi làn của một Bước song song vẽ cùng lúc, qua `GET /api/v1/runs/{run_id}/steps`
    (telemetry-and-audit:R3.7, telemetry-and-audit:R4.2;
-   `.claude/plans/studio/telemetry-and-audit/issues/03-lich-su-chay-theo-buoc.md`). Khung, đầu làn và nhãn của từng cấu
-   trúc là ticket 04; màn này dùng chúng khi có, không chờ chúng.
+   `.claude/plans/studio/telemetry-and-audit/issues/03-lich-su-chay-theo-buoc.md`). Màn mở từ id lượt mà route
+   `test-runs` của bước 4 trả (H-17); route Bước chạy cho người giữ `studio.workflows.test` đọc lượt `simulate` do chính
+   mình xin mà không cần `runs.read`, và trả 404 cho lượt của người khác, lượt `live` khi không giữ `runs.read` hay lượt
+   của công ty khác (telemetry-and-audit:R4.4, telemetry-and-audit:R4.5; V4.41), nên màn không tự kiểm quyền nào. Khung, đầu làn và nhãn của từng cấu trúc là ticket 04; màn
+   này dùng chúng khi có, không chờ chúng.
 8. Bản Nháp mới (R3.13, R3.14, R3.15): Quy trình không có bản Nháp hay Bản ứng viên mở phiên bản Đang dùng, hay phiên
    bản mới nhất khi không có bản Đang dùng, chỉ đọc kèm nút "Tạo bản Nháp"; trang không gọi route tạo bản Nháp khi mở.
    Bấm nút thì gọi `POST /api/v1/studio/artifacts/{id}/draft` của tenant-config đúng một lần (tenant-config:R2.21) rồi
    mở bản Nháp trả về cùng ETag của nó; 409 `candidate_pending` (tenant-config:R2.22) thì đọc lại giai đoạn và vào trạng
    thái chỉ đọc của bước 6; 409 `draft_exists` (tenant-config:R2.23) thì đọc và mở bản Nháp đang có; không lần nào gọi
    lại route.
+9. Lớp phần khác (R3.16-R3.20; V4.37): Sơ đồ chỉ đọc của bước 7 nhận thêm một bản để so, là một trong ba giá trị mà màn
+   gọi phải nêu rõ: tài liệu của bản Đang dùng, "chưa có bản Đang dùng", hay "đọc lỗi"; không giá trị nào được suy từ
+   một giá trị khác. Ticket này mở rộng diff theo id Bước của `apps/web/lib/workflow-graph.ts` (ticket 02), vẫn thuần,
+   không import gói nào, có test đơn vị, để trả cho mỗi id: "Mới" khi id chỉ có ở bản đang xem; "Đã sửa" khi `type`,
+   `config`, `retry`, `timeout_s`, `on_error` hay `description` của Bước khác (so dạng chuẩn, không so thứ tự khóa), khi
+   làn chứa nó (id Bước chứa và Nhánh ra) khác, hay khi chỉ số của nó trong dãy các Bước có ở cả hai bản của cùng làn
+   khác; "Đã xóa" khi id chỉ có ở bản Đang dùng; cộng tên các khóa ngoài `steps` (`triggers`, `variables`, `inputs`,
+   `outputs`, `bindings`, `limits`, `outcomes`) có nội dung khác. Thẻ mang antd `Tag` "Mới" hay "Đã sửa" từ khóa thông điệp, chữ cùng biểu tượng, màu từ
+   bộ từ vựng của theme; Bước "Đã xóa" vào một antd `List` "Bước đã xóa" cạnh Sơ đồ, mỗi mục nêu tên, Loại bước và làn
+   cũ, không vẽ thẻ ma trong cây, nên `workflow-layout.ts` không đổi; chọn một thẻ "Đã sửa" mở antd `Drawer` chỉ đọc nêu
+   từng trường đã khác, trước và sau (antd `Descriptions`); các phần ngoài cây Bước đã khác hiện ở đầu Sơ đồ (antd
+   `Alert`, `App.useApp()` không dùng cho nó vì nó không phải thông báo tạm). "Chưa có bản Đang dùng" thì mọi Bước "Mới";
+   "đọc lỗi" thì một `Alert` "Không so được với bản Đang dùng" và không nhãn nào. Màn này không gọi lưu Nháp hay thao tác
+   cây nào, như màn lượt chạy; route, quyền và hai phiên bản đưa vào là của agent-lifecycle/07.
 
 ## Tiêu chí chấp nhận
 
@@ -84,7 +104,8 @@ R3.10, R3.11, R3.12, R3.13, R3.14, R3.15, BU2, BU3, BU5, BU6, BU9, BU15, BU16).
       trả 409 `candidate_exists` → trang vào cùng trạng thái chỉ đọc; bỏ trạng thái chỉ đọc → test thành phần đỏ.
 - [ ] R3.11 (BU16): lượt mô phỏng của F5 (test thành phần với `GET /api/v1/runs/{run_id}/steps` giả) → Sơ đồ chỉ
       đọc, mỗi thẻ có trạng thái, thời gian, token và chi phí bằng chữ cùng biểu tượng; làn của quyết định giả lập được
-      tô, làn kia ghi "Chưa chạy"; màn lượt chạy không gọi lưu Nháp hay thao tác cây nào; cho sửa trên màn lượt chạy →
+      tô, làn kia ghi "Chưa chạy"; một `logic.switch` có `port` là làn "Khác" rỗng → làn đó được tô; màn lượt chạy
+      không gọi lưu Nháp hay thao tác cây nào; cho sửa trên màn lượt chạy, hay suy làn đã đi từ Bước chạy thay `port` →
       test thành phần đỏ.
 - [ ] R3.12 (BU16): lượt mô phỏng của F3 (test thành phần với `GET /api/v1/runs/{run_id}/steps` giả) → chọn lần lặp
       2 → mỗi Bước của thân vòng lặp, ở mọi làn của một Bước song song trong thân, hiện Bước chạy có `iteration_path`
@@ -96,6 +117,23 @@ R3.10, R3.11, R3.12, R3.13, R3.14, R3.15, BU2, BU3, BU5, BU6, BU9, BU15, BU16).
       "rút bản đang chờ về Nháp để sửa", không lời gọi thứ hai; gọi lại route sau 409 → test đỏ.
 - [ ] R3.15 (BU15): route giả trả 409 `conflict` với `draft_exists` → trang đọc và mở bản Nháp đang có với ETag của nó,
       không lời gọi thứ hai; hiện lỗi thay vì mở bản Nháp → test đỏ.
+- [ ] R3.16 (BU17): test thành phần trên F1 làm bản Đang dùng và một bản sửa của nó (thêm một Bước, đổi ngưỡng của một
+      `logic.switch`, đổi chỗ hai Bước trong một làn, dời một Bước sang làn khác) → đúng một thẻ "Mới", nhãn "Đã sửa" ở
+      Bước đổi ngưỡng, ở cả hai Bước đổi chỗ và ở Bước dời, không nhãn ở Bước đứng ngay sau Bước mới; bỏ so thứ tự trong
+      làn → hai Bước đổi chỗ không mang nhãn, test đỏ; bỏ so làn chứa → Bước dời không mang nhãn, test đỏ; màn gọi đưa
+      "chưa có bản Đang dùng" cùng F1 → mọi Bước của F1 mang "Mới"; cho giá trị đó vẽ như không phần khác → không thẻ
+      nào mang nhãn, test đỏ.
+- [ ] R3.17 (BU17): bản sửa xóa một Bước và một khung "Song song" chứa hai Bước → danh sách "Bước đã xóa" có đúng bốn
+      mục (Bước đó, chính Bước song song và hai Bước trong các làn của nó), mỗi mục nêu tên, Loại bước và làn cũ; Sơ đồ
+      không vẽ thẻ nào cho chúng, và tọa độ mọi Bước còn lại bằng tọa độ khi vẽ bản sửa không có lớp phần khác; bỏ danh
+      sách → bốn Bước đó không hiện ở đâu, test đỏ.
+- [ ] R3.18: chọn Bước đổi ngưỡng → Drawer chỉ đọc nêu đúng trường `config` đã khác với giá trị trước và sau, không
+      trường nào khác, không nút lưu hay sửa nào; cho Drawer nêu mọi trường của Bước, hay đặt một ô sửa trong Drawer →
+      test thành phần đỏ.
+- [ ] R3.19 (BU17): màn gọi đưa "đọc lỗi" → `Alert` "Không so được với bản Đang dùng", không nhãn nào trên Sơ đồ; cho
+      "đọc lỗi" vẽ thành "không phần khác", hay thành cây rỗng → test đỏ.
+- [ ] R3.20 (BU17): bản sửa chỉ đổi `limits.max_steps` và một mục `triggers[]` → đầu Sơ đồ nêu `limits` và `triggers`,
+      không thẻ nào mang nhãn; bỏ so phần ngoài cây Bước → không gì hiện, test đỏ.
 - [ ] Xong: `pnpm -C apps/web test` xanh.
 
 ## Nguồn
@@ -111,6 +149,11 @@ R3.10, R3.11, R3.12, R3.13, R3.14, R3.15, BU2, BU3, BU5, BU6, BU9, BU15, BU16).
   `.claude/plans/studio/telemetry-and-audit/issues/03-lich-su-chay-theo-buoc.md`; spec: R3.11, R3.12 (Bước chạy mang
   `lane_path` và `iteration_path`).
 - ADR-0101 (Accepted), ADR-0114 (Accepted); spec: R3.2.
+- ADR-0112 (Accepted) quyết 1 (id của Bước giữ nguyên qua các phiên bản);
+  `.claude/plans/studio/agent-lifecycle/issues/07-man-duyet-phat-hanh.md`; spec: R3.16-R3.20 (lớp phần khác mà màn
+  duyệt dùng, V4.37).
+- telemetry-and-audit:R4.2 (`port` của V4.36), telemetry-and-audit:R4.4, telemetry-and-audit:R4.5 (quyền đọc của
+  V4.41); spec: R3.11.
 
 ## Comments
 
@@ -121,3 +164,8 @@ R3.10, R3.11, R3.12, R3.13, R3.14, R3.15, BU2, BU3, BU5, BU6, BU9, BU15, BU16).
 - 2026-10-24 (agent): vòng sửa thứ tư, lượt f, theo quyết định V4.17 của Đạt cùng ngày: Quy trình có Bản ứng viên đang chờ thì trang chỉ đọc, nêu "rút bản đang chờ về Nháp để sửa" và chỉ gọi lệnh rút của agent-lifecycle khi người dựng bấm (R3.10, BU9). Không thêm cạnh: ticket đã chờ agent-lifecycle/03, nơi có lệnh rút.
 - 2026-10-25 (agent): lượt g, theo V4.24 của Đạt và G-5 ngày 24/10/2026: kết quả lượt mô phỏng mở trên màn lượt chạy cùng Sơ đồ, chỉ đọc, chọn lần lặp và làn (R3.11, R3.12, BU16), thay lớp phủ trước đây; Quy trình không có bản Nháp hay Bản ứng viên mở bản Nháp mới chỉ khi người dựng bấm Tạo bản Nháp (R3.13, R3.14, R3.15, BU15). Không thêm cạnh: ticket đã chờ telemetry-and-audit/03 (làn và `iteration_path` của Bước chạy), và tenant-config/02 (route tạo bản Nháp) đã đứng trước nó qua ticket 02.
 - 2026-10-25 (agent): màn lượt chạy thôi có bộ chọn làn (R3.12, BU16): id Bước là duy nhất trong cây (workflow-engine:R1.1) và mọi làn của một Bước song song vẽ cùng lúc, nên làn không phân biệt Bước chạy nào mà id chưa phân biệt, và ca âm của nó không đỏ được; bộ chọn chỉ số của `logic.map` đến ở W2 (dòng Quyết định 25/10/2026 của spec).
+- 2026-10-25 (agent): lượt h, theo V4.37 của Đạt: ticket thêm lớp phần khác của Sơ đồ chỉ đọc so theo id Bước với bản Đang dùng (bước 9; R3.16-R3.20, BU17), mà agent-lifecycle/07 dùng và chờ ticket này; theo V4.41: màn lượt chạy mở từ id mà `test-runs` trả, dưới quyền đọc của người giữ `studio.workflows.test` cho lượt `simulate` do chính mình xin (R3.11); làn đã đi đọc từ `port` của Bước chạy (V4.36). Không thêm cạnh: ticket đã chờ telemetry-and-audit/03, nơi `port` và quyền đọc của V4.41 ra đời, và diff theo id Bước có ở ticket 02.
+- 2026-10-26 (agent): lượt h, rà lại: quyền đọc của V4.41 dẫn đúng tiêu chí của telemetry-and-audit (R4.4 cho người dựng đọc lượt `simulate` của chính mình, R4.5 cho 404), thay R4.2, vốn là tiêu chí của route cho người giữ `runs.read`; tiêu chí R3.18 thêm ca âm. Không thêm cạnh.
+- 2026-10-26 (agent): lượt h, kiểm: ca "chưa có bản Đang dùng" (mọi Bước "Mới") dời từ tiêu chí R3.19 sang R3.16, vì
+  R3.16 của spec nay nêu ca đó còn R3.19 chỉ nói "đọc lỗi" và chưa rõ, và có ca âm riêng; tiêu chí R3.17 đếm đúng bốn
+  mục, vì chính Bước song song bị xóa cũng có id chỉ ở bản Đang dùng. Không thêm cạnh.

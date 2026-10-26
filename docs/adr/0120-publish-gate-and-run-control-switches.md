@@ -88,11 +88,14 @@ envelope leaves "which version runs" to this stage contract. The `agent-lifecycl
    a Protocol at the composition root, like `decision_guards`, never a permission key of its own. While the approval
    is pending, a person who may decide it, holding `approvals.decide` and its stamp and, where the type assigns
    people, among its assignees, reads the candidate and its difference from the `live` version through
-   agent-lifecycle's approval route, audited; outside that window reading a definition needs the kind's author key,
-   and anyone else, or any caller once the approval is decided, gets 404 `not_found` as if the approval did not exist
-   (ADR-0104 decision 11). The strict prefixes `studio.publish.` and `studio.lifecycle.` are added with `|=` where
-   Studio is wired, and the decision guard `require_not_author` refuses a decider in `payload.author_ids` and a
-   payload without them (fail closed). The submitter is the approval's `requested_by`, and the strict prefix's check
+   agent-lifecycle's approval route, audited, for a workflow from W1 on a review screen that shows the read-only
+   canvas with workflow-builder-ui's layer of differences from the `live` version, under ADR-0101's (Accepted) canvas
+   glob, the gate's results and the estimated cost (agent-lifecycle/07, V4.37, YC116); outside that window reading a
+   definition needs the kind's author key, and anyone else, or any caller once the approval is decided, gets 404
+   `not_found` as if the approval did not exist (ADR-0104 decision 11). The strict prefixes `studio.publish.` and
+   `studio.lifecycle.` are added with `|=` where Studio is wired, and the decision guard `require_not_author`
+   refuses a decider in `payload.author_ids` and a payload without them (fail closed). The submitter is the
+   approval's `requested_by`, and the strict prefix's check
    runs before any guard (ADR-0104 decision 11), so a submitter deciding is refused 409 `conflict` with
    `second_person_required` and only a contributor who did not submit meets the guard's `author_cannot_approve`; a
    requester deciding their own `studio.lifecycle.revive` or `studio.lifecycle.unfreeze` gets `second_person_required`
@@ -114,12 +117,18 @@ envelope leaves "which version runs" to this stage contract. The `agent-lifecycl
    `ApprovalRequest.cancel()` and returns the version to `draft`; a lane cancels expired publish approvals, auditing
    as `system:<lane>` because it acts on its own. Publish also needs every required binding approved (ADR-0110) and an
    accountable owner (ADR-0103; else 409 `owner_missing`, live versions still running).
-3. **The quality gate.** A gate run executes the version's sealed tenant evaluation sets (from W2; in W1 only the
-   security suite runs, and the key's dataset list is empty) and a platform security suite generated from its closure by
+3. **The quality gate.** A gate run executes a platform security suite generated from the version's closure by
    `configs/evals/studio_security_suite@1.0.0.yaml` (prompt injection through the user message, untrusted tool output
-   and retrieval; cross-tenant canaries; missing evidence; an effect without approval), which must pass at 100%. Trials
-   are normal runs in `simulate` mode (ADR-0111), each requested through `RunRequestService` (ADR-0113 (Accepted)
-   decision 1). A candidate in `evaluating` has no `studio.actor_boundaries` row yet, a version's boundary being written
+   and retrieval; cross-tenant canaries; missing evidence; an effect without approval), which must pass at 100%; from
+   W1, for a workflow version, its deterministic scenario cases (V4.37, YC115); and from W2 the version's sealed
+   tenant evaluation sets (YC74). A scenario case holds a payload, simulated decisions, simulated results pinned per
+   step, the expected `outcome` and CEL assertions (ADR-0114 (Accepted)), and is graded without a model through
+   `run_cases` and agent-lifecycle/02's graders (decision 4): the `studio_gate` lane puts the case's pinned results in
+   the trial's input, the node wrapper applies each in `simulate` in place of its step kind's simulation once the
+   result matches the step's output schema (H-18), and the expected `outcome` is compared with the outcomes the run
+   records (`platform.worker_runs.outcomes`, H-14). Trials are normal runs in `simulate` mode (ADR-0111), each
+   requested through `RunRequestService` (ADR-0113 (Accepted) decision 1). A candidate in `evaluating` has no
+   `studio.actor_boundaries` row yet, a version's boundary being written
    at publish (ADR-0103 (Accepted) decision 5), so each trial reads under the provisional boundary that the door derives
    from the candidate's closure by the derivation the kind's publish hook runs, recorded under
    `(version_id, pinned_hash)` for that trial alone, intersected with the reach of the principal the gate lane requests
@@ -134,9 +143,9 @@ envelope leaves "which version runs" to this stage contract. The `agent-lifecycl
    them from W2 (ADR-0121 decision 4), it ends the same way. Neither refusal carries an HTTP status, since no caller
    waits on the lane (DO-21.3). Verdicts are `pass`, `fail`, `unknown` (blocks like `fail`) and `error`. Evidence counts
    only for its exact key: the effective hash of ADR-0109 decision 6 (the definition hash plus the overlay entries, so a
-   tenant override of a platform prompt voids older evidence, DO-27.1), the gate policy, the security suite and the
-   dataset content hashes; a passing run with the same key is reused. The gate run records the run-time resolutions it
-   saw (tenant overrides, MCP definitions, bindings, knowledge index).
+   tenant override of a platform prompt voids older evidence, DO-27.1), the gate policy, the security suite, the
+   dataset content hashes and the content of the scenario cases; a passing run with the same key is reused. The gate
+   run records the run-time resolutions it saw (tenant overrides, MCP definitions, bindings, knowledge index).
 4. **`dw_evals` is extended, not replaced.** `Observation`, `ObservationGrader`, `JudgePort`, `EvalTargetPort`, an
    async `run_cases` with trials and a pure `gate.py` (`GatePolicy`, `evaluate_gate`, the one function deciding
    "does this pass") are added; `SECURITY_CATEGORIES` (`packages/python/dw_evals/src/dw_evals/dataset.py:25`),
@@ -155,7 +164,8 @@ envelope leaves "which version runs" to this stage contract. The `agent-lifecycl
    as, a person or a service principal, is no longer an active member (ADR-0113 decision 3 shapes it per
    `trigger_kind`), and ADR-0102's `tenant_locked`, `tenant_offboarding`, `workspace_archived`). The doors: ingress and
    the run queue claim (ADR-0113), runner start, stream and resume, node start (ADR-0112),
-   `ApproveAndResumeService.decide` and the route that resolves an incident (ADR-0113 decision 4), a
+   `ApproveAndResumeService.decide` and the routes that resolve an incident or an `outcome_review` wait (ADR-0113
+   (Accepted) decision 4; V4.30, workflow-engine/08), a
    `RunControlMiddleware` in agent and sub-agent stacks, the structured gateway and compaction, the `ToolExecutor`
    before its scope check (`deny_frozen`, `deny_killed`), and every lane sending a queued effect (among them
    connections-and-vault's lane that sends queued messages, agent-lifecycle R8.4), each given the port by injection,
@@ -169,7 +179,7 @@ envelope leaves "which version runs" to this stage contract. The `agent-lifecycl
    be evaluated. Lifting it is a strict `studio.lifecycle.revive` run-less approval stamped `studio.lifecycle.kill`: a
    second person (D11). A tenant freeze (one holder of `studio.lifecycle.freeze` at tenant depth, reason required)
    and a platform freeze (operators through the provisioning context, which a tenant admin cannot lift) refuse
-   interactive runs not yet started (`chat`, `manual`, `test`, `replay`, `fork`; ADR-0113 decision 3), submissions,
+   interactive runs not yet started (`chat`, `manual`, `test`, `replay`; ADR-0113 decision 3), submissions,
    gate runs and publishes with `tenant_frozen` or `platform_frozen`, except that under a tenant freeze a
    `dw.object/v1` version may still take decision 1's tighten-only branch, since it only removes access, the change
    an incident most needs, while a platform freeze refuses that branch too; keep a queued trigger run (`datahub`,
@@ -179,8 +189,9 @@ envelope leaves "which version runs" to this stage contract. The `agent-lifecycl
    freeze is a strict `studio.lifecycle.unfreeze` run-less approval stamped `studio.lifecycle.freeze`, whose
    `.decided` handler lifts it: a second person (D11). A freeze has no time limit, so the retention lane skips the
    inbound events it holds and counts them (ADR-0122 decision 7). A provider call already in flight finishes and is
-   recorded. Each change is audited in its own transaction (platform freezes in `platform.provisioning_audit`), and
-   `dw_control_refusals_total{door, reason_code}` counts refusals.
+   recorded by the egress client's typed result (ADR-0115 (Accepted) decision 6, V4.30), an unknown outcome as
+   `outcome_unknown`, never as a success or a failure. Each change is audited in its own transaction (platform
+   freezes in `platform.provisioning_audit`), and `dw_control_refusals_total{door, reason_code}` counts refusals.
 8. **Lifecycle findings** derive from the dependency index (ADR-0109) by events plus an hourly sweep: a component
    newer, retired or killed, `mcp_definition_changed`, `tenant_override_stale`, `eval_stale`, `eval_below_threshold`,
    `binding_degraded` and `publish_failed`; an acknowledgement needs a reason and expires within 30 days.
@@ -204,13 +215,20 @@ envelope leaves "which version runs" to this stage contract. The `agent-lifecycl
 
 ## Consequences
 
-- A tenant needs two people holding publish rights before it publishes anything; sales says so (D11).
+- A tenant needs two people holding publish rights before it publishes anything (D11): it is created with two owners
+  and stays `setup` until the second is active, and the platform warns when the active holders of
+  `studio.publish.approve` or of `platform.roles.write` fall below two (V4.38, ADR-0104 (Accepted) decision 10).
 - Every door gains a `RunControlPort` check and a negative test on its own path that sets the switch mid-run, not
   through the layer above it (failure-modes #5). Model calls outside runs (ingestion embeddings, rerank) are a named
   blind spot in v1.
 - Gate runs cost the tenant money and stay flaky until k and the thresholds are measured (FOG-64);
   `studio.gate_case_results` is range-partitioned by month. W1 needs the switches, the guarded stage, the 100%
-  security gate and two-person publish for the slice; tenant evaluation sets, findings and judges are W2.
+  security gate, a workflow's deterministic scenario cases, the review screen and two-person publish for the slice,
+  and gate E1 holds the first effect at every profile until the switches stand at every door and two-person publish
+  works (V4.31); tenant evaluation sets, findings and judges are W2. marketing-pilot/03 proves the scenario cases on
+  the lead intake's six (a new lead, a duplicate, a low score, a rejection, an SMTP failure, a missing field): the
+  same result over 20 repetitions, at most 2 minutes and USD 0.5 per gate run, and a mutation removing the duplicate
+  branch failing the gate (V4.37).
 
 ### Contradictions and amendments
 
@@ -338,3 +356,23 @@ D11 cases scoped by the requester and Đạt:
   version's boundary is written when it is sealed and its trials read under it); decision 6 counts among its doors the
   route that resolves an incident, "Chạy tiếp từ Bước lỗi" or "Kết thúc" (ADR-0113 decision 4), which decision 7's
   freeze refuses as it refuses decisions on paused runs.
+
+## Amendments (2026-10-25)
+
+Amended by Đạt on 2026-10-25, who accepted the recommendation on each of the twelve decisions owed (V4.30-V4.41), eleven
+from the answer to ChatGPT's architecture review and one on a builder's read of simulated runs, applied with the
+planner's provisional calls H-1-H-18:
+
+- Third consistency check (round 4), eighth pass, Đạt's V4.30, V4.31, V4.36, V4.37 and V4.38 and the planner's
+  provisional calls H-13, H-14 and H-18: decision 2's approver reads a workflow candidate on agent-lifecycle/07's review
+  screen, with the read-only canvas and its layer of differences from the `live` version, the gate's results and the
+  estimated cost (YC116); decision 3's gate runs a workflow version's deterministic scenario cases from W1, graded
+  without a model, their pinned results applied by the node wrapper in `simulate` and their expected `outcome` compared
+  with the outcomes the run records, the evidence key covering their content (YC115), which replaces "in W1 only the
+  security suite runs" while tenant evaluation sets stay W2; decision 6 adds the route that resolves an `outcome_review`
+  wait to its doors, which decision 7's freeze refuses as it refuses decisions on paused runs; decision 7 records a call
+  in flight by the egress client's typed result and drops `fork` from the interactive runs, "Chạy tách từ bước" having
+  gone (H-13); Consequences say that a tenant is created with two owners, where sales alone carried the rule, and add
+  the scenario cases, the review screen, gate E1 and V4.37's experiment (if H-18 is wrong, each step kind reads its own
+  pinned result; if H-14 is wrong, `outcomes[]` leaves the W1 schema and a case asserts on the final state in CEL; if
+  H-13 is wrong, Fork stays in W2 running `simulate` only and `fork` returns to decision 7's list).

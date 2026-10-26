@@ -41,18 +41,23 @@ bị giả lập như `simulate`. Lượt chạy của worker định nghĩa b�
    thuộc W2.
 6. Bước chế độ trong `ToolExecutor._execute`, đúng chỗ thứ tự bước của tools-and-skills:R2.6 đặt: sau kiểm
    quyền và, khi `run_mode` khác `live`, trước bước phê duyệt (N2, R5.6), luôn trước khi giành lượt và gọi
-   handler. Khi `run_mode` là `simulate` hay `test` và công cụ không `simulate_safe`:
+   handler; tools-and-skills/01, ticket sau, đưa bước này vào sổ guard `build_tool_executor_steps` của ToolExecutor
+   (tools-and-skills:R2.6; H-3), nên ticket này đặt nó thẳng vào `_execute`. Khi `run_mode` là `simulate` hay `test` và
+   công cụ không `simulate_safe`:
     - không gọi handler, không giành lượt; ghi dòng `platform.tool_executions` với `status` `simulated`;
     - audit `tool.simulated` với `details.run_mode` và `details.reason` (`not_simulate_safe`) trong cùng
       giao dịch với dòng đó;
     - trả đầu ra giả lập: giá trị nhỏ nhất sinh từ output schema, kiểm theo output schema như đầu ra thật,
-      thêm `simulated: true`. Kết quả giả lập ghim theo Bước là W2 của workflow-nodes, không làm ở ticket
-      này.
+      thêm `simulated: true`. Executor không đọc kết quả giả lập ghim nào: ở W1 wrapper nút của workflow-engine/03 áp
+      kết quả ghim ở mức Bước, sau khi kiểm với schema đầu ra của Bước, và không gọi ToolExecutor cho Bước đó
+      (workflow-engine:R4.27; V4.37, H-18); kết quả ghim qua route `.../test-runs` là W2 của workflow-triggers.
     - không mở yêu cầu phê duyệt nào, kể cả với công cụ `critical`: bước phê duyệt chỉ chạy cho lệnh gọi đi qua
       bước chế độ, tức công cụ `simulate_safe` ở chế độ khác `live` và mọi công cụ ở `live`.
-7. Revision Alembic mới: thay `ck_tool_executions_status` (runtime-hardening/01 tạo) bằng cùng tập
-   giá trị cộng `simulated`; migration dừng với lỗi nếu có dòng mang giá trị ngoài tập mới. Index chống
-   lặp giữ điều kiện `succeeded`.
+7. Revision Alembic mới: thay `ck_tool_executions_status` (runtime-hardening/01 tạo) bằng tập của
+   runtime-hardening:R6.3 cộng `simulated`, tức
+   `CHECK (status IN ('succeeded', 'failed', 'dispatched', 'outcome_unknown', 'simulated'))`, giữ `dispatched` và
+   `outcome_unknown` mà nhật ký lần gửi ghi (V4.30); migration dừng với lỗi nếu có dòng mang giá trị ngoài tập mới.
+   Index chống lặp `uq_tool_executions_idempotency` giữ điều kiện `succeeded`.
 8. Test gọi thẳng executor, không qua graph node (failure-modes #5), và test tiếp tục sau duyệt ở một
    runner khác với runner đã bắt đầu lượt chạy.
 
@@ -70,6 +75,8 @@ bị giả lập như `simulate`. Lượt chạy của worker định nghĩa b�
       `run_mode` khỏi chỗ dựng lại ngữ cảnh ở `approval_flow.py` → test đỏ.
 - [ ] R5.1 (TC11): gọi thẳng ToolExecutor với công cụ `external` ở `simulate` và ở `test` → handler (spy)
       không chạy, dòng có `status` `simulated`; gỡ bước chế độ → test đỏ.
+- [ ] R5.1 (TC11): sau revision của bước 7, INSERT dòng `simulated`, `dispatched` và `outcome_unknown` → nhận; `bogus` →
+      CHECK từ chối; tập mới thiếu `dispatched` hay `outcome_unknown` → ca nhận đỏ.
 - [ ] R5.2 (TC11): audit `tool.simulated` có `details.run_mode` và `details.reason`; rollback giao dịch
       thì cả dòng lệnh gọi lẫn audit đều không còn.
 - [ ] R5.3 (TC11): đầu ra giả lập sinh từ output schema, qua kiểm output schema và mang `simulated: true`;
@@ -90,6 +97,7 @@ bị giả lập như `simulate`. Lượt chạy của worker định nghĩa b�
 - `packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py:135`; spec: R5, TC11.
 - `packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langgraph_runner.py:283`; spec: R4.3.
 - `db/migrations/sql/0001_platform_baseline.sql:423`; spec: R5.1; ADR-0111 (Accepted) quyết 1-3.
+- `.claude/plans/studio/runtime-hardening/spec.md` R6.3 (tập của `ck_tool_executions_status`); spec: Dữ liệu.
 
 ## Comments
 
@@ -102,3 +110,8 @@ bị giả lập như `simulate`. Lượt chạy của worker định nghĩa b�
 - 2026-10-24 (agent): theo quyết định N2 của Đạt ngày 24/10/2026: ở chế độ khác `live` bước chế độ đứng trước bước
   phê duyệt (R5.6, thứ tự của tools-and-skills:R2.6), nên lệnh gọi bị giả lập không mở yêu cầu phê duyệt; egress
   ở chế độ khác `live` theo ADR-0115 (Accepted) quyết 6 (chừa `model` và Hành động chỉ đọc).
+- 2026-10-25 (agent): lượt h, theo V4.37, H-18 và V4.30 (quyết định cùng ngày của spec): kết quả giả lập ghim theo Bước
+  vào W1 nhưng thuộc wrapper nút của workflow-engine/03, không thuộc executor, nên bước 6 chỉ dẫn chiếu và R5.3 không
+  đổi; câu Comments ngày 23/10/2026 "Kết quả giả lập ghim theo Bước dời sang W2 của workflow-nodes" không còn áp. Bước 7
+  nêu tập đủ của CHECK, giữ `dispatched` và `outcome_unknown` của runtime-hardening:R6.3; bước 6 ghi rằng
+  tools-and-skills/01 đưa bước chế độ vào sổ guard (H-3). Dòng Blocked by không đổi.

@@ -166,8 +166,8 @@ of shadcn/ui; the measurements behind it are in `.claude/plans/web-ui.md`.
   order fails silently (Tailwind classes on antd components are ignored), so
   the switch ships with a test that fails without it.
 - **Bundle:** about +250 kB first-load JS on a page using Table, Form, Select
-  and DatePicker is accepted; it does not cover the Studio canvas route, which
-  is measured on its own (ADR 0101).
+  and DatePicker is accepted; it does not cover the Studio canvas routes (the
+  builder and the publish review), each measured on its own (ADR 0101).
 - **Dates:** dayjs with the `vi` locale, behind `lib/dates.ts` — one
   formatter, not two.
 - **One shared shell:** `@dw/ui` owns the theme, the top-navbar layout (a

@@ -67,8 +67,9 @@ YC102. The `workflow-engine` spec owns it; custom-objects and workflow-builder-u
    lasting months is a chain of short runs along the record's lifecycle: between two Stages the record waits, not a
    run, so no checkpoint is held for months; and each Stage entry runs the version live when it fires, so a changed
    process applies from the next Stage without moving waiting runs.
-5. **Sub-workflows are for reuse only.** `flow.subworkflow` (W2) runs a part that several workflows share, as a child
-   run under ADR-0113 decision 9; it is never the way to divide a long process into nested parts.
+5. **Sub-workflows are for reuse only.** `flow.subworkflow` (W1, tier B; V4.33) runs a part that several workflows
+   share, as a child run under ADR-0113 (Accepted) decision 9; it is never the way to divide a long process into
+   nested parts.
 6. **Views by Stage carry no run meaning.** custom-objects shows an object's records grouped by the options of its
    status field: one keyset list per Stage through `RecordService`, filtered on the status field and so needing it in an
    indexed slot (ADR-0107 decision 1), with the capped count of custom-objects R8.8 and no aggregate query
@@ -159,3 +160,13 @@ YC102. The `workflow-engine` spec owns it; custom-objects and workflow-builder-u
   that positions are derived from the step tree, no longer computed by dagre, and Context says that the document names
   no group of nodes, where it said it had none, since the lanes of a step tree group steps as control flow. Context's
   line that no wait sits inside a parallel branch stays as it is, V4.26 keeping waits out of parallel lanes.
+
+## Amendments (2026-10-25)
+
+Amended by Đạt on 2026-10-25, who accepted the recommendation on each of the twelve decisions owed (V4.30-V4.41), eleven
+from the answer to ChatGPT's architecture review and one on a builder's read of simulated runs, applied with the
+planner's provisional calls H-1-H-18:
+
+- Third consistency check (round 4), eighth pass, Đạt's V4.33: decision 5 places `flow.subworkflow` in W1's tier B,
+  where V4.33 puts it with at most three levels and a child pinned at submit, no longer in W2; this ADR stays W2
+  (YC102), and decision 5's rule that a sub-workflow is for reuse only holds from W1.

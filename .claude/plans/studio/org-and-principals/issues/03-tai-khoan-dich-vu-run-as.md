@@ -1,7 +1,7 @@
 # 03 — Tài khoản dịch vụ làm chủ thể chạy
 
 Status: needs-triage
-Blocked by: 02, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md, .claude/plans/studio/foundations-hardening/issues/02-hang-rao-du-lieu-va-danh-tinh.md, .claude/plans/studio/foundations-hardening/issues/03-quyen-dw-app-va-rls-initplan.md, .claude/plans/studio/app-standards/issues/01-vo-loi-problem-json.md, .claude/plans/studio/app-standards/issues/02-khoa-chong-lap-gan-nguoi-goi.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md, .claude/plans/studio/usage-and-limits/issues/02-bang-gia-so-su-dung-va-man-hinh.md
+Blocked by: 02, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md, .claude/plans/studio/foundations-hardening/issues/02-hang-rao-du-lieu-va-danh-tinh.md, .claude/plans/studio/foundations-hardening/issues/03-quyen-dw-app-va-rls-initplan.md, .claude/plans/studio/app-standards/issues/01-vo-loi-problem-json.md, .claude/plans/studio/app-standards/issues/02-khoa-chong-lap-gan-nguoi-goi.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md
 Area: studio
 Yêu cầu: R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.8, R6.9, R6.10, R7.1, R7.2, OP8, OP9, OP10, OP11, OP14, OP15
 
@@ -12,10 +12,10 @@ người, không bao giờ đăng nhập, không bao giờ giữ quyền trọng
 của nó (R6, R7, YC8; ADR-0103 (Accepted) mục 2, 4). Việc gắn vào phiên bản và chạy lượt chạy dưới danh nghĩa nó thuộc
 workflow-triggers và workflow-engine (R6.7); workflow-triggers đọc sự kiện `platform.service_principal.grants_changed` của
 ticket này, và ticket đọc sự kiện đó của workflow-triggers chờ ticket này (DO-12). Công ty rời nền tảng thì lane
-offboarding xóa người dùng loại `service` của nó qua một hàm SECURITY DEFINER hẹp, sau cùng trong giao dịch xóa (R6.8,
-R6.9); ticket này chờ foundations-hardening/07 vì cùng sửa lane offboarding và `test_offboarding.py`, và chờ
-usage-and-limits/02 vì lời gọi của nó đứng sau lời gọi `platform.purge_tenant_append_only` của ticket đó trong cùng
-`purge_rows`. Bảng khác tham chiếu tài khoản dịch vụ bằng khóa ngoại ghép trong tenant (R6.10). Từ brief B2 ticket 07; DO-12 và DO-17 đã có câu trả lời ngày 23/10/2026.
+offboarding xóa người dùng loại `service` của nó qua một hàm SECURITY DEFINER hẹp, ở một bước đăng ký vào sổ bước xóa
+mà foundations-hardening/07 dựng, thứ tự suy từ khóa ngoại `RESTRICT` và `NO ACTION` của `pg_constraint` (R6.8, R6.9;
+foundations-hardening:R11.4; H-2); ticket này chờ foundations-hardening/07 vì cùng sửa lane offboarding và
+`test_offboarding.py`, và không chờ usage-and-limits/02, ticket cũng đăng ký một bước vào sổ đó. Bảng khác tham chiếu tài khoản dịch vụ bằng khóa ngoại ghép trong tenant (R6.10). Từ brief B2 ticket 07; DO-12 và DO-17 đã có câu trả lời ngày 23/10/2026.
 
 ## Việc cần làm
 
@@ -79,18 +79,21 @@ usage-and-limits/02 vì lời gọi của nó đứng sau lời gọi `platform.
    SECURITY DEFINER, `search_path` cố định, thu EXECUTE khỏi `PUBLIC`, cấp EXECUTE cho `dw_app`: từ chối với SQLSTATE
    23514 khi `platform.tenants.status` của `p_tenant` khác `offboarding` (R6.9); không thì xóa dòng `platform.users` có
    `kind = 'service' AND owner_tenant_id = p_tenant` và trả số dòng đã xóa; `test_privileges.py` khẳng định `dw_app` có
-   EXECUTE còn `PUBLIC` thì không (CLAUDE.md, Data model rules). `SqlTenantOffboarding.purge_rows` gọi hàm
-   sau cùng trong giao dịch xóa: sau lời gọi `platform.purge_tenant_append_only` của usage-and-limits/02 và sau mọi
-   bảng tenant, vì một bảng tenant có thể giữ khóa ngoại `ON DELETE RESTRICT` tới tài khoản dịch vụ tới khi chính bảng
-   đó bị xóa; lời gọi vào cuối thứ tự các bước xóa mà `offboarding.py` khai cho test phủ (studio-skeleton/01). Việc xóa
-   đi qua hàm vì `dw_app` không có DELETE trên `platform.users` (foundations-hardening:R5.1), và
-   dòng `platform.tenants` ở lại `offboarded` nên CASCADE của `owner_tenant_id` không bao giờ chạy. `_ORDERED_FIRST`
-   xóa `platform.tenant_members` trước `platform.workspaces` (khóa ngoại tới workspace sở hữu là `ON DELETE RESTRICT`),
-   nên `platform.service_principals` đi theo cascade trước khi workspace bị xóa. `test_offboarding.py` purge một
+   EXECUTE còn `PUBLIC` thì không (CLAUDE.md, Data model rules). Ở composition root của worker
+   (`apps/worker/src/dw_worker/main.py`), đăng ký vào sổ bước xóa của foundations-hardening/07 một bước
+   `service_users` khai bảng `platform.users`, chạy `platform.purge_tenant_service_users(:t)` trong giao dịch xóa. Thứ tự
+   của bước suy từ `pg_constraint` (foundations-hardening:R11.4): nó chạy sau mọi bước xóa bảng giữ khóa ngoại
+   `ON DELETE RESTRICT` hay `NO ACTION` tới `platform.users` (như `run_as_principal_id` của workflow-triggers), vì
+   bảng đó giữ tài khoản dịch vụ tới khi chính nó bị xóa; không danh sách tay nào đặt nó "sau cùng", và nó không cần
+   biết bước `platform.purge_tenant_append_only` của usage-and-limits/02. Việc xóa đi qua hàm vì `dw_app` không có
+   DELETE trên `platform.users` (foundations-hardening:R5.1), và dòng `platform.tenants` ở lại `offboarded` nên CASCADE
+   của `owner_tenant_id` không bao giờ chạy. `platform.service_principals` không có bước riêng: dòng của nó đi theo
+   `CASCADE` từ `platform.tenant_members` (và từ `platform.users`), nên khóa ngoại `RESTRICT` của nó tới workspace sở
+   hữu được thứ tự suy mang sang các bước đó, chạy trước bước xóa `platform.workspaces`. `test_offboarding.py` purge một
    tenant có tài khoản dịch vụ và khẳng định không còn dòng `platform.service_principals` nào và không còn người dùng
    loại `service` nào của tenant đó, còn người dùng loại `human` và tài khoản dịch vụ của tenant khác giữ nguyên; cùng
-   tệp, một test bắt câu lệnh bằng sự kiện `before_cursor_execute` khẳng định lời gọi
-   `platform.purge_tenant_service_users` là câu lệnh xóa cuối của giao dịch, sau `platform.purge_tenant_append_only`.
+   tệp, một bảng thử giữ khóa ngoại `RESTRICT` tới tài khoản dịch vụ, tạo trong giao dịch test, và một test bắt câu
+   lệnh bằng sự kiện `before_cursor_execute` khẳng định bước `service_users` chạy sau câu xóa bảng thử đó.
 
 ## Tiêu chí chấp nhận
 
@@ -100,7 +103,7 @@ usage-and-limits/02 vì lời gọi của nó đứng sau lời gọi `platform.
 - [ ] R6.4 (OP9): dưới `dw_migrator` gán `tenant_owner` cho tài khoản dịch vụ → 23514; thêm khóa `critical` vào vai trò đang gán cho nó → 23514; test catalog thấy trigger `guard_service_principal_grants` trên `platform.role_assignments` và `platform.tenant_role_permissions`; gỡ trigger → đỏ.
 - [ ] R6.5 (OP10): người gọi thiếu một khóa tài khoản đang giữ → 403 `rbac_escalation` nêu khóa đó; thiếu `platform.service_principals.use` → 403; thay `platform.grants_cover` bằng `true` → đỏ; `bindable_by_me` bằng đúng kết quả của bộ kiểm.
 - [ ] R6.6: gán vai trò cho tài khoản dịch vụ → đúng một sự kiện outbox `platform.service_principal.grants_changed` cùng giao dịch; giao dịch lùi → không sự kiện.
-- [ ] R6.8 (OP14): purge một tenant `offboarding` có một tài khoản dịch vụ → không còn dòng `platform.users` loại `service` có `owner_tenant_id` của tenant đó, không còn dòng `platform.service_principals` của nó, người dùng loại `human` và tài khoản dịch vụ của tenant khác còn; bỏ lời gọi hàm khỏi `purge_rows` → `test_offboarding.py` đỏ; lời gọi là câu lệnh xóa cuối của giao dịch, sau `platform.purge_tenant_append_only`, và chuyển nó lên trước một bảng của tenant → test thứ tự câu lệnh đỏ.
+- [ ] R6.8 (OP14): purge một tenant `offboarding` có một tài khoản dịch vụ → không còn dòng `platform.users` loại `service` có `owner_tenant_id` của tenant đó, không còn dòng `platform.service_principals` của nó, người dùng loại `human` và tài khoản dịch vụ của tenant khác còn; gỡ bước `service_users` khỏi sổ → `test_offboarding.py` đỏ; bảng thử giữ khóa ngoại `RESTRICT` tới tài khoản dịch vụ → bước chạy sau câu xóa bảng thử, và đổi khai của bước sang bảng khác `platform.users` → test phủ của studio-skeleton:R4.2 đỏ, nêu bước.
 - [ ] R6.9 (OP14): gọi `platform.purge_tenant_service_users` dưới `dw_app` cho tenant `active` → 23514 và 0 dòng bị xóa; gỡ kiểm trạng thái khỏi hàm → test đỏ.
 - [ ] R6.10 (OP15): bảng thử có khóa ngoại ghép `(tenant_id, sp_id)` tới `platform.service_principals (tenant_id, user_id)`, INSERT `(tenant_B, tài khoản dịch vụ của A)` → lỗi FK, không dòng nào; test catalog thấy `uq_service_principals_tenant_id_user_id` trong `pg_constraint`; bỏ ràng buộc → test đỏ.
 - [ ] R7.1 (OP11): quản trị viên tenant B gọi `GET /api/v1/directory/candidates` → không có tài khoản dịch vụ của A hay B; gỡ lọc `kind` → đỏ.
@@ -115,7 +118,7 @@ usage-and-limits/02 vì lời gọi của nó đứng sau lời gọi `platform.
 - `apps/api/src/dw_api/routes/v1/directory.py:65-78`; spec: R7.1.
 - `apps/api/src/dw_api/routes/v1/platform.py:94`; spec: R7.2.
 - `packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/runtime_tables.py:38`; spec: R6.7.
-- `packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:108-114`, `packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:183-194`; spec: R6.8, R6.9.
+- `packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:183-194`, `apps/worker/src/dw_worker/main.py:403-405`; spec: R6.8, R6.9; foundations-hardening:R11.4.
 - ADR-0103 (Accepted) mục 1, 2, 4; brief B2 ticket 07 và mục 9.
 
 ## Comments
@@ -124,3 +127,8 @@ usage-and-limits/02 vì lời gọi của nó đứng sau lời gọi `platform.
   xóa, sau `platform.purge_tenant_append_only` và mọi bảng của tenant, nên Blocked by thêm usage-and-limits/02 (hai
   ticket cùng sửa `purge_rows`); bước 2 thêm `uq_service_principals_tenant_id_user_id`, đích của khóa ngoại ghép từ bảng
   khác, với R6.10 và OP15 (Quyết định 24/10/2026 của spec).
+- 2026-10-25 (agent): lượt h, theo H-2 (quyết định tạm cùng ngày của spec): Blocked by gỡ usage-and-limits/02 theo bảng
+  cạnh của lượt h; bước 9 đăng ký bước `service_users` vào sổ bước xóa của foundations-hardening/07, thứ tự suy từ
+  `pg_constraint`, thay lời gọi "sau cùng, sau `platform.purge_tenant_append_only`" và mục `_ORDERED_FIRST`; R6.8 thay ca
+  "câu lệnh xóa cuối" bằng ca bước chạy sau bảng giữ khóa ngoại tới tài khoản dịch vụ; dòng Comments ngày 24/10/2026 về
+  cạnh tới usage-and-limits/02 không còn áp.

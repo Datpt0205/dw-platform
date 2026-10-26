@@ -58,8 +58,12 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
    canvas computing every position from the tree (ADR-0101 (Accepted) decision 3), so the definition hash changes when
    the tree does and never when the canvas does. The document also holds `variables[]`; `inputs` and `outputs`;
    `bindings[]`; `limits` (`max_steps`, `max_parallel`, `max_map_items`, `max_run_seconds`, `max_open_waits`);
-   `outcomes[]` (a name and a CEL condition). Every tenant value (connection, run-as principal, endpoint, schedule) is a
-   binding name whose value is approved apart from the version (ADR-0110 (Accepted)).
+   `outcomes[]` (a name and a CEL condition): when a run ends, workflow-engine evaluates each condition on the final
+   state and writes the names that hold into the run's `outcomes text[]` on `platform.worker_runs`, only names the
+   pinned document declares, as the validator guarantees at submit, and a scenario case of the quality gate compares
+   its expected `outcome` with that column (V4.37, H-14); filtering `/runs` by outcome is W2. Every tenant value
+   (connection, run-as principal, endpoint, schedule) is a binding name whose value is approved apart from the version
+   (ADR-0110 (Accepted)).
 2. **Step types are platform code** in one `NodeTypeRegistry`, built by one function, `build_node_registry(ports)`, at
    both composition roots (the API for the palette and the validator, the worker for execution). A `NodeTypeSpec`
    carries `type@major`, config and output schemas, the ports whose lanes a step of the type holds (decision 1), a
@@ -72,7 +76,11 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
    `flow.*` and `code.python`. A join is no type of its own: `logic.join` folds into the end of `logic.parallel`, whose
    join waits for every lane in W1. `logic.parallel` (YC108), `logic.loop` and `logic.break` (YC105) arrive in the W1
    tail, after the critical path to YC94, and no pilot ticket waits for them (V4.26), workflow-nodes registering the
-   types and workflow-engine owning the block structure in the IR and the compiler; `logic.map` stays W2. `logic.loop`
+   types and workflow-engine owning the block structure in the IR and the compiler; `logic.map` stays W2.
+   `flow.subworkflow@1` (YC117) joins the same tail, no pilot ticket waiting for it either (V4.33): its step runs a
+   child version pinned at submit (ADR-0109 decision 9), nested at most 3 deep (decision 6), and opens a `child_run`
+   wait, so its type declares `opens_wait` true, workflow-nodes registering the type (workflow-nodes/08) and
+   workflow-engine running the child run (workflow-engine/09). `logic.loop`
    is a bounded do-while ("Lặp lại khi …"): its body runs, then its condition decides whether the body runs again; its
    `max_iterations` is required and clamped by the plan, and at that count the step takes its `max_reached` lane ("Đã đủ
    N lần") or, when it declares none, fails the run with `loop_limit_reached` (V4.P11). `logic.break` ("Thoát vòng lặp")
@@ -87,16 +95,18 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
    `logic.break` in its list is not); every `logic.switch` is total, its default lane present; every `{{ }}` reference
    names a dominating step or is guarded by `has()`, a loop's body dominating what follows the loop except the steps a
    `logic.break` can skip; CEL types hold (ADR-0114); a variable has one writer per superstep, and no two lanes of one
-   `logic.parallel` write the same variable; no wait (an approval, a task, a timer or an incident hold) sits inside a
-   `map` body or a parallel lane in v1, while a loop body may hold waits; inside a parallel lane neither a `flow.stop`
+   `logic.parallel` write the same variable; no wait (an approval, a task, a timer, the child run of a
+   `flow.subworkflow` or an incident hold) sits inside a `map` body or a parallel lane in v1, while a loop body may
+   hold waits; inside a parallel lane neither a `flow.stop`
    nor an error lane that ends the run leaves the lane before its end, so an error lane there only merges back
    (measured: such an exit completes the run as a success while the join and every later step never run); every
    `logic.break` sits in a loop body and in no parallel lane, even one inside that body; plan limits hold (the tree's
    step count and nesting depth); every connection, principal and endpoint is a declared binding. It returns
    `[{path, code, message_vi, message_en}]` with stable codes (`wf.unreachable_node`, `wf.router_not_total`,
-   `wf.ref_not_dominating`, `wf.type_mismatch`, `wf.wait_in_map`, `wf.wait_in_parallel`, `wf.stop_in_parallel`,
-   `wf.break_outside_loop`, `wf.limit_above_plan`, `wf.binding_undeclared`). Two checks of the graph form cannot fail on
-   a tree, whose lanes always meet at the end of their block and whose only way back is a loop, so their codes,
+   `wf.ref_not_dominating`, `wf.type_mismatch`, `wf.variable_conflict`, `wf.wait_in_map`, `wf.wait_in_parallel`,
+   `wf.stop_in_parallel`, `wf.break_outside_loop`, `wf.limit_above_plan`, `wf.binding_undeclared`). Two checks of the
+   graph form cannot fail on a tree, whose lanes always meet at the end of their block and whose only way back is a
+   loop, so their codes,
    `wf.join_required` and workflow-engine's `wf.unbounded_cycle`, are retired and never reused. Keeping waits out of
    parallel lanes keeps every parked node in the root graph, where ADR-0109 decision 8's resume check looks for it,
    since each lane compiles to a subgraph with a checkpoint namespace of its own (decision 4). The validator also
@@ -116,7 +126,10 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
    `max_concurrency` and child runs per chunk beyond `max_map_items` (at most 1,000); every wait, an incident hold
    included, an `interrupt()` as the first statement of its own node; `recursion_limit` always passed (`max_steps` plus
    the supersteps the compiler counts), though it bounds one invoke only, since it resets on every resume, so the run's
-   step cap is the node wrapper's counter (decision 5). Context records the measurements behind these choices. Compiled
+   step cap is the node wrapper's counter (decision 5). Every invoke passes `durability="sync"`, which the run
+   manifest's engine section pins (ADR-0109 decision 8, V4.34), so a step's checkpoint is written before the next step
+   dispatches an effect, where the library's default `async` widens the window in which a crash after an effect runs
+   its node again. Context records the measurements behind these choices. Compiled
    graphs sit in a bounded per-process LRU of 256 keyed
    `(tenant_id, artifact_version_id, pinned_hash, compiler_version)`, where `pinned_hash` is the hash the run manifest
    pins: a sealed version's `definition_hash`, or the provisional hash of a draft's content (ADR-0109 decision 6). A
@@ -127,17 +140,28 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
    start it asks `RunControlPort.require_open` (ADR-0120), checks the run's deadline and, from W2, cancellation
    (ADR-0113 decision 3), and counts the step on a counter the run keeps across every resume, stopping the run with
    `limit_exceeded`, without applying the step's `on_error`, once `limits.max_steps`, clamped by the plan, is spent; it
-   resolves inputs by CEL, runs each attempt under `asyncio.timeout`, retries with backoff (each attempt a run step),
-   then applies `on_error`: `fail` raises; `continue` writes `{status: "error", error}` to the step's channel; `route`,
-   from W1, writes it too and takes the step's error lane, which merges back below the step or ends the run (inside a
-   parallel lane it only merges back, decision 3); `incident` ("Chờ xử lý", in the W1 tail) parks a `live` run `waiting`
-   on a wait of kind `incident` (ADR-0113 (Accepted) decision 4) once the attempts are spent, "Chạy tiếp từ Bước lỗi"
-   running the step again and "Kết thúc" failing the run, while a run in any other mode, with no person to resolve it,
-   fails as under `fail`. A step's output carries `error` under `continue` and under `route` alike (workflow-nodes
-   R1.5). An effect step calls its door once per attempt with the idempotency key
-   `wf:{run_id}:{node_id}:{iteration_path}` (map index and loop counter, never the attempt), claimed first and fenced
-   per ADR-0108, so a retry after a crash replays the stored result, and a step run again from an incident keeps its
-   key. Outputs are validated against the step's output schema off the event loop and capped at 64 KiB inline.
+   resolves inputs by CEL, runs each attempt under `asyncio.timeout` and retries with backoff (each attempt a run
+   step), an attempt whose outbound call returns the egress client's typed outcome (ADR-0115 (Accepted) decision 6)
+   being retried only when that outcome is `not_dispatched`, or `rejected` with a code the Action declares retryable
+   (V4.30), then applies `on_error`: `fail` raises; `continue` writes `{status: "error", error}` to the step's
+   channel; `route`, from W1, writes it too and takes the step's error lane, which merges back below the step or ends
+   the run (inside a parallel lane it only merges back, decision 3); `incident` ("Chờ xử lý", in the W1 tail) parks a
+   `live` run `waiting` on a wait of kind `incident` (ADR-0113 (Accepted) decision 4) once the attempts are spent,
+   "Chạy tiếp từ Bước lỗi" running the step again and "Kết thúc" failing the run, while a run in any other mode, with
+   no person to resolve it, fails as under `fail`. An `outcome_unknown`, a call that may have reached the provider,
+   applies no `on_error`: it is never written as `continue`'s error and never enters an error lane; the run parks
+   `waiting` on an `outcome_review` wait (ADR-0113 (Accepted) decision 4), whose resolution records the step as
+   succeeded, sends again under the same key or fails the step, and only that failure then follows `on_error`
+   (V4.30); how a run parks for such a step inside a parallel lane, where no wait sits (decision 3), is Open 6 (Q-h5).
+   A step's output carries `error` under `continue` and under `route` alike (workflow-nodes R1.5). An effect step
+   calls its door once per attempt with the idempotency key `wf:{run_id}:{node_id}:{iteration_path}` (map index and
+   loop counter, never the attempt), claimed first and fenced per ADR-0108: a node run again after a crash replays a
+   call recorded `succeeded`, runs again a call that has no `dispatched` row and follows the Action's `on_unknown` for
+   one recorded `dispatched` with no outcome (ADR-0108 decision 5), and a step run again from an incident keeps its
+   key. Outputs are validated against the step's output schema off the event loop and capped at 64 KiB inline. In a
+   `simulate` run a result the run pins for a step (a scenario case's pinned simulated result, V4.37) stands in for
+   the simulated answer of the step's door once it validates against the step's output schema (H-18), the door still
+   applying the run mode to every call it receives (ADR-0111).
 6. **Every effect leaves through its kind's door**, each a narrow Protocol the consumer declares and the composition
    root satisfies: the ToolExecutor (connector actions and `tool.call`; `http.request` as an inline `http` tool frozen
    at submit, when the version is sealed, so its kind floor applies; a message to a non-member is a connector
@@ -146,8 +170,8 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
    refused at submit, a non-member at run time is dropped and counted); the `ModelResolver` (ADR-0118);
    `CodeSandboxPort` (ADR-0119); waits and child runs through ADR-0113's doors, child runs (sub-workflows, workflow
    tools, agent nodes, linked agents) nesting at most 3 deep, as ADR-0113 decision 9 and ADR-0117 decision 7 state
-   (requirements Q1, YC45, YC57). A node holds no SQL, no provider SDK and no concrete adapter, and it hands the run
-   mode to its door, which applies it (ADR-0111): a node never simulates an effect itself.
+   (requirements Q1, YC45, YC57, YC117). A node holds no SQL, no provider SDK and no concrete adapter, and it hands
+   the run mode to its door, which applies it (ADR-0111): a node never simulates an effect itself.
 7. **Approval steps and human tasks are enforced on the server.** In a `live` run `human.approval` opens an approval of
    type `studio.step.approval` and waits for its decision; in any other run it waits for no decider and takes a
    simulated decision (ADR-0111 decision 5). A step whose `approval_rule` is `all` (k = n, in the W1 tail, decision 2)
@@ -192,6 +216,21 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
     checkpoint, blob and write tables, holds JSON-native state, stores values above 64 KiB by reference under
     `tenants/{tenant_id}/workspaces/{workspace_id}/runs/{run_id}/state/`, and deletes a run's rows 24 hours after it
     ends. The format is pinned per run (ADR-0109), so pilot runs finish on the format they started on.
+11. **One execution semantics, held by golden traces.** What a run does with the tree is one section of
+    workflow-engine's spec ("Ngữ nghĩa thực thi", V4.34), each rule with a golden trace that CI runs on every
+    `WorkflowRunnerPort`, so an engine that replaced LangGraph would be held to the same traces: a block runs its steps
+    in order, each effect one pass through its door under its key (decision 5); a `logic.switch` takes exactly one
+    lane, its default required, its lanes meeting at the end of its block (decision 3); a `logic.parallel` runs every
+    lane and ends when every lane has, and a lane that fails with no error lane to catch it cancels the lanes still
+    running, audited `studio.branch.cancelled`, the error rising to the `logic.parallel` step; a variable has one
+    writer in the block (`wf.variable_conflict`), and a record write in a lane is a PATCH of the fields it names, so
+    two lanes that change different fields of one record keep both; `max_parallel` bounds a `map` only, from W2; a
+    `logic.loop` runs at most `max_iterations` times and then takes `max_reached` or fails with `loop_limit_reached`,
+    each iteration named by `iteration_path` (decision 2); an error lane runs when a failed step has spent its
+    attempts, and an `outcome_unknown` never enters one (decision 5); a `flow.subworkflow` step runs its pinned child
+    (ADR-0113 decision 9); and cancelling a run moves every `open` wait to `cancelled` in the same transaction
+    (ADR-0113 decision 3). A rule the spec already states is cited there, never copied; the failing lane's propagation
+    and the per-field PATCH are criteria of their own, each with its trace.
 
 ## Alternatives considered
 
@@ -199,8 +238,16 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
   keep it in paid editions (n8n <https://docs.n8n.io/n8n-community-license/community-license/license-faq> and
   Activepieces <https://www.activepieces.com/docs/about/license>, as read by the research on 2026-10-22; Dify's and
   Windmill's terms are S5's reading, not re-read for this ADR), and each brings a second tenancy model.
-- **A custom interpreter.** Rejected: it would re-implement the checkpoint, interrupt and human-in-the-loop machinery
-  LangGraph already gives (<https://docs.langchain.com/oss/python/langgraph/interrupts>).
+- **A custom interpreter** (option C of V4.34, a token engine on Postgres). Not built: it would re-implement the
+  checkpoint, interrupt and human-in-the-loop machinery LangGraph already gives
+  (<https://docs.langchain.com/oss/python/langgraph/interrupts>), a reason that stays a claim until spike S-RT
+  measures it, and whose numbers replace this line after the spike. S-RT is discovery 14 widened (two weeks in S0,
+  beside foundations-hardening and app-standards, so the critical path does not lengthen), with six reference
+  workflows RW1 to RW6 and thresholds T1 to T9. LangGraph on the tree (option A: each lane a subgraph,
+  `durability="sync"`, decision 11's golden traces) is kept if it meets T1 to T8; if it misses T1, T2 or T7, C,
+  designed on paper only until then, is built and measured on T1 to T9; if both miss, Temporal (option B) opens with
+  an ADR of its own; T5 missed only because of the saver brings the blob-per-channel saver (decision 10) into W1 and
+  keeps the engine.
 - **LangGraph's own retry policy and error handler.** Rejected: no idempotency key per iteration, so a retried effect
   repeats; the handler's behaviour depends on topology (measured).
 - **An effect inside a node (SQL, an SDK).** Rejected: it bypasses policy, run mode, idempotency and audit
@@ -233,10 +280,9 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
   plan ceiling of at most 500 steps a run (usage-and-limits' `max_steps_per_run`); the wrapper's counter caps, the
   static count warns.
 - **Reopening a `failed` run at its failed step** for "Chạy tiếp từ Bước lỗi". Rejected: `failed` is terminal for the
-  lanes that delete secret versions no unfinished run pins (ADR-0115 (Accepted) decision 1), that delete a run's
-  checkpoints after it ends (decision 10) and that return its budget lease (ADR-0121 (Accepted)), and reopening would
-  add a writer of queued rows (ADR-0113 decision 1). Camunda keeps an instance whose job has no retries left at an
-  incident and continues it once a person resolves the incident
+  lanes that delete a run's checkpoints after it ends (decision 10) and that return its budget lease (ADR-0121
+  (Accepted)), and reopening would add a writer of queued rows (ADR-0113 decision 1). Camunda keeps an instance whose
+  job has no retries left at an incident and continues it once a person resolves the incident
   (<https://docs.camunda.io/docs/components/concepts/incidents/>, read 2026-10-24), which decision 5's `incident`
   follows.
 
@@ -247,18 +293,29 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
 - A LangGraph upgrade is gated by golden parked-run fixtures resumed forward and backward in CI (ADR-0109's engine
   pin; LangGraph 1.2.11 and 1.2.16 resumed each other's runs when measured).
 - The constructs of the W1 tail (V4.26: `logic.parallel`, the bounded loop with `logic.break`, `incident` and the step
-  every approver must approve) come after the critical path to YC94, block no pilot ticket and lengthen W1 by about two
-  to three weeks. Discovery 14 measures them again on the Postgres saver with two workers, starting from Context's
-  in-memory results: joins by waiting edge over subgraph lanes, nested and inside a loop; a loop that waits, with the
-  step counter; an incident and its resume. Subgraph lanes carry the most risk, medium to high, since they change the
-  compile model, the checkpoint namespaces and the run steps a lane writes.
+  every approver must approve; V4.33: `flow.subworkflow`) come after the critical path to YC94, block no pilot ticket
+  and lengthen W1 by about two to three weeks. Discovery 14 is spike S-RT (V4.34), the one owner of the runtime's
+  measurements: it measures them again on the Postgres saver with two workers, starting from Context's in-memory
+  results (joins by waiting edge over subgraph lanes, nested and inside a loop; a loop that waits, with the step
+  counter; an incident and its resume), runs RW1 to RW6 against T1 to T9 (RW6 a sub-workflow three deep with a wait in
+  a child and the parent cancelled midway), and runs V4.30's crash matrix, K1 to K6 plus a holder stalled past its
+  claim and a send whose answer was lost, against a fake provider in three delivery modes (a provider key, a lookup,
+  neither); workflow-engine/03 waits on its answer. Subgraph lanes carry the most risk, medium to high, since they
+  change the compile model, the checkpoint namespaces and the run steps a lane writes.
 - Migrations (Alembic, random revision ids): `studio.step_assignments`, `studio.step_approvals` and
   `studio.human_tasks` in the CLAUDE.md workspace policy shape; the approval status CHECK gains `expired`, which
   workflow-engine writes from W2; later the
   per-run checkpoint tables under RLS. `studio.code.author` and `studio.tasks.manage` join the catalogue (ADR-0104).
 - Tests that must exist, each red when its guard is removed: a failing fixture per validator code; an architecture test
   that no node module imports SQLAlchemy, an SDK or a concrete adapter; a negative test at each door called directly
-  (failure-modes #5); a crash after an effect replaying one effect; an expiry that never approves; a decider outside the
+  (failure-modes #5); the crash matrix, in which an effect with a provider key or a lookup is applied once, one with
+  neither is never sent again automatically and parks on `outcome_review` every time, an internal effect is never
+  repeated and a fallback channel never delivers both (removing the dispatch log turns it red); an `outcome_unknown`
+  taking neither `continue` nor an error lane; each rule of decision 11 as a golden trace on every runner, a failing
+  lane cancelling the others with `studio.branch.cancelled` and two lanes changing different fields of one record
+  keeping both among them; a `flow.subworkflow` step refused in a parallel lane with `wf.wait_in_parallel` and allowed
+  in a loop body; a run that ends writing into `outcomes` only names its document declares; an expiry that never
+  approves; a decider outside the
   assignees refused; a code node saved without `studio.code.author` refused; a non-allowlisted type in a checkpoint
   refusing to load; a join running once over uneven lanes and over a switch inside a lane; a `flow.stop` and an error
   lane that ends the run inside a parallel lane refused with `wf.stop_in_parallel`, a wait or an `incident` step there
@@ -307,6 +364,18 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
    Python 3.12 only, no JavaScript and no skill scripts, billed by reserved vCPU and GB over run time (DO-45.1 (a));
    one container per code execution in v1, a per-agent-session container decided only in W3 (DO-45.2 (a)).
 5. **FOG-37 (prototype).** Which msgpack allowlist the platform's real checkpoint state types need.
+6. **Q-h5 (Đạt, before workflow-engine/06 is ready; asked there as workflow-engine Q4): an unknown outcome inside a
+   parallel lane.** An outbound call that ends `outcome_unknown` parks its run on an `outcome_review` wait (decision
+   5), but no wait sits in a parallel lane, whose parked node would sit in a checkpoint namespace the resume check does
+   not read (decision 3), and neither V4.30 nor V4.34 says how such a run parks, for a lane's own call or for one
+   still in flight in a lane that decision 11 cancels. Proposed: submit refuses with `wf.wait_in_parallel` every
+   effect step inside a parallel lane whose Action's `on_unknown` is `review`, as every Action's is in W1 (H-5), so
+   in W1 every step that sends an email, and no unknown outcome can arise inside a lane; W2 looks at it again when
+   waits open inside lanes. The other way: the unknown outcome is a failure of its lane that no error lane catches,
+   the other lanes are cancelled (decision 11), and the run parks on one `outcome_review` wait set on the
+   `logic.parallel` step in the root graph, where the resume check finds the parked node, the block running again
+   once it is resolved, each effect with a recorded outcome replaying by its key and the unknown one following the
+   decision. Nothing here decides it.
 
 ## Acceptance (2026-10-23)
 
@@ -368,3 +437,24 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
   decision follows), and so are `approval_rule` and decision 7's one approval per assignee under one wait, as
   workflow-nodes R12 states them (if that is wrong, the step opens one approval holding a decision per assignee, as
   R12's fallback says, and decision 7 follows). Decision 7 also says that under `all` only the decision that settles the step resolves its wait, where it had said that any decision does.
+
+## Amendments (2026-10-25)
+
+- Third consistency check (round 4), eighth pass, Đạt's V4.30, V4.33, V4.34, V4.35 and V4.37 with the planner's calls
+  H-9, H-10, H-14 and H-18: decision 1's `outcomes[]` gets its reader, the names whose condition holds on the final
+  state being written into the run's `outcomes` and compared by the gate's scenario cases (H-14); decision 2 brings
+  `flow.subworkflow@1` into the W1 tail, its step opening a `child_run` wait (V4.33), which decision 3 counts among the
+  waits refused in a parallel lane, decision 3's code list also naming `wf.variable_conflict`, the code workflow-engine
+  R2.7 gives two lanes writing one variable; decision 4 passes `durability="sync"` on every invoke, pinned in the run
+  manifest's engine section (V4.34); decision 5 retries an outbound attempt only on `not_dispatched` or a retryable
+  `rejected`, applies no `on_error` to an `outcome_unknown`, which parks the run on an `outcome_review` wait, and
+  replaces "a retry after a crash replays the stored result" with ADR-0108 decision 5's three cases (V4.30), and in
+  `simulate` it applies a result the run pins for a step (H-18); decision 11, new, makes the execution semantics one
+  section of workflow-engine's spec, a golden trace per rule run on every runner, with a failing lane cancelling the
+  others and a record write in a lane being a per-field PATCH (V4.34); Alternatives keep the custom interpreter
+  unbuilt on a reason that spike S-RT's numbers replace, with V4.34's options and decision rule, and drop the
+  secret-version lane from the reasons a `failed` run is not reopened, since no run pins a secret version any more
+  (V4.35, H-10); Consequences make discovery 14 the spike S-RT, which also runs V4.30's crash matrix (H-9), and add
+  the tests of these rules; Open 6 records, without deciding it, Đạt's Q-h5, how a run parks when an effect inside a
+  parallel lane ends `outcome_unknown` (workflow-engine Q4), with the planner's proposal to refuse at submit an effect
+  step whose Action's `on_unknown` is `review` inside a parallel lane.

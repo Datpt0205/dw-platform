@@ -47,10 +47,12 @@ v1 and v2, and on the provisional call on DO-26.
    (`contracts.py:141`), and every construction sets it, the resume included. The run manifest records it (ADR 0109).
 2. **The server fixes it at admission, and it only gets safer.** The run request door (ADR 0113) sets it: triggers and
    manual runs of the live version are `live`; the test-run endpoint accepts only `test` or `simulate` (`live` is 422),
-   and the builder starts only those; evaluations are `simulate`; a replay or a fork is `simulate` unless a holder of
-   `runs.replay_live` asks for `live` in a dialog that names the effect nodes that will run; a child run takes
-   `child_mode(parent, requested)`, the safer of the two (safest first: `simulate`, `test`, `live`). No caller picks
-   `live`.
+   and the builder starts only those; evaluations are `simulate`; a replay is `simulate` unless a holder of
+   `runs.replay_live` asks for `live` in a dialog that names the effect nodes that will run; Fork from a step is
+   dropped, since running a past run again from one of its steps would send its effects again under new keys, and
+   "Chạy lại mô phỏng" (W2) is a new `simulate` run of the same pinned version with the same input (H-13); a child
+   run takes `child_mode(parent, requested)`, the safer of the two (safest first: `simulate`, `test`, `live`). No
+   caller picks `live`.
 3. **Enforced where effects leave, never in a node.** In `simulate` the ToolExecutor executes only tools whose kind
    declares `simulate_safe` (read kinds, and platform tools with `side_effect_level = none`), the RecordService
    validates a write fully and returns the would-be record without persisting it (ADR 0107), the egress client refuses
@@ -59,7 +61,8 @@ v1 and v2, and on the provisional call on DO-26.
    intersected with the run's boundary and under the tester's allowance; the boundary of a root not live yet, a draft or
    a sealed candidate in its gate run, is the provisional one its run door derives (ADR 0103 decision 5), which no
    `live` run reads under. Every other tool call is an intercepted call: recorded in `tool_executions` with status
-   `simulated` (that column's first CHECK), audited as `tool.simulated` with the reason, and answered with the node's or
+   `simulated` (which tenant-config/03 adds to the CHECK that runtime-hardening/01 creates with `dispatched` and
+   `outcome_unknown`, V4.30), audited as `tool.simulated` with the reason, and answered with the node's or
    tool's mock output, validated against its output schema and shaped like the mocks of evaluation cases, or with a
    placeholder generated from the schema, marked `simulated: true`.
 4. **`test` adds real messages to allowlisted people only.** It also executes connector actions whose kind declares
@@ -185,3 +188,12 @@ v1 and v2, and on the provisional call on DO-26.
   names whose access a gate trial reads under, the principal the gate lane requests it as (ADR 0103 decision 5, ADR 0120
   decision 3), extending the sixth pass's line above (if it is wrong, a version's boundary is written when it is sealed
   and its gate trials read under it).
+
+## Amendments (2026-10-25)
+
+- Third consistency check (round 4), eighth pass, Đạt's V4.30 and V4.36 with the planner's call H-13: decision 2
+  drops the fork, whose run from a past run's step would send its effects again under new keys, keeping the replay
+  and naming its W2 replacement, "Chạy lại mô phỏng", a new `simulate` run of the same pinned version with the same
+  input; decision 3's `simulated` status is no longer the first CHECK of `tool_executions.status`, since
+  runtime-hardening/01 creates that CHECK with `dispatched` and `outcome_unknown` and tenant-config/03 adds
+  `simulated` to it.

@@ -1,9 +1,9 @@
 # 05 — Giao người phụ trách và đổi workspace sở hữu
 
 Status: needs-triage
-Blocked by: 03, 04, .claude/plans/studio/app-standards/issues/01-vo-loi-problem-json.md, .claude/plans/studio/app-standards/issues/02-khoa-chong-lap-gan-nguoi-goi.md
+Blocked by: 03, 04, .claude/plans/studio/app-standards/issues/01-vo-loi-problem-json.md, .claude/plans/studio/app-standards/issues/02-khoa-chong-lap-gan-nguoi-goi.md, .claude/plans/studio/custom-objects/issues/03-record-service.md
 Area: studio
-Yêu cầu: R8.1, R8.2, R8.3, R8.4, R8.5, R8.6, R8.7, R8.8, R8.9, R8.10, RA24, RA25, RA26
+Yêu cầu: R8.1, R8.2, R8.3, R8.4, R8.5, R8.6, R8.7, R8.8, R8.9, R8.10, R8.11, R8.12, RA24, RA25, RA26, RA28
 
 ## Mục tiêu
 
@@ -32,8 +32,16 @@ trong cùng giao dịch (spec R8; ADR-0105 (Accepted) mục 2 và 3; DO-11 theo 
    `get_idempotent_operation`; thân `{"owner_id": "...", "workspace_id": "..."}`, `workspace_id` tùy chọn; 200 với
    `record_id`, `version`, `owner_id`, `workspace_id`; 403 `assign_not_permitted`, 403 `assign_target_out_of_reach`,
    404, trong `details.reason_code` của lỗi; `make generate-contracts`.
-5. Bước "Giao cho" của workflow-nodes gọi cùng `AssignRecordService`; không đường nào khác đổi được người phụ trách vì
-   `dw_app` không có UPDATE trên các cột đó (ticket 03).
+5. Bước "Giao cho" của workflow-nodes gọi cùng `AssignRecordService` qua `RecordAssignPort`, Protocol mà
+   workflow-engine/03 khai trong `dw_studio.workflows.ports` (H-30), nối ở gốc ghép; không đường nào khác đổi được người
+   phụ trách vì `dw_app` không có UPDATE trên các cột đó (ticket 03).
+6. Khóa của lần giao từ một Bước (R8.11, R8.12; V4.30): khi lời gọi qua `RecordAssignPort` mang khóa
+   `wf:{run_id}:{node_id}:{iteration_path}`, `AssignRecordService` tra `studio.record_write_keys` của custom-objects/03
+   trước khi gọi hàm giao; có dòng của cùng chủ thể thì trả `owner_kind`, `owner_id`, `workspace_id`, `version` đã lưu
+   với `replayed: true` mà không gọi hàm, không audit, không outbox; không có thì gọi hàm, ghi audit, outbox và dòng khóa
+   `op` `assign` trong cùng giao dịch; INSERT khóa vướng PK vì dòng của chủ thể khác → 409 `idempotency_conflict`. Route
+   HTTP không nhận khóa `wf:`; nó giữ `Idempotency-Key` gắn người gọi của bước 4. Ở `simulate` không gọi hàm và không ghi
+   dòng khóa.
 
 ## Tiêu chí chấp nhận
 
@@ -57,6 +65,13 @@ trong cùng giao dịch (spec R8; ADR-0105 (Accepted) mục 2 và 3; DO-11 theo 
 - [ ] R8.9 (RA26): người phụ trách cũ chỉ có `read` mức Của tôi SELECT bản ghi ở câu lệnh đầu tiên sau commit → 0 dòng.
 - [ ] R8.10 (RA25): cùng người gọi gửi lại cùng `Idempotency-Key` → trả kết quả lần đầu, một audit, một outbox,
       `version` tăng một lần.
+- [ ] R8.11 (RA28): Bước giao qua `RecordAssignPort` với khóa `wf:` → một dòng `studio.record_write_keys` `op`
+      `assign` mang người phụ trách mới, cùng giao dịch với lần giao, audit và outbox; lỗi giả lập sau khi ghi audit →
+      giao dịch lùi, 0 dòng khóa; ghi dòng khóa trong giao dịch riêng → test đỏ.
+- [ ] R8.12 (RA28): giết worker sau commit của lần giao và trước checkpoint, chạy lại cùng khóa khi người lâu nhất chưa
+      nhận đã đổi → cùng người phụ trách với `replayed: true`, `version` tăng một lần, một audit, một outbox; gỡ bước tra
+      khóa → lần chạy lại giao cho người kế tiếp trong vòng xoay, test đỏ; cùng khóa từ chủ thể khác → 409
+      `idempotency_conflict`, không cột nào đổi.
 - [ ] Xong: `make ci test-integration` xanh.
 
 ## Nguồn
@@ -66,6 +81,7 @@ trong cùng giao dịch (spec R8; ADR-0105 (Accepted) mục 2 và 3; DO-11 theo 
 - `db/migrations/sql/0012_partition_maintenance.sql:45-48`; spec: R8.1.
 - `docs/adr/0104-tenant-roles-with-depth-and-one-effective-grants-owner.md:65-69`; spec: R8.4, R8.5.
 - `docs/adr/0105-record-reach-is-decided-by-postgresql.md:67-76`; spec: R8.1, R8.2.
+- `docs/adr/0108-one-error-envelope-and-caller-bound-idempotency.md:111-123`; spec: R8.11, R8.12 (V4.30); workflow-nodes:R6.5; custom-objects:R5.9, R5.11.
 
 ## Comments
 
@@ -73,3 +89,4 @@ trong cùng giao dịch (spec R8; ADR-0105 (Accepted) mục 2 và 3; DO-11 theo 
   được; người phụ trách được ở workspace khác (lead của Marketing, người phụ trách ở Sales).
 - 2026-10-23 (agent): DO-11 (a) đã được Đạt xác nhận ngày 23/10/2026; thêm app-standards/01, /02 vào Blocked by vì route
   giao dùng problem+json và `Idempotency-Key` gắn người gọi; người dự phòng khi giao là của workflow-nodes (Q6).
+- 2026-10-25 (agent): lượt h, theo V4.30 của Đạt (mục 10): nhận R8.11, R8.12 và RA28, khóa `wf:` của Bước giao ghi cùng giao dịch với lần giao và phát lại người đã giao (bước 6); Bước giao đi qua `RecordAssignPort` mà workflow-engine/03 khai (H-30, bước 5). Blocked by thêm custom-objects/03, ticket tạo `studio.record_write_keys`; cạnh ngoài bảng mục B, đã chạy g.py: `marketing-pilot/03` vẫn ở độ sâu 15, chuỗi dài nhất 18.

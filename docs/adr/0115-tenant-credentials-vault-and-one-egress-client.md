@@ -39,14 +39,22 @@ platform's vault and are injected per call into the model proxy) and D14 (the pr
    `rewrap`, `destroy_tenant_key`); `LocalDevKms` serves only outside deployed profiles (`validate_for_profile`
    refuses it when `is_deployed`). Each row names its secret's `field text NOT NULL` and
    `secret_version integer NOT NULL`, numbered per subject and field, which rises when the secret's value changes and
-   never on a rewrap; a run manifest pins one for each connection and field it uses (ADR-0109 decision 6), and a row
-   is unique per tenant, subject, field and secret version, so a rotation with an overlap, such as a signing secret's
-   24 hours, holds two versions side by side. Writing a secret anew sets `revoked_at` on its previous versions in the
-   same transaction: at once for a connection's field, and 24 hours later for an inbound endpoint's `signing_secret`,
-   which is accepted until then. A run whose manifest pinned a version past its `revoked_at`, or one whose row is
-   gone, stops at its next use with `credential_revoked` (closed while missing), and the `credential_purge` lane
-   deletes such versions once no unfinished run pins them; `connection_usable` reads the same column for a run's
-   pinned versions (decision 2). The
+   never on a rewrap, and a row is unique per tenant, subject, field and secret version, so a rotation with an
+   overlap, such as a signing secret's 24 hours, holds two versions side by side. A run manifest pins the connection,
+   never a secret version (ADR-0109 (Accepted) decision 6, V4.35): every call through a connection uses the latest
+   version of each of its fields that is not revoked, and a tool call records the version it used in
+   `platform.tool_executions.credential_version`, a column connections-and-vault owns because the egress client
+   resolves the secret, and in its audit (H-10), so a run that waits for an approval across a password change sends
+   with the new password. A rotation and a revocation for compromise are two acts. Writing a secret anew replaces its
+   previous version, which no later call takes; an inbound endpoint's `signing_secret` keeps V4.20's overlap, its
+   previous version accepted for 24 hours, until the `revoked_at` that the write sets that far ahead. A revocation
+   for compromise sets `revoked_at` at once and `platform.connections.compromised_at` in the same transaction, and stops
+   every unfinished run of the connection requested at or before `compromised_at` at its next egress call with
+   `credential_revoked`, even when a newer version exists; `credential_purge` deletes the revoked version's secret
+   material at once but never that timestamp, so the refusal keeps its source after the purge (H-28); a field with no version left that is not revoked,
+   its rows gone included, refuses the call the same way (closed while missing), and `connection_usable` reads both
+   before each egress call (decision 2). The `credential_purge` lane deletes a replaced version 24 hours after the
+   rotation that replaced it and a revoked one at once, since no run pins a version (H-10). The
    AAD, `dw.secret.v1|<tenant_id>|<owning_workspace_id>|<subject_kind>:<subject_id>|<field>|<secret_version>` (the
    subject kind being its FK column's name without `_id`, such as `connection` or `inbound_endpoint`), binds tenant,
    owning workspace, subject, field and the version of the secret, unchanged by rewrap: a rewrap wraps only the data
@@ -55,8 +63,9 @@ platform's vault and are injected per call into the model proxy) and D14 (the pr
    `owning_workspace_id` on `platform.connections` and on every row of `studio.artifacts`, from which a subject that
    belongs to an artifact, such as an inbound endpoint, takes its owning workspace, so a change of owner, if one is
    ever offered, encrypts the subject's envelopes again. The key is chosen from the run's or access context's tenant,
-   never from the row. `dw_app` holds no privilege on the table: four SECURITY DEFINER functions
-   (`platform.put_secret`, `platform.open_secret`, `platform.secret_status`, `platform.delete_secret`), each narrowing
+   never from the row. `dw_app` holds no privilege on the table: five SECURITY DEFINER functions
+   (`platform.put_secret`, `platform.open_secret`, `platform.secret_status`, `platform.delete_secret`,
+   `platform.revoke_connection_secrets`, the last added in pass h), each narrowing
    by `app.tenant_id`, and the `credential_purge` lane's `platform.purge_retired_secrets()`, which takes no argument,
    are the one database door, and only the credential broker decrypts. A secret never enters graph state, tool
    arguments, checkpoints, traces, logs or audit, and the API never returns one (write-only fields; a signing secret
@@ -82,8 +91,9 @@ platform's vault and are injected per call into the model proxy) and D14 (the pr
    the single answer to "may this run use this connection now": same tenant, `status = 'active'`, the run's workspace
    equal to the owning one or inside its sub-tree under `workspace_subtree`, `connections.use` held there, for a
    personal connection the owner acting or a delegation covering the run's definition, and, before a run's egress
-   call, every `secret_version` its manifest pins for the connection still present and not revoked (decision 1). It is
-   asked when a binding value is approved (ADR-0110), at run admission and before every egress call.
+   call, a version of each secret field that is not revoked and no revocation for compromise of the connection since
+   the run was requested (decision 1). It is asked when a binding value is approved (ADR-0110), at run admission and
+   before every egress call.
 3. **Personal connections.** A personal connection acts in a background run only through a revocable delegation
    (`platform.connection_delegations`: one workflow or agent, granted by the owner, expiring at most 365 days after
    the grant, its effective state derived by one function). P1 ships workspace-shared connections only, so no
@@ -112,8 +122,12 @@ platform's vault and are injected per call into the model proxy) and D14 (the pr
    (managed with `integrations.admin`; no IP literals; one wildcard level, never on a public suffix; a host is added
    only by the `.decided` handler of a strict run-less approval `egress.allowed_host`, stamped
    `required_scope = integrations.admin` (ADR-0004), that a second person decides, and removed by one person,
-   audited); keys rate limits by provider app, connection and tenant; owns retries (a timed-out non-idempotent POST
-   is `outcome_unknown`, never retried); scrubs the call's secrets from bodies, errors and logs; and in `simulate`
+   audited); keys rate limits by provider app, connection and tenant; answers every call with a typed result, which
+   the ToolExecutor and the node wrapper read (V4.30): `not_dispatched` when it is certain that no byte left,
+   `rejected` for a 4xx that the provider commits it did not apply, `outcome_unknown` for a timeout or a reset after
+   sending or an ambiguous 5xx (for SMTP, `DATA` sent and no 250 received) and `succeeded`; owns transport retries and
+   never retries a call whose outcome is unknown, which only its action's `delivery` block or a person sends again
+   (ADR-0116 (Accepted) decision 2); scrubs the call's secrets from bodies, errors and logs; and in `simulate`
    refuses every purpose except `model` and read-only actions (`egress_blocked:run_mode`). An architecture test
    allows `httpx.AsyncClient(` only in the egress package and the existing operator-configured adapters.
 7. **The egress proxy.** In deployed profiles smokescreen (<https://github.com/stripe/smokescreen>, MIT, built from a
@@ -175,8 +189,12 @@ platform's vault and are injected per call into the model proxy) and D14 (the pr
   checkpoint blobs, `platform.tool_executions`, `platform.audit_events`, spans or logs; the address policy over
   mapped, 6to4, Teredo and NAT64 forms; a DNS answer changed after the check still reaching only the pinned address; a
   replayed `state` doing nothing; the OAuth client never resolved sideways (mirroring `test_tenant_overlay.py`); a run
-  whose pinned secret version is revoked, or gone, stopping at its next use with `credential_revoked`; an inbound
-  endpoint's previous signing secret refused once 24 hours have passed since its rotation.
+  waiting for approval while the SMTP password changes to version 2, which once approved sends with version 2 and
+  records version 2 in `credential_version` and its audit (V4.35); a revocation for compromise stopping every waiting
+  run of the connection at its next egress call with `credential_revoked` although version 2 exists, and a field with
+  no version left unrevoked refusing the same way; a replaced version purged 24 hours after its rotation and a revoked
+  one at once; an inbound endpoint's previous signing secret refused once 24 hours have passed since its rotation; a
+  timeout after SMTP `DATA` answered `outcome_unknown` and never retried by the client.
 - Harder: an extra hop per call, a Go image to maintain, an unseal after every OpenBao restart; an operator endpoint on
   CGNAT space (`100.64.0.0/10`) is refused after the change unless allow-listed.
 - The existing outbound URL check folds into the one address policy, so startup checks and the egress client cannot
@@ -267,3 +285,30 @@ Amended on 2026-10-24 by the requester and Đạt, who scoped the remaining D11 
   `revoked_at` NULL and its 24 hours count from the new version's `created_at` in one function that the signature
   verifier and the lane both call, or the lane deletes through `platform.delete_secret` tenant by tenant and the
   database door keeps its four functions).
+
+## Amendments (2026-10-25)
+
+Amended by Đạt on 2026-10-25, who accepted the recommendation on each of the twelve decisions owed (V4.30-V4.41), eleven
+from the answer to ChatGPT's architecture review and one on a builder's read of simulated runs, applied with the
+planner's provisional calls H-1-H-18:
+
+- Third consistency check (round 4), eighth pass, Đạt's V4.30 and V4.35 and the planner's provisional call H-10:
+  decision 1 no longer has a run manifest pin a secret version (ADR-0109 (Accepted) decision 6): a call uses the latest
+  version of each field that is not revoked and records it in `platform.tool_executions.credential_version`,
+  connections-and-vault's column, and in its audit; a rotation replaces a version, which the `credential_purge` lane
+  deletes 24 hours later, while a revocation for compromise stops every unfinished run of the connection at its next
+  egress call with `credential_revoked`, even when a newer version exists, and its version is deleted at once; an
+  inbound endpoint's signing secret keeps V4.20's 24 hours. Decision 2's `connection_usable` reads that revocation in
+  place of a run's pinned versions. Decision 6's typed results, `not_dispatched`, `rejected`, `outcome_unknown` and
+  `succeeded`, gain their readers, the ToolExecutor and the node wrapper, and the client never retries a call whose
+  outcome is unknown. Consequences replace the test of a pinned version with V4.35's experiment. This replaces the third
+  pass's pin of one version per connection and field and the sixth pass's rule that keeps a revoked version until no
+  unfinished run pins it, the lines above that name them staying as history (if H-10 is wrong, a replaced version is
+  kept until no unfinished run of the connection is left).
+- Pass h, after wave 1 (H-28): a revocation for compromise records `platform.connections.compromised_at`, which
+  `credential_purge` never deletes, so a run requested before it stays refused after the revoked version is purged.
+- Pass h, wave 2: a secret version gains `replaced_at`, set when a rotation replaces it, and `credential_purge`
+  deletes a replaced version 24 hours after `replaced_at` and a version revoked for compromise at once; the revocation
+  is `platform.revoke_connection_secrets`, the fifth SECURITY DEFINER function of decision 1, and each finished call
+  records the versions it used in `platform.tool_executions.credential_version` (connections-and-vault R1.14-R1.16,
+  R6.8).

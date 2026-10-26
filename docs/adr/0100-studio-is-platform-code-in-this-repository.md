@@ -92,14 +92,17 @@ Sales and sends a message once a person approves; all of it answers to the one a
    schema. Rows are read and written through the parent, so a table whose policy is narrower than the tenant may join
    the registry, and offboarding, which exports only what `dw_app` can read, exports each row once. Nobody redefines
    it; its revision registers `platform.audit_events` first. A retention term is never a registry column: the
-   versioned retention policy (`configs/policies/retention@<semver>.yaml`, keyed `schema.table`, with its `enforced`
-   gate) owns every term, so a changed term is a new policy version, never a migration. telemetry-and-audit owns the
-   policy's format and its lane; the ticket that registers a table writes that table's term under its `schema.table`
-   key in the same change, so the test that every registered append-only table has a term is green from the
-   registering change on. The one exception is the registry's first row: its revision (studio-skeleton/01) edits no
-   policy file, and until usage-and-limits/02, the first ticket of ADR-0122 decision 7's chain, moves the term under
-   the `platform.audit_events` key, the policy model maps `audit.tables.audit_events` of `retention@1.7.0` to that
-   key, so the test is green from the registry's own revision on.
+   retention policy is one fragment per store, `configs/policies/retention.d/<schema>.<table>.yaml` (a store that is
+   not a table takes a prefixed name, such as `objects.run_step_payloads.yaml`), each holding the fields of today's
+   keyed entry (the term, the deleter, the `enforced` gate), and the release manifest pins the hash of the fragment set
+   in place of a file's semver (H-1), so a changed term is a changed fragment, never a migration. telemetry-and-audit
+   owns the fragment format, its loader into `platform.retention_terms`, `platform.retention_term_days(text)` (its
+   ticket 01) and the lane (its ticket 03); the ticket that registers a table adds that table's fragment in the same
+   change, with no chain of tickets editing one file, so the test that every registered append-only table has a
+   fragment, red when one is removed, is green from the registering change on. The one exception is the registry's
+   first row: its revision (studio-skeleton/01) adds no fragment, and until telemetry-and-audit/01 adds the
+   `platform.audit_events` fragment and removes the mapping, the policy model maps `audit.tables.audit_events` of
+   `retention@1.7.0` to that store, so the test is green from the registry's own revision on.
 8. **si-platform is reference and selective port source (D5).** Pure code is ported at a pinned commit, with its
    tests, under a first line `Ported from si-platform <path> at <commit> (<date>). Changes: <one line>. Decision: ADR 01NN.`
    Those headers are the ledger (`git grep "Ported from si-platform"`); there is no sync, and a later si fix is a new
@@ -148,7 +151,8 @@ Sales and sends a message once a person approves; all of it answers to the one a
   catalog; offboarding exports every `studio` tenant table or names it, with a reason, in an exclusion list; the
   registry equals the range-partitioned parents that have a DEFAULT partition; a partition read by its own name as
   `dw_app` is refused with permission denied (the new expectation of `test_rls_coverage.py:187-225`); every
-  append-only table in the registry has a term in the retention policy; the import contracts; the 401 smoke.
+  append-only table in the registry has a retention fragment, and removing one turns it red; the import contracts;
+  the 401 smoke.
 - `test_rls_coverage.py` holds the tenant-wide class of decision 5 the way it holds `_PRINCIPAL_ONLY_ON_PURPOSE`
   (`:108-131`): it reads from the catalog every parent table (`relkind IN ('r', 'p')`, not a partition) with
   `tenant_id` and no `workspace_id`, compares that set both ways with a `_TENANT_WIDE_ON_PURPOSE` dict of reasons
@@ -244,3 +248,13 @@ Sales and sends a message once a person approves; all of it answers to the one a
 - Third consistency check (round 4), third pass: decision 5's composite foreign key to `platform.workspaces` names
   `ON DELETE RESTRICT`, as every foreign key must name its action (`CLAUDE.md`, Data model rules) and as the tables
   that carry it already state (tenant-config, connections-and-vault, org-and-principals).
+
+## Amendments (2026-10-25)
+
+- Third consistency check (round 4), eighth pass, the planner's call H-1 under Đạt's V4.31: decision 7's retention
+  policy is one fragment per store under `configs/policies/retention.d/`, the release manifest pinning the hash of the
+  fragment set, and each registering ticket adds its own fragment with no chain of tickets, where one versioned file
+  took a new version from each ticket in turn; telemetry-and-audit/01 owns the format, the loader and the reading
+  function and removes the mapping of `retention@1.7.0`, which replaces the second pass's line above, whose mapping
+  lasted until usage-and-limits/02 (V4.P1); Consequences' coverage test turns red when a fragment is removed (if H-1
+  is wrong, one versioned file with a chain of tickets returns, as V4.P1 had it).

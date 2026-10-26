@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: 02, 03, .claude/plans/studio/runtime-hardening/issues/03-run-va-outbox-khong-ket.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md
 Area: studio
-Yêu cầu: R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.7, R3.6, R3.8, R2.18, TC15, TC21, TC28, TC29, TC31
+Yêu cầu: R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.7, R6.8, R3.6, R3.8, R2.18, TC15, TC21, TC28, TC29, TC31, TC32
 
 ## Mục tiêu
 
@@ -11,7 +11,8 @@ Mỗi lượt chạy có gốc là thành phần Studio ghim release ref, chế 
 một bản kê lưu một lần theo mã băm; trong lượt chạy, mọi phân giải chỉ đọc bản kê, kể cả khi tiếp tục ở
 tiến trình khác sau 3 ngày chờ duyệt hay lâu hơn; không gì một lượt chạy còn trỏ tới bị dọn (spec R6,
 TC15). Chỉ lượt `simulate` được có gốc là bản Nháp, ghim bằng mã băm tạm của nội dung nháp (R6.1, R6.7,
-TC28). Ticket 05 thêm mục điểm gắn vào cùng bản kê.
+TC28). Mục `engine` ghim độ bền checkpoint `sync` mà runtime truyền ở mọi lần chạy và tiếp tục (R6.8, TC32; V4.34).
+Ticket 05 thêm mục điểm gắn vào cùng bản kê, không ghim phiên bản bí mật nào (V4.35).
 
 ## Việc cần làm
 
@@ -42,21 +43,23 @@ TC28). Ticket 05 thêm mục điểm gắn vào cùng bản kê.
       R3.8, TC31): ứng dụng không xóa dòng nào của hai bảng (bản kê định danh theo nội dung, khóa ghim phiên bản cho
       lượt chạy còn giữ), nên DELETE của `dw_app` chỉ để lane `offboarding` xóa được, vì lane chỉ xóa bảng có trong
       `_CATALOG_PURGEABLE`.
-    - Offboarding, trên `offboarding.py` và `test_offboarding.py` mà foundations-hardening/07 đã viết lại:
-      `platform.run_manifest_keys` vào `_ORDERED_FIRST` ngay sau `platform.worker_runs` và trước các mục `studio` của
-      ticket 02, vì FK RESTRICT của `artifact_version_id` giữ `studio.artifact_versions` (và FK RESTRICT của
-      `config_version_id` mà ticket 05 thêm giữ `platform.config_versions`), và test phủ offboarding đọc thứ tự các bước
-      xóa mà `offboarding.py` khai, không theo CASCADE của `platform.run_manifests` (studio-skeleton:R4.2);
-      `platform.run_manifests` ở phần xóa theo chữ cái, sau `platform.worker_runs` mà `_ORDERED_FIRST` xóa trước (cạnh
-      RESTRICT từ lượt chạy; ADR-0109 (Accepted) Consequences).
+    - Offboarding, trên `offboarding.py` và `test_offboarding.py` mà foundations-hardening/07 đã viết lại: hai bảng
+      dùng bước mặc định của sổ bước xóa (foundations-hardening:R11.4; H-2), không đăng ký bước nào; thứ tự suy từ
+      `pg_constraint` đặt `platform.run_manifest_keys` trước `studio.artifact_versions` (FK RESTRICT của
+      `artifact_version_id`; và trước `platform.config_versions` khi ticket 05 thêm FK RESTRICT của `config_version_id`),
+      và `platform.worker_runs` trước `platform.run_manifests` (FK RESTRICT của `run_manifest_hash`; ADR-0109 (Accepted)
+      Consequences). Dòng của `platform.run_manifest_keys` cũng mất qua CASCADE từ `platform.run_manifests`, nhưng bước
+      riêng của bảng đó đã đứng trước `studio.artifact_versions`, nên thứ tự không dựa vào CASCADE.
     - Cột mới đi sau `ck_worker_runs_status` của runtime-hardening/03 trên cùng `platform.worker_runs`, nên
       revision này nối sau revision của ticket đó.
 2. Thân `dw.run_manifest/v1` (mô hình trong lõi `dw_studio`, `extra="forbid"`): `schema`, `release_manifest_ref`,
    `run_mode`, `root` (`kind`, `artifact_id`, `version_no`, `definition_hash`, và `stage` `draft` chỉ khi gốc là bản
    Nháp), `closure` (mỗi mục `kind`, `key`, `version`, `content_hash`, lấy từ `studio.definition_manifests` của gốc),
    `engine` (lấy từ mục registry của loại gốc; workflow-engine và agent-builder điền mục của họ, ADR-0109 (Accepted)
-   quyết 8). Mã băm là `content_hash` của thân qua `dw_kernel.canonical`. Thân không chứa bí mật nào. Gốc ở `draft` (chỉ
-   lượt `simulate`, R6.7; ADR-0109 (Accepted) quyết 6): `closure` lấy từ `extract` của loại trên nội dung nháp lúc nhận,
+   quyết 8), trong đó `durability: Literal["sync"]` bắt buộc, không giá trị mặc định ở mô hình, do builder đặt cho mọi
+   gốc (R6.8; V4.34); runner của workflow-engine/03 đọc nó và truyền cho mọi lần chạy và tiếp tục graph
+   (workflow-engine:R4.25). Mã băm là `content_hash` của thân qua `dw_kernel.canonical`. Thân không chứa bí mật
+   nào. Gốc ở `draft` (chỉ lượt `simulate`, R6.7; ADR-0109 (Accepted) quyết 6): `closure` lấy từ `extract` của loại trên nội dung nháp lúc nhận,
    `definition_hash` là mã băm tạm tính trên nội dung đó và bao đóng đó bằng cùng bước băm mà `seal` của ticket 02 dùng
    (ADR-0109 (Accepted) quyết 4), `version_no` là giá trị của dòng nháp, có thể null; không ghi gì vào dòng nháp hay
    `studio.definition_manifests`.
@@ -96,13 +99,17 @@ TC28). Ticket 05 thêm mục điểm gắn vào cùng bản kê.
       trước): DELETE phiên bản được bản kê ghim → lỗi FK; DELETE bản kê mà `platform.worker_runs` còn trỏ tới → lỗi FK.
 - [ ] R6.6: p95 đo được ghi ở Comments và không quá 20 ms, hoặc Quyết định của spec có dòng Đạt chấp
       nhận số đo mới.
+- [ ] R6.8 (TC32): bản kê của lượt gốc `fixture` có `engine.durability` `sync`; dựng thân với `async` hay thiếu
+      `durability` → lỗi kiểm mô hình, không dòng `platform.run_manifests`; đổi kiểu trường thành `str` → ca `async`
+      được nhận, test đỏ.
 - [ ] R6.7 (TC28): `build` với gốc ở `draft` và `run_mode` `live` hay `test` → từ chối, không dòng
       `platform.run_manifests` hay `platform.run_manifest_keys` nào; bỏ kiểm chế độ → test đỏ.
 - [ ] R2.18 (TC29): bằng vai migrator, INSERT dòng `platform.run_manifest_keys` của tenant A có `artifact_version_id`
       là phiên bản của tenant B → lỗi FK ghép; đổi FK ghép về FK một cột → test đỏ.
 - [ ] R3.6 (TC21): `test_offboarding.py` purge tenant có lượt chạy ghim bản kê lên phiên bản Studio, tenant
-      khác giữ nguyên; gỡ mục `platform.run_manifest_keys` khỏi `_ORDERED_FIRST` → test phủ offboarding
-      (studio-skeleton:R4.2) đỏ, nêu FK ghép của `artifact_version_id`; thu DELETE của `dw_app` trên
+      khác giữ nguyên; thứ tự mà sổ bước xóa suy ra đặt `platform.run_manifest_keys` trước `studio.artifact_versions` và
+      `platform.worker_runs` trước `platform.run_manifests`; đột biến phép suy để bỏ cạnh của `artifact_version_id` → test
+      phủ offboarding (studio-skeleton:R4.2) đỏ, nêu FK ghép của `artifact_version_id`; thu DELETE của `dw_app` trên
       `platform.run_manifests` → test phủ (studio-skeleton:R4.3) đỏ, nêu tên bảng.
 - [ ] R3.8 (TC31): `dw_app` DELETE một dòng `platform.run_manifests` hay `platform.run_manifest_keys` của công ty
       `active` → 23514, dòng còn; cùng lệnh khi công ty ở `offboarding` → xóa được; gỡ trigger khỏi một trong hai bảng
@@ -113,8 +120,9 @@ TC28). Ticket 05 thêm mục điểm gắn vào cùng bản kê.
 
 - `packages/python/dw_agent_runtime/src/dw_agent_runtime/ports.py:132`; spec: R6.4.
 - `db/migrations/versions/0005_run_artifact_versions.py:41-51`; spec: R6.1.
-- `packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:108-114`; spec: R3.6,
-  TC21; ADR-0109 (Accepted) quyết 6-7.
+- `packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:108-114` (foundations-hardening/07 thay
+  bằng sổ bước xóa); spec: R3.6, TC21; ADR-0109 (Accepted) quyết 6-7.
+- ADR-0109 (Accepted) quyết 8 (mục `engine`, độ bền `sync`); spec: R6.8, TC32.
 - `packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:98-101`; spec: R3.8, TC31.
 
 ## Comments
@@ -142,3 +150,7 @@ TC28). Ticket 05 thêm mục điểm gắn vào cùng bản kê.
   offboarding kiểm FK RESTRICT tới `studio.artifact_versions` theo thứ tự các bước xóa mà `offboarding.py` khai, không
   theo CASCADE (studio-skeleton:R4.2), nên ca âm của R3.6 gỡ mục đó; ca xóa cứng để thấy lỗi FK (R6.5) chạy khi công ty
   ở `offboarding`.
+- 2026-10-25 (agent): lượt h, theo V4.34 của Đạt và H-2 (quyết định cùng ngày của spec): mục `engine` của thân có
+  `durability` `sync` (R6.8, TC32), mà workflow-engine/03 truyền; hai bảng của ticket dùng bước mặc định của sổ bước xóa
+  của foundations-hardening/07, thứ tự suy từ `pg_constraint`, thay mục `_ORDERED_FIRST` của các dòng Comments ngày
+  24/10/2026, và ca âm của R3.6 thành đột biến phép suy. Dòng Blocked by không đổi.

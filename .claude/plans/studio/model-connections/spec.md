@@ -26,7 +26,7 @@ Mọi cửa model đọc một bộ phân giải theo công ty, trả cùng mộ
 - R1.1 `ModelResolver` PHẢI là nguồn route model duy nhất cho mọi cửa model, gồm chọn model, ngân sách lượt chạy, đo usage, gateway có cấu trúc, nén ngữ cảnh và giám khảo.
 - R1.2 KHI hai cửa model khác nhau phân giải cho một công ty có hồ sơ riêng, `ModelResolver` PHẢI trả cùng một route cho cả hai.
 - R1.3 NẾU một công ty hỏi một hồ sơ mà chỉ công ty khác có bản riêng, THÌ `ModelResolver` PHẢI rơi về hồ sơ nền tảng và không bao giờ trả bản của công ty khác.
-- R1.4 KHI một lượt chạy được nhận, `ModelResolver` PHẢI ghim route model đã phân giải vào bản kê lượt chạy của lượt.
+- R1.4 KHI một lượt chạy được nhận, `ModelResolver` PHẢI ghim route model đã phân giải vào bản kê lượt chạy của lượt, không kèm phiên bản bí mật nào (ADR-0118 (Accepted) quyết 1; V4.35).
 
 ### R2 — Hồ sơ model trong danh sách gói cho phép, `ModelProfile` v2
 
@@ -48,23 +48,25 @@ Hồ sơ model khai nơi xử lý dữ liệu; thiếu khai là nước ngoài, 
 ## Trong phạm vi
 
 - `ModelResolver`: một cổng cho `StudioModelSelection`, cửa ngân sách lượt chạy (`RunBudgetMiddleware` hôm nay, rồi `LimitsMiddleware` thay nó ở usage-and-limits/03 và đọc cùng bộ phân giải, ADR-0118 (Accepted) quyết 1), `LangchainUsageMeter`, `RoutingModelGateway` và nén ngữ cảnh; đọc lớp nền tảng lọc theo gói (lớp công ty khi `tenant-config` có phiên bản cấu hình).
-- `ModelProfile` v2: số phiên bản, cờ năng lực (`strict_tools`, `max_strict_tools`, `numeric_bounds`), trường `data_location`, `processor`, `retention_days`, `no_training` (không mặc định). Spec này là chủ duy nhất của các trường tuyến dữ liệu và luật "không khai là nước ngoài" (R3); compliance-pdpl chỉ đọc. Hồ sơ không mang giá: giá ở Bảng giá (DO-21.5).
+- `ModelProfile` v2: số phiên bản, cờ năng lực (`strict_tools`, `max_strict_tools`, `numeric_bounds`), trường `data_location`, `processor`, `retention_days`, `no_training` (không mặc định). Spec này là chủ duy nhất của các trường tuyến dữ liệu và luật "không khai là nước ngoài" (R3); compliance-pdpl chỉ đọc. Hồ sơ không mang giá: giá ở Bảng giá (DO-21.5); ticket 02 bỏ `price_per_million_input`, `price_per_million_output` khỏi `ModelRoute` và `configs/models/*.yaml` sau khi `route_cost` thôi đọc chúng ở usage-and-limits/02 (H-4), và chuyển `temperature`, `max_cost_usd_per_run` sang `Decimal` (ADR-0109 (Accepted) Consequences).
+- `ResolvedRoute` không mang `secret_version`: route ghim trong bản kê, khóa của kết nối model là phiên bản mới nhất chưa thu hồi lúc gọi (V4.35).
 - Bảng `platform.plan_model_profiles` (gói của công ty tới hồ sơ cho phép).
 - `make check-model` thăm dò và so cờ năng lực khai với kết quả thăm dò.
 
 ## Ngoài phạm vi
 
-| Việc                                                                               | Vì sao                                                                   | Chủ                            |
-| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | ------------------------------ |
-| Bảng `platform.model_connections`, API quản trị, quyền lợi `byom`                  | YC58; kết nối model đầy đủ dựng sau bộ phân giải                         | model-connections đợt sau (W2) |
-| Dịch vụ compose `model-proxy` (Model proxy), transport tiêm khóa, breaker, lọc lỗi | YC58; Model proxy dựng sau spike ở ticket 01                             | model-connections đợt sau (W2) |
-| Lane `model_probe`, đo usage BYOM, màn "Kết nối model"                             | YC58; phụ thuộc kết nối model và sổ usage                                | model-connections đợt sau (W2) |
-| Route dự phòng trong cùng công ty                                                  | Cần breaker theo kết nối trước                                           | đợt sau (W3)                   |
-| Embedding BYOM cho tri thức                                                        | Độ rộng vector mới cần collection mới                                    | đợt sau (W2)                   |
-| Kho bí mật, kết nối, `egress_allowed_hosts`, smokescreen                           | Kết nối và lối ra mạng                                                   | connections-and-vault          |
-| Bảng giá, sổ usage, lease                                                          | Hạn mức và đo; Bảng giá là chủ duy nhất của giá (DO-21.5)                | usage-and-limits               |
-| `ResidencyGate` và chính sách lớp tuyến dữ liệu                                    | Cổng tuyến dữ liệu; chỉ đọc `data_location`, `processor` mà spec này giữ | compliance-pdpl                |
-| Lưu và duyệt phiên bản cấu hình kind `model_profile`                               | Vỏ phiên bản và hai người duyệt                                          | tenant-config                  |
+| Việc                                                                                                           | Vì sao                                                                                                                              | Chủ                                               |
+| -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| Bảng `platform.model_connections`, API quản trị, quyền lợi `byom`                                              | YC58; kết nối model đầy đủ dựng sau bộ phân giải                                                                                    | model-connections đợt sau (W2)                    |
+| Dịch vụ compose `model-proxy` (Model proxy), transport tiêm khóa, breaker, lọc lỗi                             | YC58; Model proxy dựng sau spike ở ticket 01                                                                                        | model-connections đợt sau (W2)                    |
+| Lane `model_probe`, đo usage BYOM, màn "Kết nối model"                                                         | YC58; phụ thuộc kết nối model và sổ usage                                                                                           | model-connections đợt sau (W2)                    |
+| W2: lời gọi model của công ty ghi phiên bản khóa đã dùng trên sự kiện sử dụng của nó (`platform.usage_events`) | H-25; W1 không có kết nối model của công ty, nên không lời gọi nào có khóa của công ty để ghi; khóa không ghim trong bản kê (V4.35) | model-connections; usage-and-limits, đợt sau (W2) |
+| Route dự phòng trong cùng công ty                                                                              | Cần breaker theo kết nối trước                                                                                                      | đợt sau (W3)                                      |
+| Embedding BYOM cho tri thức                                                                                    | Độ rộng vector mới cần collection mới                                                                                               | đợt sau (W2)                                      |
+| Kho bí mật, kết nối, `egress_allowed_hosts`, smokescreen                                                       | Kết nối và lối ra mạng                                                                                                              | connections-and-vault                             |
+| Bảng giá, sổ usage, lease                                                                                      | Hạn mức và đo; Bảng giá là chủ duy nhất của giá (DO-21.5)                                                                           | usage-and-limits                                  |
+| `ResidencyGate` và chính sách lớp tuyến dữ liệu                                                                | Cổng tuyến dữ liệu; chỉ đọc `data_location`, `processor` mà spec này giữ                                                            | compliance-pdpl                                   |
+| Lưu và duyệt phiên bản cấu hình kind `model_profile`                                                           | Vỏ phiên bản và hai người duyệt                                                                                                     | tenant-config                                     |
 
 ## Dữ liệu
 
@@ -88,6 +90,7 @@ Hồ sơ model khai nơi xử lý dữ liệu; thiếu khai là nước ngoài, 
 ## Phụ thuộc
 
 - `tenant-config`: bản kê lượt chạy ghim route model (`tenant-config:R6.1`); phiên bản cấu hình kind `model_profile` cho hồ sơ công ty (W2). Ticket `.claude/plans/studio/tenant-config/issues/04-ban-ke-luot-chay.md`.
+- usage-and-limits: ticket 02 chờ `.claude/plans/studio/usage-and-limits/issues/02-bang-gia-so-su-dung-va-man-hinh.md`, nơi Bảng giá ra đời và `route_cost` thôi đọc giá trên route, rồi bỏ hai trường giá khi dựng `ModelProfile` v2; mỗi tệp `model/profiles.py`, `configs/models/*.yaml` có một ticket sửa (H-4).
 - Seam do bên khác dựng, tham chiếu bằng slug: `usage-and-limits` (Bảng giá là chủ duy nhất của giá, kể cả mục giá của công ty `platform.tenant_price_entries` cho BYOM (usage-and-limits:R2.1); hồ sơ chỉ dẫn chiếu; sổ usage); `compliance-pdpl` (`ResidencyGate` gọi bởi mọi caller của bộ phân giải, lớp tuyến chặt nhất của công ty, workspace và agent, chỉ đọc trường tuyến dữ liệu của R2.3 và R3; ticket 03 của compliance-pdpl không thêm lại các trường đó); `connections-and-vault` (kho bí mật, kết nối `llm_<kind>`, `egress_allowed_hosts`, smokescreen trên mạng `dw-llm`).
 - Lát thí điểm chạy dưới `vn_only` nên cần ít nhất một route nền tảng khai `data_location` là Việt Nam trước bước AI đầu tiên (ADR-0118 (Accepted); FOG-10 ở `.claude/plans/studio/discovery/issues/19-vietnamese-model-quality.md`, FOG-18 ở `.claude/plans/studio/discovery/issues/18-requester-questions.md`).
 - Kiểm lại khi: báo cáo sự cố cuối của LiteLLM hay một advisory mới → ticket 01 và bản ghim; FOG-18 khai nơi xử lý của từng alias trên gateway nền tảng → R3.2; FOG-10 không tìm được model xử lý tại Việt Nam đủ chất lượng → bước AI đầu tiên của thí điểm; luật sư đổi kết luận DO-54.2 → R3.
@@ -111,6 +114,9 @@ Hồ sơ model khai nơi xử lý dữ liệu; thiếu khai là nước ngoài, 
 - 24/10/2026 (người đặt yêu cầu và Đạt): Phạm vi D11: W1 chưa có đường hai người cho việc nới lộ trình dữ liệu, nên thao tác đó bị khóa ở W1 (409 `conflict`, `second_person_required`; ADR-0110 (Accepted) quyết 2); vế "nới lộ trình dữ liệu cần hai người" của dòng DO-54.2 ở trên chỉ có đường từ W2. Spec này không có thao tác nới lộ trình nào. Sửa: không mục nào ngoài dòng này; áp ở compliance-pdpl và tenant-config.
 - 24/10/2026 (agent, tạm): `platform.plan_model_profiles.plan_id` có FK tới `platform.plans (plan_id)` ON DELETE CASCADE, như `platform.plan_limits` của usage-and-limits, với chỉ mục là khóa chính `(plan_id, profile_id)`; `profile_id` là khóa văn bản kiểm theo `configs/models` bằng một test, không FK, vì hồ sơ nền tảng nằm trong tệp cấu hình (CLAUDE.md, Data model rules: khóa ngoại nào cũng nêu `ON DELETE` và có chỉ mục ở phía của nó; failure-modes #2). Sửa: Dữ liệu, ticket 02. Nếu sai thì: FK là `ON DELETE RESTRICT`, và xóa một gói phải xóa trước các dòng của nó ở bảng này.
 - 24/10/2026 (agent, tạm): cửa ngân sách lượt chạy mà `ModelResolver` phục vụ là `RunBudgetMiddleware` lúc ticket 02 dựng, rồi `LimitsMiddleware` của usage-and-limits/03 thay nó, như ADR-0118 (Accepted) quyết 1 nêu `LimitsMiddleware` thay `RunBudgetMiddleware`; R1.1 và MR1 giữ, vì cửa thay thế đọc cùng bộ phân giải. Sửa: Trong phạm vi, ticket 02. Nếu sai thì: `LimitsMiddleware` không đọc route, và danh sách cửa của R1.1 bỏ nó.
+- 25/10/2026 (Đạt): V4.35: bản kê lượt chạy ghim id kết nối và phiên bản Bộ giá trị gắn, không ghim `secret_version`; lời gọi dùng phiên bản mới nhất chưa thu hồi của kết nối và ghi phiên bản đã dùng; xoay tách khỏi thu hồi vì lộ. Ở spec này: `ResolvedRoute` ghim trong bản kê không mang phiên bản bí mật (ADR-0118 (Accepted) quyết 1). Sửa: R1.4, Trong phạm vi, ticket 02.
+- 25/10/2026 (agent, tạm): H-4: usage-and-limits/02 dựng Bảng giá theo ngày hiệu lực và chuyển `route_cost` sang đọc nó, không sửa `model/profiles.py` hay `configs/models/*.yaml`; ticket 02, nay chờ ticket đó, bỏ hai trường giá đã không còn ai đọc khi dựng `ModelProfile` v2, còn `temperature`, `max_cost_usd_per_run` vẫn sang `Decimal`; thay dòng ngày 24/10/2026 ở trên ("ticket 02 đi trước usage-and-limits/02"). Sửa: Trong phạm vi, Phụ thuộc, ticket 02. Nếu sai thì: usage-and-limits/02 chờ ticket 02 như trước.
+- 25/10/2026 (agent, tạm): H-25: lời gọi model của công ty (W2) ghi phiên bản khóa đã dùng trên sự kiện sử dụng của nó, `platform.usage_events` của usage-and-limits, là một dòng Ngoài phạm vi W2. Sửa: Ngoài phạm vi. Nếu sai thì: chỉ audit ghi phiên bản khóa.
 
 ## Danh sách ticket
 

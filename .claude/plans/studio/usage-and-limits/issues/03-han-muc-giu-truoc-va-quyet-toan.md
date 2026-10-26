@@ -32,10 +32,10 @@ chạy chết được thu hồi (spec R4, R5). Thay `RunBudgetLedger` và `tena
    khóa `platform.limits.manage` trong `platform.permissions` của tenant-rbac/01 (nhãn tiếng Việt, `scope_kind`
    `tenant`, `risk` `elevated` theo bảng phân loại của ticket đó); INSERT nêu mọi cột NOT NULL của bảng lúc đó, gồm
    `risk` của tenant-rbac/01 và `tenant_grantable` (`true`) của tenant-rbac/02, ticket này chờ ticket đó. Cùng thay
-   đổi: thêm khóa `platform.budget_counters` (395 ngày sau `window_end`) và `platform.budget_leases` (30 ngày sau khi
-   đóng), số tạm UNVERIFIED, vào bản kế tiếp của tệp chính sách retention theo định dạng của
-   telemetry-and-audit:R5.6; trong chuỗi phiên bản của tệp, bản này đứng sau bản của ticket 02 và trước bản của
-   telemetry-and-audit/03.
+   đổi: thêm hai mảnh retention theo định dạng của telemetry-and-audit:R5.6,
+   `configs/policies/retention.d/platform.budget_counters.yaml` (`days: 395` sau `window_end`, `purger: row_delete`) và
+   `configs/policies/retention.d/platform.budget_leases.yaml` (`days: 30` sau khi đóng, `purger: row_delete`), số tạm
+   UNVERIFIED; không ticket nào khác chờ hai mảnh này và ticket này không chờ ticket nào vì mảnh (H-1).
 2. `EffectiveLimits.for_admission(run_context, artifact)` gộp gói, tenant, workspace và tổ tiên, agent
    hoặc quy trình (phạm vi người dùng ở W2); cache theo tenant, xóa khi ghi. Một hàm `window_for(tenant_id, window_kind, at)`
    đọc `platform.tenants.timezone` cho ranh giới, NULL thì Asia/Ho_Chi_Minh (DO-50; ADR-0121 (Accepted)
@@ -59,9 +59,10 @@ chạy chết được thu hồi (spec R4, R5). Thay `RunBudgetLedger` và `tena
 5. `ReapTarget(name="budget_leases")` trên lane `reaper` (hôm nay không đăng ký gì): quét dưới
    `app.worker_drain`, đặt tenant theo từng sự kiện; dòng `unsettled_estimate`; cuộn bộ đếm; audit
    `limits.lease.expired` bằng `lane_audit_event` và `append_across_tenants`. Lane `retention_limits` đọc thời
-   hạn dưới khóa `platform.budget_counters` và `platform.budget_leases` của tệp chính sách retention mà lane
-   `partitions` nạp (bộ đếm quá `window_end` cộng 395 ngày, lease đóng quá 30 ngày; spec R5.7), không ghi cứng số
-   nào trong mã; thiếu khóa thì không xóa gì và báo lỗi cấu hình. Sửa `test_only_the_platform_lanes_are_wired`.
+   hạn của mảnh `platform.budget_counters` và mảnh `platform.budget_leases` trong tập mảnh retention đang ghim, qua bộ
+   đọc tập mảnh của mô hình chính sách (telemetry-and-audit:R5.13, dựng ở telemetry-and-audit/01, mà ticket này chờ qua
+   ticket 02) (bộ đếm quá `window_end` cộng 395 ngày, lease đóng quá 30 ngày; spec R5.7), không ghi cứng số nào trong
+   mã; thiếu mảnh thì không xóa gì và báo lỗi cấu hình. Sửa `test_only_the_platform_lanes_are_wired`.
 6. Route `GET /api/v1/limits` (`platform.usage.read`): mỗi chính sách kèm Hạn mức hiệu lực, bộ đếm của kỳ
    hiện tại và giờ đặt lại (không route `/api/v1/usage/limits` riêng). `PUT /api/v1/limits/{scope_type}/{scope_id}`
    và `DELETE` (`platform.limits.manage`, `Idempotency-Key`; `{scope_type}` nhận `tenant`, `workspace`, `agent`,
@@ -112,9 +113,10 @@ chạy chết được thu hồi (spec R4, R5). Thay `RunBudgetLedger` và `tena
       không hạ ngầm xuống model rẻ hơn; gỡ kiểm ranh giới → test đỏ.
 - [ ] R5.6: lượt chạy con của một lượt gốc chạy trên lease của lượt gốc, không có dòng `budget_leases` thứ
       hai và không gọi `admit`.
-- [ ] R5.7: với thời hạn 395 và 30 ngày trong tệp chính sách retention, lane `retention_limits` xóa bộ đếm có
+- [ ] R5.7: với thời hạn 395 và 30 ngày trong hai mảnh retention, lane `retention_limits` xóa bộ đếm có
       `window_end` 396 ngày trước và lease đóng 31 ngày trước; giữ bộ đếm 394 ngày và lease còn mở; đổi số trong
-      tệp thử → lane theo số mới, không sửa mã.
+      mảnh thử → lane theo số mới, không sửa mã; gỡ mảnh `platform.budget_leases` khỏi tập thử → lane không xóa lease
+      nào và báo lỗi cấu hình.
 - [ ] R6.5: `ResidencyGate` giả từ chối một lời gọi → `reserved` của lease không đổi, 0 dòng
       `usage_events` cho lời gọi đó.
 - [ ] Xong: `make ci && make test-integration` xanh.
@@ -156,3 +158,10 @@ chạy chết được thu hồi (spec R4, R5). Thay `RunBudgetLedger` và `tena
 - 2026-10-24 (agent): vòng sửa thứ tư, lượt d, theo các Quyết định tạm cùng ngày của spec: hai FK ghép phạm vi có ca âm
   chéo công ty (spec R4.13, UL17; CLAUDE.md, Tenancy and authorization), bước 1 và tiêu chí R4.13; bước 4 nói lần thử
   của Kiểm định thử cũng dùng lease của Kiểm định thử chứa nó, không gọi `admit` (spec R5.6; agent-lifecycle:R4.8).
+- 2026-10-26 (agent): vòng 4, lượt h, theo H-1: thời hạn của bộ đếm và lease là hai mảnh
+  `configs/policies/retention.d/<schema>.<table>.yaml` thêm trong cùng thay đổi tạo bảng, thay bản tệp retention trong
+  chuỗi ticket (bước 1); lane `retention_limits` đọc hai mảnh qua bộ đọc tập mảnh của telemetry-and-audit/01 (bước 5,
+  tiêu chí R5.7 thêm ca thiếu mảnh). Không đổi cạnh: telemetry-and-audit/01 đã là tổ tiên qua ticket 02 (H-27).
+- 2026-10-26 (agent): theo V4.31 và V4.37, Lượt kiểm định và lease `eval_offline` của nó nay ở agent-lifecycle/06, tách từ
+  agent-lifecycle/04; ticket chờ ticket này là agent-lifecycle/06 (cạnh đã có ở ticket đó), thay vế "agent-lifecycle/04 chờ
+  ticket này" của dòng 2026-10-23 ở trên.

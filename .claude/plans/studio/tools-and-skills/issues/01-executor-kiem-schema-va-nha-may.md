@@ -1,17 +1,18 @@
 # 01 — Executor tự kiểm JSON Schema, phân giải theo tenant, khe nhà máy theo loại
 
 Status: needs-triage
-Blocked by: .claude/plans/studio/runtime-hardening/issues/01-toolexecutor-gianh-luot-khong-cua-sau.md, .claude/plans/studio/tenant-config/issues/03-che-do-chay-va-gia-lap-o-executor.md, .claude/plans/studio/agent-lifecycle/issues/01-dong-bang-va-kiem-o-moi-cua.md
+Blocked by: .claude/plans/studio/runtime-hardening/issues/01-toolexecutor-gianh-luot-khong-cua-sau.md, .claude/plans/studio/tenant-config/issues/03-che-do-chay-va-gia-lap-o-executor.md
 Area: studio
-Yêu cầu: R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R3.1, R3.2, G1, G2, TS2, TS3, TS4, TS5, TS6, TS10
+Yêu cầu: R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R2.7, R2.8, R3.1, R3.2, G1, G2, TS2, TS3, TS4, TS5, TS6, TS10, TS12, TS13
 
 ## Mục tiêu
 
 Executor tự kiểm đầu vào và đầu ra bằng JSON Schema (LangChain không kiểm lược đồ dạng dict), phân giải
 công cụ theo công ty, một nhà máy theo Loại công cụ với Mức sàn theo loại mà công ty chỉ siết, một nơi
-quyết duyệt, một hook sàn gửi tin cho Hành động `effect_class: message`, và một thứ tự bước duy nhất cho
-`ToolExecutor` (spec R1, R2, R3). Mọi loại công cụ Studio sau này thừa hưởng một cửa này. Gộp từ B8b-tools
-tools-and-skills 02; đóng đường vòng quanh executor đã nằm ở runtime-hardening/01.
+quyết duyệt, một hook sàn gửi tin cho Hành động `effect_class: message`, và một sổ bước có thứ tự cho
+`ToolExecutor` ở composition root, nơi mỗi ticket chủ đăng ký bước của mình (spec R1, R2, R3; H-3). Mọi loại công cụ
+Studio sau này thừa hưởng một cửa này. Gộp từ B8b-tools tools-and-skills 02; đóng đường vòng quanh executor đã nằm ở
+runtime-hardening/01.
 
 ## Việc cần làm
 
@@ -39,11 +40,22 @@ tools-and-skills 02; đóng đường vòng quanh executor đã nằm ở runtim
 message` (compliance-pdpl cài); từ chối → không gọi handler, trả kết quả bị chặn kèm lý do. Audit của
    lần từ chối là `marketing.send_refused` do compliance-pdpl ghi trong giao dịch của executor
    (compliance-pdpl:R3.1); ticket này không ghi audit thứ hai.
-8. Thứ tự bước trong `ToolExecutor._execute` theo R2.6: công tắc điều khiển (agent-lifecycle/01 chèn),
-   phân giải, kiểm đầu vào, kiểm quyền, chế độ chạy (tenant-config/03 chèn), phê duyệt, sàn gửi tin, giành
-   lượt (runtime-hardening/01), gọi handler, kiểm đầu ra, audit; ghi thứ tự này ở docstring đầu
-   `executor.py` thay chuỗi cũ. Ở chế độ khác `live`, lời gọi bị giả lập dừng ở bước chế độ chạy, nên không
-   gọi `approval_required` và không mở phê duyệt (tenant-config:R5.6; ADR-0111 (Accepted) quyết 5).
+8. Sổ bước của `ToolExecutor` (R2.6, R2.7; H-3): một hàm duy nhất ở composition root,
+   `build_tool_executor_steps(deps)`, mà API (`apps/api/src/dw_api/bootstrap/wiring.py`) và worker
+   (`apps/worker/src/dw_worker/main.py`) cùng gọi, khai các bước theo đúng thứ tự R2.6: công tắc điều khiển, phân
+   giải, kiểm đầu vào, kiểm quyền, chế độ chạy, phê duyệt, sàn gửi tin, giành lượt, ghi `dispatched`, gọi handler, kiểm
+   đầu ra, audit. Ticket này đưa vào sổ các bước của nó, bước chế độ chạy của tenant-config/03 và bước giành lượt và
+   ghi `dispatched` của runtime-hardening/01 (hai ticket đi trước, viết trong `_execute` hiện có); danh sách bước chờ
+   đăng ký của sổ ghi công tắc điều khiển (agent-lifecycle/01) và sàn gửi tin (`MarketingSendPolicy` của
+   compliance-pdpl/04), mỗi mục nêu đường dẫn ticket chủ. `ToolExecutor._execute` chỉ chạy các bước của sổ theo thứ
+   tự đó, không gọi bước nào ngoài sổ; đăng ký một tên ngoài R2.6, hay một tên hai lần, là `ConfigError` lúc khởi động;
+   ghi thứ tự ở docstring đầu `executor.py` thay chuỗi cũ. Test sổ: so tên các bước với dãy R2.6 và đỏ, nêu bước, khi
+   hai bước ngược thứ tự, có tên lạ, hay vắng một bước không có trong danh sách chờ. Ở chế độ khác `live`, lời gọi bị
+   giả lập dừng ở bước chế độ chạy, nên không gọi `approval_required` và không mở phê duyệt (tenant-config:R5.6;
+   ADR-0111 (Accepted) quyết 5).
+9. Bước sàn gửi tin khi còn chờ đăng ký (R2.8): mọi lời gọi tới Hành động `effect_class: message` trả kết quả bị chặn
+   `blocked:send_floor_unavailable`, không gọi handler; khi compliance-pdpl/04 đăng ký `MarketingSendPolicy`, bước đó
+   hỏi `SendAdmissionPort` như bước 7.
 
 ## Tiêu chí chấp nhận
 
@@ -65,10 +77,18 @@ message` (compliance-pdpl cài); từ chối → không gọi handler, trả k�
       `approval_required`, handler không chạy; ba cổng (wrapper, middleware, executor) cho cùng kết quả
       trên bảng ca.
 - [ ] R2.6 (TS10): bảng ca gọi thẳng executor, mỗi ca từ chối ở một bước (phân giải, đầu vào, quyền, chế độ
-      chạy, phê duyệt, sàn gửi tin) → spy của mọi bước sau không được gọi, handler không chạy; công cụ
+      chạy, phê duyệt, sàn gửi tin, giành lượt) → spy của mọi bước sau không được gọi, không dòng `dispatched` nào,
+      handler không chạy; lời gọi qua mọi bước → dòng `dispatched` có trước lời gọi handler; công cụ
       `critical` cần duyệt gọi ở `simulate` → lời gọi `simulated`, không `approval_required`, không dòng
       `platform.approval_requests` nào, còn ở `live` → `approval_required`; đảo hai bước liền nhau, kể cả
       chế độ chạy và phê duyệt → test đỏ.
+- [ ] R2.7 (TS12): sổ thử đảo bước chế độ chạy và bước phê duyệt, thêm một bước không có tên trong R2.6, hay bỏ bước
+      phân giải mà không đưa vào danh sách chờ → test sổ đỏ, nêu bước; sổ của API và của worker cùng dựng từ
+      `build_tool_executor_steps`, và gỡ một dòng đăng ký của hàm đó → test đỏ; `_execute` gọi một bước ngoài sổ → test
+      đỏ; sổ thật của ticket này với hai bước chờ đăng ký → xanh.
+- [ ] R2.8 (TS13): bước sàn gửi tin còn chờ đăng ký, gọi `email.send` (`effect_class: message`) →
+      `blocked:send_floor_unavailable`, handler (spy) không chạy; một Hành động khác `message` → chạy như thường; cho
+      bước chờ đăng ký đi qua → test đỏ.
 - [ ] R3.1 (TS6): Hành động `effect_class: message` → executor hỏi `SendAdmissionPort` trước mỗi lời gọi
       (spy thấy một lần mỗi lời gọi).
 - [ ] R3.2 (TS6): lead không có đồng ý đúng mục đích → `email.send` không gọi nhà cung cấp, kết quả bị
@@ -87,9 +107,9 @@ message` (compliance-pdpl cài); từ chối → không gọi handler, trả k�
 - `packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py:3`; spec: R2.6 (chuỗi bước cũ ở
   docstring).
 - `packages/python/dw_agent_runtime/src/dw_agent_runtime/tool_specs.py:36-50`; spec: R2.3, R2.4.
-- spec: R1, R2, R3, TS2-TS6; ADR-0116 (Accepted) quyết 3; ADR-0124 (Accepted) quyết 2;
-  runtime-hardening/01 (`ToolClaimPort`, CHECK `tool_executions.status`); tenant-config/03 (bước chế
-  độ chạy, tenant-config:R5.1).
+- spec: R1, R2, R3, TS2-TS6, TS12, TS13; H-3; ADR-0116 (Accepted) quyết 3; ADR-0124 (Accepted) quyết 2;
+  runtime-hardening/01 (`ToolClaimPort`, CHECK `tool_executions.status`, dòng `dispatched`, runtime-hardening:R6.11);
+  tenant-config/03 (bước chế độ chạy, tenant-config:R5.1).
 
 ## Comments
 
@@ -104,3 +124,7 @@ message` (compliance-pdpl cài); từ chối → không gọi handler, trả k�
   R2.6, TS10; hành vi giả lập không mở phê duyệt là tenant-config:R5.6); Mức sàn kiểm lúc lưu và lúc gửi kiểm
   định (bước 5, R2.3); thêm Blocked by agent-lifecycle/01, vì ticket đó chèn bước công tắc vào cùng chuỗi bước
   của `ToolExecutor._execute`.
+- 2026-10-25 (agent): lượt h, theo V4.30, V4.31 của Đạt và H-3: ticket này dựng sổ bước có thứ tự ở composition root
+  (bước 8; R2.7, TS12), thứ tự R2.6 có bước ghi `dispatched` ngay trước bước gọi handler (runtime-hardening:R6.11), và
+  bước sàn gửi tin còn chờ đăng ký thì chặn Hành động `message` (bước 9; R2.8, TS13). Gỡ cạnh Blocked by
+  agent-lifecycle/01: ticket đó nay chờ ticket này và chỉ thêm một dòng đăng ký vào sổ.

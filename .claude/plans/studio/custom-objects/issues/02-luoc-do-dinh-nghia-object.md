@@ -50,9 +50,11 @@ describe và bộ chiếu theo quyền của người gọi, và ticket 06 nối
       `(tenant_id, object_id, uNN) WHERE uNN IS NOT NULL AND deleted_at IS NULL`; `deleted_at`, `deleted_by`; chỉ
       mục `(tenant_id, object_id, created_at DESC, id DESC)`, `(tenant_id, object_id, updated_at DESC, id DESC)`,
       `(tenant_id, object_id, name, id)`, `(tenant_id, workspace_id)` cho FK tới workspace sở hữu, và chỉ mục từng
-      phần của mỗi slot. Tập slot là tập ticket 01 chốt;
-      `PARTITION BY HASH (tenant_id)` modulus 8 với `studio.records_p0` tới `studio.records_p7`, hay modulus 4 với
-      `studio.records_p0` tới `studio.records_p3` khi số đo của ticket 01 chọn đường lui (DO-15 (a)).
+      phần của mỗi slot. Tập slot, loại chỉ mục của `updated_at` (btree ở A1, BRIN khi luật quyết chọn A2) và việc
+      giữ chỉ mục họ `b` (bỏ khi chọn A3) là những gì luật quyết của ticket 01 chốt (V4.32);
+      `PARTITION BY HASH (tenant_id)` modulus 8 với `studio.records_p0` tới `studio.records_p7` khi A1 đạt ngưỡng và
+      cho lợi ích bảo trì đo được, không thì modulus 4 với `studio.records_p0` tới `studio.records_p3` (R9.2, R9.5;
+      ADR-0107 (Accepted) quyết 2).
     - `studio.dependencies` (bảng của tenant-config/02): `ALTER TABLE` thêm `to_field_id uuid` NULL, FK ghép
       `(tenant_id, to_field_id)` tới `studio.field_defs (tenant_id, id)` ON DELETE RESTRICT, index
       `(tenant_id, to_field_id)` (ADR-0109 (Accepted) quyết 5); quyền của `dw_app` trên bảng giữ như
@@ -73,12 +75,13 @@ describe và bộ chiếu theo quyền của người gọi, và ticket 06 nối
    `scope_kind` `tenant` (chỉ mức `tenant`), `risk` `standard` theo bảng phân loại của tenant-rbac/01, `status`
    `active`, `owner_package` và `tenant_grantable` `true` của tenant-rbac/02 (Quyết định 24/10/2026 của spec); vai
    nào giữ khóa là việc của tenant-rbac.
-3. Thêm `("studio", "records")`, `("studio", "picklist_options")`, `("studio", "field_defs")`,
-   `("studio", "object_defs")` theo thứ tự đó vào `_ORDERED_FIRST` của
-   `packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py`, giữa `studio.dependencies` và
-   `studio.artifacts` mà tenant-config/02 thêm: sau `studio.dependencies` vì `to_field_id` giữ `studio.field_defs` bằng
-   FK RESTRICT, trước `studio.artifacts` vì FK của `studio.object_defs` tới thành phần là RESTRICT
-   (studio-skeleton:R4.2); trên phần đọc catalog và `export_rows` mà foundations-hardening/07 đã viết lại.
+3. Đăng ký một bước xóa cho `studio.records`, `studio.picklist_options`, `studio.field_defs` và `studio.object_defs`
+   vào sổ bước xóa của lane `offboarding` ở composition root của worker (foundations-hardening/07,
+   foundations-hardening:R11.4, foundations-hardening:R11.5; H-2), bước khai đúng bốn bảng đó; không viết thứ tự tay:
+   lane suy thứ tự từ khóa ngoại RESTRICT và NO ACTION của `pg_constraint`, nên bước của `studio.dependencies`
+   (tenant-config/02) chạy trước vì `to_field_id` giữ `studio.field_defs` bằng FK RESTRICT, và bước của
+   `studio.artifacts` chạy sau vì FK của `studio.object_defs` tới thành phần là RESTRICT (studio-skeleton:R4.2); trên
+   phần đọc catalog và `export_rows` mà foundations-hardening/07 đã viết lại.
 4. Trong `dw_studio.records` (gói của studio-skeleton/02):
     - `domain/field_types.py`: Literal `FieldType` với 13 giá trị của CHECK và bảng kiểu sang họ slot; thêm tệp vào
       `WATCHED_LITERALS` của `scripts/verify_invariants.py`.
@@ -165,9 +168,9 @@ describe và bộ chiếu theo quyền của người gọi, và ticket 06 nối
 - [ ] R4.2 (CO21): thêm policy PERMISSIVE `USING (true)` lên `studio.records` → test catalog đỏ.
 - [ ] R4.4: offboarding một công ty có hai đối tượng xuất mỗi dòng định nghĩa đúng một lần, sau purge còn 0 dòng ở
       bốn bảng, kể cả khi một dòng `studio.dependencies` của công ty đó có `to_field_id` trỏ tới một trường của nó; bỏ
-      một bảng `studio` khỏi `_ORDERED_FIRST` hay xếp `studio.field_defs` trước `studio.dependencies` → test phủ
-      offboarding của studio-skeleton/01 đỏ, vì nó đọc các khóa ngoại `RESTRICT` từ `pg_constraint`
-      (studio-skeleton:R4.1, studio-skeleton:R4.2).
+      một bảng `studio` khỏi bước đã đăng ký → test phủ offboarding của studio-skeleton/01 đỏ, vì nó đọc các khóa ngoại
+      `RESTRICT` từ `pg_constraint` (studio-skeleton:R4.1, studio-skeleton:R4.2); khai `studio.field_defs` ở cả bước này
+      và một bước khác → lane từ chối trước câu xóa đầu (foundations-hardening:R11.5).
 - [ ] R4.6 (CO1): bằng `dw_migrator`, vai bỏ qua RLS nên chỉ khóa ngoại chặn được (ở ticket này `studio.records` chưa
       có policy PERMISSIVE nào cho `dw_app` ghi), INSERT dòng của công ty A vào `studio.records` hay `studio.field_defs`
       với `object_id` của công ty B, vào `studio.picklist_options` với `field_id` của B, vào `studio.object_defs` với
@@ -176,7 +179,7 @@ describe và bộ chiếu theo quyền của người gọi, và ticket 06 nối
       một cột → test đỏ.
 - [ ] R9.2: khi ticket 01 chọn modulus 8, test catalog thấy `studio.records` là `PARTITION BY HASH (tenant_id)` với 8
       partition, mỗi partition ENABLE và FORCE RLS, không quyền nào của `dw_app`.
-- [ ] R9.5: khi ticket 01 chọn đường lui modulus 4, test catalog thấy 4 partition `studio.records_p0` tới
+- [ ] R9.5: khi ticket 01 chọn modulus 4, test catalog thấy 4 partition `studio.records_p0` tới
       `studio.records_p3`, mỗi partition ENABLE và FORCE RLS, không quyền nào của `dw_app`.
 - [ ] R9.4: test catalog đọc `pg_index` thấy đúng tập slot của ticket 01, mỗi slot một chỉ mục từng phần đúng vị từ.
 - [ ] Xong: `make test-integration` xanh.
@@ -235,3 +238,5 @@ describe và bộ chiếu theo quyền của người gọi, và ticket 06 nối
 - 2026-10-24 (agent): vòng sửa 4, lượt sáu: tiêu chí R4.4 nêu test phủ offboarding của studio-skeleton/01, nay đọc khóa
   ngoại `RESTRICT` từ `pg_constraint` và đòi thứ tự xóa duy nhất liệt kê mỗi bảng sau mọi bảng giữ khóa tới nó
   (studio-skeleton:R4.2), thay cho "test walk `pg_class`"; bước 3 đã đúng luật đó.
+- 2026-10-25 (agent): lượt h, theo V4.32 của Đạt: modulus và DDL của `studio.records` theo luật quyết của ticket 01 (modulus 8 chỉ khi A1 đạt ngưỡng và cho lợi ích bảo trì đo được, không thì 4; chỉ mục `updated_at` và họ `b` theo biến thể được chọn), thay cho "đường lui" của DO-15; ticket này vẫn chờ ticket 01. Tiêu chí không đổi ngoài chữ "đường lui" của R9.5.
+- 2026-10-26 (agent): lượt h, theo H-2 (foundations-hardening/07, R11.4, R11.5, FH33): `_ORDERED_FIRST` đã bỏ, nên bước 3 đăng ký một bước xóa cho bốn bảng vào sổ bước xóa ở composition root của worker, thứ tự suy từ khóa ngoại RESTRICT và NO ACTION của `pg_constraint`, thay cho bốn mục chèn tay; tiêu chí R4.4 thêm ca khai trùng bảng. Ticket đã chờ foundations-hardening/07; không thêm cạnh.

@@ -1,23 +1,26 @@
 # 04 — Sàn gửi tin marketing: đồng ý, chặn gửi, khung giờ, tần suất
 
 Status: needs-triage
-Blocked by: .claude/plans/studio/custom-objects/issues/03-record-service.md, .claude/plans/studio/tools-and-skills/issues/01-executor-kiem-schema-va-nha-may.md, .claude/plans/studio/telemetry-and-audit/issues/03-lich-su-chay-theo-buoc.md, .claude/plans/studio/workflow-triggers/issues/02-data-hub-endpoint-va-ingress.md
+Blocked by: .claude/plans/studio/custom-objects/issues/03-record-service.md, .claude/plans/studio/tools-and-skills/issues/01-executor-kiem-schema-va-nha-may.md, .claude/plans/studio/telemetry-and-audit/issues/01-otel-khong-noi-dung-va-metric.md
 Area: studio
-Yêu cầu: R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R5.1, R5.5, R5.6, CP7, CP8, CP9, CP10, CP11, CP18, CP19
+Yêu cầu: R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R3.9, R3.10, R3.11, R3.12, R5.1, R5.5, R5.6, CP7, CP8, CP9, CP10, CP11, CP18, CP19, CP24, CP25
 
 ## Mục tiêu
 
 Một Sàn gửi tin kiểm trong ToolExecutor so với các Bản ghi đồng ý của nền tảng: một tin marketing chỉ rời
 đi khi không bị chặn, có đồng ý đúng mục đích và kênh, trong Khung giờ không gửi và dưới Giới hạn tần suất
-gửi; hủy đăng ký có hiệu lực ngay (spec R3; ADR-0124 (Accepted)).
+gửi; hủy đăng ký có hiệu lực ngay (spec R3; ADR-0124 (Accepted)). Một tin được nhận ghi dòng nhật ký gửi
+`dispatching` trước khi gửi, nên trần tần suất đếm cả lần gửi còn dở hay chưa biết kết quả (spec R3.9-R3.11; V4.30);
+bước sàn gửi tin vào sổ bước của `ToolExecutor` mà tools-and-skills/01 dựng, thay lời từ chối
+`blocked:send_floor_unavailable` của bước còn chờ đăng ký (spec R3.12; H-3).
 
 ## Việc cần làm
 
 1. Migration (id hex ngẫu nhiên):
     - `platform.consent_records`: chỉ thêm, bảng toàn tenant (RLS chỉ theo công ty, không `workspace_id`);
       phân vùng theo tháng trên `captured_at` với DEFAULT, đăng ký bằng một dòng
-      `platform.time_partitioned_tables` (`append_only = true`); `subject_ref`, `purpose` CHECK (`marketing`,
-      `transactional`), `channel` CHECK (`zns`, `email`, `sms`, `messenger`, `zalo_oa`), `state`,
+      `platform.time_partitioned_tables` (`append_only = true`); `subject_ref`, `purpose` CHECK (`marketing`) ở W1
+      (tin giao dịch không đòi Bản ghi đồng ý, nên `transactional` không có bên đọc; H-29, V4.39), `channel` CHECK (`zns`, `email`, `sms`, `messenger`, `zalo_oa`), `state`,
       `captured_at`, `source`, `evidence_ref`, `notice_version`, `withdrawn_at`; index `(tenant_id,
 subject_ref, channel, purpose, captured_at DESC)`; đồng ý hiện hành là dòng mới nhất theo
       `(subject_ref, purpose, channel)`, nên một lần rút ghi ở workspace nào cũng chặn ở mọi workspace.
@@ -27,32 +30,49 @@ subject_ref, channel, purpose, captured_at DESC)`; đồng ý hiện hành là d
       `platform.guard_control_switch()` của agent-lifecycle/01 (agent-lifecycle:R7.5).
     - `platform.marketing_send_log`: phân vùng tháng, đăng ký bằng một dòng `platform.time_partitioned_tables`
       (`append_only = true`); RLS dạng workspace của `CLAUDE.md` trên bảng cha; một dòng mỗi Tương tác ở W1
-      (N4): `outcome` CHECK (`sent`, `blocked`), `blocked_reason` (NULL khi `sent`, CHECK theo tập lý do của
-      bước 2), `root_run_id`, `consent_record_id` khi `sent`, nguồn gốc tin AI soạn (lượt chạy soạn, model).
+      (N4): `outcome` CHECK (`dispatching`, `blocked`), `blocked_reason` (NULL khi `dispatching`, CHECK theo tập lý
+      do của bước 2), `idempotency_key text` (CHECK NOT NULL khi `dispatching`), `channel`, `address_hash` (cùng hàm
+      băm với `platform.contact_suppressions`), `created_at`, `root_run_id`, `consent_record_id` khi `dispatching`,
+      nguồn gốc tin AI soạn (lượt chạy soạn, model); index `(tenant_id, idempotency_key)` và
+      `(tenant_id, channel, address_hash, created_at DESC)` trên bảng cha; kết quả giao nhận của lần gửi nằm ở dòng
+      `platform.tool_executions` cùng khóa, không ở bảng này.
     - `dw_app` không giữ quyền nào trên partition nào của hai bảng phân vùng, kể cả DEFAULT; đọc ghi qua
       bảng cha (DO-02.2), không DELETE trên cha. `consent_records` và `contact_suppressions` có tên và lý do trong
       danh sách bảng toàn tenant của `test_rls_coverage.py`; `contact_suppressions` có DELETE cho `dw_app`, chỉ dùng
       được ở lượt xóa của lane `offboarding` nhờ trigger trên.
-    - Cùng thay đổi đăng ký: khóa `platform.consent_records` (theo quan hệ cộng 5 năm, xóa theo dòng; bộ xóa đăng
-      ký ở ticket 06) và `platform.marketing_send_log` (13 tháng, DROP PARTITION qua
-      `platform.drop_expired_partitions`), số tạm UNVERIFIED, vào bản kế tiếp của tệp chính sách retention theo
-      định dạng của telemetry-and-audit:R5.6, sau bản của workflow-triggers/02 trong chuỗi các ticket sửa tệp ở mục
-      Phụ thuộc của spec, nên studio-skeleton:R3.7 xanh ngay khi đăng ký (spec R5.1); hai dòng
+    - Cùng thay đổi đăng ký, hai mảnh retention theo định dạng của telemetry-and-audit/01 (telemetry-and-audit:R5.6;
+      H-1): `configs/policies/retention.d/platform.consent_records.yaml` (`days` theo quan hệ cộng 5 năm, `purger:
+row_delete`, bộ xóa đăng ký ở ticket 06) và `configs/policies/retention.d/platform.marketing_send_log.yaml`
+      (`days: 395`, 13 tháng, `purger: drop_partition` qua `platform.drop_expired_partitions`), số tạm UNVERIFIED,
+      `enforced: true`, nên studio-skeleton:R3.7 xanh ngay khi đăng ký (spec R5.1); không ticket nào khác sửa hai mảnh
+      đó trong lượt này, nên không chờ ticket nào chỉ vì thứ tự tệp; hai dòng
       `STUDIO_EXCLUSIONS` cho hai bảng với lý do "`dw_app` không DELETE; xóa khi offboarding bằng
       `platform.purge_tenant_append_only`" (spec R5.5; studio-skeleton:R4.3).
-2. `MarketingSendPolicy` thỏa `SendAdmissionPort` của ToolExecutor; thứ tự kiểm: chặn gửi, đồng ý, tần
-   suất, khung giờ (đọc múi giờ của công ty), rồi số người nhận khác nhau đã gửi trong lượt chạy gốc (đếm dòng
-   `sent` của nhật ký gửi theo `root_run_id`; spec R3.8); trả `blocked:<lý do>` với lý do `suppressed`,
-   `no_consent`, `consent_withdrawn`, `frequency_cap`, `quiet_hours`, `recipient_cap`.
-3. ToolExecutor hỏi `SendAdmissionPort` trên mọi hành động connector mà manifest đánh dấu là gửi tin,
-   trước khi egress client gửi; không node nào kiểm thay (ADR-0112 (Accepted) quyết 6).
+2. `MarketingSendPolicy` thỏa `SendAdmissionPort` của ToolExecutor; trước mọi kiểm, nếu khóa chống lặp của lời gọi
+   đã có dòng `dispatching` thì nhận ngay, không ghi dòng thứ hai và không đếm dòng đó, để bước giành lượt phát lại
+   hay trả `outcome_unknown` (spec R3.11; runtime-hardening:R6.9); thứ tự kiểm: chặn gửi, đồng ý, tần suất (đếm mọi
+   dòng `dispatching` tới cùng `channel`, `address_hash` trong cửa sổ, kể cả dòng mà lần gửi còn dở hay kết thúc
+   `outcome_unknown`; spec R3.10), khung giờ (đọc múi giờ của công ty), rồi số người nhận khác nhau đã gửi trong lượt
+   chạy gốc (đếm dòng `dispatching` của nhật ký gửi theo `root_run_id`; spec R3.8); trả `blocked:<lý do>` với lý do
+   `suppressed`, `no_consent`, `consent_withdrawn`, `frequency_cap`, `quiet_hours`, `recipient_cap`. Nhận thì ghi dòng
+   `dispatching` (khóa chống lặp, `consent_record_id`, người nhận, `root_run_id`) và commit trong một giao dịch riêng,
+   trước bước giành lượt và ghi `dispatched` của runtime-hardening/01 và trước khi Bộ gọi ra ngoài gửi (spec R3.9;
+   ADR-0124 (Accepted) quyết 1). Hai lời gọi đồng thời tới cùng địa chỉ với hai khóa khác nhau tuần tự hóa trên khóa
+   tư vấn của giao dịch theo `(tenant_id, channel, address_hash)`, để lần thứ hai thấy dòng của lần đầu.
+3. Đăng ký bước sàn gửi tin vào `build_tool_executor_steps(deps)` của tools-and-skills/01 (tools-and-skills:R2.6,
+   tools-and-skills:R2.7; H-3), ở vị trí sau phê duyệt và trước giành lượt, và gỡ mục của nó khỏi danh sách bước chờ
+   đăng ký của sổ trong cùng thay đổi; tới lúc đó tools-and-skills:R2.8 trả `blocked:send_floor_unavailable` cho mọi
+   Hành động `effect_class: message` (spec R3.12). ToolExecutor hỏi `SendAdmissionPort` trên mọi hành động connector
+   mà manifest đánh dấu là gửi tin, trước khi egress client gửi; không node nào kiểm thay (ADR-0112 (Accepted) quyết
+   6).
 4. `configs/policies/marketing_send@1.0.0.yaml`: số mặc định thận trọng ghi UNVERIFIED (1 tin mỗi địa chỉ
    mỗi kênh mỗi 24 giờ, 08:00-20:00 Asia/Ho_Chi_Minh, tối đa 200 người nhận mỗi lượt chạy ở thí điểm; DO-55,
    Đạt 24/10/2026); overlay công ty chỉ siết, lỏng hơn (kể cả số người nhận cao hơn) → 422.
 5. Route công khai `GET /api/v1/public/unsubscribe/{token}`: HMAC một địa chỉ, rate-limited, idempotent,
    không lộ địa chỉ có tồn tại; ghi một dòng chặn gửi trong 5 phút. Từ khóa hủy trên Zalo qua inbound router
    là W2 (router sự kiện nhà cung cấp và kênh Zalo là W2).
-6. Audit `marketing.sent` (kèm `consent_record_id`), `marketing.send_refused` (lý do); chỉ ticket này ghi
+6. Audit `marketing.sent` (kèm `consent_record_id`, ghi khi lời gọi kết thúc `succeeded`), `marketing.send_refused`
+   (lý do), nhãn trong mảnh `configs/copy/audit_actions.d/compliance-pdpl.yaml` (H-21); chỉ ticket này ghi
    `marketing.send_refused`, trong giao dịch của executor, cùng một dòng nhật ký gửi `outcome` `blocked` kèm lý do
    (spec R3.7); ToolExecutor của tools-and-skills/01 chỉ trả kết quả bị chặn kèm lý do.
 
@@ -66,8 +86,8 @@ subject_ref, channel, purpose, captured_at DESC)`; đồng ý hiện hành là d
       `blocked:recipient_cap`, SMTP giả 0 lời gọi, một dòng nhật ký gửi `outcome` `blocked` với `blocked_reason`
       `recipient_cap` (ADR-0124 (Accepted) quyết 1); tin tới người thứ 200 → gửi; tin thứ hai tới một người đã nhận
       trong lượt đó không tính thêm người nhận; overlay hạ còn 50 → người thứ 51 bị chặn; gỡ kiểm → test đỏ.
-- [ ] R5.1: đăng ký `consent_records` và `marketing_send_log` → test catalog của studio-skeleton:R3.7 xanh vì hai
-      khóa đã có trong bản tệp của thay đổi này; bỏ một khóa → test đó đỏ, nêu tên bảng.
+- [ ] R5.1: đăng ký `consent_records` và `marketing_send_log` → test catalog của studio-skeleton:R3.7 và test phủ mảnh
+      của telemetry-and-audit/01 xanh vì hai mảnh có trong cùng thay đổi; gỡ một mảnh → test đó đỏ, nêu tên bảng.
 - [ ] R5.5: công ty `offboarding` có dòng trong ba bảng → lane `offboarding` xuất mỗi dòng một lần rồi xóa hết;
       test phủ offboarding (studio-skeleton:R4.3) xanh với hai dòng `STUDIO_EXCLUSIONS`.
 - [ ] R5.6 (CP19): `dw_app` DELETE một dòng `platform.contact_suppressions` của công ty `active` → SQLSTATE 23514,
@@ -75,7 +95,23 @@ subject_ref, channel, purpose, captured_at DESC)`; đồng ý hiện hành là d
       gỡ phép kiểm DELETE khỏi trigger → test đỏ.
 - [ ] R3.2 (CP8): gọi hành động gửi qua node `tool.call`, qua công cụ agent, qua quy trình-như-công-cụ khi
       thiếu đồng ý → cả ba bị chặn ở executor; gỡ kiểm ở executor → test đỏ.
-- [ ] R3.3: một tin rời đi → một dòng nhật ký gửi mang `consent_record_id` và một sự kiện `marketing.sent`.
+- [ ] R3.3: một tin qua sàn và gửi được → đúng một dòng nhật ký gửi `dispatching` mang `consent_record_id`, và một sự
+      kiện `marketing.sent` sau khi lời gọi kết thúc `succeeded`; lời gọi kết thúc `outcome_unknown` → dòng
+      `dispatching` có, không `marketing.sent`.
+- [ ] R3.9 (CP24): lúc máy chủ SMTP giả nhận lời gọi, một kết nối thứ hai đọc thấy dòng `dispatching` đã commit; bước
+      giành lượt ném lỗi → dòng `dispatching` vẫn còn (giao dịch riêng); chuyển lần ghi vào giao dịch của lời gọi →
+      kết nối thứ hai không thấy dòng, test đỏ.
+- [ ] R3.10 (CP24): tin đầu tới một địa chỉ kết thúc `outcome_unknown`, tin thứ hai tới cùng địa chỉ và kênh trong 24
+      giờ với khóa khác → `blocked:frequency_cap`, máy giả có đúng 1 email; hai lời gọi đồng thời tới cùng địa chỉ với
+      hai khóa → một qua, một `blocked:frequency_cap`; chỉ đếm dòng đã có kết quả `succeeded` → tin thứ hai đi, test
+      đỏ.
+- [ ] R3.11 (CP24): lời gọi lặp lại cùng khóa của tin đầu → không dòng nhật ký gửi thứ hai, không
+      `blocked:frequency_cap`, ToolExecutor trả `outcome_unknown` của runtime-hardening:R6.9, máy giả vẫn 1 email; bỏ
+      phép nhận ngay theo khóa → lời gọi lặp bị `blocked:frequency_cap`, test đỏ.
+- [ ] R3.12 (CP25): sổ bước của API và của worker có bước sàn gửi tin là `MarketingSendPolicy` ở đúng vị trí của
+      tools-and-skills:R2.6, danh sách chờ không còn mục của nó, `email.send` thiếu đồng ý → `blocked:no_consent`, không
+      `blocked:send_floor_unavailable`; gỡ dòng đăng ký mà không trả mục về danh sách chờ → test sổ của
+      tools-and-skills:R2.7 đỏ.
 - [ ] R3.4 (CP9): bấm link hủy → lần gửi sau `blocked:suppressed` trong ≤ 5 phút; một tin đang chờ bị kiểm
       lại trước khi gửi; rút đồng ý ghi ở workspace Sales chặn tin từ workspace Marketing.
 - [ ] R3.5 (CP11): overlay đặt Giới hạn tần suất gửi, Khung giờ không gửi hay số người nhận mỗi lượt (300) lỏng
@@ -90,6 +126,9 @@ subject_ref, channel, purpose, captured_at DESC)`; đồng ý hiện hành là d
 - `db/migrations/versions/5a25154e0296_platform_channel_deliveries.py:125-132`; spec: R3.2 (đường gửi chỉ
   tới thành viên hiện tại; lead là đường connector qua executor).
 - ADR-0124 (Accepted) quyết 1, 2, 4, 5, 6.
+- spec: R3.9-R3.12, CP24, CP25; tools-and-skills:R2.6, tools-and-skills:R2.7, tools-and-skills:R2.8 (sổ bước, H-3);
+  runtime-hardening:R6.9, runtime-hardening:R6.11 (giành lượt và `dispatched` sau sàn gửi tin);
+  telemetry-and-audit:R5.6 (định dạng mảnh retention, H-1).
 
 ## Comments
 
@@ -113,3 +152,10 @@ subject_ref, channel, purpose, captured_at DESC)`; đồng ý hiện hành là d
 - 2026-10-24 (agent): kiểm sau lượt sửa: tiêu chí R3.8 (CP18) nay khẳng định cả dòng nhật ký gửi `outcome` `blocked`
   với `blocked_reason` `recipient_cap` và tin tới người thứ 200 vẫn gửi, như CP18 của spec và ADR-0124 (Accepted)
   quyết 1 sau V4.11 (F:ADR-0124 (Accepted)\~compliance-pdpl:R3.8).
+- 2026-10-25 (agent): lượt h, theo V4.30 của Đạt (mục 7): nhật ký gửi ghi một dòng `dispatching` trước khi gửi, commit
+  riêng trước bước giành lượt, và trần tần suất đếm cả lần gửi còn dở hay chưa biết kết quả (bước 2; spec R3.9-R3.11,
+  CP24); `outcome` CHECK thành (`dispatching`, `blocked`), vì bảng chỉ thêm và kết quả giao nhận nằm ở
+  `platform.tool_executions`. Theo H-3: bước 3 đăng ký `MarketingSendPolicy` vào sổ bước của tools-and-skills/01 (spec
+  R3.12, CP25). Theo H-1 và bảng cạnh của lượt: thời hạn của hai bảng là hai mảnh dưới `configs/policies/retention.d/`,
+  nên gỡ Blocked by workflow-triggers/02 (chỉ vì chuỗi tệp) và telemetry-and-audit/03, thêm telemetry-and-audit/01
+  (định dạng mảnh, bộ nạp, hàm đọc hạn). Theo H-29 (V4.39): `purpose` của Bản ghi đồng ý chỉ còn `marketing` ở W1.

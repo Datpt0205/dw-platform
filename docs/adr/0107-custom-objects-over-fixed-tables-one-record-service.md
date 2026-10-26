@@ -61,14 +61,25 @@ obvious designs (measured by the Studio research on 2026-10-22 on PostgreSQL 16.
    object, `t01-t24, i01-i12, f01-f08, d01-d08, z01-z08, b01-b08`, is fixed by custom-objects/01. Only
    slot-backed fields filter and sort. No table, column or index is created at runtime.
 2. **Hash partitions by tenant, the modulus fixed by measurement.** As D12 asks, `studio.records` is
-   `PARTITION BY HASH (tenant_id)` from its first revision, on PostgreSQL 16: modulus 8 (`studio.records_p0` to
-   `studio.records_p7`) provided custom-objects/01 keeps planning p95 at or under 5 ms for a three-predicate query
-   with every slot index present and `CacheMemoryContext` at or under 64 MB per backend, else modulus 4, which the
-   same ticket measures as the fallback; if both miss, the question goes back to the requester. There is no
-   unpartitioned form (DO-15). Each partition is ENABLE and FORCE with the parent's policies and gives `dw_app` no
-   privilege, so rows are reached only through the parent (ADR 0100). The primary key is `(tenant_id, id)`, every
-   UNIQUE and foreign key carries `tenant_id`, and the query compiler states `tenant_id = :tenant` in every statement
-   (RLS still decides; the predicate lets the planner prune and pick the index).
+   `PARTITION BY HASH (tenant_id)` from its first revision, on PostgreSQL 16, with modulus 8 (`studio.records_p0` to
+   `studio.records_p7`) or 4. custom-objects/01 measures both (V4.32) on one harness and one seed that it owns and
+   record-access/01 reuses, adding only its policy variants, on YC20's machine with an image pinned by digest; the
+   seed and the load are that ticket's, and its thresholds keep YC20's and custom-objects R9.2's, planning p95 at
+   or under 5 ms for a three-predicate query and `CacheMemoryContext` at or under 64 MB per backend among them. It
+   measures the DDL of W1 and of W2's known additions together, since the modulus cannot change after the first
+   revision: A0 is the W1 DDL; A1 adds W2's known indexes and the six-arm policy (ADR 0105) and decides the modulus;
+   A2 is A1 with a BRIN index on `updated_at`, predicted to let an update that touches only `data` be HOT, which A1's
+   btree allows for no update; A3 is A1 without the `b` family's indexes; a narrow typed pivot carrying record reach
+   is measured on the write path and maintenance only, and JSONB by one `EXPLAIN` under `dw_app` that records why it
+   is rejected. Each runs at modulus 8 and 4, and every claim that an index is used carries
+   `EXPLAIN (ANALYZE, BUFFERS)`. A1 is kept if every thresholded row passes; if only the write path misses, A2, A3,
+   fewer slots per family and `wal_compression` are tried in turn, and a pivot for overflow fields only after them;
+   modulus 8 is chosen only when A1 meets the thresholds and shows a measured maintenance gain, else 4; if A1 misses
+   the read thresholds at both, the question goes back to the requester. There is no unpartitioned form (DO-15). Each
+   partition is ENABLE and FORCE with the parent's policies and gives `dw_app` no privilege, so rows are reached only
+   through the parent (ADR 0100). The primary key is `(tenant_id, id)`, every UNIQUE and foreign key carries
+   `tenant_id`, and the query compiler states `tenant_id = :tenant` in every statement (RLS still decides; the
+   predicate lets the planner prune and pick the index).
 3. **One RecordService.** REST routes, workflow data nodes (workflow-nodes' `RecordsPort`), agent object
    tools (tools-and-skills' `ObjectDataPort`, run as the caller), import, export and bulk operations, purge
    lanes and domain-pack seeding all call one service; each consumer declares its narrow Protocol and the
@@ -121,8 +132,10 @@ obvious designs (measured by the Studio research on 2026-10-22 on PostgreSQL 16.
 
 - **Runtime DDL per object.** Rejected: the application would need DDL rights, and `db/migrations` would
   stop being the one owner of the schema (`CLAUDE.md:100`).
-- **One shared value table (EAV), or typed pivot index tables.** Rejected: every filter becomes a join and
-  no value has a typed index; the pivot measured 3 times the index storage and 3.4 times the write cost.
+- **One shared value table (EAV), or typed pivot index tables.** Rejected: every filter becomes a join, an EAV
+  value has no typed index, and a typed pivot, which can index its values, must still carry each record's reach
+  (ADR 0105), copied onto its rows or checked by a join in its policy. Its write and maintenance cost against the
+  slots is measured by custom-objects/01 as decision 2's narrow pivot variant.
 - **A jsonb document with GIN or expression indexes.** Rejected: no typed range or sort, indexes unused
   under RLS, and a planner blind to selectivity.
 - **A record path per channel, or validation in database triggers.** Rejected: agents and workflows would
@@ -177,7 +190,8 @@ obvious designs (measured by the Studio research on 2026-10-22 on PostgreSQL 16.
    first revision; the unpartitioned form in decision 2 exists only for a failed measurement. Answered
    2026-10-23: partitions from the first revision on PostgreSQL 16, modulus 8 if custom-objects/01 meets the
    thresholds of decision 2, modulus 4 as the fallback measured in the same ticket, the requester asked again
-   only if both miss; the unpartitioned form is dropped (DO-15 (a)).
+   only if both miss; the unpartitioned form is dropped (DO-15 (a)). Refined 2026-10-25 by Đạt's V4.32: modulus 8
+   only when A1 meets the thresholds and also shows a measured maintenance gain, else 4 (decision 2).
 3. **Uniqueness scope of unique and external-id fields** (DO-35, Đạt with the requester): proposed
    object-wide, a duplicate answering 409 `duplicate_value` with the field pointer and no record id unless
    the caller can read the duplicate. Answered 2026-10-23: object-wide; the 409 `duplicate_value` names the
@@ -214,3 +228,14 @@ obvious designs (measured by the Studio research on 2026-10-22 on PostgreSQL 16.
   (Q-R6, B:agent-lifecycle:R1.6~custom-objects:R1.7).
 - Consequences: the line that read as clarifying `CLAUDE.md` is gone; a HASH-partitioned table without a DEFAULT
   partition is this ADR's own fact, and `CLAUDE.md`'s Data model rules ask a DEFAULT only of append-only range tables.
+
+## Amendments (2026-10-25)
+
+- Third consistency check (round 4), eighth pass, Đạt's V4.32, which keeps the typed slots and reopens nothing here:
+  decision 2's measurement is one harness and one seed that custom-objects/01 owns and record-access/01 reuses, over
+  the DDL of W1 and W2's known additions, with the variants A0 to A3 (A2 a BRIN index on `updated_at`), a narrow typed
+  pivot and one JSONB `EXPLAIN`, each at modulus 8 and 4, and its decision rule, modulus 8 only when A1 meets the
+  thresholds and shows a measured maintenance gain, else 4, where modulus 8 had needed only the planning and
+  relcache thresholds; Alternatives drop the pivot's "3 times the index storage and 3.4 times the write cost", which
+  no recorded workload backed, for custom-objects/01's measurement, and say that a typed pivot can index its values
+  but must carry each record's reach.

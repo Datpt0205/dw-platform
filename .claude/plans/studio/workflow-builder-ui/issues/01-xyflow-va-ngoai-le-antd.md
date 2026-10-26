@@ -19,8 +19,8 @@ duyệt (workflow-builder-ui R1.1, R1.2, R1.3, R1.9, BU1, BU14).
    canvas đo riêng, ngoài ngân sách khoảng 250 kB của antd. Dựng một trang nháp dưới `apps/web/app/studio/**/canvas/**`, sau CSP
    hiện có (`apps/web/lib/csp.ts:16-21`), với `@xyflow/react` 12.12.0 và không dagre: bản nháp của mô-đun thuần
    `apps/web/lib/workflow-layout.ts`; thẻ antd, làn, khung chứa, ô "+", làn lỗi, mũi tên quay lại; `Tree`; mô hình bàn
-   phím của R2.5; kéo từ bảng bên và kéo một Bước có sẵn vào ô; các loại W2 (`logic.map`, `flow.subworkflow`, làn "Hết
-   hạn") chỉ để xem, trên cùng các khối. Fixture sinh dưới dạng cây Bước: F1 (15 Bước tiếp nhận lead), F2
+   phím của R2.5; kéo từ bảng bên và kéo một Bước có sẵn vào ô; thẻ Quy trình con (`flow.subworkflow`, bậc B của W1,
+   V4.33) và các loại W2 (`logic.map`, làn "Hết hạn") chỉ để xem, trên cùng các khối. Fixture sinh dưới dạng cây Bước: F1 (15 Bước tiếp nhận lead), F2
    (`logic.switch` 8 làn lồng 2 tầng), F3 (song song ×3 trong vòng lặp trong `logic.switch`), F4 (làn lỗi ở mọi Bước),
    F5 (vòng làm lại có phê duyệt, cùng một phê duyệt nhiều người bắt buộc), F6 và F7 (300 và 500 Bước), F8 (tên tiếng
    Việt dài nhất), F9 (duyệt ba cấp mà từ chối quay về các Bước trước khác nhau theo lý do, bằng vòng lặp lồng nhau và
@@ -102,3 +102,4 @@ duyệt (workflow-builder-ui R1.1, R1.2, R1.3, R1.9, BU1, BU14).
   lúc đó.
 - 2026-10-23 (agent): DO-42 đã có lời đáp (Đạt 23/10/2026: `@xyflow/react` và `@dagrejs/dagre` cùng ngoại lệ, một glob canvas, allowlist `{module, glob, adr}`, giữ huy hiệu, không thư viện biểu đồ ở v1), nên ticket về `needs-triage`; việc đổi guard thành allowlist thuộc studio-skeleton/03, ticket này chỉ thêm mục `EXCEPTIONS`.
 - 2026-10-25 (agent): lượt g, theo V4.25, V4.27 và V4.29 của Đạt ngày 24/10/2026: ticket là spike của discovery/24 cho Sơ đồ có cấu trúc (fixture F1-F9, bảng đo không còn mục dagre), `@dagrejs/dagre` rời ngoại lệ nên chỉ một mục `EXCEPTIONS`, huy hiệu ở góc dưới trái, một `zustand`, và bộ từ vựng nháp vào theme của `@dw/ui` để Đạt duyệt (R1.9, BU14). Không thêm cạnh.
+- 2026-10-25 (agent): lượt h, theo V4.33 của Đạt: `flow.subworkflow` vào bậc B của W1 và thẻ Quy trình con vào ngữ pháp W1 (R1.5, ticket 04), nên bước 1 thôi gọi nó là loại W2; spike vẫn chỉ vẽ nó để xem. Không thêm cạnh.

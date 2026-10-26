@@ -133,8 +133,10 @@ and D12 (the scale target), and on the call on DO-11, decided 2026-10-23.
 
 - **Measure before freezing.** record-access ticket 01 measures the six-arm policy (tenant-wide default, workspace key,
   own, team, subordinates, grants) at D12's target (10 million records per object, 50 million per tenant, 5,000 users,
-  200 workspaces, tree depth 6, hash partitions by tenant) before the template is frozen; this ADR records the numbers
-  (FOG-40). The planning trial above did not measure 10^7 rows, the write path under WITH CHECK or concurrency.
+  200 workspaces, tree depth 6, hash partitions by tenant) before the template is frozen, on the one harness and seed
+  that custom-objects ticket 01 owns, to which it adds only its policy variants, so the policy and the full set of
+  slot indexes are measured together (ADR 0107 decision 2, V4.32); this ADR records the numbers (FOG-40). The planning
+  trial above did not measure 10^7 rows, the write path under WITH CHECK or concurrency.
 - **`test_rls_coverage.py` learns the RESTRICTIVE plus PERMISSIVE shape:** the exact policy set and canonical text per
   record table and partition, from the same template; every function a record policy depends on (`pg_depend`) is
   STABLE, invoker, with a fixed `search_path`; a connection with a tenant and no actor kind reads nothing;
@@ -252,3 +254,9 @@ and D12 (the scale target), and on the call on DO-11, decided 2026-10-23.
   as a draft, as ADR-0103 decision 5 now says, where the sixth pass's line above named a draft alone and left a gate
   trial with no boundary to bind (if it is wrong, a version's boundary is written when it is sealed and its trials bind
   it).
+
+## Amendments (2026-10-25)
+
+- Third consistency check (round 4), eighth pass, Đạt's V4.32: Consequences have record-access ticket 01 measure the
+  six-arm policy on the one harness and seed that custom-objects ticket 01 owns, adding only its policy variants, so
+  the policy is measured with the full set of slot indexes rather than over a few slot columns of a seed of its own.

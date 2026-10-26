@@ -28,9 +28,9 @@ database và "đã kiểm định" tính được (spec R1, R2). Đứng trên v
    còn `tighten_only` do ticket 04 tính bằng bộ so sánh của loại;
    `contributor_ids uuid[] NOT NULL CHECK (cardinality(contributor_ids) >= 1)`; `submitted_by`, `submitted_at`,
    `published_by`, `published_at`, `retired_by`, `retired_at`; `retire_reason_code` CHECK (`superseded`,
-   `explicit`); `stage_changed_at timestamptz NOT NULL`. Ở ticket này cột `gate_run_id` chưa có FK: ticket 04, trong
+   `explicit`); `stage_changed_at timestamptz NOT NULL`. Ở ticket này cột `gate_run_id` chưa có FK: ticket 06, trong
    revision tạo `studio.gate_runs` cùng `uq_gate_runs_tenant_id_id`, thêm FK ghép `(tenant_id, gate_run_id)` tới
-   `studio.gate_runs (tenant_id, id)` ON DELETE RESTRICT có index riêng, nên ticket 04 không chặn ticket này. Mọi FK
+   `studio.gate_runs (tenant_id, id)` ON DELETE RESTRICT có index riêng, nên ticket 06 không chặn ticket này. Mọi FK
    tới một bảng theo tenant ở đây là FK ghép vì kiểm khóa ngoại không đi qua RLS (ADR-0109 (Accepted) quyết 1;
    ADR-0120 (Accepted) quyết 1; tenant-config:R2.18 cùng luật).
 2. Hàm `studio.guard_version_stage()` (BEFORE INSERT OR UPDATE): chèn là `draft`; `draft → evaluating`
@@ -79,7 +79,7 @@ database và "đã kiểm định" tính được (spec R1, R2). Đứng trên v
    Nơi đang dùng; bước đó không đổi giai đoạn, tenant-config:R2.7), chạy các kiểm của bảng kiểm theo loại (một kiểm
    từ chối → 422 với `reason_code` của nó, giao dịch lùi, phiên bản giữ `draft`; spec R2.7), ghi `compared_live_hash`
    (spec R2.10), `LifecycleService` chuyển `draft → evaluating` (spec R2.1; ADR-0120 (Accepted) quyết 1), xếp Lượt
-   kiểm định hoặc dùng lại bằng chứng (ticket 04), audit `studio.version.submitted`.
+   kiểm định hoặc dùng lại bằng chứng (ticket 06), audit `studio.version.submitted`.
    Lần gửi thứ hai song song với một lần gửi đã chuyển bản Nháp khỏi `draft` thấy phiên bản không còn ở `draft` và
    nhận 409 `candidate_exists`, giao dịch lùi (spec R1.3). Ticket 04 thêm vào route này kiểm `PublishBindingsCheck` cho
    mọi loại (spec R2.11). `POST .../withdraw`, cách người dựng sửa tiếp khi route tạo nháp của tenant-config trả 409
@@ -95,8 +95,10 @@ database và "đã kiểm định" tính được (spec R1, R2). Đứng trên v
    của tenant-rbac/01 (nhãn tiếng Việt, `scope_kind` `workspace`, `risk` `standard` theo bảng phân loại của ticket
    đó); INSERT nêu mọi cột NOT NULL của bảng lúc đó, gồm `risk` của tenant-rbac/01 và `tenant_grantable` (`true`)
    của tenant-rbac/02, ticket này chờ ticket đó. Khóa ngoại `publish_approval_id` (RESTRICT) tới
-   `platform.approval_requests` cần lane `offboarding` xóa `studio.artifact_versions` trước: thêm thứ tự đó vào
-   `_ORDERED_FIRST` (studio-skeleton:R4.2), sau bản viết lại lane của foundations-hardening/07 mà ticket này chờ.
+   `platform.approval_requests` cần lane `offboarding` xóa `studio.artifact_versions` trước: thứ tự đó không viết tay mà
+   suy từ khóa ngoại trong `pg_constraint` qua sổ bước xóa ở composition root của worker mà foundations-hardening/07 dựng
+   và ticket này chờ (foundations-hardening:R11.4; H-2), nên ticket này không đăng ký bước nào; test phủ của
+   studio-skeleton:R4.2 đọc sổ đó và đỏ khi một bước đi trái cạnh này.
 
 ## Tiêu chí chấp nhận
 
@@ -198,3 +200,10 @@ database và "đã kiểm định" tính được (spec R1, R2). Đứng trên v
   đọc chỉ mục một Đang dùng của ticket này cùng chỉ mục của tenant-config/02; lần gửi song song thứ hai nhận 409
   `candidate_exists` vì bản Nháp duy nhất đã rời `draft`; lệnh rút là cách sửa tiếp khi route tạo nháp trả 409
   `candidate_pending`. Không thêm cạnh: ticket này đã chờ tenant-config/02 qua tenant-config/04.
+- 2026-10-26 (agent): lượt h, đợt 2, theo V4.31 của Đạt: ticket 04 tách, nên FK ghép của `gate_run_id` và việc xếp
+  Lượt kiểm định hay dùng lại bằng chứng nay ở ticket 06 (bước 1, bước 5); nhánh gửi của loại không cổng và
+  `PublishBindingsCheck` vẫn ở ticket 04. Không đổi cạnh.
+- 2026-10-26 (agent): lượt h, đợt 2, theo H-2: `_ORDERED_FIRST` đã bỏ; thứ tự xóa của khóa ngoại `publish_approval_id`
+  suy từ `pg_constraint` qua sổ bước xóa của foundations-hardening/07 (foundations-hardening:R11.4, R11.5), thay câu
+  "thêm thứ tự đó vào `_ORDERED_FIRST`" của bước 7 và chữ "cùng sửa `_ORDERED_FIRST`" của dòng trên; cạnh tới
+  foundations-hardening/07 giữ, vì sổ ra đời ở đó.

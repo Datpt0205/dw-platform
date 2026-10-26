@@ -111,9 +111,12 @@ DO-07), so the status names the requester's direction.
    hold the declared scopes and pass `connection_usable` for the proposer, asked again at approval (ADR 0115). No
    version is published while a required binding has no approved value (`binding_unset`); a connection that degrades
    later fails run admission (`binding_degraded`) and raises drift.
-8. **Runs pin what they bound.** The run manifest (ADR 0109) records the binding-set version, each connection id with
-   the `secret_version` it pins for each of that connection's secret fields, a secret's version being numbered per
-   subject and field (ADR 0115 decision 1), and a hash of each variable value; handlers read them through
+8. **Runs pin what they bound.** The run manifest (ADR 0109) records the binding-set version, each connection id and a
+   hash of each variable value, never a secret version (V4.35): a call uses the connection's latest secret version not
+   revoked at the time of the call and records the version it used in `platform.tool_executions` and audit (ADR 0115
+   decision 1, H-10). Rotating a secret, a new version replacing the old, is apart from revoking one for exposure: a
+   rotation reaches a run that is waiting, and a revocation stops every unfinished run of the connection at its next
+   egress call with `credential_revoked`, even when a newer version exists. Handlers read the pins through
    `RunBindingsPort`, served from the manifest, and `connection_usable` still runs at admission and before every egress
    call.
 9. **Packages carry declarations only.** A domain pack, and in v2 a promotion, moves binding names; every tenant, a
@@ -151,9 +154,12 @@ DO-07), so the status names the requester's direction.
   implements `connection_usable` and `ConnectionDependentsPort`; workflow-engine and agent-builder implement
   `RunBindingsPort` over the run manifest, not over their documents. Phasing: binding sets with maker and checker in
   W1 P1 (tenant-config/05); the five artifact kinds and the removal of `platform.policy_overrides` in W2.
-- A tenant with one admin changes configuration and publishes only what tightens (decision 2, ADR 0120 decision 1)
-  until it adds a second checker (D11), and sales must say that Studio needs at least two admins. Tenant-wide
-  configuration is proposed from the maker's workspace and decided there, because an approval is a workspace row.
+- A tenant is created with two owners and stays `setup` until the second is `active` (V4.38, ADR 0104 decision 10),
+  so a second checker exists before the first change; a tenant later left with no second checker changes
+  configuration and publishes only what tightens (decision 2, ADR 0120 decision 1) until it adds one (D11), and its
+  tenant-depth holders of `platform.members.write` are warned once each time the `active` holders of
+  `studio.publish.approve` or `platform.roles.write` fall below two (H-15). Tenant-wide configuration is proposed from
+  the maker's workspace and decided there, because an approval is a workspace row.
 - Ports: `DecisionGuard` is synchronous (`approval_flow.py:47`), so the stale-base guard needs the async
   `ApprovalDecisionGuard` and `ProposedDecision` of dw-proterial's `dw_agent_runtime/approval_flow.py`, ported with its
   rule-version pattern (`dw_sales/application/rules.py`: `OVERRIDABLE`, `read_over`, `TenantRuleBook`,
@@ -169,7 +175,9 @@ DO-07), so the status names the requester's direction.
   resolves per tenant is 422; tenant A never resolves tenant B's row
   (`packages/python/dw_agent_runtime/tests/unit/test_tenant_overlay.py`, extended); a document holding a connection id
   fails publish; an unset required binding blocks publish; a run keeps its pinned binding set after a newer one is
-  approved.
+  approved; a run waiting for an approval while its SMTP password rotates to v2 sends with v2 once approved and records
+  v2 in its execution row and audit, and a revocation for exposure stops every waiting run of that connection at its
+  next egress call with `credential_revoked` (V4.35).
 - Contradicts `db/migrations/versions/45dc1b5e0125_platform_policy_overrides.py` (a mutable upsert, retired), worth
   reopening because a tenant's value must be approvable and reversible; its whole-document rule is kept. Makes
   CLAUDE.md:223-224 true, declared and never loaded today; uses CLAUDE.md:274-279 as written and keeps
@@ -237,3 +245,15 @@ DO-07), so the status names the requester's direction.
   for each connection and secret field, no longer one credential version per connection, because ADR 0115 decision 1
   numbers a secret's versions per subject and field (if it is wrong, ADR 0115 numbers versions per connection and
   every field of a connection rotates together).
+
+## Amendments (2026-10-25)
+
+- Third consistency check (round 4), eighth pass, Đạt's V4.35 and V4.38 with the planner's calls H-10 and H-15:
+  decision 8's run manifest pins the binding-set version, each connection id and the hashes of variable values, never
+  a secret version, a call using the connection's latest unrevoked version and recording the one it used, and a
+  rotation is apart from a revocation for exposure, which stops every unfinished run of the connection at its next
+  egress call, replacing the third pass's line above, which pinned a `secret_version` per connection and secret field
+  (V4.35, H-10; `CLAUDE.md`, Non-negotiable architecture); Consequences say that a tenant is created with two owners
+  and stays `setup` until the second is `active`, in place of "sales must say that Studio needs at least two admins",
+  a tenant falling below two later warning its holders of `platform.members.write` (V4.38, H-15), and add V4.35's
+  rotation and revocation test.

@@ -1,4 +1,4 @@
-# 04 — Ngữ pháp sơ đồ: nhánh, song song, vòng lặp, nhánh lỗi
+# 04 — Ngữ pháp sơ đồ: nhánh, song song, vòng lặp, nhánh lỗi, quy trình con
 
 Status: needs-triage
 Blocked by: 02
@@ -9,10 +9,10 @@ Yêu cầu: R1.5, R1.7, R2.5, R2.6, BU7, BU8, BU11, BU14
 
 Sơ đồ vẽ mọi cấu trúc của cây Bước theo bảng ngữ pháp của R1.5, trên năm khối chung mà ticket 02 đặt chỗ: các làn của
 `logic.switch` với làn "Khác", làn "Duyệt" và "Từ chối" của Bước phê duyệt, khung "Song song" với Điểm nối, khung vòng
-lặp với mũi tên "Lặp lại", và làn lỗi khi Khi lỗi là `route`; khung chứa thu gọn được; bàn phím và Dạng danh sách đi qua
-làn và khung (workflow-builder-ui R1.5, R1.7, R2.5, R2.6, BU7, BU8, BU11, BU14). Đây là bậc A của V4.26: ngữ pháp có
-trước bộ máy chạy song song và vòng lặp có trần của bậc B, nên ticket không chờ các Loại bước của bậc B; bảng Loại bước
-chỉ đưa chúng khi workflow-nodes đăng ký.
+lặp với mũi tên "Lặp lại", làn lỗi khi Khi lỗi là `route`, và thẻ Quy trình con; khung chứa thu gọn được; bàn phím và
+Dạng danh sách đi qua làn và khung (workflow-builder-ui R1.5, R1.7, R2.5, R2.6, BU7, BU8, BU11, BU14). Đây là bậc A của
+V4.26 và V4.33: ngữ pháp có trước bộ máy chạy song song, vòng lặp có trần và lượt con của bậc B, nên ticket không chờ
+các Loại bước của bậc B; bảng Loại bước chỉ đưa chúng khi workflow-nodes đăng ký.
 
 ## Việc cần làm
 
@@ -32,6 +32,12 @@ chỉ đưa chúng khi workflow-nodes đăng ký.
       dưới Bước, trừ khi làn kết thúc bằng `flow.stop`. Trong một làn song song, bộ kiểm của workflow-engine từ chối làn
       lỗi kết thúc và `flow.stop` (workflow-engine:R2.15); Sơ đồ chỉ hiện lỗi đó trên Bước như R3.4, không tự kiểm
       (ADR-0101 (Accepted) quyết 3).
+    - Quy trình con (`flow.subworkflow`): thẻ Bước cỡ cố định của R1.8 mang dấu "Quy trình con" (biểu tượng cùng chữ, từ
+      bộ từ vựng của theme), tóm tắt cấu hình là `api_name` của Quy trình được gọi (`config.workflow`,
+      workflow-nodes:R13.1), và dòng "Chờ Quy trình con xong", vì Bước mở một điểm chờ `child_run`; không vẽ Bước nào
+      của Quy trình con trong Sơ đồ cha; không Tag phiên bản ghim, báo lệch hay nút Mở ở W1 (Ngoài phạm vi của spec).
+      Một Bước Quy trình con trong làn song song bị bộ kiểm từ chối với `wf.wait_in_parallel` (workflow-nodes:R13.3);
+      Sơ đồ chỉ hiện lỗi đó trên Bước như R3.4.
     - Nhãn lấy từ khóa thông điệp (DO-57) và nhãn Nhánh ra của `GET /api/v1/studio/node-types` (workflow-nodes:R1.2);
       màu, biểu tượng, cỡ thẻ và kiểu đường nối chỉ từ bộ từ vựng mà ticket 01 ghi trong theme của `@dw/ui`.
 2. Thu gọn: mỗi khung chứa ("Song song", "Lặp lại khi …") thu gọn và mở từ một antd `Button` ở đầu khung; trạng thái
@@ -40,11 +46,13 @@ chỉ đưa chúng khi workflow-nodes đăng ký.
 3. Bàn phím và Dạng danh sách qua cấu trúc: ←/→ đi giữa các làn kề nhau của một Bước; ↓ từ thẻ của một Bước có làn
    vào Bước đầu của làn đầu, ↑ từ Bước đầu của một làn về thẻ đó; `Tree` vẽ mỗi làn là một node lồng dưới Bước của nó,
    mang `aria-level`, `aria-posinset`, `aria-setsize`, để NVDA đọc "nhánh 2 trên 3: Điểm ≥ 70".
-4. Fixture F2, F3, F4, F5 và F9 của ticket 01 thành snapshot test; Playwright chỉ bàn phím dựng F5. Cả hai chạy trên
-   một `GET /api/v1/studio/node-types` giả mang mọi Loại bước mà các fixture dùng, với đúng Nhánh ra và cấu hình mà
+4. Fixture F2, F3, F4, F5 và F9 của ticket 01 thành snapshot test, cộng F10 của ticket này (một Bước Quy trình con ở
+   chuỗi gốc và một trong thân một Bước vòng lặp); Playwright chỉ bàn phím dựng F5. Cả hai chạy trên một
+   `GET /api/v1/studio/node-types` giả mang mọi Loại bước mà các fixture dùng, với đúng Nhánh ra và cấu hình mà
    workflow-nodes khai, kể cả `human.approval@1` với quy tắc duyệt `all` và các loại của bậc B `logic.parallel@1`,
-   `logic.loop@1`, `logic.break@1` (workflow-nodes:R10.1, workflow-nodes:R11.2, workflow-nodes:R12.1), vì ticket này
-   chỉ chờ danh mục của workflow-nodes/02 qua ticket 02, không chờ workflow-nodes đăng ký các loại đó (V4.26).
+   `logic.loop@1`, `logic.break@1`, `flow.subworkflow@1` (workflow-nodes:R10.1, workflow-nodes:R11.2,
+   workflow-nodes:R12.1, workflow-nodes:R13.1), vì ticket này chỉ chờ danh mục của workflow-nodes/02 qua ticket 02, không
+   chờ workflow-nodes đăng ký các loại đó (V4.26, V4.33).
 5. Học mẫu, không chép: đặc tả OpenFlow của Windmill (Apache-2.0) và luồng của Power Automate là danh sách kiểm cho ngữ
    pháp; không chép giao diện Dify, không chép mã Windmill hay n8n (V4.24, V4.29).
 
@@ -56,8 +64,12 @@ chỉ đưa chúng khi workflow-nodes đăng ký.
       phải, gộp lại dưới Bước; F5: làn "Duyệt" và "Từ chối", thẻ "Cần cả 3 người duyệt"; F9 vẽ xong, mỗi Bước "Thoát
       vòng lặp" có mũi tên tới lối ra dưới khung của nó, không hai thẻ chồng nhau; vẽ một điểm gộp của `logic.switch`
       bằng thanh "Chờ tất cả nhánh xong" → snapshot đỏ.
-- [ ] R1.5 (BU14): một màu literal trong thành phần ngữ pháp → test đỏ; một nhãn làn hay đầu khung chỉ có màu, không
-      chữ → test đỏ.
+- [ ] R1.5: snapshot F10: mỗi Bước Quy trình con, ở chuỗi gốc và trong thân vòng lặp, là một thẻ mang dấu "Quy trình
+      con", `api_name` của Quy trình được gọi và dòng "Chờ Quy trình con xong", và không thẻ nào của Quy trình con được
+      vẽ trong Sơ đồ cha; vẽ các Bước của Quy trình con vào Sơ đồ cha, hay bỏ dòng "Chờ Quy trình con xong" → snapshot
+      đỏ.
+- [ ] R1.5 (BU14): một màu literal trong thành phần ngữ pháp → test đỏ; một nhãn làn, đầu khung hay dấu "Quy trình con"
+      chỉ có màu, không chữ → test đỏ.
 - [ ] R1.7 (BU8): thu gọn một khung → khung vẽ như một thẻ, tài liệu và Mã băm nội dung không đổi; tải lại → khung vẫn
       thu gọn với cùng người xem; bộ nhớ trình duyệt không dùng được → trang vẽ đủ, mọi khung mở; ghi trạng thái thu
       gọn vào tài liệu → test đỏ.
@@ -77,9 +89,12 @@ chỉ đưa chúng khi workflow-nodes đăng ký.
   vòng lặp, quy tắc duyệt `all`, cho danh mục giả của bước 4).
 - workflow-engine:R1.1, workflow-engine:R2.15; spec: R1.5 (làn lồng theo Nhánh ra; trong làn song song, làn lỗi chỉ gộp
   lại).
+- workflow-nodes:R13.1, workflow-nodes:R13.3; ADR-0113 (Accepted) quyết 4, 9; spec: R1.5 (cấu hình của Bước Quy trình
+  con, điểm chờ `child_run` mà dòng "Chờ Quy trình con xong" nói).
 - `.claude/rules/ui-quality.md:230-231`, `.claude/rules/ui-quality.md:370-376`; spec: R1.5 (không chỉ màu, tương phản).
 - `packages/typescript/ui/src/theme.ts:3-6`; spec: R1.5 (một chủ của màu).
 
 ## Comments
 
 - 2026-10-25 (agent): tạo ở lượt g theo V4.24, V4.26 (bậc A) và V4.27 của Đạt ngày 24/10/2026. Không cạnh tới spec khác: ngữ pháp vẽ từ cây tài liệu và danh mục Loại bước mà ticket 02 đã chờ (workflow-engine/01, workflow-nodes/02), không chờ Loại bước của bậc B.
+- 2026-10-25 (agent): lượt h, theo V4.33 của Đạt: ngữ pháp thêm thẻ Quy trình con (bậc A vẽ, bậc B chạy ở workflow-engine/09 và workflow-nodes/08), với fixture F10 và danh mục giả mang `flow.subworkflow@1`; Tag phiên bản ghim, báo lệch và nút Mở ở W2 (dòng Quyết định 25/10/2026 của spec, agent, tạm). Không thêm cạnh: ticket không chờ workflow-nodes/08, như với các loại khác của bậc B.

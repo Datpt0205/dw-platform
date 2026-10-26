@@ -3,16 +3,16 @@
 Status: needs-triage
 Blocked by: .claude/plans/studio/foundations-hardening/issues/03-quyen-dw-app-va-rls-initplan.md, .claude/plans/studio/org-and-principals/issues/01-khoa-don-vi-va-siet-realm.md, .claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md
 Area: studio
-Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R1.8, R1.9, R1.10, R2.2, CV1, CV2, CV3, CV4, CV5, CV23, CV24
+Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R1.8, R1.9, R1.10, R1.14, R2.2, CV1, CV2, CV3, CV4, CV5, CV23, CV24
 
 ## Mục tiêu
 
 Mọi Thông tin bí mật của công ty nằm trong một phong bì AES-256-GCM dưới Khóa của công ty, chỉ bộ môi
 giới bí mật mở được, và một cửa cơ sở dữ liệu một chiều chặn `dw_app` đọc thẳng (spec R1, R2.2). Phần này
 không chờ spike 21 (ADR-0115 (Accepted)); OpenBao Transit, mở niêm phong, xoay khóa, hủy khóa và sao lưu
-kho khóa ở ticket 06 (DO-47.1). Thay một bí mật thu hồi phiên bản cũ trong cùng giao dịch (bí mật ký sau 24 giờ
-chồng lấn), và cửa mở bí mật không mở phiên bản đã thu hồi hay thiếu (spec R1.9, R1.10; V4.20). Gộp từ
-B8a-connections connections-and-vault 03 và 04.
+kho khóa ở ticket 06 (DO-47.1). Xoay một bí mật thay phiên bản cũ trong cùng giao dịch (bí mật ký sau 24 giờ chồng
+lấn), cửa mở bí mật mở phiên bản mới nhất chưa thu hồi vì không lượt nào ghim phiên bản, và không mở phiên bản đã thu
+hồi hay thiếu (spec R1.9, R1.10, R1.14; V4.20; V4.35). Gộp từ B8a-connections connections-and-vault 03 và 04.
 
 ## Việc cần làm
 
@@ -25,7 +25,9 @@ B8a-connections connections-and-vault 03 và 04.
       độ dài 12, `kek_ref text NOT NULL`, `ciphertext bytea NOT NULL` CHECK độ dài ≤ 64 KiB,
       `wrapped_data_key bytea NOT NULL` (khóa dữ liệu bọc bởi Khóa của công ty, giữ cạnh `ciphertext`),
       `kek_version int NOT NULL`, `revoked_at timestamptz NULL` (thời điểm từ đó phiên bản bị từ chối, NULL ở phiên
-      bản đang dùng, không vào AAD; V4.20), `created_at`, `updated_at timestamptz NOT NULL`, không cột `aad_hint`;
+      bản đang dùng, không vào AAD; V4.20), `replaced_at timestamptz NULL` (thời điểm của lần xoay đã thay phiên bản,
+      chỉ `platform.put_secret` ghi, không vào AAD; H-10), `created_at`, `updated_at timestamptz NOT NULL`, không cột
+      `aad_hint`;
       UNIQUE `(tenant_id, connection_id, field, secret_version)`, dạng của UNIQUE
       `(tenant_id, subject_kind, subject_id, field, secret_version)` cho cột chủ thể `connection_id`, dẫn đầu bằng
       hai cột của FK ghép nên cũng là chỉ mục của FK đó và của FK `tenant_id`; loại trừ chủ thể qua CHECK
@@ -33,7 +35,7 @@ B8a-connections connections-and-vault 03 và 04.
       `(tenant_id, <cột chủ thể>)` tới UNIQUE `(tenant_id, id)` của bảng chủ thể ON DELETE CASCADE, cùng UNIQUE
       của cột đó, trong migration của ticket thêm nó (`inbound_endpoint_id` ở workflow-triggers/02,
       ADR-0115 (Accepted) quyết 1);
-    - `connections`: toàn cột của spec (bao gồm `share_scope` CHECK, `status` CHECK không DEFAULT,
+    - `connections`: toàn cột của spec trừ `compromised_at`, mà ticket 04 thêm cùng bên đọc của nó (bao gồm `share_scope` CHECK, `status` CHECK không DEFAULT,
       `owning_workspace_id` NOT NULL với FK ghép `(tenant_id, owning_workspace_id)` tới `platform.workspaces`
       ON DELETE RESTRICT trên `uq_workspaces_tenant_id_id` của org-and-principals/01, index danh sách), UNIQUE
       `(tenant_id, id)` (`uq_connections_tenant_id_id`) làm đích của FK ghép từ `secret_envelopes`, tạo trước FK
@@ -46,15 +48,18 @@ B8a-connections connections-and-vault 03 và 04.
    `app.tenant_id` (không nhận tham số công ty), EXECUTE cho `dw_app`; `platform.put_secret` ghi giá trị mới
    của (chủ thể, trường) thành một dòng mới, không sửa bản mã của dòng cũ, với `secret_version` là số kế tiếp mà
    `SecretStore` đã đưa vào AAD trước khi mã hóa (bước 3), nên hai lần ghi đồng thời cùng số thì UNIQUE từ chối
-   lần sau, và trong cùng giao dịch ghi `revoked_at` cho mọi dòng cũ có `revoked_at` NULL của cùng (chủ thể,
-   trường): `now()`, hay `now() + interval '24 hours'` khi `field = 'signing_secret'` (khoảng chồng của lần xoay, như
-   bí mật ký của workflow-triggers/02), một quy tắc trong hàm cho mọi chủ thể, nên ticket thêm chủ thể không sửa nó
-   (spec R1.9; V4.20);
-   `platform.open_secret` mở đúng (chủ thể, trường, `secret_version`) bên gọi nêu, tức phiên bản mà bản kê của lượt
-   ghim (ticket 04 bước 2), và không trả dòng nào khi phiên bản đó có `revoked_at <= now()`, như khi không còn dòng,
-   nên `SecretStore` trả `credential_revoked` khi không có dòng (spec R1.10; đóng khi thiếu);
-   `platform.secret_status` trả `secret_version` và `revoked_at` của từng phiên bản còn dòng của (chủ thể, trường),
-   không trả giá trị; grant cột cho `platform.connections`, cộng DELETE cho `dw_app`, để route xóa của ticket 04 và
+   lần sau, và trong cùng giao dịch, bằng một câu UPDATE, ghi cho mọi dòng cũ có `revoked_at` NULL của cùng (chủ thể,
+   trường) `replaced_at = now()` và `revoked_at` bằng `now()`, hay `now() + interval '24 hours'` khi
+   `field = 'signing_secret'` (khoảng chồng của lần xoay, như bí mật ký của workflow-triggers/02), một quy tắc trong hàm
+   cho mọi chủ thể, nên ticket thêm chủ thể không sửa nó (spec R1.9; V4.20; V4.35);
+   `platform.open_secret(subject, field, secret_version)` với `secret_version` NULL mở phiên bản có `secret_version`
+   lớn nhất của (chủ thể, trường) mà `revoked_at` NULL hay ở tương lai, và với `secret_version` nêu (bộ kiểm chữ ký
+   của workflow-triggers/02 trong khoảng chồng 24 giờ) mở đúng phiên bản đó; trả số phiên bản đã mở cùng bản mã; không
+   trả dòng nào khi phiên bản được chọn có `revoked_at <= now()` hay không còn phiên bản chưa thu hồi nào, như khi không
+   còn dòng, nên `SecretStore` trả `credential_revoked` khi không có dòng (spec R1.10, R1.14; đóng khi thiếu); không lượt
+   chạy nào ghim phiên bản (ADR-0109 (Accepted) quyết 6; V4.35);
+   `platform.secret_status` trả `secret_version`, `revoked_at` và `replaced_at` của từng phiên bản còn dòng của (chủ
+   thể, trường), không trả giá trị; grant cột cho `platform.connections`, cộng DELETE cho `dw_app`, để route xóa của ticket 04 và
    lane `offboarding` xóa Kết nối như bảng thường và FK CASCADE xóa phong bì của nó (bước 6).
 3. `KmsPort`, `LocalDevKms` (HKDF-SHA256 từ `DW_LOCAL_KMS_MASTER_KEY`, AES key wrap); `SecretStore`
    (AES-256-GCM) với AAD
@@ -83,7 +88,7 @@ B8a-connections connections-and-vault 03 và 04.
 
 - [ ] R1.1: ghi một bí mật rồi `open_secret` trả đúng giá trị; phong bì trong database không chứa giá
       trị rõ; ghi giá trị mới cho cùng (chủ thể, trường) → một dòng mới với `secret_version` kế tiếp, bản mã của dòng
-      cũ không đổi, `open_secret` với phiên bản mới trả giá trị mới (phiên bản cũ ở R1.10); chèn trùng
+      cũ không đổi (phiên bản cũ ở R1.10, phiên bản mới ở R1.14); chèn trùng
       (chủ thể, `field`, `secret_version`) → UNIQUE từ chối; `platform.put_secret` với `nonce` hay `ciphertext`
       NULL → lỗi NOT NULL (23502), không dòng nào; gỡ NOT NULL của hai cột trong migration thử → phong bì thiếu bản
       mã được ghi, test đỏ.
@@ -110,18 +115,24 @@ B8a-connections connections-and-vault 03 và 04.
 - [ ] R1.8 (CV23): đặt `app.tenant_id` của công ty A, `platform.put_secret` với `connection_id` của công ty B → lỗi
       khóa ngoại (23503), không dòng nào; xóa một Kết nối → mọi phong bì của nó xóa theo; đổi FK ghép thành FK một
       cột `connection_id` trong migration thử → lần ghi chéo công ty thành công, test đỏ.
-- [ ] R1.9 (CV24): lưu giá trị mới cho `api_key` của một Kết nối → dòng cũ có `revoked_at` bằng `now()` của giao dịch
-      ghi, dòng mới có `revoked_at` NULL; lưu giá trị mới cho trường `signing_secret` → dòng cũ có `revoked_at` bằng
-      `now()` cộng 24 giờ; giao dịch ghi lùi → dòng cũ vẫn `revoked_at` NULL và không dòng mới nào; trường `password`
+- [ ] R1.9 (CV24): lưu giá trị mới cho `api_key` của một Kết nối → dòng cũ có `revoked_at` và `replaced_at` bằng
+      `now()` của giao dịch ghi, dòng mới có cả hai NULL; lưu giá trị mới cho trường `signing_secret` → dòng cũ có
+      `replaced_at` bằng `now()` và `revoked_at` bằng `now()` cộng 24 giờ; giao dịch ghi lùi → dòng cũ vẫn `revoked_at` NULL và không dòng mới nào; trường `password`
       của cùng Kết nối và Kết nối khác không đổi; xoay `signing_secret` lần nữa trước khi 24 giờ của lần đầu hết →
-      phiên bản 1 giữ `revoked_at` của lần đầu, phiên bản 2 nhận `now()` cộng 24 giờ; gỡ bước ghi `revoked_at` khỏi
-      `platform.put_secret` → phiên bản cũ vẫn mở được, hay bỏ điều kiện `revoked_at` NULL khỏi câu ghi → phiên bản 1
-      bị dời hạn, test đỏ.
+      phiên bản 1 giữ `revoked_at` và `replaced_at` của lần đầu, phiên bản 2 nhận `now()` cộng 24 giờ; gỡ bước ghi
+      `revoked_at` khỏi `platform.put_secret` → phiên bản cũ vẫn mở được bằng số của nó, bỏ điều kiện `revoked_at` NULL
+      khỏi câu ghi → phiên bản 1 bị dời hạn, hay gỡ vế `replaced_at` → dòng cũ có `replaced_at` NULL, test đỏ.
 - [ ] R1.10 (CV24): `open_secret` với phiên bản đã thu hồi của ca R1.9 → không dòng, `SecretStore` trả
-      `credential_revoked`, không giá trị rõ; với một `secret_version` chưa từng có → `credential_revoked`; phiên bản
+      `credential_revoked`, không giá trị rõ; với một `secret_version` chưa từng có → `credential_revoked`; mọi phiên
+      bản của một trường đã thu hồi hay đã xóa, `open_secret` không nêu phiên bản → `credential_revoked`; phiên bản
       cũ của `signing_secret` ở ca R1.9 (`revoked_at` ở tương lai) → mở được tới thời điểm đó và `credential_revoked`
-      sau đó; `platform.secret_status` trả `revoked_at` của cả hai phiên bản, không giá trị; gỡ kiểm `revoked_at`
-      khỏi `platform.open_secret` → phiên bản đã thu hồi mở được, test đỏ.
+      sau đó; `platform.secret_status` trả `revoked_at` và `replaced_at` của cả hai phiên bản, không giá trị; gỡ kiểm
+      `revoked_at` khỏi `platform.open_secret` → phiên bản đã thu hồi mở được, test đỏ.
+- [ ] R1.14 (CV24): ba phiên bản của `password` một Kết nối, phiên bản 3 vừa lưu → `open_secret` không nêu phiên bản
+      trả giá trị của phiên bản 3 cùng số 3; đặt `revoked_at` của phiên bản 3 về quá khứ bằng vai migrator trong test
+      (thu hồi vì lộ của ticket 04 chưa có) → `credential_revoked`, không lùi về phiên bản 2 đã bị thay; cho hàm chọn
+      `secret_version` nhỏ nhất, hay bỏ điều kiện `revoked_at` khỏi phép chọn → giá trị của phiên bản 1 hay của phiên
+      bản 3 đã thu hồi được trả, test đỏ.
 - [ ] R2.2 (CV5): `DW_KMS_PROVIDER=local` với profile `uat` → `RuntimeError` lúc khởi động; gỡ
       `validate_for_profile` → test đỏ.
 - [ ] Xong: `make ci && make test-integration` xanh.
@@ -132,7 +143,8 @@ B8a-connections connections-and-vault 03 và 04.
 - `packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:108-114`; spec: R1.6.
 - `packages/python/dw_platform/tests/integration/test_rls_coverage.py:108`; spec: Dữ liệu
   (`_TENANT_WIDE_ON_PURPOSE` theo mẫu `_PRINCIPAL_ONLY_ON_PURPOSE`, DO-01).
-- spec: R1, R2.2, CV1-CV5, CV23, CV24; ADR-0115 (Accepted) quyết 1; si-platform `db/si` không có bảng này (tự dẫn).
+- spec: R1, R2.2, CV1-CV5, CV23, CV24; ADR-0115 (Accepted) quyết 1; ADR-0109 (Accepted) quyết 6 (bản kê không ghim
+  phiên bản bí mật); si-platform `db/si` không có bảng này (tự dẫn).
 - spec: R1.6, Dữ liệu (dòng `STUDIO_EXCLUSIONS` của `platform.secret_envelopes`); studio-skeleton:R4.3.
 
 ## Comments
@@ -184,3 +196,10 @@ B8a-connections connections-and-vault 03 và 04.
   được ghi `revoked_at`, vì "chưa thu hồi" của spec R1.12 gồm cả hạn ở tương lai, nên một lần xoay thứ hai trong 24
   giờ đã dời hạn của bí mật ký cũ nhất quá 24 giờ sau lần xoay của nó (V4.20); tiêu chí R1.9 và CV24 thêm ca xoay hai
   lần và ca bỏ điều kiện đó.
+- 2026-10-25 (agent): lượt h, theo V4.35 của Đạt và H-10: bản kê lượt chạy thôi ghim `secret_version`, nên bước 2
+  cho `platform.open_secret` mở phiên bản lớn nhất chưa thu hồi khi bên gọi không nêu phiên bản và trả số đã mở (spec
+  R1.14), bộ kiểm chữ ký vẫn nêu phiên bản trong khoảng chồng 24 giờ; bước 1 thêm `replaced_at`, mà
+  `platform.put_secret` ghi cùng `revoked_at`, để lane `credential_purge` của ticket 05 xóa phiên bản bị thay 24 giờ sau
+  lần xoay và phiên bản bị thu hồi vì lộ ngay; R1.1 thôi nói `open_secret` với phiên bản mới, R1.9, R1.10 thêm
+  `replaced_at` và ca không còn phiên bản chưa thu hồi, thêm R1.14. Thu hồi vì lộ (`compromised_at`,
+  `platform.revoke_connection_secrets`) ở ticket 04. Không đổi cạnh.

@@ -35,7 +35,7 @@ with the amendments listed under Acceptance; the calls it leaned on are answered
 
 1. **One door, and the queue is the run row.** `RunRequestService.request(RunRequest)` is the only way a Studio run
    starts, for `trigger_kind` `chat`, `manual`, `test`, `agent_node`, `agent_link`, `agent_tool` (a workflow tool),
-   `subworkflow`, `eval`, `replay`, `fork` and the triggers `datahub`, `provider_app`, `schedule`, `record_event`. It
+   `subworkflow`, `eval`, `replay` and the triggers `datahub`, `provider_app`, `schedule`, `record_event`. It
    resolves the version (only the live version runs `live`, and a draft only `simulate`, ADR-0109 decision 6), fixes
    the run mode (ADR-0111), resolves the run-as principal (ADR-0103), builds the run manifest (ADR-0109) and inserts
    the row `queued` `ON CONFLICT (tenant_id, request_key) DO NOTHING`, returning the existing run. The queue is
@@ -55,7 +55,7 @@ with the amendments listed under Acceptance; the calls it leaned on are answered
    `RunControlPort.require_open` (ADR-0120), then `LimitsPort.admit` (ADR-0121). That claim is the one place a Studio
    run is admitted; a child run shares its root's lease and is not admitted again (decision 9). One table keyed by
    `trigger_kind` shapes every refusal, for freezes and limits alike, and gives every kind of decision 1 its row:
-   `chat`, `manual`, `test`, `replay` and `fork` are interactive runs; `datahub`, `provider_app`, `schedule` and
+   `chat`, `manual`, `test` and `replay` are interactive runs; `datahub`, `provider_app`, `schedule` and
    `record_event` are trigger runs; `eval` is an evaluation trial; and a child run (`subworkflow`, `agent_node`,
    `agent_link`, `agent_tool`) is never admitted on its own, so only its root's row applies. From W2 (YC79), missing
    concurrency re-queues every kind with a later `available_at`. A freeze re-queues a trigger run with a later
@@ -93,11 +93,12 @@ with the amendments listed under Acceptance; the calls it leaned on are answered
    waiting runs being cancelled in the database with their open waits and approvals; until then only a kill cancels an
    artifact's waiting runs before their deadline (ADR-0120 decision 7).
 4. **A run waits in place.** Each wait is an `interrupt()` plus a durable `platform.run_waits` row (RLS ENABLE and
-   FORCE; `kind` `approval`, `task`, `timer`, `child_run`, `incident`; `status` `open`, `resolved`, `consumed`,
-   `expired`, `cancelled`; unique `(tenant_id, run_id, interrupt_id)`); several may be open. A decision, a due timer or
-   a child run's end is written in the deciding transaction (the wait `resolved`, the run `queued`):
-   `ApproveAndResumeService` gets a dispatch table of in-transaction decision handlers keyed by approval-type prefix
-   (`studio.step.` to the Studio handler), registered at the composition root like `strict_approval_prefixes` and
+   FORCE; `kind` `approval`, `task`, `timer`, `child_run`, `incident`, `outcome_review`; `status` `open`, `resolved`,
+   `consumed`, `expired`, `cancelled`; unique `(tenant_id, run_id, interrupt_id)`); several may be open. A decision, a
+   due timer, a child run's end or a reconciliation is written in the deciding transaction (the wait `resolved`, the
+   run `queued`): `ApproveAndResumeService` gets a dispatch table of in-transaction decision handlers keyed by
+   approval-type prefix (`studio.step.` to the Studio handler), registered at the composition root like
+   `strict_approval_prefixes` and
    written where the run-less outbox event already is (`approval_flow.py:245`), never the inline resume. Under a
    `human.approval` whose `approval_rule` is `all` (ADR-0112 (Accepted) decision 7) a decision that leaves another
    approval of its wait pending is recorded and resolves nothing, the wait staying `open` and the run `waiting`; the
@@ -112,13 +113,28 @@ with the amendments listed under Acceptance; the calls it leaned on are answered
    refused across tenants and asking `RunControlPort` first as `decide` does (ADR-0120 (Accepted) decision 6), so a
    freeze or a kill refuses it, from the run view that telemetry-and-audit owns. "Chạy tiếp từ Bước lỗi" resolves it as
    a decision resolves a wait (the wait `resolved`, the run `queued`, in one transaction), and the run runs the failed
-   step again under its idempotency key, with the binding set and the secret versions it pinned (ADR-0109 (Accepted)
-   decision 7; tenant-config R7.4-R7.5), so it recovers transient faults only, which the screen says, and the screen
-   shows "kết quả lần trước không rõ" when the failed attempt's outcome is unknown; "Kết thúc" resolves it and ends the
-   run `failed` in the same transaction. `failed` stays terminal: no path leads from it back to `queued`, so the lanes
-   that act on finished runs (the secret versions no unfinished run pins, ADR-0115 (Accepted) decision 1; checkpoints
-   deleted after a run ends, ADR-0112 decision 10; the budget lease returned, ADR-0121 (Accepted)) never see one come
-   back.
+   step again under its idempotency key, with the binding set it pinned (ADR-0109 (Accepted) decision 7) and, at each
+   egress call, the latest unrevoked secret version of the connection, which the call records (V4.35; ADR-0109
+   decision 6), so it recovers a transient fault or a secret rotated since, never a binding approved since, which the
+   screen says, and the screen shows "kết quả lần trước không rõ" when the failed attempt's outcome is unknown; "Kết
+   thúc" resolves it and ends the run `failed` in the same transaction. `failed` stays terminal: no path leads from it
+   back to `queued`, so the lanes that act on finished runs (checkpoints deleted after a run ends, ADR-0112 decision
+   10; the budget lease returned, ADR-0121 (Accepted)) never see one come back. An `outcome_review` wait (V4.30) holds
+   the step of a run whose outbound call ended `outcome_unknown` (ADR-0112 decision 5; for a step inside a parallel
+   lane, ADR-0112 Open 6), with no new run status: the run turns `waiting` on it, and the run history shows "Không rõ
+   nhà cung cấp đã nhận hay chưa" with `reason_code` `outcome_unknown`. A route of workflow-engine's resolves it
+   under the key `runs.reconcile`, which workflow-engine registers in tenant-rbac's catalogue, `tenant_grantable`,
+   high-risk and held by default by `tenant_owner` alone (H-8), audited, refused across tenants and asking
+   `RunControlPort` first as the incident route does; its holder chooses "Đã nhận" (the execution recorded
+   `succeeded` with the evidence they give), "Chưa nhận, gửi lại cùng khóa" (the step sends again under its key) or
+   "Bỏ" (the step fails and follows its `on_error`), each resolving the wait
+   and re-queuing the run in one transaction, as a decision does, and for an effect whose `side_effect_level` is
+   `critical` the person who resolves it is not the run's requester (D11). W1 has no `studio_reconcile` lane
+   resolving one through the Action's lookup (H-5). A run still waiting on one at its `deadline_at` ends as every
+   overdue run does (decision 3): the execution row keeps `outcome_unknown`, the lane that ends the run audits
+   `run.effect_unresolved` as itself (ADR-0011), and the run history shows the step "Không rõ nhà cung cấp đã nhận
+   hay chưa, chưa ai xác nhận" for good (H-6). A kill or a freeze records a call in flight by its typed outcome
+   (ADR-0120 (Accepted) decision 7).
 5. **Triggers request runs and never start them.** When a version becomes live, its triggers are materialised as
    `studio.trigger_subscriptions` rows (`datahub`, `provider_app`, `schedule`, `record_event`, `agent_tool`), and the
    previous live version's rows retire in the same transaction: the `workflow` kind's publish hook (ADR-0109
@@ -162,7 +178,9 @@ with the amendments listed under Acceptance; the calls it leaned on are answered
 9. **Child runs.** A sub-workflow, a workflow tool, a linked agent and an agent node start a child run through the same
    door. The child shares the root's run-as principal, budget lease and limits; depth is at most 3 and cycles are
    refused at submit; run taint flows both ways; its run mode is never less safe than its parent's; a child waiting
-   for a person reports `waiting`, never success. Only root runs count toward runs per day (ADR-0121).
+   for a person reports `waiting`, never success. Only root runs count toward runs per day (ADR-0121). A
+   `flow.subworkflow` step, in the W1 tail (V4.33, YC117), runs the child version pinned at submit (ADR-0109 decision 9) and parks its parent `waiting` on a `child_run` wait (decision 4) until the child ends; a parent cancelled by any
+   path stops every child run below it within 5 seconds (YC45, YC117).
 10. **Chat runs in the worker.** A conversation turn is a run of trigger kind `chat` requested through the door and
     executed by the worker; the client polls in P1, and streaming arrives in P2 over an ephemeral Valkey relay that is
     never the source of truth. The API never executes an agent inline.
@@ -211,7 +229,12 @@ with the amendments listed under Acceptance; the calls it leaned on are answered
   `datahub` run held `queued` under `binding_needs_review` until the binding is approved again, then started; an
   incident resumed running its failed step again under the same key, and one ended leaving the run `failed`, each in
   the deciding transaction; no write moving a run from `failed` back to `queued`; the incident route refused for
-  another tenant's run.
+  another tenant's run; an `outcome_review` wait resolved by each of its three choices in the deciding transaction,
+  and the reconcile route refused without `runs.reconcile`, for another tenant's run, under a freeze, and to the run's
+  requester when the effect is `critical`; a run reaching its deadline on an unresolved effect audited
+  `run.effect_unresolved`, its execution row still `outcome_unknown`; an incident resumed after its connection's
+  secret was rotated calling with the new version; a parent cancelled stopping each of its child runs within
+  5 seconds.
 - Harder: every new start path must go through the door; each linked-agent call pays queue latency; P1 has no token
   streaming.
 - Reinforces `CLAUDE.md:260-265`, whose port becomes `LimitsPort` with ADR-0121. Follows
@@ -328,3 +351,20 @@ Amended by Đạt on 2026-10-24, who accepted every recommendation the second co
   org-and-principals brings that route into W1 and the notice names them so again). Decision 4 also says that under an
   `approval_rule` of `all` (ADR-0112 decision 7) a decision before the last approval or the first rejection is recorded
   and resolves no wait, which its "the wait `resolved`, the run `queued`" had left unsaid.
+
+## Amendments (2026-10-25)
+
+- Third consistency check (round 4), eighth pass, Đạt's V4.30, V4.33 and V4.35 with the planner's calls H-5, H-6,
+  H-8 and H-13: decision 4's `platform.run_waits.kind` gains `outcome_review`, on which a run whose outbound call
+  ended `outcome_unknown` waits, with no new run status, for a holder of the new key `runs.reconcile` to choose "Đã
+  nhận", "Chưa nhận, gửi lại cùng khóa" or "Bỏ" in the deciding transaction, the resolver of a `critical` effect not
+  being the run's requester, a run still waiting at its deadline ending as decision 3 says with `run.effect_unresolved`
+  audited and the execution row kept `outcome_unknown`, and no `studio_reconcile` lane in W1 (V4.30, H-5, H-6, H-8);
+  "Chạy tiếp từ Bước lỗi" keeps the binding set it pinned and calls with the latest unrevoked secret version, where it
+  kept the secret versions it pinned, and the lanes that rely on `failed` staying terminal no longer include a
+  secret-version lane, which the seventh pass's line above still names, since no run pins a secret version (V4.35);
+  decision 9 adds the W1 tail's `flow.subworkflow` step, parked on its pinned child, and a parent's cancellation
+  stopping every child run within 5 seconds (V4.33); decisions 1 and 3 drop `fork` from the trigger kinds and from the
+  refusal table, where a 2026-10-24 line above shaped it as an interactive run, since Fork from a step is dropped and
+  its W2 replacement, "Chạy lại mô phỏng", is a new `simulate` run of the same pinned version with the same input
+  (H-13); Consequences add the tests of these rules.

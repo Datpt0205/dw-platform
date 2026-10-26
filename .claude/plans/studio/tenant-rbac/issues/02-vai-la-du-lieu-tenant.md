@@ -3,13 +3,15 @@
 Status: needs-triage
 Blocked by: 01, .claude/plans/studio/org-and-principals/issues/02-thanh-vien-cap-tenant.md, .claude/plans/studio/foundations-hardening/issues/02-hang-rao-du-lieu-va-danh-tinh.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md, .claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md
 Area: studio
-Yêu cầu: R2.2, R2.3, R2.4, R2.5, R2.6, R2.7, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R4.1, R4.2, R5.1, R5.2, G1, RB5, RB6, RB7, RB8, RB9, RB10, RB11, RB12, RB13, RB14, RB34
+Yêu cầu: R2.2, R2.3, R2.4, R2.5, R2.6, R2.7, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R3.9, R3.10, R3.11, R3.12, R3.13, R4.1, R4.2, R5.1, R5.2, G1, RB5, RB6, RB7, RB8, RB9, RB10, RB11, RB12, RB13, RB14, RB34, RB37, RB38, RB39, RB40
 
 ## Mục tiêu
 
 Vai trò thành dữ liệu của tenant, gán theo membership, và một hàm PostgreSQL trả quyền hiệu lực cho mọi đường đọc (R2,
 R3); thay đổi quyền có hiệu lực từ request đầu tiên nhờ phiên bản quyền trong khóa cache (R4); tách nhiệm đọc quyền hiệu
-lực (R5.1, R5.2). Gộp từ brief B3 ticket 04, 05, 07. DO-09.1 và DO-32.2 đã quyết theo khuyến nghị (a) (Đạt, 23/10/2026);
+lực (R5.1, R5.2). Công ty ra đời với hai chủ sở hữu, ở `setup` tới khi người thứ hai `active`, và người vận hành hay
+nhân viên `support_staff` không bao giờ giữ quyền chủ trong công ty của khách (R3.1, R3.9-R3.13; V4.38, H-15). Gộp từ
+brief B3 ticket 04, 05, 07. DO-09.1 và DO-32.2 đã quyết theo khuyến nghị (a) (Đạt, 23/10/2026);
 xóa cache ở route khóa của foundations-hardening/02 là tạm và ticket này gỡ nó (`A:foundations-hardening:R3.3~tenant-rbac:R4.1`).
 
 ## Việc cần làm
@@ -55,7 +57,7 @@ xóa cache ở route khóa của foundations-hardening/02 là tạm và ticket n
    tính động) và `member` (`is_system`, quyền nhân bản từ mẫu `member`). `platform.install_role_template(p_tenant_id uuid, p_template_key text) RETURNS uuid`:
    nhân bản `platform.roles` (loại `role`) hay `platform.permission_sets` (loại `permission_set`), mức theo `scope_kind`
    (`workspace` cho khóa `workspace`, `tenant` cho khóa `tenant`); mẫu sửa về sau không chạm bản đã nhân bản (R3.2), không
-   đọc rơi về mẫu. `POST /api/v1/platform/tenants` gọi `install_system_roles` trong giao dịch tạo tenant;
+   đọc rơi về mẫu. `POST /api/v1/platform/tenants` gọi `install_system_roles` trong giao dịch tạo tenant (bước 16);
    `POST /api/v1/platform/tenants/{tenant_id}/org-admins` gán `tenant_owner` ở workspace `main` thay cho `org_admin`.
 7. **Quyền hiệu lực** (ADR-0104 (Accepted) mục 5): `platform.effective_grants(p_tenant_id uuid, p_user_id uuid)` trả
    `(permission_key, depth, anchor_workspace_id, role_id)`; SQL, STABLE, SECURITY INVOKER; chỉ tính tenant `active`,
@@ -117,6 +119,51 @@ xóa cache ở route khóa của foundations-hardening/02 là tạm và ticket n
     vào `STUDIO_EXCLUSIONS` với lý do "một dòng đếm mỗi tenant giữ có chủ ý, không mang dữ liệu của tenant; dòng
     `platform.tenants` của tenant đã offboard còn ở `offboarded` nên dòng đếm còn theo", như `studio.access_epochs` của
     record-access (Quyết định 24/10/2026 của spec).
+16. **Hai chủ sở hữu khi tạo công ty** (R3.1, R3.9-R3.11; V4.38). Revision (id hex của `alembic revision`):
+    - `ck_tenants_status` thay bằng `CHECK (status IN ('setup', 'active', 'locked', 'offboarding', 'offboarded'))`
+      (`db/migrations/versions/5d9d89ffc716_tenant_offboarding_requests.py:79-80`); trigger trạng thái của
+      foundations-hardening/02 (`foundations-hardening:R3.2`) giữ nguyên. Một trigger BEFORE UPDATE OF `status` trên
+      `platform.tenants` từ chối với SQLSTATE 23514 mọi bước vào `setup` từ trạng thái khác, vì `setup` chỉ có lúc tạo;
+      bước rời `setup` sang trạng thái khác `active` chờ Q2 của spec và ticket này không mở nó.
+    - Luật chuyển (R3.10): `platform.complete_tenant_setup()` SECURITY DEFINER, `search_path` ghim, gắn AFTER UPDATE OF
+      `status` trên `platform.tenant_members` khi `NEW.status = 'active'` và `OLD.status <> 'active'`: khi
+      `platform.tenants.status` của dòng là `setup` và số thành viên công ty `active` có gán `tenant_owner` (đếm trên
+      `platform.role_assignments` nối `platform.tenant_members`, không qua `platform.effective_grants`, vốn chỉ tính tenant
+      `active`) lên hai, đặt `status = 'active'` trong cùng giao dịch và ghi audit `platform.tenant.setup_completed` đứng
+      tên người vừa `active`, `details` là id hai chủ sở hữu, nhãn tiếng Việt của hành động vào mảnh
+      `configs/copy/audit_actions.d/tenant-rbac.yaml` trong cùng thay đổi (H-21). Lần đăng nhập đầu của chủ sở hữu (`_resolve_user`, mà
+      org-and-principals/02 cho đổi `invited` sang `active`, org-and-principals:R4.5) là đường kích hoạt; cửa
+      AccessContext từ chối công ty không `active` ở mọi route (ADR-0102 (Accepted) quyết 6), nên đường đó trong `setup`
+      chờ Q1 của spec, còn test của luật chuyển chạy trên lệnh UPDATE của `platform.tenant_members`.
+    - Người vận hành và `support_staff` (R3.11): `platform.guard_operator_tenant_grants()`, trigger BEFORE INSERT, UPDATE
+      trên `platform.role_assignments` (người được gán có dòng `platform.platform_operators` hay `platform.support_staff`, và
+      vai trò là `tenant_owner` hay có `studio.publish.approve` hay `platform.roles.write` trong
+      `platform.tenant_role_permissions`), trên `platform.tenant_role_permissions` (thêm một trong hai khóa vào vai trò
+      đang gán cho người như vậy), và BEFORE INSERT trên `platform.platform_operators`, `platform.support_staff` (người
+      đang giữ một trong ba quyền đó ở một tenant); SQLSTATE 23514, ràng buộc `ck_role_assignments_operator_not_owner`,
+      áp cho mọi vai kể cả `dw_provisioner`, `dw_migrator`. Tên vai trò và hai khóa sống ở một chỗ, hàm này; test so
+      hai khóa với danh mục khi chúng đã đăng ký. Đường vượt `platform_admin` của G2 chờ Q3 của spec.
+    - `POST /api/v1/platform/tenants` (`apps/api/src/dw_api/routes/v1/platform.py:154-166`): thân thêm `owners`, mảng
+      đúng hai email khác nhau sau khi chuẩn hóa chữ thường; sai thì 422 `validation_failed`, không ghi gì (R3.9). Một
+      giao dịch: tenant `setup`, `install_system_roles`, và với mỗi chủ sở hữu, theo đường mời hiện có, người dùng (có rồi
+      thì dùng lại; chưa có thì `subject` `invite:`), thành viên công ty `invited`, membership ở `main` và gán
+      `tenant_owner` như R3.8. Đối tác của khách (người ngoài công ty khách) đi cùng đường như mọi thành viên. Trigger của
+      R3.11 từ chối → 409 `conflict` với `details.reason_code` `operator_not_assignable`, không ghi gì; route
+      `.../org-admins` trả cùng mã. Phản hồi có `status`.
+    - Migration chuyển dữ liệu (bước 13) không đổi tenant đã có sang `setup`; danh sách tenant dưới hai chủ sở hữu mà nó
+      in ra vẫn là việc của người vận hành.
+17. **Dưới hai người** (R3.12, R3.13; H-15). `platform.tenants.owner_coverage_low_since timestamptz NULL`. Trigger AFTER
+    INSERT, UPDATE, DELETE theo câu lệnh (bảng chuyển tiếp) trên `platform.role_assignments`,
+    `platform.tenant_role_permissions`, `platform.tenant_roles`, `platform.tenant_members` gọi
+    `platform.check_owner_coverage(p_tenant_id)` một lần cho mỗi tenant của câu lệnh: với tenant `active`, đếm người
+    `active` giữ `studio.publish.approve` và người `active` giữ `platform.roles.write` trên `platform.effective_grants`;
+    một trong hai số dưới hai mà cột NULL → đặt cột bằng `now()` và ghi outbox `platform.tenant.owner_coverage_low`
+    (`tenant_id`, khóa nào dưới hai) cùng giao dịch; cả hai từ hai trở lên mà cột khác NULL → đặt NULL. Handler của sự
+    kiện, đăng ký ở composition root của worker, gửi qua dịch vụ thông báo của nền tảng
+    (`packages/python/dw_platform/src/dw_platform/application/notifications.py`) một thông báo cho mỗi người giữ
+    `platform.members.write` ở độ sâu công ty, như `workflow-engine:R5.20`. `GET /api/v1/platform/tenants` trả
+    `owner_coverage_low_since` cạnh `status`; `apps/web/app/platform/page.tsx` có bộ lọc "Đang thiết lập" (`setup`) và
+    "Dưới hai người", antd `Table` và `Tag`. Số đo của trigger trên tenant 5.000 người ghi ở Comments cùng số đo FOG-38.
 
 ## Tiêu chí chấp nhận
 
@@ -127,7 +174,13 @@ xóa cache ở route khóa của foundations-hardening/02 là tạm và ticket n
 - [ ] R2.5 (RB7): qua đường SQL, `platform.effective_grants` của thành viên `suspended`, tenant `locked`, vai trò xóa mềm, gán quá `expires_at` → khóa vắng, và `scope_holders.py` không còn bộ lọc riêng mà vẫn không trả người đó; gỡ từng điều kiện trong hàm → đỏ.
 - [ ] R2.6: Vitest: nav và trang admin đọc `/me` giả; grep không còn chuỗi `platform_admin` trong `apps/web` ngoài test; bootstrap không còn `roles`, `scopes`.
 - [ ] R2.7 (RB34): migration thử đăng ký một khóa `active` có `tenant_grantable` sau khi gán `tenant_owner` → `platform.effective_grants` và `/me` của người đó có khóa ở mức `tenant`, `platform.tenant_role_permissions` không có dòng nào cho `tenant_owner`; `platform.admin` (`tenant_grantable` sai) và một khóa `retired` vắng; bỏ điều kiện `tenant_grantable` hay `status` khỏi quyền tính động ở bước 7 → test đỏ.
-- [ ] R3.1: `POST /api/v1/platform/tenants` → tenant mới có đúng `tenant_owner` và `member`, `is_system`; lỗi giữa giao dịch → không có tenant lẫn vai trò.
+- [ ] R3.1 (RB37): `POST /api/v1/platform/tenants` với hai chủ sở hữu → tenant mới ở `setup`, có đúng `tenant_owner` và `member`, `is_system`, hai thành viên công ty `invited` mỗi người giữ `tenant_owner` ở `main`; lỗi giữa giao dịch → không có tenant, vai trò hay thành viên; `ck_tenants_status` thiếu `setup` → INSERT từ chối, test đỏ.
+- [ ] R3.1: UPDATE một tenant `active` sang `setup` dưới `dw_provisioner` → 23514, trạng thái giữ; gỡ trigger → test đỏ.
+- [ ] R3.9 (RB37): một chủ sở hữu, ba, hay hai email chỉ khác hoa thường → 422 `validation_failed`, 0 dòng `platform.tenants`; bỏ kiểm → ca một chủ sở hữu được nhận, test đỏ.
+- [ ] R3.10 (RB38): kích hoạt chủ sở hữu thứ nhất bằng UPDATE `platform.tenant_members` → tenant giữ `setup`; kích hoạt người thứ hai → tenant `active` và một audit `platform.tenant.setup_completed` trong cùng giao dịch; lùi giao dịch đó → tenant `setup`, không audit; thành viên `active` không giữ `tenant_owner` → tenant giữ `setup`; gỡ trigger → test đỏ.
+- [ ] R3.11 (RB39): dưới `dw_provisioner` và `dw_migrator`, gán `tenant_owner` cho người vận hành → 23514; `POST /api/v1/platform/tenants` với email của một nhân viên `support_staff` làm chủ sở hữu → 409 `operator_not_assignable`, 0 dòng; thêm `studio.publish.approve` hay `platform.roles.write` (khóa thử nếu cụm chủ chưa đăng ký) vào vai trò đang gán cho người vận hành → 23514; INSERT `platform.platform_operators` cho một `tenant_owner` → 23514; đối tác ngoài công ty khách làm chủ sở hữu thứ hai → nhận; gỡ trigger hay bỏ nhánh `platform.support_staff` → test đỏ.
+- [ ] R3.12 (RB40): tenant `active` với hai người giữ `platform.roles.write`; gỡ gán của một người → đúng một thông báo cho mỗi người giữ `platform.members.write` ở độ sâu công ty, `owner_coverage_low_since` có giá trị; gỡ thêm một gán → không thông báo thứ hai; gán lại cho hai người → cột về NULL; xuống lần nữa → một thông báo mới; bỏ kiểm cột trước khi ghi outbox → thông báo thứ hai, test đỏ.
+- [ ] R3.13 (RB40): `GET /api/v1/platform/tenants` trả `status` `setup` cho tenant mới và `owner_coverage_low_since` cho tenant dưới hai người; Vitest: màn `apps/web/app/platform` lọc "Đang thiết lập" và "Dưới hai người" trên dữ liệu giả.
 - [ ] R3.2 (RB10): migration thử sửa mẫu `approver` → vai trò `approver` đã nhân bản giữ nguyên quyền và mức.
 - [ ] R3.3 (RB8): kết nối `app.tenant_id` A đọc vai trò, quyền, gán của B → 0 dòng; INSERT gán với `role_id` của B → FK kép từ chối; kết nối không đặt tenant → 0 dòng.
 - [ ] R3.4 (RB9): `platform.roles.write` mức `workspace` → 23514; khóa `workspace` mức `own` → 23514; gỡ trigger → đỏ.
@@ -152,11 +205,15 @@ xóa cache ở route khóa của foundations-hardening/02 là tạm và ticket n
 - `apps/api/src/dw_api/routes/v1/me.py:27-38`; spec: R2.6.
 - `apps/web/lib/session.ts:177-181`; spec: R2.6.
 - `apps/api/src/dw_api/routes/v1/platform.py:257`; spec: R3.8.
+- `apps/api/src/dw_api/routes/v1/platform.py:154-166`, `apps/api/src/dw_api/routes/v1/platform.py:26-34`; spec: R3.1, R3.9, R3.13.
+- `db/migrations/versions/5d9d89ffc716_tenant_offboarding_requests.py:79-80`; spec: R3.1.
+- `db/migrations/sql/0001_platform_baseline.sql:340-345`, `db/migrations/versions/af8ee878b4ab_platform_support_staff_and_support_.py:195`; spec: R3.11.
+- `packages/python/dw_platform/src/dw_platform/application/notifications.py:40`; spec: R3.12.
 - `apps/api/src/dw_api/routes/v1/platform.py:189-232`; spec: R4.1 (route khóa, mở khóa, offboard).
 - `db/migrations/versions/f381f1694395_platform_sod_waiver_second_person_and_.py:55-58`; spec: R5.1.
 - `packages/python/dw_platform/tests/integration/test_separation_of_duties.py:278-282`; spec: R5.1.
 - `packages/python/dw_platform/tests/integration/test_rls_coverage.py:44-59`; spec: Hiện trạng (lớp bảng toàn tenant).
-- ADR-0104 (Accepted) mục 2, 3, 5, 7, 9; ADR-0012 (Accepted); brief B3 mục 1.2-1.7.
+- ADR-0104 (Accepted) mục 2, 3, 5, 7, 9, 10; ADR-0012 (Accepted); ADR-0024 (Proposed) quyết 6; brief B3 mục 1.2-1.7.
 
 ## Comments
 
@@ -167,3 +224,8 @@ xóa cache ở route khóa của foundations-hardening/02 là tạm và ticket n
 - 2026-10-24 (agent): vòng sửa 4, lượt ba: luật quyền tính động của `tenant_owner` ở bước 7 là tiêu chí R2.7 của spec với kiểm soát RB34; dòng `Yêu cầu:` và một tiêu chí chấp nhận thêm theo, bước 7 không đổi (Quyết định 24/10/2026 của spec).
 - 2026-10-24 (agent): vòng sửa 4, lượt bốn: bước 3 đổi index `(tenant_id, permission_key)` thành `(permission_key, tenant_id)`, để FK `permission_key` tới `platform.permissions` có index dẫn bằng cột của nó (CLAUDE.md, Data model rules; Quyết định 24/10/2026 của spec).
 - 2026-10-24 (agent): bước 15 thôi nói offboarding xóa `platform.tenant_access_versions`, vì `dw_app` chỉ SELECT trên bảng đó (bước 9) và lane offboarding chỉ xóa bảng mà `dw_app` có DELETE; dòng đếm được xuất, giữ có chủ ý và vào `STUDIO_EXCLUSIONS` kèm lý do, như `studio.access_epochs` của record-access (CLAUDE.md, Data model rules; Quyết định 24/10/2026 của spec).
+- 2026-10-25 (agent): lượt h, theo V4.38 của Đạt và H-15 cùng các dòng tạm cùng ngày của spec: bước 16 (hai chủ sở hữu,
+  `setup` trong `ck_tenants_status`, luật chuyển trên `platform.tenant_members`, trigger cho người vận hành và
+  `support_staff`) và bước 17 (cảnh báo dưới hai người, cột và màn vận hành); tiêu chí R3.1 viết lại, thêm R3.9-R3.13 và
+  RB37-RB40. Đường kích hoạt qua đăng nhập đầu khi công ty còn `setup` chờ Q1, bước rời `setup` khác `active` chờ Q2,
+  đường vượt `platform_admin` chờ Q3. Không thêm cạnh Blocked by: org-and-principals/02 đã là tổ tiên.

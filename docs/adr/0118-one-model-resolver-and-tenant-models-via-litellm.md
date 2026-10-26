@@ -53,12 +53,14 @@ repository root. External facts were gathered by the Studio research on 2026-10-
 purpose) -> ResolvedRoute` serves `StudioModelSelection`, `LimitsMiddleware` (ADR-0121),
    `LangchainUsageMeter`, `RoutingModelGateway` (structured calls), compaction and evaluation judges.
    A `ResolvedRoute` names the profile id and version, provider family, model, `endpoint_kind` (the
-   platform-paid gateway or the model proxy), `model_connection_id`, `secret_version`, `payer`,
+   platform-paid gateway or the model proxy), `model_connection_id`, `payer`,
    `data_location`, `processor`, model capabilities and a price reference. Order: the tenant layer
    (tenant configuration versions of kind `model_profile`, ADR-0110), then a platform profile only when
    `platform.plan_model_profiles (plan_id, profile_id)` lists it for the tenant's plan; never another
    tenant; no answer refuses with `model_profile_unavailable`. The answer is pinned at admission in the
-   run manifest (ADR-0109); the residency gate (ADR-0123) runs before content leaves, and a profile the
+   run manifest (ADR-0109) with no secret version: each call takes the latest version of the model
+   connection's key that is not revoked, as every call through a connection does (ADR-0115 (Accepted)
+   decision 1, V4.35); the residency gate (ADR-0123) runs before content leaves, and a profile the
    effective route class forbids is refused at submit and at admission.
 2. **ModelProfile v2, in one change** (`model/profiles.py`): a `version`; per route the model
    capabilities plus `data_location`, `processor`, `retention_days` and `no_training` with no defaults;
@@ -223,3 +225,15 @@ open:
   `connection_id` is a composite foreign key to `platform.connections (tenant_id, id)`, because a foreign
   key check does not pass through RLS and a one-column key would let a model connection point at another
   tenant's connection.
+
+## Amendments (2026-10-25)
+
+Amended by Đạt on 2026-10-25, who accepted the recommendation on each of the twelve decisions owed
+(V4.30-V4.41), eleven from the answer to ChatGPT's architecture review and one on a builder's read
+of simulated runs, applied with the planner's provisional calls H-1-H-18:
+
+- Third consistency check (round 4), eighth pass, Đạt's V4.35: decision 1's `ResolvedRoute`, which
+  the run manifest pins at admission, no longer names a `secret_version`: each call takes the latest
+  version of the model connection's key that is not revoked, as every call through a connection does
+  (ADR-0115 (Accepted) decision 1), and a revocation for compromise stops the run at its next model
+  call through decision 3's `connection_usable`.

@@ -50,9 +50,10 @@ through this ADR's `LimitsPort`, was accepted with it.
    `eval_offline` (DO-21.4); `GET /api/v1/runs/{run_id}/usage`; and the `usage_rollup` lane feeding
    `platform.usage_daily`, `GET /api/v1/usage/summary` and the usage dashboard. The operator
    reconciliation aggregate `platform.usage_provider_daily(day)` (SECURITY DEFINER, by provider and
-   model, no tenant ids) and cost per workflow outcome over the runs of one `root_run_id` (which needs
-   an outcome event no spec emits yet; fees a tenant pays a provider directly, such as ZNS on its own
-   account, stay outside it) are not readers until a ticket ships each with its consumer (DO-21.1).
+   model, no tenant ids) and cost per workflow outcome over the runs of one `root_run_id` (whose
+   source, the outcomes each run records in `platform.worker_runs.outcomes`, exists from W1 (H-14);
+   fees a tenant pays a provider directly, such as ZNS on its own account, stay outside it) are not
+   readers until a ticket ships each with its consumer (DO-21.1).
 3. **One price book.** `configs/pricing/price_book@<semver>.yaml`, pinned in the release manifest,
    prices every metered operation by effective-dated entries per provider, model and usage type,
    cache state, code sandbox time by profile (reserved vCPU and GB times wall time, ADR 0119) and
@@ -99,7 +100,7 @@ through this ADR's `LimitsPort`, was accepted with it.
    lane claims the run (ADR 0113 decision 3); no API dependency answers 429 for a Studio run, and
    429 stays only on the old inline path (`langgraph_runner.py:246-264`). From W2 (YC79), missing
    concurrency re-queues every kind. A spent window ends an interactive run (`chat`, `manual`,
-   `test`, `replay`, `fork`; ADR 0113 decision 3) `failed` with
+   `test`, `replay`; ADR 0113 decision 3) `failed` with
    `details.reason_code = limit_exceeded`, the metric, scope, window and `resets_at`; holds a
    `datahub`, `provider_app` or `record_event` run `queued` until `resets_at` or a raised limit,
    never dropped; records a `schedule` fire (W2) as `limit_refused` and skips it instead of holding
@@ -169,8 +170,9 @@ through this ADR's `LimitsPort`, was accepted with it.
   exhausted month; model profiles change shape; `test_only_the_platform_lanes_are_wired` changes;
   offboarding exports the ledger and then purges it with the rest of the tenant's Studio data
   (YC6); its `user_id` is personal data, so erasing it on a data subject's request still needs
-  counsel's decision (DO-52, ADR 0122). `usage-and-limits` lands before any deployed Studio run is
-  admitted.
+  counsel's decision (DO-52, ADR 0122). The hard limits at the run door (YC77-YC78) land before the
+  first effect at every profile, gate E1 (V4.31), and the rest of `usage-and-limits` before any
+  deployed Studio run is admitted.
 - The pruning lane of decision 5 reads its terms from the retention policy (ADR 0122):
   `platform.budget_counters` 13 months (395 days) after a window ends and `platform.budget_leases`
   30 days after close, provisional and UNVERIFIED like every term there. A limit whose workspace,
@@ -290,3 +292,18 @@ open, with the D11 cases scoped by the requester and Đạt:
   foreign keys to their targets' `UNIQUE (tenant_id, id)`, as usage-and-limits states them, because a
   foreign key check does not pass through RLS and a one-column key would let one tenant's limit name
   another tenant's workspace or artifact (`CLAUDE.md`, Data model rules).
+
+## Amendments (2026-10-25)
+
+Amended by Đạt on 2026-10-25, who accepted the recommendation on each of the twelve decisions owed
+(V4.30-V4.41), eleven from the answer to ChatGPT's architecture review and one on a builder's read
+of simulated runs, applied with the planner's provisional calls H-1-H-18:
+
+- Third consistency check (round 4), eighth pass, Đạt's V4.31, V4.36 and V4.37 and the planner's
+  provisional calls H-13 and H-14: decision 2's cost per workflow outcome gains its source, the
+  outcomes a run records from W1, and still waits for a ticket that ships it with its consumer;
+  decision 6's interactive runs drop `fork`, "Chạy tách từ bước" having gone; Consequences hold the
+  hard limits at the run door to gate E1, before the first effect at every profile, where they said
+  only "before any deployed Studio run" (if H-14 is wrong, `outcomes[]` leaves the W1 schema and
+  decision 2's cost per outcome is again without a source; if H-13 is wrong, Fork stays in W2
+  running `simulate` only and `fork` returns to decision 6's list).

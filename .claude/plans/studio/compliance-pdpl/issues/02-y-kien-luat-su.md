@@ -27,7 +27,7 @@ xử lý mà ticket 03, 04, 06 chờ, và trả lời Q1, Q2 của spec.
       nhạy cảm? (Câu trả lời chỉ đổi `pd_category` của trường thí điểm qua một phiên bản `dw.object/v1` mới.)
     - DO-48: cùng một Page hay OA do hai công ty nối thì sự kiện tới cả hai; hai lần cấp quyền OAuth đó có đủ
       căn cứ xử lý cho cả hai công ty không? (Không bật định tuyến sự kiện nhà cung cấp ở W2 trước lời đáp.)
-    - DO-52: thời hạn tạm UNVERIFIED trong tệp chính sách retention (Bước chạy và sự kiện vào 30
+    - DO-52: thời hạn tạm UNVERIFIED trong các mảnh retention `configs/policies/retention.d/` (Bước chạy và sự kiện vào 30
       ngày, Bản ghi đồng ý theo quan hệ cộng 5 năm, Danh sách chặn gửi suốt quan hệ, nhật ký gửi 13 tháng,
       hội thoại 90 ngày, bộ đếm hạn mức 13 tháng; số tạm của Đạt ngày 24/10/2026) và xóa `user_id` ở Sổ sử dụng
       theo yêu cầu của chủ thể.
@@ -37,6 +37,10 @@ xử lý mà ticket 03, 04, 06 chờ, và trả lời Q1, Q2 của spec.
       có đủ không?
     - DO-51: nội dung thông báo xử lý cho lead khi công ty bật Ghi nội dung, và thông báo cho nhân viên trước
       khi quản trị viên xem sử dụng theo tên người.
+    - V4.39 (tin giao dịch): căn cứ xử lý cho tin giao dịch (ví dụ đơn hàng gửi nhà cung cấp) theo Luật 91/2025/QH15
+      và Nghị định 356 là gì, có cần Bản ghi đồng ý không, và người nhận có quyền từ chối tin giao dịch không?
+      (Tới khi có lời đáp: luật `transactional` dưới Sàn gửi tin ở W2, ADR-0124 (Accepted) quyết 8 và Open 6; giá
+      trị `transactional` của mục đích đồng ý không có ở W1, H-29.)
 2. Đính kèm sơ đồ luồng dữ liệu lát Marketing (nguồn lead, chấm điểm, tạo bản ghi, gửi tin).
 3. Nhận ý kiến bằng văn bản; ghi từng câu trả lời và ngày vào Comments.
 4. Chuyển mỗi câu trả lời vào ADR liên quan (ADR-0123 (Accepted), ADR-0124 (Accepted), ADR-0106 (Accepted),
@@ -44,7 +48,7 @@ xử lý mà ticket 03, 04, 06 chờ, và trả lời Q1, Q2 của spec.
 
 ## Tiêu chí chấp nhận
 
-- [ ] Mỗi câu (DO-53, DO-54, DO-55, DO-60, DO-34, DO-48, DO-52, DO-35, DO-56, DO-51) có câu trả lời bằng văn bản
+- [ ] Mỗi câu (DO-53, DO-54, DO-55, DO-60, DO-34, DO-48, DO-52, DO-35, DO-56, DO-51, V4.39) có câu trả lời bằng văn bản
       hoặc "chưa có hướng dẫn" kèm ngày, ghi ở Comments.
 - [ ] Mỗi câu trả lời được chuyển vào ADR liên quan hoặc dòng Quyết định của spec, kèm ngày.
 - [ ] Xong: `python -I scripts/check_plans.py --advisory --path .claude/plans/studio/compliance-pdpl` xanh.
@@ -63,3 +67,6 @@ xử lý mà ticket 03, 04, 06 chờ, và trả lời Q1, Q2 của spec.
   luật sư xác nhận trước chạy bóng. Thêm câu DO-34 (DO-34.2), DO-48 (DO-48.2), DO-52, DO-56 và DO-51 theo
   quyết định cùng ngày.
 - 2026-10-24 (agent): Đạt đặt bốn số tạm ngày 24/10/2026, mọi số UNVERIFIED chờ luật sư khi có dữ liệu thật: hội thoại 90 ngày (DO-52), 200 người nhận mỗi lượt ở thí điểm (DO-55), giới hạn dò trùng (DO-35), bộ đếm hạn mức 13 tháng; thêm vào câu hỏi tương ứng.
+- 2026-10-25 (agent): lượt h, theo V4.39 của Đạt: thêm câu về căn cứ xử lý cho tin giao dịch, mà luật `transactional`
+  W2 của ADR-0124 (Accepted) quyết 8 chờ (Open 6; YC112); theo H-1, thời hạn của DO-52 nằm trong các mảnh retention
+  thay một tệp có phiên bản.

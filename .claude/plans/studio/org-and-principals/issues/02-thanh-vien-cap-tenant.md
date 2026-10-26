@@ -39,7 +39,9 @@ ra đời, cùng foundations-hardening/07, vì cùng sửa lane offboarding và 
    (`INSERT ... ON CONFLICT (tenant_id, user_id) DO NOTHING`): `membership_admin`, `tenant_members` (lời mời ghi `invited`
    cho người chưa đăng nhập lần nào), `_provision_default_membership` và `provisioning_repo` (ghi `active`), `seed_env`,
    `scripts/grant_platform_admin.py`. Lần đăng nhập đầu của người được mời (`_resolve_user`) đổi `invited` sang `active`
-   trong giao dịch nối danh tính.
+   trong giao dịch nối danh tính, bằng một câu `UPDATE` trên `platform.tenant_members`: đó là lần kích hoạt mà luật chuyển
+   `setup` → `active` của tenant-rbac (tenant-rbac:R3.10; V4.38) đọc, qua trigger mà tenant-rbac/02, ticket sau ticket
+   này, gắn lên bảng; ticket này không đọc trạng thái `setup` và không đổi `platform.tenants`.
 5. **Người đọc.** Dựng AccessContext (`membership_lookup.py:80-106`) join `platform.tenant_members` và đòi
    `status = 'active'`, thiếu dòng là từ chối (fail closed), nên mọi route cần AccessContext, kể cả `GET /api/v1/me`, trả
    403 cho người không `active`; `member_status()` đọc cột thay cho suy luận; `GET /api/v1/admin/members`,
@@ -81,3 +83,7 @@ ra đời, cùng foundations-hardening/07, vì cùng sửa lane offboarding và 
 - ADR-0102 (Accepted) mục 3; brief B2 mục 1.2, 1.3 và ticket 05.
 
 ## Comments
+
+- 2026-10-25 (agent): lượt h, theo V4.38 của Đạt: lần đổi `invited` sang `active` ở bước 4 là lần kích hoạt mà luật
+  chuyển `setup` → `active` của tenant-rbac đọc (tenant-rbac:R3.10), gắn ở tenant-rbac/02, ticket đã chờ ticket này; không
+  thêm cạnh Blocked by.

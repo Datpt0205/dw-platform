@@ -98,18 +98,16 @@ chỉ siết của `dw.object/v1`); ticket này không viết chuyển giai đo�
    do trong danh sách bảng toàn tenant của test đó (định nghĩa có `owning_workspace_id`, phiên bản và chỉ mục
    phụ thuộc là con của thành phần, bản kê định nghĩa định danh theo nội dung; DO-01).
 4. Offboarding, trên `offboarding.py` và `test_offboarding.py` mà foundations-hardening/07 đã viết lại
-   (`_CATALOG_COLUMNS`, `export_rows`): `_ORDERED_FIRST` thêm theo thứ tự `studio.dependencies`,
-   `studio.artifact_versions`, `studio.artifacts`, mỗi bảng sau mọi bảng giữ một FK ON DELETE RESTRICT tới nó, không dựa
-   vào CASCADE (studio-skeleton:R4.2; spec Dữ liệu): `studio.dependencies` trước vì `to_version_id` và `to_artifact_id`
-   giữ hai bảng kia (đã đo: xóa `studio.artifacts` trước khi gỡ cạnh phụ thuộc thì hỏng); `studio.artifact_versions`
-   trước `studio.artifacts`, không xóa theo CASCADE từ thành phần, vì agent-lifecycle/04 chèn mục `studio.gate_runs` giữa
-   hai mục đó (`studio.artifact_versions.gate_run_id` và `studio.gate_runs.artifact_id` là FK RESTRICT,
-   agent-lifecycle:R10.2); `studio.artifacts` trước phần xóa theo chữ cái vì `owning_workspace_id` giữ
-   `platform.workspaces`; `studio.definition_manifests` không có FK RESTRICT nào nên ở phần xóa theo chữ cái.
-   `purge_rows` bỏ qua mục `_ORDERED_FIRST` của bảng không có trong `_CATALOG_PURGEABLE`
-   (`packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:187-188`), nên bốn bảng xóa được
-   nhờ DELETE của bước 3, không bảng nào có dòng `STUDIO_EXCLUSIONS`; `test_offboarding.py` purge một tenant có hai
-   thành phần phụ thuộc nhau ở hai workspace (TC21).
+   (`_CATALOG_COLUMNS`, `export_rows`) và sổ bước xóa của ticket đó (foundations-hardening:R11.4; H-2): bốn bảng dùng
+   bước mặc định (câu `DELETE` chung) nhờ DELETE của bước 3, không đăng ký bước nào và không khai thứ tự; thứ tự đến từ
+   khóa ngoại `RESTRICT` của chính các bảng này trong `pg_constraint` (studio-skeleton:R4.2; spec Dữ liệu):
+   `studio.dependencies` trước hai bảng kia vì `to_version_id` và `to_artifact_id` giữ chúng (đã đo: xóa
+   `studio.artifacts` trước khi gỡ cạnh phụ thuộc thì hỏng; CASCADE của `from_version_id` không cho nó đi sau);
+   `studio.artifact_versions` trước `studio.artifacts`, với `studio.gate_runs` của agent-lifecycle ở giữa
+   (`studio.artifact_versions.gate_run_id` và `studio.gate_runs.artifact_id` là FK RESTRICT, agent-lifecycle:R10.2);
+   `studio.artifacts` trước `platform.workspaces` vì `owning_workspace_id` giữ nó; `studio.definition_manifests` không
+   có FK RESTRICT nào nên không bị ràng thứ tự. Không bảng nào có dòng `STUDIO_EXCLUSIONS`; `test_offboarding.py` purge
+   một tenant có hai thành phần phụ thuộc nhau ở hai workspace (TC21).
 5. `ArtifactKindRegistry` trong lõi `dw_studio`, đăng ký ở `build_studio` (ADR-0100 (Accepted) quyết 6):
    mỗi mục có `kind`, `document_schema`, khóa đọc, khóa ghi và khóa gửi của loại, và `publish_hook`, không giá trị
    mặc định (R2.15; mỗi spec đăng ký khóa của mình theo quy ước `studio.<area>.<verb>` của tenant-rbac:R1.6),
@@ -274,9 +272,10 @@ chỉ siết của `dw.object/v1`); ticket này không viết chuyển giai đo�
 - [ ] R3.5: `GET .../draft/dependencies` trả phụ thuộc của nháp và số dòng `studio.dependencies` không
       đổi.
 - [ ] R3.6 (TC21): `test_offboarding.py` purge tenant có hai thành phần phụ thuộc nhau, tenant khác giữ
-      nguyên mọi dòng; gỡ mục `studio.dependencies` khỏi `_ORDERED_FIRST` → test đỏ; đặt `studio.dependencies` sau
-      `studio.artifact_versions` → test phủ offboarding (studio-skeleton:R4.2) đỏ, nêu FK ghép của `to_version_id`; test
-      phủ offboarding (studio-skeleton:R4.1, studio-skeleton:R4.2) xanh với bốn bảng không có trong `STUDIO_EXCLUSIONS`;
+      nguyên mọi dòng; thứ tự bước mà sổ bước xóa suy ra đặt `studio.dependencies` trước `studio.artifact_versions` và
+      `studio.artifact_versions` trước `studio.artifacts`; đột biến phép suy để bỏ cạnh `to_version_id` → purge hỏng ở
+      khóa ngoại đó và test phủ offboarding (studio-skeleton:R4.2) đỏ, nêu FK ghép của `to_version_id`; test phủ
+      offboarding (studio-skeleton:R4.1, studio-skeleton:R4.2) xanh với bốn bảng không có trong `STUDIO_EXCLUSIONS`;
       thu DELETE của `dw_app` trên một trong bốn bảng → test phủ đỏ, nêu tên bảng.
 - [ ] R3.8 (TC31): `dw_app` DELETE một dòng `studio.artifacts`, `studio.artifact_versions` hay
       `studio.definition_manifests` của công ty `active` → 23514, dòng còn; cùng lệnh khi công ty ở `offboarding` → xóa
@@ -286,7 +285,7 @@ chỉ siết của `dw.object/v1`); ticket này không viết chuyển giai đo�
 ## Nguồn
 
 - `packages/python/dw_platform/src/dw_platform/adapters/persistence/tables.py:46`; spec: Dữ liệu.
-- `packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:108-114`; spec: R3.6,
+- `packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:108-114` (foundations-hardening/07 thay bằng sổ bước xóa); spec: R3.6,
   TC21.
 - `packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:98-101`; spec: R3.8, TC31;
   `CLAUDE.md`, Data model rules.
@@ -343,3 +342,6 @@ chỉ siết của `dw.object/v1`); ticket này không viết chuyển giai đo�
   phong cạnh một Bản ứng viên rời R2.16, vì không còn xảy ra được; `_ORDERED_FIRST` thành `studio.dependencies`,
   `studio.artifact_versions`, `studio.artifacts`, mỗi bảng sau mọi bảng giữ một FK RESTRICT tới nó, để agent-lifecycle/04
   chèn mục `studio.gate_runs` giữa hai mục sau (TC21). Không thêm cạnh Blocked by.
+- 2026-10-25 (agent): lượt h, theo H-2 (quyết định tạm cùng ngày của spec): bước 4 thôi thêm mục `_ORDERED_FIRST`; bốn
+  bảng dùng bước mặc định của sổ bước xóa của foundations-hardening/07, thứ tự suy từ khóa ngoại `RESTRICT` của
+  `pg_constraint`, và ca âm của R3.6 thành đột biến phép suy; dòng Blocked by không đổi.

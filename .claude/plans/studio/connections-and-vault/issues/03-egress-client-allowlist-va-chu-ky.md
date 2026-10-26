@@ -1,17 +1,19 @@
-# 03 — Egress client ghim IP, danh sách máy chủ được phép và module chữ ký webhook
+# 03 — Egress client ghim IP, kết quả có kiểu, danh sách máy chủ được phép và module chữ ký webhook
 
 Status: needs-triage
 Blocked by: .claude/plans/studio/runtime-hardening/issues/02-bien-mang-va-kho-du-lieu.md, .claude/plans/studio/tenant-config/issues/03-che-do-chay-va-gia-lap-o-executor.md, .claude/plans/studio/tenant-rbac/issues/01-mot-chu-cho-quyen.md, .claude/plans/studio/org-and-principals/issues/01-khoa-don-vi-va-siet-realm.md, .claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md
 Area: studio
-Yêu cầu: R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R3.9, R3.10, R3.11, R3.12, R4.1, R4.2, R4.3, R4.4, CV7, CV8, CV9, CV10, CV11, CV19, CV22
+Yêu cầu: R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R3.9, R3.10, R3.11, R3.12, R3.13, R3.14, R3.15, R3.16, R4.1, R4.2, R4.3, R4.4, CV7, CV8, CV9, CV10, CV11, CV19, CV22, CV26
 
 ## Mục tiêu
 
 Mọi lời gọi ra ngoài của lưu lượng tới tenant đi qua một bộ gọi ghim địa chỉ đã kiểm, chỉ tới địa chỉ
 Internet toàn cầu trong danh sách được phép, kể cả sau chuyển hướng hay đổi DNS; và một module thuần
 kiểm chữ ký cho mọi cửa nhận sự kiện (spec R3, R4). W1 từ chối mọi chế độ khác `live` ở egress làm lớp
-thứ hai sau executor của tenant-config/03 (DO-26.1). Gộp từ B8a-connections connections-and-vault 02, 08 và
-13 (phần module chữ ký).
+thứ hai sau executor của tenant-config/03 (DO-26.1). Mỗi lời gọi kết thúc bằng một kết quả có kiểu mà ToolExecutor
+(runtime-hardening:R6.12) và wrapper nút (workflow-engine:R4.23) đọc, và egress không bao giờ tự gửi lại một lời gọi
+không rõ kết quả (spec R3.13-R3.16; V4.30). Gộp từ B8a-connections connections-and-vault 02, 08 và 13 (phần module
+chữ ký).
 
 ## Việc cần làm
 
@@ -61,6 +63,19 @@ run_mode, purpose, connector_key, connection_id, simulate_safe)` (`simulate_safe
    bảng `VERIFIERS` (`standard_webhooks_v1`, `static_header_token`, `meta_x_hub_signature_256`,
    `zalo_oa_zevent`), `sign_standard_webhook()`; cửa sổ dấu thời gian ±5 phút; so token theo thời gian
    hằng định.
+9. Kết quả có kiểu (spec R3.13-R3.16; ADR-0115 (Accepted) quyết 6; V4.30): `EgressClient` trả `EgressResponse` cho
+   `succeeded`, hay ném một trong ba lỗi mà `dw_agent_runtime` khai ở runtime-hardening/01 bước 3 (`NotDispatchedError`,
+   `RejectedError` mang mã, `OutcomeUnknownError`; bên dùng khai, egress ném), không lớp lỗi riêng nào khác:
+    - module thuần `dw_connectors.egress.outcome` giữ một bảng phân loại theo pha của lời gọi, một chủ cho cả HTTP và
+      SMTP (ticket 05 dùng lại cho `SmtpEgress`): dừng trước byte đầu tiên của yêu cầu (phân giải, kết nối, bắt tay
+      TLS, mọi `egress_blocked:*`, `credential_revoked`) → `NotDispatchedError` mang mã đó; HTTP hết thời gian hay
+      reset sau byte đầu tiên, hay 5xx → `OutcomeUnknownError`; HTTP 4xx → `RejectedError` mang trạng thái; SMTP dừng
+      trước dấu kết thúc dữ liệu của `DATA` → `NotDispatchedError`; trả lời 4yz, 5yz → `RejectedError` mang mã SMTP;
+      đã gửi dấu kết thúc dữ liệu mà chưa nhận 250 → `OutcomeUnknownError`;
+    - `PinnedNetworkBackend` ghi nhận byte đầu tiên đã ghi ra socket, để pha "đã gửi" là sự thật đo được, không suy từ
+      loại ngoại lệ của `httpx`;
+    - egress chỉ tự thử lại ở pha trước byte đầu tiên (thử lại kết nối), không bao giờ sau đó; lỗi khác ném ra từ
+      egress không được nuốt, để ToolExecutor ghi nó `outcome_unknown` theo runtime-hardening:R6.12.
 
 ## Tiêu chí chấp nhận
 
@@ -98,6 +113,19 @@ run_mode, purpose, connector_key, connection_id, simulate_safe)` (`simulate_safe
       dấu thời gian → test đỏ.
 - [ ] R4.3 (CV11): token tĩnh sai → `rejected`, so theo thời gian hằng định.
 - [ ] R4.4: khi xoay khóa ký, chữ ký của cả khóa cũ còn hạn lẫn khóa mới đều `verified`.
+- [ ] R3.13 (CV26): mỗi ca của bảng phân loại kết thúc bằng đúng một `EgressResponse` hay một trong ba lỗi của
+      `dw_agent_runtime`; một test kiến trúc thấy egress không khai lớp lỗi kết quả nào khác; thêm một nhánh trả `None`
+      hay ném `RuntimeError` cho một pha → test bảng đỏ.
+- [ ] R3.14 (CV26): máy chủ HTTP giả từ chối kết nối → `NotDispatchedError`, máy giả không nhận byte nào; đích bị
+      `egress_blocked:address` → `NotDispatchedError` mang mã đó; gỡ phân loại theo byte đã ghi để mọi lỗi kết nối
+      thành `OutcomeUnknownError` → ca này đỏ.
+- [ ] R3.15 (CV26): máy chủ giả đọc yêu cầu rồi reset → `OutcomeUnknownError`, máy giả có đúng 1 yêu cầu; máy giả trả
+      503 → `OutcomeUnknownError`; cho egress thử lại sau reset, hay phân loại reset sau khi gửi thành
+      `NotDispatchedError` → máy giả nhận 2 yêu cầu, test đỏ.
+- [ ] R3.16 (CV26): máy giả trả 422 → `RejectedError` mang 422, máy giả có đúng 1 yêu cầu; bảng của SMTP: ngắt trước dấu
+      kết thúc dữ liệu → `NotDispatchedError`, 550 sau dữ liệu → `RejectedError` mang 550, hết thời gian sau dấu kết
+      thúc dữ liệu → `OutcomeUnknownError`; đổi 4xx thành `OutcomeUnknownError` hay 550 thành `NotDispatchedError` →
+      test bảng đỏ.
 - [ ] Xong: `make ci && make test-integration` xanh.
 
 ## Nguồn
@@ -108,6 +136,9 @@ run_mode, purpose, connector_key, connection_id, simulate_safe)` (`simulate_safe
 - `apps/api/src/dw_api/settings.py:206`; spec: R3.2 (danh sách máy chủ được phép).
 - spec: R3, R4, CV7-CV11; ADR-0115 (Accepted) quyết 5, 6; si-platform `si_kernel/net_guard.py` có cùng
   lỗ (luồng ngược, ghi area file).
+- spec: R3.13-R3.16, CV26; runtime-hardening/01 bước 3 (ba lỗi có kiểu), runtime-hardening:R6.12 (lỗi không có kiểu sau
+  `dispatched` là `outcome_unknown`); workflow-engine:R4.23 (wrapper chỉ thử lại `not_dispatched` và `rejected` khai
+  thử lại được).
 
 ## Comments
 
@@ -129,3 +160,8 @@ run_mode, purpose, connector_key, connection_id, simulate_safe)` (`simulate_safe
 - 2026-10-24 (agent): vòng sửa thứ tư, lượt c: FK ghép `(tenant_id, owning_workspace_id)` của
   `platform.egress_allowed_hosts` nêu `ON DELETE RESTRICT` và chỉ mục như spec ghi cho `platform.connections`
   (CLAUDE.md, Data model rules: khóa ngoại nào cũng nêu `ON DELETE` và có chỉ mục ở phía của nó) (bước 7).
+- 2026-10-25 (agent): lượt h, theo V4.30 của Đạt (mục 2): egress trả kết quả có kiểu, `succeeded` hay ba lỗi có kiểu
+  mà runtime-hardening/01 khai ở `dw_agent_runtime` (bước 9; spec R3.13-R3.16, CV26), với bảng phân loại một chủ cho
+  HTTP và SMTP mà `SmtpEgress` của ticket 05 dùng lại (SMTP đã gửi dấu kết thúc dữ liệu của `DATA` mà chưa nhận 250 là
+  `outcome_unknown`); lỗi khác không bị nuốt, để ToolExecutor ghi nó `outcome_unknown` (runtime-hardening:R6.12).
+  Không thêm cạnh: ticket này đã đi sau runtime-hardening/01 qua tenant-config/03.

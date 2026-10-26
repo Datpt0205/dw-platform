@@ -71,7 +71,9 @@ Phát lại thư chết (R10.4, R10.5), theo DO-56.1:
     tenant bằng `set_config('app.tenant_id', <tenant của sự kiện>, true)`, xóa `dead_at`, đặt
     `attempts = 0` và `available_at = now()`, rồi ghi audit `platform.outbox.replayed` (actor là người
     vận hành, `resource_id` là id sự kiện) trong cùng giao dịch. Không có route cho công ty: công ty thấy
-    lượt chạy lỗi của mình trong Lịch sử chạy.
+    lượt chạy lỗi của mình trong Lịch sử chạy. Cùng thay đổi: mảnh `configs/copy/audit_actions.d/runtime-hardening.yaml`
+    mang nhãn tiếng Việt của `platform.outbox.replayed`, mảnh của spec này trong catalog hành động mà
+    telemetry-and-audit gộp (telemetry-and-audit:R1.6; H-21); ticket này không chờ ticket nào vì mảnh.
 
 ## Tiêu chí chấp nhận
 
@@ -113,7 +115,7 @@ Phát lại thư chết (R10.4, R10.5), theo DO-56.1:
 - `packages/python/dw_observability/src/dw_observability/metrics.py:27-29`
 - `infra/prometheus/alerts.yml:53-66`
 - `docs/adr/0113-every-run-is-requested-and-queued-in-postgres.md:40-44`
-- spec: R9, R10, G5, RH25-RH29.
+- spec: R9, R10, G5, RH25-RH29; telemetry-and-audit:R1.6 (mảnh nhãn audit; H-21).
 
 ## Comments
 
@@ -125,3 +127,7 @@ Phát lại thư chết (R10.4, R10.5), theo DO-56.1:
   thư chết mà lane `studio_run_reaper` của workflow-engine/04 ghi (ADR-0113 (Accepted) quyết 3; workflow-engine:R3.2,
   workflow-engine:R5.7); workflow-engine/02 đã chờ ticket này.
 - 2026-10-25 (agent): ticket chuyển từ foundations-hardening/06 sang đây thành ticket 03 khi spec tách (hai dòng Quyết định cuối của spec); kiểm soát FH25-FH29 thành RH25-RH29, cùng số, và cạnh tới ticket 01 cùng thư mục cũ thành đường dẫn tới foundations-hardening/01. Không đổi việc cần làm, không thêm cạnh.
+- 2026-10-26 (agent): lượt h, đợt 2, theo H-21 (dòng tạm 25/10/2026 của telemetry-and-audit): nhãn của audit
+  `platform.outbox.replayed` vào mảnh `configs/copy/audit_actions.d/runtime-hardening.yaml` trong cùng thay đổi (bước
+  10); test AST của telemetry-and-audit:R1.6 đọc mảnh đó khi telemetry-and-audit/03, đi sau ticket này, vào. Không thêm
+  cạnh.

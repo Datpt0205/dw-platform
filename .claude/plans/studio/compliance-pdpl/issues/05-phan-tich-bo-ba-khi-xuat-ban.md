@@ -1,16 +1,17 @@
-# 05 — Phân tích bộ ba nguy hiểm và năng lực khi gửi kiểm định
+# 05 — Phân tích bộ ba nguy hiểm và năng lực của quy trình khi gửi kiểm định
 
 Status: needs-triage
-Blocked by: 03, .claude/plans/studio/workflow-engine/issues/01-tai-lieu-workflow-va-kiem-xuat-ban.md, .claude/plans/studio/agent-lifecycle/issues/03-hop-dong-vong-doi-va-niem-phong.md, .claude/plans/studio/agent-builder/issues/02-loai-agent-va-khung-prompt.md, .claude/plans/studio/tenant-config/issues/02-vo-phien-ban-va-chi-muc-phu-thuoc.md
+Blocked by: 03, .claude/plans/studio/workflow-engine/issues/01-tai-lieu-workflow-va-kiem-xuat-ban.md, .claude/plans/studio/agent-lifecycle/issues/03-hop-dong-vong-doi-va-niem-phong.md, .claude/plans/studio/tenant-config/issues/02-vo-phien-ban-va-chi-muc-phu-thuoc.md
 Area: studio
-Yêu cầu: R2.6, R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R4.7, R5.5, CP6, CP12, CP13, CP14, CP15, CP21
+Yêu cầu: R2.6, R4.1, R4.2, R4.4, R4.5, R4.6, R4.7, R4.8, R5.5, CP6, CP12, CP14, CP15, CP21, CP26
 
 ## Mục tiêu
 
-Khi gửi kiểm định, một module thuần đọc nhãn năng lực của loại node và loại công cụ; một đường nối đầu vào
-không tin cậy, dữ liệu riêng và tác động ra ngoài phải qua node phê duyệt; agent mang cả ba nhãn phải tự
-chủ ≤ A2; trường dữ liệu cá nhân không vào prompt trên tuyến ra nước ngoài; kết quả ghi vào
-`studio.version_assessments` để lane `studio_gate` đọc (spec R2.6, R4; ADR-0125 (Accepted)).
+Khi gửi kiểm định một quy trình, một module thuần đọc nhãn năng lực của loại node và loại công cụ; một đường nối đầu
+vào không tin cậy, dữ liệu riêng và tác động ra ngoài phải qua node phê duyệt; một Bước Quy trình con mang nhãn của
+phiên bản con đã ghim, bắc cầu (V4.33); trường dữ liệu cá nhân không vào prompt trên tuyến ra nước ngoài; kết quả ghi
+vào `studio.version_assessments` để lane `studio_gate` đọc (spec R2.6, R4; ADR-0125 (Accepted)). Luật agent và móc
+phân tích của loại `agent` ở `.claude/plans/studio/compliance-pdpl/issues/07-phan-tich-nang-luc-agent.md` (V4.31).
 
 ## Việc cần làm
 
@@ -23,9 +24,8 @@ chủ ≤ A2; trường dữ liệu cá nhân không vào prompt trên tuyến r
 2. Quy tắc quy trình: mọi đường từ `untrusted_source` qua `private_data` tới `external_effect` phải có một
    node `human.approval` chi phối node tác động; thiếu → gửi kiểm định trả 422 `trifecta_path_unapproved`
    kèm đường vi phạm.
-3. Quy tắc agent: mang cả ba nhãn thì Mức tự chủ khai ≤ A2 (công cụ `external` và `critical` luôn hỏi);
-   trên A2 → 422 `capability_trifecta_autonomy` kèm hai cách sửa (hạ tự chủ, hoặc tách phần đọc nội dung
-   không tin cậy khỏi phần giữ tác động); công cụ thiếu một phân loại → 422 `tool_unclassified`.
+3. Công cụ mà một Bước `tool.call` của quy trình dùng thiếu một trong ba phân loại → 422 `tool_unclassified` (spec
+   R4.4). Quy tắc agent (Mức tự chủ ≤ A2 khi mang cả ba nhãn) và móc của loại `agent` ở ticket 07.
 4. Migration (id hex ngẫu nhiên) tạo `studio.version_assessments` (một dòng mỗi phiên bản và Mã băm định
    nghĩa; tín hiệu, đường vi phạm, kết luận, phiên bản bộ phân tích; RLS chỉ theo công ty, không cột
    `workspace_id`, nên cùng thay đổi thêm một dòng cho bảng vào danh sách bảng toàn tenant của
@@ -43,6 +43,13 @@ chủ ≤ A2; trường dữ liệu cá nhân không vào prompt trên tuyến r
 6. `configs/policies/studio_risk@1.0.0.yaml`: dữ liệu gợi ý tầng rủi ro (cột tầng trên
    `studio.version_assessments` là W2, ticket 18).
 7. Case trong bộ eval bảo mật: workflow pilot bỏ node phê duyệt; đường `score → send` không qua `approve`.
+8. Bước Quy trình con (spec R4.8; V4.33): bảng điều phối nhãn có một mục cho `flow.subworkflow@1` mà nhãn là hợp các
+   nhãn ở dòng `studio.version_assessments` của phiên bản con mà bao đóng của lần gửi kiểm định ghim
+   (ADR-0109 (Accepted) quyết 4, 9), đọc qua một Protocol hẹp `VersionAssessmentLookup` mà module khai và composition root đáp
+   ứng từ bảng của bước 4, nên module vẫn thuần; dòng của phiên bản con đã gồm nhãn của phiên bản con của nó, nên
+   phép hợp bắc cầu mà không duyệt lại cây; không đọc được phiên bản con hay dòng của nó → cả ba nhãn. Tới khi
+   `flow.subworkflow@1` có trong sổ loại (workflow-nodes/08, bậc B), một Bước loại đó là loại chưa biết và mang cả ba
+   nhãn theo R4.1, nên ticket này không chờ workflow-nodes/08 hay workflow-engine/09.
 
 ## Tiêu chí chấp nhận
 
@@ -51,10 +58,15 @@ chủ ≤ A2; trường dữ liệu cá nhân không vào prompt trên tuyến r
 - [ ] R4.2 (CP12): bỏ node phê duyệt khỏi workflow pilot → gửi kiểm định 422 `trifecta_path_unapproved` nêu
       đường; đường chấm điểm tới gửi tin không qua node `approve` → 422 nêu đường; node phê duyệt chỉ trên một
       nhánh → vẫn 422.
-- [ ] R4.3 (CP13): agent có cả ba nhãn ở A3 → 422 `capability_trifecta_autonomy`; gỡ kiểm → test đỏ.
-- [ ] R4.4 (CP14): phiên bản dùng công cụ thiếu một trong ba phân loại → 422 `tool_unclassified`.
-- [ ] R4.5 (CP15): overlay công ty bỏ node phê duyệt hay nâng Mức tự chủ trên A2 cho phiên bản bộ ba → gửi
-      kiểm định 422, phiên bản vẫn Nháp.
+- [ ] R4.4 (CP14): quy trình có Bước `tool.call` dùng công cụ thiếu một trong ba phân loại → 422 `tool_unclassified`;
+      gỡ kiểm → test đỏ.
+- [ ] R4.5 (CP15): overlay công ty bỏ node phê duyệt của một quy trình bộ ba → gửi kiểm định 422
+      `trifecta_path_unapproved`, phiên bản vẫn Nháp.
+- [ ] R4.8 (CP26): quy trình cha có `untrusted_source` và `private_data`, gọi một quy trình con mà dòng đánh giá mang
+      `external_effect`, không node phê duyệt nào chi phối Bước Quy trình con → 422 `trifecta_path_unapproved` nêu
+      đường qua Bước đó; con không tác động mà cháu có (dòng của con đã gồm nhãn của cháu) → vẫn 422; bản giả của
+      `VersionAssessmentLookup` không trả dòng → Bước mang cả ba nhãn; trước khi loại có trong sổ → mang cả ba nhãn
+      theo R4.1; gán nhãn rỗng thay hợp nhãn của con → test đỏ.
 - [ ] R4.6: gửi kiểm định một quy trình hợp lệ → đúng một dòng `studio.version_assessments` cho Mã băm định
       nghĩa của phiên bản, ghi trong cùng giao dịch; rollback giao dịch gửi kiểm định → không dòng nào.
 - [ ] R4.7 (CP21): chèn một dòng `studio.version_assessments` mang `tenant_id` của công ty A và `version_id` của một
@@ -75,6 +87,7 @@ chủ ≤ A2; trường dữ liệu cá nhân không vào prompt trên tuyến r
   sàn `critical` và `approval_policy: always`).
 - ADR-0125 (Accepted) quyết 1, 2, 3, 5.
 - tenant-config:R2.18 (FK ghép tới `uq_artifact_versions_tenant_id_id`); spec: R4.7.
+- ADR-0109 (Accepted) quyết 4, 9 (bao đóng ghim phiên bản con); workflow-nodes:R13.1; spec: R4.8.
 
 ## Comments
 
@@ -99,3 +112,8 @@ chủ ≤ A2; trường dữ liệu cá nhân không vào prompt trên tuyến r
   danh sách bảng toàn tenant của `test_rls_coverage.py` (`CLAUDE.md` mục 'Tenancy and authorization'); bước 4 làm
   cả hai, tiêu chí R4.7 (CP21) thử FK ghép (spec R4.7, theo tenant-config:R2.18) và tiêu chí R4.6 thứ hai thử dòng
   danh sách.
+- 2026-10-25 (agent): lượt h, theo V4.31 của Đạt (bảng ticket mới và bảng cạnh của lượt): luật agent (bước 3 cũ) và móc
+  phân tích của loại `agent` tách sang `.claude/plans/studio/compliance-pdpl/issues/07-phan-tich-nang-luc-agent.md`,
+  R4.3 (CP13) dời theo, R4.4 và R4.5 giữ phần quy trình ở đây; gỡ Blocked by agent-builder/02. Theo V4.33: bước 8 cho
+  Bước `flow.subworkflow@1` mang nhãn của phiên bản con đã ghim, bắc cầu, và loại chưa biết mang cả ba nhãn tới khi
+  loại có trong sổ (spec R4.8, CP26); không thêm cạnh.

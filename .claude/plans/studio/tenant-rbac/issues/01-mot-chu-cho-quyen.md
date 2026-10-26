@@ -55,7 +55,7 @@ phần bootstrap của foundations-hardening 05 (brief B11).
    phê duyệt hay tên sự kiện audit.
    Từ nay mỗi cụm Studio đăng ký mọi khóa nó kiểm trong migration của chính nó, và test này giữ chúng, kể cả khóa ngoài
    tiền tố `studio.` mà cụm đó kiểm (`platform.limits.manage` của usage-and-limits, `runs.read_payloads` của
-   telemetry-and-audit); ticket đăng ký chờ ticket 02 (cột `tenant_grantable`) và câu INSERT nêu mọi cột NOT NULL
+   telemetry-and-audit, `runs.reconcile` của workflow-engine/08, mức rủi ro cao, `tenant_grantable` đúng, H-8); ticket đăng ký chờ ticket 02 (cột `tenant_grantable`) và câu INSERT nêu mọi cột NOT NULL
    của danh mục lúc đó (Quyết định 24/10/2026 của spec); ticket này không đăng ký khóa của cụm khác.
 6. **Người vận hành.** Thêm `studio.`, `obj.`, `fld.`, `connections.`, `integrations.` vào `FORBIDDEN_SCOPE_PREFIXES`
    (`support_access.py:63-72`), để người vận hành không được cấp `connections.manage` hay `integrations.admin` của
@@ -88,3 +88,5 @@ phần bootstrap của foundations-hardening 05 (brief B11).
 
 - 2026-10-24 (agent): Đạt nhận các khuyến nghị vòng 2 (24/10/2026): thêm `connections.`, `integrations.` vào `FORBIDDEN_SCOPE_PREFIXES` (`D:connections-and-vault:trong-phạm-vi~tenant-rbac:R1.5`); quy ước đăng ký khóa ghi rõ khu vực số nhiều và phủ cả khóa ngoài tiền tố `studio.` (`B:agent-lifecycle:phụ-thuộc~tenant-rbac/01`).
 - 2026-10-24 (agent): vòng sửa 4: thêm R1.6 và kiểm (d) của bước 5 cho quy ước ba đoạn `studio.<area>.<verb>` mà spec là chủ (Quyết định 24/10/2026 của spec, khóa bốn đoạn của ADR-0117 (Accepted) đổi tên); ticket đăng ký khóa của cụm khác chờ tenant-rbac/02 và nêu mọi cột NOT NULL trong INSERT (`C:custom-objects/02~tenant-rbac/02`), nên cột `tenant_grantable` vẫn ra đời ở ticket 02, không ở đây.
+- 2026-10-25 (agent): lượt h, theo H-8: bước 5 nêu `runs.reconcile` (workflow-engine/08) trong các ví dụ khóa ngoài
+  tiền tố `studio.` mà cụm chủ đăng ký; mặc định chỉ `tenant_owner` có nó (R2.7). Không đổi phạm vi ticket này.

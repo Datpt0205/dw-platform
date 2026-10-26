@@ -81,6 +81,14 @@ Numbered in the block 0100-0199 reserved for Studio (ADR-0100 records the block)
    webhooks; run-history payloads and approvals (references and field names stored, values fetched live and masked for
    the viewer); telemetry, logs, audit and error messages (field names, never values). An architecture test keeps the
    records table and its slot columns named only in the records adapter.
+   From W2, before the destinations W2 opens ship (`notify.send`, `ai.agent`, internal messages, lookups, search),
+   access is also decided on the side of whoever receives a value (YC113, V4.40): compliance-pdpl's capability
+   analysis computes at submit the set of fields each value derives from, the output of an `ai.llm` or agent step
+   carrying the union of its inputs' sets; field security checks the recipient against that set at every
+   destination; a step of workflow-nodes' `data.object.*` family never writes a value derived from a secured field
+   into an open field; a lookup's `name` is masked by the field access at the target record; and
+   `studio.record_terms` (ADR-0107 decision 7) gains `field_id` (record-access). Until then the pilot slice's own
+   rules keep W1 safe (marketing-pilot).
 5. **Sensitive reads leave a trace.** A response carrying sensitive values writes one audit event `pd.read` with record
    ids and field names only. From W1, granting read on a sensitive field takes a second person, because every `fld.*`
    grant is a two-person role change (ADR-0104 decision 10), and a role carrying one counts as critical for
@@ -136,10 +144,11 @@ Numbered in the block 0100-0199 reserved for Studio (ADR-0100 records the block)
   and no value, and removing the check on that path turns its test red (field-security/02); a filter or sort on a
   hidden field is refused before SQL; an agent tool schema omits the field; opening a sensitive field fails on the
   CHECK; a registry test fails a table holding personal-data fields without a `DataSubjectPort`; Presidio has a measured
-  threshold per choke point before it is switched on.
+  threshold per choke point before it is switched on; from W2, removing the recipient check at any one destination
+  turns that destination's leak test red, and every sample workflow of the Marketing pack still passes submit.
 - **Phasing.** W1 secures the lead's personal fields (phone, email, full name) by default and masks them on every path
-  the slice uses; the matrix screen, exports, knowledge, the sensitive-read audit, data-subject requests and Presidio
-  come in W2.
+  the slice uses; the matrix screen, exports, knowledge, the sensitive-read audit, data-subject requests, Presidio and
+  the recipient check with its rule against writing down (YC113) come in W2.
 - **Harder.** Every new path that emits record values must call the function; checkpoints and run history should hold
   record references rather than values (FOG-37); Presidio costs CPU on hot paths and grows the image by an NLP model.
 - Contradicts CLAUDE.md:77-120 (a second language may connect to the database under four conditions): adds "reads
@@ -209,3 +218,12 @@ Numbered in the block 0100-0199 reserved for Studio (ADR-0100 records the block)
   composite, `(tenant_id, role_id)` to `platform.tenant_roles` and `(tenant_id, field_id)` to `studio.field_defs`, as
   tenant-rbac states them, because a foreign key check does not pass through RLS and a one-column key would let one
   tenant's privilege name another tenant's role or field (`CLAUDE.md`, Data model rules).
+
+## Amendments (2026-10-25)
+
+- Third consistency check (round 4), eighth pass, Đạt's V4.40: decision 4 adds, from W2 and before W2's destinations
+  ship, the field set each value derives from, computed at submit by compliance-pdpl's capability analysis, the
+  recipient check against it at every destination, no write from a secured field into an open one through a
+  `data.object.*` step, a lookup's `name` masked by the field access at the target record and `field_id` on
+  `studio.record_terms` (YC113); Consequences add the per-destination mutation test and place the rule in W2's
+  phasing, W1 adding only these lines.

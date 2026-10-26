@@ -89,22 +89,38 @@ without it, and Studio's tools and workflow nodes are the first effects that ret
    where required: 422 with `details.reason_code` `idempotency_key_required`. Required on a `POST` that starts
    a long-running operation, on batches and on upsert; optional on a single create, which `create_key`
    covers (ADR 0107). A retention lane deletes keys older than 24 hours.
-5. **Tool idempotency is claim-first.** `platform.tool_execution_claims` (`tenant_id`, `workspace_id`,
-   `tool_name`, `idempotency_key`, `run_id`, `claim_token`, `claimed_at`, `expires_at`; primary key
-   `(tenant_id, tool_name, idempotency_key)`) is inserted before the executor looks for a succeeded call. A
-   duplicate while the first runs gets `ConflictError`; a duplicate after success replays; an expired claim is
-   taken over by `DELETE ... WHERE claim_token = :old AND expires_at < now()` then `INSERT`; release deletes
-   only its own token; `expires_at = now() + timeout_seconds * (1 + max_retries) + 30 s`. Two calls with one
-   key can never both run the effect. `uq_tool_executions_idempotency` stays as the backstop (an
-   `IntegrityError` there becomes a replay), and `dw_app` loses UPDATE on `platform.tool_executions`.
+5. **Tool idempotency is claim-first, with a dispatch log.** `platform.tool_execution_claims` (`tenant_id`,
+   `workspace_id`, `tool_name`, `idempotency_key`, `run_id`, `claim_token`, `claimed_at`, `expires_at`; primary
+   key `(tenant_id, tool_name, idempotency_key)`) is inserted before the executor looks for a succeeded call. A
+   duplicate while the first runs gets `ConflictError`; a duplicate after success replays; release deletes
+   only its own token; `expires_at = now() + timeout_seconds * (1 + max_retries) + 30 s`. Just before the step
+   that calls the handler in tools-and-skills R2.6's order, the executor inserts a `dispatched` row into
+   `platform.tool_executions` and commits it in a transaction of its own, before the outbound call; the
+   outcome is a further row, so the table stays append-only, and `uq_tool_executions_idempotency`, which covers
+   `succeeded` rows only, is untouched. An expired claim is taken over by
+   `DELETE ... WHERE claim_token = :old AND expires_at < now()` then `INSERT`, and the taker reads the key's
+   rows first: with no `dispatched` row the call never left and runs again safely; with a `dispatched` row and
+   no terminal row it follows the Action's `on_unknown` (the `delivery` block of ADR 0116 decision 1, `review`
+   when absent) and never calls the provider again blindly. Two calls with one key never both dispatch while
+   the claim is live. `uq_tool_executions_idempotency` stays as the backstop (an `IntegrityError` there becomes
+   a replay), and `dw_app` loses UPDATE on `platform.tool_executions`.
    ADR 0122's 30-day clearing of `output` therefore runs in the retention lane through a SECURITY DEFINER
    function that takes no argument, reads its term from `platform.retention_terms`, the provisioner's copy of
-   the pinned retention policy (ADR 0122 decision 7), nulls `output` past it and changes nothing else, so
-   UPDATE never returns to `dw_app`.
+   the retention fragments the release manifest pins (ADR 0122 decision 7), nulls `output` past it and changes
+   nothing else, so UPDATE never returns to `dw_app`.
 6. **One key grammar for run effects.** A workflow node's effect carries `wf:{run_id}:{node_id}:{iteration_path}`
    (map index and loop counter path, never the attempt; the node catalogue's `run_id:node_id:iteration` is
    this key), derived through the existing `executor.canonical_hash`, which stays unchanged so in-flight runs
-   keep their keys. A retried node reuses its key, and the claim turns the retry into a replay.
+   keep their keys. A retried node reuses its key: after a recorded success the claim turns the retry into a
+   replay, and after a `dispatched` row with no outcome the Action's `on_unknown` decides (decision 5). The key
+   a provider receives is a hash of this key, the same on every attempt (ADR 0116 decision 1). What a run's
+   effect is promised is named by its level, never as "exactly once" alone (YC41): an internal effect (a run's
+   state change, a wait, a decision, an outbox event, a record write, `update` and `assign` through
+   `RecordsPort` included) happens exactly once, because the node's key is stored in the transaction of the
+   write and replayed by key before the inputs are computed again; an external effect whose Action declares a
+   provider key or a lookup is applied once by the provider within the provider's `retention_hours`, every
+   attempt carrying the same key; one that declares neither (SMTP) is sent at most once automatically, a person
+   deciding when its outcome is unknown; and two calls with one key never both dispatch while the claim is live.
 
 ## Alternatives considered
 
@@ -128,16 +144,21 @@ without it, and Studio's tools and workflow nodes are the first effects that ret
 - app-standards (P0) lands before custom-objects' generic API. The OpenAPI snapshot and the generated
   TypeScript client change with the envelope, a web helper maps `errors[]` onto form fields, and every error
   changes content type.
-- runtime-hardening ports the claim-first table (its ticket 01) before tools-and-skills ships tenant
-  tools; every Studio tool kind then inherits single execution.
+- runtime-hardening ports the claim-first table and the dispatch log (its ticket 01) before tools-and-skills
+  ships tenant tools; every Studio tool kind then inherits the claim, the dispatch log and the guarantee its
+  level gives (decision 6).
 - Migrations: one Alembic revision adds `caller_ref`, `reservation_token` and `response_headers` to
-  `platform.idempotency_keys`; one creates `platform.tool_execution_claims` (RLS ENABLE and FORCE, grants)
-  and revokes `dw_app` UPDATE on `platform.tool_executions`, asserted by `test_privileges.py`.
+  `platform.idempotency_keys`; one creates `platform.tool_execution_claims` (RLS ENABLE and FORCE, grants),
+  creates `ck_tool_executions_status` with `dispatched` and `outcome_unknown` among its values from the start
+  (tenant-config/03 adds `simulated` later) and revokes `dw_app` UPDATE on `platform.tool_executions`, asserted
+  by `test_privileges.py`.
 - Tests that must exist: another caller with the same key and body gets 409 and never the stored body
   (dropping `caller_ref` from the comparison turns it red); a late `complete` with a stale token writes
-  nothing; two concurrent calls with one key, made on the executor directly and not through a graph, run one
-  effect; a route walker finds every error in problem+json; the plan-shape test covers every existing paged
-  endpoint and the records compiler.
+  nothing; two concurrent calls with one key, made on the executor directly and not through a graph, never
+  both dispatch; a takeover with no `dispatched` row runs the call once, and a takeover after a `dispatched` row
+  with no terminal row follows `on_unknown` and, under `review`, never calls the provider (removing the dispatch
+  log turns this case red); a route walker finds every error in problem+json; the plan-shape test covers every
+  existing paged endpoint and the records compiler.
 - One retry that spans the deploy answers 409 instead of replaying (it fails closed). A crashed claim holder
   blocks its key until `expires_at`, which is bounded. The 24-hour key term follows common vendor practice
   (unverified). The worker's lane-set test (`apps/worker/tests/unit/test_worker.py`) gains the retention lane.
@@ -184,3 +205,17 @@ All three are DO-16, owned by Đạt:
 - Third consistency check (round 4), sixth pass, Đạt's V4.21: decision 5's function that clears `output` takes
   no argument and reads its term from `platform.retention_terms`, which the provisioner loads from the pinned
   retention policy (ADR 0122 decision 7), so a new term from counsel takes a policy version and no code.
+
+## Amendments (2026-10-25)
+
+- Third consistency check (round 4), eighth pass, Đạt's V4.30 and the planner's call H-1: decision 5 adds the
+  dispatch log, a `dispatched` row the executor commits in a transaction of its own before the outbound call,
+  and splits the takeover of an expired claim in two, a safe run again when no `dispatched` row exists and the
+  Action's `on_unknown` when one exists with no terminal row, never a blind re-run; decision 6 names what a run's
+  effect is promised by level (internal, keyed or looked up, keyless, concurrent) and says that the provider key
+  is a hash of the `wf:` key, replacing decision 5's "Two calls with one key can never both run the effect" and
+  decision 6's unqualified "the claim turns the retry into a replay", which promised a single application that a
+  send whose answer was lost does not give; Consequences add the status CHECK with `dispatched` and
+  `outcome_unknown` from its creation and a test of each takeover case. Decision 5's clearing function reads the
+  term of the retention fragments the release manifest pins, one fragment per store (H-1, ADR 0122 decision 7),
+  where the line above says a policy version.

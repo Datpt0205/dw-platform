@@ -120,13 +120,24 @@ by copying") and D3 (record-level access in four layers), and on the call on DO-
     the triggers of decision 6 read that person in `app.user_id`. This keeps the pattern of ADR-0012 rather than
     ADR-0110's settlement, which runs in a lane that the triggers would see instead of a person. A tenant where nobody
     else could confirm gets 409 `conflict` with `details.reason_code` `no_checker_available` and no proposal, so a
-    tenant with one owner changes no role, and invites nobody, until an operator installs a second owner through
+    tenant left with one owner changes no role, and invites nobody, until an operator installs a second owner through
     `POST /api/v1/platform/tenants/{tenant_id}/org-admins`; a proposer who confirms their own proposal gets 409
     `conflict` with `second_person_required`. A change that only narrows (an assignment revoked, privileges removed or
     made shallower with nothing added, a role soft-deleted) is applied in its sender's transaction with one audit event
     and no proposal. One SQL function over `platform.effective_grants` finds a checker (an active holder of the
     permission other than the proposer) for this mechanism and ADR-0110's, which also share the proposal expiry rule
-    and both reason codes.
+    and both reason codes. A tenant starts with two owners (V4.38, YC114): `POST /api/v1/platform/tenants` (tenant-rbac
+    R3.1, its ticket 02) takes two, and the tenant stays in a new status `setup`, which `ck_tenants_status` gains in
+    that ticket's revision while foundations-hardening R3.2's status trigger stays as it is, until the second owner
+    turns `active`, the tenant turning `active` in the transaction that activates that person (org-and-principals'
+    member activation calls the transition). The second owner may be the customer's partner, a person outside the
+    customer's company invited as a member like any other member, and is never a platform operator or a support staff
+    member: neither ever holds `tenant_owner`, `studio.publish.approve` or `platform.roles.write` in a customer's
+    tenant, which PostgreSQL refuses, with a negative test (ADR-0024 (Proposed) decision 6, cited and not amended).
+    Once each time the `active` holders of `studio.publish.approve` or `platform.roles.write` fall below two, the
+    tenant-depth holders of `platform.members.write` are warned, and the operators' screen lists the tenants in
+    `setup` and those below two (H-15). Who may do what while a tenant is `setup`, and whether `setup` leads anywhere
+    but `active`, wait on Đạt (Open 7 and 8).
 11. **Three answers to a refused decider.** A person refused the decision of an approval, or the confirmation of a
     role change under decision 10, gets one of three answers, and specs cite them from here:
     - 404 `not_found` when the request lies outside what they may see: another workspace's request, or a stamped one
@@ -186,7 +197,7 @@ by copying") and D3 (record-level access in four layers), and on the call on DO-
   so dw-proterial's maintainer moves its writes off that column before tenant-rbac/03 refuses them.
   A tenant with one owner changes no role and invites nobody until an operator installs a second owner (decision 10),
   so the migration prints the tenants with fewer than two owners and those with no `org_admin` in their root
-  workspace.
+  workspace; a tenant created once tenant-rbac/02 lands has two owners from the start (V4.38).
 - Contradicts `CLAUDE.md:185` ("Every tenant-scoped table has `tenant_id` and `workspace_id`") for
   `platform.tenant_roles`, `platform.tenant_role_permissions`, `platform.tenant_access_versions`,
   `platform.role_change_requests` and `platform.tenant_role_object_privileges`, worth reopening because a role, its
@@ -241,6 +252,19 @@ by copying") and D3 (record-level access in four layers), and on the call on DO-
    role templates name its object keys stays open.
 6. **FOG-38 (prototype).** Cost of `effective_grants` and the version read per request; triggers under bulk assignment
    and on a role with 1,000 holders; whether `FOR SHARE` closes the revoke-while-assigning race on PostgreSQL 16.
+7. **Q-h1 (Đạt, before tenant-rbac/02 is ready).** Who may do what while a tenant is `setup` (decision 10)? Proposed:
+   `setup` behaves as `locked` at every tenant route, except the two owners' first sign-in and their acceptance of the
+   owner invitation, and the operators' routes; no run, no publish and no other invitation until the tenant is
+   `active`. ADR-0102 decision 6, read as written, refuses a tenant that is not active at every route, `/me` included,
+   which would refuse those two steps as well, so the answer also names that exception.
+8. **Q-h2 (Đạt, before tenant-rbac/02 is ready).** May a tenant in `setup` be offboarded (`setup` to `offboarding`)?
+   Proposed: yes, by the operators through the existing offboarding flow, so a tenant whose second owner never arrives
+   does not stay `setup` for good (failure-modes #6).
+9. **Q-h7 (Đạt, before tenant-rbac/02 is ready).** In W1, does the `platform_admin` bypass (the value in
+   `memberships.role_keys` that passes every scope check without an approval mark, tenant-rbac G2) count as holding
+   `platform.roles.write` in a customer's tenant under decision 10? If it does, it contradicts the operator rule there
+   until W2 withdraws the value. Proposed: yes; the role-administration and role-assignment routes do not accept the
+   bypass, as it already does not pass an approval mark (DO-33), and G2 holds for every other route.
 
 ## Acceptance (2026-10-23)
 
@@ -285,3 +309,14 @@ by copying") and D3 (record-level access in four layers), and on the call on DO-
   through a composite foreign key, `(tenant_id, object_id)` or `(tenant_id, field_id)`, as tenant-rbac's object and
   field privilege tables state them, because a foreign key check does not pass through RLS and a one-column key would
   let one tenant's privilege name another tenant's definition (`CLAUDE.md`, Data model rules).
+
+## Amendments (2026-10-25)
+
+- Third consistency check (round 4), eighth pass, Đạt's V4.38 with the planner's call H-15: decision 10 has a tenant
+  created with two owners, kept in the new status `setup` until the second is `active` and turned `active` in that
+  person's activating transaction; lets the customer's partner be the second owner and never a platform operator or a
+  support staff member, who never hold `tenant_owner`, `studio.publish.approve` or `platform.roles.write` in a
+  customer's tenant (ADR-0024 (Proposed) decision 6 cited, not amended); and warns the tenant-depth holders of
+  `platform.members.write` once each time the `active` holders of either key fall below two (H-15). Open 7 (Q-h1, what
+  `setup` allows) and Open 8 (Q-h2, whether `setup` may lead to `offboarding`) are Đạt's, and nothing here guesses
+  them; Consequences note that a tenant created after tenant-rbac/02 starts with two owners.

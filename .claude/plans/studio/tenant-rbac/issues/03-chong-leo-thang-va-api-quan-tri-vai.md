@@ -59,8 +59,9 @@ trị viên, `platform.roles.bind` gán vai trò không trọng yếu.
    `platform.tenants.status` của công ty khác `offboarding` (spec R7.7), cùng hình với `platform.guard_control_switch()`
    của agent-lifecycle (agent-lifecycle:R7.5); khẳng định quyền trong `test_privileges.py`. Hết hạn đọc từ `expires_at`,
    không có trạng thái thứ hai; dòng giữ làm hồ sơ tới khi offboarding xóa tenant, và lane offboarding xuất rồi xóa
-   bảng dưới test phủ offboarding (studio-skeleton:R4.3); hai khóa ngoại của bảng đều `ON DELETE CASCADE` nên
-   `_ORDERED_FIRST` không cần mục nào.
+   bảng dưới test phủ offboarding (studio-skeleton:R4.3) bằng bước mặc định của sổ bước xóa (foundations-hardening:R11.4);
+   hai khóa ngoại của bảng đều `ON DELETE CASCADE` nên thứ tự suy từ `pg_constraint` không ràng nó, và ticket này không
+   đăng ký bước nào.
     - Mutation nới quyền ở bước 5 và 6 ghi một đề xuất (202 kèm `id`) sau khi `platform.rbac_refusals` cho người đề xuất
       không trả gì; `platform.checker_candidates` (ticket 02) không trả ai cho `required_permission` → 409 `conflict` với
       `details.reason_code` `no_checker_available`, không ghi.
@@ -164,3 +165,5 @@ trị viên, `platform.roles.bind` gán vai trò không trọng yếu.
 - 2026-10-24 (agent): vòng sửa 4: câu INSERT của bước 1 nêu mọi cột NOT NULL của danh mục, `tenant_grantable` của ticket 02 gồm (`C:custom-objects/02~tenant-rbac/02`); ticket này đã chờ ticket 02 nên Blocked by không đổi.
 - 2026-10-24 (agent): vòng sửa 4, lượt bốn: bước 4 thêm index `(tenant_id, role_id)` của `platform.role_change_requests` cho FK tới vai trò, vì index danh sách không dẫn bằng hai cột đó (CLAUDE.md, Data model rules; Quyết định 24/10/2026 của spec).
 - 2026-10-24 (agent): bước 4 cấp DELETE cho `dw_app` trên `platform.role_change_requests` cùng trigger `platform.guard_role_change_request()` chỉ cho xóa khi công ty ở `offboarding`, vì lane offboarding chỉ xóa bảng mà `dw_app` có DELETE; tiêu chí mới R7.7 (RB36) mang ca âm của công ty `active` và lượt xóa (CLAUDE.md, Data model rules; Quyết định 24/10/2026 của spec).
+- 2026-10-25 (agent): lượt h, theo H-2 (foundations-hardening): bước xóa `platform.role_change_requests` là bước mặc định
+  của sổ bước xóa, thứ tự suy từ `pg_constraint`, thay câu về `_ORDERED_FIRST`; không đổi gì khác.

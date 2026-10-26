@@ -3,19 +3,20 @@
 Status: needs-triage
 Blocked by: .claude/plans/studio/foundations-hardening/issues/01-test-khong-the-do.md, .claude/plans/studio/org-and-principals/issues/01-khoa-don-vi-va-siet-realm.md
 Area: studio
-Yêu cầu: R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.7, R6.8, RH15, RH16, RH17, RH18, RH19, RH32
+Yêu cầu: R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.7, R6.8, R6.9, R6.10, R6.11, R6.12, R6.13, RH15, RH16, RH17, RH18, RH19, RH32, RH33, RH34, RH35
 
 ## Mục tiêu
 
-Mỗi hiệu ứng của một công cụ chạy một lần dù hai lời gọi cùng khóa đến đồng thời, claim mồ côi có
-người dọn, claim không trỏ được sang workspace của tenant khác, bản ghi lần gọi chỉ thêm và có CHECK, và
-không mục nào tới model mà không qua ToolExecutor (R6.1-R6.8, RH15-RH19, RH32; ADR-0108 (Accepted) quyết
-định 5; ADR-0116 (Accepted) quyết định 3 và 7).
-Mọi loại công cụ Studio sau này thừa hưởng việc chạy một lần từ đây.
+Hai lời gọi cùng khóa không cùng gửi khi claim còn hạn, mỗi lần gửi ra ngoài có một dòng `dispatched` commit trước lời
+gọi, một lần gửi chưa biết kết quả không bao giờ bị gửi lại mù mà trả `outcome_unknown` cho bên gọi, claim mồ côi có
+người dọn, claim không trỏ được sang workspace của tenant khác, bản ghi lần gọi chỉ thêm và có CHECK, và không mục
+nào tới model mà không qua ToolExecutor (R6.1-R6.13, RH15-RH19, RH32-RH35; V4.30; ADR-0108 (Accepted) quyết định 5;
+ADR-0116 (Accepted) quyết định 3 và 7). Mọi loại công cụ Studio sau này thừa hưởng claim và nhật ký lần gửi từ đây;
+đây là bước giành lượt và ghi `dispatched` mà tools-and-skills/01 đưa vào sổ bước (H-3), và là một phần của cổng E1.
 
 ## Việc cần làm
 
-Claim trước hiệu ứng (R6.1, R6.2, R6.3, R6.7, R6.8):
+Claim và nhật ký lần gửi trước hiệu ứng (R6.1-R6.3, R6.7-R6.13):
 
 1. Revision Alembic mới `db/migrations/versions/*_tool_execution_claims.py` (id ngẫu nhiên): bảng
    `platform.tool_execution_claims` theo ADR-0108 (Accepted) quyết định 5:
@@ -31,19 +32,33 @@ Claim trước hiệu ứng (R6.1, R6.2, R6.3, R6.7, R6.8):
       thể đã đổi dạng); policy `worker_drain` đọc `app.worker_drain` cho lane dọn;
     - `dw_app` giữ SELECT, INSERT, DELETE; REVOKE UPDATE mà default privileges cấp.
 2. Cùng revision: REVOKE UPDATE trên `platform.tool_executions` khỏi `dw_app` (DELETE giữ vì
-   offboarding xóa theo tenant); CHECK `ck_tool_executions_status` cho `status IN ('succeeded', 'failed')`,
-   sau khi `SELECT DISTINCT status` trên dữ liệu hiện có không thấy giá trị khác (ghi Comments);
-   tenant-config/03, đi sau ticket này, thay CHECK đó bằng cùng tập cộng `simulated` (ADR-0111 (Accepted)). Cột
+   offboarding xóa theo tenant); CHECK `ck_tool_executions_status` cho
+   `status IN ('succeeded', 'failed', 'dispatched', 'outcome_unknown')` ngay từ lần tạo (V4.30), sau khi
+   `SELECT DISTINCT status` trên dữ liệu hiện có không thấy giá trị khác (ghi Comments); bảng vẫn chỉ thêm, và
+   `uq_tool_executions_idempotency` chỉ phủ dòng `succeeded` (`db/migrations/sql/0001_platform_baseline.sql:698`) nên
+   dòng `dispatched` không đụng nó; tenant-config/03, đi sau ticket này, thay CHECK đó bằng cùng tập cộng `simulated`
+   (ADR-0111 (Accepted)). Cột
    `output` quá 30 ngày do lane lưu giữ của telemetry-and-audit xóa qua một hàm riêng của lane
    (ADR-0122 (Accepted) quyết 7), nên không trả UPDATE cho `dw_app` để lane đó dùng.
-3. Port `ToolClaimPort` do `dw_agent_runtime` khai (claim, tiếp quản claim quá hạn, nhả theo token),
-   adapter SQL nối ở composition root; `ToolExecutor` nhận port qua constructor.
+3. Port `ToolClaimPort` do `dw_agent_runtime` khai (claim, tiếp quản claim quá hạn, nhả theo token, tìm lần gửi chưa
+   biết kết quả, chèn dòng `dispatched` có rào), adapter SQL nối ở composition root; `ToolExecutor` nhận port qua
+   constructor. Cùng chỗ khai: ba lỗi có kiểu mà handler ném sau khi lần gửi bắt đầu, `NotDispatchedError`,
+   `RejectedError` (mang mã nhà cung cấp) và `OutcomeUnknownError`, để egress client của connections-and-vault/03 ném
+   theo kết quả có kiểu của nó (ADR-0115 (Accepted) quyết 6).
 4. `ToolExecutor._execute`, khi có khóa chống lặp: INSERT claim trước `find_succeeded`, với
    `expires_at = now() + timeout_seconds × (1 + max_retries) + 30 giây`:
-    - giành được: tìm lần thành công (có thì replay), không thì chạy handler, ghi, rồi nhả claim trong
-      `finally` bằng token của mình;
-    - không giành được: có lần thành công thì replay; claim hiện có quá hạn thì
-      `DELETE ... WHERE claim_token = :old AND expires_at < now()` rồi INSERT lại; còn lại `ConflictError`.
+    - giành được, hay tiếp quản claim quá hạn bằng `DELETE ... WHERE claim_token = :old AND expires_at < now()` rồi
+      INSERT lại (R6.10): tìm lần thành công (có thì replay); khóa có lần gửi chưa biết kết quả, tức dòng `dispatched`
+      mới nhất của khóa chưa có `succeeded` hay `failed` sau nó, thì trả `outcome_unknown` và không gọi handler
+      (R6.9); không thì, với lời gọi có hiệu ứng ra ngoài nền tảng không bị giả lập, chèn dòng `dispatched` bằng
+      `INSERT ... SELECT ... WHERE EXISTS` (claim mang `claim_token` của mình còn hạn) và commit trong giao dịch riêng,
+      không chèn được dòng nào thì dừng mà không gọi handler (R6.11, R6.13); gọi handler; ghi đúng một dòng kết thúc
+      theo kết quả có kiểu, `succeeded`, `failed` mang mã cho `NotDispatchedError` và `RejectedError`, `outcome_unknown`
+      cho `OutcomeUnknownError` và mọi lỗi khác ném sau `dispatched` (R6.12); rồi nhả claim trong `finally` bằng token
+      của mình;
+    - không giành được và claim hiện có còn hạn: có lần thành công thì replay, còn lại `ConflictError` (R6.1).
+      Bước này là bước giành lượt và ghi `dispatched` của thứ tự tools-and-skills:R2.6, ngay trước bước gọi handler;
+      ticket này dựng nó trong `_execute` hiện có, tools-and-skills/01 đưa nó vào sổ bước (H-3).
 5. `SqlToolExecutionStore.record`: `IntegrityError` trên `uq_tool_executions_idempotency` thành đọc
    lại lần thành công và replay, không ném lỗi.
 6. Lane `tool_claims_retention`: một `RetentionPrunePort` xóa claim có `expires_at < now()`, đăng ký ở
@@ -71,10 +86,27 @@ Không còn cửa sau (R6.4, R6.5, R6.6):
       `external` cùng khóa trên `ToolExecutor` trực tiếp (không qua graph), handler ngủ 0,5 giây →
       handler chạy đúng một lần, lời gọi kia nhận replay hoặc `ConflictError`; gỡ bước claim → đỏ (ghi
       Comments).
-- [ ] R6.2 (RH15): claim mồ côi quá hạn → lời gọi kế tiếp tiếp quản và chạy handler một lần; người
-      giữ cũ nhả bằng token cũ → claim của người mới còn; bỏ điều kiện token ở câu nhả → đỏ.
+- [ ] R6.2 (RH15): claim của người giữ cũ bị tiếp quản; người giữ cũ nhả bằng token cũ → claim của người mới còn; bỏ
+      điều kiện token ở câu nhả → đỏ.
 - [ ] R6.3 (RH16): bằng `dw_app`: UPDATE `platform.tool_executions` → `permission denied`; INSERT
-      `status='bogus'` → CHECK từ chối; khẳng định catalog trong `test_privileges.py`.
+      `status='bogus'` → CHECK từ chối; INSERT `dispatched` và `outcome_unknown` → nhận; khẳng định catalog trong
+      `test_privileges.py`.
+- [ ] R6.9 (RH33): K4 trên PostgreSQL thật: nhà cung cấp giả nhận lời gọi và trả 2xx, tiến trình chết sau dòng
+      `dispatched` và trước dòng kết thúc → lời gọi kế tiếp cùng khóa với claim quá hạn, và một lời gọi nữa sau khi lane
+      `tool_claims_retention` đã dọn claim, đều nhận `outcome_unknown`, handler không chạy, nhà cung cấp giả có đúng 1
+      lời gọi; dòng mới nhất của khóa là `outcome_unknown` → như trên; gỡ kiểm lần gửi chưa biết kết quả → nhà cung
+      cấp giả nhận lời gọi thứ hai, test đỏ.
+- [ ] R6.10 (RH33): claim quá hạn mà khóa chưa có `dispatched` nào, và claim quá hạn mà lần gửi trước đã `failed` →
+      lời gọi kế tiếp tiếp quản, ghi `dispatched` rồi chạy handler một lần.
+- [ ] R6.11 (RH34): lúc nhà cung cấp giả nhận lời gọi, một kết nối thứ hai đọc thấy dòng `dispatched` của khóa đã
+      commit; gỡ bước ghi `dispatched` → ca K4 của R6.9 gửi hai lần, test đỏ.
+- [ ] R6.12 (RH34): T: nhà cung cấp giả áp dụng rồi để lời gọi hết thời gian → dòng kết thúc `outcome_unknown`, không
+      `failed`; handler ném lỗi không có kiểu sau `dispatched` → `outcome_unknown`; `NotDispatchedError` và
+      `RejectedError` → `failed` mang mã; trả kết quả → `succeeded`; mỗi lần gửi đúng một dòng kết thúc; ghi `failed`
+      cho lỗi không có kiểu → test đỏ.
+- [ ] R6.13 (RH35): S: người giữ cũ dừng ngay trước bước ghi `dispatched` tới quá `expires_at`, người mới tiếp quản và
+      gửi, rồi người cũ chạy tiếp → không có dòng `dispatched` thứ hai, handler của người cũ không chạy, nhà cung cấp
+      giả có đúng 1 lời gọi; gỡ rào `claim_token` ở câu chèn → nhà cung cấp giả nhận 2 lời gọi, test đỏ.
 - [ ] R6.4 (RH17): một mục dict trong danh sách công cụ → model giả không nhận nó ở cả hai middleware;
       `build_agent` với mục không phải `BaseTool` → lỗi; hoàn tác bộ lọc → đỏ.
 - [ ] R6.5 (RH18): lời gọi thất bại với input `{"items": [{"api_key": "sk-123"}]}` → audit
@@ -103,8 +135,8 @@ Không còn cửa sau (R6.4, R6.5, R6.6):
 - `configs/workers/README.md:14-17`
 - `db/migrations/sql/0001_platform_baseline.sql:698`
 - `docs/adr/0108-one-error-envelope-and-caller-bound-idempotency.md:90-97`
-- spec: R6, RH15-RH19, RH32; org-and-principals:R1.1 (`uq_workspaces_tenant_id_id`); si-platform
-  `db/si/migrations/0040_tool_call_claims.sql`.
+- spec: R6, RH15-RH19, RH32-RH35; V4.30; org-and-principals:R1.1 (`uq_workspaces_tenant_id_id`); tools-and-skills:R2.6
+  (chỗ của bước); si-platform `db/si/migrations/0040_tool_call_claims.sql`.
 
 ## Comments
 
@@ -116,3 +148,8 @@ Không còn cửa sau (R6.4, R6.5, R6.6):
   không tạo vòng); tiêu chí R6.8 với kiểm soát RH32 là ca âm của FK ghép đó: claim của tenant A mang `workspace_id` của
   tenant B bị từ chối (hai dòng Quyết định 24/10/2026 của spec).
 - 2026-10-25 (agent): ticket chuyển từ foundations-hardening/04 sang đây thành ticket 01 khi spec tách (hai dòng Quyết định cuối của spec); kiểm soát FH15-FH19, FH32 thành RH15-RH19, RH32, cùng số, và cạnh tới ticket 01 cùng thư mục cũ thành đường dẫn tới foundations-hardening/01. Không đổi việc cần làm, không thêm cạnh.
+- 2026-10-25 (agent): lượt h, theo V4.30 của Đạt và dòng tạm cùng ngày của spec: CHECK `ck_tool_executions_status` có
+  `dispatched` và `outcome_unknown` từ lần tạo (bước 2); nhật ký lần gửi, kiểm lần gửi chưa biết kết quả ở mọi lần giành
+  claim, rào `claim_token` khi ghi `dispatched` và ba lỗi có kiểu (bước 3, 4; R6.9-R6.13, RH33-RH35); ca tiếp quản cũ
+  của R6.2 tách thành R6.9 và R6.10, R6.2 giữ ca nhả bằng token cũ. Không thêm cạnh; không thêm cột `credential_version`
+  (H-10, connections-and-vault là chủ).

@@ -213,8 +213,9 @@ bao giờ bằng token của nền tảng (ADR-0116 (Accepted) quyết 8; ADR-01
   `platform.guard_control_switch()` (agent-lifecycle:R7.5) và `platform.guard_contact_suppression()`
   (compliance-pdpl:R5.6), vì lane `offboarding` xóa bằng `dw_app` và chỉ thấy bảng mà `dw_app` có DELETE, nên
   thiếu DELETE thì test phủ offboarding đỏ và dữ liệu của công ty rời nền tảng ở lại (studio-skeleton:R4.1).
-  Mỗi khóa ngoại `ON DELETE RESTRICT` mà ticket W2 đặt giữa các bảng MCP có một dòng thứ tự trong
-  `_ORDERED_FIRST` của `offboarding.py`, bảng con trước (studio-skeleton:R4.2).
+  Ticket W2 tạo bảng MCP đăng ký bước xóa của chúng vào sổ bước xóa của lane `offboarding`, mỗi bước khai các bảng nó
+  xóa; thứ tự giữa các bảng MCP nối bằng khóa ngoại `ON DELETE RESTRICT` suy từ `pg_constraint`, bảng con trước,
+  không ghi tay (foundations-hardening:R11.4, foundations-hardening:R11.5; studio-skeleton:R4.2; H-2).
 - Công cụ MCP là thành phần loại `tool` trong vỏ phiên bản chung (`studio.artifacts`,
   `studio.artifact_versions`), không cột `status`: phiên bản chạy là Giai đoạn `live`, và ngưng do lệch là
   một dòng `platform.control_switches` có `scope_type` `tool` (ADR-0116 (Accepted) quyết 1;
@@ -371,6 +372,11 @@ bao giờ bằng token của nền tảng (ADR-0116 (Accepted) quyết 8; ADR-01
   (studio-skeleton:R4.2). Sửa: thêm R2.7, Dữ liệu, Kiểm soát (MC20), Tiêu chí xong. Nếu sai thì: `dw_app` không
   DELETE trên hai bảng, offboarding xóa chúng qua một hàm SECURITY DEFINER hẹp mà một dòng `STUDIO_EXCLUSIONS` nêu,
   và R2.7, MC20 đổi theo.
+- 26/10/2026 (agent, tạm): H-2: các bước xóa của lane `offboarding` là một sổ ở composition root của worker do
+  foundations-hardening/07 dựng, mỗi bước khai các bảng nó xóa, thứ tự suy từ khóa ngoại `RESTRICT` và `NO ACTION`
+  trong `pg_constraint`, hai bước trùng bảng hay có vòng thì bị từ chối trước câu xóa đầu (foundations-hardening:R11.4,
+  foundations-hardening:R11.5); bảng MCP của W2 đăng ký bước vào sổ đó, thay vế "một dòng thứ tự trong `_ORDERED_FIRST`"
+  của dòng Quyết định về R2.7 ở trên. Sửa: Dữ liệu. Nếu sai thì: thứ tự viết tay trong `offboarding.py`.
 
 ## Danh sách ticket
 

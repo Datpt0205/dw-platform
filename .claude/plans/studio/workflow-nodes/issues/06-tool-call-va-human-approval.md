@@ -23,7 +23,10 @@ lượt (R9.15). Quy tắc `all` (mọi người được giao phải duyệt) l
    `ToolExecutor.execute` với đúng khoá mà wrapper nút dẫn (workflow-engine:R4.5), không tự dựng khoá; nhận
    `subject` đã khoá sau phê duyệt.
    Thiếu quyền → `permission_denied` từ executor; sàn gửi tin ở đường messaging của executor
-   (compliance-pdpl), không ở bước.
+   (compliance-pdpl), không ở bước. Mức bảo đảm của lời gọi là của executor và hợp đồng giao nhận của Hành động
+   (V4.30): Bước không tự thử lại hay gửi lại; hai lời gọi cùng khoá không cùng gửi khi claim còn hạn (R8.2), còn lời
+   gọi không rõ kết quả làm theo `on_unknown` của Hành động, ở W1 chỉ là `review` (H-5), nên lượt đỗ ở điểm chờ
+   `outcome_review` của workflow-engine/08 và không chạy làn lỗi của Bước, việc của wrapper nút (workflow-engine/03).
 2. Bảng `studio.step_assignments` và `studio.step_approvals` (xem mục Dữ liệu của spec: `tenant_id`,
    `workspace_id`, `run_id`, `node_id`; `step_assignments.assignee_kind` CHECK (`user`) không DEFAULT ở W1;
    `step_assignments.run_id` FK ghép `(tenant_id, run_id)` tới `platform.worker_runs (tenant_id, id)`
@@ -79,8 +82,8 @@ lượt (R9.15). Quy tắc `all` (mọi người được giao phải duyệt) l
 
 - [ ] R8.1: `tool.call` gọi `ToolExecutor.execute` với đúng khoá mà wrapper nút dẫn (workflow-engine:R4.5) và
       phiên bản công cụ đã ghim lúc gửi kiểm định.
-- [ ] R8.2 (WN6): hai lần chạy song song cùng khoá do wrapper nút dẫn → tác động ngoài xảy ra đúng một lần; cho Bước
-      tự dựng khoá khác → test đỏ.
+- [ ] R8.2 (WN6): hai lần chạy song song cùng khoá do wrapper nút dẫn, lần sau trong lúc claim của lần đầu còn hạn →
+      nhà cung cấp giả nhận đúng một lời gọi; cho Bước tự dựng khoá khác → hai lời gọi, test đỏ.
 - [ ] R8.3 (WN7): người chạy thiếu quyền công cụ → `permission_denied` từ executor, không từ bước.
 - [ ] R8.4 (WN7): `tool.call` `email.send` của `smtp@1.0.0` tới địa chỉ chưa đồng ý → `blocked:no_consent`;
       gọi thẳng công cụ (bỏ qua bước) cũng bị chặn; gỡ sàn gửi khỏi executor → test đỏ.
@@ -156,3 +159,7 @@ lượt (R9.15). Quy tắc `all` (mọi người được giao phải duyệt) l
 - 2026-10-25 (agent): `human.approval@1` khai `opens_wait` đúng và `tool.call@1` khai cả ba tính chất vị trí sai, theo
   trường bắt buộc của ticket 02 (dòng Quyết định 25/10/2026 của spec), để `wf.wait_in_parallel` của workflow-engine/06
   nhận ra Bước phê duyệt mà không đọc tên loại. Không thêm cạnh.
+- 2026-10-25 (agent): lượt h, theo V4.30 của Đạt: R8.2 nói mức bảo đảm đồng thời (hai lời gọi cùng khoá không cùng gửi
+  khi claim còn hạn) thay "tác động ngoài xảy ra đúng một lần", và bước 1 nói lời gọi không rõ kết quả là của wrapper
+  nút và điểm chờ `outcome_review` của workflow-engine/08, không của Bước. Không thêm cạnh: R8.2 thử executor giành lượt
+  của runtime-hardening/01, mà ticket này đã chờ qua tools-and-skills/02.

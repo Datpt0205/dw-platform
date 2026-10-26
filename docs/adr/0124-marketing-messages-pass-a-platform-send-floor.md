@@ -46,7 +46,8 @@ spec owns the floor and the consent records, `tools-and-skills` consumes the flo
    distinct recipient once its root run (counted by `root_run_id`) has reached decision 6's maximum recipients per
    run, 200 in the pilot, which a tenant may only lower. A refusal is a typed `blocked:<reason>` result on the node's
    error port and an audit event, and it also writes one send-log row with `outcome` `blocked` (N4); nothing is
-   sent.
+   sent. An admitted message writes its send-log row with `outcome` `dispatching` before the egress client sends it,
+   so the frequency cap sees a send still in progress, whose outcome may not be known yet (V4.30).
 2. **Checked once, in the ToolExecutor.** `SendAdmissionPort` is declared by its consumer and satisfied by the
    platform's `MarketingSendPolicy`. The ToolExecutor consults it on every connector action that its manifest marks
    as sending a message (ADR-0116), before the egress client sends (ADR-0115), so a `tool.call` node, an agent's tool
@@ -57,7 +58,8 @@ spec owns the floor and the consent records, `tools-and-skills` consumes the flo
    this floor. A message to anyone else is a connector message action.
 4. **Consent records are platform data, tenant-wide.** `platform.consent_records`, append-only under tenant-only
    RLS, range-partitioned by month with a DEFAULT partition through one row in `platform.time_partitioned_tables`:
-   subject key (E.164 phone, lowercase email or Zalo user id), purpose (`marketing`, `transactional`), channel
+   subject key (E.164 phone, lowercase email or Zalo user id), purpose (`marketing` in W1; decision 8's transactional
+   messages need no consent record, so `transactional` returns only if counsel asks for an opt-out, H-29), channel
    (`zns`, `email`, `sms`, `messenger`, `zalo_oa`), state, `captured_at`, `source`, `evidence_ref` (a Data Hub event
    id or an import batch), `notice_version` and `withdrawn_at`; the current consent is the latest row per subject,
    purpose and channel. `platform.contact_suppressions` holds an address hash per channel. Both tables are tenant-wide
@@ -82,6 +84,13 @@ spec owns the floor and the consent records, `tools-and-skills` consumes the flo
    carries an "AI-drafted" label, on by default until counsel answers DO-60, and its provenance (the drafting run and
    model) on the send log. In a `test` run a message reaches only the tenant's test recipients (the tenant-wide
    `studio.test_recipients`, ADR-0111), and the floor applies to them too.
+8. **A transactional rule under the floor (W2, after counsel).** Once counsel's opinion (compliance-pdpl 02) names
+   its legal basis, a message whose action fixes its purpose as `transactional` in the connector manifest still
+   passes the suppression list and the per-run recipient cap, needs no consent record, and is held to neither the cap
+   of one message per address and channel per 24 hours nor marketing's quiet hours, so two orders to one supplier on
+   one day both go. The purpose belongs to the action, never to the builder, and the capability analysis shows it
+   (ADR-0125 (Accepted) decision 8); a marketing message sent through a transactional action is refused at submit
+   (V4.39, YC112). Until then every message action passes decisions 1 to 7.
 
 ## Alternatives considered
 
@@ -97,15 +106,19 @@ spec owns the floor and the consent records, `tools-and-skills` consumes the flo
 ## Consequences
 
 - compliance-pdpl ships the consent records, the suppressions, the send log and `MarketingSendPolicy` (compliance-pdpl
-  04, W1) before the slice's first live message; connections-and-vault messaging manifests declare purpose, channel
-  and recipient; the Data Hub mapping captures the consent checkbox and notice version at intake (FOG-03).
+  04, W1) before the first effect at every profile, gate E1 (V4.31); connections-and-vault messaging manifests
+  declare purpose, channel and recipient; the Data Hub mapping captures the consent checkbox and notice version at
+  intake (FOG-03).
 - A lead without consent evidence gets no message at all, so the pilot sends nothing until intake captures consent.
   Existing consents need an import with evidence. Deferring a refused send to the next allowed hour is W2.
 - An `http.request` node or a tenant `http` tool aimed at a messaging provider's host would go around the floor; the
   planning briefs propose refusing such hosts for both, which tools-and-skills owns (ADR-0116).
 - Tests that must exist (MP1, MP12, MP15), each shown red with its guard removed: a direct tool call, an agent tool
   call and a workflow-as-tool call to a message action without consent are each refused on their own path; a
-  withdrawn consent stops a queued message; a tenant overlay looser than the floor is refused.
+  withdrawn consent stops a queued message; a tenant overlay looser than the floor is refused; a second message to an
+  address whose first send is still `dispatching` refused by the frequency cap (V4.30); from W2, two transactional
+  orders to one supplier on one day both sent, and a marketing message through a transactional action refused at
+  submit (V4.39).
 - Consent records are removed row by row, never by dropping a partition, since the row in force may be old. Their
   term (DO-52 proposes the relationship plus 5 years) and what survives an erasure as proof are counsel's
   (ADR-0122's retention). Contact suppressions stay while the tenant is a customer, and only offboarding or a data
@@ -147,6 +160,9 @@ spec owns the floor and the consent records, `tools-and-skills` consumes the flo
    out to both, which counsel confirms. Answered 2026-10-23: SMTP and workspace-shared connections as stated
    (DO-48.1 (a)); the fan-out provisionally, with provider-event routing (W2) off until counsel's opinion
    (DO-48.2 (a), ADR-0113).
+6. **Counsel (V4.39).** What is the legal basis for transactional messages under Law 91/2025/QH15 and Decree
+   356/2025/ND-CP? Decision 8 waits for the answer (compliance-pdpl 02), and the planner records the question among
+   the decisions owed.
 
 ## Acceptance (2026-10-23)
 
@@ -175,3 +191,20 @@ Amended by Đạt on 2026-10-24, who accepted every recommendation the second co
   (F:ADR-0124~compliance-pdpl:R3.8).
 - Third consistency check (round 4), second pass: decision 3 refuses an address-shaped `notify.send` recipient at
   submit, where ADR-0112 decision 3's validator runs, no longer as "a publish error", as ADR-0112 decision 6 now says.
+
+## Amendments (2026-10-25)
+
+Amended by Đạt on 2026-10-25, who accepted the recommendation on each of the twelve decisions owed (V4.30-V4.41), eleven
+from the answer to ChatGPT's architecture review and one on a builder's read of simulated runs, applied with the
+planner's provisional calls H-1-H-18:
+
+- Third consistency check (round 4), eighth pass, Đạt's V4.30, V4.31 and V4.39: decision 1 writes a message's send-log
+  row as `dispatching` before the egress client sends it, so the frequency cap sees a send still in progress; a new
+  decision 8 places a `transactional` rule under the floor in W2, after counsel's opinion, which keeps the suppression
+  list and the per-run recipient cap, asks no consent record and applies neither the 24-hour cap nor the quiet hours,
+  the purpose fixed by the action in its manifest and shown in the capability analysis, a marketing message through a
+  transactional action refused at submit; Consequences hold the floor to gate E1, before the first effect at every
+  profile, where they said "before the slice's first live message", and name the tests; Open 6 records the question for
+  counsel.
+- Pass h, after wave 1 (H-29): the consent purpose `transactional` leaves the W1 set, since decision 8's messages need
+  no consent record; it returns with the W2 rule only if counsel asks for an opt-out.

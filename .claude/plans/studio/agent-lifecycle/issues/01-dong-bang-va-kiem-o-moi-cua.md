@@ -1,7 +1,7 @@
 # 01 — Đóng băng toàn nền tảng và theo tenant, kiểm ở mọi cửa của runtime
 
 Status: needs-triage
-Blocked by: .claude/plans/studio/org-and-principals/issues/02-thanh-vien-cap-tenant.md, .claude/plans/studio/runtime-hardening/issues/03-run-va-outbox-khong-ket.md, .claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md, .claude/plans/studio/tenant-config/issues/05-lien-ket-va-phien-ban-cau-hinh.md
+Blocked by: .claude/plans/studio/org-and-principals/issues/02-thanh-vien-cap-tenant.md, .claude/plans/studio/runtime-hardening/issues/03-run-va-outbox-khong-ket.md, .claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md, .claude/plans/studio/tenant-config/issues/05-lien-ket-va-phien-ban-cau-hinh.md, .claude/plans/studio/tools-and-skills/issues/01-executor-kiem-schema-va-nha-may.md
 Area: studio
 Yêu cầu: R7.1, R7.2, R7.3, R7.4, R7.5, R7.6, R7.7, R7.8, R7.10, R7.11, R9.1, R9.2, R10.1, AL11, AL12, AL16, AL17, AL18
 
@@ -61,7 +61,11 @@ cửa, để quyết Đóng băng có thể tiếp tục cho lượt đang chạ
    `ResidencyGate` của compliance-pdpl/03 (ticket đó chờ ticket này), rồi `LimitsMiddleware` của
    usage-and-limits/03; middleware tóm tắt trước `budget.check`; cửa `resume` chèn trên compare-and-set của
    runtime-hardening/03, ticket này chờ nó;
-   `ToolExecutor._execute` trước kiểm quyền (audit `tool.denied`, `policy_decision` `deny_frozen`). Runner
+   cửa công cụ là bước "công tắc điều khiển" của sổ bước `build_tool_executor_steps(deps)` mà tools-and-skills/01 dựng ở
+   composition root (tools-and-skills:R2.6, tools-and-skills:R2.7; H-3): ticket này đăng ký đúng một bước đó vào sổ, ở
+   chỗ đầu mà thứ tự R2.6 của tools-and-skills dành cho nó, trước kiểm quyền (audit `tool.denied`, `policy_decision`
+   `deny_frozen`), và gỡ nó khỏi danh sách bước chờ đăng ký của sổ, không viết lại chuỗi bước của
+   `ToolExecutor._execute` và không gọi bước nào ngoài sổ. Runner
    map `RunHaltedError` sang `_fail(status=CANCELLED, event="run.cancelled")`; middleware lỗi công cụ ném lại
    `RunHaltedError` thay vì báo model. Cửa nhận theo `trigger_kind` (spec R7.7, R7.8): lượt `chat`,
    `manual`, `test` và lần thử của Lượt kiểm định kết thúc `cancelled`; lượt `datahub`, `provider_app`,
@@ -100,6 +104,10 @@ cửa, để quyết Đóng băng có thể tiếp tục cho lượt đang chạ
 - [ ] R7.1 (AL11): đặt đóng băng giữa một run, lời gọi kế tiếp qua mỗi cửa trong 6 cửa của R7.1 bị từ
       chối, run kết thúc `cancelled` với `reason_code`; tiến trình B thấy công tắc do tiến trình A đặt trong
       5 giây (NOTIFY), và trong TTL khi NOTIFY mất; gỡ kiểm ở một cửa → test của cửa đó đỏ.
+- [ ] R7.1 (AL11): sổ bước của API và của worker có bước "công tắc điều khiển" của ticket này ở chỗ đầu của thứ tự
+      R2.6, danh sách bước chờ đăng ký không còn nó, và lời gọi công cụ khi Đóng băng → `tool.denied` với `deny_frozen`
+      trước kiểm quyền; gỡ dòng đăng ký của ticket này mà không đưa bước lại vào danh sách chờ → test sổ của
+      tools-and-skills:R2.7 đỏ, nêu bước; đăng ký bước sau kiểm quyền → test sổ đỏ.
 - [ ] R7.3 (AL11): database ngắt quá 30 giây → lời gọi công cụ bị từ chối `control_state_unavailable`.
 - [ ] R7.2: test hợp đồng với làn `studio_inbound` giả: khi đóng băng `admission_state` trả `tenant_frozen`
       và làn để nguyên sự kiện; sau khi gỡ trả mở và làn xin lượt chạy theo `received_at`.
@@ -135,7 +143,8 @@ cửa, để quyết Đóng băng có thể tiếp tục cho lượt đang chạ
 ## Nguồn
 
 - `packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/run_events.py:97`; spec: R7.1 (mẫu NOTIFY).
-- `packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py:160`; spec: R7.1 (cửa công cụ).
+- `packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py:160`; spec: R7.1 (cửa công cụ, nay là một bước
+  của sổ bước của tools-and-skills/01; tools-and-skills:R2.7; H-3).
 - `packages/python/dw_agent_runtime/src/dw_agent_runtime/model/gateway.py:164`; spec: R7.1 (cửa có cấu trúc).
 - `packages/python/dw_platform/src/dw_platform/adapters/persistence/caching_lookup.py:27`; spec: R7.3
   (cache đóng khi lỗi, trái cache khóa tenant mở khi lỗi); ADR-0120 (Accepted) quyết 5.
@@ -179,3 +188,7 @@ cửa, để quyết Đóng băng có thể tiếp tục cho lượt đang chạ
 - 2026-10-24 (agent): vòng sửa thứ tư, lượt d, theo Quyết định tạm cùng ngày của spec: bước 1 thêm index `(tenant_id)`
   cho FK `tenant_id` của `platform.control_switches`, vì chỉ mục một công tắc mở là từng phần (CLAUDE.md, Data model
   rules: mọi khóa ngoại có chỉ mục ở phía mình).
+- 2026-10-26 (agent): lượt h, đợt 2, theo V4.31 của Đạt và H-3: chiều cạnh với tools-and-skills/01 đảo, ticket này chờ
+  ticket đó (bảng cạnh của lượt h), vì ticket đó dựng sổ bước có thứ tự của `ToolExecutor` ở composition root và ghi bước
+  công tắc điều khiển vào danh sách chờ đăng ký; ticket này chỉ đăng ký bước của mình vào sổ (bước 3, tiêu chí R7.1),
+  không viết lại chuỗi bước. Câu "tools-and-skills/01 chờ ticket này" của dòng 2026-10-24 không còn áp.

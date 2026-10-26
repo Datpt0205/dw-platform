@@ -1,9 +1,9 @@
 # 03 — RecordService: tạo, đọc, sửa, xóa mềm, trường duy nhất, upsert và describe theo người gọi
 
 Status: needs-triage
-Blocked by: 02, .claude/plans/studio/record-access/issues/03-policy-ban-ghi-va-mac-dinh-truy-cap.md, .claude/plans/studio/field-security/issues/01-mo-hinh-bao-mat-truong.md, .claude/plans/studio/app-standards/issues/02-khoa-chong-lap-gan-nguoi-goi.md, .claude/plans/studio/app-standards/issues/03-quy-uoc-api-danh-sach-va-sua.md, .claude/plans/studio/tenant-config/issues/03-che-do-chay-va-gia-lap-o-executor.md, .claude/plans/studio/usage-and-limits/issues/05-cong-gioi-han-toc-do-theo-tien-trinh.md
+Blocked by: 02, .claude/plans/studio/telemetry-and-audit/issues/01-otel-khong-noi-dung-va-metric.md, .claude/plans/studio/record-access/issues/03-policy-ban-ghi-va-mac-dinh-truy-cap.md, .claude/plans/studio/field-security/issues/01-mo-hinh-bao-mat-truong.md, .claude/plans/studio/app-standards/issues/02-khoa-chong-lap-gan-nguoi-goi.md, .claude/plans/studio/app-standards/issues/03-quy-uoc-api-danh-sach-va-sua.md, .claude/plans/studio/tenant-config/issues/03-che-do-chay-va-gia-lap-o-executor.md, .claude/plans/studio/usage-and-limits/issues/05-cong-gioi-han-toc-do-theo-tien-trinh.md
 Area: studio
-Yêu cầu: R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R4.3, R4.4, R4.5, R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R5.8, R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.7, R6.8, R7.1, R7.2, R7.3, R7.4, R7.5, R7.6, R7.7, R7.8, CO1, CO7, CO8, CO9, CO10, CO11, CO12, CO13, CO14, CO15, CO16, CO17, CO18, CO20, CO22, CO25
+Yêu cầu: R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R4.3, R4.4, R4.5, R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R5.8, R5.9, R5.10, R5.11, R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.7, R6.8, R7.1, R7.2, R7.3, R7.4, R7.5, R7.6, R7.7, R7.8, CO1, CO7, CO8, CO9, CO10, CO11, CO12, CO13, CO14, CO15, CO16, CO17, CO18, CO20, CO22, CO25, CO26
 
 ## Mục tiêu
 
@@ -34,9 +34,29 @@ người gọi (R3) đến ở đây, sau khóa đọc đối tượng của ten
     - ghi bản ghi; outbox; audit; `create_key`.
 2. Khi tạo: `owner_kind` `user`, `owner_id` là người gọi (hay principal của lượt chạy), `workspace_id` là workspace
    đang làm việc; policy chèn của record-access/03 đòi cả hai trong tầm tạo. `version` bắt đầu 1, mỗi lần sửa cộng 1.
-   `create_key` do đường gọi đặt: route lấy từ `Idempotency-Key` gắn người gọi (app-standards/02), bước quy trình
+   `create_key` do đường gọi đặt: route ghép `http:`, `caller_ref` của app-standards/02 và `Idempotency-Key`, nên khóa gửi qua HTTP không bao giờ
+   trùng khóa `wf:` của một lượt chạy hay khóa của người gọi khác (H-34; ca: hai người gọi cùng `Idempotency-Key`
+   → hai bản ghi, một khóa `wf:` của một lượt chạy gửi làm `Idempotency-Key` → bản ghi mới, không trả bản ghi của
+   lượt đó; bỏ tiền tố → test đỏ), bước quy trình
    dùng khóa `wf:{run_id}:{node_id}:{iteration_path}` của ADR-0108 (Accepted) quyết định 6; trùng `create_key`
    trả bản ghi đã có.
+
+    Khóa của lệnh sửa từ một Bước (R5.9 tới R5.11; V4.30): bảng `studio.record_write_keys` theo mục Dữ liệu của spec
+    (PK `(tenant_id, write_key)`, `write_key` CHECK bắt đầu bằng `wf:`, FK ghép `(tenant_id, record_id)` tới
+    `studio.records` ON DELETE CASCADE có index, `op` CHECK `update`, `upsert`, `assign`, `version`, `created`, ba cột
+    người phụ trách cho `assign`, `actor_id`, `created_at`), RLS ENABLE và FORCE với policy tenant cộng policy RESTRICTIVE
+    `tenant AND (actor_id = app.user_id OR scope)`, một dòng lý do trong danh sách bảng toàn tenant của
+    `test_rls_coverage.py`, quyền `dw_app` SELECT, INSERT, DELETE và không UPDATE (assert ở
+    `dw_platform/tests/integration/test_privileges.py`), một bước xóa trong sổ bước của lane `offboarding` (H-2) và mảnh
+    `configs/policies/retention.d/studio.record_write_keys.yaml` 31 ngày (`purger: row_delete`, `enforced: true`) trong
+    cùng revision, cùng bộ xóa theo dòng đăng ký vào sổ bộ xóa `RetentionPurgerRegistry` của telemetry-and-audit/01
+    (H-35); khóa không phải dữ liệu cá nhân nên mảnh không chờ cổng E3. `RecordService.update` và
+    nhánh sửa của `upsert` nhận `write_key` chỉ từ `RecordsPort` (không route nào nhận khóa `wf:`): trước khi ép kiểu,
+    tra khóa; có dòng thì trả `{record_id, version, created, replayed: true}` mà không ghi; không có thì ghi bản ghi,
+    outbox, audit và dòng khóa trong một giao dịch; INSERT khóa vướng PK vì dòng của chủ thể khác (không thấy qua RLS) →
+    409 `idempotency_conflict`. Ở `simulate` không ghi dòng khóa nào (R5.4). `replayed` là trường kết quả mà
+    workflow-engine:R4.22 dựa vào; workflow-nodes/04 chạy bộ contract test của `RecordsPort` (H-30) trên service này.
+
 3. Route trong nhóm `/api/v1/studio` (`dw_studio.records.presentation`), lỗi theo problem+json của app-standards:
     - `POST /api/v1/studio/objects/{api_name}/records` → 201, `ETag: "<version>"`, `Location`; `Idempotency-Key`
       không bắt buộc.
@@ -107,6 +127,16 @@ người gọi (R3) đến ở đây, sau khóa đọc đối tượng của ten
       → test đỏ.
 - [ ] R5.4 (CO13): service trong lượt `simulate` và lượt `test` trả bản ghi giả định; số dòng của `studio.records`,
       outbox và `platform.audit_events` không đổi; gỡ bước chế độ chạy → test đỏ.
+- [ ] R5.9 (CO26): một Bước `update` qua `RecordsPort` với khóa `wf:` → một dòng `studio.record_write_keys` cùng
+      giao dịch với bản ghi, outbox và audit; ép lỗi khi chèn audit → không bản ghi đổi và không dòng khóa; ghi dòng khóa
+      trong giao dịch riêng → test đỏ.
+- [ ] R5.10 (CO26): giết worker sau commit của lần sửa và trước checkpoint, chạy lại Bước cùng khóa với đầu vào đã đổi
+      → kết quả của lần đầu với `replayed: true`, `version` tăng một lần, một sự kiện `studio.record.updated`, một audit,
+      giá trị của lần đầu giữ nguyên; gỡ bước tra khóa → lần chạy lại sửa lần hai, test đỏ.
+- [ ] R5.11 (CO26): cùng khóa `wf:` từ một chủ thể khác → 409 `idempotency_conflict`, không dòng nào đổi; chủ thể khác
+      SELECT `studio.record_write_keys` → 0 dòng; gỡ policy RESTRICTIVE theo chủ thể → chủ thể khác đọc được dòng, test
+      đỏ.
+- [ ] R5.9: mảnh lưu giữ của `studio.record_write_keys` đặt 30 ngày, bằng hạn chót của lượt chạy → test so hai số đỏ.
 - [ ] R5.5: `DELETE` đặt `deleted_at`, `deleted_by`, dòng còn; `GET` theo id trả `deleted_at`.
 - [ ] R5.6 (CO10): thêm một mô-đun thử có chuỗi SQL `studio.records` ngoài `dw_studio.records.adapters` → test kiến
       trúc đỏ.
@@ -170,9 +200,11 @@ người gọi (R3) đến ở đây, sau khóa đọc đối tượng của ten
 - `.claude/plans/studio/discovery/issues/10-dedupe-and-upsert.md:10-15`; spec: R7.
 - ADR-0107 (Accepted) quyết định 3, 8; ADR-0105 (Accepted) quyết định 3, 8; ADR-0106 (Accepted) quyết định 4;
   ADR-0108 (Accepted) quyết định 3, 4, 6; ADR-0111 (Accepted).
+- spec: R5.9, R5.10, R5.11, CO26 (V4.30 mục 10); workflow-engine:R4.22, R5.22; workflow-nodes:R5.1.
 
 ## Comments
 
 - 2026-10-23 (agent): DO-35 (a), DO-49 (a), DO-03.2 (a), DO-26.1 (A) và `B:custom-objects:R6.5~field-security:R3.3` (a) đã có lời đáp (Đạt, 23/10/2026). Còn needs-info vì ngưỡng và cửa sổ của R7.6 chưa có số (Q3 của spec). Thêm usage-and-limits/05 (`RateLimiterPort` W1) vào Blocked by theo DO-49.
 - 2026-10-24 (agent): Q3 (DO-35) có số (Đạt, 24/10/2026; tạm, UNVERIFIED, chờ luật sư khi có dữ liệu thật): tối đa 20 lần 409 `duplicate_value` mỗi người, mỗi đối tượng, trong cửa sổ trượt 10 phút; vượt thì 429 và audit. Status về needs-triage; thêm R7.8. Cạnh tới usage-and-limits/05 giữ nguyên; port cần khóa có kiểu (tenant, người gọi, đối tượng), cửa sổ 10 phút (`usage-and-limits:R7.2`) và lần hỏi không tính lượt (`usage-and-limits:R7.3`).
 - 2026-10-24 (agent): vòng sửa 4: nhận R3.1 tới R3.6, phần trường Đã ẩn của R3.7 và CO25 từ ticket 02 (bước 9; Quyết định 24/10/2026 của spec, `I:custom-objects/02~tenant-rbac/01`), vì ticket này đã chờ field-security/01 và qua đó tenant-rbac/04; Blocked by không đổi. R6.7 thành 422 `validation_failed` với `errors[].code` `field_not_writable`, R7.7 mang `details.reason_code` `idempotency_key_required` (`B:app-standards:R1.3~custom-objects:R6.7`).
+- 2026-10-25 (agent): lượt h, theo V4.30 của Đạt (mục 10): nhận R5.9 tới R5.11 và CO26, khóa `wf:` của lệnh sửa từ một Bước ghi cùng giao dịch với lần sửa và phát lại khi gặp lại (đoạn hai của bước 2); lệnh `create` đã có hành vi này qua `create_key` (bước 2), nên không đổi. Blocked by thêm telemetry-and-audit/01 vì mảnh lưu giữ của `studio.record_write_keys` theo định dạng và test phủ của ticket đó (H-1); cạnh ngoài bảng mục B, đã chạy g.py: `marketing-pilot/03` vẫn ở độ sâu 15, chuỗi dài nhất 18.

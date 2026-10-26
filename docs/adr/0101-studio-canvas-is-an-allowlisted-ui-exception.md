@@ -66,7 +66,10 @@ it, which the spike measures rather than assumes.
    runtime and is not used. The lockfile holds one `zustand`, at 4.5.6 or above and never 5.x. No other manifest
    declares the library, `@dw/ui` neither depends on nor wraps it, and only files under
    `apps/web/app/studio/**/canvas/**` import it. `@dagrejs/dagre` is not admitted (V4.25). The canvas is a client
-   component loaded with `next/dynamic` and `ssr: false` on the builder route only.
+   component loaded with `next/dynamic` and `ssr: false` on two routes only: the builder, and the publish review
+   screen (agent-lifecycle/07, YC116, V4.37), whose read-only diagram of the submitted version sits under the same
+   glob, with workflow-builder-ui's layer of what differs from the `live` version, beside the gate's results and the
+   estimated cost. The read-only diagram offers no slot and no move, so nothing done on it changes a document.
 2. **antd draws everything but the pane.** The library draws the pane, the viewport and the edges. Every node body
    (antd `Card`), panel and form (`Form`, `Drawer`, `Tabs`), menu and notice is antd; the library's `Controls`,
    `MiniMap` and `NodeToolbar` are not used. `@xyflow/react/dist/base.css` is imported once into `@layer components`,
@@ -189,9 +192,12 @@ it, which the spike measures rather than assumes.
   `@xyflow/react` fails; an unlisted runtime dependency fails; the `dw.workflow/v1` schema refuses a document that
   carries coordinates, so a stored position cannot slip in; one document laid out twice gives the same coordinates, and
   an insert moves only what decision 3 lets it move (property tests over random trees); every node of the outline `Tree`
-  carries `aria-level`, `aria-posinset` and `aria-setsize`, which antd 6.6.5 does not emit.
+  carries `aria-level`, `aria-posinset` and `aria-setsize`, which antd 6.6.5 does not emit; the review screen's
+  diagram, given a drop or a key that edits in the builder, sends no save.
 - From the canvas the builder submits a version for the quality gate ("Gửi kiểm định") and starts `simulate` runs
-  (`test` runs later, ADR 0111); it never publishes by itself (ADR 0120).
+  (`test` runs later, ADR 0111); it never publishes by itself (ADR 0120). The approver of a publish reads the same
+  layout, read-only, on the review screen of agent-lifecycle/07 (decision 1), so what changed is seen in the diagram
+  and not only in the document; that route's first-load JS is measured on its own, as the builder's is.
 - workflow-builder-ui owes the accessible path: every mouse action has a keyboard path, with roving focus in document
   order (↑ and ↓ to the step before and after, ← and → to the next lane, Enter to the configuration, Esc back to the
   step, Shift+F10 for the menu, Ctrl+Z and Ctrl+Shift+Z), single-key shortcuts only while the canvas has focus
@@ -282,3 +288,11 @@ it, which the spike measures rather than assumes.
   no reason at all, FlowGram.ai added, D2 quoted as "kéo thả bước" with no "connect"); Consequences carry the new spike
   of discovery 24, the visual vocabulary, the accessible path and the outline's `aria-level`, `aria-posinset` and
   `aria-setsize`.
+
+## Amendments (2026-10-25)
+
+- Third consistency check (round 4), eighth pass, Đạt's V4.37: decision 1 loads the canvas on a second route, the
+  publish review screen of agent-lifecycle/07 (YC116), whose read-only diagram of the submitted version, with
+  workflow-builder-ui's layer of what differs from the `live` version, sits under the same glob, where the canvas
+  was loaded on the builder route only; Consequences add that the approver reads the diagram there, that the route's
+  first-load JS is measured on its own, and a test that the read-only diagram sends no save.

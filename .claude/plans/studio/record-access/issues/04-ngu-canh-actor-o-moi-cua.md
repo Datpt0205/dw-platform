@@ -46,11 +46,12 @@ quyết 6, ADR-0111 (Accepted) quyết 3).
       hạn tạm; ở hai bảng con, DELETE cũng qua khi dòng cha là giới hạn tạm hay không còn, tức cascade từ một DELETE dòng
       cha mà trigger của dòng cha đã cho qua, nên trigger kết thúc lượt của workflow-engine xóa được giới hạn tạm bằng
       một DELETE dòng cha (workflow-engine:R3.14; spec R6.15); trigger không đọc `app.workspace_scope`.
-    - Thêm `("studio", "actor_boundary_objects")`, `("studio", "actor_boundary_fields")` vào `_ORDERED_FIRST` của
-      `packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py`, ngay trước
-      `("studio", "records")` mà custom-objects/02 thêm, vì khóa ngoại `ON DELETE RESTRICT` của hai bảng giữ
-      `studio.object_defs` và `studio.field_defs` (spec R6.10; studio-skeleton:R4.2); `studio.actor_boundaries` xóa ở
-      phần còn lại của danh mục, trên phần đọc catalog và `export_rows` mà foundations-hardening/07 đã viết lại.
+    - Đăng ký một bước xóa khai `studio.actor_boundaries`, `studio.actor_boundary_objects` và
+      `studio.actor_boundary_fields` vào sổ bước xóa của lane `offboarding` ở composition root của worker
+      (foundations-hardening/07, foundations-hardening:R11.4, foundations-hardening:R11.5; H-2); không viết thứ tự tay:
+      lane suy từ khóa ngoại `ON DELETE RESTRICT` của hai bảng con tới `studio.object_defs` và `studio.field_defs` trong
+      `pg_constraint` rằng bước này chạy trước bước của custom-objects/02 (spec R6.10; studio-skeleton:R4.2); trên phần
+      đọc catalog và `export_rows` mà foundations-hardening/07 đã viết lại.
     - Ba bảng không có `workspace_id`: mỗi bảng một dòng trong danh sách bảng toàn tenant của
       `packages/python/dw_platform/tests/integration/test_rls_coverage.py` với lý do "giới hạn dữ liệu của một phiên bản
       agent hay quy trình đã phát hành, hay giới hạn tạm của một lượt `simulate` có gốc chưa phát hành, thuộc định nghĩa
@@ -107,7 +108,8 @@ quyết 6, ADR-0111 (Accepted) quyết 3).
 - [ ] R6.10: công ty `offboarding` có một giới hạn dữ liệu trỏ tới một đối tượng và một trường của nó → lane
       `offboarding` xuất mỗi dòng của ba bảng một lần rồi xóa hết, cùng định nghĩa đối tượng và trường, không lỗi khóa
       ngoại; dòng của công ty khác còn nguyên; test phủ offboarding (studio-skeleton:R4.1, studio-skeleton:R4.2) xanh;
-      gỡ hai mục khỏi `_ORDERED_FIRST` → test đỏ.
+      gỡ bước đã đăng ký khỏi sổ bước xóa → test đỏ; khai `studio.actor_boundary_objects` ở cả bước này và một
+      bước khác → lane từ chối trước câu xóa đầu (foundations-hardening:R11.5).
 - [ ] R6.11 (RA27): với một dòng `platform.worker_runs` `run_mode = 'simulate'` của fixture, `record_provisional` cho
       một bản Nháp ghi đúng một giới hạn tạm có `run_id` của lượt, `source_id` là `version_id`, `source_version` là
       `pinned_hash`, cùng dòng đối tượng và trường của nó; gọi lần hai cho cùng lượt → 23505, không dòng thứ hai; hai
@@ -174,3 +176,4 @@ quyết 6, ADR-0111 (Accepted) quyết 3).
   (agent-lifecycle:R4.12); Mục tiêu, bước 1 và 4 nói gốc chưa phát hành thay bản Nháp, tiêu chí R6.11, R6.12 thêm ca
   Bản ứng viên với đột biến thu hẹp về `draft`. Không thêm cạnh: `record_provisional` và trigger không đổi hình, chỉ
   không được thu hẹp về `draft`.
+- 2026-10-26 (agent): lượt h, theo H-2 (foundations-hardening/07, R11.4, R11.5, FH33): `_ORDERED_FIRST` đã bỏ, nên bước 1 đăng ký một bước xóa cho ba bảng vào sổ bước xóa ở composition root của worker và để lane suy thứ tự từ khóa ngoại RESTRICT của `pg_constraint`, thay cho hai mục chèn tay vào `_ORDERED_FIRST`; tiêu chí R6.10 đỏ khi gỡ bước và có ca khai trùng bảng. Ticket đã chờ foundations-hardening/07 qua ticket 03; không thêm cạnh.

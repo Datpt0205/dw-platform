@@ -56,7 +56,24 @@ approves an MCP tool definition is also the requester's D11 (2026-10-23).
    by one generic `ManifestActionHandler` through the egress client (ADR-0115); a non-standard provider gets a small,
    contract-tested auth adapter in code (`zalo_oa_v4`, `meta_page`). A manifest fails to load on an un-namespaced
    action, `max_retries` above 0 (the egress client owns retries), a write declared `side_effect_level: none` without
-   a reason, empty `egress_hosts`, or a missing `data_location`, `pd_categories` or `effect_class`.
+   a reason, empty `egress_hosts`, a missing `data_location`, `pd_categories` or `effect_class`, or an action whose
+   `side_effect_level` is not `none` without a `delivery` block (V4.30). That block says how the effect reaches the
+   provider: `idempotency` (`mode` `provider_key`, `natural_key` or `none`, the `field` that carries the key and the
+   provider's `retention_hours`), `reconciliation` (`mode` `lookup` or `none`, the lookup `action` and its
+   `ref_field`) and `on_unknown` (`review`, `resend_same_key` or `lookup_then_resend`, read as `review` when absent).
+   A manifest also fails to load on `resend_same_key` with `idempotency.mode: none` or on `lookup_then_resend`
+   without `reconciliation.mode: lookup`, and no value treats an unknown outcome as a failure (failure-modes #7). The
+   key sent to a provider is a hash of the node's `wf:` key (ADR-0108 (Accepted) decision 6), the same on every
+   attempt, and there is no `effect_risk`. So an action with a key or a lookup is applied once within the provider's
+   `retention_hours`, and one with neither is sent at most once automatically, a person deciding on an
+   `outcome_review` wait when its outcome is unknown (ADR-0113 (Accepted) decision 4; YC41). `smtp@1.0.0` declares
+   `idempotency: none`, `reconciliation: none` and `on_unknown: review`, and the `Message-ID` it derives from the key
+   is only a hint to the receiving mailbox (that Gmail deduplicates on it is UNVERIFIED). In W1 (H-5), whose one
+   external effect is SMTP mail, YC41's internal, unkeyed and concurrent levels ship: the schema holds every field while
+   the loader refuses an `idempotency.mode` or a `reconciliation.mode` other than `none` and an `on_unknown` other
+   than `review`, until the first connector that declares a key or a lookup (W2) brings `resend_same_key`,
+   `lookup_then_resend` and the `studio_reconcile` lane with it; and there is no `compensation` block, since v1
+   compensates only through an explicit step in an error lane, which would leave such a block no reader.
 3. **The ToolExecutor is the only door to a tool effect.** It resolves a Studio run's tool from that run's manifest
    alone, and any other run's by the run's tenant (`ToolRegistry.resolve(name, version, *, tenant_id)`); validates
    input and output itself against JSON Schema
@@ -65,9 +82,14 @@ approves an MCP tool definition is also the requester's D11 (2026-10-23).
    most 5, at most 100 properties, no `$ref`, `allOf`, `oneOf`, `not`, conditionals or `pattern` in v1); answers "does
    this call need a person" in one function, `approval_required(definition, run_context, args, step_calls)`, which the
    tool wrapper, `OneApprovalPerStepMiddleware` and the executor all call (kind floors, the approval condition, the
-   autonomy level, run taint); enforces policy and run mode (ADR-0111); claims idempotency first (ADR-0108) and
-   audits. Per-kind factories (`ToolKindFactory.build(...) -> ToolBehaviour`) return behaviour only, with no slot for
-   policy. A suspended tool (its switch), a killed agent or a frozen tenant is refused before resolve. No unpinned
+   autonomy level, run taint); enforces policy and run mode (ADR-0111); claims idempotency first (ADR-0108); just
+   before it calls the handler, commits a `dispatched` row to `platform.tool_executions` in a transaction of its own,
+   so a takeover of an expired claim tells a call that never left from one whose outcome is unknown (V4.30); records
+   the call's end from the egress client's typed result (ADR-0115 (Accepted) decision 6), `outcome_unknown`
+   included; and audits. Its steps run in tools-and-skills R2.6's order, held by one registry at the composition
+   root to which each context that owns a step adds it (H-3). Per-kind factories
+   (`ToolKindFactory.build(...) -> ToolBehaviour`) return behaviour only, with no slot for policy. A suspended tool
+   (its switch), a killed agent or a frozen tenant is refused before resolve. No unpinned
    tool and no non-`BaseTool` entry (a provider-native tool) ever reaches the model: `ScopedToolsMiddleware` and
    `OfferedToolsOnlyMiddleware` drop them and `build_agent` refuses them.
 4. **Classification is required.** A tool version without a `side_effect_level`, a `data_classification` (`none`,
@@ -158,7 +180,12 @@ approves an MCP tool definition is also the requester's D11 (2026-10-23).
   no handler call; a looser policy refused at save; a reverted approval gate caught at the executor itself, not only
   through the wrapper, failure-modes #5); a contract test on the exact offered tool list; an unpinned or
   provider-native tool never offered; a changed MCP definition refusing the call; the registrant unable to approve; a
-  skill write refused.
+  skill write refused; a manifest refused at load for an action with an effect and no `delivery` block, for
+  `resend_same_key` without a key and for `lookup_then_resend` without a lookup, and in W1 for any key, lookup or
+  `on_unknown` other than `review` (H-5); the crash matrix K1-K6 with the cases S and T against a fake provider in
+  three modes (keyed, looked up, neither), the first two applying once and the third never resent automatically, its
+  unknown outcomes all parked on `outcome_review` (discovery/14), and marketing-pilot/03's case K4, one email, one
+  `outcome_review` and no second email, each red once the `dispatched` row is removed (V4.30).
 - Harder: tenant-authored descriptions are model-facing text that needs lint and approval; server updates need
   re-approval; untrusted reads bring more approvals; whether `FilesystemMiddleware` lets approval interrupts through is
   measured before it ships (FOG-35). Lifting a tool's switch and approving its redefined version are two approvals:
@@ -245,3 +272,21 @@ Amended by Đạt on 2026-10-24, who accepted every recommendation the second co
 - Third consistency check (round 4), third pass: the second pass's line above names only the path it kept, ADR-0120's
   publish transaction with the tool kind's publish hook, `LifecycleService` being the one writer of `live`
   (ADR-0120 decision 1), and no longer the per-kind path it replaced.
+
+## Amendments (2026-10-25)
+
+Amended by Đạt on 2026-10-25, who accepted the recommendation on each of the twelve decisions owed (V4.30-V4.41), eleven
+from the answer to ChatGPT's architecture review and one on a builder's read of simulated runs, applied with the
+planner's provisional calls H-1-H-18:
+
+- Third consistency check (round 4), eighth pass, Đạt's V4.30 and V4.31 and the planner's provisional calls H-3 and H-5:
+  decision 2 gives `dw.connector/v1` the `delivery` block, required on every action whose `side_effect_level` is not
+  `none`, with `idempotency`, `reconciliation` and `on_unknown`, `review` when absent, its load rules and no value that
+  treats an unknown outcome as a failure, the provider key hashed from the node's `wf:` key and `smtp@1.0.0` declaring
+  neither key nor lookup; in W1 the loader accepts only `none`, `none` and `review` until the first connector with a key
+  or a lookup (W2) brings `resend_same_key`, `lookup_then_resend` and the `studio_reconcile` lane, and there is no
+  `compensation` block. Decision 3's ToolExecutor commits a `dispatched` row in its own transaction just before it calls
+  the handler and records the call's end from the egress client's typed result, its steps held in tools-and-skills
+  R2.6's order by one registry at the composition root. Consequences name the load-rule tests and the crash matrix (if
+  H-5 is wrong, the keyed level and the `studio_reconcile` lane come into W1 with a test connector that declares a key;
+  if H-3 is wrong, tools-and-skills/01 waits for agent-lifecycle/01 as before).

@@ -31,7 +31,7 @@ R3, G1).
 5. Sửa docstring `dw_evals/__init__.py`. `dw_evals` không import gói Studio nào (hợp đồng import-linter
    giữ nguyên hướng phụ thuộc).
 6. Dataset CI mới chấm các quan sát đã ghi bằng bộ chấm Studio, mỗi bộ chấm một quan sát xấu để thấy nó
-   đỏ (chuẩn bị cho ticket 04); không đổi dataset nền tảng nào.
+   đỏ (chuẩn bị cho ticket 06); không đổi dataset nền tảng nào.
 
 ## Tiêu chí chấp nhận
 
@@ -56,3 +56,6 @@ R3, G1).
 
 - 2026-10-23 (agent): từ B10a agent-lifecycle 02. Băm RFC 8785 cho Mã băm định nghĩa là một chủ ở
   tenant-config/01 (`dw_kernel.canonical`), không ở đây.
+- 2026-10-26 (agent): lượt h, đợt 2: Cổng chất lượng nay ở ticket 06 (V4.31), nơi ca kịch bản tất định của quy trình
+  dùng lại `run_cases`, `EvalTargetPort` và bộ chấm theo quan sát của ticket này, thêm `CaseCategory.SCENARIO`, trường
+  `Observation.state` và luật `scenario` của `evaluate_gate` (V4.37; H-23); ticket này không đổi phạm vi.
