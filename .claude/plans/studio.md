@@ -415,7 +415,7 @@ Khối số dành riêng: 0100-0199.
 - [`studio-skeleton`](studio/studio-skeleton/spec.md): kiểm nhất quán vòng 4 sau các lượt sửa của vòng 4, rồi `checking-plan-readiness` cho từng ticket W1 (25/10/2026).
 - [`foundations-hardening`](studio/foundations-hardening/spec.md): tách xong (R6-R10 và ticket 04-06 sang `runtime-hardening`); kiểm nhất quán vòng 4, rồi `checking-plan-readiness` cho từng ticket W1 (25/10/2026).
 - [`runtime-hardening`](studio/runtime-hardening/spec.md): tách từ `foundations-hardening` (số R, G và kiểm soát giữ nguyên, ticket 04-06 thành 01-03); kiểm nhất quán vòng 4, rồi `checking-plan-readiness` cho từng ticket W1 (25/10/2026).
-- [`app-standards`](studio/app-standards/spec.md): Đạt duyệt spec và cách chia ticket 01-03; ticket 01 xong ở `feat/app-standards-01` (`41a8c37`); Q-01a, Q-01b Đạt trả lời theo đề xuất (R1.1 thêm 429, R1.9 và APS11 mới), nên spec về `Duyệt: chưa` và chờ Đạt duyệt lại cùng bản sửa R2-R5. R2-R5 còn 1 CRITICAL (policy `worker_drain_idempotency_keys` không có hàng Kiểm soát và test âm xuyên tenant) và 9 HIGH, chặn ticket 02 và 03 tới khi sửa qua `writing-plan-specs` (26/10/2026).
+- [`app-standards`](studio/app-standards/spec.md): Đạt duyệt spec và cách chia ticket 01-03; ticket 01 xong ở `feat/app-standards-01` (`41a8c37`, `996d5f1`, gồm Q-01a và Q-01b của Đạt: R1.1 thêm 429, R1.9 và APS11 mới); spec về `Duyệt: chưa`, chờ Đạt duyệt lại cùng bản sửa R2-R5. R2-R5 còn 1 CRITICAL (policy `worker_drain_idempotency_keys` không có hàng Kiểm soát và test âm xuyên tenant) và 9 HIGH, chặn ticket 02 và 03 tới khi sửa qua `writing-plan-specs` (26/10/2026).
 - [`org-and-principals`](studio/org-and-principals/spec.md): kiểm nhất quán vòng 4 sau các lượt sửa của vòng 4, rồi `checking-plan-readiness` cho từng ticket W1 (25/10/2026).
 - [`tenant-rbac`](studio/tenant-rbac/spec.md): kiểm nhất quán vòng 4 sau các lượt sửa của vòng 4, rồi `checking-plan-readiness` cho từng ticket W1 (25/10/2026).
 - [`record-access`](studio/record-access/spec.md): kiểm nhất quán vòng 4 sau các lượt sửa của vòng 4, rồi `checking-plan-readiness` cho từng ticket W1 (25/10/2026).
@@ -477,3 +477,4 @@ Kiểm nhất quán 24/10/2026: 8 CRITICAL, 25 HIGH, 38 MEDIUM, 2 LOW; phủ YC 
 Each resolved ticket adds one line here: the commit hash and one sentence.
 
 - `41a8c37` app-standards/01: mọi route trả một mô tả lỗi problem+json (lỗi schema, đường lạ, sai method, 500 không lộ gì), OpenAPI khai `Problem` cho 4XX và 5XX, client web giữ `errors[]`.
+- `996d5f1` app-standards/01 bước 9: 429 của bộ giới hạn tốc độ là problem+json; `X-Request-ID` chỉ nhận `[A-Za-z0-9._-]{1,128}` (Q-01a, Q-01b).
