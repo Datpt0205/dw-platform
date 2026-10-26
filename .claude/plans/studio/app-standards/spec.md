@@ -1,6 +1,6 @@
 # Chuẩn ứng dụng nền tảng: vỏ lỗi, khóa chống lặp, ETag, phân trang, lọc
 
-Status: needs-triage
+Status: needs-info
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: chưa
 Sẵn sàng: chưa kiểm
@@ -21,11 +21,16 @@ Mọi route mới của Studio và của nền tảng nói cùng một quy ướ
 - `ERROR_STATE` buộc map mọi mã lỗi bằng `satisfies` (`packages/typescript/ui/src/region-state.tsx:29-48`). Ràng buộc: mã mới phải có vùng hiển thị.
 - `RequestFingerprint` gồm method, đường, workspace và băm body, không có người gọi (`packages/python/dw_platform/src/dw_platform/application/idempotency.py:47-68`). Thiếu: người khác cùng tenant và workspace gửi lại khóa và body thì nhận câu trả lời đã lưu, còn handler cùng phép kiểm quyền của nó không chạy.
 - `complete` và `release` chỉ so `completed_at IS NULL` (`packages/python/dw_platform/src/dw_platform/adapters/persistence/idempotency_store.py:130-164`), và giữ chỗ bị giành lại sau 5 phút (`packages/python/dw_platform/src/dw_platform/application/idempotency.py:44`). Thiếu: không có token rào.
+- Đọc ở `32c3484` ngày 26/10/2026: `claim` so dấu vân tay trước, rồi tới câu trả lời đã lưu, rồi mới tới nhánh giành lại và 409 `conflict` (`packages/python/dw_platform/src/dw_platform/application/idempotency.py:147-167`). Ràng buộc: khi `caller_ref` thuộc dấu vân tay, người gọi khác dừng ở nhánh đầu.
+- Đọc ở `32c3484` ngày 26/10/2026: Khóa chính là `(tenant_id, idempotency_key)` (`db/migrations/sql/0002_http_idempotency.sql:39`), bảng FORCE RLS với policy theo `app.tenant_id` (`db/migrations/sql/0002_http_idempotency.sql:76-79`), nên một khóa chỉ đụng được dòng của chính tenant đó (`packages/python/dw_platform/src/dw_platform/adapters/persistence/idempotency_store.py:48-51`). Thiếu: không test âm xuyên tenant nào cho bảng này.
+- Đọc ở `32c3484` ngày 26/10/2026: Dependency khóa nhận `AccessContext` đã xác minh và giữ chỗ trước khi handler chạy (`apps/api/src/dw_api/dependencies/idempotency.py:217-248`). Ràng buộc: lần phát lại có người gọi đã xác minh, nhưng không qua phép kiểm quyền của route.
+- Đọc ở `32c3484` ngày 26/10/2026: Bảy adapter đặt `app.worker_drain` bằng `set_config(..., true)`, ví dụ `packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/checkpoint_retention.py:55`, và kiểm RLS coi setting đó là đáng tin (`packages/python/dw_platform/tests/integration/test_rls_coverage.py:93-99`). Thiếu: không phép quét nguồn nào giới hạn nơi đặt nó, nên một kết nối `dw_app` của API cũng đặt được.
+- Đọc ở `32c3484` ngày 26/10/2026: `platform.prune_notifications()` xóa xuyên tenant qua một hàm không đối số mà không cần policy drain (`db/migrations/versions/855ae928c3fa_platform_in_app_notifications.py:27-29`). Ràng buộc: tiền lệ cho một đường dọn không đọc được dòng.
 - Câu trả lời lưu chỉ gồm status và body (`packages/python/dw_platform/src/dw_platform/application/idempotency.py:71-78`), và lần phát lại chỉ kèm `Idempotency-Key` (`apps/api/src/dw_api/exception_handlers.py:22-26`). Thiếu: `ETag`, `Location`.
 - Bảng khóa hứa một lượt xóa theo tuổi và có index `created_at` cho nó (`db/migrations/sql/0002_http_idempotency.sql:67-70`). Thiếu: chưa gì xóa, nên khóa và body đã lưu ở lại mãi (failure-modes #6).
 - Khóa dài tối đa 255 ký tự (`apps/api/src/dw_api/dependencies/idempotency.py:76`), và query string thuộc đích của khóa (`apps/api/src/dw_api/dependencies/idempotency.py:191-200`). Ràng buộc: hai luật này giữ nguyên.
 - Lane dọn hàng vận hành ghi số đếm, không ghi audit từng dòng (`docs/adr/0011-a-background-lane-audits-as-itself.md:38-43`). Ràng buộc: lane dọn khóa theo cùng cách.
-- Lane dọn checkpoint đọc mọi tenant qua policy `worker_drain_` (`db/migrations/versions/7bbd071748ca_run_checkpoints_worker_drain_and_sweep_.py:46-58`). Ràng buộc: mẫu cho lane dọn khóa.
+- Lane dọn checkpoint đọc mọi tenant qua policy `worker_drain_` (`db/migrations/versions/7bbd071748ca_run_checkpoints_worker_drain_and_sweep_.py:46-58`). Chưa rõ: policy này mở cả đọc lẫn xóa, nên có là mẫu cho lane dọn khóa không là Q2.
 - CORS cho phép `Idempotency-Key` mà không có `If-Match` (`apps/api/src/dw_api/main.py:52-60`), và chỉ lộ `X-Request-ID`, `Retry-After` (`apps/api/src/dw_api/main.py:112`). Thiếu: trình duyệt không gửi được `If-Match` và không đọc được `ETag`, `Location`.
 - Con trỏ chỉ mang `datetime` (`packages/python/dw_kernel/src/dw_kernel/pagination.py:107-119`), từ chối mọi phiên bản khác 1 (`packages/python/dw_kernel/src/dw_kernel/pagination.py:50-53`) và chuỗi hóa giá trị lọc trong dấu vân tay (`packages/python/dw_kernel/src/dw_kernel/pagination.py:91-104`). Thiếu: con trỏ cho cột không phải thời gian.
 - Vị từ và thứ tự keyset chỉ có chiều giảm (`packages/python/dw_platform/src/dw_platform/adapters/persistence/keyset.py:22-53`). Thiếu: chiều tăng và NULL cuối.
@@ -58,15 +63,20 @@ Trước đây: dấu vân tay không có người gọi (`packages/python/dw_pl
 
 Người gọi thử lại một yêu cầu ghi nhận lại kết quả lần đầu, và chỉ chính người đó (YC5).
 
-- R2.1 KHI cùng người gọi gửi lại cùng `Idempotency-Key` với cùng method, đường, workspace và body sau khi lần đầu thành công, API PHẢI trả lại status, body, `ETag` và `Location` đã lưu mà không chạy handler lần hai.
-- R2.2 NẾU một người gọi khác trong cùng tenant, khác `principal_id` hay khác grant `support` của ADR-0024 (Proposed), gửi một `Idempotency-Key` đã dùng, THÌ API PHẢI trả 409 `idempotency_conflict`, không trả body đã lưu và không chạy handler.
+- R2.1 KHI cùng người gọi gửi lại cùng `Idempotency-Key` với cùng method, đường, workspace, body, `If-Match` và `If-None-Match` sau khi lần đầu thành công, API PHẢI trả lại status, body, `ETag` và `Location` đã lưu mà không chạy handler lần hai và không so lại điều kiện của R3.
+- R2.2 NẾU một người gọi khác trong cùng tenant, khác `principal_id` hay khác grant `support` của ADR-0024 (Proposed), gửi một `Idempotency-Key` đã dùng, dù yêu cầu đầu đã xong, còn đang chạy hay đã giữ chỗ quá 5 phút, THÌ API PHẢI trả 409 `idempotency_conflict`, không trả body đã lưu và không chạy handler.
 - R2.3 NẾU dòng của khóa được ghi trước thay đổi này (`caller_ref` rỗng), THÌ API PHẢI trả 409 `idempotency_conflict` cho mọi người gọi gửi lại khóa đó và không phát lại.
-- R2.4 KHI một yêu cầu giành lại một giữ chỗ đã quá 5 phút, kho khóa PHẢI thay token rào của dòng bằng một token mới.
+- R2.4 KHI cùng người gọi gửi lại cùng dấu vân tay và giành lại một giữ chỗ đã quá 5 phút, kho khóa PHẢI thay token rào của dòng bằng một token mới và giữ nguyên `caller_ref`.
 - R2.5 NẾU yêu cầu đã mất giữ chỗ gọi hoàn tất hay nhả khóa bằng token cũ, THÌ kho khóa PHẢI không ghi và không xóa dòng của khóa đó.
-- R2.6 NẾU một route bắt buộc khóa chống lặp nhận yêu cầu thiếu `Idempotency-Key`, THÌ API PHẢI trả 422 với `details.reason_code` `idempotency_key_required` và không chạy handler.
-- R2.7 ĐỐI VỚI `POST` khởi một tác vụ chạy nền, một batch hay một upsert, route đó PHẢI bắt buộc `Idempotency-Key`.
-- R2.8 KHI lane `idempotency_sweep` chạy, lane `idempotency_sweep` PHẢI xóa mọi dòng của `platform.idempotency_keys` có `created_at` cũ hơn 24 giờ, ở mọi tenant, và giữ mọi dòng khác.
+- R2.6 NẾU một route bắt buộc khóa chống lặp nhận yêu cầu thiếu `Idempotency-Key`, THÌ API PHẢI trả 422 `validation_failed` với `details.reason_code` `idempotency_key_required` và `errors[]` gồm `{header: "Idempotency-Key", code: "idempotency_key_required"}`, mà không chạy handler.
+- R2.7 ĐỐI VỚI `POST` khởi một tác vụ chạy nền, một batch hay một upsert, route đó PHẢI bắt buộc `Idempotency-Key`. Hiệu ứng lặp khi một lần giành lại chạy handler lần hai: [CAN LAM RO: Q3].
+- R2.8 KHI lane `idempotency_sweep` chạy, lane `idempotency_sweep` PHẢI xóa mọi dòng của `platform.idempotency_keys` có `created_at` cũ hơn 24 giờ, ở mọi tenant, và giữ mọi dòng khác, qua cơ chế và nguồn thời hạn của [CAN LAM RO: Q2].
 - R2.9 KHI lane `idempotency_sweep` xóa dòng, lane `idempotency_sweep` PHẢI ghi số dòng đã xóa vào log và không ghi dòng audit nào (ADR-0011 (Accepted), mục "Not applied").
+- R2.10 NẾU một người gọi khác gửi khóa của một giữ chỗ đã quá 5 phút, THÌ kho khóa PHẢI không giành lại và không đổi `caller_ref`, `reservation_token` hay `created_at` của dòng.
+- R2.11 KHI một người gọi ở tenant B gửi một `Idempotency-Key` mà tenant A đã dùng, API PHẢI giữ chỗ khóa đó cho tenant B như một khóa chưa dùng và không đọc, trả hay đổi dòng của tenant A.
+- R2.12 NẾU một kết nối `dw_app` đặt `app.tenant_id` của một tenant đọc `platform.idempotency_keys`, kể cả khi nó tự đặt `app.worker_drain`, THÌ PostgreSQL PHẢI chỉ trả dòng của tenant đó.
+- R2.13 KHI lane `idempotency_sweep` chạy, cơ chế dọn của R2.8 PHẢI chỉ trả cho lane số dòng đã xóa, không trả cột nào của dòng.
+- R2.14 NẾU yêu cầu gửi lại một khóa không dựng được `AccessContext` đã xác minh (token không hợp lệ, grant `support` đã thu hồi theo ADR-0024 (Proposed)), THÌ API PHẢI trả lỗi của bước dựng ngữ cảnh đó và không đọc dòng của khóa.
 
 ### R3 — ETag, If-Match và JSON Merge Patch cho route sửa
 
@@ -78,6 +88,8 @@ Người sửa một tài nguyên có phiên bản bản ghi không ghi đè tha
 - R3.4 NẾU yêu cầu tạo mang `If-None-Match: *` mà tài nguyên đã tồn tại, THÌ API PHẢI trả 412 `precondition_failed` và không tạo gì.
 - R3.5 KHI `PATCH` gửi body `application/merge-patch+json` hay `application/json`, API PHẢI áp ngữ nghĩa RFC 7396: khóa mang `null` xóa trường, khóa vắng giữ nguyên, đối tượng lồng được trộn.
 - R3.6 API PHẢI cho trình duyệt gửi `If-Match`, `If-None-Match` và đọc `ETag`, `Location` qua CORS.
+- R3.7 NẾU người gọi gửi `If-Match` tới một tài nguyên mà họ không đọc được, THÌ API PHẢI trả đúng phản hồi của một id không tồn tại, dù `If-Match` khớp hay lệch.
+- R3.8 NẾU một route mà tài nguyên bắt buộc điều kiện nhận `If-Match: *`, THÌ API PHẢI trả 428 `precondition_required` như khi thiếu `If-Match` và không đổi gì.
 
 ### R4 — Phân trang keyset có kiểu, không trùng không sót
 
@@ -88,23 +100,27 @@ Người đọc danh sách sắp theo một trường, tăng hay giảm, nhận 
 - R4.3 NẾU một con trỏ được cấp cho truy vấn khác (route, cây lọc, `order_by` hay `fields` khác), THÌ API PHẢI trả 422 `validation_failed` và không trả dòng nào.
 - R4.4 NẾU một người gọi gửi con trỏ do người khác nhận, THÌ API PHẢI chỉ trả những dòng chính người gọi đó đọc được theo quyền hiện tại của họ.
 - R4.5 KHI hai yêu cầu gửi cùng một cây lọc với thứ tự khóa JSON khác nhau, API PHẢI nhận con trỏ của yêu cầu này cho yêu cầu kia.
+- R4.6 NẾU con trỏ không giải được (không phải JSON base64url, thẻ kiểu không hợp kiểu của trường sắp, pha khác `values` và `nulls`, pha `nulls` mà mang giá trị, `id` không là uuid), THÌ API PHẢI trả 422 `validation_failed` và không chạy câu SQL nào.
 
 ### R5 — Cây lọc JSON, `order_by` và `fields`
 
 Route danh sách nhận một ngôn ngữ chọn bản ghi có giới hạn, với lỗi trỏ đúng chỗ (ADR-0108 (Accepted) điểm 2).
 
-- R5.1 NẾU cây lọc vượt một giới hạn (độ sâu quá 5, quá 50 lá, `$in` quá 500 giá trị, chuỗi quá 1.024 byte UTF-8), THÌ route danh sách PHẢI trả 422 với `errors[].pointer` trỏ vào nút vượt và không chạy truy vấn; cây đúng bằng giới hạn được nhận.
+- R5.1 NẾU cây lọc vượt một giới hạn (độ sâu quá 5, quá 50 lá, `$in` quá 500 giá trị, chuỗi quá 1.024 byte UTF-8), THÌ route danh sách PHẢI trả 422 với `errors[].pointer` trỏ vào nút vượt và không chạy truy vấn; cây đúng bằng giới hạn được nhận qua `POST <danh sách>/query`.
 - R5.2 NẾU cây lọc nêu trường không lọc được hay toán tử không hợp kiểu của trường, THÌ route danh sách PHẢI trả 422 với `errors[].pointer` trỏ vào lá đó.
-- R5.3 KHI người gọi gửi `order_by` theo AIP-132, ví dụ `name desc, created_at`, route danh sách PHẢI sắp theo đúng các trường đó và luôn thêm `id` làm khóa cuối.
+- R5.3 KHI người gọi gửi `order_by` theo AIP-132 với một trường, ví dụ `name desc`, route danh sách PHẢI sắp theo trường đó và luôn thêm `id` làm khóa cuối.
 - R5.4 NẾU `order_by` nêu trường không sắp được, THÌ route danh sách PHẢI trả 422 với `errors[].parameter` bằng `order_by`.
 - R5.5 KHI người gọi gửi `fields`, route danh sách PHẢI chỉ trả các trường được nêu cùng `id`.
 - R5.6 KHI route danh sách trả 422 cho cây lọc, `order_by` hay `fields`, route danh sách PHẢI đặt `code` là `validation_failed` và mã lý do của từng lỗi, như `field_not_readable` hay `field_not_filterable`, vào `errors[].code`.
+- R5.7 KHI route danh sách nhận cây lọc qua tham số `filter` (JSON mã hóa URL) của `GET` hay qua thành viên `filter` của thân `POST <danh sách>/query` (custom-objects:R8.1), route danh sách PHẢI phân tích cả hai bằng cùng một trình phân tích và đặt `errors[].pointer` của lỗi cây lọc là JSON pointer bắt đầu bằng `/filter` ở cả hai dạng.
+- R5.8 KHI route danh sách trả 422 vì một giới hạn của R5.1, một toán tử của R5.2 hay số trường của R5.9, route danh sách PHẢI đặt `errors[].code` theo bảng mã lý do ở mục API.
+- R5.9 NẾU `order_by` nêu hơn một trường, THÌ route danh sách PHẢI trả 422 với `errors[].parameter` bằng `order_by` và không chạy truy vấn.
 
 ### R6 — Kiểm hình kế hoạch truy vấn trong CI
 
 Một truy vấn phân trang không có index mang trọn làm CI đỏ, kể cả khi bảng thử nhỏ (`CLAUDE.md` "Data model rules").
 
-- R6.1 NẾU kế hoạch của một câu lệnh phân trang lấy từ mã repository, chạy dưới vai `dw_app` với `app.tenant_id` đặt sẵn và `enable_seqscan = off`, có cột vị từ không nằm trong `Index Cond` hay `Recheck Cond`, hay có nút `Sort` trên khóa sắp, THÌ kiểm hình kế hoạch PHẢI đỏ và nêu câu lệnh cùng cột.
+- R6.1 NẾU kế hoạch của một câu lệnh phân trang lấy từ mã repository, chạy dưới vai `dw_app` với `app.tenant_id` đặt sẵn và `enable_seqscan = off`, có một cột khai cho câu lệnh đó (`tenant_id` do RLS chèn và các cột vị từ của chính câu lệnh; không gồm vế `workspace_id OR app.workspace_scope` của RLS) không nằm trong `Index Cond` hay `Recheck Cond`, hay có nút `Sort` trên khóa sắp, THÌ kiểm hình kế hoạch PHẢI đỏ và nêu câu lệnh cùng cột.
 - R6.2 Kiểm hình kế hoạch PHẢI chạy trên năm route phân trang hiện có và trên danh sách audit theo lượt chạy.
 
 ## Hành vi giữ nguyên
@@ -113,7 +129,7 @@ Một truy vấn phân trang không có index mang trọn làm CI đỏ, kể c�
 - G2 KHI một client đọc `code`, `message`, `details` và `request_id` của một lỗi, API PHẢI TIẾP TỤC trả bốn trường đó với cùng tên và nghĩa (test: `test_an_error_keeps_code_message_details_and_request_id`, viết trước thay đổi và xanh ở commit gốc).
 - G3 KHI một mã lỗi có ở Python mà không có ở TypeScript, test hợp đồng PHẢI TIẾP TỤC đỏ (test: `test_the_typescript_error_codes_mirror_the_python_ones`).
 - G4 KHI cùng người gọi gửi cùng khóa với body khác, API PHẢI TIẾP TỤC trả 409 `idempotency_conflict` (test: `test_the_same_key_with_a_different_body_is_a_conflict`).
-- G5 KHI khóa còn được giữ bởi một yêu cầu đang chạy, API PHẢI TIẾP TỤC trả 409 `conflict` mà không chạy handler (test: `test_a_request_still_in_flight_is_refused_rather_than_run_again`).
+- G5 KHI khóa còn được giữ bởi một yêu cầu đang chạy của cùng người gọi với cùng dấu vân tay, API PHẢI TIẾP TỤC trả 409 `conflict` mà không chạy handler (test: `test_a_request_still_in_flight_is_refused_rather_than_run_again`).
 - G6 KHI lần đầu thất bại với 5xx, API PHẢI TIẾP TỤC nhả khóa để lần thử lại chạy được (test: `test_a_failed_request_releases_its_key_so_the_retry_can_work`).
 - G7 KHI người gọi gửi một con trỏ phiên bản 1, route danh sách PHẢI TIẾP TỤC trả trang kế từ đúng vị trí đó (test: `test_a_v1_cursor_still_resumes_where_it_left_off`, viết trước thay đổi và xanh ở commit gốc).
 - G8 KHI người gọi gửi một con trỏ phiên bản 0 hay phiên bản lạ, API PHẢI TIẾP TỤC từ chối với `validation_failed` (test: `test_a_cursor_from_an_older_format_version_is_refused`).
@@ -121,7 +137,7 @@ Một truy vấn phân trang không có index mang trọn làm CI đỏ, kể c�
 ## Trong phạm vi
 
 - Mô tả lỗi problem+json, các handler và schema `Problem` trong OpenAPI; mã `method_not_allowed`, `precondition_failed`, `precondition_required` cùng bản TypeScript; client web đọc `errors[]`.
-- Khóa chống lặp: cột `caller_ref`, `reservation_token`, `response_headers` của `platform.idempotency_keys`, policy drain, lane `idempotency_sweep`, dependency khóa bắt buộc.
+- Khóa chống lặp: cột `caller_ref`, `reservation_token`, `response_headers`, `request_preconditions` của `platform.idempotency_keys`, cơ chế dọn của R2.8, lane `idempotency_sweep`, dependency khóa bắt buộc.
 - ETag, `If-Match`, `If-None-Match`, JSON Merge Patch và CORS cho các header đó.
 - Con trỏ phiên bản 2, keyset hai chiều với NULL cuối, cây lọc JSON, `order_by`, `fields`.
 - Kiểm hình kế hoạch trong CI và các index mà nó đòi sửa.
@@ -138,6 +154,8 @@ Một truy vấn phân trang không có index mang trọn làm CI đỏ, kể c�
 | OpenAPI theo tenant và HTTP QUERY                                                        | W3                                                                                                                                | app-standards, đợt sau (W3)         |
 | Khóa chống lặp của tool, nhận trước (`platform.tool_execution_claims`)                   | ADR-0108 (Accepted) điểm 5                                                                                                        | runtime-hardening, ticket 01        |
 | Ngữ pháp khóa cho hiệu ứng của lượt chạy                                                 | ADR-0108 (Accepted) điểm 6                                                                                                        | workflow-engine                     |
+| `filter`, `order_by`, `fields` trên năm route phân trang hiện có                         | chưa ai đọc (failure-modes #1); năm route giữ thứ tự cố định và chỉ đổi định dạng con trỏ sang phiên bản 2                        | spec mở lại route đó                |
+| `order_by` nhiều trường                                                                  | con trỏ phiên bản 2 mang một giá trị sắp và một pha (ADR-0108 (Accepted) điểm 2); mỗi cặp trường cần một index ghép               | custom-objects, đợt sau (W2)        |
 | Biến trong cây lọc, chuỗi lọc OData hay AIP-160                                          | chưa route nào đọc; chuỗi có thể đến sau và dịch về cây                                                                           | custom-objects                      |
 | `Cache-Control: no-store` cho tài nguyên có bảo vệ theo trường                           | thuộc route bản ghi                                                                                                               | custom-objects, field-security      |
 | Bộ đếm giới hạn theo tenant (`RateLimiterPort`), sửa bộ giới hạn tốc độ theo địa chỉ     | không thuộc quy ước HTTP chung (DO-49)                                                                                            | usage-and-limits, runtime-hardening |
@@ -146,31 +164,37 @@ Một truy vấn phân trang không có index mang trọn làm CI đỏ, kể c�
 
 ## Dữ liệu
 
-- `platform.idempotency_keys` thêm `caller_ref text NOT NULL DEFAULT ''` (`user:` nối `principal_id`, hay `support:` nối `grant_id` khi người gọi làm việc dưới grant của ADR-0024 (Proposed)), `reservation_token uuid NOT NULL DEFAULT gen_random_uuid()`, `response_headers jsonb` với `CHECK (response_headers IS NULL OR jsonb_typeof(response_headers) = 'object')`, chỉ giữ `ETag` và `Location`. Dòng cũ mang `caller_ref = ''`, không bằng người gọi thật nào.
-- Policy `worker_drain_idempotency_keys` đọc `app.worker_drain`, theo mẫu lane dọn checkpoint.
+- `platform.idempotency_keys` thêm `caller_ref text NOT NULL DEFAULT ''` (`user:` nối `principal_id`, hay `support:` nối `grant_id` khi người gọi làm việc dưới grant của ADR-0024 (Proposed)), `reservation_token uuid NOT NULL DEFAULT gen_random_uuid()`, `response_headers jsonb` với `CHECK (response_headers IS NULL OR jsonb_typeof(response_headers) = 'object')`, chỉ giữ `ETag` và `Location`, và `request_preconditions text NOT NULL DEFAULT ''` (giá trị `If-Match` và `If-None-Match` đã gửi, thuộc dấu vân tay của R2.1). Dòng cũ mang `caller_ref = ''`, không bằng người gọi thật nào.
+- Cơ chế dọn xuyên tenant của R2.8 và nguồn thời hạn 24 giờ: [CAN LAM RO: Q2]. Mọi phương án giữ R2.12 và R2.13.
 - Index cho kiểm hình kế hoạch do test quyết; dự kiến `platform.feedback (tenant_id, created_at DESC, id DESC)` thay `ix_feedback_tenant_created`. Index `platform.audit_events (tenant_id, run_id, occurred_at)` trên bảng cha là index audit theo lượt chạy duy nhất của nền tảng, chủ là ticket 03 (ADR-0122 (Accepted) bỏ `ix_audit_events_run`).
 
 ## API
 
-- Mô tả lỗi: `type`, `title`, `status`, `detail`, `instance`, cùng `code`, `message`, `details`, `request_id`, `trace_id`, `errors[]`. Mã mới: `method_not_allowed` (405), `precondition_failed` (412), `precondition_required` (428); `details.reason_code` `idempotency_key_required` (422).
+- Mô tả lỗi: `type`, `title`, `status`, `detail`, `instance`, cùng `code`, `message`, `details`, `request_id`, `trace_id`, `errors[]`. Mã mới: `method_not_allowed` (405), `precondition_failed` (412), `precondition_required` (428); `details.reason_code` và `errors[].code` `idempotency_key_required` (422).
+- Mã lý do của lỗi danh sách (`errors[].code`; `code` cấp trên luôn là `validation_failed`): `filter_too_deep`, `filter_too_many_leaves`, `filter_in_too_many_values`, `filter_string_too_long` (R5.1); `operator_not_allowed` (R5.2); `field_not_readable`, `field_not_filterable` (R5.6, cũng cho `order_by` và `fields` như custom-objects:R8.4 và custom-objects:R8.5); `order_by_too_many_fields` (R5.9).
 - Header: `ETag`, `If-Match`, `If-None-Match`, `Location`; CORS cho phép `If-Match`, `If-None-Match` và lộ `ETag`, `Location`.
-- Danh sách: `cursor` (phiên bản 2), `filter` (cây JSON), `order_by`, `fields`, `limit` (mặc định 50, tối đa 200, như `packages/python/dw_kernel/src/dw_kernel/pagination.py` đang có). Custom method là `POST` sub-resource theo cách viết của nền tảng, ví dụ `/records/batch-create`.
+- Danh sách: `cursor` (phiên bản 2), `filter` (cây JSON), `order_by`, `fields`, `limit` (mặc định 50, tối đa 200, như `packages/python/dw_kernel/src/dw_kernel/pagination.py` đang có). Custom method là `POST` sub-resource theo cách viết của nền tảng, ví dụ `/records/batch-create`; cây lọc đi qua `GET ?filter=` hay thân `POST <danh sách>/query` (R5.7).
 
 ## Kiểm soát
 
-| #     | Kiểm soát                                     | Yêu cầu                | Test âm                                                                                                                                                                                        |
-| ----- | --------------------------------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| APS1  | Một mô tả lỗi cho mọi route                   | R1.1, R1.3, R1.4, R1.5 | Walker đọc `app.openapi()` (thấy router lồng) gọi mỗi operation với body sai kiểu, cùng một đường lạ và một method sai: mọi phản hồi là problem+json; gỡ handler `RequestValidationError` → đỏ |
-| APS2  | Lỗi 500 không lộ chi tiết nội bộ              | R1.6                   | Route thử ném `IntegrityError` mang giá trị dòng → 500 không chứa SQL, tên bảng hay giá trị; gỡ handler `Exception` → đỏ                                                                       |
-| APS3  | Phát lại chỉ cho người đã dùng khóa           | R2.2                   | Người B cùng tenant và workspace gửi khóa và body của A → 409, handler không chạy, body của A không có trong phản hồi; bỏ `caller_ref` khỏi phép so → đỏ                                       |
-| APS4  | Dòng khóa cũ không phát lại                   | R2.3                   | Dòng có `caller_ref = ''` cùng body → 409; coi `''` là khớp mọi người → đỏ                                                                                                                     |
-| APS5  | Giành lại có rào                              | R2.5                   | Sau giành lại, `complete` của chủ cũ với token cũ không ghi; bỏ điều kiện token → đỏ                                                                                                           |
-| APS6  | Route bắt buộc khóa không chạy khi thiếu khóa | R2.6                   | Route thử bắt buộc, gọi thiếu header → 422 `idempotency_key_required`, handler không chạy; gỡ dependency → đỏ                                                                                  |
-| APS7  | 412 và 428 không ghi gì                       | R3.2, R3.3             | `If-Match` lệch hay yếu → 412, phiên bản không đổi, không dòng audit nào; gỡ phép so → đỏ                                                                                                      |
-| APS8  | Con trỏ không cấp quyền                       | R4.4                   | Con trỏ người A nhận ở workspace W1 dùng bởi người B chỉ thuộc W2 → trang chỉ có dòng B đọc được; lấy phạm vi từ con trỏ → đỏ                                                                  |
-| APS9  | Cây lọc có giới hạn                           | R5.1                   | Độ sâu 6, 51 lá, `$in` 501 giá trị, chuỗi 1.025 byte → 422 và không câu SQL nào chạy; gỡ giới hạn → đỏ                                                                                         |
-| APS10 | Kiểm hình kế hoạch đỏ được                    | R6.1                   | Gỡ index trang feedback trong giao dịch test → đỏ; bảng nhỏ không qua mặt nhờ `enable_seqscan = off` và phép kiểm `Index Cond`                                                                 |
-| APS11 | Mã yêu cầu chỉ nhận ký tự an toàn             | R1.9                   | `X-Request-ID: a b` hay có ký tự ngoài bộ cho phép → `request_id` mới, giá trị gửi không có trong body hay header; gỡ phép kiểm bộ ký tự → đỏ                                                  |
+| #     | Kiểm soát                                           | Yêu cầu                | Test âm                                                                                                                                                                                                                                                                                                   |
+| ----- | --------------------------------------------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| APS1  | Một mô tả lỗi cho mọi route                         | R1.1, R1.3, R1.4, R1.5 | Walker đọc `app.openapi()` (thấy router lồng) gọi mỗi operation với body sai kiểu, cùng một đường lạ và một method sai: mọi phản hồi là problem+json; gỡ handler `RequestValidationError` → đỏ                                                                                                            |
+| APS2  | Lỗi 500 không lộ chi tiết nội bộ                    | R1.6                   | Route thử ném `IntegrityError` mang giá trị dòng → 500 không chứa SQL, tên bảng hay giá trị; gỡ handler `Exception` → đỏ                                                                                                                                                                                  |
+| APS3  | Phát lại chỉ cho người đã dùng khóa                 | R2.2                   | Người B cùng tenant và workspace gửi khóa và body của A → 409, handler không chạy, body của A không có trong phản hồi; bỏ `caller_ref` khỏi phép so → đỏ                                                                                                                                                  |
+| APS4  | Dòng khóa cũ không phát lại                         | R2.3                   | Dòng có `caller_ref = ''` cùng body → 409; coi `''` là khớp mọi người → đỏ                                                                                                                                                                                                                                |
+| APS5  | Giành lại có rào                                    | R2.5                   | Sau giành lại, `complete` của chủ cũ với token cũ không ghi; bỏ điều kiện token → đỏ                                                                                                                                                                                                                      |
+| APS6  | Route bắt buộc khóa không chạy khi thiếu khóa       | R2.6                   | Route thử bắt buộc, gọi thiếu header → 422 `idempotency_key_required`, handler không chạy; gỡ dependency → đỏ                                                                                                                                                                                             |
+| APS7  | 412 và 428 không ghi gì                             | R3.2, R3.3, R3.8       | `If-Match` lệch hay yếu → 412, `If-Match: *` trên route bắt buộc điều kiện → 428, phiên bản không đổi, không dòng audit nào; gỡ phép so hay nhận `*` → đỏ                                                                                                                                                 |
+| APS8  | Con trỏ không cấp quyền                             | R4.4                   | Con trỏ người A nhận ở workspace W1 dùng bởi người B chỉ thuộc W2 → trang chỉ có dòng B đọc được; lấy phạm vi từ con trỏ → đỏ                                                                                                                                                                             |
+| APS9  | Cây lọc có giới hạn                                 | R5.1                   | Độ sâu 6, 51 lá, `$in` 501 giá trị, chuỗi 1.025 byte → 422 và không câu SQL nào chạy; gỡ giới hạn → đỏ                                                                                                                                                                                                    |
+| APS10 | Kiểm hình kế hoạch đỏ được                          | R6.1                   | Gỡ index trang feedback trong giao dịch test → đỏ; bảng nhỏ không qua mặt nhờ `enable_seqscan = off` và phép kiểm `Index Cond`                                                                                                                                                                            |
+| APS11 | Mã yêu cầu chỉ nhận ký tự an toàn                   | R1.9                   | `X-Request-ID: a b` hay có ký tự ngoài bộ cho phép → `request_id` mới, giá trị gửi không có trong body hay header; gỡ phép kiểm bộ ký tự → đỏ                                                                                                                                                             |
+| APS12 | Khóa của tenant khác không chạm dòng của tenant này | R2.11, R2.12           | Tenant B gửi khóa và body tenant A đã dùng → B nhận phản hồi mới của chính handler, body của A không có, dòng của A không đổi; kết nối `dw_app` với `app.tenant_id` của B, cả khi tự đặt `app.worker_drain = on`, đọc 0 dòng của A; thêm policy cho đọc theo `app.worker_drain` hay gỡ policy tenant → đỏ |
+| APS13 | Giành lại chỉ cho chính chủ                         | R2.10                  | Giữ chỗ của A quá 5 phút, B gửi cùng khóa → 409 `idempotency_conflict`; gọi thẳng `take_over` của kho với người gọi B, không qua `claim` → không giành được, `caller_ref`, token và `created_at` không đổi; bỏ điều kiện người gọi khỏi `take_over` → đỏ                                                  |
+| APS14 | Dọn xuyên tenant chỉ xóa dòng quá hạn               | R2.8, R2.13            | Dòng 25 giờ của hai tenant bị xóa, dòng 1 giờ còn; cơ chế dọn chỉ trả số dòng, không cột nào; nới điều kiện tuổi hay cho cơ chế trả dòng → đỏ                                                                                                                                                             |
+| APS15 | Phát lại cần ngữ cảnh đã xác minh                   | R2.14                  | Grant `support` bị thu hồi rồi gửi lại khóa đã dùng dưới grant đó → lỗi của bước dựng ngữ cảnh, body đã lưu không có trong phản hồi, không câu lệnh nào đọc `platform.idempotency_keys`; đặt dependency khóa trước `RequireAccessContext` → đỏ                                                            |
+| APS16 | Điều kiện không dò được tài nguyên                  | R3.7                   | Người B không đọc được tài nguyên X gửi `If-Match` khớp và lệch tới X → cùng phản hồi như id không tồn tại; so điều kiện trước khi nạp tài nguyên dưới quyền của người gọi → đỏ                                                                                                                           |
 
 ## Tiêu chí xong
 
@@ -185,9 +209,14 @@ Một truy vấn phân trang không có index mang trọn làm CI đỏ, kể c�
 - `AccessContext` do nền tảng dựng từ token đã xác minh: nguồn duy nhất của `caller_ref` (`principal_id`, grant của ADR-0024 (Proposed)).
 - telemetry-and-audit ticket 02 chờ ticket 03, vì index audit theo lượt chạy có một chủ ở đây (OPS-b).
 - Ticket 02 chờ ticket 01: 422 `idempotency_key_required` của R2.6 và handler phát lại của R2.1 trả qua vỏ problem+json của R1, và hai ticket cùng sửa `apps/api/src/dw_api/exception_handlers.py` (C:app-standards/01~app-standards/02).
-- Kiểm lại khi: ADR-0108 (Accepted) đổi trạng thái hay nội dung → cả spec; custom-objects đổi hình cây lọc hay danh sách → R4, R5, ticket 03; custom-objects hay field-security thêm mã lý do cho cây lọc → R5.6, ticket 03; một route phân trang mới → R6.2; một spec mở route bắt buộc khóa → R2.7.
+- custom-objects:R8.1: danh sách nhận cây lọc qua `GET ?filter=` và `POST .../records/query`, nên R5.7 phủ cả hai dạng.
+- ADR-0122 (Accepted) quyết định 7: một chính sách lưu giữ, mỗi kho một mảnh `configs/policies/retention.d/<schema>.<table>.yaml`, hạn đọc từ `platform.retention_terms` do telemetry-and-audit ticket 01 dựng; R2.8 theo Q2.
+- Kiểm lại khi: ADR-0108 (Accepted) đổi trạng thái hay nội dung → cả spec; ADR-0122 (Accepted) đổi quyết định 7 hay telemetry-and-audit đổi định dạng mảnh lưu giữ → R2.8, Q2; custom-objects đổi hình cây lọc hay danh sách → R4, R5, ticket 03; custom-objects hay field-security thêm mã lý do cho cây lọc → R5.6, ticket 03; một route phân trang mới → R6.2; một spec mở route bắt buộc khóa → R2.7.
 
 ## Câu hỏi còn mở
+
+- Q2. Lane `idempotency_sweep` xóa xuyên tenant bằng gì, và ai giữ thời hạn 24 giờ: (A) một hàm SECURITY DEFINER không đối số `platform.purge_expired_idempotency_keys()` đọc hạn từ `platform.retention_terms` (mảnh `configs/policies/retention.d/platform.idempotency_keys.yaml`), không policy drain, phần dọn tách khỏi ticket 02 thành một ticket chờ telemetry-and-audit/01; (B) cùng hàm đó với hạn 24 giờ viết trong thân hàm như `platform.prune_notifications()`, ticket 02 làm trọn, telemetry-and-audit/01 chuyển hạn sang mảnh; hay (C) giữ policy `worker_drain_idempotency_keys`, thu hẹp vào dòng quá hạn, và bỏ vế `app.worker_drain` của R2.12? Chủ: Đạt. Chặn: R2.8, R2.9, R2.13, APS14, ticket 02 bước 1 và 5, cách chia ticket.
+- Q3. Khi một lần giành lại của R2.4 chạy handler lần hai, trong lúc yêu cầu đầu còn chạy quá 5 phút hay sau khi nó đã ghi hiệu ứng rồi chết trước `complete`, ai chặn hiệu ứng lặp: (A) không ai, Đạt nhận rủi ro và README nói rõ; hay (B) mỗi route bắt buộc khóa theo R2.7 tự chống lặp hiệu ứng trong cùng giao dịch ghi, như `create_key` của custom-objects:R5.3, còn khóa HTTP chỉ là lớp phát lại? Chủ: Đạt. Không đổi: ticket 02 dựng khóa, token và giành lại như viết; câu trả lời chỉ thêm một vế cho R2.7, mà các spec mở route chứng minh.
 
 ## Quyết định
 
@@ -206,6 +235,21 @@ Một truy vấn phân trang không có index mang trọn làm CI đỏ, kể c�
 - 26/10/2026 (Đạt): Duyệt cách chia ticket 01-03.
 - 26/10/2026 (Đạt): Q-01a theo đề xuất: 429 của bộ giới hạn tốc độ theo địa chỉ dựng qua cùng hàm dựng mô tả lỗi, chỉ thêm trường. Hỏi: Q-01a (Comments của ticket 01). Sửa: Hiện trạng, R1.1, hàng 429 ở Ngoài phạm vi, ticket 01.
 - 26/10/2026 (Đạt): Q-01b theo đề xuất: `X-Request-ID` chỉ được nhận khi khớp `[A-Za-z0-9._-]{1,128}`, không khớp thì sinh mới. Hỏi: Q-01b (Comments của ticket 01). Sửa: Hiện trạng, R1.9, APS11, ticket 01.
+- 26/10/2026 (agent, tạm): Kết quả checking-plan-readiness ngày 26/10/2026 cho R2-R5 (1 CRITICAL, 9 HIGH, ở commit `670fd6d`) sửa qua writing-plan-specs; các dòng dưới ghi từng chỗ, câu cần Đạt là Q2 và Q3.
+- 26/10/2026 (agent, tạm): Mâu thuẫn nguồn: dòng 23/10/2026 về `idempotency_sweep` nói thời hạn 24 giờ là hằng trong mã ngoài tệp lưu giữ, còn ADR-0122 (Accepted) quyết định 7, sửa ngày 24 và 25/10/2026, nói mỗi kho có một mảnh `retention.d` và hạn đọc từ `platform.retention_terms`; theo ADR-0122 (Accepted), còn cơ chế và thứ tự là Q2. Policy drain của bản trước cũng mở đọc `response_body` của mọi tenant mà không hàng Kiểm soát nào giữ (CRITICAL của lần kiểm): R2.12, R2.13 và APS14 ràng buộc mọi phương án của Q2. Sửa: Hiện trạng, R2.8, R2.12, R2.13, Dữ liệu, APS14, Phụ thuộc. Nếu sai thì: Q2 (C) bỏ vế `app.worker_drain` của R2.12.
+- 26/10/2026 (agent, tạm): Ranh giới tenant của khóa đã có trong mã: khóa chính dẫn bằng `tenant_id` dưới FORCE RLS (`packages/python/dw_platform/src/dw_platform/adapters/persistence/idempotency_store.py:48-51`), nên khóa tenant A đã dùng là khóa chưa dùng với tenant B; spec chỉ thêm tiêu chí và test âm xuyên tenant mà `CLAUDE.md` "Tenancy and authorization" bắt buộc. Sửa: R2.11, APS12. Nếu sai thì: khóa thành duy nhất trên cả nền tảng và tenant B nhận 409.
+- 26/10/2026 (agent, tạm): Người gọi khác không giành lại được và luôn nhận `idempotency_conflict`: `claim` so dấu vân tay trước nhánh giành lại và trước 409 `conflict` (`packages/python/dw_platform/src/dw_platform/application/idempotency.py:147-167`), và ADR-0108 (Accepted) quyết định 4 dành `conflict` cho yêu cầu đang chạy, `idempotency_conflict` cho người gọi khác; nên người B không biết khóa của A đang chạy hay đã xong. Sửa: R2.2, R2.4, R2.10, G5, APS13. Nếu sai thì: R2.2 nêu thứ tự ngược lại và G5 áp cho mọi người gọi.
+- 26/10/2026 (agent, tạm): R2.6 theo R1.3: thiếu header bắt buộc là lỗi header, nên 422 mang `code` `validation_failed` (mã của `DomainError`, `packages/python/dw_kernel/src/dw_kernel/errors.py:45-48`), `details.reason_code` của ADR-0108 (Accepted) quyết định 4 và một phần tử `errors[]` có `header`. Sửa: R2.6, API. Nếu sai thì: chỉ còn `details.reason_code`, và `fieldErrors()` của web không thấy lỗi.
+- 26/10/2026 (agent, tạm): Phát lại chỉ sau khi `AccessContext` đã xác minh được dựng, như dependency khóa đang làm (`apps/api/src/dw_api/dependencies/idempotency.py:217-248`), nên grant `support` thu hồi chặn được lần phát lại (ADR-0024 (Proposed)); quyền của route không chạy lại, vì ADR-0108 (Accepted) quyết định 4 chỉ phát lại cho chính người gọi đã dùng khóa và handler không chạy. Sửa: R2.14, APS15. Nếu sai thì: dependency khóa nhận quyền của route và kiểm trước khi phát lại.
+- 26/10/2026 (agent, tạm): Yêu cầu mang cả `Idempotency-Key` lẫn `If-Match` hay `If-None-Match`: phát lại đi trước so điều kiện, và hai header thuộc dấu vân tay (cột `request_preconditions`), nên lần thử lại sau một `PATCH` thành công nhận 200 đã lưu, còn cùng khóa với điều kiện khác là 409 `idempotency_conflict`; 412 hay 428 nêu từ dependency không được lưu, như mọi 4xx (G6 và `apps/api/src/dw_api/dependencies/idempotency.py:27-33`). Sửa: R2.1, Dữ liệu, Trong phạm vi. Nếu sai thì: `RequireIfMatch` chạy trước khóa, và lần thử lại sau thành công nhận 412.
+- 26/10/2026 (agent, tạm): `If-Match: *` trên route bắt buộc điều kiện là thiếu điều kiện (428), vì nhận nó là ghi đè không cần phiên bản, đúng thứ R3 chặn (failure-modes #7). Sửa: R3.8, APS7. Nếu sai thì: `*` được nhận theo RFC 9110 và R3.3 nêu ngoại lệ.
+- 26/10/2026 (agent, tạm): `If-Match` chỉ được so sau khi tài nguyên được nạp dưới quyền của người gọi, nên người không đọc được nhận phản hồi của id không tồn tại, không 412. Sửa: R3.7, APS16. Nếu sai thì: 412 lộ việc tài nguyên tồn tại và phiên bản của nó cho người không đọc được.
+- 26/10/2026 (agent, tạm): Năm route phân trang hiện có phát con trỏ phiên bản 2 qua bộ mã hóa chung mà không nhận `filter`, `order_by` hay `fields`, như ticket 03 bước 5 đã viết ("giữ `after_position` và `newest_first`"), vì chưa ai đọc các tham số đó ở năm route (failure-modes #1). Sửa: Ngoài phạm vi. Nếu sai thì: R5 áp cho cả năm route, mỗi route một lược đồ lọc và các index sắp.
+- 26/10/2026 (agent, tạm): `order_by` một trường cộng `id`, vì con trỏ phiên bản 2 của ADR-0108 (Accepted) quyết định 2 mang một `sort_value` và một pha; hai trường cùng nullable cần bốn pha, và mỗi cặp trường cần một index ghép mà kiểm hình kế hoạch đòi. Sửa: R5.3, R5.9, API, Ngoài phạm vi. Nếu sai thì: con trỏ mang một danh sách giá trị, chỉ trường đầu được NULL, và custom-objects khai index cho từng cặp.
+- 26/10/2026 (agent, tạm): Cây lọc đi bằng `GET ?filter=` hay thân `POST .../query`, như custom-objects:R8.1 đã quyết; pointer của lỗi cây lọc bắt đầu bằng `/filter` ở cả hai dạng để web xử lý một kiểu, và cây đúng bằng giới hạn chỉ hứa qua `POST`, vì 500 giá trị 1.024 byte vượt độ dài URL. Sửa: R5.1, R5.7, API. Nếu sai thì: dạng `GET` trả `errors[].parameter` `filter` với pointer trong `detail`.
+- 26/10/2026 (agent, tạm): Mã lý do cho mỗi giới hạn, toán tử và `order_by` nhiều trường là một bảng ở mục API, vì web dựng văn bản từ `errors[].code` (quyết định DO-57 ngày 23/10/2026) và custom-objects trích các mã đó. Sửa: R5.8, API. Nếu sai thì: đổi tên mã trước khi custom-objects/04 phát hành.
+- 26/10/2026 (agent, tạm): Kiểm hình kế hoạch khai `tenant_id` do RLS chèn (`CLAUDE.md` "Data model rules") và các cột vị từ của chính câu lệnh, không khai vế `workspace_id OR app.workspace_scope` của RLS, vì vế OR với một setting không thành `Index Cond` được; ADR-0108 (Accepted) quyết định 2 nói "declared". Sửa: R6.1. Nếu sai thì: khai thêm `workspace_id` cho bảng có index dẫn bằng `(tenant_id, workspace_id)` và nhận vế OR là `Filter`.
+- 26/10/2026 (agent, tạm): Con trỏ hỏng hay sửa tay là 422, không bao giờ 500 hay lỗi ép kiểu của PostgreSQL. Sửa: R4.6. Nếu sai thì: R4.6 nêu một mã riêng cho con trỏ hỏng.
 
 ## Danh sách ticket
 
