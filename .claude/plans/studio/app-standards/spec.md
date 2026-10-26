@@ -2,7 +2,7 @@
 
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
-Duyệt: chưa
+Duyệt: Đạt, 26/10/2026
 Sẵn sàng: chưa kiểm
 
 Mọi route mới của Studio và của nền tảng nói cùng một quy ước HTTP: một mô tả lỗi problem+json, khóa chống lặp gắn người gọi đã xác minh, ETag với `If-Match`, phân trang keyset có kiểu, cây lọc JSON và một kiểm hình kế hoạch truy vấn trong CI (ADR-0108 (Accepted)). API bản ghi của custom-objects, vỏ phiên bản của tenant-config và mọi API quản trị của lát Marketing dùng các quy ước này, nên spec này đi trước chúng. Ý định: một quy ước HTTP cho mọi route, để không spec nào tự đặt hình lỗi, khóa hay con trỏ của riêng nó.
@@ -200,6 +200,7 @@ Một truy vấn phân trang không có index mang trọn làm CI đỏ, kể c�
 - 23/10/2026 (Đạt): DO-49 theo (a): giới hạn theo tenant đi qua `RateLimiterPort` của usage-and-limits; ở W1 bộ giới hạn của custom-objects:R7.6 trả 429 kèm `Retry-After` qua port đó, là ngoại lệ W1 của hàng 429 ở Ngoài phạm vi. Sửa: Ngoài phạm vi.
 - 23/10/2026 (Đạt): DO-03.2 theo (a): port mã thuần của si-platform cần thỏa thuận viết, ghim commit và dòng đầu `Ported from si-platform`; ticket 02 dựng lại thiết kế idempotency của si-platform thành migration và mã mới, không chép mã, nên không chờ thỏa thuận.
 - 23/10/2026 (agent, tạm): mã lý do của từng lỗi cây lọc, `order_by` hay `fields` (`field_not_readable`, `field_not_filterable`) nằm ở `errors[].code`, còn `code` cấp trên là `validation_failed`, theo cách sửa thứ nhất của phát hiện B:app-standards:R1.3~custom-objects:R8.4; custom-objects và field-security trích nguyên văn R5.6. Sửa: thêm R5.6, ticket 03. Nếu sai thì: hai mã thành `code` cấp trên và R1.3 nêu ngoại lệ.
+- 26/10/2026 (Đạt): Duyệt cách chia ticket 01-03.
 
 ## Danh sách ticket
 
