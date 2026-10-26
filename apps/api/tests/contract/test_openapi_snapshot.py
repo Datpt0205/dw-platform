@@ -41,3 +41,20 @@ def test_key_endpoints_present() -> None:
         "/api/v1/integrations",
     ):
         assert expected in paths, f"missing endpoint {expected}"
+
+
+def test_every_operation_describes_its_errors_as_a_problem() -> None:
+    from generate_contracts import build_openapi
+
+    schema = build_openapi()
+    components = schema["components"]["schemas"]  # type: ignore[index]
+    assert "HTTPValidationError" not in components
+    assert "ValidationError" not in components
+    problem = {"$ref": "#/components/schemas/Problem"}
+    for path, item in schema["paths"].items():  # type: ignore[attr-defined]
+        for method, operation in item.items():
+            for status in ("4XX", "5XX"):
+                content = operation["responses"][status]["content"]
+                assert content == {"application/problem+json": {"schema": problem}}, (
+                    f"{method.upper()} {path} {status}"
+                )

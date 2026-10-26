@@ -10,6 +10,8 @@ import {
   ingestJobSchema,
   memoryItemSchema,
   errorResponseSchema,
+  PROBLEM_MEDIA_TYPE,
+  problemSchema,
   healthResponseSchema,
   readinessResponseSchema,
   runSchema,
@@ -35,7 +37,7 @@ import {
   type AuditEvent,
   type DemoUser,
   type DevSessionInfo,
-  type ErrorResponse,
+  type Problem,
   type Integration,
   type KnowledgeDocument,
   type IngestJob,
@@ -107,11 +109,36 @@ export type ZaloWorkspace = z.infer<typeof zaloWorkspaceSchema>;
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
-    public readonly body: ErrorResponse,
+    public readonly body: Problem,
   ) {
     super(`${body.code}: ${body.message}`);
     this.name = "ApiError";
   }
+}
+
+/**
+ * The error a refused call raises: the one place a failed response is read.
+ *
+ * A problem+json body keeps its `errors[]`, so a form can mark the fields it
+ * names; any other body is read for the four members every error has carried.
+ * Only a body neither can read becomes `internal`.
+ */
+function apiErrorFrom(response: Response, json: unknown): ApiError {
+  const contentType = response.headers.get("Content-Type") ?? "";
+  const parsed = contentType.startsWith(PROBLEM_MEDIA_TYPE)
+    ? problemSchema.safeParse(json)
+    : errorResponseSchema.safeParse(json);
+  return new ApiError(
+    response.status,
+    parsed.success
+      ? { errors: [], ...parsed.data }
+      : {
+          code: "internal",
+          message: `HTTP ${response.status}`,
+          details: {},
+          errors: [],
+        },
+  );
 }
 
 export interface ApiClientOptions {
@@ -269,17 +296,7 @@ export class ApiClient {
 
     const json: unknown = await response.json().catch(() => null);
     if (!response.ok) {
-      const parsedError = errorResponseSchema.safeParse(json);
-      throw new ApiError(
-        response.status,
-        parsedError.success
-          ? parsedError.data
-          : {
-              code: "internal",
-              message: `HTTP ${response.status}`,
-              details: {},
-            },
-      );
+      throw apiErrorFrom(response, json);
     }
     return schema.parse(json);
   }
@@ -309,13 +326,7 @@ export class ApiClient {
     });
     if (response.ok) return response;
     const json: unknown = await response.json().catch(() => null);
-    const parsed = errorResponseSchema.safeParse(json);
-    throw new ApiError(
-      response.status,
-      parsed.success
-        ? parsed.data
-        : { code: "internal", message: `HTTP ${response.status}`, details: {} },
-    );
+    throw apiErrorFrom(response, json);
   }
 
   /**
@@ -340,13 +351,7 @@ export class ApiClient {
     });
     if (response.ok || response.status === 204) return;
     const json: unknown = await response.json().catch(() => null);
-    const parsed = errorResponseSchema.safeParse(json);
-    throw new ApiError(
-      response.status,
-      parsed.success
-        ? parsed.data
-        : { code: "internal", message: `HTTP ${response.status}`, details: {} },
-    );
+    throw apiErrorFrom(response, json);
   }
 
   getHealth(): Promise<HealthResponse> {
@@ -756,17 +761,7 @@ export class ApiClient {
     );
     if (!response.ok) {
       const json: unknown = await response.json().catch(() => null);
-      const parsed = errorResponseSchema.safeParse(json);
-      throw new ApiError(
-        response.status,
-        parsed.success
-          ? parsed.data
-          : {
-              code: "http_error",
-              message: `HTTP ${response.status}`,
-              details: {},
-            },
-      );
+      throw apiErrorFrom(response, json);
     }
   }
 
@@ -923,17 +918,7 @@ export class ApiClient {
     );
     const json: unknown = await response.json().catch(() => null);
     if (!response.ok) {
-      const parsed = errorResponseSchema.safeParse(json);
-      throw new ApiError(
-        response.status,
-        parsed.success
-          ? parsed.data
-          : {
-              code: "internal",
-              message: `HTTP ${response.status}`,
-              details: {},
-            },
-      );
+      throw apiErrorFrom(response, json);
     }
     return ingestJobSchema.parse(json);
   }

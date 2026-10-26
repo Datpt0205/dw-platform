@@ -34,6 +34,7 @@ export type RegionKind =
 export const ERROR_STATE = {
   validation_failed: "error",
   not_found: "notfound",
+  method_not_allowed: "error",
   conflict: "conflict",
   unauthenticated: "session",
   permission_denied: "forbidden",

@@ -21,6 +21,20 @@ export function errorCode(error: unknown): string | null {
 }
 
 /**
+ * The body fields a refusal names, keyed by JSON pointer (`"/name"`), each with
+ * its machine code: a form builds its Vietnamese sentence from the code
+ * (DO-57) and puts it under the field. The first error on a field wins.
+ */
+export function fieldErrors(error: unknown): Record<string, string> {
+  if (!(error instanceof ApiError)) return {};
+  const fields: Record<string, string> = {};
+  for (const { pointer, code } of error.body.errors) {
+    if (pointer !== undefined && !(pointer in fields)) fields[pointer] = code;
+  }
+  return fields;
+}
+
+/**
  * A failure, as the shared `RegionState` reads it: the server's code and
  * sentence (never `"<code>: …"`), or `"offline"` when the browser has no
  * network and `fetch` could not even start.

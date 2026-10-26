@@ -22,6 +22,7 @@ from starlette.responses import Response
 
 import dw_api
 from dw_api.bootstrap import ApiContainer, build_container
+from dw_api.errors import PROBLEM_RESPONSES, publish_problems_as_problem_json
 from dw_api.exception_handlers import register_exception_handlers
 from dw_api.middleware.rate_limit import RateLimitMiddleware
 from dw_api.middleware.request_id import RequestIdMiddleware
@@ -89,7 +90,9 @@ def create_app(container: ApiContainer | None = None) -> FastAPI:
         docs_url=None if hide_docs else "/api/docs",
         redoc_url=None if hide_docs else "/api/redoc",
         openapi_url=None if hide_docs else "/api/openapi.json",
+        responses=PROBLEM_RESPONSES,
     )
+    publish_problems_as_problem_json(app)
     app.state.container = container
 
     # Middleware runs in reverse registration order: request-id first, then limit.

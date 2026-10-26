@@ -1,6 +1,6 @@
 # 01 — Một vỏ lỗi problem+json cho mọi route
 
-Status: ready-for-agent
+Status: resolved (2026-10-26, feat/app-standards-01)
 Area: studio
 Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R1.8, G1, G2, G3, APS1, APS2
 
@@ -21,18 +21,18 @@ Lát này cho client, người tích hợp và trang web một hình lỗi duy n
 
 ## Tiêu chí chấp nhận
 
-- [ ] R1.1 (APS1): mọi phản hồi lỗi của walker có `Content-Type: application/problem+json`; 422 có `type` `urn:dw:problem:validation_failed` và `instance` bằng `urn:dw:request:` nối `X-Request-ID` đã gửi; gỡ handler `RequestValidationError` thì walker đỏ.
-- [ ] R1.2: một `DWError` với `details={"limit": 3}` trả `details.limit` là số 3, không phải chuỗi; khi có span, `trace_id` có 32 ký tự hex; không có span thì `trace_id` là `null`.
-- [ ] R1.3 (APS1): body sai kiểu trả 422 với `errors[0].pointer` trỏ đúng trường; tham số query sai trả `errors[0].parameter`.
-- [ ] R1.4 (APS1): `GET /api/v1/khong-co` trả 404 problem+json với `code` `not_found`.
-- [ ] R1.5 (APS1): `DELETE` trên một đường chỉ có `GET` trả 405 `method_not_allowed` kèm header `Allow`.
-- [ ] R1.6 (APS2): route thử ném `IntegrityError` mang giá trị dòng trả 500 mà body không chứa câu SQL, tên bảng hay giá trị đó; gỡ handler `Exception` thì test đỏ.
-- [ ] R1.7: ảnh chụp OpenAPI không còn `HTTPValidationError`, và mọi operation có 4XX và 5XX trỏ `Problem`.
-- [ ] R1.8: client TypeScript nhận 422 có `errors[]` trả lỗi `validation_failed` giữ `errors[]`; client đọc `code` và `message` như cũ vẫn đúng.
-- [ ] G1: `test_me_without_a_verifiable_token_is_401_with_a_challenge` xanh trước và sau thay đổi.
-- [ ] G2: `test_an_error_keeps_code_message_details_and_request_id` xanh ở commit gốc và sau thay đổi.
-- [ ] G3: `test_the_typescript_error_codes_mirror_the_python_ones` xanh khi `method_not_allowed` có ở cả hai bên, đỏ khi chỉ có ở Python.
-- [ ] Xong: `make test-unit test-contract typecheck && pnpm -r --if-present test` xanh.
+- [x] R1.1 (APS1): mọi phản hồi lỗi của walker có `Content-Type: application/problem+json`; 422 có `type` `urn:dw:problem:validation_failed` và `instance` bằng `urn:dw:request:` nối `X-Request-ID` đã gửi; gỡ handler `RequestValidationError` thì walker đỏ.
+- [x] R1.2: một `DWError` với `details={"limit": 3}` trả `details.limit` là số 3, không phải chuỗi; khi có span, `trace_id` có 32 ký tự hex; không có span thì `trace_id` là `null`.
+- [x] R1.3 (APS1): body sai kiểu trả 422 với `errors[0].pointer` trỏ đúng trường; tham số query sai trả `errors[0].parameter`.
+- [x] R1.4 (APS1): `GET /api/v1/khong-co` trả 404 problem+json với `code` `not_found`.
+- [x] R1.5 (APS1): `DELETE` trên một đường chỉ có `GET` trả 405 `method_not_allowed` kèm header `Allow`.
+- [x] R1.6 (APS2): route thử ném `IntegrityError` mang giá trị dòng trả 500 mà body không chứa câu SQL, tên bảng hay giá trị đó; gỡ handler `Exception` thì test đỏ.
+- [x] R1.7: ảnh chụp OpenAPI không còn `HTTPValidationError`, và mọi operation có 4XX và 5XX trỏ `Problem`.
+- [x] R1.8: client TypeScript nhận 422 có `errors[]` trả lỗi `validation_failed` giữ `errors[]`; client đọc `code` và `message` như cũ vẫn đúng.
+- [x] G1: `test_me_without_a_verifiable_token_is_401_with_a_challenge` xanh trước và sau thay đổi.
+- [x] G2: `test_an_error_keeps_code_message_details_and_request_id` xanh ở commit gốc và sau thay đổi.
+- [x] G3: `test_the_typescript_error_codes_mirror_the_python_ones` xanh khi `method_not_allowed` có ở cả hai bên, đỏ khi chỉ có ở Python.
+- [x] Xong: `make test-unit test-contract typecheck && pnpm -r --if-present test` xanh.
 
 ## Nguồn
 
@@ -47,3 +47,8 @@ Lát này cho client, người tích hợp và trang web một hình lỗi duy n
 ## Comments
 
 - 2026-10-26 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-10-26 (agent): Xong. Mọi tiêu chí xanh, kể cả dòng Xong. Đột biến đã thấy đỏ: APS1 (gỡ handler `RequestValidationError` → walker và test R1.3 đỏ); APS2 (gỡ handler `Exception` → đỏ vì content-type; handler trả `str(exc)` → đỏ vì lộ câu SQL); G1 (bỏ `WWW-Authenticate`); G3 (mã chỉ có ở Python); R1.2 (`details` chuỗi hóa lại); R1.8 (client bỏ qua problem+json). Walker thay dependency xác thực bằng ngữ cảnh giả, vì xác thực chạy trước khi kiểm body: không thay thì chỉ `/dev/session` tới được 422. Với ngữ cảnh giả, cả 25 operation có body đều trả 422 problem+json.
+- 2026-10-26 (agent): Câu hỏi cho Đạt, Q-01a. 429 của `RateLimitMiddleware` (`apps/api/src/dw_api/middleware/rate_limit.py:61-70`) tự dựng body cũ, `application/json`, không qua handler nào. R1.1 nói "khi một route trả lỗi", còn hàng 429 ở Ngoài phạm vi hoãn quy ước 429 sang W2, nên ticket để nguyên như đã viết, và client vẫn đọc được body đó. Đề xuất đổi R1.1: 429 của middleware dựng qua `problem_response`, chỉ thêm trường.
+- 2026-10-26 (agent): Câu hỏi cho Đạt, Q-01b. `X-Request-ID` do client gửi, tới 128 ký tự bất kỳ (`apps/api/src/dw_api/middleware/request_id.py:17`), đi nguyên vào `instance` = `urn:dw:request:` nối giá trị đó, nên `instance` có thể không là URI hợp lệ (ví dụ có dấu cách). Ticket giữ nguồn như Hiện trạng ràng buộc. Đề xuất: middleware chỉ nhận `[A-Za-z0-9._-]{1,128}`, không khớp thì sinh mới.
+- 2026-10-26 (agent, tạm): `HTTPException` có mã khác 404/405 mang mã đầu tiên của status đó trong `_STATUS_BY_CODE` (`code_for`), không có thì `internal` và giữ status; hôm nay không route nào ném nó. Lỗi schema ở `cookie` thành `parameter`. Nếu sai thì: một nhánh trong `code_for` hay `_located`, không đổi hình lỗi.
+- 2026-10-26 (agent): Ghi chú khi dựng. `_STATUS_BY_CODE` nằm ở `apps/api/src/dw_api/errors.py`, không ở `dw_kernel` như bước 3 viết, nên ánh xạ 405 thêm ở đó. Client có năm bản sao của đoạn đọc lỗi, một bản đã lệch (`code: "http_error"`), nên gom về một `apiErrorFrom`. Phản hồi lỗi nay mang `X-Request-ID` cả với 500, vốn được trả ngoài middleware. `trace_id` sẽ là `null` cho tới khi API có span của server: hôm nay API chưa có instrumentation OpenTelemetry cho FastAPI (phụ thuộc telemetry-and-audit).

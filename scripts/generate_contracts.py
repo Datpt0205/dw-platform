@@ -15,12 +15,25 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from fastapi import FastAPI
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SNAPSHOT = REPO_ROOT / "contracts" / "openapi" / "openapi.json"
 
 
 def build_openapi() -> dict[str, object]:
+    return build_app().openapi()
+
+
+def build_app() -> FastAPI:
+    """The app the snapshot describes: every router mounted, no service contacted.
+
+    Also what the error-envelope walker calls, so the routes it proves answer
+    in problem+json are the routes the contract publishes.
+    """
     from dw_api.bootstrap import build_container
     from dw_api.main import create_app
     from dw_api.settings import ApiSettings
@@ -47,9 +60,7 @@ def build_openapi() -> dict[str, object]:
         s3_secret_key="contract",
         model_provider="mock",
     )
-    app = create_app(build_container(settings))
-    schema = app.openapi()
-    return schema
+    return create_app(build_container(settings))
 
 
 def main() -> int:

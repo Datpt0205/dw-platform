@@ -230,8 +230,8 @@ async def test_revoking_a_waiver_in_use_is_a_conflict_naming_how_many_rely_on_it
     )
 
     assert response.status_code == 409
-    # The error contract carries details as strings.
-    assert response.json()["details"]["memberships"] == "2"
+    # Details keep their JSON type (ADR 0108, point 1): a count is a number.
+    assert response.json()["details"]["memberships"] == 2
 
 
 async def test_revoking_without_an_open_waiver_is_not_found() -> None:

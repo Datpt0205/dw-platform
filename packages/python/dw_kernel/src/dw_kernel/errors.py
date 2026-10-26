@@ -15,6 +15,7 @@ class ErrorCode(StrEnum):
 
     VALIDATION_FAILED = "validation_failed"
     NOT_FOUND = "not_found"
+    METHOD_NOT_ALLOWED = "method_not_allowed"
     CONFLICT = "conflict"
     UNAUTHENTICATED = "unauthenticated"
     PERMISSION_DENIED = "permission_denied"

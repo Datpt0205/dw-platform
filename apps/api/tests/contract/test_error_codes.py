@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from dw_api.errors import _STATUS_BY_CODE, status_for
+from dw_api.errors import _STATUS_BY_CODE, _TITLE_BY_CODE, status_for
 from dw_kernel.errors import (
     ErrorCode,
     PayloadTooLargeError,
@@ -29,6 +29,10 @@ TS_ERRORS = REPO_ROOT / "packages" / "typescript" / "contracts" / "src" / "error
 
 def test_every_error_code_has_an_explicit_status() -> None:
     assert set(ErrorCode) - set(_STATUS_BY_CODE) == set()
+
+
+def test_every_error_code_has_a_title() -> None:
+    assert set(ErrorCode) - set(_TITLE_BY_CODE) == set()
 
 
 def test_a_body_too_large_is_413_and_an_unsupported_type_is_415() -> None:

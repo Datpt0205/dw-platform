@@ -72,6 +72,17 @@ def build_telemetry(
     return OtelTelemetry(tracer=tracer, meter=meter)
 
 
+def current_trace_id() -> str | None:
+    """The running span's trace id as 32 lowercase hex digits, or None.
+
+    None, not the all-zero id, when no span is recording: unconfigured tracing
+    still hands out OTel's invalid span, and an id that names no trace would
+    send whoever pastes it into a trace search looking for nothing.
+    """
+    context = trace.get_current_span().get_span_context()
+    return trace.format_trace_id(context.trace_id) if context.is_valid else None
+
+
 def configure_tracing(
     service_name: str,
     *,
