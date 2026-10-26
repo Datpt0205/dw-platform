@@ -2,8 +2,8 @@
 
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
-Duyệt: Đạt 26/10/2026
-Sẵn sàng: ĐẠT (26/10/2026; 0 CRITICAL, 0 HIGH; ticket 01)
+Duyệt: chưa
+Sẵn sàng: chưa kiểm
 
 Mọi route mới của Studio và của nền tảng nói cùng một quy ước HTTP: một mô tả lỗi problem+json, khóa chống lặp gắn người gọi đã xác minh, ETag với `If-Match`, phân trang keyset có kiểu, cây lọc JSON và một kiểm hình kế hoạch truy vấn trong CI (ADR-0108 (Accepted)). API bản ghi của custom-objects, vỏ phiên bản của tenant-config và mọi API quản trị của lát Marketing dùng các quy ước này, nên spec này đi trước chúng. Ý định: một quy ước HTTP cho mọi route, để không spec nào tự đặt hình lỗi, khóa hay con trỏ của riêng nó.
 
@@ -13,7 +13,8 @@ Mọi route mới của Studio và của nền tảng nói cùng một quy ướ
 - Chỉ có handler cho `ReplayedResponse`, `DWError` và `Exception` (`apps/api/src/dw_api/exception_handlers.py:14`, `apps/api/src/dw_api/exception_handlers.py:28`, `apps/api/src/dw_api/exception_handlers.py:41`). Thiếu: lỗi schema, đường lạ và sai method trả hình riêng của FastAPI.
 - `details` bị chuỗi hóa (`apps/api/src/dw_api/exception_handlers.py:33`). Thiếu: `details` có cấu trúc.
 - Mọi 401 kèm `WWW-Authenticate: Bearer` (`apps/api/src/dw_api/exception_handlers.py:37-38`). Ràng buộc: giữ header này.
-- `request_id` lấy từ `X-Request-ID` khi không quá 128 ký tự, không thì sinh mới (`apps/api/src/dw_api/middleware/request_id.py:16-18`). Ràng buộc: đây là nguồn của `instance`.
+- `request_id` lấy từ `X-Request-ID` khi không quá 128 ký tự, không thì sinh mới (`apps/api/src/dw_api/middleware/request_id.py:16-18`). Ràng buộc: đây là nguồn của `instance`. Thiếu: giá trị gửi đến không bị giới hạn bộ ký tự, nên `instance` có thể không là URI hợp lệ.
+- Bộ giới hạn tốc độ theo địa chỉ tự dựng 429 của nó, `application/json`, ngoài mọi handler (`apps/api/src/dw_api/middleware/rate_limit.py:61-70`). Thiếu: 429 không là problem+json.
 - Client web thay một lỗi không parse được bằng `code` `internal` và `message` "HTTP" nối mã trạng thái (`packages/typescript/api-client/src/client.ts:270-282`). Thiếu: người dùng thấy "HTTP 422" thay vì lỗi của trường.
 - Schema zod của lỗi không strict (`packages/typescript/contracts/src/error.ts:7-12`). Ràng buộc: thêm trường không làm vỡ client cũ.
 - `ErrorCode` không có mã cho 405, 412, 428 (`packages/python/dw_kernel/src/dw_kernel/errors.py:13-30`). Thiếu: sai method và điều kiện ghi chưa có mã máy đọc được.
@@ -41,7 +42,7 @@ Trước đây: lỗi trả `ErrorResponse` dạng `application/json`, còn lỗ
 
 Client và người tích hợp đọc mọi lỗi theo một hình máy đọc được, mà không mất trường nào đang đọc.
 
-- R1.1 KHI một route trả lỗi, API PHẢI trả `Content-Type: application/problem+json` với `type` là `urn:dw:problem:` nối mã lỗi, `title` tiếng Anh cố định theo mã, `status` bằng mã HTTP, `detail`, và `instance` là `urn:dw:request:` nối `request_id`.
+- R1.1 KHI API trả lỗi cho một yêu cầu, kể cả 429 của bộ giới hạn tốc độ theo địa chỉ, API PHẢI trả `Content-Type: application/problem+json` với `type` là `urn:dw:problem:` nối mã lỗi, `title` tiếng Anh cố định theo mã, `status` bằng mã HTTP, `detail`, và `instance` là `urn:dw:request:` nối `request_id`.
 - R1.2 KHI một route trả lỗi, mô tả lỗi PHẢI mang các trường mở rộng `code`, `message` bằng `detail`, `details` dạng JSON có cấu trúc, `request_id` và `trace_id` (id trace OpenTelemetry đang chạy, `null` khi không có).
 - R1.3 KHI body, tham số hay header sai schema, API PHẢI trả 422 với `code` `validation_failed` và `errors[]`, mỗi phần tử có đúng một trong `pointer` (JSON pointer vào body), `parameter`, `header`, kèm `code` và `detail`.
 - R1.4 KHI người gọi gọi một đường không tồn tại, API PHẢI trả 404 problem+json với `code` `not_found`.
@@ -49,6 +50,7 @@ Client và người tích hợp đọc mọi lỗi theo một hình máy đọc 
 - R1.6 NẾU handler ném một lỗi bất ngờ, THÌ API PHẢI trả 500 problem+json với `code` `internal` mà không có stack trace, câu SQL, tên bảng hay giá trị của dòng vi phạm ràng buộc.
 - R1.7 Tài liệu OpenAPI PHẢI khai schema `Problem` cho mọi phản hồi 4XX và 5XX của mọi operation và không còn `HTTPValidationError`.
 - R1.8 KHI API trả 422 có `errors[]`, client web PHẢI trả một lỗi mang `code` `validation_failed` và `errors[]` đã parse, không thay bằng `internal`.
+- R1.9 NẾU `X-Request-ID` gửi đến không khớp `[A-Za-z0-9._-]{1,128}`, THÌ API PHẢI sinh `request_id` mới và không đưa giá trị đã gửi vào `instance`, `request_id` hay header phản hồi nào.
 
 ### R2 — Khóa chống lặp gắn người gọi đã xác minh, có rào và hết hạn [Sửa]
 
@@ -130,7 +132,7 @@ Một truy vấn phân trang không có index mang trọn làm CI đỏ, kể c�
 | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
 | R2.7: từng route bắt buộc `Idempotency-Key` (`POST` khởi tác vụ chạy nền, batch, upsert) | mỗi route chứng minh ở spec mở nó; spec này giao dependency khóa bắt buộc                                                         | custom-objects, tenant-config       |
 | Tác vụ chạy nền chuẩn                                                                    | W2                                                                                                                                | app-standards, đợt sau (W2)         |
-| Quy ước 429 và header RateLimit chung                                                    | W2; ngoại lệ W1: bộ giới hạn của custom-objects:R7.6 trả 429 kèm `Retry-After` qua `RateLimiterPort` của usage-and-limits (DO-49) | app-standards, đợt sau (W2)         |
+| Quy ước 429 và header RateLimit chung (thân 429 đã là problem+json theo R1.1)            | W2; ngoại lệ W1: bộ giới hạn của custom-objects:R7.6 trả 429 kèm `Retry-After` qua `RateLimiterPort` của usage-and-limits (DO-49) | app-standards, đợt sau (W2)         |
 | Chính sách ngừng hỗ trợ: báo trước ít nhất 6 tháng trước khi gỡ một route                | W2 (DO-16)                                                                                                                        | app-standards, đợt sau (W2)         |
 | Giới hạn kích thước body                                                                 | W2; nhóm `/api/v1/studio` có trần riêng từ W1                                                                                     | app-standards, đợt sau (W2)         |
 | OpenAPI theo tenant và HTTP QUERY                                                        | W3                                                                                                                                | app-standards, đợt sau (W3)         |
@@ -168,6 +170,7 @@ Một truy vấn phân trang không có index mang trọn làm CI đỏ, kể c�
 | APS8  | Con trỏ không cấp quyền                       | R4.4                   | Con trỏ người A nhận ở workspace W1 dùng bởi người B chỉ thuộc W2 → trang chỉ có dòng B đọc được; lấy phạm vi từ con trỏ → đỏ                                                                  |
 | APS9  | Cây lọc có giới hạn                           | R5.1                   | Độ sâu 6, 51 lá, `$in` 501 giá trị, chuỗi 1.025 byte → 422 và không câu SQL nào chạy; gỡ giới hạn → đỏ                                                                                         |
 | APS10 | Kiểm hình kế hoạch đỏ được                    | R6.1                   | Gỡ index trang feedback trong giao dịch test → đỏ; bảng nhỏ không qua mặt nhờ `enable_seqscan = off` và phép kiểm `Index Cond`                                                                 |
+| APS11 | Mã yêu cầu chỉ nhận ký tự an toàn             | R1.9                   | `X-Request-ID: a b` hay có ký tự ngoài bộ cho phép → `request_id` mới, giá trị gửi không có trong body hay header; gỡ phép kiểm bộ ký tự → đỏ                                                  |
 
 ## Tiêu chí xong
 
@@ -201,6 +204,8 @@ Một truy vấn phân trang không có index mang trọn làm CI đỏ, kể c�
 - 23/10/2026 (Đạt): DO-03.2 theo (a): port mã thuần của si-platform cần thỏa thuận viết, ghim commit và dòng đầu `Ported from si-platform`; ticket 02 dựng lại thiết kế idempotency của si-platform thành migration và mã mới, không chép mã, nên không chờ thỏa thuận.
 - 23/10/2026 (agent, tạm): mã lý do của từng lỗi cây lọc, `order_by` hay `fields` (`field_not_readable`, `field_not_filterable`) nằm ở `errors[].code`, còn `code` cấp trên là `validation_failed`, theo cách sửa thứ nhất của phát hiện B:app-standards:R1.3~custom-objects:R8.4; custom-objects và field-security trích nguyên văn R5.6. Sửa: thêm R5.6, ticket 03. Nếu sai thì: hai mã thành `code` cấp trên và R1.3 nêu ngoại lệ.
 - 26/10/2026 (Đạt): Duyệt cách chia ticket 01-03.
+- 26/10/2026 (Đạt): Q-01a theo đề xuất: 429 của bộ giới hạn tốc độ theo địa chỉ dựng qua cùng hàm dựng mô tả lỗi, chỉ thêm trường. Hỏi: Q-01a (Comments của ticket 01). Sửa: Hiện trạng, R1.1, hàng 429 ở Ngoài phạm vi, ticket 01.
+- 26/10/2026 (Đạt): Q-01b theo đề xuất: `X-Request-ID` chỉ được nhận khi khớp `[A-Za-z0-9._-]{1,128}`, không khớp thì sinh mới. Hỏi: Q-01b (Comments của ticket 01). Sửa: Hiện trạng, R1.9, APS11, ticket 01.
 
 ## Danh sách ticket
 

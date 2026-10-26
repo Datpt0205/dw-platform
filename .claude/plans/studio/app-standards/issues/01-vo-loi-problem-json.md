@@ -2,7 +2,7 @@
 
 Status: resolved (2026-10-26, feat/app-standards-01)
 Area: studio
-Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R1.8, G1, G2, G3, APS1, APS2
+Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R1.8, R1.9, G1, G2, G3, APS1, APS2, APS11
 
 ## Mục tiêu
 
@@ -18,6 +18,7 @@ Lát này cho client, người tích hợp và trang web một hình lỗi duy n
 6. OpenAPI: phản hồi mặc định 4XX và 5XX trỏ schema `Problem` trên mọi operation; bỏ `HTTPValidationError` và `ValidationError` khỏi `components`; `make generate-contracts` cập nhật `contracts/openapi/openapi.json` và client TypeScript sinh ra.
 7. TypeScript: `packages/typescript/contracts/src/error.ts` thêm `problemSchema` không strict (trường mở rộng tùy chọn) và mã `MethodNotAllowed`; `packages/typescript/api-client/src/client.ts` parse mô tả lỗi khi `Content-Type` là `application/problem+json` và giữ `errors[]`; `packages/typescript/ui/src/region-state.tsx` thêm `method_not_allowed`; `apps/web/lib/error-message.ts` thêm `fieldErrors()` trả map từ `pointer` sang `errors[].code`.
 8. Test: walker đọc `app.openapi()` (thấy router lồng, không duyệt `app.routes`) gọi mỗi operation có body với một body sai kiểu; một đường lạ; một method sai; route thử ném `IntegrityError` mang giá trị dòng; test client TypeScript với phản hồi 422 có `errors[]`.
+9. Theo Q-01a và Q-01b (Đạt, 26/10/2026): `apps/api/src/dw_api/middleware/rate_limit.py` dựng 429 qua `problem_response`, giữ `Retry-After`; `apps/api/src/dw_api/middleware/request_id.py` chỉ nhận `X-Request-ID` khớp `[A-Za-z0-9._-]{1,128}`, không khớp thì sinh mới.
 
 ## Tiêu chí chấp nhận
 
@@ -29,6 +30,8 @@ Lát này cho client, người tích hợp và trang web một hình lỗi duy n
 - [x] R1.6 (APS2): route thử ném `IntegrityError` mang giá trị dòng trả 500 mà body không chứa câu SQL, tên bảng hay giá trị đó; gỡ handler `Exception` thì test đỏ.
 - [x] R1.7: ảnh chụp OpenAPI không còn `HTTPValidationError`, và mọi operation có 4XX và 5XX trỏ `Problem`.
 - [x] R1.8: client TypeScript nhận 422 có `errors[]` trả lỗi `validation_failed` giữ `errors[]`; client đọc `code` và `message` như cũ vẫn đúng.
+- [ ] R1.1: vượt giới hạn tốc độ trả 429 problem+json với `code` `rate_limited`, `details.limit_per_minute` là số và header `Retry-After`.
+- [ ] R1.9 (APS11): `X-Request-ID` có dấu cách hay ký tự ngoài bộ cho phép nhận `request_id` mới, giá trị đã gửi không có trong body hay header; một giá trị hợp lệ dài 128 ký tự được giữ, 129 ký tự thì không; gỡ phép kiểm bộ ký tự thì test đỏ.
 - [x] G1: `test_me_without_a_verifiable_token_is_401_with_a_challenge` xanh trước và sau thay đổi.
 - [x] G2: `test_an_error_keeps_code_message_details_and_request_id` xanh ở commit gốc và sau thay đổi.
 - [x] G3: `test_the_typescript_error_codes_mirror_the_python_ones` xanh khi `method_not_allowed` có ở cả hai bên, đỏ khi chỉ có ở Python.
