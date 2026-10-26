@@ -7,7 +7,7 @@ departments, starting with Marketing. It is platform code in this repository
 is built yet. Đạt accepted the ADR block on 2026-10-23 (0126 and 0127 on
 2026-10-24), all but ADR-0119, which waits for the code-sandbox spike.
 
-## State (2026-10-26): pass h applied V4.30-V4.41; Q-h1 to Q-h11 owed
+## State (2026-10-26): pass h applied V4.30-V4.41 and Q-h1 to Q-h11
 
 - **Round 4 in progress (2026-10-24):** Đạt accepted the 13 recommendations
   of consistency round 3, splitting a spec past the size of
@@ -306,34 +306,20 @@ is built yet. Đạt accepted the ADR block on 2026-10-23 (0126 and 0127 on
   the eleven rows from the answer to ChatGPT's review and the builders' read
   of simulated runs are V4.30-V4.41 under State, applied in pass h
   (2026-10-26).
-- **Đạt, after pass h** (V4.38's tenant `setup` state, asked in a turn of
-  their own): Q-h1, what may anyone do while a tenant is `setup`
-  (recommended: as `locked`, except the two owners' first sign-in and
-  acceptance and the operator's routes); Q-h2, may a `setup` tenant be
-  offboarded (recommended: yes, through the existing flow); from pass h's
-  first wave: Q-h3, who may revoke a secret for compromise (recommended:
-  holders of `connections.manage`, one person, audited); Q-h4, whether a
-  builder sees payloads of their own simulated run without
-  `runs.read_payloads` (recommended: no in W1); Q-h5, how a run parks when
-  an effect in a parallel lane ends `outcome_unknown` (recommended: refuse
-  at submit an unkeyed effect step inside a parallel lane); Q-h6, which
-  workflows a sub-workflow may call (recommended: only those declaring
-  `trigger.call`, pulled into tier B); from the second wave: Q-h7
-  (tenant-rbac Q3), whether G2's `platform_admin` bypass counts as holding
-  `platform.roles.write`, which would contradict V4.38 in W1 (recommended:
-  the role-administration routes do not accept that bypass; ADR-0104
-  Open 9); Q-h8 (agent-lifecycle Q4), how the quality gate treats a
-  workflow with no scenario case (recommended: it fails with
-  `scenario_missing` in W1); Q-h9 (agent-lifecycle Q5), who reads and
-  writes scenario cases (recommended: the `workflow` kind's read and edit
-  keys at the owning workspace's depth, no second person); Q-h10
-  (marketing-pilot Q10), whether the three AI-written lead fields, derived
-  from the protected `message`, are protected in W1 (recommended:
-  `score_reason` protected with `fld.*` grants for Marketing and Sales,
-  `lead_score` and `lead_tier` open); Q-h11 (usage-and-limits Q3), whether
-  the `platform.usage_events` fragment is enforced from W1 (recommended:
-  `enforced: false` until counsel confirms the term, since DROP PARTITION
-  cannot be undone).
+- **Pass h's questions, decided (2026-10-26, "theo khuyến nghị hết cho
+  tôi"):** Q-h1 to Q-h11 as recommended, each logged `(Đạt)` in its owning
+  spec: a `setup` tenant behaves as `locked` but for the two owners' first
+  sign-in and the operators' routes, and leaves only for `active` or
+  `offboarding` (tenant-rbac R3.14, R3.15; ADR-0102); a holder of
+  `connections.manage` revokes for compromise alone; no payload of an own
+  simulated run without `runs.read_payloads`; submit refuses an unkeyed
+  effect step in a parallel lane (workflow-engine R2.20) and a sub-workflow
+  call to a workflow without a `triggers[]` entry of kind `call` (R2.21,
+  R8.7); the role routes refuse the `platform_admin` bypass (tenant-rbac
+  R3.16); a workflow with no scenario case fails its gate
+  (`scenario_missing`), cases read and written under the `workflow` kind's
+  keys; `score_reason` is a protected field; the `platform.usage_events`
+  fragment stays `enforced: false` until counsel.
 - **Đạt, for W2 (domain-packs, `needs-info`):** Q4, whether the pack
   installer may use its own reserved prefix through the public routes, and
   Q5, which route writes `origin` on components that already exist.

@@ -27,8 +27,8 @@ không chờ seam web của studio-skeleton/03.
    `no_checker_available` là lý do bằng chữ); xác nhận xóa nêu tên kết nối và danh sách phụ thuộc, 409
    `connection_in_use` hiện danh sách đó.
 4. Nút "Thu hồi vì lộ" gọi `POST /api/v1/connections/{id}/revoke-credentials` (spec R1.15) sau một `Modal` xác nhận nói
-   rằng mọi lượt chưa xong của kết nối sẽ dừng ở lời gọi ra ngoài kế tiếp, kể cả khi đã lưu mật khẩu mới; khóa của nút
-   theo câu trả lời của Q3 trong spec ([CAN LAM RO: Q3]).
+   rằng mọi lượt chưa xong của kết nối sẽ dừng ở lời gọi ra ngoài kế tiếp, kể cả khi đã lưu mật khẩu mới; nút bật cho người giữ
+   `connections.manage` (spec R1.15; Đạt, Q-h3).
 5. Người thiếu `connections.manage` thấy các nút ghi bị tắt kèm lý do; ẩn hay tắt nút không phải phân quyền, API của
    ticket 04 vẫn chặn (CLAUDE.md, Tenancy and authorization). Thông báo qua `App.useApp()`.
 

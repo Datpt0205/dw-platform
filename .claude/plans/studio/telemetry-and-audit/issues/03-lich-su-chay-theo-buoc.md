@@ -335,4 +335,4 @@ timestamptz` (NULL ở dòng `waiting`), `duration_ms`, `error_type`, `input_pre
   `configs/copy/run_reason_codes.d/`, bộ nạp từ chối khóa trùng và release manifest ghim mã băm mỗi tập (bước 8-11;
   R1.10, R1.11, TA30); route Bước chạy mang `effect_unresolved_label` để màn không giữ chữ của tác động chưa giải, kể
   cả ở lượt bị hủy khi Tắt khẩn (bước 5, 6; R4.9, R4.10). Payload của lượt mô phỏng mà người dựng tự xin là Q7 của
-  spec; R4.3 vẫn trả 403 khi thiếu `runs.read_payloads`. Không đổi dòng Blocked by.
+  spec (Đạt đáp 26/10: không, Q-h4); R4.3 vẫn trả 403 khi thiếu `runs.read_payloads`. Không đổi dòng Blocked by.

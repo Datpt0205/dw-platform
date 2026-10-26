@@ -82,8 +82,8 @@ ADR-0115 (Accepted) quyết 1; V4.20; V4.35).
 - R1.14 KHI một lời gọi ra ngoài mở bí mật của một trường của Kết nối, Kho bí mật PHẢI mở phiên bản có `secret_version`
   lớn nhất mà chưa thu hồi và trả số phiên bản đó cùng giá trị, vì bản kê lượt chạy ghim id kết nối, không ghim phiên
   bản bí mật (ADR-0109 (Accepted) quyết 6; V4.35; H-10).
-- R1.15 KHI một Kết nối bị thu hồi vì lộ (`POST /api/v1/connections/{id}/revoke-credentials`, người được làm việc này:
-  [CAN LAM RO: Q3]), Kho bí mật PHẢI ghi trong một giao dịch `revoked_at` bằng thời điểm của giao dịch cho mọi phiên
+- R1.15 KHI một Kết nối bị thu hồi vì lộ (`POST /api/v1/connections/{id}/revoke-credentials`, do một người giữ
+  `connections.manage` với tới workspace sở hữu của Kết nối; Đạt, Q-h3), Kho bí mật PHẢI ghi trong một giao dịch `revoked_at` bằng thời điểm của giao dịch cho mọi phiên
   bản của mọi trường của Kết nối có `revoked_at` NULL hay ở tương lai, và `platform.connections.compromised_at` bằng
   cùng thời điểm, cùng audit `connection.credentials_revoked` (V4.35; H-28).
 - R1.16 KHI lane `credential_purge` xóa phiên bản bị thu hồi vì lộ của một Kết nối, lane `credential_purge` PHẢI giữ
@@ -440,7 +440,7 @@ không `workspace_id`, mỗi bảng một dòng có lý do trong `_TENANT_WIDE_O
   `connection_in_use`. `.../enable` trả 202 kèm id yêu cầu `connections.enable` (R5.10), hay 409
   `no_checker_available` khi không có người thứ hai (R5.13); `.../disable` có hiệu lực ngay;
   `POST /api/v1/connections/{id}/revoke-credentials` thu hồi vì lộ mọi phiên bản bí mật của Kết nối và ghi
-  `compromised_at` (R1.15), có hiệu lực ngay, quyền và số người: [CAN LAM RO: Q3]; xoay một bí mật là `PATCH` với giá
+  `compromised_at` (R1.15), có hiệu lực ngay, `connections.manage` với tới workspace sở hữu, một người (Q-h3); xoay một bí mật là `PATCH` với giá
   trị mới của trường (R1.9).
 - `GET /api/v1/connectors` (`connections.read`), đọc lớp nền tảng.
 - `GET`, `POST`, `DELETE /api/v1/egress/allowed-hosts` (`integrations.admin`, ticket 03 đăng ký): `POST` trả
@@ -496,7 +496,7 @@ không `workspace_id`, mỗi bảng một dòng có lý do trong `_TENANT_WIDE_O
 | CV25 | Lane xóa phiên bản bị thay sau 24 giờ và phiên bản bị thu hồi vì lộ ngay                      | R1.11, R1.12, R1.13                          | Phiên bản bị thay 25 giờ trước → lane xóa, một sự kiện `secret.versions_purged` đứng tên `system:credential_purge` ở workspace sở hữu của Kết nối; bị thay 23 giờ trước → giữ; bị thu hồi vì lộ một phút trước → xóa; phiên bản đang dùng và bí mật ký cũ chưa tới `revoked_at` → giữ; bỏ điều kiện 24 giờ khỏi `platform.purge_retired_secrets()` → phiên bản bị thay 23 giờ trước bị xóa, hay bỏ nhánh `replaced_at` NULL → phiên bản bị thu hồi vì lộ còn sau lần chạy, test đỏ                                                                                                                                                                                                                                                                                                                                         |
 | CV26 | Egress trả kết quả có kiểu, không tự gửi lại lời gọi không rõ kết quả                         | R3.13, R3.14, R3.15, R3.16, R7.6, R7.7, R7.8 | Máy chủ HTTP giả: từ chối kết nối → `NotDispatchedError`; nhận yêu cầu rồi reset → `OutcomeUnknownError`, máy giả có đúng 1 yêu cầu; 503 → `OutcomeUnknownError`; 422 → `RejectedError` mang 422; `egress_blocked:address` → `NotDispatchedError`; máy chủ SMTP giả: ngắt trước dấu kết thúc dữ liệu → `NotDispatchedError`; trả 550 sau dữ liệu → `RejectedError` mang 550; gỡ phân loại theo byte đã ghi, để reset sau khi gửi thành `NotDispatchedError`, hay cho egress thử lại lần reset → máy giả nhận 2 yêu cầu, test đỏ                                                                                                                                                                                                                                                                                            |
 | CV27 | Khối `delivery` bắt buộc, luật nạp, W1 chỉ không khóa                                         | R6.5, R6.6, R6.7                             | Hành động `side_effect_level` `low` không có `delivery` → nạp từ chối; `on_unknown: resend_same_key` với `idempotency.mode: none` → từ chối; `lookup_then_resend` với `reconciliation.mode: none` → từ chối; `on_unknown: treat_as_failed` → từ chối theo schema; ở W1 `idempotency.mode: provider_key` → từ chối; vắng `on_unknown` → Đặc tả công cụ mang `review`; `smtp@1.0.0` nạp với `none`, `none`, `review`; gỡ luật nạp nào → ca của nó qua, test đỏ                                                                                                                                                                                                                                                                                                                                                               |
-| CV28 | Thu hồi vì lộ dừng mọi lượt được xin trước nó, dấu thu hồi không mất khi dọn                  | R1.15, R1.16, R5.16                          | Một lượt đang chờ, thu hồi vì lộ rồi lưu phiên bản 2 → lời gọi ra ngoài kế tiếp của lượt → `credential_revoked`, máy chủ giả không nhận gì; lượt xin sau lần thu hồi → gửi bằng phiên bản 2; lane `credential_purge` xóa phiên bản bị thu hồi rồi lượt cũ gọi tiếp → vẫn `credential_revoked`; `dw_app` UPDATE `compromised_at` về NULL hay lùi giá trị → bị từ chối; công ty B gọi route với id của công ty A → 404, không phiên bản nào đổi; gỡ nhánh `compromised_at` khỏi `connection_usable`, hay gỡ trigger `platform.guard_connection_compromised_at()` rồi cho lane đặt `compromised_at` NULL → lượt cũ gửi bằng phiên bản 2, test đỏ                                                                                                                                                                              |
+| CV28 | Thu hồi vì lộ dừng mọi lượt được xin trước nó, dấu thu hồi không mất khi dọn                  | R1.15, R1.16, R5.16                          | Một lượt đang chờ, thu hồi vì lộ rồi lưu phiên bản 2 → lời gọi ra ngoài kế tiếp của lượt → `credential_revoked`, máy chủ giả không nhận gì; lượt xin sau lần thu hồi → gửi bằng phiên bản 2; lane `credential_purge` xóa phiên bản bị thu hồi rồi lượt cũ gọi tiếp → vẫn `credential_revoked`; `dw_app` UPDATE `compromised_at` về NULL hay lùi giá trị → bị từ chối; công ty B gọi route với id của công ty A → 404, không phiên bản nào đổi; người không giữ `connections.manage` với tới workspace sở hữu gọi route → 403, không phiên bản nào đổi; một người giữ khóa gọi → có hiệu lực ngay, không chờ người thứ hai; gỡ nhánh `compromised_at` khỏi `connection_usable`, hay gỡ trigger `platform.guard_connection_compromised_at()` rồi cho lane đặt `compromised_at` NULL → lượt cũ gửi bằng phiên bản 2, test đỏ  |
 
 ## Tiêu chí xong
 
@@ -580,12 +580,6 @@ không `workspace_id`, mỗi bảng một dòng có lý do trong `_TENANT_WIDE_O
   bản bí mật bị thay thì lane `credential_purge` xóa 24 giờ sau lần xoay, phiên bản bị thu hồi vì lộ thì xóa ngay,
   theo V4.35 và H-10) có theo artifact lưu giữ của DO-52 không? Chủ: counsel và Đạt. Không đổi: hình bảng W1; thời hạn
   vào lane lưu giữ ở W2.
-- Q3. Ai được thu hồi một bí mật vì lộ, và một người có đủ không? Chủ: Đạt. Chặn: R1.15. Không đổi tới khi trả lời:
-  hình dữ liệu (`compromised_at`, `platform.revoke_connection_secrets`), R5.16 và lane `credential_purge`; đổi: khóa
-  của route `POST /api/v1/connections/{id}/revoke-credentials`, CV28, ticket 04 bước 2a và ticket 07 bước 4. Đề xuất:
-  người giữ `connections.manage` với tới workspace sở hữu của Kết nối, một người, có audit
-  `connection.credentials_revoked`, vì việc này đóng quyền truy cập, như tắt kết nối (D11: đóng một người, mở hai
-  người).
 
 ## Quyết định
 
@@ -845,6 +839,9 @@ không `workspace_id`, mỗi bảng một dòng có lý do trong `_TENANT_WIDE_O
   ticket 05 dùng lại. Sửa: R3.13-R3.16, R7.6-R7.8, CV26, ticket 03, 05. Nếu sai thì: một 4xx chỉ là `rejected` khi
   Bản mô tả khai nó cam kết không áp dụng, các 4xx khác là `outcome_unknown`, và R6.5 thêm trường đó vào khối
   `delivery`.
+- 26/10/2026 (Đạt): Q-h3 theo khuyến nghị ("theo khuyến nghị hết cho tôi"): người giữ `connections.manage` với tới
+  workspace sở hữu của Kết nối thu hồi vì lộ một mình, có audit `connection.credentials_revoked`, vì việc này đóng quyền
+  truy cập như tắt kết nối (D11). Hỏi: Q3. Sửa: R1.15, API, CV28, ticket 04, 07.
 
 ## Danh sách ticket
 

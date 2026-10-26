@@ -44,8 +44,8 @@ model với đủ thuộc tính gán, chỉ thêm và idempotent; màn Mức đ�
    nào. `test_a_term_drops_only_the_months_entirely_behind_it` (G1 của studio-skeleton, mốc của `platform.audit_events`
    đọc từ mảnh của nó) và `test_a_partition_made_at_runtime_keeps_the_audit_log_append_only` (G2) xanh qua bản viết lại.
    Cùng thay đổi đăng ký, thêm mảnh `configs/policies/retention.d/platform.usage_events.yaml` theo định dạng của
-   telemetry-and-audit:R5.6 (`days: 395`, số tạm UNVERIFIED, `purger: drop_partition`, `enforced` theo câu trả lời của
-   [CAN LAM RO: Q3] ở spec), nên studio-skeleton:R3.7 xanh ngay khi đăng ký. Không có chuỗi tệp retention và không có
+   telemetry-and-audit:R5.6 (`days: 395`, số tạm UNVERIFIED, `purger: drop_partition`, `enforced: false` và `description` nêu
+   rằng thời hạn chờ luật sư xác nhận trước chạy bóng; Đạt, Q-h11; telemetry-and-audit H-33), nên studio-skeleton:R3.7 xanh ngay khi đăng ký. Không có chuỗi tệp retention và không có
    ánh xạ tạm nào ở ticket này: mảnh `platform.audit_events` và việc gỡ ánh xạ tạm của studio-skeleton/01 là của
    telemetry-and-audit/01 (H-1).
 4. Hàm `platform.purge_tenant_append_only(p_tenant uuid)` SECURITY DEFINER (search_path cố định, thu
@@ -155,3 +155,4 @@ model với đủ thuộc tính gán, chỉ thêm và idempotent; màn Mức đ�
   xóa của foundations-hardening/07, thứ tự suy từ cạnh RESTRICT, không còn ở ticket này; org-and-principals/03 thôi
   chờ ticket này (bước 4, tiêu chí R3.8, R3.11). Các dòng Comments trước về chuỗi tệp retention và thứ tự các bước xóa
   là lịch sử, đã bị thay.
+- 2026-10-26 (agent): áp Q-h11 của Đạt (theo khuyến nghị): mảnh `platform.usage_events` mang `enforced: false`, lane `partitions` không DROP tháng nào của bảng tới khi luật sư xác nhận thời hạn. Không thêm cạnh.

@@ -375,7 +375,7 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
    the other lanes are cancelled (decision 11), and the run parks on one `outcome_review` wait set on the
    `logic.parallel` step in the root graph, where the resume check finds the parked node, the block running again
    once it is resolved, each effect with a recorded outcome replaying by its key and the unknown one following the
-   decision. Nothing here decides it.
+   decision. Answered 2026-10-26: as proposed (workflow-engine R2.20).
 
 ## Acceptance (2026-10-23)
 
@@ -458,3 +458,11 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
   the tests of these rules; Open 6 records, without deciding it, Đạt's Q-h5, how a run parks when an effect inside a
   parallel lane ends `outcome_unknown` (workflow-engine Q4), with the planner's proposal to refuse at submit an effect
   step whose Action's `on_unknown` is `review` inside a parallel lane.
+
+## Amendments (2026-10-26)
+
+- Đạt answered Open 6 (Q-h5) as proposed: submit refuses with `wf.wait_in_parallel` an effect step inside a parallel
+  lane whose Action's `on_unknown` is `review`, so in W1 no unknown outcome arises inside a lane (workflow-engine R2.20).
+  Q-h6: `flow.subworkflow` calls only a workflow that declares a `triggers[]` entry of kind `call`, which joins tier B,
+  and submit refuses any other with `wf.subworkflow_not_callable` (workflow-engine R2.21, R8.7). The status stays
+  Accepted.

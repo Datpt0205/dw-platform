@@ -83,7 +83,7 @@ hoãn tin tới 08:00 (MP12) là W2.
       Lead của workspace Marketing, không Lead nào của workspace Sales; gỡ policy bản ghi → đỏ (phần trợ lý ở ticket 06).
 - [ ] MP6: vai Cộng tác viên Marketing: API không trả `name`, `phone_e164`, `email`, `message`; lọc theo `phone_e164` →
       422; cấp `update` trên `mkt_lead` cho vai đó → `phone_e164` hiện (field-security:R2.6), đỏ; gỡ áp quyền trường một
-      đường → rò đúng đường đó, đỏ; Bước `data.object.update` ghi `{{lead.phone_e164}}` vào `score_reason` → bộ kiểm
+      đường → rò đúng đường đó, đỏ; Bước `data.object.update` ghi `{{lead.message.size()}}` vào `lead_score` → bộ kiểm
       không ghi xuống của ticket 03 đỏ (phần trợ lý ở ticket 06).
 - [ ] MP7: model giả ghi lại prompt ở `simulate`: không số điện thoại, email, họ tên; gắn `full_name` vào prompt trên tuyến
       xuyên biên giới → gửi kiểm định 422 `residency_refused`; gỡ che hay gỡ kiểm lúc gửi kiểm định → đỏ.
@@ -134,3 +134,4 @@ hoãn tin tới 08:00 (MP12) là W2.
 - 2026-10-24 (agent): kiểm lượt f của vòng 4: bước 2 cho MP2, MP7 làm trên bản Nháp duy nhất của thành phần, kể cả bản mà lệnh Rút lại đưa về, thay vì Rút lại rồi tạo Nháp mới, vì tạo Nháp lúc đã có Nháp trả 409 `draft_exists` (tenant-config:R2.23); tiêu chí không đổi.
 - 2026-10-25 (agent): lượt h, theo V4.31 của Đạt: ticket này là lối ra W1a trên profile `test`, qua MP1 tới MP21 trừ phần của trợ lý và test âm của telemetry không nội dung (R6.10, MP21), không chờ OpenBao hay trợ lý; Blocked by gỡ ticket 04 và telemetry-and-audit/02, thêm agent-lifecycle/07 (màn duyệt có Sơ đồ chỉ đọc, bước 6) theo bảng cạnh của lượt h. Phần trợ lý của MP2, MP4, MP5, MP6 (trợ lý của B hỏi tên lead của A, trợ lý khai A3, trợ lý theo quyền bản ghi và trường), cây span một `trace_id` và rà soát bảo mật của trợ lý dời sang ticket 06 (lối ra W1b); câu "trợ lý của B hỏi tên lead của A" bỏ khỏi MP4, "trợ lý có công cụ gửi trực tiếp khai A3" khỏi MP2, "trợ lý trả lời không có số" khỏi MP6. Thêm MP19 (ca K4, V4.30), MP20 (ca kịch bản, V4.37), MP21 (telemetry) và vế không ghi xuống trực tiếp của MP6 (V4.40); R6.2 đếm 21 mục.
 - 2026-10-26 (agent): theo compliance-pdpl (nhật ký gửi chỉ thêm, `outcome` `dispatching` hay `blocked`; dòng `dispatching` commit trước khi gửi): MP10 đếm dòng `dispatching` cùng dòng `tool_executions` `succeeded`, MP16 bỏ lời hứa dòng nhật ký gửi lùi theo audit.
+- 2026-10-26 (agent): theo Q-h10 của Đạt, ca không ghi xuống ghi vào `lead_score` thay `score_reason`, nay là trường bảo vệ.

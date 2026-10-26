@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: 01, .claude/plans/studio/org-and-principals/issues/02-thanh-vien-cap-tenant.md, .claude/plans/studio/foundations-hardening/issues/02-hang-rao-du-lieu-va-danh-tinh.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md, .claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md
 Area: studio
-Yêu cầu: R2.2, R2.3, R2.4, R2.5, R2.6, R2.7, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R3.9, R3.10, R3.11, R3.12, R3.13, R4.1, R4.2, R5.1, R5.2, G1, RB5, RB6, RB7, RB8, RB9, RB10, RB11, RB12, RB13, RB14, RB34, RB37, RB38, RB39, RB40
+Yêu cầu: R2.2, R2.3, R2.4, R2.5, R2.6, R2.7, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R3.9, R3.10, R3.11, R3.12, R3.13, R3.14, R3.15, R4.1, R4.2, R5.1, R5.2, G1, RB5, RB6, RB7, RB8, RB9, RB10, RB11, RB12, RB13, RB14, RB34, RB37, RB38, RB39, RB40, RB41
 
 ## Mục tiêu
 
@@ -123,8 +123,9 @@ xóa cache ở route khóa của foundations-hardening/02 là tạm và ticket n
     - `ck_tenants_status` thay bằng `CHECK (status IN ('setup', 'active', 'locked', 'offboarding', 'offboarded'))`
       (`db/migrations/versions/5d9d89ffc716_tenant_offboarding_requests.py:79-80`); trigger trạng thái của
       foundations-hardening/02 (`foundations-hardening:R3.2`) giữ nguyên. Một trigger BEFORE UPDATE OF `status` trên
-      `platform.tenants` từ chối với SQLSTATE 23514 mọi bước vào `setup` từ trạng thái khác, vì `setup` chỉ có lúc tạo;
-      bước rời `setup` sang trạng thái khác `active` chờ Q2 của spec và ticket này không mở nó.
+      `platform.tenants` từ chối với SQLSTATE 23514 mọi bước vào `setup` từ trạng thái khác, vì `setup` chỉ có lúc tạo,
+      và mọi bước rời `setup` sang trạng thái khác `active` và `offboarding`; người vận hành offboard một công ty `setup`
+      qua luồng offboarding hiện có (spec R3.15; Đạt, Q-h2).
     - Luật chuyển (R3.10): `platform.complete_tenant_setup()` SECURITY DEFINER, `search_path` ghim, gắn AFTER UPDATE OF
       `status` trên `platform.tenant_members` khi `NEW.status = 'active'` và `OLD.status <> 'active'`: khi
       `platform.tenants.status` của dòng là `setup` và số thành viên công ty `active` có gán `tenant_owner` (đếm trên
@@ -133,8 +134,10 @@ xóa cache ở route khóa của foundations-hardening/02 là tạm và ticket n
       tên người vừa `active`, `details` là id hai chủ sở hữu, nhãn tiếng Việt của hành động vào mảnh
       `configs/copy/audit_actions.d/tenant-rbac.yaml` trong cùng thay đổi (H-21). Lần đăng nhập đầu của chủ sở hữu (`_resolve_user`, mà
       org-and-principals/02 cho đổi `invited` sang `active`, org-and-principals:R4.5) là đường kích hoạt; cửa
-      AccessContext từ chối công ty không `active` ở mọi route (ADR-0102 (Accepted) quyết 6), nên đường đó trong `setup`
-      chờ Q1 của spec, còn test của luật chuyển chạy trên lệnh UPDATE của `platform.tenant_members`.
+      AccessContext từ chối công ty không `active` ở mọi route (ADR-0102 (Accepted) quyết 6), trừ ngoại lệ của spec R3.14
+      (Đạt, Q-h1): với công ty `setup`, cửa cho qua đúng lần đăng nhập đầu và lần nhận lời mời làm chủ của một trong hai
+      chủ sở hữu được mời lúc tạo, cùng các route `/api/v1/platform/` của người vận hành, và từ chối mọi route khác như
+      `locked`; test của luật chuyển chạy cả trên lệnh UPDATE của `platform.tenant_members` lẫn qua lần đăng nhập đầu.
     - Người vận hành và `support_staff` (R3.11): `platform.guard_operator_tenant_grants()`, trigger BEFORE INSERT, UPDATE
       trên `platform.role_assignments` (người được gán có dòng `platform.platform_operators` hay `platform.support_staff`, và
       vai trò là `tenant_owner` hay có `studio.publish.approve` hay `platform.roles.write` trong
@@ -142,7 +145,7 @@ xóa cache ở route khóa của foundations-hardening/02 là tạm và ticket n
       đang gán cho người như vậy), và BEFORE INSERT trên `platform.platform_operators`, `platform.support_staff` (người
       đang giữ một trong ba quyền đó ở một tenant); SQLSTATE 23514, ràng buộc `ck_role_assignments_operator_not_owner`,
       áp cho mọi vai kể cả `dw_provisioner`, `dw_migrator`. Tên vai trò và hai khóa sống ở một chỗ, hàm này; test so
-      hai khóa với danh mục khi chúng đã đăng ký. Đường vượt `platform_admin` của G2 chờ Q3 của spec.
+      hai khóa với danh mục khi chúng đã đăng ký. Đường vượt `platform_admin` không mở route quản trị vai trò (spec R3.16, ticket 03).
     - `POST /api/v1/platform/tenants` (`apps/api/src/dw_api/routes/v1/platform.py:154-166`): thân thêm `owners`, mảng
       đúng hai email khác nhau sau khi chuẩn hóa chữ thường; sai thì 422 `validation_failed`, không ghi gì (R3.9). Một
       giao dịch: tenant `setup`, `install_system_roles`, và với mỗi chủ sở hữu, theo đường mời hiện có, người dùng (có rồi
@@ -181,6 +184,13 @@ xóa cache ở route khóa của foundations-hardening/02 là tạm và ticket n
 - [ ] R3.11 (RB39): dưới `dw_provisioner` và `dw_migrator`, gán `tenant_owner` cho người vận hành → 23514; `POST /api/v1/platform/tenants` với email của một nhân viên `support_staff` làm chủ sở hữu → 409 `operator_not_assignable`, 0 dòng; thêm `studio.publish.approve` hay `platform.roles.write` (khóa thử nếu cụm chủ chưa đăng ký) vào vai trò đang gán cho người vận hành → 23514; INSERT `platform.platform_operators` cho một `tenant_owner` → 23514; đối tác ngoài công ty khách làm chủ sở hữu thứ hai → nhận; gỡ trigger hay bỏ nhánh `platform.support_staff` → test đỏ.
 - [ ] R3.12 (RB40): tenant `active` với hai người giữ `platform.roles.write`; gỡ gán của một người → đúng một thông báo cho mỗi người giữ `platform.members.write` ở độ sâu công ty, `owner_coverage_low_since` có giá trị; gỡ thêm một gán → không thông báo thứ hai; gán lại cho hai người → cột về NULL; xuống lần nữa → một thông báo mới; bỏ kiểm cột trước khi ghi outbox → thông báo thứ hai, test đỏ.
 - [ ] R3.13 (RB40): `GET /api/v1/platform/tenants` trả `status` `setup` cho tenant mới và `owner_coverage_low_since` cho tenant dưới hai người; Vitest: màn `apps/web/app/platform` lọc "Đang thiết lập" và "Dưới hai người" trên dữ liệu giả.
+- [ ] R3.14 (RB41): công ty `setup` vừa tạo; chủ sở hữu thứ nhất đăng nhập lần đầu và nhận lời mời → được, công ty
+      giữ `setup`; sau đó người đó gọi `/me`, tạo một lời mời khác, xin một lượt chạy hay gửi phát hành → từ chối như
+      `locked`; người vận hành gọi `GET /api/v1/platform/tenants` → được; chủ sở hữu thứ hai đăng nhập lần đầu → công
+      ty `active` (R3.10); bỏ ngoại lệ đăng nhập đầu → không chủ sở hữu nào kích hoạt được, test đỏ; bỏ nhánh `setup`
+      của cửa → lượt chạy được nhận, test đỏ.
+- [ ] R3.15 (RB41): UPDATE `status` `setup` → `locked` → 23514, không đổi gì; người vận hành offboard công ty `setup` →
+      `offboarding`; UPDATE `active` → `setup` → 23514; gỡ trigger → bước `setup` → `locked` được nhận, test đỏ.
 - [ ] R3.2 (RB10): migration thử sửa mẫu `approver` → vai trò `approver` đã nhân bản giữ nguyên quyền và mức.
 - [ ] R3.3 (RB8): kết nối `app.tenant_id` A đọc vai trò, quyền, gán của B → 0 dòng; INSERT gán với `role_id` của B → FK kép từ chối; kết nối không đặt tenant → 0 dòng.
 - [ ] R3.4 (RB9): `platform.roles.write` mức `workspace` → 23514; khóa `workspace` mức `own` → 23514; gỡ trigger → đỏ.
@@ -228,4 +238,7 @@ xóa cache ở route khóa của foundations-hardening/02 là tạm và ticket n
   `setup` trong `ck_tenants_status`, luật chuyển trên `platform.tenant_members`, trigger cho người vận hành và
   `support_staff`) và bước 17 (cảnh báo dưới hai người, cột và màn vận hành); tiêu chí R3.1 viết lại, thêm R3.9-R3.13 và
   RB37-RB40. Đường kích hoạt qua đăng nhập đầu khi công ty còn `setup` chờ Q1, bước rời `setup` khác `active` chờ Q2,
-  đường vượt `platform_admin` chờ Q3. Không thêm cạnh Blocked by: org-and-principals/02 đã là tổ tiên.
+  đường vượt `platform_admin` chờ Q3 (đã đáp ngày 26/10, dòng sau). Không thêm cạnh Blocked by: org-and-principals/02 đã là tổ tiên.
+- 2026-10-26 (agent): áp Q-h1, Q-h2 của Đạt (theo khuyến nghị): bước 16 mở ngoại lệ đăng nhập đầu và nhận lời mời của hai
+  chủ sở hữu trong `setup` (R3.14) và cho `setup` → `offboarding` qua luồng của người vận hành, từ chối mọi lối ra khác
+  `active` (R3.15); thêm tiêu chí R3.14, R3.15 và RB41. Không thêm cạnh.

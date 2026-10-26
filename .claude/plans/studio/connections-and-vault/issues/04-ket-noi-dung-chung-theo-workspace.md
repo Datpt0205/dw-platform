@@ -42,8 +42,8 @@ connections-and-vault 07. P1 chỉ kết nối dùng chung theo workspace (DO-48
    nhận tham số công ty), trong một giao dịch: ghi `revoked_at = now()` cho mọi dòng `platform.secret_envelopes` của
    Kết nối có `revoked_at` NULL hay ở tương lai, không đụng `replaced_at`, rồi `compromised_at = now()` trên dòng Kết
    nối; Kết nối không thấy được dưới `app.tenant_id` → không ghi gì, route trả 404. Route
-   `POST /api/v1/connections/{id}/revoke-credentials`, quyền và số người: [CAN LAM RO: Q3] (đề xuất của spec:
-   `connections.manage`, một người); audit `connection.credentials_revoked` cùng giao dịch, không mang giá trị bí mật;
+   `POST /api/v1/connections/{id}/revoke-credentials` dưới `connections.manage` với tới workspace sở hữu của Kết nối,
+   một người (spec R1.15; Đạt, Q-h3); audit `connection.credentials_revoked` cùng giao dịch, không mang giá trị bí mật;
    nhãn của hành động vào mảnh `configs/copy/audit_actions.d/connections-and-vault.yaml` (H-21). Lần xoay vẫn là
    `PATCH` với giá trị mới của trường, qua `platform.put_secret` của ticket 02.
 3. `ConnectionDependentsPort` khai ở đây, cho "Được dùng bởi" và chặn xóa. Bên đáp ứng là tenant-config
@@ -124,8 +124,8 @@ connections-and-vault 07. P1 chỉ kết nối dùng chung theo workspace (DO-48
 - [ ] R1.15 (CV28): gọi route thu hồi vì lộ cho một Kết nối có `api_key` phiên bản 2 đang dùng và `password` phiên bản
       1 → cả hai phiên bản có `revoked_at` bằng `now()` của giao dịch, `replaced_at` không đổi, `compromised_at` bằng
       cùng thời điểm, một audit `connection.credentials_revoked` không chứa giá trị canary; Kết nối khác cùng công ty
-      không đổi; công ty B gọi route với id của công ty A → 404, không dòng nào đổi; `dw_app` UPDATE `compromised_at` →
-      `permission denied`; vai migrator đặt nó về NULL hay lùi nó → trigger từ chối; ghi audit ném lỗi → giao dịch lùi,
+      không đổi; công ty B gọi route với id của công ty A → 404, không dòng nào đổi; người thiếu `connections.manage` với tới workspace sở hữu → 403, không dòng nào đổi; `dw_app` UPDATE
+      `compromised_at` → `permission denied`; vai migrator đặt nó về NULL hay lùi nó → trigger từ chối; ghi audit ném lỗi → giao dịch lùi,
       không phiên bản nào bị thu hồi; gỡ vế phong bì khỏi hàm → lượt mới vẫn mở phiên bản 2, test đỏ.
 - [ ] Xong: `make ci && make test-integration` xanh.
 
@@ -173,4 +173,4 @@ connections-and-vault 07. P1 chỉ kết nối dùng chung theo workspace (DO-48
   studio-skeleton/03 (ticket 07 chờ nó). Theo V4.35 và H-28: `connection_usable` thôi nhận `pinned_secret_versions`,
   kiểm "không còn phiên bản chưa thu hồi" và `compromised_at` so với `created_at` của lượt (bước 2; R5.15-R5.17); bước 2a
   thêm thu hồi vì lộ (`compromised_at`, trigger chỉ tiến, `platform.revoke_connection_secrets`, route
-  `revoke-credentials`, audit `connection.credentials_revoked`; R1.15, CV28), người được làm: [CAN LAM RO: Q3] của spec.
+  `revoke-credentials`, audit `connection.credentials_revoked`; R1.15, CV28), người được làm: người giữ `connections.manage`, một người (Q-h3, 26/10).

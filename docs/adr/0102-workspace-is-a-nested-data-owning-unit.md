@@ -200,3 +200,10 @@ None of these facts has a home today:
 - Phasing: `RunControlPort` refuses a locked or offboarding tenant's runs from W1 (`tenant_locked`,
   `tenant_offboarding`), and `workspace_archived` arrives in W2 with archive enforcement
   (F:ADR-0120~agent-lifecycle:api).
+
+## Amendments (2026-10-26)
+
+- Decision 6 gains one exception, Đạt's answer to Q-h1 (ADR-0104 Open 7): while a tenant is `setup`, the
+  AccessContext gate lets through the first sign-in and the acceptance of the owner invitation of the two owners invited
+  at creation, and the operators' routes under `/api/v1/platform/`, and refuses every other route as it refuses a
+  `locked` tenant, `/me` after that first sign-in included (tenant-rbac R3.14). The status stays Accepted.

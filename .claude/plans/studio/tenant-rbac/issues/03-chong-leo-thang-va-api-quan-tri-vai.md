@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: 02, .claude/plans/studio/app-standards/issues/01-vo-loi-problem-json.md, .claude/plans/studio/app-standards/issues/02-khoa-chong-lap-gan-nguoi-goi.md, .claude/plans/studio/app-standards/issues/03-quy-uoc-api-danh-sach-va-sua.md
 Area: studio
-Yêu cầu: R5.3, R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.7, R7.1, R7.2, R7.3, R7.4, R7.5, R7.6, R7.7, R8.1, R8.2, R8.3, R8.4, R8.5, R8.6, R8.7, R8.8, G2, RB14, RB15, RB16, RB17, RB18, RB19, RB20, RB21, RB22, RB23, RB24, RB25, RB26, RB27, RB32, RB36
+Yêu cầu: R5.3, R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.7, R7.1, R7.2, R7.3, R7.4, R7.5, R7.6, R7.7, R8.1, R8.2, R8.3, R8.4, R8.5, R8.6, R8.7, R8.8, R3.16, G2, RB14, RB15, RB16, RB17, RB18, RB19, RB20, RB21, RB22, RB23, RB24, RB25, RB26, RB27, RB32, RB36, RB42
 
 ## Mục tiêu
 
@@ -113,6 +113,11 @@ trị viên, `platform.roles.bind` gán vai trò không trọng yếu.
    (`apps/web/components/admin/members-manager.tsx:34-39`) lấy vai trò từ `GET /api/v1/admin/roles`, khóa vai trò
    `assignable_by_me = false` kèm lý do, hiện "Chờ người thứ hai xác nhận" khi nhận 202; xóa `BASE_GRANTABLE_ROLES`,
    `ADMIN_GRANTABLE_ROLES`. `make generate-contracts`; client trong `packages/typescript/api-client`.
+10. **Đường vượt không mở route vai trò** (spec R3.16; Đạt, Q-h7): kiểm vượt `platform_admin` của G2 bỏ qua một danh
+    sách route khai một lần cạnh router (`/api/v1/admin/roles`, `/api/v1/admin/role-changes`,
+    `/api/v1/admin/members/{user_id}/memberships`, `/api/v1/admin/members/{user_id}/permission-sets` và route con), nên ở
+    đó người gọi chỉ qua khi tự giữ khóa của route qua `platform.effective_grants`; test so danh sách với router, đỏ khi
+    một route vai trò mới không có trong danh sách.
 
 ## Tiêu chí chấp nhận
 
@@ -140,7 +145,10 @@ trị viên, `platform.roles.bind` gán vai trò không trọng yếu.
 - [ ] R8.6 (RB27): ghi `permission_set_keys` khác rỗng hay `role_keys` chứa `member` → 23514 `ck_memberships_legacy_role_columns`.
 - [ ] R8.7 (RB26): vai trò đổi `version` sau lúc đề xuất, rồi người thứ hai xác nhận → 409 `conflict` với `details.reason_code` `proposal_stale`, quyền không đổi; không route nào của ticket này trả `stale_version`.
 - [ ] R8.8 (RB26): `PATCH /api/v1/admin/roles/{role_id}` không có `If-Match` → 428 `precondition_required`, không ghi gì.
-- [ ] G2: `test_platform_admin_bypasses_scopes` xanh trước và sau cắt chuyển.
+- [ ] R3.16 (RB42): người có `platform_admin` và không khóa nào gọi `POST /api/v1/admin/roles`,
+      `POST /api/v1/admin/roles/{role_id}/assignments` và `POST /api/v1/admin/role-changes/{request_id}/confirm` → 403,
+      0 dòng đổi; bỏ danh sách route khỏi kiểm vượt → route vai trò cho qua, test đỏ.
+- [ ] G2: `test_platform_admin_bypasses_scopes` xanh trước và sau cắt chuyển, trên một route không thuộc R3.16.
 - [ ] Xong: `make ci` xanh.
 
 ## Nguồn
@@ -167,3 +175,5 @@ trị viên, `platform.roles.bind` gán vai trò không trọng yếu.
 - 2026-10-24 (agent): bước 4 cấp DELETE cho `dw_app` trên `platform.role_change_requests` cùng trigger `platform.guard_role_change_request()` chỉ cho xóa khi công ty ở `offboarding`, vì lane offboarding chỉ xóa bảng mà `dw_app` có DELETE; tiêu chí mới R7.7 (RB36) mang ca âm của công ty `active` và lượt xóa (CLAUDE.md, Data model rules; Quyết định 24/10/2026 của spec).
 - 2026-10-25 (agent): lượt h, theo H-2 (foundations-hardening): bước xóa `platform.role_change_requests` là bước mặc định
   của sổ bước xóa, thứ tự suy từ `pg_constraint`, thay câu về `_ORDERED_FIRST`; không đổi gì khác.
+- 2026-10-26 (agent): áp Q-h7 của Đạt (theo khuyến nghị): bước 10 và tiêu chí R3.16 (RB42); G2 chỉ còn đúng cho route
+  không thuộc R3.16. Không thêm cạnh.

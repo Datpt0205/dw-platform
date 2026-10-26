@@ -147,7 +147,7 @@ Trước đây: `GET /api/v1/runs/{run_id}` và `.../timeline` chỉ kiểm `run
   `GET /api/v1/runs/{run_id}/steps` hay `GET /api/v1/runs/{run_id}` cho một lượt `simulate` có `requested_by` là chính
   người đó, API Lịch sử chạy PHẢI trả các Bước chạy hay chi tiết của lượt đó dù người đó không giữ `runs.read`, mỗi giá
   trị trường mà người đó không có quyền đọc thay bằng dấu `Đã ẩn` như R3.3 (V4.41); payload của các Bước chạy đó vẫn
-  theo R4.3 [CAN LAM RO: Q7].
+  theo R4.3: thiếu `runs.read_payloads` thì 403 (Đạt, Q-h4).
 - R4.5 NẾU người gọi `GET /api/v1/runs/{run_id}/steps` hay `GET /api/v1/runs/{run_id}` không giữ `runs.read` tới
   workspace của lượt, và lượt đó không phải lượt `simulate` mà chính người gọi xin trong khi giữ `studio.workflows.test`
   tới workspace đó (R4.4), THÌ API Lịch sử chạy PHẢI trả 404 giống hệt phản hồi cho một id không tồn tại và không lộ
@@ -616,12 +616,7 @@ text` NULL với CHECK `(status = 'waiting') = (reason_code IS NOT NULL)` (dòng
 
 ## Câu hỏi còn mở
 
-- Q7. Người giữ `studio.workflows.test` mà không giữ `runs.read_payloads` có xem được payload của Bước chạy trong lượt
-  mô phỏng do chính mình xin (`GET /api/v1/runs/{run_id}/steps/{step_id}/payload`) không, khi lượt mô phỏng đọc bản ghi
-  thật và ADR-0122 (Accepted) quyết 4 đặt mọi payload sau `runs.read_payloads`? Chủ: Đạt. Không đổi: R4.3 và TA12 trả
-  403 cho người thiếu `runs.read_payloads` theo ADR-0122 (Accepted) quyết 4 tới khi có câu trả lời; đề xuất là không ở
-  W1, và câu trả lời "có" chỉ thêm vào R4.3 một nhánh cho payload của lượt `simulate` mà người gọi tự xin, kèm ca âm ở
-  TA26 và một bước ở ticket 03.
+Không còn câu hỏi mở.
 
 ## Quyết định
 
@@ -889,6 +884,9 @@ text` NULL với CHECK `(status = 'waiting') = (reason_code IS NOT NULL)` (dòng
   đọc đó; đã mô phỏng: độ sâu `marketing-pilot/03` 15, chuỗi dài nhất 18; cạnh nằm ở dòng Blocked by của
   usage-and-limits/02. Hỏi: Q5. Sửa: Phụ thuộc, Câu hỏi còn mở. Nếu sai thì: cạnh đó bỏ, và ticket 01 mang mảnh và test
   phủ của `platform.usage_events` thay usage-and-limits/02.
+- 26/10/2026 (Đạt): Q-h4 theo khuyến nghị ("theo khuyến nghị hết cho tôi"): ở W1 người dựng không xem payload của
+  lượt mô phỏng do chính mình xin khi thiếu `runs.read_payloads`; R4.3 giữ 403 theo ADR-0122 (Accepted) quyết 4,
+  không thêm nhánh. Hỏi: Q7. Sửa: R4.4. Không đổi TA26 và ticket 03, vốn đã thử 403 đó.
 
 ## Danh sách ticket
 

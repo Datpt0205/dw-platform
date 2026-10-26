@@ -256,15 +256,18 @@ by copying") and D3 (record-level access in four layers), and on the call on DO-
    `setup` behaves as `locked` at every tenant route, except the two owners' first sign-in and their acceptance of the
    owner invitation, and the operators' routes; no run, no publish and no other invitation until the tenant is
    `active`. ADR-0102 decision 6, read as written, refuses a tenant that is not active at every route, `/me` included,
-   which would refuse those two steps as well, so the answer also names that exception.
+   which would refuse those two steps as well, so the answer also names that exception. Answered 2026-10-26: as
+   proposed (tenant-rbac R3.14); the exception is recorded in ADR-0102's amendments.
 8. **Q-h2 (Đạt, before tenant-rbac/02 is ready).** May a tenant in `setup` be offboarded (`setup` to `offboarding`)?
    Proposed: yes, by the operators through the existing offboarding flow, so a tenant whose second owner never arrives
-   does not stay `setup` for good (failure-modes #6).
+   does not stay `setup` for good (failure-modes #6). Answered 2026-10-26: as proposed; `setup` to `locked` and every
+   other exit but `active` and `offboarding` are refused (tenant-rbac R3.15).
 9. **Q-h7 (Đạt, before tenant-rbac/02 is ready).** In W1, does the `platform_admin` bypass (the value in
    `memberships.role_keys` that passes every scope check without an approval mark, tenant-rbac G2) count as holding
    `platform.roles.write` in a customer's tenant under decision 10? If it does, it contradicts the operator rule there
    until W2 withdraws the value. Proposed: yes; the role-administration and role-assignment routes do not accept the
-   bypass, as it already does not pass an approval mark (DO-33), and G2 holds for every other route.
+   bypass, as it already does not pass an approval mark (DO-33), and G2 holds for every other route. Answered
+   2026-10-26: as proposed (tenant-rbac R3.16).
 
 ## Acceptance (2026-10-23)
 
@@ -320,3 +323,10 @@ by copying") and D3 (record-level access in four layers), and on the call on DO-
   `platform.members.write` once each time the `active` holders of either key fall below two (H-15). Open 7 (Q-h1, what
   `setup` allows) and Open 8 (Q-h2, whether `setup` may lead to `offboarding`) are Đạt's, and nothing here guesses
   them; Consequences note that a tenant created after tenant-rbac/02 starts with two owners.
+
+## Amendments (2026-10-26)
+
+- Đạt answered Open 7, 8 and 9 as proposed ("theo khuyến nghị hết cho tôi"): a `setup` tenant behaves as `locked`
+  except the two owners' first sign-in and acceptance and the operators' routes; it leaves `setup` only for `active` or,
+  through the operators' offboarding flow, `offboarding`; the role-administration and role-assignment routes do not
+  accept the `platform_admin` bypass. The status stays Accepted.

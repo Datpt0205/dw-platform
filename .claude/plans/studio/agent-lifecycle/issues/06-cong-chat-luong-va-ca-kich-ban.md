@@ -146,8 +146,8 @@ chặn. Phát hành hai người, handler `.decided` và route đọc Bản ứn
    `dw_studio.lifecycle.presentation`: `GET /api/v1/studio/workflows/{artifact_id}/scenarios` (keyset theo `name`),
    `POST` (bắt buộc `Idempotency-Key`), `PUT .../scenarios/{scenario_id}` và `DELETE .../scenarios/{scenario_id}` (bắt
    buộc `If-Match` là `row_version`: lệch → 412 `precondition_failed` với `stale_version`, thiếu → 428
-   `precondition_required`; app-standards:R3.2, app-standards:R3.3); khóa đọc và khóa ghi của route
-   [CAN LAM RO: Q5]; thân sai dạng → 422 `validation_failed` với `errors[].pointer` (app-standards:R1.3), trùng `name`
+   `precondition_required`; app-standards:R3.2, app-standards:R3.3); khóa đọc `studio.workflows.read`, khóa ghi
+   `studio.workflows.edit` ở độ sâu của `owning_workspace_id`, một người (spec R4.18; Đạt, Q-h9); thân sai dạng → 422 `validation_failed` với `errors[].pointer` (app-standards:R1.3), trùng `name`
    → 409 `conflict`; thành phần không phải `workflow`, ngoài độ sâu của khóa ở `owning_workspace_id` hay của công ty
    khác → 404 như không tồn tại, không ghi và không audit (spec R4.19). Audit `studio.scenario.created`,
    `studio.scenario.updated`, `studio.scenario.deleted` (actor là người gọi, `details` chỉ id thành phần và id ca) trong
@@ -156,7 +156,7 @@ chặn. Phát hành hai người, handler `.decided` và route đọc Bản ứn
    ứng viên quy trình bắt đầu, lane đọc mọi dòng `studio.workflow_scenarios` của thành phần, ghi `scenario_set_hash` là
    sha256 của dạng chuẩn `dw_kernel.canonical` của danh sách `{name, scenario}` theo `name`, và mã đó vào khóa bằng chứng
    (spec R4.6), nên sửa một ca sau đó không đổi kết quả đã ghi mà làm lần gửi sau không dùng lại bằng chứng cũ; thành
-   phần không có ca nào: [CAN LAM RO: Q4]. Trước lần thử, lane kiểm ca với tài liệu đã ghim: id Bước của
+   phần không có ca nào thì Lượt kiểm định trượt với `scenario_missing`, không lần thử nào (spec R4.13; Đạt, Q-h8). Trước lần thử, lane kiểm ca với tài liệu đã ghim: id Bước của
    `approval_decisions` hay `pinned_results` không có trong cây, một Bước `human.approval` của cây (mọi độ sâu) không có
    quyết định, hay tên của `expected_outcomes` không có trong `outcomes[]` của tài liệu (workflow-engine:R1.9) → ca trượt
    với `scenario_invalid`, không lần thử nào (spec R4.16). Lần thử của ca: `RunRequest` `simulate` như bước 2, đầu vào là
@@ -179,7 +179,7 @@ chặn. Phát hành hai người, handler `.decided` và route đọc Bản ứn
 8. Nhãn (H-21): mỗi hành động audit mới của ticket (`studio.gate_run.started`, `studio.gate_run.completed`,
    `studio.scenario.created`, `.updated`, `.deleted`) có nhãn tiếng Việt trong mảnh
    `configs/copy/audit_actions.d/agent-lifecycle.yaml`, và mỗi mã lý do mới mà lane `studio_gate` ghi (`cost_bound`,
-   `scenario_invalid`, `outcome_mismatch`, `assertion_failed`, `assertion_error`) có nhãn trong mảnh
+   `scenario_missing`, `scenario_invalid`, `outcome_mismatch`, `assertion_failed`, `assertion_error`) có nhãn trong mảnh
    `configs/copy/run_reason_codes.d/agent-lifecycle.yaml`, trong cùng thay đổi; mã của spec khác (`limit_exceeded`,
    `pinned_result_invalid`) giữ nhãn ở mảnh của spec chủ, vì bộ nạp từ chối một khóa khai ở hai mảnh
    (telemetry-and-audit:R1.10); bộ nạp và test thiếu nhãn là của telemetry-and-audit.
@@ -232,6 +232,8 @@ chặn. Phát hành hai người, handler `.decided` và route đọc Bản ứn
 - [ ] R4.13 (AL30): đột biến gỡ nhánh trùng của quy trình fixture rồi gửi lại → ca "lead trùng" trượt với
       `outcome_mismatch`, cổng trượt; cùng sáu ca lặp 20 lượt cổng trên cùng Bản ứng viên (đồng hồ và nguồn ngẫu nhiên
       giả) → cùng một `verdict` mỗi lượt.
+- [ ] R4.13 (AL30): thành phần quy trình không có ca nào → Lượt kiểm định trượt với `scenario_missing`, 0 lần thử,
+      phiên bản về Nháp; gỡ kiểm → cổng đạt trên tập rỗng, test đỏ.
 - [ ] R4.14 (AL31): ca ghim kết quả `{output: {sent: true}}` cho Bước gửi email → lần thử nhận kết quả đó, 0 lời gọi
       `ToolExecutor` cho Bước đó, `pinned_results` của dòng `worker_runs` bằng đúng map của ca; lane không chuyển
       `pinned_results` → lần thử gọi cửa của Bước, test đỏ.
@@ -245,7 +247,8 @@ chặn. Phát hành hai người, handler `.decided` và route đọc Bản ứn
 - [ ] R4.17 (AL31): ca ghim kết quả cho một Bước `human.approval` → lần thử `failed` `pinned_result_invalid`, ca trượt
       với mã đó, nhánh của quyết định giả lập không chạy, 0 dòng `platform.approval_requests`; lane lọc kết quả ghim của
       Bước phê duyệt khỏi `RunRequest` → ca đạt, test đỏ.
-- [ ] R4.18: người giữ khóa ghi của route (Q5) `POST` một ca hợp lệ → 201 với `row_version`, đúng một audit
+- [ ] R4.18 (AL33): người chỉ giữ `studio.workflows.read` → `GET` danh sách được, `POST` → 403; người giữ
+      `studio.workflows.edit` ở độ sâu của `owning_workspace_id` `POST` một ca hợp lệ → 201 với `row_version`, đúng một audit
       `studio.scenario.created`, `definition_hash` của mọi phiên bản thành phần không đổi; `PUT` với `If-Match` cũ → 412
       `stale_version`, ca không đổi; thiếu `If-Match` → 428; khóa lạ trong `scenario` → 422 với con trỏ; trùng `name` →
       409; `DELETE` với `If-Match` đúng → ca mất khỏi danh sách, audit `studio.scenario.deleted`.
@@ -308,3 +311,5 @@ chặn. Phát hành hai người, handler `.decided` và route đọc Bản ứn
   bước 1 và tiêu chí R10.2 theo sổ bước xóa của foundations-hardening/07 (foundations-hardening:R11.4, R11.5, FH33):
   thứ tự suy từ khóa ngoại `RESTRICT` và `NO ACTION` trong `pg_constraint`, ticket này không đăng ký bước nào vì hai bảng
   của nó chỉ cần câu `DELETE` chung. Không thêm cạnh: ticket này chờ ticket 04 → ticket 03, mà chờ foundations-hardening/07.
+- 2026-10-26 (agent): áp Q-h8, Q-h9 của Đạt (theo khuyến nghị): bước 6 nêu khóa của route ca kịch bản, bước 7 cho cổng trượt
+  `scenario_missing` khi không có ca, bước 8 thêm nhãn của mã đó; thêm hai tiêu chí. Không thêm cạnh.

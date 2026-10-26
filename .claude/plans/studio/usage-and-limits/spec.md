@@ -298,8 +298,8 @@ Mọi bảng tenant: RLS ENABLE và FORCE theo tenant, grant cùng migration, t�
   kể cả DEFAULT, nên đọc ghi qua bảng cha (DO-02.2); đăng ký bằng một dòng `platform.time_partitioned_tables`
   (`append_only = true`, studio-skeleton:R3.1), ENABLE/FORCE RLS và policy tenant trên cha và DEFAULT; giữ
   395 ngày (13 tháng, số tạm UNVERIFIED, DO-52) ở mảnh `configs/policies/retention.d/platform.usage_events.yaml` mà
-  ticket 02 thêm trong cùng thay đổi đăng ký (telemetry-and-audit:R5.6, studio-skeleton:R3.7; H-1), với `enforced`
-  chờ [CAN LAM RO: Q3], xóa bằng DROP PARTITION qua `platform.drop_expired_partitions`; vì `dw_app` không DELETE, bảng có một dòng
+  ticket 02 thêm trong cùng thay đổi đăng ký (telemetry-and-audit:R5.6, studio-skeleton:R3.7; H-1), với `enforced: false`
+  tới khi luật sư xác nhận thời hạn trước chạy bóng (cổng E3; Đạt, Q-h11), `description` nêu điều đó (H-33), xóa bằng DROP PARTITION qua `platform.drop_expired_partitions`; vì `dw_app` không DELETE, bảng có một dòng
   `STUDIO_EXCLUSIONS` nêu cách xóa khi offboarding, `platform.purge_tenant_append_only` (R3.8;
   studio-skeleton:R4.3); index
   `(tenant_id, occurred_at)`, `(tenant_id, run_id) WHERE run_id IS NOT NULL`,
@@ -466,11 +466,6 @@ Mọi bảng tenant: RLS ENABLE và FORCE theo tenant, grant cùng migration, t�
   → R3.11, ticket 02; agent-builder/03 đổi chỗ của middleware giới hạn trong ngăn xếp → ticket 06.
 
 ## Câu hỏi còn mở
-
-- Q3. Mảnh `platform.usage_events` có `enforced: true` từ W1, để lane `partitions` thật sự DROP tháng quá 395 ngày, hay
-  `enforced: false` tới khi luật sư xác nhận thời hạn trước chạy bóng (E3)? Chủ: Đạt. Chặn: ticket 02 (giá trị
-  `enforced` của mảnh); đề xuất: `enforced: false`, vì DROP PARTITION không lùi được, số 395 ngày còn UNVERIFIED và W1
-  chỉ có dữ liệu giả lập, còn mốc NULL không đổi gì khác.
 
 ## Quyết định
 
@@ -704,6 +699,10 @@ Mọi bảng tenant: RLS ENABLE và FORCE theo tenant, grant cùng migration, t�
   thay vế "agent-lifecycle/04 chờ ticket 03" của dòng DO-21.4 ngày 23/10/2026 ở trên; cạnh
   agent-lifecycle/06 <- usage-and-limits/03 đã có ở ticket đó. Sửa: Phụ thuộc, ticket 03. Nếu sai thì: agent-lifecycle/04
   vẫn chờ ticket 03.
+- 26/10/2026 (Đạt): Q-h11 theo khuyến nghị ("theo khuyến nghị hết cho tôi"): mảnh `platform.usage_events` mang
+  `enforced: false` tới khi luật sư xác nhận 395 ngày trước chạy bóng, vì DROP PARTITION không lùi được, số còn
+  UNVERIFIED và W1 chỉ có dữ liệu giả lập; `make retention-unenforced` liệt kê nó cho cổng E3 (telemetry-and-audit,
+  H-33). Hỏi: Q3. Sửa: Dữ liệu, ticket 02.
 
 ## Danh sách ticket
 

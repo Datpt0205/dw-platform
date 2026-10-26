@@ -20,7 +20,8 @@ WN35). Lượt con (ghim lúc gửi kiểm định, lồng tối đa 3 cấp, ch
 1. Mục `NodeTypeSpec` `flow.subworkflow@1`, nhãn "Quy trình con", trong registry của ticket 02
    (`packages/python/dw_studio/src/dw_studio/workflows/node_registry.py`):
     - cấu hình: `workflow` bắt buộc, chuỗi khớp `^[a-z][a-z0-9_]{1,39}$` (luật `api_name` của ADR-0109 (Accepted) quyết
-      1), là `api_name` của Quy trình được gọi; Quy trình nào gọi được chờ Q10 của spec; `inputs` tùy chọn, đối tượng từ
+      1), là `api_name` của Quy trình được gọi, một Quy trình khai mục `triggers[]` kind `call` (spec R13.1; workflow-engine:R2.21;
+      Đạt, Q-h6); `inputs` tùy chọn, đối tượng từ
       tên trường tới Biểu thức CEL; `additionalProperties: false`, nên khóa `version`, `live` hay mọi khóa khác bị từ
       chối, vì phiên bản con chỉ do lần gửi kiểm định ghim (R13.1).
     - đầu ra: `outputs`, đối tượng có kiểu theo khai `outputs` của phiên bản con mà lần gửi kiểm định ghim
@@ -122,3 +123,5 @@ WN35). Lượt con (ghim lúc gửi kiểm định, lồng tối đa 3 cấp, ch
   and authorization), chạy trên lần gửi kiểm định và cửa xin lượt con thật, không nêu mã lỗi của bên phân giải. Kết quả
   ghim cho chính Bước Quy trình con ở lần thử của ca kịch bản là việc của wrapper nút (workflow-engine:R4.27; H-18),
   không của ticket này. Không thêm cạnh.
+- 2026-10-26 (agent): áp Q-h6 của Đạt (theo khuyến nghị): R13.1 nay chỉ nhận Quy trình khai kind `call`; kiểm và kind do
+  workflow-engine/09 dựng, ticket này đã chờ nó, nên không thêm cạnh và không thêm bước.
