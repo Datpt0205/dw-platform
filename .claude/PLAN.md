@@ -56,7 +56,7 @@ own file and a row here.
 - **Platform:**
     - backfill ADRs with a status (`docs/agents/domain.md`): 46 citations of
       ADR-001..003 point at documents this repo never had.
-    - Studio (`studio.md`): `Duyệt` of each spec after round 4's checks.
+    - Studio (`studio.md`): `Duyệt` of app-standards, then each spec to code.
 
 ## How a feature is checked here
 

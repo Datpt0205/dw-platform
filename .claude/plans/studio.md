@@ -444,7 +444,14 @@ Khối số dành riêng: 0100-0199.
 
 Kiểm nhất quán 24/10/2026: 8 CRITICAL, 25 HIGH, 38 MEDIUM, 2 LOW; phủ YC 107/107, tiêu chí 955/1021.
 
-- Đợt 1 (W1: P0 nền móng và lát Marketing P1): 25 spec, 113 ticket sau lượt h (110 `needs-triage`, 1 `needs-info`, 2 `ready-for-human`; bậc B của V4.26 và V4.33 ở trong), chưa ticket nào `ready-for-agent`.
+- 26/10/2026 (Đạt): bỏ kiểm nhất quán vòng 4 cho cả area ("ok" với khuyến nghị): `check_plans.py` sạch,
+  mâu thuẫn còn lại nằm ở ticket còn xa, và chỗ spec sai lộ ra khi dựng thì ghi ở Comments của ticket. Thay vào đó
+  `checking-plan-readiness` chạy cho từng ticket ngay trước khi code; `checking-plan-consistency` chạy lại khi một ADR
+  đổi trạng thái hay khi đợt 2 bắt đầu. Ba cảnh báo collision (agent-lifecycle 04~~05, custom-objects 03~~06,
+  workflow-engine 07~08) xử lý khi tới các ticket đó. Code bắt đầu ở ticket không chờ ai: `app-standards/01`,
+  `studio-skeleton/01`, `foundations-hardening`; mỗi spec cần `Duyệt` của Đạt và `Duyệt cách chia ticket` trước khi
+  ticket lên `ready-for-agent`.
+- Đợt 1 (W1: P0 nền móng và lát Marketing P1): 25 spec, 113 ticket sau lượt h (111 `needs-triage`, 2 `ready-for-human`; bậc B của V4.26 và V4.33 ở trong), chưa ticket nào `ready-for-agent`.
     - Ba vòng sửa của đợt đã dùng hết (vòng 1 ngày 23/10, vòng 2 và 3 ngày 24/10): phát hiện 139, 99 rồi
       73; CRITICAL 15, 7 rồi 8. Theo luật của `checking-plan-consistency`, phần còn lại đưa lên Đạt.
     - Sửa theo ADR và `CLAUDE.md` đã chấp nhận (7 CRITICAL): cột hàng đợi theo ADR-0113, mã `wf.*` theo
