@@ -415,7 +415,7 @@ Khối số dành riêng: 0100-0199.
 - [`studio-skeleton`](studio/studio-skeleton/spec.md): kiểm nhất quán vòng 4 sau các lượt sửa của vòng 4, rồi `checking-plan-readiness` cho từng ticket W1 (25/10/2026).
 - [`foundations-hardening`](studio/foundations-hardening/spec.md): tách xong (R6-R10 và ticket 04-06 sang `runtime-hardening`); kiểm nhất quán vòng 4, rồi `checking-plan-readiness` cho từng ticket W1 (25/10/2026).
 - [`runtime-hardening`](studio/runtime-hardening/spec.md): tách từ `foundations-hardening` (số R, G và kiểm soát giữ nguyên, ticket 04-06 thành 01-03); kiểm nhất quán vòng 4, rồi `checking-plan-readiness` cho từng ticket W1 (25/10/2026).
-- [`app-standards`](studio/app-standards/spec.md): kiểm nhất quán vòng 4 sau các lượt sửa của vòng 4, rồi `checking-plan-readiness` cho từng ticket W1 (25/10/2026).
+- [`app-standards`](studio/app-standards/spec.md): Đạt duyệt spec và cách chia ticket 01-03; `checking-plan-readiness` ĐẠT cho ticket 01, đang code ở `feat/app-standards-01`. R2-R5 còn 1 CRITICAL (policy `worker_drain_idempotency_keys` không có hàng Kiểm soát và test âm xuyên tenant) và 9 HIGH, chặn ticket 02 và 03 tới khi sửa qua `writing-plan-specs` (26/10/2026).
 - [`org-and-principals`](studio/org-and-principals/spec.md): kiểm nhất quán vòng 4 sau các lượt sửa của vòng 4, rồi `checking-plan-readiness` cho từng ticket W1 (25/10/2026).
 - [`tenant-rbac`](studio/tenant-rbac/spec.md): kiểm nhất quán vòng 4 sau các lượt sửa của vòng 4, rồi `checking-plan-readiness` cho từng ticket W1 (25/10/2026).
 - [`record-access`](studio/record-access/spec.md): kiểm nhất quán vòng 4 sau các lượt sửa của vòng 4, rồi `checking-plan-readiness` cho từng ticket W1 (25/10/2026).

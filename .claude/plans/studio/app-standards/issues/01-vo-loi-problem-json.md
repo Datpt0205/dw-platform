@@ -1,6 +1,6 @@
 # 01 — Một vỏ lỗi problem+json cho mọi route
 
-Status: needs-triage
+Status: ready-for-agent
 Area: studio
 Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R1.8, G1, G2, G3, APS1, APS2
 
@@ -45,3 +45,5 @@ Lát này cho client, người tích hợp và trang web một hình lỗi duy n
 - ADR-0108 (Accepted) điểm 1.
 
 ## Comments
+
+- 2026-10-26 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
