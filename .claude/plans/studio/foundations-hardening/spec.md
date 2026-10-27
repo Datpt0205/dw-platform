@@ -458,6 +458,7 @@ không dùng lại các số đó, nên kiểm soát mới lấy từ FH33.
   phủ của studio-skeleton:R4.2 đỏ khi một bước đăng ký đi trái cạnh `RESTRICT`. Sửa: Hiện trạng, thêm R11.4, R11.5,
   FH33, Trong phạm vi, Phụ thuộc, ticket 07. Nếu sai thì: thứ tự viết tay trong `offboarding.py` và cạnh
   org-and-principals/03 <- usage-and-limits/02.
+- 27/10/2026 (Đạt): Nhận từ app-standards (hàng Ngoài phạm vi của spec đó) phép quét nguồn giới hạn nơi đặt `app.worker_drain`: một kết nối `dw_app` của API đặt được setting đó, và policy drain của checkpoint mở cả đọc (`db/migrations/versions/7bbd071748ca_run_checkpoints_worker_drain_and_sweep_.py:46-58`); lượt sửa kế của spec này viết nó thành yêu cầu, hàng Kiểm soát và ticket.
 
 ## Danh sách ticket
 
