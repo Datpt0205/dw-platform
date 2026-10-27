@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: 01, .claude/plans/studio/workflow-engine/issues/03-bien-dich-va-wrapper-nut.md, .claude/plans/studio/field-security/issues/01-mo-hinh-bao-mat-truong.md, .claude/plans/studio/usage-and-limits/issues/02-bang-gia-so-su-dung-va-man-hinh.md, .claude/plans/studio/usage-and-limits/issues/03-han-muc-giu-truoc-va-quyet-toan.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md
 Area: studio
-Yêu cầu: R1.6, R1.7, R1.8, R1.9, R1.10, R1.11, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R3.9, R3.10, R3.11, R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R4.7, R4.8, R4.9, R4.10, R4.11, R4.12, R5.1, R5.2, R5.3, R5.4, R5.5, R5.7, R5.8, R5.12, R5.15, G1, TA4, TA5, TA6, TA10, TA11, TA12, TA13, TA14, TA15, TA16, TA19, TA20, TA23, TA24, TA25, TA26, TA30, TA31, TA32, TA33, TA34
+Yêu cầu: R1.6, R1.7, R1.8, R1.9, R1.10, R1.11, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R3.9, R3.10, R3.11, R3.12, R3.13, R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R4.7, R4.8, R4.9, R4.10, R4.11, R4.12, R4.13, R5.1, R5.2, R5.3, R5.4, R5.5, R5.7, R5.8, R5.12, R5.15, G1, TA4, TA5, TA6, TA10, TA11, TA12, TA13, TA14, TA15, TA16, TA19, TA20, TA23, TA24, TA25, TA26, TA30, TA31, TA32, TA33, TA34, TA36, TA37
 
 ## Mục tiêu
 
@@ -34,7 +34,8 @@ nextval('platform.run_steps_seq')` (sequence tạo cùng revision; bên ghi khô
    `(status = 'waiting') = (reason_code IS NOT NULL)` (spec R3.8), `started_at timestamptz`, `finished_at
 timestamptz` (NULL ở dòng `waiting`), `duration_ms`, `error_type`, `input_preview` và `result_preview` (≤ 4 KB),
    `input_ref` và `result_ref` (đường dẫn đối tượng, NULL khi giữ trong dòng), token, `cost_usd numeric(18,8)`,
-   `price_book_version`, `redaction_log jsonb NOT NULL DEFAULT '[]'`, `fls_version`; không cột nội dung
+   `price_book_version`, `redaction_log jsonb NOT NULL` không DEFAULT (spec R3.12; TA6), CHECK `input_ref` và `result_ref` bắt đầu bằng
+   `'tenants/' || tenant_id || '/workspaces/' || workspace_id || '/run-steps/'` (spec R3.13; TA36), `fls_version`; không cột nội dung
    thô; `dw_app` không UPDATE, DELETE trên cha và không giữ quyền nào trên phân vùng nào, kể cả DEFAULT
    (DO-02.2); index `ix_run_steps_run (tenant_id, run_id, seq)`.
 2. Đăng ký `run_steps` bằng một dòng `platform.time_partitioned_tables` (`append_only = true`) trong cùng
@@ -51,9 +52,12 @@ timestamptz` (NULL ở dòng `waiting`), `duration_ms`, `error_type`, `input_pre
    workflow-engine:R4.5; spec R3.7, R3.9); `step_waiting` nhận thêm `reason_code` của điểm chờ, ghi trong giao dịch của
    bên gọi, là giao dịch ghi dòng `platform.run_waits`, một Bước chạy `status` `waiting` không `finished_at`, và dòng
    kết thúc sau đó của cùng (`kind`, `node_id`, `iteration_path`, `attempt`) mang cùng `started_at` (spec R3.8); Bước
-   chạy `model_call` và `tool_call` không có dòng `waiting`. Mỗi lời gọi nhận `step_key` và `started_at` từ bên gọi và
+   chạy `model_call` và `tool_call` không có dòng `waiting`. Mỗi lời gọi nhận `step_key` và `started_at` từ bên gọi (thời điểm bắt đầu của lần thử mà wrapper lưu trong
+   checkpoint; dòng kết thúc của một Bước đã chờ lấy `started_at` của dòng `waiting` của cùng `step_key`) và
    chèn với `ON CONFLICT ON CONSTRAINT uq_run_steps_step_key DO NOTHING`, nên lần ghi lặp lại sau khi worker sập không
-   thêm dòng (spec R3.1; TA32). Đường che `redact_mapping`
+   thêm dòng (spec R3.1; TA32). Mỗi giá trị lá mang `field_id` mà bên gọi đưa khi nó biết; giá trị không có `field_id`, hay khi hàm quyết quyền
+   đọc trường lỗi, bị che như trường `Nhạy cảm` (spec R3.12; TA37). Khóa đối tượng tất định
+   `.../run-steps/{run_id}/{sha256(step_key)}/{status}-{in|out}.json.gz`. Đường che `redact_mapping`
    bỏ trường bí mật và tham chiếu credential, che trường `Nhạy cảm` bằng hàm quyết quyền đọc trường của field-security,
    preview ≤ 4 KB, payload lớn gzip ở đường dẫn `tenants/{tenant_id}/workspaces/{workspace_id}/run-steps/`, ghi đường
    dẫn và lý do che vào `redaction_log`.
@@ -68,7 +72,8 @@ timestamptz` (NULL ở dòng `waiting`), `duration_ms`, `error_type`, `input_pre
    `GET /api/v1/runs/{run_id}/steps` (mỗi Bước chạy mang `status`, `lane_path`, `iteration_path`, `attempt`, `port`,
    `child_run_id`, `reason_code` cùng `reason_label`, `error_type` cùng `error_label`, spec R4.2, R4.6, và
    `effect_unresolved_label`, nhãn của khóa `effect_unresolved` trên dòng mới nhất `waiting` mang `outcome_unknown` của
-   một Bước khi lượt đã kết thúc, NULL trên mọi dòng khác, spec R4.10);
+   một Bước khi lượt đã kết thúc, NULL trên mọi dòng khác, spec R4.10); `GET /api/v1/runs` và `.../steps` không mang
+   preview, ref, `redaction_log`, `result` hay `error` (spec R4.13; TA33);
    `GET /api/v1/runs/{run_id}/steps/{step_id}/payload?part=in|out`: đọc lượt theo cùng luật của `GET .../steps`
    (`runs.read`, hay nhánh người dựng bên dưới), `step_id` phải là Bước chạy của `run_id`, nếu không → 404 giống hệt id
    không tồn tại, không `run.payload.viewed` (spec R4.11); đọc được lượt mà thiếu `runs.read_payloads` tới workspace của
@@ -85,7 +90,8 @@ timestamptz` (NULL ở dòng `waiting`), `duration_ms`, `error_type`, `input_pre
    không đọc được qua RLS. Migration của ticket đăng ký khóa `runs.read_payloads` trong `platform.permissions` của
    tenant-rbac/01, với INSERT nêu mọi cột NOT NULL có lúc đó: nhãn tiếng Việt, `scope_kind` `workspace`, `risk`
    `standard` theo bảng phân loại của tenant-rbac/01, và `tenant_grantable` `true` của tenant-rbac/02 (ticket này chờ
-   tenant-rbac/02). Khóa `studio.workflows.test` do workflow-engine/01 đăng ký cùng các khóa của loại `workflow`
+   tenant-rbac/02); cùng revision cấp `runs.read_payloads` cho mọi vai giữ `runs.read` lúc đó, để người đang đọc
+   `result` và `error` không mất chúng ngày triển khai (spec, mục Trong phạm vi). Khóa `studio.workflows.test` do workflow-engine/01 đăng ký cùng các khóa của loại `workflow`
    (workflow-engine:R1.5; H-19); ticket này đã chờ ticket đó qua workflow-engine/03.
 6. Màn `/runs` (antd Table: thời điểm, agent hoặc quy trình, trạng thái, nguồn kích hoạt, thời lượng, chi
    phí, bộ lọc) và `/runs/[id]` (spec R4.7, R4.8, R4.9; V4.36): antd `Tree` cho các Bước chạy theo `lane_path`, mỗi lần
@@ -103,7 +109,7 @@ timestamptz` (NULL ở dòng `waiting`), `duration_ms`, `error_type`, `input_pre
    SECURITY DEFINER, không đối số, `search_path` cố định, REVOKE ALL FROM PUBLIC và EXECUTE chỉ cho vai của worker, đọc
    hạn qua `platform.retention_term_days('platform.run_steps')` của ticket 01, DELETE mọi Bước chạy có `started_at` quá
    hạn của lượt đã kết thúc, bỏ qua và đếm lượt chưa kết thúc (spec R5.3, R5.4), trả `tenant_id`, `input_ref` và
-   `result_ref` của dòng đã xóa, rồi DROP mỗi partition tháng nằm trọn sau hạn mà không còn dòng nào;
+   `result_ref` của mỗi dòng đã xóa, lane ghi `retention.purged` theo công ty trong cùng giao dịch với lời gọi hàm, rồi DROP mỗi partition tháng nằm trọn sau hạn mà không còn dòng nào;
    `platform.drop_expired_partitions` không chạy trên bảng này, vì `dw_app` không DELETE và ADR-0122 (Accepted) quyết 7
    không giữ dòng 30-61 ngày; `objects.run_step_payloads.yaml` (30 ngày, `object_delete`: lane xóa các đối tượng mà hàm
    trên trả về), `platform.worker_runs.payload.yaml` (90 ngày sau kết
@@ -185,7 +191,13 @@ timestamptz` (NULL ở dòng `waiting`), `duration_ms`, `error_type`, `input_pre
       có nhãn ở mảnh `telemetry-and-audit.yaml`.
 - [ ] R3.1 (TA32): một node kết thúc → đúng một Bước chạy mang trạng thái, thời điểm, thời lượng, token, chi phí; ghi
       hai lần cùng `step_key`, `status` và `started_at` → một dòng; hai lần thử khác `attempt` → hai dòng, `seq` tăng
-      dần; bỏ `uq_run_steps_step_key` hay `ON CONFLICT DO NOTHING` → hai dòng, test đỏ; bên ghi tự đặt `seq` → test đỏ.
+      dần; dòng kết thúc sau resume ở tiến trình khác → cùng `started_at` với dòng `waiting`; bỏ `uq_run_steps_step_key` hay `ON CONFLICT DO NOTHING` → hai dòng, test đỏ; bên ghi tự đặt `seq` → test đỏ.
+- [ ] R3.12 (TA37): đầu ra công cụ mang khóa `note` không có `field_id` chứa số điện thoại → preview và đối tượng không
+      chứa số đó, `redaction_log` nêu đường dẫn; hàm quyền đọc trường giả báo lỗi → mọi giá trị bị che; giữ nguyên giá
+      trị không có `field_id` → test đỏ; INSERT thiếu `redaction_log` → NOT NULL từ chối.
+- [ ] R3.13 (TA36): `dw_app` gắn công ty A chèn Bước chạy có `input_ref` dưới `tenants/<B>/...` hay dưới workspace khác
+      của A → CHECK từ chối; ref đúng tiền tố → nhận; ghi lặp lại cùng `step_key` → cùng một khóa đối tượng; gỡ CHECK →
+      ca công ty B qua, test đỏ.
 - [ ] R3.11 (TA31): Bước chạy `model_call` của một lời gọi có thông điệp mang số điện thoại → preview, ref và đối tượng
       không chứa thông điệp hay đầu ra, chỉ định danh, tên model và token; bên ghi chép thông điệp vào preview → test
       đỏ.
@@ -223,6 +235,8 @@ timestamptz` (NULL ở dòng `waiting`), `duration_ms`, `error_type`, `input_pre
 - [ ] R4.11 (TA12): người giữ `runs.read` và `runs.read_payloads` ở W1 gọi payload của Bước chạy ở W2 → 404; `step_id`
       của lượt khác dưới `run_id` của mình → 404, không `run.payload.viewed`; gỡ kiểm `step_id` thuộc `run_id` hay kiểm
       workspace → test đỏ.
+- [ ] R4.13 (TA33): người chỉ giữ `runs.read` gọi `GET /api/v1/runs` và `.../steps` → không dòng nào mang preview,
+      ref, `redaction_log`, `result` hay `error`; trả preview trên `.../steps` → test đỏ.
 - [ ] R4.12 (TA33): người giữ `runs.read` mà thiếu `runs.read_payloads` gọi `GET /api/v1/runs/{run_id}` → không
       `result`, `error`, không `run.payload.viewed`; giữ khóa → có hai trường, giá trị `phone` không được đọc là `Đã ẩn`,
       đúng một `run.payload.viewed`; trả `result` bất kể khóa → test đỏ.
@@ -273,14 +287,16 @@ timestamptz` (NULL ở dòng `waiting`), `duration_ms`, `error_type`, `input_pre
       nêu ticket hay câu hỏi còn nợ bộ xóa, đỏ khi không nêu; `make retention-unenforced` in mọi mảnh `enforced: false`
       cùng lý do, bằng chứng cho cổng E3 (YC99) (H-33).
 - [ ] R5.3 (TA11): lượt chạy `waiting_approval` 400 ngày còn nguyên; lượt chạy được `memory.items` trỏ tới
-      → bỏ qua, được đếm; Bước chạy 45 ngày của lượt `waiting_approval` → còn nguyên, được đếm; gỡ điều kiện lượt chưa
+      → bỏ qua, được đếm, còn Bước chạy 31 ngày của nó bị xóa; Bước chạy 45 ngày của lượt `waiting_approval` → còn
+      nguyên, được đếm; gỡ điều kiện lượt chưa
       kết thúc khỏi `platform.purge_expired_run_steps()` → test đỏ.
 - [ ] R5.4 (TA11): Bước chạy 31 ngày của lượt đã kết thúc → dòng bị xóa và lane xóa đối tượng theo tham chiếu của nó;
       Bước chạy 29 ngày → còn nguyên; một partition tháng nằm trọn sau hạn mà hết dòng → bị DROP, còn dòng của lượt chưa
       kết thúc → giữ; hạ dòng `platform.run_steps` của `platform.retention_terms` còn 20 ngày → dòng 21 ngày bị xóa;
       `dw_app` DELETE thẳng → `permission denied`.
 - [ ] R5.15 (TA34): lane xóa Bước chạy của hai công ty → mỗi công ty một `retention.purged` actor `system:retention`,
-      mang khóa kho và số dòng, không giá trị; lượt lane không xóa gì → không sự kiện; gỡ lời ghi audit → test đỏ.
+      mang khóa kho và số dòng, không giá trị; lượt lane không xóa gì → không sự kiện; lỗi sau lời gọi hàm xóa và trước lời ghi audit → rollback, không dòng nào
+      mất; gỡ lời ghi audit → test đỏ.
 - [ ] R5.5 (TA11): một bộ xóa đăng ký trả một dòng quá hạn kèm lý do bỏ qua → lane không xóa dòng đó và
       `dw_retention_skipped_total{store, reason}` tăng đúng lý do; lane vẫn xóa dòng bị bỏ qua → test đỏ. Ca trên
       bảng sự kiện vào thật (31 ngày có lượt `queued` trỏ tới, 45 ngày bị giữ khi Đóng băng, 31 ngày không ai trỏ
@@ -375,3 +391,7 @@ timestamptz` (NULL ở dòng `waiting`), `duration_ms`, `error_type`, `input_pre
   PARTITION) và các sửa có căn cứ: `seq` từ sequence, `step_key` duy nhất (R3.1), Bước chạy `model_call` không nội dung
   (R3.11), route payload kiểm `step_id` và workspace (R4.3, R4.11), chi tiết lượt chỉ trả `result`, `error` dưới
   `runs.read_payloads` (R4.12), audit `retention.purged` (R5.15); bước 1, 3, 4, 5, 7.
+- 2026-10-27 (agent): theo lượt kiểm lại trên `e4070f4` và lời đáp của Đạt (câu 1 A, câu 2 A): giá trị không có
+  `field_id` bị che (R3.12), CHECK tiền tố ref và khóa đối tượng tất định (R3.13), danh sách không mang payload (R4.13),
+  `redaction_log` không DEFAULT, `started_at` từ checkpoint, audit trong giao dịch của hàm xóa, R5.3 chỉ giữ dòng lượt
+  chạy mà memory trỏ tới, cấp `runs.read_payloads` cho vai đang giữ `runs.read`.

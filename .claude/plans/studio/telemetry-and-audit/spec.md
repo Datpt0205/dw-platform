@@ -2,8 +2,8 @@
 
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
-Duyệt: Đạt 27/10/2026
-Sẵn sàng: CẦN XEM (27/10/2026; 0 CRITICAL, 8 HIGH); ticket 01
+Duyệt: chưa
+Sẵn sàng: chưa kiểm
 
 Người dựng cần xem một lượt chạy đã làm gì theo từng bước (trạng thái, thời gian, lỗi, token, chi phí, đầu vào và đầu
 ra), cổng kiểm định cần kết quả từng bước, nhưng chưa có kho nào cho công ty giữ việc đó dưới RLS; telemetry hiện phát
@@ -55,15 +55,17 @@ Người vận hành và hệ thống quan sát nhận span, log và metric ch�
 
 - R1.1 NẾU một thành phần phát một tên span, khóa thuộc tính hay tên metric không có trong ảnh chụp đã ghim, THÌ test
   hợp đồng PHẢI đỏ và không nhận tên đó; ảnh chụp mang tên GenAI sinh từ YAML của
-  `open-telemetry/semantic-conventions-genai` ở `GENAI_SEMCONV_COMMIT`, không sinh từ `dw_observability.semconv`, cộng
-  các tên `dw.*` mà `dw_observability.semconv` khai (ADR-0122 (Accepted) quyết 1).
+  `open-telemetry/semantic-conventions-genai` ở `GENAI_SEMCONV_COMMIT`, không sinh từ `dw_observability.semconv`, cộng các tên mà `dw_observability.semconv` khai: tên `dw.*`, tên span mà YAML đó không có (như `invoke_workflow`,
+  `retrieval`) và tên metric `dw_*` của `ALL_METRICS`, hợp đồng của Người vận hành (ADR-0122 (Accepted) quyết 1, 2).
 - R1.2 Một span, một dòng log, một sự kiện Nhật ký kiểm toán hay một thông điệp lỗi PHẢI chỉ chứa định
   danh và tên trường, không chứa giá trị trường, nội dung prompt hay đầu ra.
 - R1.3 NẾU một tên metric khai trong `ALL_METRICS` không có lời gọi phát nào trong `src/`, THÌ test AST
   PHẢI đỏ.
-- R1.4 KHI Langfuse được bật, span processor PHẢI chỉ chuyển sang Langfuse các khóa thuộc tính có trong danh sách định
-  danh cho phép của `dw_observability.semconv` và bỏ mọi khóa khác, kể cả `user.id`, thuộc tính nội dung và khóa nội
-  dung mà một commit semconv mới thêm.
+- R1.4 KHI một span rời tiến trình qua một exporter, OTLP hay Langfuse khi được bật, span processor PHẢI chỉ chuyển
+  các khóa thuộc tính có trong danh sách định danh cho phép của `dw_observability.semconv` và bỏ mọi khóa khác, kể cả
+  `user.id`, thuộc tính nội dung, `exception.message`, `exception.stacktrace`, mô tả status và khóa nội dung mà một
+  commit semconv mới thêm, vì OTel SDK tự gắn ngoại lệ lên span ở tầng mà test trên recording port không thấy
+  (`failure-modes.md` #0).
 - R1.5 Một dòng log JSON của API hay worker PHẢI chỉ mang các khóa trong danh sách định danh cho phép của
   `dw_observability.semconv`, với `message` là một tên sự kiện hằng, không phải chuỗi định dạng mang giá trị.
 - R1.6 NẾU mã trong `src/` ghi một sự kiện Nhật ký kiểm toán với một `action` không có khóa mang nhãn tiếng Việt khác
@@ -102,6 +104,9 @@ Người vận hành truy được một lượt chạy qua một trace id duy n
 - R2.5 KHI revision thêm CHECK `trace_id` lên `platform.worker_runs`, revision đó PHẢI ghi lại mọi `trace_id` có trước
   không khớp `^[0-9a-f]{32}$` thành `md5(trace_id)` rồi `VALIDATE` ràng buộc, vì PostgreSQL áp CHECK `NOT VALID` lên mọi
   UPDATE, nên không có bước này thì lần đổi trạng thái kế tiếp của một lượt cũ vấp CHECK (`failure-modes.md` #4).
+- R2.6 NẾU header `traceparent` của một request sai định dạng W3C, mang version khác `00`, hay mang trace id hoặc
+  parent id toàn số 0, THÌ API PHẢI bỏ header đó, mở một trace mới 32 ký tự hex và trả phản hồi như với một request không mang header, nên không lệnh ghi
+  nào vấp CHECK của `trace_id` hay `trace_parent`.
 
 ### R3 — Kho Lịch sử chạy theo bước, che khi ghi và khi đọc
 
@@ -110,7 +115,8 @@ trường của người xem khi đọc.
 
 - R3.1 KHI một node, lời gọi model, lời gọi công cụ, phê duyệt hay lượt chạy con kết thúc,
   `StepRecorderPort` PHẢI ghi đúng một Bước chạy mang trạng thái, thời điểm, thời lượng, loại lỗi, token và
-  chi phí, nên một lần ghi lặp lại cùng `step_key` và `status` của bên gọi không thêm dòng nào (mục Dữ liệu).
+  chi phí, nên một lần ghi lặp lại cùng `step_key` và `status` của bên gọi không thêm dòng nào, với `started_at` là
+  thời điểm bắt đầu của lần thử mà bên gọi đã lưu bền trước hiệu ứng, không đọc lại đồng hồ (mục Dữ liệu).
 - R3.2 KHI ghi một Bước chạy, `StepRecorderPort` PHẢI bỏ trường bí mật và tham chiếu credential, che trường
   `Nhạy cảm`, và ghi lại từng quyết định che.
 - R3.3 KHI một người đọc payload của một Bước chạy, Lịch sử chạy PHẢI che mỗi trường người đó không có
@@ -138,6 +144,13 @@ trường của người xem khi đọc.
 - R3.11 ĐỐI VỚI một Bước chạy `model_call`, `StepRecorderPort` PHẢI ghi vào preview và ref chỉ định danh, tên model,
   token và tên trường, không thông điệp gửi model, đầu ra model hay đối số công cụ mà model sinh, vì giữ nội dung đó là
   Ghi nội dung của W2 (ADR-0122 (Accepted) quyết 5).
+- R3.12 NẾU một giá trị lá của payload không mang `field_id` mà bên gọi đưa, hay hàm quyết quyền đọc trường lỗi hay
+  không tra được siêu dữ liệu của trường đó, THÌ `StepRecorderPort` PHẢI coi giá trị đó là trường `Nhạy cảm`, che nó
+  khi ghi và ghi quyết định che vào `redaction_log`, nên đầu ra model, đối số công cụ và văn bản tự do không được giữ
+  nguyên (`failure-modes.md` #7; Đạt, 27/10/2026).
+- R3.13 NẾU `input_ref` hay `result_ref` của một Bước chạy không bắt đầu bằng
+  `tenants/{tenant_id}/workspaces/{workspace_id}/run-steps/` của chính dòng đó, THÌ PostgreSQL PHẢI từ chối lệnh ghi
+  bằng CHECK, vì đường dẫn đối tượng là cách ly công ty trên kho đối tượng (CLAUDE.md, mục Tenancy and authorization).
 
 ### R4 — Màn Lịch sử chạy đọc dưới `runs.read` theo độ sâu, thành cây, và lượt mô phỏng của chính người dựng [Sửa]
 
@@ -187,6 +200,10 @@ Trước đây: `GET /api/v1/runs/{run_id}` và `.../timeline` chỉ kiểm `run
   người gọi giữ `runs.read_payloads` tới workspace của lượt, che theo R3.3 và ghi một `run.payload.viewed` trong cùng
   giao dịch, và bỏ hai trường đó với mọi người gọi khác, theo ADR-0122 (Accepted) quyết 4, vì
   mọi lần xem payload cần khóa đó và có audit (`failure-modes.md` #5).
+- R4.13 KHI `GET /api/v1/runs` hay `GET /api/v1/runs/{run_id}/steps` trả một trang, API Lịch sử chạy PHẢI không mang
+  `input_preview`, `result_preview`, `input_ref`, `result_ref`, `redaction_log`, `result` hay `error` trên dòng nào, vì
+  payload chỉ đọc qua route payload dưới `runs.read_payloads` có audit (ADR-0122 (Accepted) quyết 4; `failure-modes.md`
+  #5).
 
 ### R5 — Lưu giữ có bộ xóa cho mỗi kho, không xóa lượt chạy còn sống
 
@@ -205,8 +222,10 @@ số đọc hạn của mình ở đó, nên luật sư đổi số bằng một
   chạy, Sổ sử dụng, `studio.inbound_events`, `studio.trigger_deliveries`), tập mảnh retention đang ghim PHẢI có mảnh
   của kho đó mang một thời hạn và một bộ xóa đã đăng ký.
 - R5.2 NẾU một kho dữ liệu cá nhân không có bộ xóa đăng ký, THÌ test tập bộ xóa PHẢI đỏ.
-- R5.3 NẾU một lượt chạy chưa kết thúc hay còn được `memory.items` trỏ tới, THÌ lane lưu giữ PHẢI bỏ qua nó cùng mọi
-  Bước chạy của nó và vẫn đếm nó (ADR-0122 (Accepted) quyết 7: "Unfinished runs are never touched").
+- R5.3 NẾU một lượt chạy chưa kết thúc hay còn được `memory.items` trỏ tới, THÌ lane lưu giữ PHẢI bỏ qua dòng lượt
+  chạy đó và đếm nó trên `dw_retention_skipped_total{store, reason}`; Bước chạy của lượt chưa kết thúc được giữ theo
+  R5.4, còn Bước chạy của lượt đã kết thúc mà memory trỏ tới vẫn bị xóa ở ngày 30, vì ADR-0122 (Accepted) quyết 7 chỉ
+  cho dòng lượt chạy bỏ qua tham chiếu của memory.
 - R5.4 ĐỐI VỚI một Bước chạy có `started_at` quá hạn dưới khóa `platform.run_steps` của `platform.retention_terms` (30
   ngày, YC88) của một lượt đã kết thúc, lane lưu giữ PHẢI xóa dòng đó qua hàm SECURITY DEFINER hẹp không đối số
   `platform.purge_expired_run_steps()`, rồi xóa đối tượng payload theo tham chiếu mà hàm trả về, vì ADR-0122 (Accepted)
@@ -243,7 +262,8 @@ số đọc hạn của mình ở đó, nên luật sư đổi số bằng một
   manifest của CI đỏ (H-1).
 - R5.15 KHI một lane lưu giữ xóa hay xóa trắng dòng hay đối tượng của một kho, lane đó PHẢI ghi cho mỗi công ty có dòng
   bị xóa một sự kiện `retention.purged` qua `lane_audit.append_across_tenants`, actor `system:<lane>`, mang khóa kho
-  và số dòng, không mang giá trị nào (CLAUDE.md, mục Agent and tool rules; ADR-0122 (Accepted) quyết 7).
+  và số dòng, không mang giá trị nào, trong cùng giao dịch với lời gọi hàm xóa, với số dòng theo công ty mà hàm xóa
+  trả về (CLAUDE.md, mục Agent and tool rules; ADR-0122 (Accepted) quyết 7).
 
 ### R6 — Màn sự cố trên Lịch sử chạy
 
@@ -268,7 +288,8 @@ thúc, biết trước rằng lượt chạy lại với Bộ giá trị gắn n
   hiện cạnh nút "Chạy tiếp từ Bước lỗi", trước lần bấm, `error_label` mà API trả cho mã đó, "Không rõ nhà cung cấp đã
   nhận hay chưa" của catalog mã lý do (R4.6; H-12).
 - R6.6 NẾU route giải sự cố trả 403, 404 hay 409, THÌ màn `/runs/[id]` PHẢI hiện thông báo tiếng Việt theo
-  `details.reason_code` qua `App.useApp()` và giữ sự cố ở trạng thái `open` trên màn.
+  `details.reason_code` qua `App.useApp()` và đọc lại `GET /api/v1/runs/{run_id}/incidents`, nên màn hiện đúng trạng
+  thái của máy chủ: sự cố còn `open` thì còn hiện, sự cố người khác đã giải thì thôi hiện.
 
 ### R7 — Màn giải `outcome_review` trên Lịch sử chạy
 
@@ -290,8 +311,9 @@ của lát này, vì màn Lịch sử chạy có một chủ (V4.26).
 - R7.4 NẾU người dùng chọn "Đã nhận" mà ô bằng chứng rỗng, THÌ màn `/runs/[id]` PHẢI không gửi yêu cầu nào và nêu ô
   bằng chứng còn thiếu, vì lần giải `received` mang bằng chứng (workflow-engine:R6.32).
 - R7.5 NẾU route giải `outcome_review` trả 403, 404 hay 409, kể cả `second_person_required` của tác động `critical`,
-  THÌ màn `/runs/[id]` PHẢI hiện thông báo tiếng Việt theo `details.reason_code` qua `App.useApp()` và giữ dòng chờ ở
-  trạng thái `open` trên màn (workflow-engine:R6.35).
+  THÌ màn `/runs/[id]` PHẢI hiện thông báo tiếng Việt theo `details.reason_code` qua `App.useApp()` và đọc lại
+  `GET /api/v1/runs/{run_id}/outcome-reviews`, nên dòng chờ còn `open` thì còn hiện, dòng người khác đã giải thì thôi
+  hiện (workflow-engine:R6.35).
 
 ## Hành vi giữ nguyên
 
@@ -303,8 +325,10 @@ của lát này, vì màn Lịch sử chạy có một chủ (V4.26).
 
 - Bảng, cột và phân vùng ở mục Dữ liệu; route ở mục API; màn ở mục Màn hình.
 - Mã: `dw_observability.semconv` (tên span, khóa thuộc tính, tên metric GenAI, `GENAI_SEMCONV_COMMIT`);
-  `TelemetryPort.record_histogram` với `OtelTelemetry`, `RecordingTelemetry`, `NullTelemetry`; span
-  processor Langfuse; formatter log JSON có danh sách trường cho phép; `StepRecorderPort` và adapter ghi
+  `TelemetryPort.record_histogram` với `OtelTelemetry`, `RecordingTelemetry`, `NullTelemetry`, ranh giới bucket
+  của `dw_run_duration_seconds` là 0.5, 1, 2, 5, 10, 30, 60, 120, 300, 900, 1800, 3600 giây và của
+  `dw_approval_wait_seconds` là 60, 300, 900, 3600, 14400, 43200, 86400, 259200, 604800 giây; span
+  processor lọc theo danh sách cho phép trên mọi exporter (R1.4); formatter log JSON có danh sách trường cho phép; `StepRecorderPort` và adapter ghi
   `platform.run_steps`; đọc Sổ sử dụng cho token và chi phí mỗi Bước chạy; định dạng mảnh retention (R5.6), bộ đọc
   tập mảnh của mô hình chính sách (R5.13), mã băm của tập trong release manifest (R5.14) và mảnh
   `platform.audit_events`, ở ticket 01 (H-1); các lane lưu giữ; mảnh của kho lát này tạo hay xóa mà không ticket đăng
@@ -326,6 +350,9 @@ của lát này, vì màn Lịch sử chạy có một chủ (V4.26).
 - Thêm cột `trace_parent` cho `platform.outbox_events`; CHECK `trace_id` cho `platform.worker_runs` và
   `platform.audit_events`; đăng ký `run_steps` bằng một dòng `platform.time_partitioned_tables`.
 - Audit: `run.payload.viewed`, `retention.purged`.
+- Cấp `runs.read_payloads` cho mọi vai giữ `runs.read` lúc migration của ticket 03 chạy, trong cùng revision, để người
+  đang đọc `result` và `error` hôm nay không mất chúng ngày triển khai (R4.12); công ty gỡ khóa đó khỏi vai sau nếu
+  muốn.
 - Hai catalog nhãn theo mảnh, tạo ở ticket 03 (H-21): catalog hành động audit, các mảnh
   `configs/copy/audit_actions.d/<spec>.yaml` (ADR-0122 (Accepted) quyết 6), và catalog mã lý do, các mảnh
   `configs/copy/run_reason_codes.d/<spec>.yaml` (H-12); một bộ nạp catalog gộp mỗi tập và từ chối khóa trùng giữa hai
@@ -368,7 +395,9 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
   lặp `wf:{run_id}:{node_id}:{iteration_path}` của lần chạy Bước nối `attempt` cho `node` và `approval`, id lời gọi của
   Sổ sử dụng cho `model_call`, id `platform.tool_executions` cho `tool_call`, id lượt con cho `sub_run`) với
   `uq_run_steps_step_key (tenant_id, run_id, step_key, status, started_at)`, `StepRecorderPort` chèn với
-  `ON CONFLICT DO NOTHING` và `started_at` do bên gọi đưa, nên lần ghi lặp lại sau khi worker sập không thêm dòng (R3.1),
+  `ON CONFLICT DO NOTHING` và `started_at` do bên gọi đưa: wrapper của workflow-engine lưu thời điểm bắt đầu của lần
+  thử vào checkpoint trước hiệu ứng và đọc lại nó khi chạy lại, và dòng kết thúc của một Bước đã chờ lấy `started_at`
+  của dòng `waiting` qua `StepRecorderPort`, nên lần ghi lặp lại sau khi worker sập không thêm dòng (R3.1),
   `node_id`, `lane_path jsonb NOT NULL` (CHECK mảng; mỗi phần tử là cặp id Bước
   chứa và tên Nhánh ra mà loại của Bước đó khai, từ chuỗi gốc của tài liệu tới làn chứa Bước, mảng rỗng ở chuỗi gốc
   và ở Bước chạy của lượt agent không nằm trong một Bước quy trình; không DEFAULT, để bên ghi quên cột thì bị từ chối,
@@ -389,7 +418,10 @@ text` NULL với CHECK `(status = 'waiting') = (reason_code IS NOT NULL)` (dòng
   `waiting` của nó, nên hai dòng ở cùng partition), `finished_at timestamptz` (NULL ở dòng `waiting`), `duration_ms`,
   `error_type`; `input_preview` và `result_preview` (≤ 4 KB), `input_ref` và
   `result_ref` (đường dẫn đối tượng, NULL khi giữ trong dòng); token, `cost_usd numeric(18,8)`,
-  `price_book_version`, `redaction_log jsonb NOT NULL DEFAULT '[]'`, `fls_version`; không cột nội dung thô;
+  `price_book_version`, `redaction_log jsonb NOT NULL` không DEFAULT, nên bên ghi bỏ qua bước che bị từ chối thay vì đọc như "không che gì"
+  (`failure-modes.md` #7), CHECK `input_ref` và `result_ref` bắt đầu bằng
+  `'tenants/' || tenant_id || '/workspaces/' || workspace_id || '/run-steps/'` (R3.13), khóa đối tượng tất định
+  `.../run-steps/{run_id}/{sha256(step_key)}/{status}-{in|out}.json.gz` nên lần ghi lặp lại ghi đè đúng một đối tượng, `fls_version`; không cột nội dung thô;
   `dw_app` không UPDATE, DELETE trên cha và không giữ quyền nào trên phân vùng nào, kể cả DEFAULT, nên đọc
   ghi qua bảng cha (DO-02.2), và một Bước đã chờ có hai dòng, `waiting` lúc đỗ rồi dòng kết thúc, nối với nhau bằng
   (`run_id`, `kind`, `node_id`, `iteration_path`, `attempt`), còn Bước chạy `model_call` và `tool_call` không bao giờ có
@@ -398,7 +430,8 @@ text` NULL với CHECK `(status = 'waiting') = (reason_code IS NOT NULL)` (dòng
   (YC88) dưới mảnh `platform.run_steps` (`purger: row_delete`) mà ticket 03 thêm cùng thay đổi đăng ký: lane lưu giữ
   gọi `platform.purge_expired_run_steps()`, SECURITY DEFINER, không đối số, `search_path` cố định, đọc hạn qua
   `platform.retention_term_days('platform.run_steps')`, DELETE mọi Bước chạy có `started_at` quá hạn của lượt đã kết
-  thúc (bỏ qua lượt chưa kết thúc, R5.3), trả `input_ref` và `result_ref` của dòng đã xóa để lane xóa đối tượng, rồi
+  thúc (bỏ qua lượt chưa kết thúc, R5.3), trả `tenant_id`, `input_ref` và `result_ref` của mỗi dòng đã xóa, để lane xóa đối tượng và ghi `retention.purged`
+  theo công ty trong cùng giao dịch (R5.15), rồi
   DROP mỗi partition tháng nằm trọn sau hạn mà không còn dòng nào, vì `dw_app` không DELETE (R5.4, R5.12;
   ADR-0122 (Accepted) quyết 7); `platform.drop_expired_partitions` không chạy trên bảng này; cũng vì `dw_app` không DELETE,
   bảng có một dòng `STUDIO_EXCLUSIONS` nêu cách xóa khi offboarding, `platform.purge_tenant_append_only` (R5.8;
@@ -517,12 +550,12 @@ text` NULL với CHECK `(status = 'waiting') = (reason_code IS NOT NULL)` (dòng
 | TA3  | Mỗi metric khai có nơi phát                                                   | R1.3               | Thêm một hằng vào `ALL_METRICS` không có lời gọi phát → test AST đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | TA4  | Lịch sử chạy cách ly công ty và bản ghi                                       | R3.6               | `GET` Bước chạy của lượt chạy công ty B từ A → 404; danh sách `GET /api/v1/runs` không có lượt chạy công ty khác                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | TA5  | Che theo quyền đọc trường khi đọc payload                                     | R3.3               | Người không có quyền đọc `phone` → payload trả dấu `Đã ẩn`; gỡ che → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| TA6  | Bí mật không vào Lịch sử chạy                                                 | R3.2               | Input mang một khóa bí mật → preview không có giá trị, `redaction_log` ghi lý do; gỡ bỏ bí mật → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| TA7  | Trace id 32 hex xuyên tiến trình                                              | R2.2, R2.3         | Request mang `traceparent` → cùng trace id ở span API, span worker, `platform.worker_runs` và dòng outbox; ghi `trace_id` dạng `api-...` → CHECK từ chối                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| TA6  | Bí mật không vào Lịch sử chạy                                                 | R3.2               | Input mang một khóa bí mật → preview không có giá trị, `redaction_log` ghi lý do; gỡ bỏ bí mật → test đỏ; INSERT thiếu `redaction_log` → NOT NULL từ chối; thêm DEFAULT `'[]'` → ca đó qua, test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| TA7  | Trace id 32 hex xuyên tiến trình                                              | R2.2, R2.3, R2.6   | Request mang `traceparent` → cùng trace id ở span API, span worker, `platform.worker_runs` và dòng outbox; ghi `trace_id` dạng `api-...` → CHECK từ chối; `traceparent` sai định dạng, version `ff` hay trace id toàn số 0 → request 200 với trace id mới 32 hex, không lệnh ghi nào lỗi; dùng nguyên header hỏng → CHECK làm request lỗi, test đỏ                                                                                                                                                                                                                                                                                                                                                                |
 | TA8  | Log chỉ id                                                                    | R1.5               | Một dòng log mang giá trị dạng email hay query string → `test_logs_carry_ids_only` đỏ; `message` mang giá trị nội suy thay tên sự kiện hằng → đỏ; một khóa ngoài danh sách cho phép của `semconv` → bị bỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| TA9  | Langfuse không nhận user id hay nội dung                                      | R1.4               | Span processor bỏ `user.id` và `gen_ai.input.messages`; gỡ bỏ → test exporter đỏ; một khóa nội dung mới không có trong danh sách cho phép (`gen_ai.system_instructions`) → không tới Langfuse; đổi processor sang danh sách cấm → ca đó qua, test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| TA9  | Langfuse không nhận user id hay nội dung                                      | R1.4               | Span processor bỏ `user.id` và `gen_ai.input.messages`; gỡ bỏ → test exporter đỏ; một khóa nội dung mới không có trong danh sách cho phép (`gen_ai.system_instructions`) → không tới Langfuse; đổi processor sang danh sách cấm → ca đó qua, test đỏ; một span xuất qua OTLP mang `exception.message` có số điện thoại → exporter bộ nhớ không thấy khóa đó; processor chỉ lắp cho Langfuse → ca OTLP thấy giá trị, test đỏ                                                                                                                                                                                                                                                                                       |
 | TA10 | Mở payload có ghi Nhật ký kiểm toán                                           | R3.5               | Mở payload → đúng một sự kiện `run.payload.viewed`; gỡ ghi audit → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| TA11 | Lưu giữ không xóa lượt chạy sống hay còn tham chiếu                           | R5.3, R5.4, R5.5   | Lượt chạy `waiting_approval` 400 ngày còn nguyên; lượt chạy được `memory.items` trỏ tới → bỏ qua, được đếm; sự kiện vào 31 ngày mà một lượt `queued` còn trỏ tới → bỏ qua, được đếm; sự kiện vào 45 ngày đang bị giữ khi Đóng băng → bỏ qua, metric bỏ qua tăng; gỡ điều kiện → test đỏ; Bước chạy 45 ngày của lượt `waiting_approval` → còn nguyên; Bước chạy 31 ngày của lượt đã kết thúc → bị xóa cùng đối tượng của nó, 29 ngày → còn; gỡ điều kiện lượt chưa kết thúc khỏi `platform.purge_expired_run_steps()` → test đỏ                                                                                                                                                                                    |
+| TA11 | Lưu giữ không xóa lượt chạy sống hay còn tham chiếu                           | R5.3, R5.4, R5.5   | Lượt chạy `waiting_approval` 400 ngày còn nguyên; lượt chạy được `memory.items` trỏ tới → bỏ qua, được đếm; sự kiện vào 31 ngày mà một lượt `queued` còn trỏ tới → bỏ qua, được đếm; sự kiện vào 45 ngày đang bị giữ khi Đóng băng → bỏ qua, metric bỏ qua tăng; gỡ điều kiện → test đỏ; Bước chạy 45 ngày của lượt `waiting_approval` → còn nguyên; Bước chạy 31 ngày của lượt đã kết thúc → bị xóa cùng đối tượng của nó, 29 ngày → còn; gỡ điều kiện lượt chưa kết thúc khỏi `platform.purge_expired_run_steps()` → test đỏ; Bước chạy 31 ngày của một lượt đã kết thúc mà `memory.items` trỏ tới → bị xóa, dòng lượt chạy còn và được đếm                                                                     |
 | TA12 | Payload cần `runs.read_payloads`                                              | R4.3, R4.11        | Thiếu `runs.read_payloads` gọi payload → 403, không trả payload; gỡ kiểm → test đỏ; người giữ `runs.read` và `runs.read_payloads` ở W1 gọi payload của Bước chạy ở W2 → 404; `step_id` của lượt khác dưới `run_id` của mình → 404, không `run.payload.viewed`; đọc được lượt mà thiếu khóa payload ở workspace của lượt → 403; gỡ kiểm `step_id` thuộc `run_id` hay kiểm workspace → test đỏ                                                                                                                                                                                                                                                                                                                      |
 | TA13 | Mỗi kho mới có bộ xóa đăng ký                                                 | R5.1, R5.2         | Một lớp retention thiếu bộ xóa → test tập bộ xóa đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | TA14 | Xóa output công cụ không trả UPDATE cho `dw_app`                              | R5.7               | Lane chạy qua dòng `tool_executions` 31 ngày → `output` NULL, cột khác giữ nguyên; dòng 29 ngày giữ `output`; `dw_app` UPDATE thẳng → `permission denied`; hàm đặt NULL thêm một cột khác → test đỏ; hạ dòng `platform.tool_executions` của `platform.retention_terms` còn 20 ngày trong bảng thử → dòng 21 ngày bị xóa trắng; hàm giữ hằng 30 ngày hay nhận mốc làm đối số → test đỏ                                                                                                                                                                                                                                                                                                                             |
@@ -533,20 +566,22 @@ text` NULL với CHECK `(status = 'waiting') = (reason_code IS NOT NULL)` (dòng
 | TA19 | Thiếu hạn thì hàm xóa hẹp không xóa                                           | R5.12              | `platform.retention_term_days` hỏi một khóa không có dòng → lỗi `P0002` nêu khóa; xóa dòng `platform.tool_executions` khỏi bảng thử → hàm xóa trắng `output` báo lỗi, không dòng nào đổi; xóa dòng `platform.run_steps` → `platform.purge_expired_run_steps()` báo lỗi, không Bước chạy nào mất; `platform.retention_term_days` trả hạn mặc định hay NULL khi thiếu dòng → test đỏ                                                                                                                                                                                                                                                                                                                                |
 | TA20 | Bước chạy mang làn và lần lặp của wrapper                                     | R3.7, R4.2         | Hai lần chạy cùng một Bước ở hai lần lặp, ghi qua `StepRecorderPort` với giá trị của wrapper → hai Bước chạy có `iteration_path` khác nhau, bằng đúng giá trị trong hai khóa chống lặp; một Bước ở làn `rejected` của một Bước phê duyệt → `lane_path` nêu Bước phê duyệt và Nhánh ra `rejected`, và `GET /api/v1/runs/{run_id}/steps` trả nguyên hai trường; INSERT thiếu `lane_path` hay `iteration_path` → NOT NULL từ chối; bên ghi thay `iteration_path` của wrapper bằng chuỗi rỗng → hai Bước chạy không còn phân biệt được, test đỏ; thêm DEFAULT `'[]'` cho `lane_path` → INSERT thiếu cột qua, test đỏ                                                                                                  |
 | TA21 | Đọc sự cố cách ly công ty và theo độ sâu                                      | R6.1, R6.2         | `GET /api/v1/runs/{run_id}/incidents` cho lượt của công ty B từ A → 404, không dòng nào; người không có `runs.read` tới workspace của lượt → 404; người trong tầm → đúng các sự cố `open` của lượt, không sự cố `resolved` hay `cancelled`, không sự cố của lượt khác; dòng chờ mang `node_id` của node sự cố, khác id Bước lỗi → sự cố trả `node_id` và `error_type` của lần thử cuối của Bước lỗi; nối Bước chạy theo `node_id` của dòng chờ → `error_type` rỗng, test đỏ; chạy truy vấn bằng vai bỏ qua RLS hay bỏ lọc độ sâu → test đỏ                                                                                                                                                                        |
-| TA22 | Màn không coi lần từ chối là đã giải, và báo kết quả không rõ                 | R6.5, R6.6         | Route giả trả 409 `stale_interrupt` → thông báo theo mã, sự cố còn hiện `open`; trả 403 hay 409 `tenant_frozen` → như trên; lần thử cuối mang `outcome_unknown` → `error_label` "Không rõ nhà cung cấp đã nhận hay chưa" mà API trả hiện cạnh nút, mang lỗi khác → không hiện; coi mọi phản hồi là thành công, gỡ nhánh `outcome_unknown`, hay màn tự giữ chữ của nhãn thay vì đọc `error_label` → test màn đỏ                                                                                                                                                                                                                                                                                                    |
+| TA22 | Màn không coi lần từ chối là đã giải, và báo kết quả không rõ                 | R6.5, R6.6         | Route giả trả 409 `stale_interrupt` và lần đọc lại `.../incidents` không còn sự cố → thông báo theo mã, khối sự cố thôi hiện; trả 403 hay 409 `tenant_frozen` và lần đọc lại còn sự cố → thông báo theo mã, sự cố còn hiện `open`; lần thử cuối mang `outcome_unknown` → `error_label` "Không rõ nhà cung cấp đã nhận hay chưa" mà API trả hiện cạnh nút, mang lỗi khác → không hiện; coi mọi phản hồi là thành công, giữ sự cố `open` mà không đọc lại, gỡ nhánh `outcome_unknown`, hay màn tự giữ chữ của nhãn thay vì đọc `error_label` → test màn đỏ                                                                                                                                                          |
 | TA23 | Bước chạy mang lần thử, Nhánh ra và lượt con, không trỏ sang công ty khác     | R3.9, R3.10        | Hai lần thử của cùng một Bước ở cùng `iteration_path` → hai Bước chạy `attempt` 1 và 2; Bước `switch` đi nhánh `hot` → `port` `hot`; Bước phê duyệt bị từ chối → `port` `rejected`; Bước mở lượt con → `child_run_id` của lượt đó; INSERT `attempt` 0 hay thiếu `attempt` → CHECK hay NOT NULL từ chối; `port` rỗng → CHECK từ chối; `dw_app` gắn công ty A chèn Bước chạy mang `child_run_id` của một lượt công ty B → lỗi FK 23503, không dòng nào; đổi FK ghép thành FK một cột `child_run_id` → ca đó qua, test đỏ; bên ghi tự tính `attempt` thay giá trị của wrapper → test đỏ                                                                                                                              |
 | TA24 | Bước đang chờ có dòng từ lúc đỗ, và màn nói đang chờ ở đâu                    | R3.8, R4.8, R4.9   | Bước phê duyệt đỗ → có ngay một Bước chạy `waiting` mang `reason_code` của điểm chờ, cùng giao dịch với dòng `platform.run_waits`, trước mọi quyết định; quyết định tới → thêm dòng kết thúc cùng `started_at`, dòng `waiting` còn nguyên; INSERT dòng `waiting` thiếu `reason_code`, hay dòng `succeeded` mang `reason_code` → CHECK từ chối; lượt chờ ở `outcome_review` → Bước đó trên cây mang "Đang chờ ở đây" và "Không rõ nhà cung cấp đã nhận hay chưa"; lượt đó kết thúc vì `deadline_at`, hay bị hủy khi Tắt khẩn → Bước mang "Không rõ nhà cung cấp đã nhận hay chưa, chưa ai xác nhận" và không mang "Đang chờ ở đây"; gỡ lời ghi lúc đỗ → lượt chờ duyệt không có Bước nào "Đang chờ ở đây", test đỏ |
 | TA25 | Mỗi mã lý do có nhãn, và nhãn có một chủ                                      | R1.9, R4.6, R4.10  | Thêm một lời ghi `reason_code` hay `error.code` lên lượt chạy với mã không có khóa trong mảnh nào của `configs/copy/run_reason_codes.d/` → test AST đỏ, nêu mã; một khóa có nhãn rỗng → test đỏ; đổi nhãn của `outcome_unknown` trong một catalog thử → `GET .../steps` và `GET .../incidents` trả nhãn mới trong `reason_label`, `error_label`, và màn hiện nhãn đó; đổi nhãn của `effect_unresolved` → `effect_unresolved_label` của Bước còn `waiting` với `outcome_unknown` ở lượt đã kết thúc mang nhãn mới, cùng dòng ở lượt chưa kết thúc mang NULL; mã không có khóa → nhãn NULL, Bước vẫn hiện mã; màn giữ một bảng nhãn riêng → nhãn mới không hiện, test màn đỏ                                        |
 | TA26 | Người dựng chỉ đọc lượt mô phỏng của chính mình                               | R4.4, R4.5         | Người chỉ giữ `studio.workflows.test` gọi `GET .../steps` và `GET /api/v1/runs/{run_id}` cho lượt `simulate` mình xin → 200, không `result`, `error`; cùng người giữ thêm `runs.read_payloads` → giá trị `phone` mà người đó không được đọc là `Đã ẩn`; lượt `simulate` của người khác → 404 giống hệt id ngẫu nhiên; lượt `live` → 404; lượt `simulate` mình xin ở công ty A, gọi bằng ngữ cảnh công ty B → 404; `GET /api/v1/runs` của người đó không trả lượt mô phỏng nào (H-17); payload thiếu `runs.read_payloads` → 403 (R4.3); bỏ điều kiện `requested_by`, bỏ điều kiện `run_mode`, hay chạy truy vấn bằng vai bỏ qua RLS → test đỏ                                                                      |
 | TA27 | Mỗi thời hạn có một mảnh là chủ, tập mảnh ghim trong manifest                 | R5.6, R5.13, R5.14 | Mảnh tên `platform.no_such_table.yaml` hay `audit_events.yaml` thiếu schema → test tập mảnh đỏ, nêu mảnh; gỡ mảnh `platform.audit_events` → mô hình chính sách không trả hạn nào cho bảng đó và test catalog của studio-skeleton:R3.7 đỏ, nêu bảng; giữ lại ánh xạ tạm sang `retention@1.7.0` → ca gỡ mảnh vẫn xanh, test đỏ; sửa một mảnh mà không dựng lại manifest → kiểm manifest đỏ                                                                                                                                                                                                                                                                                                                          |
 | TA28 | Đọc `outcome_review` cách ly công ty và theo độ sâu                           | R7.1, R7.2         | `GET /api/v1/runs/{run_id}/outcome-reviews` cho lượt của công ty B từ A → 404, không dòng nào; người không có `runs.read` tới workspace của lượt → 404; người trong tầm → đúng các dòng `outcome_review` `open` của lượt, không dòng `resolved`, `cancelled`, không dòng `incident` hay `approval`; dòng chờ mang `node_id` của node xác nhận → dòng trả `node_id` của Bước đang chờ; nối Bước chạy theo `node_id` của dòng chờ → `node_id` rỗng, test đỏ; chạy truy vấn bằng vai bỏ qua RLS hay bỏ lọc độ sâu → test đỏ                                                                                                                                                                                          |
-| TA29 | Màn không gửi "Đã nhận" thiếu bằng chứng, và không coi lần từ chối là đã giải | R7.4, R7.5         | Chọn "Đã nhận" với ô bằng chứng rỗng → client giả không nhận yêu cầu nào; route giả trả 409 `second_person_required`, 409 `stale_interrupt`, 409 `tenant_frozen` hay 403 → thông báo theo mã, dòng chờ còn hiện `open`; coi mọi phản hồi là thành công, hay gửi `received` không bằng chứng → test màn đỏ                                                                                                                                                                                                                                                                                                                                                                                                         |
+| TA29 | Màn không gửi "Đã nhận" thiếu bằng chứng, và không coi lần từ chối là đã giải | R7.4, R7.5         | Chọn "Đã nhận" với ô bằng chứng rỗng → client giả không nhận yêu cầu nào; route giả trả 409 `second_person_required`, 409 `tenant_frozen` hay 403 và lần đọc lại còn dòng chờ → thông báo theo mã, dòng chờ còn hiện `open`; 409 `stale_interrupt` và lần đọc lại không còn dòng chờ → thông báo theo mã, khối giải thôi hiện; coi mọi phản hồi là thành công, giữ dòng chờ mà không đọc lại, hay gửi `received` không bằng chứng → test màn đỏ                                                                                                                                                                                                                                                                   |
 | TA30 | Mỗi nhãn có một mảnh là chủ, tập mảnh ghim trong manifest                     | R1.10, R1.11       | Hai mảnh thử của `configs/copy/audit_actions.d/` cùng khai `run.started`, với hai nhãn khác nhau hay giống nhau → bộ nạp từ chối, nêu khóa và hai mảnh; cùng ca ở `configs/copy/run_reason_codes.d/` → như trên; gỡ kiểm trùng → bộ nạp nhận, test đỏ; sửa một mảnh mà không dựng lại manifest → `make release-manifest-check` đỏ; một mảnh không mang `copy_id` → `make release-manifest` vẫn chạy và manifest có một mục cho mỗi tập; đổi thứ tự đọc tệp → mã băm không đổi                                                                                                                                                                                                                                     |
 | TA31 | Bước chạy model không giữ nội dung ở W1                                       | R3.11              | Bước chạy `model_call` của một lời gọi có thông điệp mang số điện thoại → preview, ref và đối tượng không chứa thông điệp hay đầu ra, chỉ định danh, tên model và token; bên ghi chép thông điệp vào preview → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| TA32 | Ghi lặp lại không thêm Bước chạy                                              | R3.1               | Ghi hai lần cùng `step_key`, `status` và `started_at` → một dòng; hai lần thử khác `attempt` → hai dòng, `seq` tăng dần; bỏ `uq_run_steps_step_key` hay `ON CONFLICT DO NOTHING` → hai dòng, test đỏ; bên ghi tự đặt `seq` → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| TA33 | Chi tiết lượt không là lối vòng qua khóa payload                              | R4.12              | Người giữ `runs.read` mà thiếu `runs.read_payloads` gọi `GET /api/v1/runs/{run_id}` → không `result`, `error`, không `run.payload.viewed`; giữ khóa → có hai trường, giá trị `phone` không được đọc là `Đã ẩn`, đúng một `run.payload.viewed`; trả `result` bất kể khóa → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| TA34 | Lane lưu giữ audit như chính nó                                               | R5.15              | Lane xóa Bước chạy của hai công ty → mỗi công ty một `retention.purged` actor `system:retention`, mang khóa kho và số dòng, không giá trị; lượt lane không xóa gì → không sự kiện; gỡ lời ghi audit → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| TA32 | Ghi lặp lại không thêm Bước chạy                                              | R3.1               | Ghi hai lần cùng `step_key`, `status` và `started_at` → một dòng; hai lần thử khác `attempt` → hai dòng, `seq` tăng dần; bỏ `uq_run_steps_step_key` hay `ON CONFLICT DO NOTHING` → hai dòng, test đỏ; bên ghi tự đặt `seq` → test đỏ; chạy lại sau sập với `started_at` đọc từ checkpoint → một dòng; dòng kết thúc sau resume ở tiến trình khác → cùng `started_at` với dòng `waiting`, cùng partition                                                                                                                                                                                                                                                                                                           |
+| TA33 | Chi tiết lượt không là lối vòng qua khóa payload                              | R4.12, R4.13       | Người giữ `runs.read` mà thiếu `runs.read_payloads` gọi `GET /api/v1/runs/{run_id}` → không `result`, `error`, không `run.payload.viewed`; giữ khóa → có hai trường, giá trị `phone` không được đọc là `Đã ẩn`, đúng một `run.payload.viewed`; trả `result` bất kể khóa → test đỏ; người chỉ giữ `runs.read` gọi `GET /api/v1/runs` và `.../steps` → không dòng nào mang preview, ref, `redaction_log`, `result` hay `error`; trả preview trên `.../steps` → test đỏ                                                                                                                                                                                                                                              |
+| TA34 | Lane lưu giữ audit như chính nó                                               | R5.15              | Lane xóa Bước chạy của hai công ty → mỗi công ty một `retention.purged` actor `system:retention`, mang khóa kho và số dòng, không giá trị; lượt lane không xóa gì → không sự kiện; gỡ lời ghi audit → test đỏ; lỗi sau lời gọi hàm xóa và trước khi ghi audit → giao dịch rollback, không dòng nào mất mà không có `retention.purged`                                                                                                                                                                                                                                                                                                                                                                             |
 | TA35 | Lượt cũ vẫn đổi trạng thái được sau CHECK `trace_id`                          | R2.5               | Dòng `platform.worker_runs` mang `api-<hex12>` trước revision → sau revision `trace_id` là `md5` của giá trị cũ, ràng buộc đã `VALIDATE`, UPDATE trạng thái nhận; bỏ bước ghi lại → `VALIDATE` lỗi, test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| TA36 | Đường dẫn đối tượng của Bước chạy gắn đúng công ty và workspace của dòng      | R3.13              | `dw_app` gắn công ty A chèn Bước chạy có `input_ref` dưới `tenants/<B>/...` hay dưới workspace khác của A → CHECK từ chối; ref đúng tiền tố → nhận; ghi lặp lại cùng `step_key` → cùng một khóa đối tượng; gỡ CHECK → ca công ty B qua, test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| TA37 | Giá trị không nối được trường thì bị che                                      | R3.12              | Đầu ra công cụ mang một khóa `note` không có `field_id` chứa số điện thoại → preview và đối tượng không chứa số đó, `redaction_log` nêu đường dẫn; hàm quyền đọc trường giả báo lỗi → mọi giá trị bị che; giữ nguyên giá trị không có `field_id` → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 ## Tiêu chí xong
 
@@ -577,7 +612,7 @@ text` NULL với CHECK `(status = 'waiting') = (reason_code IS NOT NULL)` (dòng
   `POST /api/v1/runs/{run_id}/outcome-reviews/{wait_id}/resolve` dưới `runs.reconcile` với ba `decision`, luật người giải
   khác người xin lượt với tác động `critical` và mã trả của route (workflow-engine:R6.30 tới workflow-engine:R6.36), ở
   `.claude/plans/studio/workflow-engine/issues/08-tac-dong-khong-ro-ket-qua.md`, mà ticket 04 chờ.
-- workflow-engine: bộ bọc node phát span và gọi `StepRecorderPort`, `root_run_id` và cửa nhận lượt chạy, cùng hằng
+- workflow-engine: bộ bọc node phát span và gọi `StepRecorderPort`, `root_run_id` và cửa nhận lượt chạy, `started_at` của lần thử lưu bền trong checkpoint và `field_id` của mỗi giá trị mà bộ bọc biết (R3.1, R3.12), cùng hằng
   `dw_node_failure_total{error_type}` mà ticket đó khai vào `ALL_METRICS` và phát ở mỗi lần thử lỗi, nên test AST của
   R1.3 xanh ở cả hai ticket (`.claude/plans/studio/workflow-engine/issues/03-bien-dich-va-wrapper-nut.md`), cùng `lane_path` và `iteration_path`
   của mỗi lần chạy Bước mà bộ bọc cấp từ `WorkflowIR` của lượt, `iteration_path` là giá trị nó dẫn vào khóa chống lặp
@@ -963,6 +998,23 @@ Không còn câu hỏi mở.
   `NOT VALID` và không sửa dòng audit nào. Sửa: thêm R2.5, TA35, Dữ liệu, ticket 02. Nếu sai thì: CHECK nhận thêm ba dạng
   cũ (`api-`, `resume-`, `lookup-` cộng 12 hex) và một test bắt lời ghi mới mang dạng cũ.
 - 27/10/2026 (Đạt): Duyệt cách chia ticket 01-04.
+- 27/10/2026 (Đạt): theo khuyến nghị của lượt kiểm lại trên `e4070f4` ("theo khuyến nghị đi"). Câu 1 theo A: giá trị
+  payload không có `field_id` do bên gọi đưa, hay không tra được quyền đọc trường, bị coi là `Nhạy cảm` và che khi ghi.
+  Câu 2 theo A: sửa năm MEDIUM rẻ (`redaction_log` không DEFAULT, `traceparent` hỏng mở trace mới, màn đọc lại sau một
+  lần từ chối, ranh giới bucket, cấp `runs.read_payloads` cho vai đang giữ `runs.read`), nhận rủi ro các MEDIUM còn lại:
+  đối tượng mồ côi khi lane sập giữa lệnh xóa và lệnh xóa đối tượng, đối tượng của công ty offboarding, trường của
+  `run.payload.viewed`, trace của lượt chạy tiếp sau phê duyệt, lane không có trần theo lô, FK RESTRICT của lượt con mà
+  lượt cha còn chờ, test lệch bảng chỉ chạy trong CI, mục `retention@1.8.0` của manifest cạnh mã băm tập mảnh, và log
+  của thư viện ngoài; mỗi mục mở lại khi ticket chạm tới nó. Sửa: R1.4, R2.6, R3.12, R6.6, R7.5, Dữ liệu, Trong phạm
+  vi, TA6, TA7, TA22, TA29, TA37, ticket 01-04.
+- 27/10/2026 (agent, tạm): các sửa có căn cứ của cùng lượt. Ảnh chụp mang cả tên `dw_*` của `ALL_METRICS` và tên span
+  mà YAML thượng nguồn không có (ADR-0122 (Accepted) quyết 2; R1.1); bộ lọc chạy trên mọi exporter và bỏ khóa ngoại lệ
+  (R1.4, TA9); R5.3 chỉ giữ dòng lượt chạy mà memory trỏ tới, không giữ Bước chạy của nó (ADR-0122 (Accepted) quyết 7);
+  danh sách lượt và Bước chạy không mang payload (ADR-0122 (Accepted) quyết 4; R4.13, TA33); `started_at` lấy từ
+  checkpoint của lần thử (R3.1, TA32); hàm xóa trả `tenant_id` và lane ghi audit trong cùng giao dịch (R5.15, TA34);
+  CHECK tiền tố đường dẫn đối tượng và khóa đối tượng tất định (CLAUDE.md, mục Tenancy and authorization; R3.13, TA36).
+  Sửa: R1.1, R1.4, R3.1, R3.13, R4.13, R5.3, R5.15, Dữ liệu, Phụ thuộc, TA9, TA11, TA32, TA33, TA34, TA36, ticket 01,
+  03; workflow-engine/03. Nếu sai thì: mỗi điểm đổi một tiêu chí và một test ở ticket 01 hay 03.
 
 ## Danh sách ticket
 

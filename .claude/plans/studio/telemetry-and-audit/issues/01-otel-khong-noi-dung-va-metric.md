@@ -21,13 +21,14 @@ lệch bảng, và mảnh `platform.audit_events` thay ánh xạ tạm sang `ret
    (`invoke_workflow`, `dw.node`, `invoke_agent`, `chat`, `execute_tool`, `retrieval`), khóa thuộc tính `dw.*`, tên
    metric GenAI, và danh sách định danh cho phép mà test hợp đồng, formatter log và span processor Langfuse cùng đọc
    (spec R1.4, R1.5); ảnh chụp `contracts/telemetry/genai-semconv@<sha12>.json` sinh từ YAML thượng nguồn ở commit đó,
-   không từ `semconv.py`, cộng tên `dw.*` mà `semconv.py` khai (spec R1.1), và `--check` trong CI.
+   không từ `semconv.py`, cộng các tên `semconv.py` khai: `dw.*`, tên span mà YAML không có và tên `dw_*` của
+   `ALL_METRICS` (spec R1.1), và `--check` trong CI.
 2. Test hợp đồng: chạy gateway, middleware, executor và runner qua một `RecordingTelemetry`, đỏ nếu một tên
    phát ra nằm ngoài ảnh chụp đã ghim (TA2).
 3. Thay `gen_ai.system` bằng `gen_ai.provider.name`
    (`packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/telemetry_usage.py:60`);
    `gen_ai.response.model` lấy từ phản hồi; sửa docstring `dw_observability/__init__.py:1`.
-4. `TelemetryPort.record_histogram` với bucket theo spec; `OtelTelemetry` dùng `create_histogram` và View;
+4. `TelemetryPort.record_histogram` với ranh giới bucket của spec, mục Trong phạm vi; `OtelTelemetry` dùng `create_histogram` và View;
    `RecordingTelemetry.histograms`; `NullTelemetry`.
 5. Phát `dw_run_duration_seconds`, `dw_tool_call_total`, `dw_approval_wait_seconds`; gỡ `DW_NODE_FAILURE_TOTAL` khỏi
    `dw_observability/metrics.py` và `ALL_METRICS`, vì chưa có nơi phát: workflow-engine/03 khai lại hằng
@@ -37,8 +38,9 @@ lệch bảng, và mảnh `platform.audit_events` thay ánh xạ tạm sang `ret
 6. Formatter log JSON cho API và worker chỉ giữ các khóa trong danh sách định danh cho phép của bước 1, bỏ mọi khóa
    khác; `message` là tên sự kiện hằng, không phải chuỗi định dạng mang giá trị; giá trị dạng email, số điện thoại hay
    query string bị bỏ cả khi khóa được phép; `test_logs_carry_ids_only` (spec R1.5; TA8).
-7. Một span processor khi Langfuse bật chỉ chuyển các khóa trong danh sách định danh cho phép của bước 1, bỏ mọi khóa
-   khác, kể cả `user.id`, `gen_ai.input.messages`, đầu ra và khóa nội dung mà thượng nguồn thêm sau (spec R1.4; TA9).
+7. Một span processor lắp trên mọi exporter, OTLP và Langfuse khi bật, chỉ chuyển các khóa trong danh sách định danh cho phép của bước 1, bỏ mọi khóa
+   khác, kể cả `user.id`, `gen_ai.input.messages`, đầu ra, `exception.message`, `exception.stacktrace`, mô tả status và khóa
+   nội dung mà thượng nguồn thêm sau (spec R1.4; TA9).
 8. Một chủ cho định danh (spec R1.2; TA1): span, dòng log, sự kiện Nhật ký kiểm toán và thông điệp lỗi chỉ mang định
    danh và tên trường, vì span và log đi qua danh sách cho phép của bước 1, còn `details` của sự kiện audit và thông
    điệp lỗi do mã dựng chỉ nhận định danh và tên trường, không nhận giá trị của input.
@@ -111,7 +113,9 @@ Chính sách lưu giữ theo mảnh (spec R5.6, R5.9-R5.14; H-1; dời từ tick
       `dw_node_failure_total` không còn trong `ALL_METRICS`; `make ci` xanh ở ticket này.
 - [ ] R1.4 (TA9): span processor bỏ `user.id` và `gen_ai.input.messages`; gỡ bỏ → test exporter đỏ; một khóa nội
       dung mới không có trong danh sách cho phép (`gen_ai.system_instructions`) → không tới Langfuse; đổi processor
-      sang danh sách cấm → test đỏ.
+      sang danh sách cấm → test đỏ; span xuất qua OTLP mang `exception.message` có số điện thoại → exporter bộ nhớ không
+      thấy khóa đó; processor chỉ lắp cho Langfuse → ca OTLP thấy giá trị, test đỏ; span của `dw_run_duration_seconds`
+      và ba metric `dw_*` được phát không làm test hợp đồng đỏ.
 - [ ] R1.5 (TA8): một dòng log mang giá trị dạng email → `test_logs_carry_ids_only` đỏ; `message` mang giá trị nội suy
       → đỏ; một khóa ngoài danh sách cho phép → bị bỏ khỏi dòng.
 - [ ] R5.6 (TA27): mảnh tên `platform.no_such_table.yaml`, hay `audit_events.yaml` thiếu schema → test tập mảnh đỏ, nêu
@@ -180,3 +184,6 @@ Chính sách lưu giữ theo mảnh (spec R5.6, R5.9-R5.14; H-1; dời từ tick
 - 2026-10-27 (agent): áp câu trả lời của Đạt cho lượt `checking-plan-readiness` trên `2c63e01` (câu 3 theo A, câu 4
   theo B) và các sửa có căn cứ: kho `semantic-conventions-genai`, ảnh chụp sinh từ YAML thượng nguồn, một danh sách định
   danh cho phép cho span, log và Langfuse, `dw_node_failure_total` sang workflow-engine/03 (bước 1, 5-8; R1.1, R1.3-R1.5).
+- 2026-10-27 (agent): theo lượt kiểm lại trên `e4070f4` và lời đáp của Đạt: ảnh chụp mang tên `dw_*` của `ALL_METRICS`
+  và tên span thượng nguồn không có; processor lọc trên mọi exporter và bỏ khóa ngoại lệ; bucket ghi ở spec (bước 1, 4,
+  7; R1.1, R1.4).

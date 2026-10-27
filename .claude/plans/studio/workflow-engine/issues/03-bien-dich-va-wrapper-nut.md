@@ -48,7 +48,10 @@ Biên dịch phần lõi W1 của một phiên bản quy trình từ `WorkflowIR
 - [ ] R4.7: lượt chạy `simulate` gọi công cụ `external` → `ToolExecutor` giả lập, handler không chạy (tenant-config:R5.1); một bước bản ghi ở `simulate` → `RecordsPort` giả nhận `run_mode` `simulate` và không ghi gì, đúng hợp đồng mà bộ contract test của workflow-nodes/04 thử trên cả `RecordService` (custom-objects:R5.4; H-7); wrapper không có đường vòng.
 - [ ] R4.8 (WE5): tắt khẩn giữa lượt chạy, hay chủ thể chạy bị tạm khóa giữa lượt chạy → node kế tiếp không chạy trong ≤ 5 giây; bỏ kiểm `RunControlPort` ở wrapper → test đỏ.
 - [ ] R4.11 (WE23): đồng hồ giả qua `deadline_at` của lượt trước khi node kế tiếp bắt đầu → lượt `cancelled` với `error.code` `deadline_exceeded`, đúng một audit `run.deadline_exceeded` với actor `system:studio_runs`, nhà cung cấp giả nhận 0 lời gọi; node bắt đầu một giây trước `deadline_at` → chạy; bỏ kiểm hạn chót ở wrapper → test đỏ.
-- [ ] R4.9: bước ghi qua `StepRecorderPort` có đầu vào và đầu ra đã che theo quyền người xem, span `dw.node`; `app.actor_kind = 'workflow'` gắn mỗi giao dịch; theo telemetry-and-audit:R1.3, wrapper khai `DW_NODE_FAILURE_TOTAL` (`dw_node_failure_total`, nhãn `error_type`) vào `dw_observability/metrics.py` và `ALL_METRICS`, và phát nó qua `TelemetryPort.add_metric` ở mỗi lần thử lỗi; một lần thử lỗi → bộ đếm tăng một với `error_type` của lần đó; gỡ lời gọi phát → test AST của telemetry-and-audit/01 đỏ.
+- [ ] R4.9: bước ghi qua `StepRecorderPort` có đầu vào và đầu ra đã che theo quyền người xem, span `dw.node`; `app.actor_kind = 'workflow'` gắn mỗi giao dịch; theo telemetry-and-audit:R1.3, wrapper khai `DW_NODE_FAILURE_TOTAL` (`dw_node_failure_total`, nhãn `error_type`) vào `dw_observability/metrics.py` và `ALL_METRICS`, và phát nó qua `TelemetryPort.add_metric` ở mỗi lần thử lỗi; một lần thử lỗi → bộ đếm tăng một với `error_type` của lần đó; gỡ lời gọi phát → test AST của telemetry-and-audit/01 đỏ; theo telemetry-and-audit:R3.1 và telemetry-and-audit:R3.12,
+      wrapper lưu `started_at` của lần thử vào checkpoint trước hiệu ứng và đưa đúng giá trị đó khi chạy lại, và đưa
+      `field_id` cho mỗi giá trị của đầu vào, đầu ra Bước mà nó biết; chạy lại sau sập → cùng `started_at`, test đọc lại
+      đồng hồ → đỏ.
 - [ ] R4.21: một Bước trong làn `rejected` của một Bước phê duyệt chạy → Bước chạy của nó mang `lane_path` nêu Bước phê duyệt và Nhánh ra `rejected`, `iteration_path` rỗng; Bước ở chuỗi gốc → `lane_path` rỗng; wrapper ghi Bước chạy không có hai trường → `StepRecorderPort` từ chối, test đỏ.
 - [ ] R4.10: thêm một module node có chuỗi SQL hay import SDK nhà cung cấp → test kiến trúc đỏ.
 - [ ] R7.1 (WE45): bộ golden trace chạy trên `LangGraphWorkflowRunner` trong `make ci` cho khối tuần tự, `logic.switch`, làn phê duyệt và thử và bắt → xanh; đổi thứ tự hai Bước trong một trace, hay cho một `outcome_unknown` đi vào làn lỗi → test đỏ.
@@ -81,3 +84,6 @@ Biên dịch phần lõi W1 của một phiên bản quy trình từ `WorkflowIR
   cùng lời gọi phát ở wrapper (`failure-modes.md` #1; ADR-0122 (Accepted) quyết 2). Thêm Blocked by
   telemetry-and-audit/01, vì cả hai sửa `dw_observability/metrics.py` và wrapper đặt tên span qua `semconv` của ticket
   đó; độ sâu ticket đó là 2, ticket này 11, nên cạnh không làm chuỗi dài thêm (`marketing-pilot/03` giữ 15).
+- 2026-10-27 (agent): theo lượt kiểm lại của telemetry-and-audit trên `e4070f4`: wrapper đưa `started_at` lưu trong
+  checkpoint và `field_id` của mỗi giá trị nó biết cho `StepRecorderPort` (telemetry-and-audit:R3.1,
+  telemetry-and-audit:R3.12), vì khóa duy nhất của Bước chạy gồm `started_at` và giá trị không có `field_id` bị che.

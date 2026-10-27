@@ -40,7 +40,8 @@ màn, nên ticket 03 trên đường găng YC94 không chờ bậc B hay ticket 
    mới, nút ở trạng thái đang tải tới khi có phản hồi; hai nút chỉ hiện khi `/me` báo người xem giữ
    `studio.workflows.resolve_incident` ở workspace của lượt (`hasScope`, `apps/web/lib/nav/visibility.ts`), còn route
    vẫn là chỗ kiểm (workflow-engine:R6.23). Phản hồi 403, 404 hay 409 → thông báo tiếng Việt theo `details.reason_code`
-   qua `App.useApp()`, chữ đi qua khóa thông điệp, sự cố vẫn hiện `open`; 200 → tải lại lượt, sự cố và Bước chạy.
+   qua `App.useApp()`, chữ đi qua khóa thông điệp, rồi đọc lại `.../incidents` và hiện đúng trạng thái máy chủ trả
+   (spec R6.6); 200 → tải lại lượt, sự cố và Bước chạy.
 3. Route `GET /api/v1/runs/{run_id}/outcome-reviews` cạnh route của bước 1, cùng kiểm (`runs.read`, RLS của công ty và
    workspace theo độ sâu): các dòng `platform.run_waits` có `kind = 'outcome_review'` và `status = 'open'` của lượt, mỗi
    dòng trả `wait_id` và `created_at` của dòng chờ cùng `node_id` của Bước đang chờ, đọc từ Bước chạy `waiting` có
@@ -54,7 +55,7 @@ màn, nên ticket 03 trên đường găng YC94 không chờ bậc B hay ticket 
    mở antd Modal có ô bằng chứng bắt buộc và không gửi khi ô rỗng; ba nút chỉ hiện khi `/me` báo người xem giữ
    `runs.reconcile` ở workspace của lượt, còn route vẫn là chỗ kiểm, kể cả 409 `second_person_required` với tác động
    `critical` (workflow-engine:R6.35). Phản hồi 403, 404 hay 409 → thông báo tiếng Việt theo `details.reason_code` qua
-   `App.useApp()`, dòng chờ vẫn hiện `open`; 200 → tải lại lượt, dòng chờ và Bước chạy.
+   `App.useApp()`, rồi đọc lại `.../outcome-reviews` và hiện đúng trạng thái máy chủ trả (spec R7.5); 200 → tải lại lượt, dòng chờ và Bước chạy.
 5. Test: hai route trên PostgreSQL thật (công ty khác, ngoài độ sâu, trong tầm, dòng `resolved` và `cancelled` không
    trả, dòng của lượt khác và dòng khác loại không trả); test màn với client giả (200, 409 `stale_interrupt`, 409
    `tenant_frozen`, 409 `second_person_required`, 403; `outcome_unknown` và một lỗi khác; "Đã nhận" với ô bằng chứng
@@ -81,8 +82,9 @@ màn, nên ticket 03 trên đường găng YC94 không chờ bậc B hay ticket 
 - [ ] R6.5 (TA22): `error_type` của lần thử cuối là `outcome_unknown` → `error_label` "Không rõ nhà cung cấp đã nhận hay
       chưa" mà client giả trả hiện cạnh nút "Chạy tiếp từ Bước lỗi"; một lỗi khác → không hiện; gỡ nhánh
       `outcome_unknown`, hay màn hiện một chữ tự giữ thay `error_label` → test màn đỏ.
-- [ ] R6.6 (TA22): client giả trả 409 `stale_interrupt`, 409 `tenant_frozen` và 403 → mỗi ca một thông báo tiếng Việt
-      theo mã qua `App.useApp()`, sự cố còn hiện `open`; coi mọi phản hồi là thành công → test màn đỏ.
+- [ ] R6.6 (TA22): client giả trả 409 `tenant_frozen` hay 403 và lần đọc lại còn sự cố → thông báo tiếng Việt theo
+      mã qua `App.useApp()`, sự cố còn hiện `open`; 409 `stale_interrupt` và lần đọc lại không còn sự cố → thông báo
+      theo mã, khối sự cố thôi hiện; coi mọi phản hồi là thành công, hay giữ sự cố mà không đọc lại → test màn đỏ.
 - [ ] R7.1 (TA28): lượt có một dòng `outcome_review` `open`, một dòng `outcome_review` `resolved` và một sự cố `open` →
       `GET /api/v1/runs/{run_id}/outcome-reviews` trả đúng dòng `outcome_review` `open` với `wait_id`, `created_at` và
       `node_id` của Bước đang chờ; dòng chờ của fixture mang `node_id` của node xác nhận, khác id Bước, như
@@ -97,7 +99,9 @@ màn, nên ticket 03 trên đường găng YC94 không chờ bậc B hay ticket 
 - [ ] R7.4 (TA29): chọn "Đã nhận" với ô bằng chứng rỗng → client giả không nhận yêu cầu nào và màn nêu ô còn thiếu; có
       bằng chứng → đúng một yêu cầu `received` mang bằng chứng đó; gửi `received` không bằng chứng → test màn đỏ.
 - [ ] R7.5 (TA29): client giả trả 409 `second_person_required`, 409 `stale_interrupt`, 409 `tenant_frozen` và 403 → mỗi
-      ca một thông báo tiếng Việt theo mã qua `App.useApp()`, dòng chờ còn hiện `open`; coi mọi phản hồi là thành công →
+      ca một thông báo tiếng Việt theo mã qua `App.useApp()`, rồi đọc lại `.../outcome-reviews`: còn dòng chờ thì còn
+      hiện `open`, `stale_interrupt` mà dòng đã giải thì khối giải thôi hiện; coi mọi phản hồi là thành công, hay giữ
+      dòng chờ mà không đọc lại →
       test màn đỏ.
 - [ ] Xong: `make ci && make test-integration` xanh.
 
@@ -130,3 +134,5 @@ màn, nên ticket 03 trên đường găng YC94 không chờ bậc B hay ticket 
   `outcome_review` ra đời, cạnh ngoài mục B của lượt h: đã chạy `g.py` trên cây hiện tại cộng các thao tác của mục B,
   không vòng, độ sâu `marketing-pilot/03` giữ 15, chuỗi dài nhất 18; ticket này đã chờ workflow-engine/07, sâu hơn
   ticket đó (cả hai chờ workflow-engine/05), và không ticket nào chờ ticket này, nên cạnh không làm ticket này sâu thêm.
+- 2026-10-27 (agent): theo lời đáp của Đạt (câu 2 theo A): sau 403, 404 hay 409 màn đọc lại route đọc thay vì giữ
+  `open`, nên sự cố hay dòng chờ người khác đã giải thôi hiện (spec R6.6, R7.5; TA22, TA29).

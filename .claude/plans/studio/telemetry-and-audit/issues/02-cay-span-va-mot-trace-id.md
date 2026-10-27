@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: 01, .claude/plans/studio/workflow-engine/issues/03-bien-dich-va-wrapper-nut.md, .claude/plans/studio/app-standards/issues/03-quy-uoc-api-danh-sach-va-sua.md, .claude/plans/studio/usage-and-limits/issues/03-han-muc-giu-truoc-va-quyet-toan.md, .claude/plans/studio/workflow-engine/issues/05-cho-nguoi-va-ghim-phien-ban.md
 Area: studio
-Yêu cầu: R2.1, R2.2, R2.3, R2.4, R2.5, TA7, TA35
+Yêu cầu: R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, TA7, TA35
 
 ## Mục tiêu
 
@@ -13,7 +13,8 @@ Một cây span thật cho lượt chạy (workflow, node, agent, chat, tool, re
 ## Việc cần làm
 
 1. Middleware API đọc header `traceparent` bằng `TraceContextTextMapPropagator` (opentelemetry-api 1.44.0
-   đã ghim) hoặc mở một trace mới; `X-Request-ID` thành `dw.request_id` trên span gốc.
+   đã ghim) hoặc mở một trace mới; header sai định dạng W3C, version khác `00`, hay trace id hoặc parent id toàn số 0 thì bỏ
+   header và mở trace mới, request vẫn chạy (spec R2.6); `X-Request-ID` thành `dw.request_id` trên span gốc.
 2. `RunContext.trace_id` thành 32 ký tự hex thay `api-<hex12>`
    (`apps/api/src/dw_api/bootstrap/container.py:227`), `resume-` và `lookup-`
    (`packages/python/dw_agent_runtime/src/dw_agent_runtime/approval_flow.py:302`, `:394`); CHECK
@@ -40,6 +41,8 @@ Một cây span thật cho lượt chạy (workflow, node, agent, chat, tool, re
 - [ ] R2.2 (TA7): request mang `traceparent` → cùng một trace id ở span API, span worker,
       `platform.worker_runs`, `platform.audit_events` và dòng outbox.
 - [ ] R2.3 (TA7): ghi `trace_id` dạng `api-...` → CHECK từ chối; dạng 32 ký tự hex → nhận.
+- [ ] R2.6 (TA7): `traceparent` sai định dạng, version `ff` hay trace id toàn số 0 → request 200 với trace id mới 32
+      hex, không lệnh ghi nào lỗi; dùng nguyên header hỏng → CHECK làm request lỗi, test đỏ.
 - [ ] R2.5 (TA35): dòng `platform.worker_runs` mang `api-<hex12>` trước revision → sau revision `trace_id` là `md5`
       của giá trị cũ, ràng buộc đã `VALIDATE`, UPDATE trạng thái của dòng đó nhận; bỏ bước ghi lại → `VALIDATE` lỗi,
       test đỏ.
@@ -64,3 +67,4 @@ Một cây span thật cho lượt chạy (workflow, node, agent, chat, tool, re
   thêm CHECK `trace_id`; qua ticket đó, ticket này cũng chờ workflow-engine/04.
 - 2026-10-27 (agent): theo lượt `checking-plan-readiness` trên `2c63e01`: CHECK `NOT VALID` vẫn áp lên mọi UPDATE, nên
   `platform.worker_runs` ghi lại `trace_id` cũ rồi `VALIDATE` (spec R2.5, TA35); `platform.audit_events` giữ `NOT VALID`.
+- 2026-10-27 (agent): theo lời đáp của Đạt (câu 2 theo A): `traceparent` hỏng thì mở trace mới (spec R2.6; TA7).
