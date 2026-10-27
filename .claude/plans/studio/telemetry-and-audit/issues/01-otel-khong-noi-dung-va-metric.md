@@ -1,6 +1,6 @@
 # 01 — Module ánh xạ OTel GenAI ghim commit, không nội dung; metric phát hoặc xóa; mảnh retention và bảng thời hạn
 
-Status: needs-triage
+Status: ready-for-agent
 Blocked by: .claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md
 Area: studio
 Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R5.6, R5.9, R5.10, R5.11, R5.12, R5.13, R5.14, TA1, TA2, TA3, TA8, TA9, TA17, TA18, TA19, TA27
@@ -187,3 +187,4 @@ Chính sách lưu giữ theo mảnh (spec R5.6, R5.9-R5.14; H-1; dời từ tick
 - 2026-10-27 (agent): theo lượt kiểm lại trên `e4070f4` và lời đáp của Đạt: ảnh chụp mang tên `dw_*` của `ALL_METRICS`
   và tên span thượng nguồn không có; processor lọc trên mọi exporter và bỏ khóa ngoại lệ; bucket ghi ở spec (bước 1, 4,
   7; R1.1, R1.4).
+- 2026-10-27 (agent): checking-plan-readiness ĐẠT; ready-for-agent.

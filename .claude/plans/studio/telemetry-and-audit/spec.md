@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: Đạt 27/10/2026
-Sẵn sàng: chưa kiểm
+Sẵn sàng: ĐẠT (27/10/2026; 0 CRITICAL, 0 HIGH; ticket 01)
 
 Người dựng cần xem một lượt chạy đã làm gì theo từng bước (trạng thái, thời gian, lỗi, token, chi phí, đầu vào và đầu
 ra), cổng kiểm định cần kết quả từng bước, nhưng chưa có kho nào cho công ty giữ việc đó dưới RLS; telemetry hiện phát
