@@ -96,7 +96,7 @@ ADR 0121, which owns the usage ledger whose screens and retention this ADR also 
 6. **Audit becomes queryable and exportable.** `GET /api/v1/audit/events` gains server-side filters
    (action, actor, resource, run, and a window of at most 93 days, default 7) over a new index on
    the partitioned parent, `ix_audit_events_action`, and the one run index,
-   `platform.audit_events (tenant_id, run_id, occurred_at)`, which app-standards 03 owns. One action
+   `platform.audit_events (tenant_id, run_id, workspace_id, occurred_at)`, which app-standards 03 owns. One action
    catalogue, fragments `configs/copy/audit_actions.d/<spec>.yaml` merged and hashed the same way (H-21), gives every
    action its Vietnamese label, and
    an AST test fails an emitted action the catalogue lacks. Studio configuration changes audit
@@ -335,3 +335,10 @@ of simulated runs, applied with the planner's provisional calls H-1-H-18:
   the simulated runs they requested). Consequences follow.
 - Pass h, after wave 1 (H-21): the action and reason-code catalogues are fragments per spec, merged and hashed like
   decision 7's retention fragments, so no chain of tickets edits one catalogue file.
+
+## Amendments (2026-10-27)
+
+- Đạt, on app-standards' second readiness check: decision 6's run index carries `workspace_id` after `run_id`,
+  `platform.audit_events (tenant_id, run_id, workspace_id, occurred_at)`, because the run's audit list filters by
+  workspace (`packages/python/dw_platform/src/dw_platform/adapters/persistence/repositories.py:234-246`) and
+  app-standards R6.1 fails a predicate column that is not an `Index Cond`. The status stays Accepted.
