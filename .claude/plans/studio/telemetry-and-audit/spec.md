@@ -2,7 +2,7 @@
 
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
-Duyệt: chưa
+Duyệt: Đạt, 27/10/2026
 Sẵn sàng: chưa kiểm
 
 Người dựng cần xem một lượt chạy đã làm gì theo từng bước (trạng thái, thời gian, lỗi, token, chi phí, đầu vào và đầu
@@ -962,6 +962,7 @@ Không còn câu hỏi mở.
   UPDATE: revision ghi lại giá trị cũ thành `md5(trace_id)` rồi `VALIDATE`; `platform.audit_events` chỉ thêm nên giữ
   `NOT VALID` và không sửa dòng audit nào. Sửa: thêm R2.5, TA35, Dữ liệu, ticket 02. Nếu sai thì: CHECK nhận thêm ba dạng
   cũ (`api-`, `resume-`, `lookup-` cộng 12 hex) và một test bắt lời ghi mới mang dạng cũ.
+- 27/10/2026 (Đạt): Duyệt cách chia ticket 01-04.
 
 ## Danh sách ticket
 
