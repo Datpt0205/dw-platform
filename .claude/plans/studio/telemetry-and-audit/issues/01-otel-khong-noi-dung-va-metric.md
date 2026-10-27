@@ -220,4 +220,3 @@ Chính sách lưu giữ theo mảnh (spec R5.6, R5.9-R5.14; H-1; dời từ tick
   hạn khi mất mảnh, `indefinite` với bộ xóa, khóa mảnh lạ, tên mảnh thiếu schema, mã băm bỏ tên tệp, bộ nạp không xóa dòng,
   nạp hạn chưa `enforced`, bộ nạp nuốt lỗi, hàm đọc hạn trả mặc định, REVOKE của `dw_app`, EXECUTE cho `dw_app`, job
   `migrate` không chạy bộ nạp, lane `partitions` xóa không theo mảnh).
-
