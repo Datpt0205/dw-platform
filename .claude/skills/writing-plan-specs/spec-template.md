@@ -127,7 +127,7 @@ ticket nào.
 `Nếu sai thì: <điều gì đổi>.` `<ai>` là `Đạt`, `agent, tạm` hoặc `agent, tạm theo ủy quyền`. Các
 dòng có dạng cố định:
 
-- duyệt cách chia ticket: `- <d/m/yyyy> (Đạt): Duyệt cách chia ticket <NN-NN>.`;
+- duyệt cách chia ticket: `- <d/m/yyyy> (Đạt): Duyệt cách chia ticket <NN-NN>.`, hoặc `(agent, tạm theo ủy quyền)` thay `(Đạt)` khi mục Ủy quyền của area file có dòng `Ủy quyền duyệt: Đạt, spec, từ <d/m/yyyy>` không muộn hơn: một ủy quyền spec phủ cả `Duyệt:` lẫn cách chia ticket của spec đó;
 - rủi ro chấp nhận, chỉ Đạt ghi: `Chấp nhận rủi ro: <rủi ro>; <vì sao>.`;
 - đề xuất bị từ chối: `Không nhận: <đề xuất>; <lý do>.` Không nêu lại nếu không có bằng chứng mới;
 - nguồn lệch nhau: `Mâu thuẫn nguồn: <nguồn A> nói <X>, <nguồn B> nói <Y>; theo <cái nào>.`

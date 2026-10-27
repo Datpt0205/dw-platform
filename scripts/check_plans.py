@@ -919,14 +919,21 @@ def _approved(m: Model, doc: Doc) -> bool:
     if re.fullmatch(rf"Đạt {DATE}", value):
         return True
     delegated = re.fullmatch(rf"{DELEGATED} ({DATE})", value)
-    if not delegated:
-        return False
+    return delegated is not None and _delegated_on(m, doc, delegated.group(1))
+
+
+def _delegated_on(m: Model, doc: Doc, date: str) -> bool:
+    """Whether the area file records Dat's delegation for this kind of document by `date`.
+
+    One delegation covers a spec's `Duyet:` and the split of its tickets: a split
+    approved by an agent on Dat's recorded word, never on a word nobody wrote.
+    """
     area = m.doc(m.repo / PLANS / f"{doc.area}.md")
     for _, text in area.bullets(S["delegation"]) if area else []:
         line = re.fullmatch(DELEGATION, text)
         if not line or line.group("kind") != doc.kind:
             continue
-        if _day(line.group("date")) <= _day(delegated.group(1)):
+        if _day(line.group("date")) <= _day(date):
             return True
     return False
 
@@ -1565,9 +1572,11 @@ def check_ready(m: Model, o: Outcome) -> None:
             o.add(ticket.rel, at, "Spec cùng thư mục chưa được duyệt.", "chờ Đạt duyệt spec.")
         approved: set[str] = set()
         for _, text in spec.bullets(S["decisions"]):
-            split = re.search(rf"\(Đạt\): Duyệt cách chia ticket ({TICKET_SET})\.", text)
-            if split:
-                approved |= expand_tickets(split.group(1))
+            split = re.match(
+                rf"({DATE}) \((Đạt|{DELEGATED})\): Duyệt cách chia ticket ({TICKET_SET})\.", text
+            )
+            if split and (split.group(2) == "Đạt" or _delegated_on(m, spec, split.group(1))):
+                approved |= expand_tickets(split.group(3))
         if number not in approved:
             o.add(
                 ticket.rel,

@@ -482,6 +482,18 @@ d=$(fixture); edit "$d/$S" "Duyệt: Đạt 2/10/2026" "Duyệt: agent, tạm th
 delegate "$d" requirements 1/10/2026
 red "a delegated Duyệt for another kind of document" headers "$d"
 
+# ready: the spec delegation also covers the split of its tickets
+d=$(fixture); edit "$d/$S" "(Đạt): Duyệt cách chia ticket 01-02." "(agent, tạm theo ủy quyền): Duyệt cách chia ticket 01-02."
+delegate "$d" spec 1/10/2026
+check "a delegated split with Đạt's line in the area file passes" 0 "$(plans "$d")"
+
+d=$(fixture); edit "$d/$S" "(Đạt): Duyệt cách chia ticket 01-02." "(agent, tạm theo ủy quyền): Duyệt cách chia ticket 01-02."
+only "a delegated split with no delegation recorded" ready "$d"
+
+d=$(fixture); edit "$d/$S" "(Đạt): Duyệt cách chia ticket 01-02." "(agent, tạm theo ủy quyền): Duyệt cách chia ticket 01-02."
+delegate "$d" spec 3/10/2026
+only "a delegated split dated before the delegation" ready "$d"
+
 # sections
 d=$(fixture); edit "$d/$S" $'- Route `GET /members`.\n' $'- Route `GET /members`.\n\n## Trong phạm vi\n\n- Màn hình thành viên.\n'
 only "a section written twice" sections "$d"

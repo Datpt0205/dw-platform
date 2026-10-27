@@ -21,7 +21,8 @@ support for Đạt, who rules.
    document's line under "Tiếp theo" in the area file. Every fix goes back through
    `writing-plan-specs`.
 2. **`ready-for-agent` needs ĐẠT and Đạt.** Promote only on ĐẠT with `Duyệt:` recorded and, for a
-   ticket, Đạt's approval of the breakdown. A `ready-for-agent` document that now fails goes back to
+   ticket, Đạt's approval of the breakdown, his own or in the delegated form his line in the area
+   file's `## Ủy quyền` section allows. A `ready-for-agent` document that now fails goes back to
    `needs-triage`.
 3. **Not checked is not passed.** A check that did not run is `Chưa kiểm`, and the verdict cannot
    be ĐẠT while one stands.
@@ -88,7 +89,8 @@ When tickets exist, also:
 - build the pair table for tickets with no dependency path between them, one row per pair, starting
   from the script's collision candidates. A shared resource of the kinds the ticket template lists
   is a collision, and "no collisions" without the rows does not count;
-- confirm the breakdown approval: a "Quyết định" line by Đạt, `Duyệt cách chia ticket <NN-NN>`; for
+- confirm the breakdown approval: a "Quyết định" line by Đạt, `Duyệt cách chia ticket <NN-NN>`, or the
+  same line by `agent, tạm theo ủy quyền` under a recorded spec delegation; for
   a ticket with no spec, Đạt's `Duyệt ticket.` line in its Comments.
 
 ## 6. Sort every finding

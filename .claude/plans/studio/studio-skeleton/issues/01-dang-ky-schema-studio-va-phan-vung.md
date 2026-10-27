@@ -1,6 +1,6 @@
 # 01 — Kiểm tra đăng ký phân phối, schema studio chỉ SELECT mặc định và sổ bảng phân vùng
 
-Status: needs-triage
+Status: ready-for-agent
 Area: studio
 Yêu cầu: R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R2.3, R2.4, R2.5, R2.7, R2.8, R2.9, R2.10, R2.11, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R3.9, R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R9.1, R9.2, R9.3, R9.4, R10.1, G1, G2, G4, G5, G6, G7, G8, SKEL1, SKEL2, SKEL3, SKEL4, SKEL5, SKEL6, SKEL7, SKEL8, SKEL18, SKEL19, SKEL20, SKEL21, SKEL22, SKEL24, SKEL25, SKEL26, SKEL27, SKEL28, SKEL29
 
@@ -105,3 +105,4 @@ Lát này cho người viết mọi spec Studio sau một nền đã được ki
 - 2026-10-27 (agent): sau bước xác nhận trên `e9084eb`: không miễn vai thành viên của chủ (`GRANT dw_migrator TO dw_agent_ro` làm đỏ), phép đo partition gồm quyền theo cột, UPDATE của R3.8 tính cả theo cột.
 - 2026-10-27 (agent): sau lần xác nhận thứ hai trên `2639c06`: đo thêm `pg_has_role(..., 'MEMBER')` vì `dw_agent_ro` là `NOINHERIT` (R2.3); ca thành viên vai ở tiêu chí R3.6; ca UPDATE theo cột hai chiều ở R3.8.
 - 2026-10-27 (agent): sau lần xác nhận thứ ba trên `dfed956`: ca `pg_read_all_data` và `pg_write_all_data` ở tiêu chí R2.3; ca R3.8 dùng mô hình chính sách thử có thời hạn cho bảng thử.
+- 2026-10-27 (agent): checking-plan-readiness ĐẠT; ready-for-agent.

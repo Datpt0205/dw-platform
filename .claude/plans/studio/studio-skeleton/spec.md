@@ -2,7 +2,7 @@
 
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
-Duyệt: chưa
+Duyệt: Đạt 27/10/2026
 Sẵn sàng: ĐẠT (27/10/2026; 0 CRITICAL, 0 HIGH; ticket 01)
 
 Mọi spec Studio khác cần một chỗ để đặt mã và bảng đầu tiên: một distribution `dw_studio`, schema `studio` đóng quyền ghi khi không ai cấp, một sổ cho bảng phân vùng theo thời gian, seam API và web có nội dung thật, và luật nhận dịch vụ compose mới. Spec này dựng chỗ ở đó theo ADR-0100 (Accepted) và ADR-0101 (Accepted), trước mọi năng lực Studio. Ý định: cho Studio một chỗ ở trong repo mà mọi spec khác xây lên, không seam rỗng.
@@ -325,6 +325,8 @@ Hai ADR mang cùng số không vào được nhánh chính (ADR-0100 (Accepted) 
 - 27/10/2026 (agent, tạm): một subagent ngữ cảnh mới xác nhận sáu sửa trên `e9084eb` và thấy bốn chưa đủ cùng hai lỗi mới do chính lượt sửa: middleware 401 làm mất 404 khi không có cơ sở dữ liệu, và miễn trừ vai thành viên của chủ mở lại lỗ thành viên vai. Sửa theo khuyến nghị: middleware gắn cùng nhóm bởi một hàm, dependency đóng khi thiếu kết quả xác minh, smoke đối chứng ngoài tiền tố (R6.6, R6.8); R6.8 không còn danh sách kiểm riêng; phép đo partition gồm quyền theo cột (SKEL5); UPDATE của R3.8 tính cả theo cột; ngoại lệ compose khóa bằng vi phạm ở commit nền, ADR phải nhắc dịch vụ và luật (R8.10); mọi lối lách compose có ca trồng lỗi. `dw_migrator` là chính vai đăng nhập chạy alembic (`infra/compose/init/init-databases.sh:9`), nên test quyền không miễn vai thành viên nào. Nếu sai thì: Đạt đổi từng điểm ở lượt duyệt.
 - 27/10/2026 (agent, tạm): lần xác nhận thứ hai trên `2639c06` thấy năm điểm còn hở. Sửa theo khuyến nghị: `dw_agent_ro` là `NOINHERIT` (`infra/compose/init/init-databases.sh:18`) nên `has_*_privilege` không thấy quyền qua `SET ROLE`, và test quyền đo thêm tư cách thành viên bằng `pg_has_role(..., 'MEMBER')` (R2.3); middleware chặn mọi đường dưới tiền tố kể cả route ngoài nhóm, dependency cấp nhóm đóng khi thiếu kết quả, mỗi lớp một ca trồng lỗi riêng (SKEL12); R3.8 có ca theo cột hai chiều; mỗi điều kiện của R8 là một luật có tên, `dw-internal` là một luật như mọi luật khác nên danh sách được vào cũng khóa theo commit nền và ADR (R8). Còn lại, nêu ở lượt duyệt: `BASE_SHA` của ticket 04 là một hằng sửa được, chỉ review canh việc dời nó. Nếu sai thì: Đạt đổi từng điểm ở lượt duyệt.
 - 27/10/2026 (agent, tạm): lần xác nhận thứ ba trên `dfed956`: bốn trong năm điểm đã giải; sửa nốt ca `pg_read_all_data` và `pg_write_all_data` (SKEL3), câu thừa ở ticket 02 bước 7, tập vi phạm nền của ticket 04 tính cả Dockerfile và `ci.yml` ở `BASE_SHA`, và mô hình chính sách thử cho ca R3.7, R3.8. Nếu sai thì: Đạt đổi từng điểm ở lượt duyệt.
+- 27/10/2026 (Đạt): Duyệt cách chia ticket 01-04.
+- 27/10/2026 (Đạt): từ nay agent tự duyệt spec, `requirements.md` và cách chia ticket của area `studio`, và làm theo khuyến nghị của gate mà không hỏi lại; ghi ở mục Ủy quyền của `.claude/plans/studio.md`. Vẫn dừng hỏi khi khuyến nghị đổi `CLAUDE.md` hay một ADR Accepted, hay đòi chấp nhận rủi ro.
 
 ## Danh sách ticket
 
