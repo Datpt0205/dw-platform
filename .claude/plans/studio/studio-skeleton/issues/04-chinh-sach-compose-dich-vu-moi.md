@@ -1,7 +1,7 @@
 # 04 — Chính sách compose cho dịch vụ mới
 
 Status: needs-triage
-Blocked by: .claude/plans/studio/runtime-hardening/issues/02-bien-mang-va-kho-du-lieu.md
+Blocked by: 01, .claude/plans/studio/runtime-hardening/issues/02-bien-mang-va-kho-du-lieu.md
 Area: studio
 Yêu cầu: R8.1, R8.2, R8.3, R8.4, R8.5, R8.6, R8.7, R8.8, SKEL16, SKEL17
 
@@ -38,3 +38,5 @@ Lát này cho người thêm smokescreen, OpenBao, `mcp-gateway`, `model-proxy` 
 - `scripts/test_check_plans.sh:1-15`; spec: SKEL16, SKEL17.
 
 ## Comments
+
+- 2026-10-27 (agent): chờ ticket 01, vì cả hai sửa `.github/workflows/ci.yml` (Quyết định 27/10/2026 của spec).
