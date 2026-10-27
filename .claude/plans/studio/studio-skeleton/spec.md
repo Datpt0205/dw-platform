@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: chưa
-Sẵn sàng: chưa kiểm
+Sẵn sàng: CHƯA ĐẠT (27/10/2026; 1 CRITICAL, 5 HIGH); ticket 01
 
 Mọi spec Studio khác cần một chỗ để đặt mã và bảng đầu tiên: một distribution `dw_studio`, schema `studio` đóng quyền ghi khi không ai cấp, một sổ cho bảng phân vùng theo thời gian, seam API và web có nội dung thật, và luật nhận dịch vụ compose mới. Spec này dựng chỗ ở đó theo ADR-0100 (Accepted) và ADR-0101 (Accepted), trước mọi năng lực Studio. Ý định: cho Studio một chỗ ở trong repo mà mọi spec khác xây lên, không seam rỗng.
 
