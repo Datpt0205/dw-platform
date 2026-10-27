@@ -110,6 +110,10 @@ async def _grant(admin_url: str) -> None:
                 ("platform.roles", "SELECT"),
                 ("platform.users", "SELECT"),
                 ("platform.plans", "SELECT"),
+                # The runtime copy of the pinned retention terms, which the
+                # `migrate` job's loader writes as this role (82e168f6d189). The
+                # migration skips the grant on a cluster without the role yet.
+                ("platform.retention_terms", "SELECT, INSERT, UPDATE, DELETE"),
             ):
                 if await conn.scalar(sa.text("SELECT to_regclass(:t) IS NOT NULL"), {"t": table}):
                     await conn.execute(sa.text(f"GRANT {verbs} ON {table} TO {ROLE}"))

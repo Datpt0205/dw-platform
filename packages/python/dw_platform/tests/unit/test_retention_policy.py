@@ -18,6 +18,7 @@ from dw_platform.retention_policy import (
     CheckpointRetention,
     KnowledgeRetention,
     RetentionClass,
+    RetentionFragment,
     RetentionPolicy,
 )
 
@@ -26,7 +27,7 @@ pytestmark = pytest.mark.unit
 NOW = datetime(2026, 9, 18, tzinfo=UTC)
 
 
-def _policy() -> RetentionPolicy:
+def _policy(**stores: RetentionFragment) -> RetentionPolicy:
     return RetentionPolicy(
         schema_version="1.0",
         policy_id="retention",
@@ -40,14 +41,17 @@ def _policy() -> RetentionPolicy:
             "legal_hold": RetentionClass(days=None, description="giữ vô hạn"),
         },
         knowledge=KnowledgeRetention(deleted_grace_days=30, orphan_evidence_grace_days=7),
-        audit=AuditRetention(
-            months_ahead=3,
-            enforced=True,
-            tables={"audit_events": RetentionClass(days=None, description="giữ")},
-        ),
+        audit=AuditRetention(months_ahead=3),
         checkpoints=CheckpointRetention(superseded_days=7, idle_thread_days=730),
         channel_deliveries=ChannelDeliveryRetention(pending_expiry_days=7),
         batch_limit=100,
+        stores={key.replace("__", "."): fragment for key, fragment in stores.items()},
+    )
+
+
+def _audit(*, enforced: bool) -> RetentionFragment:
+    return RetentionFragment(
+        days=1095, purger="drop_partition", enforced=enforced, description="ba năm"
     )
 
 
@@ -77,24 +81,19 @@ def test_a_term_of_zero_days_is_refused_by_the_schema() -> None:
 def test_a_term_that_is_not_enforced_has_no_cutoff() -> None:
     """`days` records the decision; `enforced` says whether it may run. Reading
     only the first would turn writing a number into destroying a month."""
-    decided = AuditRetention(
-        months_ahead=3,
-        enforced=False,
-        tables={"audit_events": RetentionClass(days=1095, description="ba năm")},
-    )
-    assert decided.cutoff_for("audit_events", now=NOW) is None
+    decided = _policy(platform__audit_events=_audit(enforced=False))
+    assert decided.store_cutoff("platform.audit_events", now=NOW) is None
+    # Still a term: decided, only not yet allowed to run (studio-skeleton R3.7).
+    term = decided.term("platform.audit_events")
+    assert term is not None and term.days == 1095 and not term.enforced
 
 
 def test_the_same_term_has_a_cutoff_once_enforced() -> None:
     """Or the flag would be a way to disable retention that nothing switches
     back on — the test has to be able to fail in both directions."""
-    live = AuditRetention(
-        months_ahead=3,
-        enforced=True,
-        tables={"audit_events": RetentionClass(days=1095, description="ba năm")},
-    )
+    live = _policy(platform__audit_events=_audit(enforced=True))
     # 1095 = 3*365, and 2024 was a leap year, so this is three years less a day.
-    assert live.cutoff_for("audit_events", now=NOW) == datetime(2023, 9, 19, tzinfo=UTC)
+    assert live.store_cutoff("platform.audit_events", now=NOW) == datetime(2023, 9, 19, tzinfo=UTC)
 
 
 def test_an_idle_term_shorter_than_the_superseded_one_is_refused() -> None:

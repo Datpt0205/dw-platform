@@ -9,11 +9,11 @@
 #     `ReapTarget` (apps/worker/src/dw_worker/main.py), and this repo ships
 #     none yet. The metric and the rule are both real; there is just nothing
 #     to trip them until the first context lands.
-#   - `dw_node_failure_total` (per-node failure, finer than a run's overall
-#     status) is declared in dw_observability/metrics.py and emitted by
-#     nothing — a pre-existing gap found while writing this file, not
-#     introduced by it. DwRunFailureRateSpike below alerts on `dw_run_total`
-#     instead, which IS live, until that gap is closed separately.
+#   - There is no per-node failure metric yet. `dw_node_failure_total` was
+#     declared and emitted by nothing, so it left `dw_observability/metrics.py`
+#     (telemetry-and-audit/01); the node wrapper of workflow-engine/03 brings
+#     it back with its emitter. DwRunFailureRateSpike below alerts on
+#     `dw_run_total` instead, which IS live.
 groups:
   - name: dw-platform
     rules:

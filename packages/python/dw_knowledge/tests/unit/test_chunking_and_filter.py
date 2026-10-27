@@ -3,6 +3,7 @@ import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import cast
 
 import pytest
@@ -22,6 +23,7 @@ from dw_knowledge.ports import (
     VectorHit,
 )
 from dw_observability.metrics import DW_RETRIEVAL_RERANK_SKIPPED_TOTAL
+from dw_observability.semconv import contract_violations, load_snapshot, snapshot_path
 from dw_observability.telemetry import RecordingTelemetry
 from dw_platform.application.access_context import AccessContext
 
@@ -315,7 +317,11 @@ async def test_search_uses_the_reranker_order_and_scores() -> None:
 
     assert [r.content for r in results] == ["third", "second"]
     assert [r.evidence.relevance_score for r in results] == [0.8, 0.8]
-    assert telemetry.spans == [("dw.knowledge.rerank", {"candidates": 3, "top_k": 2})]
+    assert telemetry.spans == [
+        ("dw.knowledge.rerank", {"dw.rerank.candidates": 3, "dw.rerank.top_k": 2})
+    ]
+    snapshot = load_snapshot(snapshot_path(Path(__file__).resolve().parents[5]))
+    assert contract_violations(snapshot, telemetry) == []
     assert telemetry.metrics == []
 
 

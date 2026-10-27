@@ -47,6 +47,7 @@ from dw_knowledge.retention import SqlKnowledgeRetention
 from dw_memory.policy import MemoryWritePolicy
 from dw_memory.retention import SqlMemoryRetention
 from dw_memory.service import MemoryService
+from dw_observability.logs import configure_json_logging
 from dw_observability.otel import build_telemetry
 from dw_observability.telemetry import TelemetryPort
 from dw_platform.adapters.persistence.approval_codes import (
@@ -77,9 +78,8 @@ from dw_platform.application.access_context import AccessContext
 from dw_platform.application.approval_codes import ApprovalSubjectVersions, DecisionCodeKey
 from dw_platform.application.authorization import ScopeAuthorizationService
 from dw_platform.application.channel_access import LinkedUserAccess
-from dw_platform.retention_policy import load_retention_policy
+from dw_platform.retention_policy import RetentionPurgerRegistry, load_retention_policy
 from dw_worker.composition import (
-    REPO_ROOT,
     build_embeddings,
     build_export_bucket,
     build_feedback_bucket,
@@ -108,10 +108,6 @@ if TYPE_CHECKING:
     from dw_memory.adapters.qdrant_ranker import QdrantMemoryRanker
 
 logger = logging.getLogger("dw_worker")
-
-# A module constant so the test holding this file to the classes code can
-# assign reads the file the sweeps below read, not a copy of its name.
-RETENTION_POLICY_PATH = REPO_ROOT / "configs" / "policies" / "retention@1.7.0.yaml"
 
 
 def _build_worker_telemetry(settings: WorkerSettings) -> TelemetryPort:
@@ -171,6 +167,7 @@ def build_channel_decision_command(
         run_store=runner.run_store,
         clock=clock,
         id_generator=ids,
+        telemetry=runner.telemetry,
     )
     flow.strict_approval_prefixes |= strict_approval_prefixes
     secret = settings.approval_code_secret.get_secret_value()
@@ -247,6 +244,19 @@ def build_zalo_inbound(
             settings_url=f"{settings.public_web_url.rstrip('/')}/settings",
         ),
     )
+
+
+def build_retention_purgers() -> RetentionPurgerRegistry:
+    """Store key -> the purger that carries out its retention term, frozen here.
+
+    The ticket that creates a store registers its purger in this function, in
+    the same change as the store's fragment (telemetry-and-audit H-35), and the
+    retention lane runs every entry. Empty today: the one store with a term,
+    `platform.audit_events`, is purged by DROP PARTITION in the `partitions`
+    lane, and `test_every_purged_fragment_has_its_purger` holds a fragment whose
+    purger is a lane's to an entry here.
+    """
+    return RetentionPurgerRegistry().freeze()
 
 
 def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
@@ -344,7 +354,9 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
         # One file read once — the two sweeps are two halves of one commitment,
         # and a build where they disagreed would be a build that answers the
         # compliance question two ways.
-        retention_policy = load_retention_policy(RETENTION_POLICY_PATH)
+        # The pinned file and fragment set, from `dw_platform.retention_policy`'s
+        # own constants: the terms loader and the policy tests read the same pin.
+        retention_policy = load_retention_policy()
         retention = SqlMemoryRetention(
             session_factory=sessions,
             policy=retention_policy,
@@ -576,7 +588,8 @@ async def run_worker(
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+    # Identifier-only JSON lines (spec R1.5): no rendered arguments, no free text.
+    configure_json_logging(logging.INFO)
     settings = WorkerSettings()
     settings.validate_for_profile()
     # A background thread, not the asyncio loop: prometheus_client's server

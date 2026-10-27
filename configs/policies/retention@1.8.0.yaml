@@ -1,6 +1,6 @@
 schema_version: "1.0"
 policy_id: retention
-policy_version: "1.7.0"
+policy_version: "1.8.0"
 
 # Dữ liệu sống bao lâu trước khi bị xoá hẳn.
 #
@@ -67,21 +67,10 @@ knowledge:
   deleted_grace_days: 30
   orphan_evidence_grace_days: 7
 
-# Bảng chuỗi thời gian: audit_events.
-#
-# model_usage_ledger từng đứng cạnh nó và đã bị bỏ hẳn (migration aefe7c1f5d9b)
-# — repo không xuất hoá đơn cho ai, nên sổ chi phí model không có người đọc.
-#
-# Chúng phân mảnh theo tháng, nên retention ở đây là DROP PARTITION — tức thì,
-# không để lại gì phải vacuum. Nhưng cũng vì thế mà nó KHÔNG lùi được: một
-# partition bị drop là một tháng dữ liệu biến mất, không có bản soft-delete nào
-# đứng giữa.
-#
-# Cho nên mặc định là `days: null` — quét vẫn TẠO partition trước (thuần lợi,
-# không rủi ro) nhưng KHÔNG xoá gì cả. Muốn bật thì phải có người viết một con
-# số vào đây, và con số đó là nghĩa vụ pháp lý của từng triển khai chứ không
-# phải mặc định kỹ thuật ai đó đoán hộ. Cùng hình dạng với một lớp `days: null`:
-# không có `days` nghĩa là không bao giờ bị quét.
+# Bảng chuỗi thời gian: tạo partition trước. Từ 1.8.0 THỜI HẠN của mỗi bảng không
+# còn ở đây mà ở mảnh của bảng đó, `configs/policies/retention.d/<schema>.<table>.yaml`
+# (telemetry-and-audit H-1): một kho, một mảnh, một chủ; tệp này chỉ còn giữ phần
+# chung cho mọi bảng phân vùng.
 #
 # `months_ahead` là số tháng tạo sẵn. Phải lớn hơn khoảng cách giữa hai lượt
 # bảo trì cộng thêm biên an toàn: nếu tháng mới chưa có partition, dòng ghi vào
@@ -90,36 +79,6 @@ knowledge:
 # cũng không tạo được nữa.
 audit:
   months_ahead: 3
-
-  # Thời hạn đã QUYẾT, và từ 1.4.0 đã được PHÉP thi hành.
-  #
-  # `enforced` tách khỏi `days` vì hai thứ đó là hai trạng thái khác nhau, gộp
-  # lại thì mất thông tin. `days: null` = "chưa ai quyết giữ bao lâu".
-  # `enforced: false` (từng đứng ở đây) = "đã quyết, nhưng chưa được phép thi
-  # hành" — vì DROP PARTITION xoá trọn một tháng, tức thì, không lùi được, và
-  # bật một thao tác không hoàn tác được lên trên một mạng lưới an toàn chưa ai
-  # thử là sai thứ tự.
-  #
-  # Điều kiện đó giờ đã đủ: scripts/backup_postgres.sh sao lưu off-box thật
-  # (bucket dw-pg-backups), và
-  # packages/python/dw_platform/tests/integration/test_restore_drill.py chạy
-  # thật pg_dump -> pg_restore --clean --if-exists -> alembic heads trên hạ
-  # tầng sống, không phải một quy trình viết ra rồi chưa ai bấm thử. Diễn tập
-  # đó chứng minh cơ chế khôi phục TRONG CÙNG một cluster đang chạy — khôi
-  # phục lên một host hoàn toàn mới, role tạo lại từ đầu, là một cuộc diễn tập
-  # khác, lớn hơn, và chưa làm.
-  enforced: true
-
-  tables:
-    # Ba năm. Thời hiệu khởi kiện tranh chấp thương mại là 2 năm (Luật Thương
-    # mại Đ.319), kỳ soát xét nhìn lại 12 tháng — ba năm phủ cả hai kèm biên.
-    #
-    # Và đây là bảng CÓ dữ liệu cá nhân: `actor_id` nói ai làm gì lúc nào. Nghị
-    # định 13/2023 yêu cầu xoá khi hết mục đích, nên giữ vô hạn KHÔNG phải là
-    # phương án an toàn — nó là một vi phạm khác.
-    audit_events:
-      days: 1095
-      description: Nhật ký kiểm toán — ai làm gì, lúc nào
 
 # Checkpoint của run (`platform.run_checkpoints`, `run_checkpoint_writes`). Từ
 # 1.6.0.

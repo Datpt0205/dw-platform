@@ -32,7 +32,9 @@ from dw_kernel.errors import (
 )
 from dw_kernel.ids import TenantId, UserId, WorkspaceId
 from dw_kernel.ports import IdGenerator, UtcClock
+from dw_observability.metrics import DW_TOOL_CALL_TOTAL
 from dw_observability.redaction import redact_mapping
+from dw_observability.semconv import OP_EXECUTE_TOOL, execute_tool_span_name
 from dw_observability.telemetry import NullTelemetry, TelemetryPort
 from dw_platform.application.ports import PlatformUnitOfWorkFactory
 from dw_platform.domain.audit import AuditEvent
@@ -110,27 +112,38 @@ class ToolExecutor:
         decision by another door.
         """
         with self.telemetry.span(
-            "dw.tool.call",
+            execute_tool_span_name(name),
             {
                 "dw.run_id": str(run_context.run_id),
                 "dw.worker_id": run_context.worker_id,
                 "dw.tool_name": name,
                 "dw.tool_version": version,
-                # OTel GenAI semconv mirror, the same trick `dw.model.call`
-                # uses: it is what makes Langfuse render this as a tool step
-                # rather than an unnamed span.
-                "gen_ai.operation.name": "execute_tool",
+                # OTel GenAI semconv: what makes Langfuse render this as a
+                # tool step rather than an unnamed span.
+                "gen_ai.operation.name": OP_EXECUTE_TOOL,
                 "gen_ai.tool.name": name,
             },
         ):
-            return await self._execute(
-                name=name,
-                version=version,
-                raw_input=raw_input,
-                run_context=run_context,
-                idempotency_key=idempotency_key,
-                approved=approved,
-            )
+            status = "error"
+            try:
+                result = await self._execute(
+                    name=name,
+                    version=version,
+                    raw_input=raw_input,
+                    run_context=run_context,
+                    idempotency_key=idempotency_key,
+                    approved=approved,
+                )
+                status = "ok"
+                return result
+            except ApprovalRequiredError:
+                status = "approval_required"
+                raise
+            except PermissionDeniedError:
+                status = "denied"
+                raise
+            finally:
+                self.telemetry.add_metric(DW_TOOL_CALL_TOTAL, 1, {"tool": name, "status": status})
 
     async def _execute(
         self,

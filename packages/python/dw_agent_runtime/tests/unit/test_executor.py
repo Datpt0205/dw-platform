@@ -1,7 +1,6 @@
 import asyncio
 import uuid
-from collections.abc import Mapping
-from contextlib import AbstractContextManager, nullcontext
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -20,8 +19,13 @@ from dw_kernel.errors import (
     PermissionDeniedError,
 )
 from dw_kernel.ports import FixedClock, SequentialIdGenerator
+from dw_observability.metrics import DW_TOOL_CALL_TOTAL
+from dw_observability.semconv import contract_violations, load_snapshot, snapshot_path
+from dw_observability.telemetry import RecordingTelemetry
 
 pytestmark = pytest.mark.unit
+
+REPO_ROOT = Path(__file__).resolve().parents[5]
 
 
 class EchoInput(BaseModel):
@@ -366,26 +370,6 @@ async def test_output_schema_violation_is_domain_error() -> None:
         )
 
 
-class RecordingTelemetry:
-    """Captures spans without an OTel pipeline — enough to assert what is
-    exported, and nothing more."""
-
-    def __init__(self) -> None:
-        self.spans: list[tuple[str, dict[str, object]]] = []
-
-    def span(self, name: str, attributes: Mapping[str, object]) -> AbstractContextManager[None]:
-        self.spans.append((name, dict(attributes)))
-        return nullcontext()
-
-    def add_metric(
-        self, name: str, value: int | float, attributes: Mapping[str, object]
-    ) -> None: ...
-
-    def set_gauge(
-        self, name: str, value: int | float, attributes: Mapping[str, object]
-    ) -> None: ...
-
-
 async def test_tool_call_emits_span_with_names_and_no_payload() -> None:
     telemetry = RecordingTelemetry()
     executor, _, _ = make_executor(echo_handler)
@@ -399,13 +383,16 @@ async def test_tool_call_emits_span_with_names_and_no_payload() -> None:
         idempotency_key="k",
     )
 
-    assert [name for name, _ in telemetry.spans] == ["dw.tool.call"]
+    assert [name for name, _ in telemetry.spans] == ["execute_tool test.echo"]
+    assert telemetry.metrics == [(DW_TOOL_CALL_TOTAL, 1, {"tool": "test.echo", "status": "ok"})]
     _, attributes = telemetry.spans[0]
     assert attributes["dw.tool_name"] == "test.echo"
     assert attributes["dw.tool_version"] == "1.0.0"
     assert attributes["gen_ai.operation.name"] == "execute_tool"
     # Nội dung không được rời khỏi tiến trình — span chỉ mang tên và số đếm.
     assert "bí mật của khách hàng" not in str(attributes)
+    # Every name it emitted is in the pinned GenAI snapshot (spec R1.1).
+    assert contract_violations(load_snapshot(snapshot_path(REPO_ROOT)), telemetry) == []
 
 
 async def test_failed_tool_still_emits_its_span() -> None:
@@ -423,4 +410,6 @@ async def test_failed_tool_still_emits_its_span() -> None:
             run_context=make_run_context(),
             idempotency_key="k",
         )
-    assert [name for name, _ in telemetry.spans] == ["dw.tool.call"]
+    assert [name for name, _ in telemetry.spans] == ["execute_tool test.echo"]
+    assert telemetry.metrics == [(DW_TOOL_CALL_TOTAL, 1, {"tool": "test.echo", "status": "error"})]
+    assert contract_violations(load_snapshot(snapshot_path(REPO_ROOT)), telemetry) == []

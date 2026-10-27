@@ -29,6 +29,10 @@ jobs:
         run: uv run python scripts/generate_contracts.py --check
       - name: Release manifest is current
         run: uv run python scripts/release_manifest.py --check
+      # Regenerated from upstream's YAML at the pinned commit, fetched here,
+      # so a snapshot edited by hand or left behind by a semconv.py change fails.
+      - name: GenAI semconv snapshot is current
+        run: uv run python scripts/genai_semconv_snapshot.py --check
       - name: Compose profiles validate
         run: |
           cp .env.example .env

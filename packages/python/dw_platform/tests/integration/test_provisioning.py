@@ -25,7 +25,7 @@ from collections.abc import AsyncIterator
 
 import pytest
 import sqlalchemy as sa
-from pg_harness import DatabaseUrls
+from pg_harness import PROVISIONER_TEST_PASSWORD, DatabaseUrls
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
@@ -40,7 +40,7 @@ from dw_platform.testing.seed_env import seed_test_env
 
 pytestmark = pytest.mark.integration
 
-PROVISIONER_PW = "test-provisioner-pw"
+PROVISIONER_PW = PROVISIONER_TEST_PASSWORD
 # Same grant list as migration 0066 — platform provisioning tables only.
 _PLATFORM_GRANTS = (
     "GRANT USAGE ON SCHEMA platform TO dw_provisioner",

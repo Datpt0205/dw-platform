@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from pg_harness import TEST_DB, DatabaseUrls, platform_urls, recreate_database, run_alembic
+from pg_harness import TEST_DB, DatabaseUrls, platform_urls, recreate_database, run_migrations
 from sqlalchemy.exc import InterfaceError, OperationalError
 
 
@@ -22,7 +22,8 @@ def db_urls() -> DatabaseUrls:
         pytest.fail(
             f"Postgres unreachable at {urls.admin!r} — run `make infra-up` first. Error: {exc}"
         )
-    result = run_alembic(["upgrade", "head"], urls.migrator)
+    # Migrations, then the retention terms loader, as the `migrate` job runs them.
+    result = run_migrations(urls.migrator)
     if result.returncode != 0:
-        pytest.fail(f"alembic upgrade head failed:\n{result.stdout}\n{result.stderr}")
+        pytest.fail(f"migrations or the terms loader failed:\n{result.stdout}\n{result.stderr}")
     return urls

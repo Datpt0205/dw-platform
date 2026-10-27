@@ -6,6 +6,7 @@ the drop/create and the alembic invocation are the same everywhere.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import subprocess
 import sys
@@ -97,5 +98,60 @@ def run_alembic(command: list[str], database_url: str) -> subprocess.CompletedPr
     )
 
 
+# The password every suite gives `dw_provisioner` on the test cluster. A role is
+# a cluster object, and `init-databases.sh` creates this one with the
+# deployment's password, which no test knows; so whichever suite needs to log in
+# as it sets this one first (`ensure_provisioner`), and they all agree on it.
+PROVISIONER_TEST_PASSWORD = "test-provisioner-pw"
+
+
+def provisioner_url(migrator_url: str) -> str:
+    """The same database as `migrator_url`, as `dw_provisioner`."""
+    scheme, rest = migrator_url.split("://", 1)
+    return f"{scheme}://dw_provisioner:{PROVISIONER_TEST_PASSWORD}@{rest.split('@', 1)[1]}"
+
+
+async def ensure_provisioner(admin_url: str) -> None:
+    """Create `dw_provisioner` as `init-databases.sh` does, or reset its password."""
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    engine = create_async_engine(admin_url, isolation_level="AUTOCOMMIT")
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(
+                text(
+                    "DO $$ BEGIN "
+                    "IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'dw_provisioner') THEN "
+                    f"CREATE ROLE dw_provisioner LOGIN PASSWORD '{PROVISIONER_TEST_PASSWORD}' "
+                    "NOSUPERUSER BYPASSRLS NOCREATEDB NOCREATEROLE; "
+                    "ELSE "
+                    f"ALTER ROLE dw_provisioner LOGIN PASSWORD '{PROVISIONER_TEST_PASSWORD}'; "
+                    "END IF; END $$;"
+                )
+            )
+    finally:
+        await engine.dispose()
+
+
 def run_migrations(database_url: str) -> subprocess.CompletedProcess[str]:
-    return run_alembic(["upgrade", "head"], database_url)
+    """`alembic upgrade head`, then the retention terms loader, as a deploy runs them.
+
+    The compose `migrate` job runs both (telemetry-and-audit R5.9), so a test
+    database without the second step would hold an empty `platform.retention_terms`
+    no deployment ever has.
+    """
+    # Before the migrations, so their grants to the role are not skipped.
+    test_db = database_url.rsplit("/", 1)[1]
+    asyncio.run(ensure_provisioner(database_urls(test_db).admin.rsplit("/", 1)[0] + f"/{test_db}"))
+    migrated = run_alembic(["upgrade", "head"], database_url)
+    if migrated.returncode != 0:
+        return migrated
+    return subprocess.run(
+        [sys.executable, "-m", "dw_platform.adapters.persistence.retention_terms"],
+        env={**os.environ, "DW_PROVISIONER_DATABASE_URL": provisioner_url(database_url)},
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )

@@ -15,8 +15,9 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import time
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass, field
 from datetime import UTC
 from typing import Any, cast
@@ -46,7 +47,8 @@ from dw_kernel.errors import (
 )
 from dw_kernel.ids import TenantId, UserId, WorkspaceId
 from dw_kernel.ports import IdGenerator, UtcClock
-from dw_observability.metrics import DW_RUN_TOTAL
+from dw_observability.metrics import DW_RUN_DURATION_SECONDS, DW_RUN_TOTAL
+from dw_observability.semconv import invoke_workflow_span_name
 from dw_observability.telemetry import NullTelemetry, TelemetryPort
 from dw_platform.application.ports import PlatformUnitOfWorkFactory
 from dw_platform.domain.approval import ApprovalRequest
@@ -169,6 +171,28 @@ class LangGraphWorkflowRunner:
             attributes["dw.model_profile"] = worker.default_model_profile
         return attributes
 
+    @contextlib.contextmanager
+    def _invocation(self, run_context: RunContext, attributes: dict[str, object]) -> Iterator[None]:
+        """One pass of the graph, a start or a resume: its span and its duration.
+
+        The duration is this pass, not the run: a run that waits a day for an
+        approval is two passes, and the wait is `dw_approval_wait_seconds`'s.
+        `status` is whether the pass raised; the run's own status is
+        `dw_run_total`'s.
+        """
+        started = time.monotonic()
+        status = "error"
+        with self.telemetry.span(invoke_workflow_span_name(run_context.worker_id), attributes):
+            try:
+                yield
+                status = "ok"
+            finally:
+                self.telemetry.record_histogram(
+                    DW_RUN_DURATION_SECONDS,
+                    time.monotonic() - started,
+                    {"worker": run_context.worker_id, "status": status},
+                )
+
     def hosts(self, *, worker_id: str, worker_version: str, graph_version: str) -> bool:
         try:
             self.graph_registry.resolve(worker_id, graph_version)
@@ -288,7 +312,7 @@ class LangGraphWorkflowRunner:
             worker.definition.graph_version,
             worker.definition,
         )
-        with self.telemetry.span("dw.run.start", attributes):
+        with self._invocation(run_context, attributes):
             try:
                 async with self._metered(run_context, worker.definition) as callbacks:
                     state = await graph.ainvoke(
@@ -416,7 +440,7 @@ class LangGraphWorkflowRunner:
         queue: asyncio.Queue[tuple[str, Any]],
     ) -> None:
         try:
-            with self.telemetry.span("dw.run.start", attributes):
+            with self._invocation(run_context, attributes):
                 async with self._metered(run_context, worker) as callbacks:
                     run_config = {**config, "callbacks": callbacks} if callbacks else config
                     async for chunk in graph.astream(
@@ -532,7 +556,7 @@ class LangGraphWorkflowRunner:
         attributes = self._span_attributes(
             run_context, run_id, record.graph_version, worker.definition
         )
-        with self.telemetry.span("dw.run.resume", attributes):
+        with self._invocation(run_context, attributes):
             try:
                 async with self._metered(run_context, worker.definition) as callbacks:
                     state = await graph.ainvoke(

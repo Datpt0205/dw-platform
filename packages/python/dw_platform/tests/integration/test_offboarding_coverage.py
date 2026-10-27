@@ -39,8 +39,7 @@ from dw_platform.adapters.persistence.offboarding import (
     OffboardingExclusion,
     SqlTenantOffboarding,
 )
-from dw_platform.adapters.persistence.partition_maintenance import RetentionTerm, retention_term
-from dw_platform.retention_policy import RetentionPolicy, load_retention_policy
+from dw_platform.retention_policy import RetentionPolicy, RetentionTerm, load_retention_policy
 
 pytestmark = pytest.mark.integration
 
@@ -238,9 +237,7 @@ async def offboarding_violations(
 
 
 def _pinned_policy() -> RetentionPolicy:
-    from dw_worker.main import RETENTION_POLICY_PATH
-
-    return load_retention_policy(RETENTION_POLICY_PATH)
+    return load_retention_policy()
 
 
 @pytest.fixture
@@ -261,7 +258,7 @@ async def test_offboarding_covers_every_table_it_has_to(migrator: AsyncEngine) -
             STUDIO_EXCLUSIONS,
             EXPORT_EXCLUSIONS,
             _PLATFORM_PREDATING,
-            lambda key: retention_term(policy, key),
+            policy.term,
         )
     assert found == []
 
@@ -309,7 +306,7 @@ async def _violations_after(
                 purge if purge is not None else STUDIO_EXCLUSIONS,
                 export if export is not None else EXPORT_EXCLUSIONS,
                 predating if predating is not None else _PLATFORM_PREDATING,
-                term_of or (lambda key: retention_term(policy, key)),
+                term_of or (policy.term),
             )
             await conn.rollback()
     finally:

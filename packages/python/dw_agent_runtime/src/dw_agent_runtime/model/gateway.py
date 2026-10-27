@@ -35,6 +35,9 @@ class ModelUsage:
     # that builds usage by hand — every mock adapter and every test — keeps
     # working unchanged.
     latency_ms: float = 0.0
+    # The model the provider says answered, which can differ from the one asked
+    # for (an alias resolved, a fallback). None when the response did not say.
+    response_model: str | None = None
 
 
 class ModelProviderAdapter(Protocol):

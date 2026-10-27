@@ -44,6 +44,7 @@ from dw_knowledge.ports import (
     VectorIndexPort,
 )
 from dw_observability.metrics import DW_RETRIEVAL_RERANK_SKIPPED_TOTAL
+from dw_observability.semconv import DW_KNOWLEDGE_RERANK
 from dw_observability.telemetry import NullTelemetry, TelemetryPort
 from dw_platform.adapters.persistence.keyset import after_position, newest_first
 from dw_platform.application.access_context import AccessContext
@@ -633,7 +634,8 @@ async def _rerank_or_none(
     candidates = [RerankCandidate(id=str(h.chunk_id), text=h.content) for h in hits]
     try:
         with telemetry.span(
-            "dw.knowledge.rerank", {"candidates": len(candidates), "top_k": query.top_k}
+            DW_KNOWLEDGE_RERANK,
+            {"dw.rerank.candidates": len(candidates), "dw.rerank.top_k": query.top_k},
         ):
             return await reranker.rerank(query.text, candidates, query.top_k)
     except InfrastructureError as exc:

@@ -26,6 +26,8 @@ from dw_kernel.autonomy import FAIL_CLOSED_LEVEL
 from dw_kernel.errors import ConflictError, NotFoundError
 from dw_kernel.ids import UserId
 from dw_kernel.ports import IdGenerator, UtcClock
+from dw_observability.metrics import DW_APPROVAL_WAIT_SECONDS
+from dw_observability.telemetry import NullTelemetry, TelemetryPort
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.authorization import (
     ApprovalAudience,
@@ -90,6 +92,7 @@ class ApproveAndResumeService:
     # before anything is written: a rule the inbox merely hides a button for is
     # a rule a direct POST walks past.
     decision_guards: Mapping[str, DecisionGuard] = field(default_factory=dict)
+    telemetry: TelemetryPort = field(default_factory=NullTelemetry)
 
     def is_strict(self, approval_type: str) -> bool:
         """Whether this type demands a second person and a written reason.
@@ -251,6 +254,7 @@ class ApproveAndResumeService:
                 else self._admitted_audit(request, decision, admitted)
             )
             await uow.commit()
+        self._record_wait(request, decision, record)
 
         if record is not None and request.run_id is not None:
             resume_payload: dict[str, Any] = {
@@ -305,6 +309,27 @@ class ApproveAndResumeService:
                 resume_payload=resume_payload,
             )
         return request
+
+    def _record_wait(
+        self, request: ApprovalRequest, decision: ApprovalDecision, record: RunRecord | None
+    ) -> None:
+        """How long the request waited for a person, once it is decided.
+
+        After the commit: a decision rolled back did not end the wait. A request
+        read without its creation time (a fake, a row from before the column)
+        has no wait to report, and inventing one would skew the distribution.
+        """
+        if request.created_at is None:
+            return
+        waited = (decision.decided_at - request.created_at).total_seconds()
+        self.telemetry.record_histogram(
+            DW_APPROVAL_WAIT_SECONDS,
+            max(waited, 0.0),
+            {
+                "worker": record.worker_id if record is not None else "none",
+                "approval_type": request.approval_type,
+            },
+        )
 
     def _decided_event(self, request: ApprovalRequest, decision: ApprovalDecision) -> OutboxEvent:
         """Identifiers and the outcome only. The comment and the request's payload

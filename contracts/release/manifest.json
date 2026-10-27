@@ -30,7 +30,7 @@
       "version": "1.2.0"
     }
   ],
-  "git_sha": "d9a7af661b70d54f4451f6e7d39e3e1156f61c4d",
+  "git_sha": "ded983a4cf064a078ce2dd30540e38f5aa72d7e0",
   "knowledge_index_version": "2026-07-25.structure-1",
   "memory_policy_version": "2.0.0",
   "platform_version": "0.1.0",
@@ -41,14 +41,19 @@
       "version": "1.1.0"
     },
     {
-      "checksum": "c0ec53bf9f752948ddcb910c88cfb61f04020ee4c1e437aae74f77623fcaf075",
+      "checksum": "1f043342bfd8d81f034548353a1edd42b9d637f160b380a7812c014b64d422df",
       "policy_id": "retention",
-      "version": "1.7.0"
+      "version": "1.8.0"
     },
     {
       "checksum": "6cd61b8265d8ce82fdd5047dbec29a09cf5ce6b705226bb97fc24b7e19bf3be5",
       "policy_id": "worker_runs",
       "version": "1.0.0"
+    },
+    {
+      "checksum": "61fb5facca5eb6aabf3dabe58e4e9a61a6e655b144f91a9faaeae37c67004cf2",
+      "policy_id": "retention.d",
+      "version": "fragments"
     }
   ],
   "prompt_bundles": [

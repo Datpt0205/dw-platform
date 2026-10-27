@@ -97,7 +97,32 @@ def _policies() -> list[dict[str, str]]:
                 "checksum": _checksum(path),
             }
         )
+    # One entry for the whole retention fragment set (telemetry-and-audit
+    # R5.14): a fragment carries no version of its own, so the set is pinned
+    # by content, and editing any fragment moves the manifest ref.
+    policies.append(
+        {
+            "policy_id": "retention.d",
+            "version": "fragments",
+            "checksum": fragment_set_checksum(REPO_ROOT / "configs" / "policies" / "retention.d"),
+        }
+    )
     return policies
+
+
+def fragment_set_checksum(directory: Path) -> str:
+    """sha256 over each fragment's (file name, content), taken in file-name order.
+
+    The name is hashed with the content because the name is the store's key: a
+    term moved to another store with its text unchanged is a different set.
+    Sorted, so the order a filesystem lists files in changes nothing.
+    """
+    digest = hashlib.sha256()
+    for path in sorted(directory.glob("*.yaml"), key=lambda p: p.name):
+        content = path.read_bytes().replace(b"\r\n", b"\n")
+        digest.update(path.name.encode("utf-8") + b"\0")
+        digest.update(hashlib.sha256(content).digest())
+    return digest.hexdigest()
 
 
 def _copy_bundles() -> list[dict[str, str]]:

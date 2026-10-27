@@ -20,7 +20,7 @@ COMPOSE := docker compose --env-file .env -f infra/compose/docker-compose.yml
         db-migrate migrate lint format typecheck \
         test-unit coverage test-integration test-architecture test-contract test-hooks test-plans \
         test-e2e test-web test-all eval-smoke test-eval-smoke \
-        generate-contracts new-context release-manifest release-manifest-check ci
+        generate-contracts new-context release-manifest release-manifest-check semconv-snapshot semconv-snapshot-check ci
 
 help: ## List available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -153,6 +153,12 @@ release-manifest: ## Generate the immutable release manifest
 
 release-manifest-check: ## Verify the committed manifest matches the repo
 	uv run python scripts/release_manifest.py --check
+
+semconv-snapshot: ## Regenerate the pinned OTel GenAI snapshot (fetches upstream at the pinned commit)
+	uv run python scripts/genai_semconv_snapshot.py
+
+semconv-snapshot-check: ## Verify the committed GenAI snapshot matches upstream and semconv.py
+	uv run python scripts/genai_semconv_snapshot.py --check
 
 # ----------------------------------------------------------------------- ci --
 ci: lint typecheck test-unit test-architecture test-contract test-hooks test-plans eval-smoke release-manifest-check ## Local CI gate

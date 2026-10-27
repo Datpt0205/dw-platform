@@ -26,7 +26,7 @@ from collections.abc import Callable, Iterable, Mapping
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
-from dw_platform.adapters.persistence.partition_maintenance import RetentionTerm
+from dw_platform.retention_policy import RetentionTerm
 
 STUDIO = "studio"
 

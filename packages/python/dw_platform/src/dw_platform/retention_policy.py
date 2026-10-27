@@ -26,25 +26,63 @@ assign it; it returns with the route that sets one.)
 not have is more likely a newer config than a mistake, and deleting on that
 guess is irreversible. It is kept and counted, so the mismatch shows up as a
 number rather than as missing data.
+
+**One fragment per store.** How long one store (a table, or a named store such
+as an object prefix) is kept is written in its own file,
+`configs/policies/retention.d/<schema>.<table>.yaml`, and read only from there
+(telemetry-and-audit H-1, R5.13). The versioned file keeps what is shared: the
+memory classes, the knowledge windows, how far ahead partitions are made. A
+store with no fragment has no term at all, and is never purged on a guess.
 """
 
 from __future__ import annotations
 
+import os
+import re
+from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
+from types import MappingProxyType
+from typing import Final, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, ValidationError, model_validator
 
 __all__ = [
+    "NAMED_STORES",
+    "RETENTION_FRAGMENTS_DIR",
+    "RETENTION_POLICY_PATH",
     "AuditRetention",
     "ChannelDeliveryRetention",
     "CheckpointRetention",
     "KnowledgeRetention",
     "RetentionClass",
+    "RetentionFragment",
     "RetentionPolicy",
+    "RetentionPurgerRegistry",
+    "RetentionTerm",
+    "load_retention_fragments",
     "load_retention_policy",
 ]
+
+# The image sets DW_REPO_ROOT=/app and ships `configs/` there; in a checkout the
+# root is derived from this file (`packages/python/dw_platform/src/dw_platform`).
+_REPO_ROOT = Path(os.environ.get("DW_REPO_ROOT", str(Path(__file__).resolve().parents[5])))
+
+# The one pin of the retention contract. The worker's sweeps, the terms loader
+# and the test holding the policy to the classes code can assign all read these
+# two constants, so they cannot read different versions.
+RETENTION_POLICY_PATH: Final = _REPO_ROOT / "configs" / "policies" / "retention@1.8.0.yaml"
+RETENTION_FRAGMENTS_DIR: Final = _REPO_ROOT / "configs" / "policies" / "retention.d"
+
+# Stores that are not a table, so no `pg_class` row can vouch for their name: a
+# column of a table (`platform.worker_runs.payload`) or an object prefix
+# (`objects.run_step_payloads`). The ticket that creates such a store adds its
+# name here together with its fragment (telemetry-and-audit R5.6).
+NAMED_STORES: Final[frozenset[str]] = frozenset()
+
+_STORE_KEY = re.compile(r"^[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)?$")
 
 
 class RetentionClass(BaseModel):
@@ -78,38 +116,65 @@ class KnowledgeRetention(BaseModel):
 
 
 class AuditRetention(BaseModel):
-    """The two range-partitioned tables, where retention is DROP PARTITION.
-
-    A term here destroys a whole month at once and nothing stands between the
-    sweep and the data — no soft delete, no grace. So `days` defaults to nothing
-    for both tables: the maintenance pass still creates partitions ahead, which
-    is pure gain, and drops only what somebody wrote a number for. Same shape as
-    `legal_hold` above, for the same reason.
+    """Partitions made ahead, for every range-partitioned table.
 
     `months_ahead` has to exceed the gap between two maintenance passes with room
     to spare. A month with no partition sends its rows to the DEFAULT one, and a
     default holding a month's rows blocks that month's partition from ever being
     created — so falling behind is not self-correcting.
 
-    `enforced` is separate from `days` because "nobody has decided a term" and
-    "a term is decided but may not run yet" are different states, and collapsing
-    them loses the decision. Creating partitions ahead happens either way; only
-    dropping is gated. It exists so a decided schedule can be recorded before the
-    restore procedure it depends on has been rehearsed — enabling an irreversible
-    delete on top of an untested safety net is the wrong order, not a detail.
+    How long each table is kept, and so which months are dropped, is that
+    table's fragment's (`RetentionFragment`), since 1.8.0.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     months_ahead: int = Field(ge=1, le=24)
-    enforced: bool
-    tables: dict[str, RetentionClass]
 
-    def cutoff_for(self, table: str, *, now: datetime) -> datetime | None:
-        found = self.tables.get(table)
-        if not self.enforced or found is None or found.days is None:
-            return None
-        return now - timedelta(days=found.days)
+
+Purger = Literal["drop_partition", "row_delete", "object_delete", "column_clear", "none"]
+
+
+class RetentionFragment(BaseModel):
+    """One store's term, from `retention.d/<store>.yaml`: exactly four keys.
+
+    `days` is a positive number of days; `indefinite` for a store that does not
+    expire by age (it goes with `purger: none`, and only with it); `null` when
+    nobody has decided yet. A purge destroys data and nothing stands between it
+    and the rows, so nothing is purged that somebody did not write a number for.
+
+    `enforced` is separate from `days` because "nobody has decided a term" and
+    "a term is decided but may not run yet" are different states, and collapsing
+    them loses the decision. It exists so a decided schedule can be recorded
+    before the restore procedure it depends on has been rehearsed — enabling an
+    irreversible delete on top of an untested safety net is the wrong order.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    # Strict: YAML `true` is not a number of days, nor is `"30"`.
+    days: StrictInt | Literal["indefinite"] | None
+    purger: Purger
+    enforced: bool
+    description: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _a_term_and_its_purger_agree(self) -> RetentionFragment:
+        if isinstance(self.days, int) and self.days < 1:
+            raise ValueError("`days` is a positive number of days")
+        # A purger with no age to measure, or an age with nothing to carry it
+        # out, is a promise one side of the pair cannot keep (H-31).
+        if (self.days == "indefinite") != (self.purger == "none"):
+            raise ValueError("`days: indefinite` goes with `purger: none`, and only with it")
+        return self
+
+
+@dataclass(frozen=True)
+class RetentionTerm:
+    """A decided term in days, and whether it may be carried out yet."""
+
+    days: int
+    enforced: bool
 
 
 class CheckpointRetention(BaseModel):
@@ -174,6 +239,29 @@ class RetentionPolicy(BaseModel):
     checkpoints: CheckpointRetention
     channel_deliveries: ChannelDeliveryRetention
     batch_limit: int = Field(gt=0, le=10_000)
+    # From the fragment set, never from the versioned file: `load_retention_policy`
+    # fills it, and refuses a file that tries to carry it.
+    stores: Mapping[str, RetentionFragment] = Field(default_factory=dict)
+
+    def term(self, store_key: str) -> RetentionTerm | None:
+        """`store_key`'s term in days, from its fragment alone.
+
+        `None` when it has no fragment, when nobody has decided (`days: null`),
+        and when it does not expire by age (`indefinite`). A term decided but not
+        `enforced` is still a term; whether it may run is the caller's question
+        (studio-skeleton R3.7, R4.4).
+        """
+        found = self.stores.get(store_key)
+        if found is None or not isinstance(found.days, int):
+            return None
+        return RetentionTerm(days=found.days, enforced=found.enforced)
+
+    def store_cutoff(self, store_key: str, *, now: datetime) -> datetime | None:
+        """The instant before which `store_key`'s rows may be purged, or `None`."""
+        found = self.term(store_key)
+        if found is None or not found.enforced:
+            return None
+        return now - timedelta(days=found.days)
 
     def cutoff_for(self, name: str, *, now: datetime) -> datetime | None:
         """The instant before which rows of this class have outlived their term.
@@ -188,5 +276,63 @@ class RetentionPolicy(BaseModel):
         return now - timedelta(days=found.days)
 
 
-def load_retention_policy(path: Path) -> RetentionPolicy:
-    return RetentionPolicy.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
+def load_retention_fragments(directory: Path) -> dict[str, RetentionFragment]:
+    """Every fragment in `directory`, keyed by its file name less `.yaml`.
+
+    A malformed fragment raises naming its file, so a bad edit stops the process
+    that reads it instead of leaving that store without a term.
+    """
+    fragments: dict[str, RetentionFragment] = {}
+    for path in sorted(directory.glob("*.yaml")):
+        key = path.name.removesuffix(".yaml")
+        if not _STORE_KEY.match(key):
+            raise ValueError(f"{path.name}: a fragment is named <schema>.<table>.yaml")
+        try:
+            fragments[key] = RetentionFragment.model_validate(
+                yaml.safe_load(path.read_text(encoding="utf-8"))
+            )
+        except ValidationError as exc:
+            raise ValueError(f"{path.name}: {exc}") from exc
+    return fragments
+
+
+def load_retention_policy(
+    path: Path = RETENTION_POLICY_PATH, fragments: Path = RETENTION_FRAGMENTS_DIR
+) -> RetentionPolicy:
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if "stores" in raw:
+        raise ValueError(f"{path.name}: a store's term lives in its fragment, not here")
+    return RetentionPolicy.model_validate({**raw, "stores": load_retention_fragments(fragments)})
+
+
+Purge = Callable[[], Awaitable[None]]
+
+
+class RetentionPurgerRegistry:
+    """Store key -> the zero-argument purger that carries out its term.
+
+    Built and frozen at the worker's composition root: the ticket that creates a
+    store registers its purger there, and the retention lane runs every entry
+    (telemetry-and-audit H-35). A second purger for one key is a build error,
+    because two purgers of one store are two answers to how long it is kept.
+    """
+
+    def __init__(self, purgers: Mapping[str, Purge] | None = None) -> None:
+        self._purgers: dict[str, Purge] = {}
+        self._frozen = False
+        for key, purge in (purgers or {}).items():
+            self.register(key, purge)
+
+    def register(self, store_key: str, purge: Purge) -> None:
+        if self._frozen:
+            raise RuntimeError("the purger registry is frozen at the composition root")
+        if store_key in self._purgers:
+            raise ValueError(f"a purger is already registered for {store_key}")
+        self._purgers[store_key] = purge
+
+    def freeze(self) -> RetentionPurgerRegistry:
+        self._frozen = True
+        return self
+
+    def all(self) -> Mapping[str, Purge]:
+        return MappingProxyType(self._purgers)

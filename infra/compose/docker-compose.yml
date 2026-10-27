@@ -235,9 +235,19 @@ services:
     # named for the migration that did not run the migration would start the
     # sync against a database without the tables it writes to.
     profiles: ["full", "migration"]
-    command: ["alembic", "-c", "/app/db/alembic.ini", "upgrade", "head"]
+    # Migrate, then make `platform.retention_terms` exactly the pinned retention
+    # fragment set (telemetry-and-audit R5.9), as dw_provisioner, the one role
+    # that may write it. Either step failing fails the job, and `api` and
+    # `worker` wait for it to succeed, so neither starts on a stale term table.
+    command:
+      - sh
+      - -c
+      - >-
+        alembic -c /app/db/alembic.ini upgrade head
+        && python -m dw_platform.adapters.persistence.retention_terms
     environment:
       DW_DATABASE_URL: postgresql+asyncpg://dw_migrator:${DW_DB_MIGRATOR_PASSWORD:?}@postgres:5432/dw
+      DW_PROVISIONER_DATABASE_URL: postgresql+asyncpg://dw_provisioner:${DW_DB_PROVISIONER_PASSWORD:?}@postgres:5432/dw
     networks: [dw-internal]
     depends_on:
       postgres:

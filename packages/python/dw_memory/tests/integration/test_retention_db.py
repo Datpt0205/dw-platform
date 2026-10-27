@@ -57,7 +57,7 @@ def _policy(**overrides: object) -> RetentionPolicy:
             "legal_hold": RetentionClass(days=None, description="giữ vô hạn"),
         },
         "knowledge": KnowledgeRetention(deleted_grace_days=30, orphan_evidence_grace_days=7),
-        "audit": AuditRetention(months_ahead=1, enforced=False, tables={}),
+        "audit": AuditRetention(months_ahead=1),
         "checkpoints": {"superseded_days": 7, "idle_thread_days": 730},
         "channel_deliveries": {"pending_expiry_days": 7},
         "batch_limit": 1000,

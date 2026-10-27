@@ -120,7 +120,7 @@ def test_only_the_platform_lanes_are_wired() -> None:
     `spend_guard_retention` is the fifth, and reads no policy file at all —
     unlike audit/memory/knowledge, its window answers no compliance question,
     so it is a technical constant in code, not a term in
-    `retention@1.7.0.yaml` (see `SqlSpendGuardRetention`'s docstring).
+    `retention@1.8.0.yaml` (see `SqlSpendGuardRetention`'s docstring).
     `notifications_retention` is the sixth, on the same footing: the in-app
     inbox's 90 days live in `platform.prune_notifications()` itself.
     `checkpoint_retention` is the seventh, and reads the policy file again:
@@ -184,9 +184,8 @@ def test_the_pinned_retention_policy_promises_only_classes_code_can_assign() -> 
     """
     from dw_memory.service import RETENTION_CLASS
     from dw_platform.retention_policy import load_retention_policy
-    from dw_worker.main import RETENTION_POLICY_PATH
 
-    assert set(load_retention_policy(RETENTION_POLICY_PATH).classes) == {RETENTION_CLASS}
+    assert set(load_retention_policy().classes) == {RETENTION_CLASS}
 
 
 def test_the_channel_delivery_lane_needs_a_bot_token_and_runs_on_its_own_cadence(
@@ -209,3 +208,20 @@ def test_the_channel_delivery_lane_needs_a_bot_token_and_runs_on_its_own_cadence
         bare_settings(database_url=db, zalo_bot_token="t", channel_delivery_interval_seconds=5)
     )
     assert quick.interval_for("channel_delivery", 1.0) == 5.0
+
+
+def test_every_purged_fragment_has_its_purger() -> None:
+    """A fragment whose purger is a lane's (`row_delete`, `object_delete`,
+    `column_clear`) and that is enforced names a store the retention lane must
+    reach; with no entry in the registry, its term would be written and never
+    carried out (`failure-modes.md` #1). `drop_partition` is the `partitions`
+    lane's own, and `none` has nothing to run."""
+    from dw_platform.retention_policy import load_retention_policy
+    from dw_worker.main import build_retention_purgers
+
+    purged = {
+        key
+        for key, fragment in load_retention_policy().stores.items()
+        if fragment.enforced and fragment.purger in {"row_delete", "object_delete", "column_clear"}
+    }
+    assert purged - set(build_retention_purgers().all()) == set()

@@ -177,6 +177,54 @@ async def test_no_application_role_can_write_the_role_catalogue(db_urls: Databas
     assert writable == []
 
 
+async def test_the_application_cannot_write_the_retention_terms(
+    app_engine: AsyncEngine, db_urls: DatabaseUrls
+) -> None:
+    """telemetry-and-audit R5.11: the terms change only through the loader, as
+    `dw_provisioner` (82e168f6d189). Under application credentials a write could
+    only be someone shortening a term, or lengthening one past what was promised."""
+    async with app_engine.connect() as conn:
+        await conn.execute(sa.text("SELECT count(*) FROM platform.retention_terms"))
+        for statement in (
+            "INSERT INTO platform.retention_terms VALUES ('platform.probe', 1)",
+            "UPDATE platform.retention_terms SET term_days = 1",
+            "DELETE FROM platform.retention_terms",
+        ):
+            with pytest.raises(Exception, match="permission denied"):
+                await conn.execute(sa.text(statement))
+            await conn.rollback()
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            held = {
+                (row.rolname, row.verb)
+                for row in await conn.execute(
+                    sa.text(
+                        """
+                        SELECT r.rolname, v.verb
+                        FROM pg_roles r
+                        CROSS JOIN unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE',
+                                                'TRUNCATE']) AS v(verb)
+                        WHERE r.rolname IN ('dw_app', 'dw_provisioner', 'dw_agent_ro')
+                          AND has_table_privilege(r.rolname, 'platform.retention_terms', v.verb)
+                        """
+                    )
+                )
+            }
+            terms = await conn.scalar(sa.text("SELECT count(*) FROM platform.retention_terms"))
+    finally:
+        await migrator.dispose()
+    assert {verb for role, verb in held if role == "dw_app"} == {"SELECT"}
+    assert {verb for role, verb in held if role == "dw_provisioner"} == {
+        "SELECT",
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+    }
+    # The table is as the loader left it: none of the refused writes landed.
+    assert terms == 1
+
+
 async def test_the_application_cannot_read_the_provisioning_record(
     app_engine: AsyncEngine,
 ) -> None:

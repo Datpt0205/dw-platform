@@ -97,6 +97,7 @@ class OpenAICompatibleAdapter:
         usage = ModelUsage(
             provider=self.provider,
             model=route.model,
+            response_model=_response_model(data),
             input_tokens=int(usage_data.get("prompt_tokens", 0)),
             output_tokens=int(usage_data.get("completion_tokens", 0)),
         )
@@ -160,3 +161,12 @@ def _extract_json_object(content: str) -> dict[str, object]:
     if not isinstance(parsed, dict):
         raise ValueError("model returned non-object JSON")
     return parsed
+
+
+def _response_model(data: object) -> str | None:
+    """`model` of the response body, when it is a non-empty string.
+
+    Both OpenAI-shaped adapters read it here, so `gen_ai.response.model` means
+    the same thing whichever of them answered."""
+    model = data.get("model") if isinstance(data, dict) else None
+    return model if isinstance(model, str) and model else None

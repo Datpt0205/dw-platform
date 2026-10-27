@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from dw_agent_runtime.adapters.langgraph_runner import LangGraphWorkflowRunner
 from dw_agent_runtime.channel_decisions import ChannelDecisionCommand
 from dw_kernel.ports import SystemClock, Uuid4Generator
+from dw_observability.telemetry import NullTelemetry
 from dw_platform.application.approval_codes import ApprovalSubjectVersions
 from dw_worker.main import build_channel_commands, build_channel_decision_command
 from dw_worker.settings import WorkerSettings
@@ -26,9 +27,11 @@ pytestmark = pytest.mark.unit
 
 @dataclass
 class _Runner:
-    """Stands in for the runner a context hosts its graph on; only its store is read."""
+    """Stands in for the runner a context hosts its graph on; its store and its
+    telemetry, which the decision service records approval waits on, are read."""
 
     run_store: Any = field(default_factory=object)
+    telemetry: Any = field(default_factory=NullTelemetry)
 
 
 def _decision_command(secret: str) -> ChannelDecisionCommand:

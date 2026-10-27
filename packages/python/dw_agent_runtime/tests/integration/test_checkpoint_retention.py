@@ -19,10 +19,9 @@ import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 import pytest
-from runtime_harness import REPO_ROOT, RuntimeUrls
+from runtime_harness import RuntimeUrls
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
@@ -33,7 +32,7 @@ from dw_platform.retention_policy import RetentionPolicy, load_retention_policy
 pytestmark = pytest.mark.integration
 
 NOW = datetime.now(UTC)
-POLICY = load_retention_policy(Path(REPO_ROOT) / "configs" / "policies" / "retention@1.7.0.yaml")
+POLICY = load_retention_policy()
 SUPERSEDED = POLICY.checkpoints.superseded_days
 IDLE = POLICY.checkpoints.idle_thread_days
 

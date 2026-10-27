@@ -3,21 +3,27 @@
 from __future__ import annotations
 
 from pg_test_db import (
+    PROVISIONER_TEST_PASSWORD,
     REPO_ROOT,
     DatabaseUrls,
     database_urls,
     postgres_container,
+    provisioner_url,
     recreate_database,
     run_alembic,
+    run_migrations,
 )
 
 __all__ = [
+    "PROVISIONER_TEST_PASSWORD",
     "REPO_ROOT",
     "DatabaseUrls",
     "database_urls",
     "postgres_container",
+    "provisioner_url",
     "recreate_database",
     "run_alembic",
+    "run_migrations",
 ]
 
 TEST_DB = "dw_test"

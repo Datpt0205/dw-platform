@@ -1,4 +1,5 @@
-"""Observability: metric name registry and redaction utilities.
-OTel instrumentation and the optional Langfuse adapter arrive in phase 5."""
+"""Observability: the semconv contract, metric names, redaction, the telemetry
+port with its OTel adapter, the identifier-only span filter and log formatter,
+and Langfuse as an OTLP endpoint."""
 
 __version__ = "0.1.0"

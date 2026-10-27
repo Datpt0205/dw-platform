@@ -8,7 +8,7 @@ never pays for unconfigured telemetry.
 Metrics are a separate decision from tracing, on purpose. Before Ops
 hardening Phase 5, ``metrics.get_meter(...)`` was called with no
 ``MeterProvider`` ever installed — every ``add_metric`` call in this
-codebase (``dw_run_total``, ``dw_node_failure_total``, ...) was silently a
+codebase (``dw_run_total``, ``dw_tool_call_total``, ...) was silently a
 no-op against OTel's proxy meter, Langfuse configured or not. Measured, not
 assumed: ``metrics.get_meter_provider()`` returns a ``_ProxyMeterProvider``
 until something calls ``set_meter_provider``, and nothing here ever did.
@@ -24,17 +24,25 @@ import threading
 from collections.abc import Iterator, Mapping
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from opentelemetry import metrics, trace
 
 # `create_gauge`'s return type is exported as `_Gauge` in this pinned SDK
 # version (the synchronous Gauge instrument was still stabilising its public
 # name) — this is that same class, not a private implementation detail.
-from opentelemetry.metrics import Counter, Meter
+from opentelemetry.metrics import Counter, Histogram, Meter
 from opentelemetry.metrics import _Gauge as Gauge
+from opentelemetry.sdk.metrics.view import ExplicitBucketHistogramAggregation, View
 from opentelemetry.trace import Status, StatusCode, Tracer
 
+from dw_observability.metrics import HISTOGRAM_BUCKETS
+from dw_observability.span_filter import IdentifierOnlySpanProcessor
 from dw_observability.telemetry import TelemetryPort, safe_attributes
+
+if TYPE_CHECKING:
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SpanExporter
 
 _meter_provider_lock = threading.Lock()
 _meter_provider_installed = False
@@ -94,26 +102,39 @@ def configure_tracing(
     this process's own `/metrics` — a Prometheus scraper is the composition
     root's job to expose (`apps/api`'s route, `apps/worker`'s metrics
     server), not this function's.
+
+    Langfuse and a plain collector are both this one OTLP path, so the
+    identifier filter that wraps it covers both (spec R1.4).
     """
     if otlp_endpoint:
         from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-        from opentelemetry.sdk.resources import Resource
-        from opentelemetry.sdk.trace import TracerProvider
-        from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-        resource = Resource.create({"service.name": service_name})
-        provider = TracerProvider(resource=resource)
-        provider.add_span_processor(
-            BatchSpanProcessor(
-                OTLPSpanExporter(
-                    endpoint=otlp_endpoint,
-                    headers=dict(otlp_headers) if otlp_headers else None,
-                )
-            )
+        provider = build_tracer_provider(
+            service_name,
+            OTLPSpanExporter(
+                endpoint=otlp_endpoint,
+                headers=dict(otlp_headers) if otlp_headers else None,
+            ),
         )
         trace.set_tracer_provider(provider)
     _ensure_meter_provider(service_name)
     return trace.get_tracer(service_name), metrics.get_meter(service_name)
+
+
+def build_tracer_provider(service_name: str, *exporters: SpanExporter) -> TracerProvider:
+    """A provider exporting to each of `exporters`, every one behind the identifier filter.
+
+    The one place an exporter is attached: an exporter added beside this
+    function rather than through it would ship spans unfiltered.
+    """
+    from opentelemetry.sdk.resources import Resource
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
+    provider = TracerProvider(resource=Resource.create({"service.name": service_name}))
+    for exporter in exporters:
+        provider.add_span_processor(IdentifierOnlySpanProcessor(BatchSpanProcessor(exporter)))
+    return provider
 
 
 def _ensure_meter_provider(service_name: str) -> None:
@@ -134,10 +155,23 @@ def _ensure_meter_provider(service_name: str) -> None:
 
         reader = PrometheusMetricReader()
         provider = MeterProvider(
-            resource=Resource.create({"service.name": service_name}), metric_readers=[reader]
+            resource=Resource.create({"service.name": service_name}),
+            metric_readers=[reader],
+            views=histogram_views(),
         )
         metrics.set_meter_provider(provider)
         _meter_provider_installed = True
+
+
+def histogram_views() -> list[View]:
+    """One View per histogram, carrying the buckets `HISTOGRAM_BUCKETS` owns."""
+    return [
+        View(
+            instrument_name=name,
+            aggregation=ExplicitBucketHistogramAggregation(boundaries=boundaries),
+        )
+        for name, boundaries in HISTOGRAM_BUCKETS.items()
+    ]
 
 
 @dataclass
@@ -148,6 +182,7 @@ class OtelTelemetry:
     meter: Meter
     _counters: dict[str, Counter] = field(default_factory=dict)
     _gauges: dict[str, Gauge] = field(default_factory=dict)
+    _histograms: dict[str, Histogram] = field(default_factory=dict)
 
     @contextmanager
     def _span(self, name: str, attributes: Mapping[str, object]) -> Iterator[None]:
@@ -177,3 +212,12 @@ class OtelTelemetry:
             gauge = self.meter.create_gauge(name)
             self._gauges[name] = gauge
         gauge.set(value, safe_attributes(attributes))
+
+    def record_histogram(
+        self, name: str, value: int | float, attributes: Mapping[str, object]
+    ) -> None:
+        histogram = self._histograms.get(name)
+        if histogram is None:
+            histogram = self.meter.create_histogram(name, unit="s")
+            self._histograms[name] = histogram
+        histogram.record(value, safe_attributes(attributes))

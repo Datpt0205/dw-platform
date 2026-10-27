@@ -42,41 +42,14 @@ from dw_platform.retention_policy import RetentionPolicy
 
 logger = logging.getLogger("dw_platform.partitions")
 
-__all__ = ["RetentionTerm", "SqlPartitionMaintenance", "retention_term"]
+__all__ = ["AUDIT_EVENTS", "SqlPartitionMaintenance"]
 
 _ENSURE = sa.text("SELECT platform.ensure_time_partitions(:months_ahead)")
 _DROP = sa.text("SELECT platform.drop_expired_partitions(:audit_cutoff)")
 
-# The one table this build partitions. A name the policy file carries that is
-# not this one is not a table this build may be told to drop months from.
-_AUDIT = "audit_events"
-
-# Registry key (`schema.table`) -> the table's name under `audit.tables` of the
-# pinned policy file. A temporary mapping: telemetry-and-audit/01 adds the
-# fragment `configs/policies/retention.d/platform.audit_events.yaml`, and from
-# then `retention_term` answers from the fragment set (through
-# `platform.retention_term_days`), so one place answers what a table's term is.
-_KEYS_IN_RETENTION_FILE = {"platform.audit_events": _AUDIT}
-
-
-@dataclass(frozen=True)
-class RetentionTerm:
-    days: int
-    enforced: bool
-
-
-def retention_term(policy: RetentionPolicy, store_key: str) -> RetentionTerm | None:
-    """The retention term of one registered table, by its `schema.table` key.
-
-    `None` means no term is written for it. A term that is decided but not yet
-    `enforced` is still a term (studio-skeleton R3.7); whether it may run is the
-    caller's question, and a `kept` offboarding exclusion asks it (R4.4).
-    """
-    table = _KEYS_IN_RETENTION_FILE.get(store_key)
-    found = policy.audit.tables.get(table) if table is not None else None
-    if found is None or found.days is None:
-        return None
-    return RetentionTerm(days=found.days, enforced=policy.audit.enforced)
+# The one table whose months this lane drops, by its store key: the key of its
+# retention fragment and of its `platform.time_partitioned_tables` row.
+AUDIT_EVENTS = "platform.audit_events"
 
 
 @dataclass(frozen=True)
@@ -109,16 +82,18 @@ class SqlPartitionMaintenance:
     async def _drop_expired(self) -> list[str]:
         """Both cutoffs in one call, and `None` for a table with no term.
 
+        The term is the table's fragment's (`retention.d/platform.audit_events.yaml`).
         `None` reaches the function as SQL NULL, which is how the table is told
-        it is never dropped — the same meaning a memory class with no `days` carries,
-        and what a decided-but-not-yet-enforced term resolves to. Passing a very
-        old timestamp instead would be a term nobody wrote.
+        it is never dropped — the same meaning a memory class with no `days`
+        carries, and what a decided-but-not-yet-enforced term or a missing
+        fragment resolves to. Passing a very old timestamp instead would be a
+        term nobody wrote.
 
         No early return on NULL: the call is what makes the function the one
         place that decides, and short-circuiting here would put half the
         decision on this side of the connection where nothing tests it.
         """
-        cutoff = self.policy.audit.cutoff_for(_AUDIT, now=self.clock.now())
+        cutoff = self.policy.store_cutoff(AUDIT_EVENTS, now=self.clock.now())
         async with self.session_factory() as session, session.begin():
             gone = await session.scalars(_DROP, {"audit_cutoff": cutoff})
             return list(gone.all())

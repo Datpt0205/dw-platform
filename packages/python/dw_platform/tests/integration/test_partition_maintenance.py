@@ -44,9 +44,8 @@ from studio_catalog import append_only_violations, partition_violations, registr
 from test_rls_coverage import tenant_schemas
 
 from dw_platform.adapters.persistence.partition_maintenance import (
-    RetentionTerm,
+    AUDIT_EVENTS,
     SqlPartitionMaintenance,
-    retention_term,
 )
 from dw_platform.retention_policy import (
     AuditRetention,
@@ -54,15 +53,15 @@ from dw_platform.retention_policy import (
     CheckpointRetention,
     KnowledgeRetention,
     RetentionClass,
+    RetentionFragment,
     RetentionPolicy,
+    RetentionTerm,
     load_retention_policy,
 )
 
 pytestmark = pytest.mark.integration
 
 MONTHS_AHEAD = 2
-# The tables of the pinned policy file's `audit.tables`, by their name there.
-_POLICY_TABLES = ("audit_events",)
 
 
 @dataclass(frozen=True)
@@ -73,23 +72,23 @@ class _Clock:
         return self.at
 
 
-def _policy(**audit: object) -> RetentionPolicy:
-    fields: dict[str, object] = {
-        "months_ahead": MONTHS_AHEAD,
-        "enforced": True,
-        "tables": {name: RetentionClass(days=None, description="giữ") for name in _POLICY_TABLES},
-    }
-    fields.update(audit)
+def _policy(*, days: int | None = None, enforced: bool = True) -> RetentionPolicy:
+    """A policy whose `platform.audit_events` fragment holds `days` and `enforced`."""
     return RetentionPolicy(
         schema_version="1.0",
         policy_id="retention",
-        policy_version="1.2.0",
+        policy_version="1.8.0",
         classes={"default": RetentionClass(days=730, description="thường")},
         knowledge=KnowledgeRetention(deleted_grace_days=30, orphan_evidence_grace_days=7),
-        audit=AuditRetention.model_validate(fields),
+        audit=AuditRetention(months_ahead=MONTHS_AHEAD),
         checkpoints=CheckpointRetention(superseded_days=7, idle_thread_days=730),
         channel_deliveries=ChannelDeliveryRetention(pending_expiry_days=7),
         batch_limit=1000,
+        stores={
+            AUDIT_EVENTS: RetentionFragment(
+                days=days, purger="drop_partition", enforced=enforced, description="giữ"
+            )
+        },
     )
 
 
@@ -272,7 +271,7 @@ async def test_a_term_drops_only_the_months_entirely_behind_it(
     straddling = await _make_month(migrator, "audit_events", _add_months(now, -13))
     # 13 months back, so the cutoff lands inside the month above and behind the
     # one before it.
-    term = _policy(tables={"audit_events": RetentionClass(days=400, description="một năm")})
+    term = _policy(days=400)
 
     await SqlPartitionMaintenance(app_sessions, term, _Clock(now)).prune()
 
@@ -288,9 +287,7 @@ async def test_the_default_partition_is_never_dropped(
     lands when the job has fallen behind. Dropping it would delete exactly the
     rows nobody has a partition for yet."""
     now = datetime.now(UTC)
-    term = _policy(
-        tables={name: RetentionClass(days=1, description="một ngày") for name in _POLICY_TABLES}
-    )
+    term = _policy(days=1)
 
     await SqlPartitionMaintenance(app_sessions, term, _Clock(now)).prune()
 
@@ -536,10 +533,7 @@ async def test_a_decided_term_still_drops_nothing_until_it_is_enforced(
     """
     now = datetime.now(UTC)
     ancient = await _make_month(migrator, "audit_events", _add_months(now, -60))
-    decided = _policy(
-        enforced=False,
-        tables={name: RetentionClass(days=1, description="một ngày") for name in _POLICY_TABLES},
-    )
+    decided = _policy(days=1, enforced=False)
 
     await SqlPartitionMaintenance(app_sessions, decided, _Clock(now)).prune()
 
@@ -712,11 +706,9 @@ async def test_row_security_holds_on_a_new_partition_for_a_role_granted_it(
 
 
 def _pinned_policy() -> RetentionPolicy:
-    """The policy file the `partitions` lane loads: its path has one owner, the
-    worker, and this reads it from there rather than writing it twice."""
-    from dw_worker.main import RETENTION_POLICY_PATH
-
-    return load_retention_policy(RETENTION_POLICY_PATH)
+    """The policy the `partitions` lane loads: the pinned file and fragment set,
+    from `dw_platform.retention_policy`'s own constants."""
+    return load_retention_policy()
 
 
 async def test_the_registry_and_its_partitions_hold_on_the_checkout(migrator: AsyncEngine) -> None:
@@ -725,7 +717,7 @@ async def test_the_registry_and_its_partitions_hold_on_the_checkout(migrator: As
     async with migrator.connect() as conn:
         assert [v for v in await registry_violations(conn) if v.startswith("R3.4")] == []
         assert await partition_violations(conn, await tenant_schemas(conn)) == []
-        assert await append_only_violations(conn, lambda key: retention_term(policy, key)) == []
+        assert await append_only_violations(conn, policy.term) == []
 
 
 _TERM = RetentionTerm(days=30, enforced=True)
@@ -825,12 +817,10 @@ async def test_a_registered_table_without_a_term_is_named_by_key(db_urls: Databa
     ]
 
     async def by_key(conn: AsyncConnection) -> list[str]:
-        return await append_only_violations(conn, lambda key: retention_term(policy, key))
+        return await append_only_violations(conn, policy.term)
 
     async def audit_for_all(conn: AsyncConnection) -> list[str]:
-        return await append_only_violations(
-            conn, lambda key: retention_term(policy, "platform.audit_events")
-        )
+        return await append_only_violations(conn, lambda key: policy.term(AUDIT_EVENTS))
 
     found = await _planted(db_urls, statements, by_key)
     assert "R3.7 studio.pm_term_probe (registered_by pm-term-probe) has no retention term" in found
@@ -843,7 +833,7 @@ async def test_an_append_only_flag_that_lies_is_named(db_urls: DatabaseUrls) -> 
     policy = _pinned_policy()
 
     def term_of(key: str) -> RetentionTerm | None:
-        return _TERM if key.startswith("studio.pm_") else retention_term(policy, key)
+        return _TERM if key.startswith("studio.pm_") else policy.term(key)
 
     async def check(conn: AsyncConnection) -> list[str]:
         return await append_only_violations(conn, term_of)

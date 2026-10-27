@@ -1,10 +1,11 @@
 """Restore drill: proves dump -> restore -> migrate-heads actually round-trips.
 
 Before this test existed, the restore procedure lived only as a comment in
-scripts/backup_postgres.sh, never run. `configs/policies/retention@1.7.0.yaml`
-gated DROP PARTITION on exactly this: a rehearsal that actually happened, not
-one written and never tried. It now does (`audit.enforced: true`), because
-this test ran and passed.
+scripts/backup_postgres.sh, never run. The audit log's retention term gated
+DROP PARTITION on exactly this: a rehearsal that actually happened, not one
+written and never tried. It now does (`enforced: true` in
+`configs/policies/retention.d/platform.audit_events.yaml`), because this test
+ran and passed.
 
 Runs `pg_dump`/`pg_restore` INSIDE the Postgres container via `docker exec` -
 the same way scripts/backup_postgres.sh and scripts/restore_postgres.sh do in

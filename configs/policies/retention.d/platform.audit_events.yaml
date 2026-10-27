@@ -1,0 +1,16 @@
+# Nhật ký kiểm toán (`platform.audit_events`), phân vùng theo tháng.
+#
+# Ba năm, chuyển nguyên từ `audit.tables.audit_events` của `retention@1.7.0`. Số
+# tạm, UNVERIFIED tới khi luật sư xác nhận (ADR-0122 quyết 7; DO-52); căn cứ pháp
+# lý của thời hạn do compliance-pdpl/06 viết vào đây. Bảng này có dữ liệu cá
+# nhân: `actor_id` nói ai làm gì lúc nào, nên giữ vô hạn không phải phương án an
+# toàn.
+#
+# `drop_partition`: lane `partitions` xoá cả tháng qua
+# `platform.drop_expired_partitions`, chỉ tháng nằm trọn sau thời hạn. DROP
+# PARTITION không lùi được, nên `enforced: true` đứng trên một lần diễn tập khôi
+# phục thật (`test_restore_drill.py`), như từ 1.4.0.
+days: 1095
+purger: drop_partition
+enforced: true
+description: Nhật ký kiểm toán — ai làm gì, lúc nào

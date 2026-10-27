@@ -1,6 +1,7 @@
 # Generated artifacts — formatting is owned by their generators
 contracts/openapi/openapi.json
 contracts/release/
+contracts/telemetry/
 packages/typescript/api-client/src/generated/
 evals/reports/
 # Sinh bởi scripts/generate_openui_skill.mjs từ thư viện OpenUI đang cài. Prettier

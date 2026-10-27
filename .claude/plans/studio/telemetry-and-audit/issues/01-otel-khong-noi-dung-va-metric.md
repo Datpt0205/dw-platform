@@ -146,8 +146,9 @@ Chính sách lưu giữ theo mảnh (spec R5.6, R5.9-R5.14; H-1; dời từ tick
 
 - `packages/python/dw_observability/src/dw_observability/metrics.py:12-22`; spec: R1.3.
 - `packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/telemetry_usage.py:60`; spec: R1.1.
-- `configs/policies/retention@1.7.0.yaml:111-122`, `configs/policies/retention@1.7.0.yaml:72`; spec: R5.13 (thời hạn
-  `audit_events` và chú thích về `model_usage_ledger` của tệp có phiên bản hôm nay).
+- `configs/policies/retention.d/platform.audit_events.yaml:1-16`, `configs/policies/retention@1.8.0.yaml:69-81`; spec:
+  R5.13 (thời hạn `audit_events` và chú thích về `model_usage_ledger`, dòng 111-122 và 72 của `retention@1.7.0.yaml` ở
+  `ab33703`, nay là mảnh và tệp thay nó).
 - `apps/worker/src/dw_worker/main.py:114`, `packages/python/dw_platform/src/dw_platform/retention_policy.py:191-192`,
   `apps/worker/tests/unit/test_worker.py:176`; spec: R5.9 (worker ghim bản tệp bằng một hằng đường dẫn và đọc nó qua
   mô hình chính sách).
@@ -188,3 +189,35 @@ Chính sách lưu giữ theo mảnh (spec R5.6, R5.9-R5.14; H-1; dời từ tick
   và tên span thượng nguồn không có; processor lọc trên mọi exporter và bỏ khóa ngoại lệ; bucket ghi ở spec (bước 1, 4,
   7; R1.1, R1.4).
 - 2026-10-27 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-10-27 (agent): phát hiện lúc build. (1) Thượng nguồn không có tag: `GENAI_SEMCONV_COMMIT` ghim `e19717d` (main
+  27/10/2026); YAML ở commit đó đã bỏ `gen_ai.system` và có cả `invoke_workflow` lẫn `retrieval` là operation, nên ảnh
+  chụp lấy operation từ enum `gen_ai.operation.name`, khóa từ `key:` và `ref:` của `model/**/*.yaml`, metric từ
+  `metrics:`; tên ta khai là của thượng nguồn (`GENAI_OPERATIONS`, `GENAI_ATTRIBUTES`) không bao giờ được thêm vào ảnh chụp
+  từ `semconv.py`. (2) Bước 1 khai builder `chat`, `execute_tool`, `invoke_workflow` cùng nơi phát (span lời gọi model,
+  span công cụ, và `dw.run.start`/`dw.run.resume` đổi thành `invoke_workflow <worker>`); `dw.node`, `invoke_agent`,
+  `retrieval` chưa khai vì ticket này không có nơi phát chúng: ticket 02 (R2.1) khai cùng nơi phát, như
+  `dw_node_failure_total` (`failure-modes.md` #1). Span rerank giữ `dw.knowledge.rerank`, khóa đổi thành
+  `dw.rerank.candidates`, `dw.rerank.top_k`. (3) `gen_ai.response.model` lấy từ `model` của thân phản hồi
+  (`ModelUsage.response_model`), vắng khi phản hồi không nói. (4) Ba metric có nơi phát: `dw_run_duration_seconds` mỗi lượt
+  qua đồ thị ở runner (nhãn `worker`, `status` ok/error), `dw_tool_call_total` ở `ToolExecutor` (`status` ok, error,
+  approval_required, denied), `dw_approval_wait_seconds` ở `ApproveAndResumeService.decide` sau commit (runner không biết lúc
+  mở phê duyệt). Test hợp đồng chạy gateway, executor, rerank và runner cùng luồng phê duyệt (tích hợp) qua
+  `RecordingTelemetry`; không middleware nào phát telemetry. (5) Log: formatter giữ mẫu của lời gọi, không giữ đối số, nên
+  dòng access của uvicorn chỉ còn mẫu (mất method, path, status); đó là hệ quả của R1.5 đã đo
+  (`configs/logging/uvicorn.json`, `--log-config` ở `api.Dockerfile`). Ngoại lệ ghi `exception.type` và
+  `exception.frames` (file:dòng:hàm), không ghi thông điệp. (6) Ánh xạ tạm nằm ở
+  `partition_maintenance.retention_term`, không ở `retention_policy.py`; đã gỡ, `RetentionTerm` sang
+  `dw_platform.retention_policy`, `policy.term()` và `policy.store_cutoff()` đọc mảnh. (7) `RetentionPurgerRegistry` dựng và
+  đóng băng ở `build_retention_purgers()` của worker, rỗng hôm nay; `test_every_purged_fragment_has_its_purger` đọc nó tới
+  khi lane của ticket 03 chạy nó. (8) Bộ nạp: `python -m dw_platform.adapters.persistence.retention_terms`. Test bắt được
+  một lỗi thật: biến PL/pgSQL tên `found` che `FOUND`, `IF NOT FOUND` so số nguyên. (9) Fixture tích hợp
+  (`tests/support/pg_test_db.run_migrations`) đặt mật khẩu `dw_provisioner` của cụm test bằng hằng
+  `PROVISIONER_TEST_PASSWORD`, như `test_provisioning.py` đã làm, rồi migration rồi bộ nạp.
+- 2026-10-27 (agent): mutation check: 31 kiểm soát, mỗi cái gỡ đi làm đúng test của nó đỏ (lọc span theo danh sách cho
+  phép, danh sách cấm, exporter không qua bộ lọc, mô tả status, giá trị log dưới khóa được phép, mẫu log nội suy, khóa log
+  lạ, thông điệp ngoại lệ, đổi `chat` trong semconv, bộ sinh đọc semconv, khóa nội dung trong danh sách cho phép, metric
+  khai không phát, `gen_ai.system`, response model chép từ request, ba metric không phát, giá trị input vào audit, thời
+  hạn khi mất mảnh, `indefinite` với bộ xóa, khóa mảnh lạ, tên mảnh thiếu schema, mã băm bỏ tên tệp, bộ nạp không xóa dòng,
+  nạp hạn chưa `enforced`, bộ nạp nuốt lỗi, hàm đọc hạn trả mặc định, REVOKE của `dw_app`, EXECUTE cho `dw_app`, job
+  `migrate` không chạy bộ nạp, lane `partitions` xóa không theo mảnh).
+

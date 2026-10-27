@@ -30,7 +30,7 @@ def safe_attributes(attributes: Mapping[str, object]) -> dict[str, AttributeValu
 
 
 class TelemetryPort(Protocol):
-    """Constructor-injected sink for spans, counters and gauges (never a global)."""
+    """Constructor-injected sink for spans, counters, gauges and histograms (never a global)."""
 
     def span(self, name: str, attributes: Mapping[str, object]) -> AbstractContextManager[None]: ...
 
@@ -43,6 +43,17 @@ class TelemetryPort(Protocol):
         distinct from ``add_metric``, which only ever accumulates. Recording a
         snapshot through ``add_metric`` would sum successive readings into a
         number nobody asked for; a gauge reports the latest value only.
+        """
+        ...
+
+    def record_histogram(
+        self, name: str, value: int | float, attributes: Mapping[str, object]
+    ) -> None:
+        """Record one observation of a distribution (a run's duration, a wait).
+
+        Buckets are not the caller's choice: they belong to the metric, and
+        `dw_observability.metrics.HISTOGRAM_BUCKETS` holds them, so two callers
+        of one histogram cannot disagree on what its buckets mean.
         """
         ...
 
@@ -59,6 +70,11 @@ class NullTelemetry:
     def set_gauge(self, name: str, value: int | float, attributes: Mapping[str, object]) -> None:
         return None
 
+    def record_histogram(
+        self, name: str, value: int | float, attributes: Mapping[str, object]
+    ) -> None:
+        return None
+
 
 class RecordingTelemetry:
     """In-memory sink for tests: captures what production code would emit."""
@@ -67,6 +83,7 @@ class RecordingTelemetry:
         self.spans: list[tuple[str, dict[str, AttributeValue]]] = []
         self.metrics: list[tuple[str, int | float, dict[str, AttributeValue]]] = []
         self.gauges: list[tuple[str, int | float, dict[str, AttributeValue]]] = []
+        self.histograms: list[tuple[str, int | float, dict[str, AttributeValue]]] = []
 
     @contextmanager
     def _record(self, name: str, attributes: Mapping[str, object]) -> Iterator[None]:
@@ -81,3 +98,8 @@ class RecordingTelemetry:
 
     def set_gauge(self, name: str, value: int | float, attributes: Mapping[str, object]) -> None:
         self.gauges.append((name, value, safe_attributes(attributes)))
+
+    def record_histogram(
+        self, name: str, value: int | float, attributes: Mapping[str, object]
+    ) -> None:
+        self.histograms.append((name, value, safe_attributes(attributes)))

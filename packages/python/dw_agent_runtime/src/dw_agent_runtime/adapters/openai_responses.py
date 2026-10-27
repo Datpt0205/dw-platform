@@ -15,7 +15,7 @@ from typing import Any
 
 import httpx
 
-from dw_agent_runtime.adapters.openai_compatible import _extract_json_object
+from dw_agent_runtime.adapters.openai_compatible import _extract_json_object, _response_model
 from dw_agent_runtime.model.gateway import ModelUsage
 from dw_agent_runtime.model.profiles import ModelRoute, Provider
 from dw_agent_runtime.model.prompts import RenderedPrompt
@@ -128,6 +128,7 @@ class OpenAIResponsesAdapter:
         usage = ModelUsage(
             provider=self.provider,
             model=route.model,
+            response_model=_response_model(data),
             input_tokens=int(usage_data.get("input_tokens", 0)),
             output_tokens=int(usage_data.get("output_tokens", 0)),
         )

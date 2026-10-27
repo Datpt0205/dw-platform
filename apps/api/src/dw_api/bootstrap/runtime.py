@@ -237,6 +237,7 @@ def build_runtime(
         strict_approval_prefixes=frozenset({"memory."}),
         # And nobody decides on a memory they are not cleared to read.
         decision_guards={MEMORY_REVIEW: require_clearance_for_review},
+        telemetry=telemetry,
     )
 
     seam = RuntimeSeam(

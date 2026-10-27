@@ -61,7 +61,7 @@ def _policy() -> RetentionPolicy:
         policy_version="1.1.0",
         classes={"default": RetentionClass(days=730, description="thường")},
         knowledge=KnowledgeRetention(deleted_grace_days=GRACE_DAYS, orphan_evidence_grace_days=7),
-        audit=AuditRetention(months_ahead=1, enforced=False, tables={}),
+        audit=AuditRetention(months_ahead=1),
         checkpoints=CheckpointRetention(superseded_days=7, idle_thread_days=730),
         channel_deliveries=ChannelDeliveryRetention(pending_expiry_days=7),
         batch_limit=1000,
