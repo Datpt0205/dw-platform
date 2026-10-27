@@ -1,6 +1,6 @@
 # 01 — Module ánh xạ OTel GenAI ghim commit, không nội dung; metric phát hoặc xóa; mảnh retention và bảng thời hạn
 
-Status: ready-for-agent
+Status: resolved (2026-10-27, main)
 Blocked by: .claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md
 Area: studio
 Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R5.6, R5.9, R5.10, R5.11, R5.12, R5.13, R5.14, TA1, TA2, TA3, TA8, TA9, TA17, TA18, TA19, TA27
@@ -220,3 +220,7 @@ Chính sách lưu giữ theo mảnh (spec R5.6, R5.9-R5.14; H-1; dời từ tick
   hạn khi mất mảnh, `indefinite` với bộ xóa, khóa mảnh lạ, tên mảnh thiếu schema, mã băm bỏ tên tệp, bộ nạp không xóa dòng,
   nạp hạn chưa `enforced`, bộ nạp nuốt lỗi, hàm đọc hạn trả mặc định, REVOKE của `dw_app`, EXECUTE cho `dw_app`, job
   `migrate` không chạy bộ nạp, lane `partitions` xóa không theo mảnh).
+- 2026-10-27 (agent): đóng. CI trên `63755ce` (cùng mã với `ee3420c`): unit, kiến trúc, contract cùng bước
+  `genai_semconv_snapshot.py --check`, frontend, bộ tích hợp đầy đủ và compose smoke (job `migrate` chạy bộ nạp) xanh; hai
+  bước đỏ (gitleaks, trivy) đỏ từ trước ticket này, từ `85aee2a`. Unit đỏ một lần trên `fc3fbda` rồi xanh lại trên
+  `63755ce` mà không đổi mã: một test chập chờn, chưa biết tên vì log của CI cần đăng nhập.

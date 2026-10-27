@@ -15,7 +15,7 @@ git: every slice's commit message, and the pre-split narrative at
 | Agent runtime and memory (Mốc 0–6) | `.claude/plans/platform-runtime.md` | Done but for named gaps   |
 | Web UI shell (Ant Design v6)       | `.claude/plans/web-ui.md`           | antd everywhere, CSP done |
 | Chat channels (Zalo)               | `.claude/plans/channels.md`         | Upstreamed; live run owed |
-| Studio (no-code builder)           | `.claude/plans/studio.md`           | skeleton/01 done          |
+| Studio (no-code builder)           | `.claude/plans/studio.md`           | skeleton/01, telemetry/01 |
 
 After working in an area, update its file. Update this index only when an
 area's state, the next step or a decision owed changes. A new area gets its
