@@ -78,8 +78,9 @@ Numbered in the block 0100-0199 reserved for Studio (ADR-0100 records the block)
    REST projection, filters and exports; workflow data nodes and `{{ }}` templates (a hidden reference fails the node
    with `template_field_hidden`); agent object tools (schema narrowed per run to the boundary's fields); search and
    knowledge indexing (open, non-personal fields only, stamped with `fls_version`); record history and outbound
-   webhooks; run-history payloads and approvals (references and field names stored, values fetched live and masked for
-   the viewer); telemetry, logs, audit and error messages (field names, never values). An architecture test keeps the
+   webhooks; run-history payloads (stored redacted at write, secrets dropped and `sensitive` fields masked, and masked
+   again for the viewer at read, ADR 0122 decision 4); approvals (references and field names stored, values fetched
+   live and masked for the viewer); telemetry, logs, audit and error messages (field names, never values). An architecture test keeps the
    records table and its slot columns named only in the records adapter.
    From W2, before the destinations W2 opens ship (`notify.send`, `ai.agent`, internal messages, lookups, search),
    access is also decided on the side of whoever receives a value (YC113, V4.40): compliance-pdpl's capability
@@ -227,3 +228,10 @@ Numbered in the block 0100-0199 reserved for Studio (ADR-0100 records the block)
   `data.object.*` step, a lookup's `name` masked by the field access at the target record and `field_id` on
   `studio.record_terms` (YC113); Consequences add the per-destination mutation test and place the rule in W2's
   phasing, W1 adding only these lines.
+
+## Amendments (2026-10-27)
+
+- Readiness check of telemetry-and-audit on `2c63e01`, Đạt's answer to question 2 (option A): decision 4 named
+  run-history payloads beside approvals as storing references and field names only, while ADR 0122 decision 4 stores
+  them redacted at write and masked again at read, which run history's 4 KB previews, by-reference bodies and 30-day
+  deletion depend on. Decision 4 now follows ADR 0122 for run-history payloads; approvals keep references only.

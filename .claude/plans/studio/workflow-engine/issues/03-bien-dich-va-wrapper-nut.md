@@ -1,7 +1,7 @@
 # 03 — Biên dịch cây Bước sang StateGraph, làn lỗi, cache LRU và wrapper nút
 
 Status: needs-triage
-Blocked by: 01, 02, .claude/plans/studio/record-access/issues/04-ngu-canh-actor-o-moi-cua.md, .claude/plans/studio/discovery/issues/14-workflow-runtime.md
+Blocked by: 01, 02, .claude/plans/studio/record-access/issues/04-ngu-canh-actor-o-moi-cua.md, .claude/plans/studio/discovery/issues/14-workflow-runtime.md, .claude/plans/studio/telemetry-and-audit/issues/01-otel-khong-noi-dung-va-metric.md
 Area: studio
 Yêu cầu: R1.7, R3.13, R3.14, R3.15, R3.16, R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R4.7, R4.8, R4.9, R4.10, R4.11, R4.12, R4.13, R4.21, R4.22, R4.23, R4.24, R4.25, R4.26, R4.27, R4.28, R4.29, R6.28, R7.1, WE5, WE7, WE13, WE23, WE26, WE37, WE38, WE39, WE40, WE45
 
@@ -48,7 +48,7 @@ Biên dịch phần lõi W1 của một phiên bản quy trình từ `WorkflowIR
 - [ ] R4.7: lượt chạy `simulate` gọi công cụ `external` → `ToolExecutor` giả lập, handler không chạy (tenant-config:R5.1); một bước bản ghi ở `simulate` → `RecordsPort` giả nhận `run_mode` `simulate` và không ghi gì, đúng hợp đồng mà bộ contract test của workflow-nodes/04 thử trên cả `RecordService` (custom-objects:R5.4; H-7); wrapper không có đường vòng.
 - [ ] R4.8 (WE5): tắt khẩn giữa lượt chạy, hay chủ thể chạy bị tạm khóa giữa lượt chạy → node kế tiếp không chạy trong ≤ 5 giây; bỏ kiểm `RunControlPort` ở wrapper → test đỏ.
 - [ ] R4.11 (WE23): đồng hồ giả qua `deadline_at` của lượt trước khi node kế tiếp bắt đầu → lượt `cancelled` với `error.code` `deadline_exceeded`, đúng một audit `run.deadline_exceeded` với actor `system:studio_runs`, nhà cung cấp giả nhận 0 lời gọi; node bắt đầu một giây trước `deadline_at` → chạy; bỏ kiểm hạn chót ở wrapper → test đỏ.
-- [ ] R4.9: bước ghi qua `StepRecorderPort` có đầu vào và đầu ra đã che theo quyền người xem, span `dw.node`; `app.actor_kind = 'workflow'` gắn mỗi giao dịch.
+- [ ] R4.9: bước ghi qua `StepRecorderPort` có đầu vào và đầu ra đã che theo quyền người xem, span `dw.node`; `app.actor_kind = 'workflow'` gắn mỗi giao dịch; theo telemetry-and-audit:R1.3, wrapper khai `DW_NODE_FAILURE_TOTAL` (`dw_node_failure_total`, nhãn `error_type`) vào `dw_observability/metrics.py` và `ALL_METRICS`, và phát nó qua `TelemetryPort.add_metric` ở mỗi lần thử lỗi; một lần thử lỗi → bộ đếm tăng một với `error_type` của lần đó; gỡ lời gọi phát → test AST của telemetry-and-audit/01 đỏ.
 - [ ] R4.21: một Bước trong làn `rejected` của một Bước phê duyệt chạy → Bước chạy của nó mang `lane_path` nêu Bước phê duyệt và Nhánh ra `rejected`, `iteration_path` rỗng; Bước ở chuỗi gốc → `lane_path` rỗng; wrapper ghi Bước chạy không có hai trường → `StepRecorderPort` từ chối, test đỏ.
 - [ ] R4.10: thêm một module node có chuỗi SQL hay import SDK nhà cung cấp → test kiến trúc đỏ.
 - [ ] R7.1 (WE45): bộ golden trace chạy trên `LangGraphWorkflowRunner` trong `make ci` cho khối tuần tự, `logic.switch`, làn phê duyệt và thử và bắt → xanh; đổi thứ tự hai Bước trong một trace, hay cho một `outcome_unknown` đi vào làn lỗi → test đỏ.
@@ -76,3 +76,8 @@ Biên dịch phần lõi W1 của một phiên bản quy trình từ `WorkflowIR
 - 2026-10-25 (agent): lượt h, theo V4.30, V4.31, V4.34, V4.36 và V4.37 của Đạt: Blocked by gỡ custom-objects/03 và thêm discovery/14 theo bảng cạnh của lượt h (H-7, H-9), nên R4.7 và R4.22 thử trên `RecordsPort` giả có contract test và tiêu chí đọc bản ghi truy vấn `studio.records` dưới RLS (bước 12), thay dòng ngày 24/10/2026 về cạnh tới custom-objects/03; wrapper chỉ thử lại `not_dispatched` hay `rejected` thử lại được, không áp `on_error` cho `outcome_unknown` và ghi loại lỗi đó (bước 8; R6.28 dời về đây từ ticket 07, vì ticket 08 đọc nó), chạy với `durability` `sync` của bản kê (bước 9), ghi `attempt` và `port` (bước 3), áp kết quả ghim ở `simulate` với cột `pinned_results` và CHECK của nó (bước 10; H-18), và dựng bộ golden trace (bước 11). Cạnh đã kiểm bằng mô phỏng đồ thị: không vòng, độ sâu của marketing-pilot/03 không tăng.
 - 2026-10-25 (agent): lượt h, sau đợt 1: ca `assign` của R4.22 chạy trên bản giả `RecordAssignPort`, vì Bước giao đi qua cổng đó tới `AssignRecordService` của record-access/05 (workflow-nodes:R6.5), và bộ contract test của workflow-nodes/04 phủ cả hai cổng (bước 8, 12); theo H-26, wrapper từ chối kết quả ghim cho Bước phê duyệt (bước 10, R4.29). Không thêm cạnh.
 - 2026-10-26 (agent): lượt h, sau đợt 1: H-30, `RecordsPort` và `RecordAssignPort` khai ở workflow-engine/03 (người dùng đầu tiên, đứng trước workflow-nodes/04), workflow-nodes/04 chạy bộ contract test trên bản thật. Không thêm cạnh.
+- 2026-10-27 (agent): theo câu trả lời của Đạt cho lượt `checking-plan-readiness` của telemetry-and-audit (câu 4 theo B):
+  telemetry-and-audit/01 gỡ `dw_node_failure_total` khỏi `ALL_METRICS` vì chưa có nơi phát, và ticket này khai lại hằng
+  cùng lời gọi phát ở wrapper (`failure-modes.md` #1; ADR-0122 (Accepted) quyết 2). Thêm Blocked by
+  telemetry-and-audit/01, vì cả hai sửa `dw_observability/metrics.py` và wrapper đặt tên span qua `semconv` của ticket
+  đó; độ sâu ticket đó là 2, ticket này 11, nên cạnh không làm chuỗi dài thêm (`marketing-pilot/03` giữ 15).

@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: 01, .claude/plans/studio/workflow-engine/issues/03-bien-dich-va-wrapper-nut.md, .claude/plans/studio/app-standards/issues/03-quy-uoc-api-danh-sach-va-sua.md, .claude/plans/studio/usage-and-limits/issues/03-han-muc-giu-truoc-va-quyet-toan.md, .claude/plans/studio/workflow-engine/issues/05-cho-nguoi-va-ghim-phien-ban.md
 Area: studio
-Yêu cầu: R2.1, R2.2, R2.3, R2.4, TA7
+Yêu cầu: R2.1, R2.2, R2.3, R2.4, R2.5, TA7, TA35
 
 ## Mục tiêu
 
@@ -17,7 +17,9 @@ Một cây span thật cho lượt chạy (workflow, node, agent, chat, tool, re
 2. `RunContext.trace_id` thành 32 ký tự hex thay `api-<hex12>`
    (`apps/api/src/dw_api/bootstrap/container.py:227`), `resume-` và `lookup-`
    (`packages/python/dw_agent_runtime/src/dw_agent_runtime/approval_flow.py:302`, `:394`); CHECK
-   `trace_id ~ '^[0-9a-f]{32}$'` dạng `NOT VALID` cho `platform.worker_runs` và `platform.audit_events`
+   `trace_id ~ '^[0-9a-f]{32}$'`: trên `platform.worker_runs` thêm `NOT VALID`, ghi lại mọi giá trị cũ không khớp thành
+   `md5(trace_id)` rồi `VALIDATE` trong cùng revision (spec R2.5); trên `platform.audit_events` để `NOT VALID`, không sửa
+   dòng audit nào, vì bảng chỉ thêm
    (migration trên bảng cha `audit_events` đứng sau migration index theo lượt chạy của app-standards/03; migration
    trên `platform.worker_runs` đứng sau trigger của workflow-engine/05, workflow-engine:R6.13).
 3. `platform.outbox_events` thêm cột `trace_parent text` có CHECK định dạng W3C `traceparent`; dispatcher
@@ -38,6 +40,9 @@ Một cây span thật cho lượt chạy (workflow, node, agent, chat, tool, re
 - [ ] R2.2 (TA7): request mang `traceparent` → cùng một trace id ở span API, span worker,
       `platform.worker_runs`, `platform.audit_events` và dòng outbox.
 - [ ] R2.3 (TA7): ghi `trace_id` dạng `api-...` → CHECK từ chối; dạng 32 ký tự hex → nhận.
+- [ ] R2.5 (TA35): dòng `platform.worker_runs` mang `api-<hex12>` trước revision → sau revision `trace_id` là `md5`
+      của giá trị cũ, ràng buộc đã `VALIDATE`, UPDATE trạng thái của dòng đó nhận; bỏ bước ghi lại → `VALIDATE` lỗi,
+      test đỏ.
 - [ ] R2.4: một phản hồi 404 trả `application/problem+json` mang `trace_id` 32 ký tự hex của request.
 - [ ] Xong: `make ci && make test-integration` xanh.
 
@@ -57,3 +62,5 @@ Một cây span thật cho lượt chạy (workflow, node, agent, chat, tool, re
 - 2026-10-24 (agent): theo dòng tạm cùng ngày của spec (C:telemetry-and-audit/02\~workflow-engine/05), chờ
   workflow-engine/05 vì ticket đó đặt trigger của workflow-engine:R6.13 trên `platform.worker_runs`, bảng mà bước 2
   thêm CHECK `trace_id`; qua ticket đó, ticket này cũng chờ workflow-engine/04.
+- 2026-10-27 (agent): theo lượt `checking-plan-readiness` trên `2c63e01`: CHECK `NOT VALID` vẫn áp lên mọi UPDATE, nên
+  `platform.worker_runs` ghi lại `trace_id` cũ rồi `VALIDATE` (spec R2.5, TA35); `platform.audit_events` giữ `NOT VALID`.

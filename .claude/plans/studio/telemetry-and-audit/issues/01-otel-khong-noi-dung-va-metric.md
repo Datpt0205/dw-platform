@@ -17,9 +17,11 @@ lệch bảng, và mảnh `platform.audit_events` thay ánh xạ tạm sang `ret
 ## Việc cần làm
 
 1. `packages/python/dw_observability/src/dw_observability/semconv.py`: hằng `GENAI_SEMCONV_COMMIT` ghim một
-   commit của `open-telemetry/semantic-conventions`; hàm dựng tên span (`invoke_workflow`, `dw.node`,
-   `invoke_agent`, `chat`, `execute_tool`, `retrieval`), khóa thuộc tính `dw.*` và tên metric GenAI; ảnh
-   chụp `contracts/telemetry/genai-semconv@<sha12>.json` sinh ra và `--check` trong CI.
+   commit của `open-telemetry/semantic-conventions-genai` (ADR-0122 (Accepted) quyết 1); hàm dựng tên span
+   (`invoke_workflow`, `dw.node`, `invoke_agent`, `chat`, `execute_tool`, `retrieval`), khóa thuộc tính `dw.*`, tên
+   metric GenAI, và danh sách định danh cho phép mà test hợp đồng, formatter log và span processor Langfuse cùng đọc
+   (spec R1.4, R1.5); ảnh chụp `contracts/telemetry/genai-semconv@<sha12>.json` sinh từ YAML thượng nguồn ở commit đó,
+   không từ `semconv.py`, cộng tên `dw.*` mà `semconv.py` khai (spec R1.1), và `--check` trong CI.
 2. Test hợp đồng: chạy gateway, middleware, executor và runner qua một `RecordingTelemetry`, đỏ nếu một tên
    phát ra nằm ngoài ảnh chụp đã ghim (TA2).
 3. Thay `gen_ai.system` bằng `gen_ai.provider.name`
@@ -27,16 +29,19 @@ lệch bảng, và mảnh `platform.audit_events` thay ánh xạ tạm sang `ret
    `gen_ai.response.model` lấy từ phản hồi; sửa docstring `dw_observability/__init__.py:1`.
 4. `TelemetryPort.record_histogram` với bucket theo spec; `OtelTelemetry` dùng `create_histogram` và View;
    `RecordingTelemetry.histograms`; `NullTelemetry`.
-5. Phát `dw_run_duration_seconds`, `dw_tool_call_total`, `dw_approval_wait_seconds`; hằng
-   `dw_node_failure_total{error_type}` cho bộ bọc node của workflow-engine; xóa `dw_retrieval_hit_rate`,
-   `dw_human_intervention_rate`, `dw_task_success_rate`; test AST: mọi tên trong `ALL_METRICS` là đối số
-   đầu của `add_metric`, `set_gauge` hay `record_histogram` trong `src/` (TA3).
-6. Formatter log JSON cho API và worker với danh sách trường định danh cho phép; giá trị dạng email, số
-   điện thoại hay query string bị bỏ cả khi khóa được phép; `test_logs_carry_ids_only` (TA8).
-7. Một span processor thêm khóa Langfuse khi Langfuse bật, bỏ `user.id` và mọi thuộc tính nội dung
-   (`gen_ai.input.messages`, đầu ra) trước khi gửi (TA9).
-8. Luật một chủ: một span, dòng log, sự kiện Nhật ký kiểm toán hay thông điệp lỗi chỉ mang định danh và
-   tên trường (TA1).
+5. Phát `dw_run_duration_seconds`, `dw_tool_call_total`, `dw_approval_wait_seconds`; gỡ `DW_NODE_FAILURE_TOTAL` khỏi
+   `dw_observability/metrics.py` và `ALL_METRICS`, vì chưa có nơi phát: workflow-engine/03 khai lại hằng
+   `dw_node_failure_total{error_type}` cùng lời gọi phát ở bộ bọc node (`failure-modes.md` #1; Đạt, 27/10/2026);
+   xóa `dw_retrieval_hit_rate`, `dw_human_intervention_rate`, `dw_task_success_rate`; test AST: mọi tên trong
+   `ALL_METRICS` là đối số đầu của `add_metric`, `set_gauge` hay `record_histogram` trong `src/` (TA3).
+6. Formatter log JSON cho API và worker chỉ giữ các khóa trong danh sách định danh cho phép của bước 1, bỏ mọi khóa
+   khác; `message` là tên sự kiện hằng, không phải chuỗi định dạng mang giá trị; giá trị dạng email, số điện thoại hay
+   query string bị bỏ cả khi khóa được phép; `test_logs_carry_ids_only` (spec R1.5; TA8).
+7. Một span processor khi Langfuse bật chỉ chuyển các khóa trong danh sách định danh cho phép của bước 1, bỏ mọi khóa
+   khác, kể cả `user.id`, `gen_ai.input.messages`, đầu ra và khóa nội dung mà thượng nguồn thêm sau (spec R1.4; TA9).
+8. Một chủ cho định danh (spec R1.2; TA1): span, dòng log, sự kiện Nhật ký kiểm toán và thông điệp lỗi chỉ mang định
+   danh và tên trường, vì span và log đi qua danh sách cho phép của bước 1, còn `details` của sự kiện audit và thông
+   điệp lỗi do mã dựng chỉ nhận định danh và tên trường, không nhận giá trị của input.
 
 Chính sách lưu giữ theo mảnh (spec R5.6, R5.9-R5.14; H-1; dời từ ticket 03, bước 7 phần định dạng và bước 10):
 
@@ -97,13 +102,18 @@ Chính sách lưu giữ theo mảnh (spec R5.6, R5.9-R5.14; H-1; dời từ tick
 
 ## Tiêu chí chấp nhận
 
-- [ ] R1.1 (TA2): đổi một tên span trong `semconv` → test hợp đồng đỏ; tên ngoài ảnh chụp không được nhận.
+- [ ] R1.1 (TA2): đổi một tên span trong `semconv` → test hợp đồng đỏ; tên ngoài ảnh chụp không được nhận; đổi một tên
+      `gen_ai.*` sang tên không có ở YAML thượng nguồn rồi sinh lại ảnh chụp → test vẫn đỏ; sinh ảnh chụp từ
+      `semconv.py` → ca đó xanh, test đỏ.
 - [ ] R1.2 (TA1): input có một số điện thoại → không span, log hay sự kiện Nhật ký kiểm toán nào chứa giá
       trị đó.
-- [ ] R1.3 (TA3): thêm một hằng vào `ALL_METRICS` không có lời gọi phát → test AST đỏ; ba metric tỷ lệ đã
-      xóa.
-- [ ] R1.4 (TA9): span processor bỏ `user.id` và `gen_ai.input.messages`; gỡ bỏ → test exporter đỏ.
-- [ ] R1.5 (TA8): một dòng log mang giá trị dạng email → `test_logs_carry_ids_only` đỏ.
+- [ ] R1.3 (TA3): thêm một hằng vào `ALL_METRICS` không có lời gọi phát → test AST đỏ; ba metric tỷ lệ và
+      `dw_node_failure_total` không còn trong `ALL_METRICS`; `make ci` xanh ở ticket này.
+- [ ] R1.4 (TA9): span processor bỏ `user.id` và `gen_ai.input.messages`; gỡ bỏ → test exporter đỏ; một khóa nội
+      dung mới không có trong danh sách cho phép (`gen_ai.system_instructions`) → không tới Langfuse; đổi processor
+      sang danh sách cấm → test đỏ.
+- [ ] R1.5 (TA8): một dòng log mang giá trị dạng email → `test_logs_carry_ids_only` đỏ; `message` mang giá trị nội suy
+      → đỏ; một khóa ngoài danh sách cho phép → bị bỏ khỏi dòng.
 - [ ] R5.6 (TA27): mảnh tên `platform.no_such_table.yaml`, hay `audit_events.yaml` thiếu schema → test tập mảnh đỏ, nêu
       mảnh; kho có tên của fixture → nhận; hai bảng thử cùng tên ở `platform` và `studio` mang hai thời hạn khác nhau →
       mỗi bảng đọc đúng thời hạn của mình; mảnh có khóa ngoài bốn khóa → lỗi mô hình, nêu khóa.
@@ -153,6 +163,8 @@ Chính sách lưu giữ theo mảnh (spec R5.6, R5.9-R5.14; H-1; dời từ tick
   định của schema cho `dw_app` phải thu hẹp theo bảng; `dw_provisioner` nhận quyền theo từng bảng, bọc kiểm vai tồn
   tại).
 - ADR-0122 (Accepted) quyết 1, 2, 3, 7; ADR-0100 (Accepted) quyết 7; studio-skeleton:R3.7.
+- `packages/python/dw_observability/src/dw_observability/metrics.py:13`; spec: R1.3 (`DW_NODE_FAILURE_TOTAL` khai mà
+  không có nơi phát trong `src/`).
 
 ## Comments
 
@@ -165,3 +177,6 @@ Chính sách lưu giữ theo mảnh (spec R5.6, R5.9-R5.14; H-1; dời từ tick
   `platform.audit_events`; lane lưu giữ và các hàm xóa của lát vẫn ở ticket 03. Thêm Blocked by studio-skeleton/01,
   cạnh ngoài mục B của lượt h, vì ticket này gỡ ánh xạ tạm mà ticket đó dựng và test phủ đọc sổ của ticket đó; đã chạy
   `g.py` trên cây hiện tại cộng các thao tác của mục B: không vòng, độ sâu `marketing-pilot/03` giữ 15, chuỗi dài nhất 18. Dòng Xong thêm `make test-integration`, vì bảng và bộ nạp cần PostgreSQL thật.
+- 2026-10-27 (agent): áp câu trả lời của Đạt cho lượt `checking-plan-readiness` trên `2c63e01` (câu 3 theo A, câu 4
+  theo B) và các sửa có căn cứ: kho `semantic-conventions-genai`, ảnh chụp sinh từ YAML thượng nguồn, một danh sách định
+  danh cho phép cho span, log và Langfuse, `dw_node_failure_total` sang workflow-engine/03 (bước 1, 5-8; R1.1, R1.3-R1.5).
