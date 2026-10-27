@@ -2,7 +2,7 @@
 
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
-Duyệt: Đạt, 27/10/2026
+Duyệt: Đạt 27/10/2026
 Sẵn sàng: chưa kiểm
 
 Người dựng cần xem một lượt chạy đã làm gì theo từng bước (trạng thái, thời gian, lỗi, token, chi phí, đầu vào và đầu
