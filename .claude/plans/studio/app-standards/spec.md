@@ -2,7 +2,7 @@
 
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
-Duyệt: chưa
+Duyệt: Đạt 27/10/2026
 Sẵn sàng: chưa kiểm
 
 Mọi route mới của Studio và của nền tảng nói cùng một quy ước HTTP: một mô tả lỗi problem+json, khóa chống lặp gắn người gọi đã xác minh, ETag với `If-Match`, phân trang keyset có kiểu, cây lọc JSON và một kiểm hình kế hoạch truy vấn trong CI (ADR-0108 (Accepted)). API bản ghi của custom-objects, vỏ phiên bản của tenant-config và mọi API quản trị của lát Marketing dùng các quy ước này, nên spec này đi trước chúng. Ý định: một quy ước HTTP cho mọi route, để không spec nào tự đặt hình lỗi, khóa hay con trỏ của riêng nó.
@@ -304,6 +304,7 @@ Một truy vấn phân trang không có index mang trọn làm CI đỏ, kể c�
 - 27/10/2026 (Đạt): Phương án A: sửa sáu HIGH của lần kiểm trên `f412ba4` cùng hai MEDIUM rẻ (`caller_ref` cho service principal, CHECK danh sách header), không chạy thêm gate cho phiên bản này, rồi Đạt duyệt spec và cách chia ticket 01-04 trên bản đó. Sửa: R1.10, R2.16, R2.17, R2.20, R2.21, R3, R3.1, R3.13, Dữ liệu, API, APS12, APS16, APS19, APS20, ticket 02, ticket 03.
 - 27/10/2026 (Đạt): Chấp nhận rủi ro: các MEDIUM còn lại của các lần kiểm ngày 26 và 27/10/2026 (nội dung 409 `idempotency_conflict` cho người gọi khác, con trỏ phiên bản 2 mang giá trị sắp dạng rõ, audit của lần phát lại dưới grant `support`, Merge Patch với trường do máy chủ giữ, giá trị đúng kiểu mà ngoài miền trong cây lọc, trần tổng của cây lọc, cửa sổ triển khai cuốn chiếu, khóa gửi lại sau khi dòng đã bị xóa, hạn sai trong `platform.retention_terms`); CRITICAL bằng 0 từ lần kiểm thứ hai, và các MEDIUM này được mở lại khi spec dùng đầu tiên (custom-objects, tenant-config) chạm tới chúng.
 - 27/10/2026 (agent, tạm theo ủy quyền): Quyền ở mức route có một chủ là khai báo mà dependency khóa đọc, có thể là hàm của tham số đường; handler giữ phép kiểm theo tài nguyên. R2.16 phủ cả lần chạy lại sau khi G6 nhả khóa. Độ sâu là số nút trên đường dài nhất, có ví dụ. Câu ghi không khớp dòng nào thì đọc lại dưới quyền của người gọi. R1.10 cấm giá trị, không cấm `detail`. R3 bật theo tài nguyên, nên `GET` gửi `ETag`. `caller_ref` của service principal là `user:` nối `principal_id` của nó, cho tới khi `AccessContext` mang loại principal (org-and-principals). Sửa: như dòng trên. Nếu sai thì: mỗi điểm đổi một tiêu chí và một test trong ticket 02 hay 03.
+- 27/10/2026 (Đạt): Duyệt cách chia ticket 01-04.
 
 ## Danh sách ticket
 
