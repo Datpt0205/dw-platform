@@ -28,8 +28,8 @@ Lát này cho Studio một distribution và một cửa vào API: `dw_studio` đ
 - [ ] R5.4 (SKEL10): một module tầng `presentation`, và một module tầng `workflows`, của `dw_studio.core` import tầng `adapters`, mỗi cái làm `lint-imports` đỏ.
 - [ ] R5.5 (SKEL10): một module của `dw_studio.core` import `langgraph` làm `lint-imports` đỏ.
 - [ ] R5.7 (SKEL11): cây thử có `dw_studio.probe` với tầng `adapters` không có trong hợp đồng adapter làm kiểm tra đăng ký đỏ, nêu `dw_studio.probe` và tên hợp đồng.
-- [ ] R6.1 (SKEL12): app có cơ sở dữ liệu: mọi đường dưới `/api/v1/studio/` trong OpenAPI, gọi không token, trả 401; bỏ lời gọi `mount_studio` thì cùng lời gọi trả 404 và test đỏ; route thử trong nhóm không có dependency xác thực làm test đỏ.
-- [ ] R6.9 (SKEL12): route thử trong nhóm với `include_in_schema=False`, không dependency riêng, gọi không token trả 401; gỡ middleware thì route thử trả 200 và test đỏ; gỡ middleware mà giữ dependency cấp nhóm trên một route thử khác thì route đó trả 401; đường không tồn tại dưới tiền tố, không token, trả 401.
+- [ ] R6.1 (SKEL12): app có cơ sở dữ liệu: mọi đường dưới `/api/v1/studio/` trong OpenAPI, gọi không token, trả 401; bỏ lời gọi `mount_studio` thì cùng lời gọi trả 404 và test đỏ; app thử gắn nhóm mà không middleware: dependency cấp nhóm trả 401 khi thiếu kết quả xác minh, và đổi nó sang cho qua thì route của nhóm trả 200, test đỏ.
+- [ ] R6.9 (SKEL12): route thử `include_in_schema=False` gắn dưới tiền tố ngoài nhóm, không dependency nào, gọi không token trả 401; gỡ middleware thì route thử trả 200 và test đỏ; đường không tồn tại dưới tiền tố, không token, trả 401.
 - [ ] R6.2 (SKEL12): test OpenAPI đỏ khi nhóm Studio không có route nào.
 - [ ] R6.3: một operation tag `studio` đặt ở `/api/v1/objects` trong app thử làm test đỏ.
 - [ ] R6.4 (SKEL23): app dựng không cơ sở dữ liệu trả 404 cho `GET /api/v1/studio/artifacts` và không trả 500 cho đường nào của nhóm; gắn nhóm cả khi `container.studio is None` thì test đỏ.
@@ -60,3 +60,4 @@ Lát này cho Studio một distribution và một cửa vào API: `dw_studio` đ
 - 2026-10-27 (agent): sửa theo khuyến nghị của gate chạy lại trên `bce52d4` (Đạt ủy quyền 27/10/2026): token chưa xác minh nhận 401 trước khi đọc body (R6.8), body nén nhận 415 (R6.10).
 - 2026-10-27 (agent): sửa theo khuyến nghị của gate trên `d9fc4da` (Đạt chọn phương án A): xác thực trước body bằng middleware gọi bộ xác minh token duy nhất của nền tảng (R6.8). Ticket này vào `main` cùng một lần push với tenant-config/02, vì repo làm thẳng trên `main` (ADR-0100 (Accepted) điểm 6).
 - 2026-10-27 (agent): sau bước xác nhận trên `e9084eb`: middleware và nhóm gắn bởi `mount_studio` chỉ khi có cơ sở dữ liệu (giữ R6.4), dependency đóng khi thiếu kết quả xác minh, smoke đối chứng ngoài tiền tố (R6.6).
+- 2026-10-27 (agent): sau lần xác nhận thứ hai trên `2639c06`: mỗi lớp xác thực một ca trồng lỗi riêng, middleware qua route ngoài nhóm, dependency qua app thử không middleware (R6.1, R6.9).
