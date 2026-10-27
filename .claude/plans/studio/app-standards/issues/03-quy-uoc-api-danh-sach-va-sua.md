@@ -79,3 +79,4 @@ Lát này cho mọi route danh sách và route sửa một quy ước chung: ETa
 - 2026-10-27 (agent): theo lần sửa sau gate thứ tư: R3.11, R3.12 và APS22; kiểm hình kế hoạch bắt cả trang đầu, cột sắp được index giao thứ tự là đạt.
 - 2026-10-27 (agent): theo phương án A của Đạt: R3 bật theo tài nguyên (R3.1 cho cả `GET`), R3.13, cách đếm độ sâu có ví dụ.
 - 2026-10-27 (agent): theo năm khuyến nghị Đạt nhận sau gate trên `25e81be`: `If-Match` nhiều ETag trả 428 (R3.8), tham số bind và tên cột từ lược đồ (R5.10, APS25), ngữ pháp `order_by` và `fields` (R5.11).
+- 2026-10-27 (agent): theo năm khuyến nghị Đạt nhận sau gate trên `940a88f`: R3.4 chỉ áp cho tài nguyên không phải bản ghi Studio; R3.14 và APS28 thuộc custom-objects (Ngoài phạm vi của spec).

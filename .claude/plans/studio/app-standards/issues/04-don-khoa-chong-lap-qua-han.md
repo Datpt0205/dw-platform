@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: 02, .claude/plans/studio/telemetry-and-audit/issues/01-otel-khong-noi-dung-va-metric.md
 Area: studio
-Yêu cầu: R2.8, R2.9, R2.13, R2.15, APS14
+Yêu cầu: R2.8, R2.9, R2.13, R2.15, R2.25, APS14
 
 ## Mục tiêu
 
@@ -14,7 +14,8 @@ Lát này cho `platform.idempotency_keys` một bộ xóa, để khóa và body 
 1. Mảnh `configs/policies/retention.d/platform.idempotency_keys.yaml`: `days: 1`, `purger: row_delete`, `enforced: true`, `description` nói đây là bộ đệm phát lại của `Idempotency-Key`, 24 giờ (ADR-0108 (Accepted) điểm 4); `make release-manifest` sinh lại manifest.
 2. Migration mới, id hex ngẫu nhiên của `alembic revision -m "idempotency keys purge function"`: hàm `platform.purge_expired_idempotency_keys() RETURNS integer`, SECURITY DEFINER, không đối số, `search_path` cố định; đọc hạn qua `platform.retention_term_days('platform.idempotency_keys')`, nên thiếu dòng hạn thì RAISE và không xóa gì (R2.15); xóa các dòng có `created_at < now() - make_interval(days => <hạn>)` ở mọi tenant và trả số dòng, không trả cột nào (R2.13). REVOKE ALL FROM PUBLIC và GRANT EXECUTE cho `dw_app` trong khối kiểm vai tồn tại, như `platform.prune_notifications()` (`db/migrations/versions/855ae928c3fa_platform_in_app_notifications.py:184-190`); dòng của hàm trong `packages/python/dw_platform/tests/integration/test_privileges.py`.
 3. Adapter trong `dw_platform` gọi hàm đó trong giao dịch của chính nó và ghi số dòng vào log, không ghi audit (R2.9; ADR-0011 (Accepted), mục "Not applied"); đăng ký adapter vào `RetentionPurgerRegistry` với khóa `platform.idempotency_keys` ở composition root của worker.
-4. `README.md`, mục "Idempotent requests": khóa và câu trả lời đã lưu bị xóa sau hạn của mảnh (24 giờ); một lần thử lại sau đó chạy như yêu cầu mới.
+4. `platform.effect_keys` (tạo ở ticket 02) theo cùng ba bước: mảnh `configs/policies/retention.d/platform.effect_keys.yaml` (`days: 1`, `purger: row_delete`, `enforced: true`), hàm `platform.purge_expired_effect_keys()` cùng hình và cùng grant với hàm ở bước 2, đọc hạn qua `platform.retention_term_days('platform.effect_keys')`, và một bộ xóa đăng ký với khóa `platform.effect_keys` (R2.25).
+5. `README.md`, mục "Idempotent requests": khóa và câu trả lời đã lưu bị xóa sau hạn của mảnh (24 giờ); một lần thử lại sau đó chạy như yêu cầu mới.
 
 ## Tiêu chí chấp nhận
 
@@ -23,6 +24,7 @@ Lát này cho `platform.idempotency_keys` một bộ xóa, để khóa và body 
 - [ ] R2.13 (APS14): `platform.purge_expired_idempotency_keys()` trả một số nguyên và không trả cột nào của dòng; đổi hàm để trả dòng thì test đỏ.
 - [ ] R2.15 (APS14): xóa dòng `platform.idempotency_keys` khỏi `platform.retention_terms` trong giao dịch test thì hàm thất bại và không dòng nào bị xóa; cho hàm rơi về một hạn mặc định thì test đỏ.
 - [ ] R2.8 (APS14): test ở composition root của worker khẳng định `RetentionPurgerRegistry` có khóa `platform.idempotency_keys`; gỡ đăng ký thì test đỏ.
+- [ ] R2.25 (APS14): ở `platform.effect_keys`, dòng 25 giờ của hai tenant bị xóa và dòng 1 giờ còn; hàm chỉ trả số dòng; xóa dòng hạn của kho thì hàm thất bại và không dòng nào mất; `RetentionPurgerRegistry` có khóa `platform.effect_keys`; nới điều kiện tuổi hay gỡ đăng ký thì test đỏ.
 - [ ] Xong: `make test-unit test-integration release-manifest-check` xanh.
 
 ## Nguồn
@@ -37,3 +39,4 @@ Lát này cho `platform.idempotency_keys` một bộ xóa, để khóa và body 
 
 - 2026-10-27 (agent): tách từ ticket 02 theo câu trả lời của Đạt cho Q2.
 - 2026-10-27 (agent): EXECUTE cho `dw_app` theo tiền lệ `platform.prune_notifications()`; thêm test đăng ký bộ xóa.
+- 2026-10-27 (agent): theo khuyến nghị Đạt nhận sau gate trên `940a88f`: thêm bộ xóa của `platform.effect_keys` (R2.25).
