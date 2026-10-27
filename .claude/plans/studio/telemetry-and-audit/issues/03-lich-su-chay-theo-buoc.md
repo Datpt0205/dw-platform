@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: 01, .claude/plans/studio/workflow-engine/issues/03-bien-dich-va-wrapper-nut.md, .claude/plans/studio/field-security/issues/01-mo-hinh-bao-mat-truong.md, .claude/plans/studio/usage-and-limits/issues/02-bang-gia-so-su-dung-va-man-hinh.md, .claude/plans/studio/usage-and-limits/issues/03-han-muc-giu-truoc-va-quyet-toan.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md
 Area: studio
-Yêu cầu: R1.6, R1.7, R1.8, R1.9, R1.10, R1.11, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R3.9, R3.10, R3.11, R3.12, R3.13, R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R4.7, R4.8, R4.9, R4.10, R4.11, R4.12, R4.13, R5.1, R5.2, R5.3, R5.4, R5.5, R5.7, R5.8, R5.12, R5.15, G1, TA4, TA5, TA6, TA10, TA11, TA12, TA13, TA14, TA15, TA16, TA19, TA20, TA23, TA24, TA25, TA26, TA30, TA31, TA32, TA33, TA34, TA36, TA37
+Yêu cầu: R1.6, R1.7, R1.8, R1.9, R1.10, R1.11, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R3.9, R3.10, R3.11, R3.12, R3.13, R3.14, R3.15, R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R4.7, R4.8, R4.9, R4.10, R4.11, R4.12, R4.13, R4.14, R5.1, R5.2, R5.3, R5.4, R5.5, R5.7, R5.8, R5.12, R5.15, G1, TA4, TA5, TA6, TA10, TA11, TA12, TA13, TA14, TA15, TA16, TA19, TA20, TA23, TA24, TA25, TA26, TA30, TA31, TA32, TA33, TA34, TA36, TA37, TA38
 
 ## Mục tiêu
 
@@ -56,7 +56,8 @@ timestamptz` (NULL ở dòng `waiting`), `duration_ms`, `error_type`, `input_pre
    checkpoint; dòng kết thúc của một Bước đã chờ lấy `started_at` của dòng `waiting` của cùng `step_key`) và
    chèn với `ON CONFLICT ON CONSTRAINT uq_run_steps_step_key DO NOTHING`, nên lần ghi lặp lại sau khi worker sập không
    thêm dòng (spec R3.1; TA32). Mỗi giá trị lá mang `field_id` mà bên gọi đưa khi nó biết; giá trị không có `field_id`, hay khi hàm quyết quyền
-   đọc trường lỗi, bị che như trường `Nhạy cảm` (spec R3.12; TA37). Khóa đối tượng tất định
+   đọc trường lỗi, bị che như trường `Nhạy cảm` (spec R3.12; TA37). Mã `error_type` hay `reason_code` không có trong catalog được ghi thành `unknown_error`, chuỗi gốc chỉ vào payload
+   đã che (spec R3.15; TA25). Khóa đối tượng tất định
    `.../run-steps/{run_id}/{sha256(step_key)}/{status}-{in|out}.json.gz`. Đường che `redact_mapping`
    bỏ trường bí mật và tham chiếu credential, che trường `Nhạy cảm` bằng hàm quyết quyền đọc trường của field-security,
    preview ≤ 4 KB, payload lớn gzip ở đường dẫn `tenants/{tenant_id}/workspaces/{workspace_id}/run-steps/`, ghi đường
@@ -67,7 +68,7 @@ timestamptz` (NULL ở dòng `waiting`), `duration_ms`, `error_type`, `input_pre
    nằm trong một Bước quy trình mang `lane_path` `[]`, `iteration_path` rỗng và `attempt` 1, còn Bước chạy con của một
    Bước quy trình mang `lane_path`, `iteration_path` và `attempt` của lần chạy Bước đó.
 5. Route (RLS và workspace theo độ sâu):
-   `GET /api/v1/runs?artifact_kind&artifact_id&status&trigger_kind&from&to&cursor&limit` (`runs.read`), phân trang
+   `GET /api/v1/runs?from&to&cursor&limit` (`runs.read`, khóa `workspace`; spec R4.1: bộ lọc khác là W2), phân trang
    keyset trên `ix_worker_runs_page` mà workflow-engine/02 dựng (H-20), không đổi cho người dựng (H-17);
    `GET /api/v1/runs/{run_id}/steps` (mỗi Bước chạy mang `status`, `lane_path`, `iteration_path`, `attempt`, `port`,
    `child_run_id`, `reason_code` cùng `reason_label`, `error_type` cùng `error_label`, spec R4.2, R4.6, và
@@ -78,12 +79,15 @@ timestamptz` (NULL ở dòng `waiting`), `duration_ms`, `error_type`, `input_pre
    (`runs.read`, hay nhánh người dựng bên dưới), `step_id` phải là Bước chạy của `run_id`, nếu không → 404 giống hệt id
    không tồn tại, không `run.payload.viewed` (spec R4.11); đọc được lượt mà thiếu `runs.read_payloads` tới workspace của
    lượt theo độ sâu → 403 (spec R4.3); che theo quyền đọc trường của người xem, audit `run.payload.viewed` trong cùng
-   giao dịch. Một lượt chạy chạm bản ghi người xem không thấy → 404.
+   giao dịch. Lúc đọc, hàm quyền đọc trường lỗi, `field_id` trỏ tới trường đã xóa hay `fls_version` lệch → `Đã ẩn`
+   tại giá trị đó (spec R3.14; TA5). Adapter ghi và adapter đọc là hai nơi duy nhất nêu tên cột payload, với một test
+   kiến trúc (spec R4.14; TA38); kết quả thử của người dựng, bằng chứng cổng kiểm định và bản xuất offboarding đọc
+   qua phương thức payload của adapter đọc.
    Đường đọc của người dựng (spec R4.4, R4.5; V4.41): `GET .../steps` và `GET /api/v1/runs/{run_id}`
    (`apps/api/src/dw_api/routes/v1/runs.py:41-64`) trả lượt khi người gọi giữ `runs.read` tới workspace của lượt, hay
    khi lượt có `run_mode` `simulate`, `requested_by` là người gọi và người gọi giữ `studio.workflows.test` tới workspace
-   đó theo độ sâu; `result` và `error` của chi tiết lượt chỉ có khi người gọi giữ `runs.read_payloads` tới workspace của
-   lượt, qua cùng hàm che của R3.3 và với một `run.payload.viewed` trong cùng giao dịch, và vắng với mọi người gọi khác,
+   đó theo độ sâu; `result` và `error` của chi tiết lượt chỉ có khi người gọi gửi `?include=payload` và giữ `runs.read_payloads` tới
+   workspace của lượt, che theo spec R3.3, R3.12 và R3.14, qua cùng hàm che của R3.3 và với một `run.payload.viewed` trong cùng giao dịch, và vắng với mọi người gọi khác,
    ở cả nhánh `runs.read` lẫn nhánh người dựng (spec R4.12; TA33; hôm nay route trả hai trường dưới `runs.read`,
    `apps/api/src/dw_api/routes/v1/runs.py:62-63`); mọi ca khác → 404 giống hệt id không tồn tại, kể cả người gọi không giữ khóa nào (thay 403 của hôm nay,
    nên `test_reading_a_run_needs_runs_read` đổi sang 404 và vẫn khẳng định không đọc lượt nào), và lượt của công ty khác
@@ -94,7 +98,7 @@ timestamptz` (NULL ở dòng `waiting`), `duration_ms`, `error_type`, `input_pre
    `result` và `error` không mất chúng ngày triển khai (spec, mục Trong phạm vi). Khóa `studio.workflows.test` do workflow-engine/01 đăng ký cùng các khóa của loại `workflow`
    (workflow-engine:R1.5; H-19); ticket này đã chờ ticket đó qua workflow-engine/03.
 6. Màn `/runs` (antd Table: thời điểm, agent hoặc quy trình, trạng thái, nguồn kích hoạt, thời lượng, chi
-   phí, bộ lọc) và `/runs/[id]` (spec R4.7, R4.8, R4.9; V4.36): antd `Tree` cho các Bước chạy theo `lane_path`, mỗi lần
+   phí, bộ lọc khoảng thời gian) và `/runs/[id]` (spec R4.7, R4.8, R4.9; V4.36): antd `Tree` cho các Bước chạy theo `lane_path`, mỗi lần
    lặp và mỗi lần thử một nút con, mỗi nút hiện trạng thái của dòng mới nhất của (`kind`, `node_id`, `iteration_path`,
    `attempt`), tên Nhánh ra khi có `port` và liên kết tới `/runs/[child_run_id]` khi có lượt con; Bước có dòng mới nhất
    `waiting` của một lượt chưa kết thúc mang tag "Đang chờ ở đây" kèm `reason_label`; Bước còn `waiting` với
@@ -106,7 +110,8 @@ timestamptz` (NULL ở dòng `waiting`), `duration_ms`, `error_type`, `input_pre
    số ghi UNVERIFIED tới khi luật sư xác nhận trước chạy bóng (DO-52); mảnh của bảng mà spec khác tạo do ticket tạo bảng
    thêm, ticket này không khai lại. Ticket này thêm vào `configs/policies/retention.d/`:
    `platform.run_steps.yaml` (30 ngày, `row_delete`): revision của bước 1 thêm `platform.purge_expired_run_steps()`,
-   SECURITY DEFINER, không đối số, `search_path` cố định, REVOKE ALL FROM PUBLIC và EXECUTE chỉ cho vai của worker, đọc
+   SECURITY DEFINER, không đối số, `search_path` cố định, REVOKE ALL FROM PUBLIC và EXECUTE chỉ cho `dw_app`, cùng
+   luật cho hàm xóa trắng `output`, đọc
    hạn qua `platform.retention_term_days('platform.run_steps')` của ticket 01, DELETE mọi Bước chạy có `started_at` quá
    hạn của lượt đã kết thúc, bỏ qua và đếm lượt chưa kết thúc (spec R5.3, R5.4), trả `tenant_id`, `input_ref` và
    `result_ref` của mỗi dòng đã xóa, lane ghi `retention.purged` theo công ty trong cùng giao dịch với lời gọi hàm, rồi DROP mỗi partition tháng nằm trọn sau hạn mà không còn dòng nào;
@@ -198,6 +203,12 @@ timestamptz` (NULL ở dòng `waiting`), `duration_ms`, `error_type`, `input_pre
 - [ ] R3.13 (TA36): `dw_app` gắn công ty A chèn Bước chạy có `input_ref` dưới `tenants/<B>/...` hay dưới workspace khác
       của A → CHECK từ chối; ref đúng tiền tố → nhận; ghi lặp lại cùng `step_key` → cùng một khóa đối tượng; gỡ CHECK →
       ca công ty B qua, test đỏ.
+- [ ] R3.14 (TA5): hàm quyền đọc trường giả báo lỗi, `field_id` trỏ tới trường đã xóa, hay `fls_version` lệch →
+      `Đã ẩn` tại giá trị đó; trả giá trị khi hàm lỗi → test đỏ.
+- [ ] R3.15 (TA25): bên gọi đưa `error_type` `ECONNRESET at 0912345678` → cột, span và nhãn metric mang
+      `unknown_error`, chuỗi gốc chỉ ở payload đã che; ghi nguyên chuỗi → test đỏ.
+- [ ] R4.14 (TA38): một module ngoài hai adapter chọn `result_preview` → test kiến trúc đỏ, nêu tệp; gỡ test → test đỏ
+      ở ca kiểm của chính nó.
 - [ ] R3.11 (TA31): Bước chạy `model_call` của một lời gọi có thông điệp mang số điện thoại → preview, ref và đối tượng
       không chứa thông điệp hay đầu ra, chỉ định danh, tên model và token; bên ghi chép thông điệp vào preview → test
       đỏ.
@@ -207,7 +218,8 @@ timestamptz` (NULL ở dòng `waiting`), `duration_ms`, `error_type`, `input_pre
 - [ ] R3.4: payload 4 KB giữ trong dòng; 4 KB cộng một byte → lưu theo tham chiếu, dòng giữ `input_ref`.
 - [ ] R3.5 (TA10): mở payload → đúng một sự kiện `run.payload.viewed`; gỡ ghi audit → test đỏ.
 - [ ] R3.6 (TA4): `GET /api/v1/runs/{run_id}/steps` của lượt chạy công ty B từ A → 404; danh sách
-      `GET /api/v1/runs` không có lượt chạy công ty khác.
+      `GET /api/v1/runs` không có lượt chạy công ty khác; người giữ `runs.read` ở W1 gọi danh sách, chi tiết và
+      `.../steps` của lượt ở W2 cùng công ty → không có trong danh sách, hai route kia 404; bỏ lọc workspace → test đỏ.
 - [ ] R3.7 (TA20): hai lần chạy cùng một Bước ở hai lần lặp, ghi qua `StepRecorderPort` với giá trị mà bên gọi đưa như
       wrapper đưa → hai Bước chạy có `iteration_path` khác nhau, bằng đúng giá trị trong hai khóa chống lặp
       `wf:{run_id}:{node_id}:{iteration_path}` mà bên gọi dựng; một Bước ở làn `rejected` của một Bước phê duyệt →
@@ -238,7 +250,8 @@ timestamptz` (NULL ở dòng `waiting`), `duration_ms`, `error_type`, `input_pre
 - [ ] R4.13 (TA33): người chỉ giữ `runs.read` gọi `GET /api/v1/runs` và `.../steps` → không dòng nào mang preview,
       ref, `redaction_log`, `result` hay `error`; trả preview trên `.../steps` → test đỏ.
 - [ ] R4.12 (TA33): người giữ `runs.read` mà thiếu `runs.read_payloads` gọi `GET /api/v1/runs/{run_id}` → không
-      `result`, `error`, không `run.payload.viewed`; giữ khóa → có hai trường, giá trị `phone` không được đọc là `Đã ẩn`,
+      `result`, `error`, không `run.payload.viewed`; giữ khóa mà không gửi `?include=payload` → như trên; giữ khóa và
+      gửi `?include=payload` → có hai trường, giá trị không có `field_id` là `Đã ẩn`, giá trị `phone` không được đọc là `Đã ẩn`,
       đúng một `run.payload.viewed`; trả `result` bất kể khóa → test đỏ.
 - [ ] R4.4 (TA26): người chỉ giữ `studio.workflows.test` tới workspace của lượt gọi `GET .../steps` và
       `GET /api/v1/runs/{run_id}` cho lượt `simulate` mình xin → 200, không `result`, `error`; cùng người giữ thêm
@@ -395,3 +408,7 @@ timestamptz` (NULL ở dòng `waiting`), `duration_ms`, `error_type`, `input_pre
   `field_id` bị che (R3.12), CHECK tiền tố ref và khóa đối tượng tất định (R3.13), danh sách không mang payload (R4.13),
   `redaction_log` không DEFAULT, `started_at` từ checkpoint, audit trong giao dịch của hàm xóa, R5.3 chỉ giữ dòng lượt
   chạy mà memory trỏ tới, cấp `runs.read_payloads` cho vai đang giữ `runs.read`.
+- 2026-10-27 (agent): theo phương án A của Đạt cho lượt gate cuối trên `e6135bd`: `runs.read` là khóa `workspace` với
+  ca âm W1 → W2 (TA4), R3.6 bỏ vế "chạm tới bản ghi", danh sách chỉ lọc theo thời gian, che lúc đọc đóng khi lỗi (R3.14),
+  mã ngoài catalog thành `unknown_error` (R3.15), cột payload chỉ hai adapter nêu tên (R4.14), `?include=payload` cho
+  `result` và `error`, EXECUTE của hàm xóa chỉ cho `dw_app`.
