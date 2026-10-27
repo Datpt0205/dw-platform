@@ -73,6 +73,8 @@ jobs:
         run: uv run python scripts/verify_invariants.py
       - name: Planning documents (advisory until the existing plans are clean)
         run: uv run python scripts/check_plans.py --advisory
+      - name: ADR numbers are unique (blocking)
+        run: uv run python scripts/check_plans.py --check adr
       - name: Planning checker against planted defects
         run: bash scripts/test_check_plans.sh
       - name: Coding-agent harness hooks (commit gate, session baseline)
@@ -81,6 +83,7 @@ jobs:
         run: |
           uv run lint-imports
           uv run python scripts/verify_architecture.py
+          bash scripts/test_verify_architecture.sh
       - name: Migration chain is linear (single alembic head, no reused ids)
         # Two PRs numbering migrations in parallel -> two heads -> the migrate
         # one-shot dies on the server. Catch it at PR time instead.

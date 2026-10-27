@@ -744,6 +744,20 @@ only "a ticket table copying a ticket's Status" ticket-list "$d"
 d=$(fixture); cp "$d/docs/adr/0100-filter-by-workspace.md" "$d/docs/adr/0100-another-decision.md"
 only "two ADRs with one number" adr "$d"
 
+# R10.1: `--check adr` runs that rule alone and blocks, and CI runs it so.
+d=$(fixture); cp "$d/docs/adr/0100-filter-by-workspace.md" "$d/docs/adr/0100-another-decision.md"
+check "two ADRs with one number under --check adr: exits 1" 1 "$(plans "$d" --check adr)"
+check "two ADRs with one number under --check adr: reported by [adr]" yes "$(reported adr)"
+both=no
+grep -qF "0100-filter-by-workspace.md" "$work/out" && grep -qF "0100-another-decision.md" "$work/out" && both=yes
+check "two ADRs with one number under --check adr: names both files" yes "$both"
+check "--check adr runs no other rule" 1 "$(grep -cE '^(Đạt|Không đạt|Không áp dụng|Chưa kiểm) ' "$work/out")"
+check "--check adr on the clean tree: exits 0" 0 "$(plans "$clean" --check adr)"
+
+blocking=no
+grep -qE '^\s+run: uv run python scripts/check_plans\.py --check adr\s*$' "$here/.github/workflows/ci.yml" && blocking=yes
+check "CI runs check_plans.py --check adr as its own blocking step" yes "$blocking"
+
 d=$(fixture); edit "$d/docs/adr/0100-filter-by-workspace.md" "status: Proposed" "status: Maybe"
 red "an ADR status outside domain.md" adr "$d"
 

@@ -245,6 +245,7 @@ root_packages = [
     "dw_observability",
     "dw_evals",
     "dw_api",
+    "dw_docgen",
     "dw_worker",
 ]
 

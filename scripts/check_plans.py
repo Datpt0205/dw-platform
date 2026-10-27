@@ -25,7 +25,7 @@ a check that matches nothing looks exactly like a check that found nothing
 run says so instead of passing (`Chua kiem` never counts as a pass).
 
 Usage:
-    python scripts/check_plans.py [--area AREA | --path DIR] [--advisory]
+    python scripts/check_plans.py [--area AREA | --path DIR] [--advisory] [--check ID]
     python scripts/check_plans.py --table .claude/plans/<area>/<feature>/spec.md
 
 Exit 0 clean or --advisory, 1 when an enforcing check failed or did not run,
@@ -2035,11 +2035,13 @@ def build_model(repo: Path, owners: Owners, scope: list[str], hygiene: Path | No
     return Model(repo, owners, [parse_doc(repo, path) for path in paths], scope, hygiene)
 
 
-def run(model: Model, advisory: bool) -> int:
+def run(model: Model, advisory: bool, only: str | None = None) -> int:
     tally = {OK: 0, FAIL: 0, NA: 0, NOT_RUN: 0}
     failed = False
     warnings = 0
     for check_id, warn, kinds, runner in CHECKS:
+        if only is not None and check_id != only:
+            continue
         outcome = Outcome(check_id)
         try:
             runner(model, outcome)
@@ -2098,6 +2100,11 @@ def main(argv: list[str] | None = None) -> int:
     where.add_argument("--path", type=Path, help="check one folder or file under .claude/plans/")
     where.add_argument("--table", type=Path, help="print the live ticket table of one spec")
     parser.add_argument("--advisory", action="store_true", help="report, but exit 0")
+    # One rule on its own, enforcing while the whole set is still advisory in
+    # CI: `adr` is the first (studio-skeleton R10.1, two ADRs with one number).
+    parser.add_argument(
+        "--check", choices=[check_id for check_id, *_ in CHECKS], help="run only this check"
+    )
     parser.add_argument(
         "--owners", type=Path, default=SCRIPT_ROOT, help="root holding the owner files"
     )
@@ -2144,7 +2151,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.table is not None:
         return print_table(model, target or args.table)
     print(f"check_plans: {', '.join(scope)} (repo {repo}; owner files {owners_root})")
-    return run(model, args.advisory)
+    return run(model, args.advisory, args.check)
 
 
 if __name__ == "__main__":

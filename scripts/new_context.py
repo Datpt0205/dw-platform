@@ -22,8 +22,10 @@ of them are configuration:
     apps/api/pyproject.toml               declare the dependency
     apps/worker/.../main.py               register the consumer
     scripts/run_evals.py                  register the context's eval graders
+    pyproject.toml                        the domain contract's source_modules
     infra/docker/api.Dockerfile           two COPY lines
     infra/docker/worker.Dockerfile        two COPY lines
+    infra/docker/docgen.Dockerfile        the manifest COPY line
     scripts/verify_architecture.py        IMPORT_TO_DIST
 
 `CLAUDE.md` has listed these for as long as the repo has existed and nobody had
@@ -471,7 +473,28 @@ forbidden_modules = ["dw_api", "dw_worker", "dw_docgen"]
 """
     text = text[:after_block] + contract + text[after_block:]
     text = _guard_contexts(text, ctx)
+    text = _join_domain_contract(text, ctx)
     _write(path, text)
+
+
+# Every `domain` package is a source of this contract, or a framework import in
+# it goes unseen; `verify_architecture.py` reds a domain left out (R1.2).
+_DOMAIN_CONTRACT = "Domain layers never import frameworks or providers"
+
+
+def _join_domain_contract(text: str, ctx: Context) -> str:
+    span = _contract_span(text, _DOMAIN_CONTRACT)
+    if span is None:
+        raise ScaffoldError(f"import-linter {_DOMAIN_CONTRACT!r}: contract not found")
+    block = text[span[0] : span[1]]
+    sources = re.search(r"^source_modules = \[(.*)\]$", block, re.MULTILINE)
+    if sources is None:
+        raise ScaffoldError(f"import-linter {_DOMAIN_CONTRACT!r}: one-line source_modules expected")
+    entry = f'"{ctx.package}.domain"'
+    if entry in sources.group(1):
+        raise ScaffoldError(f"import-linter {_DOMAIN_CONTRACT!r}: {entry} already listed")
+    block = f"{block[: sources.end(1)]}, {entry}{block[sources.end(1) :]}"
+    return text[: span[0]] + block + text[span[1] :]
 
 
 # The contract whose `forbidden_modules` is the list of every context. It is the
@@ -710,7 +733,10 @@ def _patch_verify_architecture(ctx: Context) -> None:
 
 
 def _patch_dockerfiles(ctx: Context) -> None:
-    for name in ("api.Dockerfile", "worker.Dockerfile"):
+    # docgen too: it copies no package source, but `uv sync --frozen` resolves
+    # the whole workspace, so a member whose manifest is absent breaks its build
+    # (`verify_architecture.py` checks all three, studio-skeleton R1.4).
+    for name in ("api.Dockerfile", "worker.Dockerfile", "docgen.Dockerfile"):
         path = REPO_ROOT / "infra" / "docker" / name
         text = _read(path)
         anchor = (
