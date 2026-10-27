@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: 01, 02
 Area: studio
-Yêu cầu: R2.1, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R3.9, R3.10, R3.11, R3.12, R3.13, R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R5.8, R5.9, R5.10, R5.11, R5.12, R6.1, R6.2, G7, G8, APS7, APS8, APS9, APS10, APS16, APS18, APS22, APS25, APS36
+Yêu cầu: R2.1, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R3.9, R3.10, R3.11, R3.12, R3.13, R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R5.8, R5.9, R5.10, R5.11, R5.12, R5.13, R6.1, R6.2, G7, G8, APS7, APS8, APS9, APS10, APS16, APS18, APS22, APS25, APS36, APS40
 
 ## Mục tiêu
 
@@ -53,6 +53,7 @@ Lát này cho mọi route danh sách và route sửa một quy ước chung: ETa
 - [ ] R5.8: lá `{"a": {"$eq": 1}, "b": {"$eq": 2}}`, lá `{"age": {"$gt": 1, "$lt": 5}}`, `{"$and": []}` và giá trị chuỗi cho một trường `int` đều trả 422 với `errors[0].code` `filter_malformed` và pointer tới nút đó, không câu SQL nào chạy.
 - [ ] R5.10 (APS25): lá mang `x'); DROP TABLE t; --`, `order_by=name desc, (select 1)` và `fields=id,pg_sleep(1)` trả 422 hay một trang đúng, và mọi câu SQL bắt bằng `before_cursor_execute` không chứa chuỗi đã gửi; nối một giá trị hay một tên vào câu SQL thì test đỏ.
 - [ ] R5.11: `order_by=name sideways` trả 422 với `errors[0].parameter` `order_by` và `errors[0].code` `order_by_malformed`; `fields=name,,id` trả 422 với `errors[0].parameter` `fields` và `errors[0].code` `fields_malformed`; không câu SQL nào chạy.
+- [ ] R5.13 (APS40): gọi thẳng `dw_kernel.filters` với cây sâu 6, lá mang `x'); DROP TABLE t; --` và `order_by` sai ngữ pháp cho cùng mã lý do như qua route, và câu SQL không chứa chuỗi đã gửi; cho trình biên dịch nhận cây chưa qua trình phân tích thì test đỏ.
 - [ ] R5.12 (APS36): `GET` một route danh sách với `filter` mang `SECRET-123` và một `cursor`: access log và span của yêu cầu không chứa `SECRET-123` hay giá trị con trỏ, mà vẫn nêu tên `filter` và `cursor`; ghi query nguyên văn thì test đỏ.
 - [ ] R5.9: `order_by=name desc, created_at` trả 422 với `errors[0].parameter` `order_by` và `errors[0].code` `order_by_too_many_fields`, không câu SQL nào chạy.
 - [ ] R6.1 (APS10): gỡ index trang feedback trong giao dịch test làm kiểm hình kế hoạch đỏ, nêu câu lệnh và cột; bảng nhỏ không qua mặt nhờ `enable_seqscan = off`.
@@ -82,3 +83,4 @@ Lát này cho mọi route danh sách và route sửa một quy ước chung: ETa
 - 2026-10-27 (agent): theo năm khuyến nghị Đạt nhận sau gate trên `25e81be`: `If-Match` nhiều ETag trả 428 (R3.8), tham số bind và tên cột từ lược đồ (R5.10, APS25), ngữ pháp `order_by` và `fields` (R5.11).
 - 2026-10-27 (agent): theo năm khuyến nghị Đạt nhận sau gate trên `940a88f`: R3.4 chỉ áp cho tài nguyên không phải bản ghi Studio; R3.14 và APS28 thuộc custom-objects (Ngoài phạm vi của spec).
 - 2026-10-27 (agent): theo khuyến nghị Đạt nhận sau gate trên `6785b1b`: giá trị `filter` và `cursor` không vào access log hay span (R5.12, APS36).
+- 2026-10-27 (agent): theo đường (2) Đạt chọn sau gate trên `c6e4b2c`: giới hạn cây lọc là tính chất của `dw_kernel.filters` cho mọi người gọi (R5.13, APS40).
