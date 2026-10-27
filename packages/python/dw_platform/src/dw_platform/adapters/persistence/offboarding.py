@@ -36,14 +36,22 @@ separately, calling `export_rows`/`purge_rows` here for the Postgres half.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-__all__ = ["ExportedTable", "SqlTenantOffboarding"]
+__all__ = [
+    "EXPORT_EXCLUSIONS",
+    "STUDIO_EXCLUSIONS",
+    "ExportedTable",
+    "OffboardingExclusion",
+    "SqlTenantOffboarding",
+]
 
 _SET_TENANT = text("SELECT set_config('app.tenant_id', :tenant_id, true)")
 # Every workspace of the one tenant, for this transaction only (`true`): a pooled
@@ -117,6 +125,44 @@ _ORDERED_FIRST: tuple[tuple[str, str], ...] = (
 # pass is not a table this pass owns clearing.
 _NEVER_PURGE = frozenset({("platform", "tenant_offboarding_requests")})
 
+
+@dataclass(frozen=True)
+class OffboardingExclusion:
+    """How a tenant table this class does not DELETE from loses its rows, or why
+    it keeps them: exactly one of the three, each checked against the running
+    catalog by `test_offboarding_coverage.py` (studio-skeleton R4.4).
+
+    - `cascade_from`: the `schema.table` it cascades from, which this class deletes;
+    - `function`: the `schema.fn` step that deletes it;
+    - `kept`: its own `schema.table` key in the retention fragments, with a term
+      that is enforced.
+    """
+
+    reason: str
+    cascade_from: str | None = None
+    function: str | None = None
+    kept: str | None = None
+
+    def __post_init__(self) -> None:
+        ways = [way for way in (self.cascade_from, self.function, self.kept) if way]
+        if len(ways) != 1:
+            raise ValueError("an exclusion names exactly one of cascade_from, function, kept")
+        if not self.reason.strip():
+            raise ValueError("an exclusion carries a reason")
+
+
+# Tables of `studio`, and tenant tables of `platform` added after studio-skeleton
+# ticket 01, that `purge_rows` does not delete from, keyed `schema.table`. This
+# class does not read either mapping; the coverage test does, and fails a tenant
+# table that is neither purged nor listed, a row the catalog does not confirm,
+# and a row for a table that is gone or now handled (R4.1, R4.3-R4.5).
+STUDIO_EXCLUSIONS: Mapping[str, OffboardingExclusion] = MappingProxyType({})
+
+# Tenant tables `export_rows` does not export, with why the bundle goes without
+# them: apart from STUDIO_EXCLUSIONS, because being deleted another way says
+# nothing about being handed back to the customer first (R4.1).
+EXPORT_EXCLUSIONS: Mapping[str, str] = MappingProxyType({})
+
 # A real schema/table identifier from Postgres's own catalog never needs
 # quoting and never contains anything this does not match. Checked, not
 # assumed: the alternative is string-formatting a table name from a query
@@ -180,14 +226,27 @@ class SqlTenantOffboarding:
                 )
         return exported
 
+    async def purge_order(self, session: AsyncSession) -> tuple[str, ...]:
+        """The order `purge_rows` deletes in, as `schema.name` steps.
+
+        The one answer to that question: `purge_rows` walks it and
+        `test_offboarding_coverage.py` reads it to check every RESTRICT and NO
+        ACTION edge the running catalog declares (studio-skeleton R4.2). A step
+        is a table today; when foundations-hardening/07 moves the steps into a
+        registry at the worker's composition root, a step may name a function,
+        and this keeps its shape.
+        """
+        tables = await self._purgeable_tables(session)
+        ordered_first = [t for t in _ORDERED_FIRST if t in tables]
+        rest = [t for t in tables if t not in _ORDERED_FIRST]
+        return tuple(f"{schema}.{table}" for schema, table in [*ordered_first, *rest])
+
     async def purge_rows(self, tenant_id: UUID) -> None:
         async with self.session_factory() as session, session.begin():
             await session.execute(_SET_TENANT_ALL_WORKSPACES, {"tenant_id": str(tenant_id)})
             await self._record_purge_audit(session, tenant_id)
-            tables = await self._purgeable_tables(session)
-            ordered_first = [t for t in _ORDERED_FIRST if t in tables]
-            rest = [t for t in tables if t not in _ORDERED_FIRST]
-            for schema, table in [*ordered_first, *rest]:
+            for step in await self.purge_order(session):
+                schema, table = step.split(".", 1)
                 await session.execute(
                     text(f"DELETE FROM {_quoted(schema, table)} WHERE tenant_id = :t"),  # nosec B608
                     {"t": str(tenant_id)},

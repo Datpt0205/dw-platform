@@ -20,9 +20,10 @@ from collections.abc import AsyncIterator
 
 import pytest
 import sqlalchemy as sa
-from pg_harness import DatabaseUrls
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from pg_harness import DatabaseUrls, admin_url
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 from sqlalchemy.pool import NullPool
+from studio_catalog import registry_violations, studio_schema_violations
 from test_rls_coverage import tenant_schemas
 
 pytestmark = pytest.mark.integration
@@ -494,3 +495,220 @@ async def test_support_access_privileges(db_urls: DatabaseUrls) -> None:
                 assert not await table("dw_provisioner", "audit_events", verb), verb
     finally:
         await migrator.dispose()
+
+
+# ---------------------------------------------------------------------------
+# The studio schema (studio-skeleton R2): SELECT by default, writes per table,
+# and nobody but its owner and dw_app reaches it.
+# ---------------------------------------------------------------------------
+
+# SECURITY DEFINER functions in `studio`, each with why it must run as its
+# owner. Empty until a Studio table needs one (R2.10); the test fails a definer
+# that is not here and a name here that no longer exists.
+_STUDIO_DEFINERS: dict[str, str] = {}
+
+
+async def test_a_studio_table_is_readable_and_not_writable_by_default(
+    app_engine: AsyncEngine, db_urls: DatabaseUrls
+) -> None:
+    """R2.1, R2.2: the schema's default privileges are SELECT and nothing else,
+    so a Studio table whose migration forgot its writes fails on the first write
+    instead of being open to every write the application can make (ADR 0100
+    point 4). Created by the migrator, as every Studio table will be."""
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.begin() as conn:
+            await conn.execute(
+                sa.text("CREATE TABLE studio.grant_probe (id uuid PRIMARY KEY, name text)")
+            )
+        try:
+            async with app_engine.connect() as conn:
+                await conn.execute(sa.text("SELECT count(*) FROM studio.grant_probe"))
+                await conn.rollback()
+                for statement in (
+                    "INSERT INTO studio.grant_probe (id) VALUES (gen_random_uuid())",
+                    "UPDATE studio.grant_probe SET name = 'x'",
+                    "DELETE FROM studio.grant_probe",
+                ):
+                    with pytest.raises(Exception, match="permission denied"):
+                        await conn.execute(sa.text(statement))
+                    await conn.rollback()
+        finally:
+            async with migrator.begin() as conn:
+                await conn.execute(sa.text("DROP TABLE studio.grant_probe"))
+    finally:
+        await migrator.dispose()
+
+
+async def test_the_studio_schema_holds_nothing_it_should_not(db_urls: DatabaseUrls) -> None:
+    """R2.3-R2.5, R2.7, R2.9, R2.10 on the migrated checkout."""
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            assert await studio_schema_violations(conn, _STUDIO_DEFINERS) == []
+    finally:
+        await migrator.dispose()
+
+
+async def test_only_its_owner_may_write_the_partition_registry(db_urls: DatabaseUrls) -> None:
+    """R3.5: the registry is the input of a SECURITY DEFINER function, so a role
+    that could write it could choose the tables that function runs DDL on."""
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            assert [v for v in await registry_violations(conn) if v.startswith("R3.5")] == []
+    finally:
+        await migrator.dispose()
+    app = create_async_engine(db_urls.app, poolclass=NullPool)
+    try:
+        async with app.connect() as conn:
+            with pytest.raises(Exception, match="permission denied"):
+                await conn.execute(
+                    sa.text(
+                        "INSERT INTO platform.time_partitioned_tables"
+                        " VALUES ('studio', 'x', false, 'probe')"
+                    )
+                )
+    finally:
+        await app.dispose()
+
+
+# A probe table owned by the migrator, so the schema's default privileges apply
+# exactly as they will to a real Studio table.
+_PROBE = (
+    "SET LOCAL ROLE dw_migrator",
+    "CREATE TABLE studio.grant_probe (id uuid PRIMARY KEY, tenant_id uuid, name text)",
+    "RESET ROLE",
+)
+
+# One planted defect each, with the line the check must print for it.
+_PLANTED: dict[str, tuple[tuple[str, ...], str]] = {
+    "a table granted to dw_provisioner": (
+        ("GRANT SELECT ON studio.grant_probe TO dw_provisioner",),
+        "R2.3 dw_provisioner reaches grant_probe",
+    ),
+    "a table granted to dw_admin": (
+        ("GRANT SELECT ON studio.grant_probe TO dw_admin",),
+        "R2.3 grant_probe: dw_admin holds SELECT",
+    ),
+    "a column granted to dw_agent_ro": (
+        ("GRANT SELECT (tenant_id) ON studio.grant_probe TO dw_agent_ro",),
+        "R2.3 dw_agent_ro reaches grant_probe",
+    ),
+    "dw_agent_ro made a member of dw_app": (
+        ("GRANT dw_app TO dw_agent_ro",),
+        "R2.3 dw_agent_ro is a member of dw_app",
+    ),
+    "dw_agent_ro made a member of the owner": (
+        ("GRANT dw_migrator TO dw_agent_ro",),
+        "R2.3 dw_agent_ro is a member of dw_migrator",
+    ),
+    "dw_agent_ro made a member of pg_read_all_data": (
+        ("GRANT pg_read_all_data TO dw_agent_ro",),
+        "R2.3 dw_agent_ro is a member of pg_read_all_data",
+    ),
+    "dw_agent_ro made a member of pg_write_all_data": (
+        ("GRANT pg_write_all_data TO dw_agent_ro",),
+        "R2.3 dw_agent_ro is a member of pg_write_all_data",
+    ),
+    "a function left executable by PUBLIC": (
+        ("CREATE FUNCTION studio.probe_fn() RETURNS int LANGUAGE sql AS 'SELECT 1'",),
+        "R2.4 probe_fn: PUBLIC holds EXECUTE",
+    ),
+    "a sequence": (("CREATE SEQUENCE studio.probe_seq",), "R2.5 sequence probe_seq"),
+    "an identity column": (
+        ("CREATE TABLE studio.identity_probe (id int GENERATED ALWAYS AS IDENTITY)",),
+        "R2.5 identity column identity_probe.id",
+    ),
+    "TRUNCATE for dw_app": (
+        ("GRANT TRUNCATE ON studio.grant_probe TO dw_app",),
+        "R2.7 dw_app holds TRUNCATE on grant_probe",
+    ),
+    "CREATE on the schema for dw_app": (
+        ("GRANT CREATE ON SCHEMA studio TO dw_app",),
+        "R2.7 dw_app holds CREATE on schema studio",
+    ),
+    "a table-wide UPDATE for dw_app": (
+        ("GRANT UPDATE ON studio.grant_probe TO dw_app",),
+        "R2.7 dw_app holds UPDATE on grant_probe",
+    ),
+    "UPDATE of tenant_id for dw_app": (
+        ("GRANT UPDATE (tenant_id) ON studio.grant_probe TO dw_app",),
+        "R2.7 dw_app holds UPDATE on grant_probe.tenant_id",
+    ),
+    "a view that runs as its owner": (
+        ("CREATE VIEW studio.probe_view AS SELECT id FROM studio.grant_probe",),
+        "R2.9 view probe_view",
+    ),
+    "a materialized view": (
+        ("CREATE MATERIALIZED VIEW studio.probe_mv AS SELECT 1 AS one",),
+        "R2.9 materialized view probe_mv",
+    ),
+    "a definer with no search_path": (
+        (
+            "CREATE FUNCTION studio.probe_definer() RETURNS int LANGUAGE sql"
+            " SECURITY DEFINER AS 'SELECT 1'",
+            "REVOKE ALL ON FUNCTION studio.probe_definer() FROM PUBLIC",
+        ),
+        "R2.10 definer probe_definer pins no search_path",
+    ),
+    "an unlisted definer": (
+        (
+            "CREATE FUNCTION studio.probe_definer() RETURNS int LANGUAGE sql"
+            " SECURITY DEFINER SET search_path = pg_catalog AS 'SELECT 1'",
+            "REVOKE ALL ON FUNCTION studio.probe_definer() FROM PUBLIC",
+        ),
+        "R2.10 definer probe_definer is not listed",
+    ),
+}
+
+
+async def _studio_violations_after(conn: AsyncConnection, statements: tuple[str, ...]) -> list[str]:
+    for statement in (*_PROBE, *statements):
+        await conn.execute(sa.text(statement))
+    return await studio_schema_violations(conn, _STUDIO_DEFINERS)
+
+
+@pytest.mark.parametrize("case", sorted(_PLANTED))
+async def test_each_planted_studio_defect_is_named(db_urls: DatabaseUrls, case: str) -> None:
+    """The check above can fail: every defect planted in a rolled-back
+    transaction is named, by requirement and object."""
+    statements, expected = _PLANTED[case]
+    admin = create_async_engine(admin_url(db_urls), poolclass=NullPool)
+    try:
+        async with admin.connect() as conn:
+            found = await _studio_violations_after(conn, statements)
+            await conn.rollback()
+    finally:
+        await admin.dispose()
+    assert expected in found, found
+
+
+async def test_a_column_update_on_a_plain_column_is_allowed(db_urls: DatabaseUrls) -> None:
+    """R2.7 forbids the identity columns and table-wide UPDATE, not the
+    column-level writes ADR 0100 point 4 asks Studio tables to grant."""
+    admin = create_async_engine(admin_url(db_urls), poolclass=NullPool)
+    try:
+        async with admin.connect() as conn:
+            found = await _studio_violations_after(
+                conn, ("GRANT UPDATE (name) ON studio.grant_probe TO dw_app",)
+            )
+            await conn.rollback()
+    finally:
+        await admin.dispose()
+    assert found == [], found
+
+
+@pytest.mark.parametrize("role", ["dw_app", "dw_provisioner"])
+async def test_a_write_grant_on_the_registry_is_named(db_urls: DatabaseUrls, role: str) -> None:
+    admin = create_async_engine(admin_url(db_urls), poolclass=NullPool)
+    try:
+        async with admin.connect() as conn:
+            await conn.execute(
+                sa.text(f"GRANT INSERT ON platform.time_partitioned_tables TO {role}")
+            )
+            found = await registry_violations(conn)
+            await conn.rollback()
+    finally:
+        await admin.dispose()
+    assert any(v.startswith("R3.5") and role in v for v in found), found

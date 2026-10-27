@@ -19,8 +19,9 @@ rows then blocks the month's partition from ever being created.
 on a table `dw_app` does not own, and `dw_app` deliberately has no BYPASSRLS.
 Migration `06d9e1a67d40` installs two SECURITY DEFINER functions owned by the
 migrator, with a fixed `search_path`, EXECUTE revoked from PUBLIC, and no
-argument that names a table — the parents are a constant in the body. All this
-module supplies is a bounded integer and two cutoffs.
+argument that names a table. The parents come from
+`platform.time_partitioned_tables`, which only migrations write (`a77c5408a1f4`,
+ADR 0100 point 7). All this module supplies is a bounded integer and a cutoff.
 
 **Creating and dropping are separate transactions.** Creating is safe and
 always worth doing; dropping destroys a month. A drop that fails must not take
@@ -41,7 +42,7 @@ from dw_platform.retention_policy import RetentionPolicy
 
 logger = logging.getLogger("dw_platform.partitions")
 
-__all__ = ["SqlPartitionMaintenance"]
+__all__ = ["RetentionTerm", "SqlPartitionMaintenance", "retention_term"]
 
 _ENSURE = sa.text("SELECT platform.ensure_time_partitions(:months_ahead)")
 _DROP = sa.text("SELECT platform.drop_expired_partitions(:audit_cutoff)")
@@ -49,6 +50,33 @@ _DROP = sa.text("SELECT platform.drop_expired_partitions(:audit_cutoff)")
 # The one table this build partitions. A name the policy file carries that is
 # not this one is not a table this build may be told to drop months from.
 _AUDIT = "audit_events"
+
+# Registry key (`schema.table`) -> the table's name under `audit.tables` of the
+# pinned policy file. A temporary mapping: telemetry-and-audit/01 adds the
+# fragment `configs/policies/retention.d/platform.audit_events.yaml`, and from
+# then `retention_term` answers from the fragment set (through
+# `platform.retention_term_days`), so one place answers what a table's term is.
+_KEYS_IN_RETENTION_FILE = {"platform.audit_events": _AUDIT}
+
+
+@dataclass(frozen=True)
+class RetentionTerm:
+    days: int
+    enforced: bool
+
+
+def retention_term(policy: RetentionPolicy, store_key: str) -> RetentionTerm | None:
+    """The retention term of one registered table, by its `schema.table` key.
+
+    `None` means no term is written for it. A term that is decided but not yet
+    `enforced` is still a term (studio-skeleton R3.7); whether it may run is the
+    caller's question, and a `kept` offboarding exclusion asks it (R4.4).
+    """
+    table = _KEYS_IN_RETENTION_FILE.get(store_key)
+    found = policy.audit.tables.get(table) if table is not None else None
+    if found is None or found.days is None:
+        return None
+    return RetentionTerm(days=found.days, enforced=policy.audit.enforced)
 
 
 @dataclass(frozen=True)

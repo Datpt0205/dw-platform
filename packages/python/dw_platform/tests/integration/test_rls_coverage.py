@@ -32,6 +32,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.pool import NullPool
+from studio_catalog import studio_table_violations
 
 pytestmark = pytest.mark.integration
 
@@ -215,14 +216,17 @@ async def test_a_partition_cannot_be_read_around_its_parent(
             through_parent = (
                 await conn.execute(sa.text("SELECT count(*) FROM platform.audit_events"))
             ).scalar_one()
-            direct = (
+            await conn.rollback()
+            # And by name the partition is not there to read at all: rows are
+            # read through the parent, so dw_app holds nothing on a partition
+            # (studio-skeleton R3.3, R3.6). Its own policy stays as the second
+            # wall behind the missing grant.
+            with pytest.raises(Exception, match="permission denied"):
                 await conn.execute(sa.text("SELECT count(*) FROM platform.audit_events_default"))
-            ).scalar_one()
     finally:
         await engine.dispose()
 
     assert through_parent == 0
-    assert direct == 0, "the partition returned rows the parent refused"
 
 
 async def test_every_policy_actually_consults_the_tenant_setting(
@@ -580,3 +584,198 @@ async def test_a_connection_that_binds_no_principal_reads_no_chat_preference(
     ).scalar_one()
     assert seen == 0, "a connection without a principal read a person's chat preference"
     assert there == 1, "the probe row is missing, so the zero above proved nothing"
+
+
+# ---------------------------------------------------------------------------
+# Tenant-wide tables (ADR 0100 point 5; studio-skeleton R9): a tenant table
+# with no `workspace_id` holds rows that belong to the whole company, and says
+# why here. This dict is the one list of them (DO-01).
+# ---------------------------------------------------------------------------
+
+_TENANT_WIDE_ON_PURPOSE: dict[tuple[str, str], str] = {
+    ("memory", "item_evidence"): (
+        "a link row between a memory item and its evidence; its workspace is the "
+        "item's, and it is reached only through the item"
+    ),
+    ("platform", "agent_store"): (
+        "the agent runtime's long-term store, keyed by namespace across the whole "
+        "tenant rather than by one workspace"
+    ),
+    ("platform", "entitlements"): "what the tenant's plan includes, for the whole company",
+    ("platform", "policy_overrides"): "a tenant's override of a platform policy, company-wide",
+    ("platform", "sod_waivers"): (
+        "a separation-of-duties waiver for a person across the company's memberships"
+    ),
+    ("platform", "tenant_daily_spend_guard"): "the tenant's spend for one day, all workspaces",
+    ("platform", "tenant_offboarding_requests"): "the request to offboard the whole tenant",
+    ("platform", "workspaces"): "the workspace rows themselves; a workspace is not inside one",
+}
+
+_TENANT_WITHOUT_WORKSPACE = sa.text(
+    """
+    SELECT n.nspname AS schema, c.relname AS name
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE c.relkind IN ('r', 'p') AND NOT c.relispartition
+      AND NOT starts_with(n.nspname, 'pg_') AND n.nspname <> 'information_schema'
+      AND EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid = c.oid
+                  AND a.attname = 'tenant_id' AND NOT a.attisdropped)
+      AND NOT EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid = c.oid
+                      AND a.attname = 'workspace_id' AND NOT a.attisdropped)
+    ORDER BY 1, 2
+    """
+)
+
+# Every table with an `owning_workspace_id`, and whether a foreign key
+# `(tenant_id, owning_workspace_id) -> platform.workspaces (tenant_id, id)`
+# with ON DELETE RESTRICT holds it: deleting a workspace must not take a
+# company-wide definition with it.
+_OWNING_WORKSPACE = sa.text(
+    """
+    SELECT n.nspname AS schema, c.relname AS name,
+           EXISTS (
+               SELECT 1 FROM pg_constraint k
+               WHERE k.conrelid = c.oid AND k.contype = 'f' AND k.confdeltype = 'r'
+                 AND k.confrelid = 'platform.workspaces'::regclass
+                 AND (SELECT array_agg(a.attname::text ORDER BY a.attname) FROM pg_attribute a
+                      WHERE a.attrelid = k.conrelid AND a.attnum = ANY(k.conkey))
+                     = ARRAY['owning_workspace_id', 'tenant_id']
+                 AND (SELECT array_agg(a.attname::text ORDER BY a.attname) FROM pg_attribute a
+                      WHERE a.attrelid = k.confrelid AND a.attnum = ANY(k.confkey))
+                     = ARRAY['id', 'tenant_id']
+           ) AS held
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE c.relkind IN ('r', 'p') AND NOT c.relispartition
+      AND EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid = c.oid
+                  AND a.attname = 'owning_workspace_id' AND NOT a.attisdropped)
+    ORDER BY 1, 2
+    """
+)
+
+
+async def tenant_wide_violations(
+    conn: AsyncConnection | AsyncSession, listed: dict[tuple[str, str], str]
+) -> list[str]:
+    """R9.1-R9.4, by name and requirement."""
+    found: list[str] = []
+    rows = {(r.schema, r.name) for r in (await conn.execute(_TENANT_WITHOUT_WORKSPACE)).all()}
+    found += [
+        f"R9.1 {s}.{t} has tenant_id and no workspace_id, and no reason"
+        for s, t in sorted(rows - set(listed))
+    ]
+    found += [
+        f"R9.2 listed {s}.{t} is gone or carries workspace_id"
+        for s, t in sorted(set(listed) - rows)
+    ]
+    schemas = sorted({schema for schema, _ in listed})
+    for p in (await conn.execute(_POLICIES, {"schemas": schemas})).all():
+        reads = f"{p.qual or ''} {p.with_check or ''}"
+        if (p.schemaname, p.tablename) in listed and _WORKSPACE_SETTING in reads:
+            found.append(f"R9.3 {p.schemaname}.{p.tablename}.{p.policyname} reads app.workspace_id")
+    found += [
+        f"R9.4 {r.schema}.{r.name} has owning_workspace_id without the RESTRICT composite key"
+        for r in (await conn.execute(_OWNING_WORKSPACE)).all()
+        if not r.held
+    ]
+    return found
+
+
+async def test_every_tenant_table_without_a_workspace_has_a_reason(session: AsyncSession) -> None:
+    """R9.1-R9.4 on the migrated checkout, both ways."""
+    assert await tenant_wide_violations(session, _TENANT_WIDE_ON_PURPOSE) == []
+
+
+async def test_the_tenant_wide_checks_name_each_planted_defect(session: AsyncSession) -> None:
+    """Each defect made and rolled back in one transaction, as the migrator."""
+    probe_listed = {**_TENANT_WIDE_ON_PURPOSE, ("public", "tw_listed_probe"): "probe"}
+    try:
+        await session.execute(sa.text("CREATE TABLE public.tw_probe (tenant_id uuid)"))
+        await session.execute(
+            sa.text(
+                "CREATE TABLE public.tw_listed_probe (tenant_id uuid, owning_workspace_id uuid)"
+            )
+        )
+        # The shape R9.3 forbids: a company-wide row narrowed by the caller's
+        # workspace, through the owning workspace RLS must never read.
+        await session.execute(
+            sa.text(
+                "CREATE POLICY reads_workspace ON public.tw_listed_probe USING ("
+                "owning_workspace_id = NULLIF(current_setting('app.workspace_id', true), '')::uuid)"
+            )
+        )
+        await session.execute(
+            sa.text(
+                "CREATE TABLE public.tw_cascade_probe (tenant_id uuid, owning_workspace_id uuid,"
+                " workspace_id uuid)"
+            )
+        )
+        await session.execute(
+            sa.text(
+                "ALTER TABLE platform.workspaces"
+                " ADD CONSTRAINT uq_workspaces_probe UNIQUE (tenant_id, id)"
+            )
+        )
+        await session.execute(
+            sa.text(
+                "ALTER TABLE public.tw_cascade_probe"
+                " ADD FOREIGN KEY (tenant_id, owning_workspace_id)"
+                " REFERENCES platform.workspaces (tenant_id, id) ON DELETE CASCADE"
+            )
+        )
+        found = await tenant_wide_violations(session, probe_listed)
+        gone = await tenant_wide_violations(
+            session, {**_TENANT_WIDE_ON_PURPOSE, ("platform", "no_such_table"): "probe"}
+        )
+    finally:
+        await session.rollback()
+
+    assert "R9.1 public.tw_probe has tenant_id and no workspace_id, and no reason" in found
+    assert "R9.3 public.tw_listed_probe.reads_workspace reads app.workspace_id" in found
+    assert (
+        "R9.4 public.tw_listed_probe has owning_workspace_id without the RESTRICT composite key"
+        in found
+    )
+    assert (
+        "R9.4 public.tw_cascade_probe has owning_workspace_id without the RESTRICT composite key"
+        in found
+    )
+    assert "R9.2 listed platform.no_such_table is gone or carries workspace_id" in gone
+
+
+# ---------------------------------------------------------------------------
+# Studio tables (studio-skeleton R2.8, R2.11): every one is a tenant table
+# under forced RLS, but the platform reference tables listed here, which hold
+# no tenant's rows. Empty until tenant-config adds `studio.artifact_kinds`
+# (ADR 0109 decision 1).
+# ---------------------------------------------------------------------------
+
+_PLATFORM_REFERENCE_TABLES: dict[tuple[str, str], str] = {}
+
+
+async def test_every_studio_table_is_a_tenant_table_under_forced_rls(
+    session: AsyncSession,
+) -> None:
+    assert await studio_table_violations(session, _PLATFORM_REFERENCE_TABLES) == []
+
+
+async def test_the_studio_table_checks_name_each_planted_defect(session: AsyncSession) -> None:
+    reference = {("studio", "reference_probe"): "probe", ("studio", "gone_probe"): "probe"}
+    try:
+        for statement in (
+            "CREATE TABLE studio.no_tenant_probe (id uuid)",
+            "CREATE TABLE studio.unforced_probe (id uuid, tenant_id uuid)",
+            "ALTER TABLE studio.unforced_probe ENABLE ROW LEVEL SECURITY",
+            "CREATE TABLE studio.reference_probe (key text, tenant_id uuid)",
+            "GRANT INSERT ON studio.reference_probe TO dw_app",
+        ):
+            await session.execute(sa.text(statement))
+        found = await studio_table_violations(session, reference)
+    finally:
+        await session.rollback()
+
+    assert "R2.8 no_tenant_probe has no tenant_id" in found
+    assert "R2.8 unforced_probe does not enable and force row security" in found
+    assert "R2.11 reference table reference_probe has tenant_id" in found
+    assert "R2.11 dw_app may write reference table reference_probe" in found
+    assert "R2.11 listed reference table gone_probe does not exist" in found

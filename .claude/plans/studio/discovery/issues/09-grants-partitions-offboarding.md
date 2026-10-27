@@ -52,3 +52,5 @@ và xóa của offboarding; một hàm sắp topo trên `pg_constraint`, so vớ
   policy).
 
 ## Comments
+
+- 2026-10-27 (agent): studio-skeleton/01 đo phần FOG-31 và phần của FOG-32, FOG-33 thuộc ticket đó; số đo ở Comments của `.claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md`. Còn mở: câu 2 (chép policy InitPlan sáu nhánh, foundations-hardening/03), câu 4 (xuất 10^6 bản ghi) và câu 5 (thứ tự topo), foundations-hardening/07.
