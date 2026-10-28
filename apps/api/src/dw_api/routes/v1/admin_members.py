@@ -228,7 +228,8 @@ async def _member_ref(
             return MemberRefView(
                 user_id=member.user_id, email=member.email, display_name=member.display_name
             )
-    raise NotFoundError("no such member in this tenant", details={"user_id": str(user_id)})
+    # Nothing of the effect: the answer of an id that does not exist.
+    raise NotFoundError("no such member in this tenant")
 
 
 async def _changed_workspaces(changes: Awaitable[list[MembershipChange]]) -> list[UUID]:

@@ -130,32 +130,59 @@ characters, unique per request — and the API will act at most once on it.
 It is honoured on the mutations where a duplicate does real damage, and it is
 **optional** everywhere: a request without the header behaves exactly as before.
 
-| Route                                    | A duplicate would                                    |
-| ---------------------------------------- | ---------------------------------------------------- |
-| `POST /api/v1/approvals/{id}/decisions`  | decide twice and resume the run's side effects twice |
-| `POST /api/v1/admin/members`             | grant access twice, leaving two audit records        |
-| `DELETE /api/v1/admin/members/{user_id}` | revoke twice, leaving two audit records              |
+| Route                                             | A duplicate would                                    |
+| ------------------------------------------------- | ---------------------------------------------------- |
+| `POST /api/v1/approvals/{id}/decisions`           | decide twice and resume the run's side effects twice |
+| `POST /api/v1/admin/members`                      | grant access twice, leaving two audit records        |
+| `DELETE /api/v1/admin/members/{user_id}`          | revoke twice, leaving two audit records              |
+| `PUT /api/v1/admin/members/{user_id}/memberships` | rewrite the roles twice, two audit records each      |
+| `POST /api/v1/admin/invitations`                  | invite the person twice                              |
+| `POST /api/v1/support/grants`                     | open a second support grant                          |
+| `POST /api/v1/support/grants/{grant_id}/approve`  | approve twice, two audit records                     |
+| `POST /api/v1/support/grants/{grant_id}/reject`   | reject twice, two audit records                      |
+| `POST /api/v1/support/grants/{grant_id}/revoke`   | revoke twice, two audit records                      |
+
+A key belongs to **the caller who spent it**: the signed-in person (or service
+principal), or, under customer-granted support access, the support grant.
 
 What happens:
 
-- **First request with a key** — runs normally. The response status and body are
-  stored against the key.
-- **Retry with the same key and the same request** — the stored response comes
-  back unchanged, with the same status code, and the handler does not run again.
-  The reply echoes the `Idempotency-Key` header.
-- **Same key, different request** — `409` with code `idempotency_conflict`. The
-  key was already spent on something else, and returning the earlier response
-  would hide the mistake. Use a new key for a new request.
+- **First request with a key** — runs normally. The response status, body,
+  `ETag` and `Location` are stored against the key.
+- **Retry with the same key and the same request, by the same caller** — the
+  stored response comes back unchanged, with the same status code and those two
+  headers, and the handler does not run again. The reply echoes the
+  `Idempotency-Key` header. The route's permission is checked again first: a
+  caller who has lost it gets `403`, never the stored body.
+- **Same key, different request, or another caller's key** — `409` with code
+  `idempotency_conflict`, carrying nothing of the first request's answer. Use a
+  new key for a new request. A different `If-Match` or `If-None-Match` is a
+  different request.
 - **Same key while the first request is still running** — `409` with code
   `conflict`. Retry in a few seconds; the server refuses rather than queue, so a
-  retry storm cannot exhaust it.
-- **The request fails with a 5xx** — the key is released, not spent. A failure is
-  not a decision, and storing it would make the very retry the header exists to
+  retry storm cannot exhaust it. A request abandoned for five minutes may be
+  taken over, by its own caller only.
+- **The request fails** — the key is released, not spent. A failure is not a
+  decision, and storing it would make the very retry the header exists to
   protect return the error forever.
+- **The request fails after its effect committed** — every route above also
+  writes an _effect key_ in the effect's own transaction, so the retry does not
+  act again: it answers with the effect that exists, read back as you may see
+  it now (a resource you can no longer see is a `404`).
 
 A key is scoped to your tenant: two tenants may use the same string and will
 never meet. Within a tenant, the same key sent against a different workspace is a
-conflict, not a replay.
+conflict, not a replay. A spent key is forgotten after a day.
+
+Effects outside the effect's transaction, per route:
+
+| Route                                         | Outside the transaction                     | Why it does not repeat                                                                         |
+| --------------------------------------------- | ------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| The four `/admin/members` and invitation ones | dropping cached access contexts             | idempotent: dropping twice is dropping once                                                    |
+| `POST /api/v1/approvals/{id}/decisions`       | `<approval_type>.decided`; resuming the run | the event is in the outbox, in the transaction; the run resumes once, after the winning commit |
+| The four `/support/grants` ones               | none                                        | —                                                                                              |
+
+No route above calls an external system before it commits.
 
 ---
 

@@ -88,7 +88,10 @@ def test_an_exported_span_carries_only_allowed_keys(
         assert set(event.attributes or {}) == {"exception.type"}
     assert not span.status.is_ok
     assert span.status.description is None
-    assert "345" not in repr(span.to_json())
+    # The whole planted value, in either spelling: a fragment such as "345"
+    # also turns up in a random span id, which failed this test by chance.
+    exported = repr(span.to_json())
+    assert PHONE not in exported and PHONE.replace(" ", "") not in exported
 
 
 def test_every_kept_key_is_allowed() -> None:

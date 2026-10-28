@@ -9,15 +9,16 @@ up leaves the key spendable.
 
 import hashlib
 import uuid
-from typing import Annotated
+from typing import Annotated, Any
 
 import httpx
 import pytest
 from asgi_lifespan import LifespanManager
-from fastapi import FastAPI, File, Form, UploadFile
+from fastapi import FastAPI, File, Form, Response, UploadFile
 from pydantic import BaseModel
 
 from dw_api.bootstrap import ApiContainer
+from dw_api.dependencies.auth import get_access_context
 from dw_api.dependencies.idempotency import (
     IdempotentOperation,
     ReplayedResponse,
@@ -26,7 +27,7 @@ from dw_api.dependencies.idempotency import (
 from dw_api.health import CheckState, HealthService
 from dw_api.main import create_app
 from dw_api.settings import ApiSettings
-from dw_kernel.errors import IdempotencyConflictError, InfrastructureError
+from dw_kernel.errors import IdempotencyConflictError, InfrastructureError, PermissionDeniedError
 from dw_kernel.ports import SystemClock, Uuid4Generator
 from dw_platform.adapters.identity.dev_token import DevTokenVerifier
 from dw_platform.application.access_context import AccessContext
@@ -443,3 +444,119 @@ async def test_a_multipart_retry_replays_and_another_file_under_the_key_conflict
     assert other.status_code == 409
     assert other.json()["code"] == "idempotency_conflict"
     assert calls == ["report"], "the upload ran exactly once"
+
+
+# ---------------------------------------------------------------------------
+# app-standards ticket 02, at the dependency: probe routes on the real app.
+# ---------------------------------------------------------------------------
+
+
+class ProbeView(BaseModel):
+    id: str
+
+
+def with_probe_routes(app: FastAPI, calls: list[str]) -> FastAPI:
+    required = Annotated[
+        IdempotentOperation,
+        idempotent(MEMBERS_WRITE, operation="POST /probe/required", required=True),
+    ]
+    optional = Annotated[
+        IdempotentOperation, idempotent(MEMBERS_WRITE, operation="POST /probe/versioned")
+    ]
+
+    async def _no_reread(_: str) -> ProbeView:
+        raise AssertionError("no effect key in these probes")
+
+    @app.post("/api/v1/probe/required", status_code=201)
+    async def required_probe(idempotency: required) -> ProbeView:
+        view = await idempotency.once(
+            status=201, run=lambda _: _ran(calls, "required"), reread=_no_reread
+        )
+        return await idempotency.record(view, status_code=201)
+
+    @app.post("/api/v1/probe/versioned", status_code=201)
+    async def versioned_probe(idempotency: optional, response: Response) -> ProbeView:
+        view = await idempotency.once(
+            status=201, run=lambda _: _ran(calls, "versioned"), reread=_no_reread
+        )
+        headers = {"ETag": '"8"', "Location": f"/api/v1/probe/versioned/{view.id}"}
+        response.headers.update(headers)
+        return await idempotency.record(view, status_code=201, headers=headers)
+
+    return app
+
+
+async def _ran(calls: list[str], name: str) -> ProbeView:
+    calls.append(name)
+    return ProbeView(id=f"{name}-{len(calls)}")
+
+
+async def _probe_client(store: MemoryStore, calls: list[str]) -> tuple[FastAPI, httpx.AsyncClient]:
+    app = with_probe_routes(create_app(make_container(CountingRepo(), store)), calls)
+    return app, httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
+
+
+async def test_a_route_requiring_the_key_refuses_a_request_without_it() -> None:
+    """R2.6 (APS6): 422 `validation_failed`, the reason code and one header
+    error, and the handler never ran."""
+    calls: list[str] = []
+    app, client = await _probe_client(MemoryStore(), calls)
+    async with LifespanManager(app), client:
+        refused = await client.post("/api/v1/probe/required", headers=headers())
+
+    assert refused.status_code == 422
+    body = refused.json()
+    assert body["code"] == "validation_failed"
+    assert body["details"]["reason_code"] == "idempotency_key_required"
+    assert body["errors"][0] == {
+        "header": "Idempotency-Key",
+        "code": "idempotency_key_required",
+        "detail": "required for this operation",
+    }
+    assert calls == []
+
+
+async def test_a_replay_carries_the_first_etag_and_location() -> None:
+    """R2.1 (APS3): the stored status, body, ETag and Location, and the
+    handler ran once; another `If-Match` under the key is a conflict."""
+    calls: list[str] = []
+    app, client = await _probe_client(MemoryStore(), calls)
+    async with LifespanManager(app), client:
+        first = await client.post("/api/v1/probe/versioned", headers=headers("v-1"))
+        again = await client.post("/api/v1/probe/versioned", headers=headers("v-1"))
+        other = await client.post(
+            "/api/v1/probe/versioned", headers={**headers("v-1"), "If-Match": '"7"'}
+        )
+
+    assert (first.status_code, again.status_code) == (201, 201)
+    assert again.json() == first.json()
+    assert again.headers["ETag"] == '"8"'
+    assert again.headers["Location"] == first.headers["Location"]
+    assert other.status_code == 409 and other.json()["code"] == "idempotency_conflict"
+    assert calls == ["versioned"]
+
+
+async def test_no_key_row_is_read_when_the_context_cannot_be_built() -> None:
+    """R2.14 (APS15): the key dependency comes after the verified context, so a
+    caller whose grant was revoked is refused by that step and nothing reads
+    the key table."""
+
+    class Watching(MemoryStore):
+        reads = 0
+
+        async def reserve(self, *args: Any, **kwargs: Any) -> Any:
+            Watching.reads += 1
+            return await super().reserve(*args, **kwargs)
+
+    calls: list[str] = []
+    app, client = await _probe_client(Watching(), calls)
+
+    async def refused() -> AccessContext:
+        raise PermissionDeniedError("the support grant was revoked")
+
+    app.dependency_overrides[get_access_context] = refused
+    async with LifespanManager(app), client:
+        answered = await client.post("/api/v1/probe/versioned", headers=headers("revoked"))
+
+    assert answered.status_code == 403
+    assert Watching.reads == 0 and calls == []
