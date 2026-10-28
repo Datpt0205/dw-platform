@@ -51,6 +51,8 @@ export const ErrorCode = {
   NotFound: "not_found",
   MethodNotAllowed: "method_not_allowed",
   Conflict: "conflict",
+  PreconditionFailed: "precondition_failed",
+  PreconditionRequired: "precondition_required",
   Unauthenticated: "unauthenticated",
   PermissionDenied: "permission_denied",
   EntitlementDenied: "entitlement_denied",

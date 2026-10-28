@@ -4114,11 +4114,11 @@ export interface operations {
     list_documents_api_v1_knowledge_documents_get: {
         parameters: {
             query?: {
+                /** @description Narrow the listing to one domain. */
+                domain?: string | null;
                 limit?: number;
                 /** @description Opaque cursor from a previous page. */
                 cursor?: string | null;
-                /** @description Narrow the listing to one domain. */
-                domain?: string | null;
             };
             header?: never;
             path?: never;

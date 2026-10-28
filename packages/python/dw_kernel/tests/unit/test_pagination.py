@@ -6,7 +6,7 @@ import base64
 import json
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
@@ -18,6 +18,7 @@ from dw_kernel.pagination import (
     Page,
     PageQuery,
     PageRequest,
+    SortType,
     build_page,
     decode_cursor,
     encode_cursor,
@@ -110,6 +111,29 @@ def test_a_cursor_from_an_older_format_version_is_refused() -> None:
     cursor = base64.urlsafe_b64encode(stale.encode()).decode().rstrip("=")
     with pytest.raises(InvalidCursorError, match="older version"):
         decode_cursor(cursor, _QUERY)
+
+
+def test_a_v1_cursor_still_resumes_where_it_left_off() -> None:
+    # G7, built by hand in the version 1 shape an earlier build minted, so the
+    # test keeps meaning the same thing after the format moves on: a client
+    # mid-listing across a deploy gets the next page, not a refusal.
+    rows = _rows(6)
+    table = _Table(rows)
+    last_seen = sorted(rows, key=lambda row: (row.created_at, row.id), reverse=True)[1]
+    v1 = json.dumps(
+        {
+            "v": 1,
+            "k": last_seen.created_at.isoformat(),
+            "i": str(last_seen.id),
+            "q": _QUERY.fingerprint,
+        },
+        separators=(",", ":"),
+    )
+    cursor = base64.urlsafe_b64encode(v1.encode()).decode().rstrip("=")
+
+    page = table.keyset_page(_request(limit=2, cursor=cursor))
+
+    assert [row.label for row in page.items] == ["row-3", "row-2"]
 
 
 def test_a_cursor_with_a_mangled_position_is_refused() -> None:
@@ -301,3 +325,96 @@ def test_rows_sharing_a_sort_value_are_neither_repeated_nor_skipped() -> None:
             break
 
     assert sorted(seen) == [f"tied-{n}" for n in range(5)]
+
+
+# ------------------------------------------------------- typed cursors --
+
+_V2_QUERY = PageQuery(
+    key=None, identity={"route": "/things", "tenant": "acme"}, sort_type=SortType.INT
+)
+
+
+def _raw(cursor: str) -> dict[str, object]:
+    decoded: dict[str, object] = json.loads(
+        base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4))
+    )
+    return decoded
+
+
+def _minted(payload: dict[str, object]) -> str:
+    return base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip("=")
+
+
+def test_a_cursor_carries_a_typed_value_a_phase_and_the_id() -> None:
+    # R4.1.
+    tiebreaker = uuid.uuid4()
+    payload = _raw(encode_cursor(CursorPosition(sort_value=7, tiebreaker=tiebreaker), _V2_QUERY))
+    assert payload == {
+        "v": 2,
+        "t": "int",
+        "k": 7,
+        "p": "values",
+        "i": str(tiebreaker),
+        "q": _V2_QUERY.identity_fingerprint,
+    }
+    nulls = _raw(encode_cursor(CursorPosition(sort_value=None, tiebreaker=tiebreaker), _V2_QUERY))
+    assert (nulls["t"], nulls["p"], "k" in nulls) == ("null", "nulls", False)
+
+
+def test_every_typed_value_round_trips() -> None:
+    for sort_type, value in (
+        (SortType.TEXT, "Hà Nội"),
+        (SortType.INT, -(2**63)),
+        (SortType.FLOAT, 1.5),
+        (SortType.DATE, date(2026, 10, 28)),
+        (SortType.DATETIME, _EPOCH),
+        (SortType.BOOL, False),
+    ):
+        query = PageQuery(key=None, identity={"r": sort_type.value}, sort_type=sort_type)
+        position = CursorPosition(sort_value=value, tiebreaker=uuid.uuid4())
+        assert decode_cursor(encode_cursor(position, query), query) == position
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"t": "text"},
+        {"t": "bool", "k": True},
+        {"p": "sideways"},
+        {"p": "nulls"},
+        {"p": "nulls", "t": "null"},
+        {"i": "not-a-uuid"},
+        {"k": 2**63},
+        {"k": "7"},
+    ],
+    ids=["tag", "bool-for-int", "phase", "nulls-tag", "nulls-value", "id", "int64", "string"],
+)
+def test_a_cursor_that_does_not_fit_the_listing_is_refused(change: dict[str, object]) -> None:
+    # R4.6: tag against the sort field's type, the phase, a NULL that carries
+    # a value, the id.
+    good = _raw(encode_cursor(CursorPosition(sort_value=7, tiebreaker=uuid.uuid4()), _V2_QUERY))
+    with pytest.raises(InvalidCursorError, match="not readable"):
+        decode_cursor(_minted({**good, **change}), _V2_QUERY)
+
+
+def test_nan_in_a_cursor_is_not_a_number() -> None:
+    good = _raw(encode_cursor(CursorPosition(sort_value=7, tiebreaker=uuid.uuid4()), _V2_QUERY))
+    text = json.dumps({**good, "k": 0}).replace('"k": 0', '"k": NaN')
+    cursor = base64.urlsafe_b64encode(text.encode()).decode().rstrip("=")
+    with pytest.raises(InvalidCursorError, match="not readable"):
+        decode_cursor(cursor, _V2_QUERY)
+
+
+@pytest.mark.parametrize("version", [3, True, "2"])
+def test_a_cursor_of_an_unknown_version_is_refused(version: object) -> None:
+    # G8 for versions this build never minted.
+    good = _raw(encode_cursor(CursorPosition(sort_value=7, tiebreaker=uuid.uuid4()), _V2_QUERY))
+    with pytest.raises(InvalidCursorError, match="older version"):
+        decode_cursor(_minted({**good, "v": version}), _V2_QUERY)
+
+
+def test_a_v1_cursor_is_refused_by_a_listing_that_never_minted_one() -> None:
+    v1 = {"v": 1, "k": _EPOCH.isoformat(), "i": str(uuid.uuid4()), "q": _QUERY.fingerprint}
+    no_key = PageQuery(key=None, identity={"route": "/things"})
+    with pytest.raises(InvalidCursorError, match="different query"):
+        decode_cursor(_minted(v1), no_key)

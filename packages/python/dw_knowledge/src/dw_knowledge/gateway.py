@@ -12,6 +12,7 @@ import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any
 
 import sqlalchemy as sa
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -423,38 +424,55 @@ class KnowledgeGateway:
         allowed = classifications_for_clearance(context.clearance)
         principals = [f"user:{context.principal_id}", "tenant:*"]
         principals.extend(f"role:{role}" for role in sorted(context.roles))
+        documents = tables.documents
+
+        def arm(*visible: sa.ColumnElement[bool]) -> sa.Select[Any]:
+            query = sa.select(
+                documents,
+                sa.select(sa.func.count())
+                .where(tables.chunks.c.document_id == documents.c.id)
+                .scalar_subquery()
+                .label("chunk_count"),
+            ).where(
+                *visible,
+                documents.c.status == "active",
+                documents.c.classification.in_(allowed),
+                sa.or_(*[documents.c.acl_principals.any(principal) for principal in principals]),
+                after_position(documents.c.created_at, documents.c.id, request.after),
+            )
+            return query if domain is None else query.where(documents.c.domain == domain)
+
+        # `visible_from_workspace` (own workspace OR any global document) as two
+        # disjoint arms, each read in page order through an index of its own:
+        # the workspace's documents through one led by `tenant_id`, which the
+        # arm names because RLS on this table is `tenant OR global` and cannot
+        # narrow an index by tenant; the global documents, which RLS lets every
+        # tenant read, through one that holds only them (app-standards R6.1).
+        # One `OR` reads both through neither and sorts what it found. Two
+        # statements merged here rather than a `UNION ALL`: under RLS Postgres
+        # appends the arms and sorts them (measured 28/10/2026), where two
+        # ordered reads of at most one page each sort nothing.
+        arms = (
+            arm(
+                documents.c.tenant_id == context.tenant_id,
+                documents.c.workspace_id == context.workspace_id,
+                documents.c.scope != "global",
+            ),
+            arm(documents.c.scope == "global"),
+        )
         async with self.session_factory() as session, session.begin():
             await session.execute(_SET_TENANT, {"tenant_id": str(context.tenant_id)})
-            query = (
-                sa.select(
-                    tables.documents,
-                    sa.select(sa.func.count())
-                    .where(tables.chunks.c.document_id == tables.documents.c.id)
-                    .scalar_subquery()
-                    .label("chunk_count"),
+            found: list[sa.Row[Any]] = []
+            for query in arms:
+                result = await session.execute(
+                    query.order_by(*newest_first(documents.c.created_at, documents.c.id)).limit(
+                        request.fetch_limit
+                    )
                 )
-                .where(
-                    # Own workspace OR any global (legal) doc — RLS permits the
-                    # cross-tenant read only for scope='global' rows.
-                    tables.visible_from_workspace(context.workspace_id),
-                    tables.documents.c.status == "active",
-                    tables.documents.c.classification.in_(allowed),
-                    sa.or_(
-                        *[
-                            tables.documents.c.acl_principals.any(principal)
-                            for principal in principals
-                        ]
-                    ),
-                    after_position(
-                        tables.documents.c.created_at, tables.documents.c.id, request.after
-                    ),
-                )
-                .order_by(*newest_first(tables.documents.c.created_at, tables.documents.c.id))
-                .limit(request.fetch_limit)
-            )
-            if domain is not None:
-                query = query.where(tables.documents.c.domain == domain)
-            rows = await session.execute(query)
+                found.extend(result.all())
+            rows = sorted(found, key=lambda row: (row.created_at, row.id), reverse=True)[
+                : request.fetch_limit
+            ]
             return build_page(
                 [
                     DocumentInfo(

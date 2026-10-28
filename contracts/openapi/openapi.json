@@ -5493,6 +5493,24 @@
         "operationId": "list_documents_api_v1_knowledge_documents_get",
         "parameters": [
           {
+            "description": "Narrow the listing to one domain.",
+            "in": "query",
+            "name": "domain",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Narrow the listing to one domain.",
+              "title": "Domain"
+            }
+          },
+          {
             "in": "query",
             "name": "limit",
             "required": false,
@@ -5520,24 +5538,6 @@
               ],
               "description": "Opaque cursor from a previous page.",
               "title": "Cursor"
-            }
-          },
-          {
-            "description": "Narrow the listing to one domain.",
-            "in": "query",
-            "name": "domain",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Narrow the listing to one domain.",
-              "title": "Domain"
             }
           }
         ],

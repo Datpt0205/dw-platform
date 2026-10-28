@@ -24,6 +24,7 @@ import dw_api
 from dw_api.bootstrap import ApiContainer, build_container
 from dw_api.errors import PROBLEM_RESPONSES, publish_problems_as_problem_json
 from dw_api.exception_handlers import register_exception_handlers
+from dw_api.middleware.access_log import install_access_log_redaction
 from dw_api.middleware.rate_limit import RateLimitMiddleware
 from dw_api.middleware.request_id import RequestIdMiddleware
 from dw_api.routes.v1.admin_console import router as admin_console_router
@@ -58,6 +59,9 @@ _CORS_HEADERS = [
     # The customer's grant a support staff member acts under (ADR 0024).
     "X-DW-Support-Grant",
     "Idempotency-Key",
+    # Conditional writes (app-standards R3.6).
+    "If-Match",
+    "If-None-Match",
 ]
 _CORS_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"]
 _LOCAL_WEB_ORIGINS = ["http://localhost:3000", "http://127.0.0.1:3000"]
@@ -94,6 +98,7 @@ def create_app(container: ApiContainer | None = None) -> FastAPI:
     )
     publish_problems_as_problem_json(app)
     app.state.container = container
+    install_access_log_redaction()
 
     # Middleware runs in reverse registration order: request-id first, then limit.
     app.add_middleware(RateLimitMiddleware, requests_per_minute=settings.rate_limit_per_minute)
@@ -112,7 +117,9 @@ def create_app(container: ApiContainer | None = None) -> FastAPI:
             allow_origins=cors_origins,
             allow_methods=_CORS_METHODS,
             allow_headers=_CORS_HEADERS,
-            expose_headers=["X-Request-ID", "Retry-After"],
+            # `ETag` is the version a later `If-Match` names; `Location` where a
+            # create put its resource (R3.6).
+            expose_headers=["X-Request-ID", "Retry-After", "ETag", "Location"],
         )
 
     register_exception_handlers(app)

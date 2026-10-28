@@ -36,6 +36,10 @@ export const ERROR_STATE = {
   not_found: "notfound",
   method_not_allowed: "error",
   conflict: "conflict",
+  // Someone changed it since it was read: the same "both values, nothing
+  // overwritten" state as a conflict.
+  precondition_failed: "conflict",
+  precondition_required: "error",
   unauthenticated: "session",
   permission_denied: "forbidden",
   entitlement_denied: "entitlement",

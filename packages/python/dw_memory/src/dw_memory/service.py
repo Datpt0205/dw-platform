@@ -776,6 +776,11 @@ class MemoryService:
             rows = await session.execute(
                 sa.select(tables.items)
                 .where(
+                    # Named although RLS narrows by tenant: the table's RLS is
+                    # `tenant OR worker_drain`, which no index can seek on, so
+                    # without it the page index is entered past its first
+                    # column (app-standards R6.1).
+                    tables.items.c.tenant_id == context.tenant_id,
                     tables.items.c.workspace_id == context.workspace_id,
                     after_position(
                         tables.items.c.created_at, tables.items.c.memory_id, request.after
@@ -853,6 +858,11 @@ class MemoryService:
             rows = await session.execute(
                 sa.select(tables.items)
                 .where(
+                    # Named although RLS narrows by tenant: the table's RLS is
+                    # `tenant OR worker_drain`, which no index can seek on, so
+                    # without it the page index is entered past its first
+                    # column (app-standards R6.1).
+                    tables.items.c.tenant_id == context.tenant_id,
                     tables.items.c.workspace_id == context.workspace_id,
                     tables.items.c.worker_id == worker_id,
                     tables.items.c.classification.in_(allowed),

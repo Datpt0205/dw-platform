@@ -18,13 +18,14 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, File, Form, Query, Response, UploadFile
+from fastapi import APIRouter, File, Form, Response, UploadFile
 from pydantic import BaseModel
 
 from dw_api.dependencies.auth import RequireAccessContext
+from dw_api.dependencies.listing import RequireListPage
 from dw_api.dependencies.services import RequireContainer
 from dw_kernel.errors import DomainError, InfrastructureError, NotFoundError
-from dw_kernel.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, Page, PageQuery, page_request
+from dw_kernel.pagination import Page
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.feedback_dto import (
     FEEDBACK_IMAGE_MIMES,
@@ -190,22 +191,17 @@ async def submit_feedback(
 async def list_feedback(
     context: RequireAccessContext,
     container: RequireContainer,
-    limit: int = Query(default=DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
-    cursor: str | None = Query(default=None, description="Opaque cursor from a previous page."),
+    page: RequireListPage,
 ) -> Page[FeedbackView]:
     if container.uow_factory is None:
         raise InfrastructureError("database is not configured")
     await container.authorization.require(
         context=context, action=_INBOX_SCOPE, resource_type="feedback"
     )
-    request = page_request(
-        limit=limit,
-        cursor=cursor,
-        query=PageQuery(key="feedback.inbox", filters={"tenant": context.tenant_id}),
-    )
+    request = page.request(context, key="feedback.inbox", filters={"tenant": context.tenant_id})
     async with container.uow_factory(context) as uow:
-        page = await uow.feedback.list_page(request)
-    return page.map_items(
+        inbox = await uow.feedback.list_page(request)
+    return inbox.map_items(
         lambda item: FeedbackView(
             id=str(item.id),
             author_name=item.author_name,

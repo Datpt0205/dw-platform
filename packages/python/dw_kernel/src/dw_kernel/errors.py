@@ -17,6 +17,8 @@ class ErrorCode(StrEnum):
     NOT_FOUND = "not_found"
     METHOD_NOT_ALLOWED = "method_not_allowed"
     CONFLICT = "conflict"
+    PRECONDITION_FAILED = "precondition_failed"
+    PRECONDITION_REQUIRED = "precondition_required"
     UNAUTHENTICATED = "unauthenticated"
     PERMISSION_DENIED = "permission_denied"
     ENTITLEMENT_DENIED = "entitlement_denied"
@@ -64,6 +66,20 @@ class NotFoundError(DWError):
 
 class ConflictError(DWError):
     code = ErrorCode.CONFLICT
+
+
+class PreconditionFailedError(DWError):
+    """`If-Match` or `If-None-Match` named a state the resource is not in: the
+    caller's copy is stale, and the answer is to read it again (RFC 9110 13.1)."""
+
+    code = ErrorCode.PRECONDITION_FAILED
+
+
+class PreconditionRequiredError(DWError):
+    """A write that must be conditional came without one strong ETag to compare
+    (RFC 6585 3): the caller has to say which version it read."""
+
+    code = ErrorCode.PRECONDITION_REQUIRED
 
 
 class UnauthenticatedError(DWError):

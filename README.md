@@ -230,6 +230,36 @@ Paged today: `/audit/events`, `/knowledge/documents`, `/memory/items`,
 growing log — the workspace roster, the role catalog, the integration list, one
 run's timeline — return a plain array and take no cursor.
 
+A parameter a list does not take is refused, not ignored: `filter`, `order_by`
+or `fields` sent to one of the five above, or any of `cursor`, `limit`,
+`filter`, `order_by`, `fields` sent twice, is a `422` naming it in
+`errors[].parameter`. A cursor minted before typed cursors (version 1) still
+resumes on the route that minted it.
+
+**A list with a query schema** (the first are the record APIs to come) also
+takes `filter`, a JSON tree URL-encoded (or the `filter` member of a
+`POST <list>/query` body), `order_by` (one field, `asc` or `desc`, NULLs last
+either way) and `fields` (comma-separated). The tree is bounded (depth 5,
+50 conditions, 500 values in an `$in`, 1 024 bytes a string) and closed: what
+the schema does not declare is refused, with a reason code in `errors[].code`
+and a pointer into the tree starting `/filter`. The cursor is bound to the
+whole query, the concrete path and your workspace. `dw_kernel.filters` is the
+one parser and compiler for every caller, HTTP or not.
+
+## Conditional writes
+
+A resource with a record version answers with `ETag: "7"`, and every write to
+it requires `If-Match` with the version you read: a stale or weak one is `412
+precondition_failed`, none (or `*`, a list, a repeated header) is `428
+precondition_required`. A patch is a JSON merge patch (`application/merge-patch+json`
+or `application/json`; anything else is `415`). A create is a `POST` to the
+list and never overwrites: an id that exists is `409`, or `412` with
+`If-None-Match: *`. A resource you cannot read answers as one that does not
+exist, whatever `If-Match` said; one you can read and may not change is `403`.
+Retrying with the same `Idempotency-Key` returns the first answer without
+comparing again. No platform route has turned this on yet; the app-build test
+fails a write to a versioned resource that has not.
+
 ---
 
 ## The data model

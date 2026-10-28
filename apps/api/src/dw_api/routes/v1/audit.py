@@ -5,13 +5,14 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter
 from pydantic import BaseModel
 
 from dw_api.dependencies.auth import RequireAccessContext
+from dw_api.dependencies.listing import RequireListPage
 from dw_api.dependencies.services import RequireContainer
 from dw_kernel.errors import InfrastructureError
-from dw_kernel.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, Page, PageQuery, page_request
+from dw_kernel.pagination import Page
 
 
 class AuditEventView(BaseModel):
@@ -40,8 +41,7 @@ router = APIRouter(prefix="/audit", tags=["audit"])
 async def list_events(
     context: RequireAccessContext,
     container: RequireContainer,
-    limit: int = Query(default=DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
-    cursor: str | None = Query(default=None, description="Opaque cursor from a previous page."),
+    page: RequireListPage,
 ) -> Page[AuditEventView]:
     if container.uow_factory is None:
         raise InfrastructureError("database is not configured")
@@ -53,18 +53,15 @@ async def list_events(
     # The tenant and workspace are in the fingerprint even though neither comes
     # from the client: a cursor that somehow crossed accounts or workspaces is
     # then refused outright instead of being answered from the other window.
-    request = page_request(
-        limit=limit,
-        cursor=cursor,
-        query=PageQuery(
-            key="audit.events",
-            filters={"tenant": context.tenant_id, "workspace": context.workspace_id},
-        ),
+    request = page.request(
+        context,
+        key="audit.events",
+        filters={"tenant": context.tenant_id, "workspace": context.workspace_id},
     )
     # Only the caller's workspace: RLS on audit_events narrows by tenant only.
     async with container.uow_factory(context) as uow:
-        page = await uow.audit.list_page(request, workspace_id=context.workspace_id)
-    return page.map_items(
+        events = await uow.audit.list_page(request, workspace_id=context.workspace_id)
+    return events.map_items(
         lambda e: AuditEventView(
             actor_id=str(e.actor_id),
             action=e.action,

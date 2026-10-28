@@ -14,6 +14,8 @@ to a decision (ADR 0004, amendment 2026-10-07). The SQL filter itself is held
 to `ApprovalAudience.may_see` by `dw_platform`'s `test_approval_visibility.py`.
 """
 
+import base64
+import json
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -31,7 +33,14 @@ from dw_api.main import create_app
 from dw_api.settings import ApiSettings
 from dw_kernel.errors import ConflictError
 from dw_kernel.ids import TenantId, UserId, WorkspaceId
-from dw_kernel.pagination import CursorPosition, Page, PageQuery, PageRequest, encode_cursor
+from dw_kernel.pagination import (
+    CursorPosition,
+    Page,
+    PageQuery,
+    PageRequest,
+    encode_cursor,
+    list_identity,
+)
 from dw_kernel.ports import SystemClock, Uuid4Generator
 from dw_platform.adapters.identity.dev_token import DevTokenVerifier
 from dw_platform.application.access_context import AccessContext
@@ -431,8 +440,38 @@ async def test_a_cursor_is_bound_to_the_workspace_it_was_issued_in(
     container = make_container(FakeApprovalRepo(request), frozenset({"approvals.read"}))
     cursor = encode_cursor(
         CursorPosition(sort_value=datetime.now(UTC), tiebreaker=uuid.uuid4()),
-        PageQuery(key="approvals.pending", filters={"tenant": TENANT, "workspace": workspace}),
+        PageQuery(
+            key=None,
+            identity=list_identity(route="/api/v1/approvals", tenant=TENANT, workspace=workspace),
+        ),
     )
+
+    response = await _call(container, "GET", "", params={"cursor": cursor})
+
+    assert response.status_code == status
+
+
+def _v1_cursor(key: str, filters: dict[str, object]) -> str:
+    """A version 1 cursor as the build before typed cursors minted it (G7)."""
+    payload = {
+        "v": 1,
+        "k": datetime.now(UTC).isoformat(),
+        "i": str(uuid.uuid4()),
+        "q": PageQuery(key=key, filters=filters).fingerprint,
+    }
+    raw = json.dumps(payload, separators=(",", ":")).encode()
+    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
+
+
+@pytest.mark.parametrize(
+    ("key", "status"), [("approvals.pending", 200), ("memory.items", 422), ("audit.events", 422)]
+)
+async def test_a_v1_cursor_resumes_only_on_the_route_that_minted_it(key: str, status: int) -> None:
+    # G7 and R4.3: the version 1 identity of this route still resumes; one
+    # minted by another of the five, with the same tenant and workspace, does not.
+    request = make_request(requested_by=SOMEONE_ELSE, required_scope=None)
+    container = make_container(FakeApprovalRepo(request), frozenset({"approvals.read"}))
+    cursor = _v1_cursor(key, {"tenant": TENANT, "workspace": WORKSPACE})
 
     response = await _call(container, "GET", "", params={"cursor": cursor})
 
@@ -587,3 +626,30 @@ async def test_a_stamped_request_the_caller_may_not_see_is_not_found_and_not_rec
 
     assert response.status_code == 404
     assert store.views == []
+
+
+@pytest.mark.parametrize(
+    ("params", "parameter", "code"),
+    [
+        ({"filter": '{"status": {"$eq": "pending"}}'}, "filter", "parameter_not_accepted"),
+        ({"order_by": "created_at desc"}, "order_by", "parameter_not_accepted"),
+        ({"fields": "id"}, "fields", "parameter_not_accepted"),
+        ([("cursor", "a"), ("cursor", "b")], "cursor", "parameter_repeated"),
+        ([("limit", "5"), ("limit", "6")], "limit", "parameter_repeated"),
+    ],
+)
+async def test_a_list_parameter_the_route_does_not_take_is_refused_not_ignored(
+    params: Any, parameter: str, code: str
+) -> None:
+    # app-standards R5.15 (APS49): the inbox declares no query schema, and
+    # FastAPI would drop the unknown parameter and keep one of a repeated pair.
+    request = make_request(requested_by=SOMEONE_ELSE, required_scope=None)
+    container = make_container(FakeApprovalRepo(request), frozenset({"approvals.read"}))
+
+    response = await _call(container, "GET", "", params=params)
+
+    assert response.status_code == 422
+    body = response.json()
+    assert body["code"] == "validation_failed"
+    assert body["errors"][0]["parameter"] == parameter
+    assert body["errors"][0]["code"] == code

@@ -1,6 +1,6 @@
 # 03 — ETag và If-Match, phân trang keyset có kiểu, cây lọc JSON và kiểm hình kế hoạch trong CI
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 01, 02
 Area: studio
 Yêu cầu: R2.1, R2.34, R3.1, R3.15, R3.16, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R3.9, R3.10, R3.11, R3.12, R3.13, R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R5.8, R5.9, R5.10, R5.11, R5.12, R5.13, R5.14, R5.15, R6.1, R6.2, R6.3, R6.4, G7, G8, APS7, APS8, APS9, APS10, APS16, APS18, APS22, APS25, APS36, APS38, APS40, APS45, APS46, APS47, APS48, APS49, APS50, APS51
@@ -22,54 +22,54 @@ Lát này cho mọi route danh sách và route sửa một quy ước chung: ETa
 
 ## Tiêu chí chấp nhận
 
-- [ ] R2.34 (APS38): `PATCH` thử với `If-Match: "7"` commit lên phiên bản 8 rồi 5xx, G6 nhả khóa, gửi lại nguyên yêu cầu nhận 200 phiên bản 8, không 412, phiên bản vẫn là 8 và không có dòng audit thứ hai; route tạo thử với `If-None-Match: *` nhận 201, không 409; so điều kiện trước khi tra khóa hiệu ứng thì test đỏ.
-- [ ] R3.1: tài nguyên thử đã bật R3 trả `ETag: "7"` cho phiên bản 7 ở cả `GET` lẫn phản hồi của `PATCH`.
-- [ ] R3.13 (APS16): tài nguyên bị xóa hay ra khỏi tầm với của người gọi giữa lúc nạp và lúc ghi thì câu ghi không khớp dòng nào và người gọi nhận phản hồi của id không tồn tại; tài nguyên còn đọc được mà phiên bản đã đổi thì nhận 412; người cùng tenant giữ `action` mà không là chủ dòng của bảng thử (policy UPDATE RESTRICTIVE theo chủ) gửi `If-Match` khớp nhận 403 `permission_denied`; không nhánh nào thêm dòng audit; trả 412 ở cả ba trường hợp thì test đỏ.
-- [ ] R3.2 (APS7): `If-Match: "6"` và `If-Match: W/"7"` đều trả 412 `precondition_failed`, phiên bản vẫn là 7 và không có dòng audit mới; gỡ phép so trong dependency thì test đỏ.
-- [ ] R3.3 (APS7): route bắt buộc điều kiện, gọi thiếu `If-Match`, trả 428 `precondition_required` và không đổi gì.
-- [ ] R3.4 (APS46): `If-None-Match: *` trên tài nguyên đã có trả 412 và không tạo dòng nào; hai yêu cầu tạo cùng id với `If-None-Match: *` song song thật (hai kết nối, một rào đồng bộ trước câu chèn) cho một 201 và một 412, không 409 hay 500; kiểm tồn tại trước câu `INSERT` thì test đỏ.
-- [ ] R3.16: `PATCH` với `{}` và với một patch đặt lại đúng giá trị hiện có, mang `If-Match` khớp, trả 200, phiên bản, `ETag` và `updated_at` không đổi, không dòng audit mới; `{}` với `If-Match: "6" khi phiên bản là 7 trả 412; `{}`với`If-Match`khớp từ người cùng tenant không là chủ dòng của bảng thử trả 403; tăng phiên bản, hay trả 200 cho`If-Match` lệch hay người không sửa được, thì test đỏ.
-- [ ] R3.4 (APS50): `POST` tạo với id đã có, không `If-None-Match`, trả 409 `conflict` không nêu giá trị và dòng không đổi; route thử `POST /things/batch-update` và route thử `PATCH /things` không bật `RequireIfMatch` đều làm test dựng ứng dụng đỏ; cho `POST` tạo ghi đè thì test đỏ.
-- [ ] R3.15 (APS46): `GET` tài nguyên thử kèm `If-None-Match` khớp ETag hiện tại trả 200 có thân, không 304; trả 304 thì test đỏ.
-- [ ] R3.5: Merge Patch `{"a": null, "b": {"c": 1}}` xóa `a`, trộn `b` và giữ các trường khác, với cả hai `Content-Type`.
-- [ ] R3.6: preflight CORS cho phép `If-Match`; phản hồi lộ `ETag` và `Location`.
-- [ ] R3.7 (APS16): người B không đọc được tài nguyên X gửi `If-Match` khớp và lệch tới X nhận đúng phản hồi của một id không tồn tại; người ở tenant B gửi `If-Match` tới id của một tài nguyên tenant A cũng nhận phản hồi đó; so điều kiện trước khi nạp tài nguyên thì test đỏ.
-- [ ] R3.9 (APS18): hai `PATCH` chạy song song thật (hai kết nối, một rào đồng bộ trước câu ghi) cùng `If-Match: "7"` cho một thành công và một 412 `precondition_failed`, và phiên bản là 8; một `DELETE` thắng cuộc đua với một `PATCH` cùng `If-Match` thì `PATCH` nhận phản hồi của id không tồn tại; một `POST .../archive` thử mang `If-Match` lệch trên tài nguyên đã archive nhận 412, không 409; tách phép so khỏi câu `UPDATE` thì test đỏ.
-- [ ] R3.11 (APS16): người ở tenant B tạo với `If-None-Match: *` một tài nguyên có id trùng id của tenant A thì tài nguyên được tạo trong tenant B, không 412, và dòng của tenant A không đổi.
-- [ ] R3.12 (APS22): một tên trong danh sách miễn trừ không kèm lý do, hay một tên mà route không còn, làm test đỏ; thêm một route thử `PATCH` trả tài nguyên có `version` mà không bật `RequireIfMatch` làm test dựng ứng dụng đỏ và nêu route đó; một route thử `DELETE` trả 204 và một `POST .../archive` trả hình khác, trên đường có `GET` trả `version`, cũng làm test đỏ; route thử trả `version` kiểu chuỗi không làm test đỏ; gỡ phép kiểm thì test đỏ.
-- [ ] R3.10: `PATCH` với `Content-Type: application/json-patch+json` trả 415 `unsupported_media_type` và phiên bản không đổi.
-- [ ] R3.8 (APS7): route ghi của tài nguyên thử nhận `If-Match: *`, `If-Match: "6", "7"`, hai header `If-Match` hay `If-Match: 7` không ngoặc kép trả 428 `precondition_required` và không đổi gì; nhận `*` hay nhận danh sách khi một phần tử khớp thì test đỏ.
-- [ ] R2.1: `PATCH` mang `If-Match: "6"` và `Idempotency-Key` thành công (phiên bản lên 7), gửi lại nguyên yêu cầu nhận 200 đã lưu, không 412.
-- [ ] R4.1: trang kế mang con trỏ phiên bản 2 có thẻ kiểu, pha và `id`.
-- [ ] R4.2: test thuộc tính phân trang 1.000 dòng có giá trị trùng và 10% NULL, chiều tăng và giảm, kích thước trang từ 1 đến 50: mỗi dòng xuất hiện đúng một lần, NULL ở cuối.
-- [ ] R4.3: con trỏ cấp cho cây lọc khác, `order_by` khác, `fields` khác, workspace khác, hay cho cùng mẫu đường với tham số đường khác (`/runs/{run1}/audit` gửi tới `/runs/{run2}/audit`), đều trả 422, còn con trỏ của `GET` dùng cho `POST .../query` cùng cây thì được nhận; con trỏ phiên bản 1 của route này gửi tới route khác trong năm route trả 422; tính route theo mẫu đường thì test đỏ.
-- [ ] R4.4 (APS8): con trỏ người A nhận ở workspace W1, dùng bởi người B chỉ thuộc W2, trả 422 của R4.3 hay một trang chỉ gồm dòng B đọc được, không bao giờ một dòng B không đọc được; con trỏ tenant A nhận được dùng bởi người ở tenant B trả 422 hay một trang chỉ gồm dòng của tenant B; đổi truy vấn để lấy phạm vi từ con trỏ thì test đỏ.
-- [ ] R4.5: cùng cây lọc với thứ tự khóa khác nhau cho cùng dấu vân tay.
-- [ ] R4.6: con trỏ không phải JSON base64url, thẻ kiểu không hợp kiểu, pha lạ, pha `nulls` mang giá trị, `id` không là uuid đều trả 422 `validation_failed` và không câu SQL nào chạy.
-- [ ] R5.1 (APS9): độ sâu 6, 51 lá, `$in` 501 giá trị, chuỗi 1.025 byte đều trả 422 với `errors[].pointer` đúng nút và không câu SQL nào chạy; độ sâu 5, 50 lá, 500 giá trị, 1.024 byte được nhận; gỡ giới hạn thì test đỏ.
-- [ ] R5.2: lá dùng `$gt` trên trường `bool` trả 422 với pointer vào lá đó.
-- [ ] R5.3: `order_by=name desc` sắp đúng và câu SQL sinh ra kết thúc bằng `id`.
-- [ ] R5.4: `order_by` nêu trường không sắp được trả 422 với `errors[].parameter` bằng `order_by`.
-- [ ] R5.5: `fields=name` trả chỉ `name` và `id`.
-- [ ] R5.6: lá nêu trường không lọc được trả 422 với `code` `validation_failed` và `errors[0].code` `field_not_filterable`; lá nêu trường không có trong lược đồ của route trả `errors[0].code` `field_not_readable`; đặt mã lý do vào `code` cấp trên thì test đỏ.
-- [ ] R5.7: cùng một cây lọc sai qua `GET ?filter=` và qua thân `POST <danh sách>/query` cho cùng `errors[]`, pointer bắt đầu bằng `/filter`.
-- [ ] R5.8: độ sâu 6, 51 lá, `$in` 501 giá trị, chuỗi 1.025 byte và `$gt` trên `bool` cho đúng `filter_too_deep`, `filter_too_many_leaves`, `filter_in_too_many_values`, `filter_string_too_long`, `operator_not_allowed` ở `errors[0].code`.
-- [ ] R5.8: lá `{"a": {"$eq": 1}, "b": {"$eq": 2}}`, lá `{"age": {"$gt": 1, "$lt": 5}}`, `{"$and": []}` và giá trị chuỗi cho một trường `int` đều trả 422 với `errors[0].code` `filter_malformed` và pointer tới nút đó, không câu SQL nào chạy.
-- [ ] R5.10 (APS25): lá mang `x'); DROP TABLE t; --`, `order_by=name desc, (select 1)` và `fields=id,pg_sleep(1)` trả 422 hay một trang đúng, và mọi câu SQL bắt bằng `before_cursor_execute` không chứa chuỗi đã gửi; nối một giá trị hay một tên vào câu SQL thì test đỏ.
-- [ ] R5.11: `order_by=name sideways` trả 422 với `errors[0].parameter` `order_by` và `errors[0].code` `order_by_malformed`; `fields=name,,id` trả 422 với `errors[0].parameter` `fields` và `errors[0].code` `fields_malformed`; không câu SQL nào chạy.
-- [ ] R5.10 (APS45): route thử có vị từ phạm vi `object_id = A`; cây `$or` có một lá khớp dòng của object B, qua route và gọi thẳng `dw_kernel.filters`, chỉ trả dòng của A; biên dịch cây không ngoặc hay thay vị từ phạm vi thì test đỏ.
-- [ ] R5.13 (APS40): một con trỏ hỏng đưa thẳng vào `dw_kernel.filters` nhận ngoại lệ có kiểu như 422 của R4.6 trước mọi câu SQL; gọi thẳng `dw_kernel.filters` với cây sâu 6, lá mang `x'); DROP TABLE t; --`, `order_by` sai ngữ pháp và một lá nêu trường vắng khỏi lược đồ đưa vào cho cùng mã lý do như qua route (`field_not_readable` cho lá đó, pointer tính từ gốc cây), và câu SQL không chứa chuỗi đã gửi; cho trình biên dịch nhận cây chưa qua trình phân tích, hay lấy tên cột từ cây thay lược đồ, thì test đỏ.
-- [ ] R5.12 (APS36): `GET` một route danh sách với `filter` mang `SECRET-123` và một `cursor`: access log và span của yêu cầu không chứa `SECRET-123` hay giá trị con trỏ, mà vẫn nêu tên `filter` và `cursor`; ghi query nguyên văn thì test đỏ.
-- [ ] R5.9: `order_by=name desc, created_at` trả 422 với `errors[0].parameter` `order_by` và `errors[0].code` `order_by_too_many_fields`, không câu SQL nào chạy.
-- [ ] R6.1 (APS10): gỡ index trang feedback trong giao dịch test làm kiểm hình kế hoạch đỏ, nêu câu lệnh và cột; bảng nhỏ không qua mặt nhờ `enable_seqscan = off`.
-- [ ] R5.14 (APS48): lá mang `SECRET-123` vượt 1.024 byte, lá sai kiểu chứa `SECRET-123` và khóa lạ `SECRET-123`, qua route và gọi thẳng `dw_kernel.filters`, cho 422 và ngoại lệ không chứa `SECRET-123` ở `detail`, `pointer` hay `str()`; pointer của khóa lạ dừng ở nút chứa nó; nêu giá trị trong `detail` thì test đỏ.
-- [ ] R5.15 (APS49): `?filter=` gửi tới `GET /approvals` trả 422 với `errors[0].parameter` `filter`; `?order_by=a&order_by=b` trên route thử trả 422 nêu `order_by`; trường không khai cờ trong lược đồ thử trả `field_not_filterable` khi lọc và sắp; bỏ qua lặng lẽ hay mặc định mở thì test đỏ.
-- [ ] R6.3 (APS47): thêm một route thử nhận `cursor` mà không đăng ký vào sổ kiểm hình kế hoạch làm test dựng ứng dụng đỏ và nêu route đó; gỡ phép kiểm thì test đỏ.
-- [ ] R6.4 (APS51): lược đồ thử khai một trường sắp được mà không có index làm kiểm hình đỏ, nêu trường, chiều và pha; khai `$lt` trên cột không có index cũng đỏ; một index có `tenant_id` không đứng đầu cũng đỏ; chỉ kiểm câu cố định thì test đỏ.
-- [ ] R6.2: kiểm hình kế hoạch xanh trên năm route phân trang và danh sách audit theo lượt chạy sau khi sửa index.
-- [ ] G7: `test_a_v1_cursor_still_resumes_where_it_left_off` xanh ở commit gốc và sau thay đổi.
-- [ ] G8: `test_a_cursor_from_an_older_format_version_is_refused` xanh trước và sau thay đổi.
-- [ ] Xong: `make test-unit test-contract test-integration` xanh.
+- [x] R2.34 (APS38): `PATCH` thử với `If-Match: "7"` commit lên phiên bản 8 rồi 5xx, G6 nhả khóa, gửi lại nguyên yêu cầu nhận 200 phiên bản 8, không 412, phiên bản vẫn là 8 và không có dòng audit thứ hai; route tạo thử với `If-None-Match: *` nhận 201, không 409; so điều kiện trước khi tra khóa hiệu ứng thì test đỏ.
+- [x] R3.1: tài nguyên thử đã bật R3 trả `ETag: "7"` cho phiên bản 7 ở cả `GET` lẫn phản hồi của `PATCH`.
+- [x] R3.13 (APS16): tài nguyên bị xóa hay ra khỏi tầm với của người gọi giữa lúc nạp và lúc ghi thì câu ghi không khớp dòng nào và người gọi nhận phản hồi của id không tồn tại; tài nguyên còn đọc được mà phiên bản đã đổi thì nhận 412; người cùng tenant giữ `action` mà không là chủ dòng của bảng thử (policy UPDATE RESTRICTIVE theo chủ) gửi `If-Match` khớp nhận 403 `permission_denied`; không nhánh nào thêm dòng audit; trả 412 ở cả ba trường hợp thì test đỏ.
+- [x] R3.2 (APS7): `If-Match: "6"` và `If-Match: W/"7"` đều trả 412 `precondition_failed`, phiên bản vẫn là 7 và không có dòng audit mới; gỡ phép so trong dependency thì test đỏ.
+- [x] R3.3 (APS7): route bắt buộc điều kiện, gọi thiếu `If-Match`, trả 428 `precondition_required` và không đổi gì.
+- [x] R3.4 (APS46): `If-None-Match: *` trên tài nguyên đã có trả 412 và không tạo dòng nào; hai yêu cầu tạo cùng id với `If-None-Match: *` song song thật (hai kết nối, một rào đồng bộ trước câu chèn) cho một 201 và một 412, không 409 hay 500; kiểm tồn tại trước câu `INSERT` thì test đỏ.
+- [x] R3.16: `PATCH` với `{}` và với một patch đặt lại đúng giá trị hiện có, mang `If-Match` khớp, trả 200, phiên bản, `ETag` và `updated_at` không đổi, không dòng audit mới; `{}` với `If-Match: "6" khi phiên bản là 7 trả 412; `{}`với`If-Match`khớp từ người cùng tenant không là chủ dòng của bảng thử trả 403; tăng phiên bản, hay trả 200 cho`If-Match` lệch hay người không sửa được, thì test đỏ.
+- [x] R3.4 (APS50): `POST` tạo với id đã có, không `If-None-Match`, trả 409 `conflict` không nêu giá trị và dòng không đổi; route thử `POST /things/batch-update` và route thử `PATCH /things` không bật `RequireIfMatch` đều làm test dựng ứng dụng đỏ; cho `POST` tạo ghi đè thì test đỏ.
+- [x] R3.15 (APS46): `GET` tài nguyên thử kèm `If-None-Match` khớp ETag hiện tại trả 200 có thân, không 304; trả 304 thì test đỏ.
+- [x] R3.5: Merge Patch `{"a": null, "b": {"c": 1}}` xóa `a`, trộn `b` và giữ các trường khác, với cả hai `Content-Type`.
+- [x] R3.6: preflight CORS cho phép `If-Match`; phản hồi lộ `ETag` và `Location`.
+- [x] R3.7 (APS16): người B không đọc được tài nguyên X gửi `If-Match` khớp và lệch tới X nhận đúng phản hồi của một id không tồn tại; người ở tenant B gửi `If-Match` tới id của một tài nguyên tenant A cũng nhận phản hồi đó; so điều kiện trước khi nạp tài nguyên thì test đỏ.
+- [x] R3.9 (APS18): hai `PATCH` chạy song song thật (hai kết nối, một rào đồng bộ trước câu ghi) cùng `If-Match: "7"` cho một thành công và một 412 `precondition_failed`, và phiên bản là 8; một `DELETE` thắng cuộc đua với một `PATCH` cùng `If-Match` thì `PATCH` nhận phản hồi của id không tồn tại; một `POST .../archive` thử mang `If-Match` lệch trên tài nguyên đã archive nhận 412, không 409; tách phép so khỏi câu `UPDATE` thì test đỏ.
+- [x] R3.11 (APS16): người ở tenant B tạo với `If-None-Match: *` một tài nguyên có id trùng id của tenant A thì tài nguyên được tạo trong tenant B, không 412, và dòng của tenant A không đổi.
+- [x] R3.12 (APS22): một tên trong danh sách miễn trừ không kèm lý do, hay một tên mà route không còn, làm test đỏ; thêm một route thử `PATCH` trả tài nguyên có `version` mà không bật `RequireIfMatch` làm test dựng ứng dụng đỏ và nêu route đó; một route thử `DELETE` trả 204 và một `POST .../archive` trả hình khác, trên đường có `GET` trả `version`, cũng làm test đỏ; route thử trả `version` kiểu chuỗi không làm test đỏ; gỡ phép kiểm thì test đỏ.
+- [x] R3.10: `PATCH` với `Content-Type: application/json-patch+json` trả 415 `unsupported_media_type` và phiên bản không đổi.
+- [x] R3.8 (APS7): route ghi của tài nguyên thử nhận `If-Match: *`, `If-Match: "6", "7"`, hai header `If-Match` hay `If-Match: 7` không ngoặc kép trả 428 `precondition_required` và không đổi gì; nhận `*` hay nhận danh sách khi một phần tử khớp thì test đỏ.
+- [x] R2.1: `PATCH` mang `If-Match: "6"` và `Idempotency-Key` thành công (phiên bản lên 7), gửi lại nguyên yêu cầu nhận 200 đã lưu, không 412.
+- [x] R4.1: trang kế mang con trỏ phiên bản 2 có thẻ kiểu, pha và `id`.
+- [x] R4.2: test thuộc tính phân trang 1.000 dòng có giá trị trùng và 10% NULL, chiều tăng và giảm, kích thước trang từ 1 đến 50: mỗi dòng xuất hiện đúng một lần, NULL ở cuối.
+- [x] R4.3: con trỏ cấp cho cây lọc khác, `order_by` khác, `fields` khác, workspace khác, hay cho cùng mẫu đường với tham số đường khác (`/runs/{run1}/audit` gửi tới `/runs/{run2}/audit`), đều trả 422, còn con trỏ của `GET` dùng cho `POST .../query` cùng cây thì được nhận; con trỏ phiên bản 1 của route này gửi tới route khác trong năm route trả 422; tính route theo mẫu đường thì test đỏ.
+- [x] R4.4 (APS8): con trỏ người A nhận ở workspace W1, dùng bởi người B chỉ thuộc W2, trả 422 của R4.3 hay một trang chỉ gồm dòng B đọc được, không bao giờ một dòng B không đọc được; con trỏ tenant A nhận được dùng bởi người ở tenant B trả 422 hay một trang chỉ gồm dòng của tenant B; đổi truy vấn để lấy phạm vi từ con trỏ thì test đỏ.
+- [x] R4.5: cùng cây lọc với thứ tự khóa khác nhau cho cùng dấu vân tay.
+- [x] R4.6: con trỏ không phải JSON base64url, thẻ kiểu không hợp kiểu, pha lạ, pha `nulls` mang giá trị, `id` không là uuid đều trả 422 `validation_failed` và không câu SQL nào chạy.
+- [x] R5.1 (APS9): độ sâu 6, 51 lá, `$in` 501 giá trị, chuỗi 1.025 byte đều trả 422 với `errors[].pointer` đúng nút và không câu SQL nào chạy; độ sâu 5, 50 lá, 500 giá trị, 1.024 byte được nhận; gỡ giới hạn thì test đỏ.
+- [x] R5.2: lá dùng `$gt` trên trường `bool` trả 422 với pointer vào lá đó.
+- [x] R5.3: `order_by=name desc` sắp đúng và câu SQL sinh ra kết thúc bằng `id`.
+- [x] R5.4: `order_by` nêu trường không sắp được trả 422 với `errors[].parameter` bằng `order_by`.
+- [x] R5.5: `fields=name` trả chỉ `name` và `id`.
+- [x] R5.6: lá nêu trường không lọc được trả 422 với `code` `validation_failed` và `errors[0].code` `field_not_filterable`; lá nêu trường không có trong lược đồ của route trả `errors[0].code` `field_not_readable`; đặt mã lý do vào `code` cấp trên thì test đỏ.
+- [x] R5.7: cùng một cây lọc sai qua `GET ?filter=` và qua thân `POST <danh sách>/query` cho cùng `errors[]`, pointer bắt đầu bằng `/filter`.
+- [x] R5.8: độ sâu 6, 51 lá, `$in` 501 giá trị, chuỗi 1.025 byte và `$gt` trên `bool` cho đúng `filter_too_deep`, `filter_too_many_leaves`, `filter_in_too_many_values`, `filter_string_too_long`, `operator_not_allowed` ở `errors[0].code`.
+- [x] R5.8: lá `{"a": {"$eq": 1}, "b": {"$eq": 2}}`, lá `{"age": {"$gt": 1, "$lt": 5}}`, `{"$and": []}` và giá trị chuỗi cho một trường `int` đều trả 422 với `errors[0].code` `filter_malformed` và pointer tới nút đó, không câu SQL nào chạy.
+- [x] R5.10 (APS25): lá mang `x'); DROP TABLE t; --`, `order_by=name desc, (select 1)` và `fields=id,pg_sleep(1)` trả 422 hay một trang đúng, và mọi câu SQL bắt bằng `before_cursor_execute` không chứa chuỗi đã gửi; nối một giá trị hay một tên vào câu SQL thì test đỏ.
+- [x] R5.11: `order_by=name sideways` trả 422 với `errors[0].parameter` `order_by` và `errors[0].code` `order_by_malformed`; `fields=name,,id` trả 422 với `errors[0].parameter` `fields` và `errors[0].code` `fields_malformed`; không câu SQL nào chạy.
+- [x] R5.10 (APS45): route thử có vị từ phạm vi `object_id = A`; cây `$or` có một lá khớp dòng của object B, qua route và gọi thẳng `dw_kernel.filters`, chỉ trả dòng của A; biên dịch cây không ngoặc hay thay vị từ phạm vi thì test đỏ.
+- [x] R5.13 (APS40): một con trỏ hỏng đưa thẳng vào `dw_kernel.filters` nhận ngoại lệ có kiểu như 422 của R4.6 trước mọi câu SQL; gọi thẳng `dw_kernel.filters` với cây sâu 6, lá mang `x'); DROP TABLE t; --`, `order_by` sai ngữ pháp và một lá nêu trường vắng khỏi lược đồ đưa vào cho cùng mã lý do như qua route (`field_not_readable` cho lá đó, pointer tính từ gốc cây), và câu SQL không chứa chuỗi đã gửi; cho trình biên dịch nhận cây chưa qua trình phân tích, hay lấy tên cột từ cây thay lược đồ, thì test đỏ.
+- [x] R5.12 (APS36): `GET` một route danh sách với `filter` mang `SECRET-123` và một `cursor`: access log và span của yêu cầu không chứa `SECRET-123` hay giá trị con trỏ, mà vẫn nêu tên `filter` và `cursor`; ghi query nguyên văn thì test đỏ.
+- [x] R5.9: `order_by=name desc, created_at` trả 422 với `errors[0].parameter` `order_by` và `errors[0].code` `order_by_too_many_fields`, không câu SQL nào chạy.
+- [x] R6.1 (APS10): gỡ index trang feedback trong giao dịch test làm kiểm hình kế hoạch đỏ, nêu câu lệnh và cột; bảng nhỏ không qua mặt nhờ `enable_seqscan = off`.
+- [x] R5.14 (APS48): lá mang `SECRET-123` vượt 1.024 byte, lá sai kiểu chứa `SECRET-123` và khóa lạ `SECRET-123`, qua route và gọi thẳng `dw_kernel.filters`, cho 422 và ngoại lệ không chứa `SECRET-123` ở `detail`, `pointer` hay `str()`; pointer của khóa lạ dừng ở nút chứa nó; nêu giá trị trong `detail` thì test đỏ.
+- [x] R5.15 (APS49): `?filter=` gửi tới `GET /approvals` trả 422 với `errors[0].parameter` `filter`; `?order_by=a&order_by=b` trên route thử trả 422 nêu `order_by`; trường không khai cờ trong lược đồ thử trả `field_not_filterable` khi lọc và sắp; bỏ qua lặng lẽ hay mặc định mở thì test đỏ.
+- [x] R6.3 (APS47): thêm một route thử nhận `cursor` mà không đăng ký vào sổ kiểm hình kế hoạch làm test dựng ứng dụng đỏ và nêu route đó; gỡ phép kiểm thì test đỏ.
+- [x] R6.4 (APS51): lược đồ thử khai một trường sắp được mà không có index làm kiểm hình đỏ, nêu trường, chiều và pha; khai `$lt` trên cột không có index cũng đỏ; một index có `tenant_id` không đứng đầu cũng đỏ; chỉ kiểm câu cố định thì test đỏ.
+- [x] R6.2: kiểm hình kế hoạch xanh trên năm route phân trang và danh sách audit theo lượt chạy sau khi sửa index.
+- [x] G7: `test_a_v1_cursor_still_resumes_where_it_left_off` xanh ở commit gốc và sau thay đổi.
+- [x] G8: `test_a_cursor_from_an_older_format_version_is_refused` xanh trước và sau thay đổi.
+- [x] Xong: `make test-unit test-contract test-integration` xanh.
 
 ## Nguồn
 
@@ -104,3 +104,27 @@ Lát này cho mọi route danh sách và route sửa một quy ước chung: ETa
 - 2026-10-28 (agent, tạm): theo lượt xác nhận trên `87beedf`: `updated_at` của patch rỗng có tiêu chí, `DELETE` thắng cuộc đua cho phản hồi của id không tồn tại, custom method so `If-Match` trước trạng thái.
 - 2026-10-28 (agent): MEDIUM sửa kèm: bảng thử có trigger `updated_at` như bảng thật, câu cũ "không ghi được dòng nào thì 412" của bước 2 theo R3.13.
 - 2026-10-28 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-10-28 (agent): code trên `main`. Ba chỗ làm khác chữ của bước, cho người duyệt xem lại (agent, tạm, theo ủy quyền 27/10/2026):
+    - Kiểm hình kế hoạch tìm ra hai route nữa ngoài feedback: RLS của `knowledge.documents` là `tenant OR global` và của `memory.items` là `tenant OR worker_drain`, nên không index nào dẫn bằng `tenant_id` thu hẹp được câu danh sách. Danh sách memory nay tự nêu `tenant_id`; danh sách tri thức đọc hai nhánh rời nhau (tài liệu của workspace qua `ix_documents_workspace_page`, tài liệu `global` qua `ix_documents_global_page`) bằng hai câu và trộn ở Python, vì `UNION ALL` dưới RLS thành `Append` rồi `Sort` (đã đo). Index của nhánh `global` không dẫn bằng tenant được, vì tài liệu `global` thuộc tenant đã đăng nó; kiểm hình miễn trừ đúng index đó kèm lý do. Nếu sai thì: tách nhánh `global` thành một route riêng.
+    - Kiểm hình đặt thêm `enable_sort = off` cạnh `enable_seqscan = off`: trên bảng thử vài dòng planner sắp ba dòng thay vì đi index; không có index mang trọn thì nút `Sort` vẫn còn và vẫn đỏ (APS10 đỏ khi gỡ index feedback).
+    - R3.16: `platform.touch_updated_at()` coi `updated_at` nêu lại bằng giá trị cũ là chưa nêu (migration `0004`), nên lần ghi không đổi gì là `SELECT ... FOR UPDATE` có cùng điều kiện, không phải `UPDATE`. Policy UPDATE của RLS vẫn lọc nó (đã đo: người không là chủ nhận 403), `updated_at` và phiên bản giữ nguyên.
+    - Thêm bốn mã lý do ngoài bảng của spec: `cursor_invalid` (con trỏ hỏng hay cấp cho truy vấn khác, ở route có lược đồ), `limit_out_of_range` (người gọi không qua HTTP), `parameter_repeated` và `parameter_not_accepted` (R5.15).
+    - R5.12: API không mở span HTTP nào, và `IdentifierOnlySpanProcessor` bỏ mọi thuộc tính `url.*` (không có trong `ALLOWED_KEYS`); bộ lọc che `filter` và `cursor` gắn vào logger `uvicorn.access`, phần span được chứng minh bằng test trên allowlist.
+    - Index audit theo lượt chạy tên `ix_audit_events_by_run`, dựng `ON ONLY` trên bảng cha rồi `CREATE INDEX CONCURRENTLY` từng partition và gắn vào (MEDIUM của 28/10).
+- 2026-10-28 (agent): `reviewing-feature-security`: cô lập tenant (con trỏ gắn tenant và workspace, tenant B gửi `If-Match` hay tạo cùng id), phân quyền (403 của R3.13 ở service, không ở dependency), nội dung không đáng tin (giá trị lọc chỉ là tham số bind, không vào log), mặc định (lược đồ đóng, ETag yếu không khớp, `If-None-Match` khác `*` bị từ chối) đều có test âm. Không áp: autonomy (không tool hay lượt chạy nào đổi tầm với), provenance (không route thật nào ghi), image (không đổi Dockerfile hay lockfile). Route có lược đồ phân tích truy vấn trước phép kiểm quyền của handler, nên người không có quyền gửi truy vấn sai nhận 422 trước 403; không dòng nào được đọc.
+- 2026-10-28 (agent): mutation check, 41 đột biến trên APS7-APS10, APS16, APS18, APS22, APS25, APS36, APS38, APS40, APS45-APS51, R4.2, R4.3, R4.6, R6.1, R6.3, G7: mọi đột biến đều đỏ. Bốn chỗ lần đầu xanh đã sửa: nhánh `*` riêng của `If-Match` là thừa (`*` không là entity-tag, nên rơi vào 428) và đã bỏ, đột biến nhận `*` làm test đỏ; tenant trong dấu vân tay bị workspace che, thêm test cùng workspace `None` khác tenant; hai đột biến viết sai (giữ `ON CONFLICT`, sửa chính assertion) đã viết lại và đều đỏ.
+- 2026-10-28 (agent): P50/P95/P99 (ms), app thật qua httpx, PostgreSQL thật, 1.000 dòng mỗi bảng, 300 yêu cầu mỗi operation (nửa trang đầu, nửa trang có con trỏ, `limit=50`), sau 20 lượt làm nóng, so với `87441bb` xuất bằng `git archive`, đo tuần tự khi không việc nặng nào khác chạy:
+
+    | Operation                         | Trước (P50/P95/P99) | Sau (P50/P95/P99)  |
+    | --------------------------------- | ------------------- | ------------------ |
+    | `GET /api/v1/approvals`           | 32,1 / 38,6 / 43,9  | 30,5 / 36,6 / 40,4 |
+    | `GET /api/v1/audit/events`        | 31,3 / 38,1 / 44,6  | 29,9 / 35,0 / 41,7 |
+    | `GET /api/v1/feedback`            | 35,3 / 44,6 / 53,6  | 31,8 / 37,5 / 42,3 |
+    | `GET /api/v1/knowledge/documents` | 36,0 / 42,2 / 56,7  | 37,7 / 45,0 / 56,8 |
+    | `GET /api/v1/memory/items`        | 35,6 / 42,2 / 47,6  | 33,0 / 42,5 / 48,4 |
+    | route thử, `filter` + `order_by`  | —                   | 30,4 / 36,6 / 44,2 |
+    | route thử, `PATCH` có `If-Match`  | —                   | 35,7 / 42,1 / 46,0 |
+
+    Mọi operation trong ngân sách; không P95 nào chậm hơn 20%. Tri thức chậm hơn 6,7% ở P95 vì thêm câu của nhánh `global`.
+
+- 2026-10-28 (agent): `make test-unit test-contract` xanh (1.519 unit), lint, format, `test-architecture`, TS typecheck, hooks, eval-smoke, release-manifest xanh. `uv run mypy` không chạy được vì Application Control của Windows chặn `mypy.exe`; `python -m mypy` xanh trên 447 file. `make test-integration`: mọi suite xanh trừ các test cần Qdrant, kho S3 và ảnh sandbox của docgen, mà máy này không có (cổng 9000 do kho S3 của dự án khác giữ); cùng các lỗi đó ở commit cha.

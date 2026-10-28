@@ -14,6 +14,7 @@ from fastapi import APIRouter, File, Form, Query, UploadFile
 from pydantic import BaseModel
 
 from dw_api.dependencies.auth import RequireAccessContext
+from dw_api.dependencies.listing import RequireListPage
 from dw_api.dependencies.services import RequireContainer
 from dw_kernel.errors import (
     DomainError,
@@ -21,7 +22,7 @@ from dw_kernel.errors import (
     NotFoundError,
     PermissionDeniedError,
 )
-from dw_kernel.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, Page, PageQuery, page_request
+from dw_kernel.pagination import Page
 from dw_knowledge.ingest_jobs import EnqueueIngestCommand
 
 # Documents up to this size are accepted for ingestion (raw bytes staged to
@@ -66,8 +67,7 @@ router = APIRouter(prefix="/knowledge", tags=["knowledge"])
 async def list_documents(
     context: RequireAccessContext,
     container: RequireContainer,
-    limit: int = Query(default=DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
-    cursor: str | None = Query(default=None, description="Opaque cursor from a previous page."),
+    page: RequireListPage,
     domain: str | None = Query(default=None, description="Narrow the listing to one domain."),
 ) -> Page[KnowledgeDocumentView]:
     if container.knowledge_gateway is None:
@@ -78,16 +78,14 @@ async def list_documents(
     # ``domain`` changes which rows come back, so it belongs in the fingerprint:
     # a cursor taken from the unfiltered listing must not be resumed against a
     # narrowed one, where the same position describes a different window.
-    request = page_request(
-        limit=limit,
-        cursor=cursor,
-        query=PageQuery(
-            key="knowledge.documents",
-            filters={"tenant": context.tenant_id, "domain": domain},
-        ),
+    request = page.request(
+        context,
+        key="knowledge.documents",
+        filters={"tenant": context.tenant_id, "domain": domain},
+        params={"domain": domain},
     )
-    page = await container.knowledge_gateway.list_documents(context, request, domain=domain)
-    return page.map_items(
+    documents = await container.knowledge_gateway.list_documents(context, request, domain=domain)
+    return documents.map_items(
         lambda doc: KnowledgeDocumentView(
             document_id=doc.document_id,
             title=doc.title,

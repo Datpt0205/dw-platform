@@ -33,10 +33,13 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import math
+import re
 import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
+from enum import StrEnum
 from typing import Final
 
 from dw_kernel.errors import DomainError
@@ -47,16 +50,117 @@ from dw_kernel.errors import DomainError
 DEFAULT_PAGE_SIZE: Final = 50
 MAX_PAGE_SIZE: Final = 200
 
-# Bumped only when the encoded payload changes shape. A cursor carrying any
-# other version is refused rather than guessed at, which is what stops a client's
-# in-flight cursor from being reinterpreted under new rules after a deploy.
-_CURSOR_FORMAT_VERSION: Final = 1
+# The payload shapes this build reads. Version 2 is the one it mints: a typed
+# sort value, a phase, and a fingerprint of the whole query (app-standards R4).
+# Version 1 (a timestamp, minted by the five listings that existed before) is
+# still read, against its own fingerprint, so a client paging across a deploy
+# gets its next page (G7). Any other version is refused rather than guessed at,
+# which is what stops an in-flight cursor being reinterpreted under new rules.
+_V1: Final = 1
+_V2: Final = 2
 
 # 64 bits of query fingerprint. This detects an honest mistake — a cursor
 # replayed against a different filter or a different endpoint — rather than
 # resisting an attacker, and eight bytes keep the cursor short enough to sit
 # comfortably in a URL.
 _FINGERPRINT_BYTES: Final = 8
+
+_INT64_MIN: Final = -(2**63)
+_INT64_MAX: Final = 2**63 - 1
+_DATE: Final = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+# RFC 3339: a date-time always carries its offset. One without is a wall-clock
+# time in a zone nobody named, and comparing it with a timestamptz would read
+# it in the session's zone.
+_DATETIME: Final = re.compile(
+    r"[0-9]{4}-[0-9]{2}-[0-9]{2}[Tt ][0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,6})?"
+    r"([Zz]|[+-][0-9]{2}:[0-9]{2})"
+)
+
+
+class SortType(StrEnum):
+    """The abstract types a list sorts and filters on, and their cursor tags."""
+
+    TEXT = "text"
+    INT = "int"
+    FLOAT = "float"
+    DATE = "date"
+    DATETIME = "datetime"
+    BOOL = "bool"
+
+
+NULL_TAG: Final = "null"
+
+
+class Phase(StrEnum):
+    """Where in a nullable ordering a page ended: among the values, or past them
+    among the NULLs, which always come last (R4.2)."""
+
+    VALUES = "values"
+    NULLS = "nulls"
+
+
+type SortValue = str | int | float | date | datetime | bool | None
+
+
+def _in_int64(value: int) -> bool:
+    return _INT64_MIN <= value <= _INT64_MAX
+
+
+def typed_value(sort_type: SortType, raw: object) -> SortValue:
+    """``raw`` (as JSON decoded it) as a value of ``sort_type``, or ValueError.
+
+    The one reading of a typed value, shared by the cursor and the filter tree,
+    so a value a filter refuses is one a cursor refuses too: a bool is not an
+    int, an int outside int64 or a float that is not finite is no number, a
+    date is `YYYY-MM-DD` and a date-time carries its offset.
+    """
+    number = isinstance(raw, int | float) and not isinstance(raw, bool)
+    if sort_type is SortType.TEXT and isinstance(raw, str):
+        return raw
+    if sort_type is SortType.BOOL and isinstance(raw, bool):
+        return raw
+    if sort_type is SortType.INT and isinstance(raw, int) and number and _in_int64(raw):
+        return raw
+    if sort_type is SortType.FLOAT and number:
+        assert isinstance(raw, int | float)
+        if (not isinstance(raw, int) or _in_int64(raw)) and math.isfinite(raw):
+            return float(raw)
+    if sort_type is SortType.DATE and isinstance(raw, str) and _DATE.fullmatch(raw):
+        return date.fromisoformat(raw)
+    if sort_type is SortType.DATETIME and isinstance(raw, str) and _DATETIME.fullmatch(raw):
+        return datetime.fromisoformat(raw)
+    raise ValueError("not a value of the sort type")
+
+
+def _tag_of(value: SortValue) -> str:
+    # bool before int (a bool is an int), datetime before date (likewise).
+    if value is None:
+        return NULL_TAG
+    if isinstance(value, bool):
+        return SortType.BOOL.value
+    if isinstance(value, int):
+        return SortType.INT.value
+    if isinstance(value, float):
+        return SortType.FLOAT.value
+    if isinstance(value, datetime):
+        return SortType.DATETIME.value
+    if isinstance(value, date):
+        return SortType.DATE.value
+    return SortType.TEXT.value
+
+
+def _json_of(value: SortValue) -> object:
+    return value.isoformat() if isinstance(value, date) else value
+
+
+def canonical_json(value: object) -> str:
+    """JSON with sorted keys and no whitespace: equal for equal queries whatever
+    order a caller wrote their filter's keys in (R4.5)."""
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def _digest(text: str) -> str:
+    return hashlib.blake2b(text.encode("utf-8"), digest_size=_FINGERPRINT_BYTES).hexdigest()
 
 
 class InvalidCursorError(DomainError):
@@ -69,27 +173,57 @@ class InvalidCursorError(DomainError):
     """
 
 
+def list_identity(
+    *,
+    route: str,
+    tenant: object,
+    workspace: object | None,
+    params: Mapping[str, object] | None = None,
+    selection: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    """What a version 2 cursor is bound to (R4.3, the spec's "API" section).
+
+    ``route`` is the concrete list path with its path parameters filled in, so
+    a cursor from `/runs/{run1}/audit` is refused at `/runs/{run2}/audit`;
+    `GET <list>` and `POST <list>/query` pass the same path. ``params`` are the
+    route's own query parameters other than `cursor` and `limit`, and
+    ``selection`` the parsed filter, ordering and fields. The tenant and
+    workspace are the verified context's, never anything the client sent."""
+    return {
+        "route": route,
+        "params": {
+            name: None if value is None else str(value) for name, value in (params or {}).items()
+        },
+        "tenant": str(tenant),
+        "workspace": None if workspace is None else str(workspace),
+        "selection": dict(selection or {}),
+    }
+
+
 @dataclass(frozen=True)
 class PageQuery:
     """The identity of the query a cursor belongs to.
 
-    ``key`` names the endpoint. An endpoint's sort order is fixed, so the name
-    implies the ordering and the ordering never has to be spelled out twice.
-    ``filters`` carries the values that narrow the listing.
+    ``identity`` is what a version 2 cursor is bound to, built by
+    :func:`list_identity`: the route, its parameters, the caller's tenant and
+    workspace, and the filter, ordering and fields. ``sort_type`` is the type of
+    the value the listing is ordered by, which a cursor's tag must name.
 
-    A cursor encodes a fingerprint of both, so one taken from a different
-    endpoint — or from the same endpoint with a different filter — is refused
-    rather than applied to a window it does not describe. Anything a caller can
-    vary that changes which rows come back, including a sort direction an
-    endpoint chooses to offer, belongs in ``filters``.
+    ``key`` and ``filters`` are the version 1 identity: the endpoint's name and
+    the values that narrowed it. They are read only to resume a version 1
+    cursor; a listing that never minted one has no ``key``, and a version 1
+    cursor sent to it is refused. Without an ``identity`` (an internal one-page
+    read) the version 2 fingerprint is taken from them.
     """
 
-    key: str
+    key: str | None
     filters: Mapping[str, object] = field(default_factory=dict)
+    identity: Mapping[str, object] | None = None
+    sort_type: SortType = SortType.DATETIME
 
     @property
     def fingerprint(self) -> str:
-        """A short, stable digest of this query's identity.
+        """The version 1 digest: the endpoint's name and its stringified filters.
 
         Values are stringified rather than serialized structurally: the digest
         only has to be equal for equal queries and different for different ones,
@@ -100,8 +234,18 @@ class PageQuery:
             [self.key, {key: str(value) for key, value in sorted(self.filters.items())}],
             separators=(",", ":"),
         )
-        digest = hashlib.blake2b(canonical.encode("utf-8"), digest_size=_FINGERPRINT_BYTES)
-        return digest.hexdigest()
+        return _digest(canonical)
+
+    @property
+    def identity_fingerprint(self) -> str:
+        """The version 2 digest, over :attr:`identity` as canonical JSON."""
+        identity = self.identity
+        if identity is None:
+            identity = {
+                "key": self.key,
+                "filters": {key: str(value) for key, value in self.filters.items()},
+            }
+        return _digest(canonical_json(identity))
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,10 +257,17 @@ class CursorPosition:
     remembered only the timestamp would either repeat every tied row on the next
     page or skip all but one of them, depending on which way the comparison was
     written. With the id in the position the comparison is exact.
+
+    A ``sort_value`` of None is a row among the NULLs, which sort after every
+    value in either direction: that is the position's :attr:`phase`.
     """
 
-    sort_value: datetime
+    sort_value: SortValue
     tiebreaker: uuid.UUID
+
+    @property
+    def phase(self) -> Phase:
+        return Phase.NULLS if self.sort_value is None else Phase.VALUES
 
 
 @dataclass(frozen=True, slots=True)
@@ -169,56 +320,95 @@ class Page[ItemT]:
 
 
 def encode_cursor(position: CursorPosition, query: PageQuery) -> str:
-    """Render a position as the opaque string a client sends back."""
-    payload = {
-        "v": _CURSOR_FORMAT_VERSION,
-        "k": position.sort_value.isoformat(),
+    """Render a position as the opaque version 2 string a client sends back."""
+    payload: dict[str, object] = {
+        "v": _V2,
+        "t": _tag_of(position.sort_value),
+        "p": position.phase.value,
         "i": str(position.tiebreaker),
-        "q": query.fingerprint,
+        "q": query.identity_fingerprint,
     }
-    raw = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    if position.sort_value is not None:
+        payload["k"] = _json_of(position.sort_value)
+    raw = json.dumps(payload, separators=(",", ":"), allow_nan=False).encode("utf-8")
     # Padding is stripped so the cursor survives a query string without
     # percent-encoding; :func:`decode_cursor` puts it back.
     return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+_UNREADABLE: Final = "cursor is not readable; drop it and request the first page again"
+_FOREIGN: Final = (
+    "cursor was issued for a different query; "
+    "request the first page again with the filters you want"
+)
+
+
+def _refuse_constant(_: str) -> object:
+    # `NaN`, `Infinity` and `-Infinity`, which `json` accepts by default.
+    raise ValueError("not a JSON number")
+
+
+def _decode_v1(payload: Mapping[str, object], query: PageQuery) -> CursorPosition:
+    # Only a listing that minted version 1 cursors reads one, and only against
+    # the fingerprint it minted them with (G7, R4.3).
+    if query.key is None or query.sort_type is not SortType.DATETIME:
+        raise InvalidCursorError(_FOREIGN)
+    if payload.get("q") != query.fingerprint:
+        raise InvalidCursorError(_FOREIGN)
+    try:
+        sort_value = datetime.fromisoformat(str(payload["k"]))
+        tiebreaker = uuid.UUID(str(payload["i"]))
+    except (KeyError, ValueError) as exc:
+        raise InvalidCursorError(_UNREADABLE) from exc
+    return CursorPosition(sort_value=sort_value, tiebreaker=tiebreaker)
+
+
+def _decode_v2(payload: Mapping[str, object], query: PageQuery) -> CursorPosition:
+    if payload.get("q") != query.identity_fingerprint:
+        raise InvalidCursorError(_FOREIGN)
+    tag, phase = payload.get("t"), payload.get("p")
+    try:
+        tiebreaker = uuid.UUID(str(payload["i"]))
+        if phase == Phase.NULLS.value:
+            # A NULL has no value to carry; one that does is not a NULL.
+            if tag != NULL_TAG or "k" in payload:
+                raise ValueError("a nulls position carries no value")
+            return CursorPosition(sort_value=None, tiebreaker=tiebreaker)
+        if phase != Phase.VALUES.value or tag != query.sort_type.value:
+            raise ValueError("phase or type tag does not fit this listing")
+        sort_value = typed_value(query.sort_type, payload["k"])
+    except (KeyError, ValueError) as exc:
+        raise InvalidCursorError(_UNREADABLE) from exc
+    return CursorPosition(sort_value=sort_value, tiebreaker=tiebreaker)
 
 
 def decode_cursor(cursor: str, query: PageQuery) -> CursorPosition:
     """Read a cursor back, refusing one that does not belong to ``query``.
 
     Raises :class:`InvalidCursorError` for anything unreadable, for a payload
-    written by a different format version, and for a cursor whose fingerprint
-    does not match — a stale or foreign cursor is refused rather than silently
-    applied, because applying it would return a window of the wrong result set
-    and the client would have no way to notice.
+    written by a format version this build does not read, and for a cursor
+    whose fingerprint does not match — a stale or foreign cursor is refused
+    rather than silently applied, because applying it would return a window of
+    the wrong result set and the client would have no way to notice.
     """
     try:
         # ``binascii.Error`` and ``json.JSONDecodeError`` are both ValueError.
         padded = cursor + "=" * (-len(cursor) % 4)
-        payload = json.loads(base64.urlsafe_b64decode(padded))
+        payload = json.loads(base64.urlsafe_b64decode(padded), parse_constant=_refuse_constant)
     except (ValueError, TypeError) as exc:
-        raise InvalidCursorError(
-            "cursor is not readable; drop it and request the first page again"
-        ) from exc
+        raise InvalidCursorError(_UNREADABLE) from exc
     if not isinstance(payload, dict):
-        raise InvalidCursorError("cursor is not readable; drop it and request the first page again")
-    if payload.get("v") != _CURSOR_FORMAT_VERSION:
-        raise InvalidCursorError(
-            "cursor was issued by an older version of this API; "
-            "drop it and request the first page again"
-        )
-    if payload.get("q") != query.fingerprint:
-        raise InvalidCursorError(
-            "cursor was issued for a different query; "
-            "request the first page again with the filters you want"
-        )
-    try:
-        sort_value = datetime.fromisoformat(str(payload["k"]))
-        tiebreaker = uuid.UUID(str(payload["i"]))
-    except (KeyError, ValueError) as exc:
-        raise InvalidCursorError(
-            "cursor is not readable; drop it and request the first page again"
-        ) from exc
-    return CursorPosition(sort_value=sort_value, tiebreaker=tiebreaker)
+        raise InvalidCursorError(_UNREADABLE)
+    version = payload.get("v")
+    if isinstance(version, int) and not isinstance(version, bool):
+        if version == _V2:
+            return _decode_v2(payload, query)
+        if version == _V1:
+            return _decode_v1(payload, query)
+    raise InvalidCursorError(
+        "cursor was issued by an older version of this API; "
+        "drop it and request the first page again"
+    )
 
 
 def page_request(*, limit: int, cursor: str | None, query: PageQuery) -> PageRequest:

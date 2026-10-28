@@ -34,6 +34,7 @@ from dw_kernel.pagination import (
     PageRequest,
     build_page,
     encode_cursor,
+    list_identity,
 )
 from dw_platform.adapters.identity.dev_token import DevTokenVerifier
 from dw_platform.application.access_context import AccessContext
@@ -301,7 +302,12 @@ async def test_an_audit_cursor_is_bound_to_the_workspace_it_was_issued_in(
 ) -> None:
     cursor = encode_cursor(
         CursorPosition(sort_value=NOW, tiebreaker=uuid.uuid4()),
-        PageQuery(key="audit.events", filters={"tenant": TENANT, "workspace": workspace}),
+        PageQuery(
+            key=None,
+            identity=list_identity(
+                route="/api/v1/audit/events", tenant=TENANT, workspace=workspace
+            ),
+        ),
     )
 
     response = await _get(

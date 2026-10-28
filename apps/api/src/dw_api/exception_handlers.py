@@ -18,6 +18,11 @@ from dw_api.dependencies.idempotency import (
 )
 from dw_api.errors import ProblemError, code_for, problem_response, status_for
 from dw_kernel.errors import DWError, ErrorCode
+from dw_kernel.filters import QueryError
+
+# Where a filter tree sits in either form of a list query: the `filter`
+# parameter of `GET`, the `filter` member of a `POST <list>/query` body (R5.7).
+FILTER_POINTER = "/filter"
 
 
 def _json_pointer(path: Sequence[Any]) -> str:
@@ -104,6 +109,28 @@ def register_exception_handlers(app: FastAPI) -> None:
                     code=KEY_REQUIRED,
                     detail="required for this operation",
                 )
+            ],
+        )
+
+    @app.exception_handler(QueryError)
+    async def handle_query_error(request: Request, exc: QueryError) -> Response:
+        # Every part of the answer is the platform's: the reason code, its fixed
+        # sentence, a pointer into the tree or a parameter's name (R5.14).
+        return problem_response(
+            request,
+            exc.code,
+            exc.message,
+            errors=[
+                ProblemError(
+                    pointer=FILTER_POINTER + problem.pointer,
+                    code=problem.code,
+                    detail=problem.detail,
+                )
+                if problem.pointer is not None
+                else ProblemError(
+                    parameter=problem.parameter, code=problem.code, detail=problem.detail
+                )
+                for problem in exc.problems
             ],
         )
 

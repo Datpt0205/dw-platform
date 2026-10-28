@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Query, Response
+from fastapi import APIRouter, Response
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from dw_agent_runtime.approval_codes import (
@@ -24,9 +24,10 @@ from dw_agent_runtime.approval_flow import ApproveAndResumeService
 from dw_api.bootstrap import ApiContainer
 from dw_api.dependencies.auth import RequireAccessContext
 from dw_api.dependencies.idempotency import CheckInput, IdempotentOperation, idempotent
+from dw_api.dependencies.listing import RequireListPage
 from dw_api.dependencies.services import RequireContainer
 from dw_kernel.errors import InfrastructureError, NotFoundError
-from dw_kernel.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, Page, PageQuery, page_request
+from dw_kernel.pagination import Page
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.approval_codes import MAX_COMMENT_LENGTH
 from dw_platform.application.authorization import ApprovalAudience, ScopeAuthorizationService
@@ -123,8 +124,7 @@ router = APIRouter(prefix="/approvals", tags=["approvals"])
 async def list_pending(
     context: RequireAccessContext,
     container: RequireContainer,
-    limit: int = Query(default=DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
-    cursor: str | None = Query(default=None, description="Opaque cursor from a previous page."),
+    page: RequireListPage,
 ) -> Page[ApprovalView]:
     if container.uow_factory is None or container.approval_flow is None:
         raise InfrastructureError("database is not configured")
@@ -133,22 +133,19 @@ async def list_pending(
     )
     # The workspace is in the fingerprint as the tenant is: a cursor taken in
     # one workspace is refused in another rather than answered from its window.
-    request = page_request(
-        limit=limit,
-        cursor=cursor,
-        query=PageQuery(
-            key="approvals.pending",
-            filters={"tenant": context.tenant_id, "workspace": context.workspace_id},
-        ),
+    request = page.request(
+        context,
+        key="approvals.pending",
+        filters={"tenant": context.tenant_id, "workspace": context.workspace_id},
     )
     approval_flow = container.approval_flow
     authorization = container.authorization
     audience = ApprovalAudience.of(context, authorization)
     async with container.uow_factory(context) as uow:
-        page = await uow.approvals.list_pending(
+        listed = await uow.approvals.list_pending(
             request, workspace_id=context.workspace_id, audience=audience
         )
-    return page.map_items(lambda p: _view(p, context, approval_flow, authorization))
+    return listed.map_items(lambda p: _view(p, context, approval_flow, authorization))
 
 
 @router.get("/{approval_id}", response_model=ApprovalView)
