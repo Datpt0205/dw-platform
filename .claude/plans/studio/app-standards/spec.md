@@ -2,8 +2,8 @@
 
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
-Duyệt: chưa
-Sẵn sàng: chưa kiểm
+Duyệt: agent, tạm theo ủy quyền 28/10/2026
+Sẵn sàng: ĐẠT (28/10/2026; 0 CRITICAL, 0 HIGH; ticket 03)
 
 Mọi route mới của Studio và của nền tảng nói cùng một quy ước HTTP: một mô tả lỗi problem+json, khóa chống lặp gắn người gọi đã xác minh, ETag với `If-Match`, phân trang keyset có kiểu, cây lọc JSON và một kiểm hình kế hoạch truy vấn trong CI (ADR-0108 (Accepted)). API bản ghi của custom-objects, vỏ phiên bản của tenant-config và mọi API quản trị của lát Marketing dùng các quy ước này, nên spec này đi trước chúng. Ý định: một quy ước HTTP cho mọi route, để không spec nào tự đặt hình lỗi, khóa hay con trỏ của riêng nó.
 
@@ -430,6 +430,7 @@ Một truy vấn phân trang không có index mang trọn làm CI đỏ, kể c�
 - 28/10/2026 (agent, tạm theo ủy quyền): Lượt xác nhận ngữ cảnh mới trên `22f2fe5`: ba HIGH của lượt chạy lại thứ hai đã sửa; nó gặp ba điểm HIGH mới, sửa theo phương án A: `PUT`, `PATCH`, `DELETE` trên chính đường danh sách là route ghi của R3.12; `POST` lên danh sách bản ghi Studio không upsert theo R3.14 và custom-objects:R5.3, và upsert hay batch trên tài nguyên đã bật R3 vào danh sách miễn trừ tới khi spec mở nó định nghĩa phép so theo mục; câu sinh cho mỗi toán tử của R6.4 sắp theo thứ tự mặc định của route, và R6.1 đỏ khi index được dùng không dẫn bằng `tenant_id`. Kèm: patch rỗng vẫn chạy câu ghi có điều kiện mà không tăng `version` (R3.16). Nếu sai thì: R6.1 bỏ vế cột đầu và `CLAUDE.md` "Data model rules" được kiểm bằng review.
 - 28/10/2026 (agent, tạm theo ủy quyền): Lượt xác nhận ngữ cảnh mới trên `56fb677`: năm điểm đã sửa; sửa thêm các chỗ nó gặp trong chính các câu vừa sửa: danh sách miễn trừ của R3 gồm upsert và batch của tài nguyên đã bật R3; R3.9 chỉ cho yêu cầu ghi đổi giá trị; patch rỗng nêu lại `updated_at`; "đường danh sách cha" chỉ khi đoạn cuối là tham số đường; vế cột đầu của R6.1 chỉ cho lần quét keyset của bảng được phân trang; `Incremental Sort`. Còn cho Đạt (MEDIUM): một toán tử miền trên cột X, sắp theo thứ tự mặc định, qua kiểm hình với index `(tenant_id, <khóa mặc định>, id, X)` mà vẫn quét cả phần index của tenant; khuyến nghị nhận cho W1 và để custom-objects khai index theo truy vấn thật.
 - 28/10/2026 (agent, tạm theo ủy quyền): Lượt xác nhận trên `87beedf`: năm điểm đã sửa; ba câu nó gặp đã sửa: tiêu chí cho `updated_at` của patch rỗng; lượt thua cuộc đua với một `DELETE` nhận phản hồi của id không tồn tại (R3.9 nhường R3.13); custom method so `If-Match` trước khi kiểm trạng thái, nên `If-Match` lệch là 412 trước 409.
+- 28/10/2026 (agent): checking-plan-readiness cho spec và ticket 03: ĐẠT, 0 CRITICAL, 0 HIGH. Theo phương án A của Đạt (27/10/2026), ĐẠT dựa trên các lượt xác nhận ngữ cảnh mới của từng bản sửa sau lượt chạy lại thứ hai (`22f2fe5`, `56fb677`, `87beedf`, `fa74d50`; lượt cuối không còn HIGH), không trên một lượt đọc mở mới. MEDIUM để Đạt quyết: dò sự tồn tại bằng `POST` tạo kèm `If-None-Match: *` trong cùng tenant (dòng tạm 27/10/2026, chưa có trần); toán tử miền sắp theo thứ tự mặc định qua được kiểm hình mà vẫn quét cả phần index của tenant (khuyến nghị nhận cho W1). MEDIUM khác ở Comments của ticket 03.
 
 ## Danh sách ticket
 
