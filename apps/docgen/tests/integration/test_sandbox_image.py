@@ -50,6 +50,23 @@ print("generated")
 
 CONVERT_TO_PDF = "soffice --headless --convert-to pdf --outdir . out.docx"
 
+# Counts live `sleep 300` processes from /proc. The image has no `pgrep`
+# (procps is not installed), and `pgrep ... || echo NONE` printed NONE because
+# the command was missing, whatever was running. Python is in the image by
+# design. A process that exits between the listing and the read is skipped.
+COUNT_SLEEPERS = """
+import os
+
+def argv(pid):
+    try:
+        with open(f"/proc/{pid}/cmdline", "rb") as cmdline:
+            return cmdline.read().split(bytes(1))[:2]
+    except OSError:
+        return []
+
+print(sum(1 for pid in os.listdir("/proc") if pid.isdigit() and argv(pid) == [b"sleep", b"300"]))
+"""
+
 
 @pytest.fixture(scope="module")
 def client() -> Iterator[httpx.Client]:
@@ -183,17 +200,25 @@ def test_a_backgrounded_command_does_not_outlive_its_session(
     client: httpx.Client, session: str
 ) -> None:
     """`cmd &` returns immediately and leaves the child running. Nothing should
-    still be alive once the request that started it has been answered."""
-    run(client, session, "sleep 300 &")
+    still be alive once the request that started it has been answered.
 
-    alive = run(client, session, "pgrep -c -f 'sleep 300' || echo NONE")
+    The positive control comes first: inside the request that started it, the
+    count sees the sleeper, so a zero afterwards means it is gone, not that the
+    count is blind. Requests of a session share one PID namespace (measured
+    2026-10-28), so a later request can see an earlier one's survivor."""
+    write(client, session, "count.py", COUNT_SLEEPERS)
 
-    assert "NONE" in str(alive["output"]), alive["output"]
+    during = run(client, session, "sleep 300 & python3 count.py")
+    after = run(client, session, "python3 count.py")
+
+    assert int(str(during["output"]).strip()) >= 1, during["output"]
+    assert int(str(after["output"]).strip()) == 0, after["output"]
 
 
 def test_one_session_cannot_reach_another(client: httpx.Client, session: str) -> None:
-    """Both directions: the path check refuses the download, and the shell finds
-    nothing because each session is its own directory."""
+    """The path check refuses the download, and the session's own directory
+    does not hold the other's file. Whether the shell can walk to the other
+    directory is the next test's question."""
     other = f"other-{uuid.uuid4().hex[:8]}"
     write(client, other, "secret.txt", "another customer's draft")
     try:
@@ -207,6 +232,31 @@ def test_one_session_cannot_reach_another(client: httpx.Client, session: str) ->
 
     assert stolen.json()["results"][0]["error"] == "invalid_path"
     assert "ABSENT" in str(listed["output"])
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "docgen runs every session's shell as one uid over one /work, so "
+        "../<other session> is readable (foundations-hardening/01 Comments, "
+        "2026-10-28); a fix to docgen turns this XPASS red: drop the mark then"
+    ),
+)
+def test_a_session_shell_cannot_read_another_sessions_files(
+    client: httpx.Client, session: str
+) -> None:
+    """Session names carry the tenant (`sandbox.py`'s `session_id_for`), and one
+    docgen container serves every tenant, so a shell that reaches a sibling
+    directory reads another customer's drafts."""
+    other = f"other-{uuid.uuid4().hex[:8]}"
+    write(client, other, "secret.txt", "another customer's draft")
+    try:
+        reached = run(client, session, f"cat ../{other}/secret.txt 2>&1; ls .. 2>&1")
+    finally:
+        client.post(f"/v1/sessions/{other}")
+
+    assert "another customer's draft" not in str(reached["output"])
+    assert other not in str(reached["output"])
 
 
 def test_the_image_cannot_be_rewritten_by_what_it_runs(client: httpx.Client, session: str) -> None:

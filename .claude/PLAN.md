@@ -45,10 +45,10 @@ own file and a row here.
       gpt-5.6-luna, `make check-model`; the key is only in local `.env`);
     - the rerank key for uat/production (local reranks through FPT Cloud,
       `make check-rerank`; the key is only in local `.env`);
-    - whether CI runs the web vitest suite and the Playwright specs, the
-      antd layer-order spec among them (`web-ui/antd-shell` ticket 10).
+    - whether CI runs the web vitest suite and the Playwright specs (`web-ui/antd-shell` ticket 10).
     - how many independent documents a memory needs to be written without
       review (`MemoryWritePolicy.auto_write_sources`, 2 since 2026-10-06).
+    - a ticket to fix docgen: a session's shell reads other tenants' drafts (xfail test, 2026-10-28).
 - **Ops:**
     - spend guard dollar thresholds per plan;
     - a retention term for offboarding export bundles;

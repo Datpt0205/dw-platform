@@ -17,9 +17,9 @@ from typing import Any
 import httpx
 import pytest
 from asgi_lifespan import LifespanManager
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
 from fastapi.dependencies.models import Dependant
-from fastapi.routing import APIRoute
+from fastapi.routing import iter_route_contexts
 from test_support_endpoint import ENABLED, GRANTER, SECRET, TENANT, WORKSPACE, _container
 
 from dw_api.bootstrap.wiring import SUPPORT_ALLOWED_ROUTES
@@ -41,15 +41,29 @@ def _calls(dependant: Dependant) -> Iterator[Callable[..., Any]]:
         yield from _calls(sub)
 
 
+def _endpoints(app: FastAPI) -> Iterator[tuple[str, str, Dependant]]:
+    """(method, full path, dependant) of every endpoint, routers included.
+
+    `app.routes` holds an included router as one `_IncludedRouter` entry
+    (FastAPI 0.141), so a loop over it filtered to `APIRoute` saw only the
+    routes mounted on the app itself. `iter_route_contexts` walks into every
+    included router, with the prefix in the path and the router's own
+    `dependencies=[...]` in the dependant."""
+    for context in iter_route_contexts(app.routes):
+        dependant = getattr(context, "dependant", None)
+        if dependant is None:
+            continue
+        for method in context.methods or ():
+            yield method, context.path, dependant
+
+
 def support_routes(app: FastAPI) -> set[tuple[str, str]]:
     """Every (method, path) whose dependency tree builds a support context."""
-    found: set[tuple[str, str]] = set()
-    for route in app.routes:
-        if isinstance(route, APIRoute) and get_access_context_or_support in set(
-            _calls(route.dependant)
-        ):
-            found |= {(method, route.path) for method in route.methods}
-    return found
+    return {
+        (method, path)
+        for method, path, dependant in _endpoints(app)
+        if get_access_context_or_support in set(_calls(dependant))
+    }
 
 
 def test_the_walker_sees_a_route_that_opts_in() -> None:
@@ -60,6 +74,29 @@ def test_the_walker_sees_a_route_that_opts_in() -> None:
     async def probe(item_id: str, context: RequireAccessContextOrSupport) -> None: ...
 
     assert support_routes(app) == {("GET", "/probe/{item_id}")}
+
+
+def test_the_walker_sees_a_route_inside_an_included_router() -> None:
+    # The blind spot of the old walker: every platform route lives in a router
+    # included under `/api/v1`, never on the app itself.
+    app = FastAPI()
+    router = APIRouter()
+
+    @router.get("/probe/{item_id}")
+    async def probe(item_id: str, context: RequireAccessContextOrSupport) -> None: ...
+
+    app.include_router(router, prefix="/api/v1")
+
+    assert support_routes(app) == {("GET", "/api/v1/probe/{item_id}")}
+
+
+def test_the_walker_sees_the_real_apps_routes() -> None:
+    # A floor under the comparison below: an empty walk would equal the empty
+    # allow-list too.
+    app = create_app(_container(GRANTER, ENABLED))
+    assert ("GET", "/api/v1/runs/{run_id}") in {
+        (method, path) for method, path, _ in _endpoints(app)
+    }
 
 
 def test_only_the_allowed_routes_take_a_support_context() -> None:
