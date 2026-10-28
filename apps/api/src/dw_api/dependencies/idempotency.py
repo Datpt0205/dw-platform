@@ -26,7 +26,8 @@ and that is the whole contract. Everything else happens around the handler:
   has lost the right gets 403, never a stored body. It runs when the handler
   starts ``once`` (or ``claim_fields``), not when the dependency is entered:
   FastAPI enters dependencies before it validates the body, and a wrong body
-  is a 422 whoever sends it.
+  is a 422 whoever sends it. Only when a key is sent: without one nothing reads
+  a key row, and the service's own check refuses the caller (R2.22).
 * **No header.** Nothing is stored and ``record`` returns what it was given,
   unless the route requires the key (422 ``idempotency_key_required``, R2.6).
 * **First use of a key.** The dependency reserves it before the handler runs.
@@ -186,7 +187,10 @@ class IdempotentOperation:
         if self._started:
             return
         self._started = True
-        if self._authorize is not None:
+        # With no key there is no key row to guard, and the service makes the
+        # same check itself (R2.22); for `decide` running it here too would read
+        # the approval twice.
+        if self._authorize is not None and self._idempotency is not None and self._key is not None:
             await self._authorize()
         if self._request_fingerprint is not None:
             await self.claim(self._request_fingerprint)

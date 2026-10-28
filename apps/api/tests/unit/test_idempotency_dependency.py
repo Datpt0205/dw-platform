@@ -474,6 +474,20 @@ def with_probe_routes(app: FastAPI, calls: list[str]) -> FastAPI:
         )
         return await idempotency.record(view, status_code=201)
 
+    async def counted_check(_: Any) -> None:
+        calls.append("check")
+
+    checked = Annotated[
+        IdempotentOperation, idempotent(counted_check, operation="POST /probe/checked")
+    ]
+
+    @app.post("/api/v1/probe/checked", status_code=201)
+    async def checked_probe(idempotency: checked) -> ProbeView:
+        view = await idempotency.once(
+            status=201, run=lambda _: _ran(calls, "checked"), reread=_no_reread
+        )
+        return await idempotency.record(view, status_code=201)
+
     @app.post("/api/v1/probe/versioned", status_code=201)
     async def versioned_probe(idempotency: optional, response: Response) -> ProbeView:
         view = await idempotency.once(
@@ -534,6 +548,25 @@ async def test_a_replay_carries_the_first_etag_and_location() -> None:
     assert again.headers["Location"] == first.headers["Location"]
     assert other.status_code == 409 and other.json()["code"] == "idempotency_conflict"
     assert calls == ["versioned"]
+
+
+async def test_the_declared_check_runs_only_when_a_key_is_sent() -> None:
+    """Without the header no key row is read, and the service checks the caller
+    itself (R2.22), so the route's declared check is not run a second time; for
+    `POST /approvals/{approval_id}/decisions` that check reads the approval. With
+    the header it runs first, replay included (R2.17)."""
+    calls: list[str] = []
+    app, client = await _probe_client(MemoryStore(), calls)
+    async with LifespanManager(app), client:
+        plain = await client.post("/api/v1/probe/checked", headers=headers())
+        assert plain.status_code == 201
+        assert calls == ["checked"]
+        calls.clear()
+        keyed = await client.post("/api/v1/probe/checked", headers=headers("c-1"))
+        again = await client.post("/api/v1/probe/checked", headers=headers("c-1"))
+
+    assert (keyed.status_code, again.status_code) == (201, 201)
+    assert calls == ["check", "checked", "check"], "first use, then the replay, each checked"
 
 
 async def test_no_key_row_is_read_when_the_context_cannot_be_built() -> None:
