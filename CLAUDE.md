@@ -264,6 +264,11 @@ kind of change nobody makes and everybody works around.
   person's recorded decision (an approval's settlement, an offboarding purge, a
   kill) audits that person and names itself in `details.lane`. From a
   cross-tenant drain, write with `lane_audit.append_across_tenants` (ADR 0011).
+  Housekeeping of operational rows that are not records a person made
+  (checkpoints, notifications, nonces, idempotency and effect keys, delivery
+  rows, counters) and partition maintenance write no audit row; they log counts
+  (ADR 0011 "Not applied"; Đạt, 2026-10-28). A row someone can read back as
+  what a person did or was told is a record, not housekeeping.
 - A run's limits are enforced where a run begins — in the runner, not in an API
   dependency. The API is not the only door: a worker reacting to an inbound
   event starts runs no request ever touched. Every limit comes through
