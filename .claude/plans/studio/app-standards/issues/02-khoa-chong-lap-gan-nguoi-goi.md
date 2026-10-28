@@ -1,6 +1,6 @@
 # 02 — Idempotency-Key gắn người gọi, token rào, phát lại header, kiểm lại quyền
 
-Status: needs-triage
+Status: ready-for-agent
 Blocked by: 01, .claude/plans/studio/telemetry-and-audit/issues/01-otel-khong-noi-dung-va-metric.md
 Area: studio
 Yêu cầu: R1.10, R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R2.10, R2.11, R2.12, R2.14, R2.16, R2.17, R2.18, R2.19, R2.20, R2.21, R2.22, R2.23, R2.24, R2.25, R2.26, R2.27, R2.28, R2.29, R2.30, R2.31, R2.33, R2.35, R2.37, R2.38, R2.39, R2.40, R2.42, G4, G5, G6, APS3, APS4, APS5, APS6, APS12, APS13, APS15, APS17, APS19, APS20, APS21, APS23, APS24, APS26, APS27, APS29, APS30, APS31, APS32, APS33, APS34, APS35, APS37, APS39, APS42, APS44
@@ -99,3 +99,4 @@ Lát này cho người gọi thử lại một yêu cầu ghi mà không sợ gh
 - 2026-10-28 (agent): theo bốn khuyến nghị sau gate trên `d6fea80` (ủy quyền của Đạt): `lock_timeout` đặt lại sau câu chèn, phản hồi của hiệu ứng đã có cùng hình lần đầu, lúc gọi hàm quá hạn và 500 khi thiếu hạn, nguồn của `errors[].detail`.
 - 2026-10-28 (agent): theo lời Đạt "theo recommend đi": R2.41 (APS43) resume lại lượt chạy kẹt khi gửi lại quyết định, R2.42 (APS44) entitlement `support_access` trước dòng khóa; hai rủi ro Đạt nhận ghi ở Quyết định của spec.
 - 2026-10-28 (agent): theo phương án A của Đạt sau gate trên `97c2681`: R2.41 và APS43 bỏ, cứu lượt chạy kẹt thuộc runtime-hardening; R2.42 chỉ ở `POST /support/grants` và `approve`; R2.23 trừ dòng R2.37 coi là chưa dùng; R2.38 tính khóa dòng; R1.10 văn bản cố định thay `msg` của Pydantic; `platform.effect_key_cutoff()`.
+- 2026-10-28 (agent): checking-plan-readiness ĐẠT; ready-for-agent.

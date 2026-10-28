@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 28/10/2026
-Sẵn sàng: chưa kiểm
+Sẵn sàng: ĐẠT (28/10/2026; 0 CRITICAL, 0 HIGH; ticket 02)
 
 Mọi route mới của Studio và của nền tảng nói cùng một quy ước HTTP: một mô tả lỗi problem+json, khóa chống lặp gắn người gọi đã xác minh, ETag với `If-Match`, phân trang keyset có kiểu, cây lọc JSON và một kiểm hình kế hoạch truy vấn trong CI (ADR-0108 (Accepted)). API bản ghi của custom-objects, vỏ phiên bản của tenant-config và mọi API quản trị của lát Marketing dùng các quy ước này, nên spec này đi trước chúng. Ý định: một quy ước HTTP cho mọi route, để không spec nào tự đặt hình lỗi, khóa hay con trỏ của riêng nó.
 
@@ -396,6 +396,7 @@ Một truy vấn phân trang không có index mang trọn làm CI đỏ, kể c�
 - 28/10/2026 (agent): checking-plan-readiness cho spec và ticket 02 trên `97c2681`: CẦN XEM, 0 CRITICAL, 5 HIGH.
 - 28/10/2026 (Đạt): Phương án A và mọi khuyến nghị còn lại ("theo khuyến nghị đi"). Hỏi: R2.41. Sửa: R2.41 và APS43 bỏ; chấp nhận rủi ro lượt chạy kẹt khi tiến trình chết giữa commit của quyết định và lúc đồ thị bắt đầu, như hôm nay, việc cứu thuộc runtime-hardening.
 - 28/10/2026 (agent, tạm theo ủy quyền): Bốn HIGH còn lại của lần kiểm trên `97c2681`. Sửa: R2.42 chỉ ở hai route mà service kiểm `support_access`, theo ADR-0024 (Proposed) "Who may close"; R2.23 trừ dòng mà R2.37 coi là chưa dùng; R2.38 tính cả khóa dòng; R1.10 dùng văn bản cố định thay `msg` của Pydantic, đã đo. Kèm ba MEDIUM rẻ: `platform.effect_key_cutoff()` trả mốc cắt để index `(created_at)` được dùng, APS26 thử vế `app.worker_drain`, và `EffectKeyPort` là port của `dw_platform` mà `dw_agent_runtime` đã import (`approval_flow.py` dùng `dw_platform.application`). Hạn 0 ngày không nạp được: mảnh đòi `days` ≥ 1 và `platform.retention_terms.term_days` có CHECK > 0 (telemetry-and-audit/01).
+- 28/10/2026 (agent): checking-plan-readiness cho spec và ticket 02 trên `51dd456`: ĐẠT, 0 CRITICAL, 0 HIGH trên yêu cầu của ticket 02; hai HIGH của ticket 03 (R5.13 chưa định nghĩa lược đồ và `field_not_readable` cho người gọi không qua route; R3.12 chưa định nghĩa route ghi tài nguyên có phiên bản) chờ gate của ticket 03.
 
 ## Danh sách ticket
 
