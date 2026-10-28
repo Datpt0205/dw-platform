@@ -86,11 +86,11 @@ Lát này cho người viết mọi spec Studio sau một nền đã được ki
 - `db/migrations/sql/0013_partition_maintenance.sql:21-104`, `db/migrations/sql/0013_partition_maintenance.sql:106-134`, `db/migrations/sql/0012_partition_maintenance.sql:209-226`; spec: R3.
 - `packages/python/dw_platform/tests/integration/test_partition_maintenance.py:54`; spec: R3.1.
 - `packages/python/dw_platform/tests/integration/test_rls_coverage.py:187-225`; spec: R3.6.
-- `packages/python/dw_platform/src/dw_platform/adapters/persistence/partition_maintenance.py:93-95`, `configs/policies/retention@1.7.0.yaml:111-122`; spec: R3.7; ADR-0122 (Accepted) quyết 7.
+- `packages/python/dw_platform/src/dw_platform/adapters/persistence/partition_maintenance.py:93-95`, `configs/policies/retention.d/platform.audit_events.yaml:13-15`; spec: R3.7; ADR-0122 (Accepted) quyết 7.
 - `packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:68-114`; spec: R4; ADR-0121 (Accepted) cho Sổ sử dụng.
 - `packages/python/dw_platform/tests/integration/test_rls_coverage.py:44-59`, `packages/python/dw_platform/tests/integration/test_rls_coverage.py:108-131`, `packages/python/dw_platform/tests/integration/test_rls_coverage.py:450-496`; spec: R9.
 - `scripts/check_plans.py:1748-1751`, `.github/workflows/ci.yml:74-75`; spec: R10.1.
-- `configs/policies/retention@1.7.0.yaml:91-122`; spec: G1.
+- `configs/policies/retention.d/platform.audit_events.yaml:1-15`; spec: G1.
 - ADR-0100 (Accepted) điểm 4, 5, 7 và 9.
 
 ## Comments
