@@ -2,8 +2,8 @@
 
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
-Duyệt: chưa
-Sẵn sàng: chưa kiểm
+Duyệt: agent, tạm theo ủy quyền 28/10/2026
+Sẵn sàng: ĐẠT (28/10/2026; 0 CRITICAL, 0 HIGH; ticket 01)
 
 Studio đặt dữ liệu do tenant định nghĩa, agent do tenant dựng và việc gửi ra ngoài lên các dịch vụ nền
 đang có lỗi cô lập tenant, cô lập người gọi và test không thể đỏ. Spec này sửa các lỗi đã đo trong code
@@ -497,6 +497,11 @@ không dùng lại các số đó, nên kiểm soát mới lấy từ FH33.
   RA22) với danh sách riêng của nó và `tenant_wide_scope()` chưa có trong repo; phép quét bắt mọi chuỗi chứa
   `app.worker_drain` và mọi lần nhập một hằng như thế từ module được miễn, không chỉ `set_config(...)`. Sửa: Hiện
   trạng, R2.6, Trong phạm vi, FH34, ticket 02. Nếu sai thì: phép quét chỉ tìm `set_config('app.worker_drain'`.
+
+- 28/10/2026 (agent, tạm theo ủy quyền): Duyệt spec trên `faaeb6c` (`## Ủy quyền` của
+  area). Nếu sai thì: Đạt duyệt lại, ticket 01 đã làm giữ nguyên vì nó chỉ sửa test.
+
+- 28/10/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 01-03, 07.
 
 ## Danh sách ticket
 

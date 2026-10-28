@@ -1,6 +1,6 @@
 # 01 — Test không thể đỏ: walker route và tiến trình nền sandbox
 
-Status: needs-triage
+Status: ready-for-agent
 Area: studio
 Yêu cầu: R1.1, R1.2, FH1
 
@@ -60,3 +60,6 @@ trong router được include trước khi có route mới.
 - 2026-10-23 (agent): Đo ngày 23/10/2026: với `fastapi==0.141.1`, router được include hiện ra ở cấp
   đầu là `_IncludedRouter`, vòng `APIRoute` không thấy route nào, `iter_route_contexts` thấy
   `/api/v1/runs/{run_id}`; `dw-docgen:local` không có `pgrep`.
+- 2026-10-28 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-10-28 (agent): câu hỏi của gate chạm ticket này, đã trả lời bằng đo trên `dw-docgen:local` và FastAPI 0.141.1, cho người làm: (a) `RouteContext.dependant` của `iter_route_contexts` mang cả phụ thuộc gắn ở `include_router(..., dependencies=[...])`, và `path` mang đủ prefix, nên `_calls` giữ nguyên thấy ngữ cảnh support gắn ở cấp router; API không có `app.mount` sub-app nào; (b) hai request của một phiên docgen dùng chung một PID namespace (`readlink /proc/self/ns/pid` như nhau), nên lần quét ở request sau thấy được tiến trình của request trước, và đối chứng dương trong cùng request thấy 1; (c) R1.2 nói "sau khi request khởi chạy nó đã được trả lời", không phải khi phiên đóng; đo hôm nay: 0 tiến trình ở request sau, nên test đã sửa xanh thật và bước 6 không xảy ra; (d) `pgrep` không có trong image, xác nhận test cũ luôn xanh.
+- 2026-10-28 (Đạt): Bước 5 tìm thêm một test cùng họ không thấy điều nó canh: `test_one_session_cannot_reach_another` chỉ `ls secret.txt` trong thư mục của chính phiên, còn đo qua gateway cho thấy shell của một phiên đọc được `../<phiên khác>/secret.txt` (`/work` chung, cùng uid `dw`), mà tên phiên mang tenant (`packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/sandbox.py:155`). Đạt chọn: ticket này thêm ca đó vào test, đánh `xfail(strict=True)` kèm lý do trỏ tới ticket sửa docgen, và push như thường; ticket sửa docgen mở riêng.
