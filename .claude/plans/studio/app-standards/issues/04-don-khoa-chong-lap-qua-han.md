@@ -1,6 +1,6 @@
 # 04 — Dọn khóa chống lặp quá hạn qua chính sách lưu giữ
 
-Status: needs-triage
+Status: ready-for-agent
 Blocked by: 02, .claude/plans/studio/telemetry-and-audit/issues/01-otel-khong-noi-dung-va-metric.md
 Area: studio
 Yêu cầu: R2.8, R2.9, R2.13, R2.15, APS14
@@ -39,3 +39,5 @@ Lát này cho `platform.idempotency_keys` một bộ xóa, để khóa và body 
 - 2026-10-27 (agent): EXECUTE cho `dw_app` theo tiền lệ `platform.prune_notifications()`; thêm test đăng ký bộ xóa.
 - 2026-10-27 (agent): theo khuyến nghị Đạt nhận sau gate trên `940a88f`: thêm bộ xóa của `platform.effect_keys` (R2.25).
 - 2026-10-27 (agent): bộ xóa của `platform.effect_keys` (R2.25) chuyển sang ticket 02, vì ADR-0122 (Accepted) quyết định 7 đòi nó trong cùng thay đổi tạo kho (Đạt, phương án A).
+- 2026-10-28 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-10-28 (agent): MEDIUM và LOW của gate trên `48edd43`, cho người làm (không CRITICAL hay HIGH, nên không có lượt xác nhận): (a) README bước 4 không được hứa "sau 24 giờ chạy như mới": khóa HTTP chỉ mất khi lane lưu giữ chạy (telemetry-and-audit/03, spec Phụ thuộc), `claim` không xét tuổi, và với chín operation dòng `platform.effect_keys` còn hạn vẫn trả hiệu ứng đã có (R2.29, R2.37); (b) adapter đặt trong `idempotency_store.py`, module đã miễn trừ của R2.26, và worker nhập hằng khóa từ đó như `EFFECT_KEYS`, không viết chuỗi `platform.idempotency_keys` ở composition root; (c) thêm một test đặt hạn 2 ngày trong giao dịch test và khẳng định dòng 25 giờ còn, để một hàm bỏ qua `platform.retention_term_days` mà dùng cứng 1 ngày thì đỏ; (d) APS14 thiếu vế "gỡ đăng ký → đỏ" mà tiêu chí 5 của ticket có, `test_every_purged_fragment_has_its_purger` giữ nó; (e) adapter để lỗi của hàm (thiếu hạn) đi lên lane như `SqlEffectKeyRetention`, không nuốt; (f) một câu `DELETE` không lô, như `platform.purge_expired_effect_keys()`; xóa theo lô và tín hiệu khi bộ xóa lỗi lặp lại thuộc lane của telemetry-and-audit/03; (g) hạn 0, âm hay NULL đã bị `ck_retention_terms_term_days_positive` và `NOT NULL` chặn (`82e168f6d189`); `enforced` do `RetentionPolicy` đọc (`retention_policy.py:262`); (h) bộ xóa chạy cùng lúc với lượt giành lại, hay hai worker cùng chạy: `DELETE` theo tuổi là idempotent, lượt giành lại khớp 0 dòng thì `claim` chèn dòng mới.

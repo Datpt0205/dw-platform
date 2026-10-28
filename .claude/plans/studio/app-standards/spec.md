@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 28/10/2026
-Sẵn sàng: ĐẠT (28/10/2026; 0 CRITICAL, 0 HIGH; ticket 03)
+Sẵn sàng: ĐẠT (28/10/2026; 0 CRITICAL, 0 HIGH; ticket 04)
 
 Mọi route mới của Studio và của nền tảng nói cùng một quy ước HTTP: một mô tả lỗi problem+json, khóa chống lặp gắn người gọi đã xác minh, ETag với `If-Match`, phân trang keyset có kiểu, cây lọc JSON và một kiểm hình kế hoạch truy vấn trong CI (ADR-0108 (Accepted)). API bản ghi của custom-objects, vỏ phiên bản của tenant-config và mọi API quản trị của lát Marketing dùng các quy ước này, nên spec này đi trước chúng. Ý định: một quy ước HTTP cho mọi route, để không spec nào tự đặt hình lỗi, khóa hay con trỏ của riêng nó.
 
