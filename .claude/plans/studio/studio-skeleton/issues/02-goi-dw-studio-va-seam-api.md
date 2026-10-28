@@ -1,6 +1,6 @@
 # 02 — Gói dw_studio, hợp đồng import và seam API /api/v1/studio
 
-Status: needs-triage
+Status: ready-for-agent
 Blocked by: 01
 Area: studio
 Yêu cầu: R2.6, R5.1, R5.4, R5.5, R5.7, R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.7, R6.8, R6.9, R6.10, R6.11, SKEL9, SKEL10, SKEL11, SKEL12, SKEL13, SKEL14, SKEL23, SKEL30
@@ -35,7 +35,7 @@ Lát này cho Studio một distribution và một cửa vào API: `dw_studio` đ
 - [ ] R6.4 (SKEL23): app dựng không cơ sở dữ liệu trả 404 cho `GET /api/v1/studio/artifacts` và không trả 500 cho đường nào của nhóm; gắn nhóm cả khi `container.studio is None` thì test đỏ.
 - [ ] R6.5 (SKEL13): body 1048577 byte, với `Content-Length` đúng, không `Content-Length` và `Content-Length` khai 10 byte, trả 413 `payload_too_large` mà handler giả không chạy và nguồn body không bị đọc quá 1048577 byte; body 1048576 byte tới handler; gỡ trần thì test đỏ.
 - [ ] R6.8 (SKEL13): body 2 MiB không token, với token hết hạn, sai chữ ký và sai audience, trả 401 và nguồn body không bị đọc byte nào; đặt trần trước xác thực, hay chuyển xác thực vào dependency với route thử khai tham số body, thì test đỏ; thay bộ xác minh của middleware bằng một bản chỉ kiểm chữ ký thì ca sai audience đỏ.
-- [ ] R6.11 (SKEL30): token hợp lệ của thành viên đã thu hồi, của tenant bị khóa, và yêu cầu kèm header grant support nhận cùng status và `code` ở `GET /api/v1/studio/artifacts` và ở `GET /api/v1/runs/{run_id}`; thay factory của dependency cấp nhóm bằng một bản chỉ đọc claims thì ca thành viên đã thu hồi đỏ; bỏ phép từ chối header grant support thì ca support đỏ.
+- [ ] R6.11 (SKEL30): token hợp lệ của thành viên đã thu hồi, của tenant bị khóa, và yêu cầu kèm header grant support mang token của một thành viên còn hiệu lực của chính tenant đó nhận cùng status và `code` (ca support cùng `details.reason_code` `support_context_not_allowed`) ở `GET /api/v1/studio/artifacts` và ở `GET /api/v1/runs/{run_id}`; thay factory của dependency cấp nhóm bằng một bản chỉ đọc claims thì ca thành viên đã thu hồi đỏ; bỏ phép từ chối header grant support thì ca support nhận 200 và đỏ.
 - [ ] R6.10 (SKEL13): body có token và `Content-Encoding: gzip` trả 415, nguồn body không bị đọc quá 1048577 byte; gỡ phép kiểm thì test đỏ.
 - [ ] R6.6: bước smoke của job `containers` nhận 401 từ `/api/v1/studio/artifacts` trên container đã dựng, và 404 từ `/api/v1/studio-missing` ngoài tiền tố; bỏ `mount_studio` thì bước đầu nhận 404 và đỏ.
 - [ ] R6.7 (SKEL14): thêm một cột vào bảng `studio` bằng migration thử mà không vào mô tả bảng làm test đối chiếu đỏ.
@@ -64,3 +64,6 @@ Lát này cho Studio một distribution và một cửa vào API: `dw_studio` đ
 - 2026-10-27 (agent): sau lần xác nhận thứ hai trên `2639c06`: mỗi lớp xác thực một ca trồng lỗi riêng, middleware qua route ngoài nhóm, dependency qua app thử không middleware (R6.1, R6.9).
 - 2026-10-28 (agent): sửa theo HIGH của checking-plan-readiness trên `72a078c` (R6.11, SKEL30).
 - 2026-10-28 (Đạt): ticket này được code cùng tenant-config/02 và vào `main` trong một lần push, như Mục tiêu đã viết; không code một mình, vì bước 1-4 và 9-10 cũng để lại một gói `dw_studio` chỉ có khung (`CLAUDE.md` "Work style" mục 6).
+- 2026-10-28 (agent): lượt xác nhận bản sửa R6.11 tìm một HIGH (ca support của SKEL30 không đỏ được khi người gọi không là thành viên); sửa: token của thành viên còn hiệu lực và so `details.reason_code`.
+- 2026-10-28 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-10-28 (agent): MEDIUM và LOW của gate trên `72a078c`, cho người làm: (a) container dựng trước app (`apps/api/src/dw_api/main.py:70-71`), nên `mount_studio` gắn middleware lúc tạo app, không trong lifespan; (b) 415 dùng `ErrorCode.UNSUPPORTED_MEDIA_TYPE` có sẵn (`packages/python/dw_kernel/src/dw_kernel/errors.py:30`), và 401, 413, 415 do middleware trả phải theo vỏ problem+json của app-standards/01 kèm `request_id` và `WWW-Authenticate` cho 401; (c) preflight CORS `OPTIONS` không mang token: middleware cho `OPTIONS` không body đi qua để lớp CORS trả lời, hoặc ghi lý do nếu API không bật CORS cho nhóm; (d) `/api/v1/studio` không gạch chéo cuối và route path `""`: middleware so cả tiền tố không gạch chéo, để mọi đường mà nhóm phục vụ qua cả hai lớp; (e) bộ xác minh lỗi (JWKS, IdP hết giờ) thì middleware từ chối, không cho qua; (f) `GET` không body kèm `Content-Encoding: gzip` nhận 415 theo chữ R6.10; (g) handler tự đọc `request.stream()` gặp 413 giữa chừng: trần bọc `receive`, nên handler như thế phải không ghi gì trước khi đọc hết body; (h) `dw_docgen` vào nguồn của hợp đồng "Platform core does not import Studio" nếu kiểm đăng ký của ticket 01 đòi.
