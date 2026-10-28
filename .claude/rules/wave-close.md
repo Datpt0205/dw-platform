@@ -8,6 +8,14 @@ keep, per ticket, every check that finds a bug in _this_ ticket's code, and to
 move to the end of the wave the checks whose cost is fixed per run and whose
 finding is still attributable afterwards (one commit per ticket on `main`).
 
+**This rule wins over a ticket's own "Xong" line.** Many tickets end with
+"Xong: `make test-unit test-contract test-integration` xanh"; read it as the
+fast gates below plus the integration suites of the packages the ticket
+touched. The whole `make test-integration`, the latency of operations whose
+database access did not change, `/code-review` of the diff and
+`checking-plan-consistency` are not run per ticket: they run once, at the
+wave's close, and a ticket is not left open waiting for them.
+
 ## Per ticket — never deferred
 
 1. **Readiness: one gate, one confirmation.** `checking-plan-readiness` runs
