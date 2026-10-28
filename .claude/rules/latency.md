@@ -7,10 +7,23 @@ page slower, and the tests that prove it correct do not see it.
 Đạt, 2026-10-28: a feature must not get unreasonably slow. A feature that works
 and got slow is not finished.
 
+## When: per ticket, or once per wave
+
+Đạt, 2026-10-28, for speed without losing the check: a ticket measures its own
+operations before it closes **only when it changes how a request reaches the
+database** — a migration or index, a query or repository method, a list's
+ordering or filter, a lock, or one more statement on a request path. Every
+other ticket (a new route over existing queries, configuration, UI, docs)
+closes without numbers, and its operations are measured with the rest at the
+end of the wave (`.claude/rules/wave-close.md`), against the wave's starting
+commit. A per-ticket commit makes a wave-end regression attributable by
+bisecting, so deferring the measurement loses no information, only latency of
+finding out.
+
 ## The step
 
 After the mutation check of `reviewing-feature-security`, before a ticket is
-closed:
+closed (or at the wave's close, per the section above):
 
 1. **List what the change touched**: every API operation whose handler, service,
    repository, query or migration changed, and every page or interaction whose
