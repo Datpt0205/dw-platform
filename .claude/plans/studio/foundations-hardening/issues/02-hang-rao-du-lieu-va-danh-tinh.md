@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: 01
 Area: studio
-Yêu cầu: R2.1, R2.2, R2.3, R2.4, R2.5, R3.1, R3.2, R3.3, R4.1, R4.2, R4.3, R4.4, G1, G2, G3, G4, G5, FH2, FH3, FH4, FH5, FH6, FH7, FH8, FH9, FH10, FH11
+Yêu cầu: R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R3.1, R3.2, R3.3, R4.1, R4.2, R4.3, R4.4, G1, G2, G3, G4, G5, FH2, FH3, FH4, FH5, FH6, FH7, FH8, FH9, FH10, FH11, FH34
 
 ## Mục tiêu
 
@@ -40,6 +40,12 @@ Checkpoint (R2.4, R2.5, G5):
 5. `SqlCheckpointRetention.prune`: `newer` và `recent` so thêm `tenant_id`; truy vấn chọn thêm
    `tenant_id`; DELETE trên `platform.run_checkpoint_writes` và `platform.run_checkpoints` theo bộ bốn
    `(tenant_id, thread_id, checkpoint_ns, checkpoint_id)`.
+   5a. Test kiến trúc `packages/python/dw_platform/tests/unit/test_drain_setting_scan.py`, theo mẫu
+   `packages/python/dw_platform/tests/unit/test_key_tables_scan.py`: quét mọi `*.py` dưới `apps` và
+   `packages` ngoài thư mục `tests`, bằng AST: mọi hằng chuỗi chứa `app.worker_drain` (trong
+   `set_config`, `SET [LOCAL]` hay làm giá trị tham số), và mọi `from <module được miễn> import <tên>`
+   mà tên đó trong module được miễn là một hằng chứa `app.worker_drain`; so với
+   `EXEMPT: dict[str, str]` (module → lý do) đóng băng gồm bảy adapter ở Hiện trạng (R2.6, FH34).
 6. `SqlAlchemyCheckpointSaver` nhận serializer qua constructor thay vì dựng cứng `JsonPlusSerializer()`;
    composition root (`apps/api/src/dw_api/bootstrap/runtime.py`, nơi duy nhất dựng saver hôm nay)
    dựng `JsonPlusSerializer(allowed_msgpack_modules=ALLOWED)` với `ALLOWED` là một tuple tường minh
@@ -116,6 +122,10 @@ Nối danh tính (R4.1-R4.4, G2-G4), áp ngay theo DO-17.1:
       nhất của A còn; bỏ so `tenant_id` ở `newer` → đỏ.
 - [ ] R2.5 (FH6): một dòng checkpoint có kiểu ngoài `ALLOWED` → nạp ra dict, không object nào của
       kiểu đó được dựng; đổi allowlist thành `True` → đỏ.
+- [ ] R2.6 (FH34): ba module thử dưới `apps`: một có `set_config('app.worker_drain', 'on', true)`,
+      một nhập `_SET_WORKER_DRAIN` từ `dw_knowledge.ingest_jobs`, một gọi `set_config(:k, 'on', true)`
+      với `k='app.worker_drain'` → test kiến trúc đỏ và nêu từng module; các module trong `EXEMPT` và
+      thư mục `tests` không làm đỏ; gỡ phép quét hay thêm một tên không lý do → đỏ.
 - [ ] R3.1 (FH7): `POST /api/v1/platform/tenants/{tenant_id}/unlock` và `/lock` cho tenant
       `offboarding` → 409 `tenant_offboarding`, `status` giữ nguyên; gỡ điều kiện trạng thái → đỏ.
 - [ ] R3.2 (FH7): UPDATE thẳng `offboarded → active` bằng `dw_provisioner` → trigger từ chối với
@@ -160,3 +170,5 @@ Nối danh tính (R4.1-R4.4, G2-G4), áp ngay theo DO-17.1:
   `email_verified`).
 
 ## Comments
+
+- 2026-10-28 (agent): thêm R2.6 và FH34 (bước 5a) theo CRITICAL của checking-plan-readiness trên `59884c8`, áp quyết định 27/10/2026 của Đạt.

@@ -161,6 +161,22 @@ ticket ở đây chờ ticket đó qua dòng Blocked by của chúng (ADR-0103 (
   (`apps/docgen/tests/integration/test_sandbox_image.py:182-191`). Thiếu: đo ngày 23/10/2026,
   `dw-docgen:local` không có `pgrep` (procps không có trong `infra/docker/docgen.Dockerfile:70-76`)
   nên test luôn xanh.
+- Đọc ở `59884c8` ngày 28/10/2026: bảy adapter đặt `app.worker_drain` bằng `set_config(..., true)`
+  (`packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/checkpoint_retention.py:55`,
+  `packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/spend_guard.py:41`,
+  `packages/python/dw_knowledge/src/dw_knowledge/ingest_jobs.py:28`,
+  `packages/python/dw_knowledge/src/dw_knowledge/retention.py:68`,
+  `packages/python/dw_memory/src/dw_memory/retention.py:42`,
+  `packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:63`,
+  `packages/python/dw_platform/src/dw_platform/adapters/persistence/outbox_drain.py:34`), và policy
+  drain của checkpoint cho đọc và ghi mọi tenant khi setting đó là `on`
+  (`db/migrations/versions/7bbd071748ca_run_checkpoints_worker_drain_and_sweep_.py:46-58`). Thiếu: không
+  phép quét nguồn nào giới hạn nơi đặt nó, nên một module của API cũng đặt được, bằng chuỗi của chính
+  nó hay bằng hằng của một adapter trên (`ingest_jobs.py` và `spend_guard.py` đã nằm trong composition
+  root của API: `apps/api/src/dw_api/bootstrap/container.py:49`, `apps/api/src/dw_api/bootstrap/runtime.py:19`).
+  Phép quét nơi đặt `app.workspace_scope` mà `CLAUDE.md` ("Tenancy and authorization") nêu chưa có trong repo
+  và thuộc record-access (R7.2, RA22). Ràng buộc: lane checkpoint đọc khóa dưới policy drain trước khi xóa
+  (`packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/checkpoint_retention.py:106-108`).
 
 ## Mục tiêu
 
@@ -192,6 +208,10 @@ Trước đây: xóa tài liệu theo id rồi tombstone vector theo id (`packag
   PHẢI giữ checkpoint mới nhất của tenant này.
 - R2.5 NẾU một dòng checkpoint chứa giá trị có kiểu ngoài allowlist của composition root, THÌ kho
   checkpoint của runner PHẢI trả giá trị đó dạng dữ liệu thô và không dựng object nào của kiểu ấy.
+- R2.6 NẾU một module Python dưới `apps` hay `packages`, ngoài thư mục `tests` và ngoài danh sách
+  miễn trừ đóng băng kèm lý do (bảy adapter đặt `app.worker_drain` ở Hiện trạng), có một hằng chuỗi
+  chứa `app.worker_drain` hay nhập từ module được miễn một hằng như thế, THÌ test kiến trúc PHẢI đỏ và
+  nêu module đó.
 
 ### R3 — Tenant không quay lại sau offboarding và khóa có hiệu lực từ request kế tiếp [Sửa]
 
@@ -298,6 +318,8 @@ G7 chuyển sang runtime-hardening; G5 ở cả hai spec (Quyết định 25/10/
 - Thu quyền ghi của `dw_app` trên `platform.users`, `platform.platform_operators`, `platform.plans`;
   một nguồn cho quyền của `dw_provisioner`; dạng sub-SELECT cho mọi policy RLS.
 - Hai test không thể đỏ và việc rà các mẫu cùng họ.
+- Phép quét nguồn giới hạn nơi đặt `app.worker_drain` (R2.6), với danh sách miễn trừ đóng băng kèm lý
+  do.
 - Danh mục xuất của offboarding chỉ gồm bảng cha, đọc theo lô keyset trên khóa chính; `details.lane`
   của audit `tenant.offboarding.purged`.
 - Sổ bước xóa của lane `offboarding` ở composition root của worker, mỗi bước khai bảng nó xóa, thứ tự suy từ khóa ngoại
@@ -335,6 +357,7 @@ G7 chuyển sang runtime-hardening; G5 ở cả hai spec (Quyết định 25/10/
 | FH30 | Gói xuất không lặp dòng của bảng phân vùng                        | R11.1        | Bảng phân vùng thử có partition tháng và DEFAULT mà `dw_app` đọc được theo tên, mỗi nơi một dòng của tenant → mỗi dòng có đúng một lần trong kết quả xuất; test viết trước, đỏ trên mã hiện có; bỏ lọc partition khỏi danh mục xuất → đỏ                                                                                                                                                                                                                                                                                                |
 | FH31 | Audit của lần xóa đứng tên người yêu cầu và nêu lane đã thi hành  | G8, R11.3    | Purge một tenant có yêu cầu offboarding → audit `tenant.offboarding.purged` có actor là người yêu cầu và `details.lane` bằng `offboarding`; đổi actor sang `system_actor('offboarding')` → test G8 đỏ; ghi lại `details` rỗng → test R11.3 đỏ                                                                                                                                                                                                                                                                                           |
 | FH33 | Thứ tự xóa của offboarding suy từ catalog, không từ danh sách tay | R11.4, R11.5 | Hai bảng thử tạo trong giao dịch test, tên xếp theo chữ cái ngược chiều cạnh, nối bằng khóa ngoại `RESTRICT` (và một cặp `NO ACTION`) → purge xóa được cả hai; bảng con chỉ mất dòng qua `CASCADE` từ bảng của một bước khác → bước đó chạy trước bước xóa bảng cha; thay phép suy bằng thứ tự chữ cái hay một danh sách cạnh chép tay → lỗi khóa ngoại, test đỏ; hai bước khai cùng một bảng, hay vòng hai bảng `RESTRICT` → từ chối trước câu xóa đầu, 0 dòng bị xóa, tenant giữ `offboarding`; gỡ kiểm trùng hay kiểm vòng → test đỏ |
+| FH34 | Chỉ các lane đã đăng ký đặt `app.worker_drain`                    | R2.6         | Ba module thử dưới `apps`: một có `set_config('app.worker_drain', 'on', true)`, một nhập `_SET_WORKER_DRAIN` từ `dw_knowledge.ingest_jobs`, một gọi `set_config(:k, 'on', true)` với `k='app.worker_drain'` → test kiến trúc đỏ và nêu từng module; module trong danh sách và thư mục `tests` không làm đỏ; gỡ phép quét, hay thêm một tên vào danh sách mà không có lý do → đỏ                                                                                                                                                         |
 
 FH15-FH29 và FH32 chuyển sang runtime-hardening thành RH15-RH29 và RH32 (Quyết định 24/10/2026); spec này
 không dùng lại các số đó, nên kiểm soát mới lấy từ FH33.
@@ -459,6 +482,21 @@ không dùng lại các số đó, nên kiểm soát mới lấy từ FH33.
   FH33, Trong phạm vi, Phụ thuộc, ticket 07. Nếu sai thì: thứ tự viết tay trong `offboarding.py` và cạnh
   org-and-principals/03 <- usage-and-limits/02.
 - 27/10/2026 (Đạt): Nhận từ app-standards (hàng Ngoài phạm vi của spec đó) phép quét nguồn giới hạn nơi đặt `app.worker_drain`: một kết nối `dw_app` của API đặt được setting đó, và policy drain của checkpoint mở cả đọc (`db/migrations/versions/7bbd071748ca_run_checkpoints_worker_drain_and_sweep_.py:46-58`); lượt sửa kế của spec này viết nó thành yêu cầu, hàng Kiểm soát và ticket.
+- 28/10/2026 (agent, tạm theo ủy quyền): Áp quyết định 27/10/2026 theo CRITICAL của checking-plan-readiness trên
+  `59884c8`: R2.6 và FH34, phép quét nguồn với danh sách đóng băng như phép quét bảng khóa của
+  app-standards:R2.26, ở ticket 02 vì ticket đó sửa lane `checkpoint_retention`. Sửa: Hiện trạng, R2.6, Trong phạm vi,
+  FH34, ticket 02. Nếu sai thì: phép quét thành ticket riêng.
+- 28/10/2026 (agent, tạm): Policy drain của checkpoint giữ quyền đọc, vì lane chọn khóa cần xóa bằng một câu đọc dưới
+  policy đó (Hiện trạng); R2.6 chặn mã nguồn Python ngoài danh sách đặt setting, bằng chuỗi hay bằng hằng nhập từ
+  một adapter được miễn, không đóng đường đọc của lane đã đăng ký và không thấy SQL sinh lúc chạy hay một dịch vụ
+  ngôn ngữ khác. Nếu sai thì: lane checkpoint xóa qua một hàm SECURITY DEFINER không đối số như
+  `platform.prune_notifications()`, và policy drain của `platform.run_checkpoints` và `platform.run_checkpoint_writes`
+  bị gỡ.
+- 28/10/2026 (agent, tạm theo ủy quyền): Lượt xác nhận bản sửa trên tìm một CRITICAL và một HIGH, sửa theo khuyến
+  nghị: R2.6 chỉ phủ `app.worker_drain`, vì phép quét nơi đặt `app.workspace_scope` đã thuộc record-access (R7.2,
+  RA22) với danh sách riêng của nó và `tenant_wide_scope()` chưa có trong repo; phép quét bắt mọi chuỗi chứa
+  `app.worker_drain` và mọi lần nhập một hằng như thế từ module được miễn, không chỉ `set_config(...)`. Sửa: Hiện
+  trạng, R2.6, Trong phạm vi, FH34, ticket 02. Nếu sai thì: phép quét chỉ tìm `set_config('app.worker_drain'`.
 
 ## Danh sách ticket
 
