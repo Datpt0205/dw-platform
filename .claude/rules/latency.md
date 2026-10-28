@@ -24,7 +24,8 @@ closed:
     - Web: Playwright (the MCP or the repo's specs), time to the page's main
       content and to each changed interaction.
 3. **Compare with the parent commit**, measured the same way on a checkout of it
-   (a second worktree, never `git stash` in a tree something else is running in).
+   (`git archive <parent> | tar -x -C <scratch dir>`, never a worktree or a
+   `git stash` in a tree something else is running in).
 4. **Write the numbers down**: P50, P95, P99 before and after, per operation, in
    the ticket's Comments and in the closing report.
 
