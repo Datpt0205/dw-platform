@@ -68,6 +68,10 @@ from dw_platform.adapters.persistence.effect_key_store import (
     EFFECT_KEYS,
     SqlEffectKeyRetention,
 )
+from dw_platform.adapters.persistence.idempotency_store import (
+    IDEMPOTENCY_KEYS,
+    SqlIdempotencyKeyRetention,
+)
 from dw_platform.adapters.persistence.membership_lookup import SqlMembershipLookup
 from dw_platform.adapters.persistence.notifications import SqlNotificationRetention
 from dw_platform.adapters.persistence.offboarding import SqlTenantOffboarding
@@ -264,6 +268,7 @@ def build_retention_purgers(
     """
     purgers = RetentionPurgerRegistry()
     purgers.register(EFFECT_KEYS, SqlEffectKeyRetention(session_factory).purge)
+    purgers.register(IDEMPOTENCY_KEYS, SqlIdempotencyKeyRetention(session_factory).purge)
     return purgers.freeze()
 
 

@@ -1,4 +1,4 @@
-"""SQL implementation of :class:`IdempotencyStorePort`.
+"""SQL implementation of :class:`IdempotencyStorePort`, and the table's purger.
 
 Each call opens its own tenant-bound transaction and commits it, because the
 guarantee only works if the reservation is visible to other requests *before*
@@ -7,6 +7,7 @@ the handler runs — see the port's docstring.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -25,7 +26,13 @@ from dw_platform.application.idempotency import (
     StoredResponse,
 )
 
+logger = logging.getLogger(__name__)
+
+# The store key of this table's retention fragment and purger (R2.8).
+IDEMPOTENCY_KEYS = "platform.idempotency_keys"
+
 _KEYS = tables.idempotency_keys
+_PURGE_IDEMPOTENCY_KEYS = sa.text("SELECT platform.purge_expired_idempotency_keys()")
 
 
 @dataclass(frozen=True)
@@ -195,3 +202,23 @@ class SqlIdempotencyStore:
                     _KEYS.c.completed_at.is_(None),
                 )
             )
+
+
+@dataclass(frozen=True)
+class SqlIdempotencyKeyRetention:
+    """The purger registered for `platform.idempotency_keys` (R2.8). Every
+    tenant's expired rows go through one no-argument function that returns only
+    a count (R2.13), and a missing term raises out of `purge` rather than
+    deleting nothing quietly (R2.15). Housekeeping of operational rows: it logs
+    the count and writes no audit row (R2.9; `CLAUDE.md` "Agent and tool
+    rules")."""
+
+    session_factory: async_sessionmaker[AsyncSession]
+
+    async def purge(self) -> None:
+        async with self.session_factory() as session, session.begin():
+            removed = await session.scalar(_PURGE_IDEMPOTENCY_KEYS)
+        logger.info(
+            "idempotency keys purged",
+            extra={"deleted": removed, "retention_class": IDEMPOTENCY_KEYS},
+        )

@@ -172,7 +172,16 @@ What happens:
 
 A key is scoped to your tenant: two tenants may use the same string and will
 never meet. Within a tenant, the same key sent against a different workspace is a
-conflict, not a replay. A spent key is forgotten after a day.
+conflict, not a replay.
+
+A spent key and its stored response are kept for the term of their retention
+fragment (`configs/policies/retention.d/platform.idempotency_keys.yaml`, a day)
+and then deleted by the worker's retention lane. Until the lane deletes a key, a
+retry is still answered from it, however old it is. Once it is gone, the same key
+starts a new request; on the routes above, the effect key (kept for a day as
+well, and only after the HTTP key is gone) still answers with the effect that
+exists while it lives. The lane that runs this purge is not wired yet, so for
+now a spent key is kept.
 
 Effects outside the effect's transaction, per route:
 

@@ -1,0 +1,12 @@
+# Bộ đệm phát lại của `Idempotency-Key` (`platform.idempotency_keys`), app-standards ticket 04.
+#
+# 24 giờ, như ADR-0108 quyết định 4: khóa và câu trả lời đã lưu, kể cả body, chỉ
+# cần sống đủ lâu cho một client thử lại sau khi hết giờ. Dòng vận hành, không là
+# bản ghi của ai: bộ xóa ghi số dòng vào log, không ghi audit (`CLAUDE.md` "Agent
+# and tool rules"; ADR-0011 "Not applied"). `created_at` là lúc giữ chỗ đang có
+# hiệu lực bắt đầu, nên khóa được giành lại sống trọn hạn từ lượt giành (R2.4).
+# Khóa hiệu ứng cùng tên chỉ được xóa sau khi dòng này đã mất (R2.31).
+days: 1
+purger: row_delete
+enforced: true
+description: Bộ đệm phát lại của Idempotency-Key, 24 giờ

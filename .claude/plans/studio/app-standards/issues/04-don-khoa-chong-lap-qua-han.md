@@ -1,6 +1,6 @@
 # 04 — Dọn khóa chống lặp quá hạn qua chính sách lưu giữ
 
-Status: ready-for-agent
+Status: resolved (2026-10-28, main)
 Blocked by: 02, .claude/plans/studio/telemetry-and-audit/issues/01-otel-khong-noi-dung-va-metric.md
 Area: studio
 Yêu cầu: R2.8, R2.9, R2.13, R2.15, APS14
@@ -18,12 +18,12 @@ Lát này cho `platform.idempotency_keys` một bộ xóa, để khóa và body 
 
 ## Tiêu chí chấp nhận
 
-- [ ] R2.8 (APS14): dòng có `created_at` 25 giờ trước bị xóa, dòng 1 giờ trước còn, ở hai tenant khác nhau trong cùng một lần gọi bộ xóa; nới điều kiện tuổi thì test tích hợp đỏ.
-- [ ] R2.9: lần gọi bộ xóa ghi số dòng đã xóa vào log và không thêm dòng nào vào `platform.audit_events`.
-- [ ] R2.13 (APS14): `platform.purge_expired_idempotency_keys()` trả một số nguyên và không trả cột nào của dòng; đổi hàm để trả dòng thì test đỏ.
-- [ ] R2.15 (APS14): xóa dòng `platform.idempotency_keys` khỏi `platform.retention_terms` trong giao dịch test thì hàm thất bại và không dòng nào bị xóa; cho hàm rơi về một hạn mặc định thì test đỏ.
-- [ ] R2.8 (APS14): test ở composition root của worker khẳng định `RetentionPurgerRegistry` có khóa `platform.idempotency_keys`; gỡ đăng ký thì test đỏ.
-- [ ] Xong: `make test-unit test-integration release-manifest-check` xanh.
+- [x] R2.8 (APS14): dòng có `created_at` 25 giờ trước bị xóa, dòng 1 giờ trước còn, ở hai tenant khác nhau trong cùng một lần gọi bộ xóa; nới điều kiện tuổi thì test tích hợp đỏ.
+- [x] R2.9: lần gọi bộ xóa ghi số dòng đã xóa vào log và không thêm dòng nào vào `platform.audit_events`.
+- [x] R2.13 (APS14): `platform.purge_expired_idempotency_keys()` trả một số nguyên và không trả cột nào của dòng; đổi hàm để trả dòng thì test đỏ.
+- [x] R2.15 (APS14): xóa dòng `platform.idempotency_keys` khỏi `platform.retention_terms` trong giao dịch test thì hàm thất bại và không dòng nào bị xóa; cho hàm rơi về một hạn mặc định thì test đỏ.
+- [x] R2.8 (APS14): test ở composition root của worker khẳng định `RetentionPurgerRegistry` có khóa `platform.idempotency_keys`; gỡ đăng ký thì test đỏ.
+- [x] Xong: `make test-unit test-integration release-manifest-check` xanh.
 
 ## Nguồn
 
@@ -41,3 +41,10 @@ Lát này cho `platform.idempotency_keys` một bộ xóa, để khóa và body 
 - 2026-10-27 (agent): bộ xóa của `platform.effect_keys` (R2.25) chuyển sang ticket 02, vì ADR-0122 (Accepted) quyết định 7 đòi nó trong cùng thay đổi tạo kho (Đạt, phương án A).
 - 2026-10-28 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
 - 2026-10-28 (agent): MEDIUM và LOW của gate trên `48edd43`, cho người làm (không CRITICAL hay HIGH, nên không có lượt xác nhận): (a) README bước 4 không được hứa "sau 24 giờ chạy như mới": khóa HTTP chỉ mất khi lane lưu giữ chạy (telemetry-and-audit/03, spec Phụ thuộc), `claim` không xét tuổi, và với chín operation dòng `platform.effect_keys` còn hạn vẫn trả hiệu ứng đã có (R2.29, R2.37); (b) adapter đặt trong `idempotency_store.py`, module đã miễn trừ của R2.26, và worker nhập hằng khóa từ đó như `EFFECT_KEYS`, không viết chuỗi `platform.idempotency_keys` ở composition root; (c) thêm một test đặt hạn 2 ngày trong giao dịch test và khẳng định dòng 25 giờ còn, để một hàm bỏ qua `platform.retention_term_days` mà dùng cứng 1 ngày thì đỏ; (d) APS14 thiếu vế "gỡ đăng ký → đỏ" mà tiêu chí 5 của ticket có, `test_every_purged_fragment_has_its_purger` giữ nó; (e) adapter để lỗi của hàm (thiếu hạn) đi lên lane như `SqlEffectKeyRetention`, không nuốt; (f) một câu `DELETE` không lô, như `platform.purge_expired_effect_keys()`; xóa theo lô và tín hiệu khi bộ xóa lỗi lặp lại thuộc lane của telemetry-and-audit/03; (g) hạn 0, âm hay NULL đã bị `ck_retention_terms_term_days_positive` và `NOT NULL` chặn (`82e168f6d189`); `enforced` do `RetentionPolicy` đọc (`retention_policy.py:262`); (h) bộ xóa chạy cùng lúc với lượt giành lại, hay hai worker cùng chạy: `DELETE` theo tuổi là idempotent, lượt giành lại khớp 0 dòng thì `claim` chèn dòng mới.
+- 2026-10-28 (agent): làm xong trên `main`. Hàm `platform.purge_expired_idempotency_keys()` ở revision `b248d0664f47` (id của `alembic revision`), mảnh `platform.idempotency_keys.yaml` (`days: 1`, `row_delete`, `enforced: true`), `SqlIdempotencyKeyRetention` trong `idempotency_store.py`, đăng ký ở `build_retention_purgers` của worker bằng hằng `IDEMPOTENCY_KEYS`, dòng EXECUTE trong `test_privileges.py`, manifest sinh lại. Test: `packages/python/dw_platform/tests/integration/test_idempotency_key_purge.py` (R2.8, R2.9, R2.13, R2.15 và hạn 2 ngày của MEDIUM (c)).
+- 2026-10-28 (agent, tạm): hàm đọc hạn vào biến khai báo trước câu `DELETE`, nên thiếu hạn thì RAISE cả khi bảng rỗng; trả `integer` theo chữ của bước 2 (hàm của `platform.effect_keys` trả `bigint`). Nếu sai thì: đổi kiểu trả về trong một revision mới.
+- 2026-10-28 (agent, tạm): tiêu chí 5 (khóa có trong `RetentionPurgerRegistry`) do `test_every_purged_fragment_has_its_purger` (`apps/worker/tests/unit/test_worker.py`) giữ, không viết test thứ hai: mảnh mới `row_delete` và `enforced` buộc sổ có khóa, và gỡ dòng đăng ký thì test đó đỏ (mutation check). Nếu sai thì: thêm một khẳng định nêu tên khóa.
+- 2026-10-28 (agent, tạm): README nói lane lưu giữ chưa được nối nên khóa chưa bị xóa, thay cho chữ "bị xóa sau 24 giờ; thử lại chạy như yêu cầu mới" của bước 4, vì chưa lane nào chạy sổ bộ xóa (telemetry-and-audit/03) và `claim` không xét tuổi (MEDIUM (a) của gate). Nếu sai thì: README bỏ câu về lane khi telemetry-and-audit/03 xong.
+- 2026-10-28 (agent): `reviewing-feature-security`: cô lập tenant (hàm xóa xuyên tenant chỉ trả số đếm, gọi như `dw_app` không đặt tenant; dòng của hai tenant bị xóa, dòng trẻ còn), phân quyền (EXECUTE chỉ cho `dw_app`, không PUBLIC, không `dw_agent_ro`, hỏi catalog), audit (không dòng `platform.audit_events` nào, log có số đếm), mặc định (thiếu hạn thì RAISE, không hạn mặc định; hạn 0, âm hay NULL bị CHECK của `82e168f6d189` chặn) đều có test âm. Không áp: autonomy và nội dung không đáng tin (không tool, prompt hay route nào), image (không đổi Dockerfile hay lockfile).
+- 2026-10-28 (agent): mutation check, 7 đột biến: nới điều kiện tuổi, hàm trả dòng (đỏ ở khẳng định một cột, không ở migration), hạn cứng 1 ngày, hạn mặc định khi thiếu dòng, bỏ log số đếm, gỡ đăng ký ở worker, gỡ GRANT: cả bảy đỏ; đối chứng không đột biến xanh.
+- 2026-10-28 (agent): cổng nhanh xanh: ruff, format, mypy (448 tệp), `make test-unit` (1520), `make test-contract`, `make test-architecture`, `make release-manifest-check`; integration của `dw_platform` và `apps/worker` xanh. Độ trễ không đo (agent, tạm): migration chỉ thêm một hàm mà không request nào gọi, lane gọi nó chưa được nối, nên không operation hay trang nào đổi đường vào CSDL (`latency.md` "When"). Nếu sai thì: đo `SqlIdempotencyKeyRetention.purge` ở cuối đợt.

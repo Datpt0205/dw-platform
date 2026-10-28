@@ -234,7 +234,8 @@ async def test_effect_keys_are_written_once_and_read_by_no_other_role(
     """app-standards ticket 02 (3c54129c940c): `dw_app` reads, inserts and
     deletes an effect key (offboarding, and replacing an expired one, R2.37) and
     never rewrites one; `dw_agent_ro` holds nothing on either key table, whose
-    rows carry another caller's stored response. The two functions run for
+    rows carry another caller's stored response. The three functions, the
+    idempotency keys' purge of ticket 04 among them (b248d0664f47), run for
     `dw_app` and for nobody else. Asked of the catalog."""
     migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
     try:
@@ -264,7 +265,9 @@ async def test_effect_keys_are_written_once_and_read_by_no_other_role(
                         SELECT r.rolname, f.fn
                         FROM pg_roles r
                         CROSS JOIN unnest(ARRAY['platform.effect_key_cutoff()',
-                                                'platform.purge_expired_effect_keys()']) AS f(fn)
+                                                'platform.purge_expired_effect_keys()',
+                                                'platform.purge_expired_idempotency_keys()'])
+                            AS f(fn)
                         WHERE r.rolname IN ('dw_app', 'dw_agent_ro', 'public')
                           AND has_function_privilege(r.rolname, f.fn, 'EXECUTE')
                         """
@@ -284,6 +287,7 @@ async def test_effect_keys_are_written_once_and_read_by_no_other_role(
     assert executes == {
         ("dw_app", "platform.effect_key_cutoff()"),
         ("dw_app", "platform.purge_expired_effect_keys()"),
+        ("dw_app", "platform.purge_expired_idempotency_keys()"),
     }
 
 
