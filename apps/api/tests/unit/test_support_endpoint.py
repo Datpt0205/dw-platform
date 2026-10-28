@@ -23,6 +23,7 @@ from dw_kernel.ports import SystemClock, Uuid4Generator
 from dw_platform.adapters.identity.dev_token import DevTokenVerifier
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.authorization import ScopeAuthorizationService
+from dw_platform.application.effect_keys import PendingEffect
 from dw_platform.application.entitlement import DEFAULT_PLANS, PlanEntitlementService
 from dw_platform.application.identity import DbAccessContextFactory, MembershipAccess
 from dw_platform.application.support_access import (
@@ -71,7 +72,11 @@ class FakeRepo:
         return "Main"
 
     async def create(
-        self, context: AccessContext, grant: NewSupportGrant, audit: AuditFor
+        self,
+        context: AccessContext,
+        grant: NewSupportGrant,
+        audit: AuditFor,
+        effect: PendingEffect | None = None,
     ) -> SupportGrant:
         raise NotImplementedError("not exercised by the route tests")
 
@@ -93,6 +98,7 @@ class FakeRepo:
         expected: frozenset[GrantStatus],
         change: GrantChange,
         audit: AuditFor,
+        effect: PendingEffect | None = None,
     ) -> SupportGrant | None:
         raise NotImplementedError("not exercised by the route tests")
 

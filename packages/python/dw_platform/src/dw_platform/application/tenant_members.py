@@ -38,6 +38,7 @@ from dw_kernel.errors import DomainError, NotFoundError
 from dw_kernel.ids import TenantId, UserId, WorkspaceId
 from dw_kernel.ports import IdGenerator, UtcClock
 from dw_platform.application.access_context import AccessContext
+from dw_platform.application.effect_keys import PendingEffect
 from dw_platform.application.membership_admin import (
     MEMBERS_READ,
     MEMBERS_WRITE,
@@ -137,11 +138,14 @@ class TenantMembersRepositoryPort(Protocol):
         user_id: uuid.UUID,
         plan: Callable[[Roles], Roles],
         audit: Callable[[MembershipChange], AuditEvent],
+        effect: PendingEffect | None = None,
     ) -> list[MembershipChange]:
         """In one transaction: read the person's memberships in this tenant
         (NotFoundError when there are none), apply `plan` to them, write the
         changes with one audit event each. NotFoundError for a planned
-        workspace outside the tenant."""
+        workspace outside the tenant. ``effect``, when the request holds an
+        idempotency key, is claimed first in the same transaction
+        (app-standards R2.16, R2.38)."""
         ...
 
     async def invite(
@@ -152,6 +156,7 @@ class TenantMembersRepositoryPort(Protocol):
         email: str,
         memberships: Roles,
         audit: Callable[[uuid.UUID, uuid.UUID, frozenset[str]], AuditEvent],
+        effect: PendingEffect | None = None,
     ) -> UserRef:
         """In one transaction: find the person by email or create them (no
         external identity), refuse one already in this tenant (409
@@ -172,7 +177,11 @@ class TenantMembersService:
         return await self.repo.list_members(context)
 
     async def set_memberships(
-        self, context: AccessContext, command: SetMemberships
+        self,
+        context: AccessContext,
+        command: SetMemberships,
+        *,
+        effect: PendingEffect | None = None,
     ) -> list[MembershipChange]:
         await self.authz.require(context=context, action=MEMBERS_WRITE, resource_type=_RESOURCE)
         desired = _by_workspace(command.memberships)
@@ -182,9 +191,16 @@ class TenantMembersService:
             user_id=command.user_id,
             plan=lambda current: plan_memberships(current, desired, administrative),
             audit=lambda change: self._change_event(context, command.user_id, change),
+            effect=effect,
         )
 
-    async def invite(self, context: AccessContext, command: InviteMember) -> UserRef:
+    async def invite(
+        self,
+        context: AccessContext,
+        command: InviteMember,
+        *,
+        effect: PendingEffect | None = None,
+    ) -> UserRef:
         await self.authz.require(context=context, action=MEMBERS_WRITE, resource_type=_RESOURCE)
         display_name = command.display_name.strip()
         if not 4 <= len(display_name) <= 120:
@@ -208,6 +224,7 @@ class TenantMembersService:
                 ws,
                 {"user_id": str(user_id), "roles": sorted(roles)},
             ),
+            effect=effect,
         )
 
     async def _checked_roles(self, context: AccessContext, desired: Roles) -> frozenset[str]:

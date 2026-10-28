@@ -216,6 +216,8 @@ def test_every_purged_fragment_has_its_purger() -> None:
     reach; with no entry in the registry, its term would be written and never
     carried out (`failure-modes.md` #1). `drop_partition` is the `partitions`
     lane's own, and `none` has nothing to run."""
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
     from dw_platform.retention_policy import load_retention_policy
     from dw_worker.main import build_retention_purgers
 
@@ -224,4 +226,4 @@ def test_every_purged_fragment_has_its_purger() -> None:
         for key, fragment in load_retention_policy().stores.items()
         if fragment.enforced and fragment.purger in {"row_delete", "object_delete", "column_clear"}
     }
-    assert purged - set(build_retention_purgers().all()) == set()
+    assert purged - set(build_retention_purgers(async_sessionmaker()).all()) == set()

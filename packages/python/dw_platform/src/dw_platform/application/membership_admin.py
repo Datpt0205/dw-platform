@@ -31,6 +31,7 @@ from dw_kernel.ids import TenantId, UserId, WorkspaceId
 from dw_kernel.ports import IdGenerator, UtcClock
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.authorization import PLATFORM_ADMIN_ROLE
+from dw_platform.application.effect_keys import PendingEffect
 from dw_platform.application.ports import AuthorizationPort
 from dw_platform.domain.audit import AuditEvent
 
@@ -116,10 +117,12 @@ class MembershipAdminRepositoryPort(Protocol):
         role_keys: frozenset[str],
         department: str,
         audit: AuditEvent,
+        effect: PendingEffect | None = None,
     ) -> None:
         """Insert-or-update the membership and record ``audit`` in the same
         transaction. Verifies the workspace is in the caller's tenant; RLS keeps
-        the write there."""
+        the write there. ``effect``, when the request holds an idempotency key, is claimed first in
+        the same transaction (app-standards R2.16, R2.38)."""
         ...
 
     async def revoke(
@@ -129,9 +132,12 @@ class MembershipAdminRepositoryPort(Protocol):
         user_id: uuid.UUID,
         workspace_id: uuid.UUID,
         audit: AuditEvent,
+        effect: PendingEffect | None = None,
     ) -> bool:
         """Remove the membership and, if there was one, record ``audit`` in the
-        same transaction. Returns False if there was none to remove."""
+        same transaction. Returns False if there was none to remove.
+        ``effect``, when the request holds an idempotency key, is claimed first in
+        the same transaction (app-standards R2.16, R2.38)."""
         ...
 
 
@@ -142,7 +148,13 @@ class GrantMembershipHandler:
     clock: UtcClock
     id_generator: IdGenerator
 
-    async def handle(self, context: AccessContext, command: GrantMembership) -> UserRef:
+    async def handle(
+        self,
+        context: AccessContext,
+        command: GrantMembership,
+        *,
+        effect: PendingEffect | None = None,
+    ) -> UserRef:
         await self.authz.require(context=context, action=MEMBERS_WRITE, resource_type=_RESOURCE)
         if not command.role_keys:
             raise PermissionDeniedError("a membership needs at least one role")
@@ -175,6 +187,7 @@ class GrantMembershipHandler:
                 command.workspace_id,
                 {"roles": sorted(command.role_keys), "department": command.department},
             ),
+            effect=effect,
         )
         return user
 
@@ -209,7 +222,13 @@ class RevokeMembershipHandler:
     clock: UtcClock
     id_generator: IdGenerator
 
-    async def handle(self, context: AccessContext, command: RevokeMembership) -> None:
+    async def handle(
+        self,
+        context: AccessContext,
+        command: RevokeMembership,
+        *,
+        effect: PendingEffect | None = None,
+    ) -> None:
         await self.authz.require(context=context, action=MEMBERS_WRITE, resource_type=_RESOURCE)
         removed = await self.repo.revoke(
             context,
@@ -225,6 +244,7 @@ class RevokeMembershipHandler:
                 resource_id=str(command.user_id),
                 occurred_at=self.clock.now(),
             ),
+            effect=effect,
         )
         if not removed:
             raise NotFoundError(

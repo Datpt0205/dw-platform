@@ -35,6 +35,7 @@ from dw_platform.application.authorization import (
     holds_stamped_scope,
     permission_denied,
 )
+from dw_platform.application.effect_keys import PendingEffect
 from dw_platform.application.ports import PlatformUnitOfWork, PlatformUnitOfWorkFactory
 from dw_platform.domain.approval import (
     APPROVALS_DECIDE,
@@ -165,6 +166,98 @@ class ApproveAndResumeService:
             )
         return record
 
+    async def authorize_decision(
+        self,
+        *,
+        approval_id: uuid.UUID,
+        approve: bool,
+        comment: str,
+        context: AccessContext,
+        authorization: ScopeAuthorizationService,
+    ) -> None:
+        """Whether this caller may decide (or withdraw) this request: the same
+        rules `decide` applies, and nothing of the request's state, so a retry
+        of a decision already made passes it. What the route's idempotency
+        check calls before any key row is read (app-standards R2.30)."""
+        async with self.uow_factory(context) as uow:
+            request = await self._visible(uow, approval_id, context, authorization)
+            await self._authorize(
+                request,
+                approve=approve,
+                comment=comment,
+                context=context,
+                authorization=authorization,
+            )
+
+    async def _visible(
+        self,
+        uow: PlatformUnitOfWork,
+        approval_id: uuid.UUID,
+        context: AccessContext,
+        authorization: ScopeAuthorizationService,
+    ) -> ApprovalRequest:
+        # Narrowed to the caller's workspace by the repository: RLS on
+        # approval_requests narrows by tenant only. Another workspace's
+        # request is not found, before any scope check, write or resume.
+        # So is a stamped request the caller may neither decide nor asked
+        # for (ADR 0004, amendment 2026-10-07): the inbox does not list it,
+        # and a refusal here would tell them it exists and what it needs.
+        request = await uow.approvals.get(
+            approval_id,
+            workspace_id=context.workspace_id,
+            audience=ApprovalAudience.of(context, authorization),
+        )
+        if request is None:
+            raise NotFoundError(
+                "approval request not found", details={"approval_id": str(approval_id)}
+            )
+        return request
+
+    async def _authorize(
+        self,
+        request: ApprovalRequest,
+        *,
+        approve: bool,
+        comment: str,
+        context: AccessContext,
+        authorization: ScopeAuthorizationService,
+    ) -> None:
+        """Who may decide this request: the scope, the stamped scope, the strict
+        rules and the type's guard. Never its state."""
+        # Approving is the decision that needs the right; WITHDRAWING your
+        # own request is not. A seller who asks the assistant to do
+        # something and then changes their mind must not have to find a
+        # manager to take it back — without this the request sits pending
+        # forever and its run stays parked (measured 2026-09-08: a sales
+        # role got `permission_denied` on Reject as well as Approve).
+        # The read moves above the gate so we know whose request it is;
+        # it is tenant-scoped by RLS and workspace-scoped by the read above.
+        if approve or request.requested_by.value != context.principal_id:
+            await authorization.require(
+                context=context,
+                action=APPROVALS_DECIDE,
+                resource_type="approval_request",
+                resource_id=str(request.id),
+            )
+            # Who may decide THIS request, stamped when it was raised
+            # (ADR 0004) and read from the row, never from today's policy.
+            # NOT through `require`: its admin rule would let a platform
+            # operator decide a business approval (2026-10-06). The inbox
+            # reads the same `holds_stamped_scope`; and this sits before any
+            # write or resume, so a refusal leaves the request pending and
+            # the run parked.
+            if not holds_stamped_scope(context, request.required_scope):
+                raise permission_denied(
+                    action=str(request.required_scope),
+                    resource_type="approval_request",
+                    resource_id=str(request.id),
+                )
+        if self.is_strict(request.approval_type):
+            self._enforce_strict_rules(request, comment, context)
+        guard = self.decision_guards.get(request.approval_type)
+        if guard is not None:
+            guard(request, context)
+
     async def decide(
         self,
         *,
@@ -176,6 +269,7 @@ class ApproveAndResumeService:
         approved_action_ids: list[str] | None = None,
         channel: str = "web",
         admission: DecisionAdmission | None = None,
+        effect: PendingEffect | None = None,
     ) -> ApprovalRequest:
         """Decide, then resume the run. `channel` is where the decision came
         from (`web`, or `zalo` through `ChannelApprovalDecisionService`): it is
@@ -183,54 +277,20 @@ class ApproveAndResumeService:
         `admission`, when given, must admit this decision inside the same unit
         of work (see `DecisionAdmission`)."""
         async with self.uow_factory(context) as uow:
-            # Narrowed to the caller's workspace by the repository: RLS on
-            # approval_requests narrows by tenant only. Another workspace's
-            # request is not found, before any scope check, write or resume.
-            # So is a stamped request the caller may neither decide nor asked
-            # for (ADR 0004, amendment 2026-10-07): the inbox does not list it,
-            # and a refusal here would tell them it exists and what it needs.
-            request = await uow.approvals.get(
-                approval_id,
-                workspace_id=context.workspace_id,
-                audience=ApprovalAudience.of(context, authorization),
+            # First in the decision's transaction, before the request is read
+            # and its state checked: a concurrent attempt of the same key waits
+            # here, then meets this decision rather than "already decided"
+            # (app-standards R2.33, R2.38).
+            if effect is not None:
+                await uow.effect_keys.claim(effect.of(approval_id))
+            request = await self._visible(uow, approval_id, context, authorization)
+            await self._authorize(
+                request,
+                approve=approve,
+                comment=comment,
+                context=context,
+                authorization=authorization,
             )
-            if request is None:
-                raise NotFoundError(
-                    "approval request not found", details={"approval_id": str(approval_id)}
-                )
-            # Approving is the decision that needs the right; WITHDRAWING your
-            # own request is not. A seller who asks the assistant to do
-            # something and then changes their mind must not have to find a
-            # manager to take it back — without this the request sits pending
-            # forever and its run stays parked (measured 2026-09-08: a sales
-            # role got `permission_denied` on Reject as well as Approve).
-            # The read moves above the gate so we know whose request it is;
-            # it is tenant-scoped by RLS and workspace-scoped by the read above.
-            if approve or request.requested_by.value != context.principal_id:
-                await authorization.require(
-                    context=context,
-                    action=APPROVALS_DECIDE,
-                    resource_type="approval_request",
-                    resource_id=str(approval_id),
-                )
-                # Who may decide THIS request, stamped when it was raised
-                # (ADR 0004) and read from the row, never from today's policy.
-                # NOT through `require`: its admin rule would let a platform
-                # operator decide a business approval (2026-10-06). The inbox
-                # reads the same `holds_stamped_scope`; and this sits before any
-                # write or resume, so a refusal leaves the request pending and
-                # the run parked.
-                if not holds_stamped_scope(context, request.required_scope):
-                    raise permission_denied(
-                        action=str(request.required_scope),
-                        resource_type="approval_request",
-                        resource_id=str(approval_id),
-                    )
-            if self.is_strict(request.approval_type):
-                self._enforce_strict_rules(request, comment, context)
-            guard = self.decision_guards.get(request.approval_type)
-            if guard is not None:
-                guard(request, context)
             record = await self._resumable_run(context, request)
             admitted = None if admission is None else await admission.admit(uow, request, context)
 

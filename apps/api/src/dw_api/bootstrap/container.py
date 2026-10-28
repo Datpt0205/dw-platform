@@ -55,6 +55,7 @@ from dw_platform.application.admin_console import AdminConsoleService
 from dw_platform.application.authorization import ScopeAuthorizationService
 from dw_platform.application.cache import CachePort
 from dw_platform.application.channel_access import ChannelPreferencesPort
+from dw_platform.application.effect_keys import EffectKeyPort
 from dw_platform.application.entitlement import PlanEntitlementService
 from dw_platform.application.hierarchy import HierarchyService
 from dw_platform.application.idempotency import HttpIdempotency
@@ -194,6 +195,8 @@ class ApiContainer:
     # either — and where the dependency degrades to a pass-through rather than
     # refusing a header the API advertises.
     idempotency: HttpIdempotency | None = None
+    # The effect half of an idempotent request (app-standards R2.16).
+    effect_keys: EffectKeyPort | None = None
 
     # Platform provisioning: absent unless a provisioner connection is set —
     # then /api/v1/platform/* is mounted. Its engine is a second role with no

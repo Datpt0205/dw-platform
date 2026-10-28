@@ -14,6 +14,7 @@ which one (`SupportRefusal`): `support_access_not_enabled` (403),
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter
@@ -21,7 +22,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from dw_api.bootstrap import ApiContainer
 from dw_api.dependencies.auth import RequireAccessContext, RequireVerifiedIdentity
-from dw_api.dependencies.idempotency import RequireIdempotency
+from dw_api.dependencies.idempotency import IdempotentOperation, idempotent
 from dw_api.dependencies.services import RequireContainer
 from dw_kernel.errors import InfrastructureError
 from dw_platform.application.support_access import (
@@ -31,10 +32,33 @@ from dw_platform.application.support_access import (
     SupportGrantService,
     SupportGrantView,
     SupportRefusal,
+    check_approve,
+    check_close,
+    check_request,
     support_access_refused,
 )
 
 router = APIRouter(prefix="/support", tags=["support"])
+
+# Each write checks, before any key row, what its service checks first: the
+# flag and a side to request or grant, the flag and `support.grant` to approve,
+# and `support.grant` alone to close, never the flag (ADR 0024 "Who may close";
+# app-standards R2.21, R2.42).
+RequestIdempotency = Annotated[
+    IdempotentOperation, idempotent(check_request, operation="POST /support/grants")
+]
+ApproveIdempotency = Annotated[
+    IdempotentOperation,
+    idempotent(check_approve, operation="POST /support/grants/{grant_id}/approve"),
+]
+RejectIdempotency = Annotated[
+    IdempotentOperation,
+    idempotent(check_close, operation="POST /support/grants/{grant_id}/reject"),
+]
+RevokeIdempotency = Annotated[
+    IdempotentOperation,
+    idempotent(check_close, operation="POST /support/grants/{grant_id}/revoke"),
+]
 
 
 class SupportScopeSetView(BaseModel):
@@ -147,19 +171,22 @@ async def request_grant(
     body: RequestSupportGrantBody,
     context: RequireAccessContext,
     container: RequireContainer,
-    idempotency: RequireIdempotency,
+    idempotency: RequestIdempotency,
 ) -> SupportGrantModel:
     """With `support.grant` the grant is made (`pending_assignment`); with only
     `support.request` it waits for a granter (`pending_approval`)."""
-    view = await _service(container).request(
-        context,
-        RequestSupportGrant(
-            scope_set_key=body.scope_set_key,
-            resource_type=body.resource_type,
-            resource_id=body.resource_id,
-            reason=body.reason,
-            duration_hours=body.duration_hours,
-        ),
+    service = _service(container)
+    command = RequestSupportGrant(
+        scope_set_key=body.scope_set_key,
+        resource_type=body.resource_type,
+        resource_id=body.resource_id,
+        reason=body.reason,
+        duration_hours=body.duration_hours,
+    )
+    view = await idempotency.once(
+        status=201,
+        run=lambda effect: service.request(context, command, effect=effect),
+        reread=lambda grant_id: service.grant(context, UUID(grant_id)),
     )
     return await idempotency.record(_model(view), status_code=201)
 
@@ -169,9 +196,14 @@ async def approve_grant(
     grant_id: UUID,
     context: RequireAccessContext,
     container: RequireContainer,
-    idempotency: RequireIdempotency,
+    idempotency: ApproveIdempotency,
 ) -> SupportGrantModel:
-    view = await _service(container).approve(context, grant_id)
+    service = _service(container)
+    view = await idempotency.once(
+        status=200,
+        run=lambda effect: service.approve(context, grant_id, effect=effect),
+        reread=lambda _: service.grant(context, grant_id),
+    )
     return await idempotency.record(_model(view))
 
 
@@ -181,9 +213,14 @@ async def reject_grant(
     body: RejectSupportGrantBody,
     context: RequireAccessContext,
     container: RequireContainer,
-    idempotency: RequireIdempotency,
+    idempotency: RejectIdempotency,
 ) -> SupportGrantModel:
-    view = await _service(container).reject(context, grant_id, body.reason)
+    service = _service(container)
+    view = await idempotency.once(
+        status=200,
+        run=lambda effect: service.reject(context, grant_id, body.reason, effect=effect),
+        reread=lambda _: service.grant(context, grant_id),
+    )
     return await idempotency.record(_model(view))
 
 
@@ -192,10 +229,15 @@ async def revoke_grant(
     grant_id: UUID,
     context: RequireAccessContext,
     container: RequireContainer,
-    idempotency: RequireIdempotency,
+    idempotency: RevokeIdempotency,
 ) -> SupportGrantModel:
     """Takes effect at the staff member's next request."""
-    view = await _service(container).revoke(context, grant_id)
+    service = _service(container)
+    view = await idempotency.once(
+        status=200,
+        run=lambda effect: service.revoke(context, grant_id, effect=effect),
+        reread=lambda _: service.grant(context, grant_id),
+    )
     return await idempotency.record(_model(view))
 
 

@@ -601,6 +601,10 @@ _TENANT_WIDE_ON_PURPOSE: dict[tuple[str, str], str] = {
         "the agent runtime's long-term store, keyed by namespace across the whole "
         "tenant rather than by one workspace"
     ),
+    ("platform", "effect_keys"): (
+        "an effect an idempotent request committed, keyed by its caller across the "
+        "tenant; the workspace is inside the request hash (app-standards R2.16)"
+    ),
     ("platform", "entitlements"): "what the tenant's plan includes, for the whole company",
     ("platform", "policy_overrides"): "a tenant's override of a platform policy, company-wide",
     ("platform", "sod_waivers"): (

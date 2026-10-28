@@ -26,6 +26,9 @@ from sqlalchemy.pool import NullPool
 from studio_catalog import registry_violations, studio_schema_violations
 from test_rls_coverage import tenant_schemas
 
+from dw_platform.adapters.persistence.retention_terms import pinned_terms
+from dw_platform.retention_policy import load_retention_policy
+
 pytestmark = pytest.mark.integration
 
 
@@ -222,7 +225,66 @@ async def test_the_application_cannot_write_the_retention_terms(
         "DELETE",
     }
     # The table is as the loader left it: none of the refused writes landed.
-    assert terms == 1
+    assert terms == len(pinned_terms(load_retention_policy()))
+
+
+async def test_effect_keys_are_written_once_and_read_by_no_other_role(
+    db_urls: DatabaseUrls,
+) -> None:
+    """app-standards ticket 02 (3c54129c940c): `dw_app` reads, inserts and
+    deletes an effect key (offboarding, and replacing an expired one, R2.37) and
+    never rewrites one; `dw_agent_ro` holds nothing on either key table, whose
+    rows carry another caller's stored response. The two functions run for
+    `dw_app` and for nobody else. Asked of the catalog."""
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            held = {
+                (row.rolname, row.tbl, row.verb)
+                for row in await conn.execute(
+                    sa.text(
+                        """
+                        SELECT r.rolname, t.tbl, v.verb
+                        FROM pg_roles r
+                        CROSS JOIN unnest(ARRAY['platform.effect_keys',
+                                                'platform.idempotency_keys']) AS t(tbl)
+                        CROSS JOIN unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE',
+                                                'TRUNCATE']) AS v(verb)
+                        WHERE r.rolname IN ('dw_app', 'dw_agent_ro')
+                          AND has_table_privilege(r.rolname, t.tbl, v.verb)
+                        """
+                    )
+                )
+            }
+            executes = {
+                (row.rolname, row.fn)
+                for row in await conn.execute(
+                    sa.text(
+                        """
+                        SELECT r.rolname, f.fn
+                        FROM pg_roles r
+                        CROSS JOIN unnest(ARRAY['platform.effect_key_cutoff()',
+                                                'platform.purge_expired_effect_keys()']) AS f(fn)
+                        WHERE r.rolname IN ('dw_app', 'dw_agent_ro', 'public')
+                          AND has_function_privilege(r.rolname, f.fn, 'EXECUTE')
+                        """
+                    )
+                )
+            }
+    finally:
+        await migrator.dispose()
+    assert {
+        verb for role, tbl, verb in held if role == "dw_app" and tbl == "platform.effect_keys"
+    } == {
+        "SELECT",
+        "INSERT",
+        "DELETE",
+    }
+    assert {role for role, _, _ in held} <= {"dw_app"}, "dw_agent_ro reads a key table"
+    assert executes == {
+        ("dw_app", "platform.effect_key_cutoff()"),
+        ("dw_app", "platform.purge_expired_effect_keys()"),
+    }
 
 
 async def test_the_application_cannot_read_the_provisioning_record(

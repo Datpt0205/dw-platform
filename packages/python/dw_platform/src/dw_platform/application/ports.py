@@ -14,6 +14,7 @@ from uuid import UUID
 
 from dw_kernel.pagination import Page, PageRequest
 from dw_platform.application.access_context import AccessContext
+from dw_platform.application.effect_keys import EffectKeyWriterPort
 
 if TYPE_CHECKING:
     from dw_platform.application.approval_codes import DecisionCodeLedgerPort
@@ -333,6 +334,9 @@ class PlatformUnitOfWork(Protocol):
     # Consuming a single-use decision code in the decision's own transaction
     # (ADR 0007); only a decision admitted by a code touches it.
     decision_codes: DecisionCodeLedgerPort
+    # The effect key of an idempotent request, first in the transaction
+    # (app-standards R2.38); only a request that holds a key touches it.
+    effect_keys: EffectKeyWriterPort
 
     async def __aenter__(self) -> PlatformUnitOfWork: ...
 

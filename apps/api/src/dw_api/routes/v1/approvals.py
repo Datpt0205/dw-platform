@@ -9,10 +9,10 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Query, Response
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from dw_agent_runtime.approval_codes import (
     ApprovalViewService,
@@ -21,14 +21,16 @@ from dw_agent_runtime.approval_codes import (
     reject_command,
 )
 from dw_agent_runtime.approval_flow import ApproveAndResumeService
+from dw_api.bootstrap import ApiContainer
 from dw_api.dependencies.auth import RequireAccessContext
-from dw_api.dependencies.idempotency import RequireIdempotency
+from dw_api.dependencies.idempotency import CheckInput, IdempotentOperation, idempotent
 from dw_api.dependencies.services import RequireContainer
 from dw_kernel.errors import InfrastructureError, NotFoundError
 from dw_kernel.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, Page, PageQuery, page_request
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.approval_codes import MAX_COMMENT_LENGTH
 from dw_platform.application.authorization import ApprovalAudience, ScopeAuthorizationService
+from dw_platform.application.effect_keys import PendingEffect
 from dw_platform.domain.approval import ApprovalRequest
 
 
@@ -155,6 +157,16 @@ async def get_approval(
 ) -> ApprovalView:
     if container.uow_factory is None or container.approval_flow is None:
         raise InfrastructureError("database is not configured")
+    return await _approval_view(container, context, approval_id)
+
+
+async def _approval_view(
+    container: ApiContainer, context: AccessContext, approval_id: uuid.UUID
+) -> ApprovalView:
+    """One request as this caller may see it now: what `GET` answers, and what
+    a retried decision reads back (app-standards R2.29)."""
+    if container.uow_factory is None or container.approval_flow is None:
+        raise InfrastructureError("database is not configured")
     await container.authorization.require(
         context=context,
         action="approvals.read",
@@ -173,6 +185,34 @@ async def get_approval(
     return _view(request, context, container.approval_flow, container.authorization)
 
 
+async def _may_decide(check: CheckInput) -> None:
+    """The service's own who-may-decide check, before any key row is read
+    (app-standards R2.30): the scope, the stamped scope, the strict rules and
+    the type's guard, or being the requester who withdraws. A body or path the
+    schema refuses is left to FastAPI's own 422, which follows."""
+    flow = check.container.approval_flow
+    if flow is None:
+        raise InfrastructureError("approval flow is not configured")
+    try:
+        approval_id = uuid.UUID(check.request.path_params["approval_id"])
+        body = DecisionRequest.model_validate_json(await check.request.body())
+    except (KeyError, ValueError, ValidationError):
+        return
+    await flow.authorize_decision(
+        approval_id=approval_id,
+        approve=body.approve,
+        comment=body.comment,
+        context=check.context,
+        authorization=check.container.authorization,
+    )
+
+
+DecisionIdempotency = Annotated[
+    IdempotentOperation,
+    idempotent(_may_decide, operation="POST /approvals/{approval_id}/decisions"),
+]
+
+
 # A decision resumes a checkpointed run, and the run is where the side effects
 # are — so a retry after a timeout is the one request on this router that must
 # never be executed twice. `Idempotency-Key` is honoured here (optional; see
@@ -183,21 +223,30 @@ async def decide(
     body: DecisionRequest,
     context: RequireAccessContext,
     container: RequireContainer,
-    idempotency: RequireIdempotency,
+    idempotency: DecisionIdempotency,
 ) -> ApprovalView:
-    if container.approval_flow is None:
+    flow = container.approval_flow
+    if flow is None:
         raise InfrastructureError("approval flow is not configured")
-    request = await container.approval_flow.decide(
-        approval_id=approval_id,
-        approve=body.approve,
-        comment=body.comment,
-        context=context,
-        authorization=container.authorization,
-        approved_action_ids=body.approved_action_ids,
+
+    async def decided(effect: PendingEffect | None) -> ApprovalView:
+        request = await flow.decide(
+            approval_id=approval_id,
+            approve=body.approve,
+            comment=body.comment,
+            context=context,
+            authorization=container.authorization,
+            approved_action_ids=body.approved_action_ids,
+            effect=effect,
+        )
+        return _view(request, context, flow, container.authorization)
+
+    view = await idempotency.once(
+        status=200,
+        run=decided,
+        reread=lambda decided_id: _approval_view(container, context, uuid.UUID(decided_id)),
     )
-    return await idempotency.record(
-        _view(request, context, container.approval_flow, container.authorization)
-    )
+    return await idempotency.record(view)
 
 
 # Opening an approval on the portal (ADR 0007, channels Z5). Every

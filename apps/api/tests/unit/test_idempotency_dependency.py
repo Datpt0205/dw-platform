@@ -14,14 +14,14 @@ from typing import Annotated
 import httpx
 import pytest
 from asgi_lifespan import LifespanManager
-from fastapi import Depends, FastAPI, File, Form, UploadFile
+from fastapi import FastAPI, File, Form, UploadFile
 from pydantic import BaseModel
 
 from dw_api.bootstrap import ApiContainer
 from dw_api.dependencies.idempotency import (
     IdempotentOperation,
     ReplayedResponse,
-    get_form_idempotent_operation,
+    idempotent,
 )
 from dw_api.health import CheckState, HealthService
 from dw_api.main import create_app
@@ -40,6 +40,7 @@ from dw_platform.application.idempotency import (
 )
 from dw_platform.application.identity import DbAccessContextFactory, MembershipAccess
 from dw_platform.application.membership_admin import (
+    MEMBERS_WRITE,
     GrantMembershipHandler,
     RevokeMembershipHandler,
     UserRef,
@@ -90,7 +91,9 @@ class CountingRepo:
     async def scopes_for_roles(self, role_keys: frozenset[str]) -> frozenset[str]:
         return frozenset()
 
-    async def grant(self, context: AccessContext, *, audit: AuditEvent, **kw: object) -> None:
+    async def grant(
+        self, context: AccessContext, *, audit: AuditEvent, effect: object = None, **kw: object
+    ) -> None:
         self.grants += 1
         if self.fail:
             raise InfrastructureError("the database went away mid-write")
@@ -102,39 +105,57 @@ class CountingRepo:
         user_id: uuid.UUID,
         workspace_id: uuid.UUID,
         audit: AuditEvent,
+        effect: object = None,
     ) -> bool:
         self.revokes += 1
         return True
 
 
 class MemoryStore:
-    """The store port, backed by a dict. Reservation semantics preserved."""
+    """The store port, backed by a dict. Reservation and token semantics
+    preserved, as `SqlIdempotencyStore` keeps them."""
 
     def __init__(self) -> None:
         self.rows: dict[tuple[uuid.UUID, str], ReservedKey] = {}
+        self.tokens: dict[tuple[uuid.UUID, str], uuid.UUID] = {}
 
     async def reserve(
         self, context: AccessContext, *, key: str, fingerprint: RequestFingerprint
-    ) -> ReservedKey | None:
+    ) -> uuid.UUID | ReservedKey:
         existing = self.rows.get((context.tenant_id, key))
         if existing is not None:
             return existing
         self.rows[(context.tenant_id, key)] = ReservedKey(fingerprint=fingerprint, response=None)
+        token = self.tokens[(context.tenant_id, key)] = uuid.uuid4()
+        return token
+
+    async def take_over(
+        self,
+        context: AccessContext,
+        *,
+        key: str,
+        fingerprint: RequestFingerprint,
+        older_than: object,
+    ) -> uuid.UUID | None:
+        # Nothing in these tests is old enough to be abandoned.
         return None
 
-    async def take_over(self, context: AccessContext, *, key: str, older_than: object) -> bool:
-        # Nothing in these tests is old enough to be abandoned.
-        return False
-
-    async def complete(self, context: AccessContext, *, key: str, response: StoredResponse) -> None:
+    async def complete(
+        self, context: AccessContext, *, key: str, token: uuid.UUID, response: StoredResponse
+    ) -> None:
         row = self.rows[(context.tenant_id, key)]
-        self.rows[(context.tenant_id, key)] = ReservedKey(
-            fingerprint=row.fingerprint, response=response
-        )
+        if self.tokens.get((context.tenant_id, key)) == token and row.response is None:
+            self.rows[(context.tenant_id, key)] = ReservedKey(
+                fingerprint=row.fingerprint, response=response
+            )
 
-    async def release(self, context: AccessContext, *, key: str) -> None:
+    async def release(self, context: AccessContext, *, key: str, token: uuid.UUID) -> None:
         row = self.rows.get((context.tenant_id, key))
-        if row is not None and row.response is None:
+        if (
+            row is not None
+            and row.response is None
+            and self.tokens.get((context.tenant_id, key)) == token
+        ):
             del self.rows[(context.tenant_id, key)]
 
 
@@ -319,9 +340,13 @@ async def test_an_operation_that_never_claimed_the_key_never_releases_it() -> No
         roles=frozenset(),
         plan_id="professional",
     )
-    holder = IdempotentOperation(idempotency, context, "shared", method="POST", target="/x")
+    holder = IdempotentOperation(
+        idempotency, None, context, "shared", operation="POST /x", method="POST", target="/x"
+    )
     await holder.claim_fields({"a": "1"})
-    bystander = IdempotentOperation(idempotency, context, "shared", method="POST", target="/x")
+    bystander = IdempotentOperation(
+        idempotency, None, context, "shared", operation="POST /x", method="POST", target="/x"
+    )
 
     await bystander.abandon_unless_recorded()
     assert (TENANT, "shared") in store.rows, "the holder's reservation must survive"
@@ -340,14 +365,20 @@ async def test_claim_fields_fingerprints_the_fields_not_their_order() -> None:
         roles=frozenset(),
         plan_id="professional",
     )
-    first = IdempotentOperation(idempotency, context, "k", method="POST", target="/x")
+    first = IdempotentOperation(
+        idempotency, None, context, "k", operation="POST /x", method="POST", target="/x"
+    )
     await first.claim_fields({"a": "1", "b": "2"})
     await first.record_no_content()
 
-    again = IdempotentOperation(idempotency, context, "k", method="POST", target="/x")
+    again = IdempotentOperation(
+        idempotency, None, context, "k", operation="POST /x", method="POST", target="/x"
+    )
     with pytest.raises(ReplayedResponse):
         await again.claim_fields({"b": "2", "a": "1"})
-    other = IdempotentOperation(idempotency, context, "k", method="POST", target="/x")
+    other = IdempotentOperation(
+        idempotency, None, context, "k", operation="POST /x", method="POST", target="/x"
+    )
     with pytest.raises(IdempotencyConflictError):
         await other.claim_fields({"a": "1", "b": "3"})
 
@@ -361,7 +392,10 @@ def with_upload_route(app: FastAPI, calls: list[str]) -> FastAPI:
     """A multipart route of the shape the form dependency is for: the key is
     claimed from the parsed fields, the file as its hash. The platform ships
     no such route yet; this one stands in for the first context's."""
-    form_idempotency = Annotated[IdempotentOperation, Depends(get_form_idempotent_operation)]
+    form_idempotency = Annotated[
+        IdempotentOperation,
+        idempotent(MEMBERS_WRITE, operation="POST /probe/uploads", form=True),
+    ]
 
     @app.post("/api/v1/probe/uploads", status_code=201)
     async def upload(

@@ -1,0 +1,12 @@
+# Khóa chống lặp của hiệu ứng (`platform.effect_keys`), app-standards ticket 02.
+#
+# Một ngày, như khóa HTTP của ADR-0108 quyết định 4: đủ cho một client thử lại
+# sau khi hết giờ, ngắn đủ để một khóa không chặn mãi. Dòng vận hành, không là
+# bản ghi của ai: bộ xóa ghi số dòng vào log, không ghi audit (`CLAUDE.md`
+# "Agent and tool rules"; ADR-0011 "Not applied"). Một dòng quá hạn mà khóa HTTP
+# cùng khóa còn sống thì được giữ (R2.31); route coi dòng quá hạn mà không còn
+# khóa HTTP là chưa dùng, dù lane lưu giữ chưa chạy (R2.37).
+days: 1
+purger: row_delete
+enforced: true
+description: Khóa chống lặp của hiệu ứng đã ghi, theo người gọi

@@ -17,8 +17,10 @@ holds BYPASSRLS and would prove nothing about either privileges or isolation.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 
 import pytest
 import sqlalchemy as sa
@@ -41,6 +43,7 @@ from dw_platform.application.idempotency import (
     STALE_RESERVATION,
     HttpIdempotency,
     RequestFingerprint,
+    Reservation,
     StoredResponse,
 )
 
@@ -66,15 +69,22 @@ def context_for(tenant_id: uuid.UUID, workspace_id: uuid.UUID) -> AccessContext:
     )
 
 
+CALLER_A = context_for(TENANT_ONE, WORKSPACE_ONE)
+CALLER_B = context_for(TENANT_ONE, WORKSPACE_ONE)
+
+
 def fingerprint(
-    *, body: bytes = b'{"approve":true}', workspace_id: uuid.UUID = WORKSPACE_ONE
+    *, body: bytes = b'{"approve":true}', context: AccessContext = CALLER_A
 ) -> RequestFingerprint:
     return RequestFingerprint.of(
-        method="POST",
-        path="/api/v1/approvals/decisions",
-        workspace_id=workspace_id,
-        body=body,
+        context=context, method="POST", path="/api/v1/approvals/decisions", body=body
     )
+
+
+async def reserved(idempotency: HttpIdempotency, context: AccessContext, key: str) -> Reservation:
+    claimed = await idempotency.claim(context, key=key, fingerprint=fingerprint(context=context))
+    assert isinstance(claimed, Reservation)
+    return claimed
 
 
 @pytest.fixture
@@ -133,25 +143,31 @@ async def backdate(
 
 
 async def test_a_replay_returns_the_stored_response(idempotency: HttpIdempotency) -> None:
-    context = context_for(TENANT_ONE, WORKSPACE_ONE)
+    context = CALLER_A
     key = "replay-me"
     body: dict[str, object] = {"id": "abc", "status": "approved"}
 
-    assert await idempotency.claim(context, key=key, fingerprint=fingerprint()) is None
+    held = await reserved(idempotency, context, key)
     await idempotency.complete(
-        context, key=key, response=StoredResponse(status_code=200, body=body)
+        context,
+        key=key,
+        token=held.token,
+        response=StoredResponse(
+            status_code=201, body=body, headers={"ETag": '"3"', "Location": "/x/abc"}
+        ),
     )
 
     replayed = await idempotency.claim(context, key=key, fingerprint=fingerprint())
-    assert replayed is not None
-    assert replayed.status_code == 200
+    assert isinstance(replayed, StoredResponse)
+    assert replayed.status_code == 201
     assert replayed.body == body
+    assert replayed.headers == {"ETag": '"3"', "Location": "/x/abc"}
 
 
 async def test_the_same_key_on_a_different_request_is_refused(
     idempotency: HttpIdempotency,
 ) -> None:
-    context = context_for(TENANT_ONE, WORKSPACE_ONE)
+    context = CALLER_A
     key = "mismatched"
 
     await idempotency.claim(context, key=key, fingerprint=fingerprint(body=b'{"approve":true}'))
@@ -166,10 +182,10 @@ async def test_a_second_request_while_the_first_is_in_flight_is_refused(
     idempotency: HttpIdempotency,
 ) -> None:
     """The reservation is committed before the handler runs, so it is visible."""
-    context = context_for(TENANT_ONE, WORKSPACE_ONE)
+    context = CALLER_A
     key = "in-flight"
 
-    assert await idempotency.claim(context, key=key, fingerprint=fingerprint()) is None
+    await reserved(idempotency, context, key)
     with pytest.raises(ConflictError) as excinfo:
         await idempotency.claim(context, key=key, fingerprint=fingerprint())
     assert not isinstance(excinfo.value, IdempotencyConflictError), "in flight, not a mismatch"
@@ -178,23 +194,25 @@ async def test_a_second_request_while_the_first_is_in_flight_is_refused(
 async def test_an_abandoned_reservation_can_be_taken_over(
     idempotency: HttpIdempotency, sessions: async_sessionmaker[AsyncSession]
 ) -> None:
-    context = context_for(TENANT_ONE, WORKSPACE_ONE)
+    context = CALLER_A
     key = "abandoned"
 
-    await idempotency.claim(context, key=key, fingerprint=fingerprint())
+    await reserved(idempotency, context, key)
     await backdate(sessions, TENANT_ONE, key)
 
-    assert await idempotency.claim(context, key=key, fingerprint=fingerprint()) is None
+    taken = await idempotency.claim(context, key=key, fingerprint=fingerprint())
+    assert isinstance(taken, Reservation) and taken.taken_over
 
 
 async def test_releasing_lets_the_key_be_spent_again(idempotency: HttpIdempotency) -> None:
-    context = context_for(TENANT_ONE, WORKSPACE_ONE)
+    context = CALLER_A
     key = "released"
 
-    await idempotency.claim(context, key=key, fingerprint=fingerprint())
-    await idempotency.release(context, key=key)
+    held = await reserved(idempotency, context, key)
+    await idempotency.release(context, key=key, token=held.token)
 
-    assert await idempotency.claim(context, key=key, fingerprint=fingerprint()) is None
+    again = await idempotency.claim(context, key=key, fingerprint=fingerprint())
+    assert isinstance(again, Reservation) and not again.taken_over
 
 
 async def test_two_tenants_may_spend_the_same_key_string(idempotency: HttpIdempotency) -> None:
@@ -203,10 +221,9 @@ async def test_two_tenants_may_spend_the_same_key_string(idempotency: HttpIdempo
     one = context_for(TENANT_ONE, WORKSPACE_ONE)
     two = context_for(TENANT_TWO, WORKSPACE_TWO)
 
-    assert await idempotency.claim(one, key=key, fingerprint=fingerprint()) is None
-    assert (
-        await idempotency.claim(two, key=key, fingerprint=fingerprint(workspace_id=WORKSPACE_TWO))
-        is None
+    await reserved(idempotency, one, key)
+    assert isinstance(
+        await idempotency.claim(two, key=key, fingerprint=fingerprint(context=two)), Reservation
     ), "tenant two's identical key must not collide with tenant one's"
 
 
@@ -215,9 +232,7 @@ async def test_one_tenant_cannot_see_another_tenants_keys(
 ) -> None:
     """RLS, not the query, is what keeps the rows apart."""
     key = "isolated"
-    await idempotency.claim(
-        context_for(TENANT_ONE, WORKSPACE_ONE), key=key, fingerprint=fingerprint()
-    )
+    await reserved(idempotency, CALLER_A, key)
 
     async with tenant_session(sessions, TenantScope(tenant_id=TENANT_TWO)) as session:
         rows = (
@@ -228,3 +243,130 @@ async def test_one_tenant_cannot_see_another_tenants_keys(
             )
         ).all()
     assert rows == []
+
+
+async def row(
+    sessions: async_sessionmaker[AsyncSession], key: str
+) -> sa.Row[tuple[object, ...]] | None:
+    async with tenant_session(sessions, TenantScope(tenant_id=TENANT_ONE)) as session:
+        return (
+            await session.execute(
+                sa.select(
+                    tables.idempotency_keys.c.caller_ref,
+                    tables.idempotency_keys.c.reservation_token,
+                    tables.idempotency_keys.c.created_at,
+                    tables.idempotency_keys.c.response_status,
+                ).where(
+                    tables.idempotency_keys.c.tenant_id == TENANT_ONE,
+                    tables.idempotency_keys.c.idempotency_key == key,
+                )
+            )
+        ).one_or_none()
+
+
+async def test_a_take_over_fences_the_request_that_lost_it(
+    idempotency: HttpIdempotency, sessions: async_sessionmaker[AsyncSession]
+) -> None:
+    """app-standards R2.4, R2.5 (APS5): the take-over gets a new token, a fresh
+    `created_at` and the same caller; the old request's late `complete` and
+    `release` change nothing."""
+    key = "fenced"
+    old = await reserved(idempotency, CALLER_A, key)
+    await backdate(sessions, TENANT_ONE, key)
+    before = await row(sessions, key)
+    taken = await idempotency.claim(CALLER_A, key=key, fingerprint=fingerprint())
+    assert isinstance(taken, Reservation)
+
+    after = await row(sessions, key)
+    assert before is not None and after is not None
+    assert after.reservation_token == taken.token != old.token
+    assert after.created_at > before.created_at
+    assert after.caller_ref == before.caller_ref == f"user:{CALLER_A.principal_id}"
+
+    await idempotency.complete(
+        CALLER_A, key=key, token=old.token, response=StoredResponse(status_code=200, body={})
+    )
+    await idempotency.release(CALLER_A, key=key, token=old.token)
+    untouched = await row(sessions, key)
+    assert untouched is not None and untouched.response_status is None
+
+
+async def test_another_caller_cannot_take_an_abandoned_reservation_over(
+    idempotency: HttpIdempotency, sessions: async_sessionmaker[AsyncSession]
+) -> None:
+    """R2.10 (APS13): B is refused, and asking the store directly changes no
+    column of A's row."""
+    key = "not-yours"
+    await reserved(idempotency, CALLER_A, key)
+    await backdate(sessions, TENANT_ONE, key)
+    before = await row(sessions, key)
+
+    with pytest.raises(IdempotencyConflictError):
+        await idempotency.claim(CALLER_B, key=key, fingerprint=fingerprint(context=CALLER_B))
+    won = await SqlIdempotencyStore(sessions).take_over(
+        CALLER_B,
+        key=key,
+        fingerprint=fingerprint(context=CALLER_B),
+        older_than=datetime.now(UTC),
+    )
+
+    assert won is None
+    assert await row(sessions, key) == before
+
+
+async def test_two_take_overs_of_one_reservation_have_one_winner(
+    idempotency: HttpIdempotency, sessions: async_sessionmaker[AsyncSession]
+) -> None:
+    """R2.19 (APS20): two real concurrent take-overs by the same caller; one wins
+    and the other is told the key is still in progress."""
+    key = "raced"
+    await reserved(idempotency, CALLER_A, key)
+    await backdate(sessions, TENANT_ONE, key)
+
+    outcomes = await asyncio.gather(
+        idempotency.claim(CALLER_A, key=key, fingerprint=fingerprint()),
+        idempotency.claim(CALLER_A, key=key, fingerprint=fingerprint()),
+        return_exceptions=True,
+    )
+
+    assert sum(isinstance(o, Reservation) for o in outcomes) == 1
+    assert sum(type(o) is ConflictError for o in outcomes) == 1
+
+
+@pytest.mark.parametrize(
+    ("column", "value"),
+    [
+        ("caller_ref", "'someone'"),
+        ("response_headers", """'{"Set-Cookie": "x"}'::jsonb"""),
+    ],
+)
+async def test_the_database_refuses_a_malformed_caller_or_header(
+    sessions: async_sessionmaker[AsyncSession], column: str, value: str
+) -> None:
+    """R2.20: the CHECKs, not the code, hold the caller's shape and the two
+    headers a replay may carry."""
+    async with tenant_session(sessions, TenantScope(tenant_id=TENANT_ONE)) as session:
+        with pytest.raises(Exception, match=f"ck_idempotency_keys_{column}"):
+            await session.execute(
+                sa.text(
+                    "INSERT INTO platform.idempotency_keys (tenant_id, idempotency_key,"
+                    " workspace_id, request_method, request_path, body_hash, "
+                    f"{column}) VALUES (:t, 'bad-row', :w, 'POST', '/x', 'h', {value})"
+                ),
+                {"t": str(TENANT_ONE), "w": str(WORKSPACE_ONE)},
+            )
+
+
+async def test_setting_worker_drain_reads_no_other_tenants_keys(
+    idempotency: HttpIdempotency, sessions: async_sessionmaker[AsyncSession]
+) -> None:
+    """R2.12 (APS12): no drain policy opens this table to `dw_app`."""
+    await reserved(idempotency, CALLER_A, "drained")
+
+    async with tenant_session(sessions, TenantScope(tenant_id=TENANT_TWO)) as session:
+        await session.execute(sa.text("SELECT set_config('app.worker_drain', 'on', true)"))
+        seen = await session.scalar(
+            sa.text("SELECT count(*) FROM platform.idempotency_keys WHERE tenant_id = :t"),
+            {"t": str(TENANT_ONE)},
+        )
+    assert seen == 0

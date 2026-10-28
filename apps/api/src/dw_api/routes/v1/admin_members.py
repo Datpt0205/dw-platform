@@ -15,6 +15,8 @@ an administrative role asked by a non-Platform-Admin.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter
@@ -22,13 +24,20 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from dw_api.bootstrap import ApiContainer
 from dw_api.dependencies.auth import RequireAccessContext
-from dw_api.dependencies.idempotency import RequireIdempotency
+from dw_api.dependencies.idempotency import IdempotentOperation, idempotent
 from dw_api.dependencies.services import RequireContainer
-from dw_kernel.errors import InfrastructureError
+from dw_kernel.errors import InfrastructureError, NotFoundError
+from dw_platform.application.access_context import AccessContext
 from dw_platform.application.cache import membership_cache_pattern
-from dw_platform.application.membership_admin import GrantMembership, RevokeMembership
+from dw_platform.application.membership_admin import (
+    MEMBERS_WRITE,
+    GrantMembership,
+    RevokeMembership,
+    UserRef,
+)
 from dw_platform.application.tenant_members import (
     InviteMember,
+    MembershipChange,
     SetMemberships,
     TenantMember,
     TenantMembersService,
@@ -37,6 +46,23 @@ from dw_platform.application.tenant_members import (
 
 router = APIRouter(prefix="/admin/members", tags=["admin"])
 invitations_router = APIRouter(prefix="/admin/invitations", tags=["admin"])
+
+# The four writes honour `Idempotency-Key` (optional; see README), each checking
+# the `action` its service checks (app-standards R2.21), under a fixed operation
+# name its effect key carries.
+GrantIdempotency = Annotated[
+    IdempotentOperation, idempotent(MEMBERS_WRITE, operation="POST /admin/members")
+]
+RevokeIdempotency = Annotated[
+    IdempotentOperation, idempotent(MEMBERS_WRITE, operation="DELETE /admin/members/{user_id}")
+]
+SetMembershipsIdempotency = Annotated[
+    IdempotentOperation,
+    idempotent(MEMBERS_WRITE, operation="PUT /admin/members/{user_id}/memberships"),
+]
+InviteIdempotency = Annotated[
+    IdempotentOperation, idempotent(MEMBERS_WRITE, operation="POST /admin/invitations")
+]
 
 
 class GrantMemberRequest(BaseModel):
@@ -63,18 +89,21 @@ async def grant_member(
     body: GrantMemberRequest,
     context: RequireAccessContext,
     container: RequireContainer,
-    idempotency: RequireIdempotency,
+    idempotency: GrantIdempotency,
 ) -> MemberRefView:
-    if container.grant_membership is None:
+    grant = container.grant_membership
+    if grant is None:
         raise InfrastructureError("database is not configured")
-    ref = await container.grant_membership.handle(
-        context,
-        GrantMembership(
-            email=body.email,
-            workspace_id=body.workspace_id,
-            role_keys=frozenset(body.role_keys),
-            department=body.department,
-        ),
+    command = GrantMembership(
+        email=body.email,
+        workspace_id=body.workspace_id,
+        role_keys=frozenset(body.role_keys),
+        department=body.department,
+    )
+    view = await idempotency.once(
+        status=201,
+        run=lambda effect: _ref_view(grant.handle(context, command, effect=effect)),
+        reread=lambda user_id: _member_ref(container, context, UUID(user_id)),
     )
     # The grant changed this workspace's roles → drop its cached AccessContexts so
     # the new access takes effect at once, not after the TTL.
@@ -82,10 +111,7 @@ async def grant_member(
         await container.cache.delete_pattern(
             membership_cache_pattern(context.tenant_id, body.workspace_id)
         )
-    return await idempotency.record(
-        MemberRefView(user_id=ref.user_id, email=ref.email, display_name=ref.display_name),
-        status_code=201,
-    )
+    return await idempotency.record(view, status_code=201)
 
 
 @router.delete("/{user_id}", status_code=204)
@@ -94,12 +120,17 @@ async def revoke_member(
     workspace_id: UUID,
     context: RequireAccessContext,
     container: RequireContainer,
-    idempotency: RequireIdempotency,
+    idempotency: RevokeIdempotency,
 ) -> None:
-    if container.revoke_membership is None:
+    revoke = container.revoke_membership
+    if revoke is None:
         raise InfrastructureError("database is not configured")
-    await container.revoke_membership.handle(
-        context, RevokeMembership(user_id=user_id, workspace_id=workspace_id)
+    command = RevokeMembership(user_id=user_id, workspace_id=workspace_id)
+    # A 204 is answered as a 204 without a read (R2.29).
+    await idempotency.once(
+        status=204,
+        run=lambda effect: revoke.handle(context, command, effect=effect),
+        reread=_no_content,
     )
     if container.cache is not None:
         await container.cache.delete_pattern(
@@ -181,6 +212,37 @@ def _rows(body: list[WorkspaceRolesBody]) -> tuple[WorkspaceRoles, ...]:
     )
 
 
+async def _ref_view(ref: Awaitable[UserRef]) -> MemberRefView:
+    done = await ref
+    return MemberRefView(user_id=done.user_id, email=done.email, display_name=done.display_name)
+
+
+async def _member_ref(
+    container: ApiContainer, context: AccessContext, user_id: UUID
+) -> MemberRefView:
+    """A retried grant or invitation, read back as `GET /admin/members` shows
+    the person to this caller now: absent when they are no longer there
+    (app-standards R2.29)."""
+    for member in await _members(container).list_members(context):
+        if member.user_id == user_id:
+            return MemberRefView(
+                user_id=member.user_id, email=member.email, display_name=member.display_name
+            )
+    raise NotFoundError("no such member in this tenant", details={"user_id": str(user_id)})
+
+
+async def _changed_workspaces(changes: Awaitable[list[MembershipChange]]) -> list[UUID]:
+    return [change.workspace_id for change in await changes]
+
+
+async def _named_workspaces(rows: list[WorkspaceRolesBody]) -> list[UUID]:
+    return [row.workspace_id for row in rows]
+
+
+async def _no_content(_: str) -> None:
+    return None
+
+
 async def _drop_cached_contexts(
     container: ApiContainer, tenant_id: UUID, workspace_ids: list[UUID]
 ) -> None:
@@ -204,17 +266,24 @@ async def set_memberships(
     body: SetMembershipsRequest,
     context: RequireAccessContext,
     container: RequireContainer,
-    idempotency: RequireIdempotency,
+    idempotency: SetMembershipsIdempotency,
 ) -> MemberMembershipsView:
     """Replace the person's non-administrative roles, workspace by workspace,
     in one transaction. A workspace in the body without a membership gets one;
     one left out keeps only its administrative roles, and goes without any.
     Answers the person's memberships as they now are (empty: none left)."""
     service = _members(container)
-    changes = await service.set_memberships(
-        context, SetMemberships(user_id=user_id, memberships=_rows(body.memberships))
+    command = SetMemberships(user_id=user_id, memberships=_rows(body.memberships))
+    changed = await idempotency.once(
+        status=200,
+        run=lambda effect: _changed_workspaces(
+            service.set_memberships(context, command, effect=effect)
+        ),
+        # A retry of a change already made: every workspace it named, since
+        # which of them changed is not stored. Dropping a cache is idempotent.
+        reread=lambda _: _named_workspaces(body.memberships),
     )
-    await _drop_cached_contexts(container, context.tenant_id, [c.workspace_id for c in changes])
+    await _drop_cached_contexts(container, context.tenant_id, changed)
     now = [m for m in await service.list_members(context) if m.user_id == user_id]
     return await idempotency.record(
         MemberMembershipsView(
@@ -229,20 +298,20 @@ async def invite_member(
     body: InviteMemberRequest,
     context: RequireAccessContext,
     container: RequireContainer,
-    idempotency: RequireIdempotency,
+    idempotency: InviteIdempotency,
 ) -> MemberRefView:
     """Create the person (no sign-in yet) and their memberships. No email is
     sent: the admin tells the person, who then signs in with that email."""
-    ref = await _members(container).invite(
-        context,
-        InviteMember(
-            display_name=body.display_name, email=body.email, memberships=_rows(body.memberships)
-        ),
+    service = _members(container)
+    command = InviteMember(
+        display_name=body.display_name, email=body.email, memberships=_rows(body.memberships)
+    )
+    view = await idempotency.once(
+        status=201,
+        run=lambda effect: _ref_view(service.invite(context, command, effect=effect)),
+        reread=lambda user_id: _member_ref(container, context, UUID(user_id)),
     )
     await _drop_cached_contexts(
         container, context.tenant_id, [row.workspace_id for row in body.memberships]
     )
-    return await idempotency.record(
-        MemberRefView(user_id=ref.user_id, email=ref.email, display_name=ref.display_name),
-        status_code=201,
-    )
+    return await idempotency.record(view, status_code=201)

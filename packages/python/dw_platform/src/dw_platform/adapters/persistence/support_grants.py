@@ -20,10 +20,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from dw_kernel.errors import ConflictError
 from dw_platform.adapters.persistence import tables
+from dw_platform.adapters.persistence.effect_key_store import claim_effect_key
 from dw_platform.adapters.persistence.repositories import SqlAuditRepository
 from dw_platform.adapters.persistence.separation_of_duties import refusal
 from dw_platform.adapters.persistence.tenant_session import TenantScope, tenant_session
 from dw_platform.application.access_context import AccessContext
+from dw_platform.application.effect_keys import PendingEffect
 from dw_platform.application.support_access import (
     AuditFor,
     GrantChange,
@@ -96,9 +98,15 @@ class SqlSupportGrantRepository:
         return name
 
     async def create(
-        self, context: AccessContext, grant: NewSupportGrant, audit: AuditFor
+        self,
+        context: AccessContext,
+        grant: NewSupportGrant,
+        audit: AuditFor,
+        effect: PendingEffect | None = None,
     ) -> SupportGrant:
         async with tenant_session(self.session_factory, _scope(context)) as session:
+            if effect is not None:
+                await claim_effect_key(session, effect.of(grant.id))
             row = (
                 await session.execute(
                     sa.insert(_G)
@@ -155,6 +163,7 @@ class SqlSupportGrantRepository:
         expected: frozenset[GrantStatus],
         change: GrantChange,
         audit: AuditFor,
+        effect: PendingEffect | None = None,
     ) -> SupportGrant | None:
         values: dict[str, object] = {"status": change.status.value}
         for column in (
@@ -170,6 +179,8 @@ class SqlSupportGrantRepository:
             if value is not None:
                 values[column] = value
         async with tenant_session(self.session_factory, _scope(context)) as session:
+            if effect is not None:
+                await claim_effect_key(session, effect.of(grant_id))
             row = (
                 await session.execute(
                     sa.update(_G)

@@ -46,6 +46,7 @@ from dw_kernel.ids import TenantId, UserId, WorkspaceId
 from dw_kernel.ports import IdGenerator, UtcClock
 from dw_platform.application.access_context import AccessContext, SupportScope
 from dw_platform.application.authorization import permission_denied
+from dw_platform.application.effect_keys import PendingEffect
 from dw_platform.domain.audit import AuditEvent
 
 SUPPORT_GRANT_SCOPE = "support.grant"
@@ -352,9 +353,14 @@ class SupportGrantRepositoryPort(Protocol):
     async def workspace_name(self, context: AccessContext) -> str | None: ...
 
     async def create(
-        self, context: AccessContext, grant: NewSupportGrant, audit: AuditFor
+        self,
+        context: AccessContext,
+        grant: NewSupportGrant,
+        audit: AuditFor,
+        effect: PendingEffect | None = None,
     ) -> SupportGrant:
-        """Insert and audit in one transaction; the code is assigned by the database."""
+        """Insert and audit in one transaction; the code is assigned by the
+        database. ``effect`` is claimed first in it (app-standards R2.38)."""
         ...
 
     async def get(
@@ -375,9 +381,11 @@ class SupportGrantRepositoryPort(Protocol):
         expected: frozenset[GrantStatus],
         change: GrantChange,
         audit: AuditFor,
+        effect: PendingEffect | None = None,
     ) -> SupportGrant | None:
         """Apply `change` if the grant is still in one of `expected`, with its
-        audit, in one transaction. None when it was not (moved meanwhile)."""
+        audit, in one transaction. None when it was not (moved meanwhile).
+        ``effect`` is claimed first in it (app-standards R2.38)."""
         ...
 
 
@@ -416,9 +424,13 @@ class SupportGrantService:
         return await self._views(grants)
 
     async def request(
-        self, context: AccessContext, command: RequestSupportGrant
+        self,
+        context: AccessContext,
+        command: RequestSupportGrant,
+        *,
+        effect: PendingEffect | None = None,
     ) -> SupportGrantView:
-        _require_enabled(context)
+        check_request(context)
         side = _side(context)
         scope_set = self.catalog.get(command.scope_set_key)
         if scope_set is None:
@@ -467,13 +479,17 @@ class SupportGrantService:
             granted_at=now if granting else None,
         )
         grant = await self.repo.create(
-            context, new, self._audit(context, "support.grant.requested", now)
+            context,
+            new,
+            self._audit(context, "support.grant.requested", now),
+            effect=effect,
         )
         return SupportGrantView(grant=grant, state=grant.status.value)
 
-    async def approve(self, context: AccessContext, grant_id: UUID) -> SupportGrantView:
-        _require_enabled(context)
-        _require_granter(context)
+    async def approve(
+        self, context: AccessContext, grant_id: UUID, *, effect: PendingEffect | None = None
+    ) -> SupportGrantView:
+        check_approve(context)
         grant = await self._get(context, grant_id)
         _require_status(grant, {GrantStatus.PENDING_APPROVAL})
         _require_holds(context, grant.scopes)
@@ -489,12 +505,20 @@ class SupportGrantService:
             ),
             "support.grant.approved",
             now,
+            effect,
         )
 
-    async def reject(self, context: AccessContext, grant_id: UUID, reason: str) -> SupportGrantView:
+    async def reject(
+        self,
+        context: AccessContext,
+        grant_id: UUID,
+        reason: str,
+        *,
+        effect: PendingEffect | None = None,
+    ) -> SupportGrantView:
         # Closing a request needs no feature flag: switching support off must
         # never leave the customer unable to say no.
-        _require_granter(context)
+        check_close(context)
         checked = _checked_reason(reason)
         grant = await self._get(context, grant_id)
         _require_status(grant, {GrantStatus.PENDING_APPROVAL})
@@ -511,11 +535,14 @@ class SupportGrantService:
             ),
             "support.grant.rejected",
             now,
+            effect,
         )
 
-    async def revoke(self, context: AccessContext, grant_id: UUID) -> SupportGrantView:
+    async def revoke(
+        self, context: AccessContext, grant_id: UUID, *, effect: PendingEffect | None = None
+    ) -> SupportGrantView:
         # Like `reject`, never behind the flag. Takes effect at the next request.
-        _require_granter(context)
+        check_close(context)
         grant = await self._get(context, grant_id)
         _require_status(grant, _OPEN)
         now = self.clock.now()
@@ -528,7 +555,21 @@ class SupportGrantService:
             ),
             "support.grant.revoked",
             now,
+            effect,
         )
+
+    async def grant(self, context: AccessContext, grant_id: UUID) -> SupportGrantView:
+        """One grant the caller may see, as `list_grants` shows it: every grant
+        of the workspace to a granter, a requester's own otherwise. What a
+        retried write reads back (app-standards R2.29). Not behind the flag, like
+        `reject` and `revoke`: the answer to a close must stay readable."""
+        granter = context.has_scope(SUPPORT_GRANT_SCOPE)
+        grant = await self.repo.get(
+            context, grant_id, requested_by=None if granter else context.principal_id
+        )
+        if grant is None:
+            raise NotFoundError("support grant not found", details={"grant_id": str(grant_id)})
+        return (await self._views([grant]))[0]
 
     async def _get(self, context: AccessContext, grant_id: UUID) -> SupportGrant:
         grant = await self.repo.get(context, grant_id)
@@ -544,6 +585,7 @@ class SupportGrantService:
         change: GrantChange,
         action: str,
         now: datetime,
+        effect: PendingEffect | None,
     ) -> SupportGrantView:
         changed = await self.repo.change(
             context,
@@ -551,6 +593,7 @@ class SupportGrantService:
             expected=frozenset(expected),
             change=change,
             audit=self._audit(context, action, now),
+            effect=effect,
         )
         if changed is None:
             # Moved by someone else between the read and the write.
@@ -639,6 +682,26 @@ def support_grant_audit(
             **(extra or {}),
         },
     )
+
+
+def check_request(context: AccessContext) -> None:
+    """`POST /support/grants`: the feature flag, then either side; the side
+    picks `support.grant` or `support.request`. The service and the route's
+    idempotency check both call this (app-standards R2.21, R2.42)."""
+    _require_enabled(context)
+    _side(context)
+
+
+def check_approve(context: AccessContext) -> None:
+    """Approving a request: the flag and `support.grant`."""
+    _require_enabled(context)
+    _require_granter(context)
+
+
+def check_close(context: AccessContext) -> None:
+    """Rejecting or revoking: `support.grant` and never the flag (ADR 0024
+    "Who may close")."""
+    _require_granter(context)
 
 
 def _require_enabled(context: AccessContext) -> None:

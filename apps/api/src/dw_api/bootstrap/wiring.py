@@ -61,6 +61,7 @@ from dw_platform.adapters.persistence.caching_lookup import CachingMembershipLoo
 from dw_platform.adapters.persistence.channel_inbound import SqlChannelUpdateQueue
 from dw_platform.adapters.persistence.channel_preferences import SqlChannelPreferences
 from dw_platform.adapters.persistence.directory import SqlWorkspaceDirectory
+from dw_platform.adapters.persistence.effect_key_store import SqlEffectKeyLookup
 from dw_platform.adapters.persistence.hierarchy_repo import SqlHierarchyRepository
 from dw_platform.adapters.persistence.idempotency_store import SqlIdempotencyStore
 from dw_platform.adapters.persistence.identity_provisioning import SqlIdentityBootstrap
@@ -205,6 +206,7 @@ def _build_container(settings: ApiSettings | None) -> ApiContainer:
     uow_factory = SqlPlatformUnitOfWorkFactory(session_factory)
     container.uow_factory = uow_factory
     container.idempotency = HttpIdempotency(SqlIdempotencyStore(session_factory), clock)
+    container.effect_keys = SqlEffectKeyLookup(session_factory)
     container.workspace_directory = SqlWorkspaceDirectory(session_factory)
 
     membership_repo = SqlMembershipAdminRepository(session_factory)

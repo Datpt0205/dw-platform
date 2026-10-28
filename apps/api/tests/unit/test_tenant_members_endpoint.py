@@ -26,6 +26,7 @@ from dw_platform.adapters.identity.dev_token import DevTokenVerifier
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.authorization import ScopeAuthorizationService
 from dw_platform.application.cache import membership_cache_pattern
+from dw_platform.application.effect_keys import PendingEffect
 from dw_platform.application.entitlement import DEFAULT_PLANS, PlanEntitlementService
 from dw_platform.application.idempotency import HttpIdempotency
 from dw_platform.application.identity import DbAccessContextFactory, MembershipAccess
@@ -101,6 +102,7 @@ class Repo:
         user_id: uuid.UUID,
         plan: Callable[[Roles], Roles],
         audit: Callable[[MembershipChange], AuditEvent],
+        effect: PendingEffect | None = None,
     ) -> list[MembershipChange]:
         if user_id != PERSON or not self.held:
             raise NotFoundError("no such member in this tenant")
@@ -122,6 +124,7 @@ class Repo:
         email: str,
         memberships: Roles,
         audit: Callable[[uuid.UUID, uuid.UUID, frozenset[str]], AuditEvent],
+        effect: PendingEffect | None = None,
     ) -> UserRef:
         raise NotImplementedError("not exercised by the route tests")
 

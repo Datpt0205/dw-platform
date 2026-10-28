@@ -2763,7 +2763,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request is a 409. */
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
                 "Idempotency-Key"?: string | null;
             };
             path?: never;
@@ -2846,7 +2846,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request is a 409. */
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
                 "Idempotency-Key"?: string | null;
             };
             path?: never;
@@ -2893,7 +2893,7 @@ export interface operations {
                 workspace_id: string;
             };
             header?: {
-                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request is a 409. */
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
                 "Idempotency-Key"?: string | null;
             };
             path: {
@@ -2934,7 +2934,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request is a 409. */
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
                 "Idempotency-Key"?: string | null;
             };
             path: {
@@ -3587,7 +3587,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request is a 409. */
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
                 "Idempotency-Key"?: string | null;
             };
             path: {
@@ -5463,7 +5463,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request is a 409. */
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
                 "Idempotency-Key"?: string | null;
             };
             path?: never;
@@ -5508,7 +5508,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request is a 409. */
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
                 "Idempotency-Key"?: string | null;
             };
             path: {
@@ -5551,7 +5551,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request is a 409. */
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
                 "Idempotency-Key"?: string | null;
             };
             path: {
@@ -5598,7 +5598,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request is a 409. */
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
                 "Idempotency-Key"?: string | null;
             };
             path: {

@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from dw_kernel.errors import NotFoundError
 from dw_platform.adapters.persistence import tables
+from dw_platform.adapters.persistence.effect_key_store import claim_effect_key
 from dw_platform.adapters.persistence.repositories import SqlAuditRepository
 from dw_platform.adapters.persistence.separation_of_duties import (
     separation_of_duties_conflict,
@@ -26,6 +27,7 @@ from dw_platform.adapters.persistence.separation_of_duties import (
 from dw_platform.adapters.persistence.support_grants import support_staff_conflict
 from dw_platform.adapters.persistence.tenant_session import TenantScope, tenant_session
 from dw_platform.application.access_context import AccessContext
+from dw_platform.application.effect_keys import PendingEffect
 from dw_platform.application.membership_admin import UserRef
 from dw_platform.domain.audit import AuditEvent
 
@@ -88,12 +90,15 @@ class SqlMembershipAdminRepository:
         role_keys: frozenset[str],
         department: str,
         audit: AuditEvent,
+        effect: PendingEffect | None = None,
     ) -> None:
         scope = TenantScope.from_access_context(context)
         async with tenant_session(self.session_factory, scope) as session:
             # RLS shows only this tenant's workspaces, so a workspace from another
             # tenant reads as missing — the grant is refused rather than landing a
             # membership whose workspace lives somewhere else.
+            if effect is not None:
+                await claim_effect_key(session, effect.of(user_id))
             workspace = (
                 await session.execute(
                     sa.select(tables.workspaces.c.id).where(tables.workspaces.c.id == workspace_id)
@@ -138,9 +143,12 @@ class SqlMembershipAdminRepository:
         user_id: uuid.UUID,
         workspace_id: uuid.UUID,
         audit: AuditEvent,
+        effect: PendingEffect | None = None,
     ) -> bool:
         scope = TenantScope.from_access_context(context)
         async with tenant_session(self.session_factory, scope) as session:
+            if effect is not None:
+                await claim_effect_key(session, effect.of(user_id))
             deleted = (
                 await session.execute(
                     sa.delete(tables.memberships)

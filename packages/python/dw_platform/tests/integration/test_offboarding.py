@@ -234,6 +234,46 @@ async def test_purge_rows_respects_fk_order_and_leaves_the_other_tenant_alone(
     )
 
 
+async def _seed_keys(sessions: async_sessionmaker[AsyncSession], t: _Tenant) -> None:
+    """One HTTP idempotency key and one effect key (app-standards ticket 02)."""
+    async with sessions() as session, session.begin():
+        await session.execute(
+            sa.text("SELECT set_config('app.tenant_id', :t, true)"), {"t": str(t.tenant_id)}
+        )
+        await session.execute(
+            sa.text(
+                "INSERT INTO platform.idempotency_keys (tenant_id, idempotency_key, workspace_id,"
+                " request_method, request_path, body_hash) VALUES (:t, 'k', :w, 'POST', '/p', 'h')"
+            ),
+            {"t": t.tenant_id, "w": t.workspace_id},
+        )
+        await session.execute(
+            sa.text(
+                "INSERT INTO platform.effect_keys (tenant_id, operation, idempotency_key,"
+                " caller_ref, request_hash, result) VALUES (:t, 'POST /p', 'k', :c, :h,"
+                ' CAST(\'{"status": 201, "id": "x"}\' AS jsonb))'
+            ),
+            {"t": t.tenant_id, "c": f"user:{uuid.uuid4()}", "h": "c" * 64},
+        )
+
+
+async def test_purge_removes_the_tenants_idempotency_and_effect_keys(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    """app-standards R2.27 (APS29): both key tables lose this tenant's rows, as
+    `dw_app`, without a permission error, and keep the other tenant's."""
+    mine, theirs = _new_tenant(), _new_tenant()
+    for tenant in (mine, theirs):
+        await _seed_tenant(sessions, tenant)
+        await _seed_keys(sessions, tenant)
+
+    await SqlTenantOffboarding(session_factory=sessions).purge_rows(mine.tenant_id)
+
+    for table in ("idempotency_keys", "effect_keys"):
+        assert await _count(sessions, mine.tenant_id, "platform", table) == 0, table
+        assert await _count(sessions, theirs.tenant_id, "platform", table) == 1, table
+
+
 async def _seed_checkpoint(sessions: async_sessionmaker[AsyncSession], t: _Tenant) -> None:
     """One run checkpoint and one pending write: the verbatim conversation a
     thread leaves behind, which must go with the tenant."""

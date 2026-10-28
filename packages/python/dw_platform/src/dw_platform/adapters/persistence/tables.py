@@ -396,6 +396,40 @@ idempotency_keys = sa.Table(
         server_default=sa.text("now()"),
     ),
     sa.Column("completed_at", sa.TIMESTAMP(timezone=True), nullable=True),
+    # `user:<principal_id>` or `support:<grant_id>`; '' on a row written before
+    # the caller was bound, which equals no caller (app-standards R2.3).
+    sa.Column("caller_ref", sa.Text, nullable=False, server_default=sa.text("''")),
+    # The fence: a take-over replaces it, so the request that lost the
+    # reservation can neither complete nor release it (R2.5).
+    sa.Column(
+        "reservation_token",
+        UUID(as_uuid=True),
+        nullable=False,
+        server_default=sa.text("gen_random_uuid()"),
+    ),
+    sa.Column("response_headers", JSONB, nullable=True),
+    sa.Column("request_preconditions", sa.Text, nullable=False, server_default=sa.text("''")),
+)
+
+# One row per effect an idempotent operation committed, in the effect's own
+# transaction (app-standards R2.16). Tenant-wide on purpose: a key follows its
+# caller across the tenant's workspaces, and "same workspace" is inside
+# `request_hash`.
+effect_keys = sa.Table(
+    "effect_keys",
+    metadata,
+    sa.Column("tenant_id", UUID(as_uuid=True), sa.ForeignKey("tenants.id"), primary_key=True),
+    sa.Column("operation", sa.Text, primary_key=True),
+    sa.Column("idempotency_key", sa.Text, primary_key=True),
+    sa.Column("caller_ref", sa.Text, nullable=False),
+    sa.Column("request_hash", sa.Text, nullable=False),
+    sa.Column("result", JSONB, nullable=False),
+    sa.Column(
+        "created_at",
+        sa.TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=sa.text("now()"),
+    ),
 )
 
 # Platform Operator allowlist: who may provision tenants (ADR-002). Global —
@@ -614,4 +648,5 @@ TENANT_SCOPED_TABLES = (
     "audit_events",
     "outbox_events",
     "idempotency_keys",
+    "effect_keys",
 )

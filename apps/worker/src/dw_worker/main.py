@@ -64,6 +64,10 @@ from dw_platform.adapters.persistence.channel_inbound import (
     SqlChannelUpdateQueue,
 )
 from dw_platform.adapters.persistence.channel_preferences import SqlChannelPreferences
+from dw_platform.adapters.persistence.effect_key_store import (
+    EFFECT_KEYS,
+    SqlEffectKeyRetention,
+)
 from dw_platform.adapters.persistence.membership_lookup import SqlMembershipLookup
 from dw_platform.adapters.persistence.notifications import SqlNotificationRetention
 from dw_platform.adapters.persistence.offboarding import SqlTenantOffboarding
@@ -246,17 +250,21 @@ def build_zalo_inbound(
     )
 
 
-def build_retention_purgers() -> RetentionPurgerRegistry:
+def build_retention_purgers(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> RetentionPurgerRegistry:
     """Store key -> the purger that carries out its retention term, frozen here.
 
     The ticket that creates a store registers its purger in this function, in
     the same change as the store's fragment (telemetry-and-audit H-35), and the
-    retention lane runs every entry. Empty today: the one store with a term,
-    `platform.audit_events`, is purged by DROP PARTITION in the `partitions`
-    lane, and `test_every_purged_fragment_has_its_purger` holds a fragment whose
-    purger is a lane's to an entry here.
+    retention lane runs every entry. `platform.audit_events` is purged by DROP
+    PARTITION in the `partitions` lane instead, and
+    `test_every_purged_fragment_has_its_purger` holds a fragment whose purger is
+    a lane's to an entry here.
     """
-    return RetentionPurgerRegistry().freeze()
+    purgers = RetentionPurgerRegistry()
+    purgers.register(EFFECT_KEYS, SqlEffectKeyRetention(session_factory).purge)
+    return purgers.freeze()
 
 
 def build_registry(settings: WorkerSettings) -> ConsumerRegistry:

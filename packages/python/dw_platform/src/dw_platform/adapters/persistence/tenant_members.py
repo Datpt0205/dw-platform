@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from dw_kernel.errors import ConflictError, NotFoundError
 from dw_platform.adapters.persistence import tables
 from dw_platform.adapters.persistence.directory import member_status
+from dw_platform.adapters.persistence.effect_key_store import claim_effect_key
 from dw_platform.adapters.persistence.repositories import SqlAuditRepository
 from dw_platform.adapters.persistence.separation_of_duties import (
     separation_of_duties_conflict,
@@ -34,6 +35,7 @@ from dw_platform.adapters.persistence.separation_of_duties import (
 from dw_platform.adapters.persistence.support_grants import support_staff_conflict
 from dw_platform.adapters.persistence.tenant_session import TenantScope, tenant_session
 from dw_platform.application.access_context import AccessContext
+from dw_platform.application.effect_keys import PendingEffect
 from dw_platform.application.membership_admin import UserRef
 from dw_platform.application.tenant_members import (
     MembershipChange,
@@ -110,8 +112,13 @@ class SqlTenantMembersRepository:
         user_id: uuid.UUID,
         plan: Callable[[Roles], Roles],
         audit: Callable[[MembershipChange], AuditEvent],
+        effect: PendingEffect | None = None,
     ) -> list[MembershipChange]:
         async with tenant_session(self.session_factory, _scope(context)) as session:
+            # Before the row lock below: a second attempt of the key waits at
+            # the effect key, not at the member's rows (R2.38).
+            if effect is not None:
+                await claim_effect_key(session, effect.of(user_id))
             held = (
                 await session.execute(
                     sa.select(_M.c.workspace_id, _M.c.role_keys)
@@ -145,6 +152,7 @@ class SqlTenantMembersRepository:
         email: str,
         memberships: Roles,
         audit: Callable[[uuid.UUID, uuid.UUID, frozenset[str]], AuditEvent],
+        effect: PendingEffect | None = None,
     ) -> UserRef:
         async with tenant_session(self.session_factory, _scope(context)) as session:
             await _require_workspaces(session, context, set(memberships))
@@ -155,12 +163,19 @@ class SqlTenantMembersRepository:
                     ).where(sa.func.lower(tables.users.c.email) == email)
                 )
             ).first()
+            # The invited person's id is known once the email is read, and the
+            # effect key goes in before anything is written (R2.38).
+            new_user_id = uuid.uuid4()
+            if effect is not None:
+                await claim_effect_key(
+                    session, effect.of(existing.id if existing is not None else new_user_id)
+                )
             if existing is None:
                 created = (
                     await session.execute(
                         pg_insert(tables.users)
                         .values(
-                            id=uuid.uuid4(),
+                            id=new_user_id,
                             subject=f"invite:{uuid.uuid4()}",
                             email=email,
                             display_name=display_name,
