@@ -1,9 +1,9 @@
 # 03 — Thu quyền ghi thừa của dw_app và RLS đọc setting một lần mỗi câu lệnh
 
-Status: needs-triage
+Status: ready-for-agent
 Blocked by: 01, 02, .claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md
 Area: studio
-Yêu cầu: R5.1, R5.2, R5.3, G6, FH12, FH13, FH14
+Yêu cầu: R5.1, R5.2, R5.3, R5.4, G6, FH12, FH13, FH14
 
 ## Mục tiêu
 
@@ -36,13 +36,17 @@ Quyền (R5.1, R5.2, G6):
    `dw_app`; REVOKE UPDATE, DELETE, TRUNCATE trên `platform.users` khỏi `dw_app` (INSERT giữ cho
    đăng nhập lần đầu và lời mời); mỗi câu canh việc vai tồn tại như revision `648e2f7c3edb`;
    downgrade trả lại quyền của baseline.
-5. Cùng revision: đặt quyền của `dw_provisioner` về đúng tập câu lệnh mà `SqlProvisioningRepository`
-   thực sự chạy (đọc code, như Hiện trạng của spec làm cho `dw_app`), thu phần thừa mà baseline cấp;
-   sửa `_WRITE_TABLES` và danh sách động từ của `scripts/create_provisioner_role.py` về cùng tập.
+5. Cùng revision: đặt quyền của `dw_provisioner` về đúng tập (bảng, quyền, cột) mà mọi đường dùng vai này
+   thực sự chạy: `SqlProvisioningRepository`, bộ nạp `retention_terms` của job migrate
+   (`retention_terms.py`, `82e168f6d189`), ghi danh tính đăng nhập của người vận hành (R4.4, FH11), và các
+   grant sau baseline (`af8ee878b4ab`, `5d9d89ffc716`); liệt kê bằng cách đọc code của từng đường và ghi
+   danh sách vào Comments; thu phần thừa mà baseline cấp; sửa `_WRITE_TABLES`, danh sách động từ và quyền theo cột (`GRANT UPDATE (<cột>)`) của
+   `scripts/create_provisioner_role.py` về cùng tập.
 6. `packages/python/dw_platform/tests/integration/test_privileges.py`: mỗi REVOKE ở bước 4 có một
    khẳng định câu lệnh (`permission denied`) và một khẳng định catalog `has_table_privilege` theo mẫu
-   `test_the_application_cannot_rewrite_the_role_catalogue`; một test so tập `(bảng, quyền)` của
-   `dw_provisioner` trong catalog với tập script khai (FH13).
+   `test_the_application_cannot_rewrite_the_role_catalogue`; một test so tập `(bảng, quyền, cột)` của
+   `dw_provisioner` trong catalog (gồm quyền theo cột của `information_schema.column_privileges`) với tập
+   script khai (FH13), và một test chạy mỗi đường ở bước 5 dưới `dw_provisioner` thật.
 
 Chuyển policy (R5.3), chỉ khi bước 3 qua ngưỡng:
 
@@ -69,12 +73,14 @@ Chuyển policy (R5.3), chỉ khi bước 3 qua ngưỡng:
       `test_tenant_members.py`, `test_zalo_link_repo.py`) dưới quyền mới.
 - [ ] R5.2 (FH13): thêm một bảng vào `_WRITE_TABLES` mà migration không cấp → test so quyền đỏ; bỏ
       một quyền khỏi migration mà script còn cấp → đỏ.
+- [ ] R5.4 (FH13): thu quyền ghi `platform.retention_terms` của `dw_provisioner` → test của bộ nạp retention
+      dưới `dw_provisioner` đỏ; thu INSERT danh tính đăng nhập → test ghi danh tính người vận hành đỏ.
 - [ ] R5.3 (FH14): sau revision bước 7, ALTER một policy về dạng theo dòng → test ở bước 9 đỏ; một
       partition tạo bằng `platform.ensure_time_partitions` mang dạng mới. Nếu bước 3 dưới ngưỡng,
       Comments có số đo và đề xuất rút R5.3.
 - [ ] G6: `test_a_connection_that_never_scopes_itself_reads_nothing` và mọi test RLS hiện có xanh
       sau revision bước 7.
-- [ ] Xong: `make ci && make test-integration` xanh.
+- [ ] Xong: `make test-unit test-contract test-architecture && uv run pytest -m integration packages/python/dw_platform apps/api` xanh.
 
 ## Nguồn
 
@@ -95,3 +101,5 @@ Chuyển policy (R5.3), chỉ khi bước 3 qua ngưỡng:
 ## Comments
 
 - 2026-10-29 (agent, tạm theo ủy quyền): chờ thêm ticket 02, vì hai ticket cùng chạm quyền của `dw_app` trên `platform.users` và `platform.external_identities` (cảnh báo collision của `scripts/check_plans.py` sau bản sửa gate của ticket 02). Nếu sai thì: bỏ 02 khỏi Blocked by.
+- 2026-10-29 (agent): gate `checking-plan-readiness` lượt 1: R5.2 phủ mọi đường dùng `dw_provisioner` (HIGH, đã sửa ở spec và bước 5-6). MEDIUM để người làm xử lý khi gặp: danh sách policy của partition phải đọc catalog lúc upgrade (không danh sách tĩnh, tập partition ở uat và production khác máy dev); test so `qual` trước và sau khi bỏ lớp bọc, và một test âm tenant B đọc và ghi dòng của A sau revision; đo R5.3 trên dạng `tenant AND (workspace OR scope)`, Execution Time không gồm planning; hàm tự đọc setting bên trong policy cũng phải bọc `(SELECT f())`; bảng mới không tự nhận quyền ghi của `dw_app` qua `ALTER DEFAULT PRIVILEGES` (test catalog liệt kê bảng `dw_app` không được ghi).
+- 2026-10-29 (agent): checking-plan-readiness ĐẠT; ready-for-agent.

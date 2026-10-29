@@ -486,24 +486,25 @@ Kiểm nhất quán 24/10/2026: 8 CRITICAL, 25 HIGH, 38 MEDIUM, 2 LOW; phủ YC 
 Nguồn duy nhất của thứ tự (Đạt, 29/10/2026). Phiên không người trực làm việc đầu tiên chưa xong; một ticket bị chặn bởi thứ
 bên ngoài thì ghi "Chờ Đạt" và làm việc kế. Đường dẫn ticket tính từ `.claude/plans/studio/`.
 
-| #   | Việc                                                                                   | Trạng thái |
-| --- | -------------------------------------------------------------------------------------- | ---------- |
-| 0   | Pha 0: D17, requirements, ADR-0128, spec `digital-worker`, `wf-lite`, `leadcare`, gate | đang làm   |
-| 1   | `foundations-hardening/issues/07`                                                      | chưa       |
-| 2   | `foundations-hardening/issues/03`                                                      | chưa       |
-| 3   | `org-and-principals/issues/01`                                                         | chưa       |
-| 4   | `runtime-hardening/issues/01`                                                          | chưa       |
-| 5   | `digital-worker/issues/01` hồ sơ DW và loại quyết định                                 | chưa       |
-| 6   | `digital-worker/issues/02` hàng đợi chung, bàn giao, cổng duyệt                        | chưa       |
-| 7   | `wf-lite/issues/01` tài liệu, sổ loại bước, bộ kiểm, luật sàn HITL                     | chưa       |
-| 8   | `wf-lite/issues/02` biên dịch, chạy, chờ và chạy tiếp                                  | chưa       |
-| 9   | `runtime-hardening/issues/02`                                                          | chưa       |
-| 10  | `leadcare/issues/01` gói Marketing chăm sóc lead                                       | chưa       |
-| 11  | `digital-worker/issues/03` scorecard, nâng hạ tự chủ                                   | chưa       |
-| 12  | `digital-worker/issues/04` màn hình web                                                | chưa       |
-| 13  | `leadcare/issues/02` demo chạy thật, ảnh chụp ở `docs/demo/digital-worker/`            | chưa       |
-| 14  | `wf-ai` spec rồi ticket 01: AI sửa gói mẫu (D16, D18)                                  | chưa       |
-| 15  | mọi ticket studio khác có Blocked by đã resolved, theo thứ tự đợt                      | chưa       |
+| #   | Việc                                                                                      | Trạng thái |
+| --- | ----------------------------------------------------------------------------------------- | ---------- |
+| 0   | Pha 0: D17, requirements, ADR-0128, spec `digital-worker`, `wf-lite`, `leadcare`, gate    | đang làm   |
+| 1   | `foundations-hardening/issues/07`                                                         | chưa       |
+| 2   | `foundations-hardening/issues/03`                                                         | chưa       |
+| 3   | `org-and-principals/issues/01`                                                            | chưa       |
+| 4   | `runtime-hardening/issues/01`                                                             | chưa       |
+| 5   | `digital-worker/issues/01` hồ sơ DW và loại quyết định                                    | chưa       |
+| 6   | `digital-worker/issues/02` hàng đợi chung, bàn giao, cổng duyệt                           | chưa       |
+| 7   | `wf-lite/issues/01` tài liệu, sổ loại bước, bộ kiểm, luật sàn HITL                        | chưa       |
+| 8   | `wf-lite/issues/02` biên dịch, chạy, chờ và chạy tiếp                                     | chưa       |
+| 9   | `runtime-hardening/issues/02`                                                             | chưa       |
+| 9b  | `compliance-pdpl/issues/08` lõi sàn gửi tin (tách từ 04 theo gate của leadcare, ADR-0124) | chưa       |
+| 10  | `leadcare/issues/01` gói Marketing chăm sóc lead                                          | chưa       |
+| 11  | `digital-worker/issues/03` scorecard, nâng hạ tự chủ                                      | chưa       |
+| 12  | `digital-worker/issues/04` màn hình web                                                   | chưa       |
+| 13  | `leadcare/issues/02` demo chạy thật, ảnh chụp ở `docs/demo/digital-worker/`               | chưa       |
+| 14  | `wf-ai` spec rồi ticket 01: AI sửa gói mẫu (D16, D18)                                     | chưa       |
+| 15  | mọi ticket studio khác có Blocked by đã resolved, theo thứ tự đợt                         | chưa       |
 
 ## Ủy quyền
 
@@ -525,18 +526,20 @@ Each resolved ticket adds one line here: the commit hash and one sentence.
 
 ## Chờ Đạt (phiên không người trực)
 
-| #   | câu hỏi                                                                           | khuyến nghị đã áp    | chỗ ghi                         | sửa gì nếu Đạt chọn khác                                        |
-| --- | --------------------------------------------------------------------------------- | -------------------- | ------------------------------- | --------------------------------------------------------------- |
-| 1   | Sổ loại bước của lát đầu có thêm `logic.switch` (chỉ so bằng) ngoài năm loại?     | thêm                 | Quyết định của `wf-lite`        | bỏ loại đó; chăm sóc lead luôn nhắc rồi bàn giao                |
-| 2   | Định danh DW lát đầu là id của dòng DW, không dòng `platform.users`?              | id dòng DW           | Quyết định của `digital-worker` | tạo `platform.service_principals` tối thiểu ở digital-worker/01 |
-| 3   | Loại quyết định nêu trong thân yêu cầu tạo DW, wf-lite kiểm lúc chạy?             | có                   | Quyết định của `digital-worker` | API tạo DW đọc loại từ tài liệu đã ghim                         |
-| 4   | Mức hiệu lực đọc lúc cổng hỏi, kể cả lượt đang chạy?                              | có                   | Quyết định của `digital-worker` | đóng dấu mức lên lượt chạy lúc bắt đầu                          |
-| 5   | Chi phí của scorecard lấy cột `worker_runs.model_cost_usd` tới khi có sổ sử dụng? | có                   | Quyết định của `digital-worker` | scorecard không có chi phí tới usage-and-limits/02              |
-| 6   | Cây quy trình chỉ đọc vẽ bằng antd, không `@xyflow/react`?                        | antd                 | Quyết định của `digital-worker` | chuyển trang dưới `studio/**/canvas/**`                         |
-| 7   | Dấu vết bước (`trail`) trong trạng thái lượt chạy, không bảng bước?               | trong trạng thái     | Quyết định của `wf-lite`        | tạo `platform.run_steps` tối thiểu                              |
-| 8   | "Chờ phản hồi" là hẹn giờ rồi đọc hộp thư, không chờ sự kiện tương quan?          | có                   | Quyết định của `wf-lite`        | thêm `event.wait@1` và cửa nhận thư trả lời                     |
-| 9   | Khóa ký cửa nhận lead là HMAC dẫn xuất từ bí mật máy chủ, không lưu?              | có                   | Quyết định của `leadcare`       | lưu khóa mã hóa sau connections-and-vault                       |
-| 10  | Thư chỉ tới Mailpit dev, đồng ý kiểm trên payload?                                | có                   | Quyết định của `leadcare`       | lát chờ compliance-pdpl                                         |
-| 11  | Thời gian chờ phản hồi là tham số, demo 60 giây?                                  | có                   | Quyết định của `leadcare`       | mặc định 2 ngày làm việc theo YC98                              |
-| 12  | YC96 (trợ lý Marketing) đọc lại là kênh chat vào DW chăm sóc lead?                | có                   | D17 trong `requirements.md`     | bỏ YC96 hay giữ như trợ lý riêng                                |
-| 13  | DW có nên cắm vào FPT AI EOS như agent bên thứ ba?                                | câu hỏi mở, chưa làm | Q-EOS trong `requirements.md`   | thêm một spec giao tiếp agent ngoài                             |
+| #   | câu hỏi                                                                                                   | khuyến nghị đã áp                          | chỗ ghi                               | sửa gì nếu Đạt chọn khác                                           |
+| --- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------ | ------------------------------------- | ------------------------------------------------------------------ |
+| 1   | Sổ loại bước của lát đầu có thêm `logic.switch` (chỉ so bằng) ngoài năm loại?                             | thêm                                       | Quyết định của `wf-lite`              | bỏ loại đó; chăm sóc lead luôn nhắc rồi bàn giao                   |
+| 2   | Định danh DW lát đầu là id của dòng DW, không dòng `platform.users`?                                      | id dòng DW                                 | Quyết định của `digital-worker`       | tạo `platform.service_principals` tối thiểu ở digital-worker/01    |
+| 3   | Loại quyết định nêu trong thân yêu cầu tạo DW, wf-lite kiểm lúc chạy?                                     | có                                         | Quyết định của `digital-worker`       | API tạo DW đọc loại từ tài liệu đã ghim                            |
+| 4   | Mức hiệu lực đọc lúc cổng hỏi, kể cả lượt đang chạy?                                                      | có                                         | Quyết định của `digital-worker`       | đóng dấu mức lên lượt chạy lúc bắt đầu                             |
+| 5   | Chi phí của scorecard lấy cột `worker_runs.model_cost_usd` tới khi có sổ sử dụng?                         | có                                         | Quyết định của `digital-worker`       | scorecard không có chi phí tới usage-and-limits/02                 |
+| 6   | Cây quy trình chỉ đọc vẽ bằng antd, không `@xyflow/react`?                                                | antd                                       | Quyết định của `digital-worker`       | chuyển trang dưới `studio/**/canvas/**`                            |
+| 7   | Dấu vết bước (`trail`) trong trạng thái lượt chạy, không bảng bước?                                       | trong trạng thái                           | Quyết định của `wf-lite`              | tạo `platform.run_steps` tối thiểu                                 |
+| 8   | "Chờ phản hồi" là hẹn giờ rồi đọc hộp thư, không chờ sự kiện tương quan?                                  | có                                         | Quyết định của `wf-lite`              | thêm `event.wait@1` và cửa nhận thư trả lời                        |
+| 9   | Khóa ký cửa nhận lead là HMAC dẫn xuất từ bí mật máy chủ, không lưu?                                      | có                                         | Quyết định của `leadcare`             | lưu khóa mã hóa sau connections-and-vault                          |
+| 10  | Thư chỉ tới Mailpit dev, đồng ý kiểm trên payload?                                                        | có                                         | Quyết định của `leadcare`             | lát chờ compliance-pdpl                                            |
+| 11  | Thời gian chờ phản hồi là tham số, demo 60 giây?                                                          | có                                         | Quyết định của `leadcare`             | mặc định 2 ngày làm việc theo YC98                                 |
+| 12  | YC96 (trợ lý Marketing) đọc lại là kênh chat vào DW chăm sóc lead?                                        | có                                         | D17 trong `requirements.md`           | bỏ YC96 hay giữ như trợ lý riêng                                   |
+| 13  | DW có nên cắm vào FPT AI EOS như agent bên thứ ba?                                                        | câu hỏi mở, chưa làm                       | Q-EOS trong `requirements.md`         | thêm một spec giao tiếp agent ngoài                                |
+| 14  | Một offboarding `failed` để tenant kẹt ở `offboarding`; chạy lại bằng yêu cầu mới, hủy thì chưa có đường? | giữ như spec (R11.5), không thêm đường hủy | Comments của foundations-hardening/07 | thêm R cho chạy lại và hủy có audit, sửa trigger trạng thái tenant |
+| 15  | Khóa ký cửa nhận lead lộ thì chỉ thu hồi được bằng đổi bí mật máy chủ (mọi DW đổi theo)?                  | chấp nhận ở lát đầu, chỉ hộp thư dev       | Ngoài phạm vi của `leadcare`          | lưu khóa theo DW có phiên bản và route xoay khóa                   |

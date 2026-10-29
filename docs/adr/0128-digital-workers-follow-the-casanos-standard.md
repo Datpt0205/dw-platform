@@ -40,11 +40,14 @@ handoffs and a scorecard. Nothing in it is a chat product, and D15 says it must 
 1. **A DW is a row, not a code artifact.** `platform.digital_workers` holds one DW per row, in one workspace whose
    queue it works: a key, a name, a mandate, the work kinds it may hold, the tools it may use, the workflow version it
    runs (a shipped `dw.workflow/v1` document in the first slice, D17), its parameters, its lifecycle state and its four
-   people. The DW's identity is the row's own id, written as `requested_by` on every run it makes and as the actor of
-   every audit event it causes; it never borrows a person's id (YC118). It holds no login and no membership; it has
-   exactly the scopes its allowed tools require, computed, never stored, so no one can widen it by editing a list.
-   org-and-principals/03 later backs the id with a `platform.service_principals` row; until then this is the "minimal
-   principal" of D17.
+   people. The DW's identity is a service principal of its own in the shape ADR-0103 (Accepted) decision 2 gives one:
+   a `platform.users` row of `kind = 'service'` owned by the tenant, a `platform.service_principals` row, and a
+   membership with roles granted only by someone who holds them all. It never borrows a person's id (YC118) and never
+   gains a login identity. Its runs follow ADR-0103 decision 4: `requested_by` is the system actor of the lane that
+   started the run, `run_as_principal_id` is the DW's principal, and the run's reach is that principal's grants
+   intersected with the scopes its allowed tools require, the boundary of decision 5. The DW row is the governance
+   record and never a principal. The first slice builds only this minimal part of the shape (the "minimal principal" of
+   D17); org-and-principals/03 adds keys, bindings and the ownership lane on top of it.
 2. **Four people, as functions, not roles.** Business Owner (mandate, autonomy, scorecard, answers for outcomes),
    Technical Owner (builds, monitors, recovers; never widens authority), Work Assigner (puts work in the queue) and
    Validator (decides proposals and receives handoffs). Each is a user of the tenant; one person may hold several. A
@@ -125,8 +128,8 @@ scorecard.
 
 - Positive: the CASANOS standard has a named owner for each part, and a DW's authority is visible as data a reviewer
   can read.
-- Negative: until org-and-principals/03 the DW id is a principal with no row in a principals table; a check that wants
-  "is this a known principal" must ask `platform.digital_workers` as well.
+- Negative: the first slice builds a minimal service principal ahead of org-and-principals/03, which then extends
+  the same rows rather than creating them; the two tickets are ordered so that only one creates the table.
 - Negative: the scorecard's cost column reads the run's own recorded cost until usage-and-limits/02's ledger exists,
   then moves to the ledger.
 

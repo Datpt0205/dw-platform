@@ -673,6 +673,7 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
   tuần tự hóa trên khóa tư vấn của giao dịch. Sửa: R3.3, R3.8, R3.9-R3.11, Dữ liệu, CP24, ticket 04. Nếu sai thì: thêm
   một dòng `sent` sau khi gửi được, Tương tác là dòng `dispatching` hay `blocked`, và trần tần suất không đếm lần gửi
   `failed`.
+- 29/10/2026 (agent, tạm theo ủy quyền): Tách lõi Sàn gửi tin khỏi ticket 04 thành ticket 08 (R3.1-R3.4, R3.6-R3.11, R5.6), chỉ chờ foundations-hardening/07, runtime-hardening/01 và wf-lite/02, để Digital Worker chăm sóc lead gửi thư qua sàn ở mọi profile như ADR-0124 (Accepted) đòi (gate của leadcare, 29/10/2026); ticket 04 giữ overlay (R3.5), đối tượng Đồng ý và bước trong sổ bước (R3.12). Nếu sai thì: gộp lại và leadcare/01 chờ ticket 04.
 
 ## Danh sách ticket
 
@@ -685,3 +686,4 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
 | 05  | [Phân tích bộ ba nguy hiểm và năng lực của quy trình khi gửi kiểm định](issues/05-phan-tich-bo-ba-khi-xuat-ban.md) |
 | 06  | [Lớp lưu giữ cho kho dữ liệu cá nhân mới, bỏ dẫn Nghị định 13](issues/06-lop-luu-giu-du-lieu-ca-nhan.md)           |
 | 07  | [Phân tích năng lực của agent: luật tự chủ và móc của loại agent](issues/07-phan-tich-nang-luc-agent.md)           |
+| 08  | [Lõi sàn gửi tin](issues/08-loi-san-gui-tin.md)                                                                    |

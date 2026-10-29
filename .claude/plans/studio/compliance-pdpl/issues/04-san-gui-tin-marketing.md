@@ -159,3 +159,4 @@ row_delete`, bộ xóa đăng ký ở ticket 06) và `configs/policies/retention
   R3.12, CP25). Theo H-1 và bảng cạnh của lượt: thời hạn của hai bảng là hai mảnh dưới `configs/policies/retention.d/`,
   nên gỡ Blocked by workflow-triggers/02 (chỉ vì chuỗi tệp) và telemetry-and-audit/03, thêm telemetry-and-audit/01
   (định dạng mảnh, bộ nạp, hàm đọc hạn). Theo H-29 (V4.39): `purpose` của Bản ghi đồng ý chỉ còn `marketing` ở W1.
+- 2026-10-29 (agent, tạm theo ủy quyền): lõi sàn (ba bảng, `MarketingSendPolicy`, `SendAdmissionPort` trong executor, route hủy nhận, R3.1-R3.4, R3.6-R3.11, R5.6) tách sang ticket 08, làm trước theo hàng đợi phiên không người trực; ticket này còn R3.5, R3.12, đối tượng Đồng ý và mảnh copy, và mở rộng bảng của ticket 08 chứ không tạo lại. Không thêm 08 vào Blocked by vì phụ thuộc chỉ trỏ ngược; cảnh báo collision giữa 04 và 08 là có chủ ý.

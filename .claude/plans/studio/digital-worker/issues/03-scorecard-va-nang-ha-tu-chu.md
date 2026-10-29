@@ -17,14 +17,19 @@ Business Owner đọc scorecard của DW tính từ hàng đợi, quyết địn
    gọi vào `model_cost_usd` của lượt chạy bằng `UPDATE ... SET model_cost_usd = model_cost_usd + :c`;
    đăng ký trong `CompositeUsageRecorder` ở composition root của worker và API.
 3. `dw_platform/application/scorecard.py` và repository: `GET /v1/digital-workers/{id}/scorecard?days=`
-   (1-90, mặc định 30, cửa sổ theo Asia/Ho_Chi_Minh), một truy vấn tổng hợp mỗi nguồn: việc theo trạng
-   thái, tỷ lệ `done` và `handed_off`, approval `dw.decision` có `payload->>'dw_id'` là DW theo kết quả
-   quyết định (duyệt nguyên văn, duyệt có sửa theo `edited`, từ chối), tổng `model_cost_usd` của lượt chạy có `requested_by` là id DW.
+   (1-90, mặc định 30, cửa sổ cuộn `now() - n × 24 giờ`), một truy vấn tổng hợp mỗi nguồn theo R7.1: việc
+   có `dw_id` là DW theo `created_at`, approval `dw.decision` có `payload->>'dw_id'` là DW theo `decided_at`
+   (duyệt nguyên văn, duyệt có sửa theo `edited`, từ chối), tổng `model_cost_usd` của lượt chạy có
+   `run_as_principal_id` là principal của DW theo `created_at`.
 4. `POST /v1/digital-workers/{id}/decision-classes/{key}/autonomy` `{level}`: hạ (BO hay TO) ghi ngay
-   với audit `dw.autonomy.lowered`; nâng (chỉ BO, không quá trần) mở approval `dw.autonomy.raise`
-   không lượt chạy, trả 202 với id approval; thêm `dw.autonomy.` vào `strict_approval_prefixes`.
-5. Handler outbox `dw.autonomy.raise.decided` ở worker: duyệt thì ghi mức mới và audit
-   `dw.autonomy.raised` đứng tên người duyệt với `details.lane`; từ chối thì không đổi gì.
+   với audit `dw.autonomy.lowered`; nâng (chỉ BO, không quá trần, không khi đã có approval nâng đang chờ
+   cho loại đó) mở approval `dw.autonomy.raise` không lượt chạy với `from_level`, `to_level`, trả 202 với
+   id approval; thêm `dw.autonomy.` vào `strict_approval_prefixes` và một `DecisionAdmission` chỉ nhận
+   Validator hay Technical Owner hiện tại của DW (R8.3).
+5. Handler outbox `dw.autonomy.raise.decided` ở worker: duyệt, `earned_level` hiện tại bằng `from_level` và
+   DW chưa `retired` thì ghi `to_level` (`UPDATE ... WHERE earned_level = :from_level`) và audit
+   `dw.autonomy.raised` đứng tên người duyệt với `details.lane`; không thì audit `dw.autonomy.raise_stale`
+   và không đổi mức (R8.6).
 6. Đo P50/P95/P99 của route scorecard và danh sách việc (ticket đổi cách truy cập DB, `latency.md`).
 7. Test âm DWK17-DWK20.
 
@@ -35,9 +40,9 @@ Business Owner đọc scorecard của DW tính từ hàng đợi, quyết địn
 - [ ] R7.3: hai lời gọi model của một lượt chạy cộng đúng vào `model_cost_usd`; lời gọi của lượt khác không chạm.
 - [ ] R8.1: BO hạ A3 xuống A2 → mức mới ngay, `effective_level` trả A2 ở lần hỏi kế tiếp, có audit.
 - [ ] R8.2 (DWK17): BO nâng A2 lên A3 → 202, mức vẫn A2; người thứ hai từ chối → vẫn A2; duyệt → A3.
-- [ ] R8.6: sự kiện `dw.autonomy.raise.decided` với quyết định từ chối không đổi mức; duyệt ghi mức mới và audit.
-- [ ] R8.3 (DWK18): BO tự duyệt đề nghị của mình, hay duyệt không lý do → 409, mức không đổi.
-- [ ] R8.4 (DWK19): đề nghị A4 với trần A3 → 422 `above_ceiling`, không approval.
+- [ ] R8.6 (DWK17): từ chối không đổi mức; duyệt ghi mức mới và audit; hạ khẩn xuống A0 rồi duyệt đề nghị A2→A3 → mức giữ A0, audit `dw.autonomy.raise_stale`.
+- [ ] R8.3 (DWK18): BO tự duyệt đề nghị của mình, người ngoài DW giữ `approvals.decide` duyệt, hay duyệt không lý do → 409, mức không đổi.
+- [ ] R8.4 (DWK19): đề nghị A4 với trần A3 → 422 `above_ceiling`; đề nghị thứ hai khi một đang chờ → 409 `raise_pending`; không approval mới.
 - [ ] R8.5 (DWK20): Validator hạ → 403 `not_dw_owner`; TO nâng → 403.
 - [ ] Xong: `make test-unit test-contract test-architecture` xanh.
 

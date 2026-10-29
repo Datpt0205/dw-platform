@@ -1,7 +1,7 @@
 # 03 — Tài khoản dịch vụ làm chủ thể chạy
 
 Status: needs-triage
-Blocked by: 02, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md, .claude/plans/studio/foundations-hardening/issues/02-hang-rao-du-lieu-va-danh-tinh.md, .claude/plans/studio/foundations-hardening/issues/03-quyen-dw-app-va-rls-initplan.md, .claude/plans/studio/app-standards/issues/01-vo-loi-problem-json.md, .claude/plans/studio/app-standards/issues/02-khoa-chong-lap-gan-nguoi-goi.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md
+Blocked by: 02, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md, .claude/plans/studio/foundations-hardening/issues/02-hang-rao-du-lieu-va-danh-tinh.md, .claude/plans/studio/foundations-hardening/issues/03-quyen-dw-app-va-rls-initplan.md, .claude/plans/studio/app-standards/issues/01-vo-loi-problem-json.md, .claude/plans/studio/app-standards/issues/02-khoa-chong-lap-gan-nguoi-goi.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md, .claude/plans/studio/digital-worker/issues/01-ho-so-dw-va-loai-quyet-dinh.md
 Area: studio
 Yêu cầu: R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.8, R6.9, R6.10, R7.1, R7.2, OP8, OP9, OP10, OP11, OP14, OP15
 
@@ -132,3 +132,4 @@ foundations-hardening:R11.4; H-2); ticket này chờ foundations-hardening/07 v�
   `pg_constraint`, thay lời gọi "sau cùng, sau `platform.purge_tenant_append_only`" và mục `_ORDERED_FIRST`; R6.8 thay ca
   "câu lệnh xóa cuối" bằng ca bước chạy sau bảng giữ khóa ngoại tới tài khoản dịch vụ; dòng Comments ngày 24/10/2026 về
   cạnh tới usage-and-limits/02 không còn áp.
+- 2026-10-29 (agent): digital-worker/01 dựng phần tối thiểu của service principal theo ADR-0103 (Accepted) quyết 2 (`platform.users.kind`, `owner_tenant_id`, `platform.service_principals`, trigger từ chối danh tính đăng nhập, danh sách danh tính lọc `kind = 'human'`) cho định danh Digital Worker (D17); ticket này chờ nó và mở rộng chính các bảng đó (khóa API, binding, `owner_user_id` theo `tenant_members`, lane `principal_ownership`), không tạo lại.
