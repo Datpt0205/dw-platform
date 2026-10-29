@@ -49,7 +49,8 @@ Checkpoint (R2.4, R2.5, G5):
    mà tên đó trong module được miễn là một hằng chứa `app.worker_drain`; so với
    `EXEMPT: dict[str, str]` (module → lý do) đóng băng gồm bảy adapter ở Hiện trạng (R2.6, FH34).
    Docstring (hằng chuỗi đứng một mình đầu module, lớp hay hàm) không tính. Ngoài `apps/worker`, phép
-   quét đỏ thêm ở `import <module được miễn>` và ở `from <module được miễn> import <tên>` khi `<tên>` là
+   quét đỏ thêm ở `import <module được miễn>`, ở `from <package> import <module được miễn>` và ở
+   `from <module được miễn> import <tên>` khi `<tên>` là
    lớp hay hàm cấp module mà thân dùng hằng drain của module đó (tìm bằng AST trên chính module được
    miễn, không danh sách tay).
    5b. Tách `IngestJobStore.claim_next` sang lớp mới `IngestJobQueue` trong `dw_knowledge/ingest_jobs.py`
@@ -100,21 +101,25 @@ Nối danh tính (R4.1-R4.4, G2-G4), áp ngay theo DO-17.1:
     tính đăng nhập `(issuer, subject)`; (b) subject lưu trên user chỉ khi issuer là `dw-dev`; (c) email
     chỉ khi `email_verified` đúng, user chưa có danh tính đăng nhập nào và không là người vận
     hành hay nhân viên `support_staff` (đọc như `bootstrap` đang đọc hai danh sách đó), sau khi khóa
-    dòng user bằng `SELECT ... FOR UPDATE` để hai lần đăng nhập đầu cùng lúc không cùng qua; (d) email
+    khóa tư vấn của giao dịch `pg_advisory_xact_lock` trên id của user (không `SELECT ... FOR UPDATE`, vì
+    ticket 03 thu UPDATE của `dw_app` trên `platform.users`) để hai lần đăng nhập đầu cùng lúc không
+    cùng qua; (d) email
     trùng một user có sẵn mà không qua (c) → `PermissionDeniedError` 403 với
     `details.reason_code = "identity_email_in_use"`, không ghi dòng nào; (e) còn lại tạo user mới, email
-    rỗng khi `email_verified` không đúng (R4.5); INSERT `ON CONFLICT (subject) DO NOTHING RETURNING id`,
+    NULL khi `email_verified` không đúng (R4.5); INSERT `ON CONFLICT (subject) DO NOTHING RETURNING id`,
     khi xung đột thì chỉ đọc lại danh tính `(issuer, subject)` (lần đăng nhập đầu song song đã thắng),
     không có thì `PermissionDeniedError` 403 với `details.reason_code = "identity_subject_in_use"`, không
     ghi dòng nào (R4.3); không đọc lại user theo `users.subject`.
 14. `SqlMembershipLookup.find_access` bỏ nhánh khớp `users.subject` khi issuer khác `dw-dev`.
 15. Cùng revision ở bước 10: trigger `platform.guard_privileged_login_identity()` BEFORE INSERT trên
     `platform.external_identities` từ chối danh tính đăng nhập (provider không thuộc liên kết chat)
-    cho người vận hành hay nhân viên `support_staff` khi `current_user` không giữ `rolbypassrls`
-    (`ck_external_identities_privileged_relink`); trigger BEFORE DELETE từ chối xóa danh tính đăng
-    nhập khi `current_user` không giữ `rolbypassrls` (`ck_external_identities_login_kept`); cả hai đọc
-    `pg_roles` theo `current_user`, nên vai bảo trì của seed và một xóa dây chuyền từ `platform.users`
-    chạy dưới chủ bảng vẫn qua (ghi điều đo được vào Comments); REVOKE UPDATE, TRUNCATE trên
+    cho người vận hành hay nhân viên `support_staff` khi `current_user` khác `dw_provisioner`
+    (`ck_external_identities_privileged_relink`; ADR-0103 (Accepted) quyết định 8); trigger BEFORE
+    DELETE từ chối xóa danh tính đăng nhập khi `current_user` không giữ `rolbypassrls` theo `pg_roles`
+    (`ck_external_identities_login_kept`), để xóa dây chuyền từ `platform.users` chạy dưới chủ bảng vẫn
+    qua (ghi điều đo được vào Comments); `dw_platform/testing/seed_env.py` ghi danh tính Keycloak trước
+    khi đặt người vận hành và bỏ qua danh tính đã có, vì trigger BEFORE INSERT chạy cả khi
+    `ON CONFLICT DO NOTHING` sẽ bỏ dòng; REVOKE UPDATE, TRUNCATE trên
     `platform.external_identities` khỏi `dw_app`. Một test giữ danh sách provider chat trong hai
     trigger bằng `tables.CHANNEL_LINK_PROVIDERS`; quyền mới được khẳng định trong `test_privileges.py`.
 16. Sửa docstring đầu `identity_provisioning.py`, comment "Email-based account linking" trong
@@ -145,10 +150,11 @@ Nối danh tính (R4.1-R4.4, G2-G4), áp ngay theo DO-17.1:
       nhất của A còn; bỏ so `tenant_id` ở `newer` → đỏ.
 - [ ] R2.5 (FH6): một dòng checkpoint có kiểu ngoài `ALLOWED` → nạp ra dict, không object nào của
       kiểu đó được dựng; đổi allowlist thành `True` → đỏ.
-- [ ] R2.6 (FH34): ba module thử dưới `apps`: một có `set_config('app.worker_drain', 'on', true)`,
+- [ ] R2.6 (FH34): sáu module thử dưới `apps/api`: một có `set_config('app.worker_drain', 'on', true)`,
       một nhập `_SET_WORKER_DRAIN` từ `dw_knowledge.ingest_jobs`, một gọi `set_config(:k, 'on', true)`
       với `k='app.worker_drain'`, một nhập `IngestJobQueue` từ `dw_knowledge.ingest_jobs`, một
-      `import dw_knowledge.ingest_jobs` → test kiến trúc đỏ và nêu từng module; các module trong
+      `import dw_knowledge.ingest_jobs`, một `from dw_knowledge import ingest_jobs` → test kiến trúc đỏ
+      và nêu từng module; các module trong
       `EXEMPT`, `apps/worker`, docstring và thư mục `tests` không làm đỏ; `IngestJobStore` của API không
       làm đỏ; gỡ phép quét, gỡ nhánh lớp hay hàm, hay thêm một tên không lý do → đỏ.
 - [ ] R3.1 (FH7): `POST /api/v1/platform/tenants/{tenant_id}/unlock` và `/lock` cho tenant
@@ -167,11 +173,12 @@ Nối danh tính (R4.1-R4.4, G2-G4), áp ngay theo DO-17.1:
 - [ ] R4.3 (FH10): token issuer X có `sub` bằng subject lưu trên user chỉ biết qua issuer Y →
       `find_access` không trả AccessContext, `bootstrap` trả 403 `identity_subject_in_use` và không thêm
       dòng nào; token `dw-dev` theo subject vẫn vào; khôi phục đọc lại user theo `subject` → đỏ.
-- [ ] R4.4 (FH11): bằng `dw_app`, và bằng một vai thử không `BYPASSRLS` có INSERT: INSERT danh tính
-      đăng nhập cho người vận hành → trigger từ chối; bằng `dw_app`: UPDATE một danh tính →
+- [ ] R4.4 (FH11): bằng `dw_app` và bằng `dw_migrator`: INSERT danh tính đăng nhập cho người vận
+      hành → trigger từ chối; bằng `dw_provisioner`: nhận; bằng `dw_app`: UPDATE một danh tính →
       `permission denied`; DELETE danh tính đăng nhập → trigger từ chối; DELETE danh tính `zalo` vẫn
-      nhận; đổi điều kiện thành `current_user = 'dw_app'` → ca vai thử đỏ.
-- [ ] R4.5 (FH9): token `email_verified=false` với email chưa có user → user mới có email rỗng; lời
+      nhận; đổi điều kiện INSERT thành `current_user = 'dw_app'` hay thành mọi vai `BYPASSRLS` → ca
+      `dw_migrator` đỏ.
+- [ ] R4.5 (FH9): token `email_verified=false` với email chưa có user → user mới có email NULL; lời
       mời theo email đó sau đó tạo user khác; ghi email chưa xác minh → đỏ.
 - [ ] G1: `test_a_member_deletes_a_document_of_their_own_workspace` xanh trước và sau bản vá.
 - [ ] G2: `test_an_invited_person_signs_in_and_finds_their_workspace` xanh với token dev mang
@@ -205,3 +212,4 @@ Nối danh tính (R4.1-R4.4, G2-G4), áp ngay theo DO-17.1:
 
 - 2026-10-28 (agent): thêm R2.6 và FH34 (bước 5a) theo CRITICAL của checking-plan-readiness trên `59884c8`, áp quyết định 27/10/2026 của Đạt.
 - 2026-10-29 (agent, tạm theo ủy quyền): checking-plan-readiness trên `a9573e8`: 0 CRITICAL, 7 HIGH, sửa theo khuyến nghị (Quyết định 29/10/2026 của spec; bước 2, 5a, 5b, 9, 10, 13, 15, 18). MEDIUM cho người làm: tombstone lỗi sau commit để vector sống tới lần purge của retention (đối soát ngoài phạm vi); một kiểu ngoài `ALLOWED` lúc resume nạp ra dict theo R2.5 và run đi tiếp trên dict; `delete_pattern` lỗi sau khi đổi trạng thái thì route trả lỗi, không 204 im lặng; lần nối bị từ chối không có audit (ngoài phạm vi); phép đo `ALLOWED` chạy cả integration của `apps/api`, nơi saver được dựng; user có `users.subject` của issuer khác `dw-dev` mà không có danh tính đăng nhập: đếm trên DB local và ghi vào đây, không backfill.
+- 2026-10-29 (agent, tạm theo ủy quyền): lượt xác nhận: 6/7 HIGH đã sửa; một CRITICAL mới (trigger cho mọi vai `BYPASSRLS` thêm danh tính của người vận hành, trái chữ ADR-0103 (Accepted) quyết định 8), một HIGH mới (`SELECT ... FOR UPDATE` cần UPDATE mà ticket 03 thu), hai MEDIUM (email rỗng là NULL; `from dw_knowledge import ingest_jobs`) và một LOW, sửa theo khuyến nghị (bước 5a, 13, 15, R4.4, R4.5, FH11); vì có CRITICAL mới, gate đầy đủ chạy lại một lượt (`wave-close.md` mục 1).
