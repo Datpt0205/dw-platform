@@ -86,8 +86,8 @@ typecheck: ## Type-check Python (mypy strict) + TypeScript (tsc)
 	pnpm run -r --if-present typecheck
 
 # -------------------------------------------------------------------- tests --
-test-unit: ## Fast unit tests (no external services)
-	uv run pytest -m unit
+test-unit: ## Fast unit tests (no external services), one worker per CPU (pytest-xdist)
+	uv run pytest -m unit -n auto
 
 coverage: ## Unit-test coverage vs gate (fail_under in pyproject)
 	uv run pytest -m unit --cov --cov-report=term
@@ -102,7 +102,7 @@ test-architecture: ## Import-boundary + declared-dependency checks
 	uv run python scripts/verify_invariants.py
 
 test-contract: ## API/event/tool contract tests
-	uv run pytest -m contract || test $$? -eq 5  # exit 5 = no tests collected yet
+	uv run pytest -m contract -n auto || test $$? -eq 5  # exit 5 = no tests collected yet
 
 test-hooks: ## Coding-agent harness hooks (.claude/hooks) against throwaway repos
 	bash scripts/test_claude_hooks.sh

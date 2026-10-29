@@ -75,6 +75,10 @@ also gets its sections of `reviewing-feature-security` and `failure-modes.md`.
   is not permission" classes, at least one adversarial situation, at most five findings. Every
   matched boundary is walked. A tier C spec (one with its own ADR) gets up to four subagents, with
   the matched boundaries split among them; any other spec gets one for all of them.
+- **A ticket with no spec (tier A)** gets ONE subagent for both checks. It uses the builder brief
+  (A) with the boundary brief's (C) three steps appended, and returns one list of B, S, F and N
+  rows. On docgen-session-isolation/01 two separate subagents returned the same three HIGHs twice.
+  The confirmation pass stays a fresh subagent of its own.
 
 ## 5. Ticket mode
 

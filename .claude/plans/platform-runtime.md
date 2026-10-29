@@ -320,6 +320,19 @@ user, scope)` and `holding(tenant, ws, scopes)`, neither needing an
   whose writing and fixing took most of that ticket's mutation time.
   `reviewing-feature-security` and `wave-close.md` point at it.
 
+- **Faster per-ticket gates** (2026-10-29, Đạt asked):
+    - `make test-unit` and `make test-contract` run under pytest-xdist
+      (`-n auto`). On the 16-thread dev machine, unit went from about 3m40 to
+      38-41s (1533 passed, 8 skipped, the same as serial) and contract from 49s
+      to 30s.
+    - xdist needed deterministic parametrize ids, so `test_support_routes.py`
+      takes a fixed run id instead of `uuid4()`.
+    - CI still calls pytest directly and is unchanged.
+    - A tier A ticket's gate is one subagent, builder check and boundary walk
+      together.
+    - `writing-plan-specs` walks failure-modes #1-#7 per control before the gate.
+    - WSL2 was proposed and declined by Đạt; work stays on Windows.
+
 ## Deliberately not taken
 
 - **Vector or graph recall deciding the recalled set.**

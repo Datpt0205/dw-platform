@@ -105,7 +105,19 @@ seams, consumer-declared Protocols and other specs' criteria by ID, plus a `Kiá»
 
 1. Run `uv run python scripts/check_plans.py --path <folder>` and fix every finding it reports.
 2. Walk groups 1-4 of `.claude/skills/checking-plan-readiness/quality-checklist.md` against the
-   draft.
+   draft, then `.claude/rules/failure-modes.md` #1-#7 against each control. For each control,
+   answer, in one line in your head, not in the document:
+    - who reads it;
+    - what owns the fact;
+    - can its test fail;
+    - what reaches the effect around it;
+    - what removes what it creates;
+    - what happens when the value is missing.
+
+    The same holds for a ticket with no spec. On docgen-session-isolation/01 every HIGH the gate
+    found was one of these shapes: a default that failed open, a guard reachable around, and a uid
+    reused with residue.
+
 3. Cut every sentence that restates `CLAUDE.md`, an ADR or `CONTEXT.md`, and link instead. A
    sentence that neither decides nor evidences anything goes.
 4. Fix inline. There is no review loop here: independent review is the gate's job, once per

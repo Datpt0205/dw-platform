@@ -107,7 +107,9 @@ def test_only_the_allowed_routes_take_a_support_context() -> None:
 @pytest.mark.parametrize(
     "path",
     [
-        f"/runs/{uuid.uuid4()}",
+        # Fixed, not uuid4(): a parametrize id must be the same in every
+        # pytest-xdist worker, or the workers refuse a collection that differs.
+        "/runs/00000000-0000-4000-8000-000000000001",
         "/approvals",
         "/knowledge/documents",
         "/audit/events",

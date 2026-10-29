@@ -53,6 +53,7 @@ dev = [
     # carry system tzdata; this is a dev-machine gap only, found by actually
     # running `alembic revision`, not by reading alembic's docs.
     "tzdata>=2024.1",
+    "pytest-xdist>=3.6,<4",
 ]
 
 # ---------------------------------------------------------------------------
