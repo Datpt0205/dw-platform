@@ -1,0 +1,234 @@
+# Mutation check of ticket 01: scripts/mutate.py runs this file.
+images:
+  docgen:
+    image: dw-docgen:local
+    target: /app/.venv/lib/python3.12/site-packages/dw_docgen
+    port: 8110
+    health: /health
+    url_env: DW_DOCGEN_URL
+    args:
+    - --read-only
+    - --user
+    - 0:0
+    - --cap-drop
+    - ALL
+    - --cap-add
+    - SETUID
+    - --cap-add
+    - SETGID
+    - --cap-add
+    - CHOWN
+    - --cap-add
+    - DAC_OVERRIDE
+    - --cap-add
+    - FOWNER
+    - --security-opt
+    - no-new-privileges:true
+    - --init
+    - --pids-limit
+    - '512'
+    - --tmpfs
+    - /work:mode=0711,size=256m,nosuid,nodev,noexec
+    - --tmpfs
+    - /tmp:mode=1777,size=64m,nosuid,nodev,noexec
+    command:
+    - uvicorn
+    - dw_docgen.main:create_app
+    - --factory
+    - --host
+    - 0.0.0.0
+    - --port
+    - '8110'
+mutations:
+- name: dir 0700 -> 0755
+  file: apps/docgen/src/dw_docgen/workspace.py
+  old: |2-
+                    path.chmod(0o700)
+            return path
+
+        def uid_of
+  new: |2-
+                    path.chmod(0o755)
+            return path
+
+        def uid_of
+  tests:
+  - apps/docgen/tests/integration/test_sandbox_image.py::test_a_session_shell_cannot_read_another_sessions_files
+  runner: image:docgen
+- name: no uid switch
+  file: apps/docgen/src/dw_docgen/runner.py
+  old: |2
+        who = identity.child_identity(uid)
+  new: |2
+        who = identity.ChildIdentity()
+  tests:
+  - apps/docgen/tests/integration/test_sandbox_image.py::test_each_session_runs_as_its_own_uid_with_no_capabilities
+  - apps/docgen/tests/integration/test_sandbox_image.py::test_no_session_reads_the_service_environment
+  runner: image:docgen
+- name: group kill instead of uid kill
+  file: apps/docgen/src/dw_docgen/runner.py
+  old: |2-
+                if uid is None:
+                    _kill_group(group, process)
+  new: |2-
+                if True:
+                    _kill_group(group, process)
+  tests:
+  - apps/docgen/tests/integration/test_sandbox_image.py::test_a_detached_process_does_not_outlive_its_command
+  runner: image:docgen
+- name: no purge after command
+  file: apps/docgen/src/dw_docgen/runner.py
+  old: |2-
+            identity.purge(uid, settings.shared_temp_dirs)
+        except OSError:
+            logger.error("could not purge uid %s after its command"
+  new: |2-
+            pass
+        except OSError:
+            logger.error("could not purge uid %s after its command"
+  tests:
+  - apps/docgen/tests/integration/test_sandbox_image.py::test_what_a_session_leaves_outside_its_directory_is_gone_after_the_command
+  runner: image:docgen
+- name: no chown of uploads
+  file: apps/docgen/src/dw_docgen/files.py
+  old: |2-
+            if owner is not None:
+                os.chown(created, owner, owner)
+  new: |2-
+            if False:
+                os.chown(created, owner, owner)
+  tests:
+  - apps/docgen/tests/integration/test_sandbox_image.py::test_an_upload_belongs_to_the_session_that_receives_it
+  runner: image:docgen
+- name: FIFO treated as a file
+  file: apps/docgen/src/dw_docgen/files.py
+  old: '    return "file" if stat.S_ISREG(mode) else "special"'
+  new: '    return "file"'
+  tests:
+  - apps/docgen/tests/integration/test_sandbox_image.py::test_a_fifo_cannot_hang_the_file_routes
+  runner: image:docgen
+- name: no startup refusal when not root
+  file: apps/docgen/src/dw_docgen/main.py
+  old: |2-
+            if isolate_sessions:
+                refuse_unless_isolation_holds(resolved)
+  new: |2-
+            if False:
+                refuse_unless_isolation_holds(resolved)
+  tests:
+  - apps/docgen/tests/unit/test_isolation.py::test_isolation_refuses_to_start_unless_it_is_uid_0
+  runner: local
+- name: root allowed without isolation
+  file: apps/docgen/src/dw_docgen/main.py
+  old: |2-
+        if _euid() == 0:
+            msg = "docgen runs as uid 0 without
+  new: |2-
+        if False:
+            msg = "docgen runs as uid 0 without
+  tests:
+  - apps/docgen/tests/unit/test_isolation.py::test_without_isolation_uid_0_refuses_to_start
+  runner: local
+- name: max_concurrency unchecked
+  file: apps/docgen/src/dw_docgen/main.py
+  old: '    if settings.max_concurrency != 1:'
+  new: '    if False:'
+  tests:
+  - apps/docgen/tests/unit/test_isolation.py::test_isolation_refuses_more_than_one_command_at_a_time
+  runner: local
+- name: passwd unchecked
+  file: apps/docgen/src/dw_docgen/main.py
+  old: '        if name != f"dws{n}":'
+  new: '        if False:'
+  tests:
+  - apps/docgen/tests/unit/test_isolation.py::test_isolation_refuses_a_pool_uid_without_its_passwd_entry
+  runner: linux
+- name: uid base unvalidated
+  file: apps/docgen/src/dw_docgen/settings.py
+  old: Field(default=20000, ge=10000)
+  new: Field(default=20000)
+  tests:
+  - apps/docgen/tests/unit/test_isolation.py::test_the_uid_range_cannot_reach_system_uids
+  runner: local
+- name: owner outside the pool accepted
+  file: apps/docgen/src/dw_docgen/workspace.py
+  old: '        if owner not in self._uids:'
+  new: '        if False:'
+  tests:
+  - apps/docgen/tests/unit/test_isolation.py::test_a_session_owned_outside_the_pool_is_refused
+  runner: local
+- name: live uid handed out
+  file: apps/docgen/src/dw_docgen/workspace.py
+  old: '        } | identity.process_owners()'
+  new: '        }'
+  tests:
+  - apps/docgen/tests/unit/test_isolation.py::test_a_uid_with_a_live_process_is_never_handed_out
+  runner: linux
+- name: no sweep before 503
+  file: apps/docgen/src/dw_docgen/workspace.py
+  old: |2
+                self.sweep(older_than_seconds=self._session_ttl_seconds)
+  new: ''
+  tests:
+  - apps/docgen/tests/unit/test_isolation.py::test_a_full_pool_sweeps_stale_sessions_before_refusing_with_503
+  runner: local
+- name: unclean session served
+  file: apps/docgen/src/dw_docgen/workspace.py
+  old: '        if owner in identity.process_owners():'
+  new: '        if False:'
+  tests:
+  - apps/docgen/tests/unit/test_isolation.py::test_a_session_whose_uid_still_has_a_process_is_refused
+  runner: linux
+- name: purge ignores the owner
+  file: apps/docgen/src/dw_docgen/identity.py
+  old: '        if entry.stat(follow_symlinks=False).st_uid != uid:'
+  new: '        if False:'
+  tests:
+  - apps/docgen/tests/unit/test_isolation.py::test_purge_removes_the_uids_entries_and_leaves_everyone_elses
+  runner: linux
+- name: adopt_root keeps strays
+  file: apps/docgen/src/dw_docgen/workspace.py
+  old: '            if child.name == ".service" or child.lstat().st_uid in self._uids:'
+  new: '            if True:'
+  tests:
+  - apps/docgen/tests/unit/test_isolation.py::test_adopting_the_root_drops_what_no_pool_uid_owns
+  runner: local
+- name: adopt_root leaves the mode
+  file: apps/docgen/src/dw_docgen/workspace.py
+  old: |2
+            self._root.chmod(0o711)
+  new: ''
+  tests:
+  - apps/docgen/tests/unit/test_isolation.py::test_adopting_the_root_drops_what_no_pool_uid_owns
+  runner: linux
+- name: sweep outside the semaphore
+  file: apps/docgen/src/dw_docgen/api.py
+  old: |2
+                # Still under the semaphore: a sweep must not delete a session
+                # that a file route is writing into.
+                _sweep(workspace, settings, active)
+  new: ''
+  tests:
+  - apps/docgen/tests/unit/test_isolation.py::test_the_sweep_after_a_command_runs_under_the_semaphore
+  runner: local
+- name: upload outside the semaphore
+  file: apps/docgen/src/dw_docgen/api.py
+  old: '    return await _exclusively(request, write)'
+  new: '    return await asyncio.to_thread(write)'
+  tests:
+  - apps/docgen/tests/unit/test_isolation.py::test_an_upload_waits_for_the_command_holding_the_semaphore
+  runner: local
+- name: download creates the session
+  file: apps/docgen/src/dw_docgen/api.py
+  old: '        if workspace.session_dir(session_id, create=False).exists():'
+  new: '        if workspace.session_dir(session_id).exists():'
+  tests:
+  - apps/docgen/tests/unit/test_isolation.py::test_a_download_never_creates_a_session
+  runner: local
+- name: unit FIFO check
+  file: apps/docgen/src/dw_docgen/files.py
+  old: '    return "file" if stat.S_ISREG(mode) else "special"'
+  new: '    return "file"'
+  tests:
+  - apps/docgen/tests/unit/test_files.py::test_a_fifo_is_neither_downloaded_nor_written_through
+  runner: linux

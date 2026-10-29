@@ -312,6 +312,14 @@ user, scope)` and `holding(tenant, ws, scopes)`, neither needing an
       the wave's close;
     - ADR 0119's context still says "one uid".
 
+- **`scripts/mutate.py`** (2026-10-29): one mutation runner for every ticket.
+  The mutations are YAML beside the ticket (`mutations/<NN>.yaml`); the runner
+  overlays a package copy, runs in parallel, runs controls first, and refuses
+  a mutation that does not reach the code. On docgen-session-isolation/01 it
+  caught 22/22 in 63s warm with 6 jobs. That replaces a per-ticket script,
+  whose writing and fixing took most of that ticket's mutation time.
+  `reviewing-feature-security` and `wave-close.md` point at it.
+
 ## Deliberately not taken
 
 - **Vector or graph recall deciding the recalled set.**

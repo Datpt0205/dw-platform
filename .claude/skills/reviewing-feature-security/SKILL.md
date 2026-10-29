@@ -160,6 +160,25 @@ This repository has three recorded cases where the test was green both ways:
 
 All three were found by mutation and none by reading. Budget the minutes.
 
+**How:** write the mutations as data and run `scripts/mutate.py`; do not write
+a script per ticket. The spec sits beside the ticket at
+`.claude/plans/<area>/<feature>/mutations/<NN>.yaml`, and its format is in the
+script's docstring. One mutation per "Kiểm soát" row, or per control the ticket
+adds, each naming only the tests that guard it. Extra mutations cost minutes
+and prove nothing new.
+
+The script:
+
+- runs the mutations in parallel, but integration tests that share a database
+  one at a time;
+- runs every group unmutated first, and a red control voids the result;
+- refuses a mutation that does not reach the imported code;
+- mounts a mutated package into an image already built, rather than rebuilding
+  it;
+- runs POSIX-only tests in a Linux container (`runner: linux`).
+
+Exit 0 means every control is green and every mutation red.
+
 ## Two things this checklist cannot do
 
 Read `.claude/rules/failure-modes.md` for the counts behind these. Two of the

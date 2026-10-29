@@ -65,7 +65,7 @@ own file and a row here.
    questions this diff earns.
 3. `.claude/skills/reviewing-feature-security/`:
     - six trust boundaries, with a negative test at each;
-    - a mutation check, then P50/P95/P99 (`latency.md`; a wave's close: `wave-close.md`);
+    - a mutation check (`scripts/mutate.py`), then P50/P95/P99 (`latency.md`; a wave's close: `wave-close.md`);
     - run before calling a feature done, without being asked.
 4. `.claude/skills/reviewing-deployment-security/`: deployed-profile exposure,
    secrets, CORS, outbound URLs, and a scan of every new image.

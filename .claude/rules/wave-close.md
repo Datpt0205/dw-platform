@@ -27,9 +27,10 @@ wave's close, and a ticket is not left open waiting for them.
 2. **Tests for every R and G of the ticket**, the G tests written first where
    the ticket says so.
 3. **`reviewing-feature-security`** and the **mutation check scoped to the
-   ticket's APS**: one batch script that breaks each control, runs only the
-   tests that guard it, and restores it. This is where tests that cannot fail
-   are found; it is never deferred.
+   ticket's APS**: one mutation per control in the ticket's
+   `mutations/<NN>.yaml`, run by `scripts/mutate.py`, which breaks each one,
+   runs only the tests that guard it, and restores it. This is where tests
+   that cannot fail are found; it is never deferred.
 4. **Fast gates**: ruff, format, `python -m mypy`, `make test-unit`,
    `make test-contract`, `make test-architecture`, and the integration suites
    of the packages the ticket touched (not the whole `make test-integration`).
