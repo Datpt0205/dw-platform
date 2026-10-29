@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: 01, .claude/plans/studio/runtime-hardening/issues/01-toolexecutor-gianh-luot-khong-cua-sau.md
 Area: studio
-Yêu cầu: R1.4, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R4.1, R4.2, R4.3, R5.1, R5.2, R5.3, R6.1, DWK2, DWK3, DWK8, DWK9, DWK10, DWK11, DWK12, DWK13, DWK14, DWK15, DWK16
+Yêu cầu: R1.4, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R4.1, R4.2, R4.3, R5.1, R5.2, R5.3, R5.4, R5.5, R6.1, DWK2, DWK3, DWK8, DWK9, DWK10, DWK11, DWK12, DWK13, DWK14, DWK15, DWK16, DWK22
 
 ## Mục tiêu
 
@@ -45,7 +45,8 @@ proposal, eligible_deciders}`, `eligible_deciders` đọc từ hồ sơ DW lúc 
    `holder_kind`, keyset `(created_at, id)`), `GET /v1/work-items/{id}`,
    `POST /v1/work-items/{id}/complete`; kiểm hình kế hoạch của danh sách vào bộ kiểm của
    app-standards/03.
-9. Test âm DWK2, DWK3 (việc), DWK8-DWK16.
+9. `POST /v1/approvals/{id}/decision` nhận `edited_proposal` tùy chọn cho loại `dw.decision`: kiểm theo `payload.proposal_schema` (cổng ghi schema đầu ra của bước đề xuất) trước khi gọi `decide`, sai thì 422 `proposal_invalid`; migration thêm `platform.approval_decisions.edited boolean NOT NULL DEFAULT false` và `edited_payload jsonb NULL`; `resume_payload` mang `edited_proposal` (R5.4, R5.5, D18).
+10. Test âm DWK2, DWK3 (việc), DWK8-DWK16, DWK22.
 
 ## Tiêu chí chấp nhận
 
@@ -64,11 +65,13 @@ proposal, eligible_deciders}`, `eligible_deciders` đọc từ hồ sơ DW lúc 
 - [ ] R5.1: loại `email.send` ở A2 → lệnh mở approval `dw.decision` có `eligible_deciders` là Validator và Business Owner.
 - [ ] R5.2: loại `lead.score` ở A3 → `auto` và một dòng audit `dw.decision.auto`.
 - [ ] R5.3 (DWK15): người giữ `approvals.decide` ngoài `eligible_deciders` quyết → 409 `not_eligible_decider`, không dòng `approval_decisions`.
+- [ ] R5.4 (DWK22): `edited_proposal` thiếu `subject` → 422 `proposal_invalid`, không dòng quyết định, lượt chạy vẫn `waiting_approval`.
+- [ ] R5.5: duyệt có sửa ghi `edited = true` và `edited_payload`; lượt chạy tiếp nhận `edited_proposal`; từ chối kèm lý do chạy tiếp với `comment`.
 - [ ] R6.1 (DWK16): lượt chạy của DW `paused` gọi công cụ qua `ToolExecutor` → `dw_not_operating`, công cụ không chạy, một dòng từ chối trong `platform.tool_executions`.
 - [ ] Xong: `make test-unit test-contract test-architecture` xanh.
 
 ## Nguồn
 
-- `packages/python/dw_agent_runtime/src/dw_agent_runtime/approval_flow.py:85-96`; `apps/api/src/dw_api/bootstrap/runtime.py:238-240`; `packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py:79`; `apps/worker/src/dw_worker/consumers/__init__.py:22`; spec: R1.4, R3-R6, DWK2, DWK3, DWK8-DWK16.
+- `packages/python/dw_agent_runtime/src/dw_agent_runtime/approval_flow.py:85-96`; `apps/api/src/dw_api/bootstrap/runtime.py:238-240`; `packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py:79`; `apps/worker/src/dw_worker/consumers/__init__.py:22`; spec: R1.4, R3-R6, DWK2, DWK3, DWK8-DWK16, DWK22.
 
 ## Comments

@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: 01
 Area: studio
-Yêu cầu: R5.1, R5.2, R5.3, R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.7, R6.8, R6.9, G1, WFL9, WFL10, WFL11, WFL12, WFL13, WFL14, WFL15, WFL16, WFL17
+Yêu cầu: R5.1, R5.2, R5.3, R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.7, R6.8, R6.9, R6.10, R6.11, R6.12, R6.13, G1, WFL9, WFL10, WFL11, WFL12, WFL13, WFL14, WFL15, WFL16, WFL17, WFL18
 
 ## Mục tiêu
 
@@ -22,7 +22,7 @@ tiếp (R5, R6, G1).
 2. Nút: `ai.llm@1` theo R5 (gateway, `PromptRegistry`, kiểm `output_schema` bằng `jsonschema`, bàn giao
    khi sai hay dưới `min_confidence`); `tool.call@1` qua `ToolExecutor` với khóa `<run_id>:<step_id>`,
    từ chối `tool_not_allowed` trước khi gọi; `human.approval@1` hỏi `DecisionGate`, `auto` thì lane
-   `approved`, không thì interrupt với payload của cổng và lane theo `approved` khi chạy tiếp;
+   `approved`, không thì interrupt với payload của cổng và lane theo `approved` khi chạy tiếp, đầu ra `proposal` là `edited_proposal` khi có (R6.10);
    `time.wait@1` interrupt `{wait: "timer", wake_at}`; `logic.switch@1` cạnh có điều kiện so bằng.
 3. `LangGraphWorkflowRunner._handle_outcome`: interrupt có `wait: "timer"` → không approval, gọi
    `WaitRecorderPort.record_timer(run_context, run_id, wake_at)` (cấp bởi `WorkQueue`: việc
@@ -50,16 +50,20 @@ tiếp (R5, R6, G1).
 - [ ] R6.2 (WFL11): DW thiếu loại `email.send` → việc `failed` `decision_class_missing`, `trail` rỗng; tham số sai kiểu → `parameter_invalid`.
 - [ ] R6.9 (WFL17): DW khai `email.send` là `none`, và `reversible: true` trái tài liệu → việc `failed` `decision_class_mismatch`, `trail` rỗng.
 - [ ] R6.3 (WFL12): mức A2 cho loại `external` → lượt chạy `waiting_approval`, việc `waiting_approval`, công cụ chưa gọi; duyệt → chạy tiếp lane `approved`; từ chối → lane `rejected`.
-- [ ] R6.4 (WFL13): công cụ ngoài `allowed_tools` → `tool_not_allowed`, `ToolExecutor` không được gọi.
-- [ ] R6.5 (WFL14): `time.wait` → không dòng approval, việc `waiting_timer`; hai lane `dw_timers` song song → một lần chạy tiếp.
-- [ ] R6.6 (WFL15): `trail` không chứa chuỗi nào của đầu ra model hay payload.
+- [ ] R6.4: bước `tool.call` gọi `ToolExecutor` với khóa `<run_id>:<step_id>`.
+- [ ] R6.11 (WFL13): công cụ ngoài `allowed_tools` → `tool_not_allowed`, `ToolExecutor` không được gọi.
+- [ ] R6.5 (WFL14): `time.wait` → không dòng approval, việc `waiting_timer` với `wake_at`.
+- [ ] R6.12 (WFL14): hai lane `dw_timers` song song trên một việc quá hạn → một lần chạy tiếp; việc chưa tới hạn không được chạy tiếp.
+- [ ] R6.13: `GET /v1/work-items/{id}` trả `trail` khi lượt đang chờ và khi đã kết thúc.
+- [ ] R6.6 (WFL15): `trail` có một mục mỗi nút đã chạy và không chứa chuỗi nào của đầu ra model hay payload.
 - [ ] R6.7: lượt đi hết → việc `done` có `closed_at`; lượt lỗi → việc `failed`.
 - [ ] R6.8 (WFL16): dừng sau bước gửi rồi chạy tiếp → công cụ gửi được gọi đúng một lần; gỡ `durability="sync"` thì test đỏ.
+- [ ] R6.10 (WFL18): duyệt với tiêu đề đã sửa → thư gửi mang tiêu đề đã sửa.
 - [ ] G1: `test_approval_flow.py` xanh không sửa.
 - [ ] Xong: `make test-unit test-contract test-architecture` xanh.
 
 ## Nguồn
 
-- `packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langgraph_runner.py:609-673`; `packages/python/dw_agent_runtime/src/dw_agent_runtime/registry.py:29-47`; `docs/adr/0112-workflows-compile-to-langgraph-one-effect-per-node.md:117-135`; spec: R5, R6, G1, WFL9-WFL17.
+- `packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langgraph_runner.py:609-673`; `packages/python/dw_agent_runtime/src/dw_agent_runtime/registry.py:29-47`; `docs/adr/0112-workflows-compile-to-langgraph-one-effect-per-node.md:117-135`; spec: R5, R6, G1, WFL9-WFL18.
 
 ## Comments

@@ -378,6 +378,8 @@ Nhóm thêm theo D15, D16 và D17 (29/10/2026); cả tám YC ở W1. Chuẩn Dig
 
 ## Câu hỏi còn mở
 
+- Q-EOS. Digital Worker của nền tảng này có nên cắm được vào FPT AI EOS như một "Agent bên thứ ba" (bổ trợ EOS) hay đứng riêng (cạnh tranh)? Chủ: Đạt. Không đổi: lát DW đầu (D17).
+
 ## Quyết định
 
 - 22/10/2026 (người đặt yêu cầu): D1: dữ liệu thuộc về workspace, và workspace lồng thành cây; bản ghi có người phụ trách (người hay nhóm) và workspace sở hữu; vai trò cấp quyền theo mức truy cập; Marketing với tới Sales bằng quyền, không bằng sao chép. ADR-0102 (Accepted), ADR-0104 (Accepted).
@@ -591,3 +593,14 @@ Nhóm thêm theo D15, D16 và D17 (29/10/2026); cả tám YC ở W1. Chuẩn Dig
   sai thì: đường A (lát DW chờ custom-objects, tenant-config và workflow-engine đầy đủ) làm lead thành bản ghi, bỏ spec
   `wf-lite` và gộp tiêu chí của nó vào workflow-engine, và YC2 áp ngay từ lát đầu; đường B (lát DW trên graph viết tay,
   không tài liệu quy trình) bỏ `wf-lite` và đổi leadcare/01 thành một graph mã của nền tảng.
+- 29/10/2026 (Đạt): D18: sau khi đối chiếu với FPT AI EOS (console-agents.fpt.ai và tài liệu công khai docs-agents.fpt.ai,
+  xem chỉ đọc ngày 29/10/2026), cả năm khuyến nghị: (1) giữ hướng D15 và đường C của D17, D17 thành quyết định của Đạt: EOS
+  hôm nay là trình dựng agent chat (trigger và "Hiệu suất" còn "sắp có", người đang chat tự duyệt), còn lát DW nhắm đúng
+  phần việc chạy nền, hàng đợi có chủ, người duyệt có tên và scorecard; (2) màn loại quyết định hiện mức hiệu lực bằng chữ
+  "Tự động / Hỏi / Chặn" trên nền A0-A4, "Chặn" là thao tác ngoài `allowed_tools`, không dữ liệu mới; (3) thẻ duyệt của
+  Digital Worker có "Sửa rồi duyệt" (bản sửa khớp schema của đề xuất) và "Từ chối kèm lý do" (lý do về lại lượt chạy),
+  scorecard tách duyệt nguyên văn với duyệt có sửa; (4) trợ lý AI dựng quy trình (YC125) đi vòng hỏi lại, kế hoạch, đề
+  xuất dạng diff để duyệt, từ chối hay sửa, nhận tài liệu và ảnh quy trình làm đầu vào, và không bao giờ đổi loại quyết
+  định, mức tự chủ, kết nối, model hay thông tin đăng nhập; (5) cắm vào EOS như agent bên thứ ba là câu hỏi mở Q-EOS. Không
+  nhận: chat làm sản phẩm chính, người kích hoạt tự duyệt, phát hành một người, cổng sẵn sàng chỉ để gợi ý. Sửa: D17 (xác
+  nhận), Câu hỏi còn mở; spec `digital-worker` R5.4, R5.5, R7.1, R9.2; spec `wf-lite` R6.10; spec `wf-ai` khi viết.

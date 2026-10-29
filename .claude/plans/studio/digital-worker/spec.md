@@ -72,6 +72,8 @@ Một đề xuất trên mức hiệu lực chờ đúng người duyệt, qua c
 - R5.1 KHI `DecisionGate.check` được gọi cho một loại quyết định mà `requires_person` đúng, cổng PHẢI trả lệnh mở approval loại `dw.decision` với payload gồm `dw_id`, `decision_class`, `effective_level`, `proposal` và `eligible_deciders` (Validator, Business Owner) đọc từ hồ sơ DW lúc đó.
 - R5.2 KHI `requires_person` sai, cổng PHẢI trả `auto` và ghi một dòng audit `dw.decision.auto` với `decision_class` và `effective_level`, đứng tên DW.
 - R5.3 NẾU người quyết một approval `dw.decision` không có trong `eligible_deciders` của nó, THÌ `ApproveAndResumeService.decide` PHẢI trả 409 `not_eligible_decider` và không ghi quyết định nào.
+- R5.4 NẾU người duyệt một approval `dw.decision` gửi `edited_proposal` không khớp `proposal_schema` mà cổng ghi trong payload, THÌ route quyết định PHẢI trả 422 `proposal_invalid` và không ghi quyết định nào (D18).
+- R5.5 KHI một approval `dw.decision` được quyết, `ApproveAndResumeService` PHẢI chạy tiếp lượt chạy với `approved`, `comment` và `edited_proposal` (khi có), và ghi `edited` đúng hay sai lên dòng quyết định để scorecard đọc (D18).
 
 ### R6 — Dừng một Digital Worker
 
@@ -83,7 +85,7 @@ Tạm dừng có hiệu lực ở cửa hiệu ứng, không chỉ ở lane (ADR
 
 Business Owner đọc DW làm được gì từ dữ liệu, không từ lời DW tự báo (YC122).
 
-- R7.1 `GET /v1/digital-workers/{id}/scorecard?days=<n>` PHẢI trả, cho các việc tạo trong `n` ngày gần nhất (Asia/Ho_Chi_Minh), số việc theo trạng thái, tỷ lệ `done`, tỷ lệ `handed_off`, số approval `dw.decision` được duyệt và bị từ chối, và tổng `model_cost_usd` của lượt chạy, tính bằng truy vấn trên `platform.work_items`, `platform.approval_requests`, `platform.approval_decisions` và `platform.worker_runs`.
+- R7.1 `GET /v1/digital-workers/{id}/scorecard?days=<n>` PHẢI trả, cho các việc tạo trong `n` ngày gần nhất (Asia/Ho_Chi_Minh), số việc theo trạng thái, tỷ lệ `done`, tỷ lệ `handed_off`, số approval `dw.decision` được duyệt nguyên văn, duyệt có sửa và bị từ chối, và tổng `model_cost_usd` của lượt chạy, tính bằng truy vấn trên `platform.work_items`, `platform.approval_requests`, `platform.approval_decisions` và `platform.worker_runs`.
 - R7.2 NẾU `days` ngoài 1-90, THÌ API PHẢI trả 422 `days_out_of_range`; 1 và 90 thì nhận.
 - R7.3 KHI một lời gọi model của lượt chạy DW xong, bộ ghi chi phí PHẢI cộng chi phí ước tính vào `platform.worker_runs.model_cost_usd` của lượt đó bằng một câu `UPDATE` cộng dồn.
 
@@ -92,7 +94,8 @@ Business Owner đọc DW làm được gì từ dữ liệu, không từ lời D
 Business Owner đổi mức đã kiếm; nâng cần người thứ hai, hạ có hiệu lực ngay (YC123, ADR-0128 (Proposed) quyết 5).
 
 - R8.1 KHI Business Owner hay Technical Owner hạ `earned_level` qua `POST /v1/digital-workers/{id}/decision-classes/{key}/autonomy`, API PHẢI ghi mức mới và dòng audit `dw.autonomy.lowered` trong một giao dịch, và cổng đọc mức mới ở lần hỏi kế tiếp.
-- R8.2 KHI Business Owner nâng `earned_level`, API PHẢI mở một approval `dw.autonomy.raise` không gắn lượt chạy và không đổi mức; handler của `dw.autonomy.raise.decided` PHẢI ghi mức mới chỉ khi quyết định là duyệt.
+- R8.2 KHI Business Owner nâng `earned_level`, API PHẢI mở một approval `dw.autonomy.raise` không gắn lượt chạy và không đổi mức.
+- R8.6 KHI sự kiện `dw.autonomy.raise.decided` tới, handler PHẢI ghi mức mới chỉ khi quyết định là duyệt.
 - R8.3 NẾU người quyết `dw.autonomy.raise` là người đề nghị hay không ghi lý do, THÌ `ApproveAndResumeService.decide` PHẢI trả 409 và không ghi quyết định nào.
 - R8.4 NẾU mức đề nghị cao hơn `ceiling` của loại quyết định, THÌ API PHẢI trả 422 `above_ceiling` và không mở approval.
 - R8.5 NẾU người nâng không phải Business Owner, hay người hạ không phải Business Owner hay Technical Owner, THÌ API PHẢI trả 403 `not_dw_owner` và không đổi gì.
@@ -102,7 +105,7 @@ Business Owner đổi mức đã kiếm; nâng cần người thứ hai, hạ c�
 Business Owner, Validator và người làm việc thấy DW, hàng đợi và thẻ duyệt trên web (antd).
 
 - R9.1 Trang `/digital-workers` PHẢI liệt kê DW của workspace với tên, trạng thái, mandate rút gọn và số việc đang mở.
-- R9.2 Trang `/digital-workers/[id]` PHẢI hiện hồ sơ, bốn người, các loại quyết định với trần, mức đã kiếm và mức hiệu lực, scorecard 30 ngày và cây quy trình chỉ đọc.
+- R9.2 Trang `/digital-workers/[id]` PHẢI hiện hồ sơ, bốn người, các loại quyết định với trần, mức đã kiếm và mức hiệu lực hiện bằng chữ "Tự động", "Hỏi" hay "Chặn" ("Chặn" là thao tác ngoài `allowed_tools`) kèm mức A0-A4 (D18), scorecard 30 ngày và cây quy trình chỉ đọc.
 - R9.3 Trang `/work` PHẢI hiện hàng đợi chung lọc theo trạng thái và loại người giữ, cùng gói bàn giao của việc `handed_off`.
 - R9.4 Trang `/approvals` PHẢI hiện approval `dw.decision` thành một thẻ có tên DW, loại quyết định, mức hiệu lực và đề xuất.
 - R9.5 NẾU API trả 403 hay 404 cho một trang DW, THÌ trang PHẢI hiện trạng thái không có quyền hay không tìm thấy và không hiện dữ liệu nào.
@@ -173,10 +176,11 @@ R9. Ant Design v6, thanh trên cùng có mục "Digital Worker" và "Hàng đợ
 | DWK14 | người nhận bàn giao phải là thành viên workspace                            | R4.3       | người nhận của tenant B: từ chối, người giữ không đổi                                                                    |
 | DWK15 | chỉ người trong `eligible_deciders` quyết `dw.decision`                     | R5.3       | người giữ `approvals.decide` không là Validator hay Business Owner: 409, không dòng quyết định                           |
 | DWK16 | DW không `operating` không gây hiệu ứng ở cửa công cụ                       | R6.1       | lượt chạy của DW `paused` gọi công cụ qua `ToolExecutor`: từ chối `dw_not_operating`, công cụ không chạy                 |
-| DWK17 | nâng mức không đổi gì trước khi người thứ hai duyệt                         | R8.2       | nâng: mức vẫn cũ, có một approval; từ chối approval: mức vẫn cũ                                                          |
+| DWK17 | nâng mức không đổi gì trước khi người thứ hai duyệt                         | R8.2, R8.6 | nâng: mức vẫn cũ, có một approval; từ chối approval: mức vẫn cũ                                                          |
 | DWK18 | người đề nghị nâng không tự duyệt                                           | R8.3       | Business Owner duyệt approval nâng của chính mình: 409, mức không đổi                                                    |
 | DWK19 | mức đề nghị không vượt trần                                                 | R8.4       | đề nghị A4 với trần A3: 422, không approval                                                                              |
 | DWK20 | chỉ chủ DW nâng hay hạ                                                      | R8.5       | Validator hạ mức: 403, mức không đổi                                                                                     |
+| DWK22 | bản sửa sai schema không thành quyết định                                   | R5.4       | Validator duyệt với `edited_proposal` thiếu `subject`: 422 `proposal_invalid`, không dòng quyết định, lượt chạy vẫn chờ  |
 | DWK21 | trang DW không hiện dữ liệu khi API từ chối                                 | R9.5       | API mock trả 403: trang không có hàng dữ liệu nào                                                                        |
 
 ## Tiêu chí thành công
@@ -205,6 +209,7 @@ R9. Ant Design v6, thanh trên cùng có mục "Digital Worker" và "Hàng đợ
 - 29/10/2026 (agent, tạm): Loại quyết định của DW nêu trong thân yêu cầu tạo; wf-lite kiểm lúc chạy rằng mọi loại mà tài liệu quy trình dùng đều có trên DW, vì dw/01 đi trước wf-lite/01 theo hàng đợi. Nếu sai thì: API tạo DW đọc loại quyết định từ tài liệu đã ghim và thân yêu cầu chỉ nêu mức.
 - 29/10/2026 (agent, tạm): Mức hiệu lực đọc ở lúc cổng hỏi, không đóng dấu lúc lượt chạy bắt đầu, nên hạ mức có hiệu lực cả với lượt đang chạy ở cổng kế tiếp. Nếu sai thì: đóng dấu mức lên lượt chạy và R8.1 chỉ áp lượt mới.
 - 29/10/2026 (agent, tạm): Chi phí của scorecard là cột `model_cost_usd` của lượt chạy cho tới khi sổ sử dụng có; khi đó sổ là chủ và cột thành dẫn xuất hay bị bỏ. Nếu sai thì: scorecard không có cột chi phí cho tới usage-and-limits/02.
+- 29/10/2026 (Đạt): D18 theo khuyến nghị sau khi đối chiếu FPT AI EOS: chữ "Tự động / Hỏi / Chặn", "Sửa rồi duyệt" và "Từ chối kèm lý do". Sửa: R5.4, R5.5, R7.1, R9.2, DWK22.
 - 29/10/2026 (agent, tạm): Cây quy trình chỉ đọc vẽ bằng antd, không `@xyflow/react`. Nếu sai thì: trang chuyển dưới `apps/web/app/studio/**/canvas/**` và dùng canvas của ADR-0101 (Accepted).
 
 ## Danh sách ticket

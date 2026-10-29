@@ -50,6 +50,7 @@ Mọi lỗi của một tài liệu được báo cùng lúc, trước khi worke
 Không tài liệu nào để một hiệu ứng ra ngoài xảy ra mà không có cổng của loại quyết định của nó (D16).
 
 - R4.1 NẾU một `tool.call` gọi công cụ có `side_effect_level` `external` hay `critical` mà không có `human.approval` cùng `decision_class` đứng trước nó trên mọi đường từ gốc, THÌ bộ kiểm PHẢI trả `wf.hitl_gate_missing`.
+- R4.3 NẾU đầu vào của một `tool.call` có cổng theo R4.1 tham chiếu tới đầu ra của một bước `ai.llm` thay vì `proposal` của bước `human.approval` gác nó, THÌ bộ kiểm PHẢI trả `wf.unapproved_input` (D18).
 - R4.2 NẾU `side_effect_level` của công cụ cao hơn `effect_level` của loại quyết định mà bước `tool.call` khai, THÌ bộ kiểm PHẢI trả `wf.effect_above_class`.
 
 ### R5 — Bước AI có đầu ra cấu trúc
@@ -65,12 +66,16 @@ Bước `ai.llm` phán đoán trong khung: prompt có phiên bản, đầu ra c�
 Mỗi tài liệu biên dịch một lần thành StateGraph, chạy, dừng ở chỗ chờ và chạy tiếp sau checkpoint (ADR-0112 (Accepted) quyết 4).
 
 - R6.1 Trình biên dịch PHẢI dựng `StateGraph` với một kênh `out__<id>` mỗi bước, `logic.switch` là cạnh có điều kiện tới lane rồi một nút gộp, và mỗi chờ là `interrupt()` ở dòng đầu nút của nó, đăng ký qua `GraphRegistry` với `worker_id` `dw:<key>` và `graph_version` là `version` của tài liệu.
-- R6.2 KHI lane `dw_work` yêu cầu lượt chạy cho một việc, bộ khởi chạy PHẢI kiểm `parameters` của DW theo `variables[]` và sự có mặt trên DW của mọi `decision_class` tài liệu dùng, và NẾU sai THÌ PHẢI chuyển việc sang `failed` với `parameter_invalid` hay `decision_class_missing` mà không chạy bước nào.
+- R6.2 NẾU `parameters` của DW không khớp `variables[]` của tài liệu hay DW thiếu một `decision_class` mà tài liệu dùng, THÌ bộ khởi chạy PHẢI chuyển việc sang `failed` với `parameter_invalid` hay `decision_class_missing` mà không chạy bước nào.
 - R6.9 NẾU một loại quyết định trên DW có `effect_level` khác của tài liệu, `ceiling` cao hơn của tài liệu, hay `reversible` đúng khi tài liệu nói sai, THÌ bộ khởi chạy PHẢI chuyển việc sang `failed` với `decision_class_mismatch` mà không chạy bước nào.
 - R6.3 KHI một bước `human.approval@1` chạy, bước PHẢI hỏi `DecisionGate` (digital-worker:R5.1) và đi lane "Duyệt" ngay khi cổng trả `auto`, còn không thì interrupt với approval `dw.decision`, việc sang `waiting_approval`, rồi đi lane "Duyệt" hay "Từ chối" theo quyết định khi chạy tiếp.
-- R6.4 KHI một bước `tool.call@1` chạy, bước PHẢI gọi công cụ qua `ToolExecutor` với khóa chống lặp `<run_id>:<step_id>`; NẾU công cụ không có trong `allowed_tools` của DW, THÌ bước PHẢI từ chối `tool_not_allowed` mà không gọi `ToolExecutor`.
-- R6.5 KHI một bước `time.wait@1` chạy, bước PHẢI interrupt với `wake_at`, runner PHẢI ghi việc `waiting_timer` với `wake_at` thay vì mở approval, và lane `dw_timers` PHẢI chạy tiếp mỗi lượt có `wake_at` đã qua đúng một lần.
-- R6.6 Mỗi nút PHẢI thêm vào kênh `trail` của lượt chạy một mục `{step_id, type, status, at}` (chỉ định danh và trạng thái, không nội dung), và `GET /v1/work-items/{id}` PHẢI trả `trail` đó.
+- R6.10 KHI một bước `human.approval@1` chạy tiếp với quyết định duyệt, bước PHẢI ghi vào `out__<id>.proposal` bản `edited_proposal` khi có, không thì đề xuất gốc, để bước sau tham chiếu đúng nội dung đã được duyệt (D18).
+- R6.4 KHI một bước `tool.call@1` chạy, bước PHẢI gọi công cụ qua `ToolExecutor` với khóa chống lặp `<run_id>:<step_id>`.
+- R6.11 NẾU công cụ của một bước `tool.call@1` không có trong `allowed_tools` của DW, THÌ bước PHẢI từ chối `tool_not_allowed` mà không gọi `ToolExecutor`.
+- R6.5 KHI một bước `time.wait@1` interrupt với `wake_at`, runner PHẢI ghi việc `waiting_timer` với `wake_at` thay vì mở approval.
+- R6.12 Lane `dw_timers` PHẢI chạy tiếp mỗi lượt có `wake_at` đã qua đúng một lần.
+- R6.6 Mỗi nút PHẢI thêm vào kênh `trail` của lượt chạy một mục `{step_id, type, status, at}` (chỉ định danh và trạng thái, không nội dung).
+- R6.13 `GET /v1/work-items/{id}` PHẢI trả `trail` của lượt chạy gắn với việc.
 - R6.7 KHI lượt chạy của một việc kết thúc `completed` mà không bàn giao, hay `failed`, bộ khởi chạy PHẢI chuyển việc sang `done` hay `failed` tương ứng và ghi `closed_at`.
 - R6.8 Mọi lần gọi graph của wf-lite PHẢI truyền `durability="sync"` và `recursion_limit`, để checkpoint của một bước được ghi trước khi bước sau gây hiệu ứng.
 
@@ -95,25 +100,27 @@ Mỗi tài liệu biên dịch một lần thành StateGraph, chạy, dừng ở
 
 ## Kiểm soát
 
-| #     | Kiểm soát                                                      | Yêu cầu    | Test âm                                                                                                                    |
-| ----- | -------------------------------------------------------------- | ---------- | -------------------------------------------------------------------------------------------------------------------------- |
-| WFL1  | tài liệu sai hình không được nạp                               | R1.2       | tệp có khóa lạ và tệp tên lệch phiên bản: `wf.schema_invalid`, catalog không có tài liệu đó                                |
-| WFL2  | loại bước lạ hay config sai bị từ chối                         | R2.2       | bước `http.request@1` và `ai.llm@1` thiếu `prompt`: hai lỗi đúng mã                                                        |
-| WFL3  | tham chiếu tới bước không đứng trước bị từ chối                | R3.2       | tham chiếu tới bước ở lane khác của switch: `wf.ref_not_dominating`                                                        |
-| WFL4  | switch phải có lane mặc định                                   | R3.3       | switch không `default`: `wf.router_not_total`                                                                              |
-| WFL5  | công cụ và loại quyết định phải được khai                      | R3.4       | công cụ không có spec, loại không khai: hai lỗi đúng mã                                                                    |
-| WFL6  | tài liệu lỗi chặn khởi động                                    | R3.5       | thêm một tệp lỗi vào thư mục gói tạm: dựng ứng dụng API và worker đều ném lỗi nêu tệp                                      |
-| WFL7  | hiệu ứng ra ngoài phải có cổng cùng loại quyết định đứng trước | R4.1       | `tool.call` email không có `human.approval` trước, và có cổng nhưng ở lane khác: `wf.hitl_gate_missing`                    |
-| WFL8  | công cụ không được vượt mức hiệu ứng của loại quyết định       | R4.2       | công cụ `external` dưới loại `internal`: `wf.effect_above_class`                                                           |
-| WFL9  | đầu ra model sai schema thì bàn giao, không chạy tiếp          | R5.2       | model giả trả JSON thiếu trường: việc `handed_off`, bước sau không có trong `trail`                                        |
-| WFL10 | độ chắc chắn dưới ngưỡng thì bàn giao                          | R5.3       | `confidence` 0,4 với ngưỡng 0,7: việc `handed_off`, công cụ gửi không được gọi                                             |
-| WFL11 | tham số sai hay thiếu loại quyết định thì không chạy bước nào  | R6.2       | DW thiếu loại `email.send`: việc `failed` `decision_class_missing`, `trail` rỗng                                           |
-| WFL12 | cổng đòi người thì không đi tiếp trước quyết định              | R6.3       | mức hiệu lực A2 với loại `external`: lượt chạy `waiting_approval`, công cụ gửi chưa được gọi                               |
-| WFL13 | công cụ ngoài `allowed_tools` không được gọi                   | R6.4       | DW không có `email.send` trong `allowed_tools`: bước từ chối, `ToolExecutor` không được gọi                                |
-| WFL14 | chờ hẹn giờ không mở approval và chỉ được chạy tiếp một lần    | R6.5       | interrupt `wait: timer`: không dòng approval nào; hai lane `dw_timers` song song: một lần chạy tiếp                        |
-| WFL15 | `trail` không mang nội dung                                    | R6.6       | đầu ra model có email người: không chuỗi nào của đầu ra xuất hiện trong `trail` trả về                                     |
-| WFL16 | hiệu ứng không lặp lại khi chạy tiếp sau sự cố                 | R6.4, R6.8 | dừng tiến trình sau bước gửi, chạy tiếp: `ToolExecutor` thấy khóa đã dùng, công cụ được gọi một lần                        |
-| WFL17 | DW không nới loại quyết định của tài liệu                      | R6.9       | DW khai `email.send` là `none` hay `reversible: true` trái tài liệu: việc `failed` `decision_class_mismatch`, `trail` rỗng |
+| #     | Kiểm soát                                                      | Yêu cầu     | Test âm                                                                                                                    |
+| ----- | -------------------------------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------- |
+| WFL1  | tài liệu sai hình không được nạp                               | R1.2        | tệp có khóa lạ và tệp tên lệch phiên bản: `wf.schema_invalid`, catalog không có tài liệu đó                                |
+| WFL2  | loại bước lạ hay config sai bị từ chối                         | R2.2        | bước `http.request@1` và `ai.llm@1` thiếu `prompt`: hai lỗi đúng mã                                                        |
+| WFL3  | tham chiếu tới bước không đứng trước bị từ chối                | R3.2        | tham chiếu tới bước ở lane khác của switch: `wf.ref_not_dominating`                                                        |
+| WFL4  | switch phải có lane mặc định                                   | R3.3        | switch không `default`: `wf.router_not_total`                                                                              |
+| WFL5  | công cụ và loại quyết định phải được khai                      | R3.4        | công cụ không có spec, loại không khai: hai lỗi đúng mã                                                                    |
+| WFL6  | tài liệu lỗi chặn khởi động                                    | R3.5        | thêm một tệp lỗi vào thư mục gói tạm: dựng ứng dụng API và worker đều ném lỗi nêu tệp                                      |
+| WFL7  | hiệu ứng ra ngoài phải có cổng cùng loại quyết định đứng trước | R4.1        | `tool.call` email không có `human.approval` trước, và có cổng nhưng ở lane khác: `wf.hitl_gate_missing`                    |
+| WFL8  | công cụ không được vượt mức hiệu ứng của loại quyết định       | R4.2        | công cụ `external` dưới loại `internal`: `wf.effect_above_class`                                                           |
+| WFL9  | đầu ra model sai schema thì bàn giao, không chạy tiếp          | R5.2        | model giả trả JSON thiếu trường: việc `handed_off`, bước sau không có trong `trail`                                        |
+| WFL10 | độ chắc chắn dưới ngưỡng thì bàn giao                          | R5.3        | `confidence` 0,4 với ngưỡng 0,7: việc `handed_off`, công cụ gửi không được gọi                                             |
+| WFL11 | tham số sai hay thiếu loại quyết định thì không chạy bước nào  | R6.2        | DW thiếu loại `email.send`: việc `failed` `decision_class_missing`, `trail` rỗng                                           |
+| WFL12 | cổng đòi người thì không đi tiếp trước quyết định              | R6.3        | mức hiệu lực A2 với loại `external`: lượt chạy `waiting_approval`, công cụ gửi chưa được gọi                               |
+| WFL13 | công cụ ngoài `allowed_tools` không được gọi                   | R6.11       | DW không có `email.send` trong `allowed_tools`: bước từ chối, `ToolExecutor` không được gọi                                |
+| WFL14 | chờ hẹn giờ không mở approval và chỉ được chạy tiếp một lần    | R6.5, R6.12 | interrupt `wait: timer`: không dòng approval nào; hai lane `dw_timers` song song: một lần chạy tiếp                        |
+| WFL15 | `trail` không mang nội dung                                    | R6.6        | đầu ra model có email người: không chuỗi nào của đầu ra xuất hiện trong `trail` trả về                                     |
+| WFL16 | hiệu ứng không lặp lại khi chạy tiếp sau sự cố                 | R6.4, R6.8  | dừng tiến trình sau bước gửi, chạy tiếp: `ToolExecutor` thấy khóa đã dùng, công cụ được gọi một lần                        |
+| WFL18 | công cụ dùng bản đã duyệt, không bản nháp của model            | R6.10       | duyệt với tiêu đề đã sửa: thư gửi mang tiêu đề đã sửa, không tiêu đề của bản nháp                                          |
+| WFL19 | hiệu ứng có cổng chỉ nhận nội dung đã duyệt                    | R4.3        | `tool.call` email tham chiếu `steps.draft.subject` thay vì `steps.approve_send.proposal.subject`: `wf.unapproved_input`    |
+| WFL17 | DW không nới loại quyết định của tài liệu                      | R6.9        | DW khai `email.send` là `none` hay `reversible: true` trái tài liệu: việc `failed` `decision_class_mismatch`, `trail` rỗng |
 
 ## Tiêu chí xong
 
@@ -132,6 +139,7 @@ Mỗi tài liệu biên dịch một lần thành StateGraph, chạy, dừng ở
 ## Quyết định
 
 - 29/10/2026 (agent, tạm): Sổ có sáu loại, thêm `logic.switch@1` (chỉ so bằng một giá trị, lane mặc định bắt buộc) vào năm loại của hàng đợi, vì chăm sóc lead phải rẽ theo phân loại phản hồi và theo duyệt hay từ chối. Nếu sai thì: bỏ `logic.switch`, chăm sóc lead luôn nhắc rồi bàn giao, và nhánh theo phân loại chuyển vào gói bàn giao.
+- 29/10/2026 (Đạt): D18: bước duyệt trả bản đã duyệt (có thể đã sửa) làm đầu ra. Sửa: R4.3, R6.10, WFL18, WFL19.
 - 29/10/2026 (agent, tạm): `trail` trong trạng thái lượt chạy thay cho một bảng bước, vì `platform.run_steps` là của telemetry-and-audit/03 và hai bảng bước là hai câu trả lời. Nếu sai thì: wf-lite tạo `platform.run_steps` tối thiểu và telemetry-and-audit/03 mở rộng nó.
 - 29/10/2026 (agent, tạm): "Chờ phản hồi" là `time.wait` rồi một công cụ đọc hộp thư, không là chờ sự kiện tương quan (W3). Nếu sai thì: thêm loại `event.wait@1` với khóa tương quan và cửa nhận thư trả lời.
 

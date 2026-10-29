@@ -21,7 +21,7 @@ Thí điểm D4 thành một DW chăm sóc lead ở A2 (D15): DW nhận lead có
 
 Business Owner có một quy trình chăm sóc lead chạy được mà không viết gì.
 
-- R1.1 Tệp `configs/packs/marketing/workflows/lead_care@1.0.0.yaml` PHẢI qua bộ kiểm của wf-lite không lỗi và đi theo thứ tự `trigger.work_item` → `ai.llm` chấm điểm (`lead.score`) → `ai.llm` soạn thư (`email.draft`) → `human.approval` (`email.send`) → `tool.call` `email.send` → `time.wait` → `tool.call` `mailbox.fetch_reply` → `ai.llm` phân loại (`reply.classify`) → `logic.switch` theo nhãn (nhãn `no_reply`: `human.approval` rồi `tool.call` thư nhắc) → `tool.call` `work.handoff` cho sales.
+- R1.1 Tệp `configs/packs/marketing/workflows/lead_care@1.0.0.yaml` PHẢI qua bộ kiểm của wf-lite không lỗi và đi theo thứ tự `trigger.work_item` → `ai.llm` chấm điểm (`lead.score`) → `ai.llm` soạn thư (`email.draft`) → `human.approval` (`email.send`, đề xuất là thư đã soạn) → `tool.call` `email.send` với tiêu đề và thân lấy từ `proposal` của bước duyệt → `time.wait` → `tool.call` `mailbox.fetch_reply` → `ai.llm` phân loại (`reply.classify`) → `logic.switch` theo nhãn (nhãn `no_reply`: `human.approval` rồi `tool.call` thư nhắc) → `tool.call` `work.handoff` cho sales.
 - R1.2 Gói PHẢI khai loại quyết định `lead.score` (`none`, trần A3, khởi đầu A3), `email.draft` (`none`, trần A3, khởi đầu A3), `email.send` (`external`, không đảo được, trần A3, khởi đầu A2), `reply.classify` (`none`, trần A3, khởi đầu A3) và `work.handoff` (`internal`, đảo được, trần A3, khởi đầu A3).
 - R1.3 JSON Schema `configs/packs/marketing/schemas/marketing.lead@1.0.0.json` PHẢI đòi `name` (1-200 ký tự), `email` (định dạng email), `source` (1-64 ký tự), `message` (0-4.000 ký tự) và `consent` gồm `granted` (`true`), `text_version` và `captured_at` (date-time), và cấm trường lạ.
 - R1.4 Ba prompt `configs/prompts/marketing/lead_score@1.0.0.yaml`, `lead_email_draft@1.0.0.yaml`, `lead_reply_classify@1.0.0.yaml` PHẢI nạp được qua `PromptRegistry` với mọi biến lấy từ lead bọc trong `<input>`.
@@ -34,7 +34,8 @@ Form website gửi lead vào hàng đợi của DW mà không qua tài khoản n
 - R2.2 NẾU chữ ký thiếu hay sai, DW không tồn tại, hay `X-DW-Timestamp` lệch giờ máy chủ quá 300 giây, THÌ cửa nhận PHẢI trả 401 `signature_invalid` giống nhau cho mọi trường hợp và không ghi gì.
 - R2.3 NẾU `consent.granted` không là `true` hay thiếu `consent`, THÌ cửa nhận PHẢI trả 422 `consent_missing` và không ghi việc nào.
 - R2.4 Khóa ký của một DW PHẢI là HMAC-SHA256 của id DW dưới bí mật máy chủ `INTAKE_SIGNING_SECRET`, không lưu ở database, và chỉ Business Owner hay Technical Owner đọc được qua `GET /v1/digital-workers/{id}/intake-key`.
-- R2.5 NẾU `INTAKE_SIGNING_SECRET` thiếu hay ngắn hơn 32 byte, THÌ API PHẢI từ chối khởi động khi `settings.is_deployed`, và cửa nhận PHẢI trả 503 ở profile khác.
+- R2.5 TRONG KHI `settings.is_deployed`, NẾU `INTAKE_SIGNING_SECRET` thiếu hay ngắn hơn 32 byte, THÌ API PHẢI từ chối khởi động.
+- R2.7 TRONG KHI không `settings.is_deployed`, NẾU `INTAKE_SIGNING_SECRET` thiếu hay ngắn hơn 32 byte, THÌ cửa nhận PHẢI trả 503 `intake_unconfigured` và không ghi gì.
 - R2.6 Hàm `platform.intake_worker_scope(dw_id uuid)` (SECURITY DEFINER) PHẢI chỉ trả `tenant_id` và `workspace_id` của một DW, để cửa nhận phân giải tenant trước khi có ngữ cảnh mà `dw_app` không đọc được bảng nào khác.
 
 ### R3 — Công cụ của gói
@@ -72,20 +73,20 @@ Mọi hiệu ứng của DW đi qua `ToolExecutor`; người nhận thư không 
 
 ## Kiểm soát
 
-| #     | Kiểm soát                                              | Yêu cầu | Test âm                                                                                                  |
-| ----- | ------------------------------------------------------ | ------- | -------------------------------------------------------------------------------------------------------- |
-| LCP1  | gói không có lỗi bộ kiểm và có cổng trước mỗi thư      | R1.1    | bỏ bước `human.approval` khỏi bản sao của tệp: bộ kiểm trả `wf.hitl_gate_missing`                        |
-| LCP2  | payload lead sai schema bị từ chối                     | R1.3    | lead thêm trường lạ, email sai định dạng: 422, không việc nào                                            |
-| LCP3  | chữ ký sai, cũ hay của DW khác bị từ chối như nhau     | R2.2    | ký bằng khóa của DW khác, timestamp lệch 301 giây, chữ ký rỗng: ba lần 401 cùng thân, đếm việc không đổi |
-| LCP4  | tenant lấy từ dòng DW, không từ thân                   | R2.1    | thân có `tenant_id` của tenant B: việc thuộc tenant của DW, không có dòng nào ở B                        |
-| LCP5  | lead không có đồng ý thì không vào hàng đợi            | R2.3    | `consent.granted = false`: 422, đếm việc không đổi                                                       |
-| LCP6  | khóa ký chỉ chủ DW đọc được                            | R2.4    | Validator gọi `/intake-key`: 403                                                                         |
-| LCP7  | thiếu bí mật ký thì không chạy ở môi trường triển khai | R2.5    | dựng ứng dụng với `is_deployed` và bí mật 16 byte: lỗi khởi động                                         |
-| LCP8  | hàm phân giải chỉ trả hai cột                          | R2.6    | gọi hàm với id DW: đúng hai cột; `dw_app` không ngữ cảnh đọc `platform.digital_workers`: 0 dòng          |
-| LCP9  | người nhận thư không do model chọn                     | R3.2    | đầu vào `email.send` có người nhận khác lead: từ chối, Mailpit không có thư                              |
-| LCP10 | không đồng ý thì không gửi ở cửa công cụ               | R3.2    | payload việc sửa `consent.granted = false` sau khi vào hàng đợi: từ chối `consent_missing`               |
-| LCP11 | không có hộp thư dev thì bàn giao, không đoán          | R3.4    | không `MAILBOX_API_URL`: việc `handed_off`, `problem` nêu `mailbox_unconfigured`                         |
-| LCP12 | demo đỏ khi thư đi trước duyệt                         | R4.4    | bộ kiểm của script gặp Mailpit giả đã có thư trước approval: script trả mã khác 0                        |
+| #     | Kiểm soát                                              | Yêu cầu    | Test âm                                                                                                  |
+| ----- | ------------------------------------------------------ | ---------- | -------------------------------------------------------------------------------------------------------- |
+| LCP1  | gói không có lỗi bộ kiểm và có cổng trước mỗi thư      | R1.1       | bỏ bước `human.approval` khỏi bản sao của tệp: bộ kiểm trả `wf.hitl_gate_missing`                        |
+| LCP2  | payload lead sai schema bị từ chối                     | R1.3       | lead thêm trường lạ, email sai định dạng: 422, không việc nào                                            |
+| LCP3  | chữ ký sai, cũ hay của DW khác bị từ chối như nhau     | R2.2       | ký bằng khóa của DW khác, timestamp lệch 301 giây, chữ ký rỗng: ba lần 401 cùng thân, đếm việc không đổi |
+| LCP4  | tenant lấy từ dòng DW, không từ thân                   | R2.1       | thân có `tenant_id` của tenant B: việc thuộc tenant của DW, không có dòng nào ở B                        |
+| LCP5  | lead không có đồng ý thì không vào hàng đợi            | R2.3       | `consent.granted = false`: 422, đếm việc không đổi                                                       |
+| LCP6  | khóa ký chỉ chủ DW đọc được                            | R2.4       | Validator gọi `/intake-key`: 403                                                                         |
+| LCP7  | thiếu bí mật ký thì không chạy ở môi trường triển khai | R2.5, R2.7 | dựng ứng dụng với `is_deployed` và bí mật 16 byte: lỗi khởi động                                         |
+| LCP8  | hàm phân giải chỉ trả hai cột                          | R2.6       | gọi hàm với id DW: đúng hai cột; `dw_app` không ngữ cảnh đọc `platform.digital_workers`: 0 dòng          |
+| LCP9  | người nhận thư không do model chọn                     | R3.2       | đầu vào `email.send` có người nhận khác lead: từ chối, Mailpit không có thư                              |
+| LCP10 | không đồng ý thì không gửi ở cửa công cụ               | R3.2       | payload việc sửa `consent.granted = false` sau khi vào hàng đợi: từ chối `consent_missing`               |
+| LCP11 | không có hộp thư dev thì bàn giao, không đoán          | R3.4       | không `MAILBOX_API_URL`: việc `handed_off`, `problem` nêu `mailbox_unconfigured`                         |
+| LCP12 | demo đỏ khi thư đi trước duyệt                         | R4.4       | bộ kiểm của script gặp Mailpit giả đã có thư trước approval: script trả mã khác 0                        |
 
 ## Tiêu chí thành công
 
