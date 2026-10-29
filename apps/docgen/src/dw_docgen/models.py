@@ -57,3 +57,6 @@ class DownloadReply(BaseModel):
 class HealthReply(BaseModel):
     status: str
     limits_enforced: bool
+    # Each session's shell under its own uid (ADR 0025). The image test asserts
+    # it, so a compose file that runs the service unisolated fails CI.
+    sessions_isolated: bool

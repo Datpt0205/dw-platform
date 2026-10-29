@@ -4,6 +4,12 @@
 than raise, because the model is expected to read the failure and fix it. Errors
 use the `FileOperationError` vocabulary the protocol defines, so the backend can
 pass them straight through.
+
+Only regular files are read or written. A FIFO the shell made would block an
+`open` with nobody on the other end - the session's processes are all dead by
+now - while the request holds the one semaphore every tenant waits on. And with
+sessions isolated, what an upload creates is handed to the session's uid, or
+its own shell could not change or delete it (ADR 0025).
 """
 
 from __future__ import annotations
@@ -11,6 +17,8 @@ from __future__ import annotations
 import base64
 import binascii
 import logging
+import os
+import stat
 from pathlib import Path
 
 from dw_docgen.models import DownloadResult, UploadFile, UploadResult
@@ -23,6 +31,12 @@ from dw_docgen.workspace import (
 
 logger = logging.getLogger(__name__)
 
+# Never follow a final symlink, never wait on a FIFO. `resolve` already refused
+# a path that leaves the session; these keep the open honest about what it found.
+_OPEN_FLAGS = (
+    getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0)
+)
+
 
 class BatchTooLargeError(ValueError):
     """The batch exceeded a count or byte budget, so none of it was applied."""
@@ -33,8 +47,13 @@ def upload(
     session_id: str,
     files: list[UploadFile],
     settings: DocgenSettings,
+    owner: int | None,
 ) -> list[UploadResult]:
-    """Write `files` into the session. Rejects the whole batch if it is oversized."""
+    """Write `files` into the session. Rejects the whole batch if it is oversized.
+
+    `owner` is the session's uid, given what this writes; None when sessions
+    are not isolated.
+    """
     _check_batch_size(len(files), settings)
     decoded = _decode_all(files, settings)
 
@@ -43,7 +62,7 @@ def upload(
         if isinstance(payload, str):
             results.append(UploadResult(path=item.path, error=payload))
             continue
-        results.append(_write_one(workspace, session_id, item.path, payload))
+        results.append(_write_one(workspace, session_id, item.path, payload, owner))
     return results
 
 
@@ -96,15 +115,28 @@ def _decode_all(
 
 
 def _write_one(
-    workspace: SessionWorkspace, session_id: str, raw_path: str, payload: bytes
+    workspace: SessionWorkspace,
+    session_id: str,
+    raw_path: str,
+    payload: bytes,
+    owner: int | None,
 ) -> UploadResult:
     try:
         target = workspace.resolve(session_id, raw_path)
     except (InvalidSessionError, PathOutsideSessionError):
         return UploadResult(path=raw_path, error="invalid_path")
+    kind = _kind(target)
+    if kind == "directory":
+        return UploadResult(path=raw_path, error="is_directory")
+    if kind == "special":
+        return UploadResult(path=raw_path, error="invalid_path")
     try:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(payload)
+        _make_parents(target.parent, owner)
+        descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | _OPEN_FLAGS, 0o600)
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(payload)
+        if owner is not None:
+            os.chown(target, owner, owner)
     except IsADirectoryError:
         return UploadResult(path=raw_path, error="is_directory")
     except PermissionError:
@@ -123,10 +155,17 @@ def _read_one(
         source: Path = workspace.resolve(session_id, raw_path)
     except (InvalidSessionError, PathOutsideSessionError):
         return DownloadResult(path=raw_path, error="invalid_path"), 0
-    if source.is_dir():
+    kind = _kind(source)
+    if kind == "missing":
+        return DownloadResult(path=raw_path, error="file_not_found"), 0
+    if kind == "directory":
         return DownloadResult(path=raw_path, error="is_directory"), 0
+    if kind == "special":
+        return DownloadResult(path=raw_path, error="invalid_path"), 0
     try:
-        payload = source.read_bytes()
+        descriptor = os.open(source, os.O_RDONLY | _OPEN_FLAGS)
+        with os.fdopen(descriptor, "rb") as handle:
+            payload = handle.read(budget + 1)
     except FileNotFoundError:
         return DownloadResult(path=raw_path, error="file_not_found"), 0
     except PermissionError:
@@ -140,3 +179,26 @@ def _read_one(
         DownloadResult(path=raw_path, content_b64=base64.b64encode(payload).decode("ascii")),
         len(payload),
     )
+
+
+def _kind(path: Path) -> str:
+    """`missing`, `directory`, `file`, or `special` (FIFO, socket, device)."""
+    try:
+        mode = path.lstat().st_mode
+    except FileNotFoundError:
+        return "missing"
+    if stat.S_ISDIR(mode):
+        return "directory"
+    return "file" if stat.S_ISREG(mode) else "special"
+
+
+def _make_parents(directory: Path, owner: int | None) -> None:
+    """`mkdir -p`, giving each directory it creates to `owner`."""
+    missing: list[Path] = []
+    while not directory.exists():
+        missing.append(directory)
+        directory = directory.parent
+    for created in reversed(missing):
+        created.mkdir()
+        if owner is not None:
+            os.chown(created, owner, owner)

@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 MEGABYTE = 1024 * 1024
@@ -35,10 +36,24 @@ class DocgenSettings(BaseSettings):
     # the whole budget.
     shell_path: str = "/bin/bash"
 
-    # One command at a time. Two sessions sharing a container share a uid, so
-    # serial execution is what keeps one session's process from reading another's
-    # files mid-run — the residual risk recorded in the ADR.
+    # One command at a time, and with sessions isolated nothing else is allowed
+    # (`main` refuses to start): the file routes write with DAC_OVERRIDE, and the
+    # one semaphore is what keeps a session's own process from swapping a path
+    # component for a symlink under them (ADR 0025, decision 4).
     max_concurrency: int = 1
+
+    # The pool of uids a session's shell runs under, one per live session
+    # (ADR 0025). The image carries a `passwd` entry `dws<n>` for each, and
+    # `main` refuses to start when one is missing, so this and the Dockerfile
+    # cannot drift quietly. Well above every system and image uid, so no pool
+    # uid is anything but a session.
+    session_uid_base: int = Field(default=20000, ge=10000)
+    session_uid_count: int = Field(default=1024, ge=1)
+
+    # World-writable places outside `/work` where a session can leave something
+    # behind for whoever gets its uid next. Each is purged of the uid's entries
+    # after its command and before the uid is handed out.
+    shared_temp_dirs: tuple[str, ...] = ("/tmp", "/dev/shm", "/dev/mqueue")
 
     # A brandkit generate over a large template measures in single-digit seconds;
     # a LibreOffice PDF conversion in tens. 120s leaves headroom for both and
@@ -75,6 +90,10 @@ class DocgenSettings(BaseSettings):
     # A session left behind by a crashed run is swept rather than kept forever;
     # tmpfs is RAM and an abandoned workdir is both a leak and a disclosure.
     session_ttl_seconds: int = 3600
+
+    @property
+    def session_uids(self) -> range:
+        return range(self.session_uid_base, self.session_uid_base + self.session_uid_count)
 
     @property
     def enforce_limits(self) -> bool:

@@ -24,6 +24,11 @@ under the service's own scratch directory on the sandbox tmpfs, because the
 container's root filesystem is read-only and there is no `/tmp` to fall back to.
 It is unlinked as it is created, so the command whose output it holds has no
 name to reach it by.
+
+With sessions isolated (ADR 0025) the command runs under the session's own uid
+with `umask 077`, and afterwards everything of that uid is killed - not only the
+process group, which `setsid` leaves - and what it left in the shared temporary
+directories is purged, so its uid can be handed to another tenant clean.
 """
 
 from __future__ import annotations
@@ -39,6 +44,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import IO
 
+from dw_docgen import identity
 from dw_docgen.settings import DocgenSettings
 
 logger = logging.getLogger(__name__)
@@ -101,8 +107,14 @@ def run_command(
     sink_dir: Path,
     settings: DocgenSettings,
     timeout_seconds: int,
+    uid: int | None,
 ) -> CommandResult:
-    """Execute `command` with `cwd` as its working directory."""
+    """Execute `command` with `cwd` as its working directory, under `uid`.
+
+    `uid` is None only where sessions are not isolated; it has no default, so a
+    caller states which it is.
+    """
+    who = identity.child_identity(uid)
     with tempfile.TemporaryFile(dir=sink_dir) as sink:
         # A shell is what this service exists to offer. The boundary is the
         # container it runs in, not the absence of one.
@@ -120,6 +132,12 @@ def run_command(
             executable=settings.shell_path if sys.platform != "win32" else None,
             # POSIX: its own session, so the whole tree can be killed by group.
             start_new_session=sys.platform != "win32",
+            user=who.user,
+            group=who.group,
+            extra_groups=who.extra_groups,
+            # Nothing a session writes outside its 0700 directory is readable
+            # by another uid; -1 is Popen's "leave it".
+            umask=0o077 if uid is not None else -1,
         )
         group = _process_group(process)
         timed_out = False
@@ -135,7 +153,10 @@ def run_command(
             # outlive the session, hold the container's process budget and make
             # every later command fail with "Resource temporarily unavailable".
             # Measured, not theorised: it is what the image tests hit first.
-            _kill_group(group, process)
+            if uid is None:
+                _kill_group(group, process)
+            else:
+                _kill_uid(uid, process, settings)
         output, truncated = _read_capped(sink, settings.max_output_bytes)
 
     if timed_out:
@@ -232,6 +253,33 @@ def _kill_group(group: int | None, process: subprocess.Popen[bytes]) -> None:
         process.wait(timeout=5)
     except subprocess.TimeoutExpired:
         logger.error("sandbox process %s survived SIGKILL", process.pid)
+
+
+def _kill_uid(uid: int, process: subprocess.Popen[bytes], settings: DocgenSettings) -> None:
+    """Kill every process of the session's uid, then purge what it left.
+
+    Neither failure stops the reply: the command already ran. Both leave the
+    uid unusable instead - a survivor keeps it out of the pool and refuses the
+    session's next request, and a failed purge is retried before the uid is
+    handed out, which skips it while it still fails.
+    """
+    # The shell itself is this process's child: killed, it stays a zombie until
+    # it is waited for, and a zombie is still a process of the uid. Only a shell
+    # still running (the timeout) needs this first signal; one that returned was
+    # reaped by `wait`, and `kill_all` spawns nothing when no process is left -
+    # the ordinary case, and a helper process saved on every command.
+    if process.poll() is None:
+        identity.signal_all(uid)
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        logger.error("sandbox process %s survived SIGKILL", process.pid)
+    if not identity.kill_all(uid):
+        logger.error("uid %s outlived %d SIGKILL rounds", uid, identity.KILL_ROUNDS)
+    try:
+        identity.purge(uid, settings.shared_temp_dirs)
+    except OSError:
+        logger.error("could not purge uid %s after its command", uid, exc_info=True)
 
 
 def _read_capped(sink: IO[bytes], limit: int) -> tuple[str, bool]:

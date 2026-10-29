@@ -18,7 +18,7 @@ pytestmark = pytest.mark.unit
 
 @pytest.fixture
 def workspace(tmp_path: Path) -> SessionWorkspace:
-    return SessionWorkspace(tmp_path / "work")
+    return SessionWorkspace(tmp_path / "work", uids=None)
 
 
 def test_session_directory_is_created_under_the_root(workspace: SessionWorkspace) -> None:

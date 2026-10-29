@@ -20,7 +20,7 @@ SESSION = "run-1"
 
 @pytest.fixture
 def client(settings: DocgenSettings) -> Iterator[TestClient]:
-    with TestClient(create_app(settings)) as test_client:
+    with TestClient(create_app(settings, isolate_sessions=False)) as test_client:
         yield test_client
 
 
@@ -30,7 +30,11 @@ def test_health_reports_whether_the_limits_are_on(
     reply = client.get("/health")
 
     assert reply.status_code == 200
-    assert reply.json() == {"status": "ok", "limits_enforced": settings.enforce_limits}
+    assert reply.json() == {
+        "status": "ok",
+        "limits_enforced": settings.enforce_limits,
+        "sessions_isolated": False,
+    }
 
 
 def test_a_command_runs_and_its_files_come_back(client: TestClient) -> None:
@@ -94,7 +98,9 @@ def test_an_oversized_batch_is_refused_with_413(client: TestClient) -> None:
 class TestWithAToken:
     @pytest.fixture
     def client(self, settings: DocgenSettings) -> Iterator[TestClient]:
-        with TestClient(create_app(settings.model_copy(update={"token": "s3cret"}))) as test_client:
+        with TestClient(
+            create_app(settings.model_copy(update={"token": "s3cret"}), isolate_sessions=False)
+        ) as test_client:
             yield test_client
 
     def test_a_caller_without_the_token_is_refused(self, client: TestClient) -> None:

@@ -1,6 +1,6 @@
 # 01 — Mỗi phiên docgen chạy dưới một uid riêng
 
-Status: ready-for-agent
+Status: resolved (2026-10-29, main)
 Area: platform-runtime
 Yêu cầu: không (việc cỡ A, một câu: shell của mỗi phiên docgen chạy dưới uid riêng của phiên, nên không đọc được gì của phiên khác; quyết định ở ADR 0025)
 
@@ -90,42 +90,42 @@ của container với năm capability (ADR 0025).
 
 ## Tiêu chí chấp nhận
 
-- [ ] Shell của phiên A không đọc được tệp của phiên B và không liệt kê được `/work`: bỏ dấu xfail ở
+- [x] Shell của phiên A không đọc được tệp của phiên B và không liệt kê được `/work`: bỏ dấu xfail ở
       `test_a_session_shell_cannot_read_another_sessions_files`, và test xanh. Bỏ `chown` hoặc `0700` thì
       test đỏ.
-- [ ] Hai phiên chạy dưới hai uid khác nhau trong dải, và `CapEff` bằng 0. Bỏ `user=` ở `Popen` thì test
+- [x] Hai phiên chạy dưới hai uid khác nhau trong dải, và `CapEff` bằng 0. Bỏ `user=` ở `Popen` thì test
       đỏ.
-- [ ] Không phiên nào đọc được biến `DW_DOCGEN_` trong `/proc/*/environ`. Nay đọc được, nên test đỏ ở
+- [x] Không phiên nào đọc được biến `DW_DOCGEN_` trong `/proc/*/environ`. Nay đọc được, nên test đỏ ở
       commit gốc.
-- [ ] Một `setsid sleep 300 &` không sống qua lệnh của nó: đối chứng dương thấy nó trong lệnh, và lệnh sau
+- [x] Một `setsid sleep 300 &` không sống qua lệnh của nó: đối chứng dương thấy nó trong lệnh, và lệnh sau
       đếm được 0. Thay kill theo uid bằng `_kill_group` thì test đỏ.
-- [ ] Những gì phiên để lại ở `/tmp`, `/dev/shm` và `/dev/mqueue`, và một đoạn SysV shm tạo bằng `ipcmk`,
+- [x] Những gì phiên để lại ở `/tmp`, `/dev/shm` và `/dev/mqueue`, và một đoạn SysV shm tạo bằng `ipcmk`,
       đều biến mất sau lệnh, còn trong lệnh thì vẫn thấy. Bỏ bước xóa thì test đỏ.
-- [ ] Một upload `sub/dir/f.txt` xóa được bằng `rm -r sub` từ shell của phiên. Bỏ `chown` ở upload thì test
+- [x] Một upload `sub/dir/f.txt` xóa được bằng `rm -r sub` từ shell của phiên. Bỏ `chown` ở upload thì test
       đỏ.
-- [ ] Download một FIFO do shell tạo trả `invalid_path` ngay, và lệnh kế của phiên vẫn chạy. Bỏ phép kiểm
+- [x] Download một FIFO do shell tạo trả `invalid_path` ngay, và lệnh kế của phiên vẫn chạy. Bỏ phép kiểm
       tệp thường thì test treo tới timeout của client và đỏ.
-- [ ] Upload của một phiên đang có lệnh chạy chỉ xong sau khi lệnh xong (unit, giữ semaphore). Bỏ
+- [x] Upload của một phiên đang có lệnh chạy chỉ xong sau khi lệnh xong (unit, giữ semaphore). Bỏ
       semaphore ở upload thì test đỏ.
-- [ ] Lifespan từ chối từng trường hợp ở mục 6 (unit, một test mỗi trường hợp; trường hợp "tắt mà là root"
+- [x] Lifespan từ chối từng trường hợp ở mục 6 (unit, một test mỗi trường hợp; trường hợp "tắt mà là root"
       giả euid bằng monkeypatch). Bỏ một phép kiểm thì test của nó đỏ.
-- [ ] Một thư mục phiên có chủ ngoài dải thì `uid_of` từ chối (unit). Bỏ phép kiểm thì test đỏ.
-- [ ] Dải đã đầy (mọi uid có thư mục giữ) thì một phiên mới nhận 503, và phiên quá TTL đã bị quét trước đó
+- [x] Một thư mục phiên có chủ ngoài dải thì `uid_of` từ chối (unit). Bỏ phép kiểm thì test đỏ.
+- [x] Dải đã đầy (mọi uid có thư mục giữ) thì một phiên mới nhận 503, và phiên quá TTL đã bị quét trước đó
       (unit). Bỏ việc kiểm "rảnh" hoặc bỏ lượt quét thì test đỏ.
-- [ ] Một uid còn tiến trình sống không được giao, kể cả khi không thư mục nào giữ nó (unit, POSIX; dải là
+- [x] Một uid còn tiến trình sống không được giao, kể cả khi không thư mục nào giữ nó (unit, POSIX; dải là
       uid của chính tiến trình test). Bỏ phép kiểm `/proc` thì test đỏ.
-- [ ] Phiên có uid còn tiến trình sống nhận 503 ở execute và ở route tệp (unit, POSIX). Bỏ phép kiểm thì test
+- [x] Phiên có uid còn tiến trình sống nhận 503 ở execute và ở route tệp (unit, POSIX). Bỏ phép kiểm thì test
       đỏ.
-- [ ] `purge_uid` xóa mục của uid ở các thư mục được chỉ, và để yên mục của uid khác (unit). Bỏ phép so chủ
+- [x] `purge_uid` xóa mục của uid ở các thư mục được chỉ, và để yên mục của uid khác (unit). Bỏ phép so chủ
       thì test đỏ.
-- [ ] Lượt sweep sau execute chạy khi semaphore đang bị giữ (unit). Đưa sweep ra ngoài thì test đỏ.
-- [ ] `adopt_root()` xóa mục có chủ ngoài dải, giữ `.service`, và đặt `0711` (unit). Bỏ một bước thì test
+- [x] Lượt sweep sau execute chạy khi semaphore đang bị giữ (unit). Đưa sweep ra ngoài thì test đỏ.
+- [x] `adopt_root()` xóa mục có chủ ngoài dải, giữ `.service`, và đặt `0711` (unit). Bỏ một bước thì test
       đỏ.
-- [ ] Release một phiên chưa có trả 204 và không tạo thư mục (unit). Cho release tạo phiên thì test đỏ.
-- [ ] Download một phiên chưa có không tạo thư mục phiên (unit). Bỏ `create=False` thì test đỏ.
-- [ ] LibreOffice vẫn chuyển DOCX sang PDF, và các test chứa (fork bomb, memory bomb, mạng) vẫn xanh trong
+- [x] Release một phiên chưa có trả 204 và không tạo thư mục (unit). Cho release tạo phiên thì test đỏ.
+- [x] Download một phiên chưa có không tạo thư mục phiên (unit). Bỏ `create=False` thì test đỏ.
+- [x] LibreOffice vẫn chuyển DOCX sang PDF, và các test chứa (fork bomb, memory bomb, mạng) vẫn xanh trong
       `test_sandbox_image.py`.
-- [ ] Xong: `uv run python -m pytest apps/docgen/tests -q` xanh.
+- [x] Xong: `uv run python -m pytest apps/docgen/tests -q` xanh.
 
 ## Nguồn
 
@@ -173,3 +173,72 @@ của container với năm capability (ADR 0025).
   `purge_uid`. Test image chỉ làm đỏ được bước sau lệnh, vì muốn tàn dư sống qua bước đó thì phải gỡ chính
   nó. Nếu sai thì: thêm một test image tạo tàn dư bằng một uid trong dải rồi mở một phiên mới.
 - 2026-10-29 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-10-29 (agent): Đã làm.
+    - `dw_docgen/identity.py` mới: `child_identity`, `run_as`, `process_owners`, `kill_all`, `signal_all`,
+      `purge`.
+    - Workspace cấp uid theo luật "rảnh", có `uid_of` và `adopt_root`; `resolve` không tạo phiên.
+    - Runner chạy dưới uid với `umask 077`, kill theo uid, rồi xóa tàn dư.
+    - Files chỉ đụng tệp thường và `chown` cho uid.
+    - API: mọi route giữ semaphore, sweep ở bên trong; lỗi cách ly trả 400/413/503/500.
+    - Main có bốn phép từ chối khởi động.
+    - Dockerfile có 1024 dòng `dws<n>`; compose chạy uid 0 với năm capability, `/work` 0711.
+    - Test: `tests/unit/test_isolation.py` (16), một test FIFO ở `test_files.py`, và bảy test image mới.
+      Test xuyên phiên bỏ xfail và kiểm thêm `ls ../<phiên khác>`.
+- 2026-10-29 (agent, tạm): xóa SysV IPC theo id đọc từ `/proc/sysvipc/*`, không dùng `ipcrm --all` như mục 2. Đo trên image: `--all` trả 1 ngay khi có đối tượng của uid khác, nên mã thoát của nó không phân biệt
+  được xóa lỗi với container đang bận. Nếu sai thì: chỉ đổi `identity._purge_ipc`.
+- 2026-10-29 (agent, tạm): lượt `kill -9 -1` đầu tiên chỉ chạy khi shell còn sống (hết giờ). Bình thường
+  shell đã được `wait` thu, và `kill_all` kiểm `/proc` trước khi sinh tiến trình, nên không tốn một bash
+  mỗi lệnh. Mục 3 viết "sau lệnh chạy `kill -9 -1`". Nếu sai thì: bỏ điều kiện `process.poll()` ở
+  `runner._kill_uid`.
+- 2026-10-29 (agent, tạm): thêm `sessions_isolated` vào `/health`, có test image khẳng định nó, để một
+  compose chạy service mà không cách ly đỏ ở CI. Ngoài chữ của ticket.
+- 2026-10-29 (agent, tạm): tệp upload tạo mới có mode 0600 (trước là 0644), và download chỉ đọc tối đa
+  ngân sách cộng một byte.
+- 2026-10-29 (agent, tạm): tiêu chí "environ đọc được ở commit gốc" được chứng minh bằng đột biến "bỏ đổi
+  uid" (test đỏ), không bằng cách chạy image cũ. Image cũ đã bị dựng đè; cách đo bằng probe cùng uid ở
+  phần trên cho cùng kết quả.
+- 2026-10-29 (agent): reviewing-feature-security:
+    - **Tenant:** phiên A không đọc, không liệt kê được phiên B, và không đọc được environ của service
+      (test image).
+    - **Quyền:** token không đổi. `/health` không cần token như trước, chỉ thêm một boolean.
+    - **Công cụ agent và sandbox:**
+        - kill theo uid gom được tiến trình `setsid`;
+        - tàn dư ở `/tmp`, `/dev/shm`, `/dev/mqueue` và SysV IPC bị xóa;
+        - FIFO không treo route;
+        - uid còn tiến trình không được giao, và phiên của nó nhận 503.
+    - **Container:** thêm năm capability cho service; rủi ro còn lại ghi ở ADR 0025. Shell có `CapEff` 0
+      (test).
+    - **Job nền:** sweep chạy dưới semaphore (test).
+    - **Phụ thuộc:** không thêm gói nào.
+    - `reviewing-deployment-security` cho service compose đã đổi để tới cuối đợt (wave-close.md).
+- 2026-10-29 (agent): mutation check, 22 đột biến, đối chứng chưa đột biến xanh ở cả ba nơi, cả 22 đều đỏ:
+    - **Image** (6): thư mục 0755, bỏ đổi uid, kill theo nhóm, bỏ xóa tàn dư, bỏ `chown` upload, FIFO coi
+      như tệp.
+    - **Unit Windows** (9): bỏ từ chối khi không phải root, cho root chạy không cách ly, bỏ kiểm
+      `max_concurrency`, bỏ validator base, nhận chủ ngoài dải, bỏ sweep trước 503, `adopt_root` giữ mục
+      lạ, sweep ngoài semaphore, upload ngoài semaphore. Thêm đột biến "download tạo phiên".
+    - **Unit Linux, uid 1000** (6): bỏ kiểm `passwd`, giao uid còn tiến trình, phục vụ phiên còn tiến
+      trình, `purge` bỏ so chủ, `adopt_root` bỏ chmod, FIFO ở unit.
+
+    Đột biến 0755 lúc đầu không bị bắt: tệp upload 0600 vẫn chặn `cat`. Test đã siết thêm phần kiểm
+    `ls ../<phiên khác>`, rồi bắt được.
+
+- 2026-10-29 (agent): gate nhanh:
+    - ruff, format và `python -m mypy` (449 tệp) sạch;
+    - `make test-unit` 1533 qua; `make test-contract` 24 qua; `make test-architecture` 7 contract giữ;
+    - `verify_invariants` đạt;
+    - toàn bộ `apps/docgen/tests` trên container dựng lại: 77 qua, 8 bỏ qua (POSIX, xanh trên Linux).
+- 2026-10-29 (agent): độ trễ, ngoài yêu cầu của latency.md vì ticket không đổi cách truy cập DB. Đo 200
+  lệnh `echo`, ấm, gọi thẳng vào container (không qua gateway), cùng image và cùng cờ:
+    - commit gốc `0e4af59` (uid 1001): P50 9,0 ms, P95 10,9 ms, P99 14,7 ms;
+    - sau ticket: P50 17,5 ms, P95 21,2 ms, P99 26,6 ms;
+    - upload sau ticket: P50 5,0 ms, P95 7,4 ms, P99 12,2 ms.
+
+    P95 tệ hơn quá 20%. Lý do: phần cách ly mỗi lệnh (đổi uid, quét `/proc` tìm tiến trình sống sót, xóa
+    ba thư mục và bảng SysV IPC, kiểm uid của phiên) đo trong tiến trình là khoảng 3,8 ms. Bản đầu tốn hơn,
+    P50 27 ms; đã sửa bằng cách bỏ bash kill thừa khi không còn tiến trình. Vẫn trong ngân sách 300 ms, và
+    một lệnh tài liệu thật tốn hàng giây.
+
+- 2026-10-29 (agent): `docs/adr/0119-each-code-execution-gets-a-fresh-gvisor-container.md:28` và `:113` vẫn
+  tả docgen là "một uid". Đó là bối cảnh của một ADR đang Proposed, nên tôi không sửa; Đạt quyết có cập
+  nhật hay không.

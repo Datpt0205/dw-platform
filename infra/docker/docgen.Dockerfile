@@ -77,6 +77,14 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
 
 RUN groupadd --gid 1001 dw && useradd --uid 1001 --gid dw --no-create-home dw
 
+# The session pool (ADR 0025): each session's shell runs under one of these
+# uids, never the service's. Entries rather than bare numbers because
+# LibreOffice cannot set up a user installation for a uid with no passwd entry
+# (measured 2026-10-29: "User installation could not be completed"). The base
+# and count match DW_DOCGEN_SESSION_UID_BASE/COUNT, and the service refuses to
+# start when they disagree.
+RUN for n in $(seq 0 1023); do         uid=$((20000 + n));         echo "dws$n:x:$uid:$uid::/nonexistent:/usr/sbin/nologin" >> /etc/passwd;         echo "dws$n:x:$uid:" >> /etc/group;     done
+
 WORKDIR /app
 COPY --from=builder --chown=root:root /app/.venv /app/.venv
 # Third-party, pinned at a tag, never edited here. See vendor/brandkit/README.md.
@@ -94,6 +102,11 @@ ENV PATH="/app/.venv/bin:$PATH" \
 
 # Nothing in the image is owned by the user that runs it, so a compromised
 # script cannot rewrite the engine it was told to call.
+#
+# `dw` is the default, and the docgen service refuses to start as `dw`: it
+# needs uid 0 with five capabilities to give each session its own uid, which
+# compose grants (ADR 0025). So this image run bare fails loudly rather than
+# running every session as one uid. The gateway runs as `dw`.
 USER dw
 EXPOSE 8110
 

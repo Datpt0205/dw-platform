@@ -36,6 +36,8 @@ DIACRITICS = "ế ộ ỹ ằ Đ đ"
 # bomb, which is exactly how this went unnoticed. Five spans the window in which
 # the survivors used to consume what was left.
 FORK_RECOVERY_PROBES = 5
+# The first uid of the session pool (ADR 0025, `DocgenSettings.session_uid_base`).
+SESSION_UID_BASE = 20000
 
 GENERATE_DOCX = f"""
 from docx import Document
@@ -234,29 +236,119 @@ def test_one_session_cannot_reach_another(client: httpx.Client, session: str) ->
     assert "ABSENT" in str(listed["output"])
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "docgen runs every session's shell as one uid over one /work, so "
-        "../<other session> is readable (foundations-hardening/01 Comments, "
-        "2026-10-28); a fix to docgen turns this XPASS red: drop the mark then"
-    ),
-)
 def test_a_session_shell_cannot_read_another_sessions_files(
     client: httpx.Client, session: str
 ) -> None:
     """Session names carry the tenant (`sandbox.py`'s `session_id_for`), and one
     docgen container serves every tenant, so a shell that reaches a sibling
-    directory reads another customer's drafts."""
+    directory reads another customer's drafts. Each session's directory is 0700
+    and owned by its own uid, and `/work` is 0711 (ADR 0025)."""
     other = f"other-{uuid.uuid4().hex[:8]}"
     write(client, other, "secret.txt", "another customer's draft")
     try:
-        reached = run(client, session, f"cat ../{other}/secret.txt 2>&1; ls .. 2>&1")
+        read = run(client, session, f"cat ../{other}/secret.txt 2>&1")
+        listed = run(client, session, "ls .. 2>&1")
+        looked_inside = run(client, session, f"ls ../{other} 2>&1")
     finally:
         client.post(f"/v1/sessions/{other}")
 
-    assert "another customer's draft" not in str(reached["output"])
-    assert other not in str(reached["output"])
+    assert "another customer's draft" not in str(read["output"])
+    assert "Permission denied" in str(read["output"]), read["output"]
+    assert other not in str(listed["output"])
+    # The file names alone say what a customer is drafting.
+    assert "secret.txt" not in str(looked_inside["output"]), looked_inside["output"]
+
+
+def test_the_service_reports_its_sessions_isolated(client: httpx.Client) -> None:
+    # A compose file that runs the service unisolated fails here first.
+    assert client.get("/health").json()["sessions_isolated"] is True
+
+
+def test_each_session_runs_as_its_own_uid_with_no_capabilities(
+    client: httpx.Client, session: str
+) -> None:
+    other = f"other-{uuid.uuid4().hex[:8]}"
+    try:
+        mine = run(client, session, "id -u; grep CapEff /proc/self/status")
+        theirs = run(client, other, "id -u")
+    finally:
+        client.post(f"/v1/sessions/{other}")
+
+    my_uid, cap_line = str(mine["output"]).splitlines()[:2]
+    assert int(my_uid) >= SESSION_UID_BASE
+    assert int(str(theirs["output"]).strip()) >= SESSION_UID_BASE
+    assert int(my_uid) != int(str(theirs["output"]).strip())
+    assert cap_line.split() == ["CapEff:", "0000000000000000"]
+
+
+def test_no_session_reads_the_service_environment(client: httpx.Client, session: str) -> None:
+    # The service's environment carries DW_DOCGEN_TOKEN; it ran as the same
+    # uid as every shell until ADR 0025.
+    reached = run(
+        client,
+        session,
+        r"cat /proc/[0-9]*/environ 2>/dev/null | tr '\0' '\n' | grep -c '^DW_DOCGEN_' || true",
+    )
+
+    assert str(reached["output"]).strip() == "0"
+
+
+def test_a_detached_process_does_not_outlive_its_command(
+    client: httpx.Client, session: str
+) -> None:
+    """`setsid` leaves the command's process group, which is all a group kill
+    reaches; the kill by uid reaches it anyway. Positive control first."""
+    write(client, session, "count.py", COUNT_SLEEPERS)
+
+    during = run(
+        client, session, "setsid sleep 300 </dev/null >/dev/null 2>&1 & sleep 0.5; python3 count.py"
+    )
+    after = run(client, session, "python3 count.py")
+
+    assert int(str(during["output"]).strip()) >= 1, during["output"]
+    assert int(str(after["output"]).strip()) == 0, after["output"]
+
+
+def test_what_a_session_leaves_outside_its_directory_is_gone_after_the_command(
+    client: httpx.Client, session: str
+) -> None:
+    """Its uid goes to another tenant once released, so nothing of it may stay
+    in the world-writable directories or in SysV IPC."""
+    mark = uuid.uuid4().hex[:8]
+    leave = (
+        f"touch /tmp/left-{mark} /dev/shm/left-{mark} /dev/mqueue/left-{mark} && "
+        f"mkdir /tmp/dir-{mark} && ipcmk -M 4096 >/dev/null && "
+        f'ls /tmp /dev/shm /dev/mqueue | grep -c {mark}; ipcs -m | grep -c "$(id -un)"'
+    )
+    look = f'ls /tmp /dev/shm /dev/mqueue | grep -c {mark}; ipcs -m | grep -c "$(id -un)"'
+
+    during = run(client, session, leave)
+    after = run(client, session, look)
+
+    assert str(during["output"]).split() == ["4", "1"], during["output"]
+    assert str(after["output"]).split() == ["0", "0"], after["output"]
+
+
+def test_an_upload_belongs_to_the_session_that_receives_it(
+    client: httpx.Client, session: str
+) -> None:
+    write(client, session, "sub/dir/f.txt", "draft")
+
+    removed = run(client, session, "echo more >> sub/dir/f.txt && rm -r sub && echo GONE")
+
+    assert "GONE" in str(removed["output"]), removed["output"]
+
+
+def test_a_fifo_cannot_hang_the_file_routes(client: httpx.Client, session: str) -> None:
+    run(client, session, "mkfifo out.docx")
+
+    fetched = client.post(
+        f"/v1/sessions/{session}/files/download", json={"paths": ["out.docx"]}, timeout=10
+    )
+    probe = run(client, session, "echo ALIVE")
+
+    assert fetched.json()["results"][0]["error"] == "invalid_path"
+    assert "ALIVE" in str(probe["output"])
 
 
 def test_the_image_cannot_be_rewritten_by_what_it_runs(client: httpx.Client, session: str) -> None:

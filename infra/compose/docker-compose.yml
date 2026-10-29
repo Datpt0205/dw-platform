@@ -364,15 +364,24 @@ services:
     # be silently inert. Everything reaches it through `docgen-gateway` below.
     networks: [dw-sandbox]
     read_only: true
+    # uid 0 with five capabilities and nothing else, so each session's shell runs
+    # under a uid of its own from the image's pool (ADR 0025): SETUID/SETGID to
+    # start it there, CHOWN to give a session its directory and uploads,
+    # DAC_OVERRIDE/FOWNER to read, write and purge what a session's uid owns.
+    # The shell holds none of them - leaving uid 0 clears every capability -
+    # and the service refuses to start as anything but uid 0.
     cap_drop: [ALL]
+    cap_add: [SETUID, SETGID, CHOWN, DAC_OVERRIDE, FOWNER]
     security_opt:
       - no-new-privileges:true
-    user: "1001:1001"
+    user: "0:0"
     # The only writable path, and it is RAM that dies with the container.
     # `noexec` costs nothing: scripts here are read by an interpreter that lives
-    # in the image, never executed in place.
+    # in the image, never executed in place. 0711: a shell enters its own
+    # session directory and cannot list its neighbours (the service also sets
+    # this at startup).
     tmpfs:
-      - /work:mode=1777,size=512m,nosuid,nodev,noexec
+      - /work:mode=0711,size=512m,nosuid,nodev,noexec
       # LibreOffice opens its UNO pipe under /tmp and finds no other path, so a
       # read-only root means no PDF at all. Small, and it dies with the container.
       - /tmp:mode=1777,size=128m,nosuid,nodev,noexec
@@ -384,7 +393,7 @@ services:
     # never started. A command's descendants are orphaned the moment their own
     # parent is killed, get reparented to PID 1, and stay zombies because
     # nobody calls `wait()` for them. A zombie still counts against
-    # `ulimit -u` for uid 1001 — so killing a fork bomb correctly was not
+    # `ulimit -u` for the session's uid — so killing a fork bomb correctly was not
     # enough: the corpses kept the process budget, and every later command
     # still failed with "Resource temporarily unavailable". Measured: killing
     # the group in a loop made the fork-bomb test itself pass and left the six

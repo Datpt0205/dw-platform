@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import secrets
-from pathlib import Path
+from collections.abc import Callable
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -28,7 +28,13 @@ from dw_docgen.models import (
 )
 from dw_docgen.runner import run_command
 from dw_docgen.settings import DocgenSettings
-from dw_docgen.workspace import InvalidSessionError, SessionWorkspace
+from dw_docgen.workspace import (
+    InvalidSessionError,
+    SessionIsolationError,
+    SessionPoolExhaustedError,
+    SessionUncleanError,
+    SessionWorkspace,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -68,8 +74,12 @@ Authorized = Depends(require_token)
 
 
 @router.get("/health")
-def health(settings: Settings) -> HealthReply:
-    return HealthReply(status="ok", limits_enforced=settings.enforce_limits)
+def health(request: Request, settings: Settings) -> HealthReply:
+    return HealthReply(
+        status="ok",
+        limits_enforced=settings.enforce_limits,
+        sessions_isolated=request.app.state.sessions_isolated,
+    )
 
 
 @router.post("/v1/sessions/{session_id}/execute", dependencies=[Authorized])
@@ -80,55 +90,71 @@ async def execute(
     settings: Settings,
     workspace: Workspace,
 ) -> ExecuteReply:
-    cwd = _session_dir(workspace, session_id)
     timeout = min(
         payload.timeout_seconds or settings.default_timeout_seconds,
         settings.max_timeout_seconds,
     )
-    semaphore: asyncio.Semaphore = request.app.state.semaphore
     active: set[str] = request.app.state.active_sessions
-    async with semaphore:
+
+    def run() -> ExecuteReply:
+        cwd = workspace.session_dir(session_id)
         active.add(session_id)
         try:
-            result = await asyncio.to_thread(
-                run_command,
+            result = run_command(
                 payload.command,
                 cwd=cwd,
                 sink_dir=workspace.scratch_dir,
                 settings=settings,
                 timeout_seconds=timeout,
+                uid=workspace.uid_of(session_id),
             )
+            # Still under the semaphore: a sweep must not delete a session
+            # that a file route is writing into.
+            _sweep(workspace, settings, active)
         finally:
             active.discard(session_id)
-    _sweep(workspace, settings, active)
-    return ExecuteReply(
-        output=result.output,
-        exit_code=result.exit_code,
-        truncated=result.truncated,
-        timed_out=result.timed_out,
-    )
+        return ExecuteReply(
+            output=result.output,
+            exit_code=result.exit_code,
+            truncated=result.truncated,
+            timed_out=result.timed_out,
+        )
+
+    return await _exclusively(request, run)
 
 
 @router.post("/v1/sessions/{session_id}/files/upload", dependencies=[Authorized])
-def upload_files(
-    session_id: str, payload: UploadRequest, settings: Settings, workspace: Workspace
+async def upload_files(
+    session_id: str,
+    payload: UploadRequest,
+    request: Request,
+    settings: Settings,
+    workspace: Workspace,
 ) -> UploadReply:
-    _session_dir(workspace, session_id)
-    try:
-        return UploadReply(results=upload(workspace, session_id, payload.files, settings))
-    except BatchTooLargeError as exc:
-        raise HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail=str(exc)) from exc
+    def write() -> UploadReply:
+        workspace.session_dir(session_id)
+        owner = workspace.uid_of(session_id)
+        return UploadReply(results=upload(workspace, session_id, payload.files, settings, owner))
+
+    return await _exclusively(request, write)
 
 
 @router.post("/v1/sessions/{session_id}/files/download", dependencies=[Authorized])
-def download_files(
-    session_id: str, payload: DownloadRequest, settings: Settings, workspace: Workspace
+async def download_files(
+    session_id: str,
+    payload: DownloadRequest,
+    request: Request,
+    settings: Settings,
+    workspace: Workspace,
 ) -> DownloadReply:
-    _session_dir(workspace, session_id)
-    try:
+    def read() -> DownloadReply:
+        # A read never creates a session, so it never takes a uid from the pool:
+        # every path of a session that does not exist is simply not found.
+        if workspace.session_dir(session_id, create=False).exists():
+            workspace.uid_of(session_id)
         return DownloadReply(results=download(workspace, session_id, payload.paths, settings))
-    except BatchTooLargeError as exc:
-        raise HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail=str(exc)) from exc
+
+    return await _exclusively(request, read)
 
 
 @router.post(
@@ -136,20 +162,45 @@ def download_files(
     dependencies=[Authorized],
     status_code=status.HTTP_204_NO_CONTENT,
 )
-def release(session_id: str, workspace: Workspace) -> Response:
+async def release(session_id: str, request: Request, workspace: Workspace) -> Response:
     """Delete the session's directory. The chat host calls this when a run ends."""
-    try:
-        workspace.reset(session_id)
-    except InvalidSessionError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    await _exclusively(request, lambda: workspace.reset(session_id))
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-def _session_dir(workspace: SessionWorkspace, session_id: str) -> Path:
-    try:
-        return workspace.session_dir(session_id)
-    except InvalidSessionError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+async def _exclusively[T](request: Request, work: Callable[[], T]) -> T:
+    """Run `work` in a thread while holding the one semaphore.
+
+    Every route that touches a session holds it, not only execute. The service
+    writes with DAC_OVERRIDE, so no process of a session may be alive to swap a
+    path component for a symlink between the containment check and the write -
+    and between commands none is, because each command ends by killing its uid
+    (ADR 0025, decision 4). `main` refuses `max_concurrency` other than 1 with
+    sessions isolated, which is what makes this semaphore that guarantee.
+    """
+    semaphore: asyncio.Semaphore = request.app.state.semaphore
+    async with semaphore:
+        try:
+            return await asyncio.to_thread(work)
+        except InvalidSessionError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        except BatchTooLargeError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail=str(exc)
+            ) from exc
+        except (SessionPoolExhaustedError, SessionUncleanError) as exc:
+            logger.warning("session %s refused: %s", request.path_params.get("session_id"), exc)
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+            ) from exc
+        except SessionIsolationError as exc:
+            # Not the caller's mistake and not transient: a directory this
+            # service would have to run as the wrong uid to serve.
+            logger.error("session isolation fault: %s", exc)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="session isolation fault",
+            ) from exc
 
 
 def _sweep(workspace: SessionWorkspace, settings: DocgenSettings, active: set[str]) -> None:

@@ -12,7 +12,7 @@ git: every slice's commit message, and the pre-split narrative at
 | Area                               | File                                | State                                                          |
 | ---------------------------------- | ----------------------------------- | -------------------------------------------------------------- |
 | Ops hardening                      | `.claude/plans/ops-hardening.md`    | Done; numbers owed                                             |
-| Agent runtime and memory (Mốc 0–6) | `.claude/plans/platform-runtime.md` | Named gaps; docgen isolation in progress                       |
+| Agent runtime and memory (Mốc 0–6) | `.claude/plans/platform-runtime.md` | Named gaps; docgen sessions isolated (ADR 0025)                |
 | Web UI shell (Ant Design v6)       | `.claude/plans/web-ui.md`           | antd everywhere, CSP done                                      |
 | Chat channels (Zalo)               | `.claude/plans/channels.md`         | Upstreamed; live run owed                                      |
 | Studio (no-code builder)           | `.claude/plans/studio.md`           | skeleton/01, telemetry/01, app-standards/01-04, foundations/01 |

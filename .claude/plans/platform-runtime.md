@@ -300,11 +300,17 @@ user, scope)` and `holding(tenant, ws, scopes)`, neither needing an
 
 ## Docgen session isolation (2026-10-29)
 
-- **`docgen-session-isolation/01`** (in progress, `needs-triage`, gate
-  running): each docgen session's shell runs under a uid of its own, so it
-  cannot read another tenant's drafts or the service's environ, and a
-  `setsid` process dies with its command. Đạt chose the approach and ADR 0025
-  on 2026-10-29, and delegated the ticket's gate and approval. Not coded yet.
+- **`docgen-session-isolation/01`** (resolved 2026-10-29): each docgen
+  session's shell runs under a uid of its own from a pool of 1024 (ADR 0025).
+  It cannot read or list another session's files or the service's environ. A
+  `setsid` process dies with its command, and residue in `/tmp`, `/dev/shm`,
+  `/dev/mqueue` and SysV IPC is purged. The service runs as uid 0 with five
+  capabilities and refuses to start in any unisolated shape. Execute P95 went
+  from 10.9 to 21.2 ms (reason in the ticket). Open:
+    - no per-tenant uid cap;
+    - `reviewing-deployment-security` for the changed compose service is due at
+      the wave's close;
+    - ADR 0119's context still says "one uid".
 
 ## Deliberately not taken
 
