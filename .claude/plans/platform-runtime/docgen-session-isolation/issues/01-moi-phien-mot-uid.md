@@ -136,7 +136,8 @@ của container với năm capability (ADR 0025).
 
 ## Comments
 
-- 2026-10-29 (Đạt): Duyệt ticket. Ghi từ câu trả lời trong chat 2026-10-29: Đạt chọn phương án "uid riêng
+- 2026-10-29 (Đạt): Duyệt ticket.
+- 2026-10-29 (agent): dòng trên ghi từ câu trả lời trong chat 2026-10-29: Đạt chọn phương án "uid riêng
   mỗi phiên", mà mô tả có câu "Ticket tier A ở platform-runtime, tôi tự gate và tự duyệt"; chọn service
   chạy bằng uid 0 trong container với năm capability; và chọn ghi quyết định ở ADR 0025.
 - 2026-10-29 (agent): checking-plan-readiness, lượt 1 (builder check và boundary walk), 0 CRITICAL, 3 HIGH:
