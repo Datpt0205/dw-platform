@@ -490,7 +490,7 @@ bên ngoài thì ghi "Chờ Đạt" và làm việc kế. Đường dẫn ticket
 | --- | ----------------------------------------------------------------------------------------- | -------------- |
 | 0   | Pha 0: D17, requirements, ADR-0128, spec `digital-worker`, `wf-lite`, `leadcare`, gate    | xong           |
 | 1   | `foundations-hardening/issues/07`                                                         | xong `8cee863` |
-| 2   | `foundations-hardening/issues/03`                                                         | chưa           |
+| 2   | `foundations-hardening/issues/03`                                                         | xong `62d3b32` |
 | 3   | `org-and-principals/issues/01`                                                            | chưa           |
 | 4   | `runtime-hardening/issues/01`                                                             | chưa           |
 | 5   | `digital-worker/issues/01` hồ sơ DW và loại quyết định                                    | chưa           |
@@ -524,6 +524,7 @@ Each resolved ticket adds one line here: the commit hash and one sentence.
 - `f757729` foundations-hardening/01: walker của grant support thấy route trong router được include, test tiến trình nền docgen đếm qua `/proc` với đối chứng dương, ca đọc xuyên phiên của docgen là `xfail(strict=True)`.
 - `1c681e8` foundations-hardening/02: xóa tài liệu, danh sách bộ nhớ và dọn checkpoint giữ hàng rào tenant và workspace, phép quét giữ `app.worker_drain` ở bảy lane, checkpoint không dựng kiểu ngoài allowlist, tenant offboarding không quay lại và khóa có hiệu lực ngay, nối danh tính theo quyết định 8 của ADR-0103 với trigger trên `platform.external_identities`.
 - `8cee863` foundations-hardening/07: gói xuất có mỗi dòng một lần, đọc theo lô keyset 1.000 dòng, sổ bước xóa ở composition root của worker với thứ tự suy từ khóa ngoại của `pg_constraint`, từ chối trước khi xuất khi bảng không khóa chính hay khóa ngoại treo, audit xóa nêu `details.lane`.
+- `62d3b32` foundations-hardening/03: `dw_app` hết quyền ghi bảng người vận hành, gói dịch vụ và sửa/xóa user; quyền của `dw_provisioner` đúng tập mã nó chạy, một nguồn trong migration và script, test so với catalog; mọi policy đọc setting trong sub-SELECT (đo 224 ms còn 84 ms ở 200.000 dòng), partition tạo sau theo dạng mới.
 
 ## Chờ Đạt (phiên không người trực)
 

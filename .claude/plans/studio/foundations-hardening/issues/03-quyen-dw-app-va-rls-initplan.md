@@ -1,6 +1,6 @@
 # 03 — Thu quyền ghi thừa của dw_app và RLS đọc setting một lần mỗi câu lệnh
 
-Status: ready-for-agent
+Status: resolved (2026-10-29, main)
 Blocked by: 01, 02, .claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md
 Area: studio
 Yêu cầu: R5.1, R5.2, R5.3, R5.4, G6, FH12, FH13, FH14
@@ -66,21 +66,21 @@ Chuyển policy (R5.3), chỉ khi bước 3 qua ngưỡng:
 
 ## Tiêu chí chấp nhận
 
-- [ ] R5.1 (FH12): bằng `dw_app`: INSERT `platform.platform_operators`, UPDATE `platform.plans`,
+- [x] R5.1 (FH12): bằng `dw_app`: INSERT `platform.platform_operators`, UPDATE `platform.plans`,
       UPDATE và DELETE `platform.users` → `permission denied`; `has_table_privilege` sai cho từng quyền
       bị thu; khôi phục một GRANT → test đỏ.
-- [ ] R5.1: đăng nhập lần đầu, lời mời và nối lại Zalo vẫn xanh (`test_identity_provisioning.py`,
+- [x] R5.1: đăng nhập lần đầu, lời mời và nối lại Zalo vẫn xanh (`test_identity_provisioning.py`,
       `test_tenant_members.py`, `test_zalo_link_repo.py`) dưới quyền mới.
-- [ ] R5.2 (FH13): thêm một bảng vào `_WRITE_TABLES` mà migration không cấp → test so quyền đỏ; bỏ
+- [x] R5.2 (FH13): thêm một bảng vào `_WRITE_TABLES` mà migration không cấp → test so quyền đỏ; bỏ
       một quyền khỏi migration mà script còn cấp → đỏ.
-- [ ] R5.4 (FH13): thu quyền ghi `platform.retention_terms` của `dw_provisioner` → test của bộ nạp retention
+- [x] R5.4 (FH13): thu quyền ghi `platform.retention_terms` của `dw_provisioner` → test của bộ nạp retention
       dưới `dw_provisioner` đỏ; thu INSERT danh tính đăng nhập → test ghi danh tính người vận hành đỏ.
-- [ ] R5.3 (FH14): sau revision bước 7, ALTER một policy về dạng theo dòng → test ở bước 9 đỏ; một
+- [x] R5.3 (FH14): sau revision bước 7, ALTER một policy về dạng theo dòng → test ở bước 9 đỏ; một
       partition tạo bằng `platform.ensure_time_partitions` mang dạng mới. Nếu bước 3 dưới ngưỡng,
       Comments có số đo và đề xuất rút R5.3.
-- [ ] G6: `test_a_connection_that_never_scopes_itself_reads_nothing` và mọi test RLS hiện có xanh
+- [x] G6: `test_a_connection_that_never_scopes_itself_reads_nothing` và mọi test RLS hiện có xanh
       sau revision bước 7.
-- [ ] Xong: `make test-unit test-contract test-architecture && uv run pytest -m integration packages/python/dw_platform apps/api` xanh.
+- [x] Xong: `make test-unit test-contract test-architecture && uv run pytest -m integration packages/python/dw_platform apps/api` xanh.
 
 ## Nguồn
 
@@ -103,3 +103,17 @@ Chuyển policy (R5.3), chỉ khi bước 3 qua ngưỡng:
 - 2026-10-29 (agent, tạm theo ủy quyền): chờ thêm ticket 02, vì hai ticket cùng chạm quyền của `dw_app` trên `platform.users` và `platform.external_identities` (cảnh báo collision của `scripts/check_plans.py` sau bản sửa gate của ticket 02). Nếu sai thì: bỏ 02 khỏi Blocked by.
 - 2026-10-29 (agent): gate `checking-plan-readiness` lượt 1: R5.2 phủ mọi đường dùng `dw_provisioner` (HIGH, đã sửa ở spec và bước 5-6). MEDIUM để người làm xử lý khi gặp: danh sách policy của partition phải đọc catalog lúc upgrade (không danh sách tĩnh, tập partition ở uat và production khác máy dev); test so `qual` trước và sau khi bỏ lớp bọc, và một test âm tenant B đọc và ghi dòng của A sau revision; đo R5.3 trên dạng `tenant AND (workspace OR scope)`, Execution Time không gồm planning; hàm tự đọc setting bên trong policy cũng phải bọc `(SELECT f())`; bảng mới không tự nhận quyền ghi của `dw_app` qua `ALTER DEFAULT PRIVILEGES` (test catalog liệt kê bảng `dw_app` không được ghi).
 - 2026-10-29 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-10-29 (agent): đo trước (bước 1-3), PostgreSQL 16.15, bảng thử trong schema riêng của `dw_test`, 200.000 dòng một tenant trên 20 workspace cộng 200.000 dòng tenant khác, index `(tenant_id, workspace_id, created_at DESC, id DESC)`, policy dạng `tenant AND (workspace OR scope)`, đọc bằng `dw_app` với `app.tenant_id` và `app.workspace_id` đặt theo giao dịch, trang `ORDER BY created_at DESC, id DESC LIMIT 50`, `EXPLAIN (ANALYZE, BUFFERS)`, Execution Time không gồm planning, 5 lần sau một lượt làm nóng: dạng theo dòng trung vị 224,0 ms (173,5-254,1; plan `Limit / Gather Merge`), dạng sub-SELECT trung vị 84,2 ms (72,1-87,1; plan `Limit / Result` với InitPlan), giảm 62%, qua ngưỡng 20%, nên bước 7-10 đã làm. discovery/05 chưa có `## Answer` nên đo đủ.
+- 2026-10-29 (agent): quyền của `dw_provisioner` theo mọi đường dùng vai (đọc mã): `SqlProvisioningRepository` (tenants SELECT/INSERT/UPDATE, workspaces SELECT/INSERT, entitlements SELECT/INSERT, memberships SELECT/INSERT/UPDATE, users SELECT, plans SELECT, roles SELECT, platform_operators SELECT/INSERT/DELETE, support_staff SELECT/INSERT/DELETE, support_grants SELECT và UPDATE năm cột phân công, audit_events INSERT, provisioning_audit SELECT/INSERT, tenant_offboarding_requests SELECT/INSERT), bộ nạp `retention_terms` (SELECT/INSERT/UPDATE/DELETE), danh tính đăng nhập của người vận hành (external_identities SELECT/INSERT, R4.4). Thu phần thừa của baseline: DELETE trên tenants, workspaces, entitlements, memberships; INSERT/UPDATE/DELETE trên users và plans; UPDATE trên platform_operators; UPDATE/DELETE trên provisioning_audit; UPDATE trên tenant_offboarding_requests. Làm khác chữ của bước: quyền theo cột của `support_grants` vào cả migration lẫn script; `REVOKE ALL` rồi `GRANT` đúng tập trong revision, nên catalog sau upgrade đúng bằng tập khai; test so ba nguồn (catalog, migration, script) theo (bảng, quyền, cột). Danh sách policy là 50 policy của bảng không phải partition lúc viết revision, mỗi cái có biểu thức cũ và mới viết sẵn (không thay chuỗi lúc chạy); partition (khác nhau giữa môi trường) được tìm trong catalog lúc upgrade và nhận cùng một vị từ tĩnh; `platform._ensure_one_partition` viết lại với vị từ mới.
+- 2026-10-29 (agent): mutation check 7/7 đỏ (`mutations/03.yaml`, tại chỗ sau một lượt đối chứng xanh; DB test dựng và migrate lại mỗi phiên nên đột biến trong migration có tác dụng). `reviewing-feature-security`: cô lập tenant (policy cùng nghĩa, mọi test RLS cũ xanh, G6 xanh), phân quyền (mỗi quyền bị thu có test âm câu lệnh và catalog), mặc định (revision canh vai tồn tại; partition tạo sau nhận dạng mới); không áp autonomy, nội dung không tin cậy, audit (không đường ghi mới). Cổng: ruff, format, mypy, `make test-unit`, `make test-contract`, `make test-architecture`, integration của `dw_platform` và `apps/api` xanh.
+- 2026-10-29 (agent): P50/P95/P99 (ms), app thật qua httpx, PostgreSQL thật, 1.000 dòng mỗi bảng, 300 yêu cầu mỗi route, so với `0556079` xuất bằng `git archive`, đo tuần tự:
+
+    | Operation                         | Trước (P50/P95/P99) | Sau (P50/P95/P99)  |
+    | --------------------------------- | ------------------- | ------------------ |
+    | `GET /api/v1/approvals`           | 33,7 / 42,2 / 49,9  | 32,6 / 42,9 / 58,0 |
+    | `GET /api/v1/audit/events`        | 32,9 / 40,2 / 45,2  | 32,0 / 41,0 / 50,2 |
+    | `GET /api/v1/feedback`            | 35,1 / 48,8 / 62,9  | 35,1 / 45,2 / 51,8 |
+    | `GET /api/v1/knowledge/documents` | 39,0 / 47,1 / 51,5  | 39,6 / 49,3 / 52,5 |
+    | `GET /api/v1/memory/items`        | 34,3 / 41,9 / 49,4  | 35,4 / 44,3 / 51,4 |
+
+    Mọi route trong ngân sách; không P95 nào chậm hơn 20% (lớn nhất +5,6% ở memory). Ở 1.000 dòng mỗi bảng, khác biệt giữa hai dạng nằm trong nhiễu; lợi ích đo được ở 200.000 dòng ở dòng Comments đầu.
