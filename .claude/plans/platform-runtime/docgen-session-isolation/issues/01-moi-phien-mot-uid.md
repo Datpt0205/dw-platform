@@ -1,6 +1,6 @@
 # 01 — Mỗi phiên docgen chạy dưới một uid riêng
 
-Status: needs-triage
+Status: ready-for-agent
 Area: platform-runtime
 Yêu cầu: không (việc cỡ A, một câu: shell của mỗi phiên docgen chạy dưới uid riêng của phiên, nên không đọc được gì của phiên khác; quyết định ở ADR 0025)
 
@@ -20,7 +20,6 @@ của container với năm capability (ADR 0025).
 ## Việc cần làm
 
 1. `apps/docgen/src/dw_docgen/settings.py`, thêm các setting sau:
-    - `isolate_sessions: bool = True`;
     - `session_uid_base: int = 20000`, `session_uid_count: int = 1024`, với validator đòi base ≥ 10000;
     - `shared_temp_dirs: tuple[str, ...] = ("/tmp", "/dev/shm", "/dev/mqueue")`.
 
@@ -38,14 +37,21 @@ của container với năm capability (ADR 0025).
       đường dẫn; release của một phiên chưa có là 204.
     - `uid_of(session_id)` đọc chủ của thư mục phiên. Chủ nằm ngoài dải (uid 0 chẳng hạn) thì ném
       `SessionIsolationError`: API trả 500, ghi log mức error, và không chạy lệnh.
-    - `scratch_dir` là `0700`.
+    - `scratch_dir` thuộc root, mode `0700`. Shell chỉ nhận fd của tệp output, không cần đường dẫn.
     - `uids=None` giữ nguyên hành vi cũ. Chỉ unit test dùng nó, và mục 6 cấm nó khi service là root.
+    - `adopt_root()`, lifespan gọi:
+        - đặt `/work` về `0711`;
+        - xóa mọi mục ở `/work` mà chủ không thuộc dải, trừ `.service`.
+    - Trước execute và mọi route tệp, nếu uid của phiên còn tiến trình sống (kill lần trước không hội tụ),
+      API trả 503 và không làm gì.
 3. `apps/docgen/src/dw_docgen/runner.py`, `run_command(..., uid: int | None)`, tham số bắt buộc:
     - Khi có uid, `Popen` nhận `user=uid, group=uid, extra_groups=[], umask=0o077`.
     - Sau lệnh, kể cả khi quá giờ, chạy `kill -9 -1` dưới uid đó cho tới khi `/proc` không còn tiến trình
       nào của uid (tối đa `_KILL_ROUNDS` vòng). Không hội tụ thì ghi log mức error; uid đó không về lại
       dải chừng nào còn tiến trình, theo luật "rảnh" ở mục 2.
-    - Sau khi kill, xóa các mục của uid ở `shared_temp_dirs` và SysV IPC của nó, như ở mục 2.
+    - Sau khi kill, xóa các mục của uid ở `shared_temp_dirs` và SysV IPC của nó, bằng cùng hàm
+      `purge_uid` mà mục 2 dùng. Xóa lỗi thì ghi log mức error. uid còn bẩn sẽ được xóa lại trước khi giao,
+      và bị bỏ qua nếu vẫn lỗi.
     - Không có uid thì giữ `_kill_group` như cũ.
 4. `apps/docgen/src/dw_docgen/files.py`:
     - Thư mục cha mà upload tạo, và tệp upload ghi, đều `chown` cho uid của phiên, để shell của phiên sửa
@@ -56,16 +62,15 @@ của container với năm capability (ADR 0025).
    semaphore với execute. Lý do: service ghi bằng `DAC_OVERRIDE`, nên tiến trình của một phiên không được
    đổi một thành phần đường dẫn thành symlink giữa lúc kiểm và lúc ghi, và sweep không được xóa một phiên
    đang upload.
-6. `apps/docgen/src/dw_docgen/main.py`, lifespan ném `RuntimeError` (service không lên) khi:
-    - `isolate_sessions` bật mà euid khác 0;
-    - `isolate_sessions` tắt mà euid bằng 0;
-    - `isolate_sessions` bật mà `max_concurrency` khác 1;
+6. `apps/docgen/src/dw_docgen/main.py`: `create_app(settings=None, *, isolate_sessions: bool = True)`.
+   Đây là tham số trong code, không phải setting đọc từ env, nên không biến môi trường nào tắt được cách
+   ly; factory của uvicorn luôn cách ly. Lifespan ném `RuntimeError` (service không lên) khi:
+    - cách ly bật mà euid khác 0;
+    - cách ly tắt mà euid bằng 0;
+    - cách ly bật mà `max_concurrency` khác 1;
     - một uid trong dải không có dòng `passwd` tên `dws<n>`, trong đó n là vị trí của uid trong dải.
 
-    Ngoài ra lifespan:
-    - đặt `/work` về `0711`;
-    - xóa mọi mục ở `/work` mà chủ không thuộc dải, trừ `.service`;
-    - đưa dải uid cho `SessionWorkspace`.
+    Ngoài ra lifespan gọi `adopt_root()` và đưa dải uid cho `SessionWorkspace`.
 
 7. `infra/docker/docgen.Dockerfile`: thêm dòng `passwd` và `group` cho 1024 uid `dws<n>` từ 20000, vì
    LibreOffice không dựng được user installation cho một uid không có dòng `passwd` (đo 2026-10-29).
@@ -77,7 +82,7 @@ của container với năm capability (ADR 0025).
 
     `docgen-gateway` giữ `user: "1001:1001"`.
 
-9. Unit test `apps/docgen/tests/conftest.py` đặt `isolate_sessions=False`.
+9. Unit test dựng app bằng `create_app(settings, isolate_sessions=False)`.
 10. `docs/adr/0025-each-docgen-session-runs-under-its-own-uid.md`.
 11. Dựng lại image và chạy `docgen` cùng `docgen-gateway`
     (`docker compose ... --profile infra up -d --build docgen docgen-gateway`) trước khi chạy test
@@ -105,8 +110,18 @@ của container với năm capability (ADR 0025).
 - [ ] Lifespan từ chối từng trường hợp ở mục 6 (unit, một test mỗi trường hợp; trường hợp "tắt mà là root"
       giả euid bằng monkeypatch). Bỏ một phép kiểm thì test của nó đỏ.
 - [ ] Một thư mục phiên có chủ ngoài dải thì `uid_of` từ chối (unit). Bỏ phép kiểm thì test đỏ.
-- [ ] Dải đã đầy (mọi uid có thư mục giữ) thì một phiên mới nhận 503 (unit). Bỏ việc kiểm "rảnh" thì test
+- [ ] Dải đã đầy (mọi uid có thư mục giữ) thì một phiên mới nhận 503, và phiên quá TTL đã bị quét trước đó
+      (unit). Bỏ việc kiểm "rảnh" hoặc bỏ lượt quét thì test đỏ.
+- [ ] Một uid còn tiến trình sống không được giao, kể cả khi không thư mục nào giữ nó (unit, POSIX; dải là
+      uid của chính tiến trình test). Bỏ phép kiểm `/proc` thì test đỏ.
+- [ ] Phiên có uid còn tiến trình sống nhận 503 ở execute và ở route tệp (unit, POSIX). Bỏ phép kiểm thì test
       đỏ.
+- [ ] `purge_uid` xóa mục của uid ở các thư mục được chỉ, và để yên mục của uid khác (unit). Bỏ phép so chủ
+      thì test đỏ.
+- [ ] Lượt sweep sau execute chạy khi semaphore đang bị giữ (unit). Đưa sweep ra ngoài thì test đỏ.
+- [ ] `adopt_root()` xóa mục có chủ ngoài dải, giữ `.service`, và đặt `0711` (unit). Bỏ một bước thì test
+      đỏ.
+- [ ] Release một phiên chưa có trả 204 và không tạo thư mục (unit). Cho release tạo phiên thì test đỏ.
 - [ ] Download một phiên chưa có không tạo thư mục phiên (unit). Bỏ `create=False` thì test đỏ.
 - [ ] LibreOffice vẫn chuyển DOCX sang PDF, và các test chứa (fork bomb, memory bomb, mạng) vẫn xanh trong
       `test_sandbox_image.py`.
@@ -121,9 +136,9 @@ của container với năm capability (ADR 0025).
 
 ## Comments
 
-- 2026-10-29 (agent, tạm theo ủy quyền): Duyệt ticket. Trong chat 2026-10-29, Đạt chọn mỗi phiên một uid
-  riêng, với service chạy bằng uid 0 trong container và năm capability, chọn ghi quyết định ở ADR 0025,
-  và giao agent tự gate, tự duyệt ticket này.
+- 2026-10-29 (Đạt): Duyệt ticket. Ghi từ câu trả lời trong chat 2026-10-29: Đạt chọn phương án "uid riêng
+  mỗi phiên", mà mô tả có câu "Ticket tier A ở platform-runtime, tôi tự gate và tự duyệt"; chọn service
+  chạy bằng uid 0 trong container với năm capability; và chọn ghi quyết định ở ADR 0025.
 - 2026-10-29 (agent): checking-plan-readiness, lượt 1 (builder check và boundary walk), 0 CRITICAL, 3 HIGH:
     - tắt cách ly khi service là root;
     - `max_concurrency` khác 1 mở lại TOCTOU;
@@ -145,3 +160,15 @@ của container với năm capability (ADR 0025).
 - 2026-10-29 (agent, tạm): không có test cho `threading.Lock` khi cấp uid. Mọi lời gọi tạo phiên đã nằm dưới
   semaphore, nên lock là lớp thứ hai và không có cách làm nó đỏ một cách tất định. Nếu sai thì: thêm một
   test hai thread gọi `session_dir` cho hai phiên mới.
+- 2026-10-29 (agent): lượt xác nhận gate, 0 CRITICAL. Sửa theo nó:
+    - N1 (HIGH): cách ly tắt được bằng env khi service không phải root. Nay `isolate_sessions` là tham số
+      của `create_app` (mục 6).
+    - C3, C5, C7, C9: thêm tiêu chí cho luật "rảnh", sweep dưới semaphore, quét trước 503, và
+      `adopt_root`.
+    - N2: phiên còn tiến trình sống nhận 503.
+    - N3: xóa lỗi sau lệnh.
+    - N4: chủ của `scratch_dir`.
+- 2026-10-29 (agent, tạm): bước xóa trước khi giao uid (mục 2) và bước xóa sau lệnh (mục 3) gọi chung
+  `purge_uid`. Test image chỉ làm đỏ được bước sau lệnh, vì muốn tàn dư sống qua bước đó thì phải gỡ chính
+  nó. Nếu sai thì: thêm một test image tạo tàn dư bằng một uid trong dải rồi mở một phiên mới.
+- 2026-10-29 (agent): checking-plan-readiness ĐẠT; ready-for-agent.

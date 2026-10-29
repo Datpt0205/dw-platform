@@ -52,7 +52,8 @@ commands.
 5. **The service runs as uid 0 in the container with `SETUID`, `SETGID`, `CHOWN`, `DAC_OVERRIDE`
    and `FOWNER` only.** The root filesystem stays read-only, `no-new-privileges` stays, and
    `cap_drop: [ALL]` stays, with these five added back. The image keeps `USER dw`. The service
-   refuses to start in four cases:
+   refuses to start in four cases. Isolation is an argument of `create_app` in code, not a setting
+   read from the environment, so no variable turns it off:
     - isolation is on and it is not uid 0;
     - isolation is off and it is uid 0;
     - isolation is on and `max_concurrency` is not 1;
