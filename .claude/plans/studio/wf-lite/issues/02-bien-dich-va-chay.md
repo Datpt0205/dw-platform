@@ -1,6 +1,6 @@
 # 02 — Biên dịch sang StateGraph, chạy trên runner hiện có, chờ duyệt, hẹn giờ và chạy tiếp
 
-Status: needs-triage
+Status: ready-for-agent
 Blocked by: 01
 Area: studio
 Yêu cầu: R5.1, R5.2, R5.3, R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.7, R6.8, R6.9, R6.10, R6.12, R6.13, R6.14, R6.15, R6.16, R6.17, R6.18, R6.19, R6.20, R6.21, G1, WFL9, WFL10, WFL11, WFL12, WFL13, WFL14, WFL15, WFL16, WFL17, WFL18, WFL21, WFL22, WFL23, WFL25, WFL26
@@ -89,3 +89,4 @@ hẹn giờ dừng không mở approval; không hiệu ứng nào lặp lại kh
 
 - 2026-10-29 (agent): viết lại theo gate `checking-plan-readiness` lượt 1.
 - 2026-10-29 (agent): theo lượt xác nhận của gate: migration thêm `platform.worker_runs.definition_hash` và `platform.dw_timer_scopes_due` trả cặp `(tenant_id, workspace_id)`; wrapper của nút so `definition_hash` (R6.19), để `GraphInterrupt` đi qua (R6.18) và dựng gói bốn trường (R6.20); `ToolExecutor` tự hỏi `DecisionAutonomy` (R6.17); thuê 15 phút. Ca chéo tenant của lane `dw_timers` và chéo workspace của `trail` thêm vào WFL14, WFL15.
+- 2026-10-29 (agent): checking-plan-readiness ĐẠT; ready-for-agent.

@@ -1,6 +1,6 @@
 # 03 — Scorecard tính từ dữ liệu, nâng hạ mức đã kiếm
 
-Status: needs-triage
+Status: ready-for-agent
 Blocked by: 02, .claude/plans/studio/wf-lite/issues/02-bien-dich-va-chay.md
 Area: studio
 Yêu cầu: R7.1, R7.2, R7.3, R8.1, R8.2, R8.3, R8.4, R8.5, R8.6, DWK17, DWK18, DWK19, DWK20
@@ -32,6 +32,8 @@ Business Owner đọc scorecard của DW tính từ hàng đợi, quyết địn
    và không đổi mức (R8.6).
 6. Đo P50/P95/P99 của route scorecard và danh sách việc (ticket đổi cách truy cập DB, `latency.md`).
 7. Test âm DWK17-DWK20.
+8. Theo gate lượt 2: index unique một phần trên `platform.approval_requests ((payload->>'dw_id'), (payload->>'decision_class'))`
+   `WHERE approval_type = 'dw.autonomy.raise' AND status = 'pending'` (R8.4); bắt vi phạm unique thành 409 `raise_pending`.
 
 ## Tiêu chí chấp nhận
 
@@ -44,6 +46,7 @@ Business Owner đọc scorecard của DW tính từ hàng đợi, quyết địn
 - [ ] R8.3 (DWK18): BO tự duyệt đề nghị của mình, người ngoài DW giữ `approvals.decide` duyệt, hay duyệt không lý do → 409, mức không đổi.
 - [ ] R8.4 (DWK19): đề nghị A4 với trần A3 → 422 `above_ceiling`; đề nghị thứ hai khi một đang chờ → 409 `raise_pending`; không approval mới.
 - [ ] R8.5 (DWK20): Validator hạ → 403 `not_dw_owner`; TO nâng → 403.
+- [ ] R8.4 (DWK19): hai đề nghị nâng cùng lúc cho một loại → đúng một approval, lời gọi kia 409 `raise_pending`.
 - [ ] Xong: `make test-unit test-contract test-architecture` xanh.
 
 ## Nguồn
@@ -51,3 +54,5 @@ Business Owner đọc scorecard của DW tính từ hàng đợi, quyết địn
 - `packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/usage_recorders.py:1-40`; `packages/python/dw_agent_runtime/src/dw_agent_runtime/approval_flow.py:304-305`; spec: R7, R8, DWK17-DWK20.
 
 ## Comments
+
+- 2026-10-29 (agent): checking-plan-readiness ĐẠT; ready-for-agent.

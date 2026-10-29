@@ -1,6 +1,6 @@
 # 02 — Demo chạy thật: một lead đi trọn vòng trên compose, ảnh chụp từng màn
 
-Status: needs-triage
+Status: ready-for-agent
 Blocked by: 01, .claude/plans/studio/digital-worker/issues/04-man-hinh-dw.md
 Area: studio
 Yêu cầu: R4.1, R4.2, R4.3, R4.4, LCP12
@@ -39,3 +39,5 @@ infra/compose/docker-compose.dev.yml up -d --build` cho postgres, api, worker, w
 - `./Makefile:122`; `infra/compose/docker-compose.dev.yml:77-92`; spec: R4, LCP12.
 
 ## Comments
+
+- 2026-10-29 (agent): checking-plan-readiness ĐẠT; ready-for-agent.

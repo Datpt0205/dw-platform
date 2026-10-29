@@ -1,6 +1,6 @@
 # 04 — Màn hình Digital Worker, hàng đợi việc và thẻ duyệt
 
-Status: needs-triage
+Status: ready-for-agent
 Blocked by: 03
 Area: studio
 Yêu cầu: R9.1, R9.2, R9.3, R9.4, R9.5, DWK21
@@ -42,3 +42,5 @@ web, bằng Ant Design v6 (R9).
 - `apps/web/app/approvals`; `CLAUDE.md` mục Web UI; spec: R9, DWK21.
 
 ## Comments
+
+- 2026-10-29 (agent): checking-plan-readiness ĐẠT; ready-for-agent.

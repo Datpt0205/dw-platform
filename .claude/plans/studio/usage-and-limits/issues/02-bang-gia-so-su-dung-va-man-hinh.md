@@ -156,3 +156,4 @@ model với đủ thuộc tính gán, chỉ thêm và idempotent; màn Mức đ�
   chờ ticket này (bước 4, tiêu chí R3.8, R3.11). Các dòng Comments trước về chuỗi tệp retention và thứ tự các bước xóa
   là lịch sử, đã bị thay.
 - 2026-10-26 (agent): áp Q-h11 của Đạt (theo khuyến nghị): mảnh `platform.usage_events` mang `enforced: false`, lane `partitions` không DROP tháng nào của bảng tới khi luật sư xác nhận thời hạn. Không thêm cạnh.
+- 2026-10-29 (agent): `platform.purge_tenant_append_only` phải bỏ qua bảng đã có bước khác khai trong sổ bước xóa (`platform.consent_records`, `platform.marketing_send_log` do `platform.purge_tenant_marketing` của compliance-pdpl/08 xóa), vì foundations-hardening R11.8 làm worker không khởi động khi hai bước cùng khai một bảng.

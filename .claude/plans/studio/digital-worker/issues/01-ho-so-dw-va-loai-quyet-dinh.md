@@ -1,9 +1,9 @@
 # 01 — Hồ sơ Digital Worker, service principal tối thiểu, loại quyết định và mức tự chủ có hiệu lực
 
-Status: needs-triage
+Status: ready-for-agent
 Blocked by: .claude/plans/studio/foundations-hardening/issues/03-quyen-dw-app-va-rls-initplan.md
 Area: studio
-Yêu cầu: R1.1, R1.2, R1.3, R1.5, R1.6, R1.7, R1.8, R1.9, R1.10, R1.11, R1.13, R1.15, R1.16, R2.1, R2.2, R2.3, R2.4, DWK1, DWK3, DWK4, DWK5, DWK6, DWK7, DWK23, DWK24, DWK25, DWK33
+Yêu cầu: R1.1, R1.2, R1.3, R1.5, R1.6, R1.7, R1.8, R1.9, R1.10, R1.11, R1.13, R1.15, R1.16, R1.17, R2.1, R2.2, R2.3, R2.4, DWK1, DWK3, DWK4, DWK5, DWK6, DWK7, DWK23, DWK24, DWK25, DWK33, DWK36, R1.18, DWK41
 
 ## Mục tiêu
 
@@ -41,6 +41,9 @@ duy nhất trả mức tự chủ có hiệu lực (R1, R2, ADR-0128 (Proposed) 
    `PUT /v1/digital-workers/{id}/people`, theo app-standards (problem+json, `Idempotency-Key`, keyset),
    mã lỗi đúng mục API của spec; nối ở `apps/api/src/dw_api/bootstrap/wiring.py`.
 8. Test âm DWK1, DWK3 (DW và loại quyết định), DWK4-DWK7, DWK23-DWK25.
+9. Theo gate lượt 2 và lượt xác nhận: `membership_admin` từ chối thêm vai hay bộ quyền cho principal của một DW
+   (R1.17, 409 `dw_principal_roles_fixed`), vẫn cho tạm ngưng và gỡ; test catalog trong `test_privileges.py` (hay
+   `test_rls_coverage.py`) liệt kê membership của principal của DW giữ vai tới hạn và đỏ khi có (R1.18, DWK41).
 
 ## Tiêu chí chấp nhận
 
@@ -61,6 +64,8 @@ duy nhất trả mức tự chủ có hiệu lực (R1, R2, ADR-0128 (Proposed) 
 - [ ] R2.2: `earned_level` A3 với trần A2 → 422 `above_ceiling`, không dòng DW nào.
 - [ ] R2.3 (DWK6): trần tenant A1, đã kiếm A3, trần loại A4 → `A1`; loại không tồn tại → `A0`.
 - [ ] R2.4 (DWK7): `critical` ở A4 đòi người; `external` không đảo được ở A3 đòi người; đảo được ở A3 không đòi; `test_autonomy_policy.py` xanh không sửa.
+- [ ] R1.17 (DWK36): `PUT /admin/members` thêm vai cho principal của DW → 409 `dw_principal_roles_fixed`, membership không đổi; tạm ngưng → được.
+- [ ] R1.18 (DWK41): gán `org_admin` cho principal bằng vai migrator → test catalog đỏ và nêu DW; gỡ → xanh.
 - [ ] Xong: `make test-unit test-contract test-architecture` xanh.
 
 ## Nguồn
@@ -71,3 +76,5 @@ duy nhất trả mức tự chủ có hiệu lực (R1, R2, ADR-0128 (Proposed) 
 
 - 2026-10-29 (agent): viết lại theo gate `checking-plan-readiness` lượt 1 (định danh DW là service principal tối thiểu theo ADR-0103 (Accepted) quyết 2; hai người khi vào chạy; luật phủ). org-and-principals/03 chờ ticket này và mở rộng cùng bảng.
 - 2026-10-29 (agent): theo lượt xác nhận của gate: Business Owner chỉ ở `platform.service_principals.owner_user_id` với trigger `platform.guard_accountable_owner()`; vai tới hạn bị cấm cho principal (R1.15, R1.16, DWK33).
+- 2026-10-29 (agent): theo gate lượt 2: route thành viên từ chối ghi membership của user `kind = 'service'` (R1.17, DWK36); bốn người phải `kind = 'human'`; mọi route theo id trả 404 trước 403 (R1.5).
+- 2026-10-29 (agent): checking-plan-readiness ĐẠT; ready-for-agent.

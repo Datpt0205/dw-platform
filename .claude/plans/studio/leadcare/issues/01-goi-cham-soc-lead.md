@@ -1,6 +1,6 @@
 # 01 — Gói Marketing chăm sóc lead, cửa nhận lead có chữ ký, công cụ email chỉ tới hộp thư dev
 
-Status: needs-triage
+Status: ready-for-agent
 Blocked by: .claude/plans/studio/wf-lite/issues/02-bien-dich-va-chay.md, .claude/plans/studio/compliance-pdpl/issues/08-loi-san-gui-tin.md
 Area: studio
 Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R2.7, R2.8, R2.9, R2.10, R2.11, R2.12, R2.13, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, LCP1, LCP2, LCP3, LCP4, LCP5, LCP6, LCP7, LCP8, LCP9, LCP10, LCP11, LCP13, LCP14, LCP15, LCP16, LCP17, LCP18
@@ -84,3 +84,4 @@ workspace_id uuid, state text)` `SECURITY DEFINER`, `SET search_path = pg_catalo
 
 - 2026-10-29 (agent): viết lại theo gate `checking-plan-readiness` lượt 1.
 - 2026-10-29 (agent): theo lượt xác nhận của gate: chờ compliance-pdpl/08 (Sàn gửi tin); `email.send` `approval_policy: always`, `sends_message: true`; cửa nhận ghi Bản ghi đồng ý và đóng khi `is_deployed`; `work.handoff` nhận `{to, code, facts}`; tiêu chí R1.5 kiểm điểm và nhãn (người nhận là tham chiếu khóa nên không đổi được); LCP3 thêm DW `draft`; LCP13 tách hai ca.
+- 2026-10-29 (agent): checking-plan-readiness ĐẠT; ready-for-agent.

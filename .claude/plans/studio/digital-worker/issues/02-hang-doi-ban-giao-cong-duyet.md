@@ -1,9 +1,9 @@
 # 02 — Hàng đợi việc chung, bàn giao có gói, cổng duyệt theo loại quyết định, ranh giới ở cửa công cụ
 
-Status: needs-triage
+Status: ready-for-agent
 Blocked by: 01, .claude/plans/studio/runtime-hardening/issues/01-toolexecutor-gianh-luot-khong-cua-sau.md
 Area: studio
-Yêu cầu: R1.4, R1.12, R1.14, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R3.9, R3.10, R3.11, R3.12, R3.13, R3.14, R4.1, R4.2, R4.3, R5.1, R5.2, R5.3, R5.4, R5.5, R6.1, R6.2, R6.3, DWK2, DWK3, DWK8, DWK9, DWK10, DWK11, DWK12, DWK13, DWK14, DWK15, DWK16, DWK22, DWK26, DWK27, DWK28, DWK29, DWK30, DWK31, DWK32, DWK34, DWK35
+Yêu cầu: R1.4, R1.12, R1.14, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R3.9, R3.10, R3.11, R3.12, R3.13, R3.14, R3.15, R4.1, R4.2, R4.3, R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R6.1, R6.2, R6.3, DWK2, DWK3, DWK8, DWK9, DWK10, DWK11, DWK12, DWK13, DWK14, DWK15, DWK16, DWK22, DWK26, DWK27, DWK28, DWK29, DWK30, DWK31, DWK32, DWK34, DWK35, DWK37, DWK38, DWK39, DWK40
 
 ## Mục tiêu
 
@@ -54,6 +54,13 @@ now()` của DW `operating`), chuyển `in_progress`, rồi gọi `DigitalWorker
    app-standards/03.
 9. Đo P50/P95/P99 của `GET /v1/work-items` và `POST .../work-items` (ticket đổi cách truy cập DB, `latency.md`).
 10. Test âm DWK2, DWK3 (việc), DWK8-DWK16, DWK22, DWK26-DWK32.
+11. Theo gate lượt 2 và lượt xác nhận: lane sinh `run_id` trong giao dịch nhận, truyền vào `RunContext.run_id`,
+    chỉ nhận việc của DW `operating` có Business Owner (R3.6); việc `in_progress` có `run_id` không dòng lượt chạy 15
+    phút sau `updated_at` về `open` giữ `run_id` (R3.14); lỗi bắt đầu khác hạn mức → `failed`, lượt đã tồn tại thì
+    không (R3.15); hàm `platform.retire_dw_principal(dw_id)` SECURITY DEFINER gỡ membership của principal khi
+    `retired` (R1.14), với khẳng định quyền trong `test_privileges.py`; trigger giữ `payload` chỉ áp cho `dw_app`;
+    bộ che `payload.proposal` và `edited_payload` của `dw.decision` theo loại approval, nối ở composition root (R5.6);
+    bộ kiểm JSON Schema là mô-đun chung của `dw_kernel` (thay `jsonschema` gọi thẳng ở bước 2).
 
 ## Tiêu chí chấp nhận
 
@@ -67,6 +74,7 @@ now()` của DW `operating`), chuyển `in_progress`, rồi gọi `DigitalWorker
 - [ ] R3.5 (DWK3): danh sách có cả việc người và DW giữ của workspace, không `payload`, không việc của tenant B; kế hoạch dùng index dẫn bằng `tenant_id`.
 - [ ] R3.6 (DWK10): hai lane song song trên một việc → đúng một lời gọi `DigitalWorkerRunStarter`.
 - [ ] R3.7 (DWK11): DW `paused` có việc `open` → sau một vòng lane việc vẫn `open`, không lời gọi nào.
+- [ ] R3.15: runner giả từ chối vì tài liệu không nạp được → việc `failed` với mã, lane không nhận lại.
 - [ ] R3.8 (DWK12): người không giữ gọi `/complete` → 403 `not_holder`; người giữ gọi trên việc `in_progress` → 409; trạng thái không đổi.
 - [ ] R3.9 (DWK27): runner giả từ chối vì hạn mức → việc về `open`, `available_at` sau 5 phút, không dòng nào bị xóa; lane không nhận lại trước `available_at`.
 - [ ] R3.10 (DWK30): Validator gọi `POST /v1/digital-workers/{id}/work-items` → 403 `not_work_assigner`; Work Assigner → 201.
@@ -85,6 +93,11 @@ now()` của DW `operating`), chuyển `in_progress`, rồi gọi `DigitalWorker
 - [ ] R6.3 (DWK34): thu vai của principal khi lượt đang chờ duyệt, rồi duyệt → `scope_lost`, công cụ không chạy.
 - [ ] R3.14 (DWK35): việc `in_progress` `run_id` NULL 16 phút → lane trả về `open`; 14 phút → giữ.
 - [ ] R6.2 (DWK26): lượt chạy DW gọi công cụ cùng scope nhưng ngoài `allowed_tools` → `tool_not_allowed`, công cụ không chạy.
+- [ ] R1.14 (DWK32): `retired` gỡ membership của principal của DW đó, không chạm membership khác.
+- [ ] R3.14 (DWK37): việc `in_progress` có `run_id` không dòng lượt chạy 16 phút sau `updated_at` → `open` giữ `run_id`; lần bắt đầu sau cùng `run_id`, `email.send` của lượt đầu đã ghi khóa thì không gửi lần hai.
+- [ ] R5.6 (DWK38): thành viên giữ `approvals.read` không là người của DW đọc approval `dw.decision` → không `payload.proposal`, không `edited_payload`; Validator đọc → có.
+- [ ] R4.3 (DWK39): Validator là principal của DW khác → 422; người nhận bàn giao `kind = 'service'` → `handoff_target_invalid`.
+- [ ] R3.2 (DWK40): `enqueue` cho DW `retired` → `dw_not_accepting_work`, không dòng nào.
 - [ ] Xong: `make test-unit test-contract test-architecture` xanh.
 
 ## Nguồn
@@ -95,3 +108,5 @@ now()` của DW `operating`), chuyển `in_progress`, rồi gọi `DigitalWorker
 
 - 2026-10-29 (agent): viết lại theo gate `checking-plan-readiness` lượt 1.
 - 2026-10-29 (agent): theo lượt xác nhận của gate: `dw_work_scopes_due` trả cặp `(tenant_id, workspace_id)` và phép nhận đặt cả `app.workspace_id`; `retired` khóa dòng DW `FOR UPDATE`, phép nhận `FOR SHARE`; `ToolExecutor` đọc scope sống (R6.3); lane trả việc kẹt về `open` (R3.14); `run_id` ghi ngay khi runner trả id. MEDIUM để người làm: payload `proposal` của approval `dw.decision` đọc được bởi người xem hộp duyệt của workspace, rộng hơn R3.11; đặt `required_scope` của approval theo quyền duyệt của DW khi làm.
+- 2026-10-29 (agent): theo gate lượt 2: lane sinh `run_id` trong giao dịch nhận và truyền vào `RunContext.run_id`; việc kẹt về `open` giữ `run_id` (R3.14, DWK37); lỗi bắt đầu khác hạn mức → `failed` (R3.15); bộ che `payload.proposal` của approval `dw.decision` theo loại, nối ở composition root (R5.6, DWK38); người nhận bàn giao `kind = 'human'` (DWK39); DW `draft` hay `retired` từ chối việc (DWK40); bộ kiểm JSON Schema dùng chung ở `dw_kernel`.
+- 2026-10-29 (agent): checking-plan-readiness ĐẠT; ready-for-agent.

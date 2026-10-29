@@ -1,6 +1,6 @@
 # 01 — Tài liệu `dw.workflow/v1` của gói, sổ sáu loại bước, bộ kiểm và luật sàn HITL
 
-Status: needs-triage
+Status: ready-for-agent
 Blocked by: .claude/plans/studio/digital-worker/issues/02-hang-doi-ban-giao-cong-duyet.md
 Area: studio
 Yêu cầu: R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R4.1, R4.2, R4.3, WFL1, WFL2, WFL3, WFL4, WFL5, WFL6, WFL7, WFL8, WFL19, WFL20, WFL24
@@ -68,3 +68,4 @@ message_en}]` với mã `wf.schema_invalid`, `wf.duplicate_step_id`, `wf.unknown
 ## Comments
 
 - 2026-10-29 (agent): viết lại theo gate `checking-plan-readiness` lượt 1.
+- 2026-10-29 (agent): checking-plan-readiness ĐẠT; ready-for-agent.

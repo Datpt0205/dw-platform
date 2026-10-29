@@ -2,8 +2,8 @@
 
 Status: needs-triage
 Area: studio · Nhánh: `main` · Viết: 29/10/2026
-Duyệt: chưa
-Sẵn sàng: chưa kiểm
+Duyệt: agent, tạm theo ủy quyền 29/10/2026
+Sẵn sàng: ĐẠT (29/10/2026; 0 CRITICAL, 0 HIGH; ticket 01-02)
 
 Thí điểm D4 thành một DW chăm sóc lead ở A2 (D15): DW nhận lead có chữ ký và có đồng ý, chấm điểm, soạn thư, chờ người duyệt gửi, gửi, chờ phản hồi hay nhắc, phân loại phản hồi rồi bàn giao cho sales (YC124). Theo D17 quy trình là một tài liệu của gói Marketing ship sẵn, lead là việc trong hàng đợi chung, và lát này phải chạy thật trên docker compose với model thật, có ảnh chụp từng màn (KQ15).
 
@@ -127,6 +127,7 @@ Mọi hiệu ứng của DW đi qua `ToolExecutor`; người nhận thư là lea
 - 29/10/2026 (agent, tạm): Thời gian chờ phản hồi là tham số `reply_wait_seconds` của DW, demo đặt 60 giây. Nếu sai thì: mặc định 2 ngày làm việc theo YC98 và demo đổi tham số.
 - 29/10/2026 (agent, tạm theo ủy quyền): Theo gate `checking-plan-readiness` lượt 1: `email.send` chỉ tới hộp thư dev và từ chối ở mọi môi trường triển khai (R3.6), để không thư nào tới một người khi sàn gửi tin của ADR-0124 (Accepted) chưa có; trần `email.send` của gói là A2 nên mọi thư đều chờ người (ADR-0124 (Accepted) quyết 7); chữ ký phủ event id; DW `draft` hay `retired` không nhận lead, DW `paused` nhận và việc chờ; khóa ký chỉ chủ của chính DW đọc, có audit; người nhận nằm trong đề xuất đã duyệt và khóa, so với payload không đổi; thư nhắc có bước soạn và cổng riêng, gửi một lần; kết quả gửi không rõ thì bàn giao; bộ eval chèn lệnh. Sửa: R1.1, R1.2, R1.4, R1.5, R2.1, R2.2, R2.6, R2.8-R2.10, R3.1-R3.8, LCP1, LCP3, LCP6, LCP8, LCP10, LCP13-LCP16. Nếu sai thì: từng mục quay về bản trước gate trong lịch sử git của tệp này.
 - 29/10/2026 (agent, tạm theo ủy quyền): Theo lượt xác nhận của gate (CRITICAL còn mở: ADR-0124 (Accepted) đòi sàn trước tác động gửi đầu tiên ở mọi profile, kể cả người nhận thử): `email.send` đi qua Sàn gửi tin thật của compliance-pdpl ticket 08, làm trước leadcare/01; cửa nhận ghi Bản ghi đồng ý; công cụ `approval_policy: always` (quyết 7); R3.6 giữ làm lớp thứ hai (chỉ hộp thư dev); cửa nhận đóng ở môi trường triển khai tới cổng E3; người nhận bàn giao `{"role": "validator"}` đọc sống; gói bàn giao dựng theo mẫu của mã. Demo chạy trong 08:00-20:00 giờ Việt Nam vì khung giờ của sàn. Sửa: R1.1, R1.5, R2.3, R2.12, R2.13, R3.1, R3.3, R3.5, LCP3, LCP13, LCP16-LCP18. Nếu sai thì: Đạt sửa ADR-0124 (Accepted) để ghi ngoại lệ hộp thư dev ở profile cục bộ, bỏ phụ thuộc vào ticket 08.
+- 29/10/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 01-02.
 
 ## Danh sách ticket
 

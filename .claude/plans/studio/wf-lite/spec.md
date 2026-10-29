@@ -2,8 +2,8 @@
 
 Status: needs-triage
 Area: studio · Nhánh: `main` · Viết: 29/10/2026
-Duyệt: chưa
-Sẵn sàng: chưa kiểm
+Duyệt: agent, tạm theo ủy quyền 29/10/2026
+Sẵn sàng: ĐẠT (29/10/2026; 0 CRITICAL, 0 HIGH; ticket 01-02)
 
 Digital Worker đầu tiên chạy một quy trình xác định làm xương sống, agent chỉ ở bước cần phán đoán (D15). Theo đường C của D17, quy trình là một tài liệu `dw.workflow/v1` do gói ship sẵn trong `configs/packs/`, tenant chỉ chỉnh tham số, và bộ máy chạy nó là tập con đúng hình của ADR-0112 (Accepted): cùng cây `steps[]`, cùng tên loại bước, cùng mã `wf.*`, cùng cách biên dịch, để workflow-engine sau này mở rộng chứ không viết lại. Spec này không có bản nháp, phiên bản do tenant dựng hay cổng phát hành: đó là workflow-engine và agent-lifecycle.
 
@@ -163,6 +163,7 @@ Mỗi tài liệu biên dịch một lần thành StateGraph, chạy, dừng ở
 - 29/10/2026 (agent, tạm theo ủy quyền): Theo lượt xác nhận của gate: phép nhận theo cặp tenant và workspace (policy workspace của `work_items`); sha256 ghi vào `definition_hash`, không vào `release_manifest_ref` của nền tảng, và wrapper của mọi nút so nó (mọi đường chạy tiếp); `ToolExecutor` tự hỏi `DecisionAutonomy`, băm JSON chuẩn, `subject_changed` của ADR-0112 (Accepted) quyết 7; `GraphInterrupt` đi qua wrapper; bàn giao tự động đủ bốn trường, người nhận là Validator; `proposal_schema` do trình biên dịch tính; thuê 15 phút, chạy tiếp lần hai là no-op. Sửa: R3.2, R5.2, R5.3, R6.7, R6.12, R6.14, R6.17-R6.21, WFL13-WFL15, WFL24-WFL26. Nếu sai thì: từng mục quay về bản trước trong lịch sử git.
 - 29/10/2026 (agent, tạm): `trail` trong trạng thái lượt chạy thay cho một bảng bước, vì `platform.run_steps` là của telemetry-and-audit/03 và hai bảng bước là hai câu trả lời. Nếu sai thì: wf-lite tạo `platform.run_steps` tối thiểu và telemetry-and-audit/03 mở rộng nó.
 - 29/10/2026 (agent, tạm): "Chờ phản hồi" là `time.wait` rồi một công cụ đọc hộp thư, không là chờ sự kiện tương quan (W3). Nếu sai thì: thêm loại `event.wait@1` với khóa tương quan và cửa nhận thư trả lời.
+- 29/10/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 01-02.
 
 ## Danh sách ticket
 
