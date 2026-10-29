@@ -34,6 +34,8 @@ DEFAULT_WORKSPACE = uuid.UUID("64764894-718d-5558-ba17-9a2949214063")
 class _Identity:
     subject: str
     email: str | None
+    # An IdP that verified the address, as a corporate SSO does.
+    email_verified: bool = True
     issuer: str = "https://issuer.test/realms/dw"
     name: str | None = None
     auth_methods: frozenset[str] = frozenset()
@@ -113,23 +115,26 @@ async def test_email_links_a_keycloak_login_to_the_imported_user(
     empty one (and not crash on the unique email)."""
     bootstrap = _bootstrap(app_engine, auto_provision=False)
 
-    # The importer's user: its own subject/issuer, a real email.
-    imported = await bootstrap.bootstrap(
-        _Identity(
-            subject="sugar:tuanbta@fpt.com",
-            email="tuanbta@fpt.com",
-            issuer="sugarcrm",
-            name="Tuan Bui Trieu Anh",
+    # The importer's user: its own subject, a real email, and no sign-in, so no
+    # login identity (an importer writes the row; it does not sign anyone in).
+    imported_id = uuid.uuid4()
+    async with migrator_engine.begin() as conn:
+        await conn.execute(
+            sa.insert(tables.users).values(
+                id=imported_id,
+                subject="sugar:tuanbta@fpt.com",
+                email="tuanbta@fpt.com",
+                display_name="Tuan Bui Trieu Anh",
+            )
         )
-    )
     # Their workspace + records would reference this user id.
-    await _grant_membership_in_new_tenant(migrator_engine, imported.principal_id, slug="fis")
+    await _grant_membership_in_new_tenant(migrator_engine, imported_id, slug="fis")
 
     # Tuan signs in through Keycloak: same email, Keycloak's own subject/issuer.
     login = await bootstrap.bootstrap(_Identity(subject="kc-sub-abc", email="TuanBTA@fpt.com"))
 
     # Same person: resolves to the imported user, with their workspace and name.
-    assert login.principal_id == imported.principal_id
+    assert login.principal_id == imported_id
     assert login.display_name == "Tuan Bui Trieu Anh"
     assert {m.tenant_slug for m in login.memberships} == {"fis"}
 
@@ -139,15 +144,14 @@ async def test_email_links_a_keycloak_login_to_the_imported_user(
             (
                 await session.execute(
                     sa.select(tables.external_identities.c.issuer).where(
-                        tables.external_identities.c.user_id == imported.principal_id
+                        tables.external_identities.c.user_id == imported_id
                     )
                 )
             )
             .scalars()
             .all()
         )
-    assert "sugarcrm" in issuers
-    assert "https://issuer.test/realms/dw" in issuers
+    assert issuers == ["https://issuer.test/realms/dw"]
 
 
 async def test_the_opt_in_flag_restores_the_default_membership(app_engine: AsyncEngine) -> None:

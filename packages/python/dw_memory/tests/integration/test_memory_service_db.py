@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import NullPool
 
 from dw_kernel.errors import DomainError
+from dw_kernel.pagination import MAX_PAGE_SIZE, PageQuery, page_request
 from dw_kernel.ports import SystemClock, Uuid4Generator
 from dw_knowledge.adapters.evidence_store import SqlEvidenceStore
 from dw_knowledge.contracts import EvidenceRef
@@ -801,6 +802,47 @@ async def test_recall_will_not_hand_a_run_material_above_its_clearance(
         )
         == 1
     )
+
+
+async def _every_listed_item(svc: MemoryService, context: AccessContext) -> list[Any]:
+    """Every page of `list_items`, so a neighbour's rows cannot push ours off page 1."""
+    listed: list[Any] = []
+    cursor: str | None = None
+    query = PageQuery(key="memory.items")
+    while True:
+        page = await svc.list_items(
+            context, page_request(limit=MAX_PAGE_SIZE, cursor=cursor, query=query)
+        )
+        listed.extend(page.items)
+        if page.next_cursor is None:
+            return listed
+        cursor = page.next_cursor
+
+
+async def test_the_inventory_will_not_list_material_above_the_callers_clearance(
+    service: tuple[MemoryService, async_sessionmaker[AsyncSession]], seeded: Seeded
+) -> None:
+    """R2.3 (FH4): `GET /api/v1/memory/items` lists through `list_items`, and the
+    list answers to the same clearance as recall, one owner for both."""
+    svc, _ = service
+    context = make_context()
+    subject = a_subject()
+    # `restricted` never auto-writes, so `confidential` is the one above `internal`.
+    for classification in ("internal", "confidential"):
+        await _remember(
+            svc,
+            seeded,
+            context=context,
+            subject_refs=(subject,),
+            classification=classification,
+        )
+
+    def ours(items: list[Any]) -> set[str]:
+        return {item.classification for item in items if subject in item.subject_refs}
+
+    assert ours(await _every_listed_item(svc, context)) == {"internal"}
+    cleared = context.model_copy(update={"clearance": "confidential"})
+    assert ours(await _every_listed_item(svc, cleared)) == {"internal", "confidential"}
 
 
 async def test_recall_skips_a_fact_whose_validity_window_has_not_opened(

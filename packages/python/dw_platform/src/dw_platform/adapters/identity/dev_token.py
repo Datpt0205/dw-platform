@@ -49,6 +49,7 @@ class DevTokenVerifier:
         return VerifiedClaims(
             subject=str(claims["sub"]),
             email=claims.get("email"),
+            email_verified=claims.get("email_verified") is True,
             issuer=str(claims["iss"]),
             auth_methods=auth_methods(claims.get("amr")),
             acr=str(claims["acr"]) if claims.get("acr") is not None else None,
@@ -72,7 +73,10 @@ class DevTokenVerifier:
             "exp": int((now + ttl).timestamp()),
         }
         if email:
+            # The dev issuer stands in for an IdP that verified the address;
+            # tokens of the `local` profile only (`bootstrap/identity.py`).
             payload["email"] = email
+            payload["email_verified"] = True
         if amr is not None:
             payload["amr"] = amr
         return jwt.encode(payload, key=self.secret, algorithm="HS256")

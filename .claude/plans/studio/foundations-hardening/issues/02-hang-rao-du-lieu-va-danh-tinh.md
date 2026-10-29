@@ -1,6 +1,6 @@
 # 02 — Hàng rào dữ liệu bị quên, vòng đời tenant, nối danh tính và checkpoint an toàn
 
-Status: ready-for-agent
+Status: resolved (2026-10-29, main)
 Blocked by: 01
 Area: studio
 Yêu cầu: R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R3.1, R3.2, R3.3, R4.1, R4.2, R4.3, R4.4, R4.5, G1, G2, G3, G4, G5, FH2, FH3, FH4, FH5, FH6, FH7, FH8, FH9, FH10, FH11, FH34
@@ -138,55 +138,55 @@ Nối danh tính (R4.1-R4.4, G2-G4), áp ngay theo DO-17.1:
 
 ## Tiêu chí chấp nhận
 
-- [ ] R2.1 (FH2): mở rộng `packages/python/dw_knowledge/tests/integration/test_qdrant_tenant_filter.py`
+- [x] R2.1 (FH2): mở rộng `packages/python/dw_knowledge/tests/integration/test_qdrant_tenant_filter.py`
       với Qdrant thật: tenant B xóa id của A → 404 và tìm kiếm của A vẫn trả tài liệu; workspace 2
       xóa tài liệu workspace 1 → 404; mọi tenant xóa id tài liệu toàn cục → 404 và tài liệu vẫn tìm
       được; gỡ `tenant_id` khỏi filter tombstone → đỏ (ghi Comments).
-- [ ] R2.2 (FH3): xóa thành công ghi đúng một `knowledge.document.deleted`; audit ném lỗi → tài liệu
+- [x] R2.2 (FH3): xóa thành công ghi đúng một `knowledge.document.deleted`; audit ném lỗi → tài liệu
       không mang `status='deleted'`; chuyển ghi audit ra sau commit → đỏ.
-- [ ] R2.3 (FH4): `GET /api/v1/memory/items` với clearance `internal` không trả mục `confidential`
+- [x] R2.3 (FH4): `GET /api/v1/memory/items` với clearance `internal` không trả mục `confidential`
       hay `restricted`; bỏ điều kiện phân loại → đỏ.
-- [ ] R2.4 (FH5): hai tenant chung `thread_id`, B có checkpoint mới hơn → sau `prune` checkpoint mới
+- [x] R2.4 (FH5): hai tenant chung `thread_id`, B có checkpoint mới hơn → sau `prune` checkpoint mới
       nhất của A còn; bỏ so `tenant_id` ở `newer` → đỏ.
-- [ ] R2.5 (FH6): một dòng checkpoint có kiểu ngoài `ALLOWED` → nạp ra dict, không object nào của
+- [x] R2.5 (FH6): một dòng checkpoint có kiểu ngoài `ALLOWED` → nạp ra dict, không object nào của
       kiểu đó được dựng; đổi allowlist thành `True` → đỏ.
-- [ ] R2.6 (FH34): sáu module thử dưới `apps/api`: một có `set_config('app.worker_drain', 'on', true)`,
+- [x] R2.6 (FH34): sáu module thử dưới `apps/api`: một có `set_config('app.worker_drain', 'on', true)`,
       một nhập `_SET_WORKER_DRAIN` từ `dw_knowledge.ingest_jobs`, một gọi `set_config(:k, 'on', true)`
       với `k='app.worker_drain'`, một nhập `IngestJobQueue` từ `dw_knowledge.ingest_jobs`, một
       `import dw_knowledge.ingest_jobs`, một `from dw_knowledge import ingest_jobs` → test kiến trúc đỏ
       và nêu từng module; các module trong
       `EXEMPT`, `apps/worker`, docstring và thư mục `tests` không làm đỏ; `IngestJobStore` của API không
       làm đỏ; gỡ phép quét, gỡ nhánh lớp hay hàm, hay thêm một tên không lý do → đỏ.
-- [ ] R3.1 (FH7): `POST /api/v1/platform/tenants/{tenant_id}/unlock` và `/lock` cho tenant
+- [x] R3.1 (FH7): `POST /api/v1/platform/tenants/{tenant_id}/unlock` và `/lock` cho tenant
       `offboarding` → 409 `tenant_offboarding`, `status` giữ nguyên; hoàn tất offboarding vẫn đặt
       `offboarded`; gỡ điều kiện trạng thái → đỏ.
-- [ ] R3.2 (FH7): UPDATE thẳng `offboarded → active` và `offboarding → locked` bằng `dw_provisioner`
+- [x] R3.2 (FH7): UPDATE thẳng `offboarded → active` và `offboarding → locked` bằng `dw_provisioner`
       → trigger từ chối với `ck_tenants_status_transition`; `offboarding → offboarded` và
       `offboarded → offboarding` vẫn nhận; gỡ trigger → test SQL đỏ; đổi trigger thành danh sách cấm
       `active`, `locked` → ca `offboarding → setup` (CHECK nới trong giao dịch test) đỏ.
-- [ ] R3.3 (FH8): với cache giả trung thực (`delete_pattern` xóa thật), thành viên có context trong
+- [x] R3.3 (FH8): với cache giả trung thực (`delete_pattern` xóa thật), thành viên có context trong
       cache, người vận hành khóa tenant → request kế tiếp 403; bỏ lời gọi xóa cache → đỏ.
-- [ ] R4.1 (FH9): token `email_verified=false` có email trùng user được mời → 403
+- [x] R4.1 (FH9): token `email_verified=false` có email trùng user được mời → 403
       `identity_email_in_use`, không thêm dòng danh tính nào; gỡ kiểm `email_verified` → đỏ.
-- [ ] R4.2 (FH9): email đã xác minh của user đã có danh tính đăng nhập → 403; email đã xác minh của
+- [x] R4.2 (FH9): email đã xác minh của user đã có danh tính đăng nhập → 403; email đã xác minh của
       người vận hành chưa từng đăng nhập → 403; gỡ từng điều kiện → đỏ.
-- [ ] R4.3 (FH10): token issuer X có `sub` bằng subject lưu trên user chỉ biết qua issuer Y →
+- [x] R4.3 (FH10): token issuer X có `sub` bằng subject lưu trên user chỉ biết qua issuer Y →
       `find_access` không trả AccessContext, `bootstrap` trả 403 `identity_subject_in_use` và không thêm
       dòng nào; token `dw-dev` theo subject vẫn vào; khôi phục đọc lại user theo `subject` → đỏ.
-- [ ] R4.4 (FH11): bằng `dw_app` và bằng `dw_migrator`: INSERT danh tính đăng nhập cho người vận
+- [x] R4.4 (FH11): bằng `dw_app` và bằng `dw_migrator`: INSERT danh tính đăng nhập cho người vận
       hành → trigger từ chối; bằng `dw_provisioner`: nhận; bằng `dw_app`: UPDATE một danh tính →
       `permission denied`; DELETE danh tính đăng nhập → trigger từ chối; DELETE danh tính `zalo` vẫn
       nhận; đổi điều kiện INSERT thành `current_user = 'dw_app'` hay thành mọi vai `BYPASSRLS` → ca
       `dw_migrator` đỏ.
-- [ ] R4.5 (FH9): token `email_verified=false` với email chưa có user → user mới có email NULL; lời
+- [x] R4.5 (FH9): token `email_verified=false` với email chưa có user → user mới có email NULL; lời
       mời theo email đó sau đó tạo user khác; ghi email chưa xác minh → đỏ.
-- [ ] G1: `test_a_member_deletes_a_document_of_their_own_workspace` xanh trước và sau bản vá.
-- [ ] G2: `test_an_invited_person_signs_in_and_finds_their_workspace` xanh với token dev mang
+- [x] G1: `test_a_member_deletes_a_document_of_their_own_workspace` xanh trước và sau bản vá.
+- [x] G2: `test_an_invited_person_signs_in_and_finds_their_workspace` xanh với token dev mang
       `email_verified`.
-- [ ] G3: `test_email_links_a_keycloak_login_to_the_imported_user` xanh với `email_verified=True`.
-- [ ] G4: `test_relinking_a_user_replaces_their_old_chat` xanh dưới quyền mới.
-- [ ] G5: `test_pause_restart_resume_approved` xanh với serializer có `ALLOWED`.
-- [ ] Xong: `make ci && make test-integration` xanh.
+- [x] G3: `test_email_links_a_keycloak_login_to_the_imported_user` xanh với `email_verified=True`.
+- [x] G4: `test_relinking_a_user_replaces_their_old_chat` xanh dưới quyền mới.
+- [x] G5: `test_pause_restart_resume_approved` xanh với serializer có `ALLOWED`.
+- [x] Xong: `make ci && make test-integration` xanh.
 
 ## Nguồn
 
@@ -215,3 +215,30 @@ Nối danh tính (R4.1-R4.4, G2-G4), áp ngay theo DO-17.1:
 - 2026-10-29 (agent, tạm theo ủy quyền): lượt xác nhận: 6/7 HIGH đã sửa; một CRITICAL mới (trigger cho mọi vai `BYPASSRLS` thêm danh tính của người vận hành, trái chữ ADR-0103 (Accepted) quyết định 8), một HIGH mới (`SELECT ... FOR UPDATE` cần UPDATE mà ticket 03 thu), hai MEDIUM (email rỗng là NULL; `from dw_knowledge import ingest_jobs`) và một LOW, sửa theo khuyến nghị (bước 5a, 13, 15, R4.4, R4.5, FH11); vì có CRITICAL mới, gate đầy đủ chạy lại một lượt (`wave-close.md` mục 1).
 - 2026-10-29 (agent, tạm theo ủy quyền): gate đầy đủ lượt 2 trên `fd23d47`: 0 CRITICAL, 0 HIGH. MEDIUM cho người làm: "refusing to load" của ADR-0112 (Accepted) Consequences đọc là không dựng object của kiểu ngoài `ALLOWED`, đúng R2.5; phép đột biến tombstone của FH2 đỏ qua test gọi thẳng adapter Qdrant với tenant B trên tài liệu của A, vì gateway không tombstone khi 0 dòng; lớp hay hàm "dùng hằng drain" tính bắc cầu trong module (gọi một tên cấp module đã dùng hằng); `tenant_id` của `tombstone_document`, `delete_document` là `UUID` bắt buộc, `knowledge.documents.tenant_id` NOT NULL nên tài liệu toàn cục truyền tenant đã nạp nó; so email theo `lower(email)` ở mọi chỗ như hôm nay; nhánh `dw-dev` chỉ tới được ở profile `local` (`apps/api/src/dw_api/bootstrap/identity.py:16-26`, mọi profile khác bắt `oidc`); mọi user tạo qua đăng nhập đã có dòng danh tính từ baseline (`b890210`), nên R4.3 chỉ chặn subject của importer, lời mời và seed; user email NULL được mời sau đó thành hai user tới khi mã nhận lời mời ở W2; khóa tenant chưa dừng run do worker khởi (thuộc tenant-rbac/02 và runtime); 409 `tenant_offboarding` cho `setup` thuộc spec đưa `setup` vào CHECK; 403 `identity_email_in_use` cho email chưa xác minh giữ theo Quyết định 23/10/2026.
 - 2026-10-29 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-10-29 (agent): đã code. Tri thức: `soft_delete_document` cập nhật theo tenant, workspace, `scope = 'tenant'` và `status <> 'deleted'` với `RETURNING`, 0 dòng → `NotFoundError`, audit `knowledge.document.deleted` trong cùng giao dịch, tombstone sau commit; `VectorIndexPort.tombstone_document`/`delete_document` nhận `tenant_id`, filter Qdrant `must=[source_document_id, tenant_id]`, adapter bộ nhớ trong khóa theo `(tenant_id, document_id)`, purge của retention truyền tenant của dòng. Bộ nhớ: `list_items` lọc `classifications_for_clearance`. Checkpoint: `newer`, `recent` so `tenant_id`, DELETE theo bộ bốn. Drain: `test_drain_setting_scan.py`, `IngestJobQueue` tách khỏi `IngestJobStore`. Serializer: saver nhận serializer bắt buộc, `dw_api/bootstrap/checkpoint_serde.py` giữ `ALLOWED`. Tenant: `only_from` ở repository, 409 `tenant_offboarding`, revision `6887b6020075` (trigger trạng thái, hai trigger danh tính, REVOKE UPDATE, TRUNCATE), xóa cache ở lock, unlock, offboard. Danh tính: `email_verified` ở `VerifiedClaims` và hai verifier, `_resolve_user` theo quyết định 8, `find_access` chỉ khớp `users.subject` với `dw-dev`, seed ghi danh tính Keycloak trước người vận hành.
+- 2026-10-29 (agent): bước 7, phép đo `ALLOWED` (FOG-37): chạy integration của `dw_agent_runtime`, `apps/worker` và `apps/api` (cả `apps/api` vì saver dựng ở đó, theo MEDIUM của gate) với một plugin pytest và một `sitecustomize` cho tiến trình con, ghi mọi sự kiện `msgpack_unregistered_allowed`/`msgpack_blocked` của `langgraph.checkpoint.serde.jsonplus.emit_serde_event`; không kiểu nào ngoài `SAFE_MSGPACK_TYPES` được nạp, nên `ALLOWED = ()`. Đối chứng dương: một dataclass lạ được ghi lại, serializer mặc định dựng object, serializer có allowlist rỗng trả `dict`. discovery/14 chưa có `## Answer`, nên đây là phép đo của nó cho phần FOG-37 (OPS-j).
+- 2026-10-29 (agent): bước 8, CVE-2025-64439: bản vá ở langgraph-checkpoint 3.0.0 (allowlist cho việc dựng kiểu, bỏ đường dự phòng `json`); `uv.lock` khóa 4.2.0, nên không bị ảnh hưởng (GitLab Advisory Database, Wiz, 29/10/2026).
+- 2026-10-29 (agent): bước 18, đo trên Keycloak 26 của compose (cổng 18686), realm `dw`, hai user thử tạo rồi xóa qua admin API, đăng nhập qua `dw-web` bằng authorization code + PKCE: access token của user `emailVerified=true` mang `email_verified: true` (boolean); user `emailVerified=false` dừng ở một bước bắt buộc (302 về `login-actions`) và không nhận token; realm không có IdP brokered nào, Organizations tắt. discovery/23 chưa có `## Answer`, nên đây là phép đo của nó cho phần `email_verified` (OPS-j).
+- 2026-10-29 (agent): bước 19 chưa làm được: agent không có kênh tới dw-proterial; Đạt hỏi. Quyết định 23/10/2026 của Đạt nói câu trả lời không chặn ticket này, chỉ quyết đẩy mã nhận lời mời sớm hơn W2.
+- 2026-10-29 (agent, tạm): bước 13 (b): khớp `users.subject` của `dw-dev` trả user mà không ghi dòng danh tính, vì trigger của bước 15 từ chối `dw_app` thêm danh tính đăng nhập cho người vận hành, và người vận hành của seed (`dev|chi.le`) đăng nhập dev theo đường này. Nếu sai thì: seed ghi trước danh tính `dw-dev` cho người dùng seed, và (b) ghi dòng như (c).
+- 2026-10-29 (agent, tạm): G3: user của importer trong test được tạo thẳng bằng một dòng `platform.users`, không qua `bootstrap` với issuer `sugarcrm`, vì đăng nhập cho user đó một danh tính và quy tắc mới đúng là chặn nối email vào user đã đăng nhập; importer thật ghi dòng, không đăng nhập ai. Nếu sai thì: importer ghi danh tính với một provider không tính là đăng nhập.
+- 2026-10-29 (agent, tạm): `SqlProvisioningRepository.set_tenant_status` trả trạng thái trước đó (`str | None`) thay cho `bool`, đọc dưới `FOR UPDATE` rồi mới cập nhật, để dịch vụ phân biệt 404 với 409 mà không cần thêm phương thức port. Nếu sai thì: một phương thức `tenant_status` riêng.
+- 2026-10-29 (agent, tạm): FH11 ca nhận của `dw_provisioner`: vai đó không có INSERT trên `platform.external_identities` (chưa luồng nào thêm danh tính cho người vận hành), nên test cấp quyền rồi `SET LOCAL ROLE dw_provisioner` trong một giao dịch rollback; migration không cấp thêm quyền. Ca từ chối thử `dw_app` và `dw_migrator`.
+- 2026-10-29 (agent, tạm): `JsonPlusSerializer` được dựng trong adapter (`dw_agent_runtime.adapters.checkpoint.allowlisted_serializer`), còn `ALLOWED` ở composition root của API, vì LangGraph chỉ ở adapter runtime và `apps/api` không khai `langgraph` (`scripts/verify_architecture.py`).
+- 2026-10-29 (agent, tạm): G1 là test ở gateway trong `test_qdrant_tenant_filter.py` (route chỉ chuyển kết quả của gateway, `NotFoundError` thành 404); G2 xanh với `_Identity` của test mang `email_verified=True` thay cho token dev; R4.5 "lời mời sau đó tạo user khác" khẳng định không user nào giữ email đó, vì lời mời tìm theo `lower(email)`.
+- 2026-10-29 (agent, tạm): test dựa vào lỗi R4.3 (user chỉ có `users.subject`, tra bằng issuer IdP) nay tra bằng `dw-dev`: `support_world.py`, `test_permission_sets.py`, `test_zalo_link_repo.py`, `apps/worker/tests/integration/test_zalo_inbound_db.py`; `_Identity` giả của tám file test mang `email_verified=True` (IdP doanh nghiệp đã xác minh).
+- 2026-10-29 (agent): mutation check (`mutations/02.yaml`, một đột biến mỗi hàng Kiểm soát FH2-FH11, FH34), `scripts/mutate.py --jobs 1`: 11/11 đỏ. Control của FH8, FH9, FH10 đỏ trong bản chép gói vì `dw_api` và bộ nạp retention terms của `dw_platform` tìm `configs/` theo `__file__`; ba đột biến đó chạy lại tại chỗ bằng chính `_in_place` của script: control xanh, đột biến đỏ. Phát hiện về công cụ (failure-modes #3, cho Đạt): đột biến tại chỗ mà `old` không khớp byte (tệp CRLF) không được áp và script không báo, nên FH7 đã ra "NOT CAUGHT" tới khi tệp đổi về LF; và chế độ chép gói không chạy được với gói tìm `configs/` theo `__file__`.
+- 2026-10-29 (agent): `reviewing-feature-security`: (1) tenant: FH2, FH5 và tombstone theo tenant; (2) quyền: R3.1 ở dịch vụ, R3.2 ở PostgreSQL với mọi vai, R4.4 ở PostgreSQL, R3.3 ở cache; (3) tự chủ: không đổi, không công cụ nào mới; (4) nội dung không tin cậy: checkpoint không dựng kiểu ngoài allowlist (FH6); (5) audit: `knowledge.document.deleted` cùng giao dịch (FH3); (6) mặc định: serializer bắt buộc truyền, không mặc định; email chưa xác minh không giữ chỗ (R4.5); trigger danh tính là danh sách cho phép. Không đổi image, lockfile hay compose, nên không cần quét image mới.
+- 2026-10-29 (agent): P50/P95/P99 (ms), app thật qua httpx, PostgreSQL thật, 1.000 mục bộ nhớ (một phần năm `confidential`), 320 tài liệu, 20 lượt làm nóng rồi 300 yêu cầu mỗi operation, tuần tự, Qdrant thay bằng adapter trong bộ nhớ (thay đổi nằm ở Postgres), so với `261599b` (mã như `a9573e8`) xuất bằng `git archive`:
+
+    | Operation                                            | Trước (P50/P95/P99) | Sau (P50/P95/P99)  |
+    | ---------------------------------------------------- | ------------------- | ------------------ |
+    | `GET /api/v1/me` (`find_access`)                     | 17,4 / 22,6 / 26,8  | 16,8 / 21,8 / 26,8 |
+    | `GET /api/v1/auth/bootstrap`                         | 22,9 / 30,4 / 37,8  | 24,5 / 31,6 / 38,7 |
+    | `GET /api/v1/memory/items`                           | 32,1 / 40,9 / 58,1  | 31,6 / 43,8 / 57,3 |
+    | `DELETE /api/v1/knowledge/documents/{id}`            | 31,2 / 39,7 / 48,3  | 34,0 / 42,1 / 48,4 |
+    | `POST /api/v1/platform/tenants/{id}/lock`, `/unlock` | 41,4 / 49,2 / 58,5  | 45,1 / 56,0 / 63,2 |
+
+    Mọi operation trong ngân sách; không P95 nào chậm hơn 20%. Khóa và mở khóa chậm nhất (+13,8% P95) vì đọc trạng thái dưới `FOR UPDATE` trước khi cập nhật; xóa tài liệu +6% vì thêm dòng audit.
+
+- 2026-10-29 (agent): dòng Xong đọc theo `.claude/rules/wave-close.md`: cổng nhanh (ruff, format, mypy, `make test-unit` 1548 đạt, `make test-contract`, `make test-architecture`) và integration của các package bị đụng; `make test-integration` đầy đủ chạy ở cuối đợt. Integration của `dw_knowledge`, `dw_memory`, `dw_agent_runtime`, `dw_platform`, `apps/api`, `apps/worker` xanh, trừ `apps/api/tests/integration/test_idempotent_operations.py::test_a_grant_replayed_after_support_is_switched_off_is_refused`, đỏ cả trên `HEAD` sạch (đã thử bằng cách cất thay đổi), không do ticket này; ticket sửa nó còn phải mở. Hạ tầng chạy ở cổng riêng (Qdrant 16333, Valkey 16379, S3 19000) vì các cổng mặc định đang thuộc container của si-platform.

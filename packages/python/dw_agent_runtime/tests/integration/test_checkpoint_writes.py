@@ -22,16 +22,19 @@ each proposal ended up with three identical leads.
 from __future__ import annotations
 
 import uuid
-from typing import Any, cast
+from dataclasses import dataclass
+from typing import Any, ClassVar, cast
 
 import pytest
 from langgraph.checkpoint.base import BaseCheckpointSaver, empty_checkpoint
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from runtime_harness import RuntimeUrls, make_run_context
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from dw_agent_runtime.adapters.checkpoint import SqlAlchemyCheckpointSaver
+from dw_api.bootstrap.checkpoint_serde import checkpoint_serializer
 
 pytestmark = pytest.mark.integration
 
@@ -79,7 +82,9 @@ async def test_a_resumed_task_can_still_write_what_it_produced(urls: RuntimeUrls
     engine = create_async_engine(urls.app, poolclass=NullPool)
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     try:
-        durable = await pause_then_resume(SqlAlchemyCheckpointSaver(session_factory))
+        durable = await pause_then_resume(
+            SqlAlchemyCheckpointSaver(session_factory, checkpoint_serializer())
+        )
     finally:
         await engine.dispose()
 
@@ -95,7 +100,7 @@ async def test_replaying_a_step_stores_what_came_out_of_it_the_second_time(
     engine = create_async_engine(urls.app, poolclass=NullPool)
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     try:
-        saver = SqlAlchemyCheckpointSaver(session_factory)
+        saver = SqlAlchemyCheckpointSaver(session_factory, checkpoint_serializer())
         first = empty_checkpoint()
         await saver.aput(_config(thread_id), first, {"step": 1}, {})
 
@@ -109,3 +114,40 @@ async def test_replaying_a_step_stores_what_came_out_of_it_the_second_time(
     assert stored is not None
     assert stored.checkpoint["channel_values"] == {"log": ["after the approval"]}
     assert stored.metadata == {"step": 2}
+
+
+@dataclass
+class _Smuggled:
+    """A type no allowlist names. Building one is what a crafted row would make
+    the process do; the counter says whether it happened."""
+
+    built: ClassVar[int] = 0
+    payload: str
+
+    def __post_init__(self) -> None:
+        type(self).built += 1
+
+
+async def test_a_type_outside_the_allowlist_loads_as_data_not_as_an_object(
+    urls: RuntimeUrls,
+) -> None:
+    """R2.5 (FH6): the row is written by a permissive serializer, the way a row
+    nobody vetted would be, and read back through the composition root's."""
+    thread_id = uuid.uuid4()
+    engine = create_async_engine(urls.app, poolclass=NullPool)
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    try:
+        writer = SqlAlchemyCheckpointSaver(session_factory, JsonPlusSerializer())
+        planted = {**empty_checkpoint(), "channel_values": {"state": _Smuggled("x")}}
+        await writer.aput(_config(thread_id), cast(Any, planted), {"step": 1}, {})
+        _Smuggled.built = 0
+
+        reader = SqlAlchemyCheckpointSaver(session_factory, checkpoint_serializer())
+        stored = await reader.aget_tuple(_config(thread_id))
+    finally:
+        await engine.dispose()
+
+    assert stored is not None
+    loaded = stored.checkpoint["channel_values"]["state"]
+    assert not isinstance(loaded, _Smuggled)
+    assert _Smuggled.built == 0, "a type outside ALLOWED was constructed"

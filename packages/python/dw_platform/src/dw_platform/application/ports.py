@@ -39,6 +39,13 @@ class VerifiedIdentity(Protocol):
     def issuer(self) -> str: ...
 
     @property
+    def email_verified(self) -> bool:
+        """True only when the token's `email_verified` claim is the boolean
+        true. Linking a sign-in to an existing user by email trusts nothing
+        less (ADR-0103 decision 8)."""
+        ...
+
+    @property
     def auth_methods(self) -> frozenset[str]:
         """The token's `amr`: how the person authenticated this session.
 

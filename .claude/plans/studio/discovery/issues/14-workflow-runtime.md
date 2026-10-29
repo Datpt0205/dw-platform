@@ -200,3 +200,4 @@ Các phép đo khác, đo trong cùng các lượt chạy:
   ra (nhật ký lần gửi, tiếp quản, bộ bọc node, saver, lane hủy) rồi đo lại, và nếu nguyên nhân nằm ở LangGraph thì
   quay lại Đạt trước khi `workflow-engine/03` bắt đầu. Nếu sai thì: một trượt ở T3, T4, T6, T8, hay T5 không chỉ vì
   saver, cũng dựng C như trượt T1, T2 hay T7.
+- 2026-10-29 (agent): phần FOG-37 (allowlist của checkpoint) đã đo ở foundations-hardening/02, Comments 29/10/2026: không kiểu nào ngoài `SAFE_MSGPACK_TYPES` được nạp, `ALLOWED = ()` (OPS-j).

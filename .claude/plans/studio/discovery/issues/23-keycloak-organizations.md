@@ -53,3 +53,5 @@ Nâng từ 26.7.2 lên 26.8 chưa có ticket W1 nào nhận; kết quả ở đ�
   <https://www.keycloak.org/2026/10/keycloak-2680-released> (_documented_, theo research).
 
 ## Comments
+
+- 2026-10-29 (agent): câu 2, phần token của realm `dw`, đã đo ở foundations-hardening/02, Comments 29/10/2026: access token mang `email_verified` boolean, user chưa xác minh không nhận token; realm chưa có IdP brokered nên phần brokering còn mở (OPS-j).

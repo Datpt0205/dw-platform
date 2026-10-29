@@ -44,6 +44,8 @@ LINK = "/approvals/5c0ffee0-0000-4000-8000-000000000001"
 class _Identity:
     subject: str
     email: str | None
+    # An IdP that verified the address, as a corporate SSO does.
+    email_verified: bool = True
     issuer: str = "https://issuer.test/realms/dw"
     name: str | None = None
     auth_methods: frozenset[str] = frozenset()

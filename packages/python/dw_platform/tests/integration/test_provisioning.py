@@ -26,7 +26,7 @@ from collections.abc import AsyncIterator
 import pytest
 import sqlalchemy as sa
 from pg_harness import PROVISIONER_TEST_PASSWORD, DatabaseUrls
-from sqlalchemy.exc import ProgrammingError
+from sqlalchemy.exc import IntegrityError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
@@ -35,6 +35,7 @@ from dw_kernel.ports import SystemClock, Uuid4Generator
 from dw_platform.adapters.persistence.identity_provisioning import SqlIdentityBootstrap
 from dw_platform.adapters.persistence.membership_lookup import SqlMembershipLookup
 from dw_platform.adapters.persistence.provisioning_repo import SqlProvisioningRepository
+from dw_platform.adapters.persistence.separation_of_duties import refusal
 from dw_platform.application.provisioning import ProvisioningContext, ProvisioningService
 from dw_platform.testing.seed_env import seed_test_env
 
@@ -162,6 +163,7 @@ async def test_assign_org_admin_after_sign_in(
             subject = f"sub-{uuid.uuid4()}"
             email = "newlead@fpt.com"
             issuer = "https://issuer.test/realms/dw"
+            email_verified = True
             name = "New Lead"
             auth_methods: frozenset[str] = frozenset()
             acr: str | None = None
@@ -197,6 +199,7 @@ async def test_locking_a_tenant_denies_its_members(
             subject = f"sub-{uuid.uuid4()}"
             email = "member@lockco.com"
             issuer = "https://issuer.test/realms/dw"
+            email_verified = True
             name = "Member"
             auth_methods: frozenset[str] = frozenset()
             acr: str | None = None
@@ -320,6 +323,119 @@ async def test_finalize_after_the_worker_reports_completed_offboards_the_tenant(
     tenants = await service.list_tenants(_ctx())
     match = [t for t in tenants if t.id == created.tenant_id]
     assert match and match[0].status == "offboarded"
+
+
+@pytest.mark.parametrize("status", ["locked", "active"])
+async def test_lock_and_unlock_leave_an_offboarding_tenant_as_it_is(
+    provisioner_engine: AsyncEngine, status: str
+) -> None:
+    """R3.1 (FH7): a tenant whose data is being exported and purged is not reopened."""
+    service = _service(provisioner_engine)
+    created = await service.create_tenant(
+        _ctx(), slug=f"leaving-{status}", name="Leaving", plan_id="basic"
+    )
+    await service.initiate_offboarding(_ctx(), tenant_id=created.tenant_id)
+
+    with pytest.raises(ConflictError) as refused:
+        await service.set_tenant_status(_ctx(), tenant_id=created.tenant_id, status=status)
+
+    assert refused.value.details["reason_code"] == "tenant_offboarding"
+    match = [t for t in await service.list_tenants(_ctx()) if t.id == created.tenant_id]
+    assert match and match[0].status == "offboarding"
+
+
+async def _tenant_in(engine: AsyncEngine, status: str, slug: str) -> uuid.UUID:
+    """A tenant walked to `status` along the steps the trigger allows."""
+    created = await _service(engine).create_tenant(_ctx(), slug=slug, name=slug, plan_id="basic")
+    path = {"offboarding": ["offboarding"], "offboarded": ["offboarding", "offboarded"]}
+    async with engine.begin() as conn:
+        for step in path[status]:
+            await conn.execute(
+                sa.text("UPDATE platform.tenants SET status = :s WHERE id = :t"),
+                {"s": step, "t": created.tenant_id},
+            )
+    return created.tenant_id
+
+
+async def _status_of(engine: AsyncEngine, tenant_id: uuid.UUID) -> str:
+    async with engine.connect() as conn:
+        status = await conn.scalar(
+            sa.text("SELECT status FROM platform.tenants WHERE id = :t"), {"t": tenant_id}
+        )
+    return str(status)
+
+
+@pytest.mark.parametrize(
+    ("start", "target"),
+    [
+        ("offboarded", "active"),
+        ("offboarded", "locked"),
+        ("offboarding", "locked"),
+        ("offboarding", "active"),
+    ],
+)
+async def test_no_role_brings_a_tenant_back_from_offboarding(
+    provisioner_engine: AsyncEngine, start: str, target: str
+) -> None:
+    """R3.2 (FH7): the database refuses the step whoever asks, the provisioner
+    included, which the service's own check does not cover."""
+    tenant_id = await _tenant_in(provisioner_engine, start, f"back-{start}-{target}")
+
+    with pytest.raises(IntegrityError) as refused:
+        async with provisioner_engine.begin() as conn:
+            await conn.execute(
+                sa.text("UPDATE platform.tenants SET status = :s WHERE id = :t"),
+                {"s": target, "t": tenant_id},
+            )
+
+    assert (refusal(refused.value) or ("",))[0] == "ck_tenants_status_transition"
+
+    assert await _status_of(provisioner_engine, tenant_id) == start
+
+
+async def test_offboarding_finishes_and_may_run_again(provisioner_engine: AsyncEngine) -> None:
+    """The two steps the trigger keeps: `offboarding -> offboarded`, and the
+    flow started again on an offboarded tenant."""
+    tenant_id = await _tenant_in(provisioner_engine, "offboarded", "again")
+    async with provisioner_engine.begin() as conn:
+        await conn.execute(
+            sa.text("UPDATE platform.tenants SET status = 'offboarding' WHERE id = :t"),
+            {"t": tenant_id},
+        )
+
+    assert await _status_of(provisioner_engine, tenant_id) == "offboarding"
+
+
+async def test_a_status_added_later_opens_no_way_back(
+    provisioner_engine: AsyncEngine, db_urls: DatabaseUrls
+) -> None:
+    """The trigger is an allowlist: with `setup` admitted by the CHECK (as
+    tenant-rbac will), `offboarding -> setup` is still refused. Rolled back."""
+    tenant_id = await _tenant_in(provisioner_engine, "offboarding", "detour")
+    admin = create_async_engine(_admin_dw_url(db_urls), poolclass=NullPool)
+    try:
+        async with admin.connect() as conn:
+            transaction = await conn.begin()
+            await conn.execute(
+                sa.text("ALTER TABLE platform.tenants DROP CONSTRAINT ck_tenants_status")
+            )
+            await conn.execute(
+                sa.text(
+                    "ALTER TABLE platform.tenants ADD CONSTRAINT ck_tenants_status CHECK"
+                    " (status IN ('setup', 'active', 'locked', 'offboarding', 'offboarded'))"
+                )
+            )
+            with pytest.raises(IntegrityError) as refused:
+                async with conn.begin_nested():
+                    await conn.execute(
+                        sa.text("UPDATE platform.tenants SET status = 'setup' WHERE id = :t"),
+                        {"t": tenant_id},
+                    )
+            await transaction.rollback()
+    finally:
+        await admin.dispose()
+
+    assert (refusal(refused.value) or ("",))[0] == "ck_tenants_status_transition"
 
 
 async def test_provisioner_cannot_read_business_data(provisioner_engine: AsyncEngine) -> None:

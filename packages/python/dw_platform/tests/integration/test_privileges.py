@@ -363,6 +363,39 @@ async def test_the_application_may_only_mark_a_link_nonce_used(db_urls: Database
         await migrator.dispose()
 
 
+async def test_the_application_never_updates_or_truncates_an_identity(
+    db_urls: DatabaseUrls,
+) -> None:
+    """`platform.external_identities` (migration 6887b6020075, R4.4): `dw_app`
+    reads, links and unlinks, and that is all. No path of it updates an
+    identity, and TRUNCATE would skip the triggers that keep a login identity."""
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            held = {
+                verb: bool(
+                    await conn.scalar(
+                        sa.text(
+                            "SELECT has_table_privilege('dw_app',"
+                            " 'platform.external_identities', :verb)"
+                        ),
+                        {"verb": verb},
+                    )
+                )
+                for verb in ("SELECT", "INSERT", "DELETE", "UPDATE", "TRUNCATE")
+            }
+    finally:
+        await migrator.dispose()
+
+    assert held == {
+        "SELECT": True,
+        "INSERT": True,
+        "DELETE": True,
+        "UPDATE": False,
+        "TRUNCATE": False,
+    }
+
+
 async def test_the_application_may_only_settle_an_inbound_message_and_choose_a_workspace(
     db_urls: DatabaseUrls,
 ) -> None:

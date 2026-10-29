@@ -20,7 +20,8 @@ from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from dw_kernel.errors import InfrastructureError, PermissionDeniedError
+from dw_kernel.errors import InfrastructureError, NotFoundError, PermissionDeniedError
+from dw_kernel.ids import TenantId, UserId, WorkspaceId
 from dw_kernel.pagination import CursorPosition, Page, PageRequest, build_page
 from dw_kernel.ports import IdGenerator, UtcClock
 from dw_knowledge import tables
@@ -48,9 +49,13 @@ from dw_observability.metrics import DW_RETRIEVAL_RERANK_SKIPPED_TOTAL
 from dw_observability.semconv import DW_KNOWLEDGE_RERANK
 from dw_observability.telemetry import NullTelemetry, TelemetryPort
 from dw_platform.adapters.persistence.keyset import after_position, newest_first
+from dw_platform.adapters.persistence.repositories import SqlAuditRepository
 from dw_platform.application.access_context import AccessContext
+from dw_platform.domain.audit import AuditEvent
 
 _SET_TENANT = text("SELECT set_config('app.tenant_id', :tenant_id, true)")
+# The audit action of a soft delete; the hard removal is `retention.PURGED_ACTION`.
+DELETED_ACTION = "knowledge.document.deleted"
 
 logger = logging.getLogger("dw_knowledge.gateway")
 
@@ -362,9 +367,9 @@ class KnowledgeGateway:
 
         # Superseded versions are kept but tombstoned so search skips them.
         for old_id in superseded_ids:
-            await self.vector_index.tombstone_document(old_id)
+            await self.vector_index.tombstone_document(old_id, context.tenant_id)
         # Rebuild THIS version's vectors (delete stale then upsert deterministic points).
-        await self.vector_index.delete_document(document_id)
+        await self.vector_index.delete_document(document_id, context.tenant_id)
         if leaves:
             # Embed the CONTEXTUAL text (breadcrumb prepended) for better retrieval;
             # store raw content for display/citation.
@@ -562,27 +567,60 @@ class KnowledgeGateway:
     async def soft_delete_document(self, document_id: uuid.UUID, context: AccessContext) -> None:
         """Tombstone a document (kept for traceability; excluded from retrieval).
 
+        Only a tenant document of the caller's own workspace, not yet deleted: RLS
+        narrows to the tenant, and a global document is readable from every
+        tenant, so the workspace and scope have to be in the statement. Anything
+        else is a 404, the same as an id that does not exist, so the answer says
+        nothing about another workspace's documents (R2.1). The audit row goes in
+        the same transaction as the mark (R2.2), and the vectors are tombstoned
+        only once a row was marked.
+
         ``dw_knowledge.retention.SqlKnowledgeRetention`` hard-removes it once the
         grace period in the retention policy is over and nothing cites it.
         """
+        now = self.clock.now()
         async with self.session_factory() as session, session.begin():
             await session.execute(_SET_TENANT, {"tenant_id": str(context.tenant_id)})
-            await session.execute(
-                sa.update(tables.documents)
-                .where(tables.documents.c.id == document_id)
-                .values(
-                    status="deleted",
-                    is_current=False,
-                    deleted_at=self.clock.now(),
-                    deleted_by=context.principal_id,
+            marked = (
+                await session.execute(
+                    sa.update(tables.documents)
+                    .where(
+                        tables.documents.c.id == document_id,
+                        tables.documents.c.tenant_id == context.tenant_id,
+                        tables.documents.c.workspace_id == context.workspace_id,
+                        tables.documents.c.scope == "tenant",
+                        tables.documents.c.status != "deleted",
+                    )
+                    .values(
+                        status="deleted",
+                        is_current=False,
+                        deleted_at=now,
+                        deleted_by=context.principal_id,
+                    )
+                    .returning(tables.documents.c.id)
                 )
-            )
+            ).first()
+            if marked is None:
+                raise NotFoundError("document not found", details={"document_id": str(document_id)})
             await session.execute(
                 sa.update(tables.chunks)
                 .where(tables.chunks.c.document_id == document_id)
-                .values(status="deleted", deleted_at=self.clock.now())
+                .values(status="deleted", deleted_at=now)
             )
-        await self.vector_index.tombstone_document(document_id)
+            await SqlAuditRepository(session).append(
+                AuditEvent(
+                    id=self.id_generator.new_uuid(),
+                    tenant_id=TenantId(context.tenant_id),
+                    workspace_id=WorkspaceId(context.workspace_id),
+                    actor_id=UserId(context.principal_id),
+                    action=DELETED_ACTION,
+                    resource_type="knowledge_document",
+                    resource_id=str(document_id),
+                    occurred_at=now,
+                    details={"document_id": str(document_id)},
+                )
+            )
+        await self.vector_index.tombstone_document(document_id, context.tenant_id)
 
     # ------------------------------------------------------------ retrieval --
     async def search(self, query: SearchQuery, context: AccessContext) -> list[EvidenceChunk]:

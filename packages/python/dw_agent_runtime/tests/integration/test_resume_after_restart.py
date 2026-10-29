@@ -27,6 +27,7 @@ from dw_agent_runtime.context import access_context_from_run
 from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.testing.demo_graph import DEMO_WORKER_YAML, build_demo_graph
+from dw_api.bootstrap.checkpoint_serde import checkpoint_serializer
 from dw_kernel.errors import ConflictError
 from dw_kernel.pagination import PageQuery, PageRequest
 from dw_kernel.ports import SystemClock, Uuid4Generator
@@ -77,7 +78,7 @@ class RunnerStack:
         self.runner = LangGraphWorkflowRunner(
             worker_registry=workers,
             graph_registry=graphs,
-            checkpoint_saver=SqlAlchemyCheckpointSaver(session_factory),
+            checkpoint_saver=SqlAlchemyCheckpointSaver(session_factory, checkpoint_serializer()),
             run_store=self.run_store,
             uow_factory=self.uow_factory,
             clock=SystemClock(),

@@ -79,7 +79,7 @@ class SqlCheckpointRetention:
             return sa.and_(runs.c.tenant_id == c.c.tenant_id, runs.c.thread_id == c.c.thread_id)
 
         doomed = (
-            sa.select(c.c.thread_id, c.c.checkpoint_ns, c.c.checkpoint_id)
+            sa.select(c.c.tenant_id, c.c.thread_id, c.c.checkpoint_ns, c.c.checkpoint_id)
             .where(
                 c.c.created_at < superseded_cutoff,
                 sa.exists().where(
@@ -88,13 +88,17 @@ class SqlCheckpointRetention:
                 ~sa.exists().where(
                     same_thread(active), active.c.status.not_in(FINISHED_RUN_STATUSES)
                 ),
+                # Every comparison names the tenant: the key carries none, so two
+                # tenants can share a `thread_id` (R2.4).
                 sa.or_(
                     sa.exists().where(
+                        newer.c.tenant_id == c.c.tenant_id,
                         newer.c.thread_id == c.c.thread_id,
                         newer.c.checkpoint_ns == c.c.checkpoint_ns,
                         newer.c.checkpoint_id > c.c.checkpoint_id,
                     ),
                     ~sa.exists().where(
+                        recent.c.tenant_id == c.c.tenant_id,
                         recent.c.thread_id == c.c.thread_id,
                         recent.c.created_at >= idle_cutoff,
                     ),
@@ -115,7 +119,10 @@ class SqlCheckpointRetention:
                 await session.execute(
                     sa.delete(table).where(
                         sa.tuple_(
-                            table.c.thread_id, table.c.checkpoint_ns, table.c.checkpoint_id
+                            table.c.tenant_id,
+                            table.c.thread_id,
+                            table.c.checkpoint_ns,
+                            table.c.checkpoint_id,
                         ).in_(keys)
                     )
                 )

@@ -31,7 +31,9 @@ pytestmark = pytest.mark.integration
 
 ALPHA = uuid.UUID("d6b43d0e-c3c6-5dbc-bc08-150621bd9a5d")
 ALPHA_WS = uuid.UUID("64764894-718d-5558-ba17-9a2949214063")
-ISSUER = "https://issuer.test/realms/dw"
+# The dev issuer: these users are known by `users.subject` alone, which only
+# the dev issuer resolves (foundations-hardening R4.3).
+ISSUER = "dw-dev"
 ADMIN_SCOPES = frozenset({"platform.members.read", "platform.members.write", "platform.roles.read"})
 
 

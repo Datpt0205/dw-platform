@@ -4,6 +4,7 @@ The repository is faked; the service's validation/audit and the route's operator
 gate run for real. The gate is the point: a non-operator can never reach these.
 """
 
+import fnmatch
 import re
 import uuid
 
@@ -18,8 +19,10 @@ from dw_api.main import create_app
 from dw_api.settings import ApiSettings
 from dw_kernel.ports import SystemClock, Uuid4Generator
 from dw_platform.adapters.identity.dev_token import DevTokenVerifier
+from dw_platform.adapters.persistence.caching_lookup import CachingMembershipLookup
 from dw_platform.application.authorization import ScopeAuthorizationService
 from dw_platform.application.entitlement import DEFAULT_PLANS, PlanEntitlementService
+from dw_platform.application.identity import DbAccessContextFactory, MembershipAccess
 from dw_platform.application.identity_bootstrap import BootstrapView
 from dw_platform.application.provisioning import (
     OffboardingStatus,
@@ -61,6 +64,7 @@ class FakeRepo:
         self.audits: list[dict[str, object]] = []
         self.granted: list[dict[str, object]] = []
         self.removed: list[uuid.UUID] = []
+        self.statuses: dict[uuid.UUID, str] = {TENANT: "active"}
 
     async def list_tenants(self) -> list[TenantSummary]:
         return []
@@ -77,8 +81,15 @@ class FakeRepo:
     async def create_tenant(self, **kw: object) -> None:
         self.created.append(kw)
 
-    async def set_tenant_status(self, tenant_id: uuid.UUID, status: str) -> bool:
-        return True
+    async def set_tenant_status(
+        self, tenant_id: uuid.UUID, status: str, *, only_from: frozenset[str] | None = None
+    ) -> str | None:
+        # The SQL repository's contract: the status the tenant had, None for no
+        # tenant, and no change when it is outside `only_from`.
+        previous = self.statuses.get(tenant_id)
+        if previous is not None and (only_from is None or previous in only_from):
+            self.statuses[tenant_id] = status
+        return previous
 
     async def main_workspace_id(self, tenant_id: uuid.UUID) -> uuid.UUID | None:
         return WORKSPACE if tenant_id == TENANT else None
@@ -278,3 +289,98 @@ async def test_every_platform_route_refuses_a_non_operator() -> None:
         concrete = re.sub(r"\{[^}]+\}", str(TARGET), path)
         response = await _request(container, method, concrete, json={})
         assert response.status_code == 403, (method, path)
+
+
+# ---- tenant lifecycle (foundations-hardening R3.1, R3.3; FH7, FH8) -------------
+
+
+class _HonestCache:
+    """Deletes what a pattern matches, as Redis's SCAN + DEL does."""
+
+    def __init__(self) -> None:
+        self.entries: dict[str, str] = {}
+
+    async def get(self, key: str) -> str | None:
+        return self.entries.get(key)
+
+    async def set(self, key: str, value: str, *, ttl_seconds: int) -> None:
+        self.entries[key] = value
+
+    async def delete_pattern(self, pattern: str) -> None:
+        for key in [k for k in self.entries if fnmatch.fnmatchcase(k, pattern)]:
+            del self.entries[key]
+
+
+class _StatusAwareLookup:
+    """The uncached lookup's rule: a tenant that is not `active` resolves nothing."""
+
+    def __init__(self, repo: FakeRepo) -> None:
+        self.repo = repo
+
+    async def find_access(
+        self, subject: str, issuer: str, tenant_id: uuid.UUID, workspace_id: uuid.UUID
+    ) -> MembershipAccess | None:
+        if self.repo.statuses.get(tenant_id) != "active":
+            return None
+        return MembershipAccess(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            principal_id=TARGET,
+            roles=frozenset({"member"}),
+            scopes=frozenset(),
+            groups=frozenset(),
+            clearance="internal",
+            plan_id="professional",
+            feature_flags=frozenset(),
+        )
+
+
+def _lifecycle_container(repo: FakeRepo, cache: _HonestCache) -> ApiContainer:
+    container = make_container(repo, True)
+    container.cache = cache
+    container.access_context_factory = DbAccessContextFactory(
+        CachingMembershipLookup(inner=_StatusAwareLookup(repo), cache=cache)
+    )
+    return container
+
+
+async def _as_member(container: ApiContainer) -> httpx.Response:
+    token = DevTokenVerifier(SECRET).issue("dev|member", email="member@fpt.com")
+    member = {
+        "Authorization": f"Bearer {token}",
+        "X-Tenant-Id": str(TENANT),
+        "X-Workspace-Id": str(WORKSPACE),
+    }
+    app = create_app(container)
+    async with LifespanManager(app):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            return await client.get("/api/v1/me", headers=member)
+
+
+async def test_a_lock_stops_the_next_request_of_a_member_whose_context_is_cached() -> None:
+    """R3.3 (FH8): the member's context is in the cache when the operator locks."""
+    repo, cache = FakeRepo(), _HonestCache()
+    container = _lifecycle_container(repo, cache)
+    assert (await _as_member(container)).status_code == 200
+    assert cache.entries, "the premise: the member's context is cached"
+
+    locked = await _request(container, "POST", f"/api/v1/platform/tenants/{TENANT}/lock")
+    assert locked.status_code == 204, locked.text
+
+    assert (await _as_member(container)).status_code == 403
+
+
+@pytest.mark.parametrize("route", ["lock", "unlock"])
+async def test_lock_and_unlock_refuse_an_offboarding_tenant(route: str) -> None:
+    """R3.1 (FH7): 409 `tenant_offboarding`, and the status stays."""
+    repo = FakeRepo()
+    repo.statuses[TENANT] = "offboarding"
+
+    response = await _request(
+        make_container(repo, True), "POST", f"/api/v1/platform/tenants/{TENANT}/{route}"
+    )
+
+    assert response.status_code == 409, response.text
+    assert response.json()["details"]["reason_code"] == "tenant_offboarding"
+    assert repo.statuses[TENANT] == "offboarding"

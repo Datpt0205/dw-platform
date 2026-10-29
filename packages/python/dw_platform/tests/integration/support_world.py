@@ -36,7 +36,9 @@ from dw_platform.application.support_access import (
 SET_KEY = "probe.read"
 SET_SCOPES = frozenset({"x.read"})
 ITEM = uuid.UUID(int=0x17E)
-ISSUER = "https://issuer.test/realms/dw"
+# The dev issuer: these users are known by `users.subject` alone, which only
+# the dev issuer resolves (foundations-hardening R4.3).
+ISSUER = "dw-dev"
 
 
 class ProbeDescriber:

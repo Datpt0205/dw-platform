@@ -770,7 +770,11 @@ class MemoryService:
         Ordered by ``created_at`` rather than ``valid_from``: the two differ for a
         backdated fact, and only ``created_at`` is monotonic with insertion, which
         is what makes a cursor position stable while the agent keeps writing.
+
+        Narrowed to the caller's clearance by the same owner as ``recall``, so the
+        list never shows what a run could not recall (R2.3).
         """
+        allowed = classifications_for_clearance(context.clearance)
         async with self.session_factory() as session, session.begin():
             await session.execute(_SET_TENANT, {"tenant_id": str(context.tenant_id)})
             rows = await session.execute(
@@ -782,6 +786,7 @@ class MemoryService:
                     # column (app-standards R6.1).
                     tables.items.c.tenant_id == context.tenant_id,
                     tables.items.c.workspace_id == context.workspace_id,
+                    tables.items.c.classification.in_(allowed),
                     after_position(
                         tables.items.c.created_at, tables.items.c.memory_id, request.after
                     ),

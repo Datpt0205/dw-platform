@@ -8,8 +8,10 @@ row shape live here once rather than in each caller.
 Both tables are identity plane with no RLS (see :mod:`identity_provisioning` and
 migration ``02930a73bbdf``), so their statements need no tenant GUC; only the
 audit and notification writes below bind one. Every caller binds this to
-a ``dw_app`` session factory: ``dw_app`` holds SELECT/INSERT/UPDATE/DELETE on
-``external_identities`` through the baseline grant, and on
+a ``dw_app`` session factory: ``dw_app`` holds SELECT/INSERT/DELETE on
+``external_identities`` (UPDATE and TRUNCATE revoked by migration
+``6887b6020075``, whose triggers also refuse it deleting a login identity or
+adding one for an operator or support staff; a chat link it may replace), and on
 ``channel_link_nonces`` SELECT/INSERT/DELETE plus UPDATE of ``used_at`` alone
 (the consume's WHERE and RETURNING read columns, which UPDATE alone does not allow).
 ``dw_provisioner`` is granted neither table and must not be used here.

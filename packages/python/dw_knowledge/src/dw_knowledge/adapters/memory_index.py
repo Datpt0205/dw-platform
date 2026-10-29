@@ -30,7 +30,8 @@ class InMemoryVectorIndexAdapter:
     """Implements ``VectorIndexPort`` in process memory."""
 
     _chunks: dict[str, IndexableChunk] = field(default_factory=dict)
-    _tombstoned: set[uuid.UUID] = field(default_factory=set)
+    # (tenant_id, document_id): a document id names no tenant, as in Qdrant.
+    _tombstoned: set[tuple[uuid.UUID, uuid.UUID]] = field(default_factory=set)
 
     async def ensure_ready(self, vector_dimension: int) -> None:
         return None
@@ -38,15 +39,19 @@ class InMemoryVectorIndexAdapter:
     async def upsert(self, chunks: Sequence[IndexableChunk]) -> None:
         for chunk in chunks:
             self._chunks[str(chunk.chunk_id)] = chunk
-            self._tombstoned.discard(chunk.document_id)  # re-index reactivates
+            self._tombstoned.discard((chunk.tenant_id, chunk.document_id))  # re-index reactivates
 
-    async def delete_document(self, document_id: uuid.UUID) -> None:
-        for key in [k for k, c in self._chunks.items() if c.document_id == document_id]:
+    async def delete_document(self, document_id: uuid.UUID, tenant_id: uuid.UUID) -> None:
+        for key in [
+            k
+            for k, c in self._chunks.items()
+            if c.document_id == document_id and c.tenant_id == tenant_id
+        ]:
             del self._chunks[key]
-        self._tombstoned.discard(document_id)
+        self._tombstoned.discard((tenant_id, document_id))
 
-    async def tombstone_document(self, document_id: uuid.UUID) -> None:
-        self._tombstoned.add(document_id)
+    async def tombstone_document(self, document_id: uuid.UUID, tenant_id: uuid.UUID) -> None:
+        self._tombstoned.add((tenant_id, document_id))
 
     async def delete_by_tenant(self, tenant_id: uuid.UUID) -> None:
         for key in [k for k, c in self._chunks.items() if c.tenant_id == tenant_id]:
@@ -65,7 +70,7 @@ class InMemoryVectorIndexAdapter:
         allowed = set(trusted_filter.allowed_classifications)
         hits: list[VectorHit] = []
         for chunk in self._chunks.values():
-            if chunk.document_id in self._tombstoned:
+            if (chunk.tenant_id, chunk.document_id) in self._tombstoned:
                 continue
             # Applied first and as a conjunction: a business filter can only
             # ever drop a chunk the trusted checks below would have allowed.

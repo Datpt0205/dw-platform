@@ -30,6 +30,7 @@ from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.testing.demo_graph import DEMO_WORKER_YAML, build_demo_graph
+from dw_api.bootstrap.checkpoint_serde import checkpoint_serializer
 from dw_kernel.ports import SystemClock, Uuid4Generator
 from dw_observability.logs import IdentifierOnlyJsonFormatter
 from dw_observability.metrics import DW_APPROVAL_WAIT_SECONDS, DW_RUN_DURATION_SECONDS
@@ -89,7 +90,7 @@ async def test_a_phone_number_in_the_input_reaches_no_span_log_or_audit_row(
     runner = LangGraphWorkflowRunner(
         worker_registry=workers,
         graph_registry=graphs,
-        checkpoint_saver=SqlAlchemyCheckpointSaver(sessions),
+        checkpoint_saver=SqlAlchemyCheckpointSaver(sessions, checkpoint_serializer()),
         run_store=run_store,
         uow_factory=uow_factory,
         clock=SystemClock(),

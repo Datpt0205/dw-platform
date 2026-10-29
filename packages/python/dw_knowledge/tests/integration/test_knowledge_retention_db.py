@@ -84,10 +84,10 @@ class _RecordingIndex:
 
     async def upsert(self, chunks: Sequence[IndexableChunk]) -> None: ...
 
-    async def delete_document(self, document_id: uuid.UUID) -> None:
+    async def delete_document(self, document_id: uuid.UUID, tenant_id: uuid.UUID) -> None:
         self.deleted.append(document_id)
 
-    async def tombstone_document(self, document_id: uuid.UUID) -> None: ...
+    async def tombstone_document(self, document_id: uuid.UUID, tenant_id: uuid.UUID) -> None: ...
 
     async def delete_by_tenant(self, tenant_id: uuid.UUID) -> None: ...
 
@@ -375,8 +375,8 @@ async def test_a_citation_written_mid_pass_holds_back_only_that_document(
     ordinary = await _document(sessions, status="deleted", deleted_days_ago=GRACE_DAYS + 10)
 
     class _CitesDuringTheGap(_RecordingIndex):
-        async def delete_document(self, document_id: uuid.UUID) -> None:
-            await super().delete_document(document_id)
+        async def delete_document(self, document_id: uuid.UUID, tenant_id: uuid.UUID) -> None:
+            await super().delete_document(document_id, tenant_id)
             if document_id == late:
                 await _cite(sessions, late)
 

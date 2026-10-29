@@ -129,13 +129,19 @@ class VectorIndexPort(Protocol):
 
     async def upsert(self, chunks: Sequence[IndexableChunk]) -> None: ...
 
-    async def delete_document(self, document_id: UUID) -> None:
-        """HARD-remove all points of a document (same-version reindex / purge)."""
+    async def delete_document(self, document_id: UUID, tenant_id: UUID) -> None:
+        """HARD-remove all points of a document (same-version reindex / purge).
+
+        ``tenant_id`` is the tenant of the document's row, and the points are
+        matched on it as well as on the document: a document id names no tenant,
+        so an id alone would reach every tenant's points that carry it.
+        """
         ...
 
-    async def tombstone_document(self, document_id: UUID) -> None:
+    async def tombstone_document(self, document_id: UUID, tenant_id: UUID) -> None:
         """SOFT-delete: mark a document's points is_deleted=true so search skips
-        them, but keep them for traceability until a retention purge."""
+        them, but keep them for traceability until a retention purge. Matched on
+        ``tenant_id`` too, as ``delete_document`` is."""
         ...
 
     async def delete_by_tenant(self, tenant_id: UUID) -> None:

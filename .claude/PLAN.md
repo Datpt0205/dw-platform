@@ -9,13 +9,13 @@ git: every slice's commit message, and the pre-split narrative at
 
 ## Areas
 
-| Area                               | File                                | State                                                          |
-| ---------------------------------- | ----------------------------------- | -------------------------------------------------------------- |
-| Ops hardening                      | `.claude/plans/ops-hardening.md`    | Done; numbers owed                                             |
-| Agent runtime and memory (Mốc 0–6) | `.claude/plans/platform-runtime.md` | Named gaps; docgen sessions isolated (ADR 0025)                |
-| Web UI shell (Ant Design v6)       | `.claude/plans/web-ui.md`           | antd everywhere, CSP done                                      |
-| Chat channels (Zalo)               | `.claude/plans/channels.md`         | Upstreamed; live run owed                                      |
-| Studio (no-code builder)           | `.claude/plans/studio.md`           | skeleton/01, telemetry/01, app-standards/01-04, foundations/01 |
+| Area                               | File                                | State                                                             |
+| ---------------------------------- | ----------------------------------- | ----------------------------------------------------------------- |
+| Ops hardening                      | `.claude/plans/ops-hardening.md`    | Done; numbers owed                                                |
+| Agent runtime and memory (Mốc 0–6) | `.claude/plans/platform-runtime.md` | Named gaps; docgen sessions isolated (ADR 0025)                   |
+| Web UI shell (Ant Design v6)       | `.claude/plans/web-ui.md`           | antd everywhere, CSP done                                         |
+| Chat channels (Zalo)               | `.claude/plans/channels.md`         | Upstreamed; live run owed                                         |
+| Studio (no-code builder)           | `.claude/plans/studio.md`           | skeleton/01, telemetry/01, app-standards/01-04, foundations/01-02 |
 
 After working in an area, update its file. Update this index only when an
 area's state, the next step or a decision owed changes. A new area gets its
@@ -56,6 +56,7 @@ own file and a row here.
     - backfill ADRs with a status (`docs/agents/domain.md`): 46 citations of
       ADR-001..003 point at documents this repo never had.
     - Studio (`studio.md`): each spec's `Duyệt`.
+    - Studio: ask dw-proterial whether their IdP sends `email_verified` (DO-17.1, foundations-hardening/02 step 19).
 
 ## How a feature is checked here
 

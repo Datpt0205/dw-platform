@@ -11,12 +11,16 @@ admin grants access. The legacy auto-provision-into-the-default-tenant path is
 kept behind ``auto_provision_default_membership`` (off by default) for the demo
 seed and tests; production never turns it on.
 
-Email-based linking: a verified identity is matched to an existing user first by
-``(issuer, subject)``, then by ``subject``, then by **email**. The email step is
-what lets a person an importer created (subject ``<source>:<name>``) sign
-in through Keycloak — a different subject, same email — and land on their own
-records rather than a fresh, empty account (or an email-unique crash). It relies
-on the IdP verifying the email, which the corporate SSO (Entra/Google) does.
+Linking follows the interim rule of ADR-0103 decision 8 (foundations-hardening
+R4): a sign-in resolves to an existing user through its own ``(issuer,
+subject)``; through ``users.subject`` only for the dev issuer; or through its
+email only when the token says ``email_verified`` and that user has never
+signed in and is neither a platform operator nor support staff — the person an
+importer or an invitation created. Any other email match is refused 403
+``identity_email_in_use``, and a subject some user already holds without this
+issuer's identity is refused 403 ``identity_subject_in_use``: neither creates a
+user nor links one. A new user takes the token's email only when it is
+verified, so an unverified address cannot be squatted ahead of an invitation.
 """
 
 from __future__ import annotations
@@ -29,6 +33,8 @@ from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from dw_kernel.errors import PermissionDeniedError
+from dw_platform.adapters.identity.dev_token import DEV_ISSUER
 from dw_platform.adapters.persistence import tables
 from dw_platform.application.identity_bootstrap import (
     BootstrapView,
@@ -38,6 +44,41 @@ from dw_platform.application.ports import VerifiedIdentity
 
 _SET_TENANT = text("SELECT set_config('app.tenant_id', :tenant_id, true)")
 _SET_PRINCIPAL = text("SELECT set_config('app.principal_id', :principal_id, true)")
+
+
+_LOCK_LINK = text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))")
+# A linked chat is where to send, not who is signing in.
+_LOGIN = tables.external_identities.c.provider.not_in(tables.CHANNEL_LINK_PROVIDERS)
+
+
+async def _login_identity_owner(session: AsyncSession, identity: VerifiedIdentity) -> UUID | None:
+    return await session.scalar(
+        sa.select(tables.external_identities.c.user_id).where(
+            tables.external_identities.c.issuer == identity.issuer,
+            tables.external_identities.c.subject == identity.subject,
+            _LOGIN,
+        )
+    )
+
+
+async def _has_login_identity(session: AsyncSession, user_id: UUID) -> bool:
+    found = await session.scalar(
+        sa.select(sa.literal(True)).where(tables.external_identities.c.user_id == user_id, _LOGIN)
+    )
+    return found is not None
+
+
+async def _is_privileged(session: AsyncSession, user_id: UUID) -> bool:
+    """A platform operator or support staff member, read as ``bootstrap`` reads them."""
+    found = await session.scalar(
+        sa.select(sa.literal(True)).where(
+            sa.or_(
+                sa.exists().where(tables.platform_operators.c.user_id == user_id),
+                sa.exists().where(tables.support_staff.c.user_id == user_id),
+            )
+        )
+    )
+    return found is not None
 
 
 def _display_name_for(identity: VerifiedIdentity) -> str:
@@ -121,70 +162,68 @@ class SqlIdentityBootstrap:
     async def _resolve_user(
         self, session: AsyncSession, identity: VerifiedIdentity
     ) -> tuple[UUID, bool]:
-        """Return (user_id, is_new). Ensures the external-identity mapping."""
-        mapped = (
-            await session.execute(
-                sa.select(tables.external_identities.c.user_id).where(
-                    tables.external_identities.c.issuer == identity.issuer,
-                    tables.external_identities.c.subject == identity.subject,
-                    # A linked chat is where to send, not who is signing in.
-                    tables.external_identities.c.provider.not_in(tables.CHANNEL_LINK_PROVIDERS),
-                )
-            )
-        ).first()
+        """Return (user_id, is_new), linking ``(issuer, subject)`` where the rule allows."""
+        mapped = await _login_identity_owner(session, identity)
         if mapped is not None:
-            return mapped.user_id, False
+            return mapped, False
 
-        existing = (
-            await session.execute(
+        # The dev issuer's tokens name the seeded user's own subject; the
+        # `local` profile is the only one that verifies them.
+        if identity.issuer == DEV_ISSUER:
+            seeded = await session.scalar(
                 sa.select(tables.users.c.id).where(tables.users.c.subject == identity.subject)
             )
-        ).first()
-        if existing is not None:
-            user_id, is_new = existing.id, False
-        else:
-            # Email-based account linking. A verified identity whose email
-            # matches an existing user is the SAME person — most importantly the
-            # people an importer created as `<source>:<name>`: when they
-            # later sign in through Keycloak they carry a different subject, so
-            # resolving by subject alone would try to mint a *second* user on the
-            # same email. That collides on the unique email (a crash), and even
-            # if it didn't, their imported accounts/opps would stay on the first
-            # user and they would see nothing. So link this (issuer, subject) to
-            # the existing user instead. Trusted because the email comes from the
-            # IdP-verified token; the corporate SSO (Entra/Google) verifies it.
-            linked = None
-            if identity.email:
-                linked = (
-                    await session.execute(
-                        sa.select(tables.users.c.id).where(
-                            sa.func.lower(tables.users.c.email) == identity.email.lower()
-                        )
-                    )
-                ).first()
-            if linked is not None:
-                user_id, is_new = linked.id, False
-            else:
-                await session.execute(
-                    pg_insert(tables.users)
-                    .values(
-                        id=uuid4(),
-                        subject=identity.subject,
-                        email=identity.email,
-                        display_name=_display_name_for(identity),
-                    )
-                    .on_conflict_do_nothing(index_elements=["subject"])
-                )
-                # Read the id back (handles a concurrent insert winning the race).
-                user_id = (
-                    await session.execute(
-                        sa.select(tables.users.c.id).where(
-                            tables.users.c.subject == identity.subject
-                        )
-                    )
-                ).scalar_one()
-                is_new = True
+            if seeded is not None:
+                return seeded, False
 
+        if identity.email:
+            holder = await session.scalar(
+                sa.select(tables.users.c.id).where(
+                    sa.func.lower(tables.users.c.email) == identity.email.lower()
+                )
+            )
+            if holder is not None:
+                # Two first sign-ins to one invited person must not both pass
+                # "never signed in". An advisory lock, not FOR UPDATE: `dw_app`
+                # holds no UPDATE on `platform.users` (ticket 03).
+                await session.execute(_LOCK_LINK, {"key": f"identity_link:{holder}"})
+                if not (
+                    identity.email_verified
+                    and not await _has_login_identity(session, holder)
+                    and not await _is_privileged(session, holder)
+                ):
+                    raise PermissionDeniedError(
+                        "this email belongs to an account this sign-in cannot claim",
+                        details={"reason_code": "identity_email_in_use"},
+                    )
+                await self._link(session, holder, identity)
+                return holder, False
+
+        created = await session.scalar(
+            pg_insert(tables.users)
+            .values(
+                id=uuid4(),
+                subject=identity.subject,
+                email=identity.email if identity.email_verified else None,
+                display_name=_display_name_for(identity),
+            )
+            .on_conflict_do_nothing(index_elements=["subject"])
+            .returning(tables.users.c.id)
+        )
+        if created is None:
+            # A concurrent first sign-in of this same identity won the insert
+            # and linked it; anything else holding the subject is not ours.
+            mapped = await _login_identity_owner(session, identity)
+            if mapped is not None:
+                return mapped, False
+            raise PermissionDeniedError(
+                "this subject belongs to another account",
+                details={"reason_code": "identity_subject_in_use"},
+            )
+        await self._link(session, created, identity)
+        return created, True
+
+    async def _link(self, session: AsyncSession, user_id: UUID, identity: VerifiedIdentity) -> None:
         await session.execute(
             pg_insert(tables.external_identities)
             .values(
@@ -196,7 +235,6 @@ class SqlIdentityBootstrap:
             )
             .on_conflict_do_nothing(constraint="uq_external_identities_issuer_subject")
         )
-        return user_id, is_new
 
     async def _provision_default_membership(self, session: AsyncSession, user_id: UUID) -> None:
         tenant_exists = (

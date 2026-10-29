@@ -25,6 +25,8 @@ class VerifiedClaims:
     email: str | None
     issuer: str
     name: str | None = None
+    # Only a claim that is the boolean true; absent, "true" or 1 is False.
+    email_verified: bool = False
     # `amr` and `acr`. Empty / None when the token carries neither: no second
     # factor is ever assumed.
     auth_methods: frozenset[str] = frozenset()

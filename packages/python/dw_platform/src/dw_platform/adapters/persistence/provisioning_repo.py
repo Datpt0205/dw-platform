@@ -170,15 +170,23 @@ class SqlProvisioningRepository:
                 )
             )
 
-    async def set_tenant_status(self, tenant_id: UUID, status: str) -> bool:
+    async def set_tenant_status(
+        self, tenant_id: UUID, status: str, *, only_from: frozenset[str] | None = None
+    ) -> str | None:
         async with self.session_factory() as session, session.begin():
-            result = await session.execute(
-                sa.update(tables.tenants)
+            # Read under the row lock, so the status checked is the one updated.
+            previous = await session.scalar(
+                sa.select(tables.tenants.c.status)
                 .where(tables.tenants.c.id == tenant_id)
-                .values(status=status)
+                .with_for_update()
             )
-        assert isinstance(result, CursorResult)
-        return bool(result.rowcount)
+            if previous is not None and (only_from is None or previous in only_from):
+                await session.execute(
+                    sa.update(tables.tenants)
+                    .where(tables.tenants.c.id == tenant_id)
+                    .values(status=status)
+                )
+        return previous
 
     async def create_offboarding_request(
         self, *, request_id: UUID, tenant_id: UUID, requested_by: UUID

@@ -47,6 +47,8 @@ NOW = datetime(2026, 10, 8, 9, 0, tzinfo=UTC)
 class _Identity:
     subject: str
     email: str | None
+    # An IdP that verified the address, as a corporate SSO does.
+    email_verified: bool = True
     issuer: str = ISSUER
     name: str | None = None
     auth_methods: frozenset[str] = frozenset()

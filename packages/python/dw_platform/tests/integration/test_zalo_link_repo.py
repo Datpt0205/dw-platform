@@ -401,7 +401,7 @@ async def test_a_zalo_identity_never_resolves_a_membership(
     lookup = SqlMembershipLookup(async_sessionmaker(app_engine, expire_on_commit=False))
     assert await lookup.find_access(chat, "zalo", tenant_id, workspace_id) is None
     # The same user through their real login still resolves.
-    assert await lookup.find_access(f"test|{user}", "any-issuer", tenant_id, workspace_id)
+    assert await lookup.find_access(f"test|{user}", "dw-dev", tenant_id, workspace_id)
 
 
 async def test_a_bootstrapped_zalo_identity_never_signs_in_as_the_linked_user(
@@ -416,6 +416,8 @@ async def test_a_bootstrapped_zalo_identity_never_signs_in_as_the_linked_user(
         subject: str
         issuer: str = "zalo"
         email: str | None = None
+        # An IdP that verified the address, as a corporate SSO does.
+        email_verified: bool = True
         auth_methods: frozenset[str] = frozenset()
         acr: str | None = None
 

@@ -49,6 +49,7 @@ from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.testing.demo_graph import DEMO_WORKER_YAML, build_demo_graph
+from dw_api.bootstrap.checkpoint_serde import checkpoint_serializer
 from dw_kernel.ports import SystemClock, Uuid4Generator
 from dw_platform.adapters.persistence import tables
 from dw_platform.adapters.persistence.approval_codes import SqlApprovalCodeStore
@@ -811,7 +812,7 @@ async def test_a_decision_from_zalo_resumes_the_run_with_channel_zalo(
     runner = LangGraphWorkflowRunner(
         worker_registry=workers,
         graph_registry=graphs,
-        checkpoint_saver=SqlAlchemyCheckpointSaver(sessions),
+        checkpoint_saver=SqlAlchemyCheckpointSaver(sessions, checkpoint_serializer()),
         run_store=SqlWorkerRunStore(sessions, stale_run_after_seconds=3600),
         uow_factory=SqlPlatformUnitOfWorkFactory(sessions),
         clock=SystemClock(),

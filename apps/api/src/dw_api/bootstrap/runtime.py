@@ -30,6 +30,7 @@ from dw_agent_runtime.tool_specs import ToolSpecRegistry
 from dw_agent_runtime.tools import ToolRegistry
 from dw_agent_runtime.toolsets import ToolsetRegistry
 from dw_api.adapters.document_indexing import KnowledgeDocumentIndexingAdapter
+from dw_api.bootstrap.checkpoint_serde import checkpoint_serializer
 from dw_api.bootstrap.container import RuntimeSeam
 from dw_api.bootstrap.knowledge import build_embeddings, build_reranker, build_vector_index
 from dw_api.bootstrap.models import build_chat_model_factory, model_provider_config
@@ -211,7 +212,7 @@ def build_runtime(
     runner = LangGraphWorkflowRunner(
         worker_registry=workers,
         graph_registry=graphs,
-        checkpoint_saver=SqlAlchemyCheckpointSaver(session_factory),
+        checkpoint_saver=SqlAlchemyCheckpointSaver(session_factory, checkpoint_serializer()),
         run_store=run_store,
         uow_factory=uow_factory,
         clock=clock,

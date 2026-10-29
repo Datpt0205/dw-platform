@@ -125,7 +125,7 @@ def build_ingest_consumer(
                 return
 
     async def drain_one() -> None:
-        job = await components.job_store.claim_next(lease_seconds=lease_seconds)
+        job = await components.job_queue.claim_next(lease_seconds=lease_seconds)
         if job is None:
             return
         beat = asyncio.create_task(_beat(job))

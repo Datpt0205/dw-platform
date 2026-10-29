@@ -1,0 +1,129 @@
+# Mutation check of foundations-hardening ticket 02: scripts/mutate.py runs this file.
+# One mutation per Kiểm soát row the ticket implements (FH2-FH11, FH34).
+mutations:
+  - name: FH2 tombstone filter without tenant
+    file: packages/python/dw_knowledge/src/dw_knowledge/adapters/qdrant_index.py
+    old: |2
+                        match=models.MatchValue(value=str(document_id)),
+                    ),
+                    models.FieldCondition(
+                        key="tenant_id",
+                        match=models.MatchValue(value=str(tenant_id)),
+                    ),
+    new: |2
+                        match=models.MatchValue(value=str(document_id)),
+                    ),
+    tests:
+      - packages/python/dw_knowledge/tests/integration/test_qdrant_tenant_filter.py::test_a_tombstone_for_another_tenant_leaves_the_vectors_alone
+  - name: FH3 audit after commit
+    file: packages/python/dw_knowledge/src/dw_knowledge/gateway.py
+    old: |2
+                await SqlAuditRepository(session).append(
+                    AuditEvent(
+                        id=self.id_generator.new_uuid(),
+                        tenant_id=TenantId(context.tenant_id),
+                        workspace_id=WorkspaceId(context.workspace_id),
+                        actor_id=UserId(context.principal_id),
+                        action=DELETED_ACTION,
+                        resource_type="knowledge_document",
+                        resource_id=str(document_id),
+                        occurred_at=now,
+                        details={"document_id": str(document_id)},
+                    )
+                )
+            await self.vector_index.tombstone_document(document_id, context.tenant_id)
+    new: |2
+            await self.vector_index.tombstone_document(document_id, context.tenant_id)
+            async with self.session_factory() as late, late.begin():
+                await late.execute(_SET_TENANT, {"tenant_id": str(context.tenant_id)})
+                await SqlAuditRepository(late).append(
+                    AuditEvent(
+                        id=self.id_generator.new_uuid(),
+                        tenant_id=TenantId(context.tenant_id),
+                        workspace_id=WorkspaceId(context.workspace_id),
+                        actor_id=UserId(context.principal_id),
+                        action=DELETED_ACTION,
+                        resource_type="knowledge_document",
+                        resource_id=str(document_id),
+                        occurred_at=now,
+                        details={"document_id": str(document_id)},
+                    )
+                )
+    tests:
+      - packages/python/dw_knowledge/tests/integration/test_qdrant_tenant_filter.py::test_a_failing_audit_leaves_the_document_undeleted
+  - name: FH4 memory list without clearance
+    file: packages/python/dw_memory/src/dw_memory/service.py
+    old: |2-
+                        tables.items.c.classification.in_(allowed),
+                        after_position(
+    new: "                    after_position("
+    tests:
+      - packages/python/dw_memory/tests/integration/test_memory_service_db.py::test_the_inventory_will_not_list_material_above_the_callers_clearance
+  - name: FH5 newer without tenant
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/checkpoint_retention.py
+    old: |2
+                            newer.c.tenant_id == c.c.tenant_id,
+    new: ""
+    tests:
+      - packages/python/dw_agent_runtime/tests/integration/test_checkpoint_retention.py::test_another_tenants_newer_checkpoint_on_the_thread_does_not_cost_this_one
+  - name: FH6 allowlist True
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/checkpoint.py
+    old: allowed_msgpack_modules=tuple(allowed)
+    new: allowed_msgpack_modules=True
+    tests:
+      - packages/python/dw_agent_runtime/tests/integration/test_checkpoint_writes.py::test_a_type_outside_the_allowlist_loads_as_data_not_as_an_object
+  - name: FH7 no status trigger
+    file: db/migrations/versions/6887b6020075_tenant_status_and_identity_guards.py
+    old: |2
+        op.execute(
+            "CREATE TRIGGER tenants_status_transition BEFORE UPDATE OF status ON platform.tenants"
+            " FOR EACH ROW EXECUTE FUNCTION platform.guard_tenant_status()"
+        )
+    new: ""
+    tests:
+      - packages/python/dw_platform/tests/integration/test_provisioning.py::test_no_role_brings_a_tenant_back_from_offboarding
+  - name: FH8 lock keeps the cache
+    file: apps/api/src/dw_api/routes/v1/platform.py
+    old: |
+      status="locked")
+          await _forget_access(container, tenant_id)
+    new: |
+      status="locked")
+    tests:
+      - apps/api/tests/unit/test_platform_endpoint.py::test_a_lock_stops_the_next_request_of_a_member_whose_context_is_cached
+  - name: FH9 email_verified unchecked
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/identity_provisioning.py
+    old: |2-
+                        identity.email_verified
+                        and not await _has_login_identity
+    new: "                    not await _has_login_identity"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_identity_linking.py::test_an_unverified_email_does_not_claim_an_invited_person
+  - name: FH10 new user read back by subject
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/identity_provisioning.py
+    old: |2-
+                mapped = await _login_identity_owner(session, identity)
+                if mapped is not None:
+                    return mapped, False
+                raise PermissionDeniedError(
+    new: |2-
+                mapped = await session.scalar(
+                    sa.select(tables.users.c.id).where(tables.users.c.subject == identity.subject)
+                )
+                if mapped is not None:
+                    return mapped, False
+                raise PermissionDeniedError(
+    tests:
+      - packages/python/dw_platform/tests/integration/test_identity_linking.py::test_a_subject_of_another_issuer_reaches_no_user
+  - name: FH11 any BYPASSRLS role adds
+    file: db/migrations/versions/6887b6020075_tenant_status_and_identity_guards.py
+    old: IF current_user = 'dw_provisioner' OR NEW.provider
+    new: IF (SELECT rolbypassrls FROM pg_catalog.pg_roles WHERE rolname = current_user) OR NEW.provider
+    tests:
+      - packages/python/dw_platform/tests/integration/test_identity_linking.py::test_only_the_provisioner_adds_an_operators_login_identity[migrator]
+  - name: FH34 draining class allowed
+    file: packages/python/dw_platform/tests/unit/test_drain_setting_scan.py
+    old: "if alias.name in constants or (beyond_worker and alias.name in callables):"
+    new: "if alias.name in constants:"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_drain_setting_scan.py::test_a_planted_api_module_is_named[draining class]

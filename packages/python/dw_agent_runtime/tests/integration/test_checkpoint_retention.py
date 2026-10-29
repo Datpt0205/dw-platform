@@ -164,6 +164,33 @@ async def test_a_finished_thread_keeps_only_its_newest_checkpoint(
     assert await _left(migrator, thread) == (["ckpt-0004"], ["ckpt-0004"])
 
 
+async def test_another_tenants_newer_checkpoint_on_the_thread_does_not_cost_this_one(
+    sessions: async_sessionmaker[AsyncSession], migrator: async_sessionmaker[AsyncSession]
+) -> None:
+    """R2.4 (FH5): the key carries no tenant, so two tenants can share a
+    `thread_id`; B's newer checkpoint on it must not make A's newest look
+    superseded, nor B's recent one keep A's idle thread alive."""
+    thread = await _thread(sessions)
+    tenant_b, workspace_b = uuid.uuid4(), uuid.uuid4()
+    async with sessions() as session, session.begin():
+        await session.execute(
+            text("SELECT set_config('app.tenant_id', :t, true)"), {"t": str(tenant_b)}
+        )
+        await session.execute(
+            text(
+                "INSERT INTO platform.run_checkpoints"
+                " (thread_id, checkpoint_ns, checkpoint_id, tenant_id, workspace_id,"
+                "  type, checkpoint, metadata, created_at)"
+                " VALUES (:th, '', 'ckpt-9999', :t, :w, 'msgpack', '\\x00', '\\x00', :at)"
+            ),
+            {"th": thread, "t": tenant_b, "w": workspace_b, "at": NOW - timedelta(days=1)},
+        )
+
+    await _drain(_sweep(sessions))
+
+    assert await _left(migrator, thread) == (["ckpt-0004", "ckpt-9999"], ["ckpt-0004"])
+
+
 async def test_a_thread_idle_past_its_term_goes_entirely(
     sessions: async_sessionmaker[AsyncSession], migrator: async_sessionmaker[AsyncSession]
 ) -> None:

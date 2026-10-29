@@ -48,7 +48,7 @@ async def test_tombstone_excludes_then_reindex_restores() -> None:
     await index.upsert([_chunk()])
     assert await index.search((1.0, 0.0, 0.0), _filter(), 5)  # found
 
-    await index.tombstone_document(DOC)  # soft delete
+    await index.tombstone_document(DOC, TENANT)  # soft delete
     assert not await index.search((1.0, 0.0, 0.0), _filter(), 5)  # excluded
 
     await index.upsert([_chunk()])  # re-ingest reactivates
@@ -58,5 +58,17 @@ async def test_tombstone_excludes_then_reindex_restores() -> None:
 async def test_hard_delete_removes_permanently() -> None:
     index = InMemoryVectorIndexAdapter()
     await index.upsert([_chunk()])
-    await index.delete_document(DOC)
+    await index.delete_document(DOC, TENANT)
     assert not await index.search((1.0, 0.0, 0.0), _filter(), 5)
+
+
+async def test_another_tenant_cannot_tombstone_or_delete_the_document() -> None:
+    """A document id names no tenant, so the tenant is part of the match (R2.1)."""
+    index = InMemoryVectorIndexAdapter()
+    await index.upsert([_chunk()])
+    other = uuid.uuid4()
+
+    await index.tombstone_document(DOC, other)
+    await index.delete_document(DOC, other)
+
+    assert await index.search((1.0, 0.0, 0.0), _filter(), 5)

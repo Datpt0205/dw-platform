@@ -148,8 +148,12 @@ class ProvisioningRepositoryPort(Protocol):
         plan_id: str,
     ) -> None: ...
 
-    async def set_tenant_status(self, tenant_id: UUID, status: str) -> bool:
-        """Returns False if no tenant had that id."""
+    async def set_tenant_status(
+        self, tenant_id: UUID, status: str, *, only_from: frozenset[str] | None = None
+    ) -> str | None:
+        """Set the status and return the one the tenant had; None if no tenant
+        had that id. With ``only_from``, a tenant whose status is outside it is
+        left as it is (its status is still returned)."""
         ...
 
     async def create_offboarding_request(
@@ -297,9 +301,17 @@ class ProvisioningService:
     ) -> None:
         if status not in _TENANT_STATUSES:
             raise DomainError("status must be 'active' or 'locked'", details={"status": status})
-        changed = await self.repo.set_tenant_status(tenant_id, status)
-        if not changed:
+        # Lock and unlock move only between `active` and `locked`: a tenant whose
+        # data is being exported and purged is not reopened (R3.1). The database
+        # refuses the same step from any role (`ck_tenants_status_transition`).
+        previous = await self.repo.set_tenant_status(tenant_id, status, only_from=_TENANT_STATUSES)
+        if previous is None:
             raise NotFoundError("unknown tenant", details={"tenant_id": str(tenant_id)})
+        if previous not in _TENANT_STATUSES:
+            raise ConflictError(
+                "the tenant is being offboarded",
+                details={"tenant_id": str(tenant_id), "reason_code": "tenant_offboarding"},
+            )
         await self._audit(
             context, "platform.tenant.status", "tenant", str(tenant_id), {"status": status}
         )
@@ -323,8 +335,7 @@ class ProvisioningService:
         await self.repo.create_offboarding_request(
             request_id=request_id, tenant_id=tenant_id, requested_by=context.principal_id
         )
-        changed = await self.repo.set_tenant_status(tenant_id, "offboarding")
-        if not changed:
+        if await self.repo.set_tenant_status(tenant_id, "offboarding") is None:
             raise NotFoundError("unknown tenant", details={"tenant_id": str(tenant_id)})
         await self._audit(
             context, "platform.tenant.offboarding_initiate", "tenant", str(tenant_id), {}
@@ -358,8 +369,7 @@ class ProvisioningService:
             raise DomainError(
                 "export/purge has not completed yet", details={"status": status.status}
             )
-        changed = await self.repo.set_tenant_status(tenant_id, "offboarded")
-        if not changed:
+        if await self.repo.set_tenant_status(tenant_id, "offboarded") is None:
             raise NotFoundError("unknown tenant", details={"tenant_id": str(tenant_id)})
         await self._audit(
             context, "platform.tenant.offboarding_finalize", "tenant", str(tenant_id), {}

@@ -155,6 +155,7 @@ def _drain(
         engine=None,  # type: ignore[arg-type]
         gateway=_FakeGateway(),  # type: ignore[arg-type]
         job_store=store,  # type: ignore[arg-type]
+        job_queue=store,  # type: ignore[arg-type]
         parser=parser or _FakeParser(),  # type: ignore[arg-type]
         object_storage=_FakeStorage(),  # type: ignore[arg-type]
     )

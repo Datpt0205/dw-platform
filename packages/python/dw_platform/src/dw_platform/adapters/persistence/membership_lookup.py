@@ -15,6 +15,7 @@ import sqlalchemy as sa
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from dw_platform.adapters.identity.dev_token import DEV_ISSUER
 from dw_platform.adapters.persistence import tables
 from dw_platform.adapters.persistence.hierarchy_repo import SUBTREE_QUERY
 from dw_platform.application.authorization import PLATFORM_ADMIN_ROLE
@@ -194,20 +195,22 @@ class SqlMembershipLookup:
         async with self.session_factory() as session, session.begin():
             await session.execute(_SET_LOOKUP_CONTEXT, {"tenant_id": str(tenant_id)})
 
-            # The verified identity resolves to a platform user either directly
-            # (dev tokens store the subject on users.subject) or via an external
-            # identity mapping (Keycloak sub -> platform user).
+            # The verified identity resolves to a platform user through its own
+            # `(issuer, subject)` identity, or, for the dev issuer only, through
+            # the subject stored on the user: a subject of one issuer must not
+            # reach a user known through another (R4.3).
+            by_identity = sa.select(tables.external_identities.c.user_id).where(
+                tables.external_identities.c.issuer == issuer,
+                tables.external_identities.c.subject == subject,
+                # A linked chat is where to send, not who is signing in.
+                tables.external_identities.c.provider.not_in(tables.CHANNEL_LINK_PROVIDERS),
+            )
             candidate_users = (
-                sa.select(tables.users.c.id)
-                .where(tables.users.c.subject == subject)
-                .union(
-                    sa.select(tables.external_identities.c.user_id).where(
-                        tables.external_identities.c.issuer == issuer,
-                        tables.external_identities.c.subject == subject,
-                        # A linked chat is where to send, not who is signing in.
-                        tables.external_identities.c.provider.not_in(tables.CHANNEL_LINK_PROVIDERS),
-                    )
+                by_identity.union(
+                    sa.select(tables.users.c.id).where(tables.users.c.subject == subject)
                 )
+                if issuer == DEV_ISSUER
+                else by_identity
             )
 
             return await _access_in(

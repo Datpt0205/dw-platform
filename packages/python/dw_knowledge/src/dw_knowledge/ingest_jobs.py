@@ -162,7 +162,13 @@ def _row_to_job(row: sa.Row[Any]) -> IngestJob:
 
 @dataclass
 class IngestJobStore:
-    """CRUD over ``knowledge.ingest_jobs`` with RLS-correct tenant context."""
+    """CRUD over ``knowledge.ingest_jobs`` with RLS-correct tenant context.
+
+    Every method runs under one tenant's ``app.tenant_id``. The cross-tenant
+    claim is ``IngestJobQueue``'s, a class of its own because it sets the drain:
+    the API builds this store to enqueue, and only the worker builds the queue
+    (foundations-hardening R2.6).
+    """
 
     session_factory: async_sessionmaker[AsyncSession]
     clock: UtcClock
@@ -258,64 +264,6 @@ class IngestJobStore:
             newest.setdefault(str(source_version), job_id)
         return newest
 
-    async def claim_next(self, *, lease_seconds: int = DEFAULT_LEASE_SECONDS) -> IngestJob | None:
-        """Take the next claimable job, hold it under a lease, and return it.
-
-        Claimable means queued and due, OR already processing under a lease that
-        has expired. Without that second arm a worker killed mid-job left its row
-        in ``processing`` for ever: nothing ever selected it again, and the file
-        the user uploaded simply never finished, with no error to show them.
-
-        ``FOR UPDATE SKIP LOCKED`` keeps concurrent workers off the same row. The
-        cross-tenant scan is authorised by the ``app.worker_drain`` GUC; the
-        claiming UPDATE runs under the job's own ``app.tenant_id``.
-        """
-        now = self.clock.now()
-        async with self.session_factory() as session, session.begin():
-            await session.execute(_SET_WORKER_DRAIN)
-            claimable = sa.or_(
-                sa.and_(
-                    tables.ingest_jobs.c.status == "queued",
-                    tables.ingest_jobs.c.available_at <= now,
-                ),
-                sa.and_(
-                    tables.ingest_jobs.c.status == "processing",
-                    tables.ingest_jobs.c.lease_until.is_not(None),
-                    tables.ingest_jobs.c.lease_until < now,
-                ),
-            )
-            row = (
-                await session.execute(
-                    sa.select(tables.ingest_jobs)
-                    .where(claimable)
-                    .order_by(tables.ingest_jobs.c.available_at.asc())
-                    .limit(1)
-                    .with_for_update(skip_locked=True)
-                )
-            ).one_or_none()
-            if row is None:
-                return None
-            # The claiming UPDATE must satisfy tenant_isolation → set app.tenant_id.
-            await session.execute(_SET_TENANT, {"tenant_id": str(row.tenant_id)})
-            # RETURNING, so the caller sees the state it is actually working in.
-            # Returning the pre-update row reported the job as still queued and
-            # its attempt count one short, and mark_failed reads that count to
-            # decide whether anything is left to retry.
-            claimed = (
-                await session.execute(
-                    sa.update(tables.ingest_jobs)
-                    .where(tables.ingest_jobs.c.id == row.id)
-                    .values(
-                        status="processing",
-                        attempts=row.attempts + 1,
-                        lease_until=now + timedelta(seconds=lease_seconds),
-                        updated_at=now,
-                    )
-                    .returning(tables.ingest_jobs)
-                )
-            ).one()
-            return _row_to_job(claimed)
-
     async def renew_lease(
         self, job: IngestJob, *, lease_seconds: int = DEFAULT_LEASE_SECONDS
     ) -> bool:
@@ -408,3 +356,69 @@ class IngestJobStore:
     def _backoff(self, attempts: int) -> timedelta:
         """Exponential, so a provider that is rate-limiting us is not hammered."""
         return timedelta(seconds=self.retry_backoff_seconds * (2 ** (attempts - 1)))
+
+
+@dataclass
+class IngestJobQueue:
+    """The worker's claim of the next job across every tenant, under the drain."""
+
+    session_factory: async_sessionmaker[AsyncSession]
+    clock: UtcClock
+
+    async def claim_next(self, *, lease_seconds: int = DEFAULT_LEASE_SECONDS) -> IngestJob | None:
+        """Take the next claimable job, hold it under a lease, and return it.
+
+        Claimable means queued and due, OR already processing under a lease that
+        has expired. Without that second arm a worker killed mid-job left its row
+        in ``processing`` for ever: nothing ever selected it again, and the file
+        the user uploaded simply never finished, with no error to show them.
+
+        ``FOR UPDATE SKIP LOCKED`` keeps concurrent workers off the same row. The
+        cross-tenant scan is authorised by the ``app.worker_drain`` GUC; the
+        claiming UPDATE runs under the job's own ``app.tenant_id``.
+        """
+        now = self.clock.now()
+        async with self.session_factory() as session, session.begin():
+            await session.execute(_SET_WORKER_DRAIN)
+            claimable = sa.or_(
+                sa.and_(
+                    tables.ingest_jobs.c.status == "queued",
+                    tables.ingest_jobs.c.available_at <= now,
+                ),
+                sa.and_(
+                    tables.ingest_jobs.c.status == "processing",
+                    tables.ingest_jobs.c.lease_until.is_not(None),
+                    tables.ingest_jobs.c.lease_until < now,
+                ),
+            )
+            row = (
+                await session.execute(
+                    sa.select(tables.ingest_jobs)
+                    .where(claimable)
+                    .order_by(tables.ingest_jobs.c.available_at.asc())
+                    .limit(1)
+                    .with_for_update(skip_locked=True)
+                )
+            ).one_or_none()
+            if row is None:
+                return None
+            # The claiming UPDATE must satisfy tenant_isolation → set app.tenant_id.
+            await session.execute(_SET_TENANT, {"tenant_id": str(row.tenant_id)})
+            # RETURNING, so the caller sees the state it is actually working in.
+            # Returning the pre-update row reported the job as still queued and
+            # its attempt count one short, and mark_failed reads that count to
+            # decide whether anything is left to retry.
+            claimed = (
+                await session.execute(
+                    sa.update(tables.ingest_jobs)
+                    .where(tables.ingest_jobs.c.id == row.id)
+                    .values(
+                        status="processing",
+                        attempts=row.attempts + 1,
+                        lease_until=now + timedelta(seconds=lease_seconds),
+                        updated_at=now,
+                    )
+                    .returning(tables.ingest_jobs)
+                )
+            ).one()
+            return _row_to_job(claimed)

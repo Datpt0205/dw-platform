@@ -10,7 +10,7 @@ statement.
 from __future__ import annotations
 
 import uuid
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Iterable, Sequence
 from typing import Any, cast
 
 import sqlalchemy as sa
@@ -23,6 +23,9 @@ from langgraph.checkpoint.base import (
     CheckpointMetadata,
     CheckpointTuple,
 )
+
+# Re-exported: the composition root types its serializer without importing LangGraph.
+from langgraph.checkpoint.serde.base import SerializerProtocol as SerializerProtocol
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -48,6 +51,13 @@ def _scope(config: RunnableConfig) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID, str
     )
 
 
+def allowlisted_serializer(allowed: Iterable[tuple[str, str]]) -> SerializerProtocol:
+    """The checkpoint serializer that rebuilds only LangGraph's safe types and
+    ``allowed`` as objects; any other type loads as plain data (ADR-0112
+    decision 10). The composition root owns ``allowed``."""
+    return JsonPlusSerializer(allowed_msgpack_modules=tuple(allowed))
+
+
 # The primary keys the two upserts below conflict on.
 _CHECKPOINT_KEY = ["thread_id", "checkpoint_ns", "checkpoint_id"]
 _WRITE_KEY = [*_CHECKPOINT_KEY, "task_id", "idx"]
@@ -56,8 +66,13 @@ _WRITE_KEY = [*_CHECKPOINT_KEY, "task_id", "idx"]
 class SqlAlchemyCheckpointSaver(BaseCheckpointSaver[str]):
     """Async checkpoint persistence with per-transaction RLS context."""
 
-    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
-        super().__init__(serde=JsonPlusSerializer())
+    def __init__(
+        self, session_factory: async_sessionmaker[AsyncSession], serde: SerializerProtocol
+    ) -> None:
+        # Required, with no default: the default serializer rebuilds an object
+        # of any type a row names. The composition root passes one with an
+        # explicit allowlist (ADR-0112 decision 10; foundations-hardening R2.5).
+        super().__init__(serde=serde)
         self._session_factory = session_factory
 
     async def aget_tuple(self, config: RunnableConfig) -> CheckpointTuple | None:

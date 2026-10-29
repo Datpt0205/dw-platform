@@ -36,7 +36,7 @@ from dw_knowledge.adapters.composite_parser import CompositeParser
 from dw_knowledge.adapters.embedding_factory import build_embeddings as shared_build_embeddings
 from dw_knowledge.attachment_policy import load_attachment_policy
 from dw_knowledge.gateway import KnowledgeGateway
-from dw_knowledge.ingest_jobs import IngestJobStore
+from dw_knowledge.ingest_jobs import IngestJobQueue, IngestJobStore
 from dw_knowledge.ports import DocumentParserPort, EmbeddingPort, ObjectStoragePort, VectorIndexPort
 from dw_observability.telemetry import TelemetryPort
 from dw_worker.settings import WorkerSettings
@@ -55,6 +55,7 @@ class IngestComponents:
     engine: AsyncEngine
     gateway: KnowledgeGateway
     job_store: IngestJobStore
+    job_queue: IngestJobQueue
     parser: DocumentParserPort
     object_storage: ObjectStoragePort
 
@@ -194,6 +195,7 @@ def build_ingest_components(settings: WorkerSettings) -> IngestComponents | None
         engine=engine,
         gateway=gateway,
         job_store=job_store,
+        job_queue=IngestJobQueue(session_factory=session_factory, clock=clock),
         parser=build_parser(settings),
         object_storage=storage,
     )

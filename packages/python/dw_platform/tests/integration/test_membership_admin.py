@@ -62,6 +62,8 @@ async def migrator_engine(db_urls: DatabaseUrls) -> AsyncIterator[AsyncEngine]:
 class _Identity:
     subject: str
     email: str | None
+    # An IdP that verified the address, as a corporate SSO does.
+    email_verified: bool = True
     issuer: str = "https://issuer.test/realms/dw"
     name: str | None = None
     auth_methods: frozenset[str] = frozenset()

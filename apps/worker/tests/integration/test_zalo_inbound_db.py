@@ -43,6 +43,7 @@ from dw_connectors.inbound import (
     Reply,
 )
 from dw_kernel.ports import SystemClock
+from dw_platform.adapters.identity.dev_token import DEV_ISSUER
 from dw_platform.adapters.persistence import tables
 from dw_platform.adapters.persistence.membership_lookup import SqlMembershipLookup
 from dw_platform.adapters.persistence.notifications import SqlNotificationRepository
@@ -200,7 +201,7 @@ async def _inbox_titles(
 ) -> list[str]:
     """The person's inbox in one workspace, read the way the web reads it."""
     context = await DbAccessContextFactory(SqlMembershipLookup(sessions)).build(
-        VerifiedClaims(subject=f"test|{user_id}", email=None, issuer="dev"), *where
+        VerifiedClaims(subject=f"test|{user_id}", email=None, issuer=DEV_ISSUER), *where
     )
     inbox = await SqlNotificationRepository(sessions).latest(context, limit=20)
     return [item.title for item in inbox.items]

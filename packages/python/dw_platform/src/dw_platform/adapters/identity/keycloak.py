@@ -63,6 +63,7 @@ class KeycloakTokenVerifier:
         return VerifiedClaims(
             subject=str(claims["sub"]),
             email=claims.get("email"),
+            email_verified=claims.get("email_verified") is True,
             issuer=str(claims["iss"]),
             name=claims.get("name") or claims.get("preferred_username"),
             auth_methods=auth_methods(claims.get("amr")),

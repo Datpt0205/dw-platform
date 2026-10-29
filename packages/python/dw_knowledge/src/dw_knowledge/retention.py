@@ -90,9 +90,9 @@ class SqlKnowledgeRetention:
     async def prune(self) -> None:
         cutoff = self.clock.now() - timedelta(days=self.policy.knowledge.deleted_grace_days)
         doomed, held = await self._candidates(cutoff)
-        for document_id in doomed:
-            await self.vector_index.delete_document(document_id)
-        deleted = await self._delete(doomed) if doomed else 0
+        for document_id, tenant_id in doomed:
+            await self.vector_index.delete_document(document_id, tenant_id)
+        deleted = await self._delete([document_id for document_id, _ in doomed]) if doomed else 0
         if deleted or held:
             logger.info(
                 "knowledge retention pass",
@@ -119,7 +119,7 @@ class SqlKnowledgeRetention:
             .exists()
         )
 
-    async def _candidates(self, cutoff: object) -> tuple[list[uuid.UUID], int]:
+    async def _candidates(self, cutoff: object) -> tuple[list[tuple[uuid.UUID, uuid.UUID]], int]:
         """What this pass may delete, and what it must not, in one transaction.
 
         Read and delete are separate transactions because the vector deletes sit
@@ -133,11 +133,12 @@ class SqlKnowledgeRetention:
                 sa.select(sa.func.count()).select_from(tables.documents).where(expired, cites)
             )
             rows = await session.execute(
-                sa.select(tables.documents.c.id)
+                sa.select(tables.documents.c.id, tables.documents.c.tenant_id)
                 .where(expired, ~cites)
                 .limit(self.policy.batch_limit)
             )
-            return [row.id for row in rows], held or 0
+            # With its tenant: the vector delete matches on both (R2.1).
+            return [(row.id, row.tenant_id) for row in rows], held or 0
 
     async def _delete(self, doomed: list[uuid.UUID]) -> int:
         """The citation test again, because the read was a transaction ago.

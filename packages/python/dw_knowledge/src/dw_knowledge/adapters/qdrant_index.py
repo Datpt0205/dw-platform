@@ -183,21 +183,27 @@ class QdrantVectorIndexAdapter:
                 "failed to upsert vectors", details={"error": type(exc).__name__}
             ) from exc
 
-    def _document_filter(self, document_id: uuid.UUID) -> models.Filter:
+    def _document_filter(self, document_id: uuid.UUID, tenant_id: uuid.UUID) -> models.Filter:
         return models.Filter(
             must=[
                 models.FieldCondition(
                     key="source_document_id",
                     match=models.MatchValue(value=str(document_id)),
-                )
+                ),
+                models.FieldCondition(
+                    key="tenant_id",
+                    match=models.MatchValue(value=str(tenant_id)),
+                ),
             ]
         )
 
-    async def delete_document(self, document_id: uuid.UUID) -> None:
+    async def delete_document(self, document_id: uuid.UUID, tenant_id: uuid.UUID) -> None:
         try:
             await self.client.delete(
                 self.collection,
-                points_selector=models.FilterSelector(filter=self._document_filter(document_id)),
+                points_selector=models.FilterSelector(
+                    filter=self._document_filter(document_id, tenant_id)
+                ),
                 wait=True,
             )
         except Exception as exc:
@@ -227,12 +233,12 @@ class QdrantVectorIndexAdapter:
                 "failed to delete tenant vectors", details={"error": type(exc).__name__}
             ) from exc
 
-    async def tombstone_document(self, document_id: uuid.UUID) -> None:
+    async def tombstone_document(self, document_id: uuid.UUID, tenant_id: uuid.UUID) -> None:
         try:
             await self.client.set_payload(
                 self.collection,
                 payload={"is_deleted": True},
-                points=models.FilterSelector(filter=self._document_filter(document_id)),
+                points=models.FilterSelector(filter=self._document_filter(document_id, tenant_id)),
                 wait=True,
             )
         except Exception as exc:

@@ -277,6 +277,30 @@ async def seed_test_env(database_url: str, *, restore_deleted: bool = True) -> d
                     .values(permission_set_keys=set_keys)
                 )
 
+            # The demo identities go in before the operator row: a login identity
+            # of an operator is added only by `dw_provisioner`, and the trigger
+            # runs before ON CONFLICT would skip the row (foundations-hardening
+            # R4.4). So an identity already there is updated, never re-inserted:
+            # keyed on `id`, derived from (issuer, kc_id), which re-asserts the
+            # demo identity's fields whatever a stray row under that id held.
+            for kc_id, subject in KEYCLOAK_IDENTITIES:
+                identity_id = sid("extid", f"{KEYCLOAK_ISSUER}:{kc_id}")
+                fields = {
+                    "user_id": sid("user", subject),
+                    "issuer": KEYCLOAK_ISSUER,
+                    "subject": kc_id,
+                    "provider": "keycloak",
+                }
+                updated = await conn.execute(
+                    sa.update(tables.external_identities)
+                    .where(tables.external_identities.c.id == identity_id)
+                    .values(**fields)
+                )
+                if not updated.rowcount:
+                    await conn.execute(
+                        sa.insert(tables.external_identities).values(id=identity_id, **fields)
+                    )
+
             # ADR-002: make the demo super-admin a Platform Operator too, so the
             # /platform provisioning UI is reachable in the demo. A human may hold
             # both a data membership and operator authority; the two authorities
@@ -287,35 +311,6 @@ async def seed_test_env(database_url: str, *, restore_deleted: bool = True) -> d
                 created_by=sid("user", "dev|chi.le"),
             )
             await conn.execute(operator_stmt.on_conflict_do_nothing(index_elements=["user_id"]))
-
-            for kc_id, subject in KEYCLOAK_IDENTITIES:
-                ext_stmt = pg_insert(tables.external_identities).values(
-                    id=sid("extid", f"{KEYCLOAK_ISSUER}:{kc_id}"),
-                    user_id=sid("user", subject),
-                    issuer=KEYCLOAK_ISSUER,
-                    subject=kc_id,
-                    provider="keycloak",
-                )
-                await conn.execute(
-                    # Conflict on the primary key `id`, not the (issuer, subject)
-                    # unique. `id` is derived from (issuer, kc_id) here, so a
-                    # re-seed reuses the same id; if a stray row already holds
-                    # that id under a different (issuer, subject) — a legacy
-                    # seed, an issuer that has since changed — the (issuer,
-                    # subject) target never fires and the insert dies on the id
-                    # PK (external_identities_pkey). Keying on id re-asserts the
-                    # demo identity's fields and stays idempotent whatever the
-                    # stray row held.
-                    ext_stmt.on_conflict_do_update(
-                        index_elements=["id"],
-                        set_={
-                            "user_id": ext_stmt.excluded.user_id,
-                            "issuer": ext_stmt.excluded.issuer,
-                            "subject": ext_stmt.excluded.subject,
-                            "provider": ext_stmt.excluded.provider,
-                        },
-                    )
-                )
 
         async with engine.connect() as conn:
             counts: dict[str, int] = {}
