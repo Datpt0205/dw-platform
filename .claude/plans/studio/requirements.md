@@ -554,3 +554,10 @@ YC ở W1 có một phần đến sau, ghi ở Ngoài phạm vi của spec phụ
   DW mẫu chọn chăm sóc lead, câu quy trình chọn đủ gate. Sửa: (lượt sau, qua `writing-plan-specs` chế độ requirements) Vấn đề,
   Người dùng, YC mới cho DW, D4, Phương án A, KQ; spec mới `digital-worker`; dòng lộ trình; một ADR ánh xạ sang chuẩn DW của
   CASANOS (slide 11, 16).
+- 29/10/2026 (Đạt): D16: (1) lát DW đầu chạy quy trình chăm sóc lead ship sẵn trong gói Marketing (`dw.workflow/v1`), tenant
+  chỉ chỉnh tham số, canvas chỉ đọc để xem; (2) trợ lý AI dựng quy trình kéo từ W3 lên ngay sau lát đầu, bắt đầu bằng AI sửa
+  gói mẫu rồi mới dựng từ mô tả trống; (3) AI chỉ soạn bản nháp từ sổ node và kết nối sẵn có, nền tảng kiểm schema, CEL, tới
+  được, quyền người dựng và luật sàn HITL theo loại quyết định (thiếu cổng duyệt thì không phát hành), chạy mô phỏng, người
+  khác duyệt rồi mới live; (4) canvas kéo thả giữ nhưng làm sau, vai trò chính là xem và chỉnh tinh. Hỏi trong phiên
+  29/10/2026, cả bốn theo khuyến nghị. Sửa: (lượt sau, qua `writing-plan-specs`) Không làm (dòng W3 của trợ lý AI dựng quy
+  trình), YC của workflow-builder-ui, spec `digital-worker`, thứ tự đợt.
