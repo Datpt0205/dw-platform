@@ -541,3 +541,16 @@ YC ở W1 có một phần đến sau, ghi ở Ngoài phạm vi của spec phụ
   quy trình không có ca kịch bản nào làm Lượt kiểm định trượt (Q-h8). Sửa: YC115.
 - 25/10/2026 (agent, tạm): Nội dung của ba cổng E1, E2 và E3 ghi một lần ở Phương án A, mỗi mục dẫn YC phục vụ nó, còn area file chỉ định nghĩa nhãn; E3 là chính các điều kiện vào chạy bóng của YC99, nên YC99 nhận thêm hạn lưu dữ liệu cá nhân (YC88) và yêu cầu của chủ thể dữ liệu (YC90) mà V4.31 xếp vào E3, để điều kiện rời dữ liệu giả lập vẫn chỉ có một chỗ (dòng ngày 23/10/2026 trả lời Q9). Sửa: Phương án A, YC99. Nếu sai thì: nội dung các cổng nằm ở area file, Phương án A chỉ dẫn nhãn, và YC99 vẫn liệt kê đúng các điều kiện của E3.
 - 25/10/2026 (agent, tạm): H-24: mục TLS của cổng E2 (V4.31 ghi "TLS (YC92)") ở W1 là chứng chỉ hợp lệ và HSTS trên host uat theo DO-57, còn phần còn lại của YC92 (TLS mọi chặng nội bộ, checkpoint mã hóa theo công ty, sao lưu mã hóa) vẫn ở W2 theo ADR-0123 (Accepted) và dòng Ngoài phạm vi của `runtime-hardening`, vì V4.31 không kéo thêm phạm vi nào vào W1 trong khi lối ra W1b ở uat thuộc W1. Sửa: Phương án A. Nếu sai thì: YC92 dời vào W1b, xong trước lối ra đó, và `runtime-hardening` đổi dòng Ngoài phạm vi đó.
+- 29/10/2026 (Đạt): D15: đổi hướng theo CASANOS (workshop FAIX 22/10/2026, CASAN Vol. III 0.0.4): Digital Worker là khái niệm
+  hạng nhất của nền tảng, làm theo kiểu agentic có khung (workflow xác định làm xương sống, agent ở bước cần phán đoán, mọi
+  tác động qua `ToolExecutor` và cổng theo loại quyết định); không làm trợ lý chat hỏi đáp thành sản phẩm, chat chỉ là kênh vào
+  DW. Một DW mang định danh riêng (tài khoản dịch vụ, ADR-0103 (Accepted)), mandate và phạm vi, Business Owner, Technical Owner, Work
+  Assigner và Validator, các loại quyết định với trần và mức tự chủ đã kiếm (A0-A5, lấy mức thấp hơn giữa độ sẵn sàng của tổ
+  chức và mức đã kiếm, hạ được như nâng), hàng đợi việc chung cho người và DW với gói bàn giao, và scorecard từ lịch sử chạy
+  và sổ sử dụng. Thí điểm D4 thành DW chăm sóc lead, bắt đầu ở A2 (đề xuất, người duyệt gửi), trưởng Marketing làm Business
+  Owner. Một lát DW mỏng chạy thật (API, worker, web, PostgreSQL, model thật, có màn hình xem DW, hàng đợi và scorecard) dựng
+  trên runtime đã có, song song với phần nền móng còn lại, đủ gate (readiness, test âm, mutation) nhưng phạm vi mỏng; nền móng
+  bảo mật (foundations-hardening, org-and-principals) vẫn đi trước. Hỏi trong phiên 29/10/2026, câu 1-5 theo khuyến nghị, câu
+  DW mẫu chọn chăm sóc lead, câu quy trình chọn đủ gate. Sửa: (lượt sau, qua `writing-plan-specs` chế độ requirements) Vấn đề,
+  Người dùng, YC mới cho DW, D4, Phương án A, KQ; spec mới `digital-worker`; dòng lộ trình; một ADR ánh xạ sang chuẩn DW của
+  CASANOS (slide 11, 16).

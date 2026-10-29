@@ -409,6 +409,7 @@ Khối số dành riêng: 0100-0199.
 
 ## Tiếp theo
 
+- **Đổi hướng 29/10/2026 (Đạt, D15 trong `requirements.md`):** Digital Worker là khái niệm hạng nhất, agentic có khung, không làm trợ lý chat; thí điểm D4 thành DW chăm sóc lead ở A2; một lát DW mỏng chạy thật có màn hình, đủ gate. Tiếp theo: sửa `requirements.md` theo D15 (`writing-plan-specs`), viết spec `digital-worker` và ticket lát đầu, rồi code; ticket nền móng đang mở (foundations-hardening/03, 07; org-and-principals/01) vẫn làm.
 - `requirements.md`: `checking-plan-readiness` sau kiểm nhất quán vòng 4; YC111-YC117 thêm ở lượt h (26/10/2026).
 - ADR 0100-0127: Accepted trừ 0119 (0126, 0127 ngày 24/10/2026); 0107, 0114, 0115 chờ số đo của custom-objects/01, FOG-50, spike 21; 0119 chờ code-sandbox/01; mỗi lượt sửa của vòng 4 ghi ở mục Amendments của ADR mà nó chạm (25/10/2026).
 - `docs/platform/CONTEXT.md`: chạy reader test của `checking-plan-readiness` trên thuật ngữ dễ nhầm (23/10/2026).

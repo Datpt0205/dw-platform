@@ -15,26 +15,22 @@ git: every slice's commit message, and the pre-split narrative at
 | Agent runtime and memory (Mốc 0–6) | `.claude/plans/platform-runtime.md` | Named gaps; docgen sessions isolated (ADR 0025)                   |
 | Web UI shell (Ant Design v6)       | `.claude/plans/web-ui.md`           | antd everywhere, CSP done                                         |
 | Chat channels (Zalo)               | `.claude/plans/channels.md`         | Upstreamed; live run owed                                         |
-| Studio (no-code builder)           | `.claude/plans/studio.md`           | skeleton/01, telemetry/01, app-standards/01-04, foundations/01-02 |
+| Studio → Digital Workers (D15)     | `.claude/plans/studio.md`           | skeleton/01, telemetry/01, app-standards/01-04, foundations/01-02 |
 
 After working in an area, update its file. Update this index only when an
 area's state, the next step or a decision owed changes. A new area gets its
 own file and a row here.
 
-## Now (2026-10-08)
+## Now (2026-10-29)
 
-- **This repo is the platform seed, with no bounded context.** It is what a
-  product starts from. The Supply Chain context was built here, then removed
-  on 2026-09-29 when Đạt chose another direction. The platform work it
-  produced stayed: notifications, separation of duties and waivers, policy
-  overrides, the model-profile fixes, and the antd decision.
-  `platform-runtime.md` lists the pieces still waiting for a first caller.
-- **Products live in their own repos.** The first is E-HSDT bid preparation
-  for contractors, in `https://github.com/Datpt0205/platform-bidding`. Its
-  plans and research live there, not here.
-- **Done 2026-10-08:** antd everywhere, Vietnamese shell, CSP; tickets
-  scope-holder-check, nav-any-scope, approval-inbox-link, tenant-members,
-  support-access 01 and 02's core. **Next:** support-access 02 step 10 and 03.
+- **Platform seed, no bounded context.** Products live in their own repos
+  (first: `https://github.com/Datpt0205/platform-bidding`); the removed Supply
+  Chain context left its platform pieces, listed in `platform-runtime.md`.
+- **Digital Workers first (D15, 2026-10-29).** Studio turns to the CASANOS
+  Digital Worker: agentic within bounds, owning a queue, never a chat
+  assistant; the Marketing pilot becomes a lead-care DW at A2, and a thin DW
+  slice that really runs (with screens) comes before the rest of Studio.
+  **Next:** requirements per D15, spec `digital-worker`, then its first slice.
 
 ## Decisions Đạt owes
 
