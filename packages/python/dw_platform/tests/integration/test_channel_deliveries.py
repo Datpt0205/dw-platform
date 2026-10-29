@@ -508,9 +508,13 @@ async def test_offboarding_exports_the_tenants_deliveries_and_leaves_none(
     await _notify(app, other, b, key=theirs)
     offboarding = SqlTenantOffboarding(async_sessionmaker(app, expire_on_commit=False))
 
-    exported = await offboarding.export_rows(here.tenant_id)
-    (table,) = [t for t in exported if (t.schema, t.table) == ("platform", "channel_deliveries")]
-    assert {row["source_key"] for row in table.rows} == set(mine)
+    rows = [
+        row
+        async for batch in offboarding.export_rows(here.tenant_id)
+        if (batch.schema, batch.table) == ("platform", "channel_deliveries")
+        for row in batch.rows
+    ]
+    assert {row["source_key"] for row in rows} == set(mine)
 
     await offboarding.purge_rows(here.tenant_id)
     assert [await _rows(migrator, key) for key in mine] == [[], []]

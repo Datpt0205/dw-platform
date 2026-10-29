@@ -24,11 +24,23 @@ from pg_harness import DatabaseUrls
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
-from dw_platform.adapters.persistence.offboarding import SqlTenantOffboarding
+from dw_platform.adapters.persistence.offboarding import ExportedTable, SqlTenantOffboarding
 
 pytestmark = pytest.mark.integration
 
 NOW = datetime(2026, 9, 22, tzinfo=UTC)
+
+
+async def _collect(batches: AsyncIterator[ExportedTable]) -> list[ExportedTable]:
+    """Every batch of an export, merged per table in arrival order."""
+    merged: dict[tuple[str, str], ExportedTable] = {}
+    async for batch in batches:
+        key = (batch.schema, batch.table)
+        if key in merged:
+            merged[key].rows.extend(batch.rows)
+        else:
+            merged[key] = ExportedTable(batch.schema, batch.table, list(batch.rows))
+    return list(merged.values())
 
 
 @dataclass(frozen=True)
@@ -195,7 +207,7 @@ async def test_export_rows_returns_only_this_tenants_data(
     await _seed_tenant(sessions, theirs)
     offboarding = SqlTenantOffboarding(session_factory=sessions)
 
-    exported = await offboarding.export_rows(mine.tenant_id)
+    exported = await _collect(offboarding.export_rows(mine.tenant_id))
 
     by_table = {(t.schema, t.table): t.rows for t in exported}
     workspace_rows = by_table[("platform", "workspaces")]
@@ -574,7 +586,7 @@ async def ws_probe(db_urls: DatabaseUrls) -> AsyncIterator[_Probe]:
             for statement in (
                 f"CREATE SCHEMA {_PROBE_SCHEMA}",
                 f"CREATE TABLE {_PROBE} (tenant_id uuid NOT NULL, workspace_id uuid NOT NULL,"
-                " label text NOT NULL)",
+                " label text NOT NULL, PRIMARY KEY (tenant_id, workspace_id, label))",
                 f"ALTER TABLE {_PROBE} ENABLE ROW LEVEL SECURITY",
                 f"ALTER TABLE {_PROBE} FORCE ROW LEVEL SECURITY",
                 f"CREATE POLICY tenant_isolation_rows ON {_PROBE}"
@@ -614,7 +626,7 @@ async def _probe_labels(db_urls: DatabaseUrls, tenant_id: uuid.UUID) -> set[str]
 async def test_export_reads_every_workspace_of_the_tenant(
     sessions: async_sessionmaker[AsyncSession], ws_probe: _Probe
 ) -> None:
-    exported = await SqlTenantOffboarding(sessions).export_rows(ws_probe.a)
+    exported = await _collect(SqlTenantOffboarding(sessions).export_rows(ws_probe.a))
 
     (probe,) = [t for t in exported if (t.schema, t.table) == (_PROBE_SCHEMA, "rows")]
     assert {row["label"] for row in probe.rows} == {"a1", "a2"}
@@ -656,7 +668,7 @@ async def test_the_workspace_scope_ends_with_the_transaction(
     try:
         async with factory() as session:
             before = (await session.execute(sa.text("SELECT pg_backend_pid()"))).scalar_one()
-        await SqlTenantOffboarding(factory).export_rows(ws_probe.a)
+        await _collect(SqlTenantOffboarding(factory).export_rows(ws_probe.a))
         async with factory() as session:
             after = (await session.execute(sa.text("SELECT pg_backend_pid()"))).scalar_one()
             scope = (

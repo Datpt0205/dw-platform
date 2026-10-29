@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import uuid
 import zipfile
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -51,11 +52,12 @@ class _FakeStore:
     async def claim_requested(self) -> list[uuid.UUID]:
         return self.claimed
 
-    async def export_rows(self, tenant_id: uuid.UUID) -> list[_ExportedTable]:
+    async def export_rows(self, tenant_id: uuid.UUID) -> AsyncIterator[_ExportedTable]:
         self.calls.append(("export_rows", tenant_id))
         if tenant_id in self.fail_export_for:
             raise RuntimeError("export blew up")
-        return self.rows_by_tenant.get(tenant_id, [])
+        for batch in self.rows_by_tenant.get(tenant_id, []):
+            yield batch
 
     async def purge_rows(self, tenant_id: uuid.UUID) -> None:
         self.calls.append(("purge_rows", tenant_id))
@@ -210,9 +212,16 @@ def test_json_default_handles_every_type_a_row_can_hold() -> None:
         _json_default(object())
 
 
-def test_build_bundle_contains_table_ndjson_and_both_blob_kinds() -> None:
+async def _batches(tables: list[_ExportedTable]) -> AsyncIterator[_ExportedTable]:
+    for table in tables:
+        yield table
+
+
+async def test_build_bundle_contains_table_ndjson_and_both_blob_kinds() -> None:
     tables = [_ExportedTable("platform", "workspaces", [{"id": str(uuid.uuid4())}])]
-    bundle = _build_bundle(tables, {"art-1": b"artifact-bytes"}, {"att-1": b"attachment-bytes"})
+    bundle = await _build_bundle(
+        _batches(tables), {"art-1": b"artifact-bytes"}, {"att-1": b"attachment-bytes"}
+    )
 
     with zipfile.ZipFile(BytesIO(bundle)) as zf:
         names = set(zf.namelist())
@@ -222,3 +231,16 @@ def test_build_bundle_contains_table_ndjson_and_both_blob_kinds() -> None:
         assert zf.read("blobs/artifacts/art-1") == b"artifact-bytes"
         row = json.loads(zf.read("tables/platform.workspaces.ndjson").decode().splitlines()[0])
         assert "id" in row
+
+
+async def test_two_batches_of_one_table_become_one_ndjson_entry() -> None:
+    """foundations-hardening R11.2: a table arrives in batches of at most a
+    thousand rows; the bundle still holds one entry per table, every row once."""
+    first = _ExportedTable("platform", "workspaces", [{"n": i} for i in range(1000)])
+    second = _ExportedTable("platform", "workspaces", [{"n": 1000}])
+    bundle = await _build_bundle(_batches([first, second]), {}, {})
+
+    with zipfile.ZipFile(BytesIO(bundle)) as zf:
+        assert zf.namelist().count("tables/platform.workspaces.ndjson") == 1
+        lines = zf.read("tables/platform.workspaces.ndjson").decode().splitlines()
+    assert [json.loads(line)["n"] for line in lines] == list(range(1001))

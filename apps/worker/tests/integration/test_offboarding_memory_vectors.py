@@ -39,8 +39,9 @@ class _Store:
     async def claim_requested(self) -> list[uuid.UUID]:
         raise NotImplementedError("not exercised by lane.run")
 
-    async def export_rows(self, tenant_id: uuid.UUID) -> list[Any]:
-        return []
+    async def export_rows(self, tenant_id: uuid.UUID) -> AsyncIterator[Any]:
+        for batch in ():
+            yield batch
 
     async def purge_rows(self, tenant_id: uuid.UUID) -> None:
         return None

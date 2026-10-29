@@ -22,7 +22,7 @@ from __future__ import annotations
 import json
 import logging
 import zipfile
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import AsyncIterable, AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
@@ -62,7 +62,7 @@ class OffboardingStorePort(Protocol):
 
     async def claim_requested(self) -> list[UUID]: ...
 
-    async def export_rows(self, tenant_id: UUID) -> Sequence[_ExportedTable]: ...
+    def export_rows(self, tenant_id: UUID) -> AsyncIterator[_ExportedTable]: ...
 
     async def purge_rows(self, tenant_id: UUID) -> None: ...
 
@@ -121,10 +121,9 @@ def _json_default(value: object) -> object:
 class TenantOffboardingLane:
     """One tenant's export-then-purge, holding every port the pass needs.
 
-    All in memory, deliberately not streamed: this platform has no tenant
-    running real traffic yet (see .claude/PLAN.md), so bounding memory use
-    against a document library nobody has built is a problem to solve with
-    real sizes in hand, not guessed ahead of them.
+    Rows arrive from the store in batches read by keyset (foundations-hardening
+    R11.2), so no statement holds a whole table; the bundle itself is still
+    assembled in memory, a bound to set once real sizes are in hand.
     """
 
     store: OffboardingStorePort
@@ -140,7 +139,6 @@ class TenantOffboardingLane:
     clock: UtcClock
 
     async def run(self, tenant_id: UUID) -> None:
-        rows = await self.store.export_rows(tenant_id)
         # Two different key shapes, both tenant-prefixed but not the same way:
         # knowledge artifacts key as `{tenant_id}/{workspace_id}/...`
         # (dw_knowledge's KnowledgeGateway), feedback attachments as
@@ -153,7 +151,9 @@ class TenantOffboardingLane:
         attachment_keys = await self.attachments.list_objects(f"feedback/{tenant_id}/")
         attachment_blobs = {key: await self.attachments.get_object(key) for key in attachment_keys}
 
-        bundle = _build_bundle(rows, artifact_blobs, attachment_blobs)
+        bundle = await _build_bundle(
+            self.store.export_rows(tenant_id), artifact_blobs, attachment_blobs
+        )
         stamp = self.clock.now().strftime("%Y%m%dT%H%M%SZ")
         export_key = f"{tenant_id}/offboarding-{stamp}.zip"
         await self.exports.put_object(export_key, bundle, "application/zip")
@@ -172,19 +172,23 @@ class TenantOffboardingLane:
         await self.store.mark_status(tenant_id, "completed", export_key=export_key)
 
 
-def _build_bundle(
-    rows: Sequence[_ExportedTable],
+async def _build_bundle(
+    batches: AsyncIterable[_ExportedTable],
     artifact_blobs: dict[str, bytes],
     attachment_blobs: dict[str, bytes],
 ) -> bytes:
+    """One ndjson entry per table, gathered batch by batch: a table arrives as
+    consecutive batches of at most a thousand rows."""
+    bodies: dict[str, list[str]] = {}
+    async for batch in batches:
+        name = f"tables/{batch.schema}.{batch.table}.ndjson"
+        bodies.setdefault(name, []).extend(
+            json.dumps(row, default=_json_default, ensure_ascii=False) for row in batch.rows
+        )
     buf = BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for table in rows:
-            name = f"tables/{table.schema}.{table.table}.ndjson"
-            body = "\n".join(
-                json.dumps(row, default=_json_default, ensure_ascii=False) for row in table.rows
-            )
-            zf.writestr(name, body)
+        for name, lines in bodies.items():
+            zf.writestr(name, "\n".join(lines))
         for key, data in artifact_blobs.items():
             zf.writestr(f"blobs/artifacts/{key}", data)
         for key, data in attachment_blobs.items():

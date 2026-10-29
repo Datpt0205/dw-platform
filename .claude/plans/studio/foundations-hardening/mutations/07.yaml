@@ -1,0 +1,70 @@
+# Mutation check of foundations-hardening ticket 07: scripts/mutate.py runs this file.
+# One mutation per Kiểm soát row the ticket implements (FH30, FH31, FH33, FH35, FH36).
+# dw_platform reads configs/ through __file__, so these run in place (_in_place), after an
+# unmutated control run of the same tests.
+mutations:
+  - name: FH30 partitions listed beside their parent
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py
+    old: '    "   AND NOT c.relispartition"'
+    new: '    "   AND true"'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_offboarding_registry.py::test_a_partitioned_table_is_exported_once
+  - name: FH31 purge audit without the lane
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py
+    old: |2
+                    "details": '{"lane": "offboarding"}',
+    new: |2
+                    "details": "{}",
+    tests:
+      - packages/python/dw_platform/tests/integration/test_offboarding_registry.py::test_the_purge_audit_names_the_lane
+  - name: FH31 purge audit credits the lane instead of the operator
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py
+    old: '                "actor": requested_by,'
+    new: '                "actor": "00000000-0000-0000-0000-000000000000",'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_offboarding.py::test_purge_records_an_audit_event_before_deleting_anything
+      - packages/python/dw_platform/tests/integration/test_offboarding_registry.py::test_the_purge_audit_names_the_lane
+  - name: FH33 order by name instead of by the catalog
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py
+    old: "        ready = sorted(name for name in pending if not (before[name] & pending.keys()))"
+    new: "        ready = sorted(pending)"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_offboarding_order.py::test_a_restrict_edge_runs_the_referencing_step_first_against_name_order
+      - packages/python/dw_platform/tests/integration/test_offboarding_registry.py::test_restrict_and_no_action_edges_order_the_purge
+  - name: FH33 no edge carried through cascade
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py
+    old: "            if fk.confdeltype != _CASCADING or fk.referencing in owner:"
+    new: "            if True:"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_offboarding_registry.py::test_an_edge_reached_through_cascade_orders_the_cascading_step
+  - name: FH33 a cycle runs instead of refusing
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py
+    old: '            raise OffboardingRefusedError(f"purge steps form a cycle through {cycle}")'
+    new: "            break"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_offboarding_order.py::test_a_cycle_refuses_and_names_its_foreign_keys
+      - packages/python/dw_platform/tests/integration/test_offboarding_registry.py::test_a_cycle_refuses_before_any_delete
+  - name: FH33 two steps may declare one table
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py
+    old: "            if shared:"
+    new: "            if False:"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_offboarding_order.py::test_registering_two_steps_for_one_table_is_refused
+  - name: FH35 steps run for a tenant other than the offboarded one
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py
+    old: "                await step.run(session, tenant_id)"
+    new: "                await step.run(session, UUID(int=0))"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_offboarding_registry.py::test_steps_delete_only_the_offboarded_tenant
+  - name: FH36 a table without a primary key is skipped
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py
+    old: '                    raise OffboardingRefusedError(f"{schema}.{table} has no primary key")'
+    new: "                    continue"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_offboarding_registry.py::test_a_table_without_a_primary_key_refuses_the_export
+  - name: FH36 a dangling blocking key is not refused
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py
+    old: "            if held:"
+    new: "            if False:"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_offboarding_registry.py::test_a_kept_table_blocking_a_step_refuses_the_purge

@@ -344,12 +344,15 @@ async def test_a_table_read_by_column_and_not_deleted_is_named_until_listed(
 
 
 @pytest.mark.parametrize("deletes", ["RESTRICT", "NO ACTION"])
-async def test_a_blocking_edge_against_the_purge_order_is_named(
+async def test_a_blocking_edge_runs_the_lane_s_way_in_either_direction(
     db_urls: DatabaseUrls, deletes: str
 ) -> None:
-    """R4.2: the adapter deletes `studio.ob_a` before `studio.ob_b` (catalog
-    order), so `ob_b -> ob_a` blocks and `ob_a -> ob_b` does not. The edge is
-    made in the transaction, so only a check reading pg_constraint can see it."""
+    """R4.2 with foundations-hardening R11.4: the order is derived from
+    pg_constraint, so an edge in either direction between `studio.ob_a` and
+    `studio.ob_b` leaves no violation. Name order would delete `ob_a` first,
+    so ordering by name instead of by the catalog turns the first case red. The
+    edge is made in the transaction, so only a check reading pg_constraint can
+    see it."""
     against = await _violations_after(
         db_urls,
         [
@@ -360,9 +363,7 @@ async def test_a_blocking_edge_against_the_purge_order_is_named(
             ),
         ],
     )
-    assert [v for v in against if v.startswith("R4.2")] == [
-        "R4.2 ob_b_a_id_fkey: studio.ob_a is deleted before studio.ob_b references it"
-    ]
+    assert [v for v in against if v.startswith("R4.2")] == []
     along = await _violations_after(
         db_urls,
         [

@@ -74,7 +74,10 @@ from dw_platform.adapters.persistence.idempotency_store import (
 )
 from dw_platform.adapters.persistence.membership_lookup import SqlMembershipLookup
 from dw_platform.adapters.persistence.notifications import SqlNotificationRetention
-from dw_platform.adapters.persistence.offboarding import SqlTenantOffboarding
+from dw_platform.adapters.persistence.offboarding import (
+    OffboardingPurgeSteps,
+    SqlTenantOffboarding,
+)
 from dw_platform.adapters.persistence.outbox_drain import SqlOutboxDrain
 from dw_platform.adapters.persistence.partition_maintenance import SqlPartitionMaintenance
 from dw_platform.adapters.persistence.uow import SqlPlatformUnitOfWorkFactory
@@ -427,7 +430,11 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
         if settings.s3_endpoint_url:
             offboarding_consumer = build_offboarding_consumer(
                 TenantOffboardingLane(
-                    store=SqlTenantOffboarding(session_factory=sessions),
+                    # The one place the purge registry is built (R11.4): a context
+                    # that deletes its tables its own way registers its step here.
+                    store=SqlTenantOffboarding(
+                        session_factory=sessions, steps=OffboardingPurgeSteps()
+                    ),
                     artifacts=build_object_storage(settings),
                     exports=build_export_bucket(settings),
                     attachments=build_feedback_bucket(settings),
