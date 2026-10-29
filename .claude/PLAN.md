@@ -12,7 +12,7 @@ git: every slice's commit message, and the pre-split narrative at
 | Area                               | File                                | State                                                          |
 | ---------------------------------- | ----------------------------------- | -------------------------------------------------------------- |
 | Ops hardening                      | `.claude/plans/ops-hardening.md`    | Done; numbers owed                                             |
-| Agent runtime and memory (Mốc 0–6) | `.claude/plans/platform-runtime.md` | Done but for named gaps                                        |
+| Agent runtime and memory (Mốc 0–6) | `.claude/plans/platform-runtime.md` | Named gaps; docgen isolation in progress                       |
 | Web UI shell (Ant Design v6)       | `.claude/plans/web-ui.md`           | antd everywhere, CSP done                                      |
 | Chat channels (Zalo)               | `.claude/plans/channels.md`         | Upstreamed; live run owed                                      |
 | Studio (no-code builder)           | `.claude/plans/studio.md`           | skeleton/01, telemetry/01, app-standards/01-04, foundations/01 |
@@ -48,7 +48,6 @@ own file and a row here.
     - whether CI runs the web vitest suite and the Playwright specs (`web-ui/antd-shell` ticket 10).
     - how many independent documents a memory needs to be written without
       review (`MemoryWritePolicy.auto_write_sources`, 2 since 2026-10-06).
-    - a ticket to fix docgen: a session's shell reads other tenants' drafts (xfail test, 2026-10-28).
 - **Ops:**
     - spend guard dollar thresholds per plan;
     - a retention term for offboarding export bundles;

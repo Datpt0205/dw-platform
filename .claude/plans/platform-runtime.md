@@ -298,6 +298,14 @@ user, scope)` and `holding(tenant, ws, scopes)`, neither needing an
   email), `status` on `/directory/members` from one SQL expression. No email
   is sent (P1). Open: email linking before customer SSO is brokered.
 
+## Docgen session isolation (2026-10-29)
+
+- **`docgen-session-isolation/01`** (in progress, `needs-triage`, gate
+  running): each docgen session's shell runs under a uid of its own, so it
+  cannot read another tenant's drafts or the service's environ, and a
+  `setsid` process dies with its command. Đạt chose the approach and ADR 0025
+  on 2026-10-29, and delegated the ticket's gate and approval. Not coded yet.
+
 ## Deliberately not taken
 
 - **Vector or graph recall deciding the recalled set.**
