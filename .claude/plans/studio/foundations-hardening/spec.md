@@ -2,8 +2,8 @@
 
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
-Duyệt: chưa
-Sẵn sàng: chưa kiểm
+Duyệt: agent, tạm theo ủy quyền 29/10/2026
+Sẵn sàng: ĐẠT (29/10/2026; 0 CRITICAL, 0 HIGH; ticket 02)
 
 Studio đặt dữ liệu do tenant định nghĩa, agent do tenant dựng và việc gửi ra ngoài lên các dịch vụ nền
 đang có lỗi cô lập tenant, cô lập người gọi và test không thể đỏ. Spec này sửa các lỗi đã đo trong code
@@ -524,6 +524,8 @@ không dùng lại các số đó, nên kiểm soát mới lấy từ FH33.
 - 28/10/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 01-03, 07.
 
 - 29/10/2026 (agent, tạm theo ủy quyền): Theo khuyến nghị gate của checking-plan-readiness trên `a9573e8` (bảy HIGH, Đạt ủy quyền 27/10/2026): (1) R2.6 và FH34 phủ cả lời gọi: ngoài `apps/worker` không module nào nhập cả module được miễn hay nhập từ nó lớp hoặc hàm mà thân dùng hằng drain, nên `IngestJobStore.claim_next` tách sang một lớp riêng chỉ worker dựng; docstring không tính. Chuỗi ghép lúc chạy và SQL ngoài Python vẫn ngoài tầm phép quét, như Quyết định 28/10/2026 đã nói. (2) Trigger danh tính của người vận hành là danh sách cho phép: chỉ `dw_provisioner` thêm được (ADR-0103 (Accepted) quyết định 8, đúng chữ), không danh sách cấm `dw_app`, để một vai ứng dụng mới bị từ chối mặc định (failure-modes #7); seed của môi trường dev ghi danh tính Keycloak trước khi đặt người vận hành và bỏ qua danh tính đã có; trigger xóa từ chối mọi vai không giữ `BYPASSRLS`, để xóa dây chuyền từ `platform.users` (chạy dưới chủ bảng) vẫn qua. Lượt xác nhận ngày 29/10/2026 tìm bản sửa đầu cho mọi vai `BYPASSRLS` thêm được, trái chữ quyết định 8 (CRITICAL), nên đã đổi như trên. (3) Nhánh tạo user mới không đọc lại user theo `subject` sau xung đột: chỉ đọc lại danh tính `(iss, sub)` của một lần đăng nhập đầu chạy song song, ngoài ra 403 `identity_subject_in_use` (R4.3). (4) Điều kiện trạng thái hiện tại của R3.1 chỉ áp cho khóa và mở khóa; bắt đầu và hoàn tất offboarding giữ đường hôm nay. (5) User mới từ token chưa xác minh email mang email rỗng (R4.5), vì lời mời theo email dùng lại user có sẵn. (6) Trigger trạng thái là danh sách cho phép: rời `offboarding` chỉ tới `offboarded`, rời `offboarded` chỉ tới `offboarding` (chạy lại luồng, như mã hôm nay cho phép), nên trạng thái `setup` sắp có không mở đường vòng. (7) Một IdP brokered trước khi mã nhận lời mời thay bước email là điều kiện kiểm lại của R4. Sửa: Hiện trạng, R2.6, R3.2, R4.3, R4.4, thêm R4.5, FH7, FH9, FH10, FH11, FH34, Phụ thuộc, ticket 02. Nếu sai thì: (2) ADR-0103 (Accepted) sửa trước, rồi trigger nhận thêm vai bảo trì; (6) trigger chặn thêm mọi bước rời `offboarded`.
+
+- 29/10/2026 (agent, tạm theo ủy quyền): Duyệt spec trên `fd23d47` sau gate của ticket 02 (`## Ủy quyền` của area). Nếu sai thì: Đạt duyệt lại, ticket 02 quay về `needs-triage`.
 
 ## Danh sách ticket
 
