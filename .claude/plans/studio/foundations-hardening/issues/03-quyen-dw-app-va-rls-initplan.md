@@ -1,7 +1,7 @@
 # 03 — Thu quyền ghi thừa của dw_app và RLS đọc setting một lần mỗi câu lệnh
 
 Status: needs-triage
-Blocked by: 01, .claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md
+Blocked by: 01, 02, .claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md
 Area: studio
 Yêu cầu: R5.1, R5.2, R5.3, G6, FH12, FH13, FH14
 
@@ -93,3 +93,5 @@ Chuyển policy (R5.3), chỉ khi bước 3 qua ngưỡng:
   `db/si/migrations/0057_record_tenant_policies_initplan.sql` (dạng và số đo).
 
 ## Comments
+
+- 2026-10-29 (agent, tạm theo ủy quyền): chờ thêm ticket 02, vì hai ticket cùng chạm quyền của `dw_app` trên `platform.users` và `platform.external_identities` (cảnh báo collision của `scripts/check_plans.py` sau bản sửa gate của ticket 02). Nếu sai thì: bỏ 02 khỏi Blocked by.
