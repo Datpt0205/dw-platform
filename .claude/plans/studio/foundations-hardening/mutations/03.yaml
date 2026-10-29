@@ -1,0 +1,51 @@
+# Mutation check of foundations-hardening ticket 03: scripts/mutate.py runs this file.
+# One mutation per Kiểm soát row the ticket implements (FH12, FH13, FH14). The integration
+# harness recreates and migrates the test database every session, so a mutated migration
+# is what the tests run against.
+mutations:
+  - name: FH12 the application keeps writing the plan catalogue
+    file: db/migrations/versions/0fdd32a39d87_narrow_app_role_writes.py
+    old: '    ("platform.plans", "INSERT, UPDATE, DELETE, TRUNCATE"),'
+    new: '    ("platform.plans", "TRUNCATE"),'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_privileges.py::test_the_application_cannot_make_operators_or_rewrite_plans_or_users
+  - name: FH12 the application keeps updating users
+    file: db/migrations/versions/0fdd32a39d87_narrow_app_role_writes.py
+    old: '    ("platform.users", "UPDATE, DELETE, TRUNCATE"),'
+    new: '    ("platform.users", "TRUNCATE"),'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_privileges.py::test_the_application_cannot_make_operators_or_rewrite_plans_or_users
+  - name: FH13 the role script grants a table the migration does not
+    file: scripts/create_provisioner_role.py
+    old: '    ("platform.plans", "SELECT", ()),'
+    new: '    ("platform.plans", "SELECT, UPDATE", ()),'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_privileges.py::test_the_provisioner_holds_exactly_what_its_code_runs
+  - name: FH13 the provisioner loses the retention terms it loads
+    file: db/migrations/versions/0fdd32a39d87_narrow_app_role_writes.py
+    old: |2
+          ("platform.retention_terms", "SELECT, INSERT, UPDATE, DELETE", ()),
+          ("platform.external_identities", "SELECT, INSERT", ()),
+    new: |2
+          ("platform.retention_terms", "SELECT", ()),
+          ("platform.external_identities", "SELECT, INSERT", ()),
+    tests:
+      - packages/python/dw_platform/tests/integration/test_retention_terms.py::test_the_loader_makes_the_table_exactly_the_fragment_set
+  - name: FH13 the provisioner loses the operator login identity
+    file: db/migrations/versions/0fdd32a39d87_narrow_app_role_writes.py
+    old: '    ("platform.external_identities", "SELECT, INSERT", ()),'
+    new: '    ("platform.external_identities", "SELECT", ()),'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_privileges.py::test_only_the_provisioner_adds_an_operator_login_identity
+  - name: FH14 one policy keeps reading per row
+    file: db/migrations/versions/cfae5f2d4a13_rls_settings_once_per_statement.py
+    old: "        \"tenant_isolation_chunks\",\n        \"(tenant_id = (NULLIF(current_setting('app.tenant_id'::text, true), ''::text))::uuid)\",\n        \"(tenant_id = (NULLIF(current_setting('app.tenant_id'::text, true), ''::text))::uuid)\",\n        \"(tenant_id = (SELECT NULLIF(current_setting('app.tenant_id', true), '')::uuid))\","
+    new: "        \"tenant_isolation_chunks\",\n        \"(tenant_id = (NULLIF(current_setting('app.tenant_id'::text, true), ''::text))::uuid)\",\n        \"(tenant_id = (NULLIF(current_setting('app.tenant_id'::text, true), ''::text))::uuid)\",\n        \"(tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)\","
+    tests:
+      - packages/python/dw_platform/tests/integration/test_rls_coverage.py::test_every_policy_reads_its_settings_once_per_statement
+  - name: FH14 a partition made later reads per row
+    file: db/migrations/versions/cfae5f2d4a13_rls_settings_once_per_statement.py
+    old: "        'tenant_id = (SELECT NULLIF(current_setting(''app.tenant_id'', true), '''')::uuid)';"
+    new: "        'tenant_id = NULLIF(current_setting(''app.tenant_id'', true), '''')::uuid';"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_rls_coverage.py::test_a_partition_made_later_takes_the_once_per_statement_shape

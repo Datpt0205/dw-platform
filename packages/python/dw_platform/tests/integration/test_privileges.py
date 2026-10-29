@@ -859,3 +859,134 @@ async def test_a_write_grant_on_the_registry_is_named(db_urls: DatabaseUrls, rol
     finally:
         await admin.dispose()
     assert any(v.startswith("R3.5") and role in v for v in found), found
+
+
+# foundations-hardening ticket 03 (R5.1, R5.2, R5.4; FH12, FH13).
+
+_REPO = __import__("pathlib").Path(__file__).resolve().parents[5]
+
+
+def _module(path: str, name: str) -> object:
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(name, _REPO / path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _declared(grants: object) -> set[tuple[str, str, str]]:
+    """(table, privilege, column) triples; a table grant has column '*'."""
+    found: set[tuple[str, str, str]] = set()
+    for table, verbs, columns in grants:  # type: ignore[attr-defined]
+        found |= {(table, verb.strip(), "*") for verb in verbs.split(",")}
+        found |= {(table, "UPDATE", column) for column in columns}
+    return found
+
+
+_PROVISIONER_GRANTS = sa.text(
+    """
+    SELECT table_schema || '.' || table_name AS tbl, privilege_type AS verb, '*' AS col
+    FROM information_schema.role_table_grants WHERE grantee = 'dw_provisioner'
+    UNION
+    SELECT c.table_schema || '.' || c.table_name, c.privilege_type, c.column_name
+    FROM information_schema.column_privileges c
+    WHERE c.grantee = 'dw_provisioner'
+      AND NOT EXISTS (
+        SELECT 1 FROM information_schema.role_table_grants t
+        WHERE t.grantee = 'dw_provisioner' AND t.table_schema = c.table_schema
+          AND t.table_name = c.table_name AND t.privilege_type = c.privilege_type)
+    """
+)
+
+
+async def test_the_application_cannot_make_operators_or_rewrite_plans_or_users(
+    app_engine: AsyncEngine,
+) -> None:
+    """R5.1 (FH12): asked by statement and by the catalog, so a restored grant
+    turns this red whichever way it comes back."""
+    async with app_engine.connect() as conn:
+        for statement in (
+            "INSERT INTO platform.platform_operators (user_id) VALUES (gen_random_uuid())",
+            "UPDATE platform.plans SET name = name",
+            "UPDATE platform.users SET display_name = display_name",
+            "DELETE FROM platform.users WHERE false",
+        ):
+            with pytest.raises(Exception, match="permission denied"):
+                await conn.execute(sa.text(statement))
+            await conn.rollback()
+        for table, verbs in (
+            ("platform.platform_operators", ("INSERT", "UPDATE", "DELETE", "TRUNCATE")),
+            ("platform.plans", ("INSERT", "UPDATE", "DELETE", "TRUNCATE")),
+            ("platform.users", ("UPDATE", "DELETE", "TRUNCATE")),
+        ):
+            for verb in verbs:
+                held = await conn.scalar(
+                    sa.text("SELECT has_table_privilege('dw_app', :t, :v)"), {"t": table, "v": verb}
+                )
+                assert held is False, f"dw_app holds {verb} on {table}"
+        assert await conn.scalar(
+            sa.text("SELECT has_table_privilege('dw_app', 'platform.users', 'INSERT')")
+        ), "first sign-in and invitations create users"
+
+
+async def test_the_provisioner_holds_exactly_what_its_code_runs(db_urls: DatabaseUrls) -> None:
+    """R5.2 (FH13): the catalog, the migration and the role script name one set,
+    down to the columns of `support_grants` the provisioner may update."""
+    migration = _module(
+        "db/migrations/versions/0fdd32a39d87_narrow_app_role_writes.py", "narrow_app_role_writes"
+    )
+    script = _module("scripts/create_provisioner_role.py", "create_provisioner_role")
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            catalog = {(r.tbl, r.verb, r.col) for r in await conn.execute(_PROVISIONER_GRANTS)}
+    finally:
+        await migrator.dispose()
+    declared = _declared(migration.PROVISIONER)  # type: ignore[attr-defined]
+    assert _declared(script.GRANTS) == declared, "the role script and the migration disagree"  # type: ignore[attr-defined]
+    assert catalog == declared, (
+        f"catalog only: {sorted(catalog - declared)}; declared only: {sorted(declared - catalog)}"
+    )
+
+
+async def test_only_the_provisioner_adds_an_operator_login_identity(db_urls: DatabaseUrls) -> None:
+    """R5.4 (FH13): the one write path of R4.4 that no repository runs today; the
+    grant it needs is held to the code by running it as the role."""
+    from pg_harness import provisioner_url
+
+    user = __import__("uuid").uuid4()
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    provisioner = create_async_engine(provisioner_url(db_urls.migrator), poolclass=NullPool)
+    try:
+        async with migrator.begin() as conn:
+            await conn.execute(
+                sa.text(
+                    "INSERT INTO platform.users (id, subject, display_name) VALUES (:u, :s, 'Op')"
+                ),
+                {"u": user, "s": f"op-{user}"},
+            )
+            await conn.execute(
+                sa.text("INSERT INTO platform.platform_operators (user_id) VALUES (:u)"),
+                {"u": user},
+            )
+        async with provisioner.begin() as conn:
+            await conn.execute(
+                sa.text(
+                    "INSERT INTO platform.external_identities"
+                    " (id, user_id, provider, issuer, subject)"
+                    " VALUES (gen_random_uuid(), :u, 'oidc', 'https://idp.example', :s)"
+                ),
+                {"u": user, "s": f"op-{user}"},
+            )
+    finally:
+        async with migrator.begin() as conn:
+            for table, column in (
+                ("platform.external_identities", "user_id"),
+                ("platform.platform_operators", "user_id"),
+                ("platform.users", "id"),
+            ):
+                await conn.execute(sa.text(f"DELETE FROM {table} WHERE {column} = :u"), {"u": user})
+        await provisioner.dispose()
+        await migrator.dispose()

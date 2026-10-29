@@ -18,6 +18,7 @@ a partition added months from now, which Postgres will not police on its own.
 
 from __future__ import annotations
 
+import re
 import uuid
 from collections.abc import AsyncIterator, Sequence
 from typing import Any
@@ -783,3 +784,91 @@ async def test_the_studio_table_checks_name_each_planted_defect(session: AsyncSe
     assert "R2.11 reference table reference_probe has tenant_id" in found
     assert "R2.11 dw_app may write reference table reference_probe" in found
     assert "R2.11 listed reference table gone_probe does not exist" in found
+
+
+# foundations-hardening R5.3 (FH14): a policy reads each setting once per
+# statement. `current_setting(` inside a sub-SELECT is an InitPlan, computed
+# once; anywhere else it runs for every row and keeps the value out of the
+# index condition. A setting read inside an uncorrelated sub-query (the
+# membership look-up of `workspaces`) is computed once with that sub-query.
+
+
+def _reads_per_row(expr: str) -> bool:
+    """Whether some `current_setting(` in the expression has no enclosing
+    parenthesis whose contents begin with SELECT."""
+    start = 0
+    while (at := expr.find("current_setting(", start)) != -1:
+        start = at + 1
+        depth, i, covered = 0, at - 1, False
+        while i >= 0:
+            if expr[i] == ")":
+                depth += 1
+            elif expr[i] == "(":
+                if depth == 0:
+                    if expr[i + 1 :].lstrip().upper().startswith("SELECT"):
+                        covered = True
+                        break
+                else:
+                    depth -= 1
+            i -= 1
+        if not covered:
+            return True
+    return False
+
+
+def settings_read_per_row(policies: Sequence[sa.Row[Any]]) -> list[str]:
+    return sorted(
+        f"{r.schemaname}.{r.tablename}.{r.policyname}"
+        for r in policies
+        if any(e is not None and _reads_per_row(e) for e in (r.qual, r.with_check))
+    )
+
+
+async def test_every_policy_reads_its_settings_once_per_statement(session: AsyncSession) -> None:
+    """Partitions included: they are in the catalog like any table, and the
+    partition-making function writes the same shape (checked below)."""
+    rows = (await session.execute(_POLICIES, {"schemas": await tenant_schemas(session)})).all()
+    assert settings_read_per_row(rows) == []
+
+
+async def test_a_per_row_setting_read_is_named(session: AsyncSession) -> None:
+    """The rule above can fail: a policy of the old shape, made and rolled back
+    in one transaction, is named; the wrapped shape is not."""
+    try:
+        await session.execute(sa.text("CREATE TABLE public.initplan_probe (tenant_id uuid)"))
+        await session.execute(
+            sa.text(
+                "CREATE POLICY old_shape ON public.initplan_probe USING"
+                " (tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid)"
+            )
+        )
+        await session.execute(
+            sa.text(
+                "CREATE POLICY new_shape ON public.initplan_probe USING"
+                " (tenant_id = (SELECT NULLIF(current_setting('app.tenant_id', true), '')::uuid))"
+            )
+        )
+        rows = (await session.execute(_POLICIES, {"schemas": ["public"]})).all()
+        assert settings_read_per_row(rows) == ["public.initplan_probe.old_shape"]
+    finally:
+        await session.rollback()
+
+
+async def test_a_partition_made_later_takes_the_once_per_statement_shape(
+    session: AsyncSession,
+) -> None:
+    """`platform.ensure_time_partitions` makes next months' partitions; their
+    policies come from the function's own predicate, not from this revision."""
+    try:
+        await session.execute(sa.text("SELECT count(*) FROM platform.ensure_time_partitions(14)"))
+        rows = (await session.execute(_POLICIES, {"schemas": ["platform"]})).all()
+        made = [
+            r
+            for r in rows
+            if r.policyname.startswith("tenant_isolation_")
+            and re.search(r"_\d{4}_\d{2}$", r.tablename)
+        ]
+        assert made, "no partition policy was made to check"
+        assert settings_read_per_row(made) == []
+    finally:
+        await session.rollback()

@@ -30,11 +30,32 @@ ROLE = "dw_provisioner"
 DATABASE = "dw"
 
 # Must match migration 0067 exactly. Business schemas are deliberately absent.
-_WRITE_TABLES = (
-    "platform.tenants",
-    "platform.workspaces",
-    "platform.memberships",
-    "platform.entitlements",
+# (table, table verbs, columns that may be updated): what the code connecting as
+# this role runs, and nothing else. Migration 0fdd32a39d87 grants the same set;
+# test_privileges.py holds both to the catalog (foundations-hardening R5.2, R5.4).
+GRANTS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    ("platform.tenants", "SELECT, INSERT, UPDATE", ()),
+    ("platform.workspaces", "SELECT, INSERT", ()),
+    ("platform.entitlements", "SELECT, INSERT", ()),
+    ("platform.memberships", "SELECT, INSERT, UPDATE", ()),
+    ("platform.users", "SELECT", ()),
+    ("platform.plans", "SELECT", ()),
+    ("platform.roles", "SELECT", ()),
+    ("platform.platform_operators", "SELECT, INSERT, DELETE", ()),
+    ("platform.support_staff", "SELECT, INSERT, DELETE", ()),
+    (
+        "platform.support_grants",
+        "SELECT",
+        ("activated_at", "assigned_by", "expires_at", "staff_user_id", "status"),
+    ),
+    ("platform.audit_events", "INSERT", ()),
+    ("platform.provisioning_audit", "SELECT, INSERT", ()),
+    ("platform.tenant_offboarding_requests", "SELECT, INSERT", ()),
+    # The runtime copy of the pinned retention terms, which the `migrate` job's
+    # loader writes as this role (82e168f6d189).
+    ("platform.retention_terms", "SELECT, INSERT, UPDATE, DELETE", ()),
+    # Only this role may add an operator's login identity (6887b6020075, R4.4).
+    ("platform.external_identities", "SELECT, INSERT", ()),
 )
 
 
@@ -99,24 +120,16 @@ async def _grant(admin_url: str) -> None:
     try:
         async with engine.connect() as conn:
             await conn.execute(sa.text(f"GRANT USAGE ON SCHEMA platform TO {ROLE}"))
-            for table in _WRITE_TABLES:
-                if await conn.scalar(sa.text("SELECT to_regclass(:t) IS NOT NULL"), {"t": table}):
+            for table, verbs, columns in GRANTS:
+                if not await conn.scalar(
+                    sa.text("SELECT to_regclass(:t) IS NOT NULL"), {"t": table}
+                ):
+                    continue
+                await conn.execute(sa.text(f"GRANT {verbs} ON {table} TO {ROLE}"))
+                if columns:
                     await conn.execute(
-                        sa.text(f"GRANT SELECT, INSERT, UPDATE, DELETE ON {table} TO {ROLE}")
+                        sa.text(f"GRANT UPDATE ({', '.join(columns)}) ON {table} TO {ROLE}")
                     )
-            for table, verbs in (
-                ("platform.platform_operators", "SELECT, INSERT, DELETE"),
-                ("platform.provisioning_audit", "SELECT, INSERT"),
-                ("platform.roles", "SELECT"),
-                ("platform.users", "SELECT"),
-                ("platform.plans", "SELECT"),
-                # The runtime copy of the pinned retention terms, which the
-                # `migrate` job's loader writes as this role (82e168f6d189). The
-                # migration skips the grant on a cluster without the role yet.
-                ("platform.retention_terms", "SELECT, INSERT, UPDATE, DELETE"),
-            ):
-                if await conn.scalar(sa.text("SELECT to_regclass(:t) IS NOT NULL"), {"t": table}):
-                    await conn.execute(sa.text(f"GRANT {verbs} ON {table} TO {ROLE}"))
     finally:
         await engine.dispose()
 
