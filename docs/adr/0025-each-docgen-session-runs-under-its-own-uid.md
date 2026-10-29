@@ -40,20 +40,27 @@ commands.
 2. **The shell has nothing.** It is started with `user`, `group`, `extra_groups=[]` and `umask 077`
    (CPython's `_posixsubprocess`, so no `preexec_fn`). Moving from uid 0 to another uid clears every
    capability, and that was measured: `CapEff` is 0.
-3. **Nothing of a session outlives its command.** `kill -9 -1` runs under the session's uid until
-   `/proc` shows none of its processes. That reaches what `setsid` moved out of the process group.
-   Whatever the uid left in `/tmp`, `/dev/shm` or `/dev/mqueue` is then removed, because a uid is
-   reused once its session is released.
-4. **File routes wait for commands.** Upload, download and release take the same semaphore as
-   execute. The service writes with `DAC_OVERRIDE`, so a process of the session must not be able to
+3. **Nothing of a session outlives its command, and a uid is reused only clean.** `kill -9 -1` runs
+   under the session's uid until `/proc` shows none of its processes. That reaches what `setsid` moved
+   out of the process group. Whatever the uid left in `/tmp`, `/dev/shm`, `/dev/mqueue` or SysV IPC
+   (`ipcrm --all` under the uid) is then removed. A uid is free only while no session directory owns it
+   and no process of it is alive, and it is purged again before it is handed out. So a process that
+   survived the kill rounds keeps its uid out of the pool.
+4. **File routes wait for commands.** Upload, download, release and the sweep take the same semaphore
+   as execute, and the file routes touch only regular files, so a FIFO cannot hang the one semaphore. The service writes with `DAC_OVERRIDE`, so a process of the session must not be able to
    swap a path component for a symlink between the containment check and the write.
 5. **The service runs as uid 0 in the container with `SETUID`, `SETGID`, `CHOWN`, `DAC_OVERRIDE`
    and `FOWNER` only.** The root filesystem stays read-only, `no-new-privileges` stays, and
    `cap_drop: [ALL]` stays, with these five added back. The image keeps `USER dw`. The service
-   refuses to start when isolation is on and it is not uid 0, or when a pool uid has no `passwd`
-   entry. So the image run bare fails loudly, and does not run unisolated. The pool's `passwd`
-   entries exist because LibreOffice cannot build a user installation for a uid without one
-   (measured 2026-10-29).
+   refuses to start in four cases:
+    - isolation is on and it is not uid 0;
+    - isolation is off and it is uid 0;
+    - isolation is on and `max_concurrency` is not 1;
+    - a pool uid has no `passwd` entry named `dws<n>`.
+
+    So the image run bare fails loudly, and does not run unisolated. The pool's `passwd`
+    entries exist because LibreOffice cannot build a user installation for a uid without one
+    (measured 2026-10-29).
 
 ## Alternatives considered
 
@@ -75,7 +82,8 @@ commands.
   of them.
 - **Residual risk: a process wedged in uninterruptible sleep** survives the kill rounds. That is
   logged, as before.
-- `max_concurrency` stays 1. It now limits resources, not isolation. Raising it needs a lock per
-  session instead of the one semaphore that decision 4 relies on.
+- `max_concurrency` must stay 1 while sessions are isolated, and the service refuses anything else.
+  Raising it needs a lock per session instead of the one semaphore that decision 4 relies on.
+- The pool is shared by every tenant, with no per-tenant cap: 1024 uids, swept after an hour idle.
 - The hostile-script tests in `apps/docgen/tests/integration/test_sandbox_image.py` assert each
   decision above, and each is shown red with its guard removed.
