@@ -1,9 +1,9 @@
 # 07 — Offboarding xuất mỗi dòng một lần, đọc theo lô keyset, xóa theo sổ bước
 
-Status: needs-triage
+Status: resolved (2026-10-29, main)
 Blocked by: .claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md
 Area: studio
-Yêu cầu: R11.1, R11.2, R11.3, R11.4, R11.5, G8, FH30, FH31, FH33
+Yêu cầu: R11.1, R11.2, R11.3, R11.4, R11.5, R11.6, R11.7, R11.8, G8, FH30, FH31, FH33, FH35, FH36
 
 ## Mục tiêu
 
@@ -66,31 +66,45 @@ org-and-principals/03 và usage-and-limits/02 mỗi bên đăng ký bước củ
    (đếm dưới vai migrator, trước và sau mỗi bước) của một bảng mà bước đó không khai và không tới được qua `CASCADE`.
    Cạnh `RESTRICT` `platform.run_steps.child_run_id` → `platform.worker_runs` mà telemetry-and-audit/03 tạo
    (telemetry-and-audit:R3.10) vào thứ tự từ catalog khi bảng ra đời, không ai đăng ký gì.
+   10a. **Mỗi bước chỉ xóa tenant của lượt** (R11.6): hàm của một bước nhận `tenant_id` làm tham số; bước mặc định chạy
+   dưới `app.tenant_id` của tenant đó; test FH35 gieo dòng của tenant B ở mọi bảng của sổ trước khi purge tenant A.
+   10b. **Đóng khi lỗi** (R11.7): trước khi xuất, lane kiểm khóa chính của mọi bảng xuất và khóa ngoại treo (bảng có dòng
+   của tenant, không bước nào khai, không tới được qua `CASCADE`, giữ `RESTRICT` hay `NO ACTION` tới bảng của một
+   bước); có thì từ chối cả lượt, yêu cầu sang `failed` với lỗi nêu bảng hay khóa ngoại. Đăng ký trùng bảng ném lỗi
+   ở `register` lúc dựng sổ (worker không khởi động); cạnh `CASCADE` quay về chính bước và khóa ngoại
+   `DEFERRABLE INITIALLY DEFERRED` không vào thứ tự. Test phủ ở bước 9 chạy từng bước trong một giao dịch của vai
+   migrator và đếm trong chính giao dịch đó.
 10. Test: test ở bước 1 xanh sau bản vá; bảng thử 2.500 dòng xuất đủ 2.500 dòng, mỗi dòng một lần, qua 3
     câu lệnh đọc mà không câu nào trả quá 1.000 dòng (bắt câu lệnh bằng sự kiện `before_cursor_execute`);
     `apps/worker/tests/unit/test_offboarding_consumer.py` theo chữ ký mới.
 
 ## Tiêu chí chấp nhận
 
-- [ ] R11.1 (FH30): `test_a_partitioned_table_is_exported_once` đỏ trên mã trước bản vá (ghi Comments)
+- [x] R11.1 (FH30): `test_a_partitioned_table_is_exported_once` đỏ trên mã trước bản vá (ghi Comments)
       và xanh sau; bỏ điều kiện `NOT c.relispartition` khỏi danh mục thì test đỏ lại.
-- [ ] R11.2: bảng thử 2.500 dòng xuất đúng 2.500 dòng qua 3 câu lệnh đọc, câu nào cũng trả không quá
+- [x] R11.2: bảng thử 2.500 dòng xuất đúng 2.500 dòng qua 3 câu lệnh đọc, câu nào cũng trả không quá
       1.000 dòng; đổi về một câu `SELECT` cho cả bảng thì test đỏ.
-- [ ] R11.3 (FH31): sau `purge_rows`, audit `tenant.offboarding.purged` của tenant có `details.lane` bằng
+- [x] R11.3 (FH31): sau `purge_rows`, audit `tenant.offboarding.purged` của tenant có `details.lane` bằng
       `offboarding`; ghi lại `details` rỗng thì test đỏ.
-- [ ] G8 (FH31): `test_purge_records_an_audit_event_before_deleting_anything` xanh trước và sau thay đổi;
+- [x] G8 (FH31): `test_purge_records_an_audit_event_before_deleting_anything` xanh trước và sau thay đổi;
       đổi actor sang `system_actor('offboarding')` thì test đỏ.
-- [ ] R11.4 (FH33): hai bảng thử tạo trong giao dịch test, tên xếp theo chữ cái ngược chiều cạnh, nối bằng khóa ngoại
+- [x] R11.4 (FH33): hai bảng thử tạo trong giao dịch test, tên xếp theo chữ cái ngược chiều cạnh, nối bằng khóa ngoại
       `ON DELETE RESTRICT` → purge xóa cả hai, bảng tham chiếu trước; cùng ca với `NO ACTION` → như vậy; thay phép suy
       bằng thứ tự chữ cái hay bằng một danh sách cạnh chép tay → lỗi khóa ngoại, test đỏ.
-- [ ] R11.4 (FH33): bảng thử C chỉ mất dòng qua `CASCADE` từ bảng A của một bước, C giữ khóa ngoại `RESTRICT` tới bảng P
+- [x] R11.4 (FH33): bảng thử C chỉ mất dòng qua `CASCADE` từ bảng A của một bước, C giữ khóa ngoại `RESTRICT` tới bảng P
       của bước khác → bước của A chạy trước bước của P; bỏ phép mang cạnh qua `CASCADE` → lỗi khóa ngoại, test đỏ.
-- [ ] R11.4 (FH33): một bước thử khai bảng A mà xóa cả bảng B, tham chiếu bởi bảng của bước khác → test phủ của
+- [x] R11.4 (FH33): một bước thử khai bảng A mà xóa cả bảng B, tham chiếu bởi bảng của bước khác → test phủ của
       studio-skeleton:R4.2 đỏ, nêu bước và khóa ngoại; khai đúng B → xanh.
-- [ ] R11.5 (FH33): đăng ký hai bước khai cùng một bảng → `register` từ chối, nêu bảng; hai bảng thử nối vòng bằng hai
+- [x] R11.5 (FH33): đăng ký hai bước khai cùng một bảng → `register` từ chối, nêu bảng; hai bảng thử nối vòng bằng hai
       khóa ngoại `RESTRICT` → purge từ chối trước câu xóa đầu, 0 dòng bị xóa ở mọi bảng, tenant giữ `offboarding`, lỗi
       nêu hai khóa ngoại; gỡ kiểm trùng hay kiểm vòng → test đỏ.
-- [ ] Xong: `make ci && make test-integration` xanh.
+- [x] R11.8 (FH33): đăng ký hai bước khai cùng một bảng, hay cùng tên → `register` ném lỗi nêu bảng hay tên.
+- [x] R11.6 (FH35): dòng của tenant B ở mọi bảng của sổ, purge tenant A → mọi dòng của B còn nguyên; một bước thử
+      bỏ điều kiện `tenant_id` → test đỏ.
+- [x] R11.7 (FH36): bảng thử có `tenant_id` và policy mà không khóa chính → lượt bị từ chối trước khi xuất, không gói,
+      0 dòng bị xóa; bảng thử giữ `RESTRICT` tới bảng của một bước mà không bước nào khai → từ chối, lỗi nêu khóa
+      ngoại; bỏ phép kiểm → test đỏ.
+- [x] Xong: `make test-unit test-contract test-architecture && uv run pytest -m integration packages/python/dw_platform apps/worker` xanh.
 
 ## Nguồn
 
@@ -111,3 +125,6 @@ org-and-principals/03 và usage-and-limits/02 mỗi bên đăng ký bước củ
   tự các bước xóa khai tay bằng sổ bước xóa ở composition root, thứ tự suy từ khóa ngoại `RESTRICT` và `NO ACTION` của
   `pg_constraint` (bước 6-9, R11.4, R11.5, FH33); org-and-principals/03 và usage-and-limits/02 đăng ký bước của mình mà
   không chờ nhau (bảng cạnh của lượt h gỡ org-and-principals/03 <- usage-and-limits/02). Dòng Blocked by không đổi.
+- 2026-10-29 (agent): gate `checking-plan-readiness` lượt 1: CRITICAL bước xóa không bị buộc theo tenant (R11.6, FH35) và các câu của người dựng (không khóa chính, đăng ký trùng, cạnh `CASCADE` quay về, đếm dưới migrator) đã đưa vào spec và bước 10a-10b. Dòng `Xong` đổi theo `.claude/rules/wave-close.md` (integration của package bị đụng; toàn bộ `make test-integration` ở cuối đợt). Bảng thử của FH30 cấp SELECT trên partition cho `dw_app` chỉ trong test và bị xóa ở teardown, vì studio-skeleton/01 đã thu quyền đó trên mọi partition thật (X1 của gate). MEDIUM để Đạt: một offboarding `failed` để tenant kẹt ở `offboarding`, chạy lại cần tạo yêu cầu mới ("Chờ Đạt" 14).
+- 2026-10-29 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-10-29 (agent): làm xong. Test đỏ trước: trên mã cũ, bảng phân vùng thử (partition tháng và DEFAULT cấp SELECT cho `dw_app`) xuất mỗi dòng hai lần; sau `NOT c.relispartition` mỗi dòng một lần. Làm khác chữ của bước: (1) `export_rows` thành async generator trả lô (≤ 1.000 dòng), lane worker gom theo bảng vào một mục ndjson; (2) `confdeltype` là kiểu `"char"` mà asyncpg trả bytes, nên câu catalog ép `::text` (đo, không đoán); (3) bảng thử dùng trong test phải `REVOKE DELETE` vì `ALTER DEFAULT PRIVILEGES` cấp mọi động từ cho `dw_app` trên bảng mới của `platform`; (4) test phủ R4.2 của studio-skeleton đổi thành "cạnh ở cả hai chiều đều sạch" vì thứ tự nay suy từ catalog; xếp theo tên thì ca đầu đỏ; (5) cột khóa chính không khớp mẫu định danh làm cả lượt bị từ chối thay vì bị lọc (lượt rà `reviewing-feature-security`, mục 4); (6) test ở bước 9 chạy từng bước dưới `SET LOCAL ROLE dw_app` trong một giao dịch của vai admin (migrator không được `SET ROLE dw_app`), bước sai được đặt tên xếp trước để chạy trước bước mặc định. Mutation check 10/10 đỏ (`mutations/07.yaml`, chạy tại chỗ sau một lượt đối chứng xanh vì `dw_platform` đọc `configs/` theo `__file__`). Độ trễ: không đo, vì ticket chỉ đổi lane `offboarding`, không đổi đường một request tới database (`.claude/rules/latency.md` "When"). Cổng nhanh: ruff, format, mypy, `make test-unit` (1558), `make test-contract`, `make test-architecture`, integration của `dw_platform` (offboarding, channel deliveries) và `apps/worker` xanh. FH35 chứng minh bằng đột biến "bước chạy cho tenant khác" vì dưới `dw_app` với FORCE RLS một bước mặc định không thể xóa dòng của tenant khác; test giữ cho các bước SECURITY DEFINER sau này (usage-and-limits/02, org-and-principals/03, compliance-pdpl/08).

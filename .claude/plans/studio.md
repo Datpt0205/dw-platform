@@ -486,25 +486,25 @@ Kiểm nhất quán 24/10/2026: 8 CRITICAL, 25 HIGH, 38 MEDIUM, 2 LOW; phủ YC 
 Nguồn duy nhất của thứ tự (Đạt, 29/10/2026). Phiên không người trực làm việc đầu tiên chưa xong; một ticket bị chặn bởi thứ
 bên ngoài thì ghi "Chờ Đạt" và làm việc kế. Đường dẫn ticket tính từ `.claude/plans/studio/`.
 
-| #   | Việc                                                                                      | Trạng thái |
-| --- | ----------------------------------------------------------------------------------------- | ---------- |
-| 0   | Pha 0: D17, requirements, ADR-0128, spec `digital-worker`, `wf-lite`, `leadcare`, gate    | đang làm   |
-| 1   | `foundations-hardening/issues/07`                                                         | chưa       |
-| 2   | `foundations-hardening/issues/03`                                                         | chưa       |
-| 3   | `org-and-principals/issues/01`                                                            | chưa       |
-| 4   | `runtime-hardening/issues/01`                                                             | chưa       |
-| 5   | `digital-worker/issues/01` hồ sơ DW và loại quyết định                                    | chưa       |
-| 6   | `digital-worker/issues/02` hàng đợi chung, bàn giao, cổng duyệt                           | chưa       |
-| 7   | `wf-lite/issues/01` tài liệu, sổ loại bước, bộ kiểm, luật sàn HITL                        | chưa       |
-| 8   | `wf-lite/issues/02` biên dịch, chạy, chờ và chạy tiếp                                     | chưa       |
-| 9   | `runtime-hardening/issues/02`                                                             | chưa       |
-| 9b  | `compliance-pdpl/issues/08` lõi sàn gửi tin (tách từ 04 theo gate của leadcare, ADR-0124) | chưa       |
-| 10  | `leadcare/issues/01` gói Marketing chăm sóc lead                                          | chưa       |
-| 11  | `digital-worker/issues/03` scorecard, nâng hạ tự chủ                                      | chưa       |
-| 12  | `digital-worker/issues/04` màn hình web                                                   | chưa       |
-| 13  | `leadcare/issues/02` demo chạy thật, ảnh chụp ở `docs/demo/digital-worker/`               | chưa       |
-| 14  | `wf-ai` spec rồi ticket 01: AI sửa gói mẫu (D16, D18)                                     | chưa       |
-| 15  | mọi ticket studio khác có Blocked by đã resolved, theo thứ tự đợt                         | chưa       |
+| #   | Việc                                                                                      | Trạng thái     |
+| --- | ----------------------------------------------------------------------------------------- | -------------- |
+| 0   | Pha 0: D17, requirements, ADR-0128, spec `digital-worker`, `wf-lite`, `leadcare`, gate    | đang làm       |
+| 1   | `foundations-hardening/issues/07`                                                         | xong `8cee863` |
+| 2   | `foundations-hardening/issues/03`                                                         | chưa           |
+| 3   | `org-and-principals/issues/01`                                                            | chưa           |
+| 4   | `runtime-hardening/issues/01`                                                             | chưa           |
+| 5   | `digital-worker/issues/01` hồ sơ DW và loại quyết định                                    | chưa           |
+| 6   | `digital-worker/issues/02` hàng đợi chung, bàn giao, cổng duyệt                           | chưa           |
+| 7   | `wf-lite/issues/01` tài liệu, sổ loại bước, bộ kiểm, luật sàn HITL                        | chưa           |
+| 8   | `wf-lite/issues/02` biên dịch, chạy, chờ và chạy tiếp                                     | chưa           |
+| 9   | `runtime-hardening/issues/02`                                                             | chưa           |
+| 9b  | `compliance-pdpl/issues/08` lõi sàn gửi tin (tách từ 04 theo gate của leadcare, ADR-0124) | chưa           |
+| 10  | `leadcare/issues/01` gói Marketing chăm sóc lead                                          | chưa           |
+| 11  | `digital-worker/issues/03` scorecard, nâng hạ tự chủ                                      | chưa           |
+| 12  | `digital-worker/issues/04` màn hình web                                                   | chưa           |
+| 13  | `leadcare/issues/02` demo chạy thật, ảnh chụp ở `docs/demo/digital-worker/`               | chưa           |
+| 14  | `wf-ai` spec rồi ticket 01: AI sửa gói mẫu (D16, D18)                                     | chưa           |
+| 15  | mọi ticket studio khác có Blocked by đã resolved, theo thứ tự đợt                         | chưa           |
 
 ## Ủy quyền
 
@@ -523,6 +523,7 @@ Each resolved ticket adds one line here: the commit hash and one sentence.
 - `f7ad6d5` app-standards/04: `platform.purge_expired_idempotency_keys()` xóa khóa chống lặp quá hạn của mọi tenant và chỉ trả số đếm, hạn đọc từ `platform.retention_terms` (thiếu thì RAISE), bộ xóa đăng ký trong `RetentionPurgerRegistry` của worker.
 - `f757729` foundations-hardening/01: walker của grant support thấy route trong router được include, test tiến trình nền docgen đếm qua `/proc` với đối chứng dương, ca đọc xuyên phiên của docgen là `xfail(strict=True)`.
 - `1c681e8` foundations-hardening/02: xóa tài liệu, danh sách bộ nhớ và dọn checkpoint giữ hàng rào tenant và workspace, phép quét giữ `app.worker_drain` ở bảy lane, checkpoint không dựng kiểu ngoài allowlist, tenant offboarding không quay lại và khóa có hiệu lực ngay, nối danh tính theo quyết định 8 của ADR-0103 với trigger trên `platform.external_identities`.
+- `8cee863` foundations-hardening/07: gói xuất có mỗi dòng một lần, đọc theo lô keyset 1.000 dòng, sổ bước xóa ở composition root của worker với thứ tự suy từ khóa ngoại của `pg_constraint`, từ chối trước khi xuất khi bảng không khóa chính hay khóa ngoại treo, audit xóa nêu `details.lane`.
 
 ## Chờ Đạt (phiên không người trực)
 
