@@ -30,7 +30,10 @@ own file and a row here.
   Digital Worker: agentic within bounds, owning a queue, never a chat
   assistant; the Marketing pilot becomes a lead-care DW at A2, and a thin DW
   slice that really runs (with screens) comes before the rest of Studio.
-  **Next:** requirements per D15, spec `digital-worker`, then its first slice.
+  D17 (agent, tạm, chờ Đạt): path C, a DW core plus a minimal `dw.workflow/v1`
+  engine running a shipped lead-care pack. Drafted 2026-10-29, not yet gated:
+  YC118-YC125, ADR-0128 (Proposed), specs `digital-worker`, `wf-lite`, `leadcare`.
+  **Next:** compare with FCI's agent console (Đạt is opening it), then gate.
 
 ## Decisions Đạt owes
 
