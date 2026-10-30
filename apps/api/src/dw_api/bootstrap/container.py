@@ -62,6 +62,7 @@ from dw_platform.application.entitlement import PlanEntitlementService
 from dw_platform.application.hierarchy import HierarchyService
 from dw_platform.application.idempotency import HttpIdempotency
 from dw_platform.application.identity_bootstrap import IdentityBootstrapPort
+from dw_platform.application.marketing_send import UnsubscribeService
 from dw_platform.application.membership_admin import (
     GrantMembershipHandler,
     RevokeMembershipHandler,
@@ -171,6 +172,9 @@ class ApiContainer:
     work_queue: WorkQueue | None = None
     # A work item's `trail`, read from its run (wf-lite R6.13); with the runtime.
     run_trails: RunTrailReader | None = None
+    # The public opt-out door (ADR-0124 decision 5); None without a signing
+    # secret, and the door answers 503.
+    unsubscribe: UnsubscribeService | None = None
     # Fields of an approval type's payload only some readers see, by type
     # (digital-worker R5.6: a `dw.decision`'s proposal).
     approval_masks: dict[str, ApprovalPayloadMask] = field(default_factory=dict)

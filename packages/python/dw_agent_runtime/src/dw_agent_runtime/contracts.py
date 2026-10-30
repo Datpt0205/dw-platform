@@ -158,6 +158,18 @@ class RunContext(BaseModel):
     approval_policy_version: str | None = None
 
 
+class MessageSpec(BaseModel):
+    """What a tool that sends a message declares (compliance-pdpl R3.2,
+    CP28): its channel, and every field of its input that holds an address
+    (to, cc, bcc). The ToolExecutor sends it through the Send floor of
+    ADR-0124, one address per call."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    channel: Literal["zns", "email", "sms", "messenger", "zalo_oa"]
+    recipient_fields: tuple[str, ...] = Field(min_length=1)
+
+
 class ToolDefinition(BaseModel):
     """Versioned tool contract enforced by the tool executor."""
 
@@ -175,6 +187,8 @@ class ToolDefinition(BaseModel):
     max_retries: int = Field(ge=0, le=10)
     idempotent: bool
     data_classification: frozenset[str]
+    # Set for a tool that sends a message; its spec must say either way.
+    message: MessageSpec | None = None
 
     @field_validator("name")
     @classmethod

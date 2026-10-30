@@ -34,7 +34,7 @@ from dw_agent_runtime.adapters.run_store import SqlWorkerRunStore
 from dw_agent_runtime.adapters.tool_claims import SqlToolClaims
 from dw_agent_runtime.adapters.tool_execution_store import SqlToolExecutionStore
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
-from dw_agent_runtime.executor import ToolExecutor
+from dw_agent_runtime.executor import SendAdmissionPort, ToolExecutor
 from dw_agent_runtime.ports import ModelGateway, WorkflowRunnerPort
 from dw_agent_runtime.registry import GraphRegistry, LoadedWorker, WorkerRegistry
 from dw_agent_runtime.tools import ToolRegistry
@@ -52,14 +52,47 @@ from dw_platform.adapters.persistence.digital_workers_repo import (
     SqlScopedAudit,
     SqlTenantRunFacts,
 )
+from dw_platform.adapters.persistence.marketing_send_repo import SqlSendFloorStore
 from dw_platform.application.decision_gate import DecisionGate
 from dw_platform.application.digital_workers import DecisionAutonomy
+from dw_platform.application.marketing_send import (
+    MarketingSendPolicy,
+    UnsubscribeLinks,
+    load_send_floor_policy,
+)
 from dw_platform.application.ports import PlatformUnitOfWorkFactory
 from dw_platform.application.work_queue import WorkQueue
 
 # The fallback of an unknown code; the copy file must carry it.
 FALLBACK_CODE = "step_failed"
 _TRAIL_FIELDS = ("step_id", "type", "status", "at")
+
+
+# The floor's numbers (ADR-0124 decision 6), read once by both roots.
+SEND_FLOOR_POLICY = "marketing_send@1.0.0.yaml"
+
+
+def build_send_floor(
+    *,
+    session_factory: async_sessionmaker[AsyncSession],
+    policies: Path,
+    signing_secret: str,
+    web_url: str,
+    clock: UtcClock,
+    ids: IdGenerator,
+) -> MarketingSendPolicy | None:
+    """The Send floor of ADR-0124, or None without a signing secret: then no
+    message is sent at all (`blocked:send_floor_unavailable`), since none could
+    carry its unsubscribe link."""
+    if not signing_secret:
+        return None
+    return MarketingSendPolicy(
+        store=SqlSendFloorStore(session_factory),
+        policy=load_send_floor_policy(policies / SEND_FLOOR_POLICY),
+        links=UnsubscribeLinks(secret=signing_secret.encode(), base_url=web_url, clock=clock),
+        clock=clock,
+        ids=ids,
+    )
 
 
 def build_tool_executor(
@@ -71,6 +104,7 @@ def build_tool_executor(
     telemetry: TelemetryPort,
     clock: UtcClock,
     ids: IdGenerator,
+    send_admission: SendAdmissionPort | None,
 ) -> ToolExecutor:
     """The door to every tool effect of this process. A Digital Worker's run
     is held to its DW (operating, its allowed tools, its principal's scopes
@@ -89,6 +123,8 @@ def build_tool_executor(
         dw_boundary=SqlDwBoundary(session_factory),
         decision_autonomy=DecisionAutonomy(SqlDecisionLevels(session_factory)),
         approved_decisions=SqlApprovedDecisions(session_factory),
+        # Every tool that sends a message passes the Send floor (ADR-0124).
+        send_admission=send_admission,
     )
 
 

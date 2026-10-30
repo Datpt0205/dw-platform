@@ -259,6 +259,7 @@ def deployed(**overrides: object) -> ApiSettings:
         "qdrant_url": "https://qdrant.example:6333",
         "qdrant_api_key": "unit-test-qdrant-key",
         "redis_url": "redis://:unit-test-valkey@valkey:6379/0",
+        "unsubscribe_signing_secret": "unit-test-unsubscribe-secret-0123456789",
         "cors_origins": ["https://app.example.com"],
         "task_connector": "none",
         "database_url": "postgresql+asyncpg://u:p@db/dw",

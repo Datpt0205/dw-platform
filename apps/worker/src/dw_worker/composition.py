@@ -33,6 +33,7 @@ from dw_agent_runtime.adapters.run_store import SqlWorkerRunStore
 from dw_agent_runtime.adapters.spend_guard import SqlSpendGuardStore
 from dw_agent_runtime.adapters.wflite_host import (
     build_run_starter,
+    build_send_floor,
     build_tool_executor,
     build_wflite_ports,
     load_handoff_copy,
@@ -315,6 +316,14 @@ def build_wflite_runtime(
         telemetry=telemetry,
         clock=clock,
         ids=ids,
+        send_admission=build_send_floor(
+            session_factory=sessions,
+            policies=CONFIGS / "policies",
+            signing_secret=settings.unsubscribe_signing_secret.get_secret_value(),
+            web_url=settings.public_web_url,
+            clock=clock,
+            ids=ids,
+        ),
     )
     graphs = GraphRegistry()
     workers = WorkerRegistry(graph_registry=graphs)

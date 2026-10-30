@@ -63,6 +63,7 @@ def _deployed_worker(**overrides: object) -> WorkerSettings:
         "embedding_provider": "openai_compatible",
         "qdrant_url": "https://qdrant.example:6333",
         "qdrant_api_key": "unit-test-qdrant-key",
+        "unsubscribe_signing_secret": "unit-test-unsubscribe-secret-0123456789",
     }
     values.update(overrides)
     return WorkerSettings(**values)  # type: ignore[arg-type]

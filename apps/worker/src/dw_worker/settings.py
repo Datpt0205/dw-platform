@@ -242,6 +242,14 @@ class WorkerSettings(BaseSettings):
     # The key decision codes are hashed under; must equal the API's, which
     # issued them (ADR 0007, channels Z5). Empty = a decision sent from Zalo is
     # answered "not enabled" and nothing is decided.
+    # Signs the unsubscribe link every marketing message carries (ADR-0124
+    # decision 5): the same secret as the API's, which verifies it.
+    unsubscribe_signing_secret: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias=AliasChoices(
+            "DW_WORKER_UNSUBSCRIBE_SIGNING_SECRET", "UNSUBSCRIBE_SIGNING_SECRET"
+        ),
+    )
     approval_code_secret: SecretStr = Field(
         default=SecretStr(""),
         validation_alias=AliasChoices("DW_WORKER_APPROVAL_CODE_SECRET", "DW_APPROVAL_CODE_SECRET"),
@@ -336,3 +344,8 @@ class WorkerSettings(BaseSettings):
         # worker reads no Valkey.
         if not self.qdrant_api_key:
             raise RuntimeError(f"a Qdrant API key is required in the {self.profile} profile")
+        if len(self.unsubscribe_signing_secret.get_secret_value().encode()) < 32:
+            raise RuntimeError(
+                "UNSUBSCRIBE_SIGNING_SECRET of at least 32 bytes is required in the "
+                f"{self.profile} profile"
+            )

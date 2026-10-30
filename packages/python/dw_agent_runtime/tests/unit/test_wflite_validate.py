@@ -47,6 +47,11 @@ def _spec(name: str, side_effect: str) -> ToolSpec:
             "max_retries": 0,
             "idempotent": True,
             "data_classification": ["internal"],
+            **(
+                {"sends_message": True, "message": {"channel": "email", "recipient_fields": ["to"]}}
+                if name == "email.send"
+                else {"sends_message": False}
+            ),
         }
     )
 

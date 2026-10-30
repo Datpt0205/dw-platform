@@ -3613,6 +3613,24 @@
         "title": "TrailEntryView",
         "type": "object"
       },
+      "UnsubscribeView": {
+        "properties": {
+          "channel": {
+            "title": "Channel",
+            "type": "string"
+          },
+          "unsubscribed": {
+            "title": "Unsubscribed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "channel",
+          "unsubscribed"
+        ],
+        "title": "UnsubscribeView",
+        "type": "object"
+      },
       "UpdateTenantBody": {
         "properties": {
           "locale": {
@@ -7980,6 +7998,108 @@
         "summary": "List Users",
         "tags": [
           "platform"
+        ]
+      }
+    },
+    "/api/v1/public/unsubscribe/{token}": {
+      "get": {
+        "operationId": "check_unsubscribe_api_v1_public_unsubscribe__token__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnsubscribeView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Check Unsubscribe",
+        "tags": [
+          "public"
+        ]
+      },
+      "post": {
+        "operationId": "confirm_unsubscribe_api_v1_public_unsubscribe__token__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnsubscribeView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Confirm Unsubscribe",
+        "tags": [
+          "public"
         ]
       }
     },

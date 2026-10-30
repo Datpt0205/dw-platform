@@ -14,7 +14,7 @@ import hashlib
 import json
 import logging
 import uuid as uuid_module
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Protocol
@@ -34,6 +34,7 @@ from dw_agent_runtime.dispatch import (
 from dw_agent_runtime.tools import RegisteredTool, ToolRegistry
 from dw_kernel.errors import (
     ApprovalRequiredError,
+    ConfigError,
     ConflictError,
     DomainError,
     DWError,
@@ -49,7 +50,9 @@ from dw_observability.semconv import OP_EXECUTE_TOOL, execute_tool_span_name
 from dw_observability.telemetry import NullTelemetry, TelemetryPort
 from dw_platform.application.decision_gate import ApprovedDecision
 from dw_platform.application.digital_workers import DwBoundary
+from dw_platform.application.marketing_send import Admission, SendRequest
 from dw_platform.application.ports import PlatformUnitOfWorkFactory
+from dw_platform.application.work_queue import WorkScope
 from dw_platform.domain.audit import AuditEvent
 
 SleepFn = Callable[[float], Awaitable[None]]
@@ -136,6 +139,33 @@ class DecisionCall:
     approval_id: uuid_module.UUID | None = None
 
 
+class SendAdmissionPort(Protocol):
+    """The Send floor, declared here and satisfied by the platform's
+    `MarketingSendPolicy` (ADR-0124 decision 2)."""
+
+    async def admit(self, request: SendRequest) -> Admission: ...
+
+    async def refuse(self, request: SendRequest, reason: str) -> Admission: ...
+
+    async def sent(self, request: SendRequest, admission: Admission) -> None: ...
+
+
+# The input field a sending tool takes its unsubscribe link in (R3.3).
+UNSUBSCRIBE_FIELD = "unsubscribe_url"
+
+
+def _addresses(payload: Mapping[str, object], fields: Sequence[str]) -> list[str]:
+    """Every address the declared fields hold, a list field counting each."""
+    found: list[str] = []
+    for name in fields:
+        value = payload.get(name)
+        if isinstance(value, str) and value.strip():
+            found.append(value)
+        elif isinstance(value, list | tuple):
+            found.extend(str(v) for v in value if str(v).strip())
+    return found
+
+
 class DecisionAutonomyPort(Protocol):
     async def requires_person(
         self,
@@ -193,6 +223,9 @@ class ToolExecutor:
     # R6.17). Unset, a call naming a decision class is refused.
     decision_autonomy: DecisionAutonomyPort | None = None
     approved_decisions: ApprovedDecisionsPort | None = None
+    # The Send floor (ADR-0124): asked for every tool whose spec says it sends
+    # a message. Unset, such a call is refused (`blocked:send_floor_unavailable`).
+    send_admission: SendAdmissionPort | None = None
 
     async def execute(
         self,
@@ -330,6 +363,22 @@ class ToolExecutor:
         # 4. mask telemetry (never log raw payloads)
         safe_input = redact_mapping(input_payload)
 
+        # 4b. a message passes the Send floor (ADR-0124; compliance-pdpl R3.2):
+        # after the approval and decision checks above, after the replay of a
+        # recorded success, before the claim and the send. Every path to a tool
+        # reaches this line, so no node checks it instead.
+        sending: tuple[SendRequest, Admission] | None = None
+        if definition.message is not None and idempotency_key is not None:
+            replayed = await self._replay(tool, run_context, idempotency_key, input_hash)
+            if replayed is not None:
+                return replayed
+            sending = await self._admitted_send(
+                run_context, tool, input_payload, input_hash, idempotency_key
+            )
+            input_model = input_model.model_copy(
+                update={UNSUBSCRIBE_FIELD: sending[1].unsubscribe_url}
+            )
+
         # 5. claim the key before looking for a success (ADR-0108 decision 5), so
         # two calls with one key never both run while the claim is live (R6.1).
         # A key on a `none` tool has nothing to protect and is not claimed.
@@ -385,7 +434,7 @@ class ToolExecutor:
                     "an earlier send with this key has no known outcome",
                     details={"tool": name, "idempotency_key": idempotency_key},
                 )
-            return await self._run(
+            result = await self._run(
                 tool,
                 version,
                 input_model,
@@ -396,6 +445,9 @@ class ToolExecutor:
                 dispatch_logged=definition.side_effect_level in _LEAVES_THE_PLATFORM,
                 token=token,
             )
+            if sending is not None and self.send_admission is not None:
+                await self.send_admission.sent(*sending)
+            return result
         finally:
             try:
                 await self.claims.release(run_context, name, idempotency_key, token)
@@ -403,6 +455,50 @@ class ToolExecutor:
                 # The claim expires on its own at `expires_at`; a failed release
                 # only delays the next call with this key until then.
                 logger.exception("tool claim release failed", extra={"tool": name})
+
+    async def _admitted_send(
+        self,
+        run_context: RunContext,
+        tool: RegisteredTool,
+        input_payload: dict[str, object],
+        input_hash: str,
+        idempotency_key: str,
+    ) -> tuple[SendRequest, Admission]:
+        """The floor's admission of this call's one address, or a refusal: a
+        `refused` row, `tool.denied` and `PermissionDeniedError` naming
+        `blocked:<reason>`. No floor wired is a refusal too."""
+        definition = tool.definition
+        message = definition.message
+        assert message is not None
+        if UNSUBSCRIBE_FIELD not in tool.input_model.model_fields:
+            raise ConfigError(
+                "a tool that sends a message takes the unsubscribe link in its input",
+                details={"tool": definition.name, "field": UNSUBSCRIBE_FIELD},
+            )
+        addresses = _addresses(input_payload, message.recipient_fields)
+        if self.send_admission is None or not addresses:
+            reason = "send_floor_unavailable" if self.send_admission is None else "no_recipient"
+            await self._refuse(run_context, definition, input_hash, f"blocked:{reason}")
+            raise AssertionError("unreachable")  # pragma: no cover - _refuse raises
+        request = SendRequest(
+            scope=WorkScope(tenant_id=run_context.tenant_id, workspace_id=run_context.workspace_id),
+            actor_id=run_context.actor_id,
+            channel=message.channel,
+            address=addresses[0],
+            idempotency_key=idempotency_key,
+            tool_name=definition.name,
+            tool_version=definition.version,
+            run_id=run_context.run_id,
+            # A wf-lite run has no child runs yet: it is its own root (ticket 08).
+            root_run_id=run_context.run_id,
+        )
+        if len(addresses) > 1:
+            admission = await self.send_admission.refuse(request, "multiple_recipients")
+        else:
+            admission = await self.send_admission.admit(request)
+        if not admission.admitted:
+            await self._refuse(run_context, definition, input_hash, admission.code)
+        return request, admission
 
     async def _replay(
         self,

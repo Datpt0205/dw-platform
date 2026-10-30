@@ -35,7 +35,7 @@
       "version": "1.2.0"
     }
   ],
-  "git_sha": "b2f950e464c30c475b46b88601589edbb2f1955e",
+  "git_sha": "cfdc7b8cf4109a2c8a2c287029decf16ff8daae1",
   "knowledge_index_version": "2026-07-25.structure-1",
   "memory_policy_version": "2.0.0",
   "platform_version": "0.1.0",
@@ -44,6 +44,11 @@
       "checksum": "bbebba26b5708933b6f8ab5c43a08f57d4c6ef595e09afb1a9422df0b7d6b49c",
       "policy_id": "attachment_ingest",
       "version": "1.1.0"
+    },
+    {
+      "checksum": "44f08cb00c60979eb2a20fcd63dc2c2240a1e10660b34d45e970df0405bbff6a",
+      "policy_id": "platform.marketing_send",
+      "version": "1.0.0"
     },
     {
       "checksum": "1f043342bfd8d81f034548353a1edd42b9d637f160b380a7812c014b64d422df",
@@ -56,7 +61,7 @@
       "version": "1.0.0"
     },
     {
-      "checksum": "6a7183c21698de390623659321346d1a6c9e8b171fb88ba6f56e1a211fb2ec6a",
+      "checksum": "6765ca4c092aebb2b39cc4c6c9e3eb8e331a2cae2a065ca0296ca82ab5915a8e",
       "policy_id": "retention.d",
       "version": "fragments"
     }

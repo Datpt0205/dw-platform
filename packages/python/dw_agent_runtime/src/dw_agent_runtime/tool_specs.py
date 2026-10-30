@@ -21,6 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 from dw_agent_runtime.contracts import (
     ApprovalPolicy,
+    MessageSpec,
     SideEffectLevel,
     ToolDefinition,
     approval_policy_disagrees_with_side_effect,
@@ -52,6 +53,24 @@ class ToolSpec(BaseModel):
     max_retries: int = Field(ge=0, le=10)
     idempotent: bool
     data_classification: frozenset[str]
+    # Required of every tool with an effect, true or false: a sending tool that
+    # forgot to say so would reach the world past the Send floor
+    # (compliance-pdpl R3.2, CP28). `message` comes with `true`, and only then.
+    sends_message: bool | None = None
+    message: MessageSpec | None = None
+
+    @model_validator(mode="after")
+    def _a_tool_with_an_effect_says_whether_it_sends(self) -> ToolSpec:
+        if self.side_effect_level != "none" and self.sends_message is None:
+            raise ValueError(
+                f"side_effect_level is '{self.side_effect_level}', so sends_message must be"
+                " declared, true or false"
+            )
+        if self.sends_message and self.message is None:
+            raise ValueError("sends_message: true needs message: {channel, recipient_fields}")
+        if not self.sends_message and self.message is not None:
+            raise ValueError("message is declared only with sends_message: true")
+        return self
 
     @model_validator(mode="after")
     def _never_only_where_it_is_true(self) -> ToolSpec:
@@ -96,6 +115,7 @@ class ToolSpec(BaseModel):
             max_retries=self.max_retries,
             idempotent=self.idempotent,
             data_classification=self.data_classification,
+            message=self.message,
         )
 
 

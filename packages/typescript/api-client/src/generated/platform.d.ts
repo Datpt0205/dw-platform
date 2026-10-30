@@ -1067,6 +1067,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/public/unsubscribe/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Check Unsubscribe */
+        get: operations["check_unsubscribe_api_v1_public_unsubscribe__token__get"];
+        put?: never;
+        /** Confirm Unsubscribe */
+        post: operations["confirm_unsubscribe_api_v1_public_unsubscribe__token__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ready": {
         parameters: {
             query?: never;
@@ -2865,6 +2883,13 @@ export interface components {
             step_id: string;
             /** Type */
             type: string;
+        };
+        /** UnsubscribeView */
+        UnsubscribeView: {
+            /** Channel */
+            channel: string;
+            /** Unsubscribed */
+            unsubscribed: boolean;
         };
         /** UpdateTenantBody */
         UpdateTenantBody: {
@@ -5884,6 +5909,86 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserRefView"][];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    check_unsubscribe_api_v1_public_unsubscribe__token__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnsubscribeView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    confirm_unsubscribe_api_v1_public_unsubscribe__token__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnsubscribeView"];
                 };
             };
             /** @description The request was refused */

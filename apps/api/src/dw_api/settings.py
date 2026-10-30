@@ -250,6 +250,15 @@ class ApiSettings(BaseSettings):
         default=SecretStr(""),
         validation_alias=AliasChoices("DW_API_APPROVAL_CODE_SECRET", "DW_APPROVAL_CODE_SECRET"),
     )
+    # Signs the one-address unsubscribe links (ADR-0124 decision 5); at least
+    # 32 bytes, required in a deployed profile. Without it nothing marketing is
+    # sent and the unsubscribe route answers 503.
+    unsubscribe_signing_secret: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias=AliasChoices(
+            "DW_API_UNSUBSCRIBE_SIGNING_SECRET", "UNSUBSCRIBE_SIGNING_SECRET"
+        ),
+    )
     # Deep link to the bot's chat shown on the settings page; empty = none.
     zalo_bot_link: str = Field(
         default="", validation_alias=AliasChoices("DW_API_ZALO_BOT_LINK", "ZALO_BOT_LINK")
@@ -369,6 +378,12 @@ class ApiSettings(BaseSettings):
             # process that would talk to one without them refuses to start.
             if not self.qdrant_api_key:
                 raise RuntimeError(f"a Qdrant API key is required in the {self.profile} profile")
+            # compliance-pdpl R3.6, CP29: a short secret is a forgeable opt-out.
+            if len(self.unsubscribe_signing_secret.get_secret_value().encode()) < 32:
+                raise RuntimeError(
+                    "UNSUBSCRIBE_SIGNING_SECRET of at least 32 bytes is required in the "
+                    f"{self.profile} profile"
+                )
             if self.redis_url and not urlsplit(self.redis_url).password:
                 raise RuntimeError(
                     f"REDIS_URL must carry the Valkey password in the {self.profile} profile"

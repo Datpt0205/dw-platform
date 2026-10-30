@@ -20,6 +20,7 @@ from dw_agent_runtime.adapters.run_store import SqlWorkerRunStore
 from dw_agent_runtime.adapters.spend_guard import SqlSpendGuardStore
 from dw_agent_runtime.adapters.wflite_host import (
     RunTrailReader,
+    build_send_floor,
     build_tool_executor,
     build_wflite_ports,
     load_handoff_copy,
@@ -45,6 +46,7 @@ from dw_api.bootstrap.paths import (
     ATTACHMENT_POLICY,
     MOCK_MODEL_FIXTURES,
     MODEL_PROFILES_DIR,
+    POLICIES_DIR,
     PROMPTS_DIR,
     RUNTIME_COPY_CONFIG,
     TOOL_SPECS_DIR,
@@ -199,6 +201,14 @@ def build_runtime(
         telemetry=telemetry,
         clock=clock,
         ids=ids,
+        send_admission=build_send_floor(
+            session_factory=session_factory,
+            policies=POLICIES_DIR,
+            signing_secret=settings.unsubscribe_signing_secret.get_secret_value(),
+            web_url=settings.public_web_url,
+            clock=clock,
+            ids=ids,
+        ),
     )
     tool_specs = ToolSpecRegistry(copy=copy)
     tool_specs.load_directory(TOOL_SPECS_DIR)

@@ -70,6 +70,7 @@ from dw_platform.adapters.persistence.effect_key_store import SqlEffectKeyLookup
 from dw_platform.adapters.persistence.hierarchy_repo import SqlHierarchyRepository
 from dw_platform.adapters.persistence.idempotency_store import SqlIdempotencyStore
 from dw_platform.adapters.persistence.identity_provisioning import SqlIdentityBootstrap
+from dw_platform.adapters.persistence.marketing_send_repo import SqlSuppressionStore
 from dw_platform.adapters.persistence.membership_admin import SqlMembershipAdminRepository
 from dw_platform.adapters.persistence.membership_lookup import SqlMembershipLookup
 from dw_platform.adapters.persistence.notifications import SqlNotificationRepository
@@ -95,6 +96,7 @@ from dw_platform.application.entitlement import DEFAULT_PLANS, PlanEntitlementSe
 from dw_platform.application.hierarchy import HierarchyService
 from dw_platform.application.idempotency import HttpIdempotency
 from dw_platform.application.identity import DbAccessContextFactory
+from dw_platform.application.marketing_send import UnsubscribeLinks, UnsubscribeService
 from dw_platform.application.membership_admin import (
     GrantMembershipHandler,
     RevokeMembershipHandler,
@@ -254,6 +256,15 @@ def _build_container(settings: ApiSettings | None) -> ApiContainer:
         id_generator=ids,
     )
     container.work_queue = work_queue
+    # The opt-out door verifies what the floor signed: the same secret.
+    unsubscribe_secret = settings.unsubscribe_signing_secret.get_secret_value()
+    if unsubscribe_secret:
+        container.unsubscribe = UnsubscribeService(
+            links=UnsubscribeLinks(
+                secret=unsubscribe_secret.encode(), base_url=settings.public_web_url, clock=clock
+            ),
+            store=SqlSuppressionStore(session_factory),
+        )
     container.support_grants = SupportGrantService(
         repo=SqlSupportGrantRepository(session_factory),
         member_scopes=SqlScopeHolders(session_factory),
