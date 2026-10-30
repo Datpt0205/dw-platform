@@ -226,6 +226,11 @@ def run_local(tests: tuple[str, ...], pythonpath: Path | None) -> int:
     env = dict(os.environ)
     if pythonpath is not None:
         env["PYTHONPATH"] = str(pythonpath)
+        # A package copied out of the tree cannot find the repository from its
+        # own path (`retention_policy` reads `configs/` by `parents[5]`), so an
+        # integration control over a `dw_platform` overlay failed on the terms
+        # loader before any test ran (digital-worker 01, 30/10/2026).
+        env.setdefault("DW_REPO_ROOT", str(REPO))
     return _pytest([sys.executable, "-m", "pytest"], tests, env)
 
 

@@ -99,3 +99,18 @@ duy nhất trả mức tự chủ có hiệu lực (R1, R2, ADR-0128 (Proposed) 
   - `ToolCatalogPort` là `ToolRegistry.has_tool` (tên công cụ đã đăng ký, mọi phiên bản), đọc lúc hỏi.
   - Sau offboarding, dòng `platform.users` của principal còn lại như mọi user người (bảng định danh không có
     `tenant_id`); xóa theo `owner_tenant_id ON DELETE CASCADE` khi dòng tenant bị xóa.
+- 2026-10-30 (agent): `reviewing-feature-security`: sáu ranh giới; untrusted content không áp (không lời gọi model,
+  mandate và tham số chưa vào prompt nào). Một lỗ hổng không đóng ở ticket này: `dw_app` chèn được user `service`
+  nêu `owner_tenant_id` bất kỳ (bảng `users` không RLS); nó không thành principal ở tenant khác vì trigger đòi
+  `owner_tenant_id = NEW.tenant_id` (có test).
+- 2026-10-30 (agent): mutation check `mutations/01.yaml`: 22/22 đỏ, đối chứng xanh. Lượt đầu bốn nhóm đối chứng đỏ
+  vì `scripts/mutate.py` chép `dw_platform` ra thư mục tạm và `retention_policy` tìm `configs/` theo `parents[5]`;
+  sửa `run_local` đặt `DW_REPO_ROOT` (chỉ khi có overlay), chạy lại cả bộ.
+- 2026-10-30 (agent): độ trễ, app ASGI thật trên PostgreSQL compose, ấm, 200 lần mỗi operation sau 20 lần khởi động,
+  một tenant 200 thành viên, so với `711dbc5` (`git archive`); P50/P95/P99 ms trước → sau:
+  `GET /admin/members` 38,3/47,3/61,3 → 38,4/49,9/65,6; `GET /directory/members` 36,7/46,6/52,8 → 36,0/45,5/50,9;
+  `GET /directory/candidates` 33,7/42,9/49,4 → 33,4/42,0/48,8; `GET /admin/hierarchy` 33,9/43,0/47,7 →
+  33,4/42,9/51,4; `PUT /admin/members/{id}/memberships` (trigger mới trên `memberships`) 63,1/77,3/91,4 →
+  62,8/79,7/87,0. Mới: `POST /digital-workers` 77,2/92,8/98,3; `GET /digital-workers` 40,3/49,6/57,6;
+  `GET /digital-workers/{id}` 32,3/39,0/46,4; `POST /digital-workers/{id}/state` 60,8/74,9/83,2. Trong ngân sách,
+  không P95 nào kém hơn 20%.
