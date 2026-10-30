@@ -250,6 +250,18 @@ class ApiSettings(BaseSettings):
         default=SecretStr(""),
         validation_alias=AliasChoices("DW_API_APPROVAL_CODE_SECRET", "DW_APPROVAL_CODE_SECRET"),
     )
+    # The dev mailbox of the Marketing pack (leadcare R3): an SMTP host the send
+    # may reach (`mailpit`, `localhost`, `127.0.0.1` only; anything else is
+    # refused, as is every send in a deployed profile) and Mailpit's API.
+    smtp_host: str = Field(
+        default="", validation_alias=AliasChoices("DW_API_SMTP_HOST", "SMTP_HOST")
+    )
+    smtp_port: int = Field(
+        default=1025, ge=1, le=65535, validation_alias=AliasChoices("DW_API_SMTP_PORT", "SMTP_PORT")
+    )
+    mailbox_api_url: str | None = Field(
+        default=None, validation_alias=AliasChoices("DW_API_MAILBOX_API_URL", "MAILBOX_API_URL")
+    )
     # Signs the one-address unsubscribe links (ADR-0124 decision 5); at least
     # 32 bytes, required in a deployed profile. Without it nothing marketing is
     # sent and the unsubscribe route answers 503.

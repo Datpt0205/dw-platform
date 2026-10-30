@@ -28,6 +28,7 @@ from dw_agent_runtime.adapters.model_stack import (
     ModelStack,
     build_model_stack,
 )
+from dw_agent_runtime.adapters.pack_tools import build_leadcare_tools, register_leadcare_tools
 from dw_agent_runtime.adapters.release_manifest import read_release_manifest_ref
 from dw_agent_runtime.adapters.run_store import SqlWorkerRunStore
 from dw_agent_runtime.adapters.spend_guard import SqlSpendGuardStore
@@ -40,10 +41,12 @@ from dw_agent_runtime.adapters.wflite_host import (
     register_workflows,
 )
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
+from dw_agent_runtime.model.copy import load_runtime_copy
 from dw_agent_runtime.model.profiles import ModelProfileRegistry
 from dw_agent_runtime.model.prompts import PromptRegistry
 from dw_agent_runtime.model.run_policy import load_worker_run_policy
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
+from dw_agent_runtime.tool_specs import ToolSpecRegistry
 from dw_agent_runtime.tools import ToolRegistry
 from dw_agent_runtime.wflite.catalog import PackCatalog
 from dw_agent_runtime.wflite.starter import WorkflowRunStarter
@@ -76,6 +79,8 @@ CONFIGS = REPO_ROOT / "configs"
 ATTACHMENT_POLICY = "attachment_ingest@1.1.0.yaml"
 WORKER_RUN_POLICY = "worker_runs@1.0.0.yaml"
 WFLITE_HANDOFF_COPY = "wflite_handoff.yaml"
+# The platform's copy, the API's pin (`dw_api.bootstrap.paths.RUNTIME_COPY_CONFIG`).
+RUNTIME_COPY = "runtime@1.6.0.yaml"
 
 
 @dataclass
@@ -323,6 +328,23 @@ def build_wflite_runtime(
             web_url=settings.public_web_url,
             clock=clock,
             ids=ids,
+        ),
+    )
+    # The Marketing pack's tools, as the API registers them (leadcare R3).
+    tool_specs = ToolSpecRegistry(copy=load_runtime_copy(CONFIGS / "copy" / RUNTIME_COPY))
+    tool_specs.load_directory(CONFIGS / "tools")
+    register_leadcare_tools(
+        tools,
+        tool_specs,
+        build_leadcare_tools(
+            session_factory=sessions,
+            queue=queue,
+            clock=clock,
+            handoffs=CONFIGS / "copy" / "leadcare_handoff.yaml",
+            is_deployed=settings.is_deployed,
+            smtp_host=settings.smtp_host,
+            smtp_port=settings.smtp_port,
+            mailbox_url=settings.mailbox_api_url,
         ),
     )
     graphs = GraphRegistry()

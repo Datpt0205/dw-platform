@@ -257,3 +257,32 @@ def register_leadcare_tools(
     ):
         definition = specs.definition(name, "1.0.0")
         tools.register(RegisteredTool(definition, input_model, output_model, handler))
+
+
+def build_leadcare_tools(
+    *,
+    session_factory: Any,
+    queue: WorkQueue,
+    clock: UtcClock,
+    handoffs: Path,
+    is_deployed: bool,
+    smtp_host: str,
+    smtp_port: int,
+    mailbox_url: str | None,
+) -> LeadcareTools:
+    """What both roots register for the Marketing pack: its SMTP sender only
+    with a host, its mailbox only with an API URL."""
+    from dw_connectors.adapters.mailpit_mailbox import MailpitMailbox
+    from dw_connectors.adapters.smtp_email import SmtpEmailSender
+    from dw_platform.adapters.persistence.digital_workers_repo import SqlDigitalWorkerRepository
+
+    return LeadcareTools(
+        queue=queue,
+        workers=SqlDigitalWorkerRepository(session_factory),
+        clock=clock,
+        handoffs=load_leadcare_handoffs(handoffs),
+        is_deployed=is_deployed,
+        smtp_host=smtp_host,
+        sender=SmtpEmailSender(host=smtp_host, port=smtp_port) if smtp_host else None,
+        mailbox=MailpitMailbox(base_url=mailbox_url) if mailbox_url else None,
+    )

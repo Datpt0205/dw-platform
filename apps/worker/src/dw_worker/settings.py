@@ -242,6 +242,21 @@ class WorkerSettings(BaseSettings):
     # The key decision codes are hashed under; must equal the API's, which
     # issued them (ADR 0007, channels Z5). Empty = a decision sent from Zalo is
     # answered "not enabled" and nothing is decided.
+    # The dev mailbox of the Marketing pack (leadcare R3): an SMTP host the send
+    # may reach (`mailpit`, `localhost`, `127.0.0.1` only; anything else is
+    # refused, as is every send in a deployed profile) and Mailpit's API.
+    smtp_host: str = Field(
+        default="", validation_alias=AliasChoices("DW_WORKER_SMTP_HOST", "SMTP_HOST")
+    )
+    smtp_port: int = Field(
+        default=1025,
+        ge=1,
+        le=65535,
+        validation_alias=AliasChoices("DW_WORKER_SMTP_PORT", "SMTP_PORT"),
+    )
+    mailbox_api_url: str | None = Field(
+        default=None, validation_alias=AliasChoices("DW_WORKER_MAILBOX_API_URL", "MAILBOX_API_URL")
+    )
     # Signs the unsubscribe link every marketing message carries (ADR-0124
     # decision 5): the same secret as the API's, which verifies it.
     unsubscribe_signing_secret: SecretStr = Field(

@@ -16,6 +16,7 @@ from dw_agent_runtime.adapters.checkpoint_serde import checkpoint_serializer
 from dw_agent_runtime.adapters.langchain_usage import LangchainUsageMeter
 from dw_agent_runtime.adapters.langgraph_runner import LangGraphWorkflowRunner
 from dw_agent_runtime.adapters.model_stack import ModelStack, build_model_stack
+from dw_agent_runtime.adapters.pack_tools import build_leadcare_tools, register_leadcare_tools
 from dw_agent_runtime.adapters.run_store import SqlWorkerRunStore
 from dw_agent_runtime.adapters.spend_guard import SqlSpendGuardStore
 from dw_agent_runtime.adapters.wflite_host import (
@@ -44,6 +45,7 @@ from dw_api.bootstrap.knowledge import build_embeddings, build_reranker, build_v
 from dw_api.bootstrap.models import build_chat_model_factory, model_provider_config
 from dw_api.bootstrap.paths import (
     ATTACHMENT_POLICY,
+    CONFIGS,
     MOCK_MODEL_FIXTURES,
     MODEL_PROFILES_DIR,
     POLICIES_DIR,
@@ -212,6 +214,21 @@ def build_runtime(
     )
     tool_specs = ToolSpecRegistry(copy=copy)
     tool_specs.load_directory(TOOL_SPECS_DIR)
+    # The Marketing pack's tools, as the worker registers them (leadcare R3).
+    register_leadcare_tools(
+        tool_registry,
+        tool_specs,
+        build_leadcare_tools(
+            session_factory=session_factory,
+            queue=work_queue,
+            clock=clock,
+            handoffs=CONFIGS / "copy" / "leadcare_handoff.yaml",
+            is_deployed=settings.is_deployed,
+            smtp_host=settings.smtp_host,
+            smtp_port=settings.smtp_port,
+            mailbox_url=settings.mailbox_api_url,
+        ),
+    )
     toolsets = ToolsetRegistry()
     toolsets.load_directory(TOOLSETS_DIR)
 
