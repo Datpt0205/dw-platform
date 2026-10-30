@@ -1,6 +1,6 @@
 # 02 — Biên mạng: rate limit theo địa chỉ, net_guard chỉ địa chỉ toàn cầu, Qdrant và Valkey có xác thực
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: .claude/plans/studio/foundations-hardening/issues/01-test-khong-the-do.md
 Area: studio
 Yêu cầu: R7.1, R7.2, R8.1, R8.2, R8.3, R8.4, G7, RH20, RH21, RH22, RH23, RH24
@@ -73,31 +73,31 @@ Kho dữ liệu (R8.1, R8.2, R8.4):
 
 ## Tiêu chí chấp nhận
 
-- [ ] R7.1 (RH20): `10 × L + 1` request từ một địa chỉ, mỗi request một bearer ngẫu nhiên → request
+- [x] R7.1 (RH20): `10 × L + 1` request từ một địa chỉ, mỗi request một bearer ngẫu nhiên → request
       cuối 429; bỏ xô địa chỉ → đỏ.
-- [ ] R7.1: `L + 1` request không `Authorization` từ một địa chỉ → request cuối 429; mỗi request một
+- [x] R7.1: `L + 1` request không `Authorization` từ một địa chỉ → request cuối 429; mỗi request một
       `X-Forwarded-For` giả từ một địa chỉ ngoài `FORWARDED_ALLOW_IPS` → vẫn một xô.
-- [ ] R7.1: một bearer vượt `L` request trong 60 giây → 429 dù địa chỉ còn dưới `10 × L`.
-- [ ] R7.2 (RH21): resolver giả trả `100.64.0.1`, `100.100.100.200`, `224.0.0.1`, `ff02::1`,
+- [x] R7.1: một bearer vượt `L` request trong 60 giây → 429 dù địa chỉ còn dưới `10 × L`.
+- [x] R7.2 (RH21): resolver giả trả `100.64.0.1`, `100.100.100.200`, `224.0.0.1`, `ff02::1`,
       `::ffff:169.254.169.254`, `64:ff9b::a9fe:a9fe`, `2002:a9fe:a9fe::1` và một địa chỉ Teredo nhúng
       `169.254.169.254` → `OutboundUrlError`; `8.8.8.8` giả lập → nhận; khôi phục vị từ cũ → đỏ với
       `100.64.0.1`, `100.100.100.200`, `224.0.0.1`; `allow_private=True` với `169.254.169.254` → vẫn
       `OutboundUrlError`, với `10.0.0.5` → nhận.
-- [ ] R7.2: host có tên trong danh sách máy chủ được phép qua theo đúng tên, không phân giải;
+- [x] R7.2: host có tên trong danh sách máy chủ được phép qua theo đúng tên, không phân giải;
       `docker compose -f infra/compose/docker-compose.yml config` cho thấy hai biến danh sách ở `api`
       và `worker`.
-- [ ] R8.1 (RH22): compose smoke: gọi Qdrant không kèm API key → 401; `redis-cli PING` không mật khẩu
+- [x] R8.1 (RH22): compose smoke: gọi Qdrant không kèm API key → 401; `redis-cli PING` không mật khẩu
       → `NOAUTH`; API và worker vẫn khỏe với thông tin xác thực; `GET /collections` là endpoint thử 401;
       `docker compose -f infra/compose/docker-compose.yml config` với `QDRANT_API_KEY` trống → lỗi;
       profile `observability` khỏe với Valkey riêng của Langfuse; `PING` không mật khẩu vào `langfuse-valkey`
       → `NOAUTH`; `LANGFUSE_REDIS_PASSWORD` trống → `docker compose --profile observability config` lỗi.
-- [ ] R8.2 (RH22): settings profile `uat` thiếu `qdrant_api_key` → `validate_for_profile` ném lỗi ở
+- [x] R8.2 (RH22): settings profile `uat` thiếu `qdrant_api_key` → `validate_for_profile` ném lỗi ở
       API và worker; `redis_url` của API không mật khẩu → ném lỗi; profile `local` không đòi.
-- [ ] R8.3 (RH23): gỡ `@sha256:` khỏi một `image:` → `scripts/verify_invariants.py` đỏ.
-- [ ] R8.4 (RH24): `DATA_SOURCE_NAME` dùng `dw_app` → kiểm ở bước 10 đỏ; `dw_monitor` SELECT một bảng
+- [x] R8.3 (RH23): gỡ `@sha256:` khỏi một `image:` → `scripts/verify_invariants.py` đỏ.
+- [x] R8.4 (RH24): `DATA_SOURCE_NAME` dùng `dw_app` → kiểm ở bước 10 đỏ; `dw_monitor` SELECT một bảng
       tenant → `permission denied`; exporter vẫn xuất số đo.
-- [ ] G7: `test_health_is_exempt_and_zero_disables` xanh.
-- [ ] Xong: `make ci && make test-integration` xanh.
+- [x] G7: `test_health_is_exempt_and_zero_disables` xanh.
+- [x] Xong: `make ci && make test-integration` xanh.
 
 ## Nguồn
 
@@ -137,3 +137,31 @@ Kho dữ liệu (R8.1, R8.2, R8.4):
   đã sửa (`:?` và hai ca âm). MEDIUM cho người làm: một `Authorization` rác vẫn được `10 × L` mỗi địa chỉ vì
   middleware không xác minh bearer (đúng như bước 2 nói); thêm ca `fe80::1` dưới `allow_private=True` → từ chối.
 - 2026-10-30 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-10-30 (agent): resolved ở `df27594` (`34768e7` giới hạn tốc độ và `net_guard`, `df27594` kho dữ liệu, ảnh, exporter).
+  Khác với ticket:
+  - `net_guard`: với `allow_private` (chỉ người gọi không `is_deployed`), tên không phân giải được vẫn qua như hôm nay
+    (không tới được địa chỉ nào; dịch vụ compose có thể chưa lên); profile triển khai vẫn từ chối. Đo: Python xếp cả
+    NAT64 `64:ff9b::/96` vào `::/8` reserved, nên ca xấu đã bị chặn sẵn; bước tháo NAT64 là để cho qua NAT64 của địa
+    chỉ global (`64:ff9b::808:808`). `::1` cũng reserved, nên loopback được xét trước reserved.
+  - Healthcheck của Qdrant giữ phép thăm TCP (không cần khóa); của Valkey dùng mật khẩu.
+  - `create_monitor_role.py` đưa vai về đúng khai báo: thu hồi mọi membership ngoài `pg_monitor` (một đột biến cấp
+    thêm quyền được chính vòng này gỡ, nên đột biến của RH24 là thuộc tính `BYPASSRLS`).
+  - Trivy (0.74.0, đã chạy cục bộ trên 14 ảnh ghim): 12 ảnh có lỗ hổng HIGH/CRITICAL đã có bản vá, keycloak quét quá
+    giờ. Vòng quét ảnh bên thứ ba trong CI chỉ báo cáo; ảnh `dw-*` vẫn chặn. Nâng ảnh: `studio.md`, Chờ Đạt 19.
+  - Ngoài phạm vi, ghi lại: `FROM` của Dockerfile repo chưa ghim digest.
+  - `reviewing-feature-security`: tenant (Valkey của Langfuse tách khỏi cache mang AccessContext của mọi tenant);
+    phân quyền (bearer không xác minh ở tầng này, đúng bước 2); tự chủ: không đổi tầm với của agent; nội dung không tin
+    cậy: URL gốc do người vận hành cấu hình qua một chính sách địa chỉ, URL của tenant thuộc `connections-and-vault`;
+    audit: không có ghi mới; mặc định: bí mật kho `:?` ở mọi profile, settings triển khai từ chối thiếu khóa,
+    `allow_private` không nới link-local. Test âm ở mỗi chỗ.
+  - Mutation `mutations/02.yaml`: 13/13 đỏ, đối chứng xanh (lượt đầu 11/13; hai đột biến viết lại như trên).
+  - Đo trên project compose thử (cổng riêng): Qdrant có khóa 200, không khóa 401; Valkey `PONG`/`NOAUTH`; Valkey của
+    Langfuse `PONG`/`NOAUTH`; khóa hay mật khẩu trống → `docker compose config` lỗi.
+  - Độ trễ: ticket không đổi truy cập database (giới hạn tốc độ trong tiến trình), đo ở đóng wave.
+  - Cổng: ruff, format, mypy, `make test-unit` (1734), `test-contract`, `test-architecture` xanh; integration của
+    `dw_platform`, `dw_knowledge`, `dw_memory`, `apps/worker`, `apps/api`: 734 qua, 3 bỏ qua, 34 lỗi đều ở
+    `dw_knowledge` và đều là S3 `InvalidAccessKeyId` (thông tin S3 của `.env` cục bộ lệch SeaweedFS đang chạy; lỗi y
+    hệt ở `d565566`, không do ticket này). `make test-integration` toàn bộ để cho đóng wave.
+  - Việc của người vận hành trước khi triển khai: đặt `QDRANT_API_KEY`, `REDIS_PASSWORD`, `LANGFUSE_REDIS_PASSWORD`,
+    `DW_DB_MONITOR_PASSWORD` trên host uat và production, chạy `scripts/create_monitor_role.py` trên cluster có sẵn;
+    `.env` cục bộ cũng cần bốn biến này trước lần `make infra-up` tới (Chờ Đạt 20).
