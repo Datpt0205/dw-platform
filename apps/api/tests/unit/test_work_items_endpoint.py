@@ -288,3 +288,49 @@ async def test_an_unknown_item_is_404() -> None:
     repo = Repo()
     response = await call(make(repo, worker(assigner=CALLER)), "GET", f"/work-items/{uuid.uuid4()}")
     assert response.status_code == 404
+
+
+class Trails:
+    """`RunTrailReader`'s answer for one run; records the scope it was asked in."""
+
+    def __init__(self, run_id: uuid.UUID) -> None:
+        self.run_id = run_id
+        self.asked: list[dict[str, uuid.UUID]] = []
+
+    async def trail(
+        self, *, tenant_id: uuid.UUID, workspace_id: uuid.UUID, run_id: uuid.UUID
+    ) -> list[dict[str, str]]:
+        self.asked.append({"tenant_id": tenant_id, "workspace_id": workspace_id, "run_id": run_id})
+        if run_id != self.run_id:
+            return []
+        return [{"step_id": "draft", "type": "ai.llm@1", "status": "done", "at": NOW.isoformat()}]
+
+
+async def test_one_item_carries_its_runs_trail_read_in_the_callers_scope() -> None:
+    """wf-lite R6.13 (WFL15): the trail is read under the caller's own tenant
+    and workspace, after the item itself was; a list carries none."""
+    repo = Repo()
+    mine = worker(assigner=CALLER)
+    container = make(repo, mine)
+    created = await call(container, "POST", f"/digital-workers/{mine.id}/work-items", new_work())
+    item_id = uuid.UUID(created.json()["id"])
+    run_id = uuid.uuid4()
+    repo.items[item_id] = replace(repo.items[item_id], status="in_progress", run_id=run_id)
+    trails = Trails(run_id)
+    container.run_trails = trails  # type: ignore[assignment]
+
+    one = await call(container, "GET", f"/work-items/{item_id}")
+    assert one.status_code == 200, one.text
+    assert one.json()["trail"] == [
+        {"step_id": "draft", "type": "ai.llm@1", "status": "done", "at": NOW.isoformat()}
+    ]
+    assert trails.asked == [{"tenant_id": TENANT, "workspace_id": WORKSPACE, "run_id": run_id}]
+
+    listed = await call(container, "GET", "/work-items")
+    assert listed.json()["items"][0]["trail"] is None
+
+    # Another tenant's item is not found before any trail is read.
+    trails.asked.clear()
+    missing = await call(container, "GET", f"/work-items/{uuid.uuid4()}")
+    assert missing.status_code == 404
+    assert trails.asked == []
