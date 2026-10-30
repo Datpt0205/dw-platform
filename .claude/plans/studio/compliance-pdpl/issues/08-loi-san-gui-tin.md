@@ -139,3 +139,7 @@ message`, hai dấu phải khớp hoặc nạp lỗi; `configs/tools` hôm nay k
     allowlist antd xanh.
   - Để cho đóng wave: `reviewing-deployment-security` (route công khai mới), đo trang `/unsubscribe/[token]` bằng
     Playwright.
+- 2026-10-30 (agent): `check_plans.py` của khu: cảnh báo va chạm 08 với 04 và 06 (cùng ba bảng, route hủy, tệp chính sách)
+  là đúng: 04 và 06 xây trên những gì 08 dựng. Không ghi `Blocked by: 08` vào 04 vì số chỉ được trỏ ngược; khi cắt lại
+  lượt ticket của khu, đánh số lại (08 trước 04) ở `checking-plan-consistency`. Neo chết `retention@1.7.0.yaml:118-120`
+  của ticket 06 có từ trước, để cho lượt gate của 06.
