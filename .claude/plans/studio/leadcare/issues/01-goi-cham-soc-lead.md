@@ -88,3 +88,13 @@ workspace_id uuid, state text)` `SECURITY DEFINER`, `SET search_path = pg_catalo
 - 2026-10-30 (agent): đang làm. Khoảng trống gặp khi bắt đầu: R1.1 cần `since` là `sent_at` của bước gửi và rẽ theo
   `found`, mà đầu ra của `tool.call` chỉ có `result`; quyết định tạm ở `Quyết định` của wf-lite (30/10): spec công cụ
   khai `output_fields`, bước ghi chúng cạnh `result`, bộ kiểm nhận `steps.<id>.<trường>`.
+- 2026-10-30 (agent): đang làm. Xong bước 1-3 phần tệp và mã: gói `configs/packs/marketing` (quy trình, schema),
+  bốn prompt, ba spec công cụ (`output_fields` cho `sent_at`, `found`, `text`), `configs/copy/leadcare_handoff.yaml`
+  (`57ee004`); adapter `smtp_email.py`, `mailpit_mailbox.py` và `adapters/pack_tools.py` với ba handler (`bfa6b75`).
+  Ba quyết định tạm thêm ở wf-lite (`Quyết định` 30/10): `min_confidence` nhận `{{ params.<tên> }}`; biến số có
+  `minimum`/`maximum` (R3.8); tên tệp schema được chứa `@`. Còn, theo thứ tự: (a) settings `SMTP_HOST`, `SMTP_PORT`,
+  `MAILBOX_API_URL` ở API và worker, `register_leadcare_tools` ở hai root (cần `RuntimeCopy` ở worker); (b) bước 4-5:
+  migration `platform.intake_worker_scope`, route `POST /v1/intake/leads` và `GET /v1/digital-workers/{id}/intake-key`,
+  `INTAKE_SIGNING_SECRET`, ghi `ConsentLedger` cùng giao dịch với việc (R2.13: cần đường ghi chung giao dịch); (c) bước
+  6 Mailpit trong compose dev, đo API tìm kiếm của Mailpit thật; (d) bước 7 eval; (e) bước 8 test (LCP3-LCP18 và lượt
+  integration từ cửa nhận tới bàn giao); (f) mutation, `reviewing-feature-security`, `reviewing-deployment-security`.
