@@ -54,9 +54,9 @@ mutations:
     old: "    if tool_claims_retention is not None:\n"
     new: "    if False:\n"
     tests:
-      - apps/worker/tests/unit/test_worker.py
+      - apps/worker/tests/unit/test_worker.py::test_only_the_platform_lanes_are_wired
   - name: RH19 R6.7 the lane deletes live claims instead of expired ones
-    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/tool_claims.py
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/tool_claim_retention.py
     old: "                    tool_execution_claims.c.expires_at < sa.func.now()\n"
     new: "                    tool_execution_claims.c.expires_at > sa.func.now()\n"
     tests:

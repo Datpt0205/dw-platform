@@ -38,7 +38,8 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import NullPool
 
-from dw_agent_runtime.adapters.tool_claims import SqlToolClaimRetention, SqlToolClaims
+from dw_agent_runtime.adapters.tool_claim_retention import SqlToolClaimRetention
+from dw_agent_runtime.adapters.tool_claims import SqlToolClaims
 from dw_agent_runtime.adapters.tool_execution_store import SqlToolExecutionStore
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.contracts import RunContext, ToolDefinition

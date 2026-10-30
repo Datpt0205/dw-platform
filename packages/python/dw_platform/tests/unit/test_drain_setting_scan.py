@@ -38,6 +38,10 @@ EXEMPT: dict[str, str] = {
     "packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/checkpoint_retention.py": (
         "the checkpoint retention lane, which selects across tenants what to prune"
     ),
+    "packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/tool_claim_retention.py": (
+        "the tool-claim retention lane, which deletes expired claims of every tenant"
+        " (runtime-hardening R6.7)"
+    ),
     "packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/spend_guard.py": (
         "the spend-guard retention lane (`SqlSpendGuardRetention`) only"
     ),

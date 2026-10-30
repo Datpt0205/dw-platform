@@ -31,7 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from dw_agent_runtime.adapters.checkpoint_retention import SqlCheckpointRetention
 from dw_agent_runtime.adapters.langgraph_runner import LangGraphWorkflowRunner
 from dw_agent_runtime.adapters.spend_guard import SqlSpendGuardRetention
-from dw_agent_runtime.adapters.tool_claims import SqlToolClaimRetention
+from dw_agent_runtime.adapters.tool_claim_retention import SqlToolClaimRetention
 from dw_agent_runtime.approval_flow import ApproveAndResumeService
 from dw_agent_runtime.channel_decisions import (
     ChannelApprovalDecisionService,
