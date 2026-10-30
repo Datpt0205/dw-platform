@@ -33,7 +33,7 @@ from dw_platform.adapters.persistence.separation_of_duties import (
 )
 from dw_platform.adapters.persistence.tenant_session import TenantScope, tenant_session
 from dw_platform.application.access_context import AccessContext
-from dw_platform.application.digital_workers import DecisionLevels, Standing
+from dw_platform.application.digital_workers import DecisionLevels, DwBoundary, Standing
 from dw_platform.application.effect_keys import PendingEffect
 from dw_platform.application.work_queue import WorkScope
 from dw_platform.domain.audit import AuditEvent
@@ -516,3 +516,50 @@ class SqlScopedAudit:
         bound = TenantScope(tenant_id=scope.tenant_id, workspace_id=scope.workspace_id)
         async with tenant_session(self.session_factory, bound) as session:
             await SqlAuditRepository(session).append(event)
+
+
+@dataclass(frozen=True)
+class SqlDwBoundary:
+    """The boundary of the DW whose principal a run acts as, under the run's
+    own tenant and workspace; None when the principal is no DW's there. The
+    scopes are read the one way the access context reads them."""
+
+    session_factory: async_sessionmaker[AsyncSession]
+
+    async def boundary(
+        self, *, tenant_id: uuid.UUID, workspace_id: uuid.UUID, principal_id: uuid.UUID
+    ) -> DwBoundary | None:
+        m = tables.memberships
+        bound = TenantScope(tenant_id=tenant_id, workspace_id=workspace_id)
+        async with tenant_session(self.session_factory, bound) as session:
+            row = (
+                await session.execute(
+                    sa.select(
+                        _DW.c.state, _DW.c.allowed_tools, m.c.role_keys, m.c.permission_set_keys
+                    )
+                    .select_from(
+                        _DW.outerjoin(
+                            m,
+                            sa.and_(
+                                m.c.user_id == _DW.c.principal_user_id,
+                                m.c.workspace_id == _DW.c.workspace_id,
+                            ),
+                        )
+                    )
+                    .where(_DW.c.principal_user_id == principal_id)
+                )
+            ).first()
+            if row is None:
+                return None
+            scopes = (
+                frozenset()
+                if row.role_keys is None
+                else await effective_scopes(
+                    session, frozenset(row.role_keys), frozenset(row.permission_set_keys)
+                )
+            )
+        return DwBoundary(
+            operating=row.state == "operating",
+            allowed_tools=frozenset(row.allowed_tools),
+            scopes=scopes,
+        )

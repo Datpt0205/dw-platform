@@ -1,5 +1,6 @@
 import asyncio
 import uuid
+from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -25,6 +26,7 @@ from dw_kernel.ports import FixedClock, SequentialIdGenerator
 from dw_observability.metrics import DW_TOOL_CALL_TOTAL
 from dw_observability.semconv import contract_violations, load_snapshot, snapshot_path
 from dw_observability.telemetry import RecordingTelemetry
+from dw_platform.application.digital_workers import DwBoundary
 
 pytestmark = pytest.mark.unit
 
@@ -652,3 +654,86 @@ async def test_a_secret_in_a_list_is_redacted_in_the_failure_audit() -> None:
     failed = uow_factory.audit_repo.events[-1]
     assert failed.action == "tool.failed"
     assert failed.details["input"] == {"items": [{"api_key": "[REDACTED]"}]}
+
+
+# ------------------------------------------- digital-worker R6.1-R6.3 --
+
+
+class _Boundary:
+    """Answers one DW boundary, or raises when told the state is unreadable."""
+
+    def __init__(self, boundary: DwBoundary | None, *, fails: bool = False) -> None:
+        self.found = boundary
+        self.fails = fails
+
+    async def boundary(
+        self, *, tenant_id: uuid.UUID, workspace_id: uuid.UUID, principal_id: uuid.UUID
+    ) -> DwBoundary | None:
+        if self.fails:
+            raise InfrastructureError("database unavailable")
+        return self.found
+
+
+OPERATING = DwBoundary(
+    operating=True, allowed_tools=frozenset({"test.echo"}), scopes=frozenset({"demo.write"})
+)
+
+
+def _dw_run() -> RunContext:
+    principal = uuid.uuid4()
+    return make_run_context().model_copy(
+        update={"actor_id": principal, "run_as_principal_id": principal}
+    )
+
+
+async def _dw_call(port: _Boundary | None) -> tuple[list[str], FakeExecutionStore, FakeAuditRepo]:
+    ran: list[str] = []
+
+    async def handler(payload: EchoInput, run_context: RunContext) -> EchoOutput:
+        ran.append(payload.message)
+        return EchoOutput(echoed=payload.message)
+
+    executor, store, audit = make_executor(handler)
+    executor.dw_boundary = port
+    try:
+        await executor.execute(
+            name="test.echo",
+            version="1.0.0",
+            raw_input={"message": "x"},
+            run_context=_dw_run(),
+            idempotency_key="k1",
+        )
+    except PermissionDeniedError as refused:
+        ran.append(f"refused:{refused.details['reason_code']}")
+    return ran, store, audit
+
+
+@pytest.mark.parametrize(
+    ("port", "reason"),
+    [
+        (_Boundary(replace(OPERATING, operating=False)), "dw_not_operating"),  # DWK16
+        (_Boundary(OPERATING, fails=True), "dw_not_operating"),  # DWK16, unreadable
+        (_Boundary(None), "dw_not_operating"),
+        (None, "dw_not_operating"),
+        (_Boundary(replace(OPERATING, allowed_tools=frozenset({"other"}))), "tool_not_allowed"),
+        (_Boundary(replace(OPERATING, scopes=frozenset())), "scope_lost"),  # DWK34
+    ],
+    ids=["paused", "unreadable", "no-dw", "no-port", "outside-allowed", "scope-lost"],
+)
+async def test_a_dw_run_outside_its_boundary_reaches_nothing(
+    port: _Boundary | None, reason: str
+) -> None:
+    """DWK16, DWK26, DWK34: refused before the tool runs, with one `refused`
+    execution row and a `tool.denied` audit event."""
+    ran, store, audit = await _dw_call(port)
+    assert ran == [f"refused:{reason}"]
+    assert [(r["status"], r["error"], r["idempotency_key"]) for r in store.records] == [
+        ("refused", reason, None)
+    ]
+    assert [(e.action, e.policy_decision) for e in audit.events] == [("tool.denied", reason)]
+
+
+async def test_a_dw_run_inside_its_boundary_runs() -> None:
+    ran, store, _ = await _dw_call(_Boundary(OPERATING))
+    assert ran == ["x"]
+    assert store.records[-1]["status"] == "succeeded"

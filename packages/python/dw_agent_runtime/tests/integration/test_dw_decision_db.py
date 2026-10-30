@@ -1,4 +1,4 @@
-"""Integration: deciding a Digital Worker's decision, on real PostgreSQL.
+"""Integration: deciding a Digital Worker's decision, and its boundary, on real PostgreSQL.
 
 digital-worker ticket 02: R5.3 (DWK15, only the DW's Validator or Business
 Owner as they are when deciding), R5.4 (DWK22, an edit within the proposal's
@@ -24,6 +24,7 @@ from sqlalchemy.pool import NullPool
 from dw_agent_runtime.approval_flow import ApproveAndResumeService
 from dw_kernel.errors import ConflictError, DomainError
 from dw_kernel.ports import SystemClock, Uuid4Generator
+from dw_platform.adapters.persistence.digital_workers_repo import SqlDwBoundary
 from dw_platform.adapters.persistence.uow import SqlPlatformUnitOfWorkFactory
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.authorization import ScopeAuthorizationService
@@ -101,6 +102,11 @@ async def seed(migrator: AsyncEngine) -> World:
                 "INSERT INTO platform.service_principals (user_id, tenant_id, owning_workspace_id,"
                 " name, owner_user_id) VALUES (:u, :t, :w, 'dw', :o)",
                 {"u": principal, "t": t, "w": w, "o": owner},
+            ),
+            (
+                "INSERT INTO platform.memberships (id, tenant_id, workspace_id, user_id,"
+                " role_keys) VALUES (:i, :t, :w, :u, '[\"member\"]'::jsonb)",
+                {"i": uuid.uuid4(), "t": t, "w": w, "u": principal},
             ),
             (
                 "INSERT INTO platform.digital_workers (id, tenant_id, workspace_id,"
@@ -279,3 +285,61 @@ async def test_an_edit_outside_its_rules_decides_nothing(
             )
         ).scalar_one()
     assert status == "pending"
+
+
+async def test_the_boundary_is_read_live_and_a_refusal_is_a_refused_row(
+    engines: tuple[AsyncEngine, AsyncEngine],
+) -> None:
+    """R6 on the real tables: the boundary follows the DW's state and its
+    principal's membership as they change; a `refused` row carries no key."""
+    migrator, app = engines
+    world = await seed(migrator)
+    async with migrator.connect() as conn:
+        principal = (
+            await conn.execute(
+                sa.text("SELECT principal_user_id FROM platform.digital_workers WHERE id = :d"),
+                {"d": world.dw},
+            )
+        ).scalar_one()
+    port = SqlDwBoundary(async_sessionmaker(app, expire_on_commit=False))
+
+    async def read() -> Any:
+        return await port.boundary(
+            tenant_id=world.tenant, workspace_id=world.workspace, principal_id=principal
+        )
+
+    first = await read()
+    assert first is not None and first.operating and "approvals.read" in first.scopes
+    async with migrator.begin() as conn:
+        await conn.execute(
+            sa.text("UPDATE platform.memberships SET role_keys = '[]'::jsonb WHERE user_id = :u"),
+            {"u": principal},
+        )
+        await conn.execute(
+            sa.text("UPDATE platform.digital_workers SET state = 'paused' WHERE id = :d"),
+            {"d": world.dw},
+        )
+    second = await read()
+    assert second is not None and not second.operating and second.scopes == frozenset()
+    assert (
+        await port.boundary(
+            tenant_id=world.tenant, workspace_id=uuid.uuid4(), principal_id=principal
+        )
+        is None
+    )
+
+    insert = (
+        "INSERT INTO platform.tool_executions (id, tenant_id, workspace_id, tool_name,"
+        " tool_version, status, idempotency_key, input_hash, started_at)"
+        " VALUES (:i, :t, :w, 'email.send', '1.0.0', 'refused', :k, 'h', now())"
+    )
+    async with migrator.begin() as conn:
+        await conn.execute(
+            sa.text(insert), {"i": uuid.uuid4(), "t": world.tenant, "w": world.workspace, "k": None}
+        )
+    with pytest.raises(sa.exc.IntegrityError, match="ck_tool_executions_refused_unkeyed"):
+        async with migrator.begin() as conn:
+            await conn.execute(
+                sa.text(insert),
+                {"i": uuid.uuid4(), "t": world.tenant, "w": world.workspace, "k": "key-1"},
+            )

@@ -47,6 +47,7 @@ from dw_observability.metrics import DW_TOOL_CALL_TOTAL
 from dw_observability.redaction import redact_mapping, redact_text
 from dw_observability.semconv import OP_EXECUTE_TOOL, execute_tool_span_name
 from dw_observability.telemetry import NullTelemetry, TelemetryPort
+from dw_platform.application.digital_workers import DwBoundary
 from dw_platform.application.ports import PlatformUnitOfWorkFactory
 from dw_platform.domain.audit import AuditEvent
 
@@ -109,6 +110,20 @@ class ExecutionStorePort(Protocol):
         ...
 
 
+class DigitalWorkerBoundaryPort(Protocol):
+    """The boundary of a Digital Worker, by the principal its run acts as
+    (digital-worker R6). Declared here, satisfied by the platform; None when
+    the principal is no DW's in the run's workspace."""
+
+    async def boundary(
+        self,
+        *,
+        tenant_id: uuid_module.UUID,
+        workspace_id: uuid_module.UUID,
+        principal_id: uuid_module.UUID,
+    ) -> DwBoundary | None: ...
+
+
 def canonical_hash(payload: dict[str, object]) -> str:
     """Stable fingerprint of a payload; also used to derive idempotency keys."""
     return hashlib.sha256(
@@ -137,6 +152,10 @@ class ToolExecutor:
     # audit table. Defaults to the no-op port: every existing construction site
     # and every test keeps working, and an unconfigured process pays nothing.
     telemetry: TelemetryPort = field(default_factory=NullTelemetry)
+    # A Digital Worker's boundary, asked for every call of a run that acts as
+    # a service principal (digital-worker R6). Unset, such a call is refused:
+    # a DW run with nothing to ask about its DW reaches nothing.
+    dw_boundary: DigitalWorkerBoundaryPort | None = None
 
     async def execute(
         self,
@@ -213,6 +232,12 @@ class ToolExecutor:
             ) from exc
         input_payload = input_model.model_dump(mode="json")
         input_hash = canonical_hash(input_payload)
+
+        # 2b. a Digital Worker's boundary, read now (R6): before every other
+        # check, so a paused DW or a tool outside its mandate is refused
+        # whatever the run's stamped scopes or autonomy say.
+        if run_context.run_as_principal_id is not None:
+            await self._within_dw_boundary(run_context, definition, input_hash)
 
         # 3. authorization + approval policy
         missing = definition.required_scopes - run_context.scopes
@@ -550,6 +575,69 @@ class ToolExecutor:
 
         # 10. typed result
         return output_model
+
+    async def _within_dw_boundary(
+        self, run_context: RunContext, definition: ToolDefinition, input_hash: str
+    ) -> None:
+        """R6.1-R6.3: refuse `dw_not_operating` when the DW is not operating
+        or its state cannot be read, `tool_not_allowed` outside its
+        `allowed_tools`, `scope_lost` when its principal no longer holds a
+        scope the tool needs. The refusal is a `refused` execution row and a
+        `tool.denied` audit event; the tool does not run."""
+        principal = run_context.run_as_principal_id
+        assert principal is not None
+        reason: str | None = None
+        boundary: DwBoundary | None = None
+        if self.dw_boundary is None:
+            reason = "dw_not_operating"
+        else:
+            try:
+                boundary = await self.dw_boundary.boundary(
+                    tenant_id=run_context.tenant_id,
+                    workspace_id=run_context.workspace_id,
+                    principal_id=principal,
+                )
+            except Exception:
+                logger.exception(
+                    "dw boundary unreadable", extra={"run_id": str(run_context.run_id)}
+                )
+                boundary = None
+            if boundary is None or not boundary.operating:
+                reason = "dw_not_operating"
+            elif definition.name not in boundary.allowed_tools:
+                reason = "tool_not_allowed"
+            elif not definition.required_scopes <= boundary.scopes:
+                reason = "scope_lost"
+        if reason is None:
+            return
+        now = self.clock.now()
+        await self.execution_store.record(
+            run_context,
+            execution_id=self.id_generator.new_uuid(),
+            tool_name=definition.name,
+            tool_version=definition.version,
+            status="refused",
+            input_hash=input_hash,
+            output_hash=None,
+            output=None,
+            idempotency_key=None,
+            error=reason,
+            attempts=0,
+            started_at=now,
+            finished_at=now,
+        )
+        await self._audit(
+            run_context,
+            "tool.denied",
+            definition,
+            input_hash,
+            policy_decision=reason,
+            details={"reason_code": reason},
+        )
+        raise PermissionDeniedError(
+            "the digital worker's boundary refuses this call",
+            details={"tool": definition.name, "reason_code": reason},
+        )
 
     async def _audit(
         self,

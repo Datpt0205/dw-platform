@@ -57,6 +57,7 @@ from dw_memory.policy import MemoryWritePolicy
 from dw_memory.review import MEMORY_REVIEW, require_clearance_for_review
 from dw_memory.service import MemoryService
 from dw_observability.telemetry import TelemetryPort
+from dw_platform.adapters.persistence.digital_workers_repo import SqlDwBoundary
 from dw_platform.application.decision_gate import (
     DW_DECISION,
     DwDecisionAdmission,
@@ -186,6 +187,9 @@ def build_runtime(
         approval_policy=approval_policy,
         claims=SqlToolClaims(session_factory),
         telemetry=telemetry,
+        # A Digital Worker's run is held to its DW: operating, its allowed
+        # tools, its principal's scopes now (digital-worker R6).
+        dw_boundary=SqlDwBoundary(session_factory),
     )
     tool_specs = ToolSpecRegistry(copy=copy)
     tool_specs.load_directory(TOOL_SPECS_DIR)

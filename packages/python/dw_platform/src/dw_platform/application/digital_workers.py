@@ -125,6 +125,18 @@ class DecisionLevels:
     tenant_ceiling: str
 
 
+@dataclass(frozen=True, slots=True)
+class DwBoundary:
+    """What a Digital Worker's run may reach, read when a tool is called
+    (digital-worker R6): whether the DW is operating, the tools it is allowed,
+    and the scopes its principal's membership holds now (ADR-0103 decision 5:
+    reach is read live, so a run narrows when the principal loses a role)."""
+
+    operating: bool
+    allowed_tools: frozenset[str]
+    scopes: frozenset[str]
+
+
 class DigitalWorkerRepositoryPort(Protocol):
     """DWs of the caller's tenant and workspace, under their RLS."""
 
@@ -514,6 +526,7 @@ __all__ = [
     "DecisionLevelsPort",
     "DigitalWorkerRepositoryPort",
     "DigitalWorkerService",
+    "DwBoundary",
     "MembershipCheckPort",
     "RoleCatalogPort",
     "Standing",
