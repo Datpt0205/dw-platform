@@ -617,6 +617,12 @@ async def test_offboarding_exports_and_purges_a_tenant_holding_a_dw(
     assert exported["platform.dw_decision_classes"] == 2
     assert exported["platform.service_principals"] == 1
 
+    # As the lane finds it: offboarding has begun (compliance-pdpl R5.6).
+    async with migrator.begin() as conn:
+        await conn.execute(
+            sa.text("UPDATE platform.tenants SET status = 'offboarding' WHERE id = :t"),
+            {"t": world.tenant_a},
+        )
     await offboarding.purge_rows(world.tenant_a)
 
     for table, column in (

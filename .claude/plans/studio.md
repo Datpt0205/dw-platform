@@ -498,7 +498,7 @@ bên ngoài thì ghi "Chờ Đạt" và làm việc kế. Đường dẫn ticket
 | 7   | `wf-lite/issues/01` tài liệu, sổ loại bước, bộ kiểm, luật sàn HITL                        | xong `47df14d` |
 | 8   | `wf-lite/issues/02` biên dịch, chạy, chờ và chạy tiếp                                     | xong `3c85dbd` |
 | 9   | `runtime-hardening/issues/02`                                                             | xong `df27594` |
-| 9b  | `compliance-pdpl/issues/08` lõi sàn gửi tin (tách từ 04 theo gate của leadcare, ADR-0124) | chưa           |
+| 9b  | `compliance-pdpl/issues/08` lõi sàn gửi tin (tách từ 04 theo gate của leadcare, ADR-0124) | xong           |
 | 10  | `leadcare/issues/01` gói Marketing chăm sóc lead                                          | chưa           |
 | 11  | `digital-worker/issues/03` scorecard, nâng hạ tự chủ                                      | chưa           |
 | 12  | `digital-worker/issues/04` màn hình web                                                   | chưa           |
@@ -532,6 +532,7 @@ Each resolved ticket adds one line here: the commit hash and one sentence.
 - `47df14d` wf-lite/01: tài liệu `dw.workflow/v1` của gói với sáu loại bước, bộ kiểm một lượt trả mọi lỗi `wf.*` (tham chiếu theo cây, rẽ nhánh đủ, hiệu ứng ra ngoài chỉ trong lane Duyệt cùng loại và nhận nguyên bản đã duyệt), `PackCatalog` ghim sha256 và chặn API và worker khởi động khi gói sai, hàng đợi đọc schema của kind từ gói.
 - `3c85dbd` wf-lite/02: mỗi tài liệu của gói biên dịch thành StateGraph `dw:<key>@<version>` ở cả API và worker qua một bộ dựng chung; lane `dw_work` chạy việc, cổng duyệt dừng và chạy tiếp, `ToolExecutor` chỉ chạy đúng bản đã duyệt, lane `dw_timers` chạy tiếp hẹn giờ với thuê 15 phút, lỗi của bước thành bàn giao bốn trường cho Validator, `trail` ở `GET /v1/work-items/{id}`; checkpoint đọc theo workspace của config (`a170793`, `6976baf`, `7197171`, `c98c422`, `d209fb9`, `3c85dbd`).
 - `df27594` runtime-hardening/02: giới hạn tốc độ theo địa chỉ cộng bearer (không bearer giữ `L`, `X-Forwarded-For` chỉ từ proxy, IPv6 theo `/64`); một chính sách địa chỉ ra ngoài chuẩn hóa dạng nhúng và không để `allow_private` lọt link-local; Qdrant và Valkey đòi xác thực ở mọi profile, Langfuse có Valkey riêng; ảnh bên thứ ba ghim digest; exporter đọc bằng `dw_monitor` (`34768e7`, `df27594`).
+- compliance-pdpl/08: lõi Sàn gửi tin của ADR-0124 — ba bảng (đồng ý chỉ thêm và toàn tenant, chặn gửi chỉ xóa khi offboarding, nhật ký gửi theo workspace), hàm đếm toàn tenant, `MarketingSendPolicy` ở `ToolExecutor` cho mọi công cụ `sends_message` (chặn gửi, đồng ý, tần suất, khung giờ Hà Nội, trần người nhận; dòng `dispatching` commit trước khi gửi; phát lại hỏi lại), link hủy ký HMAC với trang và route công khai (`65f1f3b`, `cfdc7b8`, `bb2d0f3`, `e842742`).
 
 ## Chờ Đạt (phiên không người trực)
 

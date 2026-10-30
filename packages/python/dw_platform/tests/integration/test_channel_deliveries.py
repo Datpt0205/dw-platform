@@ -516,6 +516,12 @@ async def test_offboarding_exports_the_tenants_deliveries_and_leaves_none(
     ]
     assert {row["source_key"] for row in rows} == set(mine)
 
+    # As the lane finds it: offboarding has begun (compliance-pdpl R5.6).
+    async with migrator.begin() as conn:
+        await conn.execute(
+            sa.text("UPDATE platform.tenants SET status = 'offboarding' WHERE id = :t"),
+            {"t": here.tenant_id},
+        )
     await offboarding.purge_rows(here.tenant_id)
     assert [await _rows(migrator, key) for key in mine] == [[], []]
     assert len(await _rows(migrator, theirs)) == 1

@@ -1,6 +1,6 @@
 # 08 — Lõi sàn gửi tin: đồng ý, chặn gửi, tần suất, khung giờ, trần người nhận, nhật ký gửi, hủy nhận
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md, .claude/plans/studio/runtime-hardening/issues/01-toolexecutor-gianh-luot-khong-cua-sau.md, .claude/plans/studio/wf-lite/issues/02-bien-dich-va-chay.md
 Area: studio
 Yêu cầu: R3.1, R3.2, R3.3, R3.4, R3.6, R3.7, R3.8, R3.9, R3.10, R3.11, R5.6, CP7, CP8, CP9, CP10, CP18, CP19, CP24, CP27, CP28, CP29
@@ -66,24 +66,24 @@ message`, hai dấu phải khớp hoặc nạp lỗi; `configs/tools` hôm nay k
 
 ## Tiêu chí chấp nhận
 
-- [ ] R3.1 (CP7): không Bản ghi đồng ý → `blocked:no_consent`, 0 tin, `marketing.send_refused`; đồng ý `withdrawn` → `blocked:consent_withdrawn`; ở Danh sách chặn gửi → `blocked:suppressed`; 20:01 và 07:59 giờ Việt Nam → `blocked:quiet_hours`, 08:00 thì gửi; đổi múi giờ của công ty không đổi kết quả.
-- [ ] R3.2 (CP8): công cụ `sends_message` gọi qua bước `tool.call` và qua công cụ của agent mà không đồng ý → cả hai bị chặn ở executor; gỡ phép hỏi `SendAdmissionPort` → test đỏ.
-- [ ] R3.3: tin được nhận ghi dòng `dispatching` mang `consent_record_id`; lời gọi `succeeded` ghi `marketing.sent` cùng `consent_record_id`.
-- [ ] R3.4 (CP9): `POST` link hủy → lần gửi sau `blocked:suppressed`; `GET` chỉ trả trang, không dòng chặn gửi.
-- [ ] R3.6 (CP10): token sai chữ ký → 404, không dòng nào, cùng thân ở `GET` và `POST`; token đúng → `GET` 200, `POST` một dòng; `POST` lần hai → không dòng thứ hai.
-- [ ] R3.7 (CP7): tin bị chặn có đúng một dòng nhật ký `blocked` với lý do, cùng giao dịch với audit.
-- [ ] R3.8 (CP18): lượt gốc đã gửi tới 199 người nhận khác nhau → người thứ 200 gửi được; thêm tin tới người đã nhận không tính thêm; người thứ 201 → `blocked:recipient_cap`.
-- [ ] R3.9 (CP24): dòng `dispatching` đã commit trước khi công cụ giả nhận lời gọi (kết nối thứ hai thấy dòng).
-- [ ] R3.10 (CP24): lần gửi thứ hai tới cùng địa chỉ trong 24 giờ với khóa khác, kể cả khi lần đầu `outcome_unknown` hay ở workspace khác của cùng tenant → `blocked:frequency_cap`; hai lời gọi đồng thời tới cùng địa chỉ → đúng một `dispatching`.
-- [ ] R3.11 (CP24): phát lại cùng khóa sau `outcome_unknown` → không dòng thứ hai, không bị tính vào trần; người nhận đã hủy giữa hai lần → `blocked:suppressed`; gỡ phép nhận ngay → test đỏ.
-- [ ] R5.6 (CP19): `dw_app` DELETE một dòng chặn gửi của công ty `active` → 23514, dòng còn; lượt xóa offboarding xóa được; gọi `platform.purge_tenant_marketing` cho tenant `active` → lỗi, 0 dòng bị xóa.
-- [ ] CP27: tenant B gửi tới địa chỉ có đồng ý ở tenant A → `blocked:no_consent`; token hủy của A gọi ở bất kỳ ngữ cảnh nào chỉ ghi dòng chặn gửi của A; B không đọc được dòng nhật ký, đồng ý hay chặn gửi của A.
-- [ ] CP28: spec công cụ `external` thiếu `sends_message` → nạp lỗi; công cụ gửi tin có hai người nhận → `blocked:multiple_recipients`.
-- [ ] CP29: `is_deployed` với `UNSUBSCRIBE_SIGNING_SECRET` 16 byte → API không khởi động.
-- [ ] R3.7 (CP7): phát lại bị chặn vì người nhận đã hủy → một `marketing.send_refused` với `details.replay = true`, không dòng nhật ký thứ hai.
-- [ ] R3.3: `Admission` nhận được mang `unsubscribe_url` ký đúng tenant, kênh, địa chỉ; công cụ thử nhận nó trong đầu vào.
-- [ ] CP27: `dw_app` trong ngữ cảnh tenant B INSERT dòng `tenant_id` A vào ba bảng → WITH CHECK từ chối; `ConsentLedger.record` cho tenant A từ ngữ cảnh B → từ chối; hàm đếm khi `app.tenant_id` trống → lỗi.
-- [ ] Xong: `make test-unit test-contract test-architecture && uv run pytest -m integration packages/python/dw_platform packages/python/dw_agent_runtime apps/api apps/worker` xanh.
+- [x] R3.1 (CP7): không Bản ghi đồng ý → `blocked:no_consent`, 0 tin, `marketing.send_refused`; đồng ý `withdrawn` → `blocked:consent_withdrawn`; ở Danh sách chặn gửi → `blocked:suppressed`; 20:01 và 07:59 giờ Việt Nam → `blocked:quiet_hours`, 08:00 thì gửi; đổi múi giờ của công ty không đổi kết quả.
+- [x] R3.2 (CP8): công cụ `sends_message` gọi qua bước `tool.call` và qua công cụ của agent mà không đồng ý → cả hai bị chặn ở executor; gỡ phép hỏi `SendAdmissionPort` → test đỏ.
+- [x] R3.3: tin được nhận ghi dòng `dispatching` mang `consent_record_id`; lời gọi `succeeded` ghi `marketing.sent` cùng `consent_record_id`.
+- [x] R3.4 (CP9): `POST` link hủy → lần gửi sau `blocked:suppressed`; `GET` chỉ trả trang, không dòng chặn gửi.
+- [x] R3.6 (CP10): token sai chữ ký → 404, không dòng nào, cùng thân ở `GET` và `POST`; token đúng → `GET` 200, `POST` một dòng; `POST` lần hai → không dòng thứ hai.
+- [x] R3.7 (CP7): tin bị chặn có đúng một dòng nhật ký `blocked` với lý do, cùng giao dịch với audit.
+- [x] R3.8 (CP18): lượt gốc đã gửi tới 199 người nhận khác nhau → người thứ 200 gửi được; thêm tin tới người đã nhận không tính thêm; người thứ 201 → `blocked:recipient_cap`.
+- [x] R3.9 (CP24): dòng `dispatching` đã commit trước khi công cụ giả nhận lời gọi (kết nối thứ hai thấy dòng).
+- [x] R3.10 (CP24): lần gửi thứ hai tới cùng địa chỉ trong 24 giờ với khóa khác, kể cả khi lần đầu `outcome_unknown` hay ở workspace khác của cùng tenant → `blocked:frequency_cap`; hai lời gọi đồng thời tới cùng địa chỉ → đúng một `dispatching`.
+- [x] R3.11 (CP24): phát lại cùng khóa sau `outcome_unknown` → không dòng thứ hai, không bị tính vào trần; người nhận đã hủy giữa hai lần → `blocked:suppressed`; gỡ phép nhận ngay → test đỏ.
+- [x] R5.6 (CP19): `dw_app` DELETE một dòng chặn gửi của công ty `active` → 23514, dòng còn; lượt xóa offboarding xóa được; gọi `platform.purge_tenant_marketing` cho tenant `active` → lỗi, 0 dòng bị xóa.
+- [x] CP27: tenant B gửi tới địa chỉ có đồng ý ở tenant A → `blocked:no_consent`; token hủy của A gọi ở bất kỳ ngữ cảnh nào chỉ ghi dòng chặn gửi của A; B không đọc được dòng nhật ký, đồng ý hay chặn gửi của A.
+- [x] CP28: spec công cụ `external` thiếu `sends_message` → nạp lỗi; công cụ gửi tin có hai người nhận → `blocked:multiple_recipients`.
+- [x] CP29: `is_deployed` với `UNSUBSCRIBE_SIGNING_SECRET` 16 byte → API không khởi động.
+- [x] R3.7 (CP7): phát lại bị chặn vì người nhận đã hủy → một `marketing.send_refused` với `details.replay = true`, không dòng nhật ký thứ hai.
+- [x] R3.3: `Admission` nhận được mang `unsubscribe_url` ký đúng tenant, kênh, địa chỉ; công cụ thử nhận nó trong đầu vào.
+- [x] CP27: `dw_app` trong ngữ cảnh tenant B INSERT dòng `tenant_id` A vào ba bảng → WITH CHECK từ chối; `ConsentLedger.record` cho tenant A từ ngữ cảnh B → từ chối; hàm đếm khi `app.tenant_id` trống → lỗi.
+- [x] Xong: `make test-unit test-contract test-architecture && uv run pytest -m integration packages/python/dw_platform packages/python/dw_agent_runtime apps/api apps/worker` xanh.
 
 ## Nguồn
 
@@ -114,3 +114,28 @@ message`, hai dấu phải khớp hoặc nạp lỗi; `configs/tools` hôm nay k
   `withdrawn` (đóng khi không chắc); worker cũng từ chối khởi động thiếu `UNSUBSCRIBE_SIGNING_SECRET` ở profile triển
   khai (worker là nơi gửi). Còn: kết quả `mutations/08.yaml` (đang chạy), độ trễ bước 10, `reviewing-feature-security`,
   cổng nhanh và integration của bốn gói, đóng ticket.
+- 2026-10-30 (agent): resolved (`65f1f3b`, `cfdc7b8`, `bb2d0f3`, `e842742`, và commit đóng). Khác với ticket, ngoài hai
+  dòng trước: `SendAdmissionPort.admit(request)` nhận `SendRequest` mang phạm vi (không `RunContext`, vì `dw_platform`
+  không nhập runtime), thêm `refuse` (một người nhận trở lên, cùng dòng `blocked` và sự kiện như sàn) và `sent`
+  (ghi `marketing.sent` sau khi công cụ thành công); lời gọi không địa chỉ nào → `blocked:no_recipient`; route
+  `GET`/`POST` luôn được gắn, thiếu bí mật → 503; bản ghi hủy nhận không ghi audit (người hủy không là principal; ticket
+  không đòi). Hai test offboarding của kênh và DW đặt tenant `offboarding` trước khi xóa, như lane thật.
+  - `reviewing-feature-security`: tenant (ba bảng RLS, bảng toàn tenant có lý do, hàm đếm và hàm xóa RAISE khi thiếu hay
+    lệch `app.tenant_id`, test âm CP27 đọc và ghi chéo tenant); phân quyền (route công khai lấy tenant từ token đã kiểm
+    chữ ký; token sai là 404 như không tồn tại); tự chủ (sàn ở `ToolExecutor`, nơi hiệu ứng xảy ra, sau approval và phát
+    lại, trước giành lượt; không sàn thì không gửi); nội dung không tin cậy (địa chỉ từ đầu vào công cụ chuẩn hóa và
+    băm, không lưu nguyên văn; link hủy chèn sau khi băm đầu vào); audit (dòng `blocked` và `marketing.send_refused`
+    cùng một giao dịch; `marketing.sent` mang `consent_record_id`); mặc định (thiếu đồng ý là từ chối, trùng thời điểm
+    đọc là `withdrawn`, thiếu sàn là từ chối, spec im lặng về gửi tin là nạp lỗi). Test âm ở mỗi chỗ.
+  - Mutation `mutations/08.yaml`: 18/18 đỏ, đối chứng xanh (lượt đầu 17/18: đột biến CP27 sửa `WHERE` trong khi test
+    giữ `RAISE`; viết lại).
+  - Độ trễ (bước 10), lời gọi công cụ gửi tin qua `ToolExecutor`, 200 lần ấm, PostgreSQL thật: không sàn P50/P95/P99
+    50,8/63,7/70,3 ms (lần hai 50,6/66,4/75,3); có sàn 85,3/102,7/109,6 ms (86,4/107,3/116,4). Trong ngân sách
+    (P95 ≤ 300 ms); P95 xấu hơn khoảng 60%: đó là phần ticket đòi — một giao dịch riêng (hai khóa tư vấn, năm câu đọc,
+    một câu ghi) commit trước khi gửi (R3.9), cộng một giao dịch ghi `marketing.sent` sau khi gửi, và một lần đọc phát
+    lại trước sàn.
+  - Cổng: ruff, format, mypy, `make test-unit` (1743), `test-contract`, `test-architecture`, kiểm manifest xanh;
+    integration `dw_platform` (482), `dw_agent_runtime`, `apps/api`, `apps/worker` xanh; web: typecheck, lint, test
+    allowlist antd xanh.
+  - Để cho đóng wave: `reviewing-deployment-security` (route công khai mới), đo trang `/unsubscribe/[token]` bằng
+    Playwright.
