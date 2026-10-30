@@ -67,6 +67,10 @@ from dw_platform.adapters.persistence.digital_workers_repo import (
     SqlScopedAudit,
 )
 from dw_platform.adapters.persistence.directory import SqlWorkspaceDirectory
+from dw_platform.adapters.persistence.dw_autonomy_repo import (
+    SqlDwAutonomyRepository,
+    SqlScorecardRepository,
+)
 from dw_platform.adapters.persistence.effect_key_store import SqlEffectKeyLookup
 from dw_platform.adapters.persistence.hierarchy_repo import SqlHierarchyRepository
 from dw_platform.adapters.persistence.idempotency_store import SqlIdempotencyStore
@@ -97,6 +101,7 @@ from dw_platform.application.approval_codes import ApprovalSubjectVersions, Deci
 from dw_platform.application.authorization import ScopeAuthorizationService
 from dw_platform.application.decision_gate import DW_DECISION, DwProposalMask
 from dw_platform.application.digital_workers import DigitalWorkerService
+from dw_platform.application.dw_autonomy import DwAutonomyService
 from dw_platform.application.entitlement import DEFAULT_PLANS, PlanEntitlementService
 from dw_platform.application.hierarchy import HierarchyService
 from dw_platform.application.idempotency import HttpIdempotency
@@ -113,6 +118,7 @@ from dw_platform.application.membership_admin import (
 )
 from dw_platform.application.notifications import NotificationService
 from dw_platform.application.provisioning import ProvisioningService
+from dw_platform.application.scorecard import ScorecardService
 from dw_platform.application.separation_of_duties import SeparationOfDutiesService
 from dw_platform.application.support_access import (
     SupportAccessContextFactory,
@@ -391,6 +397,15 @@ def _build_container(settings: ApiSettings | None) -> ApiContainer:
         id_generator=ids,
     )
     container.digital_workers = digital_workers
+    container.dw_scorecard = ScorecardService(
+        workers=digital_workers, repo=SqlScorecardRepository(session_factory), clock=clock
+    )
+    container.dw_autonomy = DwAutonomyService(
+        workers=digital_workers,
+        repo=SqlDwAutonomyRepository(session_factory),
+        clock=clock,
+        id_generator=ids,
+    )
     # The signed lead intake (leadcare R2): only with a secret of 32 bytes.
     intake_keys = IntakeKeys(settings.intake_signing_secret.get_secret_value().encode())
     if intake_keys.configured:

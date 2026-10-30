@@ -23,7 +23,7 @@ branch for it:
 from __future__ import annotations
 
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 
@@ -152,24 +152,28 @@ def _dw_of(request: ApprovalRequest) -> uuid.UUID:
         ) from exc
 
 
+def _validator_or_business_owner(people: DwPeople) -> Iterable[uuid.UUID | None]:
+    return (people.validator_id, people.business_owner_id)
+
+
 @dataclass(frozen=True)
 class DwDecisionAdmission:
-    """R5.3: the decider of a `dw.decision` is the DW's Validator or Business
-    Owner now, read in the decision's transaction `FOR SHARE`, so a change of
-    people either commits before (and counts) or waits (and does not)."""
+    """Who decides an approval about one DW is some of its people as they are
+    now, read in the decision's transaction `FOR SHARE`, so a change of people
+    either commits before (and counts) or waits (and does not). By default the
+    Validator or Business Owner, for `dw.decision` (R5.3); a raise of autonomy
+    passes its own `deciders` (R8.3)."""
+
+    deciders: Callable[[DwPeople], Iterable[uuid.UUID | None]] = _validator_or_business_owner
+    refusal: str = "only the digital worker's validator or business owner decides this"
 
     async def admit(
         self, uow: PlatformUnitOfWork, request: ApprovalRequest, context: AccessContext
     ) -> Mapping[str, object]:
         people = await uow.dw_people.people_of(_dw_of(request))
-        eligible = (
-            set() if people is None else {people.validator_id, people.business_owner_id} - {None}
-        )
+        eligible = set() if people is None else set(self.deciders(people)) - {None}
         if context.principal_id not in eligible:
-            raise ConflictError(
-                "only the digital worker's validator or business owner decides this",
-                details={"reason_code": "not_eligible_decider"},
-            )
+            raise ConflictError(self.refusal, details={"reason_code": "not_eligible_decider"})
         return {}
 
 

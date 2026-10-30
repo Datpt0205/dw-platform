@@ -483,6 +483,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/digital-workers/{dw_id}/decision-classes/{key}/autonomy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change Decision Class Autonomy
+         * @description Lower at once (R8.1), or open a raise for a second person (R8.2): 202.
+         */
+        post: operations["change_decision_class_autonomy_api_v1_digital_workers__dw_id__decision_classes__key__autonomy_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/digital-workers/{dw_id}/intake-key": {
         parameters: {
             query?: never;
@@ -510,6 +530,23 @@ export interface paths {
         get?: never;
         /** Replace Digital Worker People */
         put: operations["replace_digital_worker_people_api_v1_digital_workers__dw_id__people_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/digital-workers/{dw_id}/scorecard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Digital Worker Scorecard */
+        get: operations["get_digital_worker_scorecard_api_v1_digital_workers__dw_id__scorecard_get"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -1581,6 +1618,32 @@ export interface components {
             resource_type: string;
             /** Trace Id */
             trace_id: string | null;
+        };
+        /** AutonomyChangeView */
+        AutonomyChangeView: {
+            /** Approval Id */
+            approval_id: string | null;
+            /** Decision Class */
+            decision_class: string;
+            /**
+             * Dw Id
+             * Format: uuid
+             */
+            dw_id: string;
+            /** Earned Level */
+            earned_level: string;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "lowered" | "raise_requested";
+            /** Requested Level */
+            requested_level: string;
+        };
+        /** AutonomyRequest */
+        AutonomyRequest: {
+            /** Level */
+            level: string;
         };
         /** Body_submit_feedback_api_v1_feedback_post */
         Body_submit_feedback_api_v1_feedback_post: {
@@ -2654,6 +2717,47 @@ export interface components {
             worker_id: string;
             /** Worker Version */
             worker_version: string;
+        };
+        /** ScorecardDecisionsView */
+        ScorecardDecisionsView: {
+            /** Approved As Is */
+            approved_as_is: number;
+            /** Approved Edited */
+            approved_edited: number;
+            /** Rejected */
+            rejected: number;
+        };
+        /** ScorecardItemsView */
+        ScorecardItemsView: {
+            /** By Status */
+            by_status: {
+                [key: string]: number;
+            };
+            /** Done Alone Rate */
+            done_alone_rate: number | null;
+            /** Handed Off Rate */
+            handed_off_rate: number | null;
+            /** Total */
+            total: number;
+        };
+        /** ScorecardView */
+        ScorecardView: {
+            /** Days */
+            days: number;
+            decisions: components["schemas"]["ScorecardDecisionsView"];
+            /**
+             * Dw Id
+             * Format: uuid
+             */
+            dw_id: string;
+            items: components["schemas"]["ScorecardItemsView"];
+            /** Model Cost Usd */
+            model_cost_usd: string;
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
         };
         /** SetManagerBody */
         SetManagerBody: {
@@ -4446,6 +4550,63 @@ export interface operations {
             };
         };
     };
+    change_decision_class_autonomy_api_v1_digital_workers__dw_id__decision_classes__key__autonomy_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                dw_id: string;
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AutonomyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutonomyChangeView"];
+                };
+            };
+            /** @description a raise waits for approval */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutonomyChangeView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     read_intake_key_api_v1_digital_workers__dw_id__intake_key_get: {
         parameters: {
             query?: never;
@@ -4511,6 +4672,48 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DigitalWorkerView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_digital_worker_scorecard_api_v1_digital_workers__dw_id__scorecard_get: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path: {
+                dw_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScorecardView"];
                 };
             };
             /** @description The request was refused */

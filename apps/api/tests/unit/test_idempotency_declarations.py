@@ -51,7 +51,8 @@ sys.path.insert(0, str(REPO / "scripts"))
 # The operations that take a key today (README, "Idempotent requests"), each
 # with what its service checks. A DW's state and people are checked against
 # the DW the path names, so their route declares a function that calls the
-# service's own `require_owner` (R2.30), held to that below.
+# service's own `require_owner` (R2.30), held to that below; so is a change of
+# its earned level, whose service then tells a raise (BO) from a lowering.
 DECLARED: dict[tuple[str, str], object] = {
     ("POST", "/api/v1/admin/members"): membership_admin.MEMBERS_WRITE,
     ("DELETE", "/api/v1/admin/members/{user_id}"): membership_admin.MEMBERS_WRITE,
@@ -69,6 +70,10 @@ DECLARED: dict[tuple[str, str], object] = {
     (
         "PUT",
         "/api/v1/digital-workers/{dw_id}/people",
+    ): digital_workers_routes._owner_of_path,
+    (
+        "POST",
+        "/api/v1/digital-workers/{dw_id}/decision-classes/{key}/autonomy",
     ): digital_workers_routes._owner_of_path,
     (
         "POST",

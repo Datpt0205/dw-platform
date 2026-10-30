@@ -1,7 +1,8 @@
-"""Digital Workers: /api/v1/digital-workers (digital-worker R1, R2).
+"""Digital Workers: /api/v1/digital-workers (digital-worker R1, R2, R7, R8).
 
 Create a DW with its principal, list and read the workspace's DWs, change a
-DW's state, and replace its four people. The service owns every rule (scopes,
+DW's state, replace its four people, read its scorecard, and raise or lower a
+decision class's earned level. The service owns every rule (scopes,
 the four people, the second person, the roles a principal may hold); the route
 shapes the request and lets a domain error map to its status.
 
@@ -9,17 +10,21 @@ Refusals the web branches on, in `details.reason_code`: 422 `owner_not_member`,
 `validator_cannot_decide`, `tool_unknown`, `work_kinds_empty`, `above_ceiling`,
 `role_not_allowed_for_service`; 403 `grants_not_covered`, `not_dw_owner`; 409
 `invalid_transition`, `second_person_required`, `dw_key_taken`. A DW the caller
-may not read is 404, the same as one that does not exist (R1.5).
+may not read is 404, the same as one that does not exist (R1.5). The scorecard:
+422 `days_out_of_range`. Autonomy: 403 `not_dw_owner`; 404
+`decision_class_not_found`; 422 `above_ceiling`, `level_invalid`,
+`level_unchanged`; 409 `raise_pending`, `level_changed`; 202 when a raise
+waits for its second person.
 """
 
 from __future__ import annotations
 
 from collections.abc import Awaitable
 from datetime import datetime
-from typing import Annotated, Any, cast
+from typing import Annotated, Any, Literal, cast
 from uuid import UUID
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from dw_api.bootstrap import ApiContainer
@@ -37,6 +42,8 @@ from dw_platform.application.digital_workers import (
     CreateDigitalWorker,
     DigitalWorkerService,
 )
+from dw_platform.application.dw_autonomy import AutonomyChange, DwAutonomyService
+from dw_platform.application.scorecard import DEFAULT_DAYS, Scorecard, ScorecardService
 from dw_platform.domain.digital_worker import (
     DecisionClass,
     DigitalWorker,
@@ -53,6 +60,18 @@ def _service(container: ApiContainer) -> DigitalWorkerService:
     if container.digital_workers is None:
         raise InfrastructureError("digital workers are not configured")
     return container.digital_workers
+
+
+def _scorecards(container: ApiContainer) -> ScorecardService:
+    if container.dw_scorecard is None:
+        raise InfrastructureError("digital workers are not configured")
+    return container.dw_scorecard
+
+
+def _autonomy(container: ApiContainer) -> DwAutonomyService:
+    if container.dw_autonomy is None:
+        raise InfrastructureError("digital workers are not configured")
+    return container.dw_autonomy
 
 
 async def _owner_of_path(check: CheckInput) -> None:
@@ -75,6 +94,12 @@ StateIdempotency = Annotated[
 PeopleIdempotency = Annotated[
     IdempotentOperation,
     idempotent(_owner_of_path, operation="PUT /digital-workers/{dw_id}/people"),
+]
+AutonomyIdempotency = Annotated[
+    IdempotentOperation,
+    idempotent(
+        _owner_of_path, operation="POST /digital-workers/{dw_id}/decision-classes/{key}/autonomy"
+    ),
 ]
 
 
@@ -314,3 +339,144 @@ async def replace_digital_worker_people(
         reread=lambda found: _reread(service, context, found),
     )
     return await idempotency.record(view)
+
+
+class ScorecardItemsView(BaseModel):
+    by_status: dict[str, int]
+    total: int
+    # None with no item in the window: no rate, which is not a rate of 0.
+    done_alone_rate: float | None
+    handed_off_rate: float | None
+
+
+class ScorecardDecisionsView(BaseModel):
+    approved_as_is: int
+    approved_edited: int
+    rejected: int
+
+
+class ScorecardView(BaseModel):
+    dw_id: UUID
+    days: int
+    since: datetime
+    items: ScorecardItemsView
+    decisions: ScorecardDecisionsView
+    # A decimal string, exact to the micro-dollar the column keeps.
+    model_cost_usd: str
+
+
+def _scorecard_view(card: Scorecard) -> ScorecardView:
+    counts = card.counts
+    return ScorecardView(
+        dw_id=card.dw_id,
+        days=card.days,
+        since=card.since,
+        items=ScorecardItemsView(
+            by_status=card.items_by_status,
+            total=card.items_total,
+            done_alone_rate=card.done_alone_rate,
+            handed_off_rate=card.handed_off_rate,
+        ),
+        decisions=ScorecardDecisionsView(
+            approved_as_is=counts.approved_as_is,
+            approved_edited=counts.approved_edited,
+            rejected=counts.rejected,
+        ),
+        model_cost_usd=str(counts.model_cost_usd),
+    )
+
+
+@router.get("/{dw_id}/scorecard", response_model=ScorecardView)
+async def get_digital_worker_scorecard(
+    dw_id: UUID,
+    context: RequireAccessContext,
+    container: RequireContainer,
+    days: int = Query(DEFAULT_DAYS),
+) -> ScorecardView:
+    # The range is the service's: 422 `days_out_of_range` (R7.2).
+    return _scorecard_view(await _scorecards(container).scorecard(context, dw_id, days=days))
+
+
+class AutonomyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    level: str
+
+
+class AutonomyChangeView(BaseModel):
+    outcome: Literal["lowered", "raise_requested"]
+    dw_id: UUID
+    decision_class: str
+    # The level in force now: the new one when lowered, the old one while a
+    # raise waits.
+    earned_level: str
+    requested_level: str
+    approval_id: UUID | None
+
+
+def _change_view(change: AutonomyChange) -> AutonomyChangeView:
+    return AutonomyChangeView(
+        outcome=change.kind,
+        dw_id=change.dw_id,
+        decision_class=change.decision_class,
+        earned_level=change.earned_level,
+        requested_level=change.requested_level,
+        approval_id=change.approval_id,
+    )
+
+
+async def _changed(change: Awaitable[AutonomyChange]) -> AutonomyChangeView:
+    return _change_view(await change)
+
+
+async def _reread_change(
+    service: DigitalWorkerService,
+    context: AccessContext,
+    dw_id: UUID,
+    key: str,
+    level: str,
+    found: str,
+) -> AutonomyChangeView:
+    """A retried change whose answer was not stored, read back as it stands:
+    the effect names `<dw>/<class>` for a lowering and the approval for a
+    raise; the same key carries the same body, so `level` is what was asked."""
+    worker = await service.get(context, dw_id)
+    current = next(
+        (c.earned_level for c in worker.configuration.decision_classes if c.key == key), level
+    )
+    raised = "/" not in found
+    return AutonomyChangeView(
+        outcome="raise_requested" if raised else "lowered",
+        dw_id=dw_id,
+        decision_class=key,
+        earned_level=current,
+        requested_level=level,
+        approval_id=UUID(found) if raised else None,
+    )
+
+
+@router.post(
+    "/{dw_id}/decision-classes/{key}/autonomy",
+    response_model=AutonomyChangeView,
+    responses={202: {"model": AutonomyChangeView, "description": "a raise waits for approval"}},
+)
+async def change_decision_class_autonomy(
+    dw_id: UUID,
+    key: str,
+    body: AutonomyRequest,
+    response: Response,
+    context: RequireAccessContext,
+    container: RequireContainer,
+    idempotency: AutonomyIdempotency,
+) -> AutonomyChangeView:
+    """Lower at once (R8.1), or open a raise for a second person (R8.2): 202."""
+    service = _autonomy(container)
+    view = await idempotency.once(
+        status=200,
+        run=lambda effect: _changed(service.change(context, dw_id, key, body.level, effect=effect)),
+        reread=lambda found: _reread_change(
+            _service(container), context, dw_id, key, body.level, found
+        ),
+    )
+    response.status_code = 202 if view.outcome == "raise_requested" else 200
+    return await idempotency.record(view, status_code=response.status_code)

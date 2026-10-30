@@ -73,6 +73,11 @@ from dw_platform.application.decision_gate import (
     DwDecisionAdmission,
     check_edited_proposal,
 )
+from dw_platform.application.dw_autonomy import (
+    DW_AUTONOMY_PREFIX,
+    DW_AUTONOMY_RAISE,
+    RAISE_ADMISSION,
+)
 from dw_platform.application.ports import PlatformUnitOfWorkFactory
 from dw_platform.application.work_queue import WorkQueue
 
@@ -302,13 +307,15 @@ def build_runtime(
         # workspace once approved: the person whose run proposed it may not
         # vouch for it alone, and whoever does says why. A context adds its own
         # prefixes with `|=` where it is wired.
-        strict_approval_prefixes=frozenset({"memory."}),
+        strict_approval_prefixes=frozenset({"memory.", DW_AUTONOMY_PREFIX}),
         # And nobody decides on a memory they are not cleared to read.
         decision_guards={MEMORY_REVIEW: require_clearance_for_review},
         # A Digital Worker's decision is decided by its Validator or Business
         # Owner as they are at that moment, and an edit keeps to the
         # proposal's schema and locked fields (digital-worker R5.3, R5.4).
-        type_admissions={DW_DECISION: DwDecisionAdmission()},
+        # A raise of a DW's earned level is decided by a second person, its
+        # Validator or Technical Owner, with a reason (digital-worker R8.3).
+        type_admissions={DW_DECISION: DwDecisionAdmission(), DW_AUTONOMY_RAISE: RAISE_ADMISSION},
         proposal_editors={DW_DECISION: check_edited_proposal},
         telemetry=telemetry,
     )

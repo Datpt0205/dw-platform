@@ -70,6 +70,7 @@ from dw_platform.adapters.persistence.digital_workers_repo import (
     SqlDigitalWorkerRepository,
     SqlDwMembershipCheck,
 )
+from dw_platform.adapters.persistence.dw_autonomy_repo import SqlDwAutonomyRepository
 from dw_platform.adapters.persistence.effect_key_store import (
     EFFECT_KEYS,
     SqlEffectKeyRetention,
@@ -97,6 +98,12 @@ from dw_platform.application.approval_codes import ApprovalSubjectVersions, Deci
 from dw_platform.application.authorization import ScopeAuthorizationService
 from dw_platform.application.channel_access import LinkedUserAccess
 from dw_platform.application.decision_gate import DW_DECISION, DwDecisionAdmission
+from dw_platform.application.dw_autonomy import (
+    DW_AUTONOMY_PREFIX,
+    DW_AUTONOMY_RAISE,
+    RAISE_ADMISSION,
+    RaiseSettler,
+)
 from dw_platform.application.work_queue import WorkQueue
 from dw_platform.retention_policy import RetentionPurgerRegistry, load_retention_policy
 from dw_worker.composition import (
@@ -111,6 +118,7 @@ from dw_worker.composition import (
 )
 from dw_worker.consumers import ConsumerRegistry
 from dw_worker.consumers.channel_delivery import build_channel_delivery_consumer
+from dw_worker.consumers.dw_autonomy import DW_AUTONOMY_RAISE_DECIDED, build_raise_handler
 from dw_worker.consumers.dw_timers import INTERVAL_SECONDS as DW_TIMERS_INTERVAL_SECONDS
 from dw_worker.consumers.dw_timers import build_dw_timers_consumer
 from dw_worker.consumers.dw_work import INTERVAL_SECONDS as DW_WORK_INTERVAL_SECONDS
@@ -193,9 +201,10 @@ def build_channel_decision_command(
         run_store=runner.run_store,
         clock=clock,
         id_generator=ids,
-        # The same decider rule as the API's (digital-worker R5.3). A chat
-        # carries no edited proposal, so no editor: an edit is refused here.
-        type_admissions={DW_DECISION: DwDecisionAdmission()},
+        # The same decider rules as the API's (digital-worker R5.3, R8.3). A
+        # chat carries no edited proposal, so no editor: an edit is refused here.
+        type_admissions={DW_DECISION: DwDecisionAdmission(), DW_AUTONOMY_RAISE: RAISE_ADMISSION},
+        strict_approval_prefixes=frozenset({DW_AUTONOMY_PREFIX}),
         telemetry=runner.telemetry,
     )
     flow.strict_approval_prefixes |= strict_approval_prefixes
@@ -424,6 +433,10 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
                 # Writes the vector that lets a later recall order a long list.
                 memory_vectors,
             )
+        )
+        # A decided raise of a DW's earned level (digital-worker R8.6).
+        handlers[DW_AUTONOMY_RAISE_DECIDED] = build_raise_handler(
+            RaiseSettler(repo=SqlDwAutonomyRepository(sessions), clock=clock, id_generator=ids)
         )
         # Pinned by filename, like every other versioned artifact here: the
         # answer to a retention question has to name the version that gave it.

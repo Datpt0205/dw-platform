@@ -367,6 +367,71 @@
         "title": "AuditEventView",
         "type": "object"
       },
+      "AutonomyChangeView": {
+        "properties": {
+          "approval_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approval Id"
+          },
+          "decision_class": {
+            "title": "Decision Class",
+            "type": "string"
+          },
+          "dw_id": {
+            "format": "uuid",
+            "title": "Dw Id",
+            "type": "string"
+          },
+          "earned_level": {
+            "title": "Earned Level",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "lowered",
+              "raise_requested"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "requested_level": {
+            "title": "Requested Level",
+            "type": "string"
+          }
+        },
+        "required": [
+          "outcome",
+          "dw_id",
+          "decision_class",
+          "earned_level",
+          "requested_level",
+          "approval_id"
+        ],
+        "title": "AutonomyChangeView",
+        "type": "object"
+      },
+      "AutonomyRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "level": {
+            "title": "Level",
+            "type": "string"
+          }
+        },
+        "required": [
+          "level"
+        ],
+        "title": "AutonomyRequest",
+        "type": "object"
+      },
       "Body_submit_feedback_api_v1_feedback_post": {
         "properties": {
           "images": {
@@ -2886,6 +2951,112 @@
           "release_manifest_ref"
         ],
         "title": "RunView",
+        "type": "object"
+      },
+      "ScorecardDecisionsView": {
+        "properties": {
+          "approved_as_is": {
+            "title": "Approved As Is",
+            "type": "integer"
+          },
+          "approved_edited": {
+            "title": "Approved Edited",
+            "type": "integer"
+          },
+          "rejected": {
+            "title": "Rejected",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "approved_as_is",
+          "approved_edited",
+          "rejected"
+        ],
+        "title": "ScorecardDecisionsView",
+        "type": "object"
+      },
+      "ScorecardItemsView": {
+        "properties": {
+          "by_status": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "By Status",
+            "type": "object"
+          },
+          "done_alone_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Done Alone Rate"
+          },
+          "handed_off_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Handed Off Rate"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "by_status",
+          "total",
+          "done_alone_rate",
+          "handed_off_rate"
+        ],
+        "title": "ScorecardItemsView",
+        "type": "object"
+      },
+      "ScorecardView": {
+        "properties": {
+          "days": {
+            "title": "Days",
+            "type": "integer"
+          },
+          "decisions": {
+            "$ref": "#/components/schemas/ScorecardDecisionsView"
+          },
+          "dw_id": {
+            "format": "uuid",
+            "title": "Dw Id",
+            "type": "string"
+          },
+          "items": {
+            "$ref": "#/components/schemas/ScorecardItemsView"
+          },
+          "model_cost_usd": {
+            "title": "Model Cost Usd",
+            "type": "string"
+          },
+          "since": {
+            "format": "date-time",
+            "title": "Since",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dw_id",
+          "days",
+          "since",
+          "items",
+          "decisions",
+          "model_cost_usd"
+        ],
+        "title": "ScorecardView",
         "type": "object"
       },
       "SetManagerBody": {
@@ -5998,6 +6169,107 @@
         ]
       }
     },
+    "/api/v1/digital-workers/{dw_id}/decision-classes/{key}/autonomy": {
+      "post": {
+        "description": "Lower at once (R8.1), or open a raise for a second person (R8.2): 202.",
+        "operationId": "change_decision_class_autonomy_api_v1_digital_workers__dw_id__decision_classes__key__autonomy_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dw_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dw Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AutonomyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutonomyChangeView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutonomyChangeView"
+                }
+              }
+            },
+            "description": "a raise waits for approval"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Change Decision Class Autonomy",
+        "tags": [
+          "digital-workers"
+        ]
+      }
+    },
     "/api/v1/digital-workers/{dw_id}/intake-key": {
       "get": {
         "operationId": "read_intake_key_api_v1_digital_workers__dw_id__intake_key_get",
@@ -6127,6 +6399,69 @@
           }
         },
         "summary": "Replace Digital Worker People",
+        "tags": [
+          "digital-workers"
+        ]
+      }
+    },
+    "/api/v1/digital-workers/{dw_id}/scorecard": {
+      "get": {
+        "operationId": "get_digital_worker_scorecard_api_v1_digital_workers__dw_id__scorecard_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dw_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dw Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "title": "Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScorecardView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Get Digital Worker Scorecard",
         "tags": [
           "digital-workers"
         ]

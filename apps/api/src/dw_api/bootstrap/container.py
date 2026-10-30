@@ -57,6 +57,7 @@ from dw_platform.application.authorization import ScopeAuthorizationService
 from dw_platform.application.cache import CachePort
 from dw_platform.application.channel_access import ChannelPreferencesPort
 from dw_platform.application.digital_workers import DigitalWorkerService
+from dw_platform.application.dw_autonomy import DwAutonomyService
 from dw_platform.application.effect_keys import EffectKeyPort
 from dw_platform.application.entitlement import PlanEntitlementService
 from dw_platform.application.hierarchy import HierarchyService
@@ -78,6 +79,7 @@ from dw_platform.application.ports import (
     WorkspaceDirectoryPort,
 )
 from dw_platform.application.provisioning import ProvisioningService
+from dw_platform.application.scorecard import ScorecardService
 from dw_platform.application.separation_of_duties import SeparationOfDutiesService
 from dw_platform.application.support_access import (
     StaffGrantsListPort,
@@ -169,6 +171,10 @@ class ApiContainer:
     # Digital Workers (digital-worker R1, R2): wired with the agent runtime,
     # whose tool register a DW's `allowed_tools` is checked against.
     digital_workers: DigitalWorkerService | None = None
+    # A DW's scorecard and the raising and lowering of its earned levels
+    # (digital-worker R7, R8); wired with `digital_workers`.
+    dw_scorecard: ScorecardService | None = None
+    dw_autonomy: DwAutonomyService | None = None
     # The queue people and DWs share (digital-worker R3, R4); Postgres only.
     work_queue: WorkQueue | None = None
     # A work item's `trail`, read from its run (wf-lite R6.13); with the runtime.
