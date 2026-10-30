@@ -332,3 +332,7 @@ class WorkerSettings(BaseSettings):
                 f"a vector store is required in the {self.profile} profile - "
                 "the in-memory index is not durable"
             )
+        # The store answers only with its key (runtime-hardening R8.2). The
+        # worker reads no Valkey.
+        if not self.qdrant_api_key:
+            raise RuntimeError(f"a Qdrant API key is required in the {self.profile} profile")

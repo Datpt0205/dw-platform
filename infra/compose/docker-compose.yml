@@ -32,6 +32,7 @@ volumes:
   postgres-data:
   qdrant-data:
   valkey-data:
+  langfuse-valkey-data:
   s3-data:
   keycloak-data:
   clickhouse-data:
@@ -42,7 +43,7 @@ volumes:
 services:
   # ------------------------------------------------------------------ data --
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16.15-alpine@sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab
     profiles: ["infra", "full", "observability", "migration"]
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?}
@@ -52,6 +53,7 @@ services:
       DW_DB_APP_PASSWORD: ${DW_DB_APP_PASSWORD:?}
       DW_DB_AGENT_RO_PASSWORD: ${DW_DB_AGENT_RO_PASSWORD:?}
       DW_DB_PROVISIONER_PASSWORD: ${DW_DB_PROVISIONER_PASSWORD:?}
+      DW_DB_MONITOR_PASSWORD: ${DW_DB_MONITOR_PASSWORD:?}
     command: ["postgres", "-c", "wal_level=logical"]
     volumes:
       - postgres-data:/var/lib/postgresql/data
@@ -74,8 +76,13 @@ services:
     restart: unless-stopped
 
   qdrant:
-    image: qdrant/qdrant:v1.13.4
+    # Answers only with its API key (runtime-hardening R8.1): `:?` refuses to
+    # start an open store when the key is empty or missing. The healthcheck is a
+    # TCP probe and needs no key.
+    image: qdrant/qdrant:v1.13.4@sha256:318c11b72aaab96b36e9662ad244de3cabd0653a1b942d4e8191f18296c81af0
     profiles: ["infra", "full"]
+    environment:
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:?}
     volumes:
       - qdrant-data:/qdrant/storage
     ports:
@@ -91,17 +98,31 @@ services:
     restart: unless-stopped
 
   valkey:
-    image: valkey/valkey:8-alpine
-    profiles: ["infra", "full", "observability"]
+    image: valkey/valkey:8.1.10-alpine@sha256:081c2f5cb575efc901aa80ff9cdbd1ec6a301682fd35e1ebb4b0990a4a4a8507
+    # The platform's cache only: Langfuse has its own (`langfuse-valkey`), so
+    # no observability service holds the password of the cache that holds
+    # every tenant's access contexts (runtime-hardening R8.1).
+    profiles: ["infra", "full"]
     command:
-      ["valkey-server", "--maxmemory-policy", "noeviction", "--save", "60", "1"]
+      [
+        "valkey-server",
+        "--maxmemory-policy",
+        "noeviction",
+        "--save",
+        "60",
+        "1",
+        "--requirepass",
+        "${REDIS_PASSWORD:?}",
+      ]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?}
     volumes:
       - valkey-data:/data
     ports:
       - "127.0.0.1:${DW_VALKEY_HOST_PORT:-6379}:6379"
     networks: [dw-internal, dw-edge]
     healthcheck:
-      test: ["CMD", "valkey-cli", "ping"]
+      test: ["CMD-SHELL", 'valkey-cli -a "$$REDIS_PASSWORD" --no-auth-warning ping | grep -q PONG']
       interval: 5s
       timeout: 3s
       retries: 6
@@ -121,7 +142,7 @@ services:
     # fail-open default, and the contract test's unsigned-request case guards
     # it. The variable names are still MINIO_ROOT_* so existing .env files and
     # server env keep working; they are the object store's root credentials.
-    image: chrislusf/seaweedfs:4.48
+    image: chrislusf/seaweedfs:4.48@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d
     profiles: ["infra", "full", "observability"]
     command: ["mini", "-dir=/data"]
     environment:
@@ -144,7 +165,7 @@ services:
     # Creates the buckets with a generic S3 client (rclone), not the server's
     # own tooling, so the next server swap leaves this job alone. `rclone
     # mkdir` on an existing bucket succeeds (measured), so re-running is safe.
-    image: rclone/rclone:1.75.1
+    image: rclone/rclone:1.75.1@sha256:45401ad7410db1d67ffdb58e19059ad20b0d8e0285a60e38bbec55cc1019c7a5
     profiles: ["infra", "full", "observability"]
     depends_on:
       s3:
@@ -169,7 +190,7 @@ services:
     restart: "no"
 
   keycloak:
-    image: quay.io/keycloak/keycloak:26.7.2
+    image: quay.io/keycloak/keycloak:26.7.2@sha256:9d1f1b2b7261ff53c66cb1092dfcdc34a5fb77e81f9e6a6e75b8b6a795de8067
     profiles: ["infra", "full"]
     # Production mode ("start", not "start-dev"): start-dev disables production
     # hardening (relaxes hostname/HTTPS, uses dev caches) and Keycloak refuses to
@@ -287,11 +308,14 @@ services:
       DW_APPROVAL_CODE_SECRET: ${DW_APPROVAL_CODE_SECRET:-}
       ZALO_BOT_LINK: ${ZALO_BOT_LINK:-}
       QDRANT_URL: http://qdrant:6333
+      QDRANT_API_KEY: ${QDRANT_API_KEY:?}
       QDRANT_COLLECTION: ${QDRANT_COLLECTION:-dw_knowledge}
-      REDIS_URL: redis://valkey:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD:?}@valkey:6379/0
       S3_ENDPOINT_URL: http://s3:8333
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?}
+      # Hosts the outbound guard passes by name (runtime-hardening R7.2).
+      DW_API_OUTBOUND_ALLOWED_HOSTS: ${DW_API_OUTBOUND_ALLOWED_HOSTS:-[]}
       # OIDC: the token issuer is the browser-facing Keycloak URL, but the API
       # (inside the network) fetches JWKS via the internal service name.
       DW_API_AUTH_MODE: ${DW_API_AUTH_MODE:-oidc}
@@ -450,11 +474,12 @@ services:
       DW_API_PROFILE: ${DW_API_PROFILE:-local}
       DW_WORKER_DATABASE_URL: postgresql+asyncpg://dw_app:${DW_DB_APP_PASSWORD:?}@postgres:5432/dw
       QDRANT_URL: http://qdrant:6333
+      QDRANT_API_KEY: ${QDRANT_API_KEY:?}
       QDRANT_COLLECTION: ${QDRANT_COLLECTION:-dw_knowledge}
-      REDIS_URL: redis://valkey:6379/0
       S3_ENDPOINT_URL: http://s3:8333
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?}
+      DW_WORKER_OUTBOUND_ALLOWED_HOSTS: ${DW_WORKER_OUTBOUND_ALLOWED_HOSTS:-[]}
       # Knowledge ingest consumer: embed with the same provider as the API so
       # uploaded docs land in the same Qdrant collection at the same width.
       DW_WORKER_EMBEDDING_PROVIDER: ${DW_API_EMBEDDING_PROVIDER:-hash}
@@ -526,7 +551,7 @@ services:
 
   # ------------------------------------------------- optional observability --
   clickhouse:
-    image: clickhouse/clickhouse-server:24.8-alpine
+    image: clickhouse/clickhouse-server:24.8.14-alpine@sha256:b002e56ed5c16e224c312527f6fcba7e77216fec5d7a88a7828f59efc614feb5
     profiles: ["observability"]
     environment:
       CLICKHOUSE_DB: langfuse
@@ -548,7 +573,7 @@ services:
     restart: unless-stopped
 
   langfuse-worker:
-    image: langfuse/langfuse-worker:3
+    image: langfuse/langfuse-worker:3.225.15@sha256:1249cc8b38bc5b3e64339f9eda7c75ae6db50e12de6ee2ce3478020ff7dbd5c5
     profiles: ["observability"]
     environment: &langfuse-env
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/langfuse
@@ -556,7 +581,7 @@ services:
       CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
       CLICKHOUSE_USER: langfuse
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?}
-      REDIS_CONNECTION_STRING: redis://valkey:6379/1
+      REDIS_CONNECTION_STRING: redis://:${LANGFUSE_REDIS_PASSWORD:?}@langfuse-valkey:6379/0
       LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
       LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://s3:8333
       LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
@@ -572,14 +597,40 @@ services:
         condition: service_healthy
       clickhouse:
         condition: service_healthy
-      valkey:
+      langfuse-valkey:
         condition: service_healthy
       s3:
         condition: service_healthy
     restart: unless-stopped
 
+  # Langfuse's queue and cache, apart from the platform's (runtime-hardening
+  # R8.1): its password opens nothing of the platform's.
+  langfuse-valkey:
+    image: valkey/valkey:8.1.10-alpine@sha256:081c2f5cb575efc901aa80ff9cdbd1ec6a301682fd35e1ebb4b0990a4a4a8507
+    profiles: ["observability"]
+    command:
+      [
+        "valkey-server",
+        "--maxmemory-policy",
+        "noeviction",
+        "--requirepass",
+        "${LANGFUSE_REDIS_PASSWORD:?}",
+      ]
+    environment:
+      REDIS_PASSWORD: ${LANGFUSE_REDIS_PASSWORD:?}
+    volumes:
+      - langfuse-valkey-data:/data
+    networks: [dw-internal]
+    healthcheck:
+      test: ["CMD-SHELL", 'valkey-cli -a "$$REDIS_PASSWORD" --no-auth-warning ping | grep -q PONG']
+      interval: 5s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
+    restart: unless-stopped
+
   langfuse-web:
-    image: langfuse/langfuse:3
+    image: langfuse/langfuse:3.225.15@sha256:dfae5abcdacdf2c868f9a3850616899260e8a379817ef5678e4021d15d446883
     profiles: ["observability"]
     environment:
       <<: *langfuse-env
@@ -606,16 +657,15 @@ services:
   # (`docker compose --profile full --profile observability up`), since
   # what's scraped — api, worker — lives there.
   postgres-exporter:
-    image: quay.io/prometheuscommunity/postgres-exporter:v0.17.1
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.17.1@sha256:38606faa38c54787525fb0ff2fd6b41b4cfb75d455c1df294927c5f611699b17
     profiles: ["observability"]
     environment:
-      # dw_app, not a new role: it holds no BYPASSRLS, and the catalog views
-      # this exporter reads (pg_stat_database, pg_settings, pg_stat_bgwriter)
-      # are world-readable regardless of RLS, which only ever governs regular
-      # tables with a policy on them. Verified against this exact image
-      # before writing this — pg_settings_max_connections and
-      # pg_stat_database_numbackends both came back populated.
-      DATA_SOURCE_NAME: postgresql://dw_app:${DW_DB_APP_PASSWORD:?}@postgres:5432/dw?sslmode=disable
+      # dw_monitor, which holds pg_monitor and nothing else (runtime-hardening
+      # R8.4): the exporter reads statistics, never a tenant's rows, and a
+      # leaked exporter password opens no table. Created by
+      # infra/compose/init/init-databases.sh on a new cluster and by
+      # scripts/create_monitor_role.py on an existing one.
+      DATA_SOURCE_NAME: postgresql://dw_monitor:${DW_DB_MONITOR_PASSWORD:?}@postgres:5432/dw?sslmode=disable
     networks: [dw-internal]
     depends_on:
       postgres:
@@ -627,7 +677,7 @@ services:
   # is already in every base image, so this needs no package install (and no
   # network call) on every `up`.
   alertmanager-config:
-    image: alpine:3.20
+    image: alpine:3.20.10@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
     profiles: ["observability"]
     environment:
       ALERTMANAGER_WEBHOOK_URL: ${ALERTMANAGER_WEBHOOK_URL:-}
@@ -639,7 +689,7 @@ services:
     restart: "no"
 
   alertmanager:
-    image: prom/alertmanager:v0.28.1
+    image: prom/alertmanager:v0.28.1@sha256:27c475db5fb156cab31d5c18a4251ac7ed567746a2483ff264516437a39b15ba
     profiles: ["observability"]
     volumes:
       - alertmanager-config:/etc/alertmanager
@@ -657,7 +707,7 @@ services:
     restart: unless-stopped
 
   prometheus:
-    image: prom/prometheus:v3.6.0
+    image: prom/prometheus:v3.6.0@sha256:76947e7ef22f8a698fc638f706685909be425dbe09bd7a2cd7aca849f79b5f64
     profiles: ["observability"]
     volumes:
       - ../prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro

@@ -41,6 +41,9 @@ class RuntimeUrls:
     migrator: str
     app: str
     qdrant_url: str
+    # Qdrant answers only with its key in every compose profile
+    # (runtime-hardening R8.1); None against a Qdrant started without one.
+    qdrant_api_key: str | None
     minio_endpoint: str
     minio_access_key: str
     minio_secret_key: str
@@ -54,6 +57,7 @@ def runtime_urls() -> RuntimeUrls:
         migrator=urls.migrator,
         app=urls.app,
         qdrant_url=env.get("QDRANT_URL", "http://localhost:6333"),
+        qdrant_api_key=env.get("QDRANT_API_KEY") or None,
         minio_endpoint=env.get("S3_ENDPOINT_URL", "http://localhost:9000").split("//")[-1],
         minio_access_key=env.get("MINIO_ROOT_USER", "dw-minio"),
         minio_secret_key=env.get("MINIO_ROOT_PASSWORD", "change-me-minio"),

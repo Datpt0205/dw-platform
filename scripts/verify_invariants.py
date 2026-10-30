@@ -1,4 +1,4 @@
-"""Check the three invariants this repository has actually broken.
+"""Check the invariants this repository has actually broken.
 
 Not a linter and not a generic security scanner — both already run in CI and
 neither would have caught any of these. Each check below exists because the
@@ -18,6 +18,14 @@ detect. The counts are from `.claude/rules/failure-modes.md`.
 3. A value a `Literal` accepts that no code branches on (found 4 times). The schema
    took `approval_policy: conditional`, no branch matched it, and it silently
    behaved as `never` — so anyone who wrote it expecting a gate got none.
+
+4. A third-party image that is not the image that was scanned
+   (runtime-hardening R8.3): a tag can be re-pushed, so every `image:` in
+   `infra/compose/` not built here carries a version tag and its `@sha256:`.
+
+5. The metrics exporter connecting as the application (runtime-hardening
+   R8.4): `postgres-exporter`'s `DATA_SOURCE_NAME` names `dw_monitor`, which
+   holds `pg_monitor` and no table, never `dw_app`.
 
 Usage: uv run python scripts/verify_invariants.py
 Exit 0 clean, 1 violations.
@@ -170,12 +178,53 @@ def check_literal_values_are_handled(sources: dict[Path, str]) -> list[str]:
     return violations
 
 
+# ------------------------------------------------------------ checks 4, 5 --
+
+COMPOSE = REPO_ROOT / "infra" / "compose"
+# Images this repository builds; everything else is pulled and must be pinned.
+_LOCAL_IMAGE = re.compile(r"^dw-[a-z0-9-]+:local$")
+_IMAGE_LINE = re.compile(r"^\s*image:\s*[\"']?([^\s\"'#]+)", re.M)
+_PINNED = re.compile(r"^[^@\s]+:[^@\s:]*\d[^@\s:]*@sha256:[0-9a-f]{64}$")
+
+
+def check_third_party_images_are_pinned(compose: Path = COMPOSE) -> list[str]:
+    violations = []
+    for path in sorted(compose.glob("*.yml")):
+        for image in _IMAGE_LINE.findall(path.read_text(encoding="utf-8")):
+            if _LOCAL_IMAGE.match(image) or _PINNED.match(image):
+                continue
+            violations.append(f"{path.name}: {image} has no version tag and @sha256: digest")
+    return violations
+
+
+# The service's block: its indented lines, up to the next top-level key.
+_EXPORTER = re.compile(r"^  postgres-exporter:\n(?P<body>(?:    .*\n|[ \t]*\n)*)", re.M)
+
+
+def check_exporter_connects_as_monitor(compose: Path = COMPOSE) -> list[str]:
+    found = []
+    for path in sorted(compose.glob("*.yml")):
+        for block in _EXPORTER.finditer(path.read_text(encoding="utf-8")):
+            for dsn in re.findall(r"DATA_SOURCE_NAME:\s*(\S+)", block.group("body")):
+                found.append((path.name, dsn))
+    if not found:
+        return ["no postgres-exporter DATA_SOURCE_NAME found in infra/compose"]
+    return [
+        f"{name}: postgres-exporter connects as {dsn.split('//', 1)[-1].split(':', 1)[0]},"
+        " not dw_monitor"
+        for name, dsn in found
+        if not dsn.split("//", 1)[-1].startswith("dw_monitor:")
+    ]
+
+
 def main() -> int:
     sources = _python_sources()
     checks = (
         ("tenant tables have row-level security", check_tenant_tables_have_rls()),
         ("declared fields are read", check_declared_fields_are_read(sources)),
         ("literal values are handled", check_literal_values_are_handled(sources)),
+        ("third-party images are pinned", check_third_party_images_are_pinned()),
+        ("the exporter connects as dw_monitor", check_exporter_connects_as_monitor()),
     )
     failed = False
     for label, violations in checks:

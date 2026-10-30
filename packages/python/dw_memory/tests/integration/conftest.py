@@ -43,8 +43,8 @@ async def ranker() -> AsyncIterator[QdrantMemoryRanker]:
     guard that cannot run is a guard that cannot fail. Unreachable is a failure
     for the same reason it is for Postgres above: both are `make infra-up`.
     """
-    url = runtime_urls().qdrant_url
-    client = AsyncQdrantClient(url=url)
+    urls = runtime_urls()
+    client = AsyncQdrantClient(url=urls.qdrant_url, api_key=urls.qdrant_api_key)
     # Its own collection per test: these write points, and a leftover from a
     # previous run would make the assertions read someone else's data.
     collection = f"dw_memory_test_{uuid.uuid4().hex[:8]}"
@@ -55,7 +55,7 @@ async def ranker() -> AsyncIterator[QdrantMemoryRanker]:
         await built.ensure_ready()
     except Exception as exc:  # pragma: no cover - environment, not logic
         await client.close()
-        pytest.fail(f"Qdrant unreachable at {url} — run `make infra-up`. Error: {exc}")
+        pytest.fail(f"Qdrant unreachable at {urls.qdrant_url} — run `make infra-up`. Error: {exc}")
     try:
         yield built
     finally:

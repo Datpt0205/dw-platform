@@ -318,6 +318,32 @@ jobs:
             ./trivy image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed \
               --exit-code 1 --quiet "$image"
           done
+          # The third-party images too, by the digest compose pins
+          # (runtime-hardening R8.3): the image that runs is the image scanned.
+          # Reported, not yet blocking: 12 of the 14 carried fixable HIGH or
+          # CRITICAL findings when they were pinned (30/10/2026), and bumping
+          # them is its own ticket (studio.md, Chờ Đạt).
+          pinned=$(grep -hoE 'image: *[^ ]+@sha256:[0-9a-f]{64}' infra/compose/*.yml \
+            | sed -E 's/image: *//' | sort -u)
+          for image in $pinned; do
+            echo "== $image"
+            ./trivy image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed \
+              --exit-code 0 --quiet --timeout 15m "$image"
+          done
+      - name: The stores refuse a caller without credentials
+        # runtime-hardening R8.1 (RH22), against the stack just started: the
+        # control first (with the key, answered), then without (refused).
+        run: |
+          # Read by name: .env is a compose file, not a shell script.
+          QDRANT_API_KEY=$(grep '^QDRANT_API_KEY=' .env | cut -d= -f2-)
+          REDIS_PASSWORD=$(grep '^REDIS_PASSWORD=' .env | cut -d= -f2-)
+          curl --fail -s -o /dev/null -H "api-key: $QDRANT_API_KEY" http://localhost:6333/collections
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:6333/collections)
+          test "$code" = "401" || { echo "Qdrant answered $code without its key"; exit 1; }
+          docker compose --env-file .env -f infra/compose/docker-compose.yml --profile full \
+            exec -T valkey valkey-cli -a "$REDIS_PASSWORD" --no-auth-warning ping | grep -q PONG
+          docker compose --env-file .env -f infra/compose/docker-compose.yml --profile full \
+            exec -T valkey valkey-cli ping | grep -q NOAUTH
       - name: Container logs
         # Only the `ps` table was captured before, which says a container is
         # unhealthy and never why. Three runs were spent guessing at a startup

@@ -89,8 +89,11 @@ class _Clock:
 
 @pytest.fixture
 async def memory_store() -> AsyncIterator[QdrantMemoryRanker]:
-    url = load_env().get("QDRANT_URL", "http://127.0.0.1:6333")
-    client = AsyncQdrantClient(url=url)
+    env = load_env()
+    client = AsyncQdrantClient(
+        url=env.get("QDRANT_URL", "http://127.0.0.1:6333"),
+        api_key=env.get("QDRANT_API_KEY") or None,
+    )
     collection = f"dw_memory_offboarding_{uuid.uuid4().hex[:8]}"
     store = QdrantMemoryRanker(
         client=client, embedder=HashEmbeddingAdapter(), collection=collection
@@ -99,7 +102,8 @@ async def memory_store() -> AsyncIterator[QdrantMemoryRanker]:
         await store.ensure_ready()
     except Exception as exc:  # pragma: no cover - environment, not logic
         await client.close()
-        pytest.fail(f"Qdrant unreachable at {url} — run `make infra-up`. Error: {exc}")
+        where = env.get("QDRANT_URL")
+        pytest.fail(f"Qdrant unreachable at {where} — run `make infra-up`. Error: {exc}")
     try:
         yield store
     finally:

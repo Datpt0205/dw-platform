@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import AliasChoices, Field, SecretStr, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -363,6 +364,14 @@ class ApiSettings(BaseSettings):
                 raise RuntimeError(
                     "a vector store is required in the "
                     f"{self.profile} profile — the in-memory index is not durable"
+                )
+            # The stores answer only with credentials (runtime-hardening R8.2): a
+            # process that would talk to one without them refuses to start.
+            if not self.qdrant_api_key:
+                raise RuntimeError(f"a Qdrant API key is required in the {self.profile} profile")
+            if self.redis_url and not urlsplit(self.redis_url).password:
+                raise RuntimeError(
+                    f"REDIS_URL must carry the Valkey password in the {self.profile} profile"
                 )
             if not self.cors_origins:
                 raise RuntimeError(

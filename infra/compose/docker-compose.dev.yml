@@ -17,8 +17,8 @@
 # SECURITY — this binds real ports on a public IP. Non-negotiable before up:
 #   1. Firewall allowlist: only team IPs may reach the ports above.
 #   2. Strong unique passwords in the server .env (never the .env.example ones).
-#   3. QDRANT_API_KEY / REDIS_PASSWORD / KC_PUBLIC_HOSTNAME / DW_KEYCLOAK_ISSUER
-#      are REQUIRED here (`:?` fails fast).
+#   3. KC_PUBLIC_HOSTNAME / DW_KEYCLOAK_ISSUER are REQUIRED here (`:?` fails
+#      fast); QDRANT_API_KEY / REDIS_PASSWORD are required by the base file.
 # Demo/dev data only — this stack is not a production trust boundary.
 # ===========================================================================
 services:
@@ -27,34 +27,11 @@ services:
       - "0.0.0.0:25432:5432"
 
   qdrant:
-    # Without an API key an exposed Qdrant is open to anyone the firewall lets
-    # through; the key rides in the same header the SDK already sends.
-    environment:
-      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:?}
     ports: !override
       - "0.0.0.0:26333:6333"
       - "0.0.0.0:26334:6334"
 
   valkey:
-    # Same flags as the base file plus auth — `command` replaces wholesale, so
-    # keep the base flags in sync if they change.
-    command:
-      [
-        "valkey-server",
-        "--maxmemory-policy",
-        "noeviction",
-        "--save",
-        "60",
-        "1",
-        "--requirepass",
-        "${REDIS_PASSWORD:?}",
-      ]
-    environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD:?}
-    healthcheck:
-      # Base healthcheck pings unauthenticated, which NOAUTHs once requirepass
-      # is on.
-      test: ["CMD-SHELL", 'valkey-cli -a "$$REDIS_PASSWORD" ping | grep -q PONG']
     ports: !override
       - "0.0.0.0:26379:6379"
 
@@ -71,23 +48,13 @@ services:
       - "0.0.0.0:28686:8080"
 
   # ------------------------------------------------ app services (profile full)
-  # The base file talks to valkey/qdrant over unauthenticated internal URLs;
-  # with requirepass/API key enabled above, every in-container client needs the
-  # credentials too — that is what the env overrides below are for.
   api:
     environment:
-      QDRANT_API_KEY: ${QDRANT_API_KEY:?}
-      REDIS_URL: redis://:${REDIS_PASSWORD:?}@valkey:6379/0
       # Browser origin of the server-hosted web app (cross-origin: web :23000
       # calls api :28000). JSON list — pydantic parses list fields as JSON.
       DW_API_CORS_ORIGINS: '["${DW_PUBLIC_WEB_URL:?}"]'
     ports: !override
       - "0.0.0.0:28000:8000"
-
-  worker:
-    environment:
-      QDRANT_API_KEY: ${QDRANT_API_KEY:?}
-      REDIS_URL: redis://:${REDIS_PASSWORD:?}@valkey:6379/0
 
   web:
     # NEXT_PUBLIC_* build args are interpolated from the server .env by the

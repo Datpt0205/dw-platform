@@ -1,0 +1,87 @@
+# Mutation check of runtime-hardening ticket 02: scripts/mutate.py runs this
+# file. One mutation per Kiểm soát row the ticket implements (RH20-RH24) and
+# per guard it adds (the anonymous bucket, the IPv6 /64, NAT64, allow_private's
+# limits, the allow-list's whole-name match, the settings' refusals).
+mutations:
+  - name: RH20 the address bucket is not counted
+    file: apps/api/src/dw_api/middleware/rate_limit.py
+    old: "        if count > _ADDRESS_FACTOR * self._limit:"
+    new: "        if False:"
+    tests:
+      - apps/api/tests/unit/test_rate_limit.py::test_a_fresh_bearer_per_request_does_not_step_around_the_address
+  - name: R7.1 anonymous traffic gets the address's bearer allowance
+    file: apps/api/src/dw_api/middleware/rate_limit.py
+    old: |2-
+                  count, start = self._count(f"anon:{address}", now)
+                  return start if count > self._limit else None
+    new: |2-
+                  count, start = self._count(f"anon:{address}", now)
+                  return start if count > _ADDRESS_FACTOR * self._limit else None
+    tests:
+      - apps/api/tests/unit/test_rate_limit.py::test_an_anonymous_address_keeps_its_limit_of_l
+  - name: R7.1 an IPv6 address is counted alone
+    file: apps/api/src/dw_api/middleware/rate_limit.py
+    old: "        return str(ipaddress.IPv6Network((address, 64), strict=False))"
+    new: "        return str(address)"
+    tests:
+      - apps/api/tests/unit/test_rate_limit.py::test_ipv6_addresses_count_by_their_64
+  - name: RH21 NAT64 is not unwrapped
+    file: packages/python/dw_kernel/src/dw_kernel/net_guard.py
+    old: "    if address in _NAT64:"
+    new: "    if False:"
+    tests:
+      - packages/python/dw_kernel/tests/unit/test_net_guard.py::test_a_global_address_is_taken
+  - name: RH21 the old predicate (private, loopback, link-local, reserved, unspecified)
+    file: packages/python/dw_kernel/src/dw_kernel/net_guard.py
+    old: "    return address.is_reserved or not address.is_global"
+    new: "    return address.is_reserved or address.is_private or address.is_loopback"
+    tests:
+      - packages/python/dw_kernel/tests/unit/test_net_guard.py::test_an_address_that_is_not_global_is_refused
+  - name: RH21 allow_private lets link-local through
+    file: packages/python/dw_kernel/src/dw_kernel/net_guard.py
+    old: "    if address.is_link_local or address.is_multicast or address.is_unspecified:"
+    new: "    if not allow_private and (address.is_link_local or address.is_multicast or address.is_unspecified):"
+    tests:
+      - packages/python/dw_kernel/tests/unit/test_net_guard.py::test_allow_private_never_lets_link_local_or_metadata_through
+  - name: R7.2 the allow-list matches a suffix
+    file: packages/python/dw_kernel/src/dw_kernel/net_guard.py
+    old: "    if host.lower() in {allowed.lower() for allowed in allowed_hosts}:"
+    new: "    if any(host.lower().endswith(allowed.lower()) for allowed in allowed_hosts):"
+    tests:
+      - packages/python/dw_kernel/tests/unit/test_net_guard.py::test_an_allow_listed_name_passes_by_its_whole_name_without_resolving
+  - name: RH22 a deployed API starts without a Qdrant key
+    file: apps/api/src/dw_api/settings.py
+    old: "            if not self.qdrant_api_key:"
+    new: "            if False:"
+    tests:
+      - apps/api/tests/unit/test_store_credentials_profile.py::test_a_deployed_api_without_a_qdrant_key_does_not_start
+  - name: RH22 a deployed API takes a password-less REDIS_URL
+    file: apps/api/src/dw_api/settings.py
+    old: "            if self.redis_url and not urlsplit(self.redis_url).password:"
+    new: "            if False:"
+    tests:
+      - apps/api/tests/unit/test_store_credentials_profile.py::test_a_deployed_api_with_a_password_less_redis_url_does_not_start
+  - name: RH22 a deployed worker starts without a Qdrant key
+    file: apps/worker/src/dw_worker/settings.py
+    old: "        if not self.qdrant_api_key:"
+    new: "        if False:"
+    tests:
+      - apps/worker/tests/unit/test_worker_model_stack.py::test_a_deployed_worker_without_a_qdrant_key_does_not_start
+  - name: RH23 an image without a digest passes
+    file: scripts/verify_invariants.py
+    old: "            if _LOCAL_IMAGE.match(image) or _PINNED.match(image):"
+    new: "            if True:"
+    tests:
+      - apps/api/tests/unit/test_compose_invariants.py::test_an_image_without_its_digest_is_red
+  - name: RH24 the exporter's role is not checked
+    file: scripts/verify_invariants.py
+    old: '        if not dsn.split("//", 1)[-1].startswith("dw_monitor:")'
+    new: "        if False"
+    tests:
+      - apps/api/tests/unit/test_compose_invariants.py::test_the_exporter_connecting_as_the_app_is_red
+  - name: RH24 dw_monitor bypasses RLS
+    file: scripts/create_monitor_role.py
+    old: 'ATTRIBUTES = "LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE"'
+    new: 'ATTRIBUTES = "LOGIN NOSUPERUSER BYPASSRLS NOCREATEDB NOCREATEROLE"'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_privileges.py::test_the_monitor_role_reads_statistics_and_no_tenant_row

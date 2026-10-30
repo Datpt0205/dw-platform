@@ -54,7 +54,7 @@ def urls() -> RuntimeUrls:
 async def gateway(urls: RuntimeUrls) -> AsyncIterator[KnowledgeGateway]:
     engine = create_async_engine(urls.app, poolclass=NullPool)
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    qdrant = AsyncQdrantClient(url=urls.qdrant_url)
+    qdrant = AsyncQdrantClient(url=urls.qdrant_url, api_key=urls.qdrant_api_key)
     collection = f"dw_knowledge_test_{uuid.uuid4().hex[:8]}"
     minio_client = Minio(
         urls.minio_endpoint,

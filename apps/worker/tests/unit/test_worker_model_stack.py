@@ -54,3 +54,24 @@ def test_a_deployed_worker_is_refused_the_fixture_model() -> None:
     )
     with pytest.raises(RuntimeError, match="mock"):
         build_model_stack_for(settings, _SESSIONS, clock=SystemClock(), telemetry=NullTelemetry())
+
+
+def _deployed_worker(**overrides: object) -> WorkerSettings:
+    values: dict[str, object] = {
+        "profile": "uat",
+        "database_url": "postgresql+asyncpg://u:p@db/dw",
+        "embedding_provider": "openai_compatible",
+        "qdrant_url": "https://qdrant.example:6333",
+        "qdrant_api_key": "unit-test-qdrant-key",
+    }
+    values.update(overrides)
+    return WorkerSettings(**values)  # type: ignore[arg-type]
+
+
+def test_a_deployed_worker_without_a_qdrant_key_does_not_start() -> None:
+    """runtime-hardening R8.2 (RH22). The control: with it, it starts."""
+    _deployed_worker().validate_for_profile()
+    with pytest.raises(RuntimeError, match="Qdrant API key"):
+        _deployed_worker(qdrant_api_key=None).validate_for_profile()
+    with pytest.raises(RuntimeError, match="Qdrant API key"):
+        _deployed_worker(qdrant_api_key="").validate_for_profile()

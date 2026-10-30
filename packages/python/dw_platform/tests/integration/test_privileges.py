@@ -1280,3 +1280,50 @@ async def test_the_work_queue_is_the_applications_and_its_functions_only_dw_apps
         ("dw_app", "platform.dw_work_scopes_due(integer)"),
         ("dw_app", "platform.retire_dw_principal(uuid)"),
     }
+
+
+async def test_the_monitor_role_reads_statistics_and_no_tenant_row(db_urls: DatabaseUrls) -> None:
+    """runtime-hardening R8.4 (RH24): `dw_monitor`, made by the same script a
+    deployed cluster runs, holds `pg_monitor` and nothing else: no bypass, no
+    superuser, and a tenant table answers "permission denied". The control:
+    the statistics the exporter reads are there."""
+    from scripts.create_monitor_role import create_monitor_role
+    from sqlalchemy.engine import make_url
+
+    password = "monitor-test-password"
+    server = db_urls.admin.rsplit("/", 1)[0] + "/postgres"
+    await create_monitor_role(server, password, database=db_urls.app.rsplit("/", 1)[1])
+    admin = create_async_engine(admin_url(db_urls), poolclass=NullPool)
+    try:
+        async with admin.connect() as conn:
+            role = (
+                await conn.execute(
+                    sa.text(
+                        "SELECT rolsuper, rolbypassrls, rolcreaterole, rolcreatedb,"
+                        " ARRAY(SELECT b.rolname FROM pg_auth_members m"
+                        "       JOIN pg_roles b ON b.oid = m.roleid WHERE m.member = r.oid)"
+                        " AS member_of FROM pg_roles r WHERE rolname = 'dw_monitor'"
+                    )
+                )
+            ).one()
+    finally:
+        await admin.dispose()
+    assert (role.rolsuper, role.rolbypassrls, role.rolcreaterole, role.rolcreatedb) == (
+        False,
+        False,
+        False,
+        False,
+    )
+    assert list(role.member_of) == ["pg_monitor"]
+
+    url = make_url(db_urls.app).set(username="dw_monitor", password=password)
+    monitor = create_async_engine(url, poolclass=NullPool)
+    try:
+        async with monitor.connect() as conn:
+            assert await conn.scalar(sa.text("SELECT count(*) FROM pg_stat_database")) > 0
+        for table in ("platform.tenants", "platform.audit_events", "platform.work_items"):
+            async with monitor.connect() as conn:
+                with pytest.raises(sa.exc.ProgrammingError, match="permission denied"):
+                    await conn.execute(sa.text(f"SELECT 1 FROM {table} LIMIT 1"))
+    finally:
+        await monitor.dispose()

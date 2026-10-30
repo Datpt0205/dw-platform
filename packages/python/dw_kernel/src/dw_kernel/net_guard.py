@@ -3,9 +3,10 @@
 One policy for every address the platform calls out to (ADR-0115 decision 5):
 `forbidden_address`. An address that embeds an IPv4 one (IPv4-mapped, 6to4
 `2002::/16`, Teredo, NAT64 `64:ff9b::/96`) is judged by the IPv4 it carries;
-then anything that is not `is_global`, or is multicast, is refused.
-`64:ff9b::a9fe:a9fe` is the reason for the order: Python calls it global, and
-it reaches `169.254.169.254` through a NAT64 gateway (measured 30/10/2026).
+then anything that is not `is_global`, or is multicast, is refused. Python
+files all of NAT64 under the reserved `::/8`, so unwrapping it is what lets a
+NAT64 path to a global address through (`64:ff9b::808:808`, 8.8.8.8), while
+`64:ff9b::a9fe:a9fe` is refused as `169.254.169.254` (measured 30/10/2026).
 
 Fail closed: only http(s), no credentials in the URL, and every address the
 host resolves to must be allowed. `allow_private`, passed only by a process

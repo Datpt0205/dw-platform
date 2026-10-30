@@ -257,6 +257,8 @@ def deployed(**overrides: object) -> ApiSettings:
         "openai_base_url": "https://api.example.com/v1",
         "embedding_provider": "openai_compatible",
         "qdrant_url": "https://qdrant.example:6333",
+        "qdrant_api_key": "unit-test-qdrant-key",
+        "redis_url": "redis://:unit-test-valkey@valkey:6379/0",
         "cors_origins": ["https://app.example.com"],
         "task_connector": "none",
         "database_url": "postgresql+asyncpg://u:p@db/dw",
