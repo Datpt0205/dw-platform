@@ -96,3 +96,15 @@ message`, hai dấu phải khớp hoặc nạp lỗi; `configs/tools` hôm nay k
 - 2026-10-29 (agent, tạm theo ủy quyền): theo gate `checking-plan-readiness` (2 CRITICAL, 5 HIGH): khung giờ cố định `Asia/Ho_Chi_Minh` (không đọc múi giờ công ty, vì đổi múi giờ là nới sàn); test âm chéo tenant cho ba bảng và token (CP27); hàm xóa từ chối tenant không `offboarding`; vị trí của sàn sau approval và phát lại; một người nhận mỗi lời gọi; trần tần suất của tenant qua hàm đếm; `sends_message` bắt buộc khai (CP28); phát lại vẫn kiểm chặn gửi và đồng ý; hủy nhận là trang `GET` và hành động `POST`; token mang tenant, không mang địa chỉ. Nếu sai thì: từng mục quay về bản trước trong lịch sử git.
 - 2026-10-29 (agent, tạm theo ủy quyền): theo lượt xác nhận của gate (không CRITICAL mới): phát lại bị chặn chỉ ghi audit (R3.7 mới); ticket 04 thu về R3.5, R3.12; mọi trường địa chỉ khai trong `recipient_fields`; rate limit cho route hủy; `Admission` mang link hủy cho công cụ; trang xác nhận là trang web antd; token hết hạn 400 ngày; hàm đếm và hàm xóa RAISE khi thiếu hay lệch `app.tenant_id`; test ghi chéo tenant. Gate ĐẠT dựa trên lượt gate và lượt xác nhận.
 - 2026-10-29 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-10-30 (agent): đang làm. Xong bước 1-3 ở `65f1f3b` (migration `0c3e9392cc06`: ba bảng, hai hàm đếm, hàm xóa,
+  trigger chặn xóa; test catalog RLS, quyền, offboarding, phân vùng xanh). Khác với ticket: (1) không có dòng
+  `STUDIO_EXCLUSIONS` — `platform.purge_tenant_marketing` là bước của nền tảng trong sổ bước
+  (`OffboardingPurgeSteps.platform()`, worker dựng từ đó, test bao phủ đọc cùng sổ), nên hai bảng được một bước của
+  lane xóa và R4.5 của studio-skeleton cấm thêm dòng ngoại lệ cho chúng; (2) hai mảnh retention `enforced: false`:
+  `row_delete` chưa có bộ xóa (compliance-pdpl/06, thời hạn tính từ hết quan hệ) và `drop_expired_partitions` hôm nay chỉ
+  xóa `audit_events` (usage-and-limits/02) — `enforced: true` khi không ai thực hiện là kiểm soát trang trí
+  (failure-modes #1); (3) test offboarding seed tenant ở `offboarding` như lane thấy. Còn: bước 4-10. Thiết kế đã chọn
+  cho bước 4-6: `SendRequest`/`Admission` ở `dw_platform.application.marketing_send` (như `ApprovedDecision`),
+  `SendAdmissionPort` ở `dw_agent_runtime.executor` dùng chúng; `ToolSpec.sends_message` bắt buộc khi có hiệu ứng,
+  `ToolDefinition.message`; executor: sau approval, phát lại `find_succeeded` trước sàn, rồi sàn, rồi giành lượt;
+  `unsubscribe_url` đi vào trường `unsubscribe_url` của model đầu vào, sau khi băm đầu vào (phát lại không lệch băm).
