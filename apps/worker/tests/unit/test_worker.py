@@ -138,6 +138,8 @@ def test_only_the_platform_lanes_are_wired() -> None:
     `approval_codes_retention` is the eleventh: single-use decision codes
     (channels Z5) a day old, the database's constant
     (`platform.prune_approval_decision_codes()`), whether or not this host polls.
+    `tool_claims_retention` is the twelfth: tool claims past `expires_at`, which
+    guard nothing once a later call may take them over (runtime-hardening R6.7).
 
     Naming the whole set is the point: a context's lane arriving in this process
     becomes a visible change rather than a silent one.
@@ -155,6 +157,7 @@ def test_only_the_platform_lanes_are_wired() -> None:
         "channel_inbound_messages_retention",
         "channel_deliveries_retention",
         "approval_codes_retention",
+        "tool_claims_retention",
     }
 
 

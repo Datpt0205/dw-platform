@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from fakes import NOW, FakeAuditRepo, FakeExecutionStore, FakeUoWFactory
+from fakes import NOW, FakeAuditRepo, FakeExecutionStore, FakeToolClaims, FakeUoWFactory
 from langchain.agents import create_agent
 from langchain.agents.middleware import AgentMiddleware
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
@@ -30,9 +30,10 @@ from langgraph.checkpoint.memory import InMemorySaver
 from pydantic import BaseModel
 from test_langchain_tools import COPY, LeadInput, LeadOutput, make_definition, make_run_context
 
+from dw_agent_runtime.adapters import agent_factory
 from dw_agent_runtime.adapters.agent_factory import AgentSpec, build_agent, platform_middleware
 from dw_agent_runtime.adapters.chat_model import MockChatModel
-from dw_agent_runtime.adapters.langchain_tools import platform_tools
+from dw_agent_runtime.adapters.langchain_tools import model_facing_name, platform_tools
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.contracts import RunContext, ToolDefinition
 from dw_agent_runtime.executor import ToolExecutor
@@ -104,13 +105,15 @@ def _registry() -> tuple[ToolRegistry, ToolExecutor]:
                 handler=handler,
             )
         )
+    store = FakeExecutionStore()
     executor = ToolExecutor(
         registry=registry,
-        execution_store=FakeExecutionStore(),
+        execution_store=store,
         uow_factory=FakeUoWFactory(),
         clock=FixedClock(NOW),
         id_generator=SequentialIdGenerator(),
         approval_policy=AutonomyApprovalPolicy(),
+        claims=FakeToolClaims(store),
     )
     return registry, executor
 
@@ -579,3 +582,30 @@ async def test_a_worker_that_asks_for_compaction_actually_compacts() -> None:
 
     assert "h0" not in [m.id for m in state.values["messages"]]
     assert [e.action for e in audit.events] == ["run.context_compacted"]
+
+
+@pytest.mark.parametrize("offered", [(), (READ,)], ids=["empty", "one tool"])
+async def test_the_model_is_given_exactly_the_toolset_and_nothing_else(
+    offered: tuple[ToolDefinition, ...],
+) -> None:
+    """runtime-hardening R6.6, on the pinned deepagents: no library tool, no
+    `write_todos`, only what the worker offered and its run may call."""
+    model = MockChatModel(responses=[AIMessage(content="xong")], mock_reply="[mock]")
+
+    await build_agent(replace(_spec(model), offered=offered)).ainvoke(
+        {"messages": [HumanMessage("chào")]}, context=make_run_context()
+    )
+
+    assert sorted(model.bound_tool_names) == sorted(model_facing_name(d.name) for d in offered)
+
+
+def test_build_agent_refuses_an_entry_that_is_not_a_platform_tool(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """runtime-hardening R6.4: refused at assembly, not only dropped per call."""
+    monkeypatch.setattr(
+        agent_factory, "platform_tools", lambda *args, **kwargs: [{"type": "web_search_preview"}]
+    )
+    model = MockChatModel(responses=[AIMessage(content="xong")], mock_reply="[mock]")
+    with pytest.raises(ConfigError, match="platform tools"):
+        build_agent(_spec(model))

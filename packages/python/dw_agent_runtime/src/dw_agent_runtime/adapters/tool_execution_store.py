@@ -1,4 +1,8 @@
-"""Append-only persistence of tool executions with idempotency lookup."""
+"""Append-only persistence of tool executions with idempotency lookup.
+
+`dw_app` holds no UPDATE on the table (migration 3f1cb1d4cece): a call's outcome
+is a further row, never a rewrite of the one before it.
+"""
 
 from __future__ import annotations
 
@@ -9,12 +13,17 @@ from typing import Any
 
 import sqlalchemy as sa
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from dw_agent_runtime.adapters.runtime_tables import tool_executions
 from dw_agent_runtime.contracts import RunContext
 
 _SET_TENANT = text("SELECT set_config('app.tenant_id', :tenant_id, true)")
+
+# The backstop behind the claim (ADR-0108 decision 5): a second `succeeded` row
+# for one key is refused here, and the refusal is answered by the first row.
+_SUCCEEDED_ONCE = "uq_tool_executions_idempotency"
 
 
 @dataclass(frozen=True)
@@ -94,25 +103,40 @@ class SqlToolExecutionStore:
         attempts: int,
         started_at: datetime,
         finished_at: datetime,
-    ) -> None:
+        dispatch_id: uuid.UUID | None = None,
+    ) -> StoredExecution | None:
+        """None once the row is written; the earlier success if the key already had one."""
+        try:
+            await self._insert(
+                run_context,
+                id=execution_id,
+                tool_name=tool_name,
+                tool_version=tool_version,
+                status=status,
+                idempotency_key=idempotency_key,
+                input_hash=input_hash,
+                output_hash=output_hash,
+                output=output,
+                error=error,
+                attempts=attempts,
+                started_at=started_at,
+                finished_at=finished_at,
+                dispatch_id=dispatch_id,
+            )
+        except IntegrityError as exc:
+            if idempotency_key is None or _SUCCEEDED_ONCE not in str(exc.orig):
+                raise
+            return await self.find_succeeded(run_context, tool_name, idempotency_key)
+        return None
+
+    async def _insert(self, run_context: RunContext, **values: Any) -> None:
         async with self.session_factory() as session, session.begin():
             await session.execute(_SET_TENANT, {"tenant_id": str(run_context.tenant_id)})
             await session.execute(
                 sa.insert(tool_executions).values(
-                    id=execution_id,
                     tenant_id=run_context.tenant_id,
                     workspace_id=run_context.workspace_id,
                     run_id=run_context.run_id,
-                    tool_name=tool_name,
-                    tool_version=tool_version,
-                    status=status,
-                    idempotency_key=idempotency_key,
-                    input_hash=input_hash,
-                    output_hash=output_hash,
-                    output=output,
-                    error=error,
-                    attempts=attempts,
-                    started_at=started_at,
-                    finished_at=finished_at,
+                    **values,
                 )
             )

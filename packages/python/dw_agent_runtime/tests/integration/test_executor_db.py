@@ -8,6 +8,7 @@ from runtime_harness import RuntimeUrls, make_run_context
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
+from dw_agent_runtime.adapters.tool_claims import SqlToolClaims
 from dw_agent_runtime.adapters.tool_execution_store import SqlToolExecutionStore
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.context import access_context_from_run
@@ -70,6 +71,7 @@ def build_executor(app_url: str) -> tuple[ToolExecutor, SqlPlatformUnitOfWorkFac
         clock=SystemClock(),
         id_generator=Uuid4Generator(),
         approval_policy=AutonomyApprovalPolicy(),
+        claims=SqlToolClaims(session_factory),
     )
     return executor, uow_factory, call_counter
 

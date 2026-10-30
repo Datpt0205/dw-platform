@@ -38,3 +38,18 @@ def test_redact_bearer_tokens_in_text() -> None:
 def test_metric_names_follow_dw_prefix() -> None:
     assert all(name.startswith("dw_") for name in ALL_METRICS)
     assert len(set(ALL_METRICS)) == len(ALL_METRICS)
+
+
+def test_redact_mapping_walks_lists_and_tuples_at_any_depth() -> None:
+    """runtime-hardening R6.5: a key in a list used to come out verbatim."""
+    cleaned = redact_mapping(
+        {
+            "items": [{"api_key": "sk-123", "name": "a"}],
+            "pairs": ({"token": "t-1"}, "Bearer abcdefgh.ijk"),
+            "deep": [[{"nested": {"client_secret": "s-1"}}]],
+        }
+    )
+    assert cleaned["items"] == [{"api_key": REDACTED, "name": "a"}]
+    assert cleaned["pairs"] == [{"token": REDACTED}, f"Bearer {REDACTED}"]
+    assert cleaned["deep"] == [[{"nested": {"client_secret": REDACTED}}]]
+    assert "sk-123" not in str(cleaned) and "s-1" not in str(cleaned)

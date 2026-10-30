@@ -47,6 +47,7 @@ from langchain.agents import create_agent
 from langchain.agents.middleware import AgentMiddleware, ModelRequest
 from langchain.agents.middleware.summarization import ContextSize
 from langchain_core.language_models import BaseChatModel
+from langchain_core.tools import BaseTool
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.store.base import BaseStore
 
@@ -70,6 +71,7 @@ from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.model.copy import RuntimeCopy
 from dw_agent_runtime.model.profiles import ModelProfileRegistry
 from dw_agent_runtime.model.prompts import PromptRegistry
+from dw_agent_runtime.registry import ConfigError
 from dw_agent_runtime.tools import ToolRegistry
 from dw_kernel.ports import IdGenerator, UtcClock
 from dw_platform.application.ports import PlatformUnitOfWorkFactory
@@ -251,16 +253,31 @@ def build_agent(
     passes its own; one built for a test or a one-shot call has none.
     """
     offered = list(spec.offered)
-    return create_agent(
-        model=spec.model,
-        tools=platform_tools(
+    tools: list[Any] = list(
+        platform_tools(
             offered,
             spec.registry,
             spec.executor,
             approval_type_prefix=spec.approval_type_prefix,
             copy=spec.copy,
-        ),
-        middleware=platform_middleware(spec),
+        )
+    )
+    middleware = platform_middleware(spec)
+    # Refused here as well as dropped per call: a tool the platform did not build
+    # reaches the model without ToolExecutor (ADR-0116 decision 3).
+    foreign = [
+        type(tool).__name__
+        for tool in [*tools, *(t for m in middleware for t in getattr(m, "tools", ()))]
+        if not isinstance(tool, BaseTool)
+    ]
+    if foreign:
+        raise ConfigError(
+            "an agent may only carry platform tools", details={"entry_types": foreign}
+        )
+    return create_agent(
+        model=spec.model,
+        tools=tools,
+        middleware=middleware,
         context_schema=RunContext,
         checkpointer=checkpointer,
         store=store,

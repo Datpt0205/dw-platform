@@ -1,4 +1,4 @@
-"""SQLAlchemy Core tables for runtime persistence (migrations 0002 and 0024)."""
+"""SQLAlchemy Core tables for runtime persistence (migrations 0002, 0024 and 3f1cb1d4cece)."""
 
 from __future__ import annotations
 
@@ -126,4 +126,22 @@ tool_executions = sa.Table(
     sa.Column("attempts", sa.Integer, nullable=False, server_default="0"),
     sa.Column("started_at", sa.TIMESTAMP(timezone=True), nullable=False),
     sa.Column("finished_at", sa.TIMESTAMP(timezone=True), nullable=True),
+    # Migration 3f1cb1d4cece. On a terminal row, the `dispatched` row it closes;
+    # NULL on every other row.
+    sa.Column("dispatch_id", UUID(as_uuid=True), nullable=True),
+)
+
+
+# Migration 3f1cb1d4cece (ADR-0108 decision 5): one live claim per key.
+tool_execution_claims = sa.Table(
+    "tool_execution_claims",
+    metadata,
+    sa.Column("tenant_id", UUID(as_uuid=True), primary_key=True),
+    sa.Column("workspace_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("tool_name", sa.Text, primary_key=True),
+    sa.Column("idempotency_key", sa.Text, primary_key=True),
+    sa.Column("run_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("claim_token", UUID(as_uuid=True), nullable=False),
+    sa.Column("claimed_at", sa.TIMESTAMP(timezone=True), nullable=False),
+    sa.Column("expires_at", sa.TIMESTAMP(timezone=True), nullable=False),
 )

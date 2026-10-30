@@ -1,18 +1,21 @@
 import asyncio
 import uuid
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
 import pytest
-from fakes import NOW, FakeAuditRepo, FakeExecutionStore, FakeUoWFactory
+from fakes import NOW, FakeAuditRepo, FakeExecutionStore, FakeToolClaims, FakeUoWFactory
 from pydantic import BaseModel
 
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.contracts import RunContext, ToolDefinition
+from dw_agent_runtime.dispatch import NotDispatchedError, OutcomeUnknownError, RejectedError
 from dw_agent_runtime.executor import ToolExecutor
 from dw_agent_runtime.tools import RegisteredTool, ToolRegistry
 from dw_kernel.errors import (
     ApprovalRequiredError,
+    ConflictError,
     DomainError,
     IdempotencyConflictError,
     InfrastructureError,
@@ -26,6 +29,10 @@ from dw_observability.telemetry import RecordingTelemetry
 pytestmark = pytest.mark.unit
 
 REPO_ROOT = Path(__file__).resolve().parents[5]
+
+# A call that stays inside the platform: retried when idempotent, `failed` when it
+# fails. An `external` call logs its dispatch and is never retried after it.
+INTERNAL = "internal"
 
 
 class EchoInput(BaseModel):
@@ -101,6 +108,7 @@ def make_executor(
         clock=FixedClock(NOW),
         id_generator=SequentialIdGenerator(),
         approval_policy=AutonomyApprovalPolicy(),
+        claims=FakeToolClaims(store),
         sleep=no_sleep,
     )
     return executor, store, uow_factory.audit_repo
@@ -294,7 +302,7 @@ async def test_transient_failure_retries_then_succeeds() -> None:
             raise InfrastructureError("upstream blip")
         return EchoOutput(echoed=payload.message)
 
-    executor, store, _ = make_executor(flaky_handler)
+    executor, store, _ = make_executor(flaky_handler, make_definition(side_effect_level=INTERNAL))
     output = await executor.execute(
         name="test.echo",
         version="1.0.0",
@@ -312,7 +320,7 @@ async def test_timeout_is_bounded_and_recorded_as_failure() -> None:
         await asyncio.sleep(60)
         return EchoOutput(echoed="never")
 
-    definition = make_definition(timeout_seconds=1, max_retries=0)
+    definition = make_definition(timeout_seconds=1, max_retries=0, side_effect_level=INTERNAL)
     executor, store, audit = make_executor(hanging_handler, definition)
     with pytest.raises(InfrastructureError, match="failed"):
         await executor.execute(
@@ -338,7 +346,9 @@ async def test_a_crashing_handler_is_recorded_like_any_other_failure() -> None:
     async def crashing_handler(payload: EchoInput, run_context: RunContext) -> EchoOutput:
         raise TypeError("a real bug, not a refusal")
 
-    executor, store, audit = make_executor(crashing_handler, make_definition(max_retries=2))
+    executor, store, audit = make_executor(
+        crashing_handler, make_definition(max_retries=2, side_effect_level=INTERNAL)
+    )
     with pytest.raises(InfrastructureError, match="failed"):
         await executor.execute(
             name="test.echo",
@@ -359,7 +369,7 @@ async def test_output_schema_violation_is_domain_error() -> None:
     async def bad_output_handler(payload: EchoInput, run_context: RunContext) -> dict[str, bool]:
         return {"unexpected": True}
 
-    executor, _, _ = make_executor(bad_output_handler)
+    executor, _, _ = make_executor(bad_output_handler, make_definition(side_effect_level=INTERNAL))
     with pytest.raises(DomainError, match="output"):
         await executor.execute(
             name="test.echo",
@@ -400,7 +410,7 @@ async def test_failed_tool_still_emits_its_span() -> None:
         raise InfrastructureError("provider down")
 
     telemetry = RecordingTelemetry()
-    executor, _, _ = make_executor(boom)
+    executor, _, _ = make_executor(boom, make_definition(side_effect_level=INTERNAL))
     executor.telemetry = telemetry
     with pytest.raises(InfrastructureError):
         await executor.execute(
@@ -413,3 +423,232 @@ async def test_failed_tool_still_emits_its_span() -> None:
     assert [name for name, _ in telemetry.spans] == ["execute_tool test.echo"]
     assert telemetry.metrics == [(DW_TOOL_CALL_TOTAL, 1, {"tool": "test.echo", "status": "error"})]
     assert contract_violations(load_snapshot(snapshot_path(REPO_ROOT)), telemetry) == []
+
+
+# ---- claims and the dispatch log (runtime-hardening R6; ADR-0108 decision 5) ----
+
+
+def _statuses(store: FakeExecutionStore) -> list[str]:
+    return [row["status"] for row in store.records]
+
+
+async def _call(executor: ToolExecutor, message: str = "x", key: str = "k") -> BaseModel:
+    return await executor.execute(
+        name="test.echo",
+        version="1.0.0",
+        raw_input={"message": message},
+        run_context=make_run_context(),
+        idempotency_key=key,
+    )
+
+
+async def test_an_external_call_logs_its_dispatch_then_its_outcome() -> None:
+    executor, store, _ = make_executor(echo_handler)
+    await _call(executor)
+    dispatched, finished = store.records
+    assert _statuses(store) == ["dispatched", "succeeded"]
+    assert finished["dispatch_id"] == dispatched["execution_id"]
+
+
+async def test_an_internal_call_logs_no_dispatch() -> None:
+    executor, store, _ = make_executor(echo_handler, make_definition(side_effect_level=INTERNAL))
+    await _call(executor)
+    assert _statuses(store) == ["succeeded"]
+    assert store.records[0]["dispatch_id"] is None
+
+
+async def test_a_live_claim_turns_a_second_call_into_a_conflict() -> None:
+    """R6.1: while the first call holds the key, the second does not run."""
+    calls = 0
+    release = asyncio.Event()
+
+    async def slow(payload: EchoInput, run_context: RunContext) -> EchoOutput:
+        nonlocal calls
+        calls += 1
+        await release.wait()
+        return EchoOutput(echoed=payload.message)
+
+    executor, _, _ = make_executor(slow)
+    first = asyncio.create_task(_call(executor))
+    await asyncio.sleep(0)
+    with pytest.raises(ConflictError):
+        await _call(executor)
+    release.set()
+    await first
+    assert calls == 1
+    assert await _call(executor) == EchoOutput(echoed="x"), "after success: replay"
+    assert calls == 1
+
+
+@pytest.mark.parametrize(
+    ("raised", "status", "error"),
+    [
+        (NotDispatchedError("no byte left"), "failed", "not_dispatched"),
+        (
+            RejectedError("refused", provider_code="550 Bearer abcdefghijk"),
+            "failed",
+            "rejected:550 Bearer [REDACTED]",
+        ),
+        (OutcomeUnknownError("reset after DATA"), "outcome_unknown", "outcome_unknown"),
+        (TypeError("untyped"), "outcome_unknown", "outcome_unknown"),
+        (InfrastructureError("upstream"), "outcome_unknown", "outcome_unknown"),
+    ],
+)
+async def test_each_send_ends_in_one_row_its_typed_result_decides(
+    raised: Exception, status: str, error: str
+) -> None:
+    """R6.12: only a typed "nothing applied" is `failed`; anything else after the
+    send may have been applied, so it is `outcome_unknown` and never retried."""
+    calls = 0
+
+    async def handler(payload: EchoInput, run_context: RunContext) -> EchoOutput:
+        nonlocal calls
+        calls += 1
+        raise raised
+
+    executor, store, audit = make_executor(handler)
+    expected = OutcomeUnknownError if status == "outcome_unknown" else type(raised)
+    with pytest.raises(expected):
+        await _call(executor)
+    assert calls == 1, "a call that left is never retried by the executor"
+    dispatched, finished = store.records
+    assert (finished["status"], finished["error"]) == (status, error)
+    assert finished["dispatch_id"] == dispatched["execution_id"]
+    assert audit.events[-1].action == "tool.failed"
+
+
+async def test_a_timeout_after_the_send_is_unknown_not_failed() -> None:
+    """R6.12, case T: the provider applied the call and the answer never came."""
+
+    async def hanging(payload: EchoInput, run_context: RunContext) -> EchoOutput:
+        await asyncio.sleep(60)
+        return EchoOutput(echoed="never")
+
+    executor, store, _ = make_executor(hanging, make_definition(timeout_seconds=1))
+    with pytest.raises(OutcomeUnknownError):
+        await _call(executor)
+    assert _statuses(store) == ["dispatched", "outcome_unknown"]
+
+
+async def test_a_send_with_no_known_outcome_is_never_made_again() -> None:
+    """R6.9: neither a new claim nor a takeover runs the handler again."""
+    calls = 0
+
+    async def flaky(payload: EchoInput, run_context: RunContext) -> EchoOutput:
+        nonlocal calls
+        calls += 1
+        raise OutcomeUnknownError("reset")
+
+    executor, store, audit = make_executor(flaky)
+    with pytest.raises(OutcomeUnknownError):
+        await _call(executor)
+    with pytest.raises(OutcomeUnknownError):
+        await _call(executor)
+    assert calls == 1
+    assert audit.events[-1].details["reason"] == "unresolved_dispatch"
+    assert _statuses(store) == ["dispatched", "outcome_unknown"]
+
+
+async def test_a_failed_send_may_be_made_again_under_a_new_claim() -> None:
+    """R6.10: every earlier send of the key has a known outcome, so the next runs."""
+    outcomes: list[Exception | None] = [NotDispatchedError("refused locally"), None]
+
+    async def handler(payload: EchoInput, run_context: RunContext) -> EchoOutput:
+        outcome = outcomes.pop(0)
+        if outcome is not None:
+            raise outcome
+        return EchoOutput(echoed=payload.message)
+
+    executor, store, _ = make_executor(handler)
+    with pytest.raises(NotDispatchedError):
+        await _call(executor)
+    assert await _call(executor) == EchoOutput(echoed="x")
+    assert _statuses(store) == ["dispatched", "failed", "dispatched", "succeeded"]
+
+
+async def test_a_holder_taken_over_before_its_dispatch_does_not_send() -> None:
+    """R6.13: the dispatch row is fenced by the caller's own live claim."""
+    calls = 0
+
+    async def handler(payload: EchoInput, run_context: RunContext) -> EchoOutput:
+        nonlocal calls
+        calls += 1
+        return EchoOutput(echoed=payload.message)
+
+    executor, store, _ = make_executor(handler)
+    claims = executor.claims
+    assert isinstance(claims, FakeToolClaims)
+    original_dispatch = claims.dispatch
+
+    async def stall_then_dispatch(*args: Any, **kwargs: Any) -> bool:
+        # The old holder stalls past `expires_at`; a new one takes over and sends.
+        claims.now = claims.now + timedelta(hours=1)
+        claims.dispatch = original_dispatch  # type: ignore[method-assign]
+        await _call(executor)
+        return await original_dispatch(*args, **kwargs)
+
+    claims.dispatch = stall_then_dispatch  # type: ignore[method-assign]
+    with pytest.raises(ConflictError):
+        await _call(executor)
+    assert calls == 1
+    assert _statuses(store) == ["dispatched", "succeeded"]
+
+
+async def test_a_second_success_refused_by_the_index_replays_the_first() -> None:
+    """Step 5 of the ticket: the unique index is the backstop behind the claim."""
+    executor, store, audit = make_executor(echo_handler)
+    first = await _call(executor)
+    earlier = store.succeeded[("test.echo", "k")]
+    store.succeeded.clear()  # the claim's lookup misses; the index still holds it
+    original_record = store.record
+
+    async def index_answers(run_context: Any, **kwargs: Any) -> Any:
+        if kwargs["status"] == "succeeded":
+            store.succeeded[("test.echo", "k")] = earlier
+        return await original_record(run_context, **kwargs)
+
+    store.record = index_answers  # type: ignore[method-assign]
+    assert await _call(executor) == first
+    assert audit.events[-1].action == "tool.replayed"
+
+
+async def test_a_secret_in_a_list_is_redacted_in_the_failure_audit() -> None:
+    """R6.5: `tool.failed` carries the input, masked at any depth."""
+
+    class ItemsInput(BaseModel):
+        items: list[dict[str, str]]
+
+    async def boom(payload: BaseModel, run_context: RunContext) -> EchoOutput:
+        raise NotDispatchedError("refused")
+
+    registry = ToolRegistry()
+    registry.register(
+        RegisteredTool(
+            definition=make_definition(),
+            input_model=ItemsInput,
+            output_model=EchoOutput,
+            handler=boom,
+        )
+    )
+    store = FakeExecutionStore()
+    uow_factory = FakeUoWFactory()
+    executor = ToolExecutor(
+        registry=registry,
+        execution_store=store,
+        uow_factory=uow_factory,
+        clock=FixedClock(NOW),
+        id_generator=SequentialIdGenerator(),
+        approval_policy=AutonomyApprovalPolicy(),
+        claims=FakeToolClaims(store),
+    )
+    with pytest.raises(NotDispatchedError):
+        await executor.execute(
+            name="test.echo",
+            version="1.0.0",
+            raw_input={"items": [{"api_key": "sk-123"}]},
+            run_context=make_run_context(),
+            idempotency_key="k",
+        )
+    failed = uow_factory.audit_repo.events[-1]
+    assert failed.action == "tool.failed"
+    assert failed.details["input"] == {"items": [{"api_key": "[REDACTED]"}]}

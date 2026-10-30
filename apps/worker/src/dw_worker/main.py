@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from dw_agent_runtime.adapters.checkpoint_retention import SqlCheckpointRetention
 from dw_agent_runtime.adapters.langgraph_runner import LangGraphWorkflowRunner
 from dw_agent_runtime.adapters.spend_guard import SqlSpendGuardRetention
+from dw_agent_runtime.adapters.tool_claims import SqlToolClaimRetention
 from dw_agent_runtime.approval_flow import ApproveAndResumeService
 from dw_agent_runtime.channel_decisions import (
     ChannelApprovalDecisionService,
@@ -309,6 +310,9 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
     # `checkpoints` terms. Its own lane for the same reason memory and knowledge
     # have theirs: a failing pass must not take the others down with it.
     checkpoint_retention: RetentionPrunePort | None = None
+    # Tool claims past `expires_at` (runtime-hardening R6.7): nothing left to
+    # guard, so no term; its own lane, like every pruner.
+    tool_claims_retention: RetentionPrunePort | None = None
     # The spend guard's own housekeeping (Ops hardening Phase 3) — a technical
     # constant, not a legal term, so it is not on retention_policy's cadence
     # or file; see SqlSpendGuardRetention's docstring.
@@ -397,6 +401,7 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
         checkpoint_retention = SqlCheckpointRetention(
             session_factory=sessions, policy=retention_policy, clock=clock
         )
+        tool_claims_retention = SqlToolClaimRetention(session_factory=sessions)
         spend_guard_retention = SqlSpendGuardRetention(session_factory=sessions, clock=clock)
         notifications_retention = SqlNotificationRetention(session_factory=sessions)
         channel_link_nonces_retention = SqlChannelLinkNonceRetention(session_factory=sessions)
@@ -523,6 +528,12 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
         registry.register(
             "checkpoint_retention",
             build_retention_consumer(checkpoint_retention),
+            interval_seconds=RETENTION_INTERVAL_SECONDS,
+        )
+    if tool_claims_retention is not None:
+        registry.register(
+            "tool_claims_retention",
+            build_retention_consumer(tool_claims_retention),
             interval_seconds=RETENTION_INTERVAL_SECONDS,
         )
     if spend_guard_retention is not None:

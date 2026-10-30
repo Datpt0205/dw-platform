@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
-from fakes import NOW, FakeExecutionStore, FakeUoWFactory
+from fakes import NOW, FakeExecutionStore, FakeToolClaims, FakeUoWFactory
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from pydantic import BaseModel
@@ -63,13 +63,15 @@ def _spec(
                 handler=_saved,
             )
         )
+    store = FakeExecutionStore()
     executor = ToolExecutor(
         registry=registry,
-        execution_store=FakeExecutionStore(),
+        execution_store=store,
         uow_factory=FakeUoWFactory(),
         clock=FixedClock(NOW),
         id_generator=SequentialIdGenerator(),
         approval_policy=AutonomyApprovalPolicy(),
+        claims=FakeToolClaims(store),
     )
     return AgentSpec(
         model=model,

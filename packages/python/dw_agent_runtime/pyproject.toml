@@ -15,7 +15,10 @@ dependencies = [
     "langgraph>=0.6,<2",
     # The sandbox backend implements deepagents' own `BaseSandbox`, so the
     # model sees the tool set it already knows rather than a bespoke one.
-    "deepagents>=0.7,<1",
+    # Exact: which tools the library installs is a fact of one release, measured
+    # by `test_agent_factory`'s contract test (runtime-hardening R6.6). A move
+    # goes through FOG-34 and that test.
+    "deepagents==0.7.15",
     "langchain-core>=1,<2",
     "httpx>=0.28,<1",
     "pyyaml>=6.0,<7",

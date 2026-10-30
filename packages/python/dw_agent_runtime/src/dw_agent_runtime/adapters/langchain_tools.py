@@ -23,6 +23,7 @@ happened yet at that point, so re-running the call on resume is safe.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import Any
 
@@ -56,6 +57,30 @@ from dw_kernel.errors import (
 from dw_observability.redaction import redact_mapping
 
 _NAME_SEPARATOR = "__"
+
+logger = logging.getLogger("dw_agent_runtime.langchain_tools")
+
+
+def platform_tools_only(tools: Sequence[Any]) -> list[BaseTool]:
+    """Drop every entry that is not a `BaseTool`, logging its type and nothing else.
+
+    A dict or a provider-native tool runs on the provider's side, outside
+    `ToolExecutor`, and so outside authorization, idempotency and audit
+    (ADR-0116 decision 3). Both middlewares below used to let any non-`BaseTool`
+    entry through on the assumption that none would arrive; nothing stopped one
+    from arriving.
+    """
+    kept: list[BaseTool] = []
+    for tool in tools:
+        if isinstance(tool, BaseTool):
+            kept.append(tool)
+        else:
+            logger.warning(
+                "dropped a tool entry that is not a platform tool",
+                extra={"entry_type": type(tool).__name__},
+            )
+    return kept
+
 
 # Failures where the tool ANSWERED and the answer was a refusal: the row is not
 # there, the arguments were wrong, the key collides. Calling again with the same
@@ -298,11 +323,10 @@ class ScopedToolsMiddleware(AgentMiddleware):
         handler: Callable[[ModelRequest], Awaitable[ModelResponse]],
     ) -> ModelResponse:
         scopes = get_runtime(RunContext).context.scopes
-        allowed = [
+        allowed: list[BaseTool | dict[str, Any]] = [
             tool
-            for tool in request.tools
-            if not isinstance(tool, BaseTool)
-            or self._required.get(tool.name, frozenset()) <= scopes
+            for tool in platform_tools_only(request.tools)
+            if self._required.get(tool.name, frozenset()) <= scopes
         ]
         return await handler(request.override(tools=allowed))
 
@@ -411,12 +435,11 @@ def _without_unreadable_files(message: Any) -> Any:
     return message.model_copy(update={"content": kept})
 
 
-# `write_todos` is not in any worker's toolset because no worker declares it —
-# it belongs to TodoListMiddleware, which deepagents installs itself and which
-# only writes to graph state. Everything else deepagents offers by default
-# (`ls`, `read_file`, `write_file`, `edit_file`, `glob`, `grep`, `execute`,
-# `task`) reaches outside the run, so none of it is here.
-_ALWAYS_ALLOWED = frozenset({"write_todos"})
+# Nothing is offered beyond the worker's own toolset. `write_todos` used to be
+# allowed here for a TodoListMiddleware that `create_deep_agent` installs; the
+# platform builds on `create_agent`, which installs no tool at all (measured on
+# deepagents 0.7.15, 30/10/2026), so the allowance read a tool nothing offered.
+# What `create_deep_agent` would install is listed in `agent_factory`, measured.
 
 
 class OfferedToolsOnlyMiddleware(AgentMiddleware):
@@ -443,17 +466,15 @@ class OfferedToolsOnlyMiddleware(AgentMiddleware):
 
     def __init__(self, definitions: Sequence[ToolDefinition]) -> None:
         super().__init__()
-        self._offered = {model_facing_name(d.name) for d in definitions} | _ALWAYS_ALLOWED
+        self._offered = {model_facing_name(d.name) for d in definitions}
 
     async def awrap_model_call(
         self,
         request: ModelRequest,
         handler: Callable[[ModelRequest], Awaitable[ModelResponse]],
     ) -> ModelResponse:
-        allowed = [
-            tool
-            for tool in request.tools
-            if not isinstance(tool, BaseTool) or tool.name in self._offered
+        allowed: list[BaseTool | dict[str, Any]] = [
+            tool for tool in platform_tools_only(request.tools) if tool.name in self._offered
         ]
         return await handler(request.override(tools=allowed))
 

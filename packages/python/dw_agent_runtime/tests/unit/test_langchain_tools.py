@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, TypedDict, cast
 
 import pytest
-from fakes import NOW, FakeAuditRepo, FakeExecutionStore, FakeUoWFactory
+from fakes import NOW, FakeAuditRepo, FakeExecutionStore, FakeToolClaims, FakeUoWFactory
 from langchain.agents import create_agent
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
@@ -98,6 +98,11 @@ def make_run_context(scopes: frozenset[str] = frozenset({"sales_chat.write"})) -
     )
 
 
+def terminal_rows(store: FakeExecutionStore) -> list[dict[str, Any]]:
+    """The rows that say how a call ended; an `external` call logs its dispatch first."""
+    return [row for row in store.records if row["status"] != "dispatched"]
+
+
 def make_stack(
     *definitions: ToolDefinition,
 ) -> tuple[ToolRegistry, ToolExecutor, FakeExecutionStore]:
@@ -119,6 +124,7 @@ def make_stack(
         clock=FixedClock(NOW),
         id_generator=SequentialIdGenerator(),
         approval_policy=AutonomyApprovalPolicy(),
+        claims=FakeToolClaims(store),
     )
     return registry, executor, store
 
@@ -179,7 +185,7 @@ async def test_call_goes_through_the_executor_and_returns_validated_output() -> 
     state = await call_tool(build_tools(registry, executor)[0])
 
     assert state["result"] == '{"lead_id":"lead-Alpha"}'
-    assert store.records[0]["status"] == "succeeded"
+    assert terminal_rows(store)[0]["status"] == "succeeded"
 
 
 async def test_repeating_a_side_effect_with_the_same_arguments_replays() -> None:
@@ -188,7 +194,8 @@ async def test_repeating_a_side_effect_with_the_same_arguments_replays() -> None
 
     await call_tool(tool)
     await call_tool(tool)
-    assert [record["status"] for record in store.records] == ["succeeded"]
+    # One send and its one outcome; the repeat replays and logs no second dispatch.
+    assert [record["status"] for record in store.records] == ["dispatched", "succeeded"]
 
 
 async def test_a_read_tool_needs_no_idempotency_key() -> None:
@@ -197,7 +204,7 @@ async def test_a_read_tool_needs_no_idempotency_key() -> None:
     )
     await call_tool(build_tools(registry, executor)[0])
 
-    assert store.records[0]["idempotency_key"] is None
+    assert terminal_rows(store)[0]["idempotency_key"] is None
 
 
 async def test_a_tool_needing_approval_pauses_before_running() -> None:
@@ -239,13 +246,15 @@ async def test_an_approval_payload_is_json_all_the_way_down() -> None:
             handler=task_handler,
         )
     )
+    store = FakeExecutionStore()
     executor = ToolExecutor(
         registry=registry,
-        execution_store=FakeExecutionStore(),
+        execution_store=store,
         uow_factory=FakeUoWFactory(),
         clock=FixedClock(NOW),
         id_generator=SequentialIdGenerator(),
         approval_policy=AutonomyApprovalPolicy(),
+        claims=FakeToolClaims(store),
     )
     lead_id = uuid.UUID(int=11)
 
@@ -282,13 +291,15 @@ async def test_a_tool_whose_argument_is_a_reference_can_show_what_it_will_write(
             approval_preview=preview,
         )
     )
+    store = FakeExecutionStore()
     executor = ToolExecutor(
         registry=registry,
-        execution_store=FakeExecutionStore(),
+        execution_store=store,
         uow_factory=FakeUoWFactory(),
         clock=FixedClock(NOW),
         id_generator=SequentialIdGenerator(),
         approval_policy=AutonomyApprovalPolicy(),
+        claims=FakeToolClaims(store),
     )
 
     state = await call_tool(build_tools(registry, executor)[0])
@@ -317,7 +328,7 @@ async def test_approving_resumes_and_runs_the_tool() -> None:
     )
 
     assert state["result"] == '{"lead_id":"lead-Alpha"}'
-    assert store.records[0]["status"] == "succeeded"
+    assert terminal_rows(store)[0]["status"] == "succeeded"
 
 
 # ------------------------------------------------------------ tool failure --
@@ -353,6 +364,7 @@ def make_failing_stack(
         clock=FixedClock(NOW),
         id_generator=SequentialIdGenerator(),
         approval_policy=AutonomyApprovalPolicy(),
+        claims=FakeToolClaims(store),
     )
     return build_tools(registry, executor), store, uow_factory.audit_repo
 
@@ -413,8 +425,8 @@ async def test_a_business_refusal_is_recorded_and_audited() -> None:
 
     await call_through_agent(tools)
 
-    assert store.records[0]["status"] == "failed"
-    assert store.records[0]["error"] == "NotFoundError"
+    assert terminal_rows(store)[0]["status"] == "failed"
+    assert terminal_rows(store)[0]["error"] == "NotFoundError"
     assert [event.action for event in audit.events] == ["tool.failed"]
 
 
@@ -435,7 +447,7 @@ async def test_a_business_refusal_is_not_retried() -> None:
 
     await call_through_agent(tools)
 
-    assert store.records[0]["attempts"] == 1
+    assert terminal_rows(store)[0]["attempts"] == 1
 
 
 async def test_an_upstream_failure_reaches_the_model_instead_of_ending_the_run() -> None:
@@ -593,9 +605,11 @@ async def test_scope_filtering_alone_would_have_let_it_through() -> None:
     assert "write_file" in model.bound_tool_names
 
 
-async def test_the_todo_tool_survives_because_a_middleware_owns_it() -> None:
-    """`write_todos` is in no toolset — TodoListMiddleware installs it, and it
-    only writes to graph state, so it is allowlisted rather than declared."""
+async def test_a_todo_tool_nobody_offered_is_hidden_like_any_other() -> None:
+    """`write_todos` used to be allowlisted for a TodoListMiddleware the platform
+    never installs: `create_agent` adds no tool (measured on deepagents 0.7.15).
+    An allowance for a tool nothing offers is a door nobody watches, so it is
+    hidden like every other tool outside the toolset (runtime-hardening R6.6)."""
 
     class _Todos(_Builtin):
         name: str = "write_todos"
@@ -611,7 +625,7 @@ async def test_the_todo_tool_survives_because_a_middleware_owns_it() -> None:
 
     await agent.ainvoke({"messages": [HumanMessage("chào")]}, context=make_run_context())
 
-    assert sorted(model.bound_tool_names) == ["crm__upsert_lead", "write_todos"]
+    assert sorted(model.bound_tool_names) == ["crm__upsert_lead"]
 
 
 async def test_two_versions_of_one_tool_coexist_and_only_the_pinned_one_is_offered() -> None:
@@ -701,3 +715,33 @@ async def test_an_unexpected_preview_bug_still_fails_loudly() -> None:
 
     with pytest.raises(ZeroDivisionError):
         await _preview(_registered(explodes), LeadInput(company="Beta"), make_run_context())
+
+
+# A provider-native tool: the provider runs it, so it never passes ToolExecutor.
+_PROVIDER_NATIVE = {"type": "web_search_preview"}
+
+
+@pytest.mark.parametrize("middleware_kind", ["offered", "scoped"])
+async def test_an_entry_that_is_not_a_platform_tool_never_reaches_the_model(
+    middleware_kind: str,
+) -> None:
+    """runtime-hardening R6.4: each middleware drops it on its own."""
+    registry, executor, _ = make_stack(make_definition())
+    definitions = registry.all_definitions()
+    middleware = (
+        OfferedToolsOnlyMiddleware(definitions)
+        if middleware_kind == "offered"
+        else ScopedToolsMiddleware(definitions)
+    )
+    model = MockChatModel(responses=[AIMessage(content="Xong.")], mock_reply="[mock]")
+    agent = create_agent(  # type: ignore[misc]
+        model=model,
+        tools=[*build_tools(registry, executor), _PROVIDER_NATIVE],
+        middleware=[middleware],
+        context_schema=RunContext,
+    )
+
+    await agent.ainvoke({"messages": [HumanMessage("chào")]}, context=make_run_context())
+
+    assert model.bound_tool_names == ["crm__upsert_lead"]
+    assert all(isinstance(tool, BaseTool) for tool in model.bound_tools)

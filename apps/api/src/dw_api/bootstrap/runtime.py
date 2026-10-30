@@ -17,6 +17,7 @@ from dw_agent_runtime.adapters.langgraph_runner import LangGraphWorkflowRunner
 from dw_agent_runtime.adapters.model_stack import ModelStack, build_model_stack
 from dw_agent_runtime.adapters.run_store import SqlWorkerRunStore
 from dw_agent_runtime.adapters.spend_guard import SqlSpendGuardStore
+from dw_agent_runtime.adapters.tool_claims import SqlToolClaims
 from dw_agent_runtime.adapters.tool_execution_store import SqlToolExecutionStore
 from dw_agent_runtime.approval_flow import ApproveAndResumeService
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
@@ -178,6 +179,7 @@ def build_runtime(
         clock=clock,
         id_generator=ids,
         approval_policy=approval_policy,
+        claims=SqlToolClaims(session_factory),
         telemetry=telemetry,
     )
     tool_specs = ToolSpecRegistry(copy=copy)

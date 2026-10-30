@@ -1,8 +1,10 @@
 """Tool executor: the enforcement pipeline for every tool call.
 
-Steps: resolve → validate input → authorize/policy → mask telemetry → execute
-(timeout/retry) → validate output → audit → typed result. Side effects require
-an idempotency key; replays return the stored result without re-executing.
+Steps: resolve → validate input → authorize/policy → mask telemetry → claim
+the key → replay or refuse → log the dispatch → execute (timeout/retry) →
+validate output → record and audit → typed result. Side effects require an
+idempotency key; replays return the stored result without re-executing, and a
+send whose outcome is unknown is never made again blindly (ADR-0108 decision 5).
 """
 
 from __future__ import annotations
@@ -10,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import uuid as uuid_module
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -20,10 +23,18 @@ from pydantic import BaseModel, ValidationError
 
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.context import access_context_from_run
-from dw_agent_runtime.contracts import RunContext
-from dw_agent_runtime.tools import ToolRegistry
+from dw_agent_runtime.contracts import RunContext, ToolDefinition
+from dw_agent_runtime.dispatch import (
+    DispatchRecord,
+    NotDispatchedError,
+    OutcomeUnknownError,
+    RejectedError,
+    ToolClaimPort,
+)
+from dw_agent_runtime.tools import RegisteredTool, ToolRegistry
 from dw_kernel.errors import (
     ApprovalRequiredError,
+    ConflictError,
     DomainError,
     DWError,
     IdempotencyConflictError,
@@ -33,13 +44,40 @@ from dw_kernel.errors import (
 from dw_kernel.ids import TenantId, UserId, WorkspaceId
 from dw_kernel.ports import IdGenerator, UtcClock
 from dw_observability.metrics import DW_TOOL_CALL_TOTAL
-from dw_observability.redaction import redact_mapping
+from dw_observability.redaction import redact_mapping, redact_text
 from dw_observability.semconv import OP_EXECUTE_TOOL, execute_tool_span_name
 from dw_observability.telemetry import NullTelemetry, TelemetryPort
 from dw_platform.application.ports import PlatformUnitOfWorkFactory
 from dw_platform.domain.audit import AuditEvent
 
 SleepFn = Callable[[float], Awaitable[None]]
+
+logger = logging.getLogger("dw_agent_runtime.executor")
+
+# Every call at these levels leaves the platform, so it logs its dispatch before
+# it leaves (R6.11). A tenant's `connector_action` joins through its level.
+_LEAVES_THE_PLATFORM = frozenset({"external", "critical"})
+
+# A provider's code is its own text; it is kept short and scrubbed like any
+# free text before it reaches the record.
+_PROVIDER_CODE_LIMIT = 64
+
+# Slack past the call's own budget before a claim may be taken over.
+_CLAIM_GRACE_SECONDS = 30.0
+
+
+def _lease_seconds(definition: ToolDefinition) -> float:
+    """`timeout_seconds * (1 + max_retries) + 30 s`, ADR-0108 decision 5."""
+    return definition.timeout_seconds * (1 + definition.max_retries) + _CLAIM_GRACE_SECONDS
+
+
+def _error_text(error: Exception) -> str:
+    """What the `error` column says about a failed call."""
+    if isinstance(error, NotDispatchedError):
+        return "not_dispatched"
+    if isinstance(error, RejectedError):
+        return f"rejected:{redact_text(error.provider_code)[:_PROVIDER_CODE_LIMIT]}"
+    return type(error).__name__
 
 
 class ExecutionStorePort(Protocol):
@@ -65,7 +103,10 @@ class ExecutionStorePort(Protocol):
         attempts: int,
         started_at: datetime,
         finished_at: datetime,
-    ) -> None: ...
+        dispatch_id: uuid_module.UUID | None = None,
+    ) -> object | None:
+        """None once written; the earlier success when the key already had one."""
+        ...
 
 
 def canonical_hash(payload: dict[str, object]) -> str:
@@ -86,6 +127,9 @@ class ToolExecutor:
     # tool wrapper and its approval middleware through this executor rather than
     # held separately, so the three gates cannot disagree about one call.
     approval_policy: AutonomyApprovalPolicy
+    # Claims on a key and the dispatch log they fence (ADR-0108 decision 5).
+    # Required: an executor without one would run two calls with one key at once.
+    claims: ToolClaimPort
     sleep: SleepFn = field(default=asyncio.sleep)
     base_backoff_seconds: float = 0.2
     # One span per tool call, so "how many tools did this run use, and how long
@@ -212,29 +256,156 @@ class ToolExecutor:
         # 4. mask telemetry (never log raw payloads)
         safe_input = redact_mapping(input_payload)
 
-        # 5a. idempotent replay
-        if idempotency_key:
-            existing = await self.execution_store.find_succeeded(run_context, name, idempotency_key)
-            if existing is not None:
-                if getattr(existing, "input_hash", None) != input_hash:
-                    raise IdempotencyConflictError(
-                        "idempotency key reused with a different payload",
-                        details={"tool": name, "idempotency_key": idempotency_key},
-                    )
-                stored_output = getattr(existing, "output", None) or {}
+        # 5. claim the key before looking for a success (ADR-0108 decision 5), so
+        # two calls with one key never both run while the claim is live (R6.1).
+        # A key on a `none` tool has nothing to protect and is not claimed.
+        if idempotency_key is None or definition.side_effect_level == "none":
+            if idempotency_key is not None:
+                replayed = await self._replay(tool, run_context, idempotency_key, input_hash)
+                if replayed is not None:
+                    return replayed
+            return await self._run(
+                tool,
+                version,
+                input_model,
+                input_hash,
+                safe_input,
+                run_context,
+                idempotency_key,
+                dispatch_logged=False,
+                token=None,
+            )
+
+        token = await self.claims.claim(
+            run_context, name, idempotency_key, lease_seconds=_lease_seconds(definition)
+        )
+        if token is None:
+            replayed = await self._replay(tool, run_context, idempotency_key, input_hash)
+            if replayed is not None:
+                return replayed
+            raise ConflictError(
+                "another call holds this idempotency key",
+                details={"tool": name, "idempotency_key": idempotency_key},
+            )
+        try:
+            replayed = await self._replay(tool, run_context, idempotency_key, input_hash)
+            if replayed is not None:
+                return replayed
+            # A send that may have been applied is never made again blindly,
+            # whether this claim is new, taken over, or the lane already removed
+            # the claim of the call that sent it (R6.9).
+            if await self.claims.has_unresolved_dispatch(run_context, name, idempotency_key):
                 await self._audit(
                     run_context,
-                    "tool.replayed",
+                    "tool.failed",
                     definition,
                     input_hash,
                     policy_decision="allow",
-                    details={"idempotency_key": idempotency_key},
+                    details={
+                        "outcome": "outcome_unknown",
+                        "reason": "unresolved_dispatch",
+                        "idempotency_key": idempotency_key,
+                    },
                 )
-                return tool.output_model.model_validate(stored_output)
+                raise OutcomeUnknownError(
+                    "an earlier send with this key has no known outcome",
+                    details={"tool": name, "idempotency_key": idempotency_key},
+                )
+            return await self._run(
+                tool,
+                version,
+                input_model,
+                input_hash,
+                safe_input,
+                run_context,
+                idempotency_key,
+                dispatch_logged=definition.side_effect_level in _LEAVES_THE_PLATFORM,
+                token=token,
+            )
+        finally:
+            try:
+                await self.claims.release(run_context, name, idempotency_key, token)
+            except Exception:
+                # The claim expires on its own at `expires_at`; a failed release
+                # only delays the next call with this key until then.
+                logger.exception("tool claim release failed", extra={"tool": name})
 
-        # 5b. execute with timeout + bounded retries (retry only if idempotent)
+    async def _replay(
+        self,
+        tool: RegisteredTool,
+        run_context: RunContext,
+        idempotency_key: str,
+        input_hash: str,
+    ) -> BaseModel | None:
+        definition = tool.definition
+        existing = await self.execution_store.find_succeeded(
+            run_context, definition.name, idempotency_key
+        )
+        if existing is None:
+            return None
+        if getattr(existing, "input_hash", None) != input_hash:
+            raise IdempotencyConflictError(
+                "idempotency key reused with a different payload",
+                details={"tool": definition.name, "idempotency_key": idempotency_key},
+            )
+        stored_output = getattr(existing, "output", None) or {}
+        await self._audit(
+            run_context,
+            "tool.replayed",
+            definition,
+            input_hash,
+            policy_decision="allow",
+            details={"idempotency_key": idempotency_key},
+        )
+        return tool.output_model.model_validate(stored_output)
+
+    async def _run(
+        self,
+        tool: RegisteredTool,
+        version: str,
+        input_model: BaseModel,
+        input_hash: str,
+        safe_input: dict[str, object],
+        run_context: RunContext,
+        idempotency_key: str | None,
+        *,
+        dispatch_logged: bool,
+        token: uuid_module.UUID | None,
+    ) -> BaseModel:
+        definition = tool.definition
+        name = definition.name
         started_at = self.clock.now().astimezone(UTC)
-        attempts_allowed = 1 + (definition.max_retries if definition.idempotent else 0)
+
+        # 6. the dispatch log: committed in its own transaction before the call
+        # leaves, and only while this call's own claim is live (R6.11, R6.13).
+        dispatch_id: uuid_module.UUID | None = None
+        if dispatch_logged:
+            assert idempotency_key is not None and token is not None
+            dispatch_id = self.id_generator.new_uuid()
+            dispatched = await self.claims.dispatch(
+                run_context,
+                name,
+                idempotency_key,
+                token,
+                DispatchRecord(
+                    execution_id=dispatch_id,
+                    tool_version=version,
+                    input_hash=input_hash,
+                    started_at=started_at,
+                ),
+            )
+            if not dispatched:
+                raise ConflictError(
+                    "this call's claim was taken over before it could send",
+                    details={"tool": name, "idempotency_key": idempotency_key},
+                )
+
+        # 7. execute with timeout + bounded retries. Retried only if idempotent,
+        # and never once the call has left: a retry after a send is the blind
+        # resend the dispatch log exists to prevent, so the caller decides.
+        attempts_allowed = (
+            1 if dispatch_logged else 1 + (definition.max_retries if definition.idempotent else 0)
+        )
         attempt = 0
         last_error: Exception | None = None
         output_model: BaseModel | None = None
@@ -245,7 +416,7 @@ class ToolExecutor:
                     tool.handler(input_model, run_context),
                     timeout=definition.timeout_seconds,
                 )
-                # 6. validate output
+                # 8. validate output
                 output_model = tool.output_model.model_validate(
                     raw_output.model_dump() if isinstance(raw_output, BaseModel) else raw_output
                 )
@@ -290,20 +461,27 @@ class ToolExecutor:
 
         if output_model is None:
             assert last_error is not None
+            # After a send, only a typed answer that nothing was applied is a
+            # failure; anything else - a timeout, an untyped crash - may have
+            # been applied, and `failed` would invite the resend (R6.12, #7).
+            unknown = dispatch_logged and not isinstance(
+                last_error, NotDispatchedError | RejectedError
+            )
             await self.execution_store.record(
                 run_context,
                 execution_id=self.id_generator.new_uuid(),
                 tool_name=name,
                 tool_version=version,
-                status="failed",
+                status="outcome_unknown" if unknown else "failed",
                 input_hash=input_hash,
                 output_hash=None,
                 output=None,
                 idempotency_key=idempotency_key,
-                error=type(last_error).__name__,
+                error="outcome_unknown" if unknown else _error_text(last_error),
                 attempts=attempt,
                 started_at=started_at,
                 finished_at=finished_at,
+                dispatch_id=dispatch_id,
             )
             await self._audit(
                 run_context,
@@ -315,8 +493,14 @@ class ToolExecutor:
                     "error": type(last_error).__name__,
                     "attempts": attempt,
                     "input": safe_input,
+                    **({"outcome": "outcome_unknown"} if unknown else {}),
                 },
             )
+            if unknown:
+                raise OutcomeUnknownError(
+                    "the tool call may have been applied; it will not be sent again",
+                    details={"tool": name, "error": type(last_error).__name__},
+                ) from last_error
             # A typed failure keeps its code, because the caller routes on it:
             # a refusal the model can answer for, versus a run that is over.
             # Only untyped failures become an InfrastructureError, and that one
@@ -331,8 +515,8 @@ class ToolExecutor:
         output_payload = output_model.model_dump(mode="json")
         output_hash = canonical_hash(output_payload)
 
-        # 7. persist execution + audit
-        await self.execution_store.record(
+        # 9. persist execution + audit
+        earlier = await self.execution_store.record(
             run_context,
             execution_id=self.id_generator.new_uuid(),
             tool_name=name,
@@ -346,7 +530,15 @@ class ToolExecutor:
             attempts=attempt,
             started_at=started_at,
             finished_at=finished_at,
+            dispatch_id=dispatch_id,
         )
+        if earlier is not None:
+            # The unique index refused a second success for this key: the first
+            # one is the answer (the backstop behind the claim, ADR-0108 d. 5).
+            assert idempotency_key is not None
+            replayed = await self._replay(tool, run_context, idempotency_key, input_hash)
+            if replayed is not None:
+                return replayed
         await self._audit(
             run_context,
             "tool.executed",
@@ -356,7 +548,7 @@ class ToolExecutor:
             details={"output_hash": output_hash, "attempts": attempt},
         )
 
-        # 8. typed result
+        # 10. typed result
         return output_model
 
     async def _audit(

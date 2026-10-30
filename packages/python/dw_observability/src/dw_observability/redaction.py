@@ -26,15 +26,22 @@ def redact_text(text: str) -> str:
 
 
 def redact_mapping(data: Mapping[str, object]) -> dict[str, object]:
-    """Return a copy with sensitive values replaced, recursing into nests."""
-    cleaned: dict[str, object] = {}
-    for key, value in data.items():
-        if is_sensitive_key(key):
-            cleaned[key] = REDACTED
-        elif isinstance(value, Mapping):
-            cleaned[key] = redact_mapping(value)
-        elif isinstance(value, str):
-            cleaned[key] = redact_text(value)
-        else:
-            cleaned[key] = value
-    return cleaned
+    """Return a copy with sensitive values replaced, recursing into nests.
+
+    Into lists and tuples too, at any depth: `{"items": [{"api_key": ...}]}`
+    used to come out verbatim, because only a mapping was walked.
+    """
+    return {
+        key: REDACTED if is_sensitive_key(key) else _redact_value(value)
+        for key, value in data.items()
+    }
+
+
+def _redact_value(value: object) -> object:
+    if isinstance(value, Mapping):
+        return redact_mapping(value)
+    if isinstance(value, list | tuple):
+        return [_redact_value(item) for item in value]
+    if isinstance(value, str):
+        return redact_text(value)
+    return value

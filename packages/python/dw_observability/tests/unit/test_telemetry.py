@@ -168,3 +168,10 @@ def test_recording_telemetry_captures_for_assertions() -> None:
     telemetry.add_metric("dw_run_total", 1, {"worker": "demo"})
     assert telemetry.spans == [("dw.run.start", {"dw.worker_id": "demo"})]
     assert telemetry.metrics == [("dw_run_total", 1, {"worker": "demo"})]
+
+
+def test_a_secret_inside_a_list_never_reaches_a_span_attribute() -> None:
+    """runtime-hardening R6.5: span attributes pass the same redaction."""
+    cleaned = safe_attributes({"items": [{"api_key": "sk-123"}]})
+    assert "sk-123" not in str(cleaned["items"])
+    assert "[REDACTED]" in str(cleaned["items"])
