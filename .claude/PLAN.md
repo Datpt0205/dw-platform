@@ -33,9 +33,8 @@ own file and a row here.
   D17/D18 (Đạt, 2026-10-29): path C, a DW core plus a minimal `dw.workflow/v1`
   engine running a shipped lead-care pack; YC118-YC125, ADR-0128 (Proposed),
   specs `digital-worker`, `wf-lite`, `leadcare` gated and ready for agent.
-  **Next:** the unattended queue in `studio.md` (foundations-hardening 07 and
-  03, org-and-principals 01, runtime-hardening 01 and
-  digital-worker 01-02, wf-lite 01-02, runtime-hardening 02, compliance-pdpl 08, leadcare 01 (but R1.5) done; next digital-worker 03).
+  **Next:** the unattended queue in `studio.md` (items 0-10 done, leadcare 01
+  but R1.5; next digital-worker 04 once 03 closes).
 
 ## Decisions Đạt owes
 

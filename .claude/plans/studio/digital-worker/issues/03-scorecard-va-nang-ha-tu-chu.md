@@ -59,3 +59,5 @@ Business Owner đọc scorecard của DW tính từ hàng đợi, quyết địn
 - 2026-10-30 (agent): đang làm. Xong bước 1-2 (`d340030`: cột `model_cost_usd`, `RunCostRecorder` trong
   `build_model_stack`, nên cả API và worker ghi). Còn: bước 3 scorecard, 4 route nâng hạ, 5 handler outbox, 8 index
   unique một phần, 6 độ trễ, 7 test âm; mutation, rà bảo mật.
+- 2026-10-30 (agent): đang đóng. Xong bước 1-8, mutation 18/18 (`8e02ff1`), độ trễ trong ngân sách; còn chạy
+  integration của bốn gói chạm tới trước khi đánh dấu resolved.
