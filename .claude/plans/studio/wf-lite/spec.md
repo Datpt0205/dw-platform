@@ -164,6 +164,11 @@ Mỗi tài liệu biên dịch một lần thành StateGraph, chạy, dừng ở
 - 29/10/2026 (agent, tạm): `trail` trong trạng thái lượt chạy thay cho một bảng bước, vì `platform.run_steps` là của telemetry-and-audit/03 và hai bảng bước là hai câu trả lời. Nếu sai thì: wf-lite tạo `platform.run_steps` tối thiểu và telemetry-and-audit/03 mở rộng nó.
 - 29/10/2026 (agent, tạm): "Chờ phản hồi" là `time.wait` rồi một công cụ đọc hộp thư, không là chờ sự kiện tương quan (W3). Nếu sai thì: thêm loại `event.wait@1` với khóa tương quan và cửa nhận thư trả lời.
 - 29/10/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 01-02.
+- 30/10/2026 (agent, tạm theo ủy quyền): Theo leadcare/01: đầu ra của `tool.call` chỉ có `result` và tham chiếu chỉ một
+  tầng, nên quy trình chăm sóc lead không đọc được `sent_at` của bước gửi hay rẽ theo `found`. Spec công cụ khai
+  `output_fields`; bước `tool.call` ghi các trường đó cạnh `result`, và bộ kiểm nhận `steps.<id>.<trường đã khai>` như
+  mọi tham chiếu khác (nguyên giá trị, theo cây). Sửa: R3.7 (đọc thêm), `ToolSpec`, bộ kiểm, trình biên dịch. Nếu sai
+  thì: tham chiếu hai tầng `steps.<id>.result.<trường>` thay cho khai báo.
 
 ## Danh sách ticket
 

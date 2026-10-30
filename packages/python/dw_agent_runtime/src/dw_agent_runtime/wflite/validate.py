@@ -291,6 +291,16 @@ class _Check:
             self._add(_join(path, "config"), "wf.config_invalid", problem)
         return not found
 
+    def _tool_fields(self, step: Step) -> set[str]:
+        """The output fields a `tool.call` step's tool declares (`output_fields`)."""
+        if step.type != "tool.call@1":
+            return set()
+        name, _, version = str(step.config.get("tool", "")).partition("@")
+        try:
+            return set(getattr(self.tools.resolve(name, version), "output_fields", ()) or ())
+        except NotFoundError:
+            return set()
+
     # ------------------------------------------------------- the HITL floor --
 
     def _tool_call(self, step: Step, path: str, gates: tuple[_Gate, ...]) -> None:
@@ -371,7 +381,8 @@ class _Check:
             else:
                 spec = self.registry.get(placed.step.type)
                 output = spec.output_schema(placed.step.config) if spec is not None else {}
-                if field not in (output.get("properties") or {}):
+                known = set(output.get("properties") or {}) | self._tool_fields(placed.step)
+                if field not in known:
                     self._add(path, "wf.ref_unknown", text)
 
 

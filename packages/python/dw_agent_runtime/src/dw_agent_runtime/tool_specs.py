@@ -58,6 +58,10 @@ class ToolSpec(BaseModel):
     # (compliance-pdpl R3.2, CP28). `message` comes with `true`, and only then.
     sends_message: bool | None = None
     message: MessageSpec | None = None
+    # The top-level fields of the tool's output a workflow may reference as
+    # `{{ steps.<id>.<field> }}` (leadcare R1.1: a reply is read since the
+    # send's `sent_at`, a switch turns on `found`); none, and only `result`.
+    output_fields: tuple[str, ...] = ()
 
     @model_validator(mode="after")
     def _a_tool_with_an_effect_says_whether_it_sends(self) -> ToolSpec:

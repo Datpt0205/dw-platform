@@ -85,3 +85,6 @@ workspace_id uuid, state text)` `SECURITY DEFINER`, `SET search_path = pg_catalo
 - 2026-10-29 (agent): viết lại theo gate `checking-plan-readiness` lượt 1.
 - 2026-10-29 (agent): theo lượt xác nhận của gate: chờ compliance-pdpl/08 (Sàn gửi tin); `email.send` `approval_policy: always`, `sends_message: true`; cửa nhận ghi Bản ghi đồng ý và đóng khi `is_deployed`; `work.handoff` nhận `{to, code, facts}`; tiêu chí R1.5 kiểm điểm và nhãn (người nhận là tham chiếu khóa nên không đổi được); LCP3 thêm DW `draft`; LCP13 tách hai ca.
 - 2026-10-29 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-10-30 (agent): đang làm. Khoảng trống gặp khi bắt đầu: R1.1 cần `since` là `sent_at` của bước gửi và rẽ theo
+  `found`, mà đầu ra của `tool.call` chỉ có `result`; quyết định tạm ở `Quyết định` của wf-lite (30/10): spec công cụ
+  khai `output_fields`, bước ghi chúng cạnh `result`, bộ kiểm nhận `steps.<id>.<trường>`.

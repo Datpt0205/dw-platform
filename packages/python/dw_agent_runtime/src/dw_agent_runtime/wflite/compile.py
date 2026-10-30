@@ -287,7 +287,10 @@ class _Builder:
                     approval_id=approval_id,
                 ),
             )
-            return {f"out__{step.id}": {"result": result.model_dump(mode="json")}}
+            output = result.model_dump(mode="json")
+            # `result` whole, and its top-level fields beside it, which the
+            # validator lets a step reference when the tool declares them.
+            return {f"out__{step.id}": {**output, "result": output}}
 
         return node
 
