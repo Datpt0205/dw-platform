@@ -98,3 +98,7 @@ workspace_id uuid, state text)` `SECURITY DEFINER`, `SET search_path = pg_catalo
   `INTAKE_SIGNING_SECRET`, ghi `ConsentLedger` cùng giao dịch với việc (R2.13: cần đường ghi chung giao dịch); (c) bước
   6 Mailpit trong compose dev, đo API tìm kiếm của Mailpit thật; (d) bước 7 eval; (e) bước 8 test (LCP3-LCP18 và lượt
   integration từ cửa nhận tới bàn giao); (f) mutation, `reviewing-feature-security`, `reviewing-deployment-security`.
+- 2026-10-30 (agent): đang làm. Xong (a) nối công cụ ở hai root (`8b51792`) và (b) cửa nhận: migration `cb43fb6e860b`,
+  `application/intake.py`, route, `INTAKE_SIGNING_SECRET`, Bản ghi đồng ý cùng giao dịch với việc qua
+  `WorkQueue.enqueue(intake=...)` (`6cf41ca`). Còn: test cửa nhận (đang viết), (c) Mailpit, (d) eval, (e) công cụ với
+  SMTP/Mailpit giả và lượt integration từ cửa nhận tới bàn giao, (f) mutation và hai lượt rà bảo mật.
