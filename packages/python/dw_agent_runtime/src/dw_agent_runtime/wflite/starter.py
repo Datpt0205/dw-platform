@@ -79,6 +79,11 @@ def checked_parameters(variables: Sequence[Variable], given: Mapping[str, Any]) 
             continue
         if not _TYPES[variable.type](value):
             raise _refused("parameter_invalid", name=variable.name, expected=variable.type)
+        if variable.type in ("integer", "number") and (
+            (variable.minimum is not None and value < variable.minimum)
+            or (variable.maximum is not None and value > variable.maximum)
+        ):
+            raise _refused("parameter_invalid", name=variable.name, outside="bounds")
         params[variable.name] = value
     return params
 

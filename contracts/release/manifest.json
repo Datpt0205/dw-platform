@@ -3,6 +3,11 @@
   "approval_policy_version": "1.0.0",
   "copy_bundles": [
     {
+      "checksum": "157df89d9b16a646120c67b8ade1fb7cf6087424aec00a4d1e03e4fe1265554c",
+      "copy_id": "marketing.leadcare_handoff",
+      "version": "1.0.0"
+    },
+    {
       "checksum": "2866325cda2ce8ea08d86d4869fdd677572499e0d17f36344a255e6516979410",
       "copy_id": "platform.runtime",
       "version": "1.3.0"
@@ -35,7 +40,7 @@
       "version": "1.2.0"
     }
   ],
-  "git_sha": "cfdc7b8cf4109a2c8a2c287029decf16ff8daae1",
+  "git_sha": "f39fb16e3f968400437b904ab52604aabda9ba7d",
   "knowledge_index_version": "2026-07-25.structure-1",
   "memory_policy_version": "2.0.0",
   "platform_version": "0.1.0",
@@ -68,6 +73,26 @@
   ],
   "prompt_bundles": [
     {
+      "checksum": "3a1be60a62c6017cee239689218d350bf8c28174f285575c3610838b6efc1d5a",
+      "prompt_id": "marketing.lead_email_draft",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "76e22bbc017611a298aa4aab5b6e5ffa7fd08b5c5f2bfff951861445b6a8fc9a",
+      "prompt_id": "marketing.lead_reminder_draft",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "52b251bc01bfe3b9dc259bd4d2a119a4958fe2c37f62bc2800e5630f67dd0ac8",
+      "prompt_id": "marketing.lead_reply_classify",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "931911a2cc7402841f7573e900246848c76df3daa1c367b4faff56a8b67fc43d",
+      "prompt_id": "marketing.lead_score",
+      "version": "1.0.0"
+    },
+    {
       "checksum": "b5dee5fc2c33cf58c88dad2853961f1aae2372dafb70080158098a45fb57a042",
       "prompt_id": "platform.untrusted_demo",
       "version": "1.1.0"
@@ -75,7 +100,29 @@
   ],
   "rubrics": [],
   "schema_version": "1.0",
-  "tool_specs": [],
+  "tool_specs": [
+    {
+      "approval_policy": "always",
+      "checksum": "236ac3b0c4c224d3bbc1b3d1cc0fc7ca7a165ba44a94784b1b108c029db6fbc4",
+      "name": "email.send",
+      "side_effect_level": "external",
+      "version": "1.0.0"
+    },
+    {
+      "approval_policy": "never",
+      "checksum": "8669c1963a6f2afaaba4eecd294d5b02888c55d11a6ed7fa085bc7864e0b4494",
+      "name": "mailbox.fetch_reply",
+      "side_effect_level": "none",
+      "version": "1.0.0"
+    },
+    {
+      "approval_policy": "conditional",
+      "checksum": "0b5db11e3eba5e2e0c79fe85a7bffefd3a3a371cef7072f1ba2e33ca5a52f1f3",
+      "name": "work.handoff",
+      "side_effect_level": "internal",
+      "version": "1.0.0"
+    }
+  ],
   "toolsets": [],
   "workers": []
 }

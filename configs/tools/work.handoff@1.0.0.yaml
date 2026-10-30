@@ -1,0 +1,17 @@
+# Bàn giao việc cho một người (leadcare R3.5): sales theo tham số, hay Validator hiện tại
+# của DW; gói bốn trường dựng từ `facts` theo mẫu của `code`.
+schema_version: "1.0"
+name: work.handoff
+version: "1.0.0"
+summary: Bàn giao việc đang làm cho một người, kèm gói thông tin.
+when_to_use: Khi DW đã làm xong phần của mình hay cần người quyết.
+when_not_to_use: Khi việc còn bước DW tự làm được.
+returns: Người nhận việc.
+required_scopes: []
+side_effect_level: internal
+approval_policy: conditional
+timeout_seconds: 15
+max_retries: 0
+idempotent: true
+data_classification: [internal]
+sends_message: false

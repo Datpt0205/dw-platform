@@ -1,0 +1,16 @@
+# Đọc thư trả lời mới nhất của lead (leadcare R3.3, R3.4), qua API của hộp thư dev.
+schema_version: "1.0"
+name: mailbox.fetch_reply
+version: "1.0.0"
+summary: Tìm thư trả lời mới nhất của một địa chỉ từ một thời điểm.
+when_to_use: Sau khi đã gửi thư và chờ xong, để biết lead có trả lời không.
+when_not_to_use: Trước khi gửi thư đầu tiên.
+returns: found (có thư hay không) và text (nội dung thư mới nhất).
+required_scopes: []
+side_effect_level: none
+approval_policy: never
+timeout_seconds: 15
+max_retries: 1
+idempotent: true
+data_classification: [personal]
+output_fields: [found, text]

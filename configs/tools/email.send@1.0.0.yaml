@@ -1,0 +1,21 @@
+# Gửi một thư tới lead của việc (leadcare R3.1, R3.2, R3.6, R3.7). Chỉ tới hộp thư dev
+# (Mailpit) ở lát này; đi qua cổng duyệt của quy trình và Sàn gửi tin (ADR-0124).
+schema_version: "1.0"
+name: email.send
+version: "1.0.0"
+summary: Gửi một thư tới đúng người nhận đã được duyệt.
+when_to_use: Khi một đề xuất thư đã được người duyệt và cần gửi đi.
+when_not_to_use: Khi chưa có quyết định duyệt, hay người nhận khác lead của việc.
+returns: Thời điểm thư được gửi (sent_at).
+required_scopes: []
+side_effect_level: external
+approval_policy: always
+timeout_seconds: 30
+max_retries: 0
+idempotent: false
+data_classification: [personal]
+sends_message: true
+message:
+  channel: email
+  recipient_fields: [to]
+output_fields: [sent_at]

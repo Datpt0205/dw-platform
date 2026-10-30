@@ -41,6 +41,10 @@ class Variable(_Strict):
     type: VariableType
     default: Any = None
     required: bool = False
+    # Bounds of a number or integer (leadcare R3.8); a value outside them is
+    # `parameter_invalid` at the start (wf-lite R6.2).
+    minimum: float | None = None
+    maximum: float | None = None
 
 
 class DecisionClassDecl(_Strict):
@@ -53,7 +57,7 @@ class DecisionClassDecl(_Strict):
 class WorkKindDecl(_Strict):
     kind: str = Field(min_length=1, max_length=120)
     # A file under the pack's `schemas/` directory.
-    schema_: str = Field(alias="schema", pattern=r"^[A-Za-z0-9_.-]+\.json$")
+    schema_: str = Field(alias="schema", pattern=r"^[A-Za-z0-9_.@-]+\.json$")
 
 
 class WorkflowDocument(_Strict):

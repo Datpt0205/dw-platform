@@ -93,7 +93,16 @@ def build_node_registry() -> Mapping[str, NodeTypeSpec]:
                     "prompt": {"type": "string", "pattern": _PROMPT_ID},
                     "inputs": {"type": "object"},
                     "output_schema": {"type": "object"},
-                    "min_confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                    # A number, or the DW's parameter that holds one (leadcare R1.1).
+                    "min_confidence": {
+                        "oneOf": [
+                            {"type": "number", "minimum": 0, "maximum": 1},
+                            {
+                                "type": "string",
+                                "pattern": r"^\{\{\s*params\.[a-z][a-z0-9_]*\s*\}\}$",
+                            },
+                        ]
+                    },
                 },
                 "additionalProperties": False,
             },

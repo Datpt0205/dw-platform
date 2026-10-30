@@ -1,0 +1,27 @@
+schema_version: "1.0"
+copy_id: marketing.leadcare_handoff
+version: "1.0.0"
+
+# Mẫu gói bàn giao của `work.handoff` theo mã (leadcare R3.5). `{name}` là một trường
+# của `facts` do quy trình truyền; thiếu thì để trống. Bốn trường của digital-worker:R4.2.
+handoffs:
+  lead_replied:
+    problem: "Lead đã trả lời thư (nhãn: {label})."
+    context: "Hạng lead: {tier}. Tóm tắt thư trả lời: {summary}"
+    tried: "Đã chấm điểm, gửi thư đầu tiên sau khi duyệt và đọc thư trả lời."
+    recommendation: "Liên hệ lead trong hôm nay và tiếp tục trao đổi."
+  lead_no_reply:
+    problem: "Lead chưa trả lời sau thư đầu tiên và thư nhắc."
+    context: "Hạng lead: {tier}."
+    tried: "Đã gửi thư đầu tiên và một thư nhắc, cả hai đã được duyệt."
+    recommendation: "Gọi điện cho lead hoặc đóng lead nếu không còn phù hợp."
+  send_rejected:
+    problem: "Người duyệt từ chối thư đầu tiên."
+    context: "Ý kiến của người duyệt: {comment}"
+    tried: "Đã chấm điểm và soạn thư đầu tiên."
+    recommendation: "Tự soạn thư cho lead này hoặc đóng lead."
+  reminder_rejected:
+    problem: "Người duyệt từ chối thư nhắc."
+    context: "Ý kiến của người duyệt: {comment}"
+    tried: "Đã gửi thư đầu tiên, lead chưa trả lời, đã soạn thư nhắc."
+    recommendation: "Quyết định có liên hệ lại lead hay không."

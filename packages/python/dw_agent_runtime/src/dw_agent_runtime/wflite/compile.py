@@ -236,7 +236,7 @@ class _Builder:
         config = step.config
         prompt_id, _, prompt_version = str(config["prompt"]).partition("@")
         schema = config["output_schema"]
-        floor = config.get("min_confidence")
+        floor_ref = config.get("min_confidence")
 
         async def node(state: Mapping[str, Any], runtime: Runtime[RunContext]) -> dict[str, Any]:
             inputs = _resolve(config["inputs"], state)
@@ -257,6 +257,7 @@ class _Builder:
             output = answer.model_dump()
             if problems(schema, output):
                 raise StepHandedOff("model_output_invalid", output)
+            floor = _resolve(floor_ref, state)
             if floor is not None and float(output.get("confidence", 0)) < float(floor):
                 raise StepHandedOff("low_confidence", output)
             return {f"out__{step.id}": output}

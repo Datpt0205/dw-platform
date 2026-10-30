@@ -1,0 +1,183 @@
+# Chăm sóc lead của gói Marketing (leadcare R1; D17): chấm điểm, soạn thư, chờ người
+# duyệt, gửi, chờ trả lời, rồi bàn giao cho sales. Mọi thư đi qua cổng duyệt và Sàn
+# gửi tin (ADR-0124); người nhận là email của lead, khóa trong đề xuất.
+schema: dw.workflow/v1
+key: lead_care
+version: 1.0.0
+triggers:
+  - id: intake
+    type: trigger.work_item@1
+    config: {kind: marketing.lead}
+variables:
+  - {name: sender_address, type: string, required: true}
+  - {name: sales_assignee_id, type: uuid, required: true}
+  - {name: reply_wait_seconds, type: integer, default: 172800, minimum: 30, maximum: 604800}
+  - {name: min_confidence, type: number, default: 0.7, minimum: 0, maximum: 1}
+decision_classes:
+  - {key: email.send, effect_level: external, reversible: false, ceiling: A2}
+  - {key: work.handoff, effect_level: internal, reversible: true, ceiling: A3}
+work_kinds:
+  - {kind: marketing.lead, schema: marketing.lead@1.0.0.json}
+steps:
+  - id: score
+    type: ai.llm@1
+    description: Chấm điểm lead
+    config:
+      prompt: marketing.lead_score@1.0.0
+      inputs:
+        name: "{{ work.name }}"
+        source: "{{ work.source }}"
+        message: "{{ work.message }}"
+      output_schema:
+        type: object
+        required: [score, tier, reasons, confidence]
+        properties:
+          score: {type: integer, minimum: 0, maximum: 100}
+          tier: {type: string, enum: [A, B, C]}
+          reasons: {type: array, maxItems: 5, items: {type: string, maxLength: 300}}
+          confidence: {type: number, minimum: 0, maximum: 1}
+      min_confidence: "{{ params.min_confidence }}"
+  - id: draft
+    type: ai.llm@1
+    description: Soạn thư đầu tiên
+    config:
+      prompt: marketing.lead_email_draft@1.0.0
+      inputs:
+        name: "{{ work.name }}"
+        message: "{{ work.message }}"
+        tier: "{{ steps.score.tier }}"
+      output_schema:
+        type: object
+        required: [subject, body, confidence]
+        properties:
+          subject: {type: string, minLength: 1, maxLength: 150}
+          body: {type: string, minLength: 1, maxLength: 4000}
+          confidence: {type: number, minimum: 0, maximum: 1}
+      min_confidence: "{{ params.min_confidence }}"
+  - id: approve_send
+    type: human.approval@1
+    description: Duyệt thư gửi lead
+    config:
+      decision_class: email.send
+      proposal:
+        to: "{{ work.email }}"
+        subject: "{{ steps.draft.subject }}"
+        body: "{{ steps.draft.body }}"
+      locked_fields: [to]
+      approved:
+        - id: send
+          type: tool.call@1
+          config:
+            tool: email.send@1.0.0
+            input: "{{ steps.approve_send.proposal }}"
+            decision_class: email.send
+        - id: wait_reply
+          type: time.wait@1
+          config: {seconds_param: reply_wait_seconds}
+        - id: fetch_reply
+          type: tool.call@1
+          config:
+            tool: mailbox.fetch_reply@1.0.0
+            input:
+              from: "{{ work.email }}"
+              since: "{{ steps.send.sent_at }}"
+            decision_class: work.handoff
+        - id: replied
+          type: logic.switch@1
+          config:
+            on: "{{ steps.fetch_reply.found }}"
+            cases:
+              "true":
+                - id: classify
+                  type: ai.llm@1
+                  description: Phân loại thư trả lời
+                  config:
+                    prompt: marketing.lead_reply_classify@1.0.0
+                    inputs:
+                      reply: "{{ steps.fetch_reply.text }}"
+                    output_schema:
+                      type: object
+                      required: [label, summary, confidence]
+                      properties:
+                        label: {type: string, enum: [interested, not_interested, question, other]}
+                        summary: {type: string, maxLength: 500}
+                        confidence: {type: number, minimum: 0, maximum: 1}
+                    min_confidence: "{{ params.min_confidence }}"
+                - id: handoff_reply
+                  type: tool.call@1
+                  config:
+                    tool: work.handoff@1.0.0
+                    input:
+                      to: {user: "{{ params.sales_assignee_id }}"}
+                      code: lead_replied
+                      facts:
+                        label: "{{ steps.classify.label }}"
+                        summary: "{{ steps.classify.summary }}"
+                        tier: "{{ steps.score.tier }}"
+                    decision_class: work.handoff
+            default:
+              - id: draft_reminder
+                type: ai.llm@1
+                description: Soạn thư nhắc
+                config:
+                  prompt: marketing.lead_reminder_draft@1.0.0
+                  inputs:
+                    name: "{{ work.name }}"
+                    first_subject: "{{ steps.draft.subject }}"
+                  output_schema:
+                    type: object
+                    required: [subject, body, confidence]
+                    properties:
+                      subject: {type: string, minLength: 1, maxLength: 150}
+                      body: {type: string, minLength: 1, maxLength: 4000}
+                      confidence: {type: number, minimum: 0, maximum: 1}
+                  min_confidence: "{{ params.min_confidence }}"
+              - id: approve_reminder
+                type: human.approval@1
+                description: Duyệt thư nhắc
+                config:
+                  decision_class: email.send
+                  proposal:
+                    to: "{{ work.email }}"
+                    subject: "{{ steps.draft_reminder.subject }}"
+                    body: "{{ steps.draft_reminder.body }}"
+                  locked_fields: [to]
+                  approved:
+                    - id: send_reminder
+                      type: tool.call@1
+                      config:
+                        tool: email.send@1.0.0
+                        input: "{{ steps.approve_reminder.proposal }}"
+                        decision_class: email.send
+                    - id: handoff_no_reply
+                      type: tool.call@1
+                      config:
+                        tool: work.handoff@1.0.0
+                        input:
+                          to: {user: "{{ params.sales_assignee_id }}"}
+                          code: lead_no_reply
+                          facts:
+                            tier: "{{ steps.score.tier }}"
+                        decision_class: work.handoff
+                  rejected:
+                    - id: handoff_reminder_rejected
+                      type: tool.call@1
+                      config:
+                        tool: work.handoff@1.0.0
+                        input:
+                          to: {role: validator}
+                          code: reminder_rejected
+                          facts:
+                            comment: "{{ steps.approve_reminder.comment }}"
+                        decision_class: work.handoff
+      rejected:
+        - id: handoff_rejected
+          type: tool.call@1
+          config:
+            tool: work.handoff@1.0.0
+            input:
+              to: {role: validator}
+              code: send_rejected
+              facts:
+                comment: "{{ steps.approve_send.comment }}"
+            decision_class: work.handoff

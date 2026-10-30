@@ -1,0 +1,21 @@
+{
+  "type": "object",
+  "required": ["name", "email", "source", "message", "consent"],
+  "properties": {
+    "name": {"type": "string", "minLength": 1, "maxLength": 200},
+    "email": {"type": "string", "format": "email", "maxLength": 320},
+    "source": {"type": "string", "minLength": 1, "maxLength": 64},
+    "message": {"type": "string", "minLength": 0, "maxLength": 4000},
+    "consent": {
+      "type": "object",
+      "required": ["granted", "text_version", "captured_at"],
+      "properties": {
+        "granted": {"const": true},
+        "text_version": {"type": "string", "minLength": 1, "maxLength": 64},
+        "captured_at": {"type": "string", "format": "date-time"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
