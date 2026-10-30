@@ -44,6 +44,8 @@ workspaces = sa.Table(
         "created_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text("now()")
     ),
     sa.UniqueConstraint("tenant_id", "slug", name="uq_workspaces_tenant_slug"),
+    # The target of every composite (tenant_id, workspace_id) foreign key (2997128da6ba).
+    sa.UniqueConstraint("tenant_id", "id", name="uq_workspaces_tenant_id_id"),
 )
 
 users = sa.Table(

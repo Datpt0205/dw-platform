@@ -62,7 +62,7 @@ function WorkspacesManager() {
       <PageHeader
         icon={<ClusterOutlined />}
         title="Workspace"
-        subtitle="Các workspace (phòng ban) của công ty."
+        subtitle="Các workspace của công ty."
       />
       <Flex vertical gap="middle">
         {error && <Alert type="error" showIcon title={error} />}

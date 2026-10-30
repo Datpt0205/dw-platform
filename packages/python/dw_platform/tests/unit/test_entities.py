@@ -8,28 +8,10 @@ from dw_platform.domain.entities import (
     Membership,
     Plan,
     Role,
-    Tenant,
     User,
-    Workspace,
 )
 
 pytestmark = pytest.mark.unit
-
-
-def test_tenant_slug_validation() -> None:
-    Tenant(id=TenantId(uuid.uuid4()), slug="tenant-alpha", name="Alpha")
-    with pytest.raises(ValueError, match="slug"):
-        Tenant(id=TenantId(uuid.uuid4()), slug="Tenant Alpha!", name="Alpha")
-
-
-def test_workspace_requires_name() -> None:
-    with pytest.raises(ValueError, match="name"):
-        Workspace(
-            id=WorkspaceId(uuid.uuid4()),
-            tenant_id=TenantId(uuid.uuid4()),
-            slug="main",
-            name="  ",
-        )
 
 
 def test_user_requires_subject() -> None:

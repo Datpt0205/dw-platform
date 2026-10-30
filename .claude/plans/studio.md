@@ -486,25 +486,25 @@ Kiểm nhất quán 24/10/2026: 8 CRITICAL, 25 HIGH, 38 MEDIUM, 2 LOW; phủ YC 
 Nguồn duy nhất của thứ tự (Đạt, 29/10/2026). Phiên không người trực làm việc đầu tiên chưa xong; một ticket bị chặn bởi thứ
 bên ngoài thì ghi "Chờ Đạt" và làm việc kế. Đường dẫn ticket tính từ `.claude/plans/studio/`.
 
-| #   | Việc                                                                                      | Trạng thái     |
-| --- | ----------------------------------------------------------------------------------------- | -------------- |
-| 0   | Pha 0: D17, requirements, ADR-0128, spec `digital-worker`, `wf-lite`, `leadcare`, gate    | xong           |
-| 1   | `foundations-hardening/issues/07`                                                         | xong `8cee863` |
-| 2   | `foundations-hardening/issues/03`                                                         | xong `62d3b32` |
-| 3   | `org-and-principals/issues/01`                                                            | chưa           |
-| 4   | `runtime-hardening/issues/01`                                                             | chưa           |
-| 5   | `digital-worker/issues/01` hồ sơ DW và loại quyết định                                    | chưa           |
-| 6   | `digital-worker/issues/02` hàng đợi chung, bàn giao, cổng duyệt                           | chưa           |
-| 7   | `wf-lite/issues/01` tài liệu, sổ loại bước, bộ kiểm, luật sàn HITL                        | chưa           |
-| 8   | `wf-lite/issues/02` biên dịch, chạy, chờ và chạy tiếp                                     | chưa           |
-| 9   | `runtime-hardening/issues/02`                                                             | chưa           |
-| 9b  | `compliance-pdpl/issues/08` lõi sàn gửi tin (tách từ 04 theo gate của leadcare, ADR-0124) | chưa           |
-| 10  | `leadcare/issues/01` gói Marketing chăm sóc lead                                          | chưa           |
-| 11  | `digital-worker/issues/03` scorecard, nâng hạ tự chủ                                      | chưa           |
-| 12  | `digital-worker/issues/04` màn hình web                                                   | chưa           |
-| 13  | `leadcare/issues/02` demo chạy thật, ảnh chụp ở `docs/demo/digital-worker/`               | chưa           |
-| 14  | `wf-ai` spec rồi ticket 01: AI sửa gói mẫu (D16, D18)                                     | chưa           |
-| 15  | mọi ticket studio khác có Blocked by đã resolved, theo thứ tự đợt                         | chưa           |
+| #   | Việc                                                                                      | Trạng thái                                                  |
+| --- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| 0   | Pha 0: D17, requirements, ADR-0128, spec `digital-worker`, `wf-lite`, `leadcare`, gate    | xong                                                        |
+| 1   | `foundations-hardening/issues/07`                                                         | xong `8cee863`                                              |
+| 2   | `foundations-hardening/issues/03`                                                         | xong `62d3b32`                                              |
+| 3   | `org-and-principals/issues/01`                                                            | dở: code, test, gate, đột biến xong; còn đo R3.4 đủ 20 phút |
+| 4   | `runtime-hardening/issues/01`                                                             | chưa                                                        |
+| 5   | `digital-worker/issues/01` hồ sơ DW và loại quyết định                                    | chưa                                                        |
+| 6   | `digital-worker/issues/02` hàng đợi chung, bàn giao, cổng duyệt                           | chưa                                                        |
+| 7   | `wf-lite/issues/01` tài liệu, sổ loại bước, bộ kiểm, luật sàn HITL                        | chưa                                                        |
+| 8   | `wf-lite/issues/02` biên dịch, chạy, chờ và chạy tiếp                                     | chưa                                                        |
+| 9   | `runtime-hardening/issues/02`                                                             | chưa                                                        |
+| 9b  | `compliance-pdpl/issues/08` lõi sàn gửi tin (tách từ 04 theo gate của leadcare, ADR-0124) | chưa                                                        |
+| 10  | `leadcare/issues/01` gói Marketing chăm sóc lead                                          | chưa                                                        |
+| 11  | `digital-worker/issues/03` scorecard, nâng hạ tự chủ                                      | chưa                                                        |
+| 12  | `digital-worker/issues/04` màn hình web                                                   | chưa                                                        |
+| 13  | `leadcare/issues/02` demo chạy thật, ảnh chụp ở `docs/demo/digital-worker/`               | chưa                                                        |
+| 14  | `wf-ai` spec rồi ticket 01: AI sửa gói mẫu (D16, D18)                                     | chưa                                                        |
+| 15  | mọi ticket studio khác có Blocked by đã resolved, theo thứ tự đợt                         | chưa                                                        |
 
 ## Ủy quyền
 

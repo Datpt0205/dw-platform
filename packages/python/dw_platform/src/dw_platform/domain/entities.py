@@ -9,48 +9,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from decimal import Decimal
-from enum import StrEnum
 
 from dw_kernel.ids import EntityId, TenantId, UserId, WorkspaceId
-
-_SLUG_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$")
-
-
-def _require_slug(value: str, owner: str) -> str:
-    if not _SLUG_PATTERN.fullmatch(value):
-        raise ValueError(f"{owner} slug must match {_SLUG_PATTERN.pattern}, got {value!r}")
-    return value
-
-
-class TenantStatus(StrEnum):
-    ACTIVE = "active"
-    SUSPENDED = "suspended"
-
-
-@dataclass(slots=True)
-class Tenant:
-    id: TenantId
-    slug: str
-    name: str
-    status: TenantStatus = TenantStatus.ACTIVE
-
-    def __post_init__(self) -> None:
-        _require_slug(self.slug, "tenant")
-        if not self.name.strip():
-            raise ValueError("tenant name must not be blank")
-
-
-@dataclass(slots=True)
-class Workspace:
-    id: WorkspaceId
-    tenant_id: TenantId
-    slug: str
-    name: str
-
-    def __post_init__(self) -> None:
-        _require_slug(self.slug, "workspace")
-        if not self.name.strip():
-            raise ValueError("workspace name must not be blank")
 
 
 @dataclass(slots=True)

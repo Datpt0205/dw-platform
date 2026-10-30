@@ -77,7 +77,7 @@ const platformNav: NavItem[] = [
   {
     href: "/admin/workspaces",
     label: "Workspace",
-    hint: "Các workspace (phòng ban) của công ty",
+    hint: "Các workspace của công ty",
     icon: ClusterOutlined,
     scope: "platform.workspaces.write",
   },

@@ -1,0 +1,48 @@
+# Mutation check of org-and-principals ticket 01: scripts/mutate.py runs this file.
+# One mutation per Kiểm soát row the ticket implements (OP1, OP2, OP3) and per guard
+# it adds (R2.1 the enum scan, R3.1 the lifespans, F1 no direct grant, B2 the sync
+# script's key list). The live probe's half of OP2/OP3 is shown by running it
+# against a realm still on the old values (ticket Comments); R9.1 is a web test.
+mutations:
+  - name: OP1 the composite key is created under another name
+    file: db/migrations/versions/2997128da6ba_workspaces_tenant_id_id_unique.py
+    old: '        " ADD CONSTRAINT uq_workspaces_tenant_id_id UNIQUE (tenant_id, id)"'
+    new: '        " ADD CONSTRAINT uq_workspaces_tenant_and_id UNIQUE (tenant_id, id)"'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_workspace_composite_key.py::test_the_composite_key_exists_by_its_convention_name
+  - name: OP2 a refresh token may be used twice
+    file: infra/keycloak/dw-realm.json
+    old: '  "refreshTokenMaxReuse": 0,'
+    new: '  "refreshTokenMaxReuse": 1,'
+    tests:
+      - packages/python/dw_platform/tests/unit/test_keycloak_realm.py
+  - name: OP3 brute-force protection off
+    file: infra/keycloak/dw-realm.json
+    old: '  "bruteForceProtected": true,'
+    new: '  "bruteForceProtected": false,'
+    tests:
+      - packages/python/dw_platform/tests/unit/test_keycloak_realm.py
+  - name: R3.1 the access token lives eight hours again
+    file: infra/keycloak/dw-realm.json
+    old: '  "accessTokenLifespan": 300,'
+    new: '  "accessTokenLifespan": 28800,'
+    tests:
+      - packages/python/dw_platform/tests/unit/test_keycloak_realm.py
+  - name: F1 the web client takes passwords directly
+    file: infra/keycloak/dw-realm.json
+    old: '      "directAccessGrantsEnabled": false,'
+    new: '      "directAccessGrantsEnabled": true,'
+    tests:
+      - packages/python/dw_platform/tests/unit/test_keycloak_realm.py::test_no_client_takes_a_password_directly
+  - name: B2 the sync script forgets the lockout factor
+    file: scripts/keycloak_realm_settings.py
+    old: '    "failureFactor",'
+    new: ""
+    tests:
+      - packages/python/dw_platform/tests/unit/test_keycloak_realm.py::test_the_sync_script_writes_every_decided_key
+  - name: R2.1 a tenant status the database refuses comes back
+    file: packages/python/dw_platform/src/dw_platform/domain/entities.py
+    old: "from decimal import Decimal\n"
+    new: "from decimal import Decimal\nfrom enum import StrEnum\n\n\nclass TenantStatus(StrEnum):\n    ACTIVE = \"active\"\n    SUSPENDED = \"suspended\"\n"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_tenant_status_vocabulary.py::test_no_enum_declares_a_tenant_status_the_database_refuses
