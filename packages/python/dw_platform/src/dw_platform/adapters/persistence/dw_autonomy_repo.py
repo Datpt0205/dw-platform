@@ -257,13 +257,11 @@ class SqlDwAutonomyRepository:
                 )
             )
             if settlement.level is not None:
+                # The class row is held `FOR UPDATE` since it was read: the
+                # level `settle` judged is the one this replaces.
                 await session.execute(
                     sa.update(_CLASSES)
-                    .where(
-                        _CLASSES.c.dw_id == dw_id,
-                        _CLASSES.c.key == key,
-                        _CLASSES.c.earned_level == from_level,
-                    )
+                    .where(_CLASSES.c.dw_id == dw_id, _CLASSES.c.key == key)
                     .values(earned_level=settlement.level)
                 )
             if settlement.audit is not None:

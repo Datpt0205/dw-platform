@@ -1,0 +1,119 @@
+# Mutation check of digital-worker ticket 03: scripts/mutate.py runs this file.
+# One mutation per control the ticket implements (DWK17-DWK20) and per guard it
+# adds (the scorecard's filters and window, the days range, the adding cost
+# statement, the lowering's audit, the raise's registration at the API).
+mutations:
+  - name: R7.1 another DW's items count
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/dw_autonomy_repo.py
+    old: "                        w.c.dw_id == dw_id,"
+    new: "                        sa.true(),"
+    tests:
+      - apps/api/tests/integration/test_dw_scorecard_autonomy.py::test_the_scorecard_counts_this_dws_own_rows_in_the_window
+  - name: R7.1 items older than the window count
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/dw_autonomy_repo.py
+    old: "                        w.c.created_at >= since,"
+    new: "                        sa.true(),"
+    tests:
+      - apps/api/tests/integration/test_dw_scorecard_autonomy.py::test_the_scorecard_counts_this_dws_own_rows_in_the_window
+  - name: R7.1 another DW's decisions count
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/dw_autonomy_repo.py
+    old: '                        r.c.payload["dw_id"].astext == str(dw_id),'
+    new: "                        sa.true(),"
+    tests:
+      - apps/api/tests/integration/test_dw_scorecard_autonomy.py::test_the_scorecard_counts_this_dws_own_rows_in_the_window
+  - name: R7.1 an edited approval counts as approved as is
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/dw_autonomy_repo.py
+    old: "sa.func.count().filter(sa.and_(approved, sa.not_(d.c.edited))),"
+    new: "sa.func.count().filter(approved),"
+    tests:
+      - apps/api/tests/integration/test_dw_scorecard_autonomy.py::test_the_scorecard_counts_this_dws_own_rows_in_the_window
+  - name: R7.1 another principal's spend counts
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/dw_autonomy_repo.py
+    old: "                        _RUNS.c.run_as_principal_id == principal_id,"
+    new: "                        sa.true(),"
+    tests:
+      - apps/api/tests/integration/test_dw_scorecard_autonomy.py::test_the_scorecard_counts_this_dws_own_rows_in_the_window
+  - name: R7.2 days outside 1-90 is taken
+    file: packages/python/dw_platform/src/dw_platform/application/scorecard.py
+    old: "        if not MIN_DAYS <= days <= MAX_DAYS:"
+    new: "        if False:"
+    tests:
+      - apps/api/tests/integration/test_dw_scorecard_autonomy.py::test_days_is_one_to_ninety
+  - name: R7.3 a call's cost replaces the run's instead of adding
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/run_cost_recorder.py
+    old: "SET model_cost_usd = model_cost_usd + :c WHERE"
+    new: "SET model_cost_usd = :c WHERE"
+    tests:
+      - packages/python/dw_agent_runtime/tests/integration/test_run_cost_recorder_db.py::test_two_calls_of_a_run_add_up_and_another_run_is_untouched
+  - name: R8.1 a lowering writes no audit
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/dw_autonomy_repo.py
+    old: |2-
+                  if moved is None:
+                      return False
+                  await SqlAuditRepository(session).append(audit)
+    new: |2-
+                  if moved is None:
+                      return False
+    tests:
+      - apps/api/tests/integration/test_dw_scorecard_autonomy.py::test_an_owner_lowers_at_once_and_the_gate_reads_it
+  - name: DWK20 a validator lowers
+    file: packages/python/dw_platform/src/dw_platform/application/dw_autonomy.py
+    old: "            if context.principal_id not in people.owners():"
+    new: "            if False:"
+    tests:
+      - apps/api/tests/integration/test_dw_scorecard_autonomy.py::test_a_validator_lowers_nothing_and_a_technical_owner_raises_nothing
+  - name: DWK20 a technical owner raises
+    file: packages/python/dw_platform/src/dw_platform/application/dw_autonomy.py
+    old: "        if context.principal_id != people.business_owner_id:"
+    new: "        if False:"
+    tests:
+      - apps/api/tests/integration/test_dw_scorecard_autonomy.py::test_a_validator_lowers_nothing_and_a_technical_owner_raises_nothing
+  - name: DWK19 a raise above the ceiling opens
+    file: packages/python/dw_platform/src/dw_platform/application/dw_autonomy.py
+    old: "        if _rank(target) > _rank(found.ceiling):"
+    new: "        if False:"
+    tests:
+      - apps/api/tests/integration/test_dw_scorecard_autonomy.py::test_a_raise_above_the_ceiling_or_beside_a_pending_one_opens_nothing
+  - name: DWK19 a second pending raise is not raise_pending
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/dw_autonomy_repo.py
+    old: "            if refused is not None and refused[0] == _RAISE_PENDING:"
+    new: "            if False:"
+    tests:
+      - apps/api/tests/integration/test_dw_scorecard_autonomy.py::test_a_raise_above_the_ceiling_or_beside_a_pending_one_opens_nothing
+      - apps/api/tests/integration/test_dw_scorecard_autonomy.py::test_two_raises_at_once_open_one_approval
+  - name: DWK18 the API admits anyone to decide a raise
+    file: apps/api/src/dw_api/bootstrap/runtime.py
+    old: "        type_admissions={DW_DECISION: DwDecisionAdmission(), DW_AUTONOMY_RAISE: RAISE_ADMISSION},"
+    new: "        type_admissions={DW_DECISION: DwDecisionAdmission()},"
+    tests:
+      - apps/api/tests/integration/test_dw_scorecard_autonomy.py::test_only_a_second_eligible_person_with_a_reason_decides_a_raise
+  - name: DWK18 a raise is not strict at the API
+    file: apps/api/src/dw_api/bootstrap/runtime.py
+    old: '        strict_approval_prefixes=frozenset({"memory.", DW_AUTONOMY_PREFIX}),'
+    new: '        strict_approval_prefixes=frozenset({"memory."}),'
+    tests:
+      - apps/api/tests/integration/test_dw_scorecard_autonomy.py::test_only_a_second_eligible_person_with_a_reason_decides_a_raise
+  - name: DWK18 a technical owner may not decide
+    file: packages/python/dw_platform/src/dw_platform/application/dw_autonomy.py
+    old: "    return (people.validator_id, people.technical_owner_id)"
+    new: "    return (people.validator_id,)"
+    tests:
+      - apps/api/tests/integration/test_dw_scorecard_autonomy.py::test_a_technical_owner_decides_a_raise_too
+  - name: DWK17 a rejected raise is settled as approved
+    file: packages/python/dw_platform/src/dw_platform/application/dw_autonomy.py
+    old: "        if not facts.approved:"
+    new: "        if False:"
+    tests:
+      - apps/api/tests/integration/test_dw_scorecard_autonomy.py::test_a_raise_changes_nothing_until_a_second_person_approves
+  - name: DWK17 an approved raise overwrites an emergency lowering
+    file: packages/python/dw_platform/src/dw_platform/application/dw_autonomy.py
+    old: '        if facts.earned_level == facts.from_level and facts.dw_state != "retired":'
+    new: '        if facts.dw_state != "retired":'
+    tests:
+      - apps/api/tests/integration/test_dw_scorecard_autonomy.py::test_an_approved_raise_does_not_overwrite_an_emergency_lowering
+  - name: R8.6 a retired DW is raised
+    file: packages/python/dw_platform/src/dw_platform/application/dw_autonomy.py
+    old: '        if facts.earned_level == facts.from_level and facts.dw_state != "retired":'
+    new: "        if facts.earned_level == facts.from_level:"
+    tests:
+      - apps/api/tests/integration/test_dw_scorecard_autonomy.py::test_a_retired_dw_is_not_raised
