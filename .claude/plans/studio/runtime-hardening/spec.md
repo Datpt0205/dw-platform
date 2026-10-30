@@ -2,8 +2,8 @@
 
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 25/10/2026
-Duyệt: chưa
-Sẵn sàng: chưa kiểm
+Duyệt: agent, tạm theo ủy quyền 30/10/2026
+Sẵn sàng: ĐẠT (30/10/2026; 0 CRITICAL, 0 HIGH; ticket 01)
 
 Studio gọi công cụ có hiệu ứng, gọi ra ngoài và xếp run cùng sự kiện lên các dịch vụ nền đang để một hiệu ứng
 chạy hai lần, một client lách giới hạn tốc độ, một URL ra ngoài tới địa chỉ nội bộ, kho vector và cache không
@@ -144,9 +144,9 @@ Trước đây: executor tìm lần thành công rồi mới chạy handler (`pa
   hay công cụ phía nhà cung cấp), THÌ runner PHẢI gọi model mà không có mục đó.
 - R6.5 NẾU input của một lần gọi công cụ có khóa bí mật nằm trong mảng ở độ sâu bất kỳ, THÌ
   ToolExecutor PHẢI ghi giá trị đó là `[REDACTED]` trong audit `tool.failed` và trong thuộc tính span.
-- R6.6 Agent do `build_agent` dựng PHẢI gắn cho model đúng các công cụ trong toolset của worker mà run có đủ scope,
+- R6.6 Agent do `build_agent` dựng cho một worker không khai `sub_agents` PHẢI gắn cho model đúng các công cụ trong toolset của worker mà run có đủ scope,
   không có công cụ dựng sẵn nào của thư viện agent (đo 30/10/2026 trên `deepagents` 0.7.15: `create_agent` không cài
-  `write_todos` hay công cụ nào khác).
+  `write_todos` hay công cụ nào khác; công cụ `task` của `sub_agents` thuộc `tools-and-skills`).
 - R6.7 KHI một claim đã quá `expires_at` mà không lời gọi nào tiếp quản, lane `tool_claims_retention`
   PHẢI xóa claim đó ở lượt chạy kế tiếp của lane.
 - R6.8 NẾU một lần ghi claim của tenant A mang `workspace_id` của một workspace thuộc tenant B, THÌ
@@ -302,7 +302,7 @@ Số G giữ nguyên từ foundations-hardening; G5 ở cả hai spec (Quyết �
 | RH33 | Lần gửi chưa biết kết quả không bao giờ bị gửi lại mù                        | R6.9, R6.10  | K4 trên PostgreSQL thật: nhà cung cấp giả nhận lời gọi và trả 2xx, tiến trình chết trước dòng kết thúc → lời gọi kế tiếp cùng khóa, với claim quá hạn hay sau khi lane đã dọn claim, nhận `outcome_unknown`, handler không chạy, nhà cung cấp giả có đúng 1 lời gọi; dòng kết thúc của lần gửi là `outcome_unknown` → như trên; claim quá hạn mà lần gửi trước đã `failed` hay chưa có `dispatched` nào → tiếp quản, handler chạy; gỡ kiểm lần gửi chưa biết kết quả → nhà cung cấp giả nhận lời gọi thứ hai, test đỏ |
 | RH34 | Nhật ký lần gửi bền trước lời gọi ra ngoài, kết quả không rõ không thành lỗi | R6.11, R6.12 | Lúc nhà cung cấp giả nhận lời gọi, một kết nối thứ hai đọc thấy dòng `dispatched` đã commit; T: nhà cung cấp giả áp dụng rồi để lời gọi hết thời gian → dòng `outcome_unknown`, không `failed`; handler ném lỗi không có kiểu sau `dispatched` → `outcome_unknown`; `not_dispatched`, `rejected` → `failed` mang mã; gỡ bước ghi `dispatched`, hay ghi `failed` cho lỗi không có kiểu → ca K4 hay T gửi hai lần, test đỏ                                                                                              |
 | RH35 | Người giữ claim cũ không gửi sau khi bị tiếp quản                            | R6.13        | S: người giữ cũ dừng ngay trước bước ghi `dispatched` tới quá `expires_at`, người mới tiếp quản và gửi, rồi người cũ chạy tiếp → không có dòng `dispatched` thứ hai, handler của người cũ không chạy, nhà cung cấp giả có đúng 1 lời gọi; gỡ rào `claim_token` ở câu chèn `dispatched` → nhà cung cấp giả nhận 2 lời gọi, test đỏ                                                                                                                                                                                     |
-| RH36 | Khóa của tenant này không chặn, không replay cho tenant khác                 | R6.14        | Tenant A có claim còn hạn, một lần `succeeded` và một lần gửi chưa biết kết quả với cùng `tool_name` và khóa; tenant B gọi khóa đó → handler của B chạy một lần, B nhận output của chính nó; bỏ `tenant_id` khỏi khóa chính của claim, hay đọc `platform.tool_executions` không gắn tenant → test đỏ                                                                                                                                                                                                                  |
+| RH36 | Khóa của tenant này không chặn, không replay cho tenant khác                 | R6.14        | Tenant A có claim còn hạn, một lần `succeeded` và một lần gửi chưa biết kết quả với cùng `tool_name` và khóa; tenant B gọi khóa đó → handler của B chạy một lần, B nhận output của chính nó; bỏ `tenant_id` khỏi khóa chính của claim → test đỏ                                                                                                                                                                                                                                                                       |
 
 ## Tiêu chí xong
 
@@ -331,7 +331,8 @@ Số G giữ nguyên từ foundations-hardening; G5 ở cả hai spec (Quyết �
   ném ba lỗi có kiểu mà ticket 01 khai, theo kết quả có kiểu của nó (ADR-0115 (Accepted) quyết 6); trước ticket đó,
   handler nào không ném chúng thì mọi lỗi sau `dispatched` ghi `outcome_unknown` (R6.12).
 - workflow-engine: lần giải điểm chờ `outcome_review` của `.claude/plans/studio/workflow-engine/issues/08-tac-dong-khong-ro-ket-qua.md`
-  đóng lần gửi chưa biết kết quả bằng một dòng kết thúc trước khi Bước chạy lại, `succeeded` kèm bằng chứng cho "Đã
+  đóng lần gửi chưa biết kết quả bằng một dòng kết thúc mang `dispatch_id` của dòng `dispatched` đó trước khi Bước
+  chạy lại, `succeeded` kèm bằng chứng cho "Đã
   nhận" và `failed` cho "Chưa nhận, gửi lại cùng khóa", vì không có dòng đó thì R6.9 lại trả `outcome_unknown` (V4.30
   mục 6).
 - telemetry-and-audit: catalog hành động gộp từ một mảnh mỗi spec (telemetry-and-audit:R1.6, telemetry-and-audit:R1.10;
@@ -472,6 +473,11 @@ Số G giữ nguyên từ foundations-hardening; G5 ở cả hai spec (Quyết �
   R6.12, thêm R6.14, RH17, RH33, thêm RH36, Hiện trạng, Trong phạm vi, ticket 01. Nếu sai thì: thứ tự theo một cột
   `bigint` tăng dần thay cho `dispatch_id`; R6.11 chỉ ghi `dispatched` cho `connector_action` và công cụ `external`
   của nền tảng nhận tiếp quản mù như hôm nay.
+- 30/10/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 01-03.
+- 30/10/2026 (agent, tạm theo ủy quyền): Duyệt spec theo `## Ủy quyền` của studio.md. Theo
+  lượt xác nhận của gate ticket 01: RH36 bỏ vế "đọc `platform.tool_executions` không gắn tenant", vì FORCE RLS theo
+  `app.tenant_id` đã thu hẹp câu đọc nên đột biến đó không đỏ được; R6.6 nói rõ worker không khai `sub_agents`; Phụ
+  thuộc của workflow-engine nêu `dispatch_id`. Nếu sai thì: RH36 thêm một đột biến đọc bằng vai bỏ qua RLS.
 
 ## Danh sách ticket
 

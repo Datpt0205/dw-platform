@@ -1,6 +1,6 @@
 # 01 — ToolExecutor giành lượt trước hiệu ứng, không còn cửa sau
 
-Status: needs-triage
+Status: ready-for-agent
 Blocked by: .claude/plans/studio/foundations-hardening/issues/01-test-khong-the-do.md, .claude/plans/studio/org-and-principals/issues/01-khoa-don-vi-va-siet-realm.md
 Area: studio
 Yêu cầu: R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.7, R6.8, R6.9, R6.10, R6.11, R6.12, R6.13, R6.14, RH15, RH16, RH17, RH18, RH19, RH32, RH33, RH34, RH35, RH36
@@ -36,18 +36,20 @@ Claim và nhật ký lần gửi trước hiệu ứng (R6.1-R6.3, R6.7-R6.13):
    `status IN ('succeeded', 'failed', 'dispatched', 'outcome_unknown')` ngay từ lần tạo (V4.30), sau khi
    `SELECT DISTINCT status` trên dữ liệu hiện có không thấy giá trị khác (ghi Comments); bảng vẫn chỉ thêm, và
    `uq_tool_executions_idempotency` chỉ phủ dòng `succeeded` (`db/migrations/sql/0001_platform_baseline.sql:698`) nên
-   dòng `dispatched` không đụng nó; cột `dispatch_id uuid` (NULL trừ ở dòng kết thúc của một lần gửi), CHECK
+   dòng `dispatched` không đụng nó; cột `dispatch_id uuid`, `id` của dòng `dispatched` mà dòng kết thúc đóng (NULL ở mọi dòng khác), CHECK
    `ck_tool_executions_dispatch_id` `dispatch_id IS NULL OR status <> 'dispatched'`, và index duy nhất một phần
    `uq_tool_executions_dispatch_resolved` trên `(tenant_id, dispatch_id)` `WHERE dispatch_id IS NOT NULL AND status IN
-('succeeded', 'failed')` (mỗi lần gửi đóng bằng đúng một dòng `succeeded` hay `failed`; R6.9, R6.12); tenant-config/03, đi sau ticket này, thay CHECK đó bằng cùng tập cộng `simulated`
+('succeeded', 'failed')` (mỗi lần gửi có nhiều nhất một dòng `succeeded` hay `failed`; dòng `outcome_unknown` trước
+   nó được phép; R6.9, R6.12); tenant-config/03, đi sau ticket này, thay CHECK đó bằng cùng tập cộng `simulated`
    (ADR-0111 (Accepted)). Cột
    `output` quá 30 ngày do lane lưu giữ của telemetry-and-audit xóa qua một hàm riêng của lane
    (ADR-0122 (Accepted) quyết 7), nên không trả UPDATE cho `dw_app` để lane đó dùng.
 3. Port `ToolClaimPort` do `dw_agent_runtime` khai (claim, tiếp quản claim quá hạn, nhả theo token, tìm lần gửi chưa
    biết kết quả, chèn dòng `dispatched` có rào), adapter SQL nối ở composition root; `ToolExecutor` nhận port qua
    constructor. Cùng chỗ khai: ba lỗi có kiểu mà handler ném sau khi lần gửi bắt đầu, `NotDispatchedError`,
-   `RejectedError` (mang mã nhà cung cấp) và `OutcomeUnknownError`, đều là `DWError` có `code` riêng
-   (`not_dispatched`, `rejected`, `outcome_unknown`); executor ném `OutcomeUnknownError` cho bên gọi ở R6.9 và R6.12,
+   `RejectedError` (mang mã nhà cung cấp) và `OutcomeUnknownError`, đều là `DWError` mang thuộc tính `outcome`
+   (`not_dispatched`, `rejected`, `outcome_unknown`) và `code` có sẵn `upstream_unavailable`, không thêm giá trị vào
+   `ErrorCode` (hợp đồng API, ADR-0108 (Accepted) quyết 1); executor ném `OutcomeUnknownError` cho bên gọi ở R6.9 và R6.12,
    không thử lại, và đường agent đưa nó tới model qua `PlatformToolErrorsMiddleware` như mọi lỗi có kiểu, để egress client của connections-and-vault/03 ném
    theo kết quả có kiểu của nó (ADR-0115 (Accepted) quyết 6).
 4. `ToolExecutor._execute`, khi có khóa chống lặp và `side_effect_level` khác `none` (R6.1): INSERT claim trước `find_succeeded`, với
@@ -81,7 +83,8 @@ Không còn cửa sau (R6.4, R6.5, R6.6):
    rỗng và toolset một công cụ, khẳng định tập tên công cụ gắn cho model đúng bằng toolset đã lọc theo scope
    của run, không `write_todos` (đo 30/10/2026: `create_agent` không cài nó).
 10. Sửa comment liệt kê công cụ dựng sẵn ở `langchain_tools.py` cho khớp comment đã đo ở
-    `agent_factory.py`, và bỏ `write_todos` khỏi `_ALWAYS_ALLOWED` vì không gì cài nó; sửa `configs/workers/README.md`: runner đọc `autonomy_level` qua
+    `agent_factory.py`, và bỏ `write_todos` khỏi `_ALWAYS_ALLOWED` vì không gì cài nó (đảo
+    `test_the_todo_tool_survives_because_a_middleware_owns_it` thành ca bị ẩn); sửa `configs/workers/README.md`: runner đọc `autonomy_level` qua
     `lower_autonomy` và bảng của `autonomy.py`, câu "read by nothing" không còn đúng (ADR-0117 (Accepted),
     ADR-0125 (Accepted)).
 
@@ -176,3 +179,4 @@ Không còn cửa sau (R6.4, R6.5, R6.6):
 - 2026-10-30 (agent): gate checking-plan-readiness MEDIUM để người dựng xem: bảng claim có `workspace_id` nhưng policy
   chỉ theo tenant như `platform.tool_executions`, vì khóa chính không có `workspace_id` (ADR-0108 (Accepted) quyết 5);
   `expires_at` không cộng thời gian thử lại của egress vì `asyncio.wait_for` bao cả handler.
+- 2026-10-30 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
