@@ -275,6 +275,14 @@ def build_zalo_inbound(
     )
 
 
+def build_purge_steps() -> OffboardingPurgeSteps:
+    """The offboarding lane's deleting steps (R11.4), built here: the
+    platform's own (the Send floor's append-only tables among them), to which
+    a context that deletes its tables its own way adds its step; every other
+    table goes by the lane's default step."""
+    return OffboardingPurgeSteps.platform()
+
+
 def build_retention_purgers(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> RetentionPurgerRegistry:
@@ -485,9 +493,7 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
                 TenantOffboardingLane(
                     # The one place the purge registry is built (R11.4): a context
                     # that deletes its tables its own way registers its step here.
-                    store=SqlTenantOffboarding(
-                        session_factory=sessions, steps=OffboardingPurgeSteps()
-                    ),
+                    store=SqlTenantOffboarding(session_factory=sessions, steps=build_purge_steps()),
                     artifacts=build_object_storage(settings),
                     exports=build_export_bucket(settings),
                     attachments=build_feedback_bucket(settings),

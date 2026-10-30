@@ -594,6 +594,14 @@ async def test_a_connection_that_binds_no_principal_reads_no_chat_preference(
 # ---------------------------------------------------------------------------
 
 _TENANT_WIDE_ON_PURPOSE: dict[tuple[str, str], str] = {
+    ("platform", "consent_records"): (
+        "a person's consent is the controller's, the tenant (ADR-0124 decision 4): a "
+        "withdrawal recorded in one workspace stops sends from every other"
+    ),
+    ("platform", "contact_suppressions"): (
+        "an opt-out holds across the company (ADR-0124 decision 4): who declined in one "
+        "workspace gets no message from another"
+    ),
     ("memory", "item_evidence"): (
         "a link row between a memory item and its evidence; its workspace is the "
         "item's, and it is reached only through the item"

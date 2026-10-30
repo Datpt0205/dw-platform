@@ -76,7 +76,11 @@ async def _seed_tenant(sessions: async_sessionmaker[AsyncSession], t: _Tenant) -
             sa.text("SELECT set_config('app.tenant_id', :t, true)"), {"t": str(t.tenant_id)}
         )
         await session.execute(
-            sa.text("INSERT INTO platform.tenants (id, slug, name) VALUES (:t, :slug, :slug)"),
+            # As the lane finds it: offboarding has begun (compliance-pdpl R5.6).
+            sa.text(
+                "INSERT INTO platform.tenants (id, slug, name, status)"
+                " VALUES (:t, :slug, :slug, 'offboarding')"
+            ),
             {"t": t.tenant_id, "slug": f"off-{t.tenant_id.hex[-10:]}"},
         )
         await session.execute(
@@ -595,6 +599,16 @@ async def ws_probe(db_urls: DatabaseUrls) -> AsyncIterator[_Probe]:
                 f"GRANT SELECT, DELETE ON {_PROBE} TO dw_app",
             ):
                 await conn.execute(sa.text(statement))
+            # Real tenants, A offboarding as the lane finds it: the platform's
+            # own steps check it (compliance-pdpl R5.6).
+            for tenant, status in ((a, "offboarding"), (b, "active")):
+                await conn.execute(
+                    sa.text(
+                        "INSERT INTO platform.tenants (id, slug, name, status)"
+                        " VALUES (:t, :s, :s, :st)"
+                    ),
+                    {"t": tenant, "s": f"wsp-{tenant.hex[:10]}", "st": status},
+                )
             await conn.execute(
                 sa.text(
                     f"INSERT INTO {_PROBE} VALUES"

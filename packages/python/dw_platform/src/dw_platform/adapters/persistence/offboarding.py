@@ -252,6 +252,18 @@ class OffboardingPurgeSteps:
 
     _steps: dict[str, OffboardingPurgeStep] = field(default_factory=dict)
 
+    @classmethod
+    def platform(cls) -> OffboardingPurgeSteps:
+        """The platform's own steps, which every registry starts from: the
+        worker's composition root adds a context's to these, and the coverage
+        test reads the same set (studio-skeleton R4)."""
+        from dw_platform.adapters.persistence.marketing_send_repo import marketing_purge_step
+
+        steps = cls()
+        # The Send floor's append-only tables (compliance-pdpl ticket 08).
+        steps.register(marketing_purge_step())
+        return steps
+
     def register(self, step: OffboardingPurgeStep) -> None:
         if step.name in self._steps:
             raise ValueError(f"purge step already registered: {step.name}")
@@ -340,7 +352,7 @@ def order_purge_steps(
 @dataclass(frozen=True)
 class SqlTenantOffboarding:
     session_factory: async_sessionmaker[AsyncSession]
-    steps: OffboardingPurgeSteps = field(default_factory=OffboardingPurgeSteps)
+    steps: OffboardingPurgeSteps = field(default_factory=OffboardingPurgeSteps.platform)
 
     async def _exportable_tables(self, session: AsyncSession) -> list[tuple[str, str]]:
         rows = (await session.execute(_CATALOG_EXPORTABLE)).all()

@@ -1,0 +1,10 @@
+# Bản ghi đồng ý (`platform.consent_records`), compliance-pdpl ticket 08.
+#
+# Hết quan hệ với người được hỏi cộng 5 năm (ADR-0124 quyết 4); số tạm, UNVERIFIED
+# tới khi luật sư xác nhận (DO-55). Chưa `enforced`: thời hạn tính từ lúc quan hệ
+# kết thúc, không từ `captured_at`, nên bộ xóa theo hàng là của compliance-pdpl/06;
+# xóa trước thời hạn là mất bằng chứng đồng ý của một tin đã gửi.
+days: 1825
+purger: row_delete
+enforced: false
+description: Bản ghi đồng ý nhận tin marketing, theo người, mục đích và kênh

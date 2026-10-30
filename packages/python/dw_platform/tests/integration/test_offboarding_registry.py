@@ -102,7 +102,12 @@ async def _new_tenant(migrator: AsyncEngine) -> tuple[uuid.UUID, uuid.UUID]:
     tenant, workspace = uuid.uuid4(), uuid.uuid4()
     async with migrator.begin() as conn:
         await conn.execute(
-            sa.text("INSERT INTO platform.tenants (id, slug, name) VALUES (:t, :s, :s)"),
+            # As the lane finds it: a tenant whose offboarding has begun, which
+            # a step guarding its tables checks (compliance-pdpl R5.6).
+            sa.text(
+                "INSERT INTO platform.tenants (id, slug, name, status)"
+                " VALUES (:t, :s, :s, 'offboarding')"
+            ),
             {"t": tenant, "s": f"fh07-{tenant.hex[:10]}"},
         )
         await conn.execute(

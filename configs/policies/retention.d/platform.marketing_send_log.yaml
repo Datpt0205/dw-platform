@@ -1,0 +1,10 @@
+# Nhật ký gửi tin marketing (`platform.marketing_send_log`), compliance-pdpl ticket 08.
+#
+# 13 tháng (395 ngày), số tạm UNVERIFIED (ADR-0124; DO-55). `drop_partition`: cả
+# tháng nằm trọn sau thời hạn. Chưa `enforced`: `platform.drop_expired_partitions`
+# hôm nay chỉ xóa tháng của `platform.audit_events`; nó đọc sổ đăng ký từ
+# usage-and-limits/02, và mảnh này bật cùng bản đó.
+days: 395
+purger: drop_partition
+enforced: false
+description: Nhật ký gửi tin marketing — gửi hay bị chặn, vì sao, dựa trên đồng ý nào
