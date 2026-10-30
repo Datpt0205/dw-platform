@@ -68,3 +68,88 @@ async def test_health_is_exempt_and_zero_disables() -> None:
     unlimited = build_app(limit=0, clock=clock)
     for _ in range(5):
         assert (await _get(unlimited, "/api/v1/things", token="x")).status_code == 200
+
+
+async def _get_from(
+    app: object, path: str, *, headers: dict[str, str], client: tuple[str, int]
+) -> httpx.Response:
+    transport = httpx.ASGITransport(app=app, client=client)  # type: ignore[arg-type]
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+        return await c.get(path, headers=headers)
+
+
+async def test_a_fresh_bearer_per_request_does_not_step_around_the_address() -> None:
+    """runtime-hardening R7.1 (RH20): `10 * L + 1` requests from one address,
+    each with its own random bearer: the last is refused."""
+    clock = FakeClock()
+    limit = 3
+    app = build_app(limit=limit, clock=clock)
+    answers = [
+        (await _get(app, "/api/v1/things", token=f"random-{n}")).status_code
+        for n in range(10 * limit + 1)
+    ]
+    assert answers[:-1] == [200] * (10 * limit)
+    assert answers[-1] == 429
+
+
+async def test_an_anonymous_address_keeps_its_limit_of_l() -> None:
+    """R7.1: a request without `Authorization` is counted at `L`, as before;
+    the address's bearer allowance is not handed to anonymous traffic."""
+    clock = FakeClock()
+    app = build_app(limit=3, clock=clock)
+    answers = [(await _get(app, "/api/v1/things")).status_code for _ in range(4)]
+    assert answers == [200, 200, 200, 429]
+
+
+async def test_a_forged_forwarded_for_from_an_untrusted_peer_is_one_address() -> None:
+    """R7.1 (RH20): uvicorn trusts `X-Forwarded-For` only from
+    `FORWARDED_ALLOW_IPS`; a client sending a new one each time is still its
+    own address. The control: from the trusted proxy, each is its own."""
+    from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+
+    clock = FakeClock()
+    limit = 2
+    forged = ProxyHeadersMiddleware(build_app(limit=limit, clock=clock), trusted_hosts="10.9.9.9")
+    answers = [
+        (
+            await _get_from(
+                forged,
+                "/api/v1/things",
+                headers={"X-Forwarded-For": f"203.0.113.{n}"},
+                client=("198.51.100.7", 4000),
+            )
+        ).status_code
+        for n in range(limit + 1)
+    ]
+    assert answers[-1] == 429
+
+    proxied = ProxyHeadersMiddleware(build_app(limit=limit, clock=clock), trusted_hosts="10.9.9.9")
+    answers = [
+        (
+            await _get_from(
+                proxied,
+                "/api/v1/things",
+                headers={"X-Forwarded-For": f"203.0.113.{n}"},
+                client=("10.9.9.9", 4000),
+            )
+        ).status_code
+        for n in range(limit + 1)
+    ]
+    assert answers == [200] * (limit + 1)
+
+
+async def test_ipv6_addresses_count_by_their_64() -> None:
+    """R7.1: a client rotating addresses inside its `/64` is one address."""
+    clock = FakeClock()
+    app = build_app(limit=2, clock=clock)
+    answers = [
+        (
+            await _get_from(
+                app, "/api/v1/things", headers={}, client=(f"2001:db8:1:2::{n:x}", 4000)
+            )
+        ).status_code
+        for n in range(1, 4)
+    ]
+    assert answers == [200, 200, 429]
+    other = await _get_from(app, "/api/v1/things", headers={}, client=("2001:db8:1:3::1", 4000))
+    assert other.status_code == 200
