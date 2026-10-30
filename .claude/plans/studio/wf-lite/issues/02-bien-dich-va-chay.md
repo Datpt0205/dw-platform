@@ -90,3 +90,22 @@ hẹn giờ dừng không mở approval; không hiệu ứng nào lặp lại kh
 - 2026-10-29 (agent): viết lại theo gate `checking-plan-readiness` lượt 1.
 - 2026-10-29 (agent): theo lượt xác nhận của gate: migration thêm `platform.worker_runs.definition_hash` và `platform.dw_timer_scopes_due` trả cặp `(tenant_id, workspace_id)`; wrapper của nút so `definition_hash` (R6.19), để `GraphInterrupt` đi qua (R6.18) và dựng gói bốn trường (R6.20); `ToolExecutor` tự hỏi `DecisionAutonomy` (R6.17); thuê 15 phút. Ca chéo tenant của lane `dw_timers` và chéo workspace của `trail` thêm vào WFL14, WFL15.
 - 2026-10-29 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-10-30 (agent): đang làm, dừng ở cuối pha B (tiếp ở phiên sau, theo thứ tự này):
+  - Xong: pha A `a170793` (migration `16ac88642439`: `worker_runs.definition_hash`, `dw_timer_scopes_due`;
+    `RunStatus.waiting_timer`; runner đỗ lượt ở `{wait: timer}` không approval, chạy tiếp từ cả hai chờ, `RunWaitsPort`;
+    `durability="sync"` cho lượt có `definition_hash`; R6.17 ở `ToolExecutor` qua `DecisionCall`) và pha B `6976baf`
+    (`wflite.compile` với sáu nút và wrapper, `wflite.waits`, `wflite.starter`, `run_store.resume_context`,
+    `approval_id` trong payload chạy tiếp; 11 test biên dịch trong bộ nhớ xanh).
+  - Còn (pha C): một hàm dựng chung đăng ký đồ thị và `WorkerDefinition` của mọi tài liệu trong `PackCatalog` vào
+    `GraphRegistry`/`WorkerRegistry`, gọi ở `build_runtime` của API và ở một runtime wf-lite mới của worker (worker
+    nền tảng chưa có runner: cần checkpointer, run store, `build_model_stack`, prompt, `ToolRegistry`, `ToolExecutor` với
+    `SqlDwBoundary`, `DecisionAutonomy(SqlDecisionLevels)`, `SqlApprovedDecisions`, `DecisionGate`, `WorkQueue`,
+    `WorkQueueRunWaits` gắn vào runner); `WorkflowRunStarter` thay `RecordingRunStarter`; lane `dw_timers`
+    (`apps/worker/src/dw_worker/consumers/dw_timers.py`: `due_timer_scopes` → `claim_timers` thuê 15 phút →
+    `run_store.get` + `resume_context` + `runner.resume`, `ConflictError` là no-op); `configs/copy/wflite_handoff.yaml`
+    (câu khuyến nghị theo mã) nạp vào `WfPorts.recommendations`; `trail` ở `GET /v1/work-items/{id}` (R6.13: từ
+    checkpoint khi lượt đang chờ, từ `worker_runs.result` khi đã xong, dưới ngữ cảnh người gọi).
+  - Còn (pha D): test integration PostgreSQL thật với model giả (lượt đi hết, dừng ở duyệt rồi chạy tiếp, hẹn giờ, bàn
+    giao, WFL11, WFL14 hai lane song song và tiến trình chết sau khi nhận, WFL16 dừng giữa bước gửi rồi chạy tiếp và đỏ
+    khi gỡ `durability="sync"`, WFL17, WFL21, WFL22); `mutations/02.yaml`; `reviewing-feature-security`; độ trễ (ticket
+    đổi truy cập database); cổng nhanh và integration của `dw_agent_runtime`, `apps/worker`, `apps/api`.
