@@ -1,6 +1,6 @@
 # 01 — ToolExecutor giành lượt trước hiệu ứng, không còn cửa sau
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: .claude/plans/studio/foundations-hardening/issues/01-test-khong-the-do.md, .claude/plans/studio/org-and-principals/issues/01-khoa-don-vi-va-siet-realm.md
 Area: studio
 Yêu cầu: R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.7, R6.8, R6.9, R6.10, R6.11, R6.12, R6.13, R6.14, RH15, RH16, RH17, RH18, RH19, RH32, RH33, RH34, RH35, RH36
@@ -90,46 +90,46 @@ Không còn cửa sau (R6.4, R6.5, R6.6):
 
 ## Tiêu chí chấp nhận
 
-- [ ] R6.1 (RH15): integration với PostgreSQL thật, `asyncio.gather` hai lời gọi một công cụ
+- [x] R6.1 (RH15): integration với PostgreSQL thật, `asyncio.gather` hai lời gọi một công cụ
       `external` cùng khóa trên `ToolExecutor` trực tiếp (không qua graph), handler ngủ 0,5 giây →
       handler chạy đúng một lần, lời gọi kia nhận replay hoặc `ConflictError`; gỡ bước claim → đỏ (ghi
       Comments).
-- [ ] R6.2 (RH15): claim của người giữ cũ bị tiếp quản; người giữ cũ nhả bằng token cũ → claim của người mới còn; bỏ
+- [x] R6.2 (RH15): claim của người giữ cũ bị tiếp quản; người giữ cũ nhả bằng token cũ → claim của người mới còn; bỏ
       điều kiện token ở câu nhả → đỏ.
-- [ ] R6.3 (RH16): bằng `dw_app`: UPDATE `platform.tool_executions` → `permission denied`; INSERT
+- [x] R6.3 (RH16): bằng `dw_app`: UPDATE `platform.tool_executions` → `permission denied`; INSERT
       `status='bogus'` → CHECK từ chối; INSERT `dispatched` và `outcome_unknown` → nhận; khẳng định catalog trong
       `test_privileges.py`.
-- [ ] R6.9 (RH33): K4 trên PostgreSQL thật: nhà cung cấp giả nhận lời gọi và trả 2xx, tiến trình chết sau dòng
+- [x] R6.9 (RH33): K4 trên PostgreSQL thật: nhà cung cấp giả nhận lời gọi và trả 2xx, tiến trình chết sau dòng
       `dispatched` và trước dòng kết thúc → lời gọi kế tiếp cùng khóa với claim quá hạn, và một lời gọi nữa sau khi lane
       `tool_claims_retention` đã dọn claim, đều nhận `outcome_unknown`, handler không chạy, nhà cung cấp giả có đúng 1
       lời gọi; dòng mới nhất của khóa là `outcome_unknown` → như trên; gỡ kiểm lần gửi chưa biết kết quả → nhà cung
       cấp giả nhận lời gọi thứ hai, test đỏ.
-- [ ] R6.10 (RH33): claim quá hạn mà khóa chưa có `dispatched` nào, và claim quá hạn mà lần gửi trước đã `failed` →
+- [x] R6.10 (RH33): claim quá hạn mà khóa chưa có `dispatched` nào, và claim quá hạn mà lần gửi trước đã `failed` →
       lời gọi kế tiếp tiếp quản, ghi `dispatched` rồi chạy handler một lần.
-- [ ] R6.11 (RH34): lúc nhà cung cấp giả nhận lời gọi, một kết nối thứ hai đọc thấy dòng `dispatched` của khóa đã
+- [x] R6.11 (RH34): lúc nhà cung cấp giả nhận lời gọi, một kết nối thứ hai đọc thấy dòng `dispatched` của khóa đã
       commit; gỡ bước ghi `dispatched` → ca K4 của R6.9 gửi hai lần, test đỏ.
-- [ ] R6.12 (RH34): T: nhà cung cấp giả áp dụng rồi để lời gọi hết thời gian → dòng kết thúc `outcome_unknown`, không
+- [x] R6.12 (RH34): T: nhà cung cấp giả áp dụng rồi để lời gọi hết thời gian → dòng kết thúc `outcome_unknown`, không
       `failed`; handler ném lỗi không có kiểu sau `dispatched` → `outcome_unknown`; `NotDispatchedError` và
       `RejectedError` → `failed` mang mã; trả kết quả → `succeeded`; mỗi lần gửi đúng một dòng kết thúc; ghi `failed`
       cho lỗi không có kiểu → test đỏ.
-- [ ] R6.13 (RH35): S: người giữ cũ dừng ngay trước bước ghi `dispatched` tới quá `expires_at`, người mới tiếp quản và
+- [x] R6.13 (RH35): S: người giữ cũ dừng ngay trước bước ghi `dispatched` tới quá `expires_at`, người mới tiếp quản và
       gửi, rồi người cũ chạy tiếp → không có dòng `dispatched` thứ hai, handler của người cũ không chạy, nhà cung cấp
       giả có đúng 1 lời gọi; gỡ rào `claim_token` ở câu chèn → nhà cung cấp giả nhận 2 lời gọi, test đỏ.
-- [ ] R6.14 (RH36): integration trên PostgreSQL thật: tenant A có claim còn hạn, một dòng `succeeded` và một lần gửi
+- [x] R6.14 (RH36): integration trên PostgreSQL thật: tenant A có claim còn hạn, một dòng `succeeded` và một lần gửi
       chưa biết kết quả cho cùng `tool_name` và khóa; tenant B gọi khóa đó → handler của B chạy đúng một lần, B nhận
       output của chính nó; bỏ `tenant_id` khỏi khóa chính của claim → đỏ.
-- [ ] R6.4 (RH17): một mục dict trong danh sách công cụ → model giả không nhận nó ở cả hai middleware;
+- [x] R6.4 (RH17): một mục dict trong danh sách công cụ → model giả không nhận nó ở cả hai middleware;
       `build_agent` với mục không phải `BaseTool` → lỗi; hoàn tác bộ lọc → đỏ.
-- [ ] R6.5 (RH18): lời gọi thất bại với input `{"items": [{"api_key": "sk-123"}]}` → audit
+- [x] R6.5 (RH18): lời gọi thất bại với input `{"items": [{"api_key": "sk-123"}]}` → audit
       `tool.failed` và thuộc tính span mang `[REDACTED]`; bỏ đệ quy vào list → đỏ.
-- [ ] R6.6 (RH17): test hợp đồng ở bước 9 xanh trên bản ghim (toolset rỗng → model không thấy công cụ nào); thêm một `BaseTool` ngoài toolset vào
+- [x] R6.6 (RH17): test hợp đồng ở bước 9 xanh trên bản ghim (toolset rỗng → model không thấy công cụ nào); thêm một `BaseTool` ngoài toolset vào
       agent → đỏ.
-- [ ] R6.7 (RH19): một claim quá hạn và một claim chưa hạn → sau một lượt `tool_claims_retention` chỉ
+- [x] R6.7 (RH19): một claim quá hạn và một claim chưa hạn → sau một lượt `tool_claims_retention` chỉ
       claim chưa hạn còn; bỏ đăng ký lane → test tập lane đỏ.
-- [ ] R6.8 (RH32): bằng `dw_app` gắn tenant A, INSERT `platform.tool_execution_claims` với `workspace_id` của một
+- [x] R6.8 (RH32): bằng `dw_app` gắn tenant A, INSERT `platform.tool_execution_claims` với `workspace_id` của một
       workspace tenant B → lỗi khóa ngoại 23503, không dòng nào; migration thử đổi FK ghép thành FK một cột
       `workspace_id` → test đỏ.
-- [ ] Xong: `make ci && make test-integration` xanh.
+- [x] Xong: `make ci && make test-integration` xanh.
 
 ## Nguồn
 
@@ -180,3 +180,30 @@ Không còn cửa sau (R6.4, R6.5, R6.6):
   chỉ theo tenant như `platform.tool_executions`, vì khóa chính không có `workspace_id` (ADR-0108 (Accepted) quyết 5);
   `expires_at` không cộng thời gian thử lại của egress vì `asyncio.wait_for` bao cả handler.
 - 2026-10-30 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-10-30 (agent): làm xong (`21a23f7`, `18b2434`, `aa53159`). Khác chữ của bước, (agent, tạm):
+  (1) executor không thử lại lời gọi `external` hay `critical` nào sau dòng `dispatched`, kể cả khi lỗi là tạm thời, vì
+  mỗi lần thử là một lần gửi; `max_retries` của công cụ đó chỉ còn vào `expires_at`. Nếu sai thì: thử lại riêng
+  `NotDispatchedError`, mỗi lần một dòng `dispatched` mới. (2) Thêm index `ix_tool_executions_dispatched`
+  `(tenant_id, tool_name, idempotency_key) WHERE status = 'dispatched'`, vì mọi lời gọi có claim hỏi lần gửi chưa biết
+  kết quả và không có nó thì câu hỏi quét mọi dòng của tenant. (3) Lane dọn claim ở module riêng
+  `adapters/tool_claim_retention.py`, thêm vào danh sách miễn trừ của `test_drain_setting_scan.py` kèm lý do, vì
+  `reviewing-feature-security` thấy `app.worker_drain` nằm cạnh adapter claim mà API nhập và phép quét đã đỏ. (4)
+  `conftest.py` của integration runtime tạo tenant A, B và workspace của chúng, vì khóa ngoại của claim từ chối tenant
+  không có. (5) Đường agent nhận `OutcomeUnknownError` qua `tool_unavailable` có sẵn, không thêm câu copy.
+- 2026-10-30 (agent): bước 2: không DB local nào có dòng `platform.tool_executions` (`SELECT status, count(*)` rỗng ở
+  `dw`, `dw_test_runtime`, `dw_test_api`, `dw_latency`, `dw_lat_head`); `ADD CONSTRAINT ck_tool_executions_status` tự
+  từ chối mọi giá trị khác lúc nâng cấp. R6.6 đo trên `deepagents` 0.7.15: `build_agent` gắn đúng toolset đã lọc scope,
+  không `write_todos`.
+- 2026-10-30 (agent): mutation check `mutations/01.yaml` 18/18 đỏ, đối chứng xanh; RH17 (R6.6) hai chỗ sửa cùng lúc
+  tại chỗ bằng tay (bỏ lọc toolset và thêm một công cụ lạ) → test hợp đồng đỏ cả hai ca, khôi phục từ bản sao lưu →
+  xanh. Đối chứng đỏ ở lần chạy đầu là `test_worker.py` chạy trên bản sao gói của `mutate.py`: nó tìm cấu hình theo
+  đường dẫn của gói; mutation của lane thu hẹp về `test_only_the_platform_lanes_are_wired`.
+- 2026-10-30 (agent): độ trễ `ToolExecutor.execute`, công cụ `external`, PostgreSQL compose, ấm, 300 lần mỗi ca, so
+  với `9d9fb54`: khóa mới P50/P95/P99 21,9/28,4/38,1 → 50,3/61,2/71,2 ms; phát lại 14,1/18,6/24,4 → 29,2/37,7/46,1 ms.
+  Trong ngân sách (P95 ≤ 300 ms, P99 ≤ 1 s) nhưng P95 gấp khoảng hai lần: một lời gọi có khóa nay chạy bảy giao dịch
+  ngắn thay vì ba (claim, tìm lần thành công, kiểm lần gửi chưa biết kết quả, dòng `dispatched` commit riêng, dòng kết
+  thúc, audit, nhả claim), mỗi giao dịch khoảng 7 ms ở máy này; bốn giao dịch thêm là ADR-0108 (Accepted) quyết 5 cùng R6.1, R6.9, R6.11 đòi, dòng `dispatched` phải commit riêng. Nếu cần nhanh hơn: gộp kiểm lần gửi chưa biết kết quả vào
+  giao dịch claim (bớt một giao dịch).
+- 2026-10-30 (agent): cổng nhanh xanh: ruff, format, mypy (464 tệp), `make test-unit` (1594), `make test-contract` (24),
+  `make test-architecture` (7 hợp đồng); integration của `dw_agent_runtime`, `dw_platform`, `apps/worker`, `apps/api`
+  xanh. `make test-integration` đầy đủ và `/code-review` chờ lúc đóng đợt (`wave-close.md`). Ticket resolved.
