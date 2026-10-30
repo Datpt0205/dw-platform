@@ -40,9 +40,10 @@ from dw_agent_runtime.adapters.run_events import RunStateListener
 from dw_agent_runtime.adapters.run_store import SqlWorkerRunStore
 from dw_agent_runtime.approval_codes import ApprovalViewService
 from dw_agent_runtime.model.run_policy import load_worker_run_policy
+from dw_agent_runtime.wflite.catalog import load_shipped_packs
 from dw_api.bootstrap.container import ApiContainer
 from dw_api.bootstrap.identity import build_token_verifier
-from dw_api.bootstrap.paths import WORKER_RUN_POLICY
+from dw_api.bootstrap.paths import CONFIGS, WORKER_RUN_POLICY
 from dw_api.bootstrap.runtime import build_runtime
 from dw_api.bootstrap.storage import (
     build_attachment_storage,
@@ -106,7 +107,7 @@ from dw_platform.application.support_access import (
     SupportGrantService,
 )
 from dw_platform.application.tenant_members import TenantMembersService
-from dw_platform.application.work_queue import InMemoryWorkKindSchemas, WorkQueue
+from dw_platform.application.work_queue import WorkQueue
 
 _LOG = logging.getLogger("dw_api.bootstrap")
 
@@ -135,6 +136,10 @@ def build_container(settings: ApiSettings | None = None) -> ApiContainer:
 def _build_container(settings: ApiSettings | None) -> ApiContainer:
     settings = settings or ApiSettings()
     settings.validate_for_profile()
+
+    # The workflows packs ship, checked before anything else: a process that
+    # starts with a workflow it cannot run takes work it will fail (wf-lite R3.5).
+    packs = load_shipped_packs(CONFIGS)
 
     clock = SystemClock()
     # Time-ordered ids (RFC 9562), not random v4. Every primary key in this
@@ -238,13 +243,12 @@ def _build_container(settings: ApiSettings | None) -> ApiContainer:
     container.approval_masks[DW_DECISION] = DwProposalMask(
         SqlDigitalWorkerRepository(session_factory)
     )
-    # No pack declares a work kind's schema until wf-lite/01 wires the reader
-    # of the pinned pack: an empty map, so every payload is refused (R3.3).
+    # A work kind's schema is the one its DW's pinned workflow declares (R3.3).
     container.work_queue = WorkQueue(
         repo=SqlWorkQueueRepository(session_factory),
         workers=SqlDigitalWorkerRepository(session_factory),
         people=SqlDwMembershipCheck(session_factory),
-        schemas=InMemoryWorkKindSchemas({}),
+        schemas=packs,
         authz=authorization,
         clock=clock,
         id_generator=ids,

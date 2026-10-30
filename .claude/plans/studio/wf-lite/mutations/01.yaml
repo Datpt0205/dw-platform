@@ -1,0 +1,127 @@
+# Mutation check of wf-lite ticket 01: scripts/mutate.py runs this file. One
+# mutation per Kiểm soát row the ticket implements (WFL1-WFL8, WFL19, WFL20,
+# WFL24) and per guard it adds (the YAML 1.2 loader).
+mutations:
+  - name: WFL1 a document whose name lies about its version loads
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/validate.py
+    old: "    if file_key is not None and file_key != (document.key, document.version):"
+    new: "    if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_validate.py::test_a_document_whose_version_is_not_its_file_name_is_refused
+  - name: WFL1 an unknown top-level key is ignored
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/document.py
+    old: '    model_config = ConfigDict(extra="forbid", frozen=True, populate_by_name=True)'
+    new: '    model_config = ConfigDict(extra="ignore", frozen=True, populate_by_name=True)'
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_validate.py::test_a_malformed_document_is_refused
+  - name: R1.3 two steps may share an id
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/validate.py
+    old: "        if step.id in self.placed:"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_validate.py::test_step_ids_are_unique_and_lowercase
+  - name: WFL2 an unknown type passes quietly
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/validate.py
+    old: '            self._add(_join(path, "type"), "wf.unknown_type", step.type)'
+    new: "            pass"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_validate.py::test_an_unknown_type_and_a_bad_config_are_named
+  - name: WFL2 a config is not checked
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/validate.py
+    old: "        found = schema_problems(spec.config_schema, step.config)"
+    new: "        found: list[str] = []"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_validate.py::test_an_unknown_type_and_a_bad_config_are_named
+  - name: WFL3 any earlier step dominates
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/validate.py
+    old: "            elif name not in visible:"
+    new: "            elif False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_validate.py::test_a_reference_into_another_lane_does_not_dominate
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_validate.py::test_a_reference_after_the_block_into_its_lane_does_not_dominate
+  - name: WFL24 any field of a step is known
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/validate.py
+    old: '                if field not in (output.get("properties") or {}):'
+    new: "                if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_validate.py::test_an_unknown_field_or_step_is_named
+  - name: WFL4 a switch needs no default
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/validate.py
+    old: '        if step.type == "logic.switch@1" and not isinstance(config.get("default"), list):'
+    new: "        if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_validate.py::test_a_switch_without_a_default_is_not_total
+  - name: WFL5 an unknown tool passes quietly
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/validate.py
+    old: '            self._add(_join(path, "config", "tool"), "wf.tool_unknown", step.config["tool"])'
+    new: "            pass"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_validate.py::test_an_unknown_tool_and_an_undeclared_class_are_named
+  - name: WFL5 any decision class is declared
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/validate.py
+    old: "            if cls not in self.classes:"
+    new: "            if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_validate.py::test_an_unknown_tool_and_an_undeclared_class_are_named
+  - name: WFL6 a bad pack does not stop the catalog
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/catalog.py
+    old: "        if failures:"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_validate.py::test_one_bad_file_refuses_the_catalog_and_names_it
+      - apps/api/tests/unit/test_api_packs_fail_fast.py::test_a_bad_pack_stops_the_api_and_names_the_file
+      - apps/worker/tests/unit/test_worker_packs_fail_fast.py::test_a_bad_pack_stops_the_worker_and_names_the_file
+  - name: WFL7 an outward effect needs no gate
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/validate.py
+    old: "        if tool.side_effect_level not in _GATED:"
+    new: "        if True:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_validate.py::test_an_outward_effect_outside_its_approved_lane_is_refused
+  - name: WFL7 the rejected lane counts as approved
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/validate.py
+    old: '                    if step.type == "human.approval@1" and port == "approved":'
+    new: '                    if step.type == "human.approval@1":'
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_validate.py::test_an_outward_effect_outside_its_approved_lane_is_refused
+  - name: WFL8 a tool beyond its class passes
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/validate.py
+    old: "            and _EFFECT_RANK[tool.side_effect_level] > _EFFECT_RANK[cls.effect_level]"
+    new: "            and False"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_validate.py::test_a_tool_beyond_its_class_is_refused
+  - name: WFL19 a gated effect takes any input
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/validate.py
+    old: "        if not (isinstance(given, str) and _normalised(given) == _normalised(approved)):"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_validate.py::test_a_gated_effect_takes_exactly_what_was_approved
+  - name: WFL20 any parameter is declared
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/validate.py
+    old: "            if field is not None or name not in self.variables:"
+    new: "            if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_validate.py::test_parameters_and_work_fields_must_be_declared
+  - name: WFL20 any work field is known
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/validate.py
+    old: "            if field is not None or name not in self.work_fields:"
+    new: "            if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_validate.py::test_parameters_and_work_fields_must_be_declared
+  - name: WFL20 a reference may sit inside text
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/validate.py
+    old: "                self._add(path, \"wf.config_invalid\", \"a reference replaces a whole value\")\n"
+    new: ""
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_validate.py::test_a_reference_replaces_a_whole_value
+  - name: WFL20 a confidence floor needs nothing to read
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/validate.py
+    old: "        if not ok:"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_validate.py::test_a_confidence_floor_needs_a_confidence_to_read
+  - name: the catalog reads on as a boolean
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/catalog.py
+    old: "        raw = load_yaml(raw_bytes)"
+    new: "        raw = yaml.safe_load(raw_bytes)"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_validate.py::test_the_sample_pack_loads_pinned_to_its_bytes

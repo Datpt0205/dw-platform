@@ -1,6 +1,6 @@
 # 01 — Tài liệu `dw.workflow/v1` của gói, sổ sáu loại bước, bộ kiểm và luật sàn HITL
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: .claude/plans/studio/digital-worker/issues/02-hang-doi-ban-giao-cong-duyet.md
 Area: studio
 Yêu cầu: R1.1, R1.2, R1.3, R1.4, R2.1, R2.2, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R4.1, R4.2, R4.3, WFL1, WFL2, WFL3, WFL4, WFL5, WFL6, WFL7, WFL8, WFL19, WFL20, WFL24
@@ -41,25 +41,25 @@ message_en}]` với mã `wf.schema_invalid`, `wf.duplicate_step_id`, `wf.unknown
 
 ## Tiêu chí chấp nhận
 
-- [ ] R1.1: tài liệu mẫu nạp được với sha256 đúng của tệp.
-- [ ] R1.2 (WFL1): khóa lạ, thiếu `steps`, tên tệp `a@1.0.0` với `version: 1.0.1` → `wf.schema_invalid`, không nạp.
-- [ ] R1.3: hai bước cùng `id` → `wf.duplicate_step_id`; `id` `Score` → `wf.schema_invalid`.
-- [ ] R1.4: `WorkKindSchemas` trả schema của kind khai; kind không khai → không có schema.
-- [ ] R2.1: sổ có đúng sáu loại, không hơn.
-- [ ] R2.2 (WFL2): `http.request@1` → `wf.unknown_type`; `ai.llm@1` thiếu `prompt` → `wf.config_invalid`.
-- [ ] R3.1: tài liệu có ba lỗi khác nhau trả đủ ba trong một lần gọi.
-- [ ] R3.2 (WFL3): tham chiếu tới bước trong lane khác của switch → `wf.ref_not_dominating`; tới bước trước switch → hợp lệ.
-- [ ] R3.2 (WFL24): `{{ steps.draft.khong_co }}` → `wf.ref_unknown`.
-- [ ] R3.3 (WFL4): switch không `default` → `wf.router_not_total`.
-- [ ] R3.4 (WFL5): công cụ không có spec → `wf.tool_unknown`; loại không khai → `wf.decision_class_undeclared`.
-- [ ] R3.5 (WFL6): thêm tệp lỗi vào thư mục gói tạm → dựng ứng dụng API và worker ném `ConfigError` nêu tệp.
-- [ ] R3.6 (WFL20): `{{ params.khong_co }}` → `wf.param_undeclared`; `{{ work.khong_co }}` → `wf.ref_unknown`.
-- [ ] R3.7 (WFL20): `"Chào {{ work.name }}"` → `wf.config_invalid`.
-- [ ] R3.8 (WFL20): `min_confidence` với `output_schema` không có `confidence` → `wf.config_invalid`.
-- [ ] R4.1 (WFL7): `tool.call` công cụ `external` không cổng, cổng ở lane khác, sau khối duyệt, và trong lane `rejected` → `wf.hitl_gate_missing`; trong lane `approved` của cổng cùng loại → hợp lệ.
-- [ ] R4.3 (WFL19): `input` của `tool.call` có cổng là `{{ steps.draft.subject }}`, hay một đối tượng ghép → `wf.unapproved_input`; `input` là `{{ steps.approve_send.proposal }}` → hợp lệ.
-- [ ] R4.2 (WFL8): công cụ `external` dưới loại `internal` → `wf.effect_above_class`.
-- [ ] Xong: `make test-unit test-contract test-architecture` xanh.
+- [x] R1.1: tài liệu mẫu nạp được với sha256 đúng của tệp.
+- [x] R1.2 (WFL1): khóa lạ, thiếu `steps`, tên tệp `a@1.0.0` với `version: 1.0.1` → `wf.schema_invalid`, không nạp.
+- [x] R1.3: hai bước cùng `id` → `wf.duplicate_step_id`; `id` `Score` → `wf.schema_invalid`.
+- [x] R1.4: `WorkKindSchemas` trả schema của kind khai; kind không khai → không có schema.
+- [x] R2.1: sổ có đúng sáu loại, không hơn.
+- [x] R2.2 (WFL2): `http.request@1` → `wf.unknown_type`; `ai.llm@1` thiếu `prompt` → `wf.config_invalid`.
+- [x] R3.1: tài liệu có ba lỗi khác nhau trả đủ ba trong một lần gọi.
+- [x] R3.2 (WFL3): tham chiếu tới bước trong lane khác của switch → `wf.ref_not_dominating`; tới bước trước switch → hợp lệ.
+- [x] R3.2 (WFL24): `{{ steps.draft.khong_co }}` → `wf.ref_unknown`.
+- [x] R3.3 (WFL4): switch không `default` → `wf.router_not_total`.
+- [x] R3.4 (WFL5): công cụ không có spec → `wf.tool_unknown`; loại không khai → `wf.decision_class_undeclared`.
+- [x] R3.5 (WFL6): thêm tệp lỗi vào thư mục gói tạm → dựng ứng dụng API và worker ném `ConfigError` nêu tệp.
+- [x] R3.6 (WFL20): `{{ params.khong_co }}` → `wf.param_undeclared`; `{{ work.khong_co }}` → `wf.ref_unknown`.
+- [x] R3.7 (WFL20): `"Chào {{ work.name }}"` → `wf.config_invalid`.
+- [x] R3.8 (WFL20): `min_confidence` với `output_schema` không có `confidence` → `wf.config_invalid`.
+- [x] R4.1 (WFL7): `tool.call` công cụ `external` không cổng, cổng ở lane khác, sau khối duyệt, và trong lane `rejected` → `wf.hitl_gate_missing`; trong lane `approved` của cổng cùng loại → hợp lệ.
+- [x] R4.3 (WFL19): `input` của `tool.call` có cổng là `{{ steps.draft.subject }}`, hay một đối tượng ghép → `wf.unapproved_input`; `input` là `{{ steps.approve_send.proposal }}` → hợp lệ.
+- [x] R4.2 (WFL8): công cụ `external` dưới loại `internal` → `wf.effect_above_class`.
+- [x] Xong: `make test-unit test-contract test-architecture` xanh.
 
 ## Nguồn
 
@@ -69,3 +69,26 @@ message_en}]` với mã `wf.schema_invalid`, `wf.duplicate_step_id`, `wf.unknown
 
 - 2026-10-29 (agent): viết lại theo gate `checking-plan-readiness` lượt 1.
 - 2026-10-29 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-10-30 (agent): làm xong. Chọn khi làm, ghi lại:
+  - Lane của một bước nằm trong `config` dưới tên cổng: `approved`/`rejected` của `human.approval@1`,
+    `cases`/`default` của `logic.switch@1` (như cách ticket viết `cases` và `default`); sổ khai cổng của từng loại.
+  - `tool.call@1` nêu công cụ dạng `name@semver` để tra `ToolSpecRegistry` theo khóa của nó; đầu ra của bước là
+    `{result}` (wf-lite/02 ghi kết quả có kiểu của công cụ vào đó).
+  - Người dùng `{{ steps.<cổng>.proposal }}` thấy được bước cổng từ trong lane của chính nó (R4.3 đòi điều đó).
+  - Tham chiếu tới id bước không có là `wf.ref_unknown`; có mà không đứng trước là `wf.ref_not_dominating`.
+  - Kind của `trigger.work_item` phải có trong `work_kinds[]`, và tệp schema của mỗi kind phải có và là JSON Schema
+    hợp lệ: `wf.config_invalid` nêu tệp.
+  - Bộ kiểm JSON Schema là `dw_platform.application.json_schema` (một chủ, digital-worker/02).
+  - Catalog đọc YAML với boolean của YAML 1.2: PyYAML theo YAML 1.1 đọc `on:` thành khóa `True` (đo trên PyYAML 6,
+    30/10/2026), nên `logic.switch` viết `on:` đã không tới bộ kiểm. Có test và đột biến riêng.
+  - `ShippedToolSpecs` đọc lớp nền tảng của `configs/tools` cho bộ kiểm, vì `ToolSpecRegistry` cần bản chữ của runtime
+    để dựng định nghĩa, việc bộ kiểm không cần, và worker không nạp công cụ. `load_shipped_packs(configs)` là một
+    hàm cho cả API (trước cổng cơ sở dữ liệu, nên gói sai chặn cả khi không có database) và worker (trước lane đầu
+    tiên). Hàng đợi việc đọc schema từ catalog đó.
+- 2026-10-30 (agent): `reviewing-feature-security`: không bảng, không route, không quyền mới; tài liệu đến từ repo, không
+  từ tenant. Hiệu ứng ra ngoài phải nằm trong lane Duyệt cùng loại quyết định và nhận nguyên bản đã duyệt, kiểm lúc
+  khởi động (cửa cuối vẫn là `ToolExecutor`, wf-lite/02 R6.17). Mutation check `mutations/01.yaml`: 20/20 đỏ, đối
+  chứng xanh (một đột biến yếu được thay: `_REFERENCE` có neo nên `search` như `fullmatch`; đột biến đúng gỡ lời từ
+  chối). Độ trễ không đo: ticket không đổi cách truy cập database (`latency.md` "When").
+- 2026-10-30 (agent): cổng nhanh xanh; integration của `dw_agent_runtime`, `apps/api`, `apps/worker` xanh. Ticket
+  resolved.

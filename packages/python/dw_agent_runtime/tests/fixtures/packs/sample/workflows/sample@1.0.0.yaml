@@ -1,0 +1,72 @@
+# The smallest document that uses all six step types: a test fixture of
+# wf-lite/01, not a product (the Marketing pack is leadcare/01).
+schema: dw.workflow/v1
+key: sample
+version: 1.0.0
+triggers:
+  - id: intake
+    type: trigger.work_item@1
+    config: {kind: lead.new}
+variables:
+  - {name: reply_wait_seconds, type: integer, default: 60}
+decision_classes:
+  - {key: email.first_touch, effect_level: external, reversible: false, ceiling: A3}
+  - {key: lead.note, effect_level: internal, reversible: true, ceiling: A4}
+work_kinds:
+  - {kind: lead.new, schema: lead.json}
+steps:
+  - id: draft
+    type: ai.llm@1
+    config:
+      prompt: sample.first_touch@1.0.0
+      inputs:
+        name: "{{ work.name }}"
+        email: "{{ work.email }}"
+      output_schema:
+        type: object
+        required: [to, subject, body, confidence]
+        properties:
+          to: {type: string}
+          subject: {type: string}
+          body: {type: string}
+          confidence: {type: number, minimum: 0, maximum: 1}
+      min_confidence: 0.6
+  - id: approve_send
+    type: human.approval@1
+    config:
+      decision_class: email.first_touch
+      proposal:
+        to: "{{ steps.draft.to }}"
+        subject: "{{ steps.draft.subject }}"
+        body: "{{ steps.draft.body }}"
+      locked_fields: [to]
+      approved:
+        - id: send
+          type: tool.call@1
+          config:
+            tool: email.send@1.0.0
+            input: "{{ steps.approve_send.proposal }}"
+            decision_class: email.first_touch
+      rejected:
+        - id: note_rejected
+          type: tool.call@1
+          config:
+            tool: lead.note@1.0.0
+            input: {text: "{{ steps.approve_send.comment }}"}
+            decision_class: lead.note
+  - id: wait_reply
+    type: time.wait@1
+    config: {seconds_param: reply_wait_seconds}
+  - id: route
+    type: logic.switch@1
+    config:
+      on: "{{ steps.approve_send.approved }}"
+      cases:
+        "true":
+          - id: note_sent
+            type: tool.call@1
+            config:
+              tool: lead.note@1.0.0
+              input: {text: "{{ steps.draft.subject }}"}
+              decision_class: lead.note
+      default: []

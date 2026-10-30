@@ -37,6 +37,7 @@ from dw_agent_runtime.channel_decisions import (
     ChannelApprovalDecisionService,
     ChannelDecisionCommand,
 )
+from dw_agent_runtime.wflite.catalog import load_shipped_packs
 from dw_connectors.adapters.zalo_bot import ZaloBotClient
 from dw_connectors.adapters.zalo_inbound import ZaloInbound
 from dw_connectors.adapters.zalo_link import link_help
@@ -96,9 +97,10 @@ from dw_platform.application.approval_codes import ApprovalSubjectVersions, Deci
 from dw_platform.application.authorization import ScopeAuthorizationService
 from dw_platform.application.channel_access import LinkedUserAccess
 from dw_platform.application.decision_gate import DW_DECISION, DwDecisionAdmission
-from dw_platform.application.work_queue import InMemoryWorkKindSchemas, WorkQueue
+from dw_platform.application.work_queue import WorkQueue
 from dw_platform.retention_policy import RetentionPurgerRegistry, load_retention_policy
 from dw_worker.composition import (
+    REPO_ROOT,
     build_embeddings,
     build_export_bucket,
     build_feedback_bucket,
@@ -288,8 +290,15 @@ def build_retention_purgers(
     return purgers.freeze()
 
 
+# The image sets DW_REPO_ROOT and ships `configs/` at that root.
+CONFIGS = REPO_ROOT / "configs"
+
+
 def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
     """Wire the lanes this process hosts, skipping any whose infra is absent."""
+    # Checked before any lane exists: a worker holding a workflow it cannot run
+    # would take work it will fail (wf-lite R3.5).
+    packs = load_shipped_packs(CONFIGS)
     registry = ConsumerRegistry()
     clock = SystemClock()
     # Uuid7: a memory id that sorts by when it was learned makes the
@@ -366,8 +375,7 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
                 repo=SqlWorkQueueRepository(sessions),
                 workers=SqlDigitalWorkerRepository(sessions),
                 people=SqlDwMembershipCheck(sessions),
-                # No pack declares a schema until wf-lite/01; nothing is let in.
-                schemas=InMemoryWorkKindSchemas({}),
+                schemas=packs,
                 authz=ScopeAuthorizationService(),
                 clock=clock,
                 id_generator=ids,
