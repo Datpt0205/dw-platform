@@ -1,6 +1,6 @@
 # 02 — Biên mạng: rate limit theo địa chỉ, net_guard chỉ địa chỉ toàn cầu, Qdrant và Valkey có xác thực
 
-Status: needs-triage
+Status: ready-for-agent
 Blocked by: .claude/plans/studio/foundations-hardening/issues/01-test-khong-the-do.md
 Area: studio
 Yêu cầu: R7.1, R7.2, R8.1, R8.2, R8.3, R8.4, G7, RH20, RH21, RH22, RH23, RH24
@@ -52,7 +52,7 @@ Kho dữ liệu (R8.1, R8.2, R8.4):
    cùng biến `QDRANT_API_KEY` và `REDIS_URL` dựng từ `REDIS_PASSWORD`; healthcheck của Qdrant và Valkey
    dùng thông tin xác thực; overlay dev bỏ phần trùng; `.env.example` mang giá trị chỉ dùng cho dev.
    Langfuse (profile `observability`) chuyển sang một dịch vụ Valkey riêng (`langfuse-valkey`, mật khẩu
-   `LANGFUSE_REDIS_PASSWORD`), `REDIS_CONNECTION_STRING` của nó trỏ vào đó.
+   `${LANGFUSE_REDIS_PASSWORD:?}`), `REDIS_CONNECTION_STRING` của nó trỏ vào đó.
 7. `ApiSettings.validate_for_profile` từ chối `qdrant_api_key` trống và `redis_url` không có mật khẩu
    khi `settings.is_deployed`; `WorkerSettings.validate_for_profile` từ chối `qdrant_api_key` trống
    (worker không dùng Valkey).
@@ -89,7 +89,8 @@ Kho dữ liệu (R8.1, R8.2, R8.4):
 - [ ] R8.1 (RH22): compose smoke: gọi Qdrant không kèm API key → 401; `redis-cli PING` không mật khẩu
       → `NOAUTH`; API và worker vẫn khỏe với thông tin xác thực; `GET /collections` là endpoint thử 401;
       `docker compose -f infra/compose/docker-compose.yml config` với `QDRANT_API_KEY` trống → lỗi;
-      profile `observability` khỏe với Valkey riêng của Langfuse.
+      profile `observability` khỏe với Valkey riêng của Langfuse; `PING` không mật khẩu vào `langfuse-valkey`
+      → `NOAUTH`; `LANGFUSE_REDIS_PASSWORD` trống → `docker compose --profile observability config` lỗi.
 - [ ] R8.2 (RH22): settings profile `uat` thiếu `qdrant_api_key` → `validate_for_profile` ném lỗi ở
       API và worker; `redis_url` của API không mật khẩu → ném lỗi; profile `local` không đòi.
 - [ ] R8.3 (RH23): gỡ `@sha256:` khỏi một `image:` → `scripts/verify_invariants.py` đỏ.
@@ -132,3 +133,7 @@ Kho dữ liệu (R8.1, R8.2, R8.4):
   cluster test và vào `test_privileges.py`; RH21 có một đột biến cho mỗi bước chuẩn hóa dạng nhúng; mật khẩu
   `dw_monitor` trống bị từ chối như bí mật kho; `FROM` của Dockerfile repo không ghim digest (ngoài R8.3, ghi lại);
   nhiều người sau một NAT chung xô `10 × L` (đánh đổi đã biết).
+- 2026-10-30 (agent): lượt xác nhận của gate: năm HIGH đều đóng; một HIGH mới (Valkey của Langfuse không fail closed)
+  đã sửa (`:?` và hai ca âm). MEDIUM cho người làm: một `Authorization` rác vẫn được `10 × L` mỗi địa chỉ vì
+  middleware không xác minh bearer (đúng như bước 2 nói); thêm ca `fe80::1` dưới `allow_private=True` → từ chối.
+- 2026-10-30 (agent): checking-plan-readiness ĐẠT; ready-for-agent.

@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 25/10/2026
 Duyệt: agent, tạm theo ủy quyền 30/10/2026
-Sẵn sàng: ĐẠT (30/10/2026; 0 CRITICAL, 0 HIGH; ticket 01)
+Sẵn sàng: ĐẠT (30/10/2026; 0 CRITICAL, 0 HIGH; ticket 01-02)
 
 Studio gọi công cụ có hiệu ứng, gọi ra ngoài và xếp run cùng sự kiện lên các dịch vụ nền đang để một hiệu ứng
 chạy hai lần, một client lách giới hạn tốc độ, một URL ra ngoài tới địa chỉ nội bộ, kho vector và cache không
@@ -204,8 +204,8 @@ Trước đây: chỉ overlay dev đặt khóa Qdrant (`infra/compose/docker-com
   profile compose bất kỳ, THÌ Qdrant và Valkey PHẢI từ chối kết nối đó (401 ở `GET /collections`
   hay `NOAUTH`). Compose đọc khóa và mật khẩu bằng `${QDRANT_API_KEY:?}` và `${REDIS_PASSWORD:?}`,
   một biến cho cả máy chủ và client, nên biến trống hay thiếu làm compose từ chối dựng kho thay vì
-  dựng một kho mở. Langfuse (profile `observability`) dùng một Valkey riêng với mật khẩu riêng,
-  không giữ mật khẩu của cache nền tảng.
+  dựng một kho mở. Langfuse (profile `observability`) dùng một Valkey riêng với mật khẩu riêng
+  `${LANGFUSE_REDIS_PASSWORD:?}`, cũng bắt buộc, không giữ mật khẩu của cache nền tảng.
 - R8.2 NẾU `settings.is_deployed` đúng mà `qdrant_api_key` trống, hoặc `REDIS_URL` của API không
   mang mật khẩu, THÌ tiến trình API hay worker đó PHẢI dừng lúc khởi động với lỗi cấu hình.
 - R8.3 Mọi dòng `image:` của ảnh bên thứ ba trong `infra/compose/` PHẢI mang tag phiên bản cùng
@@ -490,7 +490,7 @@ Số G giữ nguyên từ foundations-hardening; G5 ở cả hai spec (Quyết �
   với `FORWARDED_ALLOW_IPS`, IPv6 theo `/64`; `allow_private` chỉ nới private và loopback, không bao giờ link-local hay
   metadata; khóa Qdrant và mật khẩu Valkey bắt buộc trong compose (`:?`), một biến cho máy chủ và client; Langfuse dùng
   Valkey riêng. Sửa: R7.1, R7.2, R8.1, RH20-RH22, ticket 02. Nếu sai thì: request không bearer cũng lên `10 × L`;
-  Langfuse dùng chung Valkey với một user ACL riêng.
+  Langfuse dùng chung Valkey với một user ACL riêng. Theo lượt xác nhận: mật khẩu Valkey của Langfuse cũng `:?`.
 - 30/10/2026 (agent, tạm theo ủy quyền): Duyệt spec theo `## Ủy quyền` của studio.md. Theo
   lượt xác nhận của gate ticket 01: RH36 bỏ vế "đọc `platform.tool_executions` không gắn tenant", vì FORCE RLS theo
   `app.tenant_id` đã thu hẹp câu đọc nên đột biến đó không đỏ được; R6.6 nói rõ worker không khai `sub_agents`; Phụ
