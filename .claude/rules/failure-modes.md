@@ -75,7 +75,7 @@ not to the serialiser comes back as its default — silently.
 **Ask:** what already owns this fact? Read from the owner. If a second copy is
 unavoidable, what makes them disagree loudly instead of quietly?
 
-## 3. A test that cannot fail (found 4×)
+## 3. A test that cannot fail (found 5×)
 
 An `ORDER BY` test that compared Postgres's collation against Python's
 `sorted()` — it agreed only while every name happened to be capitalised. A
@@ -84,13 +84,18 @@ exhausted by the time the _following test_ ran. Two integration files fighting
 over one tenant's row: green apart, red together. And a mutation script of mine
 that silently did not mutate, so it reported a passing test as proof.
 
+The fifth was two layers holding one rule: `platform.dw_timer_scopes_due` and the
+claim under one scope both skip a paused DW's timer, and the lane test stopped at
+the first, so deleting the second left every lane test green (wf-lite/02,
+30/10/2026). A rule held twice needs a test per layer.
+
 **Ask:** can this test fail? Break the thing it guards and watch it go red. When
 a whole new suite passes on the first run, that is a reason to check it, not to
 move on.
 
 A new guard ships with a demonstration that removing the guard turns a test red.
 
-## 4. Trusting a library instead of measuring it — NOT THINKABLE (found 6×)
+## 4. Trusting a library instead of measuring it — NOT THINKABLE (found 7×)
 
 MinIO withdrew both its images from Docker Hub; the error read as a credentials
 problem. The move to quay.io held until MinIO withdrew them there too: twelve
@@ -102,6 +107,11 @@ narrowed `sys.platform` differently per machine, so a typecheck passed locally a
 failed in CI. The reverse also happens: grep 3.0 in Git for Windows prints nothing
 for `grep -c -f <empty file>` where Ubuntu's grep prints 0, so the Stop hook failed
 on the Windows machine while its tests, run on Ubuntu, stayed green.
+
+LangGraph's default durability looked unsafe for a step that sends, and a test
+raising inside the next step could not show it: the loop flushes pending
+checkpoint writes on the way out, so the run survived without `durability="sync"`
+too. Only a real process death (`os._exit` in a child) told them apart (wf-lite/02).
 
 No amount of care catches these. The habit that does:
 

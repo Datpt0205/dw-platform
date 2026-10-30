@@ -496,7 +496,7 @@ bên ngoài thì ghi "Chờ Đạt" và làm việc kế. Đường dẫn ticket
 | 5   | `digital-worker/issues/01` hồ sơ DW và loại quyết định                                    | xong `5e1ca10` |
 | 6   | `digital-worker/issues/02` hàng đợi chung, bàn giao, cổng duyệt                           | xong `857b317` |
 | 7   | `wf-lite/issues/01` tài liệu, sổ loại bước, bộ kiểm, luật sàn HITL                        | xong `47df14d` |
-| 8   | `wf-lite/issues/02` biên dịch, chạy, chờ và chạy tiếp                                     | chưa           |
+| 8   | `wf-lite/issues/02` biên dịch, chạy, chờ và chạy tiếp                                     | đang làm, pha D |
 | 9   | `runtime-hardening/issues/02`                                                             | chưa           |
 | 9b  | `compliance-pdpl/issues/08` lõi sàn gửi tin (tách từ 04 theo gate của leadcare, ADR-0124) | chưa           |
 | 10  | `leadcare/issues/01` gói Marketing chăm sóc lead                                          | chưa           |
