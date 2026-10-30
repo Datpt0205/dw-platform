@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from dw_agent_runtime.adapters.runtime_tables import worker_runs
 from dw_agent_runtime.contracts import RunContext, WorkerDefinition
-from dw_kernel.autonomy import AutonomyLevel
+from dw_kernel.autonomy import FAIL_CLOSED_LEVEL, AutonomyLevel
 from dw_kernel.errors import ConflictError, NotFoundError
 
 # Migration 0015. Matched by name so an unrelated constraint violation stays a
@@ -120,6 +120,48 @@ class RunRecord:
     # The workflow document a wf-lite run pinned (wf-lite R6.14); resuming
     # carries it, and with it the run's sync durability.
     definition_hash: str | None = None
+
+
+def resume_context(record: RunRecord, *, tenant_id: uuid.UUID, channel: str) -> RunContext:
+    """The context a paused run resumes with, from its own row: the one
+    reading of it, for a decision (`ApproveAndResumeService`) and a timer (the
+    `dw_timers` lane) alike.
+
+    Authority comes from the run, never from whoever or whatever resumes it:
+    the roles, scopes, clearance, owner roll-up and autonomy it started with.
+    Separation of duties makes an approver a different person every time, so
+    reading their context handed their scopes to the requester's agent; and
+    omitting the roll-up resumed with no owner limit at all, which widens
+    rather than narrows. A run started before 0006 has no autonomy stamp and
+    resumes at None, which the policy reads as ask-everything.
+    """
+    return RunContext(
+        run_id=record.id,
+        thread_id=record.thread_id,
+        tenant_id=tenant_id,
+        # The run's workspace, from its row: what the resumed graph reads and
+        # writes is the run's.
+        workspace_id=record.workspace_id,
+        # A DW's run acts as its principal again, and stays the lane's request
+        # (digital-worker R1.4).
+        actor_id=record.run_as_principal_id or record.requested_by,
+        requested_by=record.requested_by,
+        run_as_principal_id=record.run_as_principal_id,
+        definition_hash=record.definition_hash,
+        worker_id=record.worker_id,
+        worker_version=record.worker_version,
+        channel=channel,
+        plan_id=record.actor_plan_id,
+        roles=record.actor_roles,
+        scopes=record.actor_scopes,
+        clearance=record.actor_clearance,
+        record_visibility=record.actor_record_visibility,
+        visible_owners=record.actor_visible_owners,
+        autonomy_level=record.autonomy_level,
+        autonomy_ceiling=record.autonomy_level or FAIL_CLOSED_LEVEL,
+        approval_policy_version=record.approval_policy_version,
+        trace_id=f"resume-{record.id.hex[:12]}",
+    )
 
 
 @dataclass(frozen=True)

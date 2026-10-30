@@ -95,7 +95,8 @@ async def _start(queue: WorkQueue, starter: DigitalWorkerRunStarter, claimed: Cl
     except InfrastructureError:
         _LOG.exception("dw_work start failed; the claim returns in 15 minutes")
     except DWError as refused:
-        await queue.fail_start(scope_of, item.id, str(refused.code))
+        code = refused.details.get("reason_code", refused.code)
+        await queue.fail_start(scope_of, item.id, str(code))
 
 
 def _scope_of(claimed: Claimed) -> WorkScope:

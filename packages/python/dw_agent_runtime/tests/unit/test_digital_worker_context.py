@@ -77,6 +77,7 @@ def test_a_dw_run_is_the_lanes_request_acting_as_the_principal_within_its_tools(
     )
     assert context.scopes == {"email.send"}
     assert context.requested_by == system_actor("dw_work").value
+    assert context.worker_id == "dw:leadcare"
     assert context.actor_id == context.run_as_principal_id == dw.principal_user_id
     assert context.run_id == run_id
     assert context.roles == frozenset()

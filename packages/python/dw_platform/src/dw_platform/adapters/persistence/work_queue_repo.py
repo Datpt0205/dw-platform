@@ -263,3 +263,48 @@ class SqlWorkQueueRepository:
                 .values(status="open")
             )
         return int(released.rowcount or 0)  # type: ignore[attr-defined]
+
+    async def by_run(self, scope: WorkScope, run_id: uuid.UUID) -> WorkItem | None:
+        async with tenant_session(self.session_factory, _bound(scope)) as session:
+            row = (await session.execute(sa.select(_W).where(_W.c.run_id == run_id))).first()
+        return None if row is None else item_of(row)
+
+    async def due_timer_scopes(self, *, limit: int) -> list[WorkScope]:
+        async with self.session_factory() as session:
+            rows = (
+                await session.execute(
+                    sa.text("SELECT tenant_id, workspace_id FROM platform.dw_timer_scopes_due(:n)"),
+                    {"n": limit},
+                )
+            ).all()
+        return [WorkScope(tenant_id=r.tenant_id, workspace_id=r.workspace_id) for r in rows]
+
+    async def claim_timers(
+        self, scope: WorkScope, *, limit: int, lease: timedelta
+    ) -> list[WorkItem]:
+        async with tenant_session(self.session_factory, _bound(scope)) as session:
+            due = (
+                await session.execute(
+                    sa.select(_W.c.id)
+                    .select_from(_W.join(_DW, _DW.c.id == _W.c.dw_id))
+                    .where(
+                        _W.c.status == "waiting_timer",
+                        _W.c.wake_at <= sa.func.now(),
+                        _DW.c.state == "operating",
+                    )
+                    .order_by(_W.c.wake_at, _W.c.id)
+                    .limit(limit)
+                    .with_for_update(of=_W, skip_locked=True)
+                )
+            ).all()
+            if not due:
+                return []
+            rows = (
+                await session.execute(
+                    sa.update(_W)
+                    .where(_W.c.id.in_([r.id for r in due]), _W.c.status == "waiting_timer")
+                    .values(wake_at=sa.func.now() + lease)
+                    .returning(_W)
+                )
+            ).all()
+        return [item_of(r) for r in rows]

@@ -20,7 +20,7 @@ import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from dw_kernel.errors import ConflictError, DomainError
+from dw_kernel.errors import ConflictError, DomainError, NotFoundError
 from dw_kernel.pagination import CursorPosition, Page, PageRequest, build_page
 from dw_platform.adapters.persistence import tables
 from dw_platform.adapters.persistence.effect_key_store import claim_effect_key
@@ -639,3 +639,33 @@ class SqlApprovedDecisions:
         return ApprovedDecision(
             run_id=row.run_id, step_id=step if isinstance(step, str) else None, content=content
         )
+
+
+@dataclass(frozen=True)
+class SqlTenantRunFacts:
+    """A tenant's plan and autonomy ceiling, for a run no person started (the
+    `dw_work` lane builds a DW's run context from them, wf-lite R6)."""
+
+    session_factory: async_sessionmaker[AsyncSession]
+
+    async def facts(self, tenant_id: uuid.UUID) -> tuple[str, str]:
+        async with tenant_session(
+            self.session_factory, TenantScope(tenant_id=tenant_id)
+        ) as session:
+            row = (
+                await session.execute(
+                    sa.select(tables.entitlements.c.plan_id, tables.tenants.c.max_autonomy_level)
+                    .select_from(
+                        tables.tenants.join(
+                            tables.entitlements,
+                            tables.entitlements.c.tenant_id == tables.tenants.c.id,
+                        )
+                    )
+                    .where(tables.tenants.c.id == tenant_id)
+                )
+            ).first()
+        if row is None:
+            raise NotFoundError(
+                "tenant has no entitlement", details={"reason_code": "plan_missing"}
+            )
+        return row.plan_id, row.max_autonomy_level

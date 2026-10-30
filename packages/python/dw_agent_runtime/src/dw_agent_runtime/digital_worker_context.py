@@ -48,7 +48,7 @@ def run_context_for(
         actor_id=worker.principal_user_id,
         requested_by=system_actor(LANE).value,
         run_as_principal_id=worker.principal_user_id,
-        worker_id=config.workflow_key,
+        worker_id=f"dw:{config.workflow_key}",
         worker_version=config.workflow_version,
         channel=CHANNEL,
         plan_id=plan_id,

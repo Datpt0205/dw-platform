@@ -19,10 +19,14 @@ from dataclasses import dataclass, field
 from datetime import UTC
 from typing import Any, Protocol
 
-from dw_agent_runtime.adapters.run_store import RunRecord, RunStatus, SqlWorkerRunStore
+from dw_agent_runtime.adapters.run_store import (
+    RunRecord,
+    RunStatus,
+    SqlWorkerRunStore,
+    resume_context,
+)
 from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.ports import WorkflowRunnerPort
-from dw_kernel.autonomy import FAIL_CLOSED_LEVEL
 from dw_kernel.errors import ConflictError, DomainError, NotFoundError
 from dw_kernel.ids import UserId
 from dw_kernel.ports import IdGenerator, UtcClock
@@ -345,52 +349,16 @@ class ApproveAndResumeService:
                 # here, never copied from the approval's payload, which is the
                 # graph's own interrupt value.
                 "decided_by": str(context.principal_id),
+                # Which approval this was: a wf-lite tool call shows it to the
+                # tool executor, which takes only this run's (wf-lite R6.17).
+                "approval_id": str(request.id),
             }
             if approved_action_ids is not None:
                 resume_payload["approved_action_ids"] = approved_action_ids
             if edited_proposal is not None:
                 resume_payload["edited_proposal"] = dict(edited_proposal)
             await self.runner.resume(
-                run_context=RunContext(
-                    run_id=request.run_id,
-                    thread_id=record.thread_id,
-                    tenant_id=context.tenant_id,
-                    # The run's workspace, from its row, never the decider's:
-                    # what the resumed graph reads and writes is the run's.
-                    workspace_id=record.workspace_id,
-                    # A DW's run acts as its principal again, and stays the
-                    # lane's request (digital-worker R1.4).
-                    actor_id=record.run_as_principal_id or record.requested_by,
-                    requested_by=record.requested_by,
-                    run_as_principal_id=record.run_as_principal_id,
-                    definition_hash=record.definition_hash,
-                    worker_id=record.worker_id,
-                    worker_version=record.worker_version,
-                    # Where the decision came from, so the resumed graph knows.
-                    channel=channel,
-                    # Authority comes from the run, not from whoever is
-                    # approving it. Separation of duties guarantees they are
-                    # different people, so reading it from the approver's
-                    # context handed their scopes to the requester's agent.
-                    plan_id=record.actor_plan_id,
-                    roles=record.actor_roles,
-                    scopes=record.actor_scopes,
-                    clearance=record.actor_clearance,
-                    # Same reason as the roles and scopes above: the run
-                    # resumes with the reach it started with, not with the
-                    # approver's. Omitting these resumed with no owner limit
-                    # at all, which widens rather than narrows.
-                    record_visibility=record.actor_record_visibility,
-                    visible_owners=record.actor_visible_owners,
-                    # The autonomy the run started with, from its row — never
-                    # re-resolved from the tenant's ceiling today, and never the
-                    # approver's. A run started before 0006 has no stamp; it
-                    # resumes at None, which the policy reads as ask-everything.
-                    autonomy_level=record.autonomy_level,
-                    autonomy_ceiling=record.autonomy_level or FAIL_CLOSED_LEVEL,
-                    approval_policy_version=record.approval_policy_version,
-                    trace_id=f"resume-{request.run_id.hex[:12]}",
-                ),
+                run_context=resume_context(record, tenant_id=context.tenant_id, channel=channel),
                 run_id=request.run_id,
                 resume_payload=resume_payload,
             )

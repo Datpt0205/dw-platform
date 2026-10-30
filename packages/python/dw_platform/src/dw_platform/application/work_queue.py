@@ -50,6 +50,8 @@ LANE = "dw_work"
 LIMIT_BACKOFF = timedelta(minutes=5)
 # R3.14: an item claimed this long ago whose run never appeared goes back.
 STUCK_AFTER = timedelta(minutes=15)
+# wf-lite R6.12: a claimed timer's `wake_at` moves this far ahead, a lease.
+TIMER_LEASE = timedelta(minutes=15)
 
 _RESOURCE = "work_item"
 
@@ -167,6 +169,23 @@ class WorkQueueRepositoryPort(Protocol):
     async def release_stuck(self, scope: WorkScope, *, older_than: timedelta) -> int:
         """Move back to `open` every `in_progress` item untouched for
         `older_than` whose run id has no run row, keeping the run id (R3.14)."""
+        ...
+
+    async def by_run(self, scope: WorkScope, run_id: uuid.UUID) -> WorkItem | None:
+        """The item a run works on, or None (a run that is not a DW's)."""
+        ...
+
+    async def due_timer_scopes(self, *, limit: int) -> list[WorkScope]:
+        """`platform.dw_timer_scopes_due`: ids only, across tenants."""
+        ...
+
+    async def claim_timers(
+        self, scope: WorkScope, *, limit: int, lease: timedelta
+    ) -> list[WorkItem]:
+        """Take up to `limit` items `waiting_timer` whose `wake_at` has passed,
+        of an operating DW, `FOR UPDATE SKIP LOCKED`, and push their `wake_at`
+        `lease` ahead in the same transaction (wf-lite R6.12): a lane that dies
+        after the claim leaves the item due again after the lease."""
         ...
 
 
@@ -419,6 +438,15 @@ class WorkQueue:
     async def release_stuck(self, scope: WorkScope) -> int:
         return await self.repo.release_stuck(scope, older_than=STUCK_AFTER)
 
+    async def by_run(self, scope: WorkScope, run_id: uuid.UUID) -> WorkItem | None:
+        return await self.repo.by_run(scope, run_id)
+
+    async def due_timer_scopes(self, *, limit: int) -> list[WorkScope]:
+        return await self.repo.due_timer_scopes(limit=limit)
+
+    async def claim_timers(self, scope: WorkScope, *, limit: int) -> list[WorkItem]:
+        return await self.repo.claim_timers(scope, limit=limit, lease=TIMER_LEASE)
+
     async def release_for_limit(self, scope: WorkScope, item_id: uuid.UUID) -> WorkItem:
         """R3.9: back to `open`, due again in five minutes, run id kept."""
         return await self._move_by_id(
@@ -594,6 +622,7 @@ __all__: Sequence[str] = [
     "LANE",
     "LIMIT_BACKOFF",
     "STUCK_AFTER",
+    "TIMER_LEASE",
     "Claimed",
     "DwLookupPort",
     "InMemoryWorkKindSchemas",
