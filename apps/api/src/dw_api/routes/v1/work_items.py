@@ -33,6 +33,8 @@ from dw_platform.application.work_queue import NewWork, WorkListFilter, WorkQueu
 from dw_platform.domain.work_item import WorkItem, WorkStatus
 
 router = APIRouter(prefix="/work-items", tags=["work"])
+# An item whose run has not ended: its trail is in the run's checkpoint.
+_LIVE: frozenset[WorkStatus] = frozenset({"in_progress", "waiting_approval", "waiting_timer"})
 assign_router = APIRouter(prefix="/digital-workers", tags=["digital-workers"])
 
 
@@ -169,7 +171,10 @@ async def get_work_item(
         return view.model_copy(update={"trail": []})
     # Under the caller's own tenant and workspace, as the item was read.
     trail = await container.run_trails.trail(
-        tenant_id=context.tenant_id, workspace_id=context.workspace_id, run_id=item.run_id
+        tenant_id=context.tenant_id,
+        workspace_id=context.workspace_id,
+        run_id=item.run_id,
+        live=item.status in _LIVE,
     )
     return view.model_copy(update={"trail": [TrailEntryView(**entry) for entry in trail]})
 

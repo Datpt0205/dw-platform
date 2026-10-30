@@ -177,3 +177,12 @@ mutations:
     new: "        if False:\n            self.budget.forget(run_id)"
     tests:
       - apps/worker/tests/integration/test_wflite_runs_db.py::test_a_run_waits_for_approval_sends_once_waits_and_finishes
+  - name: WFL15 a checkpoint is read from another workspace of the tenant
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/checkpoint.py
+    old: |2-
+                          # workspace of the tenant reads nothing (wf-lite R6.13).
+                          run_checkpoints.c.workspace_id == workspace_id,
+    new: |2-
+                          # workspace of the tenant reads nothing (wf-lite R6.13).
+    tests:
+      - apps/worker/tests/integration/test_wflite_runs_db.py::test_another_tenants_timer_lane_scope_sees_nothing_of_this_one

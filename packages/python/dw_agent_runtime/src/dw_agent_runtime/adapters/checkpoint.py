@@ -86,6 +86,10 @@ class SqlAlchemyCheckpointSaver(BaseCheckpointSaver[str]):
                 .where(
                     run_checkpoints.c.thread_id == thread_id,
                     run_checkpoints.c.checkpoint_ns == ns,
+                    # RLS narrows checkpoints by tenant only; the workspace the
+                    # config names is held here, so a reader in another
+                    # workspace of the tenant reads nothing (wf-lite R6.13).
+                    run_checkpoints.c.workspace_id == workspace_id,
                 )
                 .order_by(run_checkpoints.c.checkpoint_id.desc())
                 .limit(1)
@@ -127,6 +131,7 @@ class SqlAlchemyCheckpointSaver(BaseCheckpointSaver[str]):
                 .where(
                     run_checkpoints.c.thread_id == thread_id,
                     run_checkpoints.c.checkpoint_ns == ns,
+                    run_checkpoints.c.workspace_id == workspace_id,
                 )
                 .order_by(run_checkpoints.c.checkpoint_id.desc())
             )

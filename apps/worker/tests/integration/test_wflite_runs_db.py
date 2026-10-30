@@ -537,8 +537,15 @@ async def decide(stack: Stack, world: World, approval: uuid.UUID, **kw: Any) -> 
 
 
 async def trail_of(stack: Stack, world: World, run_id: uuid.UUID) -> list[dict[str, str]]:
-    return await stack.trails.trail(
+    """As the route reads it: live while the item is in progress or waiting."""
+    record = await stack.run_store.get_in(
         tenant_id=world.tenant, workspace_id=world.workspace, run_id=run_id
+    )
+    return await stack.trails.trail(
+        tenant_id=world.tenant,
+        workspace_id=world.workspace,
+        run_id=run_id,
+        live=record.status.value in ("running", "waiting_approval", "waiting_timer"),
     )
 
 
@@ -938,16 +945,27 @@ async def test_another_tenants_timer_lane_scope_sees_nothing_of_this_one(
     )
     assert world.item not in {i.id for i in taken}
     assert not (await item_row(migrator, world)).leased
-    assert (
-        await stack.trails.trail(
-            tenant_id=stranger.tenant, workspace_id=stranger.workspace, run_id=run_id
+
+    async def scoped_reads(live: bool) -> None:
+        for tenant, workspace in (
+            (stranger.tenant, stranger.workspace),
+            (world.tenant, uuid.uuid4()),
+        ):
+            assert (
+                await stack.trails.trail(
+                    tenant_id=tenant, workspace_id=workspace, run_id=run_id, live=live
+                )
+                == []
+            )
+        # The control: in its own scope, the same source reads the run.
+        assert await stack.trails.trail(
+            tenant_id=world.tenant, workspace_id=world.workspace, run_id=run_id, live=live
         )
-        == []
-    )
-    assert (
-        await stack.trails.trail(tenant_id=world.tenant, workspace_id=uuid.uuid4(), run_id=run_id)
-        == []
-    )
+
+    await scoped_reads(live=True)  # waiting: the checkpoint
+    await stack.timers()
+    assert (await item_row(migrator, world)).status == "done"
+    await scoped_reads(live=False)  # ended: the run's result
 
 
 class ExitingClock:

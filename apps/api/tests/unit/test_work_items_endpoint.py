@@ -295,12 +295,14 @@ class Trails:
 
     def __init__(self, run_id: uuid.UUID) -> None:
         self.run_id = run_id
-        self.asked: list[dict[str, uuid.UUID]] = []
+        self.asked: list[dict[str, Any]] = []
 
     async def trail(
-        self, *, tenant_id: uuid.UUID, workspace_id: uuid.UUID, run_id: uuid.UUID
-    ) -> list[dict[str, str]]:
-        self.asked.append({"tenant_id": tenant_id, "workspace_id": workspace_id, "run_id": run_id})
+        self, *, tenant_id: uuid.UUID, workspace_id: uuid.UUID, run_id: uuid.UUID, live: bool
+    ) -> list[dict[str, Any]]:
+        self.asked.append(
+            {"tenant_id": tenant_id, "workspace_id": workspace_id, "run_id": run_id, "live": live}
+        )
         if run_id != self.run_id:
             return []
         return [{"step_id": "draft", "type": "ai.llm@1", "status": "done", "at": NOW.isoformat()}]
@@ -324,7 +326,9 @@ async def test_one_item_carries_its_runs_trail_read_in_the_callers_scope() -> No
     assert one.json()["trail"] == [
         {"step_id": "draft", "type": "ai.llm@1", "status": "done", "at": NOW.isoformat()}
     ]
-    assert trails.asked == [{"tenant_id": TENANT, "workspace_id": WORKSPACE, "run_id": run_id}]
+    assert trails.asked == [
+        {"tenant_id": TENANT, "workspace_id": WORKSPACE, "run_id": run_id, "live": True}
+    ]
 
     listed = await call(container, "GET", "/work-items")
     assert listed.json()["items"][0]["trail"] is None
