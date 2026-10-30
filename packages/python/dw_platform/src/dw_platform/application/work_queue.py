@@ -19,7 +19,7 @@ signed intake), never from a request body.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Any, Literal, Protocol
@@ -146,11 +146,22 @@ class WorkQueueRepositoryPort(Protocol):
         `sources`, with `audit` in the same transaction; None when it is not."""
         ...
 
-    async def claim_due(self, scope: WorkScope, *, limit: int) -> list[Claimed]:
+    async def due_scopes(self, *, limit: int) -> list[WorkScope]:
+        """`platform.dw_work_scopes_due`: the scopes with work due or stuck,
+        ids only, across tenants."""
+        ...
+
+    async def claim_due(
+        self,
+        scope: WorkScope,
+        *,
+        limit: int,
+        audit_of: Callable[[WorkItem, uuid.UUID], AuditEvent],
+    ) -> list[Claimed]:
         """Take up to `limit` open, due items of operating DWs that have a
         Business Owner, `FOR UPDATE SKIP LOCKED`, the DW row `FOR SHARE`; move
-        each to `in_progress` with its run id (kept, or new) in the same
-        transaction (R3.6, R3.7, R1.12)."""
+        each to `in_progress` with its run id (kept, or new) and its audit
+        event in the same transaction (R3.6, R3.7, R1.12)."""
         ...
 
     async def release_stuck(self, scope: WorkScope, *, older_than: timedelta) -> int:
@@ -393,8 +404,17 @@ class WorkQueue:
 
     # ------------------------------------------------------------- lane --
 
+    async def due_scopes(self, *, limit: int) -> list[WorkScope]:
+        return await self.repo.due_scopes(limit=limit)
+
     async def claim_for_lane(self, scope: WorkScope, *, limit: int) -> list[Claimed]:
-        return await self.repo.claim_due(scope, limit=limit)
+        return await self.repo.claim_due(
+            scope,
+            limit=limit,
+            audit_of=lambda item, run_id: self.lane_event(
+                scope, "work_item.claimed", item.id, {"run_id": str(run_id)}
+            ),
+        )
 
     async def release_stuck(self, scope: WorkScope) -> int:
         return await self.repo.release_stuck(scope, older_than=STUCK_AFTER)
@@ -407,7 +427,7 @@ class WorkQueue:
             "open",
             "lane",
             {"available_at": self.clock.now() + LIMIT_BACKOFF},
-            None,
+            self.lane_event(scope, "work_item.deferred_for_limit", item_id, {}),
         )
 
     async def fail_start(self, scope: WorkScope, item_id: uuid.UUID, code: str) -> WorkItem:
@@ -418,7 +438,7 @@ class WorkQueue:
             "failed",
             "runner",
             {"error": code[:500], "closed_at": self.clock.now()},
-            None,
+            self.lane_event(scope, "work_item.start_failed", item_id, {"code": code[:500]}),
         )
 
     # -------------------------------------------------------------- run --

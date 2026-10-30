@@ -106,6 +106,13 @@ class RunContext(BaseModel):
     tenant_id: UUID
     workspace_id: UUID
     actor_id: UUID
+    # Who asked for the run when that is not `actor_id`: a lane starting a
+    # Digital Worker's run on its own stands as itself, `system_actor(<lane>)`
+    # (digital-worker R1.4, ADR 0011). Unset: the actor asked.
+    requested_by: UUID | None = None
+    # The service principal the run acts as (ADR-0103 decision 4, ADR-0113
+    # decision 1). The tool executor reads a DW's boundary by it (R6).
+    run_as_principal_id: UUID | None = None
     worker_id: str
     worker_version: str = Field(pattern=_SEMVER_PATTERN)
     channel: str

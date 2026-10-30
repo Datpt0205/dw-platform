@@ -65,6 +65,10 @@ from dw_platform.adapters.persistence.channel_inbound import (
     SqlChannelUpdateQueue,
 )
 from dw_platform.adapters.persistence.channel_preferences import SqlChannelPreferences
+from dw_platform.adapters.persistence.digital_workers_repo import (
+    SqlDigitalWorkerRepository,
+    SqlDwMembershipCheck,
+)
 from dw_platform.adapters.persistence.effect_key_store import (
     EFFECT_KEYS,
     SqlEffectKeyRetention,
@@ -82,6 +86,7 @@ from dw_platform.adapters.persistence.offboarding import (
 from dw_platform.adapters.persistence.outbox_drain import SqlOutboxDrain
 from dw_platform.adapters.persistence.partition_maintenance import SqlPartitionMaintenance
 from dw_platform.adapters.persistence.uow import SqlPlatformUnitOfWorkFactory
+from dw_platform.adapters.persistence.work_queue_repo import SqlWorkQueueRepository
 from dw_platform.adapters.persistence.zalo_link_repo import (
     SqlChannelLinkNonceRetention,
     SqlZaloLink,
@@ -90,6 +95,7 @@ from dw_platform.application.access_context import AccessContext
 from dw_platform.application.approval_codes import ApprovalSubjectVersions, DecisionCodeKey
 from dw_platform.application.authorization import ScopeAuthorizationService
 from dw_platform.application.channel_access import LinkedUserAccess
+from dw_platform.application.work_queue import InMemoryWorkKindSchemas, WorkQueue
 from dw_platform.retention_policy import RetentionPurgerRegistry, load_retention_policy
 from dw_worker.composition import (
     build_embeddings,
@@ -101,6 +107,8 @@ from dw_worker.composition import (
 )
 from dw_worker.consumers import ConsumerRegistry
 from dw_worker.consumers.channel_delivery import build_channel_delivery_consumer
+from dw_worker.consumers.dw_work import INTERVAL_SECONDS as DW_WORK_INTERVAL_SECONDS
+from dw_worker.consumers.dw_work import RecordingRunStarter, build_dw_work_consumer
 from dw_worker.consumers.ingest import build_ingest_consumer
 from dw_worker.consumers.memory import memory_handlers
 from dw_worker.consumers.offboarding import INTERVAL_SECONDS as OFFBOARDING_INTERVAL_SECONDS
@@ -338,6 +346,9 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
     # Ops hardening Phase 4. Needs object storage too, not just a database -
     # export/purge touch three buckets and the vector index alongside Postgres.
     offboarding_consumer: Callable[[], Awaitable[None]] | None = None
+    # Digital Workers take their work (digital-worker R3.6). The starter
+    # records the call until wf-lite/02 wires the workflow engine.
+    dw_work_consumer: Callable[[], Awaitable[None]] | None = None
 
     if settings.database_url:
         # ---- transactional outbox ----------------------------------------
@@ -346,6 +357,19 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
         # adding the handler later drains the backlog.
         engine = create_async_engine(settings.database_url, pool_pre_ping=True)
         sessions = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        dw_work_consumer = build_dw_work_consumer(
+            WorkQueue(
+                repo=SqlWorkQueueRepository(sessions),
+                workers=SqlDigitalWorkerRepository(sessions),
+                people=SqlDwMembershipCheck(sessions),
+                # No pack declares a schema until wf-lite/01; nothing is let in.
+                schemas=InMemoryWorkKindSchemas({}),
+                authz=ScopeAuthorizationService(),
+                clock=clock,
+                id_generator=ids,
+            ),
+            RecordingRunStarter(),
+        )
         # Remembering runs here rather than on the request that produced the
         # fact: a run that stops to decide what is worth keeping is a run someone
         # is waiting on. The handler is idempotent because the outbox delivers at
@@ -496,6 +520,11 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
             channel_delivery_consumer,
             interval_seconds=settings.channel_delivery_interval_seconds,
         )
+
+    # The DW lane holds no lease either: a claim a dead worker made is returned
+    # by the lane itself after 15 minutes without a run (R3.14).
+    if dw_work_consumer is not None:
+        registry.register("dw_work", dw_work_consumer, interval_seconds=DW_WORK_INTERVAL_SECONDS)
 
     # ---- periodic repair --------------------------------------------------
     # Registered last because both sweeps act on what everything above created,

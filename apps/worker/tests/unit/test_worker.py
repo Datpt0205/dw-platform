@@ -140,6 +140,8 @@ def test_only_the_platform_lanes_are_wired() -> None:
     (`platform.prune_approval_decision_codes()`), whether or not this host polls.
     `tool_claims_retention` is the twelfth: tool claims past `expires_at`, which
     guard nothing once a later call may take them over (runtime-hardening R6.7).
+    `dw_work` is the thirteenth: Digital Workers take their work from the
+    shared queue (digital-worker R3.6), a database being all it needs.
 
     Naming the whole set is the point: a context's lane arriving in this process
     becomes a visible change rather than a silent one.
@@ -158,6 +160,7 @@ def test_only_the_platform_lanes_are_wired() -> None:
         "channel_deliveries_retention",
         "approval_codes_retention",
         "tool_claims_retention",
+        "dw_work",
     }
 
 

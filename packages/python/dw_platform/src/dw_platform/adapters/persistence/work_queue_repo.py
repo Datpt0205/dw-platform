@@ -11,7 +11,7 @@ claim of its work wait for one another rather than cross (R1.12).
 from __future__ import annotations
 
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any, cast
@@ -182,7 +182,25 @@ class SqlWorkQueueRepository:
                 await SqlAuditRepository(session).append(audit)
         return item_of(row)
 
-    async def claim_due(self, scope: WorkScope, *, limit: int) -> list[Claimed]:
+    async def due_scopes(self, *, limit: int) -> list[WorkScope]:
+        # No transaction setting: the function is the one cross-tenant read,
+        # and returns ids only (migration cfbd906be98b).
+        async with self.session_factory() as session:
+            rows = (
+                await session.execute(
+                    sa.text("SELECT tenant_id, workspace_id FROM platform.dw_work_scopes_due(:n)"),
+                    {"n": limit},
+                )
+            ).all()
+        return [WorkScope(tenant_id=r.tenant_id, workspace_id=r.workspace_id) for r in rows]
+
+    async def claim_due(
+        self,
+        scope: WorkScope,
+        *,
+        limit: int,
+        audit_of: Callable[[WorkItem, uuid.UUID], AuditEvent],
+    ) -> list[Claimed]:
         async with tenant_session(self.session_factory, _bound(scope)) as session:
             due = (
                 await session.execute(
@@ -227,7 +245,9 @@ class SqlWorkQueueRepository:
                     )
                 ).first()
                 if moved is not None:
-                    claimed.append(Claimed(item=item_of(moved), run_id=run_id))
+                    item = item_of(moved)
+                    await SqlAuditRepository(session).append(audit_of(item, run_id))
+                    claimed.append(Claimed(item=item, run_id=run_id))
         return claimed
 
     async def release_stuck(self, scope: WorkScope, *, older_than: timedelta) -> int:

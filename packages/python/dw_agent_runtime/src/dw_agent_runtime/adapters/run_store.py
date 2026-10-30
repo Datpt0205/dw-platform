@@ -111,6 +111,9 @@ class RunRecord:
     # migration 0145), which replays as "no owner limit" exactly as it did
     # then. Every run started since carries the real set.
     actor_visible_owners: frozenset[uuid.UUID] | None
+    # The service principal the run acts as, when not the requester (a DW's
+    # run, digital-worker R1.4); resuming acts as it again.
+    run_as_principal_id: uuid.UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -387,7 +390,8 @@ class SqlWorkerRunStore:
                 approval_policy_version=run_context.approval_policy_version,
                 status=RunStatus.RUNNING.value,
                 input=input_payload,
-                requested_by=run_context.actor_id,
+                requested_by=run_context.requested_by or run_context.actor_id,
+                run_as_principal_id=run_context.run_as_principal_id,
                 actor_roles=sorted(run_context.roles),
                 actor_scopes=sorted(run_context.scopes),
                 actor_plan_id=run_context.plan_id,
@@ -468,6 +472,7 @@ class SqlWorkerRunStore:
             approval_request_id=row.approval_request_id,
             release_manifest_ref=row.release_manifest_ref,
             requested_by=row.requested_by,
+            run_as_principal_id=row.run_as_principal_id,
             actor_roles=frozenset(row.actor_roles),
             actor_scopes=frozenset(row.actor_scopes),
             actor_plan_id=row.actor_plan_id,

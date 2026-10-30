@@ -36,6 +36,7 @@ worker_runs = sa.Table(
     sa.Column("autonomy_level", sa.Text, nullable=True),
     sa.Column("approval_policy_version", sa.String(16), nullable=True),
     sa.Column("requested_by", UUID(as_uuid=True), nullable=False),
+    sa.Column("run_as_principal_id", UUID(as_uuid=True), nullable=True),
     sa.Column("actor_roles", sa.ARRAY(sa.Text), nullable=False, server_default=sa.text("'{}'")),
     sa.Column("actor_scopes", sa.ARRAY(sa.Text), nullable=False, server_default=sa.text("'{}'")),
     sa.Column("actor_plan_id", sa.Text, nullable=False, server_default=""),

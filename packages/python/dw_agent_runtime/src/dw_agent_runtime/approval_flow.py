@@ -337,7 +337,11 @@ class ApproveAndResumeService:
                     # The run's workspace, from its row, never the decider's:
                     # what the resumed graph reads and writes is the run's.
                     workspace_id=record.workspace_id,
-                    actor_id=record.requested_by,
+                    # A DW's run acts as its principal again, and stays the
+                    # lane's request (digital-worker R1.4).
+                    actor_id=record.run_as_principal_id or record.requested_by,
+                    requested_by=record.requested_by,
+                    run_as_principal_id=record.run_as_principal_id,
                     worker_id=record.worker_id,
                     worker_version=record.worker_version,
                     # Where the decision came from, so the resumed graph knows.
