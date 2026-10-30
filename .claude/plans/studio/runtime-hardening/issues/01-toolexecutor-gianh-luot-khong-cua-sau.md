@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: .claude/plans/studio/foundations-hardening/issues/01-test-khong-the-do.md, .claude/plans/studio/org-and-principals/issues/01-khoa-don-vi-va-siet-realm.md
 Area: studio
-Yêu cầu: R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.7, R6.8, R6.9, R6.10, R6.11, R6.12, R6.13, RH15, RH16, RH17, RH18, RH19, RH32, RH33, RH34, RH35
+Yêu cầu: R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.7, R6.8, R6.9, R6.10, R6.11, R6.12, R6.13, R6.14, RH15, RH16, RH17, RH18, RH19, RH32, RH33, RH34, RH35, RH36
 
 ## Mục tiêu
 
@@ -36,24 +36,29 @@ Claim và nhật ký lần gửi trước hiệu ứng (R6.1-R6.3, R6.7-R6.13):
    `status IN ('succeeded', 'failed', 'dispatched', 'outcome_unknown')` ngay từ lần tạo (V4.30), sau khi
    `SELECT DISTINCT status` trên dữ liệu hiện có không thấy giá trị khác (ghi Comments); bảng vẫn chỉ thêm, và
    `uq_tool_executions_idempotency` chỉ phủ dòng `succeeded` (`db/migrations/sql/0001_platform_baseline.sql:698`) nên
-   dòng `dispatched` không đụng nó; tenant-config/03, đi sau ticket này, thay CHECK đó bằng cùng tập cộng `simulated`
+   dòng `dispatched` không đụng nó; cột `dispatch_id uuid` (NULL trừ ở dòng kết thúc của một lần gửi), CHECK
+   `ck_tool_executions_dispatch_id` `dispatch_id IS NULL OR status <> 'dispatched'`, và index duy nhất một phần
+   `uq_tool_executions_dispatch_resolved` trên `(tenant_id, dispatch_id)` `WHERE dispatch_id IS NOT NULL AND status IN
+('succeeded', 'failed')` (mỗi lần gửi đóng bằng đúng một dòng `succeeded` hay `failed`; R6.9, R6.12); tenant-config/03, đi sau ticket này, thay CHECK đó bằng cùng tập cộng `simulated`
    (ADR-0111 (Accepted)). Cột
    `output` quá 30 ngày do lane lưu giữ của telemetry-and-audit xóa qua một hàm riêng của lane
    (ADR-0122 (Accepted) quyết 7), nên không trả UPDATE cho `dw_app` để lane đó dùng.
 3. Port `ToolClaimPort` do `dw_agent_runtime` khai (claim, tiếp quản claim quá hạn, nhả theo token, tìm lần gửi chưa
    biết kết quả, chèn dòng `dispatched` có rào), adapter SQL nối ở composition root; `ToolExecutor` nhận port qua
    constructor. Cùng chỗ khai: ba lỗi có kiểu mà handler ném sau khi lần gửi bắt đầu, `NotDispatchedError`,
-   `RejectedError` (mang mã nhà cung cấp) và `OutcomeUnknownError`, để egress client của connections-and-vault/03 ném
+   `RejectedError` (mang mã nhà cung cấp) và `OutcomeUnknownError`, đều là `DWError` có `code` riêng
+   (`not_dispatched`, `rejected`, `outcome_unknown`); executor ném `OutcomeUnknownError` cho bên gọi ở R6.9 và R6.12,
+   không thử lại, và đường agent đưa nó tới model qua `PlatformToolErrorsMiddleware` như mọi lỗi có kiểu, để egress client của connections-and-vault/03 ném
    theo kết quả có kiểu của nó (ADR-0115 (Accepted) quyết 6).
-4. `ToolExecutor._execute`, khi có khóa chống lặp: INSERT claim trước `find_succeeded`, với
+4. `ToolExecutor._execute`, khi có khóa chống lặp và `side_effect_level` khác `none` (R6.1): INSERT claim trước `find_succeeded`, với
    `expires_at = now() + timeout_seconds × (1 + max_retries) + 30 giây`:
     - giành được, hay tiếp quản claim quá hạn bằng `DELETE ... WHERE claim_token = :old AND expires_at < now()` rồi
-      INSERT lại (R6.10): tìm lần thành công (có thì replay); khóa có lần gửi chưa biết kết quả, tức dòng `dispatched`
-      mới nhất của khóa chưa có `succeeded` hay `failed` sau nó, thì trả `outcome_unknown` và không gọi handler
-      (R6.9); không thì, với lời gọi có hiệu ứng ra ngoài nền tảng không bị giả lập, chèn dòng `dispatched` bằng
+      INSERT lại (R6.10): tìm lần thành công (có thì replay); khóa có lần gửi chưa biết kết quả, tức một dòng `dispatched`
+      của khóa mà chưa dòng `succeeded` hay `failed` nào mang `dispatch_id` của nó, thì trả `outcome_unknown` và không gọi handler
+      (R6.9); không thì, với lời gọi có `side_effect_level` `external` hay `critical` không bị giả lập, chèn dòng `dispatched` bằng
       `INSERT ... SELECT ... WHERE EXISTS` (claim mang `claim_token` của mình còn hạn) và commit trong giao dịch riêng,
       không chèn được dòng nào thì dừng mà không gọi handler (R6.11, R6.13); gọi handler; ghi đúng một dòng kết thúc
-      theo kết quả có kiểu, `succeeded`, `failed` mang mã cho `NotDispatchedError` và `RejectedError`, `outcome_unknown`
+      mang `dispatch_id` theo kết quả có kiểu, `succeeded`, `failed` mang mã cho `NotDispatchedError` và `RejectedError`, `outcome_unknown`
       cho `OutcomeUnknownError` và mọi lỗi khác ném sau `dispatched` (R6.12); rồi nhả claim trong `finally` bằng token
       của mình;
     - không giành được và claim hiện có còn hạn: có lần thành công thì replay, còn lại `ConflictError` (R6.1).
@@ -73,10 +78,10 @@ Không còn cửa sau (R6.4, R6.5, R6.6):
 8. `redact_mapping` đi vào list và tuple ở mọi độ sâu, che theo cùng `is_sensitive_key`.
 9. Ghim `deepagents==0.7.15` trong `packages/python/dw_agent_runtime/pyproject.toml` rồi `uv lock`
    (Quyết định của spec); test hợp đồng: dựng agent bằng `build_agent` thật với model giả, toolset
-   rỗng và toolset một công cụ, khẳng định tập tên công cụ gắn cho model đúng bằng toolset cộng
-   `write_todos`.
+   rỗng và toolset một công cụ, khẳng định tập tên công cụ gắn cho model đúng bằng toolset đã lọc theo scope
+   của run, không `write_todos` (đo 30/10/2026: `create_agent` không cài nó).
 10. Sửa comment liệt kê công cụ dựng sẵn ở `langchain_tools.py` cho khớp comment đã đo ở
-    `agent_factory.py`; sửa `configs/workers/README.md`: runner đọc `autonomy_level` qua
+    `agent_factory.py`, và bỏ `write_todos` khỏi `_ALWAYS_ALLOWED` vì không gì cài nó; sửa `configs/workers/README.md`: runner đọc `autonomy_level` qua
     `lower_autonomy` và bảng của `autonomy.py`, câu "read by nothing" không còn đúng (ADR-0117 (Accepted),
     ADR-0125 (Accepted)).
 
@@ -107,11 +112,14 @@ Không còn cửa sau (R6.4, R6.5, R6.6):
 - [ ] R6.13 (RH35): S: người giữ cũ dừng ngay trước bước ghi `dispatched` tới quá `expires_at`, người mới tiếp quản và
       gửi, rồi người cũ chạy tiếp → không có dòng `dispatched` thứ hai, handler của người cũ không chạy, nhà cung cấp
       giả có đúng 1 lời gọi; gỡ rào `claim_token` ở câu chèn → nhà cung cấp giả nhận 2 lời gọi, test đỏ.
+- [ ] R6.14 (RH36): integration trên PostgreSQL thật: tenant A có claim còn hạn, một dòng `succeeded` và một lần gửi
+      chưa biết kết quả cho cùng `tool_name` và khóa; tenant B gọi khóa đó → handler của B chạy đúng một lần, B nhận
+      output của chính nó; bỏ `tenant_id` khỏi khóa chính của claim → đỏ.
 - [ ] R6.4 (RH17): một mục dict trong danh sách công cụ → model giả không nhận nó ở cả hai middleware;
       `build_agent` với mục không phải `BaseTool` → lỗi; hoàn tác bộ lọc → đỏ.
 - [ ] R6.5 (RH18): lời gọi thất bại với input `{"items": [{"api_key": "sk-123"}]}` → audit
       `tool.failed` và thuộc tính span mang `[REDACTED]`; bỏ đệ quy vào list → đỏ.
-- [ ] R6.6 (RH17): test hợp đồng ở bước 9 xanh trên bản ghim; thêm một `BaseTool` ngoài toolset vào
+- [ ] R6.6 (RH17): test hợp đồng ở bước 9 xanh trên bản ghim (toolset rỗng → model không thấy công cụ nào); thêm một `BaseTool` ngoài toolset vào
       agent → đỏ.
 - [ ] R6.7 (RH19): một claim quá hạn và một claim chưa hạn → sau một lượt `tool_claims_retention` chỉ
       claim chưa hạn còn; bỏ đăng ký lane → test tập lane đỏ.
@@ -153,3 +161,18 @@ Không còn cửa sau (R6.4, R6.5, R6.6):
   claim, rào `claim_token` khi ghi `dispatched` và ba lỗi có kiểu (bước 3, 4; R6.9-R6.13, RH33-RH35); ca tiếp quản cũ
   của R6.2 tách thành R6.9 và R6.10, R6.2 giữ ca nhả bằng token cũ. Không thêm cạnh; không thêm cột `credential_version`
   (H-10, connections-and-vault là chủ).
+- 2026-10-30 (agent, tạm theo ủy quyền): gate checking-plan-readiness, các quyết định nhỏ cho người dựng.
+  (a) Claim chỉ khi có khóa và `side_effect_level` khác `none`, như R6.1; đường agent không dựng khóa cho `none`.
+  (b) `outcome_unknown` ở R6.9 và R6.12 audit `tool.failed` với `details.outcome = "outcome_unknown"` (R6.9 thêm
+  `details.reason = "unresolved_dispatch"`), không hành động mới, nên không cần mảnh nhãn trước telemetry-and-audit/03;
+  dòng `dispatched` không audit riêng, dòng kết thúc của nó audit. (c) Cột `error`: `not_dispatched`, hay
+  `rejected:<mã>` với mã cắt còn 64 ký tự và qua `redact_text`; `outcome_unknown` cho lỗi không rõ. (d) Người giữ cũ bị
+  rào ở R6.13 nhận `ConflictError`, không dòng nào, như lời gọi trùng của R6.1. (e) Lỗi PostgreSQL khi chèn claim hay
+  `dispatched` lan ra và handler không chạy; lỗi khi nhả claim chỉ log, claim tự hết ở `expires_at`. (f) Lời gọi đang
+  chạy bằng mã cũ lúc deploy không có claim và không có `dispatched`, nên chết giữa chừng thì lời gọi sau chạy lại như
+  hôm nay; chấp nhận vì khóa gắn `run_id` và bảng claim mới tạo. Nếu sai thì: (a) claim mọi khóa; (b) thêm hành động
+  `tool.outcome_unknown` cùng mảnh nhãn; (c) thêm cột mã; (d) trả `outcome_unknown`; (e) không đổi; (f) dừng worker khi
+  deploy.
+- 2026-10-30 (agent): gate checking-plan-readiness MEDIUM để người dựng xem: bảng claim có `workspace_id` nhưng policy
+  chỉ theo tenant như `platform.tool_executions`, vì khóa chính không có `workspace_id` (ADR-0108 (Accepted) quyết 5);
+  `expires_at` không cộng thời gian thử lại của egress vì `asyncio.wait_for` bao cả handler.
