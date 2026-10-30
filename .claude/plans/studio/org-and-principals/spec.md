@@ -2,9 +2,8 @@
 
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
-Duyệt: agent, tạm theo ủy quyền (29/10/2026)
-
-Sẵn sàng: chưa kiểm
+Duyệt: agent, tạm theo ủy quyền 29/10/2026
+Sẵn sàng: ĐẠT (29/10/2026; 0 CRITICAL, 0 HIGH; ticket 01)
 
 Công ty cần một mô hình chủ thể đủ cho D1: vị thế của một người trong công ty là một dòng có trạng thái, không suy ra từ
 membership, và lượt chạy không người kích hoạt (biểu mẫu, webhook, lịch, sự kiện bản ghi) chạy dưới danh nghĩa một tài
@@ -235,7 +234,7 @@ Người dùng thấy một thuật ngữ cho đơn vị sở hữu dữ liệu,
 - 24/10/2026 (agent, tạm): Phụ thuộc dẫn hợp đồng của `platform.purge_tenant_append_only` (chỉ xóa dòng của đúng công ty, ở mọi bảng `append_only` trong sổ phân vùng trừ `platform.audit_events`) là usage-and-limits:R3.10, chỗ gọi trong giao dịch xóa trước mọi bảng thường là usage-and-limits:R3.11, thay cho usage-and-limits:R3.8, tiêu chí về việc lane xuất rồi xóa các bảng của Sổ sử dụng, vì R6.8 dựa vào việc hàm xóa gì và chạy lúc nào. Sửa: Phụ thuộc. Nếu sai thì: Phụ thuộc dẫn lại usage-and-limits:R3.8 cạnh usage-and-limits:R3.11.
 - 25/10/2026 (Đạt): V4.38: công ty tạo với hai chủ sở hữu, ở `setup` tới khi người thứ hai `active`, rồi sang `active` trong cùng giao dịch kích hoạt người đó; kích hoạt thành viên của R4.5 là lần kích hoạt mà luật chuyển trạng thái của tenant-rbac đọc (tenant-rbac:R3.10), và tập trạng thái mà R2.1 so là tập của `ck_tenants_status`, nay có `setup`. Sửa: R2.1, Phụ thuộc, ticket 02.
 - 25/10/2026 (agent, tạm): H-2: bước `platform.purge_tenant_service_users` của R6.8 là một bước đăng ký vào sổ bước xóa của foundations-hardening/07, khai `platform.users`, thứ tự suy từ khóa ngoại `RESTRICT` và `NO ACTION` của `pg_constraint`, không còn "sau cùng, sau `platform.purge_tenant_append_only`"; ticket 03 thôi chờ usage-and-limits/02, và ca thứ tự của OP14 thành ca bước đi sau bảng giữ khóa ngoại tới tài khoản dịch vụ; dòng này thay dòng tạm 24/10/2026 về thứ tự lời gọi và cạnh tới usage-and-limits/02. Sửa: R6.8, OP14, Phụ thuộc, ticket 03. Nếu sai thì: thứ tự viết tay, lời gọi sau cùng và cạnh org-and-principals/03 <- usage-and-limits/02.
-- 29/10/2026 (agent, tạm theo ủy quyền): Duyệt spec và cách chia ticket 01-04 theo `## Ủy quyền` của studio.md. Theo gate ticket 01: R3.1-R3.3 được thử trên Keycloak đang chạy bằng một test integration tự tạo client và người dùng thử; một realm đã import trước được đưa về giá trị tệp bằng `scripts/keycloak_realm_settings.py` (ADR-0009: realm đã có sửa tay). Nếu sai thì: bỏ script, ghi bước sửa tay vào runbook triển khai.
+- 29/10/2026 (agent, tạm theo ủy quyền): Duyệt spec và cách chia ticket 01-04 theo `## Ủy quyền` của studio.md. Theo gate ticket 01: R3.1-R3.3 được thử trên Keycloak đang chạy bằng một test integration tự tạo client và người dùng thử; một realm đã import trước được đưa về giá trị tệp bằng `scripts/keycloak_realm_settings.py` (ADR-0009 (Accepted): realm đã có sửa tay). Nếu sai thì: bỏ script, ghi bước sửa tay vào runbook triển khai.
 
 ## Danh sách ticket
 
