@@ -1,0 +1,16 @@
+# Sàn gửi tin marketing (ADR-0124 quyết 6; compliance-pdpl ticket 08). Số tạm,
+# UNVERIFIED tới khi luật sư xác nhận (DO-55); một công ty chỉ được siết (ticket 04).
+# Khung giờ là giờ Việt Nam cố định, không đọc múi giờ của công ty: đổi múi giờ là
+# nới sàn.
+schema_version: "1.0"
+policy_id: platform.marketing_send
+version: "1.0.0"
+status: UNVERIFIED
+per_address:
+  count: 1
+  hours: 24
+sending_hours:
+  start: "08:00"
+  end: "20:00"
+  timezone: Asia/Ho_Chi_Minh
+max_recipients_per_run: 200
