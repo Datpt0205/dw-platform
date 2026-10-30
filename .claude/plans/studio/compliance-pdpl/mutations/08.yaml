@@ -95,13 +95,15 @@ mutations:
   - name: CP27 the counts take an unset tenant
     file: db/migrations/versions/0c3e9392cc06_marketing_send_floor.py
     old: |2-
+                      RAISE EXCEPTION 'app.tenant_id is not set';
+                  END IF;
                   RETURN (
                       SELECT count(*) FROM platform.marketing_send_log
-                      WHERE tenant_id = tenant AND channel = p_channel
     new: |2-
+                      RETURN 0;
+                  END IF;
                   RETURN (
                       SELECT count(*) FROM platform.marketing_send_log
-                      WHERE (tenant IS NULL OR tenant_id = tenant) AND channel = p_channel
     tests:
       - packages/python/dw_platform/tests/integration/test_marketing_send_db.py::test_one_tenant_reaches_nothing_of_another
   - name: CP28 a spec silent about sending loads
