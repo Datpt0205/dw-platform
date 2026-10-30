@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.contracts import RunContext, ToolDefinition
 from dw_agent_runtime.dispatch import NotDispatchedError, OutcomeUnknownError, RejectedError
-from dw_agent_runtime.executor import ToolExecutor
+from dw_agent_runtime.executor import DecisionCall, ToolExecutor
 from dw_agent_runtime.tools import RegisteredTool, ToolRegistry
 from dw_kernel.errors import (
     ApprovalRequiredError,
@@ -26,6 +26,7 @@ from dw_kernel.ports import FixedClock, SequentialIdGenerator
 from dw_observability.metrics import DW_TOOL_CALL_TOTAL
 from dw_observability.semconv import contract_violations, load_snapshot, snapshot_path
 from dw_observability.telemetry import RecordingTelemetry
+from dw_platform.application.decision_gate import ApprovedDecision
 from dw_platform.application.digital_workers import DwBoundary
 
 pytestmark = pytest.mark.unit
@@ -735,5 +736,103 @@ async def test_a_dw_run_outside_its_boundary_reaches_nothing(
 
 async def test_a_dw_run_inside_its_boundary_runs() -> None:
     ran, store, _ = await _dw_call(_Boundary(OPERATING))
+    assert ran == ["x"]
+    assert store.records[-1]["status"] == "succeeded"
+
+
+# ------------------------------------------------------ wf-lite R6.17 --
+
+DW_ID = uuid.uuid4()
+APPROVAL = uuid.uuid4()
+
+
+class _Autonomy:
+    def __init__(self, needs_person: bool) -> None:
+        self.needs_person = needs_person
+
+    async def requires_person(self, **_: object) -> bool:
+        return self.needs_person
+
+
+class _Approvals:
+    def __init__(self, found: ApprovedDecision | None) -> None:
+        self.found = found
+
+    async def approved(self, **_: object) -> ApprovedDecision | None:
+        return self.found
+
+
+async def _decided_call(
+    *,
+    needs_person: bool,
+    found: ApprovedDecision | None,
+    approval_id: uuid.UUID | None = APPROVAL,
+    message: str = "x",
+) -> tuple[list[str], FakeExecutionStore]:
+    ran: list[str] = []
+
+    async def handler(payload: EchoInput, run_context: RunContext) -> EchoOutput:
+        ran.append(payload.message)
+        return EchoOutput(echoed=payload.message)
+
+    executor, store, _ = make_executor(handler)
+    executor.dw_boundary = _Boundary(replace(OPERATING, dw_id=DW_ID))
+    executor.decision_autonomy = _Autonomy(needs_person)
+    executor.approved_decisions = _Approvals(found)
+    run = _dw_run()
+    if found is not None and found.run_id is None:
+        found = replace(found, run_id=run.run_id)
+        executor.approved_decisions = _Approvals(found)
+    try:
+        await executor.execute(
+            name="test.echo",
+            version="1.0.0",
+            raw_input={"message": message},
+            run_context=run,
+            idempotency_key="k1",
+            decision=DecisionCall(
+                "email.send", gate_step_id="approve_send", approval_id=approval_id
+            ),
+        )
+    except PermissionDeniedError as refused:
+        ran.append(f"refused:{refused.details['reason_code']}")
+    return ran, store
+
+
+def _approved(content: dict[str, object], *, run_id: uuid.UUID | None = None) -> ApprovedDecision:
+    return ApprovedDecision(run_id=run_id, step_id="approve_send", content=content)
+
+
+async def test_a_decision_within_its_level_needs_no_approval() -> None:
+    ran, _ = await _decided_call(needs_person=False, found=None, approval_id=None)
+    assert ran == ["x"]
+
+
+@pytest.mark.parametrize(
+    ("found", "approval_id", "reason"),
+    [
+        (None, None, "approval_missing"),  # no approval id at all
+        (_approved({"message": "x"}, run_id=uuid.uuid4()), APPROVAL, "approval_missing"),
+        (
+            ApprovedDecision(run_id=None, step_id="another_gate", content={"message": "x"}),
+            APPROVAL,
+            "approval_missing",
+        ),
+        (_approved({"message": "something else"}), APPROVAL, "subject_changed"),
+    ],
+    ids=["no-approval", "another-run", "another-gate", "another-content"],
+)
+async def test_a_decision_above_its_level_needs_this_runs_matching_approval(
+    found: ApprovedDecision | None, approval_id: uuid.UUID | None, reason: str
+) -> None:
+    """WFL13: refused, the tool not run, one `refused` row."""
+    ran, store = await _decided_call(needs_person=True, found=found, approval_id=approval_id)
+    assert ran == [f"refused:{reason}"]
+    assert [(r["status"], r["error"]) for r in store.records] == [("refused", reason)]
+
+
+async def test_the_approved_content_runs_once() -> None:
+    """WFL13: the approval of this run and gate, its content hashed the same."""
+    ran, store = await _decided_call(needs_person=True, found=_approved({"message": "x"}))
     assert ran == ["x"]
     assert store.records[-1]["status"] == "succeeded"

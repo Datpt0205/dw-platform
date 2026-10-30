@@ -58,6 +58,16 @@ class AskPerson:
     kind: Literal["ask"] = "ask"
 
 
+@dataclass(frozen=True, slots=True)
+class ApprovedDecision:
+    """An approved `dw.decision`: the run and gate step it belongs to, and the
+    content approved, edited or as proposed (wf-lite R6.17, D18)."""
+
+    run_id: uuid.UUID | None
+    step_id: str | None
+    content: Mapping[str, Any]
+
+
 class ScopedAuditPort(Protocol):
     async def append(self, scope: WorkScope, event: AuditEvent) -> None:
         """One audit row under `scope`'s RLS, in its own transaction."""
@@ -83,6 +93,7 @@ class DecisionGate:
         locked_fields: Sequence[str],
         reason: str,
         run_id: uuid.UUID | None = None,
+        step_id: str | None = None,
     ) -> Auto | AskPerson:
         worker = await self.workers.digital_worker(scope, dw_id)
         if worker is None:
@@ -109,6 +120,9 @@ class DecisionGate:
                     "proposal": dict(proposal),
                     "proposal_schema": dict(proposal_schema),
                     "locked_fields": list(locked_fields),
+                    # The gate step: the tool executor takes the approval only
+                    # for this run and this gate (wf-lite R6.17).
+                    "step_id": step_id,
                 }
             )
         await self.audit.append(

@@ -47,6 +47,7 @@ from dw_observability.metrics import DW_TOOL_CALL_TOTAL
 from dw_observability.redaction import redact_mapping, redact_text
 from dw_observability.semconv import OP_EXECUTE_TOOL, execute_tool_span_name
 from dw_observability.telemetry import NullTelemetry, TelemetryPort
+from dw_platform.application.decision_gate import ApprovedDecision
 from dw_platform.application.digital_workers import DwBoundary
 from dw_platform.application.ports import PlatformUnitOfWorkFactory
 from dw_platform.domain.audit import AuditEvent
@@ -124,6 +125,38 @@ class DigitalWorkerBoundaryPort(Protocol):
     ) -> DwBoundary | None: ...
 
 
+@dataclass(frozen=True, slots=True)
+class DecisionCall:
+    """A tool call taken for a Digital Worker's decision (wf-lite R6.17): its
+    decision class and, when a gate guards it, the gate step and the approval
+    the gate opened."""
+
+    decision_class: str
+    gate_step_id: str | None = None
+    approval_id: uuid_module.UUID | None = None
+
+
+class DecisionAutonomyPort(Protocol):
+    async def requires_person(
+        self,
+        *,
+        tenant_id: uuid_module.UUID,
+        workspace_id: uuid_module.UUID,
+        dw_id: uuid_module.UUID,
+        key: str,
+    ) -> bool: ...
+
+
+class ApprovedDecisionsPort(Protocol):
+    async def approved(
+        self,
+        *,
+        tenant_id: uuid_module.UUID,
+        workspace_id: uuid_module.UUID,
+        approval_id: uuid_module.UUID,
+    ) -> ApprovedDecision | None: ...
+
+
 def canonical_hash(payload: dict[str, object]) -> str:
     """Stable fingerprint of a payload; also used to derive idempotency keys."""
     return hashlib.sha256(
@@ -156,6 +189,10 @@ class ToolExecutor:
     # a service principal (digital-worker R6). Unset, such a call is refused:
     # a DW run with nothing to ask about its DW reaches nothing.
     dw_boundary: DigitalWorkerBoundaryPort | None = None
+    # A decision class's level now, and the approvals a call shows (wf-lite
+    # R6.17). Unset, a call naming a decision class is refused.
+    decision_autonomy: DecisionAutonomyPort | None = None
+    approved_decisions: ApprovedDecisionsPort | None = None
 
     async def execute(
         self,
@@ -166,6 +203,7 @@ class ToolExecutor:
         run_context: RunContext,
         idempotency_key: str | None = None,
         approved: bool = False,
+        decision: DecisionCall | None = None,
     ) -> BaseModel:
         """Span wrapper around the pipeline; the enforcement itself is `_execute`.
 
@@ -192,6 +230,7 @@ class ToolExecutor:
                 result = await self._execute(
                     name=name,
                     version=version,
+                    decision=decision,
                     raw_input=raw_input,
                     run_context=run_context,
                     idempotency_key=idempotency_key,
@@ -217,6 +256,7 @@ class ToolExecutor:
         run_context: RunContext,
         idempotency_key: str | None = None,
         approved: bool = False,
+        decision: DecisionCall | None = None,
     ) -> BaseModel:
         # 1. resolve
         tool = self.registry.resolve(name, version)
@@ -236,8 +276,17 @@ class ToolExecutor:
         # 2b. a Digital Worker's boundary, read now (R6): before every other
         # check, so a paused DW or a tool outside its mandate is refused
         # whatever the run's stamped scopes or autonomy say.
+        boundary: DwBoundary | None = None
         if run_context.run_as_principal_id is not None:
-            await self._within_dw_boundary(run_context, definition, input_hash)
+            boundary = await self._within_dw_boundary(run_context, definition, input_hash)
+        # 2c. a DW decision's call: its class's level now, and, when a person
+        # is needed, the approved decision of this run and gate with the same
+        # content (R6.17). It stands in for the tool-level gate below.
+        if decision is not None:
+            await self._decision_cleared(
+                run_context, definition, input_hash, raw_input, decision, boundary
+            )
+            approved = True
 
         # 3. authorization + approval policy
         missing = definition.required_scopes - run_context.scopes
@@ -578,7 +627,7 @@ class ToolExecutor:
 
     async def _within_dw_boundary(
         self, run_context: RunContext, definition: ToolDefinition, input_hash: str
-    ) -> None:
+    ) -> DwBoundary | None:
         """R6.1-R6.3: refuse `dw_not_operating` when the DW is not operating
         or its state cannot be read, `tool_not_allowed` outside its
         `allowed_tools`, `scope_lost` when its principal no longer holds a
@@ -609,7 +658,61 @@ class ToolExecutor:
             elif not definition.required_scopes <= boundary.scopes:
                 reason = "scope_lost"
         if reason is None:
+            return boundary
+        await self._refuse(run_context, definition, input_hash, reason)
+        return None
+
+    async def _decision_cleared(
+        self,
+        run_context: RunContext,
+        definition: ToolDefinition,
+        input_hash: str,
+        raw_input: dict[str, object],
+        decision: DecisionCall,
+        boundary: DwBoundary | None,
+    ) -> None:
+        if (
+            boundary is None
+            or boundary.dw_id is None
+            or self.decision_autonomy is None
+            or self.approved_decisions is None
+        ):
+            await self._refuse(run_context, definition, input_hash, "approval_missing")
             return
+        needs_person = await self.decision_autonomy.requires_person(
+            tenant_id=run_context.tenant_id,
+            workspace_id=run_context.workspace_id,
+            dw_id=boundary.dw_id,
+            key=decision.decision_class,
+        )
+        if not needs_person:
+            return
+        found = (
+            None
+            if decision.approval_id is None
+            else await self.approved_decisions.approved(
+                tenant_id=run_context.tenant_id,
+                workspace_id=run_context.workspace_id,
+                approval_id=decision.approval_id,
+            )
+        )
+        if (
+            found is None
+            or found.run_id != run_context.run_id
+            or found.step_id is None
+            or found.step_id != decision.gate_step_id
+        ):
+            await self._refuse(run_context, definition, input_hash, "approval_missing")
+            return
+        if canonical_hash(dict(found.content)) != canonical_hash(raw_input):
+            await self._refuse(run_context, definition, input_hash, "subject_changed")
+
+    async def _refuse(
+        self, run_context: RunContext, definition: ToolDefinition, input_hash: str, reason: str
+    ) -> None:
+        """A refused call: a `refused` execution row, a `tool.denied` audit
+        event, and `PermissionDeniedError` naming the reason. The tool does not
+        run."""
         now = self.clock.now()
         await self.execution_store.record(
             run_context,

@@ -113,6 +113,9 @@ class RunContext(BaseModel):
     # The service principal the run acts as (ADR-0103 decision 4, ADR-0113
     # decision 1). The tool executor reads a DW's boundary by it (R6).
     run_as_principal_id: UUID | None = None
+    # The sha256 of the workflow document a wf-lite run started from, pinned on
+    # its run row (wf-lite R6.14, ADR-0109); None for a run of a code graph.
+    definition_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     worker_id: str
     worker_version: str = Field(pattern=_SEMVER_PATTERN)
     channel: str

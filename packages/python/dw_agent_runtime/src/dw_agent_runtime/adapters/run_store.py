@@ -35,6 +35,9 @@ class RunStatus(StrEnum):
     PENDING = "pending"
     RUNNING = "running"
     WAITING_APPROVAL = "waiting_approval"
+    # A wf-lite `time.wait` (wf-lite R6.5): parked on a timer, not a person;
+    # the `dw_timers` lane resumes it.
+    WAITING_TIMER = "waiting_timer"
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
@@ -114,6 +117,9 @@ class RunRecord:
     # The service principal the run acts as, when not the requester (a DW's
     # run, digital-worker R1.4); resuming acts as it again.
     run_as_principal_id: uuid.UUID | None = None
+    # The workflow document a wf-lite run pinned (wf-lite R6.14); resuming
+    # carries it, and with it the run's sync durability.
+    definition_hash: str | None = None
 
 
 @dataclass(frozen=True)
@@ -392,6 +398,7 @@ class SqlWorkerRunStore:
                 input=input_payload,
                 requested_by=run_context.requested_by or run_context.actor_id,
                 run_as_principal_id=run_context.run_as_principal_id,
+                definition_hash=run_context.definition_hash,
                 actor_roles=sorted(run_context.roles),
                 actor_scopes=sorted(run_context.scopes),
                 actor_plan_id=run_context.plan_id,
@@ -473,6 +480,7 @@ class SqlWorkerRunStore:
             release_manifest_ref=row.release_manifest_ref,
             requested_by=row.requested_by,
             run_as_principal_id=row.run_as_principal_id,
+            definition_hash=row.definition_hash,
             actor_roles=frozenset(row.actor_roles),
             actor_scopes=frozenset(row.actor_scopes),
             actor_plan_id=row.actor_plan_id,

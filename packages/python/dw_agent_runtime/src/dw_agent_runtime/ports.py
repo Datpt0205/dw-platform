@@ -7,6 +7,7 @@ and application handlers depend only on the protocols.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from datetime import datetime
 from decimal import Decimal
 from typing import Literal, Protocol, TypeVar
 from uuid import UUID
@@ -154,3 +155,24 @@ class WorkflowRunnerPort(Protocol):
         run_id: UUID,
         resume_payload: dict[str, object],
     ) -> None: ...
+
+
+class RunWaitsPort(Protocol):
+    """Where a Digital Worker's run tells its work item what it is doing
+    (wf-lite R6.3, R6.5, R6.7): waiting for a person or a timer, running again,
+    finished. Called by the runner only for a run that acts as a principal;
+    satisfied by the platform's work queue, which ignores a run that holds no
+    item."""
+
+    async def waiting(
+        self,
+        run_context: RunContext,
+        run_id: UUID,
+        *,
+        kind: Literal["approval", "timer"],
+        wake_at: datetime | None = None,
+    ) -> None: ...
+
+    async def resumed(self, run_context: RunContext, run_id: UUID) -> None: ...
+
+    async def finished(self, run_context: RunContext, run_id: UUID, *, failed: bool) -> None: ...

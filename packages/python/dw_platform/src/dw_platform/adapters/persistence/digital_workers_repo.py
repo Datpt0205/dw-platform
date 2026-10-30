@@ -33,6 +33,7 @@ from dw_platform.adapters.persistence.separation_of_duties import (
 )
 from dw_platform.adapters.persistence.tenant_session import TenantScope, tenant_session
 from dw_platform.application.access_context import AccessContext
+from dw_platform.application.decision_gate import DW_DECISION, ApprovedDecision
 from dw_platform.application.digital_workers import DecisionLevels, DwBoundary, Standing
 from dw_platform.application.effect_keys import PendingEffect
 from dw_platform.application.work_queue import WorkScope
@@ -566,7 +567,11 @@ class SqlDwBoundary:
             row = (
                 await session.execute(
                     sa.select(
-                        _DW.c.state, _DW.c.allowed_tools, m.c.role_keys, m.c.permission_set_keys
+                        _DW.c.id,
+                        _DW.c.state,
+                        _DW.c.allowed_tools,
+                        m.c.role_keys,
+                        m.c.permission_set_keys,
                     )
                     .select_from(
                         _DW.outerjoin(
@@ -593,4 +598,44 @@ class SqlDwBoundary:
             operating=row.state == "operating",
             allowed_tools=frozenset(row.allowed_tools),
             scopes=scopes,
+            dw_id=row.id,
+        )
+
+
+@dataclass(frozen=True)
+class SqlApprovedDecisions:
+    """Implements ``ApprovedDecisionsPort``: an approved `dw.decision` by id,
+    under the run's tenant and workspace, with what was approved (the edit,
+    or the proposal as asked) and the run and gate step it belongs to."""
+
+    session_factory: async_sessionmaker[AsyncSession]
+
+    async def approved(
+        self, *, tenant_id: uuid.UUID, workspace_id: uuid.UUID, approval_id: uuid.UUID
+    ) -> ApprovedDecision | None:
+        r, d = tables.approval_requests, tables.approval_decisions
+        bound = TenantScope(tenant_id=tenant_id, workspace_id=workspace_id)
+        async with tenant_session(self.session_factory, bound) as session:
+            row = (
+                await session.execute(
+                    sa.select(r.c.run_id, r.c.payload, d.c.edited_payload)
+                    .select_from(r.join(d, d.c.request_id == r.c.id))
+                    .where(
+                        r.c.id == approval_id,
+                        r.c.workspace_id == workspace_id,
+                        r.c.approval_type == DW_DECISION,
+                        r.c.status == "approved",
+                        d.c.outcome == "approved",
+                    )
+                )
+            ).first()
+        if row is None:
+            return None
+        payload = dict(row.payload)
+        content = row.edited_payload if row.edited_payload is not None else payload.get("proposal")
+        if not isinstance(content, dict):
+            return None
+        step = payload.get("step_id")
+        return ApprovedDecision(
+            run_id=row.run_id, step_id=step if isinstance(step, str) else None, content=content
         )

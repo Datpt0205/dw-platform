@@ -19,7 +19,7 @@ import time
 import uuid
 from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass, field
-from datetime import UTC
+from datetime import UTC, datetime
 from typing import Any, cast
 
 from langgraph.store.base import BaseStore
@@ -38,7 +38,7 @@ from dw_agent_runtime.autonomy import AutonomyApprovalPolicy, lower_autonomy
 from dw_agent_runtime.context import access_context_from_run
 from dw_agent_runtime.contracts import RunContext, WorkerDefinition
 from dw_agent_runtime.model.budget import RunBudgetLedger
-from dw_agent_runtime.ports import RunAllowancePort
+from dw_agent_runtime.ports import RunAllowancePort, RunWaitsPort
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_kernel.errors import (
     ConflictError,
@@ -126,6 +126,9 @@ class LangGraphWorkflowRunner:
     # None keeps every wiring that predates this field valid, and a run without
     # it simply stays off the guard, as every run did before this existed.
     spend_store: SqlSpendGuardStore | None = None
+    # A Digital Worker's work item follows its run: waiting, resumed, finished
+    # (wf-lite R6.3, R6.5, R6.7). None keeps every wiring that predates it.
+    run_waits: RunWaitsPort | None = None
     _compiled: dict[tuple[str, str], Any] = field(default_factory=dict)
     # Holds a reference to every in-flight streamed run; without one the task is
     # garbage-collectable mid-run.
@@ -324,6 +327,7 @@ class LangGraphWorkflowRunner:
                             callbacks,
                         ),
                         context=run_context,
+                        **_durability(run_context),
                     )
             except Exception as exc:
                 await self._fail(run_context, run_context.run_id, exc)
@@ -530,9 +534,9 @@ class LangGraphWorkflowRunner:
         resume_payload: dict[str, Any],
     ) -> None:
         record = await self.run_store.get(run_context, run_id)
-        if record.status is not RunStatus.WAITING_APPROVAL:
+        if record.status not in (RunStatus.WAITING_APPROVAL, RunStatus.WAITING_TIMER):
             raise ConflictError(
-                "run is not waiting for approval",
+                "run is not waiting",
                 details={"run_id": str(run_id), "status": record.status.value},
             )
         if not self.hosts(
@@ -553,6 +557,13 @@ class LangGraphWorkflowRunner:
         worker = self.worker_registry.resolve(record.worker_id, record.worker_version)
 
         await self._audit(run_context, "run.resumed", str(run_id))
+        if record.status is RunStatus.WAITING_TIMER:
+            # The approval path sets `running` when it decides; a timer has no
+            # decision, so the run leaves its wait here.
+            await self.run_store.set_status(run_context, run_id, RunStatus.RUNNING)
+        waits = self._waits_for(run_context)
+        if waits is not None:
+            await waits.resumed(run_context, run_id)
         attributes = self._span_attributes(
             run_context, run_id, record.graph_version, worker.definition
         )
@@ -565,6 +576,7 @@ class LangGraphWorkflowRunner:
                             run_context, run_id, worker.definition.recursion_limit, callbacks
                         ),
                         context=run_context,
+                        **_durability(run_context),
                     )
             except Exception as exc:
                 await self._fail(run_context, run_id, exc)
@@ -605,6 +617,9 @@ class LangGraphWorkflowRunner:
             DW_RUN_TOTAL, 1, {"worker": run_context.worker_id, "status": status.value}
         )
         self.budget.forget(run_id)
+        waits = self._waits_for(run_context)
+        if waits is not None:
+            await waits.finished(run_context, run_id, failed=True)
 
     async def _handle_outcome(
         self, run_context: RunContext, run_id: uuid.UUID, state: dict[str, Any]
@@ -633,6 +648,9 @@ class LangGraphWorkflowRunner:
             payload = first.value if hasattr(first, "value") else first
             if not isinstance(payload, dict):
                 payload = {"value": _jsonable(payload)}
+            if payload.get("wait") == "timer":
+                await self._park_on_timer(run_context, run_id, payload)
+                return
             try:
                 approval_id = await self._create_approval(run_context, run_id, payload)
             except Exception:
@@ -669,6 +687,9 @@ class LangGraphWorkflowRunner:
                 1,
                 {"worker": run_context.worker_id, "status": "waiting_approval"},
             )
+            waits = self._waits_for(run_context)
+            if waits is not None:
+                await waits.waiting(run_context, run_id, kind="approval")
             return
 
         await self.run_store.set_status(
@@ -678,12 +699,42 @@ class LangGraphWorkflowRunner:
         self.telemetry.add_metric(
             DW_RUN_TOTAL, 1, {"worker": run_context.worker_id, "status": "completed"}
         )
+        waits = self._waits_for(run_context)
+        if waits is not None:
+            await waits.finished(run_context, run_id, failed=False)
         # Freed only at a terminal state, never at a pause. The ledger keyed every
         # run and nothing ever removed one, so a long-lived process grew by one
         # entry per run for as long as it lived. A paused run keeps its entry on
         # purpose: freeing it there would let a loop reset its own ceiling by
         # pausing and being resumed.
         self.budget.forget(run_id)
+
+    def _waits_for(self, run_context: RunContext) -> RunWaitsPort | None:
+        """The work item's port, for a run that acts as a principal only."""
+        return self.run_waits if run_context.run_as_principal_id is not None else None
+
+    async def _park_on_timer(
+        self, run_context: RunContext, run_id: uuid.UUID, payload: dict[str, Any]
+    ) -> None:
+        """A `time.wait` (wf-lite R6.5): no approval, the run `waiting_timer`
+        and its work item `waiting_timer` until `wake_at`."""
+        try:
+            wake_at = datetime.fromisoformat(str(payload["wake_at"]))
+        except (KeyError, ValueError) as exc:
+            await self._fail(
+                run_context, run_id, ConflictError("a timer wait without a valid wake_at")
+            )
+            raise ConflictError("a timer wait without a valid wake_at") from exc
+        await self.run_store.set_status(run_context, run_id, RunStatus.WAITING_TIMER)
+        await self._audit(
+            run_context, "run.waiting_timer", str(run_id), details={"wake_at": wake_at.isoformat()}
+        )
+        self.telemetry.add_metric(
+            DW_RUN_TOTAL, 1, {"worker": run_context.worker_id, "status": "waiting_timer"}
+        )
+        waits = self._waits_for(run_context)
+        if waits is not None:
+            await waits.waiting(run_context, run_id, kind="timer", wake_at=wake_at)
 
     async def _create_approval(
         self, run_context: RunContext, run_id: uuid.UUID, payload: dict[str, Any]
@@ -760,3 +811,11 @@ def _loop_prompt(worker: WorkerDefinition) -> tuple[str, str]:
     if worker.agent_prompt_id is not None and worker.agent_prompt_version is not None:
         return worker.agent_prompt_id, worker.agent_prompt_version
     return f"graph:{worker.worker_id}", worker.graph_version
+
+
+def _durability(run_context: RunContext) -> dict[str, Any]:
+    """A wf-lite run checkpoints each step before the next one starts (R6.8):
+    a step that sent an email is on disk before the step after it runs, so a
+    process that dies in between resumes after the send, not before it. Runs
+    of code graphs keep LangGraph's default."""
+    return {"durability": "sync"} if run_context.definition_hash is not None else {}

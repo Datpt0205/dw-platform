@@ -135,6 +135,7 @@ class DwBoundary:
     operating: bool
     allowed_tools: frozenset[str]
     scopes: frozenset[str]
+    dw_id: uuid.UUID | None = None
 
 
 class DigitalWorkerRepositoryPort(Protocol):

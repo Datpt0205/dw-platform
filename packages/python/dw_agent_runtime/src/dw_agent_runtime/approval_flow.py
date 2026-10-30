@@ -363,6 +363,7 @@ class ApproveAndResumeService:
                     actor_id=record.run_as_principal_id or record.requested_by,
                     requested_by=record.requested_by,
                     run_as_principal_id=record.run_as_principal_id,
+                    definition_hash=record.definition_hash,
                     worker_id=record.worker_id,
                     worker_version=record.worker_version,
                     # Where the decision came from, so the resumed graph knows.
