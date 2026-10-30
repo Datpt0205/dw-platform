@@ -179,13 +179,20 @@ Một client không lách giới hạn tốc độ bằng bearer ngẫu nhiên, 
 tảng tới địa chỉ không global (ADR-0115 (Accepted) quyết định 5).
 Trước đây: khóa đếm là bearer khi có header (`apps/api/src/dw_api/middleware/rate_limit.py:36-41`).
 
-- R7.1 NẾU một địa chỉ client gửi quá `10 × L` request trong một cửa sổ 60 giây tới một tiến trình
-  API (L là `rate_limit_per_minute`), THÌ middleware giới hạn tốc độ PHẢI trả 429 từ request thứ
-  `10 × L + 1`, dù mỗi request mang một bearer khác.
+- R7.1 NẾU một địa chỉ client gửi quá `10 × L` request mang `Authorization` trong một cửa sổ 60 giây
+  tới một tiến trình API (L là `rate_limit_per_minute`), THÌ middleware giới hạn tốc độ PHẢI trả 429
+  từ request thứ `10 × L + 1`, dù mỗi request mang một bearer khác; request không mang
+  `Authorization` vẫn đếm ở ngưỡng `L` của địa chỉ như hôm nay. Địa chỉ client là
+  `request.client.host` như uvicorn dựng nó: `X-Forwarded-For` chỉ được tin từ địa chỉ trong
+  `FORWARDED_ALLOW_IPS` (`infra/compose/docker-compose.host.yml:94-97`), nên một client đổi header
+  đó mỗi request vẫn ở một xô; địa chỉ IPv6 đếm theo prefix `/64`.
 - R7.2 NẾU host của một URL ra ngoài phân giải tới một địa chỉ không global, multicast, hay dạng
   IPv4-mapped, 6to4, Teredo, NAT64 `64:ff9b::/96` của một địa chỉ như vậy, THÌ bộ kiểm URL ra ngoài
   PHẢI từ chối với `OutboundUrlError` trước khi mở kết nối, trừ host có tên trong danh sách máy chủ
-  được phép.
+  được phép (so khớp nguyên tên, không phân biệt hoa thường). Host là IP literal đi qua cùng vị từ,
+  không phân giải. Cờ `allow_private` (chỉ người gọi không `is_deployed` truyền) chỉ nới dải private
+  và loopback; link-local (`169.254.0.0/16`, `fe80::/10`), multicast, unspecified, reserved và dạng
+  nhúng của chúng vẫn bị từ chối.
 
 ### R8 — Kho dữ liệu đòi xác thực ở mọi profile và ảnh ghim digest [Sửa]
 
@@ -194,7 +201,11 @@ chạy là đúng ảnh đã quét.
 Trước đây: chỉ overlay dev đặt khóa Qdrant (`infra/compose/docker-compose.dev.yml:33`).
 
 - R8.1 NẾU một client gọi Qdrant không kèm API key hoặc mở kết nối Valkey không kèm mật khẩu, ở
-  profile compose bất kỳ, THÌ Qdrant và Valkey PHẢI từ chối kết nối đó (401 hay `NOAUTH`).
+  profile compose bất kỳ, THÌ Qdrant và Valkey PHẢI từ chối kết nối đó (401 ở `GET /collections`
+  hay `NOAUTH`). Compose đọc khóa và mật khẩu bằng `${QDRANT_API_KEY:?}` và `${REDIS_PASSWORD:?}`,
+  một biến cho cả máy chủ và client, nên biến trống hay thiếu làm compose từ chối dựng kho thay vì
+  dựng một kho mở. Langfuse (profile `observability`) dùng một Valkey riêng với mật khẩu riêng,
+  không giữ mật khẩu của cache nền tảng.
 - R8.2 NẾU `settings.is_deployed` đúng mà `qdrant_api_key` trống, hoặc `REDIS_URL` của API không
   mang mật khẩu, THÌ tiến trình API hay worker đó PHẢI dừng lúc khởi động với lỗi cấu hình.
 - R8.3 Mọi dòng `image:` của ảnh bên thứ ba trong `infra/compose/` PHẢI mang tag phiên bản cùng
@@ -288,9 +299,9 @@ Số G giữ nguyên từ foundations-hardening; G5 ở cả hai spec (Quyết �
 | RH17 | Không có cửa sau quanh ToolExecutor                                          | R6.4, R6.6   | Mục dict trong danh sách công cụ → model không nhận; agent từ factory thật với toolset rỗng → model không thấy công cụ nào; thêm một công cụ dựng sẵn → đỏ                                                                                                                                                                                                                                                                                                                                                            |
 | RH18 | Bí mật trong mảng bị che                                                     | R6.5         | Input `{"items": [{"api_key": "sk-123"}]}` thất bại → audit `tool.failed` mang `[REDACTED]`; bỏ đệ quy vào list → đỏ                                                                                                                                                                                                                                                                                                                                                                                                  |
 | RH19 | Claim mồ côi có người dọn                                                    | R6.7         | Claim quá hạn → hết sau một lượt lane, claim chưa hạn còn; không đăng ký lane → đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| RH20 | Giới hạn tốc độ không lách bằng bearer ngẫu nhiên                            | R7.1         | `10 × L + 1` request từ một địa chỉ, mỗi request một bearer → request cuối 429; bỏ xô địa chỉ → đỏ                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| RH21 | Không gọi ra địa chỉ không global                                            | R7.2         | Resolver giả trả `100.64.0.1`, `100.100.100.200`, `224.0.0.1`, `ff02::1`, `64:ff9b::a9fe:a9fe` → `OutboundUrlError`; vị từ cũ → đỏ                                                                                                                                                                                                                                                                                                                                                                                    |
-| RH22 | Kho dữ liệu đòi xác thực                                                     | R8.1, R8.2   | Settings `uat` thiếu `qdrant_api_key` → không khởi động; compose smoke gọi Qdrant không khóa → 401, Valkey không mật khẩu → `NOAUTH`                                                                                                                                                                                                                                                                                                                                                                                  |
+| RH20 | Giới hạn tốc độ không lách bằng bearer ngẫu nhiên                            | R7.1         | `10 × L + 1` request từ một địa chỉ, mỗi request một bearer → request cuối 429; `L + 1` request không bearer → 429; mỗi request một `X-Forwarded-For` giả từ địa chỉ không tin → một xô; bỏ xô địa chỉ → đỏ                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| RH21 | Không gọi ra địa chỉ không global                                            | R7.2         | Resolver giả trả `100.64.0.1`, `100.100.100.200`, `224.0.0.1`, `ff02::1`, `::ffff:169.254.169.254`, `64:ff9b::a9fe:a9fe`, `2002:a9fe:a9fe::1`, Teredo nhúng `169.254.169.254` → `OutboundUrlError`; `allow_private=True` với `169.254.169.254` → vẫn từ chối; vị từ cũ → đỏ                                                                                                                                                                                                                                                                                                                                                                                    |
+| RH22 | Kho dữ liệu đòi xác thực                                                     | R8.1, R8.2   | Settings `uat` thiếu `qdrant_api_key` → không khởi động; compose smoke gọi Qdrant không khóa → 401, Valkey không mật khẩu → `NOAUTH`; `docker compose config` với `QDRANT_API_KEY` trống → lỗi                                                                                                                                                                                                                                                                                                                                                                                  |
 | RH23 | Ảnh bên thứ ba ghim digest                                                   | R8.3         | Gỡ `@sha256:` khỏi một `image:` → kiểm CI đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | RH24 | Exporter không dùng vai ứng dụng                                             | R8.4         | `DATA_SOURCE_NAME` dùng `dw_app` → kiểm compose đỏ; `dw_monitor` SELECT bảng tenant → `permission denied`                                                                                                                                                                                                                                                                                                                                                                                                             |
 | RH25 | Run không kẹt ở `waiting_approval`                                           | R9.1, R9.2   | Resume chết sau khi rời `waiting_approval`, `updated_at` lùi quá ngưỡng → lượt mới chạy; hai resume đồng thời → một chạy, một 409; bỏ compare-and-set → đỏ                                                                                                                                                                                                                                                                                                                                                            |
@@ -474,6 +485,12 @@ Số G giữ nguyên từ foundations-hardening; G5 ở cả hai spec (Quyết �
   `bigint` tăng dần thay cho `dispatch_id`; R6.11 chỉ ghi `dispatched` cho `connector_action` và công cụ `external`
   của nền tảng nhận tiếp quản mù như hôm nay.
 - 30/10/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 01-03.
+- 30/10/2026 (agent, tạm theo ủy quyền): Theo gate `checking-plan-readiness` cho ticket 02 (5 HIGH): request không
+  bearer giữ ngưỡng `L` của hôm nay (không nới gấp mười cho lưu lượng ẩn danh); địa chỉ client là cái uvicorn dựng
+  với `FORWARDED_ALLOW_IPS`, IPv6 theo `/64`; `allow_private` chỉ nới private và loopback, không bao giờ link-local hay
+  metadata; khóa Qdrant và mật khẩu Valkey bắt buộc trong compose (`:?`), một biến cho máy chủ và client; Langfuse dùng
+  Valkey riêng. Sửa: R7.1, R7.2, R8.1, RH20-RH22, ticket 02. Nếu sai thì: request không bearer cũng lên `10 × L`;
+  Langfuse dùng chung Valkey với một user ACL riêng.
 - 30/10/2026 (agent, tạm theo ủy quyền): Duyệt spec theo `## Ủy quyền` của studio.md. Theo
   lượt xác nhận của gate ticket 01: RH36 bỏ vế "đọc `platform.tool_executions` không gắn tenant", vì FORCE RLS theo
   `app.tenant_id` đã thu hẹp câu đọc nên đột biến đó không đỏ được; R6.6 nói rõ worker không khai `sub_agents`; Phụ
