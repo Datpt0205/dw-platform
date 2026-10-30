@@ -56,3 +56,6 @@ Business Owner đọc scorecard của DW tính từ hàng đợi, quyết địn
 ## Comments
 
 - 2026-10-29 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-10-30 (agent): đang làm. Xong bước 1-2 (`d340030`: cột `model_cost_usd`, `RunCostRecorder` trong
+  `build_model_stack`, nên cả API và worker ghi). Còn: bước 3 scorecard, 4 route nâng hạ, 5 handler outbox, 8 index
+  unique một phần, 6 độ trễ, 7 test âm; mutation, rà bảo mật.
