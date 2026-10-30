@@ -34,7 +34,7 @@ own file and a row here.
   engine running a shipped lead-care pack; YC118-YC125, ADR-0128 (Proposed),
   specs `digital-worker`, `wf-lite`, `leadcare` gated and ready for agent.
   **Next:** the unattended queue in `studio.md` (items 0-10 done, leadcare 01
-  but R1.5; next digital-worker 04 once 03 closes).
+  but R1.5; digital-worker 03 done; next digital-worker 04).
 
 ## Decisions Đạt owes
 

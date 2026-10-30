@@ -500,7 +500,7 @@ bên ngoài thì ghi "Chờ Đạt" và làm việc kế. Đường dẫn ticket
 | 9   | `runtime-hardening/issues/02`                                                             | xong `df27594` |
 | 9b  | `compliance-pdpl/issues/08` lõi sàn gửi tin (tách từ 04 theo gate của leadcare, ADR-0124) | xong           |
 | 10  | `leadcare/issues/01` gói Marketing chăm sóc lead                                          | xong, trừ R1.5 |
-| 11  | `digital-worker/issues/03` scorecard, nâng hạ tự chủ                                      | chưa           |
+| 11  | `digital-worker/issues/03` scorecard, nâng hạ tự chủ                                      | xong           |
 | 12  | `digital-worker/issues/04` màn hình web                                                   | chưa           |
 | 13  | `leadcare/issues/02` demo chạy thật, ảnh chụp ở `docs/demo/digital-worker/`               | chưa           |
 | 14  | `wf-ai` spec rồi ticket 01: AI sửa gói mẫu (D16, D18)                                     | chưa           |
@@ -534,6 +534,7 @@ Each resolved ticket adds one line here: the commit hash and one sentence.
 - `df27594` runtime-hardening/02: giới hạn tốc độ theo địa chỉ cộng bearer (không bearer giữ `L`, `X-Forwarded-For` chỉ từ proxy, IPv6 theo `/64`); một chính sách địa chỉ ra ngoài chuẩn hóa dạng nhúng và không để `allow_private` lọt link-local; Qdrant và Valkey đòi xác thực ở mọi profile, Langfuse có Valkey riêng; ảnh bên thứ ba ghim digest; exporter đọc bằng `dw_monitor` (`34768e7`, `df27594`).
 - compliance-pdpl/08: lõi Sàn gửi tin của ADR-0124 — ba bảng (đồng ý chỉ thêm và toàn tenant, chặn gửi chỉ xóa khi offboarding, nhật ký gửi theo workspace), hàm đếm toàn tenant, `MarketingSendPolicy` ở `ToolExecutor` cho mọi công cụ `sends_message` (chặn gửi, đồng ý, tần suất, khung giờ Hà Nội, trần người nhận; dòng `dispatching` commit trước khi gửi; phát lại hỏi lại), link hủy ký HMAC với trang và route công khai (`65f1f3b`, `cfdc7b8`, `bb2d0f3`, `e842742`).
 - leadcare/01: gói Marketing (quy trình `lead_care@1.0.0`, schema lead, bốn prompt, ba công cụ, câu bàn giao), cửa nhận lead có chữ ký với Bản ghi đồng ý cùng giao dịch, công cụ gửi thư chỉ tới Mailpit qua cổng duyệt và Sàn gửi tin, Mailpit trong compose dev, bộ eval chèn lệnh (chưa chạy với model thật) (`57ee004`, `bfa6b75`, `6cf41ca`, `9341032`).
+- digital-worker/03: chi phí model cộng vào lượt chạy, scorecard từ việc, quyết định và chi phí, hạ mức ngay và nâng qua approval `dw.autonomy.raise` không lượt chạy (strict, Validator hay TO quyết), worker settle không ghi đè lần hạ (`d340030`, `a6963ad`, `8e02ff1`).
 
 ## Chờ Đạt (phiên không người trực)
 
