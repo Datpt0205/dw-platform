@@ -1,0 +1,161 @@
+# Mutation check of wf-lite ticket 02: scripts/mutate.py runs this file. One
+# mutation per Kiểm soát row the ticket implements (WFL9-WFL18, WFL21-WFL23,
+# WFL25, WFL26) and per guard it adds (durability, the timer's lease and due
+# filter, the trail's workspace, the proposal schema).
+mutations:
+  - name: WFL9 an answer outside the output schema goes on
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/compile.py
+    old: "            if problems(schema, output):"
+    new: "            if False:"
+    tests:
+      - apps/worker/tests/integration/test_wflite_runs_db.py::test_a_model_answer_that_cannot_go_on_hands_off_to_the_validator
+  - name: WFL10 a confidence under the floor goes on
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/compile.py
+    old: '            if floor is not None and float(output.get("confidence", 0)) < float(floor):'
+    new: "            if False:"
+    tests:
+      - apps/worker/tests/integration/test_wflite_runs_db.py::test_a_model_answer_that_cannot_go_on_hands_off_to_the_validator
+  - name: WFL11 a class missing on the DW is not refused
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/starter.py
+    old: '            raise _refused("decision_class_missing", decision_class=cls.key)'
+    new: "            continue"
+    tests:
+      - apps/worker/tests/integration/test_wflite_runs_db.py::test_a_dw_without_the_documents_classes_or_parameters_fails_the_item
+  - name: WFL11 a parameter of the wrong type is taken
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/starter.py
+    old: "        if not _TYPES[variable.type](value):"
+    new: "        if False:"
+    tests:
+      - apps/worker/tests/integration/test_wflite_runs_db.py::test_a_dw_without_the_documents_classes_or_parameters_fails_the_item
+  - name: WFL17 a DW may make an irreversible class reversible
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/starter.py
+    old: "            or (found.reversible and not cls.reversible)"
+    new: "            or False"
+    tests:
+      - apps/worker/tests/integration/test_wflite_runs_db.py::test_a_dw_without_the_documents_classes_or_parameters_fails_the_item
+  - name: WFL12 a waiting run leaves its item in progress
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/waits.py
+    old: '            target="waiting_timer" if kind == "timer" else "waiting_approval",'
+    new: '            target="waiting_timer",'
+    tests:
+      - apps/worker/tests/integration/test_wflite_runs_db.py::test_a_run_waits_for_approval_sends_once_waits_and_finishes
+  - name: WFL13 another run's approval is taken
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py
+    old: "            or found.run_id != run_context.run_id"
+    new: "            or False"
+    tests:
+      - apps/worker/tests/integration/test_wflite_runs_db.py::test_the_tool_door_takes_only_this_runs_approved_content
+  - name: WFL13 content other than the approved one runs
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py
+    old: "        if canonical_hash(dict(found.content)) != canonical_hash(raw_input):"
+    new: "        if False:"
+    tests:
+      - apps/worker/tests/integration/test_wflite_runs_db.py::test_the_tool_door_takes_only_this_runs_approved_content
+  - name: WFL14 a timer wait opens an approval
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langgraph_runner.py
+    old: '            if payload.get("wait") == "timer":'
+    new: "            if False:"
+    tests:
+      - apps/worker/tests/integration/test_wflite_runs_db.py::test_a_run_waits_for_approval_sends_once_waits_and_finishes
+  - name: WFL14 a timer not due yet is claimed
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/work_queue_repo.py
+    old: "                        _W.c.wake_at <= sa.func.now(),"
+    new: "                        sa.true(),"
+    tests:
+      - apps/worker/tests/integration/test_wflite_runs_db.py::test_two_timer_lanes_resume_a_due_run_once_and_leave_the_rest
+  - name: WFL14 a claim holds no lease
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/work_queue_repo.py
+    old: "                    .values(wake_at=sa.func.now() + lease)"
+    new: "                    .values(wake_at=sa.func.now() - lease)"
+    tests:
+      - apps/worker/tests/integration/test_wflite_runs_db.py::test_a_lane_that_dies_after_its_claim_leaves_the_timer_due_after_the_lease
+  - name: WFL15 a trail is read from another workspace's run
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/run_store.py
+    old: |2-
+                      worker_runs.c.id == run_id,
+                      worker_runs.c.workspace_id == workspace_id,
+    new: |2-
+                      worker_runs.c.id == run_id,
+    tests:
+      - apps/worker/tests/integration/test_wflite_runs_db.py::test_another_tenants_timer_lane_scope_sees_nothing_of_this_one
+  - name: WFL15 a node adds nothing to the trail
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/compile.py
+    old: '                update["trail"] = [self._entry(step, "done")]'
+    new: "                pass"
+    tests:
+      - apps/worker/tests/integration/test_wflite_runs_db.py::test_a_run_waits_for_approval_sends_once_waits_and_finishes
+  - name: WFL16 a wf-lite run checkpoints with LangGraph's default durability
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langgraph_runner.py
+    old: '    return {"durability": "sync"} if run_context.definition_hash is not None else {}'
+    new: "    return {}"
+    tests:
+      - apps/worker/tests/integration/test_wflite_runs_db.py::test_a_run_that_died_after_its_send_does_not_send_again
+  - name: WFL16 the send's key is not the run's and step's
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/compile.py
+    old: '                idempotency_key=f"wf:{run.run_id}:{step.id}:",'
+    new: '                idempotency_key=f"wf:{step.id}:",'
+    tests:
+      - apps/worker/tests/integration/test_wflite_runs_db.py::test_a_run_waits_for_approval_sends_once_waits_and_finishes
+  - name: WFL18 the proposal as asked is sent, not the edit
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/compile.py
+    old: '                    "proposal": edited if edited is not None else asked.get("proposal"),'
+    new: '                    "proposal": asked.get("proposal"),'
+    tests:
+      - apps/worker/tests/integration/test_wflite_runs_db.py::test_an_edited_proposal_is_what_is_sent
+  - name: WFL21 a changed document resumes
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/compile.py
+    old: '            if state.get("definition_hash") != sha:'
+    new: "            if False:"
+    tests:
+      - apps/worker/tests/integration/test_wflite_runs_db.py::test_a_changed_document_hands_off_instead_of_resuming
+  - name: WFL22 a paused DW's timer is claimed
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/work_queue_repo.py
+    old: |2-
+                              _W.c.wake_at <= sa.func.now(),
+                              _DW.c.state == "operating",
+    new: |2-
+                              _W.c.wake_at <= sa.func.now(),
+    tests:
+      - apps/worker/tests/integration/test_wflite_runs_db.py::test_a_paused_dw_neither_wakes_nor_sends
+  - name: WFL23 a failing step ends the run as failed instead of handing off
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/compile.py
+    old: "                return await self._hand_off(state, runtime, step, code, None, failed=True)"
+    new: "                raise"
+    tests:
+      - apps/worker/tests/integration/test_wflite_runs_db.py::test_a_step_that_fails_hands_off_with_its_code
+  - name: WFL25 a hand-off says nothing of what was tried
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/compile.py
+    old: '                "tried": (", ".join(done) or "(none)")[:_MAX_FIELD],'
+    new: '                "tried": "",'
+    tests:
+      - apps/worker/tests/integration/test_wflite_runs_db.py::test_a_model_answer_that_cannot_go_on_hands_off_to_the_validator
+  - name: WFL26 a wait is caught by the wrapper
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/compile.py
+    old: "            except GraphBubbleUp:"
+    new: "            except ZeroDivisionError:"
+    tests:
+      - apps/worker/tests/integration/test_wflite_runs_db.py::test_a_step_that_fails_hands_off_with_its_code
+  - name: R6.21 the proposal schema is any object
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/compile.py
+    old: '        return find(self._lanes(step).get("approved", [])) or {"type": "object"}'
+    new: '        return {"type": "object"}'
+    tests:
+      - apps/worker/tests/integration/test_wflite_runs_db.py::test_a_run_waits_for_approval_sends_once_waits_and_finishes
+  - name: R6.7 a finished run fails its item
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/waits.py
+    old: '            outcome="failed" if failed else "done",'
+    new: '            outcome="failed",'
+    tests:
+      - apps/worker/tests/integration/test_wflite_runs_db.py::test_a_run_waits_for_approval_sends_once_waits_and_finishes
+  - name: R6.13 the route answers an item without its trail
+    file: apps/api/src/dw_api/routes/v1/work_items.py
+    old: '    return view.model_copy(update={"trail": [TrailEntryView(**entry) for entry in trail]})'
+    new: '    return view.model_copy(update={"trail": []})'
+    tests:
+      - apps/api/tests/unit/test_work_items_endpoint.py::test_one_item_carries_its_runs_trail_read_in_the_callers_scope
+  - name: R6.20 a copy without its fallback loads
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/wflite_host.py
+    old: '        if not self.recommendations.get(FALLBACK_CODE, "").strip():'
+    new: "        if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_host.py::test_a_copy_without_its_fallback_or_with_an_empty_sentence_refuses_to_load

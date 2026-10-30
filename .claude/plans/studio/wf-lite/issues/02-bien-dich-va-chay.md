@@ -109,3 +109,15 @@ hẹn giờ dừng không mở approval; không hiệu ứng nào lặp lại kh
     giao, WFL11, WFL14 hai lane song song và tiến trình chết sau khi nhận, WFL16 dừng giữa bước gửi rồi chạy tiếp và đỏ
     khi gỡ `durability="sync"`, WFL17, WFL21, WFL22); `mutations/02.yaml`; `reviewing-feature-security`; độ trễ (ticket
     đổi truy cập database); cổng nhanh và integration của `dw_agent_runtime`, `apps/worker`, `apps/api`.
+- 2026-10-30 (agent): đang làm, pha C xong `7197171`, test pha D xong `c98c422`:
+  - Pha C: `adapters/wflite_host.py` là bộ dựng chung của API và worker (executor luôn có ranh giới DW và phép kiểm
+    R6.17, cổng `DecisionGate`, đăng ký `dw:<key>@<version>`, starter, `RunTrailReader`); worker dựng runtime wf-lite
+    và lane `dw_timers`; `trail` ở `GET /v1/work-items/{id}`; `checkpoint_serde` và bộ đọc release manifest chuyển
+    vào `dw_agent_runtime` (image worker ship `contracts/release`).
+  - Pha D: `apps/worker/tests/integration/test_wflite_runs_db.py` 14 ca xanh. WFL16 đo được: lỗi giả trong tiến trình
+    không phân biệt `sync` với mặc định (LangGraph ghi nốt checkpoint khi lỗi lan ra), nên test giết tiến trình con
+    bằng `os._exit` sau bước gửi; gỡ `durability="sync"` thì đỏ 3/3 (dấu hiệu: `tool.replayed`). Đo thêm: một
+    `Command(resume=…)` không có interrupt đang chờ được interrupt kế tiếp nhận.
+  - Còn: kết quả `mutations/02.yaml` (đang chạy); sửa rò rỉ do `reviewing-feature-security` tìm ra (lượt wf-lite dừng
+    ở một tiến trình rồi kết thúc ở tiến trình kia để lại mục trong `RunBudgetLedger` của tiến trình dừng); độ trễ
+    của `GET /v1/work-items/{id}` so với `d565566`; cổng nhanh, integration của ba gói; đóng ticket.
