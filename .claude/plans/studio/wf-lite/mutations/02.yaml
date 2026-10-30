@@ -62,7 +62,7 @@ mutations:
     old: "                        _W.c.wake_at <= sa.func.now(),"
     new: "                        sa.true(),"
     tests:
-      - apps/worker/tests/integration/test_wflite_runs_db.py::test_two_timer_lanes_resume_a_due_run_once_and_leave_the_rest
+      - apps/worker/tests/integration/test_wflite_runs_db.py::test_each_layer_of_the_timer_lane_takes_only_due_timers_of_operating_dws
   - name: WFL14 a claim holds no lease
     file: packages/python/dw_platform/src/dw_platform/adapters/persistence/work_queue_repo.py
     old: "                    .values(wake_at=sa.func.now() + lease)"
@@ -116,7 +116,19 @@ mutations:
     new: |2-
                               _W.c.wake_at <= sa.func.now(),
     tests:
-      - apps/worker/tests/integration/test_wflite_runs_db.py::test_a_paused_dw_neither_wakes_nor_sends
+      - apps/worker/tests/integration/test_wflite_runs_db.py::test_each_layer_of_the_timer_lane_takes_only_due_timers_of_operating_dws
+  - name: WFL14 the scopes function names a timer not due yet
+    file: db/migrations/versions/16ac88642439_wf_lite_definition_hash_and_timers.py
+    old: "            WHERE w.status = 'waiting_timer' AND w.wake_at <= now()"
+    new: "            WHERE w.status = 'waiting_timer'"
+    tests:
+      - apps/worker/tests/integration/test_wflite_runs_db.py::test_each_layer_of_the_timer_lane_takes_only_due_timers_of_operating_dws
+  - name: WFL22 the scopes function names a paused DW's timer
+    file: db/migrations/versions/16ac88642439_wf_lite_definition_hash_and_timers.py
+    old: "              AND d.state = 'operating'"
+    new: "              AND true"
+    tests:
+      - apps/worker/tests/integration/test_wflite_runs_db.py::test_each_layer_of_the_timer_lane_takes_only_due_timers_of_operating_dws
   - name: WFL23 a failing step ends the run as failed instead of handing off
     file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/compile.py
     old: "                return await self._hand_off(state, runtime, step, code, None, failed=True)"
@@ -159,3 +171,9 @@ mutations:
     new: "        if False:"
     tests:
       - packages/python/dw_agent_runtime/tests/unit/test_wflite_host.py::test_a_copy_without_its_fallback_or_with_an_empty_sentence_refuses_to_load
+  - name: R6.3 a paused workflow keeps its ledger entry in the process it paused in
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langgraph_runner.py
+    old: "        if run_context.definition_hash is not None:\n            self.budget.forget(run_id)"
+    new: "        if False:\n            self.budget.forget(run_id)"
+    tests:
+      - apps/worker/tests/integration/test_wflite_runs_db.py::test_a_run_waits_for_approval_sends_once_waits_and_finishes

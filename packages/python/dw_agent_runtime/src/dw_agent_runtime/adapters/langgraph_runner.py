@@ -690,6 +690,7 @@ class LangGraphWorkflowRunner:
             waits = self._waits_for(run_context)
             if waits is not None:
                 await waits.waiting(run_context, run_id, kind="approval")
+            self._release_paused_workflow(run_context, run_id)
             return
 
         await self.run_store.set_status(
@@ -735,6 +736,17 @@ class LangGraphWorkflowRunner:
         waits = self._waits_for(run_context)
         if waits is not None:
             await waits.waiting(run_context, run_id, kind="timer", wake_at=wake_at)
+        self._release_paused_workflow(run_context, run_id)
+
+    def _release_paused_workflow(self, run_context: RunContext, run_id: uuid.UUID) -> None:
+        """A paused wf-lite run's ledger entry is freed at the pause, unlike an
+        agent loop's (`_handle_outcome`). Its run often resumes in another
+        process (paused by the worker, decided in the API), which never frees
+        this one's entry, so keeping it leaked one per run for the life of the
+        process. Nothing is reset that a model controls: a workflow's pauses and
+        its model steps are the document's, each step one call."""
+        if run_context.definition_hash is not None:
+            self.budget.forget(run_id)
 
     async def _create_approval(
         self, run_context: RunContext, run_id: uuid.UUID, payload: dict[str, Any]

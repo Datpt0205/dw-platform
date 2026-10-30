@@ -138,9 +138,13 @@ class Gateway:
 
     answer: dict[str, Any] = field(default_factory=lambda: dict(DRAFT))
     requests: list[Any] = field(default_factory=list)
+    # The process's ledger, which the real gateway records each call's spend in.
+    ledger: RunBudgetLedger | None = None
 
     async def generate_structured(self, request: Any, output_type: Any, *, run_context: Any) -> Any:
         self.requests.append(request)
+        if self.ledger is not None:
+            self.ledger.record(run_context.run_id, input_tokens=10, output_tokens=5, cost_usd=0.001)
         return output_type.model_validate(self.answer)
 
 
@@ -241,6 +245,8 @@ def build(
     )
     graphs = GraphRegistry()
     workers = WorkerRegistry(graph_registry=graphs)
+    budget = RunBudgetLedger()
+    gateway.ledger = budget
     run_store = SqlWorkerRunStore(sessions, stale_run_after_seconds=3600)
     checkpoints = SqlAlchemyCheckpointSaver(sessions, checkpoint_serializer())
     runner = LangGraphWorkflowRunner(
@@ -252,7 +258,7 @@ def build(
         clock=clock,
         id_generator=ids,
         allowance=PlanEntitlementService(DEFAULT_PLANS),
-        budget=RunBudgetLedger(),
+        budget=budget,
         approval_policy=policy,
         run_waits=WorkQueueRunWaits(queue),
     )
@@ -582,6 +588,9 @@ async def test_a_run_waits_for_approval_sends_once_waits_and_finishes(
     # R6.21: the proposal's schema is email.send's input schema.
     assert row.payload["proposal_schema"] == EmailInput.model_json_schema()
     assert effects.sent == []
+    # The draft's spend is on this process's ledger until the pause, and freed
+    # at it: the decision may resume the run in another process.
+    assert run_id not in stack.runner.budget.spend
 
     await decide(stack, world, approval)
     assert effects.sent == [{k: DRAFT[k] for k in ("to", "subject", "body")}]
@@ -617,9 +626,11 @@ async def test_a_run_waits_for_approval_sends_once_waits_and_finishes(
         ("note_sent", "done"),
     ]
     # R6.6: ids and states only; nothing of what the model wrote.
-    flat = json.dumps(trail)
+    assert all(set(entry) == {"step_id", "type", "status", "at"} for entry in trail)
+    flat = json.dumps(trail, ensure_ascii=False)
     for value in (*DRAFT.values(), *LEAD.values()):
-        assert str(value) not in flat
+        if isinstance(value, str):
+            assert value not in flat
     # R6.4: the send's key is the step's.
     async with migrator.connect() as conn:
         key = (
@@ -1048,3 +1059,31 @@ async def test_a_run_that_died_after_its_send_does_not_send_again(
     assert await executions(migrator, run_id, "email.send") == ["succeeded"]
     assert (await item_row(migrator, world)).status == "done"
     assert effects.notes == [{"text": DRAFT["subject"]}]
+
+
+async def test_each_layer_of_the_timer_lane_takes_only_due_timers_of_operating_dws(
+    engines: tuple[AsyncEngine, AsyncEngine],
+) -> None:
+    """R6.12, R6.15 (WFL14, WFL22), at each layer on its own: the scopes the
+    cross-tenant function names, and the claim under one scope. The lane
+    stops at the first layer, so a lane test cannot see the second."""
+    migrator, app = engines
+    stack = build(app, gateway=Gateway(), effects=Effects())
+    world, _ = await to_the_timer(migrator, stack)
+    scope = WorkScope(tenant_id=world.tenant, workspace_id=world.workspace)
+
+    async def named() -> bool:
+        return scope in await stack.queue.due_timer_scopes(limit=10_000)
+
+    # Not due yet.
+    assert not await named()
+    assert await stack.queue.claim_timers(scope, limit=5) == []
+    # Due, of a paused DW.
+    await make_due(migrator, world)
+    await set_state(migrator, world, "paused")
+    assert not await named()
+    assert await stack.queue.claim_timers(scope, limit=5) == []
+    # Due, of an operating DW.
+    await set_state(migrator, world, "operating")
+    assert await named()
+    assert [i.id for i in await stack.queue.claim_timers(scope, limit=5)] == [world.item]
