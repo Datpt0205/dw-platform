@@ -7,6 +7,9 @@ dependencies = [
     "dw-kernel",
     "dw-platform",
     "dw-observability",
+    # The Marketing pack's tools map the SMTP adapter's typed outcomes onto the
+    # executor's dispatch outcomes (adapters.pack_tools, leadcare R3.7).
+    "dw-connectors",
     "pydantic>=2.10,<3",
     "sqlalchemy[asyncio]>=2.0.36,<2.1",
     # Directly, for the one LISTEN connection run_events holds: a listening
