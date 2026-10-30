@@ -483,6 +483,34 @@ class ConsentLedger:
     clock: UtcClock
     ids: IdGenerator
 
+    def row(
+        self,
+        scope: WorkScope,
+        *,
+        subject: str,
+        channel: str,
+        state: Literal["granted", "withdrawn"],
+        source: str,
+        notice_version: str,
+        evidence_ref: str | None = None,
+    ) -> dict[str, Any]:
+        """The record as written, for a caller that writes it in a transaction
+        of its own (the intake, with its work item; leadcare R2.13)."""
+        now = self.clock.now()
+        return {
+            "id": self.ids.new_uuid(),
+            "tenant_id": scope.tenant_id,
+            "subject_ref": normalize_address(channel, subject),
+            "purpose": PURPOSE,
+            "channel": channel,
+            "state": state,
+            "captured_at": now,
+            "source": source,
+            "evidence_ref": evidence_ref,
+            "notice_version": notice_version,
+            "withdrawn_at": now if state == "withdrawn" else None,
+        }
+
     async def record(
         self,
         scope: WorkScope,
@@ -494,25 +522,17 @@ class ConsentLedger:
         notice_version: str,
         evidence_ref: str | None = None,
     ) -> uuid.UUID:
-        record_id = self.ids.new_uuid()
-        now = self.clock.now()
-        await self.store.insert(
+        row = self.row(
             scope,
-            {
-                "id": record_id,
-                "tenant_id": scope.tenant_id,
-                "subject_ref": normalize_address(channel, subject),
-                "purpose": PURPOSE,
-                "channel": channel,
-                "state": state,
-                "captured_at": now,
-                "source": source,
-                "evidence_ref": evidence_ref,
-                "notice_version": notice_version,
-                "withdrawn_at": now if state == "withdrawn" else None,
-            },
+            subject=subject,
+            channel=channel,
+            state=state,
+            source=source,
+            notice_version=notice_version,
+            evidence_ref=evidence_ref,
         )
-        return record_id
+        await self.store.insert(scope, row)
+        return uuid.UUID(str(row["id"]))
 
 
 @dataclass(frozen=True)

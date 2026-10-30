@@ -64,13 +64,18 @@ from dw_platform.adapters.persistence.channel_preferences import SqlChannelPrefe
 from dw_platform.adapters.persistence.digital_workers_repo import (
     SqlDigitalWorkerRepository,
     SqlDwMembershipCheck,
+    SqlScopedAudit,
 )
 from dw_platform.adapters.persistence.directory import SqlWorkspaceDirectory
 from dw_platform.adapters.persistence.effect_key_store import SqlEffectKeyLookup
 from dw_platform.adapters.persistence.hierarchy_repo import SqlHierarchyRepository
 from dw_platform.adapters.persistence.idempotency_store import SqlIdempotencyStore
 from dw_platform.adapters.persistence.identity_provisioning import SqlIdentityBootstrap
-from dw_platform.adapters.persistence.marketing_send_repo import SqlSuppressionStore
+from dw_platform.adapters.persistence.marketing_send_repo import (
+    SqlConsentStore,
+    SqlIntakeScopes,
+    SqlSuppressionStore,
+)
 from dw_platform.adapters.persistence.membership_admin import SqlMembershipAdminRepository
 from dw_platform.adapters.persistence.membership_lookup import SqlMembershipLookup
 from dw_platform.adapters.persistence.notifications import SqlNotificationRepository
@@ -96,7 +101,12 @@ from dw_platform.application.entitlement import DEFAULT_PLANS, PlanEntitlementSe
 from dw_platform.application.hierarchy import HierarchyService
 from dw_platform.application.idempotency import HttpIdempotency
 from dw_platform.application.identity import DbAccessContextFactory
-from dw_platform.application.marketing_send import UnsubscribeLinks, UnsubscribeService
+from dw_platform.application.intake import IntakeKeyReader, IntakeKeys, LeadIntake
+from dw_platform.application.marketing_send import (
+    ConsentLedger,
+    UnsubscribeLinks,
+    UnsubscribeService,
+)
 from dw_platform.application.membership_admin import (
     GrantMembershipHandler,
     RevokeMembershipHandler,
@@ -371,7 +381,7 @@ def _build_container(settings: ApiSettings | None) -> ApiContainer:
     container.ingest_job_store = wiring.ingest_jobs
     container.memory_service = wiring.memory_service
     container.tool_registry = wiring.tool_registry
-    container.digital_workers = DigitalWorkerService(
+    digital_workers = DigitalWorkerService(
         repo=SqlDigitalWorkerRepository(session_factory),
         authz=authorization,
         tools=wiring.tool_registry,
@@ -380,6 +390,24 @@ def _build_container(settings: ApiSettings | None) -> ApiContainer:
         clock=clock,
         id_generator=ids,
     )
+    container.digital_workers = digital_workers
+    # The signed lead intake (leadcare R2): only with a secret of 32 bytes.
+    intake_keys = IntakeKeys(settings.intake_signing_secret.get_secret_value().encode())
+    if intake_keys.configured:
+        container.intake = LeadIntake(
+            keys=intake_keys,
+            scopes=SqlIntakeScopes(session_factory),
+            queue=work_queue,
+            consents=ConsentLedger(store=SqlConsentStore(session_factory), clock=clock, ids=ids),
+            clock=clock,
+        )
+        container.intake_keys = IntakeKeyReader(
+            keys=intake_keys,
+            workers=digital_workers,
+            audit=SqlScopedAudit(session_factory),
+            clock=clock,
+            ids=ids,
+        )
 
     # ---- BOUNDED CONTEXTS PLUG IN HERE -----------------------------------
     # Build your context from `container.runtime` (the RuntimeSeam) and attach

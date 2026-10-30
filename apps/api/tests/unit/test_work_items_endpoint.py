@@ -112,6 +112,7 @@ class Repo:
         *,
         audit: AuditEvent | None,
         effect: PendingEffect | None = None,
+        also: Any = None,
     ) -> WorkItem:
         for existing in self.items.values():
             if (existing.dw_id, existing.kind, existing.source_key) == (

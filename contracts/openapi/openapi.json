@@ -1395,6 +1395,19 @@
         "title": "IngestJobView",
         "type": "object"
       },
+      "IntakeKey": {
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key"
+        ],
+        "title": "IntakeKey",
+        "type": "object"
+      },
       "IntegrationView": {
         "properties": {
           "approval_policy": {
@@ -2655,6 +2668,20 @@
           "checks"
         ],
         "title": "ReadinessResponse",
+        "type": "object"
+      },
+      "Received": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "Received",
         "type": "object"
       },
       "RejectSupportGrantBody": {
@@ -5971,6 +5998,59 @@
         ]
       }
     },
+    "/api/v1/digital-workers/{dw_id}/intake-key": {
+      "get": {
+        "operationId": "read_intake_key_api_v1_digital_workers__dw_id__intake_key_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dw_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dw Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntakeKey"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Read Intake Key",
+        "tags": [
+          "intake"
+        ]
+      }
+    },
     "/api/v1/digital-workers/{dw_id}/people": {
       "put": {
         "operationId": "replace_digital_worker_people_api_v1_digital_workers__dw_id__people_put",
@@ -6525,6 +6605,113 @@
         "summary": "Health",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/api/v1/intake/leads": {
+      "post": {
+        "operationId": "receive_lead_api_v1_intake_leads_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-dw-worker",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dw-Worker"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-dw-event-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dw-Event-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-dw-timestamp",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dw-Timestamp"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-dw-signature",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Dw-Signature"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Received"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Receive Lead",
+        "tags": [
+          "intake"
         ]
       }
     },

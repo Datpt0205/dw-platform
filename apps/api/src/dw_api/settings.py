@@ -262,6 +262,12 @@ class ApiSettings(BaseSettings):
     mailbox_api_url: str | None = Field(
         default=None, validation_alias=AliasChoices("DW_API_MAILBOX_API_URL", "MAILBOX_API_URL")
     )
+    # Derives each DW's lead intake key (leadcare R2.4); at least 32 bytes,
+    # required in a deployed profile (R2.5). Without it the intake answers 503.
+    intake_signing_secret: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias=AliasChoices("DW_API_INTAKE_SIGNING_SECRET", "INTAKE_SIGNING_SECRET"),
+    )
     # Signs the one-address unsubscribe links (ADR-0124 decision 5); at least
     # 32 bytes, required in a deployed profile. Without it nothing marketing is
     # sent and the unsubscribe route answers 503.
@@ -390,6 +396,12 @@ class ApiSettings(BaseSettings):
             # process that would talk to one without them refuses to start.
             if not self.qdrant_api_key:
                 raise RuntimeError(f"a Qdrant API key is required in the {self.profile} profile")
+            # leadcare R2.5 (LCP7): a short intake secret is a forgeable lead.
+            if len(self.intake_signing_secret.get_secret_value().encode()) < 32:
+                raise RuntimeError(
+                    "INTAKE_SIGNING_SECRET of at least 32 bytes is required in the "
+                    f"{self.profile} profile"
+                )
             # compliance-pdpl R3.6, CP29: a short secret is a forgeable opt-out.
             if len(self.unsubscribe_signing_secret.get_secret_value().encode()) < 32:
                 raise RuntimeError(

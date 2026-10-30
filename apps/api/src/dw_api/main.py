@@ -37,6 +37,7 @@ from dw_api.routes.v1.digital_workers import router as digital_workers_router
 from dw_api.routes.v1.directory import router as directory_router
 from dw_api.routes.v1.feedback import router as feedback_router
 from dw_api.routes.v1.health import build_health_router
+from dw_api.routes.v1.intake import router as intake_router
 from dw_api.routes.v1.integrations import router as integrations_router
 from dw_api.routes.v1.knowledge import router as knowledge_router
 from dw_api.routes.v1.me import router as me_router
@@ -161,6 +162,7 @@ def create_app(container: ApiContainer | None = None) -> FastAPI:
         work_assign_router,
         work_items_router,
         unsubscribe_router,
+        intake_router,
     ):
         app.include_router(router, prefix="/api/v1")
 

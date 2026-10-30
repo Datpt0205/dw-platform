@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from dw_platform.adapters.persistence.offboarding import OffboardingPurgeStep
 from dw_platform.adapters.persistence.repositories import SqlAuditRepository
 from dw_platform.adapters.persistence.tenant_session import TenantScope, tenant_session
+from dw_platform.application.intake import IntakeScope
 from dw_platform.application.marketing_send import PURPOSE, CurrentConsent, LogRow
 from dw_platform.application.work_queue import WorkScope
 from dw_platform.domain.audit import AuditEvent
@@ -59,7 +60,7 @@ _WRITE_LOG = sa.text(
     " consent_record_id, tool_name, tool_version) VALUES (:id, :t, :w, :c, :h, :o, :reason,"
     " :k, :run, :root, :consent, :tool, :version)"
 )
-_INSERT_CONSENT = sa.text(
+INSERT_CONSENT = sa.text(
     "INSERT INTO platform.consent_records (id, tenant_id, subject_ref, purpose, channel,"
     " state, captured_at, source, evidence_ref, notice_version, withdrawn_at)"
     " VALUES (:id, :tenant_id, :subject_ref, :purpose, :channel, :state, :captured_at,"
@@ -155,7 +156,7 @@ class SqlConsentStore:
 
     async def insert(self, scope: WorkScope, row: Mapping[str, Any]) -> None:
         async with tenant_session(self.session_factory, _bound(scope)) as session:
-            await session.execute(_INSERT_CONSENT, dict(row))
+            await session.execute(INSERT_CONSENT, dict(row))
 
 
 @dataclass(frozen=True)
@@ -186,3 +187,23 @@ def marketing_purge_step() -> OffboardingPurgeStep:
         tables=frozenset({"platform.consent_records", "platform.marketing_send_log"}),
         run=_purge,
     )
+
+
+_INTAKE_SCOPE = sa.text(
+    "SELECT tenant_id, workspace_id, state FROM platform.intake_worker_scope(:d)"
+)
+
+
+@dataclass(frozen=True)
+class SqlIntakeScopes:
+    """Implements `IntakeScopePort` (leadcare R2.6): three columns of one DW,
+    through the SECURITY DEFINER function, before any tenant context."""
+
+    session_factory: async_sessionmaker[AsyncSession]
+
+    async def scope_of(self, dw_id: uuid.UUID) -> IntakeScope | None:
+        async with self.session_factory() as session:
+            row = (await session.execute(_INTAKE_SCOPE, {"d": dw_id})).first()
+        if row is None:
+            return None
+        return IntakeScope(tenant_id=row.tenant_id, workspace_id=row.workspace_id, state=row.state)

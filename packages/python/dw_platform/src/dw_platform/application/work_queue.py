@@ -46,6 +46,8 @@ from dw_platform.domain.work_item import (
 )
 
 LANE = "dw_work"
+# The signed door work arrives through from outside (leadcare R2.10).
+INTAKE_LANE = "intake"
 # R3.9: work refused for the tenant's limit waits this long, and is not dropped.
 LIMIT_BACKOFF = timedelta(minutes=5)
 # R3.14: an item claimed this long ago whose run never appeared goes back.
@@ -121,10 +123,12 @@ class WorkQueueRepositoryPort(Protocol):
         *,
         audit: AuditEvent | None,
         effect: PendingEffect | None = None,
+        also: Mapping[str, Any] | None = None,
     ) -> WorkItem:
         """Insert `item`, or return the item already holding its `(tenant, dw,
         kind, source_key)` without writing anything (R3.4). ``effect`` is
-        claimed first in the same transaction."""
+        claimed first in the same transaction; ``also``, a consent record, is
+        inserted with a new item only."""
         ...
 
     async def get(self, scope: WorkScope, item_id: uuid.UUID) -> WorkItem | None: ...
@@ -217,9 +221,12 @@ class WorkQueue:
         *,
         actor: uuid.UUID | None = None,
         effect: PendingEffect | None = None,
+        intake: Mapping[str, Any] | None = None,
     ) -> WorkItem:
-        """R3.1-R3.4. `actor` is the person who put the work in by hand; an
-        intake with no person audits nothing here (its own lane does)."""
+        """R3.1-R3.4. `actor` is the person who put the work in by hand. An
+        intake with no person passes `intake`, the consent record it carries
+        (leadcare R2.10, R2.13): the item, `work_item.received` as the `intake`
+        lane, and the record are written in one transaction, or none is."""
         worker = await self.workers.digital_worker(scope, dw_id)
         if worker is None:
             raise NotFoundError("no such digital worker")
@@ -267,12 +274,22 @@ class WorkQueue:
             updated_at=now,
             closed_at=None,
         )
-        audit = (
-            None
-            if actor is None
-            else self._event(scope, actor, "work_item.enqueued", item.id, {"kind": work.kind})
-        )
-        stored = await self.repo.insert(scope, item, audit=audit, effect=effect)
+        audit: AuditEvent | None = None
+        if intake is not None:
+            audit = lane_audit_event(
+                lane=INTAKE_LANE,
+                event_id=self.id_generator.new_uuid(),
+                tenant_id=TenantId(scope.tenant_id),
+                workspace_id=WorkspaceId(scope.workspace_id),
+                action="work_item.received",
+                resource_type=_RESOURCE,
+                resource_id=str(item.id),
+                occurred_at=now,
+                details={"dw_id": str(dw_id), "kind": work.kind},
+            )
+        elif actor is not None:
+            audit = self._event(scope, actor, "work_item.enqueued", item.id, {"kind": work.kind})
+        stored = await self.repo.insert(scope, item, audit=audit, effect=effect, also=intake)
         if stored.payload_hash != item.payload_hash:
             raise _refused(
                 "this source key already carried a different payload", "source_key_reused"

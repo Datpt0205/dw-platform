@@ -24,6 +24,7 @@ from dw_kernel.pagination import CursorPosition, Page, PageRequest, build_page
 from dw_platform.adapters.persistence import tables
 from dw_platform.adapters.persistence.effect_key_store import claim_effect_key
 from dw_platform.adapters.persistence.keyset import after_position, newest_first
+from dw_platform.adapters.persistence.marketing_send_repo import INSERT_CONSENT
 from dw_platform.adapters.persistence.repositories import SqlAuditRepository
 from dw_platform.adapters.persistence.tenant_session import TenantScope, tenant_session
 from dw_platform.application.effect_keys import PendingEffect
@@ -82,6 +83,7 @@ class SqlWorkQueueRepository:
         *,
         audit: AuditEvent | None,
         effect: PendingEffect | None = None,
+        also: Mapping[str, Any] | None = None,
     ) -> WorkItem:
         async with tenant_session(self.session_factory, _bound(scope)) as session:
             inserted = (
@@ -118,8 +120,13 @@ class SqlWorkQueueRepository:
                         )
                     )
                 ).one()
-            elif audit is not None:
-                await SqlAuditRepository(session).append(audit)
+            else:
+                if audit is not None:
+                    await SqlAuditRepository(session).append(audit)
+                if also is not None:
+                    # The intake's consent record, in the item's transaction
+                    # (leadcare R2.13): neither is written without the other.
+                    await session.execute(INSERT_CONSENT, dict(also))
             # After the row is known: a repeat of the source answers with the
             # item that already holds it (R3.4), so its key names that item;
             # a different payload is refused by the caller, and claims nothing.

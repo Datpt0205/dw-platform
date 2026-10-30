@@ -62,6 +62,7 @@ from dw_platform.application.entitlement import PlanEntitlementService
 from dw_platform.application.hierarchy import HierarchyService
 from dw_platform.application.idempotency import HttpIdempotency
 from dw_platform.application.identity_bootstrap import IdentityBootstrapPort
+from dw_platform.application.intake import IntakeKeyReader, LeadIntake
 from dw_platform.application.marketing_send import UnsubscribeService
 from dw_platform.application.membership_admin import (
     GrantMembershipHandler,
@@ -175,6 +176,10 @@ class ApiContainer:
     # The public opt-out door (ADR-0124 decision 5); None without a signing
     # secret, and the door answers 503.
     unsubscribe: UnsubscribeService | None = None
+    # The signed lead intake and its key reader (leadcare R2); None without a
+    # signing secret of 32 bytes, and the door answers 503.
+    intake: LeadIntake | None = None
+    intake_keys: IntakeKeyReader | None = None
     # Fields of an approval type's payload only some readers see, by type
     # (digital-worker R5.6: a `dw.decision`'s proposal).
     approval_masks: dict[str, ApprovalPayloadMask] = field(default_factory=dict)

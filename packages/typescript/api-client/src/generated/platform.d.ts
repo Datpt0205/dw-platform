@@ -483,6 +483,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/digital-workers/{dw_id}/intake-key": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Intake Key */
+        get: operations["read_intake_key_api_v1_digital_workers__dw_id__intake_key_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/digital-workers/{dw_id}/people": {
         parameters: {
             query?: never;
@@ -622,6 +639,23 @@ export interface paths {
         get: operations["health_api_v1_health_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/intake/leads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Receive Lead */
+        post: operations["receive_lead_api_v1_intake_leads_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1985,6 +2019,11 @@ export interface components {
              */
             warnings: string[];
         };
+        /** IntakeKey */
+        IntakeKey: {
+            /** Key */
+            key: string;
+        };
         /** IntegrationView */
         IntegrationView: {
             /** Approval Policy */
@@ -2542,6 +2581,14 @@ export interface components {
             };
             /** Status */
             status: string;
+        };
+        /** Received */
+        Received: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
         };
         /** RejectSupportGrantBody */
         RejectSupportGrantBody: {
@@ -4399,6 +4446,46 @@ export interface operations {
             };
         };
     };
+    read_intake_key_api_v1_digital_workers__dw_id__intake_key_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dw_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntakeKey"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     replace_digital_worker_people_api_v1_digital_workers__dw_id__people_put: {
         parameters: {
             query?: never;
@@ -4757,6 +4844,49 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    receive_lead_api_v1_intake_leads_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-dw-worker"?: string | null;
+                "x-dw-event-id"?: string | null;
+                "x-dw-timestamp"?: string | null;
+                "x-dw-signature"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Received"];
                 };
             };
             /** @description The request was refused */
