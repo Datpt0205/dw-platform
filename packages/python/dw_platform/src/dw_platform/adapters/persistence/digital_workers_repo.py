@@ -244,6 +244,37 @@ class SqlDigitalWorkerRepository:
             await SqlAuditRepository(session).append(audit)
         return True
 
+    async def people_of_many(
+        self, scope: WorkScope, dw_ids: Sequence[uuid.UUID]
+    ) -> Mapping[uuid.UUID, DwPeople]:
+        """Implements ``DwPeopleBatchPort``: one statement for a page."""
+        bound = TenantScope(tenant_id=scope.tenant_id, workspace_id=scope.workspace_id)
+        async with tenant_session(self.session_factory, bound) as session:
+            rows = (
+                await session.execute(
+                    sa.select(
+                        _DW.c.id,
+                        _DW.c.technical_owner_id,
+                        _DW.c.work_assigner_id,
+                        _DW.c.validator_id,
+                        _PRINCIPALS.c.owner_user_id,
+                    )
+                    .select_from(
+                        _DW.join(_PRINCIPALS, _PRINCIPALS.c.user_id == _DW.c.principal_user_id)
+                    )
+                    .where(_DW.c.id.in_(list(dw_ids)))
+                )
+            ).all()
+        return {
+            row.id: DwPeople(
+                business_owner_id=row.owner_user_id,
+                technical_owner_id=row.technical_owner_id,
+                work_assigner_id=row.work_assigner_id,
+                validator_id=row.validator_id,
+            )
+            for row in rows
+        }
+
     async def digital_worker(self, scope: WorkScope, dw_id: uuid.UUID) -> DigitalWorker | None:
         """Implements ``DwLookupPort``: the DW under a verified scope rather
         than a signed-in caller (the lane, an intake, a run)."""

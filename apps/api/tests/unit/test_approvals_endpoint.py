@@ -19,7 +19,6 @@ import json
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from types import SimpleNamespace
 from typing import Any
 
 import httpx
@@ -678,15 +677,17 @@ def _dw_decision(dw_id: uuid.UUID) -> ApprovalRequest:
 
 
 class _OneDw:
+    """Answers the people of one DW, in one call per page, and counts calls."""
+
     def __init__(self, validator: uuid.UUID) -> None:
         self.id = uuid.uuid4()
         self.validator = validator
+        self.calls = 0
 
-    async def digital_worker(self, scope: Any, dw_id: uuid.UUID) -> Any:
-        if dw_id != self.id:
-            return None
+    async def people_of_many(self, scope: Any, dw_ids: Any) -> dict[uuid.UUID, DwPeople]:
+        self.calls += 1
         people = DwPeople(SOMEONE_ELSE, SOMEONE_ELSE, SOMEONE_ELSE, self.validator)
-        return SimpleNamespace(people=people)
+        return {self.id: people} if self.id in dw_ids else {}
 
 
 @pytest.mark.parametrize(("validator", "sees"), [(VIEWER, True), (SOMEONE_ELSE, False)])

@@ -8,6 +8,7 @@ only to who may decide it and to its requester, and is not found by anyone else.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Annotated, Any
 
@@ -62,17 +63,23 @@ class ApprovalView(BaseModel):
     requested_by_me: bool
 
 
-async def _payload(
-    container: ApiContainer, context: AccessContext, request: ApprovalRequest
-) -> dict[str, Any]:
-    """The payload as this caller may read it: a type with a mask drops its
-    masked fields for whoever the mask does not admit (R5.6)."""
-    payload = dict(request.payload)
-    mask = container.approval_masks.get(request.approval_type)
-    if mask is not None and not await mask.may_read(context, request):
-        for name in mask.masked_fields:
-            payload.pop(name, None)
-    return payload
+async def _payloads(
+    container: ApiContainer, context: AccessContext, requests: Sequence[ApprovalRequest]
+) -> dict[uuid.UUID, dict[str, Any]]:
+    """Each payload as this caller may read it: a type with a mask drops its
+    masked fields for whoever the mask does not admit (R5.6), asked once per
+    type for the whole page."""
+    payloads = {request.id: dict(request.payload) for request in requests}
+    for approval_type, mask in container.approval_masks.items():
+        of_type = [r for r in requests if r.approval_type == approval_type]
+        if not of_type:
+            continue
+        readable = await mask.readable(context, of_type)
+        for request in of_type:
+            if request.id not in readable:
+                for name in mask.masked_fields:
+                    payloads[request.id].pop(name, None)
+    return payloads
 
 
 def _view(
@@ -162,7 +169,7 @@ async def list_pending(
         listed = await uow.approvals.list_pending(
             request, workspace_id=context.workspace_id, audience=audience
         )
-    payloads = {p.id: await _payload(container, context, p) for p in listed.items}
+    payloads = await _payloads(container, context, listed.items)
     return listed.map_items(
         lambda p: _view(p, context, approval_flow, authorization, payloads[p.id])
     )
@@ -204,7 +211,7 @@ async def _approval_view(
         context,
         container.approval_flow,
         container.authorization,
-        await _payload(container, context, request),
+        (await _payloads(container, context, [request]))[request.id],
     )
 
 
@@ -268,7 +275,7 @@ async def decide(
             context,
             flow,
             container.authorization,
-            await _payload(container, context, request),
+            (await _payloads(container, context, [request]))[request.id],
         )
 
     view = await idempotency.once(

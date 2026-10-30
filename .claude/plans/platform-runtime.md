@@ -342,3 +342,9 @@ user, scope)` and `holding(tenant, ws, scopes)`, neither needing an
 - **`create_deep_agent`'s builtin file and shell tools.** `build_agent` uses
   `create_agent`, which installs none; `OfferedToolsOnlyMiddleware` guards a
   context that reaches for them anyway.
+
+- 2026-10-30 (agent, digital-worker/02): `build_channel_decision_command` in `apps/worker/src/dw_worker/main.py` builds
+  its `ApproveAndResumeService` without the API's `decision_guards` (`memory.review` → `require_clearance_for_review`).
+  Unreachable today (chat decides only types with a registered subject-version port, and memory has none), but the
+  same shape as failure-modes #5: one composition root enforces a rule the other does not. Fix: build both from one
+  shared factory of guards and admissions.

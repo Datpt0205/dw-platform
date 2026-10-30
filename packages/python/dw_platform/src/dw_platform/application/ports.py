@@ -343,7 +343,12 @@ class ApprovalPayloadMask(Protocol):
     @property
     def masked_fields(self) -> tuple[str, ...]: ...
 
-    async def may_read(self, context: AccessContext, request: ApprovalRequest) -> bool: ...
+    async def readable(
+        self, context: AccessContext, requests: Sequence[ApprovalRequest]
+    ) -> frozenset[uuid.UUID]:
+        """The ids of `requests` whose masked fields `context` may read, asked
+        once per page, not once per row."""
+        ...
 
 
 class PlatformUnitOfWork(Protocol):

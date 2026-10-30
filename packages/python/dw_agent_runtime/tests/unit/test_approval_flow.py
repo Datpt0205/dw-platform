@@ -130,6 +130,7 @@ class FakeRunStore:
     actor_clearance: str = "confidential"
     actor_record_visibility: str = "restricted"
     actor_visible_owners: frozenset[uuid.UUID] | None = REQUESTER_OWNERS
+    run_as_principal_id: uuid.UUID | None = None
 
     async def get(self, run_context: RunContext, run_id: uuid.UUID) -> RunRecord:
         if run_context.workspace_id != self.workspace_id:
@@ -160,6 +161,7 @@ class FakeRunStore:
             actor_clearance=self.actor_clearance,
             actor_record_visibility=self.actor_record_visibility,
             actor_visible_owners=self.actor_visible_owners,
+            run_as_principal_id=self.run_as_principal_id,
         )
 
 
@@ -1108,3 +1110,20 @@ async def test_a_channel_decision_keeps_its_own_audit_and_writes_one_row() -> No
     )
 
     assert [event.action for event in audit.events] == [CHANNEL_DECIDED_ACTION]
+
+
+async def test_a_resumed_dw_run_acts_as_its_principal_and_stays_the_lanes_request() -> None:
+    """digital-worker R1.4: the run row's requester is the lane; resuming acts
+    as the DW's principal again, never as the lane, never as the decider."""
+    principal = uuid.UUID(int=77)
+    request = make_request("dw.decision", run_id=RUN_ID)
+    runner = FakeRunner(hosted=True)
+    service = make_service(request, frozenset(), runner=runner)
+    service.run_store.run_as_principal_id = principal  # type: ignore[attr-defined]
+
+    await decide(service, APPROVER, "")
+
+    resumed = runner.contexts[0]
+    assert resumed.actor_id == principal
+    assert resumed.run_as_principal_id == principal
+    assert resumed.requested_by == REQUESTER
