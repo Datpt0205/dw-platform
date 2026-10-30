@@ -23,7 +23,7 @@ from dw_agent_runtime.adapters.run_store import RunRecord, RunStatus, SqlWorkerR
 from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.ports import WorkflowRunnerPort
 from dw_kernel.autonomy import FAIL_CLOSED_LEVEL
-from dw_kernel.errors import ConflictError, NotFoundError
+from dw_kernel.errors import ConflictError, DomainError, NotFoundError
 from dw_kernel.ids import UserId
 from dw_kernel.ports import IdGenerator, UtcClock
 from dw_observability.metrics import DW_APPROVAL_WAIT_SECONDS
@@ -54,6 +54,11 @@ Raises to refuse. Registered by type at the composition root, the way strict
 prefixes are, so a context with its own rule adds an entry rather than a branch
 in `decide` (memory: the decider must be cleared for what they are deciding on).
 """
+
+ProposalEditor = Callable[[Mapping[str, Any], Mapping[str, Any]], None]
+"""How one approval type takes a proposal the decider edited before approving:
+given the request's payload and the edit, raises to refuse it. A type with no
+editor takes no edit (digital-worker R5.4, D18)."""
 
 DECIDED_EVENT_SCHEMA = "1.0"
 
@@ -93,6 +98,13 @@ class ApproveAndResumeService:
     # before anything is written: a rule the inbox merely hides a button for is
     # a rule a direct POST walks past.
     decision_guards: Mapping[str, DecisionGuard] = field(default_factory=dict)
+    # Keyed by the exact approval type, like the guards, for a condition that
+    # must be read in the decision's own transaction: who may decide a
+    # Digital Worker's decision is its Validator or Business Owner as they are
+    # when it is decided (digital-worker R5.3). Run after every check above and
+    # before anything is written.
+    type_admissions: Mapping[str, DecisionAdmission] = field(default_factory=dict)
+    proposal_editors: Mapping[str, ProposalEditor] = field(default_factory=dict)
     telemetry: TelemetryPort = field(default_factory=NullTelemetry)
 
     def is_strict(self, approval_type: str) -> bool:
@@ -270,6 +282,7 @@ class ApproveAndResumeService:
         channel: str = "web",
         admission: DecisionAdmission | None = None,
         effect: PendingEffect | None = None,
+        edited_proposal: Mapping[str, Any] | None = None,
     ) -> ApprovalRequest:
         """Decide, then resume the run. `channel` is where the decision came
         from (`web`, or `zalo` through `ChannelApprovalDecisionService`): it is
@@ -292,6 +305,11 @@ class ApproveAndResumeService:
                 authorization=authorization,
             )
             record = await self._resumable_run(context, request)
+            if edited_proposal is not None:
+                self._check_edit(request, approve, edited_proposal)
+            type_admission = self.type_admissions.get(request.approval_type)
+            if type_admission is not None:
+                await type_admission.admit(uow, request, context)
             admitted = None if admission is None else await admission.admit(uow, request, context)
 
             decision = request.decide(
@@ -301,6 +319,7 @@ class ApproveAndResumeService:
                 decided_at=self.clock.now().astimezone(UTC),
                 comment=comment,
                 channel=channel,
+                edited_payload=edited_proposal,
             )
             await uow.approvals.save(request)
             await uow.approvals.add_decision(decision)
@@ -329,6 +348,8 @@ class ApproveAndResumeService:
             }
             if approved_action_ids is not None:
                 resume_payload["approved_action_ids"] = approved_action_ids
+            if edited_proposal is not None:
+                resume_payload["edited_proposal"] = dict(edited_proposal)
             await self.runner.resume(
                 run_context=RunContext(
                     run_id=request.run_id,
@@ -373,6 +394,19 @@ class ApproveAndResumeService:
                 resume_payload=resume_payload,
             )
         return request
+
+    def _check_edit(
+        self, request: ApprovalRequest, approve: bool, edited: Mapping[str, Any]
+    ) -> None:
+        """An edit is approved, not rejected, and only on a type that takes
+        one, by that type's own rule (R5.4)."""
+        editor = self.proposal_editors.get(request.approval_type)
+        if editor is None or not approve:
+            raise DomainError(
+                "this decision takes no edited proposal",
+                details={"reason_code": "proposal_not_editable"},
+            )
+        editor(request.payload, edited)
 
     def _record_wait(
         self, request: ApprovalRequest, decision: ApprovalDecision, record: RunRecord | None

@@ -203,6 +203,10 @@ class SqlApprovalRepository:
                 comment=decision.comment,
                 decided_at=decision.decided_at,
                 channel=decision.channel,
+                edited=decision.edited_payload is not None,
+                edited_payload=(
+                    None if decision.edited_payload is None else dict(decision.edited_payload)
+                ),
             )
         )
 

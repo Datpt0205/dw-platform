@@ -68,6 +68,7 @@ from dw_platform.application.membership_admin import (
 from dw_platform.application.notifications import NotificationService
 from dw_platform.application.ports import (
     AccessContextFactoryPort,
+    ApprovalPayloadMask,
     FeedbackAttachmentStoragePort,
     PlatformUnitOfWorkFactory,
     TokenVerifierPort,
@@ -167,6 +168,9 @@ class ApiContainer:
     digital_workers: DigitalWorkerService | None = None
     # The queue people and DWs share (digital-worker R3, R4); Postgres only.
     work_queue: WorkQueue | None = None
+    # Fields of an approval type's payload only some readers see, by type
+    # (digital-worker R5.6: a `dw.decision`'s proposal).
+    approval_masks: dict[str, ApprovalPayloadMask] = field(default_factory=dict)
     notifications: NotificationService | None = None
     # Customer-granted support access (ADR 0024). A context registers its
     # grantable scope sets and resource describers on the catalog at the seam

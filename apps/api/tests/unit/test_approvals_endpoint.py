@@ -19,6 +19,7 @@ import json
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any
 
 import httpx
@@ -52,6 +53,7 @@ from dw_platform.application.approval_codes import (
     ViewReceipt,
 )
 from dw_platform.application.authorization import ApprovalAudience, ScopeAuthorizationService
+from dw_platform.application.decision_gate import DW_DECISION, DwProposalMask
 from dw_platform.application.entitlement import DEFAULT_PLANS, PlanEntitlementService
 from dw_platform.application.identity import DbAccessContextFactory, MembershipAccess
 from dw_platform.domain.approval import (
@@ -61,6 +63,7 @@ from dw_platform.domain.approval import (
     decided_event_type,
 )
 from dw_platform.domain.audit import AuditEvent
+from dw_platform.domain.digital_worker import DwPeople
 from dw_platform.domain.outbox import OutboxEvent
 
 pytestmark = pytest.mark.unit
@@ -653,3 +656,53 @@ async def test_a_list_parameter_the_route_does_not_take_is_refused_not_ignored(
     assert body["code"] == "validation_failed"
     assert body["errors"][0]["parameter"] == parameter
     assert body["errors"][0]["code"] == code
+
+
+# ------------------------------------------------- digital-worker R5.6 --
+
+
+def _dw_decision(dw_id: uuid.UUID) -> ApprovalRequest:
+    return ApprovalRequest(
+        id=uuid.uuid4(),
+        tenant_id=TenantId(TENANT),
+        workspace_id=WorkspaceId(WORKSPACE),
+        approval_type=DW_DECISION,
+        requested_by=UserId(SOMEONE_ELSE),
+        reason="gửi thư chào",
+        payload={
+            "dw_id": str(dw_id),
+            "decision_class": "email.send",
+            "proposal": {"to": "an@khach.vn", "subject": "Chào anh"},
+        },
+    )
+
+
+class _OneDw:
+    def __init__(self, validator: uuid.UUID) -> None:
+        self.id = uuid.uuid4()
+        self.validator = validator
+
+    async def digital_worker(self, scope: Any, dw_id: uuid.UUID) -> Any:
+        if dw_id != self.id:
+            return None
+        people = DwPeople(SOMEONE_ELSE, SOMEONE_ELSE, SOMEONE_ELSE, self.validator)
+        return SimpleNamespace(people=people)
+
+
+@pytest.mark.parametrize(("validator", "sees"), [(VIEWER, True), (SOMEONE_ELSE, False)])
+async def test_a_dw_decisions_proposal_is_read_by_the_dws_people_only(
+    validator: uuid.UUID, sees: bool
+) -> None:
+    """DWK38: a reader of the inbox who is not one of the DW's people gets the
+    approval without its proposal, in the list and in the detail."""
+    dw = _OneDw(validator)
+    request = _dw_decision(dw.id)
+    container = make_container(FakeApprovalRepo(request), frozenset({"approvals.read"}))
+    container.approval_masks[DW_DECISION] = DwProposalMask(dw)
+
+    detail = (await _call(container, "GET", f"/{request.id}")).json()
+    listed = (await _call(container, "GET", "")).json()["items"][0]
+
+    for payload in (detail["payload"], listed["payload"]):
+        assert ("proposal" in payload) is sees
+        assert payload["decision_class"] == "email.send"

@@ -15,6 +15,7 @@ from uuid import UUID
 from dw_kernel.pagination import Page, PageRequest
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.effect_keys import EffectKeyWriterPort
+from dw_platform.domain.digital_worker import DwPeople
 
 if TYPE_CHECKING:
     from dw_platform.application.approval_codes import DecisionCodeLedgerPort
@@ -327,6 +328,24 @@ class OutboxDrainPort(Protocol):
         ...
 
 
+class DwPeopleReaderPort(Protocol):
+    async def people_of(self, dw_id: uuid.UUID) -> DwPeople | None:
+        """The DW's four people now, the row held `FOR SHARE` for the rest of
+        the transaction; None when the DW is not in the bound scope."""
+        ...
+
+
+class ApprovalPayloadMask(Protocol):
+    """Who of the approval's readers sees some fields of one approval type's
+    payload; registered by type at the composition root (digital-worker R5.6).
+    The rest of the approval is served as before."""
+
+    @property
+    def masked_fields(self) -> tuple[str, ...]: ...
+
+    async def may_read(self, context: AccessContext, request: ApprovalRequest) -> bool: ...
+
+
 class PlatformUnitOfWork(Protocol):
     """One transaction with trusted tenant context applied via SET LOCAL.
 
@@ -344,6 +363,9 @@ class PlatformUnitOfWork(Protocol):
     # The effect key of an idempotent request, first in the transaction
     # (app-standards R2.38); only a request that holds a key touches it.
     effect_keys: EffectKeyWriterPort
+    # The people of a Digital Worker, read in a decision's own transaction
+    # (digital-worker R5.3); only a `dw.decision` touches it.
+    dw_people: DwPeopleReaderPort
 
     async def __aenter__(self) -> PlatformUnitOfWork: ...
 

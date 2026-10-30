@@ -88,6 +88,7 @@ from dw_platform.adapters.persistence.zalo_link_repo import SqlZaloLink
 from dw_platform.application.admin_console import AdminConsoleService
 from dw_platform.application.approval_codes import ApprovalSubjectVersions, DecisionCodeKey
 from dw_platform.application.authorization import ScopeAuthorizationService
+from dw_platform.application.decision_gate import DW_DECISION, DwProposalMask
 from dw_platform.application.digital_workers import DigitalWorkerService
 from dw_platform.application.entitlement import DEFAULT_PLANS, PlanEntitlementService
 from dw_platform.application.hierarchy import HierarchyService
@@ -234,6 +235,9 @@ def _build_container(settings: ApiSettings | None) -> ApiContainer:
         SqlSeparationOfDutiesRepository(session_factory), authorization, clock, ids
     )
     container.notifications = NotificationService(SqlNotificationRepository(session_factory))
+    container.approval_masks[DW_DECISION] = DwProposalMask(
+        SqlDigitalWorkerRepository(session_factory)
+    )
     # No pack declares a work kind's schema until wf-lite/01 wires the reader
     # of the pinned pack: an empty map, so every payload is refused (R3.3).
     container.work_queue = WorkQueue(

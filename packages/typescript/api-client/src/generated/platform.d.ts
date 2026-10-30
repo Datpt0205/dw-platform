@@ -1706,6 +1706,10 @@ export interface components {
              * @default
              */
             comment: string;
+            /** Edited Proposal */
+            edited_proposal?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** DemoUser */
         DemoUser: {

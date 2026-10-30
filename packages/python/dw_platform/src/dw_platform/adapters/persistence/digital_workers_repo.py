@@ -472,3 +472,47 @@ class SqlDecisionLevels:
             earned_level=row.earned_level,
             tenant_ceiling=row.max_autonomy_level,
         )
+
+
+@dataclass(frozen=True)
+class SqlDwPeopleReader:
+    """Implements ``DwPeopleReaderPort`` on a unit of work's own session."""
+
+    session: AsyncSession
+
+    async def people_of(self, dw_id: uuid.UUID) -> DwPeople | None:
+        row = (
+            await self.session.execute(
+                sa.select(
+                    _DW.c.technical_owner_id,
+                    _DW.c.work_assigner_id,
+                    _DW.c.validator_id,
+                    _PRINCIPALS.c.owner_user_id,
+                )
+                .select_from(
+                    _DW.join(_PRINCIPALS, _PRINCIPALS.c.user_id == _DW.c.principal_user_id)
+                )
+                .where(_DW.c.id == dw_id)
+                .with_for_update(read=True)
+            )
+        ).first()
+        if row is None:
+            return None
+        return DwPeople(
+            business_owner_id=row.owner_user_id,
+            technical_owner_id=row.technical_owner_id,
+            work_assigner_id=row.work_assigner_id,
+            validator_id=row.validator_id,
+        )
+
+
+@dataclass(frozen=True)
+class SqlScopedAudit:
+    """Implements ``ScopedAuditPort``: one audit row under a verified scope."""
+
+    session_factory: async_sessionmaker[AsyncSession]
+
+    async def append(self, scope: WorkScope, event: AuditEvent) -> None:
+        bound = TenantScope(tenant_id=scope.tenant_id, workspace_id=scope.workspace_id)
+        async with tenant_session(self.session_factory, bound) as session:
+            await SqlAuditRepository(session).append(event)

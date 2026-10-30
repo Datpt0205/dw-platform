@@ -767,6 +767,18 @@
             "default": "",
             "title": "Comment",
             "type": "string"
+          },
+          "edited_proposal": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edited Proposal"
           }
         },
         "required": [

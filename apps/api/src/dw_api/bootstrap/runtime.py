@@ -57,6 +57,11 @@ from dw_memory.policy import MemoryWritePolicy
 from dw_memory.review import MEMORY_REVIEW, require_clearance_for_review
 from dw_memory.service import MemoryService
 from dw_observability.telemetry import TelemetryPort
+from dw_platform.application.decision_gate import (
+    DW_DECISION,
+    DwDecisionAdmission,
+    check_edited_proposal,
+)
 from dw_platform.application.ports import PlatformUnitOfWorkFactory
 
 
@@ -240,6 +245,11 @@ def build_runtime(
         strict_approval_prefixes=frozenset({"memory."}),
         # And nobody decides on a memory they are not cleared to read.
         decision_guards={MEMORY_REVIEW: require_clearance_for_review},
+        # A Digital Worker's decision is decided by its Validator or Business
+        # Owner as they are at that moment, and an edit keeps to the
+        # proposal's schema and locked fields (digital-worker R5.3, R5.4).
+        type_admissions={DW_DECISION: DwDecisionAdmission()},
+        proposal_editors={DW_DECISION: check_edited_proposal},
         telemetry=telemetry,
     )
 

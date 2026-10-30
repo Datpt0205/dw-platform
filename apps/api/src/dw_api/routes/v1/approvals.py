@@ -62,11 +62,25 @@ class ApprovalView(BaseModel):
     requested_by_me: bool
 
 
+async def _payload(
+    container: ApiContainer, context: AccessContext, request: ApprovalRequest
+) -> dict[str, Any]:
+    """The payload as this caller may read it: a type with a mask drops its
+    masked fields for whoever the mask does not admit (R5.6)."""
+    payload = dict(request.payload)
+    mask = container.approval_masks.get(request.approval_type)
+    if mask is not None and not await mask.may_read(context, request):
+        for name in mask.masked_fields:
+            payload.pop(name, None)
+    return payload
+
+
 def _view(
     request: ApprovalRequest,
     context: AccessContext,
     approval_flow: ApproveAndResumeService,
     authorization: ScopeAuthorizationService,
+    payload: dict[str, Any],
 ) -> ApprovalView:
     return ApprovalView(
         id=request.id,
@@ -74,7 +88,7 @@ def _view(
         reason=request.reason,
         status=request.status.value,
         run_id=request.run_id,
-        payload=dict(request.payload),
+        payload=payload,
         created_at=request.created_at,
         decided_at=request.decided_at,
         requires_comment=approval_flow.is_strict(request.approval_type),
@@ -90,6 +104,9 @@ class DecisionRequest(BaseModel):
     approve: bool
     comment: str = ""
     approved_action_ids: list[str] | None = None
+    # A type that takes edits checks this against its proposal before the
+    # decision is written (digital-worker R5.4); any other refuses it.
+    edited_proposal: dict[str, Any] | None = None
 
 
 class ViewRequest(BaseModel):
@@ -145,7 +162,10 @@ async def list_pending(
         listed = await uow.approvals.list_pending(
             request, workspace_id=context.workspace_id, audience=audience
         )
-    return listed.map_items(lambda p: _view(p, context, approval_flow, authorization))
+    payloads = {p.id: await _payload(container, context, p) for p in listed.items}
+    return listed.map_items(
+        lambda p: _view(p, context, approval_flow, authorization, payloads[p.id])
+    )
 
 
 @router.get("/{approval_id}", response_model=ApprovalView)
@@ -179,7 +199,13 @@ async def _approval_view(
     # decide nor asked for, is the same answer as one that never existed.
     if request is None:
         raise NotFoundError("approval request not found")
-    return _view(request, context, container.approval_flow, container.authorization)
+    return _view(
+        request,
+        context,
+        container.approval_flow,
+        container.authorization,
+        await _payload(container, context, request),
+    )
 
 
 async def _may_decide(check: CheckInput) -> None:
@@ -235,8 +261,15 @@ async def decide(
             authorization=container.authorization,
             approved_action_ids=body.approved_action_ids,
             effect=effect,
+            edited_proposal=body.edited_proposal,
         )
-        return _view(request, context, flow, container.authorization)
+        return _view(
+            request,
+            context,
+            flow,
+            container.authorization,
+            await _payload(container, context, request),
+        )
 
     view = await idempotency.once(
         status=200,

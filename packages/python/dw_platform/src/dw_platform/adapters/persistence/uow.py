@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from dw_kernel.errors import TenantContextMissingError
 from dw_platform.adapters.persistence.approval_codes import SqlDecisionCodeLedger
+from dw_platform.adapters.persistence.digital_workers_repo import SqlDwPeopleReader
 from dw_platform.adapters.persistence.effect_key_store import SqlEffectKeyWriter
 from dw_platform.adapters.persistence.repositories import (
     SqlApprovalRepository,
@@ -28,6 +29,7 @@ from dw_platform.application.effect_keys import EffectKeyWriterPort
 from dw_platform.application.ports import (
     ApprovalRepositoryPort,
     AuditRepositoryPort,
+    DwPeopleReaderPort,
     FeedbackRepositoryPort,
     OutboxRepositoryPort,
 )
@@ -42,6 +44,7 @@ class SqlPlatformUnitOfWork:
     outbox: OutboxRepositoryPort
     decision_codes: DecisionCodeLedgerPort
     effect_keys: EffectKeyWriterPort
+    dw_people: DwPeopleReaderPort
 
     def __init__(
         self,
@@ -69,6 +72,7 @@ class SqlPlatformUnitOfWork:
         self.outbox = SqlOutboxRepository(session)
         self.decision_codes = SqlDecisionCodeLedger(session)
         self.effect_keys = SqlEffectKeyWriter(session)
+        self.dw_people = SqlDwPeopleReader(session)
         return self
 
     async def __aexit__(

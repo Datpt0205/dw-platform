@@ -6,6 +6,7 @@ Invariant: a request is decided exactly once; decisions are immutable facts.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
@@ -67,6 +68,9 @@ class ApprovalDecision:
     decided_at: datetime
     # Where the decision was made: `web`, or `zalo` after a portal view (ADR 0007).
     channel: str = "web"
+    # The proposal as the decider edited it before approving (digital-worker
+    # R5.5, D18); None when it was decided as asked.
+    edited_payload: Mapping[str, object] | None = None
 
 
 @dataclass(slots=True)
@@ -107,6 +111,7 @@ class ApprovalRequest:
         decided_at: datetime,
         comment: str = "",
         channel: str = "web",
+        edited_payload: Mapping[str, object] | None = None,
     ) -> ApprovalDecision:
         """Apply a human decision; returns the immutable decision record."""
         self._require_pending()
@@ -127,6 +132,7 @@ class ApprovalRequest:
             comment=comment,
             decided_at=decided_at,
             channel=channel,
+            edited_payload=edited_payload,
         )
 
     def cancel(self) -> None:

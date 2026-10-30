@@ -95,6 +95,7 @@ from dw_platform.application.access_context import AccessContext
 from dw_platform.application.approval_codes import ApprovalSubjectVersions, DecisionCodeKey
 from dw_platform.application.authorization import ScopeAuthorizationService
 from dw_platform.application.channel_access import LinkedUserAccess
+from dw_platform.application.decision_gate import DW_DECISION, DwDecisionAdmission
 from dw_platform.application.work_queue import InMemoryWorkKindSchemas, WorkQueue
 from dw_platform.retention_policy import RetentionPurgerRegistry, load_retention_policy
 from dw_worker.composition import (
@@ -187,6 +188,9 @@ def build_channel_decision_command(
         run_store=runner.run_store,
         clock=clock,
         id_generator=ids,
+        # The same decider rule as the API's (digital-worker R5.3). A chat
+        # carries no edited proposal, so no editor: an edit is refused here.
+        type_admissions={DW_DECISION: DwDecisionAdmission()},
         telemetry=runner.telemetry,
     )
     flow.strict_approval_prefixes |= strict_approval_prefixes

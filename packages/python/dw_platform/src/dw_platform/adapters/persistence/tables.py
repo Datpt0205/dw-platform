@@ -260,6 +260,11 @@ approval_decisions = sa.Table(
     sa.Column("decided_at", sa.TIMESTAMP(timezone=True), nullable=False),
     # `web` or `zalo` (CHECK, migration e399be8c0a2d): where the decision came from.
     sa.Column("channel", sa.Text, nullable=False, server_default="web"),
+    # digital-worker R5.5 (migration cfbd906be98b): CHECK edited = (edited_payload IS NOT NULL).
+    sa.Column("edited", sa.Boolean, nullable=False, server_default=sa.false()),
+    # SQL NULL for None, not the JSON `null` JSONB writes by default, which the
+    # CHECK would refuse on every decision taken as asked (measured 30/10/2026).
+    sa.Column("edited_payload", JSONB(none_as_null=True), nullable=True),
 )
 
 # A person opened an approval on the portal (channels Z5, ADR 0007):
