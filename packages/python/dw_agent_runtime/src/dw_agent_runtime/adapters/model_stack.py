@@ -34,6 +34,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from dw_agent_runtime.adapters.mock_model import MockModelAdapter
 from dw_agent_runtime.adapters.openai_compatible import OpenAICompatibleAdapter
 from dw_agent_runtime.adapters.openai_responses import OpenAIResponsesAdapter
+from dw_agent_runtime.adapters.run_cost_recorder import RunCostRecorder
 from dw_agent_runtime.adapters.spend_guard import SqlSpendGuardRecorder
 from dw_agent_runtime.adapters.telemetry_usage import TelemetryUsageRecorder
 from dw_agent_runtime.adapters.usage_recorders import CompositeUsageRecorder
@@ -146,6 +147,8 @@ def build_model_stack(
     recorder = CompositeUsageRecorder(
         [
             SqlSpendGuardRecorder(session_factory=session_factory, clock=clock),
+            # A run's own spend, which a DW's scorecard reads (digital-worker R7.3).
+            RunCostRecorder(session_factory=session_factory),
             TelemetryUsageRecorder(telemetry),
         ]
     )
