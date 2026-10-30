@@ -102,10 +102,13 @@ export function AppFrame({ children }: { children: ReactNode }) {
   }, [redirectTo, router]);
 
   // The dev-login page renders outside the gate (it is how you authenticate),
+  // as does the public unsubscribe page (compliance-pdpl R3.4),
   // and so does its layer-check fixture (app/dev-login/layer-check), which
   // exists only in dev-auth builds.
   if (
     pathname === "/dev-login" ||
+    // The unsubscribe page is for whoever got the email: no account, no gate.
+    pathname.startsWith("/unsubscribe/") ||
     (AUTH_MODE === "dev" && pathname === "/dev-login/layer-check")
   ) {
     return <>{children}</>;

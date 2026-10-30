@@ -44,7 +44,8 @@ _SUPPRESSED = sa.text(
 _CONSENT = sa.text(
     "SELECT id, state FROM platform.consent_records"
     " WHERE subject_ref = :s AND channel = :c AND purpose = :p"
-    " ORDER BY captured_at DESC LIMIT 1"
+    # Latest first; a withdrawal and a grant at one instant read as withdrawn.
+    " ORDER BY captured_at DESC, (state = 'withdrawn') DESC LIMIT 1"
 )
 _SENDS_SINCE = sa.text("SELECT platform.marketing_sends_since(:c, :h, :since)")
 _RECIPIENTS = sa.text("SELECT platform.marketing_recipients_of_run(:r)")

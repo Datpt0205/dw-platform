@@ -233,6 +233,8 @@ def build(
         telemetry=_null_telemetry(),
         clock=clock,
         ids=ids,
+        # The tools here are not message tools; the floor is ticket 08's test.
+        send_admission=None,
     )
     queue = WorkQueue(
         repo=SqlWorkQueueRepository(sessions),
