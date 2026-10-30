@@ -1,0 +1,124 @@
+# Mutation check of compliance-pdpl ticket 08: scripts/mutate.py runs this file.
+# One mutation per Kiểm soát row the ticket implements (CP7-CP10, CP18, CP19,
+# CP24, CP27-CP29) and per guard it adds (the replay's second look, the
+# same-instant tie, the token's age).
+mutations:
+  - name: CP7 a suppressed address is not asked about
+    file: packages/python/dw_platform/src/dw_platform/application/marketing_send.py
+    old: "        if await tx.suppressed(channel, hashed):"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_marketing_send_db.py::test_the_floor_refuses_in_its_order_and_names_the_reason
+  - name: CP7 a withdrawn consent counts as granted
+    file: packages/python/dw_platform/src/dw_platform/application/marketing_send.py
+    old: '        if consent.state != "granted":'
+    new: "        if False:"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_marketing_send_db.py::test_the_floor_refuses_in_its_order_and_names_the_reason
+  - name: CP7 a grant and a withdrawal at one instant read as granted
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/marketing_send_repo.py
+    old: "    \" ORDER BY captured_at DESC, (state = 'withdrawn') DESC LIMIT 1\""
+    new: "    \" ORDER BY captured_at DESC, (state = 'granted') DESC LIMIT 1\""
+    tests:
+      - packages/python/dw_platform/tests/integration/test_marketing_send_db.py::test_the_floor_refuses_in_its_order_and_names_the_reason
+  - name: CP7 quiet hours are not asked about
+    file: packages/python/dw_platform/src/dw_platform/application/marketing_send.py
+    old: "        if not self.policy.within_hours(now):"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_marketing_send_db.py::test_the_sending_hours_are_hanoi_time
+  - name: CP8 the executor does not ask the floor
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py
+    old: "        if definition.message is not None and idempotency_key is not None:"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/integration/test_send_floor_executor_db.py::test_a_send_without_consent_is_refused_at_the_executor
+  - name: CP9 GET writes the suppression
+    file: apps/api/src/dw_api/routes/v1/unsubscribe.py
+    old: "    claim = _found(_service(container).check(token))"
+    new: "    claim = _found(await _service(container).confirm(token))"
+    tests:
+      - apps/api/tests/unit/test_unsubscribe_endpoint.py::test_get_only_checks_and_post_writes_once_under_the_tokens_tenant
+  - name: CP10 a token's signature is not checked
+    file: packages/python/dw_platform/src/dw_platform/application/marketing_send.py
+    old: "        if not hmac.compare_digest(expected, signature):"
+    new: "        if False:"
+    tests:
+      - apps/api/tests/unit/test_unsubscribe_endpoint.py::test_a_token_that_does_not_verify_is_the_same_404_on_both_and_writes_nothing
+      - apps/api/tests/unit/test_unsubscribe_endpoint.py::test_a_token_signed_with_another_secret_or_too_old_is_refused
+  - name: CP10 a token never grows old
+    file: packages/python/dw_platform/src/dw_platform/application/marketing_send.py
+    old: "        if self.clock.now().timestamp() - issued > self.max_age.total_seconds():"
+    new: "        if False:"
+    tests:
+      - apps/api/tests/unit/test_unsubscribe_endpoint.py::test_a_token_signed_with_another_secret_or_too_old_is_refused
+  - name: CP18 the recipient cap is not counted
+    file: packages/python/dw_platform/src/dw_platform/application/marketing_send.py
+    old: "            and await tx.run_recipients(root) >= self.policy.max_recipients_per_run"
+    new: "            and False"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_marketing_send_db.py::test_the_recipient_cap_of_a_root_run
+  - name: CP19 a suppression of an active tenant may be deleted
+    file: db/migrations/versions/0c3e9392cc06_marketing_send_floor.py
+    old: "                WHERE t.id = OLD.tenant_id AND t.status = 'offboarding'"
+    new: "                WHERE t.id = OLD.tenant_id"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_marketing_send_db.py::test_a_suppression_outlives_everything_but_offboarding
+  - name: CP19 the purge runs for an active tenant
+    file: db/migrations/versions/0c3e9392cc06_marketing_send_floor.py
+    old: "                WHERE t.id = p_tenant_id AND t.status = 'offboarding'"
+    new: "                WHERE t.id = p_tenant_id"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_marketing_send_db.py::test_a_suppression_outlives_everything_but_offboarding
+  - name: CP24 the frequency cap is not counted
+    file: packages/python/dw_platform/src/dw_platform/application/marketing_send.py
+    old: "        if await tx.sends_since(request.channel, hashed, since) >= window.count:"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_marketing_send_db.py::test_the_frequency_cap_counts_every_workspace_and_a_send_in_flight
+  - name: CP24 two sends to one address are not serialised
+    file: packages/python/dw_platform/src/dw_platform/application/marketing_send.py
+    old: '            await tx.lock(f"marketing:{scope.tenant_id}:{channel}:{hashed}")'
+    new: "            pass"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_marketing_send_db.py::test_two_sends_to_one_address_at_once_dispatch_one
+  - name: CP24 a replay is admitted without its second look
+    file: packages/python/dw_platform/src/dw_platform/application/marketing_send.py
+    old: |2-
+                      if reason is not None:
+                          await tx.audit(self._refused(request, hashed, reason, replay=True))
+    new: |2-
+                      if False:
+                          await tx.audit(self._refused(request, hashed, reason, replay=True))
+    tests:
+      - packages/python/dw_platform/tests/integration/test_marketing_send_db.py::test_a_replay_of_a_dispatched_key_writes_nothing_but_asks_again
+  - name: CP27 the counts take an unset tenant
+    file: db/migrations/versions/0c3e9392cc06_marketing_send_floor.py
+    old: |2-
+                  RETURN (
+                      SELECT count(*) FROM platform.marketing_send_log
+                      WHERE tenant_id = tenant AND channel = p_channel
+    new: |2-
+                  RETURN (
+                      SELECT count(*) FROM platform.marketing_send_log
+                      WHERE (tenant IS NULL OR tenant_id = tenant) AND channel = p_channel
+    tests:
+      - packages/python/dw_platform/tests/integration/test_marketing_send_db.py::test_one_tenant_reaches_nothing_of_another
+  - name: CP28 a spec silent about sending loads
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/tool_specs.py
+    old: '        if self.side_effect_level != "none" and self.sends_message is None:'
+    new: "        if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_specs.py::test_a_tool_with_an_effect_must_say_whether_it_sends_a_message
+  - name: CP28 two addresses in one call are sent
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py
+    old: "        if len(addresses) > 1:"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/integration/test_send_floor_executor_db.py::test_two_addresses_in_one_call_are_refused
+  - name: CP29 a short unsubscribe secret starts a deployed API
+    file: apps/api/src/dw_api/settings.py
+    old: "            if len(self.unsubscribe_signing_secret.get_secret_value().encode()) < 32:"
+    new: "            if False:"
+    tests:
+      - apps/api/tests/unit/test_store_credentials_profile.py::test_a_deployed_api_with_a_short_unsubscribe_secret_does_not_start

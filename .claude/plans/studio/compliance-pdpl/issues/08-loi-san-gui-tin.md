@@ -108,3 +108,9 @@ message`, hai dấu phải khớp hoặc nạp lỗi; `configs/tools` hôm nay k
   `SendAdmissionPort` ở `dw_agent_runtime.executor` dùng chúng; `ToolSpec.sends_message` bắt buộc khi có hiệu ứng,
   `ToolDefinition.message`; executor: sau approval, phát lại `find_succeeded` trước sàn, rồi sàn, rồi giành lượt;
   `unsubscribe_url` đi vào trường `unsubscribe_url` của model đầu vào, sau khi băm đầu vào (phát lại không lệch băm).
+- 2026-10-30 (agent): đang làm, sau bước 9. Xong: sàn trong `dw_platform` (`cfdc7b8`), `ToolSpec.sends_message`,
+  sàn trong `ToolExecutor`, hai root, route hủy nhận (`bb2d0f3`), test integration của sàn (11) và của executor (4),
+  trang web hủy nhận (`e842742`). Khác thêm: một bản ghi `granted` và một `withdrawn` cùng thời điểm đọc là
+  `withdrawn` (đóng khi không chắc); worker cũng từ chối khởi động thiếu `UNSUBSCRIBE_SIGNING_SECRET` ở profile triển
+  khai (worker là nơi gửi). Còn: kết quả `mutations/08.yaml` (đang chạy), độ trễ bước 10, `reviewing-feature-security`,
+  cổng nhanh và integration của bốn gói, đóng ticket.
