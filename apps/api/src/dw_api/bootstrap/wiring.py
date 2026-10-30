@@ -83,6 +83,7 @@ from dw_platform.adapters.persistence.support_grants import (
 )
 from dw_platform.adapters.persistence.tenant_members import SqlTenantMembersRepository
 from dw_platform.adapters.persistence.uow import SqlPlatformUnitOfWorkFactory
+from dw_platform.adapters.persistence.work_queue_repo import SqlWorkQueueRepository
 from dw_platform.adapters.persistence.zalo_link_repo import SqlZaloLink
 from dw_platform.application.admin_console import AdminConsoleService
 from dw_platform.application.approval_codes import ApprovalSubjectVersions, DecisionCodeKey
@@ -104,6 +105,7 @@ from dw_platform.application.support_access import (
     SupportGrantService,
 )
 from dw_platform.application.tenant_members import TenantMembersService
+from dw_platform.application.work_queue import InMemoryWorkKindSchemas, WorkQueue
 
 _LOG = logging.getLogger("dw_api.bootstrap")
 
@@ -232,6 +234,17 @@ def _build_container(settings: ApiSettings | None) -> ApiContainer:
         SqlSeparationOfDutiesRepository(session_factory), authorization, clock, ids
     )
     container.notifications = NotificationService(SqlNotificationRepository(session_factory))
+    # No pack declares a work kind's schema until wf-lite/01 wires the reader
+    # of the pinned pack: an empty map, so every payload is refused (R3.3).
+    container.work_queue = WorkQueue(
+        repo=SqlWorkQueueRepository(session_factory),
+        workers=SqlDigitalWorkerRepository(session_factory),
+        people=SqlDwMembershipCheck(session_factory),
+        schemas=InMemoryWorkKindSchemas({}),
+        authz=authorization,
+        clock=clock,
+        id_generator=ids,
+    )
     container.support_grants = SupportGrantService(
         repo=SqlSupportGrantRepository(session_factory),
         member_scopes=SqlScopeHolders(session_factory),

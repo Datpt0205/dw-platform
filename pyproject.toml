@@ -168,6 +168,12 @@ disallow_incomplete_defs = false
 module = ["asyncpg", "asyncpg.*"]
 ignore_missing_imports = true
 
+# Ships no type information (ADR 0116 pins it exactly); one wrapper,
+# `dw_platform.application.json_schema`, is the only importer.
+[[tool.mypy.overrides]]
+module = ["jsonschema", "jsonschema.*"]
+ignore_missing_imports = true
+
 # ---------------------------------------------------------------------------
 # pytest
 # ---------------------------------------------------------------------------

@@ -81,6 +81,9 @@ EXPECTED: dict[tuple[str, str], Expectation] = {
     ("GET", "/api/v1/digital-workers"): Expectation(
         "platform.digital_workers", ("workspace_id",), ("created_at", "id")
     ),
+    ("GET", "/api/v1/work-items"): Expectation(
+        "platform.work_items", ("workspace_id",), ("created_at", "id")
+    ),
     ("GET", "/api/v1/knowledge/documents"): Expectation(
         "knowledge.documents",
         ("workspace_id", "status"),
@@ -201,7 +204,7 @@ async def seed(migrator: AsyncEngine) -> World:
                 " '1', :r, :at)",
             ):
                 await conn.execute(sa.text(statement), {**row, "id": uuid.uuid4()})
-            principal = uuid.uuid4()
+            principal, dw = uuid.uuid4(), uuid.uuid4()
             for statement in (
                 "INSERT INTO platform.users (id, subject, display_name, kind, owner_tenant_id)"
                 " VALUES (:p, :sub, 'plan', 'service', :t)",
@@ -213,12 +216,18 @@ async def seed(migrator: AsyncEngine) -> World:
                 " created_by, created_at, updated_at)"
                 " VALUES (:id, :t, :w, :p, :key, 'plan', 'plan', ARRAY['lead'], ARRAY[]::text[],"
                 " 'plan', '1.0.0', :u, :u, :u, :u, :at, :at)",
+                "INSERT INTO platform.work_items (id, tenant_id, workspace_id, dw_id, kind,"
+                " source_key, payload, payload_hash, holder_kind, holder_id, created_at,"
+                " updated_at) VALUES (:item, :t, :w, :dw, 'lead', :key, '{}'::jsonb,"
+                " repeat('0', 64), 'digital_worker', :dw, :at, :at)",
             ):
                 await conn.execute(
                     sa.text(statement),
                     {
                         **row,
-                        "id": uuid.uuid4(),
+                        "id": dw,
+                        "dw": dw,
+                        "item": uuid.uuid4(),
                         "p": principal,
                         "sub": f"service:{principal}",
                         "key": f"plan_{n}",

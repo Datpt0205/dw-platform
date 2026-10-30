@@ -517,6 +517,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/digital-workers/{dw_id}/work-items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Give Work */
+        post: operations["give_work_api_v1_digital_workers__dw_id__work_items_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/directory/candidates": {
         parameters: {
             query?: never;
@@ -1249,6 +1266,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/work-items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Work Items */
+        get: operations["list_work_items_api_v1_work_items_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/work-items/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Work Item */
+        get: operations["get_work_item_api_v1_work_items__item_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/work-items/{item_id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Complete Work Item */
+        post: operations["complete_work_item_api_v1_work_items__item_id__complete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/zalo/connect": {
         parameters: {
             query?: never;
@@ -1801,6 +1869,17 @@ export interface components {
              */
             workspace_id: string;
         };
+        /** HandoffView */
+        HandoffView: {
+            /** Context */
+            context: string;
+            /** Problem */
+            problem: string;
+            /** Recommendation */
+            recommendation: string;
+            /** Tried */
+            tried: string;
+        };
         /** HealthResponse */
         HealthResponse: {
             /** Api Version */
@@ -2146,6 +2225,17 @@ export interface components {
              */
             workspace_id: string;
         };
+        /** NewWorkRequest */
+        NewWorkRequest: {
+            /** Kind */
+            kind: string;
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
+            /** Source Key */
+            source_key: string;
+        };
         /** NotificationView */
         NotificationView: {
             /** Body */
@@ -2301,6 +2391,20 @@ export interface components {
         Page_MemoryItemView_: {
             /** Items */
             items: components["schemas"]["MemoryItemView"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /**
+         * Page
+         * @description A page of results and the cursor that continues it.
+         *
+         *     ``next_cursor`` is ``None`` on the last page, and that — not an empty
+         *     ``items`` — is the client's stop condition: a filtered listing can return an
+         *     empty page in the middle of a run and still have more rows behind it.
+         */
+        Page_WorkItemView_: {
+            /** Items */
+            items: components["schemas"]["WorkItemView"][];
             /** Next Cursor */
             next_cursor: string | null;
         };
@@ -2789,6 +2893,58 @@ export interface components {
         WaiverDecisionBody: {
             /** Reason */
             reason: string;
+        };
+        /** WorkItemView */
+        WorkItemView: {
+            /**
+             * Available At
+             * Format: date-time
+             */
+            available_at: string;
+            /** Closed At */
+            closed_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Dw Id
+             * Format: uuid
+             */
+            dw_id: string;
+            /** Error */
+            error: string | null;
+            handoff?: components["schemas"]["HandoffView"] | null;
+            /**
+             * Holder Id
+             * Format: uuid
+             */
+            holder_id: string;
+            /** Holder Kind */
+            holder_kind: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Payload */
+            payload?: {
+                [key: string]: unknown;
+            } | null;
+            /** Source Key */
+            source_key: string;
+            /** Status */
+            status: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Wake At */
+            wake_at: string | null;
         };
         /** WorkspaceMemberView */
         WorkspaceMemberView: {
@@ -4273,6 +4429,53 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DigitalWorkerView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    give_work_api_v1_digital_workers__dw_id__work_items_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                dw_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewWorkRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemView"];
                 };
             };
             /** @description The request was refused */
@@ -6114,6 +6317,133 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MySupportGrantModel"][];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_work_items_api_v1_work_items_get: {
+        parameters: {
+            query?: {
+                status?: ("open" | "in_progress" | "waiting_approval" | "waiting_timer" | "handed_off" | "done" | "failed" | "cancelled") | null;
+                holder_kind?: ("digital_worker" | "person") | null;
+                limit?: number;
+                /** @description Opaque cursor from a previous page. */
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_WorkItemView_"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_work_item_api_v1_work_items__item_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    complete_work_item_api_v1_work_items__item_id__complete_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemView"];
                 };
             };
             /** @description The request was refused */

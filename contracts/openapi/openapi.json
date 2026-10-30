@@ -1132,6 +1132,34 @@
         "title": "GrantMemberRequest",
         "type": "object"
       },
+      "HandoffView": {
+        "properties": {
+          "context": {
+            "title": "Context",
+            "type": "string"
+          },
+          "problem": {
+            "title": "Problem",
+            "type": "string"
+          },
+          "recommendation": {
+            "title": "Recommendation",
+            "type": "string"
+          },
+          "tried": {
+            "title": "Tried",
+            "type": "string"
+          }
+        },
+        "required": [
+          "problem",
+          "context",
+          "tried",
+          "recommendation"
+        ],
+        "title": "HandoffView",
+        "type": "object"
+      },
       "HealthResponse": {
         "properties": {
           "api_version": {
@@ -1956,6 +1984,35 @@
         "title": "NewTenantView",
         "type": "object"
       },
+      "NewWorkRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Kind",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "source_key": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Source Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "source_key",
+          "payload"
+        ],
+        "title": "NewWorkRequest",
+        "type": "object"
+      },
       "NotificationView": {
         "properties": {
           "body": {
@@ -2278,6 +2335,35 @@
           "items": {
             "items": {
               "$ref": "#/components/schemas/MemoryItemView"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "Page",
+        "type": "object"
+      },
+      "Page_WorkItemView_": {
+        "description": "A page of results and the cursor that continues it.\n\n``next_cursor`` is ``None`` on the last page, and that — not an empty\n``items`` — is the client's stop condition: a filtered listing can return an\nempty page in the middle of a run and still have more rows behind it.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WorkItemView"
             },
             "title": "Items",
             "type": "array"
@@ -3617,6 +3703,130 @@
           "reason"
         ],
         "title": "WaiverDecisionBody",
+        "type": "object"
+      },
+      "WorkItemView": {
+        "properties": {
+          "available_at": {
+            "format": "date-time",
+            "title": "Available At",
+            "type": "string"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "dw_id": {
+            "format": "uuid",
+            "title": "Dw Id",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "handoff": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HandoffView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "holder_id": {
+            "format": "uuid",
+            "title": "Holder Id",
+            "type": "string"
+          },
+          "holder_kind": {
+            "title": "Holder Kind",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "payload": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payload"
+          },
+          "source_key": {
+            "title": "Source Key",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "wake_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wake At"
+          }
+        },
+        "required": [
+          "id",
+          "dw_id",
+          "kind",
+          "source_key",
+          "status",
+          "holder_kind",
+          "holder_id",
+          "available_at",
+          "wake_at",
+          "error",
+          "created_at",
+          "updated_at",
+          "closed_at"
+        ],
+        "title": "WorkItemView",
         "type": "object"
       },
       "WorkspaceMemberView": {
@@ -5846,6 +6056,87 @@
           }
         },
         "summary": "Change Digital Worker State",
+        "tags": [
+          "digital-workers"
+        ]
+      }
+    },
+    "/api/v1/digital-workers/{dw_id}/work-items": {
+      "post": {
+        "operationId": "give_work_api_v1_digital_workers__dw_id__work_items_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dw_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dw Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewWorkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Give Work",
         "tags": [
           "digital-workers"
         ]
@@ -8271,6 +8562,249 @@
         "summary": "My Grants",
         "tags": [
           "support"
+        ]
+      }
+    },
+    "/api/v1/work-items": {
+      "get": {
+        "operationId": "list_work_items_api_v1_work_items_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "open",
+                    "in_progress",
+                    "waiting_approval",
+                    "waiting_timer",
+                    "handed_off",
+                    "done",
+                    "failed",
+                    "cancelled"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "holder_kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "digital_worker",
+                    "person"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Holder Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque cursor from a previous page.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Opaque cursor from a previous page.",
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_WorkItemView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "List Work Items",
+        "tags": [
+          "work"
+        ]
+      }
+    },
+    "/api/v1/work-items/{item_id}": {
+      "get": {
+        "operationId": "get_work_item_api_v1_work_items__item_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Get Work Item",
+        "tags": [
+          "work"
+        ]
+      }
+    },
+    "/api/v1/work-items/{item_id}/complete": {
+      "post": {
+        "operationId": "complete_work_item_api_v1_work_items__item_id__complete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Complete Work Item",
+        "tags": [
+          "work"
         ]
       }
     },

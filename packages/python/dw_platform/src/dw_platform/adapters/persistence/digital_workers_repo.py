@@ -35,6 +35,7 @@ from dw_platform.adapters.persistence.tenant_session import TenantScope, tenant_
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.digital_workers import DecisionLevels, Standing
 from dw_platform.application.effect_keys import PendingEffect
+from dw_platform.application.work_queue import WorkScope
 from dw_platform.domain.audit import AuditEvent
 from dw_platform.domain.digital_worker import (
     DecisionClass,
@@ -43,6 +44,7 @@ from dw_platform.domain.digital_worker import (
     DwPeople,
     DwState,
 )
+from dw_platform.domain.work_item import IN_FLIGHT, sources_of
 
 _DW = tables.digital_workers
 _CLASSES = tables.dw_decision_classes
@@ -225,6 +227,8 @@ class SqlDigitalWorkerRepository:
         async with tenant_session(self.session_factory, _scope(context)) as session:
             if effect is not None:
                 await claim_effect_key(session, effect.of(dw_id))
+            if target == "retired":
+                await _retire_work(session, dw_id)
             moved = (
                 await session.execute(
                     sa.update(_DW)
@@ -235,8 +239,21 @@ class SqlDigitalWorkerRepository:
             ).first()
             if moved is None:
                 return False
+            if target == "retired":
+                await session.execute(sa.select(sa.func.platform.retire_dw_principal(dw_id)))
             await SqlAuditRepository(session).append(audit)
         return True
+
+    async def digital_worker(self, scope: WorkScope, dw_id: uuid.UUID) -> DigitalWorker | None:
+        """Implements ``DwLookupPort``: the DW under a verified scope rather
+        than a signed-in caller (the lane, an intake, a run)."""
+        bound = TenantScope(tenant_id=scope.tenant_id, workspace_id=scope.workspace_id)
+        async with tenant_session(self.session_factory, bound) as session:
+            row = (await session.execute(_select_workers().where(_DW.c.id == dw_id))).first()
+            if row is None:
+                return None
+            classes = await _classes_of(session, [dw_id])
+        return _worker_of(row, classes.get(dw_id, ()))
 
     async def replace_people(
         self,
@@ -277,6 +294,31 @@ class SqlDigitalWorkerRepository:
                 raise known from exc
             raise
         return True
+
+
+async def _retire_work(session: AsyncSession, dw_id: uuid.UUID) -> None:
+    """R1.12, R1.14: under the DW's row lock, which the lane's claim waits on
+    (`FOR SHARE`), refuse while any of its work is in flight, and cancel what
+    is still open, before the state changes."""
+    await session.execute(sa.select(_DW.c.id).where(_DW.c.id == dw_id).with_for_update())
+    w = tables.work_items
+    busy = (
+        await session.execute(
+            sa.select(sa.func.count())
+            .select_from(w)
+            .where(w.c.dw_id == dw_id, w.c.status.in_(sorted(IN_FLIGHT)))
+        )
+    ).scalar_one()
+    if busy:
+        raise ConflictError(
+            "this digital worker still has work in progress or waiting",
+            details={"reason_code": "dw_has_work_in_flight", "items": int(busy)},
+        )
+    await session.execute(
+        sa.update(w)
+        .where(w.c.dw_id == dw_id, w.c.status.in_(sorted(sources_of("cancelled", "retire"))))
+        .values(status="cancelled", closed_at=sa.func.now())
+    )
 
 
 def _select_workers() -> sa.Select[Any]:
@@ -364,13 +406,26 @@ class SqlDwMembershipCheck:
     session_factory: async_sessionmaker[AsyncSession]
 
     async def standing(self, context: AccessContext, user_id: uuid.UUID) -> Standing | None:
+        return await self._standing(
+            TenantScope.from_access_context(context), context.workspace_id, user_id
+        )
+
+    async def is_person_in(self, scope: WorkScope, user_id: uuid.UUID) -> bool:
+        """Implements ``PersonCheckPort`` (R4.3)."""
+        bound = TenantScope(tenant_id=scope.tenant_id, workspace_id=scope.workspace_id)
+        found = await self._standing(bound, scope.workspace_id, user_id)
+        return found is not None and found.kind == "human"
+
+    async def _standing(
+        self, bound: TenantScope, workspace_id: uuid.UUID, user_id: uuid.UUID
+    ) -> Standing | None:
         m = tables.memberships
-        async with tenant_session(self.session_factory, _scope(context)) as session:
+        async with tenant_session(self.session_factory, bound) as session:
             row = (
                 await session.execute(
                     sa.select(tables.users.c.kind, m.c.role_keys, m.c.permission_set_keys)
                     .select_from(m.join(tables.users, tables.users.c.id == m.c.user_id))
-                    .where(m.c.workspace_id == context.workspace_id, m.c.user_id == user_id)
+                    .where(m.c.workspace_id == workspace_id, m.c.user_id == user_id)
                 )
             ).first()
             if row is None:

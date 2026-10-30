@@ -1196,6 +1196,7 @@ version = "0.1.0"
 source = { editable = "packages/python/dw_platform" }
 dependencies = [
     { name = "dw-kernel" },
+    { name = "jsonschema" },
     { name = "pydantic" },
     { name = "pyjwt", extra = ["crypto"] },
     { name = "pyyaml" },
@@ -1206,6 +1207,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "dw-kernel", editable = "packages/python/dw_kernel" },
+    { name = "jsonschema", specifier = "==4.26.0" },
     { name = "pydantic", specifier = ">=2.10,<3" },
     { name = "pyjwt", extras = ["crypto"], specifier = ">=2.10,<3" },
     { name = "pyyaml", specifier = ">=6,<7" },

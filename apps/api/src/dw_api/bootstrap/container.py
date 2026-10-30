@@ -83,6 +83,7 @@ from dw_platform.application.support_access import (
     SupportScopeCatalog,
 )
 from dw_platform.application.tenant_members import TenantMembersService
+from dw_platform.application.work_queue import WorkQueue
 
 
 @dataclass(frozen=True)
@@ -164,6 +165,8 @@ class ApiContainer:
     # Digital Workers (digital-worker R1, R2): wired with the agent runtime,
     # whose tool register a DW's `allowed_tools` is checked against.
     digital_workers: DigitalWorkerService | None = None
+    # The queue people and DWs share (digital-worker R3, R4); Postgres only.
+    work_queue: WorkQueue | None = None
     notifications: NotificationService | None = None
     # Customer-granted support access (ADR 0024). A context registers its
     # grantable scope sets and resource describers on the catalog at the seam

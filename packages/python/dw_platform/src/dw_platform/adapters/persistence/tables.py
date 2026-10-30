@@ -717,3 +717,29 @@ dw_decision_classes = sa.Table(
         "updated_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text("now()")
     ),
 )
+
+# The queue people and Digital Workers share (migration cfbd906be98b,
+# digital-worker R3, R4). `payload` is fixed once written.
+work_items = sa.Table(
+    "work_items",
+    metadata,
+    sa.Column("id", UUID(as_uuid=True), primary_key=True),
+    sa.Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("workspace_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("dw_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("kind", sa.Text, nullable=False),
+    sa.Column("source_key", sa.Text, nullable=False),
+    sa.Column("payload", JSONB, nullable=False),
+    sa.Column("payload_hash", sa.Text, nullable=False),
+    sa.Column("holder_kind", sa.Text, nullable=False),
+    sa.Column("holder_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("status", sa.Text, nullable=False, server_default="open"),
+    sa.Column("available_at", sa.TIMESTAMP(timezone=True), nullable=False),
+    sa.Column("run_id", UUID(as_uuid=True), nullable=True),
+    sa.Column("wake_at", sa.TIMESTAMP(timezone=True), nullable=True),
+    sa.Column("handoff", JSONB, nullable=True),
+    sa.Column("error", sa.Text, nullable=True),
+    sa.Column("created_at", sa.TIMESTAMP(timezone=True), nullable=False),
+    sa.Column("updated_at", sa.TIMESTAMP(timezone=True), nullable=False),
+    sa.Column("closed_at", sa.TIMESTAMP(timezone=True), nullable=True),
+)

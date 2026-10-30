@@ -55,6 +55,7 @@ IMPORT_TO_DIST = {
     "langfuse": "langfuse",
     "jwt": "pyjwt",
     "yaml": "pyyaml",
+    "jsonschema": "jsonschema",
     "deepagents": "deepagents",
     "playwright": "playwright",
     "reportlab": "reportlab",

@@ -45,6 +45,8 @@ from dw_api.routes.v1.notifications import router as notifications_router
 from dw_api.routes.v1.platform import router as platform_router
 from dw_api.routes.v1.runs import router as runs_router
 from dw_api.routes.v1.support import router as support_router
+from dw_api.routes.v1.work_items import assign_router as work_assign_router
+from dw_api.routes.v1.work_items import router as work_items_router
 from dw_api.routes.v1.zalo import router as zalo_router
 from dw_api.routes.v1.zalo import webhook_router as zalo_webhook_router
 
@@ -155,6 +157,8 @@ def create_app(container: ApiContainer | None = None) -> FastAPI:
         integrations_router,
         support_router,
         digital_workers_router,
+        work_assign_router,
+        work_items_router,
     ):
         app.include_router(router, prefix="/api/v1")
 

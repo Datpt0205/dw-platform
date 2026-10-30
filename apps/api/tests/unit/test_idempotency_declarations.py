@@ -31,6 +31,7 @@ from starlette.routing import Mount
 from dw_agent_runtime.approval_flow import ApproveAndResumeService
 from dw_api.dependencies.idempotency import IDEMPOTENCY_HEADER
 from dw_api.routes.v1 import digital_workers as digital_workers_routes
+from dw_api.routes.v1 import work_items as work_items_routes
 from dw_platform.application import digital_workers, membership_admin, support_access
 
 pytestmark = pytest.mark.unit
@@ -69,6 +70,14 @@ DECLARED: dict[tuple[str, str], object] = {
         "PUT",
         "/api/v1/digital-workers/{dw_id}/people",
     ): digital_workers_routes._owner_of_path,
+    (
+        "POST",
+        "/api/v1/work-items/{item_id}/complete",
+    ): work_items_routes._holder_of_path,
+    (
+        "POST",
+        "/api/v1/digital-workers/{dw_id}/work-items",
+    ): work_items_routes._assigner_of_path,
 }
 DECIDE = ("POST", "/api/v1/approvals/{approval_id}/decisions")
 
@@ -82,6 +91,7 @@ HIDDEN: dict[tuple[str, str], str] = {
 # modules a declared name may come from: the services those routes call.
 SERVICE_MODULES = {
     "dw_platform.application.digital_workers",
+    "dw_platform.application.work_queue",
     "dw_platform.application.membership_admin",
     "dw_platform.application.support_access",
 }
@@ -194,6 +204,11 @@ def test_each_declaration_is_the_check_its_service_makes() -> None:
     owner = ast.dump(ast.parse(_source_of(digital_workers_routes._owner_of_path)))
     assert "require_owner" in owner, "a DW write must call the service's own owner check"
     assert hasattr(digital_workers.DigitalWorkerService, "require_owner")
+    for check, service_check in (
+        (work_items_routes._holder_of_path, "require_holder"),
+        (work_items_routes._assigner_of_path, "require_work_assigner"),
+    ):
+        assert service_check in ast.dump(ast.parse(_source_of(check))), service_check
 
 
 def _source_of(function: object) -> str:

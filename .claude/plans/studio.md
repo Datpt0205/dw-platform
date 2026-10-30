@@ -494,7 +494,7 @@ bên ngoài thì ghi "Chờ Đạt" và làm việc kế. Đường dẫn ticket
 | 3   | `org-and-principals/issues/01`                                                            | xong `0b341d4` |
 | 4   | `runtime-hardening/issues/01`                                                             | xong `aa53159` |
 | 5   | `digital-worker/issues/01` hồ sơ DW và loại quyết định                                    | xong `5e1ca10` |
-| 6   | `digital-worker/issues/02` hàng đợi chung, bàn giao, cổng duyệt                           | chưa           |
+| 6   | `digital-worker/issues/02` hàng đợi chung, bàn giao, cổng duyệt                           | đang làm       |
 | 7   | `wf-lite/issues/01` tài liệu, sổ loại bước, bộ kiểm, luật sàn HITL                        | chưa           |
 | 8   | `wf-lite/issues/02` biên dịch, chạy, chờ và chạy tiếp                                     | chưa           |
 | 9   | `runtime-hardening/issues/02`                                                             | chưa           |

@@ -1231,3 +1231,52 @@ async def test_the_critical_role_check_names_a_planted_principal(db_urls: Databa
             await tx.rollback()
     finally:
         await migrator.dispose()
+
+
+async def test_the_work_queue_is_the_applications_and_its_functions_only_dw_apps(
+    db_urls: DatabaseUrls,
+) -> None:
+    """Migration cfbd906be98b: `dw_app` reads, writes and (for offboarding)
+    deletes work items, `dw_agent_ro` nothing; the lane's cross-tenant read and
+    the retirement of a principal run for `dw_app` and for nobody else."""
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            held = {
+                (row.rolname, row.verb)
+                for row in await conn.execute(
+                    sa.text(
+                        """
+                        SELECT r.rolname, v.verb
+                        FROM pg_roles r
+                        CROSS JOIN unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE',
+                                                'TRUNCATE']) AS v(verb)
+                        WHERE r.rolname IN ('dw_app', 'dw_agent_ro')
+                          AND has_table_privilege(r.rolname, 'platform.work_items', v.verb)
+                        """
+                    )
+                )
+            }
+            executes = {
+                (row.rolname, row.fn)
+                for row in await conn.execute(
+                    sa.text(
+                        """
+                        SELECT r.rolname, f.fn
+                        FROM pg_roles r
+                        CROSS JOIN unnest(ARRAY['platform.dw_work_scopes_due(integer)',
+                                                'platform.retire_dw_principal(uuid)',
+                                                'platform.work_item_payload_fixed()']) AS f(fn)
+                        WHERE r.rolname IN ('dw_app', 'dw_agent_ro', 'dw_provisioner', 'public')
+                          AND has_function_privilege(r.rolname, f.fn, 'EXECUTE')
+                        """
+                    )
+                )
+            }
+    finally:
+        await migrator.dispose()
+    assert held == {("dw_app", v) for v in ("SELECT", "INSERT", "UPDATE", "DELETE")}
+    assert executes == {
+        ("dw_app", "platform.dw_work_scopes_due(integer)"),
+        ("dw_app", "platform.retire_dw_principal(uuid)"),
+    }
