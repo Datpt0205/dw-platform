@@ -17,6 +17,7 @@ import pytest
 from dw_agent_runtime.model.prompts import PromptRegistry
 from dw_agent_runtime.wflite.catalog import (
     PackCatalog,
+    PinnedWorkflow,
     ShippedToolSpecs,
     load_shipped_packs,
     load_yaml,
@@ -36,7 +37,7 @@ LEAD = {
 }
 
 
-def pinned():  # type: ignore[no-untyped-def]
+def pinned() -> PinnedWorkflow:
     found = load_shipped_packs(CONFIGS).workflow("lead_care", "1.0.0")
     assert found is not None
     return found
@@ -72,7 +73,7 @@ def test_a_copy_that_sends_outside_an_approved_lane_is_refused(tmp_path: Path) -
     import yaml
 
     path.write_text(yaml.safe_dump(raw, allow_unicode=True), encoding="utf-8")
-    with pytest.raises(ConfigError, match="wf.hitl_gate_missing"):
+    with pytest.raises(ConfigError, match=r"wf\.hitl_gate_missing"):
         PackCatalog.load(tmp_path, ShippedToolSpecs.load(CONFIGS / "tools"))
 
 
