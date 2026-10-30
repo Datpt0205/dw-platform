@@ -33,6 +33,7 @@ from dw_api.routes.v1.admin_members import router as admin_members_router
 from dw_api.routes.v1.approvals import router as approvals_router
 from dw_api.routes.v1.audit import router as audit_router
 from dw_api.routes.v1.auth import router as auth_router
+from dw_api.routes.v1.digital_workers import router as digital_workers_router
 from dw_api.routes.v1.directory import router as directory_router
 from dw_api.routes.v1.feedback import router as feedback_router
 from dw_api.routes.v1.health import build_health_router
@@ -153,6 +154,7 @@ def create_app(container: ApiContainer | None = None) -> FastAPI:
         memory_router,
         integrations_router,
         support_router,
+        digital_workers_router,
     ):
         app.include_router(router, prefix="/api/v1")
 

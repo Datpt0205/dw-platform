@@ -51,13 +51,21 @@ from dw_knowledge.gateway import KnowledgeGateway
 from dw_memory.policy import MemoryWritePolicy
 from dw_memory.service import MemoryService
 from dw_platform.adapters.identity.dev_token import DevTokenVerifier
+from dw_platform.adapters.persistence.digital_workers_repo import (
+    SqlDigitalWorkerRepository,
+    SqlDwMembershipCheck,
+)
+from dw_platform.adapters.persistence.tenant_members import SqlTenantMembersRepository
 from dw_platform.application.access_context import AccessContext
+from dw_platform.application.authorization import ScopeAuthorizationService
+from dw_platform.application.digital_workers import DigitalWorkerService
 
 pytestmark = pytest.mark.integration
 
 SECRET = "plan-shape-secret-0123456789abcdef01234"
 SCOPES = (
-    '["approvals.read", "audit.events", "platform.members.read", "knowledge.read", "memory.read"]'
+    '["approvals.read", "audit.events", "platform.members.read", "knowledge.read", "memory.read",'
+    ' "dw.read"]'
 )
 
 # What each registered page must get from its index: the statement's own
@@ -70,6 +78,9 @@ EXPECTED: dict[tuple[str, str], Expectation] = {
         "platform.audit_events", ("workspace_id",), ("occurred_at", "id")
     ),
     ("GET", "/api/v1/feedback"): Expectation("platform.feedback", (), ("created_at", "id")),
+    ("GET", "/api/v1/digital-workers"): Expectation(
+        "platform.digital_workers", ("workspace_id",), ("created_at", "id")
+    ),
     ("GET", "/api/v1/knowledge/documents"): Expectation(
         "knowledge.documents",
         ("workspace_id", "status"),
@@ -190,6 +201,29 @@ async def seed(migrator: AsyncEngine) -> World:
                 " '1', :r, :at)",
             ):
                 await conn.execute(sa.text(statement), {**row, "id": uuid.uuid4()})
+            principal = uuid.uuid4()
+            for statement in (
+                "INSERT INTO platform.users (id, subject, display_name, kind, owner_tenant_id)"
+                " VALUES (:p, :sub, 'plan', 'service', :t)",
+                "INSERT INTO platform.service_principals (user_id, tenant_id,"
+                " owning_workspace_id, name, owner_user_id) VALUES (:p, :t, :w, 'plan', :u)",
+                "INSERT INTO platform.digital_workers (id, tenant_id, workspace_id,"
+                " principal_user_id, key, name, mandate, work_kinds, allowed_tools, workflow_key,"
+                " workflow_version, technical_owner_id, work_assigner_id, validator_id,"
+                " created_by, created_at, updated_at)"
+                " VALUES (:id, :t, :w, :p, :key, 'plan', 'plan', ARRAY['lead'], ARRAY[]::text[],"
+                " 'plan', '1.0.0', :u, :u, :u, :u, :at, :at)",
+            ):
+                await conn.execute(
+                    sa.text(statement),
+                    {
+                        **row,
+                        "id": uuid.uuid4(),
+                        "p": principal,
+                        "sub": f"service:{principal}",
+                        "key": f"plan_{n}",
+                    },
+                )
     return world
 
 
@@ -284,6 +318,17 @@ async def bench(api_db: DatabaseUrls) -> AsyncIterator[Bench]:
         clock=clock,
         id_generator=ids,
         evidence_store=unused,
+    )
+    # Digital Workers are wired with the runtime too; the listing reads only
+    # Postgres, so no tool register is consulted.
+    container.digital_workers = DigitalWorkerService(
+        repo=SqlDigitalWorkerRepository(sessions),
+        authz=ScopeAuthorizationService(),
+        tools=unused,
+        members=SqlDwMembershipCheck(sessions),
+        roles=SqlTenantMembersRepository(sessions),
+        clock=clock,
+        id_generator=ids,
     )
     # The inbox lists through the approval flow; no approval here has a run.
     container.approval_flow = ApproveAndResumeService(

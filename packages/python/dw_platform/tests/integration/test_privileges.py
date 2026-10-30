@@ -16,6 +16,7 @@ So the privilege model is asserted, not assumed. Three claims:
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import AsyncIterator
 
 import pytest
@@ -1033,3 +1034,200 @@ async def test_tool_executions_are_appended_and_claims_never_rewritten(
         for role, tbl, verb in held
         if role == "dw_agent_ro" and tbl == "platform.tool_execution_claims"
     }
+
+
+# ---------------------------------------------------------------------------
+# Digital Workers (migration be93e0c26a4c, digital-worker ticket 01).
+# ---------------------------------------------------------------------------
+
+_DW_TABLES = (
+    "platform.service_principals",
+    "platform.digital_workers",
+    "platform.dw_decision_classes",
+)
+
+
+async def test_digital_worker_tables_are_the_applications_and_nobody_elses(
+    db_urls: DatabaseUrls,
+) -> None:
+    """`dw_app` reads and writes the three tables, and DELETE is held for
+    offboarding, which purges exactly what `dw_app` may delete; nothing
+    truncates them and `dw_agent_ro` reads none of them. The three trigger
+    functions run as their owner and are nobody's to call."""
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            held = {
+                (row.rolname, row.tbl, row.verb)
+                for row in await conn.execute(
+                    sa.text(
+                        """
+                        SELECT r.rolname, t.tbl, v.verb
+                        FROM pg_roles r
+                        CROSS JOIN unnest(CAST(:tables AS text[])) AS t(tbl)
+                        CROSS JOIN unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE',
+                                                'TRUNCATE']) AS v(verb)
+                        WHERE r.rolname IN ('dw_app', 'dw_agent_ro')
+                          AND has_table_privilege(r.rolname, t.tbl, v.verb)
+                        """
+                    ),
+                    {"tables": list(_DW_TABLES)},
+                )
+            }
+            callable_by_public = (
+                await conn.execute(
+                    sa.text(
+                        """
+                        SELECT count(*) FROM unnest(ARRAY[
+                            'platform.guard_accountable_owner()',
+                            'platform.external_identities_human_only()',
+                            'platform.dw_principal_roles_fixed()'
+                        ]) AS f(fn)
+                        WHERE has_function_privilege('public', f.fn, 'EXECUTE')
+                        """
+                    )
+                )
+            ).scalar_one()
+    finally:
+        await migrator.dispose()
+    for table in _DW_TABLES:
+        assert {verb for role, tbl, verb in held if role == "dw_app" and tbl == table} == {
+            "SELECT",
+            "INSERT",
+            "UPDATE",
+            "DELETE",
+        }, table
+    assert {role for role, _, _ in held} == {"dw_app"}, "dw_agent_ro reads a DW table"
+    assert callable_by_public == 0
+
+
+# R1.18 (DWK41): every role or permission set a DW's principal holds that a
+# service principal may not: a critical role by name, or one carrying an
+# administrative scope (`platform.*`, the platform's prefix, or `admin.*`).
+# Read from the catalog after every migration, so a role the catalogue widens
+# later is caught without anyone looking at the DW.
+_CRITICAL_PRINCIPAL_ROLES = sa.text(
+    """
+    SELECT d.key AS dw, d.tenant_id, r.key AS role
+    FROM platform.digital_workers d
+    JOIN platform.memberships m ON m.user_id = d.principal_user_id
+    JOIN platform.roles r ON m.role_keys ? r.key
+    WHERE r.key IN ('tenant_owner', 'org_admin', 'platform_admin')
+       OR EXISTS (
+           SELECT 1 FROM jsonb_array_elements_text(r.scopes) AS s(scope)
+           WHERE s.scope LIKE 'platform.%' OR s.scope LIKE 'admin.%'
+       )
+    UNION ALL
+    SELECT d.key, d.tenant_id, p.key
+    FROM platform.digital_workers d
+    JOIN platform.memberships m ON m.user_id = d.principal_user_id
+    JOIN platform.permission_sets p ON m.permission_set_keys ? p.key
+    WHERE EXISTS (
+        SELECT 1 FROM jsonb_array_elements_text(p.scopes) AS s(scope)
+        WHERE s.scope LIKE 'platform.%' OR s.scope LIKE 'admin.%'
+    )
+    ORDER BY 1, 3
+    """
+)
+
+
+async def critical_principal_roles(conn: AsyncConnection) -> list[str]:
+    return [
+        f"DW {row.dw} of tenant {row.tenant_id} holds {row.role}"
+        for row in (await conn.execute(_CRITICAL_PRINCIPAL_ROLES)).all()
+    ]
+
+
+async def test_no_digital_worker_principal_holds_a_critical_role(db_urls: DatabaseUrls) -> None:
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            assert await critical_principal_roles(conn) == []
+    finally:
+        await migrator.dispose()
+
+
+_MEMBER = '["member"]'
+
+
+async def test_the_critical_role_check_names_a_planted_principal(db_urls: DatabaseUrls) -> None:
+    """DWK41: `org_admin` given to a DW's principal by a role that can (the
+    migrator, as the table's owner, past the trigger the application meets)
+    turns the check red and names the DW; taken away, green again. In a
+    transaction rolled back."""
+    tenant, ws, owner, principal, dw = (uuid.uuid4() for _ in range(5))
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn, conn.begin() as tx:
+            for sql, values in (
+                (
+                    "INSERT INTO platform.tenants (id, slug, name) VALUES (:t, :s, :s)",
+                    {"t": tenant, "s": f"crit-{tenant.hex[:12]}"},
+                ),
+                (
+                    "INSERT INTO platform.workspaces (id, tenant_id, slug, name)"
+                    " VALUES (:w, :t, 'main', 'main')",
+                    {"w": ws, "t": tenant},
+                ),
+                (
+                    "INSERT INTO platform.users (id, subject, display_name)"
+                    " VALUES (:u, :s, 'owner')",
+                    {"u": owner, "s": f"crit-{owner}"},
+                ),
+                (
+                    "INSERT INTO platform.memberships (id, tenant_id, workspace_id, user_id,"
+                    " role_keys) VALUES (:id, :t, :w, :u, CAST(:r AS jsonb))",
+                    {"id": uuid.uuid4(), "t": tenant, "w": ws, "u": owner, "r": _MEMBER},
+                ),
+                (
+                    "INSERT INTO platform.users (id, subject, display_name, kind,"
+                    " owner_tenant_id) VALUES (:u, :s, 'dw', 'service', :t)",
+                    {"u": principal, "s": f"service:{principal}", "t": tenant},
+                ),
+                (
+                    "INSERT INTO platform.service_principals (user_id, tenant_id,"
+                    " owning_workspace_id, name, owner_user_id) VALUES (:u, :t, :w, 'dw', :o)",
+                    {"u": principal, "t": tenant, "w": ws, "o": owner},
+                ),
+                (
+                    "INSERT INTO platform.memberships (id, tenant_id, workspace_id, user_id,"
+                    " role_keys) VALUES (:id, :t, :w, :u, CAST(:r AS jsonb))",
+                    {"id": uuid.uuid4(), "t": tenant, "w": ws, "u": principal, "r": _MEMBER},
+                ),
+                (
+                    "INSERT INTO platform.digital_workers (id, tenant_id, workspace_id,"
+                    " principal_user_id, key, name, mandate, work_kinds, allowed_tools,"
+                    " workflow_key, workflow_version, technical_owner_id, work_assigner_id,"
+                    " validator_id, created_by) VALUES (:d, :t, :w, :u, 'planted_dw', 'dw',"
+                    " 'dw', ARRAY['lead'], ARRAY[]::text[], 'wf', '1.0.0', :o, :o, :o, :o)",
+                    {"d": dw, "t": tenant, "w": ws, "u": principal, "o": owner},
+                ),
+            ):
+                await conn.execute(sa.text(sql), values)
+            assert await critical_principal_roles(conn) == []
+
+            await conn.execute(
+                sa.text("ALTER TABLE platform.memberships DISABLE TRIGGER dw_principal_roles_fixed")
+            )
+            await conn.execute(
+                sa.text(
+                    "UPDATE platform.memberships"
+                    " SET role_keys = role_keys || CAST(:r AS jsonb) WHERE user_id = :u"
+                ),
+                {"u": principal, "r": '["org_admin"]'},
+            )
+            assert await critical_principal_roles(conn) == [
+                f"DW planted_dw of tenant {tenant} holds org_admin"
+            ]
+
+            await conn.execute(
+                sa.text(
+                    "UPDATE platform.memberships SET role_keys = CAST(:r AS jsonb)"
+                    " WHERE user_id = :u"
+                ),
+                {"u": principal, "r": _MEMBER},
+            )
+            assert await critical_principal_roles(conn) == []
+            await tx.rollback()
+    finally:
+        await migrator.dispose()

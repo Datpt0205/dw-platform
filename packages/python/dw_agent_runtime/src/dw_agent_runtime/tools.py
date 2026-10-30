@@ -51,6 +51,13 @@ class ToolRegistry:
             )
         return tool
 
+    def has_tool(self, name: str) -> bool:
+        """Whether any version of a tool of this name is registered: what a
+        Digital Worker's `allowed_tools` is checked against (digital-worker
+        R1.3, `ToolCatalogPort`). Read at the time of asking, so a tool a
+        context registers after wiring counts."""
+        return any(tool_name == name for tool_name, _ in self._tools)
+
     def all_definitions(self) -> list[ToolDefinition]:
         return [tool.definition for tool in self._tools.values()]
 

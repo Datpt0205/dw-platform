@@ -61,7 +61,7 @@ class SqlWorkspaceDirectory:
                     tables.users, tables.memberships.c.user_id == tables.users.c.id
                 )
             )
-            .where(tables.memberships.c.workspace_id == context.workspace_id)
+            .where(tables.memberships.c.workspace_id == context.workspace_id, tables.HUMAN)
             .order_by(tables.users.c.display_name)
         )
         scope = TenantScope.from_access_context(context)
@@ -102,6 +102,7 @@ class SqlWorkspaceDirectory:
             )
             .where(
                 tables.users.c.email.is_not(None),
+                tables.HUMAN,
                 tables.users.c.id.not_in(already),
                 sa.or_(
                     tables.users.c.id.in_(in_this_tenant),

@@ -608,6 +608,10 @@ _TENANT_WIDE_ON_PURPOSE: dict[tuple[str, str], str] = {
     ),
     ("platform", "entitlements"): "what the tenant's plan includes, for the whole company",
     ("platform", "policy_overrides"): "a tenant's override of a platform policy, company-wide",
+    ("platform", "service_principals"): (
+        "a service principal is an identity of the company (ADR-0103 decision 2); its "
+        "workspace is `owning_workspace_id`, held by the RESTRICT composite key"
+    ),
     ("platform", "sod_waivers"): (
         "a separation-of-duties waiver for a person across the company's memberships"
     ),

@@ -60,6 +60,10 @@ from dw_platform.adapters.persistence.approval_codes import SqlApprovalCodeStore
 from dw_platform.adapters.persistence.caching_lookup import CachingMembershipLookup
 from dw_platform.adapters.persistence.channel_inbound import SqlChannelUpdateQueue
 from dw_platform.adapters.persistence.channel_preferences import SqlChannelPreferences
+from dw_platform.adapters.persistence.digital_workers_repo import (
+    SqlDigitalWorkerRepository,
+    SqlDwMembershipCheck,
+)
 from dw_platform.adapters.persistence.directory import SqlWorkspaceDirectory
 from dw_platform.adapters.persistence.effect_key_store import SqlEffectKeyLookup
 from dw_platform.adapters.persistence.hierarchy_repo import SqlHierarchyRepository
@@ -83,6 +87,7 @@ from dw_platform.adapters.persistence.zalo_link_repo import SqlZaloLink
 from dw_platform.application.admin_console import AdminConsoleService
 from dw_platform.application.approval_codes import ApprovalSubjectVersions, DecisionCodeKey
 from dw_platform.application.authorization import ScopeAuthorizationService
+from dw_platform.application.digital_workers import DigitalWorkerService
 from dw_platform.application.entitlement import DEFAULT_PLANS, PlanEntitlementService
 from dw_platform.application.hierarchy import HierarchyService
 from dw_platform.application.idempotency import HttpIdempotency
@@ -330,6 +335,15 @@ def _build_container(settings: ApiSettings | None) -> ApiContainer:
     container.ingest_job_store = wiring.ingest_jobs
     container.memory_service = wiring.memory_service
     container.tool_registry = wiring.tool_registry
+    container.digital_workers = DigitalWorkerService(
+        repo=SqlDigitalWorkerRepository(session_factory),
+        authz=authorization,
+        tools=wiring.tool_registry,
+        members=SqlDwMembershipCheck(session_factory),
+        roles=SqlTenantMembersRepository(session_factory),
+        clock=clock,
+        id_generator=ids,
+    )
 
     # ---- BOUNDED CONTEXTS PLUG IN HERE -----------------------------------
     # Build your context from `container.runtime` (the RuntimeSeam) and attach

@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from dw_kernel.errors import ConflictError, NotFoundError
 from dw_platform.adapters.persistence import tables
+from dw_platform.adapters.persistence.digital_workers_repo import dw_principal_roles_conflict
 from dw_platform.adapters.persistence.directory import member_status
 from dw_platform.adapters.persistence.effect_key_store import claim_effect_key
 from dw_platform.adapters.persistence.repositories import SqlAuditRepository
@@ -78,7 +79,7 @@ class SqlTenantMembersRepository:
                     tables.workspaces, tables.workspaces.c.id == _M.c.workspace_id
                 )
             )
-            .where(_M.c.tenant_id == context.tenant_id)
+            .where(_M.c.tenant_id == context.tenant_id, tables.HUMAN)
             .order_by(
                 tables.users.c.display_name.collate(VIETNAMESE),
                 tables.users.c.id,
@@ -263,7 +264,11 @@ async def _write(
                     sa.update(_M).where(*mine).values(role_keys=sorted(change.after))
                 )
     except IntegrityError as exc:
-        conflict = separation_of_duties_conflict(exc) or support_staff_conflict(exc)
+        conflict = (
+            separation_of_duties_conflict(exc)
+            or support_staff_conflict(exc)
+            or dw_principal_roles_conflict(exc)
+        )
         if conflict is None:
             raise
         raise conflict from exc

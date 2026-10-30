@@ -45,12 +45,11 @@ only the ceiling decides how far a run reaches.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Final
 
 from dw_agent_runtime.contracts import RunContext, ToolDefinition
-from dw_kernel.autonomy import AUTONOMY_LEVELS, AutonomyLevel
+from dw_kernel.autonomy import AutonomyLevel, effect_rung, lower_autonomy, requires_person
 
 __all__ = [
     "AUTONOMY_POLICY_VERSION",
@@ -61,42 +60,6 @@ __all__ = [
 # Bumped whenever what any level may do changes. Stamped on each run, so a past
 # decision is read under the policy that made it, never re-derived under today's.
 AUTONOMY_POLICY_VERSION: Final = "1.0.0"
-
-# The rungs, lowest to highest. "external_idempotent" is not a value a tool spec
-# can declare; it is what an idempotent external tool is ranked as.
-_RUNG: Final[Mapping[str, int]] = {
-    "none": 0,
-    "internal": 1,
-    "external_idempotent": 2,
-    "external": 3,
-    "critical": 4,
-}
-
-# The highest rung each level runs without asking. -1 is below every rung: A0
-# reaches nothing. No level reaches 4, which is what makes `critical` a floor by
-# construction and not only by the explicit check below.
-_REACH: Final[Mapping[AutonomyLevel, int]] = {
-    "A0": -1,
-    "A1": _RUNG["none"],
-    "A2": _RUNG["internal"],
-    "A3": _RUNG["external_idempotent"],
-    "A4": _RUNG["external"],
-}
-
-
-def lower_autonomy(first: AutonomyLevel, second: AutonomyLevel) -> AutonomyLevel:
-    """The more restrictive of two levels.
-
-    How a tenant's ceiling combines with a worker's declared level: a tenant may
-    hold a worker below what it was built for, and never lift it above.
-    """
-    return first if AUTONOMY_LEVELS.index(first) <= AUTONOMY_LEVELS.index(second) else second
-
-
-def _rung_of(tool: ToolDefinition) -> int:
-    if tool.side_effect_level == "external" and tool.idempotent:
-        return _RUNG["external_idempotent"]
-    return _RUNG[tool.side_effect_level]
 
 
 @dataclass(frozen=True)
@@ -121,13 +84,11 @@ class AutonomyApprovalPolicy:
         return self.requires_approval(tool, autonomy=run_context.autonomy_level)
 
     def requires_approval(self, tool: ToolDefinition, *, autonomy: AutonomyLevel | None) -> bool:
-        # The floors, first and unconditionally. `critical` is also out of every
-        # level's reach below; checking it here as well means that stays true
-        # even if someone one day extends a level's reach.
-        if tool.approval_policy == "always" or tool.side_effect_level == "critical":
+        # The tool author's floor, first and unconditionally. The ladder itself,
+        # with `critical` out of every level's reach and an unresolved level
+        # asking, is the kernel's: a Digital Worker's decision class climbs the
+        # same one (digital-worker R2.4).
+        if tool.approval_policy == "always":
             return True
-        # A run whose autonomy was never resolved has not been through the runner
-        # that sets it. Refusing is recoverable; acting on a guess is not.
-        if autonomy is None:
-            return True
-        return _rung_of(tool) > _REACH[autonomy]
+        rung = effect_rung(tool.side_effect_level, repeatable=tool.idempotent)
+        return requires_person(rung, autonomy)

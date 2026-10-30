@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from dw_kernel.errors import NotFoundError
 from dw_platform.adapters.persistence import tables
+from dw_platform.adapters.persistence.digital_workers_repo import dw_principal_roles_conflict
 from dw_platform.adapters.persistence.effect_key_store import claim_effect_key
 from dw_platform.adapters.persistence.repositories import SqlAuditRepository
 from dw_platform.adapters.persistence.separation_of_duties import (
@@ -49,7 +50,7 @@ class SqlMembershipAdminRepository:
                         tables.users.c.id,
                         tables.users.c.email,
                         tables.users.c.display_name,
-                    ).where(sa.func.lower(tables.users.c.email) == normalised)
+                    ).where(sa.func.lower(tables.users.c.email) == normalised, tables.HUMAN)
                 )
             ).first()
         if row is None:
@@ -130,7 +131,11 @@ class SqlMembershipAdminRepository:
                 # not hold (the membership's existing permission sets
                 # included), or a support staff member (ADR 0024): nothing
                 # was granted, and no audit row claims it.
-                conflict = separation_of_duties_conflict(exc) or support_staff_conflict(exc)
+                conflict = (
+                    separation_of_duties_conflict(exc)
+                    or support_staff_conflict(exc)
+                    or dw_principal_roles_conflict(exc)
+                )
                 if conflict is None:
                     raise
                 raise conflict from exc

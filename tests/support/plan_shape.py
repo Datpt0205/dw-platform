@@ -45,6 +45,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 REGISTERED: Final[Mapping[tuple[str, str], str]] = {
     ("GET", "/api/v1/approvals"): "platform.approval_requests",
     ("GET", "/api/v1/audit/events"): "platform.audit_events",
+    ("GET", "/api/v1/digital-workers"): "platform.digital_workers",
     ("GET", "/api/v1/feedback"): "platform.feedback",
     ("GET", "/api/v1/knowledge/documents"): "knowledge.documents",
     ("GET", "/api/v1/memory/items"): "memory.items",

@@ -30,7 +30,8 @@ from starlette.routing import Mount
 
 from dw_agent_runtime.approval_flow import ApproveAndResumeService
 from dw_api.dependencies.idempotency import IDEMPOTENCY_HEADER
-from dw_platform.application import membership_admin, support_access
+from dw_api.routes.v1 import digital_workers as digital_workers_routes
+from dw_platform.application import digital_workers, membership_admin, support_access
 
 pytestmark = pytest.mark.unit
 
@@ -46,8 +47,10 @@ ROUTES = Path(__file__).resolve().parents[2] / "src" / "dw_api" / "routes" / "v1
 REPO = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(REPO / "scripts"))
 
-# The nine operations that take a key today (README, "Idempotent requests"),
-# each with what its service checks.
+# The operations that take a key today (README, "Idempotent requests"), each
+# with what its service checks. A DW's state and people are checked against
+# the DW the path names, so their route declares a function that calls the
+# service's own `require_owner` (R2.30), held to that below.
 DECLARED: dict[tuple[str, str], object] = {
     ("POST", "/api/v1/admin/members"): membership_admin.MEMBERS_WRITE,
     ("DELETE", "/api/v1/admin/members/{user_id}"): membership_admin.MEMBERS_WRITE,
@@ -57,6 +60,15 @@ DECLARED: dict[tuple[str, str], object] = {
     ("POST", "/api/v1/support/grants/{grant_id}/approve"): support_access.check_approve,
     ("POST", "/api/v1/support/grants/{grant_id}/reject"): support_access.check_close,
     ("POST", "/api/v1/support/grants/{grant_id}/revoke"): support_access.check_close,
+    ("POST", "/api/v1/digital-workers"): digital_workers.DW_MANAGE,
+    (
+        "POST",
+        "/api/v1/digital-workers/{dw_id}/state",
+    ): digital_workers_routes._owner_of_path,
+    (
+        "PUT",
+        "/api/v1/digital-workers/{dw_id}/people",
+    ): digital_workers_routes._owner_of_path,
 }
 DECIDE = ("POST", "/api/v1/approvals/{approval_id}/decisions")
 
@@ -69,6 +81,7 @@ HIDDEN: dict[tuple[str, str], str] = {
 # The route modules whose `idempotent(...)` declarations are read, and the
 # modules a declared name may come from: the services those routes call.
 SERVICE_MODULES = {
+    "dw_platform.application.digital_workers",
     "dw_platform.application.membership_admin",
     "dw_platform.application.support_access",
 }
@@ -178,6 +191,9 @@ def test_each_declaration_is_the_check_its_service_makes() -> None:
         "decisions must call the service's own check (R2.30)"
     )
     assert hasattr(ApproveAndResumeService, "authorize_decision")
+    owner = ast.dump(ast.parse(_source_of(digital_workers_routes._owner_of_path)))
+    assert "require_owner" in owner, "a DW write must call the service's own owner check"
+    assert hasattr(digital_workers.DigitalWorkerService, "require_owner")
 
 
 def _source_of(function: object) -> str:

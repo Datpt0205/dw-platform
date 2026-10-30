@@ -60,6 +60,7 @@ class SqlHierarchyRepository:
             .where(
                 tables.memberships.c.tenant_id == context.tenant_id,
                 tables.memberships.c.workspace_id == context.workspace_id,
+                tables.HUMAN,
             )
             .order_by(tables.users.c.display_name)
         )

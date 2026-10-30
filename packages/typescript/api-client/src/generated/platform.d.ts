@@ -448,6 +448,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/digital-workers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Digital Workers */
+        get: operations["list_digital_workers_api_v1_digital_workers_get"];
+        put?: never;
+        /** Create Digital Worker */
+        post: operations["create_digital_worker_api_v1_digital_workers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/digital-workers/{dw_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Digital Worker */
+        get: operations["get_digital_worker_api_v1_digital_workers__dw_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/digital-workers/{dw_id}/people": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Replace Digital Worker People */
+        put: operations["replace_digital_worker_people_api_v1_digital_workers__dw_id__people_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/digital-workers/{dw_id}/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Change Digital Worker State */
+        post: operations["change_digital_worker_state_api_v1_digital_workers__dw_id__state_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/directory/candidates": {
         parameters: {
             query?: never;
@@ -1475,12 +1544,47 @@ export interface components {
             /** Cancelled */
             cancelled: boolean;
         };
+        /** ChangeStateRequest */
+        ChangeStateRequest: {
+            /** State */
+            state: string;
+        };
         /**
          * CodeUnavailable
          * @description Why the portal offers no code. Each one is a sentence on the page.
          * @enum {string}
          */
         CodeUnavailable: "not_pending" | "cannot_decide" | "requester" | "web_only" | "not_linked" | "comment_required" | "channel_off";
+        /**
+         * CreateDigitalWorkerRequest
+         * @description Unknown fields are ignored, not refused: a `tenant_id` or `workspace_id`
+         *     in the body changes nothing, both come from the access context (R1.1).
+         */
+        CreateDigitalWorkerRequest: {
+            /** Allowed Tools */
+            allowed_tools?: string[];
+            /** Decision Classes */
+            decision_classes?: components["schemas"]["DecisionClassBody"][];
+            /** Key */
+            key: string;
+            /** Mandate */
+            mandate: string;
+            /** Name */
+            name: string;
+            /** Parameters */
+            parameters?: {
+                [key: string]: unknown;
+            };
+            people: components["schemas"]["PeopleBody"];
+            /** Role Keys */
+            role_keys: string[];
+            /** Work Kinds */
+            work_kinds: string[];
+            /** Workflow Key */
+            workflow_key: string;
+            /** Workflow Version */
+            workflow_version: string;
+        };
         /** CreateTenantRequest */
         CreateTenantRequest: {
             /** Name */
@@ -1496,6 +1600,32 @@ export interface components {
             name: string;
             /** Slug */
             slug: string;
+        };
+        /** DecisionClassBody */
+        DecisionClassBody: {
+            /** Ceiling */
+            ceiling: string;
+            /** Earned Level */
+            earned_level: string;
+            /** Effect Level */
+            effect_level: string;
+            /** Key */
+            key: string;
+            /** Reversible */
+            reversible: boolean;
+        };
+        /** DecisionClassView */
+        DecisionClassView: {
+            /** Ceiling */
+            ceiling: string;
+            /** Earned Level */
+            earned_level: string;
+            /** Effect Level */
+            effect_level: string;
+            /** Key */
+            key: string;
+            /** Reversible */
+            reversible: boolean;
         };
         /** DecisionRequest */
         DecisionRequest: {
@@ -1564,6 +1694,59 @@ export interface components {
              * Format: uuid
              */
             workspace_id: string;
+        };
+        /** DigitalWorkerView */
+        DigitalWorkerView: {
+            /** Allowed Tools */
+            allowed_tools: string[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Created By
+             * Format: uuid
+             */
+            created_by: string;
+            /** Decision Classes */
+            decision_classes: components["schemas"]["DecisionClassView"][];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Key */
+            key: string;
+            /** Mandate */
+            mandate: string;
+            /** Name */
+            name: string;
+            /** Parameters */
+            parameters: {
+                [key: string]: unknown;
+            };
+            people: components["schemas"]["PeopleView"];
+            /**
+             * Principal User Id
+             * Format: uuid
+             */
+            principal_user_id: string;
+            /** Role Keys */
+            role_keys: string[];
+            /** State */
+            state: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Work Kinds */
+            work_kinds: string[];
+            /** Workflow Key */
+            workflow_key: string;
+            /** Workflow Version */
+            workflow_version: string;
         };
         /** FeedbackAttachmentView */
         FeedbackAttachmentView: {
@@ -2073,6 +2256,20 @@ export interface components {
          *     ``items`` — is the client's stop condition: a filtered listing can return an
          *     empty page in the middle of a run and still have more rows behind it.
          */
+        Page_DigitalWorkerView_: {
+            /** Items */
+            items: components["schemas"]["DigitalWorkerView"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /**
+         * Page
+         * @description A page of results and the cursor that continues it.
+         *
+         *     ``next_cursor`` is ``None`` on the last page, and that — not an empty
+         *     ``items`` — is the client's stop condition: a filtered listing can return an
+         *     empty page in the middle of a run and still have more rows behind it.
+         */
         Page_FeedbackView_: {
             /** Items */
             items: components["schemas"]["FeedbackView"][];
@@ -2106,6 +2303,49 @@ export interface components {
             items: components["schemas"]["MemoryItemView"][];
             /** Next Cursor */
             next_cursor: string | null;
+        };
+        /** PeopleBody */
+        PeopleBody: {
+            /**
+             * Business Owner Id
+             * Format: uuid
+             */
+            business_owner_id: string;
+            /**
+             * Technical Owner Id
+             * Format: uuid
+             */
+            technical_owner_id: string;
+            /**
+             * Validator Id
+             * Format: uuid
+             */
+            validator_id: string;
+            /**
+             * Work Assigner Id
+             * Format: uuid
+             */
+            work_assigner_id: string;
+        };
+        /** PeopleView */
+        PeopleView: {
+            /** Business Owner Id */
+            business_owner_id: string | null;
+            /**
+             * Technical Owner Id
+             * Format: uuid
+             */
+            technical_owner_id: string;
+            /**
+             * Validator Id
+             * Format: uuid
+             */
+            validator_id: string;
+            /**
+             * Work Assigner Id
+             * Format: uuid
+             */
+            work_assigner_id: string;
         };
         /** PermissionSetView */
         PermissionSetView: {
@@ -3812,6 +4052,227 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DevSessionResponse"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_digital_workers_api_v1_digital_workers_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                /** @description Opaque cursor from a previous page. */
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_DigitalWorkerView_"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    create_digital_worker_api_v1_digital_workers_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateDigitalWorkerRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DigitalWorkerView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_digital_worker_api_v1_digital_workers__dw_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dw_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DigitalWorkerView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    replace_digital_worker_people_api_v1_digital_workers__dw_id__people_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                dw_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PeopleBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DigitalWorkerView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    change_digital_worker_state_api_v1_digital_workers__dw_id__state_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                dw_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeStateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DigitalWorkerView"];
                 };
             };
             /** @description The request was refused */

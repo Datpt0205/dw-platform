@@ -55,6 +55,7 @@ from dw_platform.application.admin_console import AdminConsoleService
 from dw_platform.application.authorization import ScopeAuthorizationService
 from dw_platform.application.cache import CachePort
 from dw_platform.application.channel_access import ChannelPreferencesPort
+from dw_platform.application.digital_workers import DigitalWorkerService
 from dw_platform.application.effect_keys import EffectKeyPort
 from dw_platform.application.entitlement import PlanEntitlementService
 from dw_platform.application.hierarchy import HierarchyService
@@ -160,6 +161,9 @@ class ApiContainer:
     admin_console: AdminConsoleService | None = None
     hierarchy: HierarchyService | None = None
     separation_of_duties: SeparationOfDutiesService | None = None
+    # Digital Workers (digital-worker R1, R2): wired with the agent runtime,
+    # whose tool register a DW's `allowed_tools` is checked against.
+    digital_workers: DigitalWorkerService | None = None
     notifications: NotificationService | None = None
     # Customer-granted support access (ADR 0024). A context registers its
     # grantable scope sets and resource describers on the catalog at the seam

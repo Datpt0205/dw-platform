@@ -55,10 +55,18 @@ users = sa.Table(
     sa.Column("subject", sa.Text, nullable=False, unique=True),
     sa.Column("email", sa.Text, nullable=True, unique=True),
     sa.Column("display_name", sa.Text, nullable=False),
+    # `service` for a Digital Worker's principal, which belongs to one tenant
+    # and never signs in (migration be93e0c26a4c, ADR-0103 decision 2).
+    sa.Column("kind", sa.Text, nullable=False, server_default="human"),
+    sa.Column("owner_tenant_id", UUID(as_uuid=True), nullable=True),
     sa.Column(
         "created_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text("now()")
     ),
 )
+
+# A person, as the identity plane's lists show them: a Digital Worker's service
+# principal never appears where people are listed, picked or told (R1.11).
+HUMAN = users.c.kind == "human"
 
 roles = sa.Table(
     "roles",
@@ -651,4 +659,61 @@ TENANT_SCOPED_TABLES = (
     "outbox_events",
     "idempotency_keys",
     "effect_keys",
+)
+
+
+# Digital Workers (migration be93e0c26a4c, digital-worker R1, R2). A DW acts
+# under its own service principal; its Business Owner is the principal's
+# `owner_user_id` and nowhere else.
+service_principals = sa.Table(
+    "service_principals",
+    metadata,
+    sa.Column("user_id", UUID(as_uuid=True), primary_key=True),
+    sa.Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("owning_workspace_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("name", sa.Text, nullable=False),
+    sa.Column("owner_user_id", UUID(as_uuid=True), nullable=True),
+    sa.Column(
+        "created_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text("now()")
+    ),
+)
+
+digital_workers = sa.Table(
+    "digital_workers",
+    metadata,
+    sa.Column("id", UUID(as_uuid=True), primary_key=True),
+    sa.Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("workspace_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("principal_user_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("key", sa.Text, nullable=False),
+    sa.Column("name", sa.Text, nullable=False),
+    sa.Column("mandate", sa.Text, nullable=False),
+    sa.Column("work_kinds", ARRAY(sa.Text), nullable=False),
+    sa.Column("allowed_tools", ARRAY(sa.Text), nullable=False),
+    sa.Column("workflow_key", sa.Text, nullable=False),
+    sa.Column("workflow_version", sa.Text, nullable=False),
+    sa.Column("parameters", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
+    sa.Column("state", sa.Text, nullable=False, server_default="draft"),
+    sa.Column("technical_owner_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("work_assigner_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("validator_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("created_by", UUID(as_uuid=True), nullable=False),
+    sa.Column("created_at", sa.TIMESTAMP(timezone=True), nullable=False),
+    sa.Column("updated_at", sa.TIMESTAMP(timezone=True), nullable=False),
+)
+
+dw_decision_classes = sa.Table(
+    "dw_decision_classes",
+    metadata,
+    sa.Column("dw_id", UUID(as_uuid=True), primary_key=True),
+    sa.Column("key", sa.Text, primary_key=True),
+    sa.Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("workspace_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("effect_level", sa.Text, nullable=False),
+    sa.Column("reversible", sa.Boolean, nullable=False),
+    sa.Column("ceiling", sa.Text, nullable=False),
+    sa.Column("earned_level", sa.Text, nullable=False),
+    sa.Column(
+        "updated_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text("now()")
+    ),
 )

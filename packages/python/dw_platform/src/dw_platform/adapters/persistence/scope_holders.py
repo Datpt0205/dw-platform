@@ -33,13 +33,16 @@ async def _members(
     tenant_id: uuid.UUID,
     workspace_id: uuid.UUID,
     user_id: uuid.UUID | None = None,
+    *,
+    people_only: bool = False,
 ) -> Sequence[sa.Row[Any]]:
     """The memberships of one workspace of an active tenant, by `user_id`.
 
     The one membership query of this module. RLS already bounds the rows to the
     bound tenant; the explicit tenant predicate says so again, and the tenant
     join refuses a tenant that is not `active` (an absent or unreadable status
-    is not active either). With `user_id`, at most that one membership.
+    is not active either). With `user_id`, at most that one membership. With
+    `people_only`, no Digital Worker's principal: it is never someone to tell.
     """
     query = (
         sa.select(
@@ -61,6 +64,10 @@ async def _members(
     )
     if user_id is not None:
         query = query.where(tables.memberships.c.user_id == user_id)
+    if people_only:
+        query = query.join(tables.users, tables.users.c.id == tables.memberships.c.user_id).where(
+            tables.HUMAN
+        )
     return (await session.execute(query)).all()
 
 
@@ -89,7 +96,7 @@ class SqlScopeHolders:
         scope = TenantScope(tenant_id=tenant_id, workspace_id=workspace_id)
         async with tenant_session(self.session_factory, scope) as session:
             holders: list[uuid.UUID] = []
-            for member in await _members(session, tenant_id, workspace_id):
+            for member in await _members(session, tenant_id, workspace_id, people_only=True):
                 if await _scopes_of(session, member) & scopes:
                     holders.append(member.user_id)
         return holders
