@@ -1,0 +1,147 @@
+# Mutation check of digital-worker ticket 01: scripts/mutate.py runs this file.
+# One mutation per Kiểm soát row the ticket implements (DWK1, DWK3-DWK7, DWK23-
+# DWK25, DWK33, DWK36, DWK39) and per guard it adds (404 before 403, the kind
+# filters, the refusal mapped to 409). DWK41 is a catalog test with no source to
+# break; its planted-principal test is its mutation. The `kind = 'human'` filter
+# on `/directory/candidates` cannot be broken alone: a service user has no email
+# and the candidates query already requires one, so it is defence in depth and
+# recorded as such in the ticket's Comments.
+mutations:
+  - name: DWK1 the validator need not decide
+    file: packages/python/dw_platform/src/dw_platform/application/digital_workers.py
+    old: "        if validator is None or APPROVALS_DECIDE not in validator.scopes:"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_digital_workers.py::test_the_four_people_are_members_and_the_validator_decides
+  - name: DWK39 a service user may be one of the four
+    file: packages/python/dw_platform/src/dw_platform/application/digital_workers.py
+    old: '            if standing is None or standing.kind != "human"'
+    new: "            if standing is None"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_digital_workers.py::test_a_service_user_is_not_one_of_the_four_people
+  - name: R1.3 any tool is known
+    file: packages/python/dw_platform/src/dw_platform/application/digital_workers.py
+    old: "if not self.tools.has_tool(t))"
+    new: "if False)"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_digital_workers.py::test_an_unknown_tool_is_refused_before_anything_is_written
+      - apps/api/tests/unit/test_digital_workers_endpoint.py::test_a_refusal_names_its_reason
+  - name: DWK3 the policy forgets the workspace
+    file: db/migrations/versions/be93e0c26a4c_platform_digital_workers.py
+    old: '_NARROWED = f"({_TENANT} AND ({_WORKSPACE} OR {_SCOPE}))"'
+    new: '_NARROWED = f"({_TENANT})"'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_digital_workers_db.py::test_another_tenant_or_workspace_does_not_find_a_dw
+  - name: DWK3 decision classes without RLS
+    file: db/migrations/versions/be93e0c26a4c_platform_digital_workers.py
+    old: '    op.execute("ALTER TABLE platform.dw_decision_classes ENABLE ROW LEVEL SECURITY")'
+    new: "    pass"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_digital_workers_db.py::test_another_tenant_or_workspace_does_not_find_a_dw
+  - name: R1.5 403 before 404
+    file: packages/python/dw_platform/src/dw_platform/application/digital_workers.py
+    old: "            raise _not_found() from None"
+    new: "            raise"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_digital_workers.py::test_a_dw_the_caller_may_not_read_is_not_found
+  - name: DWK4 anyone may change state
+    file: packages/python/dw_platform/src/dw_platform/application/digital_workers.py
+    old: "        if context.principal_id not in worker.people.owners():"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_digital_workers.py::test_only_an_owner_changes_state
+      - packages/python/dw_platform/tests/unit/test_digital_workers.py::test_people_are_replaced_only_by_an_owner_and_only_with_members
+  - name: DWK5 any transition
+    file: packages/python/dw_platform/src/dw_platform/domain/digital_worker.py
+    old: "    if target not in TRANSITIONS.get(current, frozenset()):"
+    new: "    if False:"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_digital_workers.py::test_a_retired_dw_does_not_operate_again
+  - name: DWK6 the tenant's ceiling is ignored
+    file: packages/python/dw_platform/src/dw_platform/application/digital_workers.py
+    old: "    return lower_autonomy(lower_autonomy(ceiling, earned), tenant)"
+    new: "    return lower_autonomy(ceiling, earned)"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_digital_workers.py::test_the_effective_level_is_the_lowest_of_three
+      - packages/python/dw_platform/tests/integration/test_digital_workers_db.py::test_the_effective_level_reads_the_tenants_ceiling_when_asked
+  - name: DWK6 a missing class is A4
+    file: packages/python/dw_platform/src/dw_platform/application/digital_workers.py
+    old: "    if found is None:\n        return FAIL_CLOSED_LEVEL"
+    new: "    if found is None:\n        return \"A4\""
+    tests:
+      - packages/python/dw_platform/tests/unit/test_digital_workers.py::test_an_unreadable_level_is_a0
+  - name: DWK7 an irreversible external effect ranks as repeatable
+    file: packages/python/dw_kernel/src/dw_kernel/autonomy.py
+    old: '    if effect_level == "external" and repeatable:'
+    new: '    if effect_level == "external":'
+    tests:
+      - packages/python/dw_platform/tests/unit/test_digital_workers.py::test_the_decision_ladder_is_the_tool_ladder
+      - packages/python/dw_agent_runtime/tests/unit/test_autonomy_policy.py
+  - name: DWK23 the creator may start their own DW
+    file: packages/python/dw_platform/src/dw_platform/application/digital_workers.py
+    old: "        if context.principal_id == worker.created_by:"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_digital_workers.py::test_the_creator_does_not_put_their_own_dw_into_operation
+      - apps/api/tests/unit/test_digital_workers_endpoint.py::test_the_creator_cannot_start_their_own_dw_and_the_list_shows_it
+  - name: DWK23 the second person need not cover the principal
+    file: packages/python/dw_platform/src/dw_platform/application/digital_workers.py
+    old: "        if not held <= context.scopes:"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_digital_workers.py::test_who_puts_a_dw_into_operation_holds_every_scope_of_its_principal
+      - packages/python/dw_platform/tests/integration/test_digital_workers_db.py::test_a_second_person_who_covers_the_principal_puts_it_into_operation
+  - name: DWK24 the creator hands out scopes they lack
+    file: packages/python/dw_platform/src/dw_platform/application/digital_workers.py
+    old: "        if not granted <= context.scopes:"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_digital_workers.py::test_the_creator_hands_out_no_scope_they_lack
+  - name: DWK33 a critical role is allowed
+    file: packages/python/dw_platform/src/dw_platform/application/digital_workers.py
+    old: "        critical = sorted(key for key in role_keys if is_critical_role(key, catalog[key]))"
+    new: "        critical: list[str] = []"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_digital_workers.py::test_a_principal_holds_no_critical_role
+  - name: DWK33 R1.16 the owner may belong to another tenant
+    file: db/migrations/versions/be93e0c26a4c_platform_digital_workers.py
+    old: "                  AND m.tenant_id = NEW.tenant_id"
+    new: ""
+    tests:
+      - packages/python/dw_platform/tests/integration/test_digital_workers_db.py::test_the_accountable_owner_is_a_human_member_of_the_tenant
+  - name: DWK25 a service user gets a login identity
+    file: db/migrations/versions/be93e0c26a4c_platform_digital_workers.py
+    old: "WHERE id = NEW.user_id AND kind <> 'human'"
+    new: "WHERE false"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_digital_workers_db.py::test_a_principal_never_signs_in_and_is_never_listed_as_a_person
+  - name: DWK25 the workspace directory lists the principal
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/directory.py
+    old: ".where(tables.memberships.c.workspace_id == context.workspace_id, tables.HUMAN)"
+    new: ".where(tables.memberships.c.workspace_id == context.workspace_id)"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_digital_workers_db.py::test_a_principal_never_signs_in_and_is_never_listed_as_a_person
+  - name: DWK25 the tenant member list shows the principal
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/tenant_members.py
+    old: ".where(_M.c.tenant_id == context.tenant_id, tables.HUMAN)"
+    new: ".where(_M.c.tenant_id == context.tenant_id)"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_digital_workers_db.py::test_a_principal_never_signs_in_and_is_never_listed_as_a_person
+  - name: DWK36 a principal's roles may grow
+    file: db/migrations/versions/be93e0c26a4c_platform_digital_workers.py
+    old: "               OR NOT (OLD.role_keys @> NEW.role_keys)\n"
+    new: ""
+    tests:
+      - packages/python/dw_platform/tests/integration/test_digital_workers_db.py::test_a_dw_principals_roles_do_not_grow
+  - name: DWK36 a principal may join another workspace
+    file: db/migrations/versions/be93e0c26a4c_platform_digital_workers.py
+    old: '" BEFORE INSERT OR UPDATE ON platform.memberships"'
+    new: '" BEFORE UPDATE ON platform.memberships"'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_digital_workers_db.py::test_a_dw_principals_roles_do_not_grow
+  - name: DWK36 the refusal is not read back as 409
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/membership_admin.py
+    old: "                    or dw_principal_roles_conflict(exc)\n"
+    new: ""
+    tests:
+      - packages/python/dw_platform/tests/integration/test_digital_workers_db.py::test_a_dw_principals_roles_do_not_grow
