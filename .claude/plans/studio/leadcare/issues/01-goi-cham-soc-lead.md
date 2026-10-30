@@ -78,7 +78,7 @@ workspace_id uuid, state text)` `SECURITY DEFINER`, `SET search_path = pg_catalo
 
 ## Nguồn
 
-- `infra/compose/docker-compose.dev.yml:25-92`; `packages/python/dw_connectors/src/dw_connectors/adapters/zalo_bot.py:1`; spec: R1-R3, LCP1-LCP11, LCP13-LCP16.
+- `infra/compose/docker-compose.dev.yml:25-87`; `packages/python/dw_connectors/src/dw_connectors/adapters/zalo_bot.py:1`; spec: R1-R3, LCP1-LCP11, LCP13-LCP16.
 
 ## Comments
 

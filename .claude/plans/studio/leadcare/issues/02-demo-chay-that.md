@@ -36,7 +36,7 @@ infra/compose/docker-compose.dev.yml up -d --build` cho postgres, api, worker, w
 
 ## Nguồn
 
-- `./Makefile:122`; `infra/compose/docker-compose.dev.yml:77-92`; spec: R4, LCP12.
+- `./Makefile:122`; `infra/compose/docker-compose.dev.yml:62-87`; spec: R4, LCP12.
 
 ## Comments
 

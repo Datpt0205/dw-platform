@@ -11,7 +11,7 @@ Thí điểm D4 thành một DW chăm sóc lead ở A2 (D15): DW nhận lead có
 
 - Thư mục prompt chỉ có prompt của nền tảng, `configs/tools` chỉ có README (`configs/tools/README.md:1`). Thiếu: prompt và công cụ của gói Marketing.
 - Kết nối có sẵn là Zalo và một connector việc giả (`packages/python/dw_connectors/src/dw_connectors/adapters/zalo_bot.py:1`, `packages/python/dw_connectors/src/dw_connectors/adapters/mock_task_connector.py:1`). Thiếu: gửi email và đọc hộp thư.
-- Compose dev có postgres, qdrant, valkey, s3, keycloak, api, worker, web (`infra/compose/docker-compose.dev.yml:25-92`). Thiếu: một hộp thư dev để gửi thư thật mà không ra ngoài.
+- Compose dev có postgres, qdrant, valkey, s3, keycloak, api, worker, web (`infra/compose/docker-compose.dev.yml:25-87`). Thiếu: một hộp thư dev để gửi thư thật mà không ra ngoài.
 - Model thật của máy dev là luna, kiểm bằng make check-model (`./Makefile:122`). Ràng buộc: khóa chỉ ở tệp .env cục bộ.
 - Kênh vào trước khi biết tenant (Zalo) phân giải tenant trước rồi mới đặt ngữ cảnh (`packages/python/dw_platform/src/dw_platform/adapters/persistence/tables.py:126`). Ràng buộc: cửa nhận lead không đọc tenant từ thân yêu cầu.
 
