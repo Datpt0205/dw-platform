@@ -142,6 +142,8 @@ def test_only_the_platform_lanes_are_wired() -> None:
     guard nothing once a later call may take them over (runtime-hardening R6.7).
     `dw_work` is the thirteenth: Digital Workers take their work from the
     shared queue (digital-worker R3.6), a database being all it needs.
+    `dw_timers` is the fourteenth: a DW's run that waited on a timer runs on
+    once `wake_at` has passed (wf-lite R6.12), on the same database.
 
     Naming the whole set is the point: a context's lane arriving in this process
     becomes a visible change rather than a silent one.
@@ -161,6 +163,7 @@ def test_only_the_platform_lanes_are_wired() -> None:
         "approval_codes_retention",
         "tool_claims_retention",
         "dw_work",
+        "dw_timers",
     }
 
 

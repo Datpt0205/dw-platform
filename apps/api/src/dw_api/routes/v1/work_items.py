@@ -4,9 +4,11 @@ R3.13), and the hand-given work of a DW, `POST /digital-workers/{id}/work-items`
 
 The queue owns every rule; the route shapes the request. A list never carries a
 payload or a hand-off packet; one item carries them for its holder and the DW's
-four people only. Refusals the web branches on, in `details.reason_code`: 403
-`not_holder`, `not_work_assigner`; 409 `invalid_transition`, `source_key_reused`;
-422 `payload_invalid`, `work_kind_outside_mandate`, `dw_not_accepting_work`.
+four people only, and one item carries its run's `trail` (wf-lite R6.13): ids
+and states only, for whoever may read the item. Refusals the web branches on,
+in `details.reason_code`: 403 `not_holder`, `not_work_assigner`; 409
+`invalid_transition`, `source_key_reused`; 422 `payload_invalid`,
+`work_kind_outside_mandate`, `dw_not_accepting_work`.
 """
 
 from __future__ import annotations
@@ -77,6 +79,13 @@ class HandoffView(BaseModel):
     recommendation: str
 
 
+class TrailEntryView(BaseModel):
+    step_id: str
+    type: str
+    status: str
+    at: str
+
+
 class WorkItemView(BaseModel):
     id: UUID
     dw_id: UUID
@@ -94,6 +103,8 @@ class WorkItemView(BaseModel):
     # Present only for who may read them (R3.11); never in a list.
     payload: dict[str, Any] | None = None
     handoff: HandoffView | None = None
+    # One item's run, step by step; never in a list or a write's answer.
+    trail: list[TrailEntryView] | None = None
 
 
 def _view(item: WorkItem, *, contents: bool) -> WorkItemView:
@@ -152,7 +163,15 @@ async def list_work_items(
 async def get_work_item(
     item_id: UUID, context: RequireAccessContext, container: RequireContainer
 ) -> WorkItemView:
-    return _view(await _queue(container).get(context, item_id), contents=True)
+    item = await _queue(container).get(context, item_id)
+    view = _view(item, contents=True)
+    if item.run_id is None or container.run_trails is None:
+        return view.model_copy(update={"trail": []})
+    # Under the caller's own tenant and workspace, as the item was read.
+    trail = await container.run_trails.trail(
+        tenant_id=context.tenant_id, workspace_id=context.workspace_id, run_id=item.run_id
+    )
+    return view.model_copy(update={"trail": [TrailEntryView(**entry) for entry in trail]})
 
 
 async def _viewed(item: Awaitable[WorkItem]) -> WorkItemView:

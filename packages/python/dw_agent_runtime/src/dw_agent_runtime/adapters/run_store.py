@@ -491,11 +491,22 @@ class SqlWorkerRunStore:
         holds a context in the run's workspace - the runner its own, the API
         and `decide` the caller's.
         """
-        result = await self._execute(
-            run_context,
+        return await self.get_in(
+            tenant_id=run_context.tenant_id, workspace_id=run_context.workspace_id, run_id=run_id
+        )
+
+    async def get_in(
+        self, *, tenant_id: uuid.UUID, workspace_id: uuid.UUID, run_id: uuid.UUID
+    ) -> RunRecord:
+        """`get` for a reader that holds a verified scope and no run context
+        yet: the `dw_timers` lane, from the work item it claimed, and a work
+        item's `trail`, under its reader's tenant and workspace (wf-lite R6.12,
+        R6.13)."""
+        result = await self._execute_for_tenant(
+            tenant_id,
             sa.select(worker_runs).where(
                 worker_runs.c.id == run_id,
-                worker_runs.c.workspace_id == run_context.workspace_id,
+                worker_runs.c.workspace_id == workspace_id,
             ),
         )
         row = result.first()

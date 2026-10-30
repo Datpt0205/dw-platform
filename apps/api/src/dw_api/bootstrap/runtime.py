@@ -12,16 +12,21 @@ from dataclasses import dataclass
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from dw_agent_runtime.adapters.checkpoint import SqlAlchemyCheckpointSaver
+from dw_agent_runtime.adapters.checkpoint_serde import checkpoint_serializer
 from dw_agent_runtime.adapters.langchain_usage import LangchainUsageMeter
 from dw_agent_runtime.adapters.langgraph_runner import LangGraphWorkflowRunner
 from dw_agent_runtime.adapters.model_stack import ModelStack, build_model_stack
 from dw_agent_runtime.adapters.run_store import SqlWorkerRunStore
 from dw_agent_runtime.adapters.spend_guard import SqlSpendGuardStore
-from dw_agent_runtime.adapters.tool_claims import SqlToolClaims
-from dw_agent_runtime.adapters.tool_execution_store import SqlToolExecutionStore
+from dw_agent_runtime.adapters.wflite_host import (
+    RunTrailReader,
+    build_tool_executor,
+    build_wflite_ports,
+    load_handoff_copy,
+    register_workflows,
+)
 from dw_agent_runtime.approval_flow import ApproveAndResumeService
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
-from dw_agent_runtime.executor import ToolExecutor
 from dw_agent_runtime.model.copy import load_runtime_copy
 from dw_agent_runtime.model.profiles import ModelProfileRegistry
 from dw_agent_runtime.model.prompts import PromptRegistry
@@ -30,8 +35,9 @@ from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.tool_specs import ToolSpecRegistry
 from dw_agent_runtime.tools import ToolRegistry
 from dw_agent_runtime.toolsets import ToolsetRegistry
+from dw_agent_runtime.wflite.catalog import PackCatalog
+from dw_agent_runtime.wflite.waits import WorkQueueRunWaits
 from dw_api.adapters.document_indexing import KnowledgeDocumentIndexingAdapter
-from dw_api.bootstrap.checkpoint_serde import checkpoint_serializer
 from dw_api.bootstrap.container import RuntimeSeam
 from dw_api.bootstrap.knowledge import build_embeddings, build_reranker, build_vector_index
 from dw_api.bootstrap.models import build_chat_model_factory, model_provider_config
@@ -43,6 +49,7 @@ from dw_api.bootstrap.paths import (
     RUNTIME_COPY_CONFIG,
     TOOL_SPECS_DIR,
     TOOLSETS_DIR,
+    WFLITE_HANDOFF_COPY,
     release_manifest_ref,
 )
 from dw_api.settings import ApiSettings
@@ -57,13 +64,13 @@ from dw_memory.policy import MemoryWritePolicy
 from dw_memory.review import MEMORY_REVIEW, require_clearance_for_review
 from dw_memory.service import MemoryService
 from dw_observability.telemetry import TelemetryPort
-from dw_platform.adapters.persistence.digital_workers_repo import SqlDwBoundary
 from dw_platform.application.decision_gate import (
     DW_DECISION,
     DwDecisionAdmission,
     check_edited_proposal,
 )
 from dw_platform.application.ports import PlatformUnitOfWorkFactory
+from dw_platform.application.work_queue import WorkQueue
 
 
 @dataclass(frozen=True)
@@ -81,6 +88,8 @@ class RuntimeWiring:
     # The gateway, ledger and recorders, as the shared builder made them; a
     # context's one-call handlers take `model_stack.one_call(allowance)`.
     model_stack: ModelStack
+    # A work item's `trail`, from its run (wf-lite R6.13).
+    run_trails: RunTrailReader
 
 
 def _build_memory_ranker(
@@ -116,6 +125,8 @@ def build_runtime(
     run_store: SqlWorkerRunStore,
     allowance: RunAllowancePort,
     object_storage: ObjectStoragePort,
+    packs: PackCatalog,
+    work_queue: WorkQueue,
     telemetry: TelemetryPort,
     clock: UtcClock,
     ids: IdGenerator,
@@ -178,18 +189,16 @@ def build_runtime(
     # it through the executor. Two instances could carry two versions, and a run
     # stamped under one would be decided under the other.
     approval_policy = AutonomyApprovalPolicy()
-    tool_executor = ToolExecutor(
-        registry=tool_registry,
-        execution_store=SqlToolExecutionStore(session_factory),
+    # The executor the worker builds too: a Digital Worker's run is held to
+    # its DW, and a DW decision's call to its approved content (wf-lite R6.17).
+    tool_executor = build_tool_executor(
+        tools=tool_registry,
+        session_factory=session_factory,
         uow_factory=uow_factory,
-        clock=clock,
-        id_generator=ids,
         approval_policy=approval_policy,
-        claims=SqlToolClaims(session_factory),
         telemetry=telemetry,
-        # A Digital Worker's run is held to its DW: operating, its allowed
-        # tools, its principal's scopes now (digital-worker R6).
-        dw_boundary=SqlDwBoundary(session_factory),
+        clock=clock,
+        ids=ids,
     )
     tool_specs = ToolSpecRegistry(copy=copy)
     tool_specs.load_directory(TOOL_SPECS_DIR)
@@ -220,10 +229,11 @@ def build_runtime(
     # fast for the wrong reason.
     graphs = GraphRegistry()
     workers = WorkerRegistry(graph_registry=graphs)
+    checkpoints = SqlAlchemyCheckpointSaver(session_factory, checkpoint_serializer())
     runner = LangGraphWorkflowRunner(
         worker_registry=workers,
         graph_registry=graphs,
-        checkpoint_saver=SqlAlchemyCheckpointSaver(session_factory, checkpoint_serializer()),
+        checkpoint_saver=checkpoints,
         run_store=run_store,
         uow_factory=uow_factory,
         clock=clock,
@@ -235,6 +245,25 @@ def build_runtime(
         telemetry=telemetry,
         usage_meter=usage_meter,
         spend_store=SqlSpendGuardStore(session_factory=session_factory),
+        # A DW run's work item follows it: waiting, resumed, finished.
+        run_waits=WorkQueueRunWaits(work_queue),
+    )
+    # Every shipped workflow, as the worker hosts it too: a run the worker
+    # paused on an approval resumes here when a person decides (wf-lite R6.1).
+    register_workflows(
+        packs,
+        build_wflite_ports(
+            session_factory=session_factory,
+            gateway=gateway,
+            executor=tool_executor,
+            tools=tool_registry,
+            queue=work_queue,
+            recommendations=load_handoff_copy(WFLITE_HANDOFF_COPY),
+            clock=clock,
+            ids=ids,
+        ),
+        graphs=graphs,
+        workers=workers,
     )
     approval_flow = ApproveAndResumeService(
         uow_factory=uow_factory,
@@ -288,4 +317,5 @@ def build_runtime(
         memory_service=memory_service,
         tool_registry=tool_registry,
         model_stack=model_stack,
+        run_trails=RunTrailReader(run_store=run_store, checkpoints=checkpoints),
     )

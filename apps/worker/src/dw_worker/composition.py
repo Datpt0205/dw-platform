@@ -1,4 +1,5 @@
-"""Worker composition root: wires the knowledge ingest pipeline from settings.
+"""Worker composition root: wires the knowledge ingest pipeline and the
+wf-lite runtime from settings.
 
 Mirrors the API's knowledge wiring but on the worker side, where the parse
 layer lives. Only the composition root imports concrete adapters
@@ -19,14 +20,34 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from dw_agent_runtime.adapters.checkpoint import SqlAlchemyCheckpointSaver
+from dw_agent_runtime.adapters.checkpoint_serde import checkpoint_serializer
+from dw_agent_runtime.adapters.langgraph_runner import LangGraphWorkflowRunner
 from dw_agent_runtime.adapters.model_stack import (
     ModelProviderConfig,
     ModelStack,
     build_model_stack,
 )
+from dw_agent_runtime.adapters.release_manifest import read_release_manifest_ref
+from dw_agent_runtime.adapters.run_store import SqlWorkerRunStore
+from dw_agent_runtime.adapters.spend_guard import SqlSpendGuardStore
+from dw_agent_runtime.adapters.wflite_host import (
+    build_run_starter,
+    build_tool_executor,
+    build_wflite_ports,
+    load_handoff_copy,
+    register_workflows,
+)
+from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.model.profiles import ModelProfileRegistry
 from dw_agent_runtime.model.prompts import PromptRegistry
-from dw_kernel.ports import SystemClock, UtcClock, Uuid7Generator
+from dw_agent_runtime.model.run_policy import load_worker_run_policy
+from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
+from dw_agent_runtime.tools import ToolRegistry
+from dw_agent_runtime.wflite.catalog import PackCatalog
+from dw_agent_runtime.wflite.starter import WorkflowRunStarter
+from dw_agent_runtime.wflite.waits import WorkQueueRunWaits
+from dw_kernel.ports import IdGenerator, SystemClock, UtcClock, Uuid7Generator
 from dw_knowledge.adapters.api_parsers import (
     DeepgramTranscriptParser,
     GatewayFileParser,
@@ -39,6 +60,9 @@ from dw_knowledge.gateway import KnowledgeGateway
 from dw_knowledge.ingest_jobs import IngestJobQueue, IngestJobStore
 from dw_knowledge.ports import DocumentParserPort, EmbeddingPort, ObjectStoragePort, VectorIndexPort
 from dw_observability.telemetry import TelemetryPort
+from dw_platform.adapters.persistence.uow import SqlPlatformUnitOfWorkFactory
+from dw_platform.application.entitlement import DEFAULT_PLANS, PlanEntitlementService
+from dw_platform.application.work_queue import WorkQueue
 from dw_worker.settings import WorkerSettings
 
 if TYPE_CHECKING:
@@ -47,7 +71,10 @@ if TYPE_CHECKING:
 # The image sets DW_REPO_ROOT=/app; outside a container the checkout root is
 # four levels up from this file.
 REPO_ROOT = Path(os.environ.get("DW_REPO_ROOT", str(Path(__file__).resolve().parents[4])))
+CONFIGS = REPO_ROOT / "configs"
 ATTACHMENT_POLICY = "attachment_ingest@1.1.0.yaml"
+WORKER_RUN_POLICY = "worker_runs@1.0.0.yaml"
+WFLITE_HANDOFF_COPY = "wflite_handoff.yaml"
 
 
 @dataclass
@@ -244,4 +271,92 @@ def build_model_stack_for(
         clock=clock,
         telemetry=telemetry,
         mock_fixtures_dir=MOCK_MODEL_FIXTURES,
+    )
+
+
+@dataclass(frozen=True)
+class WfLiteRuntime:
+    """The workflows this process runs (wf-lite R6): the runner the `dw_work`
+    lane starts runs on and the `dw_timers` lane resumes them on, and the tool
+    registry a context registers its tools on, at the marked seam in
+    `dw_worker.main`, as it does on the API's."""
+
+    runner: LangGraphWorkflowRunner
+    starter: WorkflowRunStarter
+    tools: ToolRegistry
+
+
+def build_wflite_runtime(
+    settings: WorkerSettings,
+    sessions: async_sessionmaker[AsyncSession],
+    *,
+    packs: PackCatalog,
+    queue: WorkQueue,
+    clock: UtcClock,
+    ids: IdGenerator,
+    telemetry: TelemetryPort,
+) -> WfLiteRuntime:
+    """The runner, executor and nodes the API builds for the same graphs
+    (`dw_agent_runtime.adapters.wflite_host`): a run this process pauses on an
+    approval resumes there, and one the API's decision runs on to a timer
+    resumes here, from the same checkpoint.
+
+    No usage meter: it bills an agent loop's LangChain calls, and a workflow's
+    model calls go through the gateway, which records its own usage into the
+    daily spend guard."""
+    stack = build_model_stack_for(settings, sessions, clock=clock, telemetry=telemetry)
+    tools = ToolRegistry()
+    approval_policy = AutonomyApprovalPolicy()
+    executor = build_tool_executor(
+        tools=tools,
+        session_factory=sessions,
+        uow_factory=SqlPlatformUnitOfWorkFactory(sessions),
+        approval_policy=approval_policy,
+        telemetry=telemetry,
+        clock=clock,
+        ids=ids,
+    )
+    graphs = GraphRegistry()
+    workers = WorkerRegistry(graph_registry=graphs)
+    policy = load_worker_run_policy(CONFIGS / "policies" / WORKER_RUN_POLICY)
+    runner = LangGraphWorkflowRunner(
+        worker_registry=workers,
+        graph_registry=graphs,
+        checkpoint_saver=SqlAlchemyCheckpointSaver(sessions, checkpoint_serializer()),
+        run_store=SqlWorkerRunStore(
+            sessions, stale_run_after_seconds=policy.stale_run_after_seconds
+        ),
+        uow_factory=SqlPlatformUnitOfWorkFactory(sessions),
+        clock=clock,
+        id_generator=ids,
+        # The same plan catalog the API's runner refuses a run's start with.
+        allowance=PlanEntitlementService(DEFAULT_PLANS),
+        budget=stack.budget,
+        approval_policy=approval_policy,
+        release_manifest_ref=read_release_manifest_ref(REPO_ROOT),
+        telemetry=telemetry,
+        spend_store=SqlSpendGuardStore(session_factory=sessions),
+        run_waits=WorkQueueRunWaits(queue),
+    )
+    register_workflows(
+        packs,
+        build_wflite_ports(
+            session_factory=sessions,
+            gateway=stack.gateway,
+            executor=executor,
+            tools=tools,
+            queue=queue,
+            recommendations=load_handoff_copy(CONFIGS / "copy" / WFLITE_HANDOFF_COPY),
+            clock=clock,
+            ids=ids,
+        ),
+        graphs=graphs,
+        workers=workers,
+    )
+    return WfLiteRuntime(
+        runner=runner,
+        starter=build_run_starter(
+            catalog=packs, session_factory=sessions, tools=tools, runner=runner
+        ),
+        tools=tools,
     )

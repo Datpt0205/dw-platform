@@ -41,27 +41,10 @@ class DigitalWorkerRunStarter(Protocol):
     limit, `ConflictError` when a run with that id already exists, and
     another `DWError` (never `InfrastructureError`) for a start it refuses
     for good: a workflow that does not load, parameters that are wrong.
-    wf-lite/02 wires the one that runs the pinned workflow."""
+    `dw_agent_runtime.wflite.starter.WorkflowRunStarter` runs the pinned
+    workflow."""
 
     async def start(self, claimed: Claimed) -> None: ...
-
-
-class RecordingRunStarter:
-    """Records that a run was asked for and starts nothing: the starter until
-    wf-lite/02 wires the workflow engine. A deployment cannot reach it with
-    work yet (no pack declares a work kind's schema, so every payload is
-    refused at the door); should one, the item is returned by step 1 and
-    asked for again, never lost."""
-
-    def __init__(self) -> None:
-        self.asked: list[Claimed] = []
-
-    async def start(self, claimed: Claimed) -> None:
-        self.asked.append(claimed)
-        _LOG.info(
-            "dw_work run requested; no workflow engine is wired",
-            extra={"work_item_id": str(claimed.item.id), "run_id": str(claimed.run_id)},
-        )
 
 
 def build_dw_work_consumer(

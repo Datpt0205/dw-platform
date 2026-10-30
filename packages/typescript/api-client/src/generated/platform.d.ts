@@ -2855,6 +2855,17 @@ export interface components {
             /** Resource Type */
             resource_type: string;
         };
+        /** TrailEntryView */
+        TrailEntryView: {
+            /** At */
+            at: string;
+            /** Status */
+            status: string;
+            /** Step Id */
+            step_id: string;
+            /** Type */
+            type: string;
+        };
         /** UpdateTenantBody */
         UpdateTenantBody: {
             /** Locale */
@@ -2942,6 +2953,8 @@ export interface components {
             source_key: string;
             /** Status */
             status: string;
+            /** Trail */
+            trail?: components["schemas"]["TrailEntryView"][] | null;
             /**
              * Updated At
              * Format: date-time

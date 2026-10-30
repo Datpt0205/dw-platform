@@ -21,6 +21,11 @@
       "checksum": "f7cd2b502af52c5a650162e7392e1ee3b3b841387f44e6726afaf7bad67fe5f7",
       "copy_id": "platform.runtime",
       "version": "1.6.0"
+    },
+    {
+      "checksum": "22b139bbba4f0dd6dc9982501154cddcbb513bea8df4f2c2f0876f0b62374577",
+      "copy_id": "platform.wflite_handoff",
+      "version": "1.0.0"
     }
   ],
   "eval_datasets": [
@@ -30,7 +35,7 @@
       "version": "1.2.0"
     }
   ],
-  "git_sha": "7c58b59c1b2221aa1e9d232309dddaa7e992dbe6",
+  "git_sha": "b2f950e464c30c475b46b88601589edbb2f1955e",
   "knowledge_index_version": "2026-07-25.structure-1",
   "memory_policy_version": "2.0.0",
   "platform_version": "0.1.0",

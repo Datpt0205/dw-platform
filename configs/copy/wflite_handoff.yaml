@@ -1,0 +1,35 @@
+schema_version: "1.0"
+copy_id: platform.wflite_handoff
+version: "1.0.0"
+
+# Câu khuyến nghị của một bàn giao tự động, theo mã (wf-lite R6.20). Người nhận
+# là Validator của DW; câu nói họ nên làm gì, không lặp lại nội dung của việc.
+# Một mã không có ở đây dùng câu của `step_failed`, nên mục đó phải có.
+recommendations:
+  step_failed: >-
+    Một bước của quy trình bị lỗi. Xem bước lỗi trong dấu vết, xử lý việc này
+    bằng tay hoặc giao lại sau khi đã sửa nguyên nhân.
+  model_output_invalid: >-
+    Mô hình trả kết quả sai cấu trúc. Tự soạn nội dung cho việc này, hoặc báo
+    người kỹ thuật kiểm tra prompt của bước.
+  low_confidence: >-
+    Mô hình không đủ chắc chắn. Đọc bản nháp trong ngữ cảnh, sửa rồi tự xử lý
+    việc này.
+  definition_changed: >-
+    Tệp quy trình đã đổi trong khi việc đang chạy. Xử lý việc này bằng tay;
+    việc mới sẽ chạy theo bản quy trình hiện tại.
+  approval_missing: >-
+    Công cụ cần một quyết định đã duyệt mà lượt chạy không có. Xem lại việc
+    và quyết định bằng tay.
+  subject_changed: >-
+    Nội dung gửi đi khác bản đã duyệt nên không được chạy. Xem lại bản đã duyệt
+    và xử lý việc này bằng tay.
+  dw_not_operating: >-
+    Nhân sự số đang tạm dừng nên không có hiệu ứng nào được chạy. Xử lý việc
+    này bằng tay hoặc giao lại khi DW hoạt động trở lại.
+  tool_not_allowed: >-
+    Công cụ của bước không nằm trong danh sách được phép của DW. Xử lý bằng tay,
+    hoặc nhờ người kỹ thuật cập nhật cấu hình DW.
+  scope_lost: >-
+    Tài khoản dịch vụ của DW không còn quyền cần cho bước này. Xử lý bằng tay,
+    hoặc nhờ quản trị cấp lại quyền.

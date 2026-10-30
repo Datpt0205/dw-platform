@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import NullPool
 
 from dw_agent_runtime.adapters.checkpoint import SqlAlchemyCheckpointSaver
+from dw_agent_runtime.adapters.checkpoint_serde import checkpoint_serializer
 from dw_agent_runtime.adapters.langgraph_runner import LangGraphWorkflowRunner
 from dw_agent_runtime.adapters.run_store import RunStatus, SqlWorkerRunStore
 from dw_agent_runtime.approval_flow import ApproveAndResumeService
@@ -30,7 +31,6 @@ from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.testing.demo_graph import DEMO_WORKER_YAML, build_demo_graph
-from dw_api.bootstrap.checkpoint_serde import checkpoint_serializer
 from dw_kernel.ports import SystemClock, Uuid4Generator
 from dw_observability.logs import IdentifierOnlyJsonFormatter
 from dw_observability.metrics import DW_APPROVAL_WAIT_SECONDS, DW_RUN_DURATION_SECONDS

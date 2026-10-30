@@ -3585,6 +3585,34 @@
         "title": "TimelineEvent",
         "type": "object"
       },
+      "TrailEntryView": {
+        "properties": {
+          "at": {
+            "title": "At",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "step_id": {
+            "title": "Step Id",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "step_id",
+          "type",
+          "status",
+          "at"
+        ],
+        "title": "TrailEntryView",
+        "type": "object"
+      },
       "UpdateTenantBody": {
         "properties": {
           "locale": {
@@ -3804,6 +3832,20 @@
           "status": {
             "title": "Status",
             "type": "string"
+          },
+          "trail": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/TrailEntryView"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trail"
           },
           "updated_at": {
             "format": "date-time",

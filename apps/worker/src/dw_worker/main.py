@@ -100,18 +100,21 @@ from dw_platform.application.decision_gate import DW_DECISION, DwDecisionAdmissi
 from dw_platform.application.work_queue import WorkQueue
 from dw_platform.retention_policy import RetentionPurgerRegistry, load_retention_policy
 from dw_worker.composition import (
-    REPO_ROOT,
+    CONFIGS,
     build_embeddings,
     build_export_bucket,
     build_feedback_bucket,
     build_ingest_components,
     build_object_storage,
     build_vector_index,
+    build_wflite_runtime,
 )
 from dw_worker.consumers import ConsumerRegistry
 from dw_worker.consumers.channel_delivery import build_channel_delivery_consumer
+from dw_worker.consumers.dw_timers import INTERVAL_SECONDS as DW_TIMERS_INTERVAL_SECONDS
+from dw_worker.consumers.dw_timers import build_dw_timers_consumer
 from dw_worker.consumers.dw_work import INTERVAL_SECONDS as DW_WORK_INTERVAL_SECONDS
-from dw_worker.consumers.dw_work import RecordingRunStarter, build_dw_work_consumer
+from dw_worker.consumers.dw_work import build_dw_work_consumer
 from dw_worker.consumers.ingest import build_ingest_consumer
 from dw_worker.consumers.memory import memory_handlers
 from dw_worker.consumers.offboarding import INTERVAL_SECONDS as OFFBOARDING_INTERVAL_SECONDS
@@ -290,10 +293,6 @@ def build_retention_purgers(
     return purgers.freeze()
 
 
-# The image sets DW_REPO_ROOT and ships `configs/` at that root.
-CONFIGS = REPO_ROOT / "configs"
-
-
 def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
     """Wire the lanes this process hosts, skipping any whose infra is absent."""
     # Checked before any lane exists: a worker holding a workflow it cannot run
@@ -359,9 +358,10 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
     # Ops hardening Phase 4. Needs object storage too, not just a database -
     # export/purge touch three buckets and the vector index alongside Postgres.
     offboarding_consumer: Callable[[], Awaitable[None]] | None = None
-    # Digital Workers take their work (digital-worker R3.6). The starter
-    # records the call until wf-lite/02 wires the workflow engine.
+    # Digital Workers take their work (digital-worker R3.6) and run it on
+    # their pinned workflow; a run that waited on a timer runs on (wf-lite R6).
     dw_work_consumer: Callable[[], Awaitable[None]] | None = None
+    dw_timers_consumer: Callable[[], Awaitable[None]] | None = None
 
     if settings.database_url:
         # ---- transactional outbox ----------------------------------------
@@ -370,17 +370,29 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
         # adding the handler later drains the backlog.
         engine = create_async_engine(settings.database_url, pool_pre_ping=True)
         sessions = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-        dw_work_consumer = build_dw_work_consumer(
-            WorkQueue(
-                repo=SqlWorkQueueRepository(sessions),
-                workers=SqlDigitalWorkerRepository(sessions),
-                people=SqlDwMembershipCheck(sessions),
-                schemas=packs,
-                authz=ScopeAuthorizationService(),
-                clock=clock,
-                id_generator=ids,
-            ),
-            RecordingRunStarter(),
+        work_queue = WorkQueue(
+            repo=SqlWorkQueueRepository(sessions),
+            workers=SqlDigitalWorkerRepository(sessions),
+            people=SqlDwMembershipCheck(sessions),
+            schemas=packs,
+            authz=ScopeAuthorizationService(),
+            clock=clock,
+            id_generator=ids,
+        )
+        # A context's tools register on `wflite.tools` at the seam below, as
+        # they do on the API's registry: the graphs compile on their first run.
+        wflite = build_wflite_runtime(
+            settings,
+            sessions,
+            packs=packs,
+            queue=work_queue,
+            clock=clock,
+            ids=ids,
+            telemetry=telemetry,
+        )
+        dw_work_consumer = build_dw_work_consumer(work_queue, wflite.starter)
+        dw_timers_consumer = build_dw_timers_consumer(
+            work_queue, wflite.runner.run_store, wflite.runner, clock
         )
         # Remembering runs here rather than on the request that produced the
         # fact: a run that stops to decide what is worth keeping is a run someone
@@ -508,7 +520,8 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
 
     # ---- BOUNDED CONTEXT LANES REGISTER HERE -----------------------------
     # build_<context>_components(settings) → registry.register(...), and append
-    # a ReapTarget per job queue the context owns.
+    # a ReapTarget per job queue the context owns. A context whose tools a
+    # workflow calls registers them on `wflite.tools` here too.
 
     # ---- channels ----------------------------------------------------------
     # The Zalo self-link poll. Its own long-poll paces it; the interval only
@@ -537,6 +550,12 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
     # by the lane itself after 15 minutes without a run (R3.14).
     if dw_work_consumer is not None:
         registry.register("dw_work", dw_work_consumer, interval_seconds=DW_WORK_INTERVAL_SECONDS)
+    # Nor this one: a claimed timer is leased for 15 minutes in the claim's
+    # transaction, and is due again when the lease runs out (wf-lite R6.12).
+    if dw_timers_consumer is not None:
+        registry.register(
+            "dw_timers", dw_timers_consumer, interval_seconds=DW_TIMERS_INTERVAL_SECONDS
+        )
 
     # ---- periodic repair --------------------------------------------------
     # Registered last because both sweeps act on what everything above created,

@@ -34,7 +34,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import NullPool
 
 from dw_agent_runtime.adapters.checkpoint import SqlAlchemyCheckpointSaver
-from dw_api.bootstrap.checkpoint_serde import checkpoint_serializer
+from dw_agent_runtime.adapters.checkpoint_serde import checkpoint_serializer
 
 pytestmark = pytest.mark.integration
 

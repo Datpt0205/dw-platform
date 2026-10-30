@@ -244,7 +244,7 @@ def _build_container(settings: ApiSettings | None) -> ApiContainer:
         SqlDigitalWorkerRepository(session_factory)
     )
     # A work kind's schema is the one its DW's pinned workflow declares (R3.3).
-    container.work_queue = WorkQueue(
+    work_queue = WorkQueue(
         repo=SqlWorkQueueRepository(session_factory),
         workers=SqlDigitalWorkerRepository(session_factory),
         people=SqlDwMembershipCheck(session_factory),
@@ -253,6 +253,7 @@ def _build_container(settings: ApiSettings | None) -> ApiContainer:
         clock=clock,
         id_generator=ids,
     )
+    container.work_queue = work_queue
     container.support_grants = SupportGrantService(
         repo=SqlSupportGrantRepository(session_factory),
         member_scopes=SqlScopeHolders(session_factory),
@@ -328,11 +329,14 @@ def _build_container(settings: ApiSettings | None) -> ApiContainer:
         run_store=run_store,
         allowance=entitlement,
         object_storage=object_storage,
+        packs=packs,
+        work_queue=work_queue,
         telemetry=telemetry,
         clock=clock,
         ids=ids,
     )
     container.runtime = wiring.seam
+    container.run_trails = wiring.run_trails
     container.runner = wiring.runner
     container.approval_flow = wiring.approval_flow
     # The portal half of a decision on Zalo (ADR 0007, channels Z5): the view

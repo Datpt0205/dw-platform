@@ -14,6 +14,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from dw_agent_runtime.adapters.release_manifest import read_release_manifest_ref
+
 REPO_ROOT = Path(os.environ.get("DW_REPO_ROOT", str(Path(__file__).resolve().parents[5])))
 
 CONFIGS = REPO_ROOT / "configs"
@@ -29,11 +31,12 @@ POLICIES_DIR = CONFIGS / "policies"
 # 1.4.0 is 1.3.0 verbatim plus the context-compaction text; a worker that wires
 # compaction refuses to start on anything older.
 RUNTIME_COPY_CONFIG = CONFIGS / "copy" / "runtime@1.6.0.yaml"
+# The recommendation of a wf-lite hand-off, by code (wf-lite R6.20).
+WFLITE_HANDOFF_COPY = CONFIGS / "copy" / "wflite_handoff.yaml"
 WORKER_RUN_POLICY = POLICIES_DIR / "worker_runs@1.0.0.yaml"
 ATTACHMENT_POLICY = POLICIES_DIR / "attachment_ingest@1.1.0.yaml"
 
 MOCK_MODEL_FIXTURES = REPO_ROOT / "evals" / "fixtures" / "mock_model"
-_RELEASE_MANIFEST_REF = REPO_ROOT / "contracts" / "release" / "manifest.ref"
 
 
 def release_manifest_ref() -> str:
@@ -43,6 +46,4 @@ def release_manifest_ref() -> str:
     be traced back to the exact artifact set that produced it. Absent only in
     un-released development trees.
     """
-    if _RELEASE_MANIFEST_REF.exists():
-        return _RELEASE_MANIFEST_REF.read_text(encoding="utf-8").strip()
-    return "unreleased"
+    return read_release_manifest_ref(REPO_ROOT)

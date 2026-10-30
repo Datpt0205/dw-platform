@@ -27,6 +27,7 @@ from dw_agent_runtime.adapters.langchain_usage import LangchainUsageMeter
 from dw_agent_runtime.adapters.langgraph_runner import LangGraphWorkflowRunner
 from dw_agent_runtime.adapters.run_events import RunStateListener
 from dw_agent_runtime.adapters.run_store import SqlWorkerRunStore
+from dw_agent_runtime.adapters.wflite_host import RunTrailReader
 from dw_agent_runtime.approval_codes import ApprovalViewService
 from dw_agent_runtime.approval_flow import ApproveAndResumeService
 from dw_agent_runtime.contracts import RunContext
@@ -168,6 +169,8 @@ class ApiContainer:
     digital_workers: DigitalWorkerService | None = None
     # The queue people and DWs share (digital-worker R3, R4); Postgres only.
     work_queue: WorkQueue | None = None
+    # A work item's `trail`, read from its run (wf-lite R6.13); with the runtime.
+    run_trails: RunTrailReader | None = None
     # Fields of an approval type's payload only some readers see, by type
     # (digital-worker R5.6: a `dw.decision`'s proposal).
     approval_masks: dict[str, ApprovalPayloadMask] = field(default_factory=dict)
