@@ -35,7 +35,7 @@ own file and a row here.
   specs `digital-worker`, `wf-lite`, `leadcare` gated and ready for agent.
   **Next:** the unattended queue in `studio.md` (foundations-hardening 07 and
   03, org-and-principals 01, runtime-hardening 01 and
-  digital-worker 01-02, wf-lite 01 done; wf-lite 02 in progress, phases C-D left).
+  digital-worker 01-02, wf-lite 01-02 done; next runtime-hardening 02).
 
 ## Decisions Đạt owes
 

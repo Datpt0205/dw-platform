@@ -496,7 +496,7 @@ bên ngoài thì ghi "Chờ Đạt" và làm việc kế. Đường dẫn ticket
 | 5   | `digital-worker/issues/01` hồ sơ DW và loại quyết định                                    | xong `5e1ca10` |
 | 6   | `digital-worker/issues/02` hàng đợi chung, bàn giao, cổng duyệt                           | xong `857b317` |
 | 7   | `wf-lite/issues/01` tài liệu, sổ loại bước, bộ kiểm, luật sàn HITL                        | xong `47df14d` |
-| 8   | `wf-lite/issues/02` biên dịch, chạy, chờ và chạy tiếp                                     | đang làm, pha D |
+| 8   | `wf-lite/issues/02` biên dịch, chạy, chờ và chạy tiếp                                     | xong `3c85dbd` |
 | 9   | `runtime-hardening/issues/02`                                                             | chưa           |
 | 9b  | `compliance-pdpl/issues/08` lõi sàn gửi tin (tách từ 04 theo gate của leadcare, ADR-0124) | chưa           |
 | 10  | `leadcare/issues/01` gói Marketing chăm sóc lead                                          | chưa           |
@@ -530,6 +530,7 @@ Each resolved ticket adds one line here: the commit hash and one sentence.
 - `5e1ca10` digital-worker/01: DW là dữ liệu công ty với service principal riêng (user `service`, `service_principals` có chủ là người thật của tenant, membership không thêm vai sau khi tạo), loại quyết định có trần và mức đã kiếm, mức hiệu lực là thấp nhất của ba đọc lúc hỏi trên cùng thang của `dw_kernel.autonomy`, năm route `/v1/digital-workers` với người thứ hai khi vào chạy; `dw_app` giữ DELETE cho offboarding (`5e1ca10`, `827556e`, `cd19cfe`).
 - `857b317` digital-worker/02: hàng đợi chung với một bảng chuyển trạng thái, payload kiểm JSON Schema và không đổi, lane `dw_work` nhận đúng một lần dưới principal của DW và trả việc kẹt giữ `run_id`, bàn giao có gói, nghỉ hưu chặn việc đang chạy và gỡ principal; `dw.decision` do Validator hay BO hiện tại quyết, sửa trong schema, đề xuất che theo người của DW; `ToolExecutor` từ chối ngoài ranh giới của DW với dòng `refused` (`6fa3116`, `cb95e1f`, `0e108d6`, `857b317`).
 - `47df14d` wf-lite/01: tài liệu `dw.workflow/v1` của gói với sáu loại bước, bộ kiểm một lượt trả mọi lỗi `wf.*` (tham chiếu theo cây, rẽ nhánh đủ, hiệu ứng ra ngoài chỉ trong lane Duyệt cùng loại và nhận nguyên bản đã duyệt), `PackCatalog` ghim sha256 và chặn API và worker khởi động khi gói sai, hàng đợi đọc schema của kind từ gói.
+- `3c85dbd` wf-lite/02: mỗi tài liệu của gói biên dịch thành StateGraph `dw:<key>@<version>` ở cả API và worker qua một bộ dựng chung; lane `dw_work` chạy việc, cổng duyệt dừng và chạy tiếp, `ToolExecutor` chỉ chạy đúng bản đã duyệt, lane `dw_timers` chạy tiếp hẹn giờ với thuê 15 phút, lỗi của bước thành bàn giao bốn trường cho Validator, `trail` ở `GET /v1/work-items/{id}`; checkpoint đọc theo workspace của config (`a170793`, `6976baf`, `7197171`, `c98c422`, `d209fb9`, `3c85dbd`).
 
 ## Chờ Đạt (phiên không người trực)
 
