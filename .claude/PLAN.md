@@ -34,8 +34,8 @@ own file and a row here.
   engine running a shipped lead-care pack; YC118-YC125, ADR-0128 (Proposed),
   specs `digital-worker`, `wf-lite`, `leadcare` gated and ready for agent.
   **Next:** the unattended queue in `studio.md` (foundations-hardening 07 and
-  03, org-and-principals 01 and runtime-hardening 01 done;
-  digital-worker 01 next).
+  03, org-and-principals 01, runtime-hardening 01 and
+  digital-worker 01 done; digital-worker 02 next).
 
 ## Decisions Đạt owes
 

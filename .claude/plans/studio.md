@@ -493,7 +493,7 @@ bên ngoài thì ghi "Chờ Đạt" và làm việc kế. Đường dẫn ticket
 | 2   | `foundations-hardening/issues/03`                                                         | xong `62d3b32` |
 | 3   | `org-and-principals/issues/01`                                                            | xong `0b341d4` |
 | 4   | `runtime-hardening/issues/01`                                                             | xong `aa53159` |
-| 5   | `digital-worker/issues/01` hồ sơ DW và loại quyết định                                    | đang làm       |
+| 5   | `digital-worker/issues/01` hồ sơ DW và loại quyết định                                    | xong `5e1ca10` |
 | 6   | `digital-worker/issues/02` hàng đợi chung, bàn giao, cổng duyệt                           | chưa           |
 | 7   | `wf-lite/issues/01` tài liệu, sổ loại bước, bộ kiểm, luật sàn HITL                        | chưa           |
 | 8   | `wf-lite/issues/02` biên dịch, chạy, chờ và chạy tiếp                                     | chưa           |
@@ -527,6 +527,7 @@ Each resolved ticket adds one line here: the commit hash and one sentence.
 - `62d3b32` foundations-hardening/03: `dw_app` hết quyền ghi bảng người vận hành, gói dịch vụ và sửa/xóa user; quyền của `dw_provisioner` đúng tập mã nó chạy, một nguồn trong migration và script, test so với catalog; mọi policy đọc setting trong sub-SELECT (đo 224 ms còn 84 ms ở 200.000 dòng), partition tạo sau theo dạng mới.
 - `0b341d4` org-and-principals/01: khóa `(tenant_id, id)` cho workspace; gỡ enum trạng thái tenant không ai đọc, có test quét; realm 300 giây, rảnh 30 phút, tối đa 10 giờ, refresh token dùng một lần, khóa sau 10 lần sai, test tệp, test sống trên Keycloak và script đồng bộ realm đã import; bỏ "(phòng ban)".
 - `aa53159` runtime-hardening/01: claim trước hiệu ứng theo `(tenant, công cụ, khóa)` có FK ghép tới workspace và lane dọn; dòng `dispatched` commit riêng, có rào token, trước mọi lời gọi `external`/`critical`; lần gửi chưa biết kết quả không bao giờ gửi lại; một dòng kết thúc mang `dispatch_id`; `dw_app` hết UPDATE trên bản ghi; mục không phải `BaseTool` bị bỏ và `build_agent` từ chối; che bí mật trong mảng; ghim `deepagents==0.7.15` (`21a23f7`, `18b2434`, `aa53159`).
+- `5e1ca10` digital-worker/01: DW là dữ liệu công ty với service principal riêng (user `service`, `service_principals` có chủ là người thật của tenant, membership không thêm vai sau khi tạo), loại quyết định có trần và mức đã kiếm, mức hiệu lực là thấp nhất của ba đọc lúc hỏi trên cùng thang của `dw_kernel.autonomy`, năm route `/v1/digital-workers` với người thứ hai khi vào chạy; `dw_app` giữ DELETE cho offboarding (`5e1ca10`, `827556e`, `cd19cfe`).
 
 ## Chờ Đạt (phiên không người trực)
 

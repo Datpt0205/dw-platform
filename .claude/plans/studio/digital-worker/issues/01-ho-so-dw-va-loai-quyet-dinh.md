@@ -1,6 +1,6 @@
 # 01 — Hồ sơ Digital Worker, service principal tối thiểu, loại quyết định và mức tự chủ có hiệu lực
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: .claude/plans/studio/foundations-hardening/issues/03-quyen-dw-app-va-rls-initplan.md
 Area: studio
 Yêu cầu: R1.1, R1.2, R1.3, R1.5, R1.6, R1.7, R1.8, R1.9, R1.10, R1.11, R1.13, R1.15, R1.16, R1.17, R2.1, R2.2, R2.3, R2.4, DWK1, DWK3, DWK4, DWK5, DWK6, DWK7, DWK23, DWK24, DWK25, DWK33, DWK36, R1.18, DWK41
@@ -47,26 +47,26 @@ duy nhất trả mức tự chủ có hiệu lực (R1, R2, ADR-0128 (Proposed) 
 
 ## Tiêu chí chấp nhận
 
-- [ ] R1.1: tạo DW hợp lệ trả 201; cùng giao dịch có dòng DW `draft`, user `kind = 'service'` với `owner_tenant_id`, dòng `service_principals` và membership của principal; thân có `tenant_id` khác bị bỏ qua.
-- [ ] R1.2 (DWK1): Validator là user của tenant B → 422 `owner_not_member`; Validator không giữ `approvals.decide` → 422 `validator_cannot_decide`; không dòng nào.
-- [ ] R1.3: công cụ không có spec → 422 `tool_unknown`; `work_kinds` rỗng → 422 `work_kinds_empty`.
-- [ ] R1.5 (DWK3): tenant B và workspace khác đọc id DW của A → 404; đọc thẳng `platform.digital_workers` và `platform.dw_decision_classes` không ngữ cảnh → 0 dòng.
-- [ ] R1.6 (DWK4): người giữ `dw.manage` không là chủ gọi `/state` → 403 `not_dw_owner`, trạng thái không đổi; BO là thành viên thường (không `dw.manage`) gọi `/state` → được.
-- [ ] R1.7 (DWK5): `retired→operating` → 409 `invalid_transition`.
-- [ ] R1.8: đổi trạng thái ghi `dw.state_changed` đứng tên người đổi; giao dịch lỗi thì không dòng audit.
-- [ ] R1.9 (DWK23): người tạo gọi `draft→operating` → 409 `second_person_required`; TO không giữ scope của vai của principal → 403 `grants_not_covered`; TO khác người tạo, phủ quyền → `operating`.
-- [ ] R1.10 (DWK24): người tạo không giữ một scope của vai gán cho principal → 403 `grants_not_covered`, không dòng nào.
-- [ ] R1.11 (DWK25): chèn `platform.external_identities` cho principal của DW → lỗi trigger; `/directory/candidates` và `/admin/members` không có principal đó.
-- [ ] R1.15 (DWK33): gán `org_admin` hay vai có scope `admin.*` cho principal → 422 `role_not_allowed_for_service`, không dòng nào.
-- [ ] R1.16 (DWK33): `owner_user_id` là user của tenant B, hay user `kind = 'service'` → lỗi trigger `platform.guard_accountable_owner()`.
-- [ ] R1.13 (DWK4): TO đổi Validator sang một thành viên khác → người mới, audit `dw.people_changed`; người không là chủ → 403; Validator mới ngoài workspace → 422.
-- [ ] R2.1: mỗi loại quyết định trong thân thành một dòng `platform.dw_decision_classes`.
-- [ ] R2.2: `earned_level` A3 với trần A2 → 422 `above_ceiling`, không dòng DW nào.
-- [ ] R2.3 (DWK6): trần tenant A1, đã kiếm A3, trần loại A4 → `A1`; loại không tồn tại → `A0`.
-- [ ] R2.4 (DWK7): `critical` ở A4 đòi người; `external` không đảo được ở A3 đòi người; đảo được ở A3 không đòi; `test_autonomy_policy.py` xanh không sửa.
-- [ ] R1.17 (DWK36): `PUT /admin/members` thêm vai cho principal của DW → 409 `dw_principal_roles_fixed`, membership không đổi; tạm ngưng → được.
-- [ ] R1.18 (DWK41): gán `org_admin` cho principal bằng vai migrator → test catalog đỏ và nêu DW; gỡ → xanh.
-- [ ] Xong: `make test-unit test-contract test-architecture` xanh.
+- [x] R1.1: tạo DW hợp lệ trả 201; cùng giao dịch có dòng DW `draft`, user `kind = 'service'` với `owner_tenant_id`, dòng `service_principals` và membership của principal; thân có `tenant_id` khác bị bỏ qua.
+- [x] R1.2 (DWK1): Validator là user của tenant B → 422 `owner_not_member`; Validator không giữ `approvals.decide` → 422 `validator_cannot_decide`; không dòng nào.
+- [x] R1.3: công cụ không có spec → 422 `tool_unknown`; `work_kinds` rỗng → 422 `work_kinds_empty`.
+- [x] R1.5 (DWK3): tenant B và workspace khác đọc id DW của A → 404; đọc thẳng `platform.digital_workers` và `platform.dw_decision_classes` không ngữ cảnh → 0 dòng.
+- [x] R1.6 (DWK4): người giữ `dw.manage` không là chủ gọi `/state` → 403 `not_dw_owner`, trạng thái không đổi; BO là thành viên thường (không `dw.manage`) gọi `/state` → được.
+- [x] R1.7 (DWK5): `retired→operating` → 409 `invalid_transition`.
+- [x] R1.8: đổi trạng thái ghi `dw.state_changed` đứng tên người đổi; giao dịch lỗi thì không dòng audit.
+- [x] R1.9 (DWK23): người tạo gọi `draft→operating` → 409 `second_person_required`; TO không giữ scope của vai của principal → 403 `grants_not_covered`; TO khác người tạo, phủ quyền → `operating`.
+- [x] R1.10 (DWK24): người tạo không giữ một scope của vai gán cho principal → 403 `grants_not_covered`, không dòng nào.
+- [x] R1.11 (DWK25): chèn `platform.external_identities` cho principal của DW → lỗi trigger; `/directory/candidates` và `/admin/members` không có principal đó.
+- [x] R1.15 (DWK33): gán `org_admin` hay vai có scope `admin.*` cho principal → 422 `role_not_allowed_for_service`, không dòng nào.
+- [x] R1.16 (DWK33): `owner_user_id` là user của tenant B, hay user `kind = 'service'` → lỗi trigger `platform.guard_accountable_owner()`.
+- [x] R1.13 (DWK4): TO đổi Validator sang một thành viên khác → người mới, audit `dw.people_changed`; người không là chủ → 403; Validator mới ngoài workspace → 422.
+- [x] R2.1: mỗi loại quyết định trong thân thành một dòng `platform.dw_decision_classes`.
+- [x] R2.2: `earned_level` A3 với trần A2 → 422 `above_ceiling`, không dòng DW nào.
+- [x] R2.3 (DWK6): trần tenant A1, đã kiếm A3, trần loại A4 → `A1`; loại không tồn tại → `A0`.
+- [x] R2.4 (DWK7): `critical` ở A4 đòi người; `external` không đảo được ở A3 đòi người; đảo được ở A3 không đòi; `test_autonomy_policy.py` xanh không sửa.
+- [x] R1.17 (DWK36): `PUT /admin/members` thêm vai cho principal của DW → 409 `dw_principal_roles_fixed`, membership không đổi; tạm ngưng → được.
+- [x] R1.18 (DWK41): gán `org_admin` cho principal bằng vai migrator → test catalog đỏ và nêu DW; gỡ → xanh.
+- [x] Xong: `make test-unit test-contract test-architecture` xanh.
 
 ## Nguồn
 
@@ -114,3 +114,7 @@ duy nhất trả mức tự chủ có hiệu lực (R1, R2, ADR-0128 (Proposed) 
   62,8/79,7/87,0. Mới: `POST /digital-workers` 77,2/92,8/98,3; `GET /digital-workers` 40,3/49,6/57,6;
   `GET /digital-workers/{id}` 32,3/39,0/46,4; `POST /digital-workers/{id}/state` 60,8/74,9/83,2. Trong ngân sách,
   không P95 nào kém hơn 20%.
+- 2026-10-30 (agent): cổng nhanh xanh: ruff, format, mypy (470 tệp), `make test-unit`, `make test-contract`,
+  `make test-architecture`; integration của `dw_platform`, `apps/api`, `dw_agent_runtime` xanh. `make
+  test-integration` đầy đủ và `/code-review` chờ lúc đóng đợt (`wave-close.md`). Ticket resolved (`5e1ca10`,
+  `827556e`, `cd19cfe`).
