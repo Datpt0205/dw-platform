@@ -1,0 +1,119 @@
+# Mutation check of runtime-hardening ticket 01: scripts/mutate.py runs this file.
+# One mutation per Kiểm soát row the ticket implements (RH15-RH19, RH32-RH36) and
+# per guard it adds (the index backstop of step 5). RH17's "a BaseTool outside the
+# toolset reaches the model" needs two edits at once (the filter off and a stray
+# tool added), so it runs in place by hand and is recorded in the ticket's Comments.
+mutations:
+  - name: RH15 R6.1 no claim, no dispatch log
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py
+    old: '        if idempotency_key is None or definition.side_effect_level == "none":'
+    new: "        if True:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/integration/test_tool_claims.py::test_two_calls_with_one_key_at_once_send_once
+      - packages/python/dw_agent_runtime/tests/unit/test_executor.py::test_a_live_claim_turns_a_second_call_into_a_conflict
+  - name: RH15 R6.2 release ignores the token
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/tool_claims.py
+    old: "                    tool_execution_claims.c.claim_token == token,\n"
+    new: ""
+    tests:
+      - packages/python/dw_agent_runtime/tests/integration/test_tool_claims.py::test_a_taken_over_holder_cannot_release_the_new_claim
+  - name: RH16 R6.3 dw_app keeps UPDATE on tool executions
+    file: db/migrations/versions/3f1cb1d4cece_tool_execution_claims.py
+    old: '    op.execute(_for_role("dw_app", "REVOKE UPDATE ON platform.tool_executions FROM dw_app;"))'
+    new: "    pass"
+    tests:
+      - packages/python/dw_agent_runtime/tests/integration/test_tool_claims.py::test_the_application_appends_records_it_cannot_rewrite
+  - name: RH16 R6.3 the CHECK forgets outcome_unknown
+    file: db/migrations/versions/3f1cb1d4cece_tool_execution_claims.py
+    old: "                status IN ('succeeded', 'failed', 'dispatched', 'outcome_unknown')"
+    new: "                status IN ('succeeded', 'failed', 'dispatched')"
+    tests:
+      - packages/python/dw_agent_runtime/tests/integration/test_tool_claims.py::test_the_application_appends_records_it_cannot_rewrite
+  - name: RH17 R6.4 a non-BaseTool entry passes the filter
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langchain_tools.py
+    old: "        if isinstance(tool, BaseTool):\n            kept.append(tool)"
+    new: "        if True:\n            kept.append(tool)"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_langchain_tools.py::test_an_entry_that_is_not_a_platform_tool_never_reaches_the_model
+  - name: RH17 R6.4 build_agent accepts a non-BaseTool entry
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/agent_factory.py
+    old: "    if foreign:\n"
+    new: "    if False:\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_agent_factory.py::test_build_agent_refuses_an_entry_that_is_not_a_platform_tool
+  - name: RH18 R6.5 redaction stops at lists
+    file: packages/python/dw_observability/src/dw_observability/redaction.py
+    old: "    if isinstance(value, list | tuple):"
+    new: "    if False:"
+    tests:
+      - packages/python/dw_observability/tests/unit/test_redaction.py::test_redact_mapping_walks_lists_and_tuples_at_any_depth
+      - packages/python/dw_observability/tests/unit/test_telemetry.py::test_a_secret_inside_a_list_never_reaches_a_span_attribute
+      - packages/python/dw_agent_runtime/tests/unit/test_executor.py::test_a_secret_in_a_list_is_redacted_in_the_failure_audit
+  - name: RH19 R6.7 the lane is not registered
+    file: apps/worker/src/dw_worker/main.py
+    old: "    if tool_claims_retention is not None:\n"
+    new: "    if False:\n"
+    tests:
+      - apps/worker/tests/unit/test_worker.py
+  - name: RH19 R6.7 the lane deletes live claims instead of expired ones
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/tool_claims.py
+    old: "                    tool_execution_claims.c.expires_at < sa.func.now()\n"
+    new: "                    tool_execution_claims.c.expires_at > sa.func.now()\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/integration/test_tool_claims.py::test_the_lane_removes_expired_claims_and_keeps_live_ones
+  - name: RH32 R6.8 the workspace key is one column
+    file: db/migrations/versions/3f1cb1d4cece_tool_execution_claims.py
+    old: "                FOREIGN KEY (tenant_id, workspace_id)\n                REFERENCES platform.workspaces(tenant_id, id) ON DELETE CASCADE,"
+    new: "                FOREIGN KEY (workspace_id)\n                REFERENCES platform.workspaces(id) ON DELETE CASCADE,"
+    tests:
+      - packages/python/dw_agent_runtime/tests/integration/test_tool_claims.py::test_a_claim_cannot_name_another_tenants_workspace
+  - name: RH33 R6.9 no check for a send of unknown outcome
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py
+    old: "            if await self.claims.has_unresolved_dispatch(run_context, name, idempotency_key):"
+    new: "            if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/integration/test_tool_claims.py::test_a_send_that_died_after_the_provider_applied_it_is_never_resent
+      - packages/python/dw_agent_runtime/tests/integration/test_tool_claims.py::test_a_send_that_ended_unknown_is_never_resent
+  - name: RH33 R6.9 an outcome_unknown row counts as closing its send
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/tool_claims.py
+    old: "                AND t.status IN ('succeeded', 'failed')"
+    new: "                AND t.status IN ('succeeded', 'failed', 'outcome_unknown')"
+    tests:
+      - packages/python/dw_agent_runtime/tests/integration/test_tool_claims.py::test_a_send_that_ended_unknown_is_never_resent
+  - name: RH34 R6.11 no dispatch row before the call
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py
+    old: "        if dispatch_logged:\n            assert idempotency_key is not None and token is not None"
+    new: "        if False:\n            assert idempotency_key is not None and token is not None"
+    tests:
+      - packages/python/dw_agent_runtime/tests/integration/test_tool_claims.py::test_the_dispatch_row_is_committed_before_the_call_leaves
+      - packages/python/dw_agent_runtime/tests/integration/test_tool_claims.py::test_a_send_that_died_after_the_provider_applied_it_is_never_resent
+  - name: RH34 R6.12 an untyped error after the send is recorded as failed
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py
+    old: "            unknown = dispatch_logged and not isinstance("
+    new: "            unknown = False and not isinstance("
+    tests:
+      - packages/python/dw_agent_runtime/tests/integration/test_tool_claims.py::test_each_send_ends_in_exactly_one_row_its_typed_result_decides
+  - name: RH35 R6.13 the dispatch row is not fenced by the claim
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/tool_claims.py
+    old: "    WHERE EXISTS (\n        SELECT 1 FROM platform.tool_execution_claims"
+    new: "    WHERE TRUE OR EXISTS (\n        SELECT 1 FROM platform.tool_execution_claims"
+    tests:
+      - packages/python/dw_agent_runtime/tests/integration/test_tool_claims.py::test_a_stalled_holder_does_not_send_beside_the_one_that_replaced_it
+  - name: RH36 R6.14 the claim key carries no tenant
+    file: db/migrations/versions/3f1cb1d4cece_tool_execution_claims.py
+    old: "                PRIMARY KEY (tenant_id, tool_name, idempotency_key),"
+    new: "                PRIMARY KEY (tool_name, idempotency_key),"
+    tests:
+      - packages/python/dw_agent_runtime/tests/integration/test_tool_claims.py::test_another_tenants_key_neither_blocks_nor_replays
+  - name: step 5 the index refusal is raised instead of replayed
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/tool_execution_store.py
+    old: "            if idempotency_key is None or _SUCCEEDED_ONCE not in str(exc.orig):"
+    new: "            if True:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/integration/test_tool_claims.py::test_a_second_success_for_one_key_returns_the_first
+  - name: step 5 the executor ignores the earlier success
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py
+    old: "        if earlier is not None:\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_executor.py::test_a_second_success_refused_by_the_index_replays_the_first

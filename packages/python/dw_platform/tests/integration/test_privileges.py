@@ -990,3 +990,46 @@ async def test_only_the_provisioner_adds_an_operator_login_identity(db_urls: Dat
                 await conn.execute(sa.text(f"DELETE FROM {table} WHERE {column} = :u"), {"u": user})
         await provisioner.dispose()
         await migrator.dispose()
+
+
+async def test_tool_executions_are_appended_and_claims_never_rewritten(
+    db_urls: DatabaseUrls,
+) -> None:
+    """runtime-hardening R6.3 and R6.1 (3f1cb1d4cece): `dw_app` appends a tool
+    execution and never rewrites one (an outcome is a further row; DELETE stays
+    for offboarding), and replaces a claim by delete-then-insert under its token,
+    never by UPDATE. `dw_agent_ro` holds nothing on the claims. Asked of the
+    catalog."""
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            held = {
+                (row.rolname, row.tbl, row.verb)
+                for row in await conn.execute(
+                    sa.text(
+                        """
+                        SELECT r.rolname, t.tbl, v.verb
+                        FROM pg_roles r
+                        CROSS JOIN unnest(ARRAY['platform.tool_executions',
+                                                'platform.tool_execution_claims']) AS t(tbl)
+                        CROSS JOIN unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE',
+                                                'TRUNCATE']) AS v(verb)
+                        WHERE r.rolname IN ('dw_app', 'dw_agent_ro')
+                          AND has_table_privilege(r.rolname, t.tbl, v.verb)
+                        """
+                    )
+                )
+            }
+    finally:
+        await migrator.dispose()
+    for table in ("platform.tool_executions", "platform.tool_execution_claims"):
+        assert {verb for role, tbl, verb in held if role == "dw_app" and tbl == table} == {
+            "SELECT",
+            "INSERT",
+            "DELETE",
+        }, table
+    assert not {
+        verb
+        for role, tbl, verb in held
+        if role == "dw_agent_ro" and tbl == "platform.tool_execution_claims"
+    }
