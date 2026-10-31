@@ -33,8 +33,8 @@ own file and a row here.
   D17/D18 (Đạt, 2026-10-29): path C, a DW core plus a minimal `dw.workflow/v1`
   engine running a shipped lead-care pack; YC118-YC125, ADR-0128 (Proposed),
   specs `digital-worker`, `wf-lite`, `leadcare` gated and ready for agent.
-  **Next:** the unattended queue in `studio.md` (items 0-10 done, leadcare 01
-  but R1.5; digital-worker 03 done; next digital-worker 04).
+  **Next:** the unattended queue in `studio.md` (items 0-12 done, leadcare 01
+  but R1.5; next leadcare 02, which needs a model key: Chờ Đạt 21).
 
 ## Decisions Đạt owes
 Since 2026-10-31 the agent decides all of these itself (`studio.md` "Ủy quyền toàn phần"), but real keys and secrets.
