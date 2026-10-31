@@ -37,7 +37,6 @@ own file and a row here.
   but R1.5; digital-worker 03 done; next digital-worker 04).
 
 ## Decisions Đạt owes
-
 Since 2026-10-31 the agent decides all of these itself (`studio.md` "Ủy quyền toàn phần"), but real keys and secrets.
 - **Runtime:**
     - a plan quota on direct model calls (`runs_per_day`/`spend_usd_per_day`
