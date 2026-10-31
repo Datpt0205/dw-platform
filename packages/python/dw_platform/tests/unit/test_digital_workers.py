@@ -584,3 +584,24 @@ async def test_the_decision_ladder_is_the_tool_ladder() -> None:
     assert await _requires(FakeLevels(levels("external", reversible=True, earned="A3"))) is False
     assert await _requires(FakeLevels(levels("internal", earned="A2"))) is False
     assert await _requires(FakeLevels(levels("internal", earned="A1"))) is True
+
+
+@pytest.mark.parametrize(
+    "found",
+    [
+        levels("critical", earned="A4"),
+        levels("external", reversible=False, earned="A3"),
+        levels("external", reversible=True, earned="A3"),
+        levels("internal", earned="A1"),
+        levels(tenant="A9"),
+        None,
+    ],
+)
+async def test_class_autonomy_answers_what_the_gate_asks(found: DecisionLevels | None) -> None:
+    """R9.2: the page's level and "Hỏi" are the gate's own two answers."""
+    port = FakeLevels(found)
+    both = await DecisionAutonomy(port).class_autonomy(
+        tenant_id=TENANT, workspace_id=WORKSPACE, dw_id=uuid.uuid4(), key="k.x"
+    )
+    assert both.effective_level == await _effective(port)
+    assert both.requires_person is await _requires(port)

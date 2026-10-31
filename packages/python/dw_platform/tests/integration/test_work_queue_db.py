@@ -597,10 +597,15 @@ async def test_open_counts_skip_finished_work_and_other_tenants(
     ]
     await _set(migrator, items[0].id, status="cancelled", closed_at=SystemClock().now())
     await _set(migrator, items[1].id, status="in_progress")
+    await q.enqueue(scope(world), idle.id, NewWork("lead.new", "form-idle", LEAD))
 
     owner = await context_of(app_engine, world, "owner", world.tenant_a, world.ws1)
-    assert await q.open_counts(owner, [worker.id, idle.id]) == {worker.id: 2}
+    assert await q.open_counts(owner, [worker.id, idle.id]) == {worker.id: 2, idle.id: 1}
+    # Only the DWs asked about: a page of the list counts its own rows.
+    assert await q.open_counts(owner, [worker.id]) == {worker.id: 2}
     assert await q.open_counts(owner, []) == {}
+    with pytest.raises(PermissionDeniedError):
+        await q.open_counts(owner.model_copy(update={"scopes": frozenset()}), [worker.id])
 
     in_b = await context_of(app_engine, world, "b_member", world.tenant_b, world.ws_b)
     assert await q.open_counts(in_b, [worker.id, idle.id]) == {}

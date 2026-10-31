@@ -9,9 +9,11 @@ import {
   ApiOutlined,
   HomeOutlined,
   MessageOutlined,
+  RobotOutlined,
   SafetyOutlined,
   SettingOutlined,
   SplitCellsOutlined,
+  UnorderedListOutlined,
 } from "@ant-design/icons";
 import type { NavItem } from "./types";
 
@@ -35,6 +37,20 @@ const platformNav: NavItem[] = [
     hint: "Thao tác đang chờ người quyết",
     icon: CheckSquareOutlined,
     scope: "approvals.read",
+  },
+  {
+    href: "/digital-workers",
+    label: "Digital Worker",
+    hint: "Digital Worker của workspace, mức tự chủ và kết quả của chúng",
+    icon: RobotOutlined,
+    scope: "dw.read",
+  },
+  {
+    href: "/work",
+    label: "Hàng đợi việc",
+    hint: "Việc của người và Digital Worker, cả việc đã bàn giao",
+    icon: UnorderedListOutlined,
+    scope: "dw.read",
   },
   {
     href: "/knowledge",

@@ -155,3 +155,15 @@ export function moneyInWords(amount: number): string {
   const text = `${amount < 0 ? "âm " : ""}${readNumber(Math.abs(amount), false)} đồng`;
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
+
+/**
+ * `1.234,57 USD`: a model's cost, in dollars as the ledger keeps them, with the
+ * Vietnamese decimal comma. Takes the server's decimal string; two places.
+ */
+export function formatUsd(decimal: string): string {
+  const value = Number(decimal);
+  if (!Number.isFinite(value)) return decimal;
+  const [whole, cents] = Math.abs(value).toFixed(2).split(".");
+  const sign = value < 0 ? "-" : "";
+  return `${sign}${grouped(Number(whole))},${cents}${NBSP}USD`;
+}

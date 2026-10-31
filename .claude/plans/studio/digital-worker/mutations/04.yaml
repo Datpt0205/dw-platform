@@ -1,0 +1,96 @@
+# Mutation check of digital-worker ticket 04: scripts/mutate.py runs this file.
+# One mutation per server control the screens read (the list's open count, the
+# workflow outline and its modes). The web controls (R9.4's locks and reason,
+# R9.5's no-data state) are vitest tests, which this runner does not run; they
+# were mutated by hand and the result is in the ticket's Comments.
+mutations:
+  - name: R9.1 finished work counts as open
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/work_queue_repo.py
+    old: "                        _W.c.status.not_in(sorted(TERMINAL)),"
+    new: "                        sa.true(),"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_work_queue_db.py::test_open_counts_skip_finished_work_and_other_tenants
+  - name: R9.1 DWs not asked about are counted
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/work_queue_repo.py
+    old: "                        _W.c.dw_id.in_(list(dw_ids)),"
+    new: "                        sa.true(),"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_work_queue_db.py::test_open_counts_skip_finished_work_and_other_tenants
+  - name: R9.1 the count asks no scope
+    file: packages/python/dw_platform/src/dw_platform/application/work_queue.py
+    old: |2
+              await self.authz.require(context=context, action=DW_READ, resource_type=_RESOURCE)
+              return await self.repo.open_counts(WorkScope.of(context), dw_ids)
+    new: |2
+              return await self.repo.open_counts(WorkScope.of(context), dw_ids)
+    tests:
+      - packages/python/dw_platform/tests/integration/test_work_queue_db.py::test_open_counts_skip_finished_work_and_other_tenants
+  - name: R9.1 the route drops the count
+    file: apps/api/src/dw_api/routes/v1/digital_workers.py
+    old: "open_items=counts.get(worker.id, 0)"
+    new: "open_items=0"
+    tests:
+      - apps/api/tests/unit/test_digital_workers_endpoint.py::test_the_list_counts_each_dws_open_items_in_the_callers_workspace
+  - name: R9.2 a class with one allowed tool is blocked
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/outline.py
+    old: "if not names & allowed_tools"
+    new: "if not names <= allowed_tools"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_outline.py
+  - name: R9.2 the tool's version is compared with allowed_tools
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/outline.py
+    old: "yield cls, tool.partition(\"@\")[0]"
+    new: "yield cls, tool"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_outline.py
+  - name: R9.2 tool calls in lanes are not walked
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/outline.py
+    old: "            yield from _tool_calls(lane, registry)"
+    new: "            pass"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_outline.py
+  - name: R9.2 the outline drops the lanes
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/outline.py
+    old: "lanes=tuple((port, walk(lane)) for port, lane in _lanes(step, registry)),"
+    new: "lanes=(),"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_outline.py
+      - apps/api/tests/unit/test_digital_workers_endpoint.py::test_the_workflow_route_draws_the_pinned_tree_and_each_class_mode
+  - name: R9.2 asking wins over blocked
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/outline.py
+    old: |2
+          if blocked:
+              return "blocked"
+    new: |2
+          if blocked and not requires_person:
+              return "blocked"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_outline.py
+  - name: R9.2 the reader ignores the blocked set
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/outline.py
+    old: "blocked=cls.key in blocked, requires_person=found.requires_person"
+    new: "blocked=False, requires_person=found.requires_person"
+    tests:
+      - apps/api/tests/unit/test_digital_workers_endpoint.py::test_the_workflow_route_draws_the_pinned_tree_and_each_class_mode
+  - name: R9.2 the reader ignores the gate's answer
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/outline.py
+    old: "blocked=cls.key in blocked, requires_person=found.requires_person"
+    new: "blocked=cls.key in blocked, requires_person=False"
+    tests:
+      - apps/api/tests/unit/test_digital_workers_endpoint.py::test_the_workflow_route_draws_the_pinned_tree_and_each_class_mode
+  - name: R9.2 class_autonomy reports the gate's level as requiring nobody
+    file: packages/python/dw_platform/src/dw_platform/application/digital_workers.py
+    old: "            effective_level=_effective(found), requires_person=_requires_person(found)"
+    new: "            effective_level=_effective(found), requires_person=False"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_digital_workers.py::test_class_autonomy_answers_what_the_gate_asks
+  - name: R9.2 an unshipped pin reads as an empty workflow
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/outline.py
+    old: |2
+              if pinned is None:
+                  raise NotFoundError(
+    new: |2
+              if pinned is None and False:
+                  raise NotFoundError(
+    tests:
+      - apps/api/tests/unit/test_digital_workers_endpoint.py::test_the_workflow_of_an_unreadable_or_unshipped_dw_is_404

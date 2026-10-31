@@ -22,6 +22,7 @@ import {
 } from "@ant-design/icons";
 import type { Approval } from "@dw/contracts";
 import { PageHeader, RegionState } from "@dw/ui";
+import { DwDecisionCard } from "../../components/digital-workers/dw-decision-card";
 import { LoadError } from "../../components/load-error";
 import { LoadMore } from "../../components/load-more";
 import {
@@ -35,6 +36,17 @@ import { formatDateTime } from "../../lib/dates";
 import { errorMessage } from "../../lib/error-message";
 import { apiClient } from "../../lib/session";
 import { useCachedPages } from "../../lib/use-cached-pages";
+
+/**
+ * Approval types drawn by a card of their own instead of the generic one: one
+ * entry per type, so the list below holds no branch per type.
+ */
+const CARDS: Record<
+  string,
+  (props: { approval: Approval; onDecided: () => void }) => ReactNode
+> = {
+  "dw.decision": DwDecisionCard,
+};
 
 export default function ApprovalsPage() {
   const { hasScope } = useAuth();
@@ -127,6 +139,15 @@ export default function ApprovalsPage() {
         )}
 
         {pending.map((approval) => {
+          const OwnCard = CARDS[approval.approval_type];
+          if (OwnCard)
+            return (
+              <OwnCard
+                key={approval.id}
+                approval={approval}
+                onDecided={reload}
+              />
+            );
           // A context with its own inbox decides there: one door per approval.
           const inbox = approvalInbox(approval);
           const lacking = missingScope(approval);

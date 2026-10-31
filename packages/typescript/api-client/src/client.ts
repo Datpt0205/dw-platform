@@ -52,7 +52,7 @@ import {
   type Page,
   type PageParams,
 } from "@dw/contracts";
-import type { components } from "./generated/platform";
+import type { components, operations } from "./generated/platform";
 
 /**
  * Typed API client core. Endpoint methods generated from OpenAPI are layered on
@@ -269,6 +269,33 @@ const _supportOperatorsMirrorTheRoutes: [
   SameType<AssignedSupportGrant, Generated["AssignedSupportGrantView"]>,
 ] = [true, true, true, true, true];
 void _supportOperatorsMirrorTheRoutes;
+
+// ---- Digital Workers (digital-worker R9) -----------------------------------
+// The types ARE the generated ones, not a hand-kept mirror: nothing here can
+// drift from the routes because nothing here restates them. The runtime check
+// is only that an object came back; the shape is the compiler's to check.
+
+export type DigitalWorker = Generated["DigitalWorkerView"];
+export type DigitalWorkerListItem = Generated["DigitalWorkerListItemView"];
+export type DwDecisionClass = Generated["DecisionClassView"];
+export type DwScorecard = Generated["ScorecardView"];
+export type WorkflowOutline = Generated["WorkflowOutlineView"];
+export type WorkflowOutlineStep = Generated["OutlineStepView"];
+export type DwClassStanding = Generated["ClassStandingView"];
+export type WorkItem = Generated["WorkItemView"];
+export type WorkItemHandoff = Generated["HandoffView"];
+export type WorkTrailEntry = Generated["TrailEntryView"];
+type WorkListQuery = NonNullable<
+  operations["list_work_items_api_v1_work_items_get"]["parameters"]["query"]
+>;
+export type WorkStatus = NonNullable<WorkListQuery["status"]>;
+export type WorkHolderKind = NonNullable<WorkListQuery["holder_kind"]>;
+
+const generated = <T>() =>
+  z.custom<T>(
+    (value) =>
+      typeof value === "object" && value !== null && !Array.isArray(value),
+  );
 
 export class ApiClient {
   constructor(private readonly options: ApiClientOptions) {}
@@ -827,15 +854,87 @@ export class ApiClient {
     );
   }
 
+  /**
+   * `edited_proposal`: a `dw.decision` approved with the person's edit
+   * (digital-worker R5.4); the server checks it against the proposal's schema
+   * and its locked fields.
+   */
   decideApproval(
     approvalId: string,
-    decision: { approve: boolean; comment?: string },
+    decision: {
+      approve: boolean;
+      comment?: string;
+      edited_proposal?: Record<string, unknown>;
+    },
   ): Promise<Approval> {
     return this.request(
       "POST",
       `/api/v1/approvals/${approvalId}/decisions`,
       approvalSchema,
       { body: decision },
+    );
+  }
+
+  // ---- Digital Workers ------------------------------------------------------
+
+  listDigitalWorkers(
+    params: PageParams = {},
+  ): Promise<Page<DigitalWorkerListItem>> {
+    return this.request(
+      "GET",
+      `/api/v1/digital-workers${pageQueryString(params)}`,
+      pageSchema(generated<DigitalWorkerListItem>()),
+    );
+  }
+
+  getDigitalWorker(dwId: string): Promise<DigitalWorker> {
+    return this.request(
+      "GET",
+      `/api/v1/digital-workers/${encodeURIComponent(dwId)}`,
+      generated<DigitalWorker>(),
+    );
+  }
+
+  getDigitalWorkerWorkflow(dwId: string): Promise<WorkflowOutline> {
+    return this.request(
+      "GET",
+      `/api/v1/digital-workers/${encodeURIComponent(dwId)}/workflow`,
+      generated<WorkflowOutline>(),
+    );
+  }
+
+  getDigitalWorkerScorecard(dwId: string, days = 30): Promise<DwScorecard> {
+    return this.request(
+      "GET",
+      `/api/v1/digital-workers/${encodeURIComponent(dwId)}/scorecard?days=${days}`,
+      generated<DwScorecard>(),
+    );
+  }
+
+  /** The shared queue (R3.5): no payload and no packet in a list. */
+  listWorkItems(
+    params: PageParams & {
+      status?: WorkStatus | null;
+      holder_kind?: WorkHolderKind | null;
+    } = {},
+  ): Promise<Page<WorkItem>> {
+    const search = new URLSearchParams(pageQueryString(params).slice(1));
+    if (params.status) search.set("status", params.status);
+    if (params.holder_kind) search.set("holder_kind", params.holder_kind);
+    const query = search.toString();
+    return this.request(
+      "GET",
+      `/api/v1/work-items${query ? `?${query}` : ""}`,
+      pageSchema(generated<WorkItem>()),
+    );
+  }
+
+  /** One item with its `trail`; payload and packet only for whom R3.11 lets. */
+  getWorkItem(itemId: string): Promise<WorkItem> {
+    return this.request(
+      "GET",
+      `/api/v1/work-items/${encodeURIComponent(itemId)}`,
+      generated<WorkItem>(),
     );
   }
 
