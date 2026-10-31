@@ -510,6 +510,17 @@ bên ngoài thì ghi "Chờ Đạt" và làm việc kế. Đường dẫn ticket
 
 - Ủy quyền duyệt: Đạt, spec, từ 27/10/2026
 - Ủy quyền duyệt: Đạt, requirements, từ 27/10/2026
+- Ủy quyền toàn phần: Đạt, từ 31/10/2026. Agent code mọi ticket của hàng đợi, nhận mọi khuyến nghị của gate, tự
+  quyết và sửa `CLAUDE.md` và ADR (cả ADR Accepted) và tự chấp nhận rủi ro thay Đạt, không hỏi lại. Mỗi quyết định
+  ghi `(agent, theo ủy quyền 31/10/2026)` với `Nếu sai thì:` ở chỗ nó thuộc về (spec, ADR, `CLAUDE.md`, Comments của
+  ticket), và liệt kê ở báo cáo cuối lượt. Giới hạn: một CRITICAL vẫn chỉ được sửa, không được chấp nhận; việc cần
+  giá trị thật mà chỉ Đạt có (khóa model, bí mật triển khai, tài khoản: Chờ Đạt 20, 21) thì bỏ qua và làm tiếp mục
+  khác. Chờ Đạt 19 (nâng ảnh bên thứ ba) giờ là việc của agent.
+- Giao diện: Đạt, từ 31/10/2026. Mọi màn hình theo design v3: khung `AppShell`, token bảng màu A và tông trạng thái
+  (bảng ở `web-ui/antd-shell/spec.md`, mục "Token bảng màu A" và "Tông trạng thái"), với theme của `@dw/ui` là chỗ
+  duy nhất giữ giá trị. Màn nào trông lệch design thì sửa ở theme hay token, không ghi màu, cỡ, bo góc vào component.
+  Trước khi đóng một ticket có màn hình: chạy app thật, xem bằng Playwright MCP ở chế độ sáng và tối, ở bề rộng desktop
+  và dưới 992px, chụp ảnh, sửa chỗ lệch, giữ tương phản chữ từ 4,5:1; ghi ảnh và nhận xét vào Comments của ticket.
 
 ## Slice log
 

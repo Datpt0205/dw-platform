@@ -38,6 +38,7 @@ own file and a row here.
 
 ## Decisions Đạt owes
 
+Since 2026-10-31 the agent decides all of these itself (`studio.md` "Ủy quyền toàn phần"), but real keys and secrets.
 - **Runtime:**
     - a plan quota on direct model calls (`runs_per_day`/`spend_usd_per_day`
       are enforced only in the runner);

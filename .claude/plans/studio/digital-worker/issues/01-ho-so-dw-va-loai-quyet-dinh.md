@@ -70,7 +70,7 @@ duy nhất trả mức tự chủ có hiệu lực (R1, R2, ADR-0128 (Proposed) 
 
 ## Nguồn
 
-- `packages/python/dw_agent_runtime/src/dw_agent_runtime/autonomy.py:71-133`; `packages/python/dw_kernel/src/dw_kernel/autonomy.py:17`; `db/migrations/versions/0006_autonomy.py:51`; `docs/adr/0103-runs-act-as-a-principal-within-a-boundary.md:52-77`; spec: R1, R2, DWK1, DWK3-DWK7, DWK23-DWK25. R1.4, R1.12, R1.14 ở ticket 02.
+- `packages/python/dw_agent_runtime/src/dw_agent_runtime/autonomy.py:71-94`; `packages/python/dw_kernel/src/dw_kernel/autonomy.py:17`; `db/migrations/versions/0006_autonomy.py:51`; `docs/adr/0103-runs-act-as-a-principal-within-a-boundary.md:52-77`; spec: R1, R2, DWK1, DWK3-DWK7, DWK23-DWK25. R1.4, R1.12, R1.14 ở ticket 02.
 
 ## Comments
 
