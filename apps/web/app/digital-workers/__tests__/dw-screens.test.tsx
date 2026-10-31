@@ -473,15 +473,17 @@ function decision(overrides: Partial<Approval> = {}): Approval {
       effective_level: "A1",
       proposal: {
         to: "an@khach.vn",
-        subject: "Chào anh An, cảm ơn đã quan tâm",
         body: "Nội dung thư chào.",
+        subject: "Chào anh An, cảm ơn đã quan tâm",
       },
+      // As jsonb stores it: object keys re-sorted, the `required` array not.
       proposal_schema: {
         type: "object",
+        required: ["to", "subject", "body"],
         properties: {
           to: { type: "string" },
-          subject: { type: "string", maxLength: 150 },
           body: { type: "string", maxLength: 4000 },
+          subject: { type: "string", maxLength: 150 },
         },
       },
       locked_fields: ["to"],
@@ -513,6 +515,16 @@ describe("R9.4 the dw.decision card", () => {
     expect(
       await screen.findByRole("link", { name: "Chăm sóc lead" }),
     ).toBeTruthy();
+    // The fields read in the schema's required order, not jsonb's.
+    const [to, subject, body] = ["Người nhận", "Tiêu đề", "Nội dung"].map(
+      (label) => screen.getByText(label),
+    );
+    expect(to.compareDocumentPosition(subject)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(subject.compareDocumentPosition(body)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
   });
 
   it("rejecting needs a reason, and edit-then-approve sends the edit with the locked field kept", async () => {

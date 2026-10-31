@@ -52,13 +52,17 @@ export default function DigitalWorkersPage() {
             loading={loading}
             pagination={false}
             sticky
-            scroll={{ x: "max-content" }}
+            // A fixed width, not max-content: the table lays out fixed, so a
+            // long mandate is cut with its full text on hover, not pushing the
+            // open-item count off the screen.
+            scroll={{ x: 760 }}
             dataSource={items}
             locale={{ emptyText: " " }}
             columns={[
               {
                 title: "Tên",
                 dataIndex: "name",
+                width: 260,
                 render: (name: string, worker) => (
                   <Link href={`/digital-workers/${worker.id}`}>{name}</Link>
                 ),
@@ -66,6 +70,7 @@ export default function DigitalWorkersPage() {
               {
                 title: "Trạng thái",
                 dataIndex: "state",
+                width: 130,
                 render: (state: string) => {
                   const shown = dwState(state);
                   return <Tag color={shown.color}>{shown.label}</Tag>;
@@ -75,12 +80,12 @@ export default function DigitalWorkersPage() {
                 title: "Nhiệm vụ",
                 dataIndex: "mandate",
                 ellipsis: { showTitle: true },
-                width: 420,
               },
               {
                 title: "Việc đang mở",
                 dataIndex: "open_items",
                 align: "right",
+                width: 130,
                 render: (count: number) => (
                   <Typography.Text className="tabular-nums">
                     {count}

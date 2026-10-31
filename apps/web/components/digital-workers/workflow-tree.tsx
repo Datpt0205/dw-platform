@@ -18,7 +18,14 @@ export function WorkflowTree({ steps }: { steps: WorkflowOutlineStep[] }) {
       current={-1}
       items={steps.map((step) => ({
         key: step.id,
-        title: step.description ?? step.id,
+        // A step not yet run is antd's "wait", whose title is the secondary
+        // colour; a read-only outline is not a progress bar, so the title
+        // keeps the text colour.
+        title: (
+          <Typography.Text strong>
+            {step.description ?? step.id}
+          </Typography.Text>
+        ),
         content: <StepBody step={step} />,
       }))}
     />

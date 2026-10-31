@@ -46,6 +46,8 @@ function readPayload(payload: Json) {
     schema && isObject(schema.properties)
       ? (schema.properties as Record<string, FieldSchema>)
       : {};
+  const required =
+    schema && Array.isArray(schema.required) ? schema.required.map(String) : [];
   const locked = Array.isArray(payload.locked_fields)
     ? payload.locked_fields.map(String)
     : [];
@@ -59,6 +61,7 @@ function readPayload(payload: Json) {
         : "—",
     proposal,
     properties,
+    required,
     locked,
   };
 }
@@ -68,6 +71,16 @@ const FIELD_LABEL: Record<string, string> = {
   subject: "Tiêu đề",
   body: "Nội dung",
 };
+
+/**
+ * Field names in the order a person reads them: the schema's `required` list
+ * first (an array, so its order survives jsonb, which re-sorts object keys),
+ * then any other property, then anything else the proposal carries.
+ */
+function fieldOrder(names: string[], required: string[]): string[] {
+  const first = required.filter((name) => names.includes(name));
+  return [...first, ...names.filter((name) => !first.includes(name))];
+}
 
 function fieldLabel(name: string, field: FieldSchema | undefined): string {
   return FIELD_LABEL[name] ?? field?.title ?? name;
@@ -130,12 +143,14 @@ export function DwDecisionCard({
   }
 
   const dwName = worker.data?.name ?? shown.dwId ?? "Digital Worker";
-  const editable = Object.entries(shown.properties).filter(
-    ([, field]) =>
-      field.type === "string" ||
-      field.type === "number" ||
-      field.type === "integer",
-  );
+  const editable = fieldOrder(Object.keys(shown.properties), shown.required)
+    .map((name): [string, FieldSchema] => [name, shown.properties[name] ?? {}])
+    .filter(
+      ([, field]) =>
+        field.type === "string" ||
+        field.type === "number" ||
+        field.type === "integer",
+    );
 
   const withLock = (button: ReactNode) =>
     lockReason ? (
@@ -247,15 +262,18 @@ export function DwDecisionCard({
             column={1}
             size="small"
             bordered
-            items={Object.entries(shown.proposal).map(([name, value]) => ({
-              key: name,
-              label: fieldLabel(name, shown.properties[name]),
-              children: (
-                <Typography.Paragraph className="whitespace-pre-wrap">
-                  {typeof value === "string" ? value : JSON.stringify(value)}
-                </Typography.Paragraph>
-              ),
-            }))}
+            styles={{ label: { whiteSpace: "nowrap" } }}
+            items={fieldOrder(Object.keys(shown.proposal), shown.required)
+              .map((name) => [name, shown.proposal?.[name]] as const)
+              .map(([name, value]) => ({
+                key: name,
+                label: fieldLabel(name, shown.properties[name]),
+                children: (
+                  <Typography.Paragraph className="whitespace-pre-wrap">
+                    {typeof value === "string" ? value : JSON.stringify(value)}
+                  </Typography.Paragraph>
+                ),
+              }))}
           />
         )}
 
