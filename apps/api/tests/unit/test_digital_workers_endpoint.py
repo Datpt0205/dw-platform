@@ -8,13 +8,17 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import replace
-from typing import Any
+from typing import Any, cast
 
 import httpx
 import pytest
 from asgi_lifespan import LifespanManager
 
+from dw_agent_runtime.wflite.catalog import load_shipped_packs
+from dw_agent_runtime.wflite.outline import WorkflowOutlineReader
+from dw_agent_runtime.wflite.registry import build_node_registry
 from dw_api.bootstrap import ApiContainer
+from dw_api.bootstrap.paths import CONFIGS
 from dw_api.health import CheckState, HealthService
 from dw_api.main import create_app
 from dw_api.settings import ApiSettings
@@ -23,10 +27,15 @@ from dw_kernel.ports import SystemClock, Uuid4Generator
 from dw_platform.adapters.identity.dev_token import DevTokenVerifier
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.authorization import ScopeAuthorizationService
-from dw_platform.application.digital_workers import DigitalWorkerService, Standing
+from dw_platform.application.digital_workers import (
+    ClassAutonomy,
+    DigitalWorkerService,
+    Standing,
+)
 from dw_platform.application.effect_keys import PendingEffect
 from dw_platform.application.entitlement import DEFAULT_PLANS, PlanEntitlementService
 from dw_platform.application.identity import DbAccessContextFactory, MembershipAccess
+from dw_platform.application.work_queue import InMemoryWorkKindSchemas, WorkQueue, WorkScope
 from dw_platform.domain.audit import AuditEvent
 from dw_platform.domain.digital_worker import DigitalWorker, DwPeople, DwState
 
@@ -144,11 +153,59 @@ class Roles:
         return {"member": frozenset({"approvals.read", "dw.read"})}
 
 
-def make_container(repo: FakeRepo, scopes: frozenset[str] = SCOPES) -> ApiContainer:
+class QueueRepo:
+    """Answers the one question the list asks of the queue: open items per DW,
+    only inside the scope asked."""
+
+    def __init__(self) -> None:
+        self.open: dict[tuple[uuid.UUID, uuid.UUID], int] = {}
+        self.asked: list[WorkScope] = []
+
+    async def open_counts(self, scope: WorkScope, dw_ids: Any) -> dict[uuid.UUID, int]:
+        self.asked.append(scope)
+        wanted = set(dw_ids)
+        return {
+            dw: n
+            for (workspace, dw), n in self.open.items()
+            if workspace == scope.workspace_id and dw in wanted
+        }
+
+    def __getattr__(self, name: str) -> Any:
+        raise NotImplementedError(f"{name} is not exercised by the route tests")
+
+
+class Autonomy:
+    """The gate's answer per class key, as `DecisionAutonomy` gives it."""
+
+    def __init__(self, answers: dict[str, ClassAutonomy]) -> None:
+        self.answers = answers
+
+    async def class_autonomy(
+        self, *, tenant_id: uuid.UUID, workspace_id: uuid.UUID, dw_id: uuid.UUID, key: str
+    ) -> ClassAutonomy:
+        return self.answers.get(key, ClassAutonomy(effective_level="A0", requires_person=True))
+
+
+def make_container(
+    repo: FakeRepo,
+    scopes: frozenset[str] = SCOPES,
+    *,
+    queue: QueueRepo | None = None,
+    autonomy: Autonomy | None = None,
+) -> ApiContainer:
     async def ok_probe() -> CheckState:
         return "ok"
 
     authz = ScopeAuthorizationService()
+    service = DigitalWorkerService(
+        repo=repo,
+        authz=authz,
+        tools=Tools(),
+        members=Members(),
+        roles=Roles(),
+        clock=SystemClock(),
+        id_generator=Uuid4Generator(),
+    )
     return ApiContainer(
         settings=ApiSettings(profile="test", dev_secret=SECRET),
         engine=None,
@@ -159,16 +216,26 @@ def make_container(repo: FakeRepo, scopes: frozenset[str] = SCOPES) -> ApiContai
         uow_factory=None,
         authorization=authz,
         entitlement=PlanEntitlementService(DEFAULT_PLANS),
-        digital_workers=DigitalWorkerService(
-            repo=repo,
+        digital_workers=service,
+        work_queue=WorkQueue(
+            repo=cast(Any, queue or QueueRepo()),
+            workers=cast(Any, None),
+            people=cast(Any, None),
+            schemas=InMemoryWorkKindSchemas({}),
             authz=authz,
-            tools=Tools(),
-            members=Members(),
-            roles=Roles(),
             clock=SystemClock(),
             id_generator=Uuid4Generator(),
         ),
+        dw_workflows=WorkflowOutlineReader(
+            workers=service,
+            workflows=PACKS,
+            autonomy=autonomy or Autonomy({}),
+            registry=build_node_registry(),
+        ),
     )
+
+
+PACKS = load_shipped_packs(CONFIGS)
 
 
 def body(**changes: Any) -> dict[str, Any]:
@@ -309,3 +376,85 @@ async def test_the_creator_cannot_start_their_own_dw_and_the_list_shows_it() -> 
     listed = await call(make_container(repo), "GET")
     assert listed.status_code == 200
     assert [item["id"] for item in listed.json()["items"]] == [dw_id]
+
+
+async def test_the_list_counts_each_dws_open_items_in_the_callers_workspace() -> None:
+    """R9.1: the list carries the open items of each DW; one with none reads 0."""
+    repo, queue = FakeRepo(), QueueRepo()
+    first = (await call(make_container(repo), "POST", payload=body())).json()["id"]
+    second = (await call(make_container(repo), "POST", payload=body(key="other"))).json()["id"]
+    queue.open[(WORKSPACE, uuid.UUID(first))] = 3
+    queue.open[(uuid.uuid4(), uuid.UUID(second))] = 9
+
+    listed = await call(make_container(repo, queue=queue), "GET")
+    assert listed.status_code == 200, listed.text
+    counts = {item["id"]: item["open_items"] for item in listed.json()["items"]}
+    assert counts == {first: 3, second: 0}
+    assert queue.asked == [WorkScope(tenant_id=TENANT, workspace_id=WORKSPACE)]
+
+
+def lead_care(**changes: Any) -> dict[str, Any]:
+    return body(
+        workflow_key="lead_care",
+        decision_classes=[
+            {
+                "key": "email.send",
+                "effect_level": "external",
+                "reversible": False,
+                "ceiling": "A2",
+                "earned_level": "A1",
+            },
+            {
+                "key": "work.handoff",
+                "effect_level": "internal",
+                "reversible": True,
+                "ceiling": "A3",
+                "earned_level": "A3",
+            },
+        ],
+        **changes,
+    )
+
+
+async def test_the_workflow_route_draws_the_pinned_tree_and_each_class_mode() -> None:
+    """R9.2: every step of the pinned document with its lanes; a class whose
+    every tool is outside `allowed_tools` is `blocked` whatever its level."""
+    repo = FakeRepo()
+    autonomy = Autonomy(
+        {
+            "email.send": ClassAutonomy(effective_level="A1", requires_person=True),
+            "work.handoff": ClassAutonomy(effective_level="A3", requires_person=False),
+        }
+    )
+    dw_id = (await call(make_container(repo), "POST", payload=lead_care())).json()["id"]
+
+    response = await call(make_container(repo, autonomy=autonomy), "GET", f"/{dw_id}/workflow")
+    assert response.status_code == 200, response.text
+    view = response.json()
+    assert (view["key"], view["version"]) == ("lead_care", "1.0.0")
+    assert [s["id"] for s in view["steps"]] == ["score", "draft", "approve_send"]
+    gate = view["steps"][2]
+    assert gate["decision_class"] == "email.send"
+    assert [lane["port"] for lane in gate["lanes"]] == ["approved", "rejected"]
+    switch = next(s for s in gate["lanes"][0]["steps"] if s["id"] == "replied")
+    assert {lane["port"] for lane in switch["lanes"]} == {"cases.true", "default"}
+    # Only email.send is allowed: work.handoff's tools are all refused.
+    assert view["decision_classes"] == [
+        {"key": "email.send", "effective_level": "A1", "mode": "ask"},
+        {"key": "work.handoff", "effective_level": "A3", "mode": "blocked"},
+    ]
+
+
+async def test_the_workflow_of_an_unreadable_or_unshipped_dw_is_404() -> None:
+    repo = FakeRepo()
+    dw_id = (await call(make_container(repo), "POST", payload=lead_care())).json()["id"]
+    unreadable = await call(
+        make_container(repo, frozenset({"approvals.read"})), "GET", f"/{dw_id}/workflow"
+    )
+    assert unreadable.status_code == 404
+    assert "steps" not in unreadable.json()
+
+    other = (await call(make_container(repo), "POST", payload=body(key="unshipped"))).json()["id"]
+    unshipped = await call(make_container(repo), "GET", f"/{other}/workflow")
+    assert unshipped.status_code == 404
+    assert unshipped.json()["details"]["reason_code"] == "workflow_not_shipped"

@@ -588,6 +588,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/digital-workers/{dw_id}/workflow": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Digital Worker Workflow */
+        get: operations["get_digital_worker_workflow_api_v1_digital_workers__dw_id__workflow_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/directory/candidates": {
         parameters: {
             query?: never;
@@ -1732,6 +1749,21 @@ export interface components {
             /** State */
             state: string;
         };
+        /** ClassStandingView */
+        ClassStandingView: {
+            /**
+             * Effective Level
+             * @enum {string}
+             */
+            effective_level: "A0" | "A1" | "A2" | "A3" | "A4";
+            /** Key */
+            key: string;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "auto" | "ask" | "blocked";
+        };
         /**
          * CodeUnavailable
          * @description Why the portal offers no code. Each one is a sentence on the page.
@@ -1881,6 +1913,61 @@ export interface components {
              * Format: uuid
              */
             workspace_id: string;
+        };
+        /** DigitalWorkerListItemView */
+        DigitalWorkerListItemView: {
+            /** Allowed Tools */
+            allowed_tools: string[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Created By
+             * Format: uuid
+             */
+            created_by: string;
+            /** Decision Classes */
+            decision_classes: components["schemas"]["DecisionClassView"][];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Key */
+            key: string;
+            /** Mandate */
+            mandate: string;
+            /** Name */
+            name: string;
+            /** Open Items */
+            open_items: number;
+            /** Parameters */
+            parameters: {
+                [key: string]: unknown;
+            };
+            people: components["schemas"]["PeopleView"];
+            /**
+             * Principal User Id
+             * Format: uuid
+             */
+            principal_user_id: string;
+            /** Role Keys */
+            role_keys: string[];
+            /** State */
+            state: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Work Kinds */
+            work_kinds: string[];
+            /** Workflow Key */
+            workflow_key: string;
+            /** Workflow Version */
+            workflow_version: string;
         };
         /** DigitalWorkerView */
         DigitalWorkerView: {
@@ -2434,6 +2521,28 @@ export interface components {
              */
             user_id: string;
         };
+        /** OutlineLaneView */
+        OutlineLaneView: {
+            /** Port */
+            port: string;
+            /** Steps */
+            steps: components["schemas"]["OutlineStepView"][];
+        };
+        /** OutlineStepView */
+        OutlineStepView: {
+            /** Decision Class */
+            decision_class: string | null;
+            /** Description */
+            description: string | null;
+            /** Id */
+            id: string;
+            /** Lanes */
+            lanes: components["schemas"]["OutlineLaneView"][];
+            /** Tool */
+            tool: string | null;
+            /** Type */
+            type: string;
+        };
         /**
          * Page
          * @description A page of results and the cursor that continues it.
@@ -2470,9 +2579,9 @@ export interface components {
          *     ``items`` — is the client's stop condition: a filtered listing can return an
          *     empty page in the middle of a run and still have more rows behind it.
          */
-        Page_DigitalWorkerView_: {
+        Page_DigitalWorkerListItemView_: {
             /** Items */
-            items: components["schemas"]["DigitalWorkerView"][];
+            items: components["schemas"]["DigitalWorkerListItemView"][];
             /** Next Cursor */
             next_cursor: string | null;
         };
@@ -3138,6 +3247,24 @@ export interface components {
             updated_at: string;
             /** Wake At */
             wake_at: string | null;
+        };
+        /** WorkflowOutlineView */
+        WorkflowOutlineView: {
+            /** Decision Classes */
+            decision_classes: components["schemas"]["ClassStandingView"][];
+            /**
+             * Dw Id
+             * Format: uuid
+             */
+            dw_id: string;
+            /** Key */
+            key: string;
+            /** Sha256 */
+            sha256: string;
+            /** Steps */
+            steps: components["schemas"]["OutlineStepView"][];
+            /** Version */
+            version: string;
         };
         /** WorkspaceMemberView */
         WorkspaceMemberView: {
@@ -4442,7 +4569,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Page_DigitalWorkerView_"];
+                    "application/json": components["schemas"]["Page_DigitalWorkerListItemView_"];
                 };
             };
             /** @description The request was refused */
@@ -4808,6 +4935,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkItemView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_digital_worker_workflow_api_v1_digital_workers__dw_id__workflow_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dw_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowOutlineView"];
                 };
             };
             /** @description The request was refused */

@@ -137,6 +137,13 @@ class WorkQueueRepositoryPort(Protocol):
         self, scope: WorkScope, request: PageRequest, where: WorkListFilter
     ) -> Page[WorkItem]: ...
 
+    async def open_counts(
+        self, scope: WorkScope, dw_ids: Sequence[uuid.UUID]
+    ) -> Mapping[uuid.UUID, int]:
+        """How many items not done, failed or cancelled each DW holds or
+        handed off; a DW with none is absent."""
+        ...
+
     async def move(
         self,
         scope: WorkScope,
@@ -333,6 +340,14 @@ class WorkQueue:
         await self.authz.require(context=context, action=DW_READ, resource_type=_RESOURCE)
         listed = await self.repo.page(WorkScope.of(context), request, where)
         return listed.map_items(_without_contents)
+
+    async def open_counts(
+        self, context: AccessContext, dw_ids: Sequence[uuid.UUID]
+    ) -> Mapping[uuid.UUID, int]:
+        """digital-worker R9.1: the open items of each DW on a page of the list,
+        in one statement, for a caller who may read the queue."""
+        await self.authz.require(context=context, action=DW_READ, resource_type=_RESOURCE)
+        return await self.repo.open_counts(WorkScope.of(context), dw_ids)
 
     async def get(self, context: AccessContext, item_id: uuid.UUID) -> WorkItem:
         """R3.11: payload and packet only for the holder and the DW's four

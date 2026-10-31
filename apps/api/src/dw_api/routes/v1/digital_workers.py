@@ -1,8 +1,8 @@
 """Digital Workers: /api/v1/digital-workers (digital-worker R1, R2, R7, R8).
 
 Create a DW with its principal, list and read the workspace's DWs, change a
-DW's state, replace its four people, read its scorecard, and raise or lower a
-decision class's earned level. The service owns every rule (scopes,
+DW's state, replace its four people, read its scorecard and its pinned
+workflow, and raise or lower a decision class's earned level. The service owns every rule (scopes,
 the four people, the second person, the roles a principal may hold); the route
 shapes the request and lets a domain error map to its status.
 
@@ -14,7 +14,7 @@ may not read is 404, the same as one that does not exist (R1.5). The scorecard:
 422 `days_out_of_range`. Autonomy: 403 `not_dw_owner`; 404
 `decision_class_not_found`; 422 `above_ceiling`, `level_invalid`,
 `level_unchanged`; 409 `raise_pending`, `level_changed`; 202 when a raise
-waits for its second person.
+waits for its second person. The workflow: 404 `workflow_not_shipped`.
 """
 
 from __future__ import annotations
@@ -27,6 +27,12 @@ from uuid import UUID
 from fastapi import APIRouter, Query, Response
 from pydantic import BaseModel, ConfigDict, Field
 
+from dw_agent_runtime.wflite.outline import (
+    DecisionMode,
+    OutlineStep,
+    WorkflowOutline,
+    WorkflowOutlineReader,
+)
 from dw_api.bootstrap import ApiContainer
 from dw_api.dependencies.auth import RequireAccessContext
 from dw_api.dependencies.idempotency import CheckInput, IdempotentOperation, idempotent
@@ -44,6 +50,7 @@ from dw_platform.application.digital_workers import (
 )
 from dw_platform.application.dw_autonomy import AutonomyChange, DwAutonomyService
 from dw_platform.application.scorecard import DEFAULT_DAYS, Scorecard, ScorecardService
+from dw_platform.application.work_queue import WorkQueue
 from dw_platform.domain.digital_worker import (
     DecisionClass,
     DigitalWorker,
@@ -66,6 +73,18 @@ def _scorecards(container: ApiContainer) -> ScorecardService:
     if container.dw_scorecard is None:
         raise InfrastructureError("digital workers are not configured")
     return container.dw_scorecard
+
+
+def _queue(container: ApiContainer) -> WorkQueue:
+    if container.work_queue is None:
+        raise InfrastructureError("the work queue is not configured")
+    return container.work_queue
+
+
+def _outlines(container: ApiContainer) -> WorkflowOutlineReader:
+    if container.dw_workflows is None:
+        raise InfrastructureError("digital workers are not configured")
+    return container.dw_workflows
 
 
 def _autonomy(container: ApiContainer) -> DwAutonomyService:
@@ -284,17 +303,27 @@ async def create_digital_worker(
     return await idempotency.record(view, status_code=201)
 
 
-@router.get("", response_model=Page[DigitalWorkerView])
+class DigitalWorkerListItemView(DigitalWorkerView):
+    # Items not done, failed or cancelled, handed off ones included (R9.1).
+    open_items: int
+
+
+@router.get("", response_model=Page[DigitalWorkerListItemView])
 async def list_digital_workers(
     context: RequireAccessContext, container: RequireContainer, page: RequireListPage
-) -> Page[DigitalWorkerView]:
+) -> Page[DigitalWorkerListItemView]:
     request = page.request(
         context,
         key="digital_workers",
         filters={"tenant": context.tenant_id, "workspace": context.workspace_id},
     )
     listed = await _service(container).list(context, request)
-    return listed.map_items(_view)
+    counts = await _queue(container).open_counts(context, [w.id for w in listed.items])
+    return listed.map_items(
+        lambda worker: DigitalWorkerListItemView(
+            **_view(worker).model_dump(), open_items=counts.get(worker.id, 0)
+        )
+    )
 
 
 @router.get("/{dw_id}", response_model=DigitalWorkerView)
@@ -395,6 +424,74 @@ async def get_digital_worker_scorecard(
 ) -> ScorecardView:
     # The range is the service's: 422 `days_out_of_range` (R7.2).
     return _scorecard_view(await _scorecards(container).scorecard(context, dw_id, days=days))
+
+
+class OutlineLaneView(BaseModel):
+    # `approved`, `rejected`, `cases.<value>` or `default`: the step type's port.
+    port: str
+    steps: list[OutlineStepView]
+
+
+class OutlineStepView(BaseModel):
+    id: str
+    type: str
+    description: str | None
+    decision_class: str | None
+    tool: str | None
+    lanes: list[OutlineLaneView]
+
+
+class ClassStandingView(BaseModel):
+    key: str
+    effective_level: AutonomyLevel
+    # "Tự động", "Hỏi" or "Chặn" on the page (R9.2).
+    mode: DecisionMode
+
+
+class WorkflowOutlineView(BaseModel):
+    dw_id: UUID
+    key: str
+    version: str
+    sha256: str
+    steps: list[OutlineStepView]
+    decision_classes: list[ClassStandingView]
+
+
+def _step_view(step: OutlineStep) -> OutlineStepView:
+    return OutlineStepView(
+        id=step.id,
+        type=step.type,
+        description=step.description,
+        decision_class=step.decision_class,
+        tool=step.tool,
+        lanes=[
+            OutlineLaneView(port=port, steps=[_step_view(s) for s in steps])
+            for port, steps in step.lanes
+        ],
+    )
+
+
+def _outline_view(found: WorkflowOutline) -> WorkflowOutlineView:
+    return WorkflowOutlineView(
+        dw_id=found.dw_id,
+        key=found.key,
+        version=found.version,
+        sha256=found.sha256,
+        steps=[_step_view(s) for s in found.steps],
+        decision_classes=[
+            ClassStandingView(key=c.key, effective_level=c.effective_level, mode=c.mode)
+            for c in found.decision_classes
+        ],
+    )
+
+
+@router.get("/{dw_id}/workflow", response_model=WorkflowOutlineView)
+async def get_digital_worker_workflow(
+    dw_id: UUID, context: RequireAccessContext, container: RequireContainer
+) -> WorkflowOutlineView:
+    # 404 for a DW the caller may not read; 404 `workflow_not_shipped` for a
+    # pin no pack ships any more.
+    return _outline_view(await _outlines(container).read(context, dw_id))
 
 
 class AutonomyRequest(BaseModel):

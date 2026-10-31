@@ -608,6 +608,41 @@
         "title": "ChangeStateRequest",
         "type": "object"
       },
+      "ClassStandingView": {
+        "properties": {
+          "effective_level": {
+            "enum": [
+              "A0",
+              "A1",
+              "A2",
+              "A3",
+              "A4"
+            ],
+            "title": "Effective Level",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "mode": {
+            "enum": [
+              "auto",
+              "ask",
+              "blocked"
+            ],
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "effective_level",
+          "mode"
+        ],
+        "title": "ClassStandingView",
+        "type": "object"
+      },
       "CodeUnavailable": {
         "description": "Why the portal offers no code. Each one is a sentence on the page.",
         "enum": [
@@ -966,6 +1001,121 @@
           "expires_at"
         ],
         "title": "DevSessionResponse",
+        "type": "object"
+      },
+      "DigitalWorkerListItemView": {
+        "properties": {
+          "allowed_tools": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Tools",
+            "type": "array"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "format": "uuid",
+            "title": "Created By",
+            "type": "string"
+          },
+          "decision_classes": {
+            "items": {
+              "$ref": "#/components/schemas/DecisionClassView"
+            },
+            "title": "Decision Classes",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "mandate": {
+            "title": "Mandate",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "open_items": {
+            "title": "Open Items",
+            "type": "integer"
+          },
+          "parameters": {
+            "additionalProperties": true,
+            "title": "Parameters",
+            "type": "object"
+          },
+          "people": {
+            "$ref": "#/components/schemas/PeopleView"
+          },
+          "principal_user_id": {
+            "format": "uuid",
+            "title": "Principal User Id",
+            "type": "string"
+          },
+          "role_keys": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Role Keys",
+            "type": "array"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "work_kinds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Work Kinds",
+            "type": "array"
+          },
+          "workflow_key": {
+            "title": "Workflow Key",
+            "type": "string"
+          },
+          "workflow_version": {
+            "title": "Workflow Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "key",
+          "name",
+          "mandate",
+          "state",
+          "work_kinds",
+          "allowed_tools",
+          "workflow_key",
+          "workflow_version",
+          "parameters",
+          "principal_user_id",
+          "role_keys",
+          "people",
+          "decision_classes",
+          "created_by",
+          "created_at",
+          "updated_at",
+          "open_items"
+        ],
+        "title": "DigitalWorkerListItemView",
         "type": "object"
       },
       "DigitalWorkerView": {
@@ -2274,6 +2424,89 @@
         "title": "OperatorView",
         "type": "object"
       },
+      "OutlineLaneView": {
+        "properties": {
+          "port": {
+            "title": "Port",
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/OutlineStepView"
+            },
+            "title": "Steps",
+            "type": "array"
+          }
+        },
+        "required": [
+          "port",
+          "steps"
+        ],
+        "title": "OutlineLaneView",
+        "type": "object"
+      },
+      "OutlineStepView": {
+        "properties": {
+          "decision_class": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision Class"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "lanes": {
+            "items": {
+              "$ref": "#/components/schemas/OutlineLaneView"
+            },
+            "title": "Lanes",
+            "type": "array"
+          },
+          "tool": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "description",
+          "decision_class",
+          "tool",
+          "lanes"
+        ],
+        "title": "OutlineStepView",
+        "type": "object"
+      },
       "Page_ApprovalView_": {
         "description": "A page of results and the cursor that continues it.\n\n``next_cursor`` is ``None`` on the last page, and that — not an empty\n``items`` — is the client's stop condition: a filtered listing can return an\nempty page in the middle of a run and still have more rows behind it.",
         "properties": {
@@ -2332,12 +2565,12 @@
         "title": "Page",
         "type": "object"
       },
-      "Page_DigitalWorkerView_": {
+      "Page_DigitalWorkerListItemView_": {
         "description": "A page of results and the cursor that continues it.\n\n``next_cursor`` is ``None`` on the last page, and that — not an empty\n``items`` — is the client's stop condition: a filtered listing can return an\nempty page in the middle of a run and still have more rows behind it.",
         "properties": {
           "items": {
             "items": {
-              "$ref": "#/components/schemas/DigitalWorkerView"
+              "$ref": "#/components/schemas/DigitalWorkerListItemView"
             },
             "title": "Items",
             "type": "array"
@@ -4097,6 +4330,51 @@
           "closed_at"
         ],
         "title": "WorkItemView",
+        "type": "object"
+      },
+      "WorkflowOutlineView": {
+        "properties": {
+          "decision_classes": {
+            "items": {
+              "$ref": "#/components/schemas/ClassStandingView"
+            },
+            "title": "Decision Classes",
+            "type": "array"
+          },
+          "dw_id": {
+            "format": "uuid",
+            "title": "Dw Id",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/OutlineStepView"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dw_id",
+          "key",
+          "version",
+          "sha256",
+          "steps",
+          "decision_classes"
+        ],
+        "title": "WorkflowOutlineView",
         "type": "object"
       },
       "WorkspaceMemberView": {
@@ -6014,7 +6292,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Page_DigitalWorkerView_"
+                  "$ref": "#/components/schemas/Page_DigitalWorkerListItemView_"
                 }
               }
             },
@@ -6624,6 +6902,59 @@
           }
         },
         "summary": "Give Work",
+        "tags": [
+          "digital-workers"
+        ]
+      }
+    },
+    "/api/v1/digital-workers/{dw_id}/workflow": {
+      "get": {
+        "operationId": "get_digital_worker_workflow_api_v1_digital_workers__dw_id__workflow_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dw_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dw Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowOutlineView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Get Digital Worker Workflow",
         "tags": [
           "digital-workers"
         ]

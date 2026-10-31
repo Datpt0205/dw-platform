@@ -486,10 +486,19 @@ class DecisionAutonomy:
         found = await self._levels(
             tenant_id=tenant_id, workspace_id=workspace_id, dw_id=dw_id, key=key
         )
-        if found is None:
-            return True
-        rung = effect_rung(found.effect_level, repeatable=found.reversible)
-        return requires_person(rung, _effective(found))
+        return _requires_person(found)
+
+    async def class_autonomy(
+        self, *, tenant_id: uuid.UUID, workspace_id: uuid.UUID, dw_id: uuid.UUID, key: str
+    ) -> ClassAutonomy:
+        """Both answers from one read, for a page that shows them together
+        (R9.2): the same rules the gate asks, never a second copy."""
+        found = await self._levels(
+            tenant_id=tenant_id, workspace_id=workspace_id, dw_id=dw_id, key=key
+        )
+        return ClassAutonomy(
+            effective_level=_effective(found), requires_person=_requires_person(found)
+        )
 
     async def _levels(
         self, *, tenant_id: uuid.UUID, workspace_id: uuid.UUID, dw_id: uuid.UUID, key: str
@@ -503,6 +512,19 @@ class DecisionAutonomy:
             # which is recoverable; the failure is logged, not swallowed.
             _log.exception("decision class levels unreadable", extra={"dw_id": str(dw_id)})
             return None
+
+
+@dataclass(frozen=True, slots=True)
+class ClassAutonomy:
+    effective_level: AutonomyLevel
+    requires_person: bool
+
+
+def _requires_person(found: DecisionLevels | None) -> bool:
+    if found is None:
+        return True
+    rung = effect_rung(found.effect_level, repeatable=found.reversible)
+    return requires_person(rung, _effective(found))
 
 
 def _effective(found: DecisionLevels | None) -> AutonomyLevel:
@@ -520,6 +542,7 @@ __all__ = [
     "DW_MANAGE",
     "DW_READ",
     "ChangeState",
+    "ClassAutonomy",
     "CreateDigitalWorker",
     "DecisionAutonomy",
     "DecisionClass",

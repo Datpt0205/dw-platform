@@ -41,6 +41,8 @@ from dw_agent_runtime.adapters.run_store import SqlWorkerRunStore
 from dw_agent_runtime.approval_codes import ApprovalViewService
 from dw_agent_runtime.model.run_policy import load_worker_run_policy
 from dw_agent_runtime.wflite.catalog import load_shipped_packs
+from dw_agent_runtime.wflite.outline import WorkflowOutlineReader
+from dw_agent_runtime.wflite.registry import build_node_registry
 from dw_api.bootstrap.container import ApiContainer
 from dw_api.bootstrap.identity import build_token_verifier
 from dw_api.bootstrap.paths import CONFIGS, WORKER_RUN_POLICY
@@ -62,6 +64,7 @@ from dw_platform.adapters.persistence.caching_lookup import CachingMembershipLoo
 from dw_platform.adapters.persistence.channel_inbound import SqlChannelUpdateQueue
 from dw_platform.adapters.persistence.channel_preferences import SqlChannelPreferences
 from dw_platform.adapters.persistence.digital_workers_repo import (
+    SqlDecisionLevels,
     SqlDigitalWorkerRepository,
     SqlDwMembershipCheck,
     SqlScopedAudit,
@@ -100,7 +103,7 @@ from dw_platform.application.admin_console import AdminConsoleService
 from dw_platform.application.approval_codes import ApprovalSubjectVersions, DecisionCodeKey
 from dw_platform.application.authorization import ScopeAuthorizationService
 from dw_platform.application.decision_gate import DW_DECISION, DwProposalMask
-from dw_platform.application.digital_workers import DigitalWorkerService
+from dw_platform.application.digital_workers import DecisionAutonomy, DigitalWorkerService
 from dw_platform.application.dw_autonomy import DwAutonomyService
 from dw_platform.application.entitlement import DEFAULT_PLANS, PlanEntitlementService
 from dw_platform.application.hierarchy import HierarchyService
@@ -405,6 +408,13 @@ def _build_container(settings: ApiSettings | None) -> ApiContainer:
         repo=SqlDwAutonomyRepository(session_factory),
         clock=clock,
         id_generator=ids,
+    )
+    # The levels the gate reads, read the same way for the page (R9.2).
+    container.dw_workflows = WorkflowOutlineReader(
+        workers=digital_workers,
+        workflows=packs,
+        autonomy=DecisionAutonomy(SqlDecisionLevels(session_factory)),
+        registry=build_node_registry(),
     )
     # The signed lead intake (leadcare R2): only with a secret of 32 bytes.
     intake_keys = IntakeKeys(settings.intake_signing_secret.get_secret_value().encode())

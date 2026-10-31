@@ -582,3 +582,25 @@ async def test_a_retirement_and_a_claim_do_not_cross(
         == 0
     )
     assert isinstance(retire, ConflictError) or claim == []
+
+
+async def test_open_counts_skip_finished_work_and_other_tenants(
+    world: World, app_engine: AsyncEngine, migrator: AsyncEngine
+) -> None:
+    """digital-worker R9.1: the list's open items, per DW, under RLS."""
+    worker = await _dw(app_engine, migrator, world)
+    idle = await _dw(app_engine, migrator, world, "other_dw")
+    q = queue(app_engine)
+    items = [
+        await q.enqueue(scope(world), worker.id, NewWork("lead.new", f"form-{n}", LEAD))
+        for n in range(3)
+    ]
+    await _set(migrator, items[0].id, status="cancelled", closed_at=SystemClock().now())
+    await _set(migrator, items[1].id, status="in_progress")
+
+    owner = await context_of(app_engine, world, "owner", world.tenant_a, world.ws1)
+    assert await q.open_counts(owner, [worker.id, idle.id]) == {worker.id: 2}
+    assert await q.open_counts(owner, []) == {}
+
+    in_b = await context_of(app_engine, world, "b_member", world.tenant_b, world.ws_b)
+    assert await q.open_counts(in_b, [worker.id, idle.id]) == {}

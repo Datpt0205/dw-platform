@@ -11,7 +11,7 @@ claim of its work wait for one another rather than cross (R1.12).
 from __future__ import annotations
 
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any, cast
@@ -30,7 +30,7 @@ from dw_platform.adapters.persistence.tenant_session import TenantScope, tenant_
 from dw_platform.application.effect_keys import PendingEffect
 from dw_platform.application.work_queue import Claimed, WorkListFilter, WorkScope
 from dw_platform.domain.audit import AuditEvent
-from dw_platform.domain.work_item import HandoffPacket, WorkItem, WorkStatus, sources_of
+from dw_platform.domain.work_item import TERMINAL, HandoffPacket, WorkItem, WorkStatus, sources_of
 
 _W = tables.work_items
 _DW = tables.digital_workers
@@ -160,6 +160,25 @@ class SqlWorkQueueRepository:
                 )
             ).all()
         return build_page([item_of(r) for r in rows], request=request, position_of=_position)
+
+    async def open_counts(
+        self, scope: WorkScope, dw_ids: Sequence[uuid.UUID]
+    ) -> Mapping[uuid.UUID, int]:
+        if not dw_ids:
+            return {}
+        async with tenant_session(self.session_factory, _bound(scope)) as session:
+            rows = (
+                await session.execute(
+                    sa.select(_W.c.dw_id, sa.func.count())
+                    .where(
+                        _W.c.workspace_id == scope.workspace_id,
+                        _W.c.dw_id.in_(list(dw_ids)),
+                        _W.c.status.not_in(sorted(TERMINAL)),
+                    )
+                    .group_by(_W.c.dw_id)
+                )
+            ).all()
+        return {row[0]: int(row[1]) for row in rows}
 
     async def move(
         self,

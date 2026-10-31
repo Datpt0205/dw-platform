@@ -41,6 +41,7 @@ from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.tool_specs import ToolSpecRegistry
 from dw_agent_runtime.tools import ToolRegistry
 from dw_agent_runtime.toolsets import ToolsetRegistry
+from dw_agent_runtime.wflite.outline import WorkflowOutlineReader
 from dw_api.health import HealthService
 from dw_api.settings import ApiSettings
 from dw_connectors.adapters.zalo_link import ZaloLinking
@@ -175,6 +176,9 @@ class ApiContainer:
     # (digital-worker R7, R8); wired with `digital_workers`.
     dw_scorecard: ScorecardService | None = None
     dw_autonomy: DwAutonomyService | None = None
+    # A DW's pinned workflow as its page draws it, with each decision class's
+    # level and mode (digital-worker R9.2); wired with `digital_workers`.
+    dw_workflows: WorkflowOutlineReader | None = None
     # The queue people and DWs share (digital-worker R3, R4); Postgres only.
     work_queue: WorkQueue | None = None
     # A work item's `trail`, read from its run (wf-lite R6.13); with the runtime.
