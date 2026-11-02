@@ -2,8 +2,8 @@
 
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
-Duyệt: chưa
-Sẵn sàng: chưa kiểm
+Duyệt: agent, tạm theo ủy quyền 2/11/2026
+Sẵn sàng: ĐẠT (2/11/2026; 0 CRITICAL, 0 HIGH; ticket 01)
 
 Studio cần đo và chặn chi tiêu ở mức công ty, workspace, agent và quy trình (theo người dùng từ W2), việc
 mà một tổng theo ngày của cả tenant không làm được. Lát này đưa lại Sổ sử dụng theo lượt gọi (D6) làm nguồn
@@ -703,6 +703,16 @@ Mọi bảng tenant: RLS ENABLE và FORCE theo tenant, grant cùng migration, t�
   `enforced: false` tới khi luật sư xác nhận 395 ngày trước chạy bóng, vì DROP PARTITION không lùi được, số còn
   UNVERIFIED và W1 chỉ có dữ liệu giả lập; `make retention-unenforced` liệt kê nó cho cổng E3 (telemetry-and-audit,
   H-33). Hỏi: Q3. Sửa: Dữ liệu, ticket 02.
+- 2/11/2026 (agent, tạm theo ủy quyền): sửa ticket 01 theo gate `checking-plan-readiness` (3 HIGH, đo trên `1aa6ea7`):
+  `PlanCatalogPort` bất đồng bộ, cache trong tiến trình theo `plan_id` TTL 30 giây, lỗi đọc lan ra và lượt chạy không
+  được nhận, `RunAllowancePort` thành `async` tới khi ticket 03 gỡ nó; test kiến trúc quét `ast` tên `DEFAULT_PLANS` và
+  lời gọi `Plan(`, `PlanLimits(` ngoài adapter; seed trần mỗi lượt `max_model_calls_per_run` 50 và
+  `max_tool_calls_per_run` 200 ở ba gói, chi tiết và lý do ở Comments của ticket. Không đổi R1. Theo `## Ủy quyền` của
+  studio.md (Đạt, 31/10/2026). Nếu sai thì: như các dòng `Nếu sai thì` ở Comments của ticket 01.
+- 2/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 01. Ticket 01 là danh mục gói một chủ (R1.1-R1.4, UL1),
+  chỉ chờ foundations-hardening/03 (đã xong), không chạm bảng, route, migration, config hay prompt nào của ticket 02
+  hay 05, hai ticket không có đường phụ thuộc tới nó; 03 chờ nó. Cách chia 02-06 được duyệt khi gate chạy cho chúng.
+  Theo `## Ủy quyền` của studio.md (Đạt, 31/10/2026). Nếu sai thì: hạ ticket 01 về `needs-triage` và chia lại.
 
 ## Danh sách ticket
 

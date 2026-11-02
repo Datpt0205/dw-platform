@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 29/10/2026
-Sẵn sàng: ĐẠT (29/10/2026; 0 CRITICAL, 0 HIGH; ticket 08)
+Sẵn sàng: ĐẠT (2/11/2026; 0 CRITICAL, 0 HIGH; ticket 01, 08)
 
 Studio xử lý dữ liệu cá nhân của khách hàng của công ty khách (lead, khách hàng) trên nền tảng đặt tại
 Việt Nam, gọi model có thể ở nước ngoài và gửi tin marketing qua Zalo và email. Lát này biến các nghĩa vụ
@@ -62,6 +62,9 @@ module kernel, và tạo trường thiếu loại bị từ chối (YC84).
   kernel, hay một giá trị thiếu nhãn tiếng Việt, THÌ test drift PHẢI đỏ.
 - R1.4 ĐỐI VỚI một trường `Nhạy cảm`, bảng định nghĩa trường PHẢI mang `sensitive_type` từ danh sách Nghị
   định 356 Điều 4.1, còn trường `Cơ bản` hay `Không` thì không mang.
+- R1.5 NẾU một yêu cầu tạo một trường `Nhạy cảm` không có `sensitive_type`, hay một trường `Cơ bản` hay `Không` có
+  `sensitive_type`, THÌ API chủ bảng PHẢI trả 422 `validation_failed` với `errors[].code` `sensitive_type_required`
+  hay `sensitive_type_not_allowed` có con trỏ (app-standards:R1.3), và không tạo trường.
 
 ### R2 — Lộ trình dữ liệu ở model gateway, mọi lời gọi model qua cùng cổng
 
@@ -204,8 +207,8 @@ lane của telemetry-and-audit thi hành (DO-52). Mỗi hàm xóa hẹp của l�
 ## Trong phạm vi
 
 - Bảng, cột và ràng buộc ở mục Dữ liệu; route ở mục API.
-- Mã: `dw_kernel.personal_data` (từ vựng `pd_category`, `sensitive_type`, Trường định danh chủ thể, helper
-  CHECK và helper test catalog); `ResidencyGate` và `effective_route_class`; `MarketingSendPolicy` thỏa
+- Mã: `dw_kernel.personal_data` (từ vựng `pd_category`, `sensitive_type`, Trường định danh chủ thể, biểu thức
+  CHECK ghép và helper validate) và helper test catalog ở `dw_platform.testing.personal_data`; `ResidencyGate` và `effective_route_class`; `MarketingSendPolicy` thỏa
   `SendAdmissionPort`; module thuần `capability_analysis`, bảng điều phối nhãn ở composition root và kiểm
   đăng ký vào bảng kiểm theo loại lúc gửi kiểm định của agent-lifecycle (agent-lifecycle:R2.7);
   `configs/policies/marketing_send@1.0.0.yaml` (gồm số người nhận tối đa mỗi lượt), `configs/policies/studio_risk@1.0.0.yaml`
@@ -254,8 +257,10 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
 
 - `dw_kernel.personal_data`: module thuần stdlib; `PdCategory` (`none`, `basic`, `sensitive`),
   `SensitiveType` (danh sách Nghị định 356 Điều 4.1), `SubjectIdentifierKind` (email, phone, national_id,
-  zalo_user_id, facebook_psid, tax_code, bank_account); helper `assert_field_tables_classified` và JSON
-  Schema `contracts/jsonschema/pd_classification.json` sinh ra, `--check` trong CI; nhãn tiếng Việt
+  zalo_user_id, facebook_psid, tax_code, bank_account), biểu thức CHECK ghép `SENSITIVE_TYPE_PAIRING_SQL` và
+  helper validate thuần; helper test catalog `assert_field_tables_classified` ở `dw_platform.testing.personal_data`
+  (kernel không có phụ thuộc); JSON Schema `contracts/jsonschema/pd_classification.json` sinh ra, `--check` trong
+  CI; nhãn tiếng Việt
   `apps/web/lib/pd-labels.ts`.
 - `platform.tenants`: thêm `data_route_class text NOT NULL DEFAULT 'vn_only'` CHECK (`vn_only`,
   `cross_border_minimised`, `cross_border_full`).
@@ -336,7 +341,8 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
   không lộ địa chỉ có tồn tại.
 - Lỗi theo vỏ `application/problem+json` của ADR-0108 (Accepted). Lát này là chủ mã `pd_category_required`, một
   `errors[].code` của 422 `validation_failed` có con trỏ tới trường thiếu loại (app-standards:R1.3), không phải
-  `details.reason_code`; spec chủ bảng trả nó cùng hình (custom-objects:R2.2, workflow-triggers:R4.1).
+  `details.reason_code`; spec chủ bảng trả nó cùng hình (custom-objects:R2.2, workflow-triggers:R4.1). Cùng hình,
+  lát này là chủ mã `sensitive_type_required` và `sensitive_type_not_allowed` (R1.5).
   `details.reason_code`: `residency_refused`, `blocked:<lý do>` (lý do của Sàn gửi tin ở ADR-0124 (Accepted)
   quyết 1, gồm `recipient_cap`; `processing_restricted` đến ở W2 cùng Hạn chế xử lý), `capability_trifecta_autonomy`,
   `tool_unclassified`, `trifecta_path_unapproved`, `second_person_required`. Mã 422 lúc gửi kiểm định đi qua
@@ -683,6 +689,19 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
 - 29/10/2026 (agent, tạm theo ủy quyền): Theo gate `checking-plan-readiness` cho ticket 08: R3.4 tách trang xác nhận `GET` khỏi hành động `POST`; R3.11 phát lại vẫn kiểm chặn gửi và đồng ý; khung giờ cố định `Asia/Ho_Chi_Minh`; CP27 (chéo tenant), CP28 (dấu gửi tin bắt buộc), CP29 (bí mật ký). Sửa: R3.4, R3.6, R3.11, CP27-CP29, ticket 08.
 - 29/10/2026 (agent, tạm theo ủy quyền): Theo lượt xác nhận của gate cho ticket 08: R3.7 tách lần chặn đầu (một dòng `blocked`) khỏi lần phát lại bị chặn (chỉ audit, `details.replay`); CP9, CP10 theo `GET` trang và `POST` hành động; xóa hai bảng phân vùng qua bước `platform.purge_tenant_marketing`, không qua `purge_tenant_append_only`.
 - 29/10/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 08.
+- 2/11/2026 (agent, theo ủy quyền 31/10/2026): Theo gate `checking-plan-readiness` cho ticket 01: tiêu chí R1.1-R1.4
+  của ticket kiểm chính helper (vấn đề có con trỏ, helper catalog trên một bảng tạm), vì ở `1aa6ea7` chưa có schema
+  `studio` hay route tạo trường nào; nửa HTTP ở custom-objects:R2.2 và workflow-triggers:R4.1. Nếu sai thì: ticket 01
+  chờ custom-objects/02 và kiểm trên `studio.field_defs` thật.
+- 2/11/2026 (agent, theo ủy quyền 31/10/2026): R1.4 giữ ở hai tầng: CHECK `ck_<bảng>_pd_sensitive_type` bằng
+  `(pd_category = 'sensitive') = (sensitive_type IS NOT NULL)` mà helper catalog so với định nghĩa Postgres in ra, và
+  R1.5 mới với `errors[].code` `sensitive_type_required`, `sensitive_type_not_allowed` để API trả 422 thay vì để CHECK
+  nổ thành 500. Sửa: thêm R1.5, Dữ liệu, Trong phạm vi, API, ticket 01. Nếu sai thì: một mã
+  `sensitive_type_invalid` cho cả hai chiều, CHECK giữ nguyên.
+- 2/11/2026 (agent, theo ủy quyền 31/10/2026): `SensitiveType` chép từ văn bản tiếng Việt chính thức của Nghị định
+  356 Điều 4 khoản 1, một giá trị mỗi điểm có chữ cái, không giá trị `other`; ticket 02 (luật sư) xác nhận danh sách.
+  Sửa: ticket 01. Nếu sai thì: giá trị đổi tên hay thêm bằng migration ở mỗi bảng chủ, khi dữ liệu còn giả lập (YC89).
+- 2/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 01.
 
 ## Danh sách ticket
 

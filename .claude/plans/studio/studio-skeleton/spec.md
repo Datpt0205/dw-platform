@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 28/10/2026
-Sẵn sàng: ĐẠT (28/10/2026; 0 CRITICAL, 0 HIGH; ticket 02)
+Sẵn sàng: ĐẠT (2/11/2026; 0 CRITICAL, 0 HIGH; ticket 02, 04)
 
 Mọi spec Studio khác cần một chỗ để đặt mã và bảng đầu tiên: một distribution `dw_studio`, schema `studio` đóng quyền ghi khi không ai cấp, một sổ cho bảng phân vùng theo thời gian, seam API và web có nội dung thật, và luật nhận dịch vụ compose mới. Spec này dựng chỗ ở đó theo ADR-0100 (Accepted) và ADR-0101 (Accepted), trước mọi năng lực Studio. Ý định: cho Studio một chỗ ở trong repo mà mọi spec khác xây lên, không seam rỗng.
 
@@ -264,7 +264,7 @@ Hai ADR mang cùng số không vào được nhánh chính (ADR-0100 (Accepted) 
 - usage-and-limits ticket 02: chủ duy nhất của `platform.drop_expired_partitions(cutoffs jsonb)` ở W1, mỗi bảng cha một mốc mà lane `partitions` dựng từ tập mảnh retention; ticket 01 không sửa thân hàm, và G1 phải xanh qua bản viết lại đó. Ticket đó đăng ký bước xóa `platform.purge_tenant_append_only` vào sổ bước xóa của foundations-hardening/07, và test phủ của R4.2 đỏ khi bước đó đi trái một cạnh `RESTRICT` (H-2).
 - telemetry-and-audit: chủ định dạng mảnh retention, bộ đọc tập mảnh (telemetry-and-audit:R5.13) và lane lưu giữ (ADR-0122 (Accepted) quyết 7; H-1); R3.7 đọc thời hạn qua hàm tra của mô hình chính sách, mà từ telemetry-and-audit/01 chỉ đọc tập mảnh; ticket 01 của telemetry-and-audit thêm mảnh `platform.audit_events` và gỡ ánh xạ tạm sang `retention@1.7.0` mà ticket 01 của spec này dựng.
 - foundations-hardening ticket 07: sổ bước xóa của lane `offboarding` ở composition root của worker (foundations-hardening:R11.4, foundations-hardening:R11.5, FH33 của spec đó), mỗi bước nêu bảng nó xóa, thứ tự suy từ cạnh `RESTRICT` và `NO ACTION` trong `pg_constraint`, không danh sách viết tay; test phủ của R4.2 đọc thứ tự qua cùng một hàm của adapter trước và sau ticket đó (H-2).
-- runtime-hardening ticket 02: mọi ảnh bên thứ ba ghim digest (runtime-hardening:R8.3) trước ticket 04 (OPS-b), nên danh sách ngoại lệ của ticket 04 không có phần ghim ảnh.
+- runtime-hardening ticket 02: mọi ảnh bên thứ ba ghim digest (runtime-hardening:R8.3) trước ticket 04 (OPS-b), nên luật `digest` của ticket 04 không có ngoại lệ cho ảnh kéo về; dòng `FROM` của Dockerfile repo nằm ngoài runtime-hardening:R8.3 và là vi phạm có trước luật (Quyết định 2/11/2026).
 - foundations-hardening ticket 03: chờ ticket 01 và viết lại bản ba tham số của `platform._ensure_one_partition` theo dạng policy của foundations-hardening:R5.3, giữ R3.3.
 - Kiểm lại khi: ADR-0100 (Accepted) hay ADR-0101 (Accepted) đổi trạng thái hay nội dung → cả spec; một spec thêm dịch vụ compose → R8, ticket 04; tenant-config đổi route đọc artifact → R7.3, ticket 03; tenant-rbac/02 đổi cách thanh điều hướng đọc khóa từ `/me` → R7.2, ticket 03; một spec đăng ký bảng phân vùng có policy chặt hơn tenant → R3.3, R3.6, ticket 01; một spec tạo bảng tenant không có `workspace_id` → R9, dòng của bảng đó trong danh sách; telemetry-and-audit đổi cách đặt tên mảnh hay bộ đọc tập mảnh → R3.7, ticket 01; usage-and-limits/02 đổi chữ ký hay cách đọc thời hạn của `platform.drop_expired_partitions` → G1, ticket 01; một spec tạo bảng tenant ở `platform` → R4.3, dòng loại trừ hay thứ tự xóa của bảng đó; foundations-hardening/07 đổi cách sổ bước xóa nêu bảng hay suy thứ tự → R4.2, ticket 01.
 
@@ -331,6 +331,7 @@ Hai ADR mang cùng số không vào được nhánh chính (ADR-0100 (Accepted) 
 - 27/10/2026 (Đạt): từ nay agent tự duyệt spec, `requirements.md` và cách chia ticket của area `studio`, và làm theo khuyến nghị của gate mà không hỏi lại; ghi ở mục Ủy quyền của `.claude/plans/studio.md`. Vẫn dừng hỏi khi khuyến nghị đổi `CLAUDE.md` hay một ADR Accepted, hay đòi chấp nhận rủi ro.
 
 - 28/10/2026 (agent, tạm theo ủy quyền): theo HIGH của checking-plan-readiness cho ticket 02 trên `72a078c`: nhóm Studio dựng `AccessContext` bằng chính factory của `get_access_context` và từ chối header grant support như nó, để "người gọi là ai" có một chủ (R6.11, SKEL30, API, ticket 02); gộp MEDIUM về phiên support (DO-13.3). Sửa: R6.11, API, SKEL30, ticket 02. Nếu sai thì: Đạt đổi ở lượt duyệt.
+- 2/11/2026 (agent, theo ủy quyền 31/10/2026): theo bảy HIGH của checking-plan-readiness cho ticket 04 trên `1aa6ea7`: runtime-hardening/02 ghim mọi `image:` bên thứ ba nhưng ghi `FROM` của Dockerfile repo là ngoài R8.3, nên OPS-b thu hẹp: luật `digest` không có ngoại lệ cho ảnh kéo về, còn sáu dịch vụ tự dựng có `FROM` chưa ghim đứng trong `EXCEPTIONS["digest"]` như mọi vi phạm có trước luật (R8.8); tổ hợp overlay chạy `--profile '*'`; job `contracts` checkout đủ lịch sử cho `BASE_SHA`; luật CI tách `ci-config`, `ci-smoke`, `ci-trivy`; dòng đỏ mang loại, ADR khớp tên trong backtick; ticket 04 chờ ticket 02 vì cùng sửa `.github/workflows/ci.yml`. Sửa: Phụ thuộc, ticket 04. Nếu sai thì: ticket 04 ghim tám dòng `FROM` và `EXCEPTIONS["digest"]` rỗng, chờ ticket 02 vì cả hai sửa Dockerfile.
 
 ## Danh sách ticket
 
