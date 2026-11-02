@@ -1,0 +1,55 @@
+{
+  "$id": "pd_classification.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A field's personal-data classification (ADR-0106 decision 1). Generated from dw_kernel.personal_data by scripts/generate_contracts.py; do not edit.",
+  "properties": {
+    "pd_category": {
+      "enum": [
+        "none",
+        "basic",
+        "sensitive"
+      ],
+      "type": "string"
+    },
+    "sensitive_type": {
+      "description": "Decree 356/2025/ND-CP Art. 4.1; only on a sensitive field.",
+      "enum": [
+        "racial_ethnic_origin",
+        "political_religious_views",
+        "private_life",
+        "health",
+        "biometric_genetic",
+        "sex_life_orientation",
+        "crime_violation",
+        "location",
+        "identity_credentials",
+        "financial",
+        "behaviour_tracking",
+        "legally_confidential",
+        null
+      ],
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "subject_identifier": {
+      "enum": [
+        "email",
+        "phone",
+        "national_id",
+        "zalo_user_id",
+        "facebook_psid",
+        "tax_code",
+        "bank_account",
+        null
+      ],
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "title": "PdClassification",
+  "type": "object"
+}

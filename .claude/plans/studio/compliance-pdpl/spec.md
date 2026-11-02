@@ -257,8 +257,9 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
 
 - `dw_kernel.personal_data`: module thuần stdlib; `PdCategory` (`none`, `basic`, `sensitive`),
   `SensitiveType` (danh sách Nghị định 356 Điều 4.1), `SubjectIdentifierKind` (email, phone, national_id,
-  zalo_user_id, facebook_psid, tax_code, bank_account), biểu thức CHECK ghép `SENSITIVE_TYPE_PAIRING_SQL` và
-  helper validate thuần; helper test catalog `assert_field_tables_classified` ở `dw_platform.testing.personal_data`
+  zalo_user_id, facebook_psid, tax_code, bank_account), biểu thức CHECK ghép `SENSITIVE_TYPE_PAIRING_SQL`,
+  `SUBJECT_IDENTIFIER_PAIRING_SQL` (`pd_category <> 'none' OR subject_identifier IS NULL`, CHECK
+  `ck_<bảng>_pd_subject_identifier`) và helper validate thuần; helper test catalog `assert_field_tables_classified` ở `dw_platform.testing.personal_data`
   (kernel không có phụ thuộc); JSON Schema `contracts/jsonschema/pd_classification.json` sinh ra, `--check` trong
   CI; nhãn tiếng Việt
   `apps/web/lib/pd-labels.ts`.
@@ -342,7 +343,8 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
 - Lỗi theo vỏ `application/problem+json` của ADR-0108 (Accepted). Lát này là chủ mã `pd_category_required`, một
   `errors[].code` của 422 `validation_failed` có con trỏ tới trường thiếu loại (app-standards:R1.3), không phải
   `details.reason_code`; spec chủ bảng trả nó cùng hình (custom-objects:R2.2, workflow-triggers:R4.1). Cùng hình,
-  lát này là chủ mã `sensitive_type_required` và `sensitive_type_not_allowed` (R1.5).
+  lát này là chủ mã `sensitive_type_required` và `sensitive_type_not_allowed` (R1.5), và
+  `subject_identifier_not_allowed` cho một trường `Không` mang Trường định danh chủ thể (con trỏ `<trường>/subject_identifier`).
   `details.reason_code`: `residency_refused`, `blocked:<lý do>` (lý do của Sàn gửi tin ở ADR-0124 (Accepted)
   quyết 1, gồm `recipient_cap`; `processing_restricted` đến ở W2 cùng Hạn chế xử lý), `capability_trifecta_autonomy`,
   `tool_unclassified`, `trifecta_path_unapproved`, `second_person_required`. Mã 422 lúc gửi kiểm định đi qua
@@ -702,6 +704,11 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
   356 Điều 4 khoản 1, một giá trị mỗi điểm có chữ cái, không giá trị `other`; ticket 02 (luật sư) xác nhận danh sách.
   Sửa: ticket 01. Nếu sai thì: giá trị đổi tên hay thêm bằng migration ở mỗi bảng chủ, khi dữ liệu còn giả lập (YC89).
 - 2/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 01.
+- 2/11/2026 (agent, theo ủy quyền 31/10/2026): Khi dựng ticket 01, theo MEDIUM (c) của gate: một Trường định danh
+  chủ thể là dữ liệu cá nhân, nên trường `Không` không mang `subject_identifier`: mã `subject_identifier_not_allowed`
+  của `classification_problems` và CHECK thứ năm `ck_<bảng>_pd_subject_identifier` mà helper catalog so khớp; thêm lúc
+  chưa bảng định nghĩa trường nào tồn tại thì không tốn migration nào. Sửa: Dữ liệu, API, ticket 01. Nếu sai thì: gỡ mã
+  và CHECK, helper về bốn CHECK.
 
 ## Danh sách ticket
 

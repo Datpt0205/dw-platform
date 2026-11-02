@@ -1,5 +1,6 @@
 # Generated artifacts — formatting is owned by their generators
 contracts/openapi/openapi.json
+contracts/jsonschema/
 contracts/release/
 contracts/telemetry/
 packages/typescript/api-client/src/generated/

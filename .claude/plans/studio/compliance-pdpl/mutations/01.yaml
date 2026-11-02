@@ -1,0 +1,107 @@
+# Mutation check of compliance-pdpl ticket 01: scripts/mutate.py runs this file.
+# One mutation per control the ticket adds (CP1; R1.1-R1.5) and per layer that
+# holds one: the pure check owners call (kernel), the catalog net over the
+# tables (dw_platform.testing), and the generated schema with its --check.
+# The web label table (R1.3, apps/web/lib/pd-labels.ts) is guarded by vitest,
+# which mutate.py does not run: deleting one label was shown red by hand on
+# 2026-11-02 (lib/__tests__/pd-labels.test.ts: 2 of 3, then 1 of 3 failed).
+mutations:
+  - name: R1.1 a field without a category passes the check
+    file: packages/python/dw_kernel/src/dw_kernel/personal_data.py
+    old: "            found.append(ClassificationProblem(ClassificationCode.PD_CATEGORY_REQUIRED, pointer))"
+    new: "            pass"
+    tests:
+      - packages/python/dw_kernel/tests/unit/test_personal_data.py::test_a_field_without_a_category_is_one_problem_at_its_pointer
+  - name: R1.5 a sensitive field without a type passes the check
+    file: packages/python/dw_kernel/src/dw_kernel/personal_data.py
+    old: "        if category == PdCategory.SENSITIVE and field.sensitive_type is None:"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_kernel/tests/unit/test_personal_data.py::test_sensitive_type_is_required_on_sensitive_and_refused_elsewhere
+  - name: R1.5 a basic or none field may carry a sensitive type
+    file: packages/python/dw_kernel/src/dw_kernel/personal_data.py
+    old: "        if category != PdCategory.SENSITIVE and field.sensitive_type is not None:"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_kernel/tests/unit/test_personal_data.py::test_sensitive_type_is_required_on_sensitive_and_refused_elsewhere
+  - name: a subject identifier on a none field passes the check
+    file: packages/python/dw_kernel/src/dw_kernel/personal_data.py
+    old: "        if category == PdCategory.NONE and field.subject_identifier is not None:"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_kernel/tests/unit/test_personal_data.py::test_a_subject_identifier_is_refused_on_a_field_with_no_personal_data
+  - name: R1.4 a point of Art. 4.1 dropped from SensitiveType
+    file: packages/python/dw_kernel/src/dw_kernel/personal_data.py
+    old: "    LEGALLY_CONFIDENTIAL = \"legally_confidential\", \"m\"\n"
+    new: ""
+    tests:
+      - packages/python/dw_kernel/tests/unit/test_personal_data.py::test_sensitive_types_are_one_per_lettered_point_of_article_4_1
+  - name: R1.4 the kernel's pairing loses one direction
+    file: packages/python/dw_kernel/src/dw_kernel/personal_data.py
+    old: 'SENSITIVE_TYPE_PAIRING_SQL: Final = "(pd_category = ''sensitive'') = (sensitive_type IS NOT NULL)"'
+    new: 'SENSITIVE_TYPE_PAIRING_SQL: Final = "pd_category <> ''sensitive'' OR sensitive_type IS NOT NULL"'
+    tests:
+      - packages/python/dw_kernel/tests/unit/test_personal_data.py::test_the_pairing_expressions_are_the_ones_the_spec_states
+      - packages/python/dw_platform/tests/integration/test_personal_data_catalog.py::test_a_table_written_to_the_pattern_passes
+  - name: R1.2 R1.3 a value-set CHECK that drifted from the kernel passes
+    file: packages/python/dw_platform/src/dw_platform/testing/personal_data.py
+    old: "        if set(allowed) != set(kernel) or len(allowed) != len(kernel):"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_personal_data_catalog.py::test_a_value_set_check_that_drifted_is_named
+  - name: R1.3 a missing value-set CHECK passes
+    file: packages/python/dw_platform/src/dw_platform/testing/personal_data.py
+    old: "            problems.append(f\"{table}: CHECK {constraint} is missing\")\n            continue\n        allowed"
+    new: "            continue\n        allowed"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_personal_data_catalog.py::test_a_value_set_check_that_drifted_is_named
+  - name: R1.3 a missing column passes
+    file: packages/python/dw_platform/src/dw_platform/testing/personal_data.py
+    old: '            problems.append(f"{table}: column {column} is missing")'
+    new: "            pass"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_personal_data_catalog.py::test_a_missing_column_is_named
+  - name: a nullable category passes
+    file: packages/python/dw_platform/src/dw_platform/testing/personal_data.py
+    old: '        elif row.type != "text" or row.attnotnull != not_null:'
+    new: '        elif row.type != "text":'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_personal_data_catalog.py::test_a_nullable_category_is_named
+  - name: R1.4 a missing pairing CHECK passes
+    file: packages/python/dw_platform/src/dw_platform/testing/personal_data.py
+    old: "        if constraint not in checks:\n            problems.append(f\"{table}: CHECK {constraint} is missing\")"
+    new: "        if constraint not in checks:\n            pass"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_personal_data_catalog.py::test_a_pairing_check_that_is_not_the_kernels_is_named
+      - packages/python/dw_platform/tests/integration/test_personal_data_catalog.py::test_a_subject_identifier_pairing_that_is_missing_is_named
+  - name: R1.3 R1.4 a CHECK is compared by its values only, not its expression
+    file: packages/python/dw_platform/src/dw_platform/testing/personal_data.py
+    old: "            if checks[constraint] != reference:"
+    new: "            if False:"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_personal_data_catalog.py::test_a_value_set_check_that_drifted_is_named
+      - packages/python/dw_platform/tests/integration/test_personal_data_catalog.py::test_a_pairing_check_that_is_not_the_kernels_is_named
+  - name: the net over no table passes
+    file: packages/python/dw_platform/src/dw_platform/testing/personal_data.py
+    old: "    if not tables:"
+    new: "    if False:"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_personal_data_catalog.py::test_a_table_that_does_not_exist_or_no_table_at_all_is_red
+  - name: R1.4 --check does not compare the committed text
+    file: scripts/generate_contracts.py
+    old: '        if not path.exists() or path.read_text(encoding="utf-8") != text'
+    new: "        if not path.exists()"
+    tests:
+      - apps/api/tests/contract/test_pd_classification_snapshot.py::test_a_hand_edited_enum_is_reported_stale
+  - name: R1.1 the schema makes the category required
+    file: scripts/generate_contracts.py
+    old: "        \"type\": \"object\",\n        \"properties\": {\n            \"pd_category\""
+    new: "        \"type\": \"object\",\n        \"required\": [\"pd_category\"],\n        \"properties\": {\n            \"pd_category\""
+    tests:
+      - apps/api/tests/contract/test_pd_classification_snapshot.py::test_the_committed_schema_is_the_generated_one
+  - name: R1.3 the schema's category list is not the kernel's
+    file: scripts/generate_contracts.py
+    old: '            "pd_category": {"type": "string", "enum": [m.value for m in PdCategory]},'
+    new: '            "pd_category": {"type": "string", "enum": ["none", "basic"]},'
+    tests:
+      - apps/api/tests/contract/test_pd_classification_snapshot.py::test_the_committed_schema_is_the_generated_one
