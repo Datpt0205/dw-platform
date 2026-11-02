@@ -1,6 +1,6 @@
 # 01 — Băm chuẩn hóa JCS (RFC 8785) một chủ trong dw_kernel
 
-Status: ready-for-agent
+Status: resolved (2026-11-02, main)
 Area: studio
 Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, G2, G3, TC8
 
@@ -69,23 +69,23 @@ Studio và giữ nguyên (bước 4).
 
 ## Tiêu chí chấp nhận
 
-- [ ] R1.1 (TC8): vector RFC 8785 và 20.000 ca vi sai cho bytes trùng `rfc8785.dumps`; đổi sắp khóa sang
+- [x] R1.1 (TC8): vector RFC 8785 và 20.000 ca vi sai cho bytes trùng `rfc8785.dumps`; đổi sắp khóa sang
       code point thì test vi sai đỏ trên khóa ngoài BMP (ghi Comments).
-- [ ] R1.2 (TC8): `{"a": 1.0}`, `float("nan")`, `float("inf")` → `float_forbidden`, không trả mã băm.
-- [ ] R1.3 (TC8): `2**53 - 1` và `-(2**53 - 1)` băm được; `2**53` và `-(2**53)` → `integer_out_of_range`.
-- [ ] R1.4 (TC8): "Ngưỡng điểm" dạng NFD ở giá trị và ở khóa → `not_nfc`; cùng chuỗi ở NFC băm được;
+- [x] R1.2 (TC8): `{"a": 1.0}`, `float("nan")`, `float("inf")` → `float_forbidden`, không trả mã băm.
+- [x] R1.3 (TC8): `2**53 - 1` và `-(2**53 - 1)` băm được; `2**53` và `-(2**53)` → `integer_out_of_range`.
+- [x] R1.4 (TC8): "Ngưỡng điểm" dạng NFD ở giá trị và ở khóa → `not_nfc`; cùng chuỗi ở NFC băm được;
       bỏ kiểm NFC thì hai dạng cho hai mã băm khác nhau và test đỏ.
-- [ ] R1.5: bytes của release manifest đã commit (bỏ `git_sha`) trùng bytes mà `manifest_ref` băm; sửa
+- [x] R1.5: bytes của release manifest đã commit (bỏ `git_sha`) trùng bytes mà `manifest_ref` băm; sửa
       thứ tự sắp của một bên trong test thì test đỏ.
-- [ ] G2: `test_replay_returns_cached_output_without_reexecution` vẫn xanh và `canonical_hash` của
+- [x] G2: `test_replay_returns_cached_output_without_reexecution` vẫn xanh và `canonical_hash` của
       executor không đổi dòng nào.
-- [ ] G3: `test_manifest_ref_is_stable_and_ignores_git_sha` vẫn xanh; `contracts/release/manifest.ref`
+- [x] G3: `test_manifest_ref_is_stable_and_ignores_git_sha` vẫn xanh; `contracts/release/manifest.ref`
       không đổi.
-- [ ] R1.4 (TC8): `to_nfc` cho NFD lồng ra cùng `content_hash` với dạng NFC; hai khóa trùng sau NFC →
+- [x] R1.4 (TC8): `to_nfc` cho NFD lồng ra cùng `content_hash` với dạng NFC; hai khóa trùng sau NFC →
       `nfc_key_collision`, không giá trị nào bị chọn; bỏ phép kiểm trùng thì test đỏ.
-- [ ] R1.1 (TC8): phạm vi một chủ: `workflow_sha256` và `dw_kernel.pagination.canonical_json` không đổi dòng
+- [x] R1.1 (TC8): phạm vi một chủ: `workflow_sha256` và `dw_kernel.pagination.canonical_json` không đổi dòng
       nào (`git diff` của ticket không chạm hai hàm đó); test của wf-ai và wf-lite vẫn xanh.
-- [ ] Xong: `make ci` xanh.
+- [x] Xong: `make ci` xanh.
 
 ## Nguồn
 
@@ -125,3 +125,9 @@ Studio và giữ nguyên (bước 4).
   (phạm vi ở Mục tiêu, bước 4, một tiêu chí, ADR-0109 (Accepted) sửa đổi 2026-11-02 và Quyết định của spec nói
   cùng một điều; dẫn chứng số thực của tài liệu gói sửa thành `wflite/document.py:46-47`), B2 đóng.
 - 2026-11-02 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-02 (agent): resolved (`66ad6e7`).
+    - Khác ticket (agent, theo ủy quyền 31/10/2026): thêm giới hạn độ sâu `MAX_DEPTH = 64` với lý do `depth_exceeded` (M4), nên giá trị tự tham chiếu bị từ chối có mã thay vì `RecursionError`, ở cả hàm băm lẫn `to_nfc`. Nếu sai thì: bỏ giới hạn và ghi rằng biên đọc JSON đã chặn. Vector sắp khóa của RFC 8785 mục 3.2.3 có U+FB33, mà NFC tách ra (loại trừ hợp thành), nên hàm băm từ chối nó đúng luật; test dùng U+FF21 thay, cùng vai (một ký tự U+E000-U+FFFF đứng sau ký tự ngoài BMP theo đơn vị mã UTF-16). Test vi sai đặt cặp khóa đó ở mọi tài liệu (M2). Test R1.5 ở `apps/api/tests/unit/test_release_manifest.py` (M3): `content_hash` của manifest đã commit bỏ `git_sha` bằng `manifest_ref`.
+    - Tìm thấy: `contracts/release/manifest.json` đã lệch từ wf-ai/01 (prompt `wf_ai.workflow_edit` chưa vào manifest), `make release-manifest-check` đỏ; sinh lại ở commit riêng `a2536ac`, để ticket này không đổi `manifest.ref` (G3), ghi ở Comments của wf-ai/01.
+    - Test: `packages/python/dw_kernel/tests/unit/test_canonical.py` 21 ca (20.000 tài liệu vi sai với `rfc8785==0.1.4`, nhóm `dev`, đã chạy thật); `test_release_manifest.py` thêm một ca; G2 (`test_replay_returns_cached_output_without_reexecution`) và G3 xanh; `canonical_json`, `workflow_sha256`, `canonical_hash`, `manifest_ref` không đổi dòng nào; test của wf-ai và wf-lite xanh. import-linter "Kernel is pure" giữ.
+    - `mutations/01.yaml` 6 đột biến, chưa chạy (lượt kiểm tra cuối của hàng đợi).
+    - `reviewing-feature-security` (đọc): hàm thuần, không tenant, không route; lỗi chỉ mang lý do và con trỏ, không mang giá trị (test khẳng định); không sửa ngầm tài liệu; `to_nfc` trả bản mới và từ chối khóa trùng.
