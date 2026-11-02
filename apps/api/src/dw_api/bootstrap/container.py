@@ -83,6 +83,7 @@ from dw_platform.application.ports import (
     WorkspaceDirectoryPort,
 )
 from dw_platform.application.provisioning import ProvisioningService
+from dw_platform.application.rate_limit import RateLimiterPort
 from dw_platform.application.scorecard import ScorecardService
 from dw_platform.application.separation_of_duties import SeparationOfDutiesService
 from dw_platform.application.support_access import (
@@ -227,6 +228,11 @@ class ApiContainer:
     # unless ``settings.zalo_webhook_enabled``, and then the route is not mounted.
     zalo_webhook_inbox: InboundUpdateInboxPort | None = None
     cache: CachePort | None = None
+    # The process's one limiter for per-company rate limits (usage-and-limits
+    # R7): Data Hub's source limit and custom-objects' duplicate check take it
+    # by injection. `build_container` always sets it; `None` only in a test
+    # container that wires none.
+    rate_limiter: RateLimiterPort | None = None
     # Dedicated to the readiness probe — the runtime's own retrieval/memory
     # clients are built (and disposed) deeper inside `build_runtime`, only
     # when the full runtime is wired. Readiness must answer regardless, so

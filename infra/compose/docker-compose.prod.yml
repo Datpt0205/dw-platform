@@ -27,6 +27,9 @@ services:
   api:
     environment:
       DW_API_PROFILE: production
+      # How many API processes serve callers; each takes `limit / N` of a
+      # company's rate limit (usage-and-limits R7.1). Raise it with the replicas.
+      DW_API_REPLICAS: "1"
     deploy:
       resources:
         limits:

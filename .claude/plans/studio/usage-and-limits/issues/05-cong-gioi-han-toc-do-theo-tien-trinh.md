@@ -1,6 +1,6 @@
 # 05 — Một RateLimiterPort và bộ đếm theo tiến trình cho giới hạn tốc độ W1
 
-Status: ready-for-agent
+Status: resolved (2026-11-02, main)
 Area: studio
 Yêu cầu: R7.1, R7.2, R7.3, UL14
 
@@ -46,24 +46,26 @@ adapter thứ hai ở W2.
 
 ## Tiêu chí chấp nhận
 
-- [ ] R7.1 (UL14): giới hạn 60 với `replicas` = 2: lần thứ 30 trong một phút ở một tiến trình được nhận,
+- [x] R7.1 (UL14): giới hạn 60 với `replicas` = 2: lần thứ 30 trong một phút ở một tiến trình được nhận,
       lần thứ 31 bị từ chối kèm `retry_at`; phút sau nhận lại; với `replicas` = 1 thì lần 60 nhận, lần 61 từ
       chối.
-- [ ] R7.1: settings của profile `uat` đủ mọi trường bắt buộc khác nhưng không có `DW_API_REPLICAS` →
+- [x] R7.1: settings của profile `uat` đủ mọi trường bắt buộc khác nhưng không có `DW_API_REPLICAS` →
       `validate_for_profile` ném `RuntimeError` nêu `DW_API_REPLICAS`; profile `local` không có nó → adapter dựng với
       `replicas` = 1; bỏ phép kiểm ở profile triển khai → test đỏ.
-- [ ] R7.2 (UL14): hai `SourceKey` dựng riêng từ cùng `(tenant_id, source_id)`, như hai yêu cầu mang hai bearer khác
+- [x] R7.2 (UL14): hai `SourceKey` dựng riêng từ cùng `(tenant_id, source_id)`, như hai yêu cầu mang hai bearer khác
       nhau sẽ dựng, chia chung một bộ đếm; `SourceKey(tenant_id, "băm-bearer")` và `acquire("chuỗi", 60, ...)` (kèm
       `# type: ignore`) ném `TypeError`; thêm `str` vào hợp `RateLimitKey` hay bỏ phép kiểm kiểu → test đỏ; hai
       `PrincipalObjectKey` khác người gọi hay khác đối tượng có bộ đếm riêng. Test HTTP hai bearer tới một Nguồn dữ
       liệu thuộc bên dùng (workflow-triggers:R5.9, ticket 02 của nó).
-- [ ] R7.2 (UL14): chéo tenant, công ty A dùng hết giới hạn của `SourceKey(A, s)` và của `PrincipalObjectKey(A, p, o)`
+- [x] R7.2 (UL14): chéo tenant, công ty A dùng hết giới hạn của `SourceKey(A, s)` và của `PrincipalObjectKey(A, p, o)`
       → `SourceKey(B, s)` và `PrincipalObjectKey(B, p, o)` cùng `s`, `p`, `o` vẫn được nhận và `peek` của B trả cho
       qua; bỏ `tenant_id` khỏi khóa của bảng đếm → test đỏ.
-- [ ] R7.3 (UL14): `PrincipalObjectKey`, giới hạn 20, cửa sổ 10 phút, `replicas` = 1: `peek` sau 19 lượt tính trả
+- [x] R7.3 (UL14): `PrincipalObjectKey`, giới hạn 20, cửa sổ 10 phút, `replicas` = 1: `peek` sau 19 lượt tính trả
       cho qua và bộ đếm vẫn 19; sau lượt tính thứ 20 `peek` trả đã đủ kèm `retry_at` bằng lúc lượt đầu ra khỏi cửa
       sổ; tới lúc đó `peek` trả cho qua; `peek` tính lượt → test đỏ.
-- [ ] Xong: `make ci` xanh.
+- [ ] Xong: `make ci` xanh. Ticket đã chạy cổng nhanh (ruff, format, mypy, lint-imports, verify_invariants,
+      verify_architecture, unit dw_platform và api, contract api); `make ci` đầy đủ, mutation `mutations/05.yaml`
+      và `/code-review` chạy ở lúc đóng đợt.
 
 ## Nguồn
 
@@ -121,3 +123,29 @@ adapter thứ hai ở W2.
       một bên gọi.
     - L1: bước 5 chỉ nói điều không đổi.
 - 2026-11-02 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-02 (agent, theo ủy quyền 31/10/2026): M2 theo khuyến nghị: lượt bị từ chối không tính, mỗi khóa giữ tối
+  đa `floor(limit / replicas)` mốc thời gian. M3: phần 0 từ chối mọi lượt với `retry_at` None (không lượt chờ nào
+  giúp), ghi ở docstring của `RateDecision` và adapter. M4: dọn từ `acquire`, tối đa mỗi phút một lần, khóa có
+  `last_used + window + 1 phút < now`; không trần số khóa (khóa là id đã xác minh). M5 theo khuyến nghị: `UtcClock`
+  tiêm vào, đồng hồ lùi làm cửa sổ dài ra (nghiêng về từ chối), test dùng `FixedClock`. M8 theo khuyến nghị: docstring
+  của `application/rate_limit.py` ghi W1 mỗi kiểu khóa một bên gọi, bên gọi thứ hai thêm kiểu khóa riêng. Nếu sai
+  thì: M2 tính lượt bị từ chối là thêm một `append` ở nhánh từ chối; M3 `retry_at = now + window` là một dòng.
+- 2026-11-02 (agent, theo ủy quyền 31/10/2026): `ApiContainer.rate_limiter` là `RateLimiterPort | None = None`, không
+  bắt buộc, để hơn hai mươi container dựng tay trong test không phải sửa; `build_container` luôn đặt nó, trước cổng
+  database vì bộ đếm không cần Postgres. `replicas = settings.api_replicas or 1` ở wiring là chỗ duy nhất đọc trống là
+  1. Thêm `api_replicas=1` vào hai bộ settings triển khai của test (`test_dev_endpoints.deployed_settings`,
+  `test_zalo_webhook_endpoint.deployed`) và một dòng chú thích `DW_API_REPLICAS` trong `.env.example`. `__len__` và
+  `replicas` trên adapter để test đọc bảng và số tiến trình. Nếu sai thì: trường bắt buộc nghĩa là sửa mọi fixture
+  dựng `ApiContainer`.
+- 2026-11-02 (agent): resolved. `RateLimiterPort`, `SourceKey`, `PrincipalObjectKey`, `RateDecision` ở
+  `dw_platform/application/rate_limit.py`; `InProcessRateLimiter` ở `dw_platform/adapters/rate_limit.py`;
+  `DW_API_REPLICAS` bắt buộc khi `is_deployed`, overlay uat/prod đặt `"1"` (`docker compose ... config` hợp lệ);
+  một instance trên `ApiContainer`, worker không có. Test: `test_rate_limiter.py` 27 (R7.1, M2, M3, R7.2 kiểu khóa,
+  chéo tenant, R7.3, dọn khóa), `test_rate_limiter_replicas.py` 6 (R7.1 profile, env, wiring); unit dw_platform 237,
+  unit api 349, contract api 28 xanh trên HEAD cộng thay đổi của ticket (cây làm việc có việc dở của ticket 01).
+  Một mutation thử tay (bỏ `tenant_id` khỏi so sánh của `SourceKey`) làm test chéo tenant đỏ; 12 mutation trong
+  `mutations/05.yaml` đã viết, chưa chạy (lúc đóng đợt). `reviewing-feature-security`: ranh giới 1 (bộ đếm khóa theo
+  tenant, test âm chéo tenant) và 6 (dọn khóa, phần 0 đóng khi thiếu, thiếu `DW_API_REPLICAS` không khởi động) áp
+  dụng; 2-5 không (không quyết định quyền, không chạm agent, nội dung, audit; khóa do bên dùng dựng từ ngữ cảnh đã
+  xác minh). `reviewing-deployment-security`: §1 áp dụng (trường mới chặn bằng `is_deployed`, test uat/production);
+  §2-§6 không (không route, không bí mật, không CORS, không URL ra ngoài, không image mới).

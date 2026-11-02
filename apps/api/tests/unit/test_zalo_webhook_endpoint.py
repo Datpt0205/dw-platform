@@ -267,6 +267,7 @@ def deployed(**overrides: object) -> ApiSettings:
         "zalo_updates_mode": "webhook",
         "zalo_webhook_secret": "s" * 32,
         "public_base_url": "https://api.example.com",
+        "api_replicas": 1,
     }
     values.update(overrides)
     return ApiSettings(**values)  # type: ignore[arg-type]

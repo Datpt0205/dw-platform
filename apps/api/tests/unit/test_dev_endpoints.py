@@ -52,6 +52,7 @@ def deployed_settings(profile: str = "production", task_connector: str = "none")
         task_connector=task_connector,
         database_url="postgresql+asyncpg://u:p@db/dw",
         rate_limit_per_minute=0,
+        api_replicas=1,
     )
 
 

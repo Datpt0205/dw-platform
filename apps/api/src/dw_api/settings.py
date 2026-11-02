@@ -204,6 +204,14 @@ class ApiSettings(BaseSettings):
         ge=0,  # 0 disables (tests); per-caller fixed window
         validation_alias=AliasChoices("DW_API_RATE_LIMIT_PER_MINUTE"),
     )
+    # How many API processes serve the same callers (containers times uvicorn
+    # workers; one per container today). Each process's share of a company's
+    # rate limit is `floor(limit / api_replicas)` (usage-and-limits R7.1).
+    # Required in a deployed profile, because 1 on N processes multiplies every
+    # such limit by N; local and test read it unset as 1.
+    api_replicas: int | None = Field(
+        default=None, ge=1, validation_alias=AliasChoices("DW_API_REPLICAS")
+    )
     outbound_allowed_hosts: list[str] = Field(
         default=[],
         validation_alias=AliasChoices("DW_API_OUTBOUND_ALLOWED_HOSTS"),
@@ -445,6 +453,13 @@ class ApiSettings(BaseSettings):
                 raise RuntimeError(
                     "ZALO_UPDATES_MODE=webhook needs a ZALO_WEBHOOK_SECRET of at least "
                     f"32 characters in the {self.profile} profile"
+                )
+            # usage-and-limits R7.1: unset reads as one process, and N processes
+            # each allowing the whole limit allow N times it.
+            if self.api_replicas is None:
+                raise RuntimeError(
+                    "DW_API_REPLICAS (how many API processes run) is required in the "
+                    f"{self.profile} profile"
                 )
         if self.auth_mode == "oidc" and not self.oidc_issuer_url:
             raise RuntimeError("auth_mode=oidc requires DW_API_OIDC_ISSUER_URL")

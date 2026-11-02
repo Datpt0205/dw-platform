@@ -1,0 +1,78 @@
+# Mutation check of usage-and-limits ticket 05: scripts/mutate.py runs this file.
+# One mutation per control (R7.1-R7.3, UL14) and per layer that holds one: the
+# key's own field check and the adapter's key check both hold R7.2
+# (failure-modes #3, #5).
+mutations:
+  - name: R7.1 each process allows the whole limit
+    file: packages/python/dw_platform/src/dw_platform/adapters/rate_limit.py
+    old: "        share = limit // self._replicas"
+    new: "        share = limit"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_rate_limiter.py::test_with_two_replicas_the_thirtieth_call_passes_and_the_thirty_first_waits
+  - name: R7.1 a deployed API starts without its process count
+    file: apps/api/src/dw_api/settings.py
+    old: "            if self.api_replicas is None:"
+    new: "            if False:"
+    tests:
+      - apps/api/tests/unit/test_rate_limiter_replicas.py::test_a_deployed_api_without_its_process_count_does_not_start
+  - name: R7.1 the composition root ignores the process count
+    file: apps/api/src/dw_api/bootstrap/wiring.py
+    old: "        rate_limiter=InProcessRateLimiter(replicas=settings.api_replicas or 1, clock=clock),"
+    new: "        rate_limiter=InProcessRateLimiter(replicas=1, clock=clock),"
+    tests:
+      - apps/api/tests/unit/test_rate_limiter_replicas.py::test_the_limiter_takes_the_process_count_the_settings_name
+  - name: M2 a refused call is counted
+    file: packages/python/dw_platform/src/dw_platform/adapters/rate_limit.py
+    old: "        if entry is not None and len(entry.stamps) >= share:\n            return"
+    new: "        if entry is not None and len(entry.stamps) >= share:\n            entry.stamps.append(now)\n            return"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_rate_limiter.py::test_a_refused_call_counts_nothing_so_the_oldest_leaving_lets_one_in
+  - name: R7.2 a string joins the key union
+    file: packages/python/dw_platform/src/dw_platform/application/rate_limit.py
+    old: "RateLimitKey = SourceKey | PrincipalObjectKey"
+    new: "RateLimitKey = SourceKey | PrincipalObjectKey | str"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_rate_limiter.py::test_the_adapter_refuses_a_key_that_is_not_a_rate_limit_key
+  - name: R7.2 the adapter takes any key
+    file: packages/python/dw_platform/src/dw_platform/adapters/rate_limit.py
+    old: "        if not isinstance(key, RateLimitKey):"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_rate_limiter.py::test_the_adapter_refuses_a_key_that_is_not_a_rate_limit_key
+  - name: R7.2 a key's fields take any type
+    file: packages/python/dw_platform/src/dw_platform/application/rate_limit.py
+    old: "    if not isinstance(value, kind):"
+    new: "    if False:"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_rate_limiter.py::test_a_source_key_carrying_a_bearer_hash_is_refused
+      - packages/python/dw_platform/tests/unit/test_rate_limiter.py::test_a_key_field_of_the_wrong_type_is_refused
+  - name: R7.2 a source's counter does not hold its tenant
+    file: packages/python/dw_platform/src/dw_platform/application/rate_limit.py
+    old: "    tenant_id: TenantId\n    source_id: UUID"
+    new: "    tenant_id: TenantId = __import__(\"dataclasses\").field(compare=False)\n    source_id: UUID"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_rate_limiter.py::test_a_company_spending_its_limit_leaves_another_with_the_same_ids_untouched
+  - name: R7.2 a person's counter does not hold its tenant
+    file: packages/python/dw_platform/src/dw_platform/application/rate_limit.py
+    old: "    tenant_id: TenantId\n    principal_id: UUID"
+    new: "    tenant_id: TenantId = __import__(\"dataclasses\").field(compare=False)\n    principal_id: UUID"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_rate_limiter.py::test_a_company_spending_its_limit_leaves_another_with_the_same_ids_untouched
+  - name: R7.3 peek counts a call
+    file: packages/python/dw_platform/src/dw_platform/adapters/rate_limit.py
+    old: "        return self._decide(key, limit, window, count=False)"
+    new: "        return self._decide(key, limit, window, count=True)"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_rate_limiter.py::test_peek_counts_nothing_and_reports_when_the_oldest_leaves
+  - name: R7.3 retry_at is when the newest call leaves
+    file: packages/python/dw_platform/src/dw_platform/adapters/rate_limit.py
+    old: "            return RateDecision(allowed=False, retry_at=entry.stamps[0] + window)"
+    new: "            return RateDecision(allowed=False, retry_at=entry.stamps[-1] + window)"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_rate_limiter.py::test_peek_counts_nothing_and_reports_when_the_oldest_leaves
+  - name: failure-modes 6 an idle key is never dropped
+    file: packages/python/dw_platform/src/dw_platform/adapters/rate_limit.py
+    old: "            del self._entries[key]"
+    new: "            pass"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_rate_limiter.py::test_a_key_idle_past_its_window_and_a_minute_is_dropped

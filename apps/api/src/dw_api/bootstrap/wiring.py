@@ -106,6 +106,7 @@ from dw_platform.adapters.persistence.tenant_members import SqlTenantMembersRepo
 from dw_platform.adapters.persistence.uow import SqlPlatformUnitOfWorkFactory
 from dw_platform.adapters.persistence.work_queue_repo import SqlWorkQueueRepository
 from dw_platform.adapters.persistence.zalo_link_repo import SqlZaloLink
+from dw_platform.adapters.rate_limit import InProcessRateLimiter
 from dw_platform.application.admin_console import AdminConsoleService
 from dw_platform.application.approval_codes import ApprovalSubjectVersions, DecisionCodeKey
 from dw_platform.application.authorization import ScopeAuthorizationService
@@ -212,6 +213,9 @@ def _build_container(settings: ApiSettings | None) -> ApiContainer:
         entitlement=entitlement,
         cache=cache,
         qdrant_client=qdrant_client,
+        # One per process; a deployed profile names its process count
+        # (`validate_for_profile`), local and test run one (usage-and-limits R7.1).
+        rate_limiter=InProcessRateLimiter(replicas=settings.api_replicas or 1, clock=clock),
     )
     if not settings.database_url:
         _LOG.warning("no database configured: only stateless routes are mounted")
