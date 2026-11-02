@@ -504,7 +504,7 @@ bên ngoài thì ghi "Chờ Đạt" và làm việc kế. Đường dẫn ticket
 | 12  | `digital-worker/issues/04` màn hình web                                                   | xong                                  |
 | 13  | `leadcare/issues/02` demo chạy thật, ảnh chụp ở `docs/demo/digital-worker/`               | khóa chạy được (2/11); sau tenant-rbac/02 |
 | 14  | `wf-ai` spec rồi ticket 01: AI sửa gói mẫu (D16, D18)                                     | xong `fea6cf2`                        |
-| 15  | mọi ticket studio khác có Blocked by đã resolved, theo thứ tự đợt                         | đang: usage-and-limits/01, /05, marketing-pilot/01 xong; dựng tenant-rbac/02 |
+| 15  | mọi ticket studio khác có Blocked by đã resolved, theo thứ tự đợt                         | đang: tenant-rbac/02 xong; dựng org-and-principals/04 và custom-objects/01 |
 
 ## Ủy quyền
 
@@ -562,6 +562,7 @@ Each resolved ticket adds one line here: the commit hash and one sentence.
 - `9ddf0f8` usage-and-limits/01: số của gói về một chủ `platform.plan_limits` (revision `764b0e239f95`, `dw_app` chỉ SELECT, trần mỗi lượt NOT NULL, bước 1..500), `PlanCatalogPort` cache 30 giây đóng khi thiếu dòng hay lỗi đọc, `RunAllowancePort` async, `DEFAULT_PLANS` và cột `quotas` bỏ, test `ast` chặn danh mục gói trong mã; 11 mutation đã viết chưa chạy. Cho lượt cuối: `dw_observability` `test_logs_carry_ids_only` chập chờn (micro giây chứa "345").
 - `9397afb` marketing-pilot/01: bộ sinh lead giả lập có hạt giống với năm loại cặp có nhãn, oracle kiểm trùng theo số E.164 rồi email chữ thường (không bao giờ theo tên) và khẳng định mọi địa chỉ nằm trong dải thử hay `example.com`; 200 lead cho 196 khóa, gộp nhầm 0, `tests/e2e` vào `testpaths` để CI chạy, 88 test xanh, 13 mutation đã viết chưa chạy.
 - leadcare/01 R1.5 (2/11/2026): `make eval-leadcare` xanh trên `gpt-5.6-luna`; lần chạy thật đầu tìm ra nút `ai.llm` hỏi model bằng schema rỗng `_AnyObject` nên model thật chỉ trả `{}` (mọi bước sẽ bàn giao `model_output_invalid`); sửa bằng `ModelRequest.output_schema`, nút gửi schema của bước, eval đọc schema từ gói; hai test đỏ khi gỡ từng lớp, hai mutation viết chưa chạy.
+- `bd8c607` tenant-rbac/02: vai trò thành dữ liệu của tenant với `platform.effective_grants` là chủ duy nhất của quyền hiệu lực, khóa cache mang phiên bản quyền do CSDL tăng, tách nhiệm qua mọi workspace (đọc `assigned_grants`), công ty mới ra đời với hai chủ sở hữu ở `setup`, người vận hành và `support_staff` không bao giờ giữ quyền chủ, cảnh báo dưới hai người, web đọc `/me` theo từng workspace; 40 mutation đã viết chưa chạy. Cho lượt cuối: `test_restore_drill` đỏ ở `marketing_send_log_default_pkey`, chưa rõ có đỏ từ trước không.
 
 ## Chờ Đạt (phiên không người trực)
 
