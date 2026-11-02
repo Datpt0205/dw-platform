@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 25/10/2026
 Duyệt: agent, tạm theo ủy quyền 30/10/2026
-Sẵn sàng: ĐẠT (30/10/2026; 0 CRITICAL, 0 HIGH; ticket 01-02)
+Sẵn sàng: ĐẠT (2/11/2026; 0 CRITICAL, 0 HIGH; ticket 01-03)
 
 Studio gọi công cụ có hiệu ứng, gọi ra ngoài và xếp run cùng sự kiện lên các dịch vụ nền đang để một hiệu ứng
 chạy hai lần, một client lách giới hạn tốc độ, một URL ra ngoài tới địa chỉ nội bộ, kho vector và cache không
@@ -219,12 +219,12 @@ Một thread không kẹt mãi sau khi resume chết, và PostgreSQL từ chối
 phê duyệt và quyết định.
 Trước đây: resume chạy graph mà không đổi trạng thái (`packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langgraph_runner.py:536-547`).
 
-- R9.1 NẾU tiến trình resume một run chết hay bị hủy sau khi run rời `waiting_approval`, THÌ runner
-  PHẢI cho lượt mới của cùng thread chạy sau ngưỡng `stale_run_after_seconds` của chính sách
+- R9.1 NẾU tiến trình resume một run chết hay bị hủy sau khi run rời `waiting_approval` hay `waiting_timer`,
+  THÌ runner PHẢI cho lượt mới của cùng thread chạy sau ngưỡng `stale_run_after_seconds` của chính sách
   `worker_runs` (3600 giây) thay vì báo thread đang chờ duyệt.
 - R9.2 NẾU hai yêu cầu resume cùng một run đến đồng thời, THÌ runner PHẢI chạy graph cho đúng một
   yêu cầu và trả 409 cho yêu cầu kia.
-- R9.3 NẾU một câu lệnh ghi `status` của run ngoài `pending`, `running`, `waiting_approval`,
+- R9.3 NẾU một câu lệnh ghi `status` của run ngoài `pending`, `running`, `waiting_approval`, `waiting_timer`,
   `completed`, `failed`, `cancelled`, `queued`, `waiting`, `blocked`, `dead_lettered`, `status` của yêu cầu phê duyệt
   ngoài `pending`, `approved`, `rejected`, `cancelled`, `expired`, hay `outcome` của quyết định ngoài
   `approved`, `rejected`, THÌ PostgreSQL PHẢI từ chối câu lệnh và không đổi dòng nào.
@@ -237,8 +237,9 @@ Trước đây: claim mọi dòng còn lượt theo `occurred_at` (`packages/pyt
 
 - R10.1 KHI lần giao thứ n của một sự kiện outbox thất bại mà sự kiện còn lượt, lane `outbox` PHẢI
   không claim lại sự kiện đó trước `min(30 × 2^(n-1), 3600)` giây sau lần thất bại.
-- R10.2 NẾU một sự kiện thất bại ở lượt thứ `outbox_max_attempts` hoặc handler báo không giao được,
-  THÌ lane `outbox` PHẢI đặt `dead_at` và không claim lại sự kiện đó.
+- R10.2 NẾU một sự kiện thất bại ở lượt thứ `outbox_max_attempts`, handler báo không giao được, hoặc
+  lượt claim gặp sự kiện có `processed_at` rỗng đã dùng hết `outbox_max_attempts` lượt (tiến trình chết giữa lần giao
+  cuối), THÌ lane `outbox` PHẢI đặt `dead_at` và không claim lại sự kiện đó.
 - R10.3 Worker PHẢI xuất gauge `dw_outbox_dead_letters` bằng số sự kiện đang mang `dead_at`, bằng 0
   khi không có.
 - R10.4 KHI người vận hành chạy script phát lại cho một sự kiện mang `dead_at`, script phát lại PHẢI
@@ -304,10 +305,10 @@ Số G giữ nguyên từ foundations-hardening; G5 ở cả hai spec (Quyết �
 | RH22 | Kho dữ liệu đòi xác thực                                                     | R8.1, R8.2   | Settings `uat` thiếu `qdrant_api_key` → không khởi động; compose smoke gọi Qdrant không khóa → 401, Valkey không mật khẩu → `NOAUTH`; `docker compose config` với `QDRANT_API_KEY` trống → lỗi                                                                                                                                                                                                                                                                                                                                                                                  |
 | RH23 | Ảnh bên thứ ba ghim digest                                                   | R8.3         | Gỡ `@sha256:` khỏi một `image:` → kiểm CI đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | RH24 | Exporter không dùng vai ứng dụng                                             | R8.4         | `DATA_SOURCE_NAME` dùng `dw_app` → kiểm compose đỏ; `dw_monitor` SELECT bảng tenant → `permission denied`                                                                                                                                                                                                                                                                                                                                                                                                             |
-| RH25 | Run không kẹt ở `waiting_approval`                                           | R9.1, R9.2   | Resume chết sau khi rời `waiting_approval`, `updated_at` lùi quá ngưỡng → lượt mới chạy; hai resume đồng thời → một chạy, một 409; bỏ compare-and-set → đỏ                                                                                                                                                                                                                                                                                                                                                            |
+| RH25 | Run không kẹt ở `waiting_approval`                                           | R9.1, R9.2   | Resume chết sau khi rời `waiting_approval`, `updated_at` lùi quá ngưỡng → lượt mới chạy; hai resume đồng thời, từ `waiting_approval` và từ `waiting_timer` → một chạy, một 409; bỏ compare-and-set → đỏ                                                                                                                                                                                                                                                                                                                |
 | RH26 | Trạng thái có CHECK theo enum                                                | R9.3         | `status='bogus'` → CHECK từ chối; thêm giá trị vào enum mà không vào CHECK → test catalog đỏ                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | RH27 | Outbox lùi thời gian                                                         | R10.1        | Lỗi lần một → không claim lại khi `available_at` còn ở tương lai, lùi nó về quá khứ → claim lại; bỏ điều kiện `available_at` → đỏ                                                                                                                                                                                                                                                                                                                                                                                     |
-| RH28 | Thư chết không bị claim lại và thấy được                                     | R10.2, R10.3 | Hết lượt → `dead_at` đặt, gauge 1, không claim lại; `UndeliverableEventError` → `dead_at` ngay lần đầu; bỏ điều kiện `dead_at` → đỏ                                                                                                                                                                                                                                                                                                                                                                                   |
+| RH28 | Thư chết không bị claim lại và thấy được                                     | R10.2, R10.3 | Hết lượt → `dead_at` đặt, gauge 1, không claim lại; `UndeliverableEventError` → `dead_at` ngay lần đầu; sự kiện đã hết lượt mà `dead_at` rỗng (chết giữa lần giao cuối) → lượt claim kế đặt `dead_at`, không giao; bỏ điều kiện `dead_at` hay nhánh hết lượt ở claim → đỏ                                                                                                                                                                                                                                              |
 | RH29 | Chỉ người vận hành phát lại thư chết, có audit                               | R10.4, R10.5 | `--operator` không có trong `platform.platform_operators` → thoát 1, sự kiện vẫn mang `dead_at`, không có audit; người vận hành phát lại → sự kiện về hàng đợi và đúng một audit đứng tên người đó; bỏ kiểm người vận hành → đỏ                                                                                                                                                                                                                                                                                       |
 | RH32 | Claim không trỏ sang workspace của tenant khác                               | R6.8         | Bằng `dw_app` gắn tenant A: INSERT `platform.tool_execution_claims` với `workspace_id` của một workspace tenant B → lỗi khóa ngoại, không dòng nào; đổi FK ghép thành FK một cột `workspace_id` → test đỏ                                                                                                                                                                                                                                                                                                             |
 | RH33 | Lần gửi chưa biết kết quả không bao giờ bị gửi lại mù                        | R6.9, R6.10  | K4 trên PostgreSQL thật: nhà cung cấp giả nhận lời gọi và trả 2xx, tiến trình chết trước dòng kết thúc → lời gọi kế tiếp cùng khóa, với claim quá hạn hay sau khi lane đã dọn claim, nhận `outcome_unknown`, handler không chạy, nhà cung cấp giả có đúng 1 lời gọi; dòng kết thúc của lần gửi là `outcome_unknown` → như trên; claim quá hạn mà lần gửi trước đã `failed` hay chưa có `dispatched` nào → tiếp quản, handler chạy; gỡ kiểm lần gửi chưa biết kết quả → nhà cung cấp giả nhận lời gọi thứ hai, test đỏ |
@@ -495,6 +496,15 @@ Số G giữ nguyên từ foundations-hardening; G5 ở cả hai spec (Quyết �
   lượt xác nhận của gate ticket 01: RH36 bỏ vế "đọc `platform.tool_executions` không gắn tenant", vì FORCE RLS theo
   `app.tenant_id` đã thu hẹp câu đọc nên đột biến đó không đỏ được; R6.6 nói rõ worker không khai `sub_agents`; Phụ
   thuộc của workflow-engine nêu `dispatch_id`. Nếu sai thì: RH36 thêm một đột biến đọc bằng vai bỏ qua RLS.
+- 2/11/2026 (agent, tạm theo ủy quyền): sửa theo gate `checking-plan-readiness` cho ticket 03 (3 HIGH), đo trên code
+  `ceec634`. wf-lite/02 thêm `RunStatus.WAITING_TIMER` (`waiting_timer`) cho `platform.worker_runs` và cho `resume`
+  chạy tiếp từ đó (`langgraph_runner.py:569`, lane `dw_timers`), nên CHECK của R9.3 nhận `waiting_timer`, và
+  compare-and-set của R9.1, R9.2 đi từ cả `waiting_approval` lẫn `waiting_timer`, thay câu `set_status(RUNNING)` không
+  điều kiện của đường hẹn giờ. Một sự kiện outbox hết lượt mà chưa xử lý (tiến trình chết giữa lần giao cuối) được lượt
+  claim kế đặt `dead_at`, vì claim lọc `attempts < max_attempts` khiến nó vô hình với claim, backlog và gauge, mà
+  `dead_at` là chủ duy nhất của "đã chết" (`failure-modes.md` #2). Sửa: R9.1, R9.3, R10.2, RH25, RH28, ticket 03. Nếu
+  sai thì: CHECK bỏ `waiting_timer` cùng lúc wf-lite đổi trạng thái chờ hẹn giờ của run sang `waiting` của ADR-0113 (Accepted), và
+  sự kiện chết giữa lần giao cuối được đếm bằng `attempts >= outbox_max_attempts` ở backlog và gauge thay vì `dead_at`.
 
 ## Danh sách ticket
 
