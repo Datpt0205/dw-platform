@@ -3,6 +3,11 @@
   "approval_policy_version": "1.0.0",
   "copy_bundles": [
     {
+      "checksum": "0b67fa856ecc410bc07e8f67340c8db8e57a369c35833a13e82c63a6cb86889a",
+      "copy_id": "platform.audit_actions.runtime_hardening",
+      "version": "1.0.0"
+    },
+    {
       "checksum": "157df89d9b16a646120c67b8ade1fb7cf6087424aec00a4d1e03e4fe1265554c",
       "copy_id": "marketing.leadcare_handoff",
       "version": "1.0.0"
@@ -40,7 +45,7 @@
       "version": "1.2.0"
     }
   ],
-  "git_sha": "66ad6e7dfbb30c2673124657f72c2a9be5885f24",
+  "git_sha": "8b54b3b66e8b62c14147492c46167a2634330441",
   "knowledge_index_version": "2026-07-25.structure-1",
   "memory_policy_version": "2.0.0",
   "platform_version": "0.1.0",

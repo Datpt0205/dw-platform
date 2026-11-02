@@ -2,5 +2,7 @@
 # spec's fragment of the action catalogue telemetry-and-audit merges
 # (telemetry-and-audit R1.6; H-21).
 schema_version: "1.0"
+copy_id: platform.audit_actions.runtime_hardening
+version: "1.0.0"
 actions:
   platform.outbox.replayed: "Người vận hành phát lại sự kiện outbox đã chết"
