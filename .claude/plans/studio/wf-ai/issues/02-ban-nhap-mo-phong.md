@@ -1,6 +1,6 @@
 # 02 — Bản nháp và mô phỏng
 
-Status: ready-for-agent
+Status: resolved (2026-11-02, main)
 Blocked by: 01
 Area: studio
 Yêu cầu: R6.1, R6.2, R6.7, R6.9, R6.12, R6.13, R6.15, WAI9, WAI13, WAI15
@@ -19,14 +19,14 @@ Chủ DW lưu một cây bước thành bản nháp duy nhất của DW, kiểm 
 
 ## Tiêu chí chấp nhận
 
-- [ ] R6.1: lưu hai lần bởi hai owner: một dòng, nội dung lần hai, `author_ids` có cả hai, hash khớp `workflow_sha256` của tài liệu dựng lại.
-- [ ] R6.7 (WAI13): `PUT` cây có `send` ngoài lane `approved`: 422 `draft_not_publishable` có `wf.hitl_gate_missing`, 0 dòng bản nháp.
-- [ ] R6.2 (WAI9): mô phỏng bản nháp có `send`: `passed`, `tool_calls` có `email.send` với đề xuất đã duyệt, `ToolExecutor` và gateway 0 lần gọi; gỡ cổng giả thì test đỏ.
-- [ ] R6.9: bản nháp có `logic.switch` trên trường mẫu không khớp lane nào mà thiếu mặc định không qua R6.7; bước ném lỗi trong mô phỏng: `failed` với `failed_step`.
-- [ ] R6.12: mỗi lần lưu và mô phỏng: một dòng audit cùng giao dịch, đứng tên người gọi.
-- [ ] R6.13 (WAI15): tenant B: 404 trên ba route, 0 dòng đọc được dưới tenant B; `test_rls_coverage.py` liệt kê hai bảng.
-- [ ] R6.15: `PUT` lặp cùng khóa và cùng thân: một lần lưu; cùng khóa khác thân: 422 theo app-standards/02.
-- [ ] Xong: `make test-unit test-contract test-architecture` xanh.
+- [x] R6.1: lưu hai lần bởi hai owner: một dòng, nội dung lần hai, `author_ids` có cả hai, hash khớp `workflow_sha256` của tài liệu dựng lại.
+- [x] R6.7 (WAI13): `PUT` cây có `send` ngoài lane `approved`: 422 `draft_not_publishable` có `wf.hitl_gate_missing`, 0 dòng bản nháp.
+- [x] R6.2 (WAI9): mô phỏng bản nháp có `send`: `passed`, `tool_calls` có `email.send` với đề xuất đã duyệt, `ToolExecutor` và gateway 0 lần gọi; gỡ cổng giả thì test đỏ.
+- [x] R6.9: bản nháp có `logic.switch` trên trường mẫu không khớp lane nào mà thiếu mặc định không qua R6.7; bước ném lỗi trong mô phỏng: `failed` với `failed_step`.
+- [x] R6.12: mỗi lần lưu và mô phỏng: một dòng audit cùng giao dịch, đứng tên người gọi.
+- [x] R6.13 (WAI15): tenant B: 404 trên ba route, 0 dòng đọc được dưới tenant B; `test_rls_coverage.py` liệt kê hai bảng.
+- [x] R6.15: `PUT` lặp cùng khóa và cùng thân: một lần lưu; cùng khóa khác thân: 422 theo app-standards/02.
+- [x] Xong: `make test-unit test-contract test-architecture` xanh.
 
 ## Nguồn
 
@@ -37,3 +37,11 @@ Chủ DW lưu một cây bước thành bản nháp duy nhất của DW, kiểm 
 - 2026-10-31 (agent): viết cùng spec.
 - 2026-11-02 (agent): viết lại sau gate CHƯA ĐẠT: kiểm lại phía server, mô phỏng không gọi model, RLS, audit, `Idempotency-Key`.
 - 2026-11-02 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-02 (agent): resolved (`d46e5c0` bộ mô phỏng, `12e74bd` bản nháp, route, migration).
+    - Khác ticket (agent, theo ủy quyền 31/10/2026): FK tới `digital_workers` là RESTRICT, không CASCADE, như mọi cạnh tới bảng đó; offboarding xếp thứ tự xóa từ catalog (test coverage xanh). Nếu sai thì: đổi sang CASCADE trong một revision mới. `WfPorts` nhận Protocol hẹp (executor, gate, hand-off, tool models) để bộ mô phỏng thay vào không cần ép kiểu. Bộ mô phỏng kiểm đầu vào của công cụ theo `input_model` như executor làm trước tiên, nên bản nháp tham chiếu sai kiểu thì `failed` ngay khi mô phỏng. Hàm kiểm bản đề xuất (`checked_proposal`, `bases_of`) tách khỏi trợ lý, trợ lý và bản nháp dùng chung. `workflow_sha256` là sha256 của JSON chuẩn hóa, một cách băm cho gốc và bản nháp. `PUT` và `simulate` đã từ chối khi `submitted` (R6.8 của ticket 03, test ở ticket 03).
+    - Tìm thấy và sửa: `scripts/mutate.py` không đột biến được tệp CRLF khi `old` nhiều dòng (đọc bytes thô), nên báo "không bắt" cho đột biến chưa từng xảy ra; nay đọc như phép kiểm lúc nạp và từ chối đột biến không đổi gì (failure-modes #3, lần 6).
+    - Test: unit `test_wflite_simulate.py` 5 ca; integration `apps/api/tests/integration/test_wf_ai_drafts.py` 6 ca; `test_privileges.py` thêm một ca; `test_idempotency_declarations.py` thêm hai route.
+    - Mutation `mutations/02.yaml`: 6/6 đỏ, đối chứng xanh (01 chạy lại 10/10).
+    - `reviewing-feature-security`: tenant (hai bảng RLS bật và FORCE theo dạng workspace, tenant B nhận 404 trên ba route và đọc 0 dòng, đột biến policy thấy đỏ); phân quyền (chỉ chủ DW qua `require_owner`, Validator 403); tự chủ (mô phỏng không gọi `ToolExecutor` hay model, không thư nào trong `marketing_send_log`); nội dung không tin (server dựng lại tài liệu, không nhận tài liệu từ client); audit (`dw.workflow.draft_saved`, `dw.workflow.simulated` cùng giao dịch ghi); vòng đời (một bản nháp và một kết quả mô phỏng mỗi DW, ghi đè; offboarding xóa theo catalog; trần 200 bước).
+    - Độ trễ (200 lời gọi ấm sau 20 lời gọi khởi động, uvicorn thật, PostgreSQL thật, DB `dw_ui04` với 6.000 việc): `PUT workflow-draft` P50/P95/P99 165,5/193,5/208,2 ms; `GET workflow-draft` 57,6/70,2/91,8 ms; `POST simulate` 217,9/250,6/478,6 ms. Route mới, không số của cha; trong ngân sách.
+    - Cổng: ruff, format, mypy, `make test-unit`, `test-contract` (snapshot OpenAPI và kiểu TS sinh lại), `test-architecture`, `verify_invariants.py`; integration của `dw_platform`, `dw_agent_runtime`, `apps/api`: 768 passed, 3 skipped.
