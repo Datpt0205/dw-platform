@@ -503,7 +503,7 @@ bên ngoài thì ghi "Chờ Đạt" và làm việc kế. Đường dẫn ticket
 | 11  | `digital-worker/issues/03` scorecard, nâng hạ tự chủ                                      | xong           |
 | 12  | `digital-worker/issues/04` màn hình web                                                   | xong           |
 | 13  | `leadcare/issues/02` demo chạy thật, ảnh chụp ở `docs/demo/digital-worker/`               | Chờ Đạt 21     |
-| 14  | `wf-ai` spec rồi ticket 01: AI sửa gói mẫu (D16, D18)                                     | chưa           |
+| 14  | `wf-ai` spec rồi ticket 01: AI sửa gói mẫu (D16, D18)                                     | xong `fea6cf2` |
 | 15  | mọi ticket studio khác có Blocked by đã resolved, theo thứ tự đợt                         | chưa           |
 
 ## Ủy quyền
@@ -547,6 +547,7 @@ Each resolved ticket adds one line here: the commit hash and one sentence.
 - leadcare/01: gói Marketing (quy trình `lead_care@1.0.0`, schema lead, bốn prompt, ba công cụ, câu bàn giao), cửa nhận lead có chữ ký với Bản ghi đồng ý cùng giao dịch, công cụ gửi thư chỉ tới Mailpit qua cổng duyệt và Sàn gửi tin, Mailpit trong compose dev, bộ eval chèn lệnh (chưa chạy với model thật) (`57ee004`, `bfa6b75`, `6cf41ca`, `9341032`).
 - digital-worker/03: chi phí model cộng vào lượt chạy, scorecard từ việc, quyết định và chi phí, hạ mức ngay và nâng qua approval `dw.autonomy.raise` không lượt chạy (strict, Validator hay TO quyết), worker settle không ghi đè lần hạ (`d340030`, `a6963ad`, `8e02ff1`).
 - digital-worker/04: bốn màn hình antd (danh sách DW với số việc đang mở, hồ sơ với mức "Tự động/Hỏi/Chặn" từ cổng, scorecard 30 ngày và cây quy trình đã ghim, hàng đợi chung lọc trên URL với Drawer gói bàn giao và trail, thẻ `dw.decision` có "Sửa rồi duyệt" và "Từ chối" kèm lý do), hai route đọc mới, 403/404 không hiện dữ liệu; xem trên app thật sáng/tối, desktop/768px (`a205deb`, `f22e452`, `2e09dc8`).
+- `fea6cf2` wf-ai/01: trợ lý sửa quy trình mẫu của DW: một lượt trả câu hỏi lại hay đề xuất cây bước, chỉ đổi `steps`, công cụ và prompt từ bản gói, qua bộ kiểm của wf-lite và luật sàn HITL, diff theo id bước, chỉ chủ DW nhờ được, gọi model qua `one_call` của runtime; eval chèn lệnh chờ khóa model.
 
 ## Chờ Đạt (phiên không người trực)
 

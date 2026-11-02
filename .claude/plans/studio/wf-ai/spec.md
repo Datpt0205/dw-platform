@@ -31,7 +31,7 @@ Chủ của DW gửi một yêu cầu và nhận lại một câu hỏi hoặc m
 - R1.4 NẾU `instruction` dài quá 4.000 ký tự, hay `history` có quá 10 lượt hoặc một lượt quá 4.000 ký tự, THÌ route PHẢI trả 422 `assistant_input_too_long` và không gọi model.
 - R1.6 Lượt gọi model của trợ lý PHẢI đi qua bộ model của runtime (`build_model_stack`: `ResidencyGate`, sổ chi tiêu) như một lượt chạy, không một client model riêng.
 - R1.7 NẾU `kind` là `question` mà có `steps`, hay `proposal` mà `steps` rỗng hoặc thiếu, THÌ trợ lý PHẢI coi đầu ra đó là không khớp schema theo R1.5.
-- R1.5 NẾU model không trả được đầu ra khớp schema sau các lần thử của gateway, THÌ route PHẢI trả 502 `upstream_unavailable` với `reason_code` `assistant_output_invalid` và không trả đề xuất nào.
+- R1.5 NẾU model không trả được đầu ra khớp schema sau các lần thử của gateway, THÌ route PHẢI trả 503 `upstream_unavailable` với `reason_code` `assistant_output_invalid` và không trả đề xuất nào.
 
 ### R2 — Chỉ soạn từ cái đã có
 
@@ -105,7 +105,7 @@ Trợ lý chỉ đổi cây bước; mọi thứ khác của quy trình gốc gi
 
 ## API
 
-- `POST /v1/digital-workers/{id}/workflow-assistant`: thân `{instruction, history[]}`, mỗi lượt `{role: "user" | "assistant", text}`; trả `{kind, question?, plan[], steps?, diff?, problems[], publishable}`. 404 khi không đọc được DW, 403 `not_dw_owner`, 422 `assistant_input_too_long`, 404 `workflow_not_shipped`, 502 `upstream_unavailable` (`assistant_output_invalid`). Không ghi gì, nên không `Idempotency-Key`.
+- `POST /v1/digital-workers/{id}/workflow-assistant`: thân `{instruction, history[]}`, mỗi lượt `{role: "user" | "assistant", text}`; trả `{kind, question?, plan[], steps?, diff?, problems[], publishable}`. 404 khi không đọc được DW, 403 `not_dw_owner`, 422 `assistant_input_too_long`, 404 `workflow_not_shipped`, 503 `upstream_unavailable` (`assistant_output_invalid`). Không ghi gì, nên không `Idempotency-Key`.
 - `PUT` và `GET /v1/digital-workers/{id}/workflow-draft`, `POST .../workflow-draft/simulate`, `.../submit`, `.../withdraw`: chỉ Business Owner hay Technical Owner, `Idempotency-Key` trên mọi `POST` và `PUT`; 404 khi không đọc được DW, 403 `not_dw_owner`, 422 `draft_not_publishable`, 409 `draft_submitted`, `simulation_required`.
 
 ## Kiểm soát
@@ -156,6 +156,7 @@ Không có.
 - 2/11/2026 (agent, tạm theo ủy quyền): checking-plan-readiness CHƯA ĐẠT (3 CRITICAL, 9 HIGH), sửa theo khuyến nghị của gate: lưu dựng lại và kiểm lại phía server (R6.1, R6.7, WAI13); approval chỉ mang định danh và hash, bản đang chờ khóa, phát hành đúng hash, rút được (R6.4-R6.6, R6.8, R6.10, WAI14); RLS và không rơi sang tenant khác (R6.13, WAI15); mọi người đã lưu bị loại khỏi người duyệt (R6.4, WAI16); xử lý quyết định một lần, từ chối và hủy trả về nháp (R6.11, WAI17); audit cùng giao dịch và `Idempotency-Key` (R6.12); một cách băm (mở đầu R6); số phiên bản theo DW (R6.5); công cụ và prompt so với bản gói (R2); `question`/`proposal` đúng hình (R1.7); bộ model của runtime (R1.6); lượt `assistant` giả là ca eval (R5.2). Nếu sai thì: từng dòng tương ứng.
 - 2/11/2026 (agent, tạm theo ủy quyền): mô phỏng không gọi model nào: mọi `ai.llm` trả mẫu theo `output_schema`, vì mô phỏng kiểm đường đi của cây và các cổng, còn chất lượng câu chữ là việc của eval; thay dòng 31/10/2026. Sửa: R6.2. Nếu sai thì: mô phỏng gọi model qua bộ model của runtime, và lượt lỗi model là `failed` (R6.9).
 - 2/11/2026 (agent, tạm theo ủy quyền): người quyết `dw.workflow.publish` là vai của DW (Validator, Technical Owner) đọc lúc quyết như `dw.decision` và `dw.autonomy.raise`, không con dấu `studio.publish.approve` của ADR-0120 (Accepted) quyết 2, vì quy trình của DW chưa là artifact của Studio và vai đó chưa có trong danh mục quyền; ghi ở mục Amendments của ADR-0120 (Accepted). Nếu sai thì: đóng dấu `required_scope` khi tenant-rbac có vai, và `DwDecisionAdmission` thêm điều kiện giữ con dấu.
+- 2/11/2026 (agent, tạm theo ủy quyền): lỗi đầu ra của model là 503, không 502: `upstream_unavailable` có một mã trạng thái trong `dw_api.errors` và R1.5 theo nó, không thêm mã thứ hai. Sửa: R1.5, API. Nếu sai thì: thêm mã 502 vào bảng trạng thái của `dw_api.errors`.
 
 ## Danh sách ticket
 
