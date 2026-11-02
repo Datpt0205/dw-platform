@@ -30,7 +30,7 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import timedelta
 from itertools import pairwise
-from typing import Annotated, Any, TypedDict
+from typing import Annotated, Any, Protocol, TypedDict
 from uuid import UUID
 
 from langgraph.errors import GraphBubbleUp
@@ -40,17 +40,16 @@ from langgraph.types import interrupt
 from pydantic import BaseModel, ConfigDict
 
 from dw_agent_runtime.contracts import RunContext, WorkerDefinition
-from dw_agent_runtime.executor import DecisionCall, ToolExecutor
+from dw_agent_runtime.executor import DecisionCall
 from dw_agent_runtime.ports import ModelGateway, ModelOutputInvalidError, ModelRequest
-from dw_agent_runtime.tools import ToolRegistry
 from dw_agent_runtime.wflite.catalog import PinnedWorkflow
 from dw_agent_runtime.wflite.document import Step
 from dw_agent_runtime.wflite.registry import NodeTypeSpec, build_node_registry
 from dw_kernel.errors import DWError
 from dw_kernel.ports import UtcClock
-from dw_platform.application.decision_gate import AskPerson, DecisionGate
+from dw_platform.application.decision_gate import AskPerson, Auto
 from dw_platform.application.json_schema import problems
-from dw_platform.application.work_queue import DwLookupPort, WorkQueue, WorkScope
+from dw_platform.application.work_queue import DwLookupPort, WorkScope
 
 WORKER_PREFIX = "dw:"
 _MAX_FIELD = 4000
@@ -60,16 +59,80 @@ def worker_id_of(key: str) -> str:
     return f"{WORKER_PREFIX}{key}"
 
 
+class ToolExecutionPort(Protocol):
+    """The one door a `tool.call` node goes through: `ToolExecutor` in a run,
+    a recorder in a simulation (wf-ai R6.2)."""
+
+    async def execute(
+        self,
+        *,
+        name: str,
+        version: str,
+        raw_input: dict[str, object],
+        run_context: RunContext,
+        idempotency_key: str | None = None,
+        approved: bool = False,
+        decision: DecisionCall | None = None,
+    ) -> BaseModel: ...
+
+
+class ToolModels(Protocol):
+    """A registered tool as a node reads it: what it takes and gives."""
+
+    @property
+    def input_model(self) -> type[BaseModel]: ...
+
+    @property
+    def output_model(self) -> type[BaseModel]: ...
+
+
+class ToolModelsPort(Protocol):
+    """The tool register as nodes read it: `ToolRegistry`."""
+
+    def resolve(self, name: str, version: str) -> ToolModels: ...
+
+
+class DecisionGatePort(Protocol):
+    """What an approval node asks: `DecisionGate` in a run."""
+
+    async def check(
+        self,
+        scope: WorkScope,
+        dw_id: UUID,
+        *,
+        decision_class: str,
+        proposal: Mapping[str, Any],
+        proposal_schema: Mapping[str, Any],
+        locked_fields: Sequence[str],
+        reason: str,
+        run_id: UUID | None = None,
+        step_id: str | None = None,
+    ) -> Auto | AskPerson: ...
+
+
+class HandOffPort(Protocol):
+    """Where a failed step hands its work: `WorkQueue` in a run."""
+
+    async def hand_off(
+        self,
+        scope: WorkScope,
+        item_id: UUID,
+        *,
+        to_user: UUID,
+        packet: Mapping[str, object],
+    ) -> object: ...
+
+
 @dataclass(frozen=True)
 class WfPorts:
     """What the nodes of every compiled workflow use, built once at the
     composition root."""
 
     gateway: ModelGateway
-    executor: ToolExecutor
-    tools: ToolRegistry
-    gate: DecisionGate
-    queue: WorkQueue
+    executor: ToolExecutionPort
+    tools: ToolModelsPort
+    gate: DecisionGatePort
+    queue: HandOffPort
     workers: DwLookupPort
     clock: UtcClock
     # The sentence a hand-off recommends, by code (configs/copy/wflite_handoff.yaml).

@@ -170,10 +170,10 @@ class Bench:
     def ports(self) -> WfPorts:
         return WfPorts(
             gateway=self.gateway,
-            executor=self.executor,  # type: ignore[arg-type]
+            executor=self.executor,
             tools=Tools(),  # type: ignore[arg-type]
-            gate=self.gate,  # type: ignore[arg-type]
-            queue=self.queue,  # type: ignore[arg-type]
+            gate=self.gate,
+            queue=self.queue,
             workers=Workers(),
             clock=FixedClock(NOW),
             recommendations={"step_failed": "Xem lại bước lỗi.", "low_confidence": "Viết lại thư."},
