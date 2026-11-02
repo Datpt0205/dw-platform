@@ -1,0 +1,86 @@
+# Mutation check of marketing-pilot ticket 01: scripts/mutate.py runs this file.
+# One mutation per control of R2.1, R2.2 and R2.3 (the generator's half). The
+# harness is not under a `src/` directory, so each mutation is applied in place
+# and restored, one at a time.
+mutations:
+  - name: R2.1 the generator draws from an unseeded random source
+    file: tests/e2e/marketing_pilot/generator.py
+    old: "    rng = random.Random(seed)"
+    new: "    rng = random.Random()"
+    tests:
+      - tests/e2e/marketing_pilot/test_generator.py::test_one_seed_gives_one_set_byte_for_byte
+  - name: R2.1 the generator's choice depends on the process hash seed
+    file: tests/e2e/marketing_pilot/generator.py
+    old: "        fmt = fmt if fmt is not None else self._rng.choice(tuple(PHONE_FORMATS))"
+    new: "        fmt = fmt if fmt is not None else self._rng.choice(tuple(sorted(PHONE_FORMATS, key=hash)))"
+    tests:
+      - tests/e2e/marketing_pilot/test_generator.py::test_the_set_does_not_depend_on_the_process
+  - name: R2.1 no message closes the input tag
+    file: tests/e2e/marketing_pilot/generator.py
+    old: '    "close_tag",'
+    new: ""
+    tests:
+      - tests/e2e/marketing_pilot/test_generator.py::test_the_set_holds_a_close_tag_an_instruction_and_addresses_in_free_text
+  - name: R2.2 the number is not normalised
+    file: tests/e2e/marketing_pilot/measure.py
+    old: '    return f"+84{subscriber}"'
+    new: "    return raw"
+    tests:
+      - tests/e2e/marketing_pilot/test_generator.py::test_three_writings_of_one_number_are_one_key
+      - tests/e2e/marketing_pilot/test_generator.py::test_each_planted_pair_gives_one_key_per_person
+  - name: R2.2 84 without the plus is not read as the country code
+    file: tests/e2e/marketing_pilot/measure.py
+    old: '    elif digits.startswith("84") and len(digits) in (11, 12):'
+    new: "    elif False:"
+    tests:
+      - tests/e2e/marketing_pilot/test_generator.py::test_three_writings_of_one_number_are_one_key
+  - name: R2.2 the email is not lower-cased
+    file: tests/e2e/marketing_pilot/measure.py
+    old: "    return raw.strip().lower()"
+    new: "    return raw.strip()"
+    tests:
+      - tests/e2e/marketing_pilot/test_generator.py::test_each_planted_pair_gives_one_key_per_person
+      - tests/e2e/marketing_pilot/test_generator.py::test_the_number_wins_over_the_email_and_the_email_is_lower_case
+  - name: R2.2 the name enters the key
+    file: tests/e2e/marketing_pilot/measure.py
+    old: '        return ("phone", normalize_phone(lead.phone))'
+    new: '        return ("phone", normalize_phone(lead.phone) + lead.name)'
+    tests:
+      - tests/e2e/marketing_pilot/test_generator.py::test_a_variant_that_differs_only_in_name_makes_no_new_key
+  - name: R2.2 a wrong merge is not counted
+    file: tests/e2e/marketing_pilot/measure.py
+    old: "        wrong_merges=sum(_pairs(n) for n in per_key.values()) - same_person_same_key,"
+    new: "        wrong_merges=0,"
+    tests:
+      - tests/e2e/marketing_pilot/test_generator.py::test_a_wrong_merge_is_counted
+  - name: R2.3 a number outside the test range passes
+    file: tests/e2e/marketing_pilot/measure.py
+    old: "    if int(e164[1:]) not in TEST_RANGE:"
+    new: "    if False:"
+    tests:
+      - tests/e2e/marketing_pilot/test_generator.py::test_a_real_address_stops_the_measure_before_any_rate
+  - name: R2.3 an address at another domain passes
+    file: tests/e2e/marketing_pilot/measure.py
+    old: "    if domain != EMAIL_DOMAIN:"
+    new: "    if False:"
+    tests:
+      - tests/e2e/marketing_pilot/test_generator.py::test_a_real_address_stops_the_measure_before_any_rate
+      - tests/e2e/marketing_pilot/test_generator.py::test_the_check_ignores_the_label
+  - name: R2.3 numbers in the message are not checked
+    file: tests/e2e/marketing_pilot/measure.py
+    old: '        checks += [("message", _phone_problem(m)) for m in phones_in_text(lead.message)]'
+    new: ""
+    tests:
+      - tests/e2e/marketing_pilot/test_generator.py::test_a_real_address_stops_the_measure_before_any_rate
+  - name: R2.3 emails in the message are not checked
+    file: tests/e2e/marketing_pilot/measure.py
+    old: '        checks += [("message", _email_problem(m)) for m in emails_in_text(lead.message)]'
+    new: ""
+    tests:
+      - tests/e2e/marketing_pilot/test_generator.py::test_a_real_address_stops_the_measure_before_any_rate
+  - name: R2.3 the rates are printed before the check
+    file: tests/e2e/marketing_pilot/measure.py
+    old: "    assert_simulated(leads)"
+    new: "    out.write(report(measure(leads))); assert_simulated(leads)"
+    tests:
+      - tests/e2e/marketing_pilot/test_generator.py::test_a_real_address_stops_the_measure_before_any_rate

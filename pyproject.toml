@@ -195,6 +195,7 @@ testpaths = [
     "apps/api/tests",
     "apps/docgen/tests",
     "apps/worker/tests",
+    "tests/e2e",
 ]
 pythonpath = [".", "tests/support", "packages/python/dw_agent_runtime/tests/integration"]
 markers = [
