@@ -2,8 +2,8 @@
 
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
-Duyệt: chưa
-Sẵn sàng: chưa kiểm
+Duyệt: agent, tạm theo ủy quyền 2/11/2026
+Sẵn sàng: ĐẠT (2/11/2026; 0 CRITICAL, 0 HIGH; ticket 01)
 
 Mã do công ty viết phải chạy cách ly ở mức nhân, mỗi lần một container mới; nhưng điều đó chỉ đứng vững nếu runsc dưới một engine rootless thật sự tôn trọng trần tài nguyên trên host và chạy được trên runner CI. W1 chỉ là spike đo hai điều đó và chốt ADR-0119 (Proposed) cùng ngân sách hạ tầng; không lát nào chạy mã của công ty ở W1. Ảnh, runner, bộ script thù địch, `CodeExecutionService` và máy thứ hai là W2.
 
@@ -38,7 +38,7 @@ Mỗi lần chạy mã dùng một container mới dùng một lần, không m�
 
 ## Trong phạm vi
 
-- Spike host: `apps/sandbox-runner` harness thử đo runsc trên systrap dưới Docker hoặc Podman rootless với cgroup v2 ủy quyền (khởi động lạnh và ấm, `memory.peak`, fork bomb, tmpfs `noexec`, pandas, reaper sau `kill -9`, engine rootless chung máy với daemon rootful).
+- Spike host: harness ở `tests/spike/sandbox/` (không phải `apps/sandbox-runner`, là W2) đo runsc trên systrap dưới Docker hoặc Podman rootless với cgroup v2 ủy quyền (khởi động lạnh và ấm, `memory.peak`, fork bomb, tmpfs `noexec`, pandas, reaper sau `kill -9`, engine rootless chung máy với daemon rootful).
 - Spike CI: chạy một container `runsc-dw` không mạng trên runner Ubuntu.
 - Tài liệu quyết định của spike: bảng số đo, lựa chọn Docker hay Podman rootless, và ngân sách hạ tầng vào ADR-0119 (Proposed).
 
@@ -67,7 +67,7 @@ Mỗi lần chạy mã dùng một container mới dùng một lần, không m�
 
 - Bảng số đo mười mục của R1.1 trên host mục tiêu và trên runner CI có trong tài liệu quyết định của spike; mọi tiêu chí R1 có test; CS1, CS2 có test âm đã thấy đỏ khi gỡ guard (ghi ở Comments của ticket 01).
 - ADR-0119 (Proposed) và ngân sách hạ tầng (VM thứ hai, cỡ host) được chốt theo số đo; trần nào không được tôn trọng thì ghi là điều kiện chặn bước mã (R1.2).
-- `uv run pytest packages/python/dw_studio/tests/spike -k sandbox` xanh.
+- `DW_SANDBOX_SPIKE=1 uv run python -m pytest tests/spike/sandbox` xanh trên runner CI (ticket 01) và trên host mục tiêu (ticket 02).
 - Tiêu chí W2 (bộ script thù địch đạt 100% ở cổng phát hành, job `sandbox-hostile`, `/health` của runner trên VM báo `rootless: true` và `runtime: runsc-dw`) thuộc R2 ở Ngoài phạm vi và không chặn việc đóng spec này ở W1.
 
 ## Phụ thuộc
@@ -89,9 +89,13 @@ Mỗi lần chạy mã dùng một container mới dùng một lần, không m�
 - 23/10/2026 (Đạt): Tiêu chí xong của W1 theo (a): viết lại theo R1 (bảng số đo, CS1, CS2 thấy đỏ, ADR-0119 (Proposed) và ngân sách hạ tầng chốt); phần còn lại là tiêu chí W2 của R2, không đổi phạm vi. Sửa: Tiêu chí xong.
 - 23/10/2026 (Đạt): ADR-0119 (Proposed) giữ Proposed tới khi ticket 01 báo số; khi chấp nhận, quyết 10 chuyển sang Open W3. Spec giữ trích dẫn ADR-0119 (Proposed).
 - 24/10/2026 (agent, tạm): một chủ cho mỗi việc của bước mã W2: workflow-nodes đăng ký quyền `studio.code.author` cùng node `code.python`, còn `CodeExecutionService` của spec này kiểm quyền lợi `code_node` và quyền đó trước khi gọi runner (kiểm nhất quán vòng 3). Sửa: Ngoài phạm vi (cột Chủ của R2.3 và dòng node mã), Phụ thuộc. Nếu sai thì: workflow-nodes kiểm quyền lợi ở node, và dòng R2.3 bỏ phần kiểm quyền lợi.
+- 2/11/2026 (agent, theo ủy quyền 31/10/2026): Theo gate `checking-plan-readiness` cho ticket 01 (builder check): harness và test của spike ở `tests/spike/sandbox/`, không ở `apps/sandbox-runner` (W2) hay `dw_studio` (không tồn tại); lệnh xong là `DW_SANDBOX_SPIKE=1 uv run python -m pytest tests/spike/sandbox`, đỏ chứ không skip khi thiếu `runsc-dw`; bảng số đo mười mục có một chủ là mục Measurements của ADR-0119 (Proposed). Sửa: Trong phạm vi, Tiêu chí xong. Nếu sai thì: khi W2 dựng `apps/sandbox-runner`, harness chuyển vào đó và lệnh xong đổi theo.
+- 2/11/2026 (agent, theo ủy quyền 31/10/2026): Host mục tiêu chưa có (VM thứ hai chưa đặt mua, DO-24, D14), nên phần host của R1 tách thành ticket 02 `ready-for-human`; ticket 01 là harness và cột CI. ADR-0119 (Proposed) giữ Proposed tới khi ticket 02 báo số, đúng Quyết định 23/10/2026 của Đạt. Sửa: Danh sách ticket, Tiêu chí xong. Nếu sai thì: gộp 02 vào 01 khi đã có host.
+- 2/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 01-02. Ticket 01 là harness `tests/spike/sandbox/`, script dựng `setup_rootless.sh` và job CI `sandbox-spike` cho cột CI của R1.1 và R1.2-R1.4, CS1, CS2; ticket 02 chạy cùng harness trên host mục tiêu, bị chặn bởi 01, là việc của người (`ready-for-human`). Hai ticket có đường phụ thuộc, nên không cần bảng cặp.
 
 ## Danh sách ticket
 
 | #   | Ticket                                                                                                             |
 | --- | ------------------------------------------------------------------------------------------------------------------ |
 | 01  | [Spike: runsc systrap dưới engine rootless trên máy chủ và trên runner CI](issues/01-spike-runsc-may-chu-va-ci.md) |
+| 02  | [Đo runsc trên host mục tiêu và chốt ADR-0119 (Proposed)](issues/02-do-runsc-tren-host-muc-tieu.md) |
