@@ -85,3 +85,20 @@ def test_manifest_ref_is_stable_and_ignores_git_sha() -> None:
     assert ref == script.manifest_ref({**manifest, "git_sha": "different"})
     changed = {**manifest, "knowledge_index_version": "changed"}
     assert ref != script.manifest_ref(changed)
+
+
+def test_the_committed_manifest_hashes_as_its_canonical_bytes() -> None:
+    """tenant-config R1.5, G3: the bytes `manifest_ref` hashes are the RFC
+    8785 bytes of the committed manifest without `git_sha`, so a release ref
+    and a Studio content hash agree on one document; `manifest_ref` itself is
+    not changed."""
+    import json
+
+    from dw_kernel.canonical import content_hash
+
+    script = _load_script()
+    committed = json.loads(
+        (REPO_ROOT / "contracts" / "release" / "manifest.json").read_text("utf-8")
+    )
+    without_sha = {k: v for k, v in committed.items() if k != "git_sha"}
+    assert content_hash(without_sha) == script.manifest_ref(committed)

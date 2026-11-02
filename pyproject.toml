@@ -54,6 +54,9 @@ dev = [
     # running `alembic revision`, not by reading alembic's docs.
     "tzdata>=2024.1",
     "pytest-xdist>=3.6,<4",
+    # The reference RFC 8785 serializer `dw_kernel.canonical` is tested against
+    # (tenant-config R1.1); never a runtime dependency: the kernel is stdlib only.
+    "rfc8785==0.1.4",
 ]
 
 # ---------------------------------------------------------------------------

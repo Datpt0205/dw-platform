@@ -1,0 +1,41 @@
+# Mutation check of tenant-config ticket 01: scripts/mutate.py runs this file.
+# One mutation per refusal and per ordering rule of `dw_kernel.canonical`
+# (R1.1-R1.5, TC8).
+mutations:
+  - name: R1.1 keys sorted by code point, not UTF-16 code units
+    file: packages/python/dw_kernel/src/dw_kernel/canonical.py
+    old: "        return {key: _sorted(value[key]) for key in sorted(value, key=_utf16)}"
+    new: "        return {key: _sorted(value[key]) for key in sorted(value)}"
+    tests:
+      - packages/python/dw_kernel/tests/unit/test_canonical.py::test_the_bytes_match_the_reference_on_20_000_documents
+      - packages/python/dw_kernel/tests/unit/test_canonical.py::test_the_rfc_8785_examples_without_numbers
+  - name: R1.2 a float is hashed
+    file: packages/python/dw_kernel/src/dw_kernel/canonical.py
+    old: "    if isinstance(value, float):"
+    new: "    if False:"
+    tests:
+      - packages/python/dw_kernel/tests/unit/test_canonical.py::test_any_float_is_refused_with_no_hash
+  - name: R1.3 no safe-integer range
+    file: packages/python/dw_kernel/src/dw_kernel/canonical.py
+    old: "        if abs(value) > MAX_SAFE_INTEGER:"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_kernel/tests/unit/test_canonical.py::test_integers_are_held_to_the_safe_range
+  - name: R1.4 text not in NFC is hashed
+    file: packages/python/dw_kernel/src/dw_kernel/canonical.py
+    old: '    if not unicodedata.is_normalized("NFC", text):'
+    new: "    if False:"
+    tests:
+      - packages/python/dw_kernel/tests/unit/test_canonical.py::test_text_not_in_nfc_is_refused_in_values_and_keys
+  - name: R1.4 two keys one after NFC, one value kept
+    file: packages/python/dw_kernel/src/dw_kernel/canonical.py
+    old: "            if normal in out:"
+    new: "            if False:"
+    tests:
+      - packages/python/dw_kernel/tests/unit/test_canonical.py::test_two_keys_one_after_nfc_are_refused_not_chosen
+  - name: R1.5 the release manifest's bytes are not the canonical ones
+    file: scripts/release_manifest.py
+    old: '    canonical = json.dumps(hashable, sort_keys=True, ensure_ascii=False, separators=(",", ":"))'
+    new: '    canonical = json.dumps(hashable, ensure_ascii=False, separators=(",", ":"))'
+    tests:
+      - apps/api/tests/unit/test_release_manifest.py::test_the_committed_manifest_hashes_as_its_canonical_bytes
