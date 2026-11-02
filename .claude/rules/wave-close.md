@@ -19,9 +19,12 @@ left open waiting for it.
 
 1. **Readiness, only for a ticket not yet gated.** A ticket of a spec already
    ĐẠT is not gated again. A `needs-triage` ticket gets `checking-plan-readiness`
-   once, in one subagent that does the builder check and the boundary walk
-   together; its CRITICAL and HIGH findings are fixed (on delegation, with the
-   recommendation), MEDIUMs go to the ticket's Comments.
+   once, in one subagent; its CRITICAL and HIGH findings are fixed (on
+   delegation, with the recommendation), MEDIUMs go to the ticket's Comments.
+   A ticket that adds no migration and no route gets the builder check only; one
+   that does gets the builder check and the boundary walk together. Gates run
+   ahead of the code, three or four at a time, so a ĐẠT ticket is always waiting
+   (Đạt, 2/11/2026).
 2. **Tests for every R and G of the ticket**, the G tests written first where
    the ticket says so, with a negative test for every row of its "Kiểm soát"
    (another tenant, a caller without the right).
@@ -29,12 +32,23 @@ left open waiting for it.
    against the code. Write `mutations/<NN>.yaml`, one mutation per control, but
    do not run it yet.
 4. **Fast gates**: ruff, format, `python -m mypy`, the unit tests of the
-   packages the ticket touched, the ticket's own integration tests, and, when
-   it adds a migration, `test_rls_coverage.py`, `test_privileges.py` and
-   `test_offboarding_coverage.py`. A changed route regenerates the OpenAPI
+   packages the ticket touched, only the integration tests the ticket adds or
+   changes, and, when it adds a migration, `test_rls_coverage.py`,
+   `test_privileges.py` and `test_offboarding_coverage.py`. The broad suites wait
+   for the queue's close, where a regression is still bisected to its commit. A changed route regenerates the OpenAPI
    snapshot and the TS types. The pre-commit hook runs as always.
 5. Ticket `resolved`, short Comments with what was done differently, one Slice
    log line, commit, push, next ticket.
+
+## Two lanes at once (Đạt, 2/11/2026)
+
+Two tickets whose code does not overlap may be built at once, each by its own
+subagent on `main` (no branches, no worktrees). Each stages only its own paths,
+never `git add -A`, pulls with rebase before it pushes, and leaves the plan's
+area file to the session that runs the queue, which records each result. A new
+Alembic revision re-points `down_revision` to the head it finds when it
+commits. Tickets that share a migration chain step, a contract snapshot or a
+table are not run side by side.
 
 ## At the queue's close — once, before the queue is called done
 
