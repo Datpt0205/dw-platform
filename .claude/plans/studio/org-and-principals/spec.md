@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 29/10/2026
-Sẵn sàng: ĐẠT (29/10/2026; 0 CRITICAL, 0 HIGH; ticket 01)
+Sẵn sàng: ĐẠT (2/11/2026; 0 CRITICAL, 0 HIGH; ticket 01, 02)
 
 Công ty cần một mô hình chủ thể đủ cho D1: vị thế của một người trong công ty là một dòng có trạng thái, không suy ra từ
 membership, và lượt chạy không người kích hoạt (biểu mẫu, webhook, lịch, sự kiện bản ghi) chạy dưới danh nghĩa một tài
@@ -235,6 +235,22 @@ Người dùng thấy một thuật ngữ cho đơn vị sở hữu dữ liệu,
 - 25/10/2026 (Đạt): V4.38: công ty tạo với hai chủ sở hữu, ở `setup` tới khi người thứ hai `active`, rồi sang `active` trong cùng giao dịch kích hoạt người đó; kích hoạt thành viên của R4.5 là lần kích hoạt mà luật chuyển trạng thái của tenant-rbac đọc (tenant-rbac:R3.10), và tập trạng thái mà R2.1 so là tập của `ck_tenants_status`, nay có `setup`. Sửa: R2.1, Phụ thuộc, ticket 02.
 - 25/10/2026 (agent, tạm): H-2: bước `platform.purge_tenant_service_users` của R6.8 là một bước đăng ký vào sổ bước xóa của foundations-hardening/07, khai `platform.users`, thứ tự suy từ khóa ngoại `RESTRICT` và `NO ACTION` của `pg_constraint`, không còn "sau cùng, sau `platform.purge_tenant_append_only`"; ticket 03 thôi chờ usage-and-limits/02, và ca thứ tự của OP14 thành ca bước đi sau bảng giữ khóa ngoại tới tài khoản dịch vụ; dòng này thay dòng tạm 24/10/2026 về thứ tự lời gọi và cạnh tới usage-and-limits/02. Sửa: R6.8, OP14, Phụ thuộc, ticket 03. Nếu sai thì: thứ tự viết tay, lời gọi sau cùng và cạnh org-and-principals/03 <- usage-and-limits/02.
 - 29/10/2026 (agent, tạm theo ủy quyền): Duyệt spec và cách chia ticket 01-04 theo `## Ủy quyền` của studio.md. Theo gate ticket 01: R3.1-R3.3 được thử trên Keycloak đang chạy bằng một test integration tự tạo client và người dùng thử; một realm đã import trước được đưa về giá trị tệp bằng `scripts/keycloak_realm_settings.py` (ADR-0009 (Accepted): realm đã có sửa tay). Nếu sai thì: bỏ script, ghi bước sửa tay vào runbook triển khai.
+- 2/11/2026 (agent, theo ủy quyền 31/10/2026): gate ticket 02, CRITICAL C1: lần kích hoạt của R4.5 là hàm SECURITY
+  DEFINER `platform.activate_invited_members`, chỉ đổi `invited` sang `active`, gọi ở mỗi lần `bootstrap` ngay sau
+  `_resolve_user`, vì `_resolve_user` chạy trước khi có `app.tenant_id` và một policy ghi theo `app.principal_id` sẽ cho
+  người `suspended` tự mở lại, trái D11. Sửa: ticket 02 bước 4, tiêu chí R4.5. Nếu sai thì: `bootstrap` UPDATE từng tenant
+  của người đó dưới policy tenant, cùng điều kiện `status = 'invited'`.
+- 2/11/2026 (agent, theo ủy quyền 31/10/2026): gate ticket 02, HIGH H1-H4: tài khoản dịch vụ của digital-worker/01
+  (`be93e0c26a4c`) là thành viên công ty `active` khi chuyển dữ liệu và khi tạo DW (R6.1; ADR-0103 (Accepted) quyết 2);
+  lời mời, `membership_admin` và `grant_role` của provisioning ghi `invited` và người đó thành `active` ở lần đăng nhập kế
+  tiếp, còn người ghi khác ghi `active`; `status_changed_at` do trigger dời khi `status` đổi, vì workflow-engine/04 đọc
+  nó làm khóa chống lặp (workflow-engine:R5.20); mọi đường ghi membership có lúc dựng, kể cả `scripts/demo_dw_seed.py` của
+  leadcare/02, theo cùng luật. R4.4 giữ nguyên chữ. Sửa: ticket 02 bước 1, 3, 4 và tiêu chí. Nếu sai thì: mọi người ghi
+  theo luật chuyển dữ liệu (`active` khi đã có danh tính đăng nhập) và tenant-rbac/02 gắn luật `setup` lên cả INSERT.
+- 2/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 02. Ticket 02 là bảng thành viên công ty có trạng thái,
+  người ghi và người đọc của nó ở cửa AccessContext và bootstrap; tài khoản dịch vụ làm chủ thể chạy ở ticket 03, người
+  được dùng ở ticket 04, cả hai chờ ticket 02. Nếu sai thì: tách lần kích hoạt và người ghi thành một ticket riêng chờ
+  ticket 02.
 
 ## Danh sách ticket
 
