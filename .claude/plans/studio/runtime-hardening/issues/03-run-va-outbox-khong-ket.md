@@ -1,6 +1,6 @@
 # 03 — Run không kẹt ở waiting_approval, CHECK trạng thái, outbox lùi thời gian và thư chết
 
-Status: ready-for-agent
+Status: resolved (2026-11-02, main)
 Blocked by: .claude/plans/studio/foundations-hardening/issues/01-test-khong-the-do.md, .claude/plans/studio/tenant-config/issues/03-che-do-chay-va-gia-lap-o-executor.md
 Area: studio
 Yêu cầu: R9.1, R9.2, R9.3, R10.1, R10.2, R10.3, R10.4, R10.5, G5, RH25, RH26, RH27, RH28, RH29
@@ -87,34 +87,34 @@ Phát lại thư chết (R10.4, R10.5), theo DO-56.1:
 
 ## Tiêu chí chấp nhận
 
-- [ ] R9.1 (RH25): integration giả lập chết sau `begin_resume` (run ở `running`, `updated_at` đặt lùi
+- [x] R9.1 (RH25): integration giả lập chết sau `begin_resume` (run ở `running`, `updated_at` đặt lùi
       quá `stale_run_after_seconds`) → lượt mới của cùng thread được nhận, không còn báo chờ duyệt;
       bỏ compare-and-set (resume không đổi `status`) → lượt mới bị báo chờ duyệt, test đỏ.
-- [ ] R9.1: `CancelledError` trong lần chạy graph → run `failed` với lỗi `ResumeInterrupted` và ngoại
+- [x] R9.1: `CancelledError` trong lần chạy graph → run `failed` với lỗi `ResumeInterrupted` và ngoại
       lệ được ném lại.
-- [ ] R9.2 (RH25): hai resume đồng thời cùng một run → đúng một lần chạy graph, lần kia 409 và không ghi
+- [x] R9.2 (RH25): hai resume đồng thời cùng một run → đúng một lần chạy graph, lần kia 409 và không ghi
       audit `run.resumed`; cùng ca cho một run `waiting_timer` → một chạy, một 409; các test hẹn giờ của
       `apps/worker/tests/integration/test_wflite_runs_db.py` (lane `dw_timers` chạy tiếp từ `waiting_timer`)
       xanh với compare-and-set.
-- [ ] R9.3 (RH26): ghi `status='bogus'` vào run và yêu cầu phê duyệt, `outcome='bogus'` vào quyết định
+- [x] R9.3 (RH26): ghi `status='bogus'` vào run và yêu cầu phê duyệt, `outcome='bogus'` vào quyết định
       → CHECK từ chối; thêm một giá trị vào `RunStatus` mà không vào CHECK → test catalog đỏ.
-- [ ] R10.1 (RH27): lỗi lần một → sự kiện không được claim khi `available_at` còn ở tương lai; lùi
+- [x] R10.1 (RH27): lỗi lần một → sự kiện không được claim khi `available_at` còn ở tương lai; lùi
       `available_at` về quá khứ → được claim lại; khoảng lùi lần n nằm trong `[b, 1,2 × b]` với
       `b = min(30 × 2^(n-1), 3600)` giây; bỏ điều kiện `available_at` khỏi claim → đỏ.
-- [ ] R10.2 (RH28): thất bại ở lượt `outbox_max_attempts` → `dead_at` được đặt và sự kiện không bị
+- [x] R10.2 (RH28): thất bại ở lượt `outbox_max_attempts` → `dead_at` được đặt và sự kiện không bị
       claim lại; `UndeliverableEventError` → `dead_at` ngay lần đầu; sự kiện có `attempts` bằng
       `outbox_max_attempts`, `processed_at` và `dead_at` rỗng (chết giữa lần giao cuối) → lượt claim kế đặt
       `dead_at`, handler không chạy, gauge bằng 1; bỏ điều kiện `dead_at` khỏi claim, hay bỏ nhánh hết lượt
       của claim → đỏ.
-- [ ] R10.3 (RH28): một sự kiện chết → gauge `dw_outbox_dead_letters` bằng 1, không có → 0; `backlog`
+- [x] R10.3 (RH28): một sự kiện chết → gauge `dw_outbox_dead_letters` bằng 1, không có → 0; `backlog`
       không đếm sự kiện chết.
-- [ ] R10.4 (RH29): người vận hành chạy script cho một sự kiện chết → sự kiện về hàng đợi (`dead_at`
+- [x] R10.4 (RH29): người vận hành chạy script cho một sự kiện chết → sự kiện về hàng đợi (`dead_at`
       rỗng, `attempts` 0) và có đúng một audit `platform.outbox.replayed` đứng tên người đó, trong cùng
       giao dịch; audit ném lỗi → sự kiện vẫn mang `dead_at`.
-- [ ] R10.5 (RH29): `--operator` không có trong `platform.platform_operators` → script thoát 1, sự kiện
+- [x] R10.5 (RH29): `--operator` không có trong `platform.platform_operators` → script thoát 1, sự kiện
       vẫn mang `dead_at`, không có audit; gỡ kiểm người vận hành → test đỏ.
-- [ ] G5: `test_pause_restart_resume_approved` xanh với compare-and-set.
-- [ ] Xong: `make ci && make test-integration` xanh.
+- [x] G5: `test_pause_restart_resume_approved` xanh với compare-and-set.
+- [x] Xong: `make ci && make test-integration` xanh.
 
 ## Nguồn
 
@@ -197,4 +197,8 @@ Phát lại thư chết (R10.4, R10.5), theo DO-56.1:
   dòng outbox, cột mới có mặc định, không đụng. Không cặp nào đụng mà thiếu đường. Duyệt cách chia: dòng 30/10/2026
   (agent, tạm theo ủy quyền) "Duyệt cách chia ticket 01-03" của spec.
 - 2026-11-02 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
-- 2026-11-02 (agent): code và test riêng xong, đã commit; chờ integration liên quan trước khi resolved.
+- 2026-11-02 (agent): resolved (`48a6f3f`).
+    - Khác ticket (agent, theo ủy quyền 31/10/2026): đọc và phát lại thư chết qua `SqlDeadLetters` cạnh `SqlOutboxDrain` (module đã được miễn cho `app.worker_drain`), không đặt cờ drain trong `scripts/` (M2); phát lại chỉ đổi dòng còn `dead_at`, id không phải thư chết thì không đổi gì, không audit, script thoát 2 (M3). `backlog()` bỏ tham số `max_attempts` (M8) và trả thêm số thư chết; gauge vào `ALL_METRICS` và ảnh chụp semconv (M4). Index `ix_outbox_events_claimable (occurred_at, available_at)` một phần cho dòng chưa xử lý, chưa chết, và `ix_outbox_events_dead`; `EXPLAIN` trên bảng thật đo ở lượt cuối. `SELECT DISTINCT` dữ liệu hiện có nằm trong migration (dừng và nêu giá trị lạ). Nếu sai thì: tách đọc thư chết vào một port riêng.
+    - Test: integration `test_resume_once_db.py` 5 ca (hai lần tiếp tục từ `waiting_approval` và `waiting_timer`: một chạy, một 409, một audit; chết sau `begin_resume` thì lượt mới của thread được nhận; hủy thì `failed` `ResumeInterrupted`), `test_outbox_dead_letters.py` 8 ca (lùi thời gian, bỏ cuộc ở lượt cuối và ngay khi không giao được, chết giữa lần giao cuối, phát lại có audit, audit lỗi thì vẫn chết, không phải người vận hành thì không đổi gì, CHECK bằng tập của enum, giá trị lạ bị từ chối); `test_outbox_drain.py` và `test_outbox_consumer.py` sửa theo backoff. Integration liên quan (runtime, timer, outbox, approval, phát hành wf-ai, phủ RLS và quyền): 297 passed.
+    - `mutations/03.yaml` 10 đột biến, chưa chạy. Độ trễ (claim, `record_failure`, `begin_resume`) đo ở lượt cuối.
+    - MEDIUM chưa làm: M1 (hủy trong stream là `cancelled`, trong resume là `failed`), M5, M6 (việc của DW ở `in_progress` khi tiếp tục hẹn giờ chết), M7 (không gì xóa thư chết ngoài phát lại).
