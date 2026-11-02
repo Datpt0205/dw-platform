@@ -5,7 +5,8 @@ import pytest
 from dw_kernel.errors import EntitlementDeniedError, PermissionDeniedError
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.authorization import ScopeAuthorizationService
-from dw_platform.application.entitlement import DEFAULT_PLANS, PlanEntitlementService
+from dw_platform.application.entitlement import PlanEntitlementService
+from dw_platform.testing.plan_catalog import InMemoryPlanCatalog
 
 pytestmark = pytest.mark.unit
 
@@ -46,19 +47,22 @@ async def test_platform_admin_bypasses_scopes() -> None:
     await service.require(context=admin, action="anything.at_all", resource_type="any")
 
 
-async def test_entitlement_by_plan_and_override() -> None:
-    service = PlanEntitlementService(DEFAULT_PLANS)
-    basic = make_context(plan_id="basic")
+async def test_a_feature_is_the_one_the_access_context_carries() -> None:
+    """The plan's features reach the context from `platform.plans.features`
+    with the tenant's overrides; the service reads nothing else (ticket 01)."""
+    service = PlanEntitlementService(InMemoryPlanCatalog())
+    basic = make_context(plan_id="basic", feature_flags=frozenset({"knowledge_search"}))
     await service.require_feature(basic, "knowledge_search")
     with pytest.raises(EntitlementDeniedError):
         await service.require_feature(basic, "audit_export")
 
-    # per-tenant override wins even on basic plan
-    with_override = make_context(plan_id="basic", feature_flags=frozenset({"audit_export"}))
+    with_override = make_context(
+        plan_id="basic", feature_flags=frozenset({"knowledge_search", "audit_export"})
+    )
     await service.require_feature(with_override, "audit_export")
 
 
-async def test_entitlement_unknown_plan_fails_closed() -> None:
-    service = PlanEntitlementService(DEFAULT_PLANS)
+async def test_a_context_carrying_no_feature_is_denied_on_any_plan() -> None:
+    service = PlanEntitlementService(InMemoryPlanCatalog())
     with pytest.raises(EntitlementDeniedError):
-        await service.require_feature(make_context(plan_id="ghost"), "knowledge_search")
+        await service.require_feature(make_context(plan_id="enterprise"), "knowledge_search")

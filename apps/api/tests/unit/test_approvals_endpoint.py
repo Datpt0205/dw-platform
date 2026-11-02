@@ -53,7 +53,6 @@ from dw_platform.application.approval_codes import (
 )
 from dw_platform.application.authorization import ApprovalAudience, ScopeAuthorizationService
 from dw_platform.application.decision_gate import DW_DECISION, DwProposalMask
-from dw_platform.application.entitlement import DEFAULT_PLANS, PlanEntitlementService
 from dw_platform.application.identity import DbAccessContextFactory, MembershipAccess
 from dw_platform.domain.approval import (
     ApprovalDecision,
@@ -230,7 +229,6 @@ def make_container(
         identity_bootstrap=None,
         uow_factory=uow_factory,
         authorization=ScopeAuthorizationService(),
-        entitlement=PlanEntitlementService(DEFAULT_PLANS),
         approval_flow=ApproveAndResumeService(
             uow_factory=uow_factory,
             runner=RunnerThatMustNotRun(),  # type: ignore[arg-type]

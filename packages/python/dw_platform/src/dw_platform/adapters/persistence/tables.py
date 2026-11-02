@@ -187,7 +187,26 @@ plans = sa.Table(
     sa.Column("plan_id", sa.Text, primary_key=True),
     sa.Column("name", sa.Text, nullable=False),
     sa.Column("features", JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")),
-    sa.Column("quotas", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
+)
+
+# usage-and-limits ticket 01: the plan's numbers, one row per plan, written by
+# migrations only (`dw_app` reads). NULL is no limit; a missing row refuses.
+_USD = sa.Numeric(20, 8)
+plan_limits = sa.Table(
+    "plan_limits",
+    metadata,
+    sa.Column(
+        "plan_id", sa.Text, sa.ForeignKey("plans.plan_id", ondelete="CASCADE"), primary_key=True
+    ),
+    sa.Column("runs_per_day", sa.Integer, nullable=True),
+    sa.Column("cost_usd_per_day", _USD, nullable=True),
+    sa.Column("cost_usd_per_month", _USD, nullable=True),
+    sa.Column("tokens_per_month", sa.BigInteger, nullable=True),
+    sa.Column("max_cost_usd_per_run", _USD, nullable=False),
+    sa.Column("max_tokens_per_run", sa.BigInteger, nullable=False),
+    sa.Column("max_steps_per_run", sa.Integer, nullable=False),
+    sa.Column("max_model_calls_per_run", sa.Integer, nullable=False),
+    sa.Column("max_tool_calls_per_run", sa.Integer, nullable=False),
 )
 
 memberships = sa.Table(

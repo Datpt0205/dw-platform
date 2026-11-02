@@ -1,0 +1,82 @@
+# Mutation check of usage-and-limits ticket 01: scripts/mutate.py runs this file
+# at the queue's close (wave-close.md). One mutation per control (R1.1-R1.4) and
+# per layer that holds one: the service refuses a missing row, the cache holds
+# the TTL and lets a failed read through (failure-modes #3, #5).
+#
+# The two architecture mutations change a `src/` file, which mutate.py edits in
+# a copy of the package put first on PYTHONPATH; `test_plan_catalogue_owner.py`
+# finds each package with `importlib.util.find_spec`, so it scans that copy.
+mutations:
+  - name: R1.1 DEFAULT_PLANS declared again in entitlement.py
+    file: packages/python/dw_platform/src/dw_platform/application/entitlement.py
+    old: "from dw_platform.application.plan_catalog import PlanCatalogPort\n"
+    new: "from dw_platform.application.plan_catalog import PlanCatalogPort\n\nDEFAULT_PLANS: dict[str, object] = {}\n"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_plan_catalogue_owner.py::test_the_source_tree_holds_no_plan_catalogue
+  - name: R1.1 a PlanLimits built in wiring.py
+    file: apps/api/src/dw_api/bootstrap/wiring.py
+    old: "    container.entitlement = entitlement\n"
+    new: "    container.entitlement = entitlement\n    _ = PlanLimits(plan_id=\"basic\")  # type: ignore[call-arg]  # noqa: F821\n"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_plan_catalogue_owner.py::test_the_source_tree_holds_no_plan_catalogue
+  - name: R1.2 a plan with no row runs unlimited
+    file: packages/python/dw_platform/src/dw_platform/application/entitlement.py
+    old: "            return 0\n"
+    new: "            return None\n"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_plan_catalog.py::test_a_plan_with_no_row_is_refused_runs_and_spend
+      - packages/python/dw_agent_runtime/tests/unit/test_plan_catalogue_admission.py::test_a_plan_with_no_row_is_refused_not_unlimited
+      - packages/python/dw_agent_runtime/tests/integration/test_plan_limits_admission.py::test_a_plan_with_no_limits_row_is_refused
+  - name: R1.2 a plan with no row spends without a ceiling
+    file: packages/python/dw_platform/src/dw_platform/application/entitlement.py
+    old: "            return Decimal(0)\n"
+    new: "            return None\n"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_plan_catalog.py::test_a_plan_with_no_row_is_refused_runs_and_spend
+  - name: R1.1 the cache never expires
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/plan_catalog.py
+    old: "        if cached is not None and now - cached[0] < timedelta(seconds=self.ttl_seconds):"
+    new: "        if cached is not None:"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_plan_catalog.py::test_within_the_ttl_the_cache_answers_and_after_it_the_catalogue_does
+      - packages/python/dw_agent_runtime/tests/integration/test_plan_limits_admission.py::test_a_changed_number_reaches_admission_after_thirty_seconds_not_before
+  - name: R1.1 nothing is cached
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/plan_catalog.py
+    old: "        if cached is not None and now - cached[0] < timedelta(seconds=self.ttl_seconds):"
+    new: "        if cached is not None and False:"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_plan_catalog.py::test_within_the_ttl_the_cache_answers_and_after_it_the_catalogue_does
+      - packages/python/dw_platform/tests/unit/test_plan_catalog.py::test_a_missing_plan_is_cached_as_missing
+      - packages/python/dw_agent_runtime/tests/integration/test_plan_limits_admission.py::test_a_changed_number_reaches_admission_after_thirty_seconds_not_before
+  - name: R1.2 a failed read answers from the expired entry
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/plan_catalog.py
+    old: "        limits = await self.inner.limits(plan_id)\n"
+    new: "        try:\n            limits = await self.inner.limits(plan_id)\n        except Exception:\n            return cached[1] if cached is not None else None\n"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_plan_catalog.py::test_a_failed_read_raises_and_never_answers_from_the_expired_entry
+      - packages/python/dw_agent_runtime/tests/integration/test_plan_limits_admission.py::test_a_failed_read_stops_admission_even_with_an_expired_row_cached
+  - name: R1.2 a failed read answers no row
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/plan_catalog.py
+    old: "        limits = await self.inner.limits(plan_id)\n"
+    new: "        try:\n            limits = await self.inner.limits(plan_id)\n        except Exception:\n            return None\n"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_plan_catalog.py::test_a_failed_read_raises_and_never_answers_from_the_expired_entry
+      - packages/python/dw_agent_runtime/tests/integration/test_plan_limits_admission.py::test_a_failed_read_stops_admission_even_with_an_expired_row_cached
+  - name: R1.3 dw_app keeps the writes ALTER DEFAULT PRIVILEGES gave it
+    file: db/migrations/versions/764b0e239f95_plan_limits.py
+    old: '            _for_role(role, f"REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON {_TABLE} FROM {role};")'
+    new: '            _for_role(role, f"REVOKE TRUNCATE ON {_TABLE} FROM {role};")'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_privileges.py::test_the_plan_catalogue_is_read_only_to_every_application_role
+  - name: R1.4 max_steps_per_run above 500 accepted
+    file: db/migrations/versions/764b0e239f95_plan_limits.py
+    old: "                CHECK (max_steps_per_run BETWEEN 1 AND 500),"
+    new: "                CHECK (max_steps_per_run BETWEEN 1 AND 1000),"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_plan_limits.py::test_the_per_run_maxima_are_bounded_and_never_null
+  - name: R1.4 max_tokens_per_run may be NULL
+    file: db/migrations/versions/764b0e239f95_plan_limits.py
+    old: "            max_tokens_per_run bigint NOT NULL,"
+    new: "            max_tokens_per_run bigint,"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_plan_limits.py::test_the_per_run_maxima_are_bounded_and_never_null

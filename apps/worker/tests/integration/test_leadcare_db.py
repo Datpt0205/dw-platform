@@ -59,6 +59,7 @@ from dw_platform.adapters.persistence.digital_workers_repo import (
     SqlDwMembershipCheck,
 )
 from dw_platform.adapters.persistence.marketing_send_repo import SqlConsentStore, SqlIntakeScopes
+from dw_platform.adapters.persistence.plan_catalog import SqlPlanCatalog
 from dw_platform.adapters.persistence.uow import SqlPlatformUnitOfWorkFactory
 from dw_platform.adapters.persistence.work_queue_repo import SqlWorkQueueRepository
 from dw_platform.application.authorization import ScopeAuthorizationService
@@ -67,7 +68,7 @@ from dw_platform.application.decision_gate import (
     DwDecisionAdmission,
     check_edited_proposal,
 )
-from dw_platform.application.entitlement import DEFAULT_PLANS, PlanEntitlementService
+from dw_platform.application.entitlement import PlanEntitlementService
 from dw_platform.application.intake import IntakeKeys, LeadIntake
 from dw_platform.application.marketing_send import ConsentLedger
 from dw_platform.application.work_queue import WorkQueue
@@ -323,7 +324,8 @@ def process(app: AsyncEngine) -> Process:
         uow_factory=uow,
         clock=clock,
         id_generator=ids,
-        allowance=PlanEntitlementService(DEFAULT_PLANS),
+        # The seeded catalogue, as the worker root reads it (usage-and-limits R1.1).
+        allowance=PlanEntitlementService(SqlPlanCatalog(sessions)),
         budget=RunBudgetLedger(),
         approval_policy=policy,
         run_waits=WorkQueueRunWaits(queue),

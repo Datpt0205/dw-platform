@@ -64,8 +64,9 @@ from dw_knowledge.gateway import KnowledgeGateway
 from dw_knowledge.ingest_jobs import IngestJobQueue, IngestJobStore
 from dw_knowledge.ports import DocumentParserPort, EmbeddingPort, ObjectStoragePort, VectorIndexPort
 from dw_observability.telemetry import TelemetryPort
+from dw_platform.adapters.persistence.plan_catalog import CachingPlanCatalog, SqlPlanCatalog
 from dw_platform.adapters.persistence.uow import SqlPlatformUnitOfWorkFactory
-from dw_platform.application.entitlement import DEFAULT_PLANS, PlanEntitlementService
+from dw_platform.application.entitlement import PlanEntitlementService
 from dw_platform.application.work_queue import WorkQueue
 from dw_worker.settings import WorkerSettings
 
@@ -378,8 +379,9 @@ def build_wflite_runtime(
         uow_factory=SqlPlatformUnitOfWorkFactory(sessions),
         clock=clock,
         id_generator=ids,
-        # The same plan catalog the API's runner refuses a run's start with.
-        allowance=PlanEntitlementService(DEFAULT_PLANS),
+        # The same plan catalogue the API's runner refuses a run's start with:
+        # `platform.plan_limits`, cached in this process (usage-and-limits R1.1).
+        allowance=PlanEntitlementService(CachingPlanCatalog(SqlPlanCatalog(sessions), clock)),
         budget=stack.budget,
         approval_policy=approval_policy,
         release_manifest_ref=read_release_manifest_ref(REPO_ROOT),

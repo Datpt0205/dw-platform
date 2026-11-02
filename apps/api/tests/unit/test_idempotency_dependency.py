@@ -32,7 +32,6 @@ from dw_kernel.ports import SystemClock, Uuid4Generator
 from dw_platform.adapters.identity.dev_token import DevTokenVerifier
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.authorization import ScopeAuthorizationService
-from dw_platform.application.entitlement import DEFAULT_PLANS, PlanEntitlementService
 from dw_platform.application.idempotency import (
     HttpIdempotency,
     RequestFingerprint,
@@ -175,7 +174,6 @@ def make_container(repo: CountingRepo, store: MemoryStore) -> ApiContainer:
         identity_bootstrap=None,
         uow_factory=None,
         authorization=authz,
-        entitlement=PlanEntitlementService(DEFAULT_PLANS),
         grant_membership=GrantMembershipHandler(repo, authz, clock, ids),
         revoke_membership=RevokeMembershipHandler(repo, authz, clock, ids),
         idempotency=HttpIdempotency(store=store, clock=clock),

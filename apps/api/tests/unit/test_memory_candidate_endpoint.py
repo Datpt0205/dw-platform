@@ -24,7 +24,6 @@ from dw_memory.service import ReviewCandidate
 from dw_platform.adapters.identity.dev_token import DevTokenVerifier
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.authorization import ScopeAuthorizationService
-from dw_platform.application.entitlement import DEFAULT_PLANS, PlanEntitlementService
 from dw_platform.application.identity import DbAccessContextFactory, MembershipAccess
 
 pytestmark = pytest.mark.unit
@@ -103,7 +102,6 @@ def make_container(service: FakeMemoryService, scopes: frozenset[str]) -> ApiCon
         identity_bootstrap=None,
         uow_factory=None,
         authorization=ScopeAuthorizationService(),
-        entitlement=PlanEntitlementService(DEFAULT_PLANS),
         memory_service=cast(Any, service),
     )
 

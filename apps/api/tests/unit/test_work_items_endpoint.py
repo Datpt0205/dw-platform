@@ -24,7 +24,6 @@ from dw_kernel.ports import SystemClock, Uuid4Generator
 from dw_platform.adapters.identity.dev_token import DevTokenVerifier
 from dw_platform.application.authorization import ScopeAuthorizationService
 from dw_platform.application.effect_keys import PendingEffect
-from dw_platform.application.entitlement import DEFAULT_PLANS, PlanEntitlementService
 from dw_platform.application.identity import DbAccessContextFactory, MembershipAccess
 from dw_platform.application.work_queue import (
     Claimed,
@@ -188,7 +187,6 @@ def make(repo: Repo, dw: DigitalWorker) -> ApiContainer:
         identity_bootstrap=None,
         uow_factory=None,
         authorization=authz,
-        entitlement=PlanEntitlementService(DEFAULT_PLANS),
         work_queue=WorkQueue(
             repo=repo,
             workers=Workers(dw),

@@ -863,8 +863,8 @@ async def test_a_decision_from_zalo_resumes_the_run_with_channel_zalo(
 
 
 class _Unmetered:
-    def runs_per_day(self, plan_id: str) -> int | None:
+    async def runs_per_day(self, plan_id: str) -> int | None:
         return None
 
-    def spend_usd_per_day(self, plan_id: str) -> Any:
+    async def spend_usd_per_day(self, plan_id: str) -> Any:
         return None

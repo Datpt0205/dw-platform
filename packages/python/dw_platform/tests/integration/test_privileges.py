@@ -1486,3 +1486,51 @@ async def test_company_members_are_the_applications_and_the_provisioners_to_add(
     assert {verb for role, verb in held if role == "dw_agent_ro"} == set()
     assert {verb for role, verb in held if role == "dw_provisioner"} == {"SELECT", "INSERT"}
     assert calls == {"public": False, "dw_app": True, "dw_agent_ro": False}
+
+
+# usage-and-limits ticket 01 (migration 764b0e239f95).
+
+
+async def test_the_plan_catalogue_is_read_only_to_every_application_role(
+    db_urls: DatabaseUrls, app_engine: AsyncEngine
+) -> None:
+    """R1.3: only a migration writes `platform.plan_limits`. `ALTER DEFAULT
+    PRIVILEGES` handed `dw_app` INSERT, UPDATE and DELETE on every new
+    platform table, so this asks the catalog for every verb of every
+    application role, and tries each write as `dw_app`."""
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            held = {
+                (row.rolname, row.verb)
+                for row in await conn.execute(
+                    sa.text(
+                        """
+                        SELECT r.rolname, v.verb
+                        FROM pg_roles r
+                        CROSS JOIN unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE',
+                                                'TRUNCATE']) AS v(verb)
+                        WHERE r.rolname IN ('dw_app', 'dw_provisioner', 'dw_agent_ro')
+                          AND has_table_privilege(r.rolname, 'platform.plan_limits', v.verb)
+                        """
+                    )
+                )
+            }
+    finally:
+        await migrator.dispose()
+    assert held == {("dw_app", "SELECT")}
+    async with app_engine.connect() as conn:
+        assert await conn.scalar(
+            sa.text("SELECT runs_per_day FROM platform.plan_limits WHERE plan_id = 'basic'")
+        )
+        for statement in (
+            "UPDATE platform.plan_limits SET runs_per_day = NULL",
+            "DELETE FROM platform.plan_limits",
+            "TRUNCATE platform.plan_limits",
+            "INSERT INTO platform.plan_limits (plan_id, max_cost_usd_per_run, max_tokens_per_run,"
+            " max_steps_per_run, max_model_calls_per_run, max_tool_calls_per_run)"
+            " VALUES ('basic', 1, 1, 1, 1, 1)",
+        ):
+            with pytest.raises(Exception, match="permission denied"):
+                await conn.execute(sa.text(statement))
+            await conn.rollback()

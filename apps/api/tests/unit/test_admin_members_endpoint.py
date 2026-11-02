@@ -19,7 +19,6 @@ from dw_platform.adapters.identity.dev_token import DevTokenVerifier
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.authorization import ScopeAuthorizationService
 from dw_platform.application.effect_keys import PendingEffect
-from dw_platform.application.entitlement import DEFAULT_PLANS, PlanEntitlementService
 from dw_platform.application.identity import DbAccessContextFactory, MembershipAccess
 from dw_platform.application.membership_admin import (
     GrantMembershipHandler,
@@ -109,7 +108,6 @@ def make_container(repo: FakeRepo, scopes: frozenset[str]) -> ApiContainer:
         identity_bootstrap=None,
         uow_factory=None,
         authorization=authz,
-        entitlement=PlanEntitlementService(DEFAULT_PLANS),
         grant_membership=GrantMembershipHandler(repo, authz, clock, ids),
         revoke_membership=RevokeMembershipHandler(repo, authz, clock, ids),
     )

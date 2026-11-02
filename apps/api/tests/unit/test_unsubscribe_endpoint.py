@@ -23,7 +23,6 @@ from dw_api.settings import ApiSettings
 from dw_kernel.ports import FixedClock, SystemClock
 from dw_platform.adapters.identity.dev_token import DevTokenVerifier
 from dw_platform.application.authorization import ScopeAuthorizationService
-from dw_platform.application.entitlement import DEFAULT_PLANS, PlanEntitlementService
 from dw_platform.application.marketing_send import (
     UnsubscribeLinks,
     UnsubscribeService,
@@ -70,7 +69,6 @@ def make(store: Suppressions | None) -> ApiContainer:
         identity_bootstrap=None,
         uow_factory=None,
         authorization=ScopeAuthorizationService(),
-        entitlement=PlanEntitlementService(DEFAULT_PLANS),
         unsubscribe=None if store is None else UnsubscribeService(links=links(), store=store),
     )
 

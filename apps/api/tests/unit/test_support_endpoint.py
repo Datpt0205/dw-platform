@@ -24,7 +24,6 @@ from dw_platform.adapters.identity.dev_token import DevTokenVerifier
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.authorization import ScopeAuthorizationService
 from dw_platform.application.effect_keys import PendingEffect
-from dw_platform.application.entitlement import DEFAULT_PLANS, PlanEntitlementService
 from dw_platform.application.identity import DbAccessContextFactory, MembershipAccess
 from dw_platform.application.support_access import (
     AuditFor,
@@ -125,7 +124,6 @@ def _container(scopes: frozenset[str], flags: frozenset[str]) -> ApiContainer:
         identity_bootstrap=None,
         uow_factory=None,
         authorization=ScopeAuthorizationService(),
-        entitlement=PlanEntitlementService(DEFAULT_PLANS),
         support_catalog=catalog,
         support_grants=SupportGrantService(
             repo=FakeRepo(),

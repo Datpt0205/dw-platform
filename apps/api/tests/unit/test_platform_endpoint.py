@@ -21,7 +21,6 @@ from dw_kernel.ports import SystemClock, Uuid4Generator
 from dw_platform.adapters.identity.dev_token import DevTokenVerifier
 from dw_platform.adapters.persistence.caching_lookup import CachingMembershipLookup
 from dw_platform.application.authorization import ScopeAuthorizationService
-from dw_platform.application.entitlement import DEFAULT_PLANS, PlanEntitlementService
 from dw_platform.application.identity import DbAccessContextFactory, MembershipAccess
 from dw_platform.application.identity_bootstrap import BootstrapView
 from dw_platform.application.provisioning import (
@@ -138,7 +137,6 @@ def make_container(repo: FakeRepo, is_operator: bool) -> ApiContainer:
         identity_bootstrap=FakeBootstrap(is_operator),
         uow_factory=None,
         authorization=ScopeAuthorizationService(),
-        entitlement=PlanEntitlementService(DEFAULT_PLANS),
         provisioning=ProvisioningService(repo=repo, clock=SystemClock(), ids=Uuid4Generator()),
     )
 

@@ -7,8 +7,8 @@ total, read by nothing but the runner's own gate
 (`RunAllowancePort.spend_usd_per_day`, checked in `langgraph_runner.py`
 alongside the existing `runs_per_day` gate). No admin route, no dashboard.
 
-Every plan ships `spend_usd_per_day=None` today (see
-`dw_platform.application.entitlement`) — this needs Đạt's actual dollar
+Every plan ships `cost_usd_per_day` NULL today (`platform.plan_limits`,
+read through `dw_platform.application.entitlement`) — this needs Đạt's actual dollar
 thresholds before it protects anything. Recording still runs regardless, so
 the numbers are already accumulating for whenever a threshold is set.
 """

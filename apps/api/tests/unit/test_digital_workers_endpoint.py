@@ -37,7 +37,6 @@ from dw_platform.application.digital_workers import (
     Standing,
 )
 from dw_platform.application.effect_keys import PendingEffect
-from dw_platform.application.entitlement import DEFAULT_PLANS, PlanEntitlementService
 from dw_platform.application.identity import DbAccessContextFactory, MembershipAccess
 from dw_platform.application.work_queue import InMemoryWorkKindSchemas, WorkQueue, WorkScope
 from dw_platform.domain.audit import AuditEvent
@@ -220,7 +219,6 @@ def make_container(
         identity_bootstrap=None,
         uow_factory=None,
         authorization=authz,
-        entitlement=PlanEntitlementService(DEFAULT_PLANS),
         digital_workers=service,
         work_queue=WorkQueue(
             repo=cast(Any, queue or QueueRepo()),

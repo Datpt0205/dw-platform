@@ -49,7 +49,7 @@ class DailyAllowance:
     allowance: RunAllowancePort
     runs: RunsStartedPort
     # None for a wiring that predates the spend guard; every plan ships
-    # `spend_usd_per_day=None` today as well. Either means the spend check
+    # `cost_usd_per_day` NULL today as well. Either means the spend check
     # returns at once. Recording spend happens elsewhere either way.
     spend: SpendTodayPort | None
     clock: UtcClock
@@ -62,7 +62,7 @@ class DailyAllowance:
         day_start = (
             self.clock.now().astimezone(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
         )
-        limit = self.allowance.runs_per_day(run_context.plan_id)
+        limit = await self.allowance.runs_per_day(run_context.plan_id)
         if limit is None:
             return
         used = await self.runs.started_since(run_context.tenant_id, day_start)
@@ -83,7 +83,7 @@ class DailyAllowance:
     async def _require_spend(self, run_context: RunContext) -> None:
         if self.spend is None:
             return
-        limit = self.allowance.spend_usd_per_day(run_context.plan_id)
+        limit = await self.allowance.spend_usd_per_day(run_context.plan_id)
         if limit is None:
             return
         today = self.clock.now().astimezone(UTC).date()

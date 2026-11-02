@@ -4,9 +4,7 @@ import pytest
 
 from dw_kernel.ids import EntityId, TenantId, UserId, WorkspaceId
 from dw_platform.domain.entities import (
-    Entitlement,
     Membership,
-    Plan,
     Role,
     User,
 )
@@ -34,22 +32,3 @@ def test_membership_requires_roles() -> None:
             user_id=UserId(uuid.uuid4()),
             role_keys=frozenset(),
         )
-
-
-def test_entitlement_effective_features() -> None:
-    plan = Plan(plan_id="basic", name="Basic", features=frozenset({"knowledge_search"}))
-    entitlement = Entitlement(
-        id=EntityId(uuid.uuid4()),
-        tenant_id=TenantId(uuid.uuid4()),
-        plan_id="basic",
-        feature_overrides=frozenset({"audit_export"}),
-    )
-    assert entitlement.effective_features(plan) == {"knowledge_search", "audit_export"}
-    other_plan = Plan(plan_id="pro", name="Pro", features=frozenset())
-    with pytest.raises(ValueError, match="does not match"):
-        entitlement.effective_features(other_plan)
-
-
-def test_plan_quota_must_be_non_negative() -> None:
-    with pytest.raises(ValueError, match="quota"):
-        Plan(plan_id="basic", name="Basic", features=frozenset(), quotas={"runs": -1})

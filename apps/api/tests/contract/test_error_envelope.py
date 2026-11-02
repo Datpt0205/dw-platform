@@ -40,7 +40,6 @@ from dw_kernel.errors import ConflictError, DomainError
 from dw_platform.adapters.identity.dev_token import DevTokenVerifier
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.authorization import ScopeAuthorizationService
-from dw_platform.application.entitlement import DEFAULT_PLANS, PlanEntitlementService
 from dw_platform.application.provisioning import ProvisioningContext
 
 pytestmark = pytest.mark.contract
@@ -77,7 +76,6 @@ def make_app(*, rate_limit_per_minute: int = 0) -> FastAPI:
             identity_bootstrap=None,
             uow_factory=None,
             authorization=ScopeAuthorizationService(),
-            entitlement=PlanEntitlementService(DEFAULT_PLANS),
         )
     )
 

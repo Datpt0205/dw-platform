@@ -27,7 +27,6 @@ from dw_platform.application.access_context import AccessContext
 from dw_platform.application.authorization import ScopeAuthorizationService
 from dw_platform.application.cache import membership_cache_pattern
 from dw_platform.application.effect_keys import PendingEffect
-from dw_platform.application.entitlement import DEFAULT_PLANS, PlanEntitlementService
 from dw_platform.application.idempotency import HttpIdempotency
 from dw_platform.application.identity import DbAccessContextFactory, MembershipAccess
 from dw_platform.application.membership_admin import UserRef
@@ -159,7 +158,6 @@ def _container(repo: Repo, cache: Cache, store: MemoryStore) -> ApiContainer:
         identity_bootstrap=None,
         uow_factory=None,
         authorization=authz,
-        entitlement=PlanEntitlementService(DEFAULT_PLANS),
         cache=cache,
         idempotency=HttpIdempotency(store, SystemClock()),
         tenant_members=TenantMembersService(repo, authz, SystemClock(), Uuid4Generator()),

@@ -1,6 +1,6 @@
 # 01 — Một chủ cho danh mục gói dịch vụ: platform.plan_limits thay DEFAULT_PLANS
 
-Status: ready-for-agent
+Status: resolved (2026-11-02, main)
 Blocked by: .claude/plans/studio/foundations-hardening/issues/03-quyen-dw-app-va-rls-initplan.md
 Area: studio
 Yêu cầu: R1.1, R1.2, R1.3, R1.4, UL1
@@ -48,19 +48,21 @@ Số giới hạn của một Gói dịch vụ về một chủ trong database, 
 
 ## Tiêu chí chấp nhận
 
-- [ ] R1.1 (UL1): mọi bên đọc giới hạn gói đọc `platform.plan_limits`; test kiến trúc của bước 5 xanh trên cây
+- [x] R1.1 (UL1): mọi bên đọc giới hạn gói đọc `platform.plan_limits`; test kiến trúc của bước 5 xanh trên cây
       nguồn; khai lại `DEFAULT_PLANS` trong `entitlement.py` → đỏ; thêm một lời gọi `Plan(...)` hay `PlanLimits(...)`
       trong `wiring.py` → đỏ.
-- [ ] R1.2 (UL1): thiếu dòng gói → `QuotaExceededError` khi nhận lượt chạy, không hiểu thành "không giới
+- [x] R1.2 (UL1): thiếu dòng gói → `QuotaExceededError` khi nhận lượt chạy, không hiểu thành "không giới
       hạn"; gỡ kiểm thiếu dòng → test đỏ.
-- [ ] R1.3: `dw_app` ghi `platform.plan_limits` → bị từ chối (chỉ migration ghi).
-- [ ] R1.1: bằng vai migrator đổi `runs_per_day` của một gói (đồng hồ giả) → lần nhận lượt chạy trong 30 giây
+- [x] R1.3: `dw_app` ghi `platform.plan_limits` → bị từ chối (chỉ migration ghi).
+- [x] R1.1: bằng vai migrator đổi `runs_per_day` của một gói (đồng hồ giả) → lần nhận lượt chạy trong 30 giây
       sau lần đọc trước còn dùng số cũ, lần nhận sau khi qua 30 giây dùng số mới; gỡ hạn TTL → test đỏ.
-- [ ] R1.2: adapter của `PlanCatalogPort` gặp lỗi đọc database (session giả ném lỗi) khi nhận lượt chạy → lượt chạy
+- [x] R1.2: adapter của `PlanCatalogPort` gặp lỗi đọc database (session giả ném lỗi) khi nhận lượt chạy → lượt chạy
       không được nhận và lỗi lan ra, kể cả khi cache còn một dòng đã hết hạn; nuốt lỗi và trả số cũ hay `None`
       → test đỏ.
-- [ ] R1.4: `max_steps_per_run` 501 → migration từ chối, 1 → nhận; `max_tokens_per_run` NULL → từ chối.
-- [ ] Xong: `make ci && make test-integration` xanh.
+- [x] R1.4: `max_steps_per_run` 501 → migration từ chối, 1 → nhận; `max_tokens_per_run` NULL → từ chối.
+- [x] Xong (theo `wave-close.md`): ruff, format, mypy, lint-imports, verify_invariants, verify_architecture,
+      `make test-unit`, `make test-contract` và các suite integration ticket thêm hay sửa xanh. Để lúc đóng hàng đợi:
+      `make test-integration` toàn bộ, `scripts/mutate.py mutations/01.yaml`, `/code-review`.
 
 ## Nguồn
 
@@ -129,3 +131,35 @@ Số giới hạn của một Gói dịch vụ về một chủ trong database, 
   va chạm. Ngoài spec: org-and-principals/02 đang sửa `tables.py`, `test_privileges.py`, `seed_env.py` trong cây làm
   việc; dựng ticket này sau khi ticket đó commit, và revision mới nối vào head lúc đó.
 - 2026-11-02 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-02 (agent, theo ủy quyền 31/10/2026): M6: `ApiContainer.entitlement` thành `PlanEntitlementService | None = None`
+  và dựng sau cổng database (`CachingPlanCatalog(SqlPlanCatalog(session_factory), clock)`), thay vì một catalogue "từ
+  chối" dựng trước cổng: không database thì không có runner hay one-call gateway nào hỏi giới hạn, và không trường nào
+  trong `src` đọc `container.entitlement`; 25 tệp test API chỉ bỏ dòng `entitlement=...`, không cần catalogue giả.
+  Nếu sai thì: giữ trường bắt buộc và dựng trước cổng với một `PlanCatalogPort` luôn ném lỗi.
+- 2026-11-02 (agent, theo ủy quyền 31/10/2026): bỏ entity `Plan` (và `Entitlement.effective_features`) khỏi
+  `dw_platform.domain.entities`: bên dựng duy nhất là `DEFAULT_PLANS`, tính năng gộp ở `membership_lookup.py`; `PlanLimits`
+  và `PlanCatalogPort` ở `dw_platform/application/plan_catalog.py`, không kiểm lại CHECK trong Python (database là chủ
+  ràng buộc, tránh bản sao thứ hai). Trần mỗi lượt khác `max_steps_per_run` có CHECK `> 0` (ticket không nêu; 0 là một
+  trần vô nghĩa). Nếu sai thì: một revision mới đổi CHECK sang `>= 0`.
+- 2026-11-02 (agent, theo ủy quyền 31/10/2026): bước 3 chung revision với bước 1 (`764b0e239f95`): chuyển
+  `quotas.runs_per_day` của ba gói `DEFAULT_PLANS` biết sang cột, và migration RAISE nếu số đó khác số runtime đã thực thi
+  (20/200/2000), để hai bản sao không bị chọn lặng lẽ; gói khác không có dòng nên vẫn bị từ chối như hôm nay. Hai test
+  integration của worker (`test_leadcare_db.py`, `test_wflite_runs_db.py`) dùng `SqlPlanCatalog` thật trên database đã
+  migrate thay vì catalogue giả, như composition root của worker; catalogue giả `InMemoryPlanCatalog` không tự dựng
+  `PlanLimits` (test đưa vào). Test kiến trúc tìm mỗi package bằng `importlib.util.find_spec`, nên thấy bản sao package
+  mà `mutate.py` đặt trước PYTHONPATH (đã thử tay một lần với bản sao có `DEFAULT_PLANS`: đỏ). Nếu sai thì: quét cây
+  nguồn theo đường dẫn và chạy hai đột biến kiến trúc tại chỗ.
+- 2026-11-02 (agent): resolved. Bảng `platform.plan_limits` (revision `764b0e239f95`, nối `349080a62e41`), `quotas` bỏ;
+  `PlanCatalogPort`, `SqlPlanCatalog` + `CachingPlanCatalog` (TTL 30 s, đồng hồ tiêm, cache cả dòng thiếu, lỗi đọc lan
+  ra); `PlanEntitlementService(catalog)` async, `RunAllowancePort` async, hai root dựng adapter; `DEFAULT_PLANS` xóa.
+  Test: dw_platform unit 3 tệp mới/sửa (`test_plan_catalog.py` 7, `test_plan_catalogue_owner.py` 15,
+  `test_authorization_entitlement.py`), dw_agent_runtime unit `test_plan_catalogue_admission.py` 3; integration
+  `test_plan_limits.py` 8, `test_plan_limits_admission.py` 4, `test_privileges.py` +1. Chạy: unit dw_platform +
+  dw_agent_runtime 1080 xanh, API unit/contract + worker unit 478 xanh, `make test-unit` xanh trừ
+  `dw_observability/test_logs.py::test_logs_carry_ids_only` đỏ một lần vì timestamp chứa "345" (không liên quan, chạy lại
+  xanh), contract 28; integration lane1: dw_platform (plan_limits, privileges, rls_coverage, offboarding_coverage) 88,
+  dw_agent_runtime (admission + 6 tệp sửa fake) 61, worker (leadcare, wflite_runs) 20. Đột biến: 11 trong
+  `mutations/01.yaml`, viết, chưa chạy. reviewing-feature-security đã đọc: (1) bảng toàn cục, cache khóa `plan_id`, không
+  dữ liệu tenant; (2) R1.3 từ chối ở database, test bằng câu lệnh và catalog; (3) không thêm tầm với cho agent, nhận lượt
+  đóng khi thiếu dòng hay lỗi đọc; (4) không nội dung không tin cậy; (5) danh mục chỉ migration ghi, không audit;
+  (6) cache giới hạn bởi số gói, lỗi đọc từ chối, có test. Release manifest không đổi, contracts không đổi.

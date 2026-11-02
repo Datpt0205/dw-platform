@@ -2,82 +2,53 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal
 
 from dw_kernel.errors import EntitlementDeniedError
 from dw_platform.application.access_context import AccessContext
-from dw_platform.domain.entities import Plan
-
-# Canonical POC plans; the seeded DB rows mirror these (system of record for
-# billing integrations later — the catalog here is the runtime source). Only
-# platform capabilities appear here; a bounded context adds its own worker
-# feature when it lands.
-DEFAULT_PLANS: dict[str, Plan] = {
-    "basic": Plan(
-        plan_id="basic",
-        name="Basic",
-        features=frozenset({"knowledge_search"}),
-        quotas={"runs_per_day": 20},
-    ),
-    "professional": Plan(
-        plan_id="professional",
-        name="Professional",
-        features=frozenset({"knowledge_search"}),
-        quotas={"runs_per_day": 200},
-    ),
-    "enterprise": Plan(
-        plan_id="enterprise",
-        name="Enterprise",
-        features=frozenset({"knowledge_search", "audit_export"}),
-        quotas={"runs_per_day": 2000},
-    ),
-}
+from dw_platform.application.plan_catalog import PlanCatalogPort
 
 
 @dataclass(frozen=True)
 class PlanEntitlementService:
-    """Checks features against the plan catalog + per-tenant feature flags."""
+    """Features from the access context; limits from the plan catalogue.
 
-    plans: Mapping[str, Plan]
+    A plan's features reach the `AccessContext` from `platform.plans.features`
+    joined with the tenant's overrides when the context is built, so that is
+    the one place a feature is read. Its numbers come from `platform.plan_limits`
+    through ``catalog`` (usage-and-limits R1.1).
+    """
+
+    catalog: PlanCatalogPort
 
     def has_feature(self, context: AccessContext, feature: str) -> bool:
-        if context.has_feature(feature):  # per-tenant override, resolved at build
-            return True
-        plan = self.plans.get(context.plan_id)
-        return plan is not None and feature in plan.features
+        return context.has_feature(feature)
 
-    def runs_per_day(self, plan_id: str) -> int | None:
+    async def runs_per_day(self, plan_id: str) -> int | None:
         """Satisfies ``dw_agent_runtime.ports.RunAllowancePort``.
 
-        An unknown plan is refused outright rather than treated as unlimited.
-        It should be unreachable — `entitlements.plan_id` is a foreign key into
-        `platform.plans`, so a tenant cannot hold a plan the database has never
-        heard of — and the one way to get here is a plan added to the database
-        without being added to `DEFAULT_PLANS`. Of the two ways that can end,
-        an operator seeing runs refused for a plan they just created is the
-        one that gets fixed; unlimited runs on an unpriced plan is the one
-        nobody notices until the invoice.
+        A plan with no `platform.plan_limits` row is refused outright (0),
+        never treated as unlimited (R1.2): an operator seeing runs refused for
+        a plan they just created is the failure that gets fixed; unlimited
+        runs on an unpriced plan is the one nobody notices until the invoice.
+        A catalogue that cannot be read raises, and the run is not admitted.
         """
-        plan = self.plans.get(plan_id)
-        if plan is None:
+        limits = await self.catalog.limits(plan_id)
+        if limits is None:
             return 0
-        return plan.quotas.get("runs_per_day")
+        return limits.runs_per_day
 
-    def spend_usd_per_day(self, plan_id: str) -> Decimal | None:
+    async def spend_usd_per_day(self, plan_id: str) -> Decimal | None:
         """Satisfies `dw_agent_runtime.ports.RunAllowancePort.spend_usd_per_day`.
 
-        Same refuse-unknown-plan shape as `runs_per_day`, with one difference:
-        an unknown plan there means 0 (never unlimited on a plan the database
-        has never heard of); here it also means "spend nothing more today",
-        for the same reason — the alternative is a metering hole nobody
-        notices until the bill.
+        The plan's `cost_usd_per_day`, with the same refusal as `runs_per_day`
+        for a plan with no row: spend nothing more today.
         """
-        plan = self.plans.get(plan_id)
-        if plan is None:
+        limits = await self.catalog.limits(plan_id)
+        if limits is None:
             return Decimal(0)
-        return plan.spend_usd_per_day
+        return limits.cost_usd_per_day
 
     async def require_feature(self, context: AccessContext, feature: str) -> None:
         if self.has_feature(context, feature):

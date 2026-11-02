@@ -21,7 +21,6 @@ from dw_api.main import create_app
 from dw_api.settings import ApiSettings
 from dw_platform.adapters.identity.dev_token import DevTokenVerifier
 from dw_platform.application.authorization import ScopeAuthorizationService
-from dw_platform.application.entitlement import DEFAULT_PLANS, PlanEntitlementService
 from dw_platform.application.identity import DbAccessContextFactory, MembershipAccess
 
 pytestmark = pytest.mark.unit
@@ -97,7 +96,6 @@ def _container(
         identity_bootstrap=None,
         uow_factory=None,
         authorization=ScopeAuthorizationService(),
-        entitlement=PlanEntitlementService(DEFAULT_PLANS),
         run_store=store,  # type: ignore[arg-type]
         runner=runner,  # type: ignore[arg-type]
     )

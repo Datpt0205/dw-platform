@@ -242,10 +242,10 @@ class _CapturingRunStore:
 
 
 class _UnmeteredPlan:
-    def runs_per_day(self, plan_id: str) -> int | None:
+    async def runs_per_day(self, plan_id: str) -> int | None:
         return None
 
-    def spend_usd_per_day(self, plan_id: str) -> Decimal | None:
+    async def spend_usd_per_day(self, plan_id: str) -> Decimal | None:
         return None
 
 

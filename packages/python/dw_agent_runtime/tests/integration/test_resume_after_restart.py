@@ -52,10 +52,10 @@ STALE_AFTER_SECONDS_LOCAL = 3600
 class _UnmeteredPlan:
     """Any plan, no daily limit — the run quota is not what these tests exercise."""
 
-    def runs_per_day(self, plan_id: str) -> int | None:
+    async def runs_per_day(self, plan_id: str) -> int | None:
         return None
 
-    def spend_usd_per_day(self, plan_id: str) -> Decimal | None:
+    async def spend_usd_per_day(self, plan_id: str) -> Decimal | None:
         return None
 
 

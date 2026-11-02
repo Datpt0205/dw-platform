@@ -22,7 +22,6 @@ from dw_api.main import create_app
 from dw_api.settings import ApiSettings
 from dw_kernel.errors import ConflictError
 from dw_platform.application.authorization import ScopeAuthorizationService
-from dw_platform.application.entitlement import DEFAULT_PLANS, PlanEntitlementService
 
 pytestmark = pytest.mark.unit
 
@@ -65,7 +64,6 @@ def app() -> FastAPI:
             identity_bootstrap=None,
             uow_factory=None,
             authorization=ScopeAuthorizationService(),
-            entitlement=PlanEntitlementService(DEFAULT_PLANS),
         )
     )
 

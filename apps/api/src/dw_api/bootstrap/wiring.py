@@ -93,6 +93,7 @@ from dw_platform.adapters.persistence.marketing_send_repo import (
 from dw_platform.adapters.persistence.membership_admin import SqlMembershipAdminRepository
 from dw_platform.adapters.persistence.membership_lookup import SqlMembershipLookup
 from dw_platform.adapters.persistence.notifications import SqlNotificationRepository
+from dw_platform.adapters.persistence.plan_catalog import CachingPlanCatalog, SqlPlanCatalog
 from dw_platform.adapters.persistence.provisioning_repo import SqlProvisioningRepository
 from dw_platform.adapters.persistence.scope_holders import SqlScopeHolders
 from dw_platform.adapters.persistence.separation_of_duties_repo import (
@@ -113,7 +114,7 @@ from dw_platform.application.authorization import ScopeAuthorizationService
 from dw_platform.application.decision_gate import DW_DECISION, DwProposalMask
 from dw_platform.application.digital_workers import DecisionAutonomy, DigitalWorkerService
 from dw_platform.application.dw_autonomy import DwAutonomyService
-from dw_platform.application.entitlement import DEFAULT_PLANS, PlanEntitlementService
+from dw_platform.application.entitlement import PlanEntitlementService
 from dw_platform.application.hierarchy import HierarchyService
 from dw_platform.application.idempotency import HttpIdempotency
 from dw_platform.application.identity import DbAccessContextFactory
@@ -179,7 +180,6 @@ def _build_container(settings: ApiSettings | None) -> ApiContainer:
     # written keep the keys they were given.
     ids = Uuid7Generator()
     authorization = ScopeAuthorizationService()
-    entitlement = PlanEntitlementService(DEFAULT_PLANS)
     telemetry = build_telemetry(settings)
 
     # Built ahead of the database gate below: neither depends on Postgres, and
@@ -210,7 +210,6 @@ def _build_container(settings: ApiSettings | None) -> ApiContainer:
         identity_bootstrap=None,
         uow_factory=None,
         authorization=authorization,
-        entitlement=entitlement,
         cache=cache,
         qdrant_client=qdrant_client,
         # One per process; a deployed profile names its process count
@@ -234,6 +233,11 @@ def _build_container(settings: ApiSettings | None) -> ApiContainer:
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     container.engine = engine
     container.health_service = _health_service(engine)
+    # The plan catalogue is `platform.plan_limits`, so it exists only past this
+    # gate: with no database there is no entitlement, and nothing that would ask
+    # it (the runner, the one-call gateway) is wired either (ticket 01, M6).
+    entitlement = PlanEntitlementService(CachingPlanCatalog(SqlPlanCatalog(session_factory), clock))
+    container.entitlement = entitlement
 
     # Cache the membership lookup (the per-request AccessContext) so a burst
     # from one user hits the database once. No cache URL → straight to the

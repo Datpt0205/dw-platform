@@ -62,10 +62,10 @@ class _FakeSpendStore:
 class _FakePlan:
     spend_limit: Decimal | None
 
-    def runs_per_day(self, plan_id: str) -> int | None:
+    async def runs_per_day(self, plan_id: str) -> int | None:
         return None
 
-    def spend_usd_per_day(self, plan_id: str) -> Decimal | None:
+    async def spend_usd_per_day(self, plan_id: str) -> Decimal | None:
         return self.spend_limit
 
 

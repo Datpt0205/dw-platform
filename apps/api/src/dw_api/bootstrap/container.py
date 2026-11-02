@@ -147,7 +147,9 @@ class ApiContainer:
     identity_bootstrap: IdentityBootstrapPort | None
     uow_factory: PlatformUnitOfWorkFactory | None
     authorization: ScopeAuthorizationService
-    entitlement: PlanEntitlementService
+    # Built past the database gate, over `platform.plan_limits`: no database, no
+    # plan catalogue, so nothing answers a plan's limits (usage-and-limits 01).
+    entitlement: PlanEntitlementService | None = None
 
     run_store: SqlWorkerRunStore | None = None
     # Holds one LISTEN connection for the process; started and stopped by the

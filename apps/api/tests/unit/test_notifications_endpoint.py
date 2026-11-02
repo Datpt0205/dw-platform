@@ -19,7 +19,6 @@ from dw_api.settings import ApiSettings
 from dw_platform.adapters.identity.dev_token import DevTokenVerifier
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.authorization import ScopeAuthorizationService
-from dw_platform.application.entitlement import DEFAULT_PLANS, PlanEntitlementService
 from dw_platform.application.identity import DbAccessContextFactory, MembershipAccess
 from dw_platform.application.notifications import Inbox, Notification, NotificationService
 
@@ -94,7 +93,6 @@ def make_container(inbox: FakeInbox) -> ApiContainer:
         identity_bootstrap=None,
         uow_factory=None,
         authorization=ScopeAuthorizationService(),
-        entitlement=PlanEntitlementService(DEFAULT_PLANS),
         notifications=NotificationService(inbox),
     )
 

@@ -89,20 +89,23 @@ class RunAllowancePort(Protocol):
     the composition root satisfies it, and neither imports the other.
 
     ``None`` means this plan sets no limit, which is a real answer — an
-    unmetered internal tenant — and not the same as a limit of zero.
+    unmetered internal tenant — and not the same as a limit of zero. Async
+    because the answer is a database read (`platform.plan_limits`, cached for
+    seconds); a catalogue that cannot be read raises and the run is not
+    admitted (usage-and-limits R1.2).
     """
 
-    def runs_per_day(self, plan_id: str) -> int | None: ...
+    async def runs_per_day(self, plan_id: str) -> int | None: ...
 
-    def spend_usd_per_day(self, plan_id: str) -> Decimal | None:
+    async def spend_usd_per_day(self, plan_id: str) -> Decimal | None:
         """The dollar ceiling a plan grants per tenant per day — the limit, not
         the running total.
 
         Same split as ``runs_per_day``, same meaning for ``None``: no limit,
         not a limit of zero. Unlike ``runs_per_day``, every plan ships this
-        unset today — the numbers are a business decision nobody has made yet,
-        and guessing one into a quota table is worse than leaving the gate
-        open and saying so.
+        unset today (`cost_usd_per_day` is NULL in `platform.plan_limits`) —
+        the numbers are a business decision nobody has made yet, and guessing
+        one into the catalogue is worse than leaving the gate open and saying so.
         """
         ...
 

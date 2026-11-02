@@ -62,6 +62,7 @@ from dw_platform.adapters.persistence.digital_workers_repo import (
     SqlDigitalWorkerRepository,
     SqlDwMembershipCheck,
 )
+from dw_platform.adapters.persistence.plan_catalog import SqlPlanCatalog
 from dw_platform.adapters.persistence.uow import SqlPlatformUnitOfWorkFactory
 from dw_platform.adapters.persistence.work_queue_repo import SqlWorkQueueRepository
 from dw_platform.application.access_context import AccessContext
@@ -71,7 +72,7 @@ from dw_platform.application.decision_gate import (
     DwDecisionAdmission,
     check_edited_proposal,
 )
-from dw_platform.application.entitlement import DEFAULT_PLANS, PlanEntitlementService
+from dw_platform.application.entitlement import PlanEntitlementService
 from dw_platform.application.work_queue import WorkQueue, WorkScope
 from dw_platform.testing.members import add_tenant_member
 from dw_worker.consumers.dw_timers import build_dw_timers_consumer
@@ -268,7 +269,8 @@ def build(
         uow_factory=uow,
         clock=clock,
         id_generator=ids,
-        allowance=PlanEntitlementService(DEFAULT_PLANS),
+        # The seeded catalogue, as the worker root reads it (usage-and-limits R1.1).
+        allowance=PlanEntitlementService(SqlPlanCatalog(sessions)),
         budget=budget,
         approval_policy=policy,
         run_waits=WorkQueueRunWaits(queue),
