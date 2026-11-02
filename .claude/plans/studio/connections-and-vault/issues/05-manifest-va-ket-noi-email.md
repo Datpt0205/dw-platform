@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: 04, .claude/plans/studio/tools-and-skills/issues/02-toolset-va-cong-cu-ghim.md, .claude/plans/studio/tenant-config/issues/05-lien-ket-va-phien-ban-cau-hinh.md
 Area: studio
-Yêu cầu: R1.11, R1.12, R1.13, R1.16, R5.16, R5.17, R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.7, R6.8, R7.1, R7.2, R7.3, R7.4, R7.5, R7.6, R7.7, R7.8, CV10, CV16, CV17, CV18, CV24, CV25, CV26, CV27, CV28
+Yêu cầu: R1.2, R1.11, R1.12, R1.13, R1.16, R5.16, R5.17, R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.7, R6.8, R7.1, R7.2, R7.3, R7.4, R7.5, R7.6, R7.7, R7.8, CV4, CV10, CV16, CV17, CV18, CV24, CV25, CV26, CV27, CV28
 
 ## Mục tiêu
 
@@ -93,6 +93,9 @@ message`, `data_location: VN`, `delivery` khai `idempotency: {mode: none}`, `rec
       `../admin` được mã hóa.
 - [ ] R7.1: quy trình gọi `email.send` của `smtp@1.0.0` → email gửi qua kết nối SMTP của công ty, mật
       khẩu lấy từ Kho bí mật; mật khẩu không có trong log SMTP.
+- [ ] R1.2 (CV4): lời gọi ra ngoài: máy chủ SMTP giả vọng mật khẩu và chuỗi `AUTH` base64 của nó trong phản hồi
+      lỗi `535` → 0 lần xuất hiện ở checkpoint, `platform.tool_executions`, audit, span và log của lượt chạy; tắt che
+      theo giá trị ở `SmtpEgress` → test đỏ. Lớp `Secret` và Kho bí mật của R1.2 ở ticket 02.
 - [ ] R7.2 (CV18): kết nối SMTP không TLS khi `settings.is_deployed` → từ chối, không gửi.
 - [ ] R7.3 (CV18): host SMTP phân giải về IP nội bộ → chặn lúc mở kết nối.
 - [ ] R7.4 (CV18): K4 trên PostgreSQL thật: máy chủ SMTP giả trả 250, tiến trình chết trước dòng kết thúc, lời gọi
@@ -192,3 +195,7 @@ message`, `data_location: VN`, `delivery` khai `idempotency: {mode: none}`, `rec
   xóa phiên bản bị thay sau 24 giờ và phiên bản bị thu hồi vì lộ ngay, không đụng `compromised_at` (bước 6; R1.11,
   R1.12, R1.16); R5.15 của ticket này (lượt ghim phiên bản 1) thay bằng thí nghiệm của V4.35 (R5.17, R5.16). Không đổi
   cạnh: ticket đã đi sau runtime-hardening/01 qua tools-and-skills/02.
+- 2026-11-02 (agent, theo ủy quyền 31/10/2026): gate `checking-plan-readiness` của ticket 02 tách R1.2 (CV4): ca mock
+  nhà cung cấp vọng bí mật (checkpoint, `platform.tool_executions`, audit, span, log) về đây, vì ticket 02 không có lời
+  gọi ra ngoài nào, còn ticket này có lời gọi đầu tiên qua một Kết nối (`SmtpEgress`); thêm R1.2, CV4 vào Yêu cầu và
+  một tiêu chí. Nếu sai thì: ca đó về ticket 03 với máy chủ HTTP giả của nó, và ticket này bỏ tiêu chí.

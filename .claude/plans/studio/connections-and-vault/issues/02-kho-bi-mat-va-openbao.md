@@ -1,6 +1,6 @@
 # 02 — Kho bí mật: KmsPort, LocalDevKms, secret_envelopes và cửa một chiều
 
-Status: needs-triage
+Status: ready-for-agent
 Blocked by: .claude/plans/studio/foundations-hardening/issues/03-quyen-dw-app-va-rls-initplan.md, .claude/plans/studio/org-and-principals/issues/01-khoa-don-vi-va-siet-realm.md, .claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md
 Area: studio
 Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R1.8, R1.9, R1.10, R1.14, R2.2, CV1, CV2, CV3, CV4, CV5, CV23, CV24
@@ -45,7 +45,10 @@ hồi hay thiếu (spec R1.9, R1.10, R1.14; V4.20; V4.35). Gộp từ B8a-connec
 2. RLS ENABLE và FORCE, policy tenant theo dạng `test_rls_coverage.py` đòi lúc merge trên cả hai bảng;
    `REVOKE ALL ON platform.secret_envelopes FROM dw_app`; hàm SECURITY DEFINER `platform.put_secret`,
    `platform.open_secret`, `platform.secret_status`, `platform.delete_secret` lấy công ty từ
-   `app.tenant_id` (không nhận tham số công ty), EXECUTE cho `dw_app`; `platform.put_secret` ghi giá trị mới
+   `app.tenant_id` (không nhận tham số công ty), mỗi hàm `SET search_path = pg_catalog, platform`, rồi
+   `REVOKE ALL ON FUNCTION ... FROM PUBLIC` và EXECUTE chỉ cho `dw_app` (như
+   `db/migrations/versions/349080a62e41_tenant_members.py:162`, `:179`), vì một hàm mới mặc định cho PUBLIC
+   EXECUTE, nên `dw_provisioner` và mọi vai có USAGE trên schema `platform` gọi được cửa nếu thiếu câu REVOKE (CV2); `platform.put_secret` ghi giá trị mới
    của (chủ thể, trường) thành một dòng mới, không sửa bản mã của dòng cũ, với `secret_version` là số kế tiếp mà
    `SecretStore` đã đưa vào AAD trước khi mã hóa (bước 3), nên hai lần ghi đồng thời cùng số thì UNIQUE từ chối
    lần sau, và trong cùng giao dịch, bằng một câu UPDATE, ghi cho mọi dòng cũ có `revoked_at` NULL của cùng (chủ thể,
@@ -59,8 +62,15 @@ hồi hay thiếu (spec R1.9, R1.10, R1.14; V4.20; V4.35). Gộp từ B8a-connec
    còn dòng, nên `SecretStore` trả `credential_revoked` khi không có dòng (spec R1.10, R1.14; đóng khi thiếu); không lượt
    chạy nào ghim phiên bản (ADR-0109 (Accepted) quyết 6; V4.35);
    `platform.secret_status` trả `secret_version`, `revoked_at` và `replaced_at` của từng phiên bản còn dòng của (chủ
-   thể, trường), không trả giá trị; grant cột cho `platform.connections`, cộng DELETE cho `dw_app`, để route xóa của ticket 04 và
-   lane `offboarding` xóa Kết nối như bảng thường và FK CASCADE xóa phong bì của nó (bước 6).
+   thể, trường), không trả giá trị; trên `platform.connections`, `dw_app` giữ SELECT, INSERT và DELETE ở mức bảng,
+   vì catalog của offboarding hỏi `has_table_privilege` SELECT và DELETE
+   (`packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:81-119`), nên SELECT theo cột
+   làm lane bỏ qua bảng, và UPDATE chỉ theo cột: `REVOKE UPDATE` rồi
+   `GRANT UPDATE (share_scope, external_account, status, scopes, last_used_at, updated_at)`, không UPDATE trên `id`,
+   `tenant_id`, `owning_workspace_id`, `connector_key`, `connector_major`, `created_by`, `created_at`, nên cột ticket
+   sau thêm (`compromised_at` của ticket 04) không có UPDATE của `dw_app` khi không migration nào cấp (spec Dữ liệu);
+   DELETE để route xóa của ticket 04 và lane `offboarding` xóa Kết nối như bảng thường và FK CASCADE xóa phong bì
+   của nó (bước 6).
 3. `KmsPort`, `LocalDevKms` (HKDF-SHA256 từ `DW_LOCAL_KMS_MASTER_KEY`, AES key wrap); `SecretStore`
    (AES-256-GCM) với AAD
    `dw.secret.v1|<tenant_id>|<owning_workspace_id>|<subject_kind>:<subject_id>|<field>|<secret_version>` theo
@@ -71,18 +81,33 @@ hồi hay thiếu (spec R1.9, R1.10, R1.14; V4.20; V4.35). Gộp từ B8a-connec
    khóa dữ liệu (`KmsPort.rewrap`, lane `credential_rewrap` của ticket 06) chỉ đổi `wrapped_data_key` và
    `kek_version`, nên AAD không đổi và phong bì vẫn giải mã. Kiểu `Secret` (`repr` ẩn, `reveal()` chỉ ở module
    cho phép, có test kiến trúc).
-4. `DW_KMS_PROVIDER=none|local` (giá trị `openbao` thêm ở ticket 06, cùng thay đổi với bên đọc của nó);
-   `validate_for_profile` của api và worker từ chối `local` khi `settings.is_deployed`.
-5. `kek_ref` suy từ công ty của ngữ cảnh; một dòng mang `kek_ref` của công ty khác → từ chối, audit
-   `secret.key_mismatch`.
+4. `DW_KMS_PROVIDER=none|local`, mặc định `none` (giá trị `openbao` thêm ở ticket 06, cùng thay đổi với bên đọc
+   của nó); `none` dựng một `KmsPort` từ chối mọi lời gọi với `kms_unavailable` (spec R2.4), không rơi về
+   `LocalDevKms` hay giá trị rõ; `local` cần `DW_LOCAL_KMS_MASTER_KEY` (base64 của ít nhất 32 byte), thiếu hay ngắn
+   hơn → `RuntimeError` lúc khởi động ở mọi profile; `validate_for_profile` của api và worker từ chối `local` khi
+   `settings.is_deployed`; composition root của api và worker dựng `KmsPort` và `SecretStore` lúc khởi động, nên cấu
+   hình sai hỏng ngay, và ticket 04 là bên dùng đầu tiên. Khóa chủ của `LocalDevKms` sinh tại máy dev
+   (`.env.example` để trống kèm lệnh sinh, fixture test một hằng), không phải bí mật của Đạt.
+5. `kek_ref` là `tenant-<tenant_uuid>` (ADR-0115 (Accepted) quyết 1), suy từ công ty của ngữ cảnh; `SecretStore` so
+   `kek_ref` của dòng `open_secret` trả với giá trị đó trước khi gọi `KmsPort`; lệch → lỗi `secret_key_mismatch`,
+   không giải mã, và audit `secret.key_mismatch` ghi qua `ScopedAuditPort` (`SqlScopedAudit`,
+   `packages/python/dw_platform/src/dw_platform/adapters/persistence/digital_workers_repo.py:548`) trong giao dịch
+   riêng trước khi ném lỗi, nên dòng còn khi giao dịch của bên gọi lùi; đứng tên tác nhân của ngữ cảnh gọi (người,
+   hay `system_actor(<lane>)` khi một lane gọi, ADR-0011 (Accepted)), ở công ty của ngữ cảnh và workspace sở hữu của
+   chủ thể, `details` chỉ `subject_kind`, `subject_id`, `field`, `secret_version`, không giá trị và không `kek_ref`
+   của dòng, vì nó mang id của công ty khác.
 6. Assert ở `test_privileges.py`; `test_rls_coverage.py` tự thấy hai bảng; thêm hai dòng có lý do vào
    `_TENANT_WIDE_ON_PURPOSE` (danh sách của studio-skeleton/01, studio-skeleton:R9.1) (`secret_envelopes`: dòng con mà chủ thể mang workspace; `connections`: tầm dùng
    vượt workspace theo thiết kế); catalog export của offboarding (`_CATALOG_EXPORTABLE`) không liệt kê
-   `secret_envelopes`; một dòng `STUDIO_EXCLUSIONS` của test phủ offboarding (studio-skeleton:R4.3) cho
-   `platform.secret_envelopes` với lý do "REVOKE ALL với `dw_app`; xóa theo FK CASCADE từ chủ thể
-   (`platform.connections`, `studio.inbound_endpoints`) khi lane xóa chủ thể, và qua `platform.delete_secret` cho một
-   bí mật lẻ", vì bảng được tạo sau khi studio-skeleton/01 đo `_PLATFORM_PREDATING`, và lane `offboarding` không xuất
-   và không xóa thẳng nó.
+   `secret_envelopes`; vì bảng được tạo sau khi studio-skeleton/01 đo `_PLATFORM_PREDATING`, và lane `offboarding`
+   không xuất và không xóa thẳng nó, test phủ offboarding (studio-skeleton:R4.3) đòi hai dòng
+   (`packages/python/dw_platform/tests/integration/test_offboarding_coverage.py`, `offboarding_violations`): một dòng
+   `EXPORT_EXCLUSIONS["platform.secret_envelopes"]` với lý do "bí mật không rời Kho bí mật qua đường ra nào, gói xuất
+   cũng vậy (R1.2, R1.6); `dw_app` không SELECT", và một dòng `STUDIO_EXCLUSIONS["platform.secret_envelopes"]` là
+   `OffboardingExclusion(reason="REVOKE ALL với dw_app; xóa theo FK CASCADE khi lane xóa platform.connections",
+   cascade_from="platform.connections")`, đúng một cách xóa như `OffboardingExclusion` đòi (`offboarding.py:163-189`);
+   workflow-triggers/02 sửa lý do khi thêm chủ thể `studio.inbound_endpoints`, và `platform.delete_secret` không phải
+   bước của lane.
 
 ## Tiêu chí chấp nhận
 
@@ -92,21 +117,33 @@ hồi hay thiếu (spec R1.9, R1.10, R1.14; V4.20; V4.35). Gộp từ B8a-connec
       (chủ thể, `field`, `secret_version`) → UNIQUE từ chối; `platform.put_secret` với `nonce` hay `ciphertext`
       NULL → lỗi NOT NULL (23502), không dòng nào; gỡ NOT NULL của hai cột trong migration thử → phong bì thiếu bản
       mã được ghi, test đỏ.
-- [ ] R1.2 (CV4): mock nhà cung cấp vọng header và key trong body lỗi → 0 lần xuất hiện ở checkpoint,
-      `platform.tool_executions`, audit, span, log; tắt che → test đỏ.
+- [ ] R1.2 (CV4): lớp Kho bí mật: một giá trị canary ghi qua `SecretStore` rồi mở → canary không có trong `repr`,
+      `str`, `format`, JSON hay `model_dump` của `Secret`, trong log bắt được của lần ghi và lần mở, trong thông điệp
+      lỗi `credential_revoked`, `kms_unavailable`, `secret_key_mismatch` và trong dòng audit `secret.key_mismatch`;
+      `reveal()` gọi từ một module ngoài danh sách cho phép → test kiến trúc đỏ; cho `__repr__` trả giá trị → test
+      đỏ. Ca mock nhà cung cấp vọng header và key (checkpoint, `platform.tool_executions`, span) chạy ở ticket 05, lời
+      gọi ra ngoài đầu tiên qua một Kết nối.
 - [ ] R1.3 (CV2): `SELECT * FROM platform.secret_envelopes` bằng `dw_app` → `permission denied`; khẳng
-      định catalog trong `test_privileges.py`.
+      định catalog trong `test_privileges.py`; `has_function_privilege` trên bốn hàm đúng với `dw_app`, sai với
+      `dw_provisioner` và `dw_agent_ro`, `proacl` không cấp PUBLIC, mỗi hàm `prosecdef` với `search_path` ghim;
+      `dw_provisioner` (có USAGE trên `platform`) gọi `platform.put_secret` → `permission denied for function`;
+      `dw_app` giữ SELECT, INSERT, DELETE trên `platform.connections` ở mức bảng, UPDATE ở đúng các cột của bước 2 và
+      không UPDATE ở `owning_workspace_id`, `tenant_id`; gỡ `REVOKE ... FROM PUBLIC` trong migration thử →
+      `dw_provisioner` ghi được phong bì, test đỏ.
 - [ ] R1.4 (CV1): chép một phong bì sang `connection_id` khác (cùng công ty và công ty khác), sang trường khác
       của cùng kết nối, hay sang dòng có `secret_version` khác rồi giải mã → lỗi; bọc lại khóa dữ liệu qua
       `KmsPort.rewrap` của `LocalDevKms` (`kek_version` tăng) → vẫn giải mã; gỡ AAD khỏi `SecretStore`, hay đưa
       `kek_version` vào AAD → test đỏ. Ca chủ thể `inbound_endpoint_id` chạy ở workflow-triggers/02, nơi thêm cột
       đó.
 - [ ] R1.5 (CV3): đặt công ty A, `open_secret` với chủ thể của công ty B → không dòng; một dòng mang
-      `kek_ref` của công ty khác → từ chối, audit `secret.key_mismatch`; chưa đặt `app.tenant_id` → không
+      `kek_ref` của công ty khác → từ chối với `secret_key_mismatch`, `KmsPort` không được gọi, audit
+      `secret.key_mismatch` đứng tên tác nhân của ngữ cảnh, còn sau khi giao dịch của bên gọi lùi, `details` không chứa
+      `kek_ref` của dòng; gỡ phép so `kek_ref` → giải mã được gọi, test đỏ; chưa đặt `app.tenant_id` → không
       dòng.
 - [ ] R1.6 (CV2): truy vấn catalog export của offboarding (`_CATALOG_EXPORTABLE`) không liệt kê
-      `secret_envelopes` (integration); test phủ offboarding (studio-skeleton:R4.3) xanh với dòng `STUDIO_EXCLUSIONS`
-      của `platform.secret_envelopes`, bỏ dòng đó → test phủ đỏ và nêu tên bảng; offboarding một công ty có Kết nối →
+      `secret_envelopes` (integration); test phủ offboarding (studio-skeleton:R4.3) xanh với dòng `EXPORT_EXCLUSIONS` và
+      dòng `STUDIO_EXCLUSIONS` của `platform.secret_envelopes`, bỏ một trong hai → test phủ đỏ và nêu tên bảng;
+      `platform.connections` có trong `_CATALOG_PURGEABLE`; offboarding một công ty có Kết nối →
       mọi phong bì của công ty đó bị xóa theo CASCADE khi lane xóa `platform.connections`, phong bì của công ty khác
       còn nguyên.
 - [ ] R1.7 (CV1): `UPDATE platform.connections SET owning_workspace_id = <workspace khác cùng công ty>` → trigger
@@ -133,8 +170,10 @@ hồi hay thiếu (spec R1.9, R1.10, R1.14; V4.20; V4.35). Gộp từ B8a-connec
       (thu hồi vì lộ của ticket 04 chưa có) → `credential_revoked`, không lùi về phiên bản 2 đã bị thay; cho hàm chọn
       `secret_version` nhỏ nhất, hay bỏ điều kiện `revoked_at` khỏi phép chọn → giá trị của phiên bản 1 hay của phiên
       bản 3 đã thu hồi được trả, test đỏ.
-- [ ] R2.2 (CV5): `DW_KMS_PROVIDER=local` với profile `uat` → `RuntimeError` lúc khởi động; gỡ
-      `validate_for_profile` → test đỏ.
+- [ ] R2.2 (CV5): `DW_KMS_PROVIDER=local` với profile `uat` → `RuntimeError` lúc khởi động, ở api và ở worker; gỡ
+      `validate_for_profile` → test đỏ; không đặt `DW_KMS_PROVIDER` → `none`, và `put` hay `open` qua `SecretStore` →
+      `kms_unavailable`, không dòng nào được ghi; `local` với `DW_LOCAL_KMS_MASTER_KEY` trống hay dưới 32 byte →
+      `RuntimeError` lúc khởi động ở profile `local`; cho `none` rơi về `LocalDevKms` → test đỏ.
 - [ ] Xong: `make ci && make test-integration` xanh.
 
 ## Nguồn
@@ -203,3 +242,60 @@ hồi hay thiếu (spec R1.9, R1.10, R1.14; V4.20; V4.35). Gộp từ B8a-connec
   lần xoay và phiên bản bị thu hồi vì lộ ngay; R1.1 thôi nói `open_secret` với phiên bản mới, R1.9, R1.10 thêm
   `replaced_at` và ca không còn phiên bản chưa thu hồi, thêm R1.14. Thu hồi vì lộ (`compromised_at`,
   `platform.revoke_connection_secrets`) ở ticket 04. Không đổi cạnh.
+- 2026-11-02 (agent, theo ủy quyền 31/10/2026): gate `checking-plan-readiness` ở `f95a89f`, kiểm người dựng và đi
+  ranh giới trong một lượt (ticket thêm migration, không route), trong ngữ cảnh của agent gate, không subagent.
+  `check_plans`: 24 Đạt, 0 cảnh báo. Mọi Blocked by đã `resolved`. CRITICAL 1: bốn hàm SECURITY DEFINER không nói
+  `REVOKE ... FROM PUBLIC` hay `search_path`, mà một hàm mới mặc định cho PUBLIC EXECUTE, nên mọi vai có USAGE trên
+  `platform` (`dw_provisioner`) ghi, mở hay xóa được phong bì, không kiểm soát và không test âm; sửa: bước 2 theo tiền
+  lệ `349080a62e41_tenant_members.py:162`, `:179`, R1.3 thêm phép kiểm catalog và lời gọi của `dw_provisioner` (không
+  phải `dw_agent_ro`, vai không có USAGE trên `platform`, nên đột biến sẽ không đỏ), spec Dữ liệu và CV2. Nếu sai thì:
+  không có cách sai an toàn hơn; chỉ có thể đổi vai dùng cho test.
+- 2026-11-02 (agent, theo ủy quyền 31/10/2026): HIGH 1: bước 6 chỉ nêu `STUDIO_EXCLUSIONS` với lý do nêu hai cách xóa
+  và một bảng chưa có, trong khi `OffboardingExclusion` đòi đúng một cách (`offboarding.py:163-189`) và test phủ đòi
+  thêm một dòng `EXPORT_EXCLUSIONS` cho bảng không xuất (`test_offboarding_coverage.py`, `offboarding_violations`,
+  R4.3); sửa: bước 6, R1.6, spec Dữ liệu và CV2. Nếu sai thì: test phủ tự nêu dòng thiếu, sửa lý do theo nó.
+- 2026-11-02 (agent, theo ủy quyền 31/10/2026): HIGH 2: "grant cột cho `platform.connections`" không nói đặc quyền
+  nào theo cột; SELECT theo cột làm `has_table_privilege` của catalog offboarding (`offboarding.py:81-119`) bỏ qua
+  bảng, nên Kết nối và phong bì sống qua offboarding; sửa: SELECT, INSERT, DELETE ở mức bảng, UPDATE theo sáu cột
+  nêu tên (bước 2, R1.3, R1.6). Nếu sai thì: ticket 04 cấp thêm cột cho PATCH trong migration của nó.
+- 2026-11-02 (agent, theo ủy quyền 31/10/2026): HIGH 3: tiêu chí R1.2 (CV4) đòi mock nhà cung cấp và checkpoint,
+  `platform.tool_executions`, span, trong khi ticket không có lời gọi ra ngoài nào (mục 29: chỉ ticket khác làm nó
+  đúng được); tách, không thu nhỏ: ticket này giữ lớp `Secret` và Kho bí mật, ca vọng bí mật đầu-cuối sang ticket 05
+  (Yêu cầu thêm R1.2, CV4 và một tiêu chí). Nếu sai thì: ca đó về ticket 03 với máy chủ HTTP giả của nó.
+- 2026-11-02 (agent, theo ủy quyền 31/10/2026): HIGH 4: `DW_KMS_PROVIDER` không có mặc định, `none` không có hành vi
+  và khóa chủ trống của `local` không bị từ chối, một mặc định có thể mở (failure-modes #7, như HIGH "bí mật kho trống
+  dựng kho mở" của runtime-hardening/02); sửa: mặc định `none`, `none` từ chối mọi lời gọi với `kms_unavailable`, khóa
+  chủ thiếu hay dưới 32 byte → `RuntimeError`, composition root dựng `KmsPort` lúc khởi động (bước 4, R2.2). Nếu sai
+  thì: thiếu `DW_KMS_PROVIDER` → `RuntimeError` lúc khởi động thay vì `none`.
+- 2026-11-02 (agent, theo ủy quyền 31/10/2026): HIGH 5: audit `secret.key_mismatch` không nói giao dịch, tác nhân,
+  workspace hay `details`; ghi trong giao dịch của bên gọi thì mất khi lỗi làm nó lùi, và `kek_ref` của dòng mang id
+  công ty khác vào audit của công ty này; sửa: `ScopedAuditPort` (`digital_workers_repo.py:548`) trong giao dịch riêng
+  trước khi ném lỗi, tác nhân của ngữ cảnh hay `system_actor(<lane>)`, `details` không `kek_ref` (bước 5, R1.5). Nếu
+  sai thì: audit ghi cùng giao dịch và bên gọi commit trước khi ném lỗi.
+- 2026-11-02 (agent): lượt xác nhận chỉ đọc sáu bản sửa: cả sáu đóng; một chỗ của chính bản sửa CRITICAL đã sửa
+  ngay (`dw_agent_ro` không có USAGE trên `platform`, nên đột biến gỡ REVOKE không đỏ được; đổi sang `dw_provisioner`
+  và `has_function_privilege`); không CRITICAL hay HIGH mới.
+- 2026-11-02 (agent): MEDIUM, chưa sửa, cho người dựng: (a) neo ở Nguồn đã trôi: `settings.py:323-325` nay là
+  `is_deployed` ở `apps/api/src/dw_api/settings.py:350-353` và `validate_for_profile` ở `:366`, của worker
+  `apps/worker/src/dw_worker/settings.py:337-344`; `offboarding.py:108-114` nay là `_CATALOG_EXPORTABLE` ở `:107`
+  (`_CATALOG_COLUMNS` `:81-105`); `test_rls_coverage.py:108` nay là `_PRINCIPAL_ONLY_ON_PURPOSE` ở `:112`,
+  `_TENANT_WIDE_ON_PURPOSE` ở `:604`; (b) trigger `touch_updated_at` của `secret_envelopes` không được nêu (CLAUDE.md,
+  Data model rules), `put_secret` và lane bọc lại sửa dòng; (c) `field` không CHECK dạng, đề xuất
+  `^[a-z][a-z0-9_]{0,62}$`, cũng giữ `|` khỏi AAD; (d) `open_secret` trả những cột nào (`alg`, `nonce`, `kek_ref`,
+  `kek_version`, `wrapped_data_key`, `ciphertext`, `secret_version`) và `SecretStore` lấy `owning_workspace_id` từ
+  `platform.connections` (dw_app SELECT được); (e) `KmsPort` của ticket này chỉ cần `generate_data_key`,
+  `decrypt_data_key`, `rewrap` (ADR-0115 (Accepted) quyết 1 nêu năm; `ensure_tenant_key`, `destroy_tenant_key` cùng ticket 06);
+  `LocalDevKms` dẫn KEK phiên bản v bằng HKDF với info `<kek_ref>|<v>`, phiên bản hiện hành là tham số dựng;
+  (f) `cryptography` chỉ là phụ thuộc bắc cầu (`uv.lock`: 50.0.1), phải khai ghim trong `pyproject.toml` của gói
+  chủ, `scripts/verify_architecture.py` `IMPORT_TO_DIST` thêm `cryptography`; (g) gói chủ của `KmsPort`, `SecretStore`
+  và danh sách module được gọi `Secret.reveal()` (lúc đầu chỉ `SecretStore`, ticket 03, 05 thêm module của chúng)
+  chưa nêu; (h) hai lần `put_secret` đồng thời: lần sau nhận 23505, `SecretStore` trả `ConflictError` và không tự thử
+  lại (AAD mang số phiên bản); (i) `platform.delete_secret` xóa mọi phiên bản của (chủ thể, trường) hay một phiên bản,
+  và chưa có bên gọi sản xuất ở W1 (ticket 04 chỉ dùng trong test); (j) `created_by` của `platform.connections` chưa
+  nói FK và ON DELETE, và bảng không có cột tên mà màn của spec liệt kê (ticket 04, 07); (k) policy đặt tên
+  `tenant_isolation_<bảng>`, vì catalog offboarding lọc theo tiền tố đó; theo tiền lệ, `REVOKE ALL ... FROM dw_agent_ro`
+  trên hai bảng; (l) `Xong:` đọc theo `.claude/rules/wave-close.md`: cổng nhanh cộng integration của `dw_platform`,
+  `apps/api`, `apps/worker`. LOW: partial unique `active` theo `external_account` NULL không chặn hai kết nối trùng.
+- 2026-11-02 (agent): xây được trên máy này không cần bí mật thật của Đạt: `LocalDevKms` với khóa chủ sinh tại chỗ,
+  PostgreSQL của compose; OpenBao, khóa triển khai và bí mật host thuộc ticket 06 (Chờ Đạt 20, 21 không chặn ticket này).
+- 2026-11-02 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
