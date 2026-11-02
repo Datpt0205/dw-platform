@@ -504,7 +504,7 @@ bên ngoài thì ghi "Chờ Đạt" và làm việc kế. Đường dẫn ticket
 | 12  | `digital-worker/issues/04` màn hình web                                                   | xong                                  |
 | 13  | `leadcare/issues/02` demo chạy thật, ảnh chụp ở `docs/demo/digital-worker/`               | Chờ Đạt 21                            |
 | 14  | `wf-ai` spec rồi ticket 01: AI sửa gói mẫu (D16, D18)                                     | xong `fea6cf2`                        |
-| 15  | mọi ticket studio khác có Blocked by đã resolved, theo thứ tự đợt                         | đang: dựng usage-and-limits/01 và /05 |
+| 15  | mọi ticket studio khác có Blocked by đã resolved, theo thứ tự đợt                         | đang: usage-and-limits/05 xong; dựng usage-and-limits/01 và marketing-pilot/01 |
 
 ## Ủy quyền
 
@@ -558,6 +558,7 @@ Each resolved ticket adds one line here: the commit hash and one sentence.
 - `0f1943a` tools-and-skills/01: executor tự kiểm JSON Schema đầu vào và đầu ra qua bộ kiểm duy nhất của nền tảng, sổ công cụ theo công ty không chéo công ty, bộ lắp theo loại công cụ với mức sàn chỉ siết, `approval_required` một câu trả lời cho wrapper, middleware và executor, sổ bước theo thứ tự R2.6 dựng ở `build_tool_executor_steps`, khóa chống lặp bắt buộc với mọi công cụ có khối `message`.
 - `5a0f8e9` org-and-principals/02: vị thế của một người trong công ty là dòng `platform.tenant_members` (`invited`, `active`, `suspended`) mà mọi membership treo vào; chỉ thành viên `active` qua cửa AccessContext và hiện ở đăng nhập; mỗi lần đăng nhập kích hoạt lời mời nhưng không bao giờ mở lại người bị đình chỉ; mọi nơi ghi membership ghi dòng đó trước; 23 fixture test qua một helper.
 - `ae5434f` compliance-pdpl/01: `dw_kernel.personal_data` là chủ từ vựng `pd_category`, `sensitive_type` (12 điểm Nghị định 356 Điều 4.1, luật sư xác nhận ở ticket 02) và `subject_identifier` cùng `classification_problems` có con trỏ; helper catalog so năm CHECK với kernel qua chính PostgreSQL; `pd_classification.json` sinh ra có `--check`; nhãn tiếng Việt ở web kiểm theo nó.
+- `2a0b5b6` usage-and-limits/05: `RateLimiterPort` với khóa có kiểu (`SourceKey`, `PrincipalObjectKey`, `TypeError` khi sai kiểu) và `InProcessRateLimiter` cửa sổ trượt khóa theo cả tenant, `floor(limit / replicas)` mỗi tiến trình, `DW_API_REPLICAS` bắt buộc khi triển khai (overlay uat/prod đặt 1), một instance trên `ApiContainer`; 33 test mới, 12 mutation đã viết chưa chạy.
 
 ## Chờ Đạt (phiên không người trực)
 
