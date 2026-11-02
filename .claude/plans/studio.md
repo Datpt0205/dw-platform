@@ -504,7 +504,7 @@ bên ngoài thì ghi "Chờ Đạt" và làm việc kế. Đường dẫn ticket
 | 12  | `digital-worker/issues/04` màn hình web                                                   | xong                                  |
 | 13  | `leadcare/issues/02` demo chạy thật, ảnh chụp ở `docs/demo/digital-worker/`               | Chờ Đạt 21                            |
 | 14  | `wf-ai` spec rồi ticket 01: AI sửa gói mẫu (D16, D18)                                     | xong `fea6cf2`                        |
-| 15  | mọi ticket studio khác có Blocked by đã resolved, theo thứ tự đợt                         | đang: usage-and-limits/01, /05 xong; dựng tenant-rbac/02 và marketing-pilot/01 |
+| 15  | mọi ticket studio khác có Blocked by đã resolved, theo thứ tự đợt                         | đang: usage-and-limits/01, /05, marketing-pilot/01 xong; dựng tenant-rbac/02 |
 
 ## Ủy quyền
 
@@ -560,6 +560,7 @@ Each resolved ticket adds one line here: the commit hash and one sentence.
 - `ae5434f` compliance-pdpl/01: `dw_kernel.personal_data` là chủ từ vựng `pd_category`, `sensitive_type` (12 điểm Nghị định 356 Điều 4.1, luật sư xác nhận ở ticket 02) và `subject_identifier` cùng `classification_problems` có con trỏ; helper catalog so năm CHECK với kernel qua chính PostgreSQL; `pd_classification.json` sinh ra có `--check`; nhãn tiếng Việt ở web kiểm theo nó.
 - `2a0b5b6` usage-and-limits/05: `RateLimiterPort` với khóa có kiểu (`SourceKey`, `PrincipalObjectKey`, `TypeError` khi sai kiểu) và `InProcessRateLimiter` cửa sổ trượt khóa theo cả tenant, `floor(limit / replicas)` mỗi tiến trình, `DW_API_REPLICAS` bắt buộc khi triển khai (overlay uat/prod đặt 1), một instance trên `ApiContainer`; 33 test mới, 12 mutation đã viết chưa chạy.
 - `9ddf0f8` usage-and-limits/01: số của gói về một chủ `platform.plan_limits` (revision `764b0e239f95`, `dw_app` chỉ SELECT, trần mỗi lượt NOT NULL, bước 1..500), `PlanCatalogPort` cache 30 giây đóng khi thiếu dòng hay lỗi đọc, `RunAllowancePort` async, `DEFAULT_PLANS` và cột `quotas` bỏ, test `ast` chặn danh mục gói trong mã; 11 mutation đã viết chưa chạy. Cho lượt cuối: `dw_observability` `test_logs_carry_ids_only` chập chờn (micro giây chứa "345").
+- `9397afb` marketing-pilot/01: bộ sinh lead giả lập có hạt giống với năm loại cặp có nhãn, oracle kiểm trùng theo số E.164 rồi email chữ thường (không bao giờ theo tên) và khẳng định mọi địa chỉ nằm trong dải thử hay `example.com`; 200 lead cho 196 khóa, gộp nhầm 0, `tests/e2e` vào `testpaths` để CI chạy, 88 test xanh, 13 mutation đã viết chưa chạy.
 
 ## Chờ Đạt (phiên không người trực)
 
