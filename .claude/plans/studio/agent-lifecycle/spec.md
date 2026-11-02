@@ -2,8 +2,8 @@
 
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
-Duyệt: chưa
-Sẵn sàng: chưa kiểm
+Duyệt: agent, tạm theo ủy quyền 2/11/2026
+Sẵn sàng: ĐẠT (2/11/2026; 0 CRITICAL, 0 HIGH; ticket 02)
 
 Người dựng cần một lớp điều khiển vòng đời cho agent và quy trình: mỗi phiên bản đi qua Nháp, Đang
 kiểm định, Chờ duyệt, Đang dùng, Đã gỡ trong một máy trạng thái do PostgreSQL canh; chỉ sang Đang dùng
@@ -1357,6 +1357,18 @@ Mọi bảng mới: RLS ENABLE và FORCE theo tenant, grant cùng migration, tê
   đặt số tối thiểu. Q5: đọc ca dưới `studio.workflows.read`, tạo, sửa và xóa dưới `studio.workflows.edit`, ở độ sâu của
   `owning_workspace_id`, không cần người thứ hai, vì Lượt kiểm định ghim mã băm của tập ca và người duyệt thấy kết quả
   từng ca. Sửa: R4.13, R4.18, AL30, AL33, ticket 06.
+- 2/11/2026 (agent, tạm theo ủy quyền): sửa ticket 02 theo gate `checking-plan-readiness` (gate nhẹ, 7 HIGH, đo trên
+  `f95a89f`): bước 6 thành test đầu-cuối trên quan sát đã ghi, không tệp mới dưới `evals/datasets` (G1); `JudgePort` có
+  `JudgeVerdict`, `judge_grader` và adapter giả `ScriptedJudge`; số lần thử là `pass_k` cho câu `consistency` (R3.1),
+  `case.trials` cho câu khác; `unknown` không bao giờ đi cùng `passed`; `evaluate_gate(report, policy)` không tham số
+  thứ ba (R3.4) với ba luật có tên; `ObservationGrader` bất đồng bộ và `merge_graders` generic; R3.5 chứng minh hợp đồng
+  của studio-skeleton:R5.1, nên ticket 02 chờ studio-skeleton/02. Không đổi R3. Chi tiết ở Comments
+  của ticket 02. Theo `## Ủy quyền` của studio.md (Đạt, 31/10/2026). Nếu sai thì: như các dòng `Nếu sai thì` ở
+  Comments của ticket 02.
+- 2/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 02. Ticket 02 là phần mở rộng `dw_evals` (R3.1-R3.5,
+  G1), chỉ chạm `packages/python/dw_evals` và test của nó, không bảng, route, migration, config hay prompt nào của
+  ticket 01, 03, 04 hay 05, chỉ chờ studio-skeleton/02; 06 chờ nó. Cách chia 01, 03-07 được duyệt khi gate chạy cho
+  chúng. Theo `## Ủy quyền` của studio.md (Đạt, 31/10/2026). Nếu sai thì: hạ ticket 02 về `needs-triage` và chia lại.
 
 ## Danh sách ticket
 

@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 2/11/2026
-Sẵn sàng: ĐẠT (2/11/2026; 0 CRITICAL, 0 HIGH; ticket 01)
+Sẵn sàng: ĐẠT (2/11/2026; 0 CRITICAL, 0 HIGH; ticket 01, 05)
 
 Studio cần đo và chặn chi tiêu ở mức công ty, workspace, agent và quy trình (theo người dùng từ W2), việc
 mà một tổng theo ngày của cả tenant không làm được. Lát này đưa lại Sổ sử dụng theo lượt gọi (D6) làm nguồn
@@ -378,7 +378,7 @@ Mọi bảng tenant: RLS ENABLE và FORCE theo tenant, grant cùng migration, t�
 | UL11 | Tạm dừng nhả tiền                                    | R5.3              | Lượt chạy chờ duyệt → `reserved` của lượt về 0; tiếp tục → giữ lại số đã tiêu; gỡ nhả → test đỏ                                                                                                                                                                                                             |
 | UL12 | Giá không định lại lịch sử                           | R2.4              | Đổi Bảng giá → dòng cũ giữ `price_book_version` và chi phí cũ                                                                                                                                                                                                                                               |
 | UL13 | Hạn mức giữa lượt chạy dừng sạch, không hạ ngầm      | R5.5, R6.3        | Trần cạn giữa lượt → dừng ở ranh giới kế tiếp `limit_exceeded`, không cắt giữa một bước gửi, không hạ model; gỡ kiểm ranh giới → test đỏ                                                                                                                                                                    |
-| UL14 | Giới hạn tốc độ theo khóa có kiểu, không theo bearer | R7.1, R7.2, R7.3  | Giới hạn 60, 2 replica: lần thứ 31 trong một phút ở một tiến trình bị từ chối; hai bearer khác nhau gửi tới cùng nguồn chia chung một bộ đếm; khóa (tenant, người gọi, đối tượng) 20 trong 10 phút: lần hỏi không tính lượt không đổi bộ đếm, sau lượt thứ 20 trả đã đủ; đổi khóa sang băm bearer → test đỏ |
+| UL14 | Giới hạn tốc độ theo khóa có kiểu, không theo bearer | R7.1, R7.2, R7.3  | Giới hạn 60, 2 replica: lần thứ 31 trong một phút ở một tiến trình bị từ chối; hai bearer khác nhau gửi tới cùng nguồn chia chung một bộ đếm; khóa (tenant, người gọi, đối tượng) 20 trong 10 phút: lần hỏi không tính lượt không đổi bộ đếm, sau lượt thứ 20 trả đã đủ; công ty khác cùng id nguồn, người gọi và đối tượng có bộ đếm riêng; đổi khóa sang chuỗi tự do hay băm bearer, hay bỏ `tenant_id` khỏi khóa → test đỏ |
 | UL15 | Không nới Hạn mức bằng một người                     | R4.9              | Một người `PUT` nâng trần tenant từ USD 10 lên USD 50 → 409 `second_person_required`, Hạn mức hiệu lực vẫn USD 10; `DELETE` chính sách → 409; gỡ kiểm → test đỏ                                                                                                                                             |
 | UL16 | Xóa sổ chỉ thêm chỉ khi công ty đang offboarding     | R3.8, R3.9, R3.10 | Gọi `platform.purge_tenant_append_only` cho công ty `active` → 23514, 0 dòng xóa; công ty `offboarding` → dòng của nó trong `usage_events` xóa hết, dòng của công ty khác và `audit_events` còn; gỡ kiểm trạng thái khỏi hàm → test đỏ                                                                      |
 | UL17 | Phạm vi của hạn mức không trỏ sang công ty khác      | R4.13             | Bằng vai migrator, INSERT dòng `platform.limit_policies` của tenant A có `scope_workspace_id` là workspace của tenant B, hay `scope_artifact_id` là thành phần của B → FK từ chối, không ghi; cùng id của tenant A → nhận; đổi một FK ghép sang FK một cột → test đỏ                                        |
@@ -713,6 +713,18 @@ Mọi bảng tenant: RLS ENABLE và FORCE theo tenant, grant cùng migration, t�
   chỉ chờ foundations-hardening/03 (đã xong), không chạm bảng, route, migration, config hay prompt nào của ticket 02
   hay 05, hai ticket không có đường phụ thuộc tới nó; 03 chờ nó. Cách chia 02-06 được duyệt khi gate chạy cho chúng.
   Theo `## Ủy quyền` của studio.md (Đạt, 31/10/2026). Nếu sai thì: hạ ticket 01 về `needs-triage` và chia lại.
+- 2/11/2026 (agent, tạm theo ủy quyền): sửa ticket 05 theo gate `checking-plan-readiness` (1 CRITICAL, 3 HIGH, đo trên
+  `f95a89f`): test âm chéo tenant cho bộ đếm; `RateLimiterPort` bất đồng bộ để adapter Valkey W2 đáp cùng Protocol; khóa
+  có trường kiểu `TenantId` và `UUID`, `TypeError` khi sai kiểu, tiêu chí R7.2 viết ở mức port (test HTTP hai bearer
+  thuộc workflow-triggers/02); số replica là `DW_API_REPLICAS` đếm tiến trình API, bắt buộc ở profile triển khai, và
+  worker không có instance ở W1. Sửa: UL14, ticket 05; chi tiết ở Comments của ticket. Không đổi R7. Theo `## Ủy quyền`
+  của studio.md (Đạt, 31/10/2026). Nếu sai thì: như các dòng `Nếu sai thì` ở Comments của ticket 05.
+- 2/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 05. Ticket 05 là `RateLimiterPort` và bộ đếm theo tiến trình
+  (R7.1-R7.3, UL14), không chờ ticket nào, không chạm bảng, route, migration hay prompt; config duy nhất là
+  `DW_API_REPLICAS` ở overlay uat/prod, không ticket nào khác của spec chạm. Không đường phụ thuộc nào nối nó với 01-04
+  hay 06 và không tài nguyên chung với chúng; chung tệp `apps/api/src/dw_api/bootstrap/wiring.py` với ticket 01 (mã, không
+  phải tài nguyên của danh sách va chạm). workflow-triggers/02 và custom-objects/03 chờ nó. Theo `## Ủy quyền` của
+  studio.md (Đạt, 31/10/2026). Nếu sai thì: hạ ticket 05 về `needs-triage` và chia lại.
 
 ## Danh sách ticket
 
