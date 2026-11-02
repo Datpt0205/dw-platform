@@ -42,8 +42,22 @@ TRANSITIONS: Final[Mapping[DwState, frozenset[DwState]]] = MappingProxyType(
 _DW_KEY = re.compile(r"[a-z][a-z0-9_]{1,39}")
 _CLASS_KEY = re.compile(r"[a-z][a-z0-9_.]{1,63}")
 _SEMVER = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)")
+# A pin names a pack's version, or a tenant's published one: the pack's semver
+# and `+t<n>` (wf-ai R6.5; migration 1fb796131647).
+_PIN = re.compile(_SEMVER.pattern + r"(\+t[1-9][0-9]*)?")
+TENANT_PIN_MARK = "+t"
 MAX_NAME = 120
 MAX_MANDATE = 2000
+
+
+def is_tenant_pin(version: str) -> bool:
+    """Whether a pin names a tenant's published version, not a pack's."""
+    return TENANT_PIN_MARK in version
+
+
+def pack_version_of(version: str) -> str:
+    """The pack's semver a pin is made from: itself, or before `+t<n>`."""
+    return version.split("+", 1)[0]
 
 
 def refused(message: str, reason_code: str, **details: object) -> DomainError:
@@ -97,7 +111,9 @@ class DwPeople:
 @dataclass(frozen=True, slots=True)
 class DwConfiguration:
     """What a DW is made with, fixed for its life: changing it is making a new
-    DW (spec, Quyết định of gate round 2)."""
+    DW (spec, Quyết định of gate round 2). One exception: the publication of
+    its own workflow version moves `workflow_version` to `<semver>+t<n>`, the
+    same pack's document with other steps (wf-ai R6.5)."""
 
     key: str
     name: str
@@ -120,7 +136,7 @@ class DwConfiguration:
             raise refused(f"a mandate has 1 to {MAX_MANDATE} characters", "mandate_invalid")
         if not self.work_kinds or any(not kind.strip() for kind in self.work_kinds):
             raise refused("a DW holds at least one kind of work", "work_kinds_empty")
-        if not self.workflow_key.strip() or not _SEMVER.fullmatch(self.workflow_version):
+        if not self.workflow_key.strip() or not _PIN.fullmatch(self.workflow_version):
             raise refused("a workflow is pinned by key and semver", "workflow_invalid")
         keys = [c.key for c in self.decision_classes]
         if len(keys) != len(set(keys)):

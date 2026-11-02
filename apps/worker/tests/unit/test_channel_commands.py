@@ -27,11 +27,13 @@ pytestmark = pytest.mark.unit
 
 @dataclass
 class _Runner:
-    """Stands in for the runner a context hosts its graph on; its store and its
-    telemetry, which the decision service records approval waits on, are read."""
+    """Stands in for the runner a context hosts its graph on; its store, its
+    telemetry, which the decision service records approval waits on, and its
+    tenant graphs (none here) are read."""
 
     run_store: Any = field(default_factory=object)
     telemetry: Any = field(default_factory=NullTelemetry)
+    run_graphs: Any = None
 
 
 def _decision_command(secret: str) -> ChannelDecisionCommand:

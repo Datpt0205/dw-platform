@@ -764,6 +764,8 @@ dw_workflow_drafts = sa.Table(
     sa.Column("author_ids", ARRAY(UUID(as_uuid=True)), nullable=False),
     sa.Column("state", sa.Text, nullable=False, server_default="draft"),
     sa.Column("reason", sa.Text, nullable=True),
+    # The publish approval a submitted draft waits on (migration 1fb796131647).
+    sa.Column("approval_id", UUID(as_uuid=True), nullable=True),
     sa.Column("created_at", sa.TIMESTAMP(timezone=True), nullable=False),
     sa.Column("updated_at", sa.TIMESTAMP(timezone=True), nullable=False),
 )
@@ -780,5 +782,26 @@ dw_workflow_simulations = sa.Table(
     sa.Column("tool_calls", JSONB, nullable=False),
     sa.Column("failed_step", sa.Text, nullable=True),
     sa.Column("error", sa.Text, nullable=True),
+    sa.Column("created_at", sa.TIMESTAMP(timezone=True), nullable=False),
+)
+
+# A tenant's published versions of a DW's workflow, append-only (migration
+# 1fb796131647, wf-ai R6.5): `<pack semver>+t<seq>`, one per approval.
+dw_workflow_versions = sa.Table(
+    "dw_workflow_versions",
+    metadata,
+    sa.Column("id", UUID(as_uuid=True), primary_key=True),
+    sa.Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("workspace_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("dw_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("key", sa.Text, nullable=False),
+    sa.Column("seq", sa.Integer, nullable=False),
+    sa.Column("version", sa.Text, nullable=False),
+    sa.Column("content", JSONB, nullable=False),
+    sa.Column("content_sha256", sa.Text, nullable=False),
+    sa.Column("base_sha256", sa.Text, nullable=False),
+    sa.Column("author_ids", ARRAY(UUID(as_uuid=True)), nullable=False),
+    sa.Column("approved_by", UUID(as_uuid=True), nullable=False),
+    sa.Column("approval_id", UUID(as_uuid=True), nullable=False),
     sa.Column("created_at", sa.TIMESTAMP(timezone=True), nullable=False),
 )

@@ -1,6 +1,6 @@
 # 03 — Gửi duyệt và phát hành
 
-Status: ready-for-agent
+Status: resolved (2026-11-02, main)
 Blocked by: 02
 Area: studio
 Yêu cầu: R6.3, R6.4, R6.5, R6.6, R6.8, R6.10, R6.11, R6.14, R6.16, WAI10, WAI11, WAI12, WAI14, WAI16, WAI17
@@ -19,18 +19,18 @@ Chủ DW gửi bản nháp đã mô phỏng để một người khác duyệt; 
 
 ## Tiêu chí chấp nhận
 
-- [ ] R6.3 (WAI10): lưu lại sau mô phỏng rồi gửi: 409 `simulation_required`, 0 approval.
-- [ ] R6.8 (WAI14): `PUT` khi `submitted`: 409 `draft_submitted`, nội dung không đổi.
-- [ ] R6.4 (WAI11): người lưu là Technical Owner quyết: 409 `second_person_required`; Validator quyết được.
-- [ ] R6.4 (WAI16): A lưu, B lưu và gửi, A quyết: 409 `second_person_required`.
-- [ ] R6.10: rút: approval `cancelled`, bản nháp `draft`, một dòng audit.
-- [ ] R6.5 (WAI12): duyệt: phiên bản `1.0.0+t1`, ghim của DW trỏ tới nó, việc mới chạy theo nó, việc đang chờ giữ sha cũ; lần duyệt sau ra `1.0.0+t2`.
-- [ ] R6.6 (WAI12): đổi ghim của DW sau khi gửi rồi duyệt: `base_changed`, 0 phiên bản, ghim giữ giá trị đã đổi.
-- [ ] R6.6 (WAI14): ghi đè `content` bản nháp bằng migrator sau khi gửi rồi duyệt: `content_changed`, 0 phiên bản.
-- [ ] R6.11: từ chối, và hủy qua `withdraw`: bản nháp `draft`, ghim không đổi.
-- [ ] R6.14 (WAI17): giao lại sự kiện đã xử lý: vẫn một phiên bản, một dòng audit phát hành.
-- [ ] R6.16: DW của tenant B ghim `1.0.0+t1` mà chỉ tenant A có, và DW thứ hai cùng workspace ghim `1.0.0+t1` của DW thứ nhất: cả hai 404 `workflow_not_shipped`.
-- [ ] Xong: `make test-unit test-contract test-architecture` xanh.
+- [x] R6.3 (WAI10): lưu lại sau mô phỏng rồi gửi: 409 `simulation_required`, 0 approval.
+- [x] R6.8 (WAI14): `PUT` khi `submitted`: 409 `draft_submitted`, nội dung không đổi.
+- [x] R6.4 (WAI11): người lưu là Technical Owner quyết: 409 `second_person_required`; Validator quyết được.
+- [x] R6.4 (WAI16): A lưu, B lưu và gửi, A quyết: 409 `second_person_required`.
+- [x] R6.10: rút: approval `cancelled`, bản nháp `draft`, một dòng audit.
+- [x] R6.5 (WAI12): duyệt: phiên bản `1.0.0+t1`, ghim của DW trỏ tới nó, việc mới chạy theo nó, việc đang chờ giữ sha cũ; lần duyệt sau ra `1.0.0+t2`.
+- [x] R6.6 (WAI12): đổi ghim của DW sau khi gửi rồi duyệt: `base_changed`, 0 phiên bản, ghim giữ giá trị đã đổi.
+- [x] R6.6 (WAI14): ghi đè `content` bản nháp bằng migrator sau khi gửi rồi duyệt: `content_changed`, 0 phiên bản.
+- [x] R6.11: từ chối, và hủy qua `withdraw`: bản nháp `draft`, ghim không đổi.
+- [x] R6.14 (WAI17): giao lại sự kiện đã xử lý: vẫn một phiên bản, một dòng audit phát hành.
+- [x] R6.16: DW của tenant B ghim `1.0.0+t1` mà chỉ tenant A có, và DW thứ hai cùng workspace ghim `1.0.0+t1` của DW thứ nhất: cả hai 404 `workflow_not_shipped`.
+- [x] Xong: `make test-unit test-contract test-architecture` xanh.
 
 ## Nguồn
 
@@ -41,3 +41,10 @@ Chủ DW gửi bản nháp đã mô phỏng để một người khác duyệt; 
 - 2026-10-31 (agent): viết cùng spec.
 - 2026-11-02 (agent): viết lại sau gate CHƯA ĐẠT: hash trong approval, khóa khi chờ, rút, xử lý một lần, loại mọi người đã lưu.
 - 2026-11-02 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-02 (agent): resolved.
+    - Khác ticket (agent, theo ủy quyền 31/10/2026): `dw_workflow_versions` có thêm `seq` (CHECK buộc `version` kết thúc bằng `+t<seq>`, unique theo DW) để đếm `n` không phải tách chuỗi; `dw_workflow_drafts.approval_id` (CHECK `submitted` ⇔ có approval) để quyết định và rút chỉ tác động bản nháp đang chờ đúng approval đó. Handler `dw.workflow.publish.decided` chỉ ở worker (API không chạy outbox); API và worker cùng đăng ký tiền tố strict `dw.workflow.` và `PUBLISH_ADMISSION`. Gửi và rút ở `WorkflowPublishing` (`wflite/publish.py`), tách khỏi `WorkflowDrafts`, port hẹp và không vòng import. Nếu sai thì: gộp lại vào `WorkflowDrafts`.
+    - Khác ticket: phiên bản tenant chạy dưới `run_version` `<semver>+t<n>.<sha256 nội dung>`, không `+t<n>` trần, vì graph đăng ký theo process và `+t1` của hai tenant là hai tài liệu; `WorkerDefinition` và `RunContext.worker_version` nhận build metadata semver. Graph của phiên bản tenant được đăng ký lần đầu dùng (`TenantWorkflowGraphs.ensure`, đọc dưới tenant của lượt chạy, kiểm lại hash nội dung) ở runner (start, resume) và ở `ApproveAndResumeService` trước `hosts`; giữ đến hết process, chặn trên bởi số phiên bản đã phát hành. Nếu sai thì: một kho graph có hạn (LRU) thay cho đăng ký vĩnh viễn.
+    - Thêm: DW mới không ghim được `+t<n>` (422 `workflow_invalid`); `PackCatalog.schema` đọc theo semver của gói nên việc mới của DW ghim phiên bản tenant vẫn kiểm theo schema của kind; rút sau khi đã quyết là 409 `approval_decided` (quyết định đó do settlement xử lý); ghim tenant mà dòng phiên bản mất thì coi là `base_changed` (đóng an toàn).
+    - Test: unit `test_wflite_publish.py` 29 ca, `test_digital_workers.py` thêm một ca; integration `apps/api/tests/integration/test_wf_ai_publish.py` 13 ca, `apps/worker/tests/integration/test_wflite_runs_db.py` thêm hai ca (việc mới chạy phiên bản tenant, việc đang chờ giữ sha gói, process khác quyết và chạy tiếp; ghim `+t1` của DW khác thì việc `failed`); `test_privileges.py` thêm một ca; `test_rls_coverage.py`, `test_offboarding_coverage.py` xanh với bảng mới.
+    - `mutations/03.yaml` 11 đột biến, chưa chạy (chạy ở lượt kiểm tra cuối hàng đợi, `wave-close.md` 2/11/2026). Độ trễ cũng để lượt cuối.
+    - `reviewing-feature-security` (đọc): tenant (bảng RLS bật và FORCE theo dạng workspace, tenant B 404 và đọc 0 dòng, graph đọc dưới tenant của lượt chạy và khóa theo sha đầy đủ); phân quyền (gửi, rút chỉ chủ DW, Validator 403, người lạ 404; quyết bởi Validator hay Technical Owner, không tác giả, không người gửi, kể cả qua Zalo vì worker đăng ký cùng admission); duyệt (phát hành chỉ từ dòng quyết định `approved`, kiểm lại hash gốc và hash nội dung dưới khóa dòng DW); nội dung không tin (payload approval dựng phía server từ dòng bản nháp đã khóa, chỉ định danh và hash); audit (`submitted`, `withdrawn` cùng giao dịch; `published`, `returned` đứng tên người quyết với `details.lane`); vòng đời (phiên bản chỉ thêm, `dw_app` không UPDATE, xóa qua offboarding).

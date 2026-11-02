@@ -32,6 +32,7 @@ from dw_agent_runtime.wflite.validate import Problem, ToolSpecLookup, validate
 from dw_kernel.errors import ConfigError, NotFoundError
 from dw_kernel.pagination import canonical_json
 from dw_platform.application.json_schema import validator_for
+from dw_platform.domain.digital_worker import pack_version_of
 
 
 class _Yaml12Loader(yaml.SafeLoader):
@@ -73,6 +74,18 @@ class PinnedWorkflow:
     sha256: str
     path: Path
     work_schemas: Mapping[str, JsonSchema]
+    # A tenant's published version (`1.0.0+t2`, wf-ai R6.5); None for a pack's
+    # own document. Its `sha256` is then the content's (`workflow_sha256`).
+    label: str | None = None
+
+    @property
+    def run_version(self) -> str:
+        """The version its runs are registered and recorded under: the pack's
+        semver, or a tenant version's label with its content hash, so the
+        graph of one tenant's `+t1` is never another's (wf-ai R6.16)."""
+        if self.label is None:
+            return self.document.version
+        return f"{self.label}.{self.sha256}"
 
 
 @dataclass
@@ -124,8 +137,10 @@ class PackCatalog:
         self, *, workflow_key: str, workflow_version: str, kind: str
     ) -> Mapping[str, Any] | None:
         """`WorkKindSchemas`: the schema a pinned workflow declares for a kind;
-        None for a kind it does not declare, or a workflow not shipped."""
-        pinned = self._workflows.get((workflow_key, workflow_version))
+        None for a kind it does not declare, or a workflow not shipped. A
+        tenant's version keeps its pack's kinds (wf-ai R2.1), so it is asked
+        by the pack's semver."""
+        pinned = self._workflows.get((workflow_key, pack_version_of(workflow_version)))
         return None if pinned is None else pinned.work_schemas.get(kind)
 
 

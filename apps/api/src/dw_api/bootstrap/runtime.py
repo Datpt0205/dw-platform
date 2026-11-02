@@ -38,6 +38,11 @@ from dw_agent_runtime.tool_specs import ToolSpecRegistry
 from dw_agent_runtime.tools import ToolRegistry
 from dw_agent_runtime.toolsets import ToolsetRegistry
 from dw_agent_runtime.wflite.catalog import PackCatalog
+from dw_agent_runtime.wflite.publish import (
+    DW_WORKFLOW_PREFIX,
+    DW_WORKFLOW_PUBLISH,
+    PUBLISH_ADMISSION,
+)
 from dw_agent_runtime.wflite.waits import WorkQueueRunWaits
 from dw_api.adapters.document_indexing import KnowledgeDocumentIndexingAdapter
 from dw_api.bootstrap.container import RuntimeSeam
@@ -262,6 +267,26 @@ def build_runtime(
     graphs = GraphRegistry()
     workers = WorkerRegistry(graph_registry=graphs)
     checkpoints = SqlAlchemyCheckpointSaver(session_factory, checkpoint_serializer())
+    # Every shipped workflow, as the worker hosts it too: a run the worker
+    # paused on an approval resumes here when a person decides (wf-lite R6.1).
+    # A tenant's published version registers on its run's first use here
+    # (wf-ai R6.5): the runner and the approval flow both ask it.
+    tenant_graphs = register_workflows(
+        packs,
+        build_wflite_ports(
+            session_factory=session_factory,
+            gateway=gateway,
+            executor=tool_executor,
+            tools=tool_registry,
+            queue=work_queue,
+            recommendations=load_handoff_copy(WFLITE_HANDOFF_COPY),
+            clock=clock,
+            ids=ids,
+        ),
+        graphs=graphs,
+        workers=workers,
+        session_factory=session_factory,
+    )
     runner = LangGraphWorkflowRunner(
         worker_registry=workers,
         graph_registry=graphs,
@@ -279,23 +304,7 @@ def build_runtime(
         spend_store=SqlSpendGuardStore(session_factory=session_factory),
         # A DW run's work item follows it: waiting, resumed, finished.
         run_waits=WorkQueueRunWaits(work_queue),
-    )
-    # Every shipped workflow, as the worker hosts it too: a run the worker
-    # paused on an approval resumes here when a person decides (wf-lite R6.1).
-    register_workflows(
-        packs,
-        build_wflite_ports(
-            session_factory=session_factory,
-            gateway=gateway,
-            executor=tool_executor,
-            tools=tool_registry,
-            queue=work_queue,
-            recommendations=load_handoff_copy(WFLITE_HANDOFF_COPY),
-            clock=clock,
-            ids=ids,
-        ),
-        graphs=graphs,
-        workers=workers,
+        run_graphs=tenant_graphs,
     )
     approval_flow = ApproveAndResumeService(
         uow_factory=uow_factory,
@@ -307,7 +316,7 @@ def build_runtime(
         # workspace once approved: the person whose run proposed it may not
         # vouch for it alone, and whoever does says why. A context adds its own
         # prefixes with `|=` where it is wired.
-        strict_approval_prefixes=frozenset({"memory.", DW_AUTONOMY_PREFIX}),
+        strict_approval_prefixes=frozenset({"memory.", DW_AUTONOMY_PREFIX, DW_WORKFLOW_PREFIX}),
         # And nobody decides on a memory they are not cleared to read.
         decision_guards={MEMORY_REVIEW: require_clearance_for_review},
         # A Digital Worker's decision is decided by its Validator or Business
@@ -315,8 +324,15 @@ def build_runtime(
         # proposal's schema and locked fields (digital-worker R5.3, R5.4).
         # A raise of a DW's earned level is decided by a second person, its
         # Validator or Technical Owner, with a reason (digital-worker R8.3).
-        type_admissions={DW_DECISION: DwDecisionAdmission(), DW_AUTONOMY_RAISE: RAISE_ADMISSION},
+        # A DW's workflow is published by its Validator or Technical Owner,
+        # none of the draft's authors and not its submitter (wf-ai R6.4).
+        type_admissions={
+            DW_DECISION: DwDecisionAdmission(),
+            DW_AUTONOMY_RAISE: RAISE_ADMISSION,
+            DW_WORKFLOW_PUBLISH: PUBLISH_ADMISSION,
+        },
         proposal_editors={DW_DECISION: check_edited_proposal},
+        run_graphs=tenant_graphs,
         telemetry=telemetry,
     )
 

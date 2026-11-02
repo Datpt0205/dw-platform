@@ -23,18 +23,14 @@ from datetime import datetime
 from typing import Any, Literal, Protocol
 
 from dw_agent_runtime.contracts import RunContext
-from dw_agent_runtime.wflite.assistant import (
-    DwOwnerPort,
-    PinnedWorkflowsPort,
-    bases_of,
-    checked_proposal,
-)
+from dw_agent_runtime.wflite.assistant import DwOwnerPort, bases_of, checked_proposal
 from dw_agent_runtime.wflite.catalog import workflow_sha256
 from dw_agent_runtime.wflite.compile import ToolModelsPort
 from dw_agent_runtime.wflite.document import WorkflowDocument
 from dw_agent_runtime.wflite.registry import NodeTypeSpec
 from dw_agent_runtime.wflite.simulate import SimulationResult, simulate
 from dw_agent_runtime.wflite.validate import ToolSpecLookup
+from dw_agent_runtime.wflite.versions import PinnedWorkflowsPort, base_sha256
 from dw_kernel.errors import DomainError, NotFoundError
 from dw_kernel.ids import TenantId, UserId, WorkspaceId
 from dw_kernel.ports import IdGenerator, UtcClock
@@ -55,6 +51,8 @@ class Draft:
     state: Literal["draft", "submitted"]
     reason: str | None
     updated_at: datetime
+    # The publish approval a submitted draft waits on (wf-ai R6.4).
+    approval_id: uuid.UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,7 +104,7 @@ class DraftStorePort(Protocol):
 RunContextFactory = Callable[[AccessContext, uuid.UUID], RunContext]
 
 
-def _draft_not_found() -> NotFoundError:
+def draft_not_found() -> NotFoundError:
     return NotFoundError(
         "this digital worker has no workflow draft", details={"reason_code": "draft_not_found"}
     )
@@ -134,8 +132,7 @@ class WorkflowDrafts:
         effect: PendingEffect | None = None,
     ) -> Draft:
         worker = await self.workers.require_owner(context, dw_id)
-        config = worker.configuration
-        bases = bases_of(self.workflows, config.workflow_key, config.workflow_version)
+        bases = await bases_of(self.workflows, worker)
         content, problems = checked_proposal(bases, steps, registry=self.registry, tools=self.specs)
         if problems:
             raise DomainError(
@@ -151,9 +148,7 @@ class WorkflowDrafts:
             dw_id,
             content=content,
             content_sha256=sha,
-            base_sha256=workflow_sha256(
-                bases.pinned.document.model_dump(by_alias=True, exclude_none=True)
-            ),
+            base_sha256=base_sha256(bases.pinned),
             saved_by=context.principal_id,
             audit=self._event(context, dw_id, "dw.workflow.draft_saved", {"content_sha256": sha}),
             effect=effect,
@@ -166,7 +161,7 @@ class WorkflowDrafts:
         scope = WorkScope.of(context)
         draft = await self.store.get(scope, dw_id)
         if draft is None:
-            raise _draft_not_found()
+            raise draft_not_found()
         return draft, await self.store.simulation(scope, dw_id)
 
     async def simulate(
@@ -176,9 +171,8 @@ class WorkflowDrafts:
         scope = WorkScope.of(context)
         draft = await self.store.get(scope, dw_id)
         if draft is None:
-            raise _draft_not_found()
-        config = worker.configuration
-        bases = bases_of(self.workflows, config.workflow_key, config.workflow_version)
+            raise draft_not_found()
+        bases = await bases_of(self.workflows, worker)
         pinned = replace(
             bases.pinned,
             document=WorkflowDocument.model_validate(dict(draft.content)),
@@ -235,4 +229,4 @@ class WorkflowDrafts:
         )
 
 
-__all__ = ["Draft", "DraftStorePort", "Simulation", "WorkflowDrafts"]
+__all__ = ["Draft", "DraftStorePort", "Simulation", "WorkflowDrafts", "draft_not_found"]

@@ -349,6 +349,24 @@ def build_wflite_runtime(
     )
     graphs = GraphRegistry()
     workers = WorkerRegistry(graph_registry=graphs)
+    # The packs' graphs now; a tenant's published version on its run's first
+    # use, at its start or its timer's resume (wf-ai R6.5).
+    tenant_graphs = register_workflows(
+        packs,
+        build_wflite_ports(
+            session_factory=sessions,
+            gateway=stack.gateway,
+            executor=executor,
+            tools=tools,
+            queue=queue,
+            recommendations=load_handoff_copy(CONFIGS / "copy" / WFLITE_HANDOFF_COPY),
+            clock=clock,
+            ids=ids,
+        ),
+        graphs=graphs,
+        workers=workers,
+        session_factory=sessions,
+    )
     policy = load_worker_run_policy(CONFIGS / "policies" / WORKER_RUN_POLICY)
     runner = LangGraphWorkflowRunner(
         worker_registry=workers,
@@ -368,21 +386,7 @@ def build_wflite_runtime(
         telemetry=telemetry,
         spend_store=SqlSpendGuardStore(session_factory=sessions),
         run_waits=WorkQueueRunWaits(queue),
-    )
-    register_workflows(
-        packs,
-        build_wflite_ports(
-            session_factory=sessions,
-            gateway=stack.gateway,
-            executor=executor,
-            tools=tools,
-            queue=queue,
-            recommendations=load_handoff_copy(CONFIGS / "copy" / WFLITE_HANDOFF_COPY),
-            clock=clock,
-            ids=ids,
-        ),
-        graphs=graphs,
-        workers=workers,
+        run_graphs=tenant_graphs,
     )
     return WfLiteRuntime(
         runner=runner,

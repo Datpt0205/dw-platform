@@ -63,6 +63,7 @@ from dw_platform.domain.digital_worker import (
     DwState,
     EffectLevel,
     check_transition,
+    is_tenant_pin,
     refused,
 )
 
@@ -246,6 +247,10 @@ class DigitalWorkerService:
     ) -> DigitalWorker:
         await self.authz.require(context=context, action=DW_MANAGE, resource_type=_RESOURCE)
         configuration = command.configuration
+        if is_tenant_pin(configuration.workflow_version):
+            # A tenant's version is one DW's, reached only by its publication
+            # (wf-ai R6.5, R6.16); a new DW pins a pack's.
+            raise refused("a new DW pins a pack's workflow version", "workflow_invalid")
         unknown = sorted(t for t in set(configuration.allowed_tools) if not self.tools.has_tool(t))
         if unknown:
             raise refused("these tools are not on the platform", "tool_unknown", tools=unknown)

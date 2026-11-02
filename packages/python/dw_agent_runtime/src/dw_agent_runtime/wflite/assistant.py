@@ -34,7 +34,8 @@ from dw_agent_runtime.wflite.catalog import PinnedWorkflow
 from dw_agent_runtime.wflite.outline import StepChange, diff_steps
 from dw_agent_runtime.wflite.registry import NodeTypeSpec
 from dw_agent_runtime.wflite.validate import Problem, ToolSpecLookup, validate
-from dw_kernel.errors import DomainError, NotFoundError
+from dw_agent_runtime.wflite.versions import PinnedWorkflowsPort, not_shipped
+from dw_kernel.errors import DomainError
 from dw_platform.application.access_context import AccessContext
 from dw_platform.domain.digital_worker import DigitalWorker
 
@@ -88,10 +89,6 @@ class DwOwnerPort(Protocol):
         """The DW for its Business or Technical Owner: 404 for one the caller
         may not read, 403 `not_dw_owner` for anyone else (digital-worker R1.6)."""
         ...
-
-
-class PinnedWorkflowsPort(Protocol):
-    def workflow(self, key: str, version: str) -> PinnedWorkflow | None: ...
 
 
 # The trusted run context of the one call the turn makes, built from the
@@ -174,20 +171,15 @@ class Bases:
     pack: PinnedWorkflow
 
 
-def bases_of(workflows: PinnedWorkflowsPort, key: str, version: str) -> Bases:
-    """R1.3: from the DW's own pin; 404 `workflow_not_shipped` when no pack
-    ships it any more."""
-
-    def found(at: str) -> PinnedWorkflow:
-        pinned = workflows.workflow(key, at)
-        if pinned is None:
-            raise NotFoundError(
-                "the digital worker's pinned workflow is not shipped",
-                details={"reason_code": "workflow_not_shipped"},
-            )
-        return pinned
-
-    return Bases(pinned=found(version), pack=found(version.split("+", 1)[0]))
+async def bases_of(workflows: PinnedWorkflowsPort, worker: DigitalWorker) -> Bases:
+    """R1.3: from the DW's own pin, a pack's or its tenant's version (R6.16);
+    404 `workflow_not_shipped` when it is not there any more."""
+    config = worker.configuration
+    pinned = await workflows.pinned(worker)
+    pack = workflows.pack(config.workflow_key, config.workflow_version)
+    if pinned is None or pack is None:
+        raise not_shipped()
+    return Bases(pinned=pinned, pack=pack)
 
 
 def checked_proposal(
@@ -234,8 +226,7 @@ class WorkflowAssistant:
                 details={"reason_code": "assistant_input_too_long"},
             )
         worker = await self.workers.require_owner(context, dw_id)
-        config = worker.configuration
-        bases = bases_of(self.workflows, config.workflow_key, config.workflow_version)
+        bases = await bases_of(self.workflows, worker)
         base = base_raw(bases.pinned)
         request = ModelRequest(
             task="wf_ai.workflow_edit",

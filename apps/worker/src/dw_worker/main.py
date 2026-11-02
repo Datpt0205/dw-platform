@@ -32,12 +32,20 @@ from dw_agent_runtime.adapters.checkpoint_retention import SqlCheckpointRetentio
 from dw_agent_runtime.adapters.langgraph_runner import LangGraphWorkflowRunner
 from dw_agent_runtime.adapters.spend_guard import SqlSpendGuardRetention
 from dw_agent_runtime.adapters.tool_claim_retention import SqlToolClaimRetention
+from dw_agent_runtime.adapters.wf_drafts import SqlWorkflowDrafts
+from dw_agent_runtime.adapters.wflite_host import build_pinned_workflows
 from dw_agent_runtime.approval_flow import ApproveAndResumeService
 from dw_agent_runtime.channel_decisions import (
     ChannelApprovalDecisionService,
     ChannelDecisionCommand,
 )
 from dw_agent_runtime.wflite.catalog import load_shipped_packs
+from dw_agent_runtime.wflite.publish import (
+    DW_WORKFLOW_PREFIX,
+    DW_WORKFLOW_PUBLISH,
+    PUBLISH_ADMISSION,
+    PublishSettler,
+)
 from dw_connectors.adapters.zalo_bot import ZaloBotClient
 from dw_connectors.adapters.zalo_inbound import ZaloInbound
 from dw_connectors.adapters.zalo_link import link_help
@@ -123,6 +131,10 @@ from dw_worker.consumers.dw_timers import INTERVAL_SECONDS as DW_TIMERS_INTERVAL
 from dw_worker.consumers.dw_timers import build_dw_timers_consumer
 from dw_worker.consumers.dw_work import INTERVAL_SECONDS as DW_WORK_INTERVAL_SECONDS
 from dw_worker.consumers.dw_work import build_dw_work_consumer
+from dw_worker.consumers.dw_workflow_publish import (
+    DW_WORKFLOW_PUBLISH_DECIDED,
+    build_publish_handler,
+)
 from dw_worker.consumers.ingest import build_ingest_consumer
 from dw_worker.consumers.memory import memory_handlers
 from dw_worker.consumers.offboarding import INTERVAL_SECONDS as OFFBOARDING_INTERVAL_SECONDS
@@ -203,8 +215,13 @@ def build_channel_decision_command(
         id_generator=ids,
         # The same decider rules as the API's (digital-worker R5.3, R8.3). A
         # chat carries no edited proposal, so no editor: an edit is refused here.
-        type_admissions={DW_DECISION: DwDecisionAdmission(), DW_AUTONOMY_RAISE: RAISE_ADMISSION},
-        strict_approval_prefixes=frozenset({DW_AUTONOMY_PREFIX}),
+        type_admissions={
+            DW_DECISION: DwDecisionAdmission(),
+            DW_AUTONOMY_RAISE: RAISE_ADMISSION,
+            DW_WORKFLOW_PUBLISH: PUBLISH_ADMISSION,
+        },
+        strict_approval_prefixes=frozenset({DW_AUTONOMY_PREFIX, DW_WORKFLOW_PREFIX}),
+        run_graphs=runner.run_graphs,
         telemetry=runner.telemetry,
     )
     flow.strict_approval_prefixes |= strict_approval_prefixes
@@ -437,6 +454,15 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
         # A decided raise of a DW's earned level (digital-worker R8.6).
         handlers[DW_AUTONOMY_RAISE_DECIDED] = build_raise_handler(
             RaiseSettler(repo=SqlDwAutonomyRepository(sessions), clock=clock, id_generator=ids)
+        )
+        # A decided publication of a DW's workflow draft (wf-ai R6.5, R6.6).
+        handlers[DW_WORKFLOW_PUBLISH_DECIDED] = build_publish_handler(
+            PublishSettler(
+                repo=SqlWorkflowDrafts(sessions),
+                workflows=build_pinned_workflows(packs, sessions),
+                clock=clock,
+                id_generator=ids,
+            )
         )
         # Pinned by filename, like every other versioned artifact here: the
         # answer to a retention question has to name the version that gave it.

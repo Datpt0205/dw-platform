@@ -557,13 +557,14 @@ def compile_workflow(pinned: PinnedWorkflow, ports: WfPorts) -> StateGraph:  # t
 def worker_definition_of(pinned: PinnedWorkflow) -> WorkerDefinition:
     """The worker a pinned document runs as: `dw:<key>` at its version. A0,
     because every effect of a workflow goes through its decision class's gate
-    (`DecisionCall`), and anything that does not reaches nothing unasked."""
+    (`DecisionCall`), and anything that does not reaches nothing unasked.
+    A tenant's version runs at its `run_version` (wf-ai R6.5)."""
     version = pinned.document.version
     return WorkerDefinition(
         worker_id=worker_id_of(pinned.document.key),
-        worker_version=version,
+        worker_version=pinned.run_version,
         domain="dw",
-        graph_version=version,
+        graph_version=pinned.run_version,
         prompt_bundle_version=version,
         policy_version=version,
         memory_policy_version=version,

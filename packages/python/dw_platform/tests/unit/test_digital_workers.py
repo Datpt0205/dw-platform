@@ -288,6 +288,21 @@ async def test_an_unknown_tool_is_refused_before_anything_is_written() -> None:
     assert repo.workers == {}
 
 
+async def test_a_new_dw_pins_a_packs_version_never_a_tenants() -> None:
+    """wf-ai R6.16: `+t<n>` is one DW's published version, set only by its
+    publication; a DW created pinned to one would read another's."""
+    repo = FakeRepo()
+    with pytest.raises(DomainError) as refused:
+        await service(repo).create(
+            CREATOR_CTX,
+            CreateDigitalWorker(
+                configuration=configuration(workflow_version="1.0.0+t1"), people=people()
+            ),
+        )
+    assert reason(refused) == "workflow_invalid"
+    assert repo.workers == {}
+
+
 def test_a_dw_holds_at_least_one_kind_of_work() -> None:
     with pytest.raises(DomainError) as refused:
         configuration(work_kinds=())

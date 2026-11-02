@@ -26,7 +26,7 @@ from dw_agent_runtime.adapters.run_store import (
     resume_context,
 )
 from dw_agent_runtime.contracts import RunContext
-from dw_agent_runtime.ports import WorkflowRunnerPort
+from dw_agent_runtime.ports import RunGraphsPort, WorkflowRunnerPort
 from dw_kernel.errors import ConflictError, DomainError, NotFoundError
 from dw_kernel.ids import UserId
 from dw_kernel.ports import IdGenerator, UtcClock
@@ -109,6 +109,10 @@ class ApproveAndResumeService:
     # before anything is written.
     type_admissions: Mapping[str, DecisionAdmission] = field(default_factory=dict)
     proposal_editors: Mapping[str, ProposalEditor] = field(default_factory=dict)
+    # Registers a tenant's published workflow before `hosts` is asked, so a
+    # decision on its run is not refused by a process that has not run it yet
+    # (wf-ai R6.5). The runner's own, where both are wired.
+    run_graphs: RunGraphsPort | None = None
     telemetry: TelemetryPort = field(default_factory=NullTelemetry)
 
     def is_strict(self, approval_type: str) -> bool:
@@ -165,6 +169,13 @@ class ApproveAndResumeService:
                     "run_id": str(request.run_id),
                     "status": record.status.value,
                 },
+            )
+        if self.run_graphs is not None:
+            await self.run_graphs.ensure(
+                tenant_id=context.tenant_id,
+                workspace_id=context.workspace_id,
+                worker_id=record.worker_id,
+                worker_version=record.worker_version,
             )
         if not self.runner.hosts(
             worker_id=record.worker_id,

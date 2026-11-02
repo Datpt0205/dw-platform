@@ -7,6 +7,9 @@ no higher, and never reversible where the document says it is not. Any of
 these refuses the start with its code, and the lane fails the work item with
 it; nothing runs.
 
+The pinned workflow is a pack's or the DW's own published version (wf-ai
+R6.5, R6.16), which runs at its `run_version`.
+
 The run is the lane's request, acting as the DW's principal within its tools
 (`run_context_for`), pinned to the document's sha256 (`definition_hash`), and
 started with the claim's run id, so a claim returned and taken again starts
@@ -24,8 +27,8 @@ from dw_agent_runtime.digital_worker_context import run_context_for, tool_scopes
 from dw_agent_runtime.executor import DigitalWorkerBoundaryPort
 from dw_agent_runtime.ports import WorkflowRunnerPort
 from dw_agent_runtime.tools import ToolRegistry
-from dw_agent_runtime.wflite.catalog import PackCatalog
 from dw_agent_runtime.wflite.document import DecisionClassDecl, Variable
+from dw_agent_runtime.wflite.versions import PinnedWorkflowsPort
 from dw_kernel.autonomy import AUTONOMY_LEVELS, FAIL_CLOSED_LEVEL, is_autonomy_level
 from dw_kernel.errors import DomainError
 from dw_platform.application.work_queue import Claimed, DwLookupPort, WorkScope
@@ -111,7 +114,7 @@ def check_decision_classes(
 class WorkflowRunStarter:
     """Implements the lane's `DigitalWorkerRunStarter`."""
 
-    catalog: PackCatalog
+    workflows: PinnedWorkflowsPort
     workers: DwLookupPort
     boundary: DigitalWorkerBoundaryPort
     tenants: TenantRunFactsPort
@@ -125,7 +128,7 @@ class WorkflowRunStarter:
         if worker is None:
             raise _refused("dw_missing")
         config = worker.configuration
-        pinned = self.catalog.workflow(config.workflow_key, config.workflow_version)
+        pinned = await self.workflows.pinned(worker)
         if pinned is None:
             raise _refused(
                 "workflow_not_loaded",
@@ -149,7 +152,9 @@ class WorkflowRunStarter:
             trace_id=str(claimed.run_id),
             autonomy_ceiling=ceiling if is_autonomy_level(ceiling) else FAIL_CLOSED_LEVEL,  # type: ignore[arg-type]
             subject_ref=f"work_item:{item.id}",
-        ).model_copy(update={"definition_hash": pinned.sha256})
+        ).model_copy(
+            update={"definition_hash": pinned.sha256, "worker_version": pinned.run_version}
+        )
         await self.runner.start(
             run_context=run_context,
             input_payload={

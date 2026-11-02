@@ -16,6 +16,7 @@ import pytest
 from asgi_lifespan import LifespanManager
 
 from dw_agent_runtime.ports import ModelOutputInvalidError
+from dw_agent_runtime.testing.wflite import packs_only
 from dw_agent_runtime.wflite.assistant import WorkflowAssistant
 from dw_agent_runtime.wflite.catalog import ShippedToolSpecs, load_shipped_packs
 from dw_agent_runtime.wflite.outline import WorkflowOutlineReader
@@ -232,13 +233,13 @@ def make_container(
         ),
         dw_workflows=WorkflowOutlineReader(
             workers=service,
-            workflows=PACKS,
+            workflows=packs_only(PACKS),
             autonomy=autonomy or Autonomy({}),
             registry=build_node_registry(),
         ),
         workflow_assistant=WorkflowAssistant(
             workers=service,
-            workflows=PACKS,
+            workflows=packs_only(PACKS),
             gateway=cast(Any, gateway or AssistantGateway(FIXTURE)),
             registry=build_node_registry(),
             tools=ShippedToolSpecs.load(CONFIGS / "tools"),

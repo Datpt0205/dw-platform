@@ -17,11 +17,10 @@ from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 
-from dw_agent_runtime.wflite.catalog import PinnedWorkflow
 from dw_agent_runtime.wflite.document import Step, WorkflowDocument
 from dw_agent_runtime.wflite.registry import NodeTypeSpec
+from dw_agent_runtime.wflite.versions import PinnedWorkflowsPort, not_shipped
 from dw_kernel.autonomy import AutonomyLevel
-from dw_kernel.errors import NotFoundError
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.digital_workers import ClassAutonomy
 from dw_platform.domain.digital_worker import DigitalWorker
@@ -245,10 +244,6 @@ class DwReaderPort(Protocol):
         ...
 
 
-class PinnedWorkflowsPort(Protocol):
-    def workflow(self, key: str, version: str) -> PinnedWorkflow | None: ...
-
-
 class ClassAutonomyPort(Protocol):
     async def class_autonomy(
         self, *, tenant_id: uuid.UUID, workspace_id: uuid.UUID, dw_id: uuid.UUID, key: str
@@ -268,12 +263,10 @@ class WorkflowOutlineReader:
     async def read(self, context: AccessContext, dw_id: uuid.UUID) -> WorkflowOutline:
         worker = await self.workers.get(context, dw_id)
         config = worker.configuration
-        pinned = self.workflows.workflow(config.workflow_key, config.workflow_version)
+        # A pack's document or the DW's own published version (wf-ai R6.16).
+        pinned = await self.workflows.pinned(worker)
         if pinned is None:
-            raise NotFoundError(
-                "the digital worker's pinned workflow is not shipped",
-                details={"reason_code": "workflow_not_shipped"},
-            )
+            raise not_shipped()
         blocked = blocked_classes(pinned.document, self.registry, frozenset(config.allowed_tools))
         standings = []
         for cls in config.decision_classes:
@@ -295,7 +288,7 @@ class WorkflowOutlineReader:
         return WorkflowOutline(
             dw_id=worker.id,
             key=pinned.document.key,
-            version=pinned.document.version,
+            version=config.workflow_version,
             sha256=pinned.sha256,
             steps=outline(pinned.document, self.registry),
             decision_classes=tuple(standings),

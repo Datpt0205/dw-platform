@@ -264,7 +264,9 @@ def build(
         approval_policy=policy,
         run_waits=WorkQueueRunWaits(queue),
     )
-    register_workflows(
+    # A tenant's published version registers on its run's first use (wf-ai
+    # R6.5), as both roots wire it.
+    runner.run_graphs = register_workflows(
         catalog,
         build_wflite_ports(
             session_factory=sessions,
@@ -278,6 +280,7 @@ def build(
         ),
         graphs=graphs,
         workers=workers,
+        session_factory=sessions,
     )
     flow = ApproveAndResumeService(
         uow_factory=uow,
@@ -287,6 +290,7 @@ def build(
         id_generator=ids,
         type_admissions={DW_DECISION: DwDecisionAdmission()},
         proposal_editors={DW_DECISION: check_edited_proposal},
+        run_graphs=runner.run_graphs,
     )
     return Stack(
         runner=runner,
@@ -1107,3 +1111,147 @@ async def test_each_layer_of_the_timer_lane_takes_only_due_timers_of_operating_d
     await set_state(migrator, world, "operating")
     assert await named()
     assert [i.id for i in await stack.queue.claim_timers(scope, limit=5)] == [world.item]
+
+
+# ------------------------------------------------------- tenant versions --
+
+
+async def publish_version(migrator: AsyncEngine, world: World, steps_: list[Any]) -> str:
+    """What a settled publication writes (wf-ai R6.5): `1.0.0+t1` with these
+    steps, and the DW pinned to it. Its content hash, as `workflow_sha256`."""
+    from dw_agent_runtime.wflite.catalog import workflow_sha256
+
+    pinned = load_catalog().workflow("sample", "1.0.0")
+    assert pinned is not None
+    content = {**pinned.document.model_dump(by_alias=True, exclude_none=True), "steps": steps_}
+    sha = workflow_sha256(content)
+    async with migrator.begin() as conn:
+        await conn.execute(
+            sa.text(
+                "INSERT INTO platform.dw_workflow_versions (id, tenant_id, workspace_id, dw_id,"
+                " key, seq, version, content, content_sha256, base_sha256, author_ids,"
+                " approved_by, approval_id) VALUES (:i, :t, :w, :d, 'sample', 1, '1.0.0+t1',"
+                " CAST(:c AS jsonb), :s, :s, ARRAY[CAST(:o AS uuid)], :v, :a)"
+            ),
+            {
+                "i": uuid.uuid4(),
+                "t": world.tenant,
+                "w": world.workspace,
+                "d": world.dw,
+                "c": json.dumps(content),
+                "s": sha,
+                "o": world.owner,
+                "v": world.validator,
+                "a": uuid.uuid4(),
+            },
+        )
+        await conn.execute(
+            sa.text(
+                "UPDATE platform.digital_workers SET workflow_version = '1.0.0+t1' WHERE id = :d"
+            ),
+            {"d": world.dw},
+        )
+    return sha
+
+
+async def new_item(migrator: AsyncEngine, world: World) -> World:
+    item = uuid.uuid4()
+    async with migrator.begin() as conn:
+        await conn.execute(
+            sa.text(
+                "INSERT INTO platform.work_items (id, tenant_id, workspace_id, dw_id, kind,"
+                " source_key, payload, payload_hash, holder_kind, holder_id)"
+                " VALUES (:i, :t, :w, :d, 'lead.new', :k, CAST(:p AS jsonb), repeat('a', 64),"
+                " 'digital_worker', :d)"
+            ),
+            {
+                "i": item,
+                "t": world.tenant,
+                "w": world.workspace,
+                "d": world.dw,
+                "k": f"k-{item}",
+                "p": json.dumps(LEAD),
+            },
+        )
+    return World(*astuple(world)[:-1], item)
+
+
+async def test_new_work_runs_the_published_version_and_a_waiting_run_keeps_its_own(
+    engines: tuple[AsyncEngine, AsyncEngine],
+) -> None:
+    """wf-ai R6.5: a run waiting when the pin moved resumes on the pack's
+    graph and sha; new work runs the tenant version at its run version; a
+    process that never ran it (the API, deciding) resumes it too."""
+    migrator, app = engines
+    world = await seed(migrator)
+    effects = Effects()
+    stack = build(app, gateway=Gateway(), effects=effects)
+    pack = load_catalog().workflow("sample", "1.0.0")
+    assert pack is not None
+    old_run, old_approval = await paused_on_approval(migrator, stack, world)
+
+    # The published version drops the last step (`route`).
+    steps_ = pack.document.model_dump(by_alias=True, exclude_none=True)["steps"][:-1]
+    sha = await publish_version(migrator, world, steps_)
+    second = await new_item(migrator, world)
+    new_run, new_approval = await paused_on_approval(migrator, stack, second)
+    async with migrator.connect() as conn:
+        versions = dict(
+            (
+                await conn.execute(
+                    sa.text(
+                        "SELECT id, worker_version FROM platform.worker_runs WHERE id IN (:a, :b)"
+                    ),
+                    {"a": old_run, "b": new_run},
+                )
+            ).all()
+        )
+    assert versions == {old_run: "1.0.0", new_run: f"1.0.0+t1.{sha}"}
+    assert (await run_row(migrator, new_run)).definition_hash == sha
+    assert (await run_row(migrator, old_run)).definition_hash == pack.sha256
+
+    # The waiting run resumes on what it began with: the pack's `route`.
+    await decide(stack, world, old_approval)
+    await make_due(migrator, world)
+    await stack.timers()
+    assert ("route", "done") in steps(await trail_of(stack, world, old_run))
+
+    # Another process decides the tenant version's run: it registers the
+    # graph from storage, under the run's tenant, and resumes it.
+    other = build(app, gateway=Gateway(), effects=effects)
+    assert not other.runner.hosts(
+        worker_id="dw:sample", worker_version=f"1.0.0+t1.{sha}", graph_version=f"1.0.0+t1.{sha}"
+    )
+    await decide(other, second, new_approval)
+    await make_due(migrator, second)
+    await other.timers()
+    item = await item_row(migrator, second)
+    assert item.status == "done", item
+    assert "route" not in {s for s, _ in steps(await trail_of(other, second, new_run))}
+
+
+async def test_a_pin_to_a_version_the_dw_does_not_have_fails_its_work(
+    engines: tuple[AsyncEngine, AsyncEngine],
+) -> None:
+    """wf-ai R6.16: another DW's `+t1` is not this DW's; nothing runs."""
+    migrator, app = engines
+    owner_world = await seed(migrator)
+    pack = load_catalog().workflow("sample", "1.0.0")
+    assert pack is not None
+    await publish_version(
+        migrator, owner_world, pack.document.model_dump(by_alias=True, exclude_none=True)["steps"]
+    )
+    world = await seed(migrator)
+    async with migrator.begin() as conn:
+        await conn.execute(
+            sa.text(
+                "UPDATE platform.digital_workers SET workflow_version = '1.0.0+t1' WHERE id = :d"
+            ),
+            {"d": world.dw},
+        )
+    effects = Effects()
+    stack = build(app, gateway=Gateway(), effects=effects)
+    await stack.work()
+    item = await item_row(migrator, world)
+    assert item.status == "failed" and "workflow_not_loaded" in str(item.error), item
+    assert effects.sent == []

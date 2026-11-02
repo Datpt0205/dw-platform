@@ -85,6 +85,14 @@ DECLARED: dict[tuple[str, str], object] = {
     ): digital_workers_routes._owner_of_path,
     (
         "POST",
+        "/api/v1/digital-workers/{dw_id}/workflow-draft/submit",
+    ): digital_workers_routes._owner_of_path,
+    (
+        "POST",
+        "/api/v1/digital-workers/{dw_id}/workflow-draft/withdraw",
+    ): digital_workers_routes._owner_of_path,
+    (
+        "POST",
         "/api/v1/work-items/{item_id}/complete",
     ): work_items_routes._holder_of_path,
     (

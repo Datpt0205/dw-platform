@@ -1361,3 +1361,31 @@ async def test_workflow_drafts_are_the_applications_only(db_urls: DatabaseUrls) 
                 }, table
     finally:
         await migrator.dispose()
+
+
+async def test_published_workflow_versions_are_append_only(db_urls: DatabaseUrls) -> None:
+    """Migration 1fb796131647 (wf-ai R6.5, R6.13): `dw_app` reads and inserts
+    a tenant's published versions and deletes them only for offboarding; it
+    updates none, `dw_agent_ro` reads none, nobody truncates."""
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            held = {
+                (row.rolname, row.verb)
+                for row in await conn.execute(
+                    sa.text(
+                        """
+                        SELECT r.rolname, v.verb
+                        FROM pg_roles r
+                        CROSS JOIN unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE',
+                                                'TRUNCATE']) AS v(verb)
+                        WHERE r.rolname IN ('dw_app', 'dw_agent_ro')
+                          AND has_table_privilege(r.rolname, 'platform.dw_workflow_versions',
+                                                  v.verb)
+                        """
+                    )
+                )
+            }
+    finally:
+        await migrator.dispose()
+    assert held == {("dw_app", "SELECT"), ("dw_app", "INSERT"), ("dw_app", "DELETE")}

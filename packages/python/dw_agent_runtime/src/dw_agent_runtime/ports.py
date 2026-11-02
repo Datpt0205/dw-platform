@@ -157,6 +157,22 @@ class WorkflowRunnerPort(Protocol):
     ) -> None: ...
 
 
+class RunGraphsPort(Protocol):
+    """What makes a run's graph resolvable here before the runner or the
+    approval flow asks `hosts`: a tenant's published workflow is registered on
+    first use (wf-ai R6.5, `dw_agent_runtime.wflite.versions`). Leaves any
+    other version as it is."""
+
+    async def ensure(
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        worker_id: str,
+        worker_version: str,
+    ) -> None: ...
+
+
 class RunWaitsPort(Protocol):
     """Where a Digital Worker's run tells its work item what it is doing
     (wf-lite R6.3, R6.5, R6.7): waiting for a person or a timer, running again,

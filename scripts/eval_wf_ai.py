@@ -118,7 +118,10 @@ async def run() -> int:
             base_pin = replace(pinned, document=document)
 
         class Pins:
-            def workflow(self, key: str, version: str, pin=base_pin):  # type: ignore[no-untyped-def]
+            async def pinned(self, worker: DigitalWorker, pin=base_pin):  # type: ignore[no-untyped-def]
+                return pin
+
+            def pack(self, key: str, version: str, pin=pinned):  # type: ignore[no-untyped-def]
                 return pin if (key, version) == ("lead_care", "1.0.0") else None
 
         assistant = WorkflowAssistant(

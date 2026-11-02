@@ -12,7 +12,10 @@ nodes' ports. One builder, the way `model_stack` is one for the gateway:
   every DW decision call (`approval_missing`), so a root that forgot them
   would fail closed, but every DW run in it would hand off;
 - `build_wflite_ports` and `register_workflows`: each document of the catalog
-  as `dw:<key>` at its version, in `GraphRegistry` and `WorkerRegistry`;
+  as `dw:<key>` at its version, in `GraphRegistry` and `WorkerRegistry`, and
+  the tenant versions' graphs registered on first use (`TenantWorkflowGraphs`,
+  wf-ai R6.5), which the runner and the approval flow both ask;
+- `build_pinned_workflows`: a DW's pin, a pack's or its tenant's version;
 - `build_run_starter`: the `dw_work` lane's starter;
 - `RunTrailReader`: a work item's `trail`, from its run (R6.13).
 """
@@ -33,6 +36,7 @@ from dw_agent_runtime.adapters.checkpoint import SqlAlchemyCheckpointSaver
 from dw_agent_runtime.adapters.run_store import SqlWorkerRunStore
 from dw_agent_runtime.adapters.tool_claims import SqlToolClaims
 from dw_agent_runtime.adapters.tool_execution_store import SqlToolExecutionStore
+from dw_agent_runtime.adapters.wf_drafts import SqlTenantWorkflowVersions
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.executor import SendAdmissionPort, ToolExecutor
 from dw_agent_runtime.ports import ModelGateway, WorkflowRunnerPort
@@ -41,6 +45,7 @@ from dw_agent_runtime.tools import ToolRegistry
 from dw_agent_runtime.wflite.catalog import PackCatalog, PinnedWorkflow
 from dw_agent_runtime.wflite.compile import WfPorts, compile_workflow, worker_definition_of
 from dw_agent_runtime.wflite.starter import WorkflowRunStarter
+from dw_agent_runtime.wflite.versions import PinnedWorkflows, TenantWorkflowGraphs
 from dw_kernel.errors import ConfigError, NotFoundError
 from dw_kernel.ports import IdGenerator, UtcClock
 from dw_observability.telemetry import TelemetryPort
@@ -186,12 +191,25 @@ def build_wflite_ports(
     )
 
 
+def build_pinned_workflows(
+    catalog: PackCatalog, session_factory: async_sessionmaker[AsyncSession]
+) -> PinnedWorkflows:
+    return PinnedWorkflows(catalog=catalog, versions=SqlTenantWorkflowVersions(session_factory))
+
+
 def register_workflows(
-    catalog: PackCatalog, ports: WfPorts, *, graphs: GraphRegistry, workers: WorkerRegistry
-) -> None:
+    catalog: PackCatalog,
+    ports: WfPorts,
+    *,
+    graphs: GraphRegistry,
+    workers: WorkerRegistry,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> TenantWorkflowGraphs:
     """R6.1: every pinned document as `dw:<key>` at its version. The graph is
     compiled on its first run, so the tools a context registers after this
-    call are the ones its approvals' proposal schemas are read from."""
+    call are the ones its approvals' proposal schemas are read from. Returns
+    what registers a tenant version's graph on its first use, over the same
+    ports and registries, for the runner and the approval flow."""
     for pinned in catalog.all():
         definition = worker_definition_of(pinned)
         graphs.register(definition.worker_id, definition.graph_version, _factory(pinned, ports))
@@ -200,6 +218,13 @@ def register_workflows(
                 definition=definition, checksum=pinned.sha256, source_path=str(pinned.path)
             )
         )
+    return TenantWorkflowGraphs(
+        catalog=catalog,
+        versions=SqlTenantWorkflowVersions(session_factory),
+        ports=ports,
+        graphs=graphs,
+        workers=workers,
+    )
 
 
 def _factory(pinned: PinnedWorkflow, ports: WfPorts) -> Any:
@@ -214,7 +239,7 @@ def build_run_starter(
     runner: WorkflowRunnerPort,
 ) -> WorkflowRunStarter:
     return WorkflowRunStarter(
-        catalog=catalog,
+        workflows=build_pinned_workflows(catalog, session_factory),
         workers=SqlDigitalWorkerRepository(session_factory),
         boundary=SqlDwBoundary(session_factory),
         tenants=SqlTenantRunFacts(session_factory),

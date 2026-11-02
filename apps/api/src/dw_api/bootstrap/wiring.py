@@ -40,7 +40,7 @@ from dw_agent_runtime.adapters.run_events import RunStateListener
 from dw_agent_runtime.adapters.run_store import SqlWorkerRunStore
 from dw_agent_runtime.adapters.spend_guard import SqlSpendGuardStore
 from dw_agent_runtime.adapters.wf_drafts import SqlWorkflowDrafts
-from dw_agent_runtime.adapters.wflite_host import load_handoff_copy
+from dw_agent_runtime.adapters.wflite_host import build_pinned_workflows, load_handoff_copy
 from dw_agent_runtime.allowance import DailyAllowance
 from dw_agent_runtime.approval_codes import ApprovalViewService
 from dw_agent_runtime.model.run_policy import load_worker_run_policy
@@ -48,6 +48,7 @@ from dw_agent_runtime.wflite.assistant import WorkflowAssistant
 from dw_agent_runtime.wflite.catalog import ShippedToolSpecs, load_shipped_packs
 from dw_agent_runtime.wflite.drafts import WorkflowDrafts
 from dw_agent_runtime.wflite.outline import WorkflowOutlineReader
+from dw_agent_runtime.wflite.publish import WorkflowPublishing
 from dw_agent_runtime.wflite.registry import build_node_registry
 from dw_api.bootstrap.container import ApiContainer
 from dw_api.bootstrap.identity import build_token_verifier
@@ -415,10 +416,13 @@ def _build_container(settings: ApiSettings | None) -> ApiContainer:
         clock=clock,
         id_generator=ids,
     )
+    # A DW's pin: a pack's document, or its tenant's own published version
+    # (wf-ai R6.16), for the page, the assistant and the draft alike.
+    pinned_workflows = build_pinned_workflows(packs, session_factory)
     # The levels the gate reads, read the same way for the page (R9.2).
     container.dw_workflows = WorkflowOutlineReader(
         workers=digital_workers,
-        workflows=packs,
+        workflows=pinned_workflows,
         autonomy=DecisionAutonomy(SqlDecisionLevels(session_factory)),
         registry=build_node_registry(),
     )
@@ -427,7 +431,7 @@ def _build_container(settings: ApiSettings | None) -> ApiContainer:
     specs = ShippedToolSpecs.load(CONFIGS / "tools")
     container.workflow_assistant = WorkflowAssistant(
         workers=digital_workers,
-        workflows=packs,
+        workflows=pinned_workflows,
         gateway=wiring.model_stack.one_call(
             DailyAllowance(
                 allowance=entitlement,
@@ -442,13 +446,21 @@ def _build_container(settings: ApiSettings | None) -> ApiContainer:
     )
     container.workflow_drafts = WorkflowDrafts(
         workers=digital_workers,
-        workflows=packs,
+        workflows=pinned_workflows,
         store=SqlWorkflowDrafts(session_factory),
         registry=build_node_registry(),
         specs=specs,
         tools=wiring.tool_registry,
         run_context=container.run_context_for,
         recommendations=load_handoff_copy(WFLITE_HANDOFF_COPY),
+        clock=clock,
+        id_generator=ids,
+    )
+    # Submitting a draft for its second person, and withdrawing it (wf-ai
+    # R6.3, R6.4, R6.10); the worker settles the decision (R6.5).
+    container.workflow_publishing = WorkflowPublishing(
+        workers=digital_workers,
+        store=SqlWorkflowDrafts(session_factory),
         clock=clock,
         id_generator=ids,
     )

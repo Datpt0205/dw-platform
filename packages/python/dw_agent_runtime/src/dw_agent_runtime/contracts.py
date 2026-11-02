@@ -14,6 +14,11 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from dw_kernel.autonomy import FAIL_CLOSED_LEVEL, AutonomyLevel
 
 _SEMVER_PATTERN = r"^\d+\.\d+\.\d+$"
+# What a run is keyed on: a semver, or one with build metadata. A tenant's
+# published workflow runs as `<pack semver>+t<n>.<content sha256>`, so two
+# tenants' `+t1` never share a graph unless their documents are the same
+# (wf-ai R6.5, `dw_agent_runtime.wflite.versions`).
+_RUN_VERSION_PATTERN = r"^\d+\.\d+\.\d+(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$"
 _SLUG_PATTERN = r"^[a-z][a-z0-9_]*$"
 
 SideEffectLevel = Literal["none", "internal", "external", "critical"]
@@ -53,9 +58,9 @@ class WorkerDefinition(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     worker_id: str
-    worker_version: str = Field(pattern=_SEMVER_PATTERN)
+    worker_version: str = Field(pattern=_RUN_VERSION_PATTERN)
     domain: str = Field(pattern=_SLUG_PATTERN)
-    graph_version: str = Field(pattern=_SEMVER_PATTERN)
+    graph_version: str = Field(pattern=_RUN_VERSION_PATTERN)
     prompt_bundle_version: str = Field(pattern=_SEMVER_PATTERN)
     # None only for a worker that calls no tool at all (a plain graph, not an
     # agent loop) — never a placeholder for one that does. `platform.worker_
@@ -117,7 +122,7 @@ class RunContext(BaseModel):
     # its run row (wf-lite R6.14, ADR-0109); None for a run of a code graph.
     definition_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     worker_id: str
-    worker_version: str = Field(pattern=_SEMVER_PATTERN)
+    worker_version: str = Field(pattern=_RUN_VERSION_PATTERN)
     channel: str
     plan_id: str
     roles: frozenset[str]

@@ -339,6 +339,7 @@ def process(app: AsyncEngine) -> Process:
         ),
         graphs=graphs,
         workers=workers,
+        session_factory=sessions,
     )
     return Process(
         intake=LeadIntake(

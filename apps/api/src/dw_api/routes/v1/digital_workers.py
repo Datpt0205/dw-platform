@@ -39,6 +39,7 @@ from dw_agent_runtime.wflite.outline import (
     WorkflowOutline,
     WorkflowOutlineReader,
 )
+from dw_agent_runtime.wflite.publish import WorkflowPublishing
 from dw_api.bootstrap import ApiContainer
 from dw_api.dependencies.auth import RequireAccessContext
 from dw_api.dependencies.idempotency import CheckInput, IdempotentOperation, idempotent
@@ -106,6 +107,12 @@ def _drafts(container: ApiContainer) -> WorkflowDrafts:
     return container.workflow_drafts
 
 
+def _publishing(container: ApiContainer) -> WorkflowPublishing:
+    if container.workflow_publishing is None:
+        raise InfrastructureError("workflow publishing is not configured")
+    return container.workflow_publishing
+
+
 def _autonomy(container: ApiContainer) -> DwAutonomyService:
     if container.dw_autonomy is None:
         raise InfrastructureError("digital workers are not configured")
@@ -140,6 +147,14 @@ DraftIdempotency = Annotated[
 SimulateIdempotency = Annotated[
     IdempotentOperation,
     idempotent(_owner_of_path, operation="POST /digital-workers/{dw_id}/workflow-draft/simulate"),
+]
+SubmitIdempotency = Annotated[
+    IdempotentOperation,
+    idempotent(_owner_of_path, operation="POST /digital-workers/{dw_id}/workflow-draft/submit"),
+]
+WithdrawIdempotency = Annotated[
+    IdempotentOperation,
+    idempotent(_owner_of_path, operation="POST /digital-workers/{dw_id}/workflow-draft/withdraw"),
 ]
 AutonomyIdempotency = Annotated[
     IdempotentOperation,
@@ -623,8 +638,12 @@ class DraftView(BaseModel):
     saved_by: UUID
     author_ids: list[UUID]
     state: Literal["draft", "submitted"]
+    # Why a decided draft came back: its DW's pin moved, or its content
+    # changed, after it was submitted (R6.6); None otherwise.
     reason: str | None
     updated_at: datetime
+    # The `dw.workflow.publish` approval a submitted draft waits on (R6.4).
+    approval_id: UUID | None
     # The DW's last simulation, whichever content it ran on: a submission
     # needs one that passed on this `content_sha256` (R6.3).
     simulation: SimulationView | None
@@ -653,6 +672,7 @@ def _draft_view(draft: Draft, simulation: Simulation | None) -> DraftView:
         state=draft.state,
         reason=draft.reason,
         updated_at=draft.updated_at,
+        approval_id=draft.approval_id,
         simulation=None if simulation is None else _simulation_view(simulation),
     )
 
@@ -716,6 +736,53 @@ async def simulate_workflow_draft(
         return _simulation_view(simulation)
 
     view = await idempotency.once(status=200, run=run, reread=reread)
+    return await idempotency.record(view)
+
+
+@router.post("/{dw_id}/workflow-draft/submit", response_model=DraftView)
+async def submit_workflow_draft(
+    dw_id: UUID,
+    context: RequireAccessContext,
+    container: RequireContainer,
+    idempotency: SubmitIdempotency,
+) -> DraftView:
+    """wf-ai R6.3, R6.4, R6.8: opens the `dw.workflow.publish` approval for a
+    second person; 409 `simulation_required` without a passed simulation of
+    this content, 409 `draft_submitted` when it already waits."""
+    publishing = _publishing(container)
+
+    async def run(effect: PendingEffect | None) -> DraftView:
+        await publishing.submit(context, dw_id, effect=effect)
+        return await _draft_read(container, context, dw_id)
+
+    view = await idempotency.once(
+        status=200,
+        run=run,
+        reread=lambda found: _draft_read(container, context, UUID(found)),
+    )
+    return await idempotency.record(view)
+
+
+@router.post("/{dw_id}/workflow-draft/withdraw", response_model=DraftView)
+async def withdraw_workflow_draft(
+    dw_id: UUID,
+    context: RequireAccessContext,
+    container: RequireContainer,
+    idempotency: WithdrawIdempotency,
+) -> DraftView:
+    """wf-ai R6.10: cancels the pending approval and returns the draft;
+    409 `draft_not_submitted`, or `approval_decided` once it was decided."""
+    publishing = _publishing(container)
+
+    async def run(effect: PendingEffect | None) -> DraftView:
+        await publishing.withdraw(context, dw_id, effect=effect)
+        return await _draft_read(container, context, dw_id)
+
+    view = await idempotency.once(
+        status=200,
+        run=run,
+        reread=lambda found: _draft_read(container, context, UUID(found)),
+    )
     return await idempotency.record(view)
 
 

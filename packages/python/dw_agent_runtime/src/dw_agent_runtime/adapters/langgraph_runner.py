@@ -38,7 +38,7 @@ from dw_agent_runtime.autonomy import AutonomyApprovalPolicy, lower_autonomy
 from dw_agent_runtime.context import access_context_from_run
 from dw_agent_runtime.contracts import RunContext, WorkerDefinition
 from dw_agent_runtime.model.budget import RunBudgetLedger
-from dw_agent_runtime.ports import RunAllowancePort, RunWaitsPort
+from dw_agent_runtime.ports import RunAllowancePort, RunGraphsPort, RunWaitsPort
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_kernel.errors import (
     ConflictError,
@@ -129,6 +129,9 @@ class LangGraphWorkflowRunner:
     # A Digital Worker's work item follows its run: waiting, resumed, finished
     # (wf-lite R6.3, R6.5, R6.7). None keeps every wiring that predates it.
     run_waits: RunWaitsPort | None = None
+    # A tenant's published workflow is registered on its run's first use
+    # (wf-ai R6.5). None keeps every wiring that predates it.
+    run_graphs: RunGraphsPort | None = None
     _compiled: dict[tuple[str, str], Any] = field(default_factory=dict)
     # Holds a reference to every in-flight streamed run; without one the task is
     # garbage-collectable mid-run.
@@ -203,6 +206,17 @@ class LangGraphWorkflowRunner:
         except NotFoundError:
             return False
         return True
+
+    async def _ensure_graph(
+        self, tenant_id: uuid.UUID, workspace_id: uuid.UUID, worker_id: str, worker_version: str
+    ) -> None:
+        if self.run_graphs is not None:
+            await self.run_graphs.ensure(
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                worker_id=worker_id,
+                worker_version=worker_version,
+            )
 
     def _graph(self, worker_id: str, graph_version: str) -> Any:
         key = (worker_id, graph_version)
@@ -296,6 +310,12 @@ class LangGraphWorkflowRunner:
         run_context: RunContext,
         input_payload: dict[str, Any],
     ) -> uuid.UUID:
+        await self._ensure_graph(
+            run_context.tenant_id,
+            run_context.workspace_id,
+            run_context.worker_id,
+            run_context.worker_version,
+        )
         worker = self.worker_registry.resolve(run_context.worker_id, run_context.worker_version)
         run_context = self._with_autonomy(run_context, worker.definition)
         await self._require_allowance(run_context)
@@ -539,6 +559,9 @@ class LangGraphWorkflowRunner:
                 "run is not waiting",
                 details={"run_id": str(run_id), "status": record.status.value},
             )
+        await self._ensure_graph(
+            run_context.tenant_id, run_context.workspace_id, record.worker_id, record.worker_version
+        )
         if not self.hosts(
             worker_id=record.worker_id,
             worker_version=record.worker_version,

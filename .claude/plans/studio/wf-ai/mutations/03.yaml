@@ -1,0 +1,81 @@
+# Mutation check of wf-ai ticket 03: scripts/mutate.py runs this file.
+# One mutation per control (WAI10, WAI11, WAI12, WAI14, WAI15, WAI16, WAI17)
+# and per guard the ticket adds (the lock while submitted, the withdrawal of a
+# pending approval only, a DW's own version, the graph's content check, a new
+# DW pinned to a pack).
+mutations:
+  - name: WAI10 a simulation of other content lets the draft through
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/publish.py
+    old: "                or simulation.content_sha256 != draft.content_sha256"
+    new: "                or False"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_publish.py::test_a_draft_without_a_passed_simulation_of_its_content_is_not_submitted
+      - apps/api/tests/integration/test_wf_ai_publish.py::test_a_draft_changed_after_its_simulation_is_not_submitted
+  - name: WAI11 WAI16 an author or the submitter decides
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/publish.py
+    old: "        if str(context.principal_id) in {str(a) for a in authors} | {"
+    new: "        if False and str(context.principal_id) in {str(a) for a in authors} | {"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_publish.py::test_nobody_who_wrote_or_submitted_it_decides
+      - apps/api/tests/integration/test_wf_ai_publish.py::test_the_one_who_saved_it_does_not_decide_and_the_validator_does
+      - apps/api/tests/integration/test_wf_ai_publish.py::test_an_earlier_author_does_not_decide_either
+  - name: WAI12 a moved pin still publishes
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/publish.py
+    old: "        if self._base_now(facts) != facts.base_sha256:"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_publish.py::test_a_moved_pin_returns_the_draft_and_publishes_nothing
+      - apps/api/tests/integration/test_wf_ai_publish.py::test_a_pin_moved_after_submission_publishes_nothing
+  - name: WAI14 rewritten content still publishes
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/publish.py
+    old: "        elif workflow_sha256(draft.content) != facts.content_sha256:"
+    new: "        elif False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_publish.py::test_content_rewritten_after_submission_publishes_nothing
+      - apps/api/tests/integration/test_wf_ai_publish.py::test_content_rewritten_after_submission_publishes_nothing
+  - name: WAI14 R6.8 a submitted draft is saved over
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/wf_drafts.py
+    old: '            if current is not None and current.state == "submitted":'
+    new: "            if False:"
+    tests:
+      - apps/api/tests/integration/test_wf_ai_publish.py::test_a_submitted_draft_is_locked_until_it_is_decided
+  - name: WAI15 the version table reads across tenants
+    file: db/migrations/versions/1fb796131647_dw_workflow_versions.py
+    old: |2
+              "CREATE POLICY tenant_isolation_dw_workflow_versions ON platform.dw_workflow_versions"
+              f" USING {_NARROWED} WITH CHECK {_NARROWED}"
+    new: |2
+              "CREATE POLICY tenant_isolation_dw_workflow_versions ON platform.dw_workflow_versions"
+              " USING (true) WITH CHECK (true)"
+    tests:
+      - apps/api/tests/integration/test_wf_ai_publish.py::test_another_dws_or_another_tenants_version_is_not_shipped
+  - name: WAI17 a redelivered decision publishes again
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/publish.py
+    old: "        if facts.already_published or not waiting or draft is None:"
+    new: "        if not waiting or draft is None:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_publish.py::test_a_decision_settled_before_changes_nothing
+  - name: R6.16 another DW's version is this DW's
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/wf_drafts.py
+    old: "                    sa.select(_V).where(_V.c.dw_id == dw_id, _V.c.version == version)"
+    new: "                    sa.select(_V).where(_V.c.version == version)"
+    tests:
+      - apps/api/tests/integration/test_wf_ai_publish.py::test_another_dws_or_another_tenants_version_is_not_shipped
+  - name: R6.10 a decided approval is cancelled by a withdrawal
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/wf_drafts.py
+    old: '                        r.c.status == "pending",'
+    new: "                        True,"
+    tests:
+      - apps/api/tests/integration/test_wf_ai_publish.py::test_a_decided_approval_is_not_withdrawn
+  - name: R6.5 a version whose content no longer hashes to its name is hosted
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/versions.py
+    old: "        if found is None or workflow_sha256(found.content) != sha:"
+    new: "        if found is None:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_publish.py::test_a_version_whose_content_no_longer_hashes_to_its_name_is_not_hosted
+  - name: R6.16 a new DW pins a tenant version
+    file: packages/python/dw_platform/src/dw_platform/application/digital_workers.py
+    old: "        if is_tenant_pin(configuration.workflow_version):"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_digital_workers.py::test_a_new_dw_pins_a_packs_version_never_a_tenants

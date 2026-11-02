@@ -21,6 +21,7 @@ from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.model.prompts import PromptRegistry
 from dw_agent_runtime.ports import ModelOutputInvalidError, ModelRequest
 from dw_agent_runtime.testing.wf_ai import frozen
+from dw_agent_runtime.testing.wflite import packs_only
 from dw_agent_runtime.wflite.assistant import (
     AssistantTurn,
     HistoryTurn,
@@ -140,7 +141,7 @@ def assistant(answer: Any, dw: DigitalWorker | None = None) -> tuple[WorkflowAss
     return (
         WorkflowAssistant(
             workers=Owners(dw or worker()),
-            workflows=PACKS,
+            workflows=packs_only(PACKS),
             gateway=gateway,
             registry=REGISTRY,
             tools=ShippedToolSpecs.load(CONFIGS / "tools"),

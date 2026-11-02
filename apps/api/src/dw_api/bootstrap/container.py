@@ -44,6 +44,7 @@ from dw_agent_runtime.toolsets import ToolsetRegistry
 from dw_agent_runtime.wflite.assistant import WorkflowAssistant
 from dw_agent_runtime.wflite.drafts import WorkflowDrafts
 from dw_agent_runtime.wflite.outline import WorkflowOutlineReader
+from dw_agent_runtime.wflite.publish import WorkflowPublishing
 from dw_api.health import HealthService
 from dw_api.settings import ApiSettings
 from dw_connectors.adapters.zalo_link import ZaloLinking
@@ -186,6 +187,8 @@ class ApiContainer:
     workflow_assistant: WorkflowAssistant | None = None
     # A DW's workflow draft and its dry run (wf-ai R6.1, R6.2); with the runtime.
     workflow_drafts: WorkflowDrafts | None = None
+    # Submitting and withdrawing a draft's publication (wf-ai R6.3-R6.10).
+    workflow_publishing: WorkflowPublishing | None = None
     # The queue people and DWs share (digital-worker R3, R4); Postgres only.
     work_queue: WorkQueue | None = None
     # A work item's `trail`, read from its run (wf-lite R6.13); with the runtime.
