@@ -549,6 +549,7 @@ Each resolved ticket adds one line here: the commit hash and one sentence.
 - digital-worker/04: bốn màn hình antd (danh sách DW với số việc đang mở, hồ sơ với mức "Tự động/Hỏi/Chặn" từ cổng, scorecard 30 ngày và cây quy trình đã ghim, hàng đợi chung lọc trên URL với Drawer gói bàn giao và trail, thẻ `dw.decision` có "Sửa rồi duyệt" và "Từ chối" kèm lý do), hai route đọc mới, 403/404 không hiện dữ liệu; xem trên app thật sáng/tối, desktop/768px (`a205deb`, `f22e452`, `2e09dc8`).
 - `fea6cf2` wf-ai/01: trợ lý sửa quy trình mẫu của DW: một lượt trả câu hỏi lại hay đề xuất cây bước, chỉ đổi `steps`, công cụ và prompt từ bản gói, qua bộ kiểm của wf-lite và luật sàn HITL, diff theo id bước, chỉ chủ DW nhờ được, gọi model qua `one_call` của runtime; eval chèn lệnh chờ khóa model.
 - `12e74bd` wf-ai/02: bản nháp quy trình của DW, server dựng lại từ ghim và kiểm lại, mỗi DW một bản nháp và một kết quả mô phỏng dưới RLS workspace; mô phỏng chạy bộ biên dịch thật với công cụ và model trả mẫu theo schema, không gửi gì, không gọi model; `mutate.py` sửa lỗi không đột biến tệp CRLF (`d46e5c0`, `12e74bd`).
+- `9800633` wf-ai/03: gửi bản nháp đã mô phỏng cho người thứ hai (Validator hay Technical Owner, không tác giả, không người gửi), worker quyết dưới khóa dòng DW: phát hành `+t<n>` chỉ thêm và chuyển ghim, hay trả bản nháp `base_changed`, `content_changed`, bị từ chối; phiên bản tenant chạy dưới `<semver>+t<n>.<sha>`, graph đăng ký lần đầu dùng dưới tenant của lượt chạy.
 
 ## Chờ Đạt (phiên không người trực)
 
