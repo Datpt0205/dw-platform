@@ -40,4 +40,4 @@ def admin_url(urls: DatabaseUrls) -> str:
     role, grant membership, grant on another's object), each inside a
     transaction that rolls back: role DDL is transactional in Postgres.
     """
-    return urls.admin.rsplit("/", 1)[0] + f"/{TEST_DB}"
+    return urls.admin.rsplit("/", 1)[0] + "/" + urls.app.rsplit("/", 1)[1]

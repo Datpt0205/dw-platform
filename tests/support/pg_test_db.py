@@ -59,7 +59,21 @@ def postgres_container() -> str:
     return f"{load_env().get('COMPOSE_PROJECT_NAME', 'dw')}-postgres-1"
 
 
+def test_db_name(test_db: str) -> str:
+    """A suite's database name, with `DW_TEST_DB_SUFFIX` appended when set.
+
+    Two build lanes running the same suite at once each set their own suffix,
+    so neither drops the other's database mid-run (`.claude/rules/wave-close.md`,
+    two lanes at once). Unset, the name is the suite's own, as before.
+    """
+    suffix = os.environ.get("DW_TEST_DB_SUFFIX", "")
+    if suffix and not suffix.replace("_", "").isalnum():
+        raise ValueError("DW_TEST_DB_SUFFIX holds letters, digits and _ only")
+    return f"{test_db}{suffix}"
+
+
 def database_urls(test_db: str) -> DatabaseUrls:
+    test_db = test_db_name(test_db)
     env = load_env()
     host = env.get("DW_TEST_DB_HOST", "localhost")
     port = env.get("DW_TEST_DB_PORT", "5432")
@@ -78,6 +92,7 @@ async def recreate_database(admin_url: str, test_db: str) -> None:
     from sqlalchemy import text
     from sqlalchemy.ext.asyncio import create_async_engine
 
+    test_db = test_db_name(test_db)
     engine = create_async_engine(admin_url, isolation_level="AUTOCOMMIT")
     try:
         async with engine.connect() as conn:

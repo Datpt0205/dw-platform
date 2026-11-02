@@ -47,7 +47,9 @@ subagent on `main` (no branches, no worktrees). Each stages only its own paths,
 never `git add -A`, pulls with rebase before it pushes, and leaves the plan's
 area file to the session that runs the queue, which records each result. A new
 Alembic revision re-points `down_revision` to the head it finds when it
-commits. Tickets that share a migration chain step, a contract snapshot or a
+commits. Each lane runs its integration tests with its own
+`DW_TEST_DB_SUFFIX` (`_lane1`, `_lane2`), so one lane never drops the database
+the other is testing on. Tickets that share a migration chain step, a contract snapshot or a
 table are not run side by side.
 
 ## At the queue's close — once, before the queue is called done
