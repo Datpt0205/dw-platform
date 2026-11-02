@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 29/10/2026
-Sẵn sàng: ĐẠT (2/11/2026; 0 CRITICAL, 0 HIGH; ticket 01, 02)
+Sẵn sàng: ĐẠT (2/11/2026; 0 CRITICAL, 0 HIGH; ticket 01, 02, 04)
 
 Công ty cần một mô hình chủ thể đủ cho D1: vị thế của một người trong công ty là một dòng có trạng thái, không suy ra từ
 membership, và lượt chạy không người kích hoạt (biểu mẫu, webhook, lịch, sự kiện bản ghi) chạy dưới danh nghĩa một tài
@@ -105,9 +105,9 @@ Quản trị viên công ty và người vận hành không thấy tài khoản 
 Người dựng agent nói ai dùng được agent bằng một tài liệu `dw.audience/v1`, và chỉ thành viên `active` khớp mới thấy agent; ở W1 điều kiện duy nhất là workspace (YC54, YC55; ADR-0102 (Accepted) quyết định 7; DO-40).
 
 - R8.1 NẾU một tài liệu `dw.audience/v1` không có điều kiện nào, THÌ bộ kiểm người được dùng PHẢI trả 422 với `details.reason_code` `audience_empty` và không lưu gì.
-- R8.2 NẾU một tài liệu `dw.audience/v1` có điều kiện khác `workspace_subtree`, có quá 20 điều kiện, hay nêu một workspace không thuộc tenant của người gọi, THÌ bộ kiểm người được dùng PHẢI trả 422 `validation_failed` với `errors[].pointer` trỏ vào điều kiện đó và không lưu gì.
-- R8.3 KHI bên dùng gọi `platform.audience_matches` cho một người và một tài liệu `dw.audience/v1`, `platform.audience_matches` PHẢI trả `true` khi người đó là thành viên công ty `active` có membership ở một workspace mà một điều kiện `workspace_subtree` nêu.
-- R8.4 NẾU người đó không ở trạng thái `active`, chỉ có membership ở workspace khác, hay thuộc tenant khác, THÌ `platform.audience_matches` PHẢI trả `false`.
+- R8.2 NẾU một tài liệu `dw.audience/v1` có điều kiện khác `workspace_subtree`, có quá 20 điều kiện, có một nhóm `all_of` rỗng, hay nêu một workspace không thuộc tenant của người gọi, THÌ bộ kiểm người được dùng PHẢI trả 422 `validation_failed` với `details.reason_code` `audience_invalid` và `errors[].pointer` trỏ vào điều kiện hay nhóm đó, và không lưu gì.
+- R8.3 KHI bên dùng gọi `platform.audience_matches` cho một người và một tài liệu `dw.audience/v1`, `platform.audience_matches` PHẢI trả `true` khi người đó là thành viên công ty `active` và có một nhóm `all_of` không rỗng của `any_of` mà mỗi điều kiện `workspace_subtree` của nhóm đó nêu một workspace nơi người đó có membership.
+- R8.4 NẾU người đó không ở trạng thái `active`, không có nhóm nào mà mọi điều kiện đều khớp, thuộc tenant khác, hay tài liệu sai dạng, THÌ `platform.audience_matches` PHẢI trả `false` mà không báo lỗi.
 
 ### R9 — Giao diện gọi đơn vị sở hữu dữ liệu là workspace [Sửa]
 
@@ -170,8 +170,8 @@ Người dùng thấy một thuật ngữ cho đơn vị sở hữu dữ liệu,
 | OP9  | Tài khoản dịch vụ không giữ quyền trọng yếu                   | R6.4       | Dưới `dw_migrator` gán `tenant_owner` cho nó → 23514; thêm khóa `critical` vào vai trò đang gán cho nó → 23514; gỡ trigger → đỏ                                                                                                                                                                                                                                                                                                                                                                                                   |
 | OP10 | Không leo thang quyền qua tài khoản dịch vụ                   | R6.5       | Người thiếu một quyền của tài khoản → 403 `rbac_escalation`; thay `platform.grants_cover` bằng `true` → đỏ                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | OP11 | Không lộ sang tenant khác                                     | R7.1, R7.2 | Admin tenant B gọi `/directory/candidates` → không có tài khoản dịch vụ của A; `/platform/users` không có dòng `service`; gỡ lọc `kind` → đỏ                                                                                                                                                                                                                                                                                                                                                                                      |
-| OP12 | Người được dùng rỗng hay sai bị từ chối                       | R8.1, R8.2 | `{"schema": "dw.audience/v1", "any_of": []}` → 422 `audience_empty`, không lưu gì; điều kiện `team` ở W1 → 422; workspace của tenant B → 422 như workspace không tồn tại; gỡ kiểm → đỏ                                                                                                                                                                                                                                                                                                                                            |
-| OP13 | Chỉ thành viên `active` của đúng workspace khớp               | R8.4       | Người `suspended` có membership ở workspace nêu → `false`; người của tenant B → `false`; gỡ điều kiện `status = 'active'` khỏi hàm → đỏ                                                                                                                                                                                                                                                                                                                                                                                           |
+| OP12 | Người được dùng rỗng hay sai bị từ chối                       | R8.1, R8.2 | `{"schema": "dw.audience/v1", "any_of": []}` → 422 `audience_empty`, không lưu gì; điều kiện `team` ở W1 → 422; nhóm `all_of` rỗng cạnh nhóm có điều kiện → 422 `audience_group_empty`; workspace của tenant B → 422 như workspace không tồn tại; gỡ kiểm → đỏ |
+| OP13 | Chỉ thành viên `active` của đúng workspace khớp               | R8.3, R8.4 | Người `suspended` có membership ở workspace nêu → `false`; người của tenant B → `false`; người chỉ ở W1 với một nhóm `all_of` W1 và W2 → `false`; nhóm rỗng → `false`; gỡ điều kiện `status = 'active'` khỏi hàm, hay đổi "mọi điều kiện của nhóm" thành "một điều kiện bất kỳ" → đỏ |
 | OP14 | Chỉ xóa người dùng loại `service` của tenant đang offboarding | R6.8, R6.9 | Gọi `platform.purge_tenant_service_users` cho tenant `active` → 23514, 0 dòng xóa; purge tenant `offboarding` có một tài khoản dịch vụ → không còn dòng `platform.users` loại `service` của tenant đó, người dùng `human` và tài khoản dịch vụ của tenant khác còn; gỡ kiểm trạng thái khỏi hàm → đỏ; gỡ bước khỏi sổ bước xóa → `test_offboarding.py` đỏ; bảng thử giữ khóa ngoại `RESTRICT` tới tài khoản dịch vụ → bước chạy sau bước xóa bảng đó; bước khai bảng khác `platform.users` → test phủ của studio-skeleton:R4.2 đỏ |
 | OP15 | Khóa ngoại ghép tới tài khoản dịch vụ trong tenant            | R6.10      | FK `(tenant_B, sp_A)` từ bảng thử tới `platform.service_principals (tenant_id, user_id)` → lỗi FK; test khẳng định `uq_service_principals_tenant_id_user_id` có trong `pg_constraint`; bỏ ràng buộc → đỏ                                                                                                                                                                                                                                                                                                                          |
 
@@ -251,6 +251,23 @@ Người dùng thấy một thuật ngữ cho đơn vị sở hữu dữ liệu,
   người ghi và người đọc của nó ở cửa AccessContext và bootstrap; tài khoản dịch vụ làm chủ thể chạy ở ticket 03, người
   được dùng ở ticket 04, cả hai chờ ticket 02. Nếu sai thì: tách lần kích hoạt và người ghi thành một ticket riêng chờ
   ticket 02.
+- 2/11/2026 (agent, theo ủy quyền 31/10/2026): gate ticket 04, CRITICAL C1: `platform.audience_matches` khớp theo
+  `any_of` của các nhóm `all_of` như ADR-0102 (Accepted) quyết định 7 viết (một nhóm khớp khi mọi điều kiện của nó
+  khớp), không theo "một membership ở workspace mà một điều kiện nêu", vốn bỏ phép "và" của `all_of` và mở rộng người được
+  dùng khi W2 thêm điều kiện `team`; dạng tài liệu là `{"schema", "any_of": [{"all_of": [...]}]}`; nhóm `all_of` rỗng bị
+  bộ kiểm từ chối và hàm coi là `false`; tài liệu sai dạng làm hàm trả `false`, không lỗi; hàm trả `false` khi
+  `p_tenant_id` khác `app.tenant_id`. Sửa: R8.2, R8.3, R8.4, OP12, OP13, ticket 04 bước 1, 3 và tiêu chí. Nếu sai thì:
+  ADR-0102 (Accepted) quyết định 7 được sửa trước thành một danh sách điều kiện phẳng "một điều kiện bất kỳ", và R8.3 về chữ cũ.
+- 2/11/2026 (agent, theo ủy quyền 31/10/2026): gate ticket 04, HIGH H1: lỗi của bộ kiểm là `AudienceInvalidError`
+  (`DomainError`) mang `details.reason_code` (`audience_empty`, `audience_invalid`) và các vấn đề có pointer RFC 6901,
+  một handler ở `exception_handlers.py` đổi chúng thành `errors[]`, vì hôm nay chỉ `QueryError`, lỗi xác thực request và
+  lỗi thiếu khóa chống lặp điền `errors[]`, còn `DWError` chỉ gửi `details`; agent-builder:R1.5 trả `reason_code` của bộ
+  kiểm nên R8.2 cần một mã; workspace kiểm qua cổng hẹp với tenant nêu tường minh. Sửa: R8.2, ticket 04 bước 2 và tiêu
+  chí. Nếu sai thì: agent-builder/04 tự đổi vấn đề thành `errors[]` ở route của nó và handler rút.
+- 2/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 04. Ticket 04 là bộ kiểm `dw.audience/v1`, cổng workspace,
+  handler `errors[]` và hàm `platform.audience_matches`, chờ ticket 02 (đọc `platform.tenant_members`); agent-builder/04
+  là bên dùng duy nhất và chờ ticket này; không đường phụ thuộc với ticket 03 và không chung bảng, route, tệp migration,
+  config hay prompt. Nếu sai thì: tách handler `errors[]` sang agent-builder/04.
 
 ## Danh sách ticket
 
