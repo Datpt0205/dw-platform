@@ -23,6 +23,7 @@ from dw_kernel.errors import ConflictError, NotFoundError
 from dw_platform.adapters.persistence import tables
 from dw_platform.adapters.persistence.repositories import SqlAuditRepository
 from dw_platform.adapters.persistence.support_grants import grant_from_row, support_staff_conflict
+from dw_platform.adapters.persistence.tenant_member_rows import ensure_tenant_member
 from dw_platform.application.provisioning import (
     OffboardingStatus,
     OperatorRef,
@@ -291,6 +292,9 @@ class SqlProvisioningRepository:
             ).first()
             try:
                 if existing is None:
+                    # The company row first (R4.1): `invited` until the
+                    # person's next sign-in, a row already there unchanged.
+                    await session.execute(ensure_tenant_member(tenant_id, user_id, "invited"))
                     await session.execute(
                         sa.insert(tables.memberships).values(
                             id=membership_id,

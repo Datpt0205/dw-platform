@@ -46,6 +46,7 @@ from dw_platform.application.digital_workers import (
 from dw_platform.application.identity import context_from
 from dw_platform.domain.audit import AuditEvent
 from dw_platform.domain.digital_worker import DecisionClass, DwConfiguration, DwPeople
+from dw_platform.testing.members import add_tenant_member
 
 pytestmark = pytest.mark.integration
 
@@ -134,6 +135,7 @@ async def build_world(migrator: AsyncEngine) -> World:
             (w.tenant_a, w.ws1, "validator", ["approver"]),
             (w.tenant_b, w.ws_b, "b_member", ["approver", "org_admin"]),
         ):
+            await add_tenant_member(conn, tenant, w.users[name])
             await conn.execute(
                 sa.text(
                     "INSERT INTO platform.memberships"
@@ -281,7 +283,15 @@ async def test_a_dw_and_its_principal_are_written_together(
                 {"id": str(worker.id)},
             )
         ).all()
+        # org-and-principals R4.1, R6.1: the principal is an active company member.
+        standing = (
+            await conn.execute(
+                sa.text("SELECT tenant_id, status FROM platform.tenant_members WHERE user_id = :u"),
+                {"u": worker.principal_user_id},
+            )
+        ).all()
 
+    assert [tuple(s) for s in standing] == [(world.tenant_a, "active")]
     assert (user.kind, user.owner_tenant_id, user.email) == ("service", world.tenant_a, None)
     assert tuple(principal) == (world.tenant_a, world.ws1, world.users["owner"])
     assert [(r.workspace_id, sorted(r.role_keys)) for r in roles] == [

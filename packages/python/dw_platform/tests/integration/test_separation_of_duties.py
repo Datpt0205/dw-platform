@@ -35,6 +35,7 @@ from dw_platform.adapters.persistence.identity_provisioning import SqlIdentityBo
 from dw_platform.adapters.persistence.membership_admin import SqlMembershipAdminRepository
 from dw_platform.application.access_context import AccessContext
 from dw_platform.domain.audit import AuditEvent
+from dw_platform.testing.members import add_tenant_member
 from dw_platform.testing.seed_env import seed_test_env
 
 pytestmark = pytest.mark.integration
@@ -259,6 +260,7 @@ async def test_raw_sql_is_refused_too_whoever_writes_it(
             await conn.execute(
                 sa.text("SELECT set_config('app.tenant_id', :t, true)"), {"t": str(ALPHA)}
             )
+            await add_tenant_member(conn, ALPHA, user_id)
             await conn.execute(
                 sa.insert(tables.memberships).values(
                     id=uuid.uuid4(),

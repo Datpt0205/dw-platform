@@ -56,6 +56,8 @@ GRANTS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("platform.retention_terms", "SELECT, INSERT, UPDATE, DELETE", ()),
     # Only this role may add an operator's login identity (6887b6020075, R4.4).
     ("platform.external_identities", "SELECT, INSERT", ()),
+    # `grant_role` writes the company row a membership hangs from (349080a62e41).
+    ("platform.tenant_members", "SELECT, INSERT", ()),
 )
 
 

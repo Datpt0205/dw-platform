@@ -68,6 +68,7 @@ from dw_platform.application.approval_codes import (
 from dw_platform.application.authorization import ScopeAuthorizationService
 from dw_platform.application.channel_access import LinkedUserAccess
 from dw_platform.domain.approval import ApprovalRequest
+from dw_platform.testing.members import add_tenant_member
 
 pytestmark = pytest.mark.integration
 
@@ -212,6 +213,7 @@ class World:
                     id=user_id, subject=f"test|{user_id}", display_name="Người duyệt"
                 )
             )
+            await add_tenant_member(conn, where[0], user_id)
             await conn.execute(
                 sa.insert(tables.memberships).values(
                     id=uuid.uuid4(),

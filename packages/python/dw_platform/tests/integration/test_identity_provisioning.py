@@ -21,6 +21,7 @@ from sqlalchemy.pool import NullPool
 from dw_platform.adapters.persistence import tables
 from dw_platform.adapters.persistence.identity_provisioning import SqlIdentityBootstrap
 from dw_platform.adapters.persistence.membership_lookup import SqlMembershipLookup
+from dw_platform.testing.members import add_tenant_member
 from dw_platform.testing.seed_env import seed_test_env
 
 pytestmark = pytest.mark.integration
@@ -75,6 +76,7 @@ async def _grant_membership_in_new_tenant(
                 id=workspace_id, tenant_id=tenant_id, slug=f"{slug}-sales", name="Sales"
             )
         )
+        await add_tenant_member(conn, tenant_id, user_id)
         await conn.execute(
             sa.insert(tables.memberships).values(
                 id=uuid.uuid4(),
@@ -212,6 +214,7 @@ async def _membership(
                 id=workspace_id, tenant_id=tenant_id, slug=f"{slug}-ops", name="Ops"
             )
         )
+        await add_tenant_member(conn, tenant_id, user_id)
         await conn.execute(
             sa.insert(tables.memberships).values(
                 id=uuid.uuid4(),

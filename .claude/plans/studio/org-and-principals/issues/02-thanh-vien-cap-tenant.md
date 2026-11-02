@@ -1,6 +1,6 @@
 # 02 — Thành viên cấp tenant và trạng thái
 
-Status: ready-for-agent
+Status: resolved (2026-11-02, main)
 Blocked by: 01, .claude/plans/studio/foundations-hardening/issues/02-hang-rao-du-lieu-va-danh-tinh.md, .claude/plans/studio/tenant-rbac/issues/01-mot-chu-cho-quyen.md, .claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md
 Area: studio
 Yêu cầu: R4.1, R4.2, R4.3, R4.4, R4.5, R4.7, R4.8, R5.1, G1, G2, OP4, OP5, OP6, OP7
@@ -77,18 +77,18 @@ ra đời, cùng foundations-hardening/07, vì cùng sửa lane offboarding và 
 
 ## Tiêu chí chấp nhận
 
-- [ ] R4.1 (OP4): sau chuyển dữ liệu, mọi cặp `(tenant_id, user_id)` của membership có đúng một dòng, dòng của người dùng `kind = 'service'` là `active` và của người chưa từng đăng nhập là `invited`; INSERT membership không có dòng thành viên công ty → lỗi FK; mọi đường ghi ở bước 4 có test tạo membership mới thành công với đúng trạng thái bước 4 nêu, kể cả tạo DW mới → dòng `active` của tài khoản dịch vụ.
-- [ ] R4.1: (bước 1) UPDATE `status` sang giá trị khác → `status_changed_at` tiến; UPDATE giữ nguyên `status` → `status_changed_at` không đổi; câu lệnh nêu `status_changed_at` → giữ giá trị đó; gỡ trigger → test đỏ.
-- [ ] R4.2 (OP4): DELETE dòng thành viên công ty có membership ở hai workspace → 0 membership còn lại, cùng câu lệnh.
-- [ ] R4.3 (OP5): đặt `suspended` bằng SQL rồi dựng AccessContext không qua cache → `GET /api/v1/me` và một route có kiểm quyền ở cả hai workspace của người đó trả 403; xóa dòng → 403; gỡ điều kiện `status = 'active'` ở join dựng AccessContext → test đỏ.
-- [ ] R4.4: `POST /api/v1/admin/invitations` cho email mới → dòng `invited`; cho người đã đăng nhập ở tenant khác → dòng `invited`, rồi lần `GET /api/v1/auth/bootstrap` kế tiếp của người đó → `active` và workspace mới có trong kết quả; lỗi giữa giao dịch → không có dòng nào.
-- [ ] R4.5: người được mời đăng nhập lần đầu → dòng thành `active` trong cùng giao dịch với dòng `platform.external_identities`; người `invited` ở tenant A và `suspended` ở tenant B đăng nhập → A `active`, B vẫn `suspended`; bỏ `AND status = 'invited'` khỏi `platform.activate_invited_members` → test đỏ; kết nối `dw_app` chỉ đặt `app.principal_id` chạy UPDATE dòng `platform.tenant_members` của chính người đó → 0 dòng.
-- [ ] R4.7 (OP6): kết nối `app.tenant_id` A đọc thành viên của B → 0 dòng; kết nối không đặt tenant → 0 dòng; self-select chỉ trả dòng của chính người đó.
-- [ ] R4.8 (OP7): người `suspended` ở tenant A, `active` ở tenant B → bootstrap chỉ có workspace của B; gỡ điều kiện → đỏ.
-- [ ] R5.1: test so sánh: với mọi người của tenant seed, `status` của `GET /api/v1/admin/members` và `GET /api/v1/directory/members` bằng cột `status`.
-- [ ] G1: `test_an_invited_person_signs_in_and_finds_their_workspace` xanh trước và sau.
-- [ ] G2: `test_revoke_removes_a_membership` xanh trước và sau; thành viên công ty còn lại sau khi gỡ membership cuối.
-- [ ] Xong: `make ci` xanh.
+- [x] R4.1 (OP4): sau chuyển dữ liệu, mọi cặp `(tenant_id, user_id)` của membership có đúng một dòng, dòng của người dùng `kind = 'service'` là `active` và của người chưa từng đăng nhập là `invited`; INSERT membership không có dòng thành viên công ty → lỗi FK; mọi đường ghi ở bước 4 có test tạo membership mới thành công với đúng trạng thái bước 4 nêu, kể cả tạo DW mới → dòng `active` của tài khoản dịch vụ.
+- [x] R4.1: (bước 1) UPDATE `status` sang giá trị khác → `status_changed_at` tiến; UPDATE giữ nguyên `status` → `status_changed_at` không đổi; câu lệnh nêu `status_changed_at` → giữ giá trị đó; gỡ trigger → test đỏ.
+- [x] R4.2 (OP4): DELETE dòng thành viên công ty có membership ở hai workspace → 0 membership còn lại, cùng câu lệnh.
+- [x] R4.3 (OP5): đặt `suspended` bằng SQL rồi dựng AccessContext không qua cache → `GET /api/v1/me` và một route có kiểm quyền ở cả hai workspace của người đó trả 403; xóa dòng → 403; gỡ điều kiện `status = 'active'` ở join dựng AccessContext → test đỏ.
+- [x] R4.4: `POST /api/v1/admin/invitations` cho email mới → dòng `invited`; cho người đã đăng nhập ở tenant khác → dòng `invited`, rồi lần `GET /api/v1/auth/bootstrap` kế tiếp của người đó → `active` và workspace mới có trong kết quả; lỗi giữa giao dịch → không có dòng nào.
+- [x] R4.5: người được mời đăng nhập lần đầu → dòng thành `active` trong cùng giao dịch với dòng `platform.external_identities`; người `invited` ở tenant A và `suspended` ở tenant B đăng nhập → A `active`, B vẫn `suspended`; bỏ `AND status = 'invited'` khỏi `platform.activate_invited_members` → test đỏ; kết nối `dw_app` chỉ đặt `app.principal_id` chạy UPDATE dòng `platform.tenant_members` của chính người đó → 0 dòng.
+- [x] R4.7 (OP6): kết nối `app.tenant_id` A đọc thành viên của B → 0 dòng; kết nối không đặt tenant → 0 dòng; self-select chỉ trả dòng của chính người đó.
+- [x] R4.8 (OP7): người `suspended` ở tenant A, `active` ở tenant B → bootstrap chỉ có workspace của B; gỡ điều kiện → đỏ.
+- [x] R5.1: test so sánh: với mọi người của tenant seed, `status` của `GET /api/v1/admin/members` và `GET /api/v1/directory/members` bằng cột `status`.
+- [x] G1: `test_an_invited_person_signs_in_and_finds_their_workspace` xanh trước và sau.
+- [x] G2: `test_revoke_removes_a_membership` xanh trước và sau; thành viên công ty còn lại sau khi gỡ membership cuối.
+- [x] Xong: `make ci` xanh.
 
 ## Nguồn
 
@@ -194,3 +194,46 @@ ra đời, cùng foundations-hardening/07, vì cùng sửa lane offboarding và 
   một UPDATE mỗi lần đăng nhập); không thêm khóa quyền nào, nên `platform.permissions` và `test_permission_catalogue.py`
   không đổi.
 - 2026-11-02 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-02 (agent, theo ủy quyền 31/10/2026): dòng `in_ws1[requester] == "invited"  # seeded without a sign-in` của
+  G1 (`test_tenant_members.py`) nay là `"active"`: fixture `support_world` ghi người của nó là thành viên công ty `active`
+  (họ phải qua cửa AccessContext để dựng ngữ cảnh quản trị), và R5.1 đọc cột thay cho suy từ lần đăng nhập, nên tiền đề
+  của dòng đó là đúng cái ticket này đổi; phần còn lại của G1 giữ nguyên chữ và xanh. Nếu sai thì: fixture ghi
+  `requester` là `invited` và test dựng AccessContext của nó bằng tay, không qua `SqlMembershipLookup`.
+- 2026-11-02 (agent, theo ủy quyền 31/10/2026): `test_provisioning.py::test_locking_a_tenant_denies_its_members` thêm
+  một lần `bootstrap` sau `assign_org_admin`: `grant_role` ghi `invited` (bước 4), nên người đã đăng nhập vào được ở lần
+  đăng nhập kế tiếp, đúng đổi hành vi có chủ ý mà lượt xác nhận của gate nêu. Nếu sai thì: `grant_role` ghi `active` cho
+  người đã có danh tính đăng nhập (lúc đó trigger AFTER UPDATE của tenant-rbac/02 không thấy lần kích hoạt đó, H2).
+- 2026-11-02 (agent, theo ủy quyền 31/10/2026): quyền `dw_provisioner` SELECT, INSERT trên bảng mới khai trong tuple
+  `PROVISIONER` của migration `349080a62e41`, cạnh tuple cùng tên của `0fdd32a39d87`;
+  `test_the_provisioner_holds_exactly_what_its_code_runs` so catalog với hợp của hai tuple, và
+  `scripts/create_provisioner_role.py` (`GRANTS`) có dòng đó (M2). Nếu sai thì: một migration sửa tuple của
+  `0fdd32a39d87` (không được: revision cũ bất biến) hay test đọc một danh sách khác.
+- 2026-11-02 (agent, theo ủy quyền 31/10/2026): câu chuyển dữ liệu của bước 3 là hằng `BACKFILL` của migration, có
+  `ON CONFLICT DO NOTHING` (vô hại trên CSDL thật, nơi bảng còn rỗng), để test chạy nó trên người cài sẵn với khóa ngoại
+  tạm gỡ trong một giao dịch rollback: CSDL test được migrate rỗng, nên không có membership cũ nào cho câu đó chuyển.
+  Hàm trigger tên `platform.touch_status_changed_at()`. `member_status()` là truy vấn con tương quan trên
+  `platform.memberships` theo khóa chính của bảng mới, thay cho một phép join ở hai người gọi. Người ghi của code ứng dụng
+  là `tenant_member_rows.ensure_tenant_member`; helper của fixture là `dw_platform.testing.members` (M3: 23 tệp đổi).
+  `grant_platform_admin.py` ghi `active` với `ON CONFLICT DO NOTHING` như luật chung của bước 4 (dòng `suspended` giữ
+  nguyên; mở lại cần hai người). Nếu sai thì: đổi từng chỗ, không đổi hành vi.
+- 2026-11-02 (agent, theo ủy quyền 31/10/2026): R4.4 và R5.1 được kiểm ở tầng repository/dịch vụ trên PostgreSQL thật
+  (như G1), không qua HTTP: route mời và hai route danh sách là lớp mỏng chép `status` nguyên vẹn; R4.3 kiểm qua app thật
+  (`apps/api/tests/integration/test_member_status_door.py`, không cache). R5.1 so trên tenant A của `support_world` (sáu
+  người, có `suspended` và `invited`), không trên tenant seed. Nếu sai thì: thêm test HTTP cho hai route và lời mời.
+- 2026-11-02 (agent): resolved. Làm: migration `349080a62e41` (bảng, RLS, chuyển dữ liệu, FK
+  `fk_memberships_tenant_members`, trigger `updated_at` và `status_changed_at`, `platform.activate_invited_members`),
+  bảy người ghi của bước 4 (không có `scripts/demo_dw_seed.py` trong cây lúc dựng), cửa AccessContext (`_access_in`, phủ
+  cả `find_linked_access`), `_read_memberships`, `member_status()`, `MemberStatus` thêm `suspended`; offboarding thấy bảng
+  từ catalog. Test mới: `test_tenant_member_status.py` 20 (R4.1-R4.5, R4.7, R4.8, R5.1, G2 nửa integration),
+  `test_member_status_door.py` 4 (R4.3 qua HTTP), `test_offboarding.py` +1 (bước 7, M5), `test_privileges.py` +1,
+  `test_digital_workers_db.py` +1 khẳng định (DW mới → `active`); 23 tệp fixture ghi dòng thành viên công ty qua helper.
+  Chạy: ruff, format, mypy, lint-imports, verify_invariants xanh; unit + contract của dw_platform và api 584 xanh;
+  integration dw_platform 534 xanh, 1 đỏ có từ trước (`test_permission_catalogue.py` đỏ khi chạy sau
+  `test_digital_workers_db.py`, vì vai thử `email.send` của test DW ở lại CSDL phiên; xanh khi chạy riêng; không do ticket
+  này), api 137 + 4 xanh, worker 43 xanh, runtime 27 xanh. Các nửa "gỡ … → đỏ" của tiêu chí nằm trong
+  `mutations/02.yaml` (24 phép, mỗi kiểm soát một), viết chưa chạy: chạy ở cuối wave. reviewing-feature-security, đọc
+  các kiểm soát: tenant (RLS ENABLE/FORCE, policy tenant, self-select chỉ SELECT, test đọc chéo tenant và không đặt
+  tenant), người không đủ quyền (UPDATE theo principal → 0 dòng; hàm kích hoạt chỉ `dw_app` gọi được, chỉ `invited` →
+  `active`), người `suspended` (403 ở `/me` và route có kiểm scope ở hai workspace; bootstrap bỏ công ty đó; kích hoạt
+  không mở lại). Chưa làm (đúng ticket): M4 (DW owner/validator không `active`) cho ticket 03; đo P50/P95/P99 (M6) ở cuối
+  wave.

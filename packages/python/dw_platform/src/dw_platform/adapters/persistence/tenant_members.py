@@ -34,6 +34,7 @@ from dw_platform.adapters.persistence.separation_of_duties import (
     separation_of_duties_conflict,
 )
 from dw_platform.adapters.persistence.support_grants import support_staff_conflict
+from dw_platform.adapters.persistence.tenant_member_rows import ensure_tenant_member
 from dw_platform.adapters.persistence.tenant_session import TenantScope, tenant_session
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.effect_keys import PendingEffect
@@ -200,6 +201,9 @@ class SqlTenantMembersRepository:
                 )
                 if in_tenant:
                     raise _already_member()
+            # The company row first, in this transaction (R4.4): `invited`
+            # until the person's next sign-in, a row already there unchanged.
+            await session.execute(ensure_tenant_member(context.tenant_id, user.user_id, "invited"))
             await _write(
                 session,
                 context,

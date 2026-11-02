@@ -33,6 +33,11 @@ from dw_platform.application.decision_gate import (
     DwDecisionAdmission,
     check_edited_proposal,
 )
+from dw_platform.testing.members import (
+    TENANT_MEMBER_SQL,
+    add_tenant_member,
+    tenant_member_params,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -85,6 +90,7 @@ async def seed(migrator: AsyncEngine) -> World:
                 ),
                 {"u": user, "s": f"dwd-{user}"},
             )
+            await add_tenant_member(conn, t, user)
             await conn.execute(
                 sa.text(
                     "INSERT INTO platform.memberships (id, tenant_id, workspace_id, user_id,"
@@ -103,6 +109,7 @@ async def seed(migrator: AsyncEngine) -> World:
                 " name, owner_user_id) VALUES (:u, :t, :w, 'dw', :o)",
                 {"u": principal, "t": t, "w": w, "o": owner},
             ),
+            (TENANT_MEMBER_SQL, tenant_member_params(t, principal)),
             (
                 "INSERT INTO platform.memberships (id, tenant_id, workspace_id, user_id,"
                 " role_keys) VALUES (:i, :t, :w, :u, '[\"member\"]'::jsonb)",

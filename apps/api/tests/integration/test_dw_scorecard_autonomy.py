@@ -35,6 +35,7 @@ from dw_platform.adapters.persistence.dw_autonomy_repo import SqlDwAutonomyRepos
 from dw_platform.application.digital_workers import DecisionAutonomy
 from dw_platform.application.dw_autonomy import DW_AUTONOMY_RAISE_DECIDED, RaiseSettler
 from dw_platform.application.work_queue import WorkScope
+from dw_platform.testing.members import add_tenant_member
 
 pytestmark = pytest.mark.integration
 
@@ -66,6 +67,7 @@ async def _user(conn: Any, tenant: uuid.UUID, workspace: uuid.UUID) -> uuid.UUID
         u=user,
         s=f"it-{user}",
     )
+    await add_tenant_member(conn, tenant, user)
     await _x(
         conn,
         "INSERT INTO platform.memberships (id, tenant_id, workspace_id, user_id, role_keys)"

@@ -50,6 +50,7 @@ from dw_platform.adapters.persistence.notifications import SqlNotificationReposi
 from dw_platform.adapters.persistence.zalo_link_repo import SqlZaloLink
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.identity import DbAccessContextFactory, VerifiedClaims
+from dw_platform.testing.members import add_tenant_member
 from dw_worker.consumers.zalo_poll import build_zalo_poll_consumer
 from dw_worker.main import build_channel_commands, build_zalo_inbound
 from dw_worker.settings import WorkerSettings
@@ -171,6 +172,7 @@ async def _member(
                 id=uuid.uuid4(), tenant_id=tenant_id, plan_id="professional"
             )
         )
+        await add_tenant_member(conn, tenant_id, user_id)
         await conn.execute(
             sa.insert(tables.memberships).values(
                 id=uuid.uuid4(),

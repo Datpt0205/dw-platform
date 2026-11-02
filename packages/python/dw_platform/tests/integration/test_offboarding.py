@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import NullPool
 
 from dw_platform.adapters.persistence.offboarding import ExportedTable, SqlTenantOffboarding
+from dw_platform.testing.members import add_tenant_member
 
 pytestmark = pytest.mark.integration
 
@@ -248,6 +249,55 @@ async def test_purge_rows_respects_fk_order_and_leaves_the_other_tenant_alone(
     assert await _count(sessions, mine.tenant_id, "platform", "audit_events") == 1, (
         "audit_events is append-only; purge must not touch it even for the tenant being offboarded"
     )
+
+
+async def _seed_member(sessions: async_sessionmaker[AsyncSession], t: _Tenant) -> uuid.UUID:
+    """A person of the tenant: the company row and a membership hanging from it
+    (org-and-principals R4.1), written as `dw_app` under the tenant."""
+    user = uuid.uuid4()
+    async with sessions() as session, session.begin():
+        await session.execute(
+            sa.text("SELECT set_config('app.tenant_id', :t, true)"), {"t": str(t.tenant_id)}
+        )
+        await session.execute(
+            sa.text(
+                "INSERT INTO platform.users (id, subject, display_name) VALUES (:u, :s, 'member')"
+            ),
+            {"u": user, "s": f"off-{user}"},
+        )
+        await add_tenant_member(session, t.tenant_id, user)
+        await session.execute(
+            sa.text(
+                "INSERT INTO platform.memberships (id, tenant_id, workspace_id, user_id)"
+                " VALUES (gen_random_uuid(), :t, :w, :u)"
+            ),
+            {"t": t.tenant_id, "w": t.workspace_id, "u": user},
+        )
+    return user
+
+
+async def test_offboarding_exports_and_purges_the_company_members(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    """Ticket 02 step 7: discovered from the catalog like every tenant table,
+    exported first, then gone with the memberships hanging from it."""
+    mine, theirs = _new_tenant(), _new_tenant()
+    for t in (mine, theirs):
+        await _seed_tenant(sessions, t)
+    member = await _seed_member(sessions, mine)
+    await _seed_member(sessions, theirs)
+    offboarding = SqlTenantOffboarding(session_factory=sessions)
+
+    exported = {
+        (t.schema, t.table): t.rows for t in await _collect(offboarding.export_rows(mine.tenant_id))
+    }
+    assert [str(r["user_id"]) for r in exported[("platform", "tenant_members")]] == [str(member)]
+
+    await offboarding.purge_rows(mine.tenant_id)
+
+    for table in ("tenant_members", "memberships"):
+        assert await _count(sessions, mine.tenant_id, "platform", table) == 0, table
+        assert await _count(sessions, theirs.tenant_id, "platform", table) == 1, table
 
 
 async def _seed_keys(sessions: async_sessionmaker[AsyncSession], t: _Tenant) -> None:

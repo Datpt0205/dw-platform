@@ -62,6 +62,7 @@ from dw_platform.application.idempotency import (
     ReservedKey,
     StoredResponse,
 )
+from dw_platform.testing.members import add_tenant_member
 
 pytestmark = pytest.mark.integration
 
@@ -258,6 +259,7 @@ async def _world(migrator: AsyncEngine) -> dict[str, Person]:
                     "e": f"{person.id.hex[:12]}@probe.test",
                 },
             )
+            await add_tenant_member(conn, person.tenant, person.id)
             await conn.execute(
                 sa.text(
                     "INSERT INTO platform.memberships (id, tenant_id, workspace_id, user_id,"

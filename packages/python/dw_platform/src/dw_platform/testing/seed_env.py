@@ -224,6 +224,16 @@ async def seed_test_env(database_url: str, *, restore_deleted: bool = True) -> d
                     )
                 ).scalar_one()
 
+                # Dev data: the seeded people are `active` members, and a re-seed
+                # puts them back to `active` whatever a test left (R4.1).
+                member_stmt = pg_insert(tables.tenant_members).values(
+                    tenant_id=sid("tenant", tenant_slug), user_id=user_id, status="active"
+                )
+                await conn.execute(
+                    member_stmt.on_conflict_do_update(
+                        index_elements=["tenant_id", "user_id"], set_={"status": "active"}
+                    )
+                )
                 membership_stmt = pg_insert(tables.memberships).values(
                     id=sid("membership", f"{tenant_slug}:{subject}"),
                     tenant_id=sid("tenant", tenant_slug),

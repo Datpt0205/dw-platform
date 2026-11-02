@@ -211,6 +211,45 @@ memberships = sa.Table(
         "created_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text("now()")
     ),
     sa.UniqueConstraint("tenant_id", "workspace_id", "user_id", name="uq_memberships_scope_user"),
+    sa.ForeignKeyConstraint(
+        ["tenant_id", "user_id"],
+        ["tenant_members.tenant_id", "tenant_members.user_id"],
+        name="fk_memberships_tenant_members",
+        ondelete="CASCADE",
+    ),
+)
+
+# A person's standing in the company (migration 349080a62e41, org-and-principals
+# R4): every membership hangs from this row, and only `active` passes the
+# AccessContext door. Tenant-wide: no workspace column.
+tenant_members = sa.Table(
+    "tenant_members",
+    metadata,
+    sa.Column(
+        "tenant_id",
+        UUID(as_uuid=True),
+        sa.ForeignKey("tenants.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    sa.Column(
+        "user_id",
+        UUID(as_uuid=True),
+        sa.ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    sa.Column("status", sa.Text, nullable=False),
+    sa.Column(
+        "status_changed_at",
+        sa.TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=sa.text("now()"),
+    ),
+    sa.Column(
+        "created_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text("now()")
+    ),
+    sa.Column(
+        "updated_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text("now()")
+    ),
 )
 
 # The workspace a person chose for their chat commands (migration 9f2becb1bf80).

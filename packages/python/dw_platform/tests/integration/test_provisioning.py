@@ -208,6 +208,9 @@ async def test_locking_a_tenant_denies_its_members(
         await service.assign_org_admin(
             _ctx(), tenant_id=created.tenant_id, email="member@lockco.com"
         )
+        # The grant made them an invited company member; the next sign-in makes
+        # them active (org-and-principals R4.1, R4.5).
+        await bootstrap.bootstrap(_Id())
 
         lookup = SqlMembershipLookup(sessions)
         active = await lookup.find_access(

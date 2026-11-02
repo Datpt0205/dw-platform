@@ -38,6 +38,7 @@ from dw_platform.adapters.persistence.notifications import SqlNotificationReposi
 from dw_platform.adapters.persistence.offboarding import SqlTenantOffboarding
 from dw_platform.application.access_context import AccessContext
 from dw_platform.domain.audit import system_actor, system_actor_label
+from dw_platform.testing.members import add_tenant_member
 
 pytestmark = pytest.mark.integration
 
@@ -99,6 +100,7 @@ async def _person(migrator: AsyncEngine, *places: _Place, zalo: str | None = Non
             sa.insert(tables.users).values(id=user_id, subject=f"test|{user_id}", display_name="N")
         )
         for place in places:
+            await add_tenant_member(conn, place.tenant_id, user_id)
             await conn.execute(
                 sa.insert(tables.memberships).values(
                     id=uuid.uuid4(),

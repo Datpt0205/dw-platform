@@ -24,19 +24,23 @@ from dw_platform.application.access_context import AccessContext
 from dw_platform.application.directory import IdentityRef, WorkspaceMember
 
 
-def member_status() -> sa.ColumnElement[str]:
-    """`invited` until the person has signed in once, `active` after.
+def member_status() -> sa.ScalarSelect[str]:
+    """The member's company status: the `platform.tenant_members` row (R5.1).
 
     The one reading of a member's status, for the workspace directory and the
-    tenant-wide member list alike: signed in means a sign-in identity is linked
-    to the user. A linked chat is a delivery address, not a sign-in, so it does
-    not count. Correlated on `platform.users`, which the caller's query joins.
+    tenant-wide member list alike. Correlated on `platform.memberships`, which
+    the caller's query selects from; `fk_memberships_tenant_members` makes the
+    row exist, and the lookup is its primary key.
     """
-    signed_in = sa.exists().where(
-        tables.external_identities.c.user_id == tables.users.c.id,
-        tables.external_identities.c.provider.not_in(tables.CHANNEL_LINK_PROVIDERS),
+    member = tables.tenant_members
+    return (
+        sa.select(member.c.status)
+        .where(
+            member.c.tenant_id == tables.memberships.c.tenant_id,
+            member.c.user_id == tables.memberships.c.user_id,
+        )
+        .scalar_subquery()
     )
-    return sa.case((signed_in, sa.literal("active")), else_=sa.literal("invited"))
 
 
 @dataclass(frozen=True)

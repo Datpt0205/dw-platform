@@ -49,7 +49,7 @@ from dw_platform.application.membership_admin import (
 from dw_platform.application.ports import AuthorizationPort
 from dw_platform.domain.audit import AuditEvent
 
-MemberStatus = Literal["invited", "active"]
+MemberStatus = Literal["invited", "active", "suspended"]
 
 _ACTION_GRANT = "platform.membership.grant"
 _ACTION_REVOKE = "platform.membership.revoke"

@@ -31,6 +31,7 @@ from dw_platform.adapters.persistence.zalo_link_repo import (
     SqlChannelLinkNonceRetention,
     SqlZaloLink,
 )
+from dw_platform.testing.members import add_tenant_member
 
 pytestmark = pytest.mark.integration
 
@@ -91,6 +92,7 @@ async def _join_new_tenant(migrator: AsyncEngine, user_id: uuid.UUID) -> uuid.UU
                 id=workspace_id, tenant_id=tenant_id, slug="main", name="Main"
             )
         )
+        await add_tenant_member(conn, tenant_id, user_id)
         await conn.execute(
             sa.insert(tables.memberships).values(
                 id=uuid.uuid4(),
@@ -378,6 +380,7 @@ async def test_a_zalo_identity_never_resolves_a_membership(
                 id=workspace_id, tenant_id=tenant_id, slug="main", name="Main"
             )
         )
+        await add_tenant_member(conn, tenant_id, user)
         await conn.execute(
             sa.insert(tables.memberships).values(
                 id=uuid.uuid4(),

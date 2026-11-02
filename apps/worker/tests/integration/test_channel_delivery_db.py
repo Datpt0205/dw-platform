@@ -41,6 +41,7 @@ from dw_platform.adapters.persistence.notifications import SqlNotificationReposi
 from dw_platform.adapters.persistence.zalo_link_repo import SqlZaloLink
 from dw_platform.application.access_context import AccessContext
 from dw_platform.domain.audit import system_actor, system_actor_label
+from dw_platform.testing.members import add_tenant_member
 from dw_worker.consumers.channel_delivery import MAX_ATTEMPTS, build_channel_delivery_consumer
 
 pytestmark = pytest.mark.integration
@@ -118,6 +119,7 @@ async def _linked_member(migrator: AsyncEngine, place: _Place) -> tuple[uuid.UUI
         await conn.execute(
             sa.insert(tables.users).values(id=user_id, subject=f"test|{user_id}", display_name="N")
         )
+        await add_tenant_member(conn, place.tenant_id, user_id)
         await conn.execute(
             sa.insert(tables.memberships).values(
                 id=uuid.uuid4(),

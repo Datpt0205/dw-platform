@@ -59,6 +59,7 @@ from dw_platform.adapters.persistence.tenant_members import SqlTenantMembersRepo
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.authorization import ScopeAuthorizationService
 from dw_platform.application.digital_workers import DigitalWorkerService
+from dw_platform.testing.members import TENANT_MEMBER_SQL, tenant_member_params
 
 pytestmark = pytest.mark.integration
 
@@ -156,6 +157,7 @@ async def seed(migrator: AsyncEngine) -> World:
                 " VALUES (:u, :sub, :email, 'Người xem')",
                 {"u": u, "sub": f"plan-{u}", "email": f"{u.hex[:12]}@plan.test"},
             ),
+            (TENANT_MEMBER_SQL, tenant_member_params(t, u)),
             (
                 "INSERT INTO platform.memberships (id, tenant_id, workspace_id, user_id, role_keys)"
                 " VALUES (:id, :t, :w, :u, CAST(:r AS jsonb))",

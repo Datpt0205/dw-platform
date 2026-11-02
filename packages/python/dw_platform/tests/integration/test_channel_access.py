@@ -38,6 +38,7 @@ from dw_platform.adapters.persistence.channel_inbound import (
 from dw_platform.adapters.persistence.channel_preferences import SqlChannelPreferences
 from dw_platform.adapters.persistence.membership_lookup import SqlMembershipLookup
 from dw_platform.application.channel_access import LinkedUserAccess
+from dw_platform.testing.members import add_tenant_member
 
 pytestmark = pytest.mark.integration
 
@@ -106,6 +107,7 @@ async def _join(
     permission_sets: list[str] | None = None,
 ) -> None:
     async with migrator.begin() as conn:
+        await add_tenant_member(conn, where[0], user_id)
         await conn.execute(
             sa.insert(tables.memberships).values(
                 id=uuid.uuid4(),

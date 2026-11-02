@@ -1,0 +1,168 @@
+# Mutation check of org-and-principals ticket 02: scripts/mutate.py runs this file.
+# One mutation per control (R4.1-R4.5, R4.7, R4.8, R5.1; OP4-OP7) and per writer
+# of step 4. A mutation of the migration needs no reset: each suite recreates its
+# database from the migrations at session start.
+mutations:
+  - name: OP4 a membership needs no company member
+    file: db/migrations/versions/349080a62e41_tenant_members.py
+    old: |2
+          op.execute(
+              "ALTER TABLE platform.memberships ADD CONSTRAINT fk_memberships_tenant_members"
+              " FOREIGN KEY (tenant_id, user_id)"
+              " REFERENCES platform.tenant_members (tenant_id, user_id) ON DELETE CASCADE"
+          )
+    new: ""
+    tests:
+      - packages/python/dw_platform/tests/integration/test_tenant_member_status.py::test_a_membership_without_its_company_member_is_refused
+  - name: R4.2 deleting a company member leaves its memberships
+    file: db/migrations/versions/349080a62e41_tenant_members.py
+    old: '        " REFERENCES platform.tenant_members (tenant_id, user_id) ON DELETE CASCADE"'
+    new: '        " REFERENCES platform.tenant_members (tenant_id, user_id) ON DELETE NO ACTION"'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_tenant_member_status.py::test_deleting_a_company_member_deletes_every_membership_in_one_statement
+  - name: R4.1 a status outside the three is accepted
+    file: db/migrations/versions/349080a62e41_tenant_members.py
+    old: "                CHECK (status IN ('invited', 'active', 'suspended'))"
+    new: "                CHECK (status IS NOT NULL)"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_tenant_member_status.py::test_a_status_outside_the_three_is_refused
+  - name: R4.1 status_changed_at does not move
+    file: db/migrations/versions/349080a62e41_tenant_members.py
+    old: "                NEW.status_changed_at := now();"
+    new: "                NULL;"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_tenant_member_status.py::test_status_changed_at_moves_only_when_the_status_changes
+  - name: R4.1 status_changed_at overrides the value a statement states
+    file: db/migrations/versions/349080a62e41_tenant_members.py
+    old: |2
+                  IF NEW.status IS DISTINCT FROM OLD.status
+                     AND NEW.status_changed_at IS NOT DISTINCT FROM OLD.status_changed_at THEN
+    new: |2
+                  IF NEW.status IS DISTINCT FROM OLD.status THEN
+    tests:
+      - packages/python/dw_platform/tests/integration/test_tenant_member_status.py::test_status_changed_at_moves_only_when_the_status_changes
+  - name: R4.1 the backfill makes a service user invited
+    file: db/migrations/versions/349080a62e41_tenant_members.py
+    old: "           CASE WHEN u.kind = 'service' OR EXISTS ("
+    new: "           CASE WHEN EXISTS ("
+    tests:
+      - packages/python/dw_platform/tests/integration/test_tenant_member_status.py::test_the_backfill_gives_one_row_per_pair_by_kind_and_sign_in
+  - name: R4.1 the backfill counts a linked chat as a sign-in
+    file: db/migrations/versions/349080a62e41_tenant_members.py
+    old: "                WHERE e.user_id = u.id AND e.provider NOT IN {_CHANNEL_LINK_PROVIDERS}"
+    new: "                WHERE e.user_id = u.id"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_tenant_member_status.py::test_the_backfill_gives_one_row_per_pair_by_kind_and_sign_in
+  - name: OP5 the AccessContext door admits a member who is not active
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/membership_lookup.py
+    old: '                        tables.tenant_members.c.status == "active",'
+    new: ""
+    tests:
+      - packages/python/dw_platform/tests/integration/test_tenant_member_status.py::test_a_suspended_or_missing_member_gets_no_access_in_any_workspace
+      - apps/api/tests/integration/test_member_status_door.py::test_a_suspended_member_is_refused_at_every_route_in_every_workspace
+  - name: R4.5 activation reopens a suspended member
+    file: db/migrations/versions/349080a62e41_tenant_members.py
+    old: "            WHERE user_id = p_user_id AND status = 'invited';"
+    new: "            WHERE user_id = p_user_id;"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_tenant_member_status.py::test_sign_in_activates_an_invitation_and_leaves_a_suspension
+  - name: R4.5 sign-in activates no invitation
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/identity_provisioning.py
+    old: '            await session.execute(_ACTIVATE_INVITED, {"user_id": str(user_id)})'
+    new: "            pass"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_tenant_member_status.py::test_the_first_sign_in_activates_in_the_transaction_that_links_the_identity
+      - packages/python/dw_platform/tests/integration/test_tenant_member_status.py::test_a_person_signed_in_elsewhere_is_invited_then_active_at_next_bootstrap
+      - packages/python/dw_platform/tests/integration/test_tenant_members.py::test_an_invited_person_signs_in_and_finds_their_workspace
+  - name: R4.5 a principal-only policy lets a connection change its own status
+    file: db/migrations/versions/349080a62e41_tenant_members.py
+    old: '        f" FOR SELECT USING {_PRINCIPAL}"'
+    new: '        f" USING {_PRINCIPAL}"'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_tenant_member_status.py::test_a_connection_bound_only_to_a_principal_changes_no_status
+  - name: OP6 the tenant policy isolates nothing
+    file: db/migrations/versions/349080a62e41_tenant_members.py
+    old: '        f" USING {_TENANT} WITH CHECK {_TENANT}"'
+    new: '        " USING (true) WITH CHECK (true)"'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_tenant_member_status.py::test_a_connection_reads_only_its_tenants_members_or_its_own_rows
+      - packages/python/dw_platform/tests/integration/test_rls_coverage.py::test_every_policy_actually_consults_the_tenant_setting
+  - name: OP6 self-select returns every person's rows
+    file: db/migrations/versions/349080a62e41_tenant_members.py
+    old: '        f" FOR SELECT USING {_PRINCIPAL}"'
+    new: '        " FOR SELECT USING (true)"'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_tenant_member_status.py::test_a_connection_reads_only_its_tenants_members_or_its_own_rows
+  - name: OP7 bootstrap lists a company where the person is not active
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/identity_provisioning.py
+    old: '                            _MEMBER.c.status == "active",'
+    new: ""
+    tests:
+      - packages/python/dw_platform/tests/integration/test_tenant_member_status.py::test_bootstrap_drops_the_companies_where_the_person_is_suspended
+      - packages/python/dw_platform/tests/integration/test_tenant_member_status.py::test_sign_in_activates_an_invitation_and_leaves_a_suspension
+  - name: R5.1 the member lists infer a status instead of reading the column
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/directory.py
+    old: "        sa.select(member.c.status)"
+    new: '        sa.select(sa.literal("active"))'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_tenant_member_status.py::test_both_member_lists_report_the_company_status
+  - name: R4.4 an invitation writes an active member
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/tenant_members.py
+    old: '            await session.execute(ensure_tenant_member(context.tenant_id, user.user_id, "invited"))'
+    new: '            await session.execute(ensure_tenant_member(context.tenant_id, user.user_id, "active"))'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_tenant_member_status.py::test_an_invitation_writes_an_invited_member_and_a_refused_one_writes_none
+      - packages/python/dw_platform/tests/integration/test_tenant_members.py::test_an_invited_person_signs_in_and_finds_their_workspace
+  - name: R4.1 a grant writes an active member
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/membership_admin.py
+    old: '            await session.execute(ensure_tenant_member(context.tenant_id, user_id, "invited"))'
+    new: '            await session.execute(ensure_tenant_member(context.tenant_id, user_id, "active"))'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_tenant_member_status.py::test_a_grant_writes_an_invited_member_who_is_active_at_next_sign_in
+  - name: R4.1 the provisioner's grant writes an active member
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/provisioning_repo.py
+    old: '                    await session.execute(ensure_tenant_member(tenant_id, user_id, "invited"))'
+    new: '                    await session.execute(ensure_tenant_member(tenant_id, user_id, "active"))'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_tenant_member_status.py::test_the_provisioners_grant_writes_an_invited_member
+  - name: R4.1 a second write resets a suspended member
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/tenant_member_rows.py
+    old: '        .on_conflict_do_nothing(index_elements=["tenant_id", "user_id"])'
+    new: '        .on_conflict_do_update(index_elements=["tenant_id", "user_id"], set_={"status": status})'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_tenant_member_status.py::test_the_provisioners_grant_writes_an_invited_member
+  - name: R4.1 a new DW's service principal is invited
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/digital_workers_repo.py
+    old: '                    ensure_tenant_member(worker.tenant_id, worker.principal_user_id, "active")'
+    new: '                    ensure_tenant_member(worker.tenant_id, worker.principal_user_id, "invited")'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_digital_workers_db.py::test_a_dw_and_its_principal_are_written_together
+  - name: R4.1 the default membership of a first sign-in is invited
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/identity_provisioning.py
+    old: '        await session.execute(ensure_tenant_member(self.default_tenant_id, user_id, "active"))'
+    new: '        await session.execute(ensure_tenant_member(self.default_tenant_id, user_id, "invited"))'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_tenant_member_status.py::test_the_default_membership_of_a_first_sign_in_is_active
+  - name: R4.1 the operator's admin script writes an invited member
+    file: scripts/grant_platform_admin.py
+    old: '            await conn.execute(ensure_tenant_member(tenant.id, user.id, "active"))'
+    new: '            await conn.execute(ensure_tenant_member(tenant.id, user.id, "invited"))'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_tenant_member_status.py::test_the_operators_admin_script_writes_an_active_member
+  - name: R4.1 a re-seed leaves a seeded member suspended
+    file: packages/python/dw_platform/src/dw_platform/testing/seed_env.py
+    old: '                        index_elements=["tenant_id", "user_id"], set_={"status": "active"}'
+    new: '                        index_elements=["tenant_id", "user_id"], set_={"updated_at": sa.func.now()}'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_tenant_member_status.py::test_the_seed_writes_active_members_and_a_reseed_restores_them
+  - name: step 7 offboarding cannot delete company members
+    file: db/migrations/versions/349080a62e41_tenant_members.py
+    old: |2
+          op.execute(_for_role("dw_app", f"REVOKE TRUNCATE ON {table} FROM dw_app;"))
+          op.execute(_for_role("dw_app", f"GRANT SELECT, INSERT, UPDATE, DELETE ON {table} TO dw_app;"))
+    new: |2
+          op.execute(_for_role("dw_app", f"REVOKE TRUNCATE, DELETE ON {table} FROM dw_app;"))
+          op.execute(_for_role("dw_app", f"GRANT SELECT, INSERT, UPDATE ON {table} TO dw_app;"))
+    tests:
+      - packages/python/dw_platform/tests/integration/test_offboarding.py::test_offboarding_exports_and_purges_the_company_members
+      - packages/python/dw_platform/tests/integration/test_privileges.py::test_company_members_are_the_applications_and_the_provisioners_to_add

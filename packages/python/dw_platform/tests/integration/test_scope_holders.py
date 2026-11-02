@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async
 from sqlalchemy.pool import NullPool
 
 from dw_platform.adapters.persistence.scope_holders import SqlScopeHolders
+from dw_platform.testing.members import add_tenant_member
 
 pytestmark = pytest.mark.integration
 
@@ -110,6 +111,7 @@ async def world(migrator: AsyncEngine) -> World:
             (w.tenant_a, w.ws2, w.ws2_only, [doer], []),
             (w.tenant_b, w.ws_b, w.b_holder, [doer], []),
         ):
+            await add_tenant_member(conn, tenant, user)
             await conn.execute(
                 sa.text(
                     "INSERT INTO platform.memberships"

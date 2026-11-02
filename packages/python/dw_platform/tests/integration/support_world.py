@@ -32,6 +32,7 @@ from dw_platform.application.support_access import (
     SupportGrantService,
     SupportScopeCatalog,
 )
+from dw_platform.testing.members import add_tenant_member
 
 SET_KEY = "probe.read"
 SET_SCOPES = frozenset({"x.read"})
@@ -180,6 +181,7 @@ async def build_world(migrator: AsyncEngine) -> SupportWorld:
             (w.tenant_b, w.ws_b, "b_granter", [w.granter_role]),
             (w.tenant_c, w.ws_c, "c_granter", [w.granter_role]),
         ):
+            await add_tenant_member(conn, tenant, w.users[name])
             await conn.execute(
                 sa.text(
                     "INSERT INTO platform.memberships"

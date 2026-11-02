@@ -33,6 +33,7 @@ from dw_platform.adapters.persistence import tables
 from dw_platform.adapters.persistence.identity_provisioning import SqlIdentityBootstrap
 from dw_platform.adapters.persistence.membership_lookup import SqlMembershipLookup
 from dw_platform.adapters.persistence.separation_of_duties import refusal
+from dw_platform.testing.members import add_tenant_member
 from dw_platform.testing.seed_env import seed_test_env
 
 pytestmark = pytest.mark.integration
@@ -249,6 +250,7 @@ async def test_a_subject_of_another_issuer_reaches_no_user(
     subject = f"legacy-{uuid.uuid4()}"
     known = await _user(migrator, email=_email(), subject=subject)
     async with migrator.begin() as conn:
+        await add_tenant_member(conn, DEFAULT_TENANT, known)
         await conn.execute(
             sa.insert(tables.memberships).values(
                 id=uuid.uuid4(),

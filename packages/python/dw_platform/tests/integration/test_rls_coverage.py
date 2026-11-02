@@ -35,6 +35,8 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.pool import NullPool
 from studio_catalog import studio_table_violations
 
+from dw_platform.testing.members import TENANT_MEMBER_SQL, tenant_member_params
+
 pytestmark = pytest.mark.integration
 
 # Every table with a `tenant_id` column, in whatever schema it lives. No schema
@@ -124,6 +126,11 @@ _PRINCIPAL_ONLY_ON_PURPOSE: dict[tuple[str, str], str] = {
         "a decision code is the person's own and the bot reads it from the chat's "
         "linked person before it knows a tenant (migration e399be8c0a2d); SELECT "
         "only, and every write runs under the tenant and workspace policy"
+    ),
+    ("tenant_members", "tenant_members_self_select"): (
+        "sign-in reads the caller's own standing in every company before a tenant "
+        "is resolved, to list only the companies where they are active (migration "
+        "349080a62e41); SELECT only, so no connection changes its own status"
     ),
     ("channel_preferences", "channel_preferences_self"): (
         "the workspace a person chose for chat commands is the person's own row, "
@@ -550,6 +557,7 @@ async def test_a_connection_that_binds_no_principal_reads_no_chat_preference(
             " VALUES (:w, :t, 'main', 'Main')",
             {"w": workspace, "t": tenant},
         ),
+        (TENANT_MEMBER_SQL, tenant_member_params(tenant, user)),
         (
             "INSERT INTO platform.memberships (id, tenant_id, workspace_id, user_id)"
             " VALUES (gen_random_uuid(), :t, :w, :u)",
@@ -624,6 +632,10 @@ _TENANT_WIDE_ON_PURPOSE: dict[tuple[str, str], str] = {
         "a separation-of-duties waiver for a person across the company's memberships"
     ),
     ("platform", "tenant_daily_spend_guard"): "the tenant's spend for one day, all workspaces",
+    ("platform", "tenant_members"): (
+        "a person's standing belongs to the whole company, not to a workspace "
+        "(org-and-principals R4.1); each membership in a workspace hangs from it"
+    ),
     ("platform", "tenant_offboarding_requests"): "the request to offboard the whole tenant",
     ("platform", "workspaces"): "the workspace rows themselves; a workspace is not inside one",
 }

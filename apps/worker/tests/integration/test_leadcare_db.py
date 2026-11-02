@@ -71,6 +71,7 @@ from dw_platform.application.entitlement import DEFAULT_PLANS, PlanEntitlementSe
 from dw_platform.application.intake import IntakeKeys, LeadIntake
 from dw_platform.application.marketing_send import ConsentLedger
 from dw_platform.application.work_queue import WorkQueue
+from dw_platform.testing.members import add_tenant_member
 from dw_worker.consumers.dw_timers import build_dw_timers_consumer
 from dw_worker.consumers.dw_work import build_dw_work_consumer
 
@@ -169,6 +170,7 @@ async def seed(migrator: AsyncEngine, *, reply_wait: int = 30) -> Lead:
                 u=user,
                 s=f"lc-{user}",
             )
+            await add_tenant_member(conn, t, user)
             await run(
                 "INSERT INTO platform.memberships (id, tenant_id, workspace_id, user_id, role_keys)"
                 " VALUES (:i, :t, :w, :u, '[\"approver\"]'::jsonb)",
@@ -193,6 +195,7 @@ async def seed(migrator: AsyncEngine, *, reply_wait: int = 30) -> Lead:
             w=w,
             o=owner,
         )
+        await add_tenant_member(conn, t, principal)
         await run(
             "INSERT INTO platform.memberships (id, tenant_id, workspace_id, user_id, role_keys)"
             " VALUES (:i, :t, :w, :u, '[\"member\"]'::jsonb)",

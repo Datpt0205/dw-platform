@@ -93,6 +93,16 @@ async def _access_in(
                 tables.memberships.join(
                     tables.tenants, tables.tenants.c.id == tables.memberships.c.tenant_id
                 )
+                # R4.3: only an `active` member of the company passes, at every
+                # route and in every workspace; no company row denies too.
+                .join(
+                    tables.tenant_members,
+                    sa.and_(
+                        tables.tenant_members.c.tenant_id == tables.memberships.c.tenant_id,
+                        tables.tenant_members.c.user_id == tables.memberships.c.user_id,
+                        tables.tenant_members.c.status == "active",
+                    ),
+                )
             )
             .where(
                 user_clause,
@@ -101,8 +111,9 @@ async def _access_in(
             )
         )
     ).first()
-    # Fail closed: no membership, or a tenant that is not active, denies —
-    # an unreadable/absent status is not "active" and denies too.
+    # Fail closed: no membership, a person not `active` in the company, or a
+    # tenant that is not active, denies — an unreadable/absent status is not
+    # "active" and denies too.
     if membership_row is None or membership_row.tenant_status != "active":
         return None
 

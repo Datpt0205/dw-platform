@@ -31,6 +31,7 @@ from dw_platform.adapters.persistence.separation_of_duties import (
     refusal,
     separation_of_duties_conflict,
 )
+from dw_platform.adapters.persistence.tenant_member_rows import ensure_tenant_member
 from dw_platform.adapters.persistence.tenant_session import TenantScope, tenant_session
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.decision_gate import DW_DECISION, ApprovedDecision
@@ -130,6 +131,11 @@ class SqlDigitalWorkerRepository:
                         name=config.name,
                         owner_user_id=worker.people.business_owner_id,
                     )
+                )
+                # A service principal is an `active` member of its company
+                # (R6.1; ADR-0103 decision 2): its status is this row.
+                await session.execute(
+                    ensure_tenant_member(worker.tenant_id, worker.principal_user_id, "active")
                 )
                 await session.execute(
                     sa.insert(tables.memberships).values(

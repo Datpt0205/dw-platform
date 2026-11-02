@@ -25,6 +25,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from dw_platform.adapters.persistence import tables
+from dw_platform.adapters.persistence.tenant_member_rows import ensure_tenant_member
 
 ADMIN_ROLES = ["platform_admin", "org_admin"]
 
@@ -71,6 +72,9 @@ async def _run(database_url: str, email: str, tenant_slug: str) -> int:
                 print(f"Tenant {tenant_slug!r} has no 'main' workspace.", file=sys.stderr)
                 return 1
 
+            # An operator's command for a person who has signed in: an `active`
+            # member of the company; a row already there keeps its status.
+            await conn.execute(ensure_tenant_member(tenant.id, user.id, "active"))
             stmt = pg_insert(tables.memberships).values(
                 id=uuid.uuid4(),
                 tenant_id=tenant.id,

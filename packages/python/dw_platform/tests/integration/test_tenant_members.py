@@ -37,6 +37,7 @@ from dw_platform.application.tenant_members import (
     TenantMembersService,
     WorkspaceRoles,
 )
+from dw_platform.testing.members import add_tenant_member
 
 pytestmark = pytest.mark.integration
 
@@ -106,6 +107,7 @@ async def _place(
     migrator: AsyncEngine, w: SupportWorld, user: uuid.UUID, ws: uuid.UUID, roles: list[str]
 ) -> None:
     async with migrator.begin() as conn:
+        await add_tenant_member(conn, w.tenant_a, user)
         await conn.execute(
             sa.text(
                 "INSERT INTO platform.memberships (id, tenant_id, workspace_id, user_id, role_keys)"
@@ -295,7 +297,8 @@ async def test_an_invited_person_signs_in_and_finds_their_workspace(
     directory = SqlWorkspaceDirectory(async_sessionmaker(app_engine, expire_on_commit=False))
     in_ws1 = {m.user_id: m.status for m in await directory.list_members(admin)}
     assert in_ws1[ref.user_id] == "invited"
-    assert in_ws1[world.users["requester"]] == "invited"  # seeded without a sign-in
+    # The column, not a sign-in (R5.1): seeded as an active member of the company.
+    assert in_ws1[world.users["requester"]] == "active"
 
     # The first sign-in, from an IdP that verified the same email.
     view = await SqlIdentityBootstrap(

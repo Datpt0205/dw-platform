@@ -61,6 +61,7 @@ from dw_platform.application.support_access import (
 )
 from dw_platform.application.tenant_members import InviteMember, SetMemberships, WorkspaceRoles
 from dw_platform.domain.approval import ApprovalRequest
+from dw_platform.testing.members import add_tenant_member
 
 pytestmark = pytest.mark.integration
 
@@ -119,6 +120,7 @@ async def new_user(
             {"id": user, "sub": f"it-{user}", "email": f"{user.hex[:12]}@it.test", "name": name},
         )
         for workspace, role in memberships:
+            await add_tenant_member(conn, tenant, user)
             await conn.execute(
                 sa.text(
                     "INSERT INTO platform.memberships (id, tenant_id, workspace_id, user_id,"

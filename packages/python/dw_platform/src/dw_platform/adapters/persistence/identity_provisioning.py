@@ -37,6 +37,7 @@ from dw_kernel.errors import PermissionDeniedError
 from dw_platform.adapters.identity.dev_token import DEV_ISSUER
 from dw_platform.adapters.persistence import tables
 from dw_platform.adapters.persistence.membership_lookup import effective_scopes
+from dw_platform.adapters.persistence.tenant_member_rows import ensure_tenant_member
 from dw_platform.application.identity_bootstrap import (
     BootstrapView,
     WorkspaceMembershipView,
@@ -45,8 +46,12 @@ from dw_platform.application.ports import VerifiedIdentity
 
 _SET_TENANT = text("SELECT set_config('app.tenant_id', :tenant_id, true)")
 _SET_PRINCIPAL = text("SELECT set_config('app.principal_id', :principal_id, true)")
+# R4.5: every company that invited this person now has them `active`; a
+# `suspended` row stays as it is (migration 349080a62e41).
+_ACTIVATE_INVITED = text("SELECT platform.activate_invited_members(CAST(:user_id AS uuid))")
 
 
+_MEMBER = tables.tenant_members
 _LOCK_LINK = text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))")
 # A linked chat is where to send, not who is signing in.
 _LOGIN = tables.external_identities.c.provider.not_in(tables.CHANNEL_LINK_PROVIDERS)
@@ -111,6 +116,10 @@ class SqlIdentityBootstrap:
     async def bootstrap(self, identity: VerifiedIdentity) -> BootstrapView:
         async with self.session_factory() as session, session.begin():
             user_id, is_new = await self._resolve_user(session, identity)
+            # In the transaction that linked the identity, before any tenant is
+            # bound and before the memberships are read, so a company that
+            # invited this person is listed at this very sign-in (R4.5, R4.8).
+            await session.execute(_ACTIVATE_INVITED, {"user_id": str(user_id)})
 
             # Membership plane is RLS-scoped: pin the default tenant first (the
             # optional auto-provision writes into it), and set the principal so
@@ -246,6 +255,8 @@ class SqlIdentityBootstrap:
         if tenant_exists is None:
             # Unseeded database: user is created but has no workspace yet.
             return
+        # Signed in just now, so the company row is `active` (R4.1).
+        await session.execute(ensure_tenant_member(self.default_tenant_id, user_id, "active"))
         await session.execute(
             pg_insert(tables.memberships)
             .values(
@@ -278,9 +289,21 @@ class SqlIdentityBootstrap:
                     tables.memberships.join(
                         tables.workspaces,
                         tables.memberships.c.workspace_id == tables.workspaces.c.id,
-                    ).join(
+                    )
+                    .join(
                         tables.tenants,
                         tables.memberships.c.tenant_id == tables.tenants.c.id,
+                    )
+                    # R4.8: a company where this person is not `active` lists
+                    # none of its workspaces; read through
+                    # `tenant_members_self_select`, every company of theirs.
+                    .join(
+                        _MEMBER,
+                        sa.and_(
+                            _MEMBER.c.tenant_id == tables.memberships.c.tenant_id,
+                            _MEMBER.c.user_id == tables.memberships.c.user_id,
+                            _MEMBER.c.status == "active",
+                        ),
                     )
                 )
                 .where(tables.memberships.c.user_id == user_id)

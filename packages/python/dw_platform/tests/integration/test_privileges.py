@@ -29,6 +29,7 @@ from test_rls_coverage import tenant_schemas
 
 from dw_platform.adapters.persistence.retention_terms import pinned_terms
 from dw_platform.retention_policy import load_retention_policy
+from dw_platform.testing.members import TENANT_MEMBER_SQL, tenant_member_params
 
 pytestmark = pytest.mark.integration
 
@@ -938,6 +939,8 @@ async def test_the_provisioner_holds_exactly_what_its_code_runs(db_urls: Databas
     migration = _module(
         "db/migrations/versions/0fdd32a39d87_narrow_app_role_writes.py", "narrow_app_role_writes"
     )
+    # A later revision that grants the provisioner a new table declares it the same way.
+    tenant_members = _module("db/migrations/versions/349080a62e41_tenant_members.py", "tm")
     script = _module("scripts/create_provisioner_role.py", "create_provisioner_role")
     migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
     try:
@@ -945,7 +948,7 @@ async def test_the_provisioner_holds_exactly_what_its_code_runs(db_urls: Databas
             catalog = {(r.tbl, r.verb, r.col) for r in await conn.execute(_PROVISIONER_GRANTS)}
     finally:
         await migrator.dispose()
-    declared = _declared(migration.PROVISIONER)  # type: ignore[attr-defined]
+    declared = _declared(migration.PROVISIONER) | _declared(tenant_members.PROVISIONER)  # type: ignore[attr-defined]
     assert _declared(script.GRANTS) == declared, "the role script and the migration disagree"  # type: ignore[attr-defined]
     assert catalog == declared, (
         f"catalog only: {sorted(catalog - declared)}; declared only: {sorted(declared - catalog)}"
@@ -1174,6 +1177,7 @@ async def test_the_critical_role_check_names_a_planted_principal(db_urls: Databa
                     " VALUES (:u, :s, 'owner')",
                     {"u": owner, "s": f"crit-{owner}"},
                 ),
+                (TENANT_MEMBER_SQL, tenant_member_params(tenant, owner)),
                 (
                     "INSERT INTO platform.memberships (id, tenant_id, workspace_id, user_id,"
                     " role_keys) VALUES (:id, :t, :w, :u, CAST(:r AS jsonb))",
@@ -1189,6 +1193,7 @@ async def test_the_critical_role_check_names_a_planted_principal(db_urls: Databa
                     " owning_workspace_id, name, owner_user_id) VALUES (:u, :t, :w, 'dw', :o)",
                     {"u": principal, "t": tenant, "w": ws, "o": owner},
                 ),
+                (TENANT_MEMBER_SQL, tenant_member_params(tenant, principal)),
                 (
                     "INSERT INTO platform.memberships (id, tenant_id, workspace_id, user_id,"
                     " role_keys) VALUES (:id, :t, :w, :u, CAST(:r AS jsonb))",
@@ -1430,3 +1435,54 @@ async def test_the_permission_catalogue_is_read_only_to_every_application_role(
             with pytest.raises(Exception, match="permission denied"):
                 await conn.execute(sa.text(statement))
             await conn.rollback()
+
+
+# org-and-principals ticket 02 (migration 349080a62e41).
+
+
+async def test_company_members_are_the_applications_and_the_provisioners_to_add(
+    db_urls: DatabaseUrls,
+) -> None:
+    """`dw_app` reads and writes `platform.tenant_members` (DELETE for the
+    offboarding purge), never truncates it; `dw_agent_ro` holds nothing; the
+    provisioner reads and adds (its exact set is the test above). The activation
+    function is `dw_app`'s alone to call."""
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            held = {
+                (row.rolname, row.verb)
+                for row in await conn.execute(
+                    sa.text(
+                        """
+                        SELECT r.rolname, v.verb
+                        FROM pg_roles r
+                        CROSS JOIN unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE',
+                                                'TRUNCATE']) AS v(verb)
+                        WHERE r.rolname IN ('dw_app', 'dw_agent_ro', 'dw_provisioner')
+                          AND has_table_privilege(r.rolname, 'platform.tenant_members', v.verb)
+                        """
+                    )
+                )
+            }
+            calls = {
+                role: await conn.scalar(
+                    sa.text(
+                        "SELECT has_function_privilege(:r,"
+                        " 'platform.activate_invited_members(uuid)', 'EXECUTE')"
+                    ),
+                    {"r": role},
+                )
+                for role in ("public", "dw_app", "dw_agent_ro")
+            }
+    finally:
+        await migrator.dispose()
+    assert {verb for role, verb in held if role == "dw_app"} == {
+        "SELECT",
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+    }
+    assert {verb for role, verb in held if role == "dw_agent_ro"} == set()
+    assert {verb for role, verb in held if role == "dw_provisioner"} == {"SELECT", "INSERT"}
+    assert calls == {"public": False, "dw_app": True, "dw_agent_ro": False}

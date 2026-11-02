@@ -30,6 +30,7 @@ from dw_platform.adapters.persistence.digital_workers_repo import (
 from dw_platform.adapters.persistence.work_queue_repo import SqlWorkQueueRepository
 from dw_platform.application.authorization import ScopeAuthorizationService
 from dw_platform.application.work_queue import Claimed, InMemoryWorkKindSchemas, WorkQueue
+from dw_platform.testing.members import TENANT_MEMBER_SQL, tenant_member_params
 from dw_worker.consumers.dw_work import build_dw_work_consumer
 
 pytestmark = pytest.mark.integration
@@ -83,6 +84,7 @@ async def seed(migrator: AsyncEngine, *, state: str = "operating", items: int = 
                 "INSERT INTO platform.users (id, subject, display_name) VALUES (:u, :s, 'owner')",
                 {"u": owner, "s": f"dww-{owner}"},
             ),
+            (TENANT_MEMBER_SQL, tenant_member_params(t, owner)),
             (
                 "INSERT INTO platform.memberships (id, tenant_id, workspace_id, user_id, role_keys)"
                 " VALUES (:i, :t, :w, :u, '[\"approver\"]'::jsonb)",
