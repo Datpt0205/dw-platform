@@ -1,6 +1,6 @@
 # 04 — Màn hình trợ lý và thẻ duyệt
 
-Status: needs-triage
+Status: ready-for-agent
 Blocked by: 03
 Area: studio
 Yêu cầu: R7.1, R7.2
@@ -29,3 +29,4 @@ Chủ DW trò chuyện với trợ lý, xem kế hoạch, diff và lỗi, lưu, 
 ## Comments
 
 - 2026-10-31 (agent): viết cùng spec.
+- 2026-11-02 (agent): checking-plan-readiness ĐẠT; ready-for-agent.

@@ -1,9 +1,9 @@
 # Trợ lý AI sửa quy trình mẫu của Digital Worker
 
-Status: needs-triage
+Status: ready-for-agent
 Area: studio · Nhánh: `main` · Viết: 31/10/2026
 Duyệt: agent, tạm theo ủy quyền 27/10/2026
-Sẵn sàng: chưa kiểm
+Sẵn sàng: ĐẠT (2/11/2026; 0 CRITICAL, 0 HIGH; ticket 01-04)
 
 Chủ của một Digital Worker muốn đổi quy trình mẫu nó chạy (thêm một lần nhắc, bỏ một bước, đổi thứ tự) mà không viết YAML. Theo D16 (3) và D18 (4), trợ lý AI hỏi lại khi chưa rõ, nêu kế hoạch, rồi đề xuất một bản sửa dạng diff để người duyệt, từ chối hay sửa tiếp; trợ lý chỉ soạn cây bước từ sổ loại bước và những công cụ, prompt mà quy trình gốc đã dùng, không bao giờ đổi loại quyết định, mức tự chủ, kết nối, model hay thông tin đăng nhập; bản sửa chỉ chạy thật khi bộ kiểm của wf-lite, luật sàn HITL và một lượt mô phỏng đều qua và một người khác người soạn duyệt (YC125).
 
@@ -68,14 +68,14 @@ Trợ lý chỉ đổi cây bước; mọi thứ khác của quy trình gốc gi
 - R6.3 NẾU bản nháp được gửi duyệt mà chưa có lượt mô phỏng `passed` trên đúng hash nội dung đó, THÌ nền tảng PHẢI trả 409 `simulation_required` và không mở approval.
 - R6.4 KHI chủ DW gửi duyệt, nền tảng PHẢI mở approval `dw.workflow.publish` mang `dw_id`, hash nội dung và hash gốc làm định danh, theo luật strict, quyết bởi Validator hay Technical Owner của DW đọc trong giao dịch quyết định và không ai trong danh sách người đã lưu hay người gửi.
 - R6.10 KHI chủ DW rút một bản nháp đang chờ duyệt, nền tảng PHẢI hủy approval và trả bản nháp về trạng thái nháp trong cùng giao dịch.
-- R6.5 KHI approval được duyệt, nền tảng PHẢI, trong một giao dịch, ghi phiên bản của tenant bất biến từ nội dung có đúng hash nội dung của approval, đánh số `<semver của bản gói>+t<n>` với `n` tăng theo tenant và `key`, và chuyển ghim của DW sang nó; việc đang chạy giữ phiên bản đã ghim lúc bắt đầu.
+- R6.5 KHI approval được duyệt, nền tảng PHẢI, trong một giao dịch, ghi phiên bản của tenant bất biến từ nội dung có đúng hash nội dung của approval, đánh số `<semver của bản gói>+t<n>` với `n` tăng theo DW, và chuyển ghim của DW sang nó; việc đang chạy giữ phiên bản đã ghim lúc bắt đầu.
 - R6.6 NẾU lúc duyệt hash của phiên bản DW đang ghim khác hash gốc của approval, hay nội dung bản nháp không còn hash của approval, THÌ nền tảng PHẢI trả bản nháp về trạng thái nháp với lý do `base_changed` hay `content_changed` và không ghi phiên bản, không đổi ghim.
 - R6.11 NẾU approval bị từ chối hay bị hủy, THÌ nền tảng PHẢI trả bản nháp về trạng thái nháp.
 - R6.14 NẾU sự kiện `dw.workflow.publish.decided` của cùng một approval được giao hai lần, THÌ nền tảng PHẢI không ghi phiên bản thứ hai cho approval đó.
 - R6.12 Mỗi lần lưu, mô phỏng, gửi, rút, phát hành và trả về nháp PHẢI ghi một dòng audit trong cùng giao dịch với thay đổi, đứng tên người làm, lần phát hành đứng tên người duyệt với `details.lane`.
 - R6.15 Mỗi route ghi của R6 PHẢI nhận `Idempotency-Key` theo app-standards/02.
 - R6.13 Bản nháp, kết quả mô phỏng và phiên bản của tenant PHẢI mang `tenant_id` và `workspace_id` của DW dưới RLS bật và FORCE theo `CLAUDE.md` "Tenancy and authorization".
-- R6.16 NẾU một phiên bản của tenant mà DW ghim không có dưới tenant và workspace của DW, THÌ nền tảng PHẢI trả 404 `workflow_not_shipped` và không đọc sang tenant khác.
+- R6.16 NẾU phiên bản `+t<n>` mà DW ghim không có trong các phiên bản của chính DW đó dưới tenant và workspace của nó, THÌ nền tảng PHẢI trả 404 `workflow_not_shipped` và không đọc sang tenant khác.
 
 ### R7 — Màn hình
 
@@ -91,16 +91,17 @@ Trợ lý chỉ đổi cây bước; mọi thứ khác của quy trình gốc gi
 
 ## Ngoài phạm vi
 
-| Việc                                                                           | Vì sao                                                         | Chủ                  |
-| ------------------------------------------------------------------------------ | -------------------------------------------------------------- | -------------------- |
-| Tài liệu và ảnh quy trình làm đầu vào của trợ lý (D18 (4))                     | cần đọc tệp và ảnh qua cửa tri thức; lát này chỉ nhận chữ      | đợt sau              |
-| Dựng quy trình từ mô tả trống                                                  | D16 (2): sau sửa gói mẫu                                       | đợt sau (W3)         |
-| Thêm công cụ, prompt, biến, loại quyết định hay trigger mới                    | D18 (4); prompt và công cụ mới là phiên bản của nền tảng       | không làm            |
-| Canvas kéo thả                                                                 | D16 (4)                                                        | workflow-builder-ui  |
-| Bộ máy vòng đời chung của Studio (đóng băng, rút lại, nhiều loại)              | ADR-0120 (Accepted) cho mọi loại; lát này chỉ quy trình của DW | agent-lifecycle      |
-| Đóng băng của tenant hay nền tảng chặn phát hành (ADR-0120 (Accepted) quyết 7) | chưa có cờ đóng băng nào trong code                            | agent-lifecycle      |
-| Mô phỏng với model thật                                                        | lát này mẫu theo schema; model thật tốn tiền và cần khóa       | đợt sau              |
-| Chạy eval với model thật                                                       | không có khóa model trên máy (Chờ Đạt 21)                      | đợt sau, khi có khóa |
+| Việc                                                                           | Vì sao                                                                                                                                    | Chủ                  |
+| ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| Tài liệu và ảnh quy trình làm đầu vào của trợ lý (D18 (4))                     | cần đọc tệp và ảnh qua cửa tri thức; lát này chỉ nhận chữ                                                                                 | đợt sau              |
+| Dựng quy trình từ mô tả trống                                                  | D16 (2): sau sửa gói mẫu                                                                                                                  | đợt sau (W3)         |
+| Thêm công cụ, prompt, biến, loại quyết định hay trigger mới                    | D18 (4); prompt và công cụ mới là phiên bản của nền tảng                                                                                  | không làm            |
+| Canvas kéo thả                                                                 | D16 (4)                                                                                                                                   | workflow-builder-ui  |
+| Bộ máy vòng đời chung của Studio (đóng băng, rút lại, nhiều loại)              | ADR-0120 (Accepted) cho mọi loại; lát này chỉ quy trình của DW                                                                            | agent-lifecycle      |
+| Đóng băng của tenant hay nền tảng chặn phát hành (ADR-0120 (Accepted) quyết 7) | chưa có cờ đóng băng nào trong code                                                                                                       | agent-lifecycle      |
+| Approval `dw.workflow.publish` hết hạn                                         | nền tảng chưa có lane hết hạn approval (chỉ mã quyết qua Zalo hết hạn); chủ DW rút được (R6.10); khi lane có, nó hủy approval và R6.11 áp | agent-lifecycle      |
+| Mô phỏng với model thật                                                        | lát này mẫu theo schema; model thật tốn tiền và cần khóa                                                                                  | đợt sau              |
+| Chạy eval với model thật                                                       | không có khóa model trên máy (Chờ Đạt 21)                                                                                                 | đợt sau, khi có khóa |
 
 ## API
 
@@ -152,7 +153,7 @@ Không có.
 - 31/10/2026 (agent, tạm theo ủy quyền): ai được nhờ trợ lý là người sửa được DW hôm nay (Business Owner, Technical Owner); ai duyệt phát hành là Validator hay Technical Owner khác người soạn, như đề nghị nâng tự chủ (digital-worker:R8.3), theo người thứ hai của ADR-0120 (Accepted) quyết 2. Sửa: R1.2, R6.4. Nếu sai thì: đổi `deciders` của `DwDecisionAdmission` cho `dw.workflow.publish`.
 - 31/10/2026 (agent, tạm theo ủy quyền) [thay bởi dòng 2/11/2026]: mô phỏng không gọi model thật khi provider là `mock`, và với model thật thì gọi qua cùng gateway và hạn mức như lượt chạy; công cụ luôn giả. Sửa: R6.2. Nếu sai thì: mô phỏng cũng giả bước `ai.llm` bằng mẫu theo `output_schema`.
 - 31/10/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 01-04: 01 lượt trợ lý không lưu (R1-R5), 02 bản nháp và mô phỏng (R6.1, R6.2, R6.7, R6.9, R6.12, R6.13, R6.15), 03 gửi duyệt và phát hành (R6.3-R6.6, R6.8, R6.10, R6.11, R6.14, R6.16), 04 màn hình (R7).
-- 2/11/2026 (agent, tạm theo ủy quyền): checking-plan-readiness CHƯA ĐẠT (3 CRITICAL, 9 HIGH), sửa theo khuyến nghị của gate: lưu dựng lại và kiểm lại phía server (R6.1, R6.7, WAI13); approval chỉ mang định danh và hash, bản đang chờ khóa, phát hành đúng hash, rút được (R6.4-R6.6, R6.8, R6.10, WAI14); RLS và không rơi sang tenant khác (R6.13, WAI15); mọi người đã lưu bị loại khỏi người duyệt (R6.4, WAI16); xử lý quyết định một lần, từ chối và hủy trả về nháp (R6.11, WAI17); audit cùng giao dịch và `Idempotency-Key` (R6.12); một cách băm (mở đầu R6); số phiên bản theo tenant và `key` (R6.5); công cụ và prompt so với bản gói (R2); `question`/`proposal` đúng hình (R1.7); bộ model của runtime (R1.6); lượt `assistant` giả là ca eval (R5.2). Nếu sai thì: từng dòng tương ứng.
+- 2/11/2026 (agent, tạm theo ủy quyền): checking-plan-readiness CHƯA ĐẠT (3 CRITICAL, 9 HIGH), sửa theo khuyến nghị của gate: lưu dựng lại và kiểm lại phía server (R6.1, R6.7, WAI13); approval chỉ mang định danh và hash, bản đang chờ khóa, phát hành đúng hash, rút được (R6.4-R6.6, R6.8, R6.10, WAI14); RLS và không rơi sang tenant khác (R6.13, WAI15); mọi người đã lưu bị loại khỏi người duyệt (R6.4, WAI16); xử lý quyết định một lần, từ chối và hủy trả về nháp (R6.11, WAI17); audit cùng giao dịch và `Idempotency-Key` (R6.12); một cách băm (mở đầu R6); số phiên bản theo DW (R6.5); công cụ và prompt so với bản gói (R2); `question`/`proposal` đúng hình (R1.7); bộ model của runtime (R1.6); lượt `assistant` giả là ca eval (R5.2). Nếu sai thì: từng dòng tương ứng.
 - 2/11/2026 (agent, tạm theo ủy quyền): mô phỏng không gọi model nào: mọi `ai.llm` trả mẫu theo `output_schema`, vì mô phỏng kiểm đường đi của cây và các cổng, còn chất lượng câu chữ là việc của eval; thay dòng 31/10/2026. Sửa: R6.2. Nếu sai thì: mô phỏng gọi model qua bộ model của runtime, và lượt lỗi model là `failed` (R6.9).
 - 2/11/2026 (agent, tạm theo ủy quyền): người quyết `dw.workflow.publish` là vai của DW (Validator, Technical Owner) đọc lúc quyết như `dw.decision` và `dw.autonomy.raise`, không con dấu `studio.publish.approve` của ADR-0120 (Accepted) quyết 2, vì quy trình của DW chưa là artifact của Studio và vai đó chưa có trong danh mục quyền; ghi ở mục Amendments của ADR-0120 (Accepted). Nếu sai thì: đóng dấu `required_scope` khi tenant-rbac có vai, và `DwDecisionAdmission` thêm điều kiện giữ con dấu.
 

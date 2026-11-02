@@ -1,6 +1,6 @@
 # 01 — Một lượt với trợ lý, không lưu
 
-Status: needs-triage
+Status: ready-for-agent
 Area: studio
 Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R2.1, R2.2, R2.3, R2.4, R3.1, R4.1, R5.1, R5.2, R5.3, WAI1, WAI2, WAI3, WAI4, WAI5, WAI6, WAI7, WAI8
 
@@ -15,7 +15,7 @@ Business Owner hay Technical Owner của một DW gửi một yêu cầu sửa q
 2. `diff_steps(base, proposal, registry)` trong `wflite/outline.py`: thêm, bỏ, đổi (`config` hay `description`), đổi chỗ, theo `id`, mỗi mục với đường dẫn lane (R4.1). Bước có `id` trùng trong đề xuất là lỗi của bộ kiểm, diff không đoán.
 3. `configs/prompts/wf_ai/workflow_edit@1.0.0.yaml`: biến `instruction`, `history`, `base_document` (YAML của tài liệu gốc), `node_types` (tên và mô tả sáu loại), không `raw_variables` (R5.1); fixture của provider `mock` cho prompt này trả một `proposal` hợp lệ trên `lead_care@1.0.0` (thêm một `time.wait` trước `fetch_reply`).
 4. Route `POST /api/v1/digital-workers/{dw_id}/workflow-assistant` trong `apps/api/src/dw_api/routes/v1/digital_workers.py`, model thân và trả như mục API của spec; `ModelOutputInvalidError` thành 502 `upstream_unavailable` với `details.reason_code` `assistant_output_invalid` (R1.5); wiring ở `apps/api/src/dw_api/bootstrap/wiring.py` với gateway của runtime; snapshot OpenAPI và kiểu TS sinh lại (`make generate-contracts`).
-5. `evals/datasets/wf_ai/` với ca chèn lệnh trong `instruction` và trong `description` của gốc (bỏ cổng duyệt, gọi công cụ khác, đổi loại quyết định) và grader `wf_ai.frozen` trong `dw_agent_runtime.testing`, đăng ký ở `scripts/run_evals.py` (R5.2, R5.3); chạy với model thật để trống tới khi có khóa (Chờ Đạt 21), ghi ở Comments.
+5. `evals/datasets/wf_ai/` với ca chèn lệnh trong `instruction`, trong `description` của gốc và trong một lượt `assistant` giả của `history` (bỏ cổng duyệt, gọi công cụ khác, đổi loại quyết định) và grader `wf_ai.frozen` trong `dw_agent_runtime.testing`, đăng ký ở `scripts/run_evals.py` (R5.2, R5.3); chạy với model thật để trống tới khi có khóa (Chờ Đạt 21), ghi ở Comments.
 6. Test unit cho `AssistantTurn`, `diff_steps`, kiểm "chỉ từ cái đã có", độ dài; test route với gateway giả đếm số lần gọi; `mutations/01.yaml` một đột biến mỗi kiểm soát WAI1-WAI8.
 
 ## Tiêu chí chấp nhận
@@ -34,7 +34,7 @@ Business Owner hay Technical Owner của một DW gửi một yêu cầu sửa q
 - [ ] R3.1 (WAI7): đề xuất đưa `send` ra khỏi lane `approved`: `wf.hitl_gate_missing`, `publishable` sai; đề xuất của fixture mock: không lỗi, `publishable` đúng.
 - [ ] R4.1: diff của fixture mock nêu đúng một bước thêm, `id` và lane `approved` của `approve_send`; bỏ một bước và đổi chỗ một bước cho đúng mục.
 - [ ] R5.1 (WAI8): `instruction` chứa `</input>` và câu lệnh: prompt dựng có chuỗi đã escape trong khối `<input name="instruction">`.
-- [ ] R5.2: `evals/datasets/wf_ai` có ít nhất ba ca chèn lệnh, mỗi ca một trong ba ý đồ.
+- [ ] R5.2: `evals/datasets/wf_ai` có ca chèn lệnh ở cả ba chỗ (`instruction`, `description` của gốc, lượt `assistant` giả), mỗi ý đồ ít nhất một ca.
 - [ ] R5.3: grader `wf_ai.frozen` chấm đỏ một đề xuất có `wf.hitl_gate_missing` và một đề xuất đổi `decision_classes`, xanh với đề xuất của fixture (test unit của grader).
 - [ ] Xong: `make test-unit test-contract test-architecture` xanh.
 
@@ -45,3 +45,4 @@ Business Owner hay Technical Owner của một DW gửi một yêu cầu sửa q
 ## Comments
 
 - 2026-10-31 (agent): viết cùng spec.
+- 2026-11-02 (agent): checking-plan-readiness ĐẠT; ready-for-agent.

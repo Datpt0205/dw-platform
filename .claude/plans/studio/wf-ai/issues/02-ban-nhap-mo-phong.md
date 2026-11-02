@@ -1,6 +1,6 @@
 # 02 — Bản nháp và mô phỏng
 
-Status: needs-triage
+Status: ready-for-agent
 Blocked by: 01
 Area: studio
 Yêu cầu: R6.1, R6.2, R6.7, R6.9, R6.12, R6.13, R6.15, WAI9, WAI13, WAI15
@@ -36,3 +36,4 @@ Chủ DW lưu một cây bước thành bản nháp duy nhất của DW, kiểm 
 
 - 2026-10-31 (agent): viết cùng spec.
 - 2026-11-02 (agent): viết lại sau gate CHƯA ĐẠT: kiểm lại phía server, mô phỏng không gọi model, RLS, audit, `Idempotency-Key`.
+- 2026-11-02 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
