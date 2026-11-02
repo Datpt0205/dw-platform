@@ -1,0 +1,53 @@
+# Mutation check of tenant-rbac ticket 01: scripts/mutate.py runs this file.
+# One mutation per control (RB1-RB4) and per rule of the catalogue's checks.
+# The checks of (a)-(d) live in the test itself, so they are broken there:
+# a test that cannot fail when its own rule is gone is the shape found 6x.
+mutations:
+  - name: RB4 sign-in reads scopes from roles alone
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/identity_provisioning.py
+    old: "                session, frozenset(row.role_keys), frozenset(row.permission_set_keys)"
+    new: "                session, frozenset(row.role_keys), frozenset()"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_identity_provisioning.py::test_bootstrap_scopes_are_the_access_contexts_permission_sets_included
+  - name: RB1 the application may write the catalogue
+    file: db/migrations/versions/ebb17244abc6_permission_catalogue.py
+    old: '            _for_role(role, f"REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON {_TABLE} FROM {role};")'
+    new: '            _for_role(role, f"GRANT INSERT, UPDATE, DELETE ON {_TABLE} TO {role};")'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_privileges.py::test_the_permission_catalogue_is_read_only_to_every_application_role
+  - name: RB3 support may hold a tenant's Studio scopes
+    file: packages/python/dw_platform/src/dw_platform/application/support_access.py
+    old: '    "studio.",'
+    new: '    "studio_never.",'
+    tests:
+      - packages/python/dw_platform/tests/unit/test_support_access.py::test_the_catalog_refuses_a_tenants_studio_objects_and_connections
+  - name: RB2 (a) a granted key may be unassigned
+    file: packages/python/dw_platform/tests/integration/test_permission_catalogue.py
+    old: '        if catalogue.get(key) not in ("active", "retired"):'
+    new: '        if catalogue.get(key) not in ("active", "retired", "unassigned"):'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_permission_catalogue.py::test_each_catalogue_rule_fails_on_its_case
+  - name: RB2 (b) a checked key may be retired
+    file: packages/python/dw_platform/tests/integration/test_permission_catalogue.py
+    old: '        if catalogue.get(key) not in ("active", "unassigned"):'
+    new: '        if catalogue.get(key) not in ("active", "unassigned", "retired"):'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_permission_catalogue.py::test_each_catalogue_rule_fails_on_its_case
+  - name: RB2 (c) an active key nobody checks passes
+    file: packages/python/dw_platform/tests/integration/test_permission_catalogue.py
+    old: '        if status == "active" and key not in checked_set and key not in unchecked_active:'
+    new: "        if False:"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_permission_catalogue.py::test_each_catalogue_rule_fails_on_its_case
+  - name: RB2 (b) a key checked through an imported constant is not seen
+    file: packages/python/dw_platform/tests/integration/test_permission_catalogue.py
+    old: "            at = lookup(module, expr.id, consts)"
+    new: "            at = (module, expr.id) if expr.id in consts.get(module, {}) else None"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_permission_catalogue.py::test_a_key_checked_through_a_constant_imported_elsewhere_is_seen
+  - name: R1.6 (d) any studio key shape passes
+    file: packages/python/dw_platform/tests/integration/test_permission_catalogue.py
+    old: "        if len(parts) != 3 or parts[1] not in STUDIO_AREAS:"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_permission_catalogue.py::test_studio_keys_are_three_segments_with_a_listed_area

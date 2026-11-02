@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import cast
+from typing import Literal, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Response
@@ -68,6 +68,21 @@ class RoleView(BaseModel):
     key: str
     name: str
     scopes: list[str]
+
+
+ScopeKind = Literal["tenant", "workspace", "record"]
+Risk = Literal["standard", "elevated", "critical"]
+PermissionStatus = Literal["active", "unassigned", "retired"]
+
+
+class PermissionView(BaseModel):
+    key: str
+    area: str
+    label_vi: str
+    # The catalogue's CHECK constraints hold these to their sets.
+    scope_kind: ScopeKind
+    risk: Risk
+    status: PermissionStatus
 
 
 class PermissionSetView(BaseModel):
@@ -243,6 +258,26 @@ async def archive_workspace(
 async def list_roles(context: RequireAccessContext, container: RequireContainer) -> list[RoleView]:
     rows = await _service(container).list_roles(context)
     return [RoleView(key=r.key, name=r.name, scopes=list(r.scopes)) for r in rows]
+
+
+@router.get("/permissions", response_model=list[PermissionView])
+async def list_permissions(
+    context: RequireAccessContext, container: RequireContainer
+) -> list[PermissionView]:
+    """tenant-rbac R1.4: the permission catalogue, by area then key, for a
+    holder of `platform.roles.read`."""
+    rows = await _service(container).list_permissions(context)
+    return [
+        PermissionView(
+            key=r.key,
+            area=r.area,
+            label_vi=r.label_vi,
+            scope_kind=cast(ScopeKind, r.scope_kind),
+            risk=cast(Risk, r.risk),
+            status=cast(PermissionStatus, r.status),
+        )
+        for r in rows
+    ]
 
 
 @router.get("/permission-sets", response_model=list[PermissionSetView])

@@ -1,8 +1,11 @@
 """GET /api/v1/auth/bootstrap — identity-only "who am I / which workspaces?".
 
 Called by the web app right after OIDC login, before a workspace is selected.
-A brand-new verified identity is provisioned into the default demo tenant as a
-plain member; existing users keep their memberships.
+A brand-new verified identity gets no membership (an empty list) unless the
+deployment turns on `auto_provision_default_membership`, which puts it in the
+demo tenant as its default role; existing users keep their memberships. Each
+membership's scopes are its roles' and permission sets' (`effective_scopes`),
+read exactly as the access context of a request reads them (tenant-rbac R2.1).
 """
 
 from __future__ import annotations

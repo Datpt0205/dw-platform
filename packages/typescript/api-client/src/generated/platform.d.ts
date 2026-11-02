@@ -157,6 +157,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/permissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Permissions
+         * @description tenant-rbac R1.4: the permission catalogue, by area then key, for a
+         *     holder of `platform.roles.read`.
+         */
+        get: operations["list_permissions_api_v1_admin_permissions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/roles": {
         parameters: {
             query?: never;
@@ -2941,6 +2962,30 @@ export interface components {
             /** Scopes */
             scopes: string[];
         };
+        /** PermissionView */
+        PermissionView: {
+            /** Area */
+            area: string;
+            /** Key */
+            key: string;
+            /** Label Vi */
+            label_vi: string;
+            /**
+             * Risk
+             * @enum {string}
+             */
+            risk: "standard" | "elevated" | "critical";
+            /**
+             * Scope Kind
+             * @enum {string}
+             */
+            scope_kind: "tenant" | "workspace" | "record";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "unassigned" | "retired";
+        };
         /**
          * Problem
          * @description The single error description returned by every endpoint.
@@ -4053,6 +4098,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PermissionSetView"][];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_permissions_api_v1_admin_permissions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PermissionView"][];
                 };
             };
             /** @description The request was refused */

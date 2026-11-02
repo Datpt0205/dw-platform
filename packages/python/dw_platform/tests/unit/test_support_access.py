@@ -41,6 +41,25 @@ def test_the_catalog_refuses_a_set_carrying_a_platform_scope(scope: str) -> None
     assert catalog.sets() == []
 
 
+@pytest.mark.parametrize(
+    "scope",
+    [
+        "obj.lead.read",
+        "studio.agents.publish",
+        "connections.manage",
+        "integrations.admin",
+        "fld.lead.email.read",
+    ],
+)
+def test_the_catalog_refuses_a_tenants_studio_objects_and_connections(scope: str) -> None:
+    """tenant-rbac R1.5 (RB3): support never holds a tenant's Studio, its
+    objects and fields, its connections or its integrations."""
+    catalog = SupportScopeCatalog()
+    with pytest.raises(ConfigError, match="may never hold"):
+        catalog.register("ctx.read", "Read", {"ctx.records.read", scope}, {"workspace"})
+    assert catalog.sets() == []
+
+
 def test_the_catalog_refuses_a_key_twice() -> None:
     catalog = SupportScopeCatalog()
     catalog.register("ctx.read", "Read", {"ctx.records.read"}, {"workspace"})

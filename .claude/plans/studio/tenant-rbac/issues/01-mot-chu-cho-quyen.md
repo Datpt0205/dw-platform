@@ -1,6 +1,6 @@
 # 01 — Một chủ cho quyền: bootstrap qua effective_scopes và danh mục platform.permissions
 
-Status: ready-for-agent
+Status: resolved (2026-11-02, main)
 Area: studio
 Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, RB1, RB2, RB3, RB4
 
@@ -78,14 +78,14 @@ phần bootstrap của foundations-hardening 05 (brief B11).
 
 ## Tiêu chí chấp nhận
 
-- [ ] R2.1 (RB4): integration: thành viên có vai `member` và bộ quyền `approver_boost` → bootstrap trả `approvals.decide`, bằng đúng tập `GET /api/v1/me` trả ở cùng workspace; quay lại tính theo vai → test đỏ; người không có bộ quyền: kết quả không đổi.
-- [ ] R1.3 (RB1): `dw_app`, `dw_provisioner`, `dw_agent_ro` INSERT, UPDATE, DELETE trên `platform.permissions` → `permission denied`; trả lại quyền ghi trong migration thử → test đỏ.
-- [ ] R1.1 (RB2): thêm một route kiểm `x.y` không có dòng danh mục → (b) đỏ; thêm `authz.require(action=X_Y)` với hằng `X_Y = "x.y"` trong một service của `packages/python` → (b) đỏ; một `.require(action=...)` mà test không giải ra chuỗi, ngoài danh sách chỗ gọi → (b) đỏ; xóa một dòng danh mục đang được kiểm → (b) đỏ; ghi `retired` cho `runs.cancel` → (b) đỏ; ghi `unassigned` cho `approvals.decide` → (a) đỏ.
-- [ ] R1.2 (RB2): thêm khóa `active` không ai kiểm → (c) đỏ; khóa đó ở danh sách ngoại lệ có lý do → xanh.
-- [ ] R1.4: `GET /api/v1/admin/permissions` trả đủ sáu trường cho mọi dòng; người không có `platform.roles.read` → 403.
-- [ ] R1.5 (RB3): đăng ký `obj.lead.read`, `studio.agents.publish`, `connections.manage` hay `integrations.admin` cho truy cập người vận hành → bị từ chối; gỡ từng tiền tố khỏi `FORBIDDEN_SCOPE_PREFIXES` → test của tiền tố đó đỏ.
-- [ ] R1.6: dòng danh mục thử `studio.agents.settings.manage` (bốn đoạn) hay `studio.agent.read` (khu vực số ít ngoài năm ngoại lệ) → (d) đỏ và nêu khóa; `studio.agents.manage_settings`, `studio.publish.approve`, `studio.datahub.manage` → xanh; loại phê duyệt `studio.publish.object` và tên audit `studio.version.published` không nằm trong tập (d) đọc.
-- [ ] Xong: `make ci` xanh.
+- [x] R2.1 (RB4): integration: thành viên có vai `member` và bộ quyền `approver_boost` → bootstrap trả `approvals.decide`, bằng đúng tập `GET /api/v1/me` trả ở cùng workspace; quay lại tính theo vai → test đỏ; người không có bộ quyền: kết quả không đổi.
+- [x] R1.3 (RB1): `dw_app`, `dw_provisioner`, `dw_agent_ro` INSERT, UPDATE, DELETE trên `platform.permissions` → `permission denied`; trả lại quyền ghi trong migration thử → test đỏ.
+- [x] R1.1 (RB2): thêm một route kiểm `x.y` không có dòng danh mục → (b) đỏ; thêm `authz.require(action=X_Y)` với hằng `X_Y = "x.y"` trong một service của `packages/python` → (b) đỏ; một `.require(action=...)` mà test không giải ra chuỗi, ngoài danh sách chỗ gọi → (b) đỏ; xóa một dòng danh mục đang được kiểm → (b) đỏ; ghi `retired` cho `runs.cancel` → (b) đỏ; ghi `unassigned` cho `approvals.decide` → (a) đỏ.
+- [x] R1.2 (RB2): thêm khóa `active` không ai kiểm → (c) đỏ; khóa đó ở danh sách ngoại lệ có lý do → xanh.
+- [x] R1.4: `GET /api/v1/admin/permissions` trả đủ sáu trường cho mọi dòng; người không có `platform.roles.read` → 403.
+- [x] R1.5 (RB3): đăng ký `obj.lead.read`, `studio.agents.publish`, `connections.manage` hay `integrations.admin` cho truy cập người vận hành → bị từ chối; gỡ từng tiền tố khỏi `FORBIDDEN_SCOPE_PREFIXES` → test của tiền tố đó đỏ.
+- [x] R1.6: dòng danh mục thử `studio.agents.settings.manage` (bốn đoạn) hay `studio.agent.read` (khu vực số ít ngoài năm ngoại lệ) → (d) đỏ và nêu khóa; `studio.agents.manage_settings`, `studio.publish.approve`, `studio.datahub.manage` → xanh; loại phê duyệt `studio.publish.object` và tên audit `studio.version.published` không nằm trong tập (d) đọc.
+- [x] Xong: `make ci` xanh.
 
 ## Nguồn
 
@@ -153,3 +153,9 @@ phần bootstrap của foundations-hardening 05 (brief B11).
   ba luật cho mỗi khóa đang có đúng một trạng thái hợp lệ với sáu bất thường (khóa được cấp và được kiểm chỉ `active`),
   khóa của cụm khác đăng ký kèm chỗ kiểm là `active`, nên quyền tính động của `tenant_owner` (R2.7) không đổi.
 - 2026-11-02 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-02 (agent): resolved.
+    - Khác ticket (agent, theo ủy quyền 31/10/2026): `dw_provisioner` không được `GRANT SELECT` trên `platform.permissions` (bước 2 nói ba vai), vì `test_the_provisioner_holds_exactly_what_its_code_runs` (FH13) giữ vai đó đúng bằng những gì code của nó chạy, và không code nào của nó đọc danh mục; đăng nhập đọc quyền dưới `dw_app`. Ghi quyền vẫn bị thu của cả ba vai. Nếu sai thì: thêm `platform.permissions` SELECT vào `PROVISIONER` của `0fdd32a39d87` và `scripts/create_provisioner_role.py` cùng lúc. `support.grant` (code kiểm, không vai trò mẫu nào cấp) ghi `active` vì có chỗ kiểm. Ngoại lệ (c) duy nhất: `platform.admin`, giữ bằng vai `platform_admin` mà cửa phân quyền đọc. Ràng buộc đặt tên theo `NAMING_CONVENTION` (M6). Lý do `scope_kind` của `dw.read`, `dw.manage` ghi trong docstring migration (M5). Test R2.1 có hai membership ở hai tenant (M4), so với `SqlMembershipLookup.find_access`, nguồn của `GET /api/v1/me`.
+    - Bốn kiểm (a)-(d) là hàm trên dữ liệu trong chính test, nên ca tổng hợp (tạo cây nguồn tạm) chứng minh mỗi luật đỏ được; ca tích hợp chạy chúng trên danh mục đã migrate và cây nguồn thật: 22 khóa đọc được qua `ast`, 0 chỗ không giải được ngoài bốn cửa chuyển tiếp (khớp theo tệp và hàm bao, không theo dòng).
+    - Test: `test_permission_catalogue.py` 9 ca; `test_identity_provisioning.py` thêm một ca; `test_privileges.py` thêm một ca; `test_admin_console.py` thêm một ca (R1.4, 403); `test_support_access.py` thêm năm ca (R1.5); `test_rls_coverage.py`, `test_offboarding_coverage.py` xanh. Snapshot OpenAPI và kiểu TS sinh lại; `listPermissions()` trong `@dw/api-client`.
+    - `mutations/01.yaml` 8 đột biến, chưa chạy. Độ trễ của bootstrap (hai câu SQL mỗi membership, M3) đo ở lượt cuối.
+    - `reviewing-feature-security` (đọc): đăng nhập nay ra đúng tập quyền của AccessContext (một hàm `effective_scopes`); danh mục toàn cục chỉ migration ghi; route chỉ đọc, kiểm `platform.roles.read` ở service; hỗ trợ không giữ được quyền Studio, object, field, kết nối, tích hợp của tenant.

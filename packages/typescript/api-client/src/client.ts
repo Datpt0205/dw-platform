@@ -281,6 +281,7 @@ export type DwDecisionClass = Generated["DecisionClassView"];
 export type DwScorecard = Generated["ScorecardView"];
 export type WorkflowOutline = Generated["WorkflowOutlineView"];
 export type WorkflowOutlineStep = Generated["OutlineStepView"];
+export type AdminPermission = Generated["PermissionView"];
 export type AssistantAnswer = Generated["AssistantAnswerView"];
 export type AssistantTurn = Generated["HistoryTurnBody"];
 export type WorkflowStepChange = Generated["StepChangeView"];
@@ -523,6 +524,15 @@ export class ApiClient {
   /** The tenant's role catalog and the scopes each role grants (read-only). */
   listAdminRoles(): Promise<AdminRole[]> {
     return this.request("GET", "/api/v1/admin/roles", z.array(adminRoleSchema));
+  }
+
+  /** The permission catalogue, by area then key (tenant-rbac R1.4). */
+  listPermissions(): Promise<AdminPermission[]> {
+    return this.request(
+      "GET",
+      "/api/v1/admin/permissions",
+      z.array(generated<AdminPermission>()),
+    );
   }
 
   /** The catalog of permission sets an admin can grant to members (read-only). */

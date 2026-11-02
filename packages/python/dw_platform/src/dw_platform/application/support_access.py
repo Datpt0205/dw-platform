@@ -70,6 +70,13 @@ FORBIDDEN_SCOPE_PREFIXES = (
     "platform.",
     "support.",
     "directory.",
+    # A tenant's Studio, its objects and fields, its connections and its
+    # integrations: a support grant reads none of them (tenant-rbac R1.5).
+    "studio.",
+    "obj.",
+    "fld.",
+    "connections.",
+    "integrations.",
 )
 
 _KEY = re.compile(r"[a-z][a-z0-9_.]{0,63}")

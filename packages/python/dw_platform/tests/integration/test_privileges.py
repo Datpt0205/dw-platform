@@ -1389,3 +1389,44 @@ async def test_published_workflow_versions_are_append_only(db_urls: DatabaseUrls
     finally:
         await migrator.dispose()
     assert held == {("dw_app", "SELECT"), ("dw_app", "INSERT"), ("dw_app", "DELETE")}
+
+
+async def test_the_permission_catalogue_is_read_only_to_every_application_role(
+    db_urls: DatabaseUrls, app_engine: AsyncEngine
+) -> None:
+    """Migration ebb17244abc6 (tenant-rbac R1.3, RB1): `dw_app`,
+    `dw_provisioner` and `dw_agent_ro` write none of the catalogue, and only
+    `dw_app` and `dw_agent_ro` read it; asked of the catalog for every verb,
+    and tried as `dw_app`."""
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            held = {
+                (row.rolname, row.verb)
+                for row in await conn.execute(
+                    sa.text(
+                        """
+                        SELECT r.rolname, v.verb
+                        FROM pg_roles r
+                        CROSS JOIN unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE',
+                                                'TRUNCATE']) AS v(verb)
+                        WHERE r.rolname IN ('dw_app', 'dw_provisioner', 'dw_agent_ro')
+                          AND has_table_privilege(r.rolname, 'platform.permissions', v.verb)
+                        """
+                    )
+                )
+            }
+    finally:
+        await migrator.dispose()
+    # `dw_provisioner` reads nothing it does not run (FH13).
+    assert held == {("dw_app", "SELECT"), ("dw_agent_ro", "SELECT")}
+    async with app_engine.connect() as conn:
+        for statement in (
+            "UPDATE platform.permissions SET status = 'active'",
+            "DELETE FROM platform.permissions",
+            "INSERT INTO platform.permissions (key, area, label_vi, scope_kind, risk, status,"
+            " owner_package) VALUES ('x.y', 'x', 'x', 'workspace', 'standard', 'active', 'p')",
+        ):
+            with pytest.raises(Exception, match="permission denied"):
+                await conn.execute(sa.text(statement))
+            await conn.rollback()

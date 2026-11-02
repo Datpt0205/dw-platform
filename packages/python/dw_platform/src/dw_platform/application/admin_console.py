@@ -71,6 +71,18 @@ class RoleInfo:
 
 
 @dataclass(frozen=True, slots=True)
+class PermissionInfo:
+    """One row of the permission catalogue (tenant-rbac R1.4)."""
+
+    key: str
+    area: str
+    label_vi: str
+    scope_kind: str
+    risk: str
+    status: str
+
+
+@dataclass(frozen=True, slots=True)
 class PermissionSetInfo:
     key: str
     name: str
@@ -154,6 +166,10 @@ class AdminConsoleRepositoryPort(Protocol):
     async def list_roles(self) -> list[RoleInfo]: ...
 
     async def list_permission_sets(self) -> list[PermissionSetInfo]: ...
+
+    async def list_permissions(self) -> list[PermissionInfo]:
+        """The catalogue, by area then key."""
+        ...
 
     async def known_permission_sets(self, keys: frozenset[str]) -> frozenset[str]:
         """Which of the given permission-set keys exist in the catalog."""
@@ -279,6 +295,11 @@ class AdminConsoleService:
     async def list_roles(self, context: AccessContext) -> list[RoleInfo]:
         await self.authz.require(context=context, action=ROLES_READ, resource_type="role")
         return await self.repo.list_roles()
+
+    # ---- the permission catalogue (read-only, tenant-rbac R1.4) ----
+    async def list_permissions(self, context: AccessContext) -> list[PermissionInfo]:
+        await self.authz.require(context=context, action=ROLES_READ, resource_type="permission")
+        return await self.repo.list_permissions()
 
     # ---- permission sets ----
     async def list_permission_sets(self, context: AccessContext) -> list[PermissionSetInfo]:

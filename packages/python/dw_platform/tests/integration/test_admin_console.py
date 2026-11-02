@@ -174,6 +174,30 @@ async def test_roles_read_lists_the_catalog(app_engine: AsyncEngine) -> None:
     assert "member" in roles and "knowledge.write" in roles["member"].scopes
 
 
+async def test_the_permission_catalogue_lists_every_row_by_area_then_key(
+    app_engine: AsyncEngine,
+) -> None:
+    """tenant-rbac R1.4: six fields on every row, ordered by area then key;
+    a caller without `platform.roles.read` is refused."""
+    svc = _service(app_engine)
+    rows = await svc.list_permissions(_admin())
+    assert rows == sorted(rows, key=lambda r: (r.area, r.key))
+    by_key = {r.key: r for r in rows}
+    assert by_key["platform.sod_waivers.write"].risk == "critical"
+    assert by_key["approvals.pending"].status == "retired"
+    assert all(r.label_vi.strip() and r.scope_kind and r.risk and r.status for r in rows)
+    member = AccessContext(
+        tenant_id=ALPHA,
+        workspace_id=ALPHA_WS,
+        principal_id=uuid.uuid4(),
+        roles=frozenset({"member"}),
+        scopes=frozenset({"approvals.read"}),
+        plan_id="professional",
+    )
+    with pytest.raises(PermissionDeniedError):
+        await svc.list_permissions(member)
+
+
 async def test_tenant_settings_get_and_update(app_engine: AsyncEngine) -> None:
     svc = _service(app_engine)
     before = await svc.get_tenant_settings(_admin())

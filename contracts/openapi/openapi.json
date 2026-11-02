@@ -3132,6 +3132,59 @@
         "title": "PermissionSetView",
         "type": "object"
       },
+      "PermissionView": {
+        "properties": {
+          "area": {
+            "title": "Area",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label_vi": {
+            "title": "Label Vi",
+            "type": "string"
+          },
+          "risk": {
+            "enum": [
+              "standard",
+              "elevated",
+              "critical"
+            ],
+            "title": "Risk",
+            "type": "string"
+          },
+          "scope_kind": {
+            "enum": [
+              "tenant",
+              "workspace",
+              "record"
+            ],
+            "title": "Scope Kind",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "unassigned",
+              "retired"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "area",
+          "label_vi",
+          "scope_kind",
+          "risk",
+          "status"
+        ],
+        "title": "PermissionView",
+        "type": "object"
+      },
       "Problem": {
         "description": "The single error description returned by every endpoint.",
         "properties": {
@@ -5687,6 +5740,52 @@
           }
         },
         "summary": "List Permission Sets",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/permissions": {
+      "get": {
+        "description": "tenant-rbac R1.4: the permission catalogue, by area then key, for a\nholder of `platform.roles.read`.",
+        "operationId": "list_permissions_api_v1_admin_permissions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PermissionView"
+                  },
+                  "title": "Response List Permissions Api V1 Admin Permissions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "List Permissions",
         "tags": [
           "admin"
         ]

@@ -20,6 +20,7 @@ from sqlalchemy.pool import NullPool
 
 from dw_platform.adapters.persistence import tables
 from dw_platform.adapters.persistence.identity_provisioning import SqlIdentityBootstrap
+from dw_platform.adapters.persistence.membership_lookup import SqlMembershipLookup
 from dw_platform.testing.seed_env import seed_test_env
 
 pytestmark = pytest.mark.integration
@@ -185,3 +186,70 @@ async def test_bootstrap_sees_a_membership_in_a_non_default_tenant(
     second = await bootstrap.bootstrap(identity)
     assert [m.tenant_id for m in second.memberships] == [other_tenant]
     assert second.memberships[0].workspace_name == "Sales"
+
+
+async def _membership(
+    migrator: AsyncEngine,
+    user_id: uuid.UUID,
+    *,
+    slug: str,
+    permission_sets: list[str],
+) -> tuple[uuid.UUID, uuid.UUID]:
+    """A tenant with a plan, one workspace and the user in it as `member`
+    with these permission sets."""
+    tenant_id, workspace_id = uuid.uuid4(), uuid.uuid4()
+    async with migrator.begin() as conn:
+        await conn.execute(
+            sa.insert(tables.tenants).values(id=tenant_id, slug=slug, name=slug.upper())
+        )
+        await conn.execute(
+            sa.insert(tables.entitlements).values(
+                id=uuid.uuid4(), tenant_id=tenant_id, plan_id="professional"
+            )
+        )
+        await conn.execute(
+            sa.insert(tables.workspaces).values(
+                id=workspace_id, tenant_id=tenant_id, slug=f"{slug}-ops", name="Ops"
+            )
+        )
+        await conn.execute(
+            sa.insert(tables.memberships).values(
+                id=uuid.uuid4(),
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                user_id=user_id,
+                role_keys=["member"],
+                permission_set_keys=permission_sets,
+            )
+        )
+    return tenant_id, workspace_id
+
+
+async def test_bootstrap_scopes_are_the_access_contexts_permission_sets_included(
+    app_engine: AsyncEngine, migrator_engine: AsyncEngine
+) -> None:
+    """tenant-rbac R2.1 (RB4): `member` with `approver_boost` in tenant A
+    holds `approvals.decide` at sign-in, exactly the scopes a request in that
+    workspace gets; the same person as plain `member` in tenant B does not,
+    so nothing is pooled across memberships."""
+    bootstrap = _bootstrap(app_engine, auto_provision=False)
+    identity = _Identity(subject=f"sub-{uuid.uuid4()}", email=f"{uuid.uuid4().hex[:8]}@rbac.test")
+    principal = (await bootstrap.bootstrap(identity)).principal_id
+    tag = uuid.uuid4().hex[:8]
+    a = await _membership(
+        migrator_engine, principal, slug=f"a-{tag}", permission_sets=["approver_boost"]
+    )
+    b = await _membership(migrator_engine, principal, slug=f"b-{tag}", permission_sets=[])
+
+    signed_in = {
+        m.tenant_id: set(m.scopes) for m in (await bootstrap.bootstrap(identity)).memberships
+    }
+    lookup = SqlMembershipLookup(async_sessionmaker(app_engine, expire_on_commit=False))
+    for tenant_id, workspace_id in (a, b):
+        access = await lookup.find_access(
+            identity.subject, identity.issuer, tenant_id, workspace_id
+        )
+        assert access is not None
+        assert signed_in[tenant_id] == set(access.scopes), tenant_id
+    assert "approvals.decide" in signed_in[a[0]]
+    assert "approvals.decide" not in signed_in[b[0]]

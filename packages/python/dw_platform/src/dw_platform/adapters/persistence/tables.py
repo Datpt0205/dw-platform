@@ -86,6 +86,23 @@ permission_sets = sa.Table(
     sa.Column("scopes", JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")),
 )
 
+# The permission catalogue (migration ebb17244abc6, tenant-rbac R1): one row per
+# key, written by migrations only, global like roles.
+permissions = sa.Table(
+    "permissions",
+    metadata,
+    sa.Column("key", sa.Text, primary_key=True),
+    sa.Column("area", sa.Text, nullable=False),
+    sa.Column("label_vi", sa.Text, nullable=False),
+    sa.Column("description_vi", sa.Text, nullable=True),
+    sa.Column("scope_kind", sa.Text, nullable=False),
+    sa.Column("risk", sa.Text, nullable=False),
+    sa.Column("status", sa.Text, nullable=False),
+    sa.Column("status_reason", sa.Text, nullable=True),
+    sa.Column("owner_package", sa.Text, nullable=False),
+    sa.Column("created_at", sa.TIMESTAMP(timezone=True), nullable=False),
+)
+
 # Maps a verified (issuer, subject) — e.g. a Keycloak sub or a dev token subject —
 # to a platform user. Identity plane (like users): not tenant-scoped, no RLS.
 # One platform user may have several external identities (dev + Keycloak).

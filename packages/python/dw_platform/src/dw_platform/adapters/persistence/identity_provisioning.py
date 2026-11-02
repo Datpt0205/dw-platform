@@ -36,6 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from dw_kernel.errors import PermissionDeniedError
 from dw_platform.adapters.identity.dev_token import DEV_ISSUER
 from dw_platform.adapters.persistence import tables
+from dw_platform.adapters.persistence.membership_lookup import effective_scopes
 from dw_platform.application.identity_bootstrap import (
     BootstrapView,
     WorkspaceMembershipView,
@@ -266,6 +267,7 @@ class SqlIdentityBootstrap:
                 sa.select(
                     tables.memberships.c.workspace_id,
                     tables.memberships.c.role_keys,
+                    tables.memberships.c.permission_set_keys,
                     tables.workspaces.c.slug.label("workspace_slug"),
                     tables.workspaces.c.name.label("workspace_name"),
                     tables.tenants.c.id.label("tenant_id"),
@@ -287,24 +289,15 @@ class SqlIdentityBootstrap:
         if not rows:
             return ()
 
-        role_keys: set[str] = set()
-        for row in rows:
-            role_keys.update(row.role_keys)
-        scope_by_role: dict[str, list[str]] = {}
-        if role_keys:
-            role_rows = await session.execute(
-                sa.select(tables.roles.c.key, tables.roles.c.scopes).where(
-                    tables.roles.c.key.in_(role_keys)
-                )
-            )
-            for key, role_scopes in role_rows:
-                scope_by_role[key] = list(role_scopes)
-
         views: list[WorkspaceMembershipView] = []
         for row in rows:
-            scopes: set[str] = set()
-            for key in row.role_keys:
-                scopes.update(scope_by_role.get(key, []))
+            # The one reading of what a membership holds (tenant-rbac R2.1):
+            # its roles' and its permission sets' scopes, as the access
+            # context reads them, so what sign-in shows is what a request
+            # then gets.
+            scopes = await effective_scopes(
+                session, frozenset(row.role_keys), frozenset(row.permission_set_keys)
+            )
             views.append(
                 WorkspaceMembershipView(
                     tenant_id=row.tenant_id,

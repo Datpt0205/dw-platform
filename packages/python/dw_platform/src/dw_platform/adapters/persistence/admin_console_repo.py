@@ -25,6 +25,7 @@ from dw_platform.adapters.persistence.separation_of_duties import (
 from dw_platform.adapters.persistence.tenant_session import TenantScope, tenant_session
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.admin_console import (
+    PermissionInfo,
     PermissionSetInfo,
     RoleInfo,
     TenantSettings,
@@ -172,6 +173,28 @@ class SqlAdminConsoleRepository:
             ).all()
         return [
             PermissionSetInfo(key=row.key, name=row.name, scopes=tuple(row.scopes)) for row in rows
+        ]
+
+    async def list_permissions(self) -> list[PermissionInfo]:
+        p = tables.permissions
+        async with self.session_factory() as session:
+            rows = (
+                await session.execute(
+                    sa.select(
+                        p.c.key, p.c.area, p.c.label_vi, p.c.scope_kind, p.c.risk, p.c.status
+                    ).order_by(p.c.area, p.c.key)
+                )
+            ).all()
+        return [
+            PermissionInfo(
+                key=row.key,
+                area=row.area,
+                label_vi=row.label_vi,
+                scope_kind=row.scope_kind,
+                risk=row.risk,
+                status=row.status,
+            )
+            for row in rows
         ]
 
     async def known_permission_sets(self, keys: frozenset[str]) -> frozenset[str]:
