@@ -290,3 +290,15 @@ planner's provisional calls H-1-H-18:
   R2.6's order by one registry at the composition root. Consequences name the load-rule tests and the crash matrix (if
   H-5 is wrong, the keyed level and the `studio_reconcile` lane come into W1 with a test connector that declares a key;
   if H-3 is wrong, tools-and-skills/01 waits for agent-lifecycle/01 as before).
+
+## Amendments (2026-11-02)
+
+- tools-and-skills ticket 01 readiness gate, agent under Đạt's delegation of 2026-10-31: decision 3's
+  `approval_required` takes `(definition, run_context)` in W1, the autonomy level and the run mode being all it
+  weighs there; `args` and `step_calls` join its signature with their readers, the approval condition and run taint of
+  W2, as decision 1 has every policy field enter with its reader. The wrapper and `OneApprovalPerStepMiddleware` call
+  the executor's method instead of combining the policy and the run mode themselves. Decision 3's input and output
+  check is an entry point of the platform's one JSON Schema validator (`dw_platform/application/json_schema.py`),
+  not a second validator. The step registry of decision 3 also holds the Digital Worker boundary and the decision
+  call checks, and the Send floor of ADR-0124 as a registered step. If wrong: the method takes all four arguments
+  from W1 with no reader for two of them, and the registry's order is revisited in tools-and-skills R2.6.
