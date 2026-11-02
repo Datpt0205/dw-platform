@@ -3,7 +3,7 @@
 Status: ready-for-agent
 Area: studio · Nhánh: `main` · Viết: 31/10/2026
 Duyệt: agent, tạm theo ủy quyền 27/10/2026
-Sẵn sàng: ĐẠT (2/11/2026; 0 CRITICAL, 0 HIGH; ticket 01-04)
+Sẵn sàng: ĐẠT (2/11/2026; 0 CRITICAL, 0 HIGH; ticket 01-05)
 
 Chủ của một Digital Worker muốn đổi quy trình mẫu nó chạy (thêm một lần nhắc, bỏ một bước, đổi thứ tự) mà không viết YAML. Theo D16 (3) và D18 (4), trợ lý AI hỏi lại khi chưa rõ, nêu kế hoạch, rồi đề xuất một bản sửa dạng diff để người duyệt, từ chối hay sửa tiếp; trợ lý chỉ soạn cây bước từ sổ loại bước và những công cụ, prompt mà quy trình gốc đã dùng, không bao giờ đổi loại quyết định, mức tự chủ, kết nối, model hay thông tin đăng nhập; bản sửa chỉ chạy thật khi bộ kiểm của wf-lite, luật sàn HITL và một lượt mô phỏng đều qua và một người khác người soạn duyệt (YC125).
 
@@ -101,7 +101,7 @@ Trợ lý chỉ đổi cây bước; mọi thứ khác của quy trình gốc gi
 | Đóng băng của tenant hay nền tảng chặn phát hành (ADR-0120 (Accepted) quyết 7) | chưa có cờ đóng băng nào trong code                                                                                                       | agent-lifecycle      |
 | Approval `dw.workflow.publish` hết hạn                                         | nền tảng chưa có lane hết hạn approval (chỉ mã quyết qua Zalo hết hạn); chủ DW rút được (R6.10); khi lane có, nó hủy approval và R6.11 áp | agent-lifecycle      |
 | Mô phỏng với model thật                                                        | lát này mẫu theo schema; model thật tốn tiền và cần khóa                                                                                  | đợt sau              |
-| Chạy eval với model thật                                                       | không có khóa model trên máy (Chờ Đạt 21)                                                                                                 | đợt sau, khi có khóa |
+| Chạy eval với model thật trong CI                                              | CI không có khóa model; ticket 05 chạy `make eval-wf-ai` trên máy có khóa (2/11/2026)                                                     | đợt sau              |
 
 ## API
 
@@ -161,6 +161,8 @@ Không có.
 
 - 2/11/2026 (agent, theo ủy quyền 31/10/2026): thẻ duyệt đọc diff và mô phỏng qua route `.../workflow-draft/review` cho người của DW, Validator gồm cả, không qua payload approval (chỉ định danh và hash) và không qua `GET .../workflow-draft` (chỉ chủ DW, R6); trợ lý trả `outline` dựng phía server để trang vẽ cây đề xuất bằng `WorkflowTree` như cây đã ghim (R4.1, R7.1). Sửa: API. Nếu sai thì: `GET .../workflow-draft` mở cho Validator và trang tự dựng cây.
 
+- 2/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 05. Ticket 05 là trợ lý trên model thật (R1.1, R1.5, R1.7, R5.2, R5.3), tách khỏi 01 vì chỉ lượt chạy thật đầu tiên mới thấy schema bị từ chối; nó đổi dạng câu trả lời của model, không đổi route hay R nào. Sửa: "Ngoài phạm vi" (eval với model thật chỉ còn ngoài CI), "Danh sách ticket". Nếu sai thì: gộp 05 vào 01 thành một lần mở lại.
+
 ## Danh sách ticket
 
 | #   | Ticket                                                     |
@@ -169,3 +171,4 @@ Không có.
 | 02  | [Bản nháp và mô phỏng](issues/02-ban-nhap-mo-phong.md)     |
 | 03  | [Gửi duyệt và phát hành](issues/03-phat-hanh.md)           |
 | 04  | [Màn hình trợ lý và thẻ duyệt](issues/04-man-hinh.md)      |
+| 05  | [Trợ lý trả lời được trên model thật](issues/05-tro-ly-tren-model-that.md) |
