@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `main` · Viết: 31/10/2026
 Duyệt: agent, tạm theo ủy quyền 27/10/2026
-Sẵn sàng: CHƯA ĐẠT (2/11/2026; 3 CRITICAL, 9 HIGH; ticket 01-04)
+Sẵn sàng: chưa kiểm
 
 Chủ của một Digital Worker muốn đổi quy trình mẫu nó chạy (thêm một lần nhắc, bỏ một bước, đổi thứ tự) mà không viết YAML. Theo D16 (3) và D18 (4), trợ lý AI hỏi lại khi chưa rõ, nêu kế hoạch, rồi đề xuất một bản sửa dạng diff để người duyệt, từ chối hay sửa tiếp; trợ lý chỉ soạn cây bước từ sổ loại bước và những công cụ, prompt mà quy trình gốc đã dùng, không bao giờ đổi loại quyết định, mức tự chủ, kết nối, model hay thông tin đăng nhập; bản sửa chỉ chạy thật khi bộ kiểm của wf-lite, luật sàn HITL và một lượt mô phỏng đều qua và một người khác người soạn duyệt (YC125).
 
@@ -27,17 +27,19 @@ Chủ của DW gửi một yêu cầu và nhận lại một câu hỏi hoặc m
 
 - R1.1 KHI Business Owner hay Technical Owner của một DW gửi `POST /v1/digital-workers/{id}/workflow-assistant` với `instruction`, trợ lý PHẢI trả `kind` là `question` (một câu hỏi lại) hoặc `proposal` (kế hoạch tối đa 8 dòng, cây bước đề xuất, diff và danh sách lỗi).
 - R1.2 NẾU người gọi đọc được DW mà không là Business Owner hay Technical Owner của nó, THÌ route PHẢI trả 403 `not_dw_owner` và không gọi model.
-- R1.3 Trợ lý PHẢI lấy tài liệu gốc từ cặp `workflow_key@workflow_version` mà DW đang ghim, đọc phía server, bỏ qua mọi tài liệu, tenant hay workflow nêu trong thân yêu cầu.
+- R1.3 Trợ lý PHẢI lấy tài liệu gốc từ phiên bản mà DW đang ghim (bản gói hay phiên bản của tenant theo R6.5), đọc phía server dưới tenant và workspace của người gọi, bỏ qua mọi tài liệu, tenant hay workflow nêu trong thân yêu cầu.
 - R1.4 NẾU `instruction` dài quá 4.000 ký tự, hay `history` có quá 10 lượt hoặc một lượt quá 4.000 ký tự, THÌ route PHẢI trả 422 `assistant_input_too_long` và không gọi model.
+- R1.6 Lượt gọi model của trợ lý PHẢI đi qua bộ model của runtime (`build_model_stack`: `ResidencyGate`, sổ chi tiêu) như một lượt chạy, không một client model riêng.
+- R1.7 NẾU `kind` là `question` mà có `steps`, hay `proposal` mà `steps` rỗng hoặc thiếu, THÌ trợ lý PHẢI coi đầu ra đó là không khớp schema theo R1.5.
 - R1.5 NẾU model không trả được đầu ra khớp schema sau các lần thử của gateway, THÌ route PHẢI trả 502 `upstream_unavailable` với `reason_code` `assistant_output_invalid` và không trả đề xuất nào.
 
 ### R2 — Chỉ soạn từ cái đã có
 
-Trợ lý chỉ đổi cây bước; mọi thứ khác của quy trình gốc giữ nguyên (D16 (3), D18 (4)).
+Trợ lý chỉ đổi cây bước; mọi thứ khác của quy trình gốc giữ nguyên (D16 (3), D18 (4)). Công cụ và prompt được phép là những gì bản gói ship cùng `key` (`configs/packs`, phiên bản semver mà ghim dẫn về) dùng, nên một bước đã bỏ ở một phiên bản của tenant thêm lại được.
 
 - R2.1 Đề xuất PHẢI giữ nguyên `schema`, `key`, `version`, `triggers`, `variables`, `decision_classes` và `work_kinds` của tài liệu gốc và chỉ thay `steps`.
-- R2.2 NẾU một bước `tool.call` của đề xuất gọi công cụ mà tài liệu gốc không gọi ở bước nào, THÌ trợ lý PHẢI thêm lỗi `wf.tool_not_in_base` cho bước đó.
-- R2.3 NẾU một bước `ai.llm` của đề xuất nêu prompt mà tài liệu gốc không dùng ở bước nào, THÌ trợ lý PHẢI thêm lỗi `wf.prompt_not_in_base` cho bước đó.
+- R2.2 NẾU một bước `tool.call` của đề xuất gọi công cụ mà bản gói cùng `key` không gọi ở bước nào, THÌ trợ lý PHẢI thêm lỗi `wf.tool_not_in_base` cho bước đó.
+- R2.3 NẾU một bước `ai.llm` của đề xuất nêu prompt mà bản gói cùng `key` không dùng ở bước nào, THÌ trợ lý PHẢI thêm lỗi `wf.prompt_not_in_base` cho bước đó.
 - R2.4 NẾU đầu ra của model có trường ngoài cây bước, kế hoạch và câu hỏi, THÌ trợ lý PHẢI coi đầu ra đó là không khớp schema theo R1.5.
 
 ### R3 — Bộ kiểm của nền tảng trên mọi đề xuất
@@ -46,24 +48,34 @@ Trợ lý chỉ đổi cây bước; mọi thứ khác của quy trình gốc gi
 
 ### R4 — Diff để người đọc
 
-- R4.1 Đề xuất PHẢI kèm diff theo `id` bước: bước thêm, bước bỏ, bước đổi `config` hay `description`, và bước đổi chỗ (lane hay vị trí), mỗi mục nêu đường dẫn lane theo `outline`.
+- R4.1 Đề xuất PHẢI kèm diff theo `id` bước: bước thêm, bước bỏ, bước đổi `config` hay `description`, và bước đổi chỗ (lane hay vị trí), mỗi mục nêu đường dẫn lane theo `outline`; một `id` đổi `type` là một bước bỏ cộng một bước thêm.
 
 ### R5 — Đầu vào không tin
 
 - R5.1 `instruction`, `history` và tài liệu gốc PHẢI vào prompt `wf_ai.workflow_edit` chỉ như biến bọc `<input>` của một prompt không có `raw_variables`.
-- R5.2 Bộ eval `evals/datasets/wf_ai` PHẢI có ca chèn lệnh trong `instruction` và trong `description` của tài liệu gốc (bỏ cổng duyệt, gọi công cụ khác, đổi loại quyết định).
+- R5.2 Bộ eval `evals/datasets/wf_ai` PHẢI có ca chèn lệnh trong `instruction`, trong `description` của tài liệu gốc và trong một lượt `assistant` giả của `history` (bỏ cổng duyệt, gọi công cụ khác, đổi loại quyết định).
 - R5.3 NẾU một đề xuất có lỗi `wf.hitl_gate_missing` hay `wf.tool_not_in_base`, hay đổi gì ngoài `steps`, THÌ grader `wf_ai.frozen` PHẢI chấm ca đó đỏ.
 
 ### R6 — Bản nháp, mô phỏng và phát hành
 
-Đề xuất được lưu, chạy thử và phát hành bởi người thứ hai (ADR-0120 (Accepted) quyết 2).
+Đề xuất được lưu, chạy thử và phát hành bởi người thứ hai, trên đúng hash đã duyệt (ADR-0120 (Accepted) quyết 2). Hash của một tài liệu là sha256 của JSON chuẩn hóa của nó (`dw_kernel.pagination.canonical_json`), cho bản gói lẫn phiên bản của tenant, nên hai phép so dùng một cách băm.
 
-- R6.1 KHI chủ DW lưu một đề xuất `publishable`, nền tảng PHẢI lưu một bản nháp duy nhất của DW với nội dung, sha256 của nội dung, sha256 của tài liệu gốc và người soạn; lưu đè bản nháp cũ của chính DW đó.
-- R6.2 KHI chủ DW chạy mô phỏng một bản nháp, nền tảng PHẢI chạy nó trên một việc mẫu khớp schema của kind, mọi `tool.call` ghi lại đầu vào và trả mẫu theo schema đầu ra của công cụ mà không gọi `ToolExecutor`, mọi `human.approval` duyệt nguyên đề xuất, mọi `time.wait` bỏ qua, rồi lưu kết quả và `trail` theo sha256 của nội dung.
-- R6.3 NẾU bản nháp được gửi duyệt mà chưa có lượt mô phỏng thành công trên đúng sha256 nội dung đó, THÌ nền tảng PHẢI trả 409 `simulation_required` và không mở approval.
-- R6.4 KHI chủ DW gửi duyệt, nền tảng PHẢI mở approval `dw.workflow.publish` theo luật strict, chỉ Validator hay Technical Owner của DW quyết và không bao giờ người soạn.
-- R6.5 KHI approval được duyệt, nền tảng PHẢI ghi phiên bản của tenant bất biến và chuyển ghim của DW sang nó trong cùng giao dịch; việc đang chạy giữ phiên bản đã ghim lúc bắt đầu.
-- R6.6 NẾU lúc duyệt ghim của DW đã khác tài liệu gốc của bản nháp, THÌ nền tảng PHẢI trả bản nháp về trạng thái nháp với lý do `base_changed` và không đổi ghim.
+- R6.1 KHI chủ DW lưu một cây bước, nền tảng PHẢI dựng lại tài liệu từ tài liệu gốc mà DW đang ghim và chạy lại R2.1-R2.3 và R3.1 trên nó, rồi lưu một bản nháp duy nhất của DW với nội dung, hash nội dung, hash gốc, người lưu và danh sách mọi người đã lưu từ lần phát hành trước.
+- R6.7 NẾU tài liệu dựng lại ở R6.1 có lỗi, THÌ nền tảng PHẢI trả 422 `draft_not_publishable` với danh sách lỗi và không ghi gì.
+- R6.8 NẾU bản nháp đang chờ duyệt, THÌ nền tảng PHẢI từ chối lưu, mô phỏng hay gửi lại bằng 409 `draft_submitted` tới khi bản nháp được rút về hay approval được quyết.
+- R6.2 KHI chủ DW chạy mô phỏng một bản nháp, nền tảng PHẢI chạy nó trên một việc mẫu khớp schema của kind, với mọi `tool.call` và mọi `ai.llm` trả mẫu theo schema đầu ra của chúng mà không gọi `ToolExecutor` hay model, mọi `human.approval` duyệt nguyên đề xuất và mọi `time.wait` bỏ qua, rồi thay kết quả mô phỏng cũ của DW bằng kết quả và `trail` mới theo hash nội dung.
+- R6.9 NẾU lượt mô phỏng gặp bước lỗi hay vượt 200 bước, THÌ nền tảng PHẢI ghi kết quả `failed` với bước và lỗi, không `passed`.
+- R6.3 NẾU bản nháp được gửi duyệt mà chưa có lượt mô phỏng `passed` trên đúng hash nội dung đó, THÌ nền tảng PHẢI trả 409 `simulation_required` và không mở approval.
+- R6.4 KHI chủ DW gửi duyệt, nền tảng PHẢI mở approval `dw.workflow.publish` mang `dw_id`, hash nội dung và hash gốc làm định danh, theo luật strict, quyết bởi Validator hay Technical Owner của DW đọc trong giao dịch quyết định và không ai trong danh sách người đã lưu hay người gửi.
+- R6.10 KHI chủ DW rút một bản nháp đang chờ duyệt, nền tảng PHẢI hủy approval và trả bản nháp về trạng thái nháp trong cùng giao dịch.
+- R6.5 KHI approval được duyệt, nền tảng PHẢI, trong một giao dịch, ghi phiên bản của tenant bất biến từ nội dung có đúng hash nội dung của approval, đánh số `<semver của bản gói>+t<n>` với `n` tăng theo tenant và `key`, và chuyển ghim của DW sang nó; việc đang chạy giữ phiên bản đã ghim lúc bắt đầu.
+- R6.6 NẾU lúc duyệt hash của phiên bản DW đang ghim khác hash gốc của approval, hay nội dung bản nháp không còn hash của approval, THÌ nền tảng PHẢI trả bản nháp về trạng thái nháp với lý do `base_changed` hay `content_changed` và không ghi phiên bản, không đổi ghim.
+- R6.11 NẾU approval bị từ chối hay bị hủy, THÌ nền tảng PHẢI trả bản nháp về trạng thái nháp.
+- R6.14 NẾU sự kiện `dw.workflow.publish.decided` của cùng một approval được giao hai lần, THÌ nền tảng PHẢI không ghi phiên bản thứ hai cho approval đó.
+- R6.12 Mỗi lần lưu, mô phỏng, gửi, rút, phát hành và trả về nháp PHẢI ghi một dòng audit trong cùng giao dịch với thay đổi, đứng tên người làm, lần phát hành đứng tên người duyệt với `details.lane`.
+- R6.15 Mỗi route ghi của R6 PHẢI nhận `Idempotency-Key` theo app-standards/02.
+- R6.13 Bản nháp, kết quả mô phỏng và phiên bản của tenant PHẢI mang `tenant_id` và `workspace_id` của DW dưới RLS bật và FORCE theo `CLAUDE.md` "Tenancy and authorization".
+- R6.16 NẾU một phiên bản của tenant mà DW ghim không có dưới tenant và workspace của DW, THÌ nền tảng PHẢI trả 404 `workflow_not_shipped` và không đọc sang tenant khác.
 
 ### R7 — Màn hình
 
@@ -79,36 +91,43 @@ Trợ lý chỉ đổi cây bước; mọi thứ khác của quy trình gốc gi
 
 ## Ngoài phạm vi
 
-| Việc                                                              | Vì sao                                                         | Chủ                  |
-| ----------------------------------------------------------------- | -------------------------------------------------------------- | -------------------- |
-| Tài liệu và ảnh quy trình làm đầu vào của trợ lý (D18 (4))        | cần đọc tệp và ảnh qua cửa tri thức; lát này chỉ nhận chữ      | đợt sau              |
-| Dựng quy trình từ mô tả trống                                     | D16 (2): sau sửa gói mẫu                                       | đợt sau (W3)         |
-| Thêm công cụ, prompt, biến, loại quyết định hay trigger mới       | D18 (4); prompt và công cụ mới là phiên bản của nền tảng       | không làm            |
-| Canvas kéo thả                                                    | D16 (4)                                                        | workflow-builder-ui  |
-| Bộ máy vòng đời chung của Studio (đóng băng, rút lại, nhiều loại) | ADR-0120 (Accepted) cho mọi loại; lát này chỉ quy trình của DW | agent-lifecycle      |
-| Chạy eval với model thật                                          | không có khóa model trên máy (Chờ Đạt 21)                      | đợt sau, khi có khóa |
+| Việc                                                                           | Vì sao                                                         | Chủ                  |
+| ------------------------------------------------------------------------------ | -------------------------------------------------------------- | -------------------- |
+| Tài liệu và ảnh quy trình làm đầu vào của trợ lý (D18 (4))                     | cần đọc tệp và ảnh qua cửa tri thức; lát này chỉ nhận chữ      | đợt sau              |
+| Dựng quy trình từ mô tả trống                                                  | D16 (2): sau sửa gói mẫu                                       | đợt sau (W3)         |
+| Thêm công cụ, prompt, biến, loại quyết định hay trigger mới                    | D18 (4); prompt và công cụ mới là phiên bản của nền tảng       | không làm            |
+| Canvas kéo thả                                                                 | D16 (4)                                                        | workflow-builder-ui  |
+| Bộ máy vòng đời chung của Studio (đóng băng, rút lại, nhiều loại)              | ADR-0120 (Accepted) cho mọi loại; lát này chỉ quy trình của DW | agent-lifecycle      |
+| Đóng băng của tenant hay nền tảng chặn phát hành (ADR-0120 (Accepted) quyết 7) | chưa có cờ đóng băng nào trong code                            | agent-lifecycle      |
+| Mô phỏng với model thật                                                        | lát này mẫu theo schema; model thật tốn tiền và cần khóa       | đợt sau              |
+| Chạy eval với model thật                                                       | không có khóa model trên máy (Chờ Đạt 21)                      | đợt sau, khi có khóa |
 
 ## API
 
 - `POST /v1/digital-workers/{id}/workflow-assistant`: thân `{instruction, history[]}`, mỗi lượt `{role: "user" | "assistant", text}`; trả `{kind, question?, plan[], steps?, diff?, problems[], publishable}`. 404 khi không đọc được DW, 403 `not_dw_owner`, 422 `assistant_input_too_long`, 404 `workflow_not_shipped`, 502 `upstream_unavailable` (`assistant_output_invalid`). Không ghi gì, nên không `Idempotency-Key`.
-- Route của R6 viết ở ticket 02-03.
+- `PUT` và `GET /v1/digital-workers/{id}/workflow-draft`, `POST .../workflow-draft/simulate`, `.../submit`, `.../withdraw`: chỉ Business Owner hay Technical Owner, `Idempotency-Key` trên mọi `POST` và `PUT`; 404 khi không đọc được DW, 403 `not_dw_owner`, 422 `draft_not_publishable`, 409 `draft_submitted`, `simulation_required`.
 
 ## Kiểm soát
 
-| #     | Kiểm soát                                                                | Yêu cầu    | Test âm                                                                                          |
-| ----- | ------------------------------------------------------------------------ | ---------- | ------------------------------------------------------------------------------------------------ |
-| WAI1  | Chỉ Business Owner hay Technical Owner nhờ được trợ lý, kiểm trước model | R1.2       | Validator gọi route: 403 `not_dw_owner`, gateway giả không được gọi lần nào                      |
-| WAI2  | Tài liệu gốc từ ghim của DW, không từ thân yêu cầu                       | R1.3       | thân nêu `workflow_key` khác: đề xuất vẫn dựa trên tài liệu DW ghim                              |
-| WAI3  | Đầu vào quá dài bị từ chối trước model                                   | R1.4       | `instruction` 4.001 ký tự: 422, gateway giả không được gọi                                       |
-| WAI4  | Ngoài `steps` không gì của gốc đổi                                       | R2.1, R2.4 | gateway giả trả cây bước kèm `decision_classes` sửa: đề xuất mang `decision_classes` của gốc     |
-| WAI5  | Công cụ ngoài tài liệu gốc là lỗi                                        | R2.2       | đề xuất gọi `email.send` khi gốc không gọi: `wf.tool_not_in_base`, `publishable` sai             |
-| WAI6  | Prompt ngoài tài liệu gốc là lỗi                                         | R2.3       | đề xuất nêu prompt khác: `wf.prompt_not_in_base`, `publishable` sai                              |
-| WAI7  | Bộ kiểm của wf-lite chạy trên mọi đề xuất, kể cả luật sàn HITL           | R3.1       | đề xuất đưa `email.send` ra khỏi lane `approved`: `wf.hitl_gate_missing`, `publishable` sai      |
-| WAI8  | Câu của người và tài liệu gốc chỉ vào prompt như `<input>`               | R5.1       | prompt dựng với `instruction` chứa `</input>`: chuỗi bị escape trong khối `<input>`              |
-| WAI9  | Mô phỏng không gửi gì ra ngoài                                           | R6.2       | mô phỏng bản nháp có `email.send`: `ToolExecutor` không được gọi, Mailpit không có thư           |
-| WAI10 | Gửi duyệt cần mô phỏng thành công trên đúng nội dung                     | R6.3       | sửa bản nháp sau mô phỏng rồi gửi: 409 `simulation_required`, không approval                     |
-| WAI11 | Người soạn không duyệt được bản của mình                                 | R6.4       | người soạn là Technical Owner quyết: 409 `second_person_required`, ghim không đổi                |
-| WAI12 | Ghim chỉ đổi khi duyệt, và không đổi khi gốc đã khác                     | R6.5, R6.6 | đổi ghim của DW sau khi gửi rồi duyệt: `base_changed`, ghim giữ giá trị mới, không phiên bản mới |
+| #     | Kiểm soát                                                                | Yêu cầu            | Test âm                                                                                             |
+| ----- | ------------------------------------------------------------------------ | ------------------ | --------------------------------------------------------------------------------------------------- |
+| WAI1  | Chỉ Business Owner hay Technical Owner nhờ được trợ lý, kiểm trước model | R1.2               | Validator gọi route: 403 `not_dw_owner`, gateway giả không được gọi lần nào                         |
+| WAI2  | Tài liệu gốc từ ghim của DW, không từ thân yêu cầu                       | R1.3               | thân nêu `workflow_key` khác: đề xuất vẫn dựa trên tài liệu DW ghim                                 |
+| WAI3  | Đầu vào quá dài bị từ chối trước model                                   | R1.4               | `instruction` 4.001 ký tự: 422, gateway giả không được gọi                                          |
+| WAI4  | Ngoài `steps` không gì của gốc đổi                                       | R2.1, R2.4         | gateway giả trả cây bước kèm `decision_classes` sửa: đề xuất mang `decision_classes` của gốc        |
+| WAI5  | Công cụ ngoài tài liệu gốc là lỗi                                        | R2.2               | đề xuất gọi `email.send` khi gốc không gọi: `wf.tool_not_in_base`, `publishable` sai                |
+| WAI6  | Prompt ngoài tài liệu gốc là lỗi                                         | R2.3               | đề xuất nêu prompt khác: `wf.prompt_not_in_base`, `publishable` sai                                 |
+| WAI7  | Bộ kiểm của wf-lite chạy trên mọi đề xuất, kể cả luật sàn HITL           | R3.1               | đề xuất đưa `email.send` ra khỏi lane `approved`: `wf.hitl_gate_missing`, `publishable` sai         |
+| WAI8  | Câu của người và tài liệu gốc chỉ vào prompt như `<input>`               | R5.1               | prompt dựng với `instruction` chứa `</input>`: chuỗi bị escape trong khối `<input>`                 |
+| WAI9  | Mô phỏng không gửi gì ra ngoài và không gọi model                        | R6.2               | mô phỏng bản nháp có `send`: `ToolExecutor` giả và gateway giả 0 lần gọi, Mailpit không có thư      |
+| WAI10 | Gửi duyệt cần mô phỏng thành công trên đúng nội dung                     | R6.3               | sửa bản nháp sau mô phỏng rồi gửi: 409 `simulation_required`, không approval                        |
+| WAI11 | Người soạn không duyệt được bản của mình                                 | R6.4               | người lưu là Technical Owner quyết: 409 `second_person_required`, ghim không đổi                    |
+| WAI13 | Nội dung lưu được kiểm lại phía server, không tin đề xuất của client     | R6.1, R6.7         | `PUT` một cây bỏ cổng duyệt của `send`: 422 `draft_not_publishable`, 0 dòng bản nháp                |
+| WAI14 | Phát hành đúng hash đã duyệt; bản đang chờ không sửa được                | R6.5, R6.6, R6.8   | `PUT` khi `submitted`: 409; ghi đè nội dung qua migrator rồi duyệt: `content_changed`, 0 phiên bản  |
+| WAI15 | Tenant khác không thấy, không đụng bản nháp hay phiên bản                | R1.3, R6.13, R6.16 | người của tenant B gọi trợ lý, `PUT`, `submit` theo id DW của A: 404, 0 dòng đọc được dưới tenant B |
+| WAI16 | Mọi người đã lưu và người gửi đều không duyệt được                       | R6.4               | A lưu, B lưu và gửi, A là Technical Owner quyết: 409 `second_person_required`                       |
+| WAI17 | Quyết định xử lý hai lần chỉ ghi một phiên bản                           | R6.14              | giao lại `dw.workflow.publish.decided`: một phiên bản, một dòng audit phát hành                     |
+| WAI12 | Ghim chỉ đổi khi duyệt, và không đổi khi gốc đã khác                     | R6.5, R6.6         | đổi ghim của DW sau khi gửi rồi duyệt: `base_changed`, ghim giữ giá trị mới, không phiên bản mới    |
 
 ## Tiêu chí xong
 
@@ -131,8 +150,11 @@ Không có.
 - 31/10/2026 (agent, tạm theo ủy quyền): trợ lý chỉ đổi `steps`; công cụ và prompt giới hạn ở những gì tài liệu gốc đã dùng, không mở rộng tới `allowed_tools` của DW, vì D18 (4) cấm đổi kết nối và một công cụ mới với tài liệu là một quyền mới với quy trình. Sửa: R2. Nếu sai thì: R2.2 so với `allowed_tools` của DW thay vì tài liệu gốc.
 - 31/10/2026 (agent, tạm theo ủy quyền): lượt trao đổi không lưu phía server; client gửi lại `history` dạng chữ, tối đa 10 lượt, vì lịch sử chỉ là câu của người và của model, không quyết gì, còn tài liệu gốc luôn đọc lại từ ghim. Sửa: R1.1, R1.4. Nếu sai thì: bảng phiên trợ lý theo DW với hạn giữ.
 - 31/10/2026 (agent, tạm theo ủy quyền): ai được nhờ trợ lý là người sửa được DW hôm nay (Business Owner, Technical Owner); ai duyệt phát hành là Validator hay Technical Owner khác người soạn, như đề nghị nâng tự chủ (digital-worker:R8.3), theo người thứ hai của ADR-0120 (Accepted) quyết 2. Sửa: R1.2, R6.4. Nếu sai thì: đổi `deciders` của `DwDecisionAdmission` cho `dw.workflow.publish`.
-- 31/10/2026 (agent, tạm theo ủy quyền): mô phỏng không gọi model thật khi provider là `mock`, và với model thật thì gọi qua cùng gateway và hạn mức như lượt chạy; công cụ luôn giả. Sửa: R6.2. Nếu sai thì: mô phỏng cũng giả bước `ai.llm` bằng mẫu theo `output_schema`.
-- 31/10/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 01-04: 01 lượt trợ lý không lưu (R1-R5), 02 bản nháp và mô phỏng (R6.1-R6.2), 03 gửi duyệt và phát hành (R6.3-R6.6), 04 màn hình (R7).
+- 31/10/2026 (agent, tạm theo ủy quyền) [thay bởi dòng 2/11/2026]: mô phỏng không gọi model thật khi provider là `mock`, và với model thật thì gọi qua cùng gateway và hạn mức như lượt chạy; công cụ luôn giả. Sửa: R6.2. Nếu sai thì: mô phỏng cũng giả bước `ai.llm` bằng mẫu theo `output_schema`.
+- 31/10/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 01-04: 01 lượt trợ lý không lưu (R1-R5), 02 bản nháp và mô phỏng (R6.1, R6.2, R6.7, R6.9, R6.12, R6.13, R6.15), 03 gửi duyệt và phát hành (R6.3-R6.6, R6.8, R6.10, R6.11, R6.14, R6.16), 04 màn hình (R7).
+- 2/11/2026 (agent, tạm theo ủy quyền): checking-plan-readiness CHƯA ĐẠT (3 CRITICAL, 9 HIGH), sửa theo khuyến nghị của gate: lưu dựng lại và kiểm lại phía server (R6.1, R6.7, WAI13); approval chỉ mang định danh và hash, bản đang chờ khóa, phát hành đúng hash, rút được (R6.4-R6.6, R6.8, R6.10, WAI14); RLS và không rơi sang tenant khác (R6.13, WAI15); mọi người đã lưu bị loại khỏi người duyệt (R6.4, WAI16); xử lý quyết định một lần, từ chối và hủy trả về nháp (R6.11, WAI17); audit cùng giao dịch và `Idempotency-Key` (R6.12); một cách băm (mở đầu R6); số phiên bản theo tenant và `key` (R6.5); công cụ và prompt so với bản gói (R2); `question`/`proposal` đúng hình (R1.7); bộ model của runtime (R1.6); lượt `assistant` giả là ca eval (R5.2). Nếu sai thì: từng dòng tương ứng.
+- 2/11/2026 (agent, tạm theo ủy quyền): mô phỏng không gọi model nào: mọi `ai.llm` trả mẫu theo `output_schema`, vì mô phỏng kiểm đường đi của cây và các cổng, còn chất lượng câu chữ là việc của eval; thay dòng 31/10/2026. Sửa: R6.2. Nếu sai thì: mô phỏng gọi model qua bộ model của runtime, và lượt lỗi model là `failed` (R6.9).
+- 2/11/2026 (agent, tạm theo ủy quyền): người quyết `dw.workflow.publish` là vai của DW (Validator, Technical Owner) đọc lúc quyết như `dw.decision` và `dw.autonomy.raise`, không con dấu `studio.publish.approve` của ADR-0120 (Accepted) quyết 2, vì quy trình của DW chưa là artifact của Studio và vai đó chưa có trong danh mục quyền; ghi ở mục Amendments của ADR-0120 (Accepted). Nếu sai thì: đóng dấu `required_scope` khi tenant-rbac có vai, và `DwDecisionAdmission` thêm điều kiện giữ con dấu.
 
 ## Danh sách ticket
 

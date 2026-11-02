@@ -2,7 +2,7 @@
 
 Status: needs-triage
 Area: studio
-Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R2.1, R2.2, R2.3, R2.4, R3.1, R4.1, R5.1, R5.2, R5.3, WAI1, WAI2, WAI3, WAI4, WAI5, WAI6, WAI7, WAI8
+Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R2.1, R2.2, R2.3, R2.4, R3.1, R4.1, R5.1, R5.2, R5.3, WAI1, WAI2, WAI3, WAI4, WAI5, WAI6, WAI7, WAI8
 
 ## Mục tiêu
 
@@ -10,8 +10,8 @@ Business Owner hay Technical Owner của một DW gửi một yêu cầu sửa q
 
 ## Việc cần làm
 
-1. `packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/assistant.py`: `AssistantTurn` (Pydantic, đầu ra của model: `kind` `question` hay `proposal`, `question` tối đa 1.000 ký tự, `plan` tối đa 8 dòng mỗi dòng 300 ký tự, `steps` là danh sách bước thô; không trường nào khác, `extra="forbid"`). `WorkflowAssistant` nhận `DwReaderPort` (có `require_owner`), `PinnedWorkflowsPort`, `ModelGateway`, `PromptRegistry`, sổ loại bước, công cụ và schema của kind; `turn(context, dw_id, instruction, history)`:
-   kiểm độ dài (R1.4: `instruction` ≤ 4.000 ký tự, `history` ≤ 10 lượt, mỗi lượt ≤ 4.000, `role` là `user` hay `assistant`) rồi `require_owner` (R1.2) trước khi gọi model; đọc tài liệu gốc từ ghim của DW (R1.3, 404 `workflow_not_shipped` như `/workflow`); gọi `generate_structured` với `AssistantTurn`; khi `proposal`: dựng tài liệu đề xuất là bản sao của gốc chỉ thay `steps` (R2.1), chạy `validate` của wf-lite với sổ, công cụ và schema của gốc, cộng `wf.tool_not_in_base` và `wf.prompt_not_in_base` (R2.2, R2.3, thêm hai mã vào bảng thông điệp của `validate.py`), `publishable` khi không lỗi (R3.1).
+1. `packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/assistant.py`: `AssistantTurn` (Pydantic, đầu ra của model: `kind` `question` hay `proposal`, `question` không có `steps`, `proposal` có `steps` không rỗng (R1.7), `question` tối đa 1.000 ký tự, `plan` tối đa 8 dòng mỗi dòng 300 ký tự, `steps` là danh sách bước thô; không trường nào khác, `extra="forbid"`). `WorkflowAssistant` nhận `DwReaderPort` (có `require_owner`), `PinnedWorkflowsPort`, `ModelGateway`, `PromptRegistry`, sổ loại bước, công cụ và schema của kind; `turn(context, dw_id, instruction, history)`:
+   kiểm độ dài (R1.4: `instruction` ≤ 4.000 ký tự, `history` ≤ 10 lượt, mỗi lượt ≤ 4.000, `role` là `user` hay `assistant`) rồi `require_owner` (R1.2) trước khi gọi model; đọc tài liệu gốc từ ghim của DW (R1.3, 404 `workflow_not_shipped` như `/workflow`); công cụ và prompt được phép lấy từ bản gói cùng `key` (R2.2, R2.3); gọi `generate_structured` với `AssistantTurn`; khi `proposal`: dựng tài liệu đề xuất là bản sao của gốc chỉ thay `steps` (R2.1), chạy `validate` của wf-lite với sổ, công cụ và schema của gốc, cộng `wf.tool_not_in_base` và `wf.prompt_not_in_base` (R2.2, R2.3, thêm hai mã vào bảng thông điệp của `validate.py`), `publishable` khi không lỗi (R3.1).
 2. `diff_steps(base, proposal, registry)` trong `wflite/outline.py`: thêm, bỏ, đổi (`config` hay `description`), đổi chỗ, theo `id`, mỗi mục với đường dẫn lane (R4.1). Bước có `id` trùng trong đề xuất là lỗi của bộ kiểm, diff không đoán.
 3. `configs/prompts/wf_ai/workflow_edit@1.0.0.yaml`: biến `instruction`, `history`, `base_document` (YAML của tài liệu gốc), `node_types` (tên và mô tả sáu loại), không `raw_variables` (R5.1); fixture của provider `mock` cho prompt này trả một `proposal` hợp lệ trên `lead_care@1.0.0` (thêm một `time.wait` trước `fetch_reply`).
 4. Route `POST /api/v1/digital-workers/{dw_id}/workflow-assistant` trong `apps/api/src/dw_api/routes/v1/digital_workers.py`, model thân và trả như mục API của spec; `ModelOutputInvalidError` thành 502 `upstream_unavailable` với `details.reason_code` `assistant_output_invalid` (R1.5); wiring ở `apps/api/src/dw_api/bootstrap/wiring.py` với gateway của runtime; snapshot OpenAPI và kiểu TS sinh lại (`make generate-contracts`).
@@ -24,6 +24,8 @@ Business Owner hay Technical Owner của một DW gửi một yêu cầu sửa q
 - [ ] R1.2 (WAI1): Validator của DW gọi route: 403 `not_dw_owner`, gateway giả 0 lần gọi; người không `dw.read`: 404.
 - [ ] R1.3 (WAI2): thân có `workflow_key: other` và `tenant_id` khác: tài liệu gốc trong prompt và trong đề xuất là `lead_care@1.0.0` mà DW ghim.
 - [ ] R1.4 (WAI3): `instruction` 4.001 ký tự, hay 11 lượt `history`: 422 `assistant_input_too_long`, gateway giả 0 lần gọi.
+- [ ] R1.6: route dựng trợ lý với gateway từ `build_model_stack` của runtime (test wiring khẳng định cùng đối tượng gateway với runner), không client model riêng.
+- [ ] R1.7: gateway giả trả `question` kèm `steps`, hay `proposal` với `steps` rỗng: 502 `assistant_output_invalid`.
 - [ ] R1.5: gateway giả ném `ModelOutputInvalidError`: 502 với `reason_code` `assistant_output_invalid`, không `steps`.
 - [ ] R2.1 (WAI4): một đề xuất hợp lệ giữ nguyên mọi khóa ngoài `steps` của gốc, so từng khóa.
 - [ ] R2.4 (WAI4): gateway giả trả thêm `decision_classes`: `AssistantTurn` từ chối, route trả 502 `assistant_output_invalid` như R1.5.

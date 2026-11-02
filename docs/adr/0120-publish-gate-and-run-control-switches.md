@@ -376,3 +376,14 @@ planner's provisional calls H-1-H-18:
   the scenario cases, the review screen, gate E1 and V4.37's experiment (if H-18 is wrong, each step kind reads its own
   pinned result; if H-14 is wrong, `outcomes[]` leaves the W1 schema and a case asserts on the final state in CEL; if
   H-13 is wrong, Fork stays in W2 running `simulate` only and `fork` returns to decision 7's list).
+
+## Amendments (2026-11-02)
+
+- wf-ai (`.claude/plans/studio/wf-ai/spec.md` R6.4), agent under Đạt's delegation of 2026-10-31: a Digital
+  Worker's workflow version, which is not yet a Studio artifact, goes live by the same rule as decision 2 (a passing
+  simulation on its exact hash, then a second person), but its approval `dw.workflow.publish` carries no
+  `studio.publish.approve` stamp: its deciders are the DW's Validator or Technical Owner, read in the decision's
+  transaction (`DwDecisionAdmission`), never anyone who saved the draft or submitted it, because that role is not yet
+  in the permission catalogue and a stamp nobody holds would leave every request undecidable. If wrong: stamp
+  `required_scope` once tenant-rbac ships the role, and the admission also requires the stamp. When agent-lifecycle
+  builds the stage machine of decision 1, DW workflow versions move onto it.
