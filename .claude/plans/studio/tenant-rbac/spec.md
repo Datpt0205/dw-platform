@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 2/11/2026
-Sẵn sàng: ĐẠT (2/11/2026; 0 CRITICAL, 0 HIGH; ticket 01)
+Sẵn sàng: ĐẠT (2/11/2026; 0 CRITICAL, 0 HIGH; ticket 01, 02)
 
 Quản trị viên công ty cần tự dựng vai trò cho các workspace của mình (vai Marketing và vai Sales của lát Marketing, D4) với
 quyền trên đối tượng do công ty định nghĩa (`obj.lead.read`, D3), điều mà danh mục vai toàn cục chỉ migration ghi không
@@ -66,7 +66,7 @@ Công ty có vai trò của riêng mình, nhân bản từ vai trò mẫu, khôn
 - R3.2 KHI một migration sửa một vai trò mẫu, vai trò của tenant đã nhân bản từ mẫu đó PHẢI giữ nguyên quyền và mức truy cập.
 - R3.3 NẾU một kết nối đặt `app.tenant_id` của tenant A, hay không đặt tenant, đọc hoặc ghi vai trò, quyền của vai trò hay gán vai trò của tenant B, THÌ PostgreSQL PHẢI trả 0 dòng hoặc từ chối ghi, và không đổi gì.
 - R3.4 NẾU một quyền của vai trò mang mức không khớp loại quyền (W1: khóa `tenant` chỉ nhận `tenant`; khóa `workspace` nhận `workspace`, `tenant`; khóa `record` nhận `own`, `workspace`, `tenant`), THÌ PostgreSQL PHẢI từ chối với SQLSTATE 23514 và không đổi gì.
-- R3.5 KHI migration chuyển dữ liệu hiện có xong, `GET /api/v1/me` PHẢI trả cho mọi membership đúng tập khóa nó trả trước migration.
+- R3.5 KHI migration chuyển dữ liệu hiện có xong, `GET /api/v1/me` PHẢI trả cho mọi membership mọi khóa nó trả trước migration, trừ khóa `platform.admin` của `platform_admin` (vai W1 giữ trong `role_keys`, không thành vai trò của tenant; G2), và chỉ thêm khóa đến từ `tenant_owner` mà R3.6 gán hay khóa mức `tenant` từ gán vai trò ở workspace khác (R2.3).
 - R3.6 KHI migration chuyển dữ liệu hiện có, migration PHẢI gán `tenant_owner` cho người giữ `org_admin` ở workspace `main` của mỗi tenant, với audit `platform.role_assignment.grant` của `system:rbac_migration`.
 - R3.7 NẾU một tenant đã có 200 vai trò chưa xóa (tính cả bộ quyền bổ sung), THÌ PostgreSQL PHẢI từ chối vai trò thứ 201 với `role_limit_reached` và không đổi gì.
 - R3.8 KHI người vận hành gọi `POST /api/v1/platform/tenants/{tenant_id}/org-admins`, API nền tảng PHẢI gán vai trò `tenant_owner` cho người đó thay cho khóa `org_admin`.
@@ -234,7 +234,7 @@ Vai trò mang quyền `obj.<api_name>.<action>` có mức truy cập và quyền
 ## Phụ thuộc
 
 - org-and-principals: bảng thành viên công ty và trạng thái (`.claude/plans/studio/org-and-principals/issues/02-thanh-vien-cap-tenant.md`); ticket 02 ở đây chờ nó. Chiều ngược: org-and-principals/03 chờ ticket 02 ở đây (`platform.grants_cover`, gán vai trò cho tài khoản dịch vụ). AccessContext từ chối người không `active` là cửa của `org-and-principals:R4.3`; `platform.effective_grants` là chủ của câu "giữ quyền gì" (R2.5). Lần kích hoạt thành viên của `org-and-principals:R4.5` là lần kích hoạt mà R3.10 đọc: trigger của ticket 02 ở đây trên `platform.tenant_members` đặt tenant `setup` sang `active` trong cùng giao dịch (V4.38), nên org-and-principals/02 không đọc `setup`.
-- foundations-hardening/02: xóa cache theo mẫu ở route khóa, mở khóa, offboard (`foundations-hardening:R3.3`) là tạm; ticket 02 ở đây gỡ nó và chờ ticket đó. Ticket 02 cũng chờ foundations-hardening/07, vì bước xuất bốn bảng mới và xóa ba trong đó của nó sửa `offboarding.py` và `test_offboarding.py` trên phần đọc catalog và `export_rows` mà ticket đó viết lại (`foundations-hardening:R11.1`).
+- foundations-hardening/02: xóa cache theo mẫu ở route khóa, mở khóa, offboard (`foundations-hardening:R3.3`) là tạm; ticket 02 ở đây gỡ nó và chờ ticket đó. Ticket 02 cũng chờ foundations-hardening/07, vì bước xuất và xóa bốn bảng mới của nó sửa `offboarding.py` và `test_offboarding.py` trên phần đọc catalog và `export_rows` mà ticket đó viết lại (`foundations-hardening:R11.1`).
 - studio-skeleton/01: ticket 02 chờ nó, vì ticket 02 ghi dòng vào danh sách bảng toàn tenant `_TENANT_WIDE_ON_PURPOSE` của test phủ RLS (`studio-skeleton:R9.1`) và dựa vào test phủ offboarding (`studio-skeleton:R4.3`) mà ticket đó dựng. Chiều ngược: studio-skeleton/03 chờ ticket 02 ở đây, để mục Studio của điều hướng dựng trên bộ lọc đọc `GET /api/v1/me` (R2.6) và trên test phủ danh mục của ticket 01.
 - Mọi cụm đăng ký khóa: ticket của cụm khác chèn dòng vào `platform.permissions` chờ ticket 02 ở đây và nêu mọi cột NOT NULL của danh mục trong câu INSERT (quy ước khóa quyền ở Trong phạm vi), như custom-objects/02.
 - custom-objects: `studio.object_defs`, `studio.field_defs` với `api_name` bất biến và khóa `(tenant_id, id)` (ADR-0107 (Accepted)); ticket 04 chờ `.claude/plans/studio/custom-objects/issues/02-luoc-do-dinh-nghia-object.md`.
@@ -317,6 +317,27 @@ Không còn câu hỏi mở.
 - 2/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 01. Ticket 01 không phụ thuộc ticket nào, 02-04 dựa
   vào nó (danh mục, test phủ, bootstrap); cách chia 02-04 được duyệt khi gate chạy cho chúng. Theo `## Ủy quyền` của
   studio.md (Đạt, 31/10/2026). Nếu sai thì: hạ ticket 01 về `needs-triage` và chia lại.
+- 2/11/2026 (agent, theo ủy quyền 31/10/2026): gate ticket 02, HIGH 4: R3.5 ("đúng tập khóa trước migration") mâu thuẫn
+  với R3.6 (người giữ `org_admin` ở `main` nhận `tenant_owner`, nên có thêm mọi khóa `active` cấp được ở mức `tenant`,
+  như `approvals.decide` mà `org_admin` không có), với R2.3 (khóa mức `tenant` gán ở một workspace nay có ở workspace
+  khác) và với G2 (`platform_admin` không thành vai trò của tenant, nên khóa `platform.admin` thôi nằm trong `scopes`;
+  đường vượt đọc vai, `authorization.py:68-71`). R3.5 viết lại: mọi khóa cũ còn, trừ `platform.admin`, và chỉ thêm khóa
+  từ hai nguồn đó. Sửa: R3.5, ticket 02. Nếu sai thì: R3.6 không gán `tenant_owner` lúc chuyển dữ liệu (người vận hành
+  gán qua `.../org-admins`), và R3.5 về "đúng tập khóa" cho mọi membership không có khóa mức `tenant`.
+- 2/11/2026 (agent, theo ủy quyền 31/10/2026): gate ticket 02, HIGH 11: dòng 24/10/2026 về `platform.tenant_access_versions`
+  trong `STUDIO_EXCLUSIONS` không dựng được: `OffboardingExclusion` đòi đúng một cách xóa, và `kept` đòi một thời hạn
+  lưu giữ `enforced` của chính bảng (`offboarding.py:163-189`, `test_offboarding_coverage.py`), không có dạng "giữ mãi".
+  Thay bằng một bước xóa của nền tảng trong `OffboardingPurgeSteps.platform()`, như `platform.purge_tenant_marketing`:
+  hàm SECURITY DEFINER `platform.purge_tenant_access_version`, chỉ khi công ty `offboarding`, nên `dw_app` vẫn chỉ
+  SELECT (ADR-0104 (Accepted) mục 7 không đổi); `platform.bump_access_version()` chỉ chèn dòng khi tenant ra đời, mọi
+  lần khác chỉ UPDATE, nên dòng không sinh lại trong cùng lượt xóa; bộ đọc AccessContext không thấy dòng thì không ghi
+  cache. Sửa: Phụ thuộc, ticket 02 (bước 9, 15). Nếu sai thì: `dw_app` nhận DELETE trên bảng cùng trigger BEFORE DELETE
+  từ chối khi công ty khác `offboarding` (cách thay thế của dòng 24/10/2026), và ADR-0104 (Accepted) mục 7 ghi sửa đổi.
+- 2/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 02. Ticket 02 là vai trò của tenant, hàm quyền hiệu lực,
+  phiên bản quyền và hai chủ sở hữu (bước 16, 17); ticket 03 (chống leo thang, API vai trò, khóa cột cũ) và 04 (quyền
+  đối tượng và trường) chờ nó, cùng org-and-principals/03, connections-and-vault/03, /04 và studio-skeleton/03. Theo
+  `## Ủy quyền` của studio.md (Đạt, 31/10/2026). Nếu sai thì: tách bước 16, 17 (`setup`, hai chủ sở hữu, cảnh báo dưới
+  hai người) thành một ticket chờ ticket 02.
 
 ## Danh sách ticket
 
