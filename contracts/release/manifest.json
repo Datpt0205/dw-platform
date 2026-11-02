@@ -40,7 +40,7 @@
       "version": "1.2.0"
     }
   ],
-  "git_sha": "f39fb16e3f968400437b904ab52604aabda9ba7d",
+  "git_sha": "66ad6e7dfbb30c2673124657f72c2a9be5885f24",
   "knowledge_index_version": "2026-07-25.structure-1",
   "memory_policy_version": "2.0.0",
   "platform_version": "0.1.0",
@@ -96,6 +96,11 @@
       "checksum": "b5dee5fc2c33cf58c88dad2853961f1aae2372dafb70080158098a45fb57a042",
       "prompt_id": "platform.untrusted_demo",
       "version": "1.1.0"
+    },
+    {
+      "checksum": "1f02e3e920760342ff52a178d9e72db6d78fadc91ca8f168420661c02bb984de",
+      "prompt_id": "wf_ai.workflow_edit",
+      "version": "1.0.0"
     }
   ],
   "rubrics": [],
