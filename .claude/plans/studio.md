@@ -486,25 +486,25 @@ Kiểm nhất quán 24/10/2026: 8 CRITICAL, 25 HIGH, 38 MEDIUM, 2 LOW; phủ YC 
 Nguồn duy nhất của thứ tự (Đạt, 29/10/2026). Phiên không người trực làm việc đầu tiên chưa xong; một ticket bị chặn bởi thứ
 bên ngoài thì ghi "Chờ Đạt" và làm việc kế. Đường dẫn ticket tính từ `.claude/plans/studio/`.
 
-| #   | Việc                                                                                      | Trạng thái                                         |
-| --- | ----------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| 0   | Pha 0: D17, requirements, ADR-0128, spec `digital-worker`, `wf-lite`, `leadcare`, gate    | xong                                               |
-| 1   | `foundations-hardening/issues/07`                                                         | xong `8cee863`                                     |
-| 2   | `foundations-hardening/issues/03`                                                         | xong `62d3b32`                                     |
-| 3   | `org-and-principals/issues/01`                                                            | xong `0b341d4`                                     |
-| 4   | `runtime-hardening/issues/01`                                                             | xong `aa53159`                                     |
-| 5   | `digital-worker/issues/01` hồ sơ DW và loại quyết định                                    | xong `5e1ca10`                                     |
-| 6   | `digital-worker/issues/02` hàng đợi chung, bàn giao, cổng duyệt                           | xong `857b317`                                     |
-| 7   | `wf-lite/issues/01` tài liệu, sổ loại bước, bộ kiểm, luật sàn HITL                        | xong `47df14d`                                     |
-| 8   | `wf-lite/issues/02` biên dịch, chạy, chờ và chạy tiếp                                     | xong `3c85dbd`                                     |
-| 9   | `runtime-hardening/issues/02`                                                             | xong `df27594`                                     |
-| 9b  | `compliance-pdpl/issues/08` lõi sàn gửi tin (tách từ 04 theo gate của leadcare, ADR-0124) | xong                                               |
-| 10  | `leadcare/issues/01` gói Marketing chăm sóc lead                                          | xong, trừ R1.5                                     |
-| 11  | `digital-worker/issues/03` scorecard, nâng hạ tự chủ                                      | xong                                               |
-| 12  | `digital-worker/issues/04` màn hình web                                                   | xong                                               |
-| 13  | `leadcare/issues/02` demo chạy thật, ảnh chụp ở `docs/demo/digital-worker/`               | Chờ Đạt 21                                         |
-| 14  | `wf-ai` spec rồi ticket 01: AI sửa gói mẫu (D16, D18)                                     | xong `fea6cf2`                                     |
-| 15  | mọi ticket studio khác có Blocked by đã resolved, theo thứ tự đợt                         | đang: dựng compliance-pdpl/01, usage-and-limits/01 |
+| #   | Việc                                                                                      | Trạng thái                            |
+| --- | ----------------------------------------------------------------------------------------- | ------------------------------------- |
+| 0   | Pha 0: D17, requirements, ADR-0128, spec `digital-worker`, `wf-lite`, `leadcare`, gate    | xong                                  |
+| 1   | `foundations-hardening/issues/07`                                                         | xong `8cee863`                        |
+| 2   | `foundations-hardening/issues/03`                                                         | xong `62d3b32`                        |
+| 3   | `org-and-principals/issues/01`                                                            | xong `0b341d4`                        |
+| 4   | `runtime-hardening/issues/01`                                                             | xong `aa53159`                        |
+| 5   | `digital-worker/issues/01` hồ sơ DW và loại quyết định                                    | xong `5e1ca10`                        |
+| 6   | `digital-worker/issues/02` hàng đợi chung, bàn giao, cổng duyệt                           | xong `857b317`                        |
+| 7   | `wf-lite/issues/01` tài liệu, sổ loại bước, bộ kiểm, luật sàn HITL                        | xong `47df14d`                        |
+| 8   | `wf-lite/issues/02` biên dịch, chạy, chờ và chạy tiếp                                     | xong `3c85dbd`                        |
+| 9   | `runtime-hardening/issues/02`                                                             | xong `df27594`                        |
+| 9b  | `compliance-pdpl/issues/08` lõi sàn gửi tin (tách từ 04 theo gate của leadcare, ADR-0124) | xong                                  |
+| 10  | `leadcare/issues/01` gói Marketing chăm sóc lead                                          | xong, trừ R1.5                        |
+| 11  | `digital-worker/issues/03` scorecard, nâng hạ tự chủ                                      | xong                                  |
+| 12  | `digital-worker/issues/04` màn hình web                                                   | xong                                  |
+| 13  | `leadcare/issues/02` demo chạy thật, ảnh chụp ở `docs/demo/digital-worker/`               | Chờ Đạt 21                            |
+| 14  | `wf-ai` spec rồi ticket 01: AI sửa gói mẫu (D16, D18)                                     | xong `fea6cf2`                        |
+| 15  | mọi ticket studio khác có Blocked by đã resolved, theo thứ tự đợt                         | đang: dựng usage-and-limits/01 và /05 |
 
 ## Ủy quyền
 
@@ -557,6 +557,7 @@ Each resolved ticket adds one line here: the commit hash and one sentence.
 - `48a6f3f` runtime-hardening/03: lượt chạy chờ chỉ được tiếp tục một lần (`begin_resume` compare-and-set, kẻ thua 409 không ghi gì, hủy thì `failed`); CHECK trạng thái run, phê duyệt, quyết định; outbox lùi thời gian theo đồng hồ PostgreSQL, bỏ cuộc có `dead_at`, gauge và cảnh báo thư chết, script phát lại đứng tên người vận hành.
 - `0f1943a` tools-and-skills/01: executor tự kiểm JSON Schema đầu vào và đầu ra qua bộ kiểm duy nhất của nền tảng, sổ công cụ theo công ty không chéo công ty, bộ lắp theo loại công cụ với mức sàn chỉ siết, `approval_required` một câu trả lời cho wrapper, middleware và executor, sổ bước theo thứ tự R2.6 dựng ở `build_tool_executor_steps`, khóa chống lặp bắt buộc với mọi công cụ có khối `message`.
 - `5a0f8e9` org-and-principals/02: vị thế của một người trong công ty là dòng `platform.tenant_members` (`invited`, `active`, `suspended`) mà mọi membership treo vào; chỉ thành viên `active` qua cửa AccessContext và hiện ở đăng nhập; mỗi lần đăng nhập kích hoạt lời mời nhưng không bao giờ mở lại người bị đình chỉ; mọi nơi ghi membership ghi dòng đó trước; 23 fixture test qua một helper.
+- `ae5434f` compliance-pdpl/01: `dw_kernel.personal_data` là chủ từ vựng `pd_category`, `sensitive_type` (12 điểm Nghị định 356 Điều 4.1, luật sư xác nhận ở ticket 02) và `subject_identifier` cùng `classification_problems` có con trỏ; helper catalog so năm CHECK với kernel qua chính PostgreSQL; `pd_classification.json` sinh ra có `--check`; nhãn tiếng Việt ở web kiểm theo nó.
 
 ## Chờ Đạt (phiên không người trực)
 

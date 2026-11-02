@@ -14,6 +14,9 @@ dependencies = [
     # (ADR 0116). The one validator of a work kind's payload and an edited
     # proposal, `dw_platform.application.json_schema`.
     "jsonschema==4.26.0",
+    # Imported directly by `application/json_schema.py` (tool schemas: no remote
+    # `$ref`, tools-and-skills/01); pinned to the version jsonschema resolves.
+    "referencing==0.37.0",
 ]
 
 [build-system]

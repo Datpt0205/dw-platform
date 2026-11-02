@@ -56,6 +56,7 @@ IMPORT_TO_DIST = {
     "jwt": "pyjwt",
     "yaml": "pyyaml",
     "jsonschema": "jsonschema",
+    "referencing": "referencing",
     "deepagents": "deepagents",
     "playwright": "playwright",
     "reportlab": "reportlab",
