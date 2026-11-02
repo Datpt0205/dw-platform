@@ -317,14 +317,19 @@ class OutboxDrainPort(Protocol):
         """Record delivery. Called after the effect, so a crash retries it."""
         ...
 
-    async def record_failure(self, event_id: UUID, *, error: str) -> None:
-        """Keep the reason a delivery failed; the attempt was already counted."""
+    async def record_failure(
+        self, event_id: UUID, *, error: str, max_attempts: int, undeliverable: bool = False
+    ) -> None:
+        """Keep the reason a delivery failed; the attempt was already counted.
+        The event is tried again after a backoff, or given up on (`dead_at`)
+        on its last attempt, or at once when it is `undeliverable`
+        (runtime-hardening R10.1, R10.2)."""
         ...
 
-    async def backlog(self, *, event_types: Sequence[str], max_attempts: int) -> OutboxBacklog:
+    async def backlog(self, *, event_types: Sequence[str]) -> OutboxBacklog:
         """Count and age of what `claim_batch` would still find, for the same
         filter — so the number a dashboard shows matches what the dispatcher
-        actually owes, not a guess at it."""
+        actually owes, not a guess at it — and the count of the dead."""
         ...
 
 

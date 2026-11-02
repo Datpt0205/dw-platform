@@ -68,6 +68,10 @@ _ERROR_MESSAGE_LIMIT = 500
 _STREAM_BACKLOG_LIMIT = 256
 
 
+class ResumeInterrupted(Exception):  # noqa: N818 - names what the row records
+    """What a resumed run's row says when the resume was cancelled (R9.1)."""
+
+
 def _publish(queue: asyncio.Queue[tuple[str, Any]], item: tuple[str, Any]) -> None:
     """Hand an event to the reader without ever blocking the run on it.
 
@@ -591,19 +595,19 @@ class LangGraphWorkflowRunner:
         graph = self._graph(record.worker_id, record.graph_version)
         worker = self.worker_registry.resolve(record.worker_id, record.worker_version)
 
-        await self._audit(run_context, "run.resumed", str(run_id))
-        if record.status is RunStatus.WAITING_TIMER:
-            # The approval path sets `running` when it decides; a timer has no
-            # decision, so the run leaves its wait here.
-            await self.run_store.set_status(run_context, run_id, RunStatus.RUNNING)
-        waits = self._waits_for(run_context)
-        if waits is not None:
-            await waits.resumed(run_context, run_id)
-        attributes = self._span_attributes(
-            run_context, run_id, record.graph_version, worker.definition
-        )
-        with self._invocation(run_context, attributes):
-            try:
+        # The run leaves its wait only while it is still in it (runtime-
+        # hardening R9.2): of two resumes, one runs the graph and the other is
+        # refused here, before it audits or moves the work item.
+        await self.run_store.begin_resume(run_context, run_id, waiting=record.status)
+        try:
+            await self._audit(run_context, "run.resumed", str(run_id))
+            waits = self._waits_for(run_context)
+            if waits is not None:
+                await waits.resumed(run_context, run_id)
+            attributes = self._span_attributes(
+                run_context, run_id, record.graph_version, worker.definition
+            )
+            with self._invocation(run_context, attributes):
                 async with self._metered(run_context, worker.definition) as callbacks:
                     state = await graph.ainvoke(
                         Command(resume=resume_payload),
@@ -613,9 +617,19 @@ class LangGraphWorkflowRunner:
                         context=run_context,
                         **_durability(run_context),
                     )
-            except Exception as exc:
+        except BaseException as exc:
+            # Past `begin_resume` the run is `running`; whatever stops it here,
+            # a cancellation included, it is recorded `failed` rather than left
+            # `running` for a reader to wait on (R9.1). A process killed
+            # outright leaves it `running`, for the thread claim's reaper.
+            if isinstance(exc, asyncio.CancelledError):
+                current = asyncio.current_task()
+                if current is not None:
+                    current.uncancel()
+                await self._fail(run_context, run_id, ResumeInterrupted("the resume was cancelled"))
+            else:
                 await self._fail(run_context, run_id, exc)
-                raise
+            raise
         await self._handle_outcome(run_context, run_id, state)
 
     async def _settle_stream(

@@ -1,0 +1,70 @@
+# Mutation check of runtime-hardening ticket 03: scripts/mutate.py runs this
+# file. One mutation per control (RH25-RH29) and per layer that holds one.
+mutations:
+  - name: RH25 a resume does not take the run from its wait
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langgraph_runner.py
+    old: "        await self.run_store.begin_resume(run_context, run_id, waiting=record.status)"
+    new: "        pass"
+    tests:
+      - packages/python/dw_agent_runtime/tests/integration/test_resume_once_db.py::test_two_resumes_of_one_run_run_its_graph_once
+  - name: RH25 the compare-and-set takes a run in any status
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/run_store.py
+    old: "                    .where(worker_runs.c.id == run_id, worker_runs.c.status == waiting.value)"
+    new: "                    .where(worker_runs.c.id == run_id)"
+    tests:
+      - packages/python/dw_agent_runtime/tests/integration/test_resume_once_db.py::test_two_resumes_of_one_run_run_its_graph_once
+      - packages/python/dw_agent_runtime/tests/integration/test_resume_once_db.py::test_a_resume_of_a_run_not_waiting_is_refused
+  - name: R9.1 a cancelled resume is not recorded
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langgraph_runner.py
+    old: '                await self._fail(run_context, run_id, ResumeInterrupted("the resume was cancelled"))'
+    new: "                pass"
+    tests:
+      - packages/python/dw_agent_runtime/tests/integration/test_resume_once_db.py::test_a_cancelled_resume_is_recorded_failed_and_raised
+  - name: RH27 the claim ignores the backoff
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/outbox_drain.py
+    old: "                        e.c.available_at <= sa.func.now(),"
+    new: "                        sa.true(),"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_outbox_dead_letters.py::test_a_failure_backs_off_exponentially_by_the_databases_clock
+  - name: RH28 the claim takes dead events
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/outbox_drain.py
+    old: |2
+                          e.c.processed_at.is_(None),
+                          e.c.dead_at.is_(None),
+                          # Its backoff has passed, by PostgreSQL's clock (R10.1).
+    new: |2
+                          e.c.processed_at.is_(None),
+                          # Its backoff has passed, by PostgreSQL's clock (R10.1).
+    tests:
+      - packages/python/dw_platform/tests/integration/test_outbox_dead_letters.py::test_the_last_attempt_and_an_undeliverable_event_are_given_up_on
+  - name: RH28 a spent event is hidden, not given up on, at the claim
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/outbox_drain.py
+    old: "            spent = [row.id for row in candidates if row.attempts >= max_attempts]"
+    new: "            spent = []"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_outbox_dead_letters.py::test_an_event_that_died_during_its_last_delivery_is_given_up_on_at_the_claim
+  - name: RH28 the last attempt is not given up on
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/outbox_drain.py
+    old: "        given_up = sa.literal(undeliverable) | (e.c.attempts >= max_attempts)"
+    new: "        given_up = sa.literal(undeliverable)"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_outbox_dead_letters.py::test_the_last_attempt_and_an_undeliverable_event_are_given_up_on
+  - name: RH28 an undeliverable event spends every attempt
+    file: apps/worker/src/dw_worker/consumers/outbox.py
+    old: "            undeliverable=True,"
+    new: "            undeliverable=False,"
+    tests:
+      - apps/worker/tests/unit/test_outbox_consumer.py::test_an_undeliverable_event_is_recorded_and_left_undelivered
+  - name: RH29 anyone replays a dead event
+    file: scripts/replay_dead_outbox.py
+    old: "    if operator is None:"
+    new: "    if False:"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_outbox_dead_letters.py::test_someone_who_is_not_a_platform_operator_replays_nothing
+  - name: RH26 a run status outside the set is taken
+    file: db/migrations/versions/65443fe9fd9a_run_status_checks_and_outbox_backoff.py
+    old: '    ("platform.worker_runs", "ck_worker_runs_status", "status", _RUN_STATUSES),'
+    new: '    ("platform.worker_runs", "ck_worker_runs_status", "status", (*_RUN_STATUSES, "bogus")),'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_outbox_dead_letters.py::test_each_status_check_is_its_enums_set
+      - packages/python/dw_platform/tests/integration/test_outbox_dead_letters.py::test_a_status_outside_the_set_is_refused

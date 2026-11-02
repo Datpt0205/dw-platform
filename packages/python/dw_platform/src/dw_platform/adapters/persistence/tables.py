@@ -402,6 +402,12 @@ outbox_events = sa.Table(
     sa.Column("processed_at", sa.TIMESTAMP(timezone=True), nullable=True),
     sa.Column("attempts", sa.Integer, nullable=False, server_default="0"),
     sa.Column("last_error", sa.Text, nullable=True),
+    # When a failed event may be tried again, and when it was given up on
+    # (migration 65443fe9fd9a, runtime-hardening R10.1, R10.2).
+    sa.Column(
+        "available_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.Column("dead_at", sa.TIMESTAMP(timezone=True), nullable=True),
 )
 
 # Replay cache for mutating HTTP requests that carry an `Idempotency-Key`

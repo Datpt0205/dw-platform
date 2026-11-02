@@ -42,6 +42,13 @@ class RunStatus(StrEnum):
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
+    # Studio's queue (ADR-0113 decisions 1, 3): no code writes these until
+    # workflow-engine; `ck_worker_runs_status` already takes them, so its
+    # migration does not have to change the CHECK (runtime-hardening R9.3).
+    QUEUED = "queued"
+    WAITING = "waiting"
+    BLOCKED = "blocked"
+    DEAD_LETTERED = "dead_lettered"
 
 
 TERMINAL_STATUSES = frozenset({RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED})
@@ -493,6 +500,32 @@ class SqlWorkerRunStore:
             sa.update(worker_runs).where(worker_runs.c.id == run_id).values(**values),
             status,
         )
+
+    async def begin_resume(
+        self, run_context: RunContext, run_id: uuid.UUID, *, waiting: RunStatus
+    ) -> None:
+        """Take a waiting run back to `running`, only while it is still in the
+        wait `resume` read (runtime-hardening R9.2): one UPDATE with
+        `RETURNING`, so two resumes of one run cannot both run its graph; the
+        loser gets 409 before it writes anything. Announced like `set_status`."""
+        async with self.session_factory() as session, session.begin():
+            await session.execute(_SET_TENANT, {"tenant_id": str(run_context.tenant_id)})
+            taken = (
+                await session.execute(
+                    sa.update(worker_runs)
+                    .where(worker_runs.c.id == run_id, worker_runs.c.status == waiting.value)
+                    .values(status=RunStatus.RUNNING.value, updated_at=sa.func.now())
+                    .returning(worker_runs.c.id)
+                )
+            ).first()
+            if taken is None:
+                raise ConflictError(
+                    "run is not waiting any more; another resume took it",
+                    details={"run_id": str(run_id), "expected": waiting.value},
+                )
+            await session.execute(
+                _NOTIFY, {"payload": _announcement(run_context, RunStatus.RUNNING)}
+            )
 
     async def get(self, run_context: RunContext, run_id: uuid.UUID) -> RunRecord:
         """The run, read within `run_context`'s workspace.

@@ -34,6 +34,9 @@ DW_OUTBOX_BACKLOG_SIZE: Final = "dw_outbox_backlog_size"  # no labels
 DW_OUTBOX_OLDEST_PENDING_AGE_SECONDS: Final = (
     "dw_outbox_oldest_pending_age_seconds"  # no labels; 0 when the backlog is empty
 )
+# Events given up on (`dead_at`), awaiting an operator's replay
+# (runtime-hardening R10.3); never counted in the backlog.
+DW_OUTBOX_DEAD_LETTERS: Final = "dw_outbox_dead_letters"  # no labels
 DW_REAPER_REAPED_TOTAL: Final = "dw_reaper_reaped_total"  # labels: queue
 
 ALL_METRICS: Final = (
@@ -46,6 +49,7 @@ ALL_METRICS: Final = (
     DW_RETRIEVAL_RERANK_SKIPPED_TOTAL,
     DW_OUTBOX_BACKLOG_SIZE,
     DW_OUTBOX_OLDEST_PENDING_AGE_SECONDS,
+    DW_OUTBOX_DEAD_LETTERS,
     DW_REAPER_REAPED_TOTAL,
 )
 

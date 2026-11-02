@@ -66,3 +66,5 @@ class OutboxBacklog:
 
     pending: int
     oldest_pending_at: datetime | None
+    # Given up on (runtime-hardening R10.3): never in `pending`.
+    dead: int = 0

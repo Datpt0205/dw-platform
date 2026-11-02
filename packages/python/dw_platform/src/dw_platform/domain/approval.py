@@ -47,6 +47,9 @@ class ApprovalStatus(StrEnum):
     APPROVED = "approved"
     REJECTED = "rejected"
     CANCELLED = "cancelled"
+    # An approval past its term (ADR-0112): workflow-engine writes it in W2;
+    # in W1 an approval waits without one (DO-31). The CHECK takes it already.
+    EXPIRED = "expired"
 
 
 class DecisionOutcome(StrEnum):

@@ -99,6 +99,16 @@ async def _row(engine: AsyncEngine, event_id: uuid.UUID) -> sa.Row[tuple]:  # ty
         ).one()
 
 
+async def _due(engine: AsyncEngine, event_id: uuid.UUID) -> None:
+    """The backoff passed, without waiting for it."""
+    async with engine.begin() as conn:
+        await conn.execute(
+            sa.update(tables.outbox_events)
+            .where(tables.outbox_events.c.id == event_id)
+            .values(available_at=sa.func.now() - sa.text("interval '1 second'"))
+        )
+
+
 async def test_the_drain_claims_across_tenants_and_settles_each_event(
     db_urls: DatabaseUrls, pooled_app_engine: AsyncEngine
 ) -> None:
@@ -128,7 +138,7 @@ async def test_the_drain_claims_across_tenants_and_settles_each_event(
     migrator = create_async_engine(db_urls.migrator)
     try:
         await drain.mark_processed(first.id)
-        await drain.record_failure(second.id, error="account not found")
+        await drain.record_failure(second.id, error="account not found", max_attempts=3)
 
         settled = await _row(migrator, first.id)
         assert settled.processed_at == NOW
@@ -142,7 +152,9 @@ async def test_the_drain_claims_across_tenants_and_settles_each_event(
         assert untouched.attempts == 0
         assert untouched.processed_at is None
 
-        # The delivered event is gone from the next round; the failed one is not.
+        # The delivered event is gone from the next round; the failed one is
+        # back once its backoff has passed.
+        await _due(migrator, second.id)
         again = await drain.claim_batch(event_types=[CLAIMED_TYPE], limit=10, max_attempts=3)
         assert [event.id for event in again] == [second.id]
         assert again[0].attempts == 2
@@ -151,7 +163,7 @@ async def test_the_drain_claims_across_tenants_and_settles_each_event(
 
 
 async def test_an_event_that_keeps_failing_stops_being_claimed(
-    pooled_app_engine: AsyncEngine,
+    db_urls: DatabaseUrls, pooled_app_engine: AsyncEngine
 ) -> None:
     session_factory = async_sessionmaker(
         pooled_app_engine, class_=AsyncSession, expire_on_commit=False
@@ -162,13 +174,24 @@ async def test_an_event_that_keeps_failing_stops_being_claimed(
     await _announce(factory, context, event)
 
     drain = SqlOutboxDrain(session_factory=session_factory, clock=FixedClock())
-    for attempt in range(2):
-        claimed = await drain.claim_batch(event_types=[EXHAUSTED_TYPE], limit=10, max_attempts=2)
-        assert [item.id for item in claimed] == [event.id], f"attempt {attempt} should be claimable"
-        await drain.record_failure(event.id, error="still broken")
-
-    exhausted = await drain.claim_batch(event_types=[EXHAUSTED_TYPE], limit=10, max_attempts=2)
-    assert exhausted == []
+    migrator = create_async_engine(db_urls.migrator)
+    try:
+        for attempt in range(2):
+            await _due(migrator, event.id)
+            claimed = await drain.claim_batch(
+                event_types=[EXHAUSTED_TYPE], limit=10, max_attempts=2
+            )
+            assert [item.id for item in claimed] == [event.id], f"attempt {attempt}"
+            await drain.record_failure(event.id, error="still broken", max_attempts=2)
+        await _due(migrator, event.id)
+        exhausted = await drain.claim_batch(event_types=[EXHAUSTED_TYPE], limit=10, max_attempts=2)
+        assert exhausted == []
+        # R10.2: given up on at its last attempt, and counted as dead only.
+        assert (await _row(migrator, event.id)).dead_at is not None
+        backlog = await drain.backlog(event_types=[EXHAUSTED_TYPE])
+        assert (backlog.pending, backlog.dead) == (0, 1)
+    finally:
+        await migrator.dispose()
 
 
 async def test_the_drain_flag_does_not_survive_its_transaction(

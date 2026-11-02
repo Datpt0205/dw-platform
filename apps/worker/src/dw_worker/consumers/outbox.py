@@ -28,7 +28,11 @@ import logging
 from collections.abc import Awaitable, Callable, Mapping
 
 from dw_kernel.ports import UtcClock
-from dw_observability.metrics import DW_OUTBOX_BACKLOG_SIZE, DW_OUTBOX_OLDEST_PENDING_AGE_SECONDS
+from dw_observability.metrics import (
+    DW_OUTBOX_BACKLOG_SIZE,
+    DW_OUTBOX_DEAD_LETTERS,
+    DW_OUTBOX_OLDEST_PENDING_AGE_SECONDS,
+)
 from dw_observability.telemetry import TelemetryPort
 from dw_platform.application.ports import OutboxDrainPort
 from dw_platform.domain.outbox import OutboxEvent
@@ -45,18 +49,29 @@ class UndeliverableEventError(Exception):
     """The event cannot be delivered as written, and retrying will not help."""
 
 
-async def _deliver(event: OutboxEvent, handler: EventHandler, drain: OutboxDrainPort) -> None:
+async def _deliver(
+    event: OutboxEvent, handler: EventHandler, drain: OutboxDrainPort, max_attempts: int
+) -> None:
     try:
         outcome = await handler(event)
     except UndeliverableEventError as exc:
-        # A retry cannot fix the event itself, so the reason is recorded and the
-        # attempt budget is left to run out rather than being burned in a loop.
+        # A retry cannot fix the event itself: it is given up on at once, with
+        # its reason, instead of spending every attempt (runtime-hardening R10.2).
         logger.error("outbox event %s (%s) is undeliverable: %s", event.id, event.event_type, exc)
-        await drain.record_failure(event.id, error=str(exc)[:_ERROR_LIMIT])
+        await drain.record_failure(
+            event.id,
+            error=str(exc)[:_ERROR_LIMIT],
+            max_attempts=max_attempts,
+            undeliverable=True,
+        )
         return
     except Exception as exc:
         logger.exception("outbox event %s (%s) failed", event.id, event.event_type)
-        await drain.record_failure(event.id, error=f"{type(exc).__name__}: {exc}"[:_ERROR_LIMIT])
+        await drain.record_failure(
+            event.id,
+            error=f"{type(exc).__name__}: {exc}"[:_ERROR_LIMIT],
+            max_attempts=max_attempts,
+        )
         return
     await drain.mark_processed(event.id)
     logger.info("outbox event %s (%s): %s", event.id, event.event_type, outcome)
@@ -85,10 +100,11 @@ def build_outbox_consumer(
             event_types=event_types, limit=batch_size, max_attempts=max_attempts
         )
         for event in events:
-            await _deliver(event, handlers[event.event_type], drain)
+            await _deliver(event, handlers[event.event_type], drain, max_attempts)
 
-        backlog = await drain.backlog(event_types=event_types, max_attempts=max_attempts)
+        backlog = await drain.backlog(event_types=event_types)
         telemetry.set_gauge(DW_OUTBOX_BACKLOG_SIZE, backlog.pending, {})
+        telemetry.set_gauge(DW_OUTBOX_DEAD_LETTERS, backlog.dead, {})
         age_seconds = (
             (clock.now() - backlog.oldest_pending_at).total_seconds()
             if backlog.oldest_pending_at is not None

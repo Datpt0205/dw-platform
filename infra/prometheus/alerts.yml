@@ -64,6 +64,20 @@ groups:
             {{ $value }} events are pending for the types dw-worker handles;
             dw_outbox_oldest_pending_age_seconds says how stale the oldest one is.
 
+      - alert: DwOutboxDeadLetters
+        # Any dead event is a consequence that did not happen: a decided
+        # approval not settled, a memory not indexed. An operator replays it
+        # with scripts/replay_dead_outbox.py (runtime-hardening R10.4).
+        expr: dw_outbox_dead_letters > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Outbox events were given up on"
+          description: >
+            dw_outbox_dead_letters events of this worker's types have dead_at
+            set; their last_error says why. Fix the cause, then replay them.
+
       - alert: DwReaperRepeatedlyReaping
         # See the file header: cannot fire until a context registers a
         # ReapTarget. 20/hour is provisional for the same reason the backlog

@@ -197,3 +197,4 @@ Phát lại thư chết (R10.4, R10.5), theo DO-56.1:
   dòng outbox, cột mới có mặc định, không đụng. Không cặp nào đụng mà thiếu đường. Duyệt cách chia: dòng 30/10/2026
   (agent, tạm theo ủy quyền) "Duyệt cách chia ticket 01-03" của spec.
 - 2026-11-02 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-02 (agent): code và test riêng xong, đã commit; chờ integration liên quan trước khi resolved.

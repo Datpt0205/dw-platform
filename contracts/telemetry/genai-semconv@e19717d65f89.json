@@ -202,6 +202,7 @@
       "dw_model_cost_usd_total",
       "dw_model_tokens_total",
       "dw_outbox_backlog_size",
+      "dw_outbox_dead_letters",
       "dw_outbox_oldest_pending_age_seconds",
       "dw_reaper_reaped_total",
       "dw_retrieval_rerank_skipped_total",

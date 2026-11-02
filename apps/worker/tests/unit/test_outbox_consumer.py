@@ -54,6 +54,9 @@ class FakeDrain:
         self.claims: list[tuple[tuple[str, ...], int, int]] = []
         self.processed: list[uuid.UUID] = []
         self.failures: list[tuple[uuid.UUID, str]] = []
+        # Which failures were given up on at once (runtime-hardening R10.2).
+        self.undeliverable: list[uuid.UUID] = []
+        self.dead = 0
 
     async def claim_batch(
         self, *, event_types: Sequence[str], limit: int, max_attempts: int
@@ -67,15 +70,20 @@ class FakeDrain:
     async def mark_processed(self, event_id: uuid.UUID) -> None:
         self.processed.append(event_id)
 
-    async def record_failure(self, event_id: uuid.UUID, *, error: str) -> None:
+    async def record_failure(
+        self, event_id: uuid.UUID, *, error: str, max_attempts: int, undeliverable: bool = False
+    ) -> None:
         self.failures.append((event_id, error))
+        if undeliverable:
+            self.undeliverable.append(event_id)
+            self.dead += 1
 
-    async def backlog(self, *, event_types: Sequence[str], max_attempts: int) -> OutboxBacklog:
+    async def backlog(self, *, event_types: Sequence[str]) -> OutboxBacklog:
         remaining = [event for event in self.events if event.event_type in set(event_types)]
         if not remaining:
-            return OutboxBacklog(pending=0, oldest_pending_at=None)
+            return OutboxBacklog(pending=0, oldest_pending_at=None, dead=self.dead)
         oldest = min(event.occurred_at for event in remaining)
-        return OutboxBacklog(pending=len(remaining), oldest_pending_at=oldest)
+        return OutboxBacklog(pending=len(remaining), oldest_pending_at=oldest, dead=self.dead)
 
 
 def event(event_type: str = HANDLED_TYPE) -> OutboxEvent:
@@ -173,6 +181,8 @@ async def test_an_undeliverable_event_is_recorded_and_left_undelivered() -> None
 
     assert drain.processed == []
     assert drain.failures == [(one.id, "event has no actor to act as")]
+    # Given up on at once, not left to spend every attempt (R10.2).
+    assert drain.undeliverable == [one.id]
 
 
 @pytest.mark.asyncio
