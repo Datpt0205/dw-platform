@@ -30,6 +30,7 @@ from dw_agent_runtime.wflite.document import WorkflowDocument
 from dw_agent_runtime.wflite.registry import JsonSchema, NodeTypeSpec, build_node_registry
 from dw_agent_runtime.wflite.validate import Problem, ToolSpecLookup, validate
 from dw_kernel.errors import ConfigError, NotFoundError
+from dw_kernel.pagination import canonical_json
 from dw_platform.application.json_schema import validator_for
 
 
@@ -56,6 +57,14 @@ _Yaml12Loader.add_implicit_resolver(
 def load_yaml(text: str | bytes) -> Any:
     """A workflow document as the catalog reads it (YAML 1.2 booleans)."""
     return yaml.load(text, Loader=_Yaml12Loader)
+
+
+def workflow_sha256(document: Mapping[str, Any]) -> str:
+    """The hash of a workflow as data (wf-ai R6): sha256 of its canonical JSON.
+    One way for a pack's document and for a tenant's draft or version, so a
+    base and a draft compare by the same bytes. Not the file's sha256, which a
+    run pins (`PinnedWorkflow.sha256`)."""
+    return hashlib.sha256(canonical_json(document).encode("utf-8")).hexdigest()
 
 
 @dataclass(frozen=True)

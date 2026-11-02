@@ -748,3 +748,37 @@ work_items = sa.Table(
     sa.Column("updated_at", sa.TIMESTAMP(timezone=True), nullable=False),
     sa.Column("closed_at", sa.TIMESTAMP(timezone=True), nullable=True),
 )
+
+# A DW's draft of its workflow and its last simulation (migration 100d1de08d37,
+# wf-ai R6.1, R6.2): one row each per DW.
+dw_workflow_drafts = sa.Table(
+    "dw_workflow_drafts",
+    metadata,
+    sa.Column("tenant_id", UUID(as_uuid=True), primary_key=True),
+    sa.Column("workspace_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("dw_id", UUID(as_uuid=True), primary_key=True),
+    sa.Column("content", JSONB, nullable=False),
+    sa.Column("content_sha256", sa.Text, nullable=False),
+    sa.Column("base_sha256", sa.Text, nullable=False),
+    sa.Column("saved_by", UUID(as_uuid=True), nullable=False),
+    sa.Column("author_ids", ARRAY(UUID(as_uuid=True)), nullable=False),
+    sa.Column("state", sa.Text, nullable=False, server_default="draft"),
+    sa.Column("reason", sa.Text, nullable=True),
+    sa.Column("created_at", sa.TIMESTAMP(timezone=True), nullable=False),
+    sa.Column("updated_at", sa.TIMESTAMP(timezone=True), nullable=False),
+)
+
+dw_workflow_simulations = sa.Table(
+    "dw_workflow_simulations",
+    metadata,
+    sa.Column("tenant_id", UUID(as_uuid=True), primary_key=True),
+    sa.Column("workspace_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("dw_id", UUID(as_uuid=True), primary_key=True),
+    sa.Column("content_sha256", sa.Text, nullable=False),
+    sa.Column("outcome", sa.Text, nullable=False),
+    sa.Column("trail", JSONB, nullable=False),
+    sa.Column("tool_calls", JSONB, nullable=False),
+    sa.Column("failed_step", sa.Text, nullable=True),
+    sa.Column("error", sa.Text, nullable=True),
+    sa.Column("created_at", sa.TIMESTAMP(timezone=True), nullable=False),
+)

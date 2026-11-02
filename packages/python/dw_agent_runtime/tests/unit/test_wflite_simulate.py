@@ -43,8 +43,9 @@ pytestmark = pytest.mark.unit
 
 CONFIGS = Path(__file__).resolve().parents[5] / "configs"
 REGISTRY = build_node_registry()
-PINNED = load_shipped_packs(CONFIGS).workflow("lead_care", "1.0.0")
-assert PINNED is not None
+_SHIPPED = load_shipped_packs(CONFIGS).workflow("lead_care", "1.0.0")
+assert _SHIPPED is not None
+PINNED: PinnedWorkflow = _SHIPPED
 SALES = uuid.uuid4()
 
 

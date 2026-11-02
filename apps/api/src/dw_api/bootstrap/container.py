@@ -42,6 +42,7 @@ from dw_agent_runtime.tool_specs import ToolSpecRegistry
 from dw_agent_runtime.tools import ToolRegistry
 from dw_agent_runtime.toolsets import ToolsetRegistry
 from dw_agent_runtime.wflite.assistant import WorkflowAssistant
+from dw_agent_runtime.wflite.drafts import WorkflowDrafts
 from dw_agent_runtime.wflite.outline import WorkflowOutlineReader
 from dw_api.health import HealthService
 from dw_api.settings import ApiSettings
@@ -183,6 +184,8 @@ class ApiContainer:
     # The assistant that edits a DW's template workflow (wf-ai R1-R5); with
     # the runtime, whose model stack it calls through.
     workflow_assistant: WorkflowAssistant | None = None
+    # A DW's workflow draft and its dry run (wf-ai R6.1, R6.2); with the runtime.
+    workflow_drafts: WorkflowDrafts | None = None
     # The queue people and DWs share (digital-worker R3, R4); Postgres only.
     work_queue: WorkQueue | None = None
     # A work item's `trail`, read from its run (wf-lite R6.13); with the runtime.

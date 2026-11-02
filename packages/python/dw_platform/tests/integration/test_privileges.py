@@ -1327,3 +1327,37 @@ async def test_the_monitor_role_reads_statistics_and_no_tenant_row(db_urls: Data
                     await conn.execute(sa.text(f"SELECT 1 FROM {table} LIMIT 1"))
     finally:
         await monitor.dispose()
+
+
+async def test_workflow_drafts_are_the_applications_only(db_urls: DatabaseUrls) -> None:
+    """Migration 100d1de08d37 (wf-ai R6.13): `dw_app` reads, writes and (for
+    offboarding) deletes a DW's draft and simulation; `dw_agent_ro` nothing;
+    nobody truncates."""
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            for table in ("platform.dw_workflow_drafts", "platform.dw_workflow_simulations"):
+                held = {
+                    (row.rolname, row.verb)
+                    for row in await conn.execute(
+                        sa.text(
+                            """
+                            SELECT r.rolname, v.verb
+                            FROM pg_roles r
+                            CROSS JOIN unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE',
+                                                    'TRUNCATE']) AS v(verb)
+                            WHERE r.rolname IN ('dw_app', 'dw_agent_ro')
+                              AND has_table_privilege(r.rolname, :t, v.verb)
+                            """
+                        ),
+                        {"t": table},
+                    )
+                }
+                assert held == {
+                    ("dw_app", "SELECT"),
+                    ("dw_app", "INSERT"),
+                    ("dw_app", "UPDATE"),
+                    ("dw_app", "DELETE"),
+                }, table
+    finally:
+        await migrator.dispose()

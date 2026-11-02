@@ -1,0 +1,44 @@
+# Mutation check of wf-ai ticket 02: scripts/mutate.py runs this file.
+# One mutation per control (WAI9, WAI13, WAI15) and per guard the ticket adds
+# (the authors kept, the tool input checked, the step cap).
+mutations:
+  - name: WAI13 the server stores what fails its checks
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/drafts.py
+    old: "        if problems:"
+    new: "        if False:"
+    tests:
+      - apps/api/tests/integration/test_wf_ai_drafts.py::test_a_tree_without_its_gate_is_refused_and_nothing_is_stored
+  - name: WAI15 the draft table reads across tenants
+    file: db/migrations/versions/100d1de08d37_dw_workflow_drafts.py
+    old: |2
+              "CREATE POLICY tenant_isolation_dw_workflow_drafts ON platform.dw_workflow_drafts"
+              f" USING {_NARROWED} WITH CHECK {_NARROWED}"
+    new: |2
+              "CREATE POLICY tenant_isolation_dw_workflow_drafts ON platform.dw_workflow_drafts"
+              " USING (true) WITH CHECK (true)"
+    tests:
+      - apps/api/tests/integration/test_wf_ai_drafts.py::test_another_tenant_reads_and_changes_nothing
+  - name: WAI9 the simulation records nothing it would send
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/simulate.py
+    old: "        self.calls.append("
+    new: "        [].append("
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_simulate.py::test_the_pack_workflow_passes_and_records_the_send_without_sending
+  - name: R6.9 a tool's input is not checked
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/simulate.py
+    old: "        tool.input_model.model_validate(raw_input)"
+    new: "        pass"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_simulate.py::test_a_step_that_fails_makes_a_failed_simulation
+  - name: R6.9 no step cap
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/simulate.py
+    old: '        "recursion_limit": max_steps,'
+    new: '        "recursion_limit": 10_000,'
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_simulate.py::test_past_the_step_cap_is_failed
+  - name: R6.1 a later save drops the earlier authors
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/wf_drafts.py
+    old: "            authors = list(current.author_ids) if current is not None else []"
+    new: "            authors = []"
+    tests:
+      - apps/api/tests/integration/test_wf_ai_drafts.py::test_owners_save_one_draft_and_both_stay_its_authors

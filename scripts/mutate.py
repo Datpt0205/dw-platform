@@ -449,13 +449,17 @@ class Check:
     def _in_place(self, mutation: Mutation) -> int:
         backup = mutation.file.with_name(mutation.file.name + BACKUP_SUFFIX)
         original = mutation.file.read_bytes()
+        # Read as `_check_applies` reads, with universal newlines: a file with
+        # CRLF endings left a multi-line `old` unmatched here, so it was written
+        # back unchanged and its tests reported "not caught" for a mutation that
+        # never happened (wf-ai/02, 2/11/2026; failure-modes #3).
+        text = original.decode("utf-8").replace("\r\n", "\n")
+        mutated = text.replace(mutation.old, mutation.new)
+        if mutated == text:
+            raise SystemExit(f"{mutation.name}: the mutation changed nothing in {mutation.file}")
         backup.write_bytes(original)
         try:
-            mutation.file.write_text(
-                original.decode("utf-8").replace(mutation.old, mutation.new),
-                encoding="utf-8",
-                newline="\n",
-            )
+            mutation.file.write_text(mutated, encoding="utf-8", newline="\n")
             if mutation.runner == "linux":
                 return self.linux.run(mutation.tests, None, "in-place")
             return run_local(mutation.tests, None)

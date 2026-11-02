@@ -9,8 +9,8 @@ mutations:
       - apps/api/tests/unit/test_digital_workers_endpoint.py::test_the_assistant_refuses_a_non_owner_before_the_model
   - name: WAI2 the base is not the DW's pin
     file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/assistant.py
-    old: "pinned = self._pinned(config.workflow_key, config.workflow_version)"
-    new: "pinned = self._pinned(config.workflow_key, '9.9.9')"
+    old: "bases = bases_of(self.workflows, config.workflow_key, config.workflow_version)"
+    new: "bases = bases_of(self.workflows, config.workflow_key, '9.9.9')"
     tests:
       - packages/python/dw_agent_runtime/tests/unit/test_wflite_assistant.py::test_the_base_is_the_dws_pin
   - name: WAI3 too long reaches the model
@@ -27,8 +27,8 @@ mutations:
       - packages/python/dw_agent_runtime/tests/unit/test_wflite_assistant.py::test_the_answer_shape_refuses_anything_else
   - name: WAI4 the proposal changes outside steps
     file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/assistant.py
-    old: 'proposal = {**copy.deepcopy(base), "steps": steps}'
-    new: 'proposal = {**copy.deepcopy(base), "steps": steps, "decision_classes": []}'
+    old: 'proposal = {**copy.deepcopy(base), "steps": list(steps)}'
+    new: 'proposal = {**copy.deepcopy(base), "steps": list(steps), "decision_classes": []}'
     tests:
       - packages/python/dw_agent_runtime/tests/unit/test_wflite_assistant.py::test_the_fixture_proposal_is_publishable_and_keeps_everything_but_steps
   - name: WAI5 a tool outside the base passes
@@ -45,8 +45,8 @@ mutations:
       - packages/python/dw_agent_runtime/tests/unit/test_wflite_assistant.py::test_a_prompt_outside_the_base_is_not_publishable
   - name: WAI7 the wf-lite validator does not run
     file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/assistant.py
-    old: ') + not_in_base(steps, _base_raw(pack)["steps"], self.registry)'
-    new: ')[:0] + not_in_base(steps, _base_raw(pack)["steps"], self.registry)'
+    old: ') + not_in_base(steps, base_raw(bases.pack)["steps"], registry)'
+    new: ')[:0] + not_in_base(steps, base_raw(bases.pack)["steps"], registry)'
     tests:
       - packages/python/dw_agent_runtime/tests/unit/test_wflite_assistant.py::test_a_send_outside_its_gate_is_caught_by_the_validator
   - name: WAI8 the instruction is a raw variable

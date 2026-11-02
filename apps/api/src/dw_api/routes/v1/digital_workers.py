@@ -16,7 +16,8 @@ may not read is 404, the same as one that does not exist (R1.5). The scorecard:
 `level_unchanged`; 409 `raise_pending`, `level_changed`; 202 when a raise
 waits for its second person. The workflow: 404 `workflow_not_shipped`. The
 workflow assistant: 403 `not_dw_owner`; 422 `assistant_input_too_long`; 503
-`assistant_output_invalid`.
+`assistant_output_invalid`. The draft: 404 `draft_not_found`; 422
+`draft_not_publishable`; 409 `draft_submitted`, `draft_changed`.
 """
 
 from __future__ import annotations
@@ -31,6 +32,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from dw_agent_runtime.ports import ModelOutputInvalidError
 from dw_agent_runtime.wflite.assistant import AssistantAnswer, HistoryTurn, WorkflowAssistant
+from dw_agent_runtime.wflite.drafts import Draft, Simulation, WorkflowDrafts
 from dw_agent_runtime.wflite.outline import (
     DecisionMode,
     OutlineStep,
@@ -53,6 +55,7 @@ from dw_platform.application.digital_workers import (
     DigitalWorkerService,
 )
 from dw_platform.application.dw_autonomy import AutonomyChange, DwAutonomyService
+from dw_platform.application.effect_keys import PendingEffect
 from dw_platform.application.scorecard import DEFAULT_DAYS, Scorecard, ScorecardService
 from dw_platform.application.work_queue import WorkQueue
 from dw_platform.domain.digital_worker import (
@@ -97,6 +100,12 @@ def _assistant(container: ApiContainer) -> WorkflowAssistant:
     return container.workflow_assistant
 
 
+def _drafts(container: ApiContainer) -> WorkflowDrafts:
+    if container.workflow_drafts is None:
+        raise InfrastructureError("workflow drafts are not configured")
+    return container.workflow_drafts
+
+
 def _autonomy(container: ApiContainer) -> DwAutonomyService:
     if container.dw_autonomy is None:
         raise InfrastructureError("digital workers are not configured")
@@ -123,6 +132,14 @@ StateIdempotency = Annotated[
 PeopleIdempotency = Annotated[
     IdempotentOperation,
     idempotent(_owner_of_path, operation="PUT /digital-workers/{dw_id}/people"),
+]
+DraftIdempotency = Annotated[
+    IdempotentOperation,
+    idempotent(_owner_of_path, operation="PUT /digital-workers/{dw_id}/workflow-draft"),
+]
+SimulateIdempotency = Annotated[
+    IdempotentOperation,
+    idempotent(_owner_of_path, operation="POST /digital-workers/{dw_id}/workflow-draft/simulate"),
 ]
 AutonomyIdempotency = Annotated[
     IdempotentOperation,
@@ -580,6 +597,126 @@ async def ask_workflow_assistant(
             details={"reason_code": "assistant_output_invalid"},
         ) from exc
     return _answer_view(answer)
+
+
+class DraftBody(BaseModel):
+    # A step tree, never a document: the server rebuilds the document from
+    # the DW's pin and checks it (wf-ai R6.1, R6.7).
+    steps: list[dict[str, Any]]
+
+
+class SimulationView(BaseModel):
+    content_sha256: str
+    outcome: Literal["passed", "failed"]
+    trail: list[dict[str, Any]]
+    tool_calls: list[dict[str, Any]]
+    failed_step: str | None
+    error: str | None
+    created_at: datetime
+
+
+class DraftView(BaseModel):
+    dw_id: UUID
+    content: dict[str, Any]
+    content_sha256: str
+    base_sha256: str
+    saved_by: UUID
+    author_ids: list[UUID]
+    state: Literal["draft", "submitted"]
+    reason: str | None
+    updated_at: datetime
+    # The DW's last simulation, whichever content it ran on: a submission
+    # needs one that passed on this `content_sha256` (R6.3).
+    simulation: SimulationView | None
+
+
+def _simulation_view(found: Simulation) -> SimulationView:
+    return SimulationView(
+        content_sha256=found.content_sha256,
+        outcome=found.outcome,
+        trail=[dict(e) for e in found.trail],
+        tool_calls=[dict(c) for c in found.tool_calls],
+        failed_step=found.failed_step,
+        error=found.error,
+        created_at=found.created_at,
+    )
+
+
+def _draft_view(draft: Draft, simulation: Simulation | None) -> DraftView:
+    return DraftView(
+        dw_id=draft.dw_id,
+        content=dict(draft.content),
+        content_sha256=draft.content_sha256,
+        base_sha256=draft.base_sha256,
+        saved_by=draft.saved_by,
+        author_ids=list(draft.author_ids),
+        state=draft.state,
+        reason=draft.reason,
+        updated_at=draft.updated_at,
+        simulation=None if simulation is None else _simulation_view(simulation),
+    )
+
+
+async def _draft_read(container: ApiContainer, context: AccessContext, dw_id: UUID) -> DraftView:
+    draft, simulation = await _drafts(container).get(context, dw_id)
+    return _draft_view(draft, simulation)
+
+
+@router.get("/{dw_id}/workflow-draft", response_model=DraftView)
+async def get_workflow_draft(
+    dw_id: UUID, context: RequireAccessContext, container: RequireContainer
+) -> DraftView:
+    """wf-ai R6.1: the DW's draft and its last simulation, for its owners;
+    404 `draft_not_found` when there is none."""
+    return await _draft_read(container, context, dw_id)
+
+
+@router.put("/{dw_id}/workflow-draft", response_model=DraftView)
+async def save_workflow_draft(
+    dw_id: UUID,
+    body: DraftBody,
+    context: RequireAccessContext,
+    container: RequireContainer,
+    idempotency: DraftIdempotency,
+) -> DraftView:
+    """wf-ai R6.1, R6.7: 422 `draft_not_publishable` with its problems, and
+    nothing stored, when the rebuilt document fails a check."""
+    drafts = _drafts(container)
+
+    async def run(effect: PendingEffect | None) -> DraftView:
+        await drafts.save(context, dw_id, body.steps, effect=effect)
+        return await _draft_read(container, context, dw_id)
+
+    view = await idempotency.once(
+        status=200,
+        run=run,
+        reread=lambda found: _draft_read(container, context, UUID(found)),
+    )
+    return await idempotency.record(view)
+
+
+@router.post("/{dw_id}/workflow-draft/simulate", response_model=SimulationView)
+async def simulate_workflow_draft(
+    dw_id: UUID,
+    context: RequireAccessContext,
+    container: RequireContainer,
+    idempotency: SimulateIdempotency,
+) -> SimulationView:
+    """wf-ai R6.2, R6.9: a dry run of the stored draft; nothing is sent and no
+    model is called."""
+    drafts = _drafts(container)
+
+    async def run(effect: PendingEffect | None) -> SimulationView:
+        return _simulation_view(await drafts.simulate(context, dw_id, effect=effect))
+
+    async def reread(found: str) -> SimulationView:
+        _, simulation = await drafts.get(context, UUID(found))
+        if simulation is None:
+            raise InfrastructureError("the simulation of this key is gone")
+        return _simulation_view(simulation)
+
+    view = await idempotency.once(status=200, run=run, reread=reread)
+    return await idempotency.record(view)
 
 
 class AutonomyRequest(BaseModel):

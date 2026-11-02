@@ -75,7 +75,7 @@ not to the serialiser comes back as its default — silently.
 **Ask:** what already owns this fact? Read from the owner. If a second copy is
 unavoidable, what makes them disagree loudly instead of quietly?
 
-## 3. A test that cannot fail (found 5×)
+## 3. A test that cannot fail (found 6×)
 
 An `ORDER BY` test that compared Postgres's collation against Python's
 `sorted()` — it agreed only while every name happened to be capitalised. A
@@ -88,6 +88,12 @@ The fifth was two layers holding one rule: `platform.dw_timer_scopes_due` and th
 claim under one scope both skip a paused DW's timer, and the lane test stopped at
 the first, so deleting the second left every lane test green (wf-lite/02,
 30/10/2026). A rule held twice needs a test per layer.
+
+The sixth was `scripts/mutate.py` itself: its in-place mutation read the file as
+raw bytes, so on a CRLF checkout a multi-line `old` matched nothing and the file
+was written back unchanged, while the load-time check (universal newlines) had
+said it applied. It now refuses a mutation that changes nothing (wf-ai/02,
+2/11/2026). A tool that proves tests can fail needs the same check.
 
 **Ask:** can this test fail? Break the thing it guards and watch it go red. When
 a whole new suite passes on the first run, that is a reason to check it, not to

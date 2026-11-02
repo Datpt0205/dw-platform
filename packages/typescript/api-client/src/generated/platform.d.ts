@@ -626,6 +626,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/digital-workers/{dw_id}/workflow-draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Workflow Draft
+         * @description wf-ai R6.1: the DW's draft and its last simulation, for its owners;
+         *     404 `draft_not_found` when there is none.
+         */
+        get: operations["get_workflow_draft_api_v1_digital_workers__dw_id__workflow_draft_get"];
+        /**
+         * Save Workflow Draft
+         * @description wf-ai R6.1, R6.7: 422 `draft_not_publishable` with its problems, and
+         *     nothing stored, when the rebuilt document fails a check.
+         */
+        put: operations["save_workflow_draft_api_v1_digital_workers__dw_id__workflow_draft_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/digital-workers/{dw_id}/workflow-draft/simulate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Simulate Workflow Draft
+         * @description wf-ai R6.2, R6.9: a dry run of the stored draft; nothing is sent and no
+         *     model is called.
+         */
+        post: operations["simulate_workflow_draft_api_v1_digital_workers__dw_id__workflow_draft_simulate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/directory/candidates": {
         parameters: {
             query?: never;
@@ -2072,6 +2119,49 @@ export interface components {
             /** Workflow Version */
             workflow_version: string;
         };
+        /** DraftBody */
+        DraftBody: {
+            /** Steps */
+            steps: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** DraftView */
+        DraftView: {
+            /** Author Ids */
+            author_ids: string[];
+            /** Base Sha256 */
+            base_sha256: string;
+            /** Content */
+            content: {
+                [key: string]: unknown;
+            };
+            /** Content Sha256 */
+            content_sha256: string;
+            /**
+             * Dw Id
+             * Format: uuid
+             */
+            dw_id: string;
+            /** Reason */
+            reason: string | null;
+            /**
+             * Saved By
+             * Format: uuid
+             */
+            saved_by: string;
+            simulation: components["schemas"]["SimulationView"] | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "draft" | "submitted";
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
         /** FeedbackAttachmentView */
         FeedbackAttachmentView: {
             /** Content Type */
@@ -2942,6 +3032,33 @@ export interface components {
         SetPermissionSetsBody: {
             /** Permission Set Keys */
             permission_set_keys: string[];
+        };
+        /** SimulationView */
+        SimulationView: {
+            /** Content Sha256 */
+            content_sha256: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Error */
+            error: string | null;
+            /** Failed Step */
+            failed_step: string | null;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "passed" | "failed";
+            /** Tool Calls */
+            tool_calls: {
+                [key: string]: unknown;
+            }[];
+            /** Trail */
+            trail: {
+                [key: string]: unknown;
+            }[];
         };
         /** SodRuleView */
         SodRuleView: {
@@ -5106,6 +5223,136 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AssistantAnswerView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_workflow_draft_api_v1_digital_workers__dw_id__workflow_draft_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dw_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    save_workflow_draft_api_v1_digital_workers__dw_id__workflow_draft_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                dw_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DraftBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    simulate_workflow_draft_api_v1_digital_workers__dw_id__workflow_draft_simulate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                dw_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimulationView"];
                 };
             };
             /** @description The request was refused */

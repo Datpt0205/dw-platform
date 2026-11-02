@@ -159,8 +159,56 @@ def not_in_base(
     return found
 
 
-def _base_raw(pinned: PinnedWorkflow) -> dict[str, Any]:
+def base_raw(pinned: PinnedWorkflow) -> dict[str, Any]:
+    """A pinned document as plain data, the shape a proposal replaces `steps` in."""
     return pinned.document.model_dump(by_alias=True, exclude_none=True)
+
+
+@dataclass(frozen=True, slots=True)
+class Bases:
+    """What a proposal is made from and checked against: the document the DW
+    pins, and the pack's workflow of the same key, whose tools and prompts
+    are the ones allowed (R2.2, R2.3)."""
+
+    pinned: PinnedWorkflow
+    pack: PinnedWorkflow
+
+
+def bases_of(workflows: PinnedWorkflowsPort, key: str, version: str) -> Bases:
+    """R1.3: from the DW's own pin; 404 `workflow_not_shipped` when no pack
+    ships it any more."""
+
+    def found(at: str) -> PinnedWorkflow:
+        pinned = workflows.workflow(key, at)
+        if pinned is None:
+            raise NotFoundError(
+                "the digital worker's pinned workflow is not shipped",
+                details={"reason_code": "workflow_not_shipped"},
+            )
+        return pinned
+
+    return Bases(pinned=found(version), pack=found(version.split("+", 1)[0]))
+
+
+def checked_proposal(
+    bases: Bases,
+    steps: Sequence[Any],
+    *,
+    registry: Mapping[str, NodeTypeSpec],
+    tools: ToolSpecLookup,
+) -> tuple[dict[str, Any], list[Problem]]:
+    """R2.1, R3.1: the base with its steps replaced, and every problem the
+    wf-lite validator and the assistant's own checks find in it. The one
+    check, for a turn's proposal and for a draft the server stores (R6.1)."""
+    base = base_raw(bases.pinned)
+    proposal = {**copy.deepcopy(base), "steps": list(steps)}
+    problems = validate(
+        proposal,
+        registry=registry,
+        tools=tools,
+        work_schemas=bases.pinned.work_schemas,
+    ) + not_in_base(steps, base_raw(bases.pack)["steps"], registry)
+    return proposal, problems
 
 
 @dataclass(frozen=True)
@@ -187,9 +235,8 @@ class WorkflowAssistant:
             )
         worker = await self.workers.require_owner(context, dw_id)
         config = worker.configuration
-        pinned = self._pinned(config.workflow_key, config.workflow_version)
-        pack = self._pinned(config.workflow_key, config.workflow_version.split("+", 1)[0])
-        base = _base_raw(pinned)
+        bases = bases_of(self.workflows, config.workflow_key, config.workflow_version)
+        base = base_raw(bases.pinned)
         request = ModelRequest(
             task="wf_ai.workflow_edit",
             prompt_id=PROMPT_ID,
@@ -211,13 +258,7 @@ class WorkflowAssistant:
                 "question", answer.question, tuple(answer.plan), None, (), (), False
             )
         steps = answer.steps or []
-        proposal = {**copy.deepcopy(base), "steps": steps}
-        problems = validate(
-            proposal,
-            registry=self.registry,
-            tools=self.tools,
-            work_schemas=pinned.work_schemas,
-        ) + not_in_base(steps, _base_raw(pack)["steps"], self.registry)
+        _, problems = checked_proposal(bases, steps, registry=self.registry, tools=self.tools)
         return AssistantAnswer(
             kind="proposal",
             question=None,
@@ -228,20 +269,15 @@ class WorkflowAssistant:
             publishable=not problems,
         )
 
-    def _pinned(self, key: str, version: str) -> PinnedWorkflow:
-        pinned = self.workflows.workflow(key, version)
-        if pinned is None:
-            raise NotFoundError(
-                "the digital worker's pinned workflow is not shipped",
-                details={"reason_code": "workflow_not_shipped"},
-            )
-        return pinned
-
 
 __all__ = [
     "AssistantAnswer",
     "AssistantTurn",
+    "Bases",
     "HistoryTurn",
     "WorkflowAssistant",
+    "base_raw",
+    "bases_of",
+    "checked_proposal",
     "not_in_base",
 ]

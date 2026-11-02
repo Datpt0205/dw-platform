@@ -1322,6 +1322,106 @@
         "title": "DigitalWorkerView",
         "type": "object"
       },
+      "DraftBody": {
+        "properties": {
+          "steps": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Steps",
+            "type": "array"
+          }
+        },
+        "required": [
+          "steps"
+        ],
+        "title": "DraftBody",
+        "type": "object"
+      },
+      "DraftView": {
+        "properties": {
+          "author_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Author Ids",
+            "type": "array"
+          },
+          "base_sha256": {
+            "title": "Base Sha256",
+            "type": "string"
+          },
+          "content": {
+            "additionalProperties": true,
+            "title": "Content",
+            "type": "object"
+          },
+          "content_sha256": {
+            "title": "Content Sha256",
+            "type": "string"
+          },
+          "dw_id": {
+            "format": "uuid",
+            "title": "Dw Id",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "saved_by": {
+            "format": "uuid",
+            "title": "Saved By",
+            "type": "string"
+          },
+          "simulation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SimulationView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "enum": [
+              "draft",
+              "submitted"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dw_id",
+          "content",
+          "content_sha256",
+          "base_sha256",
+          "saved_by",
+          "author_ids",
+          "state",
+          "reason",
+          "updated_at",
+          "simulation"
+        ],
+        "title": "DraftView",
+        "type": "object"
+      },
       "FeedbackAttachmentView": {
         "properties": {
           "content_type": {
@@ -3457,6 +3557,76 @@
           "permission_set_keys"
         ],
         "title": "SetPermissionSetsBody",
+        "type": "object"
+      },
+      "SimulationView": {
+        "properties": {
+          "content_sha256": {
+            "title": "Content Sha256",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "failed_step": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failed Step"
+          },
+          "outcome": {
+            "enum": [
+              "passed",
+              "failed"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "tool_calls": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Tool Calls",
+            "type": "array"
+          },
+          "trail": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Trail",
+            "type": "array"
+          }
+        },
+        "required": [
+          "content_sha256",
+          "outcome",
+          "trail",
+          "tool_calls",
+          "failed_step",
+          "error",
+          "created_at"
+        ],
+        "title": "SimulationView",
         "type": "object"
       },
       "SodRuleView": {
@@ -7209,6 +7379,212 @@
           }
         },
         "summary": "Ask Workflow Assistant",
+        "tags": [
+          "digital-workers"
+        ]
+      }
+    },
+    "/api/v1/digital-workers/{dw_id}/workflow-draft": {
+      "get": {
+        "description": "wf-ai R6.1: the DW's draft and its last simulation, for its owners;\n404 `draft_not_found` when there is none.",
+        "operationId": "get_workflow_draft_api_v1_digital_workers__dw_id__workflow_draft_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dw_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dw Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Get Workflow Draft",
+        "tags": [
+          "digital-workers"
+        ]
+      },
+      "put": {
+        "description": "wf-ai R6.1, R6.7: 422 `draft_not_publishable` with its problems, and\nnothing stored, when the rebuilt document fails a check.",
+        "operationId": "save_workflow_draft_api_v1_digital_workers__dw_id__workflow_draft_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dw_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dw Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Save Workflow Draft",
+        "tags": [
+          "digital-workers"
+        ]
+      }
+    },
+    "/api/v1/digital-workers/{dw_id}/workflow-draft/simulate": {
+      "post": {
+        "description": "wf-ai R6.2, R6.9: a dry run of the stored draft; nothing is sent and no\nmodel is called.",
+        "operationId": "simulate_workflow_draft_api_v1_digital_workers__dw_id__workflow_draft_simulate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dw_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dw Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulationView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Simulate Workflow Draft",
         "tags": [
           "digital-workers"
         ]
