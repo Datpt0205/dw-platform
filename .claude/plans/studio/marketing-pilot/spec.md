@@ -2,8 +2,8 @@
 
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
-Duyệt: chưa
-Sẵn sàng: chưa kiểm
+Duyệt: agent, tạm theo ủy quyền 2/11/2026
+Sẵn sàng: ĐẠT (2/11/2026; 0 CRITICAL, 0 HIGH; ticket 01)
 
 Người đặt yêu cầu cần một bằng chứng đầu-cuối rằng Studio dựng được một quy trình nghiệp vụ thật chỉ qua bề mặt tenant: một lead từ form website chạy qua kiểm trùng, chấm hạng bằng AI, tạo hoặc cập nhật một Lead, giao cho một nhân viên Sales, chờ một người duyệt rồi gửi một email, không bao giờ tự gửi email thứ hai khi không rõ hộp thư đã nhận email đầu (YC94, YC41), mà nền tảng không có một dòng mã nghiệp vụ marketing hay một migration riêng nào. Lát này không sở hữu cơ chế nào mới; nó ghép các seam của những spec khác (đối tượng, quyền bản ghi và trường, trình kích hoạt Data Hub, bước quy trình, cổng phát hành, hạn mức, sàn gửi tin) thành một ví dụ xuyên suốt và chứng minh 21 kiểm soát MP1 tới MP21 cùng 13 lỗi P0 của nền tảng bằng test âm. Ý định: chứng minh Studio đầu-cuối trên dữ liệu giả lập, trợ lý chỉ đọc, đóng băng và tắt khẩn chứng minh được. W1 dừng ở email đầu tiên đã duyệt; Facebook Lead Ads, Zalo OA, ZNS và chăm sóc là W2 (ADR-0124 (Accepted), ADR-0125 (Accepted)). Lát ra ở hai lối ra của W1 (V4.31), sau ba cổng E1, E2 và E3 mà Phương án A của requirements.md ghi nội dung: lối ra W1a (ticket 05) chạy lát trên profile `test` (một profile không triển khai, không phải chế độ Chạy thử) với lead giả lập, qua MP1 tới MP21 trừ phần của trợ lý, cùng test âm của telemetry không nội dung, sau cổng E1 và không chờ OpenBao hay trợ lý; lối ra W1b (ticket 06) đưa lát lên uat sau cổng E2, với OpenBao, trợ lý Marketing chỉ đọc, cây span và phần trợ lý của các kiểm soát MP; dữ liệu cá nhân thật (chạy bóng) chỉ sau cổng E3, tức các điều kiện vào chạy bóng của YC99.
 
@@ -257,6 +257,8 @@ Hai đối tượng là thành phần tenant dựng qua API công khai, không p
   `lead_tier` giữ Mở vì kiểu đóng. Luật không ghi xuống của YC113 ở W2 cần một cách khai hạ cấp có người duyệt cho giá
   trị kiểu đóng, nếu không quy trình Tiếp nhận lead không qua thí nghiệm "100% quy trình mẫu qua gửi kiểm định" của
   V4.40; việc đó thuộc dòng W2 của field-security. Hỏi: Q10. Sửa: R1.4, R3.10, Dữ liệu, ticket 02, 03, 05.
+- 2/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 01. Ticket 01 là bộ sinh lead có hạt giống, tập có nhãn và oracle kiểm trùng trong harness (R2.1-R2.3, vế bộ sinh của R2.3), không chờ ticket nào và không chạm bảng, route, migration, config hay prompt nào; ticket 02 và 04 không có đường phụ thuộc tới nó và chỉ chung thư mục `tests/e2e/marketing_pilot/`, với tệp riêng.
+- 2/11/2026 (agent, theo ủy quyền 31/10/2026): gate ticket 01 (H3, một fact hai chủ): bộ chuẩn hóa của harness là oracle của custom-objects:R6.2, chủ là RecordService; MP10 của ticket 05 phát lại các cặp có nhãn của ticket 01 qua nguồn dữ liệu Data Hub ở chế độ chạy Thật và đỏ khi lệch khóa của oracle. Sửa: ticket 01, 05. Nếu sai thì: ticket 01 chờ custom-objects/03 và đo qua route upsert trên app thật.
 
 ## Danh sách ticket
 

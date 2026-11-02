@@ -33,9 +33,8 @@ own file and a row here.
   D17/D18 (Đạt, 2026-10-29): path C, a DW core plus a minimal `dw.workflow/v1`
   engine running a shipped lead-care pack; YC118-YC125, ADR-0128 (Proposed),
   specs `digital-worker`, `wf-lite`, `leadcare` gated and ready for agent.
-  **Next:** the unattended queue in `studio.md` (items 0-12 and 14 done, leadcare 01
-  but R1.5; 13 waits for a model key; item 15 running: wf-ai 01-04, tenant-config 01, 03
-  and tenant-rbac 01 done 2/11/2026, heavy checks deferred to the queue's close).
+  **Next:** the unattended queue in `studio.md` (0-12, 14 done; 13 waits for a model
+  key; item 15 running in two lanes, heavy checks deferred to the queue's close).
 
 ## Decisions Đạt owes
 Since 2026-10-31 the agent decides all of these itself (`studio.md` "Ủy quyền toàn phần"), but real keys and secrets.

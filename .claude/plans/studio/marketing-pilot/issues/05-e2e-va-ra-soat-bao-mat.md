@@ -92,7 +92,10 @@ hoãn tin tới 08:00 (MP12) là W2.
 - [ ] MP9: cùng `webhook-id` hai lần trong cửa sổ chống trùng → một Lead, một lượt chạy; gỡ chống trùng ingress → hai
       Lead, đỏ.
 - [ ] MP10: `0901234567` và `+84 901 234 567` → một Lead, nhật ký gửi của lead đó có đúng một dòng `dispatching` với đúng một dòng `tool_executions` `succeeded`; cùng tên khác
-      số → hai Lead; gỡ chuẩn hóa số → hai Lead cho một người, đỏ.
+      số → hai Lead; gỡ chuẩn hóa số → hai Lead cho một người, đỏ. Các cặp có nhãn của ticket 01 (mục 3, hạt giống ghi
+      trong README của harness) phát lại qua nguồn dữ liệu Data Hub của công ty A ở chế độ chạy Thật, mỗi lead một
+      `webhook-id`: số Lead và cách nhóm lead vào Lead khớp khóa của bộ đo ticket 01; lệch một lead thì đỏ, vì bộ chuẩn
+      hóa của harness chỉ là oracle và RecordService là chủ (custom-objects:R6.2).
 - [ ] MP11: lượt `simulate` qua bước gửi → 0 lời gọi ra ngoài; xin lượt `test` ở W1 → 422, không lượt chạy nào; gỡ kiểm
       chế độ chạy ở executor → gửi thật, đỏ.
 - [ ] MP12: gửi lúc 22:30 giờ Việt Nam → bị từ chối trong W1; tin thứ hai trong 24 giờ tới một địa chỉ →
@@ -135,3 +138,4 @@ hoãn tin tới 08:00 (MP12) là W2.
 - 2026-10-25 (agent): lượt h, theo V4.31 của Đạt: ticket này là lối ra W1a trên profile `test`, qua MP1 tới MP21 trừ phần của trợ lý và test âm của telemetry không nội dung (R6.10, MP21), không chờ OpenBao hay trợ lý; Blocked by gỡ ticket 04 và telemetry-and-audit/02, thêm agent-lifecycle/07 (màn duyệt có Sơ đồ chỉ đọc, bước 6) theo bảng cạnh của lượt h. Phần trợ lý của MP2, MP4, MP5, MP6 (trợ lý của B hỏi tên lead của A, trợ lý khai A3, trợ lý theo quyền bản ghi và trường), cây span một `trace_id` và rà soát bảo mật của trợ lý dời sang ticket 06 (lối ra W1b); câu "trợ lý của B hỏi tên lead của A" bỏ khỏi MP4, "trợ lý có công cụ gửi trực tiếp khai A3" khỏi MP2, "trợ lý trả lời không có số" khỏi MP6. Thêm MP19 (ca K4, V4.30), MP20 (ca kịch bản, V4.37), MP21 (telemetry) và vế không ghi xuống trực tiếp của MP6 (V4.40); R6.2 đếm 21 mục.
 - 2026-10-26 (agent): theo compliance-pdpl (nhật ký gửi chỉ thêm, `outcome` `dispatching` hay `blocked`; dòng `dispatching` commit trước khi gửi): MP10 đếm dòng `dispatching` cùng dòng `tool_executions` `succeeded`, MP16 bỏ lời hứa dòng nhật ký gửi lùi theo audit.
 - 2026-10-26 (agent): theo Q-h10 của Đạt, ca không ghi xuống ghi vào `lead_score` thay `score_reason`, nay là trường bảo vệ.
+- 2026-11-02 (agent, theo ủy quyền 31/10/2026): theo gate ticket 01 (H3): MP10 thêm phát lại các cặp có nhãn của ticket 01 qua đường thật, vì bộ chuẩn hóa của harness chỉ là oracle của custom-objects:R6.2. Nếu sai thì: bỏ vế phát lại và ticket 01 đo trên route upsert thật.
