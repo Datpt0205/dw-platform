@@ -1,10 +1,20 @@
 """Tool executor: the enforcement pipeline for every tool call.
 
-Steps: resolve → validate input → authorize/policy → mask telemetry → claim
-the key → replay or refuse → log the dispatch → execute (timeout/retry) →
-validate output → record and audit → typed result. Side effects require an
-idempotency key; replays return the stored result without re-executing, and a
-send whose outcome is unknown is never made again blindly (ADR-0108 decision 5).
+Its steps run in one order, tools-and-skills R2.6 (`TOOL_STEP_ORDER`): control
+switch → resolve → validate input → Digital Worker boundary → decision call →
+scopes → run mode → approval (with the idempotency key it requires) → Send
+floor → claim → log `dispatched` → handler (timeout/retry) → validate output →
+record and audit. The gate steps, resolve to the Send floor, are registered in
+a `ToolSteps` by `adapters.wflite_host.build_tool_executor_steps`, the one
+builder both roots reach through `build_tool_executor`, and `_execute` runs
+only what it holds; the last five are the executor's own tail. A step not yet
+built is named in `PENDING_STEPS` with the ticket that registers it (H-3).
+
+Each gate step takes the call's state (`ToolCall`) and either goes on (None),
+ends the call with a result (a sample outside `live`, a replay), or refuses by
+raising. Side effects require an idempotency key; replays return the stored
+result without re-executing, and a send whose outcome is unknown is never made
+again blindly (ADR-0108 decision 5).
 """
 
 from __future__ import annotations
@@ -17,7 +27,8 @@ import uuid as uuid_module
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Protocol
+from types import MappingProxyType
+from typing import Final, Protocol
 
 from pydantic import BaseModel, ValidationError
 
@@ -32,7 +43,7 @@ from dw_agent_runtime.dispatch import (
     ToolClaimPort,
 )
 from dw_agent_runtime.samples import SampleOutput, sample_of
-from dw_agent_runtime.tools import RegisteredTool, ToolRegistry
+from dw_agent_runtime.tools import RegisteredTool, SchemaViolation, ToolBehaviour, ToolRegistry
 from dw_kernel.errors import (
     ApprovalRequiredError,
     ConfigError,
@@ -198,6 +209,148 @@ def canonical_hash(payload: dict[str, object]) -> str:
     ).hexdigest()
 
 
+# --------------------------------------------------------------- the steps --
+
+# tools-and-skills R2.6: the one order of a call's steps (H-3).
+TOOL_STEP_ORDER: Final = (
+    "control_switch",
+    "resolve",
+    "validate_input",
+    "dw_boundary",
+    "decision_call",
+    "scopes",
+    "run_mode",
+    "approval",
+    "send_floor",
+    "claim",
+    "dispatched",
+    "handler",
+    "validate_output",
+    "audit",
+)
+# The executor's own tail: named in the order, run only by `_tail`.
+TAIL_STEPS: Final = TOOL_STEP_ORDER[-5:]
+GATE_STEPS: Final = TOOL_STEP_ORDER[: -len(TAIL_STEPS)]
+# A step of R2.6 no ticket has built yet, and the ticket that registers it.
+# Absent from the register, it decides nothing (spec, 25/10/2026).
+PENDING_STEPS: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "control_switch": (
+            ".claude/plans/studio/agent-lifecycle/issues/01-dong-bang-va-kiem-o-moi-cua.md"
+        )
+    }
+)
+
+# What needs an idempotency key: every call that leaves the platform, and every
+# message, whatever its level, since the Send floor is asked under the key.
+_KEYED_LEVELS = frozenset({"external", "critical"})
+
+
+@dataclass
+class ToolCall:
+    """One call's state as its steps build it: the tool and its behaviour once
+    resolved, the checked input and its hash, the DW boundary the decision
+    step reads, `approved`, the Send floor's admission, and what runs once the
+    handler succeeded (`after_success`: the floor's `sent`)."""
+
+    name: str
+    version: str
+    raw_input: dict[str, object]
+    run_context: RunContext
+    idempotency_key: str | None
+    approved: bool
+    decision: DecisionCall | None
+    tool: RegisteredTool | None = None
+    input: BaseModel | None = None
+    input_payload: dict[str, object] = field(default_factory=dict)
+    input_hash: str = ""
+    boundary: DwBoundary | None = None
+    sending: tuple[SendRequest, Admission] | None = None
+    after_success: list[Callable[[], Awaitable[None]]] = field(default_factory=list)
+
+    @property
+    def registered(self) -> RegisteredTool:
+        if self.tool is None:
+            raise ConfigError("a step read the tool before `resolve` ran")
+        return self.tool
+
+    @property
+    def definition(self) -> ToolDefinition:
+        return self.registered.definition
+
+    @property
+    def behaviour(self) -> ToolBehaviour:
+        return self.registered.behaviour
+
+    @property
+    def checked_input(self) -> BaseModel:
+        if self.input is None:
+            raise ConfigError("a step read the input before `validate_input` ran")
+        return self.input
+
+
+ToolStep = Callable[["ToolExecutor", ToolCall], Awaitable[BaseModel | None]]
+
+
+class ToolSteps:
+    """The ordered register of a `ToolExecutor`'s gate steps (R2.6, R2.7).
+
+    `register` refuses a name outside R2.6, a name twice, a tail name and a
+    pending one; `seal`, run when the executor is built, refuses two steps out
+    of R2.6's order and a gate step neither registered nor pending. Each
+    refusal is a `ConfigError` naming the step, so a root with a wrong
+    register does not start."""
+
+    def __init__(self, *, pending: Mapping[str, str] = PENDING_STEPS) -> None:
+        unknown = sorted(set(pending) - set(GATE_STEPS))
+        if unknown:
+            raise ConfigError(
+                "a pending step is not a gate step of R2.6", details={"step": unknown[0]}
+            )
+        self._pending = dict(pending)
+        self._steps: list[tuple[str, ToolStep]] = []
+
+    def register(self, name: str, step: ToolStep) -> None:
+        if name in TAIL_STEPS:
+            raise ConfigError(
+                "the tail of R2.6 is run by the executor alone", details={"step": name}
+            )
+        if name not in GATE_STEPS:
+            raise ConfigError("not a step of R2.6", details={"step": name})
+        if any(known == name for known, _ in self._steps):
+            raise ConfigError("step registered twice", details={"step": name})
+        if name in self._pending:
+            raise ConfigError(
+                "a pending step is registered; take it off the pending list",
+                details={"step": name},
+            )
+        self._steps.append((name, step))
+
+    def entries(self) -> tuple[tuple[str, ToolStep], ...]:
+        """Each registered gate step with its name, in registration order."""
+        return tuple(self._steps)
+
+    def names(self) -> tuple[str, ...]:
+        """The steps a call runs, in the order it runs them."""
+        return tuple(name for name, _ in self.entries()) + TAIL_STEPS
+
+    def seal(self) -> tuple[ToolStep, ...]:
+        """The gate steps in order, or `ConfigError` naming the first wrong one."""
+        last = -1
+        for name, _ in self.entries():
+            at = GATE_STEPS.index(name)
+            if at < last:
+                raise ConfigError("step out of R2.6's order", details={"step": name})
+            last = at
+        registered = {name for name, _ in self.entries()}
+        for name in GATE_STEPS:
+            if name not in registered and name not in self._pending:
+                raise ConfigError(
+                    "a step of R2.6 is neither registered nor pending", details={"step": name}
+                )
+        return tuple(step for _, step in self.entries())
+
+
 @dataclass
 class ToolExecutor:
     registry: ToolRegistry
@@ -212,6 +365,9 @@ class ToolExecutor:
     # Claims on a key and the dispatch log they fence (ADR-0108 decision 5).
     # Required: an executor without one would run two calls with one key at once.
     claims: ToolClaimPort
+    # The gate steps, in R2.6's order (`build_tool_executor_steps`). Required:
+    # an executor with no register would check nothing.
+    steps: ToolSteps
     sleep: SleepFn = field(default=asyncio.sleep)
     base_backoff_seconds: float = 0.2
     # One span per tool call, so "how many tools did this run use, and how long
@@ -230,6 +386,20 @@ class ToolExecutor:
     # The Send floor (ADR-0124): asked for every tool whose spec says it sends
     # a message. Unset, such a call is refused (`blocked:send_floor_unavailable`).
     send_admission: SendAdmissionPort | None = None
+    _gates: tuple[ToolStep, ...] = field(init=False, repr=False, default=())
+
+    def __post_init__(self) -> None:
+        self._gates = self.steps.seal()
+
+    def approval_required(self, definition: ToolDefinition, run_context: RunContext) -> bool:
+        """The one answer to "does this call wait for a person" (R2.5;
+        ADR-0116 decision 3, amended 2026-11-02): the run's autonomy decides
+        it, and a call the run's mode intercepts never does, since it opens no
+        approval (tenant-config R5.6). The tool wrapper and
+        `OneApprovalPerStepMiddleware` ask this, and the approval step too."""
+        return self.approval_policy.decide(
+            definition, run_context
+        ) and not definition.intercepted_in(run_context.run_mode)
 
     async def execute(
         self,
@@ -295,64 +465,105 @@ class ToolExecutor:
         approved: bool = False,
         decision: DecisionCall | None = None,
     ) -> BaseModel:
-        # 1. resolve
-        tool = self.registry.resolve(name, version)
-        definition = tool.definition
+        call = ToolCall(
+            name=name,
+            version=version,
+            raw_input=raw_input,
+            run_context=run_context,
+            idempotency_key=idempotency_key,
+            approved=approved,
+            decision=decision,
+        )
+        for step in self._gates:
+            ended = await step(self, call)
+            if ended is not None:
+                return ended
+        return await self._tail(call)
 
-        # 2. validate input
+    # ------------------------------------------------------- the gate steps --
+
+    async def step_resolve(self, call: ToolCall) -> None:
+        """By the run's tenant: its own tool, else the platform's (R2.1)."""
+        call.tool = self.registry.resolve(
+            call.name, call.version, tenant_id=TenantId(call.run_context.tenant_id)
+        )
+
+    async def step_validate_input(self, call: ToolCall) -> None:
+        """The tool's own schema, Pydantic or JSON (R1.1, R1.3, G1): a refusal
+        names paths and keywords, never a value."""
         try:
-            input_model = tool.input_model.model_validate(raw_input)
-        except ValidationError as exc:
+            call.input = call.behaviour.validate_input(call.raw_input)
+        except SchemaViolation as exc:
             raise DomainError(
                 "tool input failed schema validation",
-                details={"tool": name, "errors": str(exc.error_count())},
+                details={"tool": call.name, "errors": exc.problems},
             ) from exc
-        input_payload = input_model.model_dump(mode="json")
-        input_hash = canonical_hash(input_payload)
+        call.input_payload = call.input.model_dump(mode="json")
+        call.input_hash = canonical_hash(call.input_payload)
 
-        # 2b. a Digital Worker's boundary, read now (R6): before every other
-        # check, so a paused DW or a tool outside its mandate is refused
-        # whatever the run's stamped scopes or autonomy say.
-        boundary: DwBoundary | None = None
-        if run_context.run_as_principal_id is not None:
-            boundary = await self._within_dw_boundary(run_context, definition, input_hash)
-        # 2c. a DW decision's call: its class's level now, and, when a person
-        # is needed, the approved decision of this run and gate with the same
-        # content (R6.17). It stands in for the tool-level gate below.
-        if decision is not None:
-            await self._decision_cleared(
-                run_context, definition, input_hash, raw_input, decision, boundary
+    async def step_dw_boundary(self, call: ToolCall) -> None:
+        """A Digital Worker's boundary, read now (R6): before every other
+        check, so a paused DW or a tool outside its mandate is refused
+        whatever the run's stamped scopes or autonomy say."""
+        if call.run_context.run_as_principal_id is not None:
+            call.boundary = await self._within_dw_boundary(
+                call.run_context, call.definition, call.input_hash
             )
-            approved = True
 
-        # 3. authorization + approval policy
-        missing = definition.required_scopes - run_context.scopes
+    async def step_decision_call(self, call: ToolCall) -> None:
+        """A DW decision's call: its class's level now, and, when a person is
+        needed, the approved decision of this run and gate with the same
+        content (R6.17). It stands in for the tool-level approval below."""
+        if call.decision is None:
+            return
+        await self._decision_cleared(
+            call.run_context,
+            call.definition,
+            call.input_hash,
+            call.raw_input,
+            call.decision,
+            call.boundary,
+        )
+        call.approved = True
+
+    async def step_scopes(self, call: ToolCall) -> None:
+        definition = call.definition
+        missing = definition.required_scopes - call.run_context.scopes
         if missing:
             await self._audit(
-                run_context,
+                call.run_context,
                 "tool.denied",
                 definition,
-                input_hash,
+                call.input_hash,
                 policy_decision="deny_missing_scope",
                 details={"missing_scopes": sorted(missing)},
             )
             raise PermissionDeniedError(
                 "run context lacks required tool scopes",
-                details={"tool": name, "missing_scopes": sorted(missing)},
+                details={"tool": call.name, "missing_scopes": sorted(missing)},
             )
-        # 3b. the run's mode (tenant-config R5; N2): outside `live`, a call of
-        # a tool that is not `simulate_safe` is answered with a sample here,
-        # after the boundary, decision and scope checks and before the
-        # approval check, the key, the Send floor, the claim and the handler,
-        # so it opens no approval, sends nothing and runs nothing (R5.6).
-        if definition.intercepted_in(run_context.run_mode):
-            return await self._simulated(tool, run_context, input_hash)
-        if self.approval_policy.decide(definition, run_context) and not approved:
+
+    async def step_run_mode(self, call: ToolCall) -> BaseModel | None:
+        """The run's mode (tenant-config R5; N2): outside `live`, a call of a
+        tool that is not `simulate_safe` is answered with a sample here, before
+        the approval, the key, the Send floor, the claim and the handler, so it
+        opens no approval, sends nothing and runs nothing (R5.6)."""
+        if not call.definition.intercepted_in(call.run_context.run_mode):
+            return None
+        return await self._simulated(call.registered, call.run_context, call.input_hash)
+
+    async def step_approval(self, call: ToolCall) -> None:
+        """R2.5: a call that needs a person runs only approved, whoever called.
+        Then the key: every call that leaves the platform, and every message,
+        since the Send floor is asked under it (R3.1)."""
+        definition = call.definition
+        run_context = call.run_context
+        if self.approval_required(definition, run_context) and not call.approved:
             await self._audit(
                 run_context,
                 "tool.approval_required",
                 definition,
-                input_hash,
+                call.input_hash,
                 policy_decision="require_approval",
                 # What made it ask. "Why did this pause" is otherwise a question
                 # only the code can answer, and the code changes.
@@ -363,34 +574,65 @@ class ToolExecutor:
             )
             raise ApprovalRequiredError(
                 "tool requires human approval before execution",
-                details={"tool": name, "side_effect_level": definition.side_effect_level},
+                details={"tool": call.name, "side_effect_level": definition.side_effect_level},
             )
-        if definition.side_effect_level in ("external", "critical") and not idempotency_key:
+        needs_key = definition.side_effect_level in _KEYED_LEVELS or definition.message is not None
+        if needs_key and not call.idempotency_key:
             raise DomainError(
                 "side-effect tools require an idempotency key",
-                details={"tool": name},
+                details={"tool": call.name},
             )
 
-        # 4. mask telemetry (never log raw payloads)
-        safe_input = redact_mapping(input_payload)
-
-        # 4b. a message passes the Send floor (ADR-0124; compliance-pdpl R3.2):
-        # after the approval and decision checks above, after the replay of a
-        # recorded success, before the claim and the send. Every path to a tool
-        # reaches this line, so no node checks it instead.
-        sending: tuple[SendRequest, Admission] | None = None
-        if definition.message is not None and idempotency_key is not None:
-            replayed = await self._replay(tool, run_context, idempotency_key, input_hash)
-            if replayed is not None:
-                return replayed
-            sending = await self._admitted_send(
-                run_context, tool, input_payload, input_hash, idempotency_key
+    async def step_send_floor(self, call: ToolCall) -> BaseModel | None:
+        """A message passes the Send floor (ADR-0124; compliance-pdpl R3.2),
+        asked at every call (R3.1): after the approval and decision checks,
+        after the replay of a recorded success, before the claim and the send.
+        Every path to a tool reaches this step, so no node checks it instead."""
+        if call.definition.message is None:
+            return None
+        key = call.idempotency_key
+        if key is None:
+            # The approval step requires the key; reaching here without one is
+            # a register that lost that rule, refused rather than sent unasked.
+            await self._refuse(
+                call.run_context, call.definition, call.input_hash, "blocked:no_idempotency_key"
             )
-            input_model = input_model.model_copy(
-                update={UNSUBSCRIBE_FIELD: sending[1].unsubscribe_url}
-            )
+            return None  # pragma: no cover - _refuse raises
+        replayed = await self._replay(call.registered, call.run_context, key, call.input_hash)
+        if replayed is not None:
+            return replayed
+        sending = await self._admitted_send(
+            call.run_context, call.registered, call.input_payload, call.input_hash, key
+        )
+        call.sending = sending
+        call.input = call.checked_input.model_copy(
+            update={UNSUBSCRIBE_FIELD: sending[1].unsubscribe_url}
+        )
+        floor = self.send_admission
+        if floor is not None:
 
-        # 5. claim the key before looking for a success (ADR-0108 decision 5), so
+            async def sent() -> None:
+                await floor.sent(*sending)
+
+            call.after_success.append(sent)
+        return None
+
+    # ------------------------------------------------------------- the tail --
+
+    async def _tail(self, call: ToolCall) -> BaseModel:
+        """Claim, log `dispatched`, run, check the output, record and audit:
+        the executor's own steps, in R2.6's order, then what the gate steps
+        left to run on success."""
+        tool = call.registered
+        definition = tool.definition
+        name = definition.name
+        run_context = call.run_context
+        idempotency_key = call.idempotency_key
+        input_hash = call.input_hash
+        # Masked telemetry: a payload is never logged raw.
+        safe_input = redact_mapping(call.input_payload)
+
+        # Claim the key before looking for a success (ADR-0108 decision 5), so
         # two calls with one key never both run while the claim is live (R6.1).
         # A key on a `none` tool has nothing to protect and is not claimed.
         if idempotency_key is None or definition.side_effect_level == "none":
@@ -398,10 +640,10 @@ class ToolExecutor:
                 replayed = await self._replay(tool, run_context, idempotency_key, input_hash)
                 if replayed is not None:
                     return replayed
-            return await self._run(
+            result = await self._run(
                 tool,
-                version,
-                input_model,
+                call.version,
+                call.checked_input,
                 input_hash,
                 safe_input,
                 run_context,
@@ -409,6 +651,8 @@ class ToolExecutor:
                 dispatch_logged=False,
                 token=None,
             )
+            await self._after_success(call)
+            return result
 
         token = await self.claims.claim(
             run_context, name, idempotency_key, lease_seconds=_lease_seconds(definition)
@@ -447,8 +691,8 @@ class ToolExecutor:
                 )
             result = await self._run(
                 tool,
-                version,
-                input_model,
+                call.version,
+                call.checked_input,
                 input_hash,
                 safe_input,
                 run_context,
@@ -456,8 +700,7 @@ class ToolExecutor:
                 dispatch_logged=definition.side_effect_level in _LEAVES_THE_PLATFORM,
                 token=token,
             )
-            if sending is not None and self.send_admission is not None:
-                await self.send_admission.sent(*sending)
+            await self._after_success(call)
             return result
         finally:
             try:
@@ -466,6 +709,11 @@ class ToolExecutor:
                 # The claim expires on its own at `expires_at`; a failed release
                 # only delays the next call with this key until then.
                 logger.exception("tool claim release failed", extra={"tool": name})
+
+    @staticmethod
+    async def _after_success(call: ToolCall) -> None:
+        for then in call.after_success:
+            await then()
 
     async def _admitted_send(
         self,
@@ -481,7 +729,7 @@ class ToolExecutor:
         definition = tool.definition
         message = definition.message
         assert message is not None
-        if UNSUBSCRIBE_FIELD not in tool.input_model.model_fields:
+        if UNSUBSCRIBE_FIELD not in tool.behaviour.input_schema().get("properties", {}):
             raise ConfigError(
                 "a tool that sends a message takes the unsubscribe link in its input",
                 details={"tool": definition.name, "field": UNSUBSCRIBE_FIELD},
@@ -538,7 +786,17 @@ class ToolExecutor:
             policy_decision="allow",
             details={"idempotency_key": idempotency_key},
         )
-        return tool.output_model.model_validate(stored_output)
+        try:
+            return tool.behaviour.validate_output(stored_output)
+        except SchemaViolation as exc:
+            raise DomainError(
+                "a stored output failed the tool's output schema",
+                details={
+                    "tool": definition.name,
+                    "reason_code": "tool_output_invalid",
+                    "errors": exc.problems,
+                },
+            ) from exc
 
     async def _run(
         self,
@@ -594,13 +852,23 @@ class ToolExecutor:
             attempt += 1
             try:
                 raw_output = await asyncio.wait_for(
-                    tool.handler(input_model, run_context),
+                    tool.behaviour.handler(input_model, run_context),
                     timeout=definition.timeout_seconds,
                 )
-                # 8. validate output
-                output_model = tool.output_model.model_validate(
-                    raw_output.model_dump() if isinstance(raw_output, BaseModel) else raw_output
+                # 8. validate output: the model never receives an output its
+                # schema refuses (R1.2).
+                output_model = tool.behaviour.validate_output(raw_output)
+                break
+            except SchemaViolation as exc:
+                last_error = DomainError(
+                    "tool output failed schema validation",
+                    details={
+                        "tool": name,
+                        "reason_code": "tool_output_invalid",
+                        "errors": exc.problems,
+                    },
                 )
+                last_error.__cause__ = exc
                 break
             except (TimeoutError, InfrastructureError) as exc:
                 last_error = exc
@@ -615,8 +883,10 @@ class ToolExecutor:
                 last_error = exc
                 break
             except ValidationError as exc:
+                # A handler that built its own output model wrongly.
                 last_error = DomainError(
-                    "tool output failed schema validation", details={"tool": name}
+                    "tool output failed schema validation",
+                    details={"tool": name, "reason_code": "tool_output_invalid"},
                 )
                 last_error.__cause__ = exc
                 break
@@ -857,13 +1127,11 @@ class ToolExecutor:
         row and its `tool.simulated` audit event in one transaction."""
         definition = tool.definition
         try:
-            validated = tool.output_model.model_validate(
-                sample_of(tool.output_model.model_json_schema())
-            )
-        except ValidationError as exc:
+            validated = tool.behaviour.validate_output(sample_of(tool.behaviour.output_schema()))
+        except SchemaViolation as exc:
             raise DomainError(
                 "the simulated output failed the tool's output schema",
-                details={"tool": definition.name, "errors": str(exc.error_count())},
+                details={"tool": definition.name, "errors": exc.problems},
             ) from exc
         output: dict[str, object] = {**validated.model_dump(mode="json"), "simulated": True}
         now = self.clock.now()

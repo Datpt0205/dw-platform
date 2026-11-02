@@ -27,13 +27,14 @@ from test_langchain_tools import COPY, LeadInput, LeadOutput, make_definition, m
 from dw_agent_runtime.adapters.agent_factory import AgentSpec, build_agent
 from dw_agent_runtime.adapters.chat_model import MockChatModel
 from dw_agent_runtime.adapters.langgraph_runner import LangGraphWorkflowRunner
+from dw_agent_runtime.adapters.wflite_host import build_tool_executor_steps
 from dw_agent_runtime.autonomy import AUTONOMY_POLICY_VERSION, AutonomyApprovalPolicy
 from dw_agent_runtime.contracts import RunContext, ToolDefinition, WorkerDefinition
 from dw_agent_runtime.executor import ToolExecutor
 from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.testing.demo_graph import DEMO_WORKER_YAML, build_demo_graph
-from dw_agent_runtime.tools import RegisteredTool, ToolRegistry
+from dw_agent_runtime.tools import RegisteredTool, ToolRegistry, pydantic_behaviour
 from dw_kernel.autonomy import AutonomyLevel
 from dw_kernel.ports import FixedClock, SequentialIdGenerator
 
@@ -58,9 +59,7 @@ def _spec(
         registry.register(
             RegisteredTool(
                 definition=definition,
-                input_model=input_model,
-                output_model=LeadOutput,
-                handler=_saved,
+                behaviour=pydantic_behaviour(input_model, LeadOutput, _saved),
             )
         )
     store = FakeExecutionStore()
@@ -72,6 +71,7 @@ def _spec(
         id_generator=SequentialIdGenerator(),
         approval_policy=AutonomyApprovalPolicy(),
         claims=FakeToolClaims(store),
+        steps=build_tool_executor_steps(),
     )
     return AgentSpec(
         model=model,

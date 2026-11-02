@@ -104,9 +104,7 @@ def sub_agent_spec(parent: AgentSpec, child: SubAgentSpec) -> dict[str, Any]:
     middleware: list[AgentMiddleware[Any, Any]] = [
         OfferedToolsOnlyMiddleware(offered),
         ScopedToolsMiddleware(offered),
-        OneApprovalPerStepMiddleware(
-            offered, copy=parent.copy, policy=parent.executor.approval_policy
-        ),
+        OneApprovalPerStepMiddleware(offered, copy=parent.copy, approvals=parent.executor),
         PlatformToolErrorsMiddleware(offered, copy=parent.copy),
         # The SAME ledger object the parent holds — not a copy, not a fresh one.
         # This single argument is what keeps a delegated turn inside the ceiling

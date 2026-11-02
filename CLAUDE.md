@@ -255,7 +255,9 @@ kind of change nobody makes and everybody works around.
   classification, output trust, approval policy, timeout and idempotency; a
   tenant tool is data of a registered kind whose policy only tightens its
   kind's floor (ADR 0116). One `ToolExecutor`, the door to every tool effect,
-  authorizes, validates, executes, validates the output and audits.
+  authorizes, validates, executes, validates the output and audits, its steps
+  in tools-and-skills R2.6's order from one register,
+  `build_tool_executor_steps`, where a context owning a step adds one line.
 - All side effects use idempotency keys.
 - A background lane acting on its own (a sweep, an expiry, a retry) audits as
   itself, never as a person: `dw_platform.domain.audit.lane_audit_event`, whose

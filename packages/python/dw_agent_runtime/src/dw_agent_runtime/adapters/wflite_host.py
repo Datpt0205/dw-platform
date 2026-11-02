@@ -10,7 +10,9 @@ nodes' ports. One builder, the way `model_stack` is one for the gateway:
 - `build_tool_executor`: the one `ToolExecutor` shape, with a DW's boundary and
   the decision checks of R6.17 always wired. An executor without them refuses
   every DW decision call (`approval_missing`), so a root that forgot them
-  would fail closed, but every DW run in it would hand off;
+  would fail closed, but every DW run in it would hand off. Its steps come
+  from `build_tool_executor_steps`, which no root calls on its own
+  (tools-and-skills R2.7);
 - `build_wflite_ports` and `register_workflows`: each document of the catalog
   as `dw:<key>` at its version, in `GraphRegistry` and `WorkerRegistry`, and
   the tenant versions' graphs registered on first use (`TenantWorkflowGraphs`,
@@ -38,7 +40,7 @@ from dw_agent_runtime.adapters.tool_claims import SqlToolClaims
 from dw_agent_runtime.adapters.tool_execution_store import SqlToolExecutionStore
 from dw_agent_runtime.adapters.wf_drafts import SqlTenantWorkflowVersions
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
-from dw_agent_runtime.executor import SendAdmissionPort, ToolExecutor
+from dw_agent_runtime.executor import SendAdmissionPort, ToolExecutor, ToolSteps
 from dw_agent_runtime.ports import ModelGateway, WorkflowRunnerPort
 from dw_agent_runtime.registry import GraphRegistry, LoadedWorker, WorkerRegistry
 from dw_agent_runtime.tools import ToolRegistry
@@ -100,6 +102,25 @@ def build_send_floor(
     )
 
 
+def build_tool_executor_steps() -> ToolSteps:
+    """The gate steps of every `ToolExecutor`, in tools-and-skills R2.6's
+    order, one line per owner (H-3). The executor's tail (claim, `dispatched`,
+    handler, output, audit) is its own; the control switch is pending until
+    agent-lifecycle/01 registers it here and takes it off `PENDING_STEPS`. A
+    step reaches its ports through the executor it runs in, so the register
+    takes no dependencies."""
+    steps = ToolSteps()
+    steps.register("resolve", ToolExecutor.step_resolve)  # tools-and-skills R2.1
+    steps.register("validate_input", ToolExecutor.step_validate_input)  # R1.1, R1.3
+    steps.register("dw_boundary", ToolExecutor.step_dw_boundary)  # digital-worker R6.1
+    steps.register("decision_call", ToolExecutor.step_decision_call)  # wf-lite R6.17
+    steps.register("scopes", ToolExecutor.step_scopes)
+    steps.register("run_mode", ToolExecutor.step_run_mode)  # tenant-config R5.1
+    steps.register("approval", ToolExecutor.step_approval)  # R2.5
+    steps.register("send_floor", ToolExecutor.step_send_floor)  # compliance-pdpl R3.1
+    return steps
+
+
 def build_tool_executor(
     *,
     tools: ToolRegistry,
@@ -124,6 +145,7 @@ def build_tool_executor(
         id_generator=ids,
         approval_policy=approval_policy,
         claims=SqlToolClaims(session_factory),
+        steps=build_tool_executor_steps(),
         telemetry=telemetry,
         dw_boundary=SqlDwBoundary(session_factory),
         decision_autonomy=DecisionAutonomy(SqlDecisionLevels(session_factory)),

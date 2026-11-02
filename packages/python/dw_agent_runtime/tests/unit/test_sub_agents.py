@@ -26,7 +26,7 @@ from dw_agent_runtime.adapters.langchain_tools import model_facing_name
 from dw_agent_runtime.adapters.sub_agents import SubAgentSpec, sub_agent_spec
 from dw_agent_runtime.contracts import RunContext, ToolDefinition
 from dw_agent_runtime.model.budget import RunBudgetLedger
-from dw_agent_runtime.tools import RegisteredTool, ToolRegistry
+from dw_agent_runtime.tools import RegisteredTool, ToolRegistry, pydantic_behaviour
 
 pytestmark = pytest.mark.unit
 
@@ -169,9 +169,9 @@ async def test_a_delegated_turn_inherits_the_runs_tenancy_and_no_more() -> None:
         registry.register(
             RegisteredTool(
                 definition=definition,
-                input_model=LeadInput,
-                output_model=LeadOutput,
-                handler=_capture if definition is READ else _plain,
+                behaviour=pydantic_behaviour(
+                    LeadInput, LeadOutput, _capture if definition is READ else _plain
+                ),
             )
         )
     _, borrowed = _registry()

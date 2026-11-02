@@ -22,6 +22,7 @@ from pydantic import BaseModel
 
 from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.executor import DecisionCall
+from dw_agent_runtime.tools import ToolBehaviour, pydantic_behaviour
 from dw_agent_runtime.wflite.catalog import PackCatalog
 from dw_agent_runtime.wflite.compile import (
     WfPorts,
@@ -52,14 +53,19 @@ class NoteInput(BaseModel):
     text: str
 
 
+async def _unused(payload: BaseModel, run_context: Any) -> BaseModel:
+    raise NotImplementedError("not exercised by the compile tests")
+
+
 @dataclass
 class _Tool:
-    input_model: type[BaseModel]
+    behaviour: ToolBehaviour
 
 
 class Tools:
-    def resolve(self, name: str, version: str) -> _Tool:
-        return _Tool(EmailInput if name == "email.send" else NoteInput)
+    def resolve(self, name: str, version: str, *, tenant_id: Any) -> _Tool:
+        model = EmailInput if name == "email.send" else NoteInput
+        return _Tool(pydantic_behaviour(model, NoteInput, _unused))
 
     def all_definitions(self) -> list[Any]:
         return []
@@ -171,7 +177,7 @@ class Bench:
         return WfPorts(
             gateway=self.gateway,
             executor=self.executor,
-            tools=Tools(),  # type: ignore[arg-type]
+            tools=Tools(),
             gate=self.gate,
             queue=self.queue,
             workers=Workers(),

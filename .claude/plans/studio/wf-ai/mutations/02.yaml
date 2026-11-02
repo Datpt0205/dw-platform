@@ -26,7 +26,7 @@ mutations:
       - packages/python/dw_agent_runtime/tests/unit/test_wflite_simulate.py::test_the_pack_workflow_passes_and_records_the_send_without_sending
   - name: R6.9 a tool's input is not checked
     file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/simulate.py
-    old: "        tool.input_model.model_validate(raw_input)"
+    old: "        tool.behaviour.validate_input(raw_input)"
     new: "        pass"
     tests:
       - packages/python/dw_agent_runtime/tests/unit/test_wflite_simulate.py::test_a_step_that_fails_makes_a_failed_simulation

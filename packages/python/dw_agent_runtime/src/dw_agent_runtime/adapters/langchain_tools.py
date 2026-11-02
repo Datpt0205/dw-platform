@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from typing import Any
+from typing import Any, Protocol
 
 from langchain.agents.middleware import (
     AgentMiddleware,
@@ -40,7 +40,6 @@ from langgraph.runtime import get_runtime
 from langgraph.types import Command, interrupt
 from pydantic import BaseModel
 
-from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.contracts import RunContext, ToolDefinition
 from dw_agent_runtime.executor import ToolExecutor, canonical_hash
 from dw_agent_runtime.model.copy import RuntimeCopy
@@ -57,6 +56,14 @@ from dw_kernel.errors import (
 from dw_observability.redaction import redact_mapping
 
 _NAME_SEPARATOR = "__"
+
+
+class ApprovalQuestionPort(Protocol):
+    """The one question a gate asks before a call: `ToolExecutor`'s
+    `approval_required` (tools-and-skills R2.5)."""
+
+    def approval_required(self, definition: ToolDefinition, run_context: RunContext) -> bool: ...
+
 
 logger = logging.getLogger("dw_agent_runtime.langchain_tools")
 
@@ -245,7 +252,7 @@ class OneApprovalPerStepMiddleware(AgentMiddleware):
         definitions: Sequence[ToolDefinition],
         *,
         copy: RuntimeCopy,
-        policy: AutonomyApprovalPolicy,
+        approvals: ApprovalQuestionPort,
     ) -> None:
         super().__init__()
         if copy.approval_deferred_template is None:
@@ -258,7 +265,7 @@ class OneApprovalPerStepMiddleware(AgentMiddleware):
         # once, when the agent was built — and an agent is compiled once per
         # process, so one frozen set was served to every tenant at every level.
         self._offered = {model_facing_name(d.name): d for d in definitions}
-        self._policy = policy
+        self._approvals = approvals
         self._copy = copy
 
     async def awrap_tool_call(
@@ -267,15 +274,14 @@ class OneApprovalPerStepMiddleware(AgentMiddleware):
         handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]]],
     ) -> ToolMessage | Command[Any]:
         # Decided for THIS run, every call. The same tool is gated for an A1 run and
-        # free for an A3 one in the same process.
+        # free for an A3 one in the same process. The executor's answer, so a
+        # call it intercepts in this run's mode (tenant-config R5.6) is not
+        # gated here either.
         run_context = get_runtime(RunContext).context
-        # A call the executor intercepts in this run's mode opens no approval
-        # (tenant-config R5.6), so it is not gated here either.
         gated = {
             exposed_name: definition.name
             for exposed_name, definition in self._offered.items()
-            if self._policy.decide(definition, run_context)
-            and not definition.intercepted_in(run_context.run_mode)
+            if self._approvals.approval_required(definition, run_context)
         }
         exposed = request.tool_call["name"]
         if exposed not in gated:
@@ -489,18 +495,18 @@ def _build_tool(
     approval_type_prefix: str,
     copy: RuntimeCopy,
 ) -> BaseTool:
-    registered = registry.resolve(definition.name, definition.version)
+    # The platform layer: an agent is built once per process, before any run
+    # names a tenant. The executor resolves each call by its run's tenant.
+    registered = registry.resolve(definition.name, definition.version, tenant_id=None)
 
     async def call(**kwargs: object) -> str:
         run_context = get_runtime(RunContext).context
         approved = False
         # Asks a person only for a call that will run: one the executor
         # intercepts outside `live` is answered by a sample and opens no
-        # approval (tenant-config R5.6; failure-modes #5, the rule is held at
-        # the executor too).
-        if executor.approval_policy.decide(
-            definition, run_context
-        ) and not definition.intercepted_in(run_context.run_mode):
+        # approval (tenant-config R5.6). The executor's own answer, which it
+        # holds again where the call runs (failure-modes #5).
+        if executor.approval_required(definition, run_context):
             decision = await _ask_human(
                 definition, registered, kwargs, run_context, approval_type_prefix, copy
             )
@@ -525,7 +531,7 @@ def _build_tool(
     return StructuredTool(
         name=model_facing_name(definition.name),
         description=definition.description,
-        args_schema=registered.input_model,
+        args_schema=registered.behaviour.args_schema,
         coroutine=call,
     )
 
@@ -556,7 +562,7 @@ async def _ask_human(
     is about to be written; it runs before the pause, on the requester's own
     context, so it can only show what that requester could already read.
     """
-    payload = registered.input_model.model_validate(arguments)
+    payload = registered.behaviour.validate_input(arguments)
     body: dict[str, Any] = {
         "approval_type": f"{approval_type_prefix}{definition.name}",
         "reason": copy.approval_reason(definition.name),
@@ -564,7 +570,7 @@ async def _ask_human(
         "tool_version": definition.version,
         "payload": redact_mapping(payload.model_dump(mode="json")),
     }
-    if registered.approval_preview is not None:
+    if registered.behaviour.approval_preview is not None:
         body["preview"] = redact_mapping(await _preview(registered, payload, run_context))
     decision = interrupt(body)
     return decision if isinstance(decision, dict) else {"approved": bool(decision)}
@@ -592,7 +598,7 @@ async def _preview(
     code that crashed in a way nobody predicted.
     """
     try:
-        return await registered.approval_preview(payload, run_context)  # type: ignore[misc]
+        return await registered.behaviour.approval_preview(payload, run_context)  # type: ignore[misc]
     except (DomainError, NotFoundError, PermissionDeniedError, InfrastructureError) as exc:
         return {"preview_unavailable": str(exc)}
 

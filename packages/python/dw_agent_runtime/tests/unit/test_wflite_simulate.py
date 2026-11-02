@@ -27,6 +27,7 @@ from dw_agent_runtime.adapters.pack_tools import (
     HandoffInput,
 )
 from dw_agent_runtime.contracts import RunContext
+from dw_agent_runtime.tools import ToolBehaviour, pydantic_behaviour
 from dw_agent_runtime.wflite.catalog import PinnedWorkflow, load_shipped_packs
 from dw_agent_runtime.wflite.document import WorkflowDocument
 from dw_agent_runtime.wflite.registry import build_node_registry
@@ -49,20 +50,23 @@ PINNED: PinnedWorkflow = _SHIPPED
 SALES = uuid.uuid4()
 
 
+async def _unused(payload: BaseModel, run_context: Any) -> BaseModel:
+    raise NotImplementedError("a simulation runs no handler")
+
+
 @dataclass(frozen=True)
 class _Tool:
-    input_model: type[BaseModel]
-    output_model: type[BaseModel]
+    behaviour: ToolBehaviour
 
 
 class Tools:
     MODELS: ClassVar[dict[str, _Tool]] = {
-        "email.send": _Tool(EmailInput, EmailSent),
-        "mailbox.fetch_reply": _Tool(FetchInput, FetchOutput),
-        "work.handoff": _Tool(HandoffInput, HandoffDone),
+        "email.send": _Tool(pydantic_behaviour(EmailInput, EmailSent, _unused)),
+        "mailbox.fetch_reply": _Tool(pydantic_behaviour(FetchInput, FetchOutput, _unused)),
+        "work.handoff": _Tool(pydantic_behaviour(HandoffInput, HandoffDone, _unused)),
     }
 
-    def resolve(self, name: str, version: str) -> _Tool:
+    def resolve(self, name: str, version: str, *, tenant_id: Any) -> _Tool:
         return self.MODELS[name]
 
 

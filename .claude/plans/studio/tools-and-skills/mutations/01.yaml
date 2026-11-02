@@ -1,0 +1,208 @@
+# Mutation check of tools-and-skills ticket 01: scripts/mutate.py runs this file.
+# One mutation per control (R1.1-R1.3, R2.1-R2.8, R3.1, R3.2) and per layer
+# that holds one: the register and its seal, each gate step, the wrapper and the
+# middleware beside the executor (failure-modes #3, #5).
+mutations:
+  - name: R1.1 a tenant tool's input is not checked
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/tool_schema.py
+    old: "        raise SchemaViolation([problem._asdict() for problem in found])"
+    new: "        pass"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_schema.py::test_an_input_its_schema_refuses_never_reaches_the_handler
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_schema.py::test_an_output_its_schema_refuses_never_reaches_the_model
+  - name: R1.1 a refusal names the value
+    file: packages/python/dw_platform/src/dw_platform/application/json_schema.py
+    old: "        found.append(SchemaProblem(path=where, keyword=str(error.validator)))"
+    new: "        found.append(SchemaProblem(path=where, keyword=str(error.message)))"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_schema.py::test_an_input_its_schema_refuses_never_reaches_the_handler
+  - name: R1.3 a field outside the schema is let through
+    file: packages/python/dw_platform/src/dw_platform/application/json_schema.py
+    old: "        found.append(SchemaProblem(path=where, keyword=str(error.validator)))"
+    new: |2
+              if error.validator != "additionalProperties":
+                  found.append(SchemaProblem(path=where, keyword=str(error.validator)))
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_schema.py::test_only_a_field_outside_the_schema_is_refused
+  - name: R1.2 the output is not checked
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py
+    old: "                output_model = tool.behaviour.validate_output(raw_output)"
+    new: "                output_model = SampleOutput.model_validate(raw_output)"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_schema.py::test_an_output_its_schema_refuses_never_reaches_the_model
+  - name: ADR-0116 d3 a format is not really checked
+    file: packages/python/dw_platform/src/dw_platform/application/json_schema.py
+    old: "    return not isinstance(value, str) or ("
+    new: "    return True or ("
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_schema.py::test_the_format_list_is_closed_and_each_format_is_checked
+  - name: ADR-0116 d3 an open object passes the profile
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/tool_schema.py
+    old: '    if is_object and node.get("additionalProperties") is not False:'
+    new: "    if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_schema.py::test_a_schema_outside_the_profile_is_refused
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_schema.py::test_a_behaviour_is_never_built_from_a_schema_outside_the_profile
+  - name: ADR-0116 d3 a forbidden keyword passes the profile
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/tool_schema.py
+    old: "        if keyword in _FORBIDDEN:"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_schema.py::test_a_schema_outside_the_profile_is_refused
+  - name: R2.1 the executor resolves with no tenant
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py
+    old: "            call.name, call.version, tenant_id=TenantId(call.run_context.tenant_id)"
+    new: "            call.name, call.version, tenant_id=None"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_registry.py::test_a_tenants_tool_is_not_found_for_another_tenant
+  - name: R2.1 the key drops the tenant
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/tools.py
+    old: "        self._tools.put(key, tool, tenant_id=layer)"
+    new: "        self._tools.put(key, tool, tenant_id=None)"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_registry.py::test_a_tenants_tool_is_not_found_for_another_tenant
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_registry.py::test_without_its_own_a_tenant_gets_the_platforms_never_another_tenants
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_registry.py::test_inventory_answers_read_the_platform_layer_only
+  - name: R2.2 a kind with no factory is not refused
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/tool_kinds.py
+    old: "        if factory is None:"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_kinds.py::test_a_kind_with_no_factory_is_refused_and_nothing_is_registered
+  - name: R2.3 the assembler does not check the floor
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/tool_kinds.py
+    old: "                check_policy_against_floor(policy, floor)"
+    new: "                pass"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_kinds.py::test_a_tool_below_its_kinds_floor_is_never_registered
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_kinds.py::test_a_tenant_override_below_its_platform_tool_is_never_registered
+  - name: R2.3 R2.4 a policy below its floor passes
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/tool_kinds.py
+    old: "        if ranks[mine] < ranks[least]"
+    new: "        if ranks[mine] < ranks[least] and False"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_kinds.py::test_a_policy_may_tighten_its_floor_and_never_loosen_it
+  - name: R2.5 the executor's approval step lets an unapproved call through
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py
+    old: "        if self.approval_required(definition, run_context) and not call.approved:"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_approval_required.py::test_the_executor_refuses_an_unapproved_call_without_the_wrapper
+      - packages/python/dw_agent_runtime/tests/unit/test_approval_required.py::test_the_executors_approval_step_asks_the_one_question
+  - name: R2.5 the middleware reads the policy itself
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langchain_tools.py
+    old: "            if self._approvals.approval_required(definition, run_context)"
+    new: "            if self._approvals.approval_policy.decide(definition, run_context)  # type: ignore[attr-defined]"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_approval_required.py::test_the_middleware_asks_the_executor_for_each_call
+  - name: R2.5 the wrapper reads the policy itself
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langchain_tools.py
+    old: "        if executor.approval_required(definition, run_context):"
+    new: "        if executor.approval_policy.decide(definition, run_context):"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_approval_required.py::test_the_wrapper_asks_the_executor_for_each_call
+  - name: R2.6 the run mode registered after the approval
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/wflite_host.py
+    old: |2
+          steps.register("run_mode", ToolExecutor.step_run_mode)  # tenant-config R5.1
+          steps.register("approval", ToolExecutor.step_approval)  # R2.5
+    new: |2
+          steps.register("approval", ToolExecutor.step_approval)  # R2.5
+          steps.register("run_mode", ToolExecutor.step_run_mode)  # tenant-config R5.1
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_steps.py::test_the_register_holds_r2_6_and_only_the_control_switch_waits
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_steps.py::test_outside_live_a_critical_call_never_asks_approval_required
+  - name: R2.6 the DW boundary registered after the scope check
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/wflite_host.py
+    old: |2
+          steps.register("dw_boundary", ToolExecutor.step_dw_boundary)  # digital-worker R6.1
+          steps.register("decision_call", ToolExecutor.step_decision_call)  # wf-lite R6.17
+          steps.register("scopes", ToolExecutor.step_scopes)
+    new: |2
+          steps.register("decision_call", ToolExecutor.step_decision_call)  # wf-lite R6.17
+          steps.register("scopes", ToolExecutor.step_scopes)
+          steps.register("dw_boundary", ToolExecutor.step_dw_boundary)  # digital-worker R6.1
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_steps.py::test_the_register_holds_r2_6_and_only_the_control_switch_waits
+      - packages/python/dw_agent_runtime/tests/unit/test_executor.py::test_a_dw_run_outside_its_boundary_reaches_nothing
+  - name: R2.6 the seal does not check the order
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py
+    old: "            if at < last:"
+    new: "            if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_steps.py::test_two_steps_out_of_order_are_refused_naming_the_step
+  - name: R2.7 a step missing from the register
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/wflite_host.py
+    old: '    steps.register("resolve", ToolExecutor.step_resolve)  # tools-and-skills R2.1'
+    new: "    pass"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_steps.py::test_build_tool_executor_takes_its_register_from_the_one_function
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_steps.py::test_the_register_holds_r2_6_and_only_the_control_switch_waits
+  - name: R2.7 the seal does not check for a missing step
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py
+    old: "            if name not in registered and name not in self._pending:"
+    new: "            if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_steps.py::test_a_missing_step_is_refused_unless_it_is_pending
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_steps.py::test_an_executor_with_a_wrong_register_does_not_start
+  - name: R2.7 the executor starts without sealing its register
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py
+    old: "        self._gates = self.steps.seal()"
+    new: "        self._gates = tuple(step for _, step in self.steps.entries())"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_steps.py::test_an_executor_with_a_wrong_register_does_not_start
+  - name: R2.7 a tail name is registered from outside the executor
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py
+    old: "        if name in TAIL_STEPS:"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_steps.py::test_a_name_outside_r2_6_a_name_twice_and_a_tail_name_are_refused
+  - name: R2.7 _execute runs the executor's own steps, not its register's
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py
+    old: "        return tuple(step for _, step in self.entries())"
+    new: '        return tuple(getattr(ToolExecutor, f"step_{name}") for name, _ in self.entries())'
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_steps.py::test_execute_runs_only_the_steps_of_its_register
+  - name: R2.7 the Send floor back on the pending list
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py
+    old: |2
+      PENDING_STEPS: Final[Mapping[str, str]] = MappingProxyType(
+          {
+    new: |2
+      PENDING_STEPS: Final[Mapping[str, str]] = MappingProxyType(
+          {
+              "send_floor": "compliance-pdpl/04",
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_steps.py::test_the_register_holds_r2_6_and_only_the_control_switch_waits
+  - name: R2.8 without a floor a message goes through
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py
+    old: "        if call.definition.message is None:"
+    new: "        if call.definition.message is None or self.send_admission is None:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_steps.py::test_without_a_floor_a_message_is_blocked_and_nothing_runs
+      - packages/python/dw_agent_runtime/tests/integration/test_send_floor_executor_db.py::test_without_a_floor_no_message_leaves
+  - name: R3.1 a message at the internal level needs no key
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py
+    old: "        needs_key = definition.side_effect_level in _KEYED_LEVELS or definition.message is not None"
+    new: "        needs_key = definition.side_effect_level in _KEYED_LEVELS"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_steps.py::test_an_internal_message_without_a_key_is_refused_before_the_floor
+  - name: R3.1 the floor is not told of a send
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py
+    old: "            call.after_success.append(sent)"
+    new: "            pass"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_steps.py::test_the_floor_is_asked_at_every_call
+  - name: R3.2 the floor's refusal is not the executor's refusal
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py
+    old: "        if not admission.admitted:"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_steps.py::test_a_refusal_of_the_floor_runs_nothing_and_is_denied
+      - packages/python/dw_agent_runtime/tests/integration/test_send_floor_executor_db.py::test_a_refusal_is_the_executors_refused_row_and_the_policys_one_event
+  - name: R3.2 the Send floor step left out of the register
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/wflite_host.py
+    old: '    steps.register("send_floor", ToolExecutor.step_send_floor)  # compliance-pdpl R3.1'
+    new: "    pass"
+    tests:
+      - packages/python/dw_agent_runtime/tests/integration/test_send_floor_executor_db.py::test_a_send_without_consent_is_refused_at_the_executor

@@ -34,6 +34,7 @@ from dw_agent_runtime.adapters import agent_factory
 from dw_agent_runtime.adapters.agent_factory import AgentSpec, build_agent, platform_middleware
 from dw_agent_runtime.adapters.chat_model import MockChatModel
 from dw_agent_runtime.adapters.langchain_tools import model_facing_name, platform_tools
+from dw_agent_runtime.adapters.wflite_host import build_tool_executor_steps
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.contracts import RunContext, ToolDefinition
 from dw_agent_runtime.executor import ToolExecutor
@@ -42,7 +43,7 @@ from dw_agent_runtime.model.copy import load_runtime_copy
 from dw_agent_runtime.model.profiles import ModelProfile, ModelProfileRegistry
 from dw_agent_runtime.model.prompts import PromptArtifact, PromptRegistry
 from dw_agent_runtime.registry import ConfigError
-from dw_agent_runtime.tools import RegisteredTool, ToolRegistry
+from dw_agent_runtime.tools import RegisteredTool, ToolRegistry, pydantic_behaviour
 from dw_kernel.errors import TenantContextMissingError
 from dw_kernel.ports import FixedClock, SequentialIdGenerator
 
@@ -100,9 +101,7 @@ def _registry() -> tuple[ToolRegistry, ToolExecutor]:
         registry.register(
             RegisteredTool(
                 definition=definition,
-                input_model=LeadInput,
-                output_model=LeadOutput,
-                handler=handler,
+                behaviour=pydantic_behaviour(LeadInput, LeadOutput, handler),
             )
         )
     store = FakeExecutionStore()
@@ -114,6 +113,7 @@ def _registry() -> tuple[ToolRegistry, ToolExecutor]:
         id_generator=SequentialIdGenerator(),
         approval_policy=AutonomyApprovalPolicy(),
         claims=FakeToolClaims(store),
+        steps=build_tool_executor_steps(),
     )
     return registry, executor
 

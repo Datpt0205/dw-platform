@@ -29,8 +29,8 @@ mutations:
       - packages/python/dw_platform/tests/integration/test_marketing_send_db.py::test_the_sending_hours_are_hanoi_time
   - name: CP8 the executor does not ask the floor
     file: packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py
-    old: "        if definition.message is not None and idempotency_key is not None:"
-    new: "        if False:"
+    old: "        if call.definition.message is None:"
+    new: "        if True:"
     tests:
       - packages/python/dw_agent_runtime/tests/integration/test_send_floor_executor_db.py::test_a_send_without_consent_is_refused_at_the_executor
   - name: CP9 GET writes the suppression

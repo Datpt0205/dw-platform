@@ -29,7 +29,7 @@ from dw_agent_runtime.adapters.wflite_host import build_send_floor, build_tool_e
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.contracts import MessageSpec, RunContext, ToolDefinition
 from dw_agent_runtime.executor import ToolExecutor
-from dw_agent_runtime.tools import RegisteredTool, ToolRegistry
+from dw_agent_runtime.tools import RegisteredTool, ToolRegistry, pydantic_behaviour
 from dw_kernel.errors import PermissionDeniedError
 from dw_kernel.ports import FixedClock, Uuid4Generator
 from dw_observability.telemetry import NullTelemetry
@@ -111,9 +111,7 @@ def executor(app: AsyncEngine, tool: Tool, *, with_floor: bool = True) -> ToolEx
                 data_classification=frozenset({"internal"}),
                 message=MessageSpec(channel="email", recipient_fields=("to", "cc")),
             ),
-            EmailInput,
-            Sent,
-            tool,
+            pydantic_behaviour(EmailInput, Sent, tool),
         )
     )
     return build_tool_executor(
@@ -243,3 +241,46 @@ async def test_without_a_floor_no_message_leaves(engines: tuple[AsyncEngine, Asy
         "blocked:send_floor_unavailable"
     )
     assert tool.calls == []
+
+    async with migrator.connect() as conn:
+        statuses = (
+            await conn.execute(
+                sa.text("SELECT status FROM platform.tool_executions WHERE run_id = :r"),
+                {"r": run.run_id},
+            )
+        ).scalars()
+        assert list(statuses) == ["refused"]  # no `dispatched` row (R2.8, TS13)
+
+
+async def test_a_refusal_is_the_executors_refused_row_and_the_policys_one_event(
+    engines: tuple[AsyncEngine, AsyncEngine],
+) -> None:
+    """tools-and-skills R3.2 (TS6): no consent, no call of the tool; the
+    executor writes a `refused` row and `tool.denied` naming
+    `blocked:no_consent`, and the one `marketing.send_refused` is the
+    policy's own."""
+    migrator, app = engines
+    tool = Tool(migrator)
+    run = make_run_context()
+    assert await send(executor(app, tool), run, to=an_address()) == "blocked:no_consent"
+    assert tool.calls == []
+    async with migrator.connect() as conn:
+        rows = (
+            await conn.execute(
+                sa.text("SELECT status, error FROM platform.tool_executions WHERE run_id = :r"),
+                {"r": run.run_id},
+            )
+        ).all()
+        events = (
+            await conn.execute(
+                sa.text(
+                    "SELECT action, details FROM platform.audit_events WHERE run_id = :r"
+                    " AND action IN ('tool.denied', 'marketing.send_refused')"
+                ),
+                {"r": run.run_id},
+            )
+        ).all()
+    assert [(r.status, r.error) for r in rows] == [("refused", "blocked:no_consent")]
+    assert sorted(e.action for e in events) == ["marketing.send_refused", "tool.denied"]
+    [denied] = [e for e in events if e.action == "tool.denied"]
+    assert denied.details["reason_code"] == "blocked:no_consent"

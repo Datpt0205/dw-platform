@@ -9,11 +9,12 @@ import pytest
 from fakes import NOW, FakeAuditRepo, FakeExecutionStore, FakeToolClaims, FakeUoWFactory
 from pydantic import BaseModel
 
+from dw_agent_runtime.adapters.wflite_host import build_tool_executor_steps
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.contracts import RunContext, ToolDefinition
 from dw_agent_runtime.dispatch import NotDispatchedError, OutcomeUnknownError, RejectedError
 from dw_agent_runtime.executor import DecisionCall, ToolExecutor
-from dw_agent_runtime.tools import RegisteredTool, ToolRegistry
+from dw_agent_runtime.tools import RegisteredTool, ToolRegistry, pydantic_behaviour
 from dw_kernel.errors import (
     ApprovalRequiredError,
     ConflictError,
@@ -96,9 +97,7 @@ def make_executor(
     registry.register(
         RegisteredTool(
             definition=definition or make_definition(),
-            input_model=EchoInput,
-            output_model=EchoOutput,
-            handler=handler,
+            behaviour=pydantic_behaviour(EchoInput, EchoOutput, handler),
         )
     )
     store = FakeExecutionStore()
@@ -114,6 +113,7 @@ def make_executor(
         id_generator=SequentialIdGenerator(),
         approval_policy=AutonomyApprovalPolicy(),
         claims=FakeToolClaims(store),
+        steps=build_tool_executor_steps(),
         sleep=no_sleep,
     )
     return executor, store, uow_factory.audit_repo
@@ -630,9 +630,7 @@ async def test_a_secret_in_a_list_is_redacted_in_the_failure_audit() -> None:
     registry.register(
         RegisteredTool(
             definition=make_definition(),
-            input_model=ItemsInput,
-            output_model=EchoOutput,
-            handler=boom,
+            behaviour=pydantic_behaviour(ItemsInput, EchoOutput, boom),
         )
     )
     store = FakeExecutionStore()
@@ -645,6 +643,7 @@ async def test_a_secret_in_a_list_is_redacted_in_the_failure_audit() -> None:
         id_generator=SequentialIdGenerator(),
         approval_policy=AutonomyApprovalPolicy(),
         claims=FakeToolClaims(store),
+        steps=build_tool_executor_steps(),
     )
     with pytest.raises(NotDispatchedError):
         await executor.execute(

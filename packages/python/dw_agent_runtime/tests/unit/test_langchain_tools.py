@@ -24,12 +24,13 @@ from dw_agent_runtime.adapters.langchain_tools import (
     model_facing_name,
     platform_tools,
 )
+from dw_agent_runtime.adapters.wflite_host import build_tool_executor_steps
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.contracts import RunContext, ToolDefinition
 from dw_agent_runtime.executor import ToolExecutor
 from dw_agent_runtime.model.copy import load_runtime_copy
 from dw_agent_runtime.registry import ConfigError
-from dw_agent_runtime.tools import RegisteredTool, ToolRegistry
+from dw_agent_runtime.tools import RegisteredTool, ToolRegistry, pydantic_behaviour
 from dw_kernel.errors import (
     DomainError,
     InfrastructureError,
@@ -113,9 +114,7 @@ def make_stack(
         registry.register(
             RegisteredTool(
                 definition=definition,
-                input_model=LeadInput,
-                output_model=LeadOutput,
-                handler=handler,
+                behaviour=pydantic_behaviour(LeadInput, LeadOutput, handler),
             )
         )
     store = FakeExecutionStore()
@@ -127,6 +126,7 @@ def make_stack(
         id_generator=SequentialIdGenerator(),
         approval_policy=AutonomyApprovalPolicy(),
         claims=FakeToolClaims(store),
+        steps=build_tool_executor_steps(),
     )
     return registry, executor, store
 
@@ -243,9 +243,7 @@ async def test_an_approval_payload_is_json_all_the_way_down() -> None:
     registry.register(
         RegisteredTool(
             definition=make_definition(**CRITICAL),
-            input_model=TaskInput,
-            output_model=LeadOutput,
-            handler=task_handler,
+            behaviour=pydantic_behaviour(TaskInput, LeadOutput, task_handler),
         )
     )
     store = FakeExecutionStore()
@@ -257,6 +255,7 @@ async def test_an_approval_payload_is_json_all_the_way_down() -> None:
         id_generator=SequentialIdGenerator(),
         approval_policy=AutonomyApprovalPolicy(),
         claims=FakeToolClaims(store),
+        steps=build_tool_executor_steps(),
     )
     lead_id = uuid.UUID(int=11)
 
@@ -287,10 +286,7 @@ async def test_a_tool_whose_argument_is_a_reference_can_show_what_it_will_write(
     registry.register(
         RegisteredTool(
             definition=make_definition(**CRITICAL),
-            input_model=LeadInput,
-            output_model=LeadOutput,
-            handler=handler,
-            approval_preview=preview,
+            behaviour=pydantic_behaviour(LeadInput, LeadOutput, handler, preview),
         )
     )
     store = FakeExecutionStore()
@@ -302,6 +298,7 @@ async def test_a_tool_whose_argument_is_a_reference_can_show_what_it_will_write(
         id_generator=SequentialIdGenerator(),
         approval_policy=AutonomyApprovalPolicy(),
         claims=FakeToolClaims(store),
+        steps=build_tool_executor_steps(),
     )
 
     state = await call_tool(build_tools(registry, executor)[0])
@@ -352,9 +349,7 @@ def make_failing_stack(
     registry.register(
         RegisteredTool(
             definition=make_definition(**overrides),
-            input_model=LeadInput,
-            output_model=LeadOutput,
-            handler=failing,
+            behaviour=pydantic_behaviour(LeadInput, LeadOutput, failing),
         )
     )
     store = FakeExecutionStore()
@@ -367,6 +362,7 @@ def make_failing_stack(
         id_generator=SequentialIdGenerator(),
         approval_policy=AutonomyApprovalPolicy(),
         claims=FakeToolClaims(store),
+        steps=build_tool_executor_steps(),
     )
     return build_tools(registry, executor), store, uow_factory.audit_repo
 
@@ -675,10 +671,7 @@ async def test_a_pin_naming_an_unregistered_tool_fails_at_build_time() -> None:
 def _registered(preview: object) -> RegisteredTool:
     return RegisteredTool(
         definition=make_definition(approval_policy="always"),
-        input_model=LeadInput,
-        output_model=LeadOutput,
-        handler=handler,
-        approval_preview=cast(Any, preview),
+        behaviour=pydantic_behaviour(LeadInput, LeadOutput, handler, cast(Any, preview)),
     )
 
 

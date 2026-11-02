@@ -35,7 +35,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.dispatch import NotDispatchedError, OutcomeUnknownError, RejectedError
 from dw_agent_runtime.tool_specs import ToolSpecRegistry
-from dw_agent_runtime.tools import RegisteredTool, ToolRegistry
+from dw_agent_runtime.tools import RegisteredTool, ToolRegistry, pydantic_behaviour
 from dw_connectors.adapters.smtp_email import (
     SmtpNotSentError,
     SmtpOutcomeUnknownError,
@@ -256,7 +256,9 @@ def register_leadcare_tools(
         ("work.handoff", HandoffInput, HandoffDone, implementation.hand_off),
     ):
         definition = specs.definition(name, "1.0.0")
-        tools.register(RegisteredTool(definition, input_model, output_model, handler))
+        tools.register(
+            RegisteredTool(definition, pydantic_behaviour(input_model, output_model, handler))
+        )
 
 
 def build_leadcare_tools(

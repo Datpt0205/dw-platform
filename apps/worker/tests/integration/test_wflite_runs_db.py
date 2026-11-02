@@ -53,7 +53,7 @@ from dw_agent_runtime.contracts import RunContext, ToolDefinition
 from dw_agent_runtime.executor import DecisionCall, ToolExecutor
 from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
-from dw_agent_runtime.tools import RegisteredTool, ToolRegistry
+from dw_agent_runtime.tools import RegisteredTool, ToolRegistry, pydantic_behaviour
 from dw_agent_runtime.wflite.catalog import PackCatalog
 from dw_agent_runtime.wflite.waits import WorkQueueRunWaits
 from dw_kernel.errors import ConflictError, PermissionDeniedError
@@ -185,8 +185,16 @@ def tool_registry(effects: Effects) -> ToolRegistry:
         return Sent()
 
     tools = ToolRegistry()
-    tools.register(RegisteredTool(_definition("email.send", "external"), EmailInput, Sent, send))
-    tools.register(RegisteredTool(_definition("lead.note", "internal"), NoteInput, Sent, note))
+    tools.register(
+        RegisteredTool(
+            _definition("email.send", "external"), pydantic_behaviour(EmailInput, Sent, send)
+        )
+    )
+    tools.register(
+        RegisteredTool(
+            _definition("lead.note", "internal"), pydantic_behaviour(NoteInput, Sent, note)
+        )
+    )
     return tools
 
 

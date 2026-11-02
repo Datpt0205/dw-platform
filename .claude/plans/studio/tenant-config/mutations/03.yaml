@@ -16,27 +16,22 @@ mutations:
       - packages/python/dw_agent_runtime/tests/unit/test_run_mode.py::test_a_child_runs_no_looser_than_its_parent
   - name: R5.1 no mode step at the executor
     file: packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py
-    old: "        if definition.intercepted_in(run_context.run_mode):"
-    new: "        if False:"
+    old: "        if not call.definition.intercepted_in(call.run_context.run_mode):"
+    new: "        if True:"
     tests:
       - packages/python/dw_agent_runtime/tests/unit/test_run_mode.py::test_outside_live_an_external_call_is_answered_by_a_sample
       - packages/python/dw_agent_runtime/tests/unit/test_run_mode.py::test_a_critical_tool_opens_no_approval_outside_live
   - name: R5.6 the agent wrapper asks a person for an intercepted call
-    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langchain_tools.py
-    old: "        ) and not definition.intercepted_in(run_context.run_mode):"
-    new: "        ):"
+    # Since tools-and-skills/01 the wrapper asks `ToolExecutor.approval_required`.
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py
+    old: "        ) and not definition.intercepted_in(run_context.run_mode)"
+    new: "        )"
     tests:
       - packages/python/dw_agent_runtime/tests/unit/test_agent_factory.py::test_a_gated_tool_asks_nobody_in_a_simulated_run
   - name: R5.3 the sample is not checked by the output model
     file: packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py
-    old: |2
-                  validated = tool.output_model.model_validate(
-                      sample_of(tool.output_model.model_json_schema())
-                  )
-    new: |2
-                  validated = tool.output_model.model_construct(
-                      **sample_of(tool.output_model.model_json_schema())
-                  )
+    old: "            validated = tool.behaviour.validate_output(sample_of(tool.behaviour.output_schema()))"
+    new: "            validated = SampleOutput.model_validate(sample_of(tool.behaviour.output_schema()))"
     tests:
       - packages/python/dw_agent_runtime/tests/unit/test_run_mode.py::test_a_sample_that_fails_the_output_model_is_a_validation_failure
   - name: R5.2 the simulated call's audit is written apart from its row

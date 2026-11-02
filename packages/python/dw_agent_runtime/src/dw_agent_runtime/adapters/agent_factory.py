@@ -204,7 +204,7 @@ def platform_middleware(spec: AgentSpec) -> list[AgentMiddleware[Any, Any]]:
         # agent is compiled once per process, so one set served every tenant at
         # every level. Handed the executor's own policy so this gate, the tool
         # wrapper and the executor cannot disagree about a call.
-        OneApprovalPerStepMiddleware(offered, copy=spec.copy, policy=spec.executor.approval_policy),
+        OneApprovalPerStepMiddleware(offered, copy=spec.copy, approvals=spec.executor),
         PlatformToolErrorsMiddleware(offered, copy=spec.copy),
         # The only ceiling on the path that can loop. Without it an agent run is
         # bounded by `recursion_limit`, which counts steps and not money.

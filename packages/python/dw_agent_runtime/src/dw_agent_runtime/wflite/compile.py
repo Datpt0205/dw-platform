@@ -42,10 +42,12 @@ from pydantic import BaseModel, ConfigDict
 from dw_agent_runtime.contracts import RunContext, WorkerDefinition
 from dw_agent_runtime.executor import DecisionCall
 from dw_agent_runtime.ports import ModelGateway, ModelOutputInvalidError, ModelRequest
+from dw_agent_runtime.tools import ToolBehaviour
 from dw_agent_runtime.wflite.catalog import PinnedWorkflow
 from dw_agent_runtime.wflite.document import Step
 from dw_agent_runtime.wflite.registry import NodeTypeSpec, build_node_registry
 from dw_kernel.errors import DWError
+from dw_kernel.ids import TenantId
 from dw_kernel.ports import UtcClock
 from dw_platform.application.decision_gate import AskPerson, Auto
 from dw_platform.application.json_schema import problems
@@ -77,19 +79,18 @@ class ToolExecutionPort(Protocol):
 
 
 class ToolModels(Protocol):
-    """A registered tool as a node reads it: what it takes and gives."""
+    """A registered tool as a node reads it: how it checks what it takes and
+    gives (`ToolBehaviour`)."""
 
     @property
-    def input_model(self) -> type[BaseModel]: ...
-
-    @property
-    def output_model(self) -> type[BaseModel]: ...
+    def behaviour(self) -> ToolBehaviour: ...
 
 
 class ToolModelsPort(Protocol):
-    """The tool register as nodes read it: `ToolRegistry`."""
+    """The tool register as nodes read it: `ToolRegistry`, its platform layer
+    (`tenant_id=None`): a pinned workflow's tools are the platform's."""
 
-    def resolve(self, name: str, version: str) -> ToolModels: ...
+    def resolve(self, name: str, version: str, *, tenant_id: TenantId | None) -> ToolModels: ...
 
 
 class DecisionGatePort(Protocol):
@@ -454,8 +455,8 @@ class _Builder:
             for s in steps:
                 if s.type == "tool.call@1" and s.config.get("decision_class") == cls:
                     name, _, version = str(s.config["tool"]).partition("@")
-                    tool = self.ports.tools.resolve(name, version)
-                    return tool.input_model.model_json_schema()
+                    tool = self.ports.tools.resolve(name, version, tenant_id=None)
+                    return tool.behaviour.input_schema()
                 for lane in self._lanes(s).values():
                     found = find(lane)
                     if found is not None:

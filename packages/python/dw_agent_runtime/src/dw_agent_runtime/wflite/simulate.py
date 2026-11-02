@@ -67,10 +67,10 @@ class _Executor:
         approved: bool = False,
         decision: DecisionCall | None = None,
     ) -> BaseModel:
-        tool = self.tools.resolve(name, version)
-        # What the executor's first step does: an input the tool's model
+        tool = self.tools.resolve(name, version, tenant_id=None)
+        # What the executor's input step does: an input the tool's schema
         # refuses fails here as it would fail live.
-        tool.input_model.model_validate(raw_input)
+        tool.behaviour.validate_input(raw_input)
         self.calls.append(
             {
                 "tool": f"{name}@{version}",
@@ -78,7 +78,7 @@ class _Executor:
                 "decision_class": decision.decision_class if decision else None,
             }
         )
-        output = tool.output_model.model_json_schema()
+        output = tool.behaviour.output_schema()
         return SampleOutput.model_validate(sample_of(output))
 
 

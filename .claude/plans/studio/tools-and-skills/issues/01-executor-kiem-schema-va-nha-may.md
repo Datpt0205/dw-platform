@@ -1,6 +1,6 @@
 # 01 — Executor tự kiểm JSON Schema, phân giải theo tenant, khe nhà máy theo loại
 
-Status: ready-for-agent
+Status: resolved (2026-11-02, main)
 Blocked by: .claude/plans/studio/runtime-hardening/issues/01-toolexecutor-gianh-luot-khong-cua-sau.md, .claude/plans/studio/tenant-config/issues/03-che-do-chay-va-gia-lap-o-executor.md
 Area: studio
 Yêu cầu: R1.1, R1.2, R1.3, R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R2.7, R2.8, R3.1, R3.2, G1, G2, G3, G4, G5, G6, TS2, TS3, TS4, TS5, TS6, TS10, TS12, TS13
@@ -106,62 +106,62 @@ runtime-hardening/01.
 
 ## Tiêu chí chấp nhận
 
-- [ ] R1.1 (TS2): gọi thẳng executor với `{"lead_id": 1, "amount": -5, "extra": "x"}` cho công cụ dữ
+- [x] R1.1 (TS2): gọi thẳng executor với `{"lead_id": 1, "amount": -5, "extra": "x"}` cho công cụ dữ
       liệu tenant → `validation_failed` nêu `path`, handler (spy) không chạy; gỡ bước kiểm lược đồ → test
       đỏ.
-- [ ] R1.2 (TS3): handler trả trường ngoài lược đồ hay sai kiểu → `tool_output_invalid`, model không
+- [x] R1.2 (TS3): handler trả trường ngoài lược đồ hay sai kiểu → `tool_output_invalid`, model không
       nhận đầu ra; gỡ bước kiểm đầu ra → test đỏ.
-- [ ] R1.3 (TS2): đầu vào có trường ngoài lược đồ → `validation_failed`, handler không chạy.
-- [ ] R2.1: công cụ đăng ký cho công ty A, lượt chạy của công ty B gọi cùng tên và phiên bản → `not_found`, handler
+- [x] R1.3 (TS2): đầu vào có trường ngoài lược đồ → `validation_failed`, handler không chạy.
+- [x] R2.1: công cụ đăng ký cho công ty A, lượt chạy của công ty B gọi cùng tên và phiên bản → `not_found`, handler
       không chạy; lượt của A → chạy; công cụ nền tảng cùng tên khi B không có mục riêng → B nhận bản nền tảng, không
       bao giờ bản của A; `has_tool` và `definitions_for` không thấy mục của A; resolve bỏ `tenant_id` khỏi khóa → test
       đỏ.
-- [ ] R2.2: bảng `kind -> factory` ở composition root có `object_crud` và `connector_action`, mỗi mục trả một
+- [x] R2.2: bảng `kind -> factory` ở composition root có `object_crud` và `connector_action`, mỗi mục trả một
       `ToolBehaviour` mà bộ lắp dựng thành `RegisteredTool` (nhà máy giả trong test; nhà máy thật là của ticket 03 và
       connections-and-vault/05); một loại không có trong bảng → `ConfigError`, không công cụ nào được đăng ký.
-- [ ] R2.3 (TS4): bảng ca của `check_policy_against_floor`: `http` POST với Mức tác động `none` →
+- [x] R2.3 (TS4): bảng ca của `check_policy_against_floor`: `http` POST với Mức tác động `none` →
       `kind_floor_violation`; bộ lắp dựng một công cụ có chính sách dưới sàn của loại → `ConfigError`, công cụ không
       được đăng ký; gỡ kiểm sàn → test đỏ.
-- [ ] R2.4 (TS4): bảng ca của cùng hàm: chính sách nền tảng `always`, ghi đè `conditional` → `kind_floor_violation`;
+- [x] R2.4 (TS4): bảng ca của cùng hàm: chính sách nền tảng `always`, ghi đè `conditional` → `kind_floor_violation`;
       ghi đè `conditional` lên `always` → nhận; ghi đè đúng bằng sàn → nhận.
-- [ ] R2.5 (TS5): gọi executor với `approved=False` cho công cụ cần duyệt, bỏ qua wrapper → `approval_required`,
+- [x] R2.5 (TS5): gọi executor với `approved=False` cho công cụ cần duyệt, bỏ qua wrapper → `approval_required`,
       handler không chạy; spy trên `executor.approval_required` thấy wrapper và `OneApprovalPerStepMiddleware` gọi nó
       cho mỗi lời gọi được hỏi; cho `approval_required` trả `True` với một công cụ mà `approval_policy.decide` không
       chặn → cả wrapper lẫn middleware hỏi người; middleware tự đọc `approval_policy` thay vì gọi
       `executor.approval_required` → test đỏ.
-- [ ] R2.6 (TS10): bảng ca gọi thẳng executor, mỗi ca từ chối ở một bước (phân giải, đầu vào, biên Digital Worker, lời
+- [x] R2.6 (TS10): bảng ca gọi thẳng executor, mỗi ca từ chối ở một bước (phân giải, đầu vào, biên Digital Worker, lời
       gọi quyết định, quyền, chế độ chạy, phê duyệt, sàn gửi tin, giành lượt) → spy của mọi bước sau không được gọi,
       không dòng `dispatched` nào, handler không chạy; lời gọi qua mọi bước → dòng `dispatched` có trước lời gọi
       handler; công cụ `critical` cần duyệt gọi ở `simulate` → lời gọi `simulated`, không `approval_required`, không
       dòng `platform.approval_requests` nào, còn ở `live` → `approval_required`; đảo hai bước liền nhau, kể cả chế độ
       chạy và phê duyệt, hay biên Digital Worker và kiểm quyền → test đỏ.
-- [ ] R2.7 (TS12): sổ thử đảo bước chế độ chạy và bước phê duyệt, thêm một bước không có tên trong R2.6, đăng ký một
+- [x] R2.7 (TS12): sổ thử đảo bước chế độ chạy và bước phê duyệt, thêm một bước không có tên trong R2.6, đăng ký một
       tên đuôi từ ngoài executor, hay bỏ bước phân giải mà không đưa vào danh sách chờ → test sổ đỏ, nêu bước;
       `build_tool_executor` dựng sổ bằng `build_tool_executor_steps`, API và worker dựng executor chỉ qua
       `build_tool_executor`, và gỡ một dòng đăng ký của hàm đó → test đỏ; `_execute` gọi một bước ngoài sổ → test đỏ;
       sổ thật của ticket này, danh sách chờ chỉ có công tắc điều khiển → xanh; đưa bước sàn gửi tin về danh sách chờ →
       test sổ đỏ.
-- [ ] R2.8 (TS13): bộ dựng không có sàn (`send_admission=None`), gọi `email.send` (khối `message`) →
+- [x] R2.8 (TS13): bộ dựng không có sàn (`send_admission=None`), gọi `email.send` (khối `message`) →
       `blocked:send_floor_unavailable`, handler (spy) không chạy, không dòng `dispatched` nào; một công cụ không có
       khối `message` → chạy như thường; cho lời gọi đi qua khi không có sàn → test đỏ.
-- [ ] R3.1 (TS6): công cụ có khối `message` → executor hỏi `SendAdmissionPort` trước mỗi lời gọi (spy thấy một lần
+- [x] R3.1 (TS6): công cụ có khối `message` → executor hỏi `SendAdmissionPort` trước mỗi lời gọi (spy thấy một lần
       mỗi lời gọi, kể cả hai lời gọi liền nhau cùng người nhận); công cụ mức `internal` có khối `message` gọi không khóa
       chống lặp → bị từ chối, sàn không được hỏi, handler không chạy (hôm nay lời gọi đó chạy); bỏ khối `message` khỏi
       điều kiện khóa bắt buộc → test đỏ.
-- [ ] R3.2 (TS6): lead không có đồng ý đúng mục đích → `email.send` không gọi nhà cung cấp, kết quả bị chặn
+- [x] R3.2 (TS6): lead không có đồng ý đúng mục đích → `email.send` không gọi nhà cung cấp, kết quả bị chặn
       `blocked:no_consent`, một dòng `refused` và một `tool.denied` mang `reason_code` đó, không `marketing.send_refused`
       nào do executor ghi (một, của `MarketingSendPolicy`); gỡ bước sàn gửi tin khỏi sổ → test đỏ.
-- [ ] G1: `test_happy_path_returns_typed_output_and_audits` và mọi test executor hiện có xanh.
-- [ ] G2: `test_replay_returns_cached_output_without_reexecution` xanh (phát lại theo khóa chống lặp
+- [x] G1: `test_happy_path_returns_typed_output_and_audits` và mọi test executor hiện có xanh.
+- [x] G2: `test_replay_returns_cached_output_without_reexecution` xanh (phát lại theo khóa chống lặp
       không chạy lại handler).
-- [ ] G3: `test_a_dw_run_outside_its_boundary_reaches_nothing` xanh sau khi biên Digital Worker vào sổ.
-- [ ] G4: `test_a_decision_above_its_level_needs_this_runs_matching_approval` xanh sau khi lời gọi quyết định vào
+- [x] G3: `test_a_dw_run_outside_its_boundary_reaches_nothing` xanh sau khi biên Digital Worker vào sổ.
+- [x] G4: `test_a_decision_above_its_level_needs_this_runs_matching_approval` xanh sau khi lời gọi quyết định vào
       sổ.
-- [ ] G5: `test_a_send_without_consent_is_refused_at_the_executor` và mọi test của
+- [x] G5: `test_a_send_without_consent_is_refused_at_the_executor` và mọi test của
       `packages/python/dw_agent_runtime/tests/integration/test_send_floor_executor_db.py` xanh sau khi sàn gửi tin vào
       sổ.
-- [ ] G6: `test_a_send_with_no_known_outcome_is_never_made_again` xanh sau khi giành lượt vào sổ.
-- [ ] Xong: `make ci && make test-integration` xanh.
+- [x] G6: `test_a_send_with_no_known_outcome_is_never_made_again` xanh sau khi giành lượt vào sổ.
+- [ ] Xong: `make ci && make test-integration` xanh (theo `wave-close.md`: cổng nhanh và integration của ticket đã chạy; toàn bộ `make test-integration` chạy lúc đóng đợt).
 
 ## Nguồn
 
@@ -270,3 +270,50 @@ runtime-hardening/01.
   Nguồn, ADR-0116 (Accepted) (sửa đổi 2026-11-02) và R2.6, R2.8, R3.1, G3-G6, TS6, TS13, Trong phạm vi, Phụ thuộc của
   spec cùng nói một điều. Hệ quả ngoài khu vực này, chưa sửa: compliance-pdpl:R3.12, CP25 (M4).
 - 2026-11-02 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-02 (agent, theo ủy quyền 31/10/2026): `build_tool_executor_steps()` không nhận `deps`, và một bước là
+  `async (executor, call) -> BaseModel | None` (phương thức `ToolExecutor.step_*` chưa gắn), không phải
+  `async (call)`: bước tới cổng của nó qua executor đang chạy, nên sổ là dữ liệu dựng một lần, không vòng tròn
+  executor-sổ; ba lối ra và việc sau giữ như bước 8 (`ToolCall.after_success` cho `sent`, nhả claim ở đuôi).
+  `ToolExecutor.steps` là trường bắt buộc, `seal()` chạy ở `__post_init__`. Nếu sai thì: bước nhận closure trên
+  `deps` và `build_tool_executor_steps(deps)` dựng chúng trước executor.
+- 2026-11-02 (agent, theo ủy quyền 31/10/2026): `ToolKindFactory.build(binding, contract)` không có `deps`:
+  nhà máy nhận phụ thuộc qua constructor (`CLAUDE.md`: constructor injection, không service locator). Bảng
+  `kind -> factory` là tham số `kinds` của bộ lắp duy nhất `ToolAssembler` (`tool_kinds.py`); hai root chưa dựng
+  bộ lắp vì W1 chưa có nhà máy thật nào (ticket 03, connections-and-vault/05 mang chúng và dòng ở root), và một
+  mục giả ở root là placeholder (`failure-modes.md` #1). Nếu sai thì: `wflite_host` thêm `build_tool_assembler`
+  mà hai root gọi với bảng rỗng.
+- 2026-11-02 (agent, theo ủy quyền 31/10/2026): `KIND_FLOORS` khóa theo `(kind, read|write)`: `object_crud` đọc
+  `none/never`, ghi `internal/conditional`; `connector_action` và `http` đọc `none/never`, ghi
+  `external/conditional`; phương thức `http` khác GET, HEAD luôn là ghi, và một binding không nói là ghi (đóng khi
+  thiếu). Loại không có trong bảng (`mcp`, `workflow`, `code`) bị bộ lắp từ chối tới khi ticket của nó ghi sàn.
+  Ghi đè công cụ nền tảng: `assemble(..., over=<định nghĩa nền tảng>)` lấy chính sách nền tảng làm sàn thứ hai.
+  Nếu sai thì: đổi số trong bảng, hàm và bộ lắp không đổi.
+- 2026-11-02 (agent, theo ủy quyền 31/10/2026): M1 theo khuyến nghị: `tool_output_invalid` là
+  `details.reason_code` của `validation_failed`. Với công cụ mức `external`, `critical`, đầu ra sai lược đồ sau khi
+  lời gọi đã rời nền tảng vẫn là `outcome_unknown` (runtime-hardening R6.12), không phải `tool_output_invalid`:
+  hiệu ứng có thể đã xảy ra, và cả hai đều không đưa đầu ra cho model. M2: `phone_vn` là di động 0 rồi 3, 5, 7, 8, 9
+  (10 số) hay cố định 02 rồi 9 số, `+84` thay số 0, bỏ khoảng trắng, chấm, gạch, ngoặc; `tax_code_vn` là 10 số,
+  10 số cộng `-` và 3 số chi nhánh, hay 12 số (mã cá nhân); chưa kiểm số kiểm tra. `date-time` tự kiểm (thư viện
+  không có nếu thiếu gói phụ, đo trên 4.26.0); `check_profile` từ chối `format` ngoài danh sách đóng. Nếu sai
+  thì: sửa hai regex ở `json_schema.py` và bảng ca của test.
+- 2026-11-02 (agent, theo ủy quyền 31/10/2026): sàn gửi tin không có khóa (chỉ tới được nếu sổ mất luật khóa của
+  bước phê duyệt) trả `blocked:no_idempotency_key` thay vì bỏ qua sàn như trước; mọi `resolve` khác truyền
+  `tenant_id=None` (lớp nền tảng: agent dựng một lần, wf-lite compile và simulate, `definitions_for`). Sửa chuỗi
+  `old` cũ của `compliance-pdpl/mutations/08.yaml` (CP8), `digital-worker/mutations/02.yaml` (DWK16),
+  `tenant-config/mutations/03.yaml` (R5.1, R5.3, R5.6) và `wf-ai/mutations/02.yaml` (R6.9) theo mã mới. Nếu sai
+  thì: các mutation đó báo "không áp được" ở lúc đóng đợt.
+- 2026-11-02 (agent): resolved. Khác ticket: bốn dòng trên. Mã: `tools.py` (`ToolBehaviour`, `pydantic_behaviour`,
+  `SchemaViolation`, `ToolRegistry` hai lớp trên `TenantOverlay`), `tool_schema.py` (`check_profile`,
+  `json_schema_behaviour`), `tool_kinds.py`, `json_schema.py` (`tool_problems`, `TOOL_FORMATS`), `executor.py`
+  (`TOOL_STEP_ORDER`, `ToolSteps`, `ToolCall`, `approval_required`, bước `step_*`, đuôi `_tail`),
+  `wflite_host.build_tool_executor_steps`; middleware và wrapper chỉ hỏi `approval_required`. Test: 73 unit mới
+  (`test_tool_steps.py` 25, `test_tool_schema.py` 22, `test_tool_kinds.py` 17, `test_tool_registry.py` 4,
+  `test_approval_required.py` 5), 1 integration mới và 1 mở rộng ở `test_send_floor_executor_db.py`; unit
+  `dw_agent_runtime` 813 xanh, `dw_platform` 216/217 (đỏ `test_retention_fragments` vì
+  `configs/copy/audit_actions.d/runtime-hardening.yaml` thiếu `copy_id`, có từ `48a6f3f`, không của ticket này);
+  integration của ticket: `test_send_floor_executor_db` 5, `test_executor_db` 2, `test_tool_claims` 18,
+  `apps/worker` `test_wflite_runs_db` 17 xanh. `mutations/01.yaml` 29 mutation, đã viết, chưa chạy (`mutate.py` chạy
+  lúc đóng đợt). `reviewing-feature-security` đã đọc: cách ly tenant (R2.1, test chéo công ty), phê duyệt (cổng
+  executor test thẳng), nội dung không tin cậy (lỗi không mang giá trị), mặc định đóng (sổ bắt buộc, loại và sàn
+  thiếu thì từ chối, binding không nói là ghi); vòng đời: mục công ty trong dict cả tiến trình chưa có bên gỡ (M3,
+  ticket 03). Không migration, không route.

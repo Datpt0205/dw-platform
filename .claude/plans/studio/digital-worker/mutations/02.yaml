@@ -100,7 +100,7 @@ mutations:
       - packages/python/dw_agent_runtime/tests/unit/test_executor.py::test_a_dw_run_outside_its_boundary_reaches_nothing
   - name: DWK16 the boundary is never asked
     file: packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py
-    old: "        if run_context.run_as_principal_id is not None:"
+    old: "        if call.run_context.run_as_principal_id is not None:"
     new: "        if False:"
     tests:
       - packages/python/dw_agent_runtime/tests/unit/test_executor.py::test_a_dw_run_outside_its_boundary_reaches_nothing

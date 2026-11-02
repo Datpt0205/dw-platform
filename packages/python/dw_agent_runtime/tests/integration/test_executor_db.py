@@ -10,11 +10,12 @@ from sqlalchemy.pool import NullPool
 
 from dw_agent_runtime.adapters.tool_claims import SqlToolClaims
 from dw_agent_runtime.adapters.tool_execution_store import SqlToolExecutionStore
+from dw_agent_runtime.adapters.wflite_host import build_tool_executor_steps
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.context import access_context_from_run
 from dw_agent_runtime.contracts import RunContext, ToolDefinition
 from dw_agent_runtime.executor import ToolExecutor
-from dw_agent_runtime.tools import RegisteredTool, ToolRegistry
+from dw_agent_runtime.tools import RegisteredTool, ToolRegistry, pydantic_behaviour
 from dw_kernel.errors import IdempotencyConflictError, PermissionDeniedError
 from dw_kernel.pagination import PageQuery, PageRequest
 from dw_kernel.ports import SystemClock, Uuid4Generator
@@ -58,9 +59,7 @@ def build_executor(app_url: str) -> tuple[ToolExecutor, SqlPlatformUnitOfWorkFac
                 idempotent=True,
                 data_classification=frozenset({"internal"}),
             ),
-            input_model=DispatchInput,
-            output_model=DispatchOutput,
-            handler=dispatch_handler,
+            behaviour=pydantic_behaviour(DispatchInput, DispatchOutput, dispatch_handler),
         )
     )
     uow_factory = SqlPlatformUnitOfWorkFactory(session_factory)
@@ -72,6 +71,7 @@ def build_executor(app_url: str) -> tuple[ToolExecutor, SqlPlatformUnitOfWorkFac
         id_generator=Uuid4Generator(),
         approval_policy=AutonomyApprovalPolicy(),
         claims=SqlToolClaims(session_factory),
+        steps=build_tool_executor_steps(),
     )
     return executor, uow_factory, call_counter
 

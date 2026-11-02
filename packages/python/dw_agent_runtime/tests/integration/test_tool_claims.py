@@ -41,6 +41,7 @@ from sqlalchemy.pool import NullPool
 from dw_agent_runtime.adapters.tool_claim_retention import SqlToolClaimRetention
 from dw_agent_runtime.adapters.tool_claims import SqlToolClaims
 from dw_agent_runtime.adapters.tool_execution_store import SqlToolExecutionStore
+from dw_agent_runtime.adapters.wflite_host import build_tool_executor_steps
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.contracts import RunContext, ToolDefinition
 from dw_agent_runtime.dispatch import (
@@ -50,7 +51,7 @@ from dw_agent_runtime.dispatch import (
     RejectedError,
 )
 from dw_agent_runtime.executor import ToolExecutor
-from dw_agent_runtime.tools import RegisteredTool, ToolRegistry
+from dw_agent_runtime.tools import RegisteredTool, ToolRegistry, pydantic_behaviour
 from dw_kernel.errors import ConflictError
 from dw_kernel.ports import SystemClock, Uuid4Generator
 from dw_platform.adapters.persistence.uow import SqlPlatformUnitOfWorkFactory
@@ -132,9 +133,7 @@ def _executor(
                 idempotent=True,
                 data_classification=frozenset({"internal"}),
             ),
-            input_model=SendInput,
-            output_model=SendOutput,
-            handler=handler,
+            behaviour=pydantic_behaviour(SendInput, SendOutput, handler),
         )
     )
     return ToolExecutor(
@@ -145,6 +144,7 @@ def _executor(
         id_generator=Uuid4Generator(),
         approval_policy=AutonomyApprovalPolicy(),
         claims=claims or SqlToolClaims(sessions),
+        steps=build_tool_executor_steps(),
     )
 
 
