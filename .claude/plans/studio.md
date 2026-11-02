@@ -447,7 +447,7 @@ Khối số dành riêng: 0100-0199.
 - [`digital-worker`](studio/digital-worker/spec.md): bản nháp theo D15-D17 (29/10/2026), ticket 01-04 `needs-triage`; ADR-0128 (Proposed) ánh xạ chuẩn DW của CASANOS. Chưa qua `checking-plan-readiness`; còn một cảnh báo EARS (R8.2). Tạm dừng: Đạt mở xem nền tảng agent của FCI (eos.fpt.ai, console-agents.fpt.ai) để đối chiếu hướng trước khi gate.
 - [`wf-lite`](studio/wf-lite/spec.md): bản nháp theo D17 (29/10/2026), ticket 01-02 `needs-triage`, sáu loại bước (thêm `logic.switch`, agent, tạm). Chưa gate; bốn cảnh báo EARS (R6.2, R6.4-R6.6).
 - [`leadcare`](studio/leadcare/spec.md): bản nháp theo D17 (29/10/2026), ticket 01-02 `needs-triage` (gói Marketing, cửa nhận lead có chữ ký, Mailpit, demo). Chưa gate; một cảnh báo EARS (R2.5).
-- [`wf-ai`](studio/wf-ai/spec.md): YC125 (D16, D18); spec và ticket 01-04 viết 31/10/2026 (`needs-triage`), trợ lý chỉ đổi cây bước, công cụ và prompt giới hạn ở tài liệu gốc.
+- [`wf-ai`](studio/wf-ai/spec.md): YC125 (D16, D18); spec và ticket 01-04 viết 31/10/2026; gate 2/11/2026 CHƯA ĐẠT (3 CRITICAL, 9 HIGH), đang sửa, trợ lý chỉ đổi cây bước, công cụ và prompt giới hạn ở tài liệu gốc.
 
 ## Đợt
 

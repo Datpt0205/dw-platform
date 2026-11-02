@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `main` · Viết: 31/10/2026
 Duyệt: agent, tạm theo ủy quyền 27/10/2026
-Sẵn sàng: chưa kiểm
+Sẵn sàng: CHƯA ĐẠT (2/11/2026; 3 CRITICAL, 9 HIGH; ticket 01-04)
 
 Chủ của một Digital Worker muốn đổi quy trình mẫu nó chạy (thêm một lần nhắc, bỏ một bước, đổi thứ tự) mà không viết YAML. Theo D16 (3) và D18 (4), trợ lý AI hỏi lại khi chưa rõ, nêu kế hoạch, rồi đề xuất một bản sửa dạng diff để người duyệt, từ chối hay sửa tiếp; trợ lý chỉ soạn cây bước từ sổ loại bước và những công cụ, prompt mà quy trình gốc đã dùng, không bao giờ đổi loại quyết định, mức tự chủ, kết nối, model hay thông tin đăng nhập; bản sửa chỉ chạy thật khi bộ kiểm của wf-lite, luật sàn HITL và một lượt mô phỏng đều qua và một người khác người soạn duyệt (YC125).
 
