@@ -88,13 +88,17 @@ from dw_platform.adapters.persistence.idempotency_store import (
     SqlIdempotencyKeyRetention,
 )
 from dw_platform.adapters.persistence.membership_lookup import SqlMembershipLookup
-from dw_platform.adapters.persistence.notifications import SqlNotificationRetention
+from dw_platform.adapters.persistence.notifications import (
+    SqlNotificationRepository,
+    SqlNotificationRetention,
+)
 from dw_platform.adapters.persistence.offboarding import (
     OffboardingPurgeSteps,
     SqlTenantOffboarding,
 )
 from dw_platform.adapters.persistence.outbox_drain import SqlOutboxDrain
 from dw_platform.adapters.persistence.partition_maintenance import SqlPartitionMaintenance
+from dw_platform.adapters.persistence.scope_holders import SqlScopeHolders
 from dw_platform.adapters.persistence.uow import SqlPlatformUnitOfWorkFactory
 from dw_platform.adapters.persistence.work_queue_repo import SqlWorkQueueRepository
 from dw_platform.adapters.persistence.zalo_link_repo import (
@@ -140,6 +144,7 @@ from dw_worker.consumers.memory import memory_handlers
 from dw_worker.consumers.offboarding import INTERVAL_SECONDS as OFFBOARDING_INTERVAL_SECONDS
 from dw_worker.consumers.offboarding import TenantOffboardingLane, build_offboarding_consumer
 from dw_worker.consumers.outbox import EventHandler, build_outbox_consumer
+from dw_worker.consumers.owner_coverage import OWNER_COVERAGE_LOW, build_owner_coverage_handler
 from dw_worker.consumers.reaper import INTERVAL_SECONDS as REAP_INTERVAL_SECONDS
 from dw_worker.consumers.reaper import ReapTarget, build_reaper_consumer
 from dw_worker.consumers.retention import INTERVAL_SECONDS as RETENTION_INTERVAL_SECONDS
@@ -454,6 +459,10 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
         # A decided raise of a DW's earned level (digital-worker R8.6).
         handlers[DW_AUTONOMY_RAISE_DECIDED] = build_raise_handler(
             RaiseSettler(repo=SqlDwAutonomyRepository(sessions), clock=clock, id_generator=ids)
+        )
+        # A tenant whose owners fell below two (tenant-rbac R3.12).
+        handlers[OWNER_COVERAGE_LOW] = build_owner_coverage_handler(
+            SqlScopeHolders(sessions), SqlNotificationRepository(sessions)
         )
         # A decided publication of a DW's workflow draft (wf-ai R6.5, R6.6).
         handlers[DW_WORKFLOW_PUBLISH_DECIDED] = build_publish_handler(

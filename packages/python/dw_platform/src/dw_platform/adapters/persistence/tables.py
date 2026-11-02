@@ -27,6 +27,9 @@ tenants = sa.Table(
     sa.Column("max_autonomy_level", sa.Text, nullable=False, server_default="A4"),
     sa.Column("timezone", sa.Text, nullable=True),
     sa.Column("locale", sa.Text, nullable=True),
+    # Since when fewer than two active people hold `platform.roles.write` or
+    # `studio.publish.approve`; NULL when not (migration b5677d345bc1, R3.13).
+    sa.Column("owner_coverage_low_since", sa.TIMESTAMP(timezone=True), nullable=True),
     sa.Column(
         "created_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text("now()")
     ),
@@ -100,7 +103,77 @@ permissions = sa.Table(
     sa.Column("status", sa.Text, nullable=False),
     sa.Column("status_reason", sa.Text, nullable=True),
     sa.Column("owner_package", sa.Text, nullable=False),
+    # Whether a tenant role may carry the key (migration b5677d345bc1).
+    sa.Column("tenant_grantable", sa.Boolean, nullable=False),
     sa.Column("created_at", sa.TIMESTAMP(timezone=True), nullable=False),
+)
+
+# Roles as tenant data (migration b5677d345bc1, tenant-rbac R3; ADR-0104): a
+# role or permission set of one tenant, cloned from a template, never resolved
+# through it. Tenant-wide: the workspace anchor is the assignment's.
+tenant_roles = sa.Table(
+    "tenant_roles",
+    metadata,
+    sa.Column("id", UUID(as_uuid=True), primary_key=True),
+    sa.Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("key", sa.Text, nullable=False),
+    sa.Column("name", sa.Text, nullable=False),
+    sa.Column("description", sa.Text, nullable=True),
+    sa.Column("kind", sa.Text, nullable=False),
+    sa.Column("is_system", sa.Boolean, nullable=False, server_default=sa.false()),
+    sa.Column("template_key", sa.Text, nullable=True),
+    sa.Column("version", sa.Integer, nullable=False, server_default="1"),
+    sa.Column("created_by", UUID(as_uuid=True), nullable=True),
+    sa.Column(
+        "created_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text("now()")
+    ),
+    sa.Column(
+        "updated_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text("now()")
+    ),
+    sa.Column("deleted_at", sa.TIMESTAMP(timezone=True), nullable=True),
+    sa.UniqueConstraint("tenant_id", "key", name="uq_tenant_roles_tenant_id_key"),
+    sa.UniqueConstraint("tenant_id", "id", name="uq_tenant_roles_tenant_id_id"),
+)
+
+tenant_role_permissions = sa.Table(
+    "tenant_role_permissions",
+    metadata,
+    sa.Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("role_id", UUID(as_uuid=True), primary_key=True),
+    sa.Column("permission_key", sa.Text, primary_key=True),
+    sa.Column("depth", sa.Text, nullable=False),
+)
+
+# One role held by one membership; its workspace is the membership's, through
+# the composite key to `memberships (tenant_id, workspace_id, id)`.
+role_assignments = sa.Table(
+    "role_assignments",
+    metadata,
+    sa.Column("id", UUID(as_uuid=True), primary_key=True),
+    sa.Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("workspace_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("membership_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("role_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("assigned_by", UUID(as_uuid=True), nullable=True),
+    sa.Column(
+        "assigned_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text("now()")
+    ),
+    sa.Column("expires_at", sa.TIMESTAMP(timezone=True), nullable=True),
+    sa.UniqueConstraint(
+        "membership_id", "role_id", name="uq_role_assignments_membership_id_role_id"
+    ),
+)
+
+# The tenant's access version, bumped by `platform.bump_access_version()` on
+# every table feeding authorization; the AccessContext cache key carries it.
+tenant_access_versions = sa.Table(
+    "tenant_access_versions",
+    metadata,
+    sa.Column("tenant_id", UUID(as_uuid=True), primary_key=True),
+    sa.Column("version", sa.BigInteger, nullable=False, server_default="0"),
+    sa.Column(
+        "changed_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text("now()")
+    ),
 )
 
 # Maps a verified (issuer, subject) — e.g. a Keycloak sub or a dev token subject —

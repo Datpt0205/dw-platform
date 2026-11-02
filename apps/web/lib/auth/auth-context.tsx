@@ -10,9 +10,12 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import type { Grant, Me } from "@dw/api-client";
 import { API_BASE_URL, AUTH_MODE } from "./config";
 import { getKeycloak } from "./keycloak";
 import {
+  ACCESS_REFUSED_EVENT,
+  apiClient,
   clearActiveWorkspace,
   clearDevToken,
   devToken,
@@ -27,8 +30,6 @@ export interface Membership {
   workspaceId: string;
   workspaceSlug: string;
   workspaceName: string;
-  roles: string[];
-  scopes: string[];
 }
 
 export type AuthStatus =
@@ -45,12 +46,20 @@ interface AuthContextValue {
   email: string | null;
   memberships: Membership[];
   active: Membership | null;
+  /** The roles assigned in the active workspace, from `GET /api/v1/me`. */
   roles: string[];
+  /** What the caller holds in the active workspace, from `GET /api/v1/me`. */
   scopes: string[];
+  /** Every privilege the caller holds in the tenant, with its depth and anchor. */
+  grants: Grant[];
+  /** The W1 bypass that passes every scope check, as `/me` reports it (G2). */
+  platformBypass: boolean;
   /** ADR-002: a global provisioning authority. May hold no tenant membership. */
   isPlatformOperator: boolean;
   hasScope: (scope: string) => boolean;
   hasRole: (role: string) => boolean;
+  /** Read `/me` again for the active workspace. */
+  reloadAccess: () => void;
   login: () => void;
   register: () => void;
   logout: () => void;
@@ -65,8 +74,6 @@ interface BootstrapMembership {
   workspace_id: string;
   workspace_slug: string;
   workspace_name: string;
-  roles: string[];
-  scopes: string[];
 }
 
 interface BootstrapResponse {
@@ -88,8 +95,6 @@ function mapMembership(m: BootstrapMembership): Membership {
     workspaceId: m.workspace_id,
     workspaceSlug: m.workspace_slug,
     workspaceName: m.workspace_name,
-    roles: m.roles,
-    scopes: m.scopes,
   };
 }
 
@@ -113,23 +118,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [memberships, setMemberships] = useState<Membership[]>([]);
   const [active, setActive] = useState<Membership | null>(null);
   const [isPlatformOperator, setIsPlatformOperator] = useState(false);
+  // What the caller holds in the active workspace: `GET /api/v1/me`, read
+  // again whenever the workspace changes and whenever the API refuses
+  // something (a 403), so a revoked key stops being offered at once. Nothing
+  // here infers a scope from a role (tenant-rbac R2.6).
+  const [access, setAccess] = useState<Me | null>(null);
+  const accessRequest = useRef(0);
   const initStarted = useRef(false);
+
+  const loadAccess = useCallback(() => {
+    const request = ++accessRequest.current;
+    apiClient()
+      .me()
+      .then((me) => {
+        if (request === accessRequest.current) setAccess(me);
+      })
+      .catch(() => {
+        // Refused or unreachable: hold nothing rather than a stale answer.
+        if (request === accessRequest.current) setAccess(null);
+      });
+  }, []);
 
   const activate = useCallback(
     (m: Membership, identity: { subject: string; displayName: string }) => {
       setActive(m);
+      setAccess(null);
       setActiveWorkspace({
         tenantId: m.tenantId,
         workspaceId: m.workspaceId,
         subject: identity.subject,
         displayName: identity.displayName,
         tenantName: m.tenantName,
-        roles: m.roles,
-        scopes: m.scopes,
       });
+      loadAccess();
     },
-    [],
+    [loadAccess],
   );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.addEventListener(ACCESS_REFUSED_EVENT, loadAccess);
+    return () => window.removeEventListener(ACCESS_REFUSED_EVENT, loadAccess);
+  }, [loadAccess]);
 
   const applyBootstrap = useCallback(
     (data: BootstrapResponse) => {
@@ -263,8 +293,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<AuthContextValue>(() => {
-    const roles = active?.roles ?? [];
-    const scopes = active?.scopes ?? [];
+    const roles = access?.roles ?? [];
+    const scopes = access?.scopes ?? [];
+    const platformBypass = access?.platform_bypass ?? false;
     return {
       mode: AUTH_MODE,
       status,
@@ -277,10 +308,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       active,
       roles,
       scopes,
+      grants: access?.grants ?? [],
+      platformBypass,
       isPlatformOperator,
-      hasScope: (scope: string) =>
-        roles.includes("platform_admin") || scopes.includes(scope),
+      // The bypass is `/me`'s to report, never this file's to infer (G2).
+      hasScope: (scope: string) => platformBypass || scopes.includes(scope),
       hasRole: (role: string) => roles.includes(role),
+      reloadAccess: loadAccess,
       login,
       register,
       logout,
@@ -296,7 +330,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     email,
     memberships,
     active,
+    access,
     isPlatformOperator,
+    loadAccess,
     login,
     register,
     logout,

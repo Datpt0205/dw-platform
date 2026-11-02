@@ -1,19 +1,21 @@
-"""Unit: the caching membership lookup serves from cache and invalidates.
+"""Unit: the caching membership lookup serves from cache, keyed by access version.
 
 Fakes for the cache and the inner lookup — no database. What matters: a second
 identical lookup is served from cache (the inner is not called again), a "no
-membership" answer is cached too, and a pattern delete forces a fresh lookup.
+membership" answer is cached too, a new access version of the tenant is a miss
+(tenant-rbac R4.1), and an entry an older deploy wrote, or one carrying another
+version, is rebuilt rather than read half (R4.2, RB13). A tenant with no version
+row is never cached.
 """
 
 from __future__ import annotations
 
-import fnmatch
 import json
 import uuid
 from dataclasses import replace
 
 from dw_platform.adapters.persistence.caching_lookup import CachingMembershipLookup
-from dw_platform.application.cache import membership_cache_pattern
+from dw_platform.application.access_context import Grant
 from dw_platform.application.identity import MembershipAccess
 
 TENANT = uuid.uuid4()
@@ -32,21 +34,25 @@ class _FakeCache:
     async def set(self, key: str, value: str, *, ttl_seconds: int) -> None:
         self.store[key] = value
 
-    async def delete_pattern(self, pattern: str) -> None:
-        for key in [k for k in self.store if fnmatch.fnmatch(k, pattern)]:
-            del self.store[key]
-
 
 class _CountingLookup:
-    def __init__(self, result: MembershipAccess | None) -> None:
+    """The database as the cache sees it: a version, and the access read at it."""
+
+    def __init__(self, result: MembershipAccess | None, version: int | None = 7) -> None:
         self.result = result
+        self.version = version
         self.calls = 0
+
+    async def access_version(self, tenant_id: uuid.UUID) -> int | None:
+        return self.version
 
     async def find_access(
         self, subject: str, issuer: str, tenant_id: uuid.UUID, workspace_id: uuid.UUID
     ) -> MembershipAccess | None:
         self.calls += 1
-        return self.result
+        if self.result is None:
+            return None
+        return replace(self.result, access_version=self.version)
 
 
 def _access() -> MembershipAccess:
@@ -60,6 +66,8 @@ def _access() -> MembershipAccess:
         clearance="internal",
         plan_id="professional",
         feature_flags=frozenset({"knowledge_search"}),
+        grants=(Grant(key="crm.lead.write", depth="workspace", anchor_workspace_id=WS),),
+        access_version=7,
     )
 
 
@@ -188,14 +196,61 @@ async def test_a_no_membership_answer_is_cached_too() -> None:
     assert inner.calls == 1  # default-deny is not re-queried every request
 
 
-async def test_invalidation_forces_a_fresh_lookup() -> None:
+async def test_a_new_access_version_is_a_fresh_lookup() -> None:
+    """R4.1: whoever changed what the tenant grants, the database bumped its
+    version, and the first request after the commit reads the new state."""
     access = _access()
     inner = _CountingLookup(access)
+    lookup = CachingMembershipLookup(inner, _FakeCache())
+
+    await lookup.find_access(SUBJECT, ISSUER, TENANT, WS)
+    inner.version = 8
+    served = await lookup.find_access(SUBJECT, ISSUER, TENANT, WS)
+
+    assert inner.calls == 2
+    assert served is not None and served.access_version == 8
+
+
+async def test_an_entry_without_grants_is_rebuilt_not_defaulted() -> None:
+    """R4.2 (RB13): an entry the previous deploy wrote has no `grants`; reading it
+    as "no grants" would be a guess, so it is a miss."""
     cache = _FakeCache()
+    inner = _CountingLookup(_access())
+    lookup = CachingMembershipLookup(inner, cache)
+    await lookup.find_access(SUBJECT, ISSUER, TENANT, WS)
+    _drop_field(cache, "grants")
+
+    served = await lookup.find_access(SUBJECT, ISSUER, TENANT, WS)
+
+    assert inner.calls == 2
+    assert served is not None and served.grants == _access().grants
+
+
+async def test_an_entry_carrying_another_version_is_a_miss() -> None:
+    """R4.2: the body says which state it holds, and a body that disagrees with
+    its key is not read."""
+    cache = _FakeCache()
+    inner = _CountingLookup(_access())
+    lookup = CachingMembershipLookup(inner, cache)
+    await lookup.find_access(SUBJECT, ISSUER, TENANT, WS)
+    [key] = cache.store
+    stale = json.loads(cache.store[key])
+    stale["access_version"] = 6
+    cache.store[key] = json.dumps(stale)
+
+    await lookup.find_access(SUBJECT, ISSUER, TENANT, WS)
+
+    assert inner.calls == 2
+
+
+async def test_a_tenant_without_a_version_row_is_read_and_never_cached() -> None:
+    """R4.2: after offboarding purged the row, nothing can key an entry."""
+    cache = _FakeCache()
+    inner = _CountingLookup(_access(), version=None)
     lookup = CachingMembershipLookup(inner, cache)
 
     await lookup.find_access(SUBJECT, ISSUER, TENANT, WS)
-    await cache.delete_pattern(membership_cache_pattern(TENANT, WS))
     await lookup.find_access(SUBJECT, ISSUER, TENANT, WS)
 
-    assert inner.calls == 2  # the grant/revoke invalidation was honoured
+    assert inner.calls == 2
+    assert cache.store == {}

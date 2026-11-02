@@ -42,14 +42,6 @@ class ValkeyCache:
         except RedisError:
             return
 
-    async def delete_pattern(self, pattern: str) -> None:
-        try:
-            keys = [key async for key in self.client.scan_iter(match=pattern, count=200)]
-            if keys:
-                await self.client.delete(*keys)
-        except RedisError:
-            return
-
 
 @dataclass(frozen=True)
 class NullCache:
@@ -59,7 +51,4 @@ class NullCache:
         return None
 
     async def set(self, key: str, value: str, *, ttl_seconds: int) -> None:
-        return
-
-    async def delete_pattern(self, pattern: str) -> None:
         return

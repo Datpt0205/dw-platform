@@ -13,13 +13,13 @@ import {
 import { AuditOutlined, DownOutlined, LogoutOutlined } from "@ant-design/icons";
 import { useAuth } from "../lib/auth/auth-context";
 import { NAV_ITEMS } from "../lib/nav/registry";
-import { OPERATOR_LABEL, roleLabel } from "../lib/nav/roles";
+import { BYPASS_LABEL, OPERATOR_LABEL, roleLabel } from "../lib/nav/roles";
 
 // Seniority low → high. Only the most senior role is shown, by its full name,
-// so two different admins never both read as a bare "admin". A platform
-// operator outranks every in-tenant role. A role a bounded context adds is
+// so two different admins never both read as a bare "admin". The bypass and a
+// platform operator outrank every role. A role a bounded context adds is
 // unranked and therefore only shown when the person holds nothing else.
-const ROLE_RANK = ["member", "approver", "org_admin", "platform_admin"];
+const ROLE_RANK = ["member", "approver", "tenant_owner", "org_admin"];
 
 // The menu's second door to the audit trail reads its scope from the nav
 // registry's entry, the one owner of "who is offered /audit": hard-coding a
@@ -27,8 +27,8 @@ const ROLE_RANK = ["member", "approver", "org_admin", "platform_admin"];
 // (approval-audit-and-workspace/02).
 const AUDIT_LOG = NAV_ITEMS.find((item) => item.href === "/audit");
 
-function tagColor(role: string | undefined, operator: boolean): string {
-  if (operator || role === "platform_admin" || role === "org_admin")
+function tagColor(role: string | undefined, elevated: boolean): string {
+  if (elevated || role === "org_admin" || role === "tenant_owner")
     return "gold";
   if (role === "approver") return "green";
   return "default";
@@ -36,8 +36,15 @@ function tagColor(role: string | undefined, operator: boolean): string {
 
 /** Header chip: who is signed in, where to go next, and sign-out. */
 export function SessionChip() {
-  const { status, displayName, roles, isPlatformOperator, logout, hasScope } =
-    useAuth();
+  const {
+    status,
+    displayName,
+    roles,
+    platformBypass,
+    isPlatformOperator,
+    logout,
+    hasScope,
+  } = useAuth();
 
   if (status !== "ready") return null;
 
@@ -47,10 +54,12 @@ export function SessionChip() {
   // A platform operator (creates tenants) outranks any in-tenant role.
   const roleText = isPlatformOperator
     ? OPERATOR_LABEL
-    : topRole
-      ? roleLabel(topRole)
-      : null;
-  const color = tagColor(topRole, isPlatformOperator);
+    : platformBypass
+      ? BYPASS_LABEL
+      : topRole
+        ? roleLabel(topRole)
+        : null;
+  const color = tagColor(topRole, isPlatformOperator || platformBypass);
   const name = displayName || "Người dùng";
 
   const items: MenuProps["items"] = [

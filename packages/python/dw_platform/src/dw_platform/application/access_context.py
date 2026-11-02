@@ -26,6 +26,18 @@ class SupportScope(BaseModel):
     scope_set_key: str
 
 
+class Grant(BaseModel):
+    """One privilege the person holds, from `platform.effective_grants`
+    (tenant-rbac R2): its key, its depth, and the workspace it is anchored at
+    (the workspace of the membership whose role carries it)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    key: str
+    depth: str
+    anchor_workspace_id: UUID
+
+
 class AccessContext(BaseModel):
     """Immutable, verified identity + tenancy + entitlement snapshot."""
 
@@ -59,6 +71,12 @@ class AccessContext(BaseModel):
     # under a customer's grant, with no role and the grant's stamped scopes.
     # Never cached, never built from a membership.
     support: SupportScope | None = None
+    # Every privilege the person holds in the tenant, whichever workspace it is
+    # anchored at (`scopes` is its projection for this workspace), and the
+    # tenant's access version the snapshot was read at (tenant-rbac R2.2, R4).
+    # Empty and None on a context built from no membership (support, a ceiling).
+    grants: tuple[Grant, ...] = ()
+    access_version: int | None = None
 
     @field_validator("plan_id", "clearance")
     @classmethod

@@ -9,9 +9,11 @@ Platform rows only. Every suite in the workspace imports this, so a business
 table named here would make all of them depend on one bounded context; a context
 that needs demo records of its own seeds them from its own package.
 
-What it deliberately does NOT seed: roles, permission sets and plans. That
-config is owned by Alembic migration ``0143_platform_role_catalog`` — a migrated
-database already has it, and a second source of truth here would drift.
+What it deliberately does NOT seed: role templates, permission sets and plans.
+That config is owned by the migrations — a migrated database already has it,
+and a second source of truth here would drift. Each tenant's own roles come from
+those templates: its system roles here, and a clone of any other template the
+first time a membership names it (migration b5677d345bc1).
 
 Runs as the migrator role (BYPASSRLS maintenance role) via the database URL.
 Deterministic UUIDs (uuid5) + ON CONFLICT upserts → re-running never creates
@@ -169,6 +171,12 @@ async def seed_test_env(database_url: str, *, restore_deleted: bool = True) -> d
                     stmt.on_conflict_do_update(
                         index_elements=["slug"], set_={"name": stmt.excluded.name}
                     )
+                )
+                # As `POST /api/v1/platform/tenants` gives every tenant (tenant-rbac
+                # R3.1): `tenant_owner` and `member`; idempotent.
+                await conn.execute(
+                    sa.text("SELECT platform.install_system_roles(CAST(:t AS uuid))"),
+                    {"t": str(tenant_id)},
                 )
 
                 workspace_id = sid("workspace", f"{tenant['slug']}:main")

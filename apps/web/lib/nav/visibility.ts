@@ -1,11 +1,10 @@
-import { hasAnyRole } from "./roles";
 import type { NavItem } from "./types";
 
-/** What the menu knows about the person looking at it. */
+/** What the menu knows about the person looking at it: what `GET /api/v1/me`
+ * says they hold in the active workspace (tenant-rbac R2.6), never a role key. */
 export interface NavViewer {
   isPlatformOperator: boolean;
   hasScope: (scope: string) => boolean;
-  roles: readonly string[];
 }
 
 /**
@@ -23,6 +22,5 @@ export function isNavItemVisible(item: NavItem, viewer: NavViewer): boolean {
     if (item.anyScope.length === 0) return false;
     if (!item.anyScope.some((scope) => viewer.hasScope(scope))) return false;
   }
-  if (item.roles && !hasAnyRole(viewer.roles, item.roles)) return false;
   return true;
 }

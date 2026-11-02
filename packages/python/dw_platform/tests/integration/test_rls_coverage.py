@@ -631,12 +631,24 @@ _TENANT_WIDE_ON_PURPOSE: dict[tuple[str, str], str] = {
     ("platform", "sod_waivers"): (
         "a separation-of-duties waiver for a person across the company's memberships"
     ),
+    ("platform", "tenant_access_versions"): (
+        "vai trò, quyền của vai trò và phiên bản quyền thuộc cả công ty; neo workspace nằm ở "
+        "`platform.role_assignments` (tenant-rbac ticket 02, DO-01)"
+    ),
     ("platform", "tenant_daily_spend_guard"): "the tenant's spend for one day, all workspaces",
     ("platform", "tenant_members"): (
         "a person's standing belongs to the whole company, not to a workspace "
         "(org-and-principals R4.1); each membership in a workspace hangs from it"
     ),
     ("platform", "tenant_offboarding_requests"): "the request to offboard the whole tenant",
+    ("platform", "tenant_role_permissions"): (
+        "vai trò, quyền của vai trò và phiên bản quyền thuộc cả công ty; neo workspace nằm ở "
+        "`platform.role_assignments` (tenant-rbac ticket 02, DO-01)"
+    ),
+    ("platform", "tenant_roles"): (
+        "vai trò, quyền của vai trò và phiên bản quyền thuộc cả công ty; neo workspace nằm ở "
+        "`platform.role_assignments` (tenant-rbac ticket 02, DO-01)"
+    ),
     ("platform", "workspaces"): "the workspace rows themselves; a workspace is not inside one",
 }
 

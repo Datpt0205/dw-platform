@@ -198,6 +198,16 @@ adapter. Constructor injection — no service locator, no mutable global client.
 - Tenant context is set per transaction from a verified server-side access
   context — never from anything the client sent.
 - Cache keys and object paths include tenant/workspace.
+- Roles are tenant data (`platform.tenant_roles`, assigned per membership in
+  `platform.role_assignments`) over a code-owned permission catalogue
+  (`platform.permissions`), each privilege with a depth anchored at its
+  assignment's workspace; `platform.effective_grants` is the one answer to
+  "what does this person hold", read by the access context, `/me` and the scope
+  holders (separation of duties reads `platform.assigned_grants`, the layer
+  under it that ignores member and tenant status), never re-derived in Python
+  (ADR 0104). The
+  access-context cache key carries `platform.tenant_access_versions`, bumped by
+  the database, so no route evicts it.
 - Entitlement checks and authorization checks are separate concerns.
 - Negative tests for cross-tenant reads and writes are mandatory.
 - Hiding a control is not authorization. Enforce where the mutation happens.

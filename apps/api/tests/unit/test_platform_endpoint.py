@@ -4,7 +4,6 @@ The repository is faked; the service's validation/audit and the route's operator
 gate run for real. The gate is the point: a non-operator can never reach these.
 """
 
-import fnmatch
 import re
 import uuid
 
@@ -64,6 +63,8 @@ class FakeRepo:
         self.granted: list[dict[str, object]] = []
         self.removed: list[uuid.UUID] = []
         self.statuses: dict[uuid.UUID, str] = {TENANT: "active"}
+        # What `platform.bump_access_version()` does on a write to the tenant.
+        self.versions: dict[uuid.UUID, int] = {TENANT: 1}
 
     async def list_tenants(self) -> list[TenantSummary]:
         return []
@@ -77,8 +78,9 @@ class FakeRepo:
     async def plan_exists(self, plan_id: str) -> bool:
         return plan_id == "professional"
 
-    async def create_tenant(self, **kw: object) -> None:
+    async def create_tenant(self, **kw: object) -> list[uuid.UUID]:
         self.created.append(kw)
+        return [uuid.uuid4(), uuid.uuid4()]
 
     async def set_tenant_status(
         self, tenant_id: uuid.UUID, status: str, *, only_from: frozenset[str] | None = None
@@ -88,6 +90,7 @@ class FakeRepo:
         previous = self.statuses.get(tenant_id)
         if previous is not None and (only_from is None or previous in only_from):
             self.statuses[tenant_id] = status
+            self.versions[tenant_id] += 1
         return previous
 
     async def main_workspace_id(self, tenant_id: uuid.UUID) -> uuid.UUID | None:
@@ -98,7 +101,7 @@ class FakeRepo:
             return UserRef(user_id=TARGET, email=email, display_name="New Hire")
         return None
 
-    async def grant_role(self, **kw: object) -> None:
+    async def assign_tenant_owner(self, **kw: object) -> None:
         self.granted.append(kw)
 
     async def list_operators(self) -> list[OperatorRef]:
@@ -200,15 +203,47 @@ async def test_operator_creates_a_tenant() -> None:
         make_container(repo, True),
         "POST",
         "/api/v1/platform/tenants",
-        json={"slug": "fis", "name": "FPT IS", "plan_id": "professional"},
+        json={
+            "slug": "fis",
+            "name": "FPT IS",
+            "plan_id": "professional",
+            "owners": ["a@fis.vn", "b@fis.vn"],
+        },
     )
     assert response.status_code == 201
     body = response.json()
     assert body["slug"] == "fis"
+    assert body["status"] == "setup"
     assert len(repo.created) == 1
     assert repo.created[0]["plan_id"] == "professional"
+    assert repo.created[0]["owners"] == ["a@fis.vn", "b@fis.vn"]
     # The write left a provisioning-audit row.
     assert any(a["action"] == "platform.tenant.create" for a in repo.audits)
+
+
+@pytest.mark.parametrize(
+    "owners",
+    [
+        ["a@fis.vn"],
+        ["a@fis.vn", "b@fis.vn", "c@fis.vn"],
+        ["Chu@fis.vn", "chu@FIS.vn"],
+        [],
+        ["a@fis.vn", "not-an-email"],
+    ],
+)
+async def test_create_refuses_anything_but_two_different_owners(owners: list[str]) -> None:
+    """tenant-rbac R3.9 (RB37): 422 `validation_failed`, nothing written."""
+    repo = FakeRepo()
+    response = await _request(
+        make_container(repo, True),
+        "POST",
+        "/api/v1/platform/tenants",
+        json={"slug": "fis", "name": "FPT IS", "plan_id": "professional", "owners": owners},
+    )
+    assert response.status_code == 422, response.text
+    assert response.json()["code"] == "validation_failed"
+    assert repo.created == []
+    assert repo.audits == []
 
 
 async def test_create_rejects_an_unknown_plan() -> None:
@@ -217,7 +252,12 @@ async def test_create_rejects_an_unknown_plan() -> None:
         make_container(repo, True),
         "POST",
         "/api/v1/platform/tenants",
-        json={"slug": "fis", "name": "FPT IS", "plan_id": "nope"},
+        json={
+            "slug": "fis",
+            "name": "FPT IS",
+            "plan_id": "nope",
+            "owners": ["a@fis.vn", "b@fis.vn"],
+        },
     )
     assert response.status_code == 404
     assert repo.created == []
@@ -229,7 +269,12 @@ async def test_create_rejects_a_bad_slug() -> None:
         make_container(repo, True),
         "POST",
         "/api/v1/platform/tenants",
-        json={"slug": "Not A Slug", "name": "X", "plan_id": "professional"},
+        json={
+            "slug": "Not A Slug",
+            "name": "X",
+            "plan_id": "professional",
+            "owners": ["a@fis.vn", "b@fis.vn"],
+        },
     )
     assert response.status_code == 422
     assert repo.created == []
@@ -256,8 +301,8 @@ async def test_assign_org_admin_grants_the_role() -> None:
         json={"email": "newhire@fpt.com"},
     )
     assert response.status_code == 201
-    assert repo.granted and repo.granted[0]["role"] == "org_admin"
-    assert repo.granted[0]["workspace_id"] == WORKSPACE
+    # tenant-rbac R3.8: `tenant_owner` at `main`, no `org_admin` key.
+    assert repo.granted == [{"tenant_id": TENANT, "workspace_id": WORKSPACE, "user_id": TARGET}]
 
 
 async def test_operator_cannot_remove_themselves() -> None:
@@ -293,7 +338,7 @@ async def test_every_platform_route_refuses_a_non_operator() -> None:
 
 
 class _HonestCache:
-    """Deletes what a pattern matches, as Redis's SCAN + DEL does."""
+    """Keeps what is set, as Redis does; nothing evicts it but a new key."""
 
     def __init__(self) -> None:
         self.entries: dict[str, str] = {}
@@ -304,16 +349,15 @@ class _HonestCache:
     async def set(self, key: str, value: str, *, ttl_seconds: int) -> None:
         self.entries[key] = value
 
-    async def delete_pattern(self, pattern: str) -> None:
-        for key in [k for k in self.entries if fnmatch.fnmatchcase(k, pattern)]:
-            del self.entries[key]
-
 
 class _StatusAwareLookup:
     """The uncached lookup's rule: a tenant that is not `active` resolves nothing."""
 
     def __init__(self, repo: FakeRepo) -> None:
         self.repo = repo
+
+    async def access_version(self, tenant_id: uuid.UUID) -> int | None:
+        return self.repo.versions.get(tenant_id)
 
     async def find_access(
         self, subject: str, issuer: str, tenant_id: uuid.UUID, workspace_id: uuid.UUID
@@ -330,6 +374,7 @@ class _StatusAwareLookup:
             clearance="internal",
             plan_id="professional",
             feature_flags=frozenset(),
+            access_version=self.repo.versions.get(tenant_id),
         )
 
 
@@ -357,7 +402,8 @@ async def _as_member(container: ApiContainer) -> httpx.Response:
 
 
 async def test_a_lock_stops_the_next_request_of_a_member_whose_context_is_cached() -> None:
-    """R3.3 (FH8): the member's context is in the cache when the operator locks."""
+    """R3.3 (FH8), with no eviction at the route (tenant-rbac R4.1): the lock
+    bumps the access version, so the cached context is never read again."""
     repo, cache = FakeRepo(), _HonestCache()
     container = _lifecycle_container(repo, cache)
     assert (await _as_member(container)).status_code == 200

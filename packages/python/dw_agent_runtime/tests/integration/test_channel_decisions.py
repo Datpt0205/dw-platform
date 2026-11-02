@@ -69,6 +69,7 @@ from dw_platform.application.authorization import ScopeAuthorizationService
 from dw_platform.application.channel_access import LinkedUserAccess
 from dw_platform.domain.approval import ApprovalRequest
 from dw_platform.testing.members import add_tenant_member
+from dw_platform.testing.rbac import catalogue_test_keys
 
 pytestmark = pytest.mark.integration
 
@@ -174,6 +175,7 @@ class World:
     async def tenant(self) -> tuple[uuid.UUID, uuid.UUID]:
         tenant_id, workspace_id = uuid.uuid4(), uuid.uuid4()
         async with self.migrator.begin() as conn:
+            await catalogue_test_keys(conn, [BOARD])
             await conn.execute(
                 sa.text(
                     "INSERT INTO platform.roles (key, name, scopes)"

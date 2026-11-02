@@ -30,14 +30,18 @@ export function purgeLegacyDemoTokens(): void {
   window.localStorage.removeItem(KEYS.quickAccounts);
 }
 
+/** Fired on `window` when the API answers 403: what the caller holds may have
+ * changed, so the auth context reads `GET /api/v1/me` again (tenant-rbac R2.6). */
+export const ACCESS_REFUSED_EVENT = "dw:access-refused";
+
+/** The active workspace as stored here. What the caller holds there is never
+ * stored: it is `GET /api/v1/me`'s answer, read by the auth context. */
 export interface Session {
   tenantId: string;
   workspaceId: string;
   subject?: string;
   displayName?: string;
   tenantName?: string;
-  roles?: string[];
-  scopes?: string[];
 }
 
 export interface ActiveWorkspace {
@@ -46,8 +50,6 @@ export interface ActiveWorkspace {
   subject?: string;
   displayName?: string;
   tenantName?: string;
-  roles: string[];
-  scopes: string[];
 }
 
 export function loadSession(): Session | null {
@@ -70,10 +72,10 @@ export function loadSession(): Session | null {
 export function setActiveWorkspace(active: ActiveWorkspace): void {
   window.localStorage.setItem(KEYS.tenant, active.tenantId);
   window.localStorage.setItem(KEYS.workspace, active.workspaceId);
-  const { subject, displayName, tenantName, roles, scopes } = active;
+  const { subject, displayName, tenantName } = active;
   window.localStorage.setItem(
     KEYS.profile,
-    JSON.stringify({ subject, displayName, tenantName, roles, scopes }),
+    JSON.stringify({ subject, displayName, tenantName }),
   );
 }
 
@@ -164,22 +166,16 @@ export function clientOptions(baseUrl: string): ApiClientOptions {
         clearActiveWorkspace();
         window.location.href = "/";
       }
+      // 403 = refused: what the caller holds may have changed since `/me` was
+      // read. Not for `/me` itself, which a refusal would only ask again.
+      if (
+        res.status === 403 &&
+        typeof window !== "undefined" &&
+        !String(input).endsWith("/api/v1/me")
+      ) {
+        window.dispatchEvent(new Event(ACCESS_REFUSED_EVENT));
+      }
       return res;
     },
   };
-}
-
-/**
- * UI permission helper mirroring the backend rule: `platform_admin` bypasses
- * scope checks; otherwise the scope must be present. This only hides/disables
- * controls for clarity — the API is the sole authority.
- */
-export function hasScope(session: Session | null, scope: string): boolean {
-  if (!session) return false;
-  if (session.roles?.includes("platform_admin")) return true;
-  return session.scopes?.includes(scope) ?? false;
-}
-
-export function hasRole(session: Session | null, role: string): boolean {
-  return session?.roles?.includes(role) ?? false;
 }

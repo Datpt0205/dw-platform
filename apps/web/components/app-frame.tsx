@@ -69,7 +69,7 @@ function Brand({ href }: { href: string }) {
 /** Auth gate + application shell. Children render only once a workspace is
  * active; every other state gets a dedicated full-screen view. */
 export function AppFrame({ children }: { children: ReactNode }) {
-  const { status, error, logout, active, isPlatformOperator, hasScope, roles } =
+  const { status, error, logout, active, isPlatformOperator, hasScope } =
     useAuth();
   const pathname = usePathname();
   const router = useRouter();
@@ -79,9 +79,9 @@ export function AppFrame({ children }: { children: ReactNode }) {
   const visibleNav = useMemo(
     () =>
       NAV_ITEMS.filter((item) =>
-        isNavItemVisible(item, { isPlatformOperator, hasScope, roles }),
+        isNavItemVisible(item, { isPlatformOperator, hasScope }),
       ),
-    [isPlatformOperator, hasScope, roles],
+    [isPlatformOperator, hasScope],
   );
   // Where the logo points.
   const home = visibleNav[0]?.href ?? "/";

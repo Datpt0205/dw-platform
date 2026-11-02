@@ -13,7 +13,7 @@ from uuid import UUID
 
 from dw_kernel.autonomy import FAIL_CLOSED_LEVEL, AutonomyLevel
 from dw_kernel.errors import PermissionDeniedError, TenantContextMissingError
-from dw_platform.application.access_context import AccessContext
+from dw_platform.application.access_context import AccessContext, Grant
 from dw_platform.application.ports import VerifiedIdentity
 
 
@@ -50,6 +50,10 @@ class MembershipAccess:
     visible_owners: frozenset[UUID] | None = None
     # Most restrictive by default, for the reason given on AccessContext.
     max_autonomy_level: AutonomyLevel = FAIL_CLOSED_LEVEL
+    grants: tuple[Grant, ...] = ()
+    # The tenant's access version, read before the rest in the same
+    # transaction; None when the tenant has no version row (offboarded).
+    access_version: int | None = None
 
 
 class MembershipLookupPort(Protocol):
@@ -62,6 +66,15 @@ class MembershipLookupPort(Protocol):
         tenant_id: UUID,
         workspace_id: UUID,
     ) -> MembershipAccess | None: ...
+
+
+class VersionedMembershipLookupPort(MembershipLookupPort, Protocol):
+    """A lookup that can also say which access version its tenant is at: what a
+    cache in front of it keys by (tenant-rbac R4.1)."""
+
+    async def access_version(self, tenant_id: UUID) -> int | None:
+        """The tenant's current access version, or None when it has none."""
+        ...
 
 
 def context_from(access: MembershipAccess) -> AccessContext:
@@ -84,6 +97,8 @@ def context_from(access: MembershipAccess) -> AccessContext:
         record_visibility=access.record_visibility,
         visible_owners=access.visible_owners,
         max_autonomy_level=access.max_autonomy_level,
+        grants=access.grants,
+        access_version=access.access_version,
     )
 
 

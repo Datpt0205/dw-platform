@@ -438,8 +438,9 @@ def _position(worker: DigitalWorker) -> CursorPosition:
 @dataclass(frozen=True)
 class SqlDwMembershipCheck:
     """Implements ``MembershipCheckPort``: a user's membership in the caller's
-    workspace, the user's kind, and the scopes the membership holds, read the
-    one way the access context reads them (`effective_scopes`)."""
+    workspace, the user's kind, and the scopes they hold acting there, read the
+    one way the access context reads them (`effective_scopes`, over
+    `platform.scopes_in`; tenant-rbac R2.2)."""
 
     session_factory: async_sessionmaker[AsyncSession]
 
@@ -461,16 +462,14 @@ class SqlDwMembershipCheck:
         async with tenant_session(self.session_factory, bound) as session:
             row = (
                 await session.execute(
-                    sa.select(tables.users.c.kind, m.c.role_keys, m.c.permission_set_keys)
+                    sa.select(tables.users.c.kind)
                     .select_from(m.join(tables.users, tables.users.c.id == m.c.user_id))
                     .where(m.c.workspace_id == workspace_id, m.c.user_id == user_id)
                 )
             ).first()
             if row is None:
                 return None
-            scopes = await effective_scopes(
-                session, frozenset(row.role_keys), frozenset(row.permission_set_keys)
-            )
+            scopes = await effective_scopes(session, bound.tenant_id, user_id, workspace_id)
         return Standing(kind="service" if row.kind == "service" else "human", scopes=scopes)
 
 
@@ -576,8 +575,8 @@ class SqlDwBoundary:
                         _DW.c.id,
                         _DW.c.state,
                         _DW.c.allowed_tools,
-                        m.c.role_keys,
-                        m.c.permission_set_keys,
+                        _DW.c.workspace_id,
+                        m.c.id.label("membership_id"),
                     )
                     .select_from(
                         _DW.outerjoin(
@@ -593,12 +592,12 @@ class SqlDwBoundary:
             ).first()
             if row is None:
                 return None
+            # The principal's grants in force in the DW's own workspace;
+            # none without a membership there.
             scopes = (
                 frozenset()
-                if row.role_keys is None
-                else await effective_scopes(
-                    session, frozenset(row.role_keys), frozenset(row.permission_set_keys)
-                )
+                if row.membership_id is None
+                else await effective_scopes(session, tenant_id, principal_id, row.workspace_id)
             )
         return DwBoundary(
             operating=row.state == "operating",

@@ -28,7 +28,6 @@ from dw_platform.application.admin_console import (
     TenantSettings,
     UpdateTenantSettings,
 )
-from dw_platform.application.cache import membership_cache_pattern, tenant_cache_pattern
 from dw_platform.application.hierarchy import HierarchyService, SetManager
 from dw_platform.application.separation_of_duties import (
     ConfirmWaiver,
@@ -301,11 +300,7 @@ async def set_permission_sets(
             user_id=user_id, permission_set_keys=frozenset(payload.permission_set_keys)
         ),
     )
-    # Changed this member's scopes → drop the workspace's cached AccessContexts.
-    if container.cache is not None:
-        await container.cache.delete_pattern(
-            membership_cache_pattern(context.tenant_id, context.workspace_id)
-        )
+    # No cache eviction: the write bumps the tenant's access version (R4.1).
     return Response(status_code=204)
 
 
@@ -333,9 +328,7 @@ async def update_tenant(
         ),
     )
     # record_visibility and max_autonomy_level both change what every request in
-    # the tenant may do → drop its cached AccessContexts so it takes effect at once.
-    if container.cache is not None:
-        await container.cache.delete_pattern(tenant_cache_pattern(context.tenant_id))
+    # the tenant may do; the write to `platform.tenants` bumps the access version.
     return _tenant_view(settings)
 
 
@@ -367,12 +360,8 @@ async def set_manager(
     await _hierarchy(container).set_manager(
         context, SetManager(user_id=user_id, manager_user_id=payload.manager_user_id)
     )
-    # A manager change reshapes subtrees → the workspace's cached visible_owners
-    # are stale; drop them so the new roll-up takes effect at once.
-    if container.cache is not None:
-        await container.cache.delete_pattern(
-            membership_cache_pattern(context.tenant_id, context.workspace_id)
-        )
+    # A manager change reshapes subtrees; the write to `platform.memberships`
+    # bumps the access version, so the new roll-up holds from the next request.
     return Response(status_code=204)
 
 

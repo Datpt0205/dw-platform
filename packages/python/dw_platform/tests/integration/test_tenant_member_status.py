@@ -265,23 +265,11 @@ async def test_the_provisioners_grant_writes_an_invited_member(
 ) -> None:
     repo = SqlProvisioningRepository(async_sessionmaker(provisioner_engine, expire_on_commit=False))
     person = world.users["not_staff"]
-    await repo.grant_role(
-        membership_id=uuid.uuid4(),
-        tenant_id=world.tenant_a,
-        workspace_id=world.ws2,
-        user_id=person,
-        role="member",
-    )
+    await repo.assign_tenant_owner(tenant_id=world.tenant_a, workspace_id=world.ws2, user_id=person)
     assert await _status(migrator, world.tenant_a, person) == "invited"
     # A second grant into the other workspace keeps the row as it is.
     await _set_status(migrator, world.tenant_a, person, "suspended")
-    await repo.grant_role(
-        membership_id=uuid.uuid4(),
-        tenant_id=world.tenant_a,
-        workspace_id=world.ws1,
-        user_id=person,
-        role="member",
-    )
+    await repo.assign_tenant_owner(tenant_id=world.tenant_a, workspace_id=world.ws1, user_id=person)
     assert await _status(migrator, world.tenant_a, person) == "suspended"
 
 

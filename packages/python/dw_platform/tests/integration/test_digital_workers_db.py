@@ -47,6 +47,7 @@ from dw_platform.application.identity import context_from
 from dw_platform.domain.audit import AuditEvent
 from dw_platform.domain.digital_worker import DecisionClass, DwConfiguration, DwPeople
 from dw_platform.testing.members import add_tenant_member
+from dw_platform.testing.rbac import catalogue_test_keys
 
 pytestmark = pytest.mark.integration
 
@@ -87,6 +88,7 @@ async def build_world(migrator: AsyncEngine) -> World:
     names = ("creator", "owner", "tech", "tech_narrow", "assigner", "validator", "b_member")
     w.users = {name: uuid.uuid4() for name in names}
     async with migrator.begin() as conn:
+        await catalogue_test_keys(conn, ["email.send"])
         await conn.execute(
             sa.text(
                 "INSERT INTO platform.roles (key, name, scopes)"

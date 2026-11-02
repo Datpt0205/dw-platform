@@ -18,7 +18,6 @@ from dw_api.bootstrap import ApiContainer
 from dw_api.dependencies.auth import RequireProvisioningContext
 from dw_api.dependencies.services import RequireContainer
 from dw_kernel.errors import InfrastructureError
-from dw_platform.application.cache import tenant_cache_pattern
 from dw_platform.application.provisioning import OffboardingStatus, ProvisioningService
 
 router = APIRouter(prefix="/platform", tags=["platform"])
@@ -33,12 +32,18 @@ class TenantView(BaseModel):
     workspace_count: int
     member_count: int
     created_at: datetime
+    # Since when fewer than two people hold `platform.roles.write` or
+    # `studio.publish.approve`; None when not (tenant-rbac R3.13).
+    owner_coverage_low_since: datetime | None
 
 
 class CreateTenantRequest(BaseModel):
     slug: str = Field(min_length=2, max_length=40)
     name: str = Field(min_length=1, max_length=200)
     plan_id: str
+    # Exactly two different emails, compared lower-cased (R3.9); the service
+    # holds the rule, so a body of any length reaches it and is answered 422.
+    owners: list[str] = Field(max_length=10)
 
 
 class NewTenantView(BaseModel):
@@ -46,6 +51,7 @@ class NewTenantView(BaseModel):
     workspace_id: UUID
     slug: str
     name: str
+    status: str
 
 
 class RenameTenantRequest(BaseModel):
@@ -121,6 +127,7 @@ async def list_tenants(
             workspace_count=t.workspace_count,
             member_count=t.member_count,
             created_at=t.created_at,
+            owner_coverage_low_since=t.owner_coverage_low_since,
         )
         for t in tenants
     ]
@@ -159,11 +166,15 @@ async def create_tenant(
     container: RequireContainer,
 ) -> NewTenantView:
     t = await _service(container).create_tenant(
-        context, slug=body.slug, name=body.name, plan_id=body.plan_id
+        context, slug=body.slug, name=body.name, plan_id=body.plan_id, owners=body.owners
     )
     await _install_report_templates(container, tenant_id=t.tenant_id, workspace_id=t.workspace_id)
     return NewTenantView(
-        tenant_id=t.tenant_id, workspace_id=t.workspace_id, slug=t.slug, name=t.name
+        tenant_id=t.tenant_id,
+        workspace_id=t.workspace_id,
+        slug=t.slug,
+        name=t.name,
+        status=t.status,
     )
 
 
@@ -184,18 +195,8 @@ async def rename_tenant(
         workspace_count=t.workspace_count,
         member_count=t.member_count,
         created_at=t.created_at,
+        owner_coverage_low_since=t.owner_coverage_low_since,
     )
-
-
-async def _forget_access(container: ApiContainer, tenant_id: UUID) -> None:
-    """Drop the tenant's cached AccessContexts once its status changed, so the
-    next request of every member meets the uncached lookup, which refuses a
-    tenant that is not `active` (R3.3). Interim until tenant-rbac/02 puts the
-    access version into the cache key; that ticket removes these three calls.
-    A failing delete fails the route rather than leaving the lock unenforced
-    for the cache's 30 seconds."""
-    if container.cache is not None:
-        await container.cache.delete_pattern(tenant_cache_pattern(tenant_id))
 
 
 @router.post("/tenants/{tenant_id}/lock", status_code=204)
@@ -205,7 +206,6 @@ async def lock_tenant(
     container: RequireContainer,
 ) -> None:
     await _service(container).set_tenant_status(context, tenant_id=tenant_id, status="locked")
-    await _forget_access(container, tenant_id)
 
 
 @router.post("/tenants/{tenant_id}/unlock", status_code=204)
@@ -215,7 +215,6 @@ async def unlock_tenant(
     container: RequireContainer,
 ) -> None:
     await _service(container).set_tenant_status(context, tenant_id=tenant_id, status="active")
-    await _forget_access(container, tenant_id)
 
 
 def _offboarding_view(status: OffboardingStatus) -> OffboardingStatusView:
@@ -243,7 +242,6 @@ async def initiate_offboarding(
     offboarding lane — this call only starts it.
     """
     status = await _service(container).initiate_offboarding(context, tenant_id=tenant_id)
-    await _forget_access(container, tenant_id)
     return _offboarding_view(status)
 
 

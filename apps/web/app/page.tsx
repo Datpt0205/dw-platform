@@ -17,13 +17,12 @@ import { isNavItemVisible } from "../lib/nav/visibility";
  * here too, and nothing here can offer a link the menu would hide.
  */
 export default function HomePage() {
-  const { displayName, active, isPlatformOperator, hasScope, roles } =
-    useAuth();
+  const { displayName, active, isPlatformOperator, hasScope } = useAuth();
 
   const destinations = NAV_ITEMS.filter(
     (item) =>
       item.href !== "/" &&
-      isNavItemVisible(item, { isPlatformOperator, hasScope, roles }),
+      isNavItemVisible(item, { isPlatformOperator, hasScope }),
   );
 
   return (

@@ -1,5 +1,5 @@
-"""Platform provisioning: create/lock tenants, assign the first Org Admin, and
-manage the Platform Operator allowlist (ADR-002).
+"""Platform provisioning: create/lock tenants with their two owners, install an
+owner where one is missing, and manage the Platform Operator allowlist (ADR-002).
 
 This path is deliberately *tenant-less*. A ``ProvisioningContext`` carries only
 the operator's principal id — the FastAPI dependency refuses to build one for a
@@ -11,7 +11,7 @@ platform provisioning tables, so nothing here can touch a tenant's business data
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
@@ -24,9 +24,11 @@ from dw_platform.domain.audit import AuditEvent
 
 # A tenant slug is a URL-safe handle: lowercase, digits, single hyphens.
 _SLUG = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
-_ORG_ADMIN_ROLE = "org_admin"
+_EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 _MAIN_WORKSPACE_SLUG = "main"
 _TENANT_STATUSES = frozenset({"active", "locked"})
+# A tenant is created with exactly two owners (R3.1, R3.9; V4.38).
+OWNERS_PER_NEW_TENANT = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,6 +48,8 @@ class TenantSummary:
     workspace_count: int
     member_count: int
     created_at: datetime
+    # Since when fewer than two people hold an owner key (R3.13); None if not.
+    owner_coverage_low_since: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,6 +125,7 @@ class NewTenant:
     workspace_id: UUID
     slug: str
     name: str
+    status: str
 
 
 class ProvisioningRepositoryPort(Protocol):
@@ -146,7 +151,16 @@ class ProvisioningRepositoryPort(Protocol):
         slug: str,
         name: str,
         plan_id: str,
-    ) -> None: ...
+        owners: Sequence[str],
+    ) -> list[UUID]:
+        """In one transaction: the tenant in `setup`, its `main` workspace and
+        plan, its system roles, and each owner (a lower-cased email, an
+        existing person reused or an `invite:` one created) as an `invited`
+        company member holding `tenant_owner` at `main`. Returns the owners'
+        user ids. ConflictError, and nothing written, when an owner is support
+        staff (`support_staff_not_member`) or a platform operator
+        (`operator_not_assignable`)."""
+        ...
 
     async def set_tenant_status(
         self, tenant_id: UUID, status: str, *, only_from: frozenset[str] | None = None
@@ -176,17 +190,12 @@ class ProvisioningRepositoryPort(Protocol):
 
     async def find_user_by_email(self, email: str) -> UserRef | None: ...
 
-    async def grant_role(
-        self,
-        *,
-        membership_id: UUID,
-        tenant_id: UUID,
-        workspace_id: UUID,
-        user_id: UUID,
-        role: str,
+    async def assign_tenant_owner(
+        self, *, tenant_id: UUID, workspace_id: UUID, user_id: UUID
     ) -> None:
-        """Add ``role`` to the user's membership in that workspace, creating the
-        membership if absent. Idempotent in the role set."""
+        """Assign `tenant_owner` to the user at that workspace, creating the
+        company row (`invited`) and the membership if absent. Idempotent.
+        ConflictError as `create_tenant` gives for support staff and operators."""
         ...
 
     async def list_operators(self) -> list[OperatorRef]: ...
@@ -257,10 +266,27 @@ class ProvisioningService:
         return await self.repo.list_users()
 
     async def create_tenant(
-        self, context: ProvisioningContext, *, slug: str, name: str, plan_id: str
+        self,
+        context: ProvisioningContext,
+        *,
+        slug: str,
+        name: str,
+        plan_id: str,
+        owners: Sequence[str],
     ) -> NewTenant:
         slug = slug.strip().lower()
         name = name.strip()
+        emails = [owner.strip().lower() for owner in owners]
+        # R3.9: exactly two different owners, compared lower-cased, or nothing is written.
+        if (
+            len(emails) != OWNERS_PER_NEW_TENANT
+            or len(set(emails)) != len(emails)
+            or not all(_EMAIL.fullmatch(email) for email in emails)
+        ):
+            raise DomainError(
+                "a tenant is created with exactly two different owner emails",
+                details={"reason_code": "two_owners_required"},
+            )
         if not _SLUG.match(slug):
             raise DomainError(
                 "tenant slug must be lowercase letters, digits and single hyphens",
@@ -278,21 +304,28 @@ class ProvisioningService:
             workspace_id=self.ids.new_uuid(),
             slug=slug,
             name=name,
+            status="setup",
         )
-        await self.repo.create_tenant(
+        owner_ids = await self.repo.create_tenant(
             tenant_id=tenant.tenant_id,
             workspace_id=tenant.workspace_id,
             entitlement_id=self.ids.new_uuid(),
             slug=slug,
             name=name,
             plan_id=plan_id,
+            owners=emails,
         )
         await self._audit(
             context,
             "platform.tenant.create",
             "tenant",
             str(tenant.tenant_id),
-            {"slug": slug, "name": name, "plan_id": plan_id},
+            {
+                "slug": slug,
+                "name": name,
+                "plan_id": plan_id,
+                "owner_ids": [str(owner) for owner in owner_ids],
+            },
         )
         return tenant
 
@@ -307,6 +340,12 @@ class ProvisioningService:
         previous = await self.repo.set_tenant_status(tenant_id, status, only_from=_TENANT_STATUSES)
         if previous is None:
             raise NotFoundError("unknown tenant", details={"tenant_id": str(tenant_id)})
+        if previous == "setup":
+            # Opened by its second owner's activation alone (R3.10, R3.15).
+            raise ConflictError(
+                "the tenant is waiting for its second owner",
+                details={"tenant_id": str(tenant_id), "reason_code": "tenant_setup"},
+            )
         if previous not in _TENANT_STATUSES:
             raise ConflictError(
                 "the tenant is being offboarded",
@@ -403,19 +442,20 @@ class ProvisioningService:
             raise NotFoundError(
                 "no user with that email has signed in yet", details={"email": email}
             )
-        await self.repo.grant_role(
-            membership_id=self.ids.new_uuid(),
-            tenant_id=tenant_id,
-            workspace_id=workspace_id,
-            user_id=user.user_id,
-            role=_ORG_ADMIN_ROLE,
+        # R3.8: `tenant_owner` at `main`, no longer `org_admin` in `role_keys`.
+        await self.repo.assign_tenant_owner(
+            tenant_id=tenant_id, workspace_id=workspace_id, user_id=user.user_id
         )
         await self._audit(
             context,
             "platform.org_admin.assign",
             "membership",
             str(user.user_id),
-            {"tenant_id": str(tenant_id), "workspace_id": str(workspace_id)},
+            {
+                "tenant_id": str(tenant_id),
+                "workspace_id": str(workspace_id),
+                "role_key": "tenant_owner",
+            },
         )
         return user
 

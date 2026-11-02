@@ -1,0 +1,253 @@
+# Mutation check of tenant-rbac ticket 02: scripts/mutate.py runs this file at
+# the queue's close (wave-close.md). One mutation per control (RB5-RB14, RB34,
+# RB37-RB41) and per layer that holds one (failure-modes #3, #5). A mutation of
+# the migration takes effect when the suite's session fixture recreates the
+# database, so its tests are integration tests.
+mutations:
+- name: RB5 effective grants drop the permission sets
+  file: db/migrations/versions/b5677d345bc1_tenant_roles.py
+  old: "        JOIN platform.tenant_roles r ON r.tenant_id = a.tenant_id AND r.id = a.role_id\n        JOIN platform.tenant_role_permissions p"
+  new: "        JOIN platform.tenant_roles r ON r.tenant_id = a.tenant_id AND r.id = a.role_id AND r.kind = 'role'\n        JOIN platform.tenant_role_permissions p"
+  tests:
+  - packages/python/dw_platform/tests/integration/test_tenant_roles.py::test_a_person_holds_the_union_of_their_assignments_anchored_where_assigned
+  - apps/api/tests/integration/test_tenant_roles_api.py::test_me_answers_from_the_effective_grants_across_workspaces
+- name: RB6 the projection drops the anchor condition
+  file: db/migrations/versions/b5677d345bc1_tenant_roles.py
+  old: "           OR g.anchor_workspace_id = p_workspace_id\n           OR k.scope_kind = 'record'"
+  new: "           OR true\n           OR k.scope_kind = 'record'"
+  tests:
+  - packages/python/dw_platform/tests/integration/test_tenant_roles.py::test_a_person_holds_the_union_of_their_assignments_anchored_where_assigned
+  - apps/api/tests/integration/test_tenant_roles_api.py::test_me_answers_from_the_effective_grants_across_workspaces
+- name: RB7 a suspended member keeps their grants
+  file: db/migrations/versions/b5677d345bc1_tenant_roles.py
+  old: "          AND tm.status = 'active'\n          AND t.status = 'active'"
+  new: '          AND t.status = ''active'''
+  tests:
+  - packages/python/dw_platform/tests/integration/test_tenant_roles.py::test_a_source_not_in_force_grants_nothing
+- name: RB7 a locked tenant keeps its grants
+  file: db/migrations/versions/b5677d345bc1_tenant_roles.py
+  old: "          AND tm.status = 'active'\n          AND t.status = 'active'\n    $$"
+  new: "          AND tm.status = 'active'\n    $$"
+  tests:
+  - packages/python/dw_platform/tests/integration/test_tenant_roles.py::test_a_source_not_in_force_grants_nothing
+- name: RB7 a soft-deleted role keeps granting
+  file: db/migrations/versions/b5677d345bc1_tenant_roles.py
+  old: "        WHERE a.tenant_id = p_tenant_id\n          AND r.deleted_at IS NULL\n          AND (a.expires_at IS NULL OR a.expires_at > now())\n        UNION ALL"
+  new: "        WHERE a.tenant_id = p_tenant_id\n          AND (a.expires_at IS NULL OR a.expires_at > now())\n        UNION ALL"
+  tests:
+  - packages/python/dw_platform/tests/integration/test_tenant_roles.py::test_a_source_not_in_force_grants_nothing
+- name: RB7 an expired assignment keeps granting
+  file: db/migrations/versions/b5677d345bc1_tenant_roles.py
+  old: "          AND r.deleted_at IS NULL\n          AND (a.expires_at IS NULL OR a.expires_at > now())\n        UNION ALL"
+  new: "          AND r.deleted_at IS NULL\n        UNION ALL"
+  tests:
+  - packages/python/dw_platform/tests/integration/test_tenant_roles.py::test_a_source_not_in_force_grants_nothing
+- name: RB34 the owner takes keys no tenant may hold
+  file: db/migrations/versions/b5677d345bc1_tenant_roles.py
+  old: "          AND k.status = 'active'\n          AND k.tenant_grantable\n    $$"
+  new: "          AND k.status = 'active'\n    $$"
+  tests:
+  - packages/python/dw_platform/tests/integration/test_tenant_roles.py::test_the_owner_holds_every_grantable_active_key_registered_even_later
+  - apps/api/tests/integration/test_tenant_roles_api.py::test_an_owner_holds_a_key_registered_after_the_assignment
+- name: RB34 the owner takes retired keys
+  file: db/migrations/versions/b5677d345bc1_tenant_roles.py
+  old: "          AND k.status = 'active'\n          AND k.tenant_grantable\n    $$"
+  new: "          AND k.tenant_grantable\n    $$"
+  tests:
+  - packages/python/dw_platform/tests/integration/test_tenant_roles.py::test_the_owner_holds_every_grantable_active_key_registered_even_later
+- name: R2.5 scope holders keep a filter of their own that hides the change (holders read the column)
+  file: packages/python/dw_platform/src/dw_platform/adapters/persistence/scope_holders.py
+  old: '           ARRAY(SELECT platform.scopes_in(m.tenant_id, m.user_id, m.workspace_id)) AS scopes'
+  new: '           ARRAY(SELECT jsonb_array_elements_text(m.role_keys)) AS scopes'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_tenant_roles.py::test_the_checkers_are_the_holders_the_holders_query_names_but_the_proposer
+- name: RB8 the assignment's role key is one column
+  file: db/migrations/versions/b5677d345bc1_tenant_roles.py
+  old: "        CONSTRAINT fk_role_assignments_tenant_id_tenant_roles\n            FOREIGN KEY (tenant_id, role_id)\n            REFERENCES platform.tenant_roles (tenant_id, id) ON DELETE CASCADE,"
+  new: "        CONSTRAINT fk_role_assignments_tenant_id_tenant_roles\n            FOREIGN KEY (role_id)\n            REFERENCES platform.tenant_roles (id) ON DELETE CASCADE,"
+  tests:
+  - packages/python/dw_platform/tests/integration/test_tenant_roles.py::test_one_tenant_reads_and_names_none_of_anothers_roles
+- name: RB9 no depth trigger
+  file: db/migrations/versions/b5677d345bc1_tenant_roles.py
+  old: '           OR (v_kind = ''workspace'' AND NEW.depth NOT IN (''workspace'', ''tenant'')) THEN'
+  new: '           OR false THEN'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_tenant_roles.py::test_a_privilege_takes_only_a_depth_its_kind_allows
+- name: RB10 a clone reads through to its template
+  file: db/migrations/versions/b5677d345bc1_tenant_roles.py
+  old: "        JOIN platform.tenant_role_permissions p\n          ON p.tenant_id = a.tenant_id AND p.role_id = r.id\n        WHERE"
+  new: "        JOIN (SELECT tp.tenant_id, tp.role_id, coalesce(tpl.s, tp.permission_key) AS permission_key, tp.depth FROM platform.tenant_role_permissions tp JOIN platform.tenant_roles tr ON tr.id = tp.role_id LEFT JOIN LATERAL (SELECT jsonb_array_elements_text(x.scopes) s FROM platform.roles x WHERE x.key = tr.template_key) tpl ON true) p\n          ON p.tenant_id = a.tenant_id AND p.role_id = r.id\n        WHERE"
+  tests:
+  - packages/python/dw_platform/tests/integration/test_tenant_roles.py::test_a_template_edited_later_leaves_its_clone_as_it_was
+- name: RB11 no advisory lock on the role limit
+  file: db/migrations/versions/b5677d345bc1_tenant_roles.py
+  old: '        PERFORM pg_advisory_xact_lock(hashtext(''tenant_roles:'' || NEW.tenant_id::text));'
+  new: '        NULL;'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_tenant_roles.py::test_the_201st_role_is_refused_and_two_racing_for_the_200th_get_one
+- name: RB12 no version bump on the role assignments
+  file: db/migrations/versions/b5677d345bc1_tenant_roles.py
+  old: '    "role_assignments",\n    "memberships",\n    "tenants",'
+  new: '    "memberships",\n    "tenants",'
+  tests:
+  - apps/api/tests/integration/test_tenant_roles_api.py::test_an_assignment_revoked_in_raw_sql_is_refused_at_the_next_request
+- name: FH8 no version bump on the tenants (foundations-hardening's mutation, moved here)
+  file: db/migrations/versions/b5677d345bc1_tenant_roles.py
+  old: '    "memberships",\n    "tenants",\n    "entitlements",'
+  new: '    "memberships",\n    "entitlements",'
+  tests:
+  - apps/api/tests/integration/test_tenant_roles_api.py::test_a_lock_through_the_route_refuses_the_next_request
+- name: RB13 a cached entry without grants is read with a default
+  file: packages/python/dw_platform/src/dw_platform/adapters/persistence/caching_lookup.py
+  old: '                for key, depth, anchor in data["grants"]'
+  new: '                for key, depth, anchor in data.get("grants", [])'
+  tests:
+  - packages/python/dw_platform/tests/unit/test_caching_lookup.py::test_an_entry_without_grants_is_rebuilt_not_defaulted
+- name: RB13 a cached entry of another version is read
+  file: packages/python/dw_platform/src/dw_platform/adapters/persistence/caching_lookup.py
+  old: '        if data["access_version"] != version:'
+  new: '        if False:'
+  tests:
+  - packages/python/dw_platform/tests/unit/test_caching_lookup.py::test_an_entry_carrying_another_version_is_a_miss
+- name: R4.2 the version is bumped by re-creating its row
+  file: db/migrations/versions/b5677d345bc1_tenant_roles.py
+  old: "        UPDATE platform.tenant_access_versions\n        SET version = version + 1, changed_at = now()\n        WHERE tenant_id = v_tenant;"
+  new: "        INSERT INTO platform.tenant_access_versions (tenant_id) VALUES (v_tenant)\n        ON CONFLICT (tenant_id) DO UPDATE SET version = platform.tenant_access_versions.version + 1;"
+  tests:
+  - packages/python/dw_platform/tests/integration/test_offboarding.py::test_offboarding_exports_and_purges_the_role_tables_and_the_version_row_stays_gone
+- name: R4.2 the version row is purged for any tenant
+  file: db/migrations/versions/b5677d345bc1_tenant_roles.py
+  old: "            SELECT 1 FROM platform.tenants WHERE id = p_tenant_id AND status = 'offboarding'\n        ) THEN\n            RAISE EXCEPTION 'purge_tenant_access_version runs only for a tenant offboarding'"
+  new: "            SELECT 1 FROM platform.tenants WHERE id = p_tenant_id\n        ) THEN\n            RAISE EXCEPTION 'purge_tenant_access_version runs only for a tenant offboarding'"
+  tests:
+  - packages/python/dw_platform/tests/integration/test_tenant_roles.py::test_the_version_row_is_purged_only_for_an_offboarding_tenant
+- name: R4.1 the legacy trigger only inserts
+  file: db/migrations/versions/b5677d345bc1_tenant_roles.py
+  old: '        IF EXISTS (SELECT 1 FROM unnest(v_old) k WHERE NOT k = ANY (v_new)) THEN'
+  new: '        IF false THEN'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_tenant_roles.py::test_the_legacy_columns_copy_what_they_add_and_remove_and_nothing_else
+- name: R4.1 the legacy trigger revokes the owner too
+  file: db/migrations/versions/b5677d345bc1_tenant_roles.py
+  old: '              AND r.key NOT IN (''platform_admin'', ''tenant_owner'');'
+  new: "              AND r.key <> 'platform_admin';\n            DELETE FROM platform.role_assignments a USING platform.tenant_roles r WHERE a.membership_id = NEW.id AND r.id = a.role_id AND r.key = 'tenant_owner';"
+  tests:
+  - packages/python/dw_platform/tests/integration/test_tenant_roles.py::test_the_legacy_columns_copy_what_they_add_and_remove_and_nothing_else
+- name: RB14 no separation of duties on the assignments
+  file: db/migrations/versions/b5677d345bc1_tenant_roles.py
+  old: '        "CREATE TRIGGER trg_role_assignments_separation_of_duties"\n        " AFTER INSERT OR UPDATE ON platform.role_assignments"'
+  new: '        "CREATE TRIGGER trg_role_assignments_separation_of_duties"\n        " AFTER UPDATE ON platform.role_assignments"'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_tenant_roles.py::test_two_sides_of_a_rule_in_two_workspaces_are_refused_with_the_holder
+- name: R5.1 the waiver in-use guard counts nobody
+  file: db/migrations/versions/b5677d345bc1_tenant_roles.py
+  old: '        IF relying > 0 THEN'
+  new: '        IF false THEN'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_tenant_roles.py::test_a_confirmed_waiver_lets_both_sides_through_and_cannot_be_revoked_while_relied_on
+- name: R5.1 the legacy routes lose their 409
+  file: packages/python/dw_platform/src/dw_platform/adapters/persistence/separation_of_duties.py
+  old: '    if refused is None or refused[0] != _ROLE_SOD:'
+  new: '    if True:'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_separation_of_duties.py::test_granting_both_sides_of_a_rule_is_refused_as_a_conflict
+- name: R5.2 the owner role is judged too
+  file: db/migrations/versions/b5677d345bc1_tenant_roles.py
+  old: '        WHERE g.user_id = p_user_id AND g.role_key <> ''tenant_owner'''
+  new: '        WHERE g.user_id = p_user_id'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_tenant_roles.py::test_the_owner_role_is_not_judged_but_an_ordinary_role_it_adds_is
+- name: RB37 setup missing from the status check
+  file: db/migrations/versions/b5677d345bc1_tenant_roles.py
+  old: '        " CHECK (status IN (''setup'', ''active'', ''locked'', ''offboarding'', ''offboarded''))"'
+  new: '        " CHECK (status IN (''active'', ''locked'', ''offboarding'', ''offboarded''))"'
+  tests:
+  - apps/api/tests/integration/test_tenant_roles_api.py::test_a_tenant_is_created_in_setup_with_two_invited_owners
+- name: RB37 one owner is enough
+  file: packages/python/dw_platform/src/dw_platform/application/provisioning.py
+  old: "            len(emails) != OWNERS_PER_NEW_TENANT\n            or len(set(emails)) != len(emails)"
+  new: '            len(set(emails)) != len(emails)'
+  tests:
+  - apps/api/tests/unit/test_platform_endpoint.py::test_create_refuses_anything_but_two_different_owners
+  - apps/api/tests/integration/test_tenant_roles_api.py::test_anything_but_two_different_owners_writes_nothing
+- name: RB38 no setup transition on activation
+  file: db/migrations/versions/b5677d345bc1_tenant_roles.py
+  old: '        "CREATE TRIGGER trg_tenant_members_complete_setup"\n        " AFTER UPDATE OF status ON platform.tenant_members FOR EACH ROW"'
+  new: '        "CREATE TRIGGER trg_tenant_members_complete_setup"\n        " AFTER DELETE ON platform.tenant_members FOR EACH ROW"'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_tenant_roles.py::test_the_second_owner_activated_opens_the_tenant_in_the_same_transaction
+  - apps/api/tests/integration/test_tenant_roles_api.py::test_a_setup_tenant_is_closed_until_its_second_owner_signs_in
+- name: RB38 no setup transition on an owner assignment
+  file: db/migrations/versions/b5677d345bc1_tenant_roles.py
+  old: '        "CREATE TRIGGER trg_role_assignments_complete_setup"\n        " AFTER INSERT OR UPDATE OF role_id, membership_id ON platform.role_assignments"'
+  new: '        "CREATE TRIGGER trg_role_assignments_complete_setup"\n        " AFTER DELETE ON platform.role_assignments"'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_tenant_roles.py::test_assigning_the_owner_role_to_an_active_member_opens_the_tenant
+- name: RB38 the count does not wait for the tenant row
+  file: db/migrations/versions/b5677d345bc1_tenant_roles.py
+  old: '        PERFORM 1 FROM platform.tenants WHERE id = v_tenant FOR UPDATE;'
+  new: '        PERFORM 1 FROM platform.tenants WHERE id = v_tenant;'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_tenant_roles.py::test_two_owners_activated_at_once_still_open_the_tenant
+- name: RB39 no operator guard on assignments
+  file: db/migrations/versions/b5677d345bc1_tenant_roles.py
+  old: '        "CREATE TRIGGER trg_role_assignments_operator_not_owner"\n        " BEFORE INSERT OR UPDATE ON platform.role_assignments"'
+  new: '        "CREATE TRIGGER trg_role_assignments_operator_not_owner"\n        " BEFORE DELETE ON platform.role_assignments"'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_tenant_roles.py::test_no_operator_or_support_staff_member_is_made_an_owner
+  - apps/api/tests/integration/test_tenant_roles_api.py::test_an_operator_or_support_staff_owner_is_refused_and_nothing_is_written
+- name: RB39 the guard forgets the support staff
+  file: db/migrations/versions/b5677d345bc1_tenant_roles.py
+  old: "                OR EXISTS (SELECT 1 FROM platform.support_staff WHERE user_id = v_user)\n            ) AND EXISTS ("
+  new: '            ) AND EXISTS ('
+  tests:
+  - packages/python/dw_platform/tests/integration/test_tenant_roles.py::test_no_operator_or_support_staff_member_is_made_an_owner
+- name: RB39 an owner may be listed as an operator
+  file: db/migrations/versions/b5677d345bc1_tenant_roles.py
+  old: '        "CREATE TRIGGER trg_platform_operators_not_owner BEFORE INSERT"'
+  new: '        "CREATE TRIGGER trg_platform_operators_not_owner BEFORE DELETE"'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_tenant_roles.py::test_an_owner_key_reaches_no_operator_and_no_owner_becomes_an_operator
+  - apps/api/tests/integration/test_tenant_roles_api.py::test_an_owner_cannot_be_listed_as_operator_or_support_staff
+- name: RB40 the warning is written on every write below two
+  file: db/migrations/versions/b5677d345bc1_tenant_roles.py
+  old: "            WHERE id = p_tenant_id AND owner_coverage_low_since IS NULL\n            RETURNING owner_coverage_low_since INTO v_since;"
+  new: "            WHERE id = p_tenant_id\n            RETURNING owner_coverage_low_since INTO v_since;"
+  tests:
+  - apps/worker/tests/integration/test_owner_coverage_db.py::test_a_fall_below_two_tells_each_member_admin_once_where_they_are_anchored
+- name: RB40 an unregistered key counts as held by nobody
+  file: db/migrations/versions/b5677d345bc1_tenant_roles.py
+  old: '            WHERE k.key = ANY (platform.owner_permission_keys()) AND k.status = ''active'''
+  new: '            WHERE k.key = ANY (platform.owner_permission_keys()) OR true'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_tenant_roles.py::test_no_warning_while_neither_owner_key_is_in_the_catalogue
+- name: RB40 the handler's source key ignores the fall
+  file: apps/worker/src/dw_worker/consumers/owner_coverage.py
+  old: '            f"{OWNER_COVERAGE_LOW}:{tenant_id}:{payload.owner_coverage_low_since.isoformat()}"'
+  new: '            f"{OWNER_COVERAGE_LOW}:{tenant_id}"'
+  tests:
+  - apps/worker/tests/integration/test_owner_coverage_db.py::test_a_fall_below_two_tells_each_member_admin_once_where_they_are_anchored
+- name: RB41 setup may leave for locked
+  file: db/migrations/versions/b5677d345bc1_tenant_roles.py
+  old: '               OR (OLD.status = ''setup'' AND NEW.status NOT IN (''active'', ''offboarding''))'
+  new: '               OR false'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_tenant_roles.py::test_setup_is_entered_at_creation_and_left_for_active_or_offboarding_only
+- name: RB41 the first sign-in no longer activates in a setup company
+  file: db/migrations/versions/349080a62e41_tenant_members.py
+  old: '            WHERE user_id = p_user_id AND status = ''invited'';'
+  new: '            WHERE user_id = p_user_id AND status = ''invited'' AND EXISTS (SELECT 1 FROM platform.tenants t WHERE t.id = tenant_id AND t.status = ''active'');'
+  tests:
+  - apps/api/tests/integration/test_tenant_roles_api.py::test_a_setup_tenant_is_closed_until_its_second_owner_signs_in
+- name: RB41 the door refuses only a locked tenant
+  file: packages/python/dw_platform/src/dw_platform/adapters/persistence/membership_lookup.py
+  old: '    if membership_row is None or membership_row.tenant_status != "active":'
+  new: '    if membership_row is None or membership_row.tenant_status == "locked":'
+  tests:
+  - apps/api/tests/integration/test_tenant_roles_api.py::test_a_setup_tenant_is_closed_until_its_second_owner_signs_in
+- name: R3.5 the backfill leaves the permission sets out
+  file: db/migrations/versions/b5677d345bc1_tenant_roles.py
+  old: "    CROSS JOIN LATERAL (\n        SELECT jsonb_array_elements_text(m.role_keys)\n        UNION SELECT jsonb_array_elements_text(m.permission_set_keys)\n    ) k(key)\n    JOIN platform.tenant_roles r"
+  new: "    CROSS JOIN LATERAL (\n        SELECT jsonb_array_elements_text(m.role_keys)\n    ) k(key)\n    JOIN platform.tenant_roles r"
+  tests:
+  - packages/python/dw_platform/tests/integration/test_tenant_roles_migration.py::test_every_membership_keeps_its_keys_and_gains_only_the_owners_or_a_tenant_key

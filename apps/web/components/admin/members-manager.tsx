@@ -25,7 +25,7 @@ import { RegionState } from "@dw/ui";
 import { apiClient } from "../../lib/session";
 import { useAuth } from "../../lib/auth/auth-context";
 import { errorMessage } from "../../lib/error-message";
-import { roleLabel } from "../../lib/nav/roles";
+import { PLATFORM_ADMIN_ROLE, roleLabel } from "../../lib/nav/roles";
 import { EmailPicker } from "../email-picker";
 
 // Business roles anyone who manages members can hand out. PLUG-IN POINT: a
@@ -36,17 +36,17 @@ const BASE_GRANTABLE_ROLES = ["member", "approver"];
 // are offered only to a platform admin (see `grantableRoles`). Listing them also
 // lets an existing admin member's row show its real role instead of falling
 // back to the first business role.
-const ADMIN_GRANTABLE_ROLES = ["org_admin", "platform_admin"];
+const ADMIN_GRANTABLE_ROLES = ["org_admin", PLATFORM_ADMIN_ROLE];
 
 export function MembersManager() {
-  const { active, roles } = useAuth();
+  const { active, platformBypass } = useAuth();
   const { message, modal } = App.useApp();
   const { token } = theme.useToken();
   const workspaceId = active?.workspaceId ?? null;
-  // Only the platform_admin ROLE may mint an admin role — the grant handler's
-  // _forbid_escalation lets exactly that role through and refuses everyone else,
-  // so the UI offers the admin options to the same set and no one it would 403.
-  const canGrantAdmin = roles.includes("platform_admin");
+  // Only the bypass may mint an admin role — the grant handler's
+  // _forbid_escalation lets exactly it through and refuses everyone else, so
+  // the UI offers the admin options to the same set, as `/me` reports it.
+  const canGrantAdmin = platformBypass;
   const grantableRoles = useMemo(
     () =>
       [

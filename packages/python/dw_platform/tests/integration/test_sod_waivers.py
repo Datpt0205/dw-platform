@@ -56,6 +56,7 @@ from dw_platform.application.separation_of_duties import (
     WaiveRule,
 )
 from dw_platform.domain.audit import AuditEvent
+from dw_platform.testing.rbac import catalogue_test_keys, unregister_key
 from dw_platform.testing.seed_env import seed_test_env
 
 pytestmark = pytest.mark.integration
@@ -115,6 +116,7 @@ async def catalogue(migrator_engine: AsyncEngine) -> AsyncIterator[_Catalogue]:
     )
     order, pay = f"test.{suffix}.order", f"test.{suffix}.pay"
     async with migrator_engine.begin() as conn:
+        await catalogue_test_keys(conn, [order, pay])
         for key, scopes in ((made.orderer, [order]), (made.payer, [pay])):
             await conn.execute(sa.insert(tables.roles).values(key=key, name=key, scopes=scopes))
         await conn.execute(
@@ -133,9 +135,21 @@ async def catalogue(migrator_engine: AsyncEngine) -> AsyncIterator[_Catalogue]:
             sa.delete(tables.sod_waivers).where(tables.sod_waivers.c.rule_key.in_(rule_keys))
         )
         await conn.execute(sa.delete(tables.sod_rules).where(tables.sod_rules.c.key.in_(rule_keys)))
+        # The tenants' clones of this file's templates, then the templates and keys.
+        templates = [made.orderer, made.payer]
         await conn.execute(
-            sa.delete(tables.roles).where(tables.roles.c.key.in_([made.orderer, made.payer]))
+            sa.text(
+                "DELETE FROM platform.role_assignments a USING platform.tenant_roles r"
+                " WHERE r.id = a.role_id AND r.key = ANY(:k)"
+            ),
+            {"k": templates},
         )
+        await conn.execute(
+            sa.text("DELETE FROM platform.tenant_roles WHERE key = ANY(:k)"), {"k": templates}
+        )
+        await conn.execute(sa.delete(tables.roles).where(tables.roles.c.key.in_(templates)))
+        for key in (order, pay):
+            await unregister_key(conn, key)
 
 
 async def _add_floor(engine: AsyncEngine, made: _Catalogue) -> None:
@@ -634,94 +648,10 @@ async def test_confirming_needs_the_scope_a_reason_and_a_waiver_waiting_for_it(
             )
 
 
-# ---- a role cannot change under a membership (f381f1694395) --------------------
-
-
-async def _membership_id(engine: AsyncEngine, user_id: uuid.UUID) -> uuid.UUID:
-    async with engine.connect() as conn:
-        found = await conn.scalar(
-            sa.select(tables.memberships.c.id).where(tables.memberships.c.user_id == user_id)
-        )
-    assert isinstance(found, uuid.UUID)
-    return found
-
-
-async def _set_scopes(engine: AsyncEngine, table: sa.Table, key: str, scopes: list[str]) -> None:
-    async with engine.begin() as conn:
-        await conn.execute(sa.update(table).where(table.c.key == key).values(scopes=scopes))
-
-
-async def _scopes_of(engine: AsyncEngine, table: sa.Table, key: str) -> list[str]:
-    async with engine.connect() as conn:
-        found = await conn.scalar(sa.select(table.c.scopes).where(table.c.key == key))
-    return list(found or [])
-
-
-async def test_widening_a_role_past_a_rule_is_refused_naming_the_memberships(
-    app_engine: AsyncEngine, migrator_engine: AsyncEngine, catalogue: _Catalogue
-) -> None:
-    user_id = await _user(app_engine)
-    await _grant(app_engine, user_id, catalogue.orderer)
-    membership = await _membership_id(migrator_engine, user_id)
-    before = await _scopes_of(migrator_engine, tables.roles, catalogue.orderer)
-    pay = (await _scopes_of(migrator_engine, tables.roles, catalogue.payer))[0]
-
-    with pytest.raises(IntegrityError, match="would break") as refused:
-        await _set_scopes(migrator_engine, tables.roles, catalogue.orderer, [*before, pay])
-    assert str(membership) in str(refused.value)
-    assert catalogue.rule in str(refused.value)
-    assert await _scopes_of(migrator_engine, tables.roles, catalogue.orderer) == before
-
-    # Narrowing, or widening by a scope no rule pairs, is not a conflict.
-    await _set_scopes(migrator_engine, tables.roles, catalogue.orderer, [*before, "test.unpaired"])
-    await _set_scopes(migrator_engine, tables.roles, catalogue.orderer, before)
-
-
-async def test_a_confirmed_waiver_lets_the_role_change(
-    app_engine: AsyncEngine, migrator_engine: AsyncEngine, catalogue: _Catalogue
-) -> None:
-    user_id = await _user(app_engine)
-    await _grant(app_engine, user_id, catalogue.orderer)
-    before = await _scopes_of(migrator_engine, tables.roles, catalogue.orderer)
-    pay = (await _scopes_of(migrator_engine, tables.roles, catalogue.payer))[0]
-    await _service(app_engine).waive(_admin(), WaiveRule(catalogue.rule, REASON))
-    # Proposed only: still refused.
-    with pytest.raises(IntegrityError, match="would break"):
-        await _set_scopes(migrator_engine, tables.roles, catalogue.orderer, [*before, pay])
-
-    await _service(app_engine).confirm(_admin(), ConfirmWaiver(catalogue.rule, "ok"))
-    await _set_scopes(migrator_engine, tables.roles, catalogue.orderer, [*before, pay])
-    await _set_scopes(migrator_engine, tables.roles, catalogue.orderer, before)
-
-
-async def test_widening_a_permission_set_past_a_rule_is_refused(
-    app_engine: AsyncEngine, migrator_engine: AsyncEngine, catalogue: _Catalogue
-) -> None:
-    extra = f"test_set_{uuid.uuid4().hex[:10]}"
-    async with migrator_engine.begin() as conn:
-        await conn.execute(sa.insert(tables.permission_sets).values(key=extra, name=extra))
-    try:
-        user_id = await _user(app_engine)
-        await _grant(app_engine, user_id, catalogue.orderer)
-        async with migrator_engine.begin() as conn:
-            await conn.execute(
-                sa.update(tables.memberships)
-                .where(tables.memberships.c.user_id == user_id)
-                .values(permission_set_keys=[extra])
-            )
-        membership = await _membership_id(migrator_engine, user_id)
-        pay = (await _scopes_of(migrator_engine, tables.roles, catalogue.payer))[0]
-
-        with pytest.raises(IntegrityError, match="would break") as refused:
-            await _set_scopes(migrator_engine, tables.permission_sets, extra, [pay])
-        assert str(membership) in str(refused.value)
-    finally:
-        async with migrator_engine.begin() as conn:
-            await conn.execute(
-                sa.update(tables.memberships)
-                .where(tables.memberships.c.permission_set_keys.op("?")(extra))
-                .values(permission_set_keys=[])
-            )
-            await conn.execute(
-                sa.delete(tables.permission_sets).where(tables.permission_sets.c.key == extra)
-            )
+# A template cannot widen a role under its holders any more: a tenant's role is
+# a clone a template edit never reaches (tenant-rbac R3.2), and widening the
+# clone itself is judged by the AFTER trigger on `platform.tenant_role_permissions`
+# (`test_tenant_roles.py::test_a_role_changed_under_two_holders_names_both`).
+# The template triggers of f381f1694395 and their tests went with migration
+# b5677d345bc1; `test_no_single_role_or_permission_set_in_the_catalogue_breaks_a_rule`
+# keeps the catalogue honest instead.

@@ -114,15 +114,35 @@ class SqlNotificationRepository:
         caller's workspace, once per `source_key`: delivering again is a
         no-op, so a sender may retry until it has recorded the delivery.
         Through `platform.deliver_notification`, the table's one door in."""
-        if not recipients:
+        await self.deliver_in(
+            TenantScope.from_access_context(context),
+            recipients=recipients,
+            source_key=source_key,
+            title=title,
+            body=body,
+            link=link,
+        )
+
+    async def deliver_in(
+        self,
+        scope: TenantScope,
+        *,
+        recipients: Sequence[uuid.UUID],
+        source_key: str,
+        title: str,
+        body: str,
+        link: str | None,
+    ) -> None:
+        """`deliver`, for a sender with no access context (a worker lane): the
+        scope's tenant and workspace come from a verified source, a row the
+        database tagged, never a request (tenant-rbac R3.12)."""
+        if not recipients or scope.workspace_id is None:
             return
-        async with tenant_session(
-            self.session_factory, TenantScope.from_access_context(context)
-        ) as session:
+        async with tenant_session(self.session_factory, scope) as session:
             await session.execute(
                 DELIVER_NOTIFICATION,
                 {
-                    "workspace_id": context.workspace_id,
+                    "workspace_id": scope.workspace_id,
                     "recipients": list(dict.fromkeys(recipients)),
                     "source_key": source_key,
                     "title": title,

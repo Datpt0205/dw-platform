@@ -21,7 +21,9 @@ from dw_platform.application.ports import VerifiedIdentity
 
 @dataclass(frozen=True, slots=True)
 class WorkspaceMembershipView:
-    """One workspace the caller may enter, with resolved roles/scopes."""
+    """One workspace the caller may enter. What the caller holds there is
+    `GET /api/v1/me`'s answer, read per workspace (tenant-rbac R2.6): sign-in
+    computes no scope of its own (ADR-0104 decision 5)."""
 
     tenant_id: UUID
     tenant_slug: str
@@ -29,8 +31,6 @@ class WorkspaceMembershipView:
     workspace_id: UUID
     workspace_slug: str
     workspace_name: str
-    roles: tuple[str, ...]
-    scopes: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)

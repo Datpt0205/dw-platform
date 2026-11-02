@@ -38,7 +38,8 @@ GRANTS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("platform.workspaces", "SELECT, INSERT", ()),
     ("platform.entitlements", "SELECT, INSERT", ()),
     ("platform.memberships", "SELECT, INSERT, UPDATE", ()),
-    ("platform.users", "SELECT", ()),
+    # INSERT: an owner who never signed in is created as an `invite:` user (b5677d345bc1).
+    ("platform.users", "SELECT, INSERT", ()),
     ("platform.plans", "SELECT", ()),
     ("platform.roles", "SELECT", ()),
     ("platform.platform_operators", "SELECT, INSERT, DELETE", ()),
@@ -58,6 +59,12 @@ GRANTS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("platform.external_identities", "SELECT, INSERT", ()),
     # `grant_role` writes the company row a membership hangs from (349080a62e41).
     ("platform.tenant_members", "SELECT, INSERT", ()),
+    # A new tenant's roles and its two owners (b5677d345bc1, tenant-rbac R3.1);
+    # the depth trigger and `install_system_roles` read the catalogue.
+    ("platform.tenant_roles", "SELECT, INSERT", ()),
+    ("platform.tenant_role_permissions", "SELECT, INSERT", ()),
+    ("platform.role_assignments", "SELECT, INSERT", ()),
+    ("platform.permissions", "SELECT", ()),
 )
 
 

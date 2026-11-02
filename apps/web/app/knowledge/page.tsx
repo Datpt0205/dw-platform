@@ -50,7 +50,7 @@ const SCOPE: Record<string, { label: string; color: string }> = {
 };
 
 export default function KnowledgePage() {
-  const { hasScope, hasRole } = useAuth();
+  const { hasScope, scopes } = useAuth();
   const { modal } = App.useApp();
   // Jobs this browser started. The API exposes a job by id, not a list, so the
   // page follows the ones it queued rather than inventing a history it cannot
@@ -65,9 +65,10 @@ export default function KnowledgePage() {
   const [scope, setScope] = useState<"tenant" | "global">("tenant");
 
   const canWrite = hasScope("knowledge.write");
-  // Publishing across tenants is a platform-admin act; the API refuses it from
-  // anyone else, so the option is offered to exactly the same set.
-  const canPublishGlobal = hasRole("platform_admin");
+  // Publishing across tenants takes `knowledge.publish_global` in the request's
+  // own scopes (the gateway checks the scope itself, with no bypass), so the
+  // option is offered to exactly that set, as `/me` reports it.
+  const canPublishGlobal = scopes.includes("knowledge.publish_global");
 
   const {
     items: documents,

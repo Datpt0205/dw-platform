@@ -165,7 +165,13 @@ async def test_the_opt_in_flag_restores_the_default_membership(app_engine: Async
     view = await bootstrap.bootstrap(identity)
 
     assert [m.tenant_id for m in view.memberships] == [DEFAULT_TENANT]
-    assert view.memberships[0].roles == ("member",)
+    # The role is what the access context then reads, through its assignment
+    # (tenant-rbac ticket 02); sign-in names no role any more.
+    lookup = SqlMembershipLookup(async_sessionmaker(app_engine, expire_on_commit=False))
+    access = await lookup.find_access(
+        identity.subject, identity.issuer, DEFAULT_TENANT, view.memberships[0].workspace_id
+    )
+    assert access is not None and access.roles == frozenset({"member"})
 
 
 async def test_bootstrap_sees_a_membership_in_a_non_default_tenant(
@@ -231,10 +237,10 @@ async def _membership(
 async def test_bootstrap_scopes_are_the_access_contexts_permission_sets_included(
     app_engine: AsyncEngine, migrator_engine: AsyncEngine
 ) -> None:
-    """tenant-rbac R2.1 (RB4): `member` with `approver_boost` in tenant A
-    holds `approvals.decide` at sign-in, exactly the scopes a request in that
-    workspace gets; the same person as plain `member` in tenant B does not,
-    so nothing is pooled across memberships."""
+    """tenant-rbac R2.1, R2.2 (RB4, RB5): sign-in names the two workspaces and
+    nothing held there (R2.6: `/me` answers that); the access context of a
+    request holds `approvals.decide` through `approver_boost` in tenant A and
+    not as plain `member` in tenant B, so nothing is pooled across tenants."""
     bootstrap = _bootstrap(app_engine, auto_provision=False)
     identity = _Identity(subject=f"sub-{uuid.uuid4()}", email=f"{uuid.uuid4().hex[:8]}@rbac.test")
     principal = (await bootstrap.bootstrap(identity)).principal_id
@@ -244,15 +250,16 @@ async def test_bootstrap_scopes_are_the_access_contexts_permission_sets_included
     )
     b = await _membership(migrator_engine, principal, slug=f"b-{tag}", permission_sets=[])
 
-    signed_in = {
-        m.tenant_id: set(m.scopes) for m in (await bootstrap.bootstrap(identity)).memberships
-    }
+    memberships = (await bootstrap.bootstrap(identity)).memberships
+    assert {m.tenant_id for m in memberships} >= {a[0], b[0]}
+    assert not any(hasattr(m, "scopes") or hasattr(m, "roles") for m in memberships)
     lookup = SqlMembershipLookup(async_sessionmaker(app_engine, expire_on_commit=False))
+    held = {}
     for tenant_id, workspace_id in (a, b):
         access = await lookup.find_access(
             identity.subject, identity.issuer, tenant_id, workspace_id
         )
         assert access is not None
-        assert signed_in[tenant_id] == set(access.scopes), tenant_id
-    assert "approvals.decide" in signed_in[a[0]]
-    assert "approvals.decide" not in signed_in[b[0]]
+        held[tenant_id] = access.scopes
+    assert "approvals.decide" in held[a[0]]
+    assert "approvals.decide" not in held[b[0]]

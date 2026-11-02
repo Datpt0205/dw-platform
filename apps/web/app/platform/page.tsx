@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   App,
   Button,
   Card,
   Flex,
   Input,
+  Segmented,
   Table,
   Tag,
   Typography,
@@ -31,7 +32,13 @@ import { apiClient } from "../../lib/session";
 import { useAuth } from "../../lib/auth/auth-context";
 import { errorMessage } from "../../lib/error-message";
 import { slugify } from "../../lib/slug";
-import { tenantStatus } from "../../lib/tenant-status";
+import {
+  OWNER_COVERAGE_LOW,
+  TENANT_FILTERS,
+  filterTenants,
+  tenantStatus,
+  type TenantFilter,
+} from "../../lib/tenant-status";
 import { EmailPicker, type EmailOption } from "../../components/email-picker";
 import { SupportConsole } from "../../components/platform/support-console";
 
@@ -116,23 +123,35 @@ function CreateTenantCard({ onCreated }: { onCreated: () => void }) {
   const [slug, setSlug] = useState("");
   const [slugEdited, setSlugEdited] = useState(false);
   const [name, setName] = useState("");
+  // A company starts with two owners, then opens when the second signs in
+  // (tenant-rbac R3.1, R3.10); the API refuses any other number.
+  const [owners, setOwners] = useState(["", ""]);
   // Plans are not enforced yet (basic/pro/enterprise behave the same), so the
   // picker is hidden and every new tenant gets the default plan silently.
   const planId = "professional";
   const [busy, setBusy] = useState(false);
 
+  const ready =
+    slug.trim() !== "" &&
+    name.trim() !== "" &&
+    owners.every((owner) => owner.trim() !== "");
+
   const submit = async () => {
-    if (!slug.trim() || !name.trim()) return;
+    if (!ready) return;
     setBusy(true);
     try {
       await apiClient().createTenant({
         slug: slug.trim(),
         name: name.trim(),
         planId,
+        owners: owners.map((owner) => owner.trim()),
       });
-      message.success(`Đã tạo công ty “${name.trim()}”.`);
+      message.success(
+        `Đã tạo công ty “${name.trim()}”; công ty mở khi chủ sở hữu thứ hai đăng nhập.`,
+      );
       setSlug("");
       setName("");
+      setOwners(["", ""]);
       setSlugEdited(false);
       onCreated();
     } catch (error) {
@@ -145,7 +164,9 @@ function CreateTenantCard({ onCreated }: { onCreated: () => void }) {
   return (
     <Card title="Công ty mới">
       <Typography.Paragraph type="secondary">
-        Tạo công ty kèm workspace mặc định “main” và một gói dịch vụ.
+        Tạo công ty kèm workspace mặc định “main”, một gói dịch vụ và hai chủ sở
+        hữu. Công ty ở trạng thái “Đang thiết lập” tới khi chủ sở hữu thứ hai
+        đăng nhập.
       </Typography.Paragraph>
       <Flex wrap align="end" gap="middle">
         <Flex vertical gap={4}>
@@ -174,11 +195,32 @@ function CreateTenantCard({ onCreated }: { onCreated: () => void }) {
             }}
           />
         </Flex>
+        {owners.map((owner, index) => (
+          <Flex vertical gap={4} key={index}>
+            <label htmlFor={`tenant-owner-${index}`}>
+              Chủ sở hữu {index + 1}
+            </label>
+            <Input
+              id={`tenant-owner-${index}`}
+              className="w-56"
+              type="email"
+              placeholder="ten@congty.vn"
+              value={owner}
+              onChange={(e) =>
+                setOwners((current) =>
+                  current.map((value, i) =>
+                    i === index ? e.target.value : value,
+                  ),
+                )
+              }
+            />
+          </Flex>
+        ))}
         <Button
           type="primary"
           icon={<PlusOutlined aria-hidden />}
           loading={busy}
-          disabled={!slug.trim() || !name.trim()}
+          disabled={!ready}
           onClick={() => void submit()}
         >
           Tạo
@@ -202,6 +244,11 @@ function TenantsCard({
   const [email, setEmail] = useState("");
   const [renameFor, setRenameFor] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
+  const [filter, setFilter] = useState<TenantFilter>("all");
+  const shown = useMemo(
+    () => (tenants === null ? null : filterTenants(tenants, filter)),
+    [tenants, filter],
+  );
 
   const rename = async (tenantId: string) => {
     if (!newName.trim()) return;
@@ -245,7 +292,7 @@ function TenantsCard({
     if (!email.trim()) return;
     try {
       const ref = await apiClient().assignOrgAdmin(tenantId, email.trim());
-      message.success(`${ref.display_name} đã là quản trị viên công ty.`);
+      message.success(`${ref.display_name} đã là chủ sở hữu công ty.`);
       setAssignFor(null);
       setEmail("");
       onChanged();
@@ -255,15 +302,31 @@ function TenantsCard({
   };
 
   return (
-    <Card title="Công ty">
-      {tenants === null ? (
+    <Card
+      title="Công ty"
+      extra={
+        <Segmented<TenantFilter>
+          aria-label="Lọc công ty"
+          value={filter}
+          onChange={setFilter}
+          options={TENANT_FILTERS}
+        />
+      }
+    >
+      {shown === null ? (
         <RegionState kind="loading" compact />
-      ) : tenants.length === 0 ? (
+      ) : tenants?.length === 0 ? (
         <RegionState
           kind="empty"
           compact
           title="Chưa có công ty nào"
           description="Tạo công ty đầu tiên ở trên."
+        />
+      ) : shown.length === 0 ? (
+        <RegionState
+          kind="empty"
+          compact
+          title="Không có công ty nào khớp bộ lọc"
         />
       ) : (
         <Table<PlatformTenant>
@@ -271,7 +334,7 @@ function TenantsCard({
           size="small"
           pagination={false}
           scroll={{ x: "max-content" }}
-          dataSource={tenants}
+          dataSource={shown}
           columns={[
             {
               title: "Công ty",
@@ -337,10 +400,17 @@ function TenantsCard({
             {
               title: "Trạng thái",
               dataIndex: "status",
-              render: (value: string) => (
-                <Tag color={tenantStatus(value).color}>
-                  {tenantStatus(value).label}
-                </Tag>
+              render: (value: string, t) => (
+                <Flex wrap gap={4}>
+                  <Tag color={tenantStatus(value).color}>
+                    {tenantStatus(value).label}
+                  </Tag>
+                  {t.owner_coverage_low_since && (
+                    <Tag color={OWNER_COVERAGE_LOW.color}>
+                      {OWNER_COVERAGE_LOW.label}
+                    </Tag>
+                  )}
+                </Flex>
               ),
             },
             {
@@ -357,7 +427,7 @@ function TenantsCard({
                       setEmail("");
                     }}
                   >
-                    Quản trị viên
+                    Chủ sở hữu
                   </Button>
                   <Button
                     size="small"
@@ -369,19 +439,22 @@ function TenantsCard({
                   >
                     Đổi tên
                   </Button>
-                  <Button
-                    size="small"
-                    icon={
-                      t.status === "locked" ? (
-                        <UnlockOutlined aria-hidden />
-                      ) : (
-                        <LockOutlined aria-hidden />
-                      )
-                    }
-                    onClick={() => toggleLock(t)}
-                  >
-                    {t.status === "locked" ? "Mở khóa" : "Khóa"}
-                  </Button>
+                  {/* A company in setup opens with its second owner, never by hand. */}
+                  {t.status !== "setup" && (
+                    <Button
+                      size="small"
+                      icon={
+                        t.status === "locked" ? (
+                          <UnlockOutlined aria-hidden />
+                        ) : (
+                          <LockOutlined aria-hidden />
+                        )
+                      }
+                      onClick={() => toggleLock(t)}
+                    >
+                      {t.status === "locked" ? "Mở khóa" : "Khóa"}
+                    </Button>
+                  )}
                 </Flex>
               ),
             },

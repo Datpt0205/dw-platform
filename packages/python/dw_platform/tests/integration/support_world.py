@@ -33,6 +33,7 @@ from dw_platform.application.support_access import (
     SupportScopeCatalog,
 )
 from dw_platform.testing.members import add_tenant_member
+from dw_platform.testing.rbac import catalogue_test_keys
 
 SET_KEY = "probe.read"
 SET_SCOPES = frozenset({"x.read"})
@@ -111,6 +112,7 @@ async def build_world(migrator: AsyncEngine) -> SupportWorld:
     )
     w.users = {name: uuid.uuid4() for name in people}
     async with migrator.begin() as conn:
+        await catalogue_test_keys(conn, ["x.read", "x.write"])
         for key, scopes in (
             (w.granter_role, '["support.grant", "x.read", "x.write"]'),
             (narrow_role, '["support.grant"]'),

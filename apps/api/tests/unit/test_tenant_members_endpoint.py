@@ -25,7 +25,6 @@ from dw_kernel.ports import SystemClock, Uuid4Generator
 from dw_platform.adapters.identity.dev_token import DevTokenVerifier
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.authorization import ScopeAuthorizationService
-from dw_platform.application.cache import membership_cache_pattern
 from dw_platform.application.effect_keys import PendingEffect
 from dw_platform.application.idempotency import HttpIdempotency
 from dw_platform.application.identity import DbAccessContextFactory, MembershipAccess
@@ -129,19 +128,14 @@ class Repo:
 
 
 class Cache:
-    """Honest about patterns: records what was dropped."""
-
-    def __init__(self) -> None:
-        self.dropped: list[str] = []
+    """A cache that holds nothing: the route evicts nothing either, since every
+    membership write bumps the tenant's access version (tenant-rbac R4.1)."""
 
     async def get(self, key: str) -> str | None:
         return None
 
     async def set(self, key: str, value: str, *, ttl_seconds: int) -> None:
         return None
-
-    async def delete_pattern(self, pattern: str) -> None:
-        self.dropped.append(pattern)
 
 
 def _container(repo: Repo, cache: Cache, store: MemoryStore) -> ApiContainer:
@@ -185,12 +179,11 @@ async def _put(container: ApiContainer, body: object, key: str | None = None) ->
 BODY = {"memberships": [{"workspace_id": str(WS1), "role_keys": ["sales"]}]}
 
 
-async def test_dropping_a_workspace_drops_its_cached_contexts() -> None:
+async def test_dropping_a_workspace_revokes_its_membership() -> None:
     repo, cache = Repo(), Cache()
     response = await _put(_container(repo, cache, MemoryStore()), BODY)
     assert response.status_code == 200, response.text
     assert [m["workspace_id"] for m in response.json()["memberships"]] == [str(WS1)]
-    assert cache.dropped == [membership_cache_pattern(TENANT, WS2)]
     assert [a.action for a in repo.audits] == ["platform.membership.revoke"]
 
 

@@ -745,3 +745,51 @@ async def test_the_workspace_scope_ends_with_the_transaction(
 
     assert after == before, "a second connection was used, so this proves nothing"
     assert scope in (None, ""), f"the next transaction inherited app.workspace_scope={scope!r}"
+
+
+async def test_offboarding_exports_and_purges_the_role_tables_and_the_version_row_stays_gone(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    """tenant-rbac R4.2: roles, their privileges, assignments and the access
+    version row are exported, then purged; the version row's step may run
+    before the assignments go, and their deletes bring no row back."""
+    mine, theirs = _new_tenant(), _new_tenant()
+    for t in (mine, theirs):
+        await _seed_tenant(sessions, t)
+        member = await _seed_member(sessions, t)
+        async with sessions() as session, session.begin():
+            await session.execute(
+                sa.text("SELECT set_config('app.tenant_id', :t, true)"), {"t": str(t.tenant_id)}
+            )
+            role = await session.scalar(
+                sa.text("SELECT platform.install_role_template(:t, 'approver')"),
+                {"t": t.tenant_id},
+            )
+            await session.execute(
+                sa.text(
+                    "INSERT INTO platform.role_assignments"
+                    " (id, tenant_id, workspace_id, membership_id, role_id)"
+                    " SELECT gen_random_uuid(), m.tenant_id, m.workspace_id, m.id, :r"
+                    " FROM platform.memberships m WHERE m.user_id = :u"
+                ),
+                {"r": role, "u": member},
+            )
+    offboarding = SqlTenantOffboarding(session_factory=sessions)
+    tables = (
+        "tenant_roles",
+        "tenant_role_permissions",
+        "role_assignments",
+        "tenant_access_versions",
+    )
+
+    exported = {
+        (t.schema, t.table): t.rows for t in await _collect(offboarding.export_rows(mine.tenant_id))
+    }
+    for table in tables:
+        assert exported.get(("platform", table)), f"{table} is not in the export"
+
+    await offboarding.purge_rows(mine.tenant_id)
+
+    for table in tables:
+        assert await _count(sessions, mine.tenant_id, "platform", table) == 0, table
+        assert await _count(sessions, theirs.tenant_id, "platform", table) >= 1, table

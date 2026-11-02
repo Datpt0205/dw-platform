@@ -156,8 +156,10 @@ class SqlSeparationOfDutiesRepository:
             except IntegrityError as exc:
                 refused = refusal(exc)
                 if refused is not None and refused[0] == _IN_USE:
+                    # `memberships` keeps its name for the API's shape; it counts
+                    # the people who rely on the waiver (b5677d345bc1).
                     raise ConflictError(
-                        "memberships still hold both sides of this rule; change their"
+                        "people still hold both sides of this rule; change their"
                         " roles before revoking the waiver",
                         details={"rule_key": rule_key, "memberships": int(refused[1] or 0)},
                     ) from exc

@@ -29,6 +29,13 @@ const ROLE_LABELS: Record<string, string> = {
   platform_admin: "Quản trị toàn quyền",
 };
 
+/** The W1 bypass role's key: the one place the web names it. Whether someone
+ * holds the bypass is `GET /api/v1/me`'s `platform_bypass`, never this key. */
+export const PLATFORM_ADMIN_ROLE = "platform_admin";
+
+/** How the bypass reads, beside the role it comes from. */
+export const BYPASS_LABEL = roleLabel(PLATFORM_ADMIN_ROLE);
+
 /** How a platform operator (creates tenants, ADR-002) is named; not a role key. */
 export const OPERATOR_LABEL = "Quản trị nền tảng";
 
@@ -47,13 +54,4 @@ export function roleLabel(key: string, catalogName?: string): string {
 /** Deduplicated, comma-joined labels for a member's role keys. */
 export function roleLabels(keys: readonly string[]): string {
   return [...new Set(keys.map((key) => roleLabel(key)))].join(", ");
-}
-
-/** True when the user holds at least one of the roles an item asks for. */
-export function hasAnyRole(
-  userRoles: readonly string[],
-  required: readonly string[],
-): boolean {
-  const held = new Set(userRoles);
-  return required.some((role) => held.has(role));
 }

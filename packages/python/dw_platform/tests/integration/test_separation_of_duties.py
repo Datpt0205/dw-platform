@@ -1,11 +1,14 @@
 """Integration: static separation of duties, enforced by the database.
 
-A rule says two sets of scopes must never meet in one membership. The trigger
-on `platform.memberships` is the one place that decides. These tests reach it
-through every kind of writer: the admin grant, the permission-set update, raw
-SQL as the application, and raw SQL as the migrator. They show that no writer
-gets around it, and that the application reads the refusal back as a 409
-naming the rule.
+A rule says two sets of scopes must never meet in one person. Since tenant-rbac
+ticket 02 the one place that decides is the AFTER trigger on
+`platform.role_assignments` and `platform.tenant_role_permissions`; a write to
+`memberships.role_keys` reaches it through the trigger that copies the column
+into assignments. These tests reach it through every kind of writer: the admin
+grant, the permission-set update, raw SQL as the application, and raw SQL as
+the migrator. They show that no writer gets around it, and that the application
+reads the refusal back as a 409 naming the rule (`separation_of_duties_conflict`
+reading `ck_roles_sod_memberships`).
 
 The rule, roles and permission set here are this file's own, with a per-test
 suffix. The shared catalogue's real rules are checked for consistency, not
@@ -36,6 +39,7 @@ from dw_platform.adapters.persistence.membership_admin import SqlMembershipAdmin
 from dw_platform.application.access_context import AccessContext
 from dw_platform.domain.audit import AuditEvent
 from dw_platform.testing.members import add_tenant_member
+from dw_platform.testing.rbac import catalogue_test_keys, unregister_key
 from dw_platform.testing.seed_env import seed_test_env
 
 pytestmark = pytest.mark.integration
@@ -91,7 +95,9 @@ async def catalogue(migrator_engine: AsyncEngine) -> AsyncIterator[_Catalogue]:
         pay_set=f"test_pay_set_{suffix}",
     )
     order, pay = f"test.{suffix}.order", f"test.{suffix}.pay"
+    keys = (order, pay, f"test.{suffix}.read")
     async with migrator_engine.begin() as conn:
+        await catalogue_test_keys(conn, keys)
         for key, scopes in (
             (made.orderer, [order]),
             (made.payer, [pay]),
@@ -112,7 +118,21 @@ async def catalogue(migrator_engine: AsyncEngine) -> AsyncIterator[_Catalogue]:
             {"key": made.rule, "left": json.dumps([order]), "right": json.dumps([pay])},
         )
     yield made
+    templates = [made.orderer, made.payer, made.bystander, made.pay_set]
     async with migrator_engine.begin() as conn:
+        # The tenants' clones of this file's templates, then the templates.
+        await conn.execute(
+            sa.text(
+                "DELETE FROM platform.role_assignments a USING platform.tenant_roles r"
+                " WHERE r.id = a.role_id AND r.key = ANY(:k)"
+            ),
+            {"k": templates},
+        )
+        await conn.execute(
+            sa.text("DELETE FROM platform.tenant_roles WHERE key = ANY(:k)"), {"k": templates}
+        )
+        for key in keys:
+            await unregister_key(conn, key)
         await conn.execute(
             sa.text("DELETE FROM platform.sod_rules WHERE key = :k"), {"k": made.rule}
         )
@@ -255,7 +275,7 @@ async def test_raw_sql_is_refused_too_whoever_writes_it(
     user_id = await _user(app_engine)
     engine = app_engine if writer == "app" else migrator_engine
 
-    with pytest.raises(IntegrityError, match=catalogue.rule):
+    with pytest.raises(IntegrityError, match="orders are not paid by who placed them") as refused:
         async with engine.begin() as conn:
             await conn.execute(
                 sa.text("SELECT set_config('app.tenant_id', :t, true)"), {"t": str(ALPHA)}
@@ -272,6 +292,10 @@ async def test_raw_sql_is_refused_too_whoever_writes_it(
                 )
             )
 
+    # The rule is named in HINT, the holders in DETAIL (tenant-rbac R5.1).
+    assert getattr(refused.value.orig.__cause__, "hint", None) == catalogue.rule  # type: ignore[union-attr]
+    assert getattr(refused.value.orig.__cause__, "detail", None) == str(user_id)  # type: ignore[union-attr]
+
 
 async def test_the_application_cannot_rewrite_the_rules(app_engine: AsyncEngine) -> None:
     with pytest.raises(ProgrammingError, match="permission denied"):
@@ -283,32 +307,24 @@ async def test_no_single_role_or_permission_set_in_the_catalogue_breaks_a_rule(
     app_engine: AsyncEngine,
 ) -> None:
     """Every rule in the shared catalogue, context rules included, can be met
-    by assigning roles carefully: no role or set breaks one on its own."""
+    by assigning roles carefully: no template, cloned alone into a tenant,
+    breaks one on its own. Since tenant-rbac ticket 02 this replaces the
+    triggers b9862fa13a80 and f381f1694395 put on the templates."""
     async with app_engine.begin() as conn:
-        broken_roles = (
+        broken = (
             (
                 await conn.execute(
                     sa.text(
-                        "SELECT r.key FROM platform.roles r"
-                        " WHERE EXISTS (SELECT 1 FROM platform.sod_violation("
-                        "   NULL, jsonb_build_array(r.key), '[]'::jsonb))"
+                        "SELECT t.key FROM ("
+                        "  SELECT key, scopes FROM platform.roles"
+                        "  UNION ALL SELECT key, scopes FROM platform.permission_sets) t"
+                        " CROSS JOIN platform.sod_rules s"
+                        " WHERE platform.sod_rule_broken("
+                        "   s.key, ARRAY(SELECT jsonb_array_elements_text(t.scopes)))"
                     )
                 )
             )
             .scalars()
             .all()
         )
-        broken_sets = (
-            (
-                await conn.execute(
-                    sa.text(
-                        "SELECT p.key FROM platform.permission_sets p"
-                        " WHERE EXISTS (SELECT 1 FROM platform.sod_violation("
-                        "   NULL, '[]'::jsonb, jsonb_build_array(p.key)))"
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
-    assert (list(broken_roles), list(broken_sets)) == ([], [])
+    assert list(broken) == []

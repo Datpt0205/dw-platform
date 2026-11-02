@@ -25,7 +25,7 @@ from collections.abc import AsyncIterator
 
 import pytest
 import sqlalchemy as sa
-from pg_harness import PROVISIONER_TEST_PASSWORD, DatabaseUrls
+from pg_harness import PROVISIONER_TEST_PASSWORD, DatabaseUrls, platform_urls
 from sqlalchemy.exc import IntegrityError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
@@ -36,7 +36,11 @@ from dw_platform.adapters.persistence.identity_provisioning import SqlIdentityBo
 from dw_platform.adapters.persistence.membership_lookup import SqlMembershipLookup
 from dw_platform.adapters.persistence.provisioning_repo import SqlProvisioningRepository
 from dw_platform.adapters.persistence.separation_of_duties import refusal
-from dw_platform.application.provisioning import ProvisioningContext, ProvisioningService
+from dw_platform.application.provisioning import (
+    NewTenant,
+    ProvisioningContext,
+    ProvisioningService,
+)
 from dw_platform.testing.seed_env import seed_test_env
 
 pytestmark = pytest.mark.integration
@@ -110,6 +114,31 @@ def _ctx() -> ProvisioningContext:
     return ProvisioningContext(principal_id=uuid.uuid4())
 
 
+async def _create(service: ProvisioningService, *, slug: str, name: str, plan_id: str) -> NewTenant:
+    """A tenant with its two owners (tenant-rbac R3.1), opened as their first
+    sign-ins open it: both company rows turn `active` and the tenant with them
+    (R3.10). What these tests exercise starts from an `active` tenant."""
+    created = await service.create_tenant(
+        _ctx(),
+        slug=slug,
+        name=name,
+        plan_id=plan_id,
+        owners=[f"first-{slug}@owners.test", f"second-{slug}@owners.test"],
+    )
+    migrator = create_async_engine(platform_urls().migrator, poolclass=NullPool)
+    try:
+        async with migrator.begin() as conn:
+            await conn.execute(
+                sa.text(
+                    "UPDATE platform.tenant_members SET status = 'active' WHERE tenant_id = :t"
+                ),
+                {"t": created.tenant_id},
+            )
+    finally:
+        await migrator.dispose()
+    return created
+
+
 async def test_operator_creates_a_tenant_and_it_lists(provisioner_engine: AsyncEngine) -> None:
     service = _service(provisioner_engine)
     # A slug unique to this run. The database is recreated once per session, not
@@ -117,7 +146,7 @@ async def test_operator_creates_a_tenant_and_it_lists(provisioner_engine: AsyncE
     # earlier in the same session — a shared literal slug makes this test pass
     # alone and fail in the suite, which is the least useful way for it to fail.
     slug = f"fis-{uuid.uuid4().hex[:8]}"
-    created = await service.create_tenant(_ctx(), slug=slug, name="FPT IS", plan_id="professional")
+    created = await _create(service, slug=slug, name="FPT IS", plan_id="professional")
 
     tenants = await service.list_tenants(_ctx())
     match = [t for t in tenants if t.id == created.tenant_id]
@@ -128,7 +157,7 @@ async def test_operator_creates_a_tenant_and_it_lists(provisioner_engine: AsyncE
 
 async def test_operator_renames_a_tenant(provisioner_engine: AsyncEngine) -> None:
     service = _service(provisioner_engine)
-    created = await service.create_tenant(_ctx(), slug="rentco", name="Old Name", plan_id="basic")
+    created = await _create(service, slug="rentco", name="Old Name", plan_id="basic")
 
     updated = await service.rename_tenant(_ctx(), tenant_id=created.tenant_id, name="New Name")
     assert updated.name == "New Name"
@@ -148,7 +177,7 @@ async def test_assign_org_admin_after_sign_in(
     provisioner_engine: AsyncEngine, db_urls: DatabaseUrls
 ) -> None:
     service = _service(provisioner_engine)
-    created = await service.create_tenant(_ctx(), slug="fso", name="FSOFT", plan_id="basic")
+    created = await _create(service, slug="fso", name="FSOFT", plan_id="basic")
 
     # The person signs in once (identity created, default-deny → no membership).
     app_engine = create_async_engine(db_urls.app, poolclass=NullPool)
@@ -184,7 +213,7 @@ async def test_locking_a_tenant_denies_its_members(
     """P1b: locking must actually revoke access, not just set a column."""
     issuer = "https://issuer.test/realms/dw"
     service = _service(provisioner_engine)
-    created = await service.create_tenant(_ctx(), slug="lockco", name="Lock Co", plan_id="basic")
+    created = await _create(service, slug="lockco", name="Lock Co", plan_id="basic")
 
     app_engine = create_async_engine(db_urls.app, poolclass=NullPool)
     try:
@@ -231,7 +260,7 @@ async def test_initiate_offboarding_flags_the_tenant_and_files_a_request(
     provisioner_engine: AsyncEngine,
 ) -> None:
     service = _service(provisioner_engine)
-    created = await service.create_tenant(_ctx(), slug="offco", name="Off Co", plan_id="basic")
+    created = await _create(service, slug="offco", name="Off Co", plan_id="basic")
 
     status = await service.initiate_offboarding(_ctx(), tenant_id=created.tenant_id)
 
@@ -246,7 +275,7 @@ async def test_a_second_initiate_while_one_is_in_flight_is_a_conflict(
     provisioner_engine: AsyncEngine,
 ) -> None:
     service = _service(provisioner_engine)
-    created = await service.create_tenant(_ctx(), slug="offco2", name="Off Co 2", plan_id="basic")
+    created = await _create(service, slug="offco2", name="Off Co 2", plan_id="basic")
     await service.initiate_offboarding(_ctx(), tenant_id=created.tenant_id)
 
     with pytest.raises(ConflictError):
@@ -271,7 +300,7 @@ async def test_get_offboarding_status_with_no_request_is_refused(
     provisioner_engine: AsyncEngine,
 ) -> None:
     service = _service(provisioner_engine)
-    created = await service.create_tenant(_ctx(), slug="offco3", name="Off Co 3", plan_id="basic")
+    created = await _create(service, slug="offco3", name="Off Co 3", plan_id="basic")
 
     with pytest.raises(NotFoundError):
         await service.get_offboarding_status(_ctx(), tenant_id=created.tenant_id)
@@ -281,7 +310,7 @@ async def test_finalize_before_the_worker_completes_it_is_refused(
     provisioner_engine: AsyncEngine,
 ) -> None:
     service = _service(provisioner_engine)
-    created = await service.create_tenant(_ctx(), slug="offco4", name="Off Co 4", plan_id="basic")
+    created = await _create(service, slug="offco4", name="Off Co 4", plan_id="basic")
     await service.initiate_offboarding(_ctx(), tenant_id=created.tenant_id)
 
     with pytest.raises(DomainError):
@@ -300,7 +329,7 @@ async def test_finalize_after_the_worker_reports_completed_offboards_the_tenant(
     scoped to the target tenant — simulated here directly against the table
     rather than through the (not yet built) worker lane itself."""
     service = _service(provisioner_engine)
-    created = await service.create_tenant(_ctx(), slug="offco5", name="Off Co 5", plan_id="basic")
+    created = await _create(service, slug="offco5", name="Off Co 5", plan_id="basic")
     await service.initiate_offboarding(_ctx(), tenant_id=created.tenant_id)
 
     app_engine = create_async_engine(db_urls.app, poolclass=NullPool)
@@ -334,9 +363,7 @@ async def test_lock_and_unlock_leave_an_offboarding_tenant_as_it_is(
 ) -> None:
     """R3.1 (FH7): a tenant whose data is being exported and purged is not reopened."""
     service = _service(provisioner_engine)
-    created = await service.create_tenant(
-        _ctx(), slug=f"leaving-{status}", name="Leaving", plan_id="basic"
-    )
+    created = await _create(service, slug=f"leaving-{status}", name="Leaving", plan_id="basic")
     await service.initiate_offboarding(_ctx(), tenant_id=created.tenant_id)
 
     with pytest.raises(ConflictError) as refused:
@@ -349,7 +376,7 @@ async def test_lock_and_unlock_leave_an_offboarding_tenant_as_it_is(
 
 async def _tenant_in(engine: AsyncEngine, status: str, slug: str) -> uuid.UUID:
     """A tenant walked to `status` along the steps the trigger allows."""
-    created = await _service(engine).create_tenant(_ctx(), slug=slug, name=slug, plan_id="basic")
+    created = await _create(_service(engine), slug=slug, name=slug, plan_id="basic")
     path = {"offboarding": ["offboarding"], "offboarded": ["offboarding", "offboarded"]}
     async with engine.begin() as conn:
         for step in path[status]:

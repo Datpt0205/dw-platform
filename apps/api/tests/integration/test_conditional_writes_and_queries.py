@@ -63,6 +63,7 @@ from dw_platform.application.idempotency import (
     StoredResponse,
 )
 from dw_platform.testing.members import add_tenant_member
+from dw_platform.testing.rbac import catalogue_test_keys
 
 pytestmark = pytest.mark.integration
 
@@ -218,6 +219,7 @@ async def _world(migrator: AsyncEngine) -> dict[str, Person]:
         "outsider": Person(uuid.uuid4(), other_tenant, other_ws),
     }
     async with migrator.begin() as conn:
+        await catalogue_test_keys(conn, [PROBE_WRITE])
         await conn.execute(
             sa.text(
                 "INSERT INTO platform.roles (key, name, scopes) VALUES (:k, :k, CAST(:s AS jsonb))"

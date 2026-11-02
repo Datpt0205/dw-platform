@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from dw_platform.adapters.identity.dev_token import DEV_ISSUER
 from dw_platform.adapters.persistence import tables
 from dw_platform.adapters.persistence.hierarchy_repo import SUBTREE_QUERY
+from dw_platform.application.access_context import Grant
 from dw_platform.application.authorization import PLATFORM_ADMIN_ROLE
 from dw_platform.application.identity import MembershipAccess
 
@@ -30,30 +31,65 @@ _SET_LINKED_CONTEXT = text(
 # tenant (ADR-003), so the roll-up never narrows a director's record lists.
 _RECORDS_ALL_READ = "crm.records.all.read"
 
+_ACCESS_VERSION = text(
+    "SELECT version FROM platform.tenant_access_versions WHERE tenant_id = CAST(:t AS uuid)"
+)
+_SCOPES_IN = text(
+    "SELECT platform.scopes_in(CAST(:t AS uuid), CAST(:u AS uuid), CAST(:w AS uuid)) AS key"
+)
+# What one person holds in the tenant, the roles assigned to this membership,
+# and their projection for this workspace, in one round trip. Every answer is
+# the database's: `platform.effective_grants` and `platform.scopes_in`
+# (tenant-rbac R2, ADR-0104 decision 5); nothing here decides which key counts.
+_HELD = text(
+    """
+    SELECT
+        ARRAY(SELECT platform.scopes_in(CAST(:t AS uuid), CAST(:u AS uuid), CAST(:w AS uuid)))
+            AS scopes,
+        ARRAY(
+            SELECT DISTINCT r.key
+            FROM platform.role_assignments a
+            JOIN platform.tenant_roles r ON r.tenant_id = a.tenant_id AND r.id = a.role_id
+            WHERE a.tenant_id = CAST(:t AS uuid) AND a.membership_id = CAST(:m AS uuid)
+              AND r.deleted_at IS NULL AND (a.expires_at IS NULL OR a.expires_at > now())
+        ) AS role_keys,
+        (
+            SELECT coalesce(jsonb_agg(DISTINCT jsonb_build_array(
+                       g.permission_key, g.depth, g.anchor_workspace_id)), '[]'::jsonb)
+            FROM platform.effective_grants(CAST(:t AS uuid), CAST(:u AS uuid)) g
+        ) AS grants
+    """
+)
+
+
+async def access_version(session: AsyncSession, tenant_id: UUID) -> int | None:
+    """The tenant's access version (`platform.tenant_access_versions`), or None
+    when it has no row: an offboarded tenant, whose contexts are never cached."""
+    found = await session.scalar(_ACCESS_VERSION, {"t": str(tenant_id)})
+    return None if found is None else int(found)
+
 
 async def effective_scopes(
-    session: AsyncSession, role_keys: frozenset[str], permission_set_keys: frozenset[str]
+    session: AsyncSession, tenant_id: UUID, user_id: UUID, workspace_id: UUID
 ) -> frozenset[str]:
-    """A membership's scopes: its roles' and its permission sets', unioned.
+    """What a person holds acting in one workspace: `platform.scopes_in`, the
+    projection of `platform.effective_grants` (tenant-rbac R2.2).
 
-    Permission Sets (ADR-001 Phase 3) are additive scopes attached to a
-    membership on top of its role, so a set grants a capability without a new
-    role. The one reading of that rule on this side of the database; the
-    access context and "who in this workspace holds X" both ask it."""
-    scopes: set[str] = set()
-    if role_keys:
-        for (role_scopes,) in await session.execute(
-            sa.select(tables.roles.c.scopes).where(tables.roles.c.key.in_(role_keys))
-        ):
-            scopes.update(role_scopes)
-    if permission_set_keys:
-        for (set_scopes,) in await session.execute(
-            sa.select(tables.permission_sets.c.scopes).where(
-                tables.permission_sets.c.key.in_(permission_set_keys)
-            )
-        ):
-            scopes.update(set_scopes)
-    return frozenset(scopes)
+    A thin adapter, deliberately: the access context, "who in this workspace
+    holds X" and a Digital Worker's standing and boundary all ask it, and the
+    rule is the database's alone, so none of them can drift from the triggers
+    and policies that read the same function."""
+    rows = await session.execute(
+        _SCOPES_IN, {"t": str(tenant_id), "u": str(user_id), "w": str(workspace_id)}
+    )
+    return frozenset(row.key for row in rows)
+
+
+def _grants(raw: list[list[str]]) -> tuple[Grant, ...]:
+    grants = (
+        Grant(key=key, depth=depth, anchor_workspace_id=UUID(anchor)) for key, depth, anchor in raw
+    )
+    return tuple(sorted(grants, key=lambda g: (g.key, str(g.anchor_workspace_id), g.depth)))
 
 
 async def _access_in(
@@ -68,10 +104,13 @@ async def _access_in(
     Shared by the sign-in path and the linked-chat path, so tenant status,
     entitlement and the record roll-up are read one way for both. The caller
     has already bound the transaction's settings. With a ``ceiling`` the scopes
-    are cut to it and no role is carried: a role can stand in for scopes
-    (``platform_admin`` passes every scope check), so a context limited to a
-    ceiling must not hold one.
+    and grants are cut to it and no role is carried: a role can stand in for
+    scopes (``platform_admin`` passes every scope check), so a context limited
+    to a ceiling must not hold one.
     """
+    # Before the data, in the same transaction (R4.1): the data read below is
+    # never older than the version the context carries.
+    version = await access_version(session, tenant_id)
     # Membership and the tenant's status in one round-trip. A locked
     # tenant is frozen: even a valid member is denied an AccessContext, so
     # the Platform Operator's lock (ADR-002) actually bites instead of
@@ -81,9 +120,9 @@ async def _access_in(
     membership_row = (
         await session.execute(
             sa.select(
+                tables.memberships.c.id,
                 tables.memberships.c.user_id,
                 tables.memberships.c.role_keys,
-                tables.memberships.c.permission_set_keys,
                 tables.memberships.c.clearance,
                 tables.tenants.c.status.label("tenant_status"),
                 tables.tenants.c.record_visibility,
@@ -112,20 +151,34 @@ async def _access_in(
         )
     ).first()
     # Fail closed: no membership, a person not `active` in the company, or a
-    # tenant that is not active, denies — an unreadable/absent status is not
-    # "active" and denies too.
+    # tenant that is not active (`setup` as `locked`, R3.14), denies — an
+    # unreadable/absent status is not "active" and denies too.
     if membership_row is None or membership_row.tenant_status != "active":
         return None
 
-    role_keys = frozenset(membership_row.role_keys)
-    scopes = set(
-        await effective_scopes(session, role_keys, frozenset(membership_row.permission_set_keys))
+    held = (
+        await session.execute(
+            _HELD,
+            {
+                "t": str(tenant_id),
+                "u": str(membership_row.user_id),
+                "w": str(workspace_id),
+                "m": str(membership_row.id),
+            },
+        )
+    ).one()
+    # The roles assigned here; `platform_admin` stays in `role_keys` in W1 (G2).
+    role_keys = frozenset(held.role_keys) | (
+        frozenset({PLATFORM_ADMIN_ROLE}) & frozenset(membership_row.role_keys)
     )
+    scopes = set(held.scopes)
+    grants = _grants(held.grants)
     if ceiling is not None:
         # Narrowed BEFORE anything below reads them, so the roll-up's
         # "sees everything" cannot be granted by a scope or role the
         # ceiling took away.
         scopes &= ceiling
+        grants = tuple(g for g in grants if g.key in ceiling)
         role_keys = frozenset()
 
     entitlement_row = (
@@ -187,6 +240,8 @@ async def _access_in(
         record_visibility=membership_row.record_visibility,
         visible_owners=visible_owners,
         max_autonomy_level=membership_row.max_autonomy_level,
+        grants=grants,
+        access_version=version,
     )
 
 
@@ -195,6 +250,11 @@ class SqlMembershipLookup:
     """Implements ``MembershipLookupPort``."""
 
     session_factory: async_sessionmaker[AsyncSession]
+
+    async def access_version(self, tenant_id: UUID) -> int | None:
+        async with self.session_factory() as session, session.begin():
+            await session.execute(_SET_LOOKUP_CONTEXT, {"tenant_id": str(tenant_id)})
+            return await access_version(session, tenant_id)
 
     async def find_access(
         self,

@@ -1,0 +1,10 @@
+# The audit actions tenant-rbac adds, with their Vietnamese labels: this spec's
+# fragment of the action catalogue telemetry-and-audit merges
+# (telemetry-and-audit R1.6; H-21). Ticket 02 writes the first two; ticket 03
+# adds the role administration ones with the routes that write them.
+schema_version: "1.0"
+copy_id: platform.audit_actions.tenant_rbac
+version: "1.0.0"
+actions:
+  platform.tenant.setup_completed: "Công ty mở hoạt động khi chủ sở hữu thứ hai kích hoạt"
+  platform.role_assignment.grant: "Gán vai trò cho thành viên"

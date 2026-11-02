@@ -8,12 +8,13 @@ never share the ``dw_app`` pool.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import sqlalchemy as sa
+from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
@@ -22,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from dw_kernel.errors import ConflictError, NotFoundError
 from dw_platform.adapters.persistence import tables
 from dw_platform.adapters.persistence.repositories import SqlAuditRepository
+from dw_platform.adapters.persistence.separation_of_duties import refusal
 from dw_platform.adapters.persistence.support_grants import grant_from_row, support_staff_conflict
 from dw_platform.adapters.persistence.tenant_member_rows import ensure_tenant_member
 from dw_platform.application.provisioning import (
@@ -45,6 +47,70 @@ from dw_platform.domain.audit import AuditEvent
 # parsing SQLSTATE codes for two constraints that need two different answers.
 _ACTIVE_REQUEST_INDEX = "uq_tenant_offboarding_requests_active"
 _TENANT_FK = "fk_tenant_offboarding_requests_tenant_id_tenants"
+# R3.11: the database refuses owner authority to a platform operator or support
+# staff member (`platform.guard_operator_tenant_grants`, b5677d345bc1).
+_OPERATOR_NOT_OWNER = "ck_role_assignments_operator_not_owner"
+_INSTALL_SYSTEM_ROLES = text("SELECT platform.install_system_roles(CAST(:t AS uuid))")
+_TENANT_OWNER_ROLE = text(
+    "SELECT id FROM platform.tenant_roles"
+    " WHERE tenant_id = CAST(:t AS uuid) AND key = 'tenant_owner'"
+)
+
+
+def operator_not_assignable(error: IntegrityError) -> ConflictError | None:
+    """The refusal of R3.11 as the 409 the operator's routes give; None for
+    any other integrity error."""
+    refused = refusal(error)
+    if refused is None or refused[0] != _OPERATOR_NOT_OWNER:
+        return None
+    return ConflictError(
+        "a platform operator or support staff member cannot hold owner authority"
+        " in a customer's tenant",
+        details={"reason_code": "operator_not_assignable"},
+    )
+
+
+def _owner_conflict(error: IntegrityError) -> ConflictError | None:
+    return support_staff_conflict(error) or operator_not_assignable(error)
+
+
+async def _place_owner(
+    session: AsyncSession, *, tenant_id: UUID, workspace_id: UUID, user_id: UUID
+) -> None:
+    """`tenant_owner` for the person at `workspace_id`, as an invitation writes
+    a member (R3.1, R3.8): the company row `invited` unless one exists, the
+    membership unless one exists, and the assignment, idempotent in each."""
+    await session.execute(ensure_tenant_member(tenant_id, user_id, "invited"))
+    m = tables.memberships
+    membership_id = await session.scalar(
+        sa.select(m.c.id).where(
+            m.c.tenant_id == tenant_id, m.c.workspace_id == workspace_id, m.c.user_id == user_id
+        )
+    )
+    if membership_id is None:
+        membership_id = uuid4()
+        await session.execute(
+            sa.insert(m).values(
+                id=membership_id,
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                user_id=user_id,
+                department="general",
+            )
+        )
+    await session.execute(_INSTALL_SYSTEM_ROLES, {"t": str(tenant_id)})
+    role_id = await session.scalar(_TENANT_OWNER_ROLE, {"t": str(tenant_id)})
+    await session.execute(
+        pg_insert(tables.role_assignments)
+        .values(
+            id=uuid4(),
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            membership_id=membership_id,
+            role_id=role_id,
+        )
+        .on_conflict_do_nothing(constraint="uq_role_assignments_membership_id_role_id")
+    )
 
 
 @dataclass(frozen=True)
@@ -76,6 +142,7 @@ class SqlProvisioningRepository:
                 tables.tenants.c.slug,
                 tables.tenants.c.name,
                 tables.tenants.c.status,
+                tables.tenants.c.owner_coverage_low_since,
                 tables.tenants.c.created_at,
                 tables.entitlements.c.plan_id,
                 sa.func.coalesce(ws.c.n, 0).label("workspace_count"),
@@ -103,6 +170,7 @@ class SqlProvisioningRepository:
                 workspace_count=row.workspace_count,
                 member_count=row.member_count,
                 created_at=row.created_at,
+                owner_coverage_low_since=row.owner_coverage_low_since,
             )
             for row in rows
         ]
@@ -150,26 +218,41 @@ class SqlProvisioningRepository:
         slug: str,
         name: str,
         plan_id: str,
-    ) -> None:
-        async with self.session_factory() as session, session.begin():
-            await session.execute(
-                sa.insert(tables.tenants).values(
-                    id=tenant_id, slug=slug, name=name, status="active"
+        owners: Sequence[str],
+    ) -> list[UUID]:
+        try:
+            async with self.session_factory() as session, session.begin():
+                # `setup` until the second owner is active (R3.1, R3.10).
+                await session.execute(
+                    sa.insert(tables.tenants).values(
+                        id=tenant_id, slug=slug, name=name, status="setup"
+                    )
                 )
-            )
-            await session.execute(
-                sa.insert(tables.workspaces).values(
-                    id=workspace_id,
-                    tenant_id=tenant_id,
-                    slug="main",
-                    name="Main workspace",
+                await session.execute(
+                    sa.insert(tables.workspaces).values(
+                        id=workspace_id,
+                        tenant_id=tenant_id,
+                        slug="main",
+                        name="Main workspace",
+                    )
                 )
-            )
-            await session.execute(
-                sa.insert(tables.entitlements).values(
-                    id=entitlement_id, tenant_id=tenant_id, plan_id=plan_id
+                await session.execute(
+                    sa.insert(tables.entitlements).values(
+                        id=entitlement_id, tenant_id=tenant_id, plan_id=plan_id
+                    )
                 )
-            )
+                await session.execute(_INSTALL_SYSTEM_ROLES, {"t": str(tenant_id)})
+                owner_ids = [await _owner_user(session, email) for email in owners]
+                for user_id in owner_ids:
+                    await _place_owner(
+                        session, tenant_id=tenant_id, workspace_id=workspace_id, user_id=user_id
+                    )
+        except IntegrityError as exc:
+            conflict = _owner_conflict(exc)
+            if conflict is None:
+                raise
+            raise conflict from exc
+        return owner_ids
 
     async def set_tenant_status(
         self, tenant_id: UUID, status: str, *, only_from: frozenset[str] | None = None
@@ -271,59 +354,19 @@ class SqlProvisioningRepository:
             return None
         return UserRef(user_id=row.id, email=row.email, display_name=row.display_name)
 
-    async def grant_role(
-        self,
-        *,
-        membership_id: UUID,
-        tenant_id: UUID,
-        workspace_id: UUID,
-        user_id: UUID,
-        role: str,
+    async def assign_tenant_owner(
+        self, *, tenant_id: UUID, workspace_id: UUID, user_id: UUID
     ) -> None:
-        async with self.session_factory() as session, session.begin():
-            existing = (
-                await session.execute(
-                    sa.select(tables.memberships.c.role_keys).where(
-                        tables.memberships.c.tenant_id == tenant_id,
-                        tables.memberships.c.workspace_id == workspace_id,
-                        tables.memberships.c.user_id == user_id,
-                    )
+        try:
+            async with self.session_factory() as session, session.begin():
+                await _place_owner(
+                    session, tenant_id=tenant_id, workspace_id=workspace_id, user_id=user_id
                 )
-            ).first()
-            try:
-                if existing is None:
-                    # The company row first (R4.1): `invited` until the
-                    # person's next sign-in, a row already there unchanged.
-                    await session.execute(ensure_tenant_member(tenant_id, user_id, "invited"))
-                    await session.execute(
-                        sa.insert(tables.memberships).values(
-                            id=membership_id,
-                            tenant_id=tenant_id,
-                            workspace_id=workspace_id,
-                            user_id=user_id,
-                            role_keys=[role],
-                            department="general",
-                        )
-                    )
-                    return
-                roles = list(existing.role_keys)
-                if role not in roles:
-                    roles.append(role)
-                    await session.execute(
-                        sa.update(tables.memberships)
-                        .where(
-                            tables.memberships.c.tenant_id == tenant_id,
-                            tables.memberships.c.workspace_id == workspace_id,
-                            tables.memberships.c.user_id == user_id,
-                        )
-                        .values(role_keys=roles)
-                    )
-            except IntegrityError as exc:
-                # A support staff member is never placed in a tenant (ADR 0024).
-                conflict = support_staff_conflict(exc)
-                if conflict is None:
-                    raise
-                raise conflict from exc
+        except IntegrityError as exc:
+            conflict = _owner_conflict(exc)
+            if conflict is None:
+                raise
+            raise conflict from exc
 
     async def list_operators(self) -> list[OperatorRef]:
         stmt = (
@@ -366,12 +409,18 @@ class SqlProvisioningRepository:
         return found is not None
 
     async def add_operator(self, *, user_id: UUID, note: str | None, created_by: UUID) -> None:
-        async with self.session_factory() as session, session.begin():
-            await session.execute(
-                pg_insert(tables.platform_operators)
-                .values(user_id=user_id, note=note, created_by=created_by)
-                .on_conflict_do_nothing(index_elements=["user_id"])
-            )
+        try:
+            async with self.session_factory() as session, session.begin():
+                await session.execute(
+                    pg_insert(tables.platform_operators)
+                    .values(user_id=user_id, note=note, created_by=created_by)
+                    .on_conflict_do_nothing(index_elements=["user_id"])
+                )
+        except IntegrityError as exc:
+            conflict = operator_not_assignable(exc)
+            if conflict is None:
+                raise
+            raise conflict from exc
 
     async def remove_operator(self, user_id: UUID) -> bool:
         async with self.session_factory() as session, session.begin():
@@ -410,12 +459,18 @@ class SqlProvisioningRepository:
         ]
 
     async def add_support_staff(self, *, user_id: UUID, note: str | None, added_by: UUID) -> None:
-        async with self.session_factory() as session, session.begin():
-            await session.execute(
-                pg_insert(tables.support_staff)
-                .values(user_id=user_id, note=note, added_by=added_by)
-                .on_conflict_do_nothing(index_elements=["user_id"])
-            )
+        try:
+            async with self.session_factory() as session, session.begin():
+                await session.execute(
+                    pg_insert(tables.support_staff)
+                    .values(user_id=user_id, note=note, added_by=added_by)
+                    .on_conflict_do_nothing(index_elements=["user_id"])
+                )
+        except IntegrityError as exc:
+            conflict = operator_not_assignable(exc)
+            if conflict is None:
+                raise
+            raise conflict from exc
 
     async def remove_support_staff(self, user_id: UUID) -> bool:
         async with self.session_factory() as session, session.begin():
@@ -572,3 +627,20 @@ class SqlProvisioningRepository:
                     occurred_at=occurred_at,
                 )
             )
+
+
+async def _owner_user(session: AsyncSession, email: str) -> UUID:
+    """The person an owner email names, by its lower-cased address, or a new
+    one who has not signed in yet (`invite:<uuid>`), as an invitation creates
+    them (`tenant_members.py`); a person already known is reused."""
+    found = await session.scalar(
+        sa.select(tables.users.c.id).where(sa.func.lower(tables.users.c.email) == email)
+    )
+    if found is not None:
+        return UUID(str(found))
+    created = await session.scalar(
+        pg_insert(tables.users)
+        .values(id=uuid4(), subject=f"invite:{uuid4()}", email=email, display_name=email)
+        .returning(tables.users.c.id)
+    )
+    return UUID(str(created))

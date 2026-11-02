@@ -28,7 +28,6 @@ from dw_api.dependencies.idempotency import IdempotentOperation, idempotent
 from dw_api.dependencies.services import RequireContainer
 from dw_kernel.errors import InfrastructureError, NotFoundError
 from dw_platform.application.access_context import AccessContext
-from dw_platform.application.cache import membership_cache_pattern
 from dw_platform.application.membership_admin import (
     MEMBERS_WRITE,
     GrantMembership,
@@ -37,7 +36,6 @@ from dw_platform.application.membership_admin import (
 )
 from dw_platform.application.tenant_members import (
     InviteMember,
-    MembershipChange,
     SetMemberships,
     TenantMember,
     TenantMembersService,
@@ -105,12 +103,6 @@ async def grant_member(
         run=lambda effect: _ref_view(grant.handle(context, command, effect=effect)),
         reread=lambda user_id: _member_ref(container, context, UUID(user_id)),
     )
-    # The grant changed this workspace's roles → drop its cached AccessContexts so
-    # the new access takes effect at once, not after the TTL.
-    if container.cache is not None:
-        await container.cache.delete_pattern(
-            membership_cache_pattern(context.tenant_id, body.workspace_id)
-        )
     return await idempotency.record(view, status_code=201)
 
 
@@ -132,10 +124,6 @@ async def revoke_member(
         run=lambda effect: revoke.handle(context, command, effect=effect),
         reread=_no_content,
     )
-    if container.cache is not None:
-        await container.cache.delete_pattern(
-            membership_cache_pattern(context.tenant_id, workspace_id)
-        )
     await idempotency.record_no_content()
 
 
@@ -232,24 +220,12 @@ async def _member_ref(
     raise NotFoundError("no such member in this tenant")
 
 
-async def _changed_workspaces(changes: Awaitable[list[MembershipChange]]) -> list[UUID]:
-    return [change.workspace_id for change in await changes]
-
-
-async def _named_workspaces(rows: list[WorkspaceRolesBody]) -> list[UUID]:
-    return [row.workspace_id for row in rows]
+async def _done(work: Awaitable[object]) -> None:
+    await work
 
 
 async def _no_content(_: str) -> None:
     return None
-
-
-async def _drop_cached_contexts(
-    container: ApiContainer, tenant_id: UUID, workspace_ids: list[UUID]
-) -> None:
-    if container.cache is not None:
-        for workspace_id in workspace_ids:
-            await container.cache.delete_pattern(membership_cache_pattern(tenant_id, workspace_id))
 
 
 @router.get("", response_model=list[TenantMemberView])
@@ -275,16 +251,13 @@ async def set_memberships(
     Answers the person's memberships as they now are (empty: none left)."""
     service = _members(container)
     command = SetMemberships(user_id=user_id, memberships=_rows(body.memberships))
-    changed = await idempotency.once(
+    # No cache eviction: every write to a membership bumps the tenant's access
+    # version, so the next request reads the new roles (tenant-rbac R4.1).
+    await idempotency.once(
         status=200,
-        run=lambda effect: _changed_workspaces(
-            service.set_memberships(context, command, effect=effect)
-        ),
-        # A retry of a change already made: every workspace it named, since
-        # which of them changed is not stored. Dropping a cache is idempotent.
-        reread=lambda _: _named_workspaces(body.memberships),
+        run=lambda effect: _done(service.set_memberships(context, command, effect=effect)),
+        reread=_no_content,
     )
-    await _drop_cached_contexts(container, context.tenant_id, changed)
     now = [m for m in await service.list_members(context) if m.user_id == user_id]
     return await idempotency.record(
         MemberMembershipsView(
@@ -311,8 +284,5 @@ async def invite_member(
         status=201,
         run=lambda effect: _ref_view(service.invite(context, command, effect=effect)),
         reread=lambda user_id: _member_ref(container, context, UUID(user_id)),
-    )
-    await _drop_cached_contexts(
-        container, context.tenant_id, [row.workspace_id for row in body.memberships]
     )
     return await idempotency.record(view, status_code=201)

@@ -1990,6 +1990,8 @@ export interface components {
         CreateTenantRequest: {
             /** Name */
             name: string;
+            /** Owners */
+            owners: string[];
             /** Plan Id */
             plan_id: string;
             /** Slug */
@@ -2334,6 +2336,18 @@ export interface components {
              */
             workspace_id: string;
         };
+        /** GrantView */
+        GrantView: {
+            /**
+             * Anchor Workspace Id
+             * Format: uuid
+             */
+            anchor_workspace_id: string;
+            /** Depth */
+            depth: string;
+            /** Key */
+            key: string;
+        };
         /** HandoffView */
         HandoffView: {
             /** Context */
@@ -2505,12 +2519,18 @@ export interface components {
         };
         /** MeResponse */
         MeResponse: {
+            /** Access Version */
+            access_version: number | null;
             /** Clearance */
             clearance: string;
             /** Feature Flags */
             feature_flags: string[];
+            /** Grants */
+            grants: components["schemas"]["GrantView"][];
             /** Plan Id */
             plan_id: string;
+            /** Platform Bypass */
+            platform_bypass: boolean;
             /**
              * Principal Id
              * Format: uuid
@@ -2694,6 +2714,8 @@ export interface components {
             name: string;
             /** Slug */
             slug: string;
+            /** Status */
+            status: string;
             /**
              * Tenant Id
              * Format: uuid
@@ -3440,6 +3462,8 @@ export interface components {
             member_count: number;
             /** Name */
             name: string;
+            /** Owner Coverage Low Since */
+            owner_coverage_low_since: string | null;
             /** Plan Id */
             plan_id: string | null;
             /** Slug */
@@ -3635,10 +3659,6 @@ export interface components {
         };
         /** WorkspaceMembershipModel */
         WorkspaceMembershipModel: {
-            /** Roles */
-            roles: string[];
-            /** Scopes */
-            scopes: string[];
             /**
              * Tenant Id
              * Format: uuid

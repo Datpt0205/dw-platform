@@ -36,7 +36,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from dw_kernel.errors import PermissionDeniedError
 from dw_platform.adapters.identity.dev_token import DEV_ISSUER
 from dw_platform.adapters.persistence import tables
-from dw_platform.adapters.persistence.membership_lookup import effective_scopes
 from dw_platform.adapters.persistence.tenant_member_rows import ensure_tenant_member
 from dw_platform.application.identity_bootstrap import (
     BootstrapView,
@@ -277,8 +276,6 @@ class SqlIdentityBootstrap:
             await session.execute(
                 sa.select(
                     tables.memberships.c.workspace_id,
-                    tables.memberships.c.role_keys,
-                    tables.memberships.c.permission_set_keys,
                     tables.workspaces.c.slug.label("workspace_slug"),
                     tables.workspaces.c.name.label("workspace_name"),
                     tables.tenants.c.id.label("tenant_id"),
@@ -309,28 +306,16 @@ class SqlIdentityBootstrap:
                 .where(tables.memberships.c.user_id == user_id)
             )
         ).all()
-        if not rows:
-            return ()
-
-        views: list[WorkspaceMembershipView] = []
-        for row in rows:
-            # The one reading of what a membership holds (tenant-rbac R2.1):
-            # its roles' and its permission sets' scopes, as the access
-            # context reads them, so what sign-in shows is what a request
-            # then gets.
-            scopes = await effective_scopes(
-                session, frozenset(row.role_keys), frozenset(row.permission_set_keys)
+        # Where the person may enter, not what they hold there: that is
+        # `GET /api/v1/me`'s answer in each workspace (tenant-rbac R2.6).
+        return tuple(
+            WorkspaceMembershipView(
+                tenant_id=row.tenant_id,
+                tenant_slug=row.tenant_slug,
+                tenant_name=row.tenant_name,
+                workspace_id=row.workspace_id,
+                workspace_slug=row.workspace_slug,
+                workspace_name=row.workspace_name,
             )
-            views.append(
-                WorkspaceMembershipView(
-                    tenant_id=row.tenant_id,
-                    tenant_slug=row.tenant_slug,
-                    tenant_name=row.tenant_name,
-                    workspace_id=row.workspace_id,
-                    workspace_slug=row.workspace_slug,
-                    workspace_name=row.workspace_name,
-                    roles=tuple(sorted(row.role_keys)),
-                    scopes=tuple(sorted(scopes)),
-                )
-            )
-        return tuple(views)
+            for row in rows
+        )

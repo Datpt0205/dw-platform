@@ -262,6 +262,8 @@ class OffboardingPurgeSteps:
         steps = cls()
         # The Send floor's append-only tables (compliance-pdpl ticket 08).
         steps.register(marketing_purge_step())
+        # The access version row, which `dw_app` reads only (tenant-rbac R4.2).
+        steps.register(access_version_purge_step())
         return steps
 
     def register(self, step: OffboardingPurgeStep) -> None:
@@ -277,6 +279,25 @@ class OffboardingPurgeSteps:
 
     def all(self) -> list[OffboardingPurgeStep]:
         return list(self._steps.values())
+
+
+_PURGE_ACCESS_VERSION = text("SELECT platform.purge_tenant_access_version(CAST(:t AS uuid))")
+
+
+async def _purge_access_version(session: AsyncSession, tenant_id: UUID) -> None:
+    await session.execute(_PURGE_ACCESS_VERSION, {"t": str(tenant_id)})
+
+
+def access_version_purge_step() -> OffboardingPurgeStep:
+    """`platform.tenant_access_versions` loses its row through the SECURITY
+    DEFINER function migration b5677d345bc1 made for it, which refuses a tenant
+    that is not `offboarding`. Whatever this lane deletes after it bumps
+    nothing: `platform.bump_access_version()` only updates a row that exists."""
+    return OffboardingPurgeStep(
+        name="platform.purge_tenant_access_version",
+        tables=frozenset({"platform.tenant_access_versions"}),
+        run=_purge_access_version,
+    )
 
 
 def _default_step(qualified: str) -> OffboardingPurgeStep:

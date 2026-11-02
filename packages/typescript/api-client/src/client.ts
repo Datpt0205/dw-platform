@@ -148,6 +148,31 @@ export interface ApiClientOptions {
   fetchImpl?: typeof fetch;
 }
 
+// ---- the caller's access (tenant-rbac R2.6) ------------------------------
+
+const grantSchema = z.object({
+  key: z.string(),
+  depth: z.string(),
+  anchor_workspace_id: z.string(),
+});
+export type Grant = z.infer<typeof grantSchema>;
+
+const meSchema = z.object({
+  tenant_id: z.string(),
+  workspace_id: z.string(),
+  principal_id: z.string(),
+  roles: z.array(z.string()),
+  scopes: z.array(z.string()),
+  grants: z.array(grantSchema),
+  access_version: z.number().nullable(),
+  platform_bypass: z.boolean(),
+  clearance: z.string(),
+  plan_id: z.string(),
+  feature_flags: z.array(z.string()),
+});
+/** `GET /api/v1/me`: what the caller holds in the workspace it works in. */
+export type Me = z.infer<typeof meSchema>;
+
 // ---- platform provisioning (ADR-002) --------------------------------------
 
 const platformTenantSchema = z.object({
@@ -159,6 +184,7 @@ const platformTenantSchema = z.object({
   workspace_count: z.number(),
   member_count: z.number(),
   created_at: z.string(),
+  owner_coverage_low_since: z.string().nullable(),
 });
 export type PlatformTenant = z.infer<typeof platformTenantSchema>;
 
@@ -639,6 +665,11 @@ export class ApiClient {
     });
   }
 
+  /** What the caller holds in the workspace its headers name (tenant-rbac R2.6). */
+  me(): Promise<Me> {
+    return this.request("GET", "/api/v1/me", meSchema);
+  }
+
   // ---- platform provisioning (operator-only) ------------------------------
 
   listTenants(): Promise<PlatformTenant[]> {
@@ -658,11 +689,18 @@ export class ApiClient {
     );
   }
 
-  createTenant(input: { slug: string; name: string; planId: string }): Promise<{
+  /** A tenant starts in `setup` with its two owners invited (tenant-rbac R3.1). */
+  createTenant(input: {
+    slug: string;
+    name: string;
+    planId: string;
+    owners: string[];
+  }): Promise<{
     tenant_id: string;
     workspace_id: string;
     slug: string;
     name: string;
+    status: string;
   }> {
     return this.request(
       "POST",
@@ -672,8 +710,16 @@ export class ApiClient {
         workspace_id: z.string(),
         slug: z.string(),
         name: z.string(),
+        status: z.string(),
       }),
-      { body: { slug: input.slug, name: input.name, plan_id: input.planId } },
+      {
+        body: {
+          slug: input.slug,
+          name: input.name,
+          plan_id: input.planId,
+          owners: input.owners,
+        },
+      },
     );
   }
 

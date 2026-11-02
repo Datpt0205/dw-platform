@@ -21,6 +21,7 @@ from sqlalchemy.pool import NullPool
 
 from dw_platform.adapters.persistence.scope_holders import SqlScopeHolders
 from dw_platform.testing.members import add_tenant_member
+from dw_platform.testing.rbac import catalogue_test_keys
 
 pytestmark = pytest.mark.integration
 
@@ -61,6 +62,7 @@ async def world(migrator: AsyncEngine) -> World:
     doer, other, doer_set = f"probe_doer_{tag}", f"probe_other_{tag}", f"probe_set_{tag}"
     w = World(*(uuid.uuid4() for _ in range(11)))
     async with migrator.begin() as conn:
+        await catalogue_test_keys(conn, [SCOPE, "y.do"])
         await conn.execute(
             sa.text(
                 "INSERT INTO platform.roles (key, name, scopes) VALUES"

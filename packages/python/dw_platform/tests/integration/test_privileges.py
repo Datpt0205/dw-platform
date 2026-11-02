@@ -941,6 +941,7 @@ async def test_the_provisioner_holds_exactly_what_its_code_runs(db_urls: Databas
     )
     # A later revision that grants the provisioner a new table declares it the same way.
     tenant_members = _module("db/migrations/versions/349080a62e41_tenant_members.py", "tm")
+    tenant_roles = _module("db/migrations/versions/b5677d345bc1_tenant_roles.py", "tr")
     script = _module("scripts/create_provisioner_role.py", "create_provisioner_role")
     migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
     try:
@@ -948,7 +949,11 @@ async def test_the_provisioner_holds_exactly_what_its_code_runs(db_urls: Databas
             catalog = {(r.tbl, r.verb, r.col) for r in await conn.execute(_PROVISIONER_GRANTS)}
     finally:
         await migrator.dispose()
-    declared = _declared(migration.PROVISIONER) | _declared(tenant_members.PROVISIONER)  # type: ignore[attr-defined]
+    declared = (
+        _declared(migration.PROVISIONER)  # type: ignore[attr-defined]
+        | _declared(tenant_members.PROVISIONER)  # type: ignore[attr-defined]
+        | _declared(tenant_roles.PROVISIONER)  # type: ignore[attr-defined]
+    )
     assert _declared(script.GRANTS) == declared, "the role script and the migration disagree"  # type: ignore[attr-defined]
     assert catalog == declared, (
         f"catalog only: {sorted(catalog - declared)}; declared only: {sorted(declared - catalog)}"
@@ -1400,9 +1405,10 @@ async def test_the_permission_catalogue_is_read_only_to_every_application_role(
     db_urls: DatabaseUrls, app_engine: AsyncEngine
 ) -> None:
     """Migration ebb17244abc6 (tenant-rbac R1.3, RB1): `dw_app`,
-    `dw_provisioner` and `dw_agent_ro` write none of the catalogue, and only
-    `dw_app` and `dw_agent_ro` read it; asked of the catalog for every verb,
-    and tried as `dw_app`."""
+    `dw_provisioner` and `dw_agent_ro` write none of the catalogue; all three
+    read it (the provisioner since b5677d345bc1: the depth trigger and
+    `install_system_roles` read `scope_kind`); asked of the catalog for every
+    verb, and tried as `dw_app`."""
     migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
     try:
         async with migrator.connect() as conn:
@@ -1423,8 +1429,7 @@ async def test_the_permission_catalogue_is_read_only_to_every_application_role(
             }
     finally:
         await migrator.dispose()
-    # `dw_provisioner` reads nothing it does not run (FH13).
-    assert held == {("dw_app", "SELECT"), ("dw_agent_ro", "SELECT")}
+    assert held == {("dw_app", "SELECT"), ("dw_agent_ro", "SELECT"), ("dw_provisioner", "SELECT")}
     async with app_engine.connect() as conn:
         for statement in (
             "UPDATE platform.permissions SET status = 'active'",
@@ -1534,3 +1539,84 @@ async def test_the_plan_catalogue_is_read_only_to_every_application_role(
             with pytest.raises(Exception, match="permission denied"):
                 await conn.execute(sa.text(statement))
             await conn.rollback()
+
+
+# tenant-rbac ticket 02 (migration b5677d345bc1).
+
+_HELD_VERBS = sa.text(
+    """
+    SELECT r.rolname, v.verb
+    FROM pg_roles r
+    CROSS JOIN unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']) AS v(verb)
+    WHERE r.rolname IN ('dw_app', 'dw_provisioner', 'dw_agent_ro')
+      AND has_table_privilege(r.rolname, :t, v.verb)
+    """
+)
+
+
+@pytest.mark.parametrize(
+    ("table", "expected"),
+    [
+        (
+            table,
+            {
+                ("dw_app", "SELECT"),
+                ("dw_app", "INSERT"),
+                ("dw_app", "UPDATE"),
+                ("dw_app", "DELETE"),
+                ("dw_provisioner", "SELECT"),
+                ("dw_provisioner", "INSERT"),
+            },
+        )
+        for table in (
+            "platform.tenant_roles",
+            "platform.tenant_role_permissions",
+            "platform.role_assignments",
+        )
+    ]
+    + [("platform.tenant_access_versions", {("dw_app", "SELECT")})],
+)
+async def test_the_role_tables_are_the_applications_and_the_version_only_the_databases(
+    db_urls: DatabaseUrls, table: str, expected: set[tuple[str, str]]
+) -> None:
+    """Step 5 and 9: `dw_app` reads and writes the three role tables (DELETE
+    for offboarding), never truncates; the provisioner reads and adds; the
+    version row is written by `platform.bump_access_version()` alone, so no
+    application role may write it; `dw_agent_ro` holds nothing."""
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            held = {(r.rolname, r.verb) for r in await conn.execute(_HELD_VERBS, {"t": table})}
+    finally:
+        await migrator.dispose()
+    assert held == expected
+
+
+async def test_only_dw_app_may_purge_a_version_row_and_no_one_calls_the_trigger_functions(
+    db_urls: DatabaseUrls,
+) -> None:
+    """The SECURITY DEFINER functions of the migration are revoked from PUBLIC;
+    the purge step is `dw_app`'s alone."""
+    definers = (
+        "platform.sod_violation(uuid, uuid)",
+        "platform.bump_access_version()",
+        "platform.purge_tenant_access_version(uuid)",
+        "platform.complete_tenant_setup()",
+        "platform.guard_operator_tenant_grants()",
+        "platform.check_owner_coverage(uuid)",
+    )
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            calls = {
+                (role, function): await conn.scalar(
+                    sa.text("SELECT has_function_privilege(:r, :f, 'EXECUTE')"),
+                    {"r": role, "f": function},
+                )
+                for role in ("public", "dw_app", "dw_agent_ro")
+                for function in definers
+            }
+    finally:
+        await migrator.dispose()
+    allowed = {k for k, v in calls.items() if v}
+    assert allowed == {("dw_app", "platform.purge_tenant_access_version(uuid)")}

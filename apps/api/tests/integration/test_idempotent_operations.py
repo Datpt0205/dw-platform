@@ -14,6 +14,7 @@ second row.
 from __future__ import annotations
 
 import asyncio
+import json
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
@@ -62,6 +63,7 @@ from dw_platform.application.support_access import (
 from dw_platform.application.tenant_members import InviteMember, SetMemberships, WorkspaceRoles
 from dw_platform.domain.approval import ApprovalRequest
 from dw_platform.testing.members import add_tenant_member
+from dw_platform.testing.rbac import catalogue_test_keys
 
 pytestmark = pytest.mark.integration
 
@@ -95,6 +97,7 @@ ADMIN_SCOPES = (
 
 
 async def _role(conn: Any, key: str, scopes: str) -> None:
+    await catalogue_test_keys(conn, json.loads(scopes))
     await conn.execute(
         sa.text(
             "INSERT INTO platform.roles (key, name, scopes) VALUES (:k, :k, CAST(:s AS jsonb))"

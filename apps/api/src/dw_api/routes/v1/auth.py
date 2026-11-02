@@ -3,9 +3,10 @@
 Called by the web app right after OIDC login, before a workspace is selected.
 A brand-new verified identity gets no membership (an empty list) unless the
 deployment turns on `auto_provision_default_membership`, which puts it in the
-demo tenant as its default role; existing users keep their memberships. Each
-membership's scopes are its roles' and permission sets' (`effective_scopes`),
-read exactly as the access context of a request reads them (tenant-rbac R2.1).
+demo tenant as its default role; existing users keep their memberships. It
+names where the person may enter and nothing they hold there: the web reads
+that from `GET /api/v1/me` in each workspace (tenant-rbac R2.6; ADR-0104
+decision 5), so sign-in and requests cannot disagree.
 """
 
 from __future__ import annotations
@@ -28,8 +29,6 @@ class WorkspaceMembershipModel(BaseModel):
     workspace_id: UUID
     workspace_slug: str
     workspace_name: str
-    roles: list[str]
-    scopes: list[str]
 
 
 class BootstrapResponse(BaseModel):
@@ -69,8 +68,6 @@ async def bootstrap(
                 workspace_id=m.workspace_id,
                 workspace_slug=m.workspace_slug,
                 workspace_name=m.workspace_name,
-                roles=list(m.roles),
-                scopes=list(m.scopes),
             )
             for m in view.memberships
         ],

@@ -840,6 +840,14 @@
             "title": "Name",
             "type": "string"
           },
+          "owners": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Owners",
+            "type": "array"
+          },
           "plan_id": {
             "title": "Plan Id",
             "type": "string"
@@ -854,7 +862,8 @@
         "required": [
           "slug",
           "name",
-          "plan_id"
+          "plan_id",
+          "owners"
         ],
         "title": "CreateTenantRequest",
         "type": "object"
@@ -1661,6 +1670,30 @@
         "title": "GrantMemberRequest",
         "type": "object"
       },
+      "GrantView": {
+        "properties": {
+          "anchor_workspace_id": {
+            "format": "uuid",
+            "title": "Anchor Workspace Id",
+            "type": "string"
+          },
+          "depth": {
+            "title": "Depth",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "depth",
+          "anchor_workspace_id"
+        ],
+        "title": "GrantView",
+        "type": "object"
+      },
       "HandoffView": {
         "properties": {
           "context": {
@@ -2100,6 +2133,17 @@
       },
       "MeResponse": {
         "properties": {
+          "access_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Access Version"
+          },
           "clearance": {
             "title": "Clearance",
             "type": "string"
@@ -2111,9 +2155,20 @@
             "title": "Feature Flags",
             "type": "array"
           },
+          "grants": {
+            "items": {
+              "$ref": "#/components/schemas/GrantView"
+            },
+            "title": "Grants",
+            "type": "array"
+          },
           "plan_id": {
             "title": "Plan Id",
             "type": "string"
+          },
+          "platform_bypass": {
+            "title": "Platform Bypass",
+            "type": "boolean"
           },
           "principal_id": {
             "format": "uuid",
@@ -2151,6 +2206,9 @@
           "principal_id",
           "roles",
           "scopes",
+          "grants",
+          "access_version",
+          "platform_bypass",
           "clearance",
           "plan_id",
           "feature_flags"
@@ -2528,6 +2586,10 @@
             "title": "Slug",
             "type": "string"
           },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
           "tenant_id": {
             "format": "uuid",
             "title": "Tenant Id",
@@ -2543,7 +2605,8 @@
           "tenant_id",
           "workspace_id",
           "slug",
-          "name"
+          "name",
+          "status"
         ],
         "title": "NewTenantView",
         "type": "object"
@@ -4425,6 +4488,18 @@
             "title": "Name",
             "type": "string"
           },
+          "owner_coverage_low_since": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Coverage Low Since"
+          },
           "plan_id": {
             "anyOf": [
               {
@@ -4457,7 +4532,8 @@
           "plan_id",
           "workspace_count",
           "member_count",
-          "created_at"
+          "created_at",
+          "owner_coverage_low_since"
         ],
         "title": "TenantView",
         "type": "object"
@@ -4957,20 +5033,6 @@
       },
       "WorkspaceMembershipModel": {
         "properties": {
-          "roles": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Roles",
-            "type": "array"
-          },
-          "scopes": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Scopes",
-            "type": "array"
-          },
           "tenant_id": {
             "format": "uuid",
             "title": "Tenant Id",
@@ -5004,9 +5066,7 @@
           "tenant_name",
           "workspace_id",
           "workspace_slug",
-          "workspace_name",
-          "roles",
-          "scopes"
+          "workspace_name"
         ],
         "title": "WorkspaceMembershipModel",
         "type": "object"
