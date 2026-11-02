@@ -296,3 +296,16 @@ contract of ADR 0120.
   Consequences replace "the one order of `offboarding.py`", which the sixth pass's line above wrote, with a registry
   of offboarding steps whose order the `RESTRICT` and `NO ACTION` edges of `pg_constraint` give (H-2), and send the
   two price floats of the model profile out of it instead of into `Decimal` (H-4).
+
+## Amendments (2026-11-02)
+
+- tenant-config ticket 01 readiness gate, agent under Đạt's delegation of 2026-10-31: decision 3's "Studio hashes"
+  are the hashes of the `studio.*` envelope (`content_hash`, `definition_hash`), of definition manifests and of run
+  manifests. A Digital Worker's workflow version is not yet a Studio artifact (ADR 0120, amendment 2026-11-02), and
+  its hash `wflite.catalog.workflow_sha256` (wf-ai R6, wf-lite R6.14: bare hex over
+  `dw_kernel.pagination.canonical_json`) stays as it is, because stored drafts, versions, pending
+  `dw.workflow.publish` approvals and in-flight wf-lite runs carry it, and pack documents may hold floats that
+  `ensure_hashable` refuses; it moves to `content_hash` when DW workflow versions enter the envelope.
+  `canonical_json`'s other callers (cursor fingerprints, filters, schema cache keys) are not Studio hashes either.
+  If wrong: route `workflow_sha256` through `content_hash` in its own ticket, rehash stored drafts and versions in
+  a migration and send pending `dw.workflow.publish` approvals back to draft.

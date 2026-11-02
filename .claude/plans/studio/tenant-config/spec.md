@@ -2,8 +2,8 @@
 
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
-Duyệt: chưa
-Sẵn sàng: chưa kiểm
+Duyệt: agent, tạm theo ủy quyền 2/11/2026
+Sẵn sàng: ĐẠT (2/11/2026; 0 CRITICAL, 0 HIGH; ticket 01)
 
 Mọi thứ công ty tự dựng trong Studio (đối tượng, quy trình, agent, công cụ, kỹ năng, bộ công cụ) cần
 một vỏ phiên bản chung: tối đa một phiên bản chưa phát hành (một nháp sửa được hay một Bản ứng viên đang chờ),
@@ -1031,6 +1031,15 @@ agent-lifecycle (agent-lifecycle:R10.2), rồi `studio.artifacts`; `platform.run
   (V4.30) và một tập chép lại thiếu chúng sẽ từ chối nhật ký lần gửi; tools-and-skills/01 đưa bước chế độ chạy của ticket
   03 vào sổ guard của ToolExecutor (H-3). Sửa: Dữ liệu, TC11, ticket 03. Nếu sai thì: revision đọc tập hiện có từ
   catalog và thêm `simulated` vào đó.
+- 2/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 01. Ticket 01 là hàm dạng chuẩn một chủ, không
+  phụ thuộc ticket nào, và 02-05 dựa vào nó; cách chia 02-05 được duyệt khi gate chạy cho chúng. Theo `## Ủy quyền`
+  của studio.md (Đạt, 31/10/2026). Nếu sai thì: hạ ticket 01 về `needs-triage` và chia lại.
+- 2/11/2026 (agent, theo ủy quyền 31/10/2026): "Mã băm của Studio" ở R1 là mã băm của vỏ phiên bản `studio.*`,
+  bản kê định nghĩa và bản kê lượt chạy; `workflow_sha256` của wf-ai và wf-lite (hex trần trên `canonical_json`,
+  đã lưu ở bản nháp, phiên bản và approval đang chờ của quy trình DW) giữ nguyên tới khi phiên bản quy trình DW
+  vào vỏ (ADR-0109 (Accepted) sửa đổi 2026-11-02, ADR-0120 (Accepted) sửa đổi 2026-11-02). Sửa: ticket 01. Nếu
+  sai thì: một ticket riêng chuyển `workflow_sha256` sang `content_hash`, băm lại bản nháp và phiên bản đã lưu và
+  đưa approval `dw.workflow.publish` đang chờ về nháp.
 
 ## Danh sách ticket
 

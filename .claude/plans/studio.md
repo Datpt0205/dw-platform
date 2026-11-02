@@ -426,7 +426,7 @@ Khối số dành riêng: 0100-0199.
 - [`record-access`](studio/record-access/spec.md): kiểm nhất quán vòng 4 sau các lượt sửa của vòng 4, rồi `checking-plan-readiness` cho từng ticket W1 (25/10/2026).
 - [`field-security`](studio/field-security/spec.md): kiểm nhất quán vòng 4 sau các lượt sửa của vòng 4, rồi `checking-plan-readiness` cho từng ticket W1 (25/10/2026).
 - [`custom-objects`](studio/custom-objects/spec.md): kiểm nhất quán vòng 4 sau các lượt sửa của vòng 4, rồi `checking-plan-readiness` cho từng ticket W1 (25/10/2026).
-- [`tenant-config`](studio/tenant-config/spec.md): kiểm nhất quán vòng 4 sau các lượt sửa của vòng 4, rồi `checking-plan-readiness` cho từng ticket W1 (25/10/2026).
+- [`tenant-config`](studio/tenant-config/spec.md): `checking-plan-readiness` ticket 01: ĐẠT (2/11/2026; 0 CRITICAL, 0 HIGH sau khi sửa 2 HIGH theo ủy quyền: phạm vi "mã băm Studio" để `workflow_sha256` của wf-ai ngoài, ADR-0109 sửa đổi 2026-11-02; `to_nfc` từ chối khóa trùng sau NFC); ticket 01 `ready-for-agent`, kế: code ticket 01, rồi gate cho ticket 02-05.
 - [`domain-packs`](studio/domain-packs/spec.md): chỉ có phạm vi W2; cắt ticket khi đợt 2 bắt đầu (23/10/2026).
 - [`workflow-engine`](studio/workflow-engine/spec.md): kiểm nhất quán vòng 4 sau các lượt sửa của vòng 4, rồi `checking-plan-readiness` cho từng ticket W1 (25/10/2026).
 - [`workflow-triggers`](studio/workflow-triggers/spec.md): kiểm nhất quán vòng 4 sau các lượt sửa của vòng 4, rồi `checking-plan-readiness` cho từng ticket W1 (25/10/2026).
