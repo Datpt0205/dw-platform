@@ -2,8 +2,8 @@
 
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
-Duyệt: chưa
-Sẵn sàng: chưa kiểm
+Duyệt: agent, tạm theo ủy quyền 2/11/2026
+Sẵn sàng: ĐẠT (2/11/2026; 0 CRITICAL, 0 HIGH; ticket 01)
 
 Mọi cửa model của Studio cần một bộ phân giải theo công ty để chọn đúng hồ sơ model mà gói cho phép, ghim vào bản kê lượt chạy và đi theo lộ trình dữ liệu chặt nhất, thay cho ba chỗ đọc hồ sơ lệch nhau hôm nay; và công ty cần kết nối model của chính mình qua model proxy LiteLLM không trạng thái. W1 làm `ModelResolver` và hồ sơ nền tảng lọc theo gói cho bước AI và trợ lý, cùng một spike đo model proxy trước khi dựng; kết nối model đầy đủ (BYOM) là W2.
 
@@ -117,6 +117,19 @@ Hồ sơ model khai nơi xử lý dữ liệu; thiếu khai là nước ngoài, 
 - 25/10/2026 (Đạt): V4.35: bản kê lượt chạy ghim id kết nối và phiên bản Bộ giá trị gắn, không ghim `secret_version`; lời gọi dùng phiên bản mới nhất chưa thu hồi của kết nối và ghi phiên bản đã dùng; xoay tách khỏi thu hồi vì lộ. Ở spec này: `ResolvedRoute` ghim trong bản kê không mang phiên bản bí mật (ADR-0118 (Accepted) quyết 1). Sửa: R1.4, Trong phạm vi, ticket 02.
 - 25/10/2026 (agent, tạm): H-4: usage-and-limits/02 dựng Bảng giá theo ngày hiệu lực và chuyển `route_cost` sang đọc nó, không sửa `model/profiles.py` hay `configs/models/*.yaml`; ticket 02, nay chờ ticket đó, bỏ hai trường giá đã không còn ai đọc khi dựng `ModelProfile` v2, còn `temperature`, `max_cost_usd_per_run` vẫn sang `Decimal`; thay dòng ngày 24/10/2026 ở trên ("ticket 02 đi trước usage-and-limits/02"). Sửa: Trong phạm vi, Phụ thuộc, ticket 02. Nếu sai thì: usage-and-limits/02 chờ ticket 02 như trước.
 - 25/10/2026 (agent, tạm): H-25: lời gọi model của công ty (W2) ghi phiên bản khóa đã dùng trên sự kiện sử dụng của nó, `platform.usage_events` của usage-and-limits, là một dòng Ngoài phạm vi W2. Sửa: Ngoài phạm vi. Nếu sai thì: chỉ audit ghi phiên bản khóa.
+- 2/11/2026 (agent, theo ủy quyền 31/10/2026): sửa ticket 01 theo gate `checking-plan-readiness`. Đây là builder check, không có boundary walk vì ticket không có migration hay route; đo trên `6593e0e`. Gate tìm ra 10 HIGH, đã sửa hết:
+    - spike nằm ở `infra/spikes/model-proxy/` trên `main`, không dưới gói `dw_studio` chưa tồn tại;
+    - phần cần khóa thật hay GPU tách sang ticket 03 (Chờ Đạt 21);
+    - một proxy ghi kết nối đứng thay smokescreen, vì smokescreen thật chờ discovery/21;
+    - tham số cấm được liệt kê;
+    - thêm phép đo regex `api_base` lồng nhau và phép đo cooldown, retry tắt;
+    - log của proxy và callback của LangChain được quét ở bốn dạng mã hóa;
+    - luật 14 ngày tính từ lúc 1.106.1 lên PyPI ngày 20/10/2026, nên chỉ chạy được từ 4/11/2026;
+    - bỏ câu "một model proxy hay hai", vì D13 đã chốt;
+    - không tự nới cấu hình của ADR-0118 (Accepted) quyết định 8.
+
+    Chi tiết ở Comments của ticket 01. Sửa: ticket 01, ticket 03, Danh sách ticket. Nếu sai thì: như dòng `Nếu sai thì` ở Comments của ticket 01.
+- 2/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 01. Ticket 01 chỉ chạm `infra/spikes/model-proxy/` và Comments của nó, không bảng, route, migration, config hay prompt nào của ticket 02; ticket 03 chờ nó và chạm cùng thư mục. Cách chia 02 và 03 được duyệt khi gate chạy cho chúng. Theo `## Ủy quyền` của studio.md (Đạt, 31/10/2026). Nếu sai thì: hạ ticket 01 về `needs-triage` và chia lại.
 
 ## Danh sách ticket
 
@@ -124,3 +137,4 @@ Hồ sơ model khai nơi xử lý dữ liệu; thiếu khai là nước ngoài, 
 | --- | ----------------------------------------------------------------------------------------------------------------- |
 | 01  | [Spike: model proxy LiteLLM theo nhà cung cấp và tiêm khóa ở transport](issues/01-spike-lane-litellm.md)          |
 | 02  | [`ModelResolver` theo công ty, `ModelProfile` v2, `plan_model_profiles`](issues/02-model-resolver-theo-tenant.md) |
+| 03  | [Spike: model proxy với từng nhà cung cấp thật](issues/03-spike-nha-cung-cap-that.md)                             |
