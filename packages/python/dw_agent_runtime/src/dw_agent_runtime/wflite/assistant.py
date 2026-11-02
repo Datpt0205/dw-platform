@@ -26,12 +26,13 @@ from dataclasses import dataclass
 from typing import Annotated, Any, Literal, Protocol
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.ports import ModelGateway, ModelRequest
 from dw_agent_runtime.wflite.catalog import PinnedWorkflow
-from dw_agent_runtime.wflite.outline import StepChange, diff_steps
+from dw_agent_runtime.wflite.document import WorkflowDocument
+from dw_agent_runtime.wflite.outline import OutlineStep, StepChange, diff_steps, outline
 from dw_agent_runtime.wflite.registry import NodeTypeSpec
 from dw_agent_runtime.wflite.validate import Problem, ToolSpecLookup, validate
 from dw_agent_runtime.wflite.versions import PinnedWorkflowsPort, not_shipped
@@ -82,6 +83,9 @@ class AssistantAnswer:
     diff: tuple[StepChange, ...]
     problems: tuple[Problem, ...]
     publishable: bool
+    # The proposed tree as `outline` reads a pinned one (R4.1, R7.1); empty
+    # for a question, or for steps no document can be read from.
+    outline: tuple[OutlineStep, ...] = ()
 
 
 class DwOwnerPort(Protocol):
@@ -182,6 +186,17 @@ async def bases_of(workflows: PinnedWorkflowsPort, worker: DigitalWorker) -> Bas
     return Bases(pinned=pinned, pack=pack)
 
 
+def outline_of(
+    document: Mapping[str, Any], registry: Mapping[str, NodeTypeSpec]
+) -> tuple[OutlineStep, ...]:
+    """A document's tree as the page draws it; () when it does not read as
+    a document (its problems say why)."""
+    try:
+        return outline(WorkflowDocument.model_validate(dict(document)), registry)
+    except ValidationError:
+        return ()
+
+
 def checked_proposal(
     bases: Bases,
     steps: Sequence[Any],
@@ -249,7 +264,9 @@ class WorkflowAssistant:
                 "question", answer.question, tuple(answer.plan), None, (), (), False
             )
         steps = answer.steps or []
-        _, problems = checked_proposal(bases, steps, registry=self.registry, tools=self.tools)
+        proposal, problems = checked_proposal(
+            bases, steps, registry=self.registry, tools=self.tools
+        )
         return AssistantAnswer(
             kind="proposal",
             question=None,
@@ -258,6 +275,7 @@ class WorkflowAssistant:
             diff=tuple(diff_steps(base["steps"], steps, self.registry)),
             problems=tuple(problems),
             publishable=not problems,
+            outline=outline_of(proposal, self.registry),
         )
 
 
@@ -271,4 +289,5 @@ __all__ = [
     "bases_of",
     "checked_proposal",
     "not_in_base",
+    "outline_of",
 ]

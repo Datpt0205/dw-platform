@@ -371,3 +371,23 @@ async def test_another_dws_or_another_tenants_version_is_not_shipped(
             assert seen == 0
     finally:
         await engine.dispose()
+
+
+async def test_the_decider_reads_the_review_and_others_do_not(pub: Publish) -> None:
+    """R7.2: the Validator reads the diff, the tree and the passed simulation
+    of a submitted draft; a member who is not the DW's person is refused, a
+    stranger finds nothing."""
+    approval = await pub.submitted()
+    path = pub.path("/review")
+    found = await pub.h.client.get(path, headers=pub.h.headers("validator"))
+    assert found.status_code == 200, found.text
+    review = found.json()
+    assert review["approval_id"] == approval and review["state"] == "submitted"
+    assert review["base_current"] is True
+    assert [(c["change"], c["step_id"]) for c in review["diff"]] == [("added", "wait_more")]
+    assert review["simulation"]["outcome"] == "passed"
+    assert review["simulation"]["content_sha256"] == review["content_sha256"]
+    assert "approve_send" in {step["id"] for step in review["outline"]}
+    refused = await pub.h.client.get(path, headers=pub.h.headers("outsider"))
+    assert refused.status_code == 403 and _reason(refused) == "not_dw_person"
+    assert (await pub.h.client.get(path, headers=pub.h.headers("stranger"))).status_code == 404

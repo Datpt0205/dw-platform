@@ -446,6 +446,7 @@ def _build_container(settings: ApiSettings | None) -> ApiContainer:
     )
     container.workflow_drafts = WorkflowDrafts(
         workers=digital_workers,
+        readers=digital_workers,
         workflows=pinned_workflows,
         store=SqlWorkflowDrafts(session_factory),
         registry=build_node_registry(),

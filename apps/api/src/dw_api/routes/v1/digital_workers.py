@@ -36,6 +36,7 @@ from dw_agent_runtime.wflite.drafts import Draft, Simulation, WorkflowDrafts
 from dw_agent_runtime.wflite.outline import (
     DecisionMode,
     OutlineStep,
+    StepChange,
     WorkflowOutline,
     WorkflowOutlineReader,
 )
@@ -571,6 +572,15 @@ class AssistantAnswerView(BaseModel):
     diff: list[StepChangeView]
     problems: list[WorkflowProblemView]
     publishable: bool
+    # The proposed tree, drawn as the pinned one is (R7.1); empty for a
+    # question or for steps no document reads from.
+    outline: list[OutlineStepView]
+
+
+def _step_change_view(c: StepChange) -> StepChangeView:
+    return StepChangeView(
+        change=c.change, step_id=c.step_id, type=c.type, lane=c.lane, from_lane=c.from_lane
+    )
 
 
 def _answer_view(answer: AssistantAnswer) -> AssistantAnswerView:
@@ -579,14 +589,10 @@ def _answer_view(answer: AssistantAnswer) -> AssistantAnswerView:
         question=answer.question,
         plan=list(answer.plan),
         steps=None if answer.steps is None else list(answer.steps),
-        diff=[
-            StepChangeView(
-                change=c.change, step_id=c.step_id, type=c.type, lane=c.lane, from_lane=c.from_lane
-            )
-            for c in answer.diff
-        ],
+        diff=[_step_change_view(c) for c in answer.diff],
         problems=[WorkflowProblemView(**p.as_dict()) for p in answer.problems],
         publishable=answer.publishable,
+        outline=[_step_view(s) for s in answer.outline],
     )
 
 
@@ -689,6 +695,45 @@ async def get_workflow_draft(
     """wf-ai R6.1: the DW's draft and its last simulation, for its owners;
     404 `draft_not_found` when there is none."""
     return await _draft_read(container, context, dw_id)
+
+
+class DraftReviewView(BaseModel):
+    dw_id: UUID
+    content_sha256: str
+    base_sha256: str
+    # Whether the DW still pins the base the draft was made from; when not,
+    # its publication comes back `base_changed` (R6.6).
+    base_current: bool
+    author_ids: list[UUID]
+    state: Literal["draft", "submitted"]
+    approval_id: UUID | None
+    diff: list[StepChangeView]
+    outline: list[OutlineStepView]
+    simulation: SimulationView | None
+
+
+@router.get("/{dw_id}/workflow-draft/review", response_model=DraftReviewView)
+async def review_workflow_draft(
+    dw_id: UUID, context: RequireAccessContext, container: RequireContainer
+) -> DraftReviewView:
+    """wf-ai R7.2: what a publication's decider reads, for the DW's
+    Validator, Business Owner or Technical Owner; 403 `not_dw_person` for
+    anyone else, 404 for a DW the caller may not read or one without a
+    draft."""
+    found = await _drafts(container).review(context, dw_id)
+    draft = found.draft
+    return DraftReviewView(
+        dw_id=draft.dw_id,
+        content_sha256=draft.content_sha256,
+        base_sha256=draft.base_sha256,
+        base_current=found.base_current,
+        author_ids=list(draft.author_ids),
+        state=draft.state,
+        approval_id=draft.approval_id,
+        diff=[_step_change_view(c) for c in found.diff],
+        outline=[_step_view(s) for s in found.outline],
+        simulation=None if found.simulation is None else _simulation_view(found.simulation),
+    )
 
 
 @router.put("/{dw_id}/workflow-draft", response_model=DraftView)

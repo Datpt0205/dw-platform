@@ -518,7 +518,7 @@ describe("R9.4 the dw.decision card", () => {
     // The fields read in the schema's required order, not jsonb's.
     const [to, subject, body] = ["Người nhận", "Tiêu đề", "Nội dung"].map(
       (label) => screen.getByText(label),
-    );
+    ) as [HTMLElement, HTMLElement, HTMLElement];
     expect(to.compareDocumentPosition(subject)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );

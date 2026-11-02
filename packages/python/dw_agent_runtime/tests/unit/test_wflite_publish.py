@@ -20,7 +20,7 @@ import pytest
 
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.testing.wflite import InMemoryTenantVersions
-from dw_agent_runtime.wflite.catalog import load_shipped_packs, workflow_sha256
+from dw_agent_runtime.wflite.catalog import PinnedWorkflow, load_shipped_packs, workflow_sha256
 from dw_agent_runtime.wflite.compile import WfPorts, worker_definition_of
 from dw_agent_runtime.wflite.drafts import Draft, Simulation
 from dw_agent_runtime.wflite.publish import (
@@ -58,8 +58,15 @@ pytestmark = pytest.mark.unit
 
 CONFIGS = Path(__file__).resolve().parents[5] / "configs"
 PACKS = load_shipped_packs(CONFIGS)
-PACK = PACKS.workflow("lead_care", "1.0.0")
-assert PACK is not None
+
+
+def _pack() -> PinnedWorkflow:
+    found = PACKS.workflow("lead_care", "1.0.0")
+    assert found is not None
+    return found
+
+
+PACK = _pack()
 BASE = PACK.document.model_dump(by_alias=True, exclude_none=True)
 BASE_SHA = base_sha256(PACK)
 TENANT, WORKSPACE = uuid.uuid4(), uuid.uuid4()
@@ -69,7 +76,7 @@ NOW = datetime.now(UTC)
 
 
 def _steps() -> list[dict[str, Any]]:
-    steps = copy.deepcopy(BASE["steps"])
+    steps: list[dict[str, Any]] = copy.deepcopy(BASE["steps"])
     steps[0] = {**steps[0], "description": "changed"}
     return steps
 

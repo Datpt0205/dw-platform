@@ -1,0 +1,26 @@
+# Mutation check of wf-ai ticket 04: scripts/mutate.py runs this file.
+# One mutation per server control the screens read (who reads a draft's
+# review, the proposal's tree). The web controls are vitest tests, which this
+# runner does not run; they are mutated by hand at the queue's close, the
+# result in the ticket's Comments:
+#   - assistant page `: !proposal.publishable` -> `: false`: the save of a
+#     proposal with problems opens (wf-ai-screens "locks the save" goes red);
+#   - assistant page `: !simulatedThis` -> `: false`: the submission opens
+#     without a passed simulation of this content ("opens the submission");
+#   - card `const lockReason = approval.can_decide` -> `= true ||`: the
+#     buttons open for who may not decide ("locks both buttons");
+#   - card `{pending && !sameDraft && (` -> `{false && (`: no warning when
+#     the draft changed since its submission ("warns when the draft").
+mutations:
+  - name: R7.2 anyone who reads the DW reads its draft's review
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/drafts.py
+    old: "        if context.principal_id not in {"
+    new: "        if False and context.principal_id not in {"
+    tests:
+      - apps/api/tests/integration/test_wf_ai_publish.py::test_the_decider_reads_the_review_and_others_do_not
+  - name: R7.1 the proposal comes without its tree
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/assistant.py
+    old: "            outline=outline_of(proposal, self.registry),"
+    new: "            outline=(),"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_assistant.py::test_the_fixture_proposal_is_publishable_and_keeps_everything_but_steps

@@ -281,6 +281,13 @@ export type DwDecisionClass = Generated["DecisionClassView"];
 export type DwScorecard = Generated["ScorecardView"];
 export type WorkflowOutline = Generated["WorkflowOutlineView"];
 export type WorkflowOutlineStep = Generated["OutlineStepView"];
+export type AssistantAnswer = Generated["AssistantAnswerView"];
+export type AssistantTurn = Generated["HistoryTurnBody"];
+export type WorkflowStepChange = Generated["StepChangeView"];
+export type WorkflowProblem = Generated["WorkflowProblemView"];
+export type WorkflowDraft = Generated["DraftView"];
+export type WorkflowSimulation = Generated["SimulationView"];
+export type WorkflowDraftReview = Generated["DraftReviewView"];
 export type DwClassStanding = Generated["ClassStandingView"];
 export type WorkItem = Generated["WorkItemView"];
 export type WorkItemHandoff = Generated["HandoffView"];
@@ -900,6 +907,90 @@ export class ApiClient {
       "GET",
       `/api/v1/digital-workers/${encodeURIComponent(dwId)}/workflow`,
       generated<WorkflowOutline>(),
+    );
+  }
+
+  /** wf-ai R1: one turn with the workflow assistant; nothing is stored. */
+  askWorkflowAssistant(
+    dwId: string,
+    body: { instruction: string; history: AssistantTurn[] },
+  ): Promise<AssistantAnswer> {
+    return this.request(
+      "POST",
+      `/api/v1/digital-workers/${encodeURIComponent(dwId)}/workflow-assistant`,
+      generated<AssistantAnswer>(),
+      { body },
+    );
+  }
+
+  /** wf-ai R6.1: the DW's draft and its last simulation (its owners'). */
+  getWorkflowDraft(dwId: string): Promise<WorkflowDraft> {
+    return this.request(
+      "GET",
+      `/api/v1/digital-workers/${encodeURIComponent(dwId)}/workflow-draft`,
+      generated<WorkflowDraft>(),
+    );
+  }
+
+  /** wf-ai R6.1, R6.7: a step tree, rebuilt and checked by the server. */
+  saveWorkflowDraft(
+    dwId: string,
+    steps: Record<string, unknown>[],
+    idempotencyKey: string,
+  ): Promise<WorkflowDraft> {
+    return this.request(
+      "PUT",
+      `/api/v1/digital-workers/${encodeURIComponent(dwId)}/workflow-draft`,
+      generated<WorkflowDraft>(),
+      { body: { steps }, idempotencyKey },
+    );
+  }
+
+  /** wf-ai R6.2: a dry run of the stored draft; nothing is sent. */
+  simulateWorkflowDraft(
+    dwId: string,
+    idempotencyKey: string,
+  ): Promise<WorkflowSimulation> {
+    return this.request(
+      "POST",
+      `/api/v1/digital-workers/${encodeURIComponent(dwId)}/workflow-draft/simulate`,
+      generated<WorkflowSimulation>(),
+      { idempotencyKey },
+    );
+  }
+
+  /** wf-ai R6.3, R6.4: opens the publication's approval for a second person. */
+  submitWorkflowDraft(
+    dwId: string,
+    idempotencyKey: string,
+  ): Promise<WorkflowDraft> {
+    return this.request(
+      "POST",
+      `/api/v1/digital-workers/${encodeURIComponent(dwId)}/workflow-draft/submit`,
+      generated<WorkflowDraft>(),
+      { idempotencyKey },
+    );
+  }
+
+  /** wf-ai R6.10: cancels the pending approval and returns the draft. */
+  withdrawWorkflowDraft(
+    dwId: string,
+    idempotencyKey: string,
+  ): Promise<WorkflowDraft> {
+    return this.request(
+      "POST",
+      `/api/v1/digital-workers/${encodeURIComponent(dwId)}/workflow-draft/withdraw`,
+      generated<WorkflowDraft>(),
+      { idempotencyKey },
+    );
+  }
+
+  /** wf-ai R7.2: what a publication's decider reads (the DW's people). */
+  reviewWorkflowDraft(dwId: string): Promise<WorkflowDraftReview> {
+    return this.request(
+      "GET",
+      `/api/v1/digital-workers/${encodeURIComponent(dwId)}/workflow-draft/review`,
+      generated<WorkflowDraftReview>(),
     );
   }
 

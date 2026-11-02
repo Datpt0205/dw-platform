@@ -84,3 +84,36 @@ export function laneLabel(port: string): string {
   if (port.startsWith("cases.")) return `Khi bằng "${port.slice(6)}"`;
   return port;
 }
+
+/** A line of a step-tree diff (wf-ai R4.1), as a person reads it. */
+export const STEP_CHANGE: Record<
+  "added" | "removed" | "changed" | "moved",
+  Label
+> = {
+  added: { label: "Thêm", color: "success" },
+  removed: { label: "Bỏ", color: "error" },
+  changed: { label: "Đổi", color: "processing" },
+  moved: { label: "Đổi chỗ", color: "warning" },
+};
+
+/**
+ * Where a step sits, from the diff's lane path: `""` at the top, else
+ * `<step id>.<port>` segments joined by `/` (wf-ai R4.1).
+ */
+export function lanePath(lane: string): string {
+  if (!lane) return "Mức đầu";
+  return lane
+    .split("/")
+    .map((segment) => {
+      const dot = segment.indexOf(".");
+      if (dot < 0) return segment;
+      return `${laneLabel(segment.slice(dot + 1))} của ${segment.slice(0, dot)}`;
+    })
+    .join(" › ");
+}
+
+/** A dry run's outcome (wf-ai R6.2, R6.9). */
+export const SIMULATION_OUTCOME: Record<"passed" | "failed", Label> = {
+  passed: { label: "Qua", color: "success" },
+  failed: { label: "Không qua", color: "error" },
+};

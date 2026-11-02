@@ -652,6 +652,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/digital-workers/{dw_id}/workflow-draft/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Review Workflow Draft
+         * @description wf-ai R7.2: what a publication's decider reads, for the DW's
+         *     Validator, Business Owner or Technical Owner; 403 `not_dw_person` for
+         *     anyone else, 404 for a DW the caller may not read or one without a
+         *     draft.
+         */
+        get: operations["review_workflow_draft_api_v1_digital_workers__dw_id__workflow_draft_review_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/digital-workers/{dw_id}/workflow-draft/simulate": {
         parameters: {
             query?: never;
@@ -1724,6 +1747,8 @@ export interface components {
              * @enum {string}
              */
             kind: "question" | "proposal";
+            /** Outline */
+            outline: components["schemas"]["OutlineStepView"][];
             /** Plan */
             plan: string[];
             /** Problems */
@@ -2168,6 +2193,34 @@ export interface components {
             steps: {
                 [key: string]: unknown;
             }[];
+        };
+        /** DraftReviewView */
+        DraftReviewView: {
+            /** Approval Id */
+            approval_id: string | null;
+            /** Author Ids */
+            author_ids: string[];
+            /** Base Current */
+            base_current: boolean;
+            /** Base Sha256 */
+            base_sha256: string;
+            /** Content Sha256 */
+            content_sha256: string;
+            /** Diff */
+            diff: components["schemas"]["StepChangeView"][];
+            /**
+             * Dw Id
+             * Format: uuid
+             */
+            dw_id: string;
+            /** Outline */
+            outline: components["schemas"]["OutlineStepView"][];
+            simulation: components["schemas"]["SimulationView"] | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "draft" | "submitted";
         };
         /** DraftView */
         DraftView: {
@@ -5355,6 +5408,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DraftView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    review_workflow_draft_api_v1_digital_workers__dw_id__workflow_draft_review_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dw_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftReviewView"];
                 };
             };
             /** @description The request was refused */

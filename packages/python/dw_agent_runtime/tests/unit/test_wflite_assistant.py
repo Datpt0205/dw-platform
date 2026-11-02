@@ -181,6 +181,18 @@ async def test_the_fixture_proposal_is_publishable_and_keeps_everything_but_step
     ]
     proposed = {**BASE, "steps": list(answer.steps or [])}
     assert frozen(BASE, proposed, answer) == (True, "steps only, gates kept")
+    # R7.1: the proposed tree, as the page draws a pinned one.
+    approve = next(step for step in answer.outline if step.id == "approve_send")
+    approved = dict(approve.lanes)["approved"]
+    assert "wait_more" in {step.id for step in approved}
+    assert [step.id for step in answer.outline] == [step["id"] for step in answer.steps or []]
+
+
+async def test_steps_no_document_reads_from_have_no_outline() -> None:
+    """R7.1: the page draws no tree it cannot read; the problems say why."""
+    a, _ = assistant({"kind": "proposal", "plan": ["x"], "steps": [{"id": "x"}]})
+    answer = await a.turn(context(), uuid.uuid4(), instruction="thêm chờ", history=[])
+    assert answer.outline == () and answer.problems and not answer.publishable
 
 
 async def test_a_validator_is_refused_before_the_model() -> None:

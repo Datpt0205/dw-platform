@@ -23,6 +23,7 @@ import {
 import type { Approval } from "@dw/contracts";
 import { PageHeader, RegionState } from "@dw/ui";
 import { DwDecisionCard } from "../../components/digital-workers/dw-decision-card";
+import { WorkflowPublishCard } from "../../components/digital-workers/workflow-publish-card";
 import { LoadError } from "../../components/load-error";
 import { LoadMore } from "../../components/load-more";
 import {
@@ -46,6 +47,7 @@ const CARDS: Record<
   (props: { approval: Approval; onDecided: () => void }) => ReactNode
 > = {
   "dw.decision": DwDecisionCard,
+  "dw.workflow.publish": WorkflowPublishCard,
 };
 
 export default function ApprovalsPage() {

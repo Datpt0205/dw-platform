@@ -319,6 +319,13 @@
             "title": "Kind",
             "type": "string"
           },
+          "outline": {
+            "items": {
+              "$ref": "#/components/schemas/OutlineStepView"
+            },
+            "title": "Outline",
+            "type": "array"
+          },
           "plan": {
             "items": {
               "type": "string"
@@ -371,7 +378,8 @@
           "steps",
           "diff",
           "problems",
-          "publishable"
+          "publishable",
+          "outline"
         ],
         "title": "AssistantAnswerView",
         "type": "object"
@@ -1337,6 +1345,93 @@
           "steps"
         ],
         "title": "DraftBody",
+        "type": "object"
+      },
+      "DraftReviewView": {
+        "properties": {
+          "approval_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approval Id"
+          },
+          "author_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Author Ids",
+            "type": "array"
+          },
+          "base_current": {
+            "title": "Base Current",
+            "type": "boolean"
+          },
+          "base_sha256": {
+            "title": "Base Sha256",
+            "type": "string"
+          },
+          "content_sha256": {
+            "title": "Content Sha256",
+            "type": "string"
+          },
+          "diff": {
+            "items": {
+              "$ref": "#/components/schemas/StepChangeView"
+            },
+            "title": "Diff",
+            "type": "array"
+          },
+          "dw_id": {
+            "format": "uuid",
+            "title": "Dw Id",
+            "type": "string"
+          },
+          "outline": {
+            "items": {
+              "$ref": "#/components/schemas/OutlineStepView"
+            },
+            "title": "Outline",
+            "type": "array"
+          },
+          "simulation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SimulationView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "enum": [
+              "draft",
+              "submitted"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dw_id",
+          "content_sha256",
+          "base_sha256",
+          "base_current",
+          "author_ids",
+          "state",
+          "approval_id",
+          "diff",
+          "outline",
+          "simulation"
+        ],
+        "title": "DraftReviewView",
         "type": "object"
       },
       "DraftView": {
@@ -7526,6 +7621,60 @@
           }
         },
         "summary": "Save Workflow Draft",
+        "tags": [
+          "digital-workers"
+        ]
+      }
+    },
+    "/api/v1/digital-workers/{dw_id}/workflow-draft/review": {
+      "get": {
+        "description": "wf-ai R7.2: what a publication's decider reads, for the DW's\nValidator, Business Owner or Technical Owner; 403 `not_dw_person` for\nanyone else, 404 for a DW the caller may not read or one without a\ndraft.",
+        "operationId": "review_workflow_draft_api_v1_digital_workers__dw_id__workflow_draft_review_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dw_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dw Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftReviewView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Review Workflow Draft",
         "tags": [
           "digital-workers"
         ]

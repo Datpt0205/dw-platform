@@ -184,7 +184,14 @@ function Profile({ worker }: { worker: DigitalWorker }) {
           )}
         </Card>
 
-        <Card title="Quy trình">
+        <Card
+          title="Quy trình"
+          extra={
+            <Link href={`/digital-workers/${worker.id}/assistant`}>
+              Sửa với trợ lý
+            </Link>
+          }
+        >
           {workflow.error != null ? (
             <LoadError
               error={workflow.error}

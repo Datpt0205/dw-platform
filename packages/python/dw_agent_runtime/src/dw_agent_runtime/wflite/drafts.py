@@ -11,7 +11,9 @@ body, and replaces the DW's last one.
 
 Only the DW's Business or Technical Owner reads, saves or simulates
 (`require_owner`). Every write carries its audit row and its effect key into
-the store's one transaction (R6.12, R6.15).
+the store's one transaction (R6.12, R6.15). Its review, the diff against the
+DW's pin, the tree and the last simulation, is also its Validator's, who
+decides its publication (R7.2); anyone else who reads the DW is refused.
 """
 
 from __future__ import annotations
@@ -23,15 +25,22 @@ from datetime import datetime
 from typing import Any, Literal, Protocol
 
 from dw_agent_runtime.contracts import RunContext
-from dw_agent_runtime.wflite.assistant import DwOwnerPort, bases_of, checked_proposal
+from dw_agent_runtime.wflite.assistant import (
+    DwOwnerPort,
+    base_raw,
+    bases_of,
+    checked_proposal,
+    outline_of,
+)
 from dw_agent_runtime.wflite.catalog import workflow_sha256
 from dw_agent_runtime.wflite.compile import ToolModelsPort
 from dw_agent_runtime.wflite.document import WorkflowDocument
+from dw_agent_runtime.wflite.outline import DwReaderPort, OutlineStep, StepChange, diff_steps
 from dw_agent_runtime.wflite.registry import NodeTypeSpec
 from dw_agent_runtime.wflite.simulate import SimulationResult, simulate
 from dw_agent_runtime.wflite.validate import ToolSpecLookup
 from dw_agent_runtime.wflite.versions import PinnedWorkflowsPort, base_sha256
-from dw_kernel.errors import DomainError, NotFoundError
+from dw_kernel.errors import DomainError, NotFoundError, PermissionDeniedError
 from dw_kernel.ids import TenantId, UserId, WorkspaceId
 from dw_kernel.ports import IdGenerator, UtcClock
 from dw_platform.application.access_context import AccessContext
@@ -64,6 +73,19 @@ class Simulation:
     failed_step: str | None
     error: str | None
     created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class DraftReview:
+    """What the person deciding a publication reads (R7.2): the draft, its
+    last simulation, what it changes against the DW's pin now, its tree,
+    and whether that pin is still the base the draft was made from."""
+
+    draft: Draft
+    simulation: Simulation | None
+    diff: tuple[StepChange, ...]
+    outline: tuple[OutlineStep, ...]
+    base_current: bool
 
 
 class DraftStorePort(Protocol):
@@ -113,6 +135,7 @@ def draft_not_found() -> NotFoundError:
 @dataclass(frozen=True)
 class WorkflowDrafts:
     workers: DwOwnerPort
+    readers: DwReaderPort
     workflows: PinnedWorkflowsPort
     store: DraftStorePort
     registry: Mapping[str, NodeTypeSpec]
@@ -163,6 +186,40 @@ class WorkflowDrafts:
         if draft is None:
             raise draft_not_found()
         return draft, await self.store.simulation(scope, dw_id)
+
+    async def review(self, context: AccessContext, dw_id: uuid.UUID) -> DraftReview:
+        """R7.2: for the DW's Validator, Business Owner or Technical Owner; 403
+        `not_dw_person` for anyone else who reads the DW, 404 for who does not."""
+        worker = await self.readers.get(context, dw_id)
+        people = worker.people
+        if context.principal_id not in {
+            people.validator_id,
+            people.technical_owner_id,
+            people.business_owner_id,
+        }:
+            raise PermissionDeniedError(
+                "only the digital worker's people review its draft",
+                details={"reason_code": "not_dw_person"},
+            )
+        scope = WorkScope.of(context)
+        draft = await self.store.get(scope, dw_id)
+        if draft is None:
+            raise draft_not_found()
+        bases = await bases_of(self.workflows, worker)
+        steps = draft.content.get("steps")
+        return DraftReview(
+            draft=draft,
+            simulation=await self.store.simulation(scope, dw_id),
+            diff=tuple(
+                diff_steps(
+                    base_raw(bases.pinned)["steps"],
+                    steps if isinstance(steps, list) else [],
+                    self.registry,
+                )
+            ),
+            outline=outline_of(draft.content, self.registry),
+            base_current=base_sha256(bases.pinned) == draft.base_sha256,
+        )
 
     async def simulate(
         self, context: AccessContext, dw_id: uuid.UUID, *, effect: PendingEffect | None = None
@@ -229,4 +286,11 @@ class WorkflowDrafts:
         )
 
 
-__all__ = ["Draft", "DraftStorePort", "Simulation", "WorkflowDrafts", "draft_not_found"]
+__all__ = [
+    "Draft",
+    "DraftReview",
+    "DraftStorePort",
+    "Simulation",
+    "WorkflowDrafts",
+    "draft_not_found",
+]

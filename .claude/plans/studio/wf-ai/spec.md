@@ -106,7 +106,8 @@ Trợ lý chỉ đổi cây bước; mọi thứ khác của quy trình gốc gi
 ## API
 
 - `POST /v1/digital-workers/{id}/workflow-assistant`: thân `{instruction, history[]}`, mỗi lượt `{role: "user" | "assistant", text}`; trả `{kind, question?, plan[], steps?, diff?, problems[], publishable}`. 404 khi không đọc được DW, 403 `not_dw_owner`, 422 `assistant_input_too_long`, 404 `workflow_not_shipped`, 503 `upstream_unavailable` (`assistant_output_invalid`). Không ghi gì, nên không `Idempotency-Key`.
-- `PUT` và `GET /v1/digital-workers/{id}/workflow-draft`, `POST .../workflow-draft/simulate`, `.../submit`, `.../withdraw`: chỉ Business Owner hay Technical Owner, `Idempotency-Key` trên mọi `POST` và `PUT`; 404 khi không đọc được DW, 403 `not_dw_owner`, 422 `draft_not_publishable`, 409 `draft_submitted`, `simulation_required`.
+- `PUT` và `GET /v1/digital-workers/{id}/workflow-draft`, `POST .../workflow-draft/simulate`, `.../submit`, `.../withdraw`: chỉ Business Owner hay Technical Owner, `Idempotency-Key` trên mọi `POST` và `PUT`; 404 khi không đọc được DW, 403 `not_dw_owner`, 422 `draft_not_publishable`, 409 `draft_submitted`, `simulation_required`, `draft_not_submitted`, `approval_decided`.
+- `GET /v1/digital-workers/{id}/workflow-draft/review`: cho Validator, Business Owner hay Technical Owner của DW; trả diff với ghim hiện tại, cây bước, kết quả mô phỏng, `base_current`; 403 `not_dw_person`, 404 khi không đọc được DW hay không có bản nháp. Câu trả lời của trợ lý có thêm `outline`, cây đề xuất đọc như cây đã ghim.
 
 ## Kiểm soát
 
@@ -157,6 +158,8 @@ Không có.
 - 2/11/2026 (agent, tạm theo ủy quyền): mô phỏng không gọi model nào: mọi `ai.llm` trả mẫu theo `output_schema`, vì mô phỏng kiểm đường đi của cây và các cổng, còn chất lượng câu chữ là việc của eval; thay dòng 31/10/2026. Sửa: R6.2. Nếu sai thì: mô phỏng gọi model qua bộ model của runtime, và lượt lỗi model là `failed` (R6.9).
 - 2/11/2026 (agent, tạm theo ủy quyền): người quyết `dw.workflow.publish` là vai của DW (Validator, Technical Owner) đọc lúc quyết như `dw.decision` và `dw.autonomy.raise`, không con dấu `studio.publish.approve` của ADR-0120 (Accepted) quyết 2, vì quy trình của DW chưa là artifact của Studio và vai đó chưa có trong danh mục quyền; ghi ở mục Amendments của ADR-0120 (Accepted). Nếu sai thì: đóng dấu `required_scope` khi tenant-rbac có vai, và `DwDecisionAdmission` thêm điều kiện giữ con dấu.
 - 2/11/2026 (agent, tạm theo ủy quyền): lỗi đầu ra của model là 503, không 502: `upstream_unavailable` có một mã trạng thái trong `dw_api.errors` và R1.5 theo nó, không thêm mã thứ hai. Sửa: R1.5, API. Nếu sai thì: thêm mã 502 vào bảng trạng thái của `dw_api.errors`.
+
+- 2/11/2026 (agent, theo ủy quyền 31/10/2026): thẻ duyệt đọc diff và mô phỏng qua route `.../workflow-draft/review` cho người của DW, Validator gồm cả, không qua payload approval (chỉ định danh và hash) và không qua `GET .../workflow-draft` (chỉ chủ DW, R6); trợ lý trả `outline` dựng phía server để trang vẽ cây đề xuất bằng `WorkflowTree` như cây đã ghim (R4.1, R7.1). Sửa: API. Nếu sai thì: `GET .../workflow-draft` mở cho Validator và trang tự dựng cây.
 
 ## Danh sách ticket
 

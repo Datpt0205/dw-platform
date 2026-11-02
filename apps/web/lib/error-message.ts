@@ -58,3 +58,10 @@ export function toRegionError(
   }
   return { code: "internal", message: errorMessage(error) };
 }
+
+/** The rule a refusal names (`details.reason_code`), for branching only. */
+export function reasonCode(error: unknown): string | null {
+  if (!(error instanceof ApiError)) return null;
+  const found = error.body.details?.reason_code;
+  return typeof found === "string" ? found : null;
+}
