@@ -34,7 +34,8 @@ own file and a row here.
   engine running a shipped lead-care pack; YC118-YC125, ADR-0128 (Proposed),
   specs `digital-worker`, `wf-lite`, `leadcare` gated and ready for agent.
   **Next:** the unattended queue in `studio.md` (items 0-12 and 14 done, leadcare 01
-  but R1.5; 13 waits for a model key; item 15 next: wf-ai/03).
+  but R1.5; 13 waits for a model key; item 15 running: wf-ai 01-04, tenant-config 01, 03
+  and tenant-rbac 01 done 2/11/2026, heavy checks deferred to the queue's close).
 
 ## Decisions Đạt owes
 Since 2026-10-31 the agent decides all of these itself (`studio.md` "Ủy quyền toàn phần"), but real keys and secrets.
