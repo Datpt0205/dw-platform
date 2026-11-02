@@ -2,8 +2,8 @@
 
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
-Duyệt: chưa
-Sẵn sàng: chưa kiểm
+Duyệt: agent, tạm theo ủy quyền 2/11/2026
+Sẵn sàng: ĐẠT (2/11/2026; 0 CRITICAL, 0 HIGH; ticket 01)
 
 Công ty tự định nghĩa đối tượng và trường của mình (Lead và Campaign của Marketing trước tiên, D4) mà không
 cần nhà vận hành hay migration: định nghĩa là dữ liệu trên các bảng cố định do migration tạo, và mọi đường
@@ -737,6 +737,7 @@ ghi (DO-01, ADR-0100 (Accepted)), mỗi bảng một dòng lý do trong danh sá
   một `Idempotency-Key` trùng khóa `wf:` của một lượt chạy (khóa đoán được từ id lượt và id Bước) sẽ trả bản ghi
   lượt đó tạo cho người gọi khác (R5.3; ADR-0108 (Accepted) quyết 6). Sửa: ticket 03. Nếu sai thì: route từ chối
   422 một `Idempotency-Key` bắt đầu bằng `wf:`, và hai người gọi cùng khóa nhận 409 từ app-standards/02.
+- 2/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 01.
 
 ## Danh sách ticket
 

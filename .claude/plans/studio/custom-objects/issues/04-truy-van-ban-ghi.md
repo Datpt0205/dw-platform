@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: 03
 Area: studio
-Yêu cầu: R8.1, R8.2, R8.3, R8.4, R8.5, R8.6, R8.7, R8.8, R8.9, R9.1, CO7, CO19
+Yêu cầu: R8.1, R8.2, R8.3, R8.4, R8.5, R8.6, R8.7, R8.8, R8.9, R9.1, R9.6, R9.10, CO7, CO19
 
 ## Mục tiêu
 
@@ -38,7 +38,8 @@ dịch này qua `RecordService`.
    chạy câu lệnh bắt từ trình biên dịch bằng `dw_app` dưới RLS với `SET LOCAL enable_seqscan = off`; mỗi vị từ và cột
    sắp phải là `Index Cond`, `Recheck Cond`, hoặc một index scan giao đúng thứ tự.
 6. Đo lại R9.1 bằng `scripts/bench_records_storage.py` của ticket 01 trên lược đồ, trình biên dịch và policy thật của
-   record-access/03, với người gọi ở mỗi mức truy cập; ghi số vào Comments.
+   record-access/03, với người gọi ở mỗi mức truy cập; ghi số vào Comments. Cùng harness, đo lại R9.6 (WAL của soak) và
+   R9.10 (nhập 10^6 bản ghi) với lần ghi đi qua RecordService thật của ticket 03 thay đường ghi mô phỏng của ticket 01.
 
 ## Tiêu chí chấp nhận
 
@@ -61,6 +62,10 @@ dịch này qua `RecordService`.
       `tenant_id = :tenant` khỏi một câu lệnh → test đỏ.
 - [ ] R9.1: ở quy mô D12, mỗi mức truy cập có trang đầu 50 dòng p95 ≤ 50 ms và `GET` một bản ghi p95 ≤ 5 ms, số và
       `EXPLAIN` ở Comments; sai nếu đo ở quy mô nhỏ hơn D12.
+- [ ] R9.6: WAL của soak 2 giờ ở 200 lần ghi mỗi giây, mỗi lần ghi qua RecordService, so với 20 MB/s, đặt cạnh số
+      đường ghi mô phỏng của ticket 01; sai nếu lần ghi đi vòng qua RecordService.
+- [ ] R9.10: thời gian nhập 10^6 bản ghi qua RecordService so với 1.000 hàng/s, đặt cạnh số đường ghi mô phỏng của
+      ticket 01; sai nếu lần nhập đi vòng qua RecordService.
 - [ ] Xong: `make test-integration` xanh.
 
 ## Nguồn
@@ -74,3 +79,4 @@ dịch này qua `RecordService`.
 ## Comments
 
 - 2026-10-23 (agent): DO-16.1 (a) và ADR-0108 (Accepted) với DO-16 (a) đã có lời đáp (Đạt, 23/10/2026); Status về needs-triage. Mã lỗi lọc, sắp thành `errors[].code` dưới `validation_failed`; tên trường Đã ẩn là công khai (`B:custom-objects:R6.5~field-security:R3.3`).
+- 2026-11-02 (agent, theo ủy quyền 31/10/2026): gate của ticket 01, HIGH 3: RecordService chưa có khi ticket 01 đo, nên ticket 01 đo R9.6 và R9.10 trên đường ghi mô phỏng của harness, và ticket này đo lại hai dòng đó qua RecordService thật (bước 6). Nếu sai thì: ticket 03 đo lại hai dòng đó, và bước 6 trở về chỉ R9.1.
