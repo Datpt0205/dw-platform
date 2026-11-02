@@ -2,8 +2,8 @@
 
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
-Duyệt: chưa
-Sẵn sàng: chưa kiểm
+Duyệt: agent, tạm theo ủy quyền 2/11/2026
+Sẵn sàng: ĐẠT (2/11/2026; 0 CRITICAL, 0 HIGH; ticket 01)
 
 Quản trị viên công ty cần tự dựng vai trò cho các workspace của mình (vai Marketing và vai Sales của lát Marketing, D4) với
 quyền trên đối tượng do công ty định nghĩa (`obj.lead.read`, D3), điều mà danh mục vai toàn cục chỉ migration ghi không
@@ -306,6 +306,17 @@ Không còn câu hỏi mở.
   hành offboard được công ty `setup` qua luồng hiện có; `setup` → `locked` bị từ chối, vì `setup` đã đóng như
   `locked`. Q3: route quản trị vai trò và gán vai trò không nhận đường vượt `platform_admin`; G2 giữ cho route khác.
   Sửa: thêm R3.14, R3.15, R3.16, RB41, RB42, G2, phần mở của R3, R3.11, ticket 02, 03.
+- 2/11/2026 (agent, theo ủy quyền 31/10/2026): `status` của danh mục quyền theo ba luật mà test phủ của ticket 01 giữ:
+  khóa một vai trò mẫu hay bộ quyền cấp không bao giờ `unassigned`, khóa code kiểm không bao giờ `retired`, khóa
+  `active` có chỗ kiểm hay nằm ở danh sách ngoại lệ (R1.2); nên `approvals.pending`, `feedback.inbox` (được cấp, không
+  ai kiểm) là `retired`, còn `runs.cancel`, `knowledge.publish_global`, `crm.records.all.read`, `platform.usage.read`
+  (không ai cấp) là `unassigned`. Chỗ kiểm của R1.1 là mọi dạng gọi cửa phân quyền mà code dùng (`.require(action=`,
+  `idempotent(`, `has_scope(`, `in ... scopes`), giải cả hằng, không chỉ chuỗi viết thẳng trong route. Sửa: ticket 01.
+  Nếu sai thì: hai khóa `retired` thành `active` trong danh sách ngoại lệ của R1.2, và RB2 ghi dạng chỗ kiểm nó không
+  thấy.
+- 2/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 01. Ticket 01 không phụ thuộc ticket nào, 02-04 dựa
+  vào nó (danh mục, test phủ, bootstrap); cách chia 02-04 được duyệt khi gate chạy cho chúng. Theo `## Ủy quyền` của
+  studio.md (Đạt, 31/10/2026). Nếu sai thì: hạ ticket 01 về `needs-triage` và chia lại.
 
 ## Danh sách ticket
 
