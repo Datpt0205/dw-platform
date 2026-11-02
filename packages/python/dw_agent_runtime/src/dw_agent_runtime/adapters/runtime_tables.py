@@ -38,6 +38,8 @@ worker_runs = sa.Table(
     sa.Column("requested_by", UUID(as_uuid=True), nullable=False),
     sa.Column("run_as_principal_id", UUID(as_uuid=True), nullable=True),
     sa.Column("definition_hash", sa.Text, nullable=True),
+    # tenant-config R4.1: no default; `ck_worker_runs_run_mode`.
+    sa.Column("run_mode", sa.Text, nullable=False),
     sa.Column("actor_roles", sa.ARRAY(sa.Text), nullable=False, server_default=sa.text("'{}'")),
     sa.Column("actor_scopes", sa.ARRAY(sa.Text), nullable=False, server_default=sa.text("'{}'")),
     sa.Column("actor_plan_id", sa.Text, nullable=False, server_default=""),

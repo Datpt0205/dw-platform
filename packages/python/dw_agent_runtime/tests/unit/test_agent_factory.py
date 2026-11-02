@@ -357,6 +357,23 @@ async def test_a_gated_tool_pauses_the_run_for_a_person() -> None:
     assert "__interrupt__" in state
 
 
+async def test_a_gated_tool_asks_nobody_in_a_simulated_run() -> None:
+    """tenant-config R5.6 (TC11), at the wrapper: a call the executor
+    intercepts outside `live` neither pauses the run nor opens an approval;
+    it is answered by a sample and recorded `simulated`."""
+    model = _calling("crm__send_quote")
+    spec = _spec(model)
+    store = spec.executor.execution_store
+    simulated = make_run_context().model_copy(update={"run_mode": "simulate"})
+
+    state = await build_agent(spec, checkpointer=InMemorySaver()).ainvoke(
+        {"messages": [HumanMessage("gửi báo giá")]}, THREAD, context=simulated
+    )
+
+    assert "__interrupt__" not in state
+    assert [r["status"] for r in store.records] == ["simulated"]  # type: ignore[attr-defined]
+
+
 # ---------------------------------------------------------- the contract itself --
 
 

@@ -79,9 +79,9 @@ async def _thread(
             await session.execute(
                 text(
                     "INSERT INTO platform.worker_runs"
-                    " (id, thread_id, tenant_id, workspace_id, worker_id, worker_version,"
+                    " (run_mode, id, thread_id, tenant_id, workspace_id, worker_id, worker_version,"
                     "  graph_version, status, requested_by, created_at, updated_at)"
-                    " VALUES (gen_random_uuid(), :th, :t, :w, 'demo', '1.0.0', '1.0.0',"
+                    " VALUES ('live', gen_random_uuid(), :th, :t, :w, 'demo', '1.0.0', '1.0.0',"
                     "  :s, gen_random_uuid(), now(), now())"
                 ),
                 {"th": thread, "t": tenant, "w": workspace, "s": status},

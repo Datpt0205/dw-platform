@@ -162,9 +162,9 @@ async def seed(migrator: AsyncEngine) -> World:
                 {"id": uuid.uuid4(), "t": t, "w": w, "u": u, "r": f'["{role}"]'},
             ),
             (
-                "INSERT INTO platform.worker_runs (id, tenant_id, workspace_id, worker_id,"
-                " worker_version, graph_version, requested_by, thread_id)"
-                " VALUES (:r, :t, :w, 'plan', '1', '1', :u, :r)",
+                "INSERT INTO platform.worker_runs (run_mode, id, tenant_id, workspace_id,"
+                " worker_id, worker_version, graph_version, requested_by, thread_id)"
+                " VALUES ('live', :r, :t, :w, 'plan', '1', '1', :u, :r)",
                 {"r": r, "t": t, "w": w, "u": u},
             ),
         ):

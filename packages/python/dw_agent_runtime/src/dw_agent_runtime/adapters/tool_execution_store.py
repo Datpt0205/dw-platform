@@ -18,6 +18,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from dw_agent_runtime.adapters.runtime_tables import tool_executions
 from dw_agent_runtime.contracts import RunContext
+from dw_platform.adapters.persistence.repositories import SqlAuditRepository
+from dw_platform.domain.audit import AuditEvent
 
 _SET_TENANT = text("SELECT set_config('app.tenant_id', :tenant_id, true)")
 
@@ -104,11 +106,14 @@ class SqlToolExecutionStore:
         started_at: datetime,
         finished_at: datetime,
         dispatch_id: uuid.UUID | None = None,
+        audit: AuditEvent | None = None,
     ) -> StoredExecution | None:
-        """None once the row is written; the earlier success if the key already had one."""
+        """None once the row is written; the earlier success if the key already had one.
+        `audit` is written in the row's own transaction (tenant-config R5.2)."""
         try:
             await self._insert(
                 run_context,
+                audit,
                 id=execution_id,
                 tool_name=tool_name,
                 tool_version=tool_version,
@@ -129,7 +134,9 @@ class SqlToolExecutionStore:
             return await self.find_succeeded(run_context, tool_name, idempotency_key)
         return None
 
-    async def _insert(self, run_context: RunContext, **values: Any) -> None:
+    async def _insert(
+        self, run_context: RunContext, audit: AuditEvent | None = None, **values: Any
+    ) -> None:
         async with self.session_factory() as session, session.begin():
             await session.execute(_SET_TENANT, {"tenant_id": str(run_context.tenant_id)})
             await session.execute(
@@ -140,3 +147,7 @@ class SqlToolExecutionStore:
                     **values,
                 )
             )
+            if audit is not None:
+                # Its row's transaction: a simulated call is recorded with its
+                # trail or not at all.
+                await SqlAuditRepository(session).append(audit)

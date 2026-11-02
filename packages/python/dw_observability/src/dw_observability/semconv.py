@@ -132,6 +132,8 @@ DW_ATTRIBUTES: Final = frozenset(
         "dw.rerank.candidates",
         "dw.rerank.top_k",
         "dw.run_id",
+        # live, test or simulate (tenant-config R4.3): a value from a set.
+        "dw.run_mode",
         "dw.subject_ref",
         "dw.tenant_id",
         "dw.tool_name",

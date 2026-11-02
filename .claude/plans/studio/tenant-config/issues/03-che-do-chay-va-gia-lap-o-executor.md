@@ -1,6 +1,6 @@
 # 03 — Chế độ chạy trên mỗi lượt chạy và executor giả lập ở chế độ Mô phỏng
 
-Status: ready-for-agent
+Status: resolved (2026-11-02, main)
 Blocked by: .claude/plans/studio/runtime-hardening/issues/01-toolexecutor-gianh-luot-khong-cua-sau.md
 Area: studio
 Yêu cầu: R4.1, R4.2, R4.3, R4.4, R4.5, R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, G1, TC9, TC10, TC11
@@ -107,42 +107,42 @@ bị giả lập như `simulate`. Lượt chạy của worker định nghĩa b�
 
 ## Tiêu chí chấp nhận
 
-- [ ] R4.1 (TC9): INSERT `platform.worker_runs` thiếu `run_mode` → lỗi NOT NULL; `run_mode = 'dry'` →
+- [x] R4.1 (TC9): INSERT `platform.worker_runs` thiếu `run_mode` → lỗi NOT NULL; `run_mode = 'dry'` →
       CHECK từ chối; sau migration mọi dòng cũ là `live`.
-- [ ] R4.2 (TC9): `RunContext` dựng không nêu chế độ mang `simulate`, và lệnh gọi công cụ `external` của
+- [x] R4.2 (TC9): `RunContext` dựng không nêu chế độ mang `simulate`, và lệnh gọi công cụ `external` của
       nó bị giả lập; đổi giá trị mặc định thành `live` → test đỏ.
-- [ ] R4.3: lượt chạy mới của worker định nghĩa bằng code có `run_mode = 'live'` trên dòng, `dw.run_mode`
+- [x] R4.3: lượt chạy mới của worker định nghĩa bằng code có `run_mode = 'live'` trên dòng, `dw.run_mode`
       trên span và `details.run_mode` trong audit `run.started`; runner nhận ngữ cảnh `simulate` → dòng, span và
       audit đều `simulate`; thay `run_context.run_mode` bằng hằng `live` trong runner hay store → test đỏ.
-- [ ] R4.3: lượt chạy DW bắt đầu qua `wflite/starter.py` có `run_mode = 'live'` trên dòng và công cụ của nó
+- [x] R4.3: lượt chạy DW bắt đầu qua `wflite/starter.py` có `run_mode = 'live'` trên dòng và công cụ của nó
       thực thi, ghi `succeeded`; bỏ `run_mode="live"` khỏi `run_context_for` của `digital_worker_context.py` → test đỏ.
-- [ ] R4.4 (TC9): `child_mode` đúng cho cả 9 cặp; cha `simulate` xin con `live` → `simulate`.
-- [ ] R4.5 (TC10): lượt `simulate` chờ duyệt một công cụ `simulate_safe` có chính sách duyệt luôn hỏi, rồi tiếp
+- [x] R4.4 (TC9): `child_mode` đúng cho cả 9 cặp; cha `simulate` xin con `live` → `simulate`.
+- [x] R4.5 (TC10): lượt `simulate` chờ duyệt một công cụ `simulate_safe` có chính sách duyệt luôn hỏi, rồi tiếp
       tục ở runner khác → công cụ `external` gọi sau đó vẫn bị giả lập; lượt `live` → công cụ thực thi; bỏ
       `run_mode` khỏi `resume_context` (`adapters/run_store.py:124`) → test đỏ.
-- [ ] R5.1 (TC11): gọi thẳng ToolExecutor với công cụ `external` ở `simulate` và ở `test` → handler (spy)
+- [x] R5.1 (TC11): gọi thẳng ToolExecutor với công cụ `external` ở `simulate` và ở `test` → handler (spy)
       không chạy, dòng có `status` `simulated`; gỡ bước chế độ → test đỏ.
-- [ ] R5.1 (TC11): sau revision của bước 7, INSERT dòng `simulated`, `dispatched`, `outcome_unknown` và `refused`
+- [x] R5.1 (TC11): sau revision của bước 7, INSERT dòng `simulated`, `dispatched`, `outcome_unknown` và `refused`
       (không khóa) → nhận; `bogus` → CHECK từ chối; tập mới thiếu `dispatched`, `outcome_unknown` hay `refused` → ca
       nhận đỏ.
-- [ ] R5.2 (TC11): audit `tool.simulated` có `details.run_mode` và `details.reason`; trên PostgreSQL thật, lần ghi
+- [x] R5.2 (TC11): audit `tool.simulated` có `details.run_mode` và `details.reason`; trên PostgreSQL thật, lần ghi
       audit trong `record` thất bại thì dòng `simulated` cũng không còn; ghi audit bằng `_audit` ở giao dịch riêng như
       hôm nay → test đỏ.
-- [ ] R5.3 (TC11): đầu ra giả lập là `sample_of` của output schema của công cụ (một hàm ở `samples.py`, mà
+- [x] R5.3 (TC11): đầu ra giả lập là `sample_of` của output schema của công cụ (một hàm ở `samples.py`, mà
       `wflite/simulate.py` cũng nhập), qua `tool.output_model.model_validate`, và cả giá trị trả về lẫn cột `output`
       mang `simulated: true`; làm hỏng bộ sinh để trả giá trị sai schema → `validation_failed` như đầu ra thật; test
       của wf-ai cho `simulate` xanh không sửa.
-- [ ] R5.4: công cụ `simulate_safe` ở `simulate` chạy handler và ghi `succeeded`.
-- [ ] R5.5 (TC11): `ToolDefinition` không nêu `simulate_safe` → bị giả lập ở `simulate`.
-- [ ] R5.6 (TC11): công cụ `critical` không `simulate_safe` có chính sách duyệt luôn hỏi, gọi thẳng ToolExecutor
+- [x] R5.4: công cụ `simulate_safe` ở `simulate` chạy handler và ghi `succeeded`.
+- [x] R5.5 (TC11): `ToolDefinition` không nêu `simulate_safe` → bị giả lập ở `simulate`.
+- [x] R5.6 (TC11): công cụ `critical` không `simulate_safe` có chính sách duyệt luôn hỏi, gọi thẳng ToolExecutor
       ở `simulate` → `status` `simulated`, không dòng `platform.approval_requests` nào; cùng lệnh gọi ở `live` →
       `approval_required`; đặt bước chế độ sau bước phê duyệt → ca `simulate` trả `approval_required`, test đỏ.
-- [ ] R5.6 (TC11): cùng công cụ gọi qua tool wrapper của agent (`_build_tool` ở `adapters/langchain_tools.py:482`)
+- [x] R5.6 (TC11): cùng công cụ gọi qua tool wrapper của agent (`_build_tool` ở `adapters/langchain_tools.py:482`)
       ở `simulate` → không ngắt, không dòng `platform.approval_requests` nào, dòng `simulated`; bỏ điều kiện
       `intercepted_in` khỏi wrapper → test đỏ.
-- [ ] G1: `test_happy_path_returns_typed_output_and_audits` xanh với `run_mode = 'live'`; mọi test
+- [x] G1: `test_happy_path_returns_typed_output_and_audits` xanh với `run_mode = 'live'`; mọi test
       executor hiện có xanh.
-- [ ] Xong: `make ci && make test-integration` xanh.
+- [x] Xong: `make ci && make test-integration` xanh.
 
 ## Nguồn
 
@@ -241,3 +241,10 @@ bị giả lập như `simulate`. Lượt chạy của worker định nghĩa b�
   `tool_executions.status`) và đổi đường ghi của executor ở chế độ khác `live` (dòng và audit trong một giao dịch),
   nên thuộc diện đo độ trễ của `latency.md` ("When"); theo lệ từ 2/11/2026, đo một lần sau khi hết ticket của đợt.
 - 2026-11-02 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-02 (agent): resolved.
+    - Khác ticket (agent, theo ủy quyền 31/10/2026): bước 3 và 7 là một revision (`c478ca7b6ed1`, LOW của gate). `dw.run_mode` vào danh sách thuộc tính được phép của `dw_observability.semconv` và ảnh chụp `genai-semconv@e19717d65f89.json` (một giá trị trong tập ba, là định danh), nếu không test "chỉ định danh" của span từ chối nó. Chín fixture test chèn `platform.worker_runs` bằng SQL thô nay nêu `run_mode = 'live'`: cột NOT NULL không DEFAULT làm đúng việc của nó. Test dựng ngữ cảnh cho lượt chạy thật đặt `live` (chín bộ dựng). Nếu sai thì: tách revision theo bước.
+    - R4.5 đo trên graph demo (không công cụ) qua hai runner thật: `resume_context` đọc `simulate` từ dòng và lượt tiếp tục ở runner khác nhận `simulate`; việc executor đọc chế độ của ngữ cảnh có test riêng ở unit. Ca CHECK của R5.1 ghi được `simulated`, `refused`, `outcome_unknown`, từ chối `bogus`, và đọc định nghĩa CHECK cho đủ sáu giá trị (`dispatched` cần `dispatch_id`, đã có ở test của runtime-hardening).
+    - Test: unit `test_run_mode.py` 17 ca (mặc định đóng, 9 cặp `child_mode`, giả lập ở `simulate` và `test`, `live` chạy thật, mẫu sai schema là `validation_failed`, `simulate_safe` chạy, công cụ `critical` không mở phê duyệt ngoài `live`), `test_agent_factory.py` thêm ca wrapper ở `simulate`, `test_tool_specs.py` thêm ca assembler; integration `test_run_mode_db.py` 6 ca (NOT NULL, CHECK, không DEFAULT; runner ghi chế độ của ngữ cảnh lên dòng và audit; tiếp tục ở runner khác vẫn `simulate`; tập trạng thái; audit cùng giao dịch với dòng, lỗi audit thì không còn dòng), `test_wflite_runs_db.py` khẳng định lượt DW mang `live`. Integration của runtime, worker và các tệp có fixture sửa: xanh.
+    - `mutations/03.yaml` 10 đột biến, chưa chạy. Độ trễ (cột mới trên INSERT lượt chạy, đọc khi tiếp tục) đo ở lượt cuối.
+    - MEDIUM chưa làm, cho ticket sau: M3 (test sàn gửi không chạy cho công cụ tin nhắn bị giả lập; theo thứ tự bước nó đứng sau bước chế độ), M4 (metric gọi công cụ đếm `simulated` là `ok`), M5, M6 (dòng `simulated` lặp khi graph phát lại nút lúc tiếp tục), M8 (hai nghĩa của "mô phỏng" trong `CONTEXT.md`).
+    - `reviewing-feature-security` (đọc): chế độ đặt phía server, mặc định đóng, đọc lại từ dòng khi tiếp tục, không bao giờ nới (`child_mode`); bước chế độ ở executor sau biên DW, lệnh gọi quyết định và kiểm quyền, trước phê duyệt, khóa, sàn gửi, giành lượt và handler; wrapper và middleware của agent đọc cùng hàm `intercepted_in`; dòng `simulated` và audit cùng giao dịch.

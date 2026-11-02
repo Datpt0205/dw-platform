@@ -152,6 +152,8 @@ def tools(
 
 RUN = RunContext(
     run_id=uuid.uuid4(),
+    # A real run: its tools act (tenant-config R4.3).
+    run_mode="live",
     tenant_id=uuid.uuid4(),
     workspace_id=uuid.uuid4(),
     actor_id=uuid.uuid4(),

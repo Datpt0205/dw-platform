@@ -52,9 +52,9 @@ async def new_run(migrator: AsyncEngine) -> uuid.UUID:
     async with migrator.begin() as conn:
         await conn.execute(
             sa.text(
-                "INSERT INTO platform.worker_runs (id, thread_id, tenant_id, workspace_id,"
-                " worker_id, worker_version, graph_version, requested_by, created_at)"
-                " VALUES (:r, :r, :t, :w, 'dw', '1.0.0', '1', :r, now())"
+                "INSERT INTO platform.worker_runs (run_mode, id, thread_id, tenant_id,"
+                " workspace_id, worker_id, worker_version, graph_version, requested_by, created_at)"
+                " VALUES ('live', :r, :r, :t, :w, 'dw', '1.0.0', '1', :r, now())"
             ),
             {"r": run, "t": TENANT_A, "w": WORKSPACE_A},
         )

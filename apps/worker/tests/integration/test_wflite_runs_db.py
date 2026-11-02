@@ -595,6 +595,12 @@ async def test_a_run_waits_for_approval_sends_once_waits_and_finishes(
     run = await run_row(migrator, run_id)
     assert run.status == "waiting_approval"
     assert run.definition_hash == pinned.sha256  # R6.14
+    # tenant-config R4.3: a DW's run acts on the world, on its row too.
+    async with migrator.connect() as conn:
+        mode = await conn.scalar(
+            sa.text("SELECT run_mode FROM platform.worker_runs WHERE id = :r"), {"r": run_id}
+        )
+    assert mode == "live"
     [row] = await approvals_of(migrator, run_id)
     assert row.approval_type == DW_DECISION
     assert row.payload["step_id"] == "approve_send"

@@ -79,6 +79,8 @@ def make_definition(**overrides: object) -> ToolDefinition:
 def make_run_context(scopes: frozenset[str] = frozenset({"sales_chat.write"})) -> RunContext:
     return RunContext(
         run_id=uuid.UUID(int=7),
+        # A real run: its tools act (tenant-config R4.3).
+        run_mode="live",
         tenant_id=uuid.UUID(int=1),
         workspace_id=uuid.UUID(int=2),
         actor_id=uuid.UUID(int=3),

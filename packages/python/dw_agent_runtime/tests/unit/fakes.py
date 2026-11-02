@@ -19,6 +19,9 @@ NOW = datetime(2026, 7, 23, 12, 0, tzinfo=UTC)
 class FakeExecutionStore:
     succeeded: dict[tuple[str, str], Any] = field(default_factory=dict)
     records: list[dict[str, Any]] = field(default_factory=list)
+    # Audit events written with their row, as the SQL store writes them in
+    # the row's transaction (tenant-config R5.2).
+    audits: list[AuditEvent] = field(default_factory=list)
 
     async def find_succeeded(
         self, run_context: Any, tool_name: str, idempotency_key: str
@@ -31,6 +34,8 @@ class FakeExecutionStore:
             # The unique index's answer, as the SQL store gives it.
             return self.succeeded[key]
         self.records.append(kwargs)
+        if kwargs.get("audit") is not None:
+            self.audits.append(kwargs["audit"])
         if kwargs.get("status") == "succeeded" and key[1]:
             entry = type(
                 "Stored",

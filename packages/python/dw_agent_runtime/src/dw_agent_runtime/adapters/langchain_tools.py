@@ -269,10 +269,13 @@ class OneApprovalPerStepMiddleware(AgentMiddleware):
         # Decided for THIS run, every call. The same tool is gated for an A1 run and
         # free for an A3 one in the same process.
         run_context = get_runtime(RunContext).context
+        # A call the executor intercepts in this run's mode opens no approval
+        # (tenant-config R5.6), so it is not gated here either.
         gated = {
             exposed_name: definition.name
             for exposed_name, definition in self._offered.items()
             if self._policy.decide(definition, run_context)
+            and not definition.intercepted_in(run_context.run_mode)
         }
         exposed = request.tool_call["name"]
         if exposed not in gated:
@@ -491,7 +494,13 @@ def _build_tool(
     async def call(**kwargs: object) -> str:
         run_context = get_runtime(RunContext).context
         approved = False
-        if executor.approval_policy.decide(definition, run_context):
+        # Asks a person only for a call that will run: one the executor
+        # intercepts outside `live` is answered by a sample and opens no
+        # approval (tenant-config R5.6; failure-modes #5, the rule is held at
+        # the executor too).
+        if executor.approval_policy.decide(
+            definition, run_context
+        ) and not definition.intercepted_in(run_context.run_mode):
             decision = await _ask_human(
                 definition, registered, kwargs, run_context, approval_type_prefix, copy
             )

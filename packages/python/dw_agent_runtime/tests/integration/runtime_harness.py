@@ -74,6 +74,8 @@ def make_run_context(
 ) -> RunContext:
     return RunContext(
         run_id=run_id or uuid.uuid4(),
+        # A real run: its tools act (tenant-config R4.3).
+        run_mode="live",
         thread_id=thread_id,
         tenant_id=tenant,
         workspace_id=workspace,

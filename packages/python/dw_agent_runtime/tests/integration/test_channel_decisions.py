@@ -826,6 +826,8 @@ async def test_a_decision_from_zalo_resumes_the_run_with_channel_zalo(
     try:
         run = RunContext(
             run_id=uuid.uuid4(),
+            # A real run: its tools act (tenant-config R4.3).
+            run_mode="live",
             tenant_id=where[0],
             workspace_id=where[1],
             actor_id=requester.user_id,

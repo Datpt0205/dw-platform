@@ -57,4 +57,7 @@ def run_context_for(
         trace_id=trace_id,
         autonomy_ceiling=autonomy_ceiling,
         subject_ref=subject_ref,
+        # A published workflow's run acts on the world (ADR-0111 decision 2;
+        # tenant-config R4.3).
+        run_mode="live",
     )

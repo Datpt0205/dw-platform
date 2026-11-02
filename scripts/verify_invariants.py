@@ -117,10 +117,16 @@ WATCHED_CONTRACTS: dict[str, tuple[str, ...]] = {
 WATCHED_LITERALS: tuple[str, ...] = (
     "packages/python/dw_agent_runtime/src/dw_agent_runtime/contracts.py",
     "packages/python/dw_kernel/src/dw_kernel/autonomy.py",
+    "packages/python/dw_kernel/src/dw_kernel/run_mode.py",
 )
 
-# name -> why it is allowed to be unread. Empty today.
-UNREAD_EXEMPT: dict[str, str] = {}
+# name -> why it is allowed to be unread.
+UNREAD_EXEMPT: dict[str, str] = {
+    # W1 has no branch for `test`: anything but `live` is intercepted
+    # (`ToolDefinition.intercepted_in`, DO-26.1). Its reader is W2's list of
+    # test recipients (tenant-config R4, workflow-triggers R2.6).
+    "RunMode:test": "simulated as `simulate` in W1; W2's test recipients read it",
+}
 
 
 def _python_sources() -> dict[Path, str]:

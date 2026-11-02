@@ -120,6 +120,10 @@ class ToolSpec(BaseModel):
             idempotent=self.idempotent,
             data_classification=self.data_classification,
             message=self.message,
+            # Only a spec with no effect runs for real outside `live`
+            # (tenant-config R5.4); a tool kind declares its own later
+            # (ADR-0116).
+            simulate_safe=self.side_effect_level == "none",
         )
 
 

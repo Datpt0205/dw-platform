@@ -68,6 +68,8 @@ def make_definition(**overrides: object) -> ToolDefinition:
 def make_run_context(scopes: frozenset[str] = frozenset({"demo.write"})) -> RunContext:
     return RunContext(
         run_id=uuid.uuid4(),
+        # A real run: its tools act (tenant-config R4.3).
+        run_mode="live",
         tenant_id=uuid.uuid4(),
         workspace_id=uuid.uuid4(),
         actor_id=uuid.uuid4(),

@@ -31,6 +31,8 @@ THREAD = uuid.UUID("55555555-5555-5555-5555-555555555555")
 def a_run(*, thread_id: uuid.UUID | None = THREAD) -> RunContext:
     return RunContext(
         run_id=RUN,
+        # A real run: its tools act (tenant-config R4.3).
+        run_mode="live",
         thread_id=thread_id,
         tenant_id=TENANT,
         workspace_id=WORKSPACE,

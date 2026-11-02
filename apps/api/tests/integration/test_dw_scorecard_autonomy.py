@@ -372,10 +372,10 @@ async def _decision(
 async def _run(conn: Any, world: World, principal: uuid.UUID, cost: str, age: int = 1) -> None:
     await _x(
         conn,
-        "INSERT INTO platform.worker_runs (id, thread_id, tenant_id, workspace_id, worker_id,"
-        " worker_version, graph_version, requested_by, run_as_principal_id, model_cost_usd,"
-        " created_at) VALUES (:i, :i, :t, :w, 'dw', '1.0.0', '1', :p, :p, CAST(:c AS numeric),"
-        " now() - :age * interval '1 day')",
+        "INSERT INTO platform.worker_runs (run_mode, id, thread_id, tenant_id, workspace_id,"
+        " worker_id, worker_version, graph_version, requested_by, run_as_principal_id,"
+        " model_cost_usd, created_at) VALUES ('live', :i, :i, :t, :w, 'dw', '1.0.0', '1', :p,"
+        " :p, CAST(:c AS numeric), now() - :age * interval '1 day')",
         i=uuid.uuid4(),
         t=world.tenant,
         w=world.workspace,

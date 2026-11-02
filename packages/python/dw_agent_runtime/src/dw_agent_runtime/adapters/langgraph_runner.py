@@ -167,6 +167,8 @@ class LangGraphWorkflowRunner:
             # What woke the run, so a spike in runs can be traced to its cause
             # rather than to a count.
             "dw.channel": run_context.channel,
+            # The mode the run runs in, as its row records it (tenant-config R4.3).
+            "dw.run_mode": run_context.run_mode,
         }
         if run_context.subject_ref:
             attributes["dw.subject_ref"] = run_context.subject_ref
@@ -327,7 +329,12 @@ class LangGraphWorkflowRunner:
             input_payload=input_payload,
             release_manifest_ref=self.release_manifest_ref,
         )
-        await self._audit(run_context, "run.started", str(run_context.run_id))
+        await self._audit(
+            run_context,
+            "run.started",
+            str(run_context.run_id),
+            details={"run_mode": run_context.run_mode},
+        )
 
         attributes = self._span_attributes(
             run_context,
@@ -383,7 +390,12 @@ class LangGraphWorkflowRunner:
             input_payload=input_payload,
             release_manifest_ref=self.release_manifest_ref,
         )
-        await self._audit(run_context, "run.started", str(run_context.run_id))
+        await self._audit(
+            run_context,
+            "run.started",
+            str(run_context.run_id),
+            details={"run_mode": run_context.run_mode},
+        )
 
         queue: asyncio.Queue[tuple[str, Any]] = asyncio.Queue(maxsize=_STREAM_BACKLOG_LIMIT)
         task = asyncio.create_task(

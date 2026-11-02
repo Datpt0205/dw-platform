@@ -145,3 +145,21 @@ def test_a_tool_with_an_effect_must_say_whether_it_sends_a_message(tmp_path: Pat
     definition = loaded.spec.to_definition(COPY)
     assert definition.message is not None
     assert definition.message.recipient_fields == ("to", "cc")
+
+
+def test_only_a_spec_with_no_effect_runs_for_real_outside_live(tmp_path: Path) -> None:
+    """tenant-config R5.4, R5.5: the assembler sets `simulate_safe` for a
+    `none` spec only; an `internal` or `external` one is intercepted."""
+    registry = ToolSpecRegistry(copy=COPY)
+    registry.load_file(write_spec(tmp_path, SPEC))
+    assert registry.definition("crm.read_account", "1.0.0").simulate_safe is True
+    for level in ("internal", "external"):
+        body = SPEC.replace(
+            "side_effect_level: none",
+            f"side_effect_level: {level}" + chr(10) + "sends_message: false",
+        ).replace("approval_policy: never", "approval_policy: conditional")
+        other = ToolSpecRegistry(copy=COPY)
+        loaded = other.load_file(write_spec(tmp_path, body))
+        definition = loaded.spec.to_definition(COPY)
+        assert definition.simulate_safe is False, level
+        assert definition.intercepted_in("simulate")

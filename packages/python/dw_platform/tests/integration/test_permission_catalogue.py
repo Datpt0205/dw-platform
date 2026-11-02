@@ -105,9 +105,7 @@ def scan_sources(roots: Iterable[Path]) -> Scan:
             value = getattr(top, "value", None)
             if isinstance(value, ast.Constant) and isinstance(value.value, str):
                 targets = (
-                    top.targets
-                    if isinstance(top, ast.Assign)
-                    else [getattr(top, "target", None)]
+                    top.targets if isinstance(top, ast.Assign) else [getattr(top, "target", None)]
                 )
                 for target in targets:
                     if isinstance(target, ast.Name):

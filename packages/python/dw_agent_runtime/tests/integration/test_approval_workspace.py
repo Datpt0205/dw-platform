@@ -161,6 +161,8 @@ def _lookup(context: AccessContext, run_id: uuid.UUID) -> RunContext:
     """What `GET /runs/{id}` hands the store: the caller's own context."""
     return RunContext(
         run_id=run_id,
+        # A real run: its tools act (tenant-config R4.3).
+        run_mode="live",
         tenant_id=context.tenant_id,
         workspace_id=context.workspace_id,
         actor_id=context.principal_id,

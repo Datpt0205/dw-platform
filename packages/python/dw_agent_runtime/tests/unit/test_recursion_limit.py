@@ -29,6 +29,8 @@ def looping_graph() -> Any:
 def make_run_context() -> RunContext:
     return RunContext(
         run_id=uuid.UUID(int=1),
+        # A real run: its tools act (tenant-config R4.3).
+        run_mode="live",
         tenant_id=uuid.UUID(int=2),
         workspace_id=uuid.UUID(int=3),
         actor_id=uuid.UUID(int=4),

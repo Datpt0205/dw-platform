@@ -22,17 +22,17 @@ from __future__ import annotations
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from typing import Any, Literal
 
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.errors import GraphRecursionError
 from langgraph.types import Command
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 
 from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.executor import DecisionCall
 from dw_agent_runtime.ports import ModelRequest
+from dw_agent_runtime.samples import SampleOutput, sample_of
 from dw_agent_runtime.wflite.catalog import PinnedWorkflow
 from dw_agent_runtime.wflite.compile import ToolModelsPort, WfPorts, compile_workflow
 from dw_agent_runtime.wflite.document import Step
@@ -47,65 +47,6 @@ from dw_platform.domain.digital_worker import DigitalWorker
 MAX_STEPS = 200
 # How many waits one simulation resumes before it calls the run endless.
 _MAX_RESUMES = 100
-_SAMPLE_UUID = "00000000-0000-4000-8000-000000000000"
-
-
-def sample_of(schema: Mapping[str, Any], defs: Mapping[str, Any] | None = None) -> Any:
-    """A value that satisfies `schema`, for the shapes tools, prompts and kinds
-    declare: an object's every property, an enum's first value, a number at
-    its maximum (a `confidence` clears any floor), a string of its format."""
-    defs = defs if defs is not None else schema.get("$defs", {})
-    if "$ref" in schema:
-        return sample_of(defs[str(schema["$ref"]).rsplit("/", 1)[-1]], defs)
-    for key in ("anyOf", "oneOf"):
-        if key in schema:
-            options = [o for o in schema[key] if o.get("type") != "null"] or schema[key]
-            return sample_of(options[0], defs)
-    if "const" in schema:
-        return schema["const"]
-    if schema.get("enum"):
-        return schema["enum"][0]
-    if "default" in schema:
-        return schema["default"]
-    kind = schema.get("type")
-    if isinstance(kind, list):
-        kind = next((k for k in kind if k != "null"), "null")
-    if kind == "object" or "properties" in schema:
-        props = schema.get("properties") or {}
-        return {name: sample_of(prop, defs) for name, prop in props.items()}
-    if kind == "array":
-        count = int(schema.get("minItems", 0))
-        return [sample_of(schema.get("items") or {}, defs) for _ in range(count)]
-    if kind == "string":
-        return _string(schema)
-    if kind == "integer":
-        return int(schema.get("minimum", schema.get("maximum", 0)))
-    if kind == "number":
-        return float(schema.get("maximum", schema.get("minimum", 1)))
-    if kind == "boolean":
-        return True
-    return None
-
-
-def _string(schema: Mapping[str, Any]) -> str:
-    fmt = schema.get("format")
-    if fmt == "email":
-        return "mau@vi-du.vn"
-    if fmt == "uuid":
-        return _SAMPLE_UUID
-    if fmt == "date-time":
-        return datetime.now(UTC).isoformat()
-    if fmt == "date":
-        return datetime.now(UTC).date().isoformat()
-    text = "mẫu"
-    length = int(schema.get("minLength", 0))
-    return (text * (length // len(text) + 1))[: max(length, len(text))][
-        : int(schema.get("maxLength", 10_000))
-    ]
-
-
-class _Sample(BaseModel):
-    model_config = ConfigDict(extra="allow")
 
 
 @dataclass
@@ -138,7 +79,7 @@ class _Executor:
             }
         )
         output = tool.output_model.model_json_schema()
-        return _Sample.model_validate(sample_of(output))
+        return SampleOutput.model_validate(sample_of(output))
 
 
 @dataclass(frozen=True)

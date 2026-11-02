@@ -25,6 +25,7 @@ from dw_agent_runtime.adapters.runtime_tables import worker_runs
 from dw_agent_runtime.contracts import RunContext, WorkerDefinition
 from dw_kernel.autonomy import FAIL_CLOSED_LEVEL, AutonomyLevel
 from dw_kernel.errors import ConflictError, NotFoundError
+from dw_kernel.run_mode import RunMode
 
 # Migration 0015. Matched by name so an unrelated constraint violation stays a
 # bug report rather than being reported to the user as "already in flight".
@@ -120,6 +121,10 @@ class RunRecord:
     # The workflow document a wf-lite run pinned (wf-lite R6.14); resuming
     # carries it, and with it the run's sync durability.
     definition_hash: str | None = None
+    # The mode the run started in (tenant-config R4.5): a resume reads it from
+    # here, never from whoever resumes it. `simulate` is the closed value for
+    # a record built without one.
+    run_mode: RunMode = "simulate"
 
 
 def resume_context(record: RunRecord, *, tenant_id: uuid.UUID, channel: str) -> RunContext:
@@ -148,6 +153,9 @@ def resume_context(record: RunRecord, *, tenant_id: uuid.UUID, channel: str) -> 
         requested_by=record.requested_by,
         run_as_principal_id=record.run_as_principal_id,
         definition_hash=record.definition_hash,
+        # A run resumes in the mode it started in (R4.5): a simulated run
+        # stays simulated whichever process resumes it.
+        run_mode=record.run_mode,
         worker_id=record.worker_id,
         worker_version=record.worker_version,
         channel=channel,
@@ -441,6 +449,9 @@ class SqlWorkerRunStore:
                 requested_by=run_context.requested_by or run_context.actor_id,
                 run_as_principal_id=run_context.run_as_principal_id,
                 definition_hash=run_context.definition_hash,
+                # The context's own mode, never a constant (R4.3): the row, the
+                # span and the audit read one value.
+                run_mode=run_context.run_mode,
                 actor_roles=sorted(run_context.roles),
                 actor_scopes=sorted(run_context.scopes),
                 actor_plan_id=run_context.plan_id,
@@ -534,6 +545,7 @@ class SqlWorkerRunStore:
             requested_by=row.requested_by,
             run_as_principal_id=row.run_as_principal_id,
             definition_hash=row.definition_hash,
+            run_mode=row.run_mode,
             actor_roles=frozenset(row.actor_roles),
             actor_scopes=frozenset(row.actor_scopes),
             actor_plan_id=row.actor_plan_id,

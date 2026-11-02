@@ -96,9 +96,9 @@ async def _memory(
         await session.execute(
             sa.text(
                 "INSERT INTO platform.worker_runs"
-                " (id, thread_id, tenant_id, workspace_id, worker_id, worker_version,"
+                " (run_mode, id, thread_id, tenant_id, workspace_id, worker_id, worker_version,"
                 "  graph_version, requested_by)"
-                " VALUES (:r, :r, :t, :w, 'demo', '1.0.0', '1.0.0', gen_random_uuid())"
+                " VALUES ('live', :r, :r, :t, :w, 'demo', '1.0.0', '1.0.0', gen_random_uuid())"
             ),
             {"r": run_id, "t": tenant, "w": WORKSPACE},
         )

@@ -12,6 +12,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from dw_kernel.autonomy import FAIL_CLOSED_LEVEL, AutonomyLevel
+from dw_kernel.run_mode import RunMode
 
 _SEMVER_PATTERN = r"^\d+\.\d+\.\d+$"
 # What a run is keyed on: a semver, or one with build metadata. A tenant's
@@ -154,6 +155,12 @@ class RunContext(BaseModel):
     # everything — loud in the first test — instead of one that quietly ignores
     # the ceiling a customer set.
     autonomy_ceiling: AutonomyLevel = FAIL_CLOSED_LEVEL
+    # The mode the run runs in, set by the server where a run starts and read
+    # back from the run row where it resumes (tenant-config R4, ADR-0111).
+    # `simulate` by default, the closed value, as `autonomy_ceiling` is: a
+    # construction site that forgets it gets a run whose tools are answered by
+    # samples, loud in the first test, instead of one that acts on the world.
+    run_mode: RunMode = "simulate"
     # The level this run actually runs at, and the policy version that turns it
     # into decisions. Set by the runner when the run starts — the lower of the
     # worker's declared level and the ceiling above — stamped on the run row,
@@ -194,6 +201,10 @@ class ToolDefinition(BaseModel):
     data_classification: frozenset[str]
     # Set for a tool that sends a message; its spec must say either way.
     message: MessageSpec | None = None
+    # Whether the tool runs for real outside `live` (tenant-config R5.4): only
+    # a tool with no effect, so the default is no and a definition that does
+    # not say is intercepted (R5.5).
+    simulate_safe: bool = False
 
     @field_validator("name")
     @classmethod
@@ -215,6 +226,14 @@ class ToolDefinition(BaseModel):
                 f"ask every time."
             )
         return self
+
+    def intercepted_in(self, run_mode: RunMode) -> bool:
+        """Whether a call of this tool in a run of `run_mode` is answered by a
+        sample instead of running (tenant-config R5.1): any mode but `live`,
+        unless the tool is `simulate_safe`. The one answer the executor, the
+        agent's tool wrapper and its approval middleware all read, so a call
+        intercepted at the executor never opens an approval first (R5.6)."""
+        return run_mode != "live" and not self.simulate_safe
 
     def always_requires_approval(self) -> bool:
         """Whether this tool asks for a person at EVERY autonomy level.

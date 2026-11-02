@@ -31,6 +31,7 @@ from dw_agent_runtime.dispatch import (
     RejectedError,
     ToolClaimPort,
 )
+from dw_agent_runtime.samples import SampleOutput, sample_of
 from dw_agent_runtime.tools import RegisteredTool, ToolRegistry
 from dw_kernel.errors import (
     ApprovalRequiredError,
@@ -109,8 +110,11 @@ class ExecutionStorePort(Protocol):
         started_at: datetime,
         finished_at: datetime,
         dispatch_id: uuid_module.UUID | None = None,
+        audit: AuditEvent | None = None,
     ) -> object | None:
-        """None once written; the earlier success when the key already had one."""
+        """None once written; the earlier success when the key already had one.
+        With `audit`, the event is written in the row's own transaction: both
+        or neither (tenant-config R5.2)."""
         ...
 
 
@@ -336,6 +340,13 @@ class ToolExecutor:
                 "run context lacks required tool scopes",
                 details={"tool": name, "missing_scopes": sorted(missing)},
             )
+        # 3b. the run's mode (tenant-config R5; N2): outside `live`, a call of
+        # a tool that is not `simulate_safe` is answered with a sample here,
+        # after the boundary, decision and scope checks and before the
+        # approval check, the key, the Send floor, the claim and the handler,
+        # so it opens no approval, sends nothing and runs nothing (R5.6).
+        if definition.intercepted_in(run_context.run_mode):
+            return await self._simulated(tool, run_context, input_hash)
         if self.approval_policy.decide(definition, run_context) and not approved:
             await self._audit(
                 run_context,
@@ -838,7 +849,50 @@ class ToolExecutor:
             details={"tool": definition.name, "reason_code": reason},
         )
 
-    async def _audit(
+    async def _simulated(
+        self, tool: RegisteredTool, run_context: RunContext, input_hash: str
+    ) -> BaseModel:
+        """R5.1-R5.3: a sample of the tool's output schema, checked by its
+        output model as a real output is, marked `simulated`; a `simulated`
+        row and its `tool.simulated` audit event in one transaction."""
+        definition = tool.definition
+        try:
+            validated = tool.output_model.model_validate(
+                sample_of(tool.output_model.model_json_schema())
+            )
+        except ValidationError as exc:
+            raise DomainError(
+                "the simulated output failed the tool's output schema",
+                details={"tool": definition.name, "errors": str(exc.error_count())},
+            ) from exc
+        output: dict[str, object] = {**validated.model_dump(mode="json"), "simulated": True}
+        now = self.clock.now()
+        await self.execution_store.record(
+            run_context,
+            execution_id=self.id_generator.new_uuid(),
+            tool_name=definition.name,
+            tool_version=definition.version,
+            status="simulated",
+            input_hash=input_hash,
+            output_hash=canonical_hash(output),
+            output=output,
+            idempotency_key=None,
+            error=None,
+            attempts=0,
+            started_at=now,
+            finished_at=now,
+            audit=self._audit_event(
+                run_context,
+                "tool.simulated",
+                definition,
+                input_hash,
+                policy_decision="simulate",
+                details={"run_mode": run_context.run_mode, "reason": "not_simulate_safe"},
+            ),
+        )
+        return SampleOutput.model_validate(output)
+
+    def _audit_event(
         self,
         run_context: RunContext,
         action: str,
@@ -847,10 +901,10 @@ class ToolExecutor:
         *,
         policy_decision: str,
         details: dict[str, object] | None = None,
-    ) -> None:
+    ) -> AuditEvent:
         tool_name = getattr(definition, "name", "unknown")
         tool_version = getattr(definition, "version", "unknown")
-        event = AuditEvent(
+        return AuditEvent(
             id=self.id_generator.new_uuid(),
             tenant_id=TenantId(run_context.tenant_id),
             workspace_id=WorkspaceId(run_context.workspace_id),
@@ -863,6 +917,25 @@ class ToolExecutor:
             trace_id=run_context.trace_id,
             details={"input_hash": input_hash, **(details or {})},
             occurred_at=self.clock.now().astimezone(UTC),
+        )
+
+    async def _audit(
+        self,
+        run_context: RunContext,
+        action: str,
+        definition: object,
+        input_hash: str,
+        *,
+        policy_decision: str,
+        details: dict[str, object] | None = None,
+    ) -> None:
+        event = self._audit_event(
+            run_context,
+            action,
+            definition,
+            input_hash,
+            policy_decision=policy_decision,
+            details=details,
         )
         context = access_context_from_run(run_context)
         async with self.uow_factory(context) as uow:

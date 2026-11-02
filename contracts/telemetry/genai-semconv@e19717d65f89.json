@@ -186,6 +186,7 @@
       "dw.rerank.candidates",
       "dw.rerank.top_k",
       "dw.run_id",
+      "dw.run_mode",
       "dw.subject_ref",
       "dw.tenant_id",
       "dw.tool_name",

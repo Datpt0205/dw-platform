@@ -138,9 +138,9 @@ async def seeded(urls: RuntimeUrls) -> AsyncIterator[Seeded]:
         await conn.execute(
             text(
                 "INSERT INTO platform.worker_runs"
-                " (id, thread_id, tenant_id, workspace_id, worker_id, worker_version,"
+                " (run_mode, id, thread_id, tenant_id, workspace_id, worker_id, worker_version,"
                 "  graph_version, requested_by)"
-                " VALUES (:id, :id, :t, :w, 'demo', '1.0.0', '1.0.0', :actor)"
+                " VALUES ('live', :id, :id, :t, :w, 'demo', '1.0.0', '1.0.0', :actor)"
             ),
             {"id": run_id, "t": TENANT, "w": WORKSPACE, "actor": uuid.uuid4()},
         )
