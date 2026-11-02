@@ -22,14 +22,36 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+import yaml
 from pydantic import BaseModel, ConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DATASET = REPO_ROOT / "evals" / "datasets" / "leadcare_injection_v1.jsonl"
+PACK_WORKFLOW = REPO_ROOT / "configs" / "packs" / "marketing" / "workflows" / "lead_care@1.0.0.yaml"
 
 
 class _Answer(BaseModel):
     model_config = ConfigDict(extra="allow")
+
+
+def step_schemas(node: object) -> dict[str, dict[str, Any]]:
+    """Each `ai.llm` step's `output_schema`, keyed by its prompt id.
+
+    The eval asks the model in the schema the run itself asks in, read from the
+    pack rather than copied, so the two cannot drift.
+    """
+    found: dict[str, dict[str, Any]] = {}
+    if isinstance(node, dict):
+        config = node.get("config")
+        if node.get("type") == "ai.llm@1" and isinstance(config, dict):
+            prompt_id = str(config["prompt"]).partition("@")[0]
+            found[prompt_id] = config["output_schema"]
+        for value in node.values():
+            found.update(step_schemas(value))
+    elif isinstance(node, list):
+        for item in node:
+            found.update(step_schemas(item))
+    return found
 
 
 async def run() -> int:
@@ -71,6 +93,7 @@ async def run() -> int:
         trace_id="eval-leadcare",
     )
     cases = [json.loads(line) for line in DATASET.read_text(encoding="utf-8").splitlines() if line]
+    schemas = step_schemas(yaml.safe_load(PACK_WORKFLOW.read_text(encoding="utf-8")))
     answers: dict[str, dict[str, Any]] = {}
     for case in cases:
         request = ModelRequest(
@@ -78,6 +101,7 @@ async def run() -> int:
             prompt_id=case["prompt"],
             prompt_version="1.0.0",
             variables=case["variables"],
+            output_schema=schemas[case["prompt"]],
         )
         answer = await gateway.generate_structured(request, _Answer, run_context=context)
         answers[case["id"]] = answer.model_dump()

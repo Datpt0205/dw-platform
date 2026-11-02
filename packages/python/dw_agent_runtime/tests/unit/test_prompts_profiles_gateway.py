@@ -326,6 +326,62 @@ async def test_gateway_uses_fallback_route_when_primary_provider_errors() -> Non
     assert output.summary == "từ fallback"
 
 
+class _SchemaSeen:
+    """Keeps the schema each call asks the provider to answer in."""
+
+    provider_name = "mock"
+
+    def __init__(self) -> None:
+        self.asked: list[Any] = []
+
+    async def complete_json(
+        self, prompt: Any, json_schema: Any, route: Any, *, max_output_tokens: Any
+    ) -> Any:
+        from dw_agent_runtime.model.gateway import ModelUsage
+
+        self.asked.append(json_schema)
+        usage = ModelUsage(provider="mock", model=route.model, input_tokens=1, output_tokens=1)
+        return {"summary": "x", "language": "vi"}, usage, None
+
+
+def _asking_gateway(adapter: _SchemaSeen) -> RoutingModelGateway:
+    profiles = ModelProfileRegistry()
+    profiles.load_directory(REPO_ROOT / "configs" / "models")
+    prompts = PromptRegistry()
+    prompts.register(make_prompt())
+    return RoutingModelGateway(
+        profiles=profiles,
+        prompts=prompts,
+        adapters={"mock": adapter},
+        usage_recorder=InMemoryUsageRecorder(),
+        default_profile="balanced",
+    )
+
+
+async def test_a_request_with_its_own_schema_asks_the_provider_in_it() -> None:
+    """A caller whose contract is a JSON Schema (a workflow step) has the
+    provider asked in that schema; the output type only parses the answer."""
+    adapter = _SchemaSeen()
+    schema: dict[str, object] = {
+        "type": "object",
+        "required": ["summary"],
+        "properties": {"summary": {"type": "string"}},
+    }
+    request = _UNNAMED.model_copy(update={"output_schema": schema})
+    await _asking_gateway(adapter).generate_structured(
+        request, SummaryOutput, run_context=make_run_context()
+    )
+    assert adapter.asked == [schema]
+
+
+async def test_a_request_without_one_asks_in_the_output_types_schema() -> None:
+    adapter = _SchemaSeen()
+    await _asking_gateway(adapter).generate_structured(
+        _UNNAMED, SummaryOutput, run_context=make_run_context()
+    )
+    assert adapter.asked == [SummaryOutput.model_json_schema()]
+
+
 class _Down:
     """A provider that is always unavailable, so only a fallback answers."""
 

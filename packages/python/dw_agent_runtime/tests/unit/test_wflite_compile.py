@@ -273,6 +273,19 @@ async def test_the_gate_asks_with_the_tools_input_schema_and_waits() -> None:
     request = bench.gateway.requests[0]
     assert (request.prompt_id, request.prompt_version) == ("sample.first_touch", "1.0.0")
     assert request.variables == {"name": "Anh", "email": "an@khach.vn"}
+    # The model is asked in the step's own schema, not the open `_AnyObject`
+    # it is parsed into: a real provider sent `{"properties": {}}` strict could
+    # only answer `{}` (leadcare R1.5, 2/11/2026).
+    assert request.output_schema == {
+        "type": "object",
+        "required": ["to", "subject", "body", "confidence"],
+        "properties": {
+            "to": {"type": "string"},
+            "subject": {"type": "string"},
+            "body": {"type": "string"},
+            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        },
+    }
 
 
 async def test_an_approved_edit_is_what_is_sent_with_the_approval_shown() -> None:

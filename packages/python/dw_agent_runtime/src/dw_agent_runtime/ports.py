@@ -37,6 +37,13 @@ class ModelRequest(BaseModel):
     max_output_tokens: int | None = None
     # "auto" preserves legacy routing (task=="reasoning" -> reasoning route).
     route_kind: RouteKind = "auto"
+    # The JSON Schema the provider is asked to answer in, when the caller's
+    # contract is data rather than a Pydantic type (a workflow step's
+    # `output_schema`). None asks in the output type's own schema. A real
+    # provider answers in exactly the schema it is sent: an open `{}` type sent
+    # strict is a closed object with no properties, so every answer came back
+    # `{}` until a live call showed it (leadcare R1.5, 2/11/2026).
+    output_schema: dict[str, object] | None = None
 
 
 class ModelOutputInvalidError(DomainError):

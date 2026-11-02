@@ -166,6 +166,11 @@ class RoutingModelGateway:
         # Checked before the call, not after: the point is to not make it.
         self.budget.check(run_context.run_id, profile.budgets, task=request.task)
 
+        asked = (
+            request.output_schema
+            if request.output_schema is not None
+            else output_type.model_json_schema()
+        )
         last_error: Exception | None = None
         for index, route in enumerate(self._attempts(request, profile)):
             adapter = self.adapters.get(route.provider)
@@ -180,7 +185,7 @@ class RoutingModelGateway:
             try:
                 raw, usage, reasoning = await adapter.complete_json(
                     prompt,
-                    output_type.model_json_schema(),
+                    asked,
                     route,
                     max_output_tokens=request.max_output_tokens,
                 )

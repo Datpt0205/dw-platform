@@ -311,6 +311,9 @@ class _Builder:
                 variables={
                     k: v if isinstance(v, str) else json.dumps(v) for k, v in inputs.items()
                 },
+                # The model is asked in the step's own schema; `_AnyObject`
+                # only parses, and `problems` checks the answer after.
+                output_schema=schema,
             )
             try:
                 answer = await self.ports.gateway.generate_structured(

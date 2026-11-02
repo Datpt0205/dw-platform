@@ -85,3 +85,15 @@ mutations:
     new: "            False"
     tests:
       - apps/worker/tests/integration/test_leadcare_db.py::test_a_reply_wait_under_30_seconds_does_not_start
+  - name: R1.5 the gateway asks in the output type's schema, never the request's
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/gateway.py
+    old: "            if request.output_schema is not None"
+    new: "            if False"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_prompts_profiles_gateway.py::test_a_request_with_its_own_schema_asks_the_provider_in_it
+  - name: R1.5 an ai.llm step asks the model in the open parse type, not its own schema
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/compile.py
+    old: "                output_schema=schema,"
+    new: "                output_schema=None,"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_compile.py::test_the_gate_asks_with_the_tools_input_schema_and_waits
