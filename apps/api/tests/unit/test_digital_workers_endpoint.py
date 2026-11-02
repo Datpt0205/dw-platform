@@ -6,6 +6,7 @@ the web branches on). What the database decides is covered by `dw_platform`'s
 
 from __future__ import annotations
 
+import json
 import uuid
 from dataclasses import replace
 from typing import Any, cast
@@ -14,11 +15,13 @@ import httpx
 import pytest
 from asgi_lifespan import LifespanManager
 
-from dw_agent_runtime.wflite.catalog import load_shipped_packs
+from dw_agent_runtime.ports import ModelOutputInvalidError
+from dw_agent_runtime.wflite.assistant import WorkflowAssistant
+from dw_agent_runtime.wflite.catalog import ShippedToolSpecs, load_shipped_packs
 from dw_agent_runtime.wflite.outline import WorkflowOutlineReader
 from dw_agent_runtime.wflite.registry import build_node_registry
 from dw_api.bootstrap import ApiContainer
-from dw_api.bootstrap.paths import CONFIGS
+from dw_api.bootstrap.paths import CONFIGS, MOCK_MODEL_FIXTURES
 from dw_api.health import CheckState, HealthService
 from dw_api.main import create_app
 from dw_api.settings import ApiSettings
@@ -192,6 +195,7 @@ def make_container(
     *,
     queue: QueueRepo | None = None,
     autonomy: Autonomy | None = None,
+    gateway: AssistantGateway | None = None,
 ) -> ApiContainer:
     async def ok_probe() -> CheckState:
         return "ok"
@@ -232,10 +236,37 @@ def make_container(
             autonomy=autonomy or Autonomy({}),
             registry=build_node_registry(),
         ),
+        workflow_assistant=WorkflowAssistant(
+            workers=service,
+            workflows=PACKS,
+            gateway=cast(Any, gateway or AssistantGateway(FIXTURE)),
+            registry=build_node_registry(),
+            tools=ShippedToolSpecs.load(CONFIGS / "tools"),
+            run_context=lambda ctx, run_id: cast(Any, None),
+        ),
     )
 
 
 PACKS = load_shipped_packs(CONFIGS)
+FIXTURE = json.loads(
+    (MOCK_MODEL_FIXTURES / "wf_ai.workflow_edit@1.0.0.json").read_text(encoding="utf-8")
+)
+
+
+class AssistantGateway:
+    """Answers every turn with `answer` (or raises it) and counts the calls."""
+
+    def __init__(self, answer: Any) -> None:
+        self.answer = answer
+        self.calls = 0
+
+    async def generate_structured(
+        self, request: Any, output_type: type[Any], *, run_context: Any
+    ) -> Any:
+        self.calls += 1
+        if isinstance(self.answer, Exception):
+            raise self.answer
+        return output_type.model_validate(self.answer)
 
 
 def body(**changes: Any) -> dict[str, Any]:
@@ -458,3 +489,81 @@ async def test_the_workflow_of_an_unreadable_or_unshipped_dw_is_404() -> None:
     unshipped = await call(make_container(repo), "GET", f"/{other}/workflow")
     assert unshipped.status_code == 404
     assert unshipped.json()["details"]["reason_code"] == "workflow_not_shipped"
+
+
+async def test_the_assistant_answers_an_owner_with_a_proposal() -> None:
+    """wf-ai R1.1: the fixture's proposal, its diff and `publishable`."""
+    repo = FakeRepo()
+    dw_id = (await call(make_container(repo), "POST", payload=lead_care())).json()["id"]
+    response = await call(
+        make_container(repo),
+        "POST",
+        f"/{dw_id}/workflow-assistant",
+        {"instruction": "Thêm một lần chờ", "history": []},
+    )
+    assert response.status_code == 200, response.text
+    view = response.json()
+    assert view["kind"] == "proposal" and view["publishable"] is True
+    assert view["diff"] == [
+        {
+            "change": "added",
+            "step_id": "wait_more",
+            "type": "time.wait@1",
+            "lane": "approve_send.approved",
+            "from_lane": None,
+        }
+    ]
+
+
+async def test_the_assistant_refuses_a_non_owner_before_the_model() -> None:
+    """wf-ai R1.2 (WAI1) at the route: 403 `not_dw_owner`, no model call."""
+    repo, gateway = FakeRepo(), AssistantGateway(FIXTURE)
+    dw_id = (await call(make_container(repo), "POST", payload=lead_care())).json()["id"]
+    worker = repo.workers[uuid.UUID(dw_id)]
+    repo.workers[worker.id] = replace(worker, people=replace(worker.people, business_owner_id=TECH))
+    refused = await call(
+        make_container(repo, gateway=gateway),
+        "POST",
+        f"/{dw_id}/workflow-assistant",
+        {"instruction": "x"},
+    )
+    assert refused.status_code == 403
+    assert refused.json()["details"]["reason_code"] == "not_dw_owner"
+    assert gateway.calls == 0
+
+
+async def test_the_assistant_refuses_too_long_input_and_ignores_a_named_workflow() -> None:
+    """wf-ai R1.4 (WAI3), R1.3 (WAI2) at the route."""
+    repo, gateway = FakeRepo(), AssistantGateway(FIXTURE)
+    dw_id = (await call(make_container(repo), "POST", payload=lead_care())).json()["id"]
+    long = await call(
+        make_container(repo, gateway=gateway),
+        "POST",
+        f"/{dw_id}/workflow-assistant",
+        {"instruction": "x" * 4001},
+    )
+    assert long.status_code == 422
+    assert long.json()["details"]["reason_code"] == "assistant_input_too_long"
+    assert gateway.calls == 0
+    named = await call(
+        make_container(repo, gateway=gateway),
+        "POST",
+        f"/{dw_id}/workflow-assistant",
+        {"instruction": "x", "workflow_key": "other", "tenant_id": str(uuid.uuid4())},
+    )
+    assert named.status_code == 200 and named.json()["publishable"] is True
+
+
+async def test_an_unreadable_model_answer_is_503_with_its_reason() -> None:
+    """wf-ai R1.5."""
+    repo = FakeRepo()
+    dw_id = (await call(make_container(repo), "POST", payload=lead_care())).json()["id"]
+    failed = await call(
+        make_container(repo, gateway=AssistantGateway(ModelOutputInvalidError("bad"))),
+        "POST",
+        f"/{dw_id}/workflow-assistant",
+        {"instruction": "x"},
+    )
+    assert failed.status_code == 503
+    assert failed.json()["details"]["reason_code"] == "assistant_output_invalid"
+    assert "steps" not in failed.json()

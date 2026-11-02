@@ -69,6 +69,16 @@ MESSAGES: Mapping[str, tuple[str, str]] = {
         "The input of {detail} is not exactly what was approved",
     ),
     "wf.param_undeclared": ("Tham số chưa khai: {detail}", "Undeclared parameter: {detail}"),
+    # The assistant's own checks (wf-ai R2.2, R2.3): it composes from what the
+    # pack's workflow already uses, never a new tool or prompt.
+    "wf.tool_not_in_base": (
+        "Công cụ {detail} không có trong quy trình gốc",
+        "Tool {detail} is not used by the base workflow",
+    ),
+    "wf.prompt_not_in_base": (
+        "Prompt {detail} không có trong quy trình gốc",
+        "Prompt {detail} is not used by the base workflow",
+    ),
 }
 
 

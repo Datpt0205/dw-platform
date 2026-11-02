@@ -38,9 +38,12 @@ from sqlalchemy.ext.asyncio import (
 
 from dw_agent_runtime.adapters.run_events import RunStateListener
 from dw_agent_runtime.adapters.run_store import SqlWorkerRunStore
+from dw_agent_runtime.adapters.spend_guard import SqlSpendGuardStore
+from dw_agent_runtime.allowance import DailyAllowance
 from dw_agent_runtime.approval_codes import ApprovalViewService
 from dw_agent_runtime.model.run_policy import load_worker_run_policy
-from dw_agent_runtime.wflite.catalog import load_shipped_packs
+from dw_agent_runtime.wflite.assistant import WorkflowAssistant
+from dw_agent_runtime.wflite.catalog import ShippedToolSpecs, load_shipped_packs
 from dw_agent_runtime.wflite.outline import WorkflowOutlineReader
 from dw_agent_runtime.wflite.registry import build_node_registry
 from dw_api.bootstrap.container import ApiContainer
@@ -415,6 +418,23 @@ def _build_container(settings: ApiSettings | None) -> ApiContainer:
         workflows=packs,
         autonomy=DecisionAutonomy(SqlDecisionLevels(session_factory)),
         registry=build_node_registry(),
+    )
+    # One call is the assistant's whole run: the plan's daily allowance first,
+    # the ledger entry freed after, through the runtime's own stack (wf-ai R1.6).
+    container.workflow_assistant = WorkflowAssistant(
+        workers=digital_workers,
+        workflows=packs,
+        gateway=wiring.model_stack.one_call(
+            DailyAllowance(
+                allowance=entitlement,
+                runs=run_store,
+                spend=SqlSpendGuardStore(session_factory=session_factory),
+                clock=clock,
+            )
+        ),
+        registry=build_node_registry(),
+        tools=ShippedToolSpecs.load(CONFIGS / "tools"),
+        run_context=container.run_context_for,
     )
     # The signed lead intake (leadcare R2): only with a secret of 32 bytes.
     intake_keys = IntakeKeys(settings.intake_signing_secret.get_secret_value().encode())

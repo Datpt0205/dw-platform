@@ -302,6 +302,100 @@
         "title": "AssignedSupportGrantView",
         "type": "object"
       },
+      "AssistantAnswerView": {
+        "properties": {
+          "diff": {
+            "items": {
+              "$ref": "#/components/schemas/StepChangeView"
+            },
+            "title": "Diff",
+            "type": "array"
+          },
+          "kind": {
+            "enum": [
+              "question",
+              "proposal"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "plan": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Plan",
+            "type": "array"
+          },
+          "problems": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowProblemView"
+            },
+            "title": "Problems",
+            "type": "array"
+          },
+          "publishable": {
+            "title": "Publishable",
+            "type": "boolean"
+          },
+          "question": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question"
+          },
+          "steps": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Steps"
+          }
+        },
+        "required": [
+          "kind",
+          "question",
+          "plan",
+          "steps",
+          "diff",
+          "problems",
+          "publishable"
+        ],
+        "title": "AssistantAnswerView",
+        "type": "object"
+      },
+      "AssistantRequest": {
+        "properties": {
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/HistoryTurnBody"
+            },
+            "title": "History",
+            "type": "array"
+          },
+          "instruction": {
+            "title": "Instruction",
+            "type": "string"
+          }
+        },
+        "required": [
+          "instruction"
+        ],
+        "title": "AssistantRequest",
+        "type": "object"
+      },
       "AuditEventView": {
         "description": "One audit row as the screen shows it.\n\n``actor_id`` is here because it was the one thing the table could not show:\nthe column exists on the row and is not inside ``details``, so dropping it\nfrom this view made \"who did this\" unanswerable from the UI for every action,\nnot only sharing (spec 03.1 BR10 names it explicitly).",
         "properties": {
@@ -1460,6 +1554,28 @@
           "manager_user_id"
         ],
         "title": "HierarchyMemberView",
+        "type": "object"
+      },
+      "HistoryTurnBody": {
+        "properties": {
+          "role": {
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "text"
+        ],
+        "title": "HistoryTurnBody",
         "type": "object"
       },
       "IdentityRefView": {
@@ -3444,6 +3560,52 @@
         "title": "SodWaiverView",
         "type": "object"
       },
+      "StepChangeView": {
+        "properties": {
+          "change": {
+            "enum": [
+              "added",
+              "removed",
+              "changed",
+              "moved"
+            ],
+            "title": "Change",
+            "type": "string"
+          },
+          "from_lane": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Lane"
+          },
+          "lane": {
+            "title": "Lane",
+            "type": "string"
+          },
+          "step_id": {
+            "title": "Step Id",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "change",
+          "step_id",
+          "type",
+          "lane",
+          "from_lane"
+        ],
+        "title": "StepChangeView",
+        "type": "object"
+      },
       "SupportGrantModel": {
         "properties": {
           "activated_at": {
@@ -4375,6 +4537,34 @@
           "decision_classes"
         ],
         "title": "WorkflowOutlineView",
+        "type": "object"
+      },
+      "WorkflowProblemView": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message_en": {
+            "title": "Message En",
+            "type": "string"
+          },
+          "message_vi": {
+            "title": "Message Vi",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "code",
+          "message_vi",
+          "message_en"
+        ],
+        "title": "WorkflowProblemView",
         "type": "object"
       },
       "WorkspaceMemberView": {
@@ -6955,6 +7145,70 @@
           }
         },
         "summary": "Get Digital Worker Workflow",
+        "tags": [
+          "digital-workers"
+        ]
+      }
+    },
+    "/api/v1/digital-workers/{dw_id}/workflow-assistant": {
+      "post": {
+        "description": "wf-ai R1: one turn with the assistant; nothing is stored, so no\n`Idempotency-Key`. The base is the DW's own pin, never the body (R1.3).",
+        "operationId": "ask_workflow_assistant_api_v1_digital_workers__dw_id__workflow_assistant_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dw_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dw Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssistantRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistantAnswerView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Ask Workflow Assistant",
         "tags": [
           "digital-workers"
         ]

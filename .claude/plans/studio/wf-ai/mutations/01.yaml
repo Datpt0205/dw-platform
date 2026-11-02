@@ -1,0 +1,63 @@
+# Mutation check of wf-ai ticket 01: scripts/mutate.py runs this file.
+# One mutation per control (WAI1-WAI8), plus the diff's lane rule (R4.1).
+mutations:
+  - name: WAI1 a non-owner reaches the model
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/assistant.py
+    old: "worker = await self.workers.require_owner(context, dw_id)"
+    new: "worker = await self.workers.get(context, dw_id)  # type: ignore[attr-defined]"
+    tests:
+      - apps/api/tests/unit/test_digital_workers_endpoint.py::test_the_assistant_refuses_a_non_owner_before_the_model
+  - name: WAI2 the base is not the DW's pin
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/assistant.py
+    old: "pinned = self._pinned(config.workflow_key, config.workflow_version)"
+    new: "pinned = self._pinned(config.workflow_key, '9.9.9')"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_assistant.py::test_the_base_is_the_dws_pin
+  - name: WAI3 too long reaches the model
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/assistant.py
+    old: "        if _too_long(instruction, history):"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_assistant.py::test_too_long_is_refused_before_the_model
+  - name: WAI4 an extra field in the answer is taken
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/assistant.py
+    old: '    model_config = ConfigDict(extra="forbid")'
+    new: '    model_config = ConfigDict(extra="ignore")'
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_assistant.py::test_the_answer_shape_refuses_anything_else
+  - name: WAI4 the proposal changes outside steps
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/assistant.py
+    old: 'proposal = {**copy.deepcopy(base), "steps": steps}'
+    new: 'proposal = {**copy.deepcopy(base), "steps": steps, "decision_classes": []}'
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_assistant.py::test_the_fixture_proposal_is_publishable_and_keeps_everything_but_steps
+  - name: WAI5 a tool outside the base passes
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/assistant.py
+    old: "isinstance(tool, str) and tool not in tools:"
+    new: "isinstance(tool, str) and False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_assistant.py::test_a_tool_outside_the_base_is_not_publishable
+  - name: WAI6 a prompt outside the base passes
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/assistant.py
+    old: "isinstance(prompt, str) and prompt not in prompts:"
+    new: "isinstance(prompt, str) and False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_assistant.py::test_a_prompt_outside_the_base_is_not_publishable
+  - name: WAI7 the wf-lite validator does not run
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/assistant.py
+    old: ') + not_in_base(steps, _base_raw(pack)["steps"], self.registry)'
+    new: ')[:0] + not_in_base(steps, _base_raw(pack)["steps"], self.registry)'
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_assistant.py::test_a_send_outside_its_gate_is_caught_by_the_validator
+  - name: WAI8 the instruction is a raw variable
+    file: configs/prompts/wf_ai/workflow_edit@1.0.0.yaml
+    old: "variables: [instruction, history, base_document, node_types]"
+    new: "variables: [instruction, history, base_document, node_types]\nraw_variables: {instruction: built by code}"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_assistant.py::test_the_prompt_wraps_every_variable_as_input
+  - name: R4.1 a change inside a lane is its parent's change
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/outline.py
+    old: "                config.pop(port, None)"
+    new: "                pass"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_assistant.py::test_the_diff_names_removed_changed_moved_and_retyped_steps

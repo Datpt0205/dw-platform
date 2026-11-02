@@ -19,7 +19,7 @@ COMPOSE := docker compose --env-file .env -f infra/compose/docker-compose.yml
 .PHONY: help bootstrap infra-up infra-down dev docker-up docker-down \
         db-migrate migrate lint format typecheck \
         test-unit coverage test-integration test-architecture test-contract test-hooks test-plans \
-        test-e2e test-web test-all eval-smoke test-eval-smoke eval-leadcare \
+        test-e2e test-web test-all eval-smoke test-eval-smoke eval-leadcare eval-wf-ai \
         generate-contracts new-context release-manifest release-manifest-check semconv-snapshot semconv-snapshot-check ci
 
 help: ## List available targets
@@ -133,6 +133,9 @@ check-search: ## Probe the search providers (live calls, needs SERPER/EXA/TAVILY
 
 eval-leadcare: ## The Marketing pack's prompt-injection eval (live model calls, needs OPENAI_* in .env; not in CI)
 	uv run python scripts/eval_leadcare.py
+
+eval-wf-ai: ## The workflow assistant's prompt-injection eval (live model calls, needs OPENAI_* in .env; not in CI)
+	uv run python scripts/eval_wf_ai.py
 
 eval-smoke: ## Evaluation smoke suite (deterministic safety-gate graders)
 	uv run python scripts/run_evals.py --smoke

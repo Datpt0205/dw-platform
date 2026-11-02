@@ -605,6 +605,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/digital-workers/{dw_id}/workflow-assistant": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask Workflow Assistant
+         * @description wf-ai R1: one turn with the assistant; nothing is stored, so no
+         *     `Idempotency-Key`. The base is the DW's own pin, never the body (R1.3).
+         */
+        post: operations["ask_workflow_assistant_api_v1_digital_workers__dw_id__workflow_assistant_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/directory/candidates": {
         parameters: {
             query?: never;
@@ -1604,6 +1625,35 @@ export interface components {
              */
             tenant_id: string;
         };
+        /** AssistantAnswerView */
+        AssistantAnswerView: {
+            /** Diff */
+            diff: components["schemas"]["StepChangeView"][];
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "question" | "proposal";
+            /** Plan */
+            plan: string[];
+            /** Problems */
+            problems: components["schemas"]["WorkflowProblemView"][];
+            /** Publishable */
+            publishable: boolean;
+            /** Question */
+            question: string | null;
+            /** Steps */
+            steps: {
+                [key: string]: unknown;
+            }[] | null;
+        };
+        /** AssistantRequest */
+        AssistantRequest: {
+            /** History */
+            history?: components["schemas"]["HistoryTurnBody"][];
+            /** Instruction */
+            instruction: string;
+        };
         /**
          * AuditEventView
          * @description One audit row as the screen shows it.
@@ -2110,6 +2160,16 @@ export interface components {
              * Format: uuid
              */
             user_id: string;
+        };
+        /** HistoryTurnBody */
+        HistoryTurnBody: {
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "user" | "assistant";
+            /** Text */
+            text: string;
         };
         /** IdentityRefView */
         IdentityRefView: {
@@ -2916,6 +2976,22 @@ export interface components {
             /** Reason */
             reason: string;
         };
+        /** StepChangeView */
+        StepChangeView: {
+            /**
+             * Change
+             * @enum {string}
+             */
+            change: "added" | "removed" | "changed" | "moved";
+            /** From Lane */
+            from_lane: string | null;
+            /** Lane */
+            lane: string;
+            /** Step Id */
+            step_id: string;
+            /** Type */
+            type: string;
+        };
         /** SupportGrantModel */
         SupportGrantModel: {
             /** Activated At */
@@ -3265,6 +3341,17 @@ export interface components {
             steps: components["schemas"]["OutlineStepView"][];
             /** Version */
             version: string;
+        };
+        /** WorkflowProblemView */
+        WorkflowProblemView: {
+            /** Code */
+            code: string;
+            /** Message En */
+            message_en: string;
+            /** Message Vi */
+            message_vi: string;
+            /** Path */
+            path: string;
         };
         /** WorkspaceMemberView */
         WorkspaceMemberView: {
@@ -4975,6 +5062,50 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkflowOutlineView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    ask_workflow_assistant_api_v1_digital_workers__dw_id__workflow_assistant_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dw_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssistantRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantAnswerView"];
                 };
             };
             /** @description The request was refused */

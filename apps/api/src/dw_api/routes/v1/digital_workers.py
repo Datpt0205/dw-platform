@@ -14,7 +14,9 @@ may not read is 404, the same as one that does not exist (R1.5). The scorecard:
 422 `days_out_of_range`. Autonomy: 403 `not_dw_owner`; 404
 `decision_class_not_found`; 422 `above_ceiling`, `level_invalid`,
 `level_unchanged`; 409 `raise_pending`, `level_changed`; 202 when a raise
-waits for its second person. The workflow: 404 `workflow_not_shipped`.
+waits for its second person. The workflow: 404 `workflow_not_shipped`. The
+workflow assistant: 403 `not_dw_owner`; 422 `assistant_input_too_long`; 503
+`assistant_output_invalid`.
 """
 
 from __future__ import annotations
@@ -27,6 +29,8 @@ from uuid import UUID
 from fastapi import APIRouter, Query, Response
 from pydantic import BaseModel, ConfigDict, Field
 
+from dw_agent_runtime.ports import ModelOutputInvalidError
+from dw_agent_runtime.wflite.assistant import AssistantAnswer, HistoryTurn, WorkflowAssistant
 from dw_agent_runtime.wflite.outline import (
     DecisionMode,
     OutlineStep,
@@ -85,6 +89,12 @@ def _outlines(container: ApiContainer) -> WorkflowOutlineReader:
     if container.dw_workflows is None:
         raise InfrastructureError("digital workers are not configured")
     return container.dw_workflows
+
+
+def _assistant(container: ApiContainer) -> WorkflowAssistant:
+    if container.workflow_assistant is None:
+        raise InfrastructureError("the workflow assistant is not configured")
+    return container.workflow_assistant
 
 
 def _autonomy(container: ApiContainer) -> DwAutonomyService:
@@ -492,6 +502,84 @@ async def get_digital_worker_workflow(
     # 404 for a DW the caller may not read; 404 `workflow_not_shipped` for a
     # pin no pack ships any more.
     return _outline_view(await _outlines(container).read(context, dw_id))
+
+
+class HistoryTurnBody(BaseModel):
+    role: Literal["user", "assistant"]
+    text: str
+
+
+class AssistantRequest(BaseModel):
+    # Lengths are the service's to refuse (422 `assistant_input_too_long`,
+    # wf-ai R1.4), so a refusal names its reason instead of a schema path.
+    instruction: str
+    history: list[HistoryTurnBody] = Field(default_factory=list)
+
+
+class StepChangeView(BaseModel):
+    change: Literal["added", "removed", "changed", "moved"]
+    step_id: str
+    type: str
+    lane: str
+    from_lane: str | None
+
+
+class WorkflowProblemView(BaseModel):
+    path: str
+    code: str
+    message_vi: str
+    message_en: str
+
+
+class AssistantAnswerView(BaseModel):
+    kind: Literal["question", "proposal"]
+    question: str | None
+    plan: list[str]
+    steps: list[dict[str, Any]] | None
+    diff: list[StepChangeView]
+    problems: list[WorkflowProblemView]
+    publishable: bool
+
+
+def _answer_view(answer: AssistantAnswer) -> AssistantAnswerView:
+    return AssistantAnswerView(
+        kind=answer.kind,
+        question=answer.question,
+        plan=list(answer.plan),
+        steps=None if answer.steps is None else list(answer.steps),
+        diff=[
+            StepChangeView(
+                change=c.change, step_id=c.step_id, type=c.type, lane=c.lane, from_lane=c.from_lane
+            )
+            for c in answer.diff
+        ],
+        problems=[WorkflowProblemView(**p.as_dict()) for p in answer.problems],
+        publishable=answer.publishable,
+    )
+
+
+@router.post("/{dw_id}/workflow-assistant", response_model=AssistantAnswerView)
+async def ask_workflow_assistant(
+    dw_id: UUID,
+    body: AssistantRequest,
+    context: RequireAccessContext,
+    container: RequireContainer,
+) -> AssistantAnswerView:
+    """wf-ai R1: one turn with the assistant; nothing is stored, so no
+    `Idempotency-Key`. The base is the DW's own pin, never the body (R1.3)."""
+    try:
+        answer = await _assistant(container).turn(
+            context,
+            dw_id,
+            instruction=body.instruction,
+            history=[HistoryTurn(role=t.role, text=t.text) for t in body.history],
+        )
+    except ModelOutputInvalidError as exc:
+        raise InfrastructureError(
+            "the assistant's answer did not match its shape",
+            details={"reason_code": "assistant_output_invalid"},
+        ) from exc
+    return _answer_view(answer)
 
 
 class AutonomyRequest(BaseModel):
