@@ -504,7 +504,16 @@ bên ngoài thì ghi "Chờ Đạt" và làm việc kế. Đường dẫn ticket
 | 12  | `digital-worker/issues/04` màn hình web                                                   | xong                                  |
 | 13  | `leadcare/issues/02` demo chạy thật, ảnh chụp ở `docs/demo/digital-worker/`               | khóa chạy được (2/11); sau tenant-rbac/02 |
 | 14  | `wf-ai` spec rồi ticket 01: AI sửa gói mẫu (D16, D18)                                     | xong `fea6cf2`                        |
-| 15  | mọi ticket studio khác có Blocked by đã resolved, theo thứ tự đợt                         | đang: tenant-rbac/02 xong; dựng org-and-principals/04 và custom-objects/01 |
+| 15  | mọi ticket studio khác có Blocked by đã resolved, theo thứ tự đợt                         | đang: dở dang khi phiên ngắt (dưới bảng) |
+
+**Dở dang khi phiên ngắt (2/11/2026 tối, hết hạn mức 5 giờ; mọi subagent dừng giữa chừng).** Phiên mới đọc đoạn này trước, xem `git status`, làm tiếp chứ không làm lại:
+
+- **Lane 1, org-and-principals/04** (dựng dở, chưa commit, chưa có test): `db/migrations/versions/555dad01f629_platform_audience_matches.py` (`down_revision` phải là head `b5677d345bc1`), `dw_platform/domain/audience.py`, `application/audience.py`, `adapters/persistence/audience_workspaces.py`. Còn: handler `AudienceInvalidError` ở `apps/api/src/dw_api/exception_handlers.py`, test, `mutations/04.yaml`, cổng nhanh, commit.
+- **Lane 2, custom-objects/01** (gần xong, chưa commit): `scripts/bench_records_storage.py`, `scripts/bench_records_storage/` (có test), `custom-objects/mutations/01.yaml` đang viết. Container `dwbench-postgres` (127.0.0.1:25442) còn chạy. Còn: test modulus, mutations, chạy `--scale smoke`, ghi số vào Comments, dọn container và volume, commit.
+- **Bốn gate bị ngắt trước khi ghi gì**: tenant-rbac/03, usage-and-limits/02, org-and-principals/03 (nhận khoảng trống chủ/người duyệt DW chưa `active`), connections-and-vault/03. Chạy lại từ đầu.
+- **Sẵn sàng dựng (ĐẠT)**: wf-ai/05 (lane 2 sau custom-objects/01; chỉ `dw_agent_runtime`, prompt, fixture, manifest), agent-builder/01, code-sandbox/01; connections-and-vault/02 và leadcare/02 sau org-and-principals/04 (chung chuỗi migration); model-connections/01 chỉ từ 4/11/2026 02:00. studio-skeleton/02 đi cùng tenant-config/02 (còn chặn).
+- **Chạy model thật**: đặt `DW_MODEL_PROVIDER=openai DW_API_MODEL_PROFILE=luna` đè `.env` (đang `mock`); khóa dùng được.
+- **Lưu khi lane khác đang sửa cây**: `--only <đường dẫn>` (tệp mới: `add -N` trước); sửa tệp và lưu ở hai lệnh Bash khác nhau; trả lời câu hỏi của hook rồi chạy lại ngay.
 
 ## Ủy quyền
 
