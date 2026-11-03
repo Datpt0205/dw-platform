@@ -268,8 +268,9 @@ class SqlMembershipLookup:
 
             # The verified identity resolves to a platform user through its own
             # `(issuer, subject)` identity, or, for the dev issuer only, through
-            # the subject stored on the user: a subject of one issuer must not
-            # reach a user known through another (R4.3).
+            # the subject stored on a human user: a subject of one issuer must
+            # not reach a user known through another (R4.3), and a service
+            # account never signs in (org-and-principals R6.2).
             by_identity = sa.select(tables.external_identities.c.user_id).where(
                 tables.external_identities.c.issuer == issuer,
                 tables.external_identities.c.subject == subject,
@@ -278,7 +279,9 @@ class SqlMembershipLookup:
             )
             candidate_users = (
                 by_identity.union(
-                    sa.select(tables.users.c.id).where(tables.users.c.subject == subject)
+                    sa.select(tables.users.c.id).where(
+                        tables.users.c.subject == subject, tables.HUMAN
+                    )
                 )
                 if issuer == DEV_ISSUER
                 else by_identity

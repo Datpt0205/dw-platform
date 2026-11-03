@@ -37,6 +37,7 @@ from dw_api.middleware.studio_gate import StudioGate
 from dw_api.routes.v1.admin_console import router as admin_console_router
 from dw_api.routes.v1.admin_members import invitations_router as admin_invitations_router
 from dw_api.routes.v1.admin_members import router as admin_members_router
+from dw_api.routes.v1.admin_service_principals import router as admin_service_principals_router
 from dw_api.routes.v1.approvals import router as approvals_router
 from dw_api.routes.v1.audit import router as audit_router
 from dw_api.routes.v1.auth import router as auth_router
@@ -210,6 +211,7 @@ def create_app(
         admin_members_router,
         admin_invitations_router,
         admin_console_router,
+        admin_service_principals_router,
         approvals_router,
         runs_router,
         audit_router,

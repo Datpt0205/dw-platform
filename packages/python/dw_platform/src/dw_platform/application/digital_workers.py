@@ -430,7 +430,15 @@ class DigitalWorkerService:
                 "second_person_required",
             )
         principal = await self.members.standing(context, worker.principal_user_id)
-        held = principal.scopes if principal is not None else frozenset()
+        if principal is None:
+            # A principal that is not an `active` member reads as no membership,
+            # and its empty scopes would be covered by anyone: refused before
+            # the comparison (org-and-principals R6.19).
+            raise _conflict(
+                "the digital worker's principal is not an active member",
+                "principal_inactive",
+            )
+        held = principal.scopes
         if not held <= context.scopes:
             raise _denied(
                 "the caller does not hold every scope of the principal's roles",

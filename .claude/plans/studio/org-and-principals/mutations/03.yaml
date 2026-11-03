@@ -1,0 +1,344 @@
+# Mutation check of org-and-principals ticket 03: scripts/mutate.py runs this file.
+# One mutation per control (R6.1-R6.6, R6.8-R6.20, R7.1, R7.2; OP8-OP11, OP14-OP18)
+# and per layer that holds one: the guards and functions of migration
+# 557e6907195e (and the two objects of be93e0c26a4c it reads, R6.3 and R6.10),
+# the service-account service and its binding guard, the adapters, the DW
+# standing and second person, the work lane's claim, the offboarding step. A
+# mutation of a migration needs no reset: each suite recreates its database
+# from the migrations at session start.
+#
+# Run at the queue's close (wave-close.md), not per ticket. Two were shown red
+# by hand while building (3/11/2026): the DW creation's lock moved below the
+# company row turns the interleaving test into a real 40P01 ("deadlock
+# detected"), and the `principal_inactive` branch removed puts a DW with a
+# suspended principal into operation (DID NOT RAISE ConflictError).
+# `test_user_reads.py` scans source by path, which mutate.py's package copy
+# hides, so its mutations (HUMAN removed from a people list) run in place by
+# hand; one was shown red so on 3/11/2026.
+mutations:
+- name: R6.1 a workspace outside the company is not refused
+  file: packages/python/dw_platform/src/dw_platform/application/service_principals.py
+  old: '        if not await self.repo.workspace_usable(context, workspace_id):'
+  new: '        if False:'
+  tests:
+  - apps/api/tests/integration/test_service_principals_api.py::test_a_refused_create_writes_nothing
+  - packages/python/dw_platform/tests/unit/test_service_principals.py::test_a_workspace_outside_the_company_is_422_before_any_403
+- name: R6.1 creating without .manage reaching the workspace passes
+  file: packages/python/dw_platform/src/dw_platform/application/service_principals.py
+  old: '        if not await self.repo.reaches(context, SERVICE_PRINCIPALS_MANAGE_SCOPE, workspace_id):'
+  new: '        if False:'
+  tests:
+  - apps/api/tests/integration/test_service_principals_api.py::test_a_refused_create_writes_nothing
+- name: R6.1 a name taken is not read back as 409 service_principal_name_taken
+  file: packages/python/dw_platform/src/dw_platform/adapters/persistence/service_principals_repo.py
+  old: '    if refused[0] == _NAME_TAKEN:'
+  new: '    if False:'
+  tests:
+  - apps/api/tests/integration/test_service_principals_api.py::test_a_refused_create_writes_nothing
+- name: R6.2 find_access's dev branch matches a service user's subject
+  file: packages/python/dw_platform/src/dw_platform/adapters/persistence/membership_lookup.py
+  old: '                        tables.users.c.subject == subject, tables.HUMAN'
+  new: '                        tables.users.c.subject == subject'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_service_principals_db.py::test_a_dev_token_naming_a_service_account_builds_no_context
+- name: R6.2 bootstrap's dev branch resolves a service user
+  file: packages/python/dw_platform/src/dw_platform/adapters/persistence/identity_provisioning.py
+  old: '            if seeded is not None and seeded.kind != "human":'
+  new: '            if False:'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_service_principals_db.py::test_a_dev_token_naming_a_service_account_builds_no_context
+- name: R6.3 external_identities_human_only lets a service user in
+  file: db/migrations/versions/be93e0c26a4c_platform_digital_workers.py
+  old: '                SELECT 1 FROM platform.users WHERE id = NEW.user_id AND kind <> ''human'''
+  new: '                SELECT 1 FROM platform.users WHERE false'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_service_principals_db.py::test_a_service_account_takes_no_login_identity_from_any_writer
+- name: R6.4 the assignment branch of the guard refuses nothing
+  file: db/migrations/versions/557e6907195e_service_principals_run_as.py
+  old: '                v_refused := platform.role_is_critical(NEW.tenant_id, NEW.role_id);'
+  new: '                v_refused := false;'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_service_principals_db.py::test_no_critical_role_reaches_a_service_account_even_from_the_migrator
+- name: R6.4 the privilege branch of the guard refuses nothing
+  file: db/migrations/versions/557e6907195e_service_principals_run_as.py
+  old: "                v_refused := EXISTS (\n                    SELECT 1 FROM platform.service_holders_of_role(NEW.tenant_id,\
+    \ NEW.role_id)\n                );"
+  new: '                v_refused := false;'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_service_principals_db.py::test_no_critical_role_reaches_a_service_account_even_from_the_migrator
+- name: R6.4 restoring a critical role a service account holds passes
+  file: db/migrations/versions/557e6907195e_service_principals_run_as.py
+  old: '            v_refused := platform.role_is_critical(NEW.tenant_id, NEW.id)'
+  new: '            v_refused := false AND platform.role_is_critical(NEW.tenant_id, NEW.id)'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_service_principals_db.py::test_no_critical_role_reaches_a_service_account_even_from_the_migrator
+- name: R6.4 role_is_critical answers false
+  file: db/migrations/versions/557e6907195e_service_principals_run_as.py
+  old: '              AND (r.key = ''tenant_owner'' OR EXISTS ('
+  new: '              AND false AND (r.key = ''tenant_owner'' OR EXISTS ('
+  tests:
+  - packages/python/dw_platform/tests/integration/test_service_principals_db.py::test_no_critical_role_reaches_a_service_account_even_from_the_migrator
+- name: R6.4 the assignment branch reads before it locks the role row
+  file: db/migrations/versions/557e6907195e_service_principals_run_as.py
+  old: "                PERFORM 1 FROM platform.tenant_roles\n                WHERE tenant_id = NEW.tenant_id\
+    \ AND id = NEW.role_id\n                FOR NO KEY UPDATE;\n                v_refused := platform.role_is_critical(NEW.tenant_id,\
+    \ NEW.role_id);"
+  new: '                v_refused := platform.role_is_critical(NEW.tenant_id, NEW.role_id);'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_service_principals_db.py::test_an_assignment_and_a_critical_key_on_one_role_never_both_commit
+- name: R6.4 the privilege branch reads before it locks the role row
+  file: db/migrations/versions/557e6907195e_service_principals_run_as.py
+  old: "                PERFORM 1 FROM platform.tenant_roles\n                WHERE tenant_id = NEW.tenant_id\
+    \ AND id = NEW.role_id\n                FOR NO KEY UPDATE;\n                v_refused := EXISTS ("
+  new: '                v_refused := EXISTS ('
+  tests:
+  - packages/python/dw_platform/tests/integration/test_service_principals_db.py::test_an_assignment_and_a_critical_key_on_one_role_never_both_commit
+- name: R6.4 DW creation locks its roles after the company row (40P01)
+  file: packages/python/dw_platform/src/dw_platform/adapters/persistence/digital_workers_repo.py
+  old: "                await lock_roles(session, worker.tenant_id, config.role_keys)\n              \
+    \  await session.execute(\n                    sa.insert(tables.users).values(\n                 \
+    \       id=worker.principal_user_id,\n                        subject=f\"service:{worker.principal_user_id}\"\
+    ,\n                        email=None,\n                        display_name=config.name,\n      \
+    \                  kind=\"service\",\n                        owner_tenant_id=worker.tenant_id,\n\
+    \                    )\n                )\n                await session.execute(\n              \
+    \      sa.insert(_PRINCIPALS).values(\n                        user_id=worker.principal_user_id,\n\
+    \                        tenant_id=worker.tenant_id,\n                        owning_workspace_id=worker.workspace_id,\n\
+    \                        name=config.name,\n                        owner_user_id=worker.people.business_owner_id,\n\
+    \                    )\n                )\n                # A service principal is an `active` member\
+    \ of its company\n                # (R6.1; ADR-0103 decision 2): its status is this row.\n       \
+    \         await session.execute(\n                    ensure_tenant_member(worker.tenant_id, worker.principal_user_id,\
+    \ \"active\")\n                )\n"
+  new: "                await session.execute(\n                    sa.insert(tables.users).values(\n\
+    \                        id=worker.principal_user_id,\n                        subject=f\"service:{worker.principal_user_id}\"\
+    ,\n                        email=None,\n                        display_name=config.name,\n      \
+    \                  kind=\"service\",\n                        owner_tenant_id=worker.tenant_id,\n\
+    \                    )\n                )\n                await session.execute(\n              \
+    \      sa.insert(_PRINCIPALS).values(\n                        user_id=worker.principal_user_id,\n\
+    \                        tenant_id=worker.tenant_id,\n                        owning_workspace_id=worker.workspace_id,\n\
+    \                        name=config.name,\n                        owner_user_id=worker.people.business_owner_id,\n\
+    \                    )\n                )\n                # A service principal is an `active` member\
+    \ of its company\n                # (R6.1; ADR-0103 decision 2): its status is this row.\n       \
+    \         await session.execute(\n                    ensure_tenant_member(worker.tenant_id, worker.principal_user_id,\
+    \ \"active\")\n                )\n                await lock_roles(session, worker.tenant_id, config.role_keys)\n"
+  tests:
+  - packages/python/dw_platform/tests/integration/test_digital_workers_db.py::test_dw_creation_takes_its_role_rows_before_the_access_version_row
+- name: R6.4 the members route leaves the guard's refusal unread (500, not 422)
+  file: packages/python/dw_platform/src/dw_platform/adapters/persistence/service_principals_repo.py
+  old: '    if refused[0] == _NOT_CRITICAL:'
+  new: '    if False:'
+  tests:
+  - apps/api/tests/integration/test_service_principals_api.py::test_the_role_route_refuses_a_critical_role_for_a_service_account
+- name: R6.5 uncovered_grants is always empty (grants_cover too)
+  file: db/migrations/versions/557e6907195e_service_principals_run_as.py
+  old: '        WHERE NOT platform.holder_covers_grant('
+  new: '        WHERE false AND NOT platform.holder_covers_grant('
+  tests:
+  - packages/python/dw_platform/tests/integration/test_service_principals_db.py::test_a_holder_of_every_grant_may_bind_and_one_short_is_told_what
+  - packages/python/dw_platform/tests/integration/test_tenant_roles.py::test_cover_needs_every_key_at_the_same_or_a_broader_depth
+- name: R6.5 binding without .use on the owning workspace passes
+  file: packages/python/dw_platform/src/dw_platform/application/service_principals.py
+  old: '    if not facts.can_use or facts.owning_workspace_id is None:'
+  new: '    if facts.owning_workspace_id is None:'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_service_principals_db.py::test_a_holder_of_every_grant_may_bind_and_one_short_is_told_what
+  - packages/python/dw_platform/tests/unit/test_service_principals.py::test_the_guard_refuses_in_its_order
+- name: R6.5 a caller short of a grant binds
+  file: packages/python/dw_platform/src/dw_platform/application/service_principals.py
+  old: '    if facts.uncovered:'
+  new: '    if False:'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_service_principals_db.py::test_a_holder_of_every_grant_may_bind_and_one_short_is_told_what
+- name: 'R6.15 step (a) dropped: another company''s account or a DW principal is judged'
+  file: packages/python/dw_platform/src/dw_platform/application/service_principals.py
+  old: '    if facts is None or not facts.found or facts.is_digital_worker:'
+  new: '    if facts is None:'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_service_principals_db.py::test_what_is_not_this_companys_service_account_is_not_found
+  - packages/python/dw_platform/tests/unit/test_service_principals.py::test_the_guard_refuses_in_its_order
+- name: R6.17 an account that is not active binds
+  file: packages/python/dw_platform/src/dw_platform/application/service_principals.py
+  old: '    if not facts.active:'
+  new: '    if False:'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_service_principals_db.py::test_an_inactive_account_or_an_absent_owner_is_not_bound
+- name: R6.17 accountable_owner_present ignores the owner's status
+  file: db/migrations/versions/557e6907195e_service_principals_run_as.py
+  old: "            WHERE p.tenant_id = p_tenant_id AND p.user_id = p_principal_id\n              AND\
+    \ tm.status = 'active'"
+  new: '            WHERE p.tenant_id = p_tenant_id AND p.user_id = p_principal_id'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_service_principals_db.py::test_an_inactive_account_or_an_absent_owner_is_not_bound
+  - apps/api/tests/integration/test_service_principals_api.py::test_the_accountable_owner_through_the_routes
+- name: R6.6 an assignment to a service account announces nothing
+  file: db/migrations/versions/557e6907195e_service_principals_run_as.py
+  old: '            IF cardinality(v_principals) = 0 THEN'
+  new: '            IF true THEN'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_service_principals_db.py::test_each_growth_of_assigned_grants_announces_once_and_nothing_else_does
+- name: R6.6 an extended or opened end announces nothing
+  file: db/migrations/versions/557e6907195e_service_principals_run_as.py
+  old: "                OR (OLD.expires_at IS NOT NULL\n                    AND (NEW.expires_at IS NULL\
+    \ OR NEW.expires_at > OLD.expires_at))"
+  new: '                OR false'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_service_principals_db.py::test_each_growth_of_assigned_grants_announces_once_and_nothing_else_does
+- name: R6.6 an update of assigned_by alone announces
+  file: db/migrations/versions/557e6907195e_service_principals_run_as.py
+  old: "                NEW.role_id IS DISTINCT FROM OLD.role_id\n                OR NEW.membership_id\
+    \ IS DISTINCT FROM OLD.membership_id"
+  new: "                true\n                OR NEW.membership_id IS DISTINCT FROM OLD.membership_id"
+  tests:
+  - packages/python/dw_platform/tests/integration/test_service_principals_db.py::test_each_growth_of_assigned_grants_announces_once_and_nothing_else_does
+- name: R6.6 a key added to a held role announces nothing
+  file: db/migrations/versions/557e6907195e_service_principals_run_as.py
+  old: '            v_principals := ARRAY(SELECT platform.service_holders_of_role(NEW.tenant_id, v_role));'
+  new: '            v_principals := ''{}'';'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_service_principals_db.py::test_each_growth_of_assigned_grants_announces_once_and_nothing_else_does
+- name: R6.6 a deeper depth announces nothing
+  file: db/migrations/versions/557e6907195e_service_principals_run_as.py
+  old: '                    OR array_position({_DEPTHS}, NEW.depth) > array_position({_DEPTHS}, OLD.depth)'
+  new: '                    OR false'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_service_principals_db.py::test_each_growth_of_assigned_grants_announces_once_and_nothing_else_does
+- name: R6.6 a restored role announces nothing
+  file: db/migrations/versions/557e6907195e_service_principals_run_as.py
+  old: '                IF NOT (OLD.deleted_at IS NOT NULL AND NEW.deleted_at IS NULL) THEN'
+  new: '                IF true THEN'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_service_principals_db.py::test_each_growth_of_assigned_grants_announces_once_and_nothing_else_does
+- name: R6.8 the service users' step is not registered
+  file: packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py
+  old: '        steps.register(service_users_purge_step())'
+  new: '        pass'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_offboarding.py::test_offboarding_deletes_the_tenants_service_users_after_what_holds_them
+- name: R6.8 the step declares another table than platform.users (order lost)
+  file: packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py
+  old: '        tables=frozenset({"platform.users"}),'
+  new: '        tables=frozenset({"platform.service_users_probe"}),'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_offboarding.py::test_offboarding_deletes_the_tenants_service_users_after_what_holds_them
+- name: R6.9 the purge function runs for a tenant that is not offboarding
+  file: db/migrations/versions/557e6907195e_service_principals_run_as.py
+  old: '            SELECT 1 FROM platform.tenants WHERE id = p_tenant AND status = ''offboarding'''
+  new: '            SELECT 1 FROM platform.tenants WHERE id = p_tenant'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_service_principals_db.py::test_purging_service_users_refuses_an_active_tenant_and_another_tenant
+- name: R6.9 the purge function runs for another tenant than the transaction's
+  file: db/migrations/versions/557e6907195e_service_principals_run_as.py
+  old: '        IF p_tenant IS DISTINCT FROM NULLIF(current_setting(''app.tenant_id'', true), '''')::uuid
+    THEN'
+  new: '        IF false THEN'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_service_principals_db.py::test_purging_service_users_refuses_an_active_tenant_and_another_tenant
+- name: R6.10 the composite target is gone (and the DW key that needs it)
+  file: db/migrations/versions/be93e0c26a4c_platform_digital_workers.py
+  old: '            CONSTRAINT uq_service_principals_tenant_id_user_id UNIQUE (tenant_id, user_id),
+
+    '
+  new: ''
+  tests:
+  - packages/python/dw_platform/tests/integration/test_service_principals_db.py::test_a_composite_key_cannot_name_another_tenants_service_account
+- name: R6.11 a service account takes a company row in another tenant
+  file: db/migrations/versions/557e6907195e_service_principals_run_as.py
+  old: '              AND u.owner_tenant_id IS DISTINCT FROM NEW.tenant_id'
+  new: '              AND false'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_service_principals_db.py::test_a_service_account_is_a_member_of_its_own_tenant_only
+  - packages/python/dw_platform/tests/integration/test_service_principals_db.py::test_a_service_accounts_company_row_does_not_move_tenant
+- name: R6.12 R6.13 the DW flag is a NOT EXISTS under the caller's RLS
+  file: packages/python/dw_platform/src/dw_platform/adapters/persistence/service_principals_repo.py
+  old: '    return sa.not_(sa.func.platform.is_digital_worker_principal(_P.c.user_id, type_=sa.Boolean))'
+  new: '    return ~sa.exists().where(tables.digital_workers.c.principal_user_id == _P.c.user_id)'
+  tests:
+  - apps/api/tests/integration/test_service_principals_api.py::test_the_list_holds_what_the_caller_reaches_in_their_own_company
+  - apps/api/tests/integration/test_service_principals_api.py::test_a_patch_of_what_is_not_this_companys_account_is_not_found
+- name: R6.12 the list ignores the caller's reach
+  file: packages/python/dw_platform/src/dw_platform/adapters/persistence/service_principals_repo.py
+  old: '            .where(_not_a_dw_principal(), _P.c.owning_workspace_id.in_(reached))'
+  new: '            .where(_not_a_dw_principal())'
+  tests:
+  - apps/api/tests/integration/test_service_principals_api.py::test_the_list_holds_what_the_caller_reaches_in_their_own_company
+- name: R6.12 the tenant filter (the table's RLS policy) lets every tenant through
+  file: db/migrations/versions/be93e0c26a4c_platform_digital_workers.py
+  old: "        \"CREATE POLICY tenant_isolation_service_principals ON platform.service_principals\"\n\
+    \        f\" USING ({_TENANT}) WITH CHECK ({_TENANT})\""
+  new: "        \"CREATE POLICY tenant_isolation_service_principals ON platform.service_principals\"\n\
+    \        \" USING (true) WITH CHECK (true)\""
+  tests:
+  - packages/python/dw_platform/tests/integration/test_rls_coverage.py::test_every_policy_actually_consults_the_tenant_setting
+  - packages/python/dw_platform/tests/integration/test_rls_coverage.py::test_a_connection_that_never_scopes_itself_reads_nothing
+- name: R6.14 a PATCH without .manage reaching the owning workspace passes
+  file: packages/python/dw_platform/src/dw_platform/application/service_principals.py
+  old: "        if not await self.repo.reaches(\n            context, SERVICE_PRINCIPALS_MANAGE_SCOPE,\
+    \ found.owning_workspace_id\n        ):"
+  new: '        if False:'
+  tests:
+  - apps/api/tests/integration/test_service_principals_api.py::test_a_patch_takes_manage_reaching_the_owning_workspace
+  - packages/python/dw_platform/tests/unit/test_service_principals.py::test_a_patch_is_404_before_403_and_audits_ids_only
+- name: R6.16 an account inserted without an owner passes
+  file: db/migrations/versions/557e6907195e_service_principals_run_as.py
+  old: '        IF TG_OP = ''INSERT'' AND NEW.owner_user_id IS NULL THEN'
+  new: '        IF false THEN'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_service_principals_db.py::test_the_accountable_owner_is_given_and_an_active_human_member
+- name: R6.16 the owner guard forgets the status
+  file: db/migrations/versions/557e6907195e_service_principals_run_as.py
+  old: '                 AND tm.tenant_id = NEW.tenant_id AND tm.status = ''active'''
+  new: '                 AND tm.tenant_id = NEW.tenant_id'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_service_principals_db.py::test_the_accountable_owner_is_given_and_an_active_human_member
+  - apps/api/tests/integration/test_service_principals_api.py::test_the_accountable_owner_through_the_routes
+- name: R6.18 the scan reads owner_user_id IS NOT NULL
+  file: db/migrations/versions/557e6907195e_service_principals_run_as.py
+  old: '                AND platform.accountable_owner_present(p.tenant_id, p.user_id)
+
+    '
+  new: '                AND p.owner_user_id IS NOT NULL
+
+    '
+  tests:
+  - packages/python/dw_platform/tests/integration/test_work_queue_db.py::test_a_dw_whose_owner_is_not_active_takes_no_new_work_at_either_layer
+- name: R6.18 the claim reads owner_user_id IS NOT NULL
+  file: packages/python/dw_platform/src/dw_platform/adapters/persistence/work_queue_repo.py
+  old: "                        sa.func.platform.accountable_owner_present(\n                        \
+    \    _P.c.tenant_id, _P.c.user_id, type_=sa.Boolean\n                        ),"
+  new: '                        _P.c.owner_user_id.is_not(None),'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_work_queue_db.py::test_a_dw_whose_owner_is_not_active_takes_no_new_work_at_either_layer
+- name: R6.19 R6.20 a standing ignores the company status
+  file: packages/python/dw_platform/src/dw_platform/adapters/persistence/digital_workers_repo.py
+  old: '      ON tm.tenant_id = m.tenant_id AND tm.user_id = m.user_id AND tm.status = ''active'''
+  new: '      ON tm.tenant_id = m.tenant_id AND tm.user_id = m.user_id'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_digital_workers_db.py::test_a_suspended_person_of_the_dw_makes_no_dw
+  - packages/python/dw_platform/tests/integration/test_work_queue_db.py::test_work_is_not_handed_to_a_member_who_is_not_active
+- name: R6.19 draft to operating compares against an inactive principal's empty grants
+  file: packages/python/dw_platform/src/dw_platform/application/digital_workers.py
+  old: '        if principal is None:'
+  new: '        if False:'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_digital_workers_db.py::test_a_principal_that_is_not_active_is_never_put_into_operation
+  - packages/python/dw_platform/tests/unit/test_digital_workers.py::test_a_principal_that_is_not_an_active_member_is_not_put_into_operation
+- name: R6.19 a standing is read in two statements again
+  file: packages/python/dw_platform/src/dw_platform/adapters/persistence/digital_workers_repo.py
+  old: "                    _STANDING,\n                    {\"t\": str(bound.tenant_id), \"w\": str(workspace_id),\
+    \ \"u\": str(user_id)},\n                )\n            ).first()\n"
+  new: "                    _STANDING,\n                    {\"t\": str(bound.tenant_id), \"w\": str(workspace_id),\
+    \ \"u\": str(user_id)},\n                )\n            ).first()\n            await session.execute(sa.text(\"\
+    SELECT 1\"))\n"
+  tests:
+  - packages/python/dw_platform/tests/integration/test_digital_workers_db.py::test_a_standing_is_read_in_one_statement
+- name: R7.1 the directory's candidates take a service account
+  file: packages/python/dw_platform/src/dw_platform/adapters/persistence/directory.py
+  old: "                tables.HUMAN,\n                tables.users.c.id.not_in(already),"
+  new: '                tables.users.c.id.not_in(already),'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_service_principals_db.py::test_no_service_account_is_a_directory_candidate
+- name: R7.2 the platform's user list takes a service account
+  file: packages/python/dw_platform/src/dw_platform/adapters/persistence/provisioning_repo.py
+  old: '            .where(tables.users.c.email.is_not(None), tables.HUMAN)'
+  new: '            .where(tables.users.c.email.is_not(None))'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_service_principals_db.py::test_the_platform_user_list_holds_people_only

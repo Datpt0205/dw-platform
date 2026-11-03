@@ -9,7 +9,8 @@ shapes the request and lets a domain error map to its status.
 Refusals the web branches on, in `details.reason_code`: 422 `owner_not_member`,
 `validator_cannot_decide`, `tool_unknown`, `work_kinds_empty`, `above_ceiling`,
 `role_not_allowed_for_service`; 403 `grants_not_covered`, `not_dw_owner`; 409
-`invalid_transition`, `second_person_required`, `dw_key_taken`. A DW the caller
+`invalid_transition`, `second_person_required`, `principal_inactive`, `dw_key_taken`,
+`service_principal_name_taken`. A DW the caller
 may not read is 404, the same as one that does not exist (R1.5). The scorecard:
 422 `days_out_of_range`. Autonomy: 403 `not_dw_owner`; 404
 `decision_class_not_found`; 422 `above_ceiling`, `level_invalid`,

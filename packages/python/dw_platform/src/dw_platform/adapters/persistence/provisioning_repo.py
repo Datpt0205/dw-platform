@@ -182,7 +182,8 @@ class SqlProvisioningRepository:
                 tables.users.c.email,
                 tables.users.c.display_name,
             )
-            .where(tables.users.c.email.is_not(None))
+            # People only: a service account is no login identity (R7.2).
+            .where(tables.users.c.email.is_not(None), tables.HUMAN)
             .order_by(tables.users.c.display_name)
         )
         async with self.session_factory() as session:

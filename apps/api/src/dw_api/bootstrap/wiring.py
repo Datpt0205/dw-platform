@@ -101,6 +101,10 @@ from dw_platform.adapters.persistence.scope_holders import SqlScopeHolders
 from dw_platform.adapters.persistence.separation_of_duties_repo import (
     SqlSeparationOfDutiesRepository,
 )
+from dw_platform.adapters.persistence.service_principals_repo import (
+    SqlBindingFacts,
+    SqlServicePrincipalRepository,
+)
 from dw_platform.adapters.persistence.support_grants import (
     SqlStaffGrants,
     SqlSupportGrantRepository,
@@ -134,6 +138,10 @@ from dw_platform.application.notifications import NotificationService
 from dw_platform.application.provisioning import ProvisioningService
 from dw_platform.application.scorecard import ScorecardService
 from dw_platform.application.separation_of_duties import SeparationOfDutiesService
+from dw_platform.application.service_principals import (
+    ServicePrincipalBindingGuard,
+    ServicePrincipalService,
+)
 from dw_platform.application.support_access import (
     SupportAccessContextFactory,
     SupportGrantService,
@@ -283,6 +291,14 @@ def _build_container(
     )
     container.separation_of_duties = SeparationOfDutiesService(
         SqlSeparationOfDutiesRepository(session_factory), authorization, clock, ids
+    )
+    binding = ServicePrincipalBindingGuard(SqlBindingFacts(session_factory))
+    container.service_principal_binding = binding
+    container.service_principals = ServicePrincipalService(
+        repo=SqlServicePrincipalRepository(session_factory),
+        binding=binding,
+        clock=clock,
+        id_generator=ids,
     )
     container.notifications = NotificationService(SqlNotificationRepository(session_factory))
     container.approval_masks[DW_DECISION] = DwProposalMask(

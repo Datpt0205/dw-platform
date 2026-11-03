@@ -835,6 +835,12 @@ service_principals = sa.Table(
     sa.Column(
         "created_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text("now()")
     ),
+    # org-and-principals ticket 03 (migration 557e6907195e).
+    sa.Column("description", sa.Text, nullable=True),
+    sa.Column("created_by", UUID(as_uuid=True), nullable=True),
+    sa.Column(
+        "updated_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text("now()")
+    ),
 )
 
 digital_workers = sa.Table(

@@ -181,15 +181,16 @@ async def register_key(
     scope_kind: str = "workspace",
     status: str = "active",
     tenant_grantable: bool = True,
+    risk: str = "standard",
 ) -> None:
     """A catalogue row for a test key, every NOT NULL column named. Migrator only."""
     await _run(
         conn,
         "INSERT INTO platform.permissions (key, area, label_vi, scope_kind, risk, status,"
         " status_reason, owner_package, tenant_grantable)"
-        " VALUES (:k, 'test', 'Khóa thử', :kind, 'standard', :s,"
+        " VALUES (:k, 'test', 'Khóa thử', :kind, :risk, :s,"
         " CASE WHEN :s = 'active' THEN NULL ELSE 'khóa thử' END, 'tests', :g)",
-        {"k": key, "kind": scope_kind, "s": status, "g": tenant_grantable},
+        {"k": key, "kind": scope_kind, "s": status, "g": tenant_grantable, "risk": risk},
     )
 
 

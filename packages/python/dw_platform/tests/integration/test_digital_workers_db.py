@@ -9,19 +9,21 @@ R1.17 (DWK36) and R2.3 (the levels and the tenant's ceiling, read when asked).
 
 from __future__ import annotations
 
+import asyncio
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 
 import pytest
 import sqlalchemy as sa
 from pg_harness import DatabaseUrls
+from sqlalchemy import event
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
-from dw_kernel.errors import ConflictError, NotFoundError, PermissionDeniedError
+from dw_kernel.errors import ConflictError, DomainError, NotFoundError, PermissionDeniedError
 from dw_kernel.ids import TenantId, UserId, WorkspaceId
 from dw_kernel.pagination import PageQuery, page_request
 from dw_kernel.ports import FixedClock, Uuid4Generator
@@ -201,7 +203,8 @@ def command(w: World, key: str = "lead_care") -> CreateDigitalWorker:
     return CreateDigitalWorker(
         configuration=DwConfiguration(
             key=key,
-            name="Chăm sóc lead",
+            # A service account's name is unique in its company (org-and-principals 03).
+            name="Chăm sóc lead" if key == "lead_care" else f"Chăm sóc lead ({key})",
             mandate="Gửi thư chào lead mới.",
             work_kinds=("lead.new",),
             allowed_tools=("email.send",),
@@ -315,16 +318,31 @@ async def test_a_dw_and_its_principal_are_written_together(
 async def test_a_refused_create_leaves_no_row_behind(
     world: World, app_engine: AsyncEngine, migrator: AsyncEngine
 ) -> None:
-    """A second DW with the same key: the database refuses the DW row after
-    the service user, its principal and its membership were written."""
+    """A second DW with the same key (another name, so its principal row
+    passes): the database refuses the DW row after the service user, its
+    principal and its membership were written."""
     creator = await context_of(app_engine, world, "creator", world.tenant_a, world.ws1)
     await service(app_engine).create(creator, command(world))
     count = "SELECT count(*) FROM platform.users WHERE kind = 'service' AND owner_tenant_id = :t"
     before = await _count(migrator, count, t=world.tenant_a)
 
+    again = command(world)
+    renamed = CreateDigitalWorker(
+        configuration=replace(again.configuration, name="Chăm sóc lead (hai)"), people=again.people
+    )
     with pytest.raises(ConflictError) as refused:
-        await service(app_engine).create(creator, command(world))
+        await service(app_engine).create(creator, renamed)
     assert refused.value.details["reason_code"] == "dw_key_taken"
+    # The same name under another key: the principal's name is taken
+    # (org-and-principals 03 step 2), and nothing is left behind either.
+    other = command(world, "another_key")
+    same_name = CreateDigitalWorker(
+        configuration=replace(other.configuration, name=again.configuration.name),
+        people=other.people,
+    )
+    with pytest.raises(ConflictError) as named:
+        await service(app_engine).create(creator, same_name)
+    assert named.value.details["reason_code"] == "service_principal_name_taken"
     assert await _count(migrator, count, t=world.tenant_a) == before
     assert (
         await _count(
@@ -665,3 +683,158 @@ async def test_offboarding_exports_and_purges_a_tenant_holding_a_dw(
         )
         == 0
     )
+
+
+# ---- org-and-principals 03 (R6.4, R6.19) --------------------------------------
+
+
+@pytest.fixture
+async def admin_engine(db_urls: DatabaseUrls) -> AsyncIterator[AsyncEngine]:
+    """The superuser on this database: only to watch `pg_stat_activity`."""
+    url = db_urls.admin.rsplit("/", 1)[0] + "/" + db_urls.app.rsplit("/", 1)[1]
+    engine = create_async_engine(url, poolclass=NullPool)
+    yield engine
+    await engine.dispose()
+
+
+async def _set_status(migrator: AsyncEngine, w: World, user: uuid.UUID, status: str) -> None:
+    async with migrator.begin() as conn:
+        await conn.execute(
+            sa.text(
+                "UPDATE platform.tenant_members SET status = :s"
+                " WHERE tenant_id = :t AND user_id = :u"
+            ),
+            {"s": status, "t": w.tenant_a, "u": user},
+        )
+
+
+async def _until(check: Callable[[], Awaitable[bool]], *, seconds: float = 10.0) -> bool:
+    deadline = asyncio.get_running_loop().time() + seconds
+    while asyncio.get_running_loop().time() < deadline:
+        if await check():
+            return True
+        await asyncio.sleep(0.05)
+    return False
+
+
+async def test_a_suspended_person_of_the_dw_makes_no_dw(
+    world: World, app_engine: AsyncEngine, migrator: AsyncEngine
+) -> None:
+    """org-and-principals R6.19 (OP18): a Validator who is a member but not
+    `active` reads as no membership: 422 `owner_not_member`, nothing written."""
+    creator = await context_of(app_engine, world, "creator", world.tenant_a, world.ws1)
+    await _set_status(migrator, world, world.users["validator"], "suspended")
+    count = "SELECT count(*) FROM platform.users WHERE kind = 'service' AND owner_tenant_id = :t"
+    before = await _count(migrator, count, t=world.tenant_a)
+    with pytest.raises(DomainError) as refused:
+        await service(app_engine).create(creator, command(world))
+    assert refused.value.details["reason_code"] == "owner_not_member"
+    assert refused.value.details["users"] == [str(world.users["validator"])]
+    assert await _count(migrator, count, t=world.tenant_a) == before
+
+
+async def test_a_principal_that_is_not_active_is_never_put_into_operation(
+    world: World, app_engine: AsyncEngine, migrator: AsyncEngine
+) -> None:
+    """org-and-principals R6.19 (OP18), digital-worker R1.9: a suspended
+    principal's empty grants would be covered by anyone. The second person
+    (who lacks the mailer role's key) is refused 409 `principal_inactive` and
+    the DW stays `draft`; once the principal is `active` again the comparison
+    runs and refuses 403 `grants_not_covered`."""
+    creator = await context_of(app_engine, world, "creator", world.tenant_a, world.ws1)
+    narrow = command(world)
+    worker = await service(app_engine).create(
+        creator,
+        CreateDigitalWorker(
+            configuration=narrow.configuration,
+            people=replace(narrow.people, technical_owner_id=world.users["tech_narrow"]),
+        ),
+    )
+    second = await context_of(app_engine, world, "tech_narrow", world.tenant_a, world.ws1)
+
+    await _set_status(migrator, world, worker.principal_user_id, "suspended")
+    with pytest.raises(ConflictError) as inactive:
+        await service(app_engine).change_state(second, worker.id, ChangeState("operating"))
+    assert inactive.value.details["reason_code"] == "principal_inactive"
+    assert (await service(app_engine).get(creator, worker.id)).state == "draft"
+
+    await _set_status(migrator, world, worker.principal_user_id, "active")
+    with pytest.raises(PermissionDeniedError) as uncovered:
+        await service(app_engine).change_state(second, worker.id, ChangeState("operating"))
+    assert uncovered.value.details["reason_code"] == "grants_not_covered"
+    assert (await service(app_engine).get(creator, worker.id)).state == "draft"
+
+
+async def test_a_standing_is_read_in_one_statement(world: World, app_engine: AsyncEngine) -> None:
+    """org-and-principals R6.19: kind, company status and scopes in one
+    snapshot, so a suspension between two reads cannot pair `active` with the
+    empty scopes it leaves."""
+    creator = await context_of(app_engine, world, "creator", world.tenant_a, world.ws1)
+    statements: list[str] = []
+
+    def seen(_conn: object, _cursor: object, statement: str, *_: object) -> None:
+        if "set_config" not in statement:
+            statements.append(statement)
+
+    event.listen(app_engine.sync_engine, "before_cursor_execute", seen)
+    try:
+        standing = await SqlDwMembershipCheck(async_sessionmaker(app_engine)).standing(
+            creator, world.users["tech"]
+        )
+    finally:
+        event.remove(app_engine.sync_engine, "before_cursor_execute", seen)
+    assert standing is not None and "email.send" in standing.scopes
+    assert len(statements) == 1, statements
+
+
+async def test_dw_creation_takes_its_role_rows_before_the_access_version_row(
+    world: World, app_engine: AsyncEngine, admin_engine: AsyncEngine
+) -> None:
+    """org-and-principals R6.4 (step 4, one lock order): B holds the mailer
+    role's row as the confirm of tenant-rbac/03 does; DW creation with that
+    role waits for it before it writes anything that bumps the tenant's access
+    version; B then writes a key into the role (which bumps the version) and
+    commits. Neither side is chosen as a deadlock victim (40P01)."""
+    creator = await context_of(app_engine, world, "creator", world.tenant_a, world.ws1)
+    async with app_engine.connect() as b:
+        await b.begin()
+        await b.execute(
+            sa.text("SELECT set_config('app.tenant_id', :t, true)"), {"t": str(world.tenant_a)}
+        )
+        role = (
+            await b.execute(
+                sa.text(
+                    "SELECT id FROM platform.tenant_roles WHERE tenant_id = :t AND key = :k"
+                    " FOR NO KEY UPDATE"
+                ),
+                {"t": world.tenant_a, "k": world.mailer_role},
+            )
+        ).scalar_one()
+        b_pid = int((await b.execute(sa.text("SELECT pg_backend_pid()"))).scalar_one())
+
+        creating = asyncio.create_task(service(app_engine).create(creator, command(world)))
+
+        async def a_waits() -> bool:
+            async with admin_engine.connect() as watch:
+                waiting = await watch.scalar(
+                    sa.text(
+                        "SELECT count(*) FROM pg_stat_activity"
+                        " WHERE datname = current_database() AND wait_event_type = 'Lock'"
+                        "   AND pid <> :b"
+                    ),
+                    {"b": b_pid},
+                )
+            return bool(waiting)
+
+        assert await _until(a_waits), "DW creation never waited on the role row"
+        await b.execute(
+            sa.text(
+                "INSERT INTO platform.tenant_role_permissions"
+                " (tenant_id, role_id, permission_key, depth)"
+                " VALUES (:t, :r, 'dw.read', 'workspace')"
+            ),
+            {"t": world.tenant_a, "r": role},
+        )
+        await b.commit()
+        worker = await creating
+    assert worker.configuration.role_keys == frozenset({"member", world.mailer_role})

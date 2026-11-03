@@ -42,6 +42,7 @@ from dw_kernel.pagination import (
     MAX_PAGE_SIZE,
     PageQuery,
     PageRequest,
+    SortType,
     list_identity,
     page_request,
 )
@@ -81,9 +82,12 @@ class ListPage:
         key: str,
         filters: Mapping[str, object],
         params: Mapping[str, object] | None = None,
+        sort_type: SortType = SortType.DATETIME,
     ) -> PageRequest:
         """The page request; ``key`` and ``filters`` are the version 1 identity
-        this route minted before, ``params`` its own query parameters."""
+        this route minted before, ``params`` its own query parameters, and
+        ``sort_type`` the type of the column it sorts on (a timestamp unless
+        it says otherwise), which its cursor carries."""
         return page_request(
             limit=self.limit,
             cursor=self.cursor,
@@ -96,6 +100,7 @@ class ListPage:
                     workspace=context.workspace_id,
                     params=params,
                 ),
+                sort_type=sort_type,
             ),
         )
 

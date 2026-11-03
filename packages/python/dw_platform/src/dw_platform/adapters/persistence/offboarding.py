@@ -264,6 +264,9 @@ class OffboardingPurgeSteps:
         steps.register(marketing_purge_step())
         # The access version row, which `dw_app` reads only (tenant-rbac R4.2).
         steps.register(access_version_purge_step())
+        # The tenant's service users, which `dw_app` may not delete
+        # (org-and-principals R6.8).
+        steps.register(service_users_purge_step())
         return steps
 
     def register(self, step: OffboardingPurgeStep) -> None:
@@ -297,6 +300,27 @@ def access_version_purge_step() -> OffboardingPurgeStep:
         name="platform.purge_tenant_access_version",
         tables=frozenset({"platform.tenant_access_versions"}),
         run=_purge_access_version,
+    )
+
+
+_PURGE_SERVICE_USERS = text("SELECT platform.purge_tenant_service_users(CAST(:t AS uuid))")
+
+
+async def _purge_service_users(session: AsyncSession, tenant_id: UUID) -> None:
+    await session.execute(_PURGE_SERVICE_USERS, {"t": str(tenant_id)})
+
+
+def service_users_purge_step() -> OffboardingPurgeStep:
+    """The `platform.users` rows of kind `service` the tenant owns, through the
+    SECURITY DEFINER function migration 557e6907195e made for them, which
+    refuses a tenant that is not `offboarding` or not the transaction's own.
+    Declaring `platform.users` is what orders it: after every step whose table
+    holds a RESTRICT or NO ACTION key to a user (a DW's three people, a support
+    grant's staff member through the workspace's cascade), from the catalog."""
+    return OffboardingPurgeStep(
+        name="platform.purge_tenant_service_users",
+        tables=frozenset({"platform.users"}),
+        run=_purge_service_users,
     )
 
 

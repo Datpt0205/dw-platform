@@ -1283,6 +1283,14 @@ async def test_the_critical_role_check_names_a_planted_principal(db_urls: Databa
             await conn.execute(
                 sa.text("ALTER TABLE platform.memberships DISABLE TRIGGER dw_principal_roles_fixed")
             )
+            # And past org-and-principals 03's guard, which refuses a critical
+            # role to any service user: the check under test is the net below it.
+            await conn.execute(
+                sa.text(
+                    "ALTER TABLE platform.role_assignments"
+                    " DISABLE TRIGGER guard_service_principal_grants"
+                )
+            )
             await conn.execute(
                 sa.text(
                     "UPDATE platform.memberships"
@@ -1716,3 +1724,57 @@ async def test_only_dw_app_may_ask_who_is_in_an_audience(db_urls: DatabaseUrls) 
         "dw_provisioner": False,
     }
     assert definer is False
+
+
+# org-and-principals ticket 03 (migration 557e6907195e).
+
+
+async def test_only_dw_app_calls_the_service_account_functions_and_no_one_the_triggers(
+    db_urls: DatabaseUrls,
+) -> None:
+    """Steps 2, 4, 6, 9: every SECURITY DEFINER function of the migration is
+    revoked from PUBLIC and runs on a fixed `search_path`; `dw_app` alone calls
+    the DW flag and the purge step (R6.9: a role that may call the purge is a
+    role that may delete a tenant's service users)."""
+    definers = (
+        "platform.guard_service_user_tenant()",
+        "platform.guard_service_principal_grants()",
+        "platform.service_principal_grants_changed()",
+        "platform.is_digital_worker_principal(uuid)",
+        "platform.purge_tenant_service_users(uuid)",
+    )
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            calls = {
+                (role, function): await conn.scalar(
+                    sa.text("SELECT has_function_privilege(:r, :f, 'EXECUTE')"),
+                    {"r": role, "f": function},
+                )
+                for role in ("public", "dw_app", "dw_agent_ro", "dw_provisioner")
+                for function in definers
+            }
+            shapes = {
+                function: tuple(
+                    (
+                        await conn.execute(
+                            sa.text(
+                                "SELECT prosecdef, proconfig FROM pg_proc"
+                                " WHERE oid = CAST(:f AS regprocedure)"
+                            ),
+                            {"f": function},
+                        )
+                    ).one()
+                )
+                for function in definers
+            }
+    finally:
+        await migrator.dispose()
+    allowed = {k for k, v in calls.items() if v}
+    assert allowed == {
+        ("dw_app", "platform.is_digital_worker_principal(uuid)"),
+        ("dw_app", "platform.purge_tenant_service_users(uuid)"),
+    }
+    for function, (definer, config) in shapes.items():
+        assert definer is True, function
+        assert config == ["search_path=pg_catalog, platform"], function

@@ -87,6 +87,10 @@ from dw_platform.application.provisioning import ProvisioningService
 from dw_platform.application.rate_limit import RateLimiterPort
 from dw_platform.application.scorecard import ScorecardService
 from dw_platform.application.separation_of_duties import SeparationOfDutiesService
+from dw_platform.application.service_principals import (
+    ServicePrincipalBindingGuard,
+    ServicePrincipalService,
+)
 from dw_platform.application.support_access import (
     StaffGrantsListPort,
     SupportAccessAuditPort,
@@ -176,6 +180,11 @@ class ApiContainer:
     admin_console: AdminConsoleService | None = None
     hierarchy: HierarchyService | None = None
     separation_of_duties: SeparationOfDutiesService | None = None
+    # A company's service accounts (org-and-principals R6), and the one guard of
+    # who may bind one as a run's principal: a context that binds declares its
+    # own Protocol and is handed this object.
+    service_principals: ServicePrincipalService | None = None
+    service_principal_binding: ServicePrincipalBindingGuard | None = None
     # Digital Workers (digital-worker R1, R2): wired with the agent runtime,
     # whose tool register a DW's `allowed_tools` is checked against.
     digital_workers: DigitalWorkerService | None = None

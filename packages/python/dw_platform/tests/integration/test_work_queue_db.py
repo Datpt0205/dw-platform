@@ -609,3 +609,84 @@ async def test_open_counts_skip_finished_work_and_other_tenants(
 
     in_b = await context_of(app_engine, world, "b_member", world.tenant_b, world.ws_b)
     assert await q.open_counts(in_b, [worker.id, idle.id]) == {}
+
+
+# ---- org-and-principals 03 (R6.18, R6.20) -------------------------------------
+
+
+async def _member_status(migrator: AsyncEngine, w: World, user: uuid.UUID, status: str) -> None:
+    async with migrator.begin() as conn:
+        await conn.execute(
+            sa.text(
+                "UPDATE platform.tenant_members SET status = :s"
+                " WHERE tenant_id = :t AND user_id = :u"
+            ),
+            {"s": status, "t": w.tenant_a, "u": user},
+        )
+
+
+async def _due(app_engine: AsyncEngine, w: World) -> bool:
+    repo = SqlWorkQueueRepository(async_sessionmaker(app_engine, expire_on_commit=False))
+    return scope(w) in await repo.due_scopes(limit=100_000)
+
+
+async def test_a_dw_whose_owner_is_not_active_takes_no_new_work_at_either_layer(
+    world: World, app_engine: AsyncEngine, migrator: AsyncEngine
+) -> None:
+    """org-and-principals R6.18 (OP18), one case per layer: the scan does not
+    return the scope for a DW whose accountable owner is suspended; another DW
+    of the workspace being due brings the scope in, and the claim under it
+    still takes only the other DW's work; the owner `active` again, the next
+    pass takes it; work stuck `in_progress` is reclaimed whatever the owner."""
+    held = await _dw(app_engine, migrator, world, "held_dw")
+    other = await _dw(app_engine, migrator, world, "other_dw")
+    # The held DW answers to the Work Assigner as its accountable owner.
+    async with migrator.begin() as conn:
+        await conn.execute(
+            sa.text("UPDATE platform.service_principals SET owner_user_id = :o WHERE user_id = :p"),
+            {"o": world.users["assigner"], "p": held.principal_user_id},
+        )
+    q = queue(app_engine)
+    mine = await q.enqueue(scope(world), held.id, NewWork("lead.new", "held-1", LEAD))
+    await _member_status(migrator, world, world.users["assigner"], "suspended")
+    assert not await _due(app_engine, world), "the scan returned a DW without its owner"
+
+    theirs = await q.enqueue(scope(world), other.id, NewWork("lead.new", "other-1", LEAD))
+    assert await _due(app_engine, world)
+    claimed = await q.claim_for_lane(scope(world), limit=10)
+    assert [c.item.id for c in claimed] == [theirs.id], "the claim took a DW without its owner"
+
+    await _member_status(migrator, world, world.users["assigner"], "active")
+    assert await _due(app_engine, world)
+    assert [c.item.id for c in await q.claim_for_lane(scope(world), limit=10)] == [mine.id]
+
+    await _member_status(migrator, world, world.users["assigner"], "suspended")
+    async with migrator.begin() as conn:
+        await conn.execute(
+            sa.text(
+                "UPDATE platform.work_items SET updated_at = now() - interval '16 minutes'"
+                " WHERE dw_id = ANY(:ids)"
+            ),
+            {"ids": [held.id, other.id]},
+        )
+    assert await _due(app_engine, world), "stuck work stopped being reclaimed"
+
+
+async def test_work_is_not_handed_to_a_member_who_is_not_active(
+    world: World, app_engine: AsyncEngine, migrator: AsyncEngine
+) -> None:
+    """org-and-principals R6.20 (OP18): a suspended member of the workspace is
+    refused `handoff_target_invalid` and the work does not move; `active`
+    again, the same hand-off goes through."""
+    _, q, item = await _in_progress(app_engine, migrator, world)
+    await _member_status(migrator, world, world.users["tech_narrow"], "suspended")
+    with pytest.raises(DomainError) as refused:
+        await q.hand_off(scope(world), item.id, to_user=world.users["tech_narrow"], packet=PACKET)
+    assert refused.value.details["reason_code"] == "handoff_target_invalid"
+    assert (await q.repo.get(scope(world), item.id)).status == "in_progress"
+
+    await _member_status(migrator, world, world.users["tech_narrow"], "active")
+    handed = await q.hand_off(
+        scope(world), item.id, to_user=world.users["tech_narrow"], packet=PACKET
+    )
+    assert handed.status == "handed_off"

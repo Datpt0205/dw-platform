@@ -33,6 +33,7 @@ from dw_platform.adapters.persistence.repositories import SqlAuditRepository
 from dw_platform.adapters.persistence.separation_of_duties import (
     separation_of_duties_conflict,
 )
+from dw_platform.adapters.persistence.service_principals_repo import service_principal_refusal
 from dw_platform.adapters.persistence.support_grants import support_staff_conflict
 from dw_platform.adapters.persistence.tenant_member_rows import ensure_tenant_member
 from dw_platform.adapters.persistence.tenant_session import TenantScope, tenant_session
@@ -272,6 +273,7 @@ async def _write(
             separation_of_duties_conflict(exc)
             or support_staff_conflict(exc)
             or dw_principal_roles_conflict(exc)
+            or service_principal_refusal(exc)
         )
         if conflict is None:
             raise

@@ -107,6 +107,11 @@ EXPECTED: dict[tuple[str, str], Expectation] = {
     ("GET", "/api/v1/studio/artifacts"): Expectation(
         "studio.artifacts", ("kind",), ("updated_at", "id")
     ),
+    # By name, unique in the company: reach and "not a DW's principal" are
+    # filters on the tenant's name index (org-and-principals ticket 03).
+    ("GET", "/api/v1/admin/service-principals"): Expectation(
+        "platform.service_principals", (), ("name",)
+    ),
 }
 # The query a registered route is paged with, when it needs one.
 PARAMS: dict[tuple[str, str], dict[str, str]] = {
@@ -225,7 +230,7 @@ async def seed(migrator: AsyncEngine) -> World:
                 "INSERT INTO platform.users (id, subject, display_name, kind, owner_tenant_id)"
                 " VALUES (:p, :sub, 'plan', 'service', :t)",
                 "INSERT INTO platform.service_principals (user_id, tenant_id,"
-                " owning_workspace_id, name, owner_user_id) VALUES (:p, :t, :w, 'plan', :u)",
+                " owning_workspace_id, name, owner_user_id) VALUES (:p, :t, :w, :key, :u)",
                 "INSERT INTO platform.digital_workers (id, tenant_id, workspace_id,"
                 " principal_user_id, key, name, mandate, work_kinds, allowed_tools, workflow_key,"
                 " workflow_version, technical_owner_id, work_assigner_id, validator_id,"
@@ -273,6 +278,34 @@ async def seed(migrator: AsyncEngine) -> World:
                 },
             )
         await conn.execute(sa.text("ANALYZE studio.artifacts"))
+        # Service accounts the person reaches with `.use`, among a company's
+        # many, with statistics (org-and-principals ticket 03).
+        user_of = await plant_role(
+            conn, t, f"plan_sp_{t.hex[:8]}", {"platform.service_principals.use": "tenant"}
+        )
+        await assign(conn, t, w, world.membership, user_of)
+        for n in range(120):
+            account = uuid.uuid4()
+            for statement in (
+                "INSERT INTO platform.users (id, subject, display_name, kind, owner_tenant_id)"
+                " VALUES (:a, :sub, 'plan', 'service', :t)",
+                "INSERT INTO platform.tenant_members (tenant_id, user_id, status)"
+                " VALUES (:t, :a, 'active')",
+                "INSERT INTO platform.service_principals (user_id, tenant_id,"
+                " owning_workspace_id, name, owner_user_id) VALUES (:a, :t, :w, :name, :u)",
+            ):
+                await conn.execute(
+                    sa.text(statement),
+                    {
+                        "a": account,
+                        "sub": f"service:{account}",
+                        "t": t,
+                        "w": w,
+                        "u": u,
+                        "name": f"plan account {n:03d}",
+                    },
+                )
+        await conn.execute(sa.text("ANALYZE platform.service_principals"))
     return world
 
 

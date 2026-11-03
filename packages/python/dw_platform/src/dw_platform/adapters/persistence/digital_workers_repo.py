@@ -20,7 +20,7 @@ import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from dw_kernel.errors import ConflictError, DomainError, NotFoundError
+from dw_kernel.errors import ConflictError, NotFoundError
 from dw_kernel.pagination import CursorPosition, Page, PageRequest, build_page
 from dw_platform.adapters.persistence import tables
 from dw_platform.adapters.persistence.effect_key_store import claim_effect_key
@@ -31,6 +31,7 @@ from dw_platform.adapters.persistence.separation_of_duties import (
     refusal,
     separation_of_duties_conflict,
 )
+from dw_platform.adapters.persistence.service_principals_repo import service_principal_refusal
 from dw_platform.adapters.persistence.tenant_member_rows import ensure_tenant_member
 from dw_platform.adapters.persistence.tenant_session import TenantScope, tenant_session
 from dw_platform.application.access_context import AccessContext
@@ -51,9 +52,9 @@ from dw_platform.domain.work_item import IN_FLIGHT, sources_of
 _DW = tables.digital_workers
 _CLASSES = tables.dw_decision_classes
 _PRINCIPALS = tables.service_principals
+_ROLES = tables.tenant_roles
 
 _KEY_TAKEN = "uq_digital_workers_tenant_id_key"
-_OWNER = "ck_service_principals_accountable_owner"
 _ROLES_FIXED = "ck_memberships_dw_principal_roles_fixed"
 
 
@@ -86,12 +87,9 @@ def _refused(error: IntegrityError) -> Exception | None:
             "this tenant already has a digital worker with that key",
             details={"reason_code": "dw_key_taken"},
         )
-    if refused[0] == _OWNER:
-        return DomainError(
-            "the business owner is a human member of this tenant",
-            details={"reason_code": "owner_not_member"},
-        )
-    return None
+    # The principal's name, its Business Owner and its roles (org-and-principals
+    # R6.1, R6.4, R6.16): the same answers the service-account routes give.
+    return service_principal_refusal(error)
 
 
 @dataclass(frozen=True)
@@ -113,6 +111,7 @@ class SqlDigitalWorkerRepository:
             async with tenant_session(self.session_factory, _scope(context)) as session:
                 if effect is not None:
                     await claim_effect_key(session, effect.of(worker.id))
+                await lock_roles(session, worker.tenant_id, config.role_keys)
                 await session.execute(
                     sa.insert(tables.users).values(
                         id=worker.principal_user_id,
@@ -334,6 +333,27 @@ class SqlDigitalWorkerRepository:
         return True
 
 
+async def lock_roles(session: AsyncSession, tenant_id: uuid.UUID, keys: Iterable[str]) -> None:
+    """One lock order (org-and-principals 03 step 4): the tenant role rows a
+    write is about to assign, by id, `FOR NO KEY UPDATE`, as its FIRST
+    statement, before anything that bumps the tenant's access-version row
+    (`trg_z_bump_access_version` on the company and membership rows). The
+    service-account guard takes these rows again, holding them already; a
+    confirm of tenant-rbac/03 holding one is waited for here, while this
+    transaction holds nothing it waits for. A role not yet installed is made
+    by this transaction, and no one else sees it."""
+    await session.execute(
+        sa.select(_ROLES.c.id)
+        .where(
+            _ROLES.c.tenant_id == tenant_id,
+            _ROLES.c.key.in_(sorted(keys)),
+            _ROLES.c.deleted_at.is_(None),
+        )
+        .order_by(_ROLES.c.id)
+        .with_for_update(key_share=True)
+    )
+
+
 async def _retire_work(session: AsyncSession, dw_id: uuid.UUID) -> None:
     """R1.12, R1.14: under the DW's row lock, which the lane's claim waits on
     (`FOR SHARE`), refuse while any of its work is in flight, and cancel what
@@ -435,6 +455,20 @@ def _position(worker: DigitalWorker) -> CursorPosition:
     return CursorPosition(sort_value=worker.created_at, tiebreaker=worker.id)
 
 
+# `platform.scopes_in`, the one projection `effective_scopes` reads too.
+_STANDING = sa.text(
+    """
+    SELECT u.kind,
+           ARRAY(SELECT platform.scopes_in(CAST(:t AS uuid), u.id, CAST(:w AS uuid))) AS scopes
+    FROM platform.memberships m
+    JOIN platform.users u ON u.id = m.user_id
+    JOIN platform.tenant_members tm
+      ON tm.tenant_id = m.tenant_id AND tm.user_id = m.user_id AND tm.status = 'active'
+    WHERE m.workspace_id = CAST(:w AS uuid) AND m.user_id = CAST(:u AS uuid)
+    """
+)
+
+
 @dataclass(frozen=True)
 class SqlDwMembershipCheck:
     """Implements ``MembershipCheckPort``: a user's membership in the caller's
@@ -458,19 +492,22 @@ class SqlDwMembershipCheck:
     async def _standing(
         self, bound: TenantScope, workspace_id: uuid.UUID, user_id: uuid.UUID
     ) -> Standing | None:
-        m = tables.memberships
+        """The kind, the company status and the scopes in ONE statement, one
+        snapshot (org-and-principals R6.19, R6.20): a person who is not an
+        `active` member reads as no membership, and a suspension committed
+        between two reads cannot pair `active` with the empty scopes it leaves."""
         async with tenant_session(self.session_factory, bound) as session:
             row = (
                 await session.execute(
-                    sa.select(tables.users.c.kind)
-                    .select_from(m.join(tables.users, tables.users.c.id == m.c.user_id))
-                    .where(m.c.workspace_id == workspace_id, m.c.user_id == user_id)
+                    _STANDING,
+                    {"t": str(bound.tenant_id), "w": str(workspace_id), "u": str(user_id)},
                 )
             ).first()
-            if row is None:
-                return None
-            scopes = await effective_scopes(session, bound.tenant_id, user_id, workspace_id)
-        return Standing(kind="service" if row.kind == "service" else "human", scopes=scopes)
+        if row is None:
+            return None
+        return Standing(
+            kind="service" if row.kind == "service" else "human", scopes=frozenset(row.scopes)
+        )
 
 
 @dataclass(frozen=True)

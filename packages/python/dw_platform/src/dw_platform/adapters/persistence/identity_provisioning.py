@@ -177,18 +177,30 @@ class SqlIdentityBootstrap:
             return mapped, False
 
         # The dev issuer's tokens name the seeded user's own subject; the
-        # `local` profile is the only one that verifies them.
+        # `local` profile is the only one that verifies them. Only a human's:
+        # a service account never signs in, and its subject creates no user
+        # either (org-and-principals R6.2).
         if identity.issuer == DEV_ISSUER:
-            seeded = await session.scalar(
-                sa.select(tables.users.c.id).where(tables.users.c.subject == identity.subject)
-            )
+            seeded = (
+                await session.execute(
+                    sa.select(tables.users.c.id, tables.users.c.kind).where(
+                        tables.users.c.subject == identity.subject
+                    )
+                )
+            ).first()
+            if seeded is not None and seeded.kind != "human":
+                raise PermissionDeniedError(
+                    "this subject belongs to another account",
+                    details={"reason_code": "identity_subject_in_use"},
+                )
             if seeded is not None:
-                return seeded, False
+                return seeded.id, False
 
         if identity.email:
             holder = await session.scalar(
                 sa.select(tables.users.c.id).where(
-                    sa.func.lower(tables.users.c.email) == identity.email.lower()
+                    sa.func.lower(tables.users.c.email) == identity.email.lower(),
+                    tables.HUMAN,
                 )
             )
             if holder is not None:

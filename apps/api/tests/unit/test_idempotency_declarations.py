@@ -30,10 +30,12 @@ from starlette.routing import Mount
 
 from dw_agent_runtime.approval_flow import ApproveAndResumeService
 from dw_api.dependencies.idempotency import IDEMPOTENCY_HEADER
+from dw_api.routes.v1 import admin_service_principals as service_principal_routes
 from dw_api.routes.v1 import digital_workers as digital_workers_routes
 from dw_api.routes.v1 import studio_artifacts as studio_routes
 from dw_api.routes.v1 import work_items as work_items_routes
 from dw_platform.application import digital_workers, membership_admin, support_access
+from dw_platform.application.service_principals import ServicePrincipalService
 from dw_studio.core.application.service import ArtifactService
 
 pytestmark = pytest.mark.unit
@@ -105,6 +107,9 @@ DECLARED: dict[tuple[str, str], object] = {
     # (tenant-config R2.1, R2.21; ADR-0108 decision 4).
     ("POST", "/api/v1/studio/artifacts"): studio_routes._may_create,
     ("POST", "/api/v1/studio/artifacts/{artifact_id}/draft"): studio_routes._may_write,
+    # The owning workspace is the company's, then `.manage` reaches it
+    # (org-and-principals R6.1).
+    ("POST", "/api/v1/admin/service-principals"): service_principal_routes._may_create,
 }
 DECIDE = ("POST", "/api/v1/approvals/{approval_id}/decisions")
 
@@ -242,6 +247,9 @@ def test_each_declaration_is_the_check_its_service_makes() -> None:
     ):
         assert service_check in ast.dump(ast.parse(_source_of(check))), service_check
         assert hasattr(ArtifactService, service_check)
+    create = ast.dump(ast.parse(_source_of(service_principal_routes._may_create)))
+    assert "require_manage" in create, "a service account's create calls the service's check"
+    assert hasattr(ServicePrincipalService, "require_manage")
 
 
 def _source_of(function: object) -> str:

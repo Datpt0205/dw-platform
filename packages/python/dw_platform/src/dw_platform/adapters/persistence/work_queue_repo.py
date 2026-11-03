@@ -240,7 +240,12 @@ class SqlWorkQueueRepository:
                         _W.c.status == "open",
                         _W.c.available_at <= sa.func.now(),
                         _DW.c.state == "operating",
-                        _P.c.owner_user_id.is_not(None),
+                        # The scan's own rule, held again here: another DW of
+                        # this workspace being due brings this scope in
+                        # (org-and-principals R6.18).
+                        sa.func.platform.accountable_owner_present(
+                            _P.c.tenant_id, _P.c.user_id, type_=sa.Boolean
+                        ),
                     )
                     .order_by(_W.c.available_at, _W.c.id)
                     .limit(limit)

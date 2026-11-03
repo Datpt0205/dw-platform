@@ -421,9 +421,15 @@ async def test_only_an_owner_changes_state() -> None:
 
 async def test_a_business_owner_without_dw_manage_changes_state() -> None:
     repo = FakeRepo()
-    worker = await created(repo)
+    standing = members()
+    worker = await service(repo, standing).create(
+        CREATOR_CTX, CreateDigitalWorker(configuration=configuration(), people=people())
+    )
+    standing.standings[worker.principal_user_id] = Standing(
+        "service", ROLES["member"] | ROLES["mailer"]
+    )
     owner = context(OWNER, *MEMBER_SCOPES, "email.send")
-    moved = await service(repo).change_state(owner, worker.id, ChangeState("operating"))
+    moved = await service(repo, standing).change_state(owner, worker.id, ChangeState("operating"))
     assert moved.state == "operating"
     audit = repo.audits[-1]
     assert audit.action == "dw.state_changed" and audit.actor_id.value == OWNER
@@ -454,6 +460,18 @@ async def test_the_creator_does_not_put_their_own_dw_into_operation() -> None:
     with pytest.raises(ConflictError) as refused:
         await service(repo).change_state(CREATOR_CTX, worker.id, ChangeState("operating"))
     assert reason(refused) == "second_person_required"
+    assert repo.workers[worker.id].state == "draft"
+
+
+async def test_a_principal_that_is_not_an_active_member_is_not_put_into_operation() -> None:
+    """org-and-principals R6.19: no standing (not an `active` member) is 409
+    `principal_inactive` before any comparison, which an empty set would pass."""
+    repo = FakeRepo()
+    worker = await created(repo)
+    covering = context(TECH, *MEMBER_SCOPES, "email.send")
+    with pytest.raises(ConflictError) as refused:
+        await service(repo).change_state(covering, worker.id, ChangeState("operating"))
+    assert reason(refused) == "principal_inactive"
     assert repo.workers[worker.id].state == "draft"
 
 

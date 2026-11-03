@@ -263,6 +263,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/service-principals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Service Principals */
+        get: operations["list_service_principals_api_v1_admin_service_principals_get"];
+        put?: never;
+        /** Create Service Principal */
+        post: operations["create_service_principal_api_v1_admin_service_principals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/service-principals/{service_principal_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Service Principal */
+        patch: operations["update_service_principal_api_v1_admin_service_principals__service_principal_id__patch"];
+        trace?: never;
+    };
     "/api/v1/admin/tenant": {
         parameters: {
             query?: never;
@@ -2179,6 +2214,26 @@ export interface components {
             /** Workflow Version */
             workflow_version: string;
         };
+        /**
+         * CreateServicePrincipalBody
+         * @description The tenant is never the body's: it is the access context's.
+         */
+        CreateServicePrincipalBody: {
+            /** Description */
+            description?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Owner User Id
+             * Format: uuid
+             */
+            owner_user_id: string;
+            /**
+             * Owning Workspace Id
+             * Format: uuid
+             */
+            owning_workspace_id: string;
+        };
         /** CreateTenantRequest */
         CreateTenantRequest: {
             /** Name */
@@ -3179,6 +3234,20 @@ export interface components {
          *     ``items`` — is the client's stop condition: a filtered listing can return an
          *     empty page in the middle of a run and still have more rows behind it.
          */
+        Page_ServicePrincipalView_: {
+            /** Items */
+            items: components["schemas"]["ServicePrincipalView"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /**
+         * Page
+         * @description A page of results and the cursor that continues it.
+         *
+         *     ``next_cursor`` is ``None`` on the last page, and that — not an empty
+         *     ``items`` — is the client's stop condition: a filtered listing can return an
+         *     empty page in the middle of a run and still have more rows behind it.
+         */
         Page_WorkItemView_: {
             /** Items */
             items: components["schemas"]["WorkItemView"][];
@@ -3451,6 +3520,31 @@ export interface components {
              * Format: date-time
              */
             since: string;
+        };
+        /** ServicePrincipalView */
+        ServicePrincipalView: {
+            /** Bindable By Me */
+            bindable_by_me: boolean;
+            /** Description */
+            description: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Owner Missing */
+            owner_missing: boolean;
+            /** Owner User Id */
+            owner_user_id: string | null;
+            /**
+             * Owning Workspace Id
+             * Format: uuid
+             */
+            owning_workspace_id: string;
+            /** Status */
+            status: ("invited" | "active" | "suspended") | null;
         };
         /** SetManagerBody */
         SetManagerBody: {
@@ -3779,6 +3873,19 @@ export interface components {
             channel: string;
             /** Unsubscribed */
             unsubscribed: boolean;
+        };
+        /**
+         * UpdateServicePrincipalBody
+         * @description Only the members sent change; `description: null` empties it. A name
+         *     or an accountable owner cannot be emptied (R6.16).
+         */
+        UpdateServicePrincipalBody: {
+            /** Description */
+            description?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Owner User Id */
+            owner_user_id?: string | null;
         };
         /** UpdateTenantBody */
         UpdateTenantBody: {
@@ -4659,6 +4766,137 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_service_principals_api_v1_admin_service_principals_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                /** @description Opaque cursor from a previous page. */
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_ServicePrincipalView_"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    create_service_principal_api_v1_admin_service_principals_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateServicePrincipalBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServicePrincipalView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    update_service_principal_api_v1_admin_service_principals__service_principal_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                service_principal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateServicePrincipalBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServicePrincipalView"];
+                };
             };
             /** @description The request was refused */
             "4XX": {

@@ -21,7 +21,13 @@ from datetime import UTC, datetime
 import pytest
 import sqlalchemy as sa
 from pg_harness import DatabaseUrls
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy import event
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.pool import NullPool
 
 from dw_platform.adapters.persistence.offboarding import ExportedTable, SqlTenantOffboarding
@@ -915,3 +921,193 @@ async def test_offboarding_purges_studio_artifacts_that_use_each_other(
                 sa.text("DELETE FROM studio.artifact_kinds WHERE kind = :k"), {"k": _PROBE_KIND}
             )
         await migrator.dispose()
+
+
+# ---- org-and-principals 03: the tenant's service users (R6.8) ------------------
+
+# A table holding a service user by RESTRICT, as a later context's might. Named
+# to sort AFTER the step `platform.purge_tenant_service_users`: only the
+# catalog's edge can put the step behind it.
+_HOLDER = "platform.zz_service_user_holder"
+
+
+async def _seed_service_tenant(migrator: AsyncEngine) -> dict[str, uuid.UUID]:
+    """An `active` tenant, then `offboarding`, holding a person, a service
+    account, a Digital Worker (whose principal is a service user too) and a
+    support grant."""
+    ids = {name: uuid.uuid4() for name in ("tenant", "ws", "person", "account", "dw", "principal")}
+    statements: tuple[tuple[str, dict[str, object]], ...] = (
+        (
+            "INSERT INTO platform.tenants (id, slug, name, status) VALUES (:tenant, :slug, :slug,"
+            " 'active')",
+            {"slug": f"sp-off-{ids['tenant'].hex[:10]}"},
+        ),
+        (
+            "INSERT INTO platform.workspaces (id, tenant_id, slug, name)"
+            " VALUES (:ws, :tenant, 'main', 'Main')",
+            {},
+        ),
+        (
+            "INSERT INTO platform.users (id, subject, display_name)"
+            " VALUES (:person, 'sp-off-' || CAST(:person AS uuid)::text, 'người')",
+            {},
+        ),
+        (
+            "INSERT INTO platform.tenant_members (tenant_id, user_id, status)"
+            " VALUES (:tenant, :person, 'active')",
+            {},
+        ),
+        (
+            "INSERT INTO platform.memberships (id, tenant_id, workspace_id, user_id)"
+            " VALUES (gen_random_uuid(), :tenant, :ws, :person)",
+            {},
+        ),
+    )
+    async with migrator.begin() as conn:
+        for sql, extra in statements:
+            await conn.execute(sa.text(sql), {**ids, **extra})
+        for user in ("account", "principal"):
+            await conn.execute(
+                sa.text(
+                    "INSERT INTO platform.users (id, subject, display_name, kind,"
+                    " owner_tenant_id)"
+                    " VALUES (:u, 'service:' || CAST(:u AS uuid)::text, 'svc', 'service', :tenant)"
+                ),
+                {"u": ids[user], "tenant": ids["tenant"]},
+            )
+            await conn.execute(
+                sa.text(
+                    "INSERT INTO platform.tenant_members (tenant_id, user_id, status)"
+                    " VALUES (:tenant, :u, 'active')"
+                ),
+                {"u": ids[user], "tenant": ids["tenant"]},
+            )
+            await conn.execute(
+                sa.text(
+                    "INSERT INTO platform.service_principals"
+                    " (user_id, tenant_id, owning_workspace_id, name, owner_user_id)"
+                    " VALUES (:u, :tenant, :ws, :n, :person)"
+                ),
+                {**ids, "u": ids[user], "n": f"svc {user}"},
+            )
+            await conn.execute(
+                sa.text(
+                    "INSERT INTO platform.memberships (id, tenant_id, workspace_id, user_id)"
+                    " VALUES (gen_random_uuid(), :tenant, :ws, :u)"
+                ),
+                {**ids, "u": ids[user]},
+            )
+        await conn.execute(
+            sa.text(
+                "INSERT INTO platform.digital_workers (id, tenant_id, workspace_id,"
+                " principal_user_id, key, name, mandate, work_kinds, allowed_tools,"
+                " workflow_key, workflow_version, technical_owner_id, work_assigner_id,"
+                " validator_id, created_by) VALUES (:dw, :tenant, :ws, :principal, 'off_dw',"
+                " 'dw', 'dw', ARRAY['lead'], ARRAY[]::text[], 'wf', '1.0.0', :person, :person,"
+                " :person, :person)"
+            ),
+            ids,
+        )
+        await conn.execute(
+            sa.text(
+                "INSERT INTO platform.support_grants (id, tenant_id, workspace_id,"
+                " resource_type, resource_label, scope_set_key, scope_set_label, scopes, reason,"
+                " duration_hours, status, requested_by)"
+                " VALUES (gen_random_uuid(), :tenant, :ws, 'workspace', 'W', 'k', 'K',"
+                " ARRAY['x.read'], 'r', 72, 'pending_approval', :person)"
+            ),
+            ids,
+        )
+        await conn.execute(
+            sa.text("UPDATE platform.tenants SET status = 'offboarding' WHERE id = :tenant"), ids
+        )
+    return ids
+
+
+@pytest.fixture
+async def migrator(db_urls: DatabaseUrls) -> AsyncIterator[AsyncEngine]:
+    engine = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    yield engine
+    await engine.dispose()
+
+
+@pytest.fixture
+async def service_user_holder(migrator: AsyncEngine) -> AsyncIterator[str]:
+    """Committed, so the purge's own transaction sees it; dropped after."""
+    async with migrator.begin() as conn:
+        await conn.execute(
+            sa.text(
+                f"CREATE TABLE {_HOLDER} ("
+                " id uuid PRIMARY KEY, tenant_id uuid NOT NULL,"
+                " user_id uuid NOT NULL REFERENCES platform.users (id) ON DELETE RESTRICT)"
+            )
+        )
+        await conn.execute(sa.text(f"ALTER TABLE {_HOLDER} ENABLE ROW LEVEL SECURITY"))
+        await conn.execute(sa.text(f"ALTER TABLE {_HOLDER} FORCE ROW LEVEL SECURITY"))
+        await conn.execute(
+            sa.text(
+                f"CREATE POLICY tenant_isolation_zz_service_user_holder ON {_HOLDER}"
+                " USING (tenant_id = (SELECT NULLIF(current_setting('app.tenant_id', true),"
+                " '')::uuid))"
+            )
+        )
+        await conn.execute(sa.text(f"GRANT SELECT, DELETE ON {_HOLDER} TO dw_app"))
+    try:
+        yield _HOLDER
+    finally:
+        async with migrator.begin() as conn:
+            await conn.execute(sa.text(f"DROP TABLE IF EXISTS {_HOLDER}"))
+
+
+async def test_offboarding_deletes_the_tenants_service_users_after_what_holds_them(
+    sessions: async_sessionmaker[AsyncSession],
+    migrator: AsyncEngine,
+    service_user_holder: str,
+) -> None:
+    """org-and-principals R6.8 (OP14): after the purge no service user of the
+    tenant is left and no `platform.service_principals` row; its person and
+    another tenant's service account stay. The step runs after the delete of a
+    table holding a service user by RESTRICT (ordered by the catalog alone), and
+    a support grant of the tenant blocks nothing."""
+    mine = await _seed_service_tenant(migrator)
+    theirs = await _seed_service_tenant(migrator)
+    async with migrator.begin() as conn:
+        await conn.execute(
+            sa.text(f"INSERT INTO {service_user_holder} VALUES (gen_random_uuid(), :t, :u)"),
+            {"t": mine["tenant"], "u": mine["account"]},
+        )
+
+    statements: list[str] = []
+
+    def seen(_conn: object, _cursor: object, statement: str, *_: object) -> None:
+        statements.append(statement)
+
+    engine = sessions.kw["bind"]
+    event.listen(engine.sync_engine, "before_cursor_execute", seen)
+    try:
+        await SqlTenantOffboarding(session_factory=sessions).purge_rows(mine["tenant"])
+    finally:
+        event.remove(engine.sync_engine, "before_cursor_execute", seen)
+
+    holder_delete = next(
+        i for i, s in enumerate(statements) if "DELETE FROM" in s and "zz_service_user_holder" in s
+    )
+    purge = next(i for i, s in enumerate(statements) if "purge_tenant_service_users" in s)
+    assert holder_delete < purge
+
+    async with migrator.connect() as conn:
+
+        async def count(sql: str, **values: object) -> int:
+            return int((await conn.execute(sa.text(sql), values)).scalar_one())
+
+        services = (
+            "SELECT count(*) FROM platform.users WHERE kind = 'service' AND owner_tenant_id = :t"
+        )
+        principals = "SELECT count(*) FROM platform.service_principals WHERE tenant_id = :t"
+        assert await count(services, t=mine["tenant"]) == 0
+        assert await count(principals, t=mine["tenant"]) == 0
+        assert (
+            await count("SELECT count(*) FROM platform.users WHERE id = :u", u=mine["person"]) == 1
+        )
+        assert await count(services, t=theirs["tenant"]) == 2
+        assert await count(principals, t=theirs["tenant"]) == 2
