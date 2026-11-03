@@ -30,6 +30,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.ports import ModelGateway, ModelRequest
+from dw_agent_runtime.wflite.assistant_wire import OutputSchemas, WireStep, from_wire, to_wire
 from dw_agent_runtime.wflite.catalog import PinnedWorkflow
 from dw_agent_runtime.wflite.document import WorkflowDocument
 from dw_agent_runtime.wflite.outline import OutlineStep, StepChange, diff_steps, outline
@@ -41,7 +42,7 @@ from dw_platform.application.access_context import AccessContext
 from dw_platform.domain.digital_worker import DigitalWorker
 
 PROMPT_ID = "wf_ai.workflow_edit"
-PROMPT_VERSION = "1.0.0"
+PROMPT_VERSION = "1.1.0"
 MAX_TEXT = 4000
 MAX_HISTORY = 10
 
@@ -50,14 +51,15 @@ class AssistantTurn(BaseModel):
     """What the model may answer, and nothing else (R2.4): a question back, or
     a plan with a step tree. An extra field, a question carrying steps or a
     proposal without them is not this shape (R1.7), and the gateway's retries
-    end in `ModelOutputInvalidError` (R1.5)."""
+    end in `ModelOutputInvalidError` (R1.5). The steps are in the wire form
+    strict structured output can send (`assistant_wire`, wf-ai/05)."""
 
     model_config = ConfigDict(extra="forbid")
 
     kind: Literal["question", "proposal"]
     question: str | None = Field(default=None, max_length=1000)
     plan: list[Annotated[str, Field(max_length=300)]] = Field(default_factory=list, max_length=8)
-    steps: list[dict[str, Any]] | None = None
+    steps: list[WireStep] | None = None
 
     @model_validator(mode="after")
     def _shape(self) -> AssistantTurn:
@@ -186,6 +188,22 @@ async def bases_of(workflows: PinnedWorkflowsPort, worker: DigitalWorker) -> Bas
     return Bases(pinned=pinned, pack=pack)
 
 
+def output_schemas(bases: Bases, registry: Mapping[str, NodeTypeSpec]) -> OutputSchemas:
+    """The output schema of each `ai.llm@1` prompt, from the first step that
+    uses it in the pinned document, else in the pack's (wf-ai/05): what
+    `from_wire` gives back to a step the model wrote without one."""
+    found: dict[str, Mapping[str, Any]] = {}
+    for pinned in (bases.pinned, bases.pack):
+        for _, raw in _raw_steps(base_raw(pinned)["steps"], registry):
+            config = raw.get("config")
+            if raw.get("type") != "ai.llm@1" or not isinstance(config, Mapping):
+                continue
+            prompt, schema = config.get("prompt"), config.get("output_schema")
+            if isinstance(prompt, str) and isinstance(schema, Mapping):
+                found.setdefault(prompt, schema)
+    return found
+
+
 def outline_of(
     document: Mapping[str, Any], registry: Mapping[str, NodeTypeSpec]
 ) -> tuple[OutlineStep, ...]:
@@ -243,6 +261,8 @@ class WorkflowAssistant:
         worker = await self.workers.require_owner(context, dw_id)
         bases = await bases_of(self.workflows, worker)
         base = base_raw(bases.pinned)
+        # The model sees the steps in the form it writes them back in.
+        shown = {**base, "steps": [s.model_dump(exclude_none=True) for s in to_wire(base["steps"])]}
         request = ModelRequest(
             task="wf_ai.workflow_edit",
             prompt_id=PROMPT_ID,
@@ -252,8 +272,11 @@ class WorkflowAssistant:
                 "history": json.dumps(
                     [{"role": t.role, "text": t.text} for t in history], ensure_ascii=False
                 ),
-                "base_document": yaml.safe_dump(base, allow_unicode=True, sort_keys=False),
-                "node_types": "\n".join(sorted(self.registry)),
+                "base_document": yaml.safe_dump(shown, allow_unicode=True, sort_keys=False),
+                # A trigger is not a step the tree can hold (wf-ai/05).
+                "node_types": "\n".join(
+                    sorted(t for t, spec in self.registry.items() if not spec.is_trigger)
+                ),
             },
         )
         answer = await self.gateway.generate_structured(
@@ -263,7 +286,7 @@ class WorkflowAssistant:
             return AssistantAnswer(
                 "question", answer.question, tuple(answer.plan), None, (), (), False
             )
-        steps = answer.steps or []
+        steps = from_wire(answer.steps or [], output_schemas(bases, self.registry))
         proposal, problems = checked_proposal(
             bases, steps, registry=self.registry, tools=self.tools
         )
@@ -290,4 +313,5 @@ __all__ = [
     "checked_proposal",
     "not_in_base",
     "outline_of",
+    "output_schemas",
 ]

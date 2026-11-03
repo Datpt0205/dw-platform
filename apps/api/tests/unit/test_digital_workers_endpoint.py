@@ -6,7 +6,6 @@ the web branches on). What the database decides is covered by `dw_platform`'s
 
 from __future__ import annotations
 
-import json
 import uuid
 from dataclasses import replace
 from typing import Any, cast
@@ -14,8 +13,10 @@ from typing import Any, cast
 import httpx
 import pytest
 from asgi_lifespan import LifespanManager
+from pydantic import ValidationError
 
 from dw_agent_runtime.ports import ModelOutputInvalidError
+from dw_agent_runtime.testing.wf_ai import fixture_answer
 from dw_agent_runtime.testing.wflite import packs_only
 from dw_agent_runtime.wflite.assistant import WorkflowAssistant
 from dw_agent_runtime.wflite.catalog import ShippedToolSpecs, load_shipped_packs
@@ -247,13 +248,14 @@ def make_container(
 
 
 PACKS = load_shipped_packs(CONFIGS)
-FIXTURE = json.loads(
-    (MOCK_MODEL_FIXTURES / "wf_ai.workflow_edit@1.0.0.json").read_text(encoding="utf-8")
-)
+# The mock model's answer, in the wire form a real model writes (wf-ai/05).
+FIXTURE = fixture_answer(MOCK_MODEL_FIXTURES)
 
 
 class AssistantGateway:
-    """Answers every turn with `answer` (or raises it) and counts the calls."""
+    """Answers every turn with `answer` (or raises it) and counts the calls. An
+    answer not of the turn's shape is `ModelOutputInvalidError`, as the real
+    gateway's last retry raises it (R1.5)."""
 
     def __init__(self, answer: Any) -> None:
         self.answer = answer
@@ -265,7 +267,10 @@ class AssistantGateway:
         self.calls += 1
         if isinstance(self.answer, Exception):
             raise self.answer
-        return output_type.model_validate(self.answer)
+        try:
+            return output_type.model_validate(self.answer)
+        except ValidationError as exc:
+            raise ModelOutputInvalidError("model output failed schema validation") from exc
 
 
 def body(**changes: Any) -> dict[str, Any]:
@@ -566,3 +571,26 @@ async def test_an_unreadable_model_answer_is_503_with_its_reason() -> None:
     assert failed.status_code == 503
     assert failed.json()["details"]["reason_code"] == "assistant_output_invalid"
     assert "steps" not in failed.json()
+
+
+async def test_an_answer_in_the_wrong_wire_shape_is_503_with_its_reason() -> None:
+    """wf-ai R1.5 (wf-ai/05): a step tree in the document's free-form shape, not
+    the wire form, is the model's error, never a 500."""
+    repo = FakeRepo()
+    dw_id = (await call(make_container(repo), "POST", payload=lead_care())).json()["id"]
+    document_shaped = {
+        **FIXTURE,
+        "steps": [
+            {**step, "config": {**step["config"], "inputs": {"name": "{{ work.name }}"}}}
+            for step in FIXTURE["steps"][:1]
+        ],
+    }
+    failed = await call(
+        make_container(repo, gateway=AssistantGateway(document_shaped)),
+        "POST",
+        f"/{dw_id}/workflow-assistant",
+        {"instruction": "x"},
+    )
+    assert failed.status_code == 503, failed.text
+    assert failed.json()["code"] == "upstream_unavailable"
+    assert failed.json()["details"]["reason_code"] == "assistant_output_invalid"

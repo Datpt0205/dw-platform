@@ -209,6 +209,27 @@ class TestStrictSchemaLimits:
         assert strict["additionalProperties"] is False
         assert strict["required"] == ["a", "b"]
 
+    def test_a_property_named_like_a_keyword_is_kept(self) -> None:
+        """wf-ai/05: `default` and `format` are stripped as keywords, never as the
+        names of a caller's fields (a switch lost its `default` lane that way)."""
+        strict = _to_strict_schema(
+            {
+                "type": "object",
+                "properties": {
+                    "on": {"type": "string", "default": "x"},
+                    "default": {"type": "array", "items": {"type": "string"}, "default": []},
+                    "format": {"type": "string", "format": "date"},
+                },
+                "$defs": {"pattern": {"type": "object", "properties": {"x": {"type": "string"}}}},
+            }
+        )
+        assert list(strict["properties"]) == ["on", "default", "format"]
+        assert strict["required"] == ["on", "default", "format"]
+        assert "default" not in strict["properties"]["on"]
+        assert "default" not in strict["properties"]["default"]
+        assert "format" not in strict["properties"]["format"]
+        assert strict["$defs"]["pattern"]["required"] == ["x"]
+
     def test_a_nested_definition_is_closed_too(self) -> None:
         strict = _to_strict_schema(
             {

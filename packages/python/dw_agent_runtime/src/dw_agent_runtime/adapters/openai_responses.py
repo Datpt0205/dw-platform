@@ -188,6 +188,8 @@ _STRICT_UNSUPPORTED = frozenset(
         "uniqueItems",
     }
 )
+# Keywords whose value maps a NAME to a schema: their keys are never keywords.
+_NAME_MAPS = frozenset({"properties", "$defs", "definitions", "patternProperties"})
 
 
 def _to_strict_schema(schema: object, path: str = "") -> Any:
@@ -209,11 +211,20 @@ def _to_strict_schema(schema: object, path: str = "") -> Any:
         return [_to_strict_schema(item, path) for item in schema]
     if not isinstance(schema, dict):
         return schema
-    result: dict[str, object] = {
-        key: _to_strict_schema(value, f"{path}.{key}" if path else str(key))
-        for key, value in schema.items()
-        if key not in _STRICT_UNSUPPORTED
-    }
+    result: dict[str, object] = {}
+    for key, value in schema.items():
+        if key in _STRICT_UNSUPPORTED:
+            continue
+        here = f"{path}.{key}" if path else str(key)
+        if key in _NAME_MAPS and isinstance(value, dict):
+            # The keys of these maps are names, not keywords: a property called
+            # `default` or `format` is the caller's field, and dropping it left
+            # `logic.switch@1` with no `default` lane to send (wf-ai/05).
+            result[key] = {
+                name: _to_strict_schema(sub, f"{here}.{name}") for name, sub in value.items()
+            }
+        else:
+            result[key] = _to_strict_schema(value, here)
     properties = result.get("properties")
     if isinstance(properties, dict):
         result["additionalProperties"] = False

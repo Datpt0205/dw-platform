@@ -1,0 +1,144 @@
+# Mutation check of wf-ai ticket 05: scripts/mutate.py runs this file at the queue's close.
+# One mutation per control: the strict schema keeps every field and uses no
+# keyword strict refuses, each row of the wire-to-document mapping, each
+# validator of the wire form, the prompt showing the wire form, and the eval's
+# per-case failure line.
+mutations:
+  # Step 3: a property's NAME is never a keyword.
+  - name: strict drops a property named default
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/openai_responses.py
+    old: "        if key in _NAME_MAPS and isinstance(value, dict):"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_openai_responses.py::TestStrictSchemaLimits::test_a_property_named_like_a_keyword_is_kept
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_assistant_wire.py::test_the_answer_goes_out_strict_with_every_field
+  # Step 1: a plain Union, never a discriminated one.
+  - name: the wire step union is discriminated
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/assistant_wire.py
+    old: "WireStep = LlmStep | ToolStep | ApprovalStep | WaitStep | SwitchStep"
+    new: 'WireStep = Annotated[LlmStep | ToolStep | ApprovalStep | WaitStep | SwitchStep, __import__("pydantic").Field(discriminator="type")]'
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_assistant_wire.py::test_the_answer_goes_out_strict_with_every_field
+  # Step 1, the mapping table: one mutation per row.
+  - name: ai.llm loses its output_schema
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/assistant_wire.py
+    old: '            out["output_schema"] = copy.deepcopy(dict(schemas[self.prompt]))'
+    new: "            pass"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_assistant_wire.py::test_the_shipped_workflow_reads_back_as_itself
+  - name: ai.llm loses min_confidence
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/assistant_wire.py
+    old: '            out["min_confidence"] = self.min_confidence'
+    new: "            pass"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_assistant_wire.py::test_the_shipped_workflow_reads_back_as_itself
+  - name: a dotted key stays flat
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/assistant_wire.py
+    old: "    return value if isinstance(value, str) else _nested(value)"
+    new: "    return value if isinstance(value, str) else {e.key: e.value for e in value}"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_assistant_wire.py::test_the_shipped_workflow_reads_back_as_itself
+  - name: human.approval loses locked_fields
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/assistant_wire.py
+    old: '            out["locked_fields"] = list(self.locked_fields)'
+    new: "            pass"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_assistant_wire.py::test_the_shipped_workflow_reads_back_as_itself
+  - name: human.approval loses its rejected lane
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/assistant_wire.py
+    old: '            out["rejected"] = from_wire(self.rejected, schemas)'
+    new: "            pass"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_assistant_wire.py::test_the_shipped_workflow_reads_back_as_itself
+  - name: time.wait keeps its null field
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/assistant_wire.py
+    old: "        return self.model_dump(exclude_none=True)"
+    new: "        return self.model_dump()"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_assistant_wire.py::test_the_shipped_workflow_reads_back_as_itself
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_assistant_wire.py::test_the_rows_lead_care_does_not_use_read_back_too
+  - name: logic.switch loses its case lanes
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/assistant_wire.py
+    old: '            "cases": {case.value: from_wire(case.steps, schemas) for case in self.cases},'
+    new: '            "cases": {case.value: [] for case in self.cases},'
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_assistant_wire.py::test_the_shipped_workflow_reads_back_as_itself
+  - name: logic.switch loses its default lane
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/assistant_wire.py
+    old: '            out["default"] = from_wire(self.default, schemas)'
+    new: "            pass"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_assistant_wire.py::test_the_shipped_workflow_reads_back_as_itself
+  - name: a step loses its description
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/assistant_wire.py
+    old: '            document["description"] = step.description'
+    new: "            pass"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_assistant_wire.py::test_the_shipped_workflow_reads_back_as_itself
+  - name: the pack's schema wins over the pin's
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/assistant.py
+    old: "    for pinned in (bases.pinned, bases.pack):"
+    new: "    for pinned in (bases.pack, bases.pinned):"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_assistant_wire.py::test_an_output_schema_comes_from_the_pin_first_and_the_pack_otherwise
+  # R1.7: each validator of the wire form, through the gateway's retries.
+  - name: an entry key given twice passes
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/assistant_wire.py
+    old: "    if twice:"
+    new: "    if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_assistant_wire.py::test_a_malformed_answer_is_invalid_after_the_gateways_retries[entry_twice]
+  - name: overlapping entry keys pass
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/assistant_wire.py
+    old: '            if other.startswith(f"{key}."):'
+    new: "            if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_assistant_wire.py::test_a_malformed_answer_is_invalid_after_the_gateways_retries[entries_overlap]
+  - name: a case value given twice passes
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/assistant_wire.py
+    old: "        if len(set(values)) != len(values):"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_assistant_wire.py::test_a_malformed_answer_is_invalid_after_the_gateways_retries[case_twice]
+  - name: a question may carry steps
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/assistant.py
+    old: '        if self.kind == "question" and (not self.question or self.steps is not None):'
+    new: "        if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_assistant_wire.py::test_a_malformed_answer_is_invalid_after_the_gateways_retries[question_with_steps]
+  # R1.1 regression (WAI6): a prompt from outside the base, with no schema to copy.
+  - name: a prompt outside the base passes
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/assistant.py
+    old: '        if raw.get("type") == "ai.llm@1" and isinstance(prompt, str) and prompt not in prompts:'
+    new: "        if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_assistant.py::test_a_prompt_outside_the_base_is_not_publishable
+  # Step 2: the model sees the form it writes, and its answer is read back before any check.
+  - name: the prompt shows the document form
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/assistant.py
+    old: '                "base_document": yaml.safe_dump(shown, allow_unicode=True, sort_keys=False),'
+    new: '                "base_document": yaml.safe_dump(base, allow_unicode=True, sort_keys=False),'
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_assistant_wire.py::test_the_prompt_shows_the_steps_in_the_form_the_model_writes
+  - name: the answer is read back without the base's schemas
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/assistant.py
+    old: "        steps = from_wire(answer.steps or [], output_schemas(bases, self.registry))"
+    new: "        steps = from_wire(answer.steps or [], {})"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_wflite_assistant.py::test_the_fixture_proposal_is_publishable_and_keeps_everything_but_steps
+  # Step 6 and R1.5: one case's failure is a line, and the run goes on.
+  - name: a provider failure stops the eval
+    file: scripts/eval_wf_ai.py
+    old: "        except (ModelOutputInvalidError, InfrastructureError) as exc:"
+    new: "        except ModelOutputInvalidError as exc:"
+    tests:
+      - apps/api/tests/unit/test_eval_wf_ai_script.py::test_a_case_whose_answer_fails_is_a_fail_line_and_the_run_goes_on
+  - name: an invalid answer stops the eval
+    file: scripts/eval_wf_ai.py
+    old: |2-
+                  out(f"FAIL {case['id']}: {type(exc).__name__}")
+                  continue
+    new: |2-
+                  raise
+    tests:
+      - apps/api/tests/unit/test_eval_wf_ai_script.py::test_a_case_whose_answer_fails_is_a_fail_line_and_the_run_goes_on

@@ -1,0 +1,309 @@
+{
+  "kind": "proposal",
+  "plan": [
+    "Thêm một lần chờ nữa trước khi đọc thư trả lời của lead."
+  ],
+  "steps": [
+    {
+      "id": "score",
+      "type": "ai.llm@1",
+      "description": "Chấm điểm lead",
+      "config": {
+        "prompt": "marketing.lead_score@1.0.0",
+        "inputs": [
+          {
+            "key": "name",
+            "value": "{{ work.name }}"
+          },
+          {
+            "key": "source",
+            "value": "{{ work.source }}"
+          },
+          {
+            "key": "message",
+            "value": "{{ work.message }}"
+          }
+        ],
+        "min_confidence": "{{ params.min_confidence }}"
+      }
+    },
+    {
+      "id": "draft",
+      "type": "ai.llm@1",
+      "description": "Soạn thư đầu tiên",
+      "config": {
+        "prompt": "marketing.lead_email_draft@1.0.0",
+        "inputs": [
+          {
+            "key": "name",
+            "value": "{{ work.name }}"
+          },
+          {
+            "key": "message",
+            "value": "{{ work.message }}"
+          },
+          {
+            "key": "tier",
+            "value": "{{ steps.score.tier }}"
+          }
+        ],
+        "min_confidence": "{{ params.min_confidence }}"
+      }
+    },
+    {
+      "id": "approve_send",
+      "type": "human.approval@1",
+      "description": "Duyệt thư gửi lead",
+      "config": {
+        "decision_class": "email.send",
+        "proposal": [
+          {
+            "key": "to",
+            "value": "{{ work.email }}"
+          },
+          {
+            "key": "subject",
+            "value": "{{ steps.draft.subject }}"
+          },
+          {
+            "key": "body",
+            "value": "{{ steps.draft.body }}"
+          }
+        ],
+        "locked_fields": [
+          "to"
+        ],
+        "approved": [
+          {
+            "id": "send",
+            "type": "tool.call@1",
+            "config": {
+              "tool": "email.send@1.0.0",
+              "decision_class": "email.send",
+              "input": "{{ steps.approve_send.proposal }}"
+            }
+          },
+          {
+            "id": "wait_reply",
+            "type": "time.wait@1",
+            "config": {
+              "seconds_param": "reply_wait_seconds"
+            }
+          },
+          {
+            "id": "wait_more",
+            "type": "time.wait@1",
+            "description": "Chờ thêm một lần trước khi đọc hộp thư",
+            "config": {
+              "seconds_param": "reply_wait_seconds"
+            }
+          },
+          {
+            "id": "fetch_reply",
+            "type": "tool.call@1",
+            "config": {
+              "tool": "mailbox.fetch_reply@1.0.0",
+              "decision_class": "work.handoff",
+              "input": [
+                {
+                  "key": "from",
+                  "value": "{{ work.email }}"
+                },
+                {
+                  "key": "since",
+                  "value": "{{ steps.send.sent_at }}"
+                }
+              ]
+            }
+          },
+          {
+            "id": "replied",
+            "type": "logic.switch@1",
+            "config": {
+              "on": "{{ steps.fetch_reply.found }}",
+              "cases": [
+                {
+                  "value": "true",
+                  "steps": [
+                    {
+                      "id": "classify",
+                      "type": "ai.llm@1",
+                      "description": "Phân loại thư trả lời",
+                      "config": {
+                        "prompt": "marketing.lead_reply_classify@1.0.0",
+                        "inputs": [
+                          {
+                            "key": "reply",
+                            "value": "{{ steps.fetch_reply.text }}"
+                          }
+                        ],
+                        "min_confidence": "{{ params.min_confidence }}"
+                      }
+                    },
+                    {
+                      "id": "handoff_reply",
+                      "type": "tool.call@1",
+                      "config": {
+                        "tool": "work.handoff@1.0.0",
+                        "decision_class": "work.handoff",
+                        "input": [
+                          {
+                            "key": "to.user",
+                            "value": "{{ params.sales_assignee_id }}"
+                          },
+                          {
+                            "key": "code",
+                            "value": "lead_replied"
+                          },
+                          {
+                            "key": "facts.label",
+                            "value": "{{ steps.classify.label }}"
+                          },
+                          {
+                            "key": "facts.summary",
+                            "value": "{{ steps.classify.summary }}"
+                          },
+                          {
+                            "key": "facts.tier",
+                            "value": "{{ steps.score.tier }}"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ],
+              "default": [
+                {
+                  "id": "draft_reminder",
+                  "type": "ai.llm@1",
+                  "description": "Soạn thư nhắc",
+                  "config": {
+                    "prompt": "marketing.lead_reminder_draft@1.0.0",
+                    "inputs": [
+                      {
+                        "key": "name",
+                        "value": "{{ work.name }}"
+                      },
+                      {
+                        "key": "first_subject",
+                        "value": "{{ steps.draft.subject }}"
+                      }
+                    ],
+                    "min_confidence": "{{ params.min_confidence }}"
+                  }
+                },
+                {
+                  "id": "approve_reminder",
+                  "type": "human.approval@1",
+                  "description": "Duyệt thư nhắc",
+                  "config": {
+                    "decision_class": "email.send",
+                    "proposal": [
+                      {
+                        "key": "to",
+                        "value": "{{ work.email }}"
+                      },
+                      {
+                        "key": "subject",
+                        "value": "{{ steps.draft_reminder.subject }}"
+                      },
+                      {
+                        "key": "body",
+                        "value": "{{ steps.draft_reminder.body }}"
+                      }
+                    ],
+                    "locked_fields": [
+                      "to"
+                    ],
+                    "approved": [
+                      {
+                        "id": "send_reminder",
+                        "type": "tool.call@1",
+                        "config": {
+                          "tool": "email.send@1.0.0",
+                          "decision_class": "email.send",
+                          "input": "{{ steps.approve_reminder.proposal }}"
+                        }
+                      },
+                      {
+                        "id": "handoff_no_reply",
+                        "type": "tool.call@1",
+                        "config": {
+                          "tool": "work.handoff@1.0.0",
+                          "decision_class": "work.handoff",
+                          "input": [
+                            {
+                              "key": "to.user",
+                              "value": "{{ params.sales_assignee_id }}"
+                            },
+                            {
+                              "key": "code",
+                              "value": "lead_no_reply"
+                            },
+                            {
+                              "key": "facts.tier",
+                              "value": "{{ steps.score.tier }}"
+                            }
+                          ]
+                        }
+                      }
+                    ],
+                    "rejected": [
+                      {
+                        "id": "handoff_reminder_rejected",
+                        "type": "tool.call@1",
+                        "config": {
+                          "tool": "work.handoff@1.0.0",
+                          "decision_class": "work.handoff",
+                          "input": [
+                            {
+                              "key": "to.role",
+                              "value": "validator"
+                            },
+                            {
+                              "key": "code",
+                              "value": "reminder_rejected"
+                            },
+                            {
+                              "key": "facts.comment",
+                              "value": "{{ steps.approve_reminder.comment }}"
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "rejected": [
+          {
+            "id": "handoff_rejected",
+            "type": "tool.call@1",
+            "config": {
+              "tool": "work.handoff@1.0.0",
+              "decision_class": "work.handoff",
+              "input": [
+                {
+                  "key": "to.role",
+                  "value": "validator"
+                },
+                {
+                  "key": "code",
+                  "value": "send_rejected"
+                },
+                {
+                  "key": "facts.comment",
+                  "value": "{{ steps.approve_send.comment }}"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

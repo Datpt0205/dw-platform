@@ -25,17 +25,17 @@ from test_dw_scorecard_autonomy import (  # noqa: F401  (fixtures, used by name)
     harness,
 )
 
+from dw_agent_runtime.testing.wf_ai import fixture_steps
 from dw_agent_runtime.wflite.catalog import load_shipped_packs, workflow_sha256
 from dw_api.bootstrap.paths import CONFIGS, MOCK_MODEL_FIXTURES
 from dw_platform.adapters.persistence.tenant_session import TenantScope, tenant_session
 
 pytestmark = pytest.mark.integration
 
-PROPOSAL = json.loads(
-    (MOCK_MODEL_FIXTURES / "wf_ai.workflow_edit@1.0.0.json").read_text(encoding="utf-8")
-)
 _PINNED = load_shipped_packs(CONFIGS).workflow("lead_care", "1.0.0")
 assert _PINNED is not None
+# The mock model's proposal as document steps, the form a draft is saved in (wf-ai/05).
+PROPOSAL = {"steps": fixture_steps(MOCK_MODEL_FIXTURES, _PINNED)}
 BASE = _PINNED.document.model_dump(by_alias=True, exclude_none=True)
 
 
