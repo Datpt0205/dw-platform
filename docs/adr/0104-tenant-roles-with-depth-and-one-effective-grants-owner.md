@@ -344,3 +344,15 @@ by copying") and D3 (record-level access in four layers), and on the call on DO-
   `service` user with its `platform.service_principals` row) receives its roles in the transaction where its creator
   creates the DW in `draft`, and the second person is the DW's `draft→operating` transition, made by another person
   whose effective grants cover the principal's through `platform.grants_cover` (digital-worker R1.9). If wrong: the principal's roles go through proposals like anyone's and creating a DW answers 202.
+- Consistency check of tenant-rbac ticket 03 against org-and-principals ticket 03 (both gated the same day, neither
+  seeing the other), the agent under Đạt's delegation of 2026-10-31; the status stays Accepted. Decision 6: whether a
+  holder covers one grant (the key at `tenant` depth, or at the same anchor at the same or a broader depth) is one SQL
+  function, `platform.holder_covers_grant`, read by `platform.rbac_refusals` for each grant a change brings and by
+  `platform.uncovered_grants`, over which `platform.grants_cover` is `NOT EXISTS`; whether a role is critical (`tenant_owner`,
+  or any key of `risk = 'critical'`, and `fld.*` on a sensitive field once ADR-0106's field privileges exist) is one SQL
+  function, `platform.role_is_critical`, read by the `platform.roles.bind` rule and by ADR-0103 decision 2's guard and
+  the Digital Worker route alike; both are created by org-and-principals ticket 03, which builds first. Decision 10: the
+  Digital Worker's `draft→operating` refuses a principal that is not an active member (409 `conflict`, `details.reason_code`
+  `principal_inactive`) before asking `platform.grants_cover`, whose answer over an empty set is true. If wrong: each
+  reader keeps its own comparison, with a test per copy that they agree, and the transition compares against the
+  principal's assigned grants.

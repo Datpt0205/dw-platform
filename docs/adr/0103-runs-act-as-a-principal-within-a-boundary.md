@@ -216,3 +216,12 @@ layers, field security applied to agents and search too), and on the call on DO-
   requests it as reaches, intersected with that boundary (ADR 0120 decision 3), and the sixth pass's line above, which
   named a draft root alone, gives way (if it is wrong, a version's boundary is written when the version is sealed and
   its gate trials read under it).
+
+## Amendments (2026-11-03)
+
+- Consistency check of org-and-principals ticket 03 against tenant-rbac ticket 03, the agent under Đạt's delegation of
+  2026-10-31; the status stays Accepted. Decision 2's "a role with a `critical` permission" is ADR-0104's
+  `platform.role_is_critical`, the same answer its `platform.roles.bind` rule reads, and decision 4's cover rule is
+  `platform.holder_covers_grant` beneath `platform.grants_cover` (ADR-0104, Amendments 2026-11-03). A cover question is
+  never asked of a principal that is not active, whose effective grants are empty: binding it (decision 4) and putting a
+  Digital Worker into operation both refuse it first. If wrong: see ADR-0104's amendment of the same day.

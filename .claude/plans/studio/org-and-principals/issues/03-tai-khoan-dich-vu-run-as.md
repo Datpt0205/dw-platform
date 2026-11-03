@@ -33,12 +33,12 @@ nếu nó đã vào `main`).
 2. **Dòng chi tiết: mở rộng `platform.service_principals`** (`be93e0c26a4c_platform_digital_workers.py:97-115`):
     - thêm `description text CHECK (description IS NULL OR char_length(description) <= 1000)`; `created_by uuid NULL` FK
       `platform.users` `ON DELETE SET NULL`, index `ix_service_principals_created_by`; `updated_at timestamptz NOT NULL
-      DEFAULT now()` với trigger `touch_updated_at` (`platform.touch_updated_at()`);
+DEFAULT now()` với trigger `touch_updated_at` (`platform.touch_updated_at()`);
     - thay `ck_service_principals_name` bằng `CHECK (btrim(name) <> '' AND char_length(name) <= 120)`, cùng tên; dòng cũ
       vi phạm làm migration dừng và in số dòng, không sửa tên tự động;
     - `uq_service_principals_tenant_id_name UNIQUE (tenant_id, name)`; trước khi thêm, mỗi dòng trùng `(tenant_id, name)`
       với một dòng sớm hơn (theo `created_at`, rồi `user_id`) đổi tên thành `left(name, 108) || ' (' || left(user_id::text,
-      8) || ')'` và migration in số dòng đã đổi; vi phạm ràng buộc này ở `POST` của bước 6 và ở tạo DW
+8) || ')'` và migration in số dòng đã đổi; vi phạm ràng buộc này ở `POST` của bước 6 và ở tạo DW
       (`SqlDigitalWorkerRepository.create`) đều thành 409 `service_principal_name_taken`;
     - `uq_service_principals_tenant_id_user_id` đã có: đích của khóa ngoại ghép mà bảng khác dùng (R6.10), giữ;
     - không thêm khóa ngoại `(tenant_id, user_id)` tới `platform.tenant_members`: với nó, bước xóa
@@ -62,20 +62,29 @@ nếu nó đã vào `main`).
 4. **Không quyền trọng yếu, và sự kiện khi quyền được gán tăng.** `platform.guard_service_principal_grants()`, SECURITY
    DEFINER, `search_path` cố định, thu EXECUTE khỏi `PUBLIC`, theo dạng của `platform.guard_operator_tenant_grants()`
    (`b5677d345bc1_tenant_roles.py:881`): trigger BEFORE INSERT OR UPDATE tên `guard_service_principal_grants` trên
-   `platform.role_assignments` (người nhận loại `service` mà vai trò là `tenant_owner` hay có khóa có
-   `platform.permissions.risk = 'critical'`), trên `platform.tenant_role_permissions` (thêm hay đổi sang khóa `critical`
-   trong vai trò đang gán cho một tài khoản dịch vụ) và BEFORE UPDATE OF `deleted_at` trên `platform.tenant_roles` (khôi
-   phục vai trò như thế), SQLSTATE 23514, ràng buộc `ck_role_assignments_service_not_critical`, áp mọi người ghi kể cả
-   `dw_provisioner`, `dw_migrator`. Mỗi nhánh lấy `pg_advisory_xact_lock(hashtext('role_grants:' || role_id))` trước khi
-   đọc, nên gán vai trò và thêm khóa `critical` vào vai trò đó trong hai giao dịch đồng thời không cùng qua. Trigger này
-   riêng với trigger của `platform.rbac_refusals` (tenant-rbac/03), vốn miễn hai vai đó, và hai ticket không chờ nhau
-   (Đạt chấp nhận, OPS-b): tên của nó đứng trước `rbac_refusals_*` theo bảng chữ cái nên bắn trước; test catalog của
+   `platform.role_assignments` (người nhận loại `service` mà `platform.role_is_critical` của vai trò đúng), trên
+   `platform.tenant_role_permissions` (thêm hay đổi sang khóa có `platform.permissions.risk = 'critical'` trong vai trò
+   đang gán cho một tài khoản dịch vụ) và BEFORE UPDATE OF `deleted_at` trên `platform.tenant_roles` (khôi phục vai trò
+   mà `platform.role_is_critical` đúng), SQLSTATE 23514, ràng buộc `ck_role_assignments_service_not_critical`, áp mọi
+   người ghi kể cả `dw_provisioner`, `dw_migrator`. Migration tạo `platform.role_is_critical(p_tenant_id uuid, p_role_id
+uuid) RETURNS boolean`, `LANGUAGE sql STABLE`: vai trò là `tenant_owner` hay có một khóa `risk = 'critical'`; đó là
+   chủ duy nhất của "vai trò trọng yếu" (ADR-0104 (Accepted) quyết 6, Amendments 2026-11-03): luật `platform.roles.bind`
+   của `platform.rbac_refusals`, `_check_roles` của route DW và kiểm sớm của route gán vai trò ở tenant-rbac/03 đọc nó,
+   tenant-rbac/04 thêm `fld.*` trên trường nhạy cảm vào nó. Mỗi nhánh khóa dòng `platform.tenant_roles` của vai trò
+   `FOR NO KEY UPDATE` trước khi đọc, nên gán vai trò và thêm khóa `critical` vào vai trò đó trong hai giao dịch đồng thời
+   không cùng qua; không khóa advisory, vì tenant-rbac/03 khóa chính dòng đó lúc xác nhận, và một khóa advisory lấy trước
+   `KEY SHARE` của khóa ngoại trong giao dịch này, cộng khóa dòng của giao dịch kia lấy trước khóa advisory, là bế tắc
+   (40P01). Trigger này
+   riêng với trigger của `platform.rbac_refusals` (tenant-rbac/03), vốn miễn hai vai đó; ticket này không chờ tenant-rbac/03
+   (Đạt chấp nhận, OPS-b), còn tenant-rbac/03 chờ ticket này vì đọc `platform.role_is_critical` và
+   `platform.holder_covers_grant` của nó: tên của nó đứng trước `rbac_refusals_*` theo bảng chữ cái nên bắn trước; test catalog của
    ticket này chỉ khẳng định trigger `guard_service_principal_grants` có trên ba bảng. Kiểm `is_critical_role` của
-   `digital_workers.py:88` ở lại làm lỗi sớm 422 của route DW; trigger là chỗ quyết, và route gán vai trò của
+   `digital_workers.py:88` ở lại làm lỗi sớm 422 của route DW tới khi tenant-rbac/03 bước 11 thay nó bằng
+   `platform.role_is_critical`; trigger là chỗ quyết, và route gán vai trò của
    tenant-rbac cùng route DW đổi lỗi `ck_role_assignments_service_not_critical` thành 422
    `role_not_allowed_for_service` theo tên ràng buộc. Trước khi tạo trigger, migration dừng và in số dòng nếu một tài
    khoản dịch vụ đã giữ `tenant_owner` hay một khóa `critical`; không gỡ vai trò tự động. Trigger AFTER
-   `service_principal_grants_changed` cùng họ (cùng khóa theo vai trò) ghi một dòng `platform.outbox_events`
+   `service_principal_grants_changed` cùng họ (cùng khóa dòng vai trò) ghi một dòng `platform.outbox_events`
    `platform.service_principal.grants_changed` (`workspace_id` là `owning_workspace_id`, payload `tenant_id`,
    `service_principal_id`), theo dạng của `platform.tenant.owner_coverage_low` (`b5677d345bc1_tenant_roles.py:978`), cho
    mỗi tài khoản dịch vụ mà một dòng ghi làm quyền được gán (`platform.assigned_grants`) tăng: INSERT
@@ -123,11 +132,15 @@ nếu nó đã vào `main`).
    `human` (cờ DW qua `platform.is_digital_worker_principal`) → 404 `not_found`, không nêu quyền nào (R6.15); (b) thiếu `platform.service_principals.use` với tới workspace
    sở hữu → 403 `rbac_escalation` nêu khóa đó; (c) tài khoản không `active` → 409 `principal_inactive`; (d)
    `platform.accountable_owner_present` false → 409 `owner_missing` (R6.17); (e) `platform.uncovered_grants(tenant, người
-   gọi, tài khoản)` có dòng → 403 `rbac_escalation` kèm danh sách khóa thiếu (khóa, độ sâu, workspace neo). Migration tạo
+gọi, tài khoản)` có dòng → 403 `rbac_escalation` kèm danh sách khóa thiếu (khóa, độ sâu, workspace neo). Migration tạo
+   `platform.holder_covers_grant(p_tenant_id uuid, p_holder_id uuid, p_permission_key text, p_depth text,
+p_anchor_workspace_id uuid) RETURNS boolean` từ điều kiện bên trong của `platform.grants_cover`
+   (`b5677d345bc1_tenant_roles.py:455`: người giữ có khóa ở mức `tenant`, hay ở cùng neo với mức bằng hoặc rộng hơn),
    `platform.uncovered_grants(p_tenant_id uuid, p_holder_id uuid, p_subject_id uuid) RETURNS TABLE (permission_key,
-   depth, anchor_workspace_id)` từ điều kiện bên trong của `platform.grants_cover` (`b5677d345bc1_tenant_roles.py:455`) và
-   viết lại `platform.grants_cover` thành `NOT EXISTS (SELECT 1 FROM platform.uncovered_grants(...))`, cùng nghĩa, để
-   luật phủ quyền có một chủ; test của tenant-rbac/02 về `grants_cover` giữ xanh. `bindable_by_me` gọi cùng phương thức.
+depth, anchor_workspace_id)` là quyền hiệu lực của chủ thể mà hàm đó trả false, và viết lại `platform.grants_cover`
+   thành `NOT EXISTS (SELECT 1 FROM platform.uncovered_grants(...))`, cùng nghĩa, để luật phủ quyền có một chủ: luật giữ
+   quyền của `platform.rbac_refusals` (tenant-rbac/03) đọc `platform.holder_covers_grant` cho từng quyền một thay đổi
+   đưa vào, không chép điều kiện; test của tenant-rbac/02 về `grants_cover` giữ xanh. `bindable_by_me` gọi cùng phương thức.
    Ticket này dựng bộ kiểm trong `apps/api/src/dw_api/bootstrap/wiring.py` cho `GET`; bên gắn (workflow-triggers, bộ
    kiểm binding của tenant-config) khai Protocol của mình ở ticket của họ và wiring đáp ứng bằng chính đối tượng này.
 8. **Mặt danh tính lọc loại.** `/directory/candidates` đã lọc `tables.HUMAN` (`directory.py:109`): ticket thêm test.
@@ -177,6 +190,11 @@ nếu nó đã vào `main`).
     - `SqlDwMembershipCheck._standing` (`digital_workers_repo.py:458-473`), mà `standing` và `is_person_in` cùng đọc, join
       `platform.tenant_members` với `status = 'active'`: người không `active` đọc như không có membership, nên route DW trả
       422 `owner_not_member` (R6.19) và cửa hàng đợi trả `handoff_target_invalid` (R6.20) mà không thêm nhánh nào;
+    - người đọc thứ ba của `standing` là `_second_person` (`digital_workers.py:424-438`, digital-worker:R1.9): principal
+      của DW không `active` đọc như không có membership, nên quyền nó giữ là tập rỗng và mọi người gọi phủ được; hôm nay
+      cũng thế, vì `platform.effective_grants` đã rỗng với thành viên không `active`. `_second_person` từ chối 409
+      `principal_inactive` khi `standing` của principal là `None`, trước phép so quyền, như bước 7 (c) với bộ kiểm gắn;
+      tenant-rbac/03 bước 11 giữ nhánh này khi chuyển phép so sang `platform.grants_cover`;
     - không lời báo nào ở W1: lane `principal_ownership` ở W2 (DO-39.2); `GET` của bước 6 trả `owner_missing`.
 
 ## Tiêu chí chấp nhận
@@ -184,7 +202,7 @@ nếu nó đã vào `main`).
 - [ ] R6.1: `POST /api/v1/admin/service-principals` → người dùng `service` (`subject` `service:<uuid>`, `email` NULL), thành viên công ty `active`, membership, dòng chi tiết có `owner_user_id` và `created_by`, và một audit cùng giao dịch; lỗi giữa giao dịch → không dòng nào; người không có `platform.service_principals.manage` → 403; `owning_workspace_id` của tenant khác và id ngẫu nhiên → cùng 422 `validation_failed`; tên trùng → 409 `service_principal_name_taken`.
 - [ ] R6.2 (OP8): token dev mang `subject` của tài khoản dịch vụ → 403 ở `bootstrap` và ở `find_access`, không AccessContext, không thêm dòng `platform.users` nào; gỡ điều kiện `kind = 'human'` khỏi một trong hai nhánh dev → test đỏ.
 - [ ] R6.3 (OP8): INSERT `platform.external_identities` cho tài khoản dịch vụ, dưới `dw_app` và `dw_provisioner` → trigger `external_identities_human_only` từ chối; gỡ trigger → đỏ.
-- [ ] R6.4 (OP9): dưới `dw_migrator` gán `tenant_owner` cho tài khoản dịch vụ → 23514; thêm khóa `critical` vào vai trò đang gán cho nó → 23514; khôi phục vai trò như thế đã xóa mềm → 23514; cùng thao tác qua route gán vai trò → 422 `role_not_allowed_for_service`; hai kết nối, mỗi bên mở giao dịch, một gán vai trò R cho tài khoản, một thêm khóa `critical` vào R, commit cả hai → đúng một bên nhận 23514; test catalog thấy trigger `guard_service_principal_grants` trên `platform.role_assignments`, `platform.tenant_role_permissions` và `platform.tenant_roles`; gỡ trigger, hay gỡ khóa theo vai trò khỏi một nhánh → đỏ.
+- [ ] R6.4 (OP9): dưới `dw_migrator` gán `tenant_owner` cho tài khoản dịch vụ → 23514; thêm khóa `critical` vào vai trò đang gán cho nó → 23514; khôi phục vai trò như thế đã xóa mềm → 23514; cùng thao tác qua route gán vai trò → 422 `role_not_allowed_for_service`; hai kết nối, mỗi bên mở giao dịch, một gán vai trò R cho tài khoản, một thêm khóa `critical` vào R, commit cả hai → đúng một bên nhận 23514; test catalog thấy trigger `guard_service_principal_grants` trên `platform.role_assignments`, `platform.tenant_role_permissions` và `platform.tenant_roles`; gỡ trigger, gỡ khóa dòng vai trò khỏi một nhánh, hay thay `platform.role_is_critical` bằng `false` → đỏ.
 - [ ] R6.5 (OP10): người gọi thiếu một khóa tài khoản đang giữ → 403 `rbac_escalation` nêu khóa đó, độ sâu và workspace neo; thiếu `platform.service_principals.use` → 403 nêu `platform.service_principals.use`; thay `platform.uncovered_grants` bằng tập rỗng → đỏ, kể cả ở các ca `grants_cover` của test tenant-rbac/02; `bindable_by_me` false cho tài khoản mà người gọi thiếu một khóa và true cho tài khoản họ phủ.
 - [ ] R6.6: gán vai trò cho tài khoản dịch vụ → đúng một dòng `platform.outbox_events` `platform.service_principal.grants_changed` cùng giao dịch; gia hạn `expires_at`, thêm khóa vào vai trò đang gán, đào sâu `depth`, khôi phục vai trò đã xóa mềm → mỗi lần một dòng; gán vai trò cho tài khoản `suspended` → một dòng; đưa tài khoản từ `suspended` về `active`, rút ngắn hạn, gỡ khóa hay UPDATE chỉ đổi `assigned_by` → 0 dòng; gỡ một trong các ca khỏi trigger → ca đó đỏ.
 - [ ] R6.8 (OP14): purge một tenant `offboarding` có một tài khoản dịch vụ, một DW và một dòng `platform.support_grants` → không còn dòng `platform.users` loại `service` có `owner_tenant_id` của tenant đó, không còn dòng `platform.service_principals` của nó, người dùng loại `human` và tài khoản dịch vụ của tenant khác còn; gỡ bước `platform.purge_tenant_service_users` khỏi sổ → `test_offboarding.py` đỏ; bảng thử `platform.zz_service_principal_holder` → bước chạy sau câu xóa bảng thử; đổi khai của bước sang bảng khác `platform.users` → ca thứ tự đó đỏ; tenant có dòng `platform.support_grants` → purge xong, không lỗi khóa ngoại.
@@ -199,6 +217,7 @@ nếu nó đã vào `main`).
 - [ ] R6.17 (OP18): người chịu trách nhiệm `suspended` → bộ kiểm gắn 409 `owner_missing` và `GET` trả `owner_missing` true; `owner_user_id` NULL → như trên; tài khoản `suspended` → 409 `principal_inactive`; gỡ điều kiện `status` khỏi `platform.accountable_owner_present` → đỏ.
 - [ ] R6.18 (OP18): DW `operating` có việc `open` tới hạn, người chịu trách nhiệm `suspended` → `platform.dw_work_scopes_due` không trả cặp của nó; một DW khác cùng workspace có việc tới hạn → `claim_due` nhận việc của DW kia, không nhận việc của DW này; người đó `active` lại → nhận ở lần quét kế; việc `in_progress` quá 15 phút của DW đó vẫn được trả; thay hàm bằng `owner_user_id IS NOT NULL` ở hàm quét → ca hàm quét đỏ; ở `claim_due` → ca `claim_due` đỏ.
 - [ ] R6.19 (OP18): tạo DW với Validator `suspended` → 422 `owner_not_member`, không dòng nào; gỡ join `status = 'active'` khỏi `_standing` → đỏ.
+- [ ] R6.19 (OP18): theo digital-worker:R1.9, principal của một DW `draft` bị `suspended`, người thứ hai không giữ khóa nào của nó gọi `draft→operating` → 409 `principal_inactive`, DW vẫn `draft`; principal `active` lại → 403 `grants_not_covered`; gỡ nhánh `principal_inactive` → ca đầu nhận 200 và test đỏ.
 - [ ] R6.20 (OP18): bàn giao việc cho người `suspended` → `handoff_target_invalid`, việc không đổi; gỡ join `status = 'active'` khỏi `_standing` → đỏ.
 - [ ] R7.1 (OP11): quản trị viên tenant B gọi `GET /api/v1/directory/candidates` → không có tài khoản dịch vụ của A hay B; gỡ lọc `kind` → đỏ.
 - [ ] R7.2 (OP11): `GET /api/v1/platform/users` → không dòng `service`, kể cả một tài khoản dịch vụ thử có `email` khác NULL ghi bằng SQL; gỡ lọc `kind` → đỏ.
@@ -288,3 +307,25 @@ nếu nó đã vào `main`).
 - 2026-11-03 (agent): ticket này thêm một revision Alembic và ba route (`/api/v1/admin/service-principals`), nên dựng
   với `test_rls_coverage.py`, `test_privileges.py`, `test_offboarding_coverage.py`, snapshot OpenAPI và kiểu TS.
 - 2026-11-03 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-03 (agent, theo ủy quyền 31/10/2026): kiểm nhất quán với tenant-rbac/03 (gate cùng ngày, hai agent không
+  thấy nhau), ADR-0103 (Accepted), ADR-0104 (Accepted) và `CLAUDE.md`; 0 CRITICAL, bốn HIGH chạm ticket này, sửa theo
+  Quyết định 3/11/2026 (kiểm nhất quán) của spec. (HC1) luật phủ quyền có hai chủ: `platform.uncovered_grants` ở đây và
+  "cùng phép so của `platform.grants_cover`" chép vào `platform.rbac_refusals`: bước 7 tách điều kiện thành
+  `platform.holder_covers_grant`, mà cả hai đọc. (HC2) "vai trò trọng yếu" có ba định nghĩa (`is_critical_role` theo tên
+  và tiền tố, `risk = 'critical'` trong guard, luật `platform.roles.bind` của `rbac_refusals`, mà tenant-rbac/04 mở rộng
+  với `fld.*` nhạy cảm, nên chắc chắn lệch): bước 4 tạo `platform.role_is_critical`, một chủ. (HC3) hai khóa trên một lần
+  ghi: khóa advisory theo vai trò ở đây và khóa dòng vai trò của lần xác nhận ở tenant-rbac/03, cộng `KEY SHARE` của khóa
+  ngoại, là bế tắc giữa tạo DW và xác nhận một thay đổi trên cùng vai trò: bước 4 dùng khóa dòng `FOR NO KEY UPDATE`,
+  tenant-rbac/03 khóa cùng dòng đó. (HC4) `_second_person` của DW phủ trên tập rỗng khi principal không `active`, cùng lỗ
+  mà bước 7 (c) đóng cho bộ kiểm gắn: bước 10 thêm nhánh 409 `principal_inactive`, tiêu chí digital-worker:R1.9. Thứ tự:
+  ticket này dựng trước tenant-rbac/03, cạnh mới ở `Blocked by` của tenant-rbac/03; ticket này không thêm cạnh. Nếu sai
+  thì: HC1, HC2 thì tenant-rbac/03 tách hai hàm khi dựng và viết lại guard ở đây; HC3 thì lần xác nhận của tenant-rbac/03
+  lấy khóa advisory trước khóa dòng; HC4 thì `_second_person` so trên `platform.assigned_grants`.
+- 2026-11-03 (agent): ĐẠT của dòng trên đọc bản trước lượt kiểm nhất quán; bước 4, 7, 10 và hai tiêu chí đổi theo bốn HIGH
+  trên, không đổi phạm vi, route hay bảng. Nên một lượt xác nhận (checking-plan-readiness, chỉ đọc chỗ sửa) trước khi dựng;
+  Status giữ `ready-for-agent`. MEDIUM, chưa sửa: (M13) `platform.is_digital_worker_principal` ở đây và phép `EXISTS`
+  trong `platform.dw_principal_roles_fixed()` (`be93e0c26a4c_platform_digital_workers.py:340`), mà tenant-rbac/03 bước 11
+  chuyển sang `platform.role_assignments`, là hai câu trả lời "là principal của DW"; hàm ở đây đọc `app.tenant_id`, mà
+  `dw_provisioner` có thể không đặt, nên gộp cần hàm nhận tenant làm tham số. (M14) danh sách khóa thiếu của `rbac_escalation`
+  ở đây có `(khóa, độ sâu, workspace neo)`, của `platform.rbac_refusals` chỉ `(khóa, độ sâu)`: một `reason_code`, hai hình
+  `details`; ghi ở Comments của tenant-rbac/03.
