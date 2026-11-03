@@ -35,7 +35,8 @@ hồi hay thiếu (spec R1.9, R1.10, R1.14; V4.20; V4.35). Gộp từ B8a-connec
       `(tenant_id, <cột chủ thể>)` tới UNIQUE `(tenant_id, id)` của bảng chủ thể ON DELETE CASCADE, cùng UNIQUE
       của cột đó, trong migration của ticket thêm nó (`inbound_endpoint_id` ở workflow-triggers/02,
       ADR-0115 (Accepted) quyết 1);
-    - `connections`: toàn cột của spec trừ `compromised_at`, mà ticket 04 thêm cùng bên đọc của nó (bao gồm `share_scope` CHECK, `status` CHECK không DEFAULT,
+    - `connections`: toàn cột của spec trừ `compromised_at`, `name`, `disabled_at` và index `uq_connections_account_live`,
+      mà ticket 04 thêm cùng bên đọc của chúng (bao gồm `share_scope` CHECK, `status` CHECK không DEFAULT,
       `owning_workspace_id` NOT NULL với FK ghép `(tenant_id, owning_workspace_id)` tới `platform.workspaces`
       ON DELETE RESTRICT trên `uq_workspaces_tenant_id_id` của org-and-principals/01, index danh sách), UNIQUE
       `(tenant_id, id)` (`uq_connections_tenant_id_id`) làm đích của FK ghép từ `secret_envelopes`, tạo trước FK
@@ -299,3 +300,6 @@ hồi hay thiếu (spec R1.9, R1.10, R1.14; V4.20; V4.35). Gộp từ B8a-connec
 - 2026-11-02 (agent): xây được trên máy này không cần bí mật thật của Đạt: `LocalDevKms` với khóa chủ sinh tại chỗ,
   PostgreSQL của compose; OpenBao, khóa triển khai và bí mật host thuộc ticket 06 (Chờ Đạt 20, 21 không chặn ticket này).
 - 2026-11-02 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-03 (agent, theo ủy quyền 31/10/2026): gate của ticket 04 (spec Quyết định 3/11/2026, (s)): bước 1 ghi rõ
+  `name`, `disabled_at` và `uq_connections_account_live` là của ticket 04, như `compromised_at`, để hai migration không
+  tạo trùng; không đổi gì ticket này dựng, nên verdict ĐẠT của nó đứng.

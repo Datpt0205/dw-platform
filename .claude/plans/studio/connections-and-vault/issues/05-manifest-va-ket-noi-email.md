@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: 04, .claude/plans/studio/tools-and-skills/issues/02-toolset-va-cong-cu-ghim.md, .claude/plans/studio/tenant-config/issues/05-lien-ket-va-phien-ban-cau-hinh.md
 Area: studio
-Yêu cầu: R1.2, R1.11, R1.12, R1.13, R1.16, R5.16, R5.17, R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.7, R6.8, R7.1, R7.2, R7.3, R7.4, R7.5, R7.6, R7.7, R7.8, CV4, CV10, CV16, CV17, CV18, CV24, CV25, CV26, CV27, CV28
+Yêu cầu: R1.2, R1.11, R1.12, R1.13, R1.16, R5.3, R5.4, R5.5, R5.9, R5.15, R5.16, R5.17, R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.7, R6.8, R7.1, R7.2, R7.3, R7.4, R7.5, R7.6, R7.7, R7.8, CV4, CV10, CV13, CV14, CV15, CV16, CV17, CV18, CV24, CV25, CV26, CV27, CV28
 
 ## Mục tiêu
 
@@ -78,6 +78,16 @@ message`, `data_location: VN`, `delivery` khai `idempotency: {mode: none}`, `rec
    vào ngữ cảnh lời gọi ngay khi mở bí mật, trước lời gọi ra ngoài; ToolExecutor chép nó vào dòng kết thúc mà nó ghi
    theo kết quả có kiểu (runtime-hardening:R6.12), kể cả dòng `outcome_unknown` của một lỗi không có kiểu, và vào audit
    của lời gọi; lời gọi không qua Kết nối để NULL. Không giá trị bí mật nào vào cột hay audit (spec R1.2).
+8. Từ ticket 04 (gate 3/11/2026, (d), (j)): gắn `ConnectorCatalogPort` của ticket 04 ở composition root của api và
+   worker từ `auth` của Bản mô tả đã nạp (`smtp@1.0.0`: `{password}`), thay cài đặt trả None của ticket 04; route
+   `POST /api/v1/connections/{id}/test` theo luật quyền của ticket 04 bước 4 với khóa `connections.manage` (công ty
+   khác hay ngoài tầm đọc → 404, đọc được mà không ghi được → 403): Kết nối không `active` → 409 `conflict` với
+   `details.reason_code` `connection_disabled`; mở bí mật qua `platform.open_secret` không nêu phiên bản (không còn phiên
+   bản → `credential_revoked`); với `smtp`, `SmtpEgress` chỉ kết nối, bắt tay TLS, `EHLO` và `AUTH` rồi `QUIT`, không
+   `MAIL`, `RCPT` hay `DATA`; phản hồi và audit `connection.tested` (cùng giao dịch, đứng tên người gọi) chỉ mang `ok` và
+   một mã đã chuẩn hóa (`auth_failed`, `tls_failed`, `unreachable`, `egress_blocked:*`, `credential_revoked`), không
+   bao giờ thân hay thông điệp của nhà cung cấp, vì đó là dữ liệu không tin cậy có thể vọng bí mật (spec R1.2); nhãn
+   của `connection.tested` vào mảnh của spec; `Idempotency-Key` tùy chọn như ticket 04.
 
 ## Tiêu chí chấp nhận
 
@@ -149,6 +159,21 @@ message`, `data_location: VN`, `delivery` khai `idempotency: {mode: none}`, `rec
       trên `platform.secret_envelopes`, một phiên bản đã thu hồi của chủ thể đó bị xóa và có sự kiện ở đúng
       workspace, nên một cột chủ thể thử thêm mà không nới hàm → test đỏ; bản giả ghi audit ném lỗi → không dòng
       nào bị xóa.
+- [ ] R5.4 (CV14): một lượt `live` gọi `email.send` qua một Kết nối của workspace khác workspace của lượt →
+      `connection_usable` ở `call_site` `egress` false, `SmtpEgress` không mở kết nối SMTP, máy chủ giả không nhận gì,
+      ToolExecutor ghi `not_dispatched` với mã của lý do; gỡ lời gọi `connection_usable` khỏi `ManifestActionHandler` →
+      email được gửi, test đỏ.
+- [ ] R5.9 (CV14): chủ thể của bản kê không giữ `connections.use` ở workspace của lượt → như ca R5.4, máy giả không
+      nhận gì.
+- [ ] R5.5 (CV15): tắt Kết nối giữa hai lời gọi `email.send` của cùng lượt → lời gọi thứ hai bị từ chối với
+      `connection_disabled`, máy giả nhận đúng một email.
+- [ ] R5.15 (CV24): `password` không còn phiên bản chưa thu hồi → lời gọi kế tiếp bị từ chối với `credential_revoked`,
+      máy giả không nhận kết nối nào.
+- [ ] R5.3 (CV13): `POST .../test` của công ty B với id của công ty A → 404, máy chủ SMTP giả không nhận kết nối nào;
+      người đọc được mà không giữ `connections.manage` với tới workspace sở hữu → 403; Kết nối `disabled` → 409
+      `connection_disabled`, máy giả không nhận gì; máy giả từ chối `AUTH` với thông điệp chứa giá trị canary → phản hồi
+      `auth_failed`, canary không có trong phản hồi, audit `connection.tested` hay log; máy giả nhận đúng `EHLO`, `AUTH`,
+      `QUIT`, không `MAIL`; trả thông điệp nhà cung cấp trong phản hồi → test đỏ.
 - [ ] Xong: `make ci && make test-integration` xanh.
 
 ## Nguồn
@@ -199,3 +224,6 @@ message`, `data_location: VN`, `delivery` khai `idempotency: {mode: none}`, `rec
   nhà cung cấp vọng bí mật (checkpoint, `platform.tool_executions`, audit, span, log) về đây, vì ticket 02 không có lời
   gọi ra ngoài nào, còn ticket này có lời gọi đầu tiên qua một Kết nối (`SmtpEgress`); thêm R1.2, CV4 vào Yêu cầu và
   một tiêu chí. Nếu sai thì: ca đó về ticket 03 với máy chủ HTTP giả của nó, và ticket này bỏ tiêu chí.
+- 2026-11-03 (agent, theo ủy quyền 31/10/2026): gate của ticket 04 chuyển sang ticket này route `POST .../test`,
+  audit `connection.tested` và lần gắn `ConnectorCatalogPort` (bước 8), cùng ca đầu-cuối của R5.4, R5.5, R5.9, R5.15 qua
+  `SmtpEgress`, vì ticket 04 không gọi ra ngoài (spec Quyết định 3/11/2026 của ticket 04, (c), (d), (j)).
