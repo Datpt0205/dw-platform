@@ -75,3 +75,6 @@ blob-report/
 
 # Runtime state written by `make dev` (the worker heartbeat); never source.
 .dw/
+
+# `make demo-dw`'s ids and stage timings for one run (scripts/demo_dw.sh).
+.demo/

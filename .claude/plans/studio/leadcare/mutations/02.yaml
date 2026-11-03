@@ -1,0 +1,24 @@
+# Mutation check of leadcare ticket 02: scripts/mutate.py runs this file at the
+# queue's close (wave-close.md). One mutation per Kiểm soát row the ticket
+# implements (LCP12) and per guard the demo run adds (the hand-off reaches the
+# sales person; nothing is sent outside the Send floor's hours). The scripts
+# are not under `src/`, so each is mutated in place and restored.
+mutations:
+  - name: LCP12 a mail before the approval does not stop the demo
+    file: scripts/demo_dw_run.py
+    old: "    require_no_mail_before_approval(mailbox, lead.email)\n"
+    new: "    pass\n"
+    tests:
+      - apps/api/tests/unit/test_demo_dw_run_script.py::test_a_mail_in_mailpit_before_the_approval_fails_the_demo
+  - name: R4.2 a hand-off to anyone passes
+    file: scripts/demo_dw_run.py
+    old: '    if str(done["holder_id"]) != sales_id:'
+    new: "    if False:"
+    tests:
+      - apps/api/tests/unit/test_demo_dw_run_script.py::test_a_hand_off_to_someone_other_than_sales_fails_the_demo
+  - name: the demo sends a lead outside the Send floor's hours
+    file: scripts/demo_dw_run.py
+    old: "        require_send_hours(now or datetime.now(UTC))\n"
+    new: "        pass\n"
+    tests:
+      - apps/api/tests/unit/test_demo_dw_run_script.py::test_outside_the_send_floors_hours_no_lead_is_sent

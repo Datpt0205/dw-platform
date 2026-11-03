@@ -20,6 +20,7 @@ COMPOSE := docker compose --env-file .env -f infra/compose/docker-compose.yml
         db-migrate migrate lint format typecheck \
         test-unit coverage test-integration test-architecture test-contract test-hooks test-plans \
         test-e2e test-web test-all eval-smoke test-eval-smoke eval-leadcare eval-wf-ai \
+        demo-dw demo-dw-again demo-dw-down \
         generate-contracts new-context release-manifest release-manifest-check semconv-snapshot semconv-snapshot-check ci
 
 help: ## List available targets
@@ -136,6 +137,15 @@ eval-leadcare: ## The Marketing pack's prompt-injection eval (live model calls, 
 
 eval-wf-ai: ## The workflow assistant's prompt-injection eval (live model calls, needs OPENAI_* in .env; not in CI)
 	uv run python scripts/eval_wf_ai.py
+
+demo-dw: ## One lead the whole way on compose with the real model, screenshots in docs/demo (project dwdemo, api :8010, web :3040)
+	bash scripts/demo_dw.sh
+
+demo-dw-again: ## One more lead on the running demo (after demo-dw): run and screenshots, no rebuild
+	bash scripts/demo_dw.sh again
+
+demo-dw-down: ## Stop the digital-worker demo and drop its volumes (project dwdemo only)
+	bash scripts/demo_dw.sh down
 
 eval-smoke: ## Evaluation smoke suite (deterministic safety-gate graders)
 	uv run python scripts/run_evals.py --smoke

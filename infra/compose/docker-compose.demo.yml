@@ -1,0 +1,87 @@
+# ===========================================================================
+# The digital-worker demo on one machine (leadcare R4, ticket 02): applied by
+# `make demo-dw` ON TOP OF docker-compose.yml and docker-compose.dev.yml, as a
+# compose project of its own (`dwdemo`), so its volumes, network and containers
+# are never the dev data plane's (`dwskel`) or anybody else's.
+#
+#   docker compose -p dwdemo --env-file .env -f infra/compose/docker-compose.yml \
+#     -f infra/compose/docker-compose.dev.yml -f infra/compose/docker-compose.demo.yml \
+#     --profile full up -d --build --wait postgres api worker web mailpit
+#
+# Why an overlay over the dev one rather than the dev one alone: the dev file is
+# the shared server's, and it binds 0.0.0.0. Here every port is the loopback's,
+# on numbers the Makefile names (DW_DEMO_*), because 8000/3000 and the default
+# data-plane ports belong to other projects on a developer's machine.
+#
+# Sign-in is the `dev` mode (local HS256 tokens, the `local` profile only): the
+# demo needs no Keycloak, so `api` stops waiting for one.
+# ===========================================================================
+services:
+  postgres:
+    ports: !override
+      - "127.0.0.1:${DW_DEMO_POSTGRES_PORT:?}:5432"
+
+  qdrant:
+    ports: !override
+      - "127.0.0.1:${DW_DEMO_QDRANT_PORT:?}:6333"
+
+  valkey:
+    ports: !override
+      - "127.0.0.1:${DW_DEMO_VALKEY_PORT:?}:6379"
+
+  s3:
+    ports: !override
+      - "127.0.0.1:${DW_DEMO_S3_PORT:?}:8333"
+
+  mailpit:
+    ports: !override
+      - "127.0.0.1:${DW_DEMO_SMTP_PORT:?}:1025"
+      - "127.0.0.1:${DW_DEMO_MAILPIT_PORT:?}:8025"
+
+  # Images of the demo's own (`dw-<name>:local`, the first-party shape
+  # verify_invariants.py knows): the web build bakes the API's URL in, and an image
+  # another checkout tagged `dw-web:local` must not be the one that runs here.
+  migrate:
+    image: dw-demo-api:local
+
+  api:
+    image: dw-demo-api:local
+    environment:
+      DW_API_PROFILE: local
+      DW_API_AUTH_MODE: dev
+      # Lead intake keys (leadcare R2.4) and the unsubscribe link every
+      # marketing mail carries (ADR-0124 decision 5); `make demo-dw` mints both
+      # per run. The API needs the second too: approving resumes the run here,
+      # and the send happens in this process.
+      INTAKE_SIGNING_SECRET: ${INTAKE_SIGNING_SECRET:?}
+      UNSUBSCRIBE_SIGNING_SECRET: ${UNSUBSCRIBE_SIGNING_SECRET:?}
+    ports: !override
+      - "127.0.0.1:${DW_DEMO_API_PORT:?}:8000"
+    depends_on: !override
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      s3:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+
+  worker:
+    image: dw-demo-worker:local
+    environment:
+      DW_API_PROFILE: local
+      UNSUBSCRIBE_SIGNING_SECRET: ${UNSUBSCRIBE_SIGNING_SECRET:?}
+
+  web:
+    image: dw-demo-web:local
+    build:
+      args:
+        NEXT_PUBLIC_AUTH_MODE: dev
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:?}
+    ports: !override
+      - "127.0.0.1:${DW_DEMO_WEB_PORT:?}:3000"
