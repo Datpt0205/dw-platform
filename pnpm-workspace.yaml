@@ -15,8 +15,11 @@ allowBuilds:
 # to @redocly/openapi-core, breaking `make generate-contracts`.
 overrides:
   "js-yaml@>=4.0.0 <4.3.2": ">=4.3.2 <5"
-  "sharp@<0.35.4": ">=0.35.4 <0.36"
+  # GHSA-wq5f-xc86-pv6w (librsvg in 0.35.4), from trivy on dw-web (2026-11-03).
+  "sharp@<0.35.5": ">=0.35.5 <0.36"
   "postcss@<8.5.23": ">=8.5.23 <9"
+  # CVE-2026-93749, reached through postcss; same reasoning as nanoid below.
+  "source-map-js@<1.2.2": ">=1.2.2 <2"
   # CVE-2026-67213, reached through postcss. Overriding nanoid rather than
   # raising the postcss floor to 8.5.26 covers every path to it, not just the
   # one postcss happens to pin today.
