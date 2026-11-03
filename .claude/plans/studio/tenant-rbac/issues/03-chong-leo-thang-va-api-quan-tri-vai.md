@@ -40,7 +40,11 @@ trị viên, `platform.roles.bind` gán vai trò không trọng yếu.
    11, Quyết định 23/10/2026 của spec), còn ticket này chờ nó (Quyết định 3/11/2026 của spec, kiểm nhất quán): thứ tự
    bắn theo bảng chữ cái của tên là chủ ý, và test catalog của ticket này chỉ khẳng định trigger `rbac_refusals_*`.
    Khóa theo vai trò là một: dòng `platform.tenant_roles` `FOR NO KEY UPDATE`, mà trigger đó lấy trước khi đọc và lần
-   xác nhận ở bước 4 lấy trước khi so `base_version`; không khóa advisory theo vai trò nào khác.
+   xác nhận ở bước 4 lấy trước khi so `base_version`; không khóa advisory theo vai trò nào khác. Thứ tự khóa là của
+   org-and-principals/03 bước 4: dòng vai trò (theo `id`) trước dòng `platform.tenant_access_versions` mà
+   `trg_z_bump_access_version` UPDATE; lần xác nhận khóa dòng vai trò trước mọi lần ghi bảng quyền, trigger tăng
+   `version` của bước 5 có tên đứng trước `trg_z_` nên khóa dòng vai trò trước dòng phiên bản, và tạo DW ở bước 11 giữ
+   câu khóa vai trò đầu giao dịch của ticket kia (agent, theo ủy quyền 31/10/2026; Nếu sai thì: như ticket kia).
 3. **Chủ sở hữu công ty cuối cùng.** Trigger AFTER `ck_role_assignments_last_owner` trên DELETE, UPDATE của
    `platform.role_assignments`, DELETE của `platform.memberships`, DELETE và UPDATE `status` của
    `platform.tenant_members`, DELETE của `platform.users`: tenant `active` hay `locked` phải còn ít nhất một chủ sở hữu
@@ -186,7 +190,9 @@ trị viên, `platform.roles.bind` gán vai trò không trọng yếu.
     (`xmin` của dòng DW bằng `pg_current_xact_id()::xid`; chạy thử trên PostgreSQL 16 trước khi dựa vào, failure-modes #4), và `platform.rbac_refusals` vẫn chạy. Người thứ hai là lần
     `draft→operating` của digital-worker:R1.9: `_second_person` (`digital_workers.py:424-438`) giữ nhánh 409
     `principal_inactive` của org-and-principals/03 bước 10 trước phép so, rồi thay phép so `scopes` của workspace đang
-    làm việc bằng `platform.grants_cover(tenant, người gọi, principal)` trên quyền hiệu lực. `_check_roles` đọc vai trò
+    làm việc bằng `platform.grants_cover(tenant, người gọi, principal)` trên quyền hiệu lực; trạng thái `active` của
+    principal và `platform.grants_cover` đọc trong một câu lệnh, một snapshot, vì `grants_cover` trên tập rỗng là true
+    (agent, theo ủy quyền 31/10/2026; Nếu sai thì: giao dịch `REPEATABLE READ`). `_check_roles` đọc vai trò
     của tenant: khóa vai trò lạ → `role_unknown`, vai trò mà `platform.role_is_critical` đúng →
     `role_not_allowed_for_service`, và `is_critical_role` (`digital_workers.py:88`) nghỉ hưu
     (digital-worker:R1.15), luật giữ quyền của `platform.rbac_refusals` thay `forbid_escalation` và trả
@@ -212,8 +218,8 @@ trị viên, `platform.roles.bind` gán vai trò không trọng yếu.
 - [ ] R7.4 (RB23): xác nhận ở `expires_at` cộng 1 giây → 409 `conflict` với `details.reason_code` `proposal_expired`; ở `expires_at` trừ 1 giây → nhận.
 - [ ] R7.5 (RB21): SQL thô dưới `dw_app` ghi gán vai trò mới hay INSERT `platform.tenant_roles` không mang `app.role_change_id`, hay mang đề xuất do chính `app.user_id` đề xuất, hay mang đề xuất của vai trò X mà ghi vai trò Y, hay mang đề xuất `role_update` của X mà INSERT gán X hay thêm khóa vào X → 23514; INSERT đề xuất có `proposed_by` khác `app.user_id` hay ở `confirmed`, UPDATE đề xuất `confirmed` về `proposed` → 23514; SQL thô gỡ gán vai trò có `app.user_id` → nhận; gỡ nhánh kiểm đề xuất hay nhánh khớp vai trò khỏi trigger → đỏ.
 - [ ] R7.5 (RB21): tạo DW với vai trò `approver` của tenant → 201, principal có gán vai trò, không dòng đề xuất; người tạo tự `draft→operating` → 409 `second_person_required` (digital-worker:R1.9); SQL thô dưới `dw_app` gán thêm vai trò cho principal của DW `operating`, hay cho principal của DW `draft` bởi người không phải người tạo → 23514; SQL thô tạo một DW `draft` trỏ tới người dùng `human` rồi gán vai trò cho người đó, hay gán cho principal của một DW `draft` tạo ở giao dịch trước → 23514; mỗi ca khẳng định tên ràng buộc (`rbac_refusals_role_assignments` khác `ck_memberships_dw_principal_roles_fixed`), nên bỏ điều kiện `draft`, `created_by`, `kind` hay cùng giao dịch khỏi ngoại lệ → test đỏ; người thứ hai không giữ khóa của một vai trò đã gán cho principal → 403 `grants_not_covered`, đổi phép kiểm về `scopes` của workspace đang làm việc mà người đó có khóa ở workspace khác → test đỏ.
-- [ ] R6.3 (RB16): theo org-and-principals:R6.4, đề xuất gán cho một tài khoản dịch vụ một vai trò mang khóa `critical` (như `platform.sod_waivers.write`) → 422 `role_not_allowed_for_service`, không dòng đề xuất; đề xuất gán vai trò không trọng yếu cho tài khoản đó, rồi một đề xuất `role_permissions` thêm khóa `critical` vào vai trò ấy được xác nhận trước → lần xác nhận gán trả 422 `role_not_allowed_for_service`, không đổi gì; xác nhận đề xuất `role_permissions` thêm khóa `critical` vào vai trò đang gán cho tài khoản dịch vụ → 422, không đổi gì; gỡ kiểm sớm → ca đầu nhận 202 và test đỏ.
-- [ ] R7.8 (RB43): hai kết nối, một tạo DW với vai trò R (gán không đề xuất), một xác nhận đề xuất `role_permissions` trên R, chạy chồng nhau → cả hai xong hay một bị từ chối bằng luật của nó, không bên nào nhận 40P01; thêm lại `pg_advisory_xact_lock` theo vai trò vào `guard_service_principal_grants` trước khóa dòng → test đỏ (bế tắc).
+- [ ] R6.3 (RB16): theo org-and-principals:R6.4, đề xuất gán cho một tài khoản dịch vụ một vai trò mang khóa `critical` (như `platform.sod_waivers.write`) → 422 `role_not_allowed_for_service`, không dòng đề xuất; đề xuất gán vai trò không trọng yếu cho tài khoản đó, rồi một đề xuất `role_permissions` thêm khóa `critical` vào vai trò ấy được xác nhận trước → lần xác nhận gán trả 409 `conflict` `proposal_stale` (`version` của vai trò đã tăng, bước 5), không đổi gì, và đề xuất lại gán đó → 422 `role_not_allowed_for_service`, không dòng đề xuất; SQL thô dưới `dw_app` mang `app.role_change_id` của một đề xuất `assignment_grant` còn đúng `base_version` INSERT gán vai trò trọng yếu cho tài khoản dịch vụ → 23514 `ck_role_assignments_service_not_critical`, và service dịch tên đó sang 422; xác nhận đề xuất `role_permissions` thêm khóa `critical` vào vai trò đang gán cho tài khoản dịch vụ → 422, không đổi gì; gỡ kiểm sớm → ca đầu nhận 202 và test đỏ.
+- [ ] R7.8 (RB43): hai kết nối xen kẽ có điều khiển: B xác nhận một đề xuất `role_permissions` thêm khóa không trọng yếu vào R và dừng ngay sau khi khóa dòng R (các câu của lần xác nhận chạy theo thứ tự của bước 4 trên một kết nối), A tạo DW với vai trò R (gán không đề xuất) tới khi `pg_locks` cho thấy A chờ khóa, B đi tiếp và commit → cả hai xong, không bên nào nhận 40P01; dời câu khóa vai trò đầu giao dịch của tạo DW xuống sau lần ghi `platform.tenant_members` → 40P01, test đỏ; test catalog khẳng định trigger tăng `version` của bước 5 trên `platform.tenant_role_permissions` xếp trước `trg_z_bump_access_version` theo tên, đổi tên nó sang sau → đỏ.
 - [ ] R7.6 (RB32): gỡ gán vai trò, bỏ một khóa hay hạ mức một khóa trong vai trò → 200, áp ngay, đúng một audit, không dòng đề xuất, `version` của vai trò tăng một; xóa mềm một vai trò không còn người giữ → 200, áp ngay, đúng một audit `platform.role.delete`, không dòng đề xuất; vai trò còn người giữ → 409 `role_in_use`; SQL thô dưới `dw_app` đặt lại `deleted_at` về NULL không mang đề xuất → 23514; gỡ gán `tenant_owner` cuối vẫn 409 `last_owner`.
 - [ ] R7.7 (RB36): `dw_app` DELETE một đề xuất của công ty `active` → 23514, dòng còn; cùng lệnh khi công ty `offboarding` → xóa được; offboarding một công ty có một đề xuất `proposed` và một đề xuất `confirmed` → lane `offboarding` xuất mỗi dòng một lần rồi xóa hết, dòng của công ty khác còn nguyên, test phủ offboarding (studio-skeleton:R4.3) xanh với `platform.role_change_requests` không có trong `STUDIO_EXCLUSIONS`; gỡ phép kiểm DELETE khỏi trigger → test đỏ.
 - [ ] R7.8 (RB43): hai người khác người đề xuất xác nhận cùng một đề xuất đồng thời → đúng một lần áp, đúng một audit `.confirmed`, người kia 409 `conflict` với `details.reason_code` `proposal_closed`; xác nhận sau khi đề xuất đã rút → 409 `proposal_closed`, không đổi gì; người đề xuất bị `suspended` trước lần xác nhận → 409 `proposal_stale`; bỏ khóa dòng đề xuất hay điều kiện `status = 'proposed'` → test đồng thời đỏ.
@@ -338,3 +344,22 @@ trị viên, `platform.roles.bind` gán vai trò không trọng yếu.
   hỏi "là principal của DW" bằng `EXISTS`, bên cạnh `platform.is_digital_worker_principal` của org-and-principals/03. (M15)
   `grants_not_covered` (DW) và `rbac_escalation` cho cùng luật phủ, giữ có chủ ý theo digital-worker:R1.10. (M9) của dòng
   trên đã sửa: digital-worker:R1.1 nay là gán vai trò.
+- 2026-11-03 (agent): checking-plan-readiness, lượt xác nhận nhẹ chỉ trên chỗ 15e74b6 sửa (`Blocked by`, bước 2, 4, 6,
+  7, 11, R6.3 (RB16), R7.8 (RB43) mới), đối chiếu code hiện có, một subagent builder; 0 CRITICAL, ba HIGH chạm ticket
+  này, sửa theo ủy quyền 31/10/2026. (HX1) một khóa dòng vai trò chưa bỏ được 40P01: tạo DW giữ dòng
+  `platform.tenant_access_versions` (`trg_z_bump_access_version` trên `tenant_members`, `memberships`) rồi chờ dòng vai
+  trò, còn lần xác nhận giữ dòng vai trò rồi chờ dòng phiên bản. Thứ tự khóa ở org-and-principals/03 bước 4, bước 2 ở
+  đây trỏ tới nó, và R7.8 mới viết lại thành xen kẽ có điều khiển: đột biến cũ (thêm lại khóa advisory) không phân biệt
+  được, vì đúng thứ tự xen kẽ đó cũng bế tắc trên bản không đột biến. (HX2) R6.3 ca hai không tới được 422: xác nhận
+  `role_permissions` tăng `version` của vai trò, nên đề xuất gán đã cũ và dừng ở `proposal_stale`; tiêu chí nay nói
+  vậy, và ca dịch tên ràng buộc lúc xác nhận đi bằng SQL thô. (HX3) bước 11: `active` của principal và
+  `platform.grants_cover` đọc trong một câu, không thì một lần `suspended` giữa hai câu mở lại lỗ phủ trên tập rỗng.
+  Chủ và người đọc khớp giữa hai ticket: `platform.role_is_critical` và `platform.holder_covers_grant` do
+  org-and-principals/03 tạo, ở đây chỉ đọc (bước 2, 6, 11), cạnh `Blocked by` một chiều; `principal_inactive` là 409
+  `conflict` với `details.reason_code`, như `_conflict` (`digital_workers.py:227`). MEDIUM, chưa sửa: (M16) luật neo
+  "vai trò chưa ai giữ, một neo bất kỳ" của bước 2 diễn bằng `EXISTS (SELECT 1 FROM platform.effective_grants(tenant,
+  người làm) h WHERE platform.holder_covers_grant(tenant, người làm, khóa, độ sâu, h.anchor_workspace_id))`, không truyền
+  NULL làm "neo bất kỳ" vào hàm chung. (M17) `_check_roles` hôm nay đọc vai trò theo khóa (`RoleCatalogPort`), nên bước
+  11 tra id vai trò của tenant trước khi gọi `platform.role_is_critical`; port mới hay thêm phương thức là việc của người
+  dựng. Kết quả: ĐẠT cho chỗ sửa; Status giữ `needs-triage` tới khi ticket 05 (FOG-49) `resolved`, rồi lên
+  `ready-for-agent` không cần gate lại nếu nội dung không đổi.
