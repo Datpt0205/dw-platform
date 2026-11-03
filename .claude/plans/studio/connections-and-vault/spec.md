@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 2/11/2026
-Sẵn sàng: ĐẠT (2/11/2026; 0 CRITICAL, 0 HIGH; ticket 02)
+Sẵn sàng: ĐẠT (3/11/2026; 0 CRITICAL, 0 HIGH; ticket 02-03)
 
 Lát Marketing cần gửi email và sau này gửi Zalo tới lead, mà muốn vậy công ty phải lưu được token và
 mật khẩu của nhà cung cấp, và nền tảng phải gọi ra Internet mà không bao giờ lộ bí mật hay bị lừa gọi
@@ -130,8 +130,9 @@ gửi lại một lời gọi không rõ kết quả (YC41, YC63, YC34; D11; ADR
 - R3.4 KHI một chuyển hướng đổi origin, Bộ gọi ra ngoài PHẢI bỏ header `Authorization` và `Cookie`
   trước khi gửi bước kế.
 - R3.5 TRONG KHI lượt chạy ở chế độ khác `live` (`simulate`, hay `test` mà W1 chưa mở), NẾU một lời gọi
-  mang purpose khác `model` và không đến từ một Hành động khai chỉ đọc hay `simulate_safe`, kể cả purpose
-  `mcp` và `oauth`, THÌ Bộ gọi ra ngoài PHẢI từ chối với `egress_blocked:run_mode` và không gọi nhà cung cấp.
+  mang purpose khác `model` và không phải lời gọi purpose `connector` hay `http_tool` của một Hành động khai chỉ đọc
+  hay `simulate_safe`, kể cả mọi lời gọi purpose `mcp`, `oauth` và `webhook`, THÌ Bộ gọi ra ngoài PHẢI từ chối với
+  `egress_blocked:run_mode` và không gọi nhà cung cấp.
 - R3.6 Test kiến trúc PHẢI đỏ khi một module ngoài danh sách adapter vận hành tạo `httpx.AsyncClient`
   trực tiếp.
 - R3.7 NẾU đích của một purpose khác `connector` và `oauth` không nằm trong Máy chủ được phép của công
@@ -150,14 +151,33 @@ gửi lại một lời gọi không rõ kết quả (YC41, YC63, YC34; D11; ADR
   `integrations.admin` với tới workspace đang làm việc của người gửi, THÌ API quản trị PHẢI trả 409 `conflict` với
   `details.reason_code` `no_checker_available` và không mở yêu cầu phê duyệt nào.
 - R3.13 KHI một lời gọi qua Bộ gọi ra ngoài kết thúc, Bộ gọi ra ngoài PHẢI trả kết quả `succeeded`, hay ném đúng một
-  trong ba lỗi có kiểu mà `dw_agent_runtime` khai (runtime-hardening/01): `NotDispatchedError`, `RejectedError` mang
-  mã, `OutcomeUnknownError` (ADR-0115 (Accepted) quyết 6; V4.30).
-- R3.14 NẾU một lời gọi dừng trước khi byte đầu tiên của yêu cầu được ghi ra socket (phân giải, kết nối, bắt tay TLS,
-  mọi `egress_blocked`, `credential_revoked`), THÌ Bộ gọi ra ngoài PHẢI ném `NotDispatchedError` mang mã của lần dừng.
-- R3.15 NẾU một lời gọi HTTP hết thời gian hay bị reset sau khi byte đầu tiên của yêu cầu đã được ghi, hay nhận một
-  trạng thái 5xx, THÌ Bộ gọi ra ngoài PHẢI ném `OutcomeUnknownError` và không tự gửi lại lời gọi đó.
+  trong ba lỗi có kiểu của runtime-hardening/01: `NotDispatchedError`, `RejectedError` mang mã, `OutcomeUnknownError`
+  (ADR-0115 (Accepted) quyết 6; V4.30); ba lớp ấy định nghĩa ở `dw_kernel` và `dw_agent_runtime.dispatch` xuất lại
+  đúng các lớp đó, vì `dw_agent_runtime` đã phụ thuộc `dw_connectors` nên egress không nhập được `dw_agent_runtime`.
+- R3.14 NẾU một lời gọi dừng trước khi byte đầu tiên của yêu cầu đầu tiên được ghi ra socket (phân giải, kết nối, bắt
+  tay TLS, mọi `egress_blocked` trước byte đó, `credential_revoked`), THÌ Bộ gọi ra ngoài PHẢI ném `NotDispatchedError`
+  mang mã của lần dừng.
+- R3.15 NẾU một lời gọi HTTP dừng sau khi byte đầu tiên của yêu cầu đầu tiên đã được ghi mà không đọc trọn một trạng
+  thái 2xx hay 4xx cùng body trong trần 2 MiB (hết thời gian, reset, 5xx, 3xx không được theo, chuyển hướng bị chặn ở
+  bước sau, body vượt trần), THÌ Bộ gọi ra ngoài PHẢI ném `OutcomeUnknownError` mang mã của lần dừng và không tự gửi lại lời gọi đó.
 - R3.16 NẾU một lời gọi HTTP nhận một trạng thái 4xx, THÌ Bộ gọi ra ngoài PHẢI ném `RejectedError` mang trạng thái đó
   làm mã và không tự gửi lại.
+- R3.17 NẾU một lời gọi purpose `connector` hay `oauth` không mang `connector_key`, hoặc host đích không nằm trong
+  `egress_hosts` mà Bản mô tả lớp nền tảng của `connector_key` khai, THÌ Bộ gọi ra ngoài PHẢI từ chối với
+  `egress_blocked:host_not_allowed` và không gửi byte nào (ADR-0115 (Accepted) quyết 6).
+- R3.18 KHI người giữ `integrations.admin` gửi `DELETE /api/v1/egress/allowed-hosts/{id}`, API quản trị PHẢI đánh dấu
+  gỡ dòng (`removed_at`, `removed_by`) cùng audit `egress.allowlist.removed` trong một giao dịch, để lời gọi kế tiếp
+  tới đích đó nhận `egress_blocked:host_not_allowed`.
+- R3.19 NẾU `DELETE /api/v1/egress/allowed-hosts/{id}` nêu id của công ty khác hay người gọi không giữ
+  `integrations.admin`, THÌ API quản trị PHẢI từ chối (404 `not_found` cho id của công ty khác, 403
+  `permission_denied` cho người không giữ khóa) và không gỡ dòng nào.
+- R3.20 NẾU `settings.is_deployed` là đúng và URL của một lời gọi hay của một bước chuyển hướng không phải `https`,
+  THÌ Bộ gọi ra ngoài PHẢI từ chối với `egress_blocked:scheme` trước byte đầu tiên của bước đó (ADR-0115 (Accepted)
+  quyết 6).
+- R3.21 KHI so một đích với Máy chủ được phép, Bộ gọi ra ngoài PHẢI coi đích khớp chỉ khi host đã chuẩn hóa (chữ
+  thường, bỏ dấu chấm cuối, IDN sang A-label) bằng mẫu, hay mẫu là `*.<miền>` và host có đúng một nhãn trước
+  `<miền>`, cổng đích nằm trong `ports`, `purpose` của dòng trùng purpose của lời gọi hay là `any`, và `removed_at`
+  là NULL.
 
 ### R4 — Bộ kiểm chữ ký webhook
 
@@ -286,8 +306,9 @@ quyết (YC41, YC64; DO-48; ADR-0116 (Accepted) quyết 2; V4.30).
 
 - Bảng và cột ở mục Dữ liệu; route ở mục API; màn hình ở mục Màn hình.
 - Mã: `KmsPort`, `LocalDevKms` (chỉ ngoài profile triển khai), `OpenBaoTransitKms`, `SecretStore` và kiểu
-  `Secret`; `EgressPort`, `EgressClient`, `PinnedNetworkBackend`, mở rộng `net_guard` cho địa chỉ không
-  toàn cầu; module thuần `dw_connectors.webhooks` với `SignatureVerifier`; `ConnectorManifest` và bộ biên
+  `Secret`; `EgressPort`, `EgressClient`, `PinnedNetworkBackend`, dùng lại `forbidden_address` và `resolve_checked`
+  của `net_guard` mà runtime-hardening/02 đã dựng (`34768e7`), không thêm chính sách địa chỉ thứ hai; module thuần
+  `dw_connectors.webhooks` với `SignatureVerifier`; `ConnectorManifest` và bộ biên
   dịch sang Đặc tả công cụ, `ManifestActionHandler`; khối `delivery` của `dw.connector/v1` với luật nạp của R6.5-R6.7,
   W1 chỉ nhận `none`, `none`, `review` (H-5); kết quả có kiểu của Bộ gọi ra ngoài và `SmtpEgress` qua ba lỗi có kiểu
   mà `dw_agent_runtime` khai ở runtime-hardening/01 (R3.13-R3.16, R7.6-R7.8); cột `credential_version` của
@@ -327,6 +348,7 @@ quyết (YC41, YC64; DO-48; ADR-0116 (Accepted) quyết 2; V4.30).
 | W2: bộ điều phối OAuth và làm mới token một luồng                                                                                                                                                                                                                                              | YC65; `from_briefs` B8a 10, 11; P1 chỉ kết nối dùng chung, chưa có luồng cấp quyền                                                                                                                                                                                                     | connections-and-vault đợt sau (W2)                    |
 | W2: định tuyến sự kiện ứng dụng nhà cung cấp theo tài khoản ngoài; cùng Page hay OA do hai công ty nối thì gửi tới cả hai                                                                                                                                                                      | YC97; `from_briefs` B8a 13 (phần định tuyến); cần cửa `provider_app` của workflow-triggers; DO-48.2: không bật trước ý kiến luật sư (compliance-pdpl/02, câu 3 của discovery/18)                                                                                                       | connections-and-vault đợt sau (W2); workflow-triggers |
 | W2: trình kết nối Zalo OA và ZNS; Meta Lead Ads                                                                                                                                                                                                                                                | YC97; `from_briefs` B8a 14, 15; cần OAuth và duyệt ứng dụng                                                                                                                                                                                                                            | connections-and-vault đợt sau (W2)                    |
+| W2: trường `egress_hosts` trong `dw.connector/v1` và cách gắn `CatalogueHostsPort` từ sổ Bản mô tả; bộ kiểm chữ ký `standard_webhooks_v1a`, `meta_x_hub_signature_256`, `zalo_oa_zevent` trong `VERIFIERS` | W1 không có Hành động HTTP nào của trình kết nối (SMTP đi `SmtpEgress`) và không có cửa nhận nào dùng ba lược đồ ấy (workflow-triggers:R5.2 chỉ dùng Standard Webhooks v1 và token tĩnh); W1 gắn `CatalogueHostsPort` rỗng, nên R3.17 từ chối mọi lời gọi `connector` và `oauth`; `zalo_oa_zevent` cần đo trên OA thật (ADR-0115 (Accepted) quyết 8) | connections-and-vault đợt sau (W2), cùng trình kết nối HTTP đầu tiên |
 | W2: gửi email qua Gmail của công ty bằng ứng dụng Google nội bộ của khách, như một Hành động khai trong Bản mô tả trình kết nối                                                                                                                                                                | YC107; N8; DO-20 (c): nền tảng không giữ ứng dụng Google nào (ticket 01 bước 4); cần bộ điều phối OAuth (YC65); P1 gửi qua SMTP (R7)                                                                                                                                                   | connections-and-vault đợt sau (W2)                    |
 | W2: lane gửi tin đã xếp hàng, hỏi công tắc Tắt khẩn cấp trước khi gọi nhà cung cấp (hợp đồng agent-lifecycle:R8.4)                                                                                                                                                                             | Đạt giao chủ lane cho spec này ngày 24/10/2026; tin chỉ được hoãn và xếp hàng từ W2, nên W1 chỉ có lane giả trong test của agent-lifecycle                                                                                                                                             | connections-and-vault đợt sau (W2)                    |
 | W3: trình kết nối TikTok Lead Generation                                                                                                                                                                                                                                                       | N8: rút khỏi phần W2 của YC97; chỉ làm sau một ticket khám phá kiểm API (FOG-82)                                                                                                                                                                                                       | connections-and-vault đợt sau (W3); marketing-pilot   |
@@ -418,13 +440,18 @@ không `workspace_id`, mỗi bảng một dòng có lý do trong `_TENANT_WIDE_O
   `(tenant_id, connector_key, external_account)`. Trigger `touch_updated_at` nhường giá trị statement
   nêu (CLAUDE.md). `dw_app` có DELETE trên bảng, để route xóa (R5.8) và lane `offboarding` xóa Kết nối như bảng
   thường, và FK CASCADE xóa phong bì của nó (ticket 02 bước 2).
-- `platform.egress_allowed_hosts`: `id`, `tenant_id`, `owning_workspace_id` (FK ghép
-  `(tenant_id, owning_workspace_id)` tới `platform.workspaces` ON DELETE RESTRICT, có index, như
-  `platform.connections`); `host_pattern text` CHECK
-  (`^(\*\.)?[a-z0-9.-]+$`, ≤ 253 ký tự), kiểm Public Suffix List (wildcard không đặt trên hậu tố công
-  cộng), không IP literal; `ports int[] NOT NULL DEFAULT '{443}'`; `purpose text` CHECK (`http_tool`,
-  `mcp`, `webhook`, `model`, `any`); `note`, `created_by`, `created_at`; UNIQUE
-  `(tenant_id, host_pattern, purpose)`. Dòng chỉ được thêm bởi handler `egress.allowed_host.decided` (R3.11).
+- `platform.egress_allowed_hosts`: `id` uuid, bằng id của yêu cầu phê duyệt `egress.allowed_host` đã thêm dòng;
+  `tenant_id` NOT NULL FK `platform.tenants` ON DELETE CASCADE; `owning_workspace_id` NOT NULL, là workspace của yêu
+  cầu phê duyệt (FK ghép `(tenant_id, owning_workspace_id)` tới `platform.workspaces` ON DELETE RESTRICT, có index,
+  như `platform.connections`); `host_pattern text` NOT NULL CHECK
+  (`^(\*\.)?[a-z0-9.-]+$`, ≤ 253 ký tự, `!~ '^[0-9.]+$'`), kiểm Public Suffix List gồm phần PRIVATE (wildcard không
+  đặt trên hậu tố công cộng), không IP literal; `ports int[] NOT NULL DEFAULT '{443}'`; `purpose text` NOT NULL CHECK (`http_tool`,
+  `mcp`, `webhook`, `model`, `any`); `note` NULL; `created_by`, `created_at` NOT NULL; `removed_at`, `removed_by` NULL,
+  cả hai cùng NULL hay cùng có; UNIQUE từng phần `(tenant_id, host_pattern, purpose) WHERE removed_at IS NULL`. Dòng
+  chỉ được thêm bởi handler `egress.allowed_host.decided` (R3.11), bằng `INSERT ... ON CONFLICT DO NOTHING` với audit
+  chỉ khi có dòng mới, nên lần phát lại cùng quyết định không thêm dòng và không làm sống lại một dòng đã gỡ; `DELETE`
+  chỉ đánh dấu `removed_at` (R3.18). `dw_app`: SELECT, INSERT, UPDATE cột `removed_at`, `removed_by`, và DELETE chỉ để
+  lane `offboarding` xóa dòng của công ty như bảng thường; route không bao giờ xóa dòng.
 - `platform.tool_executions` (bảng của baseline, chỉ thêm; runtime-hardening/01 đặt CHECK `status`): thêm
   `credential_version jsonb` NULL với CHECK `credential_version IS NULL OR jsonb_typeof(credential_version) = 'object'`,
   ánh xạ tên trường bí mật sang `secret_version` mà lời gọi đã mở (ví dụ `{"password": 2}`), NULL ở lời gọi không qua
@@ -443,9 +470,9 @@ không `workspace_id`, mỗi bảng một dòng có lý do trong `_TENANT_WIDE_O
   `compromised_at` (R1.15), có hiệu lực ngay, `connections.manage` với tới workspace sở hữu, một người (Q-h3); xoay một bí mật là `PATCH` với giá
   trị mới của trường (R1.9).
 - `GET /api/v1/connectors` (`connections.read`), đọc lớp nền tảng.
-- `GET`, `POST`, `DELETE /api/v1/egress/allowed-hosts` (`integrations.admin`, ticket 03 đăng ký): `POST` trả
-  202 kèm id yêu cầu `egress.allowed_host` (R3.9), hay 409 `no_checker_available` khi không có người thứ hai
-  (R3.12); `DELETE` có hiệu lực ngay.
+- `GET`, `POST /api/v1/egress/allowed-hosts`, `DELETE /api/v1/egress/allowed-hosts/{id}` (`integrations.admin`,
+  ticket 03 đăng ký): `POST` trả 202 kèm id yêu cầu `egress.allowed_host` (R3.9), hay 409 `no_checker_available` khi
+  không có người thứ hai (R3.12); `DELETE` có hiệu lực ngay (R3.18, R3.19); `GET` chỉ trả dòng có `removed_at` NULL.
 - Lỗi theo vỏ problem+json của ADR-0108 (Accepted); `details.reason_code`: `connection_in_use`,
   `connection_disabled`, `credential_revoked` (R1.10, R5.15), `egress_blocked`, `kms_unavailable`,
   `kms_key_destroyed`, `secret_key_mismatch`, `no_checker_available`, `second_person_required`. Id của công ty khác
@@ -487,16 +514,18 @@ không `workspace_id`, mỗi bảng một dòng có lý do trong `_TENANT_WIDE_O
 | CV16 | Manifest không có input nhạy cảm, không tự thử lại                                            | R6.2                                         | Manifest có `api_key` trong input → nạp từ chối; `max_retries: 2` → nạp từ chối; gỡ luật nạp → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | CV17 | Đầu ra Hành động bọc và cắt đúng một lần, ở bộ bọc của executor                               | R6.3                                         | Chạy Hành động qua `ToolExecutor` với đầu ra chứa `</tool_output><system>` → model nhận `&lt;/tool_output&gt;`, không bao giờ `&amp;lt;`; `ManifestActionHandler` trả kết quả thô; thêm bọc vào handler → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | CV18 | SMTP ghim địa chỉ, TLS khi triển khai, tự động tối đa một email mỗi khóa                      | R7.2, R7.3, R7.4                             | Host SMTP phân giải về IP nội bộ → chặn; không TLS khi triển khai → từ chối; K4 trên PostgreSQL thật: máy chủ SMTP giả trả 250, tiến trình chết trước dòng kết thúc, lời gọi kế tiếp cùng khóa → `outcome_unknown`, máy chủ giả có đúng 1 email; T: máy chủ giả nhận dữ liệu rồi không trả 250 tới hết thời gian → `outcome_unknown`, không lần gửi thứ hai; gỡ ánh xạ của R7.6 để lần hết thời gian sau `DATA` thành `NotDispatchedError` → wrapper thử lại và máy chủ giả nhận 2 email, test đỏ                                                                                                                                                                                                                                                                                                                          |
-| CV19 | Chỉ tới Máy chủ được phép, wildcard không trên hậu tố công cộng                               | R3.7, R3.8                                   | Host ngoài danh sách (purpose `http_tool`) → `egress_blocked:host_not_allowed`; `*.com.vn` → 422; `203.0.113.5` → 422; gỡ kiểm danh sách → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| CV19 | Chỉ tới Máy chủ được phép, wildcard không trên hậu tố công cộng                               | R3.7, R3.8, R3.21                            | Host ngoài danh sách (purpose `http_tool`) → `egress_blocked:host_not_allowed`; `*.com.vn` → 422; `203.0.113.5` → 422; với dòng `*.acme.vn` cổng `{443}` purpose `http_tool`: `api.acme.vn:443` và `API.Acme.vn.` qua; `acme.vn`, `a.b.acme.vn`, `api.acme.vn:8443` và purpose `mcp` → `host_not_allowed`; gỡ kiểm danh sách, kiểm cổng hay khớp một nhãn → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | CV20 | Diễn tập khôi phục thấy kho khóa; bản sao lưu kho khóa không sống lâu hơn bản sao lưu dữ liệu | R2.7, R2.8                                   | Diễn tập chỉ khôi phục `dw` → giải mã canary thất bại, test đỏ; hạn giữ bản sao lưu kho khóa dài hơn `BACKUP_KEEP_DAYS` của `dw` → kiểm cấu hình đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | CV21 | Bật lại một kết nối cần người thứ hai                                                         | R5.10, R5.11, R5.12, R5.13                   | `POST .../enable` → 202, Connection status vẫn `disabled`, egress vẫn `connection_disabled`; người gửi tự duyệt → 409 `second_person_required`, status không đổi; người không giữ `connections.manage` quyết → 404; người thứ hai giữ `connections.manage` duyệt → `active`, audit `connection.enabled` đứng tên người đó với `details.lane` `outbox`; `PATCH` mang `status: active` không đổi status; chỉ người gửi giữ `connections.manage` với tới workspace của Kết nối → 409 `no_checker_available`, không yêu cầu nào, status vẫn `disabled`; bỏ `connections.enable` khỏi tiền tố nghiêm hay gỡ kiểm người duyệt → test đỏ                                                                                                                                                                                          |
-| CV22 | Thêm một Máy chủ được phép cần người thứ hai                                                  | R3.9, R3.10, R3.11, R3.12                    | `POST /api/v1/egress/allowed-hosts` → 202, không dòng nào, đích đó vẫn `egress_blocked:host_not_allowed`; người gửi tự duyệt → 409 `second_person_required`; người thứ hai giữ `integrations.admin` duyệt → đúng một dòng, audit `egress.allowlist.added` đứng tên người đó; handler chạy lại cùng quyết định → vẫn một dòng; chỉ người gửi giữ `integrations.admin` → 409 `no_checker_available`, không yêu cầu nào, không dòng nào; bỏ `egress.allowed_host` khỏi tiền tố nghiêm hay gỡ kiểm người duyệt → test đỏ                                                                                                                                                                                                                                                                                                       |
+| CV22 | Thêm một Máy chủ được phép cần người thứ hai                                                  | R3.9, R3.10, R3.11, R3.12                    | `POST /api/v1/egress/allowed-hosts` → 202, không dòng nào, đích đó vẫn `egress_blocked:host_not_allowed`; người gửi tự duyệt → 409 `second_person_required`; người thứ hai giữ `integrations.admin` duyệt → đúng một dòng, audit `egress.allowlist.added` đứng tên người đó; handler chạy lại cùng quyết định → vẫn một dòng; gỡ dòng rồi phát lại quyết định → dòng vẫn gỡ; hai yêu cầu cùng mẫu cùng được duyệt → một dòng, handler thứ hai kết thúc không lỗi; chỉ người gửi giữ `integrations.admin` → 409 `no_checker_available`, không yêu cầu nào, không dòng nào; bỏ `egress.allowed_host` khỏi tiền tố nghiêm, gỡ kiểm người duyệt hay đổi id dòng khỏi id phê duyệt → test đỏ                                                                                                                                                                                                                                                                                                       |
 | CV23 | Phong bì chỉ trỏ tới chủ thể cùng công ty                                                     | R1.8                                         | `platform.put_secret` dưới `app.tenant_id` của công ty A với `connection_id` của công ty B → lỗi khóa ngoại (23503), không dòng nào; xóa một Kết nối → mọi phong bì của nó xóa theo (CASCADE); đổi FK ghép thành FK một cột `connection_id` trong migration thử → lần ghi chéo công ty thành công, test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | CV24 | Lời gọi dùng phiên bản mới nhất chưa thu hồi; xoay không dừng lượt đang chờ; đóng khi thiếu   | R1.9, R1.10, R1.14, R5.15, R5.17, R6.8       | Một lượt đang chờ duyệt, đổi mật khẩu SMTP sang phiên bản 2, duyệt → email gửi bằng phiên bản 2, dòng kết thúc của `platform.tool_executions` có `credential_version` `{"password": 2}` và audit của lời gọi ghi 2; `platform.open_secret` với phiên bản 1 → `credential_revoked`, không giá trị; xóa mọi dòng của trường rồi gọi → `credential_revoked`, máy chủ giả không nhận gì; xoay `signing_secret` lần nữa trước khi 24 giờ của lần đầu hết → phiên bản 1 giữ `revoked_at` của lần đầu; gỡ bước ghi `revoked_at` khỏi `platform.put_secret` (phiên bản 1 vẫn mở được), cho `platform.open_secret` mở phiên bản nhỏ nhất thay lớn nhất, gỡ nhánh "không còn phiên bản chưa thu hồi" khỏi `connection_usable` hay bỏ cột khỏi lần ghi dòng kết thúc → test của lớp đó đỏ, mỗi lớp hỏi thẳng chứ không qua lớp sau nó |
 | CV25 | Lane xóa phiên bản bị thay sau 24 giờ và phiên bản bị thu hồi vì lộ ngay                      | R1.11, R1.12, R1.13                          | Phiên bản bị thay 25 giờ trước → lane xóa, một sự kiện `secret.versions_purged` đứng tên `system:credential_purge` ở workspace sở hữu của Kết nối; bị thay 23 giờ trước → giữ; bị thu hồi vì lộ một phút trước → xóa; phiên bản đang dùng và bí mật ký cũ chưa tới `revoked_at` → giữ; bỏ điều kiện 24 giờ khỏi `platform.purge_retired_secrets()` → phiên bản bị thay 23 giờ trước bị xóa, hay bỏ nhánh `replaced_at` NULL → phiên bản bị thu hồi vì lộ còn sau lần chạy, test đỏ                                                                                                                                                                                                                                                                                                                                         |
-| CV26 | Egress trả kết quả có kiểu, không tự gửi lại lời gọi không rõ kết quả                         | R3.13, R3.14, R3.15, R3.16, R7.6, R7.7, R7.8 | Máy chủ HTTP giả: từ chối kết nối → `NotDispatchedError`; nhận yêu cầu rồi reset → `OutcomeUnknownError`, máy giả có đúng 1 yêu cầu; 503 → `OutcomeUnknownError`; 422 → `RejectedError` mang 422; `egress_blocked:address` → `NotDispatchedError`; máy chủ SMTP giả: ngắt trước dấu kết thúc dữ liệu → `NotDispatchedError`; trả 550 sau dữ liệu → `RejectedError` mang 550; gỡ phân loại theo byte đã ghi, để reset sau khi gửi thành `NotDispatchedError`, hay cho egress thử lại lần reset → máy giả nhận 2 yêu cầu, test đỏ                                                                                                                                                                                                                                                                                            |
+| CV26 | Egress trả kết quả có kiểu, không tự gửi lại lời gọi không rõ kết quả                         | R3.13, R3.14, R3.15, R3.16, R7.6, R7.7, R7.8 | Máy chủ HTTP giả: từ chối kết nối → `NotDispatchedError`; nhận yêu cầu rồi reset → `OutcomeUnknownError`, máy giả có đúng 1 yêu cầu; 503 → `OutcomeUnknownError`; 422 → `RejectedError` mang 422; `egress_blocked:address` → `NotDispatchedError`; POST nhận 307 tới host ngoài danh sách → `OutcomeUnknownError`, máy giả có đúng 1 yêu cầu; body 2xx vượt 2 MiB → `OutcomeUnknownError`; máy chủ SMTP giả: ngắt trước dấu kết thúc dữ liệu → `NotDispatchedError`; trả 550 sau dữ liệu → `RejectedError` mang 550; gỡ phân loại theo byte đã ghi, để reset sau khi gửi thành `NotDispatchedError`, hay cho egress thử lại lần reset → máy giả nhận 2 yêu cầu, test đỏ                                                                                                                                                                                                                                                                                            |
 | CV27 | Khối `delivery` bắt buộc, luật nạp, W1 chỉ không khóa                                         | R6.5, R6.6, R6.7                             | Hành động `side_effect_level` `low` không có `delivery` → nạp từ chối; `on_unknown: resend_same_key` với `idempotency.mode: none` → từ chối; `lookup_then_resend` với `reconciliation.mode: none` → từ chối; `on_unknown: treat_as_failed` → từ chối theo schema; ở W1 `idempotency.mode: provider_key` → từ chối; vắng `on_unknown` → Đặc tả công cụ mang `review`; `smtp@1.0.0` nạp với `none`, `none`, `review`; gỡ luật nạp nào → ca của nó qua, test đỏ                                                                                                                                                                                                                                                                                                                                                               |
 | CV28 | Thu hồi vì lộ dừng mọi lượt được xin trước nó, dấu thu hồi không mất khi dọn                  | R1.15, R1.16, R5.16                          | Một lượt đang chờ, thu hồi vì lộ rồi lưu phiên bản 2 → lời gọi ra ngoài kế tiếp của lượt → `credential_revoked`, máy chủ giả không nhận gì; lượt xin sau lần thu hồi → gửi bằng phiên bản 2; lane `credential_purge` xóa phiên bản bị thu hồi rồi lượt cũ gọi tiếp → vẫn `credential_revoked`; `dw_app` UPDATE `compromised_at` về NULL hay lùi giá trị → bị từ chối; công ty B gọi route với id của công ty A → 404, không phiên bản nào đổi; người không giữ `connections.manage` với tới workspace sở hữu gọi route → 403, không phiên bản nào đổi; một người giữ khóa gọi → có hiệu lực ngay, không chờ người thứ hai; gỡ nhánh `compromised_at` khỏi `connection_usable`, hay gỡ trigger `platform.guard_connection_compromised_at()` rồi cho lane đặt `compromised_at` NULL → lượt cũ gửi bằng phiên bản 2, test đỏ  |
+| CV29 | Lời gọi trình kết nối chỉ tới host của Bản mô tả; chỉ `https` khi triển khai                  | R3.17, R3.20                                 | Purpose `connector` không `connector_key` → `egress_blocked:host_not_allowed`; `connector_key` có `egress_hosts` `{api.example.vn}` gọi `other.example.vn` → `host_not_allowed`, máy giả không nhận gì; purpose `oauth` như vậy → như vậy; với settings triển khai, `http://` tới host được phép, hay một bước chuyển hướng hạ về `http://` → `egress_blocked:scheme`, không gửi `Authorization` dạng rõ; gỡ kiểm `egress_hosts` hay kiểm `https` → test đỏ |
+| CV30 | Gỡ Máy chủ được phép có hiệu lực ngay, chỉ trong công ty mình                                 | R3.18, R3.19                                 | `DELETE` của người giữ `integrations.admin` → `removed_at` có giá trị, audit `egress.allowlist.removed` cùng giao dịch, lời gọi kế tiếp tới đích đó → `host_not_allowed`; công ty B `DELETE` id của công ty A → 404, dòng của A còn hiệu lực; người không giữ `integrations.admin` → 403, dòng còn; gỡ lọc `removed_at` khỏi kiểm danh sách hay gỡ kiểm quyền ở route → test đỏ |
 
 ## Tiêu chí xong
 
@@ -849,6 +878,55 @@ không `workspace_id`, mỗi bảng một dòng có lý do trong `_TENANT_WIDE_O
   R1.3, R1.5, R1.6, R2.2), ticket 05 (R1.2, CV4: ca vọng bí mật đầu-cuối). Nếu sai thì: vai dùng cho test đổi, còn
   câu REVOKE giữ; dòng xuất đổi lý do theo test phủ.
 - 2/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 02.
+- 3/11/2026 (agent, theo ủy quyền 31/10/2026): gate `checking-plan-readiness` của ticket 03 (builder check và boundary
+  walk), 2 CRITICAL và 12 HIGH, sửa theo khuyến nghị (a, b CRITICAL; c-n HIGH):
+  (a) purpose `connector` và `oauth` được miễn danh sách mà không có gì thay, trái ADR-0115 (Accepted) quyết 6: thêm
+  R3.17 và CV29, egress khai `CatalogueHostsPort` (W1 gắn rỗng, nên từ chối hết; W2 gắn từ `egress_hosts` của Bản mô
+  tả, dòng Ngoài phạm vi mới). Nếu sai thì: `oauth` lấy host từ hồ sơ ứng dụng nhà cung cấp thay vì Bản mô tả, R3.17
+  tách đôi.
+  (b) `DELETE` không có R nào và không có test âm chéo công ty (CLAUDE.md): thêm R3.18, R3.19, CV30; route mang
+  `{id}`. Nếu sai thì: người không giữ khóa nhận 404 thay vì 403, như ADR-0104 (Accepted) quyết 11 cho người quyết.
+  (c) chính sách địa chỉ đã có một chủ ở `net_guard` (`34768e7`): Trong phạm vi và ticket 03 dùng lại
+  `forbidden_address` và `resolve_checked`, không đọc `outbound_allowed_hosts` của settings (danh sách đó cho qua theo
+  tên mà không phân giải, chỉ cho URL người vận hành cấu hình), và chỉ composition root đặt `allow_private`, bằng
+  `not settings.is_deployed`. Nếu sai thì: egress không bao giờ nhận `allow_private`, và dev cục bộ gọi nhà cung cấp
+  giả qua một địa chỉ công khai giả lập ở resolver.
+  (d) `dw_agent_runtime` phụ thuộc `dw_connectors` (`packages/python/dw_agent_runtime/pyproject.toml`), nên egress
+  không nhập được ba lỗi từ `dw_agent_runtime`: ba lớp chuyển về `dw_kernel`, `dw_agent_runtime.dispatch` xuất lại
+  chính các lớp đó (R3.13). Nếu sai thì: egress khai kết quả riêng và một bộ ánh xạ ở `dw_agent_runtime.adapters` như
+  `pack_tools`, R3.13 bỏ vế "không lớp nào khác".
+  (e) lần dừng sau byte đầu tiên (chuyển hướng bị chặn, 3xx không theo, vượt 2 MiB, hết thời gian) là
+  `OutcomeUnknownError`, không `NotDispatchedError` (R3.14, R3.15, CV26). Nếu sai thì: 3xx không theo là
+  `RejectedError` mang trạng thái.
+  (f) chỉ `https` khi triển khai thiếu R: thêm R3.20 (CV29). Nếu sai thì: mã là `egress_blocked:address` thay vì
+  `egress_blocked:scheme`.
+  (g) handler idempotent "theo id phê duyệt" không có chỗ dựa, và phát lại sau một lần gỡ làm sống lại dòng: id dòng là
+  id phê duyệt, `DELETE` đánh dấu `removed_at`, UNIQUE từng phần, `ON CONFLICT DO NOTHING` (Dữ liệu, CV22). Nếu sai
+  thì: xóa thật, thêm cột `approval_request_id` UNIQUE, và chấp nhận cửa sổ phát lại của outbox.
+  (h) cách khớp mẫu và cột `ports` không ai đọc: thêm R3.21 vào CV19. Nếu sai thì: wildcard khớp mọi cấp con.
+  (i) miễn trừ chỉ đọc hay `simulate_safe` ở chế độ khác `live` chỉ cho purpose `connector` và `http_tool`; `mcp`,
+  `oauth`, `webhook` luôn bị chặn (R3.5). Nếu sai thì: `simulate_safe` miễn cả `mcp`.
+  (j) `integrations.admin` là khóa `scope_kind` `tenant`, `risk` `elevated`, `tenant_grantable` đúng, vì một dòng mở
+  egress cho mọi workspace của công ty (ticket 03 bước 7). Nếu sai thì: khóa `workspace`, và R3.12 hỏi người duyệt ở
+  độ sâu công ty.
+  (k) `VERIFIERS` của W1 chỉ `standard_webhooks_v1` và `static_header_token`, hai lược đồ workflow-triggers:R5.2 dùng;
+  `standard_webhooks_v1a`, `meta_x_hub_signature_256`, `zalo_oa_zevent` vào cùng bên dùng đầu tiên ở W2 (Ngoài phạm
+  vi); khóa quá `revoked_at` bị từ chối trong bộ kiểm (R4.4). Nếu sai thì: `meta_x_hub_signature_256` vào W1 với
+  vector của Meta làm oracle.
+  (l) ticket 03 không mở bí mật: bên gọi truyền giá trị cần che trên `EgressRequest` và tự ném `credential_revoked`
+  qua module phân loại (ticket 04, 05), nên ticket 03 không cần ticket 02 về chức năng; nhưng hai ticket cùng thêm
+  revision vào chuỗi migration và cùng sửa `_TENANT_WIDE_ON_PURPOSE` và `test_privileges.py`, nên ticket 03 thêm
+  Blocked by 02. Nếu sai thì: bỏ cạnh và chạy hai ticket nối tiếp theo thứ tự hàng đợi.
+  (m) danh sách client thô của test kiến trúc R3.6 thiếu `mailpit_mailbox.py` (hộp thư giả của dev), nên test đỏ ngay ở
+  commit gốc: thêm vào danh sách, và quét `packages/python/*/src`, `apps/*/src`, không quét `scripts/`. Nếu sai thì:
+  `mailpit_mailbox.py` chuyển sang egress với purpose riêng.
+  Lượt kiểm lại (builder check mới) thêm 1 HIGH, sửa: (n) Public Suffix List có phần PRIVATE hay không thì để ngỏ, và
+  CHECK của bảng nhận IP literal: kiểm cả phần PRIVATE (`*.github.io` → 422), danh sách ghim trong gói, CHECK thêm
+  `!~ '^[0-9.]+$'`, mẫu chuẩn hóa ở `POST` như R3.21, `created_by` là người gửi (Dữ liệu, ticket 03 bước 7, R3.8).
+  Nếu sai thì: chỉ phần ICANN, và hai người duyệt chịu trách nhiệm cho wildcard trên hậu tố riêng.
+  Sửa: Trong phạm vi, R3.5, R3.13-R3.15, R3.17-R3.21, Ngoài phạm vi, Dữ liệu, API, CV19, CV22, CV26, CV29, CV30,
+  ticket 03.
+- 3/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 03.
 
 ## Danh sách ticket
 
