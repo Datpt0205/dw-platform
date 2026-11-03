@@ -309,3 +309,15 @@ contract of ADR 0120.
   `canonical_json`'s other callers (cursor fingerprints, filters, schema cache keys) are not Studio hashes either.
   If wrong: route `workflow_sha256` through `content_hash` in its own ticket, rehash stored drafts and versions in
   a migration and send pending `dw.workflow.publish` approvals back to draft.
+
+## Amendments (2026-11-03)
+
+- tenant-config ticket 04 readiness gate, agent under Đạt's delegation of 2026-10-31: decision 6's root carries the
+  version id for every root, not only a draft's, so a run row leads to the exact version row it ran. Decision 7's
+  extension of `hosts()` is not a new signature: `WorkflowRunnerPort.hosts` keeps answering for code-defined workers,
+  and for a Studio run "can this process resume it" is `PinnedResolver` loading the manifest's rows through
+  `RunManifestPort` (declared in `dw_agent_runtime`, satisfied by `dw_studio`) plus decision 8's checks, which the Studio
+  runner runs before every resume or re-claim (workflow-engine/05). Decision 6's "required for every run with a Studio
+  root" is a CHECK that lands with the column marking a Studio root (workflow-engine/02), and a trigger refuses a run row
+  whose `run_mode` differs from its manifest's, or that changes a `run_manifest_hash` once set (tenant-config R6.9). If
+  wrong: `hosts` becomes async and takes the run's manifest hash, and every caller of it changes with it.

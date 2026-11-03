@@ -1,9 +1,9 @@
 # 04 — Bản kê lượt chạy: ghim mọi thứ lượt chạy dùng, phân giải theo bản kê
 
-Status: needs-triage
+Status: ready-for-agent
 Blocked by: 02, 03, .claude/plans/studio/runtime-hardening/issues/03-run-va-outbox-khong-ket.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md
 Area: studio
-Yêu cầu: R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.7, R6.8, R3.6, R3.8, R2.18, TC15, TC21, TC28, TC29, TC31, TC32
+Yêu cầu: R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.7, R6.8, R6.9, R3.6, R3.8, R2.18, TC15, TC21, TC28, TC29, TC31, TC32
 
 ## Mục tiêu
 
@@ -11,8 +11,14 @@ Mỗi lượt chạy có gốc là thành phần Studio ghim release ref, chế 
 một bản kê lưu một lần theo mã băm; trong lượt chạy, mọi phân giải chỉ đọc bản kê, kể cả khi tiếp tục ở
 tiến trình khác sau 3 ngày chờ duyệt hay lâu hơn; không gì một lượt chạy còn trỏ tới bị dọn (spec R6,
 TC15). Chỉ lượt `simulate` được có gốc là bản Nháp, ghim bằng mã băm tạm của nội dung nháp (R6.1, R6.7,
-TC28). Mục `engine` ghim độ bền checkpoint `sync` mà runtime truyền ở mọi lần chạy và tiếp tục (R6.8, TC32; V4.34).
-Ticket 05 thêm mục điểm gắn vào cùng bản kê, không ghim phiên bản bí mật nào (V4.35).
+TC28). Mục `engine` ghim độ bền checkpoint `sync` (R6.8, TC32; V4.34). Ticket 05 thêm mục điểm gắn vào cùng bản kê,
+không ghim phiên bản bí mật nào (V4.35).
+
+Ticket này làm chủ thân bản kê, bộ dựng, hai bảng, cột `run_manifest_hash` và `PinnedResolver`, và thử chúng ở
+chính các seam đó. Cửa nhận `RunRequestService` gọi bộ dựng trước node đầu tiên (workflow-engine/02, R3.3, R3.9),
+runner truyền `durability` ở mọi lần chạy và tiếp tục (workflow-engine/03, R4.25), và sáu kiểm trước khi tiếp tục biến
+lần từ chối của `PinnedResolver` thành `blocked` với `incompatible_resume` (workflow-engine/05, R6.7, R6.14); ba ticket
+đó chờ ticket này, nên không tiêu chí nào ở đây cần chúng (spec, Ngoài phạm vi).
 
 ## Việc cần làm
 
@@ -33,8 +39,20 @@ Ticket 05 thêm mục điểm gắn vào cùng bản kê, không ghim phiên b�
       revision này đặt.
     - `platform.worker_runs.run_manifest_hash` NULL, khớp `^sha256:[0-9a-f]{64}$`, FK
       `(tenant_id, run_manifest_hash)` tới `platform.run_manifests` ON DELETE RESTRICT, index
-      `(tenant_id, run_manifest_hash)`. CHECK buộc lượt chạy có gốc Studio phải có bản kê đi cùng cột gốc
-      Studio mà workflow-engine thêm (ADR-0113 (Accepted)).
+      `(tenant_id, run_manifest_hash)`. Revision này không viết CHECK buộc lượt có gốc Studio mang bản kê, vì cột
+      đánh dấu gốc Studio (`artifact_kind`) chưa có: workflow-engine/02 thêm nó và chờ ticket này, nên
+      `ck_worker_runs_studio_manifest CHECK (artifact_kind IS NULL OR run_manifest_hash IS NOT NULL)` vào revision của
+      ticket đó cùng cột (ADR-0109 (Accepted) quyết 6; Quyết định 3/11/2026 của spec). Lượt của worker định nghĩa bằng
+      code và lượt wf-lite của Digital Worker (phiên bản ghim `<semver>+t<n>.<sha256>`, chưa là thành phần Studio,
+      ADR-0109 (Accepted) sửa đổi 2026-11-02) giữ `run_manifest_hash` NULL.
+    - Trigger BEFORE INSERT OR UPDATE OF `run_manifest_hash`, `run_mode` trên `platform.worker_runs`,
+      `platform.match_run_manifest()` (R6.9, TC28): khi `NEW.run_manifest_hash` khác NULL, đọc `body->>'run_mode'` của
+      dòng `platform.run_manifests` `(NEW.tenant_id, NEW.run_manifest_hash)` dưới quyền của bên gọi (RLS); khác
+      `NEW.run_mode`, hay không đọc được → `ERRCODE 23514`, ràng buộc `ck_worker_runs_manifest_run_mode`; ở UPDATE, khi
+      `OLD.run_manifest_hash` khác NULL mà `NEW.run_manifest_hash IS DISTINCT FROM OLD.run_manifest_hash` → `23514`,
+      ràng buộc `ck_worker_runs_manifest_pinned`. `run_mode` của dòng là chỗ executor đọc khi chạy và khi tiếp tục
+      (R4.5), `run_mode` trong thân là thứ bản kê ghim; trigger làm hai bản đó bất đồng ầm ĩ, không lặng lẽ
+      (failure-modes #2), nên một cửa ghi dòng `live` cho bản kê `simulate` của một bản Nháp bị từ chối.
     - RLS ENABLE và FORCE theo tenant cho hai bảng mới; grant khẳng định trong `test_privileges.py`;
       `test_rls_coverage.py` thấy cả hai, và mỗi bảng có một dòng lý do trong danh sách bảng toàn tenant
       của test đó (bản kê định danh theo nội dung, dùng chung cho mọi lượt chạy cùng nội dung; khóa bản kê
@@ -52,58 +70,131 @@ Ticket 05 thêm mục điểm gắn vào cùng bản kê, không ghim phiên b�
       riêng của bảng đó đã đứng trước `studio.artifact_versions`, nên thứ tự không dựa vào CASCADE.
     - Cột mới đi sau `ck_worker_runs_status` của runtime-hardening/03 trên cùng `platform.worker_runs`, nên
       revision này nối sau revision của ticket đó.
-2. Thân `dw.run_manifest/v1` (mô hình trong lõi `dw_studio`, `extra="forbid"`): `schema`, `release_manifest_ref`,
-   `run_mode`, `root` (`kind`, `artifact_id`, `version_no`, `definition_hash`, và `stage` `draft` chỉ khi gốc là bản
-   Nháp), `closure` (mỗi mục `kind`, `key`, `version`, `content_hash`, lấy từ `studio.definition_manifests` của gốc),
-   `engine` (lấy từ mục registry của loại gốc; workflow-engine và agent-builder điền mục của họ, ADR-0109 (Accepted)
-   quyết 8), trong đó `durability: Literal["sync"]` bắt buộc, không giá trị mặc định ở mô hình, do builder đặt cho mọi
-   gốc (R6.8; V4.34); runner của workflow-engine/03 đọc nó và truyền cho mọi lần chạy và tiếp tục graph
-   (workflow-engine:R4.25). Mã băm là `content_hash` của thân qua `dw_kernel.canonical`. Thân không chứa bí mật
-   nào. Gốc ở `draft` (chỉ lượt `simulate`, R6.7; ADR-0109 (Accepted) quyết 6): `closure` lấy từ `extract` của loại trên nội dung nháp lúc nhận,
-   `definition_hash` là mã băm tạm tính trên nội dung đó và bao đóng đó bằng cùng bước băm mà `seal` của ticket 02 dùng
-   (ADR-0109 (Accepted) quyết 4), `version_no` là giá trị của dòng nháp, có thể null; không ghi gì vào dòng nháp hay
-   `studio.definition_manifests`.
-3. `RunManifestPort` khai trong `dw_agent_runtime` (bên dùng là cửa nhận lượt chạy), `RunManifestBuilder`
-   của `dw_studio` đáp ứng, nối ở composition root: `build(tenant_id, root_version_id, run_mode)` ghi bản
-   kê và các dòng `platform.run_manifest_keys` (gốc và mọi phiên bản trong bao đóng) rồi trả mã băm, trong
-   giao dịch nhận lượt chạy; cửa nhận lượt chạy của workflow-engine gọi nó trước node đầu tiên. Gốc ở `draft`
-   mà `run_mode` khác `simulate` → từ chối trước khi ghi gì, kể cả khi bên gọi không phải route `.../test-runs`
-   (R6.7); gốc `draft` với `simulate` → dòng `platform.run_manifest_keys` trỏ dòng nháp, FK RESTRICT giữ nó khỏi
-   bị xóa cứng.
-4. `PinnedResolver` trong `dw_agent_runtime`: dựng từ các dòng bất biến của bản kê; khóa không có trong
-   bản kê → `ConfigError` với `details.key`, không truy vấn phiên bản hiện hành. Mọi phân giải Studio
-   trong lượt chạy Studio đi qua nó. Khi tiếp tục ở bất kỳ tiến trình nào, dựng lại từ
-   `platform.worker_runs.run_manifest_hash`; `WorkflowRunnerPort.hosts` trả đúng cho lượt chạy Studio khi
-   mọi phiên bản bản kê ghim đọc được từ database (ADR-0109 (Accepted) quyết 7). Gốc `draft` là dòng duy nhất
-   không bất biến: nội dung của nó chỉ được dùng khi mã băm tính lại bằng cùng bước băm vẫn bằng mã băm tạm đã ghim;
-   lệch → từ chối phân giải, không đọc nội dung mới, và lần tiếp tục bị từ chối `incompatible_resume` theo kiểm thứ
-   sáu của ADR-0109 (Accepted) quyết 8 (workflow-engine:R6.14).
-5. Đo p95 thời gian dựng và ghi bản kê lúc nhận lượt chạy trên compose, bao đóng 50 thành phần, 1.000
-   lượt; ghi số đo và cấu hình máy vào Comments (R6.6).
+2. Thân `dw.run_manifest/v1`, mô hình trong lõi `dw_studio`, `extra="forbid"` ở mọi tầng (thân, `root`, mục bao đóng,
+   `engine`): `schema`, `release_manifest_ref`, `run_mode`, `root`, `closure`, `engine`. Mã băm là `content_hash` của
+   thân qua `dw_kernel.canonical`. Thân không chứa bí mật nào; ticket 05 thêm `bindings`.
+    - `release_manifest_ref`: giá trị mà composition root đọc bằng `read_release_manifest_ref`
+      (`apps/api/src/dw_api/bootstrap/paths.py:42`, `apps/worker/src/dw_worker/composition.py:387`), tiêm vào
+      constructor của `RunManifestBuilder`, cùng giá trị mà dòng lượt chạy ghi.
+    - `root`: `kind`, `artifact_id`, `version_id` (id của dòng phiên bản, cho mọi gốc; ADR-0109 (Accepted) quyết 6 ghi id
+      phiên bản của gốc bản Nháp, và hai bản Nháp nối tiếp cùng nội dung là hai dòng khác nhau), `version_no` (null với
+      mọi gốc có `stage` hiện tại `draft`, kể cả Bản ứng viên đã rút về còn giữ số cũ, vì lần niêm phong sau cấp số mới,
+      R2.8), `definition_hash`, và `stage` `draft` chỉ khi gốc là bản Nháp. Gốc là bản Nháp khi `stage` của dòng lúc
+      nhận là `draft`; khi tiếp tục, `root.stage` đã ghim quyết định, không `stage` hiện tại của dòng.
+    - `closure` chỉ gồm phụ thuộc trực tiếp của gốc; một quy trình con hay một agent node chạy thành lượt riêng với bản
+      kê riêng dựng từ phiên bản con mà bản kê của lượt cha ghim (ADR-0109 (Accepted) quyết 9; workflow-engine/09).
+      Gốc đã niêm phong: nguyên văn `closure` của thân `studio.definition_manifests` đọc theo
+      `(tenant_id, definition_hash)` của gốc. Gốc ở `draft` (chỉ lượt `simulate`, R6.7; ADR-0109 (Accepted) quyết 6):
+      gọi lại hai hàm của ticket 02, không chép (failure-modes #2): `closure_of(uow, kind, artifact_id, document)` trên
+      nội dung nháp đọc lúc nhận, rồi `definition_body(kind, artifact_id, content_hash(document), closure)`;
+      `definition_hash` là `content_hash` của thân mà `definition_body` trả, và `closure` của bản kê là `closure` của
+      chính thân đó, nên bước gộp trùng và xếp theo `(kind, key)` chỉ có một chủ. `closure_of` không ghi dòng nào (bước
+      niêm phong của ticket 02 tự ghi `studio.dependencies`); không gì được ghi vào dòng nháp, `studio.dependencies` hay
+      `studio.definition_manifests`. Tham chiếu hỏng của nháp → lỗi 422 `dependency_unresolved` của `closure_of`, nguyên
+      văn; nội dung nháp không băm được (số thực, số nguyên ngoài ±(2^53−1), chữ không NFC) → `CanonicalError` của
+      `dw_kernel.canonical` với con trỏ; cả hai trước khi ghi gì.
+    - `engine`: mô hình `EngineSection` với `durability: Literal["sync"]` bắt buộc, không giá trị mặc định ở mô hình, do
+      builder đặt cho mọi gốc (R6.8; V4.34). Ticket này không thêm trường nào vào mục `ArtifactKindRegistry` của ticket 02;
+      các mục ghim theo loại của ADR-0109 (Accepted) quyết 8 (compiler, `type@major`, mã băm schema state, định dạng lưu,
+      phiên bản LangGraph) vào `EngineSection` ở workflow-engine/05 cùng bên đọc của chúng (failure-modes #1).
+    - Thân vượt CHECK kích thước 1 MiB của `platform.run_manifests.body` → vi phạm ánh xạ theo tên ràng buộc ra
+      `PayloadTooLargeError`, không 500 và không dòng nào; một phép đo duy nhất là CHECK của bảng.
+3. `RunManifestBuilder` trong lõi `dw_studio` (constructor injection: registry của ticket 02, `release_manifest_ref`),
+   `build(uow, root_version_id, run_mode) -> str`, gọi thẳng bởi `RunRequestService` của workflow-engine/02 (cùng gói
+   `dw_studio`, không qua Protocol), trong giao dịch nhận lượt chạy của bên gọi. Không có tham số tenant: tenant là
+   `app.tenant_id` của giao dịch, và mọi lần đọc đi qua RLS (`CLAUDE.md`, Per-tenant artifacts). Theo thứ tự:
+    - đọc dòng phiên bản gốc cùng dòng thành phần của nó, khóa dòng thành phần `FOR SHARE`, nên `save_draft` của ticket 02
+      (khóa `FOR UPDATE` cùng dòng) chờ tới khi giao dịch nhận kết thúc và nội dung nháp được băm là nội dung được nhận;
+      không thấy dòng (tenant khác, id không có) hay thành phần đã xóa mềm → `NotFoundError`, không ghi gì;
+    - gốc ở `draft` mà `run_mode` khác `simulate` → `ConflictError` với `details.reason_code`
+      `draft_root_not_simulate`, trước khi ghi gì, bên gọi nào cũng vậy (R6.7);
+    - dựng thân như bước 2, kiểm bằng mô hình, tính mã băm;
+    - `INSERT ... ON CONFLICT DO NOTHING` vào `platform.run_manifests`, rồi `INSERT ... ON CONFLICT DO NOTHING` các dòng
+      `platform.run_manifest_keys`: một dòng cho phiên bản gốc và một dòng cho mỗi phiên bản mà một mục `artifact` của bao
+      đóng ghim, lấy `to_version_id` từ `studio.dependencies` của phiên bản gốc khi gốc đã niêm phong (nguồn duy nhất của
+      bao đóng một lượt chạy, ADR-0109 (Accepted) quyết 5), và từ các dòng `closure_of` phân giải khi gốc ở `draft`; mục
+      `to_kind` khác không có dòng khóa (ticket 05 thêm dòng của phiên bản cấu hình). Hai lượt cùng nội dung nhận đồng
+      thời không vỡ unique nào. Gốc `draft` với `simulate` → dòng khóa trỏ dòng nháp, FK RESTRICT giữ nó khỏi bị xóa cứng;
+    - trả mã băm. `build` không ghi `platform.worker_runs`; cửa ghi dòng lượt chạy với mã băm đó.
+4. Phân giải khi chạy và khi tiếp tục, qua ranh giới gói (`dw_agent_runtime` không import `dw_studio`, hợp đồng
+   import-linter của studio-skeleton/02):
+    - `RunManifestPort` khai trong `dw_agent_runtime.ports`, bên dùng là runtime dựng phân giải của lượt chạy Studio lúc
+      chạy và lúc tiếp tục: `async load(run_manifest_hash) -> PinnedManifest`, gồm thân và, cho mỗi dòng
+      `platform.run_manifest_keys`, dòng phiên bản bất biến (`id`, `artifact_id`, `version_no`, `stage`, `content_hash`,
+      `definition_hash`, `document_schema`, `document`), đọc dưới tenant của giao dịch (RLS). Dòng không ở `draft` bất
+      biến nhờ trigger của ticket 02 (TC1); dòng hiện ở `draft` (gốc là bản Nháp, hay Bản ứng viên đã rút về sau khi lượt
+      ghim nó) thì sửa được, nên adapter kèm `current_hash` của dòng đó: với gốc, mã băm tính lại bằng `definition_body`
+      của ticket 02 trên `document` hiện tại và `closure` đã ghim trong thân, không gọi lại `closure_of` (một phụ thuộc
+      phát hành bản mới trong lúc chờ không làm lượt hỏng, vì bao đóng đã ghim); với mục bao đóng, `content_hash` của
+      `document` hiện tại. `SqlRunManifestStore` trong tầng `adapters` của `dw_studio` đáp ứng, nối ở
+      composition root của API và worker.
+    - `PinnedResolver` trong `dw_agent_runtime`, dựng bằng `await PinnedResolver.load(port, run_manifest_hash)`: mã băm
+      không đọc được (tenant khác, không có) → `ConfigError` với `details.reason` `manifest_not_found`; một dòng khóa
+      không đọc được → `ConfigError`; dòng có `current_hash` khác mã băm đã ghim (`root.definition_hash` cho gốc, `content_hash`
+      của mục cho mục bao đóng) → `ConfigError` với `details.reason` `pinned_version_changed`, không trả nội dung mới nào.
+      So mã băm ở đây là chỗ duy nhất, mà kiểm thứ sáu của ADR-0109 (Accepted) quyết 8 ở workflow-engine/05 dùng.
+    - `resolve(kind, key)` trả mục đã ghim (`kind`, `key`, `version`, `content_hash`, và với mục `artifact` thì dòng
+      phiên bản); khóa không có trong bản kê → `ConfigError` với `details.key`, không truy vấn nào. Mục không phải
+      `artifact` trả từ chính mục bản kê; loại nào đọc nội dung của mục đó từ ngoài database thì spec đăng ký loại đó so
+      mã băm của nội dung với mã băm đã ghim. Mọi phân giải Studio trong lượt chạy Studio đi qua `PinnedResolver`.
+    - `WorkflowRunnerPort.hosts` giữ chữ ký cho worker định nghĩa bằng code. Với lượt chạy Studio, câu "tiến trình này
+      tiếp tục được không" là `PinnedResolver.load` thành công cộng các kiểm của ADR-0109 (Accepted) quyết 8 mà
+      workflow-engine/05 chạy trước mỗi lần tiếp tục và nhận lại (ADR-0109 (Accepted) sửa đổi 2026-11-03).
+5. Đo p95 của `build` (bao đóng 50 thành phần `live` của loại `fixture`, dựng bằng bộ dựng của `dw_studio.testing`) trên
+   PostgreSQL của compose, 1.000 lượt nóng, mỗi lượt một gốc khác để lượt nào cũng chèn thật, một p95 cho gốc đã niêm
+   phong và một cho gốc nháp `simulate` (đường `closure_of`), một lần ở lúc đóng hàng (`.claude/rules/wave-close.md`,
+   `.claude/rules/latency.md`); ghi số đo và cấu hình máy vào Comments (R6.6).
 
 ## Tiêu chí chấp nhận
 
-- [ ] R6.1: lượt chạy gốc `fixture` có `run_manifest_hash` trước node đầu tiên; thân có release ref,
-      `run_mode`, gốc với `definition_hash` và bao đóng; mã băm bằng `content_hash` của thân.
-- [ ] R6.1 (TC28): lượt `simulate` trên nháp `fixture` → thân ghim `stage` `draft` và `definition_hash` bằng mã
-      băm mà `seal` cho cùng nội dung; dòng nháp và `studio.definition_manifests` không đổi.
-- [ ] R6.2: hai lượt chạy cùng nội dung → cùng `run_manifest_hash` và đúng một dòng
-      `platform.run_manifests`; đổi `run_mode` → mã băm khác.
-- [ ] R6.3 (TC15): trong lượt chạy Studio, hỏi khóa không ghim → `ConfigError`, repository phiên bản
-      (spy) không được gọi; gỡ kiểm của `PinnedResolver` → test đỏ.
-- [ ] R6.4 (TC15): lượt chạy chờ duyệt, niêm phong v2 của một thành phần trong bao đóng, tiếp tục ở tiến
-      trình khác → lượt chạy dùng v1 đã ghim.
-- [ ] R6.4 (TC15): lượt `simulate` trên bản Nháp; lưu nháp mới rồi tiếp tục ở tiến trình khác → phân giải gốc
-      bị từ chối, nội dung mới không chạy; bỏ so mã băm tạm → test đỏ.
+- [ ] R6.1: `build` cho một phiên bản đã niêm phong của `fixture` có `uses` trỏ hai thành phần có bản `live` → trả mã
+      băm bằng `content_hash` của thân; thân có `release_manifest_ref` tiêm vào, `run_mode`, `root` với `version_id`,
+      `version_no`, `definition_hash`, `closure` bằng `closure` của bản kê định nghĩa của gốc, `engine.durability` `sync`;
+      đúng ba dòng `platform.run_manifest_keys` (gốc và hai đích); test chèn một dòng `platform.worker_runs` cùng
+      `run_mode` mang mã băm đó (đóng vai cửa của workflow-engine/02) → được.
+- [ ] R6.1 (TC28): `build` `simulate` trên bản Nháp `fixture` → thân ghim `stage` `draft` và `version_id` của dòng nháp;
+      niêm phong đúng nội dung đó ngay sau trong test → `definition_hash` của bước niêm phong bằng mã băm tạm đã ghim;
+      trước lần niêm phong, dòng nháp, `studio.dependencies` và `studio.definition_manifests` không đổi.
+- [ ] R6.1: bản Nháp có `uses` trỏ một thành phần chưa có bản `live` → lỗi 422 `dependency_unresolved` của `closure_of`;
+      bản Nháp chứa một số thực → `CanonicalError` `float_forbidden` với con trỏ; cả hai không dòng `platform.run_manifests`
+      hay `platform.run_manifest_keys` nào.
+- [ ] R6.2: hai lần `build` cùng nội dung → cùng mã băm, đúng một dòng `platform.run_manifests` và không dòng khóa trùng;
+      hai lần `build` cùng nội dung ở hai giao dịch đồng thời → cả hai commit, cùng mã băm, không lỗi unique; bỏ
+      `ON CONFLICT DO NOTHING` ở dòng khóa → ca đồng thời đỏ; đổi `run_mode` → mã băm khác.
+- [ ] R6.3 (TC15): `PinnedResolver` hỏi khóa không ghim → `ConfigError` với `details.key`, port (spy) không được gọi sau
+      `load`; gỡ kiểm của `PinnedResolver` → test đỏ.
+- [ ] R6.4 (TC15): dựng bản kê cho gốc đã niêm phong, chèn dòng lượt chạy, niêm phong v2 của một đích trong bao đóng và
+      đặt v2 `live`, v1 `retired` bằng vai migrator, rồi ở một tiến trình con mới (kết nối mới) `PinnedResolver.load` từ
+      `platform.worker_runs.run_manifest_hash` → đích phân giải về v1 với `document` của v1; để resolver đọc bản `live`
+      hiện hành → test đỏ.
+- [ ] R6.4 (TC15): bản kê `simulate` trên bản Nháp; lưu nháp nội dung mới rồi `load` ở tiến trình con →
+      `ConfigError` `pinned_version_changed`, không nội dung mới nào được trả; bỏ so mã băm → test đỏ; nháp giữ nguyên mà
+      một đích trong bao đóng phát hành bản mới → `load` thành công với bao đóng đã ghim.
+- [ ] R6.4 (TC15): bản kê `test` ghim một gốc ở `evaluating`; bằng vai migrator đưa gốc về `draft` (như lệnh rút của
+      agent-lifecycle) rồi đổi `document` → `load` trả `ConfigError` `pinned_version_changed`; đưa về `draft` mà không đổi
+      `document` → `load` thành công; chỉ so ở gốc có `root.stage` `draft` → ca đổi `document` đỏ.
+- [ ] R6.3 (TC15): ca âm chéo tenant (`CLAUDE.md`, Tenancy and authorization): giao dịch gắn tenant B gọi `build` với
+      `root_version_id` là phiên bản của tenant A → `NotFoundError`, không dòng nào ở cả hai tenant; giao dịch gắn tenant B
+      `PinnedResolver.load` mã băm bản kê của tenant A → `ConfigError` `manifest_not_found`; chạy truy vấn của
+      `SqlRunManifestStore` bằng vai bỏ qua RLS → test đỏ.
 - [ ] R6.5 (TC15): ở một công ty đã chuyển sang `offboarding` (ngoài đó trigger của spec R3.8 từ chối lệnh xóa
-      trước): DELETE phiên bản được bản kê ghim → lỗi FK; DELETE bản kê mà `platform.worker_runs` còn trỏ tới → lỗi FK.
-- [ ] R6.6: p95 đo được ghi ở Comments và không quá 20 ms, hoặc Quyết định của spec có dòng Đạt chấp
+      trước): DELETE phiên bản gốc của bản kê, dòng mà chỉ `platform.run_manifest_keys` giữ → lỗi FK nêu FK của
+      `artifact_version_id`; DELETE bản kê mà `platform.worker_runs` còn trỏ tới → lỗi FK; gỡ FK của `artifact_version_id`
+      → ca đầu đỏ.
+- [ ] R6.1: một thân giả lớn hơn 1 MiB → `PayloadTooLargeError`, không dòng `platform.run_manifests` nào; bỏ ánh xạ theo
+      tên ràng buộc → lỗi 500, test đỏ.
+- [ ] R6.6: p95 đo ở lúc đóng hàng được ghi ở Comments và không quá 20 ms, hoặc Quyết định của spec có dòng Đạt chấp
       nhận số đo mới.
-- [ ] R6.8 (TC32): bản kê của lượt gốc `fixture` có `engine.durability` `sync`; dựng thân với `async` hay thiếu
-      `durability` → lỗi kiểm mô hình, không dòng `platform.run_manifests`; đổi kiểu trường thành `str` → ca `async`
-      được nhận, test đỏ.
-- [ ] R6.7 (TC28): `build` với gốc ở `draft` và `run_mode` `live` hay `test` → từ chối, không dòng
-      `platform.run_manifests` hay `platform.run_manifest_keys` nào; bỏ kiểm chế độ → test đỏ.
+- [ ] R6.8 (TC32): bản kê của gốc `fixture` có `engine.durability` `sync`; dựng thân với `async`, thiếu `durability`, hay
+      thêm một khóa lạ vào `engine` → lỗi kiểm mô hình, không dòng `platform.run_manifests`; đổi kiểu trường thành `str` →
+      ca `async` được nhận, test đỏ.
+- [ ] R6.7 (TC28): `build` với gốc ở `draft` và `run_mode` `live` hay `test`, gọi thẳng không qua route nào →
+      `ConflictError` `draft_root_not_simulate`, không dòng `platform.run_manifests` hay `platform.run_manifest_keys` nào;
+      bỏ kiểm chế độ → test đỏ.
+- [ ] R6.9 (TC28): `dw_app` chèn dòng `platform.worker_runs` `run_mode` `live` mang mã băm của một bản kê `simulate` →
+      23514 `ck_worker_runs_manifest_run_mode`, không dòng nào; cùng chế độ → được; dòng worker định nghĩa bằng code với
+      `run_manifest_hash` NULL → được; UPDATE `run_manifest_hash` đã đặt sang mã băm khác → 23514
+      `ck_worker_runs_manifest_pinned`, dòng giữ nguyên; gỡ trigger → test đỏ.
 - [ ] R2.18 (TC29): bằng vai migrator, INSERT dòng `platform.run_manifest_keys` của tenant A có `artifact_version_id`
       là phiên bản của tenant B → lỗi FK ghép; đổi FK ghép về FK một cột → test đỏ.
 - [ ] R3.6 (TC21): `test_offboarding.py` purge tenant có lượt chạy ghim bản kê lên phiên bản Studio, tenant
@@ -118,8 +209,11 @@ Ticket 05 thêm mục điểm gắn vào cùng bản kê, không ghim phiên b�
 
 ## Nguồn
 
-- `packages/python/dw_agent_runtime/src/dw_agent_runtime/ports.py:132`; spec: R6.4.
+- `packages/python/dw_agent_runtime/src/dw_agent_runtime/ports.py:132`; spec: R6.4; ADR-0109 (Accepted) quyết 7, sửa đổi
+  2026-11-03.
 - `db/migrations/versions/0005_run_artifact_versions.py:41-51`; spec: R6.1.
+- `db/migrations/versions/c478ca7b6ed1_run_mode_and_simulated_tool_calls.py` (`run_mode` của ticket 03); spec: R6.9.
+- `apps/api/src/dw_api/bootstrap/paths.py:42`; spec: R6.1.
 - `packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py:108-114` (foundations-hardening/07 thay
   bằng sổ bước xóa); spec: R3.6, TC21; ADR-0109 (Accepted) quyết 6-7.
 - ADR-0109 (Accepted) quyết 8 (mục `engine`, độ bền `sync`); spec: R6.8, TC32.
@@ -154,3 +248,46 @@ Ticket 05 thêm mục điểm gắn vào cùng bản kê, không ghim phiên b�
   `durability` `sync` (R6.8, TC32), mà workflow-engine/03 truyền; hai bảng của ticket dùng bước mặc định của sổ bước xóa
   của foundations-hardening/07, thứ tự suy từ `pg_constraint`, thay mục `_ORDERED_FIRST` của các dòng Comments ngày
   24/10/2026, và ca âm của R3.6 thành đột biến phép suy. Dòng Blocked by không đổi.
+- 2026-11-03 (agent, theo ủy quyền 31/10/2026): gate `checking-plan-readiness` (builder check và boundary walk trong
+  một subagent, vì ticket thêm migration; không route; đối chiếu ticket 02 đã ĐẠT ở `2a22b5d`, mã sau ticket 01, 03 và
+  `5246de9`): 2 CRITICAL, 8 HIGH, đã sửa ở bước 1-5 và tiêu chí, mỗi cái một dòng Quyết định 3/11/2026 của spec với
+  Nếu sai thì. CRITICAL: (1) `root` thiếu `version_id` mà ADR-0109 (Accepted) quyết 6 ghi cho gốc bản Nháp; (2) không ca
+  âm chéo tenant nào ở `build` hay `PinnedResolver` (`CLAUDE.md`, Tenancy and authorization). HIGH: (3) tiêu chí R6.1,
+  R6.4 cần cửa, runner và kiểm tiếp tục của workflow-engine/02, 03, 05, ba ticket chờ ticket này, và CHECK "gốc Studio có
+  bản kê" cần cột `artifact_kind` của workflow-engine/02: tiêu chí nay thử ở seam của ticket này, CHECK sang revision
+  của workflow-engine/02; (4) bao đóng nháp "lấy từ `extract`" thay vì gọi lại `closure_of` và `definition_body` của
+  ticket 02; (5) băm lại nháp khi tiếp tục dùng bao đóng đã ghim, không gọi lại `closure_of`; (6) dòng khóa ghi `ON
+  CONFLICT DO NOTHING`; (7) `run_mode` ở dòng lượt chạy và trong thân bất đồng được: trigger
+  `platform.match_run_manifest()` và R6.9, kèm `run_manifest_hash` đã đặt thì không đổi; (8) `RunManifestPort` là
+  `load` cho runtime qua ranh giới gói, `build` gọi thẳng trong `dw_studio`; (9) `engine` không lấy từ mục registry mà
+  ticket 02 không có trường đó; (10) `hosts` giữ chữ ký, lượt Studio hỏi `PinnedResolver.load` và kiểm của
+  workflow-engine/05 (ADR-0109 (Accepted) sửa đổi 2026-11-03).
+- 2026-11-03 (agent): đối chiếu ticket 02 (hợp đồng đã ĐẠT, chưa dựng): không mâu thuẫn buộc sửa ticket 02. Ticket này
+  dựa vào `closure_of` không ghi dòng nào (bước niêm phong tự ghi `studio.dependencies`) và vào `definition_body` nhận
+  `closure` rồi tự gộp trùng và xếp; nếu người dựng ticket 02 đặt bước ghi hay bước xếp ở chỗ khác, ticket này gọi đúng
+  hàm làm việc đó, không chép (tiêu chí R6.1 (TC28) đỏ khi hai bản lệch). Không thêm trường nào vào `ArtifactKindRegistry`.
+- 2026-11-03 (agent): việc của ticket ngoài vùng này, cho gate của ticket đó: workflow-engine/02 thêm
+  `ck_worker_runs_studio_manifest CHECK (artifact_kind IS NULL OR run_manifest_hash IS NOT NULL)` cùng cột
+  `artifact_kind` và một ca âm (gỡ CHECK → dòng Studio thiếu bản kê lọt), và khóa dòng thành phần gốc `FOR SHARE` trước
+  `validate` của bản Nháp, để `validate` và `build` đọc cùng một nội dung; workflow-engine/05 thêm vào `EngineSection`
+  các mục ghim theo loại của ADR-0109 (Accepted) quyết 8 và đọc `ConfigError` của `PinnedResolver.load` thành `blocked`
+  với `incompatible_resume`.
+- 2026-11-03 (agent): MEDIUM và LOW của gate, chưa sửa, cho người dựng:
+  (a) `release_manifest_ref` là `unreleased` ở cây chưa phát hành; một môi trường `settings.is_deployed` mà đọc ra
+  `unreleased` nên từ chối nhận lượt chạy Studio thay vì ghim lớp nền tảng không truy được (failure-modes #7); chủ là
+  composition root của API và worker;
+  (b) `ConfigError` giữa lượt (khóa không ghim) kết thúc lượt với mã lỗi ổn định, audit và span, không thử lại; chủ là
+  wrapper nút của workflow-engine/03;
+  (c) mỗi lần lưu nháp rồi mô phỏng sinh một bản kê mới giữ FK RESTRICT lên dòng nháp; dọn bản kê theo lưu giữ của lượt
+  chạy là W2 (spec, Ngoài phạm vi: "lưu giữ và dọn"; ADR-0109 (Accepted) Open 3);
+  (d) cạnh `platform.worker_runs` → `platform.run_manifests` nằm ngoài schema `studio`, nên test phủ của
+  studio-skeleton:R4.2 không đọc nó; ca purge của tiêu chí R3.6 với một lượt chạy trỏ bản kê là phép đo của cạnh đó;
+  (e) tiêu chí R6.4 dùng tiến trình con (`subprocess`, kết nối mới) cho "tiến trình khác"; lần tiếp tục thật qua runner
+  là của workflow-engine/05 (R6.7, R6.14).
+- 2026-11-03 (agent, theo ủy quyền 31/10/2026): lượt xác nhận (builder check mới trên bản đã sửa): 3 HIGH, đã sửa: dòng
+  khóa hiện ở `draft` (Bản ứng viên rút về sau khi lượt ghim nó, rồi sửa) được băm lại, không chỉ gốc có `root.stage`
+  `draft`, lỗi chung `pinned_version_changed`; ca R6.4 đặt v2 `live` và v1 `retired`, vì v2 còn ở `draft` thì resolver đọc
+  bản hiện hành cũng trả v1; ca R6.5 xóa phiên bản gốc mà chỉ dòng khóa giữ, kèm đột biến gỡ FK. Kèm (MEDIUM, sửa luôn vì
+  rẻ): bao đóng chỉ gồm phụ thuộc trực tiếp, lượt con có bản kê riêng; `version_no` null với mọi gốc ở `draft`; giới hạn
+  1 MiB là CHECK của bảng, ánh xạ theo tên ra `PayloadTooLargeError`; phép đo R6.6 mỗi lượt một gốc khác, hai đường.
+- 2026-11-03 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
