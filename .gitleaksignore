@@ -17,3 +17,17 @@
 # so the same rule matched the comment. Rewritten so the phrase is described,
 # not quoted; this fingerprint covers the one commit that carries the quote.
 8c46c65566ee25b330580a9f1b0476b7e7e4cbee:.gitleaksignore:generic-api-key:11
+
+# Test fixtures, each checked by hand on 2026-11-03: a dev HMAC secret (or a
+# Zalo token in a settings-redaction test) that a test hands to the app it
+# builds, spelled as a counting sequence so it reads as a placeholder. None is
+# configured anywhere outside its test. A new test should mark such a line with
+# an inline `# gitleaks:allow` instead of adding a fingerprint here.
+dfa0f399fa358671928216004984c62b9e1c187b:apps/worker/tests/unit/test_zalo_poll_consumer.py:generic-api-key:58
+a7e51885268091c1294ba996208f989b4f0d0a08:apps/api/tests/integration/test_idempotent_operations.py:generic-api-key:67
+a70fb376d2df5dc3bddfe1791b8493c6963854da:apps/api/tests/integration/test_conditional_writes_and_queries.py:generic-api-key:68
+a70fb376d2df5dc3bddfe1791b8493c6963854da:apps/api/tests/integration/test_plan_shape.py:generic-api-key:58
+e842742edc991b8959db3edb69ab7f0d928e55a0:packages/python/dw_agent_runtime/tests/integration/test_send_floor_executor_db.py:generic-api-key:45
+9341032d907a89d9f03601ced8572ca6aea0d3b4:apps/worker/tests/integration/test_leadcare_db.py:generic-api-key:289
+a6963adec8c898e2084da642c30659e31f5063b6:apps/api/tests/integration/test_dw_scorecard_autonomy.py:generic-api-key:41
+fea6cf2ac96b0ee8085b46915e4c827cdfe310f1:apps/api/tests/integration/test_wf_ai_wiring.py:generic-api-key:26
