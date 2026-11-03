@@ -37,9 +37,9 @@ chạy chết được thu hồi (spec R4, R5). Thay `RunBudgetLedger` và `tena
    `configs/policies/retention.d/platform.budget_leases.yaml` (`days: 30` sau khi đóng, `purger: row_delete`), số tạm
    UNVERIFIED; không ticket nào khác chờ hai mảnh này và ticket này không chờ ticket nào vì mảnh (H-1).
 2. `EffectiveLimits.for_admission(run_context, artifact)` gộp gói, tenant, workspace và tổ tiên, agent
-   hoặc quy trình (phạm vi người dùng ở W2); cache theo tenant, xóa khi ghi. Một hàm `window_for(tenant_id, window_kind, at)`
-   đọc `platform.tenants.timezone` cho ranh giới, NULL thì Asia/Ho_Chi_Minh (DO-50; ADR-0121 (Accepted)
-   quyết 9); ảnh worker mang dữ liệu múi giờ (tzdata).
+   hoặc quy trình (phạm vi người dùng ở W2); cache theo tenant, xóa khi ghi. Ranh giới kỳ của bộ đếm lấy từ
+   `window_for(tenant_id, window_kind, at)` mà ticket 02 dựng trong `dw_usage` (DO-50; ADR-0121 (Accepted) quyết 9), chủ
+   duy nhất của ranh giới; ticket này không viết bản thứ hai.
 3. `LimitsPort` (runtime khai, `dw_usage` đáp): `admit`, `resume`, `RunLease.before_call(estimate) -> CallPermit(max_output_tokens, call_id, occurred_at)`,
    `after_call`, `release(reason)`. Nhận run một giao dịch, khóa bộ đếm theo thứ tự chuẩn (scope rank
    rồi `scope_id`); hết kỳ → `QuotaExceededError` `limit_exceeded` kèm `metric`, `scope_type`, `window`,
@@ -71,7 +71,8 @@ chạy chết được thu hồi (spec R4, R5). Thay `RunBudgetLedger` và `tena
    `second_person_required`, không đổi dòng nào (D11; nới qua tenant-config là W2); cao hơn Trần của gói →
    422 `limit_above_plan`; `kind` khác `hard` → 422 `validation_failed` với con trỏ tới `kind` (app-standards:R1.3),
    vì `soft` là W2. Màn Cấu hình hạn mức (antd Form, Table) ở cấp tenant và workspace, hiện Trần của
-   gói và Hạn mức hiệu lực; W1 chỉ có thao tác siết.
+   gói và Hạn mức hiệu lực; W1 chỉ có thao tác siết. Màn `/usage` của ticket 02 thêm antd Progress cho mỗi hạn mức, đọc
+   `GET /api/v1/limits` (spec, Màn hình).
 7. Xóa `RunAllowancePort` và adapter của nền tảng đáp nó, `RunBudgetLedger`, `RunSpend`, `ModelBudgets`,
    `DailyAllowance`, `SqlSpendGuard*`, lane `spend_guard_retention`; sửa wiring ở composition root và test
    lane; migration bỏ `platform.tenant_daily_spend_guard` (downgrade tạo lại) và bỏ dòng của bảng đó khỏi
@@ -165,3 +166,7 @@ chạy chết được thu hồi (spec R4, R5). Thay `RunBudgetLedger` và `tena
 - 2026-10-26 (agent): theo V4.31 và V4.37, Lượt kiểm định và lease `eval_offline` của nó nay ở agent-lifecycle/06, tách từ
   agent-lifecycle/04; ticket chờ ticket này là agent-lifecycle/06 (cạnh đã có ở ticket đó), thay vế "agent-lifecycle/04 chờ
   ticket này" của dòng 2026-10-23 ở trên.
+- 2026-11-03 (agent, theo ủy quyền 31/10/2026): theo gate của ticket 02: `window_for` dời sang ticket 02 (lane cuộn
+  của ticket đó là bên dùng đầu), ticket này dùng lại (bước 2); Progress cho hạn mức trên màn `/usage` dời từ ticket 02
+  sang đây cùng `GET /api/v1/limits` (bước 6). Nếu sai thì: `window_for` về lại ticket này và lane cuộn của ticket 02
+  cắt ngày theo UTC tới khi ticket này xong.

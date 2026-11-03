@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 2/11/2026
-Sẵn sàng: ĐẠT (2/11/2026; 0 CRITICAL, 0 HIGH; ticket 01, 05)
+Sẵn sàng: ĐẠT (3/11/2026; 0 CRITICAL, 0 HIGH; ticket 01, 02, 05)
 
 Studio cần đo và chặn chi tiêu ở mức công ty, workspace, agent và quy trình (theo người dùng từ W2), việc
 mà một tổng theo ngày của cả tenant không làm được. Lát này đưa lại Sổ sử dụng theo lượt gọi (D6) làm nguồn
@@ -80,13 +80,17 @@ Mọi Thao tác tính phí được định giá bởi một Bảng giá có phi
 sử không bị định lại giá (YC76; ADR-0121 (Accepted) quyết 2).
 
 - R2.1 KHI một Thao tác tính phí cần giá, `PriceBook.price` PHẢI trả chi phí `Decimal`, phiên bản Bảng
-  giá và id mục giá từ mục có `effective_from` muộn nhất không muộn hơn thời điểm lời gọi.
+  giá và id mục giá từ mục có `effective_from` muộn nhất không muộn hơn thời điểm lời gọi, cho `tenant_id` của lượt chạy
+  (lớp nền tảng cho mọi tenant ở W1; mục giá BYOM của tenant là W2, ADR-0121 (Accepted) quyết 3).
 - R2.2 NẾU bộ nạp Bảng giá gặp hai mục chồng thời gian cùng khóa, một loại sử dụng lạ hay một giá âm,
   THÌ bộ nạp PHẢI từ chối và không nạp Bảng giá.
 - R2.3 NẾU ở profile đã triển khai (`settings.is_deployed`) một tuyến model nền tảng trả phí không có
   mục giá, THÌ dịch vụ khởi động PHẢI từ chối khởi động.
 - R2.4 KHI Bảng giá đổi giá một model từ một ngày, một Bản ghi sử dụng đã quyết toán PHẢI giữ nguyên
   `price_book_version` và chi phí cũ của nó.
+- R2.5 NẾU không mục giá nào có `effective_from` không muộn hơn thời điểm lời gọi cho provider, model và loại sử dụng
+  của lời gọi, THÌ `PriceBook.price` PHẢI báo lỗi `PriceNotFoundError`, không trả chi phí 0, và Bản ghi sử dụng của lời
+  gọi đó mang `cost_source` `unpriced`.
 
 ### R3 — Sổ sử dụng theo lượt gọi và màn Mức độ sử dụng
 
@@ -104,10 +108,11 @@ mục đích và bên trả phí; màn Mức độ sử dụng đọc chính s�
 - R3.4 NẾU `dw_app` UPDATE hay DELETE trên `platform.usage_events` hay một phân vùng của nó, THÌ
   PostgreSQL PHẢI từ chối, vì sổ chỉ thêm.
 - R3.5 KHI người giữ `platform.usage.read` mở `GET /api/v1/usage/summary`, màn Mức độ sử dụng PHẢI đọc
-  tổng từ bảng cuộn của `platform.usage_events` trong tập workspace được phép, với tổng một ngày bằng đúng
-  tổng `platform.usage_events` của ngày đó theo `window_for`.
-- R3.6 NẾU công ty khác đọc Sổ sử dụng của công ty này qua bảng cha hay route, THÌ PostgreSQL và API PHẢI
-  trả 0 dòng hoặc 404.
+  tổng từ bảng cuộn của `platform.usage_events` của cả công ty (khóa có `scope_kind` `tenant`; dòng không thuộc workspace
+  nào hiện thành nhóm "Cấp công ty"), với tổng một ngày bằng đúng tổng `platform.usage_events` của ngày đó theo
+  `window_for`.
+- R3.6 NẾU công ty khác đọc Sổ sử dụng của công ty này qua bảng cha hay route, hoặc người giữ `runs.read` ở một workspace
+  mở `GET /api/v1/runs/{run_id}/usage` của lượt chạy ở workspace khác, THÌ PostgreSQL và API PHẢI trả 0 dòng hoặc 404.
 - R3.7 NẾU `dw_app` đọc hay ghi một phân vùng của `platform.usage_events` theo tên phân vùng, THÌ
   PostgreSQL PHẢI từ chối với `permission denied`, vì dòng chỉ đọc ghi qua bảng cha (DO-02.2).
 - R3.8 KHI lane `offboarding` xóa dữ liệu của một công ty đang `offboarding`, lane `offboarding` PHẢI xuất rồi
@@ -115,14 +120,18 @@ mục đích và bên trả phí; màn Mức độ sử dụng đọc chính s�
   `platform.usage_daily`, `platform.limit_policies`, `platform.budget_counters` và `platform.budget_leases`
   (YC6; ADR-0121 (Accepted)).
 - R3.9 NẾU `platform.purge_tenant_append_only` được gọi cho một công ty có `platform.tenants.status` khác
-  `offboarding`, THÌ PostgreSQL PHẢI từ chối với SQLSTATE 23514 và không xóa dòng nào.
-- R3.10 `platform.purge_tenant_append_only` PHẢI chỉ xóa dòng của đúng công ty được gọi, ở mọi bảng có
-  `append_only = true` trong `platform.time_partitioned_tables` trừ `platform.audit_events`, mà thời hạn nằm ở mảnh
-  retention của từng bảng.
+  `offboarding`, hay khác `app.tenant_id` của giao dịch gọi, THÌ PostgreSQL PHẢI từ chối với SQLSTATE 23514 và không xóa
+  dòng nào.
+- R3.10 `platform.purge_tenant_append_only` PHẢI chỉ xóa dòng của đúng công ty được gọi, ở đúng các bảng bên gọi nêu,
+  mỗi bảng là một bảng có `append_only = true` trong `platform.time_partitioned_tables` trừ `platform.audit_events` (mà
+  thời hạn nằm ở mảnh retention của từng bảng), và từ chối với SQLSTATE 23514 một bảng nêu ngoài tập đó; bước của nó trong
+  sổ bước xóa nêu mọi bảng như vậy mà không bước nào khác khai.
 - R3.11 KHI lane `offboarding` xóa dữ liệu của một công ty đang `offboarding`, lane `offboarding` PHẢI xóa dòng của một
   bảng `append_only` có khóa ngoại `ON DELETE RESTRICT` tới một bảng thường, như tin nhắn tới hội thoại
   (agent-builder:R4.9), trước dòng cha của nó, trong cùng giao dịch xóa, theo thứ tự mà sổ bước xóa của lane suy từ
   `pg_constraint` cho bước `platform.purge_tenant_append_only` (foundations-hardening:R11.4; H-2).
+- R3.12 NẾU người gọi `GET /api/v1/usage/summary` không giữ `platform.usage.read`, THÌ API PHẢI trả 403 và không đọc
+  dòng nào.
 
 ### R4 — Hạn mức là chính sách trên một chuỗi phạm vi, chặn ở cửa nhận lượt chạy
 
@@ -237,7 +246,8 @@ W1 dùng bộ đếm theo tiến trình, GCRA trên Valkey vào ở W2 (YC44; DO
   kiểu, lần hỏi không tính lượt và adapter bộ đếm theo tiến trình trên cửa sổ trượt (W1).
 - Hàm của sổ `platform.time_partitioned_tables`, chủ duy nhất ở W1:
   `platform.drop_expired_partitions(cutoffs jsonb)` (mỗi bảng cha một mốc, lane `partitions` dựng từ mảnh retention
-  của bảng đó) và `platform.purge_tenant_append_only(p_tenant uuid)` cho offboarding, một bước đăng ký vào sổ bước xóa
+  của bảng đó), `platform.append_only_tables()` và `platform.purge_tenant_append_only(p_tenant uuid, p_tables text[])`
+  cho offboarding, một bước đăng ký vào sổ bước xóa
   của lane `offboarding` (foundations-hardening/07; H-2), thứ tự do sổ suy từ cạnh khóa ngoại `RESTRICT` trong
   `pg_constraint` (R3.8, R3.10, R3.11); spec khác không viết lại thân hai hàm này.
 - Mảnh retention của bảng spec này tạo, `configs/policies/retention.d/<schema>.<table>.yaml` theo định dạng của
@@ -270,6 +280,7 @@ W1 dùng bộ đếm theo tiến trình, GCRA trên Valkey vào ở W2 (YC44; DO
 | Hàng đợi lượt chạy và điều phối công bằng; cổng đánh giá và ngưỡng chi phí phát hành                                                                                                                                                                                                                                                                                                                                                                                                                                                                | spec này cấp `LimitsPort` (bộ đếm đồng thời đến ở W2 cùng trần đồng thời); cổng xin lease `eval_offline` (DO-21.4)                                                                                                                                                                                                                                                                                                                                                | workflow-engine; agent-lifecycle                  |
 | Kết nối model của công ty và `model-proxy`; runtime sandbox                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | spec này định nghĩa cổng báo vCPU và GB đặt trước nhân thời gian chạy (DO-45.1) và bên trả phí                                                                                                                                                                                                                                                                                                                                                                    | model-connections; code-sandbox                   |
 | Đóng băng, Tắt khẩn cấp                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | cùng middleware hỏi thêm câu của agent-lifecycle                                                                                                                                                                                                                                                                                                                                                                                                                  | agent-lifecycle                                   |
+| Tab Mức độ sử dụng và Cấu hình hạn mức nhúng ở trang agent và trang quy trình | hai trang chưa có ở `apps/web/app`; ticket 02 dựng màn `/usage` lọc theo agent hay quy trình bằng tham số URL và ticket 03 màn Cấu hình hạn mức, trang nào dựng sau nhúng chúng (config-chang.md mẫu 4) | agent-builder; workflow-builder-ui |
 
 ## Dữ liệu
 
@@ -339,7 +350,7 @@ Mọi bảng tenant: RLS ENABLE và FORCE theo tenant, grant cùng migration, t�
 
 - `GET /api/v1/runs/{run_id}/usage` (`runs.read`, RLS và workspace): tổng theo thao tác, model, nguồn
   chi phí.
-- `GET /api/v1/usage/summary` (`platform.usage.read`, workspace trong tập được phép): gộp theo workspace,
+- `GET /api/v1/usage/summary` (`platform.usage.read`, khóa `scope_kind` `tenant`, nên cả công ty; R3.5, R3.12): gộp theo workspace,
   agent, quy trình và mục đích; W1 không có chiều gộp theo người (DO-51.2).
 - `GET /api/v1/limits` (`platform.usage.read`): mỗi chính sách kèm Hạn mức hiệu lực, bộ đếm của kỳ hiện tại
   và giờ đặt lại; không có route `/api/v1/usage/limits` riêng. `PUT /api/v1/limits/{scope_type}/{scope_id}`
@@ -355,8 +366,8 @@ Mọi bảng tenant: RLS ENABLE và FORCE theo tenant, grant cùng migration, t�
 - Màn Mức độ sử dụng `/usage` (antd Statistic cho chi phí, token, số run; Table nhóm theo workspace,
   agent, quy trình, mục đích, không theo người ở W1; Progress cho hạn mức; không thư viện biểu đồ ở v1,
   biểu đồ cần ADR ngoại lệ riêng khi có YC đòi, ADR-0101 (Accepted) quyết 6, DO-42.3), đọc
-  `GET /api/v1/usage/summary`; nhúng tab ở trang agent
-  và quy trình (mẫu cấu hình limit và usage theo agent, config-chang.md mẫu 4).
+  `GET /api/v1/usage/summary` (ticket 02), Progress đọc `GET /api/v1/limits` (ticket 03); lọc theo agent hay quy trình
+  bằng tham số URL, tab ở trang agent và quy trình thuộc trang đó (Ngoài phạm vi; config-chang.md mẫu 4).
 - Màn Cấu hình hạn mức (antd Form, Table) ở cấp tenant và workspace, hiện Trần của gói và Hạn mức hiệu
   lực; W1 chỉ cho hạ hay đặt mới, nới mở ở W2 cùng đề xuất hai người; cấp agent và quy trình nhúng sau
   (agent-builder, workflow-builder-ui).
@@ -371,7 +382,7 @@ Mọi bảng tenant: RLS ENABLE và FORCE theo tenant, grant cùng migration, t�
 | UL4  | Không cửa nào vòng qua hạn mức                       | R6.1, R6.2        | Lease cạn: gọi thẳng gateway có cấu trúc, chat, embedding, rerank, lane nạp → mỗi cửa bị từ chối; `RuntimeSeam` lộ gateway thô → test field đỏ                                                                                                                                                              |
 | UL5  | Thiếu số dùng không thành 0                          | R3.3              | Adapter không báo usage → dòng `estimated` bằng ước tính; gỡ → test đỏ                                                                                                                                                                                                                                      |
 | UL6  | Lease mồ côi được thu hồi                            | R5.4              | Tiến trình chết giữa lời gọi → sau `expires_at` lease đóng, phần đang bay tính, audit `system:reaper`; gỡ `ReapTarget` → test đỏ                                                                                                                                                                            |
-| UL7  | Cách ly tenant                                       | R3.6, R3.7        | Đọc, ghi `budget_counters`, `budget_leases`, `usage_events`, `limit_policies` của tenant B từ A → 0 dòng hoặc 404; kết nối không đặt tenant đọc 0 dòng; đọc một phân vùng của `usage_events` theo tên → `permission denied`                                                                                 |
+| UL7  | Cách ly tenant                                       | R3.6, R3.7        | Đọc, ghi `budget_counters`, `budget_leases`, `usage_events`, `usage_daily`, `limit_policies` của tenant B từ A → 0 dòng hoặc 404; kết nối không đặt tenant đọc 0 dòng; đọc một phân vùng của `usage_events` theo tên → `permission denied`; người giữ `runs.read` ở workspace W1 mở usage của run ở W2 cùng công ty → 404 |
 | UL8  | Workspace con không vượt cha                         | R4.4              | Cha cap USD 10 đã dùng hết, con cap USD 50 → lượt chạy ở con bị chặn; gỡ vòng tổ tiên → test đỏ                                                                                                                                                                                                             |
 | UL9  | Không đặt Hạn mức trên Trần của gói                  | R4.5              | `PUT` hạn mức tenant cao hơn gói → 422 `limit_above_plan`, không dòng nào đổi                                                                                                                                                                                                                               |
 | UL10 | Chỉ người có quyền đặt Hạn mức                       | R4.6              | Thiếu `platform.limits.manage` → 403; workspace tenant khác → 404                                                                                                                                                                                                                                           |
@@ -380,8 +391,9 @@ Mọi bảng tenant: RLS ENABLE và FORCE theo tenant, grant cùng migration, t�
 | UL13 | Hạn mức giữa lượt chạy dừng sạch, không hạ ngầm      | R5.5, R6.3        | Trần cạn giữa lượt → dừng ở ranh giới kế tiếp `limit_exceeded`, không cắt giữa một bước gửi, không hạ model; gỡ kiểm ranh giới → test đỏ                                                                                                                                                                    |
 | UL14 | Giới hạn tốc độ theo khóa có kiểu, không theo bearer | R7.1, R7.2, R7.3  | Giới hạn 60, 2 replica: lần thứ 31 trong một phút ở một tiến trình bị từ chối; hai bearer khác nhau gửi tới cùng nguồn chia chung một bộ đếm; khóa (tenant, người gọi, đối tượng) 20 trong 10 phút: lần hỏi không tính lượt không đổi bộ đếm, sau lượt thứ 20 trả đã đủ; công ty khác cùng id nguồn, người gọi và đối tượng có bộ đếm riêng; đổi khóa sang chuỗi tự do hay băm bearer, hay bỏ `tenant_id` khỏi khóa → test đỏ |
 | UL15 | Không nới Hạn mức bằng một người                     | R4.9              | Một người `PUT` nâng trần tenant từ USD 10 lên USD 50 → 409 `second_person_required`, Hạn mức hiệu lực vẫn USD 10; `DELETE` chính sách → 409; gỡ kiểm → test đỏ                                                                                                                                             |
-| UL16 | Xóa sổ chỉ thêm chỉ khi công ty đang offboarding     | R3.8, R3.9, R3.10 | Gọi `platform.purge_tenant_append_only` cho công ty `active` → 23514, 0 dòng xóa; công ty `offboarding` → dòng của nó trong `usage_events` xóa hết, dòng của công ty khác và `audit_events` còn; gỡ kiểm trạng thái khỏi hàm → test đỏ                                                                      |
+| UL16 | Xóa sổ chỉ thêm chỉ khi công ty đang offboarding     | R3.8, R3.9, R3.10 | Gọi `platform.purge_tenant_append_only` cho công ty `active` → 23514, 0 dòng xóa; giao dịch của tenant A gọi cho tenant B đang `offboarding` → 23514, 0 dòng xóa; nêu `platform.audit_events` → 23514; công ty `offboarding` → dòng của nó trong `usage_events` xóa hết, dòng của công ty khác và `audit_events` còn; gỡ kiểm trạng thái hay kiểm tenant khỏi hàm → test đỏ |
 | UL17 | Phạm vi của hạn mức không trỏ sang công ty khác      | R4.13             | Bằng vai migrator, INSERT dòng `platform.limit_policies` của tenant A có `scope_workspace_id` là workspace của tenant B, hay `scope_artifact_id` là thành phần của B → FK từ chối, không ghi; cùng id của tenant A → nhận; đổi một FK ghép sang FK một cột → test đỏ                                        |
+| UL18 | Chỉ người giữ `platform.usage.read` đọc tổng sử dụng | R3.12             | Người thiếu `platform.usage.read` gọi `GET /api/v1/usage/summary` → 403, không dòng nào đọc; gỡ kiểm quyền → test đỏ |
 
 ## Tiêu chí xong
 
@@ -725,6 +737,23 @@ Mọi bảng tenant: RLS ENABLE và FORCE theo tenant, grant cùng migration, t�
   hay 06 và không tài nguyên chung với chúng; chung tệp `apps/api/src/dw_api/bootstrap/wiring.py` với ticket 01 (mã, không
   phải tài nguyên của danh sách va chạm). workflow-triggers/02 và custom-objects/03 chờ nó. Theo `## Ủy quyền` của
   studio.md (Đạt, 31/10/2026). Nếu sai thì: hạ ticket 05 về `needs-triage` và chia lại.
+- 3/11/2026 (agent, theo ủy quyền 31/10/2026): sửa ticket 02 theo gate `checking-plan-readiness` (2 CRITICAL, 9 HIGH, đo
+  trên `992bf74`). `platform.purge_tenant_append_only(p_tenant uuid, p_tables text[])` buộc `p_tenant` bằng `app.tenant_id`
+  như hai hàm xóa cùng loại, và chỉ xóa bảng bên gọi nêu trong `platform.append_only_tables()`; bước của nó ở
+  `OffboardingPurgeSteps.platform()` giải bảng mỗi lượt trừ bảng của bước khác (foundations-hardening:R11.8).
+  `PriceBook.price` nhận `tenant_id` từ đầu (`CLAUDE.md` mục 'Per-tenant artifacts'); thiếu mục giá → `PriceNotFoundError`,
+  dòng `unpriced`, không 0. Summary đọc cả công ty vì `platform.usage.read` là khóa `scope_kind` `tenant`; route run theo
+  workspace của người gọi. `window_for` dời từ ticket 03 sang ticket 02; Progress hạn mức sang ticket 03; tab ở trang agent
+  và quy trình ra Ngoài phạm vi. Gói `dw_usage` dựng ở ticket 02; `route_cost` đọc giá qua `PricingPort` runtime khai.
+  `LedgerUsageRecorder` là bên ghi của ticket 02; ba cột lộ trình được NULL tới compliance-pdpl/03. Sửa: R2.1, thêm R2.5,
+  R3.5, R3.6, R3.9, R3.10, thêm R3.12, Trong phạm vi, Ngoài phạm vi, API, Màn hình, UL7, UL16, thêm UL18, ticket 02, ticket 03;
+  chi tiết và lý do ở Comments của ticket 02. Theo `## Ủy quyền` của studio.md (Đạt, 31/10/2026). Nếu sai thì: như các
+  dòng `Nếu sai thì` ở Comments của ticket 02.
+- 3/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 02. Ticket 02 là Bảng giá, Sổ sử dụng và màn Mức độ sử dụng
+  (R2.1-R2.5, R3.1-R3.12, UL5, UL7, UL12, UL16, UL18); 03, 04 và 06 chờ nó; không đường phụ thuộc nối nó với 01 và 05 (đã
+  dựng), và không bảng, route, migration, config hay prompt chung với hai ticket đó. Bảng va chạm ngoài spec ở Comments
+  của ticket 02. Theo `## Ủy quyền` của studio.md (Đạt, 31/10/2026). Nếu sai thì: hạ ticket 02 về `needs-triage` và chia
+  lại.
 
 ## Danh sách ticket
 
