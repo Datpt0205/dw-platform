@@ -261,6 +261,12 @@ kind of change nobody makes and everybody works around.
   the sealed version, checked by the platform's validator (ADR 0112, ADR 0116).
 - Workflow nodes contain no provider SDK and no SQL, and never import a concrete
   adapter — they take what they need by injection.
+- `dw.workflow/v1` has one implementation, in the platform core
+  (`dw_agent_runtime.wflite`): the document model, the lowering to
+  `WorkflowIR`, the validator with the one `wf.*` code table, the compiler and
+  the step-type registry. A pack's workflow and a Studio workflow are the same
+  format; Studio adds step types, path rules and its kind registration, never
+  a second model, validator or compiler (ADR 0112, Amendments 2026-11-03).
 - A tool definition carries version, schemas, scopes, side-effect level, data
   classification, output trust, approval policy, timeout and idempotency; a
   tenant tool is data of a registered kind whose policy only tightens its

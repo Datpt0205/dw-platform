@@ -321,3 +321,9 @@ Kiểm `type@major` chưa đăng ký là `wf.unknown_node_type` của workflow-e
   B7 (tầng của module) là MEDIUM (e). S4 (`null` làm hỏng lần render) là quyết định có ghi `Nếu sai thì:` ở dòng
   Quyết định 3/11/2026 của spec. Không còn CRITICAL hay HIGH.
 - 2026-11-03 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-03 (agent, theo ủy quyền 31/10/2026): theo gate của workflow-engine/01 (spec workflow-engine, Quyết định
+  3/11/2026): mã loại chưa đăng ký là `wf.unknown_type` mà wf-lite đã ship, không `wf.unknown_node_type`. workflow-engine/01
+  thêm vào `NodeTypeSpec` bốn trường bắt buộc, `block`, `ends_run`, `exits_loop` và `dependencies`; bảng `READERS` của
+  bước 2 nêu nơi đọc của chúng (`dw_agent_runtime.wflite.ir:lower` cho ba trường đầu, bộ trích ở
+  `dw_studio.workflows.application` cho `dependencies`). MEDIUM (a) đã đáp: làn ở trong `config` dưới tên Nhánh ra như
+  wf-lite, làn lỗi là khóa `error_lane` của Bước, không có khóa `lanes`.

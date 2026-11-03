@@ -87,3 +87,11 @@ Biên dịch phần lõi W1 của một phiên bản quy trình từ `WorkflowIR
 - 2026-10-27 (agent): theo lượt kiểm lại của telemetry-and-audit trên `e4070f4`: wrapper đưa `started_at` lưu trong
   checkpoint và `field_id` của mỗi giá trị nó biết cho `StepRecorderPort` (telemetry-and-audit:R3.1,
   telemetry-and-audit:R3.12), vì khóa duy nhất của Bước chạy gồm `started_at` và giá trị không có `field_id` bị che.
+- 2026-11-03 (agent, theo ủy quyền 31/10/2026): theo gate của ticket 01 (spec, Quyết định 3/11/2026; ADR-0112 (Accepted) Amendments
+  2026-11-03): trình biên dịch là `compile_workflow` của wf-lite ở `dw_agent_runtime/wflite/compile.py`, đã dựng từ
+  `WorkflowIR` ở ticket 01; ticket này mở rộng nó (wrapper nút, retry, `timeout_s`, `on_error`, `error_lane`), không viết
+  `dw_studio.workflows.workflows.compiler`, và LangGraph không vào `dw_studio`. Thân node của loại Studio đến qua
+  `NodeTypeSpec` mà `studio_node_types(ports)` đăng ký. Giữ tên node `join__<id>`, `wait__<id>` (checkpoint của lượt
+  đang đỗ nêu chúng). Nới `PACK_RULES` chỉ cho khóa mà trình biên dịch đã chạy. Một cache: LRU 256 của bước 2 hay
+  `TenantWorkflowGraphs` của wf-lite (`packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/versions.py:143`), không hai. Phép dẫn giới hạn của bước 6 đi cây bằng
+  `lower` của lõi. Gate của ticket này viết lại bước 1, 2.

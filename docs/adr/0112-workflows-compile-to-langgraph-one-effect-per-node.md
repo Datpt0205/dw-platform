@@ -466,3 +466,37 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
   Q-h6: `flow.subworkflow` calls only a workflow that declares a `triggers[]` entry of kind `call`, which joins tier B,
   and submit refuses any other with `wf.subworkflow_not_callable` (workflow-engine R2.21, R8.7). The status stays
   Accepted.
+
+## Amendments (2026-11-03)
+
+- (agent, theo ủy quyền 31/10/2026; found by the readiness gates of workflow-nodes/02 and workflow-engine/01.)
+  `dw.workflow/v1` has one implementation, and it is the one wf-lite shipped in the platform core
+  (`packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/`, `47df14d`, `3c85dbd`; ADR-0128 (Proposed), D17
+  path C): the document model, the lowering to `WorkflowIR` (`wflite/ir.py`, added by workflow-engine/01), the
+  validator with the one `wf.*` code table (`MESSAGES`, vi and en), the compiler and decision 2's
+  `NodeTypeRegistry`. Studio extends them in place and never adds a second model, validator, IR or compiler in
+  `dw_studio`, because the platform core may not import `dw_studio` and packs, wf-ai's tenant `+t<n>` versions and
+  Studio documents are one format. What only Studio has stays in `dw_studio.workflows`: its path rules, the `workflow`
+  entry of `ArtifactKindRegistry`, the dependency extractor, the publish hook and the ports it declares. So decision 4's
+  compiler is wf-lite's `compile.py` building from the IR, in `dw_agent_runtime`, where LangGraph already is; ADR-0100
+  (Accepted) decision 3's `dw_studio.workflows.workflows` stays the only place inside Studio that LangGraph may appear,
+  and the workflow compiler is not there.
+- Decision 1, where a lane sits: inside the step's `config`, under its port's name, as wf-lite places it (`approved`,
+  `rejected`; `cases` and `default`), declared by the type's config schema and listed by `NodeTypeSpec.lanes(config)`;
+  the error lane is the step's own `error_lane` key, because it belongs to every step rather than to one type's config.
+  No `dw.workflow/v2`: shipped packs and stored tenant versions keep loading unchanged. Every key decision 1 adds
+  (`retry`, `timeout_s`, `on_error`, `error_lane`, and later `limits`, `bindings[]`, `outcomes[]`) is optional in the
+  model and required or refused per path by `PathRules`: a pack refuses what the compiler running it does not run yet
+  (failure-modes #1), and Studio refuses `key` and `version`, which the envelope owns (ADR-0109 (Accepted) decision 1).
+  Floats and non-NFC strings are refused where a Studio document is hashed, by `dw_kernel.canonical` at draft save and
+  seal, not by the model: a pack is hashed as file bytes and ships `0.7`.
+- Decision 2: `NodeTypeSpec` gains `block` (`none`, `choice`, `parallel`, `loop`), `ends_run`, `exits_loop` and a
+  per-type dependency extractor with workflow-engine/01, each required with no default; the lowering reads them, never a
+  type name. Decision 3: an unregistered type is wf-lite's shipped `wf.unknown_type`; the tree's step count and nesting
+  depth are held in W1 by two platform caps (500 steps, depth 10), the same for every plan, until usage-and-limits has
+  plan columns for them; `paths_to` and the branch-exclusivity sets arrive with their first readers (ADR-0125's
+  capability analysis, workflow-engine R2.7).
+- If this is wrong: the four pieces move together into `dw_studio.workflows` and wf-lite reaches them through a narrow
+  Protocol the core declares and the composition root satisfies; if lanes must leave `config`, that is
+  `dw.workflow/v2` with a pure `upgrade_v1` applied on read, so packs and `+t<n>` rows keep loading. The status stays
+  Accepted.

@@ -71,3 +71,8 @@ Mỗi Biểu thức kiểm kiểu tại vị trí bước, chỉ tham chiếu b�
   ticket này, `studio.workflows.edit` của workflow-engine/01, `RateLimiterPort` và lịch sử chạy; thêm hai chặn tương
   ứng. workflow-builder-ui/03 đã chờ ticket này cho `/expressions/check`. Gate của ticket này kiểm lại phần đó; dòng
   `Xong:` cần thêm test của hai route.
+- 2026-11-03 (agent, theo ủy quyền 31/10/2026): theo gate của workflow-engine/01: ticket này mang thêm workflow-engine:R2.6
+  (`wf.type_mismatch`) và phần `has()` của workflow-engine:R2.5, vì CEL vào bộ kiểm ở đây (spec workflow-engine, Ngoài
+  phạm vi). Bộ kiểm là `validate` của lõi `dw_agent_runtime/wflite/validate.py`, `dominators()` là của
+  `dw_agent_runtime/wflite/ir.py`, và mã vào `MESSAGES`; kiểm cần dữ liệu Studio (`field_not_readable`) chạy ở
+  `dw_studio` trên cùng `WorkflowIR`, qua seam mà ticket này thêm nếu là ticket đầu tiên cần nó.

@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: 04, .claude/plans/studio/tenant-config/issues/05-lien-ket-va-phien-ban-cau-hinh.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md
 Area: studio
-Yêu cầu: R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.7, R6.8, R6.9, R6.10, R6.11, R6.12, R6.13, R6.14, R6.15, R6.16, R6.37, R7.1, WE9, WE10, WE11, WE12, WE15, WE16, WE22, WE23, WE45, G1
+Yêu cầu: R2.9, R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.7, R6.8, R6.9, R6.10, R6.11, R6.12, R6.13, R6.14, R6.15, R6.16, R6.37, R7.1, WE9, WE10, WE11, WE12, WE15, WE16, WE22, WE23, WE45, G1
 
 ## Mục tiêu
 
@@ -41,6 +41,7 @@ Cho một lượt chạy chờ người tại chỗ nhiều ngày rồi tiếp t
 - [ ] R6.12 (WE16): thu hồi quyền công cụ của chủ thể chạy khi lượt chạy chờ duyệt, rồi duyệt → lời gọi công cụ bị executor từ chối `permission_denied`; dựng lại ngữ cảnh bằng scope đóng dấu → test đỏ.
 - [ ] R6.37: Bước chờ giả đỗ lượt với dòng chờ `approval` → trong cùng giao dịch mở dòng chờ, bản giả của `StepRecorderPort` nhận một lời gọi `step_waiting` với `reason_code` `approval_pending` cho Bước đó; dòng chờ `incident`, `outcome_review`, `child_run` → `incident_open`, `outcome_unknown`, `child_run_pending`; giao dịch lùi → không Bước chạy nào; chỉ ghi Bước chạy khi Bước xong, hay gọi `step_waiting` không `reason_code` → test đỏ.
 - [ ] R7.1 (WE45): trace hủy lượt chạy trong bộ golden trace của ticket 03 → dòng chờ `cancelled` trong cùng giao dịch; gỡ trigger hủy dòng chờ → trace đỏ.
+- [ ] R2.9: một trường mà schema cấu hình của loại fixture đánh dấu là tên điểm gắn mang `crm_main` trong khi `bindings[]` của tài liệu không khai `crm_main`, hay mang UUID của một kết nối → niêm phong 422 `wf.binding_undeclared` có con trỏ; khai `crm_main` → qua; gỡ kiểm → test đỏ (gate của ticket 01, 3/11/2026).
 - [ ] G1: `test_pause_restart_resume_approved` xanh trước và sau thay đổi.
 - [ ] Xong: `make test-integration` xanh.
 
@@ -63,3 +64,8 @@ Cho một lượt chạy chờ người tại chỗ nhiều ngày rồi tiếp t
 - 2026-10-24 (agent): theo V4.26 của Đạt: R6.1 thôi nói hơn một dòng chờ mở cùng lúc, vì chờ trong làn song song vẫn bị cấm (R2.16) nên không đồ thị W1 nào mở hai dòng chờ cùng lúc, và tiêu chí R6.1 thử hai Bước chờ nối tiếp thay cho hai Bước chờ mở cùng lúc; R6.3 nói quyết định cuối của Bước phê duyệt, mà với một người duyệt là quyết định của người đó như ticket này thử, còn Bước có từ hai người duyệt bắt buộc trở lên là của ticket 07 (R6.29). Trigger hủy dòng chờ của bước 3 cũng hủy dòng chờ `incident` của ticket 07, không cần sửa. Không thêm cạnh.
 - 2026-10-25 (agent): lượt h, theo V4.30, V4.33, V4.34, V4.35 và V4.36 của Đạt: CHECK `kind` có đủ `approval`, `incident`, `outcome_review`, `child_run` từ bảng này, vì ticket 07, 08 và 09 không nối nhau mà mỗi ticket ghi một loại, nên ba migration tạo lại cùng ràng buộc sẽ xóa giá trị của nhau (ticket-template.md: phần dựng chung ở ticket sớm nhất), và bước 1 của ticket 07 thôi tạo lại nó; cột `resolution` giữ giá trị resume của mọi loại, map của R6.4 đọc từ đó; Bước đang chờ có Bước chạy từ lúc đỗ (R6.37); không kiểm nào khi tiếp tục hỏi phiên bản bí mật (V4.35); thêm trace hủy lượt vào bộ golden trace (R7.1). Không thêm cạnh.
 - 2026-10-25 (agent): lượt h, sau đợt 1: bước 2 gọi `StepRecorderPort.step_waiting` mang `reason_code` theo `kind` của dòng chờ, trong giao dịch mở dòng chờ, như telemetry-and-audit:R3.8, với bốn mã lý do chờ mà spec đặt (R6.37); bước 1 nói thứ tự xóa của offboarding theo H-2. Không thêm cạnh.
+- 2026-11-03 (agent, theo ủy quyền 31/10/2026): theo gate của ticket 01 (spec, Quyết định 3/11/2026): R2.9 dời về ticket này, vì
+  `bindings[]` và lược đồ của nó đến từ tenant-config/05 mà ticket này đã chờ. R2.9 chỉ kiểm một trường mà schema cấu
+  hình của loại đánh dấu là tên điểm gắn mang tên không có trong `bindings[]` (`wf.binding_undeclared`, vào `MESSAGES`);
+  quét id kết nối ở mọi chuỗi là tenant-config:R7.1. Khóa `bindings[]` vào model lõi không kèm lược đồ thứ hai: gate của
+  ticket này quyết lược đồ chung của tenant-config/05 tới lõi bằng đường nào. Yêu cầu thêm R2.9.

@@ -56,3 +56,8 @@ Phần W1 đi sau đường găng YC94, mà không ticket thí điểm nào ch�
 - 2026-10-26 (agent): lượt h, kiểm: tiêu chí R4.26 nêu điều làm nó sai. Không thêm cạnh.
 - 2026-10-26 (agent): áp Q-h5 của Đạt (theo khuyến nghị): bước 1 thêm kiểm R2.20 và tiêu chí của nó (WE28); ca `outcome_unknown` trong làn không còn xảy ra ở W1. Status về `needs-triage`. Không thêm cạnh.
 - 2026-11-03 (agent, theo ủy quyền 31/10/2026): theo gate của workflow-nodes/02 (dòng Quyết định 3/11/2026 của workflow-nodes): `opens_wait` vào `NodeTypeSpec` cùng nơi đọc đầu tiên của nó, là kiểm `wf.wait_in_parallel` của ticket này nếu không có nơi đọc nào sớm hơn: bắt buộc, không mặc định, khai cho mọi mục đã có (`human.approval@1` và `time.wait@1` đúng, các loại khác sai); tiêu chí cho gate của ticket này: một mục thiếu `opens_wait` → `build_node_registry` lỗi, cho nó mặc định `False` → test đỏ. Không thêm cạnh.
+- 2026-11-03 (agent, theo ủy quyền 31/10/2026): theo gate của ticket 01: làn của `logic.parallel@1` và `logic.loop@1` nằm trong
+  `config` dưới tên Nhánh ra (`body`, `max_reached`, các làn song song), `block` `parallel` hay `loop`, mà phép hạ của
+  ticket 01 đã hạ; `limits` vào model lõi ở ticket này cùng R4.20 và R2.18, và `limits.max_steps` trên
+  `max_steps_per_run` của gói là `wf.limit_above_plan`; `opens_wait` vào `NodeTypeSpec` cùng `wf.wait_in_parallel`;
+  tập nhánh loại trừ cùng R2.7; mã mới vào `MESSAGES` của bộ kiểm lõi.

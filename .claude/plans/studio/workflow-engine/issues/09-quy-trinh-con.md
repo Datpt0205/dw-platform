@@ -51,3 +51,8 @@ Bậc B của W1, không ticket thí điểm nào chờ (V4.33): một Bước `
 - 2026-10-25 (agent): lượt h, sau đợt 1: Blocked by thêm 08 (cạnh ngoài bảng của lượt h, đã mô phỏng trên cây hiện tại và trên đồ thị đích của bảng cạnh: không vòng, độ sâu của ticket này, của workflow-nodes/08 và của marketing-pilot/03 không đổi), vì lượt con mà R8.5 hủy cùng lượt cha mang tác động chưa giải mà bộ ghi của ticket 08 phải ghi đúng tên (bước 8; R6.38, H-22); Mục tiêu và Nguồn dẫn YC117 thay YC45 cho quy trình con, vì YC117 tách phần đó khỏi YC45.
 - 2026-10-26 (agent): lượt h, kiểm: tiêu chí R8.6 mang kiểm soát mới WE48 của spec, vì phép tra hàng của lượt gốc ở dispatch là một điều kiểm cần ca âm; R8.4 và R6.17 nêu điều làm chúng sai. Không thêm cạnh.
 - 2026-10-26 (agent): áp Q-h6 của Đạt (theo khuyến nghị): bước 2 thêm kiểm R2.21 và tiêu chí của nó. Bước 2 cũng thêm kind `call` vào mô hình `triggers[]` (R8.7). Không thêm cạnh.
+- 2026-11-03 (agent, theo ủy quyền 31/10/2026): theo gate của ticket 01: bộ kiểm là `validate` của lõi
+  (`dw_agent_runtime/wflite/validate.py`), không có `validator.py` trong `dw_studio`. `wf.subworkflow_too_deep` và
+  `wf.subworkflow_not_callable` cần bao đóng, mà lõi không đọc được, nên kiểm chạy ở `dw_studio` trên cùng `WorkflowIR`
+  và dựng lỗi bằng `Problem.of` với mã trong `MESSAGES`; seam để một kiểm Studio vào cùng lượt kiểm là của ticket đầu
+  tiên cần nó (workflow-nodes/03 hay ticket 05).
