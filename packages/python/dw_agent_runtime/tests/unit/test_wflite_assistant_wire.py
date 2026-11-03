@@ -258,12 +258,12 @@ def test_an_output_schema_comes_from_the_pin_first_and_the_pack_otherwise() -> N
     pack's workflow uses still gets the pack's."""
     from dataclasses import replace
 
-    score, *rest = PINNED.document.steps
+    pack = PINNED
+    assert pack is not None  # the module-level assert does not narrow in here
+    score, *rest = pack.document.steps
     own = {"type": "object", "properties": {"mine": {"type": "string"}}}
     draft = rest[0].model_copy(update={"config": {**rest[0].config, "output_schema": own}})
-    pinned = replace(
-        PINNED, document=PINNED.document.model_copy(update={"steps": [draft, *rest[1:]]})
-    )
-    found = output_schemas(Bases(pinned, PINNED), REGISTRY)
+    pinned = replace(pack, document=pack.document.model_copy(update={"steps": [draft, *rest[1:]]}))
+    found = output_schemas(Bases(pinned, pack), REGISTRY)
     assert found["marketing.lead_email_draft@1.0.0"] == own
     assert found["marketing.lead_score@1.0.0"] == score.config["output_schema"]
