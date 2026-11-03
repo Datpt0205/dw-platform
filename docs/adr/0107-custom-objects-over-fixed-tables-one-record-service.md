@@ -239,3 +239,18 @@ obvious designs (measured by the Studio research on 2026-10-22 on PostgreSQL 16.
   relcache thresholds; Alternatives drop the pivot's "3 times the index storage and 3.4 times the write cost", which
   no recorded workload backed, for custom-objects/01's measurement, and say that a typed pivot can index its values
   but must carry each record's reach.
+
+## Amendments (2026-11-03)
+
+- Gate of custom-objects ticket 02 (agent, under Đạt's delegation of 2026-10-31; if wrong, ticket 02 waits for the
+  D12 run again and ticket 07 is withdrawn). The D12 run of custom-objects/01 waits for YC20's machine, so ticket 02
+  creates `studio.records` on a provisional DDL, modulus 4 (the decision rule's "else 4"), the proposed A0 slot set
+  (`t01-t24, i01-i12, f01-f08, d01-d08, z01-z08, b01-b08, u01-u04`), a btree on `updated_at` and the `b` family's
+  indexes; custom-objects ticket 07 applies the rule's outcome in a later revision, rebuilding the table and moving its
+  rows through the parent if the modulus changes. Decision 2's "the modulus cannot change after the first revision"
+  now reads: it changes only through ticket 07's rebuild. The rule and its thresholds are unchanged.
+- Decision 5: the metadata service takes the exclusive `pg_advisory_xact_lock` on (tenant, object), the key
+  RecordService takes shared in decision 3, through one key function, so a record write never snapshots a definition
+  being changed; the per-tenant lock is gone. `schema_version` is the envelope's `version_no` of the applied version
+  (`object_defs.applied_version_id`), not a second counter, and the object's `api_name` lives in the envelope alone,
+  copied once into `object_defs`.

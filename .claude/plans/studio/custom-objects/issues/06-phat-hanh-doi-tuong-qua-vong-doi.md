@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: 02, .claude/plans/studio/agent-lifecycle/issues/03-hop-dong-vong-doi-va-niem-phong.md, .claude/plans/studio/agent-lifecycle/issues/04-cong-kiem-dinh-va-duyet-hai-nguoi.md
 Area: studio
-Yêu cầu: R1.2, R1.3, R1.7, CO3, CO23
+Yêu cầu: R1.2, R1.3, R1.7, R2.4, CO3, CO6, CO23
 
 ## Mục tiêu
 
@@ -21,7 +21,8 @@ ghi, quyền và bảo mật trường chờ ticket 02 mà không phải chờ C
 1. Nối loại `object` vào lệnh Gửi kiểm định `POST /api/v1/studio/objects/{artifact_id}/versions/{version_id}/submit`
    của agent-lifecycle/03 qua mục `ArtifactKindRegistry` mà ticket 02 đăng ký: khóa gửi `studio.objects.manage`
    (`tenant-config:R2.15`), bộ so sánh chỉ siết mà `LifecycleService` gọi để ghi `tighten_only` và
-   `compared_live_hash` lên dòng phiên bản (`agent-lifecycle:R2.8`), và móc phát hành `MetadataService.apply`.
+   `compared_live_hash` lên dòng phiên bản (`agent-lifecycle:R2.8`), và móc phát hành `MetadataService.apply`; `check_against_live` của ticket 02 vào bảng kiểm theo loại lúc gửi (`agent-lifecycle:R2.7`), với
+   tài liệu của phiên bản Đang dùng, để bản bỏ hay đổi trường đã phát hành bị từ chối trước khi có phê duyệt.
 2. Nhánh chỉ siết (`agent-lifecycle:R1.7`, `agent-lifecycle:R2.9`): `LifecycleService` đưa phiên bản lên Đang dùng,
    phiên bản cũ sang Đã gỡ và ghi đúng một audit `studio.version.published` có người gửi là actor, `details.path`
    `tighten_only`, trong giao dịch của người gửi; móc phát hành chạy trong cùng giao dịch và chỉ áp định nghĩa, không
@@ -64,8 +65,11 @@ ghi, quyền và bảo mật trường chờ ticket 02 mà không phải chờ C
       định nghĩa không đổi; người đó rút Bản ứng viên về Nháp (`agent-lifecycle:R2.4`), sửa nó thành chỉ đóng `phone` rồi
       Gửi kiểm định → Đang dùng ngay qua nhánh chỉ siết, phê duyệt `studio.publish.object` cũ đã hủy; cho tạo bản Nháp
       khi Bản ứng viên chờ → test đỏ.
-- [ ] R1.3 (CO3): người thiếu `studio.objects.manage` gọi lệnh Gửi kiểm định → 403 `permission_denied`, phiên bản giữ
-      Nháp, không phê duyệt nào mở; gỡ kiểm khóa gửi ở mục đăng ký của loại → test đỏ.
+- [ ] R1.3 (CO3): người thiếu `studio.objects.manage` gọi lệnh Gửi kiểm định → 404 như thành phần không tồn tại, vì
+      khóa đó cũng là khóa đọc của loại (`tenant-config:R2.11`), phiên bản giữ Nháp, không phê duyệt nào mở; gỡ kiểm khóa gửi ở mục đăng ký của loại → test đỏ.
+- [ ] R2.4 (CO6): Gửi kiểm định bản nháp bỏ một trường đã phát hành, hay đổi `scale` của nó → 422 với
+      `details.reason_code` của kiểm đó, phiên bản giữ Nháp, không phê duyệt nào mở; gỡ đăng ký kiểm → lần gửi qua tới
+      Chờ duyệt và test đỏ.
 - [ ] Xong: `make test-integration` xanh.
 
 ## Nguồn
@@ -109,3 +113,5 @@ ghi, quyền và bảo mật trường chờ ticket 02 mà không phải chờ C
 - 2026-10-24 (agent): kiểm lượt sáu của vòng sửa 4: đột biến của tiêu chí ca V4.17 là "cho tạo bản Nháp khi Bản ứng
   viên chờ" (bỏ kiểm `candidate_pending` của `tenant-config:R2.22`), không phải "bản Nháp thứ hai", vốn là ca
   `draft_exists` của `tenant-config:R2.23` và không làm test này đỏ; CO23 của spec sửa cùng.
+- 2026-11-03 (agent, theo ủy quyền 31/10/2026): gate của ticket 02 (HIGH 7): bước 1 thêm đăng ký `check_against_live` vào bảng kiểm lúc gửi, Yêu cầu thêm R2.4, CO6 và một tiêu chí, vì `validate` của registry thuần trên một tài liệu nên phép so với bản Đang dùng không chạy được trong `seal`. Nếu sai thì: tenant-config đổi chữ ký `validate`, và tiêu chí này về ticket 02.
+- 2026-11-03 (agent, theo ủy quyền 31/10/2026): gate của ticket 02, lượt xác nhận: tiêu chí R1.3 thành 404, vì `studio.objects.manage` là khóa đọc, khóa ghi và khóa gửi của loại, và người không đọc được thành phần nhận 404 (`tenant-config:R2.11`, TC24); spec R1.3 và CO3 sửa cùng. Nếu sai thì: khóa đọc của loại tách khỏi khóa ghi, và người đọc được mà không gửi được nhận 403.
