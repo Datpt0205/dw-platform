@@ -1,6 +1,6 @@
 # 04 — Người được dùng tối thiểu: dw.audience/v1 chỉ điều kiện workspace
 
-Status: ready-for-agent
+Status: resolved (2026-11-03, main)
 Blocked by: 02
 Area: studio
 Yêu cầu: R8.1, R8.2, R8.3, R8.4, OP12, OP13
@@ -60,11 +60,11 @@ ai thấy và mở được agent, không bao giờ nới tầm dữ liệu. age
 
 ## Tiêu chí chấp nhận
 
-- [ ] R8.1 (OP12): `{"schema": "dw.audience/v1", "any_of": []}` và `{"schema": "dw.audience/v1", "any_of": [{"all_of": []}]}` → `AudienceInvalidError` với `details.reason_code = "audience_empty"`, và cổng workspace không được gọi; gỡ kiểm rỗng → test đỏ.
-- [ ] R8.2 (OP12): điều kiện `{"team": "<uuid>"}` ở `/any_of/0/all_of/0` → `reason_code = "audience_invalid"`, `problems[0]` là `audience_condition_unsupported` tại `/any_of/0/all_of/0`; 21 điều kiện → `audience_too_many_conditions` tại `/any_of/0/all_of/20`; một `all_of` rỗng cạnh một nhóm có điều kiện → `audience_group_empty` tại `/any_of/1/all_of`; workspace của tenant B và workspace không tồn tại → cùng `reason_code`, `code` và câu (integration với adapter thật); handler đổi lỗi thành 422 có `errors[0].pointer` bằng `at` cộng pointer; gỡ kiểm nhóm rỗng hay kiểm tenant → test đỏ.
-- [ ] R8.3: (`[[W1, W2], [W3]]` viết tắt `any_of` gồm một nhóm `all_of` W1 và W2 và một nhóm `all_of` W3) người `active` có membership ở W1 khớp tài liệu `[[W1]]`, khớp `[[W2], [W1]]`, không khớp `[[W2]]`, và không khớp `[[W1, W2]]` (một nhóm đòi cả hai); người có membership ở cả W1 và W2 khớp `[[W1, W2]]`; đổi phép "mọi điều kiện của nhóm" thành "một điều kiện bất kỳ" → test đỏ.
-- [ ] R8.4 (OP13): người `suspended` có membership ở W1 → `false`; với `app.tenant_id` của tenant A: `p_tenant_id` = A và người chỉ thuộc tenant B → `false`, `p_tenant_id` = B và người của B có membership ở workspace được nêu → `false`, kể cả khi giao dịch đặt `app.principal_id` là người đó; tài liệu `{"any_of": [{"all_of": []}]}`, loại điều kiện `team` và giá trị không phải uuid → `false`, không lỗi; gỡ điều kiện `status = 'active'` khỏi hàm, gỡ phép so `p_tenant_id` với `app.tenant_id`, hay cho nhóm rỗng là `true` → test đỏ.
-- [ ] Xong: `make ci && make test-integration` xanh.
+- [x] R8.1 (OP12): `{"schema": "dw.audience/v1", "any_of": []}` và `{"schema": "dw.audience/v1", "any_of": [{"all_of": []}]}` → `AudienceInvalidError` với `details.reason_code = "audience_empty"`, và cổng workspace không được gọi; gỡ kiểm rỗng → test đỏ.
+- [x] R8.2 (OP12): điều kiện `{"team": "<uuid>"}` ở `/any_of/0/all_of/0` → `reason_code = "audience_invalid"`, `problems[0]` là `audience_condition_unsupported` tại `/any_of/0/all_of/0`; 21 điều kiện → `audience_too_many_conditions` tại `/any_of/0/all_of/20`; một `all_of` rỗng cạnh một nhóm có điều kiện → `audience_group_empty` tại `/any_of/1/all_of`; workspace của tenant B và workspace không tồn tại → cùng `reason_code`, `code` và câu (integration với adapter thật); handler đổi lỗi thành 422 có `errors[0].pointer` bằng `at` cộng pointer; gỡ kiểm nhóm rỗng hay kiểm tenant → test đỏ.
+- [x] R8.3: (`[[W1, W2], [W3]]` viết tắt `any_of` gồm một nhóm `all_of` W1 và W2 và một nhóm `all_of` W3) người `active` có membership ở W1 khớp tài liệu `[[W1]]`, khớp `[[W2], [W1]]`, không khớp `[[W2]]`, và không khớp `[[W1, W2]]` (một nhóm đòi cả hai); người có membership ở cả W1 và W2 khớp `[[W1, W2]]`; đổi phép "mọi điều kiện của nhóm" thành "một điều kiện bất kỳ" → test đỏ.
+- [x] R8.4 (OP13): người `suspended` có membership ở W1 → `false`; với `app.tenant_id` của tenant A: `p_tenant_id` = A và người chỉ thuộc tenant B → `false`, `p_tenant_id` = B và người của B có membership ở workspace được nêu → `false`, kể cả khi giao dịch đặt `app.principal_id` là người đó; tài liệu `{"any_of": [{"all_of": []}]}`, loại điều kiện `team` và giá trị không phải uuid → `false`, không lỗi; gỡ điều kiện `status = 'active'` khỏi hàm, gỡ phép so `p_tenant_id` với `app.tenant_id`, hay cho nhóm rỗng là `true` → test đỏ.
+- [x] Xong: `make ci && make test-integration` xanh.
 
 ## Nguồn
 
@@ -123,3 +123,29 @@ ai thấy và mở được agent, không bao giờ nới tầm dữ liệu. age
   DB: cổng workspace đọc `platform.workspaces` một câu mỗi lần kiểm, hàm đọc `platform.tenant_members` theo khóa chính và
   `platform.memberships` theo `uq_memberships_scope_user`; chưa route nào gọi chúng tới agent-builder/04.
 - 2026-11-02 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-03 (agent, theo ủy quyền 31/10/2026): không nối `AudienceValidator` ở composition root: ticket không có route
+  và chưa ai gọi nó (failure-modes #1); agent-builder/04 nối `AudienceValidator(SqlAudienceWorkspaces(session_factory))`
+  ở `wiring.py` cùng route của nó. Nếu sai thì: thêm một thuộc tính container ở `wiring.py` ngay, không đổi lớp nào.
+- 2026-11-03 (agent, theo ủy quyền 31/10/2026): M1 làm khác gợi ý của gate: `schema_` với `Field(alias="schema")` nhưng
+  `validate_by_alias=True, validate_by_name=False` thay cho `populate_by_name`, vì `populate_by_name` nhận cả
+  `{"schema_": ...}`, tài liệu mà `platform.audience_matches` luôn đọc là `false` (đo 3/11/2026, Pydantic 2.13.5); có test.
+  Nếu sai thì: trả lại `populate_by_name=True` và bỏ ca `schema_ by field name`.
+- 2026-11-03 (agent, theo ủy quyền 31/10/2026): bộ kiểm nhận uuid ở dạng Pydantic chấp nhận (chữ hoa, không gạch nối)
+  và trả `AudienceDocument` mà `as_json()` là dạng chuẩn có gạch nối, dạng hàm SQL đọc; bên lưu (agent-builder/04) lưu
+  `as_json()`, không lưu giá trị thô. Tối đa 20 vấn đề mỗi lần từ chối (`MAX_PROBLEMS`), để tài liệu nghìn điều kiện sai
+  không thành câu trả lời nghìn dòng. Nếu sai thì: từ chối dạng không chuẩn bằng `audience_malformed`.
+- 2026-11-03 (agent): resolved. Làm: `domain/audience.py` (mô hình, `parse_audience`, `AudienceInvalidError`),
+  `application/audience.py` (`AudienceValidator`, `AudienceWorkspacesPort`), adapter `audience_workspaces.py` lọc
+  `tenant_id` tường minh, handler `AudienceInvalidError` → 422 `errors[]` trong `exception_handlers.py`, migration
+  `555dad01f629` (`platform.audience_matches`, EXECUTE chỉ `dw_app`). Khác ticket: thêm một ca R8.4 (người `suspended` ở A
+  nhưng `active` ở B, `app.principal_id` là người đó → `false`), vì không có nó thì gỡ `tm.tenant_id = p_tenant_id` khỏi
+  hàm vẫn xanh. Test mới: unit `dw_platform/tests/unit/test_audience.py` 20, `apps/api/tests/unit/test_audience_errors.py`
+  4; integration `test_audience.py` 25, `test_privileges.py` +1. Cổng nhanh: ruff, format, mypy (592 tệp), lint-imports
+  xanh; integration `test_audience`, `test_privileges`, `test_rls_coverage`, `test_offboarding_coverage` 110 xanh
+  (`_lane1`); unit dw_platform + api 633 xanh, 2 đỏ không do ticket này (`test_digital_workers_endpoint.py`, hai test
+  trợ lý wf-ai đỏ vì thay đổi chưa commit của lane 2 ở `wflite/assistant.py`). Đột biến: `mutations/04.yaml` 15 phép,
+  viết chưa chạy (cuối wave); hai phép đã thử tay và đỏ đúng (gỡ phép so `app.tenant_id`, gỡ `tm.tenant_id`).
+  reviewing-feature-security, đọc: tenant (adapter và hàm lọc tenant tường minh, hàm so `app.tenant_id`, test cho
+  self-select của `app.principal_id`), người không có quyền (EXECUTE thu khỏi PUBLIC, chỉ `dw_app`; SECURITY INVOKER nên
+  RLS vẫn áp), lỗi không lộ giá trị (pointer, code, câu cố định). Chưa làm (đúng wave-close): mutate.py, cả
+  `make test-integration`, P50/P95/P99 (M6, cùng route agent-builder/04).

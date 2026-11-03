@@ -1620,3 +1620,35 @@ async def test_only_dw_app_may_purge_a_version_row_and_no_one_calls_the_trigger_
         await migrator.dispose()
     allowed = {k for k, v in calls.items() if v}
     assert allowed == {("dw_app", "platform.purge_tenant_access_version(uuid)")}
+
+
+# org-and-principals ticket 04 (migration 555dad01f629).
+
+
+async def test_only_dw_app_may_ask_who_is_in_an_audience(db_urls: DatabaseUrls) -> None:
+    """Step 3: `platform.audience_matches` is revoked from PUBLIC and granted
+    to `dw_app` alone; it is SECURITY INVOKER, so RLS still applies to it."""
+    function = "platform.audience_matches(uuid, uuid, jsonb)"
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            calls = {
+                role: await conn.scalar(
+                    sa.text("SELECT has_function_privilege(:r, :f, 'EXECUTE')"),
+                    {"r": role, "f": function},
+                )
+                for role in ("public", "dw_app", "dw_agent_ro", "dw_provisioner")
+            }
+            definer = await conn.scalar(
+                sa.text("SELECT prosecdef FROM pg_proc WHERE oid = CAST(:f AS regprocedure)"),
+                {"f": function},
+            )
+    finally:
+        await migrator.dispose()
+    assert calls == {
+        "public": False,
+        "dw_app": True,
+        "dw_agent_ro": False,
+        "dw_provisioner": False,
+    }
+    assert definer is False

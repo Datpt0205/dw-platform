@@ -19,6 +19,7 @@ from dw_api.dependencies.idempotency import (
 from dw_api.errors import ProblemError, code_for, problem_response, status_for
 from dw_kernel.errors import DWError, ErrorCode
 from dw_kernel.filters import QueryError
+from dw_platform.domain.audience import AudienceInvalidError
 
 # Where a filter tree sits in either form of a list query: the `filter`
 # parameter of `GET`, the `filter` member of a `POST <list>/query` body (R5.7).
@@ -130,6 +131,22 @@ def register_exception_handlers(app: FastAPI) -> None:
                 else ProblemError(
                     parameter=problem.parameter, code=problem.code, detail=problem.detail
                 )
+                for problem in exc.problems
+            ],
+        )
+
+    @app.exception_handler(AudienceInvalidError)
+    async def handle_audience_invalid(request: Request, exc: AudienceInvalidError) -> Response:
+        # Each problem's pointer already starts with where the caller put the
+        # document (`validate(..., at="/audience")`); the code and sentence are
+        # the platform's, never a value of the document (org-and-principals R8.2).
+        return problem_response(
+            request,
+            exc.code,
+            exc.message,
+            details=exc.details,
+            errors=[
+                ProblemError(pointer=problem.pointer, code=problem.code, detail=problem.detail)
                 for problem in exc.problems
             ],
         )
