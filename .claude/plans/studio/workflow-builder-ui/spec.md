@@ -2,8 +2,8 @@
 
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
-Duyệt: chưa
-Sẵn sàng: chưa kiểm
+Duyệt: agent, tạm theo ủy quyền 3/11/2026
+Sẵn sàng: ĐẠT (3/11/2026; 0 CRITICAL, 0 HIGH; ticket 01)
 
 Người dựng không viết mã dựng một Quy trình bằng cách đặt Bước vào ô của một Sơ đồ có cấu trúc, cấu hình mỗi Bước bằng
 biểu mẫu antd sinh từ schema, viết Biểu thức với một bộ Chọn biến có kiểu, chạy mô phỏng và gửi kiểm định. Sơ đồ là
@@ -260,7 +260,7 @@ bản với bản Đang dùng theo id Bước cho màn duyệt phát hành (YC33
 | BU11 | Dạng danh sách là cây tài liệu, mang cấp và vị trí cho trình đọc màn hình                                                            | R2.6                       | Test thành phần trên F2: mỗi node của `Tree` có `aria-level`, `aria-posinset`, `aria-setsize` đúng cây; một Bước thêm trên Sơ đồ có mặt trong `Tree` ở đúng cấp và vị trí; bỏ một thuộc tính hay dựng `Tree` từ một bản sao khác của tài liệu → test đỏ                                                                                                                                                                                                                                                                                       |
 | BU12 | Tên truy cập tiếng Việt cho mọi điều khiển, không chuỗi mặc định tiếng Anh; báo mỗi thao tác                                         | R2.9, R2.10                | Test thành phần: không phần tử nào của Sơ đồ có `aria-label` bắt đầu bằng `Edge from`; ô "+" có tên "Thêm Bước sau «tên»" với tên của Bước đứng trước; thêm, dời, xóa một Bước → vùng `aria-live` nêu tên Bước; bỏ `ariaLabel` của một đường nối hay bỏ lời báo → test đỏ                                                                                                                                                                                                                                                                     |
 | BU13 | Bố cục tất định; chèn không dời phần đứng trước và không đổi thứ tự                                                                  | R1.6                       | Property test trên cây ngẫu nhiên và F1-F9: cùng tài liệu → cùng tọa độ; chèn một Bước → chỉ các Bước đi sau chỗ chèn trong làn đó và trong các chuỗi bao ngoài đổi tọa độ, và chỉ theo chiều dọc; chèn một Bước có làn → không Bước nào đứng trước chỗ chèn đổi tọa độ dọc; mọi lần chèn giữ thứ tự dọc và thứ tự làn, không hai thẻ chồng nhau; đổi bố cục để xếp làn theo độ rộng hay theo thứ hạng, hay cho `workflow-layout.ts` import một gói → test đỏ                                                                                 |
-| BU14 | Màu, biểu tượng, cỡ thẻ và kiểu đường nối chỉ từ bộ từ vựng của theme; không bao giờ chỉ màu                                         | R1.5, R1.8, R1.9           | Một màu literal (`#…`, `rgb(`, `hsl(`) dưới glob canvas, trong `workflow-layout.ts` hay thành phần builder → test đỏ; một màu nhóm dưới 3:1 trên nền thẻ ở chế độ sáng hay tối → `theme-contrast.test.ts` đỏ; một huy hiệu hay nhãn làn chỉ có màu, không chữ → test đỏ                                                                                                                                                                                                                                                                       |
+| BU14 | Màu, biểu tượng, cỡ thẻ và kiểu đường nối chỉ từ bộ từ vựng của theme; không bao giờ chỉ màu                                         | R1.5, R1.8, R1.9           | Một màu literal (hex, hàm màu như `rgb(`, `rgba(`, `hsl(`, `hsla(`, `oklch(`, hay tên màu CSS làm giá trị màu) dưới glob canvas, trong `workflow-layout.ts` hay thành phần builder → test đỏ; một màu nhóm dưới 3:1 trên nền thẻ ở chế độ sáng hay tối → `theme-contrast.test.ts` đỏ; một huy hiệu hay nhãn làn chỉ có màu, không chữ → test đỏ                                                                                                                                                                                                                                                                       |
 | BU15 | Bản Nháp mới chỉ khi người dựng bấm "Tạo bản Nháp"; một 409 không bao giờ thành lời gọi thứ hai                                      | R3.13, R3.14, R3.15        | Test thành phần: mở builder của Quy trình chỉ có bản Đang dùng → không lời gọi `POST .../draft`; bấm → đúng một lời gọi, rồi trang mở bản Nháp với ETag của nó; route giả trả 409 `candidate_pending` → trạng thái chỉ đọc của R3.10, không lời gọi thứ hai; 409 `draft_exists` → mở bản Nháp đang có, không lời gọi thứ hai; tạo bản Nháp lúc mở trang → test đỏ                                                                                                                                                                             |
 | BU16 | Màn lượt chạy chỉ đọc, gắn Bước chạy theo lần lặp                                                                                    | R3.11, R3.12               | Test thành phần trên lượt mô phỏng của F3: màn lượt chạy không gọi lưu Nháp hay thao tác cây nào; chọn lần lặp 2 → mỗi Bước của thân hiện Bước chạy có `iteration_path` của lần 2; bỏ lọc theo `iteration_path`, hay cho sửa trên màn lượt chạy → test đỏ (bỏ lọc theo `lane_path` không làm test nào đỏ được, vì id Bước là duy nhất trong cây, workflow-engine:R1.1)                                                                                                                                                                        |
 | BU17 | Lớp phần khác không bao giờ im lặng: mọi phần khác đều có nhãn, kể cả đổi chỗ, dời làn và phần ngoài cây Bước; không so được thì nói | R3.16, R3.17, R3.19, R3.20 | Test thành phần trên F1 và một bản sửa của nó (thêm một Bước, xóa một Bước, đổi ngưỡng của một `logic.switch`, đổi chỗ hai Bước trong một làn, dời một Bước sang làn khác, đổi `limits.max_steps`) → đúng một thẻ "Mới", "Đã sửa" ở Bước đổi ngưỡng, ở cả hai Bước đổi chỗ và ở Bước dời, một mục "Bước đã xóa", và `limits` ở đầu Sơ đồ; bản Đang dùng đọc lỗi → "Không so được với bản Đang dùng", không nhãn nào; bỏ so thứ tự trong làn, bỏ so phần ngoài cây Bước, hay cho lỗi đọc thành "không phần khác" hoặc thành cây rỗng → test đỏ |
@@ -330,7 +330,7 @@ bản với bản Đang dùng theo id Bước cho màn duyệt phát hành (YC33
   R3.15, BU15, ticket 03; `telemetry-and-audit` đổi cách Bước chạy mang `lane_path` hay `iteration_path` → R3.12, BU16,
   ticket 03; `telemetry-and-audit` đổi quyền đọc Bước chạy của lượt mô phỏng (V4.41) hay cột `port` → R3.11, ticket 03;
   agent-lifecycle/07 đổi cách đưa hai phiên bản để so, hay đổi bản để so khác bản Đang dùng → R3.16-R3.20, BU17, ticket
-  03; `workflow-nodes` đổi cấu hình hay đầu ra của `flow.subworkflow@1` → R1.5, ticket 04; spike của ticket 01 thấy mô-đun bố cục trượt F1-F9 → sửa mô-đun, R1.6 và BU13 giữ nguyên, không đưa dagre trở lại
+  03; `workflow-nodes` đổi cấu hình hay đầu ra của `flow.subworkflow@1` → R1.5, ticket 04; `workflow-nodes` đăng ký một Loại bước bậc B với cấu hình hay Nhánh ra khác hình fixture → fixture F1-F9 và danh mục giả của ticket 01 sửa trong cùng thay đổi đăng ký; spike của ticket 01 thấy mô-đun bố cục trượt F1-F9 → sửa mô-đun, R1.6 và BU13 giữ nguyên, không đưa dagre trở lại
   (V4.25); Đạt đổi bộ từ vựng khi duyệt → chỉ theme đổi, R1.9 và BU14 giữ nguyên; W2 mở chế độ `test` → R3.6, R3.8, BU5,
   ticket 03.
 
@@ -506,6 +506,16 @@ bản với bản Đang dùng theo id Bước cho màn duyệt phát hành (YC33
   Bước chạy (V4.36), không suy từ Bước nào đã chạy, vì một làn rỗng không có Bước chạy nào để suy, và `port` là chủ duy
   nhất của sự thật đó (failure-modes #2). Sửa: ticket 03. Nếu sai thì: màn suy làn từ Bước chạy, và một làn rỗng đã đi
   ghi "Chưa chạy".
+- 3/11/2026 (agent, theo ủy quyền 31/10/2026): gate ticket 01: fixture F1-F9 là tài liệu `dw.workflow/v1` đúng hình
+  wf-lite (làn trong `config` dưới tên Nhánh ra, `error_lane`, `type` có `@1`, tên Bước ở `description`), làn đọc qua
+  danh mục giả theo `node-types`, không một cây thứ hai (CLAUDE.md "Agent and tool rules"; ADR-0112 (Accepted)
+  Amendments 2026-11-03); spike đo F6, F7 ở trần nền tảng 500 Bước của workflow-engine:R2.10 và không đặt trần theo gói;
+  ticket 01 commit fixture, thành phần canvas đầu tiên cùng mục `EXCEPTIONS`, CSS lớp, theme và test, còn trang thử và
+  bản nháp bố cục bị xóa; JS tải đầu đo bằng Playwright tới thẻ đầu, vì cột "First Load JS" không đếm chunk
+  `next/dynamic`; NVDA bằng tai và năm người dùng ở lại discovery/24, sau ticket 04; test màu literal của BU14 thấy
+  `rgba(`, `hsla(` và tên màu. Sửa: BU14, ticket 01, 02. Nếu sai thì: ghim gói và mục `EXCEPTIONS` dời sang ticket 02,
+  ticket 01 chỉ đo, và hai phép đo cần người thật thành một ticket `ready-for-human` của spec này.
+- 3/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 01.
 
 ## Danh sách ticket
 

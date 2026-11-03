@@ -296,3 +296,18 @@ it, which the spike measures rather than assumes.
   workflow-builder-ui's layer of what differs from the `live` version, sits under the same glob, where the canvas
   was loaded on the builder route only; Consequences add that the approver reads the diagram there, that the route's
   first-load JS is measured on its own, and a test that the read-only diagram sends no save.
+
+## Amendments (2026-11-03)
+
+- (agent, theo ủy quyền 31/10/2026; found by the readiness gate of workflow-builder-ui/01.) The spike of Consequences
+  keeps what later tickets build on and deletes the rest: the fixtures F1-F9, which are `dw.workflow/v1` documents in
+  wf-lite's one shape (lanes inside `config` under the port's name, `error_lane`, ADR-0112 (Accepted) Amendments
+  2026-11-03), the first canvas component that imports the library in the same commit as its `EXCEPTIONS` entry, the
+  CSS layer, the vocabulary and the tests stay; the draft page and the draft layout module go, and
+  `workflow-layout.ts` is written by workflow-builder-ui/02. The canvas route's first-load JS is the gzip of every chunk
+  loaded until the first card is drawn, measured in a browser, because the "First Load JS" column of `next build` does
+  not count a `next/dynamic` chunk. The spike does not set a step cap: W1 holds the platform cap of 500 steps and depth
+  10 (workflow-engine R2.10). NVDA in Vietnamese and the five business users run on the built builder after
+  workflow-builder-ui/04, carried by discovery 24 (DO-22, Đạt), and workflow-builder-ui/01 does not wait for them.
+  If this is wrong: the pin and the entry move to workflow-builder-ui/02 with the builder page, and the two human
+  measurements become a ready-for-human ticket of workflow-builder-ui. The status stays Accepted.

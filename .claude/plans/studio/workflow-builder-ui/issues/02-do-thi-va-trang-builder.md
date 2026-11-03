@@ -29,6 +29,10 @@ Của R1.5, ticket này làm hàng Chuỗi; khung, đầu làn và nhãn của t
    mà Sơ đồ dưới `apps/web/app/studio/**/canvas/**` đổi thành node và cạnh của React Flow. Property test theo R1.6 trên
    cây ngẫu nhiên và F1-F9 của ticket 01; ghi p95 ở 500 Bước theo ngưỡng của spike. Mô-đun trượt thì sửa mô-đun, không
    đưa dagre trở lại (V4.25).
+   Một test nạp mỗi fixture F1-F9 của ticket 01 (`apps/web/lib/__fixtures__/workflows/`) bằng
+   `WorkflowDocument.model_validate` của wf-lite, đỏ khi một fixture lệch hình tài liệu, để fixture và mô hình không
+   trôi (workflow-engine/01 đã thêm `error_lane`, `on_error` và các khóa khác vào mô hình); `workflow-layout.ts` đọc làn
+   qua danh mục Loại bước, không viết cứng tên làn nào.
 3. Trang `/studio/workflows/[id]/builder`: danh mục Loại bước từ `GET /api/v1/studio/node-types` (nhóm, tìm, lý do
    khóa) trong một Popover có ô tìm mở từ mỗi ô "+" và mỗi ô "Thêm Bước", và trong một bảng bên từ `lg` kéo được vào ô
    (sự kiện con trỏ cùng `screenToFlowPosition` của React Flow, không thêm thư viện kéo thả; ô hợp lệ sáng lên khi
@@ -107,3 +111,4 @@ Của R1.5, ticket này làm hàng Chuỗi; khung, đầu làn và nhãn của t
 
 - 2026-10-23 (agent): theo phiếu 23/10/2026: hàm bố cục dời vào thư mục canvas để `workflow-graph.ts` không import gói nào (DO-42.1); nhãn aria của Sơ đồ đi qua khóa thông điệp tiếng Việt (DO-57).
 - 2026-10-25 (agent): lượt g, theo V4.24 và V4.25 của Đạt ngày 24/10/2026: `workflow-graph.ts` thành thao tác trên cây Bước, hàm bố cục dagre dưới thư mục canvas thành `apps/web/lib/workflow-layout.ts` thuần ngoài glob canvas (R1.6, BU13); đặt vào ô thay nối dây (R1.4, BU8); bảng chọn là Popover của ô "+" cùng bảng kéo, cấu hình trong Drawer (R2.1); xóa có thông báo Hoàn tác thay hộp xác nhận (R2.11); mô hình bàn phím và trợ năng theo phản biện (R2.5-R2.10, BU10-BU12). Không thêm cạnh.
+- 2026-11-03 (agent, theo ủy quyền 31/10/2026): từ gate ticket 01: bước 2 thêm test `model_validate` cho F1-F9 và việc đọc làn qua danh mục, vì fixture của ticket 01 là tài liệu `dw.workflow/v1` đúng hình wf-lite và ticket 01 không chờ workflow-engine/01; `workflow-layout.ts` viết ở đây, bản nháp của spike bị xóa; trang builder dựng trên `apps/web/app/studio/workflows/[id]/builder/canvas/workflow-canvas.tsx` của ticket 01. Nếu sai thì: test fixture dời về ticket 01, và ticket 01 chờ workflow-engine/01.
