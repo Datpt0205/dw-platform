@@ -142,3 +142,7 @@ tenant qua một helper duy nhất (spec R1 tới R4, R7, R9.10; ADR-0105 (Accep
   `SqlTenantOffboarding` sang `tenant_wide_scope` trong `offboarding.py`, tệp mà ticket đó viết lại phần đọc catalog và
   `export_rows`. Lane offboarding audit đứng tên người vận hành đã yêu cầu, `details.lane` là `offboarding` (Quyết định
   24/10/2026 của spec); helper của bước 6 không đổi vì nó không ghi audit.
+- 2026-11-03 (agent, theo ủy quyền 31/10/2026): theo gate của ticket 01, lần đo D12 tách thành ticket 06
+  (`ready-for-human`, Chờ Đạt 23). Mẫu policy chỉ khóa ở D12 (ADR-0105 (Accepted) Consequences), nên ticket này không lên
+  `ready-for-agent` khi ticket 06 chưa `resolved`; Blocked by chỉ trỏ ngược nên điều đó ghi ở đây. Nếu sai thì: ticket
+  này khóa mẫu theo số smoke của ticket 01 và ticket 06 thành "Kiểm lại khi" của nó.

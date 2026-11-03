@@ -260,3 +260,13 @@ and D12 (the scale target), and on the call on DO-11, decided 2026-10-23.
 - Third consistency check (round 4), eighth pass, Đạt's V4.32: Consequences have record-access ticket 01 measure the
   six-arm policy on the one harness and seed that custom-objects ticket 01 owns, adding only its policy variants, so
   the policy is measured with the full set of slot indexes rather than over a few slot columns of a seed of its own.
+
+## Amendments (2026-11-03)
+
+- Readiness gate of record-access ticket 01 (agent, under Đạt's delegation of 2026-10-31): the measurement of
+  Consequences is split in two. Ticket 01 builds the policy variants inside custom-objects ticket 01's harness and runs
+  them at the smoke scale on the dev machine; ticket 06 runs the same command at D12 on YC20's reference host, judges
+  each R9 threshold there and is the only source of the numbers this ADR records. A smoke number is never written here.
+  The variants start from decisions 1, 3 and 4 as written (P0); a winner that differs from one of them amends that
+  decision in the same change that records the numbers. If this is wrong, ticket 06 folds back into ticket 01 as its
+  last step and ticket 01 stays open until the host exists.

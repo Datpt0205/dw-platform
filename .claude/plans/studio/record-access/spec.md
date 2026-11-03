@@ -2,8 +2,8 @@
 
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
-Duyệt: chưa
-Sẵn sàng: chưa kiểm
+Duyệt: agent, tạm theo ủy quyền 3/11/2026
+Sẵn sàng: ĐẠT (3/11/2026; 0 CRITICAL, 0 HIGH; ticket 01, 06)
 
 Ai thấy bản ghi nào được quyết định trong PostgreSQL bằng RLS trên một sổ tầm truy cập, không ở ứng dụng, nên API,
 agent, quy trình, xuất, lane và dịch vụ viết bằng ngôn ngữ khác nhận cùng một câu trả lời (ADR-0105 (Accepted),
@@ -246,9 +246,11 @@ hay không (YC50, YC82).
 
 Danh sách và bản ghi giữ ngân sách thời gian với mọi hồ sơ quyền ở quy mô D12: 10 triệu bản ghi mỗi object, 50 triệu
 mỗi tenant, 5.000 người, 200 workspace, cây workspace sâu 6 (YC20). Mỗi dòng là p95 trên ít nhất 1.000 mẫu, cả nóng
-lẫn nguội, đo phía máy chủ trên máy tham chiếu mà YC20 định nghĩa (host chính sau D14), trên harness, seed và tải hỗn
-hợp mà custom-objects/01 là chủ duy nhất (V4.32; ADR-0107 (Accepted) quyết 2), với mọi hồ sơ quyền của harness đó và
-mọi biến thể chính sách mà ticket 01 thêm.
+lẫn nguội, là thời gian cả giao dịch đo từ harness trên cùng máy với PostgreSQL, gồm gắn setting và lời gọi cửa sổ
+tầm (cận trên của thời gian phía máy chủ), trên máy tham chiếu mà YC20 định nghĩa (host chính sau D14), trên harness,
+seed và tải hỗn hợp mà custom-objects/01 là chủ duy nhất (V4.32; ADR-0107 (Accepted) quyết 2), với mọi hồ sơ quyền của
+harness đó và mọi biến thể chính sách mà ticket 01 thêm. Ticket 01 chạy chúng ở quy mô smoke trên máy dev; chỉ lần
+chạy D12 của ticket 06 xét ngưỡng.
 
 | Mã   | Thao tác dưới policy bản ghi                                   | p95 tối đa |
 | ---- | -------------------------------------------------------------- | ---------- |
@@ -440,7 +442,8 @@ mọi biến thể chính sách mà ticket 01 thêm.
   dịch vụ giao của ticket 05 đáp ứng nó ở gốc ghép, và workflow-nodes/04 chạy bộ contract test trên dịch vụ đó, kể cả ca
   chạy lại cùng khóa của R8.12 mà workflow-nodes:R6.5 dựa vào.
 - Kiểm lại khi: `platform.effective_grants` đổi hình → ticket 02 tới 05; custom-objects đổi số partition (modulus 4 theo
-  luật quyết của custom-objects/01, `custom-objects:R9.5`) hay harness, seed của custom-objects/01 → ticket 01, 03; số đo của ticket 01 trượt ngưỡng R9 → mẫu policy của ticket 03 và
+  luật quyết của custom-objects/01, `custom-objects:R9.5`) hay harness, seed của custom-objects/01 → ticket 01, 03, 06; số đo D12 của ticket 06 trượt ngưỡng R9 hay chọn phương án khác ticket 01 → sổ
+tầm của ticket 02, mẫu policy của ticket 03 và
   ADR-0105 (Accepted); foundations-hardening/03 rút `foundations-hardening:R5.3` (dạng InitPlan) → ticket 02, 03;
   custom-objects/02 đổi khóa ngoại RESTRICT tới `studio.field_defs` hay `studio.object_defs`, hay foundations-hardening/07
   đổi hình sổ bước xóa → ticket 04; workflow-engine
@@ -600,6 +603,18 @@ mọi biến thể chính sách mà ticket 01 thêm.
 - 25/10/2026 (Đạt): V4.30: mức bảo đảm nội bộ cho lần giao: dịch vụ giao nhận khóa `wf:` của Bước giao, ghi khóa cùng giao dịch với lần giao và phát lại người đã giao khi gặp lại khóa, để một lần chạy lại sau K4 không giao lead cho người kế tiếp trong vòng xoay; workflow-nodes:R6.5 dựa vào đó, dịch vụ đáp ứng `RecordAssignPort` mà workflow-engine/03 khai (H-30) và qua bộ contract test mà workflow-nodes/04 chạy; khóa ghi vào `studio.record_write_keys` của custom-objects (custom-objects:R5.9). Sửa: R8.11, R8.12, Kiểm soát (RA28), Phụ thuộc, ticket 05.
 - 25/10/2026 (Đạt): V4.40: cột `field_id` trên `studio.record_terms` là phần của spec này trong YC113, đợt W2, trước khi lookup và tìm kiếm ra; ở W1 chỉ dòng Ngoài phạm vi. Sửa: Ngoài phạm vi.
 
+- 3/11/2026 (agent, theo ủy quyền 31/10/2026): gate `checking-plan-readiness` của ticket 01: lần đo R9 tách hai.
+  Ticket 01 dựng biến thể chính sách trong harness của custom-objects/01 (mốc P0 là ADR-0105 (Accepted) quyết 1, 3, 4
+  như viết, mỗi trục đổi một điều, tổ hợp thắng đo lại) và chạy ở `--scale smoke` trên máy dev; ticket 06
+  (`ready-for-human`, Chờ Đạt 23) chạy ở `--scale d12` trên máy tham chiếu, xét ngưỡng và ghi ADR-0105 (Accepted); ticket 03 chờ
+  ticket 06. Mỗi p95 của R9 là thời gian cả giao dịch đo từ harness, gồm gắn setting và lời gọi cửa sổ tầm; R9.9 đo với
+  bốn kết nối dưới tải hỗn hợp. Sửa: R9 (đoạn mở), Phụ thuộc, ticket 01, 03, 06, ADR-0105 (Accepted), Amendments 2026-11-03. Nếu
+  sai thì: ticket 06 gộp lại làm bước cuối của ticket 01, R9 xét thời gian phía máy chủ theo `pg_stat_statements`, và
+  R9.9 theo số kết nối mà lane `access_closure` của ticket 02 dùng.
+- 3/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 01, 06. Ticket 01 là mã và lần chạy smoke mà agent làm
+  được trên máy dev; ticket 06 là lần chạy D12 cần máy chỉ Đạt cấp được, cùng lệnh, nên tách không sinh harness thứ hai.
+  Theo `## Ủy quyền` của studio.md (Đạt, 31/10/2026). Nếu sai thì: một ticket đứng mở tới khi có máy tham chiếu.
+
 ## Danh sách ticket
 
 | #   | Ticket                                                                                                                                                       |
@@ -609,3 +624,4 @@ mọi biến thể chính sách mà ticket 01 thêm.
 | 03  | [Cột truy cập, bộ policy trên bảng bản ghi, mặc định truy cập theo object và phạm vi toàn tenant cho lane](issues/03-policy-ban-ghi-va-mac-dinh-truy-cap.md) |
 | 04  | [Ngữ cảnh actor ở mọi cửa và biên dữ liệu của agent và workflow](issues/04-ngu-canh-actor-o-moi-cua.md)                                                      |
 | 05  | [Giao người phụ trách và đổi workspace sở hữu](issues/05-giao-nguoi-phu-trach.md)                                                                            |
+| 06  | [Đo hình dạng RLS bản ghi ở quy mô D12 trên máy tham chiếu](issues/06-do-rls-ban-ghi-o-quy-mo-d12.md)                                 |
