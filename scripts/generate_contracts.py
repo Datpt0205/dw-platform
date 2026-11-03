@@ -118,13 +118,37 @@ def stale(rendered: dict[Path, str]) -> list[Path]:
     ]
 
 
+def qualified_schema_names(document: dict[str, object]) -> list[str]:
+    """Schema names FastAPI qualified with their module path.
+
+    Two response or body models sharing a class name in different route
+    modules do not fail: FastAPI renames BOTH to `dw_api__routes__v1__<module>__<Name>`,
+    so the generated TypeScript loses `Name` and the web build breaks far from
+    the cause (09c344d's second `DraftView` and `DraftBody`, 2026-11-03).
+    """
+    components = document.get("components", {})
+    schemas = components.get("schemas", {}) if isinstance(components, dict) else {}
+    return sorted(name for name in schemas if "__" in name)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="verify snapshots are current")
     args = parser.parse_args()
 
+    openapi = build_openapi()
+    collided = qualified_schema_names(openapi)
+    for name in collided:
+        print(
+            f"OpenAPI schema {name} was qualified with its module: two models share"
+            " its class name; rename one",
+            file=sys.stderr,
+        )
+    if collided:
+        return 1
+
     rendered = {
-        SNAPSHOT: render(build_openapi()),
+        SNAPSHOT: render(openapi),
         PD_CLASSIFICATION: render(build_pd_classification()),
     }
 

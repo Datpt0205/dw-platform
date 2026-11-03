@@ -1840,6 +1840,39 @@ export interface components {
              */
             viewed_at: string;
         };
+        /** ArtifactDraftBody */
+        ArtifactDraftBody: {
+            /** Document */
+            document: {
+                [key: string]: unknown;
+            };
+        };
+        /** ArtifactDraftView */
+        ArtifactDraftView: {
+            /**
+             * Artifact Id
+             * Format: uuid
+             */
+            artifact_id: string;
+            /** Based On Version Id */
+            based_on_version_id: string | null;
+            /** Document */
+            document: {
+                [key: string]: unknown;
+            };
+            /** Document Schema */
+            document_schema: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Version
+             * @description The draft's ETag; `If-Match` of a save and a submit.
+             */
+            version: number;
+        };
         /** ArtifactView */
         ArtifactView: {
             /** Api Name */
@@ -2397,6 +2430,13 @@ export interface components {
             /** Workflow Version */
             workflow_version: string;
         };
+        /** DraftBody */
+        DraftBody: {
+            /** Steps */
+            steps: {
+                [key: string]: unknown;
+            }[];
+        };
         /** DraftReviewView */
         DraftReviewView: {
             /** Approval Id */
@@ -2424,6 +2464,44 @@ export interface components {
              * @enum {string}
              */
             state: "draft" | "submitted";
+        };
+        /** DraftView */
+        DraftView: {
+            /** Approval Id */
+            approval_id: string | null;
+            /** Author Ids */
+            author_ids: string[];
+            /** Base Sha256 */
+            base_sha256: string;
+            /** Content */
+            content: {
+                [key: string]: unknown;
+            };
+            /** Content Sha256 */
+            content_sha256: string;
+            /**
+             * Dw Id
+             * Format: uuid
+             */
+            dw_id: string;
+            /** Reason */
+            reason: string | null;
+            /**
+             * Saved By
+             * Format: uuid
+             */
+            saved_by: string;
+            simulation: components["schemas"]["SimulationView"] | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "draft" | "submitted";
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /** FeedbackAttachmentView */
         FeedbackAttachmentView: {
@@ -3974,84 +4052,6 @@ export interface components {
             tenant_id: string | null;
             /** Workspace Id */
             workspace_id: string | null;
-        };
-        /** DraftBody */
-        dw_api__routes__v1__digital_workers__DraftBody: {
-            /** Steps */
-            steps: {
-                [key: string]: unknown;
-            }[];
-        };
-        /** DraftView */
-        dw_api__routes__v1__digital_workers__DraftView: {
-            /** Approval Id */
-            approval_id: string | null;
-            /** Author Ids */
-            author_ids: string[];
-            /** Base Sha256 */
-            base_sha256: string;
-            /** Content */
-            content: {
-                [key: string]: unknown;
-            };
-            /** Content Sha256 */
-            content_sha256: string;
-            /**
-             * Dw Id
-             * Format: uuid
-             */
-            dw_id: string;
-            /** Reason */
-            reason: string | null;
-            /**
-             * Saved By
-             * Format: uuid
-             */
-            saved_by: string;
-            simulation: components["schemas"]["SimulationView"] | null;
-            /**
-             * State
-             * @enum {string}
-             */
-            state: "draft" | "submitted";
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
-        };
-        /** DraftBody */
-        dw_api__routes__v1__studio_artifacts__DraftBody: {
-            /** Document */
-            document: {
-                [key: string]: unknown;
-            };
-        };
-        /** DraftView */
-        dw_api__routes__v1__studio_artifacts__DraftView: {
-            /**
-             * Artifact Id
-             * Format: uuid
-             */
-            artifact_id: string;
-            /** Based On Version Id */
-            based_on_version_id: string | null;
-            /** Document */
-            document: {
-                [key: string]: unknown;
-            };
-            /** Document Schema */
-            document_schema: string;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
-            /**
-             * Version
-             * @description The draft's ETag; `If-Match` of a save and a submit.
-             */
-            version: number;
         };
     };
     responses: never;
@@ -5763,7 +5763,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["dw_api__routes__v1__digital_workers__DraftView"];
+                    "application/json": components["schemas"]["DraftView"];
                 };
             };
             /** @description The request was refused */
@@ -5800,7 +5800,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["dw_api__routes__v1__digital_workers__DraftBody"];
+                "application/json": components["schemas"]["DraftBody"];
             };
         };
         responses: {
@@ -5810,7 +5810,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["dw_api__routes__v1__digital_workers__DraftView"];
+                    "application/json": components["schemas"]["DraftView"];
                 };
             };
             /** @description The request was refused */
@@ -5936,7 +5936,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["dw_api__routes__v1__digital_workers__DraftView"];
+                    "application/json": components["schemas"]["DraftView"];
                 };
             };
             /** @description The request was refused */
@@ -5979,7 +5979,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["dw_api__routes__v1__digital_workers__DraftView"];
+                    "application/json": components["schemas"]["DraftView"];
                 };
             };
             /** @description The request was refused */
@@ -7946,7 +7946,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["dw_api__routes__v1__studio_artifacts__DraftView"];
+                    "application/json": components["schemas"]["ArtifactDraftView"];
                 };
             };
             /** @description The request was refused */
@@ -7983,7 +7983,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["dw_api__routes__v1__studio_artifacts__DraftBody"];
+                "application/json": components["schemas"]["ArtifactDraftBody"];
             };
         };
         responses: {
@@ -7993,7 +7993,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["dw_api__routes__v1__studio_artifacts__DraftView"];
+                    "application/json": components["schemas"]["ArtifactDraftView"];
                 };
             };
             /** @description The request was refused */
@@ -8038,7 +8038,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["dw_api__routes__v1__studio_artifacts__DraftView"];
+                    "application/json": components["schemas"]["ArtifactDraftView"];
                 };
             };
             /** @description The request was refused */

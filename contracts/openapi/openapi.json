@@ -231,6 +231,71 @@
         "title": "ApprovalViewOutcome",
         "type": "object"
       },
+      "ArtifactDraftBody": {
+        "additionalProperties": false,
+        "properties": {
+          "document": {
+            "additionalProperties": true,
+            "title": "Document",
+            "type": "object"
+          }
+        },
+        "required": [
+          "document"
+        ],
+        "title": "ArtifactDraftBody",
+        "type": "object"
+      },
+      "ArtifactDraftView": {
+        "properties": {
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "based_on_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Based On Version Id"
+          },
+          "document": {
+            "additionalProperties": true,
+            "title": "Document",
+            "type": "object"
+          },
+          "document_schema": {
+            "title": "Document Schema",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "version": {
+            "description": "The draft's ETag; `If-Match` of a save and a submit.",
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "artifact_id",
+          "id",
+          "document_schema",
+          "document",
+          "version",
+          "based_on_version_id"
+        ],
+        "title": "ArtifactDraftView",
+        "type": "object"
+      },
       "ArtifactView": {
         "properties": {
           "api_name": {
@@ -1462,6 +1527,23 @@
         "title": "DigitalWorkerView",
         "type": "object"
       },
+      "DraftBody": {
+        "properties": {
+          "steps": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Steps",
+            "type": "array"
+          }
+        },
+        "required": [
+          "steps"
+        ],
+        "title": "DraftBody",
+        "type": "object"
+      },
       "DraftReviewView": {
         "properties": {
           "approval_id": {
@@ -1547,6 +1629,102 @@
           "simulation"
         ],
         "title": "DraftReviewView",
+        "type": "object"
+      },
+      "DraftView": {
+        "properties": {
+          "approval_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approval Id"
+          },
+          "author_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Author Ids",
+            "type": "array"
+          },
+          "base_sha256": {
+            "title": "Base Sha256",
+            "type": "string"
+          },
+          "content": {
+            "additionalProperties": true,
+            "title": "Content",
+            "type": "object"
+          },
+          "content_sha256": {
+            "title": "Content Sha256",
+            "type": "string"
+          },
+          "dw_id": {
+            "format": "uuid",
+            "title": "Dw Id",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "saved_by": {
+            "format": "uuid",
+            "title": "Saved By",
+            "type": "string"
+          },
+          "simulation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SimulationView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "enum": [
+              "draft",
+              "submitted"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dw_id",
+          "content",
+          "content_sha256",
+          "base_sha256",
+          "saved_by",
+          "author_ids",
+          "state",
+          "reason",
+          "updated_at",
+          "approval_id",
+          "simulation"
+        ],
+        "title": "DraftView",
         "type": "object"
       },
       "FeedbackAttachmentView": {
@@ -5466,184 +5644,6 @@
         ],
         "title": "ZaloWorkspaceView",
         "type": "object"
-      },
-      "dw_api__routes__v1__digital_workers__DraftBody": {
-        "properties": {
-          "steps": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Steps",
-            "type": "array"
-          }
-        },
-        "required": [
-          "steps"
-        ],
-        "title": "DraftBody",
-        "type": "object"
-      },
-      "dw_api__routes__v1__digital_workers__DraftView": {
-        "properties": {
-          "approval_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Approval Id"
-          },
-          "author_ids": {
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "title": "Author Ids",
-            "type": "array"
-          },
-          "base_sha256": {
-            "title": "Base Sha256",
-            "type": "string"
-          },
-          "content": {
-            "additionalProperties": true,
-            "title": "Content",
-            "type": "object"
-          },
-          "content_sha256": {
-            "title": "Content Sha256",
-            "type": "string"
-          },
-          "dw_id": {
-            "format": "uuid",
-            "title": "Dw Id",
-            "type": "string"
-          },
-          "reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reason"
-          },
-          "saved_by": {
-            "format": "uuid",
-            "title": "Saved By",
-            "type": "string"
-          },
-          "simulation": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SimulationView"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "state": {
-            "enum": [
-              "draft",
-              "submitted"
-            ],
-            "title": "State",
-            "type": "string"
-          },
-          "updated_at": {
-            "format": "date-time",
-            "title": "Updated At",
-            "type": "string"
-          }
-        },
-        "required": [
-          "dw_id",
-          "content",
-          "content_sha256",
-          "base_sha256",
-          "saved_by",
-          "author_ids",
-          "state",
-          "reason",
-          "updated_at",
-          "approval_id",
-          "simulation"
-        ],
-        "title": "DraftView",
-        "type": "object"
-      },
-      "dw_api__routes__v1__studio_artifacts__DraftBody": {
-        "additionalProperties": false,
-        "properties": {
-          "document": {
-            "additionalProperties": true,
-            "title": "Document",
-            "type": "object"
-          }
-        },
-        "required": [
-          "document"
-        ],
-        "title": "DraftBody",
-        "type": "object"
-      },
-      "dw_api__routes__v1__studio_artifacts__DraftView": {
-        "properties": {
-          "artifact_id": {
-            "format": "uuid",
-            "title": "Artifact Id",
-            "type": "string"
-          },
-          "based_on_version_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Based On Version Id"
-          },
-          "document": {
-            "additionalProperties": true,
-            "title": "Document",
-            "type": "object"
-          },
-          "document_schema": {
-            "title": "Document Schema",
-            "type": "string"
-          },
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "version": {
-            "description": "The draft's ETag; `If-Match` of a save and a submit.",
-            "title": "Version",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "artifact_id",
-          "id",
-          "document_schema",
-          "document",
-          "version",
-          "based_on_version_id"
-        ],
-        "title": "DraftView",
-        "type": "object"
       }
     }
   },
@@ -8066,7 +8066,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/dw_api__routes__v1__digital_workers__DraftView"
+                  "$ref": "#/components/schemas/DraftView"
                 }
               }
             },
@@ -8135,7 +8135,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/dw_api__routes__v1__digital_workers__DraftBody"
+                "$ref": "#/components/schemas/DraftBody"
               }
             }
           },
@@ -8146,7 +8146,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/dw_api__routes__v1__digital_workers__DraftView"
+                  "$ref": "#/components/schemas/DraftView"
                 }
               }
             },
@@ -8344,7 +8344,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/dw_api__routes__v1__digital_workers__DraftView"
+                  "$ref": "#/components/schemas/DraftView"
                 }
               }
             },
@@ -8416,7 +8416,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/dw_api__routes__v1__digital_workers__DraftView"
+                  "$ref": "#/components/schemas/DraftView"
                 }
               }
             },
@@ -11091,7 +11091,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/dw_api__routes__v1__studio_artifacts__DraftView"
+                  "$ref": "#/components/schemas/ArtifactDraftView"
                 }
               }
             },
@@ -11181,7 +11181,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/dw_api__routes__v1__studio_artifacts__DraftView"
+                  "$ref": "#/components/schemas/ArtifactDraftView"
                 }
               }
             },
@@ -11252,7 +11252,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/dw_api__routes__v1__studio_artifacts__DraftBody"
+                "$ref": "#/components/schemas/ArtifactDraftBody"
               }
             }
           },
@@ -11263,7 +11263,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/dw_api__routes__v1__studio_artifacts__DraftView"
+                  "$ref": "#/components/schemas/ArtifactDraftView"
                 }
               }
             },

@@ -53,7 +53,7 @@ class ArtifactView(BaseModel):
     updated_at: datetime
 
 
-class DraftView(BaseModel):
+class ArtifactDraftView(BaseModel):
     artifact_id: uuid.UUID
     id: uuid.UUID
     document_schema: str
@@ -114,7 +114,7 @@ class NewArtifact(BaseModel):
     document: dict[str, Any] = {}
 
 
-class DraftBody(BaseModel):
+class ArtifactDraftBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     document: dict[str, Any]
@@ -134,8 +134,8 @@ def _artifact(row: ArtifactRow) -> ArtifactView:
     )
 
 
-def _draft(row: VersionRow) -> DraftView:
-    return DraftView(
+def _draft(row: VersionRow) -> ArtifactDraftView:
+    return ArtifactDraftView(
         artifact_id=row.artifact_id,
         id=row.id,
         document_schema=row.document_schema,
@@ -282,33 +282,33 @@ async def delete_artifact(
     return Response(status_code=204)
 
 
-@router.get("/{artifact_id}/draft", response_model=DraftView)
+@router.get("/{artifact_id}/draft", response_model=ArtifactDraftView)
 async def read_draft(
     artifact_id: uuid.UUID,
     context: RequireStudioAccess,
     container: RequireContainer,
     response: Response,
-) -> DraftView:
+) -> ArtifactDraftView:
     view = _draft(await _service(container).get_draft(context, artifact_id))
     response.headers["ETag"] = etag_of(view.version)
     return view
 
 
-@router.put("/{artifact_id}/draft", response_model=DraftView)
+@router.put("/{artifact_id}/draft", response_model=ArtifactDraftView)
 async def save_draft(
     artifact_id: uuid.UUID,
     context: RequireStudioAccess,
     container: RequireContainer,
     response: Response,
     expected: RequireIfMatch,
-    body: Annotated[DraftBody, Body()],
-) -> DraftView:
+    body: Annotated[ArtifactDraftBody, Body()],
+) -> ArtifactDraftView:
     row = await _service(container).save_draft(context, artifact_id, expected, body.document)
     response.headers["ETag"] = etag_of(row.row_version)
     return _draft(row)
 
 
-@router.post("/{artifact_id}/draft", response_model=DraftView, status_code=201)
+@router.post("/{artifact_id}/draft", response_model=ArtifactDraftView, status_code=201)
 async def create_draft(
     artifact_id: uuid.UUID,
     context: RequireStudioAccess,
@@ -317,19 +317,19 @@ async def create_draft(
     # The key first: a retry meets its effect before a version is compared.
     idempotency: DraftIdempotency,
     expected: RequireIfMatch,
-) -> DraftView:
+) -> ArtifactDraftView:
     service = _service(container)
 
-    async def run(effect: Any) -> DraftView:
+    async def run(effect: Any) -> ArtifactDraftView:
         return _draft(await service.create_draft(context, artifact_id, expected, effect))
 
-    async def reread(_id: str) -> DraftView:
+    async def reread(_id: str) -> ArtifactDraftView:
         return _draft(await service.get_draft(context, artifact_id))
 
     view = await idempotency.once(status=201, run=run, reread=reread)
     headers = {"ETag": etag_of(view.version), "Location": f"{_BASE}/{artifact_id}/draft"}
     response.headers.update(headers)
-    result: DraftView = await idempotency.record(view, status_code=201, headers=headers)
+    result: ArtifactDraftView = await idempotency.record(view, status_code=201, headers=headers)
     return result
 
 
