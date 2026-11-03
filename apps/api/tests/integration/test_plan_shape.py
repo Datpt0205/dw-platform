@@ -60,6 +60,8 @@ from dw_platform.application.access_context import AccessContext
 from dw_platform.application.authorization import ScopeAuthorizationService
 from dw_platform.application.digital_workers import DigitalWorkerService
 from dw_platform.testing.members import TENANT_MEMBER_SQL, tenant_member_params
+from dw_platform.testing.rbac import assign, plant_role
+from dw_studio.testing.fixture_kinds import FIXTURE_KINDS, FIXTURE_READ, planted_fixture_kinds
 
 pytestmark = pytest.mark.integration
 
@@ -99,7 +101,18 @@ EXPECTED: dict[tuple[str, str], Expectation] = {
     ("GET", "/api/v1/memory/items"): Expectation(
         "memory.items", ("workspace_id",), ("created_at", "memory_id")
     ),
+    # Registered in its `kind` form, the checker holding one shape per route
+    # (tenant-config ticket 02 step 7); the unfiltered form is planned below.
+    # Reach, `deleted_at IS NULL` and `label` are filters on the tenant's index.
+    ("GET", "/api/v1/studio/artifacts"): Expectation(
+        "studio.artifacts", ("kind",), ("updated_at", "id")
+    ),
 }
+# The query a registered route is paged with, when it needs one.
+PARAMS: dict[tuple[str, str], dict[str, str]] = {
+    ("GET", "/api/v1/studio/artifacts"): {"kind": "fixture"},
+}
+STUDIO_UNFILTERED = Expectation("studio.artifacts", (), ("updated_at", "id"))
 RUN_AUDIT = Expectation("platform.audit_events", ("run_id", "workspace_id"), ("occurred_at",))
 
 
@@ -109,6 +122,7 @@ class World:
     workspace: uuid.UUID
     user: uuid.UUID
     run: uuid.UUID
+    membership: uuid.UUID
 
     @property
     def scope(self) -> Scope:
@@ -127,7 +141,7 @@ class World:
 
 
 async def seed(migrator: AsyncEngine) -> World:
-    world = World(uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), uuid.uuid4())
+    world = World(uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), uuid.uuid4())
     role = f"plan_{world.tenant.hex[:10]}"
     t, w, u, r = world.tenant, world.workspace, world.user, world.run
     now = datetime.now(UTC)
@@ -161,7 +175,7 @@ async def seed(migrator: AsyncEngine) -> World:
             (
                 "INSERT INTO platform.memberships (id, tenant_id, workspace_id, user_id, role_keys)"
                 " VALUES (:id, :t, :w, :u, CAST(:r AS jsonb))",
-                {"id": uuid.uuid4(), "t": t, "w": w, "u": u, "r": f'["{role}"]'},
+                {"id": world.membership, "t": t, "w": w, "u": u, "r": f'["{role}"]'},
             ),
             (
                 "INSERT INTO platform.worker_runs (run_mode, id, tenant_id, workspace_id,"
@@ -235,6 +249,30 @@ async def seed(migrator: AsyncEngine) -> World:
                         "key": f"plan_{n}",
                     },
                 )
+        # Studio: the fixture kinds' read key at tenant depth, and artifacts
+        # of both kinds to page through (tenant-config ticket 02).
+        reader = await plant_role(conn, t, f"plan_studio_{t.hex[:8]}", {FIXTURE_READ: "tenant"})
+        await assign(conn, t, w, world.membership, reader)
+        # One kind rare among many, as a tenant's kinds are, with statistics:
+        # on a handful of rows the two list indexes cost the same, and the
+        # planner's tie says nothing about the index (measured 3/11/2026).
+        for n in range(120):
+            await conn.execute(
+                sa.text(
+                    "INSERT INTO studio.artifacts (id, tenant_id, kind, api_name,"
+                    " owning_workspace_id, row_version, updated_at)"
+                    " VALUES (:id, :t, :k, :n, :w, 1, :at)"
+                ),
+                {
+                    "id": uuid.uuid4(),
+                    "t": t,
+                    "k": FIXTURE_KINDS[0 if n % 20 == 0 else 1].kind,
+                    "n": f"plan_{n}",
+                    "w": w,
+                    "at": now - timedelta(minutes=n),
+                },
+            )
+        await conn.execute(sa.text("ANALYZE studio.artifacts"))
     return world
 
 
@@ -256,14 +294,14 @@ class Bench:
         assert response.status_code == 200, response.text
         return response
 
-    async def pages(self, path: str, table: str) -> list[Captured]:
+    async def pages(self, path: str, table: str, **params: str) -> list[Captured]:
         """The paged statements of a first page and of the page after it."""
         assert self.container.engine is not None
         with capture(self.container.engine) as seen:
-            first = await self.get(path, limit=1)
+            first = await self.get(path, limit=1, **params)
             cursor = first.json()["next_cursor"]
             assert cursor, f"{path} has a second page to plan"
-            await self.get(path, limit=1, cursor=cursor)
+            await self.get(path, limit=1, cursor=cursor, **params)
         statements = paged(seen, table)
         assert len(statements) >= 2, f"{path}: first and second page captured"
         return statements
@@ -303,10 +341,12 @@ class Unused:
 @pytest.fixture
 async def bench(api_db: DatabaseUrls) -> AsyncIterator[Bench]:
     migrator = create_async_engine(api_db.migrator, poolclass=NullPool)
+    kinds = planted_fixture_kinds(migrator)
+    await kinds.__aenter__()
     world = await seed(migrator)
-    await migrator.dispose()
     container = build_container(
-        ApiSettings(profile="test", database_url=api_db.app, dev_secret=SECRET)
+        ApiSettings(profile="test", database_url=api_db.app, dev_secret=SECRET),
+        studio_kinds=FIXTURE_KINDS,
     )
     assert container.engine is not None and container.uow_factory is not None
     # The runtime is wired only with object storage, which this suite has not;
@@ -356,6 +396,8 @@ async def bench(api_db: DatabaseUrls) -> AsyncIterator[Bench]:
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
             yield Bench(world, container, client, container.engine, admin_url)
     await container.engine.dispose()
+    await kinds.__aexit__(None, None, None)
+    await migrator.dispose()
 
 
 def test_every_registered_page_has_its_expectation() -> None:
@@ -368,9 +410,24 @@ async def test_a_paged_route_reads_through_an_index_that_carries_it(
     bench: Bench, operation: tuple[str, str]
 ) -> None:
     expected = EXPECTED[operation]
-    statements = await bench.pages(operation[1], expected.table)
+    statements = await bench.pages(operation[1], expected.table, **PARAMS.get(operation, {}))
 
     assert await bench.problems(statements, expected) == []
+
+
+async def test_the_studio_page_without_a_kind_reads_through_the_tenant_index(
+    bench: Bench,
+) -> None:
+    statements = await bench.pages("/api/v1/studio/artifacts", "studio.artifacts")
+    assert await bench.problems(statements, STUDIO_UNFILTERED) == []
+
+
+async def test_dropping_the_studio_page_index_turns_the_check_red(bench: Bench) -> None:
+    statements = await bench.pages("/api/v1/studio/artifacts", "studio.artifacts")
+    problems = await bench.problems(
+        statements, STUDIO_UNFILTERED, drop="studio.ix_artifacts_tenant_id_updated_at_id"
+    )
+    assert problems, "the check passed without the index"
 
 
 async def test_the_run_audit_list_reads_through_the_run_index(bench: Bench) -> None:

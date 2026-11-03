@@ -793,3 +793,125 @@ async def test_offboarding_exports_and_purges_the_role_tables_and_the_version_ro
     for table in tables:
         assert await _count(sessions, mine.tenant_id, "platform", table) == 0, table
         assert await _count(sessions, theirs.tenant_id, "platform", table) >= 1, table
+
+
+# ---------------------------------------------------------------------------
+# Studio's artifact envelope (tenant-config ticket 02, R3.6, TC21): two
+# artifacts of one company, one using the other across its two workspaces,
+# purged by the default steps in the order the catalog's keys give.
+# ---------------------------------------------------------------------------
+
+_PROBE_KIND = "offboarding_probe"
+_HASH = "sha256:" + "d" * 64
+
+
+async def _seed_studio(
+    sessions: async_sessionmaker[AsyncSession], tenant_id: uuid.UUID, status: str
+) -> None:
+    ws1, ws2 = uuid.uuid4(), uuid.uuid4()
+    used, user = uuid.uuid4(), uuid.uuid4()
+    used_v1, user_v1 = uuid.uuid4(), uuid.uuid4()
+    async with sessions() as session, session.begin():
+        await session.execute(
+            sa.text("SELECT set_config('app.tenant_id', :t, true)"), {"t": str(tenant_id)}
+        )
+        statements: list[tuple[str, dict[str, object]]] = [
+            (
+                "INSERT INTO platform.tenants (id, slug, name, status) VALUES (:t, :s, :s, :st)",
+                {"t": tenant_id, "s": f"st-{tenant_id.hex[-10:]}", "st": status},
+            ),
+            *(
+                (
+                    "INSERT INTO platform.workspaces (id, tenant_id, slug, name)"
+                    " VALUES (:w, :t, :s, :s)",
+                    {"w": w, "t": tenant_id, "s": slug},
+                )
+                for w, slug in ((ws1, "main"), (ws2, "ws2"))
+            ),
+            *(
+                (
+                    "INSERT INTO studio.artifacts (id, tenant_id, kind, api_name,"
+                    " owning_workspace_id, row_version, last_version_no)"
+                    " VALUES (:a, :t, :k, :n, :w, 1, 1)",
+                    {"a": a, "t": tenant_id, "k": _PROBE_KIND, "n": n, "w": w},
+                )
+                for a, n, w in ((used, "used_one", ws1), (user, "user_one", ws2))
+            ),
+            *(
+                (
+                    "INSERT INTO studio.artifact_versions (id, tenant_id, artifact_id, stage,"
+                    " version_no, document_schema, document, content_hash, definition_hash,"
+                    " row_version) VALUES (:v, :t, :a, 'live', 1, 'dw.probe/v1', '{}', :h, :h, 1)",
+                    {"v": v, "t": tenant_id, "a": a, "h": _HASH},
+                )
+                for v, a in ((used_v1, used), (user_v1, user))
+            ),
+            (
+                "INSERT INTO studio.dependencies (id, tenant_id, from_artifact_id,"
+                " from_version_id, to_kind, to_key, to_version, to_hash, to_artifact_id,"
+                " to_version_id, usage, path) VALUES (:id, :t, :fa, :fv, 'artifact', :key, 1,"
+                " :h, :ta, :tv, 'read', '/uses/0')",
+                {
+                    "id": uuid.uuid4(),
+                    "t": tenant_id,
+                    "fa": user,
+                    "fv": user_v1,
+                    "key": str(used),
+                    "h": _HASH,
+                    "ta": used,
+                    "tv": used_v1,
+                },
+            ),
+            (
+                "INSERT INTO studio.definition_manifests (tenant_id, hash, body)"
+                " VALUES (:t, :h, '{}')",
+                {"t": tenant_id, "h": _HASH},
+            ),
+        ]
+        for statement, values in statements:
+            await session.execute(sa.text(statement), values)
+
+
+_STUDIO_TABLES = ("dependencies", "definition_manifests", "artifact_versions", "artifacts")
+
+
+async def test_offboarding_purges_studio_artifacts_that_use_each_other(
+    sessions: async_sessionmaker[AsyncSession], db_urls: DatabaseUrls
+) -> None:
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    mine, theirs = uuid.uuid4(), uuid.uuid4()
+    try:
+        async with migrator.begin() as conn:
+            await conn.execute(
+                sa.text(
+                    "INSERT INTO studio.artifact_kinds (kind, has_quality_gate)"
+                    " VALUES (:k, false) ON CONFLICT DO NOTHING"
+                ),
+                {"k": _PROBE_KIND},
+            )
+        await _seed_studio(sessions, mine, "offboarding")
+        await _seed_studio(sessions, theirs, "active")
+        offboarding = SqlTenantOffboarding(session_factory=sessions)
+        async with sessions() as session, session.begin():
+            order = await offboarding.purge_order(session)
+        position = {name: order.index(f"studio.{name}") for name in _STUDIO_TABLES}
+        assert position["dependencies"] < position["artifact_versions"] < position["artifacts"]
+        assert order.index("studio.artifacts") < order.index("platform.workspaces")
+
+        await offboarding.purge_rows(mine)
+
+        for table in _STUDIO_TABLES:
+            assert await _count(sessions, mine, "studio", table) == 0, table
+            assert await _count(sessions, theirs, "studio", table) >= 1, table
+    finally:
+        async with migrator.begin() as conn:
+            await conn.execute(
+                sa.text("UPDATE platform.tenants SET status = 'offboarding' WHERE id = :t"),
+                {"t": theirs},
+            )
+        await SqlTenantOffboarding(session_factory=sessions).purge_rows(theirs)
+        async with migrator.begin() as conn:
+            await conn.execute(
+                sa.text("DELETE FROM studio.artifact_kinds WHERE kind = :k"), {"k": _PROBE_KIND}
+            )
+        await migrator.dispose()

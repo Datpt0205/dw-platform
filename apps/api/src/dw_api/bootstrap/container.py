@@ -45,6 +45,7 @@ from dw_agent_runtime.wflite.assistant import WorkflowAssistant
 from dw_agent_runtime.wflite.drafts import WorkflowDrafts
 from dw_agent_runtime.wflite.outline import WorkflowOutlineReader
 from dw_agent_runtime.wflite.publish import WorkflowPublishing
+from dw_api.bootstrap.studio import StudioContainer
 from dw_api.health import HealthService
 from dw_api.settings import ApiSettings
 from dw_connectors.adapters.zalo_link import ZaloLinking
@@ -258,6 +259,9 @@ class ApiContainer:
     # The plug-in kit. ``None`` on a host with no database or no object storage,
     # where no context could be wired anyway.
     runtime: RuntimeSeam | None = None
+    # Studio (ADR-0100 decision 6): ``None`` without a database, and then no
+    # route under `/api/v1/studio` is mounted (studio-skeleton R6.4).
+    studio: StudioContainer | None = None
 
     _extra_engines: list[AsyncEngine] = field(default_factory=list)
 

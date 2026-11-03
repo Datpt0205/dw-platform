@@ -29,6 +29,17 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # rules"). A `domain` package outside it may import a framework unseen.
 DOMAIN_CONTRACT = "Domain layers never import frameworks or providers"
 
+# Studio's contracts (ADR 0100 point 3; studio-skeleton R5.7): each direct
+# sub-package of `dw_studio` must be covered by every one that names it.
+STUDIO = "dw_studio"
+STUDIO_ADAPTERS_CONTRACT = "Studio inner layers never import Studio adapters"
+STUDIO_LANGGRAPH_CONTRACT = "LangGraph only in Studio compilers"
+STUDIO_CORE_CONTRACT = "Studio core imports no capability"
+# The layers that may not import a Studio adapter (R5.4).
+STUDIO_INNER_LAYERS = ("domain", "application", "workflows", "presentation")
+# Not capabilities: the core they all build on, and the test support.
+STUDIO_NON_CAPABILITIES = frozenset({"core", "testing"})
+
 # The Python images that `uv sync` the workspace: each needs every member's
 # manifest, or the lockfile resolves against a workspace that is not there.
 PYTHON_DOCKERFILES = ("api.Dockerfile", "worker.Dockerfile", "docgen.Dockerfile")
@@ -71,6 +82,7 @@ IMPORT_TO_DIST = {
     "dw_connectors": "dw-connectors",
     "dw_observability": "dw-observability",
     "dw_evals": "dw-evals",
+    "dw_studio": "dw-studio",
     "dw_api": "dw-api",
     "dw_worker": "dw-worker",
     "dw_docgen": "dw-docgen",
@@ -176,6 +188,103 @@ def _domain_packages(member: Path, import_name: str) -> list[str]:
     )
 
 
+def _matches(pattern: str, module: str) -> bool:
+    """Whether import-linter's module expression names `module` or an ancestor
+    of it: `*` is one segment, `**` one or more (as 2.15 reads them)."""
+    want, have = pattern.split("."), module.split(".")
+
+    def walk(i: int, j: int) -> bool:
+        if i == len(want):
+            return True  # an ancestor of `module` is matched: it covers it
+        if j == len(have):
+            return False
+        if want[i] == "**":
+            return any(walk(i + 1, k) for k in range(j + 1, len(have) + 1))
+        return (want[i] == "*" or want[i] == have[j]) and walk(i + 1, j + 1)
+
+    return walk(0, 0)
+
+
+def _covered(module: str, patterns: set[str]) -> bool:
+    return any(_matches(pattern, module) for pattern in patterns)
+
+
+def _contract(contracts: list[dict[str, Any]], name: str) -> dict[str, Any]:
+    return next((c for c in contracts if c.get("name") == name), {})
+
+
+def _studio_problems(root: Path, contracts: list[dict[str, Any]]) -> list[str]:
+    """R5.7: every direct sub-package of `dw_studio` in each contract R5.2-R5.5
+    asks of it, named with the contract it is missing from."""
+    base = root / "packages" / "python" / "dw_studio" / "src" / STUDIO
+    if not base.is_dir():
+        return []
+    subs = sorted(p.name for p in base.iterdir() if (p / "__init__.py").is_file())
+    domain = _contract(contracts, DOMAIN_CONTRACT)
+    adapters = _contract(contracts, STUDIO_ADAPTERS_CONTRACT)
+    langgraph = _contract(contracts, STUDIO_LANGGRAPH_CONTRACT)
+    core = _contract(contracts, STUDIO_CORE_CONTRACT)
+    capabilities = [sub for sub in subs if sub not in STUDIO_NON_CAPABILITIES]
+    independent = [
+        set(c.get("modules", []))
+        for c in contracts
+        if c.get("type") == "independence"
+        and any(
+            _covered(f"{STUDIO}.x", {m}) or m.startswith(f"{STUDIO}.") for m in c.get("modules", [])
+        )
+    ]
+    found: list[str] = []
+
+    def need(sub: str, module: str, contract: str, field: str, patterns: set[str]) -> None:
+        if not _covered(module, patterns):
+            found.append(f"{STUDIO}.{sub}: {module} missing from the {field} of {contract!r}")
+
+    for sub in subs:
+        pkg = f"{STUDIO}.{sub}"
+        need(
+            sub,
+            f"{pkg}.domain",
+            DOMAIN_CONTRACT,
+            "source_modules",
+            set(domain.get("source_modules", [])),
+        )
+        for layer in STUDIO_INNER_LAYERS:
+            need(
+                sub,
+                f"{pkg}.{layer}",
+                STUDIO_ADAPTERS_CONTRACT,
+                "source_modules",
+                set(adapters.get("source_modules", [])),
+            )
+        need(
+            sub,
+            f"{pkg}.adapters",
+            STUDIO_ADAPTERS_CONTRACT,
+            "forbidden_modules",
+            set(adapters.get("forbidden_modules", [])),
+        )
+        need(
+            sub,
+            pkg,
+            STUDIO_LANGGRAPH_CONTRACT,
+            "source_modules",
+            set(langgraph.get("source_modules", [])),
+        )
+        if sub in capabilities:
+            need(
+                sub,
+                pkg,
+                STUDIO_CORE_CONTRACT,
+                "forbidden_modules",
+                set(core.get("forbidden_modules", [])),
+            )
+            if len(capabilities) > 1 and not any(pkg in modules for modules in independent):
+                found.append(
+                    f"{pkg}: missing from an independence contract of the Studio capabilities"
+                )
+    return found
+
+
 def check_registration(root: Path) -> list[str]:
     """Every workspace member at every place a distribution must be named (R1.1, R1.2)."""
     config = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
@@ -185,12 +294,8 @@ def check_registration(root: Path) -> list[str]:
     mypy_path = set(tool["mypy"]["mypy_path"])
     coverage = set(tool["coverage"]["run"]["source"])
     root_packages = set(tool["importlinter"]["root_packages"])
-    domain_sources = {
-        module
-        for contract in tool["importlinter"].get("contracts", [])
-        if contract.get("name") == DOMAIN_CONTRACT
-        for module in contract.get("source_modules", [])
-    }
+    contracts: list[dict[str, Any]] = tool["importlinter"].get("contracts", [])
+    domain_sources = set(_contract(contracts, DOMAIN_CONTRACT).get("source_modules", []))
     dockerfiles = {
         name: (root / "infra" / "docker" / name).read_text(encoding="utf-8").splitlines()
         for name in PYTHON_DOCKERFILES
@@ -221,8 +326,9 @@ def check_registration(root: Path) -> list[str]:
         missing.extend(
             f"{module}: missing from the source_modules of {DOMAIN_CONTRACT!r}"
             for module in _domain_packages(member, name)
-            if module not in domain_sources
+            if not _covered(module, domain_sources)
         )
+    missing.extend(_studio_problems(root, contracts))
     return missing
 
 

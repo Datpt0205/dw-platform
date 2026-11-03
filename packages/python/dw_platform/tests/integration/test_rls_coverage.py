@@ -64,8 +64,14 @@ _TENANT_TABLES = sa.text(
 
 # The floor discovery must clear, not the list: the schemas the platform itself
 # ships. A discovery query gone wrong fails here instead of returning nothing
-# and passing every check built on top of it.
-_PLATFORM_SCHEMAS = frozenset({"platform", "knowledge", "memory"})
+# and passing every check built on top of it. `studio` since its first tenant
+# table (tenant-config ticket 02; studio-skeleton R2.6).
+_PLATFORM_SCHEMAS = frozenset({"platform", "knowledge", "memory", "studio"})
+
+
+def missed_schemas(rows: Sequence[sa.Row[Any]]) -> list[str]:
+    """The platform's schemas a discovery result lacks: the floor's question."""
+    return sorted(_PLATFORM_SCHEMAS - {r.schema for r in rows})
 
 
 async def tenant_tables(conn: AsyncConnection | AsyncSession) -> Sequence[sa.Row[Any]]:
@@ -73,9 +79,17 @@ async def tenant_tables(conn: AsyncConnection | AsyncSession) -> Sequence[sa.Row
     in which schemas", shared with `test_privileges.py`."""
     rows = (await conn.execute(_TENANT_TABLES)).all()
     assert rows, "found no tenant tables at all — the query is wrong, not the schema"
-    missed = _PLATFORM_SCHEMAS - {r.schema for r in rows}
-    assert not missed, f"schema discovery missed {sorted(missed)} — the query is wrong"
+    missed = missed_schemas(rows)
+    assert not missed, f"schema discovery missed {missed} — the query is wrong"
     return rows
+
+
+async def test_a_discovery_that_skips_studio_fails_the_floor(session: AsyncSession) -> None:
+    """studio-skeleton R2.6: the floor names `studio` when a discovery query
+    filtered it out, and is clear on the real one."""
+    rows = (await session.execute(_TENANT_TABLES)).all()
+    assert missed_schemas(rows) == []
+    assert missed_schemas([r for r in rows if r.schema != "studio"]) == ["studio"]
 
 
 async def tenant_schemas(conn: AsyncConnection | AsyncSession) -> list[str]:
@@ -650,6 +664,21 @@ _TENANT_WIDE_ON_PURPOSE: dict[tuple[str, str], str] = {
         "`platform.role_assignments` (tenant-rbac ticket 02, DO-01)"
     ),
     ("platform", "workspaces"): "the workspace rows themselves; a workspace is not inside one",
+    ("studio", "artifacts"): (
+        "a Studio definition belongs to the company; its workspace is `owning_workspace_id`,"
+        " held by the RESTRICT composite key (tenant-config ticket 02, DO-01)"
+    ),
+    ("studio", "artifact_versions"): (
+        "a version of an artifact, reached only through it; its workspace is the artifact's"
+    ),
+    ("studio", "dependencies"): (
+        "where one version uses another artifact, a child of the version; workspaces apart"
+        " on purpose (a dependent in ws2 counts against deleting an artifact of ws1)"
+    ),
+    ("studio", "definition_manifests"): (
+        "content-addressed by hash across the company; one body serves every version that"
+        " seals the same content and closure"
+    ),
 }
 
 _TENANT_WITHOUT_WORKSPACE = sa.text(
@@ -787,11 +816,16 @@ async def test_the_tenant_wide_checks_name_each_planted_defect(session: AsyncSes
 # ---------------------------------------------------------------------------
 # Studio tables (studio-skeleton R2.8, R2.11): every one is a tenant table
 # under forced RLS, but the platform reference tables listed here, which hold
-# no tenant's rows. Empty until tenant-config adds `studio.artifact_kinds`
+# no tenant's rows: `studio.artifact_kinds` since tenant-config ticket 02
 # (ADR 0109 decision 1).
 # ---------------------------------------------------------------------------
 
-_PLATFORM_REFERENCE_TABLES: dict[tuple[str, str], str] = {}
+_PLATFORM_REFERENCE_TABLES: dict[tuple[str, str], str] = {
+    ("studio", "artifact_kinds"): (
+        "the platform's catalogue of Studio kinds and their gate flag; a migration of each"
+        " kind's spec writes it, `dw_app` only reads (ADR-0109 decision 1)"
+    ),
+}
 
 
 async def test_every_studio_table_is_a_tenant_table_under_forced_rls(

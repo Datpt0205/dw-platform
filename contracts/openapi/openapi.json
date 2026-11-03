@@ -231,6 +231,67 @@
         "title": "ApprovalViewOutcome",
         "type": "object"
       },
+      "ArtifactView": {
+        "properties": {
+          "api_name": {
+            "title": "Api Name",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "labels": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Labels",
+            "type": "array"
+          },
+          "last_version_no": {
+            "title": "Last Version No",
+            "type": "integer"
+          },
+          "owning_workspace_id": {
+            "format": "uuid",
+            "title": "Owning Workspace Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "description": "The artifact's ETag; `If-Match` of its writes.",
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "api_name",
+          "owning_workspace_id",
+          "labels",
+          "last_version_no",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ArtifactView",
+        "type": "object"
+      },
       "AssignOrgAdminRequest": {
         "properties": {
           "email": {
@@ -1046,6 +1107,68 @@
         "title": "DemoUser",
         "type": "object"
       },
+      "DependentGroupView": {
+        "properties": {
+          "hidden": {
+            "description": "Dependents the caller may not read, counted only.",
+            "title": "Hidden",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DependentView"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "hidden"
+        ],
+        "title": "DependentGroupView",
+        "type": "object"
+      },
+      "DependentView": {
+        "properties": {
+          "api_name": {
+            "title": "Api Name",
+            "type": "string"
+          },
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "artifact_id",
+          "kind",
+          "api_name"
+        ],
+        "title": "DependentView",
+        "type": "object"
+      },
+      "DependentsView": {
+        "properties": {
+          "candidate": {
+            "$ref": "#/components/schemas/DependentGroupView"
+          },
+          "live": {
+            "$ref": "#/components/schemas/DependentGroupView"
+          }
+        },
+        "required": [
+          "live",
+          "candidate"
+        ],
+        "title": "DependentsView",
+        "type": "object"
+      },
       "DevSessionRequest": {
         "properties": {
           "subject": {
@@ -1339,23 +1462,6 @@
         "title": "DigitalWorkerView",
         "type": "object"
       },
-      "DraftBody": {
-        "properties": {
-          "steps": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Steps",
-            "type": "array"
-          }
-        },
-        "required": [
-          "steps"
-        ],
-        "title": "DraftBody",
-        "type": "object"
-      },
       "DraftReviewView": {
         "properties": {
           "approval_id": {
@@ -1441,102 +1547,6 @@
           "simulation"
         ],
         "title": "DraftReviewView",
-        "type": "object"
-      },
-      "DraftView": {
-        "properties": {
-          "approval_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Approval Id"
-          },
-          "author_ids": {
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "title": "Author Ids",
-            "type": "array"
-          },
-          "base_sha256": {
-            "title": "Base Sha256",
-            "type": "string"
-          },
-          "content": {
-            "additionalProperties": true,
-            "title": "Content",
-            "type": "object"
-          },
-          "content_sha256": {
-            "title": "Content Sha256",
-            "type": "string"
-          },
-          "dw_id": {
-            "format": "uuid",
-            "title": "Dw Id",
-            "type": "string"
-          },
-          "reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reason"
-          },
-          "saved_by": {
-            "format": "uuid",
-            "title": "Saved By",
-            "type": "string"
-          },
-          "simulation": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SimulationView"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "state": {
-            "enum": [
-              "draft",
-              "submitted"
-            ],
-            "title": "State",
-            "type": "string"
-          },
-          "updated_at": {
-            "format": "date-time",
-            "title": "Updated At",
-            "type": "string"
-          }
-        },
-        "required": [
-          "dw_id",
-          "content",
-          "content_sha256",
-          "base_sha256",
-          "saved_by",
-          "author_ids",
-          "state",
-          "reason",
-          "updated_at",
-          "approval_id",
-          "simulation"
-        ],
-        "title": "DraftView",
         "type": "object"
       },
       "FeedbackAttachmentView": {
@@ -2576,6 +2586,39 @@
         "title": "MySupportGrantModel",
         "type": "object"
       },
+      "NewArtifact": {
+        "additionalProperties": false,
+        "properties": {
+          "api_name": {
+            "title": "Api Name",
+            "type": "string"
+          },
+          "document": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Document",
+            "type": "object"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "labels": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Labels",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "api_name"
+        ],
+        "title": "NewArtifact",
+        "type": "object"
+      },
       "NewTenantView": {
         "properties": {
           "name": {
@@ -2900,6 +2943,35 @@
           "items": {
             "items": {
               "$ref": "#/components/schemas/ApprovalView"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "Page",
+        "type": "object"
+      },
+      "Page_ArtifactView_": {
+        "description": "A page of results and the cursor that continues it.\n\n``next_cursor`` is ``None`` on the last page, and that — not an empty\n``items`` — is the client's stop condition: a filtered listing can return an\nempty page in the middle of a run and still have more rows behind it.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ArtifactView"
             },
             "title": "Items",
             "type": "array"
@@ -3420,6 +3492,50 @@
           "id"
         ],
         "title": "Received",
+        "type": "object"
+      },
+      "ReferenceList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReferenceView"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ReferenceList",
+        "type": "object"
+      },
+      "ReferenceView": {
+        "properties": {
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "to_key": {
+            "title": "To Key",
+            "type": "string"
+          },
+          "to_kind": {
+            "title": "To Kind",
+            "type": "string"
+          },
+          "usage": {
+            "title": "Usage",
+            "type": "string"
+          }
+        },
+        "required": [
+          "to_kind",
+          "to_key",
+          "usage",
+          "path"
+        ],
+        "title": "ReferenceView",
         "type": "object"
       },
       "RejectSupportGrantBody": {
@@ -4730,6 +4846,106 @@
         "title": "UserRefView",
         "type": "object"
       },
+      "VersionList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/VersionView"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "VersionList",
+        "type": "object"
+      },
+      "VersionView": {
+        "properties": {
+          "based_on_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Based On Version Id"
+          },
+          "change_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Note"
+          },
+          "content_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Hash"
+          },
+          "definition_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Definition Hash"
+          },
+          "document": {
+            "additionalProperties": true,
+            "title": "Document",
+            "type": "object"
+          },
+          "document_schema": {
+            "title": "Document Schema",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "stage": {
+            "title": "Stage",
+            "type": "string"
+          },
+          "version_no": {
+            "title": "Version No",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "version_no",
+          "stage",
+          "document_schema",
+          "document",
+          "content_hash",
+          "definition_hash",
+          "based_on_version_id",
+          "change_note"
+        ],
+        "title": "VersionView",
+        "type": "object"
+      },
       "ViewRequest": {
         "additionalProperties": false,
         "properties": {
@@ -5249,6 +5465,184 @@
           "workspace_id"
         ],
         "title": "ZaloWorkspaceView",
+        "type": "object"
+      },
+      "dw_api__routes__v1__digital_workers__DraftBody": {
+        "properties": {
+          "steps": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Steps",
+            "type": "array"
+          }
+        },
+        "required": [
+          "steps"
+        ],
+        "title": "DraftBody",
+        "type": "object"
+      },
+      "dw_api__routes__v1__digital_workers__DraftView": {
+        "properties": {
+          "approval_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approval Id"
+          },
+          "author_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Author Ids",
+            "type": "array"
+          },
+          "base_sha256": {
+            "title": "Base Sha256",
+            "type": "string"
+          },
+          "content": {
+            "additionalProperties": true,
+            "title": "Content",
+            "type": "object"
+          },
+          "content_sha256": {
+            "title": "Content Sha256",
+            "type": "string"
+          },
+          "dw_id": {
+            "format": "uuid",
+            "title": "Dw Id",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "saved_by": {
+            "format": "uuid",
+            "title": "Saved By",
+            "type": "string"
+          },
+          "simulation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SimulationView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "enum": [
+              "draft",
+              "submitted"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dw_id",
+          "content",
+          "content_sha256",
+          "base_sha256",
+          "saved_by",
+          "author_ids",
+          "state",
+          "reason",
+          "updated_at",
+          "approval_id",
+          "simulation"
+        ],
+        "title": "DraftView",
+        "type": "object"
+      },
+      "dw_api__routes__v1__studio_artifacts__DraftBody": {
+        "additionalProperties": false,
+        "properties": {
+          "document": {
+            "additionalProperties": true,
+            "title": "Document",
+            "type": "object"
+          }
+        },
+        "required": [
+          "document"
+        ],
+        "title": "DraftBody",
+        "type": "object"
+      },
+      "dw_api__routes__v1__studio_artifacts__DraftView": {
+        "properties": {
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "based_on_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Based On Version Id"
+          },
+          "document": {
+            "additionalProperties": true,
+            "title": "Document",
+            "type": "object"
+          },
+          "document_schema": {
+            "title": "Document Schema",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "version": {
+            "description": "The draft's ETag; `If-Match` of a save and a submit.",
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "artifact_id",
+          "id",
+          "document_schema",
+          "document",
+          "version",
+          "based_on_version_id"
+        ],
+        "title": "DraftView",
         "type": "object"
       }
     }
@@ -7672,7 +8066,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DraftView"
+                  "$ref": "#/components/schemas/dw_api__routes__v1__digital_workers__DraftView"
                 }
               }
             },
@@ -7741,7 +8135,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/DraftBody"
+                "$ref": "#/components/schemas/dw_api__routes__v1__digital_workers__DraftBody"
               }
             }
           },
@@ -7752,7 +8146,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DraftView"
+                  "$ref": "#/components/schemas/dw_api__routes__v1__digital_workers__DraftView"
                 }
               }
             },
@@ -7950,7 +8344,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DraftView"
+                  "$ref": "#/components/schemas/dw_api__routes__v1__digital_workers__DraftView"
                 }
               }
             },
@@ -8022,7 +8416,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DraftView"
+                  "$ref": "#/components/schemas/dw_api__routes__v1__digital_workers__DraftView"
                 }
               }
             },
@@ -10253,6 +10647,820 @@
         "summary": "Get Timeline",
         "tags": [
           "runs"
+        ]
+      }
+    },
+    "/api/v1/studio/artifacts": {
+      "get": {
+        "operationId": "list_artifacts_api_v1_studio_artifacts_get",
+        "parameters": [
+          {
+            "description": "Only this kind.",
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this kind.",
+              "title": "Kind"
+            }
+          },
+          {
+            "description": "Only artifacts carrying this label.",
+            "in": "query",
+            "name": "label",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only artifacts carrying this label.",
+              "title": "Label"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque cursor from a previous page.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Opaque cursor from a previous page.",
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_ArtifactView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "List Artifacts",
+        "tags": [
+          "studio"
+        ]
+      },
+      "post": {
+        "operationId": "create_artifact_api_v1_studio_artifacts_post",
+        "parameters": [
+          {
+            "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewArtifact"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Create Artifact",
+        "tags": [
+          "studio"
+        ]
+      }
+    },
+    "/api/v1/studio/artifacts/{artifact_id}": {
+      "delete": {
+        "operationId": "delete_artifact_api_v1_studio_artifacts__artifact_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Required. The strong ETag of the version you read, for example \"7\". A stale or weak one is a 412; none, *, a list or a repeat is a 428.",
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required. The strong ETag of the version you read, for example \"7\". A stale or weak one is a 412; none, *, a list or a repeat is a 428.",
+              "title": "If-Match"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Delete Artifact",
+        "tags": [
+          "studio"
+        ]
+      },
+      "get": {
+        "operationId": "read_artifact_api_v1_studio_artifacts__artifact_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Read Artifact",
+        "tags": [
+          "studio"
+        ]
+      },
+      "patch": {
+        "operationId": "update_artifact_api_v1_studio_artifacts__artifact_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Required. The strong ETag of the version you read, for example \"7\". A stale or weak one is a 412; none, *, a list or a repeat is a 428.",
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required. The strong ETag of the version you read, for example \"7\". A stale or weak one is a 412; none, *, a list or a repeat is a 428.",
+              "title": "If-Match"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Update Artifact",
+        "tags": [
+          "studio"
+        ]
+      }
+    },
+    "/api/v1/studio/artifacts/{artifact_id}/dependents": {
+      "get": {
+        "operationId": "list_dependents_api_v1_studio_artifacts__artifact_id__dependents_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DependentsView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "List Dependents",
+        "tags": [
+          "studio"
+        ]
+      }
+    },
+    "/api/v1/studio/artifacts/{artifact_id}/draft": {
+      "get": {
+        "operationId": "read_draft_api_v1_studio_artifacts__artifact_id__draft_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/dw_api__routes__v1__studio_artifacts__DraftView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Read Draft",
+        "tags": [
+          "studio"
+        ]
+      },
+      "post": {
+        "operationId": "create_draft_api_v1_studio_artifacts__artifact_id__draft_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "description": "Required. The strong ETag of the version you read, for example \"7\". A stale or weak one is a 412; none, *, a list or a repeat is a 428.",
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required. The strong ETag of the version you read, for example \"7\". A stale or weak one is a 412; none, *, a list or a repeat is a 428.",
+              "title": "If-Match"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/dw_api__routes__v1__studio_artifacts__DraftView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Create Draft",
+        "tags": [
+          "studio"
+        ]
+      },
+      "put": {
+        "operationId": "save_draft_api_v1_studio_artifacts__artifact_id__draft_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Required. The strong ETag of the version you read, for example \"7\". A stale or weak one is a 412; none, *, a list or a repeat is a 428.",
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required. The strong ETag of the version you read, for example \"7\". A stale or weak one is a 412; none, *, a list or a repeat is a 428.",
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/dw_api__routes__v1__studio_artifacts__DraftBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/dw_api__routes__v1__studio_artifacts__DraftView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Save Draft",
+        "tags": [
+          "studio"
+        ]
+      }
+    },
+    "/api/v1/studio/artifacts/{artifact_id}/draft/dependencies": {
+      "get": {
+        "operationId": "draft_dependencies_api_v1_studio_artifacts__artifact_id__draft_dependencies_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReferenceList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Draft Dependencies",
+        "tags": [
+          "studio"
+        ]
+      }
+    },
+    "/api/v1/studio/artifacts/{artifact_id}/versions": {
+      "get": {
+        "operationId": "list_versions_api_v1_studio_artifacts__artifact_id__versions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "List Versions",
+        "tags": [
+          "studio"
+        ]
+      }
+    },
+    "/api/v1/studio/artifacts/{artifact_id}/versions/{version_no}": {
+      "get": {
+        "operationId": "read_version_api_v1_studio_artifacts__artifact_id__versions__version_no__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_no",
+            "required": true,
+            "schema": {
+              "title": "Version No",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Read Version",
+        "tags": [
+          "studio"
         ]
       }
     },

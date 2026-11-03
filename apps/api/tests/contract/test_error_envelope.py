@@ -31,6 +31,7 @@ from dw_api.dependencies.auth import (
     get_access_context,
     get_access_context_or_support,
     get_provisioning_context,
+    get_studio_access_context,
     get_verified_identity,
 )
 from dw_api.health import CheckState, HealthService
@@ -286,6 +287,7 @@ def _authenticated(app: FastAPI) -> FastAPI:
     )
     app.dependency_overrides[get_access_context] = lambda: context
     app.dependency_overrides[get_access_context_or_support] = lambda: context
+    app.dependency_overrides[get_studio_access_context] = lambda: context
     app.dependency_overrides[get_verified_identity] = lambda: object()
     app.dependency_overrides[get_provisioning_context] = lambda: ProvisioningContext(
         principal_id=uuid.uuid4()
@@ -294,9 +296,10 @@ def _authenticated(app: FastAPI) -> FastAPI:
 
 
 async def test_every_operation_answers_a_wrong_body_with_a_problem() -> None:
-    from generate_contracts import build_app  # type: ignore[import-not-found]
+    from generate_contracts import DEV_SECRET, build_app  # type: ignore[import-not-found]
 
     app = _authenticated(build_app())
+    token = DevTokenVerifier(DEV_SECRET).issue("walker")
     operations = [
         (method.upper(), path, op)
         for path, item in app.openapi()["paths"].items()
@@ -315,8 +318,19 @@ async def test_every_operation_answers_a_wrong_body_with_a_problem() -> None:
                     if parameter["in"] == "path":
                         path = path.replace("{" + parameter["name"] + "}", str(uuid.uuid4()))
                 request_id = f"walk-{len(refused)}"
+                # A real token for the Studio gate, which verifies it before the
+                # body is read and is no dependency to override (R6.8), and a
+                # well-formed `If-Match`, which a conditional write checks
+                # before its body (app-standards R3): the body is what is walked.
                 response = await client.request(
-                    method, path, json=0, headers={"X-Request-ID": request_id}
+                    method,
+                    path,
+                    json=0,
+                    headers={
+                        "X-Request-ID": request_id,
+                        "Authorization": f"Bearer {token}",
+                        "If-Match": '"1"',
+                    },
                 )
                 label = f"{method} {template}"
                 assert response.status_code == 422, label

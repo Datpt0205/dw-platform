@@ -11,6 +11,9 @@ dependencies = [
     "dw-memory",
     "dw-connectors",
     "dw-observability",
+    # Studio, composed above the context seams (ADR 0100 point 6): the API
+    # mounts its routes, so it imports it (CLAUDE.md step 8).
+    "dw-studio",
     # Object storage for knowledge documents and feedback attachments
     # (bootstrap/storage.py) — backbone infra, not a business context's.
     "minio>=7.2,<8",

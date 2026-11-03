@@ -287,6 +287,17 @@ jobs:
           docker compose --env-file .env -f infra/compose/docker-compose.yml --profile full up -d --build
       - name: "Smoke: API health"
         run: curl --fail --retry 40 --retry-delay 5 --retry-connrefused --retry-all-errors http://localhost:8000/api/v1/health
+      - name: "Smoke: Studio answers 401"
+        # studio-skeleton R6.6: on the built container, a path under the
+        # Studio prefix asks for a token (401, not 404: the group and its gate
+        # are mounted), and a path beside the prefix is not taken by it (404).
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/api/v1/studio/artifacts)
+          echo "GET /api/v1/studio/artifacts -> $code"
+          test "$code" = "401"
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/api/v1/studio-missing)
+          echo "GET /api/v1/studio-missing -> $code"
+          test "$code" = "404"
       - name: "Smoke: document sandbox health"
         # Through the gateway: the sandbox itself is on an internal network and
         # cannot publish a port, which is the property that makes it a sandbox.

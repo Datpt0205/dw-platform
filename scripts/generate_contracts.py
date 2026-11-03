@@ -28,6 +28,9 @@ if TYPE_CHECKING:
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SNAPSHOT = REPO_ROOT / "contracts" / "openapi" / "openapi.json"
 PD_CLASSIFICATION = REPO_ROOT / "contracts" / "jsonschema" / "pd_classification.json"
+# The contract app's dev-token secret: a test that walks the built app signs
+# with it to pass the Studio gate, which verifies a token before any dependency.
+DEV_SECRET = "contract-snapshot-secret-0123456789"
 
 
 def build_openapi() -> dict[str, object]:
@@ -60,7 +63,7 @@ def build_app() -> FastAPI:
         zalo_link_secret="contract-zalo-link-secret",
         zalo_bot_link="",
         auth_mode="dev",
-        dev_secret="contract-snapshot-secret-0123456789",
+        dev_secret=DEV_SECRET,
         s3_endpoint_url="http://localhost:9000",
         s3_access_key="contract",
         s3_secret_key="contract",

@@ -31,8 +31,10 @@ from starlette.routing import Mount
 from dw_agent_runtime.approval_flow import ApproveAndResumeService
 from dw_api.dependencies.idempotency import IDEMPOTENCY_HEADER
 from dw_api.routes.v1 import digital_workers as digital_workers_routes
+from dw_api.routes.v1 import studio_artifacts as studio_routes
 from dw_api.routes.v1 import work_items as work_items_routes
 from dw_platform.application import digital_workers, membership_admin, support_access
+from dw_studio.core.application.service import ArtifactService
 
 pytestmark = pytest.mark.unit
 
@@ -99,6 +101,10 @@ DECLARED: dict[tuple[str, str], object] = {
         "POST",
         "/api/v1/digital-workers/{dw_id}/work-items",
     ): work_items_routes._assigner_of_path,
+    # The kind's write key, at the acting workspace or the artifact's
+    # (tenant-config R2.1, R2.21; ADR-0108 decision 4).
+    ("POST", "/api/v1/studio/artifacts"): studio_routes._may_create,
+    ("POST", "/api/v1/studio/artifacts/{artifact_id}/draft"): studio_routes._may_write,
 }
 DECIDE = ("POST", "/api/v1/approvals/{approval_id}/decisions")
 
@@ -230,6 +236,12 @@ def test_each_declaration_is_the_check_its_service_makes() -> None:
         (work_items_routes._assigner_of_path, "require_work_assigner"),
     ):
         assert service_check in ast.dump(ast.parse(_source_of(check))), service_check
+    for check, service_check in (
+        (studio_routes._may_create, "check_create"),
+        (studio_routes._may_write, "check_write"),
+    ):
+        assert service_check in ast.dump(ast.parse(_source_of(check))), service_check
+        assert hasattr(ArtifactService, service_check)
 
 
 def _source_of(function: object) -> str:

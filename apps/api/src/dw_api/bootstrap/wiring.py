@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Sequence
 
 from qdrant_client import AsyncQdrantClient
 from sqlalchemy.ext.asyncio import (
@@ -59,6 +60,7 @@ from dw_api.bootstrap.storage import (
     build_minio_client,
     build_object_storage,
 )
+from dw_api.bootstrap.studio import build_studio
 from dw_api.bootstrap.telemetry import build_telemetry
 from dw_api.health import HealthService, database_probe, qdrant_probe, redis_probe
 from dw_api.settings import ApiSettings
@@ -138,6 +140,7 @@ from dw_platform.application.support_access import (
 )
 from dw_platform.application.tenant_members import TenantMembersService
 from dw_platform.application.work_queue import WorkQueue
+from dw_studio.core.application.registry import PLATFORM_KINDS, ArtifactKindEntry
 
 _LOG = logging.getLogger("dw_api.bootstrap")
 
@@ -155,15 +158,21 @@ def _asyncpg_dsn(url: str) -> str:
     return url.replace("postgresql+asyncpg://", "postgresql://", 1)
 
 
-def build_container(settings: ApiSettings | None = None) -> ApiContainer:
-    container = _build_container(settings)
+def build_container(
+    settings: ApiSettings | None = None,
+    *,
+    studio_kinds: Sequence[ArtifactKindEntry] = PLATFORM_KINDS,
+) -> ApiContainer:
+    container = _build_container(settings, studio_kinds)
     # Every context has registered its support scope sets by now (the seam
     # below); nothing may add one while the process serves requests.
     container.support_catalog.freeze()
     return container
 
 
-def _build_container(settings: ApiSettings | None) -> ApiContainer:
+def _build_container(
+    settings: ApiSettings | None, studio_kinds: Sequence[ArtifactKindEntry]
+) -> ApiContainer:
     settings = settings or ApiSettings()
     settings.validate_for_profile()
 
@@ -364,6 +373,8 @@ def _build_container(settings: ApiSettings | None) -> ApiContainer:
 
     if object_storage is None:
         _LOG.warning("no object storage configured: the agent runtime is not wired")
+        # Studio needs Postgres alone: a host with a database serves it (R6.1).
+        container.studio = build_studio(container, settings, kinds=studio_kinds)
         return container
 
     # ---- agent runtime ---------------------------------------------------
@@ -490,6 +501,12 @@ def _build_container(settings: ApiSettings | None) -> ApiContainer:
             clock=clock,
             ids=ids,
         )
+
+    # ---- STUDIO (ADR-0100 decision 6) -------------------------------------
+    # Platform code, wired after the runtime seam and before any context, so a
+    # context consumes it through a Protocol it declares and this root
+    # satisfies; `main.mount_studio` mounts its group and gate.
+    container.studio = build_studio(container, settings, kinds=studio_kinds)
 
     # ---- BOUNDED CONTEXTS PLUG IN HERE -----------------------------------
     # Build your context from `container.runtime` (the RuntimeSeam) and attach

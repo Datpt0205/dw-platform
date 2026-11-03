@@ -140,6 +140,58 @@ touch "$d/packages/python/dw_probe/src/dw_probe/__init__.py" \
 red "dw_probe.domain outside the domain contract" "$d" "dw_probe.domain: missing from the source_modules"
 red "dw_probe.core.domain outside the domain contract" "$d" "dw_probe.core.domain: missing from the source_modules"
 
+# Replace one text, searched for exactly; fail the case if it is not there.
+swap() { # file old new
+  "${py[@]}" - "$1" "$2" "$3" <<'PY'
+import sys
+from pathlib import Path
+
+path, old, new = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+text = path.read_text(encoding="utf-8")
+if old not in text:
+    sys.exit(f"cannot plant: {old!r} not in {path}")
+path.write_text(text.replace(old, new, 1), encoding="utf-8")
+PY
+}
+
+# A direct sub-package of dw_studio, with its layers' package folders.
+studio_sub() { # tree name
+  local base="$1/packages/python/dw_studio/src/dw_studio/$2"
+  mkdir -p "$base/adapters" "$base/domain"
+  touch "$base/__init__.py" "$base/adapters/__init__.py" "$base/domain/__init__.py"
+}
+
+# R5.7 (studio-skeleton): a Studio sub-package missing from a contract R5.2-R5.5
+# asks of it is named, with the contract.
+d=$(skeleton) && studio_sub "$d" probe
+red "dw_studio.probe outside the core contract" "$d" \
+  "dw_studio.probe: dw_studio.probe missing from the forbidden_modules of 'Studio core imports no capability'"
+
+d=$(skeleton) && studio_sub "$d" probe
+swap "$d/pyproject.toml" 'forbidden_modules = ["dw_studio.*.adapters"]' 'forbidden_modules = ["dw_studio.core.adapters"]'
+red "dw_studio.probe's adapters outside the adapter contract" "$d" \
+  "dw_studio.probe: dw_studio.probe.adapters missing from the forbidden_modules of 'Studio inner layers never import Studio adapters'"
+
+d=$(skeleton)
+swap "$d/pyproject.toml" '    "dw_studio.*.presentation",' '    "dw_studio.core.presentation",'
+studio_sub "$d" probe
+red "dw_studio.probe's presentation outside the adapter contract's sources" "$d" \
+  "dw_studio.probe: dw_studio.probe.presentation missing from the source_modules of 'Studio inner layers never import Studio adapters'"
+
+d=$(skeleton)
+swap "$d/pyproject.toml" 'source_modules = ["dw_platform.domain", "dw_studio.*.domain"]' 'source_modules = ["dw_platform.domain"]'
+red "dw_studio.core.domain outside the domain contract" "$d" \
+  "dw_studio.core: dw_studio.core.domain missing from the source_modules of 'Domain layers never import frameworks or providers'"
+
+d=$(skeleton)
+swap "$d/pyproject.toml" 'source_modules = ["dw_studio"]' 'source_modules = ["dw_studio.testing"]'
+red "dw_studio.core outside the LangGraph contract" "$d" \
+  "dw_studio.core: dw_studio.core missing from the source_modules of 'LangGraph only in Studio compilers'"
+
+d=$(skeleton) && studio_sub "$d" records && studio_sub "$d" workflows
+red "two Studio capabilities and no independence contract" "$d" \
+  "dw_studio.records: missing from an independence contract of the Studio capabilities"
+
 # The guard itself: without the call in main(), a planted case would pass.
 d=$(skeleton) && drop "$d/pyproject.toml" "[tool.coverage.run]" '    "packages/python/dw_evals/src",'
 drop "$d/scripts/verify_architecture.py" "def main(" "    unregistered = check_registration(root)"

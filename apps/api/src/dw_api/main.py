@@ -13,20 +13,27 @@ package.
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import APIRouter, Depends, FastAPI, Request
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from starlette.responses import Response
 
 import dw_api
 from dw_api.bootstrap import ApiContainer, build_container
-from dw_api.errors import PROBLEM_RESPONSES, publish_problems_as_problem_json
+from dw_api.dependencies.auth import get_studio_access_context, verify_bearer
+from dw_api.errors import (
+    PROBLEM_RESPONSES,
+    ProblemError,
+    problem_response,
+    publish_problems_as_problem_json,
+)
 from dw_api.exception_handlers import register_exception_handlers
 from dw_api.middleware.access_log import install_access_log_redaction
 from dw_api.middleware.rate_limit import RateLimitMiddleware
 from dw_api.middleware.request_id import RequestIdMiddleware
+from dw_api.middleware.studio_gate import StudioGate
 from dw_api.routes.v1.admin_console import router as admin_console_router
 from dw_api.routes.v1.admin_members import invitations_router as admin_invitations_router
 from dw_api.routes.v1.admin_members import router as admin_members_router
@@ -51,6 +58,9 @@ from dw_api.routes.v1.work_items import assign_router as work_assign_router
 from dw_api.routes.v1.work_items import router as work_items_router
 from dw_api.routes.v1.zalo import router as zalo_router
 from dw_api.routes.v1.zalo import webhook_router as zalo_webhook_router
+from dw_platform.application.ports import VerifiedIdentity
+from dw_studio.core.application.registry import PLATFORM_KINDS, ArtifactKindEntry
+from dw_studio.core.domain.artifacts import DocumentInvalidError
 
 _LOG = logging.getLogger(__name__)
 
@@ -72,8 +82,56 @@ _CORS_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"]
 _LOCAL_WEB_ORIGINS = ["http://localhost:3000", "http://127.0.0.1:3000"]
 
 
-def create_app(container: ApiContainer | None = None) -> FastAPI:
-    container = container or build_container()
+def mount_studio(app: FastAPI, container: ApiContainer) -> None:
+    """The `/api/v1/studio` group and its gate, only with Studio wired
+    (studio-skeleton R6; ADR-0100 decision 6). Without a database there is no
+    Studio, and every path under the prefix is a 404, never a 500 (R6.4).
+
+    Called before any other middleware is added: Starlette runs the last added
+    outermost, so the gate runs inside the request id (its refusals carry one)
+    and inside CORS, which answers a preflight before the gate asks for a token.
+    The gate verifies the token before a byte of the body is read; the group's
+    dependency builds the context from what it verified, and is closed without
+    it, so a route of the group, hidden from the schema or not, inherits both
+    (R6.8, R6.9, R6.11)."""
+    studio = container.studio
+    if studio is None:
+        return
+
+    async def verify(authorization: str | None) -> VerifiedIdentity:
+        return await verify_bearer(container, authorization)
+
+    app.add_middleware(StudioGate, verify=verify)
+    group = APIRouter(
+        prefix="/studio", tags=["studio"], dependencies=[Depends(get_studio_access_context)]
+    )
+    for router in studio.routers:
+        group.include_router(router)
+    app.include_router(group, prefix="/api/v1")
+
+    async def document_invalid(request: Request, exc: Exception) -> Response:
+        # Every problem of the document, each at its own pointer (R2.6).
+        assert isinstance(exc, DocumentInvalidError)
+        return problem_response(
+            request,
+            exc.code,
+            exc.message,
+            details=exc.details,
+            errors=[
+                ProblemError(pointer=problem.pointer, code=problem.code, detail=problem.detail)
+                for problem in exc.problems
+            ],
+        )
+
+    app.add_exception_handler(DocumentInvalidError, document_invalid)
+
+
+def create_app(
+    container: ApiContainer | None = None,
+    *,
+    studio_kinds: Sequence[ArtifactKindEntry] = PLATFORM_KINDS,
+) -> FastAPI:
+    container = container or build_container(studio_kinds=studio_kinds)
     settings = container.settings
 
     @asynccontextmanager
@@ -104,6 +162,8 @@ def create_app(container: ApiContainer | None = None) -> FastAPI:
     publish_problems_as_problem_json(app)
     app.state.container = container
     install_access_log_redaction()
+    # First of the middleware: see `mount_studio`.
+    mount_studio(app, container)
 
     # Middleware runs in reverse registration order: request-id first, then limit.
     app.add_middleware(RateLimitMiddleware, requests_per_minute=settings.rate_limit_per_minute)

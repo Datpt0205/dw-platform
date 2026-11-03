@@ -1,0 +1,75 @@
+# Mutation check of studio-skeleton ticket 02: scripts/mutate.py runs this file
+# at the queue's close (wave-close.md). One mutation per control the ticket adds.
+# Not here, because mutate.py runs pytest only: the import contracts (R5.1,
+# R5.4, R5.5), each planted and seen red by `lint-imports` on 3/11/2026, and
+# the registration check (R5.7), whose planted cases and own "guard removed"
+# case live in scripts/test_verify_architecture.sh. The CI smoke (R6.6) is a
+# workflow step and is watched on the containers job.
+mutations:
+  - name: R6.8 the gate lets an unverified caller through
+    file: apps/api/src/dw_api/middleware/studio_gate.py
+    old: '            identity = await self.verify(request.headers.get("authorization"))'
+    new: "            identity = None  # mutated"
+    tests:
+      - apps/api/tests/unit/test_studio_seam.py::test_a_caller_the_verifier_refuses_gets_401_with_nothing_read
+  - name: R6.10 a compressed body is read
+    file: apps/api/src/dw_api/middleware/studio_gate.py
+    old: '        if encoding not in ("", "identity"):'
+    new: "        if False:"
+    tests:
+      - apps/api/tests/unit/test_studio_seam.py::test_a_compressed_body_is_415_and_not_read
+  - name: R6.5 a declared length past the cap is read
+    file: apps/api/src/dw_api/middleware/studio_gate.py
+    old: "        if declared.isdigit() and int(declared) > self.max_body:"
+    new: "        if False:"
+    tests:
+      - apps/api/tests/unit/test_studio_seam.py::test_a_body_past_the_cap_is_413_and_never_read_past_one_byte
+  - name: R6.5 the streamed count never stops the body
+    file: apps/api/src/dw_api/middleware/studio_gate.py
+    old: '                if state["read"] > self.max_body:'
+    new: "                if False:"
+    tests:
+      - apps/api/tests/unit/test_studio_seam.py::test_a_body_past_the_cap_is_413_and_never_read_past_one_byte
+  - name: R6.1 the group dependency passes without the gate's result
+    file: apps/api/src/dw_api/dependencies/auth.py
+    old: "    if getattr(request.state, VERIFIED_IDENTITY_STATE, None) is None:"
+    new: "    if False:"
+    tests:
+      - apps/api/tests/unit/test_studio_seam.py::test_the_group_dependency_refuses_without_the_gates_result
+  - name: R6.11 the group builds its context from claims, not the factory
+    file: apps/api/src/dw_api/dependencies/auth.py
+    old: "    return await get_access_context(request, container)\n\n\nRequireStudioAccess"
+    new: "    return AccessContext(tenant_id=uuid_header(TENANT_HEADER, request.headers.get(TENANT_HEADER)), workspace_id=uuid_header(WORKSPACE_HEADER, request.headers.get(WORKSPACE_HEADER)), principal_id=uuid_header(TENANT_HEADER, request.headers.get(TENANT_HEADER)), roles=frozenset(), plan_id='x')\n\n\nRequireStudioAccess"
+    tests:
+      - apps/api/tests/integration/test_studio_artifacts.py::test_the_group_refuses_whom_the_platform_refuses_the_same_way
+  - name: R6.11 the support grant header is not refused
+    file: apps/api/src/dw_api/dependencies/auth.py
+    old: "    if request.headers.get(SUPPORT_GRANT_HEADER) is not None:\n        raise support_access_refused("
+    new: "    if False:\n        raise support_access_refused("
+    tests:
+      - apps/api/tests/integration/test_studio_artifacts.py::test_the_group_refuses_whom_the_platform_refuses_the_same_way
+  - name: R6.4 the group is mounted without Studio
+    file: apps/api/src/dw_api/main.py
+    old: "    if studio is None:\n        return\n"
+    new: "    if False:\n        return\n"
+    tests:
+      - apps/api/tests/unit/test_studio_seam.py::test_without_a_database_studio_is_absent_and_never_500
+  - name: R6.1 R6.9 the group and its gate are not mounted
+    file: apps/api/src/dw_api/main.py
+    old: "    mount_studio(app, container)\n"
+    new: "\n"
+    tests:
+      - apps/api/tests/unit/test_studio_seam.py::test_every_studio_path_of_the_schema_answers_an_anonymous_call_401
+      - apps/api/tests/unit/test_studio_seam.py::test_a_hidden_route_and_a_missing_path_under_the_prefix_are_401
+  - name: R2.6 the schema floor forgets studio
+    file: packages/python/dw_platform/tests/integration/test_rls_coverage.py
+    old: '_PLATFORM_SCHEMAS = frozenset({"platform", "knowledge", "memory", "studio"})'
+    new: '_PLATFORM_SCHEMAS = frozenset({"platform", "knowledge", "memory"})'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_rls_coverage.py::test_a_discovery_that_skips_studio_fails_the_floor
+  - name: R6.7 the description lacks a column the migration has
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/tables.py
+    old: '    sa.Column("change_note", sa.Text, nullable=True),'
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/integration/test_metadata_matches_catalog.py::test_the_description_matches_the_migrated_catalog

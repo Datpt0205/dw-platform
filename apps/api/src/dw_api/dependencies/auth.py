@@ -12,7 +12,7 @@ from typing import Annotated
 from fastapi import Depends, Request
 
 from dw_api.bootstrap import ApiContainer
-from dw_kernel.errors import InfrastructureError, PermissionDeniedError
+from dw_kernel.errors import InfrastructureError, PermissionDeniedError, UnauthenticatedError
 from dw_kernel.http_auth import TENANT_HEADER, WORKSPACE_HEADER, bearer_token, uuid_header
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.ports import VerifiedIdentity
@@ -21,6 +21,10 @@ from dw_platform.application.support_access import SupportRefusal, support_acces
 
 # A support staff member names the customer's grant they act under (ADR 0024).
 SUPPORT_GRANT_HEADER = "X-DW-Support-Grant"
+
+# Where a middleware that verified the bearer token before the body was read
+# leaves the result (the Studio gate, studio-skeleton R6.8): `request.state`.
+VERIFIED_IDENTITY_STATE = "verified_identity"
 
 
 def get_container(request: Request) -> ApiContainer:
@@ -37,15 +41,24 @@ async def get_verified_identity(
     Used by /auth/bootstrap, which answers "who am I and which workspaces can I
     enter?" before a workspace has been selected.
     """
+    return await verify_bearer(container, request.headers.get("Authorization"))
+
+
+RequireVerifiedIdentity = Annotated[VerifiedIdentity, Depends(get_verified_identity)]
+
+
+async def verify_bearer(container: ApiContainer, authorization: str | None) -> VerifiedIdentity:
+    """The platform's one token verifier, on an `Authorization` header value.
+
+    Every door that verifies a token calls this: the dependencies below and the
+    Studio gate, which verifies before a byte of the body is read (R6.8). One
+    function, so a door cannot accept a token another would refuse."""
     if container.token_verifier is None:
         raise InfrastructureError(
             "authentication is not configured",
             details={"hint": "set DW_API_DATABASE_URL and DW_API_DEV_SECRET (or OIDC)"},
         )
-    return await container.token_verifier.verify(bearer_token(request.headers.get("Authorization")))
-
-
-RequireVerifiedIdentity = Annotated[VerifiedIdentity, Depends(get_verified_identity)]
+    return await container.token_verifier.verify(bearer_token(authorization))
 
 
 async def get_access_context(
@@ -66,9 +79,10 @@ async def get_access_context(
             details={"hint": "set DW_API_DATABASE_URL and DW_API_DEV_SECRET (or OIDC)"},
         )
 
-    identity = await container.token_verifier.verify(
-        bearer_token(request.headers.get("Authorization"))
-    )
+    # Verified already when the Studio gate ran: the same function, once.
+    identity: VerifiedIdentity | None = getattr(request.state, VERIFIED_IDENTITY_STATE, None)
+    if identity is None:
+        identity = await verify_bearer(container, request.headers.get("Authorization"))
     return await container.access_context_factory.build(
         identity,
         uuid_header(TENANT_HEADER, request.headers.get(TENANT_HEADER)),
@@ -77,6 +91,25 @@ async def get_access_context(
 
 
 RequireAccessContext = Annotated[AccessContext, Depends(get_access_context)]
+
+
+async def get_studio_access_context(
+    request: Request,
+    container: Annotated[ApiContainer, Depends(get_container)],
+) -> AccessContext:
+    """The `/api/v1/studio` group's dependency (studio-skeleton R6.1, R6.11).
+
+    Closed without the gate's result: a route of the group reached with no
+    verified identity in `request.state` (the gate unmounted, a test app
+    without it) is a 401, never a token read late. With it, the context is the
+    one `get_access_context` builds, by the same factory, refusing a support
+    grant header and a revoked member or a locked tenant the same way."""
+    if getattr(request.state, VERIFIED_IDENTITY_STATE, None) is None:
+        raise UnauthenticatedError("a verified bearer token is required")
+    return await get_access_context(request, container)
+
+
+RequireStudioAccess = Annotated[AccessContext, Depends(get_studio_access_context)]
 
 
 async def get_access_context_or_support(
@@ -112,9 +145,7 @@ async def get_access_context_or_support(
         or grant_id is None
     ):
         raise InfrastructureError("support access is not configured")
-    identity = await container.token_verifier.verify(
-        bearer_token(request.headers.get("Authorization"))
-    )
+    identity = await verify_bearer(container, request.headers.get("Authorization"))
     view = await container.identity_bootstrap.bootstrap(identity)
     context = await container.support_access.build(
         principal_id=view.principal_id,
@@ -153,9 +184,7 @@ async def get_provisioning_context(
             "provisioning is not configured",
             details={"hint": "set DW_PROVISIONER_DATABASE_URL"},
         )
-    identity = await container.token_verifier.verify(
-        bearer_token(request.headers.get("Authorization"))
-    )
+    identity = await verify_bearer(container, request.headers.get("Authorization"))
     view = await container.identity_bootstrap.bootstrap(identity)
     if not view.is_platform_operator:
         raise PermissionDeniedError(

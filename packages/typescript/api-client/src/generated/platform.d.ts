@@ -1409,6 +1409,130 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/studio/artifacts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Artifacts */
+        get: operations["list_artifacts_api_v1_studio_artifacts_get"];
+        put?: never;
+        /** Create Artifact */
+        post: operations["create_artifact_api_v1_studio_artifacts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/studio/artifacts/{artifact_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Artifact */
+        get: operations["read_artifact_api_v1_studio_artifacts__artifact_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Artifact */
+        delete: operations["delete_artifact_api_v1_studio_artifacts__artifact_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Artifact */
+        patch: operations["update_artifact_api_v1_studio_artifacts__artifact_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/studio/artifacts/{artifact_id}/dependents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Dependents */
+        get: operations["list_dependents_api_v1_studio_artifacts__artifact_id__dependents_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/studio/artifacts/{artifact_id}/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Draft */
+        get: operations["read_draft_api_v1_studio_artifacts__artifact_id__draft_get"];
+        /** Save Draft */
+        put: operations["save_draft_api_v1_studio_artifacts__artifact_id__draft_put"];
+        /** Create Draft */
+        post: operations["create_draft_api_v1_studio_artifacts__artifact_id__draft_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/studio/artifacts/{artifact_id}/draft/dependencies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Draft Dependencies */
+        get: operations["draft_dependencies_api_v1_studio_artifacts__artifact_id__draft_dependencies_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/studio/artifacts/{artifact_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Versions */
+        get: operations["list_versions_api_v1_studio_artifacts__artifact_id__versions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/studio/artifacts/{artifact_id}/versions/{version_no}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Version */
+        get: operations["read_version_api_v1_studio_artifacts__artifact_id__versions__version_no__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/support/catalog": {
         parameters: {
             query?: never;
@@ -1715,6 +1839,42 @@ export interface components {
              * Format: date-time
              */
             viewed_at: string;
+        };
+        /** ArtifactView */
+        ArtifactView: {
+            /** Api Name */
+            api_name: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Labels */
+            labels: string[];
+            /** Last Version No */
+            last_version_no: number;
+            /**
+             * Owning Workspace Id
+             * Format: uuid
+             */
+            owning_workspace_id: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Version
+             * @description The artifact's ETag; `If-Match` of its writes.
+             */
+            version: number;
         };
         /** AssignOrgAdminRequest */
         AssignOrgAdminRequest: {
@@ -2069,6 +2229,33 @@ export interface components {
              */
             workspace_id: string;
         };
+        /** DependentGroupView */
+        DependentGroupView: {
+            /**
+             * Hidden
+             * @description Dependents the caller may not read, counted only.
+             */
+            hidden: number;
+            /** Items */
+            items: components["schemas"]["DependentView"][];
+        };
+        /** DependentView */
+        DependentView: {
+            /** Api Name */
+            api_name: string;
+            /**
+             * Artifact Id
+             * Format: uuid
+             */
+            artifact_id: string;
+            /** Kind */
+            kind: string;
+        };
+        /** DependentsView */
+        DependentsView: {
+            candidate: components["schemas"]["DependentGroupView"];
+            live: components["schemas"]["DependentGroupView"];
+        };
         /** DevSessionRequest */
         DevSessionRequest: {
             /** Subject */
@@ -2210,13 +2397,6 @@ export interface components {
             /** Workflow Version */
             workflow_version: string;
         };
-        /** DraftBody */
-        DraftBody: {
-            /** Steps */
-            steps: {
-                [key: string]: unknown;
-            }[];
-        };
         /** DraftReviewView */
         DraftReviewView: {
             /** Approval Id */
@@ -2244,44 +2424,6 @@ export interface components {
              * @enum {string}
              */
             state: "draft" | "submitted";
-        };
-        /** DraftView */
-        DraftView: {
-            /** Approval Id */
-            approval_id: string | null;
-            /** Author Ids */
-            author_ids: string[];
-            /** Base Sha256 */
-            base_sha256: string;
-            /** Content */
-            content: {
-                [key: string]: unknown;
-            };
-            /** Content Sha256 */
-            content_sha256: string;
-            /**
-             * Dw Id
-             * Format: uuid
-             */
-            dw_id: string;
-            /** Reason */
-            reason: string | null;
-            /**
-             * Saved By
-             * Format: uuid
-             */
-            saved_by: string;
-            simulation: components["schemas"]["SimulationView"] | null;
-            /**
-             * State
-             * @enum {string}
-             */
-            state: "draft" | "submitted";
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
         };
         /** FeedbackAttachmentView */
         FeedbackAttachmentView: {
@@ -2708,6 +2850,25 @@ export interface components {
             /** Workspace Name */
             workspace_name: string;
         };
+        /** NewArtifact */
+        NewArtifact: {
+            /** Api Name */
+            api_name: string;
+            /**
+             * Document
+             * @default {}
+             */
+            document: {
+                [key: string]: unknown;
+            };
+            /** Kind */
+            kind: string;
+            /**
+             * Labels
+             * @default []
+             */
+            labels: string[];
+        };
         /** NewTenantView */
         NewTenantView: {
             /** Name */
@@ -2845,6 +3006,20 @@ export interface components {
         Page_ApprovalView_: {
             /** Items */
             items: components["schemas"]["ApprovalView"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /**
+         * Page
+         * @description A page of results and the cursor that continues it.
+         *
+         *     ``next_cursor`` is ``None`` on the last page, and that — not an empty
+         *     ``items`` — is the client's stop condition: a filtered listing can return an
+         *     empty page in the middle of a run and still have more rows behind it.
+         */
+        Page_ArtifactView_: {
+            /** Items */
+            items: components["schemas"]["ArtifactView"][];
             /** Next Cursor */
             next_cursor: string | null;
         };
@@ -3076,6 +3251,22 @@ export interface components {
              * Format: uuid
              */
             id: string;
+        };
+        /** ReferenceList */
+        ReferenceList: {
+            /** Items */
+            items: components["schemas"]["ReferenceView"][];
+        };
+        /** ReferenceView */
+        ReferenceView: {
+            /** Path */
+            path: string;
+            /** To Key */
+            to_key: string;
+            /** To Kind */
+            to_kind: string;
+            /** Usage */
+            usage: string;
         };
         /** RejectSupportGrantBody */
         RejectSupportGrantBody: {
@@ -3536,6 +3727,37 @@ export interface components {
              */
             user_id: string;
         };
+        /** VersionList */
+        VersionList: {
+            /** Items */
+            items: components["schemas"]["VersionView"][];
+        };
+        /** VersionView */
+        VersionView: {
+            /** Based On Version Id */
+            based_on_version_id: string | null;
+            /** Change Note */
+            change_note: string | null;
+            /** Content Hash */
+            content_hash: string | null;
+            /** Definition Hash */
+            definition_hash: string | null;
+            /** Document */
+            document: {
+                [key: string]: unknown;
+            };
+            /** Document Schema */
+            document_schema: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Stage */
+            stage: string;
+            /** Version No */
+            version_no: number;
+        };
         /** ViewRequest */
         ViewRequest: {
             /**
@@ -3752,6 +3974,84 @@ export interface components {
             tenant_id: string | null;
             /** Workspace Id */
             workspace_id: string | null;
+        };
+        /** DraftBody */
+        dw_api__routes__v1__digital_workers__DraftBody: {
+            /** Steps */
+            steps: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** DraftView */
+        dw_api__routes__v1__digital_workers__DraftView: {
+            /** Approval Id */
+            approval_id: string | null;
+            /** Author Ids */
+            author_ids: string[];
+            /** Base Sha256 */
+            base_sha256: string;
+            /** Content */
+            content: {
+                [key: string]: unknown;
+            };
+            /** Content Sha256 */
+            content_sha256: string;
+            /**
+             * Dw Id
+             * Format: uuid
+             */
+            dw_id: string;
+            /** Reason */
+            reason: string | null;
+            /**
+             * Saved By
+             * Format: uuid
+             */
+            saved_by: string;
+            simulation: components["schemas"]["SimulationView"] | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "draft" | "submitted";
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** DraftBody */
+        dw_api__routes__v1__studio_artifacts__DraftBody: {
+            /** Document */
+            document: {
+                [key: string]: unknown;
+            };
+        };
+        /** DraftView */
+        dw_api__routes__v1__studio_artifacts__DraftView: {
+            /**
+             * Artifact Id
+             * Format: uuid
+             */
+            artifact_id: string;
+            /** Based On Version Id */
+            based_on_version_id: string | null;
+            /** Document */
+            document: {
+                [key: string]: unknown;
+            };
+            /** Document Schema */
+            document_schema: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Version
+             * @description The draft's ETag; `If-Match` of a save and a submit.
+             */
+            version: number;
         };
     };
     responses: never;
@@ -5463,7 +5763,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DraftView"];
+                    "application/json": components["schemas"]["dw_api__routes__v1__digital_workers__DraftView"];
                 };
             };
             /** @description The request was refused */
@@ -5500,7 +5800,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["DraftBody"];
+                "application/json": components["schemas"]["dw_api__routes__v1__digital_workers__DraftBody"];
             };
         };
         responses: {
@@ -5510,7 +5810,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DraftView"];
+                    "application/json": components["schemas"]["dw_api__routes__v1__digital_workers__DraftView"];
                 };
             };
             /** @description The request was refused */
@@ -5636,7 +5936,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DraftView"];
+                    "application/json": components["schemas"]["dw_api__routes__v1__digital_workers__DraftView"];
                 };
             };
             /** @description The request was refused */
@@ -5679,7 +5979,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DraftView"];
+                    "application/json": components["schemas"]["dw_api__routes__v1__digital_workers__DraftView"];
                 };
             };
             /** @description The request was refused */
@@ -7352,6 +7652,514 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TimelineEvent"][];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_artifacts_api_v1_studio_artifacts_get: {
+        parameters: {
+            query?: {
+                /** @description Only this kind. */
+                kind?: string | null;
+                /** @description Only artifacts carrying this label. */
+                label?: string | null;
+                limit?: number;
+                /** @description Opaque cursor from a previous page. */
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_ArtifactView_"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    create_artifact_api_v1_studio_artifacts_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewArtifact"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArtifactView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    read_artifact_api_v1_studio_artifacts__artifact_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArtifactView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    delete_artifact_api_v1_studio_artifacts__artifact_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Required. The strong ETag of the version you read, for example "7". A stale or weak one is a 412; none, *, a list or a repeat is a 428. */
+                "If-Match"?: string[] | null;
+            };
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    update_artifact_api_v1_studio_artifacts__artifact_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Required. The strong ETag of the version you read, for example "7". A stale or weak one is a 412; none, *, a list or a repeat is a 428. */
+                "If-Match"?: string[] | null;
+            };
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArtifactView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_dependents_api_v1_studio_artifacts__artifact_id__dependents_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DependentsView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    read_draft_api_v1_studio_artifacts__artifact_id__draft_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["dw_api__routes__v1__studio_artifacts__DraftView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    save_draft_api_v1_studio_artifacts__artifact_id__draft_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Required. The strong ETag of the version you read, for example "7". A stale or weak one is a 412; none, *, a list or a repeat is a 428. */
+                "If-Match"?: string[] | null;
+            };
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["dw_api__routes__v1__studio_artifacts__DraftBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["dw_api__routes__v1__studio_artifacts__DraftView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    create_draft_api_v1_studio_artifacts__artifact_id__draft_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
+                "Idempotency-Key"?: string | null;
+                /** @description Required. The strong ETag of the version you read, for example "7". A stale or weak one is a 412; none, *, a list or a repeat is a 428. */
+                "If-Match"?: string[] | null;
+            };
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["dw_api__routes__v1__studio_artifacts__DraftView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    draft_dependencies_api_v1_studio_artifacts__artifact_id__draft_dependencies_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceList"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_versions_api_v1_studio_artifacts__artifact_id__versions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VersionList"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    read_version_api_v1_studio_artifacts__artifact_id__versions__version_no__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                artifact_id: string;
+                version_no: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VersionView"];
                 };
             };
             /** @description The request was refused */

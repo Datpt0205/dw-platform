@@ -1,0 +1,175 @@
+# Mutation check of tenant-config ticket 02: scripts/mutate.py runs this file at
+# the queue's close (wave-close.md). One mutation per control of the ticket's
+# "Kiểm soát" rows (TC1-TC7, TC21, TC24, TC27, TC29-TC31) and per layer that
+# holds one. Five were run by hand while writing the tests (3/11/2026): the
+# FOR SHARE read and the artifact lock of each of save_draft, create_draft and
+# seal, each red in its own named case. The migration's mutations apply in
+# place, so their tests recreate the database from the mutated revision.
+mutations:
+  - name: TC1 a sealed version's content changes
+    file: db/migrations/versions/67071483caa6_studio_artifact_envelope.py
+    old: "        IF OLD.stage <> 'draft' AND ("
+    new: "        IF false AND ("
+    tests:
+      - packages/python/dw_studio/tests/integration/test_artifact_envelope.py::test_a_sealed_versions_content_is_fixed
+  - name: TC4 the database lets the API name change after live
+    file: db/migrations/versions/67071483caa6_studio_artifact_envelope.py
+    old: "        IF NEW.api_name IS DISTINCT FROM OLD.api_name AND EXISTS ("
+    new: "        IF false AND EXISTS ("
+    tests:
+      - packages/python/dw_studio/tests/integration/test_artifact_envelope.py::test_the_api_name_is_fixed_by_the_database_once_live
+  - name: TC27 R2.14 the gate flag gets a default
+    file: db/migrations/versions/67071483caa6_studio_artifact_envelope.py
+    old: "        has_quality_gate boolean NOT NULL,"
+    new: "        has_quality_gate boolean NOT NULL DEFAULT true,"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_artifact_envelope.py::test_a_kind_registered_without_its_gate_flag_is_refused
+  - name: TC29 to_version_id is a one-column key
+    file: db/migrations/versions/67071483caa6_studio_artifact_envelope.py
+    old: "            FOREIGN KEY (to_version_id, tenant_id)\n            REFERENCES studio.artifact_versions (id, tenant_id) ON DELETE RESTRICT,"
+    new: "            FOREIGN KEY (to_version_id)\n            REFERENCES studio.artifact_versions (id) ON DELETE RESTRICT,"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_artifact_envelope.py::test_a_dependency_never_points_into_another_tenant
+  - name: TC29 the owning workspace is a one-column key
+    file: db/migrations/versions/67071483caa6_studio_artifact_envelope.py
+    old: "            FOREIGN KEY (owning_workspace_id, tenant_id)\n            REFERENCES platform.workspaces (id, tenant_id) ON DELETE RESTRICT,"
+    new: "            FOREIGN KEY (owning_workspace_id)\n            REFERENCES platform.workspaces (id) ON DELETE RESTRICT,"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_artifact_envelope.py::test_an_artifact_is_never_owned_by_another_tenants_workspace
+  - name: TC30 the owning workspace may change
+    file: db/migrations/versions/67071483caa6_studio_artifact_envelope.py
+    old: "        IF NEW.owning_workspace_id IS DISTINCT FROM OLD.owning_workspace_id THEN"
+    new: "        IF false THEN"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_artifact_envelope.py::test_the_owning_workspace_never_changes
+  - name: TC30 studio-skeleton R2.7 dw_app gets UPDATE of the whole table
+    file: db/migrations/versions/67071483caa6_studio_artifact_envelope.py
+    old: "    \"GRANT UPDATE (api_name, labels, last_version_no, row_version, deleted_at, updated_at)\"\n    \" ON studio.artifacts TO dw_app;\","
+    new: "    \"GRANT UPDATE ON studio.artifacts TO dw_app;\","
+    tests:
+      - packages/python/dw_platform/tests/integration/test_privileges.py::test_the_artifact_envelope_grants_dw_app_its_writes_and_no_more
+      - packages/python/dw_platform/tests/integration/test_privileges.py::test_the_studio_schema_holds_nothing_it_should_not
+  - name: TC27 R2.20 the one-unreleased index narrowed to drafts
+    file: db/migrations/versions/67071483caa6_studio_artifact_envelope.py
+    old: "    \" (artifact_id) WHERE stage IN ('draft', 'evaluating', 'awaiting_approval')\","
+    new: "    \" (artifact_id) WHERE stage = 'draft'\","
+    tests:
+      - packages/python/dw_studio/tests/integration/test_artifact_envelope.py::test_one_unreleased_version_per_artifact
+  - name: TC31 R3.8 the delete trigger reads no status
+    file: db/migrations/versions/67071483caa6_studio_artifact_envelope.py
+    old: "           IS DISTINCT FROM 'offboarding' THEN"
+    new: "           IS NULL THEN"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_artifact_envelope.py::test_only_an_offboarding_company_loses_these_rows
+  - name: TC5 R3.3 an artifact target need not name its id
+    file: db/migrations/versions/67071483caa6_studio_artifact_envelope.py
+    old: "                AND to_key = to_artifact_id::text)"
+    new: ")"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_artifact_envelope.py::test_an_artifact_dependency_names_its_target_by_id
+  - name: TC5 the soft delete ignores dependents
+    file: db/migrations/versions/67071483caa6_studio_artifact_envelope.py
+    old: "            IF v_counts IS NOT NULL THEN"
+    new: "            IF false THEN"
+    tests:
+      - apps/api/tests/integration/test_studio_artifacts.py::test_an_artifact_in_use_elsewhere_is_not_deleted
+      - packages/python/dw_studio/tests/integration/test_artifact_envelope.py::test_a_seal_in_flight_holds_off_the_soft_delete_of_its_target
+  - name: TC21 dw_app loses DELETE on dependencies
+    file: db/migrations/versions/67071483caa6_studio_artifact_envelope.py
+    old: '    "GRANT INSERT, DELETE ON studio.dependencies TO dw_app;",'
+    new: '    "GRANT INSERT ON studio.dependencies TO dw_app;",'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_offboarding_coverage.py
+      - packages/python/dw_platform/tests/integration/test_privileges.py::test_the_artifact_envelope_grants_dw_app_its_writes_and_no_more
+  - name: TC21 R3.6 the purge order loses the to_version_id edge
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py
+    old: "    \"   AND NOT (k.confdeltype = 'a' AND k.condeferrable AND k.condeferred)\""
+    new: "    \"   AND NOT (k.confdeltype = 'a' AND k.condeferrable AND k.condeferred)\"\n    \"   AND k.conname <> 'fk_dependencies_to_version_id_artifact_versions'\""
+    tests:
+      - packages/python/dw_platform/tests/integration/test_offboarding.py::test_offboarding_purges_studio_artifacts_that_use_each_other
+      - packages/python/dw_platform/tests/integration/test_offboarding_coverage.py
+  - name: TC3 R2.5 save_draft compares no version
+    file: packages/python/dw_studio/src/dw_studio/core/application/service.py
+    old: "            if not expected.matches(unreleased.row_version):"
+    new: "            if False:"
+    tests:
+      - apps/api/tests/integration/test_studio_artifacts.py::test_a_draft_is_read_and_saved_under_its_own_etag
+  - name: TC3 R2.17 seal compares no version
+    file: packages/python/dw_studio/src/dw_studio/core/application/service.py
+    old: "        if unreleased.row_version != expected_row_version:"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_artifact_envelope.py::test_a_seal_with_a_stale_row_version_seals_nothing
+  - name: TC2 seal does not bump the draft's row_version
+    file: packages/python/dw_studio/src/dw_studio/core/application/service.py
+    old: "            definition_hash=manifest_hash,\n            row_version=unreleased.row_version + 1,\n"
+    new: "            definition_hash=manifest_hash,\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_artifact_envelope.py::test_two_seals_of_one_draft_give_one_number
+  - name: TC2 R2.7 seal reads before the artifact lock
+    file: packages/python/dw_studio/src/dw_studio/core/application/service.py
+    old: "        row = await self._load(tx, artifact_id, lock=True)\n        entry = self.registry.get(row.kind)"
+    new: "        row = await self._load(tx, artifact_id, lock=False)\n        entry = self.registry.get(row.kind)"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_artifact_envelope.py::test_each_version_write_reads_only_after_the_artifact_lock
+  - name: R2.7 save_draft reads before the artifact lock
+    file: packages/python/dw_studio/src/dw_studio/core/application/service.py
+    old: "            row = await self._load(tx, artifact_id, lock=True)\n            await self._writable(tx, row, await self._readable(tx, row))\n            unreleased = _unreleased(await tx.versions(artifact_id))"
+    new: "            row = await self._load(tx, artifact_id, lock=False)\n            await self._writable(tx, row, await self._readable(tx, row))\n            unreleased = _unreleased(await tx.versions(artifact_id))"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_artifact_envelope.py::test_each_version_write_reads_only_after_the_artifact_lock
+  - name: R2.7 R2.23 create_draft reads before the artifact lock
+    file: packages/python/dw_studio/src/dw_studio/core/application/service.py
+    old: "            row = await self._load(tx, artifact_id, lock=True)\n            await self._writable(tx, row, await self._readable(tx, row))\n            if not expected.matches(row.row_version):\n                raise _stale()\n            versions = await tx.versions(artifact_id)"
+    new: "            row = await self._load(tx, artifact_id, lock=False)\n            await self._writable(tx, row, await self._readable(tx, row))\n            if not expected.matches(row.row_version):\n                raise _stale()\n            versions = await tx.versions(artifact_id)"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_artifact_envelope.py::test_each_version_write_reads_only_after_the_artifact_lock
+  - name: TC27 R2.13 seal moves the stage
+    file: packages/python/dw_studio/src/dw_studio/core/application/service.py
+    old: "            version_no=version_no,\n            content_hash=root_hash,"
+    new: "            version_no=version_no,\n            stage=\"evaluating\",\n            content_hash=root_hash,"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_artifact_envelope.py::test_a_seal_numbers_hashes_and_leaves_the_stage
+  - name: TC27 R2.22 create_draft does not check for a candidate
+    file: packages/python/dw_studio/src/dw_studio/core/application/service.py
+    old: "            if unreleased is not None and unreleased.stage in CANDIDATE_STAGES:"
+    new: "            if False:"
+    tests:
+      - apps/api/tests/integration/test_studio_artifacts.py::test_a_draft_beside_a_draft_or_a_candidate_is_refused
+  - name: TC24 R2.11 the read reach is not checked
+    file: packages/python/dw_studio/src/dw_studio/core/application/service.py
+    old: "        if entry is None or row.owning_workspace_id not in await tx.reach(entry.read_key):"
+    new: "        if entry is None:"
+    tests:
+      - apps/api/tests/integration/test_studio_artifacts.py::test_an_artifact_out_of_reach_is_not_there
+  - name: TC24 R2.12 the write reach is not checked
+    file: packages/python/dw_studio/src/dw_studio/core/application/service.py
+    old: "        if row.owning_workspace_id not in await tx.reach(entry.write_key):"
+    new: "        if False:"
+    tests:
+      - apps/api/tests/integration/test_studio_artifacts.py::test_every_id_route_checks_tenant_reach_and_write
+      - apps/api/tests/integration/test_studio_artifacts.py::test_a_reader_cannot_save_a_draft
+  - name: TC24 R2.11 the list is not filtered by reach
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/artifact_store.py
+    old: "            reach,\n            after_position(artifacts.c.updated_at, artifacts.c.id, after),"
+    new: "            after_position(artifacts.c.updated_at, artifacts.c.id, after),"
+    tests:
+      - apps/api/tests/integration/test_studio_artifacts.py::test_a_list_holds_only_what_the_caller_reads_and_pages_stay_full
+  - name: R3.1 a reseal keeps the old where-used rows
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/artifact_store.py
+    old: "            sa.delete(dependencies).where(dependencies.c.from_version_id == version_id)"
+    new: "            sa.delete(dependencies).where(sa.false())"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_artifact_envelope.py::test_a_version_back_in_draft_is_resealed_under_a_new_number
+  - name: TC5 R3.3 the seal reads its target without FOR SHARE
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/artifact_store.py
+    old: "            .with_for_update(read=True)\n"
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/integration/test_artifact_envelope.py::test_a_seal_in_flight_holds_off_the_soft_delete_of_its_target
+  - name: TC6 the fixture's extractor is broken
+    file: packages/python/dw_studio/src/dw_studio/testing/fixture_kinds.py
+    old: '        Reference(TargetKind.ARTIFACT, item, Usage.READ, f"/uses/{n}")'
+    new: '        Reference(TargetKind.ARTIFACT, item, Usage.WRITE, f"/uses/{n}")'
+    tests:
+      - packages/python/dw_studio/tests/integration/test_artifact_envelope.py::test_the_fixture_kinds_where_used_rows_are_exactly_its_uses

@@ -699,6 +699,70 @@ async def test_the_studio_schema_holds_nothing_it_should_not(db_urls: DatabaseUr
         await migrator.dispose()
 
 
+# The artifact envelope (tenant-config ticket 02, step 3): table-wide INSERT
+# and DELETE (the offboarding lane deletes as `dw_app`, and a trigger refuses
+# it elsewhere), UPDATE only of these columns, never of the table.
+_STUDIO_WRITES: dict[str, tuple[frozenset[str], frozenset[str]]] = {
+    "artifact_kinds": (frozenset(), frozenset()),
+    "artifacts": (
+        frozenset({"INSERT", "DELETE"}),
+        frozenset(
+            {"api_name", "labels", "last_version_no", "row_version", "deleted_at", "updated_at"}
+        ),
+    ),
+    "artifact_versions": (
+        frozenset({"INSERT", "DELETE"}),
+        frozenset(
+            {
+                "stage",
+                "document_schema",
+                "document",
+                "version_no",
+                "content_hash",
+                "definition_hash",
+                "row_version",
+                "change_note",
+            }
+        ),
+    ),
+    "definition_manifests": (frozenset({"INSERT", "DELETE"}), frozenset()),
+    "dependencies": (frozenset({"INSERT", "DELETE"}), frozenset()),
+}
+
+
+async def test_the_artifact_envelope_grants_dw_app_its_writes_and_no_more(
+    db_urls: DatabaseUrls,
+) -> None:
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            for table, (verbs, columns) in _STUDIO_WRITES.items():
+                held = {
+                    verb
+                    for verb in ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE")
+                    if await conn.scalar(
+                        sa.text("SELECT has_table_privilege('dw_app', :t, :v)"),
+                        {"t": f"studio.{table}", "v": verb},
+                    )
+                }
+                updatable = {
+                    row[0]
+                    for row in await conn.execute(
+                        sa.text(
+                            "SELECT a.attname FROM pg_attribute a"
+                            " WHERE a.attrelid = CAST(:t AS regclass) AND a.attnum > 0"
+                            "   AND NOT a.attisdropped"
+                            "   AND has_column_privilege('dw_app', a.attrelid, a.attnum, 'UPDATE')"
+                        ),
+                        {"t": f"studio.{table}"},
+                    )
+                }
+                assert held == {"SELECT", *verbs}, table
+                assert updatable == columns, table
+    finally:
+        await migrator.dispose()
+
+
 async def test_only_its_owner_may_write_the_partition_registry(db_urls: DatabaseUrls) -> None:
     """R3.5: the registry is the input of a SECURITY DEFINER function, so a role
     that could write it could choose the tables that function runs DDL on."""

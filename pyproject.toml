@@ -20,6 +20,7 @@ dw-memory = { workspace = true }
 dw-connectors = { workspace = true }
 dw-observability = { workspace = true }
 dw-evals = { workspace = true }
+dw-studio = { workspace = true }
 dw-api = { workspace = true }
 dw-docgen = { workspace = true }
 dw-worker = { workspace = true }
@@ -110,6 +111,7 @@ known-first-party = [
     "dw_memory",
     "dw_connectors",
     "dw_observability",
+    "dw_studio",
     "dw_evals",
     "dw_api",
     "dw_docgen",
@@ -149,6 +151,7 @@ mypy_path = [
     "packages/python/dw_connectors/src",
     "packages/python/dw_observability/src",
     "packages/python/dw_evals/src",
+    "packages/python/dw_studio/src",
     "apps/api/src",
     "apps/docgen/src",
     "apps/worker/src",
@@ -224,6 +227,7 @@ source = [
     "packages/python/dw_knowledge/src",
     "packages/python/dw_memory/src",
     "packages/python/dw_observability/src",
+    "packages/python/dw_studio/src",
     "packages/python/dw_platform/src",
     "apps/api/src",
     "apps/docgen/src",
@@ -255,6 +259,7 @@ root_packages = [
     "dw_connectors",
     "dw_observability",
     "dw_evals",
+    "dw_studio",
     "dw_api",
     "dw_docgen",
     "dw_worker",
@@ -290,7 +295,10 @@ forbidden_modules = [
 [[tool.importlinter.contracts]]
 name = "Domain layers never import frameworks or providers"
 type = "forbidden"
-source_modules = ["dw_platform.domain"]
+# `dw_studio.*.domain`: each Studio sub-package's domain layer, by pattern
+# (import-linter 2.15 reads `*` and `**`, measured 3/11/2026); the registration
+# check of `scripts/verify_architecture.py` matches each real one against it.
+source_modules = ["dw_platform.domain", "dw_studio.*.domain"]
 forbidden_modules = [
     "fastapi",
     "sqlalchemy",
@@ -405,3 +413,62 @@ source_modules = [
     "dw_observability",
 ]
 forbidden_modules = ["dw_api", "dw_worker", "dw_docgen"]
+
+# ---- Studio (ADR 0100 point 3; studio-skeleton R5) --------------------------
+# Patterns rather than lists: import-linter 2.15 reads `*` (one segment) and
+# `**` in source, forbidden and ignored modules, and a pattern that matches no
+# module yet is not an error (measured 3/11/2026). `scripts/verify_architecture.py`
+# fails a direct sub-package of `dw_studio` that one of these does not cover
+# (R5.7), so a pattern cannot quietly stop matching.
+
+[[tool.importlinter.contracts]]
+name = "Platform core does not import Studio"
+type = "forbidden"
+source_modules = [
+    "dw_kernel",
+    "dw_platform",
+    "dw_agent_runtime",
+    "dw_knowledge",
+    "dw_memory",
+    "dw_connectors",
+    "dw_observability",
+    "dw_evals",
+]
+forbidden_modules = ["dw_studio"]
+
+[[tool.importlinter.contracts]]
+# Only a composition root (`dw_api.bootstrap`, `dw_worker`) names a Studio
+# adapter; the layers inside Studio take it through a port.
+name = "Studio inner layers never import Studio adapters"
+type = "forbidden"
+source_modules = [
+    "dw_studio.*.domain",
+    "dw_studio.*.application",
+    "dw_studio.*.workflows",
+    "dw_studio.*.presentation",
+]
+forbidden_modules = ["dw_studio.*.adapters"]
+
+[[tool.importlinter.contracts]]
+# The compilers (`dw_studio.workflows.workflows`, `dw_studio.agents.workflows`)
+# are the only exceptions ADR 0100 allows; neither exists yet, so none is
+# ignored here. The capability that brings one adds its `ignore_imports` line.
+name = "LangGraph only in Studio compilers"
+type = "forbidden"
+source_modules = ["dw_studio"]
+forbidden_modules = ["langgraph", "langchain", "langchain_core"]
+
+[[tool.importlinter.contracts]]
+# R5.3: the core every capability builds on imports none of them. Named before
+# they exist (a missing forbidden module is not an error, measured 3/11/2026),
+# and the registration check fails a new capability this list does not name.
+name = "Studio core imports no capability"
+type = "forbidden"
+source_modules = ["dw_studio.core"]
+forbidden_modules = [
+    "dw_studio.records",
+    "dw_studio.workflows",
+    "dw_studio.agents",
+    "dw_studio.tools",
+    "dw_studio.lifecycle",
+]
