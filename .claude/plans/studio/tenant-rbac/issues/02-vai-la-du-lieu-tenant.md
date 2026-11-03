@@ -275,7 +275,7 @@ xóa cache ở route khóa của foundations-hardening/02 là tạm và ticket n
 - [x] R5.1 (RB14): vai trò tenant mang cả hai vế một luật, hai vế gán ở hai workspace → 23514 kèm id; sửa vai trò làm 2 người vi phạm → DETAIL có 2 id; luật đã miễn trừ và xác nhận → nhận; gỡ trigger AFTER → đỏ. Người giữ hai vế ở hai workspace nhờ miễn trừ đã xác nhận: thu hồi miễn trừ → 23514 `ck_sod_waivers_not_in_use`, API 409 với `details.memberships` 1; `platform.refuse_revoking_a_waiver_in_use()` đếm theo membership như cũ → thu hồi được nhận, test đỏ. Đường ghi cũ (lời mời hay đổi vai) làm một người giữ hai vế → 409 với `details.rule` như hôm nay; `separation_of_duties_conflict` không nhận `ck_roles_sod_memberships` → 500, test đỏ.
 - [x] R5.2: người giữ `tenant_owner` không bị luật chặn; thêm vai trò thường phá luật cho người đó → 23514.
 - [x] G1: `test_the_admin_who_proposed_a_waiver_cannot_confirm_it` xanh trước và sau thay đổi.
-- [x] Xong: gate theo ticket xanh (ruff, format, mypy, lint-imports, verify_invariants, verify_architecture, unit dw_platform, apps/api, apps/worker, Vitest web, integration của ticket và `test_rls_coverage.py`, `test_privileges.py`, `test_offboarding_coverage.py`); chờ lúc đóng hàng: `scripts/mutate.py` trên `mutations/02.yaml`, `make test-integration` đầy đủ, P50/P95/P99 (kèm số đo FOG-38 trên tenant 5.000 người, M11), ảnh Playwright của màn `/platform`, `/code-review`.
+- [ ] Xong: `make ci` xanh.
 
 ## Nguồn
 
@@ -480,9 +480,15 @@ xóa cache ở route khóa của foundations-hardening/02 là tạm và ticket n
   có `grants`, `access_version`, `platform_bypass`, bootstrap bỏ `roles`, `scopes`, tạo công ty với hai chủ sở hữu ở `setup`,
   `.../org-admins` gán `tenant_owner`, 409 `operator_not_assignable`, bước xóa phiên bản của offboarding, handler cảnh báo
   dưới hai người, web đọc `/me` (tải lại khi đổi workspace và khi gặp 403), màn vận hành có hai bộ lọc. CLAUDE.md mục
-  Tenancy thêm một dòng (ADR-0104 Consequences). Test: `test_tenant_roles.py` 41, `test_tenant_roles_migration.py` 2,
+  Tenancy thêm một dòng (ADR-0104 (Accepted), Consequences). Test: `test_tenant_roles.py` 41, `test_tenant_roles_migration.py` 2,
   `test_tenant_roles_api.py` 13, `test_owner_coverage_db.py` 1, `test_rls_coverage.py`, `test_privileges.py`, `test_offboarding_coverage.py`, `test_offboarding.py` 104; cả suite integration dw_platform 610 xanh, 1 đỏ có sẵn ngoài ticket (`test_restore_drill`, `marketing_send_log_default_pkey`); integration apps/api cùng `test_channel_decisions.py` 196; unit dw_platform,
   apps/api, apps/worker xanh; Vitest web 26 tệp, 148 test. Mutation `mutations/02.yaml` 40 mục, viết, chưa chạy (mỗi `old`
   kiểm đúng một lần). reviewing-feature-security đọc theo bảng Kiểm soát RB5-RB14, RB34, RB37-RB41: mỗi hàng có test âm
   (tenant khác, người không quyền, vai trò không bỏ qua RLS). reviewing-deployment-security cho các route đổi: chỉ đổi thân
   và phản hồi, không route, ảnh, dịch vụ hay URL ra ngoài mới; `/me` chỉ thêm id và mã khóa, không email.
+- 2026-11-03 (agent): gate của ticket 03 trả dòng Xong về dạng một lệnh mà `scripts/check_plans.py` đòi; điều dòng đó
+  từng ghi giữ ở đây: gate theo ticket đã xanh (ruff, format, mypy, lint-imports, verify_invariants,
+  verify_architecture, unit dw_platform, apps/api, apps/worker, Vitest web, integration của ticket và
+  `test_rls_coverage.py`, `test_privileges.py`, `test_offboarding_coverage.py`); chờ lúc đóng hàng: `scripts/mutate.py`
+  trên `mutations/02.yaml`, `make test-integration` đầy đủ, P50/P95/P99 (kèm số đo FOG-38 trên tenant 5.000 người,
+  M11), ảnh Playwright của màn `/platform`, `/code-review`.

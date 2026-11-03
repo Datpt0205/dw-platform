@@ -330,3 +330,17 @@ by copying") and D3 (record-level access in four layers), and on the call on DO-
   except the two owners' first sign-in and acceptance and the operators' routes; it leaves `setup` only for `active` or,
   through the operators' offboarding flow, `offboarding`; the role-administration and role-assignment routes do not
   accept the `platform_admin` bypass. The status stays Accepted.
+
+## Amendments (2026-11-03)
+
+- tenant-rbac ticket 03's readiness gate, the agent under Đạt's delegation of 2026-10-31; the status stays Accepted.
+- Decision 6: besides `dw_provisioner` and `dw_migrator`, only a tenant in `offboarding` or `offboarded` is exempt from
+  `platform.rbac_refusals` (offboarding's purge); a `setup` or `locked` tenant is not. `ck_role_assignments_last_owner`
+  holds for `locked` tenants as for `active` ones, so no tenant is unlocked without an owner.
+- Decision 10: a proposal enters `proposed` from its own proposer and leaves it once, as ADR-0012's waivers do; the
+  triggers accept under a proposal only the writes its kind allows, on the role (and, for an assignment, the
+  membership) it names; `assignment_grant` is confirmed by a holder of `platform.roles.bind`, the other kinds by a
+  holder of `platform.roles.write`. One exception to "every assignment is a proposal": a Digital Worker principal (a
+  `service` user with its `platform.service_principals` row) receives its roles in the transaction where its creator
+  creates the DW in `draft`, and the second person is the DW's `draft→operating` transition, made by another person
+  whose effective grants cover the principal's through `platform.grants_cover` (digital-worker R1.9). If wrong: the principal's roles go through proposals like anyone's and creating a DW answers 202.
