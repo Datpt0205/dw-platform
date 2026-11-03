@@ -1,15 +1,15 @@
 # 03 — Phạm vi biến, kiểm kiểu khi gửi kiểm định và các bước logic
 
 Status: needs-triage
-Blocked by: 02, .claude/plans/studio/workflow-engine/issues/01-tai-lieu-workflow-va-kiem-xuat-ban.md, .claude/plans/studio/field-security/issues/01-mo-hinh-bao-mat-truong.md
+Blocked by: 02, .claude/plans/studio/workflow-engine/issues/01-tai-lieu-workflow-va-kiem-xuat-ban.md, .claude/plans/studio/field-security/issues/01-mo-hinh-bao-mat-truong.md, .claude/plans/studio/usage-and-limits/issues/05-cong-gioi-han-toc-do-theo-tien-trinh.md, .claude/plans/studio/telemetry-and-audit/issues/03-lich-su-chay-theo-buoc.md
 Area: studio
-Yêu cầu: R2.3, R2.4, R3.2, R3.3, R4.4, WN5, WN11
+Yêu cầu: R2.3, R2.4, R3.2, R3.3, R3.5, R4.4, WN5, WN11
 
 ## Mục tiêu
 
 Mỗi Biểu thức kiểm kiểu tại vị trí bước, chỉ tham chiếu bước trội, và từ chối Trường người chạy không
-đọc được; ba bước logic lát cần với mặc định đóng (workflow-nodes R2.3, R2.4, R3.2, R3.3, R4.4, WN5,
-WN11).
+đọc được; người dựng kiểm và tính thử Biểu thức chỉ ở máy chủ; ba bước logic lát cần với mặc định đóng
+(workflow-nodes R2.3, R2.4, R3.2, R3.3, R3.5, R4.4, WN5, WN11).
 
 ## Việc cần làm
 
@@ -32,6 +32,12 @@ WN11).
    bằng CEL, đánh giá ở ingress.
 5. Mặc định đóng: một bước không khai Khi lỗi → `fail`; một `logic.switch` thiếu Nhánh ra mặc định →
    `wf.router_not_total`, không niêm phong.
+6. `POST /api/v1/studio/expressions/check` và `POST /api/v1/studio/expressions/evaluate` theo mục API của spec (dạng
+   sub-resource của ADR-0108 (Accepted); quyền `studio.workflows.edit`; giới hạn tần suất theo người qua
+   `RateLimiterPort` của usage-and-limits/05): kiểm hoặc tính một Biểu thức trong môi trường của bước 1 tại một node,
+   với mẫu người gọi gõ hoặc đầu ra bước đã ghi mà người gọi đọc được, đã che (`platform.run_steps` của
+   telemetry-and-audit/03); mã lỗi theo mục API. Ticket này là bên đọc đầu tiên của `ExpressionEngine` ở API, nên dựng
+   một `CelCppEngine` trong `build_studio` (studio-skeleton/02 bước 5) và gọi `aclose()` khi API tắt (ticket 01 bước 6).
 
 ## Tiêu chí chấp nhận
 
@@ -44,6 +50,9 @@ WN11).
 - [ ] R2.4 (WN11): một `logic.switch` thiếu Nhánh ra mặc định → `wf.router_not_total`, không niêm phong;
       thêm nhánh mặc định → qua.
 - [ ] R3.2: cây `draft/scope` của một node chỉ liệt kê bước trội; bước phía sau không xuất hiện.
+- [ ] R3.5: `POST /api/v1/studio/expressions/evaluate` với `trigger.amount > 10` và mẫu `{"trigger": {"amount": 11}}` trả
+      `true` từ máy chủ; người gọi không giữ `studio.workflows.edit` → 403, người của công ty khác gọi trên quy trình
+      này → 404; gỡ kiểm quyền → test đỏ.
 - [ ] Xong: `uv run pytest packages/python/dw_studio/tests/workflows/test_variable_scope.py packages/python/dw_studio/tests/workflows/test_logic_nodes.py` xanh.
 
 ## Nguồn
@@ -57,3 +66,8 @@ WN11).
 - 2026-10-24 (agent): vòng sửa thứ tư: hai mã đổi theo ADR-0112 (Accepted) quyết 3, `wf.ref_not_dominating` và `wf.type_mismatch` (phát hiện CRITICAL F về ADR-0112 (Accepted) và workflow-engine:R2).
 - 2026-10-24 (agent): theo V4.24 của Đạt: tài liệu là cây Bước, nên `logic.switch` mang mỗi nhánh thành một làn Bước với làn mặc định "Khác", không còn Đường nối lưu trong tài liệu, và bộ kiểm chạy trên `WorkflowIR` dẫn từ cây. Ba loại điều khiển của bậc B (V4.26) vào ticket 07, không vào ticket này, để workflow-nodes/04, 05, 06, mà marketing-pilot/03 chờ, không chờ bậc B. Không thêm cạnh.
 - 2026-10-25 (agent): `flow.stop@1` khai `ends_run` đúng và hai loại kia khai cả ba tính chất vị trí sai, theo trường bắt buộc của ticket 02 (dòng Quyết định 25/10/2026 của spec); phép hạ của workflow-engine/01 đọc `ends_run` để biết Bước nào không có cạnh ra. Không thêm cạnh.
+- 2026-11-03 (agent, theo ủy quyền 31/10/2026): nhận R3.5 và hai route `/expressions/check`, `/expressions/evaluate` từ
+  ticket 01 (gate của ticket 01): không ticket nào dựng chúng, mà route cần môi trường theo vị trí và `draft/scope` của
+  ticket này, `studio.workflows.edit` của workflow-engine/01, `RateLimiterPort` và lịch sử chạy; thêm hai chặn tương
+  ứng. workflow-builder-ui/03 đã chờ ticket này cho `/expressions/check`. Gate của ticket này kiểm lại phần đó; dòng
+  `Xong:` cần thêm test của hai route.

@@ -1,5 +1,5 @@
 ---
-status: Accepted (Đạt, 2026-10-23; amendments from the decision brief applied; the C++ binding stays the default only if the FOG-50 measurement holds)
+status: Accepted (Đạt, 2026-10-23; amendments from the decision brief applied; the C++ binding stays the default only if the FOG-50 measurement holds; FOG-50 measured 2026-11-03, see Amendments)
 date: 2026-10-23
 source:
     - ../../.claude/plans/studio/workflow-nodes/spec.md
@@ -49,20 +49,17 @@ S7.
    convention; against a sample the caller typed, or a recorded step output the caller may read, masked),
    rate-limited per user.
 2. **The port.** `ExpressionEngine` lives in `dw_kernel.expressions` (stdlib only): `check(source, env)` returns a
-   checked expression (type, references, cost estimate) or issues; `evaluate(checked, activation)` returns a value or
-   an error; one closed type algebra (`null`, `bool`, `int`, `double`, `string`, `bytes`, `timestamp`, `duration`,
-   `list[T]`, `map[string, T]`, `object{...}`, `optional[T]`, `dyn`). workflow-nodes owns it. The adapters live in
-   `dw_studio.core.adapters.cel`, the one module import-linter lets import a CEL binding (ADR-0100 decision 3):
-   `CelCppEngine` on `cel-expr-python==0.1.3`, pinned exactly, is the default; `CelRustEngine` on
-   `common-expression-language==0.10.0` is the fallback, behind an AST pre-check (comprehension nesting at most 2,
-   list literals at most 1,000 elements). Both pass one contract suite (a cel-spec conformance subset, the function
-   library, budget and size cases, si-platform's validation test vectors); the composition root picks one by setting.
-   The C++ binding stays the default only if FOG-50's prototype shows it registers Python functions and typed objects
-   with fields; if it cannot, the Rust binding becomes the default behind the AST pre-check, and if both fail, work
-   stops and Đạt is told (DO-38 (a)). In deployed profiles (`settings.is_deployed`) the setting picks
-   `cel-expr-python`, the binding `CLAUDE.md` (Required stack) names, and a test fails when it points at the Rust
-   binding; moving deployed profiles to the Rust binding, that fallback included, amends that section in the same
-   change.
+   checked expression (its result type) or issues, each with a kind, a position and the name involved;
+   `evaluate(checked, activation)` returns a value or an error; one closed type algebra (`null`, `bool`, `int`,
+   `double`, `string`, `bytes`, `timestamp`, `duration`, `list[T]`, `map[string, T]`, `object{...}`, `optional[T]`,
+   `dyn`). workflow-nodes owns it. The one adapter lives in `dw_studio.core.adapters.cel`, the one module
+   import-linter lets import a CEL binding (ADR-0100 decision 3): `CelCppEngine` on `cel-expr-python==0.1.3`, pinned
+   exactly, passing one contract suite (a cel-spec conformance subset, the function library, budget, wall-clock and
+   size cases). FOG-50 measured that it registers Python functions and typed objects with fields, so it is the engine
+   (DO-38 (a)). There is no second binding and no setting choosing one (amended 2026-11-03): FOG-50 measured the Rust
+   binding without a checker, an AST or a budget, so it could not pass the suite. A replacement adapter joins only by
+   passing the same suite first, and one that moves deployed profiles off `cel-expr-python` amends `CLAUDE.md`
+   (Required stack) in the same change.
 3. **One library, pinned per run.** `dw.cel/v1`, pinned on the run manifest (ADR-0109), is the CEL standard with the
    `strings`, `math`, `optional`, `encoders` and `bindings` extensions plus the platform functions `text.nfc`,
    `text.unaccent`, `text.mask_contacts`, `phone.e164`, `email.normalize`, `fmt.money_vnd`, `fmt.datetime`, `fmt.date`
@@ -76,10 +73,13 @@ S7.
    condition without a `type()` guard. At submit (inside ADR-0112's validator, the first step of the path to live) the
    checks refuse undeclared or non-dominating references, type mismatches (a condition must be `bool`), a field the run
    principal cannot read (`field_not_readable`, ADR-0106), source over 2 KiB for a condition or 16 KiB for a text
-   template, AST depth over 32 and comprehension nesting over 2. At evaluation the engine's iteration budget (about
-   10,000) and a 256 KiB cap on the serialized result apply, and an evaluation error becomes `expression_error` naming
-   the node and the path, never a value. Compiled programs are cached by `(library version, env hash, sha256(source))`
-   in a bounded per-process LRU of 10,000.
+   template, and AST depth over 32 (the binding's parser refuses it). At evaluation the binding's iteration budget
+   (10,000, fixed inside it), a wall clock of 1 second, and a 256 KiB cap on the serialized result apply, each as
+   `expression_budget_exceeded`; evaluation runs in an evaluator process the caller does not share, so a stopped
+   evaluation never holds the caller (amended 2026-11-03). An evaluation error becomes `expression_error` naming the
+   node and the path, never a value. Compiled programs are cached by
+   `(tenant id, library version, env hash, sha256(source))` (`CLAUDE.md`, Tenancy: cache keys include the tenant) in a
+   bounded per-process LRU of 10,000.
 5. **Text templates are parsed by the platform and rendered per sink.** A CEL-aware tokenizer reads `{{ expr }}` (a
    string literal may contain `}}`; `\{{` is literal). Each templatable config field declares its sink (`x-dw-sink`):
    `prompt` wraps every value with `contain_untrusted(name, value)` (ADR-0010), the tenant's literal text being
@@ -116,13 +116,16 @@ S7.
 
 - tools-and-skills ticket 07 re-points to workflow-nodes' engine ticket; custom-objects and record-access consume the
   same port and build their own environments on it.
-- A C++ wheel enters the images, and a 0.1.x dependency sits behind a port with a tested fallback; whether it registers
-  Python functions and typed objects is measured first (FOG-50).
-- The kernel purity contract (`pyproject.toml:251-276`) is a denylist: the import names of both bindings join its
-  `forbidden_modules`, or the guard cannot see the new libraries. The names are read from the installed wheels in
-  FOG-50's prototype, not guessed (failure-modes #4); `cel` and `common_expression_language` are the expected ones.
-- Tests that must exist, each red when its guard is removed: the contract suite against both adapters; a deployed
-  profile whose setting points at the Rust binding refused (decision 2); a 10,000-element map refused by the budget;
+- A C++ wheel enters the images (measured 2026-11-03: about 66 MB installed, 16 MB of it a stray, non-importable
+  `bazel-project` build tree the wheel ships), and a 0.1.x dependency sits behind a port and a contract suite any
+  replacement must pass. Typed objects reach the binding as protobuf messages of a descriptor pool built per
+  environment, so `protobuf` becomes a direct dependency of `dw-studio`.
+- The kernel purity contract (`pyproject.toml:251-276`) is a denylist: the binding's import name joins its
+  `forbidden_modules`, or the guard cannot see the new library. FOG-50 read it from the installed wheel:
+  `cel_expr_python`. (The Rust binding's import name is `cel`, not `common_expression_language`; it is not installed.)
+- Tests that must exist, each red when its guard is removed: the contract suite against the adapter; a
+  10,000-element map refused by the budget; an expression that stays under the budget but runs past the wall clock
+  refused while the caller's event loop keeps running;
   the architecture test on `jinja2` and `.format(`; per sink, a value containing `</input>`, a header value with CR
   or LF and a templated host, each refused; a hidden field failing the render closed; the ported si-platform vectors
   passing.
@@ -153,7 +156,8 @@ S7.
    ported.
 5. **FOG-50 (prototype).** Which runtime registers Python functions and typed objects and enforces cost limits, and is
    the Rust fallback bounded by the AST pre-check alone, given a native call cannot be interrupted from Python? Its
-   answer is the condition this ADR was accepted on (decision 2).
+   answer is the condition this ADR was accepted on (decision 2). Answered 2026-11-03 (Amendments): the C++ binding
+   does both; the Rust binding is not bounded, and has no checker and no AST to pre-check.
 
 ## Acceptance (2026-10-23)
 
@@ -184,3 +188,60 @@ holds, with these amendments from the decision brief:
   the one module import-linter lets import a CEL binding, as ADR-0100 decision 3 and studio-skeleton R5.6 say;
   Consequences and Acceptance cite `CLAUDE.md` (Required stack) by its section instead of its line numbers, say that
   it named no expression language at acceptance, and quote the sentence it has carried since 2026-10-24.
+
+## Amendments (2026-11-03)
+
+The gate of workflow-nodes ticket 01 ran FOG-50 (agent, theo ủy quyền 31/10/2026). It used a scratch venv on Windows
+11 (CPython 3.12) and the `python:3.12-slim-bookworm` image the API and worker run on (glibc 2.36). The scripts stay
+out of the repository, as ticket 01 said; these are the numbers.
+
+- **Wheels.** `cel-expr-python` 0.1.3 ships cp312 wheels for `win_amd64`, `manylinux_2_27/2_28` x86_64 and aarch64,
+  and macOS, but no sdist. It installs in the image. Its import name is `cel_expr_python` (`cel_expr_python.cel`, plus
+  `cel_expr_python.ext.ext_strings`, `ext_math`, `ext_optional`, `ext_encoders`, `ext_bindings`). It declares no
+  dependencies, but typed objects need `protobuf` (7.36.1 in `uv.lock`). `common-expression-language` 0.10.0 imports
+  as `cel`, and that import also loads its CLI dependencies `typer`, `rich`, `prompt_toolkit` and `pygments`.
+- **C++ binding, what FOG-50 asked.** Python functions register under dotted names (`phone.e164`,
+  `time.add_workdays`) through `CelExtension`/`FunctionDecl`/`Overload`, and calling one with a wrong argument type
+  is refused at compile. Typed objects register through a protobuf `DescriptorPool` built at run time: `score.response.tier`
+  type-checks to `STRING` and a typo is refused at compile ("undefined field"). The activation must then hold message
+  instances, not dicts. An absent proto3 scalar reads as its zero value (`''`); a wrapper-type field reads as `null`.
+  Converting a 20-field dict and evaluating costs about 267 µs; a typical three-clause condition over maps evaluates in
+  13.5 µs (6.2 µs in the image) and compiles in about 317 µs.
+- **Budget.** The binding stops every evaluation at 10,000 comprehension iterations in total, across nesting, with a
+  raised `RuntimeError("INTERNAL: Iteration budget exceeded")`. It resets per evaluation, and no API or YAML option
+  changes it. A triple-nested map over 21 elements (9,261 iterations) completes; over 22 it stops in about 30 ms.
+  But `map` and `filter` cost quadratic time and hold the GIL: a single map over 9,000 elements takes 4.1 s. A 77-byte
+  expression that concatenates a 500-element list 19 times and maps over the result runs 5.6 s under the budget, and
+  `s.split('')` over a 9,999-character string then `map` runs 6.4 s. A ticker thread got one tick in a 1.44 s
+  evaluation, so the budget bounds iterations, not the time a caller is held. That is why decision 4 adds an
+  evaluator process and a 1 s wall clock. Measured: spawning the process and the first evaluation take 298 ms, a
+  typical round trip 149 µs, and a pathological evaluation is killed at about 1.07 s.
+- **Errors.** A compile problem raises one `RuntimeError` whose text begins with a status (`INVALID_ARGUMENT: ERROR:
+  <input>:line:col: ...`). An evaluation error is not raised: it is returned as a value of type `ERROR`
+  (`divide by zero`, `NOT_FOUND: Key not found in map`, `OUT_OF_RANGE: integer overflow`, a Python function's exception
+  text as `OUT_OF_RANGE: <message>`). Only the budget is raised. The parser refuses depth over 32 by itself.
+- **Regex and time.** `matches` is RE2: a backreference or lookahead is refused, and `(a+)+$` over 30 `a`s returns in
+  5 ms. An invalid literal pattern is reported only at evaluation. `getHours('Asia/Ho_Chi_Minh')` works in the image,
+  which has `/usr/share/zoneinfo`, and fails with "Invalid timezone" on Windows; `'+07:00'` works on both. A naive
+  `datetime` is read in the host's local time (01:30 naive gives `getHours()` 18 on a UTC+7 host and 1 in a UTC
+  container), so the adapter refuses one. There is no `now()`.
+- **Rust binding.** It has no environment declarations and no type checker: `compile("1 + 'x'")` and an undeclared
+  variable both compile, and `references()` lists names only. It exposes no AST, so the pre-check had nothing to
+  walk. It has no budget either: a single map over 10,000 elements ran 10.8 s, a nested map over 1,000 × 1,000 ran
+  107 s, and the triple-nested map over 22 completed in 138 ms. It lacks the timestamp accessors (`getHours`
+  undefined), and it reads a naive `datetime` as UTC where the C++ binding reads local time.
+
+What changed, as the agent's call under Đạt's delegation of 31/10/2026:
+
+- Decision 2: one adapter, `CelCppEngine`, and no setting. The Rust fallback could pass neither the type-checking
+  cases nor the budget cases of one contract suite. Keeping it would mean a second type checker and parser in
+  Python, a second answer to "does this hold?" (failure-modes #2). `check` returns the result type and issues, and
+  drops "references" and "cost estimate", because the binding exposes neither and nothing reads them.
+  Nếu sai thì: a second adapter comes back only with its own checker and a process boundary, and passes the whole
+  suite first.
+- Decision 4: comprehension nesting over 2 is no longer refused at submit. The rule existed for the Rust pre-check,
+  and with no AST exposed nothing could enforce it; the budget bounds every nesting. Evaluation runs in an evaluator
+  process with a 1 s wall clock, and the compiled-program cache key carries the tenant id, because `CLAUDE.md`
+  (Tenancy and authorization) requires cache keys to include the tenant and the key did not. Nếu sai thì: evaluation
+  returns to the caller's process, and the measured 5-7 s holds are accepted by Đạt as a risk.
+- Status stays Accepted: decision 2's own condition (FOG-50 holds for the C++ binding) is met.

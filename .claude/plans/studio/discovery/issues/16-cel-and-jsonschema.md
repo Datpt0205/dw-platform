@@ -53,3 +53,9 @@ một biểu thức vượt chi phí, 1.000 bản ghi giả lập cho tiêu chí
   kiểm).
 
 ## Comments
+
+- 2026-11-03 (agent, theo ủy quyền 31/10/2026): FOG-50 đã đo ở gate của workflow-nodes/01 (Windows và ảnh
+  `python:3.12-slim-bookworm`); số đo và quyết định ở `docs/adr/0114-cel-is-the-one-expression-language.md`,
+  Amendments 2026-11-03: `cel-expr-python` là engine duy nhất, bản Rust không bị chặn chi phí (cần ranh giới tiến
+  trình mà nó cũng không có bộ kiểm kiểu), nên bị bỏ; lô 1.000 điều kiện điển hình ≈ 13,5 ms trong tiến trình. FOG-58
+  (`jsonschema`) vẫn mở.
