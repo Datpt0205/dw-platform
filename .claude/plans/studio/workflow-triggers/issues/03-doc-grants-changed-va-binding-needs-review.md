@@ -1,6 +1,6 @@
 # 03 — Đọc grants_changed và giữ lượt chạy bằng binding_needs_review ở dispatch
 
-Status: needs-triage
+Status: ready-for-agent
 Blocked by: 02, .claude/plans/studio/org-and-principals/issues/03-tai-khoan-dich-vu-run-as.md
 Area: studio
 Yêu cầu: R3.6, R3.7, TR17
@@ -30,19 +30,26 @@ ADR-0103 (Accepted) quyết 4).
 2. Handler outbox cho `platform.service_principal.grants_changed` (payload `tenant_id`, `service_principal_id` của
    org-and-principals/03), đăng ký ở composition root của worker (`apps/worker/src/dw_worker/main.py`): trong giao
    dịch của lần giao sự kiện, đặt `app.tenant_id` theo `set_config(..., true)` từ `tenant_id` của sự kiện, rồi upsert một
-   dòng với `grants_changed_at` là `greatest` của giá trị đang có và thời điểm ghi của sự kiện, `last_event_id` là id
-   sự kiện; giao lại cùng sự kiện → không đổi dòng nào (R3.6).
+   dòng với `grants_changed_at` là `greatest` của giá trị đang có và `now()` của giao dịch giao sự kiện (luôn sau commit
+   của giao dịch tăng quyền, nên một đề xuất chen giữa không bao giờ trông như đã phủ quyền mới), `last_event_id` là id
+   sự kiện; sự kiện có id bằng `last_event_id` → không đổi dòng nào (R3.6). Mọi sự kiện coi như quyền có thể đã tăng, vì
+   payload không nói chiều và tự tính chiều là câu trả lời thứ hai cho `platform.effective_grants` (ADR-0104 (Accepted)):
+   thu hẹp quyền cũng giữ lượt tới khi duyệt lại (dòng 4/11/2026 của spec).
 3. Kiểm `binding_needs_review` (R3.7; V4.16): một adapter đáp ứng `BindingReviewPort` mà workflow-engine/04 khai và
    làn `studio_runs` hỏi ở dispatch cho lượt `datahub`, `provider_app`, `record_event` (workflow-engine:R5.19), nối ở
    composition root của worker: khi dòng của tài khoản dịch vụ `run_as_principal_id` của lượt trong
-   `studio.principal_grant_changes` có `grants_changed_at` muộn hơn `decided_at` của lần duyệt gần nhất của một Bộ giá
-   trị gắn `approved` của thành phần mang chính tài khoản đó ở điểm gắn `principal` (tenant-config/05) → trả giữ kèm
+   `studio.principal_grant_changes` có `grants_changed_at` muộn hơn thời điểm đề xuất (lúc `grants_cover` chạy, ticket 01)
+   của phiên bản Bộ giá trị gắn `approved` gần nhất của thành phần mang chính tài khoản đó ở điểm gắn `run_as`
+   (tenant-config/05), hay không có phiên bản nào như vậy → trả giữ kèm
    `grants_changed_at`, để làn giữ lượt ở `queued`, không node nào chạy, và báo người giữ `studio.bindings.approve`
    (workflow-engine:R5.21). Kiểm không so với Bộ giá trị gắn mà lượt ghim, vì lượt đang giữ ghim bộ được duyệt trước
    lần tăng quyền; lượt vẫn chạy với Bộ giá trị gắn đã ghim (tenant-config:R7.5). Kiểm không còn đăng ký vào bộ kiểu
-   Điểm gắn của tenant-config/05 lúc ghim, nên lượt được xin như mọi lượt và lần kích hoạt ghi `run_requested`.
+   Điểm gắn của tenant-config/05 lúc ghim, nên lượt được xin như mọi lượt và lần kích hoạt ghi `run_requested`. Lỗi đọc của
+   adapter ném lên, không bao giờ trả "không giữ"; làn xử lý nó như `control_state_unavailable` (workflow-engine:R5.16),
+   giữ lượt. Lượt giữ mãi được `deadline_at` của workflow-engine/04 kết thúc (R5.22), rồi bộ xóa của ticket 02 thôi giữ sự
+   kiện của nó (R6.8).
 4. Người phủ đủ quyền mới (kiểm `grants_cover` lúc đề xuất của ticket 01) đề xuất lại Bộ giá trị gắn và một người
-   khác duyệt: `decided_at` mới muộn hơn `grants_changed_at`, nên ở chu kỳ kế tiếp port thôi báo giữ và làn nhận các
+   khác duyệt: thời điểm đề xuất mới muộn hơn `grants_changed_at`, nên ở chu kỳ kế tiếp port thôi báo giữ và làn nhận các
    lượt đang giữ theo thứ tự `available_at`; duyệt lại với một tài khoản dịch vụ khác không nhả lượt của tài khoản cũ;
    không cần xóa dòng nào.
 
@@ -62,6 +69,13 @@ ADR-0103 (Accepted) quyết 4).
       bởi người phủ đủ quyền và duyệt bởi người khác với cùng tài khoản → hai lượt chạy theo thứ tự đến; duyệt lại với
       một tài khoản dịch vụ khác → hai lượt vẫn giữ; so `grants_changed_at` với Bộ giá trị gắn mà lượt ghim → hai lượt
       giữ mãi sau khi duyệt lại, test đỏ; gỡ kiểm → test đỏ.
+- [ ] R3.7 (TR17): một đề xuất với cùng tài khoản tạo trước lần tăng quyền và duyệt sau nó → lượt vẫn giữ; đề xuất mới
+      sau lần tăng quyền, duyệt bởi người khác → lượt chạy; so với `decided_at` thay vì thời điểm đề xuất → ca đầu nhả lượt,
+      test đỏ.
+- [ ] R3.7: adapter `BindingReviewPort` ném lỗi đọc → lượt ở lại `queued`, không node nào chạy; bắt lỗi rồi trả "không
+      giữ" → test đỏ; thu hẹp quyền của tài khoản (sự kiện `grants_changed`) → lượt kế tiếp giữ tới khi duyệt lại.
+- [ ] R3.6: giao dịch tăng quyền và giao sự kiện: `grants_changed_at` bằng `now()` của lần giao, không bằng thời điểm ghi
+      outbox; một sự kiện khác cũ hơn giao sau → `grants_changed_at` không lùi.
 - [ ] Xong: `make test-integration` xanh.
 
 ## Nguồn
@@ -97,3 +111,14 @@ ADR-0103 (Accepted) quyết 4).
 - 2026-10-24 (agent): kiểm lượt f của vòng 4: tiêu đề, và dòng của ticket ở Danh sách ticket của spec, đổi "ở cửa
   nhận" thành "ở dispatch", vì từ V4.16 kiểm `binding_needs_review` chạy ở dispatch của làn `studio_runs`
   (workflow-engine:R5.19), không ở cửa nhận lượt chạy, như Mục tiêu, bước 3 và R3.7 đã ghi. Không thêm cạnh.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): checking-plan-readiness (builder check và boundary walk trong một subagent,
+  vì ticket có migration; lượt xác nhận ngữ cảnh mới sau các sửa): 0 CRITICAL, 5 HIGH đã sửa theo khuyến nghị (dòng
+  4/11/2026 của spec): so `grants_changed_at` với thời điểm đề xuất, không `decided_at`, vì `grants_cover` chỉ chạy lúc đề
+  xuất; `grants_cover` ở mọi lần đề xuất mang `run_as` (ticket 01); chỉ điểm gắn `run_as`; `grants_changed_at` là `now()`
+  của lần giao, mọi sự kiện coi như có thể tăng; lỗi của adapter giữ lượt như `control_state_unavailable`. Nếu sai thì: như
+  `Nếu sai thì:` của dòng 4/11/2026 trong spec.
+- 2026-11-04 (agent): MEDIUM của gate, chưa sửa: (M1) thay đổi nào phát `grants_changed` (sửa quyền của vai, đổi độ sâu,
+  kích hoạt lại) là của org-and-principals/03; một lần tăng quyền không phát sự kiện thì không giữ lượt nào. (M2) Thu hẹp
+  quyền cũng giữ lượt tới khi duyệt lại (đóng khi nghi ngờ). (M3) Lượt giữ không ai duyệt lại kết thúc ở `deadline_at`
+  (workflow-engine/04), rồi sự kiện của nó theo hạn 30 ngày.
+- 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
