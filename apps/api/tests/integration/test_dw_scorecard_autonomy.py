@@ -93,13 +93,17 @@ async def _dw(
         s=f"service:{principal}",
         t=t,
     )
+    # Named by the DW's key: a tenant's service principal names are unique
+    # (uq_service_principals_tenant_id_name, org-and-principals 03), and each
+    # world seeds two DWs in one tenant.
     await _x(
         conn,
         "INSERT INTO platform.service_principals (user_id, tenant_id, owning_workspace_id, name,"
-        " owner_user_id) VALUES (:u, :t, :w, 'dw', :o)",
+        " owner_user_id) VALUES (:u, :t, :w, :n, :o)",
         u=principal,
         t=t,
         w=w,
+        n=key,
         o=people["bo"],
     )
     await _x(
