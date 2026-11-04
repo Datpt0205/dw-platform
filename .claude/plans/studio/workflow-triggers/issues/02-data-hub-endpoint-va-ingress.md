@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: 01, .claude/plans/studio/connections-and-vault/issues/02-kho-bi-mat-va-openbao.md, .claude/plans/studio/connections-and-vault/issues/03-egress-client-allowlist-va-chu-ky.md, .claude/plans/studio/usage-and-limits/issues/05-cong-gioi-han-toc-do-theo-tien-trinh.md, .claude/plans/studio/agent-lifecycle/issues/04-cong-kiem-dinh-va-duyet-hai-nguoi.md, .claude/plans/studio/telemetry-and-audit/issues/01-otel-khong-noi-dung-va-metric.md
 Area: studio
-Yêu cầu: R1.6, R1.7, R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R4.7, R4.8, R4.9, R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R5.8, R5.9, R5.10, R5.11, R5.12, R5.13, R6.1, R6.2, R6.3, R6.4, R6.6, R6.7, R6.8, R6.9, TR1, TR2, TR3, TR4, TR5, TR6, TR7, TR10, TR11, TR13, TR14, TR15, TR18, TR19
+Yêu cầu: R1.6, R1.7, R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R4.7, R4.8, R4.9, R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R5.8, R5.9, R5.10, R5.11, R5.12, R5.13, R5.14, R6.1, R6.2, R6.3, R6.4, R6.6, R6.7, R6.8, R6.9, TR1, TR2, TR3, TR4, TR5, TR6, TR7, TR10, TR11, TR13, TR14, TR15, TR18, TR19
 
 ## Mục tiêu
 
@@ -41,6 +41,7 @@ Dựng Nguồn dữ liệu cho form website: loại `endpoint` không có Cổng
 - [ ] R5.12 (TR7): Nguồn dữ liệu mới tạo, chưa có phiên bản `live`, nhận một sự kiện có chữ ký đúng → 404 `not_found`, thân bằng thân của id không tồn tại, không dòng `studio.inbound_events`, không lượt chạy, metric của cửa nhận tăng một; phiên bản đầu lên Đang dùng → sự kiện kế tiếp được nhận; trả mã khác hay lưu sự kiện ở ca này → test đỏ.
 - [ ] R5.7 (TR5): gửi lại cùng `webhook-id` sau 71 giờ → `duplicate`, không lượt chạy thứ hai; cùng `webhook-id` ở hai nguồn → hai sự kiện; bỏ chống trùng → test đỏ.
 - [ ] R5.7: `dw_app` gắn công ty A chèn dòng `studio.inbound_dedupe` mang `endpoint_id` của một Nguồn dữ liệu công ty B → lỗi FK (23503), không dòng nào được ghi; đổi FK `(tenant_id, endpoint_id)` về FK một cột `endpoint_id` → ca đó qua, test đỏ.
+- [ ] R5.14: schema khai trường `consent` (mục đích `marketing`, kênh `email`, địa chỉ là trường `email`): sự kiện với `consent` `true` → một Bản ghi đồng ý `granted`, `source` `datahub`, `evidence_ref` là `webhook-id`, cùng giao dịch với dòng `inbound_events`; `consent` `false` hay thiếu → sự kiện được nhận, 0 Bản ghi đồng ý; làm hỏng giao dịch sau lần ghi đồng ý → không dòng sự kiện, không Bản ghi đồng ý; gửi lại cùng `webhook-id` → không bản ghi thứ hai.
 - [ ] R5.8: sự kiện hợp lệ → lưu `inbound_events`, 2xx p99 dưới 1 giây với 100 yêu cầu mỗi giây trên máy dev; tắt worker → sự kiện vẫn 2xx và chạy sau.
 - [ ] R5.9: 61 sự kiện trong một phút tới một Nguồn dữ liệu → sự kiện thứ 61 nhận 429 có `Retry-After`, không gọi AI; cùng lúc một Nguồn dữ liệu khác vẫn nhận; không route, cột hay khóa quyền nào của W1 đổi số 60 (test liệt kê route của `/api/v1/studio/data-sources`).
 - [ ] R5.10 (TR10): mô tả chứa lệnh chèn → chỉ xuất hiện trong khối `<input>` đã escape khi vào prompt; bỏ bọc → test đỏ.
