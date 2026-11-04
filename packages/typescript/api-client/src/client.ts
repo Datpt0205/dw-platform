@@ -19,16 +19,12 @@ import {
   workspaceMemberSchema,
   adminWorkspaceSchema,
   adminTenantSchema,
-  adminRoleSchema,
-  adminPermissionSetSchema,
   adminSodRuleSchema,
   inboxSchema,
   hierarchyMemberSchema,
   type AdminWorkspace,
   type AdminTenant,
   type AutonomyLevel,
-  type AdminRole,
-  type AdminPermissionSet,
   type AdminSodRule,
   type Inbox,
   type HierarchyMember,
@@ -333,6 +329,15 @@ export type DwScorecard = Generated["ScorecardView"];
 export type WorkflowOutline = Generated["WorkflowOutlineView"];
 export type WorkflowOutlineStep = Generated["OutlineStepView"];
 export type AdminPermission = Generated["PermissionView"];
+// Tenant roles and who holds them (tenant-rbac ticket 03): a role is the
+// company's own row, `assignable_by_me` is `platform.rbac_refusals`' answer
+// for the caller, and a write that adds a role answers with `proposals`
+// another person confirms.
+export type AdminRole = Generated["RoleView"];
+export type TenantMember = Generated["TenantMemberView"];
+export type MemberRef = Generated["MemberRefView"];
+export type MemberMemberships = Generated["MemberMembershipsView"];
+export type PermissionSetsChange = Generated["PermissionSetsChangeView"];
 export type AssistantAnswer = Generated["AssistantAnswerView"];
 export type AssistantTurn = Generated["HistoryTurnBody"];
 export type WorkflowStepChange = Generated["StepChangeView"];
@@ -471,21 +476,21 @@ export class ApiClient {
 
   // ---- admin: membership management --------------------------------------
 
-  /** Grant an existing (signed-in) identity access to a workspace with roles. */
-  async grantMember(input: {
+  /**
+   * Place an existing (signed-in) identity in a workspace. The membership is
+   * written at once; each role is a proposal a second person confirms, listed
+   * in `proposals` (the route answers 202 then, 201 without one).
+   */
+  grantMember(input: {
     email: string;
     workspaceId: string;
     roleKeys: string[];
     department?: string;
-  }): Promise<{ userId: string; email: string | null; displayName: string }> {
-    const r = await this.request(
+  }): Promise<MemberRef> {
+    return this.request(
       "POST",
       "/api/v1/admin/members",
-      z.object({
-        user_id: z.string(),
-        email: z.string().nullable(),
-        display_name: z.string(),
-      }),
+      generated<MemberRef>(),
       {
         body: {
           email: input.email,
@@ -495,7 +500,32 @@ export class ApiClient {
         },
       },
     );
-    return { userId: r.user_id, email: r.email, displayName: r.display_name };
+  }
+
+  /** Everyone in the caller's tenant, with the roles they hold per workspace. */
+  listTenantMembers(): Promise<TenantMember[]> {
+    return this.request(
+      "GET",
+      "/api/v1/admin/members",
+      z.array(generated<TenantMember>()),
+    );
+  }
+
+  /**
+   * Replace a person's roles, workspace by workspace: a workspace left out
+   * loses its membership. A role dropped is removed now (`applied`); a role
+   * added is a proposal (`proposals`, 202). Permission sets stay.
+   */
+  setMemberships(
+    userId: string,
+    memberships: { workspace_id: string; role_keys: string[] }[],
+  ): Promise<MemberMemberships> {
+    return this.request(
+      "PUT",
+      `/api/v1/admin/members/${encodeURIComponent(userId)}/memberships`,
+      generated<MemberMemberships>(),
+      { body: { memberships } },
+    );
   }
 
   /** Signed-in identities not yet in the workspace — the grant email picker. */
@@ -582,9 +612,14 @@ export class ApiClient {
     });
   }
 
-  /** The tenant's role catalog and the scopes each role grants (read-only). */
+  /** The company's live roles and permission sets, each with whether the
+   * caller may assign it (`platform.roles.read`; the bypass does not open it). */
   listAdminRoles(): Promise<AdminRole[]> {
-    return this.request("GET", "/api/v1/admin/roles", z.array(adminRoleSchema));
+    return this.request(
+      "GET",
+      "/api/v1/admin/roles",
+      z.array(generated<AdminRole>()),
+    );
   }
 
   /** The permission catalogue, by area then key (tenant-rbac R1.4). */
@@ -596,20 +631,19 @@ export class ApiClient {
     );
   }
 
-  /** The catalog of permission sets an admin can grant to members (read-only). */
-  listPermissionSets(): Promise<AdminPermissionSet[]> {
+  /**
+   * Replace a member's permission sets (tenant roles of kind
+   * `permission_set`) in the caller's workspace: a set removed now
+   * (`applied`), a set added a proposal (`proposals`, 202).
+   */
+  setMemberPermissionSets(
+    userId: string,
+    keys: string[],
+  ): Promise<PermissionSetsChange> {
     return this.request(
-      "GET",
-      "/api/v1/admin/permission-sets",
-      z.array(adminPermissionSetSchema),
-    );
-  }
-
-  /** Replace a member's extra permission sets. 403 if a set exceeds the caller. */
-  setMemberPermissionSets(userId: string, keys: string[]): Promise<void> {
-    return this.requestNoContent(
       "PUT",
-      `/api/v1/admin/members/${userId}/permission-sets`,
+      `/api/v1/admin/members/${encodeURIComponent(userId)}/permission-sets`,
+      generated<PermissionSetsChange>(),
       { body: { permission_set_keys: keys } },
     );
   }

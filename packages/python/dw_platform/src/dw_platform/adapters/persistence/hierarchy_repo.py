@@ -16,6 +16,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from dw_platform.adapters.persistence import tables
+from dw_platform.adapters.persistence.directory import held_role_keys
 from dw_platform.adapters.persistence.repositories import SqlAuditRepository
 from dw_platform.adapters.persistence.tenant_session import TenantScope, tenant_session
 from dw_platform.application.access_context import AccessContext
@@ -47,7 +48,7 @@ class SqlHierarchyRepository:
         query = (
             sa.select(
                 tables.memberships.c.user_id,
-                tables.memberships.c.role_keys,
+                held_role_keys("role").label("role_keys"),
                 tables.memberships.c.manager_user_id,
                 tables.users.c.display_name,
                 tables.users.c.email,

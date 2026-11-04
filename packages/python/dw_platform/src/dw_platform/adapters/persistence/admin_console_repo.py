@@ -19,15 +19,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from dw_kernel.errors import ConflictError
 from dw_platform.adapters.persistence import tables
 from dw_platform.adapters.persistence.repositories import SqlAuditRepository
-from dw_platform.adapters.persistence.separation_of_duties import (
-    separation_of_duties_conflict,
-)
 from dw_platform.adapters.persistence.tenant_session import TenantScope, tenant_session
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.admin_console import (
     PermissionInfo,
     PermissionSetInfo,
-    RoleInfo,
     TenantSettings,
     UpdateTenantSettings,
     WorkspaceRef,
@@ -36,6 +32,30 @@ from dw_platform.application.admin_console import (
 from dw_platform.domain.audit import AuditEvent
 
 _WORKSPACE_SLUG_CONSTRAINT = "uq_workspaces_tenant_slug"
+
+
+# The catalogue with, for the caller, the depths each key takes by its kind
+# and the broadest of them the caller could hand out at their own workspace:
+# `platform.holder_covers_grant`, the hold rule's own comparison (step 5).
+_PERMISSIONS = sa.text(
+    """
+    SELECT p.key, p.area, p.label_vi, p.scope_kind, p.risk, p.status, d.allowed_depths,
+           (SELECT x.depth
+            FROM unnest(d.allowed_depths) WITH ORDINALITY x(depth, n)
+            WHERE platform.holder_covers_grant(
+                CAST(:t AS uuid), CAST(:u AS uuid), p.key, x.depth, CAST(:w AS uuid))
+            ORDER BY x.n DESC LIMIT 1) AS max_grantable_depth
+    FROM platform.permissions p
+    CROSS JOIN LATERAL (
+        SELECT CASE p.scope_kind
+                   WHEN 'tenant' THEN ARRAY['tenant']
+                   WHEN 'workspace' THEN ARRAY['workspace', 'tenant']
+                   ELSE ARRAY['own', 'workspace', 'tenant']
+               END AS allowed_depths
+    ) d
+    ORDER BY p.area, p.key
+    """
+)
 
 
 @dataclass(frozen=True)
@@ -149,17 +169,6 @@ class SqlAdminConsoleRepository:
             await SqlAuditRepository(session).append(audit)
         return True
 
-    async def list_roles(self) -> list[RoleInfo]:
-        async with self.session_factory() as session:
-            rows = (
-                await session.execute(
-                    sa.select(
-                        tables.roles.c.key, tables.roles.c.name, tables.roles.c.scopes
-                    ).order_by(tables.roles.c.key)
-                )
-            ).all()
-        return [RoleInfo(key=row.key, name=row.name, scopes=tuple(row.scopes)) for row in rows]
-
     async def list_permission_sets(self) -> list[PermissionSetInfo]:
         async with self.session_factory() as session:
             rows = (
@@ -175,14 +184,18 @@ class SqlAdminConsoleRepository:
             PermissionSetInfo(key=row.key, name=row.name, scopes=tuple(row.scopes)) for row in rows
         ]
 
-    async def list_permissions(self) -> list[PermissionInfo]:
-        p = tables.permissions
-        async with self.session_factory() as session:
+    async def list_permissions(self, context: AccessContext) -> list[PermissionInfo]:
+        async with tenant_session(
+            self.session_factory, TenantScope.from_access_context(context)
+        ) as session:
             rows = (
                 await session.execute(
-                    sa.select(
-                        p.c.key, p.c.area, p.c.label_vi, p.c.scope_kind, p.c.risk, p.c.status
-                    ).order_by(p.c.area, p.c.key)
+                    _PERMISSIONS,
+                    {
+                        "t": str(context.tenant_id),
+                        "u": str(context.principal_id),
+                        "w": str(context.workspace_id),
+                    },
                 )
             ).all()
         return [
@@ -193,73 +206,11 @@ class SqlAdminConsoleRepository:
                 scope_kind=row.scope_kind,
                 risk=row.risk,
                 status=row.status,
+                allowed_depths=tuple(row.allowed_depths),
+                max_grantable_depth=row.max_grantable_depth,
             )
             for row in rows
         ]
-
-    async def known_permission_sets(self, keys: frozenset[str]) -> frozenset[str]:
-        if not keys:
-            return frozenset()
-        async with self.session_factory() as session:
-            rows = (
-                await session.execute(
-                    sa.select(tables.permission_sets.c.key).where(
-                        tables.permission_sets.c.key.in_(keys)
-                    )
-                )
-            ).all()
-        return frozenset(row.key for row in rows)
-
-    async def scopes_for_permission_sets(self, keys: frozenset[str]) -> frozenset[str]:
-        if not keys:
-            return frozenset()
-        scopes: set[str] = set()
-        async with self.session_factory() as session:
-            rows = (
-                await session.execute(
-                    sa.select(tables.permission_sets.c.scopes).where(
-                        tables.permission_sets.c.key.in_(keys)
-                    )
-                )
-            ).all()
-        for (set_scopes,) in rows:
-            scopes.update(set_scopes)
-        return frozenset(scopes)
-
-    async def set_permission_sets(
-        self,
-        context: AccessContext,
-        *,
-        user_id: uuid.UUID,
-        permission_set_keys: frozenset[str],
-        audit: AuditEvent,
-    ) -> bool:
-        scope = TenantScope.from_access_context(context)
-        async with tenant_session(self.session_factory, scope) as session:
-            try:
-                row = (
-                    await session.execute(
-                        sa.update(tables.memberships)
-                        .where(
-                            tables.memberships.c.tenant_id == context.tenant_id,
-                            tables.memberships.c.workspace_id == context.workspace_id,
-                            tables.memberships.c.user_id == user_id,
-                        )
-                        .values(permission_set_keys=sorted(permission_set_keys))
-                        .returning(tables.memberships.c.id)
-                    )
-                ).first()
-            except IntegrityError as exc:
-                # A permission set cannot carry a scope past separation of
-                # duties either: the trigger judges roles and sets together.
-                conflict = separation_of_duties_conflict(exc)
-                if conflict is None:
-                    raise
-                raise conflict from exc
-            if row is None:
-                return False
-            await SqlAuditRepository(session).append(audit)
-        return True
 
     async def get_tenant_settings(self, context: AccessContext) -> TenantSettings | None:
         scope = TenantScope.from_access_context(context)

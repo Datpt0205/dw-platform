@@ -10,11 +10,13 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import Depends, Request
+from fastapi.routing import iter_route_contexts
 
 from dw_api.bootstrap import ApiContainer
 from dw_kernel.errors import InfrastructureError, PermissionDeniedError, UnauthenticatedError
 from dw_kernel.http_auth import TENANT_HEADER, WORKSPACE_HEADER, bearer_token, uuid_header
 from dw_platform.application.access_context import AccessContext
+from dw_platform.application.authorization import PLATFORM_ADMIN_ROLE
 from dw_platform.application.ports import VerifiedIdentity
 from dw_platform.application.provisioning import ProvisioningContext
 from dw_platform.application.support_access import SupportRefusal, support_access_refused
@@ -25,6 +27,27 @@ SUPPORT_GRANT_HEADER = "X-DW-Support-Grant"
 # Where a middleware that verified the bearer token before the body was read
 # leaves the result (the Studio gate, studio-skeleton R6.8): `request.state`.
 VERIFIED_IDENTITY_STATE = "verified_identity"
+
+
+_FULL_PATHS = "route_full_paths"
+
+
+def route_template(request: Request) -> str | None:
+    """The matched route's path template as the app mounts it, prefixes
+    included (`/api/v1/admin/roles/{role_id}`), which is how the route lists
+    of the composition root name a route. `scope["route"]` is the router's own
+    route, whose `path` lacks the prefix it was included under (FastAPI
+    0.141), so the full path is read once per route from
+    `iter_route_contexts` and kept on the app."""
+    route = request.scope.get("route")
+    if route is None:
+        return None
+    paths: dict[int, str | None] | None = getattr(request.app.state, _FULL_PATHS, None)
+    if paths is None or id(route) not in paths:
+        paths = {id(c.original_route): c.path for c in iter_route_contexts(request.app.routes)}
+        setattr(request.app.state, _FULL_PATHS, paths)
+    found = paths.get(id(route))
+    return found if found is not None else getattr(route, "path", None)
 
 
 def get_container(request: Request) -> ApiContainer:
@@ -83,11 +106,27 @@ async def get_access_context(
     identity: VerifiedIdentity | None = getattr(request.state, VERIFIED_IDENTITY_STATE, None)
     if identity is None:
         identity = await verify_bearer(container, request.headers.get("Authorization"))
-    return await container.access_context_factory.build(
+    context = await container.access_context_factory.build(
         identity,
         uuid_header(TENANT_HEADER, request.headers.get(TENANT_HEADER)),
         uuid_header(WORKSPACE_HEADER, request.headers.get(WORKSPACE_HEADER)),
     )
+    return without_platform_bypass(request, container, context)
+
+
+def without_platform_bypass(
+    request: Request, container: ApiContainer, context: AccessContext
+) -> AccessContext:
+    """The context without the `platform_admin` role on a route of role
+    administration or assignment (tenant-rbac R3.16, Q-h7): there the caller
+    passes only with the route's key from `platform.effective_grants`. The list
+    is read here, at the one door every such route takes, so no service has to
+    remember it; G2 holds on every other route."""
+    if (request.method, route_template(request)) not in container.no_platform_bypass_routes:
+        return context
+    if PLATFORM_ADMIN_ROLE not in context.roles:
+        return context
+    return context.model_copy(update={"roles": context.roles - {PLATFORM_ADMIN_ROLE}})
 
 
 RequireAccessContext = Annotated[AccessContext, Depends(get_access_context)]
@@ -127,8 +166,7 @@ async def get_access_context_or_support(
     raw = request.headers.get(SUPPORT_GRANT_HEADER)
     if raw is None:
         return await get_access_context(request, container)
-    route = request.scope.get("route")
-    template = getattr(route, "path", None)
+    template = route_template(request)
     # The list is enforced here as well as by the route-table test: a route
     # given this dependency without its entry still refuses support.
     if (request.method, template) not in container.support_allowed_routes:

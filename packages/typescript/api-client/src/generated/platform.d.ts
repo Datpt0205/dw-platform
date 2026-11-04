@@ -68,8 +68,9 @@ export interface paths {
         put?: never;
         /**
          * Invite Member
-         * @description Create the person (no sign-in yet) and their memberships. No email is
-         *     sent: the admin tells the person, who then signs in with that email.
+         * @description Create the person (no sign-in yet) and their memberships now; every role
+         *     of the invitation, `member` included, is a proposal (202, R7.1). No email
+         *     is sent: the admin tells the person, who then signs in with that email.
          */
         post: operations["invite_member_api_v1_admin_invitations_post"];
         delete?: never;
@@ -88,11 +89,15 @@ export interface paths {
         /**
          * List Members
          * @description Everyone in the caller's tenant, by name (Vietnamese collation), with
-         *     their roles in each workspace.
+         *     the roles assigned to them in each workspace.
          */
         get: operations["list_members_api_v1_admin_members_get"];
         put?: never;
-        /** Grant Member */
+        /**
+         * Grant Member
+         * @description Place someone who has signed in in one workspace; the membership is
+         *     written now, each role is a proposal (202).
+         */
         post: operations["grant_member_api_v1_admin_members_post"];
         delete?: never;
         options?: never;
@@ -127,10 +132,11 @@ export interface paths {
         get?: never;
         /**
          * Set Memberships
-         * @description Replace the person's non-administrative roles, workspace by workspace,
-         *     in one transaction. A workspace in the body without a membership gets one;
-         *     one left out keeps only its administrative roles, and goes without any.
-         *     Answers the person's memberships as they now are (empty: none left).
+         * @description Replace the person's roles, workspace by workspace. A workspace in the
+         *     body without a membership gets one; one left out, or with no role, goes
+         *     with every role on it. A role the body drops is removed now (200); a role
+         *     it adds is a proposal (202). Permission sets stay
+         *     (`PUT .../permission-sets`).
          */
         put: operations["set_memberships_api_v1_admin_members__user_id__memberships_put"];
         post?: never;
@@ -148,7 +154,11 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Set Permission Sets */
+        /**
+         * Set Permission Sets
+         * @description Replace a member's permission sets in the caller's workspace: a set
+         *     removed now (200), a set added a proposal (202).
+         */
         put: operations["set_permission_sets_api_v1_admin_members__user_id__permission_sets_put"];
         post?: never;
         delete?: never;
@@ -195,6 +205,84 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/role-changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Role Changes
+         * @description Proposals still waiting and not expired, newest first.
+         */
+        get: operations["list_role_changes_api_v1_admin_role_changes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/role-changes/{request_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Role Change
+         * @description A second person applies the proposal in their own transaction (R7.1,
+         *     R7.2, R7.4, R7.8, R8.7).
+         */
+        post: operations["confirm_role_change_api_v1_admin_role_changes__request_id__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/role-changes/{request_id}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw Role Change */
+        post: operations["withdraw_role_change_api_v1_admin_role_changes__request_id__withdraw_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/role-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Role Templates
+         * @description The platform's templates a role may start from; never a tenant's.
+         */
+        get: operations["list_role_templates_api_v1_admin_role_templates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/roles": {
         parameters: {
             query?: never;
@@ -202,9 +290,80 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Roles */
+        /**
+         * List Roles
+         * @description Every live role of the company. At most 200 (R3.7), so not paged.
+         */
         get: operations["list_roles_api_v1_admin_roles_get"];
         put?: never;
+        /**
+         * Create Role
+         * @description Always a proposal: making a role widens (R7.1).
+         */
+        post: operations["create_role_api_v1_admin_roles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/roles/{role_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Role */
+        get: operations["get_role_api_v1_admin_roles__role_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Role
+         * @description A soft delete of a role nobody holds, one person and one audit event
+         *     (R7.6); 409 `role_in_use`, `role_is_system`.
+         */
+        delete: operations["delete_role_api_v1_admin_roles__role_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Role
+         * @description `name`, `description`: a proposal (202), or the role unchanged (200).
+         */
+        patch: operations["update_role_api_v1_admin_roles__role_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/roles/{role_id}/assignments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Role Assignments */
+        get: operations["list_role_assignments_api_v1_admin_roles__role_id__assignments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/roles/{role_id}/permissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Role Permissions
+         * @description The role's whole set of privileges: applied at once (200) when it only
+         *     narrows, else a proposal (202, R7.1, R7.6, RB32).
+         */
+        put: operations["set_role_permissions_api_v1_admin_roles__role_id__permissions_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -2306,6 +2465,19 @@ export interface components {
             /** Purpose */
             purpose: string;
         };
+        /**
+         * AppliedRevokeView
+         * @description A role removed by the request, applied at once (R7.6).
+         */
+        AppliedRevokeView: {
+            /** Role Key */
+            role_key: string;
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
+        };
         /** ApprovalView */
         ApprovalView: {
             /** Approval Type */
@@ -2840,6 +3012,24 @@ export interface components {
             workflow_key: string;
             /** Workflow Version */
             workflow_version: string;
+        };
+        /** CreateRoleBody */
+        CreateRoleBody: {
+            /** Clone Of */
+            clone_of?: string | null;
+            /** Description */
+            description?: string | null;
+            /** From Template */
+            from_template?: string | null;
+            /** Key */
+            key: string;
+            /**
+             * Kind
+             * @default role
+             */
+            kind: string;
+            /** Name */
+            name: string;
         };
         /**
          * CreateServicePrincipalBody
@@ -3489,11 +3679,23 @@ export interface components {
         };
         /**
          * MemberMembershipsView
-         * @description A person's memberships in this tenant after a change; empty when none is left.
+         * @description A person's memberships in this tenant after a change; empty when none is
+         *     left. `applied` are the roles removed; `proposals` the roles added, each
+         *     waiting for a second person (202).
          */
         MemberMembershipsView: {
+            /**
+             * Applied
+             * @default []
+             */
+            applied: components["schemas"]["AppliedRevokeView"][];
             /** Memberships */
             memberships: components["schemas"]["MemberWorkspaceView"][];
+            /**
+             * Proposals
+             * @default []
+             */
+            proposals: string[];
             /**
              * User Id
              * Format: uuid
@@ -3506,6 +3708,11 @@ export interface components {
             display_name: string;
             /** Email */
             email: string | null;
+            /**
+             * Proposals
+             * @default []
+             */
+            proposals: string[];
             /**
              * User Id
              * Format: uuid
@@ -3959,6 +4166,20 @@ export interface components {
          *     ``items`` — is the client's stop condition: a filtered listing can return an
          *     empty page in the middle of a run and still have more rows behind it.
          */
+        Page_ProposalView_: {
+            /** Items */
+            items: components["schemas"]["ProposalView"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /**
+         * Page
+         * @description A page of results and the cursor that continues it.
+         *
+         *     ``next_cursor`` is ``None`` on the last page, and that — not an empty
+         *     ``items`` — is the client's stop condition: a filtered listing can return an
+         *     empty page in the middle of a run and still have more rows behind it.
+         */
         Page_ServicePrincipalView_: {
             /** Items */
             items: components["schemas"]["ServicePrincipalView"][];
@@ -4031,14 +4252,36 @@ export interface components {
             /** Scopes */
             scopes: string[];
         };
+        /** PermissionSetsChangeView */
+        PermissionSetsChangeView: {
+            /** Applied */
+            applied: components["schemas"]["AppliedRevokeView"][];
+            /** Proposals */
+            proposals: string[];
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
         /** PermissionView */
         PermissionView: {
+            /**
+             * Allowed Depths
+             * @description The depths the key takes by its kind.
+             */
+            allowed_depths: string[];
             /** Area */
             area: string;
             /** Key */
             key: string;
             /** Label Vi */
             label_vi: string;
+            /**
+             * Max Grantable Depth
+             * @description The broadest depth the caller could hand out at their own workspace (the hold rule, `platform.holder_covers_grant`); null when none.
+             */
+            max_grantable_depth: string | null;
             /**
              * Risk
              * @enum {string}
@@ -4054,6 +4297,11 @@ export interface components {
              * @enum {string}
              */
             status: "active" | "unassigned" | "retired";
+        };
+        /** PermissionsBody */
+        PermissionsBody: {
+            /** Permissions */
+            permissions: components["schemas"]["PrivilegeView"][];
         };
         /** PlatformFreezeRequest */
         PlatformFreezeRequest: {
@@ -4077,6 +4325,16 @@ export interface components {
         PlatformUnfreezeRequest: {
             /** Reason */
             reason?: string | null;
+        };
+        /** PrivilegeView */
+        PrivilegeView: {
+            /**
+             * Depth
+             * @description `own`, `workspace` or `tenant`.
+             */
+            depth: string;
+            /** Key */
+            key: string;
         };
         /**
          * Problem
@@ -4129,6 +4387,50 @@ export interface components {
             parameter?: string | null;
             /** Pointer */
             pointer?: string | null;
+        };
+        /** ProposalView */
+        ProposalView: {
+            /** Base Version */
+            base_version: number | null;
+            /** Confirmed By */
+            confirmed_by: string | null;
+            /** Decided At */
+            decided_at: string | null;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /**
+             * Payload
+             * @description The change exactly as it will be applied.
+             */
+            payload: {
+                [key: string]: unknown;
+            };
+            /**
+             * Proposed At
+             * Format: date-time
+             */
+            proposed_at: string;
+            /**
+             * Proposed By
+             * Format: uuid
+             */
+            proposed_by: string;
+            /** Required Permission */
+            required_permission: string;
+            /** Role Id */
+            role_id: string | null;
+            /** Status */
+            status: string;
         };
         /** ReadinessResponse */
         ReadinessResponse: {
@@ -4191,14 +4493,126 @@ export interface components {
             /** Scope Set Key */
             scope_set_key: string;
         };
-        /** RoleView */
-        RoleView: {
+        /** RoleAssignmentView */
+        RoleAssignmentView: {
+            /**
+             * Assigned At
+             * Format: date-time
+             */
+            assigned_at: string;
+            /** Expires At */
+            expires_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Membership Id
+             * Format: uuid
+             */
+            membership_id: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
+        };
+        /**
+         * RoleChangeView
+         * @description The answer to a change of an existing role: the role as it is now, and
+         *     the proposal when the change waits for a second person (202).
+         */
+        RoleChangeView: {
+            proposal: components["schemas"]["ProposalView"] | null;
+            role: components["schemas"]["RoleDetailView"];
+        };
+        /** RoleDetailView */
+        RoleDetailView: {
+            /** Description */
+            description: string | null;
+            /** Holder Count */
+            holder_count: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is System */
+            is_system: boolean;
             /** Key */
             key: string;
+            /** Kind */
+            kind: string;
             /** Name */
             name: string;
-            /** Scopes */
-            scopes: string[];
+            /** Permissions */
+            permissions: components["schemas"]["PrivilegeView"][];
+            /** Template Key */
+            template_key: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Version
+             * @description The role's ETag; `If-Match` of its writes.
+             */
+            version: number;
+        };
+        /** RoleTemplateView */
+        RoleTemplateView: {
+            /** Key */
+            key: string;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Permissions */
+            permissions: components["schemas"]["PrivilegeView"][];
+        };
+        /** RoleView */
+        RoleView: {
+            /**
+             * Assignable By Me
+             * @description `platform.rbac_refusals` refuses the caller nothing in assigning it to someone else in the caller's workspace.
+             */
+            assignable_by_me: boolean;
+            /** Description */
+            description: string | null;
+            /** Holder Count */
+            holder_count: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is System */
+            is_system: boolean;
+            /** Key */
+            key: string;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Template Key */
+            template_key: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Version
+             * @description The role's ETag; `If-Match` of its writes.
+             */
+            version: number;
         };
         /** RunUsageRowView */
         RunUsageRowView: {
@@ -5174,7 +5588,7 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            201: {
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5256,8 +5670,17 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Successful Response */
+            /** @description Placed; no role to propose. */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberRefView"];
+                };
+            };
+            /** @description Successful Response */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5355,6 +5778,15 @@ export interface operations {
                     "application/json": components["schemas"]["MemberMembershipsView"];
                 };
             };
+            /** @description Roles proposed. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberMembershipsView"];
+                };
+            };
             /** @description The request was refused */
             "4XX": {
                 headers: {
@@ -5378,7 +5810,10 @@ export interface operations {
     set_permission_sets_api_v1_admin_members__user_id__permission_sets_put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 user_id: string;
             };
@@ -5391,11 +5826,22 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            204: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PermissionSetsChangeView"];
+                };
+            };
+            /** @description Sets proposed. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PermissionSetsChangeView"];
+                };
             };
             /** @description The request was refused */
             "4XX": {
@@ -5493,6 +5939,172 @@ export interface operations {
             };
         };
     };
+    list_role_changes_api_v1_admin_role_changes_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                /** @description Opaque cursor from a previous page. */
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_ProposalView_"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    confirm_role_change_api_v1_admin_role_changes__request_id__confirm_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    withdraw_role_change_api_v1_admin_role_changes__request_id__withdraw_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_role_templates_api_v1_admin_role_templates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleTemplateView"][];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     list_roles_api_v1_admin_roles_get: {
         parameters: {
             query?: never;
@@ -5509,6 +6121,288 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RoleView"][];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    create_role_api_v1_admin_roles_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateRoleBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposalView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_role_api_v1_admin_roles__role_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleDetailView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    delete_role_api_v1_admin_roles__role_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
+                "Idempotency-Key"?: string | null;
+                /** @description Required. The strong ETag of the version you read, for example "7". A stale or weak one is a 412; none, *, a list or a repeat is a 428. */
+                "If-Match"?: string[] | null;
+            };
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleDetailView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    update_role_api_v1_admin_roles__role_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
+                "Idempotency-Key"?: string | null;
+                /** @description Required. The strong ETag of the version you read, for example "7". A stale or weak one is a 412; none, *, a list or a repeat is a 428. */
+                "If-Match"?: string[] | null;
+            };
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleChangeView"];
+                };
+            };
+            /** @description Proposed for a second person. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleChangeView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_role_assignments_api_v1_admin_roles__role_id__assignments_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleAssignmentView"][];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    set_role_permissions_api_v1_admin_roles__role_id__permissions_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
+                "Idempotency-Key"?: string | null;
+                /** @description Required. The strong ETag of the version you read, for example "7". A stale or weak one is a 412; none, *, a list or a repeat is a 428. */
+                "If-Match"?: string[] | null;
+            };
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PermissionsBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleChangeView"];
+                };
+            };
+            /** @description Proposed for a second person. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleChangeView"];
                 };
             };
             /** @description The request was refused */

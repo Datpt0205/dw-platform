@@ -14,13 +14,16 @@ The rules this service keeps, in the order a request meets them:
   before any check that would say 403 (R1.5).
 - **Creating** takes `dw.manage`. The configuration must be well formed (the
   domain's checks), its tools known to the platform (R1.3), its roles neither
-  critical (R1.15) nor wider than the creator's own scopes (R1.10, ADR-0103
-  decision 4), and its four people human members of the workspace, the
-  Validator one who may decide approvals (R1.2).
+  critical (R1.15) nor beyond what the creator may hand out (R1.10, ADR-0103
+  decision 4, through `platform.rbac_refusals`), and its four people human
+  members of the workspace, the Validator one who may decide approvals (R1.2).
+  The principal's roles are assigned in that same transaction without a
+  proposal: the second person is the first `draft→operating` (ADR-0104,
+  Amendments 2026-11-03).
 - **Changing state or people** takes being the DW's Business Owner or
   Technical Owner, not a scope (R1.6, R1.13; ADR-0128 decision 2). Putting a
   DW into operation the first time takes a second person, who holds every
-  scope of the principal's roles (R1.9): the configuration and its earned
+  privilege of the principal (R1.9, `platform.grants_cover`): the configuration and its earned
   levels are not set to run by one person alone.
 
 The database repeats what it can: the CHECKs on the tables, the accountable
@@ -51,7 +54,6 @@ from dw_kernel.pagination import Page, PageRequest
 from dw_kernel.ports import IdGenerator, UtcClock
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.effect_keys import PendingEffect
-from dw_platform.application.membership_admin import forbid_escalation, is_administrative
 from dw_platform.application.ports import AuthorizationPort
 from dw_platform.domain.approval import APPROVALS_DECIDE
 from dw_platform.domain.audit import AuditEvent
@@ -76,22 +78,6 @@ _RESOURCE = "digital_worker"
 _ACTION_CREATED = "dw.created"
 _ACTION_STATE_CHANGED = "dw.state_changed"
 _ACTION_PEOPLE_CHANGED = "dw.people_changed"
-
-# R1.15, ADR-0103 decision 2: roles a service principal never holds, besides
-# any role carrying an administrative scope. The platform's administrative
-# prefix is `platform.` (`is_administrative`); the spec's `admin.*` is checked
-# too, so a scope family added under that name later is covered unasked.
-CRITICAL_ROLES = frozenset({"tenant_owner", "org_admin", "platform_admin"})
-_ADMIN_SCOPE_PREFIX = "admin."
-
-
-def is_critical_role(key: str, scopes: frozenset[str]) -> bool:
-    """Whether a role is out of a service principal's reach (R1.15, R1.18)."""
-    return (
-        key in CRITICAL_ROLES
-        or is_administrative(scopes)
-        or any(scope.startswith(_ADMIN_SCOPE_PREFIX) for scope in scopes)
-    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -201,9 +187,33 @@ class MembershipCheckPort(Protocol):
         ...
 
 
-class RoleCatalogPort(Protocol):
-    async def role_catalog(self) -> dict[str, frozenset[str]]:
-        """Every role key with its scopes."""
+@dataclass(frozen=True, slots=True)
+class DwRoleCheck:
+    """What the tenant says of the roles a new principal is to hold (R1.10,
+    R1.15): the keys with no live tenant role, those `platform.role_is_critical`
+    calls critical, and whether `platform.rbac_refusals` refuses the creator
+    any of them at the DW's workspace."""
+
+    unknown: frozenset[str]
+    critical: frozenset[str]
+    refused: bool
+
+
+PrincipalCover = Literal["inactive", "covered", "not_covered"]
+
+
+class DwRoleCheckPort(Protocol):
+    async def check_roles(self, context: AccessContext, role_keys: frozenset[str]) -> DwRoleCheck:
+        """The tenant's roles of these keys, judged for the caller, in one ask."""
+        ...
+
+    async def principal_cover(
+        self, context: AccessContext, principal_id: uuid.UUID
+    ) -> PrincipalCover:
+        """Whether the principal is an `active` member, and if so whether
+        `platform.grants_cover` says the caller holds every grant it holds, in
+        ONE statement: `grants_cover` over the empty grants of a principal
+        suspended between two reads is true (org-and-principals R6.19)."""
         ...
 
 
@@ -234,7 +244,7 @@ class DigitalWorkerService:
     authz: AuthorizationPort
     tools: ToolCatalogPort
     members: MembershipCheckPort
-    roles: RoleCatalogPort
+    roles: DwRoleCheckPort
     clock: UtcClock
     id_generator: IdGenerator
 
@@ -373,28 +383,25 @@ class DigitalWorkerService:
         return await self.get(context, dw_id)
 
     async def _check_roles(self, context: AccessContext, role_keys: frozenset[str]) -> None:
+        """The principal's roles are tenant roles (R1.1), none critical (R1.15,
+        `platform.role_is_critical`), and the creator may hand each of them out
+        (R1.10: `platform.rbac_refusals`, the hold rule of every assignment)."""
         if not role_keys:
             raise refused("the principal needs at least one role", "roles_empty")
-        catalog = await self.roles.role_catalog()
-        unknown = role_keys - catalog.keys()
-        if unknown:
-            raise refused("unknown role", "role_unknown", roles=sorted(unknown))
-        critical = sorted(key for key in role_keys if is_critical_role(key, catalog[key]))
-        if critical:
+        checked = await self.roles.check_roles(context, role_keys)
+        if checked.unknown:
+            raise refused("unknown role", "role_unknown", roles=sorted(checked.unknown))
+        if checked.critical:
             raise refused(
                 "a service principal holds no critical role",
                 "role_not_allowed_for_service",
-                roles=critical,
+                roles=sorted(checked.critical),
             )
-        granted = frozenset(scope for key in role_keys for scope in catalog[key])
-        # ADR-0103 decision 4: no role stands in for a scope here, the platform
-        # admin's included; the creator holds every scope they hand out.
-        if not granted <= context.scopes:
+        if checked.refused:
             raise _denied(
-                "the creator does not hold every scope of the principal's roles",
+                "the creator does not hold every privilege of the principal's roles",
                 "grants_not_covered",
             )
-        forbid_escalation(context, granted)
 
     async def _check_people(self, context: AccessContext, people: DwPeople) -> None:
         if people.business_owner_id is None:
@@ -423,25 +430,27 @@ class DigitalWorkerService:
 
     async def _second_person(self, context: AccessContext, worker: DigitalWorker) -> None:
         """R1.9: who first puts a DW into operation is not who made it, and
-        holds every scope its principal holds."""
+        holds every privilege its principal holds (`platform.grants_cover`)."""
         if context.principal_id == worker.created_by:
             raise _conflict(
                 "a second person puts a new digital worker into operation",
                 "second_person_required",
             )
-        principal = await self.members.standing(context, worker.principal_user_id)
-        if principal is None:
-            # A principal that is not an `active` member reads as no membership,
-            # and its empty scopes would be covered by anyone: refused before
-            # the comparison (org-and-principals R6.19).
+        cover = await self.roles.principal_cover(context, worker.principal_user_id)
+        if cover == "inactive":
+            # A principal that is not an `active` member holds nothing, and
+            # `platform.grants_cover` over nothing is true: refused before the
+            # comparison (org-and-principals R6.19).
             raise _conflict(
                 "the digital worker's principal is not an active member",
                 "principal_inactive",
             )
-        held = principal.scopes
-        if not held <= context.scopes:
+        if cover != "covered":
+            # Every grant of the principal, at its own depth and anchor, held by
+            # the caller in the tenant (ADR-0104 Amendments 2026-11-03), not the
+            # caller's scopes in this workspace.
             raise _denied(
-                "the caller does not hold every scope of the principal's roles",
+                "the caller does not hold every privilege of the principal's roles",
                 "grants_not_covered",
             )
 
@@ -551,7 +560,6 @@ def _effective(found: DecisionLevels | None) -> AutonomyLevel:
 
 
 __all__ = [
-    "CRITICAL_ROLES",
     "DW_MANAGE",
     "DW_READ",
     "ChangeState",
@@ -564,9 +572,10 @@ __all__ = [
     "DigitalWorkerRepositoryPort",
     "DigitalWorkerService",
     "DwBoundary",
+    "DwRoleCheck",
+    "DwRoleCheckPort",
     "MembershipCheckPort",
-    "RoleCatalogPort",
+    "PrincipalCover",
     "Standing",
     "ToolCatalogPort",
-    "is_critical_role",
 ]

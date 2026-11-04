@@ -164,6 +164,28 @@ role_assignments = sa.Table(
     ),
 )
 
+# A role change that widens, waiting for a second person (tenant-rbac ticket 03,
+# ADR-0104 decision 10); `platform.guard_role_change_request` keeps its states.
+role_change_requests = sa.Table(
+    "role_change_requests",
+    metadata,
+    sa.Column("id", UUID(as_uuid=True), primary_key=True),
+    sa.Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("kind", sa.Text, nullable=False),
+    sa.Column("payload", JSONB, nullable=False),
+    sa.Column("role_id", UUID(as_uuid=True), nullable=True),
+    sa.Column("base_version", sa.Integer, nullable=True),
+    sa.Column("required_permission", sa.Text, nullable=False),
+    sa.Column("proposed_by", UUID(as_uuid=True), nullable=False),
+    sa.Column(
+        "proposed_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text("now()")
+    ),
+    sa.Column("expires_at", sa.TIMESTAMP(timezone=True), nullable=False),
+    sa.Column("status", sa.Text, nullable=False),
+    sa.Column("confirmed_by", UUID(as_uuid=True), nullable=True),
+    sa.Column("decided_at", sa.TIMESTAMP(timezone=True), nullable=True),
+)
+
 # The tenant's access version, bumped by `platform.bump_access_version()` on
 # every table feeding authorization; the AccessContext cache key carries it.
 tenant_access_versions = sa.Table(

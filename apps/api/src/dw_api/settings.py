@@ -96,9 +96,6 @@ class ApiSettings(BaseSettings):
         default="64764894-718d-5558-ba17-9a2949214063",
         validation_alias=AliasChoices("DW_API_DEFAULT_WORKSPACE_ID"),
     )
-    default_role: str = Field(
-        default="member", validation_alias=AliasChoices("DW_API_DEFAULT_ROLE")
-    )
     # Default-deny: a brand-new SSO identity gets no membership and must be
     # granted access by an admin. Turn on only for a self-serve tenant.
     auto_provision_default_membership: bool = Field(

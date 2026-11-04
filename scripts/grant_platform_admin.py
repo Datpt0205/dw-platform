@@ -1,12 +1,17 @@
-"""Promote a signed-in user to Platform Admin + Org Admin of a tenant.
+"""Give a signed-in user the Platform Admin bypass in a tenant's `main` workspace.
 
 The first-admin bootstrap. Default-deny means nobody can grant the very first
 admin through the app, so this maintenance script does it directly, as the
-migrator role (BYPASSRLS) — the same trust level as the seed.
+migrator role (BYPASSRLS) — the same trust level as the seed. Only `dw_migrator`
+may add `platform_admin` to `memberships.role_keys`
+(`ck_memberships_legacy_role_writer`, ADR-0104 decision 8).
 
 The person must have signed in once first (SSO creates their identity with no
-membership); this attaches the admin roles to that identity, found by email.
-Idempotent: re-running updates the roles rather than duplicating the membership.
+membership). `platform_admin` is added to the membership's `role_keys`, never
+written over them: while the copy trigger stands (until tenant-rbac ticket 06),
+writing over the column would revoke every role that came from it (RB49). The
+company's roles are assigned through the role routes, by two people; this
+script assigns none. Idempotent: re-running changes nothing.
 
     DW_DATABASE_URL=postgresql+asyncpg://dw_migrator:...@host/dw \
         uv run python scripts/grant_platform_admin.py --email datpt142@fpt.com
@@ -21,13 +26,14 @@ import sys
 import uuid
 
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from dw_platform.adapters.persistence import tables
 from dw_platform.adapters.persistence.tenant_member_rows import ensure_tenant_member
 
-ADMIN_ROLES = ["platform_admin", "org_admin"]
+PLATFORM_ADMIN = "platform_admin"
 
 
 async def _run(database_url: str, email: str, tenant_slug: str) -> int:
@@ -80,17 +86,20 @@ async def _run(database_url: str, email: str, tenant_slug: str) -> int:
                 tenant_id=tenant.id,
                 workspace_id=workspace.id,
                 user_id=user.id,
-                role_keys=ADMIN_ROLES,
+                role_keys=[PLATFORM_ADMIN],
                 department="admin",
             )
+            m = tables.memberships
             await conn.execute(
                 stmt.on_conflict_do_update(
                     constraint="uq_memberships_scope_user",
-                    set_={"role_keys": ADMIN_ROLES},
+                    # Added to what is there, never written over it.
+                    set_={"role_keys": m.c.role_keys.op("||")(sa.cast([PLATFORM_ADMIN], JSONB))},
+                    where=sa.not_(m.c.role_keys.op("?")(PLATFORM_ADMIN)),
                 )
             )
         print(
-            f"Granted {ADMIN_ROLES} to {user.display_name} <{email}> "
+            f"Granted {PLATFORM_ADMIN} to {user.display_name} <{email}> "
             f"in tenant {tenant.name!r} (workspace 'main')."
         )
         return 0

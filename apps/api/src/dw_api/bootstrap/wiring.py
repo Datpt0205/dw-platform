@@ -85,6 +85,7 @@ from dw_platform.adapters.persistence.digital_workers_repo import (
     SqlDecisionLevels,
     SqlDigitalWorkerRepository,
     SqlDwMembershipCheck,
+    SqlDwRoleCheck,
     SqlScopedAudit,
 )
 from dw_platform.adapters.persistence.directory import SqlWorkspaceDirectory
@@ -107,6 +108,8 @@ from dw_platform.adapters.persistence.membership_lookup import SqlMembershipLook
 from dw_platform.adapters.persistence.notifications import SqlNotificationRepository
 from dw_platform.adapters.persistence.plan_catalog import CachingPlanCatalog, SqlPlanCatalog
 from dw_platform.adapters.persistence.provisioning_repo import SqlProvisioningRepository
+from dw_platform.adapters.persistence.role_admin_repo import SqlRoleAdminRepository
+from dw_platform.adapters.persistence.role_assignments_repo import SqlRoleAssignmentRepository
 from dw_platform.adapters.persistence.scope_holders import SqlScopeHolders
 from dw_platform.adapters.persistence.separation_of_duties_repo import (
     SqlSeparationOfDutiesRepository,
@@ -156,11 +159,12 @@ from dw_platform.application.marketing_send import (
     UnsubscribeService,
 )
 from dw_platform.application.membership_admin import (
-    GrantMembershipHandler,
     RevokeMembershipHandler,
 )
 from dw_platform.application.notifications import NotificationService
 from dw_platform.application.provisioning import ProvisioningService
+from dw_platform.application.role_admin import RoleAdminService
+from dw_platform.application.role_assignments import RoleAssignmentService
 from dw_platform.application.scorecard import ScorecardService
 from dw_platform.application.secrets import SecretStore
 from dw_platform.application.separation_of_duties import SeparationOfDutiesService
@@ -303,7 +307,6 @@ def _build_container(
         session_factory=session_factory,
         default_tenant_id=uuid.UUID(settings.default_tenant_id),
         default_workspace_id=uuid.UUID(settings.default_workspace_id),
-        default_role=settings.default_role,
         auto_provision_default_membership=settings.auto_provision_default_membership,
     )
     uow_factory = SqlPlatformUnitOfWorkFactory(session_factory)
@@ -313,12 +316,17 @@ def _build_container(
     container.workspace_directory = SqlWorkspaceDirectory(session_factory)
 
     membership_repo = SqlMembershipAdminRepository(session_factory)
-    container.grant_membership = GrantMembershipHandler(membership_repo, authorization, clock, ids)
     container.revoke_membership = RevokeMembershipHandler(
         membership_repo, authorization, clock, ids
     )
     container.tenant_members = TenantMembersService(
-        SqlTenantMembersRepository(session_factory), authorization, clock, ids
+        SqlTenantMembersRepository(session_factory), authorization
+    )
+    container.role_admin = RoleAdminService(
+        SqlRoleAdminRepository(session_factory), authorization, clock, ids
+    )
+    container.role_assignments = RoleAssignmentService(
+        SqlRoleAssignmentRepository(session_factory), authorization, clock, ids
     )
     container.admin_console = AdminConsoleService(
         SqlAdminConsoleRepository(session_factory), authorization, clock, ids
@@ -541,7 +549,7 @@ def _build_container(
         authz=authorization,
         tools=wiring.tool_registry,
         members=SqlDwMembershipCheck(session_factory),
-        roles=SqlTenantMembersRepository(session_factory),
+        roles=SqlDwRoleCheck(session_factory),
         clock=clock,
         id_generator=ids,
     )

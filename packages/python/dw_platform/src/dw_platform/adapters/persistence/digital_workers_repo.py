@@ -27,6 +27,7 @@ from dw_platform.adapters.persistence.effect_key_store import claim_effect_key
 from dw_platform.adapters.persistence.keyset import after_position, newest_first
 from dw_platform.adapters.persistence.membership_lookup import effective_scopes
 from dw_platform.adapters.persistence.repositories import SqlAuditRepository
+from dw_platform.adapters.persistence.role_refusals import role_write_refusal
 from dw_platform.adapters.persistence.separation_of_duties import (
     refusal,
     separation_of_duties_conflict,
@@ -36,7 +37,13 @@ from dw_platform.adapters.persistence.tenant_member_rows import ensure_tenant_me
 from dw_platform.adapters.persistence.tenant_session import TenantScope, tenant_session
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.decision_gate import DW_DECISION, ApprovedDecision
-from dw_platform.application.digital_workers import DecisionLevels, DwBoundary, Standing
+from dw_platform.application.digital_workers import (
+    DecisionLevels,
+    DwBoundary,
+    DwRoleCheck,
+    PrincipalCover,
+    Standing,
+)
 from dw_platform.application.effect_keys import PendingEffect
 from dw_platform.application.work_queue import WorkScope
 from dw_platform.domain.audit import AuditEvent
@@ -88,8 +95,9 @@ def _refused(error: IntegrityError) -> Exception | None:
             details={"reason_code": "dw_key_taken"},
         )
     # The principal's name, its Business Owner and its roles (org-and-principals
-    # R6.1, R6.4, R6.16): the same answers the service-account routes give.
-    return service_principal_refusal(error)
+    # R6.1, R6.4, R6.16): the same answers the service-account routes give; the
+    # role guards (tenant-rbac 03) as every role write reads them.
+    return service_principal_refusal(error) or role_write_refusal(error)
 
 
 @dataclass(frozen=True)
@@ -136,15 +144,10 @@ class SqlDigitalWorkerRepository:
                 await session.execute(
                     ensure_tenant_member(worker.tenant_id, worker.principal_user_id, "active")
                 )
-                await session.execute(
-                    sa.insert(tables.memberships).values(
-                        id=uuid.uuid4(),
-                        tenant_id=worker.tenant_id,
-                        workspace_id=worker.workspace_id,
-                        user_id=worker.principal_user_id,
-                        role_keys=sorted(config.role_keys),
-                    )
-                )
+                # The DW before its principal's membership and roles: the one
+                # assignment without a proposal is a `draft` DW's principal's,
+                # by the DW's creator, in the DW's own transaction (ADR-0104,
+                # Amendments 2026-11-03, 2026-11-04).
                 await session.execute(
                     sa.insert(_DW).values(
                         id=worker.id,
@@ -166,6 +169,39 @@ class SqlDigitalWorkerRepository:
                         created_by=worker.created_by,
                         created_at=worker.created_at,
                         updated_at=worker.updated_at,
+                    )
+                )
+                membership_id = uuid.uuid4()
+                await session.execute(
+                    sa.insert(tables.memberships).values(
+                        id=membership_id,
+                        tenant_id=worker.tenant_id,
+                        workspace_id=worker.workspace_id,
+                        user_id=worker.principal_user_id,
+                    )
+                )
+                await session.execute(
+                    sa.insert(tables.role_assignments).from_select(
+                        [
+                            "id",
+                            "tenant_id",
+                            "workspace_id",
+                            "membership_id",
+                            "role_id",
+                            "assigned_by",
+                        ],
+                        sa.select(
+                            sa.func.gen_random_uuid(),
+                            _ROLES.c.tenant_id,
+                            sa.literal(worker.workspace_id),
+                            sa.literal(membership_id),
+                            _ROLES.c.id,
+                            sa.literal(worker.created_by),
+                        ).where(
+                            _ROLES.c.tenant_id == worker.tenant_id,
+                            _ROLES.c.key.in_(sorted(config.role_keys)),
+                            _ROLES.c.deleted_at.is_(None),
+                        ),
                     )
                 )
                 if config.decision_classes:
@@ -246,7 +282,16 @@ class SqlDigitalWorkerRepository:
             if moved is None:
                 return False
             if target == "retired":
-                await session.execute(sa.select(sa.func.platform.retire_dw_principal(dw_id)))
+                # Removing the principal's memberships revokes its roles, each
+                # judged by the hold rule like any revocation (ADR-0104
+                # decision 6; Q2 kept as is, tenant-rbac 03).
+                try:
+                    await session.execute(sa.select(sa.func.platform.retire_dw_principal(dw_id)))
+                except IntegrityError as exc:
+                    known = _refused(exc)
+                    if known is not None:
+                        raise known from exc
+                    raise
             await SqlAuditRepository(session).append(audit)
         return True
 
@@ -340,8 +385,7 @@ async def lock_roles(session: AsyncSession, tenant_id: uuid.UUID, keys: Iterable
     (`trg_z_bump_access_version` on the company and membership rows). The
     service-account guard takes these rows again, holding them already; a
     confirm of tenant-rbac/03 holding one is waited for here, while this
-    transaction holds nothing it waits for. A role not yet installed is made
-    by this transaction, and no one else sees it."""
+    transaction holds nothing it waits for (tenant-rbac R7.8)."""
     await session.execute(
         sa.select(_ROLES.c.id)
         .where(
@@ -380,19 +424,27 @@ async def _retire_work(session: AsyncSession, dw_id: uuid.UUID) -> None:
 
 
 def _select_workers() -> sa.Select[Any]:
-    """A DW with its Business Owner and its principal's roles, which live on
-    the principal row and the principal's membership in the DW's workspace
-    (none once that membership is removed)."""
+    """A DW with its Business Owner and its principal's roles: the keys of the
+    roles assigned on the principal's membership in the DW's workspace (none
+    once that membership is removed)."""
     m = tables.memberships
-    return sa.select(
-        _DW,
-        _PRINCIPALS.c.owner_user_id,
-        sa.func.coalesce(m.c.role_keys, sa.text("'[]'::jsonb")).label("role_keys"),
-    ).select_from(
-        _DW.join(_PRINCIPALS, _PRINCIPALS.c.user_id == _DW.c.principal_user_id).outerjoin(
-            m,
-            sa.and_(m.c.user_id == _DW.c.principal_user_id, m.c.workspace_id == _DW.c.workspace_id),
+    a = tables.role_assignments
+    role_keys = (
+        sa.select(sa.func.coalesce(sa.func.array_agg(sa.distinct(_ROLES.c.key)), sa.text("'{}'")))
+        .select_from(
+            a.join(m, sa.and_(m.c.tenant_id == a.c.tenant_id, m.c.id == a.c.membership_id)).join(
+                _ROLES, sa.and_(_ROLES.c.tenant_id == a.c.tenant_id, _ROLES.c.id == a.c.role_id)
+            )
         )
+        .where(
+            m.c.tenant_id == _DW.c.tenant_id,
+            m.c.user_id == _DW.c.principal_user_id,
+            m.c.workspace_id == _DW.c.workspace_id,
+        )
+        .scalar_subquery()
+    )
+    return sa.select(_DW, _PRINCIPALS.c.owner_user_id, role_keys.label("role_keys")).select_from(
+        _DW.join(_PRINCIPALS, _PRINCIPALS.c.user_id == _DW.c.principal_user_id)
     )
 
 
@@ -508,6 +560,82 @@ class SqlDwMembershipCheck:
         return Standing(
             kind="service" if row.kind == "service" else "human", scopes=frozenset(row.scopes)
         )
+
+
+_ROLE_CHECK = sa.text(
+    """
+    SELECT k.key,
+           r.id IS NULL AS unknown,
+           coalesce(platform.role_is_critical(CAST(:t AS uuid), r.id), false) AS critical,
+           r.id IS NOT NULL AND EXISTS (
+               SELECT 1 FROM platform.rbac_refusals(
+                   CAST(:t AS uuid), CAST(:a AS uuid),
+                   jsonb_build_object('op', 'grant', 'role_id', r.id,
+                                      'workspace_id', CAST(:w AS uuid)),
+                   false)
+           ) AS refused
+    FROM unnest(CAST(:keys AS text[])) k(key)
+    LEFT JOIN platform.tenant_roles r
+      ON r.tenant_id = CAST(:t AS uuid) AND r.key = k.key AND r.deleted_at IS NULL
+    """
+)
+# Status and cover in one statement, one snapshot (R1.9, org-and-principals R6.19).
+_PRINCIPAL_COVER = sa.text(
+    """
+    SELECT CASE
+        WHEN NOT EXISTS (
+            SELECT 1 FROM platform.tenant_members tm
+            WHERE tm.tenant_id = CAST(:t AS uuid) AND tm.user_id = CAST(:p AS uuid)
+              AND tm.status = 'active'
+        ) THEN 'inactive'
+        WHEN platform.grants_cover(CAST(:t AS uuid), CAST(:a AS uuid), CAST(:p AS uuid))
+            THEN 'covered'
+        ELSE 'not_covered'
+    END AS cover
+    """
+)
+
+
+@dataclass(frozen=True)
+class SqlDwRoleCheck:
+    """Implements ``DwRoleCheckPort``: the tenant's own answers
+    (`platform.role_is_critical`, `platform.rbac_refusals`,
+    `platform.grants_cover`), never a copy of them."""
+
+    session_factory: async_sessionmaker[AsyncSession]
+
+    async def check_roles(self, context: AccessContext, role_keys: frozenset[str]) -> DwRoleCheck:
+        async with tenant_session(self.session_factory, _scope(context)) as session:
+            rows = (
+                await session.execute(
+                    _ROLE_CHECK,
+                    {
+                        "t": str(context.tenant_id),
+                        "a": str(context.principal_id),
+                        "w": str(context.workspace_id),
+                        "keys": sorted(role_keys),
+                    },
+                )
+            ).all()
+        return DwRoleCheck(
+            unknown=frozenset(r.key for r in rows if r.unknown),
+            critical=frozenset(r.key for r in rows if r.critical),
+            refused=any(r.refused for r in rows),
+        )
+
+    async def principal_cover(
+        self, context: AccessContext, principal_id: uuid.UUID
+    ) -> PrincipalCover:
+        async with tenant_session(self.session_factory, _scope(context)) as session:
+            found = await session.scalar(
+                _PRINCIPAL_COVER,
+                {
+                    "t": str(context.tenant_id),
+                    "a": str(context.principal_id),
+                    "p": str(principal_id),
+                },
+            )
+        return cast(PrincipalCover, found)
 
 
 @dataclass(frozen=True)

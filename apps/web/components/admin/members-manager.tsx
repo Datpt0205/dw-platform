@@ -10,67 +10,70 @@ import {
   Flex,
   Select,
   Tag,
+  Tooltip,
   Typography,
   theme,
 } from "antd";
 import {
   DeleteOutlined,
+  LockOutlined,
   SafetyCertificateOutlined,
   SaveOutlined,
   UserAddOutlined,
 } from "@ant-design/icons";
-import type { PlatformUserRef, WorkspaceMember } from "@dw/api-client";
-import type { AdminPermissionSet } from "@dw/contracts";
+import type {
+  AdminRole,
+  PlatformUserRef,
+  WorkspaceMember,
+} from "@dw/api-client";
 import { RegionState } from "@dw/ui";
 import { apiClient } from "../../lib/session";
 import { useAuth } from "../../lib/auth/auth-context";
 import { errorMessage } from "../../lib/error-message";
-import { PLATFORM_ADMIN_ROLE, roleLabel } from "../../lib/nav/roles";
+import { roleLabel } from "../../lib/nav/roles";
 import { EmailPicker } from "../email-picker";
+import {
+  LOCKED_ROLE_REASON,
+  SECOND_PERSON_PENDING,
+  assignableOf,
+  keepLocked,
+  lockedOf,
+  membershipsBody,
+} from "./role-assignment";
 
-// Business roles anyone who manages members can hand out. PLUG-IN POINT: a
-// bounded context's own tiers join this list once they are in the tenant role
-// catalog — the API refuses a key the catalog does not carry.
-const BASE_GRANTABLE_ROLES = ["member", "approver"];
-// Administrative roles: the API refuses them from a non-platform-admin, so they
-// are offered only to a platform admin (see `grantableRoles`). Listing them also
-// lets an existing admin member's row show its real role instead of falling
-// back to the first business role.
-const ADMIN_GRANTABLE_ROLES = ["org_admin", PLATFORM_ADMIN_ROLE];
+// The member nobody assigned anything else to starts as, when the caller may
+// assign it; otherwise the first role they may.
+const DEFAULT_ROLE = "member";
 
+/**
+ * The workspace's members and the roles each holds there. The roles are the
+ * company's own (`GET /api/v1/admin/roles`): a role the caller may not assign
+ * (`assignable_by_me = false`) is shown locked with the reason and sent back
+ * as it is, and a role added waits for a second person (202 `proposals`).
+ * The server decides either way; the lock only says so before the click.
+ */
 export function MembersManager() {
-  const { active, platformBypass } = useAuth();
+  const { active } = useAuth();
   const { message, modal } = App.useApp();
   const { token } = theme.useToken();
   const workspaceId = active?.workspaceId ?? null;
-  // Only the bypass may mint an admin role — the grant handler's
-  // _forbid_escalation lets exactly it through and refuses everyone else, so
-  // the UI offers the admin options to the same set, as `/me` reports it.
-  const canGrantAdmin = platformBypass;
-  const grantableRoles = useMemo(
-    () =>
-      [
-        ...BASE_GRANTABLE_ROLES,
-        ...(canGrantAdmin ? ADMIN_GRANTABLE_ROLES : []),
-      ].map((key) => ({ value: key, label: roleLabel(key) })),
-    [canGrantAdmin],
-  );
 
   const [members, setMembers] = useState<WorkspaceMember[] | null>(null);
+  const [roles, setRoles] = useState<AdminRole[] | null>(null);
+  const [rolesError, setRolesError] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<PlatformUserRef[]>([]);
   // The picker is a convenience (the email box works without it), so a load
   // failure shows a small note here rather than being swallowed silently.
   const [candidatesError, setCandidatesError] = useState<string | null>(null);
-  const [permissionSets, setPermissionSets] = useState<AdminPermissionSet[]>(
-    [],
-  );
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState(BASE_GRANTABLE_ROLES[0]!);
+  const [role, setRole] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Per-row role edits, keyed by user id; a row falls back to its stored role
-  // until it is touched.
-  const [roleEdits, setRoleEdits] = useState<Record<string, string>>({});
+  // What the last write left waiting for a second person, until dismissed.
+  const [pending, setPending] = useState<string | null>(null);
+  // Per-row choices among the roles the caller may assign, keyed by user id;
+  // a row falls back to what it holds until it is touched.
+  const [roleEdits, setRoleEdits] = useState<Record<string, string[]>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
   // Per-row permission-set edits, keyed by user id.
   const [setEdits, setSetEdits] = useState<Record<string, string[]>>({});
@@ -78,6 +81,33 @@ export function MembersManager() {
   // Permission sets are the exception, not the rule, so the editor stays folded
   // per member and opens only when an admin asks for it. One open at a time.
   const [expandedSetsId, setExpandedSetsId] = useState<string | null>(null);
+
+  const rolesByKey = useMemo(
+    () => new Map((roles ?? []).map((r) => [r.key, r])),
+    [roles],
+  );
+  const roleCatalog = useMemo(
+    () => (roles ?? []).filter((r) => r.kind === "role"),
+    [roles],
+  );
+  const setCatalog = useMemo(
+    () => (roles ?? []).filter((r) => r.kind === "permission_set"),
+    [roles],
+  );
+  const roleOptions = useMemo(
+    () => roleCatalog.map(lockableOption),
+    [roleCatalog],
+  );
+  const grantable = roleCatalog.filter((r) => r.assignable_by_me);
+  const defaultRole =
+    grantable.find((r) => r.key === DEFAULT_ROLE)?.key ??
+    grantable[0]?.key ??
+    null;
+  const grantRole = role ?? defaultRole;
+
+  function nameOf(key: string): string {
+    return rolesByKey.get(key)?.name ?? roleLabel(key);
+  }
 
   // Re-read the pick list on its own so it can refresh when the picker opens:
   // somebody who signs in after this page loaded must appear without a reload.
@@ -98,16 +128,18 @@ export function MembersManager() {
       setSetEdits({});
       setRoleEdits({});
       await loadCandidates();
-      // The permission-set catalog is optional decoration; a failure here must
-      // not blank the roster.
-      try {
-        setPermissionSets(await apiClient().listPermissionSets());
-      } catch {
-        setPermissionSets([]);
-      }
     } catch (e) {
       setMembers([]);
       setError(errorMessage(e));
+    }
+    // Without the company's roles nothing can be assigned, but the roster
+    // still shows: a failure here locks the role controls, not the page.
+    try {
+      setRoles(await apiClient().listAdminRoles());
+      setRolesError(null);
+    } catch (e) {
+      setRoles(null);
+      setRolesError(errorMessage(e));
     }
   }, [loadCandidates]);
 
@@ -115,17 +147,33 @@ export function MembersManager() {
     void refresh();
   }, [refresh]);
 
+  /** Say what a write left waiting, or that it is done. */
+  function announce(who: string, proposals: readonly string[], done: string) {
+    if (proposals.length > 0) {
+      setPending(
+        `Đã gửi ${proposals.length} đề xuất vai trò cho ${who}. Vai trò có` +
+          " hiệu lực khi một người khác có quyền giao vai trò xác nhận.",
+      );
+    } else {
+      message.success(done);
+    }
+  }
+
   async function grant() {
-    if (!workspaceId || !email.trim()) return;
+    if (!workspaceId || !email.trim() || !grantRole) return;
     setBusy(true);
     setError(null);
     try {
-      await apiClient().grantMember({
+      const placed = await apiClient().grantMember({
         email: email.trim(),
         workspaceId,
-        roleKeys: [role],
+        roleKeys: [grantRole],
       });
-      message.success(`Đã cấp quyền cho ${email.trim()}.`);
+      announce(
+        placed.display_name,
+        placed.proposals,
+        `Đã cấp quyền cho ${email.trim()}.`,
+      );
       setEmail("");
       await refresh();
     } catch (e) {
@@ -135,28 +183,43 @@ export function MembersManager() {
     }
   }
 
-  function currentRole(m: WorkspaceMember): string {
-    const edited = roleEdits[m.user_id];
-    if (edited !== undefined) return edited;
-    const known = m.role_keys.find((k) =>
-      grantableRoles.some((r) => r.value === k),
-    );
-    return known ?? grantableRoles[0]!.value;
+  function chosenRoles(m: WorkspaceMember): string[] {
+    return roleEdits[m.user_id] ?? assignableOf(m.role_keys, rolesByKey);
   }
 
-  // grant is an upsert, so re-granting with a single role replaces the member's
-  // role. Department is passed back so a role change does not reset it.
-  async function saveRole(m: WorkspaceMember) {
-    if (!workspaceId || !m.email) return;
+  /** Why a row's roles cannot be saved, or null when they can. */
+  function saveBlocked(m: WorkspaceMember): string | null {
+    if (roles === null) return "Chưa đọc được danh sách vai trò.";
+    if (keepLocked(m.role_keys, chosenRoles(m), rolesByKey).length === 0) {
+      return "Chọn ít nhất một vai. Để gỡ người này khỏi workspace, dùng nút Gỡ.";
+    }
+    return null;
+  }
+
+  // The route replaces a person's roles in every workspace at once, so the
+  // other workspaces are read fresh and sent back as they are.
+  async function saveRoles(m: WorkspaceMember) {
+    if (!workspaceId) return;
     setSavingId(m.user_id);
     setError(null);
     try {
-      await apiClient().grantMember({
-        email: m.email,
-        workspaceId,
-        roleKeys: [currentRole(m)],
-        department: m.department,
-      });
+      const person = (await apiClient().listTenantMembers()).find(
+        (t) => t.user_id === m.user_id,
+      );
+      if (!person) {
+        setError(`${m.display_name} không còn trong công ty.`);
+        await refresh();
+        return;
+      }
+      const result = await apiClient().setMemberships(
+        m.user_id,
+        membershipsBody(person, workspaceId, chosenRoles(m), rolesByKey),
+      );
+      announce(
+        m.display_name,
+        result.proposals,
+        `Đã lưu vai trò của ${m.display_name}.`,
+      );
       await refresh();
     } catch (e) {
       setError(errorMessage(e));
@@ -173,7 +236,15 @@ export function MembersManager() {
     setSavingSetsId(m.user_id);
     setError(null);
     try {
-      await apiClient().setMemberPermissionSets(m.user_id, checkedSets(m));
+      const result = await apiClient().setMemberPermissionSets(
+        m.user_id,
+        keepLocked(m.permission_set_keys, checkedSets(m), rolesByKey),
+      );
+      announce(
+        m.display_name,
+        result.proposals,
+        `Đã lưu bộ quyền của ${m.display_name}.`,
+      );
       await refresh();
     } catch (e) {
       setError(errorMessage(e));
@@ -203,12 +274,20 @@ export function MembersManager() {
     });
   }
 
+  const grantBlocked =
+    roles === null
+      ? "Chưa đọc được danh sách vai trò."
+      : grantRole === null
+        ? "Bạn không giao được vai trò nào."
+        : null;
+
   return (
     <Card title="Thành viên">
       <Flex vertical gap="middle">
         <Typography.Text type="secondary">
           Cấp quyền cho người đã đăng nhập ít nhất một lần. Người mới phải tự
-          đăng nhập trước khi được giao vai.
+          đăng nhập trước khi được giao vai. Vai trò thêm mới có hiệu lực khi
+          người thứ hai xác nhận.
         </Typography.Text>
         <Flex wrap align="end" gap="small">
           <Flex vertical gap={4} className="min-w-[12rem] flex-1">
@@ -235,22 +314,46 @@ export function MembersManager() {
             <Select
               id="grant-role"
               className="w-44"
-              value={role}
+              value={grantRole}
               onChange={setRole}
-              options={grantableRoles}
+              options={roleOptions}
+              disabled={roles === null}
             />
           </Flex>
-          <Button
-            type="primary"
-            icon={<UserAddOutlined aria-hidden />}
-            loading={busy}
-            disabled={!email.trim()}
-            onClick={() => void grant()}
-          >
-            Cấp quyền
-          </Button>
+          <Tooltip title={grantBlocked}>
+            <Button
+              type="primary"
+              icon={<UserAddOutlined aria-hidden />}
+              loading={busy}
+              disabled={!email.trim() || grantBlocked !== null}
+              onClick={() => void grant()}
+            >
+              Cấp quyền
+            </Button>
+          </Tooltip>
         </Flex>
 
+        {rolesError && (
+          <Alert
+            type="warning"
+            showIcon
+            title="Không đọc được danh sách vai trò, nên chưa giao được vai."
+            description={rolesError}
+          />
+        )}
+        {pending && (
+          <Alert
+            type="info"
+            showIcon
+            role="status"
+            title={SECOND_PERSON_PENDING}
+            description={pending}
+            closable={{
+              onClose: () => setPending(null),
+              "aria-label": "Đóng",
+            }}
+          />
+        )}
         {error && <Alert type="error" showIcon title={error} />}
 
         {members === null ? (
@@ -260,7 +363,8 @@ export function MembersManager() {
         ) : (
           <ul className="m-0 list-none p-0">
             {members.map((m) => {
-              const roleId = `role-${m.user_id}`;
+              const locked = lockedOf(m.role_keys, rolesByKey);
+              const blocked = saveBlocked(m);
               return (
                 <li
                   key={m.user_id}
@@ -284,27 +388,36 @@ export function MembersManager() {
                       wrap
                       className="max-w-full"
                     >
+                      {locked.map((key) => (
+                        <Tag key={key} icon={<LockOutlined aria-hidden />}>
+                          {nameOf(key)}
+                        </Tag>
+                      ))}
                       <Select
-                        id={roleId}
+                        mode="multiple"
                         aria-label={`Vai của ${m.display_name}`}
-                        className="w-40"
-                        value={currentRole(m)}
-                        onChange={(value: string) =>
+                        className="min-w-[10rem]"
+                        value={chosenRoles(m)}
+                        onChange={(value: string[]) =>
                           setRoleEdits((prev) => ({
                             ...prev,
                             [m.user_id]: value,
                           }))
                         }
-                        options={grantableRoles}
+                        options={roleOptions}
+                        disabled={roles === null}
+                        placeholder="Chọn vai"
                       />
-                      <Button
-                        icon={<SaveOutlined aria-hidden />}
-                        loading={savingId === m.user_id}
-                        disabled={!m.email}
-                        onClick={() => void saveRole(m)}
-                      >
-                        Lưu
-                      </Button>
+                      <Tooltip title={blocked}>
+                        <Button
+                          icon={<SaveOutlined aria-hidden />}
+                          loading={savingId === m.user_id}
+                          disabled={blocked !== null}
+                          onClick={() => void saveRoles(m)}
+                        >
+                          Lưu
+                        </Button>
+                      </Tooltip>
                       <Button
                         type="text"
                         danger
@@ -314,8 +427,15 @@ export function MembersManager() {
                       />
                     </Flex>
                   </Flex>
+                  {locked.length > 0 && (
+                    <Typography.Text className="mt-1 block">
+                      <LockOutlined aria-hidden /> {LOCKED_ROLE_REASON}:{" "}
+                      {locked.map(nameOf).join(", ")}. Vai này được giữ nguyên
+                      khi lưu.
+                    </Typography.Text>
+                  )}
 
-                  {permissionSets.length > 0 && (
+                  {setCatalog.length > 0 && (
                     <div className="mt-1.5">
                       <Button
                         type="link"
@@ -344,11 +464,7 @@ export function MembersManager() {
                                 [m.user_id]: next as string[],
                               }))
                             }
-                            options={permissionSets.map((ps) => ({
-                              value: ps.key,
-                              label: ps.name,
-                              title: ps.scopes.join(", "),
-                            }))}
+                            options={setCatalog.map(lockableOption)}
                           />
                           <div>
                             <Button
@@ -372,4 +488,21 @@ export function MembersManager() {
       </Flex>
     </Card>
   );
+}
+
+/** A role as an option: its name, and when the caller may not assign it,
+ * disabled behind a lock with the reason. */
+function lockableOption(r: AdminRole) {
+  return r.assignable_by_me
+    ? { value: r.key, label: r.name, title: r.description ?? r.name }
+    : {
+        value: r.key,
+        label: (
+          <span>
+            <LockOutlined aria-hidden /> {r.name}
+          </span>
+        ),
+        title: `${r.name}: ${LOCKED_ROLE_REASON}`,
+        disabled: true,
+      };
 }

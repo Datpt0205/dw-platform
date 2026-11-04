@@ -16,6 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from dw_platform.adapters.persistence import tables
@@ -43,6 +44,31 @@ def member_status() -> sa.ScalarSelect[str]:
     )
 
 
+def held_role_keys(kind: str) -> sa.ScalarSelect[object]:
+    """The keys of the roles of ``kind`` (`role` or `permission_set`) assigned
+    on the membership the caller's query selects from, sorted: the one display
+    reading of "which roles here" (tenant-rbac ticket 03, step 9), read from the
+    assignments, never from the legacy `role_keys` columns."""
+    a = tables.role_assignments
+    r = tables.tenant_roles
+    m = tables.memberships
+    return (
+        sa.select(
+            sa.func.coalesce(
+                sa.func.array_agg(aggregate_order_by(r.c.key, r.c.key)), sa.text("'{}'")
+            )
+        )
+        .select_from(a.join(r, sa.and_(r.c.tenant_id == a.c.tenant_id, r.c.id == a.c.role_id)))
+        .where(
+            a.c.tenant_id == m.c.tenant_id,
+            a.c.membership_id == m.c.id,
+            r.c.kind == kind,
+            r.c.deleted_at.is_(None),
+        )
+        .scalar_subquery()
+    )
+
+
 @dataclass(frozen=True)
 class SqlWorkspaceDirectory:
     """Implements ``WorkspaceDirectoryPort``."""
@@ -55,8 +81,8 @@ class SqlWorkspaceDirectory:
                 tables.users.c.id,
                 tables.users.c.display_name,
                 tables.users.c.email,
-                tables.memberships.c.role_keys,
-                tables.memberships.c.permission_set_keys,
+                held_role_keys("role").label("role_keys"),
+                held_role_keys("permission_set").label("permission_set_keys"),
                 tables.memberships.c.department,
                 member_status().label("status"),
             )

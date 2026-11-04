@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, Flex, Tag, Typography } from "antd";
 import { CheckCircleFilled, SafetyOutlined } from "@ant-design/icons";
-import type { AdminRole } from "@dw/contracts";
+import type { AdminRole } from "@dw/api-client";
 import { PageHeader, RegionState } from "@dw/ui";
 import { LoadError } from "../../components/load-error";
 import { MembersManager } from "../../components/admin/members-manager";
@@ -12,14 +12,17 @@ import { roleLabel } from "../../lib/nav/roles";
 import { apiClient } from "../../lib/session";
 
 /**
- * Who holds which role in this workspace, and what each role grants. The role
- * catalog is read from the API (`platform.roles` owns it); this page restates
- * none of it, only how a role key reads to a person (`lib/nav/roles.ts`).
+ * Who holds which role in this workspace, and the company's roles. The roles
+ * are read from the API (`platform.tenant_roles` owns them, with their names);
+ * this page restates none of it.
  */
 export default function AdminPage() {
-  const { displayName, active, roles, scopes, hasScope } = useAuth();
-  const canManageMembers = hasScope("platform.members.write");
-  const canReadCatalog = hasScope("platform.roles.read");
+  const { displayName, active, roles, scopes } = useAuth();
+  // Role administration and assignment are not opened by the `platform_admin`
+  // bypass (tenant-rbac R3.16), so these read what the caller holds, never
+  // `hasScope`, which counts the bypass.
+  const canManageMembers = scopes.includes("platform.members.write");
+  const canReadCatalog = scopes.includes("platform.roles.read");
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -87,19 +90,24 @@ function RoleCatalog({ mine }: { mine: string[] }) {
         <Card
           key={role.key}
           size="small"
-          title={roleLabel(role.key, role.name)}
+          title={role.name}
           extra={
             mine.includes(role.key) ? (
               <CheckCircleFilled aria-label="Vai của bạn" />
             ) : null
           }
         >
-          <Flex wrap gap={4}>
-            {role.scopes.map((s) => (
-              <Tag key={s} className="font-mono">
-                {s}
+          <Flex vertical gap={4}>
+            {role.description && (
+              <Typography.Text>{role.description}</Typography.Text>
+            )}
+            <Flex wrap gap={4}>
+              <Tag>
+                {role.kind === "permission_set" ? "Bộ quyền" : "Vai trò"}
               </Tag>
-            ))}
+              {role.is_system && <Tag>Vai hệ thống</Tag>}
+              <Tag>{role.holder_count} người giữ</Tag>
+            </Flex>
           </Flex>
         </Card>
       ))}

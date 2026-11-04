@@ -1,4 +1,5 @@
-"""Org Admin console: workspaces, tenant settings, and the role catalog.
+"""Org Admin console: workspaces, tenant settings, the permission catalogue
+and the permission-set templates.
 
 The same two rails as ``membership_admin``: every entry point requires an
 ``platform.*`` scope an Org Admin holds and a member does not, and every write
@@ -6,10 +7,9 @@ runs under the caller's tenant RLS, so an Org Admin of one company can never
 touch another's workspaces or settings. Mutations record an audit event in the
 same transaction as the change.
 
-The role catalog is read-only here on purpose (ADR-001, one-owner-per-fact):
-roles and their scopes are versioned configuration edited by deploy, not a
-runtime table an admin rewrites. This exposes them so an admin can *see* what
-each role grants, nothing more.
+The tenant's own roles, and who holds them, are `role_admin` and
+`role_assignments` (tenant-rbac ticket 03); the catalogue here says, for the
+caller, how deep each key may be set and how deep the caller could hand it out.
 """
 
 from __future__ import annotations
@@ -20,11 +20,10 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from dw_kernel.autonomy import is_autonomy_level
-from dw_kernel.errors import DomainError, NotFoundError, PermissionDeniedError
+from dw_kernel.errors import DomainError, NotFoundError
 from dw_kernel.ids import TenantId, UserId, WorkspaceId
 from dw_kernel.ports import IdGenerator, UtcClock
 from dw_platform.application.access_context import AccessContext
-from dw_platform.application.authorization import PLATFORM_ADMIN_ROLE
 from dw_platform.application.ports import AuthorizationPort
 from dw_platform.domain.audit import AuditEvent
 
@@ -32,10 +31,6 @@ WORKSPACES_WRITE = "platform.workspaces.write"
 ROLES_READ = "platform.roles.read"
 TENANT_SETTINGS_WRITE = "platform.tenant.settings.write"
 MEMBERS_READ = "platform.members.read"
-MEMBERS_WRITE = "platform.members.write"
-
-_ACTION_SET_PERMISSION_SETS = "platform.member.permission_sets"
-_RES_MEMBER = "membership"
 
 _SLUG = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
@@ -64,13 +59,6 @@ class WorkspaceRef:
 
 
 @dataclass(frozen=True, slots=True)
-class RoleInfo:
-    key: str
-    name: str
-    scopes: tuple[str, ...]
-
-
-@dataclass(frozen=True, slots=True)
 class PermissionInfo:
     """One row of the permission catalogue (tenant-rbac R1.4)."""
 
@@ -80,6 +68,10 @@ class PermissionInfo:
     scope_kind: str
     risk: str
     status: str
+    # The depths the key takes by its kind (R3.4), and the broadest of them the
+    # caller holds at their own workspace (the hold rule), None when none.
+    allowed_depths: tuple[str, ...] = ()
+    max_grantable_depth: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,14 +79,6 @@ class PermissionSetInfo:
     key: str
     name: str
     scopes: tuple[str, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class SetPermissionSets:
-    """Replace a member's permission sets (in the caller's workspace)."""
-
-    user_id: uuid.UUID
-    permission_set_keys: frozenset[str]
 
 
 @dataclass(frozen=True, slots=True)
@@ -163,31 +147,10 @@ class AdminConsoleRepositoryPort(Protocol):
         self, context: AccessContext, *, workspace_id: uuid.UUID, audit: AuditEvent
     ) -> bool: ...
 
-    async def list_roles(self) -> list[RoleInfo]: ...
-
     async def list_permission_sets(self) -> list[PermissionSetInfo]: ...
 
-    async def list_permissions(self) -> list[PermissionInfo]:
-        """The catalogue, by area then key."""
-        ...
-
-    async def known_permission_sets(self, keys: frozenset[str]) -> frozenset[str]:
-        """Which of the given permission-set keys exist in the catalog."""
-        ...
-
-    async def scopes_for_permission_sets(self, keys: frozenset[str]) -> frozenset[str]:
-        """The union of scopes the given permission sets carry."""
-        ...
-
-    async def set_permission_sets(
-        self,
-        context: AccessContext,
-        *,
-        user_id: uuid.UUID,
-        permission_set_keys: frozenset[str],
-        audit: AuditEvent,
-    ) -> bool:
-        """Replace the member's permission sets; False if no such membership."""
+    async def list_permissions(self, context: AccessContext) -> list[PermissionInfo]:
+        """The catalogue, by area then key, with the caller's depths."""
         ...
 
     async def get_tenant_settings(self, context: AccessContext) -> TenantSettings | None: ...
@@ -291,57 +254,15 @@ class AdminConsoleService:
                 details={"workspace_id": str(command.workspace_id)},
             )
 
-    # ---- roles (read-only) ----
-    async def list_roles(self, context: AccessContext) -> list[RoleInfo]:
-        await self.authz.require(context=context, action=ROLES_READ, resource_type="role")
-        return await self.repo.list_roles()
-
     # ---- the permission catalogue (read-only, tenant-rbac R1.4) ----
     async def list_permissions(self, context: AccessContext) -> list[PermissionInfo]:
         await self.authz.require(context=context, action=ROLES_READ, resource_type="permission")
-        return await self.repo.list_permissions()
+        return await self.repo.list_permissions(context)
 
     # ---- permission sets ----
     async def list_permission_sets(self, context: AccessContext) -> list[PermissionSetInfo]:
         await self.authz.require(context=context, action=ROLES_READ, resource_type="permission_set")
         return await self.repo.list_permission_sets()
-
-    async def set_permission_sets(self, context: AccessContext, command: SetPermissionSets) -> None:
-        await self.authz.require(context=context, action=MEMBERS_WRITE, resource_type=_RES_MEMBER)
-        keys = command.permission_set_keys
-        unknown = keys - await self.repo.known_permission_sets(keys)
-        if unknown:
-            raise NotFoundError("unknown permission set", details={"keys": sorted(unknown)})
-
-        # No escalation: only a platform admin may hand out a set carrying any
-        # platform.* scope (same rule that guards administrative roles).
-        if PLATFORM_ADMIN_ROLE not in context.roles:
-            granted = await self.repo.scopes_for_permission_sets(keys)
-            administrative = {scope for scope in granted if scope.startswith("platform.")}
-            if administrative:
-                raise PermissionDeniedError(
-                    "only a platform admin may grant an administrative permission set",
-                    details={"scopes": sorted(administrative)},
-                )
-
-        changed = await self.repo.set_permission_sets(
-            context,
-            user_id=command.user_id,
-            permission_set_keys=keys,
-            audit=self._event(
-                context,
-                _ACTION_SET_PERMISSION_SETS,
-                context.workspace_id,
-                _RES_MEMBER,
-                str(command.user_id),
-                {"permission_set_keys": sorted(keys)},
-            ),
-        )
-        if not changed:
-            raise NotFoundError(
-                "no such member in this workspace",
-                details={"user_id": str(command.user_id)},
-            )
 
     # ---- tenant settings ----
     async def get_tenant_settings(self, context: AccessContext) -> TenantSettings:

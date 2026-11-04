@@ -37,6 +37,8 @@ from dw_api.middleware.studio_gate import StudioGate
 from dw_api.routes.v1.admin_console import router as admin_console_router
 from dw_api.routes.v1.admin_members import invitations_router as admin_invitations_router
 from dw_api.routes.v1.admin_members import router as admin_members_router
+from dw_api.routes.v1.admin_roles import ROLE_ROUTES_WITHOUT_BYPASS
+from dw_api.routes.v1.admin_roles import router as admin_roles_router
 from dw_api.routes.v1.admin_service_principals import router as admin_service_principals_router
 from dw_api.routes.v1.approvals import router as approvals_router
 from dw_api.routes.v1.audit import router as audit_router
@@ -215,6 +217,7 @@ def create_app(
         directory_router,
         admin_members_router,
         admin_invitations_router,
+        admin_roles_router,
         admin_console_router,
         admin_service_principals_router,
         egress_router,
@@ -237,6 +240,9 @@ def create_app(
         intake_router,
     ):
         app.include_router(router, prefix="/api/v1")
+    # Beside the routers that hold them: role administration and assignment
+    # are not opened by the `platform_admin` bypass (tenant-rbac R3.16).
+    container.no_platform_bypass_routes = ROLE_ROUTES_WITHOUT_BYPASS
 
     # The user's own Zalo link: mounted only when the bot token and the link
     # secret are both configured, so an unconfigured deployment answers 404.

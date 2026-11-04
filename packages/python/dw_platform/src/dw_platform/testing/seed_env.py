@@ -27,7 +27,7 @@ import uuid
 
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 
 from dw_platform.adapters.persistence import tables
 
@@ -151,6 +151,39 @@ KEYCLOAK_IDENTITIES = [
 ]
 
 
+async def _assign_templates(
+    conn: AsyncConnection,
+    tenant_id: uuid.UUID,
+    workspace_id: uuid.UUID,
+    membership_id: uuid.UUID,
+    keys: list[str],
+) -> None:
+    """Each key as the tenant's role (cloned from its template when the tenant
+    has none yet) assigned on the membership; idempotent. Migrator only: the
+    role triggers exempt it, as they exempt every seed."""
+    for key in keys:
+        role = await conn.scalar(
+            sa.text("SELECT id FROM platform.tenant_roles WHERE tenant_id = :t AND key = :k"),
+            {"t": tenant_id, "k": key},
+        )
+        if role is None:
+            role = await conn.scalar(
+                sa.text("SELECT platform.install_role_template(:t, :k)"),
+                {"t": tenant_id, "k": key},
+            )
+        await conn.execute(
+            pg_insert(tables.role_assignments)
+            .values(
+                id=uuid.uuid4(),
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                membership_id=membership_id,
+                role_id=role,
+            )
+            .on_conflict_do_nothing(constraint="uq_role_assignments_membership_id_role_id")
+        )
+
+
 async def seed_test_env(database_url: str, *, restore_deleted: bool = True) -> dict[str, int]:
     """Populate a migrated database with tenants, users and memberships.
 
@@ -242,22 +275,35 @@ async def seed_test_env(database_url: str, *, restore_deleted: bool = True) -> d
                         index_elements=["tenant_id", "user_id"], set_={"status": "active"}
                     )
                 )
+                # `role_keys` carries `platform_admin` only (G2, written by the
+                # migrator); every other role is an assignment (tenant-rbac
+                # ticket 03), the way `dw_platform.testing.rbac` plants them.
+                legacy = [key for key in role_keys if key == "platform_admin"]
                 membership_stmt = pg_insert(tables.memberships).values(
                     id=sid("membership", f"{tenant_slug}:{subject}"),
                     tenant_id=sid("tenant", tenant_slug),
                     workspace_id=sid("workspace", f"{tenant_slug}:main"),
                     user_id=user_id,
-                    role_keys=role_keys,
+                    role_keys=legacy,
                     department=department,
                 )
-                await conn.execute(
-                    membership_stmt.on_conflict_do_update(
-                        constraint="uq_memberships_scope_user",
-                        set_={
-                            "role_keys": membership_stmt.excluded.role_keys,
-                            "department": membership_stmt.excluded.department,
-                        },
+                membership_id = (
+                    await conn.execute(
+                        membership_stmt.on_conflict_do_update(
+                            constraint="uq_memberships_scope_user",
+                            set_={
+                                "role_keys": membership_stmt.excluded.role_keys,
+                                "department": membership_stmt.excluded.department,
+                            },
+                        ).returning(tables.memberships.c.id)
                     )
+                ).scalar_one()
+                await _assign_templates(
+                    conn,
+                    sid("tenant", tenant_slug),
+                    sid("workspace", f"{tenant_slug}:main"),
+                    membership_id,
+                    [key for key in role_keys if key != "platform_admin"],
                 )
 
             # ADR-003: point each member at their manager. By subject, not the
@@ -280,19 +326,24 @@ async def seed_test_env(database_url: str, *, restore_deleted: bool = True) -> d
 
             # ADR-001 Phase 3: attach demo permission sets to a member.
             for subject, set_keys, tenant_slug in PERMISSION_SET_ASSIGNMENTS:
-                user_id_subq = (
-                    sa.select(tables.users.c.id)
-                    .where(tables.users.c.subject == subject)
-                    .scalar_subquery()
-                )
-                await conn.execute(
-                    sa.update(tables.memberships)
-                    .where(
-                        tables.memberships.c.workspace_id
-                        == sid("workspace", f"{tenant_slug}:main"),
-                        tables.memberships.c.user_id == user_id_subq,
+                membership_id = (
+                    await conn.execute(
+                        sa.select(tables.memberships.c.id).where(
+                            tables.memberships.c.workspace_id
+                            == sid("workspace", f"{tenant_slug}:main"),
+                            tables.memberships.c.user_id
+                            == sa.select(tables.users.c.id)
+                            .where(tables.users.c.subject == subject)
+                            .scalar_subquery(),
+                        )
                     )
-                    .values(permission_set_keys=set_keys)
+                ).scalar_one()
+                await _assign_templates(
+                    conn,
+                    sid("tenant", tenant_slug),
+                    sid("workspace", f"{tenant_slug}:main"),
+                    membership_id,
+                    list(set_keys),
                 )
 
             # The demo identities go in before the operator row: a login identity

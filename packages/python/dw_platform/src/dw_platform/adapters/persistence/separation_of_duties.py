@@ -47,6 +47,9 @@ def separation_of_duties_conflict(error: IntegrityError) -> ConflictError | None
     return ConflictError(
         "these roles cannot be held together (separation of duties)",
         details={
+            # The constraint as the reason, as every role refusal names one
+            # (tenant-rbac ticket 03, step 7); the rule and holders beside it.
+            "reason_code": _ROLE_SOD,
             "rule": rule,
             "reason": getattr(cause, "message", None) or "",
             "holders": [held for held in refused[1].split(", ") if held],

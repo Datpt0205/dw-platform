@@ -101,14 +101,15 @@ class SqlIdentityBootstrap:
 
     ``default_tenant_id`` / ``default_workspace_id`` must match the seeded demo
     tenant (see ``dw_platform.testing.seed_env``). With
-    ``auto_provision_default_membership`` on, brand-new identities land there as
-    ``default_role``; off (the default), they get no membership at all.
+    ``auto_provision_default_membership`` on, brand-new identities land there
+    with a membership and no role (tenant-rbac ticket 03: a role is assigned
+    by two people, `member` included, so the demo tenant's admins place them);
+    off (the default), they get no membership at all.
     """
 
     session_factory: async_sessionmaker[AsyncSession]
     default_tenant_id: UUID
     default_workspace_id: UUID
-    default_role: str = "member"
     provider: str = "oidc"
     auto_provision_default_membership: bool = False
 
@@ -275,7 +276,6 @@ class SqlIdentityBootstrap:
                 tenant_id=self.default_tenant_id,
                 workspace_id=self.default_workspace_id,
                 user_id=user_id,
-                role_keys=[self.default_role],
                 department="general",
             )
             .on_conflict_do_nothing(constraint="uq_memberships_scope_user")

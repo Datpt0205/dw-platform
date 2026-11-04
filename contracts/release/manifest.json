@@ -18,9 +18,9 @@
       "version": "1.0.0"
     },
     {
-      "checksum": "a1ac43f4000f9c0edcfd3d6e4a2e79261ff802bc7e6e96f2e776ead46c5ff32f",
+      "checksum": "04821f3cc903c5b3c0c153b75a88acd603032251c28de52f447ed0357645199b",
       "copy_id": "platform.audit_actions.tenant_rbac",
-      "version": "1.0.0"
+      "version": "1.1.0"
     },
     {
       "checksum": "7334a5c7336af4ea355db7a583f68d05d803e77f1367c8089343564657b2dea5",
@@ -70,7 +70,7 @@
       "version": "1.2.0"
     }
   ],
-  "git_sha": "bc7cd77b13c11335710d6dfa04ed9a1e8fe70cdd",
+  "git_sha": "00fefdf4a712bf9afbf10cec4b5432d38bb0bc75",
   "knowledge_index_version": "2026-07-25.structure-1",
   "memory_policy_version": "2.0.0",
   "platform_version": "0.1.0",

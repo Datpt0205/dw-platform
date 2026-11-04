@@ -24,7 +24,6 @@ from dw_platform.application.admin_console import (
     ArchiveWorkspace,
     CreateWorkspace,
     RenameWorkspace,
-    SetPermissionSets,
     TenantSettings,
     UpdateTenantSettings,
 )
@@ -63,12 +62,6 @@ class RenameWorkspaceBody(BaseModel):
     name: str
 
 
-class RoleView(BaseModel):
-    key: str
-    name: str
-    scopes: list[str]
-
-
 ScopeKind = Literal["tenant", "workspace", "record"]
 Risk = Literal["standard", "elevated", "critical"]
 PermissionStatus = Literal["active", "unassigned", "retired"]
@@ -82,16 +75,17 @@ class PermissionView(BaseModel):
     scope_kind: ScopeKind
     risk: Risk
     status: PermissionStatus
+    allowed_depths: list[str] = Field(description="The depths the key takes by its kind.")
+    max_grantable_depth: str | None = Field(
+        description="The broadest depth the caller could hand out at their own workspace"
+        " (the hold rule, `platform.holder_covers_grant`); null when none."
+    )
 
 
 class PermissionSetView(BaseModel):
     key: str
     name: str
     scopes: list[str]
-
-
-class SetPermissionSetsBody(BaseModel):
-    permission_set_keys: list[str]
 
 
 class TenantSettingsView(BaseModel):
@@ -253,12 +247,6 @@ async def archive_workspace(
     return Response(status_code=204)
 
 
-@router.get("/roles", response_model=list[RoleView])
-async def list_roles(context: RequireAccessContext, container: RequireContainer) -> list[RoleView]:
-    rows = await _service(container).list_roles(context)
-    return [RoleView(key=r.key, name=r.name, scopes=list(r.scopes)) for r in rows]
-
-
 @router.get("/permissions", response_model=list[PermissionView])
 async def list_permissions(
     context: RequireAccessContext, container: RequireContainer
@@ -274,6 +262,8 @@ async def list_permissions(
             scope_kind=cast(ScopeKind, r.scope_kind),
             risk=cast(Risk, r.risk),
             status=cast(PermissionStatus, r.status),
+            allowed_depths=list(r.allowed_depths),
+            max_grantable_depth=r.max_grantable_depth,
         )
         for r in rows
     ]
@@ -285,23 +275,6 @@ async def list_permission_sets(
 ) -> list[PermissionSetView]:
     rows = await _service(container).list_permission_sets(context)
     return [PermissionSetView(key=r.key, name=r.name, scopes=list(r.scopes)) for r in rows]
-
-
-@router.put("/members/{user_id}/permission-sets", status_code=204)
-async def set_permission_sets(
-    user_id: UUID,
-    payload: SetPermissionSetsBody,
-    context: RequireAccessContext,
-    container: RequireContainer,
-) -> Response:
-    await _service(container).set_permission_sets(
-        context,
-        SetPermissionSets(
-            user_id=user_id, permission_set_keys=frozenset(payload.permission_set_keys)
-        ),
-    )
-    # No cache eviction: the write bumps the tenant's access version (R4.1).
-    return Response(status_code=204)
 
 
 @router.get("/tenant", response_model=TenantSettingsView)

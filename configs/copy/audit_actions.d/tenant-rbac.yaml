@@ -4,7 +4,15 @@
 # adds the role administration ones with the routes that write them.
 schema_version: "1.0"
 copy_id: platform.audit_actions.tenant_rbac
-version: "1.0.0"
+version: "1.1.0"
 actions:
   platform.tenant.setup_completed: "Công ty mở hoạt động khi chủ sở hữu thứ hai kích hoạt"
   platform.role_assignment.grant: "Gán vai trò cho thành viên"
+  platform.role_assignment.revoke: "Gỡ vai trò khỏi thành viên"
+  platform.role.create: "Tạo vai trò"
+  platform.role.update: "Đổi tên hay mô tả vai trò"
+  platform.role.permissions_set: "Đặt quyền của vai trò"
+  platform.role.delete: "Xóa vai trò"
+  platform.role_change.proposed: "Đề xuất thay đổi vai trò"
+  platform.role_change.confirmed: "Xác nhận đề xuất thay đổi vai trò"
+  platform.role_change.withdrawn: "Rút đề xuất thay đổi vai trò"

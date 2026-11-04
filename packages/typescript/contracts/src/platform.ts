@@ -115,24 +115,9 @@ export const adminTenantSchema = z.object({
 });
 export type AdminTenant = z.infer<typeof adminTenantSchema>;
 
-// One role in the tenant's catalog and the scopes it grants. Read-only: roles
-// are versioned config changed by deploy, not from the UI.
-export const adminRoleSchema = z.object({
-  key: z.string(),
-  name: z.string(),
-  scopes: z.array(z.string()),
-});
-export type AdminRole = z.infer<typeof adminRoleSchema>;
-
-// A named bundle of scopes an admin can grant to individual members on top of
-// their role. Read-only catalog; granting happens per-member on the Members
-// page. Same shape as a role, but granted individually rather than by role.
-export const adminPermissionSetSchema = z.object({
-  key: z.string(),
-  name: z.string(),
-  scopes: z.array(z.string()),
-});
-export type AdminPermissionSet = z.infer<typeof adminPermissionSetSchema>;
+// A tenant role (`GET /api/v1/admin/roles`) is the generated `RoleView`,
+// exported by `@dw/api-client` as `AdminRole`: no hand-kept mirror here
+// (tenant-rbac ticket 03).
 
 // A separation-of-duty rule: no membership may hold a scope from each side.
 // `waivable` false means no tenant can lift it. `waiver` is this tenant's open

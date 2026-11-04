@@ -208,6 +208,14 @@ adapter. Constructor injection — no service locator, no mutable global client.
   (ADR 0104). The
   access-context cache key carries `platform.tenant_access_versions`, bumped by
   the database, so no route evicts it.
+- A role write holds what it hands out and, when it widens, takes two people,
+  for every writer but `dw_migrator` (`dw_provisioner` installs system roles
+  and assigns `tenant_owner` only): `platform.rbac_refusals` is the one answer,
+  asked by the services first and by `rbac_refusals_<table>` for the write, and
+  a widening write opens only under a `platform.role_change_requests` proposal
+  another holder confirmed in that very transaction (ADR 0104 decisions 6, 10).
+  The `platform_admin` bypass does not open role routes
+  (`ROLE_ROUTES_WITHOUT_BYPASS`).
 - Entitlement checks and authorization checks are separate concerns.
 - Negative tests for cross-tenant reads and writes are mandatory.
 - Hiding a control is not authorization. Enforce where the mutation happens.

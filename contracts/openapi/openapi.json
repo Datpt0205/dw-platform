@@ -184,6 +184,26 @@
         "title": "AllowedHostView",
         "type": "object"
       },
+      "AppliedRevokeView": {
+        "description": "A role removed by the request, applied at once (R7.6).",
+        "properties": {
+          "role_key": {
+            "title": "Role Key",
+            "type": "string"
+          },
+          "workspace_id": {
+            "format": "uuid",
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace_id",
+          "role_key"
+        ],
+        "title": "AppliedRevokeView",
+        "type": "object"
+      },
       "ApprovalView": {
         "properties": {
           "approval_type": {
@@ -1497,6 +1517,70 @@
           "people"
         ],
         "title": "CreateDigitalWorkerRequest",
+        "type": "object"
+      },
+      "CreateRoleBody": {
+        "additionalProperties": false,
+        "properties": {
+          "clone_of": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clone Of"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "from_template": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Template"
+          },
+          "key": {
+            "maxLength": 63,
+            "minLength": 2,
+            "title": "Key",
+            "type": "string"
+          },
+          "kind": {
+            "default": "role",
+            "pattern": "^(role|permission_set)$",
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "name"
+        ],
+        "title": "CreateRoleBody",
         "type": "object"
       },
       "CreateServicePrincipalBody": {
@@ -3051,13 +3135,30 @@
         "type": "object"
       },
       "MemberMembershipsView": {
-        "description": "A person's memberships in this tenant after a change; empty when none is left.",
+        "description": "A person's memberships in this tenant after a change; empty when none is\nleft. `applied` are the roles removed; `proposals` the roles added, each\nwaiting for a second person (202).",
         "properties": {
+          "applied": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AppliedRevokeView"
+            },
+            "title": "Applied",
+            "type": "array"
+          },
           "memberships": {
             "items": {
               "$ref": "#/components/schemas/MemberWorkspaceView"
             },
             "title": "Memberships",
+            "type": "array"
+          },
+          "proposals": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Proposals",
             "type": "array"
           },
           "user_id": {
@@ -3089,6 +3190,15 @@
               }
             ],
             "title": "Email"
+          },
+          "proposals": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Proposals",
+            "type": "array"
           },
           "user_id": {
             "format": "uuid",
@@ -4105,6 +4215,35 @@
         "title": "Page",
         "type": "object"
       },
+      "Page_ProposalView_": {
+        "description": "A page of results and the cursor that continues it.\n\n``next_cursor`` is ``None`` on the last page, and that — not an empty\n``items`` — is the client's stop condition: a filtered listing can return an\nempty page in the middle of a run and still have more rows behind it.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ProposalView"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "Page",
+        "type": "object"
+      },
       "Page_ServicePrincipalView_": {
         "description": "A page of results and the cursor that continues it.\n\n``next_cursor`` is ``None`` on the last page, and that — not an empty\n``items`` — is the client's stop condition: a filtered listing can return an\nempty page in the middle of a run and still have more rows behind it.",
         "properties": {
@@ -4261,8 +4400,47 @@
         "title": "PermissionSetView",
         "type": "object"
       },
+      "PermissionSetsChangeView": {
+        "properties": {
+          "applied": {
+            "items": {
+              "$ref": "#/components/schemas/AppliedRevokeView"
+            },
+            "title": "Applied",
+            "type": "array"
+          },
+          "proposals": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Proposals",
+            "type": "array"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "applied",
+          "proposals"
+        ],
+        "title": "PermissionSetsChangeView",
+        "type": "object"
+      },
       "PermissionView": {
         "properties": {
+          "allowed_depths": {
+            "description": "The depths the key takes by its kind.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Depths",
+            "type": "array"
+          },
           "area": {
             "title": "Area",
             "type": "string"
@@ -4274,6 +4452,18 @@
           "label_vi": {
             "title": "Label Vi",
             "type": "string"
+          },
+          "max_grantable_depth": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The broadest depth the caller could hand out at their own workspace (the hold rule, `platform.holder_covers_grant`); null when none.",
+            "title": "Max Grantable Depth"
           },
           "risk": {
             "enum": [
@@ -4309,9 +4499,28 @@
           "label_vi",
           "scope_kind",
           "risk",
-          "status"
+          "status",
+          "allowed_depths",
+          "max_grantable_depth"
         ],
         "title": "PermissionView",
+        "type": "object"
+      },
+      "PermissionsBody": {
+        "additionalProperties": false,
+        "properties": {
+          "permissions": {
+            "items": {
+              "$ref": "#/components/schemas/PrivilegeView"
+            },
+            "title": "Permissions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "permissions"
+        ],
+        "title": "PermissionsBody",
         "type": "object"
       },
       "PlatformFreezeRequest": {
@@ -4374,6 +4583,26 @@
           }
         },
         "title": "PlatformUnfreezeRequest",
+        "type": "object"
+      },
+      "PrivilegeView": {
+        "additionalProperties": false,
+        "properties": {
+          "depth": {
+            "description": "`own`, `workspace` or `tenant`.",
+            "title": "Depth",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "depth"
+        ],
+        "title": "PrivilegeView",
         "type": "object"
       },
       "Problem": {
@@ -4513,6 +4742,111 @@
           "detail"
         ],
         "title": "ProblemError",
+        "type": "object"
+      },
+      "ProposalView": {
+        "properties": {
+          "base_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Version"
+          },
+          "confirmed_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed By"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "description": "The change exactly as it will be applied.",
+            "title": "Payload",
+            "type": "object"
+          },
+          "proposed_at": {
+            "format": "date-time",
+            "title": "Proposed At",
+            "type": "string"
+          },
+          "proposed_by": {
+            "format": "uuid",
+            "title": "Proposed By",
+            "type": "string"
+          },
+          "required_permission": {
+            "title": "Required Permission",
+            "type": "string"
+          },
+          "role_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role Id"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "role_id",
+          "base_version",
+          "payload",
+          "required_permission",
+          "proposed_by",
+          "proposed_at",
+          "expires_at",
+          "status",
+          "confirmed_by",
+          "decided_at"
+        ],
+        "title": "ProposalView",
         "type": "object"
       },
       "ReadinessResponse": {
@@ -4687,28 +5021,272 @@
         "title": "RequestSupportGrantBody",
         "type": "object"
       },
-      "RoleView": {
+      "RoleAssignmentView": {
         "properties": {
+          "assigned_at": {
+            "format": "date-time",
+            "title": "Assigned At",
+            "type": "string"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "membership_id": {
+            "format": "uuid",
+            "title": "Membership Id",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          },
+          "workspace_id": {
+            "format": "uuid",
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "membership_id",
+          "workspace_id",
+          "user_id",
+          "assigned_at",
+          "expires_at"
+        ],
+        "title": "RoleAssignmentView",
+        "type": "object"
+      },
+      "RoleChangeView": {
+        "description": "The answer to a change of an existing role: the role as it is now, and\nthe proposal when the change waits for a second person (202).",
+        "properties": {
+          "proposal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProposalView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "role": {
+            "$ref": "#/components/schemas/RoleDetailView"
+          }
+        },
+        "required": [
+          "role",
+          "proposal"
+        ],
+        "title": "RoleChangeView",
+        "type": "object"
+      },
+      "RoleDetailView": {
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "holder_count": {
+            "title": "Holder Count",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_system": {
+            "title": "Is System",
+            "type": "boolean"
+          },
           "key": {
             "title": "Key",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
             "type": "string"
           },
           "name": {
             "title": "Name",
             "type": "string"
           },
-          "scopes": {
+          "permissions": {
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/PrivilegeView"
             },
-            "title": "Scopes",
+            "title": "Permissions",
+            "type": "array"
+          },
+          "template_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Key"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "description": "The role's ETag; `If-Match` of its writes.",
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "key",
+          "name",
+          "description",
+          "kind",
+          "is_system",
+          "template_key",
+          "holder_count",
+          "version",
+          "updated_at",
+          "permissions"
+        ],
+        "title": "RoleDetailView",
+        "type": "object"
+      },
+      "RoleTemplateView": {
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "permissions": {
+            "items": {
+              "$ref": "#/components/schemas/PrivilegeView"
+            },
+            "title": "Permissions",
             "type": "array"
           }
         },
         "required": [
           "key",
           "name",
-          "scopes"
+          "kind",
+          "permissions"
+        ],
+        "title": "RoleTemplateView",
+        "type": "object"
+      },
+      "RoleView": {
+        "properties": {
+          "assignable_by_me": {
+            "description": "`platform.rbac_refusals` refuses the caller nothing in assigning it to someone else in the caller's workspace.",
+            "title": "Assignable By Me",
+            "type": "boolean"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "holder_count": {
+            "title": "Holder Count",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_system": {
+            "title": "Is System",
+            "type": "boolean"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "template_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Key"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "description": "The role's ETag; `If-Match` of its writes.",
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "key",
+          "name",
+          "description",
+          "kind",
+          "is_system",
+          "template_key",
+          "holder_count",
+          "version",
+          "assignable_by_me",
+          "updated_at"
         ],
         "title": "RoleView",
         "type": "object"
@@ -7095,7 +7673,7 @@
     },
     "/api/v1/admin/invitations": {
       "post": {
-        "description": "Create the person (no sign-in yet) and their memberships. No email is\nsent: the admin tells the person, who then signs in with that email.",
+        "description": "Create the person (no sign-in yet) and their memberships now; every role\nof the invitation, `member` included, is a proposal (202, R7.1). No email\nis sent: the admin tells the person, who then signs in with that email.",
         "operationId": "invite_member_api_v1_admin_invitations_post",
         "parameters": [
           {
@@ -7128,7 +7706,7 @@
           "required": true
         },
         "responses": {
-          "201": {
+          "202": {
             "content": {
               "application/json": {
                 "schema": {
@@ -7167,7 +7745,7 @@
     },
     "/api/v1/admin/members": {
       "get": {
-        "description": "Everyone in the caller's tenant, by name (Vietnamese collation), with\ntheir roles in each workspace.",
+        "description": "Everyone in the caller's tenant, by name (Vietnamese collation), with\nthe roles assigned to them in each workspace.",
         "operationId": "list_members_api_v1_admin_members_get",
         "responses": {
           "200": {
@@ -7211,6 +7789,7 @@
         ]
       },
       "post": {
+        "description": "Place someone who has signed in in one workspace; the membership is\nwritten now, each role is a proposal (202).",
         "operationId": "grant_member_api_v1_admin_members_post",
         "parameters": [
           {
@@ -7244,6 +7823,16 @@
         },
         "responses": {
           "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberRefView"
+                }
+              }
+            },
+            "description": "Placed; no role to propose."
+          },
+          "202": {
             "content": {
               "application/json": {
                 "schema": {
@@ -7356,7 +7945,7 @@
     },
     "/api/v1/admin/members/{user_id}/memberships": {
       "put": {
-        "description": "Replace the person's non-administrative roles, workspace by workspace,\nin one transaction. A workspace in the body without a membership gets one;\none left out keeps only its administrative roles, and goes without any.\nAnswers the person's memberships as they now are (empty: none left).",
+        "description": "Replace the person's roles, workspace by workspace. A workspace in the\nbody without a membership gets one; one left out, or with no role, goes\nwith every role on it. A role the body drops is removed now (200); a role\nit adds is a proposal (202). Permission sets stay\n(`PUT .../permission-sets`).",
         "operationId": "set_memberships_api_v1_admin_members__user_id__memberships_put",
         "parameters": [
           {
@@ -7409,6 +7998,16 @@
             },
             "description": "Successful Response"
           },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberMembershipsView"
+                }
+              }
+            },
+            "description": "Roles proposed."
+          },
           "4XX": {
             "content": {
               "application/problem+json": {
@@ -7438,6 +8037,7 @@
     },
     "/api/v1/admin/members/{user_id}/permission-sets": {
       "put": {
+        "description": "Replace a member's permission sets in the caller's workspace: a set\nremoved now (200), a set added a proposal (202).",
         "operationId": "set_permission_sets_api_v1_admin_members__user_id__permission_sets_put",
         "parameters": [
           {
@@ -7448,6 +8048,24 @@
               "format": "uuid",
               "title": "User Id",
               "type": "string"
+            }
+          },
+          {
+            "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+              "title": "Idempotency-Key"
             }
           }
         ],
@@ -7462,8 +8080,25 @@
           "required": true
         },
         "responses": {
-          "204": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionSetsChangeView"
+                }
+              }
+            },
             "description": "Successful Response"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionSetsChangeView"
+                }
+              }
+            },
+            "description": "Sets proposed."
           },
           "4XX": {
             "content": {
@@ -7583,8 +8218,272 @@
         ]
       }
     },
+    "/api/v1/admin/role-changes": {
+      "get": {
+        "description": "Proposals still waiting and not expired, newest first.",
+        "operationId": "list_role_changes_api_v1_admin_role_changes_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque cursor from a previous page.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Opaque cursor from a previous page.",
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_ProposalView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "List Role Changes",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/role-changes/{request_id}/confirm": {
+      "post": {
+        "description": "A second person applies the proposal in their own transaction (R7.1,\nR7.2, R7.4, R7.8, R8.7).",
+        "operationId": "confirm_role_change_api_v1_admin_role_changes__request_id__confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Confirm Role Change",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/role-changes/{request_id}/withdraw": {
+      "post": {
+        "operationId": "withdraw_role_change_api_v1_admin_role_changes__request_id__withdraw_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Withdraw Role Change",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/role-templates": {
+      "get": {
+        "description": "The platform's templates a role may start from; never a tenant's.",
+        "operationId": "list_role_templates_api_v1_admin_role_templates_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RoleTemplateView"
+                  },
+                  "title": "Response List Role Templates Api V1 Admin Role Templates Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "List Role Templates",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/api/v1/admin/roles": {
       "get": {
+        "description": "Every live role of the company. At most 200 (R3.7), so not paged.",
         "operationId": "list_roles_api_v1_admin_roles_get",
         "responses": {
           "200": {
@@ -7623,6 +8522,491 @@
           }
         },
         "summary": "List Roles",
+        "tags": [
+          "admin"
+        ]
+      },
+      "post": {
+        "description": "Always a proposal: making a role widens (R7.1).",
+        "operationId": "create_role_api_v1_admin_roles_post",
+        "parameters": [
+          {
+            "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRoleBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Create Role",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/roles/{role_id}": {
+      "delete": {
+        "description": "A soft delete of a role nobody holds, one person and one audit event\n(R7.6); 409 `role_in_use`, `role_is_system`.",
+        "operationId": "delete_role_api_v1_admin_roles__role_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Role Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "description": "Required. The strong ETag of the version you read, for example \"7\". A stale or weak one is a 412; none, *, a list or a repeat is a 428.",
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required. The strong ETag of the version you read, for example \"7\". A stale or weak one is a 412; none, *, a list or a repeat is a 428.",
+              "title": "If-Match"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleDetailView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Delete Role",
+        "tags": [
+          "admin"
+        ]
+      },
+      "get": {
+        "operationId": "get_role_api_v1_admin_roles__role_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Role Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleDetailView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Get Role",
+        "tags": [
+          "admin"
+        ]
+      },
+      "patch": {
+        "description": "`name`, `description`: a proposal (202), or the role unchanged (200).",
+        "operationId": "update_role_api_v1_admin_roles__role_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Role Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "description": "Required. The strong ETag of the version you read, for example \"7\". A stale or weak one is a 412; none, *, a list or a repeat is a 428.",
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required. The strong ETag of the version you read, for example \"7\". A stale or weak one is a 412; none, *, a list or a repeat is a 428.",
+              "title": "If-Match"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleChangeView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleChangeView"
+                }
+              }
+            },
+            "description": "Proposed for a second person."
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Update Role",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/roles/{role_id}/assignments": {
+      "get": {
+        "operationId": "list_role_assignments_api_v1_admin_roles__role_id__assignments_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Role Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RoleAssignmentView"
+                  },
+                  "title": "Response List Role Assignments Api V1 Admin Roles  Role Id  Assignments Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "List Role Assignments",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/roles/{role_id}/permissions": {
+      "put": {
+        "description": "The role's whole set of privileges: applied at once (200) when it only\nnarrows, else a proposal (202, R7.1, R7.6, RB32).",
+        "operationId": "set_role_permissions_api_v1_admin_roles__role_id__permissions_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Role Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "description": "Required. The strong ETag of the version you read, for example \"7\". A stale or weak one is a 412; none, *, a list or a repeat is a 428.",
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required. The strong ETag of the version you read, for example \"7\". A stale or weak one is a 412; none, *, a list or a repeat is a 428.",
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PermissionsBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleChangeView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleChangeView"
+                }
+              }
+            },
+            "description": "Proposed for a second person."
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Set Role Permissions",
         "tags": [
           "admin"
         ]

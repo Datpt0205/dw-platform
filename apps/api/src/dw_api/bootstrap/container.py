@@ -78,7 +78,6 @@ from dw_platform.application.identity_bootstrap import IdentityBootstrapPort
 from dw_platform.application.intake import IntakeKeyReader, LeadIntake
 from dw_platform.application.marketing_send import UnsubscribeService
 from dw_platform.application.membership_admin import (
-    GrantMembershipHandler,
     RevokeMembershipHandler,
 )
 from dw_platform.application.notifications import NotificationService
@@ -92,6 +91,8 @@ from dw_platform.application.ports import (
 )
 from dw_platform.application.provisioning import ProvisioningService
 from dw_platform.application.rate_limit import RateLimiterPort
+from dw_platform.application.role_admin import RoleAdminService
+from dw_platform.application.role_assignments import RoleAssignmentService
 from dw_platform.application.scorecard import ScorecardService
 from dw_platform.application.secrets import SecretStore
 from dw_platform.application.separation_of_duties import SeparationOfDutiesService
@@ -195,8 +196,10 @@ class ApiContainer:
 
     # Who works in this workspace — what turns an owner id into a person.
     workspace_directory: WorkspaceDirectoryPort | None = None
-    grant_membership: GrantMembershipHandler | None = None
     revoke_membership: RevokeMembershipHandler | None = None
+    # A company's roles and who holds them (tenant-rbac ticket 03).
+    role_admin: RoleAdminService | None = None
+    role_assignments: RoleAssignmentService | None = None
     tenant_members: TenantMembersService | None = None
     admin_console: AdminConsoleService | None = None
     hierarchy: HierarchyService | None = None
@@ -268,6 +271,10 @@ class ApiContainer:
     # (method, path template) a support context may reach; `wiring.py`'s
     # SUPPORT_ALLOWED_ROUTES. Empty refuses every support request.
     support_allowed_routes: frozenset[tuple[str, str]] = frozenset()
+    # The routes the `platform_admin` bypass does not open (tenant-rbac R3.16),
+    # as (method, path template): `ROLE_ROUTES_WITHOUT_BYPASS`, set where the
+    # routers are mounted. Empty opens every route to the bypass as before.
+    no_platform_bypass_routes: frozenset[tuple[str, str]] = frozenset()
     # The signed-in user's own Zalo link. ``None`` unless the bot token and the
     # link secret are both set, and then /api/v1/zalo/* is not mounted.
     zalo_linking: ZaloLinking | None = None
