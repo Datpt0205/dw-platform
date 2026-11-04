@@ -23,6 +23,8 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel
 
+from dw_usage.adapters.price_book_file import load_price_book
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 # Inline rather than under configs/prompts: a probe of the wiring, not an
@@ -67,6 +69,7 @@ async def probe() -> int:
         ),
         usage_recorder=recorder,
         default_profile=profile.profile_id,
+        pricing=load_price_book(),
     )
     host = urlsplit(settings.openai_base_url or "").hostname or "(no OPENAI_BASE_URL)"
     print(f"provider={settings.model_provider} profile={profile.profile_id} endpoint={host}")

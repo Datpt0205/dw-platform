@@ -6,9 +6,11 @@ every row landed in the DEFAULT partition, and a default partition cannot be
 dropped — so the retention answer for audit ("DROP PARTITION, instant, nothing
 to vacuum") could not run at all.
 
-`platform.model_usage_ledger` was the second table here until it was removed
-entirely (migration `aefe7c1f5d9b`); one parent left is why the function takes
-one cutoff.
+Every registered parent gets its own cutoff (usage-and-limits/02, migration
+`2354ad4d2e3c`): `platform.drop_expired_partitions(cutoffs jsonb)` takes one per
+`schema.table`, built here from the table's own retention fragment. Only a
+fragment with `days`, `purger: drop_partition` and `enforced: true` gives a
+cutoff; every other parent is left out of the object and loses no month.
 
 This is that job, and it runs in the worker rather than in a cron entry someone
 has to remember to install. Falling behind is not self-correcting: a month with
@@ -31,8 +33,10 @@ of the default.
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass
+from datetime import datetime
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -45,10 +49,10 @@ logger = logging.getLogger("dw_platform.partitions")
 __all__ = ["AUDIT_EVENTS", "SqlPartitionMaintenance"]
 
 _ENSURE = sa.text("SELECT platform.ensure_time_partitions(:months_ahead)")
-_DROP = sa.text("SELECT platform.drop_expired_partitions(:audit_cutoff)")
+_DROP = sa.text("SELECT platform.drop_expired_partitions(CAST(:cutoffs AS jsonb))")
 
-# The one table whose months this lane drops, by its store key: the key of its
-# retention fragment and of its `platform.time_partitioned_tables` row.
+# The audit log's store key: the key of its retention fragment and of its
+# `platform.time_partitioned_tables` row.
 AUDIT_EVENTS = "platform.audit_events"
 
 
@@ -79,21 +83,31 @@ class SqlPartitionMaintenance:
             made = await session.scalars(_ENSURE, {"months_ahead": self.policy.audit.months_ahead})
             return list(made.all())
 
+    def cutoffs(self, now: datetime) -> dict[str, str]:
+        """`schema.table` -> the instant before which its whole months go, for
+        every fragment that may drop a partition now (H-1, H-27).
+
+        A store whose term is undecided, not `enforced`, or carried out by
+        another purger is left out, which the function reads as "nothing to
+        drop": a NULL, never a very old timestamp nobody wrote.
+        """
+        found: dict[str, str] = {}
+        for key, fragment in self.policy.stores.items():
+            if fragment.purger != "drop_partition":
+                continue
+            cutoff = self.policy.store_cutoff(key, now=now)
+            if cutoff is not None:
+                found[key] = cutoff.isoformat()
+        return found
+
     async def _drop_expired(self) -> list[str]:
-        """Both cutoffs in one call, and `None` for a table with no term.
+        """Every registered parent's cutoff in one call.
 
-        The term is the table's fragment's (`retention.d/platform.audit_events.yaml`).
-        `None` reaches the function as SQL NULL, which is how the table is told
-        it is never dropped — the same meaning a memory class with no `days`
-        carries, and what a decided-but-not-yet-enforced term or a missing
-        fragment resolves to. Passing a very old timestamp instead would be a
-        term nobody wrote.
-
-        No early return on NULL: the call is what makes the function the one
-        place that decides, and short-circuiting here would put half the
+        No early return on an empty object: the call is what makes the function
+        the one place that decides, and short-circuiting here would put half the
         decision on this side of the connection where nothing tests it.
         """
-        cutoff = self.policy.store_cutoff(AUDIT_EVENTS, now=self.clock.now())
+        cutoffs = self.cutoffs(self.clock.now())
         async with self.session_factory() as session, session.begin():
-            gone = await session.scalars(_DROP, {"audit_cutoff": cutoff})
+            gone = await session.scalars(_DROP, {"cutoffs": json.dumps(cutoffs, sort_keys=True)})
             return list(gone.all())

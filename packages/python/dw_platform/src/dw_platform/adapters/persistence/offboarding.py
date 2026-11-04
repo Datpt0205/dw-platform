@@ -42,10 +42,12 @@ from types import MappingProxyType
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import text
+from sqlalchemy import Text, bindparam, text
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 __all__ = [
+    "APPEND_ONLY_STEP",
     "EXPORT_BATCH_ROWS",
     "EXPORT_EXCLUSIONS",
     "STUDIO_EXCLUSIONS",
@@ -55,6 +57,7 @@ __all__ = [
     "OffboardingPurgeSteps",
     "OffboardingRefusedError",
     "SqlTenantOffboarding",
+    "append_only_purge_step",
     "order_purge_steps",
 ]
 
@@ -247,11 +250,19 @@ PurgeRun = Callable[[AsyncSession, UUID], Awaitable[None]]
 class OffboardingPurgeStep:
     """A deleting step of the lane (R11.4): `tables` are the `schema.table`
     names it deletes from, and `run` deletes only the rows of the tenant it is
-    handed (R11.6), inside the purge transaction."""
+    handed (R11.6), inside the purge transaction.
+
+    `resolve` is set on a step whose tables are read from the database at each
+    pass rather than fixed when it is built (usage-and-limits R3.10): handed the
+    session and every table the fixed steps declare, it returns the step this
+    pass runs, its tables named, so ordering and coverage read them like any
+    other step's. A step with `resolve` declares no tables of its own.
+    """
 
     name: str
     tables: frozenset[str]
     run: PurgeRun
+    resolve: Callable[[AsyncSession, frozenset[str]], Awaitable[OffboardingPurgeStep]] | None = None
 
 
 @dataclass
@@ -276,6 +287,10 @@ class OffboardingPurgeSteps:
         steps = cls()
         # The Send floor's append-only tables (compliance-pdpl ticket 08).
         steps.register(marketing_purge_step())
+        # Every other append-only registered table, the usage ledger among them,
+        # through the one function that may delete from them (usage-and-limits
+        # R3.8-R3.11).
+        steps.register(append_only_purge_step())
         # The access version row, which `dw_app` reads only (tenant-rbac R4.2).
         steps.register(access_version_purge_step())
         # The tenant's service users, which `dw_app` may not delete
@@ -335,6 +350,41 @@ def service_users_purge_step() -> OffboardingPurgeStep:
         name="platform.purge_tenant_service_users",
         tables=frozenset({"platform.users"}),
         run=_purge_service_users,
+    )
+
+
+APPEND_ONLY_STEP = "platform.purge_tenant_append_only"
+_APPEND_ONLY_TABLES = text("SELECT platform.append_only_tables()")
+_PURGE_APPEND_ONLY = text(
+    "SELECT table_name, deleted FROM platform.purge_tenant_append_only(CAST(:t AS uuid), :tables)"
+).bindparams(bindparam("tables", type_=ARRAY(Text())))
+
+
+def append_only_purge_step() -> OffboardingPurgeStep:
+    """The registered append-only tables (`platform.append_only_tables()`, the
+    audit log never among them) that no other step declares, read at each pass,
+    deleted by `platform.purge_tenant_append_only`, which refuses another
+    tenant, a tenant not `offboarding` and any table outside that set (R3.9,
+    R3.10). Its tables come from the registry, never a list written here, so a
+    table registered later is purged, and ordered by its foreign keys, from the
+    pass after its migration (R3.11)."""
+
+    async def resolve(session: AsyncSession, declared: frozenset[str]) -> OffboardingPurgeStep:
+        tables = frozenset((await session.scalars(_APPEND_ONLY_TABLES)).all()) - declared
+
+        async def run(session: AsyncSession, tenant_id: UUID) -> None:
+            if tables:
+                await session.execute(
+                    _PURGE_APPEND_ONLY, {"t": str(tenant_id), "tables": sorted(tables)}
+                )
+
+        return OffboardingPurgeStep(name=APPEND_ONLY_STEP, tables=tables, run=run)
+
+    async def unresolved(session: AsyncSession, tenant_id: UUID) -> None:
+        raise OffboardingRefusedError(f"{APPEND_ONLY_STEP} runs only once its tables are resolved")
+
+    return OffboardingPurgeStep(
+        name=APPEND_ONLY_STEP, tables=frozenset(), run=unresolved, resolve=resolve
     )
 
 
@@ -499,13 +549,27 @@ class SqlTenantOffboarding:
             last = rows[-1]
 
     async def _steps_for(self, session: AsyncSession) -> list[OffboardingPurgeStep]:
-        declared = {table for step in self.steps.all() for table in step.tables}
+        registered = self.steps.all()
+        fixed = frozenset(table for step in registered for table in step.tables)
+        steps = [
+            await step.resolve(session, fixed) if step.resolve is not None else step
+            for step in registered
+        ]
+        declared: dict[str, str] = {}
+        for step in steps:
+            for table in step.tables:
+                if table in declared:
+                    # Two resolving steps that both took one table (R11.8).
+                    raise OffboardingRefusedError(
+                        f"purge steps {declared[table]} and {step.name} both declare {table}"
+                    )
+                declared[table] = step.name
         defaults = [
             _default_step(f"{schema}.{table}")
             for schema, table in await self._purgeable_tables(session)
             if f"{schema}.{table}" not in declared
         ]
-        return [*self.steps.all(), *defaults]
+        return [*steps, *defaults]
 
     async def _ordered_steps(self, session: AsyncSession) -> list[OffboardingPurgeStep]:
         foreign_keys = (await session.execute(_FOREIGN_KEYS)).all()

@@ -55,7 +55,7 @@
       "version": "1.2.0"
     }
   ],
-  "git_sha": "fcad9418e683cc7277f5885af9120759e54db222",
+  "git_sha": "a39de69403fdccad27ab575ae9eb8a0c18893026",
   "knowledge_index_version": "2026-07-25.structure-1",
   "memory_policy_version": "2.0.0",
   "platform_version": "0.1.0",
@@ -81,9 +81,16 @@
       "version": "1.0.0"
     },
     {
-      "checksum": "6765ca4c092aebb2b39cc4c6c9e3eb8e331a2cae2a065ca0296ca82ab5915a8e",
+      "checksum": "5ac6df14ebec5714eb5d1887cb4692f2cb4ef0e06d8a73866e631ba104fed133",
       "policy_id": "retention.d",
       "version": "fragments"
+    }
+  ],
+  "price_books": [
+    {
+      "checksum": "68f34df362bafd2f7ab68f27d9bac51ee45e66ab8a2b1afe6f4b1b18ad95836f",
+      "price_book_id": "platform",
+      "version": "1.0.0"
     }
   ],
   "prompt_bundles": [

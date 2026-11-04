@@ -26,6 +26,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from dw_usage.adapters.price_book_file import load_price_book
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -65,6 +67,7 @@ def live_gateway() -> ModelGateway:
         adapters=adapters,
         usage_recorder=InMemoryUsageRecorder(),
         default_profile=profile,
+        pricing=load_price_book(),
     )
 
 

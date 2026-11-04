@@ -57,6 +57,7 @@ from dw_api.routes.v1.platform import router as platform_router
 from dw_api.routes.v1.runs import router as runs_router
 from dw_api.routes.v1.support import router as support_router
 from dw_api.routes.v1.unsubscribe import router as unsubscribe_router
+from dw_api.routes.v1.usage import router as usage_router
 from dw_api.routes.v1.work_items import assign_router as work_assign_router
 from dw_api.routes.v1.work_items import router as work_items_router
 from dw_api.routes.v1.zalo import router as zalo_router
@@ -218,6 +219,7 @@ def create_app(
         connections_router,
         approvals_router,
         runs_router,
+        usage_router,
         audit_router,
         feedback_router,
         knowledge_router,

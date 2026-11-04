@@ -20,6 +20,9 @@ dependencies = [
     # composition root, so it is declared here rather than borrowed from the
     # context packages that also depend on it.
     "dw-observability",
+    # The price book and the usage ledger the model stack writes, and the
+    # `usage_rollup` lane (usage-and-limits 02).
+    "dw-usage",
     "pydantic>=2.10,<3",
     "pydantic-settings>=2.7,<3",
     "sqlalchemy[asyncio]>=2.0.36,<2.1",

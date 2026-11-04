@@ -60,6 +60,11 @@ EXEMPT: dict[str, str] = {
     "packages/python/dw_platform/src/dw_platform/adapters/persistence/outbox_drain.py": (
         "the outbox relay, which publishes every tenant's events"
     ),
+    "packages/python/dw_usage/src/dw_usage/adapters/sql.py": (
+        "the usage roll-up lane's search for companies with recent usage"
+        " (`SqlUsageRollupStore.tenants_with_usage_since`) only; SELECT alone"
+        " (usage-and-limits ticket 02)"
+    ),
 }
 
 

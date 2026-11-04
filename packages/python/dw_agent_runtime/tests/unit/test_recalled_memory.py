@@ -25,6 +25,7 @@ from dw_agent_runtime.adapters.chat_model import MockChatModel
 from dw_agent_runtime.adapters.recalled_memory import RecalledMemoryMiddleware
 from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.model.copy import load_runtime_copy
+from dw_agent_runtime.testing.pricing import FlatPricing
 from dw_platform.application.access_context import AccessContext
 
 pytestmark = pytest.mark.unit
@@ -91,6 +92,7 @@ def _spec(model: MockChatModel, recall: Any, *, copy: Any = COPY_WITH_FRAME) -> 
         approval_type_prefix="sales_chat.",
         **prompt_fields(WORKER_PROMPT, template=""),
         budget=RunBudgetLedger(),
+        pricing=FlatPricing(),
         profiles=_profiles(),
         profile_id=PROFILE_ID,
         recall=recall,

@@ -164,6 +164,9 @@ from dw_platform.application.support_access import (
 from dw_platform.application.tenant_members import TenantMembersService
 from dw_platform.application.work_queue import WorkQueue
 from dw_studio.core.application.registry import PLATFORM_KINDS, ArtifactKindEntry
+from dw_usage.adapters.sql import SqlTenantTimezones, SqlUsageReads
+from dw_usage.application.calendar import UsageCalendar
+from dw_usage.application.reads import UsageReads
 
 _LOG = logging.getLogger("dw_api.bootstrap")
 
@@ -421,6 +424,14 @@ def _build_container(
         session_factory, stale_run_after_seconds=_RUN_POLICY.stale_run_after_seconds
     )
     container.run_store = run_store
+    # The usage ledger's readers (usage-and-limits R3.5, R3.6): a run's usage
+    # and the company's summary, past the database gate, beside the runs.
+    container.usage = UsageReads(
+        store=SqlUsageReads(session_factory),
+        calendar=UsageCalendar(SqlTenantTimezones(session_factory)),
+        authz=authorization,
+        clock=clock,
+    )
     # asyncpg directly: a listening connection never returns to a pool, and
     # SQLAlchemy's URL prefix is not a DSN asyncpg accepts.
     container.run_events = RunStateListener(_asyncpg_dsn(settings.database_url))

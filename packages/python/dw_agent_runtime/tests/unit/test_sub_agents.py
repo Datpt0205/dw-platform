@@ -26,6 +26,7 @@ from dw_agent_runtime.adapters.langchain_tools import model_facing_name
 from dw_agent_runtime.adapters.sub_agents import SubAgentSpec, sub_agent_spec
 from dw_agent_runtime.contracts import RunContext, ToolDefinition
 from dw_agent_runtime.model.budget import RunBudgetLedger
+from dw_agent_runtime.testing.pricing import FlatPricing
 from dw_agent_runtime.tools import RegisteredTool, ToolRegistry, pydantic_behaviour
 
 pytestmark = pytest.mark.unit
@@ -49,6 +50,7 @@ def _spec(
         approval_type_prefix="sales_chat.",
         **prompt_fields(WORKER_PROMPT, template=""),
         budget=budget or RunBudgetLedger(),
+        pricing=FlatPricing(),
         profiles=_profiles(),
         profile_id=PROFILE_ID,
         sub_agents=children,

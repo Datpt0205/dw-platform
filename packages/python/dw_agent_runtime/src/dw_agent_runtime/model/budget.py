@@ -10,9 +10,11 @@ because its coverage gate is satisfied, far below this. What this catches is the
 case the gate cannot: a loop, a retry storm, or a lane whose answer does not
 exist being asked for again and again.
 
-Cost is computed from the route's declared price when the provider does not
+Cost is computed from the price book (`PricingPort`) when the provider does not
 report one, which is the normal case behind a gateway - the gateway returns
-token counts and no money.
+token counts and no money. A call the book cannot price is not free: the run is
+marked as having reached its cost ceiling, so its next call is refused
+(usage-and-limits R2.5).
 """
 
 from __future__ import annotations
@@ -20,13 +22,13 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime
 
+from dw_agent_runtime.model.pricing import PriceQuote, PricingPort, chat_quantities
 from dw_agent_runtime.model.profiles import ModelBudgets, ModelRoute
 from dw_kernel.errors import DomainError
 
 logger = logging.getLogger("dw_agent_runtime.budget")
-
-_PER_MILLION = 1_000_000
 
 
 class BudgetExceededError(DomainError):
@@ -41,20 +43,32 @@ class RunSpend:
     output_tokens: int = 0
     cost_usd: float = 0.0
     calls: int = 0
+    # A call of this run could not be priced (R2.5). Its cost is unknown, not
+    # zero, so the run is treated as having reached its cost ceiling.
+    unpriced: bool = False
 
 
-def route_cost(route: ModelRoute, input_tokens: int, output_tokens: int) -> float:
-    """What the call cost, from the route's declared price.
+def route_cost(
+    pricing: PricingPort,
+    route: ModelRoute,
+    *,
+    tenant_id: uuid.UUID,
+    input_tokens: int,
+    output_tokens: int,
+    at: datetime,
+) -> PriceQuote:
+    """What one call on `route` cost, from the price book.
 
-    Zero when the route declares no price. That is honest rather than
-    convenient: an unpriced route contributes nothing to the cost ceiling, and
-    the token ceiling is what protects such a run.
+    `PriceNotFoundError` propagates: a caller decides what an unpriced call
+    means for it, and none of them may read it as zero (R2.5).
     """
-    if route.price_per_million_input is None and route.price_per_million_output is None:
-        return 0.0
-    inbound = (route.price_per_million_input or 0.0) * input_tokens / _PER_MILLION
-    outbound = (route.price_per_million_output or 0.0) * output_tokens / _PER_MILLION
-    return inbound + outbound
+    return pricing.price(
+        tenant_id,
+        chat_quantities(input_tokens=input_tokens, output_tokens=output_tokens),
+        route.provider,
+        route.model,
+        at,
+    )
 
 
 @dataclass
@@ -74,6 +88,15 @@ class RunBudgetLedger:
         current = self.spend.get(run_id)
         if current is None:
             return
+        if current.unpriced:
+            raise BudgetExceededError(
+                "run reached its cost ceiling: a call could not be priced",
+                details={
+                    "run_id": str(run_id),
+                    "task": task,
+                    "calls": str(current.calls),
+                },
+            )
         if current.input_tokens >= budgets.max_input_tokens_per_run:
             raise BudgetExceededError(
                 "run reached its input-token ceiling",
@@ -105,6 +128,13 @@ class RunBudgetLedger:
         current.output_tokens += output_tokens
         current.cost_usd += cost_usd
         current.calls += 1
+        return current
+
+    def mark_unpriced(self, run_id: uuid.UUID) -> RunSpend:
+        """A call of this run has happened and the book could not price it:
+        the next `check` refuses (R2.5; ticket 03's lease keeps the rule)."""
+        current = self.spend.setdefault(run_id, RunSpend())
+        current.unpriced = True
         return current
 
     def forget(self, run_id: uuid.UUID) -> RunSpend | None:

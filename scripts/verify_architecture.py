@@ -85,6 +85,7 @@ IMPORT_TO_DIST = {
     "dw_observability": "dw-observability",
     "dw_evals": "dw-evals",
     "dw_studio": "dw-studio",
+    "dw_usage": "dw-usage",
     "dw_api": "dw-api",
     "dw_worker": "dw-worker",
     "dw_docgen": "dw-docgen",

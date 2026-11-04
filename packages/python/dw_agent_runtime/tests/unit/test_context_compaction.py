@@ -38,6 +38,7 @@ from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.model.budget import BudgetExceededError, RunBudgetLedger
 from dw_agent_runtime.model.copy import load_runtime_copy
 from dw_agent_runtime.registry import ConfigError
+from dw_agent_runtime.testing.pricing import FlatPricing
 from dw_kernel.ports import FixedClock, SequentialIdGenerator
 from dw_platform.domain.audit import AuditEvent
 
@@ -89,6 +90,7 @@ def _compactor(
         clock=FixedClock(NOW),
         ids=SequentialIdGenerator(),
         budget=budget if budget is not None else RunBudgetLedger(),
+        pricing=FlatPricing(),
         profiles=_profiles(
             ceiling_tokens=ceiling_tokens, summary_input_tokens=summary_input_tokens
         ),
@@ -350,6 +352,7 @@ def test_it_refuses_a_copy_without_the_summary_text(older: str) -> None:
             clock=FixedClock(NOW),
             ids=SequentialIdGenerator(),
             budget=RunBudgetLedger(),
+            pricing=FlatPricing(),
             profiles=_profiles(),
             profile_id=PROFILE_ID,
             summary_profile_id=PROFILE_ID,
@@ -555,6 +558,7 @@ def test_a_summary_route_without_an_input_budget_is_refused_at_build() -> None:
             clock=FixedClock(NOW),
             ids=SequentialIdGenerator(),
             budget=RunBudgetLedger(),
+            pricing=FlatPricing(),
             profiles=_profiles(summary_input_tokens=None),
             profile_id=PROFILE_ID,
             summary_profile_id=PROFILE_ID,

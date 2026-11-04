@@ -41,6 +41,9 @@ DW_REAPER_REAPED_TOTAL: Final = "dw_reaper_reaped_total"  # labels: queue
 # Every call of the egress client and its outcome (connections-and-vault R3).
 DW_EGRESS_REQUESTS_TOTAL: Final = "dw_egress_requests_total"  # labels: purpose, outcome
 DW_EGRESS_BLOCKED_TOTAL: Final = "dw_egress_blocked_total"  # labels: purpose, reason
+# A model call the price book could not price, recorded `unpriced`
+# (usage-and-limits R2.5).
+DW_USAGE_UNPRICED_TOTAL: Final = "dw_usage_unpriced_total"  # labels: provider, model
 
 ALL_METRICS: Final = (
     DW_RUN_TOTAL,
@@ -56,6 +59,7 @@ ALL_METRICS: Final = (
     DW_REAPER_REAPED_TOTAL,
     DW_EGRESS_REQUESTS_TOTAL,
     DW_EGRESS_BLOCKED_TOTAL,
+    DW_USAGE_UNPRICED_TOTAL,
 )
 
 # Bucket boundaries, in seconds, of each histogram (telemetry-and-audit spec,

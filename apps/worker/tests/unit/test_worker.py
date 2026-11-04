@@ -144,6 +144,9 @@ def test_only_the_platform_lanes_are_wired() -> None:
     shared queue (digital-worker R3.6), a database being all it needs.
     `dw_timers` is the fourteenth: a DW's run that waited on a timer runs on
     once `wake_at` has passed (wf-lite R6.12), on the same database.
+    `usage_rollup` is the fifteenth: today and yesterday of each company with
+    recent usage, recomputed into `platform.usage_daily` every five minutes
+    (usage-and-limits R3.5).
 
     Naming the whole set is the point: a context's lane arriving in this process
     becomes a visible change rather than a silent one.
@@ -164,6 +167,7 @@ def test_only_the_platform_lanes_are_wired() -> None:
         "tool_claims_retention",
         "dw_work",
         "dw_timers",
+        "usage_rollup",
     }
 
 

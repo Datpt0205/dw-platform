@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from dw_api.dependencies.auth import RequireAccessContext
 from dw_api.dependencies.services import RequireContainer
 from dw_kernel.errors import InfrastructureError, NotFoundError
+from dw_usage.presentation.views import RunUsageView, run_usage_view
 
 
 class RunView(BaseModel):
@@ -63,6 +64,27 @@ async def get_run(
         approval_request_id=record.approval_request_id,
         release_manifest_ref=record.release_manifest_ref,
     )
+
+
+@router.get("/{run_id}/usage", response_model=RunUsageView)
+async def get_run_usage(
+    run_id: uuid.UUID, context: RequireAccessContext, container: RequireContainer
+) -> RunUsageView:
+    """The run's usage records summed by operation, model and cost source
+    (usage-and-limits R3.6). The run is read first, in the caller's workspace,
+    as `GET /runs/{run_id}` does: another company's run, another workspace's
+    and one that does not exist are all a 404; a run that has called no model
+    yet is a 200 with a total of zero."""
+    if container.run_store is None or container.usage is None:
+        raise InfrastructureError("runtime is not configured")
+    await container.authorization.require(
+        context=context,
+        action="runs.read",
+        resource_type="worker_run",
+        resource_id=str(run_id),
+    )
+    record = await container.run_store.get(container.run_context_for(context, run_id), run_id)
+    return run_usage_view(await container.usage.run_usage(context.tenant_id, record.id))
 
 
 @router.get("/{run_id}/timeline", response_model=list[TimelineEvent])

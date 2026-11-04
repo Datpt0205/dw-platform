@@ -212,7 +212,8 @@
       "dw_retrieval_rerank_skipped_total",
       "dw_run_duration_seconds",
       "dw_run_total",
-      "dw_tool_call_total"
+      "dw_tool_call_total",
+      "dw_usage_unpriced_total"
     ],
     "metric_labels": [
       "approval_type",

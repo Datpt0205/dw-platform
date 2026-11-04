@@ -25,6 +25,8 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, ConfigDict
 
+from dw_usage.adapters.price_book_file import load_price_book
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DATASET = REPO_ROOT / "evals" / "datasets" / "leadcare_injection_v1.jsonl"
 PACK_WORKFLOW = REPO_ROOT / "configs" / "packs" / "marketing" / "workflows" / "lead_care@1.0.0.yaml"
@@ -78,6 +80,7 @@ async def run() -> int:
         ),
         usage_recorder=InMemoryUsageRecorder(),
         default_profile=profiles.resolve(settings.model_profile).profile_id,
+        pricing=load_price_book(),
     )
     context = RunContext(
         run_id=uuid.uuid4(),

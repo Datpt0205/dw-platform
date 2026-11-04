@@ -122,6 +122,9 @@ from dw_platform.application.dw_autonomy import (
 from dw_platform.application.egress_allowlist import EGRESS_ALLOWED_HOST, AllowedHostSettler
 from dw_platform.application.work_queue import WorkQueue
 from dw_platform.retention_policy import RetentionPurgerRegistry, load_retention_policy
+from dw_usage.adapters.sql import SqlTenantTimezones, SqlUsageRollupStore
+from dw_usage.application.calendar import UsageCalendar
+from dw_usage.application.rollup import UsageRollup
 from dw_worker.composition import (
     CONFIGS,
     build_embeddings,
@@ -168,6 +171,10 @@ if TYPE_CHECKING:
     from dw_memory.adapters.qdrant_ranker import QdrantMemoryRanker
 
 logger = logging.getLogger("dw_worker")
+
+# The usage roll-up's cadence (usage-and-limits ticket 02): five minutes, so the
+# usage screen trails the ledger by at most that.
+USAGE_ROLLUP_INTERVAL_SECONDS = 300
 
 
 def _build_worker_telemetry(settings: WorkerSettings) -> TelemetryPort:
@@ -416,6 +423,9 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
     # their pinned workflow; a run that waited on a timer runs on (wf-lite R6).
     dw_work_consumer: Callable[[], Awaitable[None]] | None = None
     dw_timers_consumer: Callable[[], Awaitable[None]] | None = None
+    # The usage roll-up (usage-and-limits R3.5): today and yesterday of every
+    # company with recent usage, into `platform.usage_daily`.
+    usage_rollup: Callable[[], Awaitable[None]] | None = None
 
     if settings.database_url:
         # ---- transactional outbox ----------------------------------------
@@ -520,6 +530,11 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
         # slow housekeeping and answers the same policy file.
         partitions = SqlPartitionMaintenance(
             session_factory=sessions, policy=retention_policy, clock=clock
+        )
+        usage_rollup = UsageRollup(
+            store=SqlUsageRollupStore(sessions),
+            calendar=UsageCalendar(SqlTenantTimezones(sessions)),
+            clock=clock,
         )
         knowledge_retention = SqlKnowledgeRetention(
             session_factory=sessions,
@@ -658,6 +673,10 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
             "retention_knowledge",
             build_retention_consumer(knowledge_retention),
             interval_seconds=RETENTION_INTERVAL_SECONDS,
+        )
+    if usage_rollup is not None:
+        registry.register(
+            "usage_rollup", usage_rollup, interval_seconds=USAGE_ROLLUP_INTERVAL_SECONDS
         )
     if partitions is not None:
         registry.register(

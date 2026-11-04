@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
+from decimal import Decimal
 
 import pytest
 
@@ -12,31 +14,50 @@ from dw_agent_runtime.model.budget import (
     route_cost,
 )
 from dw_agent_runtime.model.profiles import ModelBudgets, ModelRoute
+from dw_agent_runtime.testing.pricing import FlatPricing
+from dw_kernel.errors import PriceNotFoundError
 
 pytestmark = pytest.mark.unit
 
-_PRICED = ModelRoute(
-    provider="openai_responses",
-    model="gpt-5.6-luna",
-    price_per_million_input=0.20,
-    price_per_million_output=1.20,
-)
+_PRICED = ModelRoute(provider="openai_responses", model="gpt-5.6-luna")
 _UNPRICED = ModelRoute(provider="mock", model="mock-structured")
+_BOOK = FlatPricing(
+    prices={"gpt-5.6-luna": (Decimal("0.20"), Decimal("1.20"))},
+    refused=frozenset({"mock-structured"}),
+)
 _TIGHT = ModelBudgets(max_input_tokens_per_run=10_000, max_cost_usd_per_run=0.01)
+_AT = datetime(2026, 11, 4, tzinfo=UTC)
+_TENANT = uuid.uuid4()
+
+
+def _cost(route: ModelRoute, input_tokens: int, output_tokens: int) -> Decimal:
+    return route_cost(
+        _BOOK,
+        route,
+        tenant_id=_TENANT,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        at=_AT,
+    ).cost_usd
 
 
 class TestRouteCost:
-    def test_a_priced_route_costs_what_it_declares(self) -> None:
+    def test_a_priced_route_costs_what_the_book_says(self) -> None:
         # 1M input at $0.20 and 1M output at $1.20.
-        assert route_cost(_PRICED, 1_000_000, 1_000_000) == pytest.approx(1.40)
+        assert _cost(_PRICED, 1_000_000, 1_000_000) == Decimal("1.40")
 
     def test_a_realistic_extraction_call_is_fractions_of_a_cent(self) -> None:
-        assert route_cost(_PRICED, 6242, 236) == pytest.approx(0.00153, abs=1e-5)
+        assert float(_cost(_PRICED, 6242, 236)) == pytest.approx(0.00153, abs=1e-5)
 
-    def test_an_unpriced_route_contributes_nothing(self) -> None:
-        # Honest rather than convenient: such a run is bounded by the token
-        # ceiling, and pretending a price would make the cost figure fiction.
-        assert route_cost(_UNPRICED, 1_000_000, 1_000_000) == 0.0
+    def test_a_call_the_book_cannot_price_is_an_error_not_zero(self) -> None:
+        """R2.5: an unknown cost never reads as nothing spent."""
+        with pytest.raises(PriceNotFoundError):
+            _cost(_UNPRICED, 1_000_000, 1_000_000)
+
+    def test_the_book_is_asked_for_the_run_s_tenant_at_the_call_s_moment(self) -> None:
+        book = FlatPricing()
+        route_cost(book, _PRICED, tenant_id=_TENANT, input_tokens=1, output_tokens=1, at=_AT)
+        assert book.calls == [(_TENANT, "openai_responses", "gpt-5.6-luna", _AT)]
 
 
 class TestLedger:
@@ -84,3 +105,10 @@ class TestLedger:
         ledger.record(run, input_tokens=5, output_tokens=1, cost_usd=0.0)
         assert ledger.forget(run) is not None
         assert ledger.spend == {}
+
+    def test_an_unpriced_call_stops_the_run_at_its_next_call(self) -> None:
+        """R2.5: the answer already given stands; the next call is refused."""
+        ledger, run = RunBudgetLedger(), uuid.uuid4()
+        ledger.mark_unpriced(run)
+        with pytest.raises(BudgetExceededError, match="could not be priced"):
+            ledger.check(run, ModelBudgets(), task="next")

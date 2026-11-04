@@ -1,0 +1,126 @@
+# Bảng giá theo ngày hiệu lực (usage-and-limits ticket 02; ADR-0121 quyết 2): chủ
+# duy nhất của "lời gọi này tốn bao nhiêu". `route_cost` đọc nó qua `PricingPort`,
+# release manifest ghim id, phiên bản và sha256 của tệp.
+#
+# UNVERIFIED: mọi số dưới đây là giá niêm yết công khai của nhà cung cấp, chép tay
+# ngày 4/11/2026 (USD cho 1 triệu token), chưa đối chiếu với hóa đơn. Route sau
+# gateway của người đặt yêu cầu (`gpt-5.6-luna`) lấy giá đã khai trên route của
+# `configs/models/gateway.yaml`. Chờ Đạt: giá thật của các route sau gateway (DO-19)
+# trước lượt chạy tốn tiền thật đầu tiên.
+#
+# Định dạng: mỗi mục `models` là một (provider, model) từ một thời điểm
+# `effective_from` (ISO 8601, có múi giờ; M14). `prices` là bậc thấp nhất; `tiers`
+# thêm bậc theo số token input của lời gọi, áp cho cả lời gọi. Giá mới từ một ngày
+# là một mục mới cùng (provider, model) với `effective_from` muộn hơn; không sửa
+# mục cũ, để dòng sử dụng đã ghi giữ chi phí và phiên bản của nó (R2.4). OpenAI
+# không tính phí ghi cache: `cache_write_*` bằng giá input.
+schema_version: "1.0"
+price_book_id: platform
+version: 1.0.0
+currency: USD
+models:
+  # ---- mock: không trả phí, giá 0, nên định giá không có nhánh riêng ----------
+  - provider: mock
+    model: extraction-mock-1
+    effective_from: "2025-01-01T00:00:00+00:00"
+    source: route mock, không gọi nhà cung cấp nào
+    prices: &free
+      input_uncached: "0"
+      cache_read: "0"
+      cache_write_5m: "0"
+      cache_write_1h: "0"
+      output: "0"
+  - provider: mock
+    model: reasoning-mock-1
+    effective_from: "2025-01-01T00:00:00+00:00"
+    source: route mock, không gọi nhà cung cấp nào
+    prices: *free
+  - provider: mock
+    model: fallback-mock-1
+    effective_from: "2025-01-01T00:00:00+00:00"
+    source: route mock, không gọi nhà cung cấp nào
+    prices: *free
+
+  # ---- gateway của người đặt yêu cầu ------------------------------------------
+  - provider: openai_responses
+    model: gpt-5.6-luna
+    effective_from: "2025-01-01T00:00:00+00:00"
+    source: giá khai trên route của configs/models/gateway.yaml (28/9/2026), UNVERIFIED
+    prices:
+      input_uncached: "0.20"
+      cache_read: "0.20"
+      cache_write_5m: "0.20"
+      cache_write_1h: "0.20"
+      output: "1.20"
+
+  # ---- OpenAI, qua openai_compatible và openai_responses ----------------------
+  - provider: openai_compatible
+    model: gpt-4.1
+    effective_from: "2025-01-01T00:00:00+00:00"
+    source: openai.com/api/pricing, chép 4/11/2026, UNVERIFIED
+    prices:
+      input_uncached: "2.00"
+      cache_read: "0.50"
+      cache_write_5m: "2.00"
+      cache_write_1h: "2.00"
+      output: "8.00"
+  - provider: openai_compatible
+    model: gpt-4o-mini
+    effective_from: "2025-01-01T00:00:00+00:00"
+    source: openai.com/api/pricing, chép 4/11/2026, UNVERIFIED
+    prices:
+      input_uncached: "0.15"
+      cache_read: "0.075"
+      cache_write_5m: "0.15"
+      cache_write_1h: "0.15"
+      output: "0.60"
+  - provider: openai_compatible
+    model: text-embedding-3-large
+    effective_from: "2025-01-01T00:00:00+00:00"
+    source: openai.com/api/pricing, chép 4/11/2026, UNVERIFIED
+    prices:
+      embedding_input: "0.13"
+  - provider: openai_responses
+    model: gpt-5
+    effective_from: "2025-01-01T00:00:00+00:00"
+    source: openai.com/api/pricing, chép 4/11/2026, UNVERIFIED
+    prices:
+      input_uncached: "1.25"
+      cache_read: "0.125"
+      cache_write_5m: "1.25"
+      cache_write_1h: "1.25"
+      output: "10.00"
+  - provider: openai_responses
+    model: gpt-5-mini
+    effective_from: "2025-01-01T00:00:00+00:00"
+    source: openai.com/api/pricing, chép 4/11/2026, UNVERIFIED
+    prices:
+      input_uncached: "0.25"
+      cache_read: "0.025"
+      cache_write_5m: "0.25"
+      cache_write_1h: "0.25"
+      output: "2.00"
+
+  # ---- DeepSeek, qua openai_compatible ----------------------------------------
+  # DeepSeek tính cache hit (`cache_read`) và cache miss (input thường); ghi cache
+  # không có phí riêng.
+  - provider: openai_compatible
+    model: deepseek-chat
+    effective_from: "2025-01-01T00:00:00+00:00"
+    source: api-docs.deepseek.com/quick_start/pricing, chép 4/11/2026, UNVERIFIED
+    prices:
+      input_uncached: "0.27"
+      cache_read: "0.07"
+      cache_write_5m: "0.27"
+      cache_write_1h: "0.27"
+      output: "1.10"
+  - provider: openai_compatible
+    model: deepseek-reasoner
+    effective_from: "2025-01-01T00:00:00+00:00"
+    source: api-docs.deepseek.com/quick_start/pricing, chép 4/11/2026, UNVERIFIED
+    prices:
+      input_uncached: "0.55"
+      cache_read: "0.14"
+      cache_write_5m: "0.55"
+      cache_write_1h: "0.55"
+      output: "2.19"

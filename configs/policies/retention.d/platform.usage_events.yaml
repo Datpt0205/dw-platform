@@ -1,0 +1,10 @@
+# Sổ sử dụng theo lượt gọi (`platform.usage_events`), usage-and-limits ticket 02.
+#
+# 13 tháng (395 ngày), số tạm UNVERIFIED (DO-21.1, DO-52). `drop_partition`: lane
+# `partitions` xoá cả tháng nằm trọn sau thời hạn qua
+# `platform.drop_expired_partitions`. Chưa `enforced` (Đạt, Q-h11): thời hạn chờ
+# luật sư xác nhận trước chạy bóng (cổng E3), nên tới lúc đó không tháng nào bị xoá.
+days: 395
+purger: drop_partition
+enforced: false
+description: Sổ sử dụng theo lượt gọi — mỗi lượt gọi model, của ai, tốn bao nhiêu; thời hạn chờ luật sư xác nhận trước chạy bóng

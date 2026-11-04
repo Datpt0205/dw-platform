@@ -1584,6 +1584,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/runs/{run_id}/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Run Usage
+         * @description The run's usage records summed by operation, model and cost source
+         *     (usage-and-limits R3.6). The run is read first, in the caller's workspace,
+         *     as `GET /runs/{run_id}` does: another company's run, another workspace's
+         *     and one that does not exist are all a 404; a run that has called no model
+         *     yet is a 200 with a total of zero.
+         */
+        get: operations["get_run_usage_api_v1_runs__run_id__usage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/studio/artifacts": {
         parameters: {
             query?: never;
@@ -1818,6 +1842,28 @@ export interface paths {
          *     staff only (403 `support_staff_required`); no tenant header is read.
          */
         get: operations["my_grants_api_v1_support_my_grants_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/usage/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Usage Summary
+         * @description Totals over `[from, to]`, days cut in the company's time zone (the
+         *     current month when neither is given, at most 400 days), grouped by
+         *     workspace, agent or workflow, or purpose; never by person in W1 (DO-51.2).
+         */
+        get: operations["get_usage_summary_api_v1_usage_summary_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3847,6 +3893,39 @@ export interface components {
             /** Scopes */
             scopes: string[];
         };
+        /** RunUsageRowView */
+        RunUsageRowView: {
+            /** Calls */
+            calls: number;
+            /** Cost Source */
+            cost_source: string;
+            /** Cost Usd */
+            cost_usd: string;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Model */
+            model: string;
+            /** Operation */
+            operation: string;
+            /** Output Tokens */
+            output_tokens: number;
+            /** Provider */
+            provider: string;
+        };
+        /** RunUsageView */
+        RunUsageView: {
+            /** Calls */
+            calls: number;
+            /** Cost Usd */
+            cost_usd: string;
+            /** Rows */
+            rows: components["schemas"]["RunUsageRowView"][];
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+        };
         /** RunView */
         RunView: {
             /** Approval Request Id */
@@ -4305,6 +4384,61 @@ export interface components {
             record_visibility?: string | null;
             /** Timezone */
             timezone?: string | null;
+        };
+        /** UsageGroupView */
+        UsageGroupView: {
+            /** Artifact Kind */
+            artifact_kind: string | null;
+            /** Calls */
+            calls: number;
+            /** Cost Usd */
+            cost_usd: string;
+            /** Estimated Calls */
+            estimated_calls: number;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Key */
+            key: string | null;
+            /** Label */
+            label: string | null;
+            /** Output Tokens */
+            output_tokens: number;
+            /** Unpriced Calls */
+            unpriced_calls: number;
+        };
+        /** UsageSummaryView */
+        UsageSummaryView: {
+            /** Calls */
+            calls: number;
+            /** Cost Usd */
+            cost_usd: string;
+            /** Estimated Calls */
+            estimated_calls: number;
+            /**
+             * First Day
+             * Format: date
+             */
+            first_day: string;
+            /**
+             * Group By
+             * @enum {string}
+             */
+            group_by: "workspace" | "artifact" | "purpose";
+            /** Groups */
+            groups: components["schemas"]["UsageGroupView"][];
+            /** Input Tokens */
+            input_tokens: number;
+            /**
+             * Last Day
+             * Format: date
+             */
+            last_day: string;
+            /** Output Tokens */
+            output_tokens: number;
+            /** Timezone */
+            timezone: string;
+            /** Unpriced Calls */
+            unpriced_calls: number;
         };
         /** UserRefView */
         UserRefView: {
@@ -8821,6 +8955,46 @@ export interface operations {
             };
         };
     };
+    get_run_usage_api_v1_runs__run_id__usage_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunUsageView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     list_artifacts_api_v1_studio_artifacts_get: {
         parameters: {
             query?: {
@@ -9599,6 +9773,51 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MySupportGrantModel"][];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_usage_summary_api_v1_usage_summary_get: {
+        parameters: {
+            query?: {
+                group_by?: "workspace" | "artifact" | "purpose";
+                from?: string | null;
+                to?: string | null;
+                workspace_id?: string | null;
+                artifact_kind?: ("agent" | "workflow") | null;
+                artifact_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UsageSummaryView"];
                 };
             };
             /** @description The request was refused */

@@ -34,6 +34,7 @@ from dw_agent_runtime.executor import ToolExecutor
 from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.testing.demo_graph import DEMO_WORKER_YAML, build_demo_graph
+from dw_agent_runtime.testing.pricing import FlatPricing
 from dw_agent_runtime.tools import RegisteredTool, ToolRegistry, pydantic_behaviour
 from dw_kernel.autonomy import AutonomyLevel
 from dw_kernel.ports import FixedClock, SequentialIdGenerator
@@ -82,6 +83,7 @@ def _spec(
         approval_type_prefix="sales_chat.",
         **prompt_fields("Trợ lý.", template=""),
         budget=RunBudgetLedger(),
+        pricing=FlatPricing(),
         profiles=_profiles(ceiling_tokens=1_000_000),
         profile_id=PROFILE_ID,
     )

@@ -26,6 +26,7 @@ COPY packages/python/dw_connectors/pyproject.toml packages/python/dw_connectors/
 COPY packages/python/dw_observability/pyproject.toml packages/python/dw_observability/pyproject.toml
 COPY packages/python/dw_evals/pyproject.toml packages/python/dw_evals/pyproject.toml
 COPY packages/python/dw_studio/pyproject.toml packages/python/dw_studio/pyproject.toml
+COPY packages/python/dw_usage/pyproject.toml packages/python/dw_usage/pyproject.toml
 
 # --extra parsers pulls the heavy Docling+OCR stack (multi-format ingestion).
 RUN --mount=type=cache,target=/root/.cache/uv \

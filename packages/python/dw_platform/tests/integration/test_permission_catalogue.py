@@ -294,9 +294,11 @@ async def test_the_catalogue_matches_the_code_and_the_seeded_grants(
             "runs.cancel",
             "knowledge.publish_global",
             "crm.records.all.read",
-            "platform.usage.read",
         )
     } == {"unassigned"}
+    # usage-and-limits ticket 02 made its one usage key active, and the usage
+    # summary checks it (migration 2354ad4d2e3c).
+    assert catalogue["platform.usage.read"] == "active"
     # Keys only a constant names are seen (gate B1).
     assert {"approvals.decide", "dw.manage", "platform.roles.read"} <= set(code.keys)
 

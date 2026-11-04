@@ -43,6 +43,7 @@ from dw_agent_runtime.model.copy import load_runtime_copy
 from dw_agent_runtime.model.profiles import ModelProfile, ModelProfileRegistry
 from dw_agent_runtime.model.prompts import PromptArtifact, PromptRegistry
 from dw_agent_runtime.registry import ConfigError
+from dw_agent_runtime.testing.pricing import FlatPricing
 from dw_agent_runtime.tools import RegisteredTool, ToolRegistry, pydantic_behaviour
 from dw_kernel.errors import TenantContextMissingError
 from dw_kernel.ports import FixedClock, SequentialIdGenerator
@@ -198,6 +199,7 @@ def _spec(model: MockChatModel, budget: RunBudgetLedger | None = None) -> AgentS
         approval_type_prefix="sales_chat.",
         **prompt_fields(),
         budget=budget or RunBudgetLedger(),
+        pricing=FlatPricing(),
         profiles=_profiles(),
         profile_id=PROFILE_ID,
     )

@@ -35,6 +35,7 @@ from dw_agent_runtime.executor import ToolExecutor
 from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.model.copy import RuntimeCopy
 from dw_agent_runtime.model.gateway import RoutingModelGateway
+from dw_agent_runtime.model.pricing import PricingPort
 from dw_agent_runtime.model.profiles import ModelProfileRegistry
 from dw_agent_runtime.model.prompts import PromptRegistry
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
@@ -105,6 +106,7 @@ from dw_platform.application.support_access import (
 )
 from dw_platform.application.tenant_members import TenantMembersService
 from dw_platform.application.work_queue import WorkQueue
+from dw_usage.application.reads import UsageReads
 
 
 @dataclass(frozen=True)
@@ -135,6 +137,9 @@ class RuntimeSeam:
     # in this instance, so spend recorded anywhere else is never bounded against
     # the gateway's and never freed.
     budget: RunBudgetLedger
+    # The price book every call is priced by (usage-and-limits R2.1); a context
+    # building an `AgentSpec` passes this one.
+    pricing: PricingPort
     tools: ToolRegistry
     tool_executor: ToolExecutor
     tool_specs: ToolSpecRegistry
@@ -162,6 +167,9 @@ class ApiContainer:
     entitlement: PlanEntitlementService | None = None
 
     run_store: SqlWorkerRunStore | None = None
+    # A run's usage and the company's usage summary (usage-and-limits R3.5,
+    # R3.6), over the usage ledger; past the database gate.
+    usage: UsageReads | None = None
     # Holds one LISTEN connection for the process; started and stopped by the
     # app's lifespan, never by a request.
     run_events: RunStateListener | None = None

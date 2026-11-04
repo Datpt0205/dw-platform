@@ -1,8 +1,9 @@
 """Generate the immutable release manifest.
 
 Collects every versioned artifact — platform, API, workers, graphs, prompt
-bundles, toolsets, policies, knowledge index, eval datasets — plus the git SHA,
-canonicalizes to JSON and derives a content-addressed reference:
+bundles, toolsets, policies, the price book, knowledge index, eval datasets —
+plus the git SHA, canonicalizes to JSON and derives a content-addressed
+reference:
 
     sha256:<hex>          → contracts/release/manifest.json
                             contracts/release/manifest.ref
@@ -125,6 +126,23 @@ def fragment_set_checksum(directory: Path) -> str:
     return digest.hexdigest()
 
 
+def _price_books() -> list[dict[str, str]]:
+    """The price book every call is priced by (usage-and-limits ticket 02; ADR-0121
+    decision 2), pinned by id, version and content: a release that changes a price
+    is a different release, and a usage record names the version it was priced by."""
+    books = []
+    for path in sorted((REPO_ROOT / "configs" / "pricing").glob("price_book@*.yaml")):
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+        books.append(
+            {
+                "price_book_id": str(raw["price_book_id"]),
+                "version": str(raw["version"]),
+                "checksum": _checksum(path),
+            }
+        )
+    return books
+
+
 def _copy_bundles() -> list[dict[str, str]]:
     """Platform copy the model and approvers read, pinned by content.
 
@@ -244,6 +262,7 @@ def build_manifest() -> dict[str, Any]:
         "toolsets": _toolsets(),
         "rubrics": _rubrics(),
         "policies": _policies(),
+        "price_books": _price_books(),
         "knowledge_index_version": INDEX_VERSION,
         "memory_policy_version": MemoryWritePolicy().policy_version,
         # What turns a run's autonomy level into approve/do-not-approve. A run

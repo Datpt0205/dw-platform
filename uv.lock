@@ -34,6 +34,7 @@ members = [
     "dw-observability",
     "dw-platform",
     "dw-studio",
+    "dw-usage",
     "dw-worker",
 ]
 
@@ -1005,6 +1006,7 @@ dependencies = [
     { name = "dw-observability" },
     { name = "dw-platform" },
     { name = "dw-studio" },
+    { name = "dw-usage" },
     { name = "fastapi" },
     { name = "httpx" },
     { name = "minio" },
@@ -1031,6 +1033,7 @@ requires-dist = [
     { name = "dw-observability", editable = "packages/python/dw_observability" },
     { name = "dw-platform", editable = "packages/python/dw_platform" },
     { name = "dw-studio", editable = "packages/python/dw_studio" },
+    { name = "dw-usage", editable = "packages/python/dw_usage" },
     { name = "fastapi", specifier = ">=0.115,<1" },
     { name = "httpx", specifier = ">=0.28,<1" },
     { name = "minio", specifier = ">=7.2,<8" },
@@ -1250,6 +1253,33 @@ requires-dist = [
 ]
 
 [[package]]
+name = "dw-usage"
+version = "0.1.0"
+source = { editable = "packages/python/dw_usage" }
+dependencies = [
+    { name = "dw-agent-runtime" },
+    { name = "dw-kernel" },
+    { name = "dw-observability" },
+    { name = "dw-platform" },
+    { name = "pydantic" },
+    { name = "pyyaml" },
+    { name = "sqlalchemy", extra = ["asyncio"] },
+    { name = "tzdata" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "dw-agent-runtime", editable = "packages/python/dw_agent_runtime" },
+    { name = "dw-kernel", editable = "packages/python/dw_kernel" },
+    { name = "dw-observability", editable = "packages/python/dw_observability" },
+    { name = "dw-platform", editable = "packages/python/dw_platform" },
+    { name = "pydantic", specifier = ">=2.10,<3" },
+    { name = "pyyaml", specifier = ">=6.0,<7" },
+    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.36,<2.1" },
+    { name = "tzdata", specifier = ">=2024.1" },
+]
+
+[[package]]
 name = "dw-worker"
 version = "0.1.0"
 source = { editable = "apps/worker" }
@@ -1262,6 +1292,7 @@ dependencies = [
     { name = "dw-memory" },
     { name = "dw-observability" },
     { name = "dw-platform" },
+    { name = "dw-usage" },
     { name = "minio" },
     { name = "prometheus-client" },
     { name = "pydantic" },
@@ -1290,6 +1321,7 @@ requires-dist = [
     { name = "dw-memory", editable = "packages/python/dw_memory" },
     { name = "dw-observability", editable = "packages/python/dw_observability" },
     { name = "dw-platform", editable = "packages/python/dw_platform" },
+    { name = "dw-usage", editable = "packages/python/dw_usage" },
     { name = "minio", specifier = ">=7.2,<8" },
     { name = "prometheus-client", specifier = ">=0.20,<1" },
     { name = "pydantic", specifier = ">=2.10,<3" },

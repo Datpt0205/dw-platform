@@ -70,6 +70,9 @@ from dw_platform.adapters.persistence.plan_catalog import CachingPlanCatalog, Sq
 from dw_platform.adapters.persistence.uow import SqlPlatformUnitOfWorkFactory
 from dw_platform.application.entitlement import PlanEntitlementService
 from dw_platform.application.work_queue import WorkQueue
+from dw_usage.adapters.price_book_file import enforce_price_coverage, load_price_book
+from dw_usage.adapters.sql import SqlUsageLedger
+from dw_usage.application.recorder import LedgerUsageRecorder
 from dw_worker.settings import WorkerSettings
 
 if TYPE_CHECKING:
@@ -267,11 +270,20 @@ def build_model_stack_for(
     the same `build_model_stack` the API builds its own with: the profiles,
     the shipped prompts, the daily spend guard. A chat command's model call
     therefore spends against the same per-run ceiling and the same daily
-    guard as a request's."""
+    guard as a request's, priced by the same book and written to the same
+    usage ledger (usage-and-limits R2.1, R3.1); a deployed profile with a paid
+    route the book does not price refuses to start (R2.3)."""
     profiles = ModelProfileRegistry()
     profiles.load_directory(REPO_ROOT / "configs" / "models")
     prompts = PromptRegistry()
     prompts.load_directory(REPO_ROOT / "configs" / "prompts")
+    price_book = load_price_book()
+    enforce_price_coverage(
+        price_book,
+        REPO_ROOT / "configs" / "models",
+        at=clock.now(),
+        is_deployed=settings.is_deployed,
+    )
     return build_model_stack(
         model_provider_config(settings),
         profiles=profiles,
@@ -280,6 +292,14 @@ def build_model_stack_for(
         clock=clock,
         telemetry=telemetry,
         mock_fixtures_dir=MOCK_MODEL_FIXTURES,
+        pricing=price_book,
+        ledger=LedgerUsageRecorder(
+            ledger=SqlUsageLedger(sessions),
+            ids=Uuid7Generator(clock),
+            clock=clock,
+            telemetry=telemetry,
+            price_book_version=price_book.version,
+        ),
     )
 
 
@@ -312,7 +332,7 @@ def build_wflite_runtime(
 
     No usage meter: it bills an agent loop's LangChain calls, and a workflow's
     model calls go through the gateway, which records its own usage into the
-    daily spend guard."""
+    daily spend guard and the usage ledger."""
     stack = build_model_stack_for(settings, sessions, clock=clock, telemetry=telemetry)
     tools = ToolRegistry()
     approval_policy = AutonomyApprovalPolicy()

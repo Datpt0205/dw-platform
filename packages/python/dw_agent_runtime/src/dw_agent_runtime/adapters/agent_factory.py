@@ -69,6 +69,7 @@ from dw_agent_runtime.contracts import RunContext, ToolDefinition
 from dw_agent_runtime.executor import ToolExecutor
 from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.model.copy import RuntimeCopy
+from dw_agent_runtime.model.pricing import PricingPort
 from dw_agent_runtime.model.profiles import ModelProfileRegistry
 from dw_agent_runtime.model.prompts import PromptRegistry
 from dw_agent_runtime.registry import ConfigError
@@ -139,6 +140,9 @@ class AgentSpec:
     # The process's one spend ledger — `RuntimeSeam.budget`, never a fresh one —
     # and the profile whose ceiling and price this worker's calls are held to.
     budget: RunBudgetLedger
+    # The price book every call of this worker is priced by (usage-and-limits
+    # R2.1): the composition root's one instance, `RuntimeSeam.pricing`.
+    pricing: PricingPort
     profiles: ModelProfileRegistry
     profile_id: str
     compaction: CompactionSpec | None = None
@@ -208,7 +212,7 @@ def platform_middleware(spec: AgentSpec) -> list[AgentMiddleware[Any, Any]]:
         PlatformToolErrorsMiddleware(offered, copy=spec.copy),
         # The only ceiling on the path that can loop. Without it an agent run is
         # bounded by `recursion_limit`, which counts steps and not money.
-        RunBudgetMiddleware(spec.budget, spec.profiles, spec.profile_id),
+        RunBudgetMiddleware(spec.budget, spec.profiles, spec.profile_id, spec.pricing),
         # Last, so it sits closest to the model: a retry re-runs only the call
         # that failed. A failed attempt produces no response and therefore no
         # usage, so the ceiling above is not charged for one.
@@ -230,6 +234,7 @@ def platform_middleware(spec: AgentSpec) -> list[AgentMiddleware[Any, Any]]:
                 # The SAME ledger the budget middleware above holds, so a summary
                 # and an agent step spend against one ceiling.
                 budget=spec.budget,
+                pricing=spec.pricing,
                 profiles=spec.profiles,
                 profile_id=spec.profile_id,
                 summary_profile_id=spec.compaction.summary_profile_id,

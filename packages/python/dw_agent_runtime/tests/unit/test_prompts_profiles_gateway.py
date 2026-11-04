@@ -1,4 +1,6 @@
 import uuid
+from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -13,11 +15,14 @@ from dw_agent_runtime.model.profiles import ModelProfileRegistry
 from dw_agent_runtime.model.prompts import PromptArtifact, PromptRegistry
 from dw_agent_runtime.ports import ModelOutputInvalidError, ModelRequest
 from dw_agent_runtime.registry import ConfigError
+from dw_agent_runtime.testing.pricing import FlatPricing
 from dw_kernel.errors import DomainError, NotFoundError
 
 pytestmark = pytest.mark.unit
 
 REPO_ROOT = Path(__file__).resolve().parents[5]
+# The routes of `gateway.yaml` this file prices; every other model is free.
+_BOOK = FlatPricing(prices={"gpt-5.6-luna": (Decimal("0.20"), Decimal("1.20"))})
 
 
 def make_run_context() -> RunContext:
@@ -95,6 +100,7 @@ def make_gateway(adapter: MockModelAdapter) -> RoutingModelGateway:
         adapters={"mock": adapter},
         usage_recorder=InMemoryUsageRecorder(),
         default_profile="balanced",
+        pricing=_BOOK,
     )
 
 
@@ -124,7 +130,7 @@ async def test_gateway_returns_validated_output_and_records_usage() -> None:
     assert recorder.records[0][1].provider == "mock"
 
 
-async def test_recorded_usage_carries_the_route_price() -> None:
+async def test_recorded_usage_carries_the_book_s_price() -> None:
     """What the ledger stores has to be what the budget ceiling counted.
 
     The two were computed apart: the ceiling priced the call from the route and
@@ -149,6 +155,7 @@ async def test_recorded_usage_carries_the_route_price() -> None:
         adapters={"openai_responses": adapter},
         usage_recorder=recorder,
         default_profile="balanced",
+        pricing=_BOOK,
     )
     run_context = make_run_context()
 
@@ -166,15 +173,24 @@ async def test_recorded_usage_carries_the_route_price() -> None:
 
     recorded = recorder.records[0][1]
     route = profiles.resolve("gateway").structured_extraction
-    expected = route_cost(route, recorded.input_tokens, recorded.output_tokens)
+    expected = float(
+        route_cost(
+            _BOOK,
+            route,
+            tenant_id=run_context.tenant_id,
+            input_tokens=recorded.input_tokens,
+            output_tokens=recorded.output_tokens,
+            at=datetime.now(UTC),
+        ).cost_usd
+    )
     assert expected > 0.0
     assert recorded.cost_usd == expected
     spend = gateway.budget.spend[run_context.run_id]
     assert spend.cost_usd == expected
 
 
-async def test_an_unpriced_route_records_no_cost() -> None:
-    """Zero is not a price. `balanced` declares none, so nothing is charged."""
+async def test_a_free_route_records_no_cost() -> None:
+    """The mock routes of `balanced` cost nothing in the book."""
     adapter = MockModelAdapter()
     adapter.register_builder(
         "demo.summarize",
@@ -228,6 +244,7 @@ async def test_gateway_unknown_provider_fails_fast() -> None:
         adapters={},
         usage_recorder=InMemoryUsageRecorder(),
         default_profile="balanced",
+        pricing=_BOOK,
     )
     request = ModelRequest(
         task="reasoning",
@@ -312,6 +329,7 @@ async def test_gateway_uses_fallback_route_when_primary_provider_errors() -> Non
         adapters={"flaky": FailingAdapter(), "mock": mock},
         usage_recorder=InMemoryUsageRecorder(),
         default_profile="with_fallback",
+        pricing=_BOOK,
     )
     request = ModelRequest(
         task="structured_extraction",
@@ -355,6 +373,7 @@ def _asking_gateway(adapter: _SchemaSeen) -> RoutingModelGateway:
         adapters={"mock": adapter},
         usage_recorder=InMemoryUsageRecorder(),
         default_profile="balanced",
+        pricing=_BOOK,
     )
 
 
@@ -434,6 +453,7 @@ def _summarizing_gateway(
         adapters={"mock": adapter, "down": _Down()},
         usage_recorder=recorder,
         default_profile=default_profile,
+        pricing=_BOOK,
     )
 
 

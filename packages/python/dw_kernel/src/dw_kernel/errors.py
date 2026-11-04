@@ -60,6 +60,28 @@ class ConfigError(DomainError):
     """
 
 
+class PriceNotFoundError(DomainError):
+    """No price-book entry covers a call: its provider, model, usage kind and
+    moment (usage-and-limits R2.5).
+
+    Here for the reason `ConfigError` is: the price book (`dw_usage`) raises it
+    and the agent runtime, which may not import `dw_usage`, catches it after a
+    call. Never read as a cost of zero: a cost ceiling that sees nothing spent
+    stops nothing. `price_book_version` is the book that was searched, which the
+    usage record of an unpriced call still carries.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        price_book_version: str,
+        details: dict[str, object] | None = None,
+    ) -> None:
+        super().__init__(message, details=details)
+        self.price_book_version = price_book_version
+
+
 class NotFoundError(DWError):
     code = ErrorCode.NOT_FOUND
 

@@ -100,6 +100,9 @@ class OpenAICompatibleAdapter:
             response_model=_response_model(data),
             input_tokens=int(usage_data.get("prompt_tokens", 0)),
             output_tokens=int(usage_data.get("completion_tokens", 0)),
+            # No usage block at all: the gateway estimates rather than records
+            # a free call (usage-and-limits R3.3).
+            reported=bool(usage_data),
         )
         return parsed, usage, str(reasoning) if reasoning else None
 

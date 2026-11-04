@@ -85,6 +85,9 @@ from dw_platform.application.dw_autonomy import (
 )
 from dw_platform.application.ports import PlatformUnitOfWorkFactory
 from dw_platform.application.work_queue import WorkQueue
+from dw_usage.adapters.price_book_file import enforce_price_coverage, load_price_book
+from dw_usage.adapters.sql import SqlUsageLedger
+from dw_usage.application.recorder import LedgerUsageRecorder
 
 
 @dataclass(frozen=True)
@@ -152,6 +155,23 @@ def build_runtime(
     prompts.load_directory(PROMPTS_DIR)
     copy = load_runtime_copy(RUNTIME_COPY_CONFIG)
 
+    # ---- price book and usage ledger -------------------------------------
+    # The one owner of what a call costs (usage-and-limits R2.1), checked before
+    # anything is served: a deployed profile with a paid route the book does not
+    # price refuses to start (R2.3). Every call the gateway or the meter records
+    # becomes one usage record (R3.1).
+    price_book = load_price_book()
+    enforce_price_coverage(
+        price_book, MODEL_PROFILES_DIR, at=clock.now(), is_deployed=settings.is_deployed
+    )
+    ledger = LedgerUsageRecorder(
+        ledger=SqlUsageLedger(session_factory),
+        ids=ids,
+        clock=clock,
+        telemetry=telemetry,
+        price_book_version=price_book.version,
+    )
+
     # ---- model gateway ---------------------------------------------------
     # Built by the one builder the worker uses too (`build_model_stack`): the
     # gateway, ONE per-run spend ledger for the whole process — shared by the
@@ -167,13 +187,17 @@ def build_runtime(
         clock=clock,
         telemetry=telemetry,
         mock_fixtures_dir=MOCK_MODEL_FIXTURES,
+        pricing=price_book,
+        ledger=ledger,
     )
     budget = model_stack.budget
     gateway = model_stack.gateway
     usage_recorder = model_stack.usage_recorder
     # The LangChain path (agent loops, structured output) bills into the same
     # ledger through this meter rather than going unmetered.
-    usage_meter = LangchainUsageMeter(profiles=profiles, recorder=usage_recorder)
+    usage_meter = LangchainUsageMeter(
+        profiles=profiles, recorder=usage_recorder, pricing=price_book, clock=clock
+    )
     chat_models = build_chat_model_factory(settings, profiles, copy)
 
     # ---- retrieval -------------------------------------------------------
@@ -348,6 +372,7 @@ def build_runtime(
         chat_models=chat_models,
         usage_meter=usage_meter,
         budget=budget,
+        pricing=price_book,
         tools=tool_registry,
         tool_executor=tool_executor,
         tool_specs=tool_specs,

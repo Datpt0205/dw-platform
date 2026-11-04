@@ -21,6 +21,7 @@ dw-connectors = { workspace = true }
 dw-observability = { workspace = true }
 dw-evals = { workspace = true }
 dw-studio = { workspace = true }
+dw-usage = { workspace = true }
 dw-api = { workspace = true }
 dw-docgen = { workspace = true }
 dw-worker = { workspace = true }
@@ -115,6 +116,7 @@ known-first-party = [
     "dw_connectors",
     "dw_observability",
     "dw_studio",
+    "dw_usage",
     "dw_evals",
     "dw_api",
     "dw_docgen",
@@ -155,6 +157,7 @@ mypy_path = [
     "packages/python/dw_observability/src",
     "packages/python/dw_evals/src",
     "packages/python/dw_studio/src",
+    "packages/python/dw_usage/src",
     "apps/api/src",
     "apps/docgen/src",
     "apps/worker/src",
@@ -232,6 +235,7 @@ source = [
     "packages/python/dw_memory/src",
     "packages/python/dw_observability/src",
     "packages/python/dw_studio/src",
+    "packages/python/dw_usage/src",
     "packages/python/dw_platform/src",
     "apps/api/src",
     "apps/docgen/src",
@@ -264,6 +268,7 @@ root_packages = [
     "dw_observability",
     "dw_evals",
     "dw_studio",
+    "dw_usage",
     "dw_api",
     "dw_docgen",
     "dw_worker",
@@ -294,6 +299,7 @@ forbidden_modules = [
     "dw_connectors",
     "dw_observability",
     "dw_evals",
+    "dw_usage",
 ]
 
 [[tool.importlinter.contracts]]
@@ -302,7 +308,7 @@ type = "forbidden"
 # `dw_studio.*.domain`: each Studio sub-package's domain layer, by pattern
 # (import-linter 2.15 reads `*` and `**`, measured 3/11/2026); the registration
 # check of `scripts/verify_architecture.py` matches each real one against it.
-source_modules = ["dw_platform.domain", "dw_studio.*.domain"]
+source_modules = ["dw_platform.domain", "dw_studio.*.domain", "dw_usage.domain"]
 forbidden_modules = [
     "fastapi",
     "sqlalchemy",
@@ -415,8 +421,28 @@ source_modules = [
     "dw_memory",
     "dw_connectors",
     "dw_observability",
+    "dw_usage",
 ]
 forbidden_modules = ["dw_api", "dw_worker", "dw_docgen"]
+
+# ---- Usage and limits (ADR-0121 decision 1; usage-and-limits ticket 02) -----
+
+[[tool.importlinter.contracts]]
+# The runtime declares `PricingPort` and `UsageRecorderPort`, `dw_usage`
+# answers them, and the composition roots wire the two: the runtime and the
+# platform never reach into the price book or the ledger directly.
+name = "The runtime and the platform do not import dw_usage"
+type = "forbidden"
+source_modules = ["dw_agent_runtime", "dw_platform"]
+forbidden_modules = ["dw_usage"]
+
+[[tool.importlinter.contracts]]
+# Only a composition root (`dw_api.bootstrap`, `dw_worker`) names a `dw_usage`
+# adapter; its own layers take them through ports.
+name = "dw_usage inner layers never import its adapters"
+type = "forbidden"
+source_modules = ["dw_usage.domain", "dw_usage.application", "dw_usage.presentation"]
+forbidden_modules = ["dw_usage.adapters"]
 
 # ---- Studio (ADR 0100 point 3; studio-skeleton R5) --------------------------
 # Patterns rather than lists: import-linter 2.15 reads `*` (one segment) and
@@ -437,6 +463,7 @@ source_modules = [
     "dw_connectors",
     "dw_observability",
     "dw_evals",
+    "dw_usage",
 ]
 forbidden_modules = ["dw_studio"]
 

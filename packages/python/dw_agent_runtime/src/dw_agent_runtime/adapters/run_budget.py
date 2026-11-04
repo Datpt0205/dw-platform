@@ -30,7 +30,10 @@ from langgraph.runtime import get_runtime
 from dw_agent_runtime.adapters.chat_model import chat_route
 from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.model.budget import RunBudgetLedger, route_cost
+from dw_agent_runtime.model.pricing import PricingPort
 from dw_agent_runtime.model.profiles import ModelProfileRegistry
+from dw_kernel.errors import PriceNotFoundError
+from dw_kernel.ports import SystemClock, UtcClock
 
 __all__ = ["AGENT_LOOP_TASK", "RunBudgetMiddleware"]
 
@@ -43,12 +46,19 @@ class RunBudgetMiddleware(AgentMiddleware[Any, Any]):
     """Refuses an agent model call once the run has spent its ceiling."""
 
     def __init__(
-        self, ledger: RunBudgetLedger, profiles: ModelProfileRegistry, profile_id: str
+        self,
+        ledger: RunBudgetLedger,
+        profiles: ModelProfileRegistry,
+        profile_id: str,
+        pricing: PricingPort,
+        clock: UtcClock | None = None,
     ) -> None:
         super().__init__()
         self._ledger = ledger
         self._profiles = profiles
         self._profile_id = profile_id
+        self._pricing = pricing
+        self._clock: UtcClock = clock if clock is not None else SystemClock()
 
     async def awrap_model_call(
         self,
@@ -69,11 +79,27 @@ class RunBudgetMiddleware(AgentMiddleware[Any, Any]):
         response = await handler(request)
 
         input_tokens, output_tokens = _usage(response)
+        try:
+            cost = float(
+                route_cost(
+                    self._pricing,
+                    route,
+                    tenant_id=run_context.tenant_id,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    at=self._clock.now(),
+                ).cost_usd
+            )
+        except PriceNotFoundError:
+            # The answer is already paid for and is returned; the run stops at
+            # its next call instead (R2.5). The usage meter records the row.
+            self._ledger.mark_unpriced(run_context.run_id)
+            cost = 0.0
         self._ledger.record(
             run_context.run_id,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
-            cost_usd=route_cost(route, input_tokens, output_tokens),
+            cost_usd=cost,
         )
         return response
 

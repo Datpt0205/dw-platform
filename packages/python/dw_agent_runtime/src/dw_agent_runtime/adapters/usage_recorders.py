@@ -1,20 +1,15 @@
 """Where a model call's usage goes, and the rule that bookkeeping never wins.
 
-This used to sit beside `SqlUsageRecorder`, which wrote every call to
-`platform.model_usage_ledger`. That ledger is gone: it existed to answer "what
-did this tenant cost last month", nothing in this repo invoices anybody, and the
-only readers were a per-tenant daily spend cap and an admin dashboard — both
-removed with it. Cost still reaches telemetry, which is where one call is
-inspected.
-
-The fan-out stays even though only one recorder is wired today, because the
-property it carries is not about the number of recorders:
+The per-call ledger is back (usage-and-limits R3.1, DO-21.1): `dw_usage`'s
+`LedgerUsageRecorder` writes `platform.usage_events`, and the composition roots
+put it first in this fan-out (`build_model_stack`). The fan-out carries two
+properties that are not about the number of recorders:
 
 - a recorder that raises must not take the run down. The model answer the caller
   is holding has already been paid for; losing the record of it is the smaller
   loss by a wide margin, and it is logged.
-- no recorder at all is a legitimate state. A deployment with telemetry off
-  records nothing, and the gateway must not need to know that.
+- no recorder at all is a legitimate state for a test host, and the gateway must
+  not need to know that.
 """
 
 from __future__ import annotations

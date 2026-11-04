@@ -6,9 +6,11 @@ LangChain chat model with no recorder — so until 2026-08-26 every agent-loop
 token was invisible to every usage recorder. This adapter
 closes that seam: wrap the harness invocation in :meth:`LangchainUsageMeter.track`,
 pass the yielded callbacks into the LangChain ``config``, and on exit each
-model's ``usage_metadata`` becomes one ledger row priced from the profile's
-own route price — the same table the gateway prices from, so one bill speaks
-one currency.
+model's ``usage_metadata`` becomes one ledger row priced by the price book
+(``PricingPort``) for the profile's chat route — the same book the gateway
+prices from, so one bill speaks one currency. A call the book cannot price is
+recorded ``unpriced``, never at zero (usage-and-limits R2.5); the agent loop's
+budget middleware stops the run on it.
 
 Trackers nest, and the ledger counts each token once anyway. LangChain
 propagates a parent's callbacks into every nested runnable — that is the
@@ -36,7 +38,7 @@ import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from langchain_core.callbacks import UsageMetadataCallbackHandler
@@ -44,8 +46,11 @@ from langchain_core.callbacks import UsageMetadataCallbackHandler
 from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.model.budget import route_cost
 from dw_agent_runtime.model.gateway import ModelUsage, UsageRecorderPort
-from dw_agent_runtime.model.profiles import ModelProfileRegistry
+from dw_agent_runtime.model.pricing import PricingPort
+from dw_agent_runtime.model.profiles import ModelProfileRegistry, ModelRoute, Provider
 from dw_agent_runtime.ports import ModelRequest
+from dw_kernel.errors import PriceNotFoundError
+from dw_kernel.ports import SystemClock, UtcClock
 from dw_platform.application.access_context import AccessContext
 
 _LOG = logging.getLogger("dw_agent_runtime.langchain_usage")
@@ -69,6 +74,8 @@ class LangchainUsageMeter:
 
     profiles: ModelProfileRegistry
     recorder: UsageRecorderPort
+    pricing: PricingPort
+    clock: UtcClock = field(default_factory=SystemClock)
 
     @asynccontextmanager
     async def track(
@@ -157,21 +164,52 @@ class LangchainUsageMeter:
                         # tracker. A zero row would be a second entry for the
                         # same work, which is the whole failure being fixed.
                         continue
-                usage = ModelUsage(
-                    provider=str(route.provider) if route else "openai_compatible",
-                    model=model_name,
-                    input_tokens=input_tokens,
-                    output_tokens=output_tokens,
-                    # Priced from the profile's chat route, like the gateway
-                    # prices its routes: providers do not return cost. A model
-                    # answering under another name than the route's still
-                    # bills at the route's price — the route is what was
-                    # configured and paid for.
-                    cost_usd=route_cost(route, input_tokens, output_tokens) if route else 0.0,
+                # Priced for the profile's chat route, like the gateway prices
+                # its routes: providers do not return cost. A model answering
+                # under another name than the route's still bills at the
+                # route's price — the route is what was configured and paid for.
+                priced_route = route or ModelRoute(
+                    provider=Provider.OPENAI_COMPATIBLE, model=model_name
+                )
+                usage = self._priced(
+                    run_context,
+                    priced_route,
+                    ModelUsage(
+                        provider=str(priced_route.provider),
+                        model=model_name,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                    ),
                 )
                 await self.recorder.record(run_context, request, usage)
         except Exception:
             _LOG.exception("usage recording failed for run %s", run_context.run_id)
+
+    def _priced(self, run_context: RunContext, route: ModelRoute, usage: ModelUsage) -> ModelUsage:
+        try:
+            quote = route_cost(
+                self.pricing,
+                route,
+                tenant_id=run_context.tenant_id,
+                input_tokens=usage.input_tokens,
+                output_tokens=usage.output_tokens,
+                at=self.clock.now(),
+            )
+        except PriceNotFoundError as exc:
+            _LOG.error(
+                "agent-loop usage could not be priced for run %s (%s %s)",
+                run_context.run_id,
+                route.provider,
+                route.model,
+            )
+            return replace(usage, cost_source="unpriced", price_book_version=exc.price_book_version)
+        return replace(
+            usage,
+            cost_usd=float(quote.cost_usd),
+            cost_source="computed",
+            price_book_version=quote.price_book_version,
+            price_entry_ids=quote.entry_ids,
+        )
 
 
 def usage_run_context(

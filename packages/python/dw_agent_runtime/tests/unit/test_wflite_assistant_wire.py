@@ -25,6 +25,7 @@ from dw_agent_runtime.model.gateway import InMemoryUsageRecorder, RoutingModelGa
 from dw_agent_runtime.model.profiles import ModelProfileRegistry
 from dw_agent_runtime.model.prompts import PromptRegistry
 from dw_agent_runtime.ports import ModelOutputInvalidError, ModelRequest
+from dw_agent_runtime.testing.pricing import FlatPricing
 from dw_agent_runtime.wflite import assistant_wire
 from dw_agent_runtime.wflite.assistant import (
     PROMPT_ID,
@@ -214,6 +215,7 @@ async def test_a_malformed_answer_is_invalid_after_the_gateways_retries(
         adapters={"mock": adapter},
         usage_recorder=InMemoryUsageRecorder(),
         default_profile="balanced",
+        pricing=FlatPricing(),
     )
     request = ModelRequest(
         task="wf_ai.workflow_edit",

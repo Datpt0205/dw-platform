@@ -27,6 +27,7 @@ from dw_agent_runtime.model.gateway import ModelUsage
 from dw_agent_runtime.model.profiles import ModelRoute
 from dw_agent_runtime.ports import ModelRequest
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
+from dw_agent_runtime.testing.pricing import FlatPricing
 
 pytestmark = pytest.mark.unit
 
@@ -71,7 +72,9 @@ def _runner(recorder: _Recorder) -> LangGraphWorkflowRunner:
         allowance=cast(Any, None),
         budget=RunBudgetLedger(),
         approval_policy=AutonomyApprovalPolicy(),
-        usage_meter=LangchainUsageMeter(profiles=cast(Any, _Profiles()), recorder=recorder),
+        usage_meter=LangchainUsageMeter(
+            profiles=cast(Any, _Profiles()), recorder=recorder, pricing=FlatPricing()
+        ),
     )
 
 

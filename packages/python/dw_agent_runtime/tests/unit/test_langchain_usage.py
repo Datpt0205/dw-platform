@@ -4,6 +4,7 @@ price from the profile's own route, one run id per tracked invocation."""
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
 
@@ -21,6 +22,7 @@ from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.model.gateway import ModelUsage
 from dw_agent_runtime.model.profiles import ModelRoute
 from dw_agent_runtime.ports import ModelRequest
+from dw_agent_runtime.testing.pricing import FlatPricing
 from dw_platform.application.access_context import AccessContext
 
 pytestmark = pytest.mark.unit
@@ -29,12 +31,9 @@ pytestmark = pytest.mark.unit
 # tally, so one pin serves them all.
 _LOOP = {"prompt_id": "sales_chat.assistant", "prompt_version": "1.0.0"}
 
-_ROUTE = ModelRoute(
-    provider="openai_responses",
-    model="gpt-5.6-luna",
-    price_per_million_input=0.20,
-    price_per_million_output=1.20,
-)
+_ROUTE = ModelRoute(provider="openai_responses", model="gpt-5.6-luna")
+# The book this file prices by: luna's list price, every other model free.
+_BOOK = FlatPricing(prices={"gpt-5.6-luna": (Decimal("0.20"), Decimal("1.20"))})
 
 
 class _Recorder:
@@ -65,7 +64,7 @@ def _context() -> AccessContext:
 
 async def test_a_tracked_call_lands_in_the_ledger_priced_by_the_route() -> None:
     recorder = _Recorder()
-    meter = LangchainUsageMeter(profiles=_Profiles(), recorder=recorder)  # type: ignore[arg-type]
+    meter = LangchainUsageMeter(profiles=_Profiles(), recorder=recorder, pricing=_BOOK)  # type: ignore[arg-type]
     model = MockChatModel(responses=[AIMessage(content="x" * 400)], mock_reply="ok")
 
     answer = await metered_invoke(
@@ -109,7 +108,7 @@ async def test_without_a_meter_the_call_still_answers_and_nothing_records() -> N
 
 async def test_usage_survives_the_block_raising() -> None:
     recorder = _Recorder()
-    meter = LangchainUsageMeter(profiles=_Profiles(), recorder=recorder)  # type: ignore[arg-type]
+    meter = LangchainUsageMeter(profiles=_Profiles(), recorder=recorder, pricing=_BOOK)  # type: ignore[arg-type]
     model = MockChatModel(responses=[], mock_reply="answered before the crash")
     run_context = usage_run_context(_context(), worker_id="person_research")
 
@@ -149,7 +148,7 @@ async def test_an_inner_tracker_keeps_its_label_and_the_outer_stops_double_billi
     put the same tokens on the ledger twice.
     """
     recorder = _Recorder()
-    meter = LangchainUsageMeter(profiles=_Profiles(), recorder=recorder)  # type: ignore[arg-type]
+    meter = LangchainUsageMeter(profiles=_Profiles(), recorder=recorder, pricing=_BOOK)  # type: ignore[arg-type]
     model = MockChatModel(responses=[AIMessage(content="x" * 400)], mock_reply="ok")
     run_context = usage_run_context(_context(), worker_id="sales_research")
 
@@ -174,7 +173,7 @@ async def test_the_outer_still_bills_the_calls_no_inner_tracker_claimed() -> Non
     becomes a hole that hides spend.
     """
     recorder = _Recorder()
-    meter = LangchainUsageMeter(profiles=_Profiles(), recorder=recorder)  # type: ignore[arg-type]
+    meter = LangchainUsageMeter(profiles=_Profiles(), recorder=recorder, pricing=_BOOK)  # type: ignore[arg-type]
     lane_model = MockChatModel(responses=[AIMessage(content="x" * 400)], mock_reply="ok")
     loose_model = MockChatModel(responses=[AIMessage(content="x" * 800)], mock_reply="ok")
     run_context = usage_run_context(_context(), worker_id="sales_signals")
@@ -207,7 +206,7 @@ async def test_a_lone_tracker_is_untouched() -> None:
     are the outermost tracker and must still bill their whole call.
     """
     recorder = _Recorder()
-    meter = LangchainUsageMeter(profiles=_Profiles(), recorder=recorder)  # type: ignore[arg-type]
+    meter = LangchainUsageMeter(profiles=_Profiles(), recorder=recorder, pricing=_BOOK)  # type: ignore[arg-type]
     model = MockChatModel(responses=[AIMessage(content="x" * 400)], mock_reply="ok")
 
     for _ in range(2):

@@ -86,8 +86,10 @@ from dw_agent_runtime.context import access_context_from_run
 from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.model.budget import RunBudgetLedger, route_cost
 from dw_agent_runtime.model.copy import RuntimeCopy
+from dw_agent_runtime.model.pricing import PricingPort
 from dw_agent_runtime.model.profiles import ModelProfileRegistry, ModelRoute
 from dw_agent_runtime.registry import ConfigError
+from dw_kernel.errors import PriceNotFoundError
 from dw_kernel.ids import TenantId, UserId, WorkspaceId
 from dw_kernel.ports import IdGenerator, UtcClock
 from dw_platform.application.ports import PlatformUnitOfWorkFactory
@@ -114,6 +116,8 @@ class PlatformSummarizationMiddleware(SummarizationMiddleware):
         clock: UtcClock,
         ids: IdGenerator,
         budget: RunBudgetLedger,
+        # The price book a summary is priced by (usage-and-limits R2.1).
+        pricing: PricingPort,
         profiles: ModelProfileRegistry,
         # The run's profile: its ceiling is the one a summary counts against.
         profile_id: str,
@@ -156,6 +160,7 @@ class PlatformSummarizationMiddleware(SummarizationMiddleware):
         self._clock = clock
         self._ids = ids
         self._budget = budget
+        self._pricing = pricing
         self._profiles = profiles
         self._profile_id = profile_id
         self._summary_profile_id = summary_profile_id
@@ -246,7 +251,7 @@ class PlatformSummarizationMiddleware(SummarizationMiddleware):
                 run_context.run_id,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
-                cost_usd=route_cost(summary_route, input_tokens, output_tokens),
+                cost_usd=self._cost(run_context, summary_route, input_tokens, output_tokens),
             )
             calls += 1
             anchor = summary
@@ -270,6 +275,32 @@ class PlatformSummarizationMiddleware(SummarizationMiddleware):
                 *preserved,
             ]
         }
+
+    def _cost(
+        self, run_context: RunContext, route: ModelRoute, input_tokens: int, output_tokens: int
+    ) -> float:
+        """A summary's cost from the book. Unpriced, the summary still stands
+        and the run stops at its next call (R2.5): never a free summary."""
+        try:
+            return float(
+                route_cost(
+                    self._pricing,
+                    route,
+                    tenant_id=run_context.tenant_id,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    at=self._clock.now(),
+                ).cost_usd
+            )
+        except PriceNotFoundError:
+            logger.error(
+                "context summary could not be priced for run %s (%s %s)",
+                run_context.run_id,
+                route.provider,
+                route.model,
+            )
+            self._budget.mark_unpriced(run_context.run_id)
+            return 0.0
 
     def before_model(self, state: Any, runtime: Runtime[RunContext]) -> dict[str, Any] | None:  # type: ignore[override]
         """Refuse the synchronous path rather than silently take the library's.

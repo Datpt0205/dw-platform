@@ -17,8 +17,12 @@ What it builds:
   endpoint and the mock refused in a deployed profile;
 - ONE `RunBudgetLedger` for the process, shared by the gateway, an agent's
   budget middleware and the runner that frees a run's entry;
-- the usage recorders: the daily spend guard and telemetry, behind the
-  composite that lets no recorder take a call down;
+- the usage recorders: the usage ledger the composition root hands in (a
+  `dw_usage` recorder; usage-and-limits R3.1), the daily spend guard, the run's
+  cost and telemetry, behind the composite that lets no recorder take a call
+  down;
+- the gateway priced by the price book the composition root hands in
+  (`PricingPort`, R2.1);
 - `ModelStack.one_call(allowance)`: the gateway for a caller whose run is one
   call, which checks the plan's daily allowance first and frees its ledger
   entry after (`SingleCallModelGateway`).
@@ -45,6 +49,7 @@ from dw_agent_runtime.model.gateway import (
     RoutingModelGateway,
     UsageRecorderPort,
 )
+from dw_agent_runtime.model.pricing import PricingPort
 from dw_agent_runtime.model.profiles import ModelProfileRegistry, Provider
 from dw_agent_runtime.model.prompts import PromptRegistry
 from dw_agent_runtime.model.single_call import SingleCallModelGateway
@@ -140,12 +145,19 @@ def build_model_stack(
     clock: UtcClock,
     telemetry: TelemetryPort,
     mock_fixtures_dir: Path,
+    pricing: PricingPort,
+    ledger: UsageRecorderPort,
 ) -> ModelStack:
+    """`pricing` and `ledger` come from `dw_usage`, which this package may not
+    import: the composition root builds both and passes them, so both processes
+    price by one book and write one ledger (usage-and-limits R2.1, R3.1)."""
     # `tenant_daily_spend_guard` is one row per tenant per day, read by nothing
     # but the plan's spend check. The composite stays because a recorder that
     # raises must not take the call down.
     recorder = CompositeUsageRecorder(
         [
+            # One row per call, the source of the usage screen (R3.1).
+            ledger,
             SqlSpendGuardRecorder(session_factory=session_factory, clock=clock),
             # A run's own spend, which a DW's scorecard reads (digital-worker R7.3).
             RunCostRecorder(session_factory=session_factory),
@@ -161,6 +173,8 @@ def build_model_stack(
         # Resolved here so a profile id nobody registered fails at startup,
         # not on the first model call.
         default_profile=profiles.resolve(config.model_profile).profile_id,
+        pricing=pricing,
         budget=budget,
+        clock=clock,
     )
     return ModelStack(gateway=gateway, budget=budget, usage_recorder=recorder)
