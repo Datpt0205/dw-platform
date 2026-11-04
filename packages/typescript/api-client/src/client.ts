@@ -325,6 +325,16 @@ type WorkListQuery = NonNullable<
 export type WorkStatus = NonNullable<WorkListQuery["status"]>;
 export type WorkHolderKind = NonNullable<WorkListQuery["holder_kind"]>;
 
+// ---- usage (usage-and-limits ticket 02) -------------------------------------
+// The generated types again: money is a decimal string the screen formats.
+export type UsageSummary = Generated["UsageSummaryView"];
+export type UsageGroup = Generated["UsageGroupView"];
+export type RunUsage = Generated["RunUsageView"];
+export type UsageSummaryQuery = NonNullable<
+  operations["get_usage_summary_api_v1_usage_summary_get"]["parameters"]["query"]
+>;
+export type UsageGroupBy = NonNullable<UsageSummaryQuery["group_by"]>;
+
 const generated = <T>() =>
   z.custom<T>(
     (value) =>
@@ -1197,6 +1207,33 @@ export class ApiClient {
       "GET",
       "/api/v1/integrations",
       z.array(integrationSchema),
+    );
+  }
+
+  // ---- usage --------------------------------------------------------------
+  // 403 `permission_denied` without `platform.usage.read`; the run's usage is
+  // a 404 for a run not in the caller's workspace.
+
+  getUsageSummary(query: UsageSummaryQuery = {}): Promise<UsageSummary> {
+    const params = new URLSearchParams();
+    for (const [name, value] of Object.entries(query)) {
+      if (value !== undefined && value !== null && value !== "") {
+        params.set(name, String(value));
+      }
+    }
+    const search = params.toString();
+    return this.request(
+      "GET",
+      `/api/v1/usage/summary${search ? `?${search}` : ""}`,
+      generated<UsageSummary>(),
+    );
+  }
+
+  getRunUsage(runId: string): Promise<RunUsage> {
+    return this.request(
+      "GET",
+      `/api/v1/runs/${encodeURIComponent(runId)}/usage`,
+      generated<RunUsage>(),
     );
   }
 

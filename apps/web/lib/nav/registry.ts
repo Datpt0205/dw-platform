@@ -6,6 +6,7 @@ import {
   BulbOutlined,
   CheckSquareOutlined,
   ClusterOutlined,
+  DashboardOutlined,
   ApiOutlined,
   HomeOutlined,
   MessageOutlined,
@@ -81,6 +82,15 @@ const platformNav: NavItem[] = [
     // The scope `GET /audit/events` enforces; `approvals.read` (every member
     // has it) offered a link to a page the API refuses.
     scope: "audit.events",
+  },
+  {
+    href: "/usage",
+    label: "Mức độ sử dụng",
+    hint: "Chi phí và token của các lượt gọi model, theo workspace và mục đích",
+    icon: DashboardOutlined,
+    // The key `GET /usage/summary` checks; hiding the link is not the control,
+    // the route still answers 403 without it.
+    scope: "platform.usage.read",
   },
   {
     href: "/admin",
