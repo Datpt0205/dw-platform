@@ -32,7 +32,7 @@ from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.model.copy import load_runtime_copy
 from dw_agent_runtime.model.profiles import ModelProfileRegistry
 from dw_agent_runtime.model.prompts import PromptRegistry
-from dw_agent_runtime.ports import RunAllowancePort
+from dw_agent_runtime.ports import RunAllowancePort, RunControlPort
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.tool_specs import ToolSpecRegistry
 from dw_agent_runtime.tools import ToolRegistry
@@ -147,6 +147,7 @@ def build_runtime(
     telemetry: TelemetryPort,
     clock: UtcClock,
     ids: IdGenerator,
+    run_control: RunControlPort,
 ) -> RuntimeWiring:
     # ---- versioned artifact registries -----------------------------------
     profiles = ModelProfileRegistry()
@@ -189,6 +190,7 @@ def build_runtime(
         mock_fixtures_dir=MOCK_MODEL_FIXTURES,
         pricing=price_book,
         ledger=ledger,
+        run_control=run_control,
     )
     budget = model_stack.budget
     gateway = model_stack.gateway
@@ -245,6 +247,7 @@ def build_runtime(
             clock=clock,
             ids=ids,
         ),
+        run_control=run_control,
     )
     tool_specs = ToolSpecRegistry(copy=copy)
     tool_specs.load_directory(TOOL_SPECS_DIR)
@@ -322,6 +325,7 @@ def build_runtime(
         allowance=allowance,
         budget=budget,
         approval_policy=approval_policy,
+        run_control=run_control,
         release_manifest_ref=release_manifest_ref(),
         telemetry=telemetry,
         usage_meter=usage_meter,
@@ -336,6 +340,8 @@ def build_runtime(
         run_store=run_store,
         clock=clock,
         id_generator=ids,
+        # A decision on a paused run passes the freeze first (agent-lifecycle R7.14).
+        run_control=run_control,
         # A held memory is a fact the system will repeat to everyone in the
         # workspace once approved: the person whose run proposed it may not
         # vouch for it alone, and whoever does says why. A context adds its own

@@ -15,6 +15,7 @@ from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.context import access_context_from_run
 from dw_agent_runtime.contracts import RunContext, ToolDefinition
 from dw_agent_runtime.executor import ToolExecutor
+from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_agent_runtime.tools import RegisteredTool, ToolRegistry, pydantic_behaviour
 from dw_kernel.errors import IdempotencyConflictError, PermissionDeniedError
 from dw_kernel.pagination import PageQuery, PageRequest
@@ -72,6 +73,7 @@ def build_executor(app_url: str) -> tuple[ToolExecutor, SqlPlatformUnitOfWorkFac
         approval_policy=AutonomyApprovalPolicy(),
         claims=SqlToolClaims(session_factory),
         steps=build_tool_executor_steps(),
+        run_control=OpenRunControl(),
     )
     return executor, uow_factory, call_counter
 

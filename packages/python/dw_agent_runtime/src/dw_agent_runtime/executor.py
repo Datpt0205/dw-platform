@@ -42,6 +42,8 @@ from dw_agent_runtime.dispatch import (
     RejectedError,
     ToolClaimPort,
 )
+from dw_agent_runtime.ports import RunControlPort
+from dw_agent_runtime.run_control import HaltReason, RunControlDoor, RunHaltedError
 from dw_agent_runtime.samples import SampleOutput, sample_of
 from dw_agent_runtime.tools import RegisteredTool, SchemaViolation, ToolBehaviour, ToolRegistry
 from dw_kernel.errors import (
@@ -232,12 +234,18 @@ TOOL_STEP_ORDER: Final = (
 TAIL_STEPS: Final = TOOL_STEP_ORDER[-5:]
 GATE_STEPS: Final = TOOL_STEP_ORDER[: -len(TAIL_STEPS)]
 # A step of R2.6 no ticket has built yet, and the ticket that registers it.
-# Absent from the register, it decides nothing (spec, 25/10/2026).
-PENDING_STEPS: Final[Mapping[str, str]] = MappingProxyType(
+# Absent from the register, it decides nothing (spec, 25/10/2026). Empty since
+# agent-lifecycle/01 registered the control switch.
+PENDING_STEPS: Final[Mapping[str, str]] = MappingProxyType({})
+
+# The `policy_decision` of a call the control-switch step refuses (ADR-0120
+# decision 6): a freeze and a kill by name, anything else the step cannot
+# read (`control_state_unavailable`) as the state it could not read.
+_HALT_DECISIONS: Final[Mapping[HaltReason, str]] = MappingProxyType(
     {
-        "control_switch": (
-            ".claude/plans/studio/agent-lifecycle/issues/01-dong-bang-va-kiem-o-moi-cua.md"
-        )
+        HaltReason.PLATFORM_FROZEN: "deny_frozen",
+        HaltReason.TENANT_FROZEN: "deny_frozen",
+        HaltReason.ARTIFACT_KILLED: "deny_killed",
     }
 )
 
@@ -368,6 +376,11 @@ class ToolExecutor:
     # The gate steps, in R2.6's order (`build_tool_executor_steps`). Required:
     # an executor with no register would check nothing.
     steps: ToolSteps
+    # The freeze and the kill (agent-lifecycle R7.1): the control-switch step
+    # asks it first. Required: the register takes no dependencies, so a step
+    # reaches its port through the executor it runs in. The agent's model
+    # middleware asks the same instance.
+    run_control: RunControlPort
     sleep: SleepFn = field(default=asyncio.sleep)
     base_backoff_seconds: float = 0.2
     # One span per tool call, so "how many tools did this run use, and how long
@@ -448,6 +461,9 @@ class ToolExecutor:
             except ApprovalRequiredError:
                 status = "approval_required"
                 raise
+            except RunHaltedError:
+                status = "halted"
+                raise
             except PermissionDeniedError:
                 status = "denied"
                 raise
@@ -481,6 +497,25 @@ class ToolExecutor:
         return await self._tail(call)
 
     # ------------------------------------------------------- the gate steps --
+
+    async def step_control_switch(self, call: ToolCall) -> None:
+        """A freeze, a kill or an unreadable switch state refuses the call
+        before anything is resolved or checked (agent-lifecycle R7.1, R7.3):
+        no execution row, since nothing is resolved yet; a `tool.denied` audit
+        under the name and version the call asked for; then `RunHaltedError`,
+        never a permission refusal, so the runner cancels the run."""
+        try:
+            await self.run_control.require_open(call.run_context, door=RunControlDoor.TOOL)
+        except RunHaltedError as halted:
+            await self._audit(
+                call.run_context,
+                "tool.denied",
+                call,
+                canonical_hash(call.raw_input),
+                policy_decision=_HALT_DECISIONS.get(halted.reason, "deny_control_state"),
+                details={"reason_code": halted.reason.value},
+            )
+            raise
 
     async def step_resolve(self, call: ToolCall) -> None:
         """By the run's tenant: its own tool, else the platform's (R2.1)."""

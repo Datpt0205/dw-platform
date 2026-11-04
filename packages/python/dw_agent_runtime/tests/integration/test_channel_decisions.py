@@ -50,6 +50,7 @@ from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.testing.demo_graph import DEMO_WORKER_YAML, build_demo_graph
+from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_kernel.ports import SystemClock, Uuid4Generator
 from dw_platform.adapters.persistence import tables
 from dw_platform.adapters.persistence.approval_codes import SqlApprovalCodeStore
@@ -138,6 +139,7 @@ class World:
             clock=clock,
             id_generator=ids,
             strict_approval_prefixes=frozenset({"demo.strict."}),
+            run_control=OpenRunControl(),
         )
         self.store = SqlApprovalCodeStore(self.sessions)
         key = DecisionCodeKey(_SECRET)
@@ -824,6 +826,7 @@ async def test_a_decision_from_zalo_resumes_the_run_with_channel_zalo(
         allowance=_Unmetered(),
         budget=RunBudgetLedger(),
         approval_policy=AutonomyApprovalPolicy(),
+        run_control=OpenRunControl(),
     )
     spy = _Spy(runner)
     world = World(urls, runner=spy)

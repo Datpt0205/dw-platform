@@ -15,6 +15,7 @@ from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.testing.demo_graph import DEMO_WORKER_YAML
+from dw_agent_runtime.testing.run_control import OpenRunControl
 
 pytestmark = pytest.mark.unit
 
@@ -44,6 +45,7 @@ def runner(tmp_path: Path) -> LangGraphWorkflowRunner:
         allowance=cast(Any, None),
         budget=RunBudgetLedger(),
         approval_policy=AutonomyApprovalPolicy(),
+        run_control=OpenRunControl(),
     )
 
 

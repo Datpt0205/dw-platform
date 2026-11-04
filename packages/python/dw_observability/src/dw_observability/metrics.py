@@ -44,6 +44,8 @@ DW_EGRESS_BLOCKED_TOTAL: Final = "dw_egress_blocked_total"  # labels: purpose, r
 # A model call the price book could not price, recorded `unpriced`
 # (usage-and-limits R2.5).
 DW_USAGE_UNPRICED_TOTAL: Final = "dw_usage_unpriced_total"  # labels: provider, model
+# A door of the runtime refusing a run (agent-lifecycle R7; ADR-0120 decision 7).
+DW_CONTROL_REFUSALS_TOTAL: Final = "dw_control_refusals_total"  # labels: door, reason_code
 
 ALL_METRICS: Final = (
     DW_RUN_TOTAL,
@@ -60,6 +62,7 @@ ALL_METRICS: Final = (
     DW_EGRESS_REQUESTS_TOTAL,
     DW_EGRESS_BLOCKED_TOTAL,
     DW_USAGE_UNPRICED_TOTAL,
+    DW_CONTROL_REFUSALS_TOTAL,
 )
 
 # Bucket boundaries, in seconds, of each histogram (telemetry-and-audit spec,

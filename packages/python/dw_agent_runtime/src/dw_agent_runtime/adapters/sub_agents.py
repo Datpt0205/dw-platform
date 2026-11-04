@@ -50,6 +50,7 @@ from dw_agent_runtime.adapters.langchain_tools import (
     platform_tools,
 )
 from dw_agent_runtime.adapters.run_budget import RunBudgetMiddleware
+from dw_agent_runtime.adapters.run_control_middleware import RunControlMiddleware
 from dw_agent_runtime.contracts import ToolDefinition
 
 if TYPE_CHECKING:
@@ -106,6 +107,9 @@ def sub_agent_spec(parent: AgentSpec, child: SubAgentSpec) -> dict[str, Any]:
         ScopedToolsMiddleware(offered),
         OneApprovalPerStepMiddleware(offered, copy=parent.copy, approvals=parent.executor),
         PlatformToolErrorsMiddleware(offered, copy=parent.copy),
+        # The freeze at a delegated turn's model call too (agent-lifecycle
+        # R7.1): the parent's middleware does not run for a child turn.
+        RunControlMiddleware(parent.executor.run_control),
         # The SAME ledger object the parent holds — not a copy, not a fresh one.
         # This single argument is what keeps a delegated turn inside the ceiling
         # the run was given.

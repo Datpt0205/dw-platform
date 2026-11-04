@@ -16,9 +16,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from dw_agent_runtime.adapters.langgraph_runner import LangGraphWorkflowRunner
 from dw_agent_runtime.channel_decisions import ChannelDecisionCommand
+from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_kernel.ports import SystemClock, Uuid4Generator
 from dw_observability.telemetry import NullTelemetry
 from dw_platform.application.approval_codes import ApprovalSubjectVersions
+from dw_platform.application.control_switches import LIFECYCLE_PREFIX
 from dw_worker.main import build_channel_commands, build_channel_decision_command
 from dw_worker.settings import WorkerSettings
 
@@ -34,6 +36,7 @@ class _Runner:
     run_store: Any = field(default_factory=object)
     telemetry: Any = field(default_factory=NullTelemetry)
     run_graphs: Any = None
+    run_control: Any = field(default_factory=OpenRunControl)
 
 
 def _decision_command(secret: str) -> ChannelDecisionCommand:
@@ -76,6 +79,14 @@ def test_an_allowed_host_takes_a_second_person_here_as_in_the_api() -> None:
 def test_without_a_code_secret_the_command_still_answers_but_holds_no_key() -> None:
     """It answers "not enabled" rather than let the words reach a model."""
     assert _decision_command("").service.key is None
+
+
+def test_lifting_a_freeze_takes_a_second_person_here_as_in_the_api() -> None:
+    """agent-lifecycle R7.11 (AL18): the worker's decision door is strict for
+    every `studio.lifecycle.` type, the prefix the API adds too."""
+    flow = _decision_command("a-code-secret-of-32-bytes-or-so").service.approval_flow
+    assert LIFECYCLE_PREFIX in flow.strict_approval_prefixes
+    assert flow.is_strict("studio.lifecycle.unfreeze")
 
 
 def test_enabling_a_connection_takes_a_second_person_here_as_in_the_api() -> None:

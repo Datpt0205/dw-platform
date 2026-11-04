@@ -30,6 +30,7 @@ from dw_agent_runtime.contracts import RunContext, ToolDefinition
 from dw_agent_runtime.executor import ToolExecutor
 from dw_agent_runtime.model.copy import load_runtime_copy
 from dw_agent_runtime.registry import ConfigError
+from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_agent_runtime.tools import RegisteredTool, ToolRegistry, pydantic_behaviour
 from dw_kernel.errors import (
     DomainError,
@@ -127,6 +128,7 @@ def make_stack(
         approval_policy=AutonomyApprovalPolicy(),
         claims=FakeToolClaims(store),
         steps=build_tool_executor_steps(),
+        run_control=OpenRunControl(),
     )
     return registry, executor, store
 
@@ -256,6 +258,7 @@ async def test_an_approval_payload_is_json_all_the_way_down() -> None:
         approval_policy=AutonomyApprovalPolicy(),
         claims=FakeToolClaims(store),
         steps=build_tool_executor_steps(),
+        run_control=OpenRunControl(),
     )
     lead_id = uuid.UUID(int=11)
 
@@ -299,6 +302,7 @@ async def test_a_tool_whose_argument_is_a_reference_can_show_what_it_will_write(
         approval_policy=AutonomyApprovalPolicy(),
         claims=FakeToolClaims(store),
         steps=build_tool_executor_steps(),
+        run_control=OpenRunControl(),
     )
 
     state = await call_tool(build_tools(registry, executor)[0])
@@ -363,6 +367,7 @@ def make_failing_stack(
         approval_policy=AutonomyApprovalPolicy(),
         claims=FakeToolClaims(store),
         steps=build_tool_executor_steps(),
+        run_control=OpenRunControl(),
     )
     return build_tools(registry, executor), store, uow_factory.audit_repo
 

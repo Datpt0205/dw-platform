@@ -25,6 +25,7 @@ from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.testing.demo_graph import DEMO_WORKER_YAML, build_demo_graph
+from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_kernel.errors import QuotaExceededError
 
 pytestmark = pytest.mark.unit
@@ -100,6 +101,7 @@ def _runner(
         budget=RunBudgetLedger(),
         approval_policy=AutonomyApprovalPolicy(),
         spend_store=cast(Any, spend_store),
+        run_control=OpenRunControl(),
     )
 
 

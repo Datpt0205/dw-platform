@@ -31,6 +31,7 @@ from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.testing.demo_graph import DEMO_WORKER_YAML, build_demo_graph
+from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_kernel.ports import SystemClock, Uuid4Generator
 from dw_observability.logs import IdentifierOnlyJsonFormatter
 from dw_observability.metrics import DW_APPROVAL_WAIT_SECONDS, DW_RUN_DURATION_SECONDS
@@ -99,6 +100,7 @@ async def test_a_phone_number_in_the_input_reaches_no_span_log_or_audit_row(
         budget=RunBudgetLedger(),
         approval_policy=AutonomyApprovalPolicy(),
         telemetry=telemetry,
+        run_control=OpenRunControl(),
     )
     approvals = ApproveAndResumeService(
         uow_factory=uow_factory,
@@ -107,6 +109,7 @@ async def test_a_phone_number_in_the_input_reaches_no_span_log_or_audit_row(
         clock=SystemClock(),
         id_generator=Uuid4Generator(),
         telemetry=telemetry,
+        run_control=OpenRunControl(),
     )
     run = make_run_context(workspace=WORKSPACE_A)
 

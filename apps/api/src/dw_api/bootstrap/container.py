@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from dw_agent_runtime.adapters.chat_model import ChatModelFactory
 from dw_agent_runtime.adapters.langchain_usage import LangchainUsageMeter
 from dw_agent_runtime.adapters.langgraph_runner import LangGraphWorkflowRunner
+from dw_agent_runtime.adapters.run_control import SqlRunControl
 from dw_agent_runtime.adapters.run_events import RunStateListener
 from dw_agent_runtime.adapters.run_store import SqlWorkerRunStore
 from dw_agent_runtime.adapters.wflite_host import RunTrailReader
@@ -65,6 +66,7 @@ from dw_platform.application.cache import CachePort
 from dw_platform.application.channel_access import ChannelPreferencesPort
 from dw_platform.application.connection_admin import ConnectionService
 from dw_platform.application.connections import ConnectionUsability
+from dw_platform.application.control_switches import ControlSwitchService, PlatformFreezeService
 from dw_platform.application.digital_workers import DigitalWorkerService
 from dw_platform.application.dw_autonomy import DwAutonomyService
 from dw_platform.application.effect_keys import EffectKeyPort
@@ -173,6 +175,12 @@ class ApiContainer:
     # Holds one LISTEN connection for the process; started and stopped by the
     # app's lifespan, never by a request.
     run_events: RunStateListener | None = None
+    # The freeze and the kill, asked at every door of this process (agent-
+    # lifecycle R7); past the database gate. Listens from its first door on
+    # and stops on shutdown.
+    run_control: SqlRunControl | None = None
+    # The company's freeze, set by one person and lifted by two (R7.10).
+    control_switches: ControlSwitchService | None = None
     runner: LangGraphWorkflowRunner | None = None
     approval_flow: ApproveAndResumeService | None = None
     # Opening an approval: the view receipt and, when asked, the code a
@@ -293,6 +301,8 @@ class ApiContainer:
     # then /api/v1/platform/* is mounted. Its engine is a second role with no
     # grant on any business schema, disposed on shutdown.
     provisioning: ProvisioningService | None = None
+    # The operators' freezes, on the same provisioner engine (R7.4).
+    platform_freezes: PlatformFreezeService | None = None
     provisioner_engine: AsyncEngine | None = None
 
     # The plug-in kit. ``None`` on a host with no database or no object storage,
@@ -327,6 +337,8 @@ class ApiContainer:
     async def shutdown(self) -> None:
         if self.run_events is not None:
             await self.run_events.stop()
+        if self.run_control is not None:
+            await self.run_control.close()
         if self.qdrant_client is not None:
             await self.qdrant_client.close()
         for engine in (self.engine, self.provisioner_engine, *self._extra_engines):

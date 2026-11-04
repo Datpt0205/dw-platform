@@ -18,6 +18,7 @@ from dw_api.bootstrap import ApiContainer
 from dw_api.dependencies.auth import RequireProvisioningContext
 from dw_api.dependencies.services import RequireContainer
 from dw_kernel.errors import InfrastructureError
+from dw_platform.application.control_switches import PlatformFreezeService, ReasonCode
 from dw_platform.application.provisioning import OffboardingStatus, ProvisioningService
 
 router = APIRouter(prefix="/platform", tags=["platform"])
@@ -458,3 +459,76 @@ async def assign_support_request(
         activated_at=grant.activated_at,
         expires_at=grant.expires_at,
     )
+
+
+# ---- the operators' freezes (agent-lifecycle R7.4; ADR-0120 decision 7) --------
+
+
+class PlatformFreezeRequest(BaseModel):
+    reason_code: ReasonCode
+    reason: str = Field(min_length=1, max_length=500, pattern=r"\S")
+
+
+class PlatformUnfreezeRequest(BaseModel):
+    reason: str | None = Field(default=None, min_length=1, max_length=500, pattern=r"\S")
+
+
+class PlatformFreezeView(BaseModel):
+    id: UUID
+
+
+def _freezes(container: ApiContainer) -> PlatformFreezeService:
+    if container.platform_freezes is None:
+        raise InfrastructureError("provisioning is not configured")
+    return container.platform_freezes
+
+
+@router.post("/freeze", response_model=PlatformFreezeView, status_code=201)
+async def freeze_platform(
+    body: PlatformFreezeRequest,
+    context: RequireProvisioningContext,
+    container: RequireContainer,
+) -> PlatformFreezeView:
+    """Every company's runs stop at their next door; 409 `already_frozen`."""
+    freeze_id = await _freezes(container).freeze_platform(
+        context, reason_code=body.reason_code, reason=body.reason
+    )
+    return PlatformFreezeView(id=freeze_id)
+
+
+@router.post("/unfreeze", response_model=PlatformFreezeView)
+async def unfreeze_platform(
+    context: RequireProvisioningContext, container: RequireContainer
+) -> PlatformFreezeView:
+    """409 `not_frozen` when no platform freeze is open."""
+    return PlatformFreezeView(id=await _freezes(container).unfreeze_platform(context))
+
+
+@router.post("/tenants/{tenant_id}/freeze", response_model=PlatformFreezeView, status_code=201)
+async def freeze_tenant(
+    tenant_id: UUID,
+    body: PlatformFreezeRequest,
+    context: RequireProvisioningContext,
+    container: RequireContainer,
+) -> PlatformFreezeView:
+    """An operator's freeze of one company, beside any of its own; the company
+    cannot lift it. 404 for an unknown company, 409 `already_frozen`."""
+    switch_id = await _freezes(container).freeze_tenant(
+        context, tenant_id=tenant_id, reason_code=body.reason_code, reason=body.reason
+    )
+    return PlatformFreezeView(id=switch_id)
+
+
+@router.post("/tenants/{tenant_id}/unfreeze", response_model=PlatformFreezeView)
+async def unfreeze_tenant(
+    tenant_id: UUID,
+    context: RequireProvisioningContext,
+    container: RequireContainer,
+    body: PlatformUnfreezeRequest | None = None,
+) -> PlatformFreezeView:
+    """Lifts the operator's freeze of the company only, never the company's own
+    (D11); 409 `not_frozen` when no operator's freeze is open."""
+    switch_id = await _freezes(container).unfreeze_tenant(
+        context, tenant_id=tenant_id, reason=None if body is None else body.reason
+    )
+    return PlatformFreezeView(id=switch_id)

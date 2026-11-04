@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from dw_agent_runtime.adapters.model_stack import ModelStack
 from dw_agent_runtime.adapters.usage_recorders import CompositeUsageRecorder
+from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_kernel.ports import SystemClock
 from dw_observability.telemetry import NullTelemetry
 from dw_usage.adapters.price_book_file import load_price_book
@@ -47,6 +48,7 @@ def test_the_worker_builds_one_gateway_and_one_ledger() -> None:
         _SESSIONS,
         clock=SystemClock(),
         telemetry=NullTelemetry(),
+        run_control=OpenRunControl(),
     )
     assert isinstance(stack, ModelStack)
     assert stack.gateway is not None and stack.budget is not None
@@ -61,6 +63,7 @@ def test_every_recorded_call_reaches_the_usage_ledger_priced_by_the_book() -> No
         _SESSIONS,
         clock=SystemClock(),
         telemetry=NullTelemetry(),
+        run_control=OpenRunControl(),
     )
     recorder = stack.usage_recorder
     assert isinstance(recorder, CompositeUsageRecorder)
@@ -74,7 +77,13 @@ def test_a_deployed_worker_is_refused_the_fixture_model() -> None:
         profile="production", model_provider="mock"
     )
     with pytest.raises(RuntimeError, match="mock"):
-        build_model_stack_for(settings, _SESSIONS, clock=SystemClock(), telemetry=NullTelemetry())
+        build_model_stack_for(
+            settings,
+            _SESSIONS,
+            clock=SystemClock(),
+            telemetry=NullTelemetry(),
+            run_control=OpenRunControl(),
+        )
 
 
 def _deployed_worker(**overrides: object) -> WorkerSettings:

@@ -38,8 +38,14 @@ from dw_agent_runtime.autonomy import AutonomyApprovalPolicy, lower_autonomy
 from dw_agent_runtime.context import access_context_from_run
 from dw_agent_runtime.contracts import RunContext, WorkerDefinition
 from dw_agent_runtime.model.budget import RunBudgetLedger
-from dw_agent_runtime.ports import RunAllowancePort, RunGraphsPort, RunWaitsPort
+from dw_agent_runtime.ports import (
+    RunAllowancePort,
+    RunControlPort,
+    RunGraphsPort,
+    RunWaitsPort,
+)
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
+from dw_agent_runtime.run_control import HOLDING_REASONS, RunControlDoor, RunHaltedError
 from dw_kernel.errors import (
     ConflictError,
     InfrastructureError,
@@ -120,6 +126,10 @@ class LangGraphWorkflowRunner:
     # the agent's middleware decide with, so the stamp names the rules that
     # were actually applied.
     approval_policy: AutonomyApprovalPolicy
+    # The freeze, the kill and the run's principal and company, asked where a
+    # run starts and resumes (agent-lifecycle R7, R9). Injected, never
+    # defaulted, as `allowance` is: a default would be a door left open.
+    run_control: RunControlPort
     store: BaseStore | None = None
     release_manifest_ref: str | None = None
     telemetry: TelemetryPort = field(default_factory=NullTelemetry)
@@ -348,6 +358,7 @@ class LangGraphWorkflowRunner:
         )
         with self._invocation(run_context, attributes):
             try:
+                await self.run_control.require_open(run_context, door=RunControlDoor.START)
                 async with self._metered(run_context, worker.definition) as callbacks:
                     state = await graph.ainvoke(
                         input_payload,
@@ -400,6 +411,13 @@ class LangGraphWorkflowRunner:
             str(run_context.run_id),
             details={"run_mode": run_context.run_mode},
         )
+        # Before the run's task exists: a refused start reaches the caller as
+        # a 409, with the run already recorded `cancelled` and its reason.
+        try:
+            await self.run_control.require_open(run_context, door=RunControlDoor.START)
+        except RunHaltedError as halted:
+            await self._fail(run_context, run_context.run_id, halted)
+            raise
 
         queue: asyncio.Queue[tuple[str, Any]] = asyncio.Queue(maxsize=_STREAM_BACKLOG_LIMIT)
         task = asyncio.create_task(
@@ -595,6 +613,18 @@ class LangGraphWorkflowRunner:
         graph = self._graph(record.worker_id, record.graph_version)
         worker = self.worker_registry.resolve(record.worker_id, record.worker_version)
 
+        # Before the run leaves its wait (agent-lifecycle R7.14, R9): under a
+        # freeze, or with the switch state unreadable, it stays in its wait,
+        # unchanged, and the timer lane tries again at its next tick ("keep
+        # paused runs paused", ADR-0120 decision 7); a kill, an inactive
+        # principal or company cancels it.
+        try:
+            await self.run_control.require_open(run_context, door=RunControlDoor.RESUME)
+        except RunHaltedError as halted:
+            if halted.reason not in HOLDING_REASONS:
+                await self._fail(run_context, run_id, halted)
+            raise
+
         # The run leaves its wait only while it is still in it (runtime-
         # hardening R9.2): of two resumes, one runs the graph and the other is
         # refused here, before it audits or moves the work item.
@@ -654,14 +684,23 @@ class LangGraphWorkflowRunner:
         status: RunStatus = RunStatus.FAILED,
         event: str = "run.failed",
     ) -> None:
-        """Record why a run stopped, so it cannot sit at `running` for ever."""
-        await self.run_store.set_status(
-            run_context,
-            run_id,
-            status,
-            error={"type": type(exc).__name__, "message": str(exc)[:_ERROR_MESSAGE_LIMIT]},
-        )
-        await self._audit(run_context, event, str(run_id))
+        """Record why a run stopped, so it cannot sit at `running` for ever.
+
+        A door's refusal (`RunHaltedError`, agent-lifecycle R7.1) is a
+        cancellation whatever the caller passed, with its reason on the row's
+        `error` and on the `run.cancelled` audit, where the run's screen and
+        the `studio_runs` lane read it."""
+        error: dict[str, Any] = {
+            "type": type(exc).__name__,
+            "message": str(exc)[:_ERROR_MESSAGE_LIMIT],
+        }
+        details: dict[str, Any] | None = None
+        if isinstance(exc, RunHaltedError):
+            status, event = RunStatus.CANCELLED, "run.cancelled"
+            error["reason_code"] = exc.reason.value
+            details = {"reason_code": exc.reason.value, "door": exc.door.value}
+        await self.run_store.set_status(run_context, run_id, status, error=error)
+        await self._audit(run_context, event, str(run_id), details=details)
         self.telemetry.add_metric(
             DW_RUN_TOTAL, 1, {"worker": run_context.worker_id, "status": status.value}
         )

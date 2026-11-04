@@ -16,6 +16,7 @@ from dw_agent_runtime.model.prompts import PromptArtifact, PromptRegistry
 from dw_agent_runtime.ports import ModelOutputInvalidError, ModelRequest
 from dw_agent_runtime.registry import ConfigError
 from dw_agent_runtime.testing.pricing import FlatPricing
+from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_kernel.errors import DomainError, NotFoundError
 
 pytestmark = pytest.mark.unit
@@ -101,6 +102,7 @@ def make_gateway(adapter: MockModelAdapter) -> RoutingModelGateway:
         usage_recorder=InMemoryUsageRecorder(),
         default_profile="balanced",
         pricing=_BOOK,
+        run_control=OpenRunControl(),
     )
 
 
@@ -156,6 +158,7 @@ async def test_recorded_usage_carries_the_book_s_price() -> None:
         usage_recorder=recorder,
         default_profile="balanced",
         pricing=_BOOK,
+        run_control=OpenRunControl(),
     )
     run_context = make_run_context()
 
@@ -245,6 +248,7 @@ async def test_gateway_unknown_provider_fails_fast() -> None:
         usage_recorder=InMemoryUsageRecorder(),
         default_profile="balanced",
         pricing=_BOOK,
+        run_control=OpenRunControl(),
     )
     request = ModelRequest(
         task="reasoning",
@@ -330,6 +334,7 @@ async def test_gateway_uses_fallback_route_when_primary_provider_errors() -> Non
         usage_recorder=InMemoryUsageRecorder(),
         default_profile="with_fallback",
         pricing=_BOOK,
+        run_control=OpenRunControl(),
     )
     request = ModelRequest(
         task="structured_extraction",
@@ -374,6 +379,7 @@ def _asking_gateway(adapter: _SchemaSeen) -> RoutingModelGateway:
         usage_recorder=InMemoryUsageRecorder(),
         default_profile="balanced",
         pricing=_BOOK,
+        run_control=OpenRunControl(),
     )
 
 
@@ -454,6 +460,7 @@ def _summarizing_gateway(
         usage_recorder=recorder,
         default_profile=default_profile,
         pricing=_BOOK,
+        run_control=OpenRunControl(),
     )
 
 

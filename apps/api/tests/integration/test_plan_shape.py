@@ -42,6 +42,7 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.pool import NullPool
 
 from dw_agent_runtime.approval_flow import ApproveAndResumeService
+from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_api.bootstrap import ApiContainer
 from dw_api.bootstrap.wiring import build_container
 from dw_api.main import create_app
@@ -478,6 +479,7 @@ async def bench(api_db: DatabaseUrls) -> AsyncIterator[Bench]:
         run_store=cast(Any, None),
         clock=clock,
         id_generator=ids,
+        run_control=OpenRunControl(),
     )
     app = create_app(container)
     admin_url = api_db.admin.rsplit("/", 1)[0] + "/" + api_db.app.rsplit("/", 1)[1]

@@ -43,7 +43,9 @@ from dw_agent_runtime.model.copy import load_runtime_copy
 from dw_agent_runtime.model.profiles import ModelProfile, ModelProfileRegistry
 from dw_agent_runtime.model.prompts import PromptArtifact, PromptRegistry
 from dw_agent_runtime.registry import ConfigError
+from dw_agent_runtime.run_control import HaltReason, RunControlDoor, RunHaltedError
 from dw_agent_runtime.testing.pricing import FlatPricing
+from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_agent_runtime.tools import RegisteredTool, ToolRegistry, pydantic_behaviour
 from dw_kernel.errors import TenantContextMissingError
 from dw_kernel.ports import FixedClock, SequentialIdGenerator
@@ -115,9 +117,14 @@ def _registry() -> tuple[ToolRegistry, ToolExecutor]:
         approval_policy=AutonomyApprovalPolicy(),
         claims=FakeToolClaims(store),
         steps=build_tool_executor_steps(),
+        run_control=FREEZE,
     )
     return registry, executor
 
+
+# The port every executor here holds, and so every `RunControlMiddleware` the
+# stack builds from it: open, but for the one check that freezes it.
+FREEZE = OpenRunControl()
 
 # The worker's toolset: FOREIGN is deliberately absent.
 OFFERED: tuple[ToolDefinition, ...] = (READ, BOOM, GATED, ADMIN_ONLY)
@@ -470,7 +477,20 @@ async def _properties(middleware: list[AgentMiddleware[Any, Any]]) -> dict[str, 
     except Exception as exc:
         stopped_by = type(exc).__name__
 
+    # A frozen company (agent-lifecycle R7.1): the model is never called and
+    # the turn ends with the refusal, for the runner to cancel the run.
+    frozen = MockChatModel(responses=[AIMessage(content="xong")], mock_reply="[mock]")
+    FREEZE.refuse(HaltReason.TENANT_FROZEN, doors=[RunControlDoor.MODEL])
+    try:
+        await agent(frozen).ainvoke({"messages": [HumanMessage("x")]}, context=_own_run())
+        halted = False
+    except RunHaltedError:
+        halted = not frozen.calls
+    finally:
+        FREEZE.reopen()
+
     return {
+        "frozen run refused": halted,
         "runaway stopped by budget": stopped_by == "budget",
         "builtin hidden": "write_file" not in view.bound_tool_names,
         "out-of-scope hidden": "crm__purge" not in view.bound_tool_names,
@@ -492,6 +512,7 @@ OWNS = (
     "out-of-scope hidden",
     "one approval card per step",
     "failure survived",
+    "frozen run refused",
     "runaway stopped by budget",
 )
 

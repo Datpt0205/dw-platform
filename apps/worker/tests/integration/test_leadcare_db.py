@@ -48,6 +48,7 @@ from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.model.copy import load_runtime_copy
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
+from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_agent_runtime.tool_specs import ToolSpecRegistry
 from dw_agent_runtime.tools import ToolRegistry
 from dw_agent_runtime.wflite.catalog import load_shipped_packs
@@ -295,6 +296,7 @@ def process(app: AsyncEngine) -> Process:
             clock=floor_clock,
             ids=ids,
         ),
+        run_control=OpenRunControl(),
     )
     smtp, mailbox = Smtp(), Mailbox()
     specs = ToolSpecRegistry(copy=load_runtime_copy(CONFIGS / "copy" / "runtime@1.6.0.yaml"))
@@ -329,6 +331,7 @@ def process(app: AsyncEngine) -> Process:
         budget=RunBudgetLedger(),
         approval_policy=policy,
         run_waits=WorkQueueRunWaits(queue),
+        run_control=OpenRunControl(),
     )
     register_workflows(
         catalog,
@@ -365,6 +368,7 @@ def process(app: AsyncEngine) -> Process:
             id_generator=ids,
             type_admissions={DW_DECISION: DwDecisionAdmission()},
             proposal_editors={DW_DECISION: check_edited_proposal},
+            run_control=OpenRunControl(),
         ),
         starter=build_run_starter(
             catalog=catalog, session_factory=sessions, tools=tools, runner=runner

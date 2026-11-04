@@ -35,7 +35,12 @@ from dw_api.routes.v1 import connections as connection_routes
 from dw_api.routes.v1 import digital_workers as digital_workers_routes
 from dw_api.routes.v1 import studio_artifacts as studio_routes
 from dw_api.routes.v1 import work_items as work_items_routes
-from dw_platform.application import digital_workers, membership_admin, support_access
+from dw_platform.application import (
+    control_switches,
+    digital_workers,
+    membership_admin,
+    support_access,
+)
 from dw_platform.application.connection_admin import ConnectionService
 from dw_platform.application.service_principals import ServicePrincipalService
 from dw_studio.core.application.service import ArtifactService
@@ -64,6 +69,9 @@ DECLARED: dict[tuple[str, str], object] = {
     ("DELETE", "/api/v1/admin/members/{user_id}"): membership_admin.MEMBERS_WRITE,
     ("PUT", "/api/v1/admin/members/{user_id}/memberships"): membership_admin.MEMBERS_WRITE,
     ("POST", "/api/v1/admin/invitations"): membership_admin.MEMBERS_WRITE,
+    # A tenant-depth key (agent-lifecycle R7.10).
+    ("POST", "/api/v1/admin/freeze"): control_switches.LIFECYCLE_FREEZE,
+    ("POST", "/api/v1/admin/unfreeze"): control_switches.LIFECYCLE_FREEZE,
     ("POST", "/api/v1/support/grants"): support_access.check_request,
     ("POST", "/api/v1/support/grants/{grant_id}/approve"): support_access.check_approve,
     ("POST", "/api/v1/support/grants/{grant_id}/reject"): support_access.check_close,
@@ -138,6 +146,7 @@ SERVICE_MODULES = {
     "dw_platform.application.work_queue",
     "dw_platform.application.membership_admin",
     "dw_platform.application.support_access",
+    "dw_platform.application.control_switches",
 }
 
 

@@ -42,6 +42,8 @@ from dw_api.routes.v1.approvals import router as approvals_router
 from dw_api.routes.v1.audit import router as audit_router
 from dw_api.routes.v1.auth import router as auth_router
 from dw_api.routes.v1.connections import router as connections_router
+from dw_api.routes.v1.control import router as control_router
+from dw_api.routes.v1.control import state_router as control_state_router
 from dw_api.routes.v1.digital_workers import router as digital_workers_router
 from dw_api.routes.v1.directory import router as directory_router
 from dw_api.routes.v1.egress import router as egress_router
@@ -217,6 +219,8 @@ def create_app(
         admin_service_principals_router,
         egress_router,
         connections_router,
+        control_router,
+        control_state_router,
         approvals_router,
         runs_router,
         usage_router,

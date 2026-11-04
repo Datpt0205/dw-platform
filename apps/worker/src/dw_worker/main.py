@@ -30,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from dw_agent_runtime.adapters.checkpoint_retention import SqlCheckpointRetention
 from dw_agent_runtime.adapters.langgraph_runner import LangGraphWorkflowRunner
+from dw_agent_runtime.adapters.run_control import SqlRunControl
 from dw_agent_runtime.adapters.spend_guard import SqlSpendGuardRetention
 from dw_agent_runtime.adapters.tool_claim_retention import SqlToolClaimRetention
 from dw_agent_runtime.adapters.wf_drafts import SqlWorkflowDrafts
@@ -39,6 +40,7 @@ from dw_agent_runtime.channel_decisions import (
     ChannelApprovalDecisionService,
     ChannelDecisionCommand,
 )
+from dw_agent_runtime.run_control import lane_actors
 from dw_agent_runtime.wflite.catalog import load_shipped_packs
 from dw_agent_runtime.wflite.publish import (
     DW_WORKFLOW_PREFIX,
@@ -75,6 +77,7 @@ from dw_platform.adapters.persistence.channel_inbound import (
 )
 from dw_platform.adapters.persistence.channel_preferences import SqlChannelPreferences
 from dw_platform.adapters.persistence.connections_repo import SqlConnectionStore
+from dw_platform.adapters.persistence.control_switches_repo import SqlControlSwitchRepository
 from dw_platform.adapters.persistence.digital_workers_repo import (
     SqlDigitalWorkerRepository,
     SqlDwMembershipCheck,
@@ -112,6 +115,7 @@ from dw_platform.application.approval_codes import ApprovalSubjectVersions, Deci
 from dw_platform.application.authorization import ScopeAuthorizationService
 from dw_platform.application.channel_access import LinkedUserAccess
 from dw_platform.application.connection_admin import CONNECTIONS_ENABLE, ConnectionEnableSettler
+from dw_platform.application.control_switches import LIFECYCLE_PREFIX, UnfreezeSettler
 from dw_platform.application.decision_gate import DW_DECISION, DwDecisionAdmission
 from dw_platform.application.dw_autonomy import (
     DW_AUTONOMY_PREFIX,
@@ -138,6 +142,10 @@ from dw_worker.composition import (
 from dw_worker.consumers import ConsumerRegistry
 from dw_worker.consumers.channel_delivery import build_channel_delivery_consumer
 from dw_worker.consumers.connections import CONNECTIONS_ENABLE_DECIDED, build_enable_handler
+from dw_worker.consumers.control_switches import (
+    LIFECYCLE_UNFREEZE_DECIDED,
+    build_unfreeze_handler,
+)
 from dw_worker.consumers.dw_autonomy import DW_AUTONOMY_RAISE_DECIDED, build_raise_handler
 from dw_worker.consumers.dw_timers import INTERVAL_SECONDS as DW_TIMERS_INTERVAL_SECONDS
 from dw_worker.consumers.dw_timers import build_dw_timers_consumer
@@ -234,6 +242,9 @@ def build_channel_decision_command(
         run_store=runner.run_store,
         clock=clock,
         id_generator=ids,
+        # The runner's own port: a decision on a paused run passes the freeze
+        # first, as in the API (agent-lifecycle R7.14).
+        run_control=runner.run_control,
         # The same decider rules as the API's (digital-worker R5.3, R8.3). A
         # chat carries no edited proposal, so no editor: an edit is refused here.
         type_admissions={
@@ -252,6 +263,10 @@ def build_channel_decision_command(
     # Enabling a connection again takes a second person, here as in the API
     # (connections-and-vault R5.11).
     flow.strict_approval_prefixes |= {CONNECTIONS_ENABLE}
+    # Lifting a company's freeze, and from ticket 05 reviving a killed
+    # component, takes a second person, here as in the API (agent-lifecycle
+    # R7.11; D11).
+    flow.strict_approval_prefixes |= {LIFECYCLE_PREFIX}
     secret = settings.approval_code_secret.get_secret_value()
     return ChannelDecisionCommand(
         ChannelApprovalDecisionService(
@@ -434,6 +449,15 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
         # adding the handler later drains the backlog.
         engine = create_async_engine(settings.database_url, pool_pre_ping=True)
         sessions = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        # The freeze and the kill (agent-lifecycle R7, R9): one instance for
+        # every door this process runs; it listens from its first door on.
+        run_control = SqlRunControl(
+            sessions,
+            clock=clock,
+            telemetry=telemetry,
+            listen_dsn=settings.database_url.replace("postgresql+asyncpg://", "postgresql://", 1),
+            system_actors=lane_actors(),
+        )
         work_queue = WorkQueue(
             repo=SqlWorkQueueRepository(sessions),
             workers=SqlDigitalWorkerRepository(sessions),
@@ -453,6 +477,7 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
             clock=clock,
             ids=ids,
             telemetry=telemetry,
+            run_control=run_control,
         )
         dw_work_consumer = build_dw_work_consumer(work_queue, wflite.starter)
         dw_timers_consumer = build_dw_timers_consumer(
@@ -500,6 +525,12 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
         # A tenant whose owners fell below two (tenant-rbac R3.12).
         handlers[OWNER_COVERAGE_LOW] = build_owner_coverage_handler(
             SqlScopeHolders(sessions), SqlNotificationRepository(sessions)
+        )
+        # A decided request to lift a company's freeze (agent-lifecycle R7.10).
+        handlers[LIFECYCLE_UNFREEZE_DECIDED] = build_unfreeze_handler(
+            UnfreezeSettler(
+                repo=SqlControlSwitchRepository(sessions), clock=clock, id_generator=ids
+            )
         )
         # A decided publication of a DW's workflow draft (wf-ai R6.5, R6.6).
         handlers[DW_WORKFLOW_PUBLISH_DECIDED] = build_publish_handler(

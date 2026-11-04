@@ -10,6 +10,7 @@ from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
+from dw_agent_runtime.testing.run_control import OpenRunControl
 
 pytestmark = pytest.mark.unit
 
@@ -62,6 +63,7 @@ def test_the_runner_puts_the_worker_ceiling_on_every_invocation() -> None:
         allowance=cast(Any, None),
         budget=RunBudgetLedger(),
         approval_policy=AutonomyApprovalPolicy(),
+        run_control=OpenRunControl(),
     )
     config = runner._config(make_run_context(), uuid.UUID(int=1), 7)
     assert config["recursion_limit"] == 7

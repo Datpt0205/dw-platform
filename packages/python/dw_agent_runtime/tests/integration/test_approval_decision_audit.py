@@ -24,6 +24,7 @@ from dw_agent_runtime.adapters.run_store import RunStatus
 from dw_agent_runtime.approval_flow import DECIDED_ACTION, ApproveAndResumeService
 from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.testing.demo_graph import DEMO_WORKER_YAML
+from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_kernel.errors import ConflictError, PermissionDeniedError
 from dw_kernel.ports import SystemClock, Uuid4Generator
 from dw_platform.adapters.persistence.uow import SqlPlatformUnitOfWork
@@ -152,6 +153,7 @@ async def test_a_refused_decision_writes_no_audit_row(
         clock=SystemClock(),
         id_generator=Uuid4Generator(),
         strict_approval_prefixes=frozenset({"demo."}),
+        run_control=OpenRunControl(),
     )
     with pytest.raises(ConflictError, match="separation of duties"):
         await strict.decide(
@@ -198,6 +200,7 @@ async def test_no_decision_without_its_audit_row_and_no_row_without_the_decision
         run_store=stack.run_store,
         clock=SystemClock(),
         id_generator=Uuid4Generator(),
+        run_control=OpenRunControl(),
     )
 
     with pytest.raises(RuntimeError, match="failed"):

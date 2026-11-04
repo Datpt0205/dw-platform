@@ -1376,6 +1376,43 @@
         "title": "ConnectionView",
         "type": "object"
       },
+      "ControlStateView": {
+        "properties": {
+          "freezes": {
+            "items": {
+              "$ref": "#/components/schemas/OpenFreezeView"
+            },
+            "title": "Freezes",
+            "type": "array"
+          },
+          "platform_freeze": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OpenFreezeView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "enum": [
+              "open",
+              "platform_frozen",
+              "tenant_frozen"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "platform_freeze",
+          "freezes"
+        ],
+        "title": "ControlStateView",
+        "type": "object"
+      },
       "CreateDigitalWorkerRequest": {
         "description": "Unknown fields are ignored, not refused: a `tenant_id` or `workspace_id`\nin the body changes nothing, both come from the access context (R1.1).",
         "properties": {
@@ -2376,6 +2413,49 @@
           "created_at"
         ],
         "title": "FeedbackView",
+        "type": "object"
+      },
+      "FreezeBody": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Reason",
+            "type": "string"
+          },
+          "reason_code": {
+            "enum": [
+              "incident",
+              "maintenance",
+              "abuse",
+              "test",
+              "other"
+            ],
+            "title": "Reason Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason_code",
+          "reason"
+        ],
+        "title": "FreezeBody",
+        "type": "object"
+      },
+      "FreezeView": {
+        "properties": {
+          "switch_id": {
+            "format": "uuid",
+            "title": "Switch Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "switch_id"
+        ],
+        "title": "FreezeView",
         "type": "object"
       },
       "GrantMemberRequest": {
@@ -3591,6 +3671,34 @@
         "title": "OffboardingStatusView",
         "type": "object"
       },
+      "OpenFreezeView": {
+        "properties": {
+          "origin": {
+            "enum": [
+              "tenant",
+              "platform"
+            ],
+            "title": "Origin",
+            "type": "string"
+          },
+          "reason_code": {
+            "title": "Reason Code",
+            "type": "string"
+          },
+          "set_at": {
+            "format": "date-time",
+            "title": "Set At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "origin",
+          "reason_code",
+          "set_at"
+        ],
+        "title": "OpenFreezeView",
+        "type": "object"
+      },
       "OperatorView": {
         "properties": {
           "created_at": {
@@ -4191,6 +4299,68 @@
           "status"
         ],
         "title": "PermissionView",
+        "type": "object"
+      },
+      "PlatformFreezeRequest": {
+        "properties": {
+          "reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Reason",
+            "type": "string"
+          },
+          "reason_code": {
+            "enum": [
+              "incident",
+              "maintenance",
+              "abuse",
+              "test",
+              "other"
+            ],
+            "title": "Reason Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason_code",
+          "reason"
+        ],
+        "title": "PlatformFreezeRequest",
+        "type": "object"
+      },
+      "PlatformFreezeView": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "PlatformFreezeView",
+        "type": "object"
+      },
+      "PlatformUnfreezeRequest": {
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "minLength": 1,
+                "pattern": "\\S",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "title": "PlatformUnfreezeRequest",
         "type": "object"
       },
       "Problem": {
@@ -5778,6 +5948,26 @@
         "title": "TrailEntryView",
         "type": "object"
       },
+      "UnfreezeRequestView": {
+        "description": "The approval that lifts the freeze once a second person approves it.",
+        "properties": {
+          "approval_id": {
+            "format": "uuid",
+            "title": "Approval Id",
+            "type": "string"
+          },
+          "status": {
+            "default": "pending",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "approval_id"
+        ],
+        "title": "UnfreezeRequestView",
+        "type": "object"
+      },
       "UnsubscribeView": {
         "properties": {
           "channel": {
@@ -6717,6 +6907,77 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/admin/freeze": {
+      "post": {
+        "operationId": "freeze_api_v1_admin_freeze_post",
+        "parameters": [
+          {
+            "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FreezeBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FreezeView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Freeze",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
     "/api/v1/admin/hierarchy": {
       "get": {
         "description": "The org chart: every member of the workspace and who they report to.",
@@ -7854,6 +8115,67 @@
           }
         },
         "summary": "Update Tenant",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/unfreeze": {
+      "post": {
+        "operationId": "unfreeze_api_v1_admin_unfreeze_post",
+        "parameters": [
+          {
+            "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnfreezeRequestView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Unfreeze",
         "tags": [
           "admin"
         ]
@@ -9027,6 +9349,47 @@
         "summary": "Revoke Connection Credentials",
         "tags": [
           "connections"
+        ]
+      }
+    },
+    "/api/v1/control-state": {
+      "get": {
+        "operationId": "control_state_api_v1_control_state_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ControlStateView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Control State",
+        "tags": [
+          "control"
         ]
       }
     },
@@ -11463,6 +11826,58 @@
         ]
       }
     },
+    "/api/v1/platform/freeze": {
+      "post": {
+        "description": "Every company's runs stop at their next door; 409 `already_frozen`.",
+        "operationId": "freeze_platform_api_v1_platform_freeze_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlatformFreezeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformFreezeView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Freeze Platform",
+        "tags": [
+          "platform"
+        ]
+      }
+    },
     "/api/v1/platform/operators": {
       "get": {
         "operationId": "list_operators_api_v1_platform_operators_get",
@@ -12011,6 +12426,70 @@
         ]
       }
     },
+    "/api/v1/platform/tenants/{tenant_id}/freeze": {
+      "post": {
+        "description": "An operator's freeze of one company, beside any of its own; the company\ncannot lift it. 404 for an unknown company, 409 `already_frozen`.",
+        "operationId": "freeze_tenant_api_v1_platform_tenants__tenant_id__freeze_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlatformFreezeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformFreezeView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Freeze Tenant",
+        "tags": [
+          "platform"
+        ]
+      }
+    },
     "/api/v1/platform/tenants/{tenant_id}/lock": {
       "post": {
         "operationId": "lock_tenant_api_v1_platform_tenants__tenant_id__lock_post",
@@ -12272,6 +12751,77 @@
         ]
       }
     },
+    "/api/v1/platform/tenants/{tenant_id}/unfreeze": {
+      "post": {
+        "description": "Lifts the operator's freeze of the company only, never the company's own\n(D11); 409 `not_frozen` when no operator's freeze is open.",
+        "operationId": "unfreeze_tenant_api_v1_platform_tenants__tenant_id__unfreeze_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/PlatformUnfreezeRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformFreezeView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Unfreeze Tenant",
+        "tags": [
+          "platform"
+        ]
+      }
+    },
     "/api/v1/platform/tenants/{tenant_id}/unlock": {
       "post": {
         "operationId": "unlock_tenant_api_v1_platform_tenants__tenant_id__unlock_post",
@@ -12313,6 +12863,48 @@
           }
         },
         "summary": "Unlock Tenant",
+        "tags": [
+          "platform"
+        ]
+      }
+    },
+    "/api/v1/platform/unfreeze": {
+      "post": {
+        "description": "409 `not_frozen` when no platform freeze is open.",
+        "operationId": "unfreeze_platform_api_v1_platform_unfreeze_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformFreezeView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Unfreeze Platform",
         "tags": [
           "platform"
         ]

@@ -42,6 +42,7 @@ from pydantic import BaseModel, ConfigDict
 from dw_agent_runtime.contracts import RunContext, WorkerDefinition
 from dw_agent_runtime.executor import DecisionCall
 from dw_agent_runtime.ports import ModelGateway, ModelOutputInvalidError, ModelRequest
+from dw_agent_runtime.run_control import RunHaltedError
 from dw_agent_runtime.tools import ToolBehaviour
 from dw_agent_runtime.wflite.catalog import PinnedWorkflow
 from dw_agent_runtime.wflite.document import Step
@@ -482,7 +483,9 @@ class _Builder:
                 return await self._hand_off(state, runtime, step, "definition_changed", None)
             try:
                 update = await impl(state, runtime)
-            except GraphBubbleUp:
+            except (GraphBubbleUp, RunHaltedError):
+                # A door refusing the run (agent-lifecycle R7.1) ends the run,
+                # cancelled by the runner: never a hand-off of this step.
                 raise
             except StepHandedOff as stop:
                 return await self._hand_off(state, runtime, step, stop.code, stop.output)

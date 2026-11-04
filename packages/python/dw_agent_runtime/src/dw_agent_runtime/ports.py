@@ -6,7 +6,7 @@ and application handlers depend only on the protocols.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
@@ -16,6 +16,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict
 
 from dw_agent_runtime.contracts import RunContext
+from dw_agent_runtime.run_control import HaltReason, RunControlDoor
 from dw_kernel.errors import DomainError
 
 OutputT = TypeVar("OutputT", bound=BaseModel)
@@ -115,6 +116,35 @@ class RunAllowancePort(Protocol):
         the numbers are a business decision nobody has made yet, and guessing
         one into the catalogue is worse than leaving the gate open and saying so.
         """
+        ...
+
+
+class RunControlPort(Protocol):
+    """What every door of the runtime asks before it acts (agent-lifecycle R7,
+    R9; ADR-0120 decision 6, amended 2026-11-04): a freeze, a kill, an
+    unreadable switch state, an inactive principal or company. Declared here,
+    satisfied by `SqlRunControl`, given to each door by injection, never a
+    default."""
+
+    async def require_open(
+        self,
+        run_context: RunContext,
+        *,
+        door: RunControlDoor,
+        artifacts: Sequence[UUID] = (),
+    ) -> None:
+        """Return when the run may go through `door`; else raise
+        `RunHaltedError` with the reason. `artifacts` are the components the
+        call reaches (a kill of any refuses it). At `admission`, `start` and
+        `resume` the run's principal and company are read too."""
+        ...
+
+    async def admission_state(
+        self, tenant_id: UUID, artifacts: Sequence[UUID] = ()
+    ) -> HaltReason | None:
+        """For a trigger's event that has no run yet (the `studio_inbound`
+        lane): the reason it may not be admitted now, or None. No principal is
+        asked: an event has none until its run is requested."""
         ...
 
 

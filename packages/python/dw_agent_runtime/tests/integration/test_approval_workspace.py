@@ -33,6 +33,7 @@ from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.ports import WorkflowRunnerPort
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.testing.demo_graph import DEMO_WORKER_YAML, build_demo_graph
+from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_kernel.errors import NotFoundError
 from dw_kernel.ids import TenantId, UserId, WorkspaceId
 from dw_kernel.pagination import PageQuery, PageRequest
@@ -107,6 +108,7 @@ class Stack:
             allowance=_UnmeteredPlan(),
             budget=RunBudgetLedger(),
             approval_policy=AutonomyApprovalPolicy(),
+            run_control=OpenRunControl(),
         )
         self.recorder = RecordingRunner(self.runner)
         self.approvals = ApproveAndResumeService(
@@ -115,6 +117,7 @@ class Stack:
             run_store=self.run_store,
             clock=SystemClock(),
             id_generator=Uuid4Generator(),
+            run_control=OpenRunControl(),
         )
 
     async def decision_rows(self, approval_id: uuid.UUID) -> int:

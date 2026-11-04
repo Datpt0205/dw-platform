@@ -34,7 +34,9 @@ from dw_agent_runtime.executor import (
     ToolExecutor,
     ToolSteps,
 )
+from dw_agent_runtime.run_control import HaltReason, RunHaltedError
 from dw_agent_runtime.samples import SampleOutput
+from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_agent_runtime.tools import RegisteredTool, ToolRegistry, pydantic_behaviour
 from dw_kernel.errors import (
     ApprovalRequiredError,
@@ -69,9 +71,6 @@ R2_6 = (
     "validate_output",
     "audit",
 )
-CONTROL_SWITCH_TICKET = (
-    ".claude/plans/studio/agent-lifecycle/issues/01-dong-bang-va-kiem-o-moi-cua.md"
-)
 
 
 class MailInput(BaseModel):
@@ -87,15 +86,40 @@ async def _noop(executor: ToolExecutor, call: ToolCall) -> None:
 # ------------------------------------------------------------ the register --
 
 
-def test_the_register_holds_r2_6_and_only_the_control_switch_waits() -> None:
-    """R2.7 (TS12): the real register, its tail and its pending list."""
+def test_the_register_holds_all_of_r2_6_and_nothing_waits() -> None:
+    """R2.7 (TS12); agent-lifecycle R7.1: the real register, its tail, and the
+    pending list empty since the control switch was registered first."""
     assert TOOL_STEP_ORDER == R2_6
     steps = build_tool_executor_steps()
-    assert steps.names() == tuple(n for n in R2_6 if n != "control_switch")
-    assert dict(PENDING_STEPS) == {"control_switch": CONTROL_SWITCH_TICKET}
-    assert (REPO_ROOT / CONTROL_SWITCH_TICKET).is_file()
+    assert steps.names() == R2_6
+    assert steps.names()[0] == "control_switch"
+    assert dict(PENDING_STEPS) == {}
     assert TAIL_STEPS == ("claim", "dispatched", "handler", "validate_output", "audit")
-    assert len(steps.seal()) == len(GATE_STEPS) - 1
+    assert len(steps.seal()) == len(GATE_STEPS)
+
+
+def test_the_control_switch_left_out_or_after_the_scopes_is_refused_naming_it() -> None:
+    """agent-lifecycle R7.1 (AL11): a register without the control switch, not
+    put back on the pending list, does not seal; nor one that asks it after
+    the scope check."""
+    entries = dict(build_tool_executor_steps().entries())
+    without = ToolSteps()
+    for name, step in entries.items():
+        if name != "control_switch":
+            without.register(name, step)
+    with pytest.raises(ConfigError) as missing:
+        without.seal()
+    assert missing.value.details["step"] == "control_switch"
+
+    late = ToolSteps()
+    for name, step in entries.items():
+        if name != "control_switch":
+            late.register(name, step)
+        if name == "scopes":
+            late.register("control_switch", entries["control_switch"])
+    with pytest.raises(ConfigError) as after:
+        late.seal()
+    assert after.value.details["step"] == "control_switch"
 
 
 def test_the_send_floor_is_a_registered_step_not_a_pending_one() -> None:
@@ -120,7 +144,7 @@ def _register(order: list[str], *, pending: dict[str, str] | None = None) -> Too
     return steps
 
 
-GATES = list(R2_6[1:9])
+GATES = list(R2_6[:9])
 
 
 def test_two_steps_out_of_order_are_refused_naming_the_step() -> None:
@@ -179,6 +203,7 @@ def test_an_executor_with_a_wrong_register_does_not_start() -> None:
             approval_policy=AutonomyApprovalPolicy(),
             claims=FakeToolClaims(store),
             steps=_register([n for n in GATES if n != "scopes"]),
+            run_control=OpenRunControl(),
         )
 
 
@@ -194,6 +219,7 @@ def test_build_tool_executor_takes_its_register_from_the_one_function() -> None:
         clock=FixedClock(NOW),
         ids=SequentialIdGenerator(),
         send_admission=None,
+        run_control=OpenRunControl(),
     )
     assert executor.steps.names() == build_tool_executor_steps().names()
 
@@ -284,6 +310,7 @@ def bench(
     *,
     floor: FakeFloor | None = None,
     steps: ToolSteps | None = None,
+    control: OpenRunControl | None = None,
 ) -> Bench:
     store = FakeExecutionStore()
     claims = FakeToolClaims(store)
@@ -317,6 +344,7 @@ def bench(
         steps=steps if steps is not None else spied(seen),
         sleep=no_sleep,
         send_admission=floor,
+        run_control=control if control is not None else OpenRunControl(),
     )
     return Bench(executor, store, claims, uow.audit_repo, seen, handled)
 
@@ -336,9 +364,11 @@ class Case:
     context: dict[str, object] = field(default_factory=dict)
     decision: DecisionCall | None = None
     hold_claim: bool = False
+    frozen: bool = False
 
 
 CASES = [
+    Case("control_switch", RunHaltedError, frozen=True),
     Case("resolve", NotFoundError, name="test.missing"),
     Case("validate_input", DomainError, raw_input={"to": 1, "extra": "x"}),
     Case("dw_boundary", PermissionDeniedError, context={"run_as_principal_id": uuid.uuid4()}),
@@ -355,7 +385,10 @@ CASES = [
 async def test_a_call_stopped_at_a_step_runs_nothing_after_it(case: Case) -> None:
     """R2.6 (TS10): the steps after the one that stopped the call never ran,
     no `dispatched` row was written, and the handler was not called."""
-    b = bench(case.definition)
+    control = OpenRunControl()
+    if case.frozen:
+        control.refuse(HaltReason.TENANT_FROZEN)
+    b = bench(case.definition, control=control)
     key = "k1"
     if case.hold_claim:
         await b.claims.claim(make_run_context(), case.name, key, lease_seconds=60)
@@ -373,7 +406,7 @@ async def test_a_call_stopped_at_a_step_runs_nothing_after_it(case: Case) -> Non
     else:
         with pytest.raises(case.expected):
             await call
-    gates = [n for n in R2_6 if n in GATE_STEPS and n != "control_switch"]
+    gates = [n for n in R2_6 if n in GATE_STEPS]
     ran_to = gates.index(case.step) if case.step in gates else len(gates) - 1
     assert b.seen == gates[: ran_to + 1]
     assert b.dispatched() == []
@@ -390,7 +423,7 @@ async def test_a_call_through_every_step_logs_dispatched_before_the_handler() ->
         run_context=make_run_context(),
         idempotency_key="k1",
     )
-    assert b.seen == [n for n in GATE_STEPS if n != "control_switch"]
+    assert b.seen == list(GATE_STEPS)
     assert b.handled == [True]
     assert [r["status"] for r in b.store.records] == ["dispatched", "succeeded"]
 

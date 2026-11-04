@@ -44,6 +44,7 @@ from dw_agent_runtime.contracts import RunContext, ToolDefinition
 from dw_agent_runtime.executor import ToolExecutor, canonical_hash
 from dw_agent_runtime.model.copy import RuntimeCopy
 from dw_agent_runtime.registry import ConfigError
+from dw_agent_runtime.run_control import RunHaltedError
 from dw_agent_runtime.tools import RegisteredTool, ToolRegistry
 from dw_kernel.errors import (
     DomainError,
@@ -206,6 +207,10 @@ class PlatformToolErrorsMiddleware(ToolErrorMiddleware):
         # `task`. They end a turn exactly as easily, and they report under the
         # only name they have.
         tool = self._dotted.get(exposed, exposed)
+        # A door refusing the run (agent-lifecycle R7.1) ends it, cancelled
+        # by the runner; told to the model it would read as a tool result.
+        if isinstance(exc, RunHaltedError):
+            return None
         if isinstance(exc, DWError):
             if exc.code in _UNANSWERABLE_ERRORS:
                 return None

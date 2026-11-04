@@ -26,6 +26,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_usage.adapters.price_book_file import load_price_book
 
 if TYPE_CHECKING:
@@ -68,6 +69,7 @@ def live_gateway() -> ModelGateway:
         usage_recorder=InMemoryUsageRecorder(),
         default_profile=profile,
         pricing=load_price_book(),
+        run_control=OpenRunControl(),
     )
 
 

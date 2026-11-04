@@ -29,6 +29,7 @@ from uuid import UUID
 
 from dw_agent_runtime.adapters.run_store import RunRecord, resume_context
 from dw_agent_runtime.contracts import RunContext
+from dw_agent_runtime.run_control import RunHaltedError
 from dw_kernel.errors import ConflictError
 from dw_kernel.ports import UtcClock
 from dw_platform.application.work_queue import WorkQueue, WorkScope
@@ -84,6 +85,14 @@ async def _wake(
             run_context=resume_context(record, tenant_id=scope.tenant_id, channel=CHANNEL),
             run_id=record.id,
             resume_payload={"woke_at": clock.now().isoformat()},
+        )
+    except RunHaltedError as halted:
+        # A freeze keeps the run in its wait, unchanged, and the lease holds
+        # the item until a later tick (agent-lifecycle R7.14); a kill or an
+        # inactive principal or company has cancelled it.
+        _LOG.info(
+            "dw_timers run halted",
+            extra={"run_id": str(item.run_id), "reason_code": halted.reason.value},
         )
     except ConflictError:
         _LOG.info("dw_timers run no longer waiting", extra={"run_id": str(item.run_id)})

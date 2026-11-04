@@ -41,7 +41,7 @@ from dw_agent_runtime.adapters.tool_execution_store import SqlToolExecutionStore
 from dw_agent_runtime.adapters.wf_drafts import SqlTenantWorkflowVersions
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.executor import SendAdmissionPort, ToolExecutor, ToolSteps
-from dw_agent_runtime.ports import ModelGateway, WorkflowRunnerPort
+from dw_agent_runtime.ports import ModelGateway, RunControlPort, WorkflowRunnerPort
 from dw_agent_runtime.registry import GraphRegistry, LoadedWorker, WorkerRegistry
 from dw_agent_runtime.tools import ToolRegistry
 from dw_agent_runtime.wflite.catalog import PackCatalog, PinnedWorkflow
@@ -105,11 +105,10 @@ def build_send_floor(
 def build_tool_executor_steps() -> ToolSteps:
     """The gate steps of every `ToolExecutor`, in tools-and-skills R2.6's
     order, one line per owner (H-3). The executor's tail (claim, `dispatched`,
-    handler, output, audit) is its own; the control switch is pending until
-    agent-lifecycle/01 registers it here and takes it off `PENDING_STEPS`. A
-    step reaches its ports through the executor it runs in, so the register
-    takes no dependencies."""
+    handler, output, audit) is its own. A step reaches its ports through the
+    executor it runs in, so the register takes no dependencies."""
     steps = ToolSteps()
+    steps.register("control_switch", ToolExecutor.step_control_switch)  # agent-lifecycle R7.1
     steps.register("resolve", ToolExecutor.step_resolve)  # tools-and-skills R2.1
     steps.register("validate_input", ToolExecutor.step_validate_input)  # R1.1, R1.3
     steps.register("dw_boundary", ToolExecutor.step_dw_boundary)  # digital-worker R6.1
@@ -131,6 +130,7 @@ def build_tool_executor(
     clock: UtcClock,
     ids: IdGenerator,
     send_admission: SendAdmissionPort | None,
+    run_control: RunControlPort,
 ) -> ToolExecutor:
     """The door to every tool effect of this process. A Digital Worker's run
     is held to its DW (operating, its allowed tools, its principal's scopes
@@ -146,6 +146,8 @@ def build_tool_executor(
         approval_policy=approval_policy,
         claims=SqlToolClaims(session_factory),
         steps=build_tool_executor_steps(),
+        # The freeze and the kill, asked first of every call (agent-lifecycle R7.1).
+        run_control=run_control,
         telemetry=telemetry,
         dw_boundary=SqlDwBoundary(session_factory),
         decision_autonomy=DecisionAutonomy(SqlDecisionLevels(session_factory)),

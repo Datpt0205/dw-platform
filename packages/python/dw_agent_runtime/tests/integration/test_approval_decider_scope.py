@@ -38,6 +38,7 @@ from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.testing.demo_graph import DEMO_WORKER_YAML, DemoState
+from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_kernel.errors import NotFoundError, PermissionDeniedError
 from dw_kernel.ids import TenantId, UserId, WorkspaceId
 from dw_kernel.pagination import PageQuery, PageRequest
@@ -117,6 +118,7 @@ class Stack:
             allowance=_UnmeteredPlan(),
             budget=RunBudgetLedger(),
             approval_policy=AutonomyApprovalPolicy(),
+            run_control=OpenRunControl(),
         )
         self.approvals = ApproveAndResumeService(
             uow_factory=self.uow_factory,
@@ -124,6 +126,7 @@ class Stack:
             run_store=self.run_store,
             clock=SystemClock(),
             id_generator=Uuid4Generator(),
+            run_control=OpenRunControl(),
         )
 
     async def approval_rows_for(self, run: RunContext) -> int:

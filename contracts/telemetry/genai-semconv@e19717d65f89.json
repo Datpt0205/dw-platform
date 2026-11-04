@@ -201,6 +201,7 @@
     ],
     "metrics": [
       "dw_approval_wait_seconds",
+      "dw_control_refusals_total",
       "dw_egress_blocked_total",
       "dw_egress_requests_total",
       "dw_model_cost_usd_total",

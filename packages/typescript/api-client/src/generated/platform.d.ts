@@ -3,6 +3,23 @@
  * Regenerate with `make generate-contracts`.
  */
 export interface paths {
+    "/api/v1/admin/freeze": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Freeze */
+        post: operations["freeze_api_v1_admin_freeze_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/hierarchy": {
         parameters: {
             query?: never;
@@ -316,6 +333,23 @@ export interface paths {
         patch: operations["update_tenant_api_v1_admin_tenant_patch"];
         trace?: never;
     };
+    "/api/v1/admin/unfreeze": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Unfreeze */
+        post: operations["unfreeze_api_v1_admin_unfreeze_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/workspaces": {
         parameters: {
             query?: never;
@@ -569,6 +603,23 @@ export interface paths {
         put?: never;
         /** Revoke Connection Credentials */
         post: operations["revoke_connection_credentials_api_v1_connections__connection_id__revoke_credentials_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/control-state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Control State */
+        get: operations["control_state_api_v1_control_state_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1217,6 +1268,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform/freeze": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Freeze Platform
+         * @description Every company's runs stop at their next door; 409 `already_frozen`.
+         */
+        post: operations["freeze_platform_api_v1_platform_freeze_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/operators": {
         parameters: {
             query?: never;
@@ -1367,6 +1438,27 @@ export interface paths {
         patch: operations["rename_tenant_api_v1_platform_tenants__tenant_id__patch"];
         trace?: never;
     };
+    "/api/v1/platform/tenants/{tenant_id}/freeze": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Freeze Tenant
+         * @description An operator's freeze of one company, beside any of its own; the company
+         *     cannot lift it. 404 for an unknown company, 409 `already_frozen`.
+         */
+        post: operations["freeze_tenant_api_v1_platform_tenants__tenant_id__freeze_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/tenants/{tenant_id}/lock": {
         parameters: {
             query?: never;
@@ -1447,6 +1539,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform/tenants/{tenant_id}/unfreeze": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Unfreeze Tenant
+         * @description Lifts the operator's freeze of the company only, never the company's own
+         *     (D11); 409 `not_frozen` when no operator's freeze is open.
+         */
+        post: operations["unfreeze_tenant_api_v1_platform_tenants__tenant_id__unfreeze_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/tenants/{tenant_id}/unlock": {
         parameters: {
             query?: never;
@@ -1458,6 +1571,26 @@ export interface paths {
         put?: never;
         /** Unlock Tenant */
         post: operations["unlock_tenant_api_v1_platform_tenants__tenant_id__unlock_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/unfreeze": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Unfreeze Platform
+         * @description 409 `not_frozen` when no platform freeze is open.
+         */
+        post: operations["unfreeze_platform_api_v1_platform_unfreeze_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2560,6 +2693,17 @@ export interface components {
              */
             updated_at: string;
         };
+        /** ControlStateView */
+        ControlStateView: {
+            /** Freezes */
+            freezes: components["schemas"]["OpenFreezeView"][];
+            platform_freeze: components["schemas"]["OpenFreezeView"] | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "open" | "platform_frozen" | "tenant_frozen";
+        };
         /**
          * CreateDigitalWorkerRequest
          * @description Unknown fields are ignored, not refused: a `tenant_id` or `workspace_id`
@@ -2985,6 +3129,24 @@ export interface components {
             page_path?: string | null;
             /** Suggestion */
             suggestion?: string | null;
+        };
+        /** FreezeBody */
+        FreezeBody: {
+            /** Reason */
+            reason: string;
+            /**
+             * Reason Code
+             * @enum {string}
+             */
+            reason_code: "incident" | "maintenance" | "abuse" | "test" | "other";
+        };
+        /** FreezeView */
+        FreezeView: {
+            /**
+             * Switch Id
+             * Format: uuid
+             */
+            switch_id: string;
         };
         /** GrantMemberRequest */
         GrantMemberRequest: {
@@ -3500,6 +3662,21 @@ export interface components {
              */
             updated_at: string;
         };
+        /** OpenFreezeView */
+        OpenFreezeView: {
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "tenant" | "platform";
+            /** Reason Code */
+            reason_code: string;
+            /**
+             * Set At
+             * Format: date-time
+             */
+            set_at: string;
+        };
         /** OperatorView */
         OperatorView: {
             /**
@@ -3770,6 +3947,29 @@ export interface components {
              * @enum {string}
              */
             status: "active" | "unassigned" | "retired";
+        };
+        /** PlatformFreezeRequest */
+        PlatformFreezeRequest: {
+            /** Reason */
+            reason: string;
+            /**
+             * Reason Code
+             * @enum {string}
+             */
+            reason_code: "incident" | "maintenance" | "abuse" | "test" | "other";
+        };
+        /** PlatformFreezeView */
+        PlatformFreezeView: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+        };
+        /** PlatformUnfreezeRequest */
+        PlatformUnfreezeRequest: {
+            /** Reason */
+            reason?: string | null;
         };
         /**
          * Problem
@@ -4352,6 +4552,22 @@ export interface components {
             /** Type */
             type: string;
         };
+        /**
+         * UnfreezeRequestView
+         * @description The approval that lifts the freeze once a second person approves it.
+         */
+        UnfreezeRequestView: {
+            /**
+             * Approval Id
+             * Format: uuid
+             */
+            approval_id: string;
+            /**
+             * Status
+             * @default pending
+             */
+            status: string;
+        };
         /** UnsubscribeView */
         UnsubscribeView: {
             /** Channel */
@@ -4709,6 +4925,51 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    freeze_api_v1_admin_freeze_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FreezeBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FreezeView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     get_hierarchy_api_v1_admin_hierarchy_get: {
         parameters: {
             query?: never;
@@ -5538,6 +5799,47 @@ export interface operations {
             };
         };
     };
+    unfreeze_api_v1_admin_unfreeze_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnfreezeRequestView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     list_workspaces_api_v1_admin_workspaces_get: {
         parameters: {
             query?: never;
@@ -6312,6 +6614,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConnectionDetailView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    control_state_api_v1_control_state_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ControlStateView"];
                 };
             };
             /** @description The request was refused */
@@ -7999,6 +8339,48 @@ export interface operations {
             };
         };
     };
+    freeze_platform_api_v1_platform_freeze_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlatformFreezeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformFreezeView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     list_operators_api_v1_platform_operators_get: {
         parameters: {
             query?: never;
@@ -8441,6 +8823,50 @@ export interface operations {
             };
         };
     };
+    freeze_tenant_api_v1_platform_tenants__tenant_id__freeze_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlatformFreezeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformFreezeView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     lock_tenant_api_v1_platform_tenants__tenant_id__lock_post: {
         parameters: {
             query?: never;
@@ -8641,6 +9067,50 @@ export interface operations {
             };
         };
     };
+    unfreeze_tenant_api_v1_platform_tenants__tenant_id__unfreeze_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PlatformUnfreezeRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformFreezeView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     unlock_tenant_api_v1_platform_tenants__tenant_id__unlock_post: {
         parameters: {
             query?: never;
@@ -8658,6 +9128,44 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    unfreeze_platform_api_v1_platform_unfreeze_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlatformFreezeView"];
+                };
             };
             /** @description The request was refused */
             "4XX": {

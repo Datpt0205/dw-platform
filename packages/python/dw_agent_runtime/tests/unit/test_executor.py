@@ -14,6 +14,7 @@ from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.contracts import RunContext, ToolDefinition
 from dw_agent_runtime.dispatch import NotDispatchedError, OutcomeUnknownError, RejectedError
 from dw_agent_runtime.executor import DecisionCall, ToolExecutor
+from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_agent_runtime.tools import RegisteredTool, ToolRegistry, pydantic_behaviour
 from dw_kernel.errors import (
     ApprovalRequiredError,
@@ -115,6 +116,7 @@ def make_executor(
         claims=FakeToolClaims(store),
         steps=build_tool_executor_steps(),
         sleep=no_sleep,
+        run_control=OpenRunControl(),
     )
     return executor, store, uow_factory.audit_repo
 
@@ -644,6 +646,7 @@ async def test_a_secret_in_a_list_is_redacted_in_the_failure_audit() -> None:
         approval_policy=AutonomyApprovalPolicy(),
         claims=FakeToolClaims(store),
         steps=build_tool_executor_steps(),
+        run_control=OpenRunControl(),
     )
     with pytest.raises(NotDispatchedError):
         await executor.execute(

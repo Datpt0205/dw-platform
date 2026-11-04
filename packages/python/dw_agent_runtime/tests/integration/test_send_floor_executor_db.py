@@ -29,6 +29,7 @@ from dw_agent_runtime.adapters.wflite_host import build_send_floor, build_tool_e
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.contracts import MessageSpec, RunContext, ToolDefinition
 from dw_agent_runtime.executor import ToolExecutor
+from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_agent_runtime.tools import RegisteredTool, ToolRegistry, pydantic_behaviour
 from dw_kernel.errors import PermissionDeniedError
 from dw_kernel.ports import FixedClock, Uuid4Generator
@@ -130,6 +131,7 @@ def executor(app: AsyncEngine, tool: Tool, *, with_floor: bool = True) -> ToolEx
             clock=clock,
             ids=ids,
         ),
+        run_control=OpenRunControl(),
     )
 
 

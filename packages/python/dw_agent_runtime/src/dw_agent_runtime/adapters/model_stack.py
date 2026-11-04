@@ -53,6 +53,7 @@ from dw_agent_runtime.model.pricing import PricingPort
 from dw_agent_runtime.model.profiles import ModelProfileRegistry, Provider
 from dw_agent_runtime.model.prompts import PromptRegistry
 from dw_agent_runtime.model.single_call import SingleCallModelGateway
+from dw_agent_runtime.ports import RunControlPort
 from dw_kernel.net_guard import ensure_allowed_outbound_url
 from dw_kernel.ports import SystemClock, UtcClock
 from dw_kernel.resilience import CircuitBreaker
@@ -147,6 +148,7 @@ def build_model_stack(
     mock_fixtures_dir: Path,
     pricing: PricingPort,
     ledger: UsageRecorderPort,
+    run_control: RunControlPort,
 ) -> ModelStack:
     """`pricing` and `ledger` come from `dw_usage`, which this package may not
     import: the composition root builds both and passes them, so both processes
@@ -174,6 +176,8 @@ def build_model_stack(
         # not on the first model call.
         default_profile=profiles.resolve(config.model_profile).profile_id,
         pricing=pricing,
+        # The process's one port, the gateway's first door (agent-lifecycle R7.1).
+        run_control=run_control,
         budget=budget,
         clock=clock,
     )

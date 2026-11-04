@@ -25,6 +25,7 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, ConfigDict
 
+from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_usage.adapters.price_book_file import load_price_book
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -81,6 +82,7 @@ async def run() -> int:
         usage_recorder=InMemoryUsageRecorder(),
         default_profile=profiles.resolve(settings.model_profile).profile_id,
         pricing=load_price_book(),
+        run_control=OpenRunControl(),
     )
     context = RunContext(
         run_id=uuid.uuid4(),

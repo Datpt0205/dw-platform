@@ -65,6 +65,10 @@ GRANTS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("platform.tenant_role_permissions", "SELECT, INSERT", ()),
     ("platform.role_assignments", "SELECT, INSERT", ()),
     ("platform.permissions", "SELECT", ()),
+    # The operators' freezes, set and lifted by this role alone (8efd60e59d32,
+    # agent-lifecycle R7.4).
+    ("platform.control_switches", "SELECT, INSERT", ("lifted_at", "lifted_by", "lift_reason")),
+    ("platform.platform_freezes", "SELECT, INSERT", ("lifted_at", "lifted_by")),
 )
 
 

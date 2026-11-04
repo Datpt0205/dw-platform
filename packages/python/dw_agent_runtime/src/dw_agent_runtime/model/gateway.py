@@ -19,7 +19,8 @@ from dw_agent_runtime.model.budget import RunBudgetLedger, route_cost
 from dw_agent_runtime.model.pricing import CostSource, PricingPort
 from dw_agent_runtime.model.profiles import ModelProfile, ModelProfileRegistry, ModelRoute
 from dw_agent_runtime.model.prompts import PromptRegistry, RenderedPrompt
-from dw_agent_runtime.ports import ModelOutputInvalidError, ModelRequest, OutputT
+from dw_agent_runtime.ports import ModelOutputInvalidError, ModelRequest, OutputT, RunControlPort
+from dw_agent_runtime.run_control import RunControlDoor
 from dw_kernel.errors import InfrastructureError, NotFoundError, PriceNotFoundError
 from dw_kernel.ports import SystemClock, UtcClock
 
@@ -112,6 +113,10 @@ class RoutingModelGateway:
     # The price book (usage-and-limits R2.1), injected by the composition root;
     # the clock says when a call happened, which is what the book prices by.
     pricing: PricingPort
+    # The freeze and the kill (agent-lifecycle R7.1): the first door of every
+    # call, before the prompt is rendered; then the residency gate and the
+    # limits. Injected, never defaulted, as every door's is.
+    run_control: RunControlPort
     # Per-run ceiling from the profile's own `budgets`. Enforced here because
     # this is the only place every model call passes through.
     budget: RunBudgetLedger = field(default_factory=RunBudgetLedger)
@@ -159,6 +164,7 @@ class RoutingModelGateway:
         *,
         run_context: RunContext,
     ) -> tuple[OutputT, str]:
+        await self.run_control.require_open(run_context, door=RunControlDoor.MODEL)
         # The tenant comes from the run, never from the request: a caller that
         # could name the tenant whose prompt to render could read another
         # customer's wording.

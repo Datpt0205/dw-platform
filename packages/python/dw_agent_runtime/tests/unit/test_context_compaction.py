@@ -39,6 +39,7 @@ from dw_agent_runtime.model.budget import BudgetExceededError, RunBudgetLedger
 from dw_agent_runtime.model.copy import load_runtime_copy
 from dw_agent_runtime.registry import ConfigError
 from dw_agent_runtime.testing.pricing import FlatPricing
+from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_kernel.ports import FixedClock, SequentialIdGenerator
 from dw_platform.domain.audit import AuditEvent
 
@@ -98,6 +99,7 @@ def _compactor(
         summary_profile_id=PROFILE_ID,
         trigger=("messages", TRIGGER_MESSAGES),
         keep=("messages", KEEP_MESSAGES),
+        run_control=OpenRunControl(),
     )
     return middleware, repo
 
@@ -358,6 +360,7 @@ def test_it_refuses_a_copy_without_the_summary_text(older: str) -> None:
             summary_profile_id=PROFILE_ID,
             trigger=("messages", TRIGGER_MESSAGES),
             keep=("messages", KEEP_MESSAGES),
+            run_control=OpenRunControl(),
         )
 
 
@@ -564,6 +567,7 @@ def test_a_summary_route_without_an_input_budget_is_refused_at_build() -> None:
             summary_profile_id=PROFILE_ID,
             trigger=("messages", TRIGGER_MESSAGES),
             keep=("messages", KEEP_MESSAGES),
+            run_control=OpenRunControl(),
         )
 
 

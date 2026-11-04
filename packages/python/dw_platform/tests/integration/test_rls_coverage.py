@@ -717,6 +717,10 @@ _TENANT_WIDE_ON_PURPOSE: dict[tuple[str, str], str] = {
         "tầm dùng của một Kết nối vượt workspace theo thiết kế (connections-and-vault D1);"
         " workspace sở hữu là `owning_workspace_id`, giữ bởi khóa ghép RESTRICT"
     ),
+    ("platform", "control_switches"): (
+        "công tắc Đóng băng của cả công ty, hay Tắt khẩn của một thành phần toàn tenant; workspace"
+        " của thành phần là `owning_workspace_id`, RLS không đọc (agent-lifecycle ticket 01, DO-01)"
+    ),
     ("platform", "consent_records"): (
         "a person's consent is the controller's, the tenant (ADR-0124 decision 4): a "
         "withdrawal recorded in one workspace stops sends from every other"

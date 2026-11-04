@@ -18,6 +18,7 @@ from dw_agent_runtime.adapters.wflite_host import build_tool_executor_steps
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.executor import ToolExecutor
+from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_agent_runtime.tools import RegisteredTool, ToolRegistry, pydantic_behaviour
 from dw_kernel.errors import ConfigError, NotFoundError
 from dw_kernel.ids import TenantId
@@ -58,6 +59,7 @@ def executor(registry: ToolRegistry) -> ToolExecutor:
         approval_policy=AutonomyApprovalPolicy(),
         claims=FakeToolClaims(store),
         steps=build_tool_executor_steps(),
+        run_control=OpenRunControl(),
     )
 
 

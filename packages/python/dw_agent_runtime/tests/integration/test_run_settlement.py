@@ -36,6 +36,7 @@ from dw_agent_runtime.testing.demo_graph import (
     DemoState,
     build_demo_graph,
 )
+from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_kernel.errors import ConflictError
 from dw_kernel.pagination import PageQuery, PageRequest
 from dw_kernel.ports import SystemClock, Uuid4Generator
@@ -137,6 +138,7 @@ class RunnerStack:
             allowance=_UnmeteredPlan(),
             budget=RunBudgetLedger(),
             approval_policy=AutonomyApprovalPolicy(),
+            run_control=OpenRunControl(),
         )
 
     async def dispose(self) -> None:

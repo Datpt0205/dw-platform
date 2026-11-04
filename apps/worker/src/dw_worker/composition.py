@@ -45,6 +45,7 @@ from dw_agent_runtime.model.copy import load_runtime_copy
 from dw_agent_runtime.model.profiles import ModelProfileRegistry
 from dw_agent_runtime.model.prompts import PromptRegistry
 from dw_agent_runtime.model.run_policy import load_worker_run_policy
+from dw_agent_runtime.ports import RunControlPort
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.tool_specs import ToolSpecRegistry
 from dw_agent_runtime.tools import ToolRegistry
@@ -265,6 +266,7 @@ def build_model_stack_for(
     *,
     clock: UtcClock,
     telemetry: TelemetryPort,
+    run_control: RunControlPort,
 ) -> ModelStack:
     """The worker's model gateway, spend ledger and usage recorders, built by
     the same `build_model_stack` the API builds its own with: the profiles,
@@ -300,6 +302,7 @@ def build_model_stack_for(
             telemetry=telemetry,
             price_book_version=price_book.version,
         ),
+        run_control=run_control,
     )
 
 
@@ -324,6 +327,7 @@ def build_wflite_runtime(
     clock: UtcClock,
     ids: IdGenerator,
     telemetry: TelemetryPort,
+    run_control: RunControlPort,
 ) -> WfLiteRuntime:
     """The runner, executor and nodes the API builds for the same graphs
     (`dw_agent_runtime.adapters.wflite_host`): a run this process pauses on an
@@ -333,7 +337,9 @@ def build_wflite_runtime(
     No usage meter: it bills an agent loop's LangChain calls, and a workflow's
     model calls go through the gateway, which records its own usage into the
     daily spend guard and the usage ledger."""
-    stack = build_model_stack_for(settings, sessions, clock=clock, telemetry=telemetry)
+    stack = build_model_stack_for(
+        settings, sessions, clock=clock, telemetry=telemetry, run_control=run_control
+    )
     tools = ToolRegistry()
     approval_policy = AutonomyApprovalPolicy()
     executor = build_tool_executor(
@@ -352,6 +358,7 @@ def build_wflite_runtime(
             clock=clock,
             ids=ids,
         ),
+        run_control=run_control,
     )
     # The Marketing pack's tools, as the API registers them (leadcare R3).
     tool_specs = ToolSpecRegistry(copy=load_runtime_copy(CONFIGS / "copy" / RUNTIME_COPY))
@@ -406,6 +413,7 @@ def build_wflite_runtime(
         allowance=PlanEntitlementService(CachingPlanCatalog(SqlPlanCatalog(sessions), clock)),
         budget=stack.budget,
         approval_policy=approval_policy,
+        run_control=run_control,
         release_manifest_ref=read_release_manifest_ref(REPO_ROOT),
         telemetry=telemetry,
         spend_store=SqlSpendGuardStore(session_factory=sessions),

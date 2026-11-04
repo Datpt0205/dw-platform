@@ -88,7 +88,9 @@ from dw_agent_runtime.model.budget import RunBudgetLedger, route_cost
 from dw_agent_runtime.model.copy import RuntimeCopy
 from dw_agent_runtime.model.pricing import PricingPort
 from dw_agent_runtime.model.profiles import ModelProfileRegistry, ModelRoute
+from dw_agent_runtime.ports import RunControlPort
 from dw_agent_runtime.registry import ConfigError
+from dw_agent_runtime.run_control import RunControlDoor
 from dw_kernel.errors import PriceNotFoundError
 from dw_kernel.ids import TenantId, UserId, WorkspaceId
 from dw_kernel.ports import IdGenerator, UtcClock
@@ -127,6 +129,9 @@ class PlatformSummarizationMiddleware(SummarizationMiddleware):
         summary_profile_id: str,
         trigger: ContextSize,
         keep: ContextSize,
+        # The freeze before every summary call (agent-lifecycle R7.1): the
+        # process's one port, never a default.
+        run_control: RunControlPort,
     ) -> None:
         if (
             copy.context_summary_prompt is None
@@ -160,6 +165,7 @@ class PlatformSummarizationMiddleware(SummarizationMiddleware):
         self._clock = clock
         self._ids = ids
         self._budget = budget
+        self._run_control = run_control
         self._pricing = pricing
         self._profiles = profiles
         self._profile_id = profile_id
@@ -226,9 +232,10 @@ class PlatformSummarizationMiddleware(SummarizationMiddleware):
                 )
                 return None
             # Outside the fail-open block below, on purpose, and before EVERY
-            # call: a run over its ceiling must stop. Caught there, the refusal
-            # would read as "the summariser failed, carry on" and the ceiling
-            # would stop nothing.
+            # call: a frozen run and a run over its ceiling must stop. Caught
+            # there, the refusal would read as "the summariser failed, carry
+            # on" and neither would stop anything.
+            await self._run_control.require_open(run_context, door=RunControlDoor.COMPACTION)
             self._budget.check(run_context.run_id, profile.budgets, task=COMPACTION_TASK)
             try:
                 summary, input_tokens, output_tokens = await self._summarise(anchor, chunk)

@@ -18,6 +18,7 @@ from dw_agent_runtime.adapters.wflite_host import build_tool_executor_steps
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.executor import ToolExecutor
+from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_agent_runtime.tool_schema import check_profile, json_schema_behaviour
 from dw_agent_runtime.tools import RegisteredTool, ToolPayload, ToolRegistry
 from dw_kernel.errors import ConfigError, DomainError
@@ -74,6 +75,7 @@ def tenant_tool_executor(spy: Spy) -> tuple[ToolExecutor, FakeExecutionStore]:
         approval_policy=AutonomyApprovalPolicy(),
         claims=FakeToolClaims(store),
         steps=build_tool_executor_steps(),
+        run_control=OpenRunControl(),
     )
     return executor, store
 

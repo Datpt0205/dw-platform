@@ -26,6 +26,7 @@ from dw_agent_runtime.model.profiles import ModelProfileRegistry
 from dw_agent_runtime.model.prompts import PromptRegistry
 from dw_agent_runtime.ports import ModelOutputInvalidError, ModelRequest
 from dw_agent_runtime.testing.pricing import FlatPricing
+from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_agent_runtime.wflite import assistant_wire
 from dw_agent_runtime.wflite.assistant import (
     PROMPT_ID,
@@ -216,6 +217,7 @@ async def test_a_malformed_answer_is_invalid_after_the_gateways_retries(
         usage_recorder=InMemoryUsageRecorder(),
         default_profile="balanced",
         pricing=FlatPricing(),
+        run_control=OpenRunControl(),
     )
     request = ModelRequest(
         task="wf_ai.workflow_edit",

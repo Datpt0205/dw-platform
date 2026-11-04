@@ -51,6 +51,7 @@ from dw_agent_runtime.dispatch import (
     RejectedError,
 )
 from dw_agent_runtime.executor import ToolExecutor
+from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_agent_runtime.tools import RegisteredTool, ToolRegistry, pydantic_behaviour
 from dw_kernel.errors import ConflictError
 from dw_kernel.ports import SystemClock, Uuid4Generator
@@ -145,6 +146,7 @@ def _executor(
         approval_policy=AutonomyApprovalPolicy(),
         claims=claims or SqlToolClaims(sessions),
         steps=build_tool_executor_steps(),
+        run_control=OpenRunControl(),
     )
 
 

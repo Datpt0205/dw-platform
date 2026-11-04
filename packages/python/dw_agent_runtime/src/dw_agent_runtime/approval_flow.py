@@ -26,7 +26,8 @@ from dw_agent_runtime.adapters.run_store import (
     resume_context,
 )
 from dw_agent_runtime.contracts import RunContext
-from dw_agent_runtime.ports import RunGraphsPort, WorkflowRunnerPort
+from dw_agent_runtime.ports import RunControlPort, RunGraphsPort, WorkflowRunnerPort
+from dw_agent_runtime.run_control import RunControlDoor
 from dw_kernel.errors import ConflictError, DomainError, NotFoundError
 from dw_kernel.ids import UserId
 from dw_kernel.ports import IdGenerator, UtcClock
@@ -97,6 +98,12 @@ class ApproveAndResumeService:
     run_store: SqlWorkerRunStore
     clock: UtcClock
     id_generator: IdGenerator
+    # Asked before a decision on a paused run is written (agent-lifecycle
+    # R7.14): under a freeze or a kill the decision is refused, the request
+    # stays pending and the run waiting. A run-less request (an unfreeze, a
+    # revive, a publish) does not pass this door, so lifting a freeze can be
+    # decided while it holds. Injected, never defaulted.
+    run_control: RunControlPort
     strict_approval_prefixes: frozenset[str] = frozenset()
     # Keyed by the exact approval type. Checked where the decision is made,
     # before anything is written: a rule the inbox merely hides a button for is
@@ -323,6 +330,13 @@ class ApproveAndResumeService:
                 authorization=authorization,
             )
             record = await self._resumable_run(context, request)
+            if record is not None:
+                # "keep paused runs paused and refuse decisions on them"
+                # (ADR-0120 decision 7): 409 before anything is written.
+                await self.run_control.require_open(
+                    resume_context(record, tenant_id=context.tenant_id, channel=channel),
+                    door=RunControlDoor.DECIDE,
+                )
             if edited_proposal is not None:
                 self._check_edit(request, approve, edited_proposal)
             type_admission = self.type_admissions.get(request.approval_type)

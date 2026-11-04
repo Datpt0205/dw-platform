@@ -35,6 +35,7 @@ from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.testing.demo_graph import DEMO_WORKER_YAML, build_demo_graph
 from dw_agent_runtime.testing.pricing import FlatPricing
+from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_agent_runtime.tools import RegisteredTool, ToolRegistry, pydantic_behaviour
 from dw_kernel.autonomy import AutonomyLevel
 from dw_kernel.ports import FixedClock, SequentialIdGenerator
@@ -73,6 +74,7 @@ def _spec(
         approval_policy=AutonomyApprovalPolicy(),
         claims=FakeToolClaims(store),
         steps=build_tool_executor_steps(),
+        run_control=OpenRunControl(),
     )
     return AgentSpec(
         model=model,
@@ -269,6 +271,7 @@ def _runner(tmp_path: Path, store: _CapturingRunStore) -> LangGraphWorkflowRunne
         allowance=_UnmeteredPlan(),
         budget=RunBudgetLedger(),
         approval_policy=AutonomyApprovalPolicy(),
+        run_control=OpenRunControl(),
     )
 
 

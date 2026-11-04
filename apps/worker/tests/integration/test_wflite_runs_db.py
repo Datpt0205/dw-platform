@@ -53,6 +53,7 @@ from dw_agent_runtime.contracts import RunContext, ToolDefinition
 from dw_agent_runtime.executor import DecisionCall, ToolExecutor
 from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
+from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_agent_runtime.tools import RegisteredTool, ToolRegistry, pydantic_behaviour
 from dw_agent_runtime.wflite.catalog import PackCatalog
 from dw_agent_runtime.wflite.waits import WorkQueueRunWaits
@@ -245,6 +246,7 @@ def build(
         ids=ids,
         # The tools here are not message tools; the floor is ticket 08's test.
         send_admission=None,
+        run_control=OpenRunControl(),
     )
     queue = WorkQueue(
         repo=SqlWorkQueueRepository(sessions),
@@ -274,6 +276,7 @@ def build(
         budget=budget,
         approval_policy=policy,
         run_waits=WorkQueueRunWaits(queue),
+        run_control=OpenRunControl(),
     )
     # A tenant's published version registers on its run's first use (wf-ai
     # R6.5), as both roots wire it.
@@ -302,6 +305,7 @@ def build(
         type_admissions={DW_DECISION: DwDecisionAdmission()},
         proposal_editors={DW_DECISION: check_edited_proposal},
         run_graphs=runner.run_graphs,
+        run_control=OpenRunControl(),
     )
     return Stack(
         runner=runner,

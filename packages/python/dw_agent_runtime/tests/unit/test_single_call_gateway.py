@@ -25,6 +25,7 @@ from dw_agent_runtime.model.prompts import PromptArtifact, PromptRegistry
 from dw_agent_runtime.model.single_call import SingleCallModelGateway
 from dw_agent_runtime.ports import ModelOutputInvalidError, ModelRequest
 from dw_agent_runtime.testing.pricing import FlatPricing
+from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_kernel.errors import QuotaExceededError
 
 pytestmark = pytest.mark.unit
@@ -111,6 +112,7 @@ def _gateways(adapter: MockModelAdapter) -> tuple[RoutingModelGateway, RunBudget
         default_profile="balanced",
         pricing=FlatPricing(),
         budget=ledger,
+        run_control=OpenRunControl(),
     )
     return gateway, ledger
 

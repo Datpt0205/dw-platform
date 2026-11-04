@@ -27,6 +27,7 @@ from asgi_lifespan import LifespanManager
 
 from dw_agent_runtime.approval_codes import ApprovalViewService
 from dw_agent_runtime.approval_flow import ApproveAndResumeService
+from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_api.bootstrap import ApiContainer
 from dw_api.health import CheckState, HealthService
 from dw_api.main import create_app
@@ -235,6 +236,7 @@ def make_container(
             run_store=None,  # type: ignore[arg-type]
             clock=SystemClock(),
             id_generator=Uuid4Generator(),
+            run_control=OpenRunControl(),
         ),
     )
 

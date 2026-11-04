@@ -63,6 +63,7 @@ from dw_agent_runtime.adapters.langchain_tools import (
 from dw_agent_runtime.adapters.model_retry import ModelRetryMiddleware
 from dw_agent_runtime.adapters.recalled_memory import MemoryRecallPort, RecalledMemoryMiddleware
 from dw_agent_runtime.adapters.run_budget import RunBudgetMiddleware
+from dw_agent_runtime.adapters.run_control_middleware import RunControlMiddleware
 from dw_agent_runtime.adapters.sub_agents import SubAgentSpec, sub_agent_middleware
 from dw_agent_runtime.adapters.system_prompt import WorkerSystemPrompt
 from dw_agent_runtime.contracts import RunContext, ToolDefinition
@@ -210,6 +211,9 @@ def platform_middleware(spec: AgentSpec) -> list[AgentMiddleware[Any, Any]]:
         # wrapper and the executor cannot disagree about a call.
         OneApprovalPerStepMiddleware(offered, copy=spec.copy, approvals=spec.executor),
         PlatformToolErrorsMiddleware(offered, copy=spec.copy),
+        # The freeze at the model call (agent-lifecycle R7.1): the executor's
+        # own port, the one instance this process asks at every door.
+        RunControlMiddleware(spec.executor.run_control),
         # The only ceiling on the path that can loop. Without it an agent run is
         # bounded by `recursion_limit`, which counts steps and not money.
         RunBudgetMiddleware(spec.budget, spec.profiles, spec.profile_id, spec.pricing),
@@ -240,6 +244,7 @@ def platform_middleware(spec: AgentSpec) -> list[AgentMiddleware[Any, Any]]:
                 summary_profile_id=spec.compaction.summary_profile_id,
                 trigger=spec.compaction.trigger,
                 keep=spec.compaction.keep,
+                run_control=spec.executor.run_control,
             )
         )
     return stack

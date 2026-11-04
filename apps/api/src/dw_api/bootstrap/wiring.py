@@ -37,6 +37,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from dw_agent_runtime.adapters.run_control import SqlRunControl
 from dw_agent_runtime.adapters.run_events import RunStateListener
 from dw_agent_runtime.adapters.run_store import SqlWorkerRunStore
 from dw_agent_runtime.adapters.spend_guard import SqlSpendGuardStore
@@ -45,6 +46,7 @@ from dw_agent_runtime.adapters.wflite_host import build_pinned_workflows, load_h
 from dw_agent_runtime.allowance import DailyAllowance
 from dw_agent_runtime.approval_codes import ApprovalViewService
 from dw_agent_runtime.model.run_policy import load_worker_run_policy
+from dw_agent_runtime.run_control import lane_actors
 from dw_agent_runtime.wflite.assistant import WorkflowAssistant
 from dw_agent_runtime.wflite.catalog import ShippedToolSpecs, load_shipped_packs
 from dw_agent_runtime.wflite.drafts import WorkflowDrafts
@@ -75,6 +77,10 @@ from dw_platform.adapters.persistence.caching_lookup import CachingMembershipLoo
 from dw_platform.adapters.persistence.channel_inbound import SqlChannelUpdateQueue
 from dw_platform.adapters.persistence.channel_preferences import SqlChannelPreferences
 from dw_platform.adapters.persistence.connections_repo import SqlConnectionStore
+from dw_platform.adapters.persistence.control_switches_repo import (
+    SqlControlSwitchRepository,
+    SqlPlatformFreezeRepository,
+)
 from dw_platform.adapters.persistence.digital_workers_repo import (
     SqlDecisionLevels,
     SqlDigitalWorkerRepository,
@@ -127,6 +133,11 @@ from dw_platform.application.connection_admin import (
     NoConnectionDependents,
 )
 from dw_platform.application.connections import ConnectionUsability, NoConnectorCatalog
+from dw_platform.application.control_switches import (
+    LIFECYCLE_PREFIX,
+    ControlSwitchService,
+    PlatformFreezeService,
+)
 from dw_platform.application.decision_gate import DW_DECISION, DwProposalMask
 from dw_platform.application.digital_workers import DecisionAutonomy, DigitalWorkerService
 from dw_platform.application.dw_autonomy import DwAutonomyService
@@ -411,12 +422,15 @@ def _build_container(
             settings.provisioner_database_url, pool_pre_ping=True
         )
         container.provisioner_engine = provisioner_engine
+        provisioner_sessions = async_sessionmaker(
+            provisioner_engine, class_=AsyncSession, expire_on_commit=False
+        )
         container.provisioning = ProvisioningService(
-            repo=SqlProvisioningRepository(
-                async_sessionmaker(provisioner_engine, class_=AsyncSession, expire_on_commit=False)
-            ),
-            clock=clock,
-            ids=ids,
+            repo=SqlProvisioningRepository(provisioner_sessions), clock=clock, ids=ids
+        )
+        # The operators' freezes, which no company can lift (agent-lifecycle R7.4).
+        container.platform_freezes = PlatformFreezeService(
+            repo=SqlPlatformFreezeRepository(provisioner_sessions), clock=clock, ids=ids
         )
 
     # ---- runs ------------------------------------------------------------
@@ -435,6 +449,23 @@ def _build_container(
     # asyncpg directly: a listening connection never returns to a pool, and
     # SQLAlchemy's URL prefix is not a DSN asyncpg accepts.
     container.run_events = RunStateListener(_asyncpg_dsn(settings.database_url))
+    # The freeze and the kill (agent-lifecycle R7, R9; ADR-0120 decision 6):
+    # one instance for every door of this process, the runtime's below too;
+    # past this gate because the freeze routes need Postgres alone.
+    run_control = SqlRunControl(
+        session_factory,
+        clock=clock,
+        telemetry=telemetry,
+        listen_dsn=_asyncpg_dsn(settings.database_url),
+        system_actors=lane_actors(),
+    )
+    container.run_control = run_control
+    container.control_switches = ControlSwitchService(
+        repo=SqlControlSwitchRepository(session_factory),
+        authz=authorization,
+        clock=clock,
+        id_generator=ids,
+    )
 
     # ---- object storage --------------------------------------------------
     minio = build_minio_client(settings)
@@ -461,6 +492,7 @@ def _build_container(
         telemetry=telemetry,
         clock=clock,
         ids=ids,
+        run_control=run_control,
     )
     container.runtime = wiring.seam
     container.run_trails = wiring.run_trails
@@ -472,6 +504,10 @@ def _build_container(
     # Enabling a connection again takes a second person (connections-and-vault
     # R5.11; D11), here as in the worker.
     wiring.approval_flow.strict_approval_prefixes |= {CONNECTIONS_ENABLE}
+    # Lifting a company's freeze, and from ticket 05 reviving a killed
+    # component, takes a second person (agent-lifecycle R7.11; D11), here as
+    # in the worker.
+    wiring.approval_flow.strict_approval_prefixes |= {LIFECYCLE_PREFIX}
     # The portal half of a decision on Zalo (ADR 0007, channels Z5): the view
     # receipt and the single-use code. A context registers who answers for its
     # approval types' subject version on `approval_subjects` at the seam below

@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async
 from sqlalchemy.pool import NullPool
 
 from dw_agent_runtime.approval_flow import ApproveAndResumeService
+from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_kernel.errors import ConflictError, DomainError
 from dw_kernel.ports import SystemClock, Uuid4Generator
 from dw_platform.adapters.persistence.digital_workers_repo import SqlDwBoundary
@@ -166,6 +167,7 @@ def flow(app: AsyncEngine) -> ApproveAndResumeService:
         id_generator=Uuid4Generator(),
         type_admissions={DW_DECISION: DwDecisionAdmission()},
         proposal_editors={DW_DECISION: check_edited_proposal},
+        run_control=OpenRunControl(),
     )
 
 

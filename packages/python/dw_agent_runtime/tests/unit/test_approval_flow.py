@@ -13,6 +13,7 @@ from dw_agent_runtime.approval_flow import (
     DecisionGuard,
 )
 from dw_agent_runtime.contracts import RunContext
+from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_kernel.autonomy import AutonomyLevel
 from dw_kernel.errors import ConflictError, NotFoundError, PermissionDeniedError
 from dw_kernel.ids import TenantId, UserId, WorkspaceId
@@ -231,6 +232,7 @@ def make_service(
         id_generator=SequentialIdGenerator(),
         strict_approval_prefixes=prefixes,
         decision_guards=guards or {},
+        run_control=OpenRunControl(),
     )
 
 
