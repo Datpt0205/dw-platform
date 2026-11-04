@@ -1,7 +1,7 @@
 # 03 — Biên dịch cây Bước sang StateGraph, làn lỗi, cache LRU và wrapper nút
 
 Status: needs-triage
-Blocked by: 01, 02, .claude/plans/studio/record-access/issues/04-ngu-canh-actor-o-moi-cua.md, .claude/plans/studio/discovery/issues/14-workflow-runtime.md, .claude/plans/studio/telemetry-and-audit/issues/01-otel-khong-noi-dung-va-metric.md
+Blocked by: 01, 02, .claude/plans/studio/agent-lifecycle/issues/01-dong-bang-va-kiem-o-moi-cua.md, .claude/plans/studio/record-access/issues/04-ngu-canh-actor-o-moi-cua.md, .claude/plans/studio/discovery/issues/14-workflow-runtime.md, .claude/plans/studio/telemetry-and-audit/issues/01-otel-khong-noi-dung-va-metric.md
 Area: studio
 Yêu cầu: R1.7, R3.13, R3.14, R3.15, R3.16, R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R4.7, R4.8, R4.9, R4.10, R4.11, R4.12, R4.13, R4.21, R4.22, R4.23, R4.24, R4.25, R4.26, R4.27, R4.28, R4.29, R6.28, R7.1, WE5, WE7, WE13, WE23, WE26, WE37, WE38, WE39, WE40, WE45
 
