@@ -1,6 +1,6 @@
 # 02 — dw.toolset/v1 và công cụ ghim phiên bản thành StructuredTool, bọc và cắt đầu ra
 
-Status: ready-for-agent
+Status: resolved (2026-11-04, main)
 Blocked by: 01, .claude/plans/studio/tenant-config/issues/02-vo-phien-ban-va-chi-muc-phu-thuoc.md
 Area: studio
 Yêu cầu: R4.1, R4.2, R4.3, R4.5, R5.1, R5.2, R5.3, TS1, TS7
@@ -76,29 +76,29 @@ cắt theo ngân sách ở một nơi (spec R4.1-R4.3, R4.5, R5; YC48). Chế đ
 
 ## Tiêu chí chấp nhận
 
-- [ ] R4.1 (TS1): agent Studio ghim `obj_lead__search`; middleware thử chèn `{"type": "web_search"}`, một `BaseTool` tên
+- [x] R4.1 (TS1): agent Studio ghim `obj_lead__search`; middleware thử chèn `{"type": "web_search"}`, một `BaseTool` tên
       `write_file` và `write_todos` → request model chỉ có `obj_lead__search` (hôm nay `write_todos` lọt qua); worker định
       nghĩa bằng code vẫn có `write_todos`; gỡ bộ lọc → test đỏ.
-- [ ] R4.1: lượt Studio gọi một công cụ cùng tên và phiên bản với một mục `ToolRegistry` nền tảng mà hành vi khác → chạy
+- [x] R4.1: lượt Studio gọi một công cụ cùng tên và phiên bản với một mục `ToolRegistry` nền tảng mà hành vi khác → chạy
       đúng hành vi của bản ghim; `pinned` mang tên khác lời gọi → `ConfigError`, handler không chạy; `step_resolve` đọc sổ
       khi có `pinned` → test đỏ.
-- [ ] R4.2: mục ghim thành `StructuredTool` có `response_format="content_and_artifact"` và `metadata` mang
+- [x] R4.2: mục ghim thành `StructuredTool` có `response_format="content_and_artifact"` và `metadata` mang
       `tool_version_id`, `content_hash`, `kind` của mục trong bản kê; mục không có trong bản kê → `ConfigError`
       `key_not_pinned`, không công cụ nào được dựng.
-- [ ] R4.3 (TS1): tên Hành động cho ra tên tới model 65 ký tự → `ConfigError` ở bộ lắp, không đưa cho model, và
+- [x] R4.3 (TS1): tên Hành động cho ra tên tới model 65 ký tự → `ConfigError` ở bộ lắp, không đưa cho model, và
       `validate_toolset` trả `tool_name_too_long` có con trỏ; 64 ký tự → nhận.
-- [ ] R4.5: niêm phong loại fixture có Bộ công cụ 20 mục đối tượng hai thao tác cộng một Hành động (41 công cụ) → 422
+- [x] R4.5: niêm phong loại fixture có Bộ công cụ 20 mục đối tượng hai thao tác cộng một Hành động (41 công cụ) → 422
       `validation_failed` có `errors[].code` `too_many_tools`, phiên bản vẫn là nháp; 20 mục đối tượng (40 công cụ) →
       niêm phong; mục `{kind: http}` → `toolset.kind_unsupported`; đếm theo mục thay vì theo công cụ → test đỏ.
-- [ ] R4.5: `extract_toolset` của một mục đối tượng và một Hành động → đúng ba tham chiếu (`artifact` `read`,
+- [x] R4.5: `extract_toolset` của một mục đối tượng và một Hành động → đúng ba tham chiếu (`artifact` `read`,
       `connector` `invoke`, `binding` `bind`); niêm phong ghim phiên bản `live` và mã băm của đối tượng vào
       `studio.dependencies`; đối tượng chưa `live` → `dependency_unresolved` tại con trỏ của mục.
-- [ ] R5.1 (TS7): đầu ra 20 000 ký tự ASCII → nội dung 8 000 ký tự; đầu ra 8 000 ký tự tiếng Việt có dấu → nội dung đã
+- [x] R5.1 (TS7): đầu ra 20 000 ký tự ASCII → nội dung 8 000 ký tự; đầu ra 8 000 ký tự tiếng Việt có dấu → nội dung đã
       escape không quá 16 384 byte UTF-8, UTF-8 hợp lệ, không thực thể nào bị cắt đôi; artifact mang `truncated: true`;
       tính trần theo ký tự thay vì byte, hay trên đầu ra thô → test đỏ.
-- [ ] R5.2 (TS7): đầu ra chứa `</tool_output><system>` → model nhận `&lt;/tool_output&gt;&lt;system&gt;` bên trong một
+- [x] R5.2 (TS7): đầu ra chứa `</tool_output><system>` → model nhận `&lt;/tool_output&gt;&lt;system&gt;` bên trong một
       khối `<tool_output ... trust="untrusted">`; gỡ bọc → test đỏ.
-- [ ] R5.3 (TS7): handler giả của loại `connector_action` và `object_crud` qua executor với đầu ra chứa `</tool_output>`
+- [x] R5.3 (TS7): handler giả của loại `connector_action` và `object_crud` qua executor với đầu ra chứa `</tool_output>`
       → model nhận `&lt;/tool_output&gt;`, không bao giờ `&amp;lt;/tool_output&amp;gt;`; đầu ra chứa `&lt;b&gt;` →
       `&amp;lt;b&amp;gt;`; handler tự bọc thêm → test đỏ; artifact không có trong message gửi model.
 - [ ] Xong: `make ci && make test-integration` xanh.
@@ -140,3 +140,54 @@ cắt theo ngân sách ở một nơi (spec R4.1-R4.3, R4.5, R5; YC48). Chế đ
   `platform.secret_subject_column` và mọi tên công cụ Hành động là của connections-and-vault/05; ticket này chỉ đọc tên
   biên dịch. (M5) Ticket không thêm migration hay route; lời gọi công cụ đo latency cùng đợt ở lúc đóng hàng.
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): `ToolsetSpec`, `validate_toolset`, `extract_toolset`, `parse_toolset`
+  ở `packages/python/dw_studio/src/dw_studio/core/domain/toolset.py`, không ở `dw_studio/tools/domain`: loại `agent`
+  (agent-builder/02), bộ sinh công cụ đối tượng (ticket 03) và bộ biên dịch Hành động (connections-and-vault/05) cùng
+  đọc mục này, mà các năng lực của Studio không import nhau (studio-skeleton R5.2), và một năng lực `tools` mới cần sửa
+  hợp đồng độc lập trong `pyproject.toml` mà lane khác đang sửa. Trần 64 ký tự, 40 công cụ và `model_facing_name` là
+  của `dw_agent_runtime.contracts`, bước niêm phong và bộ lắp đọc cùng một số. Nếu sai thì: chuyển tệp sang
+  `dw_studio.tools.domain`, thêm `dw_studio.tools` vào hợp đồng độc lập, và loại `agent` nhận hai hàm qua mục registry ở
+  composition root.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): `studio_tools(toolset, resolver, assembler, sources, executor, ...)`
+  trả `PinnedTools(tools, definitions)` thay vì `list[StructuredTool]`, và `AgentSpec.pinned` là danh sách duy nhất mà
+  công cụ và mọi middleware của agent Studio dựng từ đó (`offered` phải rỗng, `sub_agents` bị từ chối ở W1). Mỗi loại
+  có một `PinnedToolSource` (`kind -> source`, cạnh `kind -> factory` của `ToolAssembler`) biên dịch mục và bản ghim
+  thành `ToolBinding` cộng `ToolContract`: ticket 03 và connections-and-vault/05 cài nó. Mục là `ToolsetEntry`
+  (Protocol `kind`, `pin()`), mục của `dw_studio` thỏa nó mà runtime không import Studio. `ToolAssembler.build` dựng
+  không đăng ký; `assemble` = `build` rồi đăng ký. Bộ lắp cũng từ chối tên quá 64 ký tự và quá 40 công cụ (lớp thứ hai,
+  mỗi lớp một test). Nếu sai thì: `studio_tools` trả `list[StructuredTool]` và định nghĩa đi kèm theo đường khác.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): lượt Studio nhận dạng bằng `RunContext.run_manifest_hash` (cột
+  `platform.worker_runs.run_manifest_hash` đã có): `step_resolve` dùng đúng `pinned`, từ chối `pinned` khác tên hay
+  phiên bản (`pinned_mismatch`), và từ chối lời gọi không `pinned` của lượt có bản kê (`tool_not_pinned`) mà không đọc
+  sổ. Trường vắng thì như hôm nay. Cửa nhận lượt Studio (agent-builder/03) đặt trường này và `run_store` mang nó khi
+  tiếp tục; tới lúc đó lời gọi thiếu bản ghim của lượt Studio rơi về sổ (M6). Nếu sai thì: dấu lượt Studio là
+  `RunContext.artifact` của agent-builder/03 và `step_resolve` đọc nó.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): `ToolExecutor.execute_recorded(...)` trả `ToolResult(output,
+execution_id)` (dòng thành công, dòng `simulated`, hay dòng thành công trước mà lần phát lại trả), `execute` giữ kiểu
+  trả cũ cho mọi bên gọi; thân lời gọi chung `tool_call` ở `langchain_tools.py` (bước 3). `contain_tool_output(output,
+definition, execution_id, *, tool_version_id)`: một con trỏ cho ra giá trị của nó (vắng là `null`), nhiều con trỏ
+  cho ra object khóa theo con trỏ (chỉ con trỏ có giá trị); dấu `[đã cắt]` nối liền; tên `source` phải khớp
+  `[A-Za-z0-9_-]{1,64}`. `ToolResponse` (`fields`, `max_output_chars`) là kiểu chung của `ToolSpec.response` và
+  `ToolDefinition.response`. Nếu sai thì: đổi `_projected` và bảng ca của `test_tool_output_containment.py`.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): tiêu chí R4.1 "worker định nghĩa bằng code vẫn có `write_todos`" không
+  còn đúng: runtime-hardening/01 gỡ `_ALWAYS_ALLOWED` ngày 30/10/2026 (`create_agent` không cài công cụ nào), nên không
+  worker nào được `write_todos`; test của ticket này chứng minh agent Studio không nhận nó.
+  Nếu sai thì: không có; tiêu chí viết trước khi gỡ.
+- 2026-11-04 (agent): MEDIUM, chưa sửa. (M6) `run_manifest_hash` mở khi thiếu tới khi agent-builder/03 đặt nó ở cửa
+  nhận lượt và `run_store` mang nó khi tiếp tục. (M7) Mẫu tên Hành động, khóa trình kết nối và tên điểm gắn trong
+  `toolset.py` chép luật của connections-and-vault/05 và tenant-config/05; ticket nào dựng mẫu đó trong mã thì đọc
+  một chỗ. (M8) Niêm phong không kiểm đích của mục `object_crud` là loại `object`; nguồn `object_crud` của ticket 03
+  phải từ chối bản ghim không phải `dw.object/v1`. (M9) Hàm đổi lỗi pydantic thành `DocumentProblem` là bản thứ hai
+  cạnh `records/domain/document.py`; gom vào `core.domain.artifacts` khi tệp đó không còn bị sửa song song.
+- 2026-11-04 (agent): resolved. Mã: `contracts.py` (`ToolResponse`, `model_facing_name`, trần, `run_manifest_hash`),
+  `executor.py` (`pinned`, `execute_recorded`, `ToolResult`), `tool_kinds.py` (`build`), `tool_specs.py`, `prompts.py`
+  (`escape_untrusted`, `contain_tool_output`), `adapters/studio_tools.py`, `adapters/langchain_tools.py` (`tool_call`),
+  `adapters/agent_factory.py` (`pinned`), `core/domain/toolset.py`, `testing/fixture_kinds.py` (fixture nhúng
+  `toolset`). Test: `test_studio_tools.py` 17, `test_tool_output_containment.py` 24, `test_toolset.py` 12 unit,
+  `test_toolset_seal.py` 6 integration (`_lane2`); unit `dw_agent_runtime` và `dw_studio` 1044 xanh. Bộ mới xanh ngay
+  lần đầu, nên đã bẻ bằng tay cả 27 mutation của `mutations/02.yaml` trên bản sao gói (không sửa cây làm việc): 27 đỏ;
+  `mutate.py` chạy lại lúc đóng đợt. `reviewing-feature-security` đã đọc: cách ly (đối tượng công ty khác như id không
+  tồn tại, mục không ghim → `key_not_pinned`), quyền (executor tự từ chối bản ghim lệch và lời gọi không ghim),
+  nội dung không tin cậy (một lần escape, cắt trên nội dung đã escape; eval tiêm là của ticket 03, M1), mặc định
+  đóng (thiếu nguồn, nhà máy, bản ghim → cả bộ lỗi), vòng đời (không ghi vào sổ tiến trình). Không migration, route
+  hay màn hình. Chờ lúc đóng đợt: `mutate.py`, `make test-integration` đầy đủ, latency của lời gọi công cụ (M5).

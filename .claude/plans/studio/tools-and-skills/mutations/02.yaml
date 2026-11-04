@@ -1,0 +1,205 @@
+# Mutation check of tools-and-skills ticket 02: scripts/mutate.py runs this file.
+# One mutation per control (R4.1-R4.3, R4.5, R5.1-R5.3; TS1, TS7) and per layer
+# that holds one: the seal (`validate_toolset`) and the assembler
+# (`studio_tools`) for the name and the ceiling, the assembler and the executor
+# for what a Studio run may call (failure-modes #3, #5).
+mutations:
+  # ---------------------------------------------------------------- R4.1 --
+  - name: R4.1 the offered-tools filter is gone from the stack
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/agent_factory.py
+    old: "        OfferedToolsOnlyMiddleware(offered),\n"
+    new: ""
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_tools.py::test_a_studio_agent_offers_the_model_only_its_pinned_tools
+  - name: R4.1 resolve reads the registry for a pinned tool
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py
+    old: "            call.tool = pinned\n"
+    new: "            call.tool = self.registry.resolve(call.name, call.version, tenant_id=None)\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_tools.py::test_a_studio_call_runs_its_pinned_behaviour_not_the_registrys
+  - name: R4.1 a pinned tool of another name or version is taken
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py
+    old: "            if (pinned.definition.name, pinned.definition.version) != (call.name, call.version):"
+    new: "            if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_tools.py::test_a_pinned_tool_that_is_not_the_one_called_runs_nothing
+  - name: R4.1 a Studio run's unpinned call falls back to the registry
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py
+    old: "        if call.run_context.run_manifest_hash is not None:"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_tools.py::test_a_studio_run_asking_for_a_tool_it_did_not_pin_is_refused_at_the_executor
+  - name: R4.1 the assembler registers what a run pinned
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/studio_tools.py
+    old: "            registered = assembler.build(compiled.binding, compiled.contract)"
+    new: "            registered = assembler.assemble(compiled.binding, compiled.contract, tenant_id=None)"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_tools.py::test_a_pinned_entry_becomes_a_structured_tool_with_its_pin_in_metadata
+      - packages/python/dw_studio/tests/integration/test_toolset_seal.py::test_a_sealed_toolset_builds_from_the_run_manifest_with_its_pins
+  - name: R4.1 the call body does not hand the executor its pin
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langchain_tools.py
+    old: "            pinned=registered if pinned else None,"
+    new: "            pinned=None,"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_tools.py::test_the_artifact_stays_beside_the_message_and_never_reaches_the_model
+  # ---------------------------------------------------------------- R4.2 --
+  - name: R4.2 an entry the manifest does not pin is skipped
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/studio_tools.py
+    old: "        pinned = resolver.resolve(*entry.pin())\n"
+    new: |2
+              try:
+                  pinned = resolver.resolve(*entry.pin())
+              except ConfigError:
+                  continue
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_tools.py::test_an_entry_the_manifest_does_not_pin_builds_no_tool_at_all
+  - name: R4.2 the tool answers content only
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/studio_tools.py
+    old: '        response_format="content_and_artifact",'
+    new: '        response_format="content",'
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_tools.py::test_a_pinned_entry_becomes_a_structured_tool_with_its_pin_in_metadata
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_tools.py::test_the_artifact_stays_beside_the_message_and_never_reaches_the_model
+  - name: R4.2 the metadata names the object, not its pinned version
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/studio_tools.py
+    old: "        version_id = str(pinned.artifact.id) if pinned.artifact is not None else pinned.key"
+    new: "        version_id = pinned.key"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_tools.py::test_a_pinned_entry_becomes_a_structured_tool_with_its_pin_in_metadata
+      - packages/python/dw_studio/tests/integration/test_toolset_seal.py::test_a_sealed_toolset_builds_from_the_run_manifest_with_its_pins
+  # ---------------------------------------------------------------- R4.3 --
+  - name: R4.3 the assembler lets a long name reach the model
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/studio_tools.py
+    old: "    if len(exposed) > MAX_TOOL_NAME_CHARS:"
+    new: "    if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_tools.py::test_a_65_character_name_is_refused_and_64_reaches_the_model
+  - name: R4.3 the seal lets a long action name through
+    file: packages/python/dw_studio/src/dw_studio/core/domain/toolset.py
+    old: "        if isinstance(entry, ConnectorActionEntry) and len(entry.tool_name()) > MAX_TOOL_NAME_CHARS:"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_toolset.py::test_an_action_whose_tool_name_passes_64_characters_is_refused_at_seal
+  # ---------------------------------------------------------------- R4.5 --
+  - name: R4.5 the ceiling counts entries, not tools
+    file: packages/python/dw_studio/src/dw_studio/core/domain/toolset.py
+    old: "        for key in entry.tool_keys():\n            count += 1\n"
+    new: "        count += 1\n        for key in entry.tool_keys():\n"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_toolset.py::test_forty_tools_are_taken_and_forty_one_are_too_many
+      - packages/python/dw_studio/tests/integration/test_toolset_seal.py::test_forty_one_tools_are_refused_at_seal_and_forty_are_sealed
+  - name: R4.5 a kind outside W1 is parsed as an object entry
+    file: packages/python/dw_studio/src/dw_studio/core/domain/toolset.py
+    old: "        model = _ENTRY_MODELS.get(kind) if isinstance(kind, str) else None"
+    new: "        model = _ENTRY_MODELS.get(kind, ObjectCrudEntry) if isinstance(kind, str) else None"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_toolset.py::test_a_kind_outside_w1_is_unsupported_at_its_kind
+  - name: R4.5 two entries giving one tool pass
+    file: packages/python/dw_studio/src/dw_studio/core/domain/toolset.py
+    old: "            if key in seen:"
+    new: "            if False:"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_toolset.py::test_two_entries_giving_one_tool_are_a_duplicate
+  - name: R4.5 an action's binding is not a reference
+    file: packages/python/dw_studio/src/dw_studio/core/domain/toolset.py
+    old: "            Reference(TargetKind.BINDING, self.binding, Usage.BIND, path),\n"
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/unit/test_toolset.py::test_an_object_and_an_action_give_exactly_three_references
+  - name: R4.5 the assembler offers more than forty tools
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/studio_tools.py
+    old: "    if len(tools) > MAX_MODEL_TOOLS:"
+    new: "    if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_tools.py::test_more_than_forty_tools_fail_the_set_and_forty_build
+  # ---------------------------------------------------------- R5.1 (TS7) --
+  - name: R5.1 the cap counts characters, not bytes
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/prompts.py
+    old: '    if len(escaped) <= max_chars and len(escaped.encode("utf-8")) <= MAX_OUTPUT_BYTES:'
+    new: "    if len(escaped) <= max_chars:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_output_containment.py::test_eight_thousand_vietnamese_characters_stop_at_sixteen_kib_of_utf8
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_output_containment.py::test_sixteen_kib_of_escaped_text_is_kept_and_one_byte_more_is_cut
+  - name: R5.1 the cap is measured on the raw output
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/prompts.py
+    old: "    content, truncated = _capped(escape_untrusted(text), definition.response.max_output_chars)"
+    new: |2
+          content, truncated = _capped(text, definition.response.max_output_chars)
+          content = escape_untrusted(content)
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_output_containment.py::test_the_ceilings_are_measured_on_the_escaped_text_not_the_raw_output
+  - name: R5.1 an entity is cut in half
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/prompts.py
+    old: '    if opened != -1 and ";" not in kept[opened:]:'
+    new: "    if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_output_containment.py::test_an_entity_is_never_cut_in_half
+  - name: R5.1 the tool's own cap is ignored
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/prompts.py
+    old: "    content, truncated = _capped(escape_untrusted(text), definition.response.max_output_chars)"
+    new: "    content, truncated = _capped(escape_untrusted(text), 8_000)"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_tools.py::test_a_pinned_tool_is_cut_by_its_own_response_cap
+  - name: R5.1 the projection is ignored
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/prompts.py
+    old: "        _projected(payload, definition.response.fields),"
+    new: "        payload,"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_output_containment.py::test_one_field_is_its_value_and_many_an_object_keyed_by_pointer
+  - name: R5.1 a response field need not be a JSON Pointer
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/contracts.py
+    old: "            if not pointer or re.fullmatch(_JSON_POINTER_PATTERN, pointer) is None:"
+    new: "            if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_output_containment.py::test_a_response_outside_its_rules_is_refused
+  - name: R5.1 the artifact is sent to the model
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/studio_tools.py
+    old: |2
+              return contain_tool_output(
+                  result.output, definition, result.execution_id, tool_version_id=version_id
+              )
+    new: |2
+              held = contain_tool_output(
+                  result.output, definition, result.execution_id, tool_version_id=version_id
+              )
+              return ContainedOutput(held.content + str(held.artifact), held.artifact)
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_tools.py::test_the_artifact_stays_beside_the_message_and_never_reaches_the_model
+  # ---------------------------------------------------------- R5.2 (TS7) --
+  - name: R5.2 the output is not wrapped
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/prompts.py
+    old: "        f'<{TOOL_OUTPUT_TAG} source=\"{source}\" trust=\"untrusted\">\\n{content}\\n</{TOOL_OUTPUT_TAG}>',"
+    new: "        content,"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_output_containment.py::test_a_closing_tag_in_the_output_cannot_close_the_block
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_tools.py::test_each_kinds_raw_output_is_escaped_once_and_wrapped_once
+  - name: R5.2 the output is not escaped
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/prompts.py
+    old: "    content, truncated = _capped(escape_untrusted(text), definition.response.max_output_chars)"
+    new: "    content, truncated = _capped(text, definition.response.max_output_chars)"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_output_containment.py::test_a_closing_tag_in_the_output_cannot_close_the_block
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_tools.py::test_each_kinds_raw_output_is_escaped_once_and_wrapped_once
+  # ---------------------------------------------------------- R5.3 (TS7) --
+  - name: R5.3 the output is escaped twice
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/prompts.py
+    old: "    content, truncated = _capped(escape_untrusted(text), definition.response.max_output_chars)"
+    new: "    content, truncated = _capped(escape_untrusted(escape_untrusted(text)), definition.response.max_output_chars)"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_output_containment.py::test_one_escape_only_an_entity_already_in_the_output_is_escaped_as_text
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_tools.py::test_each_kinds_raw_output_is_escaped_once_and_wrapped_once
+  - name: R5.3 the output is wrapped a second time on its way out
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/studio_tools.py
+    old: |2
+              return contain_tool_output(
+                  result.output, definition, result.execution_id, tool_version_id=version_id
+              )
+    new: |2
+              inner = contain_tool_output(
+                  result.output, definition, result.execution_id, tool_version_id=version_id
+              )
+              return contain_tool_output(
+                  {"text": inner.content}, definition, result.execution_id, tool_version_id=version_id
+              )
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_tools.py::test_each_kinds_raw_output_is_escaped_once_and_wrapped_once
