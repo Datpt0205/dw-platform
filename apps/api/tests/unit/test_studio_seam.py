@@ -231,6 +231,8 @@ async def test_a_group_mounted_without_studio_answers_otherwise() -> None:
         kinds=ArtifactKindRegistry(()),
         artifacts=cast(Any, None),
         routers=(artifacts_router,),
+        run_manifests=cast(Any, None),
+        pinned_manifests=cast(Any, None),
     )
     app = create_app(container)
     transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)

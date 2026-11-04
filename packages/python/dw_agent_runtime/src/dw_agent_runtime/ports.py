@@ -6,10 +6,11 @@ and application handlers depend only on the protocols.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
-from typing import Literal, Protocol, TypeVar
+from typing import Any, Literal, Protocol, TypeVar
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
@@ -202,3 +203,63 @@ class RunWaitsPort(Protocol):
     async def resumed(self, run_context: RunContext, run_id: UUID) -> None: ...
 
     async def finished(self, run_context: RunContext, run_id: UUID, *, failed: bool) -> None: ...
+
+
+# ---- what a Studio run pinned (tenant-config R6; ADR-0109 decisions 6-7) ----
+
+
+@dataclass(frozen=True, slots=True)
+class PinnedVersion:
+    """One version row a run manifest's keys hold, read as it is now.
+
+    A version outside `draft` never changes (tenant-config R2.9), so
+    `current_hash` is None for it. One in `draft` (a draft root, or a candidate
+    sent back after the run pinned it) can be edited, so the store hashes its
+    content again the way it was pinned: `current_hash` is that hash.
+    """
+
+    id: UUID
+    artifact_id: UUID
+    version_no: int | None
+    stage: str
+    content_hash: str | None
+    definition_hash: str | None
+    document_schema: str
+    document: Any
+    current_hash: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class PinnedEntry:
+    """One pinned thing, as the manifest names it: `kind`, `key`, the version
+    and the hash it pinned, and for an `artifact` (and the root) its row."""
+
+    kind: str
+    key: str
+    version: int | None
+    content_hash: str | None
+    artifact: PinnedVersion | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PinnedManifest:
+    """A run manifest and the rows its keys hold. `root.content_hash` is the
+    root's pinned `definition_hash`; `unread_keys` names each key row whose
+    version could not be read under the transaction's tenant."""
+
+    hash: str
+    body: Mapping[str, Any]
+    root: PinnedEntry
+    closure: tuple[PinnedEntry, ...]
+    unread_keys: tuple[UUID, ...] = ()
+
+
+class RunManifestPort(Protocol):
+    """What a Studio run reads its manifest through when it runs and when it
+    resumes, in any process (ADR-0109 decision 7, amended 2026-11-03).
+    Declared here, satisfied by `dw_studio`, which this package never imports.
+    Reads under the tenant of the transaction it is bound to (RLS)."""
+
+    async def load(self, run_manifest_hash: str) -> PinnedManifest | None:
+        """The manifest and its rows, or None when this tenant has no such hash."""
+        ...

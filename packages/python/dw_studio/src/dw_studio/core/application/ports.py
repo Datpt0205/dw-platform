@@ -174,3 +174,45 @@ class ArtifactStore(Protocol):
     def transaction(self, context: AccessContext) -> AbstractAsyncContextManager[ArtifactTx]:
         """Commits on a clean exit, rolls back on an exception."""
         ...
+
+
+@dataclass(frozen=True, slots=True)
+class RootVersion:
+    """The version a run starts from, with its artifact's kind."""
+
+    kind: str
+    version: VersionRow
+
+
+class RunManifestTx(ArtifactTx, Protocol):
+    """What `RunManifestBuilder` asks of the caller's transaction beyond the
+    envelope's own reads (tenant-config ticket 04): the same one, so the run
+    row the door writes after it commits or rolls back with the manifest."""
+
+    async def root_version(self, version_id: uuid.UUID) -> RootVersion | None:
+        """The version and its artifact's kind, the artifact row read `FOR
+        SHARE` first and the version read after it, so a `save_draft` (which
+        takes that row `FOR UPDATE`) waits for this transaction and the content
+        read is the content received. None for another tenant's, a missing
+        version, or a soft-deleted artifact."""
+        ...
+
+    async def definition_manifest(self, definition_hash: str) -> dict[str, Any] | None:
+        """The body of `studio.definition_manifests` under this hash."""
+        ...
+
+    async def pinned_versions(self, version_id: uuid.UUID) -> list[uuid.UUID]:
+        """The `to_version_id` of each `artifact` row of the version's
+        where-used index: the one source of a sealed root's closure versions."""
+        ...
+
+    async def put_run_manifest(self, manifest_hash: str, body: dict[str, Any]) -> None:
+        """`INSERT ... ON CONFLICT DO NOTHING`; a body past the table's 1 MiB
+        CHECK is `PayloadTooLargeError`, by the constraint's name."""
+        ...
+
+    async def put_run_manifest_keys(
+        self, manifest_hash: str, version_ids: Sequence[uuid.UUID]
+    ) -> None:
+        """One key row per version, `ON CONFLICT DO NOTHING`."""
+        ...

@@ -1,4 +1,5 @@
-"""SQLAlchemy Core description of schema `studio` (studio-skeleton R6.7).
+"""SQLAlchemy Core description of schema `studio` (studio-skeleton R6.7), and
+of the two `platform` tables only Studio writes, the run manifest and its keys.
 
 Mirrors the migrations, and `test_metadata_matches_catalog.py` holds the two
 equal after `alembic upgrade head`: tables, columns, types, nullability, keys
@@ -158,4 +159,46 @@ dependencies = sa.Table(
     sa.Index(None, "tenant_id", "to_artifact_id"),
     sa.Index(None, "tenant_id", "to_version_id"),
     sa.Index(None, "tenant_id", "to_kind", "to_key"),
+)
+
+# What a Studio run pinned (tenant-config ticket 04, revision 28a94cda6fdf).
+# In schema `platform`, beside the run row that names it; described here, by
+# the one package that writes and reads it.
+run_manifests = sa.Table(
+    "run_manifests",
+    metadata,
+    sa.Column(
+        "tenant_id",
+        UUID(as_uuid=True),
+        sa.ForeignKey(platform.tenants.c.id, ondelete="RESTRICT"),
+        primary_key=True,
+    ),
+    sa.Column("hash", sa.Text, primary_key=True),
+    sa.Column("body", JSONB, nullable=False),
+    sa.Column("created_at", _TS, nullable=False, server_default=sa.text("now()")),
+    schema="platform",
+)
+
+run_manifest_keys = sa.Table(
+    "run_manifest_keys",
+    metadata,
+    sa.Column("id", UUID(as_uuid=True), primary_key=True),
+    sa.Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("manifest_hash", sa.Text, nullable=False),
+    sa.Column("artifact_version_id", UUID(as_uuid=True), nullable=False),
+    sa.ForeignKeyConstraint(
+        ["manifest_hash", "tenant_id"],
+        [run_manifests.c.hash, run_manifests.c.tenant_id],
+        ondelete="CASCADE",
+    ),
+    _composite("artifact_version_id", artifact_versions, ondelete="RESTRICT"),
+    # The convention's name is one character past PostgreSQL's 63.
+    sa.UniqueConstraint(
+        "tenant_id",
+        "manifest_hash",
+        "artifact_version_id",
+        name="uq_run_manifest_keys_tenant_id_manifest_hash_artifact_version",
+    ),
+    sa.Index(None, "tenant_id", "artifact_version_id"),
+    schema="platform",
 )

@@ -581,51 +581,63 @@ class ArtifactService:
     async def closure_of(
         self, tx: ArtifactTx, kind: str, artifact_id: uuid.UUID, document: Any
     ) -> tuple[list[ClosureItem], list[DependencyRow]]:
-        """The kind's references, an `artifact` one resolved to its target's
-        `live` version within the tenant (read `FOR SHARE`); every broken one is
-        one `dependency_unresolved` problem at its path. Ticket 04 calls this
-        for a draft's `simulate` run, with `definition_body`, for the same hash."""
-        entry = self.registry.get(kind)
-        if entry is None:
-            raise NotFoundError("artifact not found")
-        problems: list[DocumentProblem] = []
-        rows: list[DependencyRow] = []
-        for ref in entry.extract(document):
-            if ref.to_kind is not TargetKind.ARTIFACT:
-                rows.append(DependencyRow(ref.to_kind, ref.to_key, ref.usage, ref.path))
-                continue
-            target = None
-            try:
-                target_id = uuid.UUID(ref.to_key)
-            except ValueError:
-                target_id = None
-            # Pinning itself would freeze the live version it replaces (gate (h)).
-            if target_id is not None and target_id != artifact_id:
-                target = await tx.live_target(target_id)
-            if target is None:
-                problems.append(
-                    DocumentProblem(
-                        ref.path,
-                        "dependency_unresolved",
-                        "no live artifact with this id",
-                    )
-                )
-                continue
-            rows.append(
-                DependencyRow(
-                    ref.to_kind,
-                    str(target.artifact_id),
-                    ref.usage,
+        return await closure_of(tx, self.registry, kind, artifact_id, document)
+
+
+async def closure_of(
+    tx: ArtifactTx,
+    registry: ArtifactKindRegistry,
+    kind: str,
+    artifact_id: uuid.UUID,
+    document: Any,
+) -> tuple[list[ClosureItem], list[DependencyRow]]:
+    """The kind's references, an `artifact` one resolved to its target's
+    `live` version within the tenant (read `FOR SHARE`); every broken one is
+    one `dependency_unresolved` problem at its path. Writes nothing: the seal
+    writes `studio.dependencies` itself, and ticket 04's `RunManifestBuilder`
+    calls this for a draft's `simulate` run, with `definition_body`, for the
+    hash the seal would give the same content."""
+    entry = registry.get(kind)
+    if entry is None:
+        raise NotFoundError("artifact not found")
+    problems: list[DocumentProblem] = []
+    rows: list[DependencyRow] = []
+    for ref in entry.extract(document):
+        if ref.to_kind is not TargetKind.ARTIFACT:
+            rows.append(DependencyRow(ref.to_kind, ref.to_key, ref.usage, ref.path))
+            continue
+        target = None
+        try:
+            target_id = uuid.UUID(ref.to_key)
+        except ValueError:
+            target_id = None
+        # Pinning itself would freeze the live version it replaces (gate (h)).
+        if target_id is not None and target_id != artifact_id:
+            target = await tx.live_target(target_id)
+        if target is None:
+            problems.append(
+                DocumentProblem(
                     ref.path,
-                    to_artifact_id=target.artifact_id,
-                    to_version_id=target.version_id,
-                    to_version=target.version_no,
-                    to_hash=target.content_hash,
+                    "dependency_unresolved",
+                    "no live artifact with this id",
                 )
             )
-        if problems:
-            raise DocumentInvalidError("a reference does not resolve", problems)
-        closure = [
-            ClosureItem(row.to_kind.value, row.to_key, row.to_version, row.to_hash) for row in rows
-        ]
-        return closure, rows
+            continue
+        rows.append(
+            DependencyRow(
+                ref.to_kind,
+                str(target.artifact_id),
+                ref.usage,
+                ref.path,
+                to_artifact_id=target.artifact_id,
+                to_version_id=target.version_id,
+                to_version=target.version_no,
+                to_hash=target.content_hash,
+            )
+        )
+    if problems:
+        raise DocumentInvalidError("a reference does not resolve", problems)
+    closure = [
+        ClosureItem(row.to_kind.value, row.to_key, row.to_version, row.to_hash) for row in rows
+    ]
+    return closure, rows

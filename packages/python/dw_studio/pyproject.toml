@@ -6,6 +6,10 @@ requires-python = ">=3.12"
 dependencies = [
     "dw-kernel",
     "dw-platform",
+    # `RunManifestPort` and the pinned types it returns (tenant-config 04): the
+    # runtime declares the port, Studio satisfies it.
+    "dw-agent-runtime",
+    "pydantic>=2.10,<3",
     "sqlalchemy[asyncio]>=2.0.36,<2.1",
 ]
 

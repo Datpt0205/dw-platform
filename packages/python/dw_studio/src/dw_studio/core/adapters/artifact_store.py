@@ -22,7 +22,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from dw_kernel.errors import ConflictError
+from dw_kernel.errors import ConflictError, PayloadTooLargeError
 from dw_kernel.pagination import CursorPosition
 from dw_kernel.ports import IdGenerator
 from dw_platform.adapters.persistence.effect_key_store import claim_effect_key
@@ -38,6 +38,8 @@ from dw_studio.core.adapters.tables import (
     artifacts,
     definition_manifests,
     dependencies,
+    run_manifest_keys,
+    run_manifests,
 )
 from dw_studio.core.application.ports import (
     ArtifactRow,
@@ -45,14 +47,16 @@ from dw_studio.core.application.ports import (
     Dependent,
     ListScope,
     LiveTarget,
+    RootVersion,
     VersionRow,
 )
-from dw_studio.core.domain.artifacts import IN_USE_STAGES, Stage
+from dw_studio.core.domain.artifacts import IN_USE_STAGES, Stage, TargetKind
 
 _API_NAME_TAKEN = "uq_artifacts_tenant_id_kind_api_name"
 _API_NAME_IMMUTABLE = "ck_artifacts_api_name_immutable"
 _UNRELEASED = "uq_artifact_versions_unreleased"
 _NOT_IN_USE = "ck_artifacts_not_in_use"
+_RUN_MANIFEST_SIZE = "ck_run_manifests_body_size"
 _DEADLOCK = "40P01"
 
 _REACH = sa.text("SELECT platform.workspace_reach(:t, :u, :k) AS w")
@@ -383,6 +387,87 @@ class SqlArtifactTx:
             )
         )
         return [_artifact(row) for row in rows]
+
+    # ---- the run manifest (tenant-config ticket 04) ----------------------
+
+    async def root_version(self, version_id: uuid.UUID) -> RootVersion | None:
+        artifact_id = await self.session.scalar(
+            sa.select(artifact_versions.c.artifact_id).where(artifact_versions.c.id == version_id)
+        )
+        if artifact_id is None:
+            return None
+        # The artifact FOR SHARE first, the version in a statement after it:
+        # one statement would read the version from a snapshot taken before
+        # a `save_draft` it waited for had committed.
+        kind = await self.session.scalar(
+            sa.select(artifacts.c.kind)
+            .where(artifacts.c.id == artifact_id, artifacts.c.deleted_at.is_(None))
+            .with_for_update(read=True)
+        )
+        if kind is None:
+            return None
+        row = (
+            await self.session.execute(
+                sa.select(artifact_versions).where(artifact_versions.c.id == version_id)
+            )
+        ).one_or_none()
+        return None if row is None else RootVersion(kind, _version(row))
+
+    async def definition_manifest(self, definition_hash: str) -> dict[str, Any] | None:
+        body = await self.session.scalar(
+            sa.select(definition_manifests.c.body).where(
+                definition_manifests.c.hash == definition_hash
+            )
+        )
+        return None if body is None else dict(body)
+
+    async def pinned_versions(self, version_id: uuid.UUID) -> list[uuid.UUID]:
+        rows = await self.session.execute(
+            sa.select(dependencies.c.to_version_id)
+            .distinct()
+            .where(
+                dependencies.c.from_version_id == version_id,
+                dependencies.c.to_kind == TargetKind.ARTIFACT.value,
+                dependencies.c.to_version_id.is_not(None),
+            )
+        )
+        return [row.to_version_id for row in rows]
+
+    async def put_run_manifest(self, manifest_hash: str, body: dict[str, Any]) -> None:
+        try:
+            await self.session.execute(
+                pg_insert(run_manifests)
+                .values(tenant_id=self.context.tenant_id, hash=manifest_hash, body=body)
+                .on_conflict_do_nothing(index_elements=["tenant_id", "hash"])
+            )
+        except IntegrityError as exc:
+            if _refused(exc) == _RUN_MANIFEST_SIZE:
+                raise PayloadTooLargeError(
+                    "the run manifest is larger than 1 MiB",
+                    details={"reason_code": "run_manifest_too_large"},
+                ) from exc
+            raise
+
+    async def put_run_manifest_keys(
+        self, manifest_hash: str, version_ids: Sequence[uuid.UUID]
+    ) -> None:
+        if not version_ids:
+            return
+        await self.session.execute(
+            pg_insert(run_manifest_keys)
+            .values(
+                [
+                    {
+                        "id": self.ids.new_uuid(),
+                        "tenant_id": self.context.tenant_id,
+                        "manifest_hash": manifest_hash,
+                        "artifact_version_id": version_id,
+                    }
+                    for version_id in version_ids
+                ]
+            )
+            .on_conflict_do_nothing()
+        )
 
     async def audit(self, event: AuditEvent) -> None:
         await SqlAuditRepository(self.session).append(event)

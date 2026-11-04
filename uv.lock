@@ -1240,15 +1240,19 @@ name = "dw-studio"
 version = "0.1.0"
 source = { editable = "packages/python/dw_studio" }
 dependencies = [
+    { name = "dw-agent-runtime" },
     { name = "dw-kernel" },
     { name = "dw-platform" },
+    { name = "pydantic" },
     { name = "sqlalchemy", extra = ["asyncio"] },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "dw-agent-runtime", editable = "packages/python/dw_agent_runtime" },
     { name = "dw-kernel", editable = "packages/python/dw_kernel" },
     { name = "dw-platform", editable = "packages/python/dw_platform" },
+    { name = "pydantic", specifier = ">=2.10,<3" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.36,<2.1" },
 ]
 

@@ -14,21 +14,25 @@ an app only through a test that passes `studio_kinds=` (tenant-config R2.15).
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from dw_agent_runtime.ports import RunManifestPort
+from dw_api.bootstrap.paths import release_manifest_ref
 from dw_api.settings import ApiSettings
 from dw_kernel.ports import SystemClock, Uuid7Generator
 from dw_studio.core.adapters.artifact_store import SqlArtifactStore
+from dw_studio.core.adapters.run_manifest_store import SqlRunManifestStore
 from dw_studio.core.application.registry import (
     PLATFORM_KINDS,
     ArtifactKindEntry,
     ArtifactKindRegistry,
 )
+from dw_studio.core.application.run_manifests import RunManifestBuilder
 from dw_studio.core.application.service import ArtifactService
 
 if TYPE_CHECKING:
@@ -42,6 +46,12 @@ class StudioContainer:
     kinds: ArtifactKindRegistry
     artifacts: ArtifactService
     routers: tuple[APIRouter, ...]
+    # tenant-config 04: the door that accepts a Studio run (workflow-engine/02)
+    # builds its manifest with this, in its own transaction, under the release
+    # this process serves; a Studio run reads its manifest back through the
+    # port, bound to the session of the run's transaction (workflow-engine/05).
+    run_manifests: RunManifestBuilder
+    pinned_manifests: Callable[[AsyncSession], RunManifestPort]
 
 
 def build_studio(
@@ -69,4 +79,10 @@ def build_studio(
     # dependencies, which import this package.
     from dw_api.routes.v1.studio_artifacts import router as artifacts_router
 
-    return StudioContainer(kinds=registry, artifacts=artifacts, routers=(artifacts_router,))
+    return StudioContainer(
+        kinds=registry,
+        artifacts=artifacts,
+        routers=(artifacts_router,),
+        run_manifests=RunManifestBuilder(registry, release_manifest_ref()),
+        pinned_manifests=SqlRunManifestStore,
+    )
