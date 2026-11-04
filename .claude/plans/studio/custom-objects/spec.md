@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 2/11/2026
-Sẵn sàng: ĐẠT (3/11/2026; 0 CRITICAL, 0 HIGH; ticket 01-02)
+Sẵn sàng: ĐẠT (4/11/2026; 0 CRITICAL, 0 HIGH; ticket 01-06)
 
 Công ty tự định nghĩa đối tượng và trường của mình (Lead và Campaign của Marketing trước tiên, D4) mà không
 cần nhà vận hành hay migration: định nghĩa là dữ liệu trên các bảng cố định do migration tạo, và mọi đường
@@ -82,7 +82,8 @@ Quản trị viên công ty tạo đối tượng và trường mà không cần
   `studio.version.published` có người gửi là actor và `details.path` `tighten_only` do agent-lifecycle ghi
   (`agent-lifecycle:R2.9`).
 - R1.8 Bộ so sánh của loại `object` PHẢI báo một phiên bản là chỉ siết khi và chỉ khi đối tượng đã có phiên bản Đang
-  dùng và mọi khác biệt với phiên bản đó là một trường từ `open` sang `secured` hay `default_access` hẹp hơn theo thứ tự
+  dùng, phiên bản có ít nhất một khác biệt với nó (đổi thứ tự trường không phải khác biệt; gate ticket 06, 4/11/2026
+  (f)), và mọi khác biệt với phiên bản đó là một trường từ `open` sang `secured` hay `default_access` hẹp hơn theo thứ tự
   `public_read_write`, `public_read`, `private`.
 
 ### R2 — Trường có tên bất biến, kiểu cố định và loại dữ liệu cá nhân
@@ -115,7 +116,9 @@ Người dùng, giao diện, công cụ và bước quy trình biết đúng nh�
 
 - R3.1 KHI người giữ `obj.<api_name>.read` gọi `GET /api/v1/studio/objects/{api_name}/describe`, API bản ghi
   PHẢI trả `ai_description` của đối tượng và mỗi trường người đó đọc được với `api_name`, nhãn `vi`, `ai_description`,
-  kiểu, `access` (`read` hay `edit`), các cờ bắt buộc, sửa được, lọc được, sắp được, và các lựa chọn đang bật.
+  kiểu, `number_mode`, `scale`, `currency_code` và `max_length` khi trường có, `access` (`read` hay `edit`), các cờ bắt
+  buộc, sửa được, lọc được, sắp được, và mọi lựa chọn với cờ đang bật (gate ticket 05, 4/11/2026 (a); lượt xác nhận
+  của gate ticket 03 (y)).
 - R3.2 KHI một trường Đã ẩn với người gọi, describe PHẢI trả trường đó chỉ với `api_name`, nhãn `vi` và `access` là
   `hidden`.
 - R3.3 NẾU `api_name` không phải đối tượng của công ty người gọi, THÌ describe PHẢI trả 404.
@@ -174,8 +177,8 @@ Mọi đường ghi chạy cùng một bộ kiểm, quyền và quyết định 
   ghi có sẵn, với khóa `wf:{run_id}:{node_id}:{iteration_path}` mà wrapper nút dẫn (workflow-nodes:R5.1), RecordService
   PHẢI ghi khóa đó cùng kết quả của lần sửa (id bản ghi, `version` sau lần sửa, `created`) trong cùng giao dịch với bản
   ghi, sự kiện outbox và audit (mức bảo đảm nội bộ của YC41; V4.30).
-- R5.10 KHI RecordService nhận lại một khóa `wf:` đã ghi theo R5.9 từ cùng chủ thể chạy, RecordService PHẢI trả kết quả
-  đã lưu của lần đầu, đánh dấu `replayed: true`, trước khi ép kiểu hay áp đầu vào mới, và không ghi bản ghi, sự kiện hay
+- R5.10 KHI RecordService nhận lại một khóa `wf:` đã ghi theo R5.9, hay đã dùng làm `create_key` của một lần tạo, từ cùng
+  chủ thể chạy, ở bất kỳ lệnh nào, RecordService PHẢI trả kết quả đã lưu của lần đầu, đánh dấu `replayed: true`, trước khi ép kiểu hay áp đầu vào mới, và không ghi bản ghi, sự kiện hay
   audit nào; lệnh `create` của Bước đã có hành vi này qua `create_key` (R5.3).
 - R5.11 NẾU một khóa `wf:` đã ghi theo R5.9 đến từ một chủ thể khác chủ thể đã dùng nó, THÌ RecordService PHẢI trả 409
   `idempotency_conflict` và không ghi gì (ADR-0108 (Accepted) quyết 4).
@@ -216,9 +219,11 @@ Quy trình Tiếp nhận lead kiểm trùng theo số điện thoại rồi emai
   `duplicate_value` như R7.1 và không đổi gì.
 - R7.5 KHI RecordService trả 409 `duplicate_value`, RecordService PHẢI ghi audit `studio.record.duplicate_refused`
   chỉ gồm đối tượng, khóa trường và người gọi.
-- R7.6 NẾU một người gọi đã nhận 20 lần 409 `duplicate_value` trên một đối tượng trong 10 phút trượt gần nhất (theo
-  công ty, người gọi và đối tượng; lần thứ 20 vẫn là 409), THÌ API bản ghi PHẢI trả 429 kèm `Retry-After` cho mọi lần
-  ghi kế tiếp của người đó lên đối tượng đó, trùng hay không, tới khi cửa sổ còn dưới 20 lần, và không ghi gì.
+- R7.6 NẾU một người gọi có loại actor `user` hay `agent` đã nhận 20 lần 409 `duplicate_value` trên một đối tượng trong
+  10 phút trượt gần nhất (theo công ty, người gọi và đối tượng; lần thứ 20 vẫn là 409), THÌ RecordService PHẢI từ chối
+  với `duplicate_throttled`, mà API bản ghi trả 429 kèm `Retry-After`, mọi lần ghi kế tiếp của người đó lên đối tượng
+  đó, trùng hay không, tới khi cửa sổ còn dưới 20 lần, và không ghi gì; lần ghi của loại actor `workflow` không đếm
+  (gate ticket 03, 4/11/2026 (d)).
 - R7.7 NẾU `POST .../records/upsert` thiếu `Idempotency-Key`, THÌ API bản ghi PHẢI trả 422 với
   `details.reason_code` `idempotency_key_required` (app-standards:R2.6) và không ghi gì.
 - R7.8 KHI API bản ghi trả 429 vì giới hạn dò trùng, API bản ghi PHẢI ghi đúng một audit
@@ -229,12 +234,13 @@ Quy trình Tiếp nhận lead kiểm trùng theo số điện thoại rồi emai
 Danh sách lọc và sắp theo trường lọc được, theo thứ tự tiếng Việt, không trùng không sót (YC27, YC23).
 
 - R8.1 KHI người giữ `obj.<api_name>.read` gọi `GET .../records` hay `POST .../records/query`, API bản ghi PHẢI
-  trả các bản ghi chưa xóa người đó đọc được theo cây lọc, sắp theo `order_by` rồi `id`, tối đa `limit` (mặc
-  định 50; 200 thì nhận, 201 thì 422).
-- R8.2 KHI sắp theo `name` hay một trường chữ, API bản ghi PHẢI theo thứ tự tiếng Việt: "An, Ánh, Ân, Bình,
-  Đạt", và "Đức" sau "Dũng", trước "Em".
+  trả các bản ghi chưa xóa người đó đọc được theo cây lọc, sắp theo `order_by` (mặc định `created_at` giảm dần) rồi
+  `id`, tối đa `limit` (mặc định 50; 200 thì nhận, 201 thì 422).
+- R8.2 KHI sắp theo `name`, API bản ghi PHẢI theo thứ tự tiếng Việt: "An, Ánh, Ân, Bình, Đạt", và "Đức" sau "Dũng",
+  trước "Em"; W1 chỉ sắp theo `name`, `created_at`, `updated_at` (gate ticket 04, 4/11/2026 (b)).
 - R8.3 KHI người gọi đi hết các trang bằng `cursor`, API bản ghi PHẢI trả mỗi bản ghi khớp đúng một lần, kể cả
-  khi giá trị sắp trùng nhau hay NULL, với NULL ở cuối.
+  khi giá trị sắp trùng nhau; `order_by` trên một slot, cột có thể NULL mà chỉ mục từng phần không mang, trả 422 ở W1
+  (gate ticket 04, 4/11/2026 (b)).
 - R8.4 NẾU cây lọc, `order_by` hay `fields` nhắc trường không tồn tại hoặc Đã ẩn với người gọi, THÌ API bản ghi
   PHẢI trả 422 `validation_failed` với `errors[].code` `field_not_readable` trỏ vào nút đó và không chạy truy vấn.
 - R8.5 NẾU cây lọc hay `order_by` nhắc trường đọc được mà không lọc được, THÌ API bản ghi PHẢI trả 422
@@ -244,8 +250,9 @@ Danh sách lọc và sắp theo trường lọc được, theo thứ tự tiến
 - R8.7 NẾU `cursor` đi kèm cây lọc hay `order_by` khác trang trước, THÌ API bản ghi PHẢI trả 422.
 - R8.8 KHI `count=exact`, API bản ghi PHẢI trả số bản ghi khớp tới 10.000, và 10.000 kèm `count_capped: true`
   khi vượt.
-- R8.9 Mọi câu lệnh trình biên dịch truy vấn sinh ra PHẢI nêu `tenant_id` và có mọi vị từ và cột sắp mang bởi
-  chỉ mục khi chạy bằng `dw_app` dưới RLS.
+- R8.9 Mọi câu lệnh trình biên dịch truy vấn sinh ra PHẢI nêu `tenant_id` và có mọi vị từ mang bởi chỉ mục, cột sắp
+  mang bởi chỉ mục khi không có cây lọc hay khi cây lọc chỉ nêu chính cột sắp, và không Seq Scan nào, khi chạy bằng
+  `dw_app` dưới RLS (gate ticket 04, 4/11/2026 (c)).
 
 ### R9 — Lưu trữ đo ở quy mô D12
 
@@ -292,8 +299,8 @@ Người dùng xem, tạo và sửa bản ghi trên màn sinh từ describe, the
   người đó đọc được, nạp thêm theo `cursor`, với cột và nhãn tiếng Việt lấy từ describe.
 - R10.2 KHI một nhân viên Sales chỉ có quyền đọc Lead ở mức Của tôi mở danh sách Lead, trang danh sách PHẢI chỉ
   hiện lead đang giao cho người đó.
-- R10.3 KHI một trường Đã ẩn với người xem, trang danh sách và trang bản ghi PHẢI hiện "Đã ẩn" có biểu tượng khóa và
-  không có giá trị, kể cả khi trường đó trống.
+- R10.3 KHI một trường Đã ẩn với người xem hiện trên trang (ô `name` của danh sách, mọi trường của trang bản ghi), trang
+  PHẢI hiện "Đã ẩn" có biểu tượng khóa và không có giá trị, kể cả khi trường đó trống (gate ticket 05, 4/11/2026 (b)).
 - R10.4 KHI một trường chỉ đọc với người xem, biểu mẫu PHẢI khóa trường đó kèm lý do trong `Tooltip`.
 - R10.5 KHI máy chủ trả 422, biểu mẫu PHẢI gắn mỗi lỗi vào trường theo `errors[].pointer`.
 - R10.6 KHI máy chủ trả 412, biểu mẫu PHẢI hiện vùng xung đột có cả hai giá trị và giữ nội dung đã gõ.
@@ -446,7 +453,7 @@ ghi (DO-01, ADR-0100 (Accepted)), mỗi bảng một dòng lý do trong danh sá
 | CO16 | Trùng không lộ bản ghi                                              | R7.1, R7.4         | Trùng với bản ghi người gọi không đọc được → 409 không id, không giá trị, có audit; trả id → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | CO17 | Tạo hoặc cập nhật không đua                                         | R7.3               | Hai lần upsert song song cùng số đã chuẩn hóa → một dòng; bỏ UNIQUE của slot `u` → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | CO18 | Giới hạn dò trùng theo người                                        | R7.6, R7.8         | 20 lần 409 trong 10 phút trượt → lần 409 thứ 20 vẫn 409; lần ghi kế tiếp, trùng hay không, → 429 kèm `Retry-After`, không ghi, đúng một audit `studio.record.duplicate_throttled`; người gọi khác hay đối tượng khác không bị chặn; gỡ lời gọi `RateLimiterPort` → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| CO19 | Truy vấn sinh ra luôn có chỉ mục dưới RLS                           | R8.9               | Ma trận toán tử × họ slot × chiều sắp qua harness hình kế hoạch; biên dịch một vị từ qua `data->>` → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| CO19 | Truy vấn sinh ra luôn có chỉ mục dưới RLS                           | R8.9               | Ma trận toán tử × họ slot × cột sắp và chiều sắp, dưới bốn hồ sơ quyền, qua harness hình kế hoạch; biên dịch một vị từ qua `data->>` → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | CO20 | Offboarding xuất đúng một lần                                       | R4.4               | Công ty có bản ghi ở hai workspace → số dòng xuất bằng số dòng tạo, sau purge 0; cấp SELECT trên một partition cho `dw_app` → đếm đôi, test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | CO21 | Policy tenant là RESTRICTIVE                                        | R4.2               | Thêm policy PERMISSIVE `USING (true)` lên `studio.records` → test catalog đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | CO22 | Ngữ cảnh hỗ trợ không tới route bản ghi                             | R4.5               | Yêu cầu có header `X-DW-Support-Grant` hợp lệ gọi `GET .../records/{record_id}` → 403 `support_context_not_allowed`; thêm route vào `SUPPORT_ALLOWED_ROUTES` → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
@@ -460,7 +467,7 @@ ghi (DO-01, ADR-0100 (Accepted)), mỗi bảng một dòng lý do trong danh sá
 
 - Mọi tiêu chí R có test; mọi kiểm soát có test âm đã thấy đỏ khi gỡ kiểm soát, ghi ở Comments của ticket.
 - `make ci` và `make test-integration` xanh; `make test-web` xanh cho ticket 05; số đo R9.1 ghi ở Comments của
-  ticket 01 và 04.
+  ticket 08 (đường SQL của harness) và 09 (đường thật), số smoke ở Comments của ticket 01 và 04.
 - `reviewing-feature-security` và `reviewing-deployment-security` đã chạy cho ticket 02 tới 06.
 
 ## Phụ thuộc
@@ -779,6 +786,63 @@ ghi (DO-01, ADR-0100 (Accepted)), mỗi bảng một dòng lý do trong danh sá
   chối như của trường; ticket 07 chờ ticket 03 (cùng `studio.records`, `studio.record_write_keys`). Sửa: R1.3, CO3,
   ticket 02, 06, 07. Nếu sai thì: khóa đọc của loại tách khỏi khóa ghi, và R1.3 trở lại 403.
 - 3/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 02, 07.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): gate `checking-plan-readiness` của ticket 03 (builder check và boundary
+  walk, hai subagent, rồi một lượt xác nhận; ticket thêm migration và route), đọc cùng mã của ticket 02 (`65bddef`), 0
+  CRITICAL, 10 HIGH, sửa theo khuyến nghị, chi tiết ở bước và tiêu chí của ticket 03 theo nhãn: (a) route chống lặp
+  bằng `idempotent()`, `once` và `platform.effect_keys` của app-standards/02 trong giao dịch ghi, `create_key` chỉ cho
+  khóa `wf:`, thay cách ghép `http:` của dòng H-34 ngày 26/10/2026. Nếu sai thì: route lại ghép `http:` vào `create_key`
+  và ghi thêm khóa hiệu ứng. (b) khóa `wf:` tra ở cả `studio.record_write_keys` lẫn `create_key`, nên lần chạy lại của
+  Bước `upsert` gặp bản ghi vừa tạo không sửa lần hai (R5.10). Nếu sai thì: lần tạo cũng ghi một dòng `op` `create`
+  vào `studio.record_write_keys` và chỉ tra ở đó. (c) RecordService không đặt setting `app.*`, cửa gắn; ticket 03 chờ
+  thêm record-access/04 (`bind_actor` của `workflow` và `agent`). Nếu sai thì: RecordService gọi `bind_actor` theo cổng
+  đến. (d) giới hạn dò trùng không đếm loại actor `workflow`, và worker gắn instance `RateLimiterPort` của mình (R7.6).
+  Nếu sai thì: tài khoản dịch vụ của quy trình có hạn mức riêng cao hơn do Đạt đặt. (e) số `exact` và tiền là chuỗi ở
+  mọi cửa, bộ chiếu đổi theo. Nếu sai thì: nhận cả số JSON có tối đa `scale` chữ số. (f) xóa mềm đi qua tầm `delete` ở
+  WITH CHECK của `_update` (record-access:R2.7 thêm cùng). Nếu sai thì: hàm SECURITY DEFINER `studio.soft_delete_record`
+  kiểm tầm `delete`, `dw_app` mất UPDATE trên `deleted_*`. (g) `name` qua quyết định trường như mọi trường. Nếu sai thì:
+  `name` luôn `open` và `name_field` không nhận `pd_category` khác `none`. (h) `simulate` không hỏi ràng buộc duy nhất,
+  chỉ so bản ghi đọc được. Nếu sai thì: `simulate` đếm vào `RateLimiterPort` và ghi audit như lượt thật. (k) lỗi 422 gom
+  trước quyết định trường, mã lỗi trường có tên. Nếu sai thì: quyết định trường chạy trước ép kiểu. (l) `permissions`
+  tính từ biểu thức tầm của module mẫu policy. Nếu sai thì: `permissions` chỉ theo khóa hành động đối tượng. (p) bộ xóa
+  của `studio.record_write_keys` là hàm SECURITY DEFINER đọc hạn từ `platform.retention_terms`. Nếu sai thì: lane lưu giữ
+  được đăng ký vào sổ `tenant_wide_scope` cho bảng này.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): gate của ticket 04 (builder check và boundary walk, hai subagent, rồi
+  một lượt xác nhận), đọc cùng phần app-standards/03 đã dựng (`dw_kernel.filters`, `dw_kernel.pagination`,
+  `apps/api/src/dw_api/dependencies/listing.py`, `tests/support/plan_shape.py`), 1 CRITICAL, 8 HIGH, sửa theo khuyến
+  nghị: (i) CRITICAL, hai route danh sách và `count` không có test âm chéo công ty, thiếu khóa đọc hay ngoài tầm: thêm
+  tiêu chí (CO1, CO8). (a) R9.1, R9.6, R9.10 cần máy tham chiếu: ticket 04 dựng chế độ đường thật của harness và chạy ở
+  smoke, ticket 09 mới (`ready-for-human`) chạy ở D12. Nếu sai thì: ticket 04 đứng mở tới khi có máy. (b) chỉ mục slot
+  không mang `IS NULL`: W1 sắp theo `name`, `created_at`, `updated_at`, lá `null` trả 422 (R8.2, R8.3). Nếu sai thì: chỉ
+  mục `WHERE <slot> IS NULL` cho trường sắp được, do ticket 07 đo. (c) lọc một trường và sắp theo trường khác: Sort
+  top-N trên tập chỉ mục chọn, không Seq Scan (R8.9). Nếu sai thì: tổ hợp đó trả 422. (d) trình biên dịch dùng lại
+  kernel và `listing.py`, không bản sao giới hạn, mã hay con trỏ. Nếu sai thì: không có. (f) giá trị lọc của số `exact`
+  và tiền là chuỗi qua bộ ép kiểu của RecordService. Nếu sai thì: nhận số đã nhân `10^scale`. (g) `GET` không nhận
+  `filter` hay `order_by=name`, giá trị lọc và con trỏ mang `name` chỉ trong thân `POST`. Nếu sai thì: nhật ký truy cập
+  và span bỏ query string của route bản ghi. (h) một ngữ pháp truy vấn cho route, công cụ và Bước. Nếu sai thì: không
+  có. Mặc định sắp `created_at` giảm dần (R8.1).
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): gate của ticket 05 (builder check, một subagent, rồi một lượt xác
+  nhận; ticket không thêm migration hay route), 0 CRITICAL, 8 HIGH, sửa theo khuyến nghị: (a) describe trả `number_mode`,
+  `scale`, `currency_code`, `max_length` (R3.1, ticket 03). Nếu sai thì: biểu mẫu đọc định nghĩa qua route của vỏ phiên
+  bản. (b) cột là `name` cộng trường lọc được với người xem. Nếu sai thì: describe thêm cờ cột danh sách cho cả trường Đã
+  ẩn. (c) `name` Đã ẩn không lọt qua `<title>` hay tên truy cập. (d) ticket 05 chờ record-access/05, vì fixture giao qua API công khai; đối tượng gieo qua móc của ticket 02 với phê duyệt fixture, vì ticket 06 đứng sau trong thư mục. Nếu sai thì: fixture tạo lead dưới chính nhân viên Sales. (e) fixture có
+  người, vai và trường cho mọi tiêu chí. (f) 412 có hai lối ra và không mất nội dung. (g) một bảng câu theo mã cạnh
+  `errorMessage()`, `fieldErrors()` có sẵn. (h) mục "Đối tượng" của Studio với khóa đọc của loại, trang
+  `/studio/objects`. Nếu sai thì: mục điều hướng cho người chỉ đọc bản ghi vào ticket này.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): gate của ticket 06 (builder check, một subagent, rồi một lượt xác
+  nhận; route Gửi kiểm định là của agent-lifecycle), 0 CRITICAL, 6 HIGH, sửa theo khuyến nghị: (a) trường bộ so sánh của
+  mục registry do agent-lifecycle/04 thêm, ticket 06 chỉ đặt `compare_object`. Nếu sai thì: ticket 06 thêm trường. (b)
+  từ chối của `check_against_live` mang `live_incompatible` và `errors[]`, 422 cùng hình với móc (R2.4). Nếu sai thì:
+  một mã lý do duy nhất, con trỏ đầu ở `details`. (c) đột biến của R1.3 đổi khóa của mục, vì gỡ riêng kiểm gửi không đỏ.
+  (d), (e) registry của worker dựng bằng `platform_kinds`, audit định nghĩa ở handler đứng tên người duyệt với
+  `details.lane` `outbox`. Nếu sai thì: agent-lifecycle/04 dựng registry của worker và ticket 06 chỉ thử. (f) phiên bản
+  không khác biệt không chỉ siết (R1.8), như mã của ticket 02. Nếu sai thì: bộ so sánh đổi và R1.8 trở lại.
+
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): lượt xác nhận của gate ticket 03-06 (một builder check mới mỗi ticket trên bản đã sửa) tìm 16 HIGH, đã
+  sửa, chi tiết ở Comments của từng ticket: ticket 03 (q)-(u), ticket 04 (j)-(m) và phần mở rộng kernel, ticket 05 (i)-(k)
+  và R10.3 (chỉ ô `name` ở danh sách), ticket 06 (g)-(i) và cạnh tới field-security/01. Sửa của lượt này không có người
+  đọc mới: nhận rủi ro (agent, theo ủy quyền 31/10/2026), mỗi sửa có tiêu chí đỏ được. Nếu sai thì: lỗi lộ ra khi dựng, ghi ở Comments của ticket.
+- 4/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 03-06, 08, 09. Ticket 09 tách khỏi 04 như 08 tách khỏi
+  01; theo `## Ủy quyền` của studio.md (Đạt, 31/10/2026). Nếu sai thì: ticket 04 đứng mở tới khi có máy tham chiếu.
 
 ## Danh sách ticket
 
@@ -791,3 +855,5 @@ ghi (DO-01, ADR-0100 (Accepted)), mỗi bảng một dòng lý do trong danh sá
 | 05  | [Danh sách và biểu mẫu antd sinh từ describe](issues/05-danh-sach-va-bieu-mau-antd.md)                                                 |
 | 06  | [Phát hành đối tượng qua vòng đời phiên bản: chỉ siết một người, nới qua người thứ hai](issues/06-phat-hanh-doi-tuong-qua-vong-doi.md) |
 | 07  | [Áp kết luận đo D12 vào DDL của studio.records](issues/07-ap-so-do-d12-vao-ddl-ban-ghi.md)                                             |
+| 08  | [Đo nền lưu trữ bản ghi ở quy mô D12 trên máy tham chiếu](issues/08-do-nen-luu-tru-o-quy-mo-d12.md)                                    |
+| 09  | [Đo đường thật của bản ghi ở quy mô D12](issues/09-do-duong-that-ban-ghi-o-quy-mo-d12.md)                                              |
