@@ -66,6 +66,13 @@ def test_the_decide_command_resumes_on_the_contexts_runner_with_its_strict_prefi
     assert decisions.service.key is not None
 
 
+def test_an_allowed_host_takes_a_second_person_here_as_in_the_api() -> None:
+    """connections-and-vault R3.10: the worker's decision door is strict for
+    `egress.allowed_host` whichever context builds it."""
+    flow = _decision_command("a-code-secret-of-32-bytes-or-so").service.approval_flow
+    assert flow.is_strict("egress.allowed_host")
+
+
 def test_without_a_code_secret_the_command_still_answers_but_holds_no_key() -> None:
     """It answers "not enabled" rather than let the words reach a model."""
     assert _decision_command("").service.key is None

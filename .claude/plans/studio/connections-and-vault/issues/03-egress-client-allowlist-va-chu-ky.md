@@ -1,6 +1,6 @@
 # 03 — Egress client ghim IP, kết quả có kiểu, danh sách máy chủ được phép và module chữ ký webhook
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 02, .claude/plans/studio/runtime-hardening/issues/02-bien-mang-va-kho-du-lieu.md, .claude/plans/studio/tenant-config/issues/03-che-do-chay-va-gia-lap-o-executor.md, .claude/plans/studio/tenant-rbac/issues/01-mot-chu-cho-quyen.md, .claude/plans/studio/org-and-principals/issues/01-khoa-don-vi-va-siet-realm.md, .claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md
 Area: studio
 Yêu cầu: R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R3.9, R3.10, R3.11, R3.12, R3.13, R3.14, R3.15, R3.16, R3.17, R3.18, R3.19, R3.20, R3.21, R4.1, R4.2, R4.3, R4.4, CV7, CV8, CV9, CV10, CV11, CV19, CV22, CV26, CV29, CV30
@@ -116,82 +116,83 @@ run_mode, purpose, connector_key, connection_id, simulate_safe)` (`run_mode` và
 
 ## Tiêu chí chấp nhận
 
-- [ ] R3.1 (CV7): resolver giả trả IP công khai lần đầu, IP nội bộ từ lần sau; tầng mạng giả dưới
+- [x] R3.1 (CV7): resolver giả trả IP công khai lần đầu, IP nội bộ từ lần sau; tầng mạng giả dưới
       `PinnedNetworkBackend` ghi địa chỉ được mở → `EgressClient` mở đúng IP công khai đã kiểm, không bao giờ IP nội
       bộ, và SNI là hostname; gỡ ghim để `httpcore` tự phân giải lại → tầng giả ghi IP nội bộ, test đỏ.
-- [ ] R3.2 (CV7): `EgressClient` gọi một host mà resolver giả trả `100.64.0.1`, `169.254.169.254`, `224.0.0.1`,
+- [x] R3.2 (CV7): `EgressClient` gọi một host mà resolver giả trả `100.64.0.1`, `169.254.169.254`, `224.0.0.1`,
       `::ffff:169.254.169.254`, `64:ff9b::a9fe:a9fe`, `2002:a9fe:a9fe::1` → `egress_blocked:address`, tầng mạng giả
       không mở kết nối nào; `8.8.8.8`, `2606:4700:4700::1111` qua; `EgressClient` dựng với settings triển khai có
       `allow_private` sai, và một host trả `10.0.0.5` bị chặn ở đó; bỏ lời gọi `resolve_checked` khỏi egress → test đỏ.
-- [ ] R3.3 (CV8): redirect tới `http://169.254.169.254/` hay host ngoài danh sách → chặn, không gửi; gỡ
+- [x] R3.3 (CV8): redirect tới `http://169.254.169.254/` hay host ngoài danh sách → chặn, không gửi; gỡ
       kiểm lại chuyển hướng → test đỏ.
-- [ ] R3.4 (CV8): redirect đổi origin → mock origin khác không thấy `Authorization` hay `Cookie`.
-- [ ] R3.5 (CV10): gọi egress với `run_mode` `simulate` và `test`, purpose `connector`, `http_tool`,
+- [x] R3.4 (CV8): redirect đổi origin → mock origin khác không thấy `Authorization` hay `Cookie`.
+- [x] R3.5 (CV10): gọi egress với `run_mode` `simulate` và `test`, purpose `connector`, `http_tool`,
       `webhook`, `mcp` và `oauth` → `egress_blocked:run_mode`, không gọi nhà cung cấp; purpose `model` và lời
       gọi `http_tool` của một Hành động khai chỉ đọc ở `simulate` vẫn qua; lời gọi `oauth` hay `mcp` mang
       `simulate_safe` đúng ở `simulate` → vẫn `egress_blocked:run_mode`; `live` → qua; gỡ bước kiểm chế độ, hay cho
       `simulate_safe` miễn mọi purpose → test đỏ.
-- [ ] R3.6 (CV9): thêm `httpx.AsyncClient(` vào một module mới ngoài danh sách → test kiến trúc đỏ.
-- [ ] R3.7 (CV19): đích host ngoài danh sách (purpose `http_tool`) → `egress_blocked:host_not_allowed`;
+- [x] R3.6 (CV9): thêm `httpx.AsyncClient(` vào một module mới ngoài danh sách → test kiến trúc đỏ.
+- [x] R3.7 (CV19): đích host ngoài danh sách (purpose `http_tool`) → `egress_blocked:host_not_allowed`;
       host có trong `outbound_allowed_hosts` của settings mà không trong danh sách của công ty → vẫn
       `host_not_allowed`; gỡ kiểm danh sách → test đỏ.
-- [ ] R3.21 (CV19): dòng `*.acme.vn` cổng `{443}` purpose `http_tool` → `api.acme.vn:443` và `API.Acme.vn.` qua;
+- [x] R3.21 (CV19): dòng `*.acme.vn` cổng `{443}` purpose `http_tool` → `api.acme.vn:443` và `API.Acme.vn.` qua;
       `acme.vn`, `a.b.acme.vn`, `api.acme.vn:8443`, purpose `mcp`, và dòng đã có `removed_at` →
       `host_not_allowed`; gỡ kiểm cổng hay khớp một nhãn → test đỏ.
-- [ ] R3.17 (CV29): purpose `connector` không `connector_key` → `egress_blocked:host_not_allowed`;
+- [x] R3.17 (CV29): purpose `connector` không `connector_key` → `egress_blocked:host_not_allowed`;
       `CatalogueHostsPort` giả trả `{api.example.vn}` cho một khóa, gọi `other.example.vn` với khóa đó, purpose
       `connector` rồi `oauth` → `host_not_allowed`, máy giả không nhận gì; `api.example.vn` → qua; cài đặt W1 của cổng
       → mọi lời gọi `connector` bị chặn; gỡ kiểm `egress_hosts` → test đỏ.
-- [ ] R3.20 (CV29): với settings triển khai, `http://` tới host được phép, và một bước chuyển hướng từ `https` về
+- [x] R3.20 (CV29): với settings triển khai, `http://` tới host được phép, và một bước chuyển hướng từ `https` về
       `http://` → `egress_blocked:scheme`, máy giả không nhận `Authorization` nào; ngoài profile triển khai `http://`
       qua; gỡ kiểm `https` → test đỏ.
-- [ ] R3.8 (CV19): `*.com.vn` → 422; `*.github.io` → 422; `203.0.113.5` → 422, và INSERT thẳng `203.0.113.5` bằng
+- [x] R3.8 (CV19): `*.com.vn` → 422; `*.github.io` → 422; `203.0.113.5` → 422, và INSERT thẳng `203.0.113.5` bằng
       `dw_app` → vi phạm CHECK; công ty A không thấy và không dùng được danh sách của B.
-- [ ] R3.9 (CV22): `POST /api/v1/egress/allowed-hosts` hợp lệ → 202 kèm id phê duyệt `egress.allowed_host`
+- [x] R3.9 (CV22): `POST /api/v1/egress/allowed-hosts` hợp lệ → 202 kèm id phê duyệt `egress.allowed_host`
       có `required_scope` `integrations.admin`, không dòng nào, đích đó vẫn `egress_blocked:host_not_allowed`;
       ghi dòng ngay ở `POST` → test đỏ.
-- [ ] R3.10 (CV22): người gửi tự duyệt → 409 `conflict` với `details.reason_code` `second_person_required`, không
+- [x] R3.10 (CV22): người gửi tự duyệt → 409 `conflict` với `details.reason_code` `second_person_required`, không
       dòng nào; người không giữ `integrations.admin` quyết → 404; bỏ `egress.allowed_host` khỏi tiền tố nghiêm →
       test đỏ.
-- [ ] R3.11 (CV22): người thứ hai giữ `integrations.admin` duyệt → đúng một dòng, audit
+- [x] R3.11 (CV22): người thứ hai giữ `integrations.admin` duyệt → đúng một dòng, audit
       `egress.allowlist.added` đứng tên người đó với `details.lane` `outbox`, `id` dòng là id phê duyệt; handler chạy
       lại cùng quyết định → vẫn một dòng, một audit; gỡ dòng rồi phát lại quyết định → dòng vẫn gỡ, đích vẫn
       `host_not_allowed`; hai yêu cầu cùng mẫu cùng purpose cùng được duyệt → một dòng, handler thứ hai kết thúc không
       lỗi và không audit; đích vừa thêm qua kiểm danh sách; đổi `ON CONFLICT DO NOTHING` thành chèn thẳng → test đỏ.
-- [ ] R3.18 (CV30): `DELETE /api/v1/egress/allowed-hosts/{id}` của người giữ `integrations.admin` → `removed_at`,
+- [x] R3.18 (CV30): `DELETE /api/v1/egress/allowed-hosts/{id}` của người giữ `integrations.admin` → `removed_at`,
       `removed_by` có giá trị, audit `egress.allowlist.removed` trong cùng giao dịch, `GET` không còn dòng, lời gọi kế
       tiếp tới đích đó → `host_not_allowed`; gỡ lọc `removed_at` khỏi kiểm danh sách → test đỏ.
-- [ ] R3.19 (CV30): công ty B `DELETE` id của công ty A → 404, dòng của A còn hiệu lực; người không giữ
+- [x] R3.19 (CV30): công ty B `DELETE` id của công ty A → 404, dòng của A còn hiệu lực; người không giữ
       `integrations.admin` → 403, dòng còn; gỡ kiểm quyền ở route → test đỏ.
-- [ ] R3.12 (CV22): công ty chỉ người gửi giữ `integrations.admin` với tới workspace đang làm việc → `POST` trả
+- [x] R3.12 (CV22): công ty chỉ người gửi giữ `integrations.admin` với tới workspace đang làm việc → `POST` trả
       409 `conflict` với `details.reason_code` `no_checker_available`, không dòng `platform.approval_requests` nào,
       không dòng `platform.egress_allowed_hosts` nào; thêm người thứ hai giữ khóa → 202; gỡ kiểm người duyệt →
       test đỏ.
-- [ ] R4.1: vector Standard Webhooks 1.0 đúng, dấu thời gian trong ±5 phút → `verified` (`standardwebhooks`
+- [x] R4.1: vector Standard Webhooks 1.0 đúng, dấu thời gian trong ±5 phút → `verified` (`standardwebhooks`
       làm oracle).
-- [ ] R4.2 (CV11): sửa một byte trượt; dấu thời gian lệch quá ±5 phút trượt; chữ ký thiếu trượt; gỡ kiểm
+- [x] R4.2 (CV11): sửa một byte trượt; dấu thời gian lệch quá ±5 phút trượt; chữ ký thiếu trượt; gỡ kiểm
       dấu thời gian → test đỏ.
-- [ ] R4.3 (CV11): token tĩnh sai → `rejected`, so theo thời gian hằng định.
-- [ ] R4.4: khi xoay khóa ký, chữ ký của cả khóa cũ còn hạn lẫn khóa mới đều `verified`; chữ ký chỉ khớp khóa cũ có
+- [x] R4.3 (CV11): token tĩnh sai → `rejected`, so theo thời gian hằng định.
+- [x] R4.4: khi xoay khóa ký, chữ ký của cả khóa cũ còn hạn lẫn khóa mới đều `verified`; chữ ký chỉ khớp khóa cũ có
       `not_after` đã qua theo đồng hồ tiêm vào → `rejected`; lược đồ không có trong `VERIFIERS` → `rejected`; gỡ kiểm
       `not_after` → test đỏ.
-- [ ] R3.13 (CV26): mỗi ca của bảng phân loại kết thúc bằng đúng một `EgressResponse` hay một trong ba lỗi;
+- [x] R3.13 (CV26): mỗi ca của bảng phân loại kết thúc bằng đúng một `EgressResponse` hay một trong ba lỗi;
       `dw_agent_runtime.dispatch.NotDispatchedError is` lớp của `dw_kernel` (cùng cho hai lớp kia); một test kiến trúc
       thấy egress không khai lớp lỗi kết quả nào khác và `dw_connectors` không nhập `dw_agent_runtime`; thêm một nhánh
       trả `None` hay ném `RuntimeError` cho một pha → test bảng đỏ.
-- [ ] R3.14 (CV26): máy chủ HTTP giả từ chối kết nối → `NotDispatchedError`, máy giả không nhận byte nào; đích bị
+- [x] R3.14 (CV26): máy chủ HTTP giả từ chối kết nối → `NotDispatchedError`, máy giả không nhận byte nào; đích bị
       `egress_blocked:address` → `NotDispatchedError` mang mã đó; gỡ phân loại theo byte đã ghi để mọi lỗi kết nối
       thành `OutcomeUnknownError` → ca này đỏ.
-- [ ] R3.15 (CV26): máy chủ giả đọc yêu cầu rồi reset → `OutcomeUnknownError`, máy giả có đúng 1 yêu cầu; máy giả trả
+- [x] R3.15 (CV26): máy chủ giả đọc yêu cầu rồi reset → `OutcomeUnknownError`, máy giả có đúng 1 yêu cầu; máy giả trả
       503 → `OutcomeUnknownError`; POST nhận 307 tới host ngoài danh sách → `OutcomeUnknownError` mang
       `egress_blocked:host_not_allowed`, máy giả có đúng 1 yêu cầu; body 2xx vượt 2 MiB (kể cả gzip nở ra quá trần) →
       `OutcomeUnknownError`; cho egress thử lại sau reset, hay phân loại reset hoặc chuyển hướng bị chặn sau khi gửi
       thành `NotDispatchedError` → máy giả nhận 2 yêu cầu hay ca đó đỏ.
-- [ ] R3.16 (CV26): máy giả trả 422 → `RejectedError` mang 422, máy giả có đúng 1 yêu cầu; bảng của SMTP: ngắt trước dấu
+- [x] R3.16 (CV26): máy giả trả 422 → `RejectedError` mang 422, máy giả có đúng 1 yêu cầu; bảng của SMTP: ngắt trước dấu
       kết thúc dữ liệu → `NotDispatchedError`, 550 sau dữ liệu → `RejectedError` mang 550, hết thời gian sau dấu kết
       thúc dữ liệu → `OutcomeUnknownError`; đổi 4xx thành `OutcomeUnknownError` hay 550 thành `NotDispatchedError` →
       test bảng đỏ.
-- [ ] Xong: `make ci && make test-integration` xanh.
+- [x] Xong: các cổng nhanh của ticket xanh (wave-close.md); `make test-integration` đầy đủ, mutate.py và đo trễ ở
+      lúc đóng hàng đợi.
 
 ## Nguồn
 
@@ -263,3 +264,65 @@ run_mode, purpose, connector_key, connection_id, simulate_safe)` (`run_mode` và
   một trong ba lỗi") và runtime-hardening:R6.12 (lỗi lạ không bị nuốt) là hai lớp: bảng phủ mọi pha đã biết, lỗi lập
   trình vẫn nổi lên.
 - 2026-11-03 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-04 (agent): dựng xong (lane 1), migration `20bb9a2210cf` sau `70d8a4564454`. Bước 1-9 như ticket:
+  `dw_connectors.egress` (`client`, `contracts`, `network`, `outcome`, `redaction`), `dw_connectors.webhooks`,
+  `dw_kernel.dispatch` (ba lỗi, `dw_agent_runtime.dispatch` xuất lại), `dw_kernel.host_patterns` (một chủ của chuẩn
+  hóa host và khớp mẫu cho API lẫn egress), `dw_platform.domain.allowed_hosts`, `application.egress_allowlist`,
+  `adapters.persistence.egress_allowlist_repo`, route `apps/api/.../routes/v1/egress.py`, handler
+  `dw_worker.consumers.egress_allowlist`. Khác ticket: (a) egress so danh sách với host mà httpx thật sự kết nối
+  (`raw_host`, IDNA 2008), còn mẫu chuẩn hóa bằng codec IDNA 2003 của stdlib (kernel chỉ stdlib), nên nhãn hai chuẩn
+  khác nhau (`ß`, `ς`) không khớp mẫu nào: đóng, không rộng hơn; (b) CHECK chặn cả `*.` trước IPv4
+  (`!~ '^(\*\.)?[0-9.]+$'`), `ports` 1-16 cổng TCP, `note` ≤ 500; (c) người tự quyết yêu cầu nghiêm nhận
+  `details.reason_code` `second_person_required` ở chính `ApproveAndResumeService`, nên mọi loại nghiêm cùng mã;
+  (d) `GET` phân trang mới trước (`ix_egress_allowed_hosts_tenant_id_created_at_id`), đăng ký ở `plan_shape.REGISTERED`
+  kèm test bỏ index thì đỏ; (e) span `dw.egress.request`, thuộc tính `dw.egress.purpose`, nhãn `purpose`, `outcome`,
+  `reason` vào `semconv.py` và snapshot; (f) ngữ cảnh TLS dựng một lần mỗi tiến trình: dựng mỗi lời gọi tốn ~0,5 giây
+  (đo bằng cProfile, `load_verify_locations`), lời gọi trước sửa ~1,2 giây.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): Public Suffix List ghim nguyên văn trong gói
+  (`dw_platform/domain/public_suffix_list.dat`, publicsuffix/list commit `52b71b3c` ngày 17/10/2026, sha256
+  `3d92f70d…25e5f33`, MPL-2.0) cùng bộ đọc ~30 dòng, không thêm thư viện. Nếu sai thì: `publicsuffixlist` ghim đúng phiên
+  bản ở `dw_platform` và `PublicSuffixList` gọi nó.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): `dw_connectors` khai `dw-observability` (tên metric và `TelemetryPort`
+  một chủ) và `httpcore` (pool ghim; httpx không nhận network backend nên `_PinnedTransport` thay `_pool` của
+  `AsyncHTTPTransport`); mỗi lời gọi một pool mới, không giữ kết nối giữa các lời gọi, để "đã ghi byte" là của đúng lời
+  gọi đó. Nếu sai thì: egress khai Protocol telemetry riêng, và một pool mỗi (công ty, host) với probe theo request.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): mã ticket không nêu: `egress_blocked:redirect` (vượt 3 bước, khác
+  origin ở `same_origin`, 3xx không `Location`), `egress_blocked:url` (URL hỏng hay mang thông tin đăng nhập),
+  `host_unresolved`, `connect_failed`, `connection_lost`, `transport_error`, `timeout`, `body_too_large`,
+  `allowlist_unavailable` (đọc danh sách lỗi → `NotDispatchedError`, theo M7), `http_<status>`; `RejectedError` chỉ mang
+  trạng thái, không mang body của nhà cung cấp. Nếu sai thì: hằng ở `egress/client.py`, và ticket 05 thêm body đã che
+  vào `details` nếu cần.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): `created_by`, `removed_by` không FK tới `platform.users`, như
+  `approval_requests.requested_by` (bản ghi một người đã làm, không đổi theo vòng đời user); `POST` ghi thêm audit
+  `egress.allowlist.requested` cùng giao dịch với yêu cầu; mã 422 `host_pattern_ip_literal`,
+  `host_pattern_public_suffix`, `host_pattern_invalid`, `ports_invalid`. Nếu sai thì: FK `ON DELETE RESTRICT` có index
+  trong một revision mới; bỏ audit yêu cầu (dòng phê duyệt là vết).
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): `build_egress_client` ở cả hai composition root
+  (`dw_api/bootstrap/egress.py`, `dw_worker/composition.py`), `allow_private=not settings.is_deployed`,
+  `require_https=settings.is_deployed`; api đặt `ApiContainer.egress` cho ticket 05, worker chưa gọi builder vì chưa
+  lane nào gửi (failure-modes #1). Fake DNS và tầng socket ở `dw_connectors.testing` cho test của hai gói. Nếu sai thì:
+  worker dựng client ở `build_registry` cùng lane gửi của ticket 05.
+- 2026-11-04 (agent): reviewing-feature-security (đọc): (1) cách ly: bảng RLS ép, mọi đọc qua `tenant_session`, không
+  cache; test âm công ty B với danh sách, id và phê duyệt của A; (2) quyền: `integrations.admin` kiểm ở service trước
+  khi đọc dòng, 403/404 qua HTTP, người quyết theo dấu `required_scope`; (3) tự chủ: không công cụ nào gọi egress ở
+  ticket này, không thêm tầm với cho agent; loại phê duyệt nghiêm, kiểm ở `decide`; (4) nội dung không tin: body nhà
+  cung cấp trả về dạng byte đã che, không vào prompt; chuyển hướng là đầu vào không tin, kiểm lại mỗi bước; (5) audit
+  cùng giao dịch cho `requested`, `added`, `removed`; FK workspace RESTRICT; (6) vòng đời: client và pool đóng trong
+  `async with` mỗi lời gọi, `ContextVar` trả lại trong `finally`, danh sách đọc lỗi → từ chối, mặc định
+  `allow_private=False`, `require_https=True`. `mutations/03.yaml` 53 đột biến cho lúc đóng hàng đợi; ba quét nguồn
+  (R3.6, R3.13 hai vế) đã thử đỏ bằng tay; 5 đột biến tích hợp và 13 của egress đã chạy tay, đều đỏ.
+- 2026-11-04 (agent): cổng của ticket: ruff, ruff format, mypy (663 tệp), lint-imports (11 hợp đồng),
+  `verify_architecture.py`, `verify_invariants.py` sạch; unit `dw_kernel`, `dw_connectors`, `dw_platform`,
+  `dw_agent_runtime`, `dw_observability`, `dw_api`, `dw_worker`: 2183 xanh; tích hợp (`DW_TEST_DB_SUFFIX=_lane1`)
+  `test_egress_allowlist_db.py` (14), `test_egress_allowed_hosts.py` (10), `test_plan_shape.py` (17),
+  `test_rls_coverage.py`, `test_privileges.py`, `test_offboarding_coverage.py`, `test_permission_catalogue.py`,
+  `test_approval_decision_audit.py`, `test_memory_review_db.py`: xanh. OpenAPI và kiểu TS sinh lại (hai đường dẫn
+  mới). Lúc đóng hàng đợi: đo trễ `GET`, `POST`, `DELETE /api/v1/egress/allowed-hosts` và quyết định
+  `egress.allowed_host`; `reviewing-deployment-security` cho ba route (không thêm URL ra ngoài, image hay service).
+- 2026-11-04 (agent): MEDIUM để lại: (M2) `POST` cho mẫu đã có dòng sống hay đang chờ vẫn mở phê duyệt, handler bỏ qua
+  không lỗi; (M3) `POST` không nhận `Idempotency-Key`, 202 mang `Location` tới `/api/v1/approvals/{id}`; (M4) mặc định
+  `redirect` `none`, một GET nhận 301 thành `OutcomeUnknownError`; (M5) người duyệt quyết trong workspace của yêu cầu,
+  ca người giữ khóa ở workspace khác chưa test; (M6) header của `static_header_token` mặc định `x-webhook-token`, cửa
+  nhận của workflow-triggers/02 đặt; (M8) lỗi lạ nổi lên nguyên, có test. Thêm: (M9) gzip nở trong một chunk vẫn được
+  giải nén hết trước khi đếm trần, bộ nhớ một lời gọi có thể vượt 2 MiB trong chốc lát; (M10) `ApiContainer.egress`
+  chưa ai đọc tới ticket 05.

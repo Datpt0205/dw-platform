@@ -640,6 +640,10 @@ _TENANT_WIDE_ON_PURPOSE: dict[tuple[str, str], str] = {
         "an effect an idempotent request committed, keyed by its caller across the "
         "tenant; the workspace is inside the request hash (app-standards R2.16)"
     ),
+    ("platform", "egress_allowed_hosts"): (
+        "một Máy chủ được phép mở đích cho mọi workspace của công ty (connections-and-vault"
+        " D1, ticket 03); workspace sở hữu là `owning_workspace_id`, giữ bởi khóa ghép RESTRICT"
+    ),
     ("platform", "entitlements"): "what the tenant's plan includes, for the whole company",
     ("platform", "policy_overrides"): "a tenant's override of a platform policy, company-wide",
     ("platform", "secret_envelopes"): (

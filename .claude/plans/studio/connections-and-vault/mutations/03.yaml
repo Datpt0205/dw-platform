@@ -1,0 +1,384 @@
+# Mutation check of connections-and-vault ticket 03: scripts/mutate.py runs this
+# file at the queue's close (wave-close.md). One mutation per control the ticket
+# adds (CV7-CV11, CV19, CV22, CV26, CV29, CV30; R3.1-R3.21, R4.1-R4.4), and one
+# per layer where a control is held twice (the pattern rule in the API and the
+# CHECK; the strict prefix in the API and the worker; the composition root of
+# each process).
+#
+# Shown red by hand, not here, because a source scan cannot see mutate.py's
+# package copy (2026-11-04, each probe file deleted afterwards):
+# - R3.6 (CV9): a module `dw_connectors/adapters/lane1_probe.py` calling
+#   `httpx.AsyncClient()` turned
+#   test_egress_architecture.py::test_no_module_but_egress_and_the_listed_adapters_builds_a_raw_client
+#   red;
+# - R3.13: a class `EgressDenied(DWError)` in `dw_connectors/egress/` turned
+#   test_egress_architecture.py::test_egress_declares_no_error_class_of_its_own
+#   red, and a module of `dw_connectors` importing `dw_agent_runtime.dispatch`
+#   turned test_egress_architecture.py::test_connectors_never_import_the_agent_runtime
+#   red.
+# Not expressible as one replacement: "write the row at POST" (R3.9) and "let
+# egress retry after a reset" (R3.15); the first is held by the row counts of
+# test_a_host_is_allowed_only_once_a_second_person_approves_it, the second by
+# the request count of test_a_reset_after_the_request_is_unknown_and_never_sent_again.
+mutations:
+  # ---- R3.1, R3.2 (CV7): resolved once, checked, pinned -----------------------
+  - name: R3.1 the connection goes to the name, not the checked address
+    file: packages/python/dw_connectors/src/dw_connectors/egress/network.py
+    old: "                    address,\n"
+    new: "                    host,\n"
+    tests:
+      - packages/python/dw_connectors/tests/unit/test_egress_client.py::test_the_connection_goes_to_the_address_that_was_checked_and_tls_to_the_name
+  - name: R3.2 resolve_checked bypassed
+    file: packages/python/dw_connectors/src/dw_connectors/egress/network.py
+    old: "                resolve_checked, host, port, allow_private=self._allow_private\n"
+    new: "                lambda h, p: [str(i[4][0]) for i in __import__('socket').getaddrinfo(h, p)], host, port\n"
+    tests:
+      - packages/python/dw_connectors/tests/unit/test_egress_client.py::test_an_address_that_is_not_global_is_refused_before_any_connection
+      - apps/api/tests/unit/test_egress_composition.py::test_deployed_a_listed_host_that_answers_a_private_address_is_refused
+  - name: R3.2 the API opens private addresses when deployed
+    file: apps/api/src/dw_api/bootstrap/egress.py
+    old: "        allow_private=not settings.is_deployed,"
+    new: "        allow_private=True,"
+    tests:
+      - apps/api/tests/unit/test_egress_composition.py::test_deployed_no_private_address_and_only_https
+      - apps/api/tests/unit/test_egress_composition.py::test_deployed_a_listed_host_that_answers_a_private_address_is_refused
+  - name: R3.2 the worker opens private addresses when deployed
+    file: apps/worker/src/dw_worker/composition.py
+    old: "        allow_private=not settings.is_deployed,"
+    new: "        allow_private=True,"
+    tests:
+      - apps/worker/tests/unit/test_worker_egress.py::test_the_profile_alone_sets_both
+
+  # ---- R3.3, R3.4 (CV8): every step checked again, credentials stay home ----
+  - name: R3.3 only the first step is admitted
+    file: packages/python/dw_connectors/src/dw_connectors/egress/client.py
+    old: "                await self._admit(context, step.url)\n"
+    new: "                if hop == 0:\n                    await self._admit(context, step.url)\n"
+    tests:
+      - packages/python/dw_connectors/tests/unit/test_egress_client.py::test_a_redirect_to_a_host_off_the_list_is_refused
+      - packages/python/dw_connectors/tests/unit/test_egress_client.py::test_a_post_redirected_off_the_list_is_unknown_and_sent_once
+  - name: R3.4 an origin change keeps Authorization and Cookie
+    file: packages/python/dw_connectors/src/dw_connectors/egress/client.py
+    old: "        if _origin(target) != _origin(self.url):\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_connectors/tests/unit/test_egress_client.py::test_an_origin_change_drops_authorization_and_cookie
+  - name: R3.3 same_origin follows another origin
+    file: packages/python/dw_connectors/src/dw_connectors/egress/client.py
+    old: 'if request.redirect == "same_origin" and _origin(following.url) != _origin('
+    new: "if False and _origin(following.url) != _origin("
+    tests:
+      - packages/python/dw_connectors/tests/unit/test_egress_client.py::test_same_origin_mode_refuses_another_origin
+  - name: R3.3 more than three steps followed
+    file: packages/python/dw_connectors/src/dw_connectors/egress/client.py
+    old: "                        if hop == MAX_REDIRECTS:\n"
+    new: "                        if hop == MAX_REDIRECTS + 10:\n"
+    tests:
+      - packages/python/dw_connectors/tests/unit/test_egress_client.py::test_a_fourth_redirect_is_not_followed
+
+  # ---- R3.5 (CV10): nothing but model outside live --------------------------
+  - name: R3.5 the run mode is not checked
+    file: packages/python/dw_connectors/src/dw_connectors/egress/client.py
+    old: "        if not run_mode_admits(context):\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_connectors/tests/unit/test_egress_client.py::test_outside_live_no_purpose_but_model_goes_out
+  - name: R3.5 simulate_safe frees every purpose
+    file: packages/python/dw_connectors/src/dw_connectors/egress/client.py
+    old: "    return context.purpose in _PASSES_OUTSIDE_LIVE and context.simulate_safe"
+    new: "    return context.simulate_safe"
+    tests:
+      - packages/python/dw_connectors/tests/unit/test_egress_client.py::test_simulate_safe_frees_no_purpose_but_connector_and_http_tool
+
+  # ---- R3.7, R3.21 (CV19): only the company's Allowed hosts -----------------
+  - name: R3.7 the list is not checked
+    file: packages/python/dw_connectors/src/dw_connectors/egress/client.py
+    old: "        if not any(rule_admits(r, host=host, port=port, purpose=context.purpose) for r in rules):\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_connectors/tests/unit/test_egress_client.py::test_anything_else_is_not_allowed
+      - apps/api/tests/unit/test_egress_composition.py::test_the_operators_outbound_hosts_admit_nothing_to_egress
+  - name: R3.21 the port is not checked
+    file: packages/python/dw_connectors/src/dw_connectors/egress/client.py
+    old: "        and port in rule.ports\n"
+    new: "\n"
+    tests:
+      - packages/python/dw_connectors/tests/unit/test_egress_client.py::test_anything_else_is_not_allowed
+  - name: R3.21 the purpose is not checked
+    file: packages/python/dw_connectors/src/dw_connectors/egress/client.py
+    old: '        and rule.purpose in (purpose, "any")'
+    new: "        and True"
+    tests:
+      - packages/python/dw_connectors/tests/unit/test_egress_client.py::test_anything_else_is_not_allowed
+  - name: R3.21 a wildcard matches any depth
+    file: packages/python/dw_kernel/src/dw_kernel/host_patterns.py
+    old: "        return bool(label) and bool(dot) and rest == domain"
+    new: "        return host.endswith('.' + domain) or host == domain"
+    tests:
+      - packages/python/dw_kernel/tests/unit/test_host_patterns.py::test_a_wildcard_matches_exactly_one_label_and_a_name_only_itself
+      - packages/python/dw_connectors/tests/unit/test_egress_client.py::test_anything_else_is_not_allowed
+  - name: R3.21 a host is not lower-cased
+    file: packages/python/dw_kernel/src/dw_kernel/host_patterns.py
+    old: "    name = host.lower()"
+    new: "    name = host"
+    tests:
+      - packages/python/dw_kernel/tests/unit/test_host_patterns.py::test_a_host_is_lower_case_without_its_trailing_dot_and_ascii
+      - packages/python/dw_connectors/tests/unit/test_egress_client.py::test_a_host_one_label_under_the_wildcard_on_a_listed_port_goes_out
+  - name: R3.7 a list that cannot be read lets the call through
+    file: packages/python/dw_connectors/src/dw_connectors/egress/client.py
+    old: "            raise not_dispatched(ALLOWLIST_UNAVAILABLE) from exc"
+    new: "            return []"
+    tests:
+      - packages/python/dw_connectors/tests/unit/test_egress_client.py::test_a_list_that_cannot_be_read_lets_nothing_out
+
+  # ---- R3.8 (CV19): no wildcard on a public suffix, no IP literal -----------
+  - name: R3.8 a wildcard on a public suffix is accepted
+    file: packages/python/dw_platform/src/dw_platform/domain/allowed_hosts.py
+    old: "    if wildcard and is_public_suffix(host):"
+    new: "    if False:"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_egress_allowlist.py::test_a_pattern_that_may_not_be_an_allowed_host_is_refused
+      - apps/api/tests/integration/test_egress_allowed_hosts.py::test_a_pattern_on_a_public_suffix_or_an_ip_is_422_and_opens_nothing
+  - name: R3.8 the PRIVATE section is not read
+    file: packages/python/dw_platform/src/dw_platform/domain/allowed_hosts.py
+    old: "            if not rule or rule.startswith(\"//\"):\n"
+    new: "            if \"BEGIN PRIVATE\" in line:\n                break\n            if not rule or rule.startswith(\"//\"):\n"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_egress_allowlist.py::test_a_pattern_that_may_not_be_an_allowed_host_is_refused
+  - name: R3.8 an IP literal is accepted by the API
+    file: packages/python/dw_platform/src/dw_platform/domain/allowed_hosts.py
+    old: '    if _is_ip_literal(name.rstrip(".")):'
+    new: "    if False:"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_egress_allowlist.py::test_a_pattern_that_may_not_be_an_allowed_host_is_refused
+  - name: R3.8 the CHECK takes an IPv4 literal
+    file: db/migrations/versions/20bb9a2210cf_egress_allowed_hosts.py
+    old: "            AND host_pattern !~ '^(\\*\\.)?[0-9.]+$'"
+    new: "            AND true"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_egress_allowlist_db.py::test_the_application_role_cannot_write_a_pattern_the_api_would_refuse
+  - name: R3.8 another company's rows are visible
+    file: db/migrations/versions/20bb9a2210cf_egress_allowed_hosts.py
+    old: '    f" USING {_TENANT} WITH CHECK {_TENANT}",'
+    new: '    " USING (true) WITH CHECK (true)",'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_egress_allowlist_db.py::test_a_company_neither_sees_nor_uses_another_companys_list
+      - apps/api/tests/integration/test_egress_allowed_hosts.py::test_another_company_cannot_see_or_remove_a_row
+
+  # ---- R3.9-R3.12 (CV22): a second person adds a host ------------------------
+  - name: R3.9 the approval is not stamped with the key
+    file: packages/python/dw_platform/src/dw_platform/application/egress_allowlist.py
+    old: "                required_scope=INTEGRATIONS_ADMIN_SCOPE,"
+    new: "                required_scope=None,"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_egress_allowlist.py::test_a_request_opens_a_stamped_strict_approval_and_writes_no_row
+      - apps/api/tests/integration/test_egress_allowed_hosts.py::test_a_host_is_allowed_only_once_a_second_person_approves_it
+  - name: R3.10 the API does not hold the type strict
+    file: apps/api/src/dw_api/bootstrap/wiring.py
+    old: "    wiring.approval_flow.strict_approval_prefixes |= {EGRESS_ALLOWED_HOST}\n"
+    new: "\n"
+    tests:
+      - apps/api/tests/integration/test_egress_allowed_hosts.py::test_a_host_is_allowed_only_once_a_second_person_approves_it
+  - name: R3.10 the worker does not hold the type strict
+    file: apps/worker/src/dw_worker/main.py
+    old: "    flow.strict_approval_prefixes |= {EGRESS_ALLOWED_HOST}\n"
+    new: "\n"
+    tests:
+      - apps/worker/tests/unit/test_channel_commands.py::test_an_allowed_host_takes_a_second_person_here_as_in_the_api
+  - name: R3.10 the self-decision carries no reason code
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/approval_flow.py
+    old: '                    "reason_code": "second_person_required",'
+    new: '                    "reason": "second_person_required",'
+    tests:
+      - apps/api/tests/integration/test_egress_allowed_hosts.py::test_a_host_is_allowed_only_once_a_second_person_approves_it
+  - name: R3.11 a replay inserts again
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/egress_allowlist_repo.py
+    old: '" ON CONFLICT DO NOTHING RETURNING id"'
+    new: '" RETURNING id"'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_egress_allowlist_db.py::test_an_approval_adds_the_row_named_by_it_once_whatever_is_replayed
+      - apps/api/tests/integration/test_egress_allowed_hosts.py::test_two_approvals_of_one_pattern_leave_one_row
+  - name: R3.11 the row's id is not the approval's
+    file: packages/python/dw_platform/src/dw_platform/application/egress_allowlist.py
+    old: "            id=decision.approval_id,"
+    new: "            id=self.id_generator.new_uuid(),"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_egress_allowlist.py::test_an_approval_adds_the_row_named_by_the_approval_audited_in_the_deciders_name
+      - packages/python/dw_platform/tests/integration/test_egress_allowlist_db.py::test_an_approval_adds_the_row_named_by_it_once_whatever_is_replayed
+  - name: R3.11 a settlement that added nothing is audited
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/egress_allowlist_repo.py
+    old: "            if inserted is None:\n                return AllowedHostSettlement(\"already_present\")\n"
+    new: "\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_egress_allowlist_db.py::test_an_approval_adds_the_row_named_by_it_once_whatever_is_replayed
+      - apps/api/tests/integration/test_egress_allowed_hosts.py::test_two_approvals_of_one_pattern_leave_one_row
+  - name: R3.11 the audit names the requester
+    file: packages/python/dw_platform/src/dw_platform/application/egress_allowlist.py
+    old: "            actor_id=UserId(decision.decided_by),"
+    new: "            actor_id=UserId(decision.requested_by),"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_egress_allowlist.py::test_an_approval_adds_the_row_named_by_the_approval_audited_in_the_deciders_name
+      - apps/api/tests/integration/test_egress_allowed_hosts.py::test_a_host_is_allowed_only_once_a_second_person_approves_it
+  - name: R3.12 no checker is asked for
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/egress_allowlist_repo.py
+    old: "            if checker is None:\n                return False\n"
+    new: "\n"
+    tests:
+      - apps/api/tests/integration/test_egress_allowed_hosts.py::test_without_a_second_holder_no_approval_is_opened
+  - name: R3.12 the requester counts as their own checker
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/egress_allowlist_repo.py
+    old: '                        "p": context.principal_id,'
+    new: '                        "p": None,'
+    tests:
+      - apps/api/tests/integration/test_egress_allowed_hosts.py::test_without_a_second_holder_no_approval_is_opened
+
+  # ---- R3.13-R3.16 (CV26): typed outcomes by the measured phase ---------------
+  - name: R3.14 every stop is unknown
+    file: packages/python/dw_connectors/src/dw_connectors/egress/outcome.py
+    old: '    return "outcome_unknown" if sent else "not_dispatched"'
+    new: '    return "outcome_unknown"'
+    tests:
+      - packages/python/dw_connectors/tests/unit/test_egress_outcome.py::test_each_phase_ends_in_exactly_one_typed_result
+      - packages/python/dw_connectors/tests/unit/test_egress_client.py::test_a_refused_connection_did_not_leave
+  - name: R3.15 a stop after sending reads as not dispatched
+    file: packages/python/dw_connectors/src/dw_connectors/egress/outcome.py
+    old: '    return "outcome_unknown" if sent else "not_dispatched"'
+    new: '    return "not_dispatched"'
+    tests:
+      - packages/python/dw_connectors/tests/unit/test_egress_client.py::test_a_reset_after_the_request_is_unknown_and_never_sent_again
+      - packages/python/dw_connectors/tests/unit/test_egress_client.py::test_a_post_redirected_off_the_list_is_unknown_and_sent_once
+  - name: R3.15 the first byte is not recorded
+    file: packages/python/dw_connectors/src/dw_connectors/egress/network.py
+    old: "            self._probe.sent = True\n"
+    new: "            pass\n"
+    tests:
+      - packages/python/dw_connectors/tests/unit/test_egress_client.py::test_a_reset_after_the_request_is_unknown_and_never_sent_again
+      - packages/python/dw_connectors/tests/unit/test_egress_client.py::test_a_timeout_after_sending_is_unknown
+  - name: R3.15 the body cap is not counted
+    file: packages/python/dw_connectors/src/dw_connectors/egress/client.py
+    old: "        if total > BODY_CAP_BYTES:\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_connectors/tests/unit/test_egress_client.py::test_a_body_over_two_mebibytes_is_unknown
+  - name: R3.16 a 4xx reads as unknown
+    file: packages/python/dw_connectors/src/dw_connectors/egress/outcome.py
+    old: "    if 400 <= status < 500:\n        return \"rejected\"\n"
+    new: "\n"
+    tests:
+      - packages/python/dw_connectors/tests/unit/test_egress_outcome.py::test_each_phase_ends_in_exactly_one_typed_result
+      - packages/python/dw_connectors/tests/unit/test_egress_client.py::test_a_422_is_rejected_with_its_status
+  - name: R3.16 an SMTP 550 reads as unknown
+    file: packages/python/dw_connectors/src/dw_connectors/egress/outcome.py
+    old: "    if reply is not None and 400 <= reply < 600:\n"
+    new: "    if False:\n"
+    tests:
+      - packages/python/dw_connectors/tests/unit/test_egress_outcome.py::test_each_phase_ends_in_exactly_one_typed_result
+  - name: R3.14 SMTP cut before end-of-data reads as unknown
+    file: packages/python/dw_connectors/src/dw_connectors/egress/outcome.py
+    old: "    if not end_of_data_sent:\n"
+    new: "    if False:\n"
+    tests:
+      - packages/python/dw_connectors/tests/unit/test_egress_outcome.py::test_each_phase_ends_in_exactly_one_typed_result
+
+  # ---- R3.17, R3.20 (CV29): manifest hosts, https when deployed ---------------
+  - name: R3.17 the manifest hosts are not checked
+    file: packages/python/dw_connectors/src/dw_connectors/egress/client.py
+    old: "            if not self._catalogue_admits(context.connector_key, host):\n"
+    new: "            if False:\n"
+    tests:
+      - packages/python/dw_connectors/tests/unit/test_egress_client.py::test_a_connector_call_goes_only_to_its_manifest_hosts
+      - packages/python/dw_connectors/tests/unit/test_egress_client.py::test_w1s_catalogue_refuses_every_connector_call
+  - name: R3.20 https is not required
+    file: packages/python/dw_connectors/src/dw_connectors/egress/client.py
+    old: '(self.require_https and url.scheme != "https")'
+    new: "False"
+    tests:
+      - packages/python/dw_connectors/tests/unit/test_egress_client.py::test_deployed_plain_http_is_refused_before_anything
+      - packages/python/dw_connectors/tests/unit/test_egress_client.py::test_deployed_a_redirect_down_to_http_is_refused_and_sends_no_credential_in_clear
+  - name: R3.20 the API does not require https when deployed
+    file: apps/api/src/dw_api/bootstrap/egress.py
+    old: "        require_https=settings.is_deployed,"
+    new: "        require_https=False,"
+    tests:
+      - apps/api/tests/unit/test_egress_composition.py::test_deployed_no_private_address_and_only_https
+
+  # ---- R3.18, R3.19 (CV30): removal at once, only in one's company --------------
+  - name: R3.18 egress reads removed rows
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/egress_allowlist_repo.py
+    old: "                    sa.select(_HOSTS.c.host_pattern, _HOSTS.c.ports, _HOSTS.c.purpose).where(\n                        _HOSTS.c.removed_at.is_(None)\n                    )\n"
+    new: "                    sa.select(_HOSTS.c.host_pattern, _HOSTS.c.ports, _HOSTS.c.purpose)\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_egress_allowlist_db.py::test_a_removed_row_admits_nothing
+      - apps/api/tests/integration/test_egress_allowed_hosts.py::test_a_removal_takes_effect_at_the_next_call
+  - name: R3.18 a removed row is removed again
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/egress_allowlist_repo.py
+    old: "                    .where(_HOSTS.c.id == host_id, _HOSTS.c.removed_at.is_(None))\n"
+    new: "                    .where(_HOSTS.c.id == host_id)\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_egress_allowlist_db.py::test_a_live_row_is_removed_by_its_company_once
+      - apps/api/tests/integration/test_egress_allowed_hosts.py::test_a_removal_takes_effect_at_the_next_call
+  - name: R3.19 removal without the key
+    file: packages/python/dw_platform/src/dw_platform/application/egress_allowlist.py
+    old: "        await self._require(context, str(host_id))\n"
+    new: "\n"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_egress_allowlist.py::test_without_the_key_every_operation_is_refused_before_anything
+      - apps/api/tests/integration/test_egress_allowed_hosts.py::test_without_the_key_every_route_is_403_and_the_row_lives
+  - name: R3.18 dw_app keeps UPDATE of every column
+    file: db/migrations/versions/20bb9a2210cf_egress_allowed_hosts.py
+    old: '    "REVOKE UPDATE ON platform.egress_allowed_hosts FROM dw_app;",'
+    new: '    "NULL;",'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_privileges.py::test_the_allowed_hosts_are_read_inserted_and_only_marked_removed
+
+  # ---- R3 (ADR-0115 decision 6): secrets scrubbed by value ---------------------
+  - name: R3 the body comes back unscrubbed
+    file: packages/python/dw_connectors/src/dw_connectors/egress/client.py
+    old: "                        body=mask.data(body),"
+    new: "                        body=body,"
+    tests:
+      - packages/python/dw_connectors/tests/unit/test_egress_client.py::test_a_2xx_comes_back_with_the_calls_secrets_scrubbed
+  - name: R3 base64 forms are not scrubbed
+    file: packages/python/dw_connectors/src/dw_connectors/egress/redaction.py
+    old: '        found |= {text, text.rstrip("=")}'
+    new: "        pass"
+    tests:
+      - packages/python/dw_connectors/tests/unit/test_egress_client.py::test_a_2xx_comes_back_with_the_calls_secrets_scrubbed
+  - name: R3 the httpx log line keeps its query string
+    file: packages/python/dw_connectors/src/dw_connectors/egress/redaction.py
+    old: '        scrubbed = _QUERY.sub(r"\1", message)'
+    new: "        scrubbed = message"
+    tests:
+      - packages/python/dw_connectors/tests/unit/test_egress_client.py::test_the_httpx_log_line_carries_no_query_and_no_secret
+
+  # ---- R4 (CV11): the signature module ----------------------------------------
+  - name: R4.2 the timestamp window is not checked
+    file: packages/python/dw_connectors/src/dw_connectors/webhooks.py
+    old: "        if abs(now.timestamp() - sent_at) > TIMESTAMP_TOLERANCE.total_seconds():"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_connectors/tests/unit/test_webhooks.py::test_a_timestamp_outside_five_minutes_is_refused
+  - name: R4.2 any offered signature passes
+    file: packages/python/dw_connectors/src/dw_connectors/webhooks.py
+    old: '                hmac.compare_digest(expected, sig.encode("ascii", "replace")) for sig in offered'
+    new: "                True for sig in offered"
+    tests:
+      - packages/python/dw_connectors/tests/unit/test_webhooks.py::test_one_byte_changed_is_refused
+  - name: R4.3 the token is compared with ==
+    file: packages/python/dw_connectors/src/dw_connectors/webhooks.py
+    old: '            if hmac.compare_digest(received, key.secret.encode("utf-8")) and matched is None:'
+    new: '            if received == key.secret.encode("utf-8") and matched is None:'
+    tests:
+      - packages/python/dw_connectors/tests/unit/test_webhooks.py::test_the_token_is_compared_in_constant_time
+  - name: R4.4 a key past its not_after is kept
+    file: packages/python/dw_connectors/src/dw_connectors/webhooks.py
+    old: "    live = [key for key in keys if key.not_after is None or now < key.not_after]"
+    new: "    live = list(keys)"
+    tests:
+      - packages/python/dw_connectors/tests/unit/test_webhooks.py::test_a_key_past_its_not_after_is_no_key
+  - name: R4.4 an unknown scheme falls back to a verifier
+    file: packages/python/dw_connectors/src/dw_connectors/webhooks.py
+    old: "    verifier = VERIFIERS.get(scheme)"
+    new: '    verifier = VERIFIERS.get(scheme, VERIFIERS["standard_webhooks_v1"])'
+    tests:
+      - packages/python/dw_connectors/tests/unit/test_webhooks.py::test_a_scheme_w1_does_not_hold_is_refused

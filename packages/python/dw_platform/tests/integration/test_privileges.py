@@ -1901,3 +1901,47 @@ async def test_the_application_cannot_read_an_envelope_and_the_provisioner_not_c
             await conn.rollback()
     finally:
         await admin.dispose()
+
+
+_ALLOWED_HOSTS_UPDATABLE = {"removed_at", "removed_by"}
+
+
+async def test_the_allowed_hosts_are_read_inserted_and_only_marked_removed(
+    db_urls: DatabaseUrls,
+) -> None:
+    """connections-and-vault ticket 03, migration 20bb9a2210cf: `dw_app` holds
+    SELECT, INSERT and DELETE (the offboarding lane's) on
+    `platform.egress_allowed_hosts`, and UPDATE of `removed_at` and
+    `removed_by` only, so no write moves a row's pattern, ports or purpose; no
+    other application role holds anything."""
+    verbs = ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER")
+    roles = ("public", "dw_app", "dw_agent_ro", "dw_provisioner")
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            held = {
+                (role, verb)
+                for role in roles
+                for verb in verbs
+                if await conn.scalar(
+                    sa.text("SELECT has_table_privilege(:r, 'platform.egress_allowed_hosts', :v)"),
+                    {"r": role, "v": verb},
+                )
+            }
+            updatable = set(
+                (
+                    await conn.execute(
+                        sa.text(
+                            "SELECT a.attname FROM pg_attribute a"
+                            " WHERE a.attrelid = 'platform.egress_allowed_hosts'::regclass"
+                            "   AND a.attnum > 0 AND NOT a.attisdropped"
+                            "   AND has_column_privilege('dw_app', a.attrelid, a.attnum,"
+                            "                            'UPDATE')"
+                        )
+                    )
+                ).scalars()
+            )
+    finally:
+        await migrator.dispose()
+    assert held == {("dw_app", v) for v in ("SELECT", "INSERT", "DELETE")}
+    assert updatable == _ALLOWED_HOSTS_UPDATABLE

@@ -112,6 +112,11 @@ EXPECTED: dict[tuple[str, str], Expectation] = {
     ("GET", "/api/v1/admin/service-principals"): Expectation(
         "platform.service_principals", (), ("name",)
     ),
+    # Newest first; `removed_at IS NULL` is a filter on the tenant's index
+    # (connections-and-vault ticket 03).
+    ("GET", "/api/v1/egress/allowed-hosts"): Expectation(
+        "platform.egress_allowed_hosts", (), ("created_at", "id")
+    ),
 }
 # The query a registered route is paged with, when it needs one.
 PARAMS: dict[tuple[str, str], dict[str, str]] = {
@@ -306,6 +311,31 @@ async def seed(migrator: AsyncEngine) -> World:
                     },
                 )
         await conn.execute(sa.text("ANALYZE platform.service_principals"))
+        # A company's Allowed hosts, some removed, held by a tenant-depth key
+        # (connections-and-vault ticket 03).
+        admin = await plant_role(conn, t, f"plan_eg_{t.hex[:8]}", {"integrations.admin": "tenant"})
+        await assign(conn, t, w, world.membership, admin)
+        for n in range(80):
+            await conn.execute(
+                sa.text(
+                    "INSERT INTO platform.egress_allowed_hosts (id, tenant_id,"
+                    " owning_workspace_id, host_pattern, purpose, created_by, created_at,"
+                    " removed_at, removed_by)"
+                    " VALUES (:id, :t, :w, :host, 'http_tool', :u, :at,"
+                    " CASE WHEN :gone THEN CAST(:at AS timestamptz) END,"
+                    " CASE WHEN :gone THEN CAST(:u AS uuid) END)"
+                ),
+                {
+                    "id": uuid.uuid4(),
+                    "t": t,
+                    "w": w,
+                    "u": u,
+                    "host": f"api{n}.plan.vn",
+                    "at": now - timedelta(minutes=n),
+                    "gone": n % 5 == 0,
+                },
+            )
+        await conn.execute(sa.text("ANALYZE platform.egress_allowed_hosts"))
     return world
 
 
@@ -485,6 +515,20 @@ async def test_dropping_the_feedback_page_index_turns_the_check_red(bench: Bench
 
     assert problems, "the check passed without the index"
     assert any("FROM platform.feedback" in problem for problem in problems)
+    assert any("created_at" in problem or "tenant_id" in problem for problem in problems)
+
+
+async def test_dropping_the_allowed_hosts_page_index_turns_the_check_red(bench: Bench) -> None:
+    """connections-and-vault ticket 03: the list's index carries its page."""
+    path = "/api/v1/egress/allowed-hosts"
+    expected = EXPECTED[("GET", path)]
+    statements = await bench.pages(path, expected.table)
+
+    problems = await bench.problems(
+        statements, expected, drop="platform.ix_egress_allowed_hosts_tenant_id_created_at_id"
+    )
+
+    assert problems, "the check passed without the index"
     assert any("created_at" in problem or "tenant_id" in problem for problem in problems)
 
 
