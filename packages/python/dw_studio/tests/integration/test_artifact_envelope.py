@@ -664,9 +664,11 @@ async def test_a_version_back_in_draft_is_resealed_under_a_new_number(
     sealed = await seal(service, world["writer"], artifact_id, row_version)
     await stage(migrator, sealed.version_id, "evaluating")
     await stage(migrator, sealed.version_id, "draft")
-    saved = await service.save_draft(
-        world["writer"].context(), artifact_id, ExpectedVersion(row_version + 1), doc(second)
-    )
+    saved = (
+        await service.save_draft(
+            world["writer"].context(), artifact_id, ExpectedVersion(row_version + 1), doc(second)
+        )
+    ).version
     assert (saved.version_no, saved.content_hash, saved.definition_hash) == (None, None, None)
 
     again = await seal(service, world["writer"], artifact_id, saved.row_version)
@@ -831,7 +833,9 @@ Write = Callable[[ArtifactService, Person, uuid.UUID, int], Coroutine[Any, Any, 
 
 
 async def _save(service: ArtifactService, who: Person, artifact_id: uuid.UUID, rv: int) -> Any:
-    return await service.save_draft(who.context(), artifact_id, ExpectedVersion(rv), doc())
+    return (
+        await service.save_draft(who.context(), artifact_id, ExpectedVersion(rv), doc())
+    ).version
 
 
 async def _create_draft(

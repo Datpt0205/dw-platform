@@ -83,6 +83,15 @@ class SealResult:
 
 
 @dataclass(frozen=True, slots=True)
+class SavedDraft:
+    """A saved draft and what its kind's check finds in it (workflow-engine
+    R2.13): warnings, never a refusal, since a draft is work in progress."""
+
+    version: VersionRow
+    warnings: tuple[DocumentProblem, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class DependentRef:
     artifact_id: uuid.UUID
     kind: str
@@ -467,15 +476,18 @@ class ArtifactService:
         expected: ExpectedVersion,
         document: Any,
         effect: PendingEffect | None = None,
-    ) -> VersionRow:
+    ) -> SavedDraft:
         """R2.4, R2.5: the document replaced under `If-Match`; a draft sealed
-        once and sent back keeps no number or hash of its old content (R2.8)."""
+        once and sent back keeps no number or hash of its old content (R2.8).
+        Only a document with no canonical form is refused (R1.2); after the
+        save, the kind's own check runs as warnings (workflow-engine R2.13)."""
         document = canonical_document(document)
         async with self.store.transaction(context) as tx:
             if effect is not None:
                 await tx.claim(effect.of(artifact_id))
             row = await self._load(tx, artifact_id, lock=True)
-            await self._writable(tx, row, await self._readable(tx, row))
+            entry = await self._readable(tx, row)
+            await self._writable(tx, row, entry)
             unreleased = _unreleased(await tx.versions(artifact_id))
             if unreleased is None:
                 raise _no_draft()
@@ -501,7 +513,7 @@ class ArtifactService:
                     {"row_version": saved.row_version},
                 )
             )
-        return saved
+        return SavedDraft(saved, tuple(entry.validate(saved.document)))
 
     async def create_draft(
         self,

@@ -208,9 +208,9 @@ async def sealed_next(
     context = who.context()
     row = await service.get(context, artifact_id)
     draft = await service.create_draft(context, artifact_id, ExpectedVersion(row.row_version))
-    saved = await service.save_draft(
-        context, artifact_id, ExpectedVersion(draft.row_version), document
-    )
+    saved = (
+        await service.save_draft(context, artifact_id, ExpectedVersion(draft.row_version), document)
+    ).version
     return await seal(service, who, artifact_id, saved.row_version)
 
 

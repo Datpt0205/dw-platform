@@ -587,12 +587,14 @@ async def test_a_resume_elsewhere_resolves_the_version_it_pinned(
     )
     target_id, v1 = targets[0]
     draft = await service.create_draft(writer.context(), target_id, ExpectedVersion(1))
-    saved = await service.save_draft(
-        writer.context(),
-        target_id,
-        ExpectedVersion(draft.row_version),
-        fixture_document(title="phiên bản 2"),
-    )
+    saved = (
+        await service.save_draft(
+            writer.context(),
+            target_id,
+            ExpectedVersion(draft.row_version),
+            fixture_document(title="phiên bản 2"),
+        )
+    ).version
     v2 = await sealed(service, writer, target_id, saved.row_version)
     await publish_for_test(migrator, v2.version_id)  # v1 retired, superseded
 
@@ -712,7 +714,7 @@ async def test_the_receipt_holds_off_a_save_of_the_draft_it_hashes(
     await waits_on_a_lock(migrator, save)
     release.set()
     found, manifest_hash = await holder
-    assert (await save).row_version == row_version + 1
+    assert (await save).version.row_version == row_version + 1
     assert found is not None and found.version.document["title"] == "trước"
     root = (await manifest_body(migrator, manifest_hash))["root"]
     received = definition_body("fixture", artifact_id, content_hash(found.version.document), [])

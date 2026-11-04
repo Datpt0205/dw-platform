@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 
+from dw_agent_runtime.wflite.registry import build_node_registry
 from dw_kernel.canonical import content_hash
 from dw_kernel.ports import SystemClock, Uuid7Generator
 from dw_studio.core.application.registry import ArtifactKindEntry, ArtifactKindRegistry
@@ -30,6 +31,8 @@ from dw_studio.testing.fixture_kinds import (
     extract_fixture,
     validate_fixture,
 )
+from dw_studio.testing.workflows import NoTools
+from dw_studio.workflows.adapters.triggers import NoTriggerSubscriptions
 
 pytestmark = pytest.mark.unit
 
@@ -108,9 +111,16 @@ def _no_store(_tx: Any) -> Any:
 
 def test_the_running_app_registers_no_test_kind() -> None:
     running = ArtifactKindRegistry(
-        platform_kinds(_no_store, clock=SystemClock(), ids=Uuid7Generator())
+        platform_kinds(
+            _no_store,
+            clock=SystemClock(),
+            ids=Uuid7Generator(),
+            nodes=build_node_registry(),
+            tools=NoTools(),
+            triggers=NoTriggerSubscriptions(),
+        )
     )
-    assert running.kinds == {"object"}
+    assert running.kinds == {"object", "workflow"}
     assert not running.kinds & {entry.kind for entry in FIXTURE_KINDS}
 
 

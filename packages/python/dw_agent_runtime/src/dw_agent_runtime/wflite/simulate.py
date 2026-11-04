@@ -36,6 +36,7 @@ from dw_agent_runtime.samples import SampleOutput, sample_of
 from dw_agent_runtime.wflite.catalog import PinnedWorkflow
 from dw_agent_runtime.wflite.compile import ToolModelsPort, WfPorts, compile_workflow
 from dw_agent_runtime.wflite.document import Step
+from dw_agent_runtime.wflite.ir import iter_lanes
 from dw_agent_runtime.wflite.registry import NodeTypeSpec
 from dw_agent_runtime.wflite.starter import checked_parameters
 from dw_kernel.errors import DWError
@@ -139,9 +140,8 @@ def _llm_schemas(steps: Sequence[Step], registry: Mapping[str, NodeTypeSpec]) ->
     for step in steps:
         if step.type == "ai.llm@1":
             found[step.id] = step.config.get("output_schema") or {"type": "object"}
-        spec = registry.get(step.type)
-        for lane in (spec.lanes(step.config) if spec else {}).values():
-            found.update(_llm_schemas([Step.model_validate(raw) for raw in lane], registry))
+        for lane in iter_lanes(step, registry):
+            found.update(_llm_schemas([Step.model_validate(raw) for raw in lane.items], registry))
     return found
 
 

@@ -4,7 +4,8 @@
 `object_document` and `object_field` build a valid `dw.object/v1` with
 Vietnamese labels; `plant_manager` plants a member holding
 `studio.objects.manage` at tenant depth, the only depth the key takes;
-`running_kinds` is what `build_studio` registers without `kinds=`.
+`running_kinds` is what `build_studio` registers without `kinds=`, with a
+tool register that knows no tool.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from dw_agent_runtime.wflite.registry import build_node_registry
 from dw_kernel.ports import SystemClock, Uuid7Generator
 from dw_platform.testing.rbac import (
     PlantedTenant,
@@ -25,7 +27,9 @@ from dw_platform.testing.rbac import (
 from dw_studio.core.application.registry import ArtifactKindEntry
 from dw_studio.kinds import OBJECTS_MANAGE_SCOPE, platform_kinds
 from dw_studio.records.adapters.definition_store import object_store_of
+from dw_studio.testing.workflows import NoTools
 from dw_studio.testing.world import Person
+from dw_studio.workflows.adapters.triggers import NoTriggerSubscriptions
 
 
 def object_field(api_name: str, type_: str = "text", **over: Any) -> dict[str, Any]:
@@ -73,4 +77,11 @@ async def plant_manager(
 
 
 def running_kinds() -> tuple[ArtifactKindEntry, ...]:
-    return platform_kinds(object_store_of, clock=SystemClock(), ids=Uuid7Generator())
+    return platform_kinds(
+        object_store_of,
+        clock=SystemClock(),
+        ids=Uuid7Generator(),
+        nodes=build_node_registry(),
+        tools=NoTools(),
+        triggers=NoTriggerSubscriptions(),
+    )

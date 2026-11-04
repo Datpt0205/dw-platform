@@ -524,7 +524,7 @@ forbidden_modules = [
 # reaches it through the core (a registry entry, a port) at the composition root.
 name = "Studio capabilities are independent"
 type = "independence"
-modules = ["dw_studio.records", "dw_studio.lifecycle"]
+modules = ["dw_studio.records", "dw_studio.lifecycle", "dw_studio.workflows"]
 
 [[tool.importlinter.contracts]]
 # studio-skeleton R5.6; ADR 0114 decision 2: one adapter imports the CEL

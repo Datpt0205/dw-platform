@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 
 from dw_agent_runtime.wflite.document import Step, WorkflowDocument
+from dw_agent_runtime.wflite.ir import iter_lanes
 from dw_agent_runtime.wflite.registry import NodeTypeSpec
 from dw_agent_runtime.wflite.versions import PinnedWorkflowsPort, not_shipped
 from dw_kernel.autonomy import AutonomyLevel
@@ -39,12 +40,9 @@ class OutlineStep:
 
 
 def _lanes(step: Step, registry: Mapping[str, NodeTypeSpec]) -> list[tuple[str, list[Step]]]:
-    spec = registry.get(step.type)
-    if spec is None:
-        return []
     return [
-        (port, [Step.model_validate(raw) for raw in lane])
-        for port, lane in spec.lanes(step.config).items()
+        (lane.port, [Step.model_validate(raw) for raw in lane.items])
+        for lane in iter_lanes(step, registry)
     ]
 
 
@@ -132,12 +130,8 @@ def _place(
                 continue
             placed[raw["id"]] = _Placed(here, raw)
             order.setdefault(here, []).append(raw["id"])
-            spec = registry.get(str(raw.get("type")))
-            config = raw.get("config")
-            if spec is None or not isinstance(config, Mapping):
-                continue
-            for port, inner in spec.lanes(config).items():
-                walk(inner, "/".join(p for p in (here, f"{raw['id']}.{port}") if p))
+            for lane in iter_lanes(raw, registry):
+                walk(lane.items, "/".join(p for p in (here, f"{raw['id']}.{lane.port}") if p))
 
     walk(steps, lane)
     return placed, order
@@ -146,19 +140,29 @@ def _place(
 def _own(raw: Mapping[str, Any], registry: Mapping[str, NodeTypeSpec]) -> dict[str, Any]:
     """A step without the steps its lanes hold, so a change inside a lane is
     that inner step's change, not its parent's."""
-    config = dict(raw.get("config") or {})
-    spec = registry.get(str(raw.get("type")))
-    if spec is not None:
-        for port in spec.lanes(config):
-            if port.startswith("cases."):
-                cases = dict(config.get("cases") or {})
-                cases.pop(port.removeprefix("cases."), None)
-                config["cases"] = cases
-            else:
-                config.pop(port, None)
-        if config.get("cases") == {}:
-            config.pop("cases")
-    return {"config": config, "description": raw.get("description")}
+    own: dict[str, Any] = {
+        "config": dict(raw.get("config") or {}),
+        "description": raw.get("description"),
+    }
+    for lane in iter_lanes(raw, registry):
+        _drop(own, lane.at)
+    if own["config"].get("cases") == {}:
+        own["config"].pop("cases")
+    return own
+
+
+def _drop(own: dict[str, Any], at: Sequence[str]) -> None:
+    """Remove the lane at `at` from a copy of a step, copying each map on the
+    way so the step itself is not changed."""
+    *parents, last = at
+    here = own
+    for key in parents:
+        inner = here.get(key)
+        if not isinstance(inner, Mapping):
+            return
+        here[key] = dict(inner)
+        here = here[key]
+    here.pop(last, None)
 
 
 def diff_steps(
@@ -287,7 +291,7 @@ class WorkflowOutlineReader:
             )
         return WorkflowOutline(
             dw_id=worker.id,
-            key=pinned.document.key,
+            key=pinned.key,
             version=config.workflow_version,
             sha256=pinned.sha256,
             steps=outline(pinned.document, self.registry),

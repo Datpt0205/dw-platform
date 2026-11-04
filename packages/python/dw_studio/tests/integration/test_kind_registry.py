@@ -19,15 +19,13 @@ from pg_test_db import DatabaseUrls
 from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 from sqlalchemy.pool import NullPool
 
-from dw_kernel.ports import SystemClock, Uuid7Generator
 from dw_studio.core.application.registry import ArtifactKindEntry
-from dw_studio.kinds import platform_kinds
-from dw_studio.records.adapters.definition_store import object_store_of
 from dw_studio.testing.fixture_kinds import FIXTURE, FIXTURE_KINDS, planted_fixture_kinds
+from dw_studio.testing.objects import running_kinds
 
 pytestmark = pytest.mark.integration
 
-RUNNING = platform_kinds(object_store_of, clock=SystemClock(), ids=Uuid7Generator())
+RUNNING = running_kinds()
 
 
 async def registry_problems(

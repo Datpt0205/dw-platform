@@ -188,11 +188,11 @@ swap "$d/pyproject.toml" 'source_modules = ["dw_studio"]' 'source_modules = ["dw
 red "dw_studio.core outside the LangGraph contract" "$d" \
   "dw_studio.core: dw_studio.core missing from the source_modules of 'LangGraph only in Studio compilers'"
 
-# `records` and `lifecycle` share one contract since agent-lifecycle 03; a
-# capability outside it is named.
-d=$(skeleton) && studio_sub "$d" records && studio_sub "$d" workflows
+# `records`, `lifecycle` and `workflows` share one contract (agent-lifecycle
+# 03, workflow-engine 01); a capability outside it is named.
+d=$(skeleton) && studio_sub "$d" records && studio_sub "$d" agents
 red "a Studio capability outside the independence contract" "$d" \
-  "dw_studio.workflows: missing from an independence contract of the Studio capabilities"
+  "dw_studio.agents: missing from an independence contract of the Studio capabilities"
 
 # The guard itself: without the call in main(), a planted case would pass.
 d=$(skeleton) && drop "$d/pyproject.toml" "[tool.coverage.run]" '    "packages/python/dw_evals/src",'

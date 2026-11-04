@@ -69,6 +69,21 @@ class ArtifactDraftView(BaseModel):
     based_on_version_id: uuid.UUID | None
 
 
+class DraftWarning(BaseModel):
+    pointer: str = Field(description="Where in the document, a JSON pointer (RFC 6901).")
+    code: str
+    detail: str
+
+
+class SavedDraftView(ArtifactDraftView):
+    warnings: list[DraftWarning] = Field(
+        description=(
+            "What the kind's check finds in the saved draft. A warning never blocks a save;"
+            " the same problems refuse a submit."
+        )
+    )
+
+
 class VersionView(BaseModel):
     id: uuid.UUID
     version_no: int
@@ -302,7 +317,7 @@ async def read_draft(
     return view
 
 
-@router.put("/{artifact_id}/draft", response_model=ArtifactDraftView)
+@router.put("/{artifact_id}/draft", response_model=SavedDraftView)
 async def save_draft(
     artifact_id: uuid.UUID,
     context: RequireStudioAccess,
@@ -310,10 +325,15 @@ async def save_draft(
     response: Response,
     expected: RequireIfMatch,
     body: Annotated[ArtifactDraftBody, Body()],
-) -> ArtifactDraftView:
-    row = await _service(container).save_draft(context, artifact_id, expected, body.document)
-    response.headers["ETag"] = etag_of(row.row_version)
-    return _draft(row)
+) -> SavedDraftView:
+    saved = await _service(container).save_draft(context, artifact_id, expected, body.document)
+    response.headers["ETag"] = etag_of(saved.version.row_version)
+    return SavedDraftView(
+        **_draft(saved.version).model_dump(),
+        warnings=[
+            DraftWarning(pointer=w.pointer, code=w.code, detail=w.detail) for w in saved.warnings
+        ],
+    )
 
 
 @router.post("/{artifact_id}/draft", response_model=ArtifactDraftView, status_code=201)

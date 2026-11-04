@@ -28,7 +28,7 @@ from pydantic import ValidationError
 from dw_agent_runtime.tool_specs import ToolSpec
 from dw_agent_runtime.wflite.document import WorkflowDocument
 from dw_agent_runtime.wflite.registry import JsonSchema, NodeTypeSpec, build_node_registry
-from dw_agent_runtime.wflite.validate import Problem, ToolSpecLookup, validate
+from dw_agent_runtime.wflite.validate import PACK_RULES, Problem, ToolSpecLookup, validate
 from dw_kernel.errors import ConfigError, NotFoundError
 from dw_kernel.pagination import canonical_json
 from dw_platform.application.json_schema import validator_for
@@ -81,13 +81,31 @@ class PinnedWorkflow:
     label: str | None = None
 
     @property
+    def key(self) -> str:
+        """The document's key. Optional in the model, which Studio documents
+        share (workflow-engine 01); a pack's was required by `PACK_RULES`
+        before it was pinned, and a `+t<n>` version is its pack's copy."""
+        return _named(self.document.key, "key")
+
+    @property
+    def version(self) -> str:
+        """The document's own semver, required the same way as `key`."""
+        return _named(self.document.version, "version")
+
+    @property
     def run_version(self) -> str:
         """The version its runs are registered and recorded under: the pack's
         semver, or a tenant version's label with its content hash, so the
         graph of one tenant's `+t1` is never another's (wf-ai R6.16)."""
         if self.label is None:
-            return self.document.version
+            return self.version
         return f"{self.label}.{self.sha256}"
+
+
+def _named(value: str | None, name: str) -> str:
+    if value is None:
+        raise ConfigError(f"a pinned workflow has no {name}")
+    return value
 
 
 @dataclass
@@ -120,7 +138,7 @@ class PackCatalog:
                 )
                 continue
             assert pinned is not None
-            key = (pinned.document.key, pinned.document.version)
+            key = (pinned.key, pinned.version)
             if key in catalog._workflows:
                 failures.append(f"{path}: {key[0]}@{key[1]} is shipped twice")
                 continue
@@ -160,7 +178,12 @@ def _read(
     key, _, version = stem.partition("@")
     schemas, problems = _work_schemas(raw, path.parent.parent / "schemas")
     problems += validate(
-        raw, registry=registry, tools=tools, work_schemas=schemas, file_key=(key, version)
+        raw,
+        registry=registry,
+        rules=PACK_RULES,
+        tools=tools,
+        work_schemas=schemas,
+        file_key=(key, version),
     )
     if problems:
         return None, problems

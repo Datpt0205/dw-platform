@@ -3375,6 +3375,18 @@ export interface components {
              */
             updated_at: string;
         };
+        /** DraftWarning */
+        DraftWarning: {
+            /** Code */
+            code: string;
+            /** Detail */
+            detail: string;
+            /**
+             * Pointer
+             * @description Where in the document, a JSON pointer (RFC 6901).
+             */
+            pointer: string;
+        };
         /**
          * EnableRequestView
          * @description The approval that enables the connection once a second person approves it.
@@ -4674,6 +4686,37 @@ export interface components {
             worker_id: string;
             /** Worker Version */
             worker_version: string;
+        };
+        /** SavedDraftView */
+        SavedDraftView: {
+            /**
+             * Artifact Id
+             * Format: uuid
+             */
+            artifact_id: string;
+            /** Based On Version Id */
+            based_on_version_id: string | null;
+            /** Document */
+            document: {
+                [key: string]: unknown;
+            };
+            /** Document Schema */
+            document_schema: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Version
+             * @description The draft's ETag; `If-Match` of a save and a submit.
+             */
+            version: number;
+            /**
+             * Warnings
+             * @description What the kind's check finds in the saved draft. A warning never blocks a save; the same problems refuse a submit.
+             */
+            warnings: components["schemas"]["DraftWarning"][];
         };
         /** ScorecardDecisionsView */
         ScorecardDecisionsView: {
@@ -10957,7 +11000,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ArtifactDraftView"];
+                    "application/json": components["schemas"]["SavedDraftView"];
                 };
             };
             /** @description The request was refused */

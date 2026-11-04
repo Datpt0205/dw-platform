@@ -24,6 +24,12 @@ person must hold to ask for each `(artifact_kind, trigger_kind)`, each a
 `*_SCOPE` constant of the capability that owns the kind, so the permission
 catalogue test reads it as a check; and `_RUN_LANES`, the lanes that may ask,
 each with its trigger kinds.
+
+The `workflow` kind (workflow-engine ticket 01) is checked against the step
+types built here, `build_node_registry()`, and the platform layer of the tool
+register: the runtime seam's when it is wired, the shipped specs otherwise,
+as the worker reads them. Its publish hook activates trigger subscriptions
+through `NoTriggerSubscriptions` until workflow-triggers/01 wires its own.
 """
 
 from __future__ import annotations
@@ -37,7 +43,10 @@ from fastapi import APIRouter
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from dw_agent_runtime.ports import RunManifestPort
-from dw_api.bootstrap.paths import release_manifest_ref
+from dw_agent_runtime.wflite.catalog import ShippedToolSpecs
+from dw_agent_runtime.wflite.registry import build_node_registry
+from dw_agent_runtime.wflite.validate import ToolSpecLookup
+from dw_api.bootstrap.paths import TOOL_SPECS_DIR, release_manifest_ref
 from dw_api.settings import ApiSettings
 from dw_kernel.ports import SystemClock, Uuid7Generator
 from dw_studio.core.adapters.artifact_store import SqlArtifactStore
@@ -46,11 +55,12 @@ from dw_studio.core.application.registry import ArtifactKindEntry, ArtifactKindR
 from dw_studio.core.application.run_manifests import RunManifestBuilder
 from dw_studio.core.application.run_request import RunLaneRegistry, RunRequestService
 from dw_studio.core.application.service import ArtifactService
-from dw_studio.kinds import platform_kinds
+from dw_studio.kinds import WORKFLOW_KIND, WORKFLOWS_TEST_SCOPE, platform_kinds
 from dw_studio.lifecycle.adapters.store import SqlLifecycleStore
 from dw_studio.lifecycle.application.ports import SubmitCheck
 from dw_studio.lifecycle.application.service import SUBMIT_SEGMENTS, LifecycleService
 from dw_studio.records.adapters.definition_store import object_store_of
+from dw_studio.workflows.adapters.triggers import NoTriggerSubscriptions
 
 if TYPE_CHECKING:
     from dw_api.bootstrap.container import ApiContainer
@@ -62,10 +72,11 @@ _SUBMIT_CHECKS: Mapping[str, Sequence[SubmitCheck]] = {}
 
 # The key a person holds, at the run's workspace, to ask for a run of each
 # (artifact_kind, trigger_kind) (workflow-engine R3.17); a pair with no entry
-# is refused. `workflow`'s (`test` -> `studio.workflows.test`) joins with that
-# kind and its key in workflow-engine/01, `manual` with workflow-triggers/01,
-# `agent`'s `chat` with agent-builder.
-_RUN_KEYS: Mapping[tuple[str, str], str] = MappingProxyType({})
+# is refused. `workflow`'s `manual` joins with workflow-triggers/01, `agent`'s
+# `chat` with agent-builder.
+_RUN_KEYS: Mapping[tuple[str, str], str] = MappingProxyType(
+    {(WORKFLOW_KIND, "test"): WORKFLOWS_TEST_SCOPE}
+)
 
 # The lanes that ask for runs, each with the trigger kinds it may ask for
 # (workflow-engine R3.18, R3.19): the inbound lane of workflow-triggers acts
@@ -118,8 +129,20 @@ def build_studio(
     )
     clock = runtime.clock if runtime is not None else SystemClock()
     ids = runtime.ids if runtime is not None else Uuid7Generator()
+    tools: ToolSpecLookup = (
+        runtime.tool_specs if runtime is not None else ShippedToolSpecs.load(TOOL_SPECS_DIR)
+    )
     registry = ArtifactKindRegistry(
-        platform_kinds(object_store_of, clock=clock, ids=ids) if kinds is None else kinds
+        platform_kinds(
+            object_store_of,
+            clock=clock,
+            ids=ids,
+            nodes=build_node_registry(),
+            tools=tools,
+            triggers=NoTriggerSubscriptions(),
+        )
+        if kinds is None
+        else kinds
     )
     store = SqlArtifactStore(sessions, ids)
     artifacts = ArtifactService(store, registry, clock, ids)

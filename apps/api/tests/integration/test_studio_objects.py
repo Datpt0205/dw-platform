@@ -105,7 +105,7 @@ async def test_the_running_registry_is_the_kind_table(api: Api) -> None:
         rows = {
             r.kind for r in await conn.execute(sa.text("SELECT kind FROM studio.artifact_kinds"))
         }
-    assert api.container.studio.kinds.kinds == rows == {"object"}
+    assert api.container.studio.kinds.kinds == rows == {"object", "workflow"}
 
 
 async def test_r1_3_only_a_holder_of_the_object_key_creates_or_finds_an_object(api: Api) -> None:

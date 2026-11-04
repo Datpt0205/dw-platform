@@ -8,6 +8,14 @@ ports whose lanes a step of it holds, and the side effect it has by itself
 
 A lane is a list of steps in the step's `config` under the port's name; a
 config schema says only that it is an array, and the validator walks it.
+A port named `a.b` sits at `config[a][b]` (a switch's `cases.<value>`).
+
+What the lowering to `WorkflowIR` needs of a type is declared here, never read
+from its name (workflow-engine R2.1; ADR-0112 Amendments 2026-11-03): `block`
+(does a step of it run one lane, every lane, or loop over `body`), `ends_run`
+and `exits_loop`; `dependencies` is what a step of it uses that Studio's
+where-used index records (workflow-engine R1.3). The four have no default, so
+a type that forgot one cannot be built.
 """
 
 from __future__ import annotations
@@ -15,7 +23,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Any
+from typing import Any, Literal, TypedDict
 
 from dw_agent_runtime.contracts import SideEffectLevel
 
@@ -27,13 +35,45 @@ _TOOL_ID = _PROMPT_ID
 _REFERENCE_OR_TEXT: JsonSchema = {"type": "string", "minLength": 1}
 
 
-@dataclass(frozen=True)
+Block = Literal["none", "choice", "parallel", "loop"]
+
+
+@dataclass(frozen=True, slots=True)
+class StepDependency:
+    """One use a step makes of something Studio records (`studio.dependencies`):
+    `to_kind` and `usage` are that table's words, `path` a JSON pointer inside
+    the step's `config`. The Studio extractor turns it into its `Reference`."""
+
+    to_kind: str
+    to_key: str
+    usage: str
+    path: str
+
+
+Dependencies = Callable[[Mapping[str, Any]], tuple[StepDependency, ...]]
+
+
+def no_dependencies(config: Mapping[str, Any]) -> tuple[StepDependency, ...]:
+    """A type whose tools and prompts are the platform's, not Studio artifacts."""
+    return ()
+
+
+@dataclass(frozen=True, kw_only=True)
 class NodeTypeSpec:
     type: str
     config_schema: JsonSchema
     # The fields a later step may reference, from the step's own config.
     output_schema: Callable[[Mapping[str, Any]], JsonSchema]
-    # The ports whose lanes a step of this type holds, from its config.
+    # How the lowering wires a step of this type (`wflite.ir`): `choice` runs
+    # one lane, `parallel` every lane, `loop` its `body` lane again and again.
+    block: Block
+    # No edge leaves a step that ends the run; one that exits its loop goes
+    # to the loop's join. A step after either in its lane is unreachable.
+    ends_run: bool
+    exits_loop: bool
+    dependencies: Dependencies
+    # The ports whose lanes a step of this type holds, from its config. Read
+    # by `wflite.ir.iter_lanes` and nothing else.
     lanes: Callable[[Mapping[str, Any]], Mapping[str, list[Any]]] = field(default=lambda config: {})
     side_effect_level: SideEffectLevel = "none"
     is_trigger: bool = False
@@ -70,6 +110,24 @@ def _switch_lanes(config: Mapping[str, Any]) -> Mapping[str, list[Any]]:
     return lanes
 
 
+class _Shape(TypedDict):
+    block: Block
+    ends_run: bool
+    exits_loop: bool
+    dependencies: Dependencies
+
+
+# The six types of wf-lite: two run one of their lanes, none ends the run or
+# leaves a loop, and none uses a Studio artifact.
+_PLAIN: _Shape = {
+    "block": "none",
+    "ends_run": False,
+    "exits_loop": False,
+    "dependencies": no_dependencies,
+}
+_CHOICE: _Shape = {**_PLAIN, "block": "choice"}
+
+
 def build_node_registry() -> Mapping[str, NodeTypeSpec]:
     """Exactly the six types of the first slice; no more (R2.1)."""
     specs = (
@@ -83,6 +141,7 @@ def build_node_registry() -> Mapping[str, NodeTypeSpec]:
             },
             output_schema=_fixed({"type": "object", "properties": {}}),
             is_trigger=True,
+            **_PLAIN,
         ),
         NodeTypeSpec(
             type="ai.llm@1",
@@ -107,6 +166,7 @@ def build_node_registry() -> Mapping[str, NodeTypeSpec]:
                 "additionalProperties": False,
             },
             output_schema=_of_config("output_schema"),
+            **_PLAIN,
         ),
         NodeTypeSpec(
             type="tool.call@1",
@@ -122,6 +182,7 @@ def build_node_registry() -> Mapping[str, NodeTypeSpec]:
             },
             # The node writes the tool's typed output under `result`.
             output_schema=_fixed({"type": "object", "properties": {"result": {}}}),
+            **_PLAIN,
         ),
         NodeTypeSpec(
             type="human.approval@1",
@@ -149,6 +210,7 @@ def build_node_registry() -> Mapping[str, NodeTypeSpec]:
                 }
             ),
             lanes=_approval_lanes,
+            **_CHOICE,
         ),
         NodeTypeSpec(
             type="time.wait@1",
@@ -162,6 +224,7 @@ def build_node_registry() -> Mapping[str, NodeTypeSpec]:
                 "additionalProperties": False,
             },
             output_schema=_fixed({"type": "object", "properties": {"woke_at": {"type": "string"}}}),
+            **_PLAIN,
         ),
         NodeTypeSpec(
             type="logic.switch@1",
@@ -179,6 +242,7 @@ def build_node_registry() -> Mapping[str, NodeTypeSpec]:
             },
             output_schema=_fixed({"type": "object", "properties": {"case": {"type": "string"}}}),
             lanes=_switch_lanes,
+            **_CHOICE,
         ),
     )
     return MappingProxyType({spec.type: spec for spec in specs})

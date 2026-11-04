@@ -3,9 +3,12 @@ R5, R6; ADR-0112 decision 4).
 
 The tree becomes the graph: each list a chain, each block (an approval, a
 switch) a node whose lanes are entered by a conditional edge and meet again at
-a join node after the block. State has one channel per step, `out__<id>`, the
-work item's payload under `work`, the DW's parameters under `params`, the
-pinned document hash, and `trail`, one id-only entry per node run.
+a join node after the block. The lanes are the regions of the document's
+`WorkflowIR` (`wflite.ir.lower`), the one lowering the validator checks, so
+the tree compiled is the tree checked (workflow-engine R2.12). State has one
+channel per step, `out__<id>`, the work item's payload under `work`, the DW's
+parameters under `params`, the pinned document hash, and `trail`, one id-only
+entry per node run.
 
 Every node runs inside one wrapper, the only place a step's failure becomes
 something else:
@@ -46,6 +49,7 @@ from dw_agent_runtime.run_control import RunHaltedError
 from dw_agent_runtime.tools import ToolBehaviour
 from dw_agent_runtime.wflite.catalog import PinnedWorkflow
 from dw_agent_runtime.wflite.document import Step
+from dw_agent_runtime.wflite.ir import lower
 from dw_agent_runtime.wflite.registry import NodeTypeSpec, build_node_registry
 from dw_kernel.errors import DWError
 from dw_kernel.ids import TenantId
@@ -187,8 +191,10 @@ class _Builder:
         self.pinned = pinned
         self.ports = ports
         self.registry: Mapping[str, NodeTypeSpec] = build_node_registry()
-        self.steps: list[Step] = []
-        self._collect(pinned.document.steps)
+        self.ir = lower(pinned.document, self.registry)
+        # A pinned document passed the validator, so its ids are unique.
+        self._index = {placed.step.id: placed.index for placed in self.ir.steps}
+        self.steps: list[Step] = [placed.step for placed in self.ir.steps]
         channels: dict[str, Any] = {
             "work": dict,
             "params": dict,
@@ -205,18 +211,9 @@ class _Builder:
         self.state = TypedDict("WorkflowState", channels, total=False)  # type: ignore[misc]
         self.graph: StateGraph = StateGraph(self.state)  # type: ignore[type-arg]
 
-    def _collect(self, steps: Sequence[Step]) -> None:
-        for step in steps:
-            self.steps.append(step)
-            for lane in self._lanes(step).values():
-                self._collect(lane)
-
     def _lanes(self, step: Step) -> dict[str, list[Step]]:
-        spec = self.registry[step.type]
-        return {
-            port: [Step.model_validate(raw) for raw in lane]
-            for port, lane in spec.lanes(step.config).items()
-        }
+        """The steps of each lane of `step`, by port, from the IR."""
+        return self.ir.lanes_of(self._index[step.id])
 
     # A chain of steps from `entry` ends at `exit`; returns the first node.
     def chain(self, steps: Sequence[Step], exit_node: str) -> str:
@@ -566,9 +563,9 @@ def worker_definition_of(pinned: PinnedWorkflow) -> WorkerDefinition:
     because every effect of a workflow goes through its decision class's gate
     (`DecisionCall`), and anything that does not reaches nothing unasked.
     A tenant's version runs at its `run_version` (wf-ai R6.5)."""
-    version = pinned.document.version
+    version = pinned.version
     return WorkerDefinition(
-        worker_id=worker_id_of(pinned.document.key),
+        worker_id=worker_id_of(pinned.key),
         worker_version=pinned.run_version,
         domain="dw",
         graph_version=pinned.run_version,

@@ -104,9 +104,11 @@ async def next_sealed(
     service: ArtifactService, who: Person, artifact_id: uuid.UUID, title: str
 ) -> SealResult:
     draft = await service.create_draft(who.context(), artifact_id, ExpectedVersion(1))
-    saved = await service.save_draft(
-        who.context(), artifact_id, ExpectedVersion(draft.row_version), {"title": title}
-    )
+    saved = (
+        await service.save_draft(
+            who.context(), artifact_id, ExpectedVersion(draft.row_version), {"title": title}
+        )
+    ).version
     async with service.store.transaction(who.context()) as tx:
         return await service.seal(tx, artifact_id, saved.row_version)
 
@@ -785,12 +787,16 @@ async def test_contributors_are_everyone_who_created_or_saved_the_draft(
         a.context(), kind="fixture_gateless", api_name=name(), labels=[], document={"title": "1"}
     )
     assert draft.contributor_ids == (a.id,)
-    saved = await service.save_draft(
-        b.context(), row.id, ExpectedVersion(draft.row_version), {"title": "2"}
-    )
-    saved = await service.save_draft(
-        a.context(), row.id, ExpectedVersion(saved.row_version), {"title": "3"}
-    )
+    saved = (
+        await service.save_draft(
+            b.context(), row.id, ExpectedVersion(draft.row_version), {"title": "2"}
+        )
+    ).version
+    saved = (
+        await service.save_draft(
+            a.context(), row.id, ExpectedVersion(saved.row_version), {"title": "3"}
+        )
+    ).version
     assert (await version(migrator, saved.id)).contributor_ids == [a.id, b.id]
 
     async with service.store.transaction(a.context()) as tx:

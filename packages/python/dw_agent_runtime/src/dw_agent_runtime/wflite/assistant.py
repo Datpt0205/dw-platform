@@ -33,9 +33,10 @@ from dw_agent_runtime.ports import ModelGateway, ModelRequest
 from dw_agent_runtime.wflite.assistant_wire import OutputSchemas, WireStep, from_wire, to_wire
 from dw_agent_runtime.wflite.catalog import PinnedWorkflow
 from dw_agent_runtime.wflite.document import WorkflowDocument
+from dw_agent_runtime.wflite.ir import iter_lanes
 from dw_agent_runtime.wflite.outline import OutlineStep, StepChange, diff_steps, outline
 from dw_agent_runtime.wflite.registry import NodeTypeSpec
-from dw_agent_runtime.wflite.validate import Problem, ToolSpecLookup, validate
+from dw_agent_runtime.wflite.validate import PACK_RULES, Problem, ToolSpecLookup, validate
 from dw_agent_runtime.wflite.versions import PinnedWorkflowsPort, not_shipped
 from dw_kernel.errors import DomainError
 from dw_platform.application.access_context import AccessContext
@@ -120,12 +121,8 @@ def _raw_steps(
             continue
         here = f"{path}/{i}"
         yield here, raw
-        spec = registry.get(str(raw.get("type")))
-        config = raw.get("config")
-        if spec is None or not isinstance(config, Mapping):
-            continue
-        for port, lane in spec.lanes(config).items():
-            yield from _raw_steps(lane, registry, f"{here}/config/{port.replace('.', '/')}")
+        for lane in iter_lanes(raw, registry):
+            yield from _raw_steps(lane.items, registry, f"{here}/{lane.path}")
 
 
 def _uses(
@@ -230,6 +227,7 @@ def checked_proposal(
     problems = validate(
         proposal,
         registry=registry,
+        rules=PACK_RULES,
         tools=tools,
         work_schemas=bases.pinned.work_schemas,
     ) + not_in_base(steps, base_raw(bases.pack)["steps"], registry)

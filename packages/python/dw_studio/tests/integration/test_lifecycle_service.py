@@ -267,9 +267,11 @@ async def test_r2_2_one_content_and_closure_give_one_hash_and_a_moved_pin_anothe
 
     # The target moves to v2: the same root content, sealed again, hashes anew.
     draft = await artifacts.create_draft(writer.context(), target, ExpectedVersion(1))
-    saved = await artifacts.save_draft(
-        writer.context(), target, ExpectedVersion(draft.row_version), {"title": "v2"}
-    )
+    saved = (
+        await artifacts.save_draft(
+            writer.context(), target, ExpectedVersion(draft.row_version), {"title": "v2"}
+        )
+    ).version
     async with artifacts.store.transaction(writer.context()) as tx:
         target_v2 = await artifacts.seal(tx, target, saved.row_version)
     await publish_for_test(migrator, target_v2.version_id)
@@ -527,9 +529,11 @@ async def test_r2_4_any_submit_key_holder_withdraws_a_candidate_and_its_request(
     assert [(r.actor_id, r.details["reason_code"]) for r in withdrawn] == [
         (co_writer.id, "withdrawn")
     ]
-    saved = await artifacts.save_draft(
-        co_writer.context(), artifact_id, ExpectedVersion(row.row_version), {"title": "sửa"}
-    )
+    saved = (
+        await artifacts.save_draft(
+            co_writer.context(), artifact_id, ExpectedVersion(row.row_version), {"title": "sửa"}
+        )
+    ).version
     assert saved.id == version_id and saved.version_no is None
     assert await rows(
         migrator,

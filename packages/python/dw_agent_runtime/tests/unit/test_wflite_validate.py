@@ -20,7 +20,7 @@ import yaml
 from dw_agent_runtime.tool_specs import ToolSpec
 from dw_agent_runtime.wflite.catalog import PackCatalog, load_yaml
 from dw_agent_runtime.wflite.registry import build_node_registry
-from dw_agent_runtime.wflite.validate import validate
+from dw_agent_runtime.wflite.validate import PACK_RULES, validate
 from dw_kernel.errors import ConfigError, NotFoundError
 
 pytestmark = pytest.mark.unit
@@ -80,6 +80,7 @@ def codes(document: dict[str, Any], **kw: Any) -> list[str]:
         for p in validate(
             document,
             registry=build_node_registry(),
+            rules=PACK_RULES,
             tools=Tools(),
             work_schemas={"lead.new": LEAD_SCHEMA},
             **kw,

@@ -2394,6 +2394,30 @@
         "title": "DraftView",
         "type": "object"
       },
+      "DraftWarning": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "pointer": {
+            "description": "Where in the document, a JSON pointer (RFC 6901).",
+            "title": "Pointer",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pointer",
+          "code",
+          "detail"
+        ],
+        "title": "DraftWarning",
+        "type": "object"
+      },
       "EnableRequestView": {
         "description": "The approval that enables the connection once a second person approves it.",
         "properties": {
@@ -5454,6 +5478,65 @@
           "release_manifest_ref"
         ],
         "title": "RunView",
+        "type": "object"
+      },
+      "SavedDraftView": {
+        "properties": {
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "based_on_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Based On Version Id"
+          },
+          "document": {
+            "additionalProperties": true,
+            "title": "Document",
+            "type": "object"
+          },
+          "document_schema": {
+            "title": "Document Schema",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "version": {
+            "description": "The draft's ETag; `If-Match` of a save and a submit.",
+            "title": "Version",
+            "type": "integer"
+          },
+          "warnings": {
+            "description": "What the kind's check finds in the saved draft. A warning never blocks a save; the same problems refuse a submit.",
+            "items": {
+              "$ref": "#/components/schemas/DraftWarning"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "artifact_id",
+          "id",
+          "document_schema",
+          "document",
+          "version",
+          "based_on_version_id",
+          "warnings"
+        ],
+        "title": "SavedDraftView",
         "type": "object"
       },
       "ScorecardDecisionsView": {
@@ -15591,7 +15674,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ArtifactDraftView"
+                  "$ref": "#/components/schemas/SavedDraftView"
                 }
               }
             },

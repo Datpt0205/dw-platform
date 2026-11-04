@@ -15,20 +15,38 @@ reaches an app only through `kinds=` (`studio_kinds=` of `create_app`).
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from typing import Final
 
+from dw_agent_runtime.wflite.document import SCHEMA_ID as WORKFLOW_DOCUMENT_SCHEMA
+from dw_agent_runtime.wflite.registry import NodeTypeSpec
+from dw_agent_runtime.wflite.validate import ToolSpecLookup
 from dw_kernel.ports import IdGenerator, UtcClock
 from dw_studio.core.application.ports import ArtifactTx
 from dw_studio.core.application.registry import ArtifactKindEntry
+from dw_studio.lifecycle.application.service import VERSIONS_SUBMIT_SCOPE
 from dw_studio.records.application.metadata import MetadataService
 from dw_studio.records.application.ports import ObjectDefinitionStore
 from dw_studio.records.domain.document import OBJECT_DOCUMENT_SCHEMA, OBJECT_KIND
 from dw_studio.records.domain.rules import extract_object, validate_object
+from dw_studio.workflows.application.dependencies import WorkflowDependencies
+from dw_studio.workflows.application.ports import TriggerActivationPort
+from dw_studio.workflows.application.publish import workflow_publish_hook
+from dw_studio.workflows.application.rules import WorkflowValidator
 
 # The read, write and submit key of the `object` kind, tenant depth only
 # (custom-objects R1.3; tenant-config R2.11, R2.12, R2.15). Which roles hold
 # it is tenant-rbac's.
 OBJECTS_MANAGE_SCOPE = "studio.objects.manage"
+
+# The `workflow` kind (workflow-engine R1.5; tenant-config R2.15): read and
+# write keys at workspace depth, the submit key the agent kind shares, and the
+# key a test run asks (H-19), which the run door's table names
+# (`dw_api.bootstrap.studio._RUN_KEYS`).
+WORKFLOW_KIND: Final = "workflow"
+WORKFLOWS_READ_SCOPE = "studio.workflows.read"
+WORKFLOWS_EDIT_SCOPE = "studio.workflows.edit"
+WORKFLOWS_TEST_SCOPE = "studio.workflows.test"
 
 
 def object_kind(
@@ -49,12 +67,38 @@ def object_kind(
     )
 
 
+def workflow_kind(
+    *,
+    nodes: Mapping[str, NodeTypeSpec],
+    tools: ToolSpecLookup,
+    triggers: TriggerActivationPort,
+) -> ArtifactKindEntry:
+    """`nodes` is the step-type registry the composition root builds, `tools`
+    the platform layer of the tool register (workflow-engine R1.4)."""
+    return ArtifactKindEntry(
+        kind=WORKFLOW_KIND,
+        document_schema=WORKFLOW_DOCUMENT_SCHEMA,
+        read_key=WORKFLOWS_READ_SCOPE,
+        write_key=WORKFLOWS_EDIT_SCOPE,
+        submit_key=VERSIONS_SUBMIT_SCOPE,
+        publish_hook=workflow_publish_hook(triggers),
+        validate=WorkflowValidator(nodes, tools),
+        extract=WorkflowDependencies(nodes),
+    )
+
+
 def platform_kinds(
     object_store: Callable[[ArtifactTx], ObjectDefinitionStore],
     *,
     clock: UtcClock,
     ids: IdGenerator,
+    nodes: Mapping[str, NodeTypeSpec],
+    tools: ToolSpecLookup,
+    triggers: TriggerActivationPort,
 ) -> tuple[ArtifactKindEntry, ...]:
     """Every kind of `studio.artifact_kinds`, one entry each; the
     composition-root test holds the two equal."""
-    return (object_kind(object_store, clock=clock, ids=ids),)
+    return (
+        object_kind(object_store, clock=clock, ids=ids),
+        workflow_kind(nodes=nodes, tools=tools, triggers=triggers),
+    )
