@@ -1,7 +1,7 @@
 # 08 — Tác động không rõ kết quả: điểm chờ outcome_review và route giải
 
 Status: needs-triage
-Blocked by: 05, .claude/plans/studio/connections-and-vault/issues/03-egress-client-allowlist-va-chu-ky.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md, .claude/plans/studio/runtime-hardening/issues/01-toolexecutor-gianh-luot-khong-cua-sau.md
+Blocked by: 05, 07, .claude/plans/studio/connections-and-vault/issues/03-egress-client-allowlist-va-chu-ky.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md, .claude/plans/studio/runtime-hardening/issues/01-toolexecutor-gianh-luot-khong-cua-sau.md
 Area: studio
 Yêu cầu: R6.22, R6.23, R6.24, R6.25, R6.30, R6.31, R6.32, R6.33, R6.34, R6.35, R6.36, R6.38, WE32, WE33, WE34, WE37, WE41, WE42, WE43
 
@@ -36,7 +36,7 @@ Lõi W1 và cổng E1, trước tác động đầu tiên (V4.31): khi cửa c�
 
 ## Nguồn
 
-- `packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py:202-214`; `packages/python/dw_agent_runtime/src/dw_agent_runtime/approval_flow.py:245`; spec: R6.22-R6.25, R6.30-R6.36, WE32-WE34, WE37, WE41-WE43.
+- `packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py:202-214`; `packages/python/dw_agent_runtime/src/dw_agent_runtime/approval_flow.py:344-345`; spec: R6.22-R6.25, R6.30-R6.36, WE32-WE34, WE37, WE41-WE43.
 - runtime-hardening:R6.9, runtime-hardening:R6.10 (lần gửi chưa biết kết quả, tiếp quản); ADR-0113 (Accepted) quyết 4; ADR-0104 (Accepted) quyết 11; ADR-0120 (Accepted) quyết 7; ADR-0108 (Accepted) quyết 5; ADR-0011 (Accepted); tenant-rbac:R2.7; app-standards:R2.7; agent-lifecycle:R8.2; V4.30, V4.31; H-5, H-6, H-8, H-22.
 
 ## Comments
