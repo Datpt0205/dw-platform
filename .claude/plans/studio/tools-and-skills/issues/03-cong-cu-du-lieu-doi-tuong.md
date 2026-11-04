@@ -28,8 +28,8 @@ eval của nó. Gộp từ B8b-tools tools-and-skills 05.
    là id phiên bản đối tượng đã ghim. Không đăng ký gì vào `ToolRegistry`: lời gọi tới executor qua `pinned=` của ticket 02.
    Hàm sinh là hàm thuần trên dòng phiên bản đối tượng, mà phép dẫn giới hạn của agent-builder/05 cũng gọi.
     - `search`: đầu vào `{filters?, order_by?, limit?, cursor?}`, `additionalProperties: false`; `filters` là danh sách
-      tối đa 10 lá AND `{field, op, value}`, `field` là `api_name` trong `enum` các trường lọc được (có slot, ADR-0107
-      (Accepted)) của phiên bản ghim, `value` là chuỗi, số, boolean hay mảng của chúng, ép kiểu và từ chối
+      tối đa 10 lá AND `{field, op, value}`, `field` là `api_name` trong `enum` các trường lọc được (có slot theo
+      ADR-0107 (Accepted)) của phiên bản ghim, `value` là chuỗi, số, boolean hay mảng của chúng, ép kiểu và từ chối
       `validation_failed` ở hàm ép giá trị lá của custom-objects/04, không ở lược đồ (không `oneOf` theo trường), `op` thuộc
       tập của custom-objects/04 (`$eq`, `$in`, `$lt`, `$lte`, `$gt`, `$gte`, theo họ slot của trường), biên dịch thành cây
       `$and` của custom-objects/04 và qua đúng `RecordQueryCompiler`, không `$or` ở W1; `order_by` theo `enum` các trường sắp
