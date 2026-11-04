@@ -75,12 +75,13 @@ Numbered in the block 0100-0199 reserved for Studio (ADR-0100 records the block)
    its value is empty or not, so the UI shows "Đã ẩn" with a lock, never a blank, and the marker says nothing about
    emptiness. A hidden field's name is not secret, its value is: describe lists the field as `access: hidden`
    (ADR-0107). The paths, by name:
-   REST projection, filters and exports; workflow data nodes and `{{ }}` templates (a hidden reference fails the node
-   with `template_field_hidden`); agent object tools (schema narrowed per run to the boundary's fields); search and
+   REST projection, filters and exports; workflow data nodes, `{{ }}` templates and expressions (a hidden reference
+   fails the step with `field_hidden`, workflow-nodes R4.4); agent object tools (schema narrowed per run to the boundary's fields); search and
    knowledge indexing (open, non-personal fields only, stamped with `fls_version`); record history and outbound
    webhooks; run-history payloads (stored redacted at write, secrets dropped and `sensitive` fields masked, and masked
-   again for the viewer at read, ADR 0122 decision 4); approvals (references and field names stored, values fetched
-   live and masked for the viewer); telemetry, logs, audit and error messages (field names, never values). An architecture test keeps the
+   again for the viewer at read, ADR 0122 decision 4); approvals (references and field names stored, the values of
+   the fields shown fetched live and masked for the viewer; the subject's rendered arguments, frozen so the approver
+   approves what will run, shown only to a viewer who reads every stamped field, workflow-nodes/06); telemetry, logs, audit and error messages (field names, never values). An architecture test keeps the
    records table and its slot columns named only in the records adapter.
    From W2, before the destinations W2 opens ship (`notify.send`, `ai.agent`, internal messages, lookups, search),
    access is also decided on the side of whoever receives a value (YC113, V4.40): compliance-pdpl's capability
@@ -235,3 +236,13 @@ Numbered in the block 0100-0199 reserved for Studio (ADR-0100 records the block)
   run-history payloads beside approvals as storing references and field names only, while ADR 0122 decision 4 stores
   them redacted at write and masked again at read, which run history's 4 KB previews, by-reference bodies and 30-day
   deletion depend on. Decision 4 now follows ADR 0122 for run-history payloads; approvals keep references only.
+
+## Amendments (2026-11-04)
+
+- Readiness check of field-security (agent, under Đạt's delegation of 2026-10-31): decision 4 named the template
+  error `template_field_hidden` while workflow-nodes R4.4, the owner of step errors, names it `field_hidden` for
+  templates and expressions alike; one name now, `field_hidden`. Decision 4's approval clause now separates the fields
+  an approval shows (values fetched live, masked per viewer) from the subject's rendered arguments, which
+  workflow-nodes/06 stores so the subject hash binds what will run and shows only to a viewer who reads every stamped
+  field (its `payload_guards`). If wrong: workflow-nodes renames its code to `template_field_hidden`, and the
+  rendered arguments are rebuilt live at the approval page with the hash checked against them.
