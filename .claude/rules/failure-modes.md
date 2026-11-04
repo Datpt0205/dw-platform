@@ -16,7 +16,7 @@ checklist as sufficient would miss exactly the dangerous half.
 
 ---
 
-## 0. A check that cannot see the thing it checks (found 2×)
+## 0. A check that cannot see the thing it checks (found 3×)
 
 Numbered zero because it comes before the rest: a check you trust that is blind
 to part of what it covers makes every finding below it unreliable.
@@ -35,6 +35,12 @@ own settings.
 The second was the commit gate. It chose its questions from the index, and it runs
 before the command, so `git add approval_flow.py && git commit` in one call showed it
 nothing to ask about (2026-10-23). It now reads staged, changed and untracked paths.
+
+The third was the route list that turns the `platform_admin` bypass off. It matched
+on `scope["route"].path`, which in FastAPI 0.141 lacks the `/api/v1` prefix, so no
+entry ever matched: the role routes and the support routes kept the bypass the list
+was written to remove (tenant-rbac/03, 4/11/2026). A test calling the route as
+`platform_admin` without the key caught it; the list itself read correctly.
 
 **Ask:** what can this check NOT see? A check over source text cannot see what the
 database creates on its own. Where the truth lives in a running system, ask the
