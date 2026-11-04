@@ -25,7 +25,7 @@ nghị (a) (Đạt, 23/10/2026); `access_mode` đổi qua phát hành `dw.object
     - thêm `ck_field_defs_sensitive_is_secured CHECK (pd_category <> 'sensitive' OR access_mode = 'secured')`;
     - trigger `BEFORE INSERT` trên `studio.field_defs` đặt `access_mode = 'secured'` khi `pd_category <> 'none'` (trường
       dữ liệu cá nhân không tạo ra ở `open` được);
-    - trigger `trg_z_bump_access_version_access_mode AFTER UPDATE OF access_mode ... FOR EACH ROW` gọi
+    - `CONSTRAINT TRIGGER trg_z_bump_access_version_access_mode AFTER UPDATE OF access_mode ... DEFERRABLE INITIALLY DEFERRED FOR EACH ROW` (hoãn tới commit, nên dòng phiên bản bị khóa sau mọi dòng vai trò mà guard của tenant-rbac/04 khóa trong `MetadataService.apply`, một thứ tự khóa) gọi
       `platform.bump_access_version()` của tenant-rbac ticket 02 (hàm đọc `NEW.tenant_id`; tên `trg_z_` xếp cuối như mọi
       trigger cùng hàm, `db/migrations/versions/b5677d345bc1_tenant_roles.py:1153`, giữ một thứ tự khóa; tên riêng vì `trg_z_bump_access_version` AFTER INSERT OR DELETE trên cùng bảng là của tenant-rbac/04 cho quyền tính động của `tenant_owner`);
     - `dw_app` thêm `access_mode` vào tập cột định nghĩa được UPDATE

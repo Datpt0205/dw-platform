@@ -203,7 +203,7 @@ duy nhất đọc giá trị bản ghi (YC23).
   `access_mode` trong tập cột định nghĩa được sửa; người ghi duy nhất là dịch vụ metadata khi một phiên bản
   `dw.object/v1` lên Đang dùng (R1.8).
 - Thay đổi `access_mode` tăng phiên bản quyền của tenant (`platform.bump_access_version()` của tenant-rbac ticket 02)
-  qua trigger `trg_z_bump_access_version_access_mode AFTER UPDATE OF access_mode` trên `studio.field_defs`, tên xếp cuối như mọi
+  qua constraint trigger hoãn tới commit `trg_z_bump_access_version_access_mode AFTER UPDATE OF access_mode` trên `studio.field_defs`, tên xếp cuối như mọi
   trigger cùng hàm (`db/migrations/versions/b5677d345bc1_tenant_roles.py:1153`), để quyết định trường đọc lại từ câu
   lệnh kế tiếp (R1.6).
 - Không bảng mới: quyền trường ở `studio.field_permissions` của tenant-rbac; `pd_category` và họ hàng ở
