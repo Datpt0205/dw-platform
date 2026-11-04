@@ -74,6 +74,7 @@ from dw_platform.adapters.persistence.approval_codes import SqlApprovalCodeStore
 from dw_platform.adapters.persistence.caching_lookup import CachingMembershipLookup
 from dw_platform.adapters.persistence.channel_inbound import SqlChannelUpdateQueue
 from dw_platform.adapters.persistence.channel_preferences import SqlChannelPreferences
+from dw_platform.adapters.persistence.connections_repo import SqlConnectionStore
 from dw_platform.adapters.persistence.digital_workers_repo import (
     SqlDecisionLevels,
     SqlDigitalWorkerRepository,
@@ -120,6 +121,12 @@ from dw_platform.adapters.rate_limit import InProcessRateLimiter
 from dw_platform.application.admin_console import AdminConsoleService
 from dw_platform.application.approval_codes import ApprovalSubjectVersions, DecisionCodeKey
 from dw_platform.application.authorization import ScopeAuthorizationService
+from dw_platform.application.connection_admin import (
+    CONNECTIONS_ENABLE,
+    ConnectionService,
+    NoConnectionDependents,
+)
+from dw_platform.application.connections import ConnectionUsability, NoConnectorCatalog
 from dw_platform.application.decision_gate import DW_DECISION, DwProposalMask
 from dw_platform.application.digital_workers import DecisionAutonomy, DigitalWorkerService
 from dw_platform.application.dw_autonomy import DwAutonomyService
@@ -315,6 +322,22 @@ def _build_container(
     container.secret_store = SecretStore(
         kms=kms, audit=SqlScopedAudit(session_factory), clock=clock, id_generator=ids
     )
+    # W1: no connector manifest is wired yet (ticket 05 replaces the catalogue)
+    # and nothing depends on a connection before tenant-config/05 replaces the
+    # dependents; both refuse rather than allow (connections-and-vault R5).
+    connection_store = SqlConnectionStore(session_factory)
+    connector_catalog = NoConnectorCatalog()
+    container.connections = ConnectionService(
+        store=connection_store,
+        secrets=container.secret_store,
+        catalog=connector_catalog,
+        dependents_port=NoConnectionDependents(),
+        clock=clock,
+        id_generator=ids,
+    )
+    container.connection_usability = ConnectionUsability(
+        store=connection_store, catalog=connector_catalog
+    )
     container.egress_allowlist = EgressAllowlistService(
         repo=SqlAllowedHostRepository(session_factory),
         authz=authorization,
@@ -435,6 +458,9 @@ def _build_container(
     # Adding an Allowed host takes a second person (connections-and-vault
     # R3.10; ADR-0115 decision 6): the type is strict, here as in the worker.
     wiring.approval_flow.strict_approval_prefixes |= {EGRESS_ALLOWED_HOST}
+    # Enabling a connection again takes a second person (connections-and-vault
+    # R5.11; D11), here as in the worker.
+    wiring.approval_flow.strict_approval_prefixes |= {CONNECTIONS_ENABLE}
     # The portal half of a decision on Zalo (ADR 0007, channels Z5): the view
     # receipt and the single-use code. A context registers who answers for its
     # approval types' subject version on `approval_subjects` at the seam below

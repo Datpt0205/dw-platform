@@ -125,6 +125,10 @@ class SqlApprovalRepository:
                 required_scope=request.required_scope,
                 status=request.status.value,
                 version=request.version,
+                # The column's default (`now()`, the transaction's start) unless
+                # the caller read a later clock, as `connections.enable` does
+                # after its row lock so the request is newer than `disabled_at`.
+                **({} if request.created_at is None else {"created_at": request.created_at}),
             )
         )
 

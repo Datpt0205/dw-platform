@@ -470,6 +470,111 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Connections */
+        get: operations["list_connections_api_v1_connections_get"];
+        put?: never;
+        /** Create Connection */
+        post: operations["create_connection_api_v1_connections_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/connections/{connection_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Connection */
+        get: operations["get_connection_api_v1_connections__connection_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Connection */
+        delete: operations["delete_connection_api_v1_connections__connection_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Connection */
+        patch: operations["update_connection_api_v1_connections__connection_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/connections/{connection_id}/dependents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Connection Dependents */
+        get: operations["connection_dependents_api_v1_connections__connection_id__dependents_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/connections/{connection_id}/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Disable Connection */
+        post: operations["disable_connection_api_v1_connections__connection_id__disable_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/connections/{connection_id}/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Enable Connection */
+        post: operations["enable_connection_api_v1_connections__connection_id__enable_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/connections/{connection_id}/revoke-credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke Connection Credentials */
+        post: operations["revoke_connection_credentials_api_v1_connections__connection_id__revoke_credentials_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/dev/demo-users": {
         parameters: {
             query?: never;
@@ -2280,6 +2385,135 @@ export interface components {
          * @enum {string}
          */
         CodeUnavailable: "not_pending" | "cannot_decide" | "requester" | "web_only" | "not_linked" | "comment_required" | "channel_off";
+        /** ConnectionDependentView */
+        ConnectionDependentView: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * ConnectionDependentsView
+         * @description `total` counts every dependent; `visible` those the caller may read.
+         */
+        ConnectionDependentsView: {
+            /** Total */
+            total: number;
+            /** Visible */
+            visible: components["schemas"]["ConnectionDependentView"][];
+        };
+        /** ConnectionDetailView */
+        ConnectionDetailView: {
+            /** Compromised At */
+            compromised_at: string | null;
+            /** Connector Key */
+            connector_key: string;
+            /** Connector Major */
+            connector_major: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string | null;
+            /** Disabled At */
+            disabled_at: string | null;
+            /** External Account */
+            external_account: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Used At */
+            last_used_at: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Owning Workspace Id
+             * Format: uuid
+             */
+            owning_workspace_id: string;
+            /** Pending Enable Approval Id */
+            pending_enable_approval_id: string | null;
+            /** Scopes */
+            scopes: string[];
+            /** Secret Fields */
+            secret_fields: components["schemas"]["SecretFieldView"][];
+            /** Share Scope */
+            share_scope: string;
+            /** Status */
+            status: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * ConnectionPatchBody
+         * @description The name and a rotation; the status, scope, connector and account never
+         *     change here (the account is the connection's identity: delete and create).
+         */
+        ConnectionPatchBody: {
+            /** Name */
+            name?: string | null;
+            /** Secrets */
+            secrets?: {
+                [key: string]: string;
+            };
+        };
+        /** ConnectionView */
+        ConnectionView: {
+            /** Compromised At */
+            compromised_at: string | null;
+            /** Connector Key */
+            connector_key: string;
+            /** Connector Major */
+            connector_major: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string | null;
+            /** Disabled At */
+            disabled_at: string | null;
+            /** External Account */
+            external_account: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Used At */
+            last_used_at: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Owning Workspace Id
+             * Format: uuid
+             */
+            owning_workspace_id: string;
+            /** Scopes */
+            scopes: string[];
+            /** Share Scope */
+            share_scope: string;
+            /** Status */
+            status: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
         /**
          * CreateDigitalWorkerRequest
          * @description Unknown fields are ignored, not refused: a `tenant_id` or `workspace_id`
@@ -2653,6 +2887,22 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /**
+         * EnableRequestView
+         * @description The approval that enables the connection once a second person approves it.
+         */
+        EnableRequestView: {
+            /**
+             * Approval Id
+             * Format: uuid
+             */
+            approval_id: string;
+            /**
+             * Status
+             * @default pending
+             */
+            status: string;
         };
         /** FeedbackAttachmentView */
         FeedbackAttachmentView: {
@@ -3098,6 +3348,27 @@ export interface components {
              */
             labels: string[];
         };
+        /** NewConnectionBody */
+        NewConnectionBody: {
+            /** Connector Key */
+            connector_key: string;
+            /** Connector Major */
+            connector_major: number;
+            /** External Account */
+            external_account: string;
+            /** Name */
+            name: string;
+            /** Secrets */
+            secrets?: {
+                [key: string]: string;
+            };
+            /**
+             * Share Scope
+             * @default workspace
+             * @constant
+             */
+            share_scope: "workspace";
+        };
         /** NewTenantView */
         NewTenantView: {
             /** Name */
@@ -3277,6 +3548,20 @@ export interface components {
         Page_AuditEventView_: {
             /** Items */
             items: components["schemas"]["AuditEventView"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /**
+         * Page
+         * @description A page of results and the cursor that continues it.
+         *
+         *     ``next_cursor`` is ``None`` on the last page, and that — not an empty
+         *     ``items`` — is the client's stop condition: a filtered listing can return an
+         *     empty page in the middle of a run and still have more rows behind it.
+         */
+        Page_ConnectionView_: {
+            /** Items */
+            items: components["schemas"]["ConnectionView"][];
             /** Next Cursor */
             next_cursor: string | null;
         };
@@ -3630,6 +3915,17 @@ export interface components {
              * Format: date-time
              */
             since: string;
+        };
+        /**
+         * SecretFieldView
+         * @description A declared secret field: `configured` while a version of it is not
+         *     revoked ("Đã cấu hình"). Never a value.
+         */
+        SecretFieldView: {
+            /** Configured */
+            configured: boolean;
+            /** Field */
+            field: string;
         };
         /** ServicePrincipalView */
         ServicePrincipalView: {
@@ -5501,6 +5797,387 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BootstrapResponse"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_connections_api_v1_connections_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                /** @description Opaque cursor from a previous page. */
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_ConnectionView_"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    create_connection_api_v1_connections_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewConnectionBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionDetailView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    get_connection_api_v1_connections__connection_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionDetailView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    delete_connection_api_v1_connections__connection_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    update_connection_api_v1_connections__connection_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectionPatchBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionDetailView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    connection_dependents_api_v1_connections__connection_id__dependents_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionDependentsView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    disable_connection_api_v1_connections__connection_id__disable_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionDetailView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    enable_connection_api_v1_connections__connection_id__enable_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnableRequestView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    revoke_connection_credentials_api_v1_connections__connection_id__revoke_credentials_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                connection_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionDetailView"];
                 };
             };
             /** @description The request was refused */

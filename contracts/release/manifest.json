@@ -3,6 +3,11 @@
   "approval_policy_version": "1.0.0",
   "copy_bundles": [
     {
+      "checksum": "9c5ece27d926622ee7fd5365915e695b0f45afefb557e21604468c7a129e75af",
+      "copy_id": "platform.audit_actions.connections_and_vault",
+      "version": "1.0.0"
+    },
+    {
       "checksum": "0b67fa856ecc410bc07e8f67340c8db8e57a369c35833a13e82c63a6cb86889a",
       "copy_id": "platform.audit_actions.runtime_hardening",
       "version": "1.0.0"
@@ -50,7 +55,7 @@
       "version": "1.2.0"
     }
   ],
-  "git_sha": "992bf742297d805b6d83b7695e40099a888b2b51",
+  "git_sha": "fcad9418e683cc7277f5885af9120759e54db222",
   "knowledge_index_version": "2026-07-25.structure-1",
   "memory_policy_version": "2.0.0",
   "platform_version": "0.1.0",

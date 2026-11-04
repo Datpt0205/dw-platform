@@ -62,6 +62,8 @@ from dw_platform.application.admin_console import AdminConsoleService
 from dw_platform.application.authorization import ScopeAuthorizationService
 from dw_platform.application.cache import CachePort
 from dw_platform.application.channel_access import ChannelPreferencesPort
+from dw_platform.application.connection_admin import ConnectionService
+from dw_platform.application.connections import ConnectionUsability
 from dw_platform.application.digital_workers import DigitalWorkerService
 from dw_platform.application.dw_autonomy import DwAutonomyService
 from dw_platform.application.effect_keys import EffectKeyPort
@@ -222,8 +224,15 @@ class ApiContainer:
     notifications: NotificationService | None = None
     # The credential broker (connections-and-vault R1); Postgres only. Its key
     # service is built ahead of the database gate, so a wrong `DW_KMS_PROVIDER`
-    # fails at startup either way. Ticket 04's connection routes read it.
+    # fails at startup either way. `connections` seals through it.
     secret_store: SecretStore | None = None
+    # The shared connections of a workspace (connections-and-vault R5, R1.15);
+    # Postgres only. Enabling one again needs the approval flow as well.
+    connections: ConnectionService | None = None
+    # The one rule on using a connection (ADR-0115 decision 2); Postgres only.
+    # Its callers arrive with tenant-config/05 (binding review, run admission)
+    # and ticket 05 (before each egress call), each through its own Protocol.
+    connection_usability: ConnectionUsability | None = None
     # The company's Allowed hosts (connections-and-vault R3.8-R3.12, R3.18);
     # Postgres only. Deciding a request needs the approval flow as well.
     egress_allowlist: EgressAllowlistService | None = None

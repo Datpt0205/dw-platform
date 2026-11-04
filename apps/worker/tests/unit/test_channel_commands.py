@@ -76,3 +76,10 @@ def test_an_allowed_host_takes_a_second_person_here_as_in_the_api() -> None:
 def test_without_a_code_secret_the_command_still_answers_but_holds_no_key() -> None:
     """It answers "not enabled" rather than let the words reach a model."""
     assert _decision_command("").service.key is None
+
+
+def test_enabling_a_connection_takes_a_second_person_here_as_in_the_api() -> None:
+    """connections-and-vault R5.11: the worker's decision door is strict for
+    `connections.enable` whichever context builds it."""
+    flow = _decision_command("a-code-secret-of-32-bytes-or-so").service.approval_flow
+    assert flow.is_strict("connections.enable")

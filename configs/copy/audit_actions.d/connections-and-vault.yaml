@@ -1,0 +1,18 @@
+# The audit actions connections-and-vault adds, with their Vietnamese labels:
+# this spec's fragment of the action catalogue telemetry-and-audit merges
+# (telemetry-and-audit R1.6; H-21). Ticket 02 writes `secret.key_mismatch`,
+# ticket 03 the Allowed hosts, ticket 04 the connections.
+schema_version: "1.0"
+copy_id: platform.audit_actions.connections_and_vault
+version: "1.0.0"
+actions:
+  secret.key_mismatch: "Từ chối mở bí mật không thuộc khóa của công ty"
+  egress.allowlist.requested: "Yêu cầu thêm máy chủ được phép gọi ra"
+  egress.allowlist.added: "Thêm máy chủ được phép gọi ra"
+  egress.allowlist.removed: "Gỡ máy chủ được phép gọi ra"
+  connection.created: "Tạo kết nối"
+  connection.updated: "Sửa kết nối"
+  connection.disabled: "Tắt kết nối"
+  connection.enabled: "Bật lại kết nối"
+  connection.deleted: "Xóa kết nối"
+  connection.credentials_revoked: "Thu hồi bí mật của kết nối vì lộ"

@@ -288,6 +288,11 @@ services:
       DW_AGENT_RO_DATABASE_URL: postgresql+asyncpg://dw_agent_ro:${DW_DB_AGENT_RO_PASSWORD:?}@postgres:5432/dw
       DW_PROVISIONER_DATABASE_URL: postgresql+asyncpg://dw_provisioner:${DW_DB_PROVISIONER_PASSWORD:?}@postgres:5432/dw
       DW_API_DEV_SECRET: ${DW_API_DEV_SECRET:-}
+      # The tenant key service (connections-and-vault R2.2): `none` seals and
+      # opens no secret; `local`, development only, is refused when deployed
+      # and needs DW_LOCAL_KMS_MASTER_KEY from .env, never from this file.
+      DW_KMS_PROVIDER: ${DW_KMS_PROVIDER:-none}
+      DW_LOCAL_KMS_MASTER_KEY: ${DW_LOCAL_KMS_MASTER_KEY:-}
       DW_MODEL_PROVIDER: ${DW_MODEL_PROVIDER:-mock}
       DW_API_MODEL_PROFILE: ${DW_API_MODEL_PROFILE:-balanced}
       DW_API_OPENAI_STRUCTURED_MODE: ${DW_API_OPENAI_STRUCTURED_MODE:-json_schema}
@@ -473,6 +478,9 @@ services:
     environment:
       DW_API_PROFILE: ${DW_API_PROFILE:-local}
       DW_WORKER_DATABASE_URL: postgresql+asyncpg://dw_app:${DW_DB_APP_PASSWORD:?}@postgres:5432/dw
+      # The api's key service, read under the same names (connections-and-vault R2.2).
+      DW_KMS_PROVIDER: ${DW_KMS_PROVIDER:-none}
+      DW_LOCAL_KMS_MASTER_KEY: ${DW_LOCAL_KMS_MASTER_KEY:-}
       QDRANT_URL: http://qdrant:6333
       QDRANT_API_KEY: ${QDRANT_API_KEY:?}
       QDRANT_COLLECTION: ${QDRANT_COLLECTION:-dw_knowledge}

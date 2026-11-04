@@ -132,8 +132,8 @@ async def _company(migrator: AsyncEngine) -> Company:
             await conn.execute(
                 sa.text(
                     "INSERT INTO platform.connections (id, tenant_id, owning_workspace_id,"
-                    " connector_key, connector_major, share_scope, status)"
-                    " VALUES (:c, :t, :w, 'probe', 1, 'workspace', 'active')"
+                    " name, connector_key, connector_major, share_scope, status)"
+                    " VALUES (:c, :t, :w, 'Thử', 'probe', 1, 'workspace', 'active')"
                 ),
                 {"c": connection, "t": tenant, "w": ws},
             )

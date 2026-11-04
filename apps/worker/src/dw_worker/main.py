@@ -74,6 +74,7 @@ from dw_platform.adapters.persistence.channel_inbound import (
     SqlChannelUpdateQueue,
 )
 from dw_platform.adapters.persistence.channel_preferences import SqlChannelPreferences
+from dw_platform.adapters.persistence.connections_repo import SqlConnectionStore
 from dw_platform.adapters.persistence.digital_workers_repo import (
     SqlDigitalWorkerRepository,
     SqlDwMembershipCheck,
@@ -110,6 +111,7 @@ from dw_platform.application.access_context import AccessContext
 from dw_platform.application.approval_codes import ApprovalSubjectVersions, DecisionCodeKey
 from dw_platform.application.authorization import ScopeAuthorizationService
 from dw_platform.application.channel_access import LinkedUserAccess
+from dw_platform.application.connection_admin import CONNECTIONS_ENABLE, ConnectionEnableSettler
 from dw_platform.application.decision_gate import DW_DECISION, DwDecisionAdmission
 from dw_platform.application.dw_autonomy import (
     DW_AUTONOMY_PREFIX,
@@ -132,6 +134,7 @@ from dw_worker.composition import (
 )
 from dw_worker.consumers import ConsumerRegistry
 from dw_worker.consumers.channel_delivery import build_channel_delivery_consumer
+from dw_worker.consumers.connections import CONNECTIONS_ENABLE_DECIDED, build_enable_handler
 from dw_worker.consumers.dw_autonomy import DW_AUTONOMY_RAISE_DECIDED, build_raise_handler
 from dw_worker.consumers.dw_timers import INTERVAL_SECONDS as DW_TIMERS_INTERVAL_SECONDS
 from dw_worker.consumers.dw_timers import build_dw_timers_consumer
@@ -239,6 +242,9 @@ def build_channel_decision_command(
     # Adding an Allowed host takes a second person, here as in the API
     # (connections-and-vault R3.10).
     flow.strict_approval_prefixes |= {EGRESS_ALLOWED_HOST}
+    # Enabling a connection again takes a second person, here as in the API
+    # (connections-and-vault R5.11).
+    flow.strict_approval_prefixes |= {CONNECTIONS_ENABLE}
     secret = settings.approval_code_secret.get_secret_value()
     return ChannelDecisionCommand(
         ChannelApprovalDecisionService(
@@ -473,6 +479,12 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
         handlers[EGRESS_ALLOWED_HOST_DECIDED] = build_allowed_host_handler(
             AllowedHostSettler(
                 repo=SqlAllowedHostRepository(sessions), clock=clock, id_generator=ids
+            )
+        )
+        # A decided request to enable a connection again (connections-and-vault R5.12).
+        handlers[CONNECTIONS_ENABLE_DECIDED] = build_enable_handler(
+            ConnectionEnableSettler(
+                store=SqlConnectionStore(sessions), clock=clock, id_generator=ids
             )
         )
         # A tenant whose owners fell below two (tenant-rbac R3.12).

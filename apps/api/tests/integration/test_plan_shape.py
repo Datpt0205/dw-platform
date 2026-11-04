@@ -117,6 +117,9 @@ EXPECTED: dict[tuple[str, str], Expectation] = {
     ("GET", "/api/v1/egress/allowed-hosts"): Expectation(
         "platform.egress_allowed_hosts", (), ("created_at", "id")
     ),
+    # Newest first; the reach of `connections.read` is a filter on the
+    # tenant's index (connections-and-vault ticket 04).
+    ("GET", "/api/v1/connections"): Expectation("platform.connections", (), ("created_at", "id")),
 }
 # The query a registered route is paged with, when it needs one.
 PARAMS: dict[tuple[str, str], dict[str, str]] = {
@@ -336,6 +339,30 @@ async def seed(migrator: AsyncEngine) -> World:
                 },
             )
         await conn.execute(sa.text("ANALYZE platform.egress_allowed_hosts"))
+        # A workspace's connections, read at tenant depth (connections-and-vault
+        # ticket 04).
+        reader = await plant_role(conn, t, f"plan_cn_{t.hex[:8]}", {"connections.read": "tenant"})
+        await assign(conn, t, w, world.membership, reader)
+        for n in range(80):
+            await conn.execute(
+                sa.text(
+                    "INSERT INTO platform.connections (id, tenant_id, owning_workspace_id,"
+                    " name, connector_key, connector_major, share_scope, external_account,"
+                    " status, created_by, created_at)"
+                    " VALUES (:id, :t, :w, :name, 'smtp', 1, 'workspace', :account, 'active',"
+                    " :u, :at)"
+                ),
+                {
+                    "id": uuid.uuid4(),
+                    "t": t,
+                    "w": w,
+                    "u": u,
+                    "name": f"plan connection {n:03d}",
+                    "account": f"plan{n}@acme.vn",
+                    "at": now - timedelta(minutes=n),
+                },
+            )
+        await conn.execute(sa.text("ANALYZE platform.connections"))
     return world
 
 
@@ -526,6 +553,20 @@ async def test_dropping_the_allowed_hosts_page_index_turns_the_check_red(bench: 
 
     problems = await bench.problems(
         statements, expected, drop="platform.ix_egress_allowed_hosts_tenant_id_created_at_id"
+    )
+
+    assert problems, "the check passed without the index"
+    assert any("created_at" in problem or "tenant_id" in problem for problem in problems)
+
+
+async def test_dropping_the_connections_page_index_turns_the_check_red(bench: Bench) -> None:
+    """connections-and-vault ticket 04: the list's index carries its page."""
+    path = "/api/v1/connections"
+    expected = EXPECTED[("GET", path)]
+    statements = await bench.pages(path, expected.table)
+
+    problems = await bench.problems(
+        statements, expected, drop="platform.ix_connections_tenant_id_created_at_id"
     )
 
     assert problems, "the check passed without the index"

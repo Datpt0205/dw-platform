@@ -363,14 +363,22 @@ def _key_header(required: bool) -> Any:
 
 
 def idempotent(
-    check: Declared, *, operation: str, required: bool = False, form: bool = False
+    check: Declared,
+    *,
+    operation: str,
+    required: bool = False,
+    form: bool = False,
+    fingerprint_body: Callable[[bytes], bytes] | None = None,
 ) -> Any:
     """The dependency of one route that honours ``Idempotency-Key``.
 
     ``check`` is what the route's service checks: its `action` constant, or a
     check function of the service; never a string written a second time (R2.21).
     ``operation`` is the method and path template, fixed here so that renaming
-    a path parameter does not orphan an effect key.
+    a path parameter does not orphan an effect key. ``fingerprint_body`` is
+    what of the body the stored fingerprint hashes, for a route whose body
+    carries a secret: an unkeyed hash of a password is guessed back
+    (connections-and-vault R1.2), so such a route hashes the body without it.
     """
 
     async def dependency(
@@ -405,7 +413,11 @@ def idempotent(
                 context=context,
                 method=request.method,
                 path=target,
-                body=await request.body(),
+                body=(
+                    await request.body()
+                    if fingerprint_body is None
+                    else fingerprint_body(await request.body())
+                ),
                 if_match=if_match,
                 if_none_match=if_none_match,
             )

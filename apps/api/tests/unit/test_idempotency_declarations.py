@@ -31,10 +31,12 @@ from starlette.routing import Mount
 from dw_agent_runtime.approval_flow import ApproveAndResumeService
 from dw_api.dependencies.idempotency import IDEMPOTENCY_HEADER
 from dw_api.routes.v1 import admin_service_principals as service_principal_routes
+from dw_api.routes.v1 import connections as connection_routes
 from dw_api.routes.v1 import digital_workers as digital_workers_routes
 from dw_api.routes.v1 import studio_artifacts as studio_routes
 from dw_api.routes.v1 import work_items as work_items_routes
 from dw_platform.application import digital_workers, membership_admin, support_access
+from dw_platform.application.connection_admin import ConnectionService
 from dw_platform.application.service_principals import ServicePrincipalService
 from dw_studio.core.application.service import ArtifactService
 
@@ -110,6 +112,16 @@ DECLARED: dict[tuple[str, str], object] = {
     # The owning workspace is the company's, then `.manage` reaches it
     # (org-and-principals R6.1).
     ("POST", "/api/v1/admin/service-principals"): service_principal_routes._may_create,
+    # `connections.manage` at the working workspace, or reaching the
+    # connection's own (connections-and-vault R5.18).
+    ("POST", "/api/v1/connections"): connection_routes._may_create,
+    ("PATCH", "/api/v1/connections/{connection_id}"): connection_routes._may_write,
+    ("POST", "/api/v1/connections/{connection_id}/disable"): connection_routes._may_write,
+    ("POST", "/api/v1/connections/{connection_id}/enable"): connection_routes._may_write,
+    (
+        "POST",
+        "/api/v1/connections/{connection_id}/revoke-credentials",
+    ): connection_routes._may_write,
 }
 DECIDE = ("POST", "/api/v1/approvals/{approval_id}/decisions")
 
@@ -247,6 +259,12 @@ def test_each_declaration_is_the_check_its_service_makes() -> None:
     ):
         assert service_check in ast.dump(ast.parse(_source_of(check))), service_check
         assert hasattr(ArtifactService, service_check)
+    for check, service_check in (
+        (connection_routes._may_create, "check_create"),
+        (connection_routes._may_write, "check_write"),
+    ):
+        assert service_check in ast.dump(ast.parse(_source_of(check))), service_check
+        assert hasattr(ConnectionService, service_check)
     create = ast.dump(ast.parse(_source_of(service_principal_routes._may_create)))
     assert "require_manage" in create, "a service account's create calls the service's check"
     assert hasattr(ServicePrincipalService, "require_manage")
