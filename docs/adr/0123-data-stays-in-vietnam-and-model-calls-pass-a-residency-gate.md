@@ -169,3 +169,20 @@ Amended on 2026-10-24 by the requester and Đạt, who scoped the remaining D11 
 - Third consistency check (round 4), second pass: decisions 4 and 5 and the tests refuse a forbidden profile, a
   foreign tool, connector action or MCP server, and MP7's personal field on a cross-border route at submit, when the
   version is sealed, no longer "at publish" (ADR-0116 decision 1, ADR-0118 decision 1).
+
+## Amendments (2026-11-04)
+
+Amended on 2026-11-04 by the agent under Đạt's delegation of 2026-10-31 (agent, theo ủy quyền 31/10/2026), from the
+readiness gate of compliance-pdpl ticket 03:
+
+- Decision 6: a run's effective class is pinned once, at admission, in `RunContext.route_class` and in
+  `platform.worker_runs.data_route_class`, and a resume reads it back from the run row. The run manifest carries no
+  route-class key: the version's own `route_class` is already inside the definition the manifest pins, and the tenant
+  and workspace classes are read at admission, so the run row is the one record of the class a run used. `data_location`
+  and `processor` are per call, on spans and usage events, never on the run row. Nếu sai thì: the manifest gains a
+  `route_class` key with resume as its reader, and the run-row column stays as the queryable copy.
+- Decision 4: the gate checks every route a call may be sent to, fallback routes included, before the first send, so a
+  failing in-country route never falls through to a foreign one; the three destinations with no model route (rerank,
+  document extraction, transcription) declare `data_location` and `processor` in their process settings, an
+  undeclared one counting as foreign. Nếu sai thì: those three become routes of a model profile, owned by
+  model-connections.
