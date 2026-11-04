@@ -1,9 +1,9 @@
 # 06 — Phát hành đối tượng qua vòng đời phiên bản: chỉ siết một người, nới qua người thứ hai
 
-Status: needs-triage
-Blocked by: 02, .claude/plans/studio/agent-lifecycle/issues/03-hop-dong-vong-doi-va-niem-phong.md, .claude/plans/studio/agent-lifecycle/issues/04-cong-kiem-dinh-va-duyet-hai-nguoi.md
+Status: ready-for-agent
+Blocked by: 02, .claude/plans/studio/field-security/issues/01-mo-hinh-bao-mat-truong.md, .claude/plans/studio/agent-lifecycle/issues/03-hop-dong-vong-doi-va-niem-phong.md, .claude/plans/studio/agent-lifecycle/issues/04-cong-kiem-dinh-va-duyet-hai-nguoi.md
 Area: studio
-Yêu cầu: R1.2, R1.3, R1.7, R2.4, CO3, CO6, CO23
+Yêu cầu: R1.2, R1.3, R1.7, R1.8, R2.4, CO3, CO6, CO23
 
 ## Mục tiêu
 
@@ -23,6 +23,34 @@ ghi, quyền và bảo mật trường chờ ticket 02 mà không phải chờ C
    (`tenant-config:R2.15`), bộ so sánh chỉ siết mà `LifecycleService` gọi để ghi `tighten_only` và
    `compared_live_hash` lên dòng phiên bản (`agent-lifecycle:R2.8`), và móc phát hành `MetadataService.apply`; `check_against_live` của ticket 02 vào bảng kiểm theo loại lúc gửi (`agent-lifecycle:R2.7`), với
    tài liệu của phiên bản Đang dùng, để bản bỏ hay đổi trường đã phát hành bị từ chối trước khi có phê duyệt.
+   Trường bộ so sánh của mục `ArtifactKindRegistry` do agent-lifecycle/04 thêm cùng bên đọc của nó (bước 3 của ticket
+   đó thử bằng một bộ so sánh giả), theo chữ ký nó khai; ticket này chỉ đặt `compare_object` của ticket 02 vào trường đó
+   cho mục `object` trong `platform_kinds(...)` (`packages/python/dw_studio/src/dw_studio/kinds.py`), không thêm trường
+   hay chữ ký thứ hai (gate 4/11/2026 (a)). Từ chối của `check_against_live` qua `SubmitCheck` mang `reason_code`
+   `live_incompatible` cùng mọi `DocumentProblem` của nó thành `errors[]` (con trỏ, `code` như `field_removed`,
+   `field_immutable`, `option_removed`, `pd_category_lowered`), và route trả 422 `validation_failed` với
+   `details.reason_code` `live_incompatible` và `errors[]` đó, cùng hình 422 mà móc trả (spec R2.4); khi kiểu từ chối
+   của `SubmitCheck` (agent-lifecycle/03 bước 5) chưa có chỗ cho danh sách lỗi, ticket này thêm một thành phần
+   `errors` tùy chọn, mặc định rỗng, mà mọi kiểm có sẵn không đổi (gate (b)). Thứ tự giữa kiểm này và câu hỏi Đóng
+   băng là của agent-lifecycle/04 bước 3; tiêu chí ở đây thử từng cái riêng. Chỉ từ chối có `errors` khác rỗng trả
+   `validation_failed` với `errors[]`; từ chối của các kiểm khác giữ hình mà agent-lifecycle/03 định. Bộ so sánh, kiểm
+   này và móc cùng so với một "bản Đang dùng": tài liệu của phiên bản `live` trong `studio.artifact_versions`; móc khẳng
+   định `applied_version_id` của `studio.object_defs` là id của phiên bản đó trước khi áp, lệch thì ném lỗi (lượt xác
+   nhận (g)). Ticket chờ field-security/01, chủ cột `access_mode` và phần áp nó của móc, vì nhánh chỉ siết "đóng
+   `phone`" chỉ đổi `studio.field_defs` khi cột đó có (lượt xác nhận (h)).
+   1a. Composition root của worker, nơi handler `studio.publish.object.decided` của agent-lifecycle/04 chạy, dựng
+   `ArtifactKindRegistry` bằng cùng `platform_kinds(object_store_of, ...)` mà API dùng (`apps/api/src/dw_api/bootstrap/
+studio.py`), không bản dựng thứ hai; khi agent-lifecycle/04 chưa làm, ticket này thêm `dw-studio` vào phụ thuộc của
+   `apps/worker` (CLAUDE.md, Adding a bounded context, bước 8) và lời gọi đó. Giao dịch của handler mang `AccessContext`
+   của người quyết định, nên các audit định nghĩa mà móc ghi (`studio.object.updated`, `studio.field.created`,
+   `studio.field.updated`, `studio.picklist.updated`, qua `ObjectDefinitionStore.context`) đứng tên người duyệt với
+   `details.lane` `outbox` (CLAUDE.md, Agent and tool rules; ADR-0011 (Accepted)), còn ở nhánh chỉ siết đứng tên người
+   gửi, không `details.lane` (gate (d), (e)). `SqlArtifactTx` thêm `lane: str | None` (mặc định None), đặt `outbox` bởi
+   đường mở giao dịch của handler `.decided`, và audit của móc ghi `details.lane` khi có; khi handler mở một giao dịch
+   không phải `SqlArtifactTx`, ticket này đổi `object_store_of` sang nhận Protocol `ArtifactTx` có `context` và `lane`
+   (đường lui (7) của ticket 02), không sửa handler (lượt xác nhận (i)). Móc ném lỗi trong handler là lỗi lập trình, không phải một nhánh: ngân
+   sách slot (R1.6) đã kiểm lúc `seal`, và mỗi đối tượng có tối đa một Bản ứng viên, nên không phiên bản nào khác tiêu
+   slot giữa lúc gửi và lúc duyệt; giao dịch lùi và lần giao outbox theo luật thử lại của outbox (gate, MEDIUM M1).
 2. Nhánh chỉ siết (`agent-lifecycle:R1.7`, `agent-lifecycle:R2.9`): `LifecycleService` đưa phiên bản lên Đang dùng,
    phiên bản cũ sang Đã gỡ và ghi đúng một audit `studio.version.published` có người gửi là actor, `details.path`
    `tighten_only`, trong giao dịch của người gửi; móc phát hành chạy trong cùng giao dịch và chỉ áp định nghĩa, không
@@ -66,10 +94,17 @@ ghi, quyền và bảo mật trường chờ ticket 02 mà không phải chờ C
       Gửi kiểm định → Đang dùng ngay qua nhánh chỉ siết, phê duyệt `studio.publish.object` cũ đã hủy; cho tạo bản Nháp
       khi Bản ứng viên chờ → test đỏ.
 - [ ] R1.3 (CO3): người thiếu `studio.objects.manage` gọi lệnh Gửi kiểm định → 404 như thành phần không tồn tại, vì
-      khóa đó cũng là khóa đọc của loại (`tenant-config:R2.11`), phiên bản giữ Nháp, không phê duyệt nào mở; gỡ kiểm khóa gửi ở mục đăng ký của loại → test đỏ.
-- [ ] R2.4 (CO6): Gửi kiểm định bản nháp bỏ một trường đã phát hành, hay đổi `scale` của nó → 422 với
-      `details.reason_code` của kiểm đó, phiên bản giữ Nháp, không phê duyệt nào mở; gỡ đăng ký kiểm → lần gửi qua tới
-      Chờ duyệt và test đỏ.
+      khóa đó cũng là khóa đọc của loại (`tenant-config:R2.11`), phiên bản giữ Nháp, không phê duyệt nào mở; đổi khóa đọc
+      và khóa gửi của mục `object` sang một khóa mà người thử giữ → lần gửi qua tới Chờ duyệt, test đỏ (gỡ riêng kiểm khóa
+      gửi không đỏ được, vì kiểm đọc trả 404 trước nó; gate (c)).
+- [ ] R2.4 (CO6): Gửi kiểm định bản nháp bỏ một trường đã phát hành và đổi `scale` của một trường khác → 422
+      `validation_failed` với `details.reason_code` `live_incompatible` và hai phần tử `errors[]`, `field_removed` con
+      trỏ `/fields` kèm `api_name` của trường đã bỏ trong `detail`, `field_immutable` con trỏ tới `scale`, phiên bản giữ Nháp, không phê duyệt nào mở; gỡ đăng ký kiểm → lần gửi qua tới Chờ duyệt và test đỏ.
+- [ ] R1.2: lần phát hành qua handler `studio.publish.object.decided` trên worker thật → audit
+      `studio.field.created` đứng tên người duyệt với `details.lane` `outbox`; lần phát hành chỉ siết → audit
+      `studio.field.updated` đứng tên người gửi, không `details.lane`; worker dựng registry không có móc của `object` →
+      handler không áp định nghĩa, test đỏ.
+- [ ] R1.8: phiên bản giống hệt bản Đang dùng, hay chỉ đổi thứ tự trường → Chờ duyệt, không chỉ siết.
 - [ ] Xong: `make test-integration` xanh.
 
 ## Nguồn
@@ -115,3 +150,18 @@ ghi, quyền và bảo mật trường chờ ticket 02 mà không phải chờ C
   `draft_exists` của `tenant-config:R2.23` và không làm test này đỏ; CO23 của spec sửa cùng.
 - 2026-11-03 (agent, theo ủy quyền 31/10/2026): gate của ticket 02 (HIGH 7): bước 1 thêm đăng ký `check_against_live` vào bảng kiểm lúc gửi, Yêu cầu thêm R2.4, CO6 và một tiêu chí, vì `validate` của registry thuần trên một tài liệu nên phép so với bản Đang dùng không chạy được trong `seal`. Nếu sai thì: tenant-config đổi chữ ký `validate`, và tiêu chí này về ticket 02.
 - 2026-11-03 (agent, theo ủy quyền 31/10/2026): gate của ticket 02, lượt xác nhận: tiêu chí R1.3 thành 404, vì `studio.objects.manage` là khóa đọc, khóa ghi và khóa gửi của loại, và người không đọc được thành phần nhận 404 (`tenant-config:R2.11`, TC24); spec R1.3 và CO3 sửa cùng. Nếu sai thì: khóa đọc của loại tách khỏi khóa ghi, và người đọc được mà không gửi được nhận 403.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): gate `checking-plan-readiness` (builder check, một subagent; route Gửi kiểm định là của
+  agent-lifecycle, ticket không thêm migration hay route): 0 CRITICAL, 6 HIGH, sửa theo khuyến nghị (Quyết định
+  4/11/2026 của spec): (a) trường bộ so sánh do agent-lifecycle/04 thêm; (b) `live_incompatible` với `errors[]`; (c) đột
+  biến R1.3 đổi khóa của mục; (d), (e) registry của worker và audit của móc ở handler; (f) không khác biệt thì không chỉ
+  siết (R1.8).
+- 2026-11-04 (agent): MEDIUM để lại: (M1) móc ném lỗi trong handler là lỗi lập trình (slot đã kiểm lúc `seal`, một Bản
+  ứng viên mỗi đối tượng), outbox thử lại theo luật của nó; (M2) nâng `pd_category` kèm đóng trường vẫn qua người thứ hai
+  theo R1.8, đúng chữ; (M3) công ty một quản trị viên không phát hành được đối tượng (Quyết định 23/10/2026, D11); (M4)
+  cặp với ticket 03 (`details.reason_code`) là cảnh báo giả của `check_plans.py`.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): lượt xác nhận: 0 CRITICAL, 3 HIGH, sửa: (h) chờ field-security/01, chủ `access_mode`, vì nhánh "đóng
+  `phone`" không đổi gì khi cột chưa có; (i) `lane` trên `SqlArtifactTx` cho `details.lane` của móc, đường lui
+  `ArtifactTx` có `context`; (g) một "bản Đang dùng" cho bộ so sánh, kiểm và móc. Sửa luôn: hình 422 của các kiểm khác
+  giữ nguyên; con trỏ `/fields` của `field_removed`. Sửa của lượt này không có người đọc mới: nhận rủi ro (agent, theo ủy quyền 31/10/2026). Nếu sai
+  thì: ghi ở đây khi dựng. Thứ tự dựng: sau 02, field-security/01, agent-lifecycle/03, /04; trước marketing-pilot/02.
+- 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
