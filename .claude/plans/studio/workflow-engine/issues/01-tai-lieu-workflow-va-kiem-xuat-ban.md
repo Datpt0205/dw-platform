@@ -1,6 +1,6 @@
 # 01 — Tài liệu dw.workflow/v1 dạng cây Bước, loại workflow, bộ kiểm khi gửi kiểm định và WorkflowIR, mở rộng tại chỗ lõi wf-lite
 
-Status: ready-for-agent
+Status: resolved (2026-11-05, main)
 Blocked by: .claude/plans/studio/tenant-config/issues/02-vo-phien-ban-va-chi-muc-phu-thuoc.md, .claude/plans/studio/agent-lifecycle/issues/03-hop-dong-vong-doi-va-niem-phong.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md
 Area: studio
 Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.8, R2.1, R2.2, R2.5, R2.10, R2.11, R2.12, R2.13, R2.14, WE14, WE36
@@ -195,43 +195,43 @@ V4.24), và cây mang làn cho mọi cấu trúc của W1 ngay từ ticket này,
 
 ## Tiêu chí chấp nhận
 
-- [ ] R2.12 (WE14): một chủ: `rg "class WorkflowDocument|def lower\(|class NodeTypeSpec|def compile_workflow|^MESSAGES" packages apps`
+- [x] R2.12 (WE14): một chủ: `rg "class WorkflowDocument|def lower\(|class NodeTypeSpec|def compile_workflow|^MESSAGES" packages apps`
       ra đúng một chỗ mỗi tên, trong `dw_agent_runtime/wflite`; test kiến trúc đỏ khi thêm bản thứ hai vào `dw_studio`.
-- [ ] R1.1: gói và `+t<n>` giữ nguyên:
+- [x] R1.1: gói và `+t<n>` giữ nguyên:
     - `PackCatalog` nạp mọi gói trong `configs/packs` không lỗi nào;
     - một nội dung `+t<n>` lưu trước ticket này (chép từ fixture của wf-ai) đọc được qua `tenant_pinned`;
     - `test_wflite_validate.py`, các test của wf-ai và hai test packs fail-fast của API và worker xanh;
     - graph biên dịch của `lead_care@1.0.0` có đúng tập node và tập cạnh của snapshot ghi ở commit gốc của ticket, kể
       cả tên node gộp và node chờ.
-- [ ] R1.1: trên đường Studio, Bước thiếu `retry`, `timeout_s` hay `on_error`, nằm ba tầng (trong `error_lane` của một Bước
+- [x] R1.1: trên đường Studio, Bước thiếu `retry`, `timeout_s` hay `on_error`, nằm ba tầng (trong `error_lane` của một Bước
       nằm trong làn `approved`) → niêm phong 422 `wf.schema_invalid` có con trỏ tới khóa thiếu. Một cây hợp lệ có Bước
       trong làn rẽ nhánh, làn phê duyệt và làn lỗi thì qua. `timeout_s` 0 hay 901, `max_attempts` 0 hay 6 → từ chối;
       `timeout_s` 1 và 900, `max_attempts` 1 và 5 → qua.
-- [ ] R1.1: luật đường: tài liệu gói có `on_error` ở một Bước, hay đề xuất của trợ lý wf-ai có `error_lane` →
+- [x] R1.1: luật đường: tài liệu gói có `on_error` ở một Bước, hay đề xuất của trợ lý wf-ai có `error_lane` →
       `wf.schema_invalid`, gói không nạp, đề xuất không ra. Tài liệu Studio có `key` → `wf.schema_invalid`. Một trình kích hoạt
       có `retry` → `wf.schema_invalid` ở cả hai đường. Một Bước id `join__a` → `wf.schema_invalid`. Gỡ một tập của
       `PACK_RULES` → test đỏ.
-- [ ] R1.8 (WE36): `edges` ở gốc, `position` trong một Bước, khóa làn `expired` trên `human.approval@1`, `error_lane`
+- [x] R1.8 (WE36): `edges` ở gốc, `position` trong một Bước, khóa làn `expired` trên `human.approval@1`, `error_lane`
       trên Bước có `on_error: fail`, hay `on_error: route` không có `error_lane` → từ chối có con trỏ, không niêm
       phong. Gỡ `extra="forbid"` khỏi `Step` → hai tài liệu chỉ khác `position` niêm phong ra hai mã băm định nghĩa
       khác nhau, test đỏ.
-- [ ] R1.2: `PUT` nháp `workflow` có `{"score": 1.0}` → 422 `float_forbidden` có con trỏ; chuỗi NFD → `not_nfc`; không
+- [x] R1.2: `PUT` nháp `workflow` có `{"score": 1.0}` → 422 `float_forbidden` có con trỏ; chuỗi NFD → `not_nfc`; không
       mã băm nào được ghi. Gói `lead_care` với `0.7` vẫn nạp.
-- [ ] R1.3: niêm phong một nháp có trình kích hoạt fixture dùng một Nguồn dữ liệu, và một Bước fixture tới một object
+- [x] R1.3: niêm phong một nháp có trình kích hoạt fixture dùng một Nguồn dữ liệu, và một Bước fixture tới một object
       nằm trong `error_lane` của một Bước trong làn `approved` → `studio.dependencies` có dòng `node_type` của Bước lồng
       đó và dòng `artifact` của cả hai. Cho bộ trích chỉ đi `steps[]` cấp đầu → test đỏ. Cho `dependencies` của loại
       fixture trả `()` → test fixture đỏ.
-- [ ] R1.4: `ArtifactKindRegistry` và các dòng `studio.artifact_kinds` cùng có `workflow` (test so hai tập của
+- [x] R1.4: `ArtifactKindRegistry` và các dòng `studio.artifact_kinds` cùng có `workflow` (test so hai tập của
       tenant-config/02). Niêm phong `workflow` gọi bộ kiểm của ticket này. Mục `workflow` có `publish_hook` (test
       composition root của tenant-config/02); gỡ móc khỏi mục → test đó đỏ.
-- [ ] R1.6: gọi `publish_hook` của `workflow` cho một phiên bản trong một giao dịch thử → bản giả của
+- [x] R1.6: gọi `publish_hook` của `workflow` cho một phiên bản trong một giao dịch thử → bản giả của
       `TriggerActivationPort` nhận đúng một lời gọi cho phiên bản đó, trong cùng giao dịch. Các ca khác:
     - giao dịch lùi → bản giả không còn đăng ký nào;
     - gọi lần hai cho cùng phiên bản → không thêm đăng ký;
     - bản giả ném lỗi → giao dịch phát hành lùi, `stage` không đổi;
     - `stage` của phiên bản không đổi, và không dòng `studio.version.published` nào;
     - gỡ lời gọi port khỏi móc → test đỏ.
-- [ ] R1.5: mục `workflow` khai ba khóa đúng tên, và dòng `studio.artifact_kinds` có `has_quality_gate = true`.
+- [x] R1.5: mục `workflow` khai ba khóa đúng tên, và dòng `studio.artifact_kinds` có `has_quality_gate = true`.
       `platform.permissions` có dòng `studio.workflows.test` với `tenant_grantable` theo luật của tenant-rbac/02, và
       kiểm (c) của tenant-rbac/01 xanh nhờ mục ngoại lệ có lý do. Các ca âm:
     - bỏ khóa khỏi migration → test của R1.5 đỏ;
@@ -240,32 +240,32 @@ V4.24), và cây mang làn cho mọi cấu trúc của W1 ngay từ ticket này,
       thành phần 404; có khóa đọc mà thiếu `studio.workflows.edit` → `PUT` nháp 403;
     - thành viên tenant B giữ cả ba khóa, `GET` và `PUT` nháp một `workflow` của tenant A → 404;
     - gỡ khóa đọc khỏi mục → test registry đỏ.
-- [ ] R2.1: `NodeTypeSpec`: dựng một mục thiếu `block`, `ends_run`, `exits_loop` hay `dependencies` → lỗi lúc dựng; sáu loại
+- [x] R2.1: `NodeTypeSpec`: dựng một mục thiếu `block`, `ends_run`, `exits_loop` hay `dependencies` → lỗi lúc dựng; sáu loại
       wf-lite khai cả bốn. Cho `ends_run` mặc định `False` → test dựng mục thiếu nó đỏ.
-- [ ] R2.1: Bước đứng sau Bước fixture `ends_run` trong cùng làn, hay sau Bước `exits_loop` trong làn `body` →
+- [x] R2.1: Bước đứng sau Bước fixture `ends_run` trong cùng làn, hay sau Bước `exits_loop` trong làn `body` →
       `wf.unreachable_node` có con trỏ tới Bước đó.
-- [ ] R2.2: `logic.switch@1` thiếu `default` → `wf.router_not_total`; `human.approval@1` không có khóa `rejected` →
+- [x] R2.2: `logic.switch@1` thiếu `default` → `wf.router_not_total`; `human.approval@1` không có khóa `rejected` →
       `wf.router_not_total` trên đường Studio, có `rejected: []` → qua; cùng phê duyệt trên đường gói → qua (đề xuất
       chỉ có `approved` của test wire wf-ai vẫn xanh); Bước `loop` fixture không có làn `body` → `wf.router_not_total`;
       Bước `on_error: fail` không có `error_lane`, hay `loop` không có `max_reached` → qua.
-- [ ] R2.5: tham chiếu từ sau một khối `choice` tới đầu ra của một Bước chỉ có ở một làn của khối →
+- [x] R2.5: tham chiếu từ sau một khối `choice` tới đầu ra của một Bước chỉ có ở một làn của khối →
       `wf.ref_not_dominating`; tham chiếu từ sau Bước lỗi tới một Bước của `error_lane` của nó →
       `wf.ref_not_dominating`; tham chiếu tới một Bước đứng trước khối → qua. Các ca dominance của wf-lite giữ kết quả.
-- [ ] R2.10: cây 501 Bước → `wf.limit_above_plan`, 500 Bước → qua; độ sâu 11 chỉ bằng `logic.switch@1` lồng nhau →
+- [x] R2.10: cây 501 Bước → `wf.limit_above_plan`, 500 Bước → qua; độ sâu 11 chỉ bằng `logic.switch@1` lồng nhau →
       `wf.limit_above_plan`, độ sâu 10 → qua; cây lồng 200 tầng → 422 có mã trong dưới 1 giây, không `RecursionError`.
-- [ ] R2.11: tài liệu có sáu lỗi ở các độ sâu khác nhau của cây → bộ kiểm trả cả sáu trong một lần, mỗi lỗi một con
+- [x] R2.11: tài liệu có sáu lỗi ở các độ sâu khác nhau của cây → bộ kiểm trả cả sáu trong một lần, mỗi lỗi một con
       trỏ.
-- [ ] R2.12 (WE14): quét nguồn `dw_agent_runtime/wflite` và `dw_studio`: lời gọi `.lanes(` và lần đọc khóa
+- [x] R2.12 (WE14): quét nguồn `dw_agent_runtime/wflite` và `dw_studio`: lời gọi `.lanes(` và lần đọc khóa
       `error_lane` chỉ có ở `wflite/ir.py`, và `_NOT_VALUES` không còn; thêm một lời gọi `.lanes(` vào `compile.py` →
       test đỏ. Cho `lower` bỏ
       `error_lane` → ca R2.5 của Bước trong làn lỗi lồng trong làn `approved` không ra lỗi, test đỏ.
-- [ ] R2.13: `PUT` nháp có một Bước không tới được → 200, tài liệu được lưu, `warnings[]` có `wf.unreachable_node`;
+- [x] R2.13: `PUT` nháp có một Bước không tới được → 200, tài liệu được lưu, `warnings[]` có `wf.unreachable_node`;
       niêm phong cùng tài liệu → 422. `PUT` nháp `steps: []` → 200 với cảnh báo `wf.schema_invalid`.
-- [ ] R2.14: niêm phong tài liệu có Bước `foo.bar@1` → 422 `wf.unknown_type` có con trỏ tới Bước, không niêm phong;
+- [x] R2.14: niêm phong tài liệu có Bước `foo.bar@1` → 422 `wf.unknown_type` có con trỏ tới Bước, không niêm phong;
       lưu nháp cùng tài liệu chỉ cảnh báo.
-- [ ] R2.11: bảng mã: mọi chuỗi `"wf.<mã>"` trong mã nguồn của `packages/` và `apps/` là một khóa của `MESSAGES`, có cả chữ vi
+- [x] R2.11: bảng mã: mọi chuỗi `"wf.<mã>"` trong mã nguồn của `packages/` và `apps/` là một khóa của `MESSAGES`, có cả chữ vi
       lẫn en. Thêm một chuỗi mã không có trong bảng → test đỏ.
-- [ ] Xong: `make ci` xanh.
+- [x] Xong: `make ci` xanh.
 
 ## Nguồn
 
@@ -350,3 +350,48 @@ V4.24), và cây mang làn cho mọi cấu trúc của W1 ngay từ ticket này,
   `studio.workflows.test` chưa có: một mục trỏ tới khóa ngoài catalogue là khai mà không ai đọc (failure-modes #1). Ticket
   này thêm mục đó cùng khóa và loại, dưới một hằng `*_SCOPE` để kiểm (b) của `test_permission_catalogue.py` đọc được. Nếu
   sai thì: workflow-engine/02 thêm khóa vào catalogue trước.
+- 2026-11-05 (agent, theo ủy quyền 31/10/2026): dựng ở `83c7588` (mã), test ở commit theo sau. Khác ticket:
+    - (1) `studio.workflows.test` không vào danh sách ngoại lệ của kiểm (c): mục (`workflow`, `test`) →
+      `WORKFLOWS_TEST_SCOPE` của `_RUN_KEYS` (cửa của workflow-engine/02 kiểm nó) là chỗ kiểm đầu tiên, nên một mục
+      ngoại lệ sẽ là dòng thừa. Ca âm của tiêu chí thành: đổi hằng đó → kiểm (c) đỏ. Nếu sai thì: thêm mục ngoại lệ có
+      lý do H-19.
+    - (2) R1.2 NFD: vỏ của tenant-config/02 sửa NFC ở cạnh (`canonical_document`: `to_nfc` rồi `ensure_hashable`), nên
+      chuỗi NFD không bao giờ ra `not_nfc`; test khẳng định nháp lưu và băm ở dạng NFC. Số thực vẫn 422
+      `float_forbidden` có con trỏ. Nếu sai thì: tenant-config/02 từ chối thay vì sửa.
+    - (3) R2.10 qua API: cây lồng 200 tầng bị `dw_kernel.canonical` từ chối khi lưu nháp (`MAX_DEPTH` 64, 422
+      `depth_exceeded`, dưới 1 giây) trước bộ kiểm; `wf.limit_above_plan` thử ở lõi (200 tầng, dưới 1 giây) và khi niêm
+      phong qua route (độ sâu 11). Nếu sai thì: nâng `MAX_DEPTH` của canonical cho tài liệu `workflow`.
+    - (4) Mục `workflow_kind(...)` ở `dw_studio/kinds.py` như `object_kind`, vì khóa gửi là hằng của `lifecycle` và
+      các năng lực độc lập; phần riêng (`STUDIO_RULES`, `WorkflowValidator`, `WorkflowDependencies`, móc, port) ở
+      `dw_studio/workflows/application/`. `dw_studio.workflows` vào hợp đồng độc lập của import-linter.
+    - (5) `TriggerActivationPort.activate(tx, version_id)`; `build_studio` nối `NoTriggerSubscriptions`
+      (`dw_studio/workflows/adapters/triggers.py`), không làm gì vì chưa có bảng đăng ký, tới khi workflow-triggers/01
+      thay (Comments ở đó); chưa ai gọi móc trước agent-lifecycle/04. Bản giả `FakeTriggerActivation` giữ hợp đồng
+      (giữ khi giao dịch thành, bỏ khi lùi, gọi lại không đổi gì, ném lỗi). Nếu sai thì: `build_studio` không đăng ký
+      loại `workflow` tới khi có adapter thật.
+    - (6) `save_draft` trả `SavedDraft(version, warnings)`; chỉ `PUT .../draft` trả `SavedDraftView` (thêm `warnings[]`),
+      kiểm chạy sau khi giao dịch lưu commit. Sinh lại OpenAPI và kiểu TS; không có mirror tay nào phải sửa.
+    - (7) `key`, `version` tùy chọn ở model, nên `PinnedWorkflow.key`/`.version` đọc chúng (ConfigError khi vắng);
+      `tool` khi không có runtime seam là `ShippedToolSpecs` như worker.
+    - (8) Phép hạ: khối `choice` luôn có cạnh tới node gộp (một kết quả không làn nào nhận) và `loop` cũng vậy, như
+      luật thống trị wf-lite cũ; trình kích hoạt nằm ở `ir.triggers`, không là node; Bước của làn không phân tích được
+      (như `timeout_s: 0`) không được hạ, nên tham chiếu tới nó là `wf.ref_unknown`; `_SCHEMA_KEYS = {output_schema}`
+      thay nửa lược đồ của `_NOT_VALUES`.
+    - (9) Đổi tên test tích hợp thành `test_workflow_kind_db.py` (trùng basename với test unit làm hỏng thu thập).
+    - Test: `test_workflow_ir.py` (lõi: bốn trường bắt buộc, IR, ảnh đồ thị `lead_care` ghi ở `6d5c24d`, `+t<n>` lưu
+      trước ticket ghi bằng model của `6d5c24d`, `PACK_RULES`, hai trần, ba quét nguồn kèm ca trồng lỗi),
+      `test_workflow_kind.py` (đường Studio: R1.1, R1.3, R1.4-R1.6, R1.8, R2.1, R2.2, R2.5, R2.10, R2.11, R2.14),
+      `test_workflow_kind_db.py` (niêm phong ghi phụ thuộc mọi độ sâu, móc trên giao dịch thật, lỗi port lùi niêm phong,
+      dòng loại và khóa), `test_studio_workflows.py` (route: cảnh báo khi lưu, 422 khi gửi, quyền, tenant khác).
+    - `mutations/01.yaml` 37 đột biến, chưa chạy bằng `mutate.py`; bộ mới xanh ngay lần đầu nên chạy tay cả 37 (31 với
+      test unit, R1.4 ×2, R1.5 ×3 và R2.13 ở tích hợp), tại chỗ, sao lưu rồi chép lại, mỗi cái đỏ.
+    - `reviewing-feature-security` (đọc): loại mới chỉ đi qua `reach` của vỏ; khóa đọc, ghi, gửi đúng tên; tenant khác
+      404, thiếu khóa đọc 404, thiếu khóa ghi 403; bộ kiểm không đọc gì từ tenant hay yêu cầu; sàn HITL chạy như nhau
+      mọi đường; móc không đổi giai đoạn, lỗi port lùi giao dịch.
+    - MEDIUM: (a) MEDIUM (a) của gate đã sửa: mỗi đoạn con trỏ thoát theo RFC 6901 (giá trị `cases`, khóa cấu hình);
+      (b) MEDIUM (b)-(h) của gate giữ nguyên; (c) id trùng: tham chiếu đọc Bước đầu tiên mang id đó; (d) quá 500 Bước
+      thì phép hạ dừng, lỗi sau đó không báo; (e) `test_object_definitions.py` R4.1, R4.2, R4.6 đỏ ở `main` với
+      `rbac_actor_missing` từ `platform.install_system_roles` (trigger của tenant-rbac/03), không do ticket này.
+    - Còn ở lúc đóng hàng đợi: `mutate.py` cho `mutations/01.yaml`; `make test-integration` toàn bộ; P50/P95/P99 của
+      `PUT /studio/artifacts/{id}/draft` (thêm một lần kiểm của loại sau commit) và `POST /studio/workflows/{id}/versions/{vid}/submit`
+      so với commit đầu hàng đợi; `/code-review`.

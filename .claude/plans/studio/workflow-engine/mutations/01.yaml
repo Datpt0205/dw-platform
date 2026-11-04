@@ -1,0 +1,267 @@
+# Mutation check of workflow-engine ticket 01: scripts/mutate.py runs this file
+# at the queue's close (wave-close.md). One mutation per control of the
+# ticket's rows (WE14, WE36) and per rule its criteria name (R1.1, R1.3-R1.6,
+# R1.8, R2.1, R2.2, R2.5, R2.10-R2.13), each test calling the place where the
+# effect happens: the core's `validate` and `lower`, the kind's own `validate`
+# and `extract`, its publish hook on a real store transaction, the envelope's
+# seal and the real routes. The suites passed on their first run, so a set of
+# these was applied by hand on 5/11/2026, each red (named in the ticket's
+# Comments). The migration's mutation applies in place, so its tests recreate
+# the database from the mutated revision; the scans' mutate the test file in
+# place (a scan cannot see a package copy), and the run key's scan mutates
+# `kinds.py` in place for the same reason.
+mutations:
+  # ---- WE14, R2.12: one lowering ---------------------------------------------
+  - name: WE14 the lowering skips the error lane
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/ir.py
+    old: "    if isinstance(error, list):\n"
+    new: "    if False:\n"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_workflow_kind.py::test_an_error_lane_nested_in_an_approved_lane_is_lowered
+      - packages/python/dw_studio/tests/unit/test_workflow_kind.py::test_every_step_at_every_depth_is_extracted
+  - name: WE14 the compiler builds no lane from the IR
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/compile.py
+    old: "        return self.ir.lanes_of(self._index[step.id])\n"
+    new: "        return {}\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_workflow_ir.py::test_lead_care_compiles_to_the_graph_it_compiled_to_before_the_ir
+  - name: R2.12 the one-owner scan finds no lowering
+    file: packages/python/dw_agent_runtime/tests/unit/test_workflow_ir.py
+    old: '    "def lower(": r"^def lower\(",'
+    new: '    "def lower(": r"^def lowered\(",'
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_workflow_ir.py::test_dw_workflow_v1_has_one_model_ir_validator_table_and_compiler
+      - packages/python/dw_agent_runtime/tests/unit/test_workflow_ir.py::test_a_second_validator_in_studio_is_seen
+  - name: R2.12 the lane scan does not see a `.lanes(` call
+    file: packages/python/dw_agent_runtime/tests/unit/test_workflow_ir.py
+    old: '                    and node.func.attr == "lanes"'
+    new: '                    and node.func.attr == "lanes_never"'
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_workflow_ir.py::test_a_lane_read_in_the_compiler_is_seen
+  # ---- R2.11: the one table ----------------------------------------------------
+  - name: R2.11 the code scan sees no code
+    file: packages/python/dw_agent_runtime/tests/unit/test_workflow_ir.py
+    old: "_CODE = re.compile(r\"[\\\"'](wf\\.[a-z_]+)[\\\"']\")"
+    new: '_CODE = re.compile(r"(?!)")'
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_workflow_ir.py::test_a_code_outside_the_table_is_seen
+  - name: Gate MEDIUM (a) a case value is not escaped as a pointer segment
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/ir.py
+    old: '    return str(text).replace("~", "~0").replace("/", "~1")'
+    new: "    return str(text)"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_workflow_ir.py::test_a_case_value_with_a_slash_is_one_pointer_segment
+  # ---- R2.1: what the lowering reads of a type -----------------------------------
+  - name: R2.1 a step that ends the run still leads on
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/ir.py
+    old: "        if spec is not None and spec.ends_run:\n            return\n"
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/unit/test_workflow_kind.py::test_a_step_after_a_stop_in_its_lane_is_unreachable
+  - name: R2.1 a break does not leave its loop
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/ir.py
+    old: "        if spec is not None and spec.exits_loop:\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_workflow_kind.py::test_a_step_after_a_break_in_a_loop_body_is_unreachable
+      - packages/python/dw_agent_runtime/tests/unit/test_workflow_ir.py::test_a_loop_body_returns_to_its_loop_and_a_break_leaves_it
+  - name: R2.1 ends_run has a default
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/registry.py
+    old: "    # to the loop's join. A step after either in its lane is unreachable.\n    ends_run: bool\n"
+    new: "    # to the loop's join. A step after either in its lane is unreachable.\n    ends_run: bool = False\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_workflow_ir.py::test_a_type_that_forgets_one_of_the_four_cannot_be_built
+  - name: R2.1 an unreachable step is not reported
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/validate.py
+    old: "        if placed.index not in self.reach:\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_workflow_kind.py::test_a_step_after_a_stop_in_its_lane_is_unreachable
+      - apps/api/tests/integration/test_studio_workflows.py::test_r2_13_a_draft_saves_with_warnings_and_the_same_problems_refuse_a_submit
+  # ---- R2.2: a lane for every port -------------------------------------------------
+  - name: R2.2 every_port_lane is not read
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/validate.py
+    old: "        if self.rules.every_port_lane and placed.spec is not None:\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_workflow_kind.py::test_an_approval_needs_its_rejected_lane_on_studio_and_not_on_a_pack
+      - packages/python/dw_studio/tests/unit/test_workflow_kind.py::test_a_loop_needs_its_body_and_not_its_max_reached_lane
+  - name: R2.2 a loop must carry max_reached
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/validate.py
+    old: '_OPTIONAL_PORTS = frozenset({"max_reached"})'
+    new: "_OPTIONAL_PORTS: frozenset[str] = frozenset()"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_workflow_kind.py::test_a_loop_needs_its_body_and_not_its_max_reached_lane
+  # ---- R2.5: dominance on the IR -----------------------------------------------------
+  - name: R2.5 any step written earlier counts as run
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/validate.py
+    old: "        return target.index != at.index and self.doms.dominates(target.index, at.index)\n"
+    new: "        return target.index < at.index\n"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_workflow_kind.py::test_after_a_choice_a_step_of_one_lane_does_not_dominate
+      - packages/python/dw_studio/tests/unit/test_workflow_kind.py::test_after_a_failing_step_its_error_lane_does_not_dominate
+  # ---- R2.10: the two caps ---------------------------------------------------------------
+  - name: R2.10 no nesting cap
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/ir.py
+    old: "            if depth > MAX_NESTING:\n"
+    new: "            if False:\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_workflow_ir.py::test_depth_ten_passes_and_depth_eleven_is_named
+      - packages/python/dw_agent_runtime/tests/unit/test_workflow_ir.py::test_a_tree_nested_two_hundred_deep_is_one_problem_in_well_under_a_second
+  - name: R2.10 no step cap
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/ir.py
+    old: "            if len(self.steps) >= MAX_TREE_STEPS:\n"
+    new: "            if False:\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_workflow_ir.py::test_five_hundred_steps_pass_and_the_five_hundred_and_first_is_named
+      - packages/python/dw_agent_runtime/tests/unit/test_workflow_ir.py::test_steps_in_lanes_count_toward_the_cap
+  # ---- R1.1: the path rules ------------------------------------------------------------------
+  - name: R1.1 a pack refuses no step policy
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/validate.py
+    old: "    refused_step_keys=STEP_POLICY_KEYS,\n"
+    new: "    refused_step_keys=frozenset(),\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_workflow_ir.py::test_a_pack_step_with_a_policy_key_is_refused
+      - packages/python/dw_agent_runtime/tests/unit/test_workflow_ir.py::test_a_pack_with_on_error_does_not_load
+      - packages/python/dw_agent_runtime/tests/unit/test_workflow_ir.py::test_a_wf_ai_proposal_with_an_error_lane_is_refused
+  - name: R1.1 a pack needs no key or version
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/validate.py
+    old: '    required_document_keys=frozenset({"key", "version"}),'
+    new: "    required_document_keys=frozenset(),"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_workflow_ir.py::test_a_pack_without_its_key_or_version_is_refused
+  - name: R1.1 a trigger may carry a step's policy
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/validate.py
+    old: "        for key in sorted(STEP_POLICY_KEYS & trigger.model_fields_set):\n"
+    new: "        for key in ():\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_workflow_ir.py::test_a_trigger_with_a_policy_key_is_refused_on_every_path
+      - packages/python/dw_studio/tests/unit/test_workflow_kind.py::test_a_studio_trigger_with_a_policy_key_is_refused
+  - name: R1.1 a step may take the compiler's node prefixes
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/validate.py
+    old: "        if step.id.startswith(_RESERVED_PREFIXES):\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_workflow_ir.py::test_a_step_id_the_compiler_names_its_own_nodes_with_is_refused
+  - name: R1.1 Studio requires no step policy
+    file: packages/python/dw_studio/src/dw_studio/workflows/application/rules.py
+    old: '    required_step_keys=frozenset({"retry", "timeout_s", "on_error"}),'
+    new: "    required_step_keys=frozenset(),"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_workflow_kind.py::test_a_step_three_deep_without_its_policy_is_named
+      - apps/api/tests/integration/test_studio_workflows.py::test_r1_1_a_step_three_deep_without_retry_is_not_sealed
+  - name: R1.1 Studio takes a document's own key and version
+    file: packages/python/dw_studio/src/dw_studio/workflows/application/rules.py
+    old: '    refused_document_keys=frozenset({"key", "version"}),'
+    new: "    refused_document_keys=frozenset(),"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_workflow_kind.py::test_a_studio_document_naming_its_own_key_or_version_is_refused
+  - name: R1.1 retry bounds
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/document.py
+    old: "    max_attempts: int = Field(ge=1, le=5, strict=True)\n"
+    new: "    max_attempts: int = Field(ge=0, le=6)\n"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_workflow_kind.py::test_the_policy_bounds
+  - name: R1.1 timeout bounds
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/document.py
+    old: "    timeout_s: int | None = Field(default=None, ge=1, le=900, strict=True)\n"
+    new: "    timeout_s: int | None = Field(default=None)\n"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_workflow_kind.py::test_the_policy_bounds
+  # ---- R1.8, WE36: no edge, no position, no stray lane --------------------------------------
+  - name: WE36 a step takes unknown keys
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/document.py
+    old: "class Step(_Strict):\n"
+    new: "class Step(BaseModel):\n"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_workflow_kind.py::test_a_position_on_a_step_is_refused
+      - apps/api/tests/integration/test_studio_workflows.py::test_r1_8_a_position_is_refused_so_it_never_changes_a_hash
+  - name: WE36 an error lane without route
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/validate.py
+    old: "        if has_error_lane and step.on_error != \"route\":\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_workflow_kind.py::test_an_error_lane_without_route_and_route_without_a_lane_are_refused
+  - name: R1.8 route without an error lane
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/validate.py
+    old: "        if step.on_error == \"route\" and not has_error_lane:\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_workflow_kind.py::test_an_error_lane_without_route_and_route_without_a_lane_are_refused
+  # ---- R1.3: the extractor ---------------------------------------------------------------------
+  - name: R1.3 the extractor walks the top level only
+    file: packages/python/dw_studio/src/dw_studio/workflows/application/dependencies.py
+    old: "        for placed in (*ir.triggers, *ir.steps):\n"
+    new: "        for placed in (*ir.triggers, *(s for s in ir.steps if s.depth == 1)):\n"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_workflow_kind.py::test_every_step_at_every_depth_is_extracted
+      - packages/python/dw_studio/tests/integration/test_workflow_kind_db.py::test_r1_3_a_seal_indexes_every_use_at_every_depth
+  - name: R1.3 a fixture type that uses something declares nothing
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/testing/workflow_types.py
+    old: '        return (StepDependency("artifact", target, "read", f"/{field}"),)'
+    new: "        return ()"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_workflow_kind.py::test_the_fixture_types_that_use_something_say_so
+  # ---- R1.4, R1.6: the entry and its hook ----------------------------------------------------------
+  - name: R1.4 the kind checks nothing at the seal
+    file: packages/python/dw_studio/src/dw_studio/kinds.py
+    old: "        validate=WorkflowValidator(nodes, tools),\n"
+    new: "        validate=lambda document: [],\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_workflow_kind_db.py::test_r1_4_a_seal_runs_the_kind_s_check
+      - apps/api/tests/integration/test_studio_workflows.py::test_r2_14_an_unregistered_type_warns_on_save_and_refuses_the_seal
+  - name: R1.4 the entry carries no hook
+    file: packages/python/dw_studio/src/dw_studio/kinds.py
+    old: "        publish_hook=workflow_publish_hook(triggers),\n"
+    new: "        publish_hook=None,  # type: ignore[arg-type]\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_kind_registry.py::test_the_running_registry_is_the_kind_table
+  - name: R1.6 the hook does not call the port
+    file: packages/python/dw_studio/src/dw_studio/workflows/application/publish.py
+    old: "        await triggers.activate(tx, version_id)\n"
+    new: "        return None\n"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_workflow_kind.py::test_the_hook_activates_the_version_once_on_the_transaction_it_was_handed
+      - packages/python/dw_studio/tests/integration/test_workflow_kind_db.py::test_r1_6_the_hook_runs_on_the_publish_transaction_and_changes_no_stage
+  - name: R1.6 the hook swallows the port's error
+    file: packages/python/dw_studio/src/dw_studio/workflows/application/publish.py
+    old: "        await triggers.activate(tx, version_id)\n"
+    new: "        try:\n            await triggers.activate(tx, version_id)\n        except Exception:\n            return None\n"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_workflow_kind.py::test_a_port_that_fails_fails_the_hook
+      - packages/python/dw_studio/tests/integration/test_workflow_kind_db.py::test_r1_6_a_failing_port_rolls_the_publish_transaction_back
+  # ---- R1.5: the keys -------------------------------------------------------------------------------
+  - name: R1.5 the read key is another key
+    file: packages/python/dw_studio/src/dw_studio/kinds.py
+    old: "        read_key=WORKFLOWS_READ_SCOPE,\n"
+    new: "        read_key=WORKFLOWS_EDIT_SCOPE,\n"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_workflow_kind.py::test_the_workflow_entry_names_its_keys_its_schema_and_its_check
+      - apps/api/tests/integration/test_studio_workflows.py::test_r1_5_without_the_read_key_the_workflow_is_not_there
+  - name: R1.5 the migration registers no test key
+    file: db/migrations/versions/ae3c7ee10b50_studio_workflow_kind_and_its_keys.py
+    old: "    (\"studio.workflows.test\", \"Chạy thử quy trình\"),\n"
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/integration/test_workflow_kind_db.py::test_r1_5_the_kind_row_and_its_keys_are_in_the_catalogue
+  - name: R1.5 the kind's row has no gate
+    file: db/migrations/versions/ae3c7ee10b50_studio_workflow_kind_and_its_keys.py
+    old: "VALUES ('workflow', true)"
+    new: "VALUES ('workflow', false)"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_workflow_kind_db.py::test_r1_5_the_kind_row_and_its_keys_are_in_the_catalogue
+  - name: R1.5 (c) nothing names the test key as checked
+    file: packages/python/dw_studio/src/dw_studio/kinds.py
+    old: 'WORKFLOWS_TEST_SCOPE = "studio.workflows.test"'
+    new: 'WORKFLOWS_TEST_SCOPE = "studio.workflows.read"'
+    runner: local
+    tests:
+      - packages/python/dw_platform/tests/integration/test_permission_catalogue.py::test_the_catalogue_matches_the_code_and_the_seeded_grants
+  # ---- R2.13: warnings on save -----------------------------------------------------------------------
+  - name: R2.13 a save returns no warning
+    file: packages/python/dw_studio/src/dw_studio/core/application/service.py
+    old: "        return SavedDraft(saved, tuple(entry.validate(saved.document)))\n"
+    new: "        return SavedDraft(saved, ())\n"
+    tests:
+      - apps/api/tests/integration/test_studio_workflows.py::test_r2_13_a_draft_saves_with_warnings_and_the_same_problems_refuse_a_submit
+      - apps/api/tests/integration/test_studio_workflows.py::test_r2_13_an_empty_draft_saves_with_its_warning
