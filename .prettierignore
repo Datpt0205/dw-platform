@@ -5,6 +5,9 @@ contracts/release/
 contracts/telemetry/
 packages/typescript/api-client/src/generated/
 evals/reports/
+# Bảng số do bench_records_storage sinh (record-access/01, 06); Prettier đệm mỗi dòng bảng
+# tới ghi chú dài nhất, gần gấp đôi tệp.
+db/bench/record-access/RESULTS.md
 # Sinh bởi scripts/generate_openui_skill.mjs từ thư viện OpenUI đang cài. Prettier
 # gói lại các dòng là làm nó lệch với bộ sinh, và vì không cổng nào chạy
 # `--check` nên lệch đó trôi im lặng cho tới khi model đọc phải bộ từ vựng cũ.

@@ -1,6 +1,6 @@
 # 01 — Đo hình dạng RLS cho quyền trên bản ghi trước khi khóa thiết kế
 
-Status: ready-for-agent
+Status: resolved (2026-11-04, main)
 Blocked by: .claude/plans/studio/custom-objects/issues/01-do-nen-luu-tru-ban-ghi.md
 Area: studio
 Yêu cầu: R9.1, R9.2, R9.3, R9.4, R9.5, R9.6, R9.7, R9.8, R9.9
@@ -108,31 +108,31 @@ số vào ADR-0105 (Accepted), là ticket 06 (`ready-for-human`, Chờ Đạt 23
 
 ## Tiêu chí chấp nhận
 
-- [ ] R9.1: `make bench-record-access SCALE=smoke` trên máy dev, trong container riêng của harness, ghi vào `RESULTS.md`
+- [x] R9.1: `make bench-record-access SCALE=smoke` trên máy dev, trong container riêng của harness, ghi vào `RESULTS.md`
       trang đầu 50 dòng có và không có bộ lọc, trên `mkt_lead` và object 0,4%, cho mọi hồ sơ của bước 4 và mọi biến thể
       của bước 2 (P0, mỗi phương án của bốn trục, tổ hợp thắng), nóng và nguội, mỗi p95 trên ít nhất 1.000 mẫu với
       `EXPLAIN (ANALYZE, BUFFERS)`, cạnh 50 ms với "đạt" hay "trượt"; sai nếu một số đo trên seed, DDL hay tải khác của
       custom-objects/01, hay `RESULTS.md` hoặc ADR-0105 (Accepted) trình một số smoke như số D12.
-- [ ] R9.1: tự kiểm của bước 7 thoát khác 0 khi bỏ mệnh đề tenant khỏi policy RESTRICTIVE (kiểm chéo tenant đỏ), khi bỏ
+- [x] R9.1: tự kiểm của bước 7 thoát khác 0 khi bỏ mệnh đề tenant khỏi policy RESTRICTIVE (kiểm chéo tenant đỏ), khi bỏ
       điều kiện `grants_valid_until` khỏi nhánh chia sẻ (kiểm hết hạn đỏ), khi trỏ biến thể chính sách vào DDL A0 và khi
       một biến thể thêm một chỉ mục ngoài phần thay đã khai; lần chạy ghi trong Comments.
-- [ ] R9.1: đặt ngưỡng trang đầu 0 ms → script vẫn thoát 0 và bảng ghi dòng đó "trượt"; bỏ số của một biến thể chính
+- [x] R9.1: đặt ngưỡng trang đầu 0 ms → script vẫn thoát 0 và bảng ghi dòng đó "trượt"; bỏ số của một biến thể chính
       sách → script thoát khác 0.
-- [ ] R9.2: tra một bản ghi theo id ở mọi hồ sơ, kể cả tài khoản dịch vụ sở hữu lead, có p95 cạnh 5 ms trong
+- [x] R9.2: tra một bản ghi theo id ở mọi hồ sơ, kể cả tài khoản dịch vụ sở hữu lead, có p95 cạnh 5 ms trong
       `RESULTS.md`; sai nếu thời gian không gồm lời gọi cửa sổ tầm.
-- [ ] R9.3: trang keyset kế tiếp ở mọi hồ sơ có p95 cạnh 50 ms.
-- [ ] R9.4: đếm có trần `LIMIT 1001` ở mọi hồ sơ có p95 cạnh 300 ms.
-- [ ] R9.5: INSERT một bản ghi và UPDATE một cột slot dưới WITH CHECK của policy, trong soak của harness ở P0 và tổ
+- [x] R9.3: trang keyset kế tiếp ở mọi hồ sơ có p95 cạnh 50 ms.
+- [x] R9.4: đếm có trần `LIMIT 1001` ở mọi hồ sơ có p95 cạnh 300 ms.
+- [x] R9.5: INSERT một bản ghi và UPDATE một cột slot dưới WITH CHECK của policy, trong soak của harness ở P0 và tổ
       hợp thắng, có p95 cạnh 10 ms; sai nếu lần ghi đi vòng đường ghi mô phỏng của harness.
-- [ ] R9.6: giao một bản ghi có p95 cạnh 20 ms, giao dịch gồm dòng outbox và audit; chia sẻ tay đo và ghi cùng bảng cho
+- [x] R9.6: giao một bản ghi có p95 cạnh 20 ms, giao dịch gồm dòng outbox và audit; chia sẻ tay đo và ghi cùng bảng cho
       W2; sai nếu giao dịch thiếu một trong hai dòng đó.
-- [ ] R9.7: tính sổ tầm cho một chủ thể có p95 cạnh 50 ms, kể cả quản lý có 5.000 cấp dưới, và mảng tính được bằng mảng
+- [x] R9.7: tính sổ tầm cho một chủ thể có p95 cạnh 50 ms, kể cả quản lý có 5.000 cấp dưới, và mảng tính được bằng mảng
       của `profiles_and_scopes` ở mọi cặp (hành động, nhánh) mà nó đặt, cho mọi chủ thể hồ sơ; sai nếu thời gian đo trên mảng gieo sẵn thay vì hàm tính.
-- [ ] R9.8: lời gọi cửa trên dòng `valid` có p95 cạnh 1 ms.
-- [ ] R9.9: tính lại 5.000 chủ thể sau một lần tăng epoch, bốn kết nối, dưới tải hỗn hợp, có tổng cạnh 120 s và số của
+- [x] R9.8: lời gọi cửa trên dòng `valid` có p95 cạnh 1 ms.
+- [x] R9.9: tính lại 5.000 chủ thể sau một lần tăng epoch, bốn kết nối, dưới tải hỗn hợp, có tổng cạnh 120 s và số của
       một kết nối; thu hồi trên hai kết nối không bao giờ để câu lệnh sau commit thấy tầm cũ, kiểm bằng ít nhất 1.000
       lần lặp.
-- [ ] Xong: `make bench-record-access SCALE=smoke` xanh.
+- [x] Xong: `make bench-record-access SCALE=smoke` xanh.
 
 ## Nguồn
 
@@ -243,3 +243,18 @@ số vào ADR-0105 (Accepted), là ticket 06 (`ready-for-human`, Chờ Đạt 23
   (25) phương án ngoài P0 chỉ đo R9.1, R9.2; (26) soak 2 giờ ở cả hai scale; (27) chạy cả hai modulus.
 - 2026-11-03 (agent): checking-plan-readiness ĐẠT; ready-for-agent. Dựng khi custom-objects/01 `resolved`; không dựng
   song song với custom-objects/04 (cùng sửa harness).
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): dựng trong harness của custom-objects/01 (`records_bench/policy/`, test `records_bench/tests/test_policy.py`, `--policy-variants`, `make bench-record-access`). Harness chỉ nhận thêm những móc bước 1 cho phép, mỗi móc mặc định tắt nên ô của custom-objects/01 dựng và đo y như trước: `Endpoint.after_scope` (lời gọi cửa chạy sau setting trong cùng vòng khứ hồi), vị từ tùy chọn của `page_sql`, `CellExtension` của `build_cell` (thay bản thay tầm trước seed, gieo đầu vào sau seed), loại đọc và cập nhật slot của `MixedLoad`, `WritePath.update_slot`, `definer_write`, `delete`, ngưỡng R9 của record-access trong bảng ngưỡng của báo cáo. Không revision Alembic, không route.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): "nhánh viết bằng join bảng sổ tầm hay EXISTS" đo là một phương án E: policy không chứa được join, sổ tầm nối theo từng dòng chỉ viết được bằng một `EXISTS` tương quan gom mọi nhánh. Nếu sai thì: thêm phương án J nối sổ tầm qua một view security-barrier, đo như một trục riêng.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): trục K giữ khóa `bigint` bằng trigger BEFORE từ `object_defs.object_no` và `platform.workspaces.workspace_no` (gán theo tenant lúc chèn), vì cột sinh không đọc được bảng khác; trigger nằm trong phần thay đã khai. Nếu sai thì: bản ghi mang thêm hai cột số và `access_key` sinh từ chúng.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): nhánh nhóm đọc mảng `objects_team` (đối tượng giữ quyền ở độ sâu nhóm trở lên, ADR-0104 quyết 3) thay cho mảng của tôi mà A1 của harness dùng, và có ở xóa, giao, chia sẻ; so mảng với harness theo cặp harness đặt nên không đổi kết quả tự kiểm. Nếu sai thì: nhánh nhóm đọc `objects_own` như A1.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): tự kiểm mảng cho nhánh `grants` chấp nhận khóa thừa (nhóm, workspace nhà, mốc cây con mà ADR-0105 quyết 3 cho một người, harness bỏ qua) chỉ khi không bản ghi nào của seed mang chúng, nên tầm bằng nhau; khóa thừa ghi vào báo cáo. Nếu sai thì: `profiles_and_scopes` của harness thêm các khóa đó (sửa của chủ harness).
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): giới hạn dữ liệu chọn theo loại actor trong câu cửa (agent → `mkt_lead`, workflow → mọi object), vì harness có đúng một agent và một người ghi. Nếu sai thì: `scoped` nhận `app.boundary_id` theo hồ sơ.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): luật 10% chỉ áp khi hai phương án cùng đạt hay cùng trượt; phương án đạt thắng phương án trượt dù chênh ít. Tổ hợp thắng bằng P0 thì không dựng lại, số của P0 là số của nó. Nếu sai thì: luật 10% áp mọi lúc, và ô W luôn chạy.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): bộ lọc slot kiểu là `i01 < 100000` (khoảng 9% dòng) trên `mkt_lead` và `account` (object 0,4%); DELETE và chia sẻ tay không có dòng ngưỡng R9, nên chỉ ghi số. Nếu sai thì: bộ lọc `t01 = <giá trị picklist>`, và chia sẻ xét theo ngưỡng 20 ms của R9.6.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): `RESULTS.md` giữ bảng số, luật chọn và kế hoạch trang đầu trên `mkt_lead` của P0 và W; mọi kế hoạch khác ở `report.md` của lần chạy (không commit, vài MB). Nếu sai thì: commit `report.md` cạnh `RESULTS.md`.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): giao, chia sẻ và DELETE chạy ở 8 phiên (`import_sessions` của scale), không 50: ở 50 phiên mỗi giao dịch ghi chạm bảng khóa 6.400 chỗ (phát hiện của custom-objects/01) và lần đo tiny chỉ thấy "out of shared memory"; hai hàm definer gắn tenant vào biến nên kế hoạch cắt về một partition. Tải hỗn hợp của R9.1 tới R9.4 và R9.9 giữ 50 phiên. Nếu sai thì: ba phép ghi chạy ở 50 phiên và ghi số lỗi cùng p95.
+- 2026-11-04 (agent): `make bench-record-access SCALE=smoke MODULUS=8` thoát 0 (12:17 tới 15:08): đủ ô của ma trận ở modulus 8 cho P0, K, L, E, H và W, mọi tự kiểm của bước 7 đạt ở mọi ô. Modulus 8 vì luật quyết của custom-objects/01 ở smoke không chọn modulus (A1 trượt ngưỡng đọc ở cả hai), `RESULTS.md` ghi "chưa chọn". Máy dev như custom-objects/01 (Ryzen 7 7735U, Docker Desktop 16 CPU 7,9 GB, `postgres:16.15-alpine` theo digest, giới hạn 2 GiB, `shared_buffers` 128MB, `work_mem` 4MB), container riêng `dwbench-postgres`, đã xóa cùng volume. Bảng đủ (mỗi hồ sơ, mỗi loại đọc, nóng và nguội, p50/p95/p99) và kế hoạch trang đầu ở `db/bench/record-access/RESULTS.md` dưới "smoke, máy dev, không phải số D12"; mọi kế hoạch khác ở `report.md` của lần chạy. Không số nào vào ADR-0105 (Accepted).
+- 2026-11-04 (agent): số smoke, p95 ms (min tới max qua 16 hồ sơ, số dòng đạt ngưỡng). P0: trang đầu 119–48.253 (0/128), keyset 115–15.815 (0/32), GET 92–937 (0/32), đếm 1.003–49.195 (0/32), R9.7 28–68 (9/11), cửa valid 1,12, giao 323, chia sẻ 36, DELETE 29, tính lại 5.000 chủ thể 107 s bốn kết nối và 211 s một kết nối, 0 lần thấy tầm cũ sau thu hồi trên 1.000 lần, soak tạo 336 và sửa slot 363. K: trang đầu 68–∞, R9.7 24–56 (10/11), cửa 0,98, tính lại 94 s. L: trang đầu 92–∞, đếm 104–48.363 (10/32), cửa 1,30, tính lại 91 s. E: trang đầu 86–∞, keyset 96–1.237, đếm 168–12.508 (14/32), tính lại 106 s. H: trang đầu 96–39.201, tính lại 121 s. W (P0 cộng câu gợi ý): trang đầu 155–49.436, soak tạo 405 và sửa slot 421, tính lại 98 s. Cắt partition: mọi biến thể quét một partition (`records_p5`) ở custom và generic plan, 15 InitPlan (E: 11).
+- 2026-11-04 (agent): luật chọn của bước 2 ở smoke: K, L, E giữ P0 vì p95 tệ nhất của chúng là ∞ (một chuỗi trang có hơn 5% mẫu lỗi hay quá 60 s), H thắng (39.201 so với 48.253 ms, hơn 10%), nên W là P0 cộng câu gợi ý và đã đo đủ. Luật đọc một số duy nhất, nên ở máy dev quá tải nó chọn theo lỗi và nhiễu; cho ticket 02, 03 và 06 đọc: sổ tầm một dòng mỗi hành động (L) trả trang đầu của các hồ sơ toàn công ty khoảng 2,3 s so với 21 tới 38 s ở mọi biến thể khác, và E cắt keyset và đếm mạnh nhất. R9.7 trượt ở quản lý có 5.000 cấp dưới (56 tới 68 ms) và gần ngưỡng ở Workspace 40 (50 ms); dưới tải 50 phiên máy chủ từ chối 2.479 tới 3.832 lời gọi cửa trong lần tính lại một kết nối ("out of shared memory", gọi lại sau tải và đếm vào ghi chú). Đây là số smoke, không phải D12: ticket 06 chọn lại trên máy tham chiếu.
+- 2026-11-04 (agent): tự kiểm của bước 7 đỏ được, mỗi ca dựng một ô P0 ở `--scale tiny` và chỉ chạy tự kiểm (bản sao `variants.py` lưu trước và chép lại sau): bỏ mệnh đề tenant khỏi policy RESTRICTIVE → "khác A1 ngoài phần thay đã khai: policy studio.records tenant_isolation_records" ở bảng cha và mọi partition, thoát 1; bỏ điều kiện `grants_valid_until` → "người nhận đọc được bản ghi 018d85ce-e000-7000-8000-000000000410 có grants_valid_until ở quá khứ", thoát 1; trỏ biến thể vào A0 → dựng lỗi `column "read_grants" does not exist`, thoát 1; thêm chỉ mục ngoài phần thay → "thêm ngoài phần thay đã khai: index studio.records ix_records_extra", thoát 1; không đột biến → 0 lỗi. Ngưỡng 0 ms và thiếu số của một biến thể là test đơn vị (`test_policy.py`).
+- 2026-11-04 (agent): resolved. Không revision Alembic, không route, không bảng ngoài `dw_bench`. Cổng: ruff, format, mypy (23 tệp của harness), 80 test đơn vị của harness xanh; `mutations/01.yaml` 14 đột biến, áp được, chưa chạy (chờ đóng hàng đợi). Không chạy test tích hợp; không chạm Qdrant, Valkey, S3 hay Keycloak. Mục Kiểm soát: không có (MEDIUM (d) của gate). Commit `5a56e41` (mã), commit đóng ticket này.
