@@ -1,6 +1,6 @@
 # 04 — Quyền theo đối tượng có độ sâu và quyền trường trong vai trò
 
-Status: ready-for-agent
+Status: resolved (2026-11-05, main)
 Blocked by: 02, 03, .claude/plans/studio/custom-objects/issues/02-luoc-do-dinh-nghia-object.md
 Area: studio
 Yêu cầu: R6.8, R9.1, R9.2, R9.3, R9.4, R9.5, R9.6, R9.7, R9.8, R9.9, R9.10, R9.11, R9.12, R9.13, R9.14, R9.15, RB28, RB29, RB30, RB31, RB33, RB35, RB44, RB45, RB46, RB47
@@ -198,3 +198,49 @@ ticket 09, 14; ngữ nghĩa quyền trường thuộc field-security (ADR-0106 (
 - 2026-11-04 (agent, theo ủy quyền 31/10/2026): gate lại ticket 03 cùng ngày (boundary walk, HIGH): ticket 03 bước 4
   nay đòi đề xuất được xác nhận bởi `app.user_id` trong chính giao dịch ghi và lần ghi khớp `payload`, không chỉ khớp
   `role_id`; bước 7 ở trên đổi theo cho hai bảng mới, không phạm vi mới. Nếu sai thì: như ticket 03 cùng ngày.
+- 2026-11-05 (agent, theo ủy quyền 31/10/2026): quyết khi dựng. (D1) `dw_provisioner` không nhận SELECT nào mới (hai
+  bảng quyền, `studio.object_defs`, `studio.field_defs`, `platform.object_actions`): R2.3 của studio-skeleton cấm vai
+  này chạm schema `studio` (`test_the_studio_schema_holds_nothing_it_should_not`), R5.2 (FH13) giữ nó đúng bằng những
+  gì code của nó chạy, và nó không tự gọi `platform.effective_grants`: mọi đường của nó (cài vai trò hệ thống, gán
+  `tenant_owner`) đi qua trigger SECURITY DEFINER đọc định nghĩa dưới chủ hàm. Test thay thế: gán `tenant_owner` dưới
+  `dw_provisioner` ở công ty có `lead` sống → nhận, người đó có `obj.lead.*`, `fld.lead.*`; vai không chạm `studio`.
+  Nếu sai thì: cấp SELECT, thêm ngoại lệ vào R2.3 và vào `PROVISIONER` của một revision. (D2) `dw_app` giữ UPDATE trên
+  `studio.field_permissions` theo cột (`access`, `granted_by`, `granted_at`), không cả bảng: R2.7 cấm UPDATE cả bảng ở
+  `studio`. Nếu sai thì: không có, R2.7 thắng. (D3) `granted_by` là người áp (người xác nhận, hay người gửi lần chỉ
+  siết), repo đặt; M2 xong một nửa (không trigger). (D4) Một dòng quyền bị xóa khi định nghĩa của nó đã mất (cascade
+  của xóa định nghĩa, R9.3) qua guard không xét: khóa nó cho đã không còn; mọi lần ghi khác vẫn bị xét, và lần thêm một
+  dòng mà định nghĩa không sống thì `platform.rbac_refusals` từ chối `rbac_not_grantable` (khóa NULL). Nếu sai thì: đòi
+  `app.user_id` cho cả lần xóa đó. (D5) Một chủ của "vai trò mang gì": `platform.role_privileges` thêm hai loại và quyền
+  tính động của `tenant_owner`; `platform.assigned_grants` đọc nó theo từng gán (LATERAL), không giữ bản thứ hai.
+  Khóa sinh có hai chủ: `platform.object_permission_keys` (khóa, nhãn, `record`, `risk`, cấp được) và
+  `platform.field_permission_keys` (khóa và "edit cho cả read", cột `from_access`); `platform.record_privilege_keys`
+  cho khóa của một dòng, trigger và service cùng đọc. (D6) `platform.scopes_in`: khóa không có trong danh mục là khóa
+  bản ghi, giữ ở mọi mức như `record`. (D7) Thân `rbac_guard`, `rbac_refusals`, `guard_service_principal_grants` lấy
+  từ revision trước (nạp theo đường dẫn) rồi vá ở chỗ neo khẳng định đúng một lần, không chép bản thứ hai; downgrade dựng
+  lại đúng thân cũ. (D8) Lần phát hành nâng một trường lên `sensitive` khi tài khoản dịch vụ đọc nó: `definition_store`
+  dịch 23514 thành `ObjectVersionRejected` mã `field_held_by_service_account`, con trỏ `/fields` (giao dịch đã hỏng nên
+  không đọc lại được `api_name`); hook chưa có người gọi thật (agent-lifecycle), test qua harness của custom-objects.
+  (D9) Đề xuất `role_permissions` viết trước ticket này (chỉ `permissions`) khi xác nhận giữ nguyên quyền đối tượng và
+  quyền trường (`RoleGrants.from_payload`). (D10) 422 của ba mảng báo theo thứ tự `permissions`, `object_privileges`,
+  `field_permissions`, mỗi lần một mảng. Nếu sai thì (D3, D5-D10): sửa ở ticket sau, không đổi dữ liệu.
+- 2026-11-05 (agent): MEDIUM còn lại. (M1) audit `platform.role.permissions_set` nay mang khóa (`obj.lead.read`,
+  `fld.lead.cccd.read`) với mức trước và sau, chưa mang `object_id`, `field_id`. (M2) như D3. (M3), (M4), (M5) như gate.
+  (M6, mới) `platform.service_principal_grants_changed` chưa phát `grants_changed` khi quyền đối tượng hay quyền trường
+  của một vai trò tài khoản dịch vụ giữ lớn lên (chỉ trường `sensitive` bị chặn hẳn): ràng buộc chạy của
+  org-and-principals R6.6 không quay về rà. (M7, mới) nhãn khóa sinh lấy `labels->>'vi'` của đối tượng, rơi về
+  `api_name` khi thiếu (CHECK của `object_defs` không cho thiếu).
+- 2026-11-05 (agent): resolved. Revision `ef68083f2905` (`5e680ea`). Test: `test_record_privileges_db.py` 27 ca SQL thô
+  (R9.2-R9.12, R9.15, R6.8, hai lớp luật hai người và luật giữ quyền, khóa ghép, thứ tự khóa của lần phát hành và lần
+  xác nhận chạy song song, dưới `dw_provisioner`, RLS hai bảng), `test_record_privileges_api.py` 14 ca qua app (R9.1,
+  R9.5, R9.6, R9.11-R9.15, R6.8, `clone_of`), `test_record_grants.py` 10 ca đơn vị, một ca R9.9 qua hook của
+  custom-objects; `test_privileges.py`, `test_rls_coverage.py`, `test_service_principals_db.py` thêm hai bảng.
+  Cổng: unit 3168 qua, phủ 76,46%; tích hợp nền tảng liên quan 307 qua, API vai trò 109 qua, object definitions 37 qua;
+  mypy, ruff, lint-imports, verify_invariants, verify_architecture, check_hygiene, release manifest, `pnpm typecheck`,
+  check_plans (24 Đạt) xanh. `mutations/04.yaml` 22 mục, chưa chạy `scripts/mutate.py`; phá tay 18 mục, cả 18 đỏ
+  (test thứ tự khóa viết lại để đột biến "không hoãn" gây 40P01 thay vì treo). reviewing-feature-security: sáu ranh giới
+  đi qua, ba (tách tenant, phân quyền, mặc định đóng) có test âm; tác tử, nội dung không tin cậy, ảnh không áp dụng.
+- 2026-11-05 (agent): nợ lúc đóng hàng: `scripts/mutate.py` cho `mutations/04.yaml` (22); `make test-integration` đầy đủ;
+  P50/P95/P99 của `GET /api/v1/me` và dựng ngữ cảnh truy cập (`platform.assigned_grants` đọc `role_privileges` theo từng
+  gán, quyền tính động của `tenant_owner` gồm mọi khóa sinh), `GET /api/v1/admin/permissions`, `GET /api/v1/admin/roles`,
+  `GET /admin/roles/{id}`, `PUT .../permissions`, xác nhận, `PUT .../memberships`, so với `f09789d`; `/code-review`;
+  reviewing-deployment-security (thân route đổi); checking-plan-consistency cho tenant-rbac (D1, D2 lệch bước 4).

@@ -784,6 +784,12 @@ _STUDIO_WRITES: dict[str, tuple[frozenset[str], frozenset[str]]] = {
         frozenset({"INSERT", "DELETE"}),
         frozenset({"labels", "position", "active", "updated_at", "updated_by"}),
     ),
+    # A role's field permissions (tenant-rbac ticket 04): a row changes only its
+    # access, and who granted it when.
+    "field_permissions": (
+        frozenset({"INSERT", "DELETE"}),
+        frozenset({"access", "granted_by", "granted_at"}),
+    ),
     "records": (
         frozenset({"INSERT", "DELETE"}),
         frozenset(
@@ -2383,4 +2389,92 @@ async def test_role_change_requests_are_proposed_and_settled_by_dw_app_alone(
         ("dw_app", "platform.role_privileges(uuid, uuid)"),
         ("dw_app", "platform.role_template_privileges(text)"),
         ("dw_provisioner", "platform.role_template_privileges(text)"),
+    }
+
+
+# tenant-rbac ticket 04 (migration ef68083f2905).
+
+_RECORD_KEY_READERS = (
+    "platform.object_permission_keys(uuid)",
+    "platform.field_permission_keys(uuid)",
+    "platform.record_privilege_keys(text, jsonb)",
+)
+_RECORD_TRIGGER_FUNCTIONS = (
+    "platform.refuse_unenforced_object_action()",
+    "platform.proposal_holds_record_row(jsonb, text, jsonb)",
+)
+
+
+@pytest.mark.parametrize(
+    ("table", "expected"),
+    [
+        (
+            "platform.tenant_role_object_privileges",
+            {
+                ("dw_app", "SELECT"),
+                ("dw_app", "INSERT"),
+                ("dw_app", "UPDATE"),
+                ("dw_app", "DELETE"),
+            },
+        ),
+        ("platform.object_actions", {("dw_app", "SELECT"), ("dw_agent_ro", "SELECT")}),
+        (
+            "studio.field_permissions",
+            {("dw_app", "SELECT"), ("dw_app", "INSERT"), ("dw_app", "DELETE")},
+        ),
+    ],
+)
+async def test_the_record_privilege_tables_are_the_applications_and_the_actions_read_only(
+    db_urls: DatabaseUrls, table: str, expected: set[tuple[str, str]]
+) -> None:
+    """Step 4: `dw_app` reads and writes a role's object privileges as it does
+    its other privileges (DELETE for offboarding) and a field permission by
+    column; the actions are the migration's; `dw_agent_ro` reads no role's
+    privileges; the provisioner, which runs none of this, holds nothing."""
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            held = {(r.rolname, r.verb) for r in await conn.execute(_HELD_VERBS, {"t": table})}
+            columns = {
+                column
+                for column in (
+                    "tenant_id",
+                    "role_id",
+                    "field_id",
+                    "access",
+                    "granted_by",
+                    "granted_at",
+                )
+                if await conn.scalar(
+                    sa.text(
+                        "SELECT has_column_privilege('dw_app', 'studio.field_permissions', :c,"
+                        " 'UPDATE')"
+                    ),
+                    {"c": column},
+                )
+            }
+    finally:
+        await migrator.dispose()
+    assert held == expected
+    assert columns == {"access", "granted_by", "granted_at"}
+
+
+async def test_dw_app_alone_reads_the_record_keys_and_no_one_calls_their_triggers(
+    db_urls: DatabaseUrls,
+) -> None:
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            calls = {
+                (role, function): await conn.scalar(
+                    sa.text("SELECT has_function_privilege(:r, :f, 'EXECUTE')"),
+                    {"r": role, "f": function},
+                )
+                for role in ("public", "dw_app", "dw_agent_ro", "dw_provisioner")
+                for function in (*_RECORD_KEY_READERS, *_RECORD_TRIGGER_FUNCTIONS)
+            }
+    finally:
+        await migrator.dispose()
+    assert {k for k, v in calls.items() if v} == {
+        ("dw_app", function) for function in _RECORD_KEY_READERS
     }

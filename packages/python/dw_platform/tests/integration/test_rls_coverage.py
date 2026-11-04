@@ -783,6 +783,10 @@ _TENANT_WIDE_ON_PURPOSE: dict[tuple[str, str], str] = {
         "vai trò, quyền của vai trò và phiên bản quyền thuộc cả công ty; neo workspace nằm ở "
         "`platform.role_assignments` (tenant-rbac ticket 02, DO-01)"
     ),
+    ("platform", "tenant_role_object_privileges"): (
+        "quyền của vai trò thuộc cả công ty; neo workspace nằm ở gán vai trò"
+        " (tenant-rbac ticket 04, DO-01)"
+    ),
     ("platform", "tenant_roles"): (
         "vai trò, quyền của vai trò và phiên bản quyền thuộc cả công ty; neo workspace nằm ở "
         "`platform.role_assignments` (tenant-rbac ticket 02, DO-01)"
@@ -810,6 +814,10 @@ _TENANT_WIDE_ON_PURPOSE: dict[tuple[str, str], str] = {
     ("studio", "field_defs"): (
         "định nghĩa đối tượng của cả công ty: trường của một đối tượng, chỉ tới qua nó"
         " (custom-objects ticket 02, DO-01)"
+    ),
+    ("studio", "field_permissions"): (
+        "quyền của vai trò thuộc cả công ty; neo workspace nằm ở gán vai trò"
+        " (tenant-rbac ticket 04, ADR-0106 quyết 3, DO-01)"
     ),
     ("studio", "picklist_options"): (
         "định nghĩa đối tượng của cả công ty: lựa chọn của một trường, chỉ tới qua nó"

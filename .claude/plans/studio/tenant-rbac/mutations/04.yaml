@@ -1,0 +1,190 @@
+# Mutation check of tenant-rbac ticket 04: scripts/mutate.py runs this file at
+# the queue's close (wave-close.md). One mutation per control (RB28-RB31, RB33,
+# RB35, RB44-RB47) and per layer that holds one (failure-modes #3, #5): the
+# database's in the migration (taking effect when the suite's session fixture
+# recreates the database), the service's early answer in the service.
+mutations:
+  - name: RB28 the database lets a role hold an action no reader enforces
+    file: db/migrations/versions/ef68083f2905_object_and_field_privileges_in_roles.py
+    old:
+      "        IF NOT EXISTS (\n            SELECT 1 FROM platform.object_actions a WHERE a.action =\
+      \ NEW.action AND a.enforced\n"
+    new:
+      "        IF false AND NOT EXISTS (\n            SELECT 1 FROM platform.object_actions a WHERE a.action\
+      \ = NEW.action AND a.enforced\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_record_privileges_db.py::test_r9_2_an_action_not_enforced_is_held_by_no_role_whoever_writes
+  - name: RB28 the service lets an action that is not enforced into a proposal
+    file: packages/python/dw_platform/src/dw_platform/application/role_admin.py
+    old: "        elif not keys.actions.get(row.action, False):"
+    new: "        elif row.action not in keys.actions:"
+    tests:
+      - apps/api/tests/integration/test_record_privileges_api.py::test_r9_13_a_bad_action_depth_access_or_record_key_is_422_with_its_pointer
+  - name: R9.1 the generated keys include the actions not enforced
+    file: db/migrations/versions/ef68083f2905_object_and_field_privileges_in_roles.py
+    old: "        WHERE o.tenant_id = p_tenant_id AND a.enforced
+
+      "
+    new: "        WHERE o.tenant_id = p_tenant_id
+
+      "
+    tests:
+      - apps/api/tests/integration/test_record_privileges_api.py::test_r9_1_the_catalogue_lists_five_generated_keys_per_live_object
+      - packages/python/dw_platform/tests/integration/test_record_privileges_db.py::test_r9_7_the_owner_holds_every_field_key_computed_and_none_stored
+  - name: RB31 a field's permissions outlive the field
+    file: db/migrations/versions/ef68083f2905_object_and_field_privileges_in_roles.py
+    old: "            REFERENCES studio.field_defs (tenant_id, id) ON DELETE CASCADE,"
+    new: "            REFERENCES studio.field_defs (tenant_id, id) ON DELETE NO ACTION,"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_record_privileges_db.py::test_r9_3_deleting_a_definition_removes_its_privileges_in_the_same_transaction
+      - packages/python/dw_platform/tests/integration/test_record_privileges_db.py::test_r9_8_every_key_of_the_two_tables_is_composite
+  - name: RB35 the object key of a privilege becomes one column
+    file: db/migrations/versions/ef68083f2905_object_and_field_privileges_in_roles.py
+    old:
+      "            FOREIGN KEY (tenant_id, object_id)\n            REFERENCES studio.object_defs (tenant_id,\
+      \ id) ON DELETE CASCADE,"
+    new: "            FOREIGN KEY (object_id)\n            REFERENCES studio.artifacts (id) ON DELETE CASCADE,"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_record_privileges_db.py::test_r9_8_a_row_of_tenant_a_naming_b_is_refused_by_the_composite_key
+      - packages/python/dw_platform/tests/integration/test_record_privileges_db.py::test_r9_8_every_key_of_the_two_tables_is_composite
+  - name: RB29 workspace_reach reads own as workspace
+    file: db/migrations/versions/b5677d345bc1_tenant_roles.py
+    old: "                     OR (g.depth = 'workspace' AND g.anchor_workspace_id = w.id))"
+    new: "                     OR (g.depth IN ('own', 'workspace') AND g.anchor_workspace_id = w.id))"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_record_privileges_db.py::test_r9_4_own_depth_reaches_no_workspace_and_the_projection_keeps_it
+  - name: RB30 the guard of the new tables stops asking the hold rule for what is added
+    file: db/migrations/versions/ef68083f2905_object_and_field_privileges_in_roles.py
+    old: "                FROM jsonb_array_elements(v_added) a(k)
+
+      "
+    new: "                FROM jsonb_array_elements(v_added) a(k) WHERE false
+
+      "
+    tests:
+      - packages/python/dw_platform/tests/integration/test_record_privileges_db.py::test_r9_5_a_wider_depth_than_held_or_a_field_key_not_held_is_refused
+  - name: RB45 a write of the new tables that widens is judged as one that narrows
+    file: db/migrations/versions/ef68083f2905_object_and_field_privileges_in_roles.py
+    old: "                v_class := 'widen';\n                -- Only a row that stays itself"
+    new: "                v_class := 'narrow';\n                -- Only a row that stays itself"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_record_privileges_db.py::test_r9_10_a_widening_write_without_a_confirmed_proposal_is_refused
+      - packages/python/dw_platform/tests/integration/test_record_privileges_db.py::test_r9_10_raising_depth_and_read_to_edit_widen
+  - name: RB45 a proposal opens a field row it does not carry
+    file: db/migrations/versions/ef68083f2905_object_and_field_privileges_in_roles.py
+    old:
+      "            WHEN 'field_permissions' THEN\n                coalesce(p_payload->'field_permissions',\
+      \ '[]'::jsonb)"
+    new:
+      "            WHEN 'field_permissions' THEN true OR\n                coalesce(p_payload->'field_permissions',\
+      \ '[]'::jsonb)"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_record_privileges_db.py::test_r9_10_a_confirmed_proposal_opens_exactly_its_rows_and_narrowing_needs_one
+  - name: RB45 the role's version stays when its object or field rows change
+    file: db/migrations/versions/ef68083f2905_object_and_field_privileges_in_roles.py
+    old: '        f" ON {schema}.{table} FOR EACH ROW EXECUTE FUNCTION platform.bump_parent_role_version()"'
+    new: '        f" ON {schema}.{table} FOR EACH ROW WHEN (false) EXECUTE FUNCTION platform.bump_parent_role_version()"'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_record_privileges_db.py::test_r9_11_every_write_of_the_two_tables_moves_the_role_version
+      - apps/api/tests/integration/test_record_privileges_api.py::test_r9_11_a_field_key_removed_between_proposal_and_confirmation_stays_removed
+  - name: R9.7 the owner's computed keys lose the fields
+    file: db/migrations/versions/ef68083f2905_object_and_field_privileges_in_roles.py
+    old: "          AND k.from_access = 'edit'
+
+      "
+    new: "          AND false
+
+      "
+    tests:
+      - packages/python/dw_platform/tests/integration/test_record_privileges_db.py::test_r9_7_the_owner_holds_every_field_key_computed_and_none_stored
+      - apps/api/tests/integration/test_record_privileges_api.py::test_r9_12_a_new_field_reaches_the_owners_cached_context
+  - name: R9.15 edit no longer gives read
+    file: db/migrations/versions/ef68083f2905_object_and_field_privileges_in_roles.py
+    old: "        CROSS JOIN (VALUES ('read', 'read'), ('read', 'edit'), ('edit', 'edit'))"
+    new: "        CROSS JOIN (VALUES ('read', 'read'), ('edit', 'edit'))"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_record_privileges_db.py::test_r9_6_r9_15_field_keys_add_up_over_roles_and_edit_gives_read
+      - packages/python/dw_platform/tests/integration/test_record_privileges_db.py::test_r9_15_a_holder_of_edit_hands_out_read
+      - apps/api/tests/integration/test_record_privileges_api.py::test_r9_6_r9_15_field_keys_add_up_and_edit_gives_read
+  - name: RB33 a role reading a sensitive field is not critical
+    file: db/migrations/versions/ef68083f2905_object_and_field_privileges_in_roles.py
+    old: "                         AND d.pd_category = 'sensitive'))
+
+      "
+    new: "                         AND false))
+
+      "
+    tests:
+      - packages/python/dw_platform/tests/integration/test_record_privileges_db.py::test_r6_8_bind_does_not_cover_a_role_reading_a_sensitive_field
+      - apps/api/tests/integration/test_record_privileges_api.py::test_r6_8_bind_alone_does_not_assign_a_role_reading_a_sensitive_field
+  - name: RB44 a sensitive field permission reaches a service account
+    file: db/migrations/versions/ef68083f2905_object_and_field_privileges_in_roles.py
+    old: "                  AND f.pd_category = 'sensitive'\n            ) THEN"
+    new: "                  AND false\n            ) THEN"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_record_privileges_db.py::test_r9_9_a_sensitive_field_permission_never_reaches_a_service_account
+  - name: RB44 a field a service account reads becomes sensitive
+    file: db/migrations/versions/ef68083f2905_object_and_field_privileges_in_roles.py
+    old:
+      "            IF NEW.pd_category = 'sensitive' AND OLD.pd_category IS DISTINCT FROM 'sensitive'
+      THEN"
+    new: "            IF false THEN"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_record_privileges_db.py::test_r9_9_a_sensitive_field_permission_never_reaches_a_service_account
+      - packages/python/dw_studio/tests/integration/test_object_definitions.py::test_tenant_rbac_r9_9_a_field_a_service_account_reads_does_not_become_sensitive
+  - name: RB46 a definition added or removed leaves the access version
+    file: db/migrations/versions/ef68083f2905_object_and_field_privileges_in_roles.py
+    old:
+      "        \" FOR EACH ROW EXECUTE FUNCTION platform.bump_access_version()\"\n        for table in\
+      \ (\"object_defs\", \"field_defs\")"
+    new:
+      "        \" FOR EACH ROW WHEN (false) EXECUTE FUNCTION platform.bump_access_version()\"\n     \
+      \   for table in (\"object_defs\", \"field_defs\")"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_record_privileges_db.py::test_r9_12_a_definition_added_or_removed_moves_the_access_version_at_commit
+      - apps/api/tests/integration/test_record_privileges_api.py::test_r9_12_a_new_field_reaches_the_owners_cached_context
+  - name: RB46 the definitions' bump takes the version row at once, before the role rows
+    file: db/migrations/versions/ef68083f2905_object_and_field_privileges_in_roles.py
+    old: '        f" ON studio.{table} DEFERRABLE INITIALLY DEFERRED"'
+    new: '        f" ON studio.{table} NOT DEFERRABLE"'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_record_privileges_db.py::test_r9_12_a_definition_added_or_removed_moves_the_access_version_at_commit
+      - packages/python/dw_platform/tests/integration/test_record_privileges_db.py::test_r9_12_a_publish_and_a_role_change_take_their_locks_in_one_order
+  - name: RB47 an object of another tenant reaches the proposal
+    file: packages/python/dw_platform/src/dw_platform/application/role_admin.py
+    old:
+      "        elif not keys.keys.get(row):\n            errors.append({\"pointer\": f\"{pointer}/object_id\"\
+      , \"detail\": \"unknown object\"})"
+    new:
+      "        elif False:\n            errors.append({\"pointer\": f\"{pointer}/object_id\", \"detail\"\
+      : \"unknown object\"})"
+    tests:
+      - apps/api/tests/integration/test_record_privileges_api.py::test_r9_13_another_tenants_ids_answer_as_unknown_ones_before_any_proposal
+  - name: RB47 a field of another tenant reaches the proposal
+    file: packages/python/dw_platform/src/dw_platform/application/role_admin.py
+    old:
+      "        elif not keys.keys.get(row):\n            errors.append({\"pointer\": f\"{pointer}/field_id\"\
+      , \"detail\": \"unknown field\"})"
+    new:
+      "        elif False:\n            errors.append({\"pointer\": f\"{pointer}/field_id\", \"detail\"\
+      : \"unknown field\"})"
+    tests:
+      - apps/api/tests/integration/test_record_privileges_api.py::test_r9_13_another_tenants_ids_answer_as_unknown_ones_before_any_proposal
+  - name: R9.14 an array left out reads as empty
+    file: packages/python/dw_platform/src/dw_platform/application/role_admin.py
+    old: "            current.object_privileges if object_privileges is None else tuple(object_privileges)"
+    new: "            () if object_privileges is None else tuple(object_privileges)"
+    tests:
+      - apps/api/tests/integration/test_record_privileges_api.py::test_r9_14_an_array_left_out_keeps_its_kind_and_an_empty_one_clears_it
+  - name: step 6 a record key naming no live definition is grantable
+    file: db/migrations/versions/ef68083f2905_object_and_field_privileges_in_roles.py
+    old: "                OR (v_key LIKE 'obj.%' AND NOT EXISTS ("
+    new: "                OR (false AND NOT EXISTS ("
+    tests:
+      - packages/python/dw_platform/tests/integration/test_record_privileges_db.py::test_a_key_of_a_definition_that_is_not_live_is_refused_never_passed
+  - name: step 7 a clone leaves the source's object and field rows behind
+    file: packages/python/dw_platform/src/dw_platform/application/role_admin.py
+    old: "            return source.grants, None"
+    new: "            return RoleGrants(source.privileges), None"
+    tests:
+      - apps/api/tests/integration/test_record_privileges_api.py::test_a_clone_carries_the_sources_object_privileges_and_field_permissions

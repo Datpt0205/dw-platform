@@ -44,7 +44,14 @@ from dw_kernel.http_conditions import ExpectedVersion
 from dw_kernel.ports import SystemClock, Uuid7Generator
 from dw_platform.adapters.persistence.offboarding import SqlTenantOffboarding
 from dw_platform.testing.personal_data import assert_field_tables_classified
-from dw_platform.testing.rbac import PlantedTenant, plant_tenant
+from dw_platform.testing.rbac import (
+    PlantedTenant,
+    assign,
+    plant_membership,
+    plant_person,
+    plant_role,
+    plant_tenant,
+)
 from dw_studio.core.adapters.artifact_store import SqlArtifactStore, SqlArtifactTx
 from dw_studio.core.application.registry import ArtifactKindEntry, ArtifactKindRegistry
 from dw_studio.core.application.service import ArtifactService, SealResult
@@ -904,6 +911,66 @@ async def test_r2_5_the_hook_refuses_an_open_new_field_and_a_lowered_category(
         ("/fields/0/pd_category", "pd_category_lowered"),
         ("/fields/1/access_mode", "personal_data_field_open"),
     ]
+
+
+async def test_tenant_rbac_r9_9_a_field_a_service_account_reads_does_not_become_sensitive(
+    service: ArtifactService,
+    sessions: async_sessionmaker[AsyncSession],
+    migrator: AsyncEngine,
+    world: World,
+) -> None:
+    """tenant-rbac R9.9 (RB44): a role holding `fld.*` on `ghi_chu` is held by
+    a service account; the version making `ghi_chu` sensitive is refused at
+    the hook with its reason, and the publish rolls back (V4.18)."""
+    who = world.manager
+    live = object_document(object_field("ghi_chu", pd_category="basic"))
+    artifact_id, _ = await published(service, who, live)
+    async with migrator.begin() as conn:
+        field = await conn.scalar(
+            sa.text(
+                "SELECT id FROM studio.field_defs WHERE object_id = :o AND api_name = 'ghi_chu'"
+            ),
+            {"o": artifact_id},
+        )
+        role = await plant_role(conn, who.tenant_id, f"svc_{uuid.uuid4().hex[:10]}", {})
+        await conn.execute(
+            sa.text(
+                "INSERT INTO studio.field_permissions (tenant_id, role_id, field_id, access)"
+                " VALUES (:t, :r, :f, 'read')"
+            ),
+            {"t": who.tenant_id, "r": role, "f": field},
+        )
+        account = await plant_person(conn, who.tenant_id, kind="service")
+        await conn.execute(
+            sa.text(
+                "INSERT INTO platform.service_principals (user_id, tenant_id, name,"
+                " owner_user_id, owning_workspace_id) VALUES (:u, :t, :n, :o, :w)"
+            ),
+            {
+                "u": account,
+                "t": who.tenant_id,
+                "n": f"svc-{account.hex[:8]}",
+                "o": who.id,
+                "w": who.workspace_id,
+            },
+        )
+        membership = await plant_membership(conn, who.tenant_id, who.workspace_id, account)
+        await assign(conn, who.tenant_id, who.workspace_id, membership, role)
+    proposed = object_document(
+        object_field("ghi_chu", pd_category="sensitive", sensitive_type="identity_credentials")
+    )
+    v2 = await sealed_next(service, who, artifact_id, proposed)
+    before = await stored(sessions, who, artifact_id)
+
+    with pytest.raises(ObjectVersionRejected) as caught:
+        await go_live(service, who, v2.version_id)
+
+    assert [p.code for p in caught.value.problems] == ["field_held_by_service_account"]
+    assert await stored(sessions, who, artifact_id) == before
+    stage = await rows(
+        migrator, "SELECT stage FROM studio.artifact_versions WHERE id = :v", v=v2.version_id
+    )
+    assert stage[0].stage == "draft"
 
 
 async def test_the_reader_answers_for_its_own_tenant_only(

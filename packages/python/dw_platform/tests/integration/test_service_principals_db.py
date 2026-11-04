@@ -516,6 +516,10 @@ async def test_the_guard_is_on_all_three_tables(migrator: AsyncEngine) -> None:
         (table, trigger)
         for table in ("role_assignments", "tenant_role_permissions", "tenant_roles")
         for trigger in ("guard_service_principal_grants", "service_principal_grants_changed")
+    } | {
+        # tenant-rbac/04: `fld.*` on a sensitive field makes a role critical.
+        ("field_permissions", "guard_service_principal_grants"),
+        ("field_defs", "guard_service_principal_grants"),
     }
 
 
