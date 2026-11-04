@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 3/11/2026
-Sẵn sàng: ĐẠT (3/11/2026; 0 CRITICAL, 0 HIGH; ticket 01-02)
+Sẵn sàng: ĐẠT (4/11/2026; 0 CRITICAL, 0 HIGH; ticket 01-03)
 
 Người dựng không viết mã ghép một quy trình từ các Bước, thành một cây Bước (V4.24). Mỗi Loại bước là mã nền
 tảng trong một sổ đăng ký duy nhất, mang schema cấu hình và đầu ra, các Nhánh ra mà mỗi Bước của loại mang
@@ -358,8 +358,8 @@ là của workflow-engine (`.claude/plans/studio/workflow-engine/issues/09-quy-t
 - `NodeTypeRegistry` và `build_node_registry(ports)` dựng ở cả hai composition root, với Nhánh ra của mỗi loại là
   một làn Bước lồng trong Bước của tài liệu dạng cây (V4.24) và đầu ra `error` dưới Khi lỗi `continue` hay `route`
   (R1.5); sáu lát loại bước W1: `data.transform`, `logic.switch`, `flow.stop`, `data.object.query|create|update|upsert`,
-  `data.object.assign`, `ai.llm`, `tool.call`, `human.approval` với hai làn `approved`, `rejected` (R9.16), cùng hình
-  chiếu `trigger.endpoint`.
+  `data.object.assign`, `ai.llm`, `tool.call`, `human.approval` với hai làn `approved`, `rejected` (R9.16), cùng kiểu
+  của `trigger` trong môi trường biểu thức, lấy từ lược đồ đầu vào mà trình kích hoạt khai.
 - Bậc B của W1, sau đường găng YC94, không ticket thí điểm nào chờ (V4.26): `logic.parallel@1` (Bước song song, gộp
   kiểu all ở Điểm nối cuối các làn; không có loại `logic.join`), `logic.loop@1` (Bước vòng lặp có trần, kiểu
   do-while, cho chờ trong thân), `logic.break@1` (Thoát vòng lặp) và quy tắc `approval_rule` `all` của
@@ -1027,6 +1027,37 @@ là của workflow-engine (`.claude/plans/studio/workflow-engine/issues/09-quy-t
   walk, vì ticket có route; không migration): lượt đầu CHƯA ĐẠT, 1 CRITICAL (sổ thứ hai) và 9 HIGH, đều sửa theo
   khuyến nghị ở các dòng trên; lượt xác nhận 9 câu, sửa ở ticket 02; MEDIUM ở Comments của ticket 02.
 - 3/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 02.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): R3.2 ở W1 từ chối mọi tham chiếu tới Bước không trội, kể cả trong
+  `has()`; `has()` chỉ bảo vệ trường tùy chọn của một Bước trội. Lý do: môi trường biểu thức chỉ khai Bước trội, và
+  `cel-expr-python` không lộ AST nên không phân biệt được tham chiếu có `has()` với tham chiếu trần (FOG-50). Sửa: ticket
+  03; ADR-0112 (Accepted), Amendments 2026-11-04. Nếu sai thì: đo env khai Bước không trội là `optional[T]`, và nếu
+  lần chọn trường trần trên nó lỗi biên dịch còn `has()` qua thì nhận tham chiếu có `has()`.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): chủ thể của `visible_fields` (R4.4; ADR-0114 (Accepted) quyết 4) lúc gửi
+  kiểm định là người gửi kiểm định, tới khi workflow-triggers/01 thêm điểm gắn run-as vào tài liệu và chuyển phép kiểm
+  sang giá trị đã duyệt của điểm gắn đó; ở `draft/scope` là người gọi; lúc chạy là chủ thể chạy của lượt, chỗ chặn
+  thật: mọi lần tính `check` lại nguồn trong môi trường dựng theo Trường chủ thể chạy đọc được, nên Biểu thức cần một
+  Trường bị ẩn trả `field_hidden`, không bao giờ tính như `null` (trường vắng đọc ra `null`, ticket 01). Lỗi biên dịch
+  không phải tham chiếu không trội là mã mới `wf.expression_invalid`; kết quả `dyn` ở trường `x-dw-cel` là
+  `wf.type_mismatch`, vì không có AST để thấy `type()`. Lý do: lúc gửi kiểm định chưa biết người chạy của một lượt chạy
+  tay, và giá trị run-as được duyệt tách khỏi phiên bản (ADR-0110 (Accepted)). Sửa: ticket 03. Nếu sai thì: lúc gửi
+  kiểm định chờ điểm gắn run-as, và một tài liệu không khai nó bị từ chối.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): `/expressions/evaluate` trên đầu ra đã ghi đọc qua dịch vụ đọc payload
+  Bước chạy của telemetry-and-audit/03, cùng luật đọc và cùng phép che theo người gọi, không đọc `platform.run_steps`
+  trực tiếp; hai route `/expressions/*` giới hạn 60 lần mỗi 60 giây theo `(tenant, người gọi)` bằng một khóa mới của
+  `RateLimiterPort`, port lỗi thì 503; cả ba route của ticket 03 có test âm 403 và 404 khác tenant. Sửa: ticket 03.
+  Nếu sai thì: `/evaluate` chỉ nhận mẫu người gọi gõ, và đầu ra đã ghi thành ticket riêng.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): `logic.switch@1` của wf-lite sửa tại chỗ, không `@2`: giữ `on`, `cases`,
+  `default`; trên đường Studio `on` là một `{{ expr }}` kiểu `string`, `int` hay `bool`, khớp nhánh theo `scalar_text`.
+  Trường Biểu thức khai bằng từ khóa `x-dw-cel` với tập kiểu nhận; điều kiện `bool` đầu tiên là "Lặp lại khi" của
+  ticket 07, nên ca `bool` của R3.3 thử ở ticket 07 và ticket 03 thử kiểu của `on`. `NodeTypeSpec` thêm
+  `allowed_on_error` ở ticket 03, nơi đầu tiên giới hạn nó, đọc bởi bộ kiểm lõi với `wf.config_invalid`. Ticket 03
+  không dựng phép ánh xạ payload bằng CEL ở ingress: workflow-triggers kiểm payload theo lược đồ khi nhận, nên hai chủ
+  của một việc thành một (failure-modes #2). Sửa: Trong phạm vi, ticket 03, 07. Nếu sai thì: `logic.switch@2` với điều
+  kiện theo nhánh, và một ticket riêng cho phép ánh xạ ở ingress.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): gate `checking-plan-readiness` của ticket 03 (builder check cùng
+  boundary walk, vì ticket có ba route; không migration): 0 CRITICAL, 11 HIGH, đều sửa theo khuyến nghị ở các dòng trên
+  và ADR-0112 (Accepted) Amendments 2026-11-04; lượt xác nhận 10 câu, sửa ở ticket 03; MEDIUM ở Comments của ticket 03.
+- 4/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 03.
 
 ## Danh sách ticket
 
