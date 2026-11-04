@@ -5,8 +5,13 @@ description = "Connector gateway: canonical contracts, mock task connector, cred
 requires-python = ">=3.12"
 dependencies = [
     "dw-kernel",
+    # The egress client's span and its two counters (connections-and-vault R3).
+    "dw-observability",
     "pydantic>=2.10,<3",
     "httpx>=0.28,<1",
+    # The egress client's pinned connection pool: httpx takes no network
+    # backend, so the pool is httpcore's own, built on the pin.
+    "httpcore>=1.0.9,<2",
 ]
 
 [build-system]

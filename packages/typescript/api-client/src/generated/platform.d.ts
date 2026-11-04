@@ -834,6 +834,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/egress/allowed-hosts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Allowed Hosts */
+        get: operations["list_allowed_hosts_api_v1_egress_allowed_hosts_get"];
+        put?: never;
+        /** Request Allowed Host */
+        post: operations["request_allowed_host_api_v1_egress_allowed_hosts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/egress/allowed-hosts/{host_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove Allowed Host */
+        delete: operations["remove_allowed_host_api_v1_egress_allowed_hosts__host_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/feedback": {
         parameters: {
             query?: never;
@@ -1823,6 +1858,67 @@ export interface components {
             email: string;
             /** Note */
             note?: string | null;
+        };
+        /** AllowedHostRequestBody */
+        AllowedHostRequestBody: {
+            /** Host Pattern */
+            host_pattern: string;
+            /** Note */
+            note?: string | null;
+            /** Ports */
+            ports?: number[];
+            /**
+             * Purpose
+             * @enum {string}
+             */
+            purpose: "http_tool" | "mcp" | "webhook" | "model" | "any";
+        };
+        /**
+         * AllowedHostRequestView
+         * @description The approval that will add the host once a second person approves it.
+         */
+        AllowedHostRequestView: {
+            /**
+             * Approval Id
+             * Format: uuid
+             */
+            approval_id: string;
+            /**
+             * Status
+             * @default pending
+             */
+            status: string;
+        };
+        /** AllowedHostView */
+        AllowedHostView: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Created By
+             * Format: uuid
+             */
+            created_by: string;
+            /** Host Pattern */
+            host_pattern: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Note */
+            note: string | null;
+            /**
+             * Owning Workspace Id
+             * Format: uuid
+             */
+            owning_workspace_id: string;
+            /** Ports */
+            ports: number[];
+            /** Purpose */
+            purpose: string;
         };
         /** ApprovalView */
         ApprovalView: {
@@ -3127,6 +3223,20 @@ export interface components {
             tool: string | null;
             /** Type */
             type: string;
+        };
+        /**
+         * Page
+         * @description A page of results and the cursor that continues it.
+         *
+         *     ``next_cursor`` is ``None`` on the last page, and that — not an empty
+         *     ``items`` — is the client's stop condition: a filtered listing can return an
+         *     empty page in the middle of a run and still have more rows behind it.
+         */
+        Page_AllowedHostView_: {
+            /** Items */
+            items: components["schemas"]["AllowedHostView"][];
+            /** Next Cursor */
+            next_cursor: string | null;
         };
         /**
          * Page
@@ -6295,6 +6405,128 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["WorkspaceMemberView"][];
                 };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_allowed_hosts_api_v1_egress_allowed_hosts_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                /** @description Opaque cursor from a previous page. */
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_AllowedHostView_"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    request_allowed_host_api_v1_egress_allowed_hosts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AllowedHostRequestBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AllowedHostRequestView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    remove_allowed_host_api_v1_egress_allowed_hosts__host_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                host_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description The request was refused */
             "4XX": {

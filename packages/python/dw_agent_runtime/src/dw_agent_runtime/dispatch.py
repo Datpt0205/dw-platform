@@ -7,10 +7,10 @@ transaction of its own before it leaves, so a later call can tell one that never
 left (run it) from one whose outcome is unknown (never run it blindly).
 
 The three errors are what a handler raises once its send has begun, read by the
-executor to write the terminal row (ADR-0115 decision 6). They carry an
-`outcome` and the existing `upstream_unavailable` code: `ErrorCode` is the API's
-public contract (ADR-0108 decision 1), and these are a runtime's answer about a
-send, not a new kind of API error.
+executor to write the terminal row (ADR-0115 decision 6). They are defined in
+`dw_kernel.dispatch` and re-exported here as the very same classes: the egress
+client in `dw_connectors` raises them too, and this package depends on that one
+(connections-and-vault R3.13).
 """
 
 from __future__ import annotations
@@ -18,10 +18,15 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Literal, Protocol
+from typing import Protocol
 
 from dw_agent_runtime.contracts import RunContext
-from dw_kernel.errors import DWError, ErrorCode
+from dw_kernel.dispatch import (
+    DispatchOutcome,
+    NotDispatchedError,
+    OutcomeUnknownError,
+    RejectedError,
+)
 
 __all__ = [
     "DispatchOutcome",
@@ -31,35 +36,6 @@ __all__ = [
     "RejectedError",
     "ToolClaimPort",
 ]
-
-DispatchOutcome = Literal["not_dispatched", "rejected", "outcome_unknown"]
-
-
-class NotDispatchedError(DWError):
-    """Certain that no byte left: the send may be made again with the same key."""
-
-    code = ErrorCode.UPSTREAM_UNAVAILABLE
-    outcome: DispatchOutcome = "not_dispatched"
-
-
-class RejectedError(DWError):
-    """The provider answered that it did not apply the call, with its own code."""
-
-    code = ErrorCode.UPSTREAM_UNAVAILABLE
-    outcome: DispatchOutcome = "rejected"
-
-    def __init__(
-        self, message: str, *, provider_code: str, details: dict[str, object] | None = None
-    ) -> None:
-        super().__init__(message, details=details)
-        self.provider_code = provider_code
-
-
-class OutcomeUnknownError(DWError):
-    """The call may have been applied; nobody may send it again without a person."""
-
-    code = ErrorCode.UPSTREAM_UNAVAILABLE
-    outcome: DispatchOutcome = "outcome_unknown"
 
 
 @dataclass(frozen=True)

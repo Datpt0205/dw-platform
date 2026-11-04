@@ -35,6 +35,7 @@ from dw_observability.telemetry import RecordingTelemetry
 __all__ = [
     "ALLOWED_KEYS",
     "DW_ATTRIBUTES",
+    "DW_EGRESS_REQUEST",
     "DW_KNOWLEDGE_RERANK",
     "DW_SPAN_NAMES",
     "GENAI_ATTRIBUTES",
@@ -72,7 +73,9 @@ GENAI_OPERATIONS: Final = frozenset({OP_CHAT, OP_EXECUTE_TOOL, OP_INVOKE_WORKFLO
 
 # Spans that are ours alone. A name here must start with `dw.`.
 DW_KNOWLEDGE_RERANK: Final = "dw.knowledge.rerank"
-DW_SPAN_NAMES: Final = frozenset({DW_KNOWLEDGE_RERANK})
+# One call of the egress client (connections-and-vault R3).
+DW_EGRESS_REQUEST: Final = "dw.egress.request"
+DW_SPAN_NAMES: Final = frozenset({DW_KNOWLEDGE_RERANK, DW_EGRESS_REQUEST})
 
 
 def chat_span_name(model: str) -> str:
@@ -117,6 +120,8 @@ OTEL_CORE_ATTRIBUTES: Final = frozenset({"exception.type"})
 DW_ATTRIBUTES: Final = frozenset(
     {
         "dw.channel",
+        # Why an egress call leaves: a value from a set (connections-and-vault R3).
+        "dw.egress.purpose",
         "dw.graph_version",
         "dw.input_tokens",
         "dw.latency_ms",
@@ -154,8 +159,12 @@ METRIC_LABELS: Final = frozenset(
         "direction",
         "error",
         "model",
+        # The egress counters (connections-and-vault R3): each a value from a set.
+        "outcome",
         "provider",
+        "purpose",
         "queue",
+        "reason",
         "status",
         "tool",
         "worker",

@@ -43,6 +43,7 @@ from dw_api.routes.v1.audit import router as audit_router
 from dw_api.routes.v1.auth import router as auth_router
 from dw_api.routes.v1.digital_workers import router as digital_workers_router
 from dw_api.routes.v1.directory import router as directory_router
+from dw_api.routes.v1.egress import router as egress_router
 from dw_api.routes.v1.feedback import router as feedback_router
 from dw_api.routes.v1.health import build_health_router
 from dw_api.routes.v1.intake import router as intake_router
@@ -212,6 +213,7 @@ def create_app(
         admin_invitations_router,
         admin_console_router,
         admin_service_principals_router,
+        egress_router,
         approvals_router,
         runs_router,
         audit_router,

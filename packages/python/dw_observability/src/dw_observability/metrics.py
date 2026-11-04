@@ -38,6 +38,9 @@ DW_OUTBOX_OLDEST_PENDING_AGE_SECONDS: Final = (
 # (runtime-hardening R10.3); never counted in the backlog.
 DW_OUTBOX_DEAD_LETTERS: Final = "dw_outbox_dead_letters"  # no labels
 DW_REAPER_REAPED_TOTAL: Final = "dw_reaper_reaped_total"  # labels: queue
+# Every call of the egress client and its outcome (connections-and-vault R3).
+DW_EGRESS_REQUESTS_TOTAL: Final = "dw_egress_requests_total"  # labels: purpose, outcome
+DW_EGRESS_BLOCKED_TOTAL: Final = "dw_egress_blocked_total"  # labels: purpose, reason
 
 ALL_METRICS: Final = (
     DW_RUN_TOTAL,
@@ -51,6 +54,8 @@ ALL_METRICS: Final = (
     DW_OUTBOX_OLDEST_PENDING_AGE_SECONDS,
     DW_OUTBOX_DEAD_LETTERS,
     DW_REAPER_REAPED_TOTAL,
+    DW_EGRESS_REQUESTS_TOTAL,
+    DW_EGRESS_BLOCKED_TOTAL,
 )
 
 # Bucket boundaries, in seconds, of each histogram (telemetry-and-audit spec,

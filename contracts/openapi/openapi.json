@@ -51,6 +51,139 @@
         "title": "AddSupportStaffRequest",
         "type": "object"
       },
+      "AllowedHostRequestBody": {
+        "additionalProperties": false,
+        "properties": {
+          "host_pattern": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Host Pattern",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "ports": {
+            "items": {
+              "maximum": 65535.0,
+              "minimum": 1.0,
+              "type": "integer"
+            },
+            "maxItems": 16,
+            "minItems": 1,
+            "title": "Ports",
+            "type": "array"
+          },
+          "purpose": {
+            "enum": [
+              "http_tool",
+              "mcp",
+              "webhook",
+              "model",
+              "any"
+            ],
+            "title": "Purpose",
+            "type": "string"
+          }
+        },
+        "required": [
+          "host_pattern",
+          "purpose"
+        ],
+        "title": "AllowedHostRequestBody",
+        "type": "object"
+      },
+      "AllowedHostRequestView": {
+        "description": "The approval that will add the host once a second person approves it.",
+        "properties": {
+          "approval_id": {
+            "format": "uuid",
+            "title": "Approval Id",
+            "type": "string"
+          },
+          "status": {
+            "default": "pending",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "approval_id"
+        ],
+        "title": "AllowedHostRequestView",
+        "type": "object"
+      },
+      "AllowedHostView": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "format": "uuid",
+            "title": "Created By",
+            "type": "string"
+          },
+          "host_pattern": {
+            "title": "Host Pattern",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "owning_workspace_id": {
+            "format": "uuid",
+            "title": "Owning Workspace Id",
+            "type": "string"
+          },
+          "ports": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Ports",
+            "type": "array"
+          },
+          "purpose": {
+            "title": "Purpose",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "host_pattern",
+          "ports",
+          "purpose",
+          "note",
+          "owning_workspace_id",
+          "created_by",
+          "created_at"
+        ],
+        "title": "AllowedHostView",
+        "type": "object"
+      },
       "ApprovalView": {
         "properties": {
           "approval_type": {
@@ -3155,6 +3288,35 @@
           "lanes"
         ],
         "title": "OutlineStepView",
+        "type": "object"
+      },
+      "Page_AllowedHostView_": {
+        "description": "A page of results and the cursor that continues it.\n\n``next_cursor`` is ``None`` on the last page, and that — not an empty\n``items`` — is the client's stop condition: a filtered listing can return an\nempty page in the middle of a run and still have more rows behind it.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AllowedHostView"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "Page",
         "type": "object"
       },
       "Page_ApprovalView_": {
@@ -8936,6 +9098,174 @@
         "summary": "List Members",
         "tags": [
           "identity"
+        ]
+      }
+    },
+    "/api/v1/egress/allowed-hosts": {
+      "get": {
+        "operationId": "list_allowed_hosts_api_v1_egress_allowed_hosts_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque cursor from a previous page.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Opaque cursor from a previous page.",
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_AllowedHostView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "List Allowed Hosts",
+        "tags": [
+          "egress"
+        ]
+      },
+      "post": {
+        "operationId": "request_allowed_host_api_v1_egress_allowed_hosts_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AllowedHostRequestBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllowedHostRequestView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Request Allowed Host",
+        "tags": [
+          "egress"
+        ]
+      }
+    },
+    "/api/v1/egress/allowed-hosts/{host_id}": {
+      "delete": {
+        "operationId": "remove_allowed_host_api_v1_egress_allowed_hosts__host_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "host_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Host Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Remove Allowed Host",
+        "tags": [
+          "egress"
         ]
       }
     },

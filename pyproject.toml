@@ -58,6 +58,9 @@ dev = [
     # The reference RFC 8785 serializer `dw_kernel.canonical` is tested against
     # (tenant-config R1.1); never a runtime dependency: the kernel is stdlib only.
     "rfc8785==0.1.4",
+    # The Standard Webhooks 1.0 reference the signature module is tested
+    # against (connections-and-vault R4.1); never a runtime dependency.
+    "standardwebhooks==1.1.0",
 ]
 
 # ---------------------------------------------------------------------------

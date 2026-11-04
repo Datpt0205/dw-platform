@@ -83,6 +83,7 @@ from dw_platform.adapters.persistence.effect_key_store import (
     EFFECT_KEYS,
     SqlEffectKeyRetention,
 )
+from dw_platform.adapters.persistence.egress_allowlist_repo import SqlAllowedHostRepository
 from dw_platform.adapters.persistence.idempotency_store import (
     IDEMPOTENCY_KEYS,
     SqlIdempotencyKeyRetention,
@@ -116,6 +117,7 @@ from dw_platform.application.dw_autonomy import (
     RAISE_ADMISSION,
     RaiseSettler,
 )
+from dw_platform.application.egress_allowlist import EGRESS_ALLOWED_HOST, AllowedHostSettler
 from dw_platform.application.work_queue import WorkQueue
 from dw_platform.retention_policy import RetentionPurgerRegistry, load_retention_policy
 from dw_worker.composition import (
@@ -138,6 +140,10 @@ from dw_worker.consumers.dw_work import build_dw_work_consumer
 from dw_worker.consumers.dw_workflow_publish import (
     DW_WORKFLOW_PUBLISH_DECIDED,
     build_publish_handler,
+)
+from dw_worker.consumers.egress_allowlist import (
+    EGRESS_ALLOWED_HOST_DECIDED,
+    build_allowed_host_handler,
 )
 from dw_worker.consumers.ingest import build_ingest_consumer
 from dw_worker.consumers.memory import memory_handlers
@@ -230,6 +236,9 @@ def build_channel_decision_command(
         telemetry=runner.telemetry,
     )
     flow.strict_approval_prefixes |= strict_approval_prefixes
+    # Adding an Allowed host takes a second person, here as in the API
+    # (connections-and-vault R3.10).
+    flow.strict_approval_prefixes |= {EGRESS_ALLOWED_HOST}
     secret = settings.approval_code_secret.get_secret_value()
     return ChannelDecisionCommand(
         ChannelApprovalDecisionService(
@@ -459,6 +468,12 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
         # A decided raise of a DW's earned level (digital-worker R8.6).
         handlers[DW_AUTONOMY_RAISE_DECIDED] = build_raise_handler(
             RaiseSettler(repo=SqlDwAutonomyRepository(sessions), clock=clock, id_generator=ids)
+        )
+        # A decided request for an Allowed host (connections-and-vault R3.11).
+        handlers[EGRESS_ALLOWED_HOST_DECIDED] = build_allowed_host_handler(
+            AllowedHostSettler(
+                repo=SqlAllowedHostRepository(sessions), clock=clock, id_generator=ids
+            )
         )
         # A tenant whose owners fell below two (tenant-rbac R3.12).
         handlers[OWNER_COVERAGE_LOW] = build_owner_coverage_handler(

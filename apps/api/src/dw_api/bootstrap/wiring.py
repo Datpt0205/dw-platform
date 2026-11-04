@@ -52,6 +52,7 @@ from dw_agent_runtime.wflite.outline import WorkflowOutlineReader
 from dw_agent_runtime.wflite.publish import WorkflowPublishing
 from dw_agent_runtime.wflite.registry import build_node_registry
 from dw_api.bootstrap.container import ApiContainer
+from dw_api.bootstrap.egress import build_egress_client
 from dw_api.bootstrap.identity import build_token_verifier
 from dw_api.bootstrap.paths import CONFIGS, WFLITE_HANDOFF_COPY, WORKER_RUN_POLICY
 from dw_api.bootstrap.runtime import build_runtime
@@ -85,6 +86,7 @@ from dw_platform.adapters.persistence.dw_autonomy_repo import (
     SqlScorecardRepository,
 )
 from dw_platform.adapters.persistence.effect_key_store import SqlEffectKeyLookup
+from dw_platform.adapters.persistence.egress_allowlist_repo import SqlAllowedHostRepository
 from dw_platform.adapters.persistence.hierarchy_repo import SqlHierarchyRepository
 from dw_platform.adapters.persistence.idempotency_store import SqlIdempotencyStore
 from dw_platform.adapters.persistence.identity_provisioning import SqlIdentityBootstrap
@@ -121,6 +123,10 @@ from dw_platform.application.authorization import ScopeAuthorizationService
 from dw_platform.application.decision_gate import DW_DECISION, DwProposalMask
 from dw_platform.application.digital_workers import DecisionAutonomy, DigitalWorkerService
 from dw_platform.application.dw_autonomy import DwAutonomyService
+from dw_platform.application.egress_allowlist import (
+    EGRESS_ALLOWED_HOST,
+    EgressAllowlistService,
+)
 from dw_platform.application.entitlement import PlanEntitlementService
 from dw_platform.application.hierarchy import HierarchyService
 from dw_platform.application.idempotency import HttpIdempotency
@@ -309,6 +315,13 @@ def _build_container(
     container.secret_store = SecretStore(
         kms=kms, audit=SqlScopedAudit(session_factory), clock=clock, id_generator=ids
     )
+    container.egress_allowlist = EgressAllowlistService(
+        repo=SqlAllowedHostRepository(session_factory),
+        authz=authorization,
+        clock=clock,
+        id_generator=ids,
+    )
+    container.egress = build_egress_client(settings, session_factory, telemetry)
     container.approval_masks[DW_DECISION] = DwProposalMask(
         SqlDigitalWorkerRepository(session_factory)
     )
@@ -419,6 +432,9 @@ def _build_container(
     container.run_trails = wiring.run_trails
     container.runner = wiring.runner
     container.approval_flow = wiring.approval_flow
+    # Adding an Allowed host takes a second person (connections-and-vault
+    # R3.10; ADR-0115 decision 6): the type is strict, here as in the worker.
+    wiring.approval_flow.strict_approval_prefixes |= {EGRESS_ALLOWED_HOST}
     # The portal half of a decision on Zalo (ADR 0007, channels Z5): the view
     # receipt and the single-use code. A context registers who answers for its
     # approval types' subject version on `approval_subjects` at the seam below

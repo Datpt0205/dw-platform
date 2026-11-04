@@ -51,6 +51,7 @@ from dw_agent_runtime.tools import ToolRegistry
 from dw_agent_runtime.wflite.catalog import PackCatalog
 from dw_agent_runtime.wflite.starter import WorkflowRunStarter
 from dw_agent_runtime.wflite.waits import WorkQueueRunWaits
+from dw_connectors.egress import EgressClient, NoCatalogueHosts
 from dw_kernel.ports import IdGenerator, SystemClock, UtcClock, Uuid7Generator
 from dw_knowledge.adapters.api_parsers import (
     DeepgramTranscriptParser,
@@ -64,6 +65,7 @@ from dw_knowledge.gateway import KnowledgeGateway
 from dw_knowledge.ingest_jobs import IngestJobQueue, IngestJobStore
 from dw_knowledge.ports import DocumentParserPort, EmbeddingPort, ObjectStoragePort, VectorIndexPort
 from dw_observability.telemetry import TelemetryPort
+from dw_platform.adapters.persistence.egress_allowlist_repo import SqlAllowedHosts
 from dw_platform.adapters.persistence.plan_catalog import CachingPlanCatalog, SqlPlanCatalog
 from dw_platform.adapters.persistence.uow import SqlPlatformUnitOfWorkFactory
 from dw_platform.application.entitlement import PlanEntitlementService
@@ -396,4 +398,22 @@ def build_wflite_runtime(
             catalog=packs, session_factory=sessions, tools=tools, runner=runner
         ),
         tools=tools,
+    )
+
+
+def build_egress_client(
+    settings: WorkerSettings,
+    session_factory: async_sessionmaker[AsyncSession],
+    telemetry: TelemetryPort,
+) -> EgressClient:
+    """The egress client as the worker composes it (connections-and-vault R3;
+    ADR-0115 decision 6): `allow_private` and `require_https` from the profile
+    and from nothing else, as the API's `build_egress_client` sets them. The
+    send lanes of ticket 05 take it from here."""
+    return EgressClient(
+        allowed_hosts=SqlAllowedHosts(session_factory),
+        catalogue=NoCatalogueHosts(),
+        allow_private=not settings.is_deployed,
+        require_https=settings.is_deployed,
+        telemetry=telemetry,
     )

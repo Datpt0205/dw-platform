@@ -167,10 +167,12 @@
   },
   "dw": {
     "span_names": [
+      "dw.egress.request",
       "dw.knowledge.rerank"
     ],
     "attributes": [
       "dw.channel",
+      "dw.egress.purpose",
       "dw.graph_version",
       "dw.input_tokens",
       "dw.latency_ms",
@@ -199,6 +201,8 @@
     ],
     "metrics": [
       "dw_approval_wait_seconds",
+      "dw_egress_blocked_total",
+      "dw_egress_requests_total",
       "dw_model_cost_usd_total",
       "dw_model_tokens_total",
       "dw_outbox_backlog_size",
@@ -215,8 +219,11 @@
       "direction",
       "error",
       "model",
+      "outcome",
       "provider",
+      "purpose",
       "queue",
+      "reason",
       "status",
       "tool",
       "worker"

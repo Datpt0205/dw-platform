@@ -49,6 +49,7 @@ from dw_api.bootstrap.studio import StudioContainer
 from dw_api.health import HealthService
 from dw_api.settings import ApiSettings
 from dw_connectors.adapters.zalo_link import ZaloLinking
+from dw_connectors.egress import EgressPort
 from dw_connectors.inbound import InboundUpdateInboxPort
 from dw_kernel.ports import IdGenerator, UtcClock
 from dw_knowledge.gateway import KnowledgeGateway
@@ -64,6 +65,7 @@ from dw_platform.application.channel_access import ChannelPreferencesPort
 from dw_platform.application.digital_workers import DigitalWorkerService
 from dw_platform.application.dw_autonomy import DwAutonomyService
 from dw_platform.application.effect_keys import EffectKeyPort
+from dw_platform.application.egress_allowlist import EgressAllowlistService
 from dw_platform.application.entitlement import PlanEntitlementService
 from dw_platform.application.hierarchy import HierarchyService
 from dw_platform.application.idempotency import HttpIdempotency
@@ -222,6 +224,12 @@ class ApiContainer:
     # service is built ahead of the database gate, so a wrong `DW_KMS_PROVIDER`
     # fails at startup either way. Ticket 04's connection routes read it.
     secret_store: SecretStore | None = None
+    # The company's Allowed hosts (connections-and-vault R3.8-R3.12, R3.18);
+    # Postgres only. Deciding a request needs the approval flow as well.
+    egress_allowlist: EgressAllowlistService | None = None
+    # The one client of tenant-directed traffic (R3; ADR-0115 decision 6);
+    # Postgres only. Ticket 05's connection test and SMTP send read it.
+    egress: EgressPort | None = None
     # Customer-granted support access (ADR 0024). A context registers its
     # grantable scope sets and resource describers on the catalog at the seam
     # in `wiring.py`; `build_container` freezes it once wiring is done.

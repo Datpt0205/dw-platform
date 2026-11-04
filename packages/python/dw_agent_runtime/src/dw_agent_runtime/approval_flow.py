@@ -145,6 +145,9 @@ class ApproveAndResumeService:
                 details={
                     "approval_id": str(request.id),
                     "approval_type": request.approval_type,
+                    # The code ADR-0104 decision 11 gives a requester deciding
+                    # their own strict request (connections-and-vault R3.10).
+                    "reason_code": "second_person_required",
                 },
             )
         if not comment.strip():
