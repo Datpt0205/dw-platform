@@ -244,6 +244,10 @@ its run manifest, never through `TenantOverlay` at run time (ADR 0109).
 - Resolution falls back to the platform, never sideways to another tenant.
   `test_tenant_overlay.py` asserts this; it is the breach this mechanism must
   not become.
+- One exception: a containment frame, the prompt that wraps tenant text so it
+  cannot leave its block (`studio.agent_frame`, ADR 0117), resolves at the
+  platform layer only; a tenant override of it is never read, because an
+  override could drop the containment.
 - Inventory answers — the release manifest, `/v1/integrations` — read the
   platform layer only. What a deployment can do must not depend on who asked.
 

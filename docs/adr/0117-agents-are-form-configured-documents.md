@@ -282,3 +282,15 @@ open:
   in its gate run as well as a draft, as ADR-0103 decision 5 now says, extending the sixth pass's line
   above (if it is wrong, an agent version's boundary is written when it is sealed and its gate trials
   read under it).
+
+## Amendments (2026-11-04)
+
+- (agent, theo ủy quyền 31/10/2026; found by the readiness gate of agent-builder/02.) The contradiction with
+  `CLAUDE.md` "Per-tenant artifacts" (every versioned prompt resolves through `TenantOverlay`) is closed in
+  `CLAUDE.md` itself: a containment frame, `studio.agent_frame`, resolves at the platform layer only and a tenant
+  override of it is never read. Decision 4's validator runs at save through the envelope's save hook, which returns
+  its problems as `warnings[]` (workflow-engine/01, R2.13), and at seal, where they refuse with 422; both answer in
+  ADR-0108's `errors[]` of `{pointer, code, detail}`. An agent's definition is created and edited through the
+  envelope's own routes (`POST /api/v1/studio/artifacts`, `PUT .../draft`); only its settings have agent routes.
+  If this is wrong: a tenant may override the frame through an approved `platform.config_versions` row, with a test
+  that the override still closes the block, and `CLAUDE.md` loses the exception. The status stays Accepted.
