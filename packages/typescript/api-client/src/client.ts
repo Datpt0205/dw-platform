@@ -309,6 +309,9 @@ const studioArtifactSchema = z.object({
   version: z.number().int(),
   created_at: z.string(),
   updated_at: z.string(),
+  // The stage a list shows for the artifact (agent-lifecycle/03's view), or
+  // null when no version has one to show.
+  display_stage: z.string().nullable(),
 });
 export type StudioArtifact = z.infer<typeof studioArtifactSchema>;
 
