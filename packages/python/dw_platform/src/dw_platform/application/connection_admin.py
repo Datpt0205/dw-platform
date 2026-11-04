@@ -97,7 +97,7 @@ CREDENTIALS_REVOKED = "connection.credentials_revoked"
 SETTLING_LANE = "outbox"
 RESOURCE = "connection"
 SUBJECT_KIND = "connection"
-SHARE_SCOPE = "workspace"
+SHARED_BY_WORKSPACE = "workspace"
 NAME_MAX = 200
 
 
@@ -374,7 +374,7 @@ class ConnectionService:
         """R5.1, R5.20, R5.21: the new connection's id."""
         name = _text(new.name, "name", limit=NAME_MAX)
         account = _text(new.external_account, "external_account")
-        if new.share_scope != SHARE_SCOPE:
+        if new.share_scope != SHARED_BY_WORKSPACE:
             raise _invalid(
                 "a connection is shared by its workspace only",
                 "share_scope_not_allowed",
@@ -403,7 +403,7 @@ class ConnectionService:
                     name=name,
                     connector_key=new.connector_key,
                     connector_major=new.connector_major,
-                    share_scope=SHARE_SCOPE,
+                    share_scope=SHARED_BY_WORKSPACE,
                     external_account=account,
                     status="active",
                     scopes=(),
@@ -427,7 +427,7 @@ class ConnectionService:
                         "connector_key": new.connector_key,
                         "connector_major": new.connector_major,
                         "external_account": account,
-                        "share_scope": SHARE_SCOPE,
+                        "share_scope": SHARED_BY_WORKSPACE,
                         "secret_fields": versions,
                     },
                 )

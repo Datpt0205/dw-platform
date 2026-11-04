@@ -32,7 +32,6 @@ first answer and stores nothing new.
 from __future__ import annotations
 
 import json
-from collections.abc import Awaitable, Callable
 from datetime import datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID
@@ -220,23 +219,29 @@ async def _may_write(check: CheckInput) -> None:
     await _service(check.container).check_write(check.context, connection_id)
 
 
-def _keyed(check: Callable[[CheckInput], Awaitable[None]], operation: str) -> Any:
-    return idempotent(check, operation=operation, fingerprint_body=_without_secret_values)
-
-
-CreateIdempotency = Annotated[IdempotentOperation, _keyed(_may_create, "POST /connections")]
+CreateIdempotency = Annotated[
+    IdempotentOperation,
+    idempotent(_may_create, operation="POST /connections", fingerprint_body=_without_secret_values),
+]
 PatchIdempotency = Annotated[
-    IdempotentOperation, _keyed(_may_write, "PATCH /connections/{connection_id}")
+    IdempotentOperation,
+    idempotent(
+        _may_write,
+        operation="PATCH /connections/{connection_id}",
+        fingerprint_body=_without_secret_values,
+    ),
 ]
 DisableIdempotency = Annotated[
-    IdempotentOperation, _keyed(_may_write, "POST /connections/{connection_id}/disable")
+    IdempotentOperation,
+    idempotent(_may_write, operation="POST /connections/{connection_id}/disable"),
 ]
 EnableIdempotency = Annotated[
-    IdempotentOperation, _keyed(_may_write, "POST /connections/{connection_id}/enable")
+    IdempotentOperation,
+    idempotent(_may_write, operation="POST /connections/{connection_id}/enable"),
 ]
 RevokeIdempotency = Annotated[
     IdempotentOperation,
-    _keyed(_may_write, "POST /connections/{connection_id}/revoke-credentials"),
+    idempotent(_may_write, operation="POST /connections/{connection_id}/revoke-credentials"),
 ]
 
 
@@ -263,6 +268,7 @@ async def create_connection(
     body: NewConnectionBody,
     context: RequireAccessContext,
     container: RequireContainer,
+    response: Response,
     idempotency: CreateIdempotency,
 ) -> ConnectionDetailView:
     service = _service(container)
@@ -282,9 +288,9 @@ async def create_connection(
     view = await idempotency.once(
         status=201, run=run, reread=lambda found: _reread(service, context, found)
     )
-    return await idempotency.record(
-        view, status_code=201, headers={"Location": f"{_BASE}/{view.id}"}
-    )
+    headers = {"Location": f"{_BASE}/{view.id}"}
+    response.headers.update(headers)
+    return await idempotency.record(view, status_code=201, headers=headers)
 
 
 @router.get("/{connection_id}", response_model=ConnectionDetailView)
@@ -347,6 +353,7 @@ async def enable_connection(
     connection_id: UUID,
     context: RequireAccessContext,
     container: RequireContainer,
+    response: Response,
     idempotency: EnableIdempotency,
 ) -> EnableRequestView:
     service = _service(container)
@@ -359,9 +366,9 @@ async def enable_connection(
         return EnableRequestView(approval_id=UUID(found))
 
     view = await idempotency.once(status=202, run=run, reread=reread)
-    return await idempotency.record(
-        view, status_code=202, headers={"Location": f"/api/v1/approvals/{view.approval_id}"}
-    )
+    headers = {"Location": f"/api/v1/approvals/{view.approval_id}"}
+    response.headers.update(headers)
+    return await idempotency.record(view, status_code=202, headers=headers)
 
 
 @router.post("/{connection_id}/revoke-credentials", response_model=ConnectionDetailView)

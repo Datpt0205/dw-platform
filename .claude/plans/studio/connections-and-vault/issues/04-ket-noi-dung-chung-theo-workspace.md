@@ -1,6 +1,6 @@
 # 04 — Kết nối dùng chung theo workspace: quy tắc dùng được, API, thu hồi vì lộ, bật lại hai người, audit
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 02, 03, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md
 Area: studio
 Yêu cầu: R1.15, R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.8, R5.9, R5.10, R5.11, R5.12, R5.13, R5.14, R5.15, R5.16, R5.17, R5.18, R5.19, R5.20, R5.21, CV12, CV13, CV14, CV15, CV21, CV24, CV28, CV31
@@ -159,83 +159,83 @@ ConnectionDependents(total: int, visible: list[DependentRef(kind, id, name)])`, 
 
 ## Tiêu chí chấp nhận
 
-- [ ] R5.1: người giữ `connections.manage` với tới workspace đang làm việc tạo một Kết nối với mọi trường bí mật mà
+- [x] R5.1: người giữ `connections.manage` với tới workspace đang làm việc tạo một Kết nối với mọi trường bí mật mà
       bản giả của `ConnectorCatalogPort` khai → mỗi trường một phong bì qua `platform.put_secret`, dòng `active` có
       `owning_workspace_id` là workspace đó, audit `connection.created` cùng giao dịch ở workspace đó; thiếu một trường,
       thêm một trường lạ, thiếu `name` hay `external_account`, hay `connector_key` mà cổng trả None → 422, không dòng
       nào; `PATCH` mang `external_account` → 422; `.../disable` lên Kết nối đã `disabled` → 409
       `connection_not_active`, `disabled_at` không đổi; vân tay của khóa chống lặp đã lưu không chứa canary; ghi audit ném lỗi → không dòng Kết nối,
       không phong bì nào.
-- [ ] R5.2 (CV12): duyệt mọi schema 2xx của router kết nối → không trường bí mật; `GET` sau khi tạo không chứa giá
+- [x] R5.2 (CV12): duyệt mọi schema 2xx của router kết nối → không trường bí mật; `GET` sau khi tạo không chứa giá
       trị canary; trường bí mật đã lưu hiện "Đã cấu hình"; audit `connection.created` và `connection.updated` của một
       lần xoay không chứa canary.
-- [ ] R5.3 (CV13): hỏi thẳng `connection_usable` với `context.tenant_id` của công ty B và id Kết nối của công ty A →
+- [x] R5.3 (CV13): hỏi thẳng `connection_usable` với `context.tenant_id` của công ty B và id Kết nối của công ty A →
       false, `connection_not_found`; `dw_app` với `app.tenant_id` của B gọi `platform.revoke_connection_secrets` với id
       của A → không phong bì, không `compromised_at` nào đổi; gỡ vế công ty khỏi câu UPDATE của hàm hay đặt
       `app.tenant_id` từ dòng Kết nối thay vì từ `context` → ca đó đỏ. Công ty B gọi `GET {id}`, `PATCH`, `DELETE`, `.../disable`, `.../enable`, `.../dependents` và
       `.../revoke-credentials` với id của công ty A → 404, dòng của A không đổi, không dòng
       `platform.approval_requests` nào, port phụ thuộc giả không được hỏi; `GET` danh sách của B không có Kết nối nào
       của A; `DISABLE ROW LEVEL SECURITY` trên `platform.connections` trong migration thử → test đỏ.
-- [ ] R5.18 (CV31): trong một công ty, người giữ `connections.read` và `connections.manage` chỉ ở workspace W1 → `GET`
+- [x] R5.18 (CV31): trong một công ty, người giữ `connections.read` và `connections.manage` chỉ ở workspace W1 → `GET`
       danh sách không có Kết nối của W2, `GET {id}`, `.../dependents` của W2 → 404; người giữ `connections.read` ở mức
       công ty và `connections.manage` chỉ ở W1 → `PATCH` (xoay `api_key`), `DELETE`, `.../disable`, `.../enable`,
       `.../revoke-credentials` trên Kết nối của W2 → 403, không phong bì, dòng hay yêu cầu nào đổi; `POST` trong ngữ cảnh
       W2 → 403; người giữ khóa ở mức công ty → nhận; gỡ phép kiểm `workspace_reach` ở luật ghi → `PATCH` của W1 lên
       Kết nối W2 thành công, test đỏ.
-- [ ] R5.4 (CV14): hỏi thẳng `connection_usable` với `workspace_id` khác `owning_workspace_id` → false,
+- [x] R5.4 (CV14): hỏi thẳng `connection_usable` với `workspace_id` khác `owning_workspace_id` → false,
       `connection_out_of_scope`; cùng workspace → true; gỡ kiểm workspace → test đỏ.
-- [ ] R5.20 (CV14): `POST` với `share_scope` `owner` hay `workspace_subtree` → 422, không dòng; `PATCH` mang
+- [x] R5.20 (CV14): `POST` với `share_scope` `owner` hay `workspace_subtree` → 422, không dòng; `PATCH` mang
       `share_scope` → 422; dòng có `share_scope` `workspace_subtree` ghi thẳng bằng vai migrator → `connection_usable`
       false, `connection_out_of_scope`; cho hàm coi mọi `share_scope` như `workspace` → test đỏ.
-- [ ] R5.5 (CV15): `.../disable` → status `disabled` ngay, audit `connection.disabled`, `connection_usable` ở cả ba
+- [x] R5.5 (CV15): `.../disable` → status `disabled` ngay, audit `connection.disabled`, `connection_usable` ở cả ba
       `call_site` → false, `connection_disabled`; gỡ kiểm status trong hàm → test đỏ.
-- [ ] R5.6 (CV15): `UPDATE` Connection status `revoked → active`, `revoked → disabled` hay `disabled → pending` bằng
+- [x] R5.6 (CV15): `UPDATE` Connection status `revoked → active`, `revoked → disabled` hay `disabled → pending` bằng
       `dw_app` → trigger từ chối (23514), dòng không đổi; INSERT với `disabled` → từ chối; `active → disabled` → nhận và
       `disabled_at` có giá trị; gỡ trigger → test đỏ.
-- [ ] R5.8: `DELETE` khi bản giả của `ConnectionDependentsPort` trả một phụ thuộc → 409 `connection_in_use`, không
+- [x] R5.8: `DELETE` khi bản giả của `ConnectionDependentsPort` trả một phụ thuộc → 409 `connection_in_use`, không
       xóa; không phụ thuộc → xóa, phong bì của Kết nối xóa theo, audit `connection.deleted` cùng giao dịch; bản giả ném
       lỗi → không xóa; `connection_usable` với id đã xóa → false, `connection_not_found`.
-- [ ] R5.9 (CV14): `principal_id` không giữ `connections.use` với tới workspace của ngữ cảnh → false,
+- [x] R5.9 (CV14): `principal_id` không giữ `connections.use` với tới workspace của ngữ cảnh → false,
       `connection_use_denied`, ở cả ba `call_site`; giữ ở một workspace khác → false; giữ ở mức công ty → true;
       `principal_id` NULL → false; gỡ kiểm `connections.use` → test đỏ.
-- [ ] R5.10 (CV21): `POST .../enable` cho Kết nối `disabled` → 202 kèm id phê duyệt `connections.enable` có
+- [x] R5.10 (CV21): `POST .../enable` cho Kết nối `disabled` → 202 kèm id phê duyệt `connections.enable` có
       `required_scope` `connections.manage` và `workspace_id` là workspace sở hữu; Connection status vẫn `disabled`,
       `connection_usable` vẫn false; `PATCH` mang `status: active` → 422, status không đổi; Kết nối `active` → 409
       `connection_not_disabled`; gửi lần hai khi yêu cầu đầu còn `pending` → 409 `enable_pending`, vẫn một yêu cầu; đổi
       status ngay ở `POST` → test đỏ.
-- [ ] R5.11 (CV21): người gửi tự duyệt → 409 `conflict` với `details.reason_code` `second_person_required`, status
+- [x] R5.11 (CV21): người gửi tự duyệt → 409 `conflict` với `details.reason_code` `second_person_required`, status
       không đổi; người không giữ `connections.manage` hay chỉ giữ nó ở workspace khác workspace sở hữu quyết → 404;
       bỏ `connections.enable` khỏi tiền tố nghiêm → test đỏ.
-- [ ] R5.12 (CV21): người thứ hai giữ `connections.manage` với tới workspace sở hữu duyệt → `active`, audit
+- [x] R5.12 (CV21): người thứ hai giữ `connections.manage` với tới workspace sở hữu duyệt → `active`, audit
       `connection.enabled` đứng tên người đó với `details.lane` `outbox`; handler chạy lại cùng quyết định → không đổi gì
       thêm, không audit thứ hai.
-- [ ] R5.19 (CV21): yêu cầu mở lúc t0, Kết nối được bật bằng đường khác rồi tắt lại lúc t1, yêu cầu được duyệt sau t1
+- [x] R5.19 (CV21): yêu cầu mở lúc t0, Kết nối được bật bằng đường khác rồi tắt lại lúc t1, yêu cầu được duyệt sau t1
       → handler không đổi gì, không audit, kết thúc không lỗi; `UPDATE ... SET status = 'active'` từ `disabled` bằng
       `dw_app` không đặt `app.connection_enable_approval`, hay đặt id của một yêu cầu `pending`, của Kết nối khác hay mở
       trước `disabled_at` → trigger từ chối; gỡ phép kiểm yêu cầu khỏi trigger → `UPDATE` thẳng thành công, test đỏ;
       gỡ phép so `disabled_at` khỏi handler → ca t0, t1 đỏ ở handler (trigger vẫn chặn, nên test hỏi từng lớp).
-- [ ] R5.13 (CV21): chỉ người gửi giữ `connections.manage` với tới workspace sở hữu của Kết nối → `POST .../enable`
+- [x] R5.13 (CV21): chỉ người gửi giữ `connections.manage` với tới workspace sở hữu của Kết nối → `POST .../enable`
       trả 409 `conflict` với `details.reason_code` `no_checker_available`, không dòng `platform.approval_requests` nào,
       status vẫn `disabled`; thêm người thứ hai giữ khóa ở workspace đó → 202; gỡ kiểm người duyệt → test đỏ.
-- [ ] R5.21 (CV21): Kết nối `disabled` cho `(smtp, a@x.vn)`, `POST` một Kết nối mới cùng `connector_key` và
+- [x] R5.21 (CV21): Kết nối `disabled` cho `(smtp, a@x.vn)`, `POST` một Kết nối mới cùng `connector_key` và
       `external_account` → 409 `conflict` với `details.reason_code` `connection_exists`, không dòng nào; Kết nối cũ đã
       xóa → `POST` nhận, audit `connection.deleted` và `connection.created` cùng nêu tài khoản; `POST` với `A@X.vn ` khi Kết nối
       `disabled` có `a@x.vn` → 409 `connection_exists`; đổi index về chỉ dòng `active` hay bỏ `lower` → `POST` lúc Kết nối
       cũ `disabled` thành công, test đỏ.
-- [ ] R5.14 (CV14): Kết nối `active`, chủ thể giữ `connections.use` ở workspace của ngữ cảnh: `purpose='tool'` → true;
+- [x] R5.14 (CV14): Kết nối `active`, chủ thể giữ `connections.use` ở workspace của ngữ cảnh: `purpose='tool'` → true;
       `purpose='model'` hay một chuỗi lạ → false, `purpose_not_allowed`; gỡ kiểm `purpose` → test đỏ.
-- [ ] R5.15 (CV24): `call_site` `egress`, mọi phiên bản của `api_key` đã thu hồi, rồi xóa hết qua
+- [x] R5.15 (CV24): `call_site` `egress`, mọi phiên bản của `api_key` đã thu hồi, rồi xóa hết qua
       `platform.delete_secret` → false, `credential_revoked`; trường còn một phiên bản chưa thu hồi → true; cổng trả None
       → false; `run_requested_at` NULL → false; cùng các dòng ở `call_site` `run_admission` → true (nhánh bí mật chỉ ở
       `egress`); gỡ nhánh "không còn phiên bản chưa thu hồi" → hàm trả true, test đỏ (hỏi thẳng hàm, vì
       `platform.open_secret` của ticket 02 vẫn chặn ở lớp sau, failure-modes #5).
-- [ ] R5.16 (CV28): `run_requested_at` t0, thu hồi vì lộ lúc t1 rồi lưu phiên bản mới lúc t2 → `connection_usable` ở
+- [x] R5.16 (CV28): `run_requested_at` t0, thu hồi vì lộ lúc t1 rồi lưu phiên bản mới lúc t2 → `connection_usable` ở
       `egress` false, `credential_revoked`; `run_requested_at` sau t1 → true; bằng đúng `compromised_at` → false; gỡ nhánh
       `compromised_at` → ca t0 qua, test đỏ. Ca đầu-cuối qua `SmtpEgress` (máy chủ giả không nhận gì) ở ticket 05.
-- [ ] R5.17 (CV24): `run_requested_at` t0, lưu giá trị mới cho `api_key` lúc t1 (xoay, không thu hồi vì lộ) →
+- [x] R5.17 (CV24): `run_requested_at` t0, lưu giá trị mới cho `api_key` lúc t1 (xoay, không thu hồi vì lộ) →
       `connection_usable` ở `egress` true; cho hàm từ chối mọi `run_requested_at` trước phiên bản mới nhất → ca này đỏ.
       Lời gọi mở phiên bản 2 ở ticket 05.
-- [ ] R1.15 (CV28): gọi route thu hồi vì lộ cho một Kết nối có `api_key` phiên bản 2 đang dùng và `password` phiên bản
+- [x] R1.15 (CV28): gọi route thu hồi vì lộ cho một Kết nối có `api_key` phiên bản 2 đang dùng và `password` phiên bản
       1 → cả hai phiên bản có `revoked_at` bằng `now()` của giao dịch, `replaced_at` không đổi, `compromised_at` bằng
       cùng thời điểm, một audit `connection.credentials_revoked` không chứa giá trị canary; Kết nối khác cùng công ty
       không đổi; công ty B gọi route với id của công ty A → 404, không dòng nào đổi; người thiếu `connections.manage` với
@@ -243,9 +243,9 @@ ConnectionDependents(total: int, visible: list[DependentRef(kind, id, name)])`, 
       migrator đặt nó về NULL hay lùi nó → trigger từ chối; ghi audit ném lỗi → giao dịch lùi, không phiên bản nào bị
       thu hồi; `has_function_privilege` của `dw_provisioner` trên `platform.revoke_connection_secrets` → sai; gỡ vế phong
       bì khỏi hàm → `platform.open_secret` không nêu phiên bản vẫn mở phiên bản 2, test đỏ.
-- [ ] R5.9 (CV14): Danh mục quyền: ba khóa có `scope_kind` `workspace`, `risk` và `tenant_grantable` như bước 1;
+- [x] R5.9 (CV14): Danh mục quyền: ba khóa có `scope_kind` `workspace`, `risk` và `tenant_grantable` như bước 1;
       `test_permission_catalogue.py` xanh; bỏ hằng `*_SCOPE` của `connections.use` → (c) đỏ.
-- [ ] Xong: `make ci && make test-integration` xanh.
+- [x] Xong: `cổng nhanh của ticket theo wave-close.md; tích hợp đầy đủ, mutate.py và đo trễ lúc đóng hàng đợi` xanh.
 
 ## Nguồn
 
@@ -351,3 +351,75 @@ ConnectionDependents(total: int, visible: list[DependentRef(kind, id, name)])`, 
   một công ty nhận 409 `connection_exists`: `external_account` của `smtp` do ticket 05 định nghĩa (gợi ý
   `<login>@<host>`).
 - 2026-11-03 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-04 (agent): dựng xong (lane 1), migration `388a31c46bdf` sau `20bb9a2210cf`. Bước 1-7 như ticket:
+  `dw_platform.application.connections` (`ConnectionUsability`, `UsableContext`, `ConnectorCatalogPort`,
+  `NoConnectorCatalog`), `application.connection_admin` (`ConnectionService`, `ConnectionDependentsPort`,
+  `NoConnectionDependents`, `ConnectionEnableSettler`), `adapters.persistence.connections_repo` (một giao dịch phục vụ
+  cả dịch vụ lẫn quy tắc), route `apps/api/.../routes/v1/connections.py`, handler `dw_worker.consumers.connections`,
+  mảnh nhãn `configs/copy/audit_actions.d/connections-and-vault.yaml` (ticket 03 chưa tạo, nên mảnh mang cả hành động
+  của 02, 03), OpenAPI, kiểu TS và release manifest sinh lại. Khác ticket: (a) `UsableContext` từ chối `call_site` lạ
+  (`ValueError`); (b) INSERT nêu `disabled_at` hay `compromised_at` bị trigger từ chối (23514), vì `dw_app` có INSERT
+  cả bảng; (c) `.../enable` trả `Location` tới `/api/v1/approvals/{id}`; (d) `GET` danh sách vào
+  `plan_shape.REGISTERED`, test bỏ index thì đỏ (M12 theo).
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): `connection_usable` là phương thức của `ConnectionUsability(store,
+  catalog)` dựng một lần ở composition root (`ApiContainer.connection_usability`), vì quy tắc đọc cơ sở dữ liệu; chữ ký
+  `connection_usable(connection, context, purpose)` đúng ADR-0115 quyết 2. Nếu sai thì: hàm tự do nhận store và
+  catalog làm tham số, chỗ gọi không đổi.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): MEDIUM (b) của ticket 02, ai xóa trường bí mật nào: P1 không có route
+  xóa một trường; phiên bản của một trường chỉ mất khi `DELETE` Kết nối (`connections.manage`, CASCADE) hay lane
+  `credential_purge` (ticket 05); `platform.delete_secret` vẫn không có bên gọi sản xuất. Nếu sai thì:
+  `DELETE /api/v1/connections/{id}/secrets/{field}` theo luật ghi của bước 4, audit `connection.updated`.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): MEDIUM (c) của ticket 02: `SecretKeyMismatchError`,
+  `SecretUnreadableError` giữ `ErrorCode.INTERNAL`, thành 500 problem+json qua `handle_dw_error` với `details` chỉ
+  `reason_code` (`secret_key_mismatch`, `secret_unreadable`), không id, không `kek_ref`; không route nào của ticket này
+  mở bí mật, egress của ticket 05 là bên đầu tiên chạm tới. Nếu sai thì: 503 `upstream_unavailable` cho
+  `secret_unreadable`, đổi `code` của lớp.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): compose chuyển `DW_KMS_PROVIDER: ${DW_KMS_PROVIDER:-none}` và
+  `DW_LOCAL_KMS_MASTER_KEY: ${DW_LOCAL_KMS_MASTER_KEY:-}` cho api và worker; `:-` có chủ ý: `none` đóng
+  (`kms_unavailable`), `local` bị `validate_for_profile` từ chối khi triển khai (test của ticket 02), khóa rỗng với
+  `local` không khởi động. reviewing-deployment-security: §1 có test, §3 khóa là `SecretStr`, `.env.example` rỗng, §2
+  404/403 theo R5.18, §4-§6 không áp dụng (không CORS, URL ra ngoài hay image mới). Nếu sai thì: `${DW_KMS_PROVIDER:?}`
+  ở overlay uat/prod khi OpenBao (ticket 06) có.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): `Idempotency-Key`: dependency chung nhận `fingerprint_body`; POST và
+  PATCH Kết nối băm thân với `secrets` thay bằng danh sách tên đã sắp, thân không phân tích được thành một hằng; cùng
+  khóa với giá trị khác trả câu trả lời đã lưu, không lưu phiên bản mới (test). `.../disable`, `.../enable`,
+  `.../revoke-credentials` cũng nhận khóa, ghi effect key trong giao dịch. Nếu sai thì: route tự `claim_fields` như
+  route multipart.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): hình thân và câu trả lời: `secrets` là object `{trường: giá trị}`
+  `writeOnly` (`SecretStr`, `format: password`); câu trả lời theo id nêu `secret_fields: [{field, configured}]`
+  (`configured` khi còn phiên bản có `revoked_at` NULL hay ở tương lai theo `platform.secret_status`; tên trường lấy từ
+  `ConnectorCatalogPort`, W1 rỗng), `disabled_at`, `compromised_at`, `pending_enable_approval_id` (M9 theo); danh sách
+  không có `secret_fields` (tránh N+1). `share_scope` ở route là `Literal["workspace"]` (422 của schema), dịch vụ giữ
+  lớp thứ hai `share_scope_not_allowed`. Mã ticket không nêu: 422 `connector_unknown`, `secret_fields_mismatch`
+  (`details.missing`, `unexpected`), `name_required`, `name_too_long`, `external_account_required`,
+  `nothing_to_change`; 409 `connection_revoked` (PATCH lên dòng `revoked`, P1 không có bên ghi) và
+  `connection_status_refused` (trigger từ chối, đọc theo tên ràng buộc, chỉ khi chạy đua). Nếu sai thì: hằng ở
+  `connection_admin.py` và `connections_repo.py`.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): M11 theo: `created_at` của yêu cầu `connections.enable` là
+  `clock_timestamp()` đọc sau khi khóa dòng; `SqlApprovalRepository.add` giữ `created_at` bên gọi đã đặt (không bên ghi
+  nào khác đặt nó, nên các loại khác vẫn `now()`). Không audit `connection.enable_requested` (danh sách bước 6; dòng
+  phê duyệt và `approval.decided` là vết). `name` NOT NULL có backfill `name = connector_key` cho dòng sót. Nếu sai
+  thì: revision mới đổi backfill; audit yêu cầu thêm ở `request_enable`.
+- 2026-11-04 (agent): reviewing-feature-security (đọc): (1) cách ly: mọi đọc qua `tenant_session` theo ngữ cảnh,
+  hàm thu hồi hẹp theo `app.tenant_id`, test công ty B trên bảy route theo id, danh sách, quy tắc và hàm; (2) quyền: một
+  luật `workspace_reach` ở dịch vụ, nơi ghi xảy ra, không trường cache mới, người quyết theo `required_scope` đã đóng
+  dấu, ma trận R5.18; (3) phê duyệt: tiền tố nghiêm ở api và worker, `checker_candidates`, trigger là lớp cuối, mỗi lớp
+  một test; không công cụ hay lượt nào thêm tầm với (quy tắc chưa có bên gọi); (4) nội dung không tin: chỉ giá trị bí
+  mật, vào một chiều, vân tay bỏ giá trị; (5) audit cùng giao dịch ở workspace sở hữu, test audit lỗi cho tạo và thu
+  hồi; (6) vòng đời: port phụ thuộc lỗi → từ chối, danh mục thiếu → từ chối, phong bì CASCADE, dấu lộ chỉ tiến.
+  `mutations/04.yaml` 49 đột biến cho lúc đóng hàng đợi; quét nguồn (c) của `test_permission_catalogue.py` đã thử đỏ
+  bằng tay (đổi tên `CONNECTIONS_USE_SCOPE`, sao lưu rồi trả lại đúng từng byte).
+- 2026-11-04 (agent): cổng của ticket: ruff, ruff format, lint-imports (11 hợp đồng), `verify_architecture.py`,
+  `verify_invariants.py`, mypy (671 tệp) sạch; unit `dw_api`, `dw_worker`, `dw_platform`, `dw_kernel` xanh; tích hợp
+  (`DW_TEST_DB_SUFFIX=_lane1`) `test_connections_db.py` (25), `test_connections_api.py` (36), `test_plan_shape.py`
+  (19), `test_secret_vault.py`, `test_privileges.py`, `test_rls_coverage.py`, `test_offboarding_coverage.py`,
+  `test_permission_catalogue.py` xanh. OpenAPI và kiểu TS sinh lại (sáu đường dẫn). Lúc đóng hàng đợi: mutate.py
+  `mutations/04.yaml`; đo trễ `GET`, `POST /api/v1/connections`, `GET`, `PATCH`, `DELETE /{id}`, `.../disable`,
+  `.../enable`, `.../revoke-credentials`, `.../dependents` và quyết định `connections.enable`;
+  reviewing-deployment-security cho chín route.
+- 2026-11-04 (agent): MEDIUM để lại: (a) `ApiContainer.connection_usability` chưa ai đọc tới tenant-config/05 và
+  ticket 05; (b) ở W1, `POST` luôn 422 `connector_unknown` và egress luôn `credential_revoked` tới khi ticket 05 gắn
+  danh mục; (c) `DELETE` Kết nối không hủy yêu cầu `connections.enable` đang chờ: yêu cầu nằm lại trong hộp duyệt,
+  duyệt thì handler kết thúc `gone`; (d) `DELETE` không nhận `Idempotency-Key` (ticket chỉ đòi POST, PATCH), lần thử
+  lại nhận 404; (e) M1, M4, M5 (seam của tenant-rbac), M3 (xoay chạy song song với thu hồi) và M13 (`external_account`
+  của `smtp`, ticket 05) còn nguyên.

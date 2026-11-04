@@ -1785,10 +1785,14 @@ _SECRET_DOORS = (
     "platform.open_secret(text, uuid, text, integer)",
     "platform.secret_status(text, uuid, text)",
     "platform.delete_secret(text, uuid, text)",
+    # The fifth door, the revocation for compromise (ticket 04, 388a31c46bdf).
+    "platform.revoke_connection_secrets(uuid)",
 )
 _SECRET_INTERNALS = (
     "platform.guard_connection_owning_workspace()",
     "platform.secret_subject_column(text)",
+    "platform.guard_connection_status()",
+    "platform.guard_connection_compromised_at()",
 )
 _CONNECTION_UPDATABLE = {
     "share_scope",
@@ -1797,16 +1801,20 @@ _CONNECTION_UPDATABLE = {
     "scopes",
     "last_used_at",
     "updated_at",
+    # Renamed by `PATCH` (ticket 04); never `disabled_at` or `compromised_at`,
+    # which only the status trigger and the revocation door write.
+    "name",
 }
 
 
 async def test_the_envelopes_are_reached_only_through_dw_apps_door(db_urls: DatabaseUrls) -> None:
     """connections-and-vault R1.3 (CV2), migration 70d8a4564454: no role but
-    the migrator holds a privilege on `platform.secret_envelopes`; the four
-    door functions are SECURITY DEFINER on a fixed `search_path`, revoked from
-    PUBLIC and executable by `dw_app` alone; the two internal functions by no
-    application role. `platform.connections`: SELECT, INSERT and DELETE on the
-    table (the offboarding catalog asks those), UPDATE of six named columns."""
+    the migrator holds a privilege on `platform.secret_envelopes`; the five
+    door functions (ticket 04's revocation the fifth) are SECURITY DEFINER on a
+    fixed `search_path`, revoked from PUBLIC and executable by `dw_app` alone;
+    the four internal functions by no application role. `platform.connections`:
+    SELECT, INSERT and DELETE on the table (the offboarding catalog asks those),
+    UPDATE of seven named columns."""
     verbs = ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER")
     roles = ("public", "dw_app", "dw_agent_ro", "dw_provisioner")
     migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)

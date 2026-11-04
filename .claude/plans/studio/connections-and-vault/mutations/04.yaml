@@ -1,0 +1,338 @@
+# Mutation check of connections-and-vault ticket 04: scripts/mutate.py runs this
+# file at the queue's close (wave-close.md). One mutation per control the ticket
+# adds (CV12-CV15, CV21, CV24, CV28, CV31; R1.15, R5.1-R5.21), and one per
+# layer where a control is held twice (the status rule in the trigger and in
+# the settler; the share scope in the route's schema and in the service; the
+# strict prefix in the API and the worker; the fingerprint in the dependency
+# and in the route's declaration).
+#
+# Shown red by hand, not here (2026-11-04, the file backed up first and put
+# back byte for byte): the permission scan (`test_permission_catalogue.py` (c))
+# with `CONNECTIONS_USE_SCOPE` renamed away from `*_SCOPE` in connections.py,
+# because a source scan cannot see mutate.py's package copy.
+# Not expressible as one replacement: "the rule refuses every run requested
+# before the newest version" (R5.17), held by
+# test_a_rotation_alone_stops_no_run; and the request's `created_at` read
+# after the row lock (M11), a race no single-process test reaches.
+mutations:
+  # ---- R5.6 (CV15): the transition table, the database's ------------------------
+  - name: R5.6 a connection may be inserted disabled
+    file: db/migrations/versions/388a31c46bdf_connections_status_rules_and_revocation_.py
+    old: "            IF NEW.status NOT IN ('pending', 'active') THEN\n"
+    new: "            IF NEW.status NOT IN ('pending', 'active', 'disabled') THEN\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_connections_db.py::test_a_connection_is_never_inserted_disabled
+  - name: R5.6 the transition table checks nothing
+    file: db/migrations/versions/388a31c46bdf_connections_status_rules_and_revocation_.py
+    old: "        IF NOT (\n            (OLD.status = 'pending'"
+    new: "        IF false AND NOT (\n            (OLD.status = 'pending'"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_connections_db.py::test_the_status_trigger_refuses_a_move_off_its_table
+  - name: R5.6 disabled_at is not stamped
+    file: db/migrations/versions/388a31c46bdf_connections_status_rules_and_revocation_.py
+    old: "            NEW.disabled_at := now();\n"
+    new: "            NULL;\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_connections_db.py::test_disabling_stamps_disabled_at
+
+  # ---- R5.19 (CV21): enabling again only under its approved request ------------
+  - name: R5.19 the trigger enables without an approved request
+    file: db/migrations/versions/388a31c46bdf_connections_status_rules_and_revocation_.py
+    old: "            IF NOT v_approved THEN\n"
+    new: "            IF false THEN\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_connections_db.py::test_enabling_without_an_approved_request_of_this_connection_is_refused
+  - name: R5.19 the trigger takes a request opened before disabled_at
+    file: db/migrations/versions/388a31c46bdf_connections_status_rules_and_revocation_.py
+    old: "                      AND r.created_at > OLD.disabled_at\n"
+    new: "\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_connections_db.py::test_enabling_without_an_approved_request_of_this_connection_is_refused
+  - name: R5.19 the settler takes a request opened before disabled_at
+    file: packages/python/dw_platform/src/dw_platform/application/connection_admin.py
+    old: "            if row.disabled_at is None or decision.created_at <= row.disabled_at:\n"
+    new: "            if False:\n"
+    tests:
+      - apps/api/tests/integration/test_connections_api.py::test_a_request_older_than_the_latest_disable_enables_nothing
+  - name: R5.12 the settler enables what is no longer disabled (a replay audits twice)
+    file: packages/python/dw_platform/src/dw_platform/application/connection_admin.py
+    old: "            if row.status != \"disabled\":\n                return \"not_disabled\"\n"
+    new: "            if False:\n                return \"not_disabled\"\n"
+    tests:
+      - apps/api/tests/integration/test_connections_api.py::test_a_second_person_enables_and_a_replay_changes_nothing
+  - name: R5.12 the enable is audited in the requester's name
+    file: packages/python/dw_platform/src/dw_platform/application/connection_admin.py
+    old: "                    actor_id=UserId(decision.decided_by),\n"
+    new: "                    actor_id=UserId(decision.requested_by),\n"
+    tests:
+      - apps/api/tests/integration/test_connections_api.py::test_a_second_person_enables_and_a_replay_changes_nothing
+
+  # ---- R5.10, R5.11, R5.13 (CV21): a request, a second person, someone to decide
+  - name: R5.10 enable opens a request for a connection that is not disabled
+    file: packages/python/dw_platform/src/dw_platform/application/connection_admin.py
+    old: "            if row.status != \"disabled\":\n                raise ConflictError(\n"
+    new: "            if False:\n                raise ConflictError(\n"
+    tests:
+      - apps/api/tests/integration/test_connections_api.py::test_enabling_opens_a_request_in_the_owning_workspace_and_changes_nothing
+  - name: R5.10 a second request opens while one waits
+    file: packages/python/dw_platform/src/dw_platform/application/connection_admin.py
+    old: "            if pending is not None:\n"
+    new: "            if False:\n"
+    tests:
+      - apps/api/tests/integration/test_connections_api.py::test_enabling_opens_a_request_in_the_owning_workspace_and_changes_nothing
+  - name: R5.10 enable changes the status at once
+    file: packages/python/dw_platform/src/dw_platform/application/connection_admin.py
+    old: "            await tx.open_approval(\n"
+    new: "            await tx.set_status(connection_id, \"active\")\n            await tx.open_approval(\n"
+    tests:
+      - apps/api/tests/integration/test_connections_api.py::test_enabling_opens_a_request_in_the_owning_workspace_and_changes_nothing
+  - name: R5.13 a request opens with nobody else to decide it
+    file: packages/python/dw_platform/src/dw_platform/application/connection_admin.py
+    old: "            if not await tx.has_checker(\n"
+    new: "            if False and not await tx.has_checker(\n"
+    tests:
+      - apps/api/tests/integration/test_connections_api.py::test_nobody_but_the_requester_to_decide_opens_nothing
+  - name: R5.11 the API's approval flow is not strict for connections.enable
+    file: apps/api/src/dw_api/bootstrap/wiring.py
+    old: "    wiring.approval_flow.strict_approval_prefixes |= {CONNECTIONS_ENABLE}\n"
+    new: "    wiring.approval_flow.strict_approval_prefixes |= set()\n"
+    tests:
+      - apps/api/tests/integration/test_connections_api.py::test_a_second_person_enables_and_a_replay_changes_nothing
+  - name: R5.11 the worker's approval flow is not strict for connections.enable
+    file: apps/worker/src/dw_worker/main.py
+    old: "    flow.strict_approval_prefixes |= {CONNECTIONS_ENABLE}\n"
+    new: "    flow.strict_approval_prefixes |= set()\n"
+    tests:
+      - apps/worker/tests/unit/test_channel_commands.py::test_enabling_a_connection_takes_a_second_person_here_as_in_the_api
+
+  # ---- R5.21 (CV21): one connection not revoked per account --------------------
+  - name: R5.21 the unique holds active rows only
+    file: db/migrations/versions/388a31c46bdf_connections_status_rules_and_revocation_.py
+    old: " (tenant_id, connector_key, lower(external_account)) WHERE status <> 'revoked'\""
+    new: " (tenant_id, connector_key, lower(external_account)) WHERE status = 'active'\""
+    tests:
+      - apps/api/tests/integration/test_connections_api.py::test_a_disabled_connection_holds_its_account
+  - name: R5.21 the unique is case sensitive
+    file: db/migrations/versions/388a31c46bdf_connections_status_rules_and_revocation_.py
+    old: " (tenant_id, connector_key, lower(external_account)) WHERE status <> 'revoked'\""
+    new: " (tenant_id, connector_key, external_account) WHERE status <> 'revoked'\""
+    tests:
+      - apps/api/tests/integration/test_connections_api.py::test_a_disabled_connection_holds_its_account
+  - name: R5.21 the refusal is not read back as connection_exists
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/connections_repo.py
+    old: "            if refused is not None and refused[0] == ACCOUNT_LIVE:\n"
+    new: "            if False:\n"
+    tests:
+      - apps/api/tests/integration/test_connections_api.py::test_a_disabled_connection_holds_its_account
+
+  # ---- R1.15 (CV28): revocation for compromise ---------------------------------
+  - name: R1.15 the revocation leaves the envelopes open
+    file: db/migrations/versions/388a31c46bdf_connections_status_rules_and_revocation_.py
+    old: "          AND (e.revoked_at IS NULL OR e.revoked_at > now());\n"
+    new: "          AND false;\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_connections_db.py::test_revoking_for_compromise_revokes_every_live_version_and_stamps_the_connection
+      - apps/api/tests/integration/test_connections_api.py::test_revoking_for_compromise_is_one_persons_and_at_once
+  - name: R1.15 (R5.3) the revocation finds another company's connection
+    file: db/migrations/versions/388a31c46bdf_connections_status_rules_and_revocation_.py
+    old: "        WHERE c.tenant_id = v_tenant AND c.id = p_connection_id\n        FOR UPDATE;\n"
+    new: "        WHERE c.id = p_connection_id\n        FOR UPDATE;\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_connections_db.py::test_revoking_with_another_company_id_writes_nothing
+  - name: R1.15 the compromise mark may be cleared
+    file: db/migrations/versions/388a31c46bdf_connections_status_rules_and_revocation_.py
+    old: "           AND (NEW.compromised_at IS NULL OR NEW.compromised_at < OLD.compromised_at) THEN\n"
+    new: "           AND false THEN\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_connections_db.py::test_the_compromise_mark_is_never_cleared_or_moved_back
+  - name: R1.15 PUBLIC may call the revocation
+    file: db/migrations/versions/388a31c46bdf_connections_status_rules_and_revocation_.py
+    old: "    for function in (*_INTERNAL, REVOKE_DOOR):\n"
+    new: "    for function in _INTERNAL:\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_connections_db.py::test_only_dw_app_may_call_the_revocation
+  - name: R1.15 dw_app may write the two dates itself
+    file: db/migrations/versions/388a31c46bdf_connections_status_rules_and_revocation_.py
+    old: "    \"GRANT UPDATE (name) ON platform.connections TO dw_app;\",\n"
+    new: "    \"GRANT UPDATE (name, disabled_at, compromised_at) ON platform.connections TO dw_app;\",\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_connections_db.py::test_dw_app_cannot_write_disabled_at_or_compromised_at
+      - packages/python/dw_platform/tests/integration/test_privileges.py::test_the_envelopes_are_reached_only_through_dw_apps_door
+
+  # ---- R5.3 (CV13): another company ---------------------------------------------
+  - name: R5.3 RLS off on platform.connections
+    file: db/migrations/versions/388a31c46bdf_connections_status_rules_and_revocation_.py
+    old: "    # Not only `active`: a disabled row blocks a new one for the same account.\n"
+    new: "    \"ALTER TABLE platform.connections DISABLE ROW LEVEL SECURITY\",\n    # Not only `active`: a disabled row blocks a new one for the same account.\n"
+    tests:
+      - apps/api/tests/integration/test_connections_api.py::test_another_company_reaches_none_of_this_companys_connections
+      - packages/python/dw_platform/tests/integration/test_connections_db.py::test_another_company_asking_about_a_connection_finds_none
+
+  # ---- R5.18 (CV31): one rule for every route, from workspace_reach -------------
+  - name: R5.18 the read rule asks no reach
+    file: packages/python/dw_platform/src/dw_platform/application/connection_admin.py
+    old: "        if row is None or row.owning_workspace_id not in await tx.reach(CONNECTIONS_READ_SCOPE):\n"
+    new: "        if row is None:\n"
+    tests:
+      - apps/api/tests/integration/test_connections_api.py::test_reading_takes_connections_read_reaching_the_owning_workspace
+  - name: R5.18 the list asks no reach
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/connections_repo.py
+    old: "                _CONNECTIONS.c.owning_workspace_id.in_(reach),\n"
+    new: "                sa.true(),\n"
+    tests:
+      - apps/api/tests/integration/test_connections_api.py::test_reading_takes_connections_read_reaching_the_owning_workspace
+  - name: R5.18 the write rule asks no reach
+    file: packages/python/dw_platform/src/dw_platform/application/connection_admin.py
+    old: "        if row.owning_workspace_id not in await tx.reach(CONNECTIONS_MANAGE_SCOPE):\n"
+    new: "        if False:\n"
+    tests:
+      - apps/api/tests/integration/test_connections_api.py::test_writing_takes_connections_manage_reaching_the_owning_workspace
+  - name: R5.18 a create asks no reach of the working workspace
+    file: packages/python/dw_platform/src/dw_platform/application/connection_admin.py
+    old: "        if context.workspace_id not in await tx.reach(CONNECTIONS_MANAGE_SCOPE):\n"
+    new: "        if False:\n"
+    tests:
+      - apps/api/tests/integration/test_connections_api.py::test_writing_takes_connections_manage_reaching_the_owning_workspace
+  - name: R5.18 the audit row stands in the caller's working workspace
+    file: packages/python/dw_platform/src/dw_platform/application/connection_admin.py
+    old: "            workspace_id=WorkspaceId(owning_workspace_id),\n"
+    new: "            workspace_id=WorkspaceId(context.workspace_id),\n"
+    tests:
+      - apps/api/tests/integration/test_connections_api.py::test_writing_takes_connections_manage_reaching_the_owning_workspace
+
+  # ---- R5.1, R5.20 (CV14): the create's body, two layers ------------------------
+  - name: R5.1 a create may leave a declared field out
+    file: packages/python/dw_platform/src/dw_platform/application/connection_admin.py
+    old: "        if given != declared:\n"
+    new: "        if not given <= declared:\n"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_connections_rule.py::test_the_service_refuses_a_create_before_it_opens_anything
+      - apps/api/tests/integration/test_connections_api.py::test_a_create_that_does_not_match_the_connector_writes_nothing
+  - name: R5.20 the service takes any share scope
+    file: packages/python/dw_platform/src/dw_platform/application/connection_admin.py
+    old: "        if new.share_scope != SHARED_BY_WORKSPACE:\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_connections_rule.py::test_the_service_refuses_a_create_before_it_opens_anything
+  - name: R5.20 the route's schema takes any share scope
+    file: apps/api/src/dw_api/routes/v1/connections.py
+    old: "    share_scope: Literal[\"workspace\"] = \"workspace\"\n"
+    new: "    share_scope: str = \"workspace\"\n"
+    tests:
+      - apps/api/tests/integration/test_connections_api.py::test_a_create_that_does_not_match_the_connector_writes_nothing
+  - name: R5.1 PATCH takes fields it must refuse
+    file: apps/api/src/dw_api/routes/v1/connections.py
+    old: "    model_config = ConfigDict(extra=\"forbid\")\n\n    name: str | None"
+    new: "    model_config = ConfigDict(extra=\"ignore\")\n\n    name: str | None"
+    tests:
+      - apps/api/tests/integration/test_connections_api.py::test_a_patch_takes_the_name_and_declared_secrets_only
+  - name: R5.5 disable acts on a connection that is not active
+    file: packages/python/dw_platform/src/dw_platform/application/connection_admin.py
+    old: "            if row.status != \"active\":\n"
+    new: "            if False:\n"
+    tests:
+      - apps/api/tests/integration/test_connections_api.py::test_disabling_is_at_once_and_only_from_active
+
+  # ---- R1.2 (CV12): the fingerprint without the values, two layers --------------
+  - name: R1.2 the dependency hashes the raw body
+    file: apps/api/src/dw_api/dependencies/idempotency.py
+    old: "                    else fingerprint_body(await request.body())\n"
+    new: "                    else await request.body()\n"
+    tests:
+      - apps/api/tests/integration/test_connections_api.py::test_the_idempotency_fingerprint_never_hashes_a_secret_value
+  - name: R1.2 the create declares no redaction
+    file: apps/api/src/dw_api/routes/v1/connections.py
+    old: "    idempotent(_may_create, operation=\"POST /connections\", fingerprint_body=_without_secret_values),\n"
+    new: "    idempotent(_may_create, operation=\"POST /connections\"),\n"
+    tests:
+      - apps/api/tests/integration/test_connections_api.py::test_the_idempotency_fingerprint_never_hashes_a_secret_value
+  - name: R1.2 the redaction keeps the values
+    file: apps/api/src/dw_api/routes/v1/connections.py
+    old: "        parsed = {**parsed, \"secrets\": sorted(given) if isinstance(given, dict) else None}\n"
+    new: "        pass\n"
+    tests:
+      - apps/api/tests/unit/test_connections_fingerprint.py
+
+  # ---- R5.8: dependents ---------------------------------------------------------
+  - name: R5.8 a connection in use is deleted
+    file: packages/python/dw_platform/src/dw_platform/application/connection_admin.py
+    old: "            if found.total > 0:\n"
+    new: "            if False:\n"
+    tests:
+      - apps/api/tests/integration/test_connections_api.py::test_a_connection_in_use_is_not_deleted
+
+  # ---- connection_usable (R5.4, R5.5, R5.9, R5.14-R5.16, R5.20) -----------------
+  - name: R5.14 any purpose is usable
+    file: packages/python/dw_platform/src/dw_platform/application/connections.py
+    old: "            if purpose not in _USABLE_PURPOSES:\n"
+    new: "            if False:\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_connections_db.py::test_a_purpose_other_than_tool_is_refused
+  - name: R5.5 any status is usable
+    file: packages/python/dw_platform/src/dw_platform/application/connections.py
+    old: "            if row.status != \"active\":\n"
+    new: "            if False:\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_connections_db.py::test_a_disabled_connection_is_refused_at_every_call_site
+  - name: R5.4 another workspace may use it
+    file: packages/python/dw_platform/src/dw_platform/application/connections.py
+    old: "                or row.owning_workspace_id != context.workspace_id\n"
+    new: "\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_connections_db.py::test_a_connection_is_usable_only_in_its_own_workspace
+  - name: R5.20 every share scope is read as workspace
+    file: packages/python/dw_platform/src/dw_platform/application/connections.py
+    old: "                row.share_scope != _SHARED_BY_WORKSPACE\n"
+    new: "                False\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_connections_db.py::test_a_connection_written_with_another_share_scope_is_not_usable
+  - name: R5.9 connections.use is not asked
+    file: packages/python/dw_platform/src/dw_platform/application/connections.py
+    old: "            if context.principal_id is None or context.workspace_id not in await tx.reach(\n"
+    new: "            if context.principal_id is None and context.workspace_id not in await tx.reach(\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_connections_db.py::test_using_a_connection_takes_connections_use_reaching_the_workspace
+  - name: R5.15 the secret branch runs at every call site
+    file: packages/python/dw_platform/src/dw_platform/application/connections.py
+    old: "            if context.call_site == \"egress\" and not await self._credentials_live(\n"
+    new: "            if not await self._credentials_live(\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_connections_db.py::test_a_field_with_no_version_left_unrevoked_refuses_the_egress_call
+  - name: R5.15 a field of revoked versions only is live
+    file: packages/python/dw_platform/src/dw_platform/application/connections.py
+    old: "            if not any(v.revoked_at is None or v.revoked_at > now for v in versions):\n"
+    new: "            if not versions:\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_connections_db.py::test_a_field_with_no_version_left_unrevoked_refuses_the_egress_call
+  - name: R5.15 a connector with no catalogue entry is live
+    file: packages/python/dw_platform/src/dw_platform/application/connections.py
+    old: "        if fields is None:\n            return False\n"
+    new: "        if fields is None:\n            return True\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_connections_db.py::test_a_field_with_no_version_left_unrevoked_refuses_the_egress_call
+  - name: R5.15 an unknown request time is live
+    file: packages/python/dw_platform/src/dw_platform/application/connections.py
+    old: "        if run_requested_at is None:\n            return False\n"
+    new: "        if run_requested_at is None:\n            return True\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_connections_db.py::test_a_field_with_no_version_left_unrevoked_refuses_the_egress_call
+  - name: R5.16 the compromise is not compared
+    file: packages/python/dw_platform/src/dw_platform/application/connections.py
+    old: "        if row.compromised_at is not None and run_requested_at <= row.compromised_at:\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_connections_db.py::test_a_run_requested_before_a_revocation_for_compromise_stays_refused
+  - name: R5.16 a run requested at the revocation's instant passes
+    file: packages/python/dw_platform/src/dw_platform/application/connections.py
+    old: "run_requested_at <= row.compromised_at:\n"
+    new: "run_requested_at < row.compromised_at:\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_connections_db.py::test_a_run_requested_before_a_revocation_for_compromise_stays_refused
+
+  # ---- R5.9 (CV14): the catalogue -----------------------------------------------
+  - name: R5.9 connections.manage registered as standard
+    file: db/migrations/versions/388a31c46bdf_connections_status_rules_and_revocation_.py
+    old: "    (\"connections.manage\", \"Quản trị kết nối của workspace\", \"elevated\"),\n"
+    new: "    (\"connections.manage\", \"Quản trị kết nối của workspace\", \"standard\"),\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_connections_db.py::test_the_three_keys_are_in_the_catalogue_at_workspace_depth
