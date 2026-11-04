@@ -1,6 +1,6 @@
 # 01 — Cổng ExpressionEngine, adapter CEL trong tiến trình tính riêng, thư viện dw.cel/v1 và bộ test hợp đồng
 
-Status: ready-for-agent
+Status: resolved (2026-11-04, 73ee226)
 Blocked by: .claude/plans/studio/studio-skeleton/issues/02-goi-dw-studio-va-seam-api.md
 Area: studio
 Yêu cầu: R3.1, R3.4, R3.7, WN12, WN36
@@ -186,38 +186,38 @@ list[ExpressionIssue]` chạy đồng bộ. `async evaluate(checked: CheckedExpr
 
 ## Tiêu chí chấp nhận
 
-- [ ] R3.1: với env có `trigger` là `object{amount: int}`, `check("trigger.amount > 1000000", env)` trả một
+- [x] R3.1: với env có `trigger` là `object{amount: int}`, `check("trigger.amount > 1000000", env)` trả một
       `CheckedExpression` kiểu `bool`, và `await evaluate(...)` với `{"trigger": {"amount": 2000000}}` trả `True`.
       Tham chiếu một biến chưa khai → `ExpressionIssue` `undeclared_reference` mang `name` của biến đó, và không có
       lời gọi `evaluate` nào. Biên dịch với `disable_check=True` → test đỏ.
-- [ ] R3.1: với `score` là `object{response: object{tier: string}}`:
+- [x] R3.1: với `score` là `object{response: object{tier: string}}`:
     - `score.response.tierr` → `undefined_field` với `name` `tierr`;
     - `score.response.tier + 1` → `no_matching_overload`;
     - `score.response.tier` với activation thiếu `tier` → `null`;
     - ánh xạ trường vô hướng sang vô hướng proto3 thay cho wrapper → ca `null` đỏ, vì đọc ra `''`.
-- [ ] R3.1: activation mang `datetime(2026, 11, 3, 1, 30)` không múi giờ → `ValueError` trước khi gửi tới tiến trình
+- [x] R3.1: activation mang `datetime(2026, 11, 3, 1, 30)` không múi giờ → `ValueError` trước khi gửi tới tiến trình
       tính. Gỡ phép kiểm này → test đỏ.
-- [ ] R3.1: `phone.e164` trả cùng `+84901234567` cho `"0901 234 567"`, `"+84901234567"` và `"+84 0901 234 567"`,
+- [x] R3.1: `phone.e164` trả cùng `+84901234567` cho `"0901 234 567"`, `"+84901234567"` và `"+84 0901 234 567"`,
       còn `"12345"` → `expression_error` (`OUT_OF_RANGE`). Đổi nhánh lỗi sang trả `''` → test đỏ.
-- [ ] R3.1: có các module thử import `cel_expr_python`:
+- [x] R3.1: có các module thử import `cel_expr_python`:
     - một module ngoài `dw_studio.core.adapters.cel` (ở `dw_studio.core.application`, và ở `dw_platform`) →
       `lint-imports` đỏ và nêu tên module đó (studio-skeleton:R5.6);
     - một module trong `dw_kernel` → contract "Kernel is pure" đỏ;
     - gỡ hợp đồng, hay bỏ `cel_expr_python` khỏi denylist → module thử qua, test đỏ.
-- [ ] R3.4 (WN12): `xs.map(a, xs.map(b, xs.map(c, a+b+c)))` với `xs` 22 phần tử → `expression_budget_exceeded`;
+- [x] R3.4 (WN12): `xs.map(a, xs.map(b, xs.map(c, a+b+c)))` với `xs` 22 phần tử → `expression_budget_exceeded`;
       21 phần tử → trả giá trị. Ánh xạ lỗi ngân sách của binding sang `expression_error` → test đỏ.
-- [ ] R3.4 (WN12): đo sau một lần tính làm ấm. Biểu thức 77 byte nối 19 lần một list 500 phần tử rồi `.map(a, a+1)`
+- [x] R3.4 (WN12): đo sau một lần tính làm ấm. Biểu thức 77 byte nối 19 lần một list 500 phần tử rồi `.map(a, a+1)`
       (đo được 5,6 giây khi tính trong tiến trình) → `expression_budget_exceeded` trong ≤ 1,5 giây. Trong thời gian
       đó, một tác vụ asyncio của bên gọi đếm nhịp 10 ms đếm được ít nhất 50 nhịp, và lần `evaluate` kế tiếp trả đúng
       giá trị. Gỡ đồng hồ, hay tính ngay trong tiến trình gọi → test đỏ, vì lâu hơn 1,5 giây hoặc thiếu nhịp.
-- [ ] R3.4 (WN12): `s + s + s` với `s` 100 KiB (kết quả 300 KiB) → `expression_budget_exceeded`; `s + s` (200 KiB) →
+- [x] R3.4 (WN12): `s + s + s` với `s` 100 KiB (kết quả 300 KiB) → `expression_budget_exceeded`; `s + s` (200 KiB) →
       trả giá trị. Gỡ trần 256 KiB → test đỏ.
-- [ ] R3.7 (WN36): cùng nguồn và cùng biến cho tenant A và tenant B → cache có hai mục. Bỏ `tenant_id` khỏi khóa →
+- [x] R3.7 (WN36): cùng nguồn và cùng biến cho tenant A và tenant B → cache có hai mục. Bỏ `tenant_id` khỏi khóa →
       còn một mục, test đỏ.
-- [ ] R3.1: `uv.lock` ghim chính xác `cel-expr-python==0.1.3` và `protobuf==7.36.1`, và không có
+- [x] R3.1: `uv.lock` ghim chính xác `cel-expr-python==0.1.3` và `protobuf==7.36.1`, và không có
       `common-expression-language`. `scripts/verify_architecture.py` xanh khi `dw_studio` import `cel_expr_python` và
       `google.protobuf`.
-- [ ] Xong: `make ci` xanh.
+- [x] Xong: `make ci` xanh.
 
 ## Nguồn
 
@@ -278,3 +278,48 @@ list[ExpressionIssue]` chạy đồng bộ. `async evaluate(checked: CheckedExpr
   xác; trường có kiểu `int` dùng `Int64Value` nên không bị. tenant-config:R6.1 viết "`dw.cel/v1`", đọc là bản chính
   của `dw.cel/v1.0`; `checking-plan-consistency` gióng lại.
 - 2026-11-03 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-04 (agent): Xong, `73ee226` (mã) và commit test ngay sau. Mọi tiêu chí xanh trên Windows và trong
+  `python:3.12-slim-bookworm`; dòng `Xong` đọc theo wave-close.md: ruff, format, mypy, lint-imports, bandit,
+  verify_architecture, test_verify_architecture.sh, verify_invariants, check_hygiene, pip-audit (không lỗ hổng),
+  unit của `dw_kernel` và `dw_studio` với `-n auto`. Mười bảy đột biến của `mutations/01.yaml` đã thấy đỏ bằng tay, tại
+  chỗ (bản Linux trong container), vì bộ test qua ngay lần đầu; `scripts/mutate.py` chạy ở lúc đóng hàng đợi.
+- 2026-11-04 (agent): Khác với ticket, đều đo trên binding trước khi dựa vào:
+    - Trên Linux, biểu thức 77 byte của WN12 lên tới 1,7 GB khi không giới hạn, nên `RLIMIT_AS` 512 MiB dừng nó ở
+      khoảng 0,8 giây bằng `MemoryError` (std::bad_alloc), trước đồng hồ. Test của tiêu chí đó nhận
+      `expression_budget_exceeded` với `DEADLINE_EXCEEDED` (Windows) hoặc `RESOURCE_EXHAUSTED` (Linux). Đồng hồ có
+      thêm một test riêng đỏ trên cả hai nền: 9.801 lần quét regex trên 300 KB (5 giây khi tính trong tiến trình,
+      đỉnh 32 MB) phải ra `DEADLINE_EXCEEDED`.
+    - Nhịp 10 ms đếm theo ô 10 ms mà tác vụ của bên gọi chạy được (`sleep(0)`), vì Windows làm tròn `sleep(0.01)`
+      lên 15,6 ms: dưới `-n auto` chỉ đếm được 47 nhịp dù vòng sự kiện rảnh.
+    - Binding cắt `str` và `bytes` truyền thẳng ở U+0000 (`'a�b'` đọc ra `'a'`), còn trong message thì giữ nguyên;
+      chuỗi truyền thẳng có U+0000 trả `expression_error` (`INVALID_ARGUMENT`).
+    - Binding không khai được biến cấp cao kiểu optional (không có chữ ký `optional_type` nào nó nhận). Biến cấp cao
+      `optional[T]` khai như `T`, vắng thì bỏ khỏi activation, đọc tới thì đóng (`UNKNOWN`). Trường `optional[T]`
+      dùng cùng trường wrapper hay message như `T`, kiểm bằng `has()` và `.?f` (ADR-0112 (Accepted), Amendments 2026-11-04).
+    - Kết quả không có dạng JSON (optional, kiểu) bị từ chối ở `check` với `other`, không chờ tới lúc tính. Double
+      không hữu hạn và khóa activation không khai ở cấp cao trả `expression_error` (`INVALID_ARGUMENT`).
+    - Mẫu chữ thứ hai của `too_deep` (`CANCELLED: Expression recursion limit exceeded`, không có vị trí) cũng được
+      xếp vào `too_deep`.
+    - `tzdata>=2024.1` thành phụ thuộc chạy của `dw-studio`. mypy đọc stub `.pyi` của binding
+      (`follow_untyped_imports`) và bỏ qua kiểu của `google.protobuf`.
+    - Hai hợp đồng import-linter được thử bằng `tests/unit/test_cel_import_contracts.py`: chạy đúng hai hợp đồng đọc từ
+      `pyproject.toml` trên một cây gói rỗng có cắm một module thử.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): `MemoryError` trong tiến trình tính trả `expression_budget_exceeded`
+  (`RESOURCE_EXHAUSTED`), không phải `expression_error` (`INTERNAL`): tiến trình không chết, và đó là một trần tài nguyên
+  như trần 256 KiB. Nếu sai thì: một nhánh trong `evaluator.evaluate`, và tiêu chí 77 byte trên Linux đổi theo.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): message thành JSON với số nguyên giữ là số, không thành chuỗi như dạng
+  JSON chuẩn của protobuf cho `int64`; trường vắng bị bỏ như ticket nói. Nếu sai thì: `schema._message_json` gọi
+  `json_format.MessageToDict`, và bên đọc nhận `"2000000"`.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): list hay map lồng trong trường của `object{...}` (`list[list[T]]`,
+  map của list...) không có dạng proto, nên dựng env ném `ValueError`; ở cấp cao thì được. Nếu sai thì: sinh một
+  message bọc cho mỗi container lồng, và đường dẫn CEL đổi theo.
+- 2026-11-04 (agent): MEDIUM, cho ticket sau:
+    - (a) Binding cũng cắt chuỗi ở U+0000 khi gọi hàm Python và khi nhận kết quả của nó, nên `text.mask_contacts`
+      và các hàm nền tảng khác chỉ thấy phần trước U+0000 của một chuỗi lấy từ message. Chặn U+0000 ở mọi chuỗi đi vào
+      (cả trong message) là một lựa chọn; ticket 03 quyết khi dựng env từ schema.
+    - (b) Ticket 03 và tools-and-skills ánh xạ schema có mảng lồng sẽ gặp `ValueError` ở trên.
+    - (c) Đo được trong smoke: lần `evaluate` đầu (khởi tiến trình) 0,22 giây trên Windows, 0,5 giây trong container;
+      một vòng gửi nhận khoảng 1,4 ms trên Windows. Đo latency ở lúc đóng hàng đợi cộng phần này cho route
+      `/expressions/evaluate` của ticket 03.
+- 2026-11-04 (agent): Còn nợ ở lúc đóng hàng đợi: `scripts/mutate.py .claude/plans/studio/workflow-nodes/mutations/01.yaml`
+  (một mục `runner: linux`); latency không có gì để đo ở ticket này vì chưa có route hay trang nào gọi engine.

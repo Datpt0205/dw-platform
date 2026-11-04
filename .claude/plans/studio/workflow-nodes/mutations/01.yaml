@@ -1,0 +1,119 @@
+# Mutation check of workflow-nodes ticket 01: scripts/mutate.py runs this file
+# at the queue's close (wave-close.md). One mutation per control the ticket adds
+# (WN12, WN36; R3.1, R3.4, R3.7) and per layer that holds one: the type check,
+# the wrapper fields, the naive-datetime refusal, the platform functions'
+# refusals, the two import contracts, the iteration budget, the clock, the
+# evaluator process, the size cap, the address-space limit, the tenant in the
+# cache key, the source cap and the activation's own refusals.
+#
+# Every one of these was also shown red by hand, in place, on 2026-11-04
+# (lane2-wn01-mutate-by-hand.log in the session scratchpad), because the suite
+# passed on its first run.
+mutations:
+  - name: R3.1 compiled without the type check
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/cel/compiler.py
+    old: "program = bound.env.compile(source)"
+    new: "program = bound.env.compile(source, disable_check=True)"
+    tests:
+      - packages/python/dw_studio/tests/core/adapters/cel/test_expression_contract.py::test_an_undeclared_reference_is_an_issue_naming_it
+      - packages/python/dw_studio/tests/core/adapters/cel/test_expression_contract.py::test_object_fields_are_checked
+  - name: R3.1 a scalar field as a proto3 scalar instead of a wrapper
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/cel/schema.py
+    old: "                _message_field(field, _WRAPPER[kind], _LABEL_OPTIONAL)"
+    new: "                field.type = _PLAIN[kind]\n                field.label = _LABEL_OPTIONAL"
+    tests:
+      - packages/python/dw_studio/tests/core/adapters/cel/test_expression_contract.py::test_an_absent_scalar_field_reads_null_never_its_zero
+  - name: R3.1 a naive datetime is sent to the evaluator
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/cel/engine.py
+    old: "        _refuse_naive_datetimes(activation)\n"
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/core/adapters/cel/test_expression_contract.py::test_a_naive_datetime_is_refused_before_it_is_sent
+      - packages/python/dw_studio/tests/core/adapters/cel/test_cel_cpp_engine.py::test_check_runs_here_and_a_naive_datetime_never_reaches_the_pool
+  - name: R3.1 phone.e164 answers an empty string instead of refusing
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/cel/library.py
+    old: '    raise ValueError("phone.e164: not a phone number")'
+    new: '    return ""'
+    tests:
+      - packages/python/dw_studio/tests/core/adapters/cel/test_expression_contract.py::test_phone_e164_one_answer_for_three_spellings
+  - name: R3.1 the CEL import contract forbids nothing
+    file: pyproject.toml
+    old: 'forbidden_modules = ["cel_expr_python"]'
+    new: 'forbidden_modules = ["cel_expr_python_not_installed"]'
+    tests:
+      - packages/python/dw_studio/tests/unit/test_cel_import_contracts.py
+  - name: R3.1 the kernel denylist loses the binding
+    file: pyproject.toml
+    old: "    \"cel_expr_python\",\n]"
+    new: "]"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_cel_import_contracts.py::test_the_binding_imported_by_the_kernel_breaks_both_contracts
+  - name: R3.4 the binding's budget error mapped to a plain expression error
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/cel/evaluator.py
+    old: '            return ExpressionError("expression_budget_exceeded", "INTERNAL")'
+    new: '            return ExpressionError("expression_error", "INTERNAL")'
+    tests:
+      - packages/python/dw_studio/tests/core/adapters/cel/test_expression_contract.py::test_the_iteration_budget_stops_a_nested_map
+  - name: R3.4 WN12 no wall clock
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/cel/pool.py
+    old: "if not evaluator.conn.poll(self._wall_clock_s):"
+    new: "if not evaluator.conn.poll(None):"
+    tests:
+      - packages/python/dw_studio/tests/core/adapters/cel/test_expression_contract.py::test_the_wall_clock_stops_a_slow_small_evaluation
+  - name: R3.4 WN12 evaluated in the caller's process
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/cel/engine.py
+    old: "        return await self._pool.run(EvalRequest(checked.source, checked.env, dict(activation)))"
+    new: "        from dw_studio.core.adapters.cel.evaluator import evaluate\n\n        return evaluate(self._compiler, EvalRequest(checked.source, checked.env, dict(activation)))"
+    tests:
+      - packages/python/dw_studio/tests/core/adapters/cel/test_expression_contract.py::test_the_wall_clock_stops_a_slow_small_evaluation
+      - packages/python/dw_studio/tests/core/adapters/cel/test_expression_contract.py::test_the_77_byte_expression_is_stopped_and_the_caller_keeps_running
+  - name: R3.4 no 256 KiB cap on the result
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/cel/evaluator.py
+    old: "    if size > MAX_RESULT_BYTES:"
+    new: "    if False:"
+    tests:
+      - packages/python/dw_studio/tests/core/adapters/cel/test_expression_contract.py::test_a_result_over_256_kib_is_refused
+  - name: R3.4 no address-space limit on the evaluator (Linux)
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/cel/evaluator.py
+    old: "        resource.setrlimit(resource.RLIMIT_AS, (ADDRESS_SPACE_BYTES, ADDRESS_SPACE_BYTES))"
+    new: "        pass"
+    runner: linux
+    tests:
+      - packages/python/dw_studio/tests/core/adapters/cel/test_cel_cpp_engine.py::test_the_address_space_limit_stops_a_memory_bomb_in_the_evaluator
+  - name: R3.7 WN36 the tenant left out of the cache key
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/cel/compiler.py
+    old: "    tenant = None if env.tenant_id is None else str(env.tenant_id)"
+    new: "    tenant = None"
+    tests:
+      - packages/python/dw_studio/tests/core/adapters/cel/test_cel_cpp_engine.py::test_two_tenants_never_share_a_compiled_program
+  - name: the 2 KiB source cap is gone
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/cel/compiler.py
+    old: '        if len(source.encode("utf-8")) > MAX_SOURCE_BYTES:'
+    new: "        if False:"
+    tests:
+      - packages/python/dw_studio/tests/core/adapters/cel/test_expression_contract.py::test_a_source_over_2_kib_is_refused_without_compiling
+  - name: a binding wording filed under the wrong kind
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/cel/compiler.py
+    old: '(re.compile(r"undefined field ''([^'']*)''"), "undefined_field"),'
+    new: '(re.compile(r"undefined field ''([^'']*)''"), "other"),'
+    tests:
+      - packages/python/dw_studio/tests/core/adapters/cel/test_expression_contract.py::test_each_issue_kind
+  - name: an undeclared activation key is accepted
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/cel/schema.py
+    old: "    if unknown:"
+    new: "    if False:"
+    tests:
+      - packages/python/dw_studio/tests/core/adapters/cel/test_expression_contract.py::test_an_undeclared_activation_key_is_an_error
+  - name: a plain string with U+0000 is read short instead of refused
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/cel/schema.py
+    old: '    if "\x00" in value:'
+    new: "    if False:"
+    tests:
+      - packages/python/dw_studio/tests/core/adapters/cel/test_expression_contract.py::test_a_plain_string_with_nul_is_refused_and_an_object_keeps_it
+  - name: a library the adapter does not ship is accepted
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/cel/compiler.py
+    old: "    if env.library != DW_CEL_LIBRARY:"
+    new: "    if False:"
+    tests:
+      - packages/python/dw_studio/tests/core/adapters/cel/test_expression_contract.py::test_a_library_this_adapter_does_not_ship_is_a_programming_error
+      - packages/python/dw_studio/tests/core/adapters/cel/test_expression_contract.py::test_evaluate_refuses_a_library_this_adapter_does_not_ship
