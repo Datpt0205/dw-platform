@@ -237,3 +237,23 @@ of simulated runs, applied with the planner's provisional calls H-1-H-18:
   version of the model connection's key that is not revoked, as every call through a connection does
   (ADR-0115 (Accepted) decision 1), and a revocation for compromise stops the run at its next model
   call through decision 3's `connection_usable`.
+
+## Amendments (2026-11-04)
+
+Amended on 2026-11-04 by the agent under Đạt's delegation of 2026-10-31 (agent, theo ủy quyền 31/10/2026), from the
+readiness gate of model-connections tickets 02 and 03:
+
+- Decision 1: the run manifest pins each profile a Studio run may use by value, every route but `embedding`, under
+  `engine.model_routes` with `default_model_profile` (ADR-0109 (Accepted) decision 8), and a call reads the pinned route.
+  A call whose pinned profile's current content hash differs from the pinned one, or whose platform profile the plan no
+  longer lists, is refused before anything is sent and the run ends `failed` with `model_profile_unavailable`: the run
+  never switches route mid-way and never sends under a declaration that has since been corrected (for instance an alias
+  re-declared `foreign` after FOG-18). A run with no Studio root has no manifest and resolves per call. The tenant layer
+  is not filtered by plan; `tenant_id=None` is not an answer the resolver gives, and the platform layer is read unfiltered
+  only by composition roots and scripts. Nếu sai thì: the run parks `blocked` with `incompatible_resume` instead of
+  failing, and the residency gate reads the current declaration.
+- Decision 2: the closed set of twelve capabilities sits under `capabilities` on each route, an undeclared one reading as
+  unsupported and a name outside the set failing to load; `max_input_tokens` moves there. The price reference is the
+  route's (`provider`, `model`) pair, the key the price book already prices by. `model_connection_model_id` joins with
+  the first tenant route in W2. Model profiles join the release manifest. Nếu sai thì: only the capabilities with a W1
+  reader are declared, and a W2 schema change adds the rest.
