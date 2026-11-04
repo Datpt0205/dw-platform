@@ -1,4 +1,4 @@
-# 05 — FOG-49: dw-proterial thôi ghi `memberships.role_keys` trước khi ticket 03 khóa cột
+# 05 — FOG-49: dw-proterial thôi ghi `memberships.role_keys` trước khi ticket 06 khóa cột
 
 Status: ready-for-human (FOG-49: người giữ dw-proterial)
 Blocked by: 02
@@ -7,17 +7,21 @@ Yêu cầu: không (điều kiện tiên quyết ngoài repo; tách khỏi ticke
 
 ## Mục tiêu
 
-Ticket 03 khóa `memberships.role_keys` và `permission_set_keys` (`ck_memberships_legacy_role_columns`) và đưa mọi gán
-vai trò qua đề xuất hai người, nên một sản phẩm dựng trên nền tảng còn ghi hai cột đó sẽ lỗi 23514 ngay khi nhận
-migration của ticket 03. Đạt quyết ngày 24/10/2026 (FOG-49) rằng người giữ dw-proterial chuyển dw-proterial khỏi hai
-cột trước khi ticket 03 chạy. Agent không có kênh tới dw-proterial, nên phần này là việc của người: Đạt hỏi, người giữ
-dw-proterial làm và xác nhận, Đạt ghi lại.
+Ticket 06 khóa `memberships.role_keys` và `permission_set_keys` (`ck_memberships_legacy_role_columns`), nên một sản
+phẩm dựng trên nền tảng còn ghi hai cột đó sẽ lỗi 23514 ngay khi nhận migration của ticket 06. Đạt quyết ngày
+24/10/2026 (FOG-49) rằng người giữ dw-proterial chuyển dw-proterial khỏi hai cột trước khi cột bị khóa; khóa tách từ
+ticket 03 sang ticket 06 ngày 4/11/2026, nên ticket này chỉ chặn ticket 06. Agent không có kênh tới dw-proterial, nên
+phần này là việc của người: Đạt hỏi, người giữ dw-proterial làm và xác nhận, Đạt ghi lại.
 
 ## Việc cần làm
 
-1. Đạt gửi người giữ dw-proterial: hai cột bị khóa ở ticket 03; gán vai trò từ nay là đề xuất hai người qua API gán
-   vai trò của ticket 03 (bước 4 và 6); importer hay script ghi vai trò dưới `dw_migrator` thì ghi bảng gán vai trò
-   của ticket 02.
+1. Đạt gửi người giữ dw-proterial: hai cột bị khóa ở ticket 06; từ ticket 03, gán vai trò là đề xuất hai người qua
+   API gán vai trò (bước 4 và 6), nên ngay khi nhận migration của ticket 03, một lần ghi hai cột dưới `dw_app` mà thêm
+   vai trò đã bị từ chối (23514 `rbac_refusals_role_assignments`), lần thêm khóa dưới `dw_provisioner` và lần thêm
+   `platform_admin` dưới vai khác `dw_migrator` cũng vậy (`ck_memberships_legacy_role_writer`), và không lần ghi nào
+   đổi được `user_id`, `workspace_id`, `tenant_id` của membership (`ck_memberships_identity_fixed`); lần ghi dưới
+   `dw_migrator` và lần bỏ vai trò còn qua tới ticket 06. Importer hay script ghi vai trò dưới `dw_migrator` thì ghi
+   bảng gán vai trò của ticket 02.
 2. Người giữ dw-proterial chuyển mọi chỗ ghi hai cột, gồm importer, seed và fixture, rồi trả lời bằng commit đã chuyển.
 3. Đạt ghi vào Comments ngày, người xác nhận và commit đó; agent dời ticket này sang `resolved`.
 
@@ -38,3 +42,6 @@ dw-proterial làm và xác nhận, Đạt ghi lại.
   điều kiện FOG-49 ("chưa xong thì ticket 03 không lên ready-for-agent") cần một câu trả lời chỉ Đạt lấy được từ người
   giữ dw-proterial. Ticket 03 lên `ready-for-agent` khi ticket này `resolved`; Blocked by chỉ trỏ ngược, nên ticket 03
   ghi điều đó ở bước 9 và Comments. Nếu sai thì: gộp lại thành điều kiện trong bước 9 của ticket 03.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): khóa cột tách từ ticket 03 sang ticket 06 (Quyết định 4/11/2026 của
+  spec); ticket này chặn ticket 06, không chặn ticket 03. Bước 1 nói thêm điều ticket 03 đã từ chối, để người giữ
+  dw-proterial biết lần nhận nào làm vỡ gì. Nếu sai thì: như dòng của ticket 03 cùng ngày.

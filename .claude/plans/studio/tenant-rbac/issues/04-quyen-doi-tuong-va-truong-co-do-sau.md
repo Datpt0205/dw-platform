@@ -68,11 +68,15 @@ ticket 09, 14; ngữ nghĩa quyền trường thuộc field-security (ADR-0106 (
       `fld.*` qua quyền tính động) là người cấp được `fld.*` đầu tiên, và người xác nhận đề xuất cũng phải giữ khóa đó
       vì thay đổi áp trong giao dịch của người xác nhận;
     - cùng trigger giữ luật hai người của ticket 03 bước 4 (R7.5, R9.10): một lần ghi nới quyền (INSERT, UPDATE nâng
-      `depth`, UPDATE `read` lên `edit`) của `dw_app` cần `app.role_change_id` trỏ tới đề xuất `proposed`, chưa hết hạn,
-      cùng tenant, của người khác, loại `role_permissions` hay `role_create` cho đúng `role_id`; ticket này mở rộng danh
-      sách lần ghi của hai loại đó ở ticket 03 sang INSERT, UPDATE, DELETE hai bảng mới của vai trò đó. Lần ghi chỉ
+      `depth`, UPDATE `read` lên `edit`) của `dw_app` cần `app.role_change_id` trỏ tới đề xuất cùng tenant, của người
+      khác, loại `role_permissions` hay `role_create` cho đúng `role_id`, đã xác nhận bởi `app.user_id` trong chính giao
+      dịch này, như ticket 03 bước 4; ticket này mở rộng danh sách lần ghi của hai loại đó ở ticket 03 sang INSERT,
+      UPDATE, DELETE hai bảng mới của vai trò đó, và phép so `payload` của ticket 03 sang hai mảng
+      `object_privileges` (`object_id`, `action`, `depth`) và `field_permissions` (`field_id`, `access`) mà `payload`
+      mang trọn lúc đề xuất. Lần ghi chỉ
       siết (DELETE, hạ `depth`, `edit` xuống `read`) chỉ cần `app.user_id`. Miễn trừ `dw_provisioner`, `dw_migrator`
-      và tenant `offboarding`/`offboarded` như ticket 03 bước 2 (lần cascade khi offboarding xóa định nghĩa);
+      và lần ghi chỉ siết ở tenant `offboarding`/`offboarded` như ticket 03 bước 2 và 4 (lần cascade khi offboarding
+      xóa định nghĩa; lần ghi nới quyền ở đó vẫn bị xét);
     - `platform.role_is_critical` của org-and-principals/03 (`CREATE OR REPLACE`, một chủ, ADR-0104 (Accepted) sửa
       3/11/2026) thêm nhánh: vai trò có dòng `studio.field_permissions` trên trường sống có `pd_category = 'sensitive'`;
       `platform.rbac_refusals` không giữ phép so riêng mà đọc hàm đó cho luật `platform.roles.bind` (R6.8, DO-32.1),
@@ -185,3 +189,12 @@ ticket 09, 14; ngữ nghĩa quyền trường thuộc field-security (ADR-0106 (
   mọi ticket chờ nó (record-access/02, field-security/01, custom-objects/03) đứng sau câu trả lời của người giữ
   dw-proterial. Thứ tự dựng: ngay sau ticket 03.
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): khóa cột cũ tách từ ticket 03 sang ticket 06 (Quyết định 4/11/2026
+  của spec); ticket này chỉ cần phần không khóa của ticket 03 (`platform.rbac_refusals`, đề xuất, trigger `version`),
+  nên `Blocked by` giữ nguyên và câu "đứng sau câu trả lời của người giữ dw-proterial" ở dòng bảng cặp trên hết đúng:
+  ticket này và chuỗi chờ nó chỉ chờ ticket 03 dựng xong. Bảng cặp thêm 04~06: không đường phụ thuộc, chung đầu chuỗi
+  Alembic (ticket xong sau trỏ lại `down_revision`); 06 chỉ đổi `platform.memberships`, không bảng hay trigger của ticket
+  này. Nếu sai thì: như dòng của ticket 03 cùng ngày.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): gate lại ticket 03 cùng ngày (boundary walk, HIGH): ticket 03 bước 4
+  nay đòi đề xuất được xác nhận bởi `app.user_id` trong chính giao dịch ghi và lần ghi khớp `payload`, không chỉ khớp
+  `role_id`; bước 7 ở trên đổi theo cho hai bảng mới, không phạm vi mới. Nếu sai thì: như ticket 03 cùng ngày.
