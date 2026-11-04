@@ -22,8 +22,8 @@ trigger `studio.refuse_sealed_content_change()` và `ArtifactService.seal` cùng
    `has_quality_gate = false`; ADR-0120 (Accepted) quyết 1: bắt buộc từ `awaiting_approval`, không từ `evaluating`);
    `publish_approval_id uuid` NULL, FK ghép `(tenant_id, publish_approval_id)` tới
    `platform.approval_requests (tenant_id, id)` ON DELETE RESTRICT có index riêng (bắt buộc cùng điều kiện, trừ phiên
-   bản lên Đang dùng theo nhánh chỉ siết), và cùng revision thêm
-   `uq_approval_requests_tenant_id_id UNIQUE (tenant_id, id)` trên `platform.approval_requests`, vì UNIQUE đã có của
+   bản lên Đang dùng theo nhánh chỉ siết), tới `uq_approval_requests_tenant_id_id UNIQUE (tenant_id, id)` mà ticket
+   01 thêm trên `platform.approval_requests` cho `lift_approval_id` (gate ticket 01, 4/11/2026), vì UNIQUE đã có của
    bảng đó, `uq_approval_requests_tenant_id_workspace_id_id`, mang `workspace_id` mà vỏ phiên bản toàn tenant không
    có; `tighten_only boolean NOT NULL DEFAULT false` và `compared_live_hash text` NULL
    với CHECK `NOT tighten_only OR compared_live_hash IS NOT NULL`, do `LifecycleService` ghi lúc gửi:
