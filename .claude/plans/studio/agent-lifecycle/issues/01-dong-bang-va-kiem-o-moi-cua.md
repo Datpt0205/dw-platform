@@ -45,8 +45,10 @@ cửa, để quyết Đóng băng có thể tiếp tục cho lượt đang chạ
       mang tenant để bên nghe biết ảnh chụp nào phải bỏ (`run_events.py:63-69`); trigger trên
       `platform.platform_freezes` NOTIFY cùng kênh với payload `{"platform": true}`, làm mọi tiến trình bỏ mọi ảnh
       chụp.
-    - `platform.platform_freezes` (mặt danh tính, không `tenant_id`): tối đa một dòng mở; `dw_app` chỉ
-      SELECT; do `dw_provisioner` ghi, audit trong `platform.provisioning_audit`.
+        - `platform.platform_freezes` (mặt danh tính, không `tenant_id`): `id`, `reason_code`, `reason`, `set_by` (danh
+          tính người vận hành của ngữ cảnh provisioning), `set_at`, `lifted_by`, `lifted_at`; `set_by` và `id` vào ảnh chụp
+          của `SqlRunControl` cho `RunHaltedError` của ticket 05 (spec R8.11); tối đa một dòng mở; `dw_app` chỉ
+          SELECT; do `dw_provisioner` ghi, audit trong `platform.provisioning_audit`.
     - Grant: `dw_app` SELECT, INSERT, UPDATE (`lifted_by, lifted_at, lift_reason, lift_approval_id`) và
       DELETE (chỉ dùng được qua lượt xóa của offboarding, nhờ trigger trên) trên `control_switches`, chỉ
       SELECT trên `platform_freezes`; `dw_provisioner` ghi cả hai; khẳng định ở `test_privileges.py`;
@@ -119,10 +121,10 @@ artifacts=())`, `door` một StrEnum (`admission`, `start`, `resume`, `node`, `d
    giữ lượt do trình kích hoạt ở `queued` (workflow-engine:R5.16), còn lượt tương tác kết thúc `cancelled`. Làn `studio_runs` của
    workflow-engine/04 thi hành hợp đồng này; ticket này giao hợp đồng kèm test với làn giả.
 4. Route `POST /api/v1/admin/freeze` (`studio.lifecycle.freeze`, `Idempotency-Key`, body `reason_code`,
-   `reason`; một người cộng audit; đã có Đóng băng `origin` `tenant` mở → 409 `conflict` với `details.reason_code`
+   `reason`; một người cộng audit; trả 201 với `{switch_id}`; đã có Đóng băng `origin` `tenant` mở → 409 `conflict` với `details.reason_code`
    `already_frozen`, 0 audit) và `POST /api/v1/admin/unfreeze` (`studio.lifecycle.freeze`, `Idempotency-Key`): mở
    một yêu cầu phê duyệt không lượt chạy `studio.lifecycle.unfreeze` nghiêm, tem `studio.lifecycle.freeze`, payload
-   chỉ `{switch_id}` của dòng `origin` `tenant` đang mở (không dòng nào → 409 `not_frozen`; một yêu cầu gỡ còn `pending`
+   chỉ `{switch_id}` của dòng `origin` `tenant` đang mở, trả 202 với `{approval_id}` (không dòng nào → 409 `not_frozen`; một yêu cầu gỡ còn `pending`
    cho dòng đó → 409 `lift_pending`, không mở yêu cầu thứ hai, giữ bằng chỉ mục duy nhất từng phần
    `uq_approval_requests_control_lift_pending` trên `platform.approval_requests` `(tenant_id, (payload->>'switch_id'))
 WHERE approval_type IN ('studio.lifecycle.unfreeze', 'studio.lifecycle.revive') AND status = 'pending'`, cùng tiền lệ

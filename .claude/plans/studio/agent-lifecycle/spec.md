@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 2/11/2026
-Sẵn sàng: ĐẠT (4/11/2026; 0 CRITICAL, 0 HIGH; ticket 01-04)
+Sẵn sàng: ĐẠT (4/11/2026; 0 CRITICAL, 0 HIGH; ticket 01-05)
 
 Người dựng cần một lớp điều khiển vòng đời cho agent và quy trình: mỗi phiên bản đi qua Nháp, Đang
 kiểm định, Chờ duyệt, Đang dùng, Đã gỡ trong một máy trạng thái do PostgreSQL canh; chỉ sang Đang dùng
@@ -481,8 +481,8 @@ Studio của nó (YC6), mà không mở cho `dw_app` một đường xóa để 
 - Khóa quyền của spec, mỗi khóa đăng ký (nhãn, `scope_kind`, `risk`) trong danh mục quyền một chủ bằng
   migration của ticket dùng nó (quy ước của tenant-rbac/01): `studio.lifecycle.freeze` (ticket 01),
   `studio.versions.submit`, `studio.versions.retire` (ticket 03), `studio.publish.approve` (ticket 04),
-  `studio.lifecycle.read`, `studio.evals.run` (ticket 06), `studio.lifecycle.kill`, `studio.lifecycle.revive`
-  (ticket 05); khóa của route ca kịch bản theo R4.18 (Câu hỏi Q5).
+  `studio.lifecycle.read`, `studio.evals.run` (ticket 06), `studio.lifecycle.kill` (ticket 05;
+  `studio.lifecycle.revive` và `studio.lifecycle.unfreeze` là loại phê duyệt, không khóa); khóa của route ca kịch bản theo R4.18 (Câu hỏi Q5).
 - Audit: `studio.version.submitted`, `.returned_to_draft`, `.retired`, `.published`, `.candidate_read` (người duyệt
   đọc Bản ứng viên, R5.11), `control.freeze.set`, `control.freeze.lifted`, `control.kill.set`, `control.kill.lifted`,
   `studio.gate_run.started`, `.completed`, `studio.scenario.created`, `.updated`, `.deleted`, `approval.cancelled` (lane
@@ -754,8 +754,8 @@ NULL`; FK
   đáp ứng `PublishBindingsCheck` của R2.11, R5.10 (tenant-config:R7.2), nên ticket 04 chờ
   `.claude/plans/studio/tenant-config/issues/05-lien-ket-va-phien-ban-cau-hinh.md`; ticket đó cũng đặt
   `details.reason_code` `second_person_required` ở `_enforce_strict_rules` một lần cho mọi loại dưới tiền tố
-  nghiêm, mã mà R5.2, R7.11, R8.7 khẳng định (V4.P9; ADR-0104 (Accepted) quyết 11), nên ticket 01 (R7.11) và ticket
-  05 (R8.7) cũng chờ nó.
+  nghiêm, mã mà R5.2, R7.11, R8.7 khẳng định (V4.P9; ADR-0104 (Accepted) quyết 11); mã đó đã có ở
+  `approval_flow.py:139-152`, nên ticket 01 và 05 không chờ nó (gate 4/11/2026).
 - app-standards: ETag, `If-Match`, 412 và 428 cho lệnh gửi (app-standards:R3.2, app-standards:R3.3;
   `.claude/plans/studio/app-standards/issues/03-quy-uoc-api-danh-sach-va-sua.md`), mà ticket 03 nhận qua
   tenant-config/04 và tenant-config/02.
@@ -1414,6 +1414,10 @@ NULL`; FK
   ticket 06, màn duyệt ở ticket 07. Gate ticket 04 (4/11/2026): yêu cầu phát hành ở `owning_workspace_id`, payload mang
   `version_id`, bộ so sánh là trường `compare` của `ArtifactKindEntry`, worker nhận `dw_studio`. Theo `## Ủy quyền` của
   studio.md (Đạt, 31/10/2026). Nếu sai thì: hạ ticket 04 về `needs-triage` và chia lại.
+- 4/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 05. Ticket 05 dựng Tắt khẩn cấp và bật lại trên bảng,
+  port và cửa của ticket 01 và hợp đồng của ticket 03 (route, lane `control_switch`, sổ móc hủy lượt); gate ticket 05
+  (4/11/2026): `studio.lifecycle.revive` là loại phê duyệt, không khóa; lane hủy lượt `live`, `test` đang đỗ, không
+  `simulate`. Theo `## Ủy quyền` của studio.md (Đạt, 31/10/2026). Nếu sai thì: hạ ticket 05 về `needs-triage` và chia lại.
 
 ## Danh sách ticket
 
