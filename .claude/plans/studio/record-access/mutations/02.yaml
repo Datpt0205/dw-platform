@@ -1,0 +1,148 @@
+# Mutation check of record-access ticket 02: scripts/mutate.py runs this file at
+# the queue's close (wave-close.md). One mutation per control (RA12-RA16, the
+# rows of R5.6 and the gate's (g), (k), (l)) and per layer that holds one
+# (failure-modes #3, #5): the database's in the migration, taking effect when the
+# suite's session fixture recreates the database; the lane's in the adapter.
+mutations:
+  - name: RA12 the view maps a grant's key to an object without the tenant
+    file: db/migrations/versions/f6ea6e818d0c_record_reach_ledger.py
+    old: "        JOIN LATERAL platform.object_permission_keys(ctx.tenant_id) k\n"
+    new:
+      "        JOIN (SELECT 'obj.' || o.api_name || '.' || a.action AS key, o.id AS object_id,\
+      \ a.action FROM studio.object_defs o CROSS JOIN platform.object_actions a WHERE a.enforced)\
+      \ k\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_principal_scopes.py::test_ra12_two_tenants_of_one_structure_share_no_id
+  - name: RA12 the ledger row stops being private to its principal
+    file: db/migrations/versions/f6ea6e818d0c_record_reach_ledger.py
+    old: '    "CREATE POLICY owner_or_scope_principal_scopes ON studio.principal_scopes AS RESTRICTIVE"'
+    new: '    "CREATE POLICY owner_or_scope_principal_scopes ON studio.principal_scopes AS PERMISSIVE"'
+    tests:
+      - packages/python/dw_studio/tests/integration/test_principal_scopes.py::test_ra12_a_principal_reads_their_own_row_and_no_one_elses
+      - packages/python/dw_platform/tests/integration/test_rls_coverage.py::test_a_table_private_to_one_person_has_exactly_its_two_policies
+  - name: RA12 R5.7 the ledger's key to the member becomes one column to the user
+    file: db/migrations/versions/f6ea6e818d0c_record_reach_ledger.py
+    old: |2-
+                  FOREIGN KEY (tenant_id, principal_id)
+                  REFERENCES platform.tenant_members (tenant_id, user_id) ON DELETE CASCADE,
+    new: |2-
+                  FOREIGN KEY (principal_id)
+                  REFERENCES platform.users (id) ON DELETE CASCADE,
+    tests:
+      - packages/python/dw_studio/tests/integration/test_principal_scopes.py::test_r5_7_a_row_naming_another_company_s_member_is_refused
+  - name: RA12 the door computes for someone who is not a member of the company
+    file: db/migrations/versions/f6ea6e818d0c_record_reach_ledger.py
+    old: |2-
+                  SELECT 1 FROM platform.tenant_members m
+                  WHERE m.tenant_id = v_tenant AND m.user_id = v_user
+    new: |2-
+                  SELECT 1 WHERE false
+    tests:
+      - packages/python/dw_studio/tests/integration/test_principal_scopes.py::test_r5_3_the_door_does_nothing_for_someone_who_is_not_a_member
+  - name: RA13 a role assignment's removal marks no row stale
+    file: db/migrations/versions/f6ea6e818d0c_record_reach_ledger.py
+    old: "                 WHERE trigger_function <> 'none' LOOP\n            EXECUTE format(\n"
+    new:
+      "                 WHERE trigger_function <> 'none' AND table_name <> 'platform.role_assignments'\
+      \ LOOP\n            EXECUTE format(\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_principal_scopes.py::test_r5_2_a_committed_change_narrows_the_next_transaction
+      - packages/python/dw_studio/tests/integration/test_principal_scopes.py::test_step_7_every_declared_input_carries_its_trigger
+  - name: RA13 a workspace membership's removal marks no row stale
+    file: db/migrations/versions/f6ea6e818d0c_record_reach_ledger.py
+    old: "                 WHERE trigger_function <> 'none' LOOP\n            EXECUTE format(\n"
+    new:
+      "                 WHERE trigger_function <> 'none' AND table_name <> 'platform.memberships'\
+      \ LOOP\n            EXECUTE format(\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_principal_scopes.py::test_r5_2_a_committed_change_narrows_the_next_transaction
+      - packages/python/dw_studio/tests/integration/test_principal_scopes.py::test_step_7_every_declared_input_carries_its_trigger
+  - name: RA13 an object created or deleted bumps no epoch
+    file: db/migrations/versions/f6ea6e818d0c_record_reach_ledger.py
+    old: "                 WHERE trigger_function <> 'none' LOOP\n            EXECUTE format(\n"
+    new:
+      "                 WHERE trigger_function <> 'none' AND table_name <> 'studio.object_defs'\
+      \ LOOP\n            EXECUTE format(\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_principal_scopes.py::test_r5_2_a_new_object_reaches_the_owner_at_the_next_transaction
+      - packages/python/dw_studio/tests/integration/test_principal_scopes.py::test_r5_2_a_committed_change_narrows_the_next_transaction
+      - packages/python/dw_studio/tests/integration/test_principal_scopes.py::test_step_7_every_declared_input_carries_its_trigger
+  - name: RA14 a reader answers from a stale row
+    file: db/migrations/versions/f6ea6e818d0c_record_reach_ledger.py
+    old: "               AND s.state = 'valid'\n"
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/integration/test_principal_scopes.py::test_r5_3_ra14_a_row_not_valid_now_reads_as_empty
+  - name: RA14 a reader answers from a row of an older epoch
+    file: db/migrations/versions/f6ea6e818d0c_record_reach_ledger.py
+    old: |2-
+                     AND s.epoch = coalesce(
+                         (SELECT e.epoch FROM studio.access_epochs e WHERE e.tenant_id = s.tenant_id), 0)
+    new: |2-
+                     AND true
+    tests:
+      - packages/python/dw_studio/tests/integration/test_principal_scopes.py::test_r5_3_ra14_a_row_not_valid_now_reads_as_empty
+  - name: R5.3 the door keeps a row past its earliest expiry
+    file: db/migrations/versions/f6ea6e818d0c_record_reach_ledger.py
+    old: "           AND (v_valid_until IS NULL OR v_valid_until > now()) THEN\n"
+    new: "           THEN\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_principal_scopes.py::test_r5_3_an_assignment_that_expires_with_no_write_leaves_at_the_next_statement
+  - name: RA15 the door's write drops its compare-and-set
+    file: db/migrations/versions/f6ea6e818d0c_record_reach_ledger.py
+    old: "        WHERE s.tenant_id = v_tenant AND s.principal_id = v_user AND s.version = v_version;\n"
+    new: "        WHERE s.tenant_id = v_tenant AND s.principal_id = v_user;\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_principal_scopes.py::test_r5_4_ra15_an_existing_row_stays_not_valid_after_a_late_write
+  - name: RA15 the principal trigger only updates a row that exists
+    file: db/migrations/versions/f6ea6e818d0c_record_reach_ledger.py
+    old: |2-
+                  INSERT INTO studio.principal_scopes AS s
+                      (tenant_id, principal_id, epoch, version, state, computed_at, workspace_ids)
+                  SELECT tm.tenant_id, tm.user_id, 0, 1, 'stale', now(), '{}'
+                  FROM platform.tenant_members tm
+                  WHERE tm.tenant_id = v_rec.tenant_id AND tm.user_id = v_user
+                  ON CONFLICT (tenant_id, principal_id)
+                  DO UPDATE SET state = 'stale', version = s.version + 1;
+    new: |2-
+                  UPDATE studio.principal_scopes s SET state = 'stale', version = s.version + 1
+                  WHERE s.tenant_id = v_rec.tenant_id AND s.principal_id = v_user;
+    tests:
+      - packages/python/dw_studio/tests/integration/test_principal_scopes.py::test_r5_4_ra15_a_first_computation_loses_to_the_revocation_s_row
+  - name: R5.6 (k) the principal trigger makes a row for a member being removed
+    file: db/migrations/versions/f6ea6e818d0c_record_reach_ledger.py
+    old: |2-
+                  SELECT tm.tenant_id, tm.user_id, 0, 1, 'stale', now(), '{}'
+                  FROM platform.tenant_members tm
+                  WHERE tm.tenant_id = v_rec.tenant_id AND tm.user_id = v_user
+    new: |2-
+                  SELECT v_rec.tenant_id, v_user, 0, 1, 'stale', now(), '{}'
+                  WHERE v_user IS NOT NULL
+    tests:
+      - packages/python/dw_studio/tests/integration/test_principal_scopes.py::test_r5_6_removing_a_member_with_no_ledger_row_succeeds_and_leaves_none
+  - name: R5.6 (l) the epoch bump makes a row again for a company leaving
+    file: db/migrations/versions/f6ea6e818d0c_record_reach_ledger.py
+    old: "          AND (TG_TABLE_NAME = 'tenants' OR t.status NOT IN ('offboarding', 'offboarded'))\n"
+    new: "\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_principal_scopes.py::test_r5_6_offboarding_leaves_no_ledger_row_and_no_epoch
+  - name: RA16 dw_app may write the ledger
+    file: db/migrations/versions/f6ea6e818d0c_record_reach_ledger.py
+    old: '    op.execute(_for_role("dw_app", f"GRANT SELECT ON {tables} TO dw_app;"))'
+    new: '    op.execute(_for_role("dw_app", f"GRANT SELECT, INSERT, UPDATE, DELETE ON {tables} TO dw_app;"))'
+    tests:
+      - packages/python/dw_studio/tests/integration/test_principal_scopes.py::test_r5_5_ra16_dw_app_writes_neither_table
+      - packages/python/dw_platform/tests/integration/test_privileges.py::test_the_reach_ledger_is_read_only_and_its_inputs_no_ones
+  - name: R5.6 the lane forgets the epoch row's step
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py
+    old: "        steps.register(access_epoch_purge_step())\n"
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/integration/test_principal_scopes.py::test_r5_6_offboarding_leaves_no_ledger_row_and_no_epoch
+      - packages/python/dw_platform/tests/integration/test_offboarding_coverage.py::test_offboarding_covers_every_table_it_has_to
+  - name: R5.6 the ledger loses its offboarding exclusion
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py
+    old: '            cascade_from="platform.tenant_members",'
+    new: '            cascade_from="platform.memberships",'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_offboarding_coverage.py::test_offboarding_covers_every_table_it_has_to

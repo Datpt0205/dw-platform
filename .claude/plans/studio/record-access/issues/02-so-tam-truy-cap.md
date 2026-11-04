@@ -1,6 +1,6 @@
 # 02 — Sổ tầm truy cập trong PostgreSQL: tính, lưu, đọc, vô hiệu hóa đồng bộ
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 01, .claude/plans/studio/tenant-rbac/issues/04-quyen-doi-tuong-va-truong-co-do-sau.md, .claude/plans/studio/org-and-principals/issues/02-thanh-vien-cap-tenant.md
 Area: studio
 Yêu cầu: R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, RA12, RA13, RA14, RA15, RA16
@@ -186,3 +186,56 @@ RESULTS.md`): ticket 06 chọn lại ở D12, ticket này không chọn theo s�
   mới: nhận rủi ro (agent, theo ủy quyền 31/10/2026). Nếu sai thì: ghi ở đây khi dựng. Thứ tự dựng: sau 01 (đã xong), tenant-rbac/04,
   org-and-principals/02; trước 03.
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-05 (agent, theo ủy quyền 31/10/2026): quyết khi dựng, mỗi điều một dòng. (D1) khóa `obj.*` đổi ra
+  `object_id` qua `platform.object_permission_keys(tenant)` của tenant-rbac/04, chủ duy nhất của khóa, thay vì nối
+  `studio.object_defs` theo `api_name` lần hai; lọc tenant là CTE `ctx` của mỗi view; đột biến "bỏ lọc tenant" là đổi
+  phép nối khóa sang một ánh xạ không có tenant, và test hai tenant đỏ. Nếu sai thì: view nối `studio.object_defs` theo
+  `api_name` và `ctx.tenant_id`. (D2) bảng khai báo có thêm `platform.tenant_role_object_privileges` (`bump_access_epoch`):
+  bảng này ra đời ở tenant-rbac/04 sau gate và là đầu vào chính; `studio.field_defs`, `studio.field_permissions` là
+  `none` kèm lý do (bảo mật trường, ADR-0106 (Accepted)). Nếu sai thì: một revision sau đổi dòng và trigger. (D3) bảng khai báo có
+  thêm cột `events`, viết như `pg_get_triggerdef` in ra để test catalog so một chuỗi: `platform.tenants` và
+  `platform.tenant_members` chỉ `UPDATE OF status`, `platform.workspaces` `DELETE OR UPDATE OF archived_at`,
+  `studio.object_defs` `INSERT OR DELETE`, còn lại `INSERT OR DELETE OR UPDATE`; CHECK trên tập giá trị và
+  `(trigger_function = 'none') = (events IS NULL)`. Nếu sai thì: bỏ cột, mọi trigger bắt cả ba lệnh. (D4) lần chuyển
+  công ty sang `offboarding` vẫn tăng epoch (đọc `OLD.status` trên `platform.tenants`), mọi lần sau đó thì không (l):
+  nếu không, dòng `valid` cũ vẫn đọc được sau khi công ty rời đi. Nếu sai thì: đọc trạng thái mới như bảng khác.
+  (D5) `studio.v_principal_workspaces` đòi cả công ty `active`, như `platform.effective_grants`, nên khóa công ty làm
+  rỗng cả `workspace_ids`. Nếu sai thì: bỏ điều kiện công ty. (D6) KHÔNG thêm hai bảng vào `EXPORT_EXCLUSIONS`: lane
+  xuất mọi bảng có policy `tenant_isolation_%` mà `dw_app` SELECT được, và R4.5 của test phủ offboarding đỏ khi một
+  loại trừ xuất nêu bảng lane có xuất; hai bảng đi vào gói xuất như dữ liệu của công ty. Nếu sai thì: lane đọc
+  `EXPORT_EXCLUSIONS` và bỏ qua các bảng đó, R4.5 đổi theo. (D7) bước `studio.purge_access_epoch` đăng ký trong
+  `OffboardingPurgeSteps.platform()` cạnh `access_version_purge_step`, nơi composition root của worker và test phủ cùng
+  đọc; `tables` rỗng nên thứ tự theo tên, không phải cuối: không mang tải vì (l) (đột biến bỏ (l) đỏ, tức có lần xóa
+  chạy sau bước). Nếu sai thì: `order_purge_steps` nhận một bước "cuối cùng". (D8) EXECUTE của `studio.access_key`
+  chưa cấp cho `dw_app`: cột sinh của ticket 03 quyết khi cần. (D9) "luật có sẵn" cho bảng riêng của một người chưa có
+  trong `test_rls_coverage.py` (chưa bảng nào của ADR-0117 (Accepted) được dựng): thêm `_PRIVATE_TO_ONE_PERSON` và
+  `private_table_violations` (đúng một PERMISSIVE theo tenant, đúng một RESTRICTIVE `tenant AND (owner OR scope)`,
+  RESTRICTIVE đọc `app.user_id` mà không có tên trong danh sách thì nêu tên) cùng test sáu hình sai; policy tên
+  `owner_or_scope_principal_scopes`. (D10) `studio.acl_user()` trả `principal_id` của dòng hợp lệ, NULL khi thiếu;
+  `acl_objects` nhận nhánh `own`, `tenant`, nhánh `keys` đọc qua `acl_keys`. (D11) `mark_principal_stale` bắt cả INSERT
+  của `memberships` và `role_assignments`, nên cài đặt một người để lại dòng `stale`; dòng `stale` giữ mảng cũ, không
+  bao giờ được đọc.
+- 2026-11-05 (agent): reviewing-feature-security: tách tenant (twin hai tenant, FK ghép R5.7, cửa với người ngoài) và
+  phân quyền (`dw_app` không ghi, không gọi hàm tính, view không ai đọc) có test âm; vòng đời: dòng do cửa hay trigger
+  tạo, đi theo cascade với thành viên hay hàm purge, mọi mặc định đóng (thiếu dòng, stale, epoch cũ, quá hạn, hành động
+  lạ đều là `'{}'`). Tác tử, nội dung không tin cậy, audit không áp dụng: không đường tác tử, không mô hình; sổ tầm là
+  dữ liệu dẫn xuất, lần purge nằm trong lượt offboarding đã có audit. `mutations/02.yaml` 17 mục, chưa chạy
+  `scripts/mutate.py`; phá tay 7 mục (lọc tenant của view, RESTRICTIVE thành PERMISSIVE, trigger `role_assignments`,
+  compare-and-set, upsert của trigger chủ thể, (l), bước purge), cả 7 đỏ.
+- 2026-11-05 (agent): MEDIUM. (M5, mới) test vi sai 500 tổ chức mất khoảng 100 giây trên máy dev Windows (một vòng hỏi
+  mỗi câu lệnh), một phần lớn của bộ tích hợp Studio. (M6, mới) chưa mã ứng dụng nào gọi cửa hay `studio.acl_*`: người
+  đọc là policy của ticket 03, `bind_actor` của ticket 04 và kiểm người nhận (`workspace_ids`) của ticket 05;
+  failure-modes #1 đứng mở tới đó. (M7, mới) mọi thay đổi `platform.tenant_role_permissions` (khóa nền tảng, không phải
+  `obj.*`) cũng tăng epoch theo danh sách của ticket: tính lại thừa, không sai. M2-M4 như gate.
+- 2026-11-05 (agent): resolved. Revision `f6ea6e818d0c` (`f11d7f1`). Test: `test_principal_scopes.py` 36 ca (vi sai
+  500 tổ chức ngẫu nhiên với oracle `dw_studio.testing.reach`, twin hai tenant, dòng riêng của một người, tám loại thay
+  đổi R5.2 và đối tượng mới, bốn dòng hỏng R5.3, hết hạn không lệnh ghi, hai ca đan xen R5.4 bằng hai kết nối và khóa
+  dòng, epoch đầu là 1, người ngoài, `dw_app` không ghi, gỡ thành viên, offboarding, R5.7, test catalog bước 7 và ba
+  lỗi cài), `test_reach_oracle.py` 6 ca đơn vị; `test_privileges.py`, `test_rls_coverage.py` (luật bảng riêng của một
+  người), `test_offboarding_coverage.py` thêm hai bảng. Cổng: unit 3262 qua, phủ 76,61%; tích hợp studio, platform,
+  usage, api, worker 1601 qua (trừ `test_keycloak_realm_live.py`), mypy, ruff, lint-imports, verify_invariants,
+  verify_architecture, check_hygiene, release manifest, gitleaks, check_plans xanh.
+- 2026-11-05 (agent): nợ lúc đóng hàng: `scripts/mutate.py` cho `mutations/02.yaml` (17); `make test-integration` đầy
+  đủ; P50/P95/P99 của các đường ghi mang trigger mới (gán và gỡ vai trò, thành viên workspace và công ty, quyền đối
+  tượng, phát hành đối tượng, lưu trữ workspace), so với `f815ab5`; `/code-review`; không route nên không
+  reviewing-deployment-security.

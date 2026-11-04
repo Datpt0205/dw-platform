@@ -655,7 +655,14 @@ async def test_support_access_privileges(db_urls: DatabaseUrls) -> None:
 # SECURITY DEFINER functions in `studio`, each with why it must run as its
 # owner. Empty until a Studio table needs one (R2.10); the test fails a definer
 # that is not here and a name here that no longer exists.
-_STUDIO_DEFINERS: dict[str, str] = {}
+_STUDIO_DEFINERS: dict[str, str] = {
+    # record-access ticket 02 (migration f6ea6e818d0c): the reach ledger is
+    # written only by these, and `dw_app` holds SELECT on it alone.
+    "ensure_principal_scope": "the door: writes the caller's own ledger row, read-only to dw_app",
+    "mark_principal_stale": "trigger: marks a principal's row stale for every writer of an input",
+    "bump_access_epoch": "trigger: bumps the tenant's epoch for every writer of an input",
+    "purge_access_epoch": "offboarding's step for the epoch row dw_app may not delete",
+}
 
 
 async def test_a_studio_table_is_readable_and_not_writable_by_default(
@@ -2512,3 +2519,72 @@ async def test_dw_app_alone_reads_the_record_keys_and_no_one_calls_their_trigger
     assert {k for k, v in calls.items() if v} == {
         ("dw_app", function) for function in _RECORD_KEY_READERS
     }
+
+
+# record-access ticket 02 (migration f6ea6e818d0c): the reach ledger.
+
+_LEDGER_DOORS = (
+    "studio.ensure_principal_scope()",
+    "studio.acl_user()",
+    "studio.acl_objects(text, text)",
+    "studio.acl_keys(text)",
+    "studio.acl_create_own_keys()",
+    "studio.purge_access_epoch(uuid)",
+)
+_LEDGER_INTERNALS = (
+    "studio.access_key(uuid, uuid)",
+    "studio.compute_principal_scope()",
+    "studio.mark_principal_stale()",
+    "studio.bump_access_epoch()",
+)
+
+
+@pytest.mark.parametrize(
+    ("relation", "expected"),
+    [
+        ("studio.principal_scopes", {("dw_app", "SELECT")}),
+        ("studio.access_epochs", {("dw_app", "SELECT")}),
+        ("studio.access_input_tables", {("dw_app", "SELECT")}),
+        ("studio.v_principal_grants", set()),
+        ("studio.v_principal_workspaces", set()),
+    ],
+)
+async def test_the_reach_ledger_is_read_only_and_its_inputs_no_ones(
+    db_urls: DatabaseUrls, relation: str, expected: set[tuple[str, str]]
+) -> None:
+    """R5.5 (RA16), R4.5, M1: `dw_app` only reads the ledger, the epochs and the
+    declaration; the provisioner and `dw_agent_ro` hold nothing; nobody but the
+    migrator reads the input views."""
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            held = {(r.rolname, r.verb) for r in await conn.execute(_HELD_VERBS, {"t": relation})}
+            public = await conn.scalar(
+                sa.text("SELECT has_table_privilege('public', :t, 'SELECT')"), {"t": relation}
+            )
+    finally:
+        await migrator.dispose()
+    assert held == expected
+    assert not public
+
+
+async def test_dw_app_calls_the_door_and_the_readers_and_no_one_the_computation(
+    db_urls: DatabaseUrls,
+) -> None:
+    """M1: EXECUTE of the computation, the key and the trigger functions is no
+    application role's and not PUBLIC's; `dw_app` calls the door, the readers
+    and the offboarding step."""
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            calls = {
+                (role, function): await conn.scalar(
+                    sa.text("SELECT has_function_privilege(:r, :f, 'EXECUTE')"),
+                    {"r": role, "f": function},
+                )
+                for role in ("public", "dw_app", "dw_agent_ro", "dw_provisioner")
+                for function in (*_LEDGER_DOORS, *_LEDGER_INTERNALS)
+            }
+    finally:
+        await migrator.dispose()
+    assert {k for k, v in calls.items() if v} == {("dw_app", f) for f in _LEDGER_DOORS}

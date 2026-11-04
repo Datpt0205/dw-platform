@@ -823,6 +823,14 @@ _TENANT_WIDE_ON_PURPOSE: dict[tuple[str, str], str] = {
         "định nghĩa đối tượng của cả công ty: lựa chọn của một trường, chỉ tới qua nó"
         " (custom-objects ticket 02, DO-01)"
     ),
+    ("studio", "principal_scopes"): (
+        "sổ tầm dẫn xuất của một chủ thể và epoch của cả tenant: tầm của một người là hợp"
+        " mọi lần gán trong công ty (record-access ticket 02, ADR-0105 quyết 4, DO-01)"
+    ),
+    ("studio", "access_epochs"): (
+        "sổ tầm dẫn xuất của một chủ thể và epoch của cả tenant: một dòng đếm mỗi công ty"
+        " (record-access ticket 02, ADR-0105 quyết 4, DO-01)"
+    ),
 }
 
 _TENANT_WITHOUT_WORKSPACE = sa.text(
@@ -969,6 +977,10 @@ _PLATFORM_REFERENCE_TABLES: dict[tuple[str, str], str] = {
         "the platform's catalogue of Studio kinds and their gate flag; a migration of each"
         " kind's spec writes it, `dw_app` only reads (ADR-0109 decision 1)"
     ),
+    ("studio", "access_input_tables"): (
+        "the platform's declaration of which tables feed record reach and their trigger"
+        " function; a migration writes it, `dw_app` only reads (record-access ticket 02)"
+    ),
 }
 
 
@@ -1086,3 +1098,149 @@ async def test_a_partition_made_later_takes_the_once_per_statement_shape(
         assert settings_read_per_row(made) == []
     finally:
         await session.rollback()
+
+
+# ---------------------------------------------------------------------------
+# Tables private to one person (CLAUDE.md, Tenancy and authorization; ADR 0117):
+# the tenant policy, and one RESTRICTIVE `tenant AND (owner OR scope)` whose
+# owner is `app.user_id`, so no PERMISSIVE policy added later reopens another
+# person's row. A RESTRICTIVE policy reading `app.user_id` on a table not listed
+# here is named: this dict is the one list of such tables.
+# ---------------------------------------------------------------------------
+
+_PRIVATE_TO_ONE_PERSON: dict[tuple[str, str], tuple[str, str]] = {
+    ("studio", "principal_scopes"): (
+        "principal_id",
+        "sổ tầm của một chủ thể, chỉ người đó đọc (record-access ticket 02, gate (b))",
+    ),
+}
+
+_POLICY_KINDS = sa.text(
+    "SELECT schemaname, tablename, policyname, permissive, cmd, qual, with_check"
+    " FROM pg_policies WHERE schemaname = ANY(:schemas)"
+)
+_USER_SETTING = "current_setting('app.user_id'"
+
+
+def _tenant_alone(expr: str) -> bool:
+    return (
+        _TENANT_SETTING in expr
+        and _USER_SETTING not in expr
+        and _SCOPE_SETTING not in expr
+        and _top_level(expr)[0] is None
+    )
+
+
+def _owner_or_scope(expr: str | None, owner: str) -> bool:
+    """`tenant AND (<owner> = app.user_id OR scope)`, as Postgres prints it."""
+    if expr is None:
+        return False
+    operator, parts = _top_level(expr)
+    if operator != "AND" or len(parts) != 2:
+        return False
+    tenant = [p for p in parts if _tenant_alone(p)]
+    rest = [p for p in parts if not _tenant_alone(p)]
+    if len(tenant) != 1 or len(rest) != 1:
+        return False
+    either, arms = _top_level(rest[0])
+    if either != "OR" or len(arms) != 2:
+        return False
+    person = [a for a in arms if a.lstrip("( ").startswith(f"{owner} = ") and _USER_SETTING in a]
+    scope = [a for a in arms if _SCOPE_SETTING in a and "'tenant'" in a and _USER_SETTING not in a]
+    return len(person) == 1 and len(scope) == 1
+
+
+def private_table_violations(
+    policies: Sequence[sa.Row[Any]], listed: dict[tuple[str, str], tuple[str, str]]
+) -> list[str]:
+    by_table: dict[tuple[str, str], list[sa.Row[Any]]] = {}
+    for r in policies:
+        by_table.setdefault((r.schemaname, r.tablename), []).append(r)
+    found: list[str] = []
+    for (schema, table), (owner, reason) in sorted(listed.items()):
+        rows = by_table.get((schema, table), [])
+        if not reason.strip():
+            found.append(f"{schema}.{table} is listed without a reason")
+        permissive = sorted(r.policyname for r in rows if r.permissive == "PERMISSIVE")
+        tenant = [r for r in rows if r.policyname == f"tenant_isolation_{table}"]
+        if permissive != [f"tenant_isolation_{table}"] or not _tenant_alone(tenant[0].qual or ""):
+            found.append(f"{schema}.{table}: PERMISSIVE {permissive}, not its tenant policy alone")
+        restrictive = [r for r in rows if r.permissive == "RESTRICTIVE"]
+        if not (
+            len(restrictive) == 1
+            and restrictive[0].cmd == "ALL"
+            and _owner_or_scope(restrictive[0].qual, owner)
+        ):
+            found.append(f"{schema}.{table}: no single RESTRICTIVE `tenant AND ({owner} OR scope)`")
+    for (schema, table), rows in sorted(by_table.items()):
+        if (schema, table) in listed:
+            continue
+        if any(
+            r.permissive == "RESTRICTIVE" and _USER_SETTING in f"{r.qual} {r.with_check}"
+            for r in rows
+        ):
+            found.append(f"{schema}.{table} narrows by app.user_id and is not listed")
+    return found
+
+
+async def test_a_table_private_to_one_person_has_exactly_its_two_policies(
+    session: AsyncSession,
+) -> None:
+    rows = (await session.execute(_POLICY_KINDS, {"schemas": await tenant_schemas(session)})).all()
+    assert private_table_violations(rows, _PRIVATE_TO_ONE_PERSON) == []
+
+
+async def test_the_private_table_rule_names_each_wrong_shape(session: AsyncSession) -> None:
+    """Each shape made and rolled back in one transaction: the right one, its
+    RESTRICTIVE policy made PERMISSIVE, dropped, joined by a second PERMISSIVE
+    policy, narrowed by the owner alone, and an unlisted private table."""
+    user = "(SELECT NULLIF(current_setting('app.user_id', true), '')::uuid)"
+    tenant = "tenant_id = (SELECT NULLIF(current_setting('app.tenant_id', true), '')::uuid)"
+    scope = "(SELECT current_setting('app.workspace_scope', true)) = 'tenant'"
+    shape = f"{tenant} AND (owner_id = {user} OR {scope})"
+    probes: dict[str, tuple[str, str] | None] = {
+        "right": ("AS RESTRICTIVE", shape),
+        "permissive": ("AS PERMISSIVE", shape),
+        "dropped": None,
+        "extra": ("AS RESTRICTIVE", shape),
+        "owner_only": ("AS RESTRICTIVE", f"{tenant} AND owner_id = {user}"),
+        "unlisted": ("AS RESTRICTIVE", shape),
+    }
+    try:
+        for name, policy in probes.items():
+            table = f"public.private_{name}"
+            await session.execute(sa.text(f"CREATE TABLE {table} (tenant_id uuid, owner_id uuid)"))
+            await session.execute(
+                sa.text(
+                    f"CREATE POLICY tenant_isolation_private_{name} ON {table} USING ({tenant})"
+                )
+            )
+            if policy is not None:
+                kind, using = policy
+                await session.execute(
+                    sa.text(f"CREATE POLICY own_row ON {table} {kind} USING ({using})")
+                )
+        await session.execute(
+            sa.text(f"CREATE POLICY wide_open ON public.private_extra USING ({tenant})")
+        )
+        rows = (await session.execute(_POLICY_KINDS, {"schemas": ["public"]})).all()
+    finally:
+        await session.rollback()
+    listed = {
+        ("public", f"private_{name}"): ("owner_id", "probe")
+        for name in probes
+        if name != "unlisted"
+    }
+    found = private_table_violations(
+        [r for r in rows if r.tablename.startswith("private_")], listed
+    )
+    assert sorted(found) == [
+        "public.private_dropped: no single RESTRICTIVE `tenant AND (owner_id OR scope)`",
+        "public.private_extra: PERMISSIVE ['tenant_isolation_private_extra', 'wide_open'],"
+        " not its tenant policy alone",
+        "public.private_owner_only: no single RESTRICTIVE `tenant AND (owner_id OR scope)`",
+        "public.private_permissive: PERMISSIVE ['own_row', 'tenant_isolation_private_permissive'],"
+        " not its tenant policy alone",
+        "public.private_permissive: no single RESTRICTIVE `tenant AND (owner_id OR scope)`",
+        "public.private_unlisted narrows by app.user_id and is not listed",
+    ]
