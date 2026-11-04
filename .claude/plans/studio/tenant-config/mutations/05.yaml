@@ -1,0 +1,257 @@
+# Mutation check of tenant-config ticket 05: scripts/mutate.py runs this file at
+# the queue's close (wave-close.md). One mutation per control of the ticket's
+# "Kiểm soát" rows (TC15-TC23, TC25, TC26, TC29, TC31, TC33, TC34) and per layer
+# that holds one. Not run with this ticket; eight were broken by hand while the
+# tests were written (5/11/2026), each red in its named case (ticket Comments).
+# The migration's mutations apply in place, so their tests recreate the
+# database from the mutated revision.
+mutations:
+- name: TC23 R7.1 the seal does not scan for connection ids
+  file: packages/python/dw_studio/src/dw_studio/core/application/service.py
+  old: '            if value in found
+
+    '
+  new: '            if value in found and False
+
+    '
+  tests:
+  - packages/python/dw_studio/tests/integration/test_bindings.py::test_r7_1_a_document_naming_a_connection_is_not_sealed
+- name: R7.6 a name with two kinds in one closure is sealed
+  file: packages/python/dw_studio/src/dw_studio/core/application/service.py
+  old: '        for name in merge(groups).conflicts
+
+    '
+  new: '        for name in merge(groups).conflicts[:0]
+
+    '
+  tests:
+  - packages/python/dw_studio/tests/integration/test_bindings.py::test_r7_6_one_set_per_root_covers_its_closure_and_the_live_version
+- name: R8.4 a connection with scopes is sealed
+  file: packages/python/dw_studio/src/dw_studio/core/domain/bindings.py
+  old: '        elif scopes:
+
+    '
+  new: '        elif False:
+
+    '
+  tests:
+  - packages/python/dw_studio/tests/integration/test_bindings.py::test_r8_4_a_connection_with_scopes_is_refused_at_the_seal
+- name: TC22 R7.2 the publish check skips required
+  file: packages/python/dw_studio/src/dw_studio/core/application/bindings.py
+  old: '        return BindingVerdict(tuple(sorted({*unset_required(decls, values), *invalid})))'
+  new: '        return BindingVerdict(tuple(sorted({*invalid})))'
+  tests:
+  - packages/python/dw_studio/tests/integration/test_bindings.py::test_r7_2_publish_needs_every_required_binding_approved
+- name: TC33 R7.6 admission does not check the set against the run's version
+  file: packages/python/dw_studio/src/dw_studio/core/application/bindings.py
+  old: '            unset = sorted({*unset_required(decls, values), *invalid})
+
+    '
+  new: '            unset: list[str] = []
+
+    '
+  tests:
+  - packages/python/dw_studio/tests/integration/test_bindings.py::test_r7_6_admission_checks_the_set_against_the_runs_own_version
+- name: TC22 R7.3 admission does not ask connection_usable
+  file: packages/python/dw_studio/src/dw_studio/core/application/bindings.py
+  old: '            if facts is None or not answer.usable:
+
+    '
+  new: '            if facts is None:
+
+    '
+  tests:
+  - packages/python/dw_studio/tests/integration/test_bindings.py::test_r7_3_a_bound_connection_no_longer_usable_refuses_the_run
+- name: TC15 R7.4 the pin section takes a secret version
+  file: packages/python/dw_studio/src/dw_studio/core/domain/run_manifest.py
+  old: 'class BindingsSection(_Strict):
+
+    '
+  new: "class BindingsSection(BaseModel):\n    model_config = ConfigDict(extra=\"allow\", frozen=True)\n"
+  tests:
+  - packages/python/dw_studio/tests/integration/test_bindings.py::test_r7_4_a_run_pins_the_set_its_connections_and_hashes_never_a_secret
+- name: TC34 R8.17 the propose key is read at the working workspace
+  file: packages/python/dw_platform/src/dw_platform/application/config_versions.py
+  old: '            if target.owning_workspace_id not in await tx.reach(entry.propose_key):'
+  new: '            if context.workspace_id not in await tx.reach(entry.propose_key):'
+  tests:
+  - packages/python/dw_studio/tests/integration/test_bindings.py::test_r8_2_r8_17_who_may_propose_where_the_artifact_lives
+- name: TC34 R8.17 the read key is not asked of the proposer
+  file: packages/python/dw_studio/src/dw_studio/core/application/bindings.py
+  old: "        or row.owning_workspace_id not in await tx.reach(entry.read_key)\n    ):\n        raise\
+    \ NotFoundError(\"artifact not found\")\n    return entry.read_key, row"
+  new: "    ):\n        raise NotFoundError(\"artifact not found\")\n    return entry.read_key, row"
+  tests:
+  - packages/python/dw_studio/tests/integration/test_bindings.py::test_r8_2_r8_17_who_may_propose_where_the_artifact_lives
+  - packages/python/dw_studio/tests/integration/test_bindings.py::test_r8_17_a_decider_who_cannot_read_the_artifact_is_not_shown_it
+- name: TC25 R8.4 a proposal does not ask connection_usable
+  file: packages/python/dw_studio/src/dw_studio/core/application/bindings.py
+  old: "        if not answer.usable:\n            return [_problem(at, \"connection_unusable\", str(answer.reason))]"
+  new: "        if False:\n            return [_problem(at, \"connection_unusable\", str(answer.reason))]"
+  tests:
+  - packages/python/dw_studio/tests/integration/test_bindings.py::test_r8_4_a_value_its_declaration_refuses
+- name: R8.4 an inactive principal is taken
+  file: packages/python/dw_studio/src/dw_studio/core/application/bindings.py
+  old: '    return [] if active else [_problem(at, "principal_inactive", "not active")]'
+  new: '    return []'
+  tests:
+  - packages/python/dw_studio/tests/integration/test_bindings.py::test_r8_4_a_value_its_declaration_refuses
+- name: TC18 R8.5 a checker who cannot read the artifact counts
+  file: packages/python/dw_platform/src/dw_platform/adapters/persistence/config_versions_repo.py
+  old: '    " WHERE CAST(:w AS uuid) IN (SELECT platform.workspace_reach(:t, c.user_id, :read)) LIMIT
+    1"'
+  new: '    " WHERE :read IS NOT NULL AND CAST(:w AS uuid) IS NOT NULL LIMIT 1"'
+  tests:
+  - packages/python/dw_studio/tests/integration/test_bindings.py::test_r8_5_no_one_else_could_approve
+- name: TC18 R8.6 a second proposal is not refused before the insert
+  file: packages/python/dw_platform/src/dw_platform/application/config_versions.py
+  old: '            if await tx.current(kind, key, "proposed") is not None:'
+  new: '            if False:'
+  tests:
+  - packages/python/dw_studio/tests/integration/test_bindings.py::test_r8_6_one_open_proposal_per_key
+- name: TC18 R8.6 the race's constraint is not read back
+  file: packages/python/dw_platform/src/dw_platform/adapters/persistence/config_versions_repo.py
+  old: '            if found is not None and found[0] in _OPEN:'
+  new: '            if found is None:'
+  tests:
+  - packages/python/dw_studio/tests/integration/test_bindings.py::test_r8_6_two_proposals_at_once_one_is_open_the_other_409
+- name: TC16 R8.8 the requester's own decision carries no reason code
+  file: packages/python/dw_agent_runtime/src/dw_agent_runtime/approval_flow.py
+  old: '                    "reason_code": "second_person_required",
+
+    '
+  new: ''
+  tests:
+  - packages/python/dw_studio/tests/integration/test_bindings.py::test_r8_8_the_proposer_never_decides_their_own
+  - packages/python/dw_agent_runtime/tests/unit/test_approval_flow.py
+- name: TC16 R8.8 config. is not strict at the API
+  file: apps/api/src/dw_api/bootstrap/runtime.py
+  old: '    approval_flow.strict_approval_prefixes |= {CONFIG_PREFIX}
+
+    '
+  new: ''
+  tests:
+  - apps/api/tests/unit/test_config_versions_wiring.py
+- name: TC20 R8.9 the guard does not compare the bindings hash
+  file: packages/python/dw_platform/src/dw_platform/application/config_versions.py
+  old: '        if target.base_hash != row.base_bindings_hash:'
+  new: '        if False:'
+  tests:
+  - packages/python/dw_studio/tests/integration/test_bindings.py::test_r8_9_a_new_seal_changing_the_bindings_makes_the_decision_stale
+- name: TC20 R8.9 the guard takes a base back in its draft
+  file: packages/python/dw_platform/src/dw_platform/application/config_versions.py
+  old: '        if row.base_version not in target.sealed_versions:'
+  new: '        if False:'
+  tests:
+  - packages/python/dw_studio/tests/integration/test_bindings.py::test_r8_9_a_base_taken_back_to_its_draft_makes_the_decision_stale
+- name: TC20 R8.9 an approval does not ask connection_usable again
+  file: packages/python/dw_platform/src/dw_platform/application/config_versions.py
+  old: '        if decision.approve and not await entry.usable('
+  new: '        if False and not await entry.usable('
+  tests:
+  - packages/python/dw_studio/tests/integration/test_bindings.py::test_r8_9_an_unusable_connection_stops_an_approval_not_a_rejection
+- name: TC20 R8.11 the guard does not compare the approved version
+  file: packages/python/dw_platform/src/dw_platform/application/config_versions.py
+  old: '        if (None if approved is None else approved.id) != row.base_approved_id:'
+  new: '        if False:'
+  tests:
+  - packages/python/dw_studio/tests/integration/test_bindings.py::test_r8_11_the_approved_version_changed_since_the_proposal_is_stale
+- name: TC20 R8.11 settlement overwrites another approved version
+  file: packages/python/dw_platform/src/dw_platform/application/config_versions.py
+  old: '                if current_id != row.base_approved_id:'
+  new: '                if False:'
+  tests:
+  - packages/python/dw_studio/tests/integration/test_bindings.py::test_r8_11_a_key_approved_otherwise_meanwhile_settles_as_a_conflict
+- name: TC17 R8.10 settlement audits as the outbox lane
+  file: packages/python/dw_platform/src/dw_platform/application/config_versions.py
+  old: '                    actor_id=UserId(decision.decided_by),'
+  new: '                    actor_id=UserId(row.proposed_by),'
+  tests:
+  - packages/python/dw_studio/tests/integration/test_bindings.py::test_r8_10_r8_15_approved_settled_once_in_the_deciders_name
+  - packages/python/dw_studio/tests/integration/test_bindings.py::test_r8_11_a_rejection_is_settled_in_the_deciders_name
+- name: TC17 R8.15 R8.19 settlement does not skip a row no longer proposed
+  file: packages/python/dw_platform/src/dw_platform/application/config_versions.py
+  old: "            if row.status != \"proposed\":\n                return \"unchanged\""
+  new: "            if False:\n                return \"unchanged\""
+  tests:
+  - packages/python/dw_studio/tests/integration/test_bindings.py::test_r8_10_r8_15_approved_settled_once_in_the_deciders_name
+  - packages/python/dw_studio/tests/integration/test_bindings.py::test_r8_18_r8_19_decided_is_not_withdrawn_and_withdrawn_is_not_settled
+- name: TC17 R8.12 approved without its approved request
+  file: db/migrations/versions/045712d63ec7_config_versions_and_bindings.py
+  old: '            IF v_request IS DISTINCT FROM ''approved'' THEN'
+  new: '            IF false THEN'
+  tests:
+  - packages/python/dw_studio/tests/integration/test_bindings.py::test_r8_12_the_database_holds_the_moves
+- name: TC17 R8.12 any status move
+  file: db/migrations/versions/045712d63ec7_config_versions_and_bindings.py
+  old: '        IF NOT ((OLD.status = ''proposed'''
+  new: '        IF false AND NOT ((OLD.status = ''proposed'''
+  tests:
+  - packages/python/dw_studio/tests/integration/test_bindings.py::test_r8_12_the_database_holds_the_moves
+- name: TC16 R8.8 the checker may be the maker
+  file: db/migrations/versions/045712d63ec7_config_versions_and_bindings.py
+  old: '            CHECK (decided_by IS NULL OR decided_by <> proposed_by),'
+  new: '            CHECK (true),'
+  tests:
+  - packages/python/dw_studio/tests/integration/test_bindings.py::test_r8_8_the_proposer_never_decides_their_own
+- name: TC26 R8.14 anyone withdraws
+  file: packages/python/dw_platform/src/dw_platform/application/config_versions.py
+  old: '        if row.proposed_by != context.principal_id:'
+  new: '        if False:'
+  tests:
+  - packages/python/dw_studio/tests/integration/test_bindings.py::test_r8_13_r8_14_only_the_proposer_withdraws
+- name: TC34 R8.18 a decided request is withdrawn
+  file: packages/python/dw_platform/src/dw_platform/application/config_versions.py
+  old: '                or request.status is not ApprovalStatus.PENDING
+
+    '
+  new: ''
+  tests:
+  - packages/python/dw_studio/tests/integration/test_bindings.py::test_r8_18_r8_19_decided_is_not_withdrawn_and_withdrawn_is_not_settled
+- name: TC29 R8.16 the request key is one column
+  file: db/migrations/versions/045712d63ec7_config_versions_and_bindings.py
+  old: "            FOREIGN KEY (approval_id, tenant_id, workspace_id)\n            REFERENCES platform.approval_requests\
+    \ (id, tenant_id, workspace_id)"
+  new: "            FOREIGN KEY (approval_id)\n            REFERENCES platform.approval_requests (id)"
+  tests:
+  - packages/python/dw_studio/tests/integration/test_bindings.py::test_r8_16_r2_18_no_key_points_into_another_company_or_workspace
+- name: TC29 R2.18 the set's key is one column
+  file: db/migrations/versions/045712d63ec7_config_versions_and_bindings.py
+  old: "            FOREIGN KEY (config_version_id, tenant_id)\n            REFERENCES platform.config_versions\
+    \ (id, tenant_id) ON DELETE RESTRICT,"
+  new: "            FOREIGN KEY (config_version_id)\n            REFERENCES platform.config_versions (id)\
+    \ ON DELETE RESTRICT,"
+  tests:
+  - packages/python/dw_studio/tests/integration/test_bindings.py::test_r8_16_r2_18_no_key_points_into_another_company_or_workspace
+- name: R7.4 a key row with both targets
+  file: db/migrations/versions/045712d63ec7_config_versions_and_bindings.py
+  old: '            CHECK (num_nonnulls(artifact_version_id, config_version_id) = 1),'
+  new: '            CHECK (true),'
+  tests:
+  - packages/python/dw_studio/tests/integration/test_bindings.py::test_r7_4_a_run_pins_the_set_its_connections_and_hashes_never_a_secret
+- name: TC31 R3.8 dw_app deletes a config version anywhere
+  file: db/migrations/versions/045712d63ec7_config_versions_and_bindings.py
+  old: "    \"CREATE TRIGGER refuse_delete_outside_offboarding BEFORE DELETE\"\n    \" ON platform.config_versions\"\
+    \n    \" FOR EACH ROW EXECUTE FUNCTION platform.refuse_delete_outside_offboarding()\",\n"
+  new: ''
+  tests:
+  - packages/python/dw_studio/tests/integration/test_bindings.py::test_r3_8_dw_app_deletes_a_config_version_only_while_offboarding
+- name: TC21 R3.6 dw_app cannot delete what the lane purges
+  file: db/migrations/versions/045712d63ec7_config_versions_and_bindings.py
+  old: '    ("dw_app", "GRANT SELECT, INSERT, DELETE ON platform.config_versions TO dw_app;"),'
+  new: '    ("dw_app", "GRANT SELECT, INSERT ON platform.config_versions TO dw_app;"),'
+  tests:
+  - packages/python/dw_platform/tests/integration/test_offboarding_coverage.py
+  - packages/python/dw_studio/tests/integration/test_bindings.py::test_r3_6_offboarding_purges_the_config_versions_its_manifests_pin
+- name: R3.7 the dependents do not read the approved sets
+  file: packages/python/dw_studio/src/dw_studio/core/adapters/artifact_store.py
+  old: '    " WHERE v.kind = ''binding_set'' AND v.status = ''approved'' AND a.deleted_at IS NULL"'
+  new: '    " WHERE false"'
+  tests:
+  - packages/python/dw_studio/tests/integration/test_bindings.py::test_r3_7_a_connection_is_used_while_an_approved_set_binds_it
+- name: R7.5 the run's connection is read from the set in force
+  file: packages/python/dw_studio/src/dw_studio/core/adapters/run_bindings.py
+  old: "        return BoundConnection(\n            connection_id=connection_id,"
+  new: "        return BoundConnection(\n            connection_id=uuid.uuid4(),"
+  tests:
+  - packages/python/dw_studio/tests/integration/test_bindings.py::test_r7_5_a_run_reads_its_pinned_connection_whatever_is_approved_later

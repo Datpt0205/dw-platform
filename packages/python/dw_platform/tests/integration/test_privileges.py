@@ -2143,6 +2143,56 @@ async def test_a_run_manifest_is_inserted_read_and_only_purged(
     assert trigger_call is False
 
 
+# tenant-config ticket 05 (migration 045712d63ec7): a configuration version is
+# proposed by `dw_app` and moved only through its five decision columns, so
+# what was proposed cannot be rewritten; DELETE serves the offboarding lane
+# alone (its trigger refuses it elsewhere, R3.8); `dw_agent_ro` reads nothing.
+
+_DECISION_COLUMNS = ("status", "decided_by", "decided_at", "decision_comment", "superseded_at")
+_PROPOSED_COLUMNS = (
+    "kind",
+    "key",
+    "workspace_id",
+    "version_no",
+    "base_version",
+    "base_bindings_hash",
+    "base_approved_id",
+    "document",
+    "document_hash",
+    "approval_id",
+    "proposed_by",
+    "proposed_at",
+)
+
+
+async def test_a_config_version_is_proposed_decided_by_column_and_only_purged(
+    db_urls: DatabaseUrls,
+) -> None:
+    table = "platform.config_versions"
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            held = {(r.rolname, r.verb) for r in await conn.execute(_HELD_VERBS, {"t": table})}
+            updatable = {
+                column: await conn.scalar(
+                    sa.text("SELECT has_column_privilege('dw_app', :t, :col, 'UPDATE')"),
+                    {"t": table, "col": column},
+                )
+                for column in (*_DECISION_COLUMNS, *_PROPOSED_COLUMNS)
+            }
+            trigger_call = await conn.scalar(
+                sa.text(
+                    "SELECT has_function_privilege('public',"
+                    " 'platform.config_version_transition()', 'EXECUTE')"
+                )
+            )
+    finally:
+        await migrator.dispose()
+    assert held == {("dw_app", "SELECT"), ("dw_app", "INSERT"), ("dw_app", "DELETE")}
+    assert {column for column, granted in updatable.items() if granted} == set(_DECISION_COLUMNS)
+    assert trigger_call is False
+
+
 # agent-lifecycle ticket 01 (migration 8efd60e59d32): a company's switch is
 # inserted and lifted by `dw_app` (only the lift columns), deleted only by
 # the offboarding lane (its trigger refuses it elsewhere, R7.5, R10.1); the

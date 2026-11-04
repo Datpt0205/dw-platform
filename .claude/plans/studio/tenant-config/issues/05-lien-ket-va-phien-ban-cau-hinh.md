@@ -1,6 +1,6 @@
 # 05 — Điểm gắn: giá trị là phiên bản cấu hình có người đề xuất và người duyệt khác nhau
 
-Status: ready-for-agent
+Status: resolved (2026-11-05, main)
 Blocked by: 04, .claude/plans/studio/connections-and-vault/issues/04-ket-noi-dung-chung-theo-workspace.md, .claude/plans/studio/runtime-hardening/issues/03-run-va-outbox-khong-ket.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md, .claude/plans/studio/app-standards/issues/02-khoa-chong-lap-gan-nguoi-goi.md
 Area: studio
 Yêu cầu: R7.1, R7.2, R7.3, R7.4, R7.5, R7.6, R8.1, R8.2, R8.3, R8.4, R8.5, R8.6, R8.7, R8.8, R8.9, R8.10, R8.11, R8.12, R8.13, R8.14, R8.15, R8.16, R8.17, R8.18, R8.19, R2.18, R3.6, R3.7, R3.8, G4, TC15, TC16, TC17, TC18, TC19, TC20, TC21, TC22, TC23, TC25, TC26, TC29, TC31, TC33, TC34
@@ -191,100 +191,100 @@ connection_id, workspace_id, principal_id, run_requested_at)`, đọc dòng `pla
 
 ## Tiêu chí chấp nhận
 
-- [ ] R7.1 (TC23): niêm phong tài liệu `fixture` có id của một kết nối của tenant ở một trường tự do → 422,
+- [x] R7.1 (TC23): niêm phong tài liệu `fixture` có id của một kết nối của tenant ở một trường tự do → 422,
       mỗi chỗ một con trỏ; gỡ bước quét → test đỏ.
-- [ ] R7.2 (TC22): gọi `PublishBindingsCheck` cho phiên bản khai `zalo_oa` bắt buộc chưa có giá trị đã duyệt →
+- [x] R7.2 (TC22): gọi `PublishBindingsCheck` cho phiên bản khai `zalo_oa` bắt buộc chưa có giá trị đã duyệt →
       `binding_unset` nêu `zalo_oa`; có giá trị đã duyệt → đạt; biến `required` có `default` mà chưa có giá trị → đạt; gỡ
       kiểm `required` → test đỏ.
 - [ ] R7.2 (TC22): thành phần mới, bản Nháp khai `email_sender` bắt buộc: lệnh gửi thành công kèm `binding_unset`
       `email_sender`; đề xuất theo phiên bản vừa niêm phong → duyệt → phát hành đạt; trước lần gửi đầu, đề xuất → 409
       `no_sealed_version`.
-- [ ] R7.6 (TC33): Bộ giá trị gắn được duyệt theo Bản ứng viên v2 thiếu điểm gắn bắt buộc `zalo_oa` mà bản `live` v1 khai
+- [x] R7.6 (TC33): Bộ giá trị gắn được duyệt theo Bản ứng viên v2 thiếu điểm gắn bắt buộc `zalo_oa` mà bản `live` v1 khai
       → nhận lượt chạy của v1 trả `binding_unset`, không bản kê, không node nào chạy; gỡ lần kiểm lúc nhận → lượt chạy,
       test đỏ.
-- [ ] R8.17 (TC34): người giữ `studio.bindings.propose` và khóa đọc chỉ ở ws2 đề xuất cho thành phần của ws1 → 404; giữ
+- [x] R8.17 (TC34): người giữ `studio.bindings.propose` và khóa đọc chỉ ở ws2 đề xuất cho thành phần của ws1 → 404; giữ
       khóa đọc với tới ws1 mà `studio.bindings.propose` chỉ ở ws2 → 403; người duyệt chỉ giữ `studio.bindings.approve`
       ở ws2 quyết yêu cầu của thành phần ws1 → 404; yêu cầu nằm ở workspace sở hữu; gỡ neo workspace sở hữu → đề xuất
       chéo workspace thành công, test đỏ.
-- [ ] R8.18 (TC34): người thứ hai duyệt, outbox chưa quyết toán, Người đề xuất rút → 409 `proposal_decided`, dòng vẫn
+- [x] R8.18 (TC34): người thứ hai duyệt, outbox chưa quyết toán, Người đề xuất rút → 409 `proposal_decided`, dòng vẫn
       `proposed`; quyết toán sau đó → `approved`.
-- [ ] R8.19 (TC34): một dòng đã `withdrawn` nhận sự kiện duyệt → không đổi, không audit; gỡ phép bỏ qua → trigger từ
+- [x] R8.19 (TC34): một dòng đã `withdrawn` nhận sự kiện duyệt → không đổi, không audit; gỡ phép bỏ qua → trigger từ
       chối và sự kiện hỏng ở mỗi lần giao lại, test đỏ.
-- [ ] R8.4 (TC25): đề xuất `principal` là thành viên của tenant khác → 404; thành viên không `active` → 422
+- [x] R8.4 (TC25): đề xuất `principal` là thành viên của tenant khác → 404; thành viên không `active` → 422
       `principal_inactive`; khai báo `connection` với `required_scopes` khác rỗng → niêm phong 422
       `binding_scopes_unsupported`; đăng ký một kind không có kiểm lúc đề xuất → lỗi lúc khởi động.
-- [ ] R8.9 (TC20): niêm phong v3 không đổi `bindings[]` sau khi đề xuất theo v2 → duyệt được; v3 đổi `bindings[]` → 409
+- [x] R8.9 (TC20): niêm phong v3 không đổi `bindings[]` sau khi đề xuất theo v2 → duyệt được; v3 đổi `bindings[]` → 409
       `decision_stale`; người duyệt không giữ khóa đọc của loại với tới workspace sở hữu → 404.
-- [ ] R7.6 (TC33): quy trình gốc khai `email_sender`, agent trong bao đóng khai `zalo_oa` → schema của đề xuất có cả
+- [x] R7.6 (TC33): quy trình gốc khai `email_sender`, agent trong bao đóng khai `zalo_oa` → schema của đề xuất có cả
       hai; hai mục khai `email_sender` khác kind → niêm phong 422 `binding_conflict`; Bộ duyệt theo Bản ứng viên v2 vẫn
       nhận giá trị `zalo_oa` mà chỉ bản `live` v1 khai; lượt `simulate` của bản Nháp thiếu giá trị bắt buộc → được nhận.
-- [ ] R8.11 (TC20): bản `approved` đổi sau khi đề xuất (một đề xuất khác được duyệt và quyết toán) → quyết định đề xuất cũ
+- [x] R8.11 (TC20): bản `approved` đổi sau khi đề xuất (một đề xuất khác được duyệt và quyết toán) → quyết định đề xuất cũ
       trả 409 `decision_stale`; lần quyết toán thứ hai của một chuỗi đề xuất nối tiếp bình thường → `approved`, bản trước
       `superseded`, không `settlement_conflict`; Phiên bản gốc bị rút về Nháp → `decision_stale`.
-- [ ] R8.6 (TC18): hai đề xuất cùng khóa gửi đồng thời (hai giao dịch, đợi `pg_locks`) → một 201, một 409
+- [x] R8.6 (TC18): hai đề xuất cùng khóa gửi đồng thời (hai giao dịch, đợi `pg_locks`) → một 201, một 409
       `proposal_open`, không 500.
-- [ ] R7.3 (TC22): thu hồi kết nối đã gắn rồi nhận lượt chạy → từ chối `binding_degraded`, không dòng
+- [x] R7.3 (TC22): thu hồi kết nối đã gắn rồi nhận lượt chạy → từ chối `binding_degraded`, không dòng
       `platform.run_manifests` mới, không node nào chạy.
-- [ ] R7.4 (TC15): bản kê có id phiên bản Bộ giá trị gắn, id kết nối và mã băm của biến; tìm token mẫu, giá trị biến
+- [x] R7.4 (TC15): bản kê có id phiên bản Bộ giá trị gắn, id kết nối và mã băm của biến; tìm token mẫu, giá trị biến
       dạng rõ và khóa `secret_version` trong `body` → không thấy; dựng mục `bindings` có `secret_version` → lỗi kiểm
       `extra="forbid"`, không dòng `platform.run_manifests`; nới `extra` → test đỏ.
-- [ ] R7.4: dòng `platform.run_manifest_keys` của Bộ giá trị gắn đã ghim mang `config_version_id`, còn
+- [x] R7.4: dòng `platform.run_manifest_keys` của Bộ giá trị gắn đã ghim mang `config_version_id`, còn
       `artifact_version_id` là NULL; INSERT dòng có cả hai cột, hay không cột nào → CHECK từ chối; dòng thứ hai cùng
       `(manifest_hash, config_version_id)` → unique từ chối.
-- [ ] R2.18 (TC29): bằng vai migrator, INSERT dòng `platform.run_manifest_keys` của tenant A có `config_version_id` là
+- [x] R2.18 (TC29): bằng vai migrator, INSERT dòng `platform.run_manifest_keys` của tenant A có `config_version_id` là
       phiên bản cấu hình của tenant B → lỗi FK ghép; đổi FK ghép về FK một cột → test đỏ.
-- [ ] R7.5 (TC15): duyệt Bộ giá trị gắn mới khi lượt chạy chờ duyệt; tiếp tục → lượt chạy dùng bộ đã
+- [x] R7.5 (TC15): duyệt Bộ giá trị gắn mới khi lượt chạy chờ duyệt; tiếp tục → lượt chạy dùng bộ đã
       ghim; xoay bí mật của kết nối đã ghim khi lượt chờ, rồi tiếp tục → bản kê không đổi và lượt không bị từ chối vì
       phiên bản, `RunBindingsPort` trả id kết nối đã ghim (phiên bản bí mật đã dùng do connections-and-vault ghi).
-- [ ] R8.1: đề xuất hợp lệ ghi một phiên bản `proposed`, một yêu cầu `config.version` có `required_scope`
+- [x] R8.1: đề xuất hợp lệ ghi một phiên bản `proposed`, một yêu cầu `config.version` có `required_scope`
       `studio.bindings.approve` và một audit `config.version.proposed`, trong một giao dịch.
-- [ ] R8.2 (TC25): người thiếu `studio.bindings.propose` → 403, không dòng nào.
-- [ ] R8.3 (TC19): thành phần hay kết nối của tenant khác → 404, không dòng nào.
-- [ ] R8.4 (TC25): kết nối sai trình kết nối, thiếu quyền khai báo, hay `connection_usable` sai với Người
+- [x] R8.2 (TC25): người thiếu `studio.bindings.propose` → 403, không dòng nào.
+- [x] R8.3 (TC19): thành phần hay kết nối của tenant khác → 404, không dòng nào.
+- [x] R8.4 (TC25): kết nối sai trình kết nối, thiếu quyền khai báo, hay `connection_usable` sai với Người
       đề xuất → 422, không dòng nào.
-- [ ] R8.5 (TC18): workspace chỉ Người đề xuất giữ `studio.bindings.approve` → 409
+- [x] R8.5 (TC18): workspace chỉ Người đề xuất giữ `studio.bindings.approve` → 409
       `no_checker_available`, không dòng nào.
-- [ ] R8.6 (TC18): đề xuất thứ hai cùng khóa khi đề xuất đầu còn mở → 409 `proposal_open`.
-- [ ] R8.7 (TC19): đề xuất loại `prompt` → 422; INSERT thẳng `kind = 'prompt'` → CHECK từ chối.
-- [ ] R8.8 (TC16): Người đề xuất quyết yêu cầu của mình → 409 `conflict` với `details.reason_code`
+- [x] R8.6 (TC18): đề xuất thứ hai cùng khóa khi đề xuất đầu còn mở → 409 `proposal_open`.
+- [x] R8.7 (TC19): đề xuất loại `prompt` → 422; INSERT thẳng `kind = 'prompt'` → CHECK từ chối.
+- [x] R8.8 (TC16): Người đề xuất quyết yêu cầu của mình → 409 `conflict` với `details.reason_code`
       `second_person_required`; UPDATE `decided_by = proposed_by` → CHECK từ chối; bỏ `config.` khỏi prefix nghiêm
       ở API → test đỏ.
-- [ ] R8.8 (TC16): người yêu cầu tự quyết một yêu cầu `memory.review` → 409 `conflict` với cùng `details.reason_code`
+- [x] R8.8 (TC16): người yêu cầu tự quyết một yêu cầu `memory.review` → 409 `conflict` với cùng `details.reason_code`
       `second_person_required`; bỏ mã khỏi `_enforce_strict_rules` → cả hai ca đỏ.
-- [ ] R8.9 (TC20): niêm phong phiên bản đổi khai báo điểm gắn sau khi đề xuất, rồi quyết định → 409
+- [x] R8.9 (TC20): niêm phong phiên bản đổi khai báo điểm gắn sau khi đề xuất, rồi quyết định → 409
       `decision_stale`, yêu cầu vẫn `pending`; gỡ guard → test đỏ.
-- [ ] R8.9 (TC20): sau khi đề xuất, tắt kết nối của đề xuất, hay thu hồi `connections.use` của Người đề xuất ở
+- [x] R8.9 (TC20): sau khi đề xuất, tắt kết nối của đề xuất, hay thu hồi `connections.use` của Người đề xuất ở
       workspace của đề xuất, rồi người thứ hai duyệt → 409 `decision_stale`, yêu cầu vẫn `pending`, không dòng nào
       đổi; người đó từ chối cùng đề xuất → được; bỏ lần hỏi lại `connection_usable` lúc duyệt → ca duyệt đỏ.
-- [ ] R8.10 (TC17): duyệt → handler đặt `approved`, bản trước `superseded`, audit `config.version.approved` có
+- [x] R8.10 (TC17): duyệt → handler đặt `approved`, bản trước `superseded`, audit `config.version.approved` có
       actor là `decided_by` và `details.lane` `outbox`; ghi audit qua `lane_audit_event` (actor `system:outbox`) →
       test đỏ.
-- [ ] R8.11 (TC17): từ chối → `rejected`, audit `config.version.rejected` có actor là `decided_by` và
+- [x] R8.11 (TC17): từ chối → `rejected`, audit `config.version.rejected` có actor là `decided_by` và
       `details.lane` `outbox`; ghi actor `system:outbox` → test đỏ.
-- [ ] R8.11 (TC20): quyết toán gặp khóa đã có bản khác được duyệt → `rejected` với `settlement_conflict`.
-- [ ] R8.12 (TC17): UPDATE `status = 'approved'` khi yêu cầu còn `pending` → trigger từ chối; UPDATE
+- [x] R8.11 (TC20): quyết toán gặp khóa đã có bản khác được duyệt → `rejected` với `settlement_conflict`.
+- [x] R8.12 (TC17): UPDATE `status = 'approved'` khi yêu cầu còn `pending` → trigger từ chối; UPDATE
       `superseded` về `proposed` → trigger từ chối; `dw_app` UPDATE `document` → permission denied; gỡ
       trigger → test đỏ.
-- [ ] R8.13: Người đề xuất rút → `withdrawn`, yêu cầu phê duyệt `cancelled`, một audit
+- [x] R8.13: Người đề xuất rút → `withdrawn`, yêu cầu phê duyệt `cancelled`, một audit
       `config.version.withdrawn`, trong một giao dịch.
-- [ ] R8.14 (TC26): người khác rút → 403, đề xuất và yêu cầu không đổi; bỏ so `proposed_by` → test đỏ.
-- [ ] R8.15 (TC17): outbox giao lại sự kiện đã quyết toán → không dòng nào đổi, không audit thứ hai.
-- [ ] R8.16 (TC29): bằng vai migrator, INSERT `platform.config_versions` của tenant A có `approval_id` là yêu cầu phê
+- [x] R8.14 (TC26): người khác rút → 403, đề xuất và yêu cầu không đổi; bỏ so `proposed_by` → test đỏ.
+- [x] R8.15 (TC17): outbox giao lại sự kiện đã quyết toán → không dòng nào đổi, không audit thứ hai.
+- [x] R8.16 (TC29): bằng vai migrator, INSERT `platform.config_versions` của tenant A có `approval_id` là yêu cầu phê
       duyệt của tenant B, rồi của một workspace khác cùng tenant A → lỗi FK ghép; đổi FK ghép về FK một cột tới
       `platform.approval_requests (id)` → test đỏ.
-- [ ] G4: `test_the_api_decides_memory_reviews_strictly_and_only_with_clearance` vẫn xanh sau khi đổi sang
+- [x] G4: `test_the_api_decides_memory_reviews_strictly_and_only_with_clearance` vẫn xanh sau khi đổi sang
       guard async.
-- [ ] R3.6 (TC21): purge tenant có phiên bản cấu hình riêng được bản kê ghim và yêu cầu phê duyệt của nó
+- [x] R3.6 (TC21): purge tenant có phiên bản cấu hình riêng được bản kê ghim và yêu cầu phê duyệt của nó
       → xong, tenant khác nguyên; thứ tự suy ra đặt `platform.config_versions` sau `platform.run_manifest_keys` và trước
       `platform.approval_requests`; đột biến phép suy để bỏ cạnh `approval_id` → test phủ offboarding
       (studio-skeleton:R4.2) đỏ, nêu khóa ngoại đó; thu DELETE của `dw_app` trên `platform.config_versions` → test phủ
       offboarding (studio-skeleton:R4.3) đỏ, nêu tên bảng.
-- [ ] R3.8 (TC31): `dw_app` DELETE một dòng `platform.config_versions` của công ty `active` → 23514, dòng và yêu cầu
+- [x] R3.8 (TC31): `dw_app` DELETE một dòng `platform.config_versions` của công ty `active` → 23514, dòng và yêu cầu
       phê duyệt của nó còn; cùng lệnh khi công ty ở `offboarding` → xóa được; gỡ trigger khỏi bảng → test đỏ.
-- [ ] R3.7: Kết nối là giá trị của một Bộ giá trị gắn `approved` → `ConnectionDependentsPort` báo đang
+- [x] R3.7: Kết nối là giá trị của một Bộ giá trị gắn `approved` → `ConnectionDependentsPort` báo đang
       dùng; bản đó sang `superseded` bởi bản không dùng Kết nối → báo không dùng; thành phần của bản `approved` bị xóa mềm
       → báo không dùng; bỏ đọc `platform.config_versions` → ca đầu đỏ.
-- [ ] R7.5: `RunBindingsPort.connection` trả `BoundConnection` có `run_requested_at` bằng `created_at` của dòng lượt chạy
+- [x] R7.5: `RunBindingsPort.connection` trả `BoundConnection` có `run_requested_at` bằng `created_at` của dòng lượt chạy
       và `principal_id` bằng `run_as_principal_id` khi có, `requested_by` khi không; công ty B hỏi `run_id` của A → None; tên không có trong `bindings`
       của bản kê → None.
 - [ ] Xong: `make ci && make test-integration` xanh.
@@ -377,3 +377,53 @@ connection_id, workspace_id, principal_id, run_requested_at)`, đọc dòng `pla
   cùng giá trị; (M8) chú thích của `UsableContext.principal_id` ở `dw_platform/application/connections.py` nói
   "`principal` của bản kê": sửa chú thích khi ticket này gắn `RunBindingsPort`.
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-05 (agent, theo ủy quyền 31/10/2026): xong ở `0abd1c1` (mã) và commit test kế tiếp, trên `main`.
+    - Quyết định theo ủy quyền, mỗi cái kèm `Nếu sai thì:`
+      (a) `PublishBindingsCheck` khai ở `dw_studio.lifecycle.application.ports` vì agent-lifecycle/04 chưa dựng; hình
+      `satisfied(tenant_id, version_id) -> BindingVerdict`, giao dịch riêng dưới tenant (handler không có người gọi).
+      `StudioContainer.binding_status` đáp ứng; lệnh gửi trả `binding_unset[]` và handler `.decided` gọi nó là việc của
+      agent-lifecycle/04 (bước 4 của ticket đó). Nếu sai thì: agent-lifecycle/04 đổi hình sang giao dịch của nó, `BindingStatus`
+      nhận `BindingTx` thay `tenant_id`.
+      (b) `ProposedDecision` ở `dw_platform.domain.approval` (runtime và platform cùng đọc), `ApprovalDecisionGuard` async ở
+      `approval_flow.py`; guard `memory.review` giữ hàm đồng bộ qua `RuleGuard`. Nếu sai thì: chuyển `ProposedDecision` vào
+      `approval_flow.py` và guard của platform khai Protocol riêng.
+      (c) `ConfigKind` có `readable` cạnh `target`: đọc và rút một đề xuất không cần phiên bản niêm phong (Phiên bản gốc rút về
+      Nháp không chặn Người đề xuất rút). Nếu sai thì: `get`/`withdraw` gọi `target` và chịu 409 `no_sealed_version`.
+      (d) `binding_unset` và `binding_degraded` lúc nhận lượt là 409 `conflict` với `details.bindings` (tên). Nếu sai thì: 422.
+      (e) `bindings` vào `dw.workflow/v1` là danh sách object do hình chung của Studio kiểm, `PACK_RULES` từ chối khóa, và
+      `exclude=True` để không dump nào thêm khóa (tài liệu đã lưu và đề xuất wf-ai giữ nguyên văn bản). Nếu sai thì: Studio bóc
+      `bindings` trước mỗi lần đọc tài liệu quy trình.
+      (f) Tài liệu Bộ giá trị gắn là `{"values": {tên: giá trị}}`; `default` của biến là văn bản JSON của giá trị; biến chỉ
+      nhận lược đồ vô hướng trong tập từ khóa đóng (không `pattern`, `$ref`). Nếu sai thì: thêm từ khóa có người đọc.
+      (g) `platform.config_versions` được mô tả ở `dw_studio.core.adapters.tables` (khóa của bản kê trỏ vào nó;
+      `test_metadata_matches_catalog.py` giữ nó bằng catalog), adapter của platform giữ danh sách cột riêng. Nếu sai thì: một
+      bảng mô tả chung ở `dw_platform.adapters.persistence.tables`.
+      (h) Mã băm khai báo (`base_bindings_hash`) bỏ `description`; `decision_stale` mang `details.reason`
+      (`bindings_changed`, `base_not_sealed`, `approved_changed`, `connection_unusable`, `no_sealed_version`). Nếu sai thì:
+      băm cả mô tả.
+      (i) Lúc nhận lượt, `connection_usable` hỏi cho `run_as` của lượt ở workspace của lượt (`run_admission`); lượt
+      `simulate` ghim giá trị đã duyệt hợp lệ và `default`. Nếu sai thì: hỏi cho `requested_by`.
+    - Thêm ngoài tiêu chí: hai đề xuất đồng thời đọc lại cả `uq_..._proposed` lẫn `uq_..._version_no` thành `proposal_open`;
+      `ck_config_versions_decided` và `ck_config_versions_superseded` giữ cột quyết định theo trạng thái.
+    - Test: integration `test_bindings.py` 37 ca (mọi R7, R8, R3.6-R3.8, R2.18; cửa gọi thẳng: `ConfigVersionService`,
+      `decide` của luồng phê duyệt với tiền tố và guard của composition root, `ConfigSettlement`, `BindingStatus`,
+      `RunRequestService`, `SqlRunBindings`, với `ConnectionUsability` thật); `test_privileges.py` (grant cột);
+      unit `test_bindings_domain.py` 10, `test_approval_flow.py` (guard thấy quyết định; `second_person_required` cho
+      `memory.review` và `config.version`), `test_workflow_ir.py` (gói từ chối `bindings`), `test_config_versions_wiring.py`,
+      `test_channel_commands.py` (tiền tố `config.` ở worker), `test_memory_review_wiring.py` (G4 trên guard async).
+      Xanh: `test_rls_coverage`, `test_privileges`, `test_offboarding_coverage`, `test_permission_catalogue`,
+      `test_metadata_matches_catalog`, `test_run_manifest`, `test_run_request`, unit toàn repo (phủ 76,7%).
+    - `mutations/05.yaml` 35 đột biến, chưa chạy `mutate.py`; chạy tay 10 (sao lưu, khôi phục bằng chép), mỗi cái đỏ ở ca
+      của nó: quét id kết nối, kiểm lúc nhận theo phiên bản của lượt, `connection_usable` lúc nhận, `extra="forbid"` của
+      mục `bindings`, neo workspace sở hữu, so mã băm khai báo, hỏi lại kết nối lúc duyệt, bỏ qua dòng đã rời `proposed`,
+      so `proposed_by` khi rút, nguồn của `ConnectionDependentsPort`.
+    - `reviewing-feature-security` (đọc): mọi đọc qua RLS của giao dịch, tenant từ ngữ cảnh đã xác minh; id trong đường
+      dẫn kiểm bằng khóa đọc của loại ở workspace sở hữu trước mọi việc, công ty khác như không có (404); người đề xuất,
+      người duyệt và `connection_usable` neo ở workspace sở hữu; yêu cầu phê duyệt mang id và mã băm, không giá trị;
+      bản kê không bí mật; mặc định đóng: kind không kiểm thì khởi động hỏng, kết nối không đọc được chỉ hiện id.
+    - MEDIUM để lại: (M9) ba route chỉ có test hợp đồng (snapshot) và test khai báo idempotency; cửa thật thử ở mức dịch vụ;
+      (M10) R3.6 kiểm purge và thứ tự, chưa kiểm export của `config_versions`; (M11) `BindingStatus` đọc trong giao dịch riêng,
+      không phải giao dịch phát hành của agent-lifecycle/04 (quyết định (a)); (M3), (M7) của gate giữ nguyên.
+    - Owed ở lúc đóng hàng: `mutate.py` cho `mutations/05.yaml`; `make test-integration` toàn bộ; P50/P95/P99 của ba route mới,
+      của cửa nhận lượt (thêm một đọc Bộ giá trị gắn, đọc tài liệu bao đóng, một `connection_usable` mỗi kết nối) và của
+      lệnh niêm phong (quét id kết nối); `/code-review`, `reviewing-deployment-security` (route mới).
