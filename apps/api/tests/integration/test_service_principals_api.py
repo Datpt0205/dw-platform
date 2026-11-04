@@ -371,19 +371,29 @@ async def test_the_accountable_owner_through_the_routes(api: Api) -> None:
 
 
 async def test_the_role_route_refuses_a_critical_role_for_a_service_account(api: Api) -> None:
-    """R6.4 (OP9): the members route's write meets the guard and answers 422
-    `role_not_allowed_for_service`; nothing is assigned."""
+    """R6.4 (OP9), tenant-rbac R6.3: the members route refuses a critical
+    tenant role for a service account before it proposes anything, 422
+    `role_not_allowed_for_service`, though the caller holds every key of the
+    role and `platform.roles.bind`; nothing is assigned or proposed. The guard
+    `guard_service_principal_grants` decides again at a confirmation (tenant-rbac
+    ticket 03's own tests)."""
     key = f"test.spapi{uuid.uuid4().hex[:8]}.crit"
     template = f"crit_{uuid.uuid4().hex[:8]}"
     async with api.migrator.begin() as conn:
         await register_key(conn, key, risk="critical")
-        await conn.execute(
-            sa.text("INSERT INTO platform.roles (key, name, scopes) VALUES (:k, :k, :s)"),
-            {"k": template, "s": f'["{key}"]'},
-        )
         a = await plant_tenant(conn, workspaces=2)
+        await plant_role(conn, a.tenant_id, template, {key: "tenant"})
     try:
-        admin = await _caller(api, a, {**_BOTH, "platform.members.write": "tenant"})
+        admin = await _caller(
+            api,
+            a,
+            {
+                **_BOTH,
+                "platform.members.write": "tenant",
+                "platform.roles.bind": "tenant",
+                key: "tenant",
+            },
+        )
         account = uuid.UUID((await _create(api, admin, admin.user_id)).json()["id"])
         answer = await _call(
             api,
@@ -400,12 +410,14 @@ async def test_the_role_route_refuses_a_critical_role_for_a_service_account(api:
             " JOIN platform.memberships m ON m.id = a.membership_id WHERE m.user_id = :u",
             u=account,
         ) == [(0,)]
+        assert await _rows(
+            api,
+            "SELECT count(*) FROM platform.role_change_requests WHERE tenant_id = :t",
+            t=a.tenant_id,
+        ) == [(0,)]
     finally:
         async with api.migrator.begin() as conn:
             await conn.execute(
                 sa.text("DELETE FROM platform.tenant_roles WHERE key = :k"), {"k": template}
-            )
-            await conn.execute(
-                sa.text("DELETE FROM platform.roles WHERE key = :k"), {"k": template}
             )
             await unregister_key(conn, key)

@@ -33,7 +33,13 @@ from dw_platform.application.support_access import (
     SupportScopeCatalog,
 )
 from dw_platform.testing.members import add_tenant_member
-from dw_platform.testing.rbac import catalogue_test_keys
+from dw_platform.testing.rbac import (
+    assign,
+    catalogue_test_keys,
+    plant_membership,
+    plant_person,
+    role_id,
+)
 
 SET_KEY = "probe.read"
 SET_SCOPES = frozenset({"x.read"})
@@ -209,6 +215,32 @@ async def context_of(
     access = await lookup.find_access(f"sg-{world.users[name]}", ISSUER, tenant, ws)
     assert access is not None, name
     return context_from(access)
+
+
+async def add_checker(migrator: AsyncEngine, world: SupportWorld) -> uuid.UUID:
+    """A second holder of `platform.roles.bind` in tenant A (`org_admin` in ws1,
+    as the requester holds it), planted as the migrator: a role the requester
+    proposes is applied only when another person confirms it (tenant-rbac 03).
+    Not part of the world itself, whose member counts some tests read."""
+    async with migrator.begin() as conn:
+        person = await plant_person(conn, world.tenant_a)
+        membership = await plant_membership(conn, world.tenant_a, world.ws1, person)
+        role = await role_id(conn, world.tenant_a, "org_admin")
+        await assign(conn, world.tenant_a, world.ws1, membership, role)
+    return person
+
+
+def checker_context(world: SupportWorld, checker: uuid.UUID) -> AccessContext:
+    """The checker's context: `platform.roles.bind` is all `confirm` asks the
+    port; the database reads the checker's real grants."""
+    return AccessContext(
+        tenant_id=world.tenant_a,
+        workspace_id=world.ws1,
+        principal_id=checker,
+        roles=frozenset({"org_admin"}),
+        scopes=frozenset({"platform.roles.bind"}),
+        plan_id="professional",
+    )
 
 
 def grant_service(

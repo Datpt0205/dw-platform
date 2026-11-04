@@ -2,8 +2,10 @@
 
 The seed gives Diệu (an AM) the ``approver_boost`` set, so her resolved access
 carries ``approvals.decide`` her role does not — the whole point. An admin can
-assign another set and it shows up; a set carrying a ``platform.*`` scope is
-refused to anyone but a platform admin (no escalation).
+assign another set and it shows up once a second holder of
+``platform.roles.bind`` confirms it (tenant-rbac ticket 03, R7.1); a critical
+set carrying a key the admin does not hold is refused (the hold rule, no
+escalation).
 """
 
 from __future__ import annotations
@@ -14,17 +16,21 @@ from collections.abc import AsyncIterator
 import pytest
 import sqlalchemy as sa
 from pg_harness import DatabaseUrls
+from rbac_world import (
+    Admins,
+    assignment_service,
+    confirm_all,
+    open_proposals,
+    plant_admins,
+    tenant_role,
+)
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from dw_kernel.errors import NotFoundError, PermissionDeniedError
-from dw_kernel.ports import SystemClock, Uuid4Generator
 from dw_platform.adapters.persistence import tables
-from dw_platform.adapters.persistence.admin_console_repo import SqlAdminConsoleRepository
 from dw_platform.adapters.persistence.membership_lookup import SqlMembershipLookup
-from dw_platform.application.access_context import AccessContext
-from dw_platform.application.admin_console import AdminConsoleService, SetPermissionSets
-from dw_platform.application.authorization import ScopeAuthorizationService
+from dw_platform.application.role_assignments import SetPermissionSets
 from dw_platform.testing.seed_env import seed_test_env
 
 pytestmark = pytest.mark.integration
@@ -34,7 +40,6 @@ ALPHA_WS = uuid.UUID("64764894-718d-5558-ba17-9a2949214063")
 # The dev issuer: these users are known by `users.subject` alone, which only
 # the dev issuer resolves (foundations-hardening R4.3).
 ISSUER = "dw-dev"
-ADMIN_SCOPES = frozenset({"platform.members.read", "platform.members.write", "platform.roles.read"})
 
 
 @pytest.fixture
@@ -52,20 +57,10 @@ async def migrator_engine(db_urls: DatabaseUrls) -> AsyncIterator[AsyncEngine]:
     await engine.dispose()
 
 
-def _admin() -> AccessContext:
-    return AccessContext(
-        tenant_id=ALPHA,
-        workspace_id=ALPHA_WS,
-        principal_id=uuid.uuid4(),
-        roles=frozenset({"org_admin"}),
-        scopes=ADMIN_SCOPES,
-        plan_id="professional",
-    )
-
-
-def _service(engine: AsyncEngine) -> AdminConsoleService:
-    repo = SqlAdminConsoleRepository(async_sessionmaker(engine, expire_on_commit=False))
-    return AdminConsoleService(repo, ScopeAuthorizationService(), SystemClock(), Uuid4Generator())
+@pytest.fixture
+async def admins(app_engine: AsyncEngine, migrator_engine: AsyncEngine) -> Admins:
+    """Two org admins of alpha: one proposes, the other confirms."""
+    return await plant_admins(migrator_engine, ALPHA, ALPHA_WS)
 
 
 async def _uid(engine: AsyncEngine, subject: str) -> uuid.UUID:
@@ -91,24 +86,33 @@ async def test_a_seeded_permission_set_adds_a_scope_the_role_lacks(
     assert "approvals.decide" in access.scopes
 
 
-async def test_admin_assigns_a_set_and_it_takes_effect(app_engine: AsyncEngine) -> None:
+async def test_admin_assigns_a_set_and_it_takes_effect(
+    app_engine: AsyncEngine, admins: Admins
+) -> None:
     an = await _uid(app_engine, "dev|an.nguyen")
     before = await _lookup(app_engine).find_access("dev|an.nguyen", ISSUER, ALPHA, ALPHA_WS)
     assert before is not None and "approvals.decide" not in before.scopes
 
-    await _service(app_engine).set_permission_sets(
-        _admin(), SetPermissionSets(user_id=an, permission_set_keys=frozenset({"approver_boost"}))
+    outcome = await assignment_service(app_engine).set_permission_sets(
+        admins.maker_context,
+        SetPermissionSets(user_id=an, permission_set_keys=frozenset({"approver_boost"})),
     )
+    assert len(outcome.proposals) == 1
+    proposed = await _lookup(app_engine).find_access("dev|an.nguyen", ISSUER, ALPHA, ALPHA_WS)
+    assert proposed is not None and "approvals.decide" not in proposed.scopes
+
+    await confirm_all(app_engine, admins.checker_context, outcome.proposals)
 
     after = await _lookup(app_engine).find_access("dev|an.nguyen", ISSUER, ALPHA, ALPHA_WS)
     assert after is not None and "approvals.decide" in after.scopes
 
 
-async def test_unknown_set_is_refused(app_engine: AsyncEngine) -> None:
+async def test_unknown_set_is_refused(app_engine: AsyncEngine, admins: Admins) -> None:
     an = await _uid(app_engine, "dev|an.nguyen")
     with pytest.raises(NotFoundError):
-        await _service(app_engine).set_permission_sets(
-            _admin(), SetPermissionSets(user_id=an, permission_set_keys=frozenset({"ghost"}))
+        await assignment_service(app_engine).set_permission_sets(
+            admins.maker_context,
+            SetPermissionSets(user_id=an, permission_set_keys=frozenset({"ghost"})),
         )
 
 
@@ -150,22 +154,30 @@ async def test_restricted_tenant_still_narrows_a_plain_rep(
 
 
 async def test_org_admin_cannot_assign_an_administrative_set(
-    app_engine: AsyncEngine, migrator_engine: AsyncEngine
+    app_engine: AsyncEngine, migrator_engine: AsyncEngine, admins: Admins
 ) -> None:
-    """No escalation: a set carrying a platform.* scope is a platform-admin act."""
+    """No escalation: a set carrying `platform.roles.write`, a critical key
+    `org_admin` does not hold, is refused 403 `rbac_escalation` naming the key,
+    nothing proposed (the hold rule, ADR-0104 decision 6)."""
     an = await _uid(app_engine, "dev|an.nguyen")
+    key = f"superpowers_{uuid.uuid4().hex[:8]}"
     async with migrator_engine.begin() as conn:
         await conn.execute(
             sa.insert(tables.permission_sets).values(
-                key="superpowers", name="Superpowers", scopes=["platform.members.write"]
+                key=key, name="Superpowers", scopes=["platform.roles.write"]
             )
         )
+    await tenant_role(migrator_engine, ALPHA, key)
+    before = await open_proposals(migrator_engine, ALPHA)
 
-    with pytest.raises(PermissionDeniedError, match="administrative"):
-        await _service(app_engine).set_permission_sets(
-            _admin(),
-            SetPermissionSets(user_id=an, permission_set_keys=frozenset({"superpowers"})),
+    with pytest.raises(PermissionDeniedError) as refused:
+        await assignment_service(app_engine).set_permission_sets(
+            admins.maker_context,
+            SetPermissionSets(user_id=an, permission_set_keys=frozenset({key})),
         )
+    assert refused.value.details["reason_code"] == "rbac_escalation"
+    assert refused.value.details["keys"] == ["platform.roles.write:tenant"]
+    assert await open_proposals(migrator_engine, ALPHA) == before
 
 
 @pytest.fixture

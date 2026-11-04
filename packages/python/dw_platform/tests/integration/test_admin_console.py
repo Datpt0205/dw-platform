@@ -14,6 +14,7 @@ from collections.abc import AsyncIterator
 import pytest
 import sqlalchemy as sa
 from pg_harness import DatabaseUrls
+from rbac_world import role_admin_service, tenant_role
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
@@ -166,12 +167,31 @@ async def test_a_plain_member_cannot_manage_workspaces(app_engine: AsyncEngine) 
         await svc.create_workspace(member, CreateWorkspace(name="Nope", slug="nope"))
 
 
-async def test_roles_read_lists_the_catalog(app_engine: AsyncEngine) -> None:
-    svc = _service(app_engine)
-    roles = {r.key: r for r in await svc.list_roles(_admin())}
-    assert "org_admin" in roles
-    assert "platform.members.write" in roles["org_admin"].scopes
-    assert "member" in roles and "knowledge.write" in roles["member"].scopes
+async def test_roles_read_lists_the_catalog(
+    app_engine: AsyncEngine, migrator_engine: AsyncEngine
+) -> None:
+    """Since tenant-rbac ticket 03 the catalogue is the role templates a tenant
+    clones from (`GET /admin/role-templates`) and the tenant's own roles
+    (`GET /admin/roles/{id}`), each with the privileges it carries."""
+    svc = role_admin_service(app_engine)
+    templates = {t.key: t for t in await svc.list_templates(_admin())}
+    assert "member" in templates
+    assert ("knowledge.write", "workspace") in {
+        (p.key, p.depth) for p in templates["member"].privileges
+    }
+    org_admin = await svc.get_role(_admin(), await tenant_role(migrator_engine, ALPHA, "org_admin"))
+    assert ("platform.members.write", "tenant") in {(p.key, p.depth) for p in org_admin.privileges}
+    with pytest.raises(PermissionDeniedError):
+        await svc.list_templates(
+            AccessContext(
+                tenant_id=ALPHA,
+                workspace_id=ALPHA_WS,
+                principal_id=uuid.uuid4(),
+                roles=frozenset({"member"}),
+                scopes=frozenset({"approvals.read"}),
+                plan_id="professional",
+            )
+        )
 
 
 async def test_the_permission_catalogue_lists_every_row_by_area_then_key(

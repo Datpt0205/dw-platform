@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import replace
-from typing import Any, cast
+from typing import Any, ClassVar, cast
 
 import httpx
 import pytest
@@ -35,6 +35,8 @@ from dw_platform.application.authorization import ScopeAuthorizationService
 from dw_platform.application.digital_workers import (
     ClassAutonomy,
     DigitalWorkerService,
+    DwRoleCheck,
+    PrincipalCover,
     Standing,
 )
 from dw_platform.application.effect_keys import PendingEffect
@@ -153,8 +155,33 @@ class Tools:
 
 
 class Roles:
-    async def role_catalog(self) -> dict[str, frozenset[str]]:
-        return {"member": frozenset({"approvals.read", "dw.read"})}
+    """`DwRoleCheckPort` over one tenant role, `member`, as `SqlDwRoleCheck`
+    answers it: an unknown key is `unknown`, a critical role `critical`, and
+    `platform.rbac_refusals` refuses the creator a role carrying a key they do
+    not hold unless they hold `platform.roles.bind` and it is not critical.
+    The caller's grants are the context's scopes."""
+
+    CATALOG: ClassVar[dict[str, frozenset[str]]] = {
+        "member": frozenset({"approvals.read", "dw.read"})
+    }
+    CRITICAL: ClassVar[frozenset[str]] = frozenset()
+
+    async def check_roles(self, context: AccessContext, role_keys: frozenset[str]) -> DwRoleCheck:
+        known = role_keys & self.CATALOG.keys()
+        bind = "platform.roles.bind" in context.scopes
+        return DwRoleCheck(
+            unknown=role_keys - known,
+            critical=known & self.CRITICAL,
+            refused=any(
+                not self.CATALOG[key] <= context.scopes and not (bind and key not in self.CRITICAL)
+                for key in known
+            ),
+        )
+
+    async def principal_cover(
+        self, context: AccessContext, principal_id: uuid.UUID
+    ) -> PrincipalCover:
+        raise NotImplementedError("not exercised by the route tests")
 
 
 class QueueRepo:

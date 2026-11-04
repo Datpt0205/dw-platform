@@ -145,7 +145,6 @@ def make_container(
         identity_bootstrap=None,
         uow_factory=FakeUowFactory(repo),
         authorization=ScopeAuthorizationService(),
-        grant_membership=None,
         revoke_membership=None,
         feedback_storage=storage,
     )

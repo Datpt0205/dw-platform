@@ -762,6 +762,10 @@ _TENANT_WIDE_ON_PURPOSE: dict[tuple[str, str], str] = {
         "a service principal is an identity of the company (ADR-0103 decision 2); its "
         "workspace is `owning_workspace_id`, held by the RESTRICT composite key"
     ),
+    ("platform", "role_change_requests"): (
+        "đề xuất thay đổi vai trò thuộc cả công ty như vai trò nó sửa; workspace của một gán nằm"
+        " trong `payload` và ở `platform.role_assignments` khi áp (tenant-rbac ticket 03, DO-01)"
+    ),
     ("platform", "sod_waivers"): (
         "a separation-of-duties waiver for a person across the company's memberships"
     ),

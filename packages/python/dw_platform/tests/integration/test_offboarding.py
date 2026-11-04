@@ -761,19 +761,18 @@ async def test_the_workspace_scope_ends_with_the_transaction(
 
 
 async def test_offboarding_exports_and_purges_the_role_tables_and_the_version_row_stays_gone(
-    sessions: async_sessionmaker[AsyncSession],
+    sessions: async_sessionmaker[AsyncSession], migrator: AsyncEngine
 ) -> None:
     """tenant-rbac R4.2: roles, their privileges, assignments and the access
     version row are exported, then purged; the version row's step may run
-    before the assignments go, and their deletes bring no row back."""
+    before the assignments go, and their deletes bring no row back. The role
+    and its assignment are planted as the migrator: as `dw_app` each is a
+    widening write only a confirmed proposal opens (tenant-rbac ticket 03)."""
     mine, theirs = _new_tenant(), _new_tenant()
     for t in (mine, theirs):
         await _seed_tenant(sessions, t)
         member = await _seed_member(sessions, t)
-        async with sessions() as session, session.begin():
-            await session.execute(
-                sa.text("SELECT set_config('app.tenant_id', :t, true)"), {"t": str(t.tenant_id)}
-            )
+        async with migrator.begin() as session:
             role = await session.scalar(
                 sa.text("SELECT platform.install_role_template(:t, 'approver')"),
                 {"t": t.tenant_id},

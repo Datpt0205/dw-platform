@@ -368,7 +368,10 @@ async def test_one_tenant_reads_and_names_none_of_anothers_roles(
     migrator: AsyncEngine, app: AsyncEngine, test_keys: dict[str, str]
 ) -> None:
     """R3.3 (RB8): RLS on all four tables; the composite key refuses B's role
-    in A's assignment; an unscoped connection reads nothing."""
+    in A's assignment; an unscoped connection reads nothing. As `dw_app` the
+    assignment meets the role guard first (no confirmed proposal opens it,
+    tenant-rbac ticket 03), so the key is shown by the migrator, whom the guard
+    exempts and the key does not."""
     async with migrator.begin() as conn:
         a, b = await plant_tenant(conn), await plant_tenant(conn)
         person = await plant_person(conn, a.tenant_id)
@@ -402,11 +405,18 @@ async def test_one_tenant_reads_and_names_none_of_anothers_roles(
         with pytest.raises(IntegrityError) as refused:
             async with conn.begin():
                 await conn.execute(
-                    sa.text("SELECT set_config('app.tenant_id', :t, true)"),
-                    {"t": str(a.tenant_id)},
+                    sa.text(
+                        "SELECT set_config('app.tenant_id', :t, true),"
+                        " set_config('app.user_id', :u, true)"
+                    ),
+                    {"t": str(a.tenant_id), "u": str(person)},
                 )
                 await assign(conn, a.tenant_id, a.main, membership, b_role)
-        assert _constraint(refused.value) == "fk_role_assignments_tenant_id_tenant_roles"
+        assert _constraint(refused.value) == "rbac_refusals_role_assignments"
+    with pytest.raises(IntegrityError) as refused:
+        async with migrator.begin() as conn:
+            await assign(conn, a.tenant_id, a.main, membership, b_role)
+    assert _constraint(refused.value) == "fk_role_assignments_tenant_id_tenant_roles"
 
 
 async def test_a_privilege_takes_only_a_depth_its_kind_allows(
@@ -829,14 +839,25 @@ async def test_setup_is_entered_at_creation_and_left_for_active_or_offboarding_o
 @pytest.fixture
 async def owner_keys(migrator: AsyncEngine) -> AsyncIterator[tuple[str, str]]:
     """The two keys of R3.11 and R3.12, registered as their clusters will
-    register them, for one test (neither is in the catalogue yet)."""
+    register them, for one test. `platform.roles.write` is in the catalogue
+    since tenant-rbac ticket 03; only a key still missing is registered here,
+    and only that one removed after."""
     keys = ("platform.roles.write", "studio.publish.approve")
     async with migrator.begin() as conn:
-        for key in keys:
+        present = set(
+            (
+                await conn.execute(
+                    sa.text("SELECT key FROM platform.permissions WHERE key = ANY(:k)"),
+                    {"k": list(keys)},
+                )
+            ).scalars()
+        )
+        added = [key for key in keys if key not in present]
+        for key in added:
             await register_key(conn, key, scope_kind="tenant")
     yield keys
     async with migrator.begin() as conn:
-        for key in keys:
+        for key in added:
             await unregister_key(conn, key)
 
 
@@ -1123,37 +1144,49 @@ async def test_a_refusal_rolls_back_the_whole_write(
 # ---- below two holders, before either key exists (R3.12) ----------------------
 
 
-async def test_no_warning_while_neither_owner_key_is_in_the_catalogue(
+async def test_no_warning_while_an_owner_key_is_not_in_the_catalogue(
     migrator: AsyncEngine, test_keys: dict[str, str]
 ) -> None:
     """R3.12 (RB40): a key not registered yet is held by nobody and counted by
-    nobody, so revoking an assignment in an active tenant sets nothing."""
+    nobody, so revoking an assignment in an active tenant sets nothing.
+    `platform.roles.write` is registered since tenant-rbac ticket 03, so the
+    tenant holds it twice over (two owners); `studio.publish.approve`, held by
+    nobody, is the key that must not warn."""
     async with migrator.begin() as conn:
-        registered = await conn.scalar(
-            sa.text(
-                "SELECT count(*) FROM platform.permissions"
-                " WHERE key = ANY(platform.owner_permission_keys())"
+        registered = (
+            await conn.execute(
+                sa.text(
+                    "SELECT key FROM platform.permissions"
+                    " WHERE key = ANY(platform.owner_permission_keys())"
+                )
             )
+        ).scalars()
+        assert list(registered) == ["platform.roles.write"], (
+            "the premise: only the ticket-03 key is registered"
         )
-        assert registered == 0, "the premise: neither key is registered yet"
         t = await plant_tenant(conn)
+        owner_role = await role_id(conn, t.tenant_id, "tenant_owner")
+        for _ in range(2):
+            owner = await plant_person(conn, t.tenant_id)
+            owner_membership = await plant_membership(conn, t.tenant_id, t.main, owner)
+            await assign(conn, t.tenant_id, t.main, owner_membership, owner_role)
         person = await plant_person(conn, t.tenant_id)
         membership = await plant_membership(conn, t.tenant_id, t.main, person)
         role = await plant_role(conn, t.tenant_id, "r_quiet", {test_keys["workspace"]: "workspace"})
         assignment = await assign(conn, t.tenant_id, t.main, membership, role)
+    events_sql = sa.text(
+        "SELECT count(*) FROM platform.outbox_events WHERE tenant_id = :t"
+        " AND event_type = 'platform.tenant.owner_coverage_low'"
+    )
+    since_sql = sa.text("SELECT owner_coverage_low_since FROM platform.tenants WHERE id = :t")
+    async with migrator.connect() as conn:
+        # Two holders of the registered key once both owners are in: no fall.
+        assert await conn.scalar(since_sql, {"t": t.tenant_id}) is None
+        before = await conn.scalar(events_sql, {"t": t.tenant_id})
     async with migrator.begin() as conn:
         await conn.execute(
             sa.text("DELETE FROM platform.role_assignments WHERE id = :a"), {"a": assignment}
         )
-        since = await conn.scalar(
-            sa.text("SELECT owner_coverage_low_since FROM platform.tenants WHERE id = :t"),
-            {"t": t.tenant_id},
-        )
-        events = await conn.scalar(
-            sa.text(
-                "SELECT count(*) FROM platform.outbox_events WHERE tenant_id = :t"
-                " AND event_type = 'platform.tenant.owner_coverage_low'"
-            ),
-            {"t": t.tenant_id},
-        )
-    assert (since, events) == (None, 0)
+        since = await conn.scalar(since_sql, {"t": t.tenant_id})
+        events = await conn.scalar(events_sql, {"t": t.tenant_id})
+    assert (since, events) == (None, before)

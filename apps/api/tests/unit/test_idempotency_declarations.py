@@ -30,6 +30,7 @@ from starlette.routing import Mount
 
 from dw_agent_runtime.approval_flow import ApproveAndResumeService
 from dw_api.dependencies.idempotency import IDEMPOTENCY_HEADER
+from dw_api.routes.v1 import admin_roles as role_routes
 from dw_api.routes.v1 import admin_service_principals as service_principal_routes
 from dw_api.routes.v1 import connections as connection_routes
 from dw_api.routes.v1 import digital_workers as digital_workers_routes
@@ -40,6 +41,7 @@ from dw_platform.application import (
     control_switches,
     digital_workers,
     membership_admin,
+    role_admin,
     support_access,
 )
 from dw_platform.application.connection_admin import ConnectionService
@@ -70,7 +72,16 @@ DECLARED: dict[tuple[str, str], object] = {
     ("POST", "/api/v1/admin/members"): membership_admin.MEMBERS_WRITE,
     ("DELETE", "/api/v1/admin/members/{user_id}"): membership_admin.MEMBERS_WRITE,
     ("PUT", "/api/v1/admin/members/{user_id}/memberships"): membership_admin.MEMBERS_WRITE,
+    ("PUT", "/api/v1/admin/members/{user_id}/permission-sets"): membership_admin.MEMBERS_WRITE,
     ("POST", "/api/v1/admin/invitations"): membership_admin.MEMBERS_WRITE,
+    # A company's roles: the write key; a proposal's confirmation and withdrawal
+    # are checked against the proposal the path names (tenant-rbac R8.2, R7.1).
+    ("POST", "/api/v1/admin/roles"): role_admin.ROLES_WRITE,
+    ("PATCH", "/api/v1/admin/roles/{role_id}"): role_admin.ROLES_WRITE,
+    ("PUT", "/api/v1/admin/roles/{role_id}/permissions"): role_admin.ROLES_WRITE,
+    ("DELETE", "/api/v1/admin/roles/{role_id}"): role_admin.ROLES_WRITE,
+    ("POST", "/api/v1/admin/role-changes/{request_id}/confirm"): role_routes._may_confirm,
+    ("POST", "/api/v1/admin/role-changes/{request_id}/withdraw"): role_routes._may_withdraw,
     # A tenant-depth key (agent-lifecycle R7.10).
     ("POST", "/api/v1/admin/freeze"): control_switches.LIFECYCLE_FREEZE,
     ("POST", "/api/v1/admin/unfreeze"): control_switches.LIFECYCLE_FREEZE,
@@ -156,6 +167,7 @@ SERVICE_MODULES = {
     "dw_platform.application.digital_workers",
     "dw_platform.application.work_queue",
     "dw_platform.application.membership_admin",
+    "dw_platform.application.role_admin",
     "dw_platform.application.support_access",
     "dw_platform.application.control_switches",
 }
@@ -288,6 +300,12 @@ def test_each_declaration_is_the_check_its_service_makes() -> None:
     ):
         assert service_check in ast.dump(ast.parse(_source_of(check))), service_check
         assert hasattr(ConnectionService, service_check)
+    for check, service_check in (
+        (role_routes._may_confirm, "require_may_confirm"),
+        (role_routes._may_withdraw, "require_may_withdraw"),
+    ):
+        assert service_check in ast.dump(ast.parse(_source_of(check))), service_check
+        assert hasattr(role_admin.RoleAdminService, service_check)
     create = ast.dump(ast.parse(_source_of(service_principal_routes._may_create)))
     assert "require_manage" in create, "a service account's create calls the service's check"
     assert hasattr(ServicePrincipalService, "require_manage")
@@ -329,7 +347,7 @@ def literal_declarations(source: str) -> list[str]:
 
 
 def test_no_route_module_writes_a_check_a_second_time() -> None:
-    for module in ("admin_members.py", "approvals.py", "support.py"):
+    for module in ("admin_members.py", "admin_roles.py", "approvals.py", "support.py"):
         assert literal_declarations((ROUTES / module).read_text(encoding="utf-8")) == [], module
 
 

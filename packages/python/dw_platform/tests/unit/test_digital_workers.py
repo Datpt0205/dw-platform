@@ -4,7 +4,12 @@ R1.2-R1.3, R1.5-R1.10, R1.13, R1.15, R2.1-R2.4; DWK1, DWK3-DWK7, DWK23, DWK24, D
 The fakes keep their Protocols' promises: the repository refuses a state move
 from a state the DW is no longer in, the membership check answers None for a
 user without a membership in the caller's workspace, whatever tenant they
-belong to.
+belong to, and the role check answers the way `SqlDwRoleCheck` does from the
+database: a key with no role is unknown, `tenant_owner` or a role carrying a
+key of risk `critical` is critical (`platform.role_is_critical`), a role the
+caller does not hold every privilege of is refused (`platform.rbac_refusals`'
+hold rule), and a principal that is not an `active` member is `inactive`
+before any cover is compared (`platform.grants_cover`).
 """
 
 from __future__ import annotations
@@ -26,8 +31,9 @@ from dw_platform.application.digital_workers import (
     DecisionAutonomy,
     DecisionLevels,
     DigitalWorkerService,
+    DwRoleCheck,
+    PrincipalCover,
     Standing,
-    is_critical_role,
 )
 from dw_platform.application.effect_keys import PendingEffect
 from dw_platform.domain.audit import AuditEvent
@@ -54,7 +60,10 @@ ROLES = {
     "approver": DECIDER_SCOPES,
     "org_admin": frozenset({"platform.members.write", "dw.manage", "dw.read"}),
     "workspace_admin": frozenset({"platform.workspaces.write"}),
+    "tenant_owner": frozenset(),
 }
+# The keys of risk `critical` in this fake catalogue.
+CRITICAL_KEYS = frozenset({"platform.members.write", "platform.workspaces.write"})
 
 
 def context(user: uuid.UUID, *scopes: str, roles: frozenset[str] = frozenset()) -> AccessContext:
@@ -149,9 +158,31 @@ class FakeTools:
         return name in self.names
 
 
+@dataclass
 class FakeRoles:
-    async def role_catalog(self) -> dict[str, frozenset[str]]:
-        return dict(ROLES)
+    """`DwRoleCheckPort` over `ROLES`: the caller's scopes stand for what
+    `platform.rbac_refusals` and `platform.grants_cover` read from the grants,
+    and a role (`platform_admin` included) never stands in for one."""
+
+    standings: FakeMembers
+
+    async def check_roles(self, context: AccessContext, role_keys: frozenset[str]) -> DwRoleCheck:
+        known = role_keys & ROLES.keys()
+        return DwRoleCheck(
+            unknown=role_keys - known,
+            critical=frozenset(
+                key for key in known if key == "tenant_owner" or ROLES[key] & CRITICAL_KEYS
+            ),
+            refused=any(not ROLES[key] <= context.scopes for key in known),
+        )
+
+    async def principal_cover(
+        self, context: AccessContext, principal_id: uuid.UUID
+    ) -> PrincipalCover:
+        standing = await self.standings.standing(context, principal_id)
+        if standing is None:
+            return "inactive"
+        return "covered" if standing.scopes <= context.scopes else "not_covered"
 
 
 def members() -> FakeMembers:
@@ -167,12 +198,13 @@ def members() -> FakeMembers:
 
 
 def service(repo: FakeRepo, people: FakeMembers | None = None) -> DigitalWorkerService:
+    standing = people or members()
     return DigitalWorkerService(
         repo=repo,
         authz=ScopeAuthorizationService(),
         tools=FakeTools(),
-        members=people or members(),
-        roles=FakeRoles(),
+        members=standing,
+        roles=FakeRoles(standing),
         clock=FixedClock(NOW),
         id_generator=Uuid4Generator(),
     )
@@ -338,9 +370,10 @@ async def test_a_platform_admin_role_does_not_stand_in_for_the_scopes_handed_out
     assert reason(refused) == "grants_not_covered"
 
 
-@pytest.mark.parametrize("role", ["org_admin", "workspace_admin"])
+@pytest.mark.parametrize("role", ["tenant_owner", "org_admin", "workspace_admin"])
 async def test_a_principal_holds_no_critical_role(role: str) -> None:
-    """DWK33: `org_admin` by name, and a role carrying an administrative scope."""
+    """DWK33: `tenant_owner` by name, and a role carrying a key of risk
+    `critical` (`platform.role_is_critical`)."""
     repo = FakeRepo()
     everything = context(CREATOR, "dw.manage", *{s for scopes in ROLES.values() for s in scopes})
     with pytest.raises(DomainError) as refused:
@@ -353,13 +386,6 @@ async def test_a_principal_holds_no_critical_role(role: str) -> None:
         )
     assert reason(refused) == "role_not_allowed_for_service"
     assert repo.workers == {}
-
-
-def test_the_critical_roles_are_named_and_found_by_scope() -> None:
-    assert is_critical_role("tenant_owner", frozenset())
-    assert is_critical_role("platform_admin", frozenset({"platform.admin"}))
-    assert is_critical_role("anything", frozenset({"admin.billing"}))
-    assert not is_critical_role("member", ROLES["member"])
 
 
 async def test_creating_takes_dw_manage() -> None:

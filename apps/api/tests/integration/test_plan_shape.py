@@ -55,8 +55,8 @@ from dw_platform.adapters.identity.dev_token import DevTokenVerifier
 from dw_platform.adapters.persistence.digital_workers_repo import (
     SqlDigitalWorkerRepository,
     SqlDwMembershipCheck,
+    SqlDwRoleCheck,
 )
-from dw_platform.adapters.persistence.tenant_members import SqlTenantMembersRepository
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.authorization import ScopeAuthorizationService
 from dw_platform.application.digital_workers import DigitalWorkerService
@@ -121,6 +121,11 @@ EXPECTED: dict[tuple[str, str], Expectation] = {
     # Newest first; the reach of `connections.read` is a filter on the
     # tenant's index (connections-and-vault ticket 04).
     ("GET", "/api/v1/connections"): Expectation("platform.connections", (), ("created_at", "id")),
+    # Open proposals, newest first; the seven-day window is a range on the
+    # same index (tenant-rbac ticket 03).
+    ("GET", "/api/v1/admin/role-changes"): Expectation(
+        "platform.role_change_requests", ("status",), ("proposed_at", "id")
+    ),
 }
 # The query a registered route is paged with, when it needs one.
 PARAMS: dict[tuple[str, str], dict[str, str]] = {
@@ -364,6 +369,32 @@ async def seed(migrator: AsyncEngine) -> World:
                 },
             )
         await conn.execute(sa.text("ANALYZE platform.connections"))
+        # A company's role change proposals, most of them closed, read with
+        # `platform.roles.read` (tenant-rbac ticket 03).
+        reader = await plant_role(
+            conn, t, f"plan_rc_{t.hex[:8]}", {"platform.roles.read": "tenant"}
+        )
+        await assign(conn, t, w, world.membership, reader)
+        for n in range(120):
+            at = now - timedelta(minutes=n)
+            await conn.execute(
+                sa.text(
+                    "INSERT INTO platform.role_change_requests (id, tenant_id, kind, payload,"
+                    " required_permission, proposed_by, proposed_at, expires_at, status,"
+                    " decided_at)"
+                    " VALUES (:id, :t, 'role_create', '{}'::jsonb, 'platform.roles.write', :p,"
+                    " :at, CAST(:at AS timestamptz) + interval '7 days', :status,"
+                    " CASE WHEN :status = 'withdrawn' THEN CAST(:at AS timestamptz) END)"
+                ),
+                {
+                    "id": uuid.uuid4(),
+                    "t": t,
+                    "p": uuid.uuid4(),
+                    "at": at,
+                    "status": "proposed" if n % 10 == 0 else "withdrawn",
+                },
+            )
+        await conn.execute(sa.text("ANALYZE platform.role_change_requests"))
     return world
 
 
@@ -468,7 +499,7 @@ async def bench(api_db: DatabaseUrls) -> AsyncIterator[Bench]:
         authz=ScopeAuthorizationService(),
         tools=unused,
         members=SqlDwMembershipCheck(sessions),
-        roles=SqlTenantMembersRepository(sessions),
+        roles=SqlDwRoleCheck(sessions),
         clock=clock,
         id_generator=ids,
     )
@@ -573,6 +604,21 @@ async def test_dropping_the_connections_page_index_turns_the_check_red(bench: Be
 
     assert problems, "the check passed without the index"
     assert any("created_at" in problem or "tenant_id" in problem for problem in problems)
+
+
+async def test_dropping_the_role_changes_page_index_turns_the_check_red(bench: Bench) -> None:
+    """tenant-rbac ticket 03: the open proposals page through their index."""
+    path = "/api/v1/admin/role-changes"
+    expected = EXPECTED[("GET", path)]
+    statements = await bench.pages(path, expected.table)
+
+    problems = await bench.problems(
+        statements,
+        expected,
+        drop="platform.ix_role_change_requests_tenant_id_status_proposed_at_id",
+    )
+
+    assert problems, "the check passed without the index"
 
 
 async def test_the_document_listing_pages_both_arms_once_in_order(

@@ -6,9 +6,9 @@ On a migrated Postgres: the statement triggers of migration b5677d345bc1 set
 `dw_worker.main` delivers one notification to each tenant-depth holder of
 `platform.members.write`, in the workspace that anchors their holding.
 
-Neither owner key is in the catalogue yet (`platform.roles.write` comes with
-tenant-rbac ticket 03, `studio.publish.approve` with its Studio cluster), so
-this registers both for the test, as those clusters will, and removes them.
+`platform.roles.write` is in the catalogue since tenant-rbac ticket 03;
+`studio.publish.approve` comes with its Studio cluster, so this registers that
+one for the test, as the cluster will, and removes it.
 """
 
 from __future__ import annotations
@@ -47,17 +47,19 @@ from dw_worker.consumers.owner_coverage import OWNER_COVERAGE_LOW, build_owner_c
 pytestmark = pytest.mark.integration
 
 _OWNER_KEYS = ("platform.roles.write", "studio.publish.approve")
+# The owner keys the catalogue does not carry yet, registered for the test.
+_UNCATALOGUED = ("studio.publish.approve",)
 
 
 @pytest.fixture
 async def migrator(worker_db: DatabaseUrls) -> AsyncIterator[AsyncEngine]:
     engine = create_async_engine(worker_db.migrator, poolclass=NullPool)
     async with engine.begin() as conn:
-        for key in _OWNER_KEYS:
+        for key in _UNCATALOGUED:
             await register_key(conn, key, scope_kind="tenant")
     yield engine
     async with engine.begin() as conn:
-        for key in _OWNER_KEYS:
+        for key in _UNCATALOGUED:
             await unregister_key(conn, key)
     await engine.dispose()
 

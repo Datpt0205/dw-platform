@@ -1,0 +1,417 @@
+# Mutation check of tenant-rbac ticket 03: scripts/mutate.py runs this file at
+# the queue's close (wave-close.md). One mutation per control (RB8, RB15-RB26,
+# RB32, RB36, RB42, RB43, RB48-RB50, Q1) and per layer that holds one
+# (failure-modes #3, #5): the trigger's own refusal is mutated in the migration,
+# the service's early answer in the service. A mutation of the migration takes
+# effect when the suite's session fixture recreates the database.
+mutations:
+  - name: RB15 the tenant_roles trigger stops asking platform.rbac_refusals
+    file: db/migrations/versions/d2b57239ef50_role_administration_and_anti_escalation.py
+    old:
+      "            CROSS JOIN LATERAL platform.rbac_refusals(v_tenant, v_actor, c.change) r
+
+      "
+    new:
+      "            CROSS JOIN LATERAL platform.rbac_refusals(v_tenant, v_actor, c.change) r\n       \
+      \     WHERE TG_TABLE_NAME <> 'tenant_roles'\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_a_key_no_tenant_may_hold_and_the_platform_admin_role_never_enter
+  - name: RB15 the tenant_role_permissions trigger stops asking platform.rbac_refusals
+    file: db/migrations/versions/d2b57239ef50_role_administration_and_anti_escalation.py
+    old:
+      "            CROSS JOIN LATERAL platform.rbac_refusals(v_tenant, v_actor, c.change) r
+
+      "
+    new:
+      "            CROSS JOIN LATERAL platform.rbac_refusals(v_tenant, v_actor, c.change) r\n       \
+      \     WHERE TG_TABLE_NAME <> 'tenant_role_permissions'\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_the_hold_rule_refuses_raw_sql_carrying_a_confirmed_proposal
+  - name: RB15 the role_assignments trigger stops asking platform.rbac_refusals
+    file: db/migrations/versions/d2b57239ef50_role_administration_and_anti_escalation.py
+    old:
+      "            CROSS JOIN LATERAL platform.rbac_refusals(v_tenant, v_actor, c.change) r
+
+      "
+    new:
+      "            CROSS JOIN LATERAL platform.rbac_refusals(v_tenant, v_actor, c.change) r\n       \
+      \     WHERE TG_TABLE_NAME <> 'role_assignments'\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_an_assignment_confirmed_by_a_bind_holder_who_lacks_the_key_is_refused
+      - packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_nobody_assigns_a_role_to_themselves_even_as_the_confirmer
+  - name: RB15 offboarding exempts what widens too
+    file: db/migrations/versions/d2b57239ef50_role_administration_and_anti_escalation.py
+    old:
+      "        IF v_class = 'narrow' AND (NOT FOUND OR v_status IN ('offboarding', 'offboarded'))
+      THEN"
+    new: "        IF (NOT FOUND OR v_status IN ('offboarding', 'offboarded')) THEN"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_offboarding_exempts_what_narrows_and_nothing_that_widens
+  - name: RB15 every company that is not active is exempt
+    file: db/migrations/versions/d2b57239ef50_role_administration_and_anti_escalation.py
+    old:
+      "        IF v_class = 'narrow' AND (NOT FOUND OR v_status IN ('offboarding', 'offboarded'))
+      THEN"
+    new: "        IF v_class = 'narrow' AND (NOT FOUND OR v_status <> 'active') THEN"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_the_hold_rule_holds_in_a_company_that_is_not_active
+  - name: RB15 a dw_app write without app.user_id passes
+    file: db/migrations/versions/d2b57239ef50_role_administration_and_anti_escalation.py
+    old: "        IF v_actor IS NULL THEN
+
+      "
+    new: "        IF false THEN
+
+      "
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_without_an_actor_dw_app_changes_no_role
+  - name: RB16 bind covers a critical role
+    file: db/migrations/versions/d2b57239ef50_role_administration_and_anti_escalation.py
+    old: "            ) AND NOT platform.role_is_critical(p_tenant_id, v_role);"
+    new: "            );"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_an_assignment_confirmed_by_a_bind_holder_who_lacks_the_key_is_refused
+      - apps/api/tests/integration/test_role_admin_api.py::test_bind_assigns_what_is_not_critical
+  - name: RB17 self-assignment allowed
+    file: db/migrations/versions/d2b57239ef50_role_administration_and_anti_escalation.py
+    old: "            IF v_op = 'grant' AND v_grantee IS NOT NULL AND v_grantee = p_actor_id THEN"
+    new: "            IF false THEN"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_nobody_assigns_a_role_to_themselves_even_as_the_confirmer
+      - apps/api/tests/integration/test_role_admin_api.py::test_nobody_assigns_a_role_to_themselves
+  - name: RB18 a key no tenant may hold enters a role
+    file: db/migrations/versions/d2b57239ef50_role_administration_and_anti_escalation.py
+    old: "                SELECT 1 FROM platform.permissions k WHERE k.key = v_key AND NOT k.tenant_grantable"
+    new: "                SELECT 1 FROM platform.permissions k WHERE false"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_a_key_no_tenant_may_hold_and_the_platform_admin_role_never_enter
+      - apps/api/tests/integration/test_role_admin_api.py::test_what_no_tenant_may_hold_never_enters
+  - name: RB19 the owner's privileges are editable
+    file: db/migrations/versions/d2b57239ef50_role_administration_and_anti_escalation.py
+    old: "            IF v_role_key = 'tenant_owner' THEN\n                reason_code := 'role_is_system';"
+    new: "            IF false THEN\n                reason_code := 'role_is_system';"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_system_roles_keep_their_shape_against_raw_sql
+  - name: RB19 a system role may be deleted
+    file: db/migrations/versions/d2b57239ef50_role_administration_and_anti_escalation.py
+    old: "           AND (v_role_key IN ('tenant_owner', 'member')
+
+      "
+    new: "           AND (false
+
+      "
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_system_roles_keep_their_shape_against_raw_sql
+  - name: RB20 two removals of the last two owners do not queue
+    file: db/migrations/versions/d2b57239ef50_role_administration_and_anti_escalation.py
+    old:
+      "        PERFORM 1 FROM platform.tenants WHERE id = v_tenant FOR UPDATE;
+
+      "
+    new: ""
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_two_removals_of_the_last_two_owners_queue_and_one_is_refused
+  - name: RB20 a cascade removes the owner after the person is gone
+    file: db/migrations/versions/d2b57239ef50_role_administration_and_anti_escalation.py
+    old: "          AND a.tenant_id = (v_old->>'tenant_id')::uuid
+
+      "
+    new: "          AND false
+
+      "
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_the_last_active_owner_stays
+  - name: RB20 a tenant_owner assignment may expire
+    file: db/migrations/versions/d2b57239ef50_role_administration_and_anti_escalation.py
+    old: "            IF TG_OP <> 'DELETE' AND NEW.expires_at IS NOT NULL AND EXISTS ("
+    new: "            IF false AND EXISTS ("
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_a_tenant_owner_assignment_never_expires
+  - name: RB21 a proposal confirmed in an earlier transaction still opens writes
+    file: db/migrations/versions/d2b57239ef50_role_administration_and_anti_escalation.py
+    old: "          AND r.xmin = pg_current_xact_id()::xid;"
+    new: "          ;"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_a_widening_write_opens_only_with_its_own_confirmed_proposal
+  - name: RB21 a proposal opens any key and depth
+    file: db/migrations/versions/d2b57239ef50_role_administration_and_anti_escalation.py
+    old:
+      "                            AND (v_new->>'role_id')::uuid = v_open.role_id\n                 \
+      \           AND v_open.payload->'permissions' @> jsonb_build_array(\n                            \
+      \    jsonb_build_object('key', v_new->>'permission_key',\n                                       \
+      \            'depth', v_new->>'depth'))"
+    new: "                            AND (v_new->>'role_id')::uuid = v_open.role_id"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_a_widening_write_opens_only_with_its_own_confirmed_proposal
+  - name: RB21 a proposal opens writes on any role
+    file: db/migrations/versions/d2b57239ef50_role_administration_and_anti_escalation.py
+    old:
+      "                            v_kind = 'privilege'\n                            AND (v_new->>'role_id')::uuid\
+      \ = v_open.role_id\n"
+    new: "                            v_kind = 'privilege'
+
+      "
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_a_widening_write_opens_only_with_its_own_confirmed_proposal
+  - name: RB21 a proposal opens writes of any kind
+    file: db/migrations/versions/d2b57239ef50_role_administration_and_anti_escalation.py
+    old:
+      "                        WHEN v_open.kind = 'role_update' THEN\n                            v_kind\
+      \ = 'role_update'"
+    new:
+      "                        WHEN v_open.kind = 'role_update' THEN\n                            true\
+      \ OR v_kind = 'role_update'"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_a_widening_write_opens_only_with_its_own_confirmed_proposal
+  - name: RB21 a widening write needs no proposal
+    file: db/migrations/versions/d2b57239ef50_role_administration_and_anti_escalation.py
+    old: "            IF NOT coalesce(v_matched, false) THEN"
+    new: "            IF false THEN"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_a_widening_write_opens_only_with_its_own_confirmed_proposal
+      - packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_the_legacy_columns_are_no_way_around_two_people
+  - name: RB21 a closed proposal may be touched again
+    file: db/migrations/versions/d2b57239ef50_role_administration_and_anti_escalation.py
+    old: "        IF OLD.status <> 'proposed' THEN"
+    new: "        IF false THEN"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_a_proposal_moves_only_as_its_state_machine_allows
+  - name: RB21 anyone confirms, holding the permission or not
+    file: db/migrations/versions/d2b57239ef50_role_administration_and_anti_escalation.py
+    old: "                    OR now() >= NEW.expires_at\n                    OR NOT EXISTS ("
+    new: "                    OR now() >= NEW.expires_at\n                    OR false AND NOT EXISTS ("
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_a_proposal_moves_only_as_its_state_machine_allows
+      - apps/api/tests/integration/test_role_admin_api.py::test_a_confirmation_takes_the_proposals_own_permission
+  - name: RB21 a proposal may name another proposer
+    file: db/migrations/versions/d2b57239ef50_role_administration_and_anti_escalation.py
+    old: "                   AND (NEW.proposed_by IS DISTINCT FROM v_actor
+
+      "
+    new: "                   AND (false
+
+      "
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_a_proposal_moves_only_as_its_state_machine_allows
+  - name: RB8 the proposal reader drops its tenant filter
+    file: db/migrations/versions/d2b57239ef50_role_administration_and_anti_escalation.py
+    old:
+      "          AND r.tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid
+
+      "
+    new: ""
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_another_tenants_proposal_opens_nothing_here
+  - name: RB21 the DW exception drops draft
+    file: db/migrations/versions/d2b57239ef50_role_administration_and_anti_escalation.py
+    old: "              AND d.state = 'draft'
+
+      "
+    new: ""
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_a_dw_principal_gets_its_first_roles_only_in_its_creators_draft_transaction
+  - name: RB21 the DW exception drops created_by
+    file: db/migrations/versions/d2b57239ef50_role_administration_and_anti_escalation.py
+    old: "              AND d.created_by = p_actor_id
+
+      "
+    new: ""
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_a_dw_principal_gets_its_first_roles_only_in_its_creators_draft_transaction
+  - name: RB21 the DW exception drops the DW made in this transaction
+    file: db/migrations/versions/d2b57239ef50_role_administration_and_anti_escalation.py
+    old: "              AND d.xmin = pg_current_xact_id()::xid
+
+      "
+    new: ""
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_a_dw_principal_gets_its_first_roles_only_in_its_creators_draft_transaction
+  - name: RB21 the DW exception drops kind
+    file: db/migrations/versions/d2b57239ef50_role_administration_and_anti_escalation.py
+    old: "              AND u.kind = 'service'
+
+      "
+    new: ""
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_a_dw_principal_gets_its_first_roles_only_in_its_creators_draft_transaction
+  - name: RB21 the DW exception drops the principal made in this transaction
+    file: db/migrations/versions/d2b57239ef50_role_administration_and_anti_escalation.py
+    old: "              AND u.created_at = now()
+
+      "
+    new: ""
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_a_dw_principal_gets_its_first_roles_only_in_its_creators_draft_transaction
+  - name: RB21 the DW guard lets an operating principal's roles grow
+    file: db/migrations/versions/d2b57239ef50_role_administration_and_anti_escalation.py
+    old: "              AND d.state <> 'draft'\n        ) THEN"
+    new: "              AND false\n        ) THEN"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_a_confirmed_grant_to_an_operating_dws_principal_meets_the_dw_guard
+  - name: RB21 users.created_at changes
+    file: db/migrations/versions/d2b57239ef50_role_administration_and_anti_escalation.py
+    old:
+      "        IF NEW.created_at IS DISTINCT FROM OLD.created_at AND session_user <> 'dw_migrator'
+      THEN"
+    new: "        IF false THEN"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_a_dw_principal_gets_its_first_roles_only_in_its_creators_draft_transaction
+  - name: RB36 dw_app deletes a proposal outside offboarding
+    file: db/migrations/versions/d2b57239ef50_role_administration_and_anti_escalation.py
+    old:
+      "            IF FOUND AND v_status IS DISTINCT FROM 'offboarding' THEN\n                RAISE EXCEPTION\
+      \ 'a role change request is deleted only"
+    new: "            IF false THEN\n                RAISE EXCEPTION 'a role change request is deleted only"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_dw_app_deletes_a_proposal_only_while_offboarding
+  - name: RB48 a nested write (the copy trigger's) is exempt
+    file: db/migrations/versions/d2b57239ef50_role_administration_and_anti_escalation.py
+    old:
+      "        IF session_user = 'dw_migrator' THEN\n            RETURN CASE WHEN TG_OP = 'DELETE' THEN\
+      \ OLD ELSE NEW END;\n        END IF;\n\n        IF TG_TABLE_NAME = 'tenant_roles' THEN"
+    new:
+      "        IF session_user = 'dw_migrator' OR pg_trigger_depth() > 1 THEN\n            RETURN CASE\
+      \ WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;\n        END IF;\n\n        IF TG_TABLE_NAME = 'tenant_roles'\
+      \ THEN"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_the_legacy_columns_are_no_way_around_two_people
+  - name: RB49 dw_app adds platform_admin
+    file: db/migrations/versions/d2b57239ef50_role_administration_and_anti_escalation.py
+    old:
+      "           AND (('platform_admin' = ANY (v_added) AND session_user <> 'dw_migrator')
+
+      "
+    new: "           AND ((false)
+
+      "
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_only_the_migrator_adds_platform_admin_and_the_provisioner_adds_nothing
+  - name: RB49 the provisioner adds keys
+    file: db/migrations/versions/d2b57239ef50_role_administration_and_anti_escalation.py
+    old: "                OR session_user NOT IN ('dw_app', 'dw_migrator')) THEN"
+    new: "                OR session_user NOT IN ('dw_app', 'dw_migrator', 'dw_provisioner')) THEN"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_only_the_migrator_adds_platform_admin_and_the_provisioner_adds_nothing
+  - name: RB49 the script writes over role_keys
+    file: scripts/grant_platform_admin.py
+    old: 'set_={"role_keys": m.c.role_keys.op("||")(sa.cast([PLATFORM_ADMIN], JSONB))},'
+    new: 'set_={"role_keys": sa.cast([PLATFORM_ADMIN], JSONB)},'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_grant_platform_admin_adds_to_role_keys_and_keeps_what_is_there
+  - name: RB50 a membership changes hands
+    file: db/migrations/versions/d2b57239ef50_role_administration_and_anti_escalation.py
+    old: "           AND session_user <> 'dw_migrator' THEN\n            RAISE EXCEPTION 'a membership keeps"
+    new: "           AND false THEN\n            RAISE EXCEPTION 'a membership keeps"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_a_membership_never_changes_hands
+  - name: RB26 the privileges move no version
+    file: db/migrations/versions/d2b57239ef50_role_administration_and_anti_escalation.py
+    old:
+      "            UPDATE platform.tenant_roles SET version = version + 1\n            WHERE tenant_id\
+      \ = OLD.tenant_id AND id = OLD.role_id;"
+    new: "            NULL;"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_a_roles_version_moves_with_it_and_its_privileges
+      - apps/api/tests/integration/test_role_admin_api.py::test_a_role_changed_after_the_proposal_makes_it_stale
+  - name: RB43 the version trigger sorts after the access version's
+    file: db/migrations/versions/d2b57239ef50_role_administration_and_anti_escalation.py
+    old: '    "CREATE TRIGGER trg_tenant_role_permissions_role_version"'
+    new: '    "CREATE TRIGGER zz_tenant_role_permissions_role_version"'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_the_role_triggers_fire_in_the_order_the_lock_rule_needs
+  - name: Q1 the provisioner writes any role
+    file: db/migrations/versions/d2b57239ef50_role_administration_and_anti_escalation.py
+    old: "        IF session_user = 'dw_provisioner' THEN\n            IF TG_OP = 'INSERT' AND ("
+    new: "        IF session_user = 'dw_provisioner' THEN\n            IF TG_OP = 'INSERT' OR ("
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_the_provisioner_installs_system_roles_and_assigns_owners_only
+  - name: RB42 the bypass opens POST /admin/roles
+    file: apps/api/src/dw_api/routes/v1/admin_roles.py
+    old: '        ("POST", f"{_API}/roles"),
+
+      '
+    new: ""
+    tests:
+      - apps/api/tests/unit/test_role_routes_without_bypass.py::test_the_list_is_every_role_route_the_app_mounts
+      - apps/api/tests/integration/test_role_admin_api.py::test_platform_admin_without_a_key_is_refused_on_role_routes
+  - name: RB42 the dependency stops reading the list
+    file: apps/api/src/dw_api/dependencies/auth.py
+    old: "    if (request.method, route_template(request)) not in container.no_platform_bypass_routes:"
+    new: "    if True:"
+    tests:
+      - apps/api/tests/unit/test_role_routes_without_bypass.py::test_the_bypass_is_stripped_on_exactly_the_listed_routes
+      - apps/api/tests/integration/test_role_admin_api.py::test_platform_admin_without_a_key_is_refused_on_role_routes
+  - name: RB21 the repository lets the proposer confirm
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/role_admin_repo.py
+    old:
+      "    if proposal.proposed_by == context.principal_id:\n        raise conflict(\"a second person\
+      \ confirms a role change\", \"second_person_required\")"
+    new: "    pass"
+    tests:
+      - apps/api/tests/integration/test_role_admin_api.py::test_the_proposer_cannot_confirm
+  - name: RB22 a proposal without a checker is written
+    file: packages/python/dw_platform/src/dw_platform/application/role_admin.py
+    old: "        if not await self.repo.has_checker(context, proposal.required_permission):"
+    new: "        if False:"
+    tests:
+      - apps/api/tests/integration/test_role_admin_api.py::test_with_nobody_else_to_confirm_nothing_is_proposed_but_a_revocation_applies
+  - name: RB22 an assignment without a checker is proposed
+    file: packages/python/dw_platform/src/dw_platform/application/role_assignments.py
+    old: "        if plan.grants and not await self.repo.has_checker(context, ROLES_BIND):"
+    new: "        if False:"
+    tests:
+      - apps/api/tests/integration/test_role_admin_api.py::test_with_nobody_else_to_confirm_nothing_is_proposed_but_a_revocation_applies
+  - name: RB23 an expired proposal is confirmed
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/role_admin_repo.py
+    old: "    if row.expired:
+
+      "
+    new: "    if False:
+
+      "
+    tests:
+      - apps/api/tests/integration/test_role_admin_api.py::test_a_proposal_is_confirmed_only_before_it_expires
+  - name: RB26 a stale If-Match proposes
+    file: packages/python/dw_platform/src/dw_platform/application/role_admin.py
+    old:
+      "        if not expected.matches(role.version):\n            raise _stale_if_match()\n        diff\
+      \ = diff_privileges(role.privileges, target)"
+    new: "        diff = diff_privileges(role.privileges, target)"
+    tests:
+      - apps/api/tests/integration/test_role_admin_api.py::test_a_role_write_names_the_version_it_read
+  - name: RB26 a stale proposal applies
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/role_admin_repo.py
+    old: "    if role is None or role.deleted_at is not None or role.version != proposal.base_version:"
+    new: "    if role is None or role.deleted_at is not None:"
+    tests:
+      - apps/api/tests/integration/test_role_admin_api.py::test_a_role_changed_after_the_proposal_makes_it_stale
+  - name: RB32 a mixed change counts as narrowing
+    file: packages/python/dw_platform/src/dw_platform/application/role_admin.py
+    old: "        return bool(self.added or self.raised)"
+    new: "        return bool(self.added)"
+    tests:
+      - apps/api/tests/integration/test_role_admin_api.py::test_a_mixed_change_widens
+  - name: RB43 a closed proposal is confirmed again
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/role_admin_repo.py
+    old:
+      "    if proposal.status != \"proposed\":\n        raise conflict(\"this proposal is closed\", \"\
+      proposal_closed\")\n    if row.expired:"
+    new: "    if row.expired:"
+    tests:
+      - apps/api/tests/integration/test_role_admin_api.py::test_two_confirmations_at_once_apply_once
+      - apps/api/tests/integration/test_role_admin_api.py::test_a_withdrawn_proposal_or_a_suspended_proposer_opens_nothing
+  - name: RB16 no early refusal of a critical role for a service account
+    file: packages/python/dw_platform/src/dw_platform/application/role_assignments.py
+    old: "            critical = sorted(g.role_key for g in plan.grants if roles[g.role_key].critical)"
+    new: "            critical: list[str] = []"
+    tests:
+      - apps/api/tests/integration/test_role_admin_api.py::test_a_service_account_never_reaches_a_critical_role
+  - name: RB43 DW creation locks its roles after the version row
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/digital_workers_repo.py
+    old:
+      "                await lock_roles(session, worker.tenant_id, config.role_keys)
+
+      "
+    new: ""
+    tests:
+      - apps/api/tests/integration/test_role_admin_api.py::test_a_confirmation_and_a_dw_creation_on_one_role_both_finish

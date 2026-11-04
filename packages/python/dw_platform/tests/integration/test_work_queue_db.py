@@ -519,13 +519,24 @@ async def test_a_dw_with_work_in_flight_does_not_retire(
 async def test_retiring_cancels_open_work_and_removes_only_its_principal(
     world: World, app_engine: AsyncEngine, migrator: AsyncEngine
 ) -> None:
-    """DWK32, R1.14."""
+    """DWK32, R1.14. Retiring removes the principal's memberships, so its roles
+    are revoked under the hold rule (tenant-rbac 03): the Business Owner, who
+    lacks the mailer role's `email.send`, is refused and nothing moves; the
+    Technical Owner, who holds every role of the principal, retires it."""
     worker = await _dw(app_engine, migrator, world)
     other = await _dw(app_engine, migrator, world, "other_dw")
     q = queue(app_engine)
     item = await q.enqueue(scope(world), worker.id, NewWork("lead.new", "form-1", LEAD))
     owner = await context_of(app_engine, world, "owner", world.tenant_a, world.ws1)
-    retired = await service(app_engine).change_state(owner, worker.id, ChangeState("retired"))
+    with pytest.raises(PermissionDeniedError) as refused:
+        await service(app_engine).change_state(owner, worker.id, ChangeState("retired"))
+    assert refused.value.details["reason_code"] == "rbac_escalation"
+    kept = await q.repo.get(scope(world), item.id)
+    assert kept is not None and kept.status == "open"
+    assert (await service(app_engine).get(owner, worker.id)).state == "operating"
+
+    tech = await context_of(app_engine, world, "tech", world.tenant_a, world.ws1)
+    retired = await service(app_engine).change_state(tech, worker.id, ChangeState("retired"))
     assert retired.state == "retired"
     after = await q.repo.get(scope(world), item.id)
     assert after is not None and after.status == "cancelled" and after.closed_at is not None
@@ -565,10 +576,12 @@ async def test_a_retirement_and_a_claim_do_not_cross(
     worker = await _dw(app_engine, migrator, world)
     q = queue(app_engine)
     await q.enqueue(scope(world), worker.id, NewWork("lead.new", "form-1", LEAD))
-    owner = await context_of(app_engine, world, "owner", world.tenant_a, world.ws1)
+    # The Technical Owner holds every role of the principal, so the retirement's
+    # revocations pass the hold rule; only the race decides.
+    tech = await context_of(app_engine, world, "tech", world.tenant_a, world.ws1)
     claim, retire = await asyncio.gather(
         q.claim_for_lane(scope(world), limit=10),
-        service(app_engine).change_state(owner, worker.id, ChangeState("retired")),
+        service(app_engine).change_state(tech, worker.id, ChangeState("retired")),
         return_exceptions=True,
     )
     assert (

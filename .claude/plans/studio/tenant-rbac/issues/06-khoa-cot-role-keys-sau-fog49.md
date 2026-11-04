@@ -78,3 +78,9 @@ ticket 03 ngày 4/11/2026; đường vượt `platform_admin` giữ nguyên tớ
   đổi ở đây, ca `grant_platform_admin.py` của RB49 dựng lại được sau xóa trắng. Dựng sau ticket 03 và khi ticket 05
   `resolved`; không đường phụ thuộc với ticket 04, chung đầu chuỗi Alembic (ticket xong sau trỏ lại `down_revision`).
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-05 (agent, theo ủy quyền 31/10/2026): ticket 03 đã chuyển mọi người ghi hai cột trong code sản phẩm, `seed_env`
+  và `scripts/grant_platform_admin.py`, cùng fixture test ghi dưới `dw_app`; fixture test ghi `role_keys` hay
+  `permission_set_keys` dưới `dw_migrator` vẫn ghi (trigger hai người miễn vai đó, nên không câu trả lời nào đổi).
+  CHECK của ticket này áp cho cả `dw_migrator`, nên bước 2 ở đây chuyển nốt chúng sang `dw_platform.testing.rbac.assign`
+  (grep `role_keys`, `permission_set_keys` trong `*/tests/**`). Nếu sai thì: ticket 03 chuyển chúng, ticket này chỉ
+  khóa cột.

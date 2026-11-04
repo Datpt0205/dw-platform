@@ -157,21 +157,38 @@ async def test_email_links_a_keycloak_login_to_the_imported_user(
     assert issuers == ["https://issuer.test/realms/dw"]
 
 
-async def test_the_opt_in_flag_restores_the_default_membership(app_engine: AsyncEngine) -> None:
-    """The legacy path still works when a deployment explicitly asks for it."""
+async def test_the_opt_in_flag_restores_the_default_membership(
+    app_engine: AsyncEngine, migrator_engine: AsyncEngine
+) -> None:
+    """The legacy path still places a person when a deployment explicitly asks
+    for it, and grants nothing: assigning `member` takes two people
+    (tenant-rbac ticket 03, step 9), so the membership carries no role, no
+    legacy key and no scope until an administrator's proposal is confirmed."""
     bootstrap = _bootstrap(app_engine, auto_provision=True)
     identity = _Identity(subject=f"sub-{uuid.uuid4()}", email="demo@example.com")
 
     view = await bootstrap.bootstrap(identity)
 
     assert [m.tenant_id for m in view.memberships] == [DEFAULT_TENANT]
-    # The role is what the access context then reads, through its assignment
-    # (tenant-rbac ticket 02); sign-in names no role any more.
     lookup = SqlMembershipLookup(async_sessionmaker(app_engine, expire_on_commit=False))
     access = await lookup.find_access(
         identity.subject, identity.issuer, DEFAULT_TENANT, view.memberships[0].workspace_id
     )
-    assert access is not None and access.roles == frozenset({"member"})
+    assert access is not None
+    assert access.roles == frozenset() and access.scopes == frozenset()
+    async with migrator_engine.connect() as conn:
+        held = (
+            await conn.execute(
+                sa.text(
+                    "SELECT m.role_keys, m.permission_set_keys,"
+                    " (SELECT count(*) FROM platform.role_assignments a"
+                    "  WHERE a.membership_id = m.id) AS assigned"
+                    " FROM platform.memberships m WHERE m.user_id = :u"
+                ),
+                {"u": view.principal_id},
+            )
+        ).one()
+    assert (held.role_keys, held.permission_set_keys, held.assigned) == ([], [], 0)
 
 
 async def test_bootstrap_sees_a_membership_in_a_non_default_tenant(

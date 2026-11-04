@@ -54,6 +54,7 @@ REGISTERED: Final[Mapping[tuple[str, str], str]] = {
     ("GET", "/api/v1/admin/service-principals"): "platform.service_principals",
     ("GET", "/api/v1/egress/allowed-hosts"): "platform.egress_allowed_hosts",
     ("GET", "/api/v1/connections"): "platform.connections",
+    ("GET", "/api/v1/admin/role-changes"): "platform.role_change_requests",
 }
 
 # Operations that take a cursor and are not planned here, each with why.

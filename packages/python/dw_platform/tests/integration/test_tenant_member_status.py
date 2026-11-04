@@ -19,10 +19,19 @@ from types import ModuleType
 import pytest
 import sqlalchemy as sa
 from pg_harness import REPO_ROOT, DatabaseUrls
+from rbac_world import assigned_roles, assignment_service, confirm_all
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
-from support_world import ISSUER, SupportWorld, build_world, context_of, provisioning
+from support_world import (
+    ISSUER,
+    SupportWorld,
+    add_checker,
+    build_world,
+    checker_context,
+    context_of,
+    provisioning,
+)
 from test_provisioning import provisioner_engine  # noqa: F401  (a fixture, used by name)
 
 from dw_kernel.errors import ConflictError
@@ -34,17 +43,13 @@ from dw_platform.adapters.persistence.membership_lookup import SqlMembershipLook
 from dw_platform.adapters.persistence.provisioning_repo import SqlProvisioningRepository
 from dw_platform.adapters.persistence.tenant_members import SqlTenantMembersRepository
 from dw_platform.application.authorization import ScopeAuthorizationService
-from dw_platform.application.membership_admin import (
+from dw_platform.application.membership_admin import RevokeMembership, RevokeMembershipHandler
+from dw_platform.application.role_assignments import (
     GrantMembership,
-    GrantMembershipHandler,
-    RevokeMembership,
-    RevokeMembershipHandler,
-)
-from dw_platform.application.tenant_members import (
     InviteMember,
-    TenantMembersService,
     WorkspaceRoles,
 )
+from dw_platform.application.tenant_members import TenantMembersService
 from dw_platform.testing.members import add_tenant_member
 from dw_platform.testing.seed_env import seed_test_env
 
@@ -109,8 +114,6 @@ def _members(app: AsyncEngine) -> TenantMembersService:
     return TenantMembersService(
         SqlTenantMembersRepository(async_sessionmaker(app, expire_on_commit=False)),
         ScopeAuthorizationService(),
-        SystemClock(),
-        Uuid4Generator(),
     )
 
 
@@ -239,12 +242,9 @@ async def test_the_backfill_gives_one_row_per_pair_by_kind_and_sign_in(
 async def test_a_grant_writes_an_invited_member_who_is_active_at_next_sign_in(
     world: SupportWorld, app_engine: AsyncEngine, migrator: AsyncEngine
 ) -> None:
-    repo = SqlMembershipAdminRepository(async_sessionmaker(app_engine, expire_on_commit=False))
-    grant = GrantMembershipHandler(
-        repo, ScopeAuthorizationService(), SystemClock(), Uuid4Generator()
-    )
+    checker = await add_checker(migrator, world)
     admin = await context_of(app_engine, world, "requester", world.tenant_a, world.ws1)
-    await grant.handle(
+    _, outcome = await assignment_service(app_engine).grant_member(
         admin,
         GrantMembership(
             email=world.email("not_staff"),
@@ -252,8 +252,12 @@ async def test_a_grant_writes_an_invited_member_who_is_active_at_next_sign_in(
             role_keys=frozenset({f"probe_plain_{world.tag}"}),
         ),
     )
+    await confirm_all(app_engine, checker_context(world, checker), outcome.proposals)
     person = world.users["not_staff"]
     assert await _status(migrator, world.tenant_a, person) == "invited"
+    assert await assigned_roles(migrator, world.tenant_a, person) == {
+        world.ws1: [f"probe_plain_{world.tag}"]
+    }
 
     view = await _bootstrap(app_engine, world).bootstrap(_seeded(world, "not_staff"))
     assert await _status(migrator, world.tenant_a, person) == "active"
@@ -438,9 +442,10 @@ async def test_an_invitation_writes_an_invited_member_and_a_refused_one_writes_n
     migrator: AsyncEngine,
     provisioner_engine: AsyncEngine,
 ) -> None:
+    await add_checker(migrator, world)
     admin = await context_of(app_engine, world, "requester", world.tenant_a, world.ws1)
     roles = (WorkspaceRoles(world.ws1, frozenset({f"probe_plain_{world.tag}"})),)
-    ref = await _members(app_engine).invite(
+    ref, _ = await assignment_service(app_engine).invite(
         admin,
         InviteMember(
             display_name="Người mới", email=f"fresh-{world.tag}@status.test", memberships=roles
@@ -453,13 +458,14 @@ async def test_an_invitation_writes_an_invited_member_and_a_refused_one_writes_n
     await provisioning(provisioner_engine, FixedClock(datetime.now(UTC))).add_support_staff(
         world.operator, email=world.email("other_staff"), note=None
     )
-    with pytest.raises(ConflictError):
-        await _members(app_engine).invite(
+    with pytest.raises(ConflictError) as refused:
+        await assignment_service(app_engine).invite(
             admin,
             InviteMember(
                 display_name="Support staff", email=world.email("other_staff"), memberships=roles
             ),
         )
+    assert refused.value.details["reason_code"] == "support_staff_not_member"
     assert await _status(migrator, world.tenant_a, world.users["other_staff"]) is None
 
 
@@ -468,8 +474,9 @@ async def test_a_person_signed_in_elsewhere_is_invited_then_active_at_next_boots
 ) -> None:
     person = world.users["b_granter"]
     await _bootstrap(app_engine, world).bootstrap(_seeded(world, "b_granter"))
+    await add_checker(migrator, world)
     admin = await context_of(app_engine, world, "requester", world.tenant_a, world.ws1)
-    await _members(app_engine).invite(
+    await assignment_service(app_engine).invite(
         admin,
         InviteMember(
             display_name="Bê Granter",
@@ -490,9 +497,10 @@ async def test_a_person_signed_in_elsewhere_is_invited_then_active_at_next_boots
 async def test_the_first_sign_in_activates_in_the_transaction_that_links_the_identity(
     world: SupportWorld, app_engine: AsyncEngine, migrator: AsyncEngine
 ) -> None:
+    await add_checker(migrator, world)
     admin = await context_of(app_engine, world, "requester", world.tenant_a, world.ws1)
     email = f"first-{world.tag}@status.test"
-    ref = await _members(app_engine).invite(
+    ref, _ = await assignment_service(app_engine).invite(
         admin,
         InviteMember(
             display_name="Lần đầu",

@@ -1371,8 +1371,12 @@ async def test_the_critical_role_check_names_a_planted_principal(db_urls: Databa
                 await conn.execute(sa.text(sql), values)
             assert await critical_principal_roles(conn) == []
 
+            # The DW's fixed roles live on the assignments since tenant-rbac 03.
             await conn.execute(
-                sa.text("ALTER TABLE platform.memberships DISABLE TRIGGER dw_principal_roles_fixed")
+                sa.text(
+                    "ALTER TABLE platform.role_assignments"
+                    " DISABLE TRIGGER trg_role_assignments_dw_principal_roles_fixed"
+                )
             )
             # And past org-and-principals 03's guard, which refuses a critical
             # role to any service user: the check under test is the net below it.
@@ -2250,3 +2254,83 @@ async def test_the_run_columns_change_no_grant_and_their_trigger_is_no_ones(
         ("dw_app", "DELETE"),
     }
     assert not any(callers.values()), callers
+
+
+# tenant-rbac ticket 03 (migration d2b57239ef50): `dw_app` proposes, settles and
+# (at offboarding) purges role change requests, and updates only the three
+# settling columns; nobody calls the trigger functions; `dw_app` alone calls the
+# refusal and privilege readers, the provisioner the template reader it
+# installs `member` through.
+
+_RCR_SETTLING = ("status", "confirmed_by", "decided_at")
+_RCR_OTHER = (
+    "id",
+    "tenant_id",
+    "kind",
+    "payload",
+    "role_id",
+    "base_version",
+    "required_permission",
+    "proposed_by",
+    "proposed_at",
+    "expires_at",
+)
+_RBAC_TRIGGER_FUNCTIONS = (
+    "platform.guard_role_change_request()",
+    "platform.role_change_in_force()",
+    "platform.rbac_guard()",
+    "platform.dw_principal_first_role(uuid, uuid, uuid)",
+    "platform.bump_tenant_role_version()",
+    "platform.bump_parent_role_version()",
+    "platform.refuse_losing_the_last_owner()",
+    "platform.remove_owner_assignments_first()",
+    "platform.guard_legacy_role_columns()",
+    "platform.guard_membership_identity()",
+    "platform.guard_user_created_at()",
+)
+_RBAC_READERS = (
+    "platform.rbac_refusals(uuid, uuid, jsonb, boolean)",
+    "platform.role_privileges(uuid, uuid)",
+    "platform.role_template_privileges(text)",
+)
+
+
+async def test_role_change_requests_are_proposed_and_settled_by_dw_app_alone(
+    db_urls: DatabaseUrls,
+) -> None:
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            held = {
+                (r.rolname, r.verb)
+                for r in await conn.execute(_HELD_VERBS, {"t": "platform.role_change_requests"})
+            }
+            column_updates = {
+                column: await conn.scalar(
+                    sa.text(
+                        "SELECT has_column_privilege('dw_app', 'platform.role_change_requests',"
+                        " :c, 'UPDATE')"
+                    ),
+                    {"c": column},
+                )
+                for column in (*_RCR_SETTLING, *_RCR_OTHER)
+            }
+            calls = {
+                (role, function): await conn.scalar(
+                    sa.text("SELECT has_function_privilege(:r, :f, 'EXECUTE')"),
+                    {"r": role, "f": function},
+                )
+                for role in ("public", "dw_app", "dw_agent_ro", "dw_provisioner")
+                for function in (*_RBAC_TRIGGER_FUNCTIONS, *_RBAC_READERS)
+            }
+    finally:
+        await migrator.dispose()
+    # UPDATE is held by column only (below), never on the whole table.
+    assert held == {("dw_app", "SELECT"), ("dw_app", "INSERT"), ("dw_app", "DELETE")}
+    assert {c for c, v in column_updates.items() if v} == set(_RCR_SETTLING)
+    assert {k for k, v in calls.items() if v} == {
+        ("dw_app", "platform.rbac_refusals(uuid, uuid, jsonb, boolean)"),
+        ("dw_app", "platform.role_privileges(uuid, uuid)"),
+        ("dw_app", "platform.role_template_privileges(text)"),
+        ("dw_provisioner", "platform.role_template_privileges(text)"),
+    }

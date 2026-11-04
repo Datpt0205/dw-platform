@@ -34,7 +34,9 @@ NOT_A_LIST_OF_PEOPLE: dict[tuple[str, str], str] = {
     ("provisioning_repo.py", "list_operators"): "the operators' allowlist, joined by id",
     ("provisioning_repo.py", "list_support_staff"): "the support staff allowlist, joined by id",
     ("repositories.py", "list_page"): "a feedback row's author, joined by id",
-    ("tenant_members.py", "invite"): "the person an invitation names by email",
+    ("role_assignments_repo.py", "invite"): "the person an invitation names by email",
+    ("role_assignments_repo.py", "_PERSON"): "reports the kind; `RoleAssignmentService` "
+    "refuses a service user a critical role and a DW principal any new one",
     ("digital_workers_repo.py", "_STANDING"): "reports the kind; `is_person_in` and the DW "
     "service refuse a service user themselves",
 }

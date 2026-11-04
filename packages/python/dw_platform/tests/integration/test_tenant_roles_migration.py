@@ -125,7 +125,25 @@ def _json(values: list[str]) -> str:
 
 
 async def _as_the_migration_found_them(conn: AsyncConnection, tenants: list[uuid.UUID]) -> None:
-    """No assignment and no tenant role: what the backfill met."""
+    """No assignment, no tenant role and no role change request: what the
+    backfill met. A request (tenant-rbac ticket 03) a test of another file left
+    on a seeded tenant holds its role by a foreign key and is deleted only by
+    the offboarding lane, so its guard is set aside here, in the caller's
+    transaction, which is rolled back."""
+    await conn.execute(
+        sa.text(
+            "ALTER TABLE platform.role_change_requests DISABLE TRIGGER guard_role_change_request"
+        )
+    )
+    await conn.execute(
+        sa.text("DELETE FROM platform.role_change_requests WHERE tenant_id = ANY(:t)"),
+        {"t": tenants},
+    )
+    await conn.execute(
+        sa.text(
+            "ALTER TABLE platform.role_change_requests ENABLE TRIGGER guard_role_change_request"
+        )
+    )
     await conn.execute(
         sa.text("DELETE FROM platform.role_assignments WHERE tenant_id = ANY(:t)"), {"t": tenants}
     )

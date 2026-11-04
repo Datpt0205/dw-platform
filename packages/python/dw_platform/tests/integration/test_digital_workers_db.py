@@ -10,6 +10,7 @@ R1.17 (DWK36) and R2.3 (the levels and the tenant's ceiling, read when asked).
 from __future__ import annotations
 
 import asyncio
+import json
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field, replace
@@ -18,6 +19,7 @@ from datetime import UTC, datetime
 import pytest
 import sqlalchemy as sa
 from pg_harness import DatabaseUrls
+from rbac_world import assigned_roles, assignment_service, confirm_all, tenant_role
 from sqlalchemy import event
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
@@ -31,9 +33,9 @@ from dw_platform.adapters.persistence.digital_workers_repo import (
     SqlDecisionLevels,
     SqlDigitalWorkerRepository,
     SqlDwMembershipCheck,
+    SqlDwRoleCheck,
 )
 from dw_platform.adapters.persistence.directory import SqlWorkspaceDirectory
-from dw_platform.adapters.persistence.membership_admin import SqlMembershipAdminRepository
 from dw_platform.adapters.persistence.membership_lookup import SqlMembershipLookup
 from dw_platform.adapters.persistence.offboarding import SqlTenantOffboarding
 from dw_platform.adapters.persistence.tenant_members import SqlTenantMembersRepository
@@ -46,6 +48,11 @@ from dw_platform.application.digital_workers import (
     DigitalWorkerService,
 )
 from dw_platform.application.identity import context_from
+from dw_platform.application.role_assignments import (
+    SetMemberships,
+    SetPermissionSets,
+    WorkspaceRoles,
+)
 from dw_platform.domain.audit import AuditEvent
 from dw_platform.domain.digital_worker import DecisionClass, DwConfiguration, DwPeople
 from dw_platform.testing.members import add_tenant_member
@@ -87,7 +94,16 @@ async def build_world(migrator: AsyncEngine) -> World:
         ws_b=uuid.uuid4(),
         mailer_role=f"dw_mailer_{tag}",
     )
-    names = ("creator", "owner", "tech", "tech_narrow", "assigner", "validator", "b_member")
+    names = (
+        "creator",
+        "checker",
+        "owner",
+        "tech",
+        "tech_narrow",
+        "assigner",
+        "validator",
+        "b_member",
+    )
     w.users = {name: uuid.uuid4() for name in names}
     async with migrator.begin() as conn:
         await catalogue_test_keys(conn, ["email.send"])
@@ -113,6 +129,8 @@ async def build_world(migrator: AsyncEngine) -> World:
                 ),
                 {"id": uuid.uuid4(), "t": tenant},
             )
+            # Its system roles, as provisioning installs them (`member` included).
+            await conn.execute(sa.text("SELECT platform.install_system_roles(:t)"), {"t": tenant})
             for n, ws in enumerate(workspaces):
                 await conn.execute(
                     sa.text(
@@ -132,6 +150,7 @@ async def build_world(migrator: AsyncEngine) -> World:
         for tenant, ws, name, roles in (
             (w.tenant_a, w.ws1, "creator", ["member", "org_admin", w.mailer_role]),
             (w.tenant_a, w.ws2, "creator", ["member", "org_admin", w.mailer_role]),
+            (w.tenant_a, w.ws1, "checker", ["org_admin"]),
             (w.tenant_a, w.ws1, "owner", ["member"]),
             (w.tenant_a, w.ws1, "tech", ["member", w.mailer_role]),
             (w.tenant_a, w.ws1, "tech_narrow", ["member"]),
@@ -183,7 +202,7 @@ def service(app_engine: AsyncEngine) -> DigitalWorkerService:
         authz=ScopeAuthorizationService(),
         tools=_Tools(),
         members=SqlDwMembershipCheck(sessions),
-        roles=SqlTenantMembersRepository(sessions),
+        roles=SqlDwRoleCheck(sessions),
         clock=FixedClock(NOW),
         id_generator=Uuid4Generator(),
     )
@@ -254,10 +273,11 @@ async def test_a_dw_and_its_principal_are_written_together(
                 {"u": worker.principal_user_id},
             )
         ).one()
-        roles = (
+        legacy = (
             await conn.execute(
                 sa.text(
-                    "SELECT workspace_id, role_keys FROM platform.memberships WHERE user_id = :u"
+                    "SELECT workspace_id, role_keys, permission_set_keys"
+                    " FROM platform.memberships WHERE user_id = :u"
                 ),
                 {"u": worker.principal_user_id},
             )
@@ -299,9 +319,14 @@ async def test_a_dw_and_its_principal_are_written_together(
     assert [tuple(s) for s in standing] == [(world.tenant_a, "active")]
     assert (user.kind, user.owner_tenant_id, user.email) == ("service", world.tenant_a, None)
     assert tuple(principal) == (world.tenant_a, world.ws1, world.users["owner"])
-    assert [(r.workspace_id, sorted(r.role_keys)) for r in roles] == [
-        (world.ws1, sorted(["member", world.mailer_role]))
+    # Its roles are assignments in the DW's workspace (tenant-rbac ticket 03),
+    # none in the legacy columns.
+    assert [(r.workspace_id, r.role_keys, r.permission_set_keys) for r in legacy] == [
+        (world.ws1, [], [])
     ]
+    assert await assigned_roles(migrator, world.tenant_a, worker.principal_user_id) == {
+        world.ws1: sorted(["member", world.mailer_role])
+    }
     assert tuple(dw) == ("draft", world.tenant_a, world.ws1)
     assert [tuple(c) for c in classes] == [
         ("email.first_touch", "external", True, "A3", "A3"),
@@ -479,14 +504,18 @@ async def test_a_principal_never_signs_in_and_is_never_listed_as_a_person(
     assert world.users["owner"] in {m.user_id for m in members}
 
 
-async def _as_app(app_engine: AsyncEngine, w: World, sql: str, **params: object) -> None:
+async def _as_app(
+    app_engine: AsyncEngine, w: World, sql: str, *, actor: uuid.UUID | None = None, **params: object
+) -> None:
+    """`sql` as `dw_app` bound to tenant A's ws1, and to `actor` when given."""
     async with app_engine.begin() as conn:
         await conn.execute(
             sa.text(
                 "SELECT set_config('app.tenant_id', :t, true),"
-                " set_config('app.workspace_id', :ws, true)"
+                " set_config('app.workspace_id', :ws, true),"
+                " set_config('app.user_id', :u, true)"
             ),
-            {"t": str(w.tenant_a), "ws": str(w.ws1)},
+            {"t": str(w.tenant_a), "ws": str(w.ws1), "u": str(actor) if actor else ""},
         )
         await conn.execute(sa.text(sql), params)
 
@@ -508,85 +537,167 @@ async def test_the_accountable_owner_is_a_human_member_of_the_tenant(
 async def test_a_dw_principals_roles_do_not_grow(
     world: World, app_engine: AsyncEngine, migrator: AsyncEngine
 ) -> None:
-    """DWK36 (R1.17): no role, no permission set and no workspace added, through
-    SQL and through the members repository; narrowing and removing pass."""
+    """DWK36 (R1.17): no role, no permission set and no workspace with a role
+    added to a DW's principal. The assignment service refuses it 409
+    `dw_principal_roles_fixed` before anything is proposed; SQL through the
+    legacy columns is a widening write no proposal opens; and once the DW has
+    left `draft` not even a confirmed proposal adds one
+    (`ck_memberships_dw_principal_roles_fixed`). Narrowing and removing pass."""
     creator = await context_of(app_engine, world, "creator", world.tenant_a, world.ws1)
+    checker = await context_of(app_engine, world, "checker", world.tenant_a, world.ws1)
     worker = await service(app_engine).create(creator, command(world))
     p = worker.principal_user_id
-    before = await _count(
-        migrator,
-        "SELECT count(*) FROM platform.memberships WHERE user_id = :u AND role_keys ? 'approver'",
-        u=p,
+    await tenant_role(migrator, world.tenant_a, "approver_boost")
+    held = {world.ws1: sorted(["member", world.mailer_role])}
+    proposals = (
+        "SELECT count(*) FROM platform.role_change_requests"
+        " WHERE tenant_id = :t AND payload->>'user_id' = :u"
     )
+
+    roles = assignment_service(app_engine)
+    current = frozenset({"member", world.mailer_role})
+    for memberships in (
+        (WorkspaceRoles(world.ws1, current | {"approver"}),),
+        (WorkspaceRoles(world.ws1, current), WorkspaceRoles(world.ws2, frozenset({"member"}))),
+    ):
+        with pytest.raises(ConflictError) as refused:
+            await roles.set_memberships(creator, SetMemberships(p, memberships))
+        assert refused.value.details["reason_code"] == "dw_principal_roles_fixed"
+    with pytest.raises(ConflictError) as refused:
+        await roles.set_permission_sets(
+            creator, SetPermissionSets(p, frozenset({"approver_boost"}))
+        )
+    assert refused.value.details["reason_code"] == "dw_principal_roles_fixed"
+    assert await _count(migrator, proposals, t=world.tenant_a, u=str(p)) == 0
+
     for sql in (
         "UPDATE platform.memberships SET role_keys = role_keys || '[\"approver\"]'::jsonb"
         " WHERE user_id = :p",
         "UPDATE platform.memberships"
         " SET permission_set_keys = '[\"approver_boost\"]'::jsonb WHERE user_id = :p",
     ):
-        with pytest.raises(DBAPIError, match="roles of a digital worker principal are fixed"):
-            await _as_app(app_engine, world, sql, p=p)
+        with pytest.raises(DBAPIError, match="only by its confirmed proposal"):
+            await _as_app(app_engine, world, sql, actor=world.users["creator"], p=p)
+    assert await assigned_roles(migrator, world.tenant_a, p) == held
 
-    repo = SqlMembershipAdminRepository(async_sessionmaker(app_engine, expire_on_commit=False))
-    audit = AuditEvent(
-        id=uuid.uuid4(),
-        tenant_id=TenantId(world.tenant_a),
-        workspace_id=WorkspaceId(world.ws2),
-        actor_id=UserId(world.users["creator"]),
-        action="platform.membership.grant",
-        resource_type="membership",
-        resource_id=str(p),
-        occurred_at=NOW,
-    )
-    with pytest.raises(ConflictError) as refused:
-        await repo.grant(
-            creator,
-            user_id=p,
-            workspace_id=world.ws2,
-            role_keys=frozenset({"member"}),
-            department="general",
-            audit=audit,
+    # Out of `draft`, a proposal confirmed by a second holder is refused too.
+    async with migrator.begin() as conn:
+        await conn.execute(
+            sa.text("UPDATE platform.digital_workers SET state = 'operating' WHERE id = :id"),
+            {"id": worker.id},
         )
-    assert refused.value.details["reason_code"] == "dw_principal_roles_fixed"
-    assert (
-        await _count(migrator, "SELECT count(*) FROM platform.memberships WHERE user_id = :u", u=p)
-        == 1
+    async with migrator.begin() as conn:
+        membership = (
+            await conn.execute(
+                sa.text("SELECT id FROM platform.memberships WHERE user_id = :u"), {"u": p}
+            )
+        ).scalar_one()
+    request = await _propose_grant(
+        app_engine,
+        creator,
+        p,
+        membership,
+        world.ws1,
+        await tenant_role(migrator, world.tenant_a, "approver"),
     )
-    assert before == 0
+    with pytest.raises(ConflictError) as fixed:
+        await confirm_all(app_engine, checker, [request])
+    assert fixed.value.details["reason_code"] == "dw_principal_roles_fixed"
+    assert await assigned_roles(migrator, world.tenant_a, p) == held
 
     await _as_app(
         app_engine,
         world,
-        "UPDATE platform.memberships SET role_keys = '[\"member\"]'::jsonb WHERE user_id = :p",
+        "DELETE FROM platform.role_assignments a USING platform.tenant_roles r"
+        " WHERE r.id = a.role_id AND a.membership_id = :m AND r.key = :k",
+        actor=world.users["creator"],
+        m=membership,
+        k=world.mailer_role,
+    )
+    assert await assigned_roles(migrator, world.tenant_a, p) == {world.ws1: ["member"]}
+    await _as_app(
+        app_engine,
+        world,
+        "DELETE FROM platform.memberships WHERE user_id = :p",
+        actor=world.users["creator"],
         p=p,
     )
-    await _as_app(app_engine, world, "DELETE FROM platform.memberships WHERE user_id = :p", p=p)
     assert (
         await _count(migrator, "SELECT count(*) FROM platform.memberships WHERE user_id = :u", u=p)
         == 0
     )
 
 
+async def _propose_grant(
+    app_engine: AsyncEngine,
+    maker: AccessContext,
+    user: uuid.UUID,
+    membership: uuid.UUID,
+    workspace: uuid.UUID,
+    role: uuid.UUID,
+) -> uuid.UUID:
+    """An `assignment_grant` proposal as `maker` writes it, past the service's
+    own refusals: what reaches the database's last word."""
+    request = uuid.uuid4()
+    await _as_app_in(
+        app_engine,
+        maker,
+        "INSERT INTO platform.role_change_requests (id, tenant_id, kind, payload, role_id,"
+        " base_version, required_permission, proposed_by, expires_at, status)"
+        " SELECT :id, :t, 'assignment_grant', CAST(:payload AS jsonb), r.id, r.version,"
+        " 'platform.roles.bind', :maker, now() + interval '7 days', 'proposed'"
+        " FROM platform.tenant_roles r WHERE r.id = :r",
+        id=request,
+        t=maker.tenant_id,
+        payload=json.dumps(
+            {
+                "membership_id": str(membership),
+                "workspace_id": str(workspace),
+                "user_id": str(user),
+            }
+        ),
+        maker=maker.principal_id,
+        r=role,
+    )
+    return request
+
+
+async def _as_app_in(
+    app_engine: AsyncEngine, context: AccessContext, sql: str, **params: object
+) -> None:
+    async with app_engine.begin() as conn:
+        await conn.execute(
+            sa.text(
+                "SELECT set_config('app.tenant_id', :t, true),"
+                " set_config('app.workspace_id', :ws, true),"
+                " set_config('app.user_id', :u, true)"
+            ),
+            {
+                "t": str(context.tenant_id),
+                "ws": str(context.workspace_id),
+                "u": str(context.principal_id),
+            },
+        )
+        await conn.execute(sa.text(sql), params)
+
+
 async def test_a_human_members_roles_still_grow(
     world: World, app_engine: AsyncEngine, migrator: AsyncEngine
 ) -> None:
-    """The trigger touches only a DW's principal."""
-    await _as_app(
-        app_engine,
-        world,
-        "UPDATE platform.memberships SET role_keys = role_keys || '[\"approver\"]'::jsonb"
-        " WHERE user_id = :u",
-        u=world.users["assigner"],
+    """The fixed-roles rule touches only a DW's principal: a human member's
+    role is proposed and, confirmed by a second holder, assigned."""
+    creator = await context_of(app_engine, world, "creator", world.tenant_a, world.ws1)
+    checker = await context_of(app_engine, world, "checker", world.tenant_a, world.ws1)
+    assigner = world.users["assigner"]
+    outcome = await assignment_service(app_engine).set_memberships(
+        creator,
+        SetMemberships(assigner, (WorkspaceRoles(world.ws1, frozenset({"member", "approver"})),)),
     )
-    assert (
-        await _count(
-            migrator,
-            "SELECT count(*) FROM platform.memberships WHERE user_id = :u"
-            " AND role_keys ? 'approver'",
-            u=world.users["assigner"],
-        )
-        == 1
-    )
+    assert len(outcome.proposals) == 1
+    await confirm_all(app_engine, checker, outcome.proposals)
+    assert await assigned_roles(migrator, world.tenant_a, assigner) == {
+        world.ws1: ["approver", "member"]
+    }
 
 
 async def test_the_effective_level_reads_the_tenants_ceiling_when_asked(
@@ -788,18 +899,30 @@ async def test_a_standing_is_read_in_one_statement(world: World, app_engine: Asy
 
 
 async def test_dw_creation_takes_its_role_rows_before_the_access_version_row(
-    world: World, app_engine: AsyncEngine, admin_engine: AsyncEngine
+    world: World, app_engine: AsyncEngine, admin_engine: AsyncEngine, migrator: AsyncEngine
 ) -> None:
-    """org-and-principals R6.4 (step 4, one lock order): B holds the mailer
-    role's row as the confirm of tenant-rbac/03 does; DW creation with that
-    role waits for it before it writes anything that bumps the tenant's access
-    version; B then writes a key into the role (which bumps the version) and
-    commits. Neither side is chosen as a deadlock victim (40P01)."""
+    """org-and-principals R6.4 (step 4, one lock order): B confirms a proposal
+    assigning the mailer role, as the confirm of tenant-rbac/03 does: it holds
+    the role's row first; DW creation with that role waits for it before it
+    writes anything that bumps the tenant's access version; B then confirms and
+    writes the assignment (which bumps the version) and commits. Neither side is
+    chosen as a deadlock victim (40P01)."""
     creator = await context_of(app_engine, world, "creator", world.tenant_a, world.ws1)
+    proposed = await assignment_service(app_engine).set_memberships(
+        creator,
+        SetMemberships(
+            world.users["assigner"],
+            (WorkspaceRoles(world.ws1, frozenset({"member", world.mailer_role})),),
+        ),
+    )
+    (request,) = proposed.proposals
     async with app_engine.connect() as b:
         await b.begin()
         await b.execute(
-            sa.text("SELECT set_config('app.tenant_id', :t, true)"), {"t": str(world.tenant_a)}
+            sa.text(
+                "SELECT set_config('app.tenant_id', :t, true), set_config('app.user_id', :u, true)"
+            ),
+            {"t": str(world.tenant_a), "u": str(world.users["checker"])},
         )
         role = (
             await b.execute(
@@ -829,12 +952,26 @@ async def test_dw_creation_takes_its_role_rows_before_the_access_version_row(
         assert await _until(a_waits), "DW creation never waited on the role row"
         await b.execute(
             sa.text(
-                "INSERT INTO platform.tenant_role_permissions"
-                " (tenant_id, role_id, permission_key, depth)"
-                " VALUES (:t, :r, 'dw.read', 'workspace')"
+                "UPDATE platform.role_change_requests"
+                " SET status = 'confirmed', confirmed_by = :u, decided_at = now() WHERE id = :id"
             ),
-            {"t": world.tenant_a, "r": role},
+            {"u": world.users["checker"], "id": request},
+        )
+        await b.execute(
+            sa.text("SELECT set_config('app.role_change_id', :id, true)"), {"id": str(request)}
+        )
+        await b.execute(
+            sa.text(
+                "INSERT INTO platform.role_assignments"
+                " (id, tenant_id, workspace_id, membership_id, role_id)"
+                " SELECT gen_random_uuid(), m.tenant_id, m.workspace_id, m.id, :r"
+                " FROM platform.memberships m WHERE m.user_id = :u AND m.workspace_id = :ws"
+            ),
+            {"r": role, "u": world.users["assigner"], "ws": world.ws1},
         )
         await b.commit()
         worker = await creating
     assert worker.configuration.role_keys == frozenset({"member", world.mailer_role})
+    assert await assigned_roles(migrator, world.tenant_a, world.users["assigner"]) == {
+        world.ws1: sorted(["member", world.mailer_role])
+    }

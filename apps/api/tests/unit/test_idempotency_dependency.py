@@ -1,8 +1,8 @@
 """The `Idempotency-Key` dependency, over the real app with an in-memory store.
 
 Same shape as ``test_admin_members_endpoint``: the real routes, the real
-handlers, only the database faked. What is asserted is what a client integrating
-against the published API is told to expect — a replay does not re-run the
+services, only the database faked (`FakeRoleAssignments`). What is asserted is
+what a client integrating against the published API is told to expect — a replay does not re-run the
 handler, a reused key with a different body is refused, and a handler that blew
 up leaves the key spendable.
 """
@@ -14,6 +14,7 @@ from typing import Annotated, Any
 import httpx
 import pytest
 from asgi_lifespan import LifespanManager
+from fake_role_assignments import FakeRole, FakeRoleAssignments
 from fastapi import FastAPI, File, Form, Response, UploadFile
 from pydantic import BaseModel
 
@@ -39,12 +40,8 @@ from dw_platform.application.idempotency import (
     StoredResponse,
 )
 from dw_platform.application.identity import DbAccessContextFactory, MembershipAccess
-from dw_platform.application.membership_admin import (
-    MEMBERS_WRITE,
-    GrantMembershipHandler,
-    RevokeMembershipHandler,
-    UserRef,
-)
+from dw_platform.application.membership_admin import MEMBERS_WRITE, RevokeMembershipHandler
+from dw_platform.application.role_assignments import AssignmentOutcome, RoleAssignmentService
 from dw_platform.domain.audit import AuditEvent
 
 pytestmark = pytest.mark.unit
@@ -66,7 +63,7 @@ class FakeMembershipLookup:
             workspace_id=workspace_id,
             principal_id=PRINCIPAL,
             roles=frozenset({"org_admin"}),
-            scopes=frozenset({"platform.members.write"}),
+            scopes=frozenset({"platform.members.write", "platform.roles.bind"}),
             groups=frozenset(),
             clearance="internal",
             plan_id="professional",
@@ -74,29 +71,23 @@ class FakeMembershipLookup:
         )
 
 
-class CountingRepo:
-    """Counts grants, so "the handler did not run again" is a real assertion."""
+class CountingRepo(FakeRoleAssignments):
+    """Counts placements and revokes, so "the handler did not run again" is a
+    real assertion; ``fail`` makes the write blow up before anything lands."""
 
     def __init__(self, *, fail: bool = False) -> None:
+        super().__init__(TENANT, {WORKSPACE: "Chính"}, [FakeRole("sales", frozenset())])
+        self.add_person(TARGET, "newhire@fpt.com", "New Hire")
+        self.add_person(uuid.uuid4(), "someone.else@fpt.com", "Someone Else")
         self.grants = 0
         self.revokes = 0
         self.fail = fail
 
-    async def find_user_by_email(self, email: str) -> UserRef | None:
-        return UserRef(user_id=TARGET, email=email, display_name="New Hire")
-
-    async def known_roles(self, role_keys: frozenset[str]) -> frozenset[str]:
-        return role_keys & {"sales"}
-
-    async def scopes_for_roles(self, role_keys: frozenset[str]) -> frozenset[str]:
-        return frozenset()
-
-    async def grant(
-        self, context: AccessContext, *, audit: AuditEvent, effect: object = None, **kw: object
-    ) -> None:
+    async def apply(self, context: AccessContext, plan: Any, **kw: Any) -> AssignmentOutcome:
         self.grants += 1
         if self.fail:
             raise InfrastructureError("the database went away mid-write")
+        return await super().apply(context, plan, **kw)
 
     async def revoke(
         self,
@@ -174,7 +165,7 @@ def make_container(repo: CountingRepo, store: MemoryStore) -> ApiContainer:
         identity_bootstrap=None,
         uow_factory=None,
         authorization=authz,
-        grant_membership=GrantMembershipHandler(repo, authz, clock, ids),
+        role_assignments=RoleAssignmentService(repo, authz, clock, ids),
         revoke_membership=RevokeMembershipHandler(repo, authz, clock, ids),
         idempotency=HttpIdempotency(store=store, clock=clock),
     )
@@ -205,10 +196,12 @@ async def test_a_replay_returns_the_stored_response_without_running_the_handler(
                 "/api/v1/admin/members", json=GRANT_BODY, headers=headers("key-1")
             )
 
-    assert first.status_code == 201
-    assert second.status_code == 201, "the replay reproduces the original status, not a bare 200"
+    # The role is a proposal (tenant-rbac R7.1): 202, kept by the replay.
+    assert first.status_code == 202, first.text
+    assert second.status_code == 202, "the replay reproduces the original status, not a bare 200"
     assert second.json() == first.json()
     assert repo.grants == 1, "the handler must run exactly once"
+    assert len(repo.proposals) == 1
 
 
 async def test_the_same_key_with_a_different_body_is_a_conflict() -> None:
@@ -271,7 +264,7 @@ async def test_a_successful_retry_after_a_failure_is_stored() -> None:
                 "/api/v1/admin/members", json=GRANT_BODY, headers=headers("key-4")
             )
 
-    assert retried.status_code == 201
+    assert retried.status_code == 202
     assert repo.grants == 2, "the retry ran, because the first attempt decided nothing"
     assert store.rows[(TENANT, "key-4")].response is not None
 

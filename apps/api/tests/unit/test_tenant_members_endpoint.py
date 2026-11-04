@@ -1,49 +1,43 @@
-"""The tenant member routes over the real service, the database faked honestly.
+"""The tenant member routes over the real services, the database faked honestly.
 
-What the route owns: dropping every cached AccessContext of each workspace a
-change touched, and replaying an `Idempotency-Key` without a second write or
-audit. The rules themselves are integration-tested against PostgreSQL
-(`dw_platform/tests/integration/test_tenant_members.py`).
+What the route owns: shaping `PUT .../memberships` (200 when it only removes,
+202 with `proposals` when it adds a role, tenant-rbac R7.1, R7.6), and
+replaying an `Idempotency-Key` without a second write or audit. Every
+membership write bumps the tenant's access version, so the route evicts no
+cached AccessContext (tenant-rbac R4.1). The rules themselves are
+integration-tested against PostgreSQL.
 """
 
 from __future__ import annotations
 
 import uuid
-from collections.abc import Callable
 
 import httpx
 import pytest
 from asgi_lifespan import LifespanManager
+from fake_role_assignments import FakeRole, FakeRoleAssignments
 from test_idempotency_dependency import MemoryStore
 
 from dw_api.bootstrap import ApiContainer
 from dw_api.health import CheckState, HealthService
 from dw_api.main import create_app
 from dw_api.settings import ApiSettings
-from dw_kernel.errors import NotFoundError
 from dw_kernel.ports import SystemClock, Uuid4Generator
 from dw_platform.adapters.identity.dev_token import DevTokenVerifier
-from dw_platform.application.access_context import AccessContext
 from dw_platform.application.authorization import ScopeAuthorizationService
-from dw_platform.application.effect_keys import PendingEffect
 from dw_platform.application.idempotency import HttpIdempotency
 from dw_platform.application.identity import DbAccessContextFactory, MembershipAccess
-from dw_platform.application.membership_admin import UserRef
-from dw_platform.application.tenant_members import (
-    MembershipChange,
-    MemberWorkspace,
-    Roles,
-    TenantMember,
-    TenantMembersService,
-)
-from dw_platform.domain.audit import AuditEvent
+from dw_platform.application.role_assignments import RoleAssignmentService
+from dw_platform.application.tenant_members import TenantMembersService
 
 pytestmark = pytest.mark.unit
 
 SECRET = "unit-test-secret-0123456789abcdef"
 TENANT, WS1, WS2 = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
 PRINCIPAL, PERSON = uuid.uuid4(), uuid.uuid4()
-ROLES = {"org_admin": frozenset({"platform.members.write"}), "sales": frozenset({"crm.read"})}
+SCOPES = frozenset(
+    {"platform.members.read", "platform.members.write", "platform.roles.bind", "crm.read"}
+)
 
 
 class Lookup:
@@ -55,7 +49,7 @@ class Lookup:
             workspace_id=workspace_id,
             principal_id=PRINCIPAL,
             roles=frozenset({"org_admin"}),
-            scopes=frozenset({"platform.members.read", "platform.members.write"}),
+            scopes=SCOPES,
             groups=frozenset(),
             clearance="internal",
             plan_id="professional",
@@ -63,68 +57,17 @@ class Lookup:
         )
 
 
-class Repo:
-    """One person in this tenant, in ws1 and ws2, held in memory and changed
-    the way the SQL repository changes them; every write audits."""
-
-    def __init__(self) -> None:
-        self.held: dict[uuid.UUID, frozenset[str]] = {
-            WS1: frozenset({"sales"}),
-            WS2: frozenset({"sales"}),
-        }
-        self.audits: list[AuditEvent] = []
-
-    async def role_catalog(self) -> dict[str, frozenset[str]]:
-        return dict(ROLES)
-
-    async def list_members(self, context: AccessContext) -> list[TenantMember]:
-        if not self.held:
-            return []
-        return [
-            TenantMember(
-                user_id=PERSON,
-                display_name="Person",
-                email="p@example.test",
-                status="active",
-                memberships=tuple(
-                    MemberWorkspace(ws, "W", tuple(sorted(roles)))
-                    for ws, roles in sorted(self.held.items(), key=lambda i: str(i[0]))
-                ),
-            )
-        ]
-
-    async def replace_memberships(
-        self,
-        context: AccessContext,
-        *,
-        user_id: uuid.UUID,
-        plan: Callable[[Roles], Roles],
-        audit: Callable[[MembershipChange], AuditEvent],
-        effect: PendingEffect | None = None,
-    ) -> list[MembershipChange]:
-        if user_id != PERSON or not self.held:
-            raise NotFoundError("no such member in this tenant")
-        planned = plan(self.held)
-        changes = [
-            MembershipChange(ws, self.held.get(ws, frozenset()), roles)
-            for ws, roles in planned.items()
-            if roles != self.held.get(ws, frozenset())
-        ]
-        self.held = {ws: roles for ws, roles in planned.items() if roles}
-        self.audits += [audit(change) for change in changes]
-        return changes
-
-    async def invite(
-        self,
-        context: AccessContext,
-        *,
-        display_name: str,
-        email: str,
-        memberships: Roles,
-        audit: Callable[[uuid.UUID, uuid.UUID, frozenset[str]], AuditEvent],
-        effect: PendingEffect | None = None,
-    ) -> UserRef:
-        raise NotImplementedError("not exercised by the route tests")
+def company() -> FakeRoleAssignments:
+    """One person in this tenant, holding `sales` in ws1 and ws2."""
+    repo = FakeRoleAssignments(
+        TENANT,
+        {WS1: "Một", WS2: "Hai"},
+        [FakeRole("sales", frozenset({"crm.read"})), FakeRole("am", frozenset({"crm.read"}))],
+    )
+    repo.add_person(PERSON, "p@example.test", "Person", status="active")
+    repo.place(PERSON, WS1, "sales")
+    repo.place(PERSON, WS2, "sales")
+    return repo
 
 
 class Cache:
@@ -138,7 +81,7 @@ class Cache:
         return None
 
 
-def _container(repo: Repo, cache: Cache, store: MemoryStore) -> ApiContainer:
+def _container(repo: FakeRoleAssignments, cache: Cache, store: MemoryStore) -> ApiContainer:
     async def ok() -> CheckState:
         return "ok"
 
@@ -154,7 +97,8 @@ def _container(repo: Repo, cache: Cache, store: MemoryStore) -> ApiContainer:
         authorization=authz,
         cache=cache,
         idempotency=HttpIdempotency(store, SystemClock()),
-        tenant_members=TenantMembersService(repo, authz, SystemClock(), Uuid4Generator()),
+        tenant_members=TenantMembersService(repo, authz),
+        role_assignments=RoleAssignmentService(repo, authz, SystemClock(), Uuid4Generator()),
     )
 
 
@@ -177,28 +121,57 @@ async def _put(container: ApiContainer, body: object, key: str | None = None) ->
 
 
 BODY = {"memberships": [{"workspace_id": str(WS1), "role_keys": ["sales"]}]}
+DROP_WS2 = ["platform.role_assignment.revoke", "platform.membership.revoke"]
 
 
 async def test_dropping_a_workspace_revokes_its_membership() -> None:
-    repo, cache = Repo(), Cache()
+    repo, cache = company(), Cache()
     response = await _put(_container(repo, cache, MemoryStore()), BODY)
     assert response.status_code == 200, response.text
-    assert [m["workspace_id"] for m in response.json()["memberships"]] == [str(WS1)]
-    assert [a.action for a in repo.audits] == ["platform.membership.revoke"]
+    view = response.json()
+    assert [m["workspace_id"] for m in view["memberships"]] == [str(WS1)]
+    assert view["applied"] == [{"workspace_id": str(WS2), "role_key": "sales"}]
+    assert view["proposals"] == []
+    # Only narrows, so applied at once with an audit each (R7.6).
+    assert [a.action for a in repo.audits] == DROP_WS2
+    assert (PERSON, WS2) not in repo.memberships
+    assert repo.proposals == []
+
+
+async def test_a_role_added_is_a_proposal_and_a_role_dropped_is_gone() -> None:
+    """R7.1 (RB32): removing `sales` and adding `am` answers 202, `sales`
+    removed, `am` waiting for a second person."""
+    repo = company()
+    body = {
+        "memberships": [
+            {"workspace_id": str(WS1), "role_keys": ["am"]},
+            {"workspace_id": str(WS2), "role_keys": ["sales"]},
+        ]
+    }
+    response = await _put(_container(repo, Cache(), MemoryStore()), body)
+    assert response.status_code == 202, response.text
+    view = response.json()
+    [proposal] = repo.proposals
+    assert view["proposals"] == [str(proposal.id)]
+    assert view["applied"] == [{"workspace_id": str(WS1), "role_key": "sales"}]
+    assert proposal.payload["workspace_id"] == str(WS1)
+    assert proposal.role_id == repo.roles["am"].id
+    assert repo.held(PERSON, WS1) == frozenset()
+    assert repo.held(PERSON, WS2) == {"sales"}
 
 
 async def test_a_replayed_key_answers_the_same_and_audits_once() -> None:
-    repo, cache, store = Repo(), Cache(), MemoryStore()
+    repo, cache, store = company(), Cache(), MemoryStore()
     container = _container(repo, cache, store)
     first = await _put(container, BODY, key="put-1")
     again = await _put(container, BODY, key="put-1")
     assert first.status_code == again.status_code == 200
     assert first.json() == again.json()
-    assert len(repo.audits) == 1
+    assert [a.action for a in repo.audits] == DROP_WS2
 
 
 async def test_an_unknown_body_field_is_refused() -> None:
     response = await _put(
-        _container(Repo(), Cache(), MemoryStore()), {**BODY, "user_id": str(uuid.uuid4())}
+        _container(company(), Cache(), MemoryStore()), {**BODY, "user_id": str(uuid.uuid4())}
     )
     assert response.status_code == 422

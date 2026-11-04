@@ -5,6 +5,9 @@ tests hold the database and the service to:
 
 - a waiver lets one membership hold both sides, in that tenant only, once a
   second admin has confirmed it (f381f1694395) - never the one who proposed it;
+  since tenant-rbac ticket 03 a role reaches a person when a second holder of
+  `platform.roles.bind` confirms its proposal, so the rule (and the waiver) is
+  judged at that confirmation;
 - a role or permission set cannot gain a scope that would make a membership
   holding it break a rule its tenant has not waived;
 - a rule its author did not mark waivable is a floor, for every writer;
@@ -14,7 +17,9 @@ tests hold the database and the service to:
   revoke and the membership write race each other;
 - a closed waiver is history: it cannot be reopened, rewritten or deleted.
 
-The rules, roles and users are this file's own, with a per-test suffix.
+The rules, roles, users and tenants are this file's own, with a per-test
+suffix (a proposal is deleted only while its tenant is offboarding, so a shared
+tenant could not drop this file's roles again).
 """
 
 from __future__ import annotations
@@ -23,11 +28,11 @@ import asyncio
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from datetime import UTC, datetime
 
 import pytest
 import sqlalchemy as sa
 from pg_harness import DatabaseUrls
+from rbac_world import Admins, assigned_roles, assignment_service, confirm_all, plant_admins
 from sqlalchemy.exc import IntegrityError, ProgrammingError
 from sqlalchemy.ext.asyncio import (
     AsyncConnection,
@@ -38,16 +43,14 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.pool import NullPool
 
 from dw_kernel.errors import ConflictError, DomainError, NotFoundError, PermissionDeniedError
-from dw_kernel.ids import TenantId, UserId, WorkspaceId
 from dw_kernel.ports import SystemClock, Uuid4Generator
 from dw_platform.adapters.persistence import tables
-from dw_platform.adapters.persistence.identity_provisioning import SqlIdentityBootstrap
-from dw_platform.adapters.persistence.membership_admin import SqlMembershipAdminRepository
 from dw_platform.adapters.persistence.separation_of_duties_repo import (
     SqlSeparationOfDutiesRepository,
 )
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.authorization import ScopeAuthorizationService
+from dw_platform.application.role_assignments import SetMemberships, WorkspaceRoles
 from dw_platform.application.separation_of_duties import (
     SOD_WAIVERS_WRITE,
     ConfirmWaiver,
@@ -55,16 +58,16 @@ from dw_platform.application.separation_of_duties import (
     SeparationOfDutiesService,
     WaiveRule,
 )
-from dw_platform.domain.audit import AuditEvent
-from dw_platform.testing.rbac import catalogue_test_keys, forget_in_memberships, unregister_key
-from dw_platform.testing.seed_env import seed_test_env
+from dw_platform.testing.rbac import (
+    catalogue_test_keys,
+    plant_membership,
+    plant_person,
+    plant_tenant,
+    unregister_key,
+)
 
 pytestmark = pytest.mark.integration
 
-ALPHA = uuid.UUID("d6b43d0e-c3c6-5dbc-bc08-150621bd9a5d")
-ALPHA_WS = uuid.UUID("64764894-718d-5558-ba17-9a2949214063")
-BETA = uuid.UUID("6634f09a-d1d7-54a6-aa23-f3f018f41f28")
-BETA_WS = uuid.UUID("eda6af16-a0c4-55d3-be0b-163414390572")
 REASON = "Công ty 3 người, một người vừa đặt hàng vừa thanh toán"
 
 
@@ -74,23 +77,17 @@ class _Catalogue:
     floor: str
     orderer: str
     payer: str
+    # Two tenants, each with this file's roles and two admins (one proposes,
+    # the other confirms a role); `alpha` is the one a test waives in.
+    alpha: Admins
+    beta: Admins
 
-
-@dataclass(frozen=True)
-class _Identity:
-    subject: str
-    email: str | None
-    # An IdP that verified the address, as a corporate SSO does.
-    email_verified: bool = True
-    issuer: str = "https://issuer.test/realms/dw"
-    name: str | None = None
-    auth_methods: frozenset[str] = frozenset()
-    acr: str | None = None
+    def tenant(self, beta: bool = False) -> Admins:
+        return self.beta if beta else self.alpha
 
 
 @pytest.fixture
 async def app_engine(db_urls: DatabaseUrls) -> AsyncIterator[AsyncEngine]:
-    await seed_test_env(db_urls.migrator)
     engine = create_async_engine(db_urls.app, poolclass=NullPool)
     yield engine
     await engine.dispose()
@@ -105,50 +102,43 @@ async def migrator_engine(db_urls: DatabaseUrls) -> AsyncIterator[AsyncEngine]:
 
 @pytest.fixture
 async def catalogue(migrator_engine: AsyncEngine) -> AsyncIterator[_Catalogue]:
-    """A waivable rule and a floor over the same two scopes, and one role on
-    each side."""
+    """A waivable rule and a floor over the same two scopes, one role on each
+    side, and two tenants holding those roles."""
     suffix = uuid.uuid4().hex[:10]
-    made = _Catalogue(
-        rule=f"sod_test_waivable_{suffix}",
-        floor=f"sod_test_floor_{suffix}",
-        orderer=f"test_orderer_{suffix}",
-        payer=f"test_payer_{suffix}",
-    )
+    rule, floor = f"sod_test_waivable_{suffix}", f"sod_test_floor_{suffix}"
+    orderer, payer = f"test_orderer_{suffix}", f"test_payer_{suffix}"
     order, pay = f"test.{suffix}.order", f"test.{suffix}.pay"
     async with migrator_engine.begin() as conn:
         await catalogue_test_keys(conn, [order, pay])
-        for key, scopes in ((made.orderer, [order]), (made.payer, [pay])):
+        for key, scopes in ((orderer, [order]), (payer, [pay])):
             await conn.execute(sa.insert(tables.roles).values(key=key, name=key, scopes=scopes))
         await conn.execute(
             sa.insert(tables.sod_rules).values(
-                key=made.rule,
+                key=rule,
                 description="orders are not paid by who placed them",
                 left_scopes=[order],
                 right_scopes=[pay],
                 waivable=True,
             )
         )
-    yield made
+        tenants = [await plant_tenant(conn), await plant_tenant(conn)]
+        for tenant in tenants:
+            for key in (orderer, payer):
+                await conn.execute(
+                    sa.text("SELECT platform.install_role_template(:t, :k)"),
+                    {"t": tenant.tenant_id, "k": key},
+                )
+    alpha, beta = [await plant_admins(migrator_engine, t.tenant_id, t.main) for t in tenants]
+    yield _Catalogue(rule, floor, orderer, payer, alpha, beta)
     async with migrator_engine.begin() as conn:
-        rule_keys = [made.rule, made.floor]
+        rule_keys = [rule, floor]
         await conn.execute(
             sa.delete(tables.sod_waivers).where(tables.sod_waivers.c.rule_key.in_(rule_keys))
         )
         await conn.execute(sa.delete(tables.sod_rules).where(tables.sod_rules.c.key.in_(rule_keys)))
-        # The tenants' clones of this file's templates, then the templates and keys.
-        templates = [made.orderer, made.payer]
-        await forget_in_memberships(conn, templates)
-        await conn.execute(
-            sa.text(
-                "DELETE FROM platform.role_assignments a USING platform.tenant_roles r"
-                " WHERE r.id = a.role_id AND r.key = ANY(:k)"
-            ),
-            {"k": templates},
-        )
-        await conn.execute(
-            sa.text("DELETE FROM platform.tenant_roles WHERE key = ANY(:k)"), {"k": templates}
-        )
-        await conn.execute(sa.delete(tables.roles).where(tables.roles.c.key.in_(templates)))
+        # The tenants' clones keep their rows (their proposals name them) and
+        # lose their privileges with the keys; then the templates.
+        await conn.execute(sa.delete(tables.roles).where(tables.roles.c.key.in_([orderer, payer])))
         for key in (order, pay):
             await unregister_key(conn, key)
 
@@ -172,10 +162,13 @@ async def _add_floor(engine: AsyncEngine, made: _Catalogue) -> None:
         )
 
 
-def _admin(tenant: uuid.UUID = ALPHA, workspace: uuid.UUID = ALPHA_WS) -> AccessContext:
+def _admin(made: _Catalogue, beta: bool = False) -> AccessContext:
+    """A holder of the waiver scope in one of the two tenants; the waiver
+    service asks the authorization port, never the role tables."""
+    admins = made.tenant(beta)
     return AccessContext(
-        tenant_id=tenant,
-        workspace_id=workspace,
+        tenant_id=admins.tenant_id,
+        workspace_id=admins.workspace_id,
         principal_id=uuid.uuid4(),
         roles=frozenset({"org_admin"}),
         scopes=frozenset({"platform.members.write", "platform.roles.read", SOD_WAIVERS_WRITE}),
@@ -192,55 +185,99 @@ def _service(engine: AsyncEngine) -> SeparationOfDutiesService:
     )
 
 
-async def _user(engine: AsyncEngine, tenant: uuid.UUID = ALPHA) -> uuid.UUID:
-    bootstrap = SqlIdentityBootstrap(
-        session_factory=async_sessionmaker(engine, expire_on_commit=False),
-        default_tenant_id=tenant,
-        default_workspace_id=ALPHA_WS if tenant == ALPHA else BETA_WS,
+async def _user(migrator: AsyncEngine, made: _Catalogue, beta: bool = False) -> uuid.UUID:
+    """A member of the tenant with a membership in its workspace and no role."""
+    admins = made.tenant(beta)
+    async with migrator.begin() as conn:
+        user = await plant_person(conn, admins.tenant_id)
+        await plant_membership(conn, admins.tenant_id, admins.workspace_id, user)
+    return user
+
+
+async def _propose(
+    engine: AsyncEngine, made: _Catalogue, user_id: uuid.UUID, *roles: str, beta: bool = False
+) -> tuple[uuid.UUID, ...]:
+    """The person's roles in the workspace become exactly `roles`: what goes is
+    revoked at once, each role that comes is proposed by the tenant's maker."""
+    admins = made.tenant(beta)
+    outcome = await assignment_service(engine).set_memberships(
+        admins.maker_context,
+        SetMemberships(user_id, (WorkspaceRoles(admins.workspace_id, frozenset(roles)),)),
     )
-    view = await bootstrap.bootstrap(
-        _Identity(subject=f"sub-{uuid.uuid4()}", email=f"{uuid.uuid4().hex[:8]}@waiver.test")
-    )
-    return view.principal_id
+    return outcome.proposals
 
 
 async def _grant(
-    engine: AsyncEngine, user_id: uuid.UUID, *roles: str, tenant: uuid.UUID = ALPHA
+    engine: AsyncEngine, made: _Catalogue, user_id: uuid.UUID, *roles: str, beta: bool = False
 ) -> None:
-    context = _admin(tenant, ALPHA_WS if tenant == ALPHA else BETA_WS)
-    await SqlMembershipAdminRepository(async_sessionmaker(engine, expire_on_commit=False)).grant(
-        context,
-        user_id=user_id,
-        workspace_id=context.workspace_id,
-        role_keys=frozenset(roles),
-        department="general",
-        audit=AuditEvent(
-            id=uuid.uuid4(),
-            tenant_id=TenantId(context.tenant_id),
-            workspace_id=WorkspaceId(context.workspace_id),
-            actor_id=UserId(context.principal_id),
-            action="platform.membership.grant",
-            resource_type="membership",
-            resource_id=str(user_id),
-            occurred_at=datetime.now(UTC),
-        ),
-    )
+    """`_propose`, each proposal confirmed by the tenant's checker in key order;
+    the first refusal is raised."""
+    proposals = await _propose(engine, made, user_id, *roles, beta=beta)
+    await confirm_all(engine, made.tenant(beta).checker_context, proposals)
 
 
-async def _waived(engine: AsyncEngine, rule_key: str, reason: str = REASON) -> None:
+async def _roles_of(
+    migrator: AsyncEngine, made: _Catalogue, user_id: uuid.UUID, beta: bool = False
+) -> list[str]:
+    admins = made.tenant(beta)
+    return (await assigned_roles(migrator, admins.tenant_id, user_id)).get(admins.workspace_id, [])
+
+
+async def _waived(
+    engine: AsyncEngine, made: _Catalogue, rule_key: str, reason: str = REASON
+) -> None:
     """Proposed by one admin and confirmed by another: a waiver in effect."""
     service = _service(engine)
-    await service.waive(_admin(), WaiveRule(rule_key, reason))
-    await service.confirm(_admin(), ConfirmWaiver(rule_key, "đã xem, đồng ý"))
+    await service.waive(_admin(made), WaiveRule(rule_key, reason))
+    await service.confirm(_admin(made), ConfirmWaiver(rule_key, "đã xem, đồng ý"))
 
 
-async def _scoped(conn: AsyncConnection, tenant: uuid.UUID = ALPHA) -> None:
+async def _scoped(conn: AsyncConnection, tenant: uuid.UUID) -> None:
     await conn.execute(sa.text("SELECT set_config('app.tenant_id', :t, true)"), {"t": str(tenant)})
 
 
-async def _audit_actions(engine: AsyncEngine, rule_key: str) -> list[tuple[str, object]]:
+async def _as_checker(conn: AsyncConnection, made: _Catalogue) -> None:
+    """Bound to alpha as its checker, the person who confirms a role there."""
+    await conn.execute(
+        sa.text(
+            "SELECT set_config('app.tenant_id', :t, true), set_config('app.user_id', :u, true)"
+        ),
+        {"t": str(made.alpha.tenant_id), "u": str(made.alpha.checker)},
+    )
+
+
+async def _confirm_in(conn: AsyncConnection, made: _Catalogue, request: uuid.UUID) -> None:
+    """What `RoleAdminService.confirm` writes for an `assignment_grant`, in the
+    caller's open transaction as alpha's checker: the proposal confirmed, then
+    its assignment (which the separation-of-duty trigger judges)."""
+    await conn.execute(
+        sa.text(
+            "UPDATE platform.role_change_requests SET status = 'confirmed',"
+            " confirmed_by = :u, decided_at = now() WHERE id = :id"
+        ),
+        {"u": made.alpha.checker, "id": request},
+    )
+    await conn.execute(
+        sa.text("SELECT set_config('app.role_change_id', :id, true)"), {"id": str(request)}
+    )
+    await conn.execute(
+        sa.text(
+            "INSERT INTO platform.role_assignments"
+            " (id, tenant_id, workspace_id, membership_id, role_id)"
+            " SELECT gen_random_uuid(), r.tenant_id, CAST(q.payload->>'workspace_id' AS uuid),"
+            "   CAST(q.payload->>'membership_id' AS uuid), r.id"
+            " FROM platform.role_change_requests q JOIN platform.tenant_roles r ON r.id = q.role_id"
+            " WHERE q.id = :id"
+        ),
+        {"id": request},
+    )
+
+
+async def _audit_actions(
+    engine: AsyncEngine, made: _Catalogue, rule_key: str
+) -> list[tuple[str, object]]:
     async with engine.begin() as conn:
-        await _scoped(conn)
+        await _scoped(conn, made.alpha.tenant_id)
         rows = (
             await conn.execute(
                 sa.text(
@@ -253,9 +290,11 @@ async def _audit_actions(engine: AsyncEngine, rule_key: str) -> list[tuple[str, 
     return [(row.action, row.details.get("reason")) for row in rows]
 
 
-async def _open_waivers(engine: AsyncEngine, rule_key: str, tenant: uuid.UUID = ALPHA) -> int:
+async def _open_waivers(
+    engine: AsyncEngine, made: _Catalogue, rule_key: str, beta: bool = False
+) -> int:
     async with engine.begin() as conn:
-        await _scoped(conn, tenant)
+        await _scoped(conn, made.tenant(beta).tenant_id)
         return int(
             await conn.scalar(
                 sa.text(
@@ -272,53 +311,55 @@ async def _open_waivers(engine: AsyncEngine, rule_key: str, tenant: uuid.UUID = 
 
 
 async def test_a_waived_rule_lets_one_membership_hold_both_sides(
-    app_engine: AsyncEngine, catalogue: _Catalogue
+    app_engine: AsyncEngine, migrator_engine: AsyncEngine, catalogue: _Catalogue
 ) -> None:
-    user_id = await _user(app_engine)
+    user_id = await _user(migrator_engine, catalogue)
     with pytest.raises(ConflictError):
-        await _grant(app_engine, user_id, catalogue.orderer, catalogue.payer)
+        await _grant(app_engine, catalogue, user_id, catalogue.orderer, catalogue.payer)
 
-    proposer, confirmer = _admin(), _admin()
+    proposer, confirmer = _admin(catalogue), _admin(catalogue)
     await _service(app_engine).waive(proposer, WaiveRule(catalogue.rule, REASON))
     # Proposed, not confirmed: it lifts nothing yet.
     with pytest.raises(ConflictError):
-        await _grant(app_engine, user_id, catalogue.orderer, catalogue.payer)
-    listed = {r.key: r for r in await _service(app_engine).list_rules(_admin())}
+        await _grant(app_engine, catalogue, user_id, catalogue.orderer, catalogue.payer)
+    listed = {r.key: r for r in await _service(app_engine).list_rules(_admin(catalogue))}
     pending = listed[catalogue.rule].waiver
     assert pending is not None and pending.confirmed_by is None
 
     await _service(app_engine).confirm(confirmer, ConfirmWaiver(catalogue.rule, "đồng ý"))
-    await _grant(app_engine, user_id, catalogue.orderer, catalogue.payer)
+    await _grant(app_engine, catalogue, user_id, catalogue.orderer, catalogue.payer)
 
-    listed = {r.key: r for r in await _service(app_engine).list_rules(_admin())}
+    listed = {r.key: r for r in await _service(app_engine).list_rules(_admin(catalogue))}
     waiver = listed[catalogue.rule].waiver
     assert waiver is not None and waiver.reason == REASON
     assert (waiver.granted_by, waiver.confirmed_by) == (
         proposer.principal_id,
         confirmer.principal_id,
     )
-    assert await _audit_actions(app_engine, catalogue.rule) == [
+    assert await _audit_actions(app_engine, catalogue, catalogue.rule) == [
         ("platform.sod.waive", REASON),
         ("platform.sod.waiver_confirm", "đồng ý"),
     ]
 
 
 async def test_one_tenants_waiver_lifts_nothing_for_another(
-    app_engine: AsyncEngine, catalogue: _Catalogue
+    app_engine: AsyncEngine, migrator_engine: AsyncEngine, catalogue: _Catalogue
 ) -> None:
-    await _service(app_engine).waive(_admin(), WaiveRule(catalogue.rule, REASON))
-    beta_admin = _admin(BETA, BETA_WS)
+    await _service(app_engine).waive(_admin(catalogue), WaiveRule(catalogue.rule, REASON))
+    beta_admin = _admin(catalogue, beta=True)
 
-    beta_user = await _user(app_engine, BETA)
+    beta_user = await _user(migrator_engine, catalogue, beta=True)
     with pytest.raises(ConflictError):
-        await _grant(app_engine, beta_user, catalogue.orderer, catalogue.payer, tenant=BETA)
+        await _grant(
+            app_engine, catalogue, beta_user, catalogue.orderer, catalogue.payer, beta=True
+        )
     # Beta sees the rule and no waiver, and cannot revoke Alpha's.
     listed = {r.key: r for r in await _service(app_engine).list_rules(beta_admin)}
     assert listed[catalogue.rule].waiver is None
     with pytest.raises(NotFoundError):
         await _service(app_engine).revoke(beta_admin, RevokeWaiver(catalogue.rule, "not ours"))
-    assert await _open_waivers(app_engine, catalogue.rule, BETA) == 0
-    assert await _open_waivers(app_engine, catalogue.rule, ALPHA) == 1
+    assert await _open_waivers(app_engine, catalogue, catalogue.rule, beta=True) == 0
+    assert await _open_waivers(app_engine, catalogue, catalogue.rule) == 1
 
 
 # ---- floors ------------------------------------------------------------------
@@ -330,9 +371,9 @@ async def test_a_rule_its_author_did_not_mark_waivable_cannot_be_waived(
     await _add_floor(migrator_engine, catalogue)
 
     with pytest.raises(ConflictError, match="cannot be waived"):
-        await _service(app_engine).waive(_admin(), WaiveRule(catalogue.floor, REASON))
+        await _service(app_engine).waive(_admin(catalogue), WaiveRule(catalogue.floor, REASON))
     async with app_engine.begin() as conn:
-        await _scoped(conn)
+        await _scoped(conn, catalogue.alpha.tenant_id)
         assert (
             await conn.scalar(
                 sa.text("SELECT count(*) FROM platform.sod_waivers WHERE rule_key = :k"),
@@ -340,14 +381,14 @@ async def test_a_rule_its_author_did_not_mark_waivable_cannot_be_waived(
             )
             == 0
         )
-    assert await _audit_actions(app_engine, catalogue.floor) == []
+    assert await _audit_actions(app_engine, catalogue, catalogue.floor) == []
     # Not for the migrator either: the guard is the database's.
     with pytest.raises(IntegrityError, match="cannot be waived"):
         async with migrator_engine.begin() as conn:
             await conn.execute(
                 sa.insert(tables.sod_waivers).values(
                     id=uuid.uuid4(),
-                    tenant_id=ALPHA,
+                    tenant_id=catalogue.alpha.tenant_id,
                     rule_key=catalogue.floor,
                     reason=REASON,
                     granted_by=uuid.uuid4(),
@@ -359,11 +400,11 @@ async def test_waiving_the_rule_lifts_nothing_while_a_floor_forbids_the_same_pai
     app_engine: AsyncEngine, migrator_engine: AsyncEngine, catalogue: _Catalogue
 ) -> None:
     await _add_floor(migrator_engine, catalogue)
-    await _waived(app_engine, catalogue.rule)
-    user_id = await _user(app_engine)
+    await _waived(app_engine, catalogue, catalogue.rule)
+    user_id = await _user(migrator_engine, catalogue)
 
     with pytest.raises(ConflictError) as refused:
-        await _grant(app_engine, user_id, catalogue.orderer, catalogue.payer)
+        await _grant(app_engine, catalogue, user_id, catalogue.orderer, catalogue.payer)
     assert refused.value.details["rule"] == catalogue.floor
 
 
@@ -374,8 +415,8 @@ async def test_waiving_needs_the_waiver_scope_and_a_reason(
     app_engine: AsyncEngine, catalogue: _Catalogue
 ) -> None:
     member = AccessContext(
-        tenant_id=ALPHA,
-        workspace_id=ALPHA_WS,
+        tenant_id=catalogue.alpha.tenant_id,
+        workspace_id=catalogue.alpha.workspace_id,
         principal_id=uuid.uuid4(),
         roles=frozenset({"org_admin"}),
         scopes=frozenset({"platform.members.write", "platform.roles.read"}),
@@ -384,8 +425,8 @@ async def test_waiving_needs_the_waiver_scope_and_a_reason(
     with pytest.raises(PermissionDeniedError):
         await _service(app_engine).waive(member, WaiveRule(catalogue.rule, REASON))
     with pytest.raises(DomainError, match="reason"):
-        await _service(app_engine).waive(_admin(), WaiveRule(catalogue.rule, "   "))
-    assert await _open_waivers(app_engine, catalogue.rule) == 0
+        await _service(app_engine).waive(_admin(catalogue), WaiveRule(catalogue.rule, "   "))
+    assert await _open_waivers(app_engine, catalogue, catalogue.rule) == 0
 
 
 async def test_org_admin_holds_the_waiver_scope(app_engine: AsyncEngine) -> None:
@@ -400,36 +441,38 @@ async def test_org_admin_holds_the_waiver_scope(app_engine: AsyncEngine) -> None
 async def test_a_second_open_waiver_of_one_rule_is_a_conflict(
     app_engine: AsyncEngine, catalogue: _Catalogue
 ) -> None:
-    await _service(app_engine).waive(_admin(), WaiveRule(catalogue.rule, REASON))
+    await _service(app_engine).waive(_admin(catalogue), WaiveRule(catalogue.rule, REASON))
     with pytest.raises(ConflictError, match="already waived"):
-        await _service(app_engine).waive(_admin(), WaiveRule(catalogue.rule, REASON))
-    assert await _audit_actions(app_engine, catalogue.rule) == [("platform.sod.waive", REASON)]
+        await _service(app_engine).waive(_admin(catalogue), WaiveRule(catalogue.rule, REASON))
+    assert await _audit_actions(app_engine, catalogue, catalogue.rule) == [
+        ("platform.sod.waive", REASON)
+    ]
 
 
 # ---- revoking ----------------------------------------------------------------
 
 
 async def test_a_waiver_memberships_rely_on_cannot_be_revoked(
-    app_engine: AsyncEngine, catalogue: _Catalogue
+    app_engine: AsyncEngine, migrator_engine: AsyncEngine, catalogue: _Catalogue
 ) -> None:
     service = _service(app_engine)
-    await _waived(app_engine, catalogue.rule)
-    user_id = await _user(app_engine)
-    await _grant(app_engine, user_id, catalogue.orderer, catalogue.payer)
+    await _waived(app_engine, catalogue, catalogue.rule)
+    user_id = await _user(migrator_engine, catalogue)
+    await _grant(app_engine, catalogue, user_id, catalogue.orderer, catalogue.payer)
 
     with pytest.raises(ConflictError) as refused:
-        await service.revoke(_admin(), RevokeWaiver(catalogue.rule, "đã tuyển thêm người"))
+        await service.revoke(_admin(catalogue), RevokeWaiver(catalogue.rule, "đã tuyển thêm người"))
     assert refused.value.details["memberships"] == 1
-    assert await _open_waivers(app_engine, catalogue.rule) == 1
+    assert await _open_waivers(app_engine, catalogue, catalogue.rule) == 1
 
     # Once the membership no longer holds both sides, the revoke goes through
     # and the rule applies again.
-    await _grant(app_engine, user_id, catalogue.orderer)
-    await service.revoke(_admin(), RevokeWaiver(catalogue.rule, "đã tuyển thêm người"))
-    assert await _open_waivers(app_engine, catalogue.rule) == 0
+    await _grant(app_engine, catalogue, user_id, catalogue.orderer)
+    await service.revoke(_admin(catalogue), RevokeWaiver(catalogue.rule, "đã tuyển thêm người"))
+    assert await _open_waivers(app_engine, catalogue, catalogue.rule) == 0
     with pytest.raises(ConflictError):
-        await _grant(app_engine, user_id, catalogue.orderer, catalogue.payer)
-    assert await _audit_actions(app_engine, catalogue.rule) == [
+        await _grant(app_engine, catalogue, user_id, catalogue.orderer, catalogue.payer)
+    assert await _audit_actions(app_engine, catalogue, catalogue.rule) == [
         ("platform.sod.waive", REASON),
         ("platform.sod.waiver_confirm", "đã xem, đồng ý"),
         ("platform.sod.waiver_revoke", "đã tuyển thêm người"),
@@ -440,46 +483,53 @@ async def test_revoking_without_an_open_waiver_is_not_found(
     app_engine: AsyncEngine, catalogue: _Catalogue
 ) -> None:
     with pytest.raises(NotFoundError):
-        await _service(app_engine).revoke(_admin(), RevokeWaiver(catalogue.rule, "x"))
-    assert await _audit_actions(app_engine, catalogue.rule) == []
+        await _service(app_engine).revoke(_admin(catalogue), RevokeWaiver(catalogue.rule, "x"))
+    assert await _audit_actions(app_engine, catalogue, catalogue.rule) == []
 
 
 async def test_a_revoke_waits_for_a_grant_relying_on_the_waiver_then_refuses(
-    app_engine: AsyncEngine, catalogue: _Catalogue
+    app_engine: AsyncEngine, migrator_engine: AsyncEngine, catalogue: _Catalogue
 ) -> None:
-    await _waived(app_engine, catalogue.rule)
-    user_id = await _user(app_engine)
-    await _grant(app_engine, user_id, catalogue.orderer)
+    """The grant is the confirmation of a proposal adding the other side: it
+    holds the waiver FOR SHARE until it commits, the revoke waits for it and
+    then finds a person relying on the waiver."""
+    await _waived(app_engine, catalogue, catalogue.rule)
+    user_id = await _user(migrator_engine, catalogue)
+    await _grant(app_engine, catalogue, user_id, catalogue.orderer)
+    (request,) = await _propose(app_engine, catalogue, user_id, catalogue.orderer, catalogue.payer)
 
     async with app_engine.connect() as grant_conn:
         grant = await grant_conn.begin()
-        await _scoped(grant_conn)
-        await grant_conn.execute(
-            sa.update(tables.memberships)
-            .where(tables.memberships.c.user_id == user_id)
-            .values(role_keys=[catalogue.orderer, catalogue.payer])
-        )
+        await _as_checker(grant_conn, catalogue)
+        await _confirm_in(grant_conn, catalogue, request)
         revoke = asyncio.create_task(
-            _service(app_engine).revoke(_admin(), RevokeWaiver(catalogue.rule, "race"))
+            _service(app_engine).revoke(_admin(catalogue), RevokeWaiver(catalogue.rule, "race"))
         )
         await asyncio.sleep(1.0)
         assert not revoke.done(), "the revoke did not wait for the grant relying on the waiver"
         await grant.commit()
     with pytest.raises(ConflictError):
         await revoke
-    assert await _open_waivers(app_engine, catalogue.rule) == 1
+    assert await _open_waivers(app_engine, catalogue, catalogue.rule) == 1
+    assert await _roles_of(migrator_engine, catalogue, user_id) == sorted(
+        [catalogue.orderer, catalogue.payer]
+    )
 
 
 async def test_a_grant_arriving_during_a_revoke_waits_then_is_refused(
-    app_engine: AsyncEngine, catalogue: _Catalogue
+    app_engine: AsyncEngine, migrator_engine: AsyncEngine, catalogue: _Catalogue
 ) -> None:
-    await _waived(app_engine, catalogue.rule)
-    user_id = await _user(app_engine)
-    await _grant(app_engine, user_id, catalogue.orderer)
+    """The confirmation of the other side, through the service, arrives while a
+    revoke of the waiver is in flight: it waits for the revoke, then the rule
+    applies again and refuses it."""
+    await _waived(app_engine, catalogue, catalogue.rule)
+    user_id = await _user(migrator_engine, catalogue)
+    await _grant(app_engine, catalogue, user_id, catalogue.orderer)
+    proposals = await _propose(app_engine, catalogue, user_id, catalogue.orderer, catalogue.payer)
 
     async with app_engine.connect() as revoke_conn:
         revoking = await revoke_conn.begin()
-        await _scoped(revoke_conn)
+        await _scoped(revoke_conn, catalogue.alpha.tenant_id)
         await revoke_conn.execute(
             sa.text(
                 "UPDATE platform.sod_waivers"
@@ -488,12 +538,16 @@ async def test_a_grant_arriving_during_a_revoke_waits_then_is_refused(
             ),
             {"who": uuid.uuid4(), "k": catalogue.rule},
         )
-        grant = asyncio.create_task(_grant(app_engine, user_id, catalogue.orderer, catalogue.payer))
+        grant = asyncio.create_task(
+            confirm_all(app_engine, catalogue.alpha.checker_context, proposals)
+        )
         await asyncio.sleep(1.0)
         assert not grant.done(), "the grant did not wait for the revoke in flight"
         await revoking.commit()
-    with pytest.raises(ConflictError):
+    with pytest.raises(ConflictError) as refused:
         await grant
+    assert refused.value.details["rule"] == catalogue.rule
+    assert await _roles_of(migrator_engine, catalogue, user_id) == [catalogue.orderer]
 
 
 # ---- a decision is history ---------------------------------------------------
@@ -503,7 +557,7 @@ async def test_a_waiver_can_be_revoked_once_and_never_rewritten_or_deleted(
     app_engine: AsyncEngine, catalogue: _Catalogue
 ) -> None:
     service = _service(app_engine)
-    await service.waive(_admin(), WaiveRule(catalogue.rule, REASON))
+    await service.waive(_admin(catalogue), WaiveRule(catalogue.rule, REASON))
 
     rewrites = (
         "UPDATE platform.sod_waivers SET reason = 'rewritten' WHERE rule_key = :k",
@@ -516,13 +570,13 @@ async def test_a_waiver_can_be_revoked_once_and_never_rewritten_or_deleted(
     for statement in rewrites:
         with pytest.raises(IntegrityError, match="revoked, once"):
             async with app_engine.begin() as conn:
-                await _scoped(conn)
+                await _scoped(conn, catalogue.alpha.tenant_id)
                 await conn.execute(sa.text(statement), {"k": catalogue.rule})
 
-    await service.revoke(_admin(), RevokeWaiver(catalogue.rule, "không cần nữa"))
+    await service.revoke(_admin(catalogue), RevokeWaiver(catalogue.rule, "không cần nữa"))
     with pytest.raises(IntegrityError, match="revoked, once"):
         async with app_engine.begin() as conn:
-            await _scoped(conn)
+            await _scoped(conn, catalogue.alpha.tenant_id)
             await conn.execute(
                 sa.text(
                     "UPDATE platform.sod_waivers"
@@ -533,14 +587,14 @@ async def test_a_waiver_can_be_revoked_once_and_never_rewritten_or_deleted(
             )
     with pytest.raises(ProgrammingError, match="permission denied"):
         async with app_engine.begin() as conn:
-            await _scoped(conn)
+            await _scoped(conn, catalogue.alpha.tenant_id)
             await conn.execute(
                 sa.text("DELETE FROM platform.sod_waivers WHERE rule_key = :k"),
                 {"k": catalogue.rule},
             )
     # Reopening means a new decision, with its own reason and audit row.
-    await service.waive(_admin(), WaiveRule(catalogue.rule, "lại thiếu người"))
-    assert [a for a, _ in await _audit_actions(app_engine, catalogue.rule)] == [
+    await service.waive(_admin(catalogue), WaiveRule(catalogue.rule, "lại thiếu người"))
+    assert [a for a, _ in await _audit_actions(app_engine, catalogue, catalogue.rule)] == [
         "platform.sod.waive",
         "platform.sod.waiver_revoke",
         "platform.sod.waive",
@@ -552,17 +606,17 @@ async def test_a_rule_made_a_floor_later_stops_honouring_its_open_waivers(
 ) -> None:
     """Clearing `waivable` is the rule author's call, made in a migration.
     From then on the tenant's open waiver lifts nothing: fail closed."""
-    await _waived(app_engine, catalogue.rule)
+    await _waived(app_engine, catalogue, catalogue.rule)
     async with migrator_engine.begin() as conn:
         await conn.execute(
             sa.update(tables.sod_rules)
             .where(tables.sod_rules.c.key == catalogue.rule)
             .values(waivable=False)
         )
-    user_id = await _user(app_engine)
+    user_id = await _user(migrator_engine, catalogue)
 
     with pytest.raises(ConflictError) as refused:
-        await _grant(app_engine, user_id, catalogue.orderer, catalogue.payer)
+        await _grant(app_engine, catalogue, user_id, catalogue.orderer, catalogue.payer)
     assert refused.value.details["rule"] == catalogue.rule
 
 
@@ -572,17 +626,19 @@ async def test_a_rule_made_a_floor_later_stops_honouring_its_open_waivers(
 async def test_the_admin_who_proposed_a_waiver_cannot_confirm_it(
     app_engine: AsyncEngine, migrator_engine: AsyncEngine, catalogue: _Catalogue
 ) -> None:
-    proposer = _admin()
+    proposer = _admin(catalogue)
     service = _service(app_engine)
     await service.waive(proposer, WaiveRule(catalogue.rule, REASON))
 
     with pytest.raises(ConflictError, match="second person"):
         await service.confirm(proposer, ConfirmWaiver(catalogue.rule, "tôi tự đồng ý"))
 
-    listed = {r.key: r for r in await service.list_rules(_admin())}
+    listed = {r.key: r for r in await service.list_rules(_admin(catalogue))}
     waiver = listed[catalogue.rule].waiver
     assert waiver is not None and waiver.confirmed_by is None
-    assert await _audit_actions(app_engine, catalogue.rule) == [("platform.sod.waive", REASON)]
+    assert await _audit_actions(app_engine, catalogue, catalogue.rule) == [
+        ("platform.sod.waive", REASON)
+    ]
     # The database's rule, for every writer: not even the migrator confirms a
     # waiver in its proposer's name, or creates one already confirmed.
     with pytest.raises(IntegrityError, match="second_person"):
@@ -601,7 +657,7 @@ async def test_the_admin_who_proposed_a_waiver_cannot_confirm_it(
             await conn.execute(
                 sa.insert(tables.sod_waivers).values(
                     id=uuid.uuid4(),
-                    tenant_id=BETA,
+                    tenant_id=catalogue.beta.tenant_id,
                     rule_key=catalogue.rule,
                     reason=REASON,
                     granted_by=uuid.uuid4(),
@@ -617,11 +673,11 @@ async def test_confirming_needs_the_scope_a_reason_and_a_waiver_waiting_for_it(
 ) -> None:
     service = _service(app_engine)
     with pytest.raises(NotFoundError):
-        await service.confirm(_admin(), ConfirmWaiver(catalogue.rule, "ok"))
-    await service.waive(_admin(), WaiveRule(catalogue.rule, REASON))
+        await service.confirm(_admin(catalogue), ConfirmWaiver(catalogue.rule, "ok"))
+    await service.waive(_admin(catalogue), WaiveRule(catalogue.rule, REASON))
     without_scope = AccessContext(
-        tenant_id=ALPHA,
-        workspace_id=ALPHA_WS,
+        tenant_id=catalogue.alpha.tenant_id,
+        workspace_id=catalogue.alpha.workspace_id,
         principal_id=uuid.uuid4(),
         roles=frozenset({"org_admin"}),
         scopes=frozenset({"platform.roles.read"}),
@@ -630,16 +686,16 @@ async def test_confirming_needs_the_scope_a_reason_and_a_waiver_waiting_for_it(
     with pytest.raises(PermissionDeniedError):
         await service.confirm(without_scope, ConfirmWaiver(catalogue.rule, "ok"))
     with pytest.raises(DomainError, match="reason"):
-        await service.confirm(_admin(), ConfirmWaiver(catalogue.rule, "  "))
+        await service.confirm(_admin(catalogue), ConfirmWaiver(catalogue.rule, "  "))
 
-    await service.confirm(_admin(), ConfirmWaiver(catalogue.rule, "ok"))
+    await service.confirm(_admin(catalogue), ConfirmWaiver(catalogue.rule, "ok"))
     # Confirmed once; a second confirmation finds nothing waiting, and the
     # confirmation itself cannot be rewritten.
     with pytest.raises(NotFoundError):
-        await service.confirm(_admin(), ConfirmWaiver(catalogue.rule, "again"))
+        await service.confirm(_admin(catalogue), ConfirmWaiver(catalogue.rule, "again"))
     with pytest.raises(IntegrityError, match="confirmed, once"):
         async with app_engine.begin() as conn:
-            await _scoped(conn)
+            await _scoped(conn, catalogue.alpha.tenant_id)
             await conn.execute(
                 sa.text(
                     "UPDATE platform.sod_waivers SET confirmed_by = gen_random_uuid()"

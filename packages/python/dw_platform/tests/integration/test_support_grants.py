@@ -18,14 +18,17 @@ from datetime import UTC, datetime, timedelta
 import pytest
 import sqlalchemy as sa
 from pg_harness import DatabaseUrls
+from rbac_world import assigned_roles, assignment_service, confirm_all
 from sqlalchemy.exc import DBAPIError
-from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlalchemy.pool import NullPool
 from support_world import (
     ITEM,
     SET_KEY,
     SupportWorld,
+    add_checker,
     build_world,
+    checker_context,
     context_of,
     grant_service,
     provisioning,
@@ -38,15 +41,9 @@ from dw_kernel.errors import (
     NotFoundError,
     PermissionDeniedError,
 )
-from dw_kernel.ports import FixedClock, Uuid4Generator
-from dw_platform.adapters.persistence.membership_admin import SqlMembershipAdminRepository
+from dw_kernel.ports import FixedClock
 from dw_platform.application.access_context import AccessContext
-from dw_platform.application.authorization import ScopeAuthorizationService
-from dw_platform.application.membership_admin import (
-    MEMBERS_WRITE,
-    GrantMembership,
-    GrantMembershipHandler,
-)
+from dw_platform.application.role_assignments import GrantMembership
 from dw_platform.application.support_access import (
     GrantStatus,
     RequestSupportGrant,
@@ -409,42 +406,39 @@ async def test_assignment_needs_support_staff_and_a_grant_waiting_for_one(
 async def test_support_staff_cannot_be_made_a_member(
     world: SupportWorld,
     app_engine: AsyncEngine,
+    migrator: AsyncEngine,
     provisioner_engine: AsyncEngine,
     clock: FixedClock,
 ) -> None:
+    """Refused where the membership is written, before any role is proposed:
+    neither a membership nor a proposal of support staff is left."""
     await _staff(provisioner_engine, world, clock)
-    admin = AccessContext(
-        tenant_id=world.tenant_a,
-        workspace_id=world.ws1,
-        principal_id=world.users["requester"],
-        roles=frozenset({"org_admin"}),
-        scopes=frozenset({MEMBERS_WRITE}),
-        plan_id="professional",
-    )
-    handler = GrantMembershipHandler(
-        SqlMembershipAdminRepository(async_sessionmaker(app_engine, expire_on_commit=False)),
-        ScopeAuthorizationService(),
-        clock,
-        Uuid4Generator(),
-    )
+    checker = await add_checker(migrator, world)
+    admin = await _ctx(app_engine, world, "requester")
+    members = assignment_service(app_engine)
     roles = frozenset({f"probe_plain_{world.tag}"})
     with pytest.raises(ConflictError) as refused:
-        await handler.handle(
+        await members.grant_member(
             admin,
             GrantMembership(email=world.email("staff"), workspace_id=world.ws1, role_keys=roles),
         )
     assert refused.value.details["reason_code"] == "support_staff_not_member"
+    assert await assigned_roles(migrator, world.tenant_a, world.users["staff"]) == {}
     # The operators' own path is held to it too.
     with pytest.raises(ConflictError) as refused:
         await provisioning(provisioner_engine, clock).assign_org_admin(
             world.operator, tenant_id=world.tenant_a, email=world.email("staff")
         )
     assert refused.value.details["reason_code"] == "support_staff_not_member"
-    # Someone not listed is placed as before.
-    await handler.handle(
+    # Someone not listed is placed as before, the role once a second person confirms.
+    _, outcome = await members.grant_member(
         admin,
         GrantMembership(email=world.email("not_staff"), workspace_id=world.ws1, role_keys=roles),
     )
+    await confirm_all(app_engine, checker_context(world, checker), outcome.proposals)
+    assert await assigned_roles(migrator, world.tenant_a, world.users["not_staff"]) == {
+        world.ws1: sorted(roles)
+    }
 
 
 # ---- SA11: the flag ---------------------------------------------------------

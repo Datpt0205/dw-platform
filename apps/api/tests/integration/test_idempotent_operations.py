@@ -9,12 +9,17 @@ has committed, before the answer is stored.
 "No second effect" is counted in `platform.audit_events`: every one of the nine
 writes its audit row in the effect's own transaction, so a second effect is a
 second row.
+
+Roles are tenant roles planted by the migrator (`dw_platform.testing.rbac`).
+Since tenant-rbac ticket 03 a role a members route adds is a proposal another
+holder of `platform.roles.bind` confirms, so placing and inviting answer 202
+and their effect is the membership and the proposal; each company has a second
+administrator, the one who could confirm (`no_checker_available` otherwise).
 """
 
 from __future__ import annotations
 
 import asyncio
-import json
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
@@ -55,16 +60,27 @@ from dw_platform.application.idempotency import (
     ReservedKey,
     StoredResponse,
 )
-from dw_platform.application.membership_admin import GrantMembership, RevokeMembership
+from dw_platform.application.membership_admin import RevokeMembership
+from dw_platform.application.role_assignments import (
+    GrantMembership,
+    InviteMember,
+    SetMemberships,
+    WorkspaceRoles,
+)
 from dw_platform.application.support_access import (
     RequestSupportGrant,
     SupportGrantService,
     SupportScopeCatalog,
 )
-from dw_platform.application.tenant_members import InviteMember, SetMemberships, WorkspaceRoles
 from dw_platform.domain.approval import ApprovalRequest
 from dw_platform.testing.members import add_tenant_member
-from dw_platform.testing.rbac import catalogue_test_keys
+from dw_platform.testing.rbac import (
+    assign,
+    catalogue_test_keys,
+    plant_membership,
+    plant_role,
+    role_id,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -91,19 +107,34 @@ class World:
     users: dict[str, uuid.UUID] = field(default_factory=dict)
 
 
-ADMIN_SCOPES = (
-    '["platform.members.read", "platform.members.write", "support.grant",'
-    ' "approvals.read", "approvals.decide", "x.read"]'
+ADMIN_KEYS = (
+    "platform.members.read",
+    "platform.members.write",
+    "platform.roles.bind",
+    "support.grant",
+    "approvals.read",
+    "approvals.decide",
+    "x.read",
 )
 
 
-async def _role(conn: Any, key: str, scopes: str) -> None:
-    await catalogue_test_keys(conn, json.loads(scopes))
-    await conn.execute(
-        sa.text(
-            "INSERT INTO platform.roles (key, name, scopes) VALUES (:k, :k, CAST(:s AS jsonb))"
-        ),
-        {"k": key, "s": scopes},
+async def _role(conn: Any, tenant: uuid.UUID, key: str, keys: tuple[str, ...]) -> None:
+    """A tenant role carrying ``keys`` at the depth a template's clone gets:
+    `tenant` for a tenant key, `workspace` otherwise."""
+    await catalogue_test_keys(conn, list(keys))
+    kinds = dict(
+        (
+            await conn.execute(
+                sa.text("SELECT key, scope_kind FROM platform.permissions WHERE key = ANY(:k)"),
+                {"k": list(keys)},
+            )
+        ).all()
+    )
+    await plant_role(
+        conn,
+        tenant,
+        key,
+        {k: "tenant" if kinds[k] == "tenant" else "workspace" for k in keys},
     )
 
 
@@ -125,13 +156,8 @@ async def new_user(
         )
         for workspace, role in memberships:
             await add_tenant_member(conn, tenant, user)
-            await conn.execute(
-                sa.text(
-                    "INSERT INTO platform.memberships (id, tenant_id, workspace_id, user_id,"
-                    " role_keys) VALUES (:id, :t, :w, :u, CAST(:r AS jsonb))"
-                ),
-                {"id": uuid.uuid4(), "t": tenant, "w": workspace, "u": user, "r": f'["{role}"]'},
-            )
+            membership = await plant_membership(conn, tenant, workspace, user)
+            await assign(conn, tenant, workspace, membership, await role_id(conn, tenant, role))
     return user
 
 
@@ -148,9 +174,6 @@ async def build_world(migrator: AsyncEngine) -> World:
         requester_role=f"it_requester_{tag}",
     )
     async with migrator.begin() as conn:
-        await _role(conn, world.admin_role, ADMIN_SCOPES)
-        await _role(conn, world.plain_role, '["x.read"]')
-        await _role(conn, world.requester_role, '["support.request", "approvals.read"]')
         for tenant, workspaces in (
             (world.tenant, (world.ws1, world.ws2)),
             (world.other_tenant, (world.other_ws,)),
@@ -177,6 +200,9 @@ async def build_world(migrator: AsyncEngine) -> World:
                     ),
                     {"id": workspace, "t": tenant, "slug": f"ws{n}"},
                 )
+            await _role(conn, tenant, world.admin_role, ADMIN_KEYS)
+            await _role(conn, tenant, world.plain_role, ("x.read",))
+            await _role(conn, tenant, world.requester_role, ("support.request", "approvals.read"))
     both = [(world.ws1, world.admin_role), (world.ws2, world.admin_role)]
     world.users["a"] = await new_user(migrator, world.tenant, both, name="Quản trị A")
     world.users["b"] = await new_user(migrator, world.tenant, both, name="Quản trị B")
@@ -184,9 +210,11 @@ async def build_world(migrator: AsyncEngine) -> World:
     world.users["requester"] = await new_user(
         migrator, world.tenant, [(world.ws1, world.requester_role)], name="Người yêu cầu"
     )
-    world.users["c"] = await new_user(
-        migrator, world.other_tenant, [(world.other_ws, world.admin_role)], name="Quản trị C"
-    )
+    other = [(world.other_ws, world.admin_role)]
+    world.users["c"] = await new_user(migrator, world.other_tenant, other, name="Quản trị C")
+    # The second administrator of the other company, who could confirm c's
+    # proposals.
+    world.users["d"] = await new_user(migrator, world.other_tenant, other, name="Quản trị D")
     return world
 
 
@@ -370,17 +398,18 @@ class Call:
 
 
 async def grant(h: Harness) -> Call:
+    """The membership now, the role a proposal: 202 (tenant-rbac R7.1)."""
     hire = await new_user(h.migrator, h.world.tenant, [])
     email = f"{hire.hex[:12]}@it.test"
-    service = h.container.grant_membership
+    service = h.container.role_assignments
     assert service is not None
     return Call(
         "POST",
         "/api/v1/admin/members",
         {"email": email, "workspace_id": str(h.world.ws1), "role_keys": [h.world.plain_role]},
-        201,
+        202,
         str(hire),
-        lambda context: service.handle(
+        lambda context: service.grant_member(
             context, GrantMembership(email, h.world.ws1, frozenset({h.world.plain_role}))
         ),
     )
@@ -401,15 +430,16 @@ async def revoke(h: Harness) -> Call:
 
 
 async def set_memberships(h: Harness) -> Call:
+    """ws1 removed at once, ws2's role a proposal: 202 (tenant-rbac R7.1)."""
     person = await new_user(h.migrator, h.world.tenant, [(h.world.ws1, h.world.plain_role)])
-    service = h.container.tenant_members
+    service = h.container.role_assignments
     assert service is not None
     rows = [{"workspace_id": str(h.world.ws2), "role_keys": [h.world.plain_role]}]
     return Call(
         "PUT",
         f"/api/v1/admin/members/{person}/memberships",
         {"memberships": rows},
-        200,
+        202,
         str(person),
         lambda context: service.set_memberships(
             context,
@@ -419,15 +449,16 @@ async def set_memberships(h: Harness) -> Call:
 
 
 async def invite(h: Harness) -> Call:
+    """The person and membership now, every role a proposal: 202 (R7.1)."""
     email = f"invite-{uuid.uuid4().hex[:10]}@it.test"
-    service = h.container.tenant_members
+    service = h.container.role_assignments
     assert service is not None
     rows = [{"workspace_id": str(h.world.ws1), "role_keys": [h.world.plain_role]}]
     return Call(
         "POST",
         "/api/v1/admin/invitations",
         {"display_name": "Người được mời", "email": email, "memberships": rows},
-        201,
+        202,
         None,
         lambda context: service.invite(
             context,
@@ -698,14 +729,26 @@ async def test_a_caller_who_lost_the_right_gets_403_and_not_the_stored_body(
     call = await grant(harness)
     key = f"lost-{uuid.uuid4()}"
     first = await harness.send("a", call, key)
-    assert first.status_code == 201
+    assert first.status_code == 202, first.text
+    # a keeps their memberships and holds only the plain role from now on.
     async with harness.migrator.begin() as conn:
+        world, a = harness.world, harness.world.users["a"]
         await conn.execute(
             sa.text(
-                "UPDATE platform.memberships SET role_keys = CAST(:r AS jsonb) WHERE user_id = :u"
+                "DELETE FROM platform.role_assignments r USING platform.memberships m"
+                " WHERE m.id = r.membership_id AND m.user_id = :u"
             ),
-            {"r": f'["{harness.world.plain_role}"]', "u": harness.world.users["a"]},
+            {"u": a},
         )
+        plain = await role_id(conn, world.tenant, world.plain_role)
+        for workspace in (world.ws1, world.ws2):
+            membership = await conn.scalar(
+                sa.text(
+                    "SELECT id FROM platform.memberships WHERE user_id = :u AND workspace_id = :w"
+                ),
+                {"u": a, "w": workspace},
+            )
+            await assign(conn, world.tenant, workspace, membership, plain)
 
     again = await harness.send("a", call, key)
 
@@ -838,7 +881,7 @@ async def test_another_tenant_spending_the_same_key_gets_its_own_effect(harness:
             "workspace_id": str(harness.world.other_ws),
             "role_keys": [harness.world.plain_role],
         },
-        201,
+        202,
         str(hire),
         lambda _: asyncio.sleep(0),
     )
@@ -847,7 +890,7 @@ async def test_another_tenant_spending_the_same_key_gets_its_own_effect(harness:
         "c", theirs, key, tenant=harness.world.other_tenant, workspace=harness.world.other_ws
     )
 
-    assert answered.status_code == 201, answered.text
+    assert answered.status_code == 202, answered.text
     assert answered.json()["user_id"] == str(hire)
     assert str(mine.resource) not in answered.text
 
@@ -874,16 +917,16 @@ async def test_two_grants_racing_on_one_key_make_one_member_and_one_audit_row(
     harness: Harness,
 ) -> None:
     call = await grant(harness)
-    admin = harness.context("platform.members.write", "x.read", who=harness.world.users["a"])
-    effect = _pending("POST /admin/members", f"race-{uuid.uuid4()}", admin.principal_id, 201)
-    service = harness.container.grant_membership
+    admin = harness.context(*ADMIN_KEYS, who=harness.world.users["a"])
+    effect = _pending("POST /admin/members", f"race-{uuid.uuid4()}", admin.principal_id, 202)
+    service = harness.container.role_assignments
     assert service is not None
     before = await harness.audits()
     body = call.body or {}
 
     outcomes = await asyncio.gather(
         *(
-            service.handle(
+            service.grant_member(
                 admin,
                 GrantMembership(body["email"], harness.world.ws1, frozenset(body["role_keys"])),
                 effect=effect,
@@ -894,13 +937,22 @@ async def test_two_grants_racing_on_one_key_make_one_member_and_one_audit_row(
     )
 
     assert sum(isinstance(o, ExistingEffect) for o in outcomes) == 1, outcomes
-    assert await harness.audits() == before + 1
+    # One effect: its membership's audit row and its proposal's, one
+    # membership, one proposal.
+    assert await harness.audits() == before + 2
     async with harness.migrator.connect() as conn:
         members = await conn.scalar(
             sa.text("SELECT count(*) FROM platform.memberships WHERE user_id = :u"),
             {"u": uuid.UUID(str(call.resource))},
         )
-    assert members == 1
+        proposals = await conn.scalar(
+            sa.text(
+                "SELECT count(*) FROM platform.role_change_requests"
+                " WHERE tenant_id = :t AND payload->>'user_id' = :u"
+            ),
+            {"t": harness.world.tenant, "u": str(call.resource)},
+        )
+    assert (members, proposals) == (1, 1)
 
 
 async def test_two_decisions_racing_on_one_key_leave_one_decided_event(harness: Harness) -> None:
@@ -944,9 +996,9 @@ async def test_two_invitations_racing_on_one_key_meet_one_effect(harness: Harnes
     the second attempt waits there and meets the first effect; after the
     person's row instead, it would fail as "already a member"."""
     email = f"race-{uuid.uuid4().hex[:10]}@it.test"
-    admin = harness.context("platform.members.write", "x.read", who=harness.world.users["a"])
-    effect = _pending("POST /admin/invitations", f"race-{uuid.uuid4()}", admin.principal_id, 201)
-    service = harness.container.tenant_members
+    admin = harness.context(*ADMIN_KEYS, who=harness.world.users["a"])
+    effect = _pending("POST /admin/invitations", f"race-{uuid.uuid4()}", admin.principal_id, 202)
+    service = harness.container.role_assignments
     assert service is not None
     before = await harness.audits()
     command = InviteMember(
@@ -961,4 +1013,10 @@ async def test_two_invitations_racing_on_one_key_meet_one_effect(harness: Harnes
     )
 
     assert sum(isinstance(o, ExistingEffect) for o in outcomes) == 1, outcomes
-    assert await harness.audits() == before + 1
+    # One effect is two rows: the invitation, and its one role's proposal.
+    assert await harness.audits() == before + 2
+    async with harness.migrator.connect() as conn:
+        people = await conn.scalar(
+            sa.text("SELECT count(*) FROM platform.users WHERE email = :e"), {"e": email}
+        )
+    assert people == 1

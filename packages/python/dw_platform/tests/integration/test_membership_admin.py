@@ -1,9 +1,12 @@
-"""Integration: an Org Admin grants and revokes membership, under RLS.
+"""Integration: an Org Admin places a person and removes them, under RLS.
 
-The vertical slice of ADR-001's "admin adds membership": a person signs in
-(default-deny, no access), an Org Admin grants them a business role in their
-tenant, and it takes. The three rails are exercised — scope, tenant, and the
-no-escalation rule — plus the audit trail every change leaves.
+The vertical slice of ADR-001's "admin adds membership", as tenant-rbac ticket
+03 left it: a person signs in (default-deny, no access), an Org Admin places
+them in a workspace of their tenant with a business role, and the role takes
+once a second holder of `platform.roles.bind` confirms it (R7.1). The rails are
+exercised — scope, tenant, the hold rule (no role carrying what the admin does
+not hold, none a tenant may not hold) and the second person — plus the audit
+trail every change leaves.
 """
 
 from __future__ import annotations
@@ -15,6 +18,14 @@ from dataclasses import dataclass
 import pytest
 import sqlalchemy as sa
 from pg_harness import DatabaseUrls
+from rbac_world import (
+    Admins,
+    assigned_roles,
+    assignment_service,
+    confirm_all,
+    open_proposals,
+    plant_admins,
+)
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
@@ -25,14 +36,8 @@ from dw_platform.adapters.persistence.identity_provisioning import SqlIdentityBo
 from dw_platform.adapters.persistence.membership_admin import SqlMembershipAdminRepository
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.authorization import ScopeAuthorizationService
-from dw_platform.application.membership_admin import (
-    MEMBERS_READ,
-    MEMBERS_WRITE,
-    GrantMembership,
-    GrantMembershipHandler,
-    RevokeMembership,
-    RevokeMembershipHandler,
-)
+from dw_platform.application.membership_admin import RevokeMembership, RevokeMembershipHandler
+from dw_platform.application.role_assignments import GrantMembership
 from dw_platform.testing.seed_env import seed_test_env
 
 pytestmark = pytest.mark.integration
@@ -40,7 +45,6 @@ pytestmark = pytest.mark.integration
 # Seeded tenant-alpha / its workspace (uuid5, matches dw_platform.testing.seed_env).
 ALPHA = uuid.UUID("d6b43d0e-c3c6-5dbc-bc08-150621bd9a5d")
 ALPHA_WS = uuid.UUID("64764894-718d-5558-ba17-9a2949214063")
-ORG_ADMIN_SCOPES = frozenset({MEMBERS_READ, MEMBERS_WRITE, "directory.read"})
 
 
 @pytest.fixture
@@ -58,6 +62,12 @@ async def migrator_engine(db_urls: DatabaseUrls) -> AsyncIterator[AsyncEngine]:
     await engine.dispose()
 
 
+@pytest.fixture
+async def admins(app_engine: AsyncEngine, migrator_engine: AsyncEngine) -> Admins:
+    """Two org admins of alpha: one proposes, the other confirms."""
+    return await plant_admins(migrator_engine, ALPHA, ALPHA_WS)
+
+
 @dataclass(frozen=True)
 class _Identity:
     subject: str
@@ -68,17 +78,6 @@ class _Identity:
     name: str | None = None
     auth_methods: frozenset[str] = frozenset()
     acr: str | None = None
-
-
-def _admin_context(tenant: uuid.UUID = ALPHA, workspace: uuid.UUID = ALPHA_WS) -> AccessContext:
-    return AccessContext(
-        tenant_id=tenant,
-        workspace_id=workspace,
-        principal_id=uuid.uuid4(),
-        roles=frozenset({"org_admin"}),
-        scopes=ORG_ADMIN_SCOPES,
-        plan_id="professional",
-    )
 
 
 async def _sign_in(engine: AsyncEngine, email: str) -> uuid.UUID:
@@ -93,69 +92,81 @@ async def _sign_in(engine: AsyncEngine, email: str) -> uuid.UUID:
     return view.principal_id
 
 
-def _handlers(engine: AsyncEngine) -> tuple[GrantMembershipHandler, RevokeMembershipHandler]:
+def _revoke_handler(engine: AsyncEngine) -> RevokeMembershipHandler:
     repo = SqlMembershipAdminRepository(async_sessionmaker(engine, expire_on_commit=False))
-    authz = ScopeAuthorizationService()
-    grant = GrantMembershipHandler(repo, authz, SystemClock(), Uuid4Generator())
-    revoke = RevokeMembershipHandler(repo, authz, SystemClock(), Uuid4Generator())
-    return grant, revoke
+    return RevokeMembershipHandler(
+        repo, ScopeAuthorizationService(), SystemClock(), Uuid4Generator()
+    )
 
 
-async def _audit_actions(engine: AsyncEngine, resource_id: uuid.UUID) -> list[str]:
-    """Membership audit rows for one target user, oldest first."""
+async def _audit_actions(engine: AsyncEngine, user_id: uuid.UUID) -> list[str]:
+    """Every audit row of alpha about one target user (its resource, or named in
+    its details), sorted: two events of one transaction may share a time."""
     async with async_sessionmaker(engine, expire_on_commit=False)() as session:
         await session.execute(
             sa.text("SELECT set_config('app.tenant_id', :t, true)"), {"t": str(ALPHA)}
         )
+        a = tables.audit_events
         rows = (
             await session.execute(
-                sa.select(tables.audit_events.c.action)
-                .where(
-                    tables.audit_events.c.resource_type == "membership",
-                    tables.audit_events.c.resource_id == str(resource_id),
-                )
-                .order_by(tables.audit_events.c.occurred_at)
-            )
-        ).all()
-    return [r.action for r in rows]
-
-
-async def _memberships_of(
-    engine: AsyncEngine, user_id: uuid.UUID
-) -> list[tuple[uuid.UUID, list[str]]]:
-    async with async_sessionmaker(engine, expire_on_commit=False)() as session:
-        await session.execute(
-            sa.text("SELECT set_config('app.principal_id', :p, true)"), {"p": str(user_id)}
-        )
-        rows = (
-            await session.execute(
-                sa.select(tables.memberships.c.tenant_id, tables.memberships.c.role_keys).where(
-                    tables.memberships.c.user_id == user_id
+                sa.select(a.c.action).where(
+                    sa.or_(
+                        a.c.resource_id == str(user_id),
+                        a.c.details["user_id"].astext == str(user_id),
+                    )
                 )
             )
         ).all()
-    return [(r.tenant_id, r.role_keys) for r in rows]
+    return sorted(r.action for r in rows)
 
 
-async def test_org_admin_grants_a_business_role_and_it_is_audited(app_engine: AsyncEngine) -> None:
-    user_id = await _sign_in(app_engine, "newhire@fpt.com")
-    grant, _revoke = _handlers(app_engine)
-
-    ref = await grant.handle(
-        _admin_context(),
-        GrantMembership(
-            email="newhire@fpt.com", workspace_id=ALPHA_WS, role_keys=frozenset({"member"})
-        ),
+async def _grant(
+    engine: AsyncEngine, admins: Admins, email: str, workspace: uuid.UUID, *keys: str
+) -> tuple[uuid.UUID, tuple[uuid.UUID, ...]]:
+    person, outcome = await assignment_service(engine).grant_member(
+        admins.maker_context,
+        GrantMembership(email=email, workspace_id=workspace, role_keys=frozenset(keys)),
     )
-
-    assert ref.user_id == user_id
-    assert await _memberships_of(app_engine, user_id) == [(ALPHA, ["member"])]
-    assert await _audit_actions(app_engine, user_id) == ["platform.membership.grant"]
+    return person.user_id, outcome.proposals
 
 
-async def test_a_plain_member_cannot_grant(app_engine: AsyncEngine) -> None:
-    await _sign_in(app_engine, "target@fpt.com")
-    grant, _revoke = _handlers(app_engine)
+async def test_org_admin_grants_a_business_role_and_it_is_audited(
+    app_engine: AsyncEngine, migrator_engine: AsyncEngine, admins: Admins
+) -> None:
+    user_id = await _sign_in(app_engine, "newhire@fpt.com")
+
+    granted, proposals = await _grant(app_engine, admins, "newhire@fpt.com", ALPHA_WS, "member")
+
+    assert granted == user_id
+    assert len(proposals) == 1
+    # Placed, holding nothing until a second person confirms (R7.1).
+    assert await assigned_roles(migrator_engine, ALPHA, user_id) == {ALPHA_WS: []}
+
+    await confirm_all(app_engine, admins.checker_context, proposals)
+
+    assert await assigned_roles(migrator_engine, ALPHA, user_id) == {ALPHA_WS: ["member"]}
+    assert await _audit_actions(app_engine, user_id) == [
+        "platform.membership.grant",
+        "platform.role_assignment.grant",
+        "platform.role_change.confirmed",
+        "platform.role_change.proposed",
+    ]
+    async with migrator_engine.connect() as conn:
+        applied = await conn.scalar(
+            sa.text(
+                "SELECT count(*) FROM platform.audit_events"
+                " WHERE tenant_id = :t AND action = 'platform.role_assignment.grant'"
+                " AND details->>'request_id' = :r AND actor_id = :c"
+            ),
+            {"t": ALPHA, "r": str(proposals[0]), "c": admins.checker},
+        )
+    assert applied == 1
+
+
+async def test_a_plain_member_cannot_grant(
+    app_engine: AsyncEngine, migrator_engine: AsyncEngine
+) -> None:
+    user_id = await _sign_in(app_engine, "target@fpt.com")
     not_admin = AccessContext(
         tenant_id=ALPHA,
         workspace_id=ALPHA_WS,
@@ -166,33 +177,37 @@ async def test_a_plain_member_cannot_grant(app_engine: AsyncEngine) -> None:
     )
 
     with pytest.raises(PermissionDeniedError):
-        await grant.handle(
+        await assignment_service(app_engine).grant_member(
             not_admin,
             GrantMembership(
                 email="target@fpt.com", workspace_id=ALPHA_WS, role_keys=frozenset({"member"})
             ),
         )
+    assert await assigned_roles(migrator_engine, ALPHA, user_id) == {}
 
 
-async def test_org_admin_cannot_mint_an_administrative_role(app_engine: AsyncEngine) -> None:
-    """No escalation: an Org Admin may not hand out platform_admin/org_admin."""
-    await _sign_in(app_engine, "crony@fpt.com")
-    grant, _revoke = _handlers(app_engine)
+async def test_org_admin_cannot_mint_an_administrative_role(
+    app_engine: AsyncEngine, migrator_engine: AsyncEngine, admins: Admins
+) -> None:
+    """No escalation: an Org Admin may not hand out `tenant_owner`, whose
+    privileges they do not hold (the hold rule, 403 `rbac_escalation`), nor
+    `platform_admin`, which no tenant role may be (404: no such role)."""
+    user_id = await _sign_in(app_engine, "crony@fpt.com")
+    before = await open_proposals(migrator_engine, ALPHA)
 
-    for elevated in ("platform_admin", "org_admin"):
-        with pytest.raises(PermissionDeniedError, match="administrative"):
-            await grant.handle(
-                _admin_context(),
-                GrantMembership(
-                    email="crony@fpt.com",
-                    workspace_id=ALPHA_WS,
-                    role_keys=frozenset({elevated}),
-                ),
-            )
+    with pytest.raises(PermissionDeniedError) as refused:
+        await _grant(app_engine, admins, "crony@fpt.com", ALPHA_WS, "tenant_owner")
+    assert refused.value.details["reason_code"] == "rbac_escalation"
+
+    with pytest.raises(NotFoundError, match="unknown role"):
+        await _grant(app_engine, admins, "crony@fpt.com", ALPHA_WS, "platform_admin")
+
+    assert await assigned_roles(migrator_engine, ALPHA, user_id) == {}
+    assert await open_proposals(migrator_engine, ALPHA) == before
 
 
 async def test_grant_into_another_tenants_workspace_is_refused(
-    app_engine: AsyncEngine, migrator_engine: AsyncEngine
+    app_engine: AsyncEngine, migrator_engine: AsyncEngine, admins: Admins
 ) -> None:
     """Tenant rail: an admin of alpha cannot place someone in beta's workspace."""
     user_id = await _sign_in(app_engine, "outsider@fpt.com")
@@ -206,32 +221,31 @@ async def test_grant_into_another_tenants_workspace_is_refused(
                 id=beta_ws, tenant_id=beta, slug="beta-sales", name="Sales"
             )
         )
-    grant, _revoke = _handlers(app_engine)
+    before = await open_proposals(migrator_engine, ALPHA)
 
     with pytest.raises(NotFoundError, match="workspace"):
-        await grant.handle(
-            _admin_context(),  # admin of alpha
-            GrantMembership(
-                email="outsider@fpt.com", workspace_id=beta_ws, role_keys=frozenset({"member"})
-            ),
-        )
-    assert await _memberships_of(app_engine, user_id) == []
+        await _grant(app_engine, admins, "outsider@fpt.com", beta_ws, "member")
+    assert await assigned_roles(migrator_engine, ALPHA, user_id) == {}
+    assert await assigned_roles(migrator_engine, beta, user_id) == {}
+    assert await open_proposals(migrator_engine, ALPHA) == before
 
 
-async def test_revoke_removes_access(app_engine: AsyncEngine) -> None:
+async def test_revoke_removes_access(
+    app_engine: AsyncEngine, migrator_engine: AsyncEngine, admins: Admins
+) -> None:
     user_id = await _sign_in(app_engine, "leaver@fpt.com")
-    grant, revoke = _handlers(app_engine)
-    await grant.handle(
-        _admin_context(),
-        GrantMembership(
-            email="leaver@fpt.com", workspace_id=ALPHA_WS, role_keys=frozenset({"member"})
-        ),
+    _, proposals = await _grant(app_engine, admins, "leaver@fpt.com", ALPHA_WS, "member")
+    await confirm_all(app_engine, admins.checker_context, proposals)
+
+    await _revoke_handler(app_engine).handle(
+        admins.maker_context, RevokeMembership(user_id=user_id, workspace_id=ALPHA_WS)
     )
 
-    await revoke.handle(_admin_context(), RevokeMembership(user_id=user_id, workspace_id=ALPHA_WS))
-
-    assert await _memberships_of(app_engine, user_id) == []
+    assert await assigned_roles(migrator_engine, ALPHA, user_id) == {}
     assert await _audit_actions(app_engine, user_id) == [
         "platform.membership.grant",
         "platform.membership.revoke",
+        "platform.role_assignment.grant",
+        "platform.role_change.confirmed",
+        "platform.role_change.proposed",
     ]
