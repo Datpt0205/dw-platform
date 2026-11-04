@@ -144,8 +144,12 @@ KHI gửi kiểm định, nội dung phiên bản bị niêm phong và bao đón
   trong giao dịch gửi `compared_live_hash` bằng `definition_hash` của phiên bản Đang dùng của thành phần lúc đó,
   NULL khi chưa có phiên bản Đang dùng (ADR-0120 (Accepted) quyết 1).
 - R2.11 NẾU phiên bản được gửi khai một Điểm gắn bắt buộc chưa có giá trị trong Bộ giá trị gắn đã duyệt, THÌ
-  dịch vụ gửi kiểm định PHẢI trả 409 `binding_unset` kèm tên Điểm gắn mà `PublishBindingsCheck` báo và không
-  chuyển phiên bản khỏi Nháp (tenant-config:R7.2; ADR-0120 (Accepted) quyết 2).
+  dịch vụ gửi kiểm định PHẢI trả 409 `binding_unset` kèm tên Điểm gắn mà `PublishBindingsCheck` báo và không chuyển
+  phiên bản khỏi Nháp khi lần gửi đi nhánh chỉ siết (phát hành ngay trong giao dịch gửi), còn ở nhánh có phê duyệt PHẢI
+  chuyển phiên bản như thường và trả danh sách `binding_unset` trong câu trả lời thành công, vì Bộ giá trị gắn chỉ đề
+  xuất được theo khai báo của một phiên bản đã niêm phong và handler phát hành từ chối (R5.10) (tenant-config:R7.2;
+  ADR-0120 (Accepted) quyết 2: phát hành cần mọi Điểm gắn bắt buộc đã duyệt; sửa ở gate tenant-config/05,
+  4/11/2026).
 - R2.12 NẾU lệnh gửi mang `If-Match` khác ETag hiện có của bản Nháp (`row_version` mà lần lưu nháp trả), THÌ dịch vụ
   gửi kiểm định PHẢI trả 412 `precondition_failed` với `details.reason_code` `stale_version`, không niêm phong gì
   và không chuyển phiên bản khỏi Nháp, ở mọi loại (tenant-config:R2.17; ADR-0108 (Accepted) quyết 3;
@@ -1369,6 +1373,11 @@ Mọi bảng mới: RLS ENABLE và FORCE theo tenant, grant cùng migration, tê
   G1), chỉ chạm `packages/python/dw_evals` và test của nó, không bảng, route, migration, config hay prompt nào của
   ticket 01, 03, 04 hay 05, chỉ chờ studio-skeleton/02; 06 chờ nó. Cách chia 01, 03-07 được duyệt khi gate chạy cho
   chúng. Theo `## Ủy quyền` của studio.md (Đạt, 31/10/2026). Nếu sai thì: hạ ticket 02 về `needs-triage` và chia lại.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026; gate tenant-config/05): R2.11 thôi từ chối lần gửi có phê duyệt vì Điểm
+  gắn chưa duyệt, chỉ từ chối ở nhánh chỉ siết, vì với lệnh gửi cũ phiên bản đầu (hay phiên bản thêm Điểm gắn bắt buộc)
+  không bao giờ gửi được: đề xuất Bộ giá trị gắn kiểm theo phiên bản niêm phong mới nhất (tenant-config, Quyết định
+  23/10/2026). Ticket 03, 04 của spec này đọc lại tiêu chí của R2.11 ở gate của chúng. Nếu sai thì: tenant-config cho đề
+  xuất kiểm theo bản Nháp và R2.11 giữ 409 ở mọi nhánh.
 
 ## Danh sách ticket
 
