@@ -92,7 +92,7 @@ phân tích của loại `agent` ở `.claude/plans/studio/compliance-pdpl/issue
    (ADR-0109 (Accepted) quyết 4, 9), đọc qua một Protocol hẹp `VersionAssessmentLookup` mà module khai và composition
    root đáp ứng từ bảng của bước 4, dưới RLS của công ty gửi kiểm định, nên module vẫn thuần; dòng của phiên bản con đã
    gồm nhãn của phiên bản con của nó, nên phép hợp bắc cầu mà không duyệt lại cây. Không có dòng cho
-   `(version_id, definition_hash)` của phiên bản con với phiên bản bộ phân tích hiện hành (gồm id phiên bản của công ty
+   `(version_id, definition_hash)` của phiên bản con với phiên bản bộ phân tích hiện hành của loại phiên bản đó (gồm id phiên bản của công ty
    khác, mà RLS không trả) → cả ba nhãn; lookup ném lỗi (mất kết nối, hết giờ) → gửi kiểm định thất bại, không ghi
    dòng, không bao giờ coi là nhãn rỗng. Tới khi `flow.subworkflow@1` có trong sổ loại (workflow-nodes/08, bậc B), một
    Bước loại đó là loại chưa biết và mang cả ba nhãn theo R4.1, nên ticket này không chờ workflow-nodes/08 hay

@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 29/10/2026
-Sẵn sàng: ĐẠT (4/11/2026; 0 CRITICAL, 0 HIGH; ticket 01, 03-06, 08)
+Sẵn sàng: ĐẠT (4/11/2026; 0 CRITICAL, 0 HIGH; ticket 01, 03-08)
 
 Studio xử lý dữ liệu cá nhân của khách hàng của công ty khách (lead, khách hàng) trên nền tảng đặt tại
 Việt Nam, gọi model có thể ở nước ngoài và gửi tin marketing qua Zalo và email. Lát này biến các nghĩa vụ
@@ -465,7 +465,8 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
 - agent-builder: loại agent và khung prompt cho nhãn năng lực
   (`.claude/plans/studio/agent-builder/issues/02-loai-agent-va-khung-prompt.md`) và giới hạn dữ liệu của agent cùng móc
   phát hành (`.claude/plans/studio/agent-builder/issues/05-gioi-han-du-lieu-cua-agent.md`), mà luật agent của ticket 07
-  chờ (V4.31).
+  chờ (V4.31); cửa nhận lượt của agent (`.claude/plans/studio/agent-builder/issues/03-runtime-agent.md`), nơi ticket 07
+  đọc mục `autonomy` mà nó thêm vào `dw.agent/v1` (ADR-0117 (Accepted) Amendments 2026-11-04).
 - connections-and-vault: egress client và `data_location` trên manifest kết nối, đang viết đợt này; dẫn
   theo đường dẫn.
 - Mảnh retention: telemetry-and-audit là chủ định dạng mảnh `configs/policies/retention.d/<schema>.<table>.yaml`, bộ
@@ -768,6 +769,13 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
   cho lane `retention` gọi hai hàm xóa; R5.7 nói rõ tin quá hạn bị xóa cả trong hội thoại còn hoạt động. Sửa: R5.7,
   thêm R5.11, CP30, Trong phạm vi, Dữ liệu, ticket 04, 06. Nếu sai thì: `owning_workspace_id` trên Bản ghi đồng ý cho
   audit; `enforced: false` lại cho nhật ký gửi; từng mục còn lại quay về bản trước trong lịch sử git.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): Theo gate `checking-plan-readiness` cho ticket 07 (1 CRITICAL, 8 HIGH):
+  `dw.agent/v1` không có mục Mức tự chủ nào mà R4.3 đọc, nên ticket 07 thêm mục `autonomy` không bắt buộc và cửa nhận
+  lượt của agent đặt mức thấp hơn giữa nó và trần của công ty, vắng thì hỏi mọi thứ (ADR-0117 (Accepted) Amendments
+  2026-11-04; ticket chờ agent-builder/03); nhãn của agent từ công cụ đã ghim và từ giới hạn dữ liệu với `field_caps`,
+  các mục W2 của agent không mang nhãn ở W1; tập nhãn của dòng mang C chỉ khi chính sách duyệt có một chủ cho một tác
+  động chạy không hỏi; R2.6 áp cho loại `agent`; phần agent của R2.4 ở ticket 07. Sửa: Phụ thuộc, ticket 05, 07. Nếu
+  sai thì: agent-builder giữ mục `autonomy` và cửa, hay R4.3 sang W2 cùng mục đó.
 
 ## Danh sách ticket
 
