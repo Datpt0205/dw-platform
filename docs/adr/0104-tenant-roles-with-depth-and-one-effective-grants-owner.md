@@ -356,3 +356,31 @@ by copying") and D3 (record-level access in four layers), and on the call on DO-
   `principal_inactive`) before asking `platform.grants_cover`, whose answer over an empty set is true. If wrong: each
   reader keeps its own comparison, with a test per copy that they agree, and the transition compares against the
   principal's assigned grants.
+
+## Amendments (2026-11-04)
+
+- tenant-rbac ticket 03 split, the agent under Đạt's delegation of 2026-10-31; the status stays Accepted.
+- Consequences: the lock of `memberships.role_keys` and `permission_set_keys` (dropping the copy trigger, blanking
+  the two columns, `ck_memberships_legacy_role_columns`) is tenant-rbac ticket 06, which waits on FOG-49 (ticket 05);
+  "before tenant-rbac/03 refuses them" reads "before tenant-rbac/06 locks the column", as Đạt's answer to Open 5 and
+  the FOG-49 line of `.claude/plans/studio/requirements.md` word it. Ticket 03 keeps the copy trigger and gives it no
+  exemption, so from ticket 03 a write to the two columns that adds a role is a role assignment like any other: refused
+  under `dw_app` without a confirmed proposal (decision 10), refused under `dw_provisioner` because its writes skip
+  `platform.rbac_refusals` (decision 6), and allowed under `dw_migrator`; a write that removes one is a narrowing. No
+  reader decides access from the two columns except `platform_admin` in `role_keys`, which the lock still allows, so
+  the split opens no way around two people. A downstream product granting roles through the columns as `dw_app` moves
+  before it takes ticket 03; ticket 05 tells dw-proterial's maintainer.
+- Decision 8: only `dw_migrator` adds `platform_admin` to `role_keys` (`ck_memberships_legacy_role_writer`, tenant-rbac
+  ticket 03), so the platform-written grant is enforced in the database before W2 retires it.
+- Decision 10: a proposal opens the writes of its change only in the transaction where a person other than its
+  proposer confirms it, and only with the values its payload carries; a membership's `tenant_id`, `workspace_id` and
+  `user_id` do not change after insert except as `dw_migrator`, so no update moves a person's assignments to another
+  person.
+- Decision 6: the exemption of a tenant in `offboarding` or `offboarded` (Amendments 2026-11-03) covers writes that only
+  narrow, which is all offboarding's purge does; a write that widens there is refused like anywhere else, since
+  decision 10's second person has no such exception.
+- Decision 10, the Digital Worker exception (Amendments 2026-11-03): besides the DW row, the principal's
+  `platform.users` row is inserted in the same transaction (its `created_at` is the transaction's `now()` and cannot be
+  updated except as `dw_migrator`), so nobody points a new `draft` DW at an existing run-as account and assigns it roles
+  alone.
+- If wrong: ticket 06 folds back into ticket 03, which waits on ticket 05 again; the database rules above stay.
