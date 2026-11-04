@@ -135,7 +135,7 @@ Một module kernel sở hữu từ vựng `pd_category`, `sensitive_type` và T
   nhận `ClassifiedField` (Protocol ba thuộc tính có kiểu enum), nên mô hình đầu vào của chủ bảng dùng thẳng; giá trị ngoài
   enum là lỗi lược đồ của chủ bảng. Nếu sai thì: nhận `Mapping` thô và thêm một mã cho giá trị lạ.
 - 2026-11-02 (agent): MEDIUM (a) và (d) không đổi: gỡ `ToolDefinition.data_classification` là của field-security/01;
-  bên đọc `subject_identifier` là yêu cầu chủ thể dữ liệu (W2), cột vẫn có vì ADR-0106 quyết 1 đòi. Thêm
+  bên đọc `subject_identifier` là yêu cầu chủ thể dữ liệu (W2), cột vẫn có vì ADR-0106 (Accepted) quyết 1 đòi. Thêm
   `contracts/jsonschema/` vào `.prettierignore` (bộ sinh sở hữu định dạng, như `openapi.json`); `generate_contracts.py`
   ghi LF.
 - 2026-11-02 (agent): resolved. Dựng: `dw_kernel.personal_data` (ba enum, `SensitiveType` 12 thành viên mang chữ của

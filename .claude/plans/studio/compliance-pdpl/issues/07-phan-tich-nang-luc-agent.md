@@ -3,7 +3,7 @@
 Status: needs-triage
 Blocked by: 05, .claude/plans/studio/agent-builder/issues/05-gioi-han-du-lieu-cua-agent.md
 Area: studio
-Yêu cầu: R4.3, R4.4, R4.5, R4.6, CP13, CP14, CP15
+Yêu cầu: R2.4, R4.3, R4.4, R4.5, R4.6, CP4, CP13, CP14, CP15
 
 ## Mục tiêu
 
@@ -23,9 +23,14 @@ Ticket tách từ bước 3 của ticket 05 (V4.31), để phân tích của quy
    422 `capability_trifecta_autonomy` kèm hai cách sửa (hạ tự chủ, hoặc tách phần đọc nội dung không tin cậy khỏi phần
    giữ tác động); công cụ thiếu một phân loại trong Bộ công cụ → 422 `tool_unclassified`; overlay công ty hay một Mức
    tự chủ nâng trên A2 cho agent bộ ba → 422, phiên bản vẫn Nháp, vì sàn chỉ siết được (spec R4.3, R4.4, R4.5).
-3. Kết quả ghi một dòng `studio.version_assessments` (bảng của ticket 05) cho Mã băm định nghĩa của phiên bản agent
+3. Lộ trình của phiên bản (spec R2.4, phần agent; ticket 03 giữ phần workspace): trong cùng móc, `route_class` mà
+   `dw.agent/v1` khai (agent-builder:R1.6) lỏng hơn `platform.tenants.data_route_class` của công ty lúc gửi kiểm định,
+   theo thứ tự của `effective_route_class` của ticket 03 → 422 `validation_failed` với `errors[].code`
+   `route_class_looser_than_tenant`, con trỏ `/route_class`, phiên bản vẫn Nháp; vắng `route_class` hay bằng hay chặt
+   hơn công ty → qua.
+4. Kết quả ghi một dòng `studio.version_assessments` (bảng của ticket 05) cho Mã băm định nghĩa của phiên bản agent
    trong giao dịch gửi kiểm định, cùng cột như dòng của quy trình (spec R4.6).
-4. Case trong bộ eval bảo mật: agent Marketing có công cụ gửi tin, đọc lead và nhận nội dung từ web ở A3.
+5. Case trong bộ eval bảo mật: agent Marketing có công cụ gửi tin, đọc lead và nhận nội dung từ web ở A3.
 
 ## Tiêu chí chấp nhận
 
@@ -38,6 +43,9 @@ Ticket tách từ bước 3 của ticket 05 (V4.31), để phân tích của quy
 - [ ] R4.6: gửi kiểm định một agent hợp lệ → đúng một dòng `studio.version_assessments` cho Mã băm định nghĩa của
       phiên bản, ghi trong cùng giao dịch; rollback giao dịch gửi kiểm định → không dòng nào; bỏ mục `agent` khỏi bảng
       kiểm theo loại → gửi kiểm định agent A3 bộ ba qua được, test đỏ.
+- [ ] R2.4 (CP4): công ty `vn_only`, agent khai `route_class: cross_border_full` → gửi kiểm định 422
+      `route_class_looser_than_tenant` ở `/route_class`, phiên bản vẫn Nháp; khai `vn_only` hay không khai → qua; gỡ
+      kiểm → test đỏ.
 - [ ] Xong: `make ci && make test-integration` xanh.
 
 ## Nguồn

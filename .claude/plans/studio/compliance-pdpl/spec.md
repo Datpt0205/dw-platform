@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 29/10/2026
-Sẵn sàng: ĐẠT (2/11/2026; 0 CRITICAL, 0 HIGH; ticket 01, 08)
+Sẵn sàng: ĐẠT (4/11/2026; 0 CRITICAL, 0 HIGH; ticket 01, 03, 08)
 
 Studio xử lý dữ liệu cá nhân của khách hàng của công ty khách (lead, khách hàng) trên nền tảng đặt tại
 Việt Nam, gọi model có thể ở nước ngoài và gửi tin marketing qua Zalo và email. Lát này biến các nghĩa vụ
@@ -87,8 +87,9 @@ Chỉ trong Việt Nam, ghi lộ trình trên từng lời gọi (YC85; ADR-0123
   ngoài, THÌ thao tác gửi kiểm định PHẢI trả 422 `residency_refused` kèm đường đó và không chuyển phiên bản
   khỏi Nháp.
 - R2.7 NẾU một người gửi `PATCH /api/v1/admin/tenant` nới `data_route_class` của công ty về phía ra nước
-  ngoài, THÌ API quản trị PHẢI trả 409 `second_person_required` và không đổi lộ trình, vì W1 không có đường
-  nới (nới qua tenant-config là W2, R2.5).
+  ngoài, hay `PATCH /api/v1/admin/workspaces/{workspace_id}` nới `data_route_class` của workspace (về lớp lỏng hơn lớp
+  đang có hay về NULL), THÌ API quản trị PHẢI trả 409 `second_person_required` và không đổi lộ trình, vì W1 không có
+  đường nới (nới qua tenant-config là W2, R2.5; ADR-0123 (Accepted), Amendments 2026-10-24).
 - R2.8 KHI quản trị viên siết `data_route_class` của công ty hay workspace, API quản trị PHẢI áp thay đổi với
   một người và ghi audit `residency.class_changed` trong cùng giao dịch.
 
@@ -266,6 +267,8 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
 - `platform.tenants`: thêm `data_route_class text NOT NULL DEFAULT 'vn_only'` CHECK (`vn_only`,
   `cross_border_minimised`, `cross_border_full`).
 - `platform.workspaces`: thêm `data_route_class text NULL` cùng CHECK (NULL kế thừa công ty; chỉ siết).
+- `platform.worker_runs`: thêm `data_route_class text NULL` cùng CHECK, lớp hiệu lực ghim lúc nhận lượt
+  (`RunContext.route_class`), lần resume đọc lại từ đây (ADR-0123 (Accepted) quyết 3, 6).
 - Hai bảng `platform.consent_records`, `platform.contact_suppressions` thuộc lớp bảng toàn tenant: RLS chỉ theo
   công ty, không cột `workspace_id`, có tên và lý do trong danh sách bảng toàn tenant mà `test_rls_coverage.py`
   giữ (`CLAUDE.md` mục 'Tenancy and authorization', ngoại lệ của DO-01); công ty là bên kiểm soát nên một lần rút
@@ -338,13 +341,18 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
 - `PATCH /api/v1/admin/tenant` (`platform.tenant.settings.write`): thêm `data_route_class`; W1 chỉ siết,
   một người cộng audit `residency.class_changed` (R2.8); nới về ra nước ngoài → 409 `second_person_required`
   (R2.7); đường nới hai người với Xác nhận là W2 qua tenant-config (R2.5).
+- `PATCH /api/v1/admin/workspaces/{workspace_id}`: thêm `data_route_class` (`platform.tenant.settings.write` cho
+  trường này); lỏng hơn công ty → 422 (R2.4); nới hay về NULL → 409 `second_person_required` (R2.7); siết một người
+  cộng audit `residency.class_changed` (R2.8); workspace của công ty khác → 404.
 - `GET /api/v1/public/unsubscribe/{token}`: route công khai, HMAC một địa chỉ, idempotent, rate-limited,
   không lộ địa chỉ có tồn tại.
 - Lỗi theo vỏ `application/problem+json` của ADR-0108 (Accepted). Lát này là chủ mã `pd_category_required`, một
   `errors[].code` của 422 `validation_failed` có con trỏ tới trường thiếu loại (app-standards:R1.3), không phải
   `details.reason_code`; spec chủ bảng trả nó cùng hình (custom-objects:R2.2, workflow-triggers:R4.1). Cùng hình,
   lát này là chủ mã `sensitive_type_required` và `sensitive_type_not_allowed` (R1.5), và
-  `subject_identifier_not_allowed` cho một trường `Không` mang Trường định danh chủ thể (con trỏ `<trường>/subject_identifier`).
+  `subject_identifier_not_allowed` cho một trường `Không` mang Trường định danh chủ thể (con trỏ `<trường>/subject_identifier`),
+  và `route_class_looser_than_tenant` cho một phiên bản agent khai `route_class` lỏng hơn công ty lúc gửi kiểm định
+  (con trỏ `/route_class`; R2.4, ticket 07).
   `details.reason_code`: `residency_refused`, `blocked:<lý do>` (lý do của Sàn gửi tin ở ADR-0124 (Accepted)
   quyết 1, gồm `recipient_cap`; `processing_restricted` đến ở W2 cùng Hạn chế xử lý), `capability_trifecta_autonomy`,
   `tool_unclassified`, `trifecta_path_unapproved`, `second_person_required`. Mã 422 lúc gửi kiểm định đi qua
@@ -355,10 +363,10 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
 | #    | Kiểm soát                                                                               | Yêu cầu            | Test âm                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | ---- | --------------------------------------------------------------------------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | CP1  | Trường thiếu `pd_category` không tạo được                                               | R1.1, R1.2, R1.3   | POST một trường không có `pd_category` → 422 `validation_failed`, `errors[].code` `pd_category_required` có con trỏ tới trường; thêm một giá trị CHECK ngoài enum kernel → test drift đỏ                                                                                                                                                                                                                                                                                                                                                                                                      |
-| CP2  | `vn_only` không gửi byte nào ra nước ngoài                                              | R2.2               | Agent `vn_only` với tuyến `foreign` → từ chối trước khi gửi, adapter giả ghi 0 lời gọi; gỡ cổng → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| CP3  | Mọi đường gọi model qua cùng cổng                                                       | R2.3               | Chép lời khi `vn_only` tới URL `foreign` → job `failed` lý do `residency_refused`, 0 request; gỡ cổng ở embedding → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| CP4  | Workspace, agent không nới lộ trình                                                     | R2.4               | Đặt `cross_border_full` ở workspace khi công ty `vn_only` → 422, không đổi dòng                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| CP5  | Không nới lộ trình bằng một người                                                       | R2.5, R2.7         | W1: `PATCH` nới công ty sang `cross_border_full` → 409 `second_person_required`, lộ trình giữ nguyên; gỡ chặn → test đỏ (đường hai người và Xác nhận của R2.5 thử ở W2)                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| CP2  | `vn_only` không gửi byte nào ra nước ngoài                                              | R2.2               | Agent `vn_only` với tuyến `foreign` → từ chối trước khi gửi, adapter giả ghi 0 lời gọi; tuyến `vn` trả 503 với tuyến `foreign` dự phòng → tuyến `foreign` 0 lời gọi; phạm vi không đọc được hay giá trị lạ → từ chối; gỡ cổng → test đỏ                                                                                                                                                                                                                                                                                                                                                       |
+| CP3  | Mọi đường gọi model qua cùng cổng                                                       | R2.3               | Chép lời khi `vn_only` tới URL `foreign` → job `failed` lý do `residency_refused`, 0 request; mỗi adapter (gateway có cấu trúc, middleware vòng agent, embedding, rerank, trích xuất, chép lời, nén ngữ cảnh) một test, gỡ cổng ở adapter đó → test của nó đỏ                                                                                                                                                                                                                                                                                                                                 |
+| CP4  | Workspace, agent không nới lộ trình                                                     | R2.4               | Đặt `cross_border_full` ở workspace khi công ty `vn_only` → 422, không đổi dòng; người thiếu `platform.tenant.settings.write` → 403; công ty B đặt lớp cho workspace của A → 404, dòng của A giữ nguyên                                                                                                                                                                                                                                                                                                                                                                                       |
+| CP5  | Không nới lộ trình bằng một người                                                       | R2.5, R2.7         | W1: `PATCH` nới công ty sang `cross_border_full` → 409 `second_person_required`, lộ trình giữ nguyên; workspace từ `vn_only` về NULL → 409; gỡ chặn → test đỏ (đường hai người và Xác nhận của R2.5 thử ở W2)                                                                                                                                                                                                                                                                                                                                                                                 |
 | CP6  | Trường cá nhân vào prompt trên tuyến ra nước ngoài bị chặn lúc gửi kiểm định            | R2.6               | Gắn `full_name` vào prompt trên tuyến `cross_border_full` → gửi kiểm định 422 `residency_refused`, phiên bản vẫn Nháp; gỡ kiểm → test đỏ (MP7)                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | CP7  | Không gửi marketing khi thiếu đồng ý; lần chặn để lại Tương tác                         | R3.1, R3.7         | Lead không có Bản ghi đồng ý → `blocked:no_consent`, 0 tin, `marketing.send_refused` và một dòng nhật ký gửi `outcome` `blocked` cùng giao dịch; gỡ kiểm → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | CP8  | Sàn gửi kiểm trong ToolExecutor, không ở node                                           | R3.2               | Gọi hành động gửi qua node, qua công cụ agent, qua quy trình-như-công-cụ không đồng ý → cả ba bị chặn; gỡ kiểm ở executor → test đỏ (MP1, MP12, MP15)                                                                                                                                                                                                                                                                                                                                                                                                                                         |
@@ -709,6 +717,17 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
   của `classification_problems` và CHECK thứ năm `ck_<bảng>_pd_subject_identifier` mà helper catalog so khớp; thêm lúc
   chưa bảng định nghĩa trường nào tồn tại thì không tốn migration nào. Sửa: Dữ liệu, API, ticket 01. Nếu sai thì: gỡ mã
   và CHECK, helper về bốn CHECK.
+- 4/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 03-07.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): Theo gate `checking-plan-readiness` cho ticket 03 (1 CRITICAL, 8 HIGH):
+  lớp của workspace đặt qua `PATCH /api/v1/admin/workspaces/{workspace_id}` với quyền `platform.tenant.settings.write`,
+  404 cho workspace của công ty khác, và về NULL hay về lớp lỏng hơn là nới (409), theo ADR-0123 (Accepted) Amendments
+  2026-10-24; lớp hiệu lực ghim lúc nhận lượt vào `RunContext.route_class` và cột mới `platform.worker_runs.data_route_class`,
+  không vào bản kê lượt chạy (ADR-0123 (Accepted) Amendments 2026-11-04); cổng lấy lớp từ `RunContext` hay phạm vi của
+  job, không từ bên gọi, đóng khi không đọc được; cổng kiểm mọi tuyến trước lần gửi đầu, nên tuyến dự phòng `foreign`
+  không nhận byte sau lỗi của tuyến `vn`; rerank, trích xuất, chép lời khai `data_location` trong settings, thiếu là
+  `foreign`; mỗi adapter một test gỡ cổng, gồm nén ngữ cảnh; phần phiên bản agent của R2.4 ở ticket 07. Sửa: R2.7, Dữ
+  liệu, API, CP2-CP5, ticket 03, 07. Nếu sai thì: từng mục quay về bản trước trong lịch sử git, và các mục "Nếu sai thì"
+  ở Comments của ticket 03.
 
 ## Danh sách ticket
 
