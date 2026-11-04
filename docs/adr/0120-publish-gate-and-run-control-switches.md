@@ -387,3 +387,19 @@ planner's provisional calls H-1-H-18:
   in the permission catalogue and a stamp nobody holds would leave every request undecidable. If wrong: stamp
   `required_scope` once tenant-rbac ships the role, and the admission also requires the stamp. When agent-lifecycle
   builds the stage machine of decision 1, DW workflow versions move onto it.
+
+## Amendments (2026-11-04)
+
+- agent-lifecycle ticket 01 gate, agent under Đạt's delegation of 2026-10-31 (`.claude/plans/studio/agent-lifecycle/spec.md`
+  R7.1, R7.14, Dữ liệu): decision 5's "one open switch per target" is one open switch per target **and origin**, so a
+  tenant freeze and an operator freeze of the same tenant are both open and each side lifts only its own row; the
+  table is tenant-wide (its target's workspace is `owning_workspace_id`, which RLS never reads), a tenant-origin row is
+  lifted only with `lift_approval_id` naming an approved `studio.lifecycle.unfreeze` or `studio.lifecycle.revive`
+  request whose payload carries that row's `switch_id`, and `pg_notify` carries `tenant_id` and the id. Decision 6's
+  `require_open` takes the door it guards (`require_open(run_context, *, door, artifacts=())`), the source of the
+  metric's `door` label; the principal and tenant-status checks run at admission, start and resume only. Decision 7's
+  "keep paused runs paused and refuse decisions on them" is applied as written: `ApproveAndResumeService.decide`
+  refuses a run-bound approval under a freeze with 409 and leaves the request pending and the run waiting, a timer wake
+  under a freeze leaves the run waiting, and run-less approvals (unfreeze, revive, publish) do not pass that door. If
+  wrong: one open switch per tenant with the operator's freeze raising its origin, and `door` read from the caller's
+  stack.
