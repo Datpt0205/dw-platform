@@ -1,0 +1,224 @@
+# Mutation check of workflow-nodes ticket 02: scripts/mutate.py runs this file
+# at the queue's close (wave-close.md). One mutation per control the ticket adds
+# (R1.1, R1.2, R1.4/WN15, R1.5, R4.1, R4.2/WN2, R4.3/WN13, WN1) and per check
+# of the template builder, as the ticket's "Gỡ từng phép kiểm → ca của nó đỏ"
+# asks.
+#
+# Three are guarded by a test that scans source files by path (the one
+# registry, the formatter scan): mutate.py's package copy is invisible to such
+# a test, so they run in place. They are marked `# in place` and were shown
+# red by hand on 2026-11-05 with a sample of the others
+# (lane2-wn02-mutate-by-hand.log in the session scratchpad).
+mutations:
+  - name: R1.2 the catalogue route without its key check
+    file: apps/api/src/dw_api/routes/v1/studio_node_types.py
+    old: "    await container.authorization.require(\n        context=context, action=WORKFLOWS_EDIT_SCOPE, resource_type=\"node_type\"\n    )\n"
+    new: ""
+    tests:
+      - apps/api/tests/unit/test_studio_node_types.py::test_a_caller_without_the_edit_key_is_403
+  - name: R1.2 the catalogue answer cacheable
+    file: apps/api/src/dw_api/routes/v1/studio_node_types.py
+    old: '    response.headers["Cache-Control"] = "private, no-store"'
+    new: "    pass"
+    tests:
+      - apps/api/tests/unit/test_studio_node_types.py::test_a_caller_with_the_edit_key_reads_the_catalogue
+  - name: R1.1 a type registered twice is kept, the later winning
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/registry.py
+    old: '            raise ValueError(f"step type {spec.type} is registered twice")'
+    new: "            pass"
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_node_registry.py::test_a_type_registered_twice_is_refused_naming_it
+      - packages/python/dw_studio/tests/workflows/test_node_registry.py::test_the_fixture_registry_refuses_a_duplicate_too
+  - name: R1.1 the catalogue hash blind to a config schema
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/registry.py
+    old: '        "config_schema": _plain(spec.config_schema),'
+    new: '        "config_schema": {},'
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_node_registry.py::test_the_catalogue_hash_moves_with_a_schema
+      - apps/api/tests/unit/test_studio_node_types.py::test_a_route_built_from_a_changed_registry_hashes_differently
+  - name: R1.1 a second NodeTypeSpec in Studio # in place
+    file: packages/python/dw_studio/src/dw_studio/workflows/__init__.py
+    old: 'over the core envelope; the core imports none of it."""'
+    new: "over the core envelope; the core imports none of it.\"\"\"\n\n\nclass NodeTypeSpec:\n    pass"
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_node_registry.py::test_there_is_one_registry_and_it_is_the_cores
+  - name: R1.4 WN15 a field without a reader
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/registry.py
+    old: "    is_trigger: bool = False\n"
+    new: "    is_trigger: bool = False\n    capability_labels: tuple[str, ...] = ()\n"
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_node_registry.py::test_every_field_has_a_row_and_every_row_a_field
+  - name: R1.4 WN15 the named reader no longer reads label_vi
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/registry.py
+    old: '        "label_vi": spec.label_vi,'
+    new: '        "label_vi": spec.type,'
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_node_registry.py::test_each_named_reader_reads_its_field
+  - name: R1.5 a step under fail publishes error
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/registry.py
+    old: '_PUBLISHES_ERROR: frozenset[str] = frozenset({"continue", "route"})'
+    new: '_PUBLISHES_ERROR: frozenset[str] = frozenset({"fail", "continue", "route"})'
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_node_registry.py::test_a_step_that_stops_on_failure_publishes_no_error
+      - packages/python/dw_studio/tests/workflows/test_node_registry.py::test_the_catalogue_names_the_ports_and_the_error
+  - name: WN1 the rendered text through format_map # in place
+    file: packages/python/dw_studio/src/dw_studio/workflows/templates.py
+    old: '    return "".join(text for text, _ in pieces)'
+    new: '    return "".join(text for text, _ in pieces).format_map(dict(activation))'
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_templates.py::test_studio_has_no_formatter_for_tenant_text
+      - packages/python/dw_studio/tests/workflows/test_templates.py::test_format_fields_are_literal_text
+  - name: WN2 a prompt value not contained
+    file: packages/python/dw_studio/src/dw_studio/workflows/templates.py
+    old: '        return contain_untrusted(f"v{index}", _cut(text, MAX_PROMPT_VALUE_BYTES))'
+    new: "        return _cut(text, MAX_PROMPT_VALUE_BYTES)"
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_templates.py::test_a_value_cannot_close_its_block_at_the_prompt_sink
+  - name: WN2 a prompt value not cut
+    file: packages/python/dw_studio/src/dw_studio/workflows/templates.py
+    old: '        return contain_untrusted(f"v{index}", _cut(text, MAX_PROMPT_VALUE_BYTES))'
+    new: '        return contain_untrusted(f"v{index}", text)'
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_templates.py::test_a_value_is_cut_to_16_kib_before_it_is_escaped
+  - name: WN2 the prompt literal may write the tag
+    file: packages/python/dw_studio/src/dw_studio/workflows/templates.py
+    old: "            if any(writes_untrusted_tag(text) for text in literals):"
+    new: "            if False:"
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_templates.py::test_prompt_literal_text_may_not_write_the_tag
+  - name: WN2 the tag check case-sensitive
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/prompts.py
+    old: '_UNTRUSTED_TAG_PATTERN = re.compile(rf"(?i)</?{UNTRUSTED_TAG}\b")'
+    new: '_UNTRUSTED_TAG_PATTERN = re.compile(rf"</?{UNTRUSTED_TAG}\b")'
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_prompt_containment.py::test_writes_untrusted_tag_is_the_tag_in_any_case_and_only_the_tag
+      - packages/python/dw_agent_runtime/tests/unit/test_prompt_containment.py::test_a_template_writing_the_tag_in_capitals_is_refused
+  - name: R4.2 the prompt literal over 8 KiB passes
+    file: packages/python/dw_studio/src/dw_studio/workflows/templates.py
+    old: '            if sum(len(text.encode("utf-8")) for text in literals) > MAX_PROMPT_LITERAL_BYTES:'
+    new: "            if False:"
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_templates.py::test_prompt_literal_text_over_8_kib_is_refused
+  - name: WN13 a templated host passes
+    file: packages/python/dw_studio/src/dw_studio/workflows/templates.py
+    old: "            if has_expression and not _AUTHORITY.match(head):"
+    new: "            if False:"
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_templates.py::test_a_url_without_its_literal_authority_is_refused
+  - name: R4.3 a url value with its slash unencoded
+    file: packages/python/dw_studio/src/dw_studio/workflows/templates.py
+    old: '            return quote(text, safe="")'
+    new: "            return quote(text)"
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_templates.py::test_url_values_are_percent_encoded
+  - name: R4.3 a dot segment passes
+    file: packages/python/dw_studio/src/dw_studio/workflows/templates.py
+    old: '    if sink == "url" and _dot_segment(pieces):'
+    new: "    if False:"
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_templates.py::test_a_value_that_makes_a_dot_segment_is_refused
+      - packages/python/dw_studio/tests/workflows/test_templates.py::test_two_values_that_make_a_dot_segment_together_are_refused
+  - name: R4.1 html values not escaped
+    file: packages/python/dw_studio/src/dw_studio/workflows/templates.py
+    old: "            return html.escape(text, quote=True)"
+    new: "            return text"
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_templates.py::test_one_value_is_text_at_text_and_escaped_at_html
+  - name: R4.1 html markup not checked
+    file: packages/python/dw_studio/src/dw_studio/workflows/templates.py
+    old: '            return [] if _markup_allowed(tokens) else [TemplateIssue("html_markup_not_allowed")]'
+    new: "            return []"
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_templates.py::test_html_markup_outside_the_list_is_refused
+  - name: R4.1 a header value with a line break passes
+    file: packages/python/dw_studio/src/dw_studio/workflows/templates.py
+    old: "            if any(mark in text for mark in _HEADER_BREAKS):"
+    new: "            if False:"
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_templates.py::test_a_header_value_with_a_line_break_is_refused
+  - name: R4.1 a header literal with a line break passes
+    file: packages/python/dw_studio/src/dw_studio/workflows/templates.py
+    old: "            if any(mark in text for text in literals for mark in _HEADER_BREAKS):"
+    new: "            if False:"
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_templates.py::test_a_line_break_in_a_header_literal_is_refused_at_submit
+  - name: R4.1 a list in text passes at submit
+    file: packages/python/dw_studio/src/dw_studio/workflows/templates.py
+    old: "            if scalar and _non_scalar(found.checked.result_type):"
+    new: "            if False:"
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_templates.py::test_a_list_in_text_is_refused_at_submit_when_its_type_is_known
+      - packages/python/dw_studio/tests/workflows/test_templates.py::test_a_list_in_a_mixed_json_leaf_is_text_and_refused
+  - name: R4.1 a list in text renders as JSON
+    file: packages/python/dw_studio/src/dw_studio/workflows/templates.py
+    old: '        return TemplateError("non_scalar_in_text", index)'
+    new: "        return json.dumps(value)"
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_templates.py::test_a_list_in_text_is_refused_at_render_when_its_type_is_dyn
+  - name: R4.1 null renders as empty text
+    file: packages/python/dw_studio/src/dw_studio/workflows/templates.py
+    old: '        return TemplateError("null_in_template", index)'
+    new: '        return ""'
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_templates.py::test_null_fails_the_render_in_text_and_is_null_in_json
+      - packages/python/dw_studio/tests/workflows/test_templates.py::test_null_at_the_prompt_sink_is_refused
+  - name: R4.1 the 16 KiB source cap off by one
+    file: packages/python/dw_studio/src/dw_studio/workflows/templates.py
+    old: '    if len(source.encode("utf-8")) > MAX_SOURCE_BYTES:'
+    new: '    if len(source.encode("utf-8")) > MAX_SOURCE_BYTES + 1:'
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_templates.py::test_16_kib_passes_and_one_byte_more_is_too_large
+  - name: R4.1 the source cap counted in characters
+    file: packages/python/dw_studio/src/dw_studio/workflows/templates.py
+    old: '    if len(source.encode("utf-8")) > MAX_SOURCE_BYTES:'
+    new: "    if len(source) > MAX_SOURCE_BYTES:"
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_templates.py::test_16_kib_is_counted_in_bytes
+  - name: R4.1 51 expressions pass
+    file: packages/python/dw_studio/src/dw_studio/workflows/templates.py
+    old: "    if _expression_count(tokens) > MAX_EXPRESSIONS:"
+    new: "    if _expression_count(tokens) > MAX_EXPRESSIONS + 1:"
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_templates.py::test_50_expressions_pass_and_51_are_too_many
+  - name: R4.1 the json field's expressions not counted across its leaves
+    file: packages/python/dw_studio/src/dw_studio/workflows/templates.py
+    old: "    if sum(_expression_count(tokens) for tokens in leaves.values()) > MAX_EXPRESSIONS:"
+    new: "    if False:"
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_templates.py::test_51_expressions_across_the_leaves_of_a_json_field_are_too_many
+  - name: R4.1 the 64 KiB render cap off by one
+    file: packages/python/dw_studio/src/dw_studio/workflows/templates.py
+    old: '    if isinstance(text, str) and len(text.encode("utf-8")) > MAX_RENDER_BYTES:'
+    new: '    if isinstance(text, str) and len(text.encode("utf-8")) > MAX_RENDER_BYTES + 1:'
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_templates.py::test_64_kib_renders_and_one_byte_more_is_too_large
+  - name: R4.1 the json render cap off
+    file: packages/python/dw_studio/src/dw_studio/workflows/templates.py
+    old: "        if not isinstance(value, TemplateError) and _json_bytes(value) > MAX_RENDER_BYTES:"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_templates.py::test_a_json_result_over_64_kib_is_too_large
+  - name: R4.1 the escaped brace pair read as an expression
+    file: packages/python/dw_studio/src/dw_studio/workflows/templates.py
+    old: '        if source.startswith("\\{{", index):'
+    new: "        if False:"
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_templates.py::test_an_escaped_brace_pair_is_literal_text
+  - name: R4.1 the tokenizer blind to CEL string literals
+    file: packages/python/dw_studio/src/dw_studio/workflows/templates.py
+    old: "        if source[index] in \"'\\\"\":"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_templates.py::test_a_cel_string_literal_may_hold_the_closing_braces
+  - name: R4.1 a json leaf of one expression rendered as text
+    file: packages/python/dw_studio/src/dw_studio/workflows/templates.py
+    old: "            if len(tokens) == 1 and isinstance(tokens[0], _Source):"
+    new: "            if False:"
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_templates.py::test_a_json_leaf_that_is_one_expression_keeps_its_type
+  - name: R4.1 a templated string without a sink passes
+    file: packages/python/dw_studio/src/dw_studio/workflows/templates.py
+    old: "            if _templated(value):"
+    new: "            if False:"
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_templates.py::test_a_templated_string_where_no_sink_is_declared_is_refused

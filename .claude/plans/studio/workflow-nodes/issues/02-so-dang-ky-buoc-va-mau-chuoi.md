@@ -1,6 +1,6 @@
 # 02 — Sổ đăng ký loại bước một chủ, API danh mục và bộ dựng mẫu {{ }} theo đích
 
-Status: ready-for-agent
+Status: resolved (2026-11-05, cff9b6f)
 Blocked by: 01, .claude/plans/studio/tools-and-skills/issues/01-executor-kiem-schema-va-nha-may.md, .claude/plans/studio/workflow-engine/issues/01-tai-lieu-workflow-va-kiem-xuat-ban.md
 Area: studio
 Yêu cầu: R1.1, R1.2, R1.4, R1.5, R4.1, R4.2, R4.3, WN1, WN2, WN13, WN15
@@ -205,24 +205,24 @@ tr th td span div`;
 
 ## Tiêu chí chấp nhận
 
-- [ ] R1.1: một sổ (ADR-0112 (Accepted) quyết 2):
+- [x] R1.1: một sổ (ADR-0112 (Accepted) quyết 2):
     - `rg "class NodeTypeSpec|def build_node_registry" packages apps` ra đúng một chỗ, là
       `dw_agent_runtime/wflite/registry.py`; thêm một bản thứ hai trong `dw_studio` → test đỏ;
     - hai mục cùng `type@major` → `build_node_registry` ném `ValueError` nêu tên loại;
     - `PackCatalog` nạp mọi gói trong `configs/packs`;
     - `test_wflite_validate.py` và hai test packs fail-fast của API và worker xanh, không sửa gì ngoài phần bước 3 đòi.
-- [ ] R1.1: `catalogue_hash` mà route trả bằng `catalogue_hash` của sổ mà trình biên dịch của worker giữ
+- [x] R1.1: `catalogue_hash` mà route trả bằng `catalogue_hash` của sổ mà trình biên dịch của worker giữ
       (`wflite/compile.py`, `_Builder.registry`). Cho route dựng từ một sổ đã sửa một schema → hai mã băm khác nhau,
       test đỏ.
-- [ ] R1.2: route trả cho mỗi loại `type`, `label_vi`, schema cấu hình, đầu ra khai báo (gồm schema `error` và các
+- [x] R1.2: route trả cho mỗi loại `type`, `label_vi`, schema cấu hình, đầu ra khai báo (gồm schema `error` và các
       `on_error` của nó), Nhánh ra có nhãn (`human.approval@1`: "Duyệt", "Từ chối"; `logic.switch@1`: theo `cases`,
       cùng "Khác") và `side_effect_level`. Người gọi không giữ `studio.workflows.edit` → 403, gỡ kiểm quyền → test đỏ.
       Phản hồi có `Cache-Control: private, no-store`.
-- [ ] R1.4 (WN15): thêm vào `NodeTypeSpec` một trường không có dòng trong `READERS` → test đỏ. Xóa phép đọc
+- [x] R1.4 (WN15): thêm vào `NodeTypeSpec` một trường không có dòng trong `READERS` → test đỏ. Xóa phép đọc
       `.label_vi` khỏi nơi đọc mà bảng nêu → test đỏ.
-- [ ] R1.5: `step_output_schema` của một Bước có `on_error` là `continue` hay `route` mang `error`
+- [x] R1.5: `step_output_schema` của một Bước có `on_error` là `continue` hay `route` mang `error`
       (`object{code, message}`). `on_error` là `fail`, hay vắng → không có `error`. Cho `fail` công bố `error` → test đỏ.
-- [ ] R4.1: cùng giá trị `<b>An</b>` render là `<b>An</b>` ở đích `text` và `&lt;b&gt;An&lt;/b&gt;` ở đích `html`.
+- [x] R4.1: cùng giá trị `<b>An</b>` render là `<b>An</b>` ở đích `text` và `&lt;b&gt;An&lt;/b&gt;` ở đích `html`.
       Thêm các ca:
     - `list[string]` ở `text` → `non_scalar_in_text`;
     - `null` ở `text` → `null_in_template`, ở `json` → `null`;
@@ -237,18 +237,18 @@ tr th td span div`;
 
     Gỡ từng phép kiểm → ca của nó đỏ.
 
-- [ ] R4.2 (WN2):
+- [x] R4.2 (WN2):
     - lời nhắn lead chứa `</input>` render ở đích `prompt` không đóng được khối; gỡ `contain_untrusted` ở đích prompt →
       test đỏ;
     - giá trị 20.000 byte bị cắt còn ≤ 16.384 byte trước khi thoát;
     - chữ tĩnh có `<INPUT name="x">` → `prompt_literal_input_tag`; gỡ phép kiểm → test đỏ;
     - chữ tĩnh 8.193 byte → `prompt_literal_too_large`.
-- [ ] R4.3 (WN13): mỗi mẫu sau ở đích `url` → `templated_host`, không render: `https://{{ trigger.input.host }}/`,
+- [x] R4.3 (WN13): mỗi mẫu sau ở đích `url` → `templated_host`, không render: `https://{{ trigger.input.host }}/`,
       `https://api.vi-du.vn{{ v }}/x`, `{{ u }}`, `https://{{ u }}@api.vi-du.vn/`. Còn
       `https://api.vi-du.vn/leads/{{ id }}?q={{ q }}` với `id` = `a/b` và `q` = `x&y` render ra
       `https://api.vi-du.vn/leads/a%2Fb?q=x%26y`. `id` = `..` → `url_dot_segment`.
-- [ ] WN1: mẫu `{0}{x.__class__}` render ra nguyên văn. Thay tokenizer bằng `str.format` → test kiến trúc đỏ.
-- [ ] Xong: `uv run pytest packages/python/dw_studio/tests/workflows/test_node_registry.py packages/python/dw_studio/tests/workflows/test_templates.py packages/python/dw_studio/tests/workflows/test_node_types_route.py packages/python/dw_agent_runtime/tests/unit/test_wflite_validate.py` xanh.
+- [x] WN1: mẫu `{0}{x.__class__}` render ra nguyên văn. Thay tokenizer bằng `str.format` → test kiến trúc đỏ.
+- [x] Xong: `uv run pytest packages/python/dw_studio/tests/workflows/test_node_registry.py packages/python/dw_studio/tests/workflows/test_templates.py packages/python/dw_studio/tests/workflows/test_node_types_route.py packages/python/dw_agent_runtime/tests/unit/test_wflite_validate.py` xanh.
 
 ## Nguồn
 
@@ -333,3 +333,52 @@ tr th td span div`;
   bước 2 nêu nơi đọc của chúng (`dw_agent_runtime.wflite.ir:lower` cho ba trường đầu, bộ trích ở
   `dw_studio.workflows.application` cho `dependencies`). MEDIUM (a) đã đáp: làn ở trong `config` dưới tên Nhánh ra như
   wf-lite, làn lỗi là khóa `error_lane` của Bước, không có khóa `lanes`.
+- 2026-11-05 (agent, theo ủy quyền 31/10/2026): route đặt ở `apps/api/src/dw_api/routes/v1/studio_node_types.py`, như
+  mọi route Studio khác; `dw_studio/workflows/presentation/node_types.py` giữ hình phản hồi (Pydantic) và hàm dựng nó,
+  như `dw_usage.presentation`. Lý do: `dw_studio` không phụ thuộc FastAPI, và route cần `RequireStudioAccess` của
+  `dw_api`, mà `dw_studio` không được import. Test route ở `apps/api/tests/unit/test_studio_node_types.py`, nên dòng
+  "Xong" đọc đường đó thay `dw_studio/tests/workflows/test_node_types_route.py`. Nếu sai thì: `dw_studio` thêm
+  `fastapi` vào phụ thuộc và route dời vào `presentation`, với một Protocol cho phép kiểm quyền.
+- 2026-11-05 (agent, theo ủy quyền 31/10/2026): quyền kiểm bằng `container.authorization.require` trên
+  `context.scopes`, tức `studio.workflows.edit` ở workspace đang làm việc (`platform.scopes_in`), cùng câu hỏi lệnh tạo
+  tác phẩm hỏi; `platform_admin` qua như mọi route dùng `ScopeAuthorizationService`. Nếu sai thì: hỏi `tx.reach` như
+  `ArtifactService._may_create`, tốn một lần đọc DB mỗi lần gọi.
+- 2026-11-05 (agent, theo ủy quyền 31/10/2026): dạng khai báo là bốn dataclass: `FixedOutput(schema)`,
+  `OutputFromConfig(key)`, `FixedPorts((Port(name, label_vi), ...))` và `KeyedPorts(key, default)`; trường `ports`
+  bắt buộc, không mặc định, vì một loại quên khai Nhánh ra thì làn của nó không được kiểm (failure-modes #7). Hai
+  phương thức `output_schema(config)` và `lanes(config)` giữ đúng hành vi cũ, kể cả `default` của switch chỉ có khi là
+  danh sách. Danh mục ghi `output.kind` là `fixed` hay `config`, `ports.kind` là `fixed` hay `keyed`. Nhãn sáu loại lấy
+  đúng chữ `apps/web/lib/digital-workers/labels.ts` đang dùng ("AI soạn", "Người duyệt"...), cộng "Khi có việc mới".
+  Nếu sai thì: đổi nhãn trong `_wf_lite_types`, mã băm danh mục đổi theo.
+- 2026-11-05 (agent, theo ủy quyền 31/10/2026): `build_node_registry` gọi `registry_of(specs)`, hàm duy nhất từ chối
+  `type@major` trùng; `fixture_node_registry` cũng qua nó thay phép gộp dict (trước đó mục sau lặng lẽ thắng). Danh
+  sách `on_error` có `error` trong danh mục được tính bằng chính `step_output_schema`, không có danh sách thứ hai.
+- 2026-11-05 (agent, theo ủy quyền 31/10/2026): bộ dựng mẫu thêm mã `expression_invalid` cho Biểu thức không qua
+  `check` (mang `ExpressionIssue` của engine), có nhãn trong `workflow-nodes.yaml`; ticket 03 ánh nó sang
+  `wf.expression_invalid`. Khóa của một trường `json` không bao giờ là mẫu: khóa chứa `{{` → `template_syntax`. Trần
+  16 KiB và 64 KiB của `json` đo trên `json.dumps(..., ensure_ascii=False, separators=(",", ":"))` theo byte UTF-8.
+  `html` từ chối cả `<` trần trong chữ (phải viết `&lt;`), chú thích, khai báo và thẻ dở ở cuối. `url_dot_segment` xét
+  mọi đoạn đường dẫn có phần do giá trị viết, nên hai Biểu thức liền nhau ra `..` cũng bị chặn. Nếu sai thì: một luật
+  nới trong `templates.py` và ca test của nó.
+- 2026-11-05 (agent, theo ủy quyền 31/10/2026): MEDIUM (e) đáp: `dw_studio.workflows.templates` vào `source_modules`
+  của hợp đồng "Studio inner layers never import Studio adapters" (`pyproject.toml`). Thử tay: thêm
+  `from dw_studio.core.adapters.cel import CelCppEngine` vào module → `lint-imports` gãy hợp đồng đó.
+- 2026-11-05 (agent): MEDIUM, cho ticket sau:
+    - (a) `apps/web/lib/digital-workers/labels.ts` giữ bản sao thứ hai của nhãn loại bước và Nhánh ra ("Khi duyệt"
+      khác "Duyệt" của danh mục). workflow-builder-ui đọc từ route này và trang DW chuyển theo, failure-modes #2.
+    - (b) `step_output_schema` ghi đè một thuộc tính `error` mà chính đầu ra của loại (hay `output_schema` của một
+      `ai.llm`) đã khai. Ticket 03 nên từ chối tên `error` trong đầu ra khai ở cấu hình khi dựng phạm vi biến.
+    - (c) Đích `url` chỉ nhận `https` (MEDIUM (g) cũ vẫn mở). `prompt_injection` eval cho đích `prompt` đi cùng ticket
+      05, nơi bộ dựng mẫu lần đầu gắn vào một lời gọi model.
+- 2026-11-05 (agent): xong ở `cff9b6f` (mã) và commit test sau nó. Cổng của ticket: 119 ca mới xanh
+  (`test_node_registry.py` 27, `test_templates.py` 85, `test_studio_node_types.py` 7, cộng 8 ca `writes_untrusted_tag`
+  trong `test_prompt_containment.py`); bộ unit cả repo 3403 qua, phủ 76,95%; mypy 846 tệp sạch; lint-imports 15 giữ;
+  verify_invariants, verify_architecture, check_hygiene, `release_manifest --check`, test contract 28 qua; `pnpm run
+typecheck` xanh; gitleaks 689 commit sạch. `reviewing-feature-security`: ranh giới 1 (danh mục như nhau với mọi
+  tenant, có test), 2 (403 ngay tại route, có test gỡ kiểm), 4 (bộ dựng mẫu là phép kiểm); 3, 5, 6 không áp dụng: không
+  tác động, không ghi, không tạo gì. `mutations/02.yaml` 34 mục, chưa chạy `scripts/mutate.py`; 12 mục làm đỏ bằng tay
+  tại chỗ, kể cả ba mục quét nguồn phải chạy tại chỗ (`lane2-wn02-mutate-by-hand.log`).
+- 2026-11-05 (agent): Còn nợ ở lúc đóng hàng đợi: `scripts/mutate.py` cho `mutations/02.yaml` (ba mục `# in place`
+  chạy tay); P50/P95/P99 của `GET /api/v1/studio/node-types` (không có mốc trước, route mới) và của các route Studio
+  dựng `workflow` qua sổ đã đổi (lưu nháp, gửi kiểm định); `/code-review`; `reviewing-deployment-security` cho route
+  mới.

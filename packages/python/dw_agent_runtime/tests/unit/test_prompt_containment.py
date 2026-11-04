@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from dw_agent_runtime.model.prompts import PromptArtifact, PromptRegistry
+from dw_agent_runtime.model.prompts import PromptArtifact, PromptRegistry, writes_untrusted_tag
 
 pytestmark = pytest.mark.unit
 
@@ -100,6 +100,31 @@ def test_a_template_may_not_wrap_a_value_itself() -> None:
     # block, and teaches the next author that wrapping is the template's job.
     with pytest.raises(ValueError, match="<input"):
         _artifact(template="<input>\n{content}\n</input> {today}")
+
+
+@pytest.mark.parametrize(
+    ("text", "writes"),
+    [
+        ("<input>", True),
+        ("</input>", True),
+        ('<INPUT name="x">', True),
+        ("</Input", True),
+        ("<inputs> are fine", False),
+        ("<input_x>", False),
+        ("no tag at all", False),
+    ],
+)
+def test_writes_untrusted_tag_is_the_tag_in_any_case_and_only_the_tag(
+    text: str, writes: bool
+) -> None:
+    """One check for a platform template and a tenant's prompt template
+    (workflow-nodes R4.2): `(?i)</?input\\b`."""
+    assert writes_untrusted_tag(text) is writes
+
+
+def test_a_template_writing_the_tag_in_capitals_is_refused() -> None:
+    with pytest.raises(ValueError, match="<input"):
+        _artifact(template='<INPUT name="x">{content}</INPUT> {today}')
 
 
 def _shipped() -> list[Path]:
