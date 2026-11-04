@@ -1,6 +1,6 @@
 # 04 — Đóng các cửa vòng qua hạn mức và giới hạn hành vi mỗi lượt chạy có trần của gói
 
-Status: needs-triage
+Status: ready-for-agent
 Blocked by: 03, .claude/plans/studio/workflow-engine/issues/03-bien-dich-va-wrapper-nut.md
 Area: studio
 Yêu cầu: R6.1, R6.2, R6.3, R6.4, UL4
@@ -21,15 +21,38 @@ spec).
 1. `RuntimeSeam` không còn lộ gateway thô, chat model trần, adapter embedding hay rerank; chỉ
    `MeteredModelGateway`, `LimitedChatModelFactory`, `MeteredEmbeddingPort`, `MeteredRerankPort`;
    `metered_invoke` đòi lease; lane nạp tri thức đo embeddings với `purpose = 'ingestion'`, gắn
-   workspace và người tải tài liệu. Hợp đồng import-linter: chỉ composition root import
+   workspace và người tải tài liệu. Lời gọi không thuộc lượt chạy nào mở một lease của thao tác qua
+   `LimitsPort.admit_operation(tenant, workspace, purpose, actor, operation_id)` (`purpose` `ingestion`, `retrieval`,
+   `builder_assist`, CHECK của ticket 03), tính vào trần tiền và token của chuỗi phạm vi, không tính `runs`, đóng khi thao
+   tác xong; lease của thao tác chỉ bị kẹp bởi trần theo kỳ, không bởi trần mỗi lượt (của lượt chạy), và giữ nhịp bằng
+   cùng tác vụ nhịp của ticket 03 ở tiến trình giữ thao tác; bị từ chối → `limit_exceeded`: việc nạp kết thúc thất bại với
+   mã `limit_exceeded` và `resets_at` mà người dùng thấy, tài liệu không bị xóa và nạp lại được sau đó, không migration;
+   route API không phải lượt chạy Studio (ADR-0121 (Accepted) quyết 6 chỉ cấm 429 cho lượt Studio) trả 429 problem+json
+   `limit_exceeded` với `Retry-After` bằng `resets_at` (spec R6.2; gate 4/11/2026 (a)). Người
+   dựng liệt kê mọi lối gọi model không thuộc lượt chạy mà mã có hôm nay (theo người dùng `RuntimeSeam` và adapter
+   embedding, rerank) ở Comments, mỗi lối một ca âm của R6.2. Hợp đồng import-linter: chỉ composition root import
    `RoutingModelGateway`, adapter embedding, rerank cụ thể. Test liệt kê field của `RuntimeSeam`: mọi
    field chạm model là kiểu có đo.
-2. `RunLimits = kẹp(giá trị của phiên bản, Trần của gói)`, kiểu mà cả quy trình lẫn vòng agent (ticket 06) đọc;
+2. Tên `metric` của mọi `limit_exceeded`, một bảng ở `dw_usage` mà ticket 03, 04, 06 cùng dùng: trần theo kỳ và lease
+   `cost_usd`, `tokens`, `runs`; trần hành vi `steps`, `model_calls`, `tool_calls`. Lượt con chạm trần hành vi của chính
+   nó thì Bước cha phân biệt bằng `metric` (gate 4/11/2026 của ticket 06 (f)).
+   `RunLimits = kẹp(giá trị của phiên bản, Trần của gói)` với năm trường `max_steps`, `max_model_calls`,
+   `max_tool_calls`, `max_cost_usd`, `max_tokens`; phiên bản không khai một trường → Trần của gói của trường đó; tính ở
+   mỗi `admit` và mỗi `resume` (ticket 03) từ giá trị của phiên bản đã ghim trong bản kê và Trần của gói hiện hành, nên
+   gói đổi trong lúc lượt chờ người áp từ lần tiếp tục; lượt quy trình đọc `max_steps` (cùng `max_cost_usd`, `max_tokens`
+   qua lease của ticket 03), vòng agent đọc `max_model_calls`, `max_tool_calls` (ticket 06), Bước `ai.*` chạy một vòng
+   agent dùng giá trị của agent đó (gate 4/11/2026 (b)); kiểu mà cả quy trình lẫn vòng agent (ticket 06) đọc;
    quy trình: `RunLimits.max_steps` tới bộ đếm bước theo lượt của wrapper nút
    bằng tiêm (workflow-engine:R4.20, ở workflow-engine/06, ticket chờ ticket này), không tới
    `recursion_limit`, vì `recursion_limit` đặt lại mỗi lần tiếp tục (đo trên LangGraph 1.2.11,
    ADR-0112 (Accepted) Context). Mọi vi phạm → `LimitExceededError(metric)` → run `failed`,
-   `error.code = limit_exceeded`, không áp chính sách lỗi của node; audit `run.limit_stopped`. Middleware giới hạn
+   `error.code = limit_exceeded`, không áp chính sách lỗi của node, không thử lại (`retry` của Bước bị bỏ qua,
+   ADR-0121 (Accepted) quyết 6) và không vào làn lỗi; trong `logic.parallel`, lane anh em chạy xong Bước đang chạy (không cắt
+   giữa một Bước gửi, UL13) rồi không bắt đầu Bước mới, join và các Bước sau không chạy; lượt kiểm định kết thúc `error`
+   với `limit_exceeded` (ADR-0113 (Accepted) quyết 3). Audit `run.limit_stopped` (`details.metric`, `details.scope_type`)
+   bằng `lane_audit_event` của lane đang chạy lượt (`system:studio_runs` hay lane của worker); trên đường chạy inline cũ
+   của api, audit đứng tên actor của lượt như audit kết thúc lượt hiện có của đường đó, với `details.reason_code`
+   `limit_exceeded` (gate 4/11/2026 (c), (d)). Middleware giới hạn
    của vòng agent và `recursion_limit` của subagent là ticket 06.
 
 ## Tiêu chí chấp nhận
@@ -43,7 +66,17 @@ spec).
       `LimitExceededError` → run `failed` với `limit_exceeded`, Bước kế không chạy và chính sách lỗi của node không áp;
       bỏ phép bỏ qua chính sách lỗi cho `LimitExceededError` → lượt đi tiếp theo `continue`, test đỏ; giới hạn số bước
       theo lượt qua nhiều lần tiếp tục thử ở tiêu chí R4.20 của workflow-engine/06, trên `RunLimits` mà ticket này trả.
-- [ ] R6.4: giá trị hành vi trong phiên bản cao hơn Trần của gói → bị kẹp về Trần của gói lúc chạy.
+- [ ] R6.4: giá trị hành vi trong phiên bản cao hơn Trần của gói → bị kẹp về Trần của gói lúc chạy; phiên bản không khai
+      `max_steps` → `RunLimits.max_steps` bằng `max_steps_per_run` của gói; gói hạ trong lúc lượt chờ → lần tiếp tục dùng
+      trần mới.
+- [ ] R6.2 (UL4): lane nạp tri thức khi tháng đã cạn → không lời gọi embedding nào tới nhà cung cấp, tài liệu ở trạng
+      thái chờ với `resets_at`, không bị xóa; route truy vấn tri thức khi cạn → problem+json `limit_exceeded`; một lease
+      `ingestion` không tăng bộ đếm `runs`; gỡ `admit_operation` khỏi lane nạp → embedding chạy, test đỏ.
+- [ ] R6.3: Bước khai `retry: {max_attempts: 3}` nhận `LimitExceededError` → không lần thử thứ hai; trong
+      wrapper nút của workflow-engine/03 nhận `LimitExceededError` → lượt `failed`, audit `run.limit_stopped` đứng tên
+      `system:<lane>` của lane gọi (test với lane giả tên `studio_runs`). Ca `logic.parallel` hai lane (lane anh em chạy xong
+      Bước đang chạy, join không chạy) thử ở ticket dựng `logic.parallel` (workflow-engine/06, ticket đó chờ ticket này),
+      vì ticket này không thể chờ nó; hành vi đã viết ở bước 2.
 - [ ] Xong: `make ci && make test-integration` xanh.
 
 ## Nguồn
@@ -70,3 +103,24 @@ spec).
   của R6.3, R6.4 và UL4 (cổng E1); phần agent của bước 2 (`ModelCallLimitMiddleware`, `ToolCallLimitMiddleware`,
   `recursion_limit` của subagent) và các ca agent của tiêu chí R6.3 dời sang ticket 06, nên gỡ cạnh
   04 <- agent-builder/03 (cạnh đó nằm ở ticket 06).
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): gate `checking-plan-readiness` (builder check; không migration, không
+  route: CHECK `purpose` của lease thao tác nằm ở migration của ticket 03) trên `0baced0`: `check_plans.py` 24 Đạt; 0
+  CRITICAL, 5 HIGH, sửa theo khuyến nghị; mỗi quyết định cùng `Nếu sai thì:` ở mục Quyết định của spec, dòng 4/11/2026
+  của ticket 04, (a)-(e): lối gọi model không thuộc lượt chạy (lane nạp, truy vấn tri thức, dựng có AI) không có nguồn
+  lease: lease của thao tác qua `admit_operation`; `RunLimits` có trường nào, khai thiếu thì sao, tính lúc nào; thử lại
+  của Bước và làn lỗi không áp cho `LimitExceededError`, `logic.parallel` dừng thế nào; actor của `run.limit_stopped`;
+  lượt kiểm định kết thúc `error`.
+- 2026-11-04 (agent): MEDIUM, chưa sửa: (M1) trần tĩnh 500 Bước và độ sâu 10 của bộ kiểm wf-lite (ADR-0112 (Accepted)
+  sửa đổi 3/11/2026) là cỡ cây tài liệu, không phải bộ đếm Bước theo lượt, nên không hai chủ với `max_steps_per_run`;
+  cảnh báo `wf.steps_may_exceed_limit` vẫn so với `limits.max_steps` của tài liệu chưa kẹp, chủ là workflow-engine;
+  (M2) lượt `datahub` chạm trần giữa lượt kết thúc `failed`, sự kiện không vào hàng lại: đúng ADR-0121 (Accepted) quyết 6
+  (dừng giữa lượt), khác lúc nhận (giữ `queued`), ghi ở trang vận hành; (M3) dòng `Xong:` đọc theo
+  `.claude/rules/wave-close.md`.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): lượt xác nhận (builder check mới trên 04 và 06 cùng lúc): 0 CRITICAL, 4
+  HIGH cho ticket này, sửa: tên `metric` chung một bảng; lease của thao tác không kẹp bởi trần mỗi lượt và có nhịp; mã HTTP
+  của route không phải lượt chạy (429 với `Retry-After`) và việc nạp thất bại thấy được thay vì trạng thái chờ cần cột
+  mới; ca `logic.parallel` và lane `studio_runs` không có trong Blocked by: ca song song thử ở workflow-engine/06, lane
+  thử bằng lane giả. Sửa của lượt này không có người đọc mới: nhận rủi ro (agent, theo ủy quyền 31/10/2026). Nếu sai
+  thì: lỗi lộ ra khi dựng, ghi ở đây. Việc cho gate của workflow-engine/06 (khu khác): tiêu chí `logic.parallel` gặp
+  `LimitExceededError` ở một lane.
+- 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.

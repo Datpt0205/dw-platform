@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 2/11/2026
-Sẵn sàng: ĐẠT (3/11/2026; 0 CRITICAL, 0 HIGH; ticket 01, 02, 05)
+Sẵn sàng: ĐẠT (4/11/2026; 0 CRITICAL, 0 HIGH; ticket 01-06)
 
 Studio cần đo và chặn chi tiêu ở mức công ty, workspace, agent và quy trình (theo người dùng từ W2), việc
 mà một tổng theo ngày của cả tenant không làm được. Lát này đưa lại Sổ sử dụng theo lượt gọi (D6) làm nguồn
@@ -175,6 +175,15 @@ mục 'Agent and tool rules'; ADR-0121 (Accepted) quyết 3). Lượt kiểm đ�
 - R4.13 NẾU một dòng `platform.limit_policies` trỏ `scope_workspace_id` hay `scope_artifact_id` tới workspace hay
   thành phần của công ty khác, THÌ PostgreSQL PHẢI từ chối dòng đó bằng FK ghép `(tenant_id, <cột>)` tới UNIQUE
   `(tenant_id, id)` của bảng đích, kể cả khi vai ghi bỏ qua RLS.
+- R4.14 NẾU một chính sách hạn mức nêu cặp `metric`, `window_kind` ngoài bốn cặp của W1 ((`cost_usd`, `day`),
+  (`cost_usd`, `month`), (`tokens`, `month`), (`runs`, `day`), mỗi cặp ứng một cột của `platform.plan_limits`), THÌ API
+  hạn mức PHẢI trả 422 `validation_failed` và không ghi dòng nào, để không chính sách nào được lưu mà không bộ đếm nào đọc
+  (gate ticket 03, 4/11/2026 (g)).
+- R4.16 NẾU một lệnh ghi thẳng vào `platform.limit_policies` nêu cặp `metric`, `window_kind` ngoài bốn cặp của R4.14, THÌ
+  PostgreSQL PHẢI từ chối dòng bằng CHECK (gate ticket 03, 4/11/2026 (g)).
+- R4.15 NẾU một `PUT` hay `DELETE` lên chính sách đã có không mang `If-Match` bằng `version` hiện hành, THÌ API hạn mức
+  PHẢI trả 428 khi thiếu và 412 khi cũ, và không đổi dòng nào; phép so lỏng hay chặt chạy trên dòng đã khóa `FOR UPDATE`
+  trong cùng giao dịch, nên hai lần hạ đồng thời không thành một lần nới (D11; gate ticket 03, 4/11/2026 (f)).
 
 ### R5 — Hạn mức cứng giữ trước bằng lease, quyết toán từng lượt gọi, thu hồi lease mồ côi
 
@@ -200,6 +209,16 @@ ADR-0121 (Accepted) quyết 4).
   thời hạn dưới khóa `platform.budget_counters` (395 ngày, 13 tháng, bằng Sổ sử dụng) và lease
   `platform.budget_leases` đã đóng quá thời hạn dưới khóa `platform.budget_leases` (30 ngày), đọc cả hai từ mảnh
   retention của bảng trong tập mảnh đang ghim (số tạm UNVERIFIED), không chạm dòng của kỳ hay lease còn mở.
+- R5.8 KHI `LimitsPort.admit` mở một lease hay `before_call` nạp thêm, `LimitsPort` PHẢI giữ không quá phần còn lại
+  (`limit - used - reserved`) của mọi phạm vi có chính sách và trần mỗi lượt còn lại (ADR-0121 (Accepted) quyết 5; gate
+  ticket 03, 4/11/2026 (a)).
+- R5.10 NẾU phần lease giữ được, sau lần nạp thêm, không đủ cho chi phí đầu vào ước tính của một lời gọi, THÌ
+  `RunLease.before_call` PHẢI từ chối `limit_exceeded` trước lời gọi và không gọi model (gate ticket 03, 4/11/2026
+  (b)).
+- R5.9 TRONG KHI một lease mở, runner PHẢI ghi nhịp mỗi 60 giây dời `expires_at` tới 300 giây sau
+  (ADR-0121 (Accepted) quyết 5; gate ticket 03, 4/11/2026 (a)).
+- R5.11 NẾU reaper đã đóng lease khi một `after_call` của nó tới, THÌ Sổ sử dụng PHẢI giữ đúng một dòng cho lời gọi
+  đó, dòng `unsettled_estimate` của reaper (gate ticket 03, 4/11/2026 (a)).
 
 ### R6 — Mọi cửa chạm model đều có đo và hạn mức, giới hạn hành vi kẹp theo gói
 
@@ -327,7 +346,8 @@ Mọi bảng tenant: RLS ENABLE và FORCE theo tenant, grant cùng migration, t�
   riêng, và từ chối dòng trỏ sang công ty khác (R4.13); CHECK
   `num_nonnulls(scope_workspace_id, scope_artifact_id) = 1` khi `scope_type` khác `tenant`, với đúng
   cột của `scope_type`, và `= 0` khi `tenant`, như chủ thể của Kho bí mật (ADR-0115 (Accepted); ADR-0121 (Accepted)
-  quyết 4), để chính sách mồ côi tự gỡ (R4.12); `metric`, `window_kind`; `kind` CHECK (`hard`), giá trị duy nhất ở
+  quyết 4), để chính sách mồ côi tự gỡ (R4.12); `metric`, `window_kind` với CHECK trên cặp, bốn cặp của R4.14;
+  `kind` CHECK (`hard`), giá trị duy nhất ở
   W1 (R4.8); `limit_value numeric(20,8) CHECK (>= 0)`; `version`; `created_by`; UNIQUE NULLS NOT DISTINCT trên
   `tenant_id`, `scope_workspace_id`, `scope_artifact_id`, `metric`, `window_kind`; trigger `updated_at` nhường giá trị
   lệnh nêu; `scope_user_id`, `thresholds`, `purposes` và giá trị `soft` của `kind` đến ở W2 cùng bên đọc (Ngoài phạm
@@ -343,7 +363,8 @@ Mọi bảng tenant: RLS ENABLE và FORCE theo tenant, grant cùng migration, t�
 - `platform.budget_leases`: `id`, `tenant_id`, `workspace_id`, `run_id`, `root_run_id`, `purpose`,
   `counter_keys jsonb`, `reserved_usd`, `reserved_tokens`, `settled_*`, `rolled_*`, `in_flight_*`,
   `state`, `close_reason`, `opened_at`, `heartbeat_at`, `expires_at`, `closed_at`; `UNIQUE (tenant_id, root_run_id) WHERE state='open'`;
-  index từng phần `expires_at WHERE state='open'`; lane `retention_limits` xóa lease đóng quá thời hạn của mảnh
+  index từng phần `expires_at WHERE state='open'`; RLS tenant và policy drain như `platform.budget_counters`, vì reaper
+  quét mọi công ty; lane `retention_limits` xóa lease đóng quá thời hạn của mảnh
   `platform.budget_leases` (30 ngày, R5.7), mảnh do ticket 03 thêm.
 
 ## API
@@ -353,13 +374,15 @@ Mọi bảng tenant: RLS ENABLE và FORCE theo tenant, grant cùng migration, t�
 - `GET /api/v1/usage/summary` (`platform.usage.read`, khóa `scope_kind` `tenant`, nên cả công ty; R3.5, R3.12): gộp theo workspace,
   agent, quy trình và mục đích; W1 không có chiều gộp theo người (DO-51.2).
 - `GET /api/v1/limits` (`platform.usage.read`): mỗi chính sách kèm Hạn mức hiệu lực, bộ đếm của kỳ hiện tại
-  và giờ đặt lại; không có route `/api/v1/usage/limits` riêng. `PUT /api/v1/limits/{scope_type}/{scope_id}`
-  và `DELETE` (`platform.limits.manage`, `Idempotency-Key`; `{scope_type}` là `tenant`, `workspace`, `agent` hay
-  `workflow`, `user` đến ở W2): siết áp ngay với một người (R4.8); nới trả 409
+  và giờ đặt lại; không có route `/api/v1/usage/limits` riêng. `PUT`, `DELETE /api/v1/limits/{scope_type}/{scope_id}/{metric}/{window_kind}`
+  (`platform.limits.manage`, `Idempotency-Key`; `{scope_type}` là `tenant`, `workspace`, `agent` hay
+  `workflow`, `user` đến ở W2; `{scope_id}` của `tenant` là công ty của ngữ cảnh, của `agent`, `workflow` là thành
+  phần cùng loại, khác loại → 422 `scope_kind_mismatch`; `If-Match` bắt buộc trên chính sách đã có, R4.15): siết áp
+  ngay với một người (R4.8); nới trả 409
   `second_person_required` ở W1 (R4.9); cao hơn Trần của gói → 422 `limit_above_plan`; `kind` chỉ nhận `hard` ở W1,
   giá trị khác → 422 `validation_failed` (app-standards:R1.3).
 - Lỗi theo vỏ problem+json của ADR-0108 (Accepted); `details.reason_code`: `limit_exceeded`,
-  `limit_above_plan`, `second_person_required`.
+  `limit_above_plan`, `second_person_required`, `limits_unavailable`, `scope_kind_mismatch`.
 
 ## Màn hình
 
@@ -374,26 +397,28 @@ Mọi bảng tenant: RLS ENABLE và FORCE theo tenant, grant cùng migration, t�
 
 ## Kiểm soát
 
-| #    | Kiểm soát                                            | Yêu cầu           | Test âm                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| ---- | ---------------------------------------------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| UL1  | Số của gói có một chủ trong database                 | R1.1, R1.2        | Xóa dòng `platform.plan_limits` của một gói → nhận lượt chạy bị từ chối, không hiểu thành "không giới hạn"; khai lại dict gói trong mã → test kiến trúc đỏ                                                                                                                                                                                                                                                                    |
-| UL2  | Hạn mức cứng giữ trước khi chi                       | R5.1              | `runs_per_day` của tenant còn đúng 3 lượt: 10 lượt chạy gốc nhận song song → đúng 3 được nhận và mở lease, 7 lượt nhận `limit_exceeded`, bộ đếm không vượt trần; gỡ khóa bộ đếm theo thứ tự → test đỏ                                                                                                                                                                                                                         |
-| UL3  | `max_tokens` kẹp theo lease                          | R5.2              | Lease còn đủ cho 100 token output → lời gọi mang `max_tokens <= 100`; gỡ kẹp → test đỏ                                                                                                                                                                                                                                                                                                                                        |
-| UL4  | Không cửa nào vòng qua hạn mức                       | R6.1, R6.2        | Lease cạn: gọi thẳng gateway có cấu trúc, chat, embedding, rerank, lane nạp → mỗi cửa bị từ chối; `RuntimeSeam` lộ gateway thô → test field đỏ                                                                                                                                                                                                                                                                                |
-| UL5  | Thiếu số dùng không thành 0                          | R3.3              | Adapter không báo usage → dòng `estimated` bằng ước tính; gỡ → test đỏ                                                                                                                                                                                                                                                                                                                                                        |
-| UL6  | Lease mồ côi được thu hồi                            | R5.4              | Tiến trình chết giữa lời gọi → sau `expires_at` lease đóng, phần đang bay tính, audit `system:reaper`; gỡ `ReapTarget` → test đỏ                                                                                                                                                                                                                                                                                              |
-| UL7  | Cách ly tenant                                       | R3.6, R3.7        | Đọc, ghi `budget_counters`, `budget_leases`, `usage_events`, `usage_daily`, `limit_policies` của tenant B từ A → 0 dòng hoặc 404; kết nối không đặt tenant đọc 0 dòng; đọc một phân vùng của `usage_events` theo tên → `permission denied`; người giữ `runs.read` ở workspace W1 mở usage của run ở W2 cùng công ty → 404                                                                                                     |
-| UL8  | Workspace con không vượt cha                         | R4.4              | Cha cap USD 10 đã dùng hết, con cap USD 50 → lượt chạy ở con bị chặn; gỡ vòng tổ tiên → test đỏ                                                                                                                                                                                                                                                                                                                               |
-| UL9  | Không đặt Hạn mức trên Trần của gói                  | R4.5              | `PUT` hạn mức tenant cao hơn gói → 422 `limit_above_plan`, không dòng nào đổi                                                                                                                                                                                                                                                                                                                                                 |
-| UL10 | Chỉ người có quyền đặt Hạn mức                       | R4.6              | Thiếu `platform.limits.manage` → 403; workspace tenant khác → 404                                                                                                                                                                                                                                                                                                                                                             |
-| UL11 | Tạm dừng nhả tiền                                    | R5.3              | Lượt chạy chờ duyệt → `reserved` của lượt về 0; tiếp tục → giữ lại số đã tiêu; gỡ nhả → test đỏ                                                                                                                                                                                                                                                                                                                               |
-| UL12 | Giá không định lại lịch sử                           | R2.4              | Đổi Bảng giá → dòng cũ giữ `price_book_version` và chi phí cũ                                                                                                                                                                                                                                                                                                                                                                 |
-| UL13 | Hạn mức giữa lượt chạy dừng sạch, không hạ ngầm      | R5.5, R6.3        | Trần cạn giữa lượt → dừng ở ranh giới kế tiếp `limit_exceeded`, không cắt giữa một bước gửi, không hạ model; gỡ kiểm ranh giới → test đỏ                                                                                                                                                                                                                                                                                      |
-| UL14 | Giới hạn tốc độ theo khóa có kiểu, không theo bearer | R7.1, R7.2, R7.3  | Giới hạn 60, 2 replica: lần thứ 31 trong một phút ở một tiến trình bị từ chối; hai bearer khác nhau gửi tới cùng nguồn chia chung một bộ đếm; khóa (tenant, người gọi, đối tượng) 20 trong 10 phút: lần hỏi không tính lượt không đổi bộ đếm, sau lượt thứ 20 trả đã đủ; công ty khác cùng id nguồn, người gọi và đối tượng có bộ đếm riêng; đổi khóa sang chuỗi tự do hay băm bearer, hay bỏ `tenant_id` khỏi khóa → test đỏ |
-| UL15 | Không nới Hạn mức bằng một người                     | R4.9              | Một người `PUT` nâng trần tenant từ USD 10 lên USD 50 → 409 `second_person_required`, Hạn mức hiệu lực vẫn USD 10; `DELETE` chính sách → 409; gỡ kiểm → test đỏ                                                                                                                                                                                                                                                               |
-| UL16 | Xóa sổ chỉ thêm chỉ khi công ty đang offboarding     | R3.8, R3.9, R3.10 | Gọi `platform.purge_tenant_append_only` cho công ty `active` → 23514, 0 dòng xóa; giao dịch của tenant A gọi cho tenant B đang `offboarding` → 23514, 0 dòng xóa; nêu `platform.audit_events` → 23514; công ty `offboarding` → dòng của nó trong `usage_events` xóa hết, dòng của công ty khác và `audit_events` còn; gỡ kiểm trạng thái hay kiểm tenant khỏi hàm → test đỏ                                                   |
-| UL17 | Phạm vi của hạn mức không trỏ sang công ty khác      | R4.13             | Bằng vai migrator, INSERT dòng `platform.limit_policies` của tenant A có `scope_workspace_id` là workspace của tenant B, hay `scope_artifact_id` là thành phần của B → FK từ chối, không ghi; cùng id của tenant A → nhận; đổi một FK ghép sang FK một cột → test đỏ                                                                                                                                                          |
-| UL18 | Chỉ người giữ `platform.usage.read` đọc tổng sử dụng | R3.12             | Người thiếu `platform.usage.read` gọi `GET /api/v1/usage/summary` → 403, không dòng nào đọc; gỡ kiểm quyền → test đỏ                                                                                                                                                                                                                                                                                                          |
+| #    | Kiểm soát                                             | Yêu cầu           | Test âm                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ---- | ----------------------------------------------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| UL1  | Số của gói có một chủ trong database                  | R1.1, R1.2        | Xóa dòng `platform.plan_limits` của một gói → nhận lượt chạy bị từ chối, không hiểu thành "không giới hạn"; khai lại dict gói trong mã → test kiến trúc đỏ                                                                                                                                                                                                                                                                    |
+| UL2  | Hạn mức cứng giữ trước khi chi                        | R5.1              | `runs_per_day` của tenant còn đúng 3 lượt: 10 lượt chạy gốc nhận song song → đúng 3 được nhận và mở lease, 7 lượt nhận `limit_exceeded`, bộ đếm không vượt trần; gỡ khóa bộ đếm theo thứ tự → test đỏ                                                                                                                                                                                                                         |
+| UL3  | `max_tokens` kẹp theo lease                           | R5.2              | Lease còn đủ cho 100 token output → lời gọi mang `max_tokens <= 100`; gỡ kẹp → test đỏ                                                                                                                                                                                                                                                                                                                                        |
+| UL4  | Không cửa nào vòng qua hạn mức                        | R6.1, R6.2        | Lease cạn: gọi thẳng gateway có cấu trúc, chat, embedding, rerank, lane nạp → mỗi cửa bị từ chối; `RuntimeSeam` lộ gateway thô → test field đỏ                                                                                                                                                                                                                                                                                |
+| UL5  | Thiếu số dùng không thành 0                           | R3.3              | Adapter không báo usage → dòng `estimated` bằng ước tính; gỡ → test đỏ                                                                                                                                                                                                                                                                                                                                                        |
+| UL6  | Lease mồ côi được thu hồi                             | R5.4              | Tiến trình chết giữa lời gọi → sau `expires_at` lease đóng, phần đang bay tính, audit `system:reaper`; gỡ `ReapTarget` → test đỏ                                                                                                                                                                                                                                                                                              |
+| UL7  | Cách ly tenant                                        | R3.6, R3.7        | Đọc, ghi `budget_counters`, `budget_leases`, `usage_events`, `usage_daily`, `limit_policies` của tenant B từ A → 0 dòng hoặc 404; kết nối không đặt tenant đọc 0 dòng; đọc một phân vùng của `usage_events` theo tên → `permission denied`; người giữ `runs.read` ở workspace W1 mở usage của run ở W2 cùng công ty → 404                                                                                                     |
+| UL8  | Workspace con không vượt cha                          | R4.4              | Cha cap USD 10 đã dùng hết, con cap USD 50 → lượt chạy ở con bị chặn; gỡ vòng tổ tiên → test đỏ                                                                                                                                                                                                                                                                                                                               |
+| UL9  | Không đặt Hạn mức trên Trần của gói                   | R4.5              | `PUT` hạn mức tenant cao hơn gói → 422 `limit_above_plan`, không dòng nào đổi                                                                                                                                                                                                                                                                                                                                                 |
+| UL10 | Chỉ người có quyền đặt Hạn mức                        | R4.6              | Thiếu `platform.limits.manage` → 403; workspace tenant khác → 404                                                                                                                                                                                                                                                                                                                                                             |
+| UL11 | Tạm dừng nhả tiền                                     | R5.3              | Lượt chạy chờ duyệt → `reserved` của lượt về 0; tiếp tục → giữ lại số đã tiêu; gỡ nhả → test đỏ                                                                                                                                                                                                                                                                                                                               |
+| UL12 | Giá không định lại lịch sử                            | R2.4              | Đổi Bảng giá → dòng cũ giữ `price_book_version` và chi phí cũ                                                                                                                                                                                                                                                                                                                                                                 |
+| UL13 | Hạn mức giữa lượt chạy dừng sạch, không hạ ngầm       | R5.5, R6.3        | Trần cạn giữa lượt → dừng ở ranh giới kế tiếp `limit_exceeded`, không cắt giữa một bước gửi, không hạ model; gỡ kiểm ranh giới → test đỏ                                                                                                                                                                                                                                                                                      |
+| UL14 | Giới hạn tốc độ theo khóa có kiểu, không theo bearer  | R7.1, R7.2, R7.3  | Giới hạn 60, 2 replica: lần thứ 31 trong một phút ở một tiến trình bị từ chối; hai bearer khác nhau gửi tới cùng nguồn chia chung một bộ đếm; khóa (tenant, người gọi, đối tượng) 20 trong 10 phút: lần hỏi không tính lượt không đổi bộ đếm, sau lượt thứ 20 trả đã đủ; công ty khác cùng id nguồn, người gọi và đối tượng có bộ đếm riêng; đổi khóa sang chuỗi tự do hay băm bearer, hay bỏ `tenant_id` khỏi khóa → test đỏ |
+| UL15 | Không nới Hạn mức bằng một người                      | R4.9              | Một người `PUT` nâng trần tenant từ USD 10 lên USD 50 → 409 `second_person_required`, Hạn mức hiệu lực vẫn USD 10; `DELETE` chính sách → 409; gỡ kiểm → test đỏ                                                                                                                                                                                                                                                               |
+| UL16 | Xóa sổ chỉ thêm chỉ khi công ty đang offboarding      | R3.8, R3.9, R3.10 | Gọi `platform.purge_tenant_append_only` cho công ty `active` → 23514, 0 dòng xóa; giao dịch của tenant A gọi cho tenant B đang `offboarding` → 23514, 0 dòng xóa; nêu `platform.audit_events` → 23514; công ty `offboarding` → dòng của nó trong `usage_events` xóa hết, dòng của công ty khác và `audit_events` còn; gỡ kiểm trạng thái hay kiểm tenant khỏi hàm → test đỏ                                                   |
+| UL17 | Phạm vi của hạn mức không trỏ sang công ty khác       | R4.13             | Bằng vai migrator, INSERT dòng `platform.limit_policies` của tenant A có `scope_workspace_id` là workspace của tenant B, hay `scope_artifact_id` là thành phần của B → FK từ chối, không ghi; cùng id của tenant A → nhận; đổi một FK ghép sang FK một cột → test đỏ                                                                                                                                                          |
+| UL18 | Chỉ người giữ `platform.usage.read` đọc tổng sử dụng  | R3.12             | Người thiếu `platform.usage.read` gọi `GET /api/v1/usage/summary` → 403, không dòng nào đọc; gỡ kiểm quyền → test đỏ                                                                                                                                                                                                                                                                                                          |
+| UL19 | Chính sách hạn mức chỉ nêu cặp metric và kỳ có bộ đếm | R4.14, R4.16      | `PUT` metric `cost_usd_per_week` hay cặp (`tokens`, `day`) → 422, không dòng nào; `dw_app` INSERT cặp lạ → CHECK từ chối; nới CHECK → test đỏ                                                                                                                                                                                                                                                                                 |
+| UL20 | Hai lần siết đồng thời không thành một lần nới        | R4.15             | Hai `PUT` hạ từ 50 về 30 và 40 cùng `If-Match` version 1 → một nhận, một 412; không `If-Match` → 428; gỡ khóa dòng và kiểm `If-Match` → lần sau ghi 40 lên 30, test đỏ                                                                                                                                                                                                                                                        |
 
 ## Tiêu chí xong
 
@@ -754,6 +779,84 @@ Mọi bảng tenant: RLS ENABLE và FORCE theo tenant, grant cùng migration, t�
   dựng), và không bảng, route, migration, config hay prompt chung với hai ticket đó. Bảng va chạm ngoài spec ở Comments
   của ticket 02. Theo `## Ủy quyền` của studio.md (Đạt, 31/10/2026). Nếu sai thì: hạ ticket 02 về `needs-triage` và chia
   lại.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): gate `checking-plan-readiness` của ticket 03 (builder check và boundary
+  walk, ba subagent, rồi một lượt xác nhận), 0 CRITICAL và 11 HIGH, sửa theo khuyến nghị:
+  (a) cỡ lease, ngưỡng nhận, nạp thêm, nhịp và lần quyết toán muộn sau reaper không viết ra dù ADR-0121 (Accepted) quyết
+  5 nói: còn đủ là còn lớn hơn 0 (tiền, token) hay ít nhất 1 (`runs`), lease giữ `min` của phần còn lại và trần mỗi
+  lượt, nạp thêm ở `before_call`, nhịp 60 giây dời `expires_at` 300 giây, dòng `unsettled_estimate` mang khóa của lời gọi
+  đang bay nên lần quyết toán muộn không tính hai lần (R5.8, R5.9). Nếu sai thì: lease giữ trọn trần mỗi lượt và từ chối
+  khi phần còn lại nhỏ hơn nó.
+  (b) chỉ token ra bị kẹp, chi phí đầu vào do nội dung không tin cậy quyết vượt được trần: `before_call` từ chối khi lease
+  không đủ cho chi phí đầu vào ước tính (R5.8). Nếu sai thì: trần trở thành kế toán, ghi rõ ở R5.2.
+  (c) `limits.resume` trong giao dịch của `ApproveAndResumeService` trái ADR-0113 (Accepted) quyết 3, 4 (quyết định chỉ
+  đưa lượt về `queued`): runner gọi `resume` lúc tiếp tục chạy, từ chối như `admit`. Nếu sai thì: lease mở trong giao
+  dịch quyết định và reaper bỏ qua lease của lượt `queued`.
+  (d) lease chung nhả khi một lượt con chờ trong lúc nhánh khác còn chạy: chỉ nhả khi cả cây gốc không lượt nào chạy.
+  Nếu sai thì: mỗi lượt con chờ nhả phần của mình bằng một lease con.
+  (e) cache chính sách trong tiến trình xóa khi ghi không thấy lần hạ ở tiến trình khác: đọc trong giao dịch của `admit`,
+  không cache. Nếu sai thì: cache mang `version` lớn nhất của chính sách công ty, đọc lại khi khác.
+  (f) hai lần hạ đồng thời thành một lần nới, `version` không ai đọc: `If-Match` bắt buộc, khóa dòng `FOR UPDATE`
+  (R4.15, UL20). Nếu sai thì: khóa dòng một mình, không `If-Match`.
+  (g) `metric`, `window_kind` không có tập đóng hay CHECK, chính sách gõ sai không ai đọc: bốn cặp có CHECK (R4.14,
+  UL19). Nếu sai thì: bảng tham chiếu cặp với cột gói.
+  (h) lượt nào tính `runs` và trần tiền, `payer` của lease `eval_offline` (ticket 02 M7): theo các lời đáp đã xác nhận
+  của ADR-0121 (Accepted): chỉ lượt gốc `run` tính `runs`, `test_run`, `builder_assist`, `eval_offline` tính tiền và
+  token; công ty trả kiểm định của mình, nền tảng trả lần kiểm định lại; BYOM chỉ tính chính sách công ty đặt (bản đầu của
+  gate đếm mọi lượt gốc, trái ADR: lượt xác nhận bắt CRITICAL đó và sửa). Nếu sai thì: không đường nào được nhận; đổi luật
+  là sửa ADR-0121 (Accepted) trước.
+  Lượt xác nhận thêm 5 HIGH, sửa: (l) `runs` một lần mỗi gốc, lượt nhận lại gắn vào lease đang mở; (m) mọi tiến trình của
+  cây giữ nhịp, cuộn một câu lệnh dưới khóa dòng; (n) `PUT`/`DELETE /api/v1/limits/{scope_type}/{scope_id}/{metric}/
+{window_kind}`; (o) chính sách đặt giữa kỳ lấy `used` từ Sổ sử dụng; (p) Trần của gói và chính sách công ty chung một
+  dòng bộ đếm. Nếu sai thì: (n) thân mang cả tập chính sách của phạm vi; (o) chính sách giữa kỳ áp từ kỳ sau.
+  (i) `max_tokens_per_run` là token vào hay tổng (ticket 01 M2): tổng, seed nâng lên 200000. Nếu sai thì: cột tách vào và
+  ra ở một revision mới.
+  (j) reaper quét `budget_leases` dưới `app.worker_drain` mà bảng không có policy drain: thêm policy, test âm. Nếu sai thì:
+  không đường nào an toàn hơn.
+  (k) `{scope_id}` của `tenant` lấy từ đường dẫn, và `agent/{id}` nhận một quy trình: công ty từ ngữ cảnh (CLAUDE.md,
+  Per-tenant artifacts), loại thành phần khớp hay 422 `scope_kind_mismatch`. Nếu sai thì: route `tenant` không có
+  `{scope_id}`.
+- 4/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 03.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): gate `checking-plan-readiness` của ticket 04 (builder check), 0 CRITICAL
+  và 5 HIGH, sửa theo khuyến nghị:
+  (a) lối gọi model không thuộc lượt chạy (lane nạp tri thức, truy vấn tri thức ở api, dựng có AI) không có nguồn lease,
+  nên R6.2 hoặc chặn mọi lần nạp hoặc để lọt: `LimitsPort.admit_operation` mở lease của thao tác (`purpose` `ingestion`,
+  `retrieval`, `builder_assist`), tính tiền và token, không tính `runs`; lane nạp thử lại sau `resets_at`. Nếu sai thì:
+  lối không thuộc lượt chạy ghi sổ mà không có trần ở W1, ghi ở Ngoài phạm vi.
+  (b) `RunLimits` có trường nào, khai thiếu thì sao, tính lúc nào: năm trường, thiếu là Trần của gói, tính ở mỗi `admit`
+  và `resume`. Nếu sai thì: `RunLimits` ghim một lần vào lease đầu và theo lượt tới hết.
+  (c) `LimitExceededError` có bỏ qua `retry` của Bước và làn lỗi không, `logic.parallel` dừng thế nào: bỏ qua cả hai
+  (ADR-0121 (Accepted) quyết 6), lane anh em xong Bước đang chạy, join không chạy. Nếu sai thì: lane anh em bị hủy ngay.
+  (d) actor của `run.limit_stopped`: `system:<lane>` của lane đang chạy lượt, đường inline đứng tên actor của lượt như
+  audit kết thúc lượt của đường đó. Nếu sai thì: một lane `limits` có tên trong sổ lane.
+  (e) lượt kiểm định chạm trần: `error` với `limit_exceeded` (ADR-0113 (Accepted) quyết 3). Nếu sai thì: `failed` như
+  lượt tương tác.
+  Lượt xác nhận (chung với ticket 06): 4 HIGH, sửa: bảng tên `metric` chung; lease của thao tác không kẹp bởi trần mỗi
+  lượt; route không phải lượt chạy trả 429 với `Retry-After`; ca `logic.parallel` thử ở workflow-engine/06. Nếu sai thì:
+  route trả 403 `limit_exceeded`.
+- 4/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 04.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): gate `checking-plan-readiness` của ticket 06 (builder check), 1 CRITICAL
+  và 7 HIGH, sửa theo khuyến nghị:
+  (a) CRITICAL, trái ADR-0117 (Accepted) Context: ticket nói "subagent `create_deep_agent` biên dịch sẵn", mà agent dựng
+  trên `create_agent`, không bao giờ `create_deep_agent`: Agent con là của `SubAgentMiddleware` (`adapters/sub_agents.py`).
+  Nếu sai thì: không đường nào được nhận; đổi luật là sửa ADR-0117 (Accepted) trước.
+  (b) `run_limit` của hai middleware đếm theo một lần gọi, nên đặt lại mỗi lần tiếp tục như `recursion_limit`
+  (ADR-0112 (Accepted) Context): đo trên bản đang ghim, dùng `thread_limit` hay bộ đếm trong trạng thái của lượt. Nếu sai thì:
+  bộ đếm luôn ở trạng thái của lượt, không dùng `thread_limit`.
+  (c) Agent con có ngăn xếp riêng nên nhân được trần: middleware của con nhận cùng đối tượng đếm của cha, như cùng sổ
+  chi. Nếu sai thì: Agent con có trần riêng bằng phần còn lại của cha lúc gọi.
+  (d) `recursion_limit` lấy giá trị nào: lưới chặn sau, superstep đo mỗi lượt model và công cụ nhân `max_model_calls`
+  cộng 10. Nếu sai thì: `max_steps` của `RunLimits`.
+  (e) lô lời gọi song song vượt phần còn lại: không lời gọi nào của lô chạy. Nếu sai thì: lời gọi trong phần còn lại
+  chạy, phần vượt bị bỏ.
+  (f) lỗi của thư viện đổi ở một chỗ sang `LimitExceededError` với `metric` của ticket 04; lượt con của `ai.agent` chạm
+  trần hành vi của mình để Bước cha áp `on_error`, lease chung cạn thì cả cây dừng. Nếu sai thì: mọi `limit_exceeded`
+  của lượt con dừng cả cây.
+  (g) lời gọi nào tính, vị trí trong ngăn xếp: sau `ResidencyGate` và `LimitsMiddleware`, ngoài lỗi công cụ và thử lại;
+  mỗi lần thử lại tính, compaction không tính. Nếu sai thì: compaction tính như lời gọi của agent.
+  (h) bộ đếm qua tiếp tục và Agent con không có ca thử: thêm tiêu chí. Nếu sai thì: không đường nào an toàn hơn.
+  Lượt xác nhận: 4 HIGH, sửa: bộ đếm model bên trong thử lại; số của Agent con cộng vào trạng thái của cha; `recursion_limit`
+  bằng `max_steps`; agent liên kết chạm trần trả lỗi công cụ. Nếu sai thì: (d) như bản đầu, công thức theo superstep đo.
+- 4/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 06.
 
 ## Danh sách ticket
 
