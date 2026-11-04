@@ -119,6 +119,34 @@ picklist_options = sa.Table(
     _composite("field_id", field_defs, ondelete="CASCADE"),
 )
 
+# A role's read or edit on one field (revision ef68083f2905, tenant-rbac ticket
+# 04): tenant-wide, judged by `platform.rbac_guard`, written by the role service
+# in raw SQL. Described here so the catalog comparison covers it like the rest.
+field_permissions = sa.Table(
+    "field_permissions",
+    metadata,
+    sa.Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("role_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("field_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("access", sa.Text, nullable=False),
+    sa.Column("granted_by", UUID(as_uuid=True), nullable=True),
+    sa.Column("granted_at", _TS, nullable=False, server_default=sa.text("now()")),
+    sa.PrimaryKeyConstraint("tenant_id", "role_id", "field_id"),
+    sa.ForeignKeyConstraint(
+        ["tenant_id", "role_id"],
+        [platform.tenant_roles.c.tenant_id, platform.tenant_roles.c.id],
+        ondelete="CASCADE",
+    ),
+    sa.ForeignKeyConstraint(
+        ["tenant_id", "field_id"],
+        [field_defs.c.tenant_id, field_defs.c.id],
+        ondelete="CASCADE",
+    ),
+    sa.ForeignKeyConstraint(["granted_by"], [platform.users.c.id], ondelete="SET NULL"),
+    sa.Index(None, "tenant_id", "field_id"),
+    sa.Index(None, "granted_by"),
+)
+
 SLOT_COLUMNS: tuple[str, ...] = tuple(slot for slots in SLOTS.values() for slot in slots)
 
 records = sa.Table(
