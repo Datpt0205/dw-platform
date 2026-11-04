@@ -161,7 +161,7 @@ tenant_id: TenantId | None)` theo khóa `(tenant_id, name, version)`: `None` là
       `packages/python/dw_agent_runtime/tests/integration/test_send_floor_executor_db.py` xanh sau khi sàn gửi tin vào
       sổ.
 - [x] G6: `test_a_send_with_no_known_outcome_is_never_made_again` xanh sau khi giành lượt vào sổ.
-- [ ] Xong: `make ci && make test-integration` xanh (theo `wave-close.md`: cổng nhanh và integration của ticket đã chạy; toàn bộ `make test-integration` chạy lúc đóng đợt).
+- [ ] Xong: `make ci && make test-integration` xanh.
 
 ## Nguồn
 

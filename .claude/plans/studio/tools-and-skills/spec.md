@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 2/11/2026
-Sẵn sàng: ĐẠT (2/11/2026; 0 CRITICAL, 0 HIGH; ticket 01)
+Sẵn sàng: ĐẠT (4/11/2026; 0 CRITICAL, 0 HIGH; ticket 01, 02, 04)
 
 Trợ lý Marketing cần đọc lead và gửi email, mà mỗi lời gọi công cụ phải được kiểm theo đúng lược đồ và
 chính sách của công ty, chạy với quyền của người hỏi, và không để kết quả từ bên ngoài đóng vai chỉ
@@ -109,10 +109,11 @@ băm nội dung (YC59; ADR-0116 (Accepted) quyết 5, 6).
   đa 64 ký tự với `response_format` là `content_and_artifact`.
 - R4.3 NẾU tên công cụ dài hơn 64 ký tự (64 thì nhận, 65 thì không), THÌ bộ lắp PHẢI trả `ConfigError`
   và không đưa công cụ cho model.
-- R4.4 ĐỐI VỚI model profile khai cờ năng lực `strict_tools`, bộ render lược đồ PHẢI dựng args schema ở
-  chế độ strict.
-- R4.5 NẾU một phiên bản agent ghim quá 40 công cụ, THÌ API Studio PHẢI trả 422 `too_many_tools` lúc gửi
-  kiểm định (niêm phong) và không niêm phong phiên bản đó.
+- R4.4 ĐỐI VỚI model profile khai cờ năng lực `strict_tools` mà Bộ công cụ của lượt không vượt `max_strict_tools` của
+  nó, bộ render lược đồ PHẢI dựng args schema ở chế độ strict.
+- R4.5 NẾU Bộ công cụ của một phiên bản agent cho ra quá 40 công cụ tới model, đếm sau khi mỗi mục đối tượng thành
+  một công cụ cho mỗi thao tác bật (`__search`, `__get`), THÌ API Studio PHẢI trả 422 `validation_failed` có
+  `errors[].code` `too_many_tools` lúc gửi kiểm định (niêm phong) và không niêm phong phiên bản đó.
 - R4.6 ĐỐI VỚI model profile không khai `strict_tools`, bộ render lược đồ PHẢI dựng args schema thường.
 
 ### R5 — Đầu ra công cụ là dữ liệu từ bên ngoài, cắt theo ngân sách
@@ -122,12 +123,14 @@ Mọi kết quả công cụ đưa cho model được bọc là dữ liệu từ
 
 - R5.1 KHI đưa đầu ra công cụ cho model, bộ bọc PHẢI bọc nó là dữ liệu từ bên ngoài theo
   ADR-0010 (Accepted) và cắt ở `max_output_chars` (mặc định 8 000 ký tự), không bao giờ quá 16 384 byte
-  UTF-8 (16 384 byte thì giữ, byte thứ 16 385 thì cắt).
+  UTF-8 (16 384 byte thì giữ, byte thứ 16 385 thì cắt), cả hai đo trên nội dung đã escape bên trong khối, cắt ở ranh
+  giới ký tự và không bao giờ giữa một thực thể escape.
 - R5.2 NẾU đầu ra chứa chuỗi đóng khối `</tool_output>` hay `<system>`, THÌ bộ bọc PHẢI escape nó để
   model nhận `&lt;/tool_output&gt;` và nội dung không thành chỉ dẫn.
-- R5.3 Bộ bọc PHẢI là nơi duy nhất bọc và cắt đầu ra công cụ, nên đầu ra của mọi loại công cụ, kể cả Hành
-  động `connector_action`, qua đúng một lần escape (model nhận `&lt;/tool_output&gt;`, không bao giờ
-  `&amp;lt;`).
+- R5.3 Bộ bọc PHẢI là nơi duy nhất bọc và cắt đầu ra của mọi công cụ mà bộ lắp Studio dựng, nên đầu ra của mọi loại
+  công cụ, kể cả Hành động `connector_action`, qua đúng một lần escape: `</tool_output>` thô thành
+  `&lt;/tool_output&gt;`, không bao giờ `&amp;lt;/tool_output&amp;gt;`, còn chuỗi `&lt;` có sẵn trong đầu ra thành
+  `&amp;lt;` theo ADR-0010 (Accepted).
 
 ### R6 — Công cụ dữ liệu đối tượng theo phiên bản lược đồ, dùng quyền người gọi
 
@@ -189,7 +192,9 @@ YC96, YC101; ADR-0116 (Accepted) quyết 1).
   `kind -> factory` ở composition root, với khe `connector_action` mà connections-and-vault/05 cắm vào;
   `KIND_FLOORS` và `check_policy_against_floor`; `approval_required` dùng chung bởi wrapper,
   `OneApprovalPerStepMiddleware` và executor; `SendAdmissionPort` (đã khai và tiêu thụ trong executor từ
-  compliance-pdpl/08) cho mọi công cụ có khối `message`; `ToolsetSpec` (`dw.toolset/v1`); bộ lắp `StructuredTool` (`studio_tools.py`)
+  compliance-pdpl/08) cho mọi công cụ có khối `message`; `ToolsetSpec` (`dw.toolset/v1`, mục nhúng trong tài liệu `dw.agent/v1`) cùng `validate_toolset` và `extract_toolset`
+  thuần ở `dw_studio`, mà loại `agent` gọi; bộ lắp Studio (`studio_tools.py`) dựng `StructuredTool` từ mục ghim qua
+  `PinnedResolver` và `ToolAssembler`, truyền bản ghim cho `ToolExecutor.execute(..., pinned=...)`
   và `contain_tool_output`, nơi duy nhất bọc và cắt đầu ra (R5.3); `ObjectDataPort`, `ObjectToolGenerator`
   (đọc `ai_description` của đối tượng và trường như dữ liệu từ bên ngoài, R6.8),
   `FieldSecurityToolSchemaMiddleware`.
@@ -218,7 +223,7 @@ YC96, YC101; ADR-0116 (Accepted) quyết 1).
 | W2: giới hạn và telemetry riêng của executor                                                                                                                                                | `from_briefs` B8b 08; phần đóng băng ở agent-lifecycle/01, hạn mức ở usage-and-limits/04                                                                                                                                                                                                                                                                                                               | tools-and-skills đợt sau (W2); agent-lifecycle; usage-and-limits |
 | W2: deepagents `>=0.7.23`; kỹ năng, màn Kỹ năng, nhập xuất `.zip`                                                                                                                           | YC66; `from_briefs` B8b 10, 11, 12; `SkillsMiddleware` cần deepagents mới                                                                                                                                                                                                                                                                                                                              | tools-and-skills đợt sau (W2)                                    |
 | W2: quy trình làm công cụ; công cụ mã trong code-sandbox                                                                                                                                    | YC69; `from_briefs` B8b 14, 15; cần `WorkflowStartPort` và một container mới mỗi lần gọi (DO-45.2)                                                                                                                                                                                                                                                                                                     | tools-and-skills đợt sau (W2); workflow-engine; code-sandbox     |
-| W2: chọn công cụ theo lượt; công cụ nền tảng chỉ siết; kiểm vùng ra theo tuyến                                                                                                              | `from_briefs` B8b 16, 17, 18; cần embedding mô tả và luật xuyên biên giới; lệnh ghi đè công cụ nền tảng của công ty gọi `check_policy_against_floor` của ticket 01 (phần route của R2.4)                                                                                                                                                                                                               | tools-and-skills đợt sau (W2); compliance-pdpl                   |
+| W2: chọn công cụ theo lượt (mặc định 20 công cụ mỗi lượt của ADR-0116 (Accepted) quyết 6); công cụ nền tảng chỉ siết; kiểm vùng ra theo tuyến                                               | `from_briefs` B8b 16, 17, 18; cần embedding mô tả và luật xuyên biên giới; lệnh ghi đè công cụ nền tảng của công ty gọi `check_policy_against_floor` của ticket 01 (phần route của R2.4)                                                                                                                                                                                                               | tools-and-skills đợt sau (W2); compliance-pdpl                   |
 | W3: tìm công cụ phía nhà cung cấp; script của kỹ năng trong sandbox                                                                                                                         | `from_briefs` B8b 19, 20                                                                                                                                                                                                                                                                                                                                                                               | tools-and-skills đợt sau (W3)                                    |
 | Sổ đồng ý tiếp thị và `SendAdmissionPort` cài đặt; đồng ý bị rút hết hiệu lực trong ≤ 5 phút                                                                                                | ADR-0124 (Accepted); executor là một cửa, sổ đồng ý là của compliance-pdpl                                                                                                                                                                                                                                                                                                                             | compliance-pdpl                                                  |
 | Kho bí mật, egress client, Bản mô tả trình kết nối, Hành động `connector_action`                                                                                                            | ADR-0115 (Accepted), ADR-0116 (Accepted); spec này gọi qua port                                                                                                                                                                                                                                                                                                                                        | connections-and-vault                                            |
@@ -226,6 +231,8 @@ YC96, YC101; ADR-0116 (Accepted) quyết 1).
 | `ObjectSchemaProjector`, RecordService, bảng bản ghi; mô hình bảo mật trường                                                                                                                | ADR-0107 (Accepted), ADR-0106 (Accepted); spec này gọi qua `ObjectDataPort` và middleware                                                                                                                                                                                                                                                                                                              | custom-objects; field-security                                   |
 | Trường `ai_description` của đối tượng và của trường (tối đa 500 ký tự, không bắt buộc) và trình kiểm độ dài của nó                                                                          | YC101; N3; custom-objects:R2.6, custom-objects:R3.7; bộ chiếu lược đồ trả nó tách khỏi JSON Schema, spec này chỉ đọc và bao (R6.8)                                                                                                                                                                                                                                                                     | custom-objects (ticket 02)                                       |
 | Máy chủ MCP, cổng MCP, ghim băm tool MCP; v1 chỉ máy chủ trong danh mục nền tảng (DO-46.1)                                                                                                  | ADR-0116 (Accepted) quyết 7-8; dùng executor và egress ở đây                                                                                                                                                                                                                                                                                                                                           | mcp-client                                                       |
+| W2: lưu đầu ra công cụ trên 256 KiB ra kho đối tượng, `output_ref` trong artifact, `redact_fields` theo công cụ                                                                             | Cần hạn lưu và đường yêu cầu chủ thể cho kho mới; W1 giữ đầu ra đầy đủ ở `platform.tool_executions.output` và artifact chỉ mang `execution_id`, `tool_version_id`, `truncated` (dòng 4/11/2026; ADR-0116 (Accepted) sửa đổi 4/11/2026)                                                                                                                                                                 | tools-and-skills đợt sau (W2)                                    |
+| Bọc và cắt đầu ra công cụ của worker định nghĩa bằng code (`packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langchain_tools.py:529`)                                         | Đổi điều agent hiện có đọc; R5.3 phủ công cụ mà bộ lắp Studio dựng (dòng 4/11/2026)                                                                                                                                                                                                                                                                                                                    | tools-and-skills đợt sau (W2)                                    |
 
 ## Kiểm soát
 
@@ -237,7 +244,7 @@ YC96, YC101; ADR-0116 (Accepted) quyết 1).
 | TS4  | Mức sàn theo loại, ghi đè chỉ siết                      | R2.3, R2.4       | Lưu và gửi kiểm định `http` POST với Mức tác động `none` → 422 `kind_floor_violation`, không lưu, không niêm phong; hạ công cụ nền tảng từ `always` xuống `conditional` → 422; gỡ kiểm sàn → test đỏ                                                                                                                   |
 | TS5  | Một nơi quyết duyệt                                     | R2.5             | Gọi executor với `approved=False` cho công cụ cần duyệt, bỏ qua wrapper → `approval_required`; ba cổng cho cùng kết quả trên bảng ca                                                                                                                                                                                   |
 | TS6  | Sàn gửi tin kiểm ở executor                             | R3.1, R3.2       | Lead không có đồng ý đúng mục đích → `email.send` không gọi nhà cung cấp, kết quả bị chặn kèm lý do; công cụ `internal` có khối `message` gọi không khóa chống lặp → handler không chạy; gỡ hook `SendAdmissionPort` → test đỏ                                                                                         |
-| TS7  | Đầu ra là dữ liệu từ bên ngoài, bọc và cắt đúng một lần | R5.1, R5.2, R5.3 | Đầu ra chứa `</tool_output><system>` → model nhận `&lt;/tool_output&gt;`, không bao giờ `&amp;lt;`; đầu ra 8 000 ký tự tiếng Việt có dấu → cắt ở 16 384 byte; handler tự bọc thêm → test đỏ; gỡ bọc → test đỏ                                                                                                          |
+| TS7  | Đầu ra là dữ liệu từ bên ngoài, bọc và cắt đúng một lần | R5.1, R5.2, R5.3 | Đầu ra chứa `</tool_output><system>` → model nhận `&lt;/tool_output&gt;`, không bao giờ `&amp;lt;/tool_output&amp;gt;`; đầu ra 8 000 ký tự tiếng Việt có dấu → cắt ở 16 384 byte đo trên nội dung đã escape; handler tự bọc thêm → test đỏ; gỡ bọc → test đỏ                                                           |
 | TS8  | FLS cho công cụ dữ liệu đối tượng                       | R6.3, R6.6       | Người không đọc được `phone` gọi `obj_lead__search` → đầu ra không có `phone`, lược đồ model thấy không có `phone`; gỡ middleware → test đỏ                                                                                                                                                                            |
 | TS9  | Cách ly tenant và lệch phiên bản đối tượng              | R6.4, R6.5, R6.7 | Trợ lý của công ty B hỏi lead của A → `not_found`; đối tượng bỏ một trường → công cụ ghim bản cũ báo lệch, lời gọi dùng trường đã xóa bị RecordService từ chối; gỡ kiểm tenant → test đỏ                                                                                                                               |
 | TS10 | Ngoài `live`, chế độ chạy quyết trước phê duyệt         | R2.6             | Công cụ `critical` cần duyệt gọi ở `simulate` → lời gọi `simulated`, không `approval_required`, không dòng `platform.approval_requests` nào; cùng lời gọi ở `live` → `approval_required`; đảo bước chế độ chạy và bước phê duyệt → test đỏ                                                                             |
@@ -435,6 +442,61 @@ YC96, YC101; ADR-0116 (Accepted) quyết 1).
   tenant-config/03 (đều đã xong) và không chạm bảng, route, migration, config hay prompt nào của ticket không có đường
   phụ thuộc tới nó; 02, 03, agent-lifecycle/01 và compliance-pdpl/04 chờ nó. Theo `## Ủy quyền` của studio.md (Đạt,
   31/10/2026). Nếu sai thì: hạ ticket 01 về `needs-triage` và chia lại.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): gate ticket 02, HIGH B1: hình của `dw.toolset/v1` không ai viết, và
+  agent-builder/02 coi `toolset` là tham chiếu `{kind: toolset, key, version}` tới một loại `toolset` mà không ticket nào
+  đăng ký, trái ADR-0116 (Accepted) quyết 6 (Bộ công cụ nhúng trong phiên bản agent). `dw.toolset/v1` là mục `toolset`
+  nhúng trong tài liệu `dw.agent/v1`, `{tools: [...]}`, mỗi mục một trong hai loại W1: `{kind: object_crud, object: <id
+thành phần đối tượng>, operations: [search, get]}` hay `{kind: connector_action, connector: "<key>@<semver>",
+action: <tên Hành động>, binding: <tên điểm gắn>}`; `ToolsetSpec`, `validate_toolset` (mọi lỗi thành `DocumentProblem`: `too_many_tools`,
+  `tool_name_too_long`, `toolset.duplicate_tool`, `toolset.kind_unsupported`) và `extract_toolset` (tham chiếu `artifact`
+  `read` tới đối tượng, `connector` `invoke` với `to_key` là `connector` của mục, `binding` `bind`) là hàm
+  thuần ở `dw_studio`, mà validator và extractor của loại `agent` gọi; bước niêm phong của tenant-config/02 ghim phiên
+  bản `live` và mã băm của mỗi đối tượng như mọi tham chiếu `artifact`, nên tài liệu không mang id phiên bản. agent-builder/02
+  chờ ticket 02 và nhúng `ToolsetSpec`. Sửa: Trong phạm vi, R4.5, ticket 02; agent-builder/02, /05 (ngoài khu vực, sửa
+  tối thiểu). Nếu sai thì: một loại `toolset` có phiên bản, khóa và móc phát hành riêng, ADR-0116 (Accepted) quyết 6 sửa,
+  và agent-builder/02 giữ tham chiếu.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): gate ticket 02, HIGH B3 và B9: trần 40 của R4.5 đếm công cụ tới model sau
+  khi mỗi mục đối tượng thành một công cụ cho mỗi thao tác; mặc định 20 công cụ mỗi lượt của ADR-0116 (Accepted) quyết 6
+  đi cùng dòng W2 chọn công cụ theo lượt, W1 đưa mọi công cụ ghim. Tên tới model quá 64 ký tự: tên đối tượng không vượt
+  được (`API_NAME` tối đa 40 ký tự, nên `obj_<api_name>__search` tối đa 52), tên Hành động bị `validate_toolset` từ chối
+  lúc niêm phong và bộ lắp từ chối lúc dựng (ADR-0116 (Accepted), sửa đổi 24/10/2026). Sửa: R4.5, ticket 02. Nếu sai
+  thì: trần đếm mục ghim, và W1 cắt danh sách mỗi lượt ở 20.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): gate ticket 02, HIGH B4 và B5: R5.1 đo hai trần trên nội dung đã escape bên
+  trong khối, cắt ở ranh giới ký tự, không giữa một thực thể như `&lt;`, vì trần giữ số byte model đọc; R5.3 nói đúng một
+  lần escape của ADR-0010 (Accepted): `&lt;` có sẵn trong đầu ra thành `&amp;lt;`, chỉ thẻ đóng khối không bao giờ bị
+  escape hai lần. Sửa: R5.1, R5.3, TS7, ticket 02. Nếu sai thì: trần đo trên đầu ra thô, và khối model nhận có thể dài
+  hơn 16 KiB tới ba lần.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): gate ticket 02, HIGH B6, B7, B10: `contain_tool_output` bọc đầu ra công cụ
+  mà bộ lắp Studio dựng; công cụ của worker định nghĩa bằng code giữ đường hôm nay (dòng Ngoài phạm vi). Bộ lắp Studio
+  dùng chung thân `call` của `_build_tool` (`langchain_tools.py:495`), khóa chống lặp `_idempotency_key` sẵn có (băm đối
+  số), mô tả là `ToolDefinition.description`; không `idempotency_key_fields`, không `copy.tool_description`;
+  `response.fields` và `response.max_output_chars` (1 tới 16 384, mặc định 8 000) vào `ToolSpec` và `ToolDefinition`
+  cùng bên đọc của chúng là `contain_tool_output`. Lượt của agent Studio được đưa đúng các công cụ ghim, không
+  `write_todos` (`_ALWAYS_ALLOWED` chỉ còn cho worker định nghĩa bằng code). Sửa: R5.3, Ngoài phạm vi, ticket 02. Nếu
+  sai thì: mọi công cụ qua `_build_tool` cùng bọc kèm test hồi quy của agent hiện có, và `write_todos` là ngoại lệ có
+  tên của R4.1.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): gate ticket 02, HIGH B8: bước 6 cũ (`redact_fields`, lưu đầu ra trên
+  256 KiB ra `dw-artifacts`) không có R nào, không tiêu chí, và tạo một kho dữ liệu cá nhân không hạn lưu
+  (`failure-modes.md` #1, #6); nay là dòng W2 của Ngoài phạm vi. W1 giữ đầu ra đầy đủ ở `platform.tool_executions.output`
+  (đã có, hạn lưu của bảng đó), artifact mang `execution_id`, `tool_version_id`, `truncated`; `output_ref` vào cùng kho
+  W2 (ADR-0116 (Accepted), sửa đổi 4/11/2026). Sửa: Ngoài phạm vi, ticket 02. Nếu sai thì: kho W1 kèm mảnh lưu giữ và
+  bộ xóa của nó.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): gate ticket 02, HIGH: lượt Studio phân giải công cụ chỉ từ bản ghim
+  (ADR-0116 (Accepted) quyết 3; DO-05), mà `ToolExecutor` hôm nay phân giải qua `ToolRegistry` của tiến trình. Bộ lắp
+  Studio dựng `RegisteredTool` của mỗi mục ghim qua `PinnedResolver` (tenant-config/04) và `ToolAssembler` (ticket 01),
+  và truyền nó vào `ToolExecutor.execute(..., pinned=...)`; bước phân giải dùng đúng bản đó và không đọc sổ; không ghi
+  mục công ty nào vào `ToolRegistry`, nên M3 của ticket 01 (sổ tiến trình không có bên gỡ) không còn bên đăng ký. Sửa:
+  Trong phạm vi, ticket 02, 03. Nếu sai thì: bộ lắp đăng ký mục công ty vào `ToolRegistry` theo lượt và gỡ khi lượt kết
+  thúc.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): gate ticket 02, HIGH: chế độ strict (R4.4, R4.6) cần cờ `strict_tools`,
+  `max_strict_tools`, `numeric_bounds` của model-connections/02 (còn `needs-triage`), mà connections-and-vault/05 không
+  cần; tách thành ticket 04 chờ ticket 02 và model-connections/02, đọc cả ba cờ (model-connections/02 nêu tools-and-skills
+  là bên đọc của `max_strict_tools`, `failure-modes.md` #1); ticket 02 dựng args schema thường. Sửa: Danh sách ticket,
+  ticket 02, 04. Nếu sai thì: ticket 02 chờ model-connections/02 và connections-and-vault/05 chờ theo.
+- 4/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 02, 04. Ticket 02 là Bộ công cụ nhúng, bộ lắp Studio,
+  phân giải theo bản ghim và bộ bọc đầu ra, chờ ticket 01 và tenant-config/02 (đã xong); ticket 04 là chế độ strict, chờ
+  ticket 02 và model-connections/02; ticket 03, agent-builder/02, /05 và connections-and-vault/05 chờ ticket 02. Theo
+  `## Ủy quyền` của studio.md (Đạt, 31/10/2026). Nếu sai thì: hạ ticket 02, 04 về `needs-triage` và chia lại.
 
 ## Danh sách ticket
 
@@ -443,3 +505,4 @@ YC96, YC101; ADR-0116 (Accepted) quyết 1).
 | 01  | [Executor tự kiểm JSON Schema, phân giải theo tenant, khe nhà máy theo loại](issues/01-executor-kiem-schema-va-nha-may.md) |
 | 02  | [dw.toolset/v1 và công cụ ghim phiên bản thành StructuredTool, bọc và cắt đầu ra](issues/02-toolset-va-cong-cu-ghim.md)    |
 | 03  | [Công cụ dữ liệu đối tượng theo phiên bản lược đồ, dùng quyền của người gọi](issues/03-cong-cu-du-lieu-doi-tuong.md)       |
+| 04  | [Chế độ strict của args schema theo cờ năng lực của model profile](issues/04-che-do-strict-theo-model-profile.md)          |
