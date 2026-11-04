@@ -38,13 +38,17 @@ from dw_studio.core.adapters.tables import (
     artifact_display_stage,
     artifact_versions,
     artifacts,
+    config_versions,
     definition_manifests,
     dependencies,
     run_manifest_keys,
     run_manifests,
 )
+from dw_studio.core.application.bindings import BINDING_SET
 from dw_studio.core.application.ports import (
     ArtifactRow,
+    BindingSetRow,
+    ConnectionFacts,
     DependencyRow,
     Dependent,
     ListScope,
@@ -65,6 +69,27 @@ _RUN_MANIFEST_SIZE = "ck_run_manifests_body_size"
 _DEADLOCK = "40P01"
 
 _REACH = sa.text("SELECT platform.workspace_reach(:t, :u, :k) AS w")
+_CONNECTION_FACTS = sa.text(
+    "SELECT id, connector_key, connector_major, scopes, owning_workspace_id, name"
+    " FROM platform.connections WHERE id = ANY(:ids)"
+).bindparams(sa.bindparam("ids", type_=ARRAY(PG_UUID(as_uuid=True))))
+_PRINCIPAL_STATUS = sa.text(
+    "SELECT user_id, status = 'active' AS active FROM platform.tenant_members"
+    " WHERE user_id = ANY(:ids)"
+).bindparams(sa.bindparam("ids", type_=ARRAY(PG_UUID(as_uuid=True))))
+# R3.7: the artifacts, not soft-deleted, whose approved Binding set has this
+# connection as a value; one source, never `studio.dependencies` (R7.1).
+_USING = sa.text(
+    "SELECT a.id FROM platform.config_versions v"
+    " JOIN studio.artifacts a ON a.tenant_id = v.tenant_id AND a.id::text = v.key"
+    " WHERE v.kind = 'binding_set' AND v.status = 'approved' AND a.deleted_at IS NULL"
+    " AND EXISTS (SELECT 1 FROM jsonb_each_text(v.document -> 'values') e"
+    "             WHERE e.value = :c)"
+    " ORDER BY a.id"
+)
+_CONNECTION_IDS = sa.text("SELECT id FROM platform.connections WHERE id = ANY(:ids)").bindparams(
+    sa.bindparam("ids", type_=ARRAY(PG_UUID(as_uuid=True)))
+)
 
 # The displayed stage of the artifact row a statement reads, from the view in
 # that same statement (agent-lifecycle R1.5): never recomputed here.
@@ -326,6 +351,19 @@ class SqlArtifactTx:
             return None
         return LiveTarget(artifact_id, kind, live.id, live.version_no, live.content_hash)
 
+    async def connection_ids(self, candidates: Sequence[uuid.UUID]) -> frozenset[uuid.UUID]:
+        # Under the tenant's RLS: another company's connection is no id here.
+        found = await self.session.scalars(_CONNECTION_IDS, {"ids": list(candidates)})
+        return frozenset(found)
+
+    async def version_documents(self, version_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, Any]:
+        rows = await self.session.execute(
+            sa.select(artifact_versions.c.id, artifact_versions.c.document).where(
+                artifact_versions.c.id.in_(list(version_ids))
+            )
+        )
+        return {row.id: row.document for row in rows}
+
     async def put_manifest(self, definition_hash: str, body: dict[str, Any]) -> None:
         await self.session.execute(
             pg_insert(definition_manifests)
@@ -499,25 +537,90 @@ class SqlArtifactTx:
             raise
 
     async def put_run_manifest_keys(
-        self, manifest_hash: str, version_ids: Sequence[uuid.UUID]
+        self,
+        manifest_hash: str,
+        version_ids: Sequence[uuid.UUID],
+        config_version_id: uuid.UUID | None = None,
     ) -> None:
-        if not version_ids:
+        rows: list[dict[str, Any]] = [
+            {
+                "id": self.ids.new_uuid(),
+                "tenant_id": self.tenant_id,
+                "manifest_hash": manifest_hash,
+                "artifact_version_id": version_id,
+                "config_version_id": None,
+            }
+            for version_id in version_ids
+        ]
+        if config_version_id is not None:
+            rows.append(
+                {
+                    "id": self.ids.new_uuid(),
+                    "tenant_id": self.tenant_id,
+                    "manifest_hash": manifest_hash,
+                    "artifact_version_id": None,
+                    "config_version_id": config_version_id,
+                }
+            )
+        if not rows:
             return
         await self.session.execute(
-            pg_insert(run_manifest_keys)
-            .values(
-                [
-                    {
-                        "id": self.ids.new_uuid(),
-                        "tenant_id": self.tenant_id,
-                        "manifest_hash": manifest_hash,
-                        "artifact_version_id": version_id,
-                    }
-                    for version_id in version_ids
-                ]
-            )
-            .on_conflict_do_nothing()
+            pg_insert(run_manifest_keys).values(rows).on_conflict_do_nothing()
         )
+
+    # ---- bindings (tenant-config ticket 05) --------------------------------
+
+    async def connections(self, ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, ConnectionFacts]:
+        rows = await self.session.execute(_CONNECTION_FACTS, {"ids": list(ids)})
+        return {
+            row.id: ConnectionFacts(
+                id=row.id,
+                connector_key=row.connector_key,
+                connector_major=row.connector_major,
+                scopes=tuple(row.scopes or ()),
+                owning_workspace_id=row.owning_workspace_id,
+                name=row.name,
+            )
+            for row in rows
+        }
+
+    async def principal_status(self, ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, bool]:
+        rows = await self.session.execute(_PRINCIPAL_STATUS, {"ids": list(ids)})
+        return {row.user_id: row.active for row in rows}
+
+    async def binding_set(self, artifact_id: uuid.UUID, status: str) -> BindingSetRow | None:
+        row = (
+            await self.session.execute(
+                sa.select(
+                    config_versions.c.id,
+                    config_versions.c.status,
+                    config_versions.c.version_no,
+                    config_versions.c.document,
+                    config_versions.c.workspace_id,
+                    config_versions.c.proposed_by,
+                    config_versions.c.decided_at,
+                ).where(
+                    config_versions.c.kind == BINDING_SET,
+                    config_versions.c.key == str(artifact_id),
+                    config_versions.c.status == status,
+                )
+            )
+        ).first()
+        if row is None:
+            return None
+        return BindingSetRow(
+            id=row.id,
+            status=row.status,
+            version_no=row.version_no,
+            document=row.document,
+            workspace_id=row.workspace_id,
+            proposed_by=row.proposed_by,
+            decided_at=row.decided_at,
+        )
+
+    async def binding_sets_using(self, connection_id: uuid.UUID) -> list[uuid.UUID]:
+        rows = await self.session.execute(_USING, {"c": str(connection_id)})
+        return [row.id for row in rows]
 
     # ---- the run row (workflow-engine ticket 02) --------------------------
 
@@ -549,6 +652,11 @@ class SqlArtifactStore:
 
     def for_lane(self, lane: LaneRequester) -> AbstractAsyncContextManager[SqlArtifactTx]:
         return self._open(TenantScope(tenant_id=lane.tenant_id), None)
+
+    # `BindingStore` (tenant-config ticket 05): a question asked for a run or a
+    # recorded decision, under the tenant alone.
+    def for_tenant(self, tenant_id: uuid.UUID) -> AbstractAsyncContextManager[SqlArtifactTx]:
+        return self._open(TenantScope(tenant_id=tenant_id), None)
 
     @asynccontextmanager
     async def _open(

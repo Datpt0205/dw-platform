@@ -7,6 +7,7 @@ container the API serves: without it, deleting the two lines from
 `approvals.decide` approved a restricted memory they cannot read, or their own.
 """
 
+import asyncio
 import uuid
 
 import pytest
@@ -17,7 +18,7 @@ from dw_kernel.errors import PermissionDeniedError
 from dw_kernel.ids import TenantId, UserId, WorkspaceId
 from dw_memory.review import MEMORY_REVIEW
 from dw_platform.application.access_context import AccessContext
-from dw_platform.domain.approval import ApprovalRequest
+from dw_platform.domain.approval import ApprovalRequest, ProposedDecision
 
 pytestmark = pytest.mark.unit
 
@@ -53,8 +54,10 @@ def test_the_api_decides_memory_reviews_strictly_and_only_with_clearance() -> No
     guard = flow.decision_guards.get(MEMORY_REVIEW)
     assert guard is not None
     with pytest.raises(PermissionDeniedError):
-        guard(
+        # The guard is asynchronous since tenant-config ticket 05 (G4).
+        coroutine = guard.check(
             request,
+            ProposedDecision(approve=True, comment="ok"),
             AccessContext(
                 tenant_id=tenant,
                 workspace_id=workspace,
@@ -65,3 +68,4 @@ def test_the_api_decides_memory_reviews_strictly_and_only_with_clearance() -> No
                 plan_id="professional",
             ),
         )
+        asyncio.run(coroutine)

@@ -226,19 +226,88 @@ run_manifests = sa.Table(
     schema="platform",
 )
 
+# A tenant's configuration versions (tenant-config ticket 05): written by
+# `dw_platform`'s `ConfigVersionService`, described here because the run
+# manifest's keys point into it.
+config_versions = sa.Table(
+    "config_versions",
+    metadata,
+    sa.Column("id", UUID(as_uuid=True), primary_key=True),
+    sa.Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("workspace_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("kind", sa.Text, nullable=False),
+    sa.Column("key", sa.Text, nullable=False),
+    sa.Column("action", sa.Text, nullable=False),
+    sa.Column("version_no", sa.Integer, nullable=False),
+    sa.Column("base_version", sa.Integer, nullable=False),
+    sa.Column("base_bindings_hash", sa.Text, nullable=False),
+    sa.Column("base_approved_id", UUID(as_uuid=True), nullable=True),
+    sa.Column("document", JSONB, nullable=False),
+    sa.Column("document_hash", sa.Text, nullable=False),
+    sa.Column("status", sa.Text, nullable=False),
+    sa.Column("approval_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("proposed_by", UUID(as_uuid=True), nullable=False),
+    sa.Column("proposed_at", _TS, nullable=False, server_default=sa.text("now()")),
+    sa.Column("decided_by", UUID(as_uuid=True), nullable=True),
+    sa.Column("decided_at", _TS, nullable=True),
+    sa.Column("decision_comment", sa.Text, nullable=True),
+    sa.Column("superseded_at", _TS, nullable=True),
+    sa.ForeignKeyConstraint(["tenant_id"], [platform.tenants.c.id], ondelete="RESTRICT"),
+    sa.ForeignKeyConstraint(
+        ["approval_id", "tenant_id", "workspace_id"],
+        [
+            platform.approval_requests.c.id,
+            platform.approval_requests.c.tenant_id,
+            platform.approval_requests.c.workspace_id,
+        ],
+        name="fk_config_versions_approval_id_approval_requests",
+        ondelete="RESTRICT",
+    ),
+    sa.UniqueConstraint("tenant_id", "id"),
+    sa.UniqueConstraint("tenant_id", "kind", "key", "version_no"),
+    sa.Index(None, "tenant_id", "workspace_id", "approval_id", unique=True),
+    sa.Index(
+        "uq_config_versions_tenant_id_kind_key_proposed",
+        "tenant_id",
+        "kind",
+        "key",
+        unique=True,
+        postgresql_where=sa.text("status = 'proposed'"),
+    ),
+    sa.Index(
+        "uq_config_versions_tenant_id_kind_key_approved",
+        "tenant_id",
+        "kind",
+        "key",
+        unique=True,
+        postgresql_where=sa.text("status = 'approved'"),
+    ),
+    schema="platform",
+)
+
 run_manifest_keys = sa.Table(
     "run_manifest_keys",
     metadata,
     sa.Column("id", UUID(as_uuid=True), primary_key=True),
     sa.Column("tenant_id", UUID(as_uuid=True), nullable=False),
     sa.Column("manifest_hash", sa.Text, nullable=False),
-    sa.Column("artifact_version_id", UUID(as_uuid=True), nullable=False),
+    # Exactly one of the two (`ck_run_manifest_keys_one_target`, ticket 05).
+    sa.Column("artifact_version_id", UUID(as_uuid=True), nullable=True),
+    sa.Column("config_version_id", UUID(as_uuid=True), nullable=True),
     sa.ForeignKeyConstraint(
         ["manifest_hash", "tenant_id"],
         [run_manifests.c.hash, run_manifests.c.tenant_id],
         ondelete="CASCADE",
     ),
     _composite("artifact_version_id", artifact_versions, ondelete="RESTRICT"),
+    _composite("config_version_id", config_versions, ondelete="RESTRICT"),
+    sa.UniqueConstraint(
+        "tenant_id",
+        "manifest_hash",
+        "config_version_id",
+        name="uq_run_manifest_keys_tenant_id_manifest_hash_config_version_id",
+    ),
+    sa.Index(None, "tenant_id", "config_version_id"),
     # The convention's name is one character past PostgreSQL's 63.
     sa.UniqueConstraint(
         "tenant_id",

@@ -47,18 +47,41 @@ from dw_platform.domain.approval import (
     ApprovalDecision,
     ApprovalRequest,
     DecisionOutcome,
+    ProposedDecision,
     decided_event_type,
 )
 from dw_platform.domain.audit import AuditEvent
 from dw_platform.domain.outbox import OutboxEvent
 
-DecisionGuard = Callable[[ApprovalRequest, AccessContext], None]
-"""A condition one approval type puts on who may decide it, beyond the scope.
 
-Raises to refuse. Registered by type at the composition root, the way strict
-prefixes are, so a context with its own rule adds an entry rather than a branch
-in `decide` (memory: the decider must be cleared for what they are deciding on).
-"""
+class ApprovalDecisionGuard(Protocol):
+    """A condition one approval type puts on its decision, beyond the scope.
+
+    Raises to refuse. Registered by type at the composition root, the way strict
+    prefixes are, so a context with its own rule adds an entry rather than a
+    branch in `decide` (memory: the decider must be cleared for what they are
+    deciding on; a configuration version: the proposal is still current,
+    tenant-config R8.9). Async, and given the decision about to be made, so a
+    guard may read what it needs and ask more of an approval than of a
+    rejection; it runs before anything is written, so a refusal leaves the
+    request pending."""
+
+    async def check(
+        self, request: ApprovalRequest, decision: ProposedDecision, context: AccessContext
+    ) -> None: ...
+
+
+@dataclass(frozen=True)
+class RuleGuard:
+    """A synchronous rule of the request and the decider alone, as a guard."""
+
+    rule: Callable[[ApprovalRequest, AccessContext], None]
+
+    async def check(
+        self, request: ApprovalRequest, decision: ProposedDecision, context: AccessContext
+    ) -> None:
+        self.rule(request, context)
+
 
 ProposalEditor = Callable[[Mapping[str, Any], Mapping[str, Any]], None]
 """How one approval type takes a proposal the decider edited before approving:
@@ -78,7 +101,7 @@ CHANNEL_DECIDED_ACTION = "approval.channel_decided"
 class DecisionAdmission(Protocol):
     """What one decision must also show, beyond who may decide it.
 
-    Not a `DecisionGuard`, which is per approval TYPE and synchronous: this is
+    Not an `ApprovalDecisionGuard`, which is per approval TYPE: this is
     per DECISION, passed by the caller, and runs inside `decide`'s own unit of
     work after every check `decide` makes and before anything is written, so
     what it consumes (a single-use code) is consumed only by a decision that
@@ -108,7 +131,7 @@ class ApproveAndResumeService:
     # Keyed by the exact approval type. Checked where the decision is made,
     # before anything is written: a rule the inbox merely hides a button for is
     # a rule a direct POST walks past.
-    decision_guards: Mapping[str, DecisionGuard] = field(default_factory=dict)
+    decision_guards: Mapping[str, ApprovalDecisionGuard] = field(default_factory=dict)
     # Keyed by the exact approval type, like the guards, for a condition that
     # must be read in the decision's own transaction: who may decide a
     # Digital Worker's decision is its Validator or Business Owner as they are
@@ -293,7 +316,7 @@ class ApproveAndResumeService:
             self._enforce_strict_rules(request, comment, context)
         guard = self.decision_guards.get(request.approval_type)
         if guard is not None:
-            guard(request, context)
+            await guard.check(request, ProposedDecision(approve, comment), context)
 
     async def decide(
         self,

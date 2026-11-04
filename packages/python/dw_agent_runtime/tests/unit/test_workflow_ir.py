@@ -290,7 +290,8 @@ def test_the_pack_rules_are_the_ticket_s() -> None:
     assert (
         PathRules(
             required_document_keys=frozenset({"key", "version"}),
-            refused_document_keys=frozenset(),
+            # A pack has no Binding set (tenant-config ticket 05).
+            refused_document_keys=frozenset({"bindings"}),
             required_step_keys=frozenset(),
             refused_step_keys=frozenset({"retry", "timeout_s", "on_error", "error_lane"}),
             every_port_lane=False,
@@ -312,6 +313,16 @@ def test_a_pack_step_with_a_policy_key_is_refused(key: str, value: Any) -> None:
     """R1.1: the wf-lite compiler runs none of the four yet (failure-modes #1)."""
     document = pack(switch("route", [wait("inner", **{key: value})]))
     assert ("wf.schema_invalid", f"steps/0/config/cases/a/0/{key}") in problems(document)
+
+
+def test_a_pack_declaring_bindings_is_refused_and_no_dump_carries_them() -> None:
+    """tenant-config ticket 05: a pack has no Binding set to give a binding a
+    value, so the key is refused on its path; a Studio document's bindings
+    are read by Studio's shape and never written back by a dump."""
+    document = pack(wait("w"))
+    document["bindings"] = [{"name": "x", "kind": "principal", "required": True}]
+    assert ("wf.schema_invalid", "bindings") in problems(document)
+    assert "bindings" not in WorkflowDocument.model_validate(document).model_dump(by_alias=True)
 
 
 def test_a_pack_without_its_key_or_version_is_refused() -> None:

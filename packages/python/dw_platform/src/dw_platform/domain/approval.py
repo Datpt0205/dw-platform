@@ -58,6 +58,16 @@ class DecisionOutcome(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
+class ProposedDecision:
+    """The decision a person is about to make, before it is written: what a
+    type's decision guard sees (tenant-config ticket 05 step 5). A guard may
+    ask more of an approval than of a rejection (a connection still usable)."""
+
+    approve: bool
+    comment: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class ApprovalDecision:
     """Immutable record of one human decision."""
 

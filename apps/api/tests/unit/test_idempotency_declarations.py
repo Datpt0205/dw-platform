@@ -35,6 +35,7 @@ from dw_api.routes.v1 import admin_service_principals as service_principal_route
 from dw_api.routes.v1 import connections as connection_routes
 from dw_api.routes.v1 import digital_workers as digital_workers_routes
 from dw_api.routes.v1 import studio_artifacts as studio_routes
+from dw_api.routes.v1 import studio_bindings as bindings_routes
 from dw_api.routes.v1 import studio_lifecycle as lifecycle_routes
 from dw_api.routes.v1 import work_items as work_items_routes
 from dw_platform.application import (
@@ -130,6 +131,16 @@ DECLARED: dict[tuple[str, str], object] = {
     # (tenant-config R2.1, R2.21; ADR-0108 decision 4).
     ("POST", "/api/v1/studio/artifacts"): studio_routes._may_create,
     ("POST", "/api/v1/studio/artifacts/{artifact_id}/draft"): studio_routes._may_write,
+    # The propose key at the artifact's owning workspace, after its read key;
+    # the proposer alone withdraws (tenant-config R8.2, R8.14, R8.17).
+    (
+        "POST",
+        "/api/v1/studio/artifacts/{artifact_id}/bindings/proposals",
+    ): bindings_routes._may_propose,
+    (
+        "POST",
+        "/api/v1/studio/artifacts/{artifact_id}/bindings/proposals/{config_version_id}/withdraw",
+    ): bindings_routes._may_withdraw,
     # The stored kind's submit key, or the retire key, at the artifact's owning
     # workspace, one segment per kind (agent-lifecycle R2.1, R2.4, R2.5).
     **{

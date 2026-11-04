@@ -52,6 +52,7 @@ from dw_studio.core.application.run_request import (
 )
 from dw_studio.core.application.service import ArtifactService
 from dw_studio.core.domain.artifacts import DocumentInvalidError, definition_body, definition_hash
+from dw_studio.testing.bindings import unasked_pins
 from dw_studio.testing.fixture_kinds import (
     FIXTURE,
     FIXTURE_GATELESS,
@@ -176,6 +177,7 @@ def door_of(
         RunLaneRegistry(LANES),
         SystemClock(),
         Uuid7Generator(),
+        bindings=unasked_pins(),
     )
 
 

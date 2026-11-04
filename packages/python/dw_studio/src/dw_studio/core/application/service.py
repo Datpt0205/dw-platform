@@ -42,6 +42,7 @@ from dw_kernel.ports import IdGenerator, UtcClock
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.effect_keys import PendingEffect
 from dw_platform.domain.audit import AuditEvent
+from dw_studio.core.application.bindings import declaration_problems
 from dw_studio.core.application.ports import (
     ArtifactRow,
     ArtifactStore,
@@ -66,9 +67,23 @@ from dw_studio.core.domain.artifacts import (
     definition_hash,
     label_problems,
 )
+from dw_studio.core.domain.bindings import (
+    binding_references,
+    connection_strings,
+    declaration_paths,
+    merge,
+    parse_declarations,
+)
 
 RESOURCE = "studio_artifact"
 _PATCHABLE = frozenset({"api_name", "labels"})
+
+
+def document_problems(entry: ArtifactKindEntry, document: Any) -> list[DocumentProblem]:
+    """The kind's own check and the shared `bindings[]` shape (tenant-config
+    R7; ticket 05 step 1): what a seal refuses, a save warns of and the run
+    door checks a simulated draft with."""
+    return [*entry.validate(document), *parse_declarations(document).problems]
 
 
 @dataclass(frozen=True, slots=True)
@@ -513,7 +528,7 @@ class ArtifactService:
                     {"row_version": saved.row_version},
                 )
             )
-        return SavedDraft(saved, tuple(entry.validate(saved.document)))
+        return SavedDraft(saved, tuple(document_problems(entry, saved.document)))
 
     async def create_draft(
         self,
@@ -623,11 +638,14 @@ class ArtifactService:
             raise _no_draft()
         if unreleased.row_version != expected_row_version:
             raise _stale()
-        problems = list(entry.validate(unreleased.document))
+        problems = document_problems(entry, unreleased.document)
         if problems:
             raise DocumentInvalidError("the document is not valid", problems)
         root_hash = content_hash(unreleased.document)
         closure, rows = await self.closure_of(tx, row.kind, artifact_id, unreleased.document)
+        problems = await _binding_problems(tx, unreleased.document, rows)
+        if problems:
+            raise DocumentInvalidError("the document is not valid", problems)
         version_no = row.last_version_no + 1
         await tx.update_artifact(artifact_id, last_version_no=version_no)
         body = definition_body(row.kind, artifact_id, root_hash, closure)
@@ -667,7 +685,8 @@ async def closure_of(
         raise NotFoundError("artifact not found")
     problems: list[DocumentProblem] = []
     rows: list[DependencyRow] = []
-    for ref in entry.extract(document):
+    declared = binding_references(document)
+    for ref in [*entry.extract(document), *declared]:
         if ref.to_kind is not TargetKind.ARTIFACT:
             rows.append(DependencyRow(ref.to_kind, ref.to_key, ref.usage, ref.path))
             continue
@@ -706,3 +725,43 @@ async def closure_of(
         ClosureItem(row.to_kind.value, row.to_key, row.to_version, row.to_hash) for row in rows
     ]
     return closure, rows
+
+
+async def _binding_problems(
+    tx: ArtifactTx, document: Any, rows: Sequence[DependencyRow]
+) -> list[DocumentProblem]:
+    """What the seal refuses beyond the document's own shape (tenant-config
+    ticket 05 step 1): a string that is the id of one of the tenant's
+    connections, where only a binding's name may stand (R7.1, TC23), and one
+    name declared with two kinds across the root and the versions its closure
+    pins (gate 4/11/2026 (n))."""
+    problems: list[DocumentProblem] = []
+    strings = connection_strings(document)
+    if strings:
+        found = await tx.connection_ids(sorted({value for _, value in strings}))
+        problems += [
+            DocumentProblem(
+                pointer,
+                "connection_id_in_document",
+                "a document names a binding, never a connection",
+            )
+            for pointer, value in strings
+            if value in found
+        ]
+    root = parse_declarations(document)
+    paths = declaration_paths(document)
+    problems += declaration_problems(root.items, paths)
+    pinned = [row.to_version_id for row in rows if row.to_version_id is not None]
+    groups = [root.items]
+    if pinned:
+        documents = await tx.version_documents(pinned)
+        groups += [parse_declarations(documents[v]).items for v in pinned if v in documents]
+    problems += [
+        DocumentProblem(
+            paths.get(name, ""),
+            "binding_conflict",
+            "this name is declared with another kind in the closure",
+        )
+        for name in merge(groups).conflicts
+    ]
+    return problems

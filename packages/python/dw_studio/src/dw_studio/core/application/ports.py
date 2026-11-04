@@ -167,6 +167,15 @@ class ArtifactTx(Protocol):
         concurrent soft delete waits and then meets the new dependency (R3.3)."""
         ...
 
+    async def connection_ids(self, candidates: Sequence[uuid.UUID]) -> frozenset[uuid.UUID]:
+        """Which of `candidates` are ids of the tenant's connections, under RLS
+        (tenant-config R7.1)."""
+        ...
+
+    async def version_documents(self, version_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, Any]:
+        """The document of each version, by id, under RLS."""
+        ...
+
     async def put_manifest(self, definition_hash: str, body: dict[str, Any]) -> None: ...
 
     async def replace_dependencies(
@@ -207,10 +216,37 @@ class RootVersion:
     owning_workspace_id: uuid.UUID
 
 
-class RunManifestTx(ArtifactTx, Protocol):
-    """What `RunManifestBuilder` asks of the caller's transaction beyond the
-    envelope's own reads (tenant-config ticket 04): the same one, so the run
-    row the door writes after it commits or rolls back with the manifest."""
+# ---- bindings (tenant-config ticket 05) ----------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class ConnectionFacts:
+    """What a binding's check reads of one of the tenant's connections."""
+
+    id: uuid.UUID
+    connector_key: str
+    connector_major: int
+    scopes: tuple[str, ...]
+    owning_workspace_id: uuid.UUID
+    name: str
+
+
+@dataclass(frozen=True, slots=True)
+class BindingSetRow:
+    """One `binding_set` row of `platform.config_versions`."""
+
+    id: uuid.UUID
+    status: str
+    version_no: int
+    document: Any
+    workspace_id: uuid.UUID
+    proposed_by: uuid.UUID
+    decided_at: datetime | None
+
+
+class BindingTx(ArtifactTx, Protocol):
+    """What the bindings read beyond the envelope, in one transaction under the
+    caller's tenant (RLS)."""
 
     async def root_version(self, version_id: uuid.UUID) -> RootVersion | None:
         """The version and its artifact's kind, the artifact row read `FOR
@@ -220,13 +256,46 @@ class RunManifestTx(ArtifactTx, Protocol):
         version, or a soft-deleted artifact."""
         ...
 
-    async def definition_manifest(self, definition_hash: str) -> dict[str, Any] | None:
-        """The body of `studio.definition_manifests` under this hash."""
-        ...
-
     async def pinned_versions(self, version_id: uuid.UUID) -> list[uuid.UUID]:
         """The `to_version_id` of each `artifact` row of the version's
         where-used index: the one source of a sealed root's closure versions."""
+        ...
+
+    async def connections(self, ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, ConnectionFacts]:
+        """The tenant's connections among `ids`, deleted ones excluded."""
+        ...
+
+    async def principal_status(self, ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, bool]:
+        """For each id that is a member or a service principal of the tenant,
+        whether it is active; another company's is absent."""
+        ...
+
+    async def binding_set(self, artifact_id: uuid.UUID, status: str) -> BindingSetRow | None:
+        """The artifact's one `approved` or one `proposed` Binding set."""
+        ...
+
+    async def binding_sets_using(self, connection_id: uuid.UUID) -> list[uuid.UUID]:
+        """The artifacts, not soft-deleted, whose `approved` Binding set has
+        `connection_id` as a value (tenant-config R3.7)."""
+        ...
+
+
+class BindingStore(Protocol):
+    def transaction(self, context: AccessContext) -> AbstractAsyncContextManager[BindingTx]: ...
+
+    def for_tenant(self, tenant_id: uuid.UUID) -> AbstractAsyncContextManager[BindingTx]:
+        """A transaction bound to the tenant alone, for a question asked on
+        behalf of a run or a recorded decision rather than a person."""
+        ...
+
+
+class RunManifestTx(BindingTx, Protocol):
+    """What `RunManifestBuilder` asks of the caller's transaction beyond the
+    envelope's own reads (tenant-config ticket 04): the same one, so the run
+    row the door writes after it commits or rolls back with the manifest."""
+
+    async def definition_manifest(self, definition_hash: str) -> dict[str, Any] | None:
+        """The body of `studio.definition_manifests` under this hash."""
         ...
 
     async def put_run_manifest(self, manifest_hash: str, body: dict[str, Any]) -> None:
@@ -235,7 +304,11 @@ class RunManifestTx(ArtifactTx, Protocol):
         ...
 
     async def put_run_manifest_keys(
-        self, manifest_hash: str, version_ids: Sequence[uuid.UUID]
+        self,
+        manifest_hash: str,
+        version_ids: Sequence[uuid.UUID],
+        config_version_id: uuid.UUID | None = None,
     ) -> None:
-        """One key row per version, `ON CONFLICT DO NOTHING`."""
+        """One key row per version, and one for the Binding set the manifest
+        pins (tenant-config R2.18, R7.4), `ON CONFLICT DO NOTHING`."""
         ...

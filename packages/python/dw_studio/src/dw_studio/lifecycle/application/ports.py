@@ -18,6 +18,7 @@ from typing import Protocol
 
 from dw_platform.application.access_context import AccessContext
 from dw_platform.domain.approval import ApprovalRequest
+from dw_studio.core.application.bindings import BindingVerdict
 from dw_studio.core.application.ports import ArtifactTx, Dependent, VersionRow
 from dw_studio.core.domain.artifacts import ClosureItem
 
@@ -87,3 +88,14 @@ class SubmitCheck(Protocol):
     async def __call__(
         self, tx: ArtifactTx, version: VersionRow, closure: Sequence[ClosureItem]
     ) -> SubmitRefusal | None: ...
+
+
+class PublishBindingsCheck(Protocol):
+    """Whether a version's required bindings all have approved values
+    (agent-lifecycle R2.11, R5.10; tenant-config R7.2), asked at the submit and
+    by the publish handler; `BindingStatus.satisfied` answers it at the
+    composition root (tenant-config ticket 05). The submit and the handler
+    that ask it are agent-lifecycle ticket 04's. Its own transaction, under the
+    tenant alone: the handler has no caller. Raising stops the publish."""
+
+    async def satisfied(self, tenant_id: uuid.UUID, version_id: uuid.UUID) -> BindingVerdict: ...

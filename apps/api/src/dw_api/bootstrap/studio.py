@@ -30,10 +30,20 @@ types built here, `build_node_registry()`, and the platform layer of the tool
 register: the runtime seam's when it is wired, the shipped specs otherwise,
 as the worker reads them. Its publish hook activates trigger subscriptions
 through `NoTriggerSubscriptions` until workflow-triggers/01 wires its own.
+
+Bindings (tenant-config ticket 05): `binding_set`, Studio's one kind of
+`ConfigKindRegistry`, with the W1 value checks of `platform_binding_types`
+over the process's one `ConnectionUsability`; `ConfigVersionService` behind
+the bindings routes; `ConfigVersionDecisions` as the `config.version` guard of
+the approval flow (its prefix is strict in `bootstrap.runtime`); the door's
+`BindingPins`; `BindingStatus`, the `PublishBindingsCheck` agent-lifecycle/04
+asks; and the connections' dependents answered from approved Binding sets.
+Without the connection rule (no database) Studio is not built at all.
 """
 
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
@@ -49,8 +59,24 @@ from dw_agent_runtime.wflite.validate import ToolSpecLookup
 from dw_api.bootstrap.paths import TOOL_SPECS_DIR, release_manifest_ref
 from dw_api.settings import ApiSettings
 from dw_kernel.ports import SystemClock, Uuid7Generator
+from dw_platform.adapters.persistence.config_versions_repo import SqlConfigVersionStore
+from dw_platform.application.config_versions import (
+    CONFIG_VERSION,
+    ConfigKindRegistry,
+    ConfigVersionDecisions,
+    ConfigVersionService,
+)
 from dw_studio.core.adapters.artifact_store import SqlArtifactStore
+from dw_studio.core.adapters.run_bindings import SqlRunBindings
 from dw_studio.core.adapters.run_manifest_store import SqlRunManifestStore
+from dw_studio.core.application.bindings import (
+    BindingConnectionDependents,
+    BindingPins,
+    BindingSets,
+    BindingsReader,
+    BindingStatus,
+    platform_binding_types,
+)
 from dw_studio.core.application.registry import ArtifactKindEntry, ArtifactKindRegistry
 from dw_studio.core.application.run_manifests import RunManifestBuilder
 from dw_studio.core.application.run_request import RunLaneRegistry, RunRequestService
@@ -108,6 +134,12 @@ class StudioContainer:
     # issues a lane its requester.
     run_requests: RunRequestService
     run_lanes: RunLaneRegistry
+    # tenant-config 05: proposals of a Binding set and their reads; the
+    # publish check agent-lifecycle/04 asks; a run's pinned connections.
+    config_versions: ConfigVersionService
+    bindings: BindingsReader
+    binding_status: BindingStatus
+    run_bindings: SqlRunBindings
 
 
 def build_studio(
@@ -117,7 +149,13 @@ def build_studio(
     kinds: Sequence[ArtifactKindEntry] | None = None,
     segments: Mapping[str, str] | None = None,
 ) -> StudioContainer | None:
-    if container.engine is None or not settings.database_url or container.run_control is None:
+    if (
+        container.engine is None
+        or not settings.database_url
+        or container.run_control is None
+        or container.connection_usability is None
+        or container.connections is None
+    ):
         return None
     # From the runtime seam's when it is wired; the database's own otherwise,
     # because the envelope needs Postgres and nothing else (R6.1).
@@ -154,9 +192,25 @@ def build_studio(
     run_manifests = RunManifestBuilder(registry, release_manifest_ref())
     run_lanes = RunLaneRegistry(_RUN_LANES)
 
+    usability = container.connection_usability
+    binding_types = platform_binding_types(usability)
+    config_kinds = ConfigKindRegistry([BindingSets(store, registry, binding_types, usability)])
+    config_store = SqlConfigVersionStore(sessions)
+    if container.approval_flow is not None:
+        # Asked before a `config.version` decision is written (R8.9, R8.17).
+        container.approval_flow.decision_guards = {
+            **container.approval_flow.decision_guards,
+            CONFIG_VERSION: ConfigVersionDecisions(config_kinds, config_store),
+        }
+    # A connection is in use while an approved Binding set binds it (R3.7).
+    container.connections = dataclasses.replace(
+        container.connections, dependents_port=BindingConnectionDependents(store, registry)
+    )
+
     # Imported here, not at the top: the routes import the container's
     # dependencies, which import this package.
     from dw_api.routes.v1.studio_artifacts import router as artifacts_router
+    from dw_api.routes.v1.studio_bindings import router as bindings_router
     from dw_api.routes.v1.studio_lifecycle import lifecycle_router
 
     return StudioContainer(
@@ -164,11 +218,22 @@ def build_studio(
         artifacts=artifacts,
         lifecycle=lifecycle,
         segments=segments,
-        routers=(artifacts_router, lifecycle_router(segments)),
+        routers=(artifacts_router, bindings_router, lifecycle_router(segments)),
         run_manifests=run_manifests,
         pinned_manifests=SqlRunManifestStore,
         run_requests=RunRequestService(
-            store, registry, run_manifests, _RUN_KEYS, run_lanes, clock, ids
+            store,
+            registry,
+            run_manifests,
+            _RUN_KEYS,
+            run_lanes,
+            clock,
+            ids,
+            bindings=BindingPins(binding_types, usability),
         ),
         run_lanes=run_lanes,
+        config_versions=ConfigVersionService(config_kinds, config_store, clock, ids),
+        bindings=BindingsReader(store, registry),
+        binding_status=BindingStatus(store, binding_types),
+        run_bindings=SqlRunBindings(sessions),
     )

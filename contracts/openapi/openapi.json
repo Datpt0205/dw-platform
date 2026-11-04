@@ -826,6 +826,296 @@
         "title": "AutonomyRequest",
         "type": "object"
       },
+      "BindingDeclView": {
+        "properties": {
+          "connector_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connector Key"
+          },
+          "connector_major": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connector Major"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "has_default": {
+            "default": false,
+            "title": "Has Default",
+            "type": "boolean"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "required": {
+            "title": "Required",
+            "type": "boolean"
+          },
+          "schema": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema"
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "required",
+          "description"
+        ],
+        "title": "BindingDeclView",
+        "type": "object"
+      },
+      "BindingItemView": {
+        "properties": {
+          "approved": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BoundValueView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "declaration": {
+            "$ref": "#/components/schemas/BindingDeclView"
+          },
+          "proposal_open": {
+            "title": "Proposal Open",
+            "type": "boolean"
+          },
+          "proposed": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BoundValueView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "enum": [
+              "unset",
+              "set",
+              "default"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "declaration",
+          "state",
+          "approved",
+          "proposed",
+          "proposal_open"
+        ],
+        "title": "BindingItemView",
+        "type": "object"
+      },
+      "BindingProposalBody": {
+        "additionalProperties": false,
+        "properties": {
+          "values": {
+            "additionalProperties": true,
+            "description": "Each binding's value by name: a connection's or a principal's id, a variable's JSON value.",
+            "title": "Values",
+            "type": "object"
+          }
+        },
+        "required": [
+          "values"
+        ],
+        "title": "BindingProposalBody",
+        "type": "object"
+      },
+      "BindingProposalView": {
+        "properties": {
+          "approval_id": {
+            "format": "uuid",
+            "title": "Approval Id",
+            "type": "string"
+          },
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "base_version": {
+            "title": "Base Version",
+            "type": "integer"
+          },
+          "document_hash": {
+            "title": "Document Hash",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "proposed_at": {
+            "format": "date-time",
+            "title": "Proposed At",
+            "type": "string"
+          },
+          "proposed_by": {
+            "format": "uuid",
+            "title": "Proposed By",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "version_no": {
+            "title": "Version No",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "artifact_id",
+          "version_no",
+          "status",
+          "base_version",
+          "document_hash",
+          "approval_id",
+          "proposed_by",
+          "proposed_at"
+        ],
+        "title": "BindingProposalView",
+        "type": "object"
+      },
+      "BindingSetRef": {
+        "properties": {
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "proposed_by": {
+            "format": "uuid",
+            "title": "Proposed By",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "version_no": {
+            "title": "Version No",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "version_no",
+          "status",
+          "proposed_by",
+          "decided_at"
+        ],
+        "title": "BindingSetRef",
+        "type": "object"
+      },
+      "BindingsView": {
+        "properties": {
+          "approved": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BindingSetRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "base_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The latest sealed version the values are checked against; none yet.",
+            "title": "Base Version"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BindingItemView"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "proposal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BindingSetRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "artifact_id",
+          "base_version",
+          "approved",
+          "proposal",
+          "items"
+        ],
+        "title": "BindingsView",
+        "type": "object"
+      },
       "Body_submit_feedback_api_v1_feedback_post": {
         "properties": {
           "images": {
@@ -972,6 +1262,55 @@
           "memberships"
         ],
         "title": "BootstrapResponse",
+        "type": "object"
+      },
+      "BoundValueView": {
+        "description": "A value as the caller may see it: a connection they do not read is its\nid alone, with `connection_hidden`.",
+        "properties": {
+          "connection_hidden": {
+            "default": false,
+            "title": "Connection Hidden",
+            "type": "boolean"
+          },
+          "connection_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connection Id"
+          },
+          "connection_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connection Name"
+          },
+          "connector_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connector Key"
+          },
+          "value": {
+            "title": "Value"
+          }
+        },
+        "title": "BoundValueView",
         "type": "object"
       },
       "CancelResult": {
@@ -15424,6 +15763,221 @@
           }
         },
         "summary": "Update Artifact",
+        "tags": [
+          "studio"
+        ]
+      }
+    },
+    "/api/v1/studio/artifacts/{artifact_id}/bindings": {
+      "get": {
+        "operationId": "read_bindings_api_v1_studio_artifacts__artifact_id__bindings_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BindingsView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Read Bindings",
+        "tags": [
+          "studio"
+        ]
+      }
+    },
+    "/api/v1/studio/artifacts/{artifact_id}/bindings/proposals": {
+      "post": {
+        "operationId": "propose_bindings_api_v1_studio_artifacts__artifact_id__bindings_proposals_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BindingProposalBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BindingProposalView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Propose Bindings",
+        "tags": [
+          "studio"
+        ]
+      }
+    },
+    "/api/v1/studio/artifacts/{artifact_id}/bindings/proposals/{config_version_id}/withdraw": {
+      "post": {
+        "operationId": "withdraw_bindings_proposal_api_v1_studio_artifacts__artifact_id__bindings_proposals__config_version_id__withdraw_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "config_version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Config Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BindingProposalView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Withdraw Bindings Proposal",
         "tags": [
           "studio"
         ]

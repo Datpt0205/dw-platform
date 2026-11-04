@@ -284,6 +284,35 @@ class PinnedManifest:
     unread_keys: tuple[UUID, ...] = ()
 
 
+@dataclass(frozen=True, slots=True)
+class BoundConnection:
+    """The connection a run's manifest pinned under one binding name, with
+    what `connection_usable` is asked with at the egress call: the run's
+    workspace, the principal it acts for (`coalesce(run_as_principal_id,
+    requested_by)` of its row) and when it was requested (tenant-config R7.5;
+    ADR-0109 decision 6; V4.35). Never a secret or its version."""
+
+    connection_id: UUID
+    workspace_id: UUID
+    principal_id: UUID
+    run_requested_at: datetime
+
+
+class RunBindingsPort(Protocol):
+    """What a run's binding names resolve to, read from its own pinned
+    manifest under the tenant's RLS, never from the Binding set in force
+    (tenant-config ticket 05 step 9). Declared here beside `RunManifestPort`,
+    satisfied by `dw_studio`; connections-and-vault/05's action handler is
+    its reader."""
+
+    async def connection(
+        self, tenant_id: UUID, run_id: UUID, binding_name: str
+    ) -> BoundConnection | None:
+        """None for another tenant's run, a run without a manifest, or a name
+        its manifest does not bind to a connection."""
+        ...
+
+
 class RunManifestPort(Protocol):
     """What a Studio run reads its manifest through when it runs and when it
     resumes, in any process (ADR-0109 decision 7, amended 2026-11-03).

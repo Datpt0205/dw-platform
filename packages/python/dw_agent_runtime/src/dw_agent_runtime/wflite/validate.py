@@ -162,7 +162,8 @@ STEP_POLICY_KEYS: Final = frozenset({"retry", "timeout_s", "on_error", ERROR_LAN
 # approval's empty lane may be left out, as wf-ai's wire leaves `rejected`.
 PACK_RULES: Final = PathRules(
     required_document_keys=frozenset({"key", "version"}),
-    refused_document_keys=frozenset(),
+    # A pack's values come from its configuration, never a Binding set.
+    refused_document_keys=frozenset({"bindings"}),
     required_step_keys=frozenset(),
     refused_step_keys=STEP_POLICY_KEYS,
     every_port_lane=False,

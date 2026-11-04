@@ -237,6 +237,10 @@ async def test_a_group_mounted_without_studio_answers_otherwise() -> None:
         pinned_manifests=cast(Any, None),
         run_requests=cast(Any, None),
         run_lanes=cast(Any, None),
+        config_versions=cast(Any, None),
+        bindings=cast(Any, None),
+        binding_status=cast(Any, None),
+        run_bindings=cast(Any, None),
     )
     app = create_app(container)
     transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)

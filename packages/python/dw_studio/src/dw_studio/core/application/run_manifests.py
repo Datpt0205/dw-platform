@@ -14,24 +14,37 @@ The closure has one source per root. A sealed root: its definition manifest's
 functions, over the content read at receipt, so the provisional hash is what
 the seal gives the same content and nothing is written to the draft, the
 where-used index or the definition manifests.
+
+The root's bindings (ticket 05): what the root and the versions it pins
+declare is handed to the caller's `pin`, before anything is written; the door
+checks the approved Binding set there and refuses, or answers what the
+manifest's `bindings` section pins, and the Binding set gets a key row of its
+own (`config_version_id`, R2.18, R7.4).
 """
 
 from __future__ import annotations
 
 import uuid
+from collections.abc import Awaitable, Callable, Sequence
 from typing import Any, Final
 
 from dw_kernel.canonical import content_hash
 from dw_kernel.errors import ConfigError, ConflictError, NotFoundError
 from dw_kernel.run_mode import RunMode
+from dw_studio.core.application.bindings import PinnedBindings
 from dw_studio.core.application.ports import RunManifestTx
 from dw_studio.core.application.registry import ArtifactKindRegistry
 from dw_studio.core.application.service import closure_of
 from dw_studio.core.domain.artifacts import Stage, definition_body, definition_hash
+from dw_studio.core.domain.bindings import BindingDecl, merge, parse_declarations
 from dw_studio.core.domain.run_manifest import RUN_MANIFEST_SCHEMA, RunManifest
 
 # R6.8 (TC32): every root's runs checkpoint synchronously.
 ENGINE: Final[dict[str, Any]] = {"durability": "sync"}
+
+Pin = Callable[[Sequence[BindingDecl]], Awaitable[PinnedBindings | None]]
+"""Given what the root's closure declares, the bindings the run pins, or a
+refusal raised before the manifest is written (the door's `BindingPins`)."""
 
 
 class RunManifestBuilder:
@@ -39,7 +52,14 @@ class RunManifestBuilder:
         self.registry = registry
         self.release_manifest_ref = release_manifest_ref
 
-    async def build(self, uow: RunManifestTx, root_version_id: uuid.UUID, run_mode: RunMode) -> str:
+    async def build(
+        self,
+        uow: RunManifestTx,
+        root_version_id: uuid.UUID,
+        run_mode: RunMode,
+        *,
+        pin: Pin | None = None,
+    ) -> str:
         """The manifest's hash, its row and its key rows written in `uow`."""
         found = await uow.root_version(root_version_id)
         if found is None or self.registry.get(found.kind) is None:
@@ -72,6 +92,12 @@ class RunManifestBuilder:
                 )
             definition = stored
             pinned = await uow.pinned_versions(version.id)
+        documents = await uow.version_documents(pinned) if pinned else {}
+        declared = merge(
+            [parse_declarations(version.document).items]
+            + [parse_declarations(documents[v]).items for v in pinned if v in documents]
+        )
+        bindings = None if pin is None else await pin(list(declared.items.values()))
         manifest = RunManifest.model_validate(
             {
                 "schema": RUN_MANIFEST_SCHEMA,
@@ -87,10 +113,15 @@ class RunManifestBuilder:
                 },
                 "closure": definition["closure"],
                 "engine": ENGINE,
+                "bindings": None if bindings is None else bindings.as_section(),
             }
         )
         body = manifest.as_body()
         manifest_hash = content_hash(body)
         await uow.put_run_manifest(manifest_hash, body)
-        await uow.put_run_manifest_keys(manifest_hash, list(dict.fromkeys([version.id, *pinned])))
+        await uow.put_run_manifest_keys(
+            manifest_hash,
+            list(dict.fromkeys([version.id, *pinned])),
+            None if bindings is None else bindings.config_version_id,
+        )
         return manifest_hash

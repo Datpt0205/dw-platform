@@ -100,3 +100,9 @@ class WorkflowDocument(_Strict):
     variables: list[Variable] = Field(default_factory=list)
     decision_classes: list[DecisionClassDecl] = Field(default_factory=list)
     work_kinds: list[WorkKindDecl] = Field(default_factory=list)
+    # What a Studio workflow needs bound (a connection, a variable, a
+    # principal), by name: Studio's one `bindings[]` shape checks each entry
+    # (tenant-config ticket 05), and a pack, which has no Binding set, refuses
+    # the key (`PACK_RULES`). Never dumped: a document's text is the
+    # envelope's, and a dump that grew the key would change every stored one.
+    bindings: list[dict[str, Any]] = Field(default_factory=list, exclude=True)

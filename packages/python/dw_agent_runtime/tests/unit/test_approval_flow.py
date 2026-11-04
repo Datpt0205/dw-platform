@@ -9,8 +9,9 @@ from dw_agent_runtime.adapters.run_store import RunRecord, RunStatus
 from dw_agent_runtime.approval_flow import (
     CHANNEL_DECIDED_ACTION,
     DECIDED_ACTION,
+    ApprovalDecisionGuard,
     ApproveAndResumeService,
-    DecisionGuard,
+    RuleGuard,
 )
 from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.run_control import HaltReason, RunControlDoor, RunHaltedError
@@ -22,7 +23,12 @@ from dw_kernel.ports import FixedClock, SequentialIdGenerator
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.authorization import ApprovalAudience, ScopeAuthorizationService
 from dw_platform.application.ports import PlatformUnitOfWork
-from dw_platform.domain.approval import ApprovalDecision, ApprovalRequest, ApprovalStatus
+from dw_platform.domain.approval import (
+    ApprovalDecision,
+    ApprovalRequest,
+    ApprovalStatus,
+    ProposedDecision,
+)
 from dw_platform.domain.audit import AuditEvent
 from dw_platform.domain.outbox import OutboxEvent
 
@@ -212,7 +218,7 @@ def make_service(
     run_status: RunStatus = RunStatus.WAITING_APPROVAL,
     run_workspace: uuid.UUID = WORKSPACE,
     outbox: FakeOutbox | None = None,
-    guards: dict[str, DecisionGuard] | None = None,
+    guards: dict[str, ApprovalDecisionGuard] | None = None,
     audit: FakeAudit | None = None,
     control: OpenRunControl | None = None,
 ) -> ApproveAndResumeService:
@@ -259,6 +265,16 @@ async def decide(
         context=make_context(principal),
         authorization=ScopeAuthorizationService(),
     )
+
+
+async def test_a_requester_deciding_a_strict_request_meets_second_person_required() -> None:
+    """tenant-config R8.8 (TC16): one code for every type under a strict
+    prefix, a held memory's and a configuration version's alike."""
+    for approval_type, prefix in (("memory.review", "memory."), ("config.version", "config.")):
+        service = make_service(make_request(approval_type), frozenset({prefix}))
+        with pytest.raises(ConflictError) as caught:
+            await decide(service, REQUESTER, "ok")
+        assert caught.value.details["reason_code"] == "second_person_required"
 
 
 async def test_strict_type_rejects_self_approval() -> None:
@@ -870,8 +886,36 @@ async def test_a_decision_that_resumes_a_run_announces_nothing() -> None:
     assert outbox.events == []
 
 
-def _refuse(request: ApprovalRequest, context: AccessContext) -> None:
+def _refuse_rule(request: ApprovalRequest, context: AccessContext) -> None:
     raise PermissionDeniedError("not cleared for this approval")
+
+
+_refuse = RuleGuard(_refuse_rule)
+
+
+class _Seen:
+    """A guard that records the decision it was shown."""
+
+    def __init__(self) -> None:
+        self.seen: list[ProposedDecision] = []
+
+    async def check(
+        self, request: ApprovalRequest, decision: ProposedDecision, context: AccessContext
+    ) -> None:
+        self.seen.append(decision)
+
+
+async def test_the_guard_is_shown_the_decision_about_to_be_made() -> None:
+    """tenant-config ticket 05 step 5: an async guard sees approve or reject
+    and the comment, so it may ask more of an approval."""
+    guard = _Seen()
+    service = make_service(
+        make_request("memory.review"), frozenset(), guards={"memory.review": guard}
+    )
+
+    await decide(service, APPROVER, "ok")
+
+    assert guard.seen == [ProposedDecision(approve=True, comment="ok")]
 
 
 async def test_a_guard_registered_for_the_type_can_refuse_and_nothing_is_recorded() -> None:
@@ -1102,7 +1146,7 @@ async def _refused(service: ApproveAndResumeService, principal: uuid.UUID, comme
 
 async def test_a_refused_decision_writes_no_audit() -> None:
     cases: list[
-        tuple[ApprovalRequest, frozenset[str], uuid.UUID, str, dict[str, DecisionGuard]]
+        tuple[ApprovalRequest, frozenset[str], uuid.UUID, str, dict[str, ApprovalDecisionGuard]]
     ] = [
         # Strict: the requester, then a missing comment.
         (make_request("sales_chat.email_send"), frozenset({"sales_chat."}), REQUESTER, "ok", {}),

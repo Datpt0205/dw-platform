@@ -22,6 +22,12 @@ the door verified, never from the request:
   decision 5), never `authz.require`, which reads the context's workspace
   only and lets `platform_admin` through.
 
+- the run's bindings (tenant-config ticket 05; R7.3, R7.4, R7.6): the
+  artifact's approved Binding set checked against the root version's own
+  declarations and its connections asked for the run's principal at the run's
+  workspace, by `BindingPins`, before the manifest is written; a refusal
+  (`binding_unset`, `binding_degraded`) leaves no manifest and no run row.
+
 A request repeated under the same `request_key` gets the first run back, and a
 different request under it is refused (R3.20). Whether the run-as principal
 is still active is the dispatch's question (R5.15), not the door's.
@@ -30,7 +36,7 @@ is still active is the dispatch's question (R5.15), not the door's.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass, field
 from types import MappingProxyType
@@ -42,10 +48,13 @@ from dw_kernel.ports import IdGenerator, UtcClock
 from dw_kernel.run_mode import RunMode
 from dw_platform.application.access_context import AccessContext
 from dw_platform.domain.audit import AuditEvent, lane_audit_event, system_actor, system_actor_label
+from dw_studio.core.application.bindings import BindingPins, PinnedBindings
 from dw_studio.core.application.ports import RootVersion, RunManifestTx
 from dw_studio.core.application.registry import ArtifactKindRegistry
 from dw_studio.core.application.run_manifests import RunManifestBuilder
+from dw_studio.core.application.service import document_problems
 from dw_studio.core.domain.artifacts import DocumentInvalidError, Stage
+from dw_studio.core.domain.bindings import BindingDecl
 
 RESOURCE: Final = "worker_run"
 STARTED: Final = "run.started"
@@ -243,8 +252,11 @@ class RunRequestService:
         lanes: RunLaneRegistry,
         clock: UtcClock,
         ids: IdGenerator,
+        *,
+        bindings: BindingPins,
     ) -> None:
         self.store = store
+        self.bindings = bindings
         self.registry = registry
         self.manifests = manifests
         # (artifact_kind, trigger_kind) -> the key a person must hold to ask.
@@ -327,10 +339,21 @@ class RunRequestService:
         if draft and rule.run_mode == "simulate":
             # R3.11: the kind's whole check, once, on the content read under
             # the lock, the way a submit runs it.
-            problems = list(entry.validate(version.document))
+            problems = document_problems(entry, version.document)
             if problems:
                 raise DocumentInvalidError("the draft is not valid", problems)
-        manifest_hash = await self.manifests.build(tx, version.id, rule.run_mode)
+        async def pin(decls: Sequence[BindingDecl]) -> PinnedBindings | None:
+            return await self.bindings.pin(
+                tx,
+                decls,
+                version.artifact_id,
+                simulate=rule.run_mode == "simulate",
+                tenant_id=parties.tenant_id,
+                workspace_id=workspace_id,
+                principal_id=parties.run_as,
+            )
+
+        manifest_hash = await self.manifests.build(tx, version.id, rule.run_mode, pin=pin)
         run = QueuedRun(
             id=self.ids.new_uuid(),
             workspace_id=workspace_id,

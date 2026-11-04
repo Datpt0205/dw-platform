@@ -128,8 +128,9 @@ class UsableContext:
     from the caller's verified run or review, never from a request body."""
 
     tenant_id: uuid.UUID
-    # The principal the run acts for (the run manifest's `principal`), or the
-    # person proposing a binding value; None is refused.
+    # The principal the run acts for (`coalesce(run_as_principal_id,
+    # requested_by)` of its run row, which `RunBindingsPort` reads; the manifest
+    # names none), or the person proposing a binding value; None is refused.
     principal_id: uuid.UUID | None
     # The run's workspace, or the workspace of the value under review.
     workspace_id: uuid.UUID

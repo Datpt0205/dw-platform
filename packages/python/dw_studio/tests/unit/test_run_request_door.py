@@ -40,6 +40,7 @@ from dw_studio.core.application.run_request import (
     RunLaneRegistry,
     RunRequestService,
 )
+from dw_studio.testing.bindings import unasked_pins
 
 pytestmark = pytest.mark.unit
 
@@ -236,6 +237,7 @@ def test_the_door_keeps_its_own_frozen_run_key_table() -> None:
         lanes=RunLaneRegistry(LANES),
         clock=SystemClock(),
         ids=Uuid7Generator(),
+        bindings=unasked_pins(),
     )
     keys[("fixture", "manual")] = "fixture.artifacts.run"
     assert ("fixture", "manual") not in door.run_keys

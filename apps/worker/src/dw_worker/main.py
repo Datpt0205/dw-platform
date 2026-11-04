@@ -76,6 +76,7 @@ from dw_platform.adapters.persistence.channel_inbound import (
     SqlChannelUpdateQueue,
 )
 from dw_platform.adapters.persistence.channel_preferences import SqlChannelPreferences
+from dw_platform.adapters.persistence.config_versions_repo import SqlConfigVersionStore
 from dw_platform.adapters.persistence.connections_repo import SqlConnectionStore
 from dw_platform.adapters.persistence.control_switches_repo import SqlControlSwitchRepository
 from dw_platform.adapters.persistence.digital_workers_repo import (
@@ -114,6 +115,7 @@ from dw_platform.application.access_context import AccessContext
 from dw_platform.application.approval_codes import ApprovalSubjectVersions, DecisionCodeKey
 from dw_platform.application.authorization import ScopeAuthorizationService
 from dw_platform.application.channel_access import LinkedUserAccess
+from dw_platform.application.config_versions import CONFIG_PREFIX, ConfigSettlement
 from dw_platform.application.connection_admin import CONNECTIONS_ENABLE, ConnectionEnableSettler
 from dw_platform.application.control_switches import LIFECYCLE_PREFIX, UnfreezeSettler
 from dw_platform.application.decision_gate import DW_DECISION, DwDecisionAdmission
@@ -141,6 +143,10 @@ from dw_worker.composition import (
 )
 from dw_worker.consumers import ConsumerRegistry
 from dw_worker.consumers.channel_delivery import build_channel_delivery_consumer
+from dw_worker.consumers.config_versions import (
+    CONFIG_VERSION_DECIDED,
+    build_config_version_handler,
+)
 from dw_worker.consumers.connections import CONNECTIONS_ENABLE_DECIDED, build_enable_handler
 from dw_worker.consumers.control_switches import (
     LIFECYCLE_UNFREEZE_DECIDED,
@@ -267,6 +273,9 @@ def build_channel_decision_command(
     # component, takes a second person, here as in the API (agent-lifecycle
     # R7.11; D11).
     flow.strict_approval_prefixes |= {LIFECYCLE_PREFIX}
+    # A configuration version takes a second person, here as in the API
+    # (tenant-config R8.8); chat decides none, having no subject version for it.
+    flow.strict_approval_prefixes |= {CONFIG_PREFIX}
     secret = settings.approval_code_secret.get_secret_value()
     return ChannelDecisionCommand(
         ChannelApprovalDecisionService(
@@ -520,6 +529,12 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
         handlers[CONNECTIONS_ENABLE_DECIDED] = build_enable_handler(
             ConnectionEnableSettler(
                 store=SqlConnectionStore(sessions), clock=clock, id_generator=ids
+            )
+        )
+        # A decided proposal of a tenant's configuration version (tenant-config R8.10).
+        handlers[CONFIG_VERSION_DECIDED] = build_config_version_handler(
+            ConfigSettlement(
+                store=SqlConfigVersionStore(sessions), clock=clock, id_generator=ids
             )
         )
         # A tenant whose owners fell below two (tenant-rbac R3.12).

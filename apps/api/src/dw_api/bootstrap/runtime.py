@@ -27,7 +27,7 @@ from dw_agent_runtime.adapters.wflite_host import (
     load_handoff_copy,
     register_workflows,
 )
-from dw_agent_runtime.approval_flow import ApproveAndResumeService
+from dw_agent_runtime.approval_flow import ApproveAndResumeService, RuleGuard
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.model.copy import load_runtime_copy
 from dw_agent_runtime.model.profiles import ModelProfileRegistry
@@ -73,6 +73,7 @@ from dw_memory.policy import MemoryWritePolicy
 from dw_memory.review import MEMORY_REVIEW, require_clearance_for_review
 from dw_memory.service import MemoryService
 from dw_observability.telemetry import TelemetryPort
+from dw_platform.application.config_versions import CONFIG_PREFIX
 from dw_platform.application.decision_gate import (
     DW_DECISION,
     DwDecisionAdmission,
@@ -348,7 +349,7 @@ def build_runtime(
         # prefixes with `|=` where it is wired.
         strict_approval_prefixes=frozenset({"memory.", DW_AUTONOMY_PREFIX, DW_WORKFLOW_PREFIX}),
         # And nobody decides on a memory they are not cleared to read.
-        decision_guards={MEMORY_REVIEW: require_clearance_for_review},
+        decision_guards={MEMORY_REVIEW: RuleGuard(require_clearance_for_review)},
         # A Digital Worker's decision is decided by its Validator or Business
         # Owner as they are at that moment, and an edit keeps to the
         # proposal's schema and locked fields (digital-worker R5.3, R5.4).
@@ -365,6 +366,9 @@ def build_runtime(
         run_graphs=tenant_graphs,
         telemetry=telemetry,
     )
+    # A configuration version is approved by a second person, with a reason
+    # (tenant-config R8.8); its guard is Studio's, registered where Studio is.
+    approval_flow.strict_approval_prefixes |= {CONFIG_PREFIX}
 
     seam = RuntimeSeam(
         session_factory=session_factory,

@@ -1988,6 +1988,57 @@ export interface paths {
         patch: operations["update_artifact_api_v1_studio_artifacts__artifact_id__patch"];
         trace?: never;
     };
+    "/api/v1/studio/artifacts/{artifact_id}/bindings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Bindings */
+        get: operations["read_bindings_api_v1_studio_artifacts__artifact_id__bindings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/studio/artifacts/{artifact_id}/bindings/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Propose Bindings */
+        post: operations["propose_bindings_api_v1_studio_artifacts__artifact_id__bindings_proposals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/studio/artifacts/{artifact_id}/bindings/proposals/{config_version_id}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw Bindings Proposal */
+        post: operations["withdraw_bindings_proposal_api_v1_studio_artifacts__artifact_id__bindings_proposals__config_version_id__withdraw_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/studio/artifacts/{artifact_id}/dependents": {
         parameters: {
             query?: never;
@@ -2735,6 +2786,125 @@ export interface components {
             /** Level */
             level: string;
         };
+        /** BindingDeclView */
+        BindingDeclView: {
+            /** Connector Key */
+            connector_key?: string | null;
+            /** Connector Major */
+            connector_major?: number | null;
+            /** Description */
+            description: string;
+            /**
+             * Has Default
+             * @default false
+             */
+            has_default: boolean;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Required */
+            required: boolean;
+            /** Schema */
+            schema?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /** BindingItemView */
+        BindingItemView: {
+            approved: components["schemas"]["BoundValueView"] | null;
+            declaration: components["schemas"]["BindingDeclView"];
+            /** Proposal Open */
+            proposal_open: boolean;
+            proposed: components["schemas"]["BoundValueView"] | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "unset" | "set" | "default";
+        };
+        /** BindingProposalBody */
+        BindingProposalBody: {
+            /**
+             * Values
+             * @description Each binding's value by name: a connection's or a principal's id, a variable's JSON value.
+             */
+            values: {
+                [key: string]: unknown;
+            };
+        };
+        /** BindingProposalView */
+        BindingProposalView: {
+            /**
+             * Approval Id
+             * Format: uuid
+             */
+            approval_id: string;
+            /**
+             * Artifact Id
+             * Format: uuid
+             */
+            artifact_id: string;
+            /** Base Version */
+            base_version: number;
+            /** Document Hash */
+            document_hash: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Proposed At
+             * Format: date-time
+             */
+            proposed_at: string;
+            /**
+             * Proposed By
+             * Format: uuid
+             */
+            proposed_by: string;
+            /** Status */
+            status: string;
+            /** Version No */
+            version_no: number;
+        };
+        /** BindingSetRef */
+        BindingSetRef: {
+            /** Decided At */
+            decided_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Proposed By
+             * Format: uuid
+             */
+            proposed_by: string;
+            /** Status */
+            status: string;
+            /** Version No */
+            version_no: number;
+        };
+        /** BindingsView */
+        BindingsView: {
+            approved: components["schemas"]["BindingSetRef"] | null;
+            /**
+             * Artifact Id
+             * Format: uuid
+             */
+            artifact_id: string;
+            /**
+             * Base Version
+             * @description The latest sealed version the values are checked against; none yet.
+             */
+            base_version: number | null;
+            /** Items */
+            items: components["schemas"]["BindingItemView"][];
+            proposal: components["schemas"]["BindingSetRef"] | null;
+        };
         /** Body_submit_feedback_api_v1_feedback_post */
         Body_submit_feedback_api_v1_feedback_post: {
             /**
@@ -2803,6 +2973,26 @@ export interface components {
             principal_id: string;
             /** Subject */
             subject: string;
+        };
+        /**
+         * BoundValueView
+         * @description A value as the caller may see it: a connection they do not read is its
+         *     id alone, with `connection_hidden`.
+         */
+        BoundValueView: {
+            /**
+             * Connection Hidden
+             * @default false
+             */
+            connection_hidden: boolean;
+            /** Connection Id */
+            connection_id?: string | null;
+            /** Connection Name */
+            connection_name?: string | null;
+            /** Connector Key */
+            connector_key?: string | null;
+            /** Value */
+            value?: unknown;
         };
         /**
          * CancelResult
@@ -10874,6 +11064,137 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ArtifactView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    read_bindings_api_v1_studio_artifacts__artifact_id__bindings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BindingsView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    propose_bindings_api_v1_studio_artifacts__artifact_id__bindings_proposals_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BindingProposalBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BindingProposalView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    withdraw_bindings_proposal_api_v1_studio_artifacts__artifact_id__bindings_proposals__config_version_id__withdraw_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                artifact_id: string;
+                config_version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BindingProposalView"];
                 };
             };
             /** @description The request was refused */

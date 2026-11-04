@@ -22,7 +22,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
-from dw_agent_runtime.approval_flow import ApproveAndResumeService
+from dw_agent_runtime.approval_flow import ApproveAndResumeService, RuleGuard
 from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_kernel.errors import ConflictError, DomainError, NotFoundError, PermissionDeniedError
 from dw_kernel.ports import SystemClock, Uuid4Generator
@@ -130,7 +130,7 @@ async def lane(worker_db: DatabaseUrls) -> AsyncIterator[Lane]:
             clock=clock,
             id_generator=ids,
             strict_approval_prefixes=frozenset({"memory."}),
-            decision_guards={MEMORY_REVIEW: require_clearance_for_review},
+            decision_guards={MEMORY_REVIEW: RuleGuard(require_clearance_for_review)},
             run_control=OpenRunControl(),
         ),
         drain=SqlOutboxDrain(app, clock),
