@@ -22,9 +22,13 @@ left open waiting for it.
    once, in one subagent; its CRITICAL and HIGH findings are fixed (on
    delegation, with the recommendation), MEDIUMs go to the ticket's Comments.
    A ticket that adds no migration and no route gets the builder check only; one
-   that does gets the builder check and the boundary walk together. Gates run
-   ahead of the code, three or four at a time, so a ĐẠT ticket is always waiting
-   (Đạt, 2/11/2026).
+   that does gets the builder check and the boundary walk together. Every
+   `needs-triage` build ticket is gated now, not when the ĐẠT stock runs low:
+   one gate subagent per area (spec read once, tickets in order), four gate
+   lanes at a time beside the two build lanes, areas next in the build order
+   first; a gate lane never edits the ticket a build lane is on (Đạt, 4/11/2026,
+   replacing "three or four ahead" of 2/11/2026). Discovery research tickets get
+   a triage pass of their own, not a build gate.
 2. **Tests for every R and G of the ticket**, the G tests written first where
    the ticket says so, with a negative test for every row of its "Kiểm soát"
    (another tenant, a caller without the right).
