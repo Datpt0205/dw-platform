@@ -1,7 +1,8 @@
 # Mutation check of compliance-pdpl ticket 04: scripts/mutate.py runs this file
 # at the queue's close (.claude/rules/wave-close.md). The five mutations of the
-# ticket's step 3, (a)-(e), and one for its second criterion: a branch that
-# skips the floor when the root built none.
+# ticket's step 3, (a)-(e), (b2) for the register's refusal of the floor as a
+# pending step, and one for its second criterion: a branch that skips the
+# floor when the root built none.
 mutations:
   - name: (a) the send floor is not registered
     file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/wflite_host.py
@@ -9,16 +10,23 @@ mutations:
     new: "    pass"
     tests:
       - packages/python/dw_agent_runtime/tests/unit/test_tool_steps.py::test_the_register_holds_all_of_r2_6_and_nothing_waits
-  - name: (b) the send floor is pending again, not registered
-    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/wflite_host.py
-    old: |2-
-          steps.register("send_floor", ToolExecutor.step_send_floor)  # compliance-pdpl R3.1
-          return steps
-    new: |2-
-          steps._pending["send_floor"] = "compliance-pdpl/04"
-          return steps
+  # (b) since the fix of 2026-11-05: the register refuses the floor as a
+  # pending step when it is built (`NEVER_PENDING`), so no root starts and no
+  # message reaches a handler unasked.
+  - name: (b) the send floor is pending again
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py
+    old: "PENDING_STEPS: Final[Mapping[str, str]] = MappingProxyType({})"
+    new: 'PENDING_STEPS: Final[Mapping[str, str]] = MappingProxyType({"send_floor": "compliance-pdpl/04"})'
     tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_steps.py::test_the_register_holds_all_of_r2_6_and_nothing_waits
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_steps.py::test_build_tool_executor_takes_its_register_from_the_one_function
       - packages/python/dw_agent_runtime/tests/integration/test_send_floor_executor_db.py::test_a_send_without_consent_is_refused_at_the_executor
+  - name: (b2) the register accepts the send floor as pending
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py
+    old: "        never = sorted(set(pending) & NEVER_PENDING)"
+    new: "        never: list[str] = []"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_steps.py::test_a_register_with_the_send_floor_pending_is_refused_when_built
   - name: (c) the API's root builds its executor without the floor
     file: apps/api/src/dw_api/bootstrap/runtime.py
     old: "        send_admission=build_send_floor("

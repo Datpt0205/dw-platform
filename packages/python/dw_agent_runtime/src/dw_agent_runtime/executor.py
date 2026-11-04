@@ -8,7 +8,8 @@ record and audit. The gate steps, resolve to the Send floor, are registered in
 a `ToolSteps` by `adapters.wflite_host.build_tool_executor_steps`, the one
 builder both roots reach through `build_tool_executor`, and `_execute` runs
 only what it holds; the last five are the executor's own tail. A step not yet
-built is named in `PENDING_STEPS` with the ticket that registers it (H-3).
+built is named in `PENDING_STEPS` with the ticket that registers it (H-3);
+the Send floor never is (`NEVER_PENDING`).
 
 Each gate step takes the call's state (`ToolCall`) and either goes on (None),
 ends the call with a result (a sample outside `live`, a replay), or refuses by
@@ -237,6 +238,10 @@ GATE_STEPS: Final = TOOL_STEP_ORDER[: -len(TAIL_STEPS)]
 # Absent from the register, it decides nothing (spec, 25/10/2026). Empty since
 # agent-lifecycle/01 registered the control switch.
 PENDING_STEPS: Final[Mapping[str, str]] = MappingProxyType({})
+# A gate step that may never wait. A pending step decides nothing, so the Send
+# floor pending would let a message reach its handler unasked instead of being
+# refused `blocked:send_floor_unavailable` (compliance-pdpl R3.12, CP25).
+NEVER_PENDING: Final = frozenset({"send_floor"})
 
 # The `policy_decision` of a call the control-switch step refuses (ADR-0120
 # decision 6): a freeze and a kill by name, anything else the step cannot
@@ -318,17 +323,24 @@ class ToolResult:
 class ToolSteps:
     """The ordered register of a `ToolExecutor`'s gate steps (R2.6, R2.7).
 
-    `register` refuses a name outside R2.6, a name twice, a tail name and a
-    pending one; `seal`, run when the executor is built, refuses two steps out
-    of R2.6's order and a gate step neither registered nor pending. Each
-    refusal is a `ConfigError` naming the step, so a root with a wrong
-    register does not start."""
+    Construction refuses a pending name outside R2.6's gate steps and the
+    Send floor as pending (`NEVER_PENDING`); `register` refuses a name outside
+    R2.6, a name twice, a tail name and a pending one; `seal`, run when the
+    executor is built, refuses two steps out of R2.6's order and a gate step
+    neither registered nor pending. Each refusal is a `ConfigError` naming the
+    step, so a root with a wrong register does not start."""
 
     def __init__(self, *, pending: Mapping[str, str] = PENDING_STEPS) -> None:
         unknown = sorted(set(pending) - set(GATE_STEPS))
         if unknown:
             raise ConfigError(
                 "a pending step is not a gate step of R2.6", details={"step": unknown[0]}
+            )
+        never = sorted(set(pending) & NEVER_PENDING)
+        if never:
+            raise ConfigError(
+                "this step may never be pending: pending decides nothing",
+                details={"step": never[0]},
             )
         self._pending = dict(pending)
         self._steps: list[tuple[str, ToolStep]] = []

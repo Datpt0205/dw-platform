@@ -123,18 +123,19 @@ def test_the_control_switch_left_out_or_after_the_scopes_is_refused_naming_it() 
 
 
 def test_the_send_floor_is_a_registered_step_not_a_pending_one() -> None:
-    """R2.7, R2.8: the floor is registered; putting it back on the pending
-    list is refused."""
+    """R2.7, R2.8: the floor is registered."""
     assert "send_floor" in build_tool_executor_steps().names()
-    pending = {**PENDING_STEPS, "send_floor": "compliance-pdpl/04"}
-    steps = ToolSteps(pending=pending)
-    for name, step in build_tool_executor_steps().entries():
-        if name == "send_floor":
-            with pytest.raises(ConfigError) as refused:
-                steps.register(name, step)
-            assert refused.value.details["step"] == "send_floor"
-        else:
-            steps.register(name, step)
+    assert "send_floor" not in PENDING_STEPS
+
+
+def test_a_register_with_the_send_floor_pending_is_refused_when_built() -> None:
+    """compliance-pdpl R3.12 (CP25): a pending step decides nothing, so the
+    floor pending would let a message through unasked; the register refuses
+    it at construction, naming it, before any step is registered."""
+    with pytest.raises(ConfigError) as refused:
+        ToolSteps(pending={**PENDING_STEPS, "send_floor": "compliance-pdpl/04"})
+    assert refused.value.details["step"] == "send_floor"
+    assert "never be pending" in refused.value.message
 
 
 def _register(order: list[str], *, pending: dict[str, str] | None = None) -> ToolSteps:

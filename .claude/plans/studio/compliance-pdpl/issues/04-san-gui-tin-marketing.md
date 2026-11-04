@@ -159,3 +159,10 @@ Bản ghi đồng ý của gói là W2 (hai dòng của Ngoài phạm vi của s
   `build_wflite_runtime` như `dw_worker.main` gọi, không chạy `main`.
 - 2026-11-05 (agent): cho lúc đóng hàng đợi: `scripts/mutate.py` với `mutations/04.yaml`; integration đầy đủ. Không đo
   trễ: không thao tác hay trang nào đổi (chỉ test và một mảnh copy).
+- 2026-11-05 (agent, theo ủy quyền 31/10/2026): đóng MEDIUM (a) ở trên: `ToolSteps.__init__` từ chối `send_floor`
+  trong danh sách chờ (`NEVER_PENDING` ở `executor.py`, `ConfigError` nêu bước), nên root dựng sai không khởi động
+  thay vì để tin tới handler mà không hỏi sàn. Test `test_a_register_with_the_send_floor_pending_is_refused_when_built`;
+  test cũ dựng sổ với sàn chờ rồi mong `register` từ chối nay chỉ khẳng định sàn đã đăng ký và không chờ. Đột biến (b)
+  viết lại ở `PENDING_STEPS` của `executor.py`, đỏ lúc dựng (hai test sổ và test R3.2 của PostgreSQL, cả ba
+  `ConfigError`); thêm (b2) gỡ lời từ chối → test mới đỏ; cả hai chạy tay, khôi phục bằng bản sao. R3.12 và CP25 của
+  spec mô tả hành vi này. Nếu sai thì: revert to the pending list as before.
