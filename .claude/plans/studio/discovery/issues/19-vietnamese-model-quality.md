@@ -1,7 +1,7 @@
 # 19 — Chất lượng model trên tiếng Việt: chấm điểm lead, model trong nước, cổng chất lượng, chọn công cụ
 
 Type: prototype
-Status: needs-triage
+Status: ready-for-human (Đạt: khóa model thật và tài khoản model trong nước, Chờ Đạt 21; khách thí điểm: nhãn hạng lead)
 Area: studio · Viết: 23/10/2026
 FOG: FOG-09 `scoring-quality`, FOG-10 `vn-models`, FOG-64 `gate-flakiness`, FOG-67 `tool-selection`
 
@@ -57,3 +57,5 @@ nếu câu 2 tìm được; một agent chỉ đọc với số công cụ tăng
   Việt chưa kiểm).
 
 ## Comments
+
+- 2026-11-04 (agent, phân loại G12, theo ủy quyền 31/10/2026): `ready-for-human`. Chưa câu nào được trả lời: `make eval-leadcare` (leadcare R1.5, `2bcfc59`) chạy model thật nhưng chỉ cho prompt injection, không chấm điểm lead; khung chạy lặp k lần là agent-lifecycle/02 (gate xong, chưa dựng). Mọi phép đo cần model thật có tốn tiền, tài khoản FPT AI Factory, Viettel MaaS hay VNPT, và nhãn hạng do khách chấm (ticket 02). Cần: Đạt (khóa, tài khoản, Chờ Đạt 21) và khách thí điểm.

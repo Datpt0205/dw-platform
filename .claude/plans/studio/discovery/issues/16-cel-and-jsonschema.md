@@ -1,7 +1,7 @@
 # 16 — Runtime CEL và chi phí kiểm JSON Schema trên đường nóng
 
 Type: prototype
-Status: needs-triage
+Status: ready-for-agent
 Area: studio · Viết: 23/10/2026
 FOG: FOG-50 `cel-runtime`, FOG-58 `jsonschema-cost`
 
@@ -52,6 +52,20 @@ một biểu thức vượt chi phí, 1.000 bản ghi giả lập cho tiêu chí
 - [research.md](../research.md) mục 3 và 15 (runtime CEL chưa chọn; giới hạn chi phí có thật sự được ép không chưa
   kiểm).
 
+## Việc của agent (phân loại 4/11/2026)
+
+- Câu hỏi: câu 3 (FOG-58), không gồm `jsonschema-rs`: p95 của một lần kiểm `jsonschema` 4.26.0 trên lược đồ 30
+  thuộc tính, với validator dựng sẵn và dựng mỗi lần; và chi phí thu hẹp lược đồ theo bảo mật trường mỗi lượt
+  chạy.
+- Cách làm: script đo trong venv của repo, 10.000 lần mỗi ca trên vector hợp lệ và không hợp lệ, qua cửa JSON
+  Schema của nền tảng (`packages/python/dw_platform/src/dw_platform/application/json_schema.py`, có format
+  `phone_vn`); thu hẹp: bỏ 5 rồi 15 trường khỏi `properties` và `required` của lược đồ 30 thuộc tính rồi dựng lại
+  validator.
+- Đầu ra: `## Answer` ở đây và một dòng vào mục Open của ADR-0116 (Accepted).
+- Đạt khi: kiểm với validator dựng sẵn p95 ≤ 1 ms và một lần thu hẹp p95 ≤ 5 ms trên máy dev (đề xuất, chưa chốt:
+  1/300 và 1/60 của ngân sách P95 300 ms trong `latency.md`). Trượt thì đề xuất cache validator theo (tenant, mã
+  băm lược đồ) và đo lại.
+
 ## Comments
 
 - 2026-11-03 (agent, theo ủy quyền 31/10/2026): FOG-50 đã đo ở gate của workflow-nodes/01 (Windows và ảnh
@@ -59,3 +73,4 @@ một biểu thức vượt chi phí, 1.000 bản ghi giả lập cho tiêu chí
   Amendments 2026-11-03: `cel-expr-python` là engine duy nhất, bản Rust không bị chặn chi phí (cần ranh giới tiến
   trình mà nó cũng không có bộ kiểm kiểu), nên bị bỏ; lô 1.000 điều kiện điển hình ≈ 13,5 ms trong tiến trình. FOG-58
   (`jsonschema`) vẫn mở.
+- 2026-11-04 (agent, phân loại G12, theo ủy quyền 31/10/2026): `ready-for-agent`. Đã trả lời: FOG-50 (câu 1-2) ở workflow-nodes/01 (`73ee226`) và ADR-0114 (Accepted), Amendments 2026-11-03: `cel-expr-python` là engine duy nhất, bản Rust bị bỏ vì không chặn chi phí được nếu không có ranh giới tiến trình; lô 1.000 điều kiện điển hình khoảng 13,5 ms trong tiến trình. Phần `jsonschema-rs` của câu 3 đóng theo `CLAUDE.md` mục Required stack (`jsonschema`, ADR-0116) và gate workflow-nodes/05 (`377c9c9`); chi phí của `jsonschema` chưa ai đo.

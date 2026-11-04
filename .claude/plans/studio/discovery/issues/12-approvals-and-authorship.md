@@ -1,7 +1,7 @@
 # 12 — Phê duyệt và tách nhiệm: tự duyệt, guard quyết định, tác giả, độ mịn taint, duyệt kèm sửa
 
 Type: grilling
-Status: needs-triage
+Status: ready-for-human (Đạt: FOG-47 và tác giả của FOG-66; khách thí điểm: FOG-12)
 Area: studio · Viết: 23/10/2026
 FOG: FOG-48 `self-approval`, FOG-63 `decision-guard`, FOG-66 `eval-semantics`, FOG-47 `taint-granularity`,
 FOG-12 `approver-phone`
@@ -49,3 +49,5 @@ phụ thuộc. Taint quá thô buộc duyệt ở mọi nơi; quá mịn thì t�
 - Brief B6 (F8), B7a, B7b, B8b, B10a, B12.
 
 ## Comments
+
+- 2026-11-04 (agent, phân loại G12, theo ủy quyền 31/10/2026): `ready-for-human`. Đã trả lời: câu 1 (FOG-48), ADR-0125 (Accepted) Open 4, ngày 23/10/2026: không; `studio.step.` là tiền tố nghiêm (workflow-nodes R9.2, R9.6, gate xong, chưa dựng; hôm nay `runtime.py:343` có `memory.`, `dw.autonomy.`, `dw.workflow.`). Câu 2 (FOG-63) quyết trong kế hoạch: guard async `ApprovalDecisionGuard` của tenant-config/05 ở `decision_guards['studio.step.approval']` (workflow-nodes/06, `d27d89e`); `DecisionGuard` đã dựng vẫn đồng bộ (`approval_flow.py:53`). Câu 3 (FOG-66) một phần: bằng chứng kiểm định theo effective hash (ADR-0109 (Accepted) Open 5, ADR-0120 (Accepted) Open 5); ai là tác giả khi có AI hỗ trợ hay tách từ mẫu, và ba phụ thuộc còn lại, vẫn mở. Câu 4 (FOG-47) mở (ADR-0125 Open 3). Câu 5: duyệt kèm sửa trong lược đồ đã có cho quyết định của DW (digital-worker/02, `0e108d6`); thí điểm có cần nó cho Bước phê duyệt không và p50 trên điện thoại qua Zalo thuộc chạy bóng W2. Cần: một buổi hỏi Đạt cho câu 3-4, và khách thí điểm cho câu 5 (ticket 02).

@@ -1,7 +1,7 @@
 # 13 — Công cụ trên bản đã ghim: import-linter, uv, alembic, FastAPI và openapi-typescript
 
 Type: prototype
-Status: needs-triage
+Status: ready-for-agent
 Area: studio · Viết: 23/10/2026
 FOG: FOG-28 `import-linter`, FOG-29 `uv-docgen`, FOG-30 `alembic-compare`, FOG-54 `merge-merge-api`
 
@@ -50,4 +50,17 @@ có trong `docgen.Dockerfile`; một migration nháp có policy, GRANT theo cộ
 - Brief B1, B5.
 - [research.md](../research.md) mục 15 (`application/merge-patch+json` trên FastAPI 0.141.1 chưa kiểm).
 
+## Việc của agent (phân loại 4/11/2026)
+
+- Câu hỏi: phần còn lại của câu 4: trên FastAPI 0.141.1, `POST .../records/query` đứng cạnh `GET`, `PATCH`,
+  `DELETE .../records/{record_id}` mà mỗi request tới đúng handler không, ở cả hai thứ tự khai route?
+- Cách làm: test đơn vị với app FastAPI tối thiểu theo đường dẫn của custom-objects/04, hoặc chính test route của
+  custom-objects/04 khi ticket đó dựng; sinh lại OpenAPI và chạy typecheck của client như `make test-contract`.
+- Đầu ra: `## Answer` ở đây; test được giữ nếu nằm trong custom-objects/04.
+- Đạt khi: ở cả hai thứ tự, `POST .../records/query` tới handler truy vấn, `GET .../records/<uuid>` tới handler đọc,
+  `GET .../records/query` không bao giờ thành đọc bản ghi có id `query` (405 hoặc 422), và client sinh ra biên
+  dịch. Trượt thì đổi thứ tự khai hay đường dẫn trước khi custom-objects/04 dựng.
+
 ## Comments
+
+- 2026-11-04 (agent, phân loại G12, theo ủy quyền 31/10/2026): `ready-for-agent`. Đã trả lời: câu 1, studio-skeleton/02 (`09c344d`, Comments): import-linter 2.15 nhận `*` và `**` trong `source_modules`, `forbidden_modules`, `ignore_imports`, mẫu không khớp module nào không lỗi. Câu 2 không còn quyết gì: `check_registration` đòi dòng COPY manifest ở cả ba Dockerfile, kể cả docgen (studio-skeleton/01, `b6d065d`; `scripts/verify_architecture.py:45`), nên hành vi của `uv sync` khi thiếu manifest không còn đổi thiết kế. Câu 3, studio-skeleton/02 R6.7 (`test_metadata_matches_catalog.py`, docstring): `compare_metadata` không thấy vị từ index một phần, CHECK, policy, quyền theo cột, trigger; thấy thứ tự và chiều index, `ON DELETE`. Câu 4 một phần: `application/merge-patch+json` đã chạy (app-standards/03, `a70fb37`; `apps/api/src/dw_api/dependencies/conditions.py`, `test_conditional_writes_and_queries.py`); openapi-typescript sinh `{[key: string]: unknown}` cho đối tượng mở và biên dịch được (`document` của phong bì trong `packages/typescript/api-client/src/generated/platform.d.ts`).

@@ -1,7 +1,7 @@
 # 15 — Agent của tenant trên runner hiện có: bản deepagents, ghép middleware, host graph đã biên dịch
 
 Type: prototype
-Status: needs-triage
+Status: ready-for-agent
 Area: studio · Viết: 23/10/2026
 FOG: FOG-34 `deepagents-pin`, FOG-35 `middleware-compose`, FOG-36 `agent-hosting`
 
@@ -54,6 +54,19 @@ hai thứ tự; chạy trong runner hiện có với checkpointer SQL; nâng dee
 - [research.md](../research.md) mục 4 và 6 (host graph `create_agent`, `FilesystemMiddleware`, bản deepagents chưa
   kiểm).
 
+## Việc của agent (phân loại 4/11/2026)
+
+- Câu hỏi: câu 1-4.
+- Cách làm: chính agent-builder/01 (`ready-for-agent`, model giả, không cần khóa): nguyên mẫu dưới
+  `tests/prototype/`, ba test hợp đồng thư viện trong
+  `packages/python/dw_agent_runtime/tests/unit/test_library_contracts.py`, đo biên dịch ở 10, 100 và 256 khóa, resume
+  qua `SqlAlchemyCheckpointSaver` với `os._exit`. Thêm cho câu 1: chạy lại các test đó trên deepagents mới nhất
+  (≥ 0.7.23) trong venv tạm, không đổi `uv.lock` (đang 0.7.15), và ghi những gì đổi.
+- Đầu ra: Comments của agent-builder/01; ticket này đóng bằng một `## Answer` trỏ tới đó.
+- Đạt khi: bảng Phép đo quyết định ở trên: interrupt phê duyệt luôn tới runner ở cả hai thứ tự và test đỏ khi
+  wrapper nuốt nó; 0 lời gọi công cụ chạy lại sau resume; middleware kiểm soát có ở mọi lời gọi của agent liên kết;
+  RSS ở 256 khóa dưới 1 GiB của worker.
+
 ## Comments
 
 - 2026-10-24 (agent, tạm): câu 4 và dòng biên dịch của Phép đo quyết định đo cache graph agent theo khóa
@@ -63,3 +76,4 @@ hai thứ tự; chạy trong runner hiện có với checkpointer SQL; nâng dee
   (ADR-0112 (Accepted) quyết 4). Sửa: Câu hỏi (câu 4), Phép đo quyết định (dòng biên dịch). Nếu sai thì: bản Nháp
   của agent không chạy được, cache giữ khóa `(tenant_id, agent_version_id)`, và câu 4 đo cỡ LRU theo (tenant, phiên
   bản) như trước.
+- 2026-11-04 (agent, phân loại G12, theo ủy quyền 31/10/2026): `ready-for-agent`. Chưa câu nào được đo: agent-builder/01 gate xong (2/11/2026) nhưng chưa dựng, `uv.lock` vẫn khóa deepagents 0.7.15. Không cần người, khóa hay máy riêng.

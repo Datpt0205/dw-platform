@@ -1,7 +1,7 @@
 # 20 — Đo trên host cỡ thí điểm: dung lượng, bộ nhớ dịch vụ mới, công tắc, khoản giữ trước, khối lượng audit
 
 Type: prototype
-Status: needs-triage
+Status: ready-for-human (máy: host cỡ thí điểm 2 vCPU / 8 GB rồi 4 vCPU / 16 GB của D14, do Đạt cấp, Chờ Đạt 23)
 Area: studio · Viết: 23/10/2026
 FOG: FOG-13 `pilot-capacity`, FOG-23 `host-memory`, FOG-65 `switch-cache`, FOG-70 `lease-cost`, FOG-72 `audit-volume`
 
@@ -57,3 +57,5 @@ gọi model giả); một bài cắt kết nối LISTEN cho cache công tắc.
   kiểm).
 
 ## Comments
+
+- 2026-11-04 (agent, phân loại G12, theo ủy quyền 31/10/2026): `ready-for-human`. Chưa câu nào được đo trên host cỡ thí điểm. Câu 3 (FOG-65, ADR-0120 (Accepted) Open 4): listener `dw_control_switch` và ngưỡng 30 giây đang dựng ở agent-lifecycle/01 (R7.3); độ trễ NOTIFY đo được trên máy dev ở đó, nhưng câu hỏi là số trên host. Cần: Đạt cấp VM cỡ host (D14), cùng máy tham chiếu của Chờ Đạt 23.

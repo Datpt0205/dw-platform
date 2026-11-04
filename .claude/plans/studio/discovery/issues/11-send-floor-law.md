@@ -1,7 +1,7 @@
 # 11 — Đồng ý lúc tiếp nhận lead và giới hạn chống tin rác cho sàn gửi tin
 
 Type: research
-Status: needs-triage
+Status: ready-for-human (luật sư của compliance-pdpl/02, do Đạt chọn)
 Area: studio · Viết: 23/10/2026
 FOG: FOG-03 `consent-intake`, FOG-75 `anti-spam`
 
@@ -43,3 +43,5 @@ gửi tin hiện là giữ chỗ ghi UNVERIFIED tới khi có câu trả lời.
 - [research.md](../research.md) mục 12 (giới hạn của Nghị định 91/2020/NĐ-CP chưa kiểm; chưa có ý kiến luật sư).
 
 ## Comments
+
+- 2026-11-04 (agent, phân loại G12, theo ủy quyền 31/10/2026): `ready-for-human`. Chưa câu nào được trả lời: compliance-pdpl/08 (`65f1f3b`) dựng lõi sàn gửi tin với các số giữ chỗ của DO-55, vẫn UNVERIFIED; Bản ghi đồng ý lấy ở cửa nhận Nguồn dữ liệu là quyết định trong kế hoạch (workflow-triggers R5.14, marketing-pilot/03 gate xong), chưa dựng. Câu 1 cần tài liệu và OA thật của ticket 04; câu 2-3 cần luật sư. Cần: luật sư do Đạt chọn (compliance-pdpl/02); `studio.md` chưa có dòng Chờ Đạt cho việc này.

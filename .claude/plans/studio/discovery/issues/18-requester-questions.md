@@ -1,7 +1,7 @@
 # 18 — Hỏi bên yêu cầu: gateway LiteLLM hiện có, Page và OA dùng chung giữa hai công ty
 
 Type: grilling
-Status: needs-triage
+Status: ready-for-human (Đạt hỏi bên yêu cầu)
 Area: studio · Viết: 23/10/2026
 FOG: FOG-18 `requester-gateway`, FOG-07 `shared-accounts`
 
@@ -42,3 +42,5 @@ hai hay từ chối, và cây khóa có cần khóa theo workspace không.
 - [research.md](../research.md) mục 9 (gateway hiện có của bên yêu cầu là gì: chưa kiểm).
 
 ## Comments
+
+- 2026-11-04 (agent, phân loại G12, theo ủy quyền 31/10/2026): `ready-for-human`. Chỉ phần "gateway có là đường BYOM không" đã trả lời (D13, ADR-0118 (Accepted)); câu 1-3 là thông tin chỉ bên yêu cầu có (ai vận hành gateway, alias đi đâu, có agency nối chung Page hay OA không). Cần: Đạt hỏi bên yêu cầu; `studio.md` chưa có dòng Chờ Đạt cho việc này.

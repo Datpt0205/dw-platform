@@ -1,7 +1,7 @@
 # 14 — Spike runtime S-RT: sáu quy trình tham chiếu, ngưỡng T1-T9, ma trận sập của tác động và các câu runtime đã có
 
 Type: prototype
-Status: needs-triage
+Status: ready-for-agent
 Area: studio · Viết: 23/10/2026
 FOG: FOG-56 `runtime-mechanics`, FOG-37 `checkpoint-allowlist`, FOG-59 `run-manifest-cost`
 
@@ -181,6 +181,19 @@ Các phép đo khác, đo trong cùng các lượt chạy:
 - Camunda: một job lỗi hết lần thử thành incident, instance đứng chờ người xử lý rồi chạy tiếp:
   <https://docs.camunda.io/docs/components/concepts/incidents/>; _documented_, đọc 24/10/2026.
 
+## Việc của agent (phân loại 4/11/2026)
+
+- Câu hỏi: như trên (T1-T9, luật quyết, câu 1-3, 6-11); câu 5 (FOG-37) đã có, xem Comments.
+- Cách làm: harness spike dưới `tests/spike/srt/` (quy ước của `tests/spike/sandbox/` ở code-sandbox/01, không vào
+  mã sản phẩm), dùng trình biên dịch của wf-lite (`dw_agent_runtime.wflite`) với `SqlAlchemyCheckpointSaver` và
+  `durability="sync"`, hai tiến trình worker trên PostgreSQL 16.15 của compose, database riêng
+  (`DW_TEST_DB_SUFFIX=_srt`); sập thật bằng `os._exit` như wf-lite/02; nhà cung cấp giả ba chế độ chạy tại chỗ;
+  container giới hạn như cấu hình của [research.md](../research.md) mục 5 (4 vCPU, 3 GiB).
+- Đầu ra: `db/bench/srt/RESULTS.md` (bảng T1-T9, golden trace RW1-RW6), tóm vào `## Answer` ở đây, một dòng vào
+  Alternatives của ADR-0112 (Accepted) và Comments của workflow-engine/03.
+- Đạt khi: luật quyết ở cuối "Phép đo quyết định" chọn được engine, với ca đối chứng của T3 (gỡ dòng `dispatched`
+  thì K4 của chế độ không gì đỏ). Lần đo lại trên host thí điểm không chặn ticket này (ticket 20).
+
 ## Comments
 
 - 2026-10-24 (agent): thêm câu 7-9 cho bậc B của V4.26 (B1-B3), bắt đầu từ số đo trong bộ nhớ ngày 24/10/2026; không
@@ -201,3 +214,4 @@ Các phép đo khác, đo trong cùng các lượt chạy:
   quay lại Đạt trước khi `workflow-engine/03` bắt đầu. Nếu sai thì: một trượt ở T3, T4, T6, T8, hay T5 không chỉ vì
   saver, cũng dựng C như trượt T1, T2 hay T7.
 - 2026-10-29 (agent): phần FOG-37 (allowlist của checkpoint) đã đo ở foundations-hardening/02, Comments 29/10/2026: không kiểu nào ngoài `SAFE_MSGPACK_TYPES` được nạp, `ALLOWED = ()` (OPS-j).
+- 2026-11-04 (agent, phân loại G12, theo ủy quyền 31/10/2026): `ready-for-agent`. Đã trả lời: câu 5 (FOG-37) ở foundations-hardening/02 (`1c681e8`, Comments 29/10/2026): không kiểu nào ngoài `SAFE_MSGPACK_TYPES` được nạp, `ALLOWED = ()`. Một mảnh của T3: wf-lite/02 (R6.8) giết tiến trình bằng `os._exit` sau bước gửi, và gỡ `durability="sync"` thì đỏ 3/3. Phần còn lại chưa chạy, và workflow-engine/03 chờ nó qua dòng `Blocked by:`. Không cần người, khóa hay máy riêng.

@@ -1,7 +1,7 @@
 # 17 — Model proxy LiteLLM và gateway: usage theo nhà cung cấp, tiêm khóa từng lượt gọi, trần token
 
 Type: prototype
-Status: needs-triage
+Status: ready-for-human (Đạt: khóa thật của nhà cung cấp và gateway, Chờ Đạt 21)
 Area: studio · Viết: 23/10/2026
 FOG: FOG-19 `litellm-behaviour`, FOG-21 `openai-transport`, FOG-20 `max-tokens`, FOG-22 `embed-rerank-usage`
 
@@ -57,3 +57,5 @@ không stream, có công cụ và có `response_format`; với câu 4-5, gọi q
 - [research.md](../research.md) mục 9 (hành vi LiteLLM theo nhà cung cấp chưa kiểm; sự cố chuỗi cung ứng 2026).
 
 ## Comments
+
+- 2026-11-04 (agent, phân loại G12, theo ủy quyền 31/10/2026): `ready-for-human`. Chưa câu nào được đo. Câu 2, câu 3 và phần upstream giả của câu 1 là model-connections/01 (`ready-for-agent`, upstream giả và Ollama tại chỗ, dựng từ 4/11/2026 02:00), agent đóng chúng ở đó và trỏ về đây. Hành vi theo từng nhà cung cấp thật (câu 1) là model-connections/03 (`needs-triage`, Chờ Đạt 21); câu 4 (`max_tokens` trên route `gpt-5.6-luna`) và câu 5 (usage của embeddings và rerank FPT Cloud) cần lời gọi thật qua gateway bằng khóa của Đạt. Cần: Đạt cho khóa và cho phép chi tiền thật (Chờ Đạt 21).
