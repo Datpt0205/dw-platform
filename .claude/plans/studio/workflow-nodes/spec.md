@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 3/11/2026
-Sẵn sàng: ĐẠT (4/11/2026; 0 CRITICAL, 0 HIGH; ticket 01-04)
+Sẵn sàng: ĐẠT (4/11/2026; 0 CRITICAL, 0 HIGH; ticket 01-05)
 
 Người dựng không viết mã ghép một quy trình từ các Bước, thành một cây Bước (V4.24). Mỗi Loại bước là mã nền
 tảng trong một sổ đăng ký duy nhất, mang schema cấu hình và đầu ra, các Nhánh ra mà mỗi Bước của loại mang
@@ -1073,6 +1073,24 @@ là của workflow-engine (`.claude/plans/studio/workflow-engine/issues/09-quy-t
   walk, vì ticket nay có migration): 1 CRITICAL và 9 HIGH, đều sửa theo khuyến nghị ở hai dòng trên; lượt xác nhận 10 câu, sửa ở ticket 04; MEDIUM ở Comments
   của ticket 04.
 - 4/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 04.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): Bước LLM của Studio là `ai.llm@2`, không sửa `ai.llm@1` của wf-lite, vì
+  `@1` nêu một prompt nền tảng theo id còn Bước Studio mang hướng dẫn và mẫu của công ty (luật "không giữ được nghĩa
+  thì bản chính mới" của ticket 02 bước 1); `PathRules` thêm `refused_types` và `STUDIO_RULES` từ chối `ai.llm@1`;
+  `instructions` (lint của agent-builder/02, system message) và `prompt` (mẫu đích `prompt`, user message) là hai trường;
+  `context` nêu đối tượng và trường mà `Mô tả cho AI` của chúng vào prompt; schema đầu ra giữ hồ sơ `dw.tool-schema/v1`;
+  kiểm bằng `jsonschema` của nền tảng (CLAUDE.md mục Required stack), không `jsonschema-rs` như ticket 05 cũ viết
+  (CRITICAL của gate); `output_invalid` không thử lại; `continue` ghi `{status: "error", error}` như ADR-0112 (Accepted)
+  quyết 5, không có `default_output`; khung prompt phân giải từ bản kê; lời gọi model chạy thật ở `simulate`
+  (ADR-0111 (Accepted) quyết 3); chi phí là của sổ sử dụng; R7.4 là cấu hình của quy trình chấm điểm; khung prompt mới có bộ eval
+  ba nhóm. Sửa: ticket 05; ADR-0112 (Accepted), Amendments 2026-11-04. Nếu sai thì: `ai.llm@1` nhận cả hai hình cấu
+  hình qua `oneOf` và mỗi đường từ chối hình kia, R7.4 thành luật của Bước theo `pd_category`.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): ADR-0112 (Accepted) quyết 8 bắt `ai.llm` hỏi `processing_flags` và từ
+  chối `ai_opt_out`, mà spec này đã dời R7.3, WN14 sang W2 theo Q9 (a) của Đạt ngày 23/10/2026; ADR nay ghi pha đó ở
+  Amendments 2026-11-04, để hai tài liệu không nói khác nhau (CRITICAL của gate ticket 05). Sửa: ADR-0112 (Accepted).
+  Nếu sai thì: kiểm vào W1 cùng cờ, và ticket 05 chờ ticket cờ của compliance-pdpl.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): gate `checking-plan-readiness` của ticket 05 (builder check; không route,
+  không migration): 2 CRITICAL và 11 HIGH, đều sửa theo khuyến nghị ở hai dòng trên; lượt xác nhận 10 câu, sửa ở ticket 05; MEDIUM ở Comments của ticket 05.
+- 4/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 05.
 
 ## Danh sách ticket
 
