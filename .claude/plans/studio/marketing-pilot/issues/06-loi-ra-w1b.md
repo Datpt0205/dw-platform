@@ -66,3 +66,26 @@ chỉ chạy trên lead giả lập: dữ liệu cá nhân thật chỉ sau cổ
   phần trợ lý của MP2, MP4, MP5, MP6, cây span (telemetry-and-audit/02) và rà soát bảo mật của trợ lý, và từ ticket 03
   phần uat với OpenBao (connections-and-vault/06). Blocked by đúng dòng của mục C: 04, 05, connections-and-vault/06,
   telemetry-and-audit/02, usage-and-limits/06.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): checking-plan-readiness (builder check; không route, không migration):
+  CẦN XEM, ticket ở lại `needs-triage`. Trường hợp: nửa dựng trên trợ lý chat riêng đã bỏ (R5.1, R5.2, R5.4 và phần trợ
+  lý của MP2, MP4, MP5, MP6 chờ bản viết lại của ticket 04 theo D15 và D17), nửa còn lại cần người: host uat có chứng
+  chỉ, OpenBao Transit triển khai và một tuyến model thật khai `vn` là giá trị thật chỉ Đạt có (studio.md, Ủy quyền). Khuyến
+  nghị theo ủy quyền: khi viết lại ticket 04, tách ticket này làm hai: lối ra W1b không trợ lý (uat, OpenBao, tuyến `vn`,
+  cây span, các MP không phải trợ lý chạy lại trên uat), `ready-for-human` cho phần dựng môi trường; và phần kênh chat
+  của Digital Worker trên uat, đi sau ticket 04 mới. Bản viết lại phải mang các HIGH sau:
+    - (1) SMTP giả "ở phía nhà cung cấp" trên uat: một host công khai có tên vào `platform.egress_allowed_hosts` qua phê
+      duyệt hai người `egress.allowed_host`, vì chính sách địa chỉ từ chối địa chỉ riêng ở môi trường triển khai, theo
+      ADR-0115 (Accepted); script gieo cần bước đó.
+    - (2) Bước `ai.llm` trên uat dùng model thật khai `data_location: vn` (chờ FOG-10) hay model giả: mock ở profile triển
+      khai không chứng minh gì về lưu trú dữ liệu; model thật làm các khẳng định không còn tất định.
+    - (3) "Đột biến trỏ vào host uat" không được nghĩa là triển khai bản gỡ RLS lên uat: mutation chạy cục bộ, uat chỉ chạy
+      bộ xanh.
+    - (4) Tiêu chí "đặt kho khóa cục bộ cho kết nối đó → bị từ chối khi lưu" không xảy ra được: kho khóa chọn theo bản
+      triển khai và `validate_for_profile` từ chối `LocalDevKms` lúc khởi động; đổi thành test khởi động.
+    - (5) Danh tính trên uat: không có bộ cấp token dev, nên script gieo của ticket 02 (token tự ký) không chạy được; cần
+      người dùng thật của IdP uat. Mỗi lần chạy gieo công ty mới thì công ty rác dồn lại (failure-modes #6): nói ai dọn,
+      bằng offboarding của người vận hành; Hạn mức không nâng được nên không dùng lại công ty cũ mãi.
+    - (6) Một `trace_id` cho cả lượt có Bước phê duyệt: phần sau duyệt chạy từ request của người duyệt; giữ trace của cửa
+      nhận hay nối bằng span link, và test đọc span trên uat từ đâu.
+    - (7) R6.9 dẫn R5.1 tới R5.4 mà ticket không có tiêu chí cho R5.3 trên uat.
+      Nếu sai thì: Đạt giữ trợ lý riêng và ticket qua gate sau khi sửa (1)-(7), không tách.
