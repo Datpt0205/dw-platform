@@ -180,3 +180,19 @@ planner's provisional calls H-1-H-18:
   fixes; Consequences give the agent rule and the `agent` kind's analysis hook to compliance-pdpl/07, split from
   compliance-pdpl/05, which keeps the analysis of workflows, and name decision 8's tests; Alternatives record taint
   tracked per value at run time as rejected.
+
+## Amendments (2026-11-04)
+
+Amended on 2026-11-04 by the agent under Đạt's delegation of 2026-10-31 (agent, theo ủy quyền 31/10/2026), from the
+readiness gate of compliance-pdpl ticket 05:
+
+- Decision 2: an effect node C needs a person when nodes carrying A and B are C itself or its ancestors in the IR, in
+  either order, since a workflow's state carries what it read to every later step. A `human.approval` node H gates C
+  only when H dominates C, C sits in H's `approved` lane (not `rejected` or the error lane), and every A and B ancestor
+  of C is also an ancestor of H, so the person decides after the untrusted content and the private data are in. An
+  approval placed first, or an effect on the rejected lane, gates nothing. Nếu sai thì: domination alone, as first
+  written, with the two cases accepted as risks.
+- Decision 1: a step's labels come from what the submit's closure pins (the tool version's three classifications, the
+  object version's `pd_category`, the trigger kind), and an `ai.agent` or `flow.subworkflow@1` step carries the labels
+  of its pinned version's assessment row, all three while that row is missing or was written by another analyser
+  version. Nếu sai thì: labels per node type only, a tool step carrying all three.
