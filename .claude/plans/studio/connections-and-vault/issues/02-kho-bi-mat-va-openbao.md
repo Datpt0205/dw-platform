@@ -1,6 +1,6 @@
 # 02 — Kho bí mật: KmsPort, LocalDevKms, secret_envelopes và cửa một chiều
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: .claude/plans/studio/foundations-hardening/issues/03-quyen-dw-app-va-rls-initplan.md, .claude/plans/studio/org-and-principals/issues/01-khoa-don-vi-va-siet-realm.md, .claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md
 Area: studio
 Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R1.8, R1.9, R1.10, R1.14, R2.2, CV1, CV2, CV3, CV4, CV5, CV23, CV24
@@ -112,70 +112,71 @@ cascade_from="platform.connections")`, đúng một cách xóa như `Offboarding
 
 ## Tiêu chí chấp nhận
 
-- [ ] R1.1: ghi một bí mật rồi `open_secret` trả đúng giá trị; phong bì trong database không chứa giá
+- [x] R1.1: ghi một bí mật rồi `open_secret` trả đúng giá trị; phong bì trong database không chứa giá
       trị rõ; ghi giá trị mới cho cùng (chủ thể, trường) → một dòng mới với `secret_version` kế tiếp, bản mã của dòng
       cũ không đổi (phiên bản cũ ở R1.10, phiên bản mới ở R1.14); chèn trùng
       (chủ thể, `field`, `secret_version`) → UNIQUE từ chối; `platform.put_secret` với `nonce` hay `ciphertext`
       NULL → lỗi NOT NULL (23502), không dòng nào; gỡ NOT NULL của hai cột trong migration thử → phong bì thiếu bản
       mã được ghi, test đỏ.
-- [ ] R1.2 (CV4): lớp Kho bí mật: một giá trị canary ghi qua `SecretStore` rồi mở → canary không có trong `repr`,
+- [x] R1.2 (CV4): lớp Kho bí mật: một giá trị canary ghi qua `SecretStore` rồi mở → canary không có trong `repr`,
       `str`, `format`, JSON hay `model_dump` của `Secret`, trong log bắt được của lần ghi và lần mở, trong thông điệp
       lỗi `credential_revoked`, `kms_unavailable`, `secret_key_mismatch` và trong dòng audit `secret.key_mismatch`;
       `reveal()` gọi từ một module ngoài danh sách cho phép → test kiến trúc đỏ; cho `__repr__` trả giá trị → test
       đỏ. Ca mock nhà cung cấp vọng header và key (checkpoint, `platform.tool_executions`, span) chạy ở ticket 05, lời
       gọi ra ngoài đầu tiên qua một Kết nối.
-- [ ] R1.3 (CV2): `SELECT * FROM platform.secret_envelopes` bằng `dw_app` → `permission denied`; khẳng
+- [x] R1.3 (CV2): `SELECT * FROM platform.secret_envelopes` bằng `dw_app` → `permission denied`; khẳng
       định catalog trong `test_privileges.py`; `has_function_privilege` trên bốn hàm đúng với `dw_app`, sai với
       `dw_provisioner` và `dw_agent_ro`, `proacl` không cấp PUBLIC, mỗi hàm `prosecdef` với `search_path` ghim;
       `dw_provisioner` (có USAGE trên `platform`) gọi `platform.put_secret` → `permission denied for function`;
       `dw_app` giữ SELECT, INSERT, DELETE trên `platform.connections` ở mức bảng, UPDATE ở đúng các cột của bước 2 và
       không UPDATE ở `owning_workspace_id`, `tenant_id`; gỡ `REVOKE ... FROM PUBLIC` trong migration thử →
       `dw_provisioner` ghi được phong bì, test đỏ.
-- [ ] R1.4 (CV1): chép một phong bì sang `connection_id` khác (cùng công ty và công ty khác), sang trường khác
+- [x] R1.4 (CV1): chép một phong bì sang `connection_id` khác (cùng công ty và công ty khác), sang trường khác
       của cùng kết nối, hay sang dòng có `secret_version` khác rồi giải mã → lỗi; bọc lại khóa dữ liệu qua
       `KmsPort.rewrap` của `LocalDevKms` (`kek_version` tăng) → vẫn giải mã; gỡ AAD khỏi `SecretStore`, hay đưa
       `kek_version` vào AAD → test đỏ. Ca chủ thể `inbound_endpoint_id` chạy ở workflow-triggers/02, nơi thêm cột
       đó.
-- [ ] R1.5 (CV3): đặt công ty A, `open_secret` với chủ thể của công ty B → không dòng; một dòng mang
+- [x] R1.5 (CV3): đặt công ty A, `open_secret` với chủ thể của công ty B → không dòng; một dòng mang
       `kek_ref` của công ty khác → từ chối với `secret_key_mismatch`, `KmsPort` không được gọi, audit
       `secret.key_mismatch` đứng tên tác nhân của ngữ cảnh, còn sau khi giao dịch của bên gọi lùi, `details` không chứa
       `kek_ref` của dòng; gỡ phép so `kek_ref` → giải mã được gọi, test đỏ; chưa đặt `app.tenant_id` → không
       dòng.
-- [ ] R1.6 (CV2): truy vấn catalog export của offboarding (`_CATALOG_EXPORTABLE`) không liệt kê
+- [x] R1.6 (CV2): truy vấn catalog export của offboarding (`_CATALOG_EXPORTABLE`) không liệt kê
       `secret_envelopes` (integration); test phủ offboarding (studio-skeleton:R4.3) xanh với dòng `EXPORT_EXCLUSIONS` và
       dòng `STUDIO_EXCLUSIONS` của `platform.secret_envelopes`, bỏ một trong hai → test phủ đỏ và nêu tên bảng;
       `platform.connections` có trong `_CATALOG_PURGEABLE`; offboarding một công ty có Kết nối →
       mọi phong bì của công ty đó bị xóa theo CASCADE khi lane xóa `platform.connections`, phong bì của công ty khác
       còn nguyên.
-- [ ] R1.7 (CV1): `UPDATE platform.connections SET owning_workspace_id = <workspace khác cùng công ty>` → trigger
+- [x] R1.7 (CV1): `UPDATE platform.connections SET owning_workspace_id = <workspace khác cùng công ty>` → trigger
       từ chối, dòng không đổi, phong bì của Kết nối vẫn giải mã; UPDATE cột khác của cùng dòng → nhận; gỡ trigger
       `platform.guard_connection_owning_workspace()` → UPDATE thành công và phong bì giải mã lỗi, test đỏ.
-- [ ] R1.8 (CV23): đặt `app.tenant_id` của công ty A, `platform.put_secret` với `connection_id` của công ty B → lỗi
+- [x] R1.8 (CV23): đặt `app.tenant_id` của công ty A, `platform.put_secret` với `connection_id` của công ty B → lỗi
       khóa ngoại (23503), không dòng nào; xóa một Kết nối → mọi phong bì của nó xóa theo; đổi FK ghép thành FK một
       cột `connection_id` trong migration thử → lần ghi chéo công ty thành công, test đỏ.
-- [ ] R1.9 (CV24): lưu giá trị mới cho `api_key` của một Kết nối → dòng cũ có `revoked_at` và `replaced_at` bằng
+- [x] R1.9 (CV24): lưu giá trị mới cho `api_key` của một Kết nối → dòng cũ có `revoked_at` và `replaced_at` bằng
       `now()` của giao dịch ghi, dòng mới có cả hai NULL; lưu giá trị mới cho trường `signing_secret` → dòng cũ có
       `replaced_at` bằng `now()` và `revoked_at` bằng `now()` cộng 24 giờ; giao dịch ghi lùi → dòng cũ vẫn `revoked_at` NULL và không dòng mới nào; trường `password`
       của cùng Kết nối và Kết nối khác không đổi; xoay `signing_secret` lần nữa trước khi 24 giờ của lần đầu hết →
       phiên bản 1 giữ `revoked_at` và `replaced_at` của lần đầu, phiên bản 2 nhận `now()` cộng 24 giờ; gỡ bước ghi
       `revoked_at` khỏi `platform.put_secret` → phiên bản cũ vẫn mở được bằng số của nó, bỏ điều kiện `revoked_at` NULL
       khỏi câu ghi → phiên bản 1 bị dời hạn, hay gỡ vế `replaced_at` → dòng cũ có `replaced_at` NULL, test đỏ.
-- [ ] R1.10 (CV24): `open_secret` với phiên bản đã thu hồi của ca R1.9 → không dòng, `SecretStore` trả
+- [x] R1.10 (CV24): `open_secret` với phiên bản đã thu hồi của ca R1.9 → không dòng, `SecretStore` trả
       `credential_revoked`, không giá trị rõ; với một `secret_version` chưa từng có → `credential_revoked`; mọi phiên
       bản của một trường đã thu hồi hay đã xóa, `open_secret` không nêu phiên bản → `credential_revoked`; phiên bản
       cũ của `signing_secret` ở ca R1.9 (`revoked_at` ở tương lai) → mở được tới thời điểm đó và `credential_revoked`
       sau đó; `platform.secret_status` trả `revoked_at` và `replaced_at` của cả hai phiên bản, không giá trị; gỡ kiểm
       `revoked_at` khỏi `platform.open_secret` → phiên bản đã thu hồi mở được, test đỏ.
-- [ ] R1.14 (CV24): ba phiên bản của `password` một Kết nối, phiên bản 3 vừa lưu → `open_secret` không nêu phiên bản
+- [x] R1.14 (CV24): ba phiên bản của `password` một Kết nối, phiên bản 3 vừa lưu → `open_secret` không nêu phiên bản
       trả giá trị của phiên bản 3 cùng số 3; đặt `revoked_at` của phiên bản 3 về quá khứ bằng vai migrator trong test
       (thu hồi vì lộ của ticket 04 chưa có) → `credential_revoked`, không lùi về phiên bản 2 đã bị thay; cho hàm chọn
       `secret_version` nhỏ nhất, hay bỏ điều kiện `revoked_at` khỏi phép chọn → giá trị của phiên bản 1 hay của phiên
       bản 3 đã thu hồi được trả, test đỏ.
-- [ ] R2.2 (CV5): `DW_KMS_PROVIDER=local` với profile `uat` → `RuntimeError` lúc khởi động, ở api và ở worker; gỡ
+- [x] R2.2 (CV5): `DW_KMS_PROVIDER=local` với profile `uat` → `RuntimeError` lúc khởi động, ở api và ở worker; gỡ
       `validate_for_profile` → test đỏ; không đặt `DW_KMS_PROVIDER` → `none`, và `put` hay `open` qua `SecretStore` →
       `kms_unavailable`, không dòng nào được ghi; `local` với `DW_LOCAL_KMS_MASTER_KEY` trống hay dưới 32 byte →
       `RuntimeError` lúc khởi động ở profile `local`; cho `none` rơi về `LocalDevKms` → test đỏ.
-- [ ] Xong: `make ci && make test-integration` xanh.
+- [x] Xong: các cổng nhanh của ticket xanh (wave-close.md); `make test-integration` đầy đủ, mutate.py và đo trễ ở
+      lúc đóng hàng đợi.
 
 ## Nguồn
 
@@ -303,3 +304,52 @@ cascade_from="platform.connections")`, đúng một cách xóa như `Offboarding
 - 2026-11-03 (agent, theo ủy quyền 31/10/2026): gate của ticket 04 (spec Quyết định 3/11/2026, (s)): bước 1 ghi rõ
   `name`, `disabled_at` và `uq_connections_account_live` là của ticket 04, như `compromised_at`, để hai migration không
   tạo trùng; không đổi gì ticket này dựng, nên verdict ĐẠT của nó đứng.
+- 2026-11-04 (agent): dựng xong (lane 1). Bước 1-6 như ticket; MEDIUM của gate đã theo: (b) `touch_updated_at` trên
+  cả hai bảng; (c) CHECK `field ~ '^[a-z][a-z0-9_]{0,62}$'`, `SecretStore` giữ cùng dạng; (d) `open_secret` trả
+  `secret_version, alg, nonce, kek_ref, kek_version, wrapped_data_key, ciphertext`, `SecretStore` đọc
+  `owning_workspace_id` từ `platform.connections` dưới RLS của bên gọi; (e) `KmsPort` ba phương thức, `LocalDevKms`
+  dẫn KEK bằng HKDF với info `dw.kms.local.v1|<kek_ref>|<v>`; (f) `cryptography==50.0.1` khai ở `dw_platform`,
+  `IMPORT_TO_DIST` thêm nó; (g) `Secret` ở `dw_kernel.secret`, `KmsPort`/`SecretStore` ở
+  `dw_platform.application.secrets`, danh sách gọi `reveal()` chỉ `secrets.py`
+  (`dw_kernel/tests/unit/test_secret_reveal_scan.py`); (h) hai lần ghi cùng số → `ConflictError`
+  `secret_version_taken`, không tự thử lại; (i) `platform.delete_secret` xóa mọi phiên bản của (chủ thể, trường),
+  chưa bên gọi sản xuất; (j) `created_by` FK `platform.users` ON DELETE SET NULL; (k) policy
+  `tenant_isolation_<bảng>`, `REVOKE ALL ... FROM dw_agent_ro` trên hai bảng. Thêm CHECK
+  `ck_secret_envelopes_replaced_revoked` (`replaced_at` chỉ đi cùng `revoked_at`) và hàm nội bộ
+  `platform.secret_subject_column(kind)`, đọc cột chủ thể từ catalog (FK ghép hai cột với `tenant_id`), nên chủ thể
+  sau (workflow-triggers/02) không sửa bốn hàm cửa; hàm đó REVOKE khỏi PUBLIC, không vai nào gọi thẳng.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): UNIQUE theo chủ thể đặt tên
+  `uq_secret_envelopes_tenant_id_connection_id_field_version`, không theo đủ quy ước: tên đủ dài 64 ký tự, Postgres
+  cắt về 63 chỉ kèm NOTICE, nên adapter đổi vi phạm thành `ConflictError` theo tên không bao giờ khớp (test tích hợp
+  `test_a_version_already_taken_is_refused_by_the_unique` tìm ra; failure-modes #4 thêm ca này). Chủ thể sau theo cùng
+  dạng (`..._inbound_endpoint_id_field_version`: 63 ký tự). Nếu sai thì: đổi tên bằng một revision mới và sửa
+  `_VERSION_TAKEN` của `secret_envelopes.py`.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): worker chưa dựng `KmsPort` và `SecretStore`: worker chưa có bên dùng
+  nào (ticket 05 `credential_purge`, ticket 06 `credential_rewrap`), một đối tượng dựng mà không ai đọc là
+  failure-modes #1; cấu hình sai vẫn hỏng lúc khởi động vì `main` gọi `validate_for_profile` trước mọi lane, và
+  `check_kms_settings` giải mã khóa chủ ở đó. Api dựng cả hai trước cổng database (`wiring.py`), `ApiContainer.secret_store`
+  cho ticket 04. Nếu sai thì: `build_kms(...)` ở đầu `build_registry` của worker.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): `.env.example` có `DW_KMS_PROVIDER=none` và
+  `DW_LOCAL_KMS_MASTER_KEY=` kèm lệnh sinh; compose chưa chuyển hai biến cho api và worker, việc của ticket 04, bên
+  dùng đầu tiên. Nếu sai thì: hai dòng `${DW_KMS_PROVIDER:-none}`, `${DW_LOCAL_KMS_MASTER_KEY:-}` ở
+  `infra/compose/docker-compose.yml`, và `reviewing-deployment-security` cho chúng.
+- 2026-11-04 (agent): khác ticket: R1.7 giữ hai lớp, mỗi lớp một test: `dw_app` không có UPDATE trên
+  `owning_workspace_id` (permission denied trước trigger), trigger từ chối cả chủ bảng. `GRANT SELECT, INSERT, DELETE`
+  trên `platform.connections` trùng với default privileges của `0001_platform_grants.sql`; kiểm soát thật là câu
+  `REVOKE UPDATE`, nên đột biến R1.6 thu hồi DELETE. Chủ thể của công ty khác (không thấy dưới RLS) trả
+  `credential_revoked` như khi thiếu, không lộ sự tồn tại. `test_restore_drill.py` theo `DW_TEST_DB_SUFFIX` (tên
+  database của `pg_dump`/`pg_restore`), import bí danh `lane_db_name` vì pytest thu `test_db_name` như một test;
+  `_violations_after` của `test_offboarding_coverage.py` gộp dòng thật với dòng thử, vì catalog đã cần dòng của
+  `platform.secret_envelopes`.
+- 2026-11-04 (agent): cổng của ticket: ruff, ruff format, mypy (633 tệp), lint-imports (11 hợp đồng),
+  `verify_architecture.py`, `verify_invariants.py` sạch; unit `dw_kernel`, `dw_platform`, `dw_api`, `dw_worker` (1054
+  xanh); tích hợp (`DW_TEST_DB_SUFFIX=_lane1`) `test_secret_vault.py` (21), `test_privileges.py`,
+  `test_rls_coverage.py`, `test_offboarding_coverage.py`, `test_offboarding.py`, `test_restore_drill.py`: 137 xanh.
+  Không route nào đổi, nên không sinh lại OpenAPI. `mutations/02.yaml` 23 đột biến, chạy lúc đóng hàng đợi; danh
+  sách cho phép `reveal()` (quét nguồn) đã thử đỏ bằng tay tại chỗ ngày 4/11/2026. Lúc đóng hàng đợi không có thao tác
+  API nào để đo trễ (ticket không thêm route).
+- 2026-11-04 (agent): MEDIUM để lại: (a) `ApiContainer.secret_store` chưa ai đọc tới ticket 04 (ticket đòi dựng lúc
+  khởi động); (b) `platform.delete_secret` chỉ hẹp theo công ty, ai được xóa trường nào là việc của route ticket 04;
+  (c) `SecretKeyMismatchError` và `SecretUnreadableError` mang `ErrorCode.INTERNAL`, ticket 04 quyết response của
+  chúng (problem+json 500, không chi tiết); (d) ca canary đầu-cuối của R1.2 (checkpoint, `tool_executions`, span) ở
+  ticket 05 như gate đã tách.

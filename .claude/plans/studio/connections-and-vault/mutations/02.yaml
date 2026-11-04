@@ -1,0 +1,183 @@
+# Mutation check of connections-and-vault ticket 02: scripts/mutate.py runs this
+# file at the queue's close (wave-close.md). One mutation per control the ticket
+# adds (CV1-CV5, CV23, CV24; R1.1-R1.10, R1.14, R2.2), and one per layer where a
+# control is held twice (the column grant and the trigger of R1.7; the broker's
+# `kek_ref` check and its audit of R1.5).
+#
+# Shown red by hand, not here: the `Secret.reveal()` allowlist (R1.2) is guarded
+# by a source scan, which cannot see mutate.py's package copy. A module outside
+# the allowlist that calls `.reveal()` was planted in place in
+# `dw_platform/adapters/kms.py` on 2026-11-04 and
+# test_secret_reveal_scan.py::test_only_the_allowed_modules_reveal_a_secret went
+# red; the file was restored from its backup.
+mutations:
+  # ---- R1.1: an envelope is never written without its cipher text ------------
+  - name: R1.1 nonce may be NULL
+    file: db/migrations/versions/70d8a4564454_connections_and_secret_envelopes.py
+    old: "        nonce bytea NOT NULL,"
+    new: "        nonce bytea,"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_secret_vault.py::test_an_envelope_without_its_nonce_or_ciphertext_is_refused
+  - name: R1.1 ciphertext may be NULL
+    file: db/migrations/versions/70d8a4564454_connections_and_secret_envelopes.py
+    old: "        ciphertext bytea NOT NULL,"
+    new: "        ciphertext bytea,"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_secret_vault.py::test_an_envelope_without_its_nonce_or_ciphertext_is_refused
+
+  # ---- R1.2 (CV4): a Secret prints as a mask ---------------------------------
+  - name: R1.2 repr shows the value
+    file: packages/python/dw_kernel/src/dw_kernel/secret.py
+    old: '        return f"Secret({_MASK!r})"'
+    new: '        return f"Secret({self._value!r})"'
+    tests:
+      - packages/python/dw_kernel/tests/unit/test_secret.py::test_the_value_comes_out_only_through_reveal
+      - packages/python/dw_kernel/tests/unit/test_secret.py::test_a_model_holding_one_dumps_no_value
+
+  # ---- R1.3 (CV2): one door, dw_app never reads the table ---------------------
+  - name: R1.3 the door functions stay executable by PUBLIC
+    file: db/migrations/versions/70d8a4564454_connections_and_secret_envelopes.py
+    old: '        op.execute(f"REVOKE ALL ON FUNCTION {function} FROM PUBLIC")'
+    new: "        pass"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_privileges.py::test_the_envelopes_are_reached_only_through_dw_apps_door
+      - packages/python/dw_platform/tests/integration/test_privileges.py::test_the_application_cannot_read_an_envelope_and_the_provisioner_not_call_the_door
+  - name: R1.3 dw_app keeps its default privileges on the envelopes
+    file: db/migrations/versions/70d8a4564454_connections_and_secret_envelopes.py
+    old: '    "REVOKE ALL ON platform.secret_envelopes FROM dw_app;",'
+    new: '    "NULL;",'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_privileges.py::test_the_envelopes_are_reached_only_through_dw_apps_door
+      - packages/python/dw_platform/tests/integration/test_privileges.py::test_the_application_cannot_read_an_envelope_and_the_provisioner_not_call_the_door
+
+  # ---- R1.4 (CV1): the AAD binds the envelope to its place --------------------
+  - name: R1.4 the AAD binds nothing
+    file: packages/python/dw_platform/src/dw_platform/application/secrets.py
+    old: "        f\"{AAD_PREFIX}|{tenant_id}|{owning_workspace_id}|{subject.kind}:{subject.id}\"\n        f\"|{secret_field}|{secret_version}\""
+    new: '        f"{AAD_PREFIX}"'
+    tests:
+      - packages/python/dw_platform/tests/unit/test_secret_store.py::test_an_envelope_opens_only_under_its_own_binding
+      - packages/python/dw_platform/tests/integration/test_secret_vault.py::test_a_copied_envelope_does_not_open
+  - name: R1.4 kek_version enters the AAD
+    file: packages/python/dw_platform/src/dw_platform/application/secrets.py
+    old: "            caller.tenant_id, workspace, subject, secret_field, envelope.secret_version\n"
+    new: "            caller.tenant_id, workspace, subject, secret_field,\n            envelope.secret_version + envelope.key.kek_version - 1,\n"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_secret_store.py::test_a_rewrapped_data_key_still_opens_the_envelope
+      - packages/python/dw_platform/tests/integration/test_secret_vault.py::test_a_rewrapped_envelope_still_opens
+
+  # ---- R1.5 (CV3): the key comes from the caller's tenant ---------------------
+  - name: R1.5 no kek_ref comparison
+    file: packages/python/dw_platform/src/dw_platform/application/secrets.py
+    old: "        if envelope.kek_ref != kek_ref_for(caller.tenant_id):"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_secret_store.py::test_another_tenants_key_is_refused_before_any_key_is_asked_for
+      - packages/python/dw_platform/tests/integration/test_secret_vault.py::test_a_row_under_another_tenants_key_is_refused_and_audited
+  - name: R1.5 a mismatch is not audited
+    file: packages/python/dw_platform/src/dw_platform/application/secrets.py
+    old: "            await self._audit_key_mismatch(caller, workspace, subject, secret_field, envelope)"
+    new: "            pass"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_secret_store.py::test_another_tenants_key_is_refused_before_any_key_is_asked_for
+      - packages/python/dw_platform/tests/integration/test_secret_vault.py::test_a_row_under_another_tenants_key_is_refused_and_audited
+
+  # ---- R1.6 (CV2): offboarding removes the envelopes through the connections --
+  - name: R1.6 the lane cannot delete a connection
+    file: db/migrations/versions/70d8a4564454_connections_and_secret_envelopes.py
+    old: '    "REVOKE UPDATE ON platform.connections FROM dw_app;",'
+    new: '    "REVOKE UPDATE, DELETE ON platform.connections FROM dw_app;",'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_secret_vault.py::test_offboarding_never_exports_an_envelope_and_deletes_them_through_connections
+      - packages/python/dw_platform/tests/integration/test_offboarding_coverage.py::test_offboarding_covers_every_table_it_has_to
+  - name: R1.6 the exclusion names a way the catalog does not confirm
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py
+    old: '            cascade_from="platform.connections",'
+    new: '            cascade_from="platform.workspaces",'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_offboarding_coverage.py::test_offboarding_covers_every_table_it_has_to
+
+  # ---- R1.7 (CV1): the owning workspace never changes, two layers -------------
+  - name: R1.7 dw_app may update the owning workspace
+    file: db/migrations/versions/70d8a4564454_connections_and_secret_envelopes.py
+    old: '    "REVOKE UPDATE ON platform.connections FROM dw_app;",'
+    new: '    "NULL;",'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_secret_vault.py::test_a_connections_owning_workspace_never_changes
+      - packages/python/dw_platform/tests/integration/test_privileges.py::test_the_envelopes_are_reached_only_through_dw_apps_door
+  - name: R1.7 the trigger lets the owning workspace move
+    file: db/migrations/versions/70d8a4564454_connections_and_secret_envelopes.py
+    old: "        IF NEW.owning_workspace_id IS DISTINCT FROM OLD.owning_workspace_id THEN"
+    new: "        IF false THEN"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_secret_vault.py::test_a_connections_owning_workspace_never_changes
+
+  # ---- R1.8 (CV23): an envelope points at its own tenant's subject ------------
+  - name: R1.8 a one-column key to the connection
+    file: db/migrations/versions/70d8a4564454_connections_and_secret_envelopes.py
+    old: "            FOREIGN KEY (connection_id, tenant_id)\n            REFERENCES platform.connections (id, tenant_id) ON DELETE CASCADE,"
+    new: "            FOREIGN KEY (connection_id)\n            REFERENCES platform.connections (id) ON DELETE CASCADE,"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_secret_vault.py::test_an_envelope_cannot_name_another_tenants_connection
+
+  # ---- R1.9 (CV24): a rotation replaces the earlier versions ------------------
+  - name: R1.9 the rotation revokes nothing
+    file: db/migrations/versions/70d8a4564454_connections_and_secret_envelopes.py
+    old: "            ' WHERE tenant_id = $1 AND %I = $2 AND field = $3 AND revoked_at IS NULL',"
+    new: "            ' WHERE tenant_id = $1 AND %I = $2 AND field = $3 AND false',"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_secret_vault.py::test_a_new_value_replaces_the_old_one_in_its_own_transaction
+      - packages/python/dw_platform/tests/integration/test_secret_vault.py::test_a_revoked_or_missing_version_does_not_open
+  - name: R1.9 a second rotation moves an earlier deadline
+    file: db/migrations/versions/70d8a4564454_connections_and_secret_envelopes.py
+    old: "            ' WHERE tenant_id = $1 AND %I = $2 AND field = $3 AND revoked_at IS NULL',"
+    new: "            ' WHERE tenant_id = $1 AND %I = $2 AND field = $3',"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_secret_vault.py::test_a_signing_secret_overlaps_for_24_hours_and_a_second_rotation_moves_nothing
+  - name: R1.9 replaced_at is not written
+    file: db/migrations/versions/70d8a4564454_connections_and_secret_envelopes.py
+    old: "            ' SET replaced_at = now(),'"
+    new: "            ' SET'"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_secret_vault.py::test_a_new_value_replaces_the_old_one_in_its_own_transaction
+
+  # ---- R1.10, R1.14 (CV24): closed while revoked or missing, no fall-back -----
+  - name: R1.10 open_secret ignores revoked_at
+    file: db/migrations/versions/70d8a4564454_connections_and_secret_envelopes.py
+    old: "            ' WHERE c.revoked_at IS NULL OR c.revoked_at > now()',"
+    new: "            ' WHERE true',"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_secret_vault.py::test_a_revoked_or_missing_version_does_not_open
+      - packages/python/dw_platform/tests/integration/test_secret_vault.py::test_the_latest_version_opens_and_a_revoked_latest_never_falls_back
+  - name: R1.14 the oldest version is chosen
+    file: db/migrations/versions/70d8a4564454_connections_and_secret_envelopes.py
+    old: "            '   ORDER BY e.secret_version DESC LIMIT 1'"
+    new: "            '   ORDER BY e.secret_version ASC LIMIT 1'"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_secret_vault.py::test_the_latest_version_opens_and_a_revoked_latest_never_falls_back
+  - name: R1.14 a revoked latest falls back to the version it replaced
+    file: db/migrations/versions/70d8a4564454_connections_and_secret_envelopes.py
+    old: "            '     AND ($4 IS NULL OR e.secret_version = $4)'"
+    new: "            '     AND ($4 IS NULL OR e.secret_version = $4)'\n            '     AND (e.revoked_at IS NULL OR e.revoked_at > now())'"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_secret_vault.py::test_the_latest_version_opens_and_a_revoked_latest_never_falls_back
+
+  # ---- R2.2 (CV5): the development key service stays out of deployments ------
+  - name: R2.2 the api does not refuse local when deployed
+    file: apps/api/src/dw_api/settings.py
+    old: "            deployed=self.is_deployed,"
+    new: "            deployed=False,"
+    tests:
+      - apps/api/tests/unit/test_kms_profile.py::test_a_deployed_api_refuses_the_local_key_service
+  - name: R2.2 the worker does not refuse local when deployed
+    file: apps/worker/src/dw_worker/settings.py
+    old: "            deployed=self.is_deployed,"
+    new: "            deployed=False,"
+    tests:
+      - apps/worker/tests/unit/test_worker_kms_profile.py::test_a_deployed_worker_refuses_the_local_key_service
+  - name: R2.2 none falls back to the local key service
+    file: packages/python/dw_platform/src/dw_platform/adapters/kms.py
+    old: "    if provider == \"local\":\n        return LocalDevKms(decode_local_master_key(local_master_key))\n    return UnavailableKms()"
+    new: "    return LocalDevKms(decode_local_master_key(local_master_key))"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_kms.py::test_none_never_falls_back_to_the_local_key_service

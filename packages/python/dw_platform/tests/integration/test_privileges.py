@@ -1778,3 +1778,126 @@ async def test_only_dw_app_calls_the_service_account_functions_and_no_one_the_tr
     for function, (definer, config) in shapes.items():
         assert definer is True, function
         assert config == ["search_path=pg_catalog, platform"], function
+
+
+_SECRET_DOORS = (
+    "platform.put_secret(text, uuid, text, integer, text, bytea, text, integer, bytea, bytea)",
+    "platform.open_secret(text, uuid, text, integer)",
+    "platform.secret_status(text, uuid, text)",
+    "platform.delete_secret(text, uuid, text)",
+)
+_SECRET_INTERNALS = (
+    "platform.guard_connection_owning_workspace()",
+    "platform.secret_subject_column(text)",
+)
+_CONNECTION_UPDATABLE = {
+    "share_scope",
+    "external_account",
+    "status",
+    "scopes",
+    "last_used_at",
+    "updated_at",
+}
+
+
+async def test_the_envelopes_are_reached_only_through_dw_apps_door(db_urls: DatabaseUrls) -> None:
+    """connections-and-vault R1.3 (CV2), migration 70d8a4564454: no role but
+    the migrator holds a privilege on `platform.secret_envelopes`; the four
+    door functions are SECURITY DEFINER on a fixed `search_path`, revoked from
+    PUBLIC and executable by `dw_app` alone; the two internal functions by no
+    application role. `platform.connections`: SELECT, INSERT and DELETE on the
+    table (the offboarding catalog asks those), UPDATE of six named columns."""
+    verbs = ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER")
+    roles = ("public", "dw_app", "dw_agent_ro", "dw_provisioner")
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            on_envelopes = {
+                (role, verb)
+                for role in roles
+                for verb in verbs
+                if await conn.scalar(
+                    sa.text("SELECT has_table_privilege(:r, 'platform.secret_envelopes', :v)"),
+                    {"r": role, "v": verb},
+                )
+            }
+            on_connections = {
+                (role, verb)
+                for role in roles
+                for verb in verbs
+                if await conn.scalar(
+                    sa.text("SELECT has_table_privilege(:r, 'platform.connections', :v)"),
+                    {"r": role, "v": verb},
+                )
+            }
+            updatable = set(
+                (
+                    await conn.execute(
+                        sa.text(
+                            "SELECT a.attname FROM pg_attribute a"
+                            " WHERE a.attrelid = 'platform.connections'::regclass"
+                            "   AND a.attnum > 0 AND NOT a.attisdropped"
+                            "   AND has_column_privilege('dw_app', a.attrelid, a.attnum,"
+                            "                            'UPDATE')"
+                        )
+                    )
+                ).scalars()
+            )
+            calls = {
+                (role, function)
+                for role in roles
+                for function in (*_SECRET_DOORS, *_SECRET_INTERNALS)
+                if await conn.scalar(
+                    sa.text("SELECT has_function_privilege(:r, :f, 'EXECUTE')"),
+                    {"r": role, "f": function},
+                )
+            }
+            shapes = {
+                function: tuple(
+                    (
+                        await conn.execute(
+                            sa.text(
+                                "SELECT prosecdef, proconfig, proacl::text[] FROM pg_proc"
+                                " WHERE oid = CAST(:f AS regprocedure)"
+                            ),
+                            {"f": function},
+                        )
+                    ).one()
+                )
+                for function in _SECRET_DOORS
+            }
+    finally:
+        await migrator.dispose()
+    assert on_envelopes == set()
+    assert on_connections == {("dw_app", v) for v in ("SELECT", "INSERT", "DELETE")}
+    assert updatable == _CONNECTION_UPDATABLE
+    assert calls == {("dw_app", function) for function in _SECRET_DOORS}
+    for function, (definer, config, acl) in shapes.items():
+        assert definer is True, function
+        assert config == ["search_path=pg_catalog, platform"], function
+        # No `=X/...` entry: PUBLIC holds nothing (an ACL entry with no grantee).
+        assert not any(entry.startswith("=") for entry in acl), (function, acl)
+
+
+async def test_the_application_cannot_read_an_envelope_and_the_provisioner_not_call_the_door(
+    db_urls: DatabaseUrls, app_engine: AsyncEngine
+) -> None:
+    """R1.3: the statements themselves, not only the catalog's answer."""
+    async with app_engine.connect() as conn:
+        with pytest.raises(Exception, match="permission denied for table secret_envelopes"):
+            await conn.execute(sa.text("SELECT * FROM platform.secret_envelopes"))
+    admin = create_async_engine(admin_url(db_urls), poolclass=NullPool)
+    try:
+        async with admin.connect() as conn:
+            await conn.execute(sa.text("SET LOCAL ROLE dw_provisioner"))
+            with pytest.raises(Exception, match="permission denied for function put_secret"):
+                await conn.execute(
+                    sa.text(
+                        "SELECT platform.put_secret('connection', gen_random_uuid(), 'api_key',"
+                        " 1, 'aes-256-gcm', decode('00', 'hex'), 'tenant-x', 1,"
+                        " decode('00', 'hex'), decode('00', 'hex'))"
+                    )
+                )
+            await conn.rollback()
+    finally:
+        await admin.dispose()
