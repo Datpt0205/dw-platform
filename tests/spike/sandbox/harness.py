@@ -22,9 +22,11 @@ from __future__ import annotations
 import argparse
 import contextlib
 import hashlib
+import io
 import json
 import math
 import os
+import platform
 import queue
 import shutil
 import signal
@@ -186,6 +188,12 @@ class Engine:
         found = self.labelled()
         self.remove(*found)
         return found
+
+    def try_reap(self) -> None:
+        """reap() where an engine that does not answer must not stop the caller:
+        the table still gets its ten rows, each saying what failed."""
+        with contextlib.suppress(HarnessError, OSError, subprocess.TimeoutExpired):
+            self.reap()
 
 
 def _tail(data: bytes | str | None, limit: int = 600) -> str:
@@ -973,7 +981,9 @@ def row_stdin_log_driver_none(engine: Engine) -> Outcome:
         },
         "bytes",
         PASS if same else FAIL,
-        "returned intact on stdout" if same else "stdout differs from the payload",
+        "returned intact on stdout"
+        if same
+        else f"stdout differs from the payload (exit {done.returncode}: {_tail(done.stderr, 200)})",
     )
 
 
@@ -986,7 +996,9 @@ def row_tmpfs_noexec(engine: Engine) -> Outcome:
         {"verdicts": verdicts, "exit_code": done.returncode, "stderr": _tail(done.stderr, 300)},
         "outcome",
         PASS if denied else FAIL,
-        "both refused with EACCES" if denied else f"not refused: {verdicts}",
+        "both refused with EACCES"
+        if denied
+        else f"not refused: {verdicts} (exit {done.returncode}: {_tail(done.stderr, 200)})",
     )
 
 
@@ -1025,7 +1037,7 @@ def row_pandas(engine: Engine) -> Outcome:
     done, wall = run_once(engine, PANDAS, timeout=PY_SMALL_TIMEOUT_SECONDS + 60)
     found: dict[str, Any] = {}
     with contextlib.suppress(ValueError):
-        found = json.loads(done.stdout.decode(errors="replace").strip().splitlines()[-1])
+        found = json.loads((done.stdout.decode(errors="replace").strip() or "{}").splitlines()[-1])
     found |= {"wall_s": round(wall, 2), "exit_code": done.returncode}
     if done.returncode != 0:
         found["stderr"] = _tail(done.stderr, 400)
@@ -1040,7 +1052,7 @@ def row_pandas(engine: Engine) -> Outcome:
         PASS if held else FAIL,
         f"done in {wall:.1f} s of the {PY_SMALL_TIMEOUT_SECONDS} s py-small allows"
         if held
-        else f"exit {done.returncode} after {wall:.1f} s",
+        else f"exit {done.returncode} after {wall:.1f} s: {_tail(done.stderr, 200)}",
     )
 
 
@@ -1198,13 +1210,13 @@ def measure_row(engine: Engine, n: int) -> Row:
         message = f"{type(error).__name__}: {error}"
         outcome = Outcome({"error": message}, "", FAIL, _tail(message))
     finally:
-        engine.reap()
+        engine.try_reap()
     return Row(n, item, outcome.measured, outcome.unit, outcome.status, outcome.reason)
 
 
 def versions(engine: Engine) -> dict[str, Any]:
     found: dict[str, Any] = {
-        "kernel": os.uname().release,
+        "kernel": platform.release(),
         # GitHub's runner image names these variables in mixed case.
         "runner_image": os.environ.get("ImageOS"),  # noqa: SIM112
         "runner_image_version": os.environ.get("ImageVersion"),  # noqa: SIM112
@@ -1228,7 +1240,7 @@ def versions(engine: Engine) -> dict[str, Any]:
 
 
 def measure(engine: Engine, where: str) -> dict[str, Any]:
-    engine.reap()
+    engine.try_reap()
     rows = [measure_row(engine, n) for n in range(1, len(ROWS) + 1)]
     return {
         "where": where,
@@ -1322,6 +1334,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _hold(args.count)
     if args.command == "annotate-log":
         return _annotate_log(args.title, args.path, args.lines)
+    # The statuses are Vietnamese; a Windows console is cp1252 by default.
+    if isinstance(sys.stdout, io.TextIOWrapper):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     results = measure(Engine.under_test(), args.where)
     out: Path = args.out or Path(f"results-{args.where}.json")
     out.write_text(json.dumps(results, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

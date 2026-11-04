@@ -116,6 +116,20 @@ EOF
   sudo apparmor_parser -r /etc/apparmor.d/dw-spike-rootlesskit /etc/apparmor.d/dw-spike-runsc
 fi
 
+# The user-namespace facts that decide whether RootlessKit may start, each on
+# one line, so the last lines of a failed log carry them.
+userns_facts() {
+  local name
+  for name in kernel/apparmor_restrict_unprivileged_userns kernel/unprivileged_userns_clone \
+    user/max_user_namespaces; do
+    echo "sysctl ${name}: $(cat "/proc/sys/${name}" 2>/dev/null || echo absent)"
+  done
+  echo "apparmor: $(sudo aa-status 2>/dev/null | grep -iE 'rootless|dw-spike' | tr -s ' \n' ' ')"
+  echo "rootlesskit true: $(rootlesskit true 2>&1 | tail -n 2 | tr '\n' ' ')"
+  echo "dmesg: $(sudo dmesg 2>/dev/null | grep -i 'apparmor=' | tail -n 2 | tr '\n' ' ')"
+}
+userns_facts
+
 # 3. Subordinate ids for the user namespace: 65536 of them, past every range
 # already handed out, so no two users share one.
 for map in subuid subgid; do
@@ -187,7 +201,12 @@ EOF
 # 7. The rootless engine. --force: a rootful daemon may run beside it (the
 # GitHub runner has one; row 9 of the table measures exactly that).
 log "installing the rootless engine"
-engine_log() { journalctl --user --unit docker.service -n 40 --no-pager >&2 || true; }
+# On failure: the engine's own last words, then the user-namespace facts that
+# decide whether RootlessKit may start at all, last so a log's tail shows them.
+engine_log() {
+  journalctl --user --unit docker.service -n 12 --no-pager >&2 || true
+  userns_facts >&2
+}
 if systemctl --user --quiet is-enabled docker.service 2>/dev/null; then
   systemctl --user restart docker.service || { engine_log; die "the rootless engine did not restart"; }
 else

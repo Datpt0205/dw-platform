@@ -61,9 +61,11 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
         for item in ours:
             item.add_marker(skip)
         return
-    rootless = harness.Engine.under_test().is_rootless()
-    ENGINE_KIND["name"] = "rootless" if rootless else "rootful"
-    blocked = BLOCKED[rootless]
+    engine = harness.Engine.under_test()
+    ENGINE_KIND["name"] = (
+        "rootful" if (engine.host or "").endswith(harness.ROOTFUL_SOCKET) else "rootless"
+    )
+    blocked = BLOCKED[engine.is_rootless()]
     for item in ours:
         reason = blocked.get(item.name)
         if reason:
