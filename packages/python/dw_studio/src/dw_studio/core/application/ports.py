@@ -199,10 +199,12 @@ class ArtifactStore(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class RootVersion:
-    """The version a run starts from, with its artifact's kind."""
+    """The version a run starts from, with its artifact's kind and owning
+    workspace (the run's workspace, workflow-engine R3.18)."""
 
     kind: str
     version: VersionRow
+    owning_workspace_id: uuid.UUID
 
 
 class RunManifestTx(ArtifactTx, Protocol):

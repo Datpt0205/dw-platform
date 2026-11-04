@@ -1,0 +1,14 @@
+# The reason codes workflow-engine writes on a run or an answer, with their
+# Vietnamese labels: this spec's fragment of the reason-code catalogue
+# telemetry-and-audit merges (H-12; V4.36). Each ticket adds the codes it
+# writes, in the same change.
+schema_version: "1.0"
+copy_id: platform.run_reason_codes.workflow_engine
+version: "1.0.0"
+codes:
+  # workflow-engine/02, the door a Studio run is created through.
+  run_as_mismatch: "Lượt chạy không được xin dưới danh nghĩa chủ thể này"
+  request_key_reused: "Khóa yêu cầu này đã dùng cho một lượt chạy khác"
+  trigger_kind_unsupported: "Loại kích hoạt này chưa chạy được"
+  version_not_live: "Chỉ phiên bản Đang dùng mới chạy thật"
+  inbound_event_unexpected: "Chỉ lượt chạy từ trung tâm dữ liệu mới gắn sự kiện nhận"

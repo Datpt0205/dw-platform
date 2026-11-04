@@ -254,8 +254,8 @@ class SqlObjectDefinitionStore:
 def object_store_of(tx: ArtifactTx) -> SqlObjectDefinitionStore:
     """The factory a composition root hands `platform_kinds`: the store over
     the session of the publish transaction it is given."""
-    if not isinstance(tx, SqlArtifactTx):
-        raise TypeError(f"an object definition store needs a SqlArtifactTx, not {type(tx)!r}")
+    if not isinstance(tx, SqlArtifactTx) or tx.context is None:
+        raise TypeError(f"an object definition store needs a person's SqlArtifactTx, not {tx!r}")
     return SqlObjectDefinitionStore(tx.session, tx.context)
 
 

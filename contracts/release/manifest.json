@@ -18,8 +18,18 @@
       "version": "1.0.0"
     },
     {
+      "checksum": "7334a5c7336af4ea355db7a583f68d05d803e77f1367c8089343564657b2dea5",
+      "copy_id": "platform.audit_actions.workflow_engine",
+      "version": "1.0.0"
+    },
+    {
       "checksum": "157df89d9b16a646120c67b8ade1fb7cf6087424aec00a4d1e03e4fe1265554c",
       "copy_id": "marketing.leadcare_handoff",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "3588cb7a2ded84fe1866c0d2aa085df15a76de23599a94257f14d488d1ef5639",
+      "copy_id": "platform.run_reason_codes.workflow_engine",
       "version": "1.0.0"
     },
     {
@@ -55,7 +65,7 @@
       "version": "1.2.0"
     }
   ],
-  "git_sha": "a39de69403fdccad27ab575ae9eb8a0c18893026",
+  "git_sha": "ae81234561a3c262e81c10098f76881f6ad1a902",
   "knowledge_index_version": "2026-07-25.structure-1",
   "memory_policy_version": "2.0.0",
   "platform_version": "0.1.0",

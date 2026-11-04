@@ -17,6 +17,13 @@ The stage machine (agent-lifecycle ticket 03) mounts one submit, withdraw and
 retire route per segment of `SUBMIT_SEGMENTS`, unless a test names its own
 `segments=` (to put a test kind under one); its submit asks the process's one
 `SqlRunControl` (ticket 01) and runs the per-kind checks of `_SUBMIT_CHECKS`.
+
+The one door a Studio run is created through (workflow-engine ticket 02),
+`RunRequestService`, takes two tables frozen here: `_RUN_KEYS`, the key a
+person must hold to ask for each `(artifact_kind, trigger_kind)`, each a
+`*_SCOPE` constant of the capability that owns the kind, so the permission
+catalogue test reads it as a check; and `_RUN_LANES`, the lanes that may ask,
+each with its trigger kinds.
 """
 
 from __future__ import annotations
@@ -37,6 +44,7 @@ from dw_studio.core.adapters.artifact_store import SqlArtifactStore
 from dw_studio.core.adapters.run_manifest_store import SqlRunManifestStore
 from dw_studio.core.application.registry import ArtifactKindEntry, ArtifactKindRegistry
 from dw_studio.core.application.run_manifests import RunManifestBuilder
+from dw_studio.core.application.run_request import RunLaneRegistry, RunRequestService
 from dw_studio.core.application.service import ArtifactService
 from dw_studio.kinds import platform_kinds
 from dw_studio.lifecycle.adapters.store import SqlLifecycleStore
@@ -51,6 +59,21 @@ if TYPE_CHECKING:
 # Capability analysis (compliance-pdpl/05) and the workflow's reviewer check
 # (workflow-nodes R9.5) register here when they ship.
 _SUBMIT_CHECKS: Mapping[str, Sequence[SubmitCheck]] = {}
+
+# The key a person holds, at the run's workspace, to ask for a run of each
+# (artifact_kind, trigger_kind) (workflow-engine R3.17); a pair with no entry
+# is refused. `workflow`'s (`test` -> `studio.workflows.test`) joins with that
+# kind and its key in workflow-engine/01, `manual` with workflow-triggers/01,
+# `agent`'s `chat` with agent-builder.
+_RUN_KEYS: Mapping[tuple[str, str], str] = MappingProxyType({})
+
+# The lanes that ask for runs, each with the trigger kinds it may ask for
+# (workflow-engine R3.18, R3.19): the inbound lane of workflow-triggers acts
+# on its own for a data-hub event; the quality gate of agent-lifecycle carries
+# out the submitter's decision. Only this registry issues a `LaneRequester`.
+_RUN_LANES: Mapping[str, tuple[str, ...]] = MappingProxyType(
+    {"studio_inbound": ("datahub",), "studio_gate": ("eval",)}
+)
 
 
 @dataclass(frozen=True)
@@ -70,6 +93,10 @@ class StudioContainer:
     # port, bound to the session of the run's transaction (workflow-engine/05).
     run_manifests: RunManifestBuilder
     pinned_manifests: Callable[[AsyncSession], RunManifestPort]
+    # workflow-engine 02: the one door of a Studio run, and the registry that
+    # issues a lane its requester.
+    run_requests: RunRequestService
+    run_lanes: RunLaneRegistry
 
 
 def build_studio(
@@ -101,6 +128,8 @@ def build_studio(
     )
 
     segments = SUBMIT_SEGMENTS if segments is None else MappingProxyType(dict(segments))
+    run_manifests = RunManifestBuilder(registry, release_manifest_ref())
+    run_lanes = RunLaneRegistry(_RUN_LANES)
 
     # Imported here, not at the top: the routes import the container's
     # dependencies, which import this package.
@@ -113,6 +142,10 @@ def build_studio(
         lifecycle=lifecycle,
         segments=segments,
         routers=(artifacts_router, lifecycle_router(segments)),
-        run_manifests=RunManifestBuilder(registry, release_manifest_ref()),
+        run_manifests=run_manifests,
         pinned_manifests=SqlRunManifestStore,
+        run_requests=RunRequestService(
+            store, registry, run_manifests, _RUN_KEYS, run_lanes, clock, ids
+        ),
+        run_lanes=run_lanes,
     )

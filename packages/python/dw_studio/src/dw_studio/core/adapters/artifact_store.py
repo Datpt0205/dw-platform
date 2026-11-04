@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncIterator, Sequence
-from contextlib import asynccontextmanager
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass
 from typing import Any
 
@@ -22,7 +22,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from dw_kernel.errors import ConflictError, PayloadTooLargeError
+from dw_kernel.errors import ConflictError, PayloadTooLargeError, PermissionDeniedError
 from dw_kernel.pagination import CursorPosition
 from dw_kernel.ports import IdGenerator
 from dw_platform.adapters.persistence.effect_key_store import claim_effect_key
@@ -33,6 +33,7 @@ from dw_platform.adapters.persistence.tenant_session import TenantScope, tenant_
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.effect_keys import EffectClaim
 from dw_platform.domain.audit import AuditEvent
+from dw_studio.core.adapters import run_intake
 from dw_studio.core.adapters.tables import (
     artifact_display_stage,
     artifact_versions,
@@ -51,6 +52,7 @@ from dw_studio.core.application.ports import (
     RootVersion,
     VersionRow,
 )
+from dw_studio.core.application.run_request import ExistingRun, LaneRequester, QueuedRun
 from dw_studio.core.domain.artifacts import IN_USE_STAGES, Stage, TargetKind
 
 _API_NAME_TAKEN = "uq_artifacts_tenant_id_kind_api_name"
@@ -141,13 +143,18 @@ def _in_use_counts(detail: str) -> dict[str, int]:
 
 @dataclass
 class SqlArtifactTx:
-    """One transaction of `SqlArtifactStore`; see `ArtifactTx`."""
+    """One transaction of `SqlArtifactStore`; see `ArtifactTx`. A person's
+    carries their verified context; a lane's (`for_lane`, workflow-engine/02)
+    carries only the tenant its registry issued it for, and asks no reach."""
 
     session: AsyncSession
-    context: AccessContext
+    tenant_id: uuid.UUID
     ids: IdGenerator
+    context: AccessContext | None
 
     async def reach(self, permission_key: str) -> frozenset[uuid.UUID]:
+        if self.context is None:
+            raise PermissionDeniedError("a lane holds no person's keys")
         rows = await self.session.execute(
             _REACH,
             {"t": self.context.tenant_id, "u": self.context.principal_id, "k": permission_key},
@@ -184,7 +191,7 @@ class SqlArtifactTx:
                     sa.insert(artifacts)
                     .values(
                         id=artifact_id,
-                        tenant_id=self.context.tenant_id,
+                        tenant_id=self.tenant_id,
                         kind=kind,
                         api_name=api_name,
                         owning_workspace_id=owning_workspace_id,
@@ -217,7 +224,7 @@ class SqlArtifactTx:
                     sa.insert(artifact_versions)
                     .values(
                         id=version_id,
-                        tenant_id=self.context.tenant_id,
+                        tenant_id=self.tenant_id,
                         artifact_id=artifact_id,
                         stage=Stage.DRAFT.value,
                         version_no=None,
@@ -322,7 +329,7 @@ class SqlArtifactTx:
     async def put_manifest(self, definition_hash: str, body: dict[str, Any]) -> None:
         await self.session.execute(
             pg_insert(definition_manifests)
-            .values(tenant_id=self.context.tenant_id, hash=definition_hash, body=body)
+            .values(tenant_id=self.tenant_id, hash=definition_hash, body=body)
             .on_conflict_do_nothing(index_elements=["tenant_id", "hash"])
         )
 
@@ -339,7 +346,7 @@ class SqlArtifactTx:
             [
                 {
                     "id": self.ids.new_uuid(),
-                    "tenant_id": self.context.tenant_id,
+                    "tenant_id": self.tenant_id,
                     "from_artifact_id": artifact_id,
                     "from_version_id": version_id,
                     "to_kind": row.to_kind.value,
@@ -438,19 +445,23 @@ class SqlArtifactTx:
         # The artifact FOR SHARE first, the version in a statement after it:
         # one statement would read the version from a snapshot taken before
         # a `save_draft` it waited for had committed.
-        kind = await self.session.scalar(
-            sa.select(artifacts.c.kind)
-            .where(artifacts.c.id == artifact_id, artifacts.c.deleted_at.is_(None))
-            .with_for_update(read=True)
-        )
-        if kind is None:
+        owner = (
+            await self.session.execute(
+                sa.select(artifacts.c.kind, artifacts.c.owning_workspace_id)
+                .where(artifacts.c.id == artifact_id, artifacts.c.deleted_at.is_(None))
+                .with_for_update(read=True)
+            )
+        ).one_or_none()
+        if owner is None:
             return None
         row = (
             await self.session.execute(
                 sa.select(artifact_versions).where(artifact_versions.c.id == version_id)
             )
         ).one_or_none()
-        return None if row is None else RootVersion(kind, _version(row))
+        if row is None:
+            return None
+        return RootVersion(owner.kind, _version(row), owner.owning_workspace_id)
 
     async def definition_manifest(self, definition_hash: str) -> dict[str, Any] | None:
         body = await self.session.scalar(
@@ -476,7 +487,7 @@ class SqlArtifactTx:
         try:
             await self.session.execute(
                 pg_insert(run_manifests)
-                .values(tenant_id=self.context.tenant_id, hash=manifest_hash, body=body)
+                .values(tenant_id=self.tenant_id, hash=manifest_hash, body=body)
                 .on_conflict_do_nothing(index_elements=["tenant_id", "hash"])
             )
         except IntegrityError as exc:
@@ -498,7 +509,7 @@ class SqlArtifactTx:
                 [
                     {
                         "id": self.ids.new_uuid(),
-                        "tenant_id": self.context.tenant_id,
+                        "tenant_id": self.tenant_id,
                         "manifest_hash": manifest_hash,
                         "artifact_version_id": version_id,
                     }
@@ -507,6 +518,14 @@ class SqlArtifactTx:
             )
             .on_conflict_do_nothing()
         )
+
+    # ---- the run row (workflow-engine ticket 02) --------------------------
+
+    async def run_by_request_key(self, request_key: str) -> ExistingRun | None:
+        return await run_intake.run_by_request_key(self.session, request_key)
+
+    async def insert_queued_run(self, run: QueuedRun) -> bool:
+        return await run_intake.insert_queued_run(self.session, self.tenant_id, run)
 
     async def audit(self, event: AuditEvent) -> None:
         await SqlAuditRepository(self.session).append(event)
@@ -520,13 +539,24 @@ class SqlArtifactStore:
     session_factory: async_sessionmaker[AsyncSession]
     ids: IdGenerator
 
+    def transaction(self, context: AccessContext) -> AbstractAsyncContextManager[SqlArtifactTx]:
+        return self._open(TenantScope.from_access_context(context), context)
+
+    # `RunIntakeStore` (workflow-engine ticket 02): a person's transaction is
+    # the envelope's; a lane's is bound to the tenant its registry issued it for.
+    def for_person(self, context: AccessContext) -> AbstractAsyncContextManager[SqlArtifactTx]:
+        return self._open(TenantScope.from_access_context(context), context)
+
+    def for_lane(self, lane: LaneRequester) -> AbstractAsyncContextManager[SqlArtifactTx]:
+        return self._open(TenantScope(tenant_id=lane.tenant_id), None)
+
     @asynccontextmanager
-    async def transaction(self, context: AccessContext) -> AsyncIterator[SqlArtifactTx]:
+    async def _open(
+        self, scope: TenantScope, context: AccessContext | None
+    ) -> AsyncIterator[SqlArtifactTx]:
         try:
-            async with tenant_session(
-                self.session_factory, TenantScope.from_access_context(context)
-            ) as session:
-                yield SqlArtifactTx(session, context, self.ids)
+            async with tenant_session(self.session_factory, scope) as session:
+                yield SqlArtifactTx(session, scope.tenant_id, self.ids, context)
         except DBAPIError as exc:
             # Two seals of artifacts that use each other can each hold the row
             # the other shares (gate MEDIUM (i)): a retry succeeds, so a 409.

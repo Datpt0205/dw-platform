@@ -1,4 +1,5 @@
-"""SQLAlchemy Core tables for runtime persistence (migrations 0002, 0024 and 3f1cb1d4cece)."""
+"""SQLAlchemy Core tables for runtime persistence (migrations 0002, 0024, 3f1cb1d4cece,
+28a94cda6fdf and 703be798341f)."""
 
 from __future__ import annotations
 
@@ -53,6 +54,28 @@ worker_runs = sa.Table(
     sa.Column("subject_ref", sa.Text, nullable=True),
     sa.Column("created_at", sa.TIMESTAMP(timezone=True), nullable=False),
     sa.Column("updated_at", sa.TIMESTAMP(timezone=True), nullable=False),
+    # tenant-config 04 (migration 28a94cda6fdf): the manifest a Studio run pins.
+    sa.Column("run_manifest_hash", sa.Text, nullable=True),
+    # workflow-engine 02 (migration 703be798341f): the run tree, the Studio
+    # artifact and request, and ADR-0113's queue. `root_run_id` is filled by
+    # `platform.default_root_run_id()` when an insert names none.
+    sa.Column("root_run_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("parent_run_id", UUID(as_uuid=True), nullable=True),
+    sa.Column("chain_depth", sa.SmallInteger, nullable=False, server_default="0"),
+    sa.Column("artifact_kind", sa.Text, nullable=True),
+    sa.Column("artifact_id", UUID(as_uuid=True), nullable=True),
+    sa.Column("artifact_version_id", UUID(as_uuid=True), nullable=True),
+    sa.Column("trigger_kind", sa.Text, nullable=True),
+    sa.Column("inbound_event_id", UUID(as_uuid=True), nullable=True),
+    sa.Column("request_key", sa.Text, nullable=True),
+    sa.Column("priority", sa.SmallInteger, nullable=False, server_default="0"),
+    sa.Column(
+        "available_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.func.now()
+    ),
+    sa.Column("lease_owner", sa.Text, nullable=True),
+    sa.Column("lease_until", sa.TIMESTAMP(timezone=True), nullable=True),
+    sa.Column("attempt", sa.SmallInteger, nullable=False, server_default="0"),
+    sa.Column("deadline_at", sa.TIMESTAMP(timezone=True), nullable=True),
 )
 
 run_checkpoints = sa.Table(

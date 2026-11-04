@@ -35,6 +35,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.sql.selectable import NamedFromClause
 
+from dw_agent_runtime.adapters.run_store import TERMINAL_STATUSES
 from dw_agent_runtime.adapters.runtime_tables import (
     run_checkpoint_writes,
     run_checkpoints,
@@ -47,10 +48,11 @@ __all__ = ["FINISHED_RUN_STATUSES", "SqlCheckpointRetention"]
 
 logger = logging.getLogger("dw_agent_runtime.checkpoint_retention")
 
-# The statuses a run never leaves. The same set `uq_worker_runs_active_thread`
-# excludes, so "this thread has no active run" means the same thing here as it
-# does to the index that allows one active run per thread.
-FINISHED_RUN_STATUSES = ("completed", "failed", "cancelled")
+# The statuses a run never leaves, read from `TERMINAL_STATUSES`: the set
+# `uq_worker_runs_active_thread` excludes, so "this thread has no active run"
+# means the same thing here as it does to the index that allows one active run
+# per thread.
+FINISHED_RUN_STATUSES = tuple(sorted(status.value for status in TERMINAL_STATUSES))
 
 _SET_DRAIN = text("SELECT set_config('app.worker_drain', 'on', true)")
 

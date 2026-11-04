@@ -51,7 +51,11 @@ class RunStatus(StrEnum):
     DEAD_LETTERED = "dead_lettered"
 
 
-TERMINAL_STATUSES = frozenset({RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED})
+# The statuses a run never leaves: the set `uq_worker_runs_active_thread`
+# excludes (workflow-engine/02), so a dead-lettered run holds no thread.
+TERMINAL_STATUSES = frozenset(
+    {RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED, RunStatus.DEAD_LETTERED}
+)
 
 _SET_TENANT = text("SELECT set_config('app.tenant_id', :tenant_id, true)")
 
