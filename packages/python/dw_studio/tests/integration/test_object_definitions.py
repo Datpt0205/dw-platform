@@ -365,10 +365,23 @@ async def _object_rows(conn: Any, tenant: PlantedTenant) -> dict[str, uuid.UUID]
     return ids
 
 
+async def _plant_tenant(conn: Any) -> PlantedTenant:
+    """`plant_tenant` as the migrator inside the superuser's transaction, which
+    rolls back with it. Since tenant-rbac/03 every writer but `dw_migrator`,
+    a superuser session included, is judged by `platform.rbac_guard()`, and
+    installing a tenant's system roles has no person to name (`rbac_actor_missing`);
+    fixtures are planted as the migrator, as tenant-rbac/03 moved its own."""
+    await conn.execute(sa.text("SET SESSION AUTHORIZATION dw_migrator"))
+    try:
+        return await plant_tenant(conn)
+    finally:
+        await conn.execute(sa.text("RESET SESSION AUTHORIZATION"))
+
+
 async def _tenant_in(conn: Any, remainder: int) -> PlantedTenant:
     """A planted tenant whose records hash to `records_p<remainder>`."""
     for _ in range(64):
-        tenant = await plant_tenant(conn)
+        tenant = await _plant_tenant(conn)
         lands = await conn.scalar(
             sa.text(
                 "SELECT satisfies_hash_partition("
@@ -400,7 +413,7 @@ async def test_r4_2_the_tenant_policy_alone_narrows_records_and_definitions(
         tx = await conn.begin()
         try:
             tenant = await _tenant_in(conn, 3)
-            other = await plant_tenant(conn)
+            other = await _plant_tenant(conn)
             mine = await _object_rows(conn, tenant)
             for statement in (
                 f"CREATE ROLE {probe} NOLOGIN NOBYPASSRLS",
@@ -475,7 +488,7 @@ async def test_r4_1_a_record_needs_its_owner_and_owning_workspace(
     async with admin.connect() as conn:
         tx = await conn.begin()
         try:
-            tenant = await plant_tenant(conn)
+            tenant = await _plant_tenant(conn)
             ids = await _object_rows(conn, tenant)
             with pytest.raises(DBAPIError) as caught:
                 await conn.execute(
@@ -542,7 +555,7 @@ async def test_r4_6_no_key_points_into_another_company(admin: AsyncEngine, case:
     async with admin.connect() as conn:
         tx = await conn.begin()
         try:
-            a, b = await plant_tenant(conn), await plant_tenant(conn)
+            a, b = await _plant_tenant(conn), await _plant_tenant(conn)
             mine, theirs = await _object_rows(conn, a), await _object_rows(conn, b)
             spare = uuid.uuid4()
             await conn.execute(
