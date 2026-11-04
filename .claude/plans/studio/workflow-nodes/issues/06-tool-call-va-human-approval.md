@@ -142,6 +142,7 @@ approval_request_id)` tới `platform.approval_requests (tenant_id, workspace_id
    tenant), nên một đường hủy không đặt ngữ cảnh làm test R9.15 đỏ thay vì lặng lẽ không hủy gì. Bộ
    trả phiên bản chủ thể cho mã quyết định Zalo không đăng ký ở W1 (cùng nhắc, chuyển cấp và hết hạn ở W2), nên loại
    `studio.step.` quyết trên web.
+7. **`effect_door`** (workflow-engine/03; bảng ở mục Trong phạm vi của spec, chủ duy nhất): `tool.call@2` khai `tool`, `human.approval@2` khai không cửa; thiếu trường thì sổ từ chối đăng ký, và `incident` của `allowed_on_error` do luật của workflow-engine/07 suy từ trường này, loại không tự khai.
 
 ## Tiêu chí chấp nhận
 

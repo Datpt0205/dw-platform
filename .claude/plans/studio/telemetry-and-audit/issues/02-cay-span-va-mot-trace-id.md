@@ -35,9 +35,11 @@ Một cây span thật cho lượt chạy (workflow, node, agent, chat, tool, re
 4. Bộ bọc node của workflow-engine (ticket 03 của nó) là chỗ duy nhất mở `invoke_workflow`, `dw.node` (`dw.node_id`,
    `dw.node_type`, `dw.attempt`, `dw.error_policy`, `error.type`) và `invoke_agent`; ticket này đặt tên, thuộc tính và
    test cây trong mã của bộ bọc, không mở span thứ hai, và gỡ span khỏi adapter chỉ-phát-span của `StepRecorderPort` mà
-   workflow-engine/03 nối tạm, nếu ticket này vào trước telemetry-and-audit/03. `error.type` là mã lỗi của bộ bọc khi mã
-   đó thuộc tập lỗi đóng của nó (bảng mã `wf.*` và mã kết quả của các cửa, mọi mã đều có khóa trong catalog của ticket 03), còn lại `unknown_error`, cùng mã thay thế của R3.15 nên span, cột và nhãn metric một tập, không bao giờ chuỗi của
-   công cụ hay nhà cung cấp (spec R2.9; TA44). Mỗi lời gọi model có đúng một span `chat {model}`: `LimitsMiddleware` mở
+   workflow-engine/03 nối tạm (ticket 03 chờ ticket này). `error.type` là `error_type_label(code)` của workflow-engine/03,
+   hàm duy nhất trả mã lỗi của bộ bọc khi mã đó thuộc tập lỗi đóng của nó (bảng mã `wf.*` và mã kết quả của các cửa)
+   và `unknown_error` khi không, cũng là hàm mà nhãn metric `dw_node_failure_total{error_type}` và cột của R3.15 gọi,
+   nên span, cột và nhãn metric một tập, không bao giờ chuỗi của công cụ hay nhà cung cấp (spec R2.9; TA44); ticket này
+   không viết phép thay thứ hai. Mỗi lời gọi model có đúng một span `chat {model}`: `LimitsMiddleware` mở
    nó trên vòng agent, gateway mở nó trên đường có cấu trúc, và lời gọi gateway nằm dưới `LimitsMiddleware` không mở
    span thứ hai. `retrieval` trong knowledge gateway không có câu hỏi; mỗi span mang `dw.run_mode`, id công ty và id
    workspace, và `dw.run_manifest_hash` khi lượt có bản kê (lượt Studio), vắng khóa đó ở lượt không có. Lượt agent
@@ -110,5 +112,12 @@ Một cây span thật cho lượt chạy (workflow, node, agent, chat, tool, re
   này thêm CHECK `trace_id`, ticket 03 thêm hàm xóa và đặt `updated_at` khi xóa trắng) và span `dw.node` (ticket này mở
   trong bộ bọc, ticket 03 thay adapter chỉ-phát-span bằng adapter không mở span); hai revision nối chuỗi Alembic, nên
   không dựng song song, revision sau đổi `down_revision`. Thứ tự dựng: sau workflow-engine/05, usage-and-limits/03 và
-  app-standards/03, trước hay sau ticket 03 đều được nếu không cùng lúc.
+  app-standards/03, trước ticket 03 (cạnh thêm 4/11/2026, dòng dưới).
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): `checking-plan-consistency` của vùng studio, hai HIGH: (C:telemetry-and-audit/02~~telemetry-and-audit/03)
+  ticket 03 dựng trước ticket này làm mất span `dw.node` (adapter mới không mở span, bộ bọc chưa mở), và ticket 03 cài
+  `step_waiting` của workflow-engine/05 mà không chờ nó: ticket 03 nay chờ ticket này, ticket đã chờ workflow-engine/05;
+  (B:telemetry-and-audit/02~~workflow-engine/03) nhãn metric `dw_node_failure_total{error_type}` không qua phép thay
+  `unknown_error` (M5 ở trên): một hàm `error_type_label` của workflow-engine/03 cho span, cột và nhãn metric; bước 3
+  không còn dựa vào catalog của ticket 03. Nếu sai thì: ticket 03 giữ span trong adapter tới khi ticket này dời nó, và
+  workflow-engine/03 khai `step_waiting` cùng Protocol.
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.

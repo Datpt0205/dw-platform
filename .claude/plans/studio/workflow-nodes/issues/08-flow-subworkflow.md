@@ -82,6 +82,7 @@ WN35). Lượt con (ghim lúc gửi kiểm định, lồng tối đa 3 cấp, ch
 4. Test: `packages/python/dw_studio/tests/workflows/test_subworkflow_node.py` cho schema, đầu ra, Khi lỗi, ba tính chất,
    bộ trích và kiểm khi gửi kiểm định; ca lượt cha `simulate` có Quy trình con gửi `email.send` và ca worker chết sau
    khi xin lượt con chạy trong `make test-integration`, trên cửa xin lượt con thật của workflow-engine/09.
+5. **`effect_door`** (workflow-engine/03; bảng ở mục Trong phạm vi của spec, chủ duy nhất): `flow.subworkflow@1` khai `child_run`; thiếu trường thì sổ từ chối đăng ký, và `incident` của `allowed_on_error` do luật của workflow-engine/07 suy từ trường này, loại không tự khai.
 
 ## Tiêu chí chấp nhận
 

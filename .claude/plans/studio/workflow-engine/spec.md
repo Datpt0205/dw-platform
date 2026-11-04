@@ -107,7 +107,7 @@ Mỗi phiên bản quy trình phát hành, và bản Nháp mà một lượt mô
 - R4.5 KHI wrapper nút gọi một hiệu ứng, wrapper nút PHẢI dẫn khóa chống lặp `wf:{run_id}:{node_id}:{iteration_path}`, giống nhau ở mọi lần thử, mọi lần nhận lại và lần chạy lại sau sự cố, qua executor giành-lượt-trước có nhật ký lần gửi, để hai lời gọi cùng khóa không cùng gửi khi claim còn hạn (mức đồng thời của YC41; runtime-hardening:R6.1; V4.30).
 - R4.6 NẾU đầu ra của một node vượt 64 KiB (65.536 byte thì nhận, 65.537 thì không), THÌ wrapper nút PHẢI cho node lỗi `output_too_large` và không ghi checkpoint lớn.
 - R4.7 TRONG KHI lượt chạy ở chế độ `simulate`, wrapper nút PHẢI cho mọi hiệu ứng đi qua đúng cửa của loại hiệu ứng (R4.4) không có đường vòng, để chính cửa đó giả lập lệnh gọi tại điểm thực thi (tenant-config:R5.1 cho công cụ, custom-objects:R5.4 cho bản ghi), trừ Bước mang kết quả ghim, không gọi cửa nào (R4.27).
-- R4.8 KHI wrapper nút bắt đầu một node, wrapper nút PHẢI kiểm `RunControlPort` và dừng lượt chạy ở node kế tiếp trong ≤ 5 giây nếu port báo dừng (đóng băng, tắt khẩn hay chủ thể chạy không `active`), không thực hiện hiệu ứng đang chờ nào (agent-lifecycle là chủ `RunControlPort` và lý do dừng, agent-lifecycle:R7.1; YC72).
+- R4.8 KHI wrapper nút bắt đầu một node, wrapper nút PHẢI kiểm `RunControlPort` và dừng lượt chạy ở node kế tiếp trong ≤ 5 giây nếu port báo dừng (đóng băng, tắt khẩn hay `control_state_unavailable`), không thực hiện hiệu ứng đang chờ nào (agent-lifecycle là chủ `RunControlPort` và lý do dừng, agent-lifecycle:R7.1; YC72); chủ thể chạy và trạng thái công ty chỉ được kiểm ở nhận lượt, bắt đầu và tiếp tục (R5.12-R5.18), không ở đầu node (ADR-0120 (Accepted), Amendments 2026-11-04).
 - R4.9 KHI wrapper nút kết thúc một node, wrapper nút PHẢI ghi một bước qua `StepRecorderPort` với đầu vào và đầu ra đã che theo quyền người xem, span `dw.node`, và gắn `app.actor_kind = 'workflow'`, `app.run_mode` của lượt cùng `app.boundary_id` của phiên bản, hay của giới hạn tạm của lượt khi gốc chưa `live` (R3.13, R3.15), mỗi giao dịch (record-access:R6.4, record-access:R6.13).
 - R4.10 Node của quy trình PHẢI không chứa SQL hay SDK nhà cung cấp, nhận cổng nó cần bằng tiêm (studio-skeleton:R5.4).
 - R4.11 NẾU wrapper nút bắt đầu một node lúc bằng hay sau `deadline_at` của lượt chạy (R5.22), THÌ wrapper nút PHẢI đặt lượt chạy `cancelled` với `error.code` `deadline_exceeded` và audit `run.deadline_exceeded` với actor `system:studio_runs` trong cùng giao dịch, không thực hiện hiệu ứng nào của node đó (V4.14; ADR-0113 (Accepted) quyết 3).
@@ -693,6 +693,24 @@ Mọi bảng mới: `tenant_id`, RLS ENABLE và FORCE chỉ theo tenant, grant c
   từng phiên bản con, tính ở `dw_studio` và đưa vào bộ kiểm lõi qua `callee_facts`; lease của lượt gốc không nhả khi chờ
   lượt con (usage-and-limits/03); ca chéo tenant ở cửa và trigger; khóa một chiều cha trước con chống deadlock.
 - 4/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 09.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): `checking-plan-consistency` của vùng studio, sửa ở spec này và các
+  ticket:
+    - CRITICAL (F:workflow-engine:R4.8~ADR-0120 (Accepted)): R4.8 dừng lượt ở đầu node cả khi chủ thể chạy không `active`, trái
+      ADR-0120 (Accepted), Amendments 2026-11-04 (chủ thể và trạng thái công ty chỉ kiểm ở nhận lượt, bắt đầu và tiếp
+      tục) và mã đã dựng của agent-lifecycle/01. Sửa: R4.8; ticket 03 tiêu chí R4.8; ticket 08 bước 5 và ca R6.38.
+    - CRITICAL (I:workflow-engine/08~ADR-0112 (Accepted)): ticket 08 (lõi W1, cổng E1, V4.31) chờ ticket 07, ticket 07 chờ 06, nên
+      marketing-pilot/03 và domain-probe/01 chờ song song và vòng lặp, trái ADR-0112 (Accepted) quyết 2 ("no pilot ticket
+      waits for them") và V4.26. Gỡ cạnh: cột `run_waits.detail` và tham số `detail` của `RunWaitPort.open` về ticket
+      05 (chủ của bảng và của port, như CHECK `kind`), CHECK của dòng `incident` ở lại ticket 07, ca `incident` của
+      R6.34 sang ticket 07 với lần gửi chưa biết kết quả dựng bằng dòng `dispatched`; ticket 07 và 08 không nối nhau
+      (không đảo, vì phụ thuộc chỉ trỏ ngược); ticket 09 chỉ thêm `resolved_with` (thay dòng 4/11 của ticket 07 ở trên:
+      "ticket 08 chờ ticket 07").
+    - HIGH (B:workflow-engine/07~workflow-nodes/04): `incident` của `allowed_on_error` là một luật của lõi suy từ
+      `effect_door`, không sửa từng mục của sổ loại, nên một loại đăng ký sau ticket 07 vẫn nhận nó (ticket 07 bước 2).
+    - HIGH (B:telemetry-and-audit/02~workflow-engine/03): nhãn `error_type` của `dw_node_failure_total` qua
+      `error_type_label` của ticket 03, cùng hàm cho span và cột (R3.15 của telemetry-and-audit).
+      Nếu sai thì: ADR-0120 (Accepted) bổ sung lại kiểm chủ thể ở đầu node; ADR-0112 (Accepted) quyết 2 ghi ngoại lệ cho ticket 08 và cạnh cũ giữ;
+      mỗi loại tự khai `incident` và workflow-nodes/04, /05 chờ ticket 07.
 
 ## Danh sách ticket
 

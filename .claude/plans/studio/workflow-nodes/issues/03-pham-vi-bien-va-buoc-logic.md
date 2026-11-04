@@ -125,6 +125,7 @@ R4.4, WN5, WN11).
     - Ticket này là bên đọc đầu tiên của `ExpressionEngine` ở API, nên dựng một `CelCppEngine` trong `build_studio`
       (studio-skeleton/02 bước 5) và gọi `aclose()` khi API tắt (ticket 01 bước 6). Sinh lại snapshot OpenAPI và kiểu
       TS.
+7. **`effect_door`** (workflow-engine/03; bảng ở mục Trong phạm vi của spec, chủ duy nhất): `data.transform`, `logic.switch`, `flow.stop` khai không cửa; thiếu trường thì sổ từ chối đăng ký, và `incident` của `allowed_on_error` do luật của workflow-engine/07 suy từ trường này, loại không tự khai.
 
 ## Tiêu chí chấp nhận
 

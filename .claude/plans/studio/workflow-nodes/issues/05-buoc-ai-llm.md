@@ -81,6 +81,7 @@ R7.4, R7.5, WN2, WN3). Bỏ qua bản ghi opt-out (R7.3, WN14) ở W2 cùng cờ
    bao giờ thấy bản ghi của tenant B, vì giá trị chỉ đến từ môi trường của lượt), và thiếu bằng chứng (lead thiếu trường
    → `output_invalid` hay giá trị rỗng theo schema, không bịa). Grader khóa `studio.llm_node.<gate>` ở
    `dw_studio.testing`, đăng ký ở seam của `scripts/run_evals.py`.
+9. **`effect_door`** (workflow-engine/03; bảng ở mục Trong phạm vi của spec, chủ duy nhất): `ai.llm@2` khai `model`; thiếu trường thì sổ từ chối đăng ký, và `incident` của `allowed_on_error` do luật của workflow-engine/07 suy từ trường này, loại không tự khai.
 
 ## Tiêu chí chấp nhận
 

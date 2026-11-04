@@ -66,10 +66,10 @@ dòng 4/11/2026). Làn `studio_inbound` và cửa nhận gọi bộ chuyển nà
    được quy trình nhận 404, đọc được mà thiếu khóa chạy nhận 403 (ADR-0104 (Accepted) quyết 11). `version_id` không thuộc
    `artifact_id` → 404 (R2.5). Thân `/runs` mang khóa `simulated_decisions` → 422 (R2.10). `test-runs`: mở giao dịch, đọc
    nội dung phiên bản dưới `FOR SHARE` như `RunRequestService` (workflow-engine/02 bước 3 (b)), kiểm `simulated_decisions`
-   với tập id Bước `human.approval@1` của đúng nội dung đó (thiếu hay thừa → 422 mỗi id một lỗi, R2.8), rồi gọi
+   với tập id Bước phê duyệt (`human.approval@2`, tên loại do workflow-nodes/06 làm chủ và đọc từ sổ loại, không viết cứng; `STUDIO_RULES` từ chối `@1` trên đường Studio) của đúng nội dung đó (thiếu hay thừa → 422 mỗi id một lỗi, R2.8), rồi gọi
    `RunRequestService.request` trong cùng giao dịch và đưa quyết định vào đầu vào của lượt (R2.7, workflow-nodes:R9.9);
    lần từ chối vì bản Nháp trượt bộ kiểm → 422 `validation_failed` với mọi lỗi `wf.*` (R2.9), route không chạy bộ kiểm thứ
-   hai. Test dùng một loại bước giả `human.approval@1` trong fixture tới khi workflow-nodes/06 đăng ký loại thật. Migration
+   hai. Test dùng một loại bước giả `human.approval@2` trong fixture tới khi workflow-nodes/06 đăng ký loại thật. Migration
    của ticket này đăng ký `studio.workflows.run` vào danh mục quyền theo quy ước khóa của tenant-rbac/01, câu INSERT nêu mọi
    cột NOT NULL không DEFAULT lúc đó, kể cả `risk` và `tenant_grantable` (V4.P2); `studio.workflows.test` là của
    workflow-engine/01 (H-19).
@@ -177,3 +177,4 @@ dòng 4/11/2026). Làn `studio_inbound` và cửa nhận gọi bộ chuyển nà
   `test-runs` ở W1. (M5) Tắt khẩn hay Đóng băng lúc chạy tay do dispatch của workflow-engine/04 quyết (R5.12, R5.14), route
   không kiểm lần hai.
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): `checking-plan-consistency` của vùng studio (B:workflow-nodes/06~workflow-triggers/01, HIGH): `test-runs` lọc `simulated_decisions` theo tên `human.approval@1` trong khi workflow-nodes/06 đăng ký `human.approval@2` và từ chối `@1` trên đường Studio, nên tập lọc luôn rỗng và mọi quyết định giả lập bị 422; nay lọc theo loại phê duyệt đọc từ sổ, fixture dùng `@2`. Nếu sai thì: workflow-nodes/06 giữ tên `@1` cho Studio và ADR-0112 (Accepted) bỏ dòng `@2` của nó.

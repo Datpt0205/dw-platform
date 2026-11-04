@@ -1,7 +1,7 @@
 # 03 — Lịch sử chạy theo bước: `run_steps` có che và lưu giữ, danh sách run, chi tiết bước
 
 Status: ready-for-agent
-Blocked by: 01, .claude/plans/studio/workflow-engine/issues/03-bien-dich-va-wrapper-nut.md, .claude/plans/studio/field-security/issues/01-mo-hinh-bao-mat-truong.md, .claude/plans/studio/usage-and-limits/issues/02-bang-gia-so-su-dung-va-man-hinh.md, .claude/plans/studio/usage-and-limits/issues/03-han-muc-giu-truoc-va-quyet-toan.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md
+Blocked by: 01, 02, .claude/plans/studio/workflow-engine/issues/03-bien-dich-va-wrapper-nut.md, .claude/plans/studio/field-security/issues/01-mo-hinh-bao-mat-truong.md, .claude/plans/studio/usage-and-limits/issues/02-bang-gia-so-su-dung-va-man-hinh.md, .claude/plans/studio/usage-and-limits/issues/03-han-muc-giu-truoc-va-quyet-toan.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md
 Area: studio
 Yêu cầu: R1.6, R1.7, R1.8, R1.9, R1.10, R1.11, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R3.9, R3.10, R3.11, R3.12, R3.13, R3.14, R3.15, R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R4.7, R4.8, R4.9, R4.10, R4.11, R4.12, R4.13, R4.14, R5.1, R5.2, R5.3, R5.4, R5.5, R5.7, R5.8, R5.12, R5.15, G1, TA4, TA5, TA6, TA10, TA11, TA12, TA13, TA14, TA15, TA16, TA19, TA20, TA23, TA24, TA25, TA26, TA30, TA31, TA32, TA33, TA34, TA36, TA37, TA38, R3.16, R3.17, R4.15, R4.16, R5.16, TA39, TA40, TA41, TA43
 
@@ -50,7 +50,8 @@ timestamptz` (NULL ở dòng `waiting`), `duration_ms`, `error_type`, `input_pre
    `child_run_id` là một cạnh mà thứ tự xóa của offboarding suy ra (H-2), nên offboarding xóa `platform.run_steps`
    trước bảng lượt chạy mà FK đó trỏ tới; ticket này không đặt chỉ mục hay ràng buộc nào trên bảng lượt chạy (H-20).
 3. Adapter thật của `StepRecorderPort` mà workflow-engine/03 khai ở `dw_agent_runtime.ports` (`step_waiting` do
-   workflow-engine/05 thêm); ticket này không khai Protocol thứ hai, chạy bộ contract test
+   workflow-engine/05 thêm, tổ tiên của ticket này qua ticket 02, mà ticket này chờ để span `dw.node` đã ở bộ bọc nút
+   trước khi adapter chỉ-phát-span bị thay); ticket này không khai Protocol thứ hai, chạy bộ contract test
    `dw_agent_runtime.testing.step_recorder_contract` trên adapter với PostgreSQL thật, và thay adapter chỉ-phát-span mà
    composition root của worker nối tạm; adapter không mở span nào (span `dw.node` là của bộ bọc nút, ticket 02).
    `step_started` không ghi dòng nào, vì CHECK `status` không có trạng thái đang chạy và R3.1 ghi đúng một dòng lúc
@@ -65,7 +66,8 @@ timestamptz` (NULL ở dòng `waiting`), `duration_ms`, `error_type`, `input_pre
    chèn với `ON CONFLICT ON CONSTRAINT uq_run_steps_step_key DO NOTHING`, nên lần ghi lặp lại sau khi worker sập không
    thêm dòng (spec R3.1; TA32). Mỗi giá trị lá mang `field_id` mà bên gọi đưa khi nó biết; giá trị không có `field_id`, hay khi hàm quyết quyền
    đọc trường lỗi, bị che như trường `Nhạy cảm` (spec R3.12; TA37). Mã `error_type` hay `reason_code` không có trong catalog được ghi thành `unknown_error`, chuỗi gốc chỉ vào payload
-   đã che (spec R3.15; TA25). Khóa đối tượng tất định
+   đã che (spec R3.15; TA25); với `error_type` adapter gọi `error_type_label` của workflow-engine/03, không phép thay
+   thứ hai. Khóa đối tượng tất định
    `.../run-steps/{run_id}/{sha256(step_key)}/{status}-{in|out}.json.gz`. Đường che `redact_mapping`
    bỏ trường bí mật và tham chiếu credential, che trường có `pd_category = 'sensitive'` (đọc qua
    `FieldSecurityInputsPort` của field-security/01 theo `field_id`, không theo người nào), giá trị không có `field_id`
@@ -229,8 +231,9 @@ timestamptz` (NULL ở dòng `waiting`), `duration_ms`, `error_type`, `input_pre
       ca công ty B qua, test đỏ.
 - [ ] R3.14 (TA5): hàm quyền đọc trường giả báo lỗi, `field_id` trỏ tới trường đã xóa, hay `fls_version` lệch →
       `Đã ẩn` tại giá trị đó; trả giá trị khi hàm lỗi → test đỏ.
-- [ ] R3.15 (TA25): bên gọi đưa `error_type` `ECONNRESET at 0912345678` → cột, span và nhãn metric mang
-      `unknown_error`, chuỗi gốc chỉ ở payload đã che; ghi nguyên chuỗi → test đỏ.
+- [ ] R3.15 (TA25): bên gọi đưa `error_type` `ECONNRESET at 0912345678` → cột mang `unknown_error`, chuỗi gốc chỉ ở
+      payload đã che; ghi nguyên chuỗi → test đỏ (span là tiêu chí R2.9 của ticket 02, nhãn metric là tiêu chí R4.9 của
+      workflow-engine/03; cả ba qua `error_type_label`).
 - [ ] R4.14 (TA38): một module ngoài hai adapter chọn `result_preview` → test kiến trúc đỏ, nêu tệp; gỡ test → test đỏ
       ở ca kiểm của chính nó.
 - [ ] R3.11 (TA31): Bước chạy `model_call` của một lời gọi có thông điệp mang số điện thoại → preview, ref và đối tượng
@@ -474,3 +477,9 @@ timestamptz` (NULL ở dòng `waiting`), `duration_ms`, `error_type`, `input_pre
   workflow-engine/03, field-security/01, usage-and-limits/02, /03; trước ticket 04, workflow-nodes/03 và
   field-security/02.
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): `checking-plan-consistency` của vùng studio: thêm `Blocked by: 02`
+  (C:telemetry-and-audit/02~telemetry-and-audit/03, HIGH: dựng trước ticket 02 làm mất span `dw.node`; I, HIGH: bước 3
+  cài `step_waiting` của workflow-engine/05 mà không chờ nó, nay chờ qua ticket 02); `error_type` đi qua
+  `error_type_label` của workflow-engine/03, tiêu chí R3.15 chỉ khẳng định cột. Không tạo vòng (đã kiểm bằng đồ thị
+  `Blocked by` của vùng). Nếu sai thì: bỏ cạnh, workflow-engine/03 khai `step_waiting`, và ticket này giữ span trong
+  adapter tới khi ticket 02 dời nó.

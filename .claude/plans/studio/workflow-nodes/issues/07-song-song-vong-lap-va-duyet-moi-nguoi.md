@@ -102,6 +102,7 @@ ticket thí điểm nào chờ ticket này.
 9. Test: `packages/python/dw_studio/tests/workflows/test_control_nodes.py` cho ba loại điều khiển, tính chất vị trí và
    kiểm vị trí; `packages/python/dw_studio/tests/workflows/test_approval_all_rule.py` cho quy tắc `all`; ca đồng thời trên
    hai kết nối với thứ tự xen kẽ cố định, ca trigger và ca lượt chạy chờ rồi tiếp tục trong `make test-integration`.
+10. **`effect_door`** (workflow-engine/03; bảng ở mục Trong phạm vi của spec, chủ duy nhất): `logic.parallel`, `logic.loop`, `logic.break` khai không cửa; thiếu trường thì sổ từ chối đăng ký, và `incident` của `allowed_on_error` do luật của workflow-engine/07 suy từ trường này, loại không tự khai.
 
 ## Tiêu chí chấp nhận
 

@@ -355,6 +355,12 @@ là của workflow-engine (`.claude/plans/studio/workflow-engine/issues/09-quy-t
 
 ## Trong phạm vi
 
+- `effect_door` của mỗi loại Studio, trường bắt buộc không mặc định của `NodeTypeSpec` mà workflow-engine/03 thêm
+  (wrapper chỉ đưa cho thân node đúng cửa đó, và luật `incident` của workflow-engine/07 suy từ nó); bảng này là chủ,
+  mỗi ticket đăng ký loại khai theo nó: `data.object.query`, `create`, `update`, `upsert` → `records`;
+  `data.object.assign` → `assign`; `ai.llm@2` → `model`; `tool.call@2` → `tool`; `flow.subworkflow@1` → `child_run`;
+  `data.transform`, `logic.switch`, `flow.stop`, `logic.parallel`, `logic.loop`, `logic.break`, `human.approval@2` →
+  không cửa (dòng chờ của `human.approval@2` mở qua đường chờ của workflow-engine/05, không qua cửa hiệu ứng).
 - `NodeTypeRegistry` và `build_node_registry(ports)` dựng ở cả hai composition root, với Nhánh ra của mỗi loại là
   một làn Bước lồng trong Bước của tài liệu dạng cây (V4.24) và đầu ra `error` dưới Khi lỗi `continue` hay `route`
   (R1.5); sáu lát loại bước W1: `data.transform`, `logic.switch`, `flow.stop`, `data.object.query|create|update|upsert`,
@@ -1148,6 +1154,12 @@ NULL)`, để guard đọc quy tắc từ dòng thay vì đếm dòng, và thay 
   (phiên bản con của lượt mô phỏng nháp cha, con chưa có `live`, nhãn năng lực theo phiên bản con); MEDIUM ở Comments
   của ticket 08.
 - 4/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 08.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): `checking-plan-consistency` của vùng studio (B:workflow-engine/03~workflow-nodes,
+  HIGH): workflow-engine/03 nói `effect_door` là trường bắt buộc của sổ mà spec này làm chủ, nhưng không ticket nào của
+  spec này khai nó; và workflow-engine/07 thêm `incident` theo từng loại, trong khi ticket 04, 05 không có đường phụ
+  thuộc tới nó. Sửa: bảng `effect_door` ở mục Trong phạm vi là chủ, ticket 03-08 mỗi ticket một bước khai theo bảng;
+  `incident` là một luật của workflow-engine/07 suy từ `effect_door`, loại không tự khai. Nếu sai thì: mỗi ticket khai
+  `incident` riêng và ticket 04, 05 chờ workflow-engine/07.
 
 ## Danh sách ticket
 

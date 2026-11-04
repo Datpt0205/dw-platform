@@ -112,6 +112,7 @@ R6.3, R6.4, R6.5, WN4, WN16).
     - Ở `simulate`: chỉ đọc, không ghi dòng nào.
     - Vòng xoay đọc và ghi qua một Protocol hẹp mà ticket này khai trong `dw_studio.workflows`, đáp ứng bằng một adapter
       SQL nối ở composition root, nên mô-đun loại bước không chứa SQL (R2.2).
+8. **`effect_door`** (workflow-engine/03; bảng ở mục Trong phạm vi của spec, chủ duy nhất): `data.object.query`, `create`, `update`, `upsert` khai `records`, `data.object.assign` khai `assign`; thiếu trường thì sổ từ chối đăng ký, và `incident` của `allowed_on_error` do luật của workflow-engine/07 suy từ trường này, loại không tự khai.
 
 ## Tiêu chí chấp nhận
 
