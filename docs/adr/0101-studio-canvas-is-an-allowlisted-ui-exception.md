@@ -311,3 +311,68 @@ it, which the spike measures rather than assumes.
   workflow-builder-ui/04, carried by discovery 24 (DO-22, Đạt), and workflow-builder-ui/01 does not wait for them.
   If this is wrong: the pin and the entry move to workflow-builder-ui/02 with the builder page, and the two human
   measurements become a ready-for-human ticket of workflow-builder-ui. The status stays Accepted.
+
+## Amendments (2026-11-04)
+
+- (agent, theo ủy quyền 31/10/2026; workflow-builder-ui/01's spike.) The measurements of Consequences, taken on the
+  real app (theme, `AppFrame`, root layout, the CSP of `lib/csp.ts`) with `@xyflow/react` 12.12.0, one `zustand`
+  4.5.7, React 19.2.8, Next 15.5.28 and antd 6.6.5, in Playwright's headless Chromium on the Windows dev machine while
+  other lanes ran tests. The draft page, the draft `workflow-layout.ts`, the outline `Tree`, the keyboard model, the
+  drags and the scripts were deleted; what stays is listed in Amendments (2026-11-03).
+    - **The three gate rows hold, so the exception is granted.** CSP: 0 violations caused by the canvas under
+      `next build && next start` and under `next dev` (StrictMode), with F1-F9 and the W2 types drawn; the one
+      `securitypolicyviolation` event in production is zod 4's `Function("")` probe, caught by zod itself, on
+      `/studio` and on the same route without the canvas too. Layers: all 93 `react-flow` rules (95 in dev) sit in
+      `@layer components` and none outside a layer; the properties `base.css` sets read back as set, and the edge
+      stroke and the pane's background resolve to the theme's tokens. React: 0 console errors and 0 `pageerror` in
+      both builds. The `EXCEPTIONS` entry, the pin, `workflow-canvas.tsx` and its stylesheet land together.
+    - **First-load JS of the canvas route:** 732.3 kB gzip loaded until the first card is drawn, against 667.6 kB for
+      the same route without the canvas (every script chunk, each body gzipped at zlib's default level). The canvas
+      adds 64.7 kB: `@xyflow/react` with `@xyflow/system`, d3 and zustand 57.8 kB in two `next/dynamic` chunks, and
+      the spike's own canvas code 6.9 kB. This is outside the roughly 250 kB accepted for antd; the 667.6 kB baseline
+      is the app's existing first load, not the canvas's.
+    - **Layout:** the draft's p95 over 200 warm runs of F7 (1,427 shapes) in Node is 0.70 ms (p50 0.32, p99 0.97), so
+      ticket 02's property test keeps 50 ms as its ceiling. F1-F9 laid out twice give the same coordinates, with no
+      two cards, slots or labels overlapping. On 200 random trees (seed 42) the first draft overlapped in 30: an
+      error lane hangs to the right of its step, and centring the step on its main column let that lane run into the
+      next lane. Measuring every step and lane as a left and a right extent from one axis fixed it (0 of 200), and an
+      insert moved nothing above it. workflow-builder-ui/02 writes the module with that extent model.
+    - **300 and 500 cards (outline off; 20 warm loads; navigation to the first card attached):** the route without
+      the canvas p50 525 ms, p95 651 ms; F1 p50 1,095, p95 1,181 ms; F6 p50 2,969, p95 3,421 ms, culled p50 2,361,
+      p95 2,732 ms; F7 p50 4,085, p95 4,510 ms, culled p50 2,949, p95 3,279 ms, culled with every container collapsed
+      through `hidden` p50 2,063, p95 2,292 ms. Heap after load: F6 110.9 MB, culled 12.6 MB; F7 177.3 MB, culled
+      13.6 MB. Pan and zoom: F7 30 fps, culled 56 fps (F6 40-47 and 56). With culling, 120 presses of ↓ through F7
+      kept the roving focus every time (0 misses), the canvas centring a culled target before focusing it.
+      `onlyRenderVisibleElements` is on in the builder. Every row misses `latency.md`'s page budget (P95 1 s), F1
+      included, and with culling the time still grows with the nodes handed to the library rather than with those
+      drawn (8 in the DOM), so the cost sits in the library's store and in the app's per-node data, which ticket 02
+      profiles on its real module.
+    - **Keyboard only, on F5:** Tab reaches the canvas (24 presses through the shell); ↑ and ↓ move between steps and
+      never move a node; → reaches the next lane; Alt+↓ moves a step and is announced; Delete then Ctrl+Z restores
+      the step; Enter opens the configuration Drawer and Esc returns focus to the step; Shift+F10 opens the menu;
+      Ctrl+K reaches a step by name; Backspace outside the canvas deletes nothing; 0 errors. R2.5 can be met. Ticket
+      02 adds a way past the shell's 24 stops.
+    - **Drags (≥ `lg`):** a palette entry dropped on a slot inserts a step, and a step's handle dropped on a slot
+      moves it, both through HTML5 drag events. Playwright 1.62 could not drive a real pointer drag on an HTML5
+      draggable here (it stops after the button goes down), so a pointer drag is checked by hand at the queue's close.
+    - **320 px and touch:** below `md` the outline `Tree` is the editor and the canvas is not drawn; touch targets are
+      at least 24 px. Not met yet: F9's outline (depth 7) indents past its column, so the page scrolls sideways at
+      320 px (413 px wide) and beside the canvas at `md` and `lg`; and the "…" menu of a `Tree` row opened its
+      Dropdown off screen at 320 px, so the menu path did not complete. A drag by hand at 320 px does not exist
+      (HTML5 drags have no touch). Ticket 02 gives the outline its own horizontal scroll or a flatter indent, and puts
+      a step's actions in a bottom Drawer on a phone (`ui-quality.md` §9), measured at 320 px (YC39).
+    - **Seen in screenshots** (light and dark at 1280, 800 and 320 px, reduced motion): the theme's tokens follow
+      dark mode; the badge stays at the bottom left, clear of the Drawer at `lg` and `md`; antd's transitions drop to
+      0.01 ms; a group tile carries its icon, so colour is never alone. Lessons for ticket 04: a 256 × 88 card is too
+      short for R1.8's badge row once a step has two badges; the zoom buttons at the top right cover cards at `md`;
+      a loop's return arrow drawn as `smoothstep` runs on the right, where R1.5 draws it on the left, so it needs its
+      own path.
+    - The vocabulary for Đạt's review is in `packages/typescript/ui/src/theme.ts` (`CANVAS_VOCABULARY`) and
+      `canvas-icons.tsx`; each group colour is 3.46:1 to 8.86:1 on the card in its mode, the error lane 3.65:1 or more,
+      and the connection stroke 4.66:1 or more on the card and on the page.
+    - The step cap: F7 misses the budget with culling, as the ticket foresaw, but so does F1 at 15 steps, so no lower
+      cap would meet it, and no lower cap is proposed to workflow-engine. W1 keeps 500 steps and depth 10. If this is
+      wrong: ticket 02's measurement of the real builder finds a step count under which the page meets 1 s, and that
+      count becomes a Decision line of workflow-engine.
+    - NVDA in Vietnamese and the five business users stay with discovery 24, after workflow-builder-ui/04. The status
+      stays Accepted.

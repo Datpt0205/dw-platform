@@ -1,0 +1,131 @@
+{
+  "schema": "dw.workflow/v1",
+  "triggers": [
+    {
+      "id": "nhan_lead",
+      "type": "trigger.datahub@1",
+      "description": "Khi Nguồn dữ liệu Form website nhận một lead",
+      "config": {
+        "endpoint": "7d0c2f1e-5b4a-4c3d-9e8f-0a1b2c3d4e5f"
+      }
+    }
+  ],
+  "steps": [
+    {
+      "id": "chuan_hoa",
+      "type": "data.transform@1",
+      "description": "Chuẩn hóa số điện thoại di động, địa chỉ thư điện tử và họ tên đầy đủ của khách hàng tiềm năng trước khi đối chiếu với danh bạ khách hàng hiện hữu",
+      "config": {
+        "fields": {
+          "ket_qua": "trigger.input"
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 30,
+      "on_error": "fail"
+    },
+    {
+      "id": "luu_lead",
+      "type": "data.object.upsert@1",
+      "description": "Lưu hoặc cập nhật hồ sơ khách hàng tiềm năng đến từ biểu mẫu đăng ký tư vấn trên trang thông tin điện tử của chuỗi cửa hàng nội thất Hưng Thịnh Phát",
+      "config": {
+        "object": "lead",
+        "match_on": ["phone", "email"],
+        "fields": {
+          "phone": "{{ phone.e164(trigger.input.phone) }}",
+          "email": "{{ email.normalize(trigger.input.email) }}",
+          "full_name": "{{ trigger.input.full_name }}"
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 30,
+      "on_error": "fail"
+    },
+    {
+      "id": "cham_diem",
+      "type": "ai.llm@2",
+      "description": "Đánh giá mức độ quan tâm và khả năng chuyển đổi của khách hàng tiềm năng bằng trí tuệ nhân tạo dựa trên lịch sử tương tác nhiều kênh",
+      "config": {
+        "instructions": "Chấm điểm lead theo tiêu chí của công ty.",
+        "prompt": "Thông tin lead: {{ trigger.input }}",
+        "output": "object",
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "score": {
+              "type": "integer"
+            },
+            "tier": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "retry": {
+        "max_attempts": 2,
+        "backoff": "exponential"
+      },
+      "timeout_s": 120,
+      "on_error": "fail"
+    },
+    {
+      "id": "duyet_uu_dai",
+      "type": "human.approval@2",
+      "description": "Trưởng phòng kinh doanh khu vực Đồng bằng sông Cửu Long phê duyệt chương trình ưu đãi đặc biệt dành cho khách hàng doanh nghiệp vừa và nhỏ",
+      "config": {
+        "required_scope": "studio.leads.approve",
+        "subject": "gui_uu_dai",
+        "approved": [
+          {
+            "id": "gui_uu_dai",
+            "type": "tool.call@2",
+            "description": "Gửi thư điện tử thông báo chương trình ưu đãi đặc biệt kèm báo giá chi tiết đã được trưởng phòng kinh doanh phê duyệt",
+            "config": {
+              "tool": "email.send@1.0.0",
+              "arguments": {
+                "to": "{{ trigger.input.email }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 3,
+              "backoff": "exponential"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ],
+        "rejected": [
+          {
+            "id": "tao_viec_goi",
+            "type": "data.object.create@1",
+            "description": "Tạo công việc gọi điện thoại chăm sóc lại khách hàng sau khi chương trình ưu đãi đặc biệt bị từ chối phê duyệt",
+            "config": {
+              "object": "task",
+              "fields": {
+                "title": "{{ trigger.input.full_name }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 60,
+      "on_error": "fail"
+    }
+  ]
+}

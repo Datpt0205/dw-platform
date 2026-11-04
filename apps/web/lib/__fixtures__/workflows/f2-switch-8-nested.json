@@ -1,0 +1,1291 @@
+{
+  "schema": "dw.workflow/v1",
+  "triggers": [
+    {
+      "id": "nhan_lead",
+      "type": "trigger.datahub@1",
+      "description": "Khi Nguồn dữ liệu Form website nhận một lead",
+      "config": {
+        "endpoint": "7d0c2f1e-5b4a-4c3d-9e8f-0a1b2c3d4e5f"
+      }
+    }
+  ],
+  "steps": [
+    {
+      "id": "cham_diem",
+      "type": "ai.llm@2",
+      "description": "Chấm điểm lead bằng AI",
+      "config": {
+        "instructions": "Chấm điểm lead theo tiêu chí của công ty.",
+        "prompt": "Thông tin lead: {{ trigger.input }}",
+        "output": "object",
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "score": {
+              "type": "integer"
+            },
+            "tier": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "retry": {
+        "max_attempts": 2,
+        "backoff": "exponential"
+      },
+      "timeout_s": 120,
+      "on_error": "fail"
+    },
+    {
+      "id": "theo_vung",
+      "type": "logic.switch@1",
+      "description": "Phân theo vùng",
+      "config": {
+        "on": "trigger.input.region",
+        "cases": {
+          "ha_noi": [
+            {
+              "id": "hang_ha_noi",
+              "type": "logic.switch@1",
+              "description": "Phân theo hạng khách ở ha_noi",
+              "config": {
+                "on": "steps.cham_diem.response.tier",
+                "cases": {
+                  "vang": [
+                    {
+                      "id": "giao_ha_noi_vang",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead vang ở ha_noi",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "bac": [
+                    {
+                      "id": "giao_ha_noi_bac",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead bac ở ha_noi",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "dong": [
+                    {
+                      "id": "giao_ha_noi_dong",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead dong ở ha_noi",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "moi": [
+                    {
+                      "id": "giao_ha_noi_moi",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead moi ở ha_noi",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "cu": [
+                    {
+                      "id": "giao_ha_noi_cu",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead cu ở ha_noi",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "doi_tac": [
+                    {
+                      "id": "giao_ha_noi_doi_tac",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead doi_tac ở ha_noi",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "noi_bo": [
+                    {
+                      "id": "giao_ha_noi_noi_bo",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead noi_bo ở ha_noi",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ]
+                },
+                "default": [
+                  {
+                    "id": "luu_ha_noi",
+                    "type": "data.object.update@1",
+                    "description": "Lưu lead chưa rõ hạng ở ha_noi",
+                    "config": {
+                      "object": "lead",
+                      "record_id": "{{ steps.luu_lead.record.id }}",
+                      "fields": {
+                        "status": "da_lien_he"
+                      }
+                    },
+                    "retry": {
+                      "max_attempts": 1,
+                      "backoff": "fixed"
+                    },
+                    "timeout_s": 30,
+                    "on_error": "fail"
+                  }
+                ]
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 10,
+              "on_error": "fail"
+            }
+          ],
+          "hai_phong": [
+            {
+              "id": "hang_hai_phong",
+              "type": "logic.switch@1",
+              "description": "Phân theo hạng khách ở hai_phong",
+              "config": {
+                "on": "steps.cham_diem.response.tier",
+                "cases": {
+                  "vang": [
+                    {
+                      "id": "giao_hai_phong_vang",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead vang ở hai_phong",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "bac": [
+                    {
+                      "id": "giao_hai_phong_bac",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead bac ở hai_phong",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "dong": [
+                    {
+                      "id": "giao_hai_phong_dong",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead dong ở hai_phong",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "moi": [
+                    {
+                      "id": "giao_hai_phong_moi",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead moi ở hai_phong",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "cu": [
+                    {
+                      "id": "giao_hai_phong_cu",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead cu ở hai_phong",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "doi_tac": [
+                    {
+                      "id": "giao_hai_phong_doi_tac",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead doi_tac ở hai_phong",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "noi_bo": [
+                    {
+                      "id": "giao_hai_phong_noi_bo",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead noi_bo ở hai_phong",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ]
+                },
+                "default": [
+                  {
+                    "id": "luu_hai_phong",
+                    "type": "data.object.update@1",
+                    "description": "Lưu lead chưa rõ hạng ở hai_phong",
+                    "config": {
+                      "object": "lead",
+                      "record_id": "{{ steps.luu_lead.record.id }}",
+                      "fields": {
+                        "status": "da_lien_he"
+                      }
+                    },
+                    "retry": {
+                      "max_attempts": 1,
+                      "backoff": "fixed"
+                    },
+                    "timeout_s": 30,
+                    "on_error": "fail"
+                  }
+                ]
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 10,
+              "on_error": "fail"
+            }
+          ],
+          "da_nang": [
+            {
+              "id": "hang_da_nang",
+              "type": "logic.switch@1",
+              "description": "Phân theo hạng khách ở da_nang",
+              "config": {
+                "on": "steps.cham_diem.response.tier",
+                "cases": {
+                  "vang": [
+                    {
+                      "id": "giao_da_nang_vang",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead vang ở da_nang",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "bac": [
+                    {
+                      "id": "giao_da_nang_bac",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead bac ở da_nang",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "dong": [
+                    {
+                      "id": "giao_da_nang_dong",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead dong ở da_nang",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "moi": [
+                    {
+                      "id": "giao_da_nang_moi",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead moi ở da_nang",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "cu": [
+                    {
+                      "id": "giao_da_nang_cu",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead cu ở da_nang",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "doi_tac": [
+                    {
+                      "id": "giao_da_nang_doi_tac",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead doi_tac ở da_nang",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "noi_bo": [
+                    {
+                      "id": "giao_da_nang_noi_bo",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead noi_bo ở da_nang",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ]
+                },
+                "default": [
+                  {
+                    "id": "luu_da_nang",
+                    "type": "data.object.update@1",
+                    "description": "Lưu lead chưa rõ hạng ở da_nang",
+                    "config": {
+                      "object": "lead",
+                      "record_id": "{{ steps.luu_lead.record.id }}",
+                      "fields": {
+                        "status": "da_lien_he"
+                      }
+                    },
+                    "retry": {
+                      "max_attempts": 1,
+                      "backoff": "fixed"
+                    },
+                    "timeout_s": 30,
+                    "on_error": "fail"
+                  }
+                ]
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 10,
+              "on_error": "fail"
+            }
+          ],
+          "hue": [
+            {
+              "id": "hang_hue",
+              "type": "logic.switch@1",
+              "description": "Phân theo hạng khách ở hue",
+              "config": {
+                "on": "steps.cham_diem.response.tier",
+                "cases": {
+                  "vang": [
+                    {
+                      "id": "giao_hue_vang",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead vang ở hue",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "bac": [
+                    {
+                      "id": "giao_hue_bac",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead bac ở hue",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "dong": [
+                    {
+                      "id": "giao_hue_dong",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead dong ở hue",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "moi": [
+                    {
+                      "id": "giao_hue_moi",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead moi ở hue",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "cu": [
+                    {
+                      "id": "giao_hue_cu",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead cu ở hue",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "doi_tac": [
+                    {
+                      "id": "giao_hue_doi_tac",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead doi_tac ở hue",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "noi_bo": [
+                    {
+                      "id": "giao_hue_noi_bo",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead noi_bo ở hue",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ]
+                },
+                "default": [
+                  {
+                    "id": "luu_hue",
+                    "type": "data.object.update@1",
+                    "description": "Lưu lead chưa rõ hạng ở hue",
+                    "config": {
+                      "object": "lead",
+                      "record_id": "{{ steps.luu_lead.record.id }}",
+                      "fields": {
+                        "status": "da_lien_he"
+                      }
+                    },
+                    "retry": {
+                      "max_attempts": 1,
+                      "backoff": "fixed"
+                    },
+                    "timeout_s": 30,
+                    "on_error": "fail"
+                  }
+                ]
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 10,
+              "on_error": "fail"
+            }
+          ],
+          "can_tho": [
+            {
+              "id": "hang_can_tho",
+              "type": "logic.switch@1",
+              "description": "Phân theo hạng khách ở can_tho",
+              "config": {
+                "on": "steps.cham_diem.response.tier",
+                "cases": {
+                  "vang": [
+                    {
+                      "id": "giao_can_tho_vang",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead vang ở can_tho",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "bac": [
+                    {
+                      "id": "giao_can_tho_bac",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead bac ở can_tho",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "dong": [
+                    {
+                      "id": "giao_can_tho_dong",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead dong ở can_tho",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "moi": [
+                    {
+                      "id": "giao_can_tho_moi",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead moi ở can_tho",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "cu": [
+                    {
+                      "id": "giao_can_tho_cu",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead cu ở can_tho",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "doi_tac": [
+                    {
+                      "id": "giao_can_tho_doi_tac",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead doi_tac ở can_tho",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "noi_bo": [
+                    {
+                      "id": "giao_can_tho_noi_bo",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead noi_bo ở can_tho",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ]
+                },
+                "default": [
+                  {
+                    "id": "luu_can_tho",
+                    "type": "data.object.update@1",
+                    "description": "Lưu lead chưa rõ hạng ở can_tho",
+                    "config": {
+                      "object": "lead",
+                      "record_id": "{{ steps.luu_lead.record.id }}",
+                      "fields": {
+                        "status": "da_lien_he"
+                      }
+                    },
+                    "retry": {
+                      "max_attempts": 1,
+                      "backoff": "fixed"
+                    },
+                    "timeout_s": 30,
+                    "on_error": "fail"
+                  }
+                ]
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 10,
+              "on_error": "fail"
+            }
+          ],
+          "tp_hcm": [
+            {
+              "id": "hang_tp_hcm",
+              "type": "logic.switch@1",
+              "description": "Phân theo hạng khách ở tp_hcm",
+              "config": {
+                "on": "steps.cham_diem.response.tier",
+                "cases": {
+                  "vang": [
+                    {
+                      "id": "giao_tp_hcm_vang",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead vang ở tp_hcm",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "bac": [
+                    {
+                      "id": "giao_tp_hcm_bac",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead bac ở tp_hcm",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "dong": [
+                    {
+                      "id": "giao_tp_hcm_dong",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead dong ở tp_hcm",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "moi": [
+                    {
+                      "id": "giao_tp_hcm_moi",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead moi ở tp_hcm",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "cu": [
+                    {
+                      "id": "giao_tp_hcm_cu",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead cu ở tp_hcm",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "doi_tac": [
+                    {
+                      "id": "giao_tp_hcm_doi_tac",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead doi_tac ở tp_hcm",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "noi_bo": [
+                    {
+                      "id": "giao_tp_hcm_noi_bo",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead noi_bo ở tp_hcm",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ]
+                },
+                "default": [
+                  {
+                    "id": "luu_tp_hcm",
+                    "type": "data.object.update@1",
+                    "description": "Lưu lead chưa rõ hạng ở tp_hcm",
+                    "config": {
+                      "object": "lead",
+                      "record_id": "{{ steps.luu_lead.record.id }}",
+                      "fields": {
+                        "status": "da_lien_he"
+                      }
+                    },
+                    "retry": {
+                      "max_attempts": 1,
+                      "backoff": "fixed"
+                    },
+                    "timeout_s": 30,
+                    "on_error": "fail"
+                  }
+                ]
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 10,
+              "on_error": "fail"
+            }
+          ],
+          "dong_nai": [
+            {
+              "id": "hang_dong_nai",
+              "type": "logic.switch@1",
+              "description": "Phân theo hạng khách ở dong_nai",
+              "config": {
+                "on": "steps.cham_diem.response.tier",
+                "cases": {
+                  "vang": [
+                    {
+                      "id": "giao_dong_nai_vang",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead vang ở dong_nai",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "bac": [
+                    {
+                      "id": "giao_dong_nai_bac",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead bac ở dong_nai",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "dong": [
+                    {
+                      "id": "giao_dong_nai_dong",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead dong ở dong_nai",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "moi": [
+                    {
+                      "id": "giao_dong_nai_moi",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead moi ở dong_nai",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "cu": [
+                    {
+                      "id": "giao_dong_nai_cu",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead cu ở dong_nai",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "doi_tac": [
+                    {
+                      "id": "giao_dong_nai_doi_tac",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead doi_tac ở dong_nai",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ],
+                  "noi_bo": [
+                    {
+                      "id": "giao_dong_nai_noi_bo",
+                      "type": "data.object.assign@1",
+                      "description": "Giao lead noi_bo ở dong_nai",
+                      "config": {
+                        "object": "lead",
+                        "record_id": "{{ steps.luu_lead.record.id }}",
+                        "fallback": "sales_lead",
+                        "reassign": false
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 30,
+                      "on_error": "fail"
+                    }
+                  ]
+                },
+                "default": [
+                  {
+                    "id": "luu_dong_nai",
+                    "type": "data.object.update@1",
+                    "description": "Lưu lead chưa rõ hạng ở dong_nai",
+                    "config": {
+                      "object": "lead",
+                      "record_id": "{{ steps.luu_lead.record.id }}",
+                      "fields": {
+                        "status": "da_lien_he"
+                      }
+                    },
+                    "retry": {
+                      "max_attempts": 1,
+                      "backoff": "fixed"
+                    },
+                    "timeout_s": 30,
+                    "on_error": "fail"
+                  }
+                ]
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 10,
+              "on_error": "fail"
+            }
+          ]
+        },
+        "default": [
+          {
+            "id": "bao_vung_khac",
+            "type": "tool.call@2",
+            "description": "Báo lead ngoài các vùng đã khai",
+            "config": {
+              "tool": "chat.post@1.0.0",
+              "arguments": {
+                "to": "{{ trigger.input.email }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 3,
+              "backoff": "exponential"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "bao_kenh",
+      "type": "tool.call@2",
+      "description": "Báo kênh bán hàng",
+      "config": {
+        "tool": "chat.post@1.0.0",
+        "arguments": {
+          "to": "{{ trigger.input.email }}"
+        }
+      },
+      "retry": {
+        "max_attempts": 3,
+        "backoff": "exponential"
+      },
+      "timeout_s": 30,
+      "on_error": "fail"
+    }
+  ]
+}

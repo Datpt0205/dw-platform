@@ -1,0 +1,5681 @@
+{
+  "schema": "dw.workflow/v1",
+  "triggers": [
+    {
+      "id": "nhan_lead",
+      "type": "trigger.datahub@1",
+      "description": "Khi Nguồn dữ liệu Form website nhận một lead",
+      "config": {
+        "endpoint": "7d0c2f1e-5b4a-4c3d-9e8f-0a1b2c3d4e5f"
+      }
+    }
+  ],
+  "steps": [
+    {
+      "id": "sau_1",
+      "type": "logic.switch@1",
+      "description": "Rẽ nhánh độ sâu 1",
+      "config": {
+        "on": "trigger.input.kind",
+        "cases": {
+          "a": [
+            {
+              "id": "sau_2",
+              "type": "logic.switch@1",
+              "description": "Rẽ nhánh độ sâu 2",
+              "config": {
+                "on": "trigger.input.kind",
+                "cases": {
+                  "a": [
+                    {
+                      "id": "sau_3",
+                      "type": "logic.switch@1",
+                      "description": "Rẽ nhánh độ sâu 3",
+                      "config": {
+                        "on": "trigger.input.kind",
+                        "cases": {
+                          "a": [
+                            {
+                              "id": "sau_4",
+                              "type": "logic.switch@1",
+                              "description": "Rẽ nhánh độ sâu 4",
+                              "config": {
+                                "on": "trigger.input.kind",
+                                "cases": {
+                                  "a": [
+                                    {
+                                      "id": "sau_5",
+                                      "type": "logic.switch@1",
+                                      "description": "Rẽ nhánh độ sâu 5",
+                                      "config": {
+                                        "on": "trigger.input.kind",
+                                        "cases": {
+                                          "a": [
+                                            {
+                                              "id": "sau_6",
+                                              "type": "logic.switch@1",
+                                              "description": "Rẽ nhánh độ sâu 6",
+                                              "config": {
+                                                "on": "trigger.input.kind",
+                                                "cases": {
+                                                  "a": [
+                                                    {
+                                                      "id": "sau_7",
+                                                      "type": "logic.switch@1",
+                                                      "description": "Rẽ nhánh độ sâu 7",
+                                                      "config": {
+                                                        "on": "trigger.input.kind",
+                                                        "cases": {
+                                                          "a": [
+                                                            {
+                                                              "id": "sau_8",
+                                                              "type": "logic.switch@1",
+                                                              "description": "Rẽ nhánh độ sâu 8",
+                                                              "config": {
+                                                                "on": "trigger.input.kind",
+                                                                "cases": {
+                                                                  "a": [
+                                                                    {
+                                                                      "id": "sau_9",
+                                                                      "type": "logic.switch@1",
+                                                                      "description": "Rẽ nhánh độ sâu 9",
+                                                                      "config": {
+                                                                        "on": "trigger.input.kind",
+                                                                        "cases": {
+                                                                          "a": [
+                                                                            {
+                                                                              "id": "day_sau",
+                                                                              "type": "data.transform@1",
+                                                                              "description": "Bước ở độ sâu 10",
+                                                                              "config": {
+                                                                                "fields": {
+                                                                                  "ket_qua": "trigger.input"
+                                                                                }
+                                                                              },
+                                                                              "retry": {
+                                                                                "max_attempts": 1,
+                                                                                "backoff": "fixed"
+                                                                              },
+                                                                              "timeout_s": 30,
+                                                                              "on_error": "fail"
+                                                                            }
+                                                                          ]
+                                                                        },
+                                                                        "default": []
+                                                                      },
+                                                                      "retry": {
+                                                                        "max_attempts": 1,
+                                                                        "backoff": "fixed"
+                                                                      },
+                                                                      "timeout_s": 10,
+                                                                      "on_error": "fail"
+                                                                    }
+                                                                  ]
+                                                                },
+                                                                "default": []
+                                                              },
+                                                              "retry": {
+                                                                "max_attempts": 1,
+                                                                "backoff": "fixed"
+                                                              },
+                                                              "timeout_s": 10,
+                                                              "on_error": "fail"
+                                                            }
+                                                          ]
+                                                        },
+                                                        "default": []
+                                                      },
+                                                      "retry": {
+                                                        "max_attempts": 1,
+                                                        "backoff": "fixed"
+                                                      },
+                                                      "timeout_s": 10,
+                                                      "on_error": "fail"
+                                                    }
+                                                  ]
+                                                },
+                                                "default": []
+                                              },
+                                              "retry": {
+                                                "max_attempts": 1,
+                                                "backoff": "fixed"
+                                              },
+                                              "timeout_s": 10,
+                                              "on_error": "fail"
+                                            }
+                                          ]
+                                        },
+                                        "default": []
+                                      },
+                                      "retry": {
+                                        "max_attempts": 1,
+                                        "backoff": "fixed"
+                                      },
+                                      "timeout_s": 10,
+                                      "on_error": "fail"
+                                    }
+                                  ]
+                                },
+                                "default": []
+                              },
+                              "retry": {
+                                "max_attempts": 1,
+                                "backoff": "fixed"
+                              },
+                              "timeout_s": 10,
+                              "on_error": "fail"
+                            }
+                          ]
+                        },
+                        "default": []
+                      },
+                      "retry": {
+                        "max_attempts": 1,
+                        "backoff": "fixed"
+                      },
+                      "timeout_s": 10,
+                      "on_error": "fail"
+                    }
+                  ]
+                },
+                "default": []
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 10,
+              "on_error": "fail"
+            }
+          ]
+        },
+        "default": []
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "cham",
+      "type": "ai.llm@2",
+      "description": "Chấm điểm",
+      "config": {
+        "instructions": "Chấm điểm lead theo tiêu chí của công ty.",
+        "prompt": "Thông tin lead: {{ trigger.input }}",
+        "output": "object",
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "score": {
+              "type": "integer"
+            },
+            "tier": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "retry": {
+        "max_attempts": 2,
+        "backoff": "exponential"
+      },
+      "timeout_s": 120,
+      "on_error": "fail"
+    },
+    {
+      "id": "doi",
+      "type": "data.transform@1",
+      "description": "Đổi dữ liệu",
+      "config": {
+        "fields": {
+          "ket_qua": "trigger.input"
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 30,
+      "on_error": "fail"
+    },
+    {
+      "id": "bao",
+      "type": "tool.call@2",
+      "description": "Báo kênh",
+      "config": {
+        "tool": "chat.post@1.0.0",
+        "arguments": {
+          "to": "{{ trigger.input.email }}"
+        }
+      },
+      "retry": {
+        "max_attempts": 3,
+        "backoff": "exponential"
+      },
+      "timeout_s": 30,
+      "on_error": "fail"
+    },
+    {
+      "id": "re",
+      "type": "logic.switch@1",
+      "description": "Rẽ nhánh theo hạng",
+      "config": {
+        "on": "steps.cham.response.tier",
+        "cases": {
+          "hot": [
+            {
+              "id": "giao",
+              "type": "data.object.assign@1",
+              "description": "Giao người",
+              "config": {
+                "object": "lead",
+                "record_id": "{{ steps.luu_lead.record.id }}",
+                "fallback": "sales_lead",
+                "reassign": false
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            },
+            {
+              "id": "cap_nhat",
+              "type": "data.object.update@1",
+              "description": "Cập nhật lead",
+              "config": {
+                "object": "lead",
+                "record_id": "{{ steps.luu_lead.record.id }}",
+                "fields": {
+                  "status": "da_lien_he"
+                }
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "warm": [
+            {
+              "id": "gui",
+              "type": "tool.call@2",
+              "description": "Gửi email",
+              "config": {
+                "tool": "email.send@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ]
+        },
+        "default": [
+          {
+            "id": "luu",
+            "type": "data.object.update@1",
+            "description": "Lưu trữ",
+            "config": {
+              "object": "lead",
+              "record_id": "{{ steps.luu_lead.record.id }}",
+              "fields": {
+                "status": "da_lien_he"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "duyet",
+      "type": "human.approval@2",
+      "description": "Duyệt",
+      "config": {
+        "required_scope": "studio.leads.approve",
+        "approved": [
+          {
+            "id": "gui_duyet",
+            "type": "tool.call@2",
+            "description": "Gửi sau duyệt",
+            "config": {
+              "tool": "email.send@1.0.0",
+              "arguments": {
+                "to": "{{ trigger.input.email }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 3,
+              "backoff": "exponential"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ],
+        "rejected": [
+          {
+            "id": "viec",
+            "type": "data.object.create@1",
+            "description": "Tạo việc",
+            "config": {
+              "object": "task",
+              "fields": {
+                "title": "{{ trigger.input.full_name }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 60,
+      "on_error": "fail"
+    },
+    {
+      "id": "song_song",
+      "type": "logic.parallel@1",
+      "description": "Tra cứu song song",
+      "config": {
+        "branches": {
+          "a": [
+            {
+              "id": "tra_a",
+              "type": "tool.call@2",
+              "description": "Tra A",
+              "config": {
+                "tool": "company.lookup@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "b": [
+            {
+              "id": "tra_b",
+              "type": "tool.call@2",
+              "description": "Tra B",
+              "config": {
+                "tool": "social.lookup@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "c": [
+            {
+              "id": "tra_c",
+              "type": "data.object.query@1",
+              "description": "Tra C",
+              "config": {
+                "object": "lead",
+                "filter": {
+                  "field": "status",
+                  "op": "eq",
+                  "value": "moi"
+                },
+                "limit": 50
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ]
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "lap",
+      "type": "logic.loop@1",
+      "description": "Lặp tới khi đủ",
+      "config": {
+        "condition": "!vars.du",
+        "max_iterations": 5,
+        "body": [
+          {
+            "id": "thu",
+            "type": "ai.llm@2",
+            "description": "Thử lại",
+            "config": {
+              "instructions": "Chấm điểm lead theo tiêu chí của công ty.",
+              "prompt": "Thông tin lead: {{ trigger.input }}",
+              "output": "object",
+              "output_schema": {
+                "type": "object",
+                "properties": {
+                  "score": {
+                    "type": "integer"
+                  },
+                  "tier": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "retry": {
+              "max_attempts": 2,
+              "backoff": "exponential"
+            },
+            "timeout_s": 120,
+            "on_error": "fail"
+          },
+          {
+            "id": "kiem",
+            "type": "data.transform@1",
+            "description": "Kiểm kết quả",
+            "config": {
+              "fields": {
+                "ket_qua": "trigger.input"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ],
+        "max_reached": [
+          {
+            "id": "viec_tay",
+            "type": "data.object.create@1",
+            "description": "Việc bằng tay",
+            "config": {
+              "object": "task",
+              "fields": {
+                "title": "{{ trigger.input.full_name }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "ghi",
+      "type": "data.object.upsert@1",
+      "description": "Ghi lead",
+      "config": {
+        "object": "lead",
+        "match_on": ["phone", "email"],
+        "fields": {
+          "phone": "{{ phone.e164(trigger.input.phone) }}",
+          "email": "{{ email.normalize(trigger.input.email) }}",
+          "full_name": "{{ trigger.input.full_name }}"
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 30,
+      "on_error": "route",
+      "error_lane": [
+        {
+          "id": "bao_loi",
+          "type": "tool.call@2",
+          "description": "Báo lỗi ghi",
+          "config": {
+            "tool": "chat.post@1.0.0",
+            "arguments": {
+              "to": "{{ trigger.input.email }}"
+            }
+          },
+          "retry": {
+            "max_attempts": 3,
+            "backoff": "exponential"
+          },
+          "timeout_s": 30,
+          "on_error": "fail"
+        }
+      ]
+    },
+    {
+      "id": "cham_2",
+      "type": "ai.llm@2",
+      "description": "Chấm điểm",
+      "config": {
+        "instructions": "Chấm điểm lead theo tiêu chí của công ty.",
+        "prompt": "Thông tin lead: {{ trigger.input }}",
+        "output": "object",
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "score": {
+              "type": "integer"
+            },
+            "tier": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "retry": {
+        "max_attempts": 2,
+        "backoff": "exponential"
+      },
+      "timeout_s": 120,
+      "on_error": "fail"
+    },
+    {
+      "id": "doi_2",
+      "type": "data.transform@1",
+      "description": "Đổi dữ liệu",
+      "config": {
+        "fields": {
+          "ket_qua": "trigger.input"
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 30,
+      "on_error": "fail"
+    },
+    {
+      "id": "bao_2",
+      "type": "tool.call@2",
+      "description": "Báo kênh",
+      "config": {
+        "tool": "chat.post@1.0.0",
+        "arguments": {
+          "to": "{{ trigger.input.email }}"
+        }
+      },
+      "retry": {
+        "max_attempts": 3,
+        "backoff": "exponential"
+      },
+      "timeout_s": 30,
+      "on_error": "fail"
+    },
+    {
+      "id": "re_2",
+      "type": "logic.switch@1",
+      "description": "Rẽ nhánh theo hạng",
+      "config": {
+        "on": "steps.cham.response.tier",
+        "cases": {
+          "hot": [
+            {
+              "id": "giao_2",
+              "type": "data.object.assign@1",
+              "description": "Giao người",
+              "config": {
+                "object": "lead",
+                "record_id": "{{ steps.luu_lead.record.id }}",
+                "fallback": "sales_lead",
+                "reassign": false
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            },
+            {
+              "id": "cap_nhat_2",
+              "type": "data.object.update@1",
+              "description": "Cập nhật lead",
+              "config": {
+                "object": "lead",
+                "record_id": "{{ steps.luu_lead.record.id }}",
+                "fields": {
+                  "status": "da_lien_he"
+                }
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "warm": [
+            {
+              "id": "gui_2",
+              "type": "tool.call@2",
+              "description": "Gửi email",
+              "config": {
+                "tool": "email.send@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ]
+        },
+        "default": [
+          {
+            "id": "luu_2",
+            "type": "data.object.update@1",
+            "description": "Lưu trữ",
+            "config": {
+              "object": "lead",
+              "record_id": "{{ steps.luu_lead.record.id }}",
+              "fields": {
+                "status": "da_lien_he"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "duyet_2",
+      "type": "human.approval@2",
+      "description": "Duyệt",
+      "config": {
+        "required_scope": "studio.leads.approve",
+        "approved": [
+          {
+            "id": "gui_duyet_2",
+            "type": "tool.call@2",
+            "description": "Gửi sau duyệt",
+            "config": {
+              "tool": "email.send@1.0.0",
+              "arguments": {
+                "to": "{{ trigger.input.email }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 3,
+              "backoff": "exponential"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ],
+        "rejected": [
+          {
+            "id": "viec_2",
+            "type": "data.object.create@1",
+            "description": "Tạo việc",
+            "config": {
+              "object": "task",
+              "fields": {
+                "title": "{{ trigger.input.full_name }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 60,
+      "on_error": "fail"
+    },
+    {
+      "id": "song_song_2",
+      "type": "logic.parallel@1",
+      "description": "Tra cứu song song",
+      "config": {
+        "branches": {
+          "a": [
+            {
+              "id": "tra_a_2",
+              "type": "tool.call@2",
+              "description": "Tra A",
+              "config": {
+                "tool": "company.lookup@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "b": [
+            {
+              "id": "tra_b_2",
+              "type": "tool.call@2",
+              "description": "Tra B",
+              "config": {
+                "tool": "social.lookup@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "c": [
+            {
+              "id": "tra_c_2",
+              "type": "data.object.query@1",
+              "description": "Tra C",
+              "config": {
+                "object": "lead",
+                "filter": {
+                  "field": "status",
+                  "op": "eq",
+                  "value": "moi"
+                },
+                "limit": 50
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ]
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "lap_2",
+      "type": "logic.loop@1",
+      "description": "Lặp tới khi đủ",
+      "config": {
+        "condition": "!vars.du",
+        "max_iterations": 5,
+        "body": [
+          {
+            "id": "thu_2",
+            "type": "ai.llm@2",
+            "description": "Thử lại",
+            "config": {
+              "instructions": "Chấm điểm lead theo tiêu chí của công ty.",
+              "prompt": "Thông tin lead: {{ trigger.input }}",
+              "output": "object",
+              "output_schema": {
+                "type": "object",
+                "properties": {
+                  "score": {
+                    "type": "integer"
+                  },
+                  "tier": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "retry": {
+              "max_attempts": 2,
+              "backoff": "exponential"
+            },
+            "timeout_s": 120,
+            "on_error": "fail"
+          },
+          {
+            "id": "kiem_2",
+            "type": "data.transform@1",
+            "description": "Kiểm kết quả",
+            "config": {
+              "fields": {
+                "ket_qua": "trigger.input"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ],
+        "max_reached": [
+          {
+            "id": "viec_tay_2",
+            "type": "data.object.create@1",
+            "description": "Việc bằng tay",
+            "config": {
+              "object": "task",
+              "fields": {
+                "title": "{{ trigger.input.full_name }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "ghi_2",
+      "type": "data.object.upsert@1",
+      "description": "Ghi lead",
+      "config": {
+        "object": "lead",
+        "match_on": ["phone", "email"],
+        "fields": {
+          "phone": "{{ phone.e164(trigger.input.phone) }}",
+          "email": "{{ email.normalize(trigger.input.email) }}",
+          "full_name": "{{ trigger.input.full_name }}"
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 30,
+      "on_error": "route",
+      "error_lane": [
+        {
+          "id": "bao_loi_2",
+          "type": "tool.call@2",
+          "description": "Báo lỗi ghi",
+          "config": {
+            "tool": "chat.post@1.0.0",
+            "arguments": {
+              "to": "{{ trigger.input.email }}"
+            }
+          },
+          "retry": {
+            "max_attempts": 3,
+            "backoff": "exponential"
+          },
+          "timeout_s": 30,
+          "on_error": "fail"
+        }
+      ]
+    },
+    {
+      "id": "cham_3",
+      "type": "ai.llm@2",
+      "description": "Chấm điểm",
+      "config": {
+        "instructions": "Chấm điểm lead theo tiêu chí của công ty.",
+        "prompt": "Thông tin lead: {{ trigger.input }}",
+        "output": "object",
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "score": {
+              "type": "integer"
+            },
+            "tier": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "retry": {
+        "max_attempts": 2,
+        "backoff": "exponential"
+      },
+      "timeout_s": 120,
+      "on_error": "fail"
+    },
+    {
+      "id": "doi_3",
+      "type": "data.transform@1",
+      "description": "Đổi dữ liệu",
+      "config": {
+        "fields": {
+          "ket_qua": "trigger.input"
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 30,
+      "on_error": "fail"
+    },
+    {
+      "id": "bao_3",
+      "type": "tool.call@2",
+      "description": "Báo kênh",
+      "config": {
+        "tool": "chat.post@1.0.0",
+        "arguments": {
+          "to": "{{ trigger.input.email }}"
+        }
+      },
+      "retry": {
+        "max_attempts": 3,
+        "backoff": "exponential"
+      },
+      "timeout_s": 30,
+      "on_error": "fail"
+    },
+    {
+      "id": "re_3",
+      "type": "logic.switch@1",
+      "description": "Rẽ nhánh theo hạng",
+      "config": {
+        "on": "steps.cham.response.tier",
+        "cases": {
+          "hot": [
+            {
+              "id": "giao_3",
+              "type": "data.object.assign@1",
+              "description": "Giao người",
+              "config": {
+                "object": "lead",
+                "record_id": "{{ steps.luu_lead.record.id }}",
+                "fallback": "sales_lead",
+                "reassign": false
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            },
+            {
+              "id": "cap_nhat_3",
+              "type": "data.object.update@1",
+              "description": "Cập nhật lead",
+              "config": {
+                "object": "lead",
+                "record_id": "{{ steps.luu_lead.record.id }}",
+                "fields": {
+                  "status": "da_lien_he"
+                }
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "warm": [
+            {
+              "id": "gui_3",
+              "type": "tool.call@2",
+              "description": "Gửi email",
+              "config": {
+                "tool": "email.send@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ]
+        },
+        "default": [
+          {
+            "id": "luu_3",
+            "type": "data.object.update@1",
+            "description": "Lưu trữ",
+            "config": {
+              "object": "lead",
+              "record_id": "{{ steps.luu_lead.record.id }}",
+              "fields": {
+                "status": "da_lien_he"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "duyet_3",
+      "type": "human.approval@2",
+      "description": "Duyệt",
+      "config": {
+        "required_scope": "studio.leads.approve",
+        "approved": [
+          {
+            "id": "gui_duyet_3",
+            "type": "tool.call@2",
+            "description": "Gửi sau duyệt",
+            "config": {
+              "tool": "email.send@1.0.0",
+              "arguments": {
+                "to": "{{ trigger.input.email }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 3,
+              "backoff": "exponential"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ],
+        "rejected": [
+          {
+            "id": "viec_3",
+            "type": "data.object.create@1",
+            "description": "Tạo việc",
+            "config": {
+              "object": "task",
+              "fields": {
+                "title": "{{ trigger.input.full_name }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 60,
+      "on_error": "fail"
+    },
+    {
+      "id": "song_song_3",
+      "type": "logic.parallel@1",
+      "description": "Tra cứu song song",
+      "config": {
+        "branches": {
+          "a": [
+            {
+              "id": "tra_a_3",
+              "type": "tool.call@2",
+              "description": "Tra A",
+              "config": {
+                "tool": "company.lookup@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "b": [
+            {
+              "id": "tra_b_3",
+              "type": "tool.call@2",
+              "description": "Tra B",
+              "config": {
+                "tool": "social.lookup@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "c": [
+            {
+              "id": "tra_c_3",
+              "type": "data.object.query@1",
+              "description": "Tra C",
+              "config": {
+                "object": "lead",
+                "filter": {
+                  "field": "status",
+                  "op": "eq",
+                  "value": "moi"
+                },
+                "limit": 50
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ]
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "lap_3",
+      "type": "logic.loop@1",
+      "description": "Lặp tới khi đủ",
+      "config": {
+        "condition": "!vars.du",
+        "max_iterations": 5,
+        "body": [
+          {
+            "id": "thu_3",
+            "type": "ai.llm@2",
+            "description": "Thử lại",
+            "config": {
+              "instructions": "Chấm điểm lead theo tiêu chí của công ty.",
+              "prompt": "Thông tin lead: {{ trigger.input }}",
+              "output": "object",
+              "output_schema": {
+                "type": "object",
+                "properties": {
+                  "score": {
+                    "type": "integer"
+                  },
+                  "tier": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "retry": {
+              "max_attempts": 2,
+              "backoff": "exponential"
+            },
+            "timeout_s": 120,
+            "on_error": "fail"
+          },
+          {
+            "id": "kiem_3",
+            "type": "data.transform@1",
+            "description": "Kiểm kết quả",
+            "config": {
+              "fields": {
+                "ket_qua": "trigger.input"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ],
+        "max_reached": [
+          {
+            "id": "viec_tay_3",
+            "type": "data.object.create@1",
+            "description": "Việc bằng tay",
+            "config": {
+              "object": "task",
+              "fields": {
+                "title": "{{ trigger.input.full_name }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "ghi_3",
+      "type": "data.object.upsert@1",
+      "description": "Ghi lead",
+      "config": {
+        "object": "lead",
+        "match_on": ["phone", "email"],
+        "fields": {
+          "phone": "{{ phone.e164(trigger.input.phone) }}",
+          "email": "{{ email.normalize(trigger.input.email) }}",
+          "full_name": "{{ trigger.input.full_name }}"
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 30,
+      "on_error": "route",
+      "error_lane": [
+        {
+          "id": "bao_loi_3",
+          "type": "tool.call@2",
+          "description": "Báo lỗi ghi",
+          "config": {
+            "tool": "chat.post@1.0.0",
+            "arguments": {
+              "to": "{{ trigger.input.email }}"
+            }
+          },
+          "retry": {
+            "max_attempts": 3,
+            "backoff": "exponential"
+          },
+          "timeout_s": 30,
+          "on_error": "fail"
+        }
+      ]
+    },
+    {
+      "id": "cham_4",
+      "type": "ai.llm@2",
+      "description": "Chấm điểm",
+      "config": {
+        "instructions": "Chấm điểm lead theo tiêu chí của công ty.",
+        "prompt": "Thông tin lead: {{ trigger.input }}",
+        "output": "object",
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "score": {
+              "type": "integer"
+            },
+            "tier": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "retry": {
+        "max_attempts": 2,
+        "backoff": "exponential"
+      },
+      "timeout_s": 120,
+      "on_error": "fail"
+    },
+    {
+      "id": "doi_4",
+      "type": "data.transform@1",
+      "description": "Đổi dữ liệu",
+      "config": {
+        "fields": {
+          "ket_qua": "trigger.input"
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 30,
+      "on_error": "fail"
+    },
+    {
+      "id": "bao_4",
+      "type": "tool.call@2",
+      "description": "Báo kênh",
+      "config": {
+        "tool": "chat.post@1.0.0",
+        "arguments": {
+          "to": "{{ trigger.input.email }}"
+        }
+      },
+      "retry": {
+        "max_attempts": 3,
+        "backoff": "exponential"
+      },
+      "timeout_s": 30,
+      "on_error": "fail"
+    },
+    {
+      "id": "re_4",
+      "type": "logic.switch@1",
+      "description": "Rẽ nhánh theo hạng",
+      "config": {
+        "on": "steps.cham.response.tier",
+        "cases": {
+          "hot": [
+            {
+              "id": "giao_4",
+              "type": "data.object.assign@1",
+              "description": "Giao người",
+              "config": {
+                "object": "lead",
+                "record_id": "{{ steps.luu_lead.record.id }}",
+                "fallback": "sales_lead",
+                "reassign": false
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            },
+            {
+              "id": "cap_nhat_4",
+              "type": "data.object.update@1",
+              "description": "Cập nhật lead",
+              "config": {
+                "object": "lead",
+                "record_id": "{{ steps.luu_lead.record.id }}",
+                "fields": {
+                  "status": "da_lien_he"
+                }
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "warm": [
+            {
+              "id": "gui_4",
+              "type": "tool.call@2",
+              "description": "Gửi email",
+              "config": {
+                "tool": "email.send@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ]
+        },
+        "default": [
+          {
+            "id": "luu_4",
+            "type": "data.object.update@1",
+            "description": "Lưu trữ",
+            "config": {
+              "object": "lead",
+              "record_id": "{{ steps.luu_lead.record.id }}",
+              "fields": {
+                "status": "da_lien_he"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "duyet_4",
+      "type": "human.approval@2",
+      "description": "Duyệt",
+      "config": {
+        "required_scope": "studio.leads.approve",
+        "approved": [
+          {
+            "id": "gui_duyet_4",
+            "type": "tool.call@2",
+            "description": "Gửi sau duyệt",
+            "config": {
+              "tool": "email.send@1.0.0",
+              "arguments": {
+                "to": "{{ trigger.input.email }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 3,
+              "backoff": "exponential"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ],
+        "rejected": [
+          {
+            "id": "viec_4",
+            "type": "data.object.create@1",
+            "description": "Tạo việc",
+            "config": {
+              "object": "task",
+              "fields": {
+                "title": "{{ trigger.input.full_name }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 60,
+      "on_error": "fail"
+    },
+    {
+      "id": "song_song_4",
+      "type": "logic.parallel@1",
+      "description": "Tra cứu song song",
+      "config": {
+        "branches": {
+          "a": [
+            {
+              "id": "tra_a_4",
+              "type": "tool.call@2",
+              "description": "Tra A",
+              "config": {
+                "tool": "company.lookup@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "b": [
+            {
+              "id": "tra_b_4",
+              "type": "tool.call@2",
+              "description": "Tra B",
+              "config": {
+                "tool": "social.lookup@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "c": [
+            {
+              "id": "tra_c_4",
+              "type": "data.object.query@1",
+              "description": "Tra C",
+              "config": {
+                "object": "lead",
+                "filter": {
+                  "field": "status",
+                  "op": "eq",
+                  "value": "moi"
+                },
+                "limit": 50
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ]
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "lap_4",
+      "type": "logic.loop@1",
+      "description": "Lặp tới khi đủ",
+      "config": {
+        "condition": "!vars.du",
+        "max_iterations": 5,
+        "body": [
+          {
+            "id": "thu_4",
+            "type": "ai.llm@2",
+            "description": "Thử lại",
+            "config": {
+              "instructions": "Chấm điểm lead theo tiêu chí của công ty.",
+              "prompt": "Thông tin lead: {{ trigger.input }}",
+              "output": "object",
+              "output_schema": {
+                "type": "object",
+                "properties": {
+                  "score": {
+                    "type": "integer"
+                  },
+                  "tier": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "retry": {
+              "max_attempts": 2,
+              "backoff": "exponential"
+            },
+            "timeout_s": 120,
+            "on_error": "fail"
+          },
+          {
+            "id": "kiem_4",
+            "type": "data.transform@1",
+            "description": "Kiểm kết quả",
+            "config": {
+              "fields": {
+                "ket_qua": "trigger.input"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ],
+        "max_reached": [
+          {
+            "id": "viec_tay_4",
+            "type": "data.object.create@1",
+            "description": "Việc bằng tay",
+            "config": {
+              "object": "task",
+              "fields": {
+                "title": "{{ trigger.input.full_name }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "ghi_4",
+      "type": "data.object.upsert@1",
+      "description": "Ghi lead",
+      "config": {
+        "object": "lead",
+        "match_on": ["phone", "email"],
+        "fields": {
+          "phone": "{{ phone.e164(trigger.input.phone) }}",
+          "email": "{{ email.normalize(trigger.input.email) }}",
+          "full_name": "{{ trigger.input.full_name }}"
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 30,
+      "on_error": "route",
+      "error_lane": [
+        {
+          "id": "bao_loi_4",
+          "type": "tool.call@2",
+          "description": "Báo lỗi ghi",
+          "config": {
+            "tool": "chat.post@1.0.0",
+            "arguments": {
+              "to": "{{ trigger.input.email }}"
+            }
+          },
+          "retry": {
+            "max_attempts": 3,
+            "backoff": "exponential"
+          },
+          "timeout_s": 30,
+          "on_error": "fail"
+        }
+      ]
+    },
+    {
+      "id": "cham_5",
+      "type": "ai.llm@2",
+      "description": "Chấm điểm",
+      "config": {
+        "instructions": "Chấm điểm lead theo tiêu chí của công ty.",
+        "prompt": "Thông tin lead: {{ trigger.input }}",
+        "output": "object",
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "score": {
+              "type": "integer"
+            },
+            "tier": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "retry": {
+        "max_attempts": 2,
+        "backoff": "exponential"
+      },
+      "timeout_s": 120,
+      "on_error": "fail"
+    },
+    {
+      "id": "doi_5",
+      "type": "data.transform@1",
+      "description": "Đổi dữ liệu",
+      "config": {
+        "fields": {
+          "ket_qua": "trigger.input"
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 30,
+      "on_error": "fail"
+    },
+    {
+      "id": "bao_5",
+      "type": "tool.call@2",
+      "description": "Báo kênh",
+      "config": {
+        "tool": "chat.post@1.0.0",
+        "arguments": {
+          "to": "{{ trigger.input.email }}"
+        }
+      },
+      "retry": {
+        "max_attempts": 3,
+        "backoff": "exponential"
+      },
+      "timeout_s": 30,
+      "on_error": "fail"
+    },
+    {
+      "id": "re_5",
+      "type": "logic.switch@1",
+      "description": "Rẽ nhánh theo hạng",
+      "config": {
+        "on": "steps.cham.response.tier",
+        "cases": {
+          "hot": [
+            {
+              "id": "giao_5",
+              "type": "data.object.assign@1",
+              "description": "Giao người",
+              "config": {
+                "object": "lead",
+                "record_id": "{{ steps.luu_lead.record.id }}",
+                "fallback": "sales_lead",
+                "reassign": false
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            },
+            {
+              "id": "cap_nhat_5",
+              "type": "data.object.update@1",
+              "description": "Cập nhật lead",
+              "config": {
+                "object": "lead",
+                "record_id": "{{ steps.luu_lead.record.id }}",
+                "fields": {
+                  "status": "da_lien_he"
+                }
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "warm": [
+            {
+              "id": "gui_5",
+              "type": "tool.call@2",
+              "description": "Gửi email",
+              "config": {
+                "tool": "email.send@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ]
+        },
+        "default": [
+          {
+            "id": "luu_5",
+            "type": "data.object.update@1",
+            "description": "Lưu trữ",
+            "config": {
+              "object": "lead",
+              "record_id": "{{ steps.luu_lead.record.id }}",
+              "fields": {
+                "status": "da_lien_he"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "duyet_5",
+      "type": "human.approval@2",
+      "description": "Duyệt",
+      "config": {
+        "required_scope": "studio.leads.approve",
+        "approved": [
+          {
+            "id": "gui_duyet_5",
+            "type": "tool.call@2",
+            "description": "Gửi sau duyệt",
+            "config": {
+              "tool": "email.send@1.0.0",
+              "arguments": {
+                "to": "{{ trigger.input.email }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 3,
+              "backoff": "exponential"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ],
+        "rejected": [
+          {
+            "id": "viec_5",
+            "type": "data.object.create@1",
+            "description": "Tạo việc",
+            "config": {
+              "object": "task",
+              "fields": {
+                "title": "{{ trigger.input.full_name }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 60,
+      "on_error": "fail"
+    },
+    {
+      "id": "song_song_5",
+      "type": "logic.parallel@1",
+      "description": "Tra cứu song song",
+      "config": {
+        "branches": {
+          "a": [
+            {
+              "id": "tra_a_5",
+              "type": "tool.call@2",
+              "description": "Tra A",
+              "config": {
+                "tool": "company.lookup@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "b": [
+            {
+              "id": "tra_b_5",
+              "type": "tool.call@2",
+              "description": "Tra B",
+              "config": {
+                "tool": "social.lookup@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "c": [
+            {
+              "id": "tra_c_5",
+              "type": "data.object.query@1",
+              "description": "Tra C",
+              "config": {
+                "object": "lead",
+                "filter": {
+                  "field": "status",
+                  "op": "eq",
+                  "value": "moi"
+                },
+                "limit": 50
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ]
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "lap_5",
+      "type": "logic.loop@1",
+      "description": "Lặp tới khi đủ",
+      "config": {
+        "condition": "!vars.du",
+        "max_iterations": 5,
+        "body": [
+          {
+            "id": "thu_5",
+            "type": "ai.llm@2",
+            "description": "Thử lại",
+            "config": {
+              "instructions": "Chấm điểm lead theo tiêu chí của công ty.",
+              "prompt": "Thông tin lead: {{ trigger.input }}",
+              "output": "object",
+              "output_schema": {
+                "type": "object",
+                "properties": {
+                  "score": {
+                    "type": "integer"
+                  },
+                  "tier": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "retry": {
+              "max_attempts": 2,
+              "backoff": "exponential"
+            },
+            "timeout_s": 120,
+            "on_error": "fail"
+          },
+          {
+            "id": "kiem_5",
+            "type": "data.transform@1",
+            "description": "Kiểm kết quả",
+            "config": {
+              "fields": {
+                "ket_qua": "trigger.input"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ],
+        "max_reached": [
+          {
+            "id": "viec_tay_5",
+            "type": "data.object.create@1",
+            "description": "Việc bằng tay",
+            "config": {
+              "object": "task",
+              "fields": {
+                "title": "{{ trigger.input.full_name }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "ghi_5",
+      "type": "data.object.upsert@1",
+      "description": "Ghi lead",
+      "config": {
+        "object": "lead",
+        "match_on": ["phone", "email"],
+        "fields": {
+          "phone": "{{ phone.e164(trigger.input.phone) }}",
+          "email": "{{ email.normalize(trigger.input.email) }}",
+          "full_name": "{{ trigger.input.full_name }}"
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 30,
+      "on_error": "route",
+      "error_lane": [
+        {
+          "id": "bao_loi_5",
+          "type": "tool.call@2",
+          "description": "Báo lỗi ghi",
+          "config": {
+            "tool": "chat.post@1.0.0",
+            "arguments": {
+              "to": "{{ trigger.input.email }}"
+            }
+          },
+          "retry": {
+            "max_attempts": 3,
+            "backoff": "exponential"
+          },
+          "timeout_s": 30,
+          "on_error": "fail"
+        }
+      ]
+    },
+    {
+      "id": "cham_6",
+      "type": "ai.llm@2",
+      "description": "Chấm điểm",
+      "config": {
+        "instructions": "Chấm điểm lead theo tiêu chí của công ty.",
+        "prompt": "Thông tin lead: {{ trigger.input }}",
+        "output": "object",
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "score": {
+              "type": "integer"
+            },
+            "tier": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "retry": {
+        "max_attempts": 2,
+        "backoff": "exponential"
+      },
+      "timeout_s": 120,
+      "on_error": "fail"
+    },
+    {
+      "id": "doi_6",
+      "type": "data.transform@1",
+      "description": "Đổi dữ liệu",
+      "config": {
+        "fields": {
+          "ket_qua": "trigger.input"
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 30,
+      "on_error": "fail"
+    },
+    {
+      "id": "bao_6",
+      "type": "tool.call@2",
+      "description": "Báo kênh",
+      "config": {
+        "tool": "chat.post@1.0.0",
+        "arguments": {
+          "to": "{{ trigger.input.email }}"
+        }
+      },
+      "retry": {
+        "max_attempts": 3,
+        "backoff": "exponential"
+      },
+      "timeout_s": 30,
+      "on_error": "fail"
+    },
+    {
+      "id": "re_6",
+      "type": "logic.switch@1",
+      "description": "Rẽ nhánh theo hạng",
+      "config": {
+        "on": "steps.cham.response.tier",
+        "cases": {
+          "hot": [
+            {
+              "id": "giao_6",
+              "type": "data.object.assign@1",
+              "description": "Giao người",
+              "config": {
+                "object": "lead",
+                "record_id": "{{ steps.luu_lead.record.id }}",
+                "fallback": "sales_lead",
+                "reassign": false
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            },
+            {
+              "id": "cap_nhat_6",
+              "type": "data.object.update@1",
+              "description": "Cập nhật lead",
+              "config": {
+                "object": "lead",
+                "record_id": "{{ steps.luu_lead.record.id }}",
+                "fields": {
+                  "status": "da_lien_he"
+                }
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "warm": [
+            {
+              "id": "gui_6",
+              "type": "tool.call@2",
+              "description": "Gửi email",
+              "config": {
+                "tool": "email.send@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ]
+        },
+        "default": [
+          {
+            "id": "luu_6",
+            "type": "data.object.update@1",
+            "description": "Lưu trữ",
+            "config": {
+              "object": "lead",
+              "record_id": "{{ steps.luu_lead.record.id }}",
+              "fields": {
+                "status": "da_lien_he"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "duyet_6",
+      "type": "human.approval@2",
+      "description": "Duyệt",
+      "config": {
+        "required_scope": "studio.leads.approve",
+        "approved": [
+          {
+            "id": "gui_duyet_6",
+            "type": "tool.call@2",
+            "description": "Gửi sau duyệt",
+            "config": {
+              "tool": "email.send@1.0.0",
+              "arguments": {
+                "to": "{{ trigger.input.email }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 3,
+              "backoff": "exponential"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ],
+        "rejected": [
+          {
+            "id": "viec_6",
+            "type": "data.object.create@1",
+            "description": "Tạo việc",
+            "config": {
+              "object": "task",
+              "fields": {
+                "title": "{{ trigger.input.full_name }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 60,
+      "on_error": "fail"
+    },
+    {
+      "id": "song_song_6",
+      "type": "logic.parallel@1",
+      "description": "Tra cứu song song",
+      "config": {
+        "branches": {
+          "a": [
+            {
+              "id": "tra_a_6",
+              "type": "tool.call@2",
+              "description": "Tra A",
+              "config": {
+                "tool": "company.lookup@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "b": [
+            {
+              "id": "tra_b_6",
+              "type": "tool.call@2",
+              "description": "Tra B",
+              "config": {
+                "tool": "social.lookup@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "c": [
+            {
+              "id": "tra_c_6",
+              "type": "data.object.query@1",
+              "description": "Tra C",
+              "config": {
+                "object": "lead",
+                "filter": {
+                  "field": "status",
+                  "op": "eq",
+                  "value": "moi"
+                },
+                "limit": 50
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ]
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "lap_6",
+      "type": "logic.loop@1",
+      "description": "Lặp tới khi đủ",
+      "config": {
+        "condition": "!vars.du",
+        "max_iterations": 5,
+        "body": [
+          {
+            "id": "thu_6",
+            "type": "ai.llm@2",
+            "description": "Thử lại",
+            "config": {
+              "instructions": "Chấm điểm lead theo tiêu chí của công ty.",
+              "prompt": "Thông tin lead: {{ trigger.input }}",
+              "output": "object",
+              "output_schema": {
+                "type": "object",
+                "properties": {
+                  "score": {
+                    "type": "integer"
+                  },
+                  "tier": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "retry": {
+              "max_attempts": 2,
+              "backoff": "exponential"
+            },
+            "timeout_s": 120,
+            "on_error": "fail"
+          },
+          {
+            "id": "kiem_6",
+            "type": "data.transform@1",
+            "description": "Kiểm kết quả",
+            "config": {
+              "fields": {
+                "ket_qua": "trigger.input"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ],
+        "max_reached": [
+          {
+            "id": "viec_tay_6",
+            "type": "data.object.create@1",
+            "description": "Việc bằng tay",
+            "config": {
+              "object": "task",
+              "fields": {
+                "title": "{{ trigger.input.full_name }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "ghi_6",
+      "type": "data.object.upsert@1",
+      "description": "Ghi lead",
+      "config": {
+        "object": "lead",
+        "match_on": ["phone", "email"],
+        "fields": {
+          "phone": "{{ phone.e164(trigger.input.phone) }}",
+          "email": "{{ email.normalize(trigger.input.email) }}",
+          "full_name": "{{ trigger.input.full_name }}"
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 30,
+      "on_error": "route",
+      "error_lane": [
+        {
+          "id": "bao_loi_6",
+          "type": "tool.call@2",
+          "description": "Báo lỗi ghi",
+          "config": {
+            "tool": "chat.post@1.0.0",
+            "arguments": {
+              "to": "{{ trigger.input.email }}"
+            }
+          },
+          "retry": {
+            "max_attempts": 3,
+            "backoff": "exponential"
+          },
+          "timeout_s": 30,
+          "on_error": "fail"
+        }
+      ]
+    },
+    {
+      "id": "cham_7",
+      "type": "ai.llm@2",
+      "description": "Chấm điểm",
+      "config": {
+        "instructions": "Chấm điểm lead theo tiêu chí của công ty.",
+        "prompt": "Thông tin lead: {{ trigger.input }}",
+        "output": "object",
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "score": {
+              "type": "integer"
+            },
+            "tier": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "retry": {
+        "max_attempts": 2,
+        "backoff": "exponential"
+      },
+      "timeout_s": 120,
+      "on_error": "fail"
+    },
+    {
+      "id": "doi_7",
+      "type": "data.transform@1",
+      "description": "Đổi dữ liệu",
+      "config": {
+        "fields": {
+          "ket_qua": "trigger.input"
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 30,
+      "on_error": "fail"
+    },
+    {
+      "id": "bao_7",
+      "type": "tool.call@2",
+      "description": "Báo kênh",
+      "config": {
+        "tool": "chat.post@1.0.0",
+        "arguments": {
+          "to": "{{ trigger.input.email }}"
+        }
+      },
+      "retry": {
+        "max_attempts": 3,
+        "backoff": "exponential"
+      },
+      "timeout_s": 30,
+      "on_error": "fail"
+    },
+    {
+      "id": "re_7",
+      "type": "logic.switch@1",
+      "description": "Rẽ nhánh theo hạng",
+      "config": {
+        "on": "steps.cham.response.tier",
+        "cases": {
+          "hot": [
+            {
+              "id": "giao_7",
+              "type": "data.object.assign@1",
+              "description": "Giao người",
+              "config": {
+                "object": "lead",
+                "record_id": "{{ steps.luu_lead.record.id }}",
+                "fallback": "sales_lead",
+                "reassign": false
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            },
+            {
+              "id": "cap_nhat_7",
+              "type": "data.object.update@1",
+              "description": "Cập nhật lead",
+              "config": {
+                "object": "lead",
+                "record_id": "{{ steps.luu_lead.record.id }}",
+                "fields": {
+                  "status": "da_lien_he"
+                }
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "warm": [
+            {
+              "id": "gui_7",
+              "type": "tool.call@2",
+              "description": "Gửi email",
+              "config": {
+                "tool": "email.send@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ]
+        },
+        "default": [
+          {
+            "id": "luu_7",
+            "type": "data.object.update@1",
+            "description": "Lưu trữ",
+            "config": {
+              "object": "lead",
+              "record_id": "{{ steps.luu_lead.record.id }}",
+              "fields": {
+                "status": "da_lien_he"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "duyet_7",
+      "type": "human.approval@2",
+      "description": "Duyệt",
+      "config": {
+        "required_scope": "studio.leads.approve",
+        "approved": [
+          {
+            "id": "gui_duyet_7",
+            "type": "tool.call@2",
+            "description": "Gửi sau duyệt",
+            "config": {
+              "tool": "email.send@1.0.0",
+              "arguments": {
+                "to": "{{ trigger.input.email }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 3,
+              "backoff": "exponential"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ],
+        "rejected": [
+          {
+            "id": "viec_7",
+            "type": "data.object.create@1",
+            "description": "Tạo việc",
+            "config": {
+              "object": "task",
+              "fields": {
+                "title": "{{ trigger.input.full_name }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 60,
+      "on_error": "fail"
+    },
+    {
+      "id": "song_song_7",
+      "type": "logic.parallel@1",
+      "description": "Tra cứu song song",
+      "config": {
+        "branches": {
+          "a": [
+            {
+              "id": "tra_a_7",
+              "type": "tool.call@2",
+              "description": "Tra A",
+              "config": {
+                "tool": "company.lookup@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "b": [
+            {
+              "id": "tra_b_7",
+              "type": "tool.call@2",
+              "description": "Tra B",
+              "config": {
+                "tool": "social.lookup@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "c": [
+            {
+              "id": "tra_c_7",
+              "type": "data.object.query@1",
+              "description": "Tra C",
+              "config": {
+                "object": "lead",
+                "filter": {
+                  "field": "status",
+                  "op": "eq",
+                  "value": "moi"
+                },
+                "limit": 50
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ]
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "lap_7",
+      "type": "logic.loop@1",
+      "description": "Lặp tới khi đủ",
+      "config": {
+        "condition": "!vars.du",
+        "max_iterations": 5,
+        "body": [
+          {
+            "id": "thu_7",
+            "type": "ai.llm@2",
+            "description": "Thử lại",
+            "config": {
+              "instructions": "Chấm điểm lead theo tiêu chí của công ty.",
+              "prompt": "Thông tin lead: {{ trigger.input }}",
+              "output": "object",
+              "output_schema": {
+                "type": "object",
+                "properties": {
+                  "score": {
+                    "type": "integer"
+                  },
+                  "tier": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "retry": {
+              "max_attempts": 2,
+              "backoff": "exponential"
+            },
+            "timeout_s": 120,
+            "on_error": "fail"
+          },
+          {
+            "id": "kiem_7",
+            "type": "data.transform@1",
+            "description": "Kiểm kết quả",
+            "config": {
+              "fields": {
+                "ket_qua": "trigger.input"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ],
+        "max_reached": [
+          {
+            "id": "viec_tay_7",
+            "type": "data.object.create@1",
+            "description": "Việc bằng tay",
+            "config": {
+              "object": "task",
+              "fields": {
+                "title": "{{ trigger.input.full_name }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "ghi_7",
+      "type": "data.object.upsert@1",
+      "description": "Ghi lead",
+      "config": {
+        "object": "lead",
+        "match_on": ["phone", "email"],
+        "fields": {
+          "phone": "{{ phone.e164(trigger.input.phone) }}",
+          "email": "{{ email.normalize(trigger.input.email) }}",
+          "full_name": "{{ trigger.input.full_name }}"
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 30,
+      "on_error": "route",
+      "error_lane": [
+        {
+          "id": "bao_loi_7",
+          "type": "tool.call@2",
+          "description": "Báo lỗi ghi",
+          "config": {
+            "tool": "chat.post@1.0.0",
+            "arguments": {
+              "to": "{{ trigger.input.email }}"
+            }
+          },
+          "retry": {
+            "max_attempts": 3,
+            "backoff": "exponential"
+          },
+          "timeout_s": 30,
+          "on_error": "fail"
+        }
+      ]
+    },
+    {
+      "id": "cham_8",
+      "type": "ai.llm@2",
+      "description": "Chấm điểm",
+      "config": {
+        "instructions": "Chấm điểm lead theo tiêu chí của công ty.",
+        "prompt": "Thông tin lead: {{ trigger.input }}",
+        "output": "object",
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "score": {
+              "type": "integer"
+            },
+            "tier": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "retry": {
+        "max_attempts": 2,
+        "backoff": "exponential"
+      },
+      "timeout_s": 120,
+      "on_error": "fail"
+    },
+    {
+      "id": "doi_8",
+      "type": "data.transform@1",
+      "description": "Đổi dữ liệu",
+      "config": {
+        "fields": {
+          "ket_qua": "trigger.input"
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 30,
+      "on_error": "fail"
+    },
+    {
+      "id": "bao_8",
+      "type": "tool.call@2",
+      "description": "Báo kênh",
+      "config": {
+        "tool": "chat.post@1.0.0",
+        "arguments": {
+          "to": "{{ trigger.input.email }}"
+        }
+      },
+      "retry": {
+        "max_attempts": 3,
+        "backoff": "exponential"
+      },
+      "timeout_s": 30,
+      "on_error": "fail"
+    },
+    {
+      "id": "re_8",
+      "type": "logic.switch@1",
+      "description": "Rẽ nhánh theo hạng",
+      "config": {
+        "on": "steps.cham.response.tier",
+        "cases": {
+          "hot": [
+            {
+              "id": "giao_8",
+              "type": "data.object.assign@1",
+              "description": "Giao người",
+              "config": {
+                "object": "lead",
+                "record_id": "{{ steps.luu_lead.record.id }}",
+                "fallback": "sales_lead",
+                "reassign": false
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            },
+            {
+              "id": "cap_nhat_8",
+              "type": "data.object.update@1",
+              "description": "Cập nhật lead",
+              "config": {
+                "object": "lead",
+                "record_id": "{{ steps.luu_lead.record.id }}",
+                "fields": {
+                  "status": "da_lien_he"
+                }
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "warm": [
+            {
+              "id": "gui_8",
+              "type": "tool.call@2",
+              "description": "Gửi email",
+              "config": {
+                "tool": "email.send@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ]
+        },
+        "default": [
+          {
+            "id": "luu_8",
+            "type": "data.object.update@1",
+            "description": "Lưu trữ",
+            "config": {
+              "object": "lead",
+              "record_id": "{{ steps.luu_lead.record.id }}",
+              "fields": {
+                "status": "da_lien_he"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "duyet_8",
+      "type": "human.approval@2",
+      "description": "Duyệt",
+      "config": {
+        "required_scope": "studio.leads.approve",
+        "approved": [
+          {
+            "id": "gui_duyet_8",
+            "type": "tool.call@2",
+            "description": "Gửi sau duyệt",
+            "config": {
+              "tool": "email.send@1.0.0",
+              "arguments": {
+                "to": "{{ trigger.input.email }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 3,
+              "backoff": "exponential"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ],
+        "rejected": [
+          {
+            "id": "viec_8",
+            "type": "data.object.create@1",
+            "description": "Tạo việc",
+            "config": {
+              "object": "task",
+              "fields": {
+                "title": "{{ trigger.input.full_name }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 60,
+      "on_error": "fail"
+    },
+    {
+      "id": "song_song_8",
+      "type": "logic.parallel@1",
+      "description": "Tra cứu song song",
+      "config": {
+        "branches": {
+          "a": [
+            {
+              "id": "tra_a_8",
+              "type": "tool.call@2",
+              "description": "Tra A",
+              "config": {
+                "tool": "company.lookup@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "b": [
+            {
+              "id": "tra_b_8",
+              "type": "tool.call@2",
+              "description": "Tra B",
+              "config": {
+                "tool": "social.lookup@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "c": [
+            {
+              "id": "tra_c_8",
+              "type": "data.object.query@1",
+              "description": "Tra C",
+              "config": {
+                "object": "lead",
+                "filter": {
+                  "field": "status",
+                  "op": "eq",
+                  "value": "moi"
+                },
+                "limit": 50
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ]
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "lap_8",
+      "type": "logic.loop@1",
+      "description": "Lặp tới khi đủ",
+      "config": {
+        "condition": "!vars.du",
+        "max_iterations": 5,
+        "body": [
+          {
+            "id": "thu_8",
+            "type": "ai.llm@2",
+            "description": "Thử lại",
+            "config": {
+              "instructions": "Chấm điểm lead theo tiêu chí của công ty.",
+              "prompt": "Thông tin lead: {{ trigger.input }}",
+              "output": "object",
+              "output_schema": {
+                "type": "object",
+                "properties": {
+                  "score": {
+                    "type": "integer"
+                  },
+                  "tier": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "retry": {
+              "max_attempts": 2,
+              "backoff": "exponential"
+            },
+            "timeout_s": 120,
+            "on_error": "fail"
+          },
+          {
+            "id": "kiem_8",
+            "type": "data.transform@1",
+            "description": "Kiểm kết quả",
+            "config": {
+              "fields": {
+                "ket_qua": "trigger.input"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ],
+        "max_reached": [
+          {
+            "id": "viec_tay_8",
+            "type": "data.object.create@1",
+            "description": "Việc bằng tay",
+            "config": {
+              "object": "task",
+              "fields": {
+                "title": "{{ trigger.input.full_name }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "ghi_8",
+      "type": "data.object.upsert@1",
+      "description": "Ghi lead",
+      "config": {
+        "object": "lead",
+        "match_on": ["phone", "email"],
+        "fields": {
+          "phone": "{{ phone.e164(trigger.input.phone) }}",
+          "email": "{{ email.normalize(trigger.input.email) }}",
+          "full_name": "{{ trigger.input.full_name }}"
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 30,
+      "on_error": "route",
+      "error_lane": [
+        {
+          "id": "bao_loi_8",
+          "type": "tool.call@2",
+          "description": "Báo lỗi ghi",
+          "config": {
+            "tool": "chat.post@1.0.0",
+            "arguments": {
+              "to": "{{ trigger.input.email }}"
+            }
+          },
+          "retry": {
+            "max_attempts": 3,
+            "backoff": "exponential"
+          },
+          "timeout_s": 30,
+          "on_error": "fail"
+        }
+      ]
+    },
+    {
+      "id": "cham_9",
+      "type": "ai.llm@2",
+      "description": "Chấm điểm",
+      "config": {
+        "instructions": "Chấm điểm lead theo tiêu chí của công ty.",
+        "prompt": "Thông tin lead: {{ trigger.input }}",
+        "output": "object",
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "score": {
+              "type": "integer"
+            },
+            "tier": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "retry": {
+        "max_attempts": 2,
+        "backoff": "exponential"
+      },
+      "timeout_s": 120,
+      "on_error": "fail"
+    },
+    {
+      "id": "doi_9",
+      "type": "data.transform@1",
+      "description": "Đổi dữ liệu",
+      "config": {
+        "fields": {
+          "ket_qua": "trigger.input"
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 30,
+      "on_error": "fail"
+    },
+    {
+      "id": "bao_9",
+      "type": "tool.call@2",
+      "description": "Báo kênh",
+      "config": {
+        "tool": "chat.post@1.0.0",
+        "arguments": {
+          "to": "{{ trigger.input.email }}"
+        }
+      },
+      "retry": {
+        "max_attempts": 3,
+        "backoff": "exponential"
+      },
+      "timeout_s": 30,
+      "on_error": "fail"
+    },
+    {
+      "id": "re_9",
+      "type": "logic.switch@1",
+      "description": "Rẽ nhánh theo hạng",
+      "config": {
+        "on": "steps.cham.response.tier",
+        "cases": {
+          "hot": [
+            {
+              "id": "giao_9",
+              "type": "data.object.assign@1",
+              "description": "Giao người",
+              "config": {
+                "object": "lead",
+                "record_id": "{{ steps.luu_lead.record.id }}",
+                "fallback": "sales_lead",
+                "reassign": false
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            },
+            {
+              "id": "cap_nhat_9",
+              "type": "data.object.update@1",
+              "description": "Cập nhật lead",
+              "config": {
+                "object": "lead",
+                "record_id": "{{ steps.luu_lead.record.id }}",
+                "fields": {
+                  "status": "da_lien_he"
+                }
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "warm": [
+            {
+              "id": "gui_9",
+              "type": "tool.call@2",
+              "description": "Gửi email",
+              "config": {
+                "tool": "email.send@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ]
+        },
+        "default": [
+          {
+            "id": "luu_9",
+            "type": "data.object.update@1",
+            "description": "Lưu trữ",
+            "config": {
+              "object": "lead",
+              "record_id": "{{ steps.luu_lead.record.id }}",
+              "fields": {
+                "status": "da_lien_he"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "duyet_9",
+      "type": "human.approval@2",
+      "description": "Duyệt",
+      "config": {
+        "required_scope": "studio.leads.approve",
+        "approved": [
+          {
+            "id": "gui_duyet_9",
+            "type": "tool.call@2",
+            "description": "Gửi sau duyệt",
+            "config": {
+              "tool": "email.send@1.0.0",
+              "arguments": {
+                "to": "{{ trigger.input.email }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 3,
+              "backoff": "exponential"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ],
+        "rejected": [
+          {
+            "id": "viec_9",
+            "type": "data.object.create@1",
+            "description": "Tạo việc",
+            "config": {
+              "object": "task",
+              "fields": {
+                "title": "{{ trigger.input.full_name }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 60,
+      "on_error": "fail"
+    },
+    {
+      "id": "song_song_9",
+      "type": "logic.parallel@1",
+      "description": "Tra cứu song song",
+      "config": {
+        "branches": {
+          "a": [
+            {
+              "id": "tra_a_9",
+              "type": "tool.call@2",
+              "description": "Tra A",
+              "config": {
+                "tool": "company.lookup@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "b": [
+            {
+              "id": "tra_b_9",
+              "type": "tool.call@2",
+              "description": "Tra B",
+              "config": {
+                "tool": "social.lookup@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "c": [
+            {
+              "id": "tra_c_9",
+              "type": "data.object.query@1",
+              "description": "Tra C",
+              "config": {
+                "object": "lead",
+                "filter": {
+                  "field": "status",
+                  "op": "eq",
+                  "value": "moi"
+                },
+                "limit": 50
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ]
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "lap_9",
+      "type": "logic.loop@1",
+      "description": "Lặp tới khi đủ",
+      "config": {
+        "condition": "!vars.du",
+        "max_iterations": 5,
+        "body": [
+          {
+            "id": "thu_9",
+            "type": "ai.llm@2",
+            "description": "Thử lại",
+            "config": {
+              "instructions": "Chấm điểm lead theo tiêu chí của công ty.",
+              "prompt": "Thông tin lead: {{ trigger.input }}",
+              "output": "object",
+              "output_schema": {
+                "type": "object",
+                "properties": {
+                  "score": {
+                    "type": "integer"
+                  },
+                  "tier": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "retry": {
+              "max_attempts": 2,
+              "backoff": "exponential"
+            },
+            "timeout_s": 120,
+            "on_error": "fail"
+          },
+          {
+            "id": "kiem_9",
+            "type": "data.transform@1",
+            "description": "Kiểm kết quả",
+            "config": {
+              "fields": {
+                "ket_qua": "trigger.input"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ],
+        "max_reached": [
+          {
+            "id": "viec_tay_9",
+            "type": "data.object.create@1",
+            "description": "Việc bằng tay",
+            "config": {
+              "object": "task",
+              "fields": {
+                "title": "{{ trigger.input.full_name }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "ghi_9",
+      "type": "data.object.upsert@1",
+      "description": "Ghi lead",
+      "config": {
+        "object": "lead",
+        "match_on": ["phone", "email"],
+        "fields": {
+          "phone": "{{ phone.e164(trigger.input.phone) }}",
+          "email": "{{ email.normalize(trigger.input.email) }}",
+          "full_name": "{{ trigger.input.full_name }}"
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 30,
+      "on_error": "route",
+      "error_lane": [
+        {
+          "id": "bao_loi_9",
+          "type": "tool.call@2",
+          "description": "Báo lỗi ghi",
+          "config": {
+            "tool": "chat.post@1.0.0",
+            "arguments": {
+              "to": "{{ trigger.input.email }}"
+            }
+          },
+          "retry": {
+            "max_attempts": 3,
+            "backoff": "exponential"
+          },
+          "timeout_s": 30,
+          "on_error": "fail"
+        }
+      ]
+    },
+    {
+      "id": "cham_10",
+      "type": "ai.llm@2",
+      "description": "Chấm điểm",
+      "config": {
+        "instructions": "Chấm điểm lead theo tiêu chí của công ty.",
+        "prompt": "Thông tin lead: {{ trigger.input }}",
+        "output": "object",
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "score": {
+              "type": "integer"
+            },
+            "tier": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "retry": {
+        "max_attempts": 2,
+        "backoff": "exponential"
+      },
+      "timeout_s": 120,
+      "on_error": "fail"
+    },
+    {
+      "id": "doi_10",
+      "type": "data.transform@1",
+      "description": "Đổi dữ liệu",
+      "config": {
+        "fields": {
+          "ket_qua": "trigger.input"
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 30,
+      "on_error": "fail"
+    },
+    {
+      "id": "bao_10",
+      "type": "tool.call@2",
+      "description": "Báo kênh",
+      "config": {
+        "tool": "chat.post@1.0.0",
+        "arguments": {
+          "to": "{{ trigger.input.email }}"
+        }
+      },
+      "retry": {
+        "max_attempts": 3,
+        "backoff": "exponential"
+      },
+      "timeout_s": 30,
+      "on_error": "fail"
+    },
+    {
+      "id": "re_10",
+      "type": "logic.switch@1",
+      "description": "Rẽ nhánh theo hạng",
+      "config": {
+        "on": "steps.cham.response.tier",
+        "cases": {
+          "hot": [
+            {
+              "id": "giao_10",
+              "type": "data.object.assign@1",
+              "description": "Giao người",
+              "config": {
+                "object": "lead",
+                "record_id": "{{ steps.luu_lead.record.id }}",
+                "fallback": "sales_lead",
+                "reassign": false
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            },
+            {
+              "id": "cap_nhat_10",
+              "type": "data.object.update@1",
+              "description": "Cập nhật lead",
+              "config": {
+                "object": "lead",
+                "record_id": "{{ steps.luu_lead.record.id }}",
+                "fields": {
+                  "status": "da_lien_he"
+                }
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "warm": [
+            {
+              "id": "gui_10",
+              "type": "tool.call@2",
+              "description": "Gửi email",
+              "config": {
+                "tool": "email.send@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ]
+        },
+        "default": [
+          {
+            "id": "luu_10",
+            "type": "data.object.update@1",
+            "description": "Lưu trữ",
+            "config": {
+              "object": "lead",
+              "record_id": "{{ steps.luu_lead.record.id }}",
+              "fields": {
+                "status": "da_lien_he"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "duyet_10",
+      "type": "human.approval@2",
+      "description": "Duyệt",
+      "config": {
+        "required_scope": "studio.leads.approve",
+        "approved": [
+          {
+            "id": "gui_duyet_10",
+            "type": "tool.call@2",
+            "description": "Gửi sau duyệt",
+            "config": {
+              "tool": "email.send@1.0.0",
+              "arguments": {
+                "to": "{{ trigger.input.email }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 3,
+              "backoff": "exponential"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ],
+        "rejected": [
+          {
+            "id": "viec_10",
+            "type": "data.object.create@1",
+            "description": "Tạo việc",
+            "config": {
+              "object": "task",
+              "fields": {
+                "title": "{{ trigger.input.full_name }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 60,
+      "on_error": "fail"
+    },
+    {
+      "id": "song_song_10",
+      "type": "logic.parallel@1",
+      "description": "Tra cứu song song",
+      "config": {
+        "branches": {
+          "a": [
+            {
+              "id": "tra_a_10",
+              "type": "tool.call@2",
+              "description": "Tra A",
+              "config": {
+                "tool": "company.lookup@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "b": [
+            {
+              "id": "tra_b_10",
+              "type": "tool.call@2",
+              "description": "Tra B",
+              "config": {
+                "tool": "social.lookup@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "c": [
+            {
+              "id": "tra_c_10",
+              "type": "data.object.query@1",
+              "description": "Tra C",
+              "config": {
+                "object": "lead",
+                "filter": {
+                  "field": "status",
+                  "op": "eq",
+                  "value": "moi"
+                },
+                "limit": 50
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ]
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "lap_10",
+      "type": "logic.loop@1",
+      "description": "Lặp tới khi đủ",
+      "config": {
+        "condition": "!vars.du",
+        "max_iterations": 5,
+        "body": [
+          {
+            "id": "thu_10",
+            "type": "ai.llm@2",
+            "description": "Thử lại",
+            "config": {
+              "instructions": "Chấm điểm lead theo tiêu chí của công ty.",
+              "prompt": "Thông tin lead: {{ trigger.input }}",
+              "output": "object",
+              "output_schema": {
+                "type": "object",
+                "properties": {
+                  "score": {
+                    "type": "integer"
+                  },
+                  "tier": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "retry": {
+              "max_attempts": 2,
+              "backoff": "exponential"
+            },
+            "timeout_s": 120,
+            "on_error": "fail"
+          },
+          {
+            "id": "kiem_10",
+            "type": "data.transform@1",
+            "description": "Kiểm kết quả",
+            "config": {
+              "fields": {
+                "ket_qua": "trigger.input"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ],
+        "max_reached": [
+          {
+            "id": "viec_tay_10",
+            "type": "data.object.create@1",
+            "description": "Việc bằng tay",
+            "config": {
+              "object": "task",
+              "fields": {
+                "title": "{{ trigger.input.full_name }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "ghi_10",
+      "type": "data.object.upsert@1",
+      "description": "Ghi lead",
+      "config": {
+        "object": "lead",
+        "match_on": ["phone", "email"],
+        "fields": {
+          "phone": "{{ phone.e164(trigger.input.phone) }}",
+          "email": "{{ email.normalize(trigger.input.email) }}",
+          "full_name": "{{ trigger.input.full_name }}"
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 30,
+      "on_error": "route",
+      "error_lane": [
+        {
+          "id": "bao_loi_10",
+          "type": "tool.call@2",
+          "description": "Báo lỗi ghi",
+          "config": {
+            "tool": "chat.post@1.0.0",
+            "arguments": {
+              "to": "{{ trigger.input.email }}"
+            }
+          },
+          "retry": {
+            "max_attempts": 3,
+            "backoff": "exponential"
+          },
+          "timeout_s": 30,
+          "on_error": "fail"
+        }
+      ]
+    },
+    {
+      "id": "cham_11",
+      "type": "ai.llm@2",
+      "description": "Chấm điểm",
+      "config": {
+        "instructions": "Chấm điểm lead theo tiêu chí của công ty.",
+        "prompt": "Thông tin lead: {{ trigger.input }}",
+        "output": "object",
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "score": {
+              "type": "integer"
+            },
+            "tier": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "retry": {
+        "max_attempts": 2,
+        "backoff": "exponential"
+      },
+      "timeout_s": 120,
+      "on_error": "fail"
+    },
+    {
+      "id": "doi_11",
+      "type": "data.transform@1",
+      "description": "Đổi dữ liệu",
+      "config": {
+        "fields": {
+          "ket_qua": "trigger.input"
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 30,
+      "on_error": "fail"
+    },
+    {
+      "id": "bao_11",
+      "type": "tool.call@2",
+      "description": "Báo kênh",
+      "config": {
+        "tool": "chat.post@1.0.0",
+        "arguments": {
+          "to": "{{ trigger.input.email }}"
+        }
+      },
+      "retry": {
+        "max_attempts": 3,
+        "backoff": "exponential"
+      },
+      "timeout_s": 30,
+      "on_error": "fail"
+    },
+    {
+      "id": "re_11",
+      "type": "logic.switch@1",
+      "description": "Rẽ nhánh theo hạng",
+      "config": {
+        "on": "steps.cham.response.tier",
+        "cases": {
+          "hot": [
+            {
+              "id": "giao_11",
+              "type": "data.object.assign@1",
+              "description": "Giao người",
+              "config": {
+                "object": "lead",
+                "record_id": "{{ steps.luu_lead.record.id }}",
+                "fallback": "sales_lead",
+                "reassign": false
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            },
+            {
+              "id": "cap_nhat_11",
+              "type": "data.object.update@1",
+              "description": "Cập nhật lead",
+              "config": {
+                "object": "lead",
+                "record_id": "{{ steps.luu_lead.record.id }}",
+                "fields": {
+                  "status": "da_lien_he"
+                }
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "warm": [
+            {
+              "id": "gui_11",
+              "type": "tool.call@2",
+              "description": "Gửi email",
+              "config": {
+                "tool": "email.send@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ]
+        },
+        "default": [
+          {
+            "id": "luu_11",
+            "type": "data.object.update@1",
+            "description": "Lưu trữ",
+            "config": {
+              "object": "lead",
+              "record_id": "{{ steps.luu_lead.record.id }}",
+              "fields": {
+                "status": "da_lien_he"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "duyet_11",
+      "type": "human.approval@2",
+      "description": "Duyệt",
+      "config": {
+        "required_scope": "studio.leads.approve",
+        "approved": [
+          {
+            "id": "gui_duyet_11",
+            "type": "tool.call@2",
+            "description": "Gửi sau duyệt",
+            "config": {
+              "tool": "email.send@1.0.0",
+              "arguments": {
+                "to": "{{ trigger.input.email }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 3,
+              "backoff": "exponential"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ],
+        "rejected": [
+          {
+            "id": "viec_11",
+            "type": "data.object.create@1",
+            "description": "Tạo việc",
+            "config": {
+              "object": "task",
+              "fields": {
+                "title": "{{ trigger.input.full_name }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 60,
+      "on_error": "fail"
+    },
+    {
+      "id": "song_song_11",
+      "type": "logic.parallel@1",
+      "description": "Tra cứu song song",
+      "config": {
+        "branches": {
+          "a": [
+            {
+              "id": "tra_a_11",
+              "type": "tool.call@2",
+              "description": "Tra A",
+              "config": {
+                "tool": "company.lookup@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "b": [
+            {
+              "id": "tra_b_11",
+              "type": "tool.call@2",
+              "description": "Tra B",
+              "config": {
+                "tool": "social.lookup@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "c": [
+            {
+              "id": "tra_c_11",
+              "type": "data.object.query@1",
+              "description": "Tra C",
+              "config": {
+                "object": "lead",
+                "filter": {
+                  "field": "status",
+                  "op": "eq",
+                  "value": "moi"
+                },
+                "limit": 50
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ]
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "lap_11",
+      "type": "logic.loop@1",
+      "description": "Lặp tới khi đủ",
+      "config": {
+        "condition": "!vars.du",
+        "max_iterations": 5,
+        "body": [
+          {
+            "id": "thu_11",
+            "type": "ai.llm@2",
+            "description": "Thử lại",
+            "config": {
+              "instructions": "Chấm điểm lead theo tiêu chí của công ty.",
+              "prompt": "Thông tin lead: {{ trigger.input }}",
+              "output": "object",
+              "output_schema": {
+                "type": "object",
+                "properties": {
+                  "score": {
+                    "type": "integer"
+                  },
+                  "tier": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "retry": {
+              "max_attempts": 2,
+              "backoff": "exponential"
+            },
+            "timeout_s": 120,
+            "on_error": "fail"
+          },
+          {
+            "id": "kiem_11",
+            "type": "data.transform@1",
+            "description": "Kiểm kết quả",
+            "config": {
+              "fields": {
+                "ket_qua": "trigger.input"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ],
+        "max_reached": [
+          {
+            "id": "viec_tay_11",
+            "type": "data.object.create@1",
+            "description": "Việc bằng tay",
+            "config": {
+              "object": "task",
+              "fields": {
+                "title": "{{ trigger.input.full_name }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "ghi_11",
+      "type": "data.object.upsert@1",
+      "description": "Ghi lead",
+      "config": {
+        "object": "lead",
+        "match_on": ["phone", "email"],
+        "fields": {
+          "phone": "{{ phone.e164(trigger.input.phone) }}",
+          "email": "{{ email.normalize(trigger.input.email) }}",
+          "full_name": "{{ trigger.input.full_name }}"
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 30,
+      "on_error": "route",
+      "error_lane": [
+        {
+          "id": "bao_loi_11",
+          "type": "tool.call@2",
+          "description": "Báo lỗi ghi",
+          "config": {
+            "tool": "chat.post@1.0.0",
+            "arguments": {
+              "to": "{{ trigger.input.email }}"
+            }
+          },
+          "retry": {
+            "max_attempts": 3,
+            "backoff": "exponential"
+          },
+          "timeout_s": 30,
+          "on_error": "fail"
+        }
+      ]
+    },
+    {
+      "id": "cham_12",
+      "type": "ai.llm@2",
+      "description": "Chấm điểm",
+      "config": {
+        "instructions": "Chấm điểm lead theo tiêu chí của công ty.",
+        "prompt": "Thông tin lead: {{ trigger.input }}",
+        "output": "object",
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "score": {
+              "type": "integer"
+            },
+            "tier": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "retry": {
+        "max_attempts": 2,
+        "backoff": "exponential"
+      },
+      "timeout_s": 120,
+      "on_error": "fail"
+    },
+    {
+      "id": "doi_12",
+      "type": "data.transform@1",
+      "description": "Đổi dữ liệu",
+      "config": {
+        "fields": {
+          "ket_qua": "trigger.input"
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 30,
+      "on_error": "fail"
+    },
+    {
+      "id": "bao_12",
+      "type": "tool.call@2",
+      "description": "Báo kênh",
+      "config": {
+        "tool": "chat.post@1.0.0",
+        "arguments": {
+          "to": "{{ trigger.input.email }}"
+        }
+      },
+      "retry": {
+        "max_attempts": 3,
+        "backoff": "exponential"
+      },
+      "timeout_s": 30,
+      "on_error": "fail"
+    },
+    {
+      "id": "re_12",
+      "type": "logic.switch@1",
+      "description": "Rẽ nhánh theo hạng",
+      "config": {
+        "on": "steps.cham.response.tier",
+        "cases": {
+          "hot": [
+            {
+              "id": "giao_12",
+              "type": "data.object.assign@1",
+              "description": "Giao người",
+              "config": {
+                "object": "lead",
+                "record_id": "{{ steps.luu_lead.record.id }}",
+                "fallback": "sales_lead",
+                "reassign": false
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            },
+            {
+              "id": "cap_nhat_12",
+              "type": "data.object.update@1",
+              "description": "Cập nhật lead",
+              "config": {
+                "object": "lead",
+                "record_id": "{{ steps.luu_lead.record.id }}",
+                "fields": {
+                  "status": "da_lien_he"
+                }
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "warm": [
+            {
+              "id": "gui_12",
+              "type": "tool.call@2",
+              "description": "Gửi email",
+              "config": {
+                "tool": "email.send@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ]
+        },
+        "default": [
+          {
+            "id": "luu_12",
+            "type": "data.object.update@1",
+            "description": "Lưu trữ",
+            "config": {
+              "object": "lead",
+              "record_id": "{{ steps.luu_lead.record.id }}",
+              "fields": {
+                "status": "da_lien_he"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "duyet_12",
+      "type": "human.approval@2",
+      "description": "Duyệt",
+      "config": {
+        "required_scope": "studio.leads.approve",
+        "approved": [
+          {
+            "id": "gui_duyet_12",
+            "type": "tool.call@2",
+            "description": "Gửi sau duyệt",
+            "config": {
+              "tool": "email.send@1.0.0",
+              "arguments": {
+                "to": "{{ trigger.input.email }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 3,
+              "backoff": "exponential"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ],
+        "rejected": [
+          {
+            "id": "viec_12",
+            "type": "data.object.create@1",
+            "description": "Tạo việc",
+            "config": {
+              "object": "task",
+              "fields": {
+                "title": "{{ trigger.input.full_name }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 60,
+      "on_error": "fail"
+    },
+    {
+      "id": "song_song_12",
+      "type": "logic.parallel@1",
+      "description": "Tra cứu song song",
+      "config": {
+        "branches": {
+          "a": [
+            {
+              "id": "tra_a_12",
+              "type": "tool.call@2",
+              "description": "Tra A",
+              "config": {
+                "tool": "company.lookup@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "b": [
+            {
+              "id": "tra_b_12",
+              "type": "tool.call@2",
+              "description": "Tra B",
+              "config": {
+                "tool": "social.lookup@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "c": [
+            {
+              "id": "tra_c_12",
+              "type": "data.object.query@1",
+              "description": "Tra C",
+              "config": {
+                "object": "lead",
+                "filter": {
+                  "field": "status",
+                  "op": "eq",
+                  "value": "moi"
+                },
+                "limit": 50
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ]
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "lap_12",
+      "type": "logic.loop@1",
+      "description": "Lặp tới khi đủ",
+      "config": {
+        "condition": "!vars.du",
+        "max_iterations": 5,
+        "body": [
+          {
+            "id": "thu_12",
+            "type": "ai.llm@2",
+            "description": "Thử lại",
+            "config": {
+              "instructions": "Chấm điểm lead theo tiêu chí của công ty.",
+              "prompt": "Thông tin lead: {{ trigger.input }}",
+              "output": "object",
+              "output_schema": {
+                "type": "object",
+                "properties": {
+                  "score": {
+                    "type": "integer"
+                  },
+                  "tier": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "retry": {
+              "max_attempts": 2,
+              "backoff": "exponential"
+            },
+            "timeout_s": 120,
+            "on_error": "fail"
+          },
+          {
+            "id": "kiem_12",
+            "type": "data.transform@1",
+            "description": "Kiểm kết quả",
+            "config": {
+              "fields": {
+                "ket_qua": "trigger.input"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ],
+        "max_reached": [
+          {
+            "id": "viec_tay_12",
+            "type": "data.object.create@1",
+            "description": "Việc bằng tay",
+            "config": {
+              "object": "task",
+              "fields": {
+                "title": "{{ trigger.input.full_name }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "ghi_12",
+      "type": "data.object.upsert@1",
+      "description": "Ghi lead",
+      "config": {
+        "object": "lead",
+        "match_on": ["phone", "email"],
+        "fields": {
+          "phone": "{{ phone.e164(trigger.input.phone) }}",
+          "email": "{{ email.normalize(trigger.input.email) }}",
+          "full_name": "{{ trigger.input.full_name }}"
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 30,
+      "on_error": "route",
+      "error_lane": [
+        {
+          "id": "bao_loi_12",
+          "type": "tool.call@2",
+          "description": "Báo lỗi ghi",
+          "config": {
+            "tool": "chat.post@1.0.0",
+            "arguments": {
+              "to": "{{ trigger.input.email }}"
+            }
+          },
+          "retry": {
+            "max_attempts": 3,
+            "backoff": "exponential"
+          },
+          "timeout_s": 30,
+          "on_error": "fail"
+        }
+      ]
+    },
+    {
+      "id": "cham_13",
+      "type": "ai.llm@2",
+      "description": "Chấm điểm",
+      "config": {
+        "instructions": "Chấm điểm lead theo tiêu chí của công ty.",
+        "prompt": "Thông tin lead: {{ trigger.input }}",
+        "output": "object",
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "score": {
+              "type": "integer"
+            },
+            "tier": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "retry": {
+        "max_attempts": 2,
+        "backoff": "exponential"
+      },
+      "timeout_s": 120,
+      "on_error": "fail"
+    },
+    {
+      "id": "doi_13",
+      "type": "data.transform@1",
+      "description": "Đổi dữ liệu",
+      "config": {
+        "fields": {
+          "ket_qua": "trigger.input"
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 30,
+      "on_error": "fail"
+    },
+    {
+      "id": "bao_13",
+      "type": "tool.call@2",
+      "description": "Báo kênh",
+      "config": {
+        "tool": "chat.post@1.0.0",
+        "arguments": {
+          "to": "{{ trigger.input.email }}"
+        }
+      },
+      "retry": {
+        "max_attempts": 3,
+        "backoff": "exponential"
+      },
+      "timeout_s": 30,
+      "on_error": "fail"
+    },
+    {
+      "id": "re_13",
+      "type": "logic.switch@1",
+      "description": "Rẽ nhánh theo hạng",
+      "config": {
+        "on": "steps.cham.response.tier",
+        "cases": {
+          "hot": [
+            {
+              "id": "giao_13",
+              "type": "data.object.assign@1",
+              "description": "Giao người",
+              "config": {
+                "object": "lead",
+                "record_id": "{{ steps.luu_lead.record.id }}",
+                "fallback": "sales_lead",
+                "reassign": false
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            },
+            {
+              "id": "cap_nhat_13",
+              "type": "data.object.update@1",
+              "description": "Cập nhật lead",
+              "config": {
+                "object": "lead",
+                "record_id": "{{ steps.luu_lead.record.id }}",
+                "fields": {
+                  "status": "da_lien_he"
+                }
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "warm": [
+            {
+              "id": "gui_13",
+              "type": "tool.call@2",
+              "description": "Gửi email",
+              "config": {
+                "tool": "email.send@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ]
+        },
+        "default": [
+          {
+            "id": "luu_13",
+            "type": "data.object.update@1",
+            "description": "Lưu trữ",
+            "config": {
+              "object": "lead",
+              "record_id": "{{ steps.luu_lead.record.id }}",
+              "fields": {
+                "status": "da_lien_he"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "duyet_13",
+      "type": "human.approval@2",
+      "description": "Duyệt",
+      "config": {
+        "required_scope": "studio.leads.approve",
+        "approved": [
+          {
+            "id": "gui_duyet_13",
+            "type": "tool.call@2",
+            "description": "Gửi sau duyệt",
+            "config": {
+              "tool": "email.send@1.0.0",
+              "arguments": {
+                "to": "{{ trigger.input.email }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 3,
+              "backoff": "exponential"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ],
+        "rejected": [
+          {
+            "id": "viec_13",
+            "type": "data.object.create@1",
+            "description": "Tạo việc",
+            "config": {
+              "object": "task",
+              "fields": {
+                "title": "{{ trigger.input.full_name }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 60,
+      "on_error": "fail"
+    },
+    {
+      "id": "song_song_13",
+      "type": "logic.parallel@1",
+      "description": "Tra cứu song song",
+      "config": {
+        "branches": {
+          "a": [
+            {
+              "id": "tra_a_13",
+              "type": "tool.call@2",
+              "description": "Tra A",
+              "config": {
+                "tool": "company.lookup@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "b": [
+            {
+              "id": "tra_b_13",
+              "type": "tool.call@2",
+              "description": "Tra B",
+              "config": {
+                "tool": "social.lookup@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "c": [
+            {
+              "id": "tra_c_13",
+              "type": "data.object.query@1",
+              "description": "Tra C",
+              "config": {
+                "object": "lead",
+                "filter": {
+                  "field": "status",
+                  "op": "eq",
+                  "value": "moi"
+                },
+                "limit": 50
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ]
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "lap_13",
+      "type": "logic.loop@1",
+      "description": "Lặp tới khi đủ",
+      "config": {
+        "condition": "!vars.du",
+        "max_iterations": 5,
+        "body": [
+          {
+            "id": "thu_13",
+            "type": "ai.llm@2",
+            "description": "Thử lại",
+            "config": {
+              "instructions": "Chấm điểm lead theo tiêu chí của công ty.",
+              "prompt": "Thông tin lead: {{ trigger.input }}",
+              "output": "object",
+              "output_schema": {
+                "type": "object",
+                "properties": {
+                  "score": {
+                    "type": "integer"
+                  },
+                  "tier": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "retry": {
+              "max_attempts": 2,
+              "backoff": "exponential"
+            },
+            "timeout_s": 120,
+            "on_error": "fail"
+          },
+          {
+            "id": "kiem_13",
+            "type": "data.transform@1",
+            "description": "Kiểm kết quả",
+            "config": {
+              "fields": {
+                "ket_qua": "trigger.input"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ],
+        "max_reached": [
+          {
+            "id": "viec_tay_13",
+            "type": "data.object.create@1",
+            "description": "Việc bằng tay",
+            "config": {
+              "object": "task",
+              "fields": {
+                "title": "{{ trigger.input.full_name }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "ghi_13",
+      "type": "data.object.upsert@1",
+      "description": "Ghi lead",
+      "config": {
+        "object": "lead",
+        "match_on": ["phone", "email"],
+        "fields": {
+          "phone": "{{ phone.e164(trigger.input.phone) }}",
+          "email": "{{ email.normalize(trigger.input.email) }}",
+          "full_name": "{{ trigger.input.full_name }}"
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 30,
+      "on_error": "route",
+      "error_lane": [
+        {
+          "id": "bao_loi_13",
+          "type": "tool.call@2",
+          "description": "Báo lỗi ghi",
+          "config": {
+            "tool": "chat.post@1.0.0",
+            "arguments": {
+              "to": "{{ trigger.input.email }}"
+            }
+          },
+          "retry": {
+            "max_attempts": 3,
+            "backoff": "exponential"
+          },
+          "timeout_s": 30,
+          "on_error": "fail"
+        }
+      ]
+    },
+    {
+      "id": "cham_14",
+      "type": "ai.llm@2",
+      "description": "Chấm điểm",
+      "config": {
+        "instructions": "Chấm điểm lead theo tiêu chí của công ty.",
+        "prompt": "Thông tin lead: {{ trigger.input }}",
+        "output": "object",
+        "output_schema": {
+          "type": "object",
+          "properties": {
+            "score": {
+              "type": "integer"
+            },
+            "tier": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "retry": {
+        "max_attempts": 2,
+        "backoff": "exponential"
+      },
+      "timeout_s": 120,
+      "on_error": "fail"
+    },
+    {
+      "id": "doi_14",
+      "type": "data.transform@1",
+      "description": "Đổi dữ liệu",
+      "config": {
+        "fields": {
+          "ket_qua": "trigger.input"
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 30,
+      "on_error": "fail"
+    },
+    {
+      "id": "bao_14",
+      "type": "tool.call@2",
+      "description": "Báo kênh",
+      "config": {
+        "tool": "chat.post@1.0.0",
+        "arguments": {
+          "to": "{{ trigger.input.email }}"
+        }
+      },
+      "retry": {
+        "max_attempts": 3,
+        "backoff": "exponential"
+      },
+      "timeout_s": 30,
+      "on_error": "fail"
+    },
+    {
+      "id": "re_14",
+      "type": "logic.switch@1",
+      "description": "Rẽ nhánh theo hạng",
+      "config": {
+        "on": "steps.cham.response.tier",
+        "cases": {
+          "hot": [
+            {
+              "id": "giao_14",
+              "type": "data.object.assign@1",
+              "description": "Giao người",
+              "config": {
+                "object": "lead",
+                "record_id": "{{ steps.luu_lead.record.id }}",
+                "fallback": "sales_lead",
+                "reassign": false
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            },
+            {
+              "id": "cap_nhat_14",
+              "type": "data.object.update@1",
+              "description": "Cập nhật lead",
+              "config": {
+                "object": "lead",
+                "record_id": "{{ steps.luu_lead.record.id }}",
+                "fields": {
+                  "status": "da_lien_he"
+                }
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "warm": [
+            {
+              "id": "gui_14",
+              "type": "tool.call@2",
+              "description": "Gửi email",
+              "config": {
+                "tool": "email.send@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ]
+        },
+        "default": [
+          {
+            "id": "luu_14",
+            "type": "data.object.update@1",
+            "description": "Lưu trữ",
+            "config": {
+              "object": "lead",
+              "record_id": "{{ steps.luu_lead.record.id }}",
+              "fields": {
+                "status": "da_lien_he"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "duyet_14",
+      "type": "human.approval@2",
+      "description": "Duyệt",
+      "config": {
+        "required_scope": "studio.leads.approve",
+        "approved": [
+          {
+            "id": "gui_duyet_14",
+            "type": "tool.call@2",
+            "description": "Gửi sau duyệt",
+            "config": {
+              "tool": "email.send@1.0.0",
+              "arguments": {
+                "to": "{{ trigger.input.email }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 3,
+              "backoff": "exponential"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ],
+        "rejected": [
+          {
+            "id": "viec_14",
+            "type": "data.object.create@1",
+            "description": "Tạo việc",
+            "config": {
+              "object": "task",
+              "fields": {
+                "title": "{{ trigger.input.full_name }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 60,
+      "on_error": "fail"
+    },
+    {
+      "id": "song_song_14",
+      "type": "logic.parallel@1",
+      "description": "Tra cứu song song",
+      "config": {
+        "branches": {
+          "a": [
+            {
+              "id": "tra_a_14",
+              "type": "tool.call@2",
+              "description": "Tra A",
+              "config": {
+                "tool": "company.lookup@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "b": [
+            {
+              "id": "tra_b_14",
+              "type": "tool.call@2",
+              "description": "Tra B",
+              "config": {
+                "tool": "social.lookup@1.0.0",
+                "arguments": {
+                  "to": "{{ trigger.input.email }}"
+                }
+              },
+              "retry": {
+                "max_attempts": 3,
+                "backoff": "exponential"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ],
+          "c": [
+            {
+              "id": "tra_c_14",
+              "type": "data.object.query@1",
+              "description": "Tra C",
+              "config": {
+                "object": "lead",
+                "filter": {
+                  "field": "status",
+                  "op": "eq",
+                  "value": "moi"
+                },
+                "limit": 50
+              },
+              "retry": {
+                "max_attempts": 1,
+                "backoff": "fixed"
+              },
+              "timeout_s": 30,
+              "on_error": "fail"
+            }
+          ]
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "bu",
+      "type": "data.transform@1",
+      "description": "Bước đệm",
+      "config": {
+        "fields": {
+          "ket_qua": "trigger.input"
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 30,
+      "on_error": "fail"
+    },
+    {
+      "id": "bu_2",
+      "type": "data.transform@1",
+      "description": "Bước đệm",
+      "config": {
+        "fields": {
+          "ket_qua": "trigger.input"
+        }
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 30,
+      "on_error": "fail"
+    }
+  ],
+  "variables": [
+    {
+      "name": "du",
+      "type": "boolean",
+      "default": false
+    }
+  ]
+}

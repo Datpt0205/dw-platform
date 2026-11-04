@@ -1,0 +1,221 @@
+{
+  "catalogue_hash": "fixture:workflow-builder-ui-01",
+  "groups": [
+    {
+      "code": "trigger",
+      "label_vi": "Kích hoạt"
+    },
+    {
+      "code": "ai",
+      "label_vi": "AI"
+    },
+    {
+      "code": "data",
+      "label_vi": "Dữ liệu"
+    },
+    {
+      "code": "logic",
+      "label_vi": "Logic"
+    },
+    {
+      "code": "human",
+      "label_vi": "Con người"
+    },
+    {
+      "code": "tool",
+      "label_vi": "Công cụ"
+    }
+  ],
+  "types": [
+    {
+      "type": "trigger.datahub@1",
+      "label_vi": "Khi Nguồn dữ liệu nhận bản ghi",
+      "group": "trigger",
+      "side_effect_level": "none",
+      "on_error": [],
+      "ports": {
+        "kind": "none"
+      }
+    },
+    {
+      "type": "data.transform@1",
+      "label_vi": "Biến đổi dữ liệu",
+      "group": "data",
+      "side_effect_level": "none",
+      "on_error": ["fail", "continue", "route"],
+      "ports": {
+        "kind": "none"
+      }
+    },
+    {
+      "type": "data.object.query@1",
+      "label_vi": "Tìm bản ghi",
+      "group": "data",
+      "side_effect_level": "none",
+      "on_error": ["fail", "continue", "route"],
+      "ports": {
+        "kind": "none"
+      }
+    },
+    {
+      "type": "data.object.create@1",
+      "label_vi": "Tạo bản ghi",
+      "group": "data",
+      "side_effect_level": "internal",
+      "on_error": ["fail", "continue", "route"],
+      "ports": {
+        "kind": "none"
+      }
+    },
+    {
+      "type": "data.object.update@1",
+      "label_vi": "Sửa bản ghi",
+      "group": "data",
+      "side_effect_level": "internal",
+      "on_error": ["fail", "continue", "route"],
+      "ports": {
+        "kind": "none"
+      }
+    },
+    {
+      "type": "data.object.upsert@1",
+      "label_vi": "Tạo hoặc sửa bản ghi",
+      "group": "data",
+      "side_effect_level": "internal",
+      "on_error": ["fail", "continue", "route"],
+      "ports": {
+        "kind": "none"
+      }
+    },
+    {
+      "type": "data.object.assign@1",
+      "label_vi": "Giao người phụ trách",
+      "group": "data",
+      "side_effect_level": "internal",
+      "on_error": ["fail", "continue", "route"],
+      "ports": {
+        "kind": "none"
+      }
+    },
+    {
+      "type": "ai.llm@2",
+      "label_vi": "Hỏi AI",
+      "group": "ai",
+      "side_effect_level": "none",
+      "on_error": ["fail", "continue", "route"],
+      "ports": {
+        "kind": "none"
+      }
+    },
+    {
+      "type": "tool.call@2",
+      "label_vi": "Gọi công cụ",
+      "group": "tool",
+      "side_effect_level": "external",
+      "on_error": ["fail", "continue", "route"],
+      "ports": {
+        "kind": "none"
+      }
+    },
+    {
+      "type": "human.approval@2",
+      "label_vi": "Phê duyệt",
+      "group": "human",
+      "side_effect_level": "none",
+      "on_error": ["fail", "continue", "route"],
+      "ports": {
+        "kind": "fixed",
+        "items": [
+          {
+            "name": "approved",
+            "label_vi": "Duyệt",
+            "required": true
+          },
+          {
+            "name": "rejected",
+            "label_vi": "Từ chối",
+            "required": true
+          }
+        ]
+      }
+    },
+    {
+      "type": "logic.switch@1",
+      "label_vi": "Rẽ nhánh",
+      "group": "logic",
+      "side_effect_level": "none",
+      "on_error": ["fail"],
+      "ports": {
+        "kind": "map",
+        "key": "cases",
+        "default": {
+          "name": "default",
+          "label_vi": "Khác"
+        }
+      }
+    },
+    {
+      "type": "logic.parallel@1",
+      "label_vi": "Song song",
+      "group": "logic",
+      "side_effect_level": "none",
+      "on_error": ["fail"],
+      "ports": {
+        "kind": "map",
+        "key": "branches"
+      }
+    },
+    {
+      "type": "logic.loop@1",
+      "label_vi": "Lặp lại khi … (tối đa N lần)",
+      "group": "logic",
+      "side_effect_level": "none",
+      "on_error": ["fail"],
+      "ports": {
+        "kind": "fixed",
+        "items": [
+          {
+            "name": "body",
+            "label_vi": "Thân",
+            "required": true
+          },
+          {
+            "name": "max_reached",
+            "label_vi": "Đã đủ N lần",
+            "required": false
+          }
+        ]
+      }
+    },
+    {
+      "type": "logic.break@1",
+      "label_vi": "Thoát vòng lặp",
+      "group": "logic",
+      "side_effect_level": "none",
+      "on_error": ["fail"],
+      "ports": {
+        "kind": "none"
+      }
+    },
+    {
+      "type": "flow.stop@1",
+      "label_vi": "Kết thúc",
+      "group": "logic",
+      "side_effect_level": "none",
+      "on_error": ["fail"],
+      "ports": {
+        "kind": "none"
+      }
+    },
+    {
+      "type": "flow.subworkflow@1",
+      "label_vi": "Quy trình con",
+      "group": "logic",
+      "side_effect_level": "internal",
+      "on_error": ["fail", "continue", "route"],
+      "ports": {
+        "kind": "none"
+      }
+    }
+  ]
+}

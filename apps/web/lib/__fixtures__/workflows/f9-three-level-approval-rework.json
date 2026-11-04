@@ -1,0 +1,452 @@
+{
+  "schema": "dw.workflow/v1",
+  "triggers": [
+    {
+      "id": "nhan_lead",
+      "type": "trigger.datahub@1",
+      "description": "Khi Nguồn dữ liệu Form website nhận một lead",
+      "config": {
+        "endpoint": "7d0c2f1e-5b4a-4c3d-9e8f-0a1b2c3d4e5f"
+      }
+    }
+  ],
+  "steps": [
+    {
+      "id": "vong_soan",
+      "type": "logic.loop@1",
+      "description": "Soạn báo giá tới khi không phải soạn lại",
+      "config": {
+        "condition": "vars.quay_ve == 'soan'",
+        "max_iterations": 3,
+        "body": [
+          {
+            "id": "soan_bao_gia",
+            "type": "ai.llm@2",
+            "description": "Soạn nội dung báo giá",
+            "config": {
+              "instructions": "Chấm điểm lead theo tiêu chí của công ty.",
+              "prompt": "Thông tin lead: {{ trigger.input }}",
+              "output": "object",
+              "output_schema": {
+                "type": "object",
+                "properties": {
+                  "score": {
+                    "type": "integer"
+                  },
+                  "tier": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "retry": {
+              "max_attempts": 2,
+              "backoff": "exponential"
+            },
+            "timeout_s": 120,
+            "on_error": "fail"
+          },
+          {
+            "id": "vong_gia",
+            "type": "logic.loop@1",
+            "description": "Tính giá tới khi không phải sửa giá",
+            "config": {
+              "condition": "vars.quay_ve == 'gia'",
+              "max_iterations": 5,
+              "body": [
+                {
+                  "id": "tinh_gia",
+                  "type": "tool.call@2",
+                  "description": "Tính giá theo bảng giá",
+                  "config": {
+                    "tool": "pricing.quote@1.0.0",
+                    "arguments": {
+                      "to": "{{ trigger.input.email }}"
+                    }
+                  },
+                  "retry": {
+                    "max_attempts": 3,
+                    "backoff": "exponential"
+                  },
+                  "timeout_s": 30,
+                  "on_error": "fail"
+                },
+                {
+                  "id": "duyet_cap_1",
+                  "type": "human.approval@2",
+                  "description": "Trưởng nhóm duyệt (cấp 1)",
+                  "config": {
+                    "required_scope": "studio.leads.approve",
+                    "approved": [
+                      {
+                        "id": "duyet_cap_2",
+                        "type": "human.approval@2",
+                        "description": "Trưởng phòng duyệt (cấp 2)",
+                        "config": {
+                          "required_scope": "studio.leads.approve",
+                          "approved": [
+                            {
+                              "id": "duyet_cap_3",
+                              "type": "human.approval@2",
+                              "description": "Giám đốc duyệt (cấp 3)",
+                              "config": {
+                                "required_scope": "studio.leads.approve",
+                                "approved": [
+                                  {
+                                    "id": "chot",
+                                    "type": "data.transform@1",
+                                    "description": "Chốt báo giá",
+                                    "config": {
+                                      "fields": {
+                                        "quay_ve": "''"
+                                      }
+                                    },
+                                    "retry": {
+                                      "max_attempts": 1,
+                                      "backoff": "fixed"
+                                    },
+                                    "timeout_s": 30,
+                                    "on_error": "fail"
+                                  },
+                                  {
+                                    "id": "thoat_vong_gia_ok",
+                                    "type": "logic.break@1",
+                                    "description": "Thoát vòng tính giá",
+                                    "config": {},
+                                    "retry": {
+                                      "max_attempts": 1,
+                                      "backoff": "fixed"
+                                    },
+                                    "timeout_s": 10,
+                                    "on_error": "fail"
+                                  }
+                                ],
+                                "rejected": [
+                                  {
+                                    "id": "ly_do_3",
+                                    "type": "logic.switch@1",
+                                    "description": "Xử lý theo lý do từ chối cấp 3",
+                                    "config": {
+                                      "on": "steps.duyet_cap_3.comment",
+                                      "cases": {
+                                        "gia": [
+                                          {
+                                            "id": "sua_gia_3",
+                                            "type": "data.transform@1",
+                                            "description": "Ghi nhận cần sửa giá (cấp 3)",
+                                            "config": {
+                                              "fields": {
+                                                "quay_ve": "'gia'"
+                                              }
+                                            },
+                                            "retry": {
+                                              "max_attempts": 1,
+                                              "backoff": "fixed"
+                                            },
+                                            "timeout_s": 30,
+                                            "on_error": "fail"
+                                          }
+                                        ],
+                                        "noi_dung": [
+                                          {
+                                            "id": "sua_noi_dung_3",
+                                            "type": "data.transform@1",
+                                            "description": "Ghi nhận cần soạn lại (cấp 3)",
+                                            "config": {
+                                              "fields": {
+                                                "quay_ve": "'soan'"
+                                              }
+                                            },
+                                            "retry": {
+                                              "max_attempts": 1,
+                                              "backoff": "fixed"
+                                            },
+                                            "timeout_s": 30,
+                                            "on_error": "fail"
+                                          },
+                                          {
+                                            "id": "thoat_vong_gia_3",
+                                            "type": "logic.break@1",
+                                            "description": "Thoát vòng tính giá",
+                                            "config": {},
+                                            "retry": {
+                                              "max_attempts": 1,
+                                              "backoff": "fixed"
+                                            },
+                                            "timeout_s": 10,
+                                            "on_error": "fail"
+                                          }
+                                        ]
+                                      },
+                                      "default": [
+                                        {
+                                          "id": "dung_cap_3",
+                                          "type": "flow.stop@1",
+                                          "description": "Dừng: cấp 3 từ chối hẳn",
+                                          "config": {},
+                                          "retry": {
+                                            "max_attempts": 1,
+                                            "backoff": "fixed"
+                                          },
+                                          "timeout_s": 60,
+                                          "on_error": "fail"
+                                        }
+                                      ]
+                                    },
+                                    "retry": {
+                                      "max_attempts": 1,
+                                      "backoff": "fixed"
+                                    },
+                                    "timeout_s": 10,
+                                    "on_error": "fail"
+                                  }
+                                ]
+                              },
+                              "retry": {
+                                "max_attempts": 1,
+                                "backoff": "fixed"
+                              },
+                              "timeout_s": 60,
+                              "on_error": "fail"
+                            }
+                          ],
+                          "rejected": [
+                            {
+                              "id": "ly_do_2",
+                              "type": "logic.switch@1",
+                              "description": "Xử lý theo lý do từ chối cấp 2",
+                              "config": {
+                                "on": "steps.duyet_cap_2.comment",
+                                "cases": {
+                                  "gia": [
+                                    {
+                                      "id": "sua_gia_2",
+                                      "type": "data.transform@1",
+                                      "description": "Ghi nhận cần sửa giá (cấp 2)",
+                                      "config": {
+                                        "fields": {
+                                          "quay_ve": "'gia'"
+                                        }
+                                      },
+                                      "retry": {
+                                        "max_attempts": 1,
+                                        "backoff": "fixed"
+                                      },
+                                      "timeout_s": 30,
+                                      "on_error": "fail"
+                                    }
+                                  ],
+                                  "noi_dung": [
+                                    {
+                                      "id": "sua_noi_dung_2",
+                                      "type": "data.transform@1",
+                                      "description": "Ghi nhận cần soạn lại (cấp 2)",
+                                      "config": {
+                                        "fields": {
+                                          "quay_ve": "'soan'"
+                                        }
+                                      },
+                                      "retry": {
+                                        "max_attempts": 1,
+                                        "backoff": "fixed"
+                                      },
+                                      "timeout_s": 30,
+                                      "on_error": "fail"
+                                    },
+                                    {
+                                      "id": "thoat_vong_gia_2",
+                                      "type": "logic.break@1",
+                                      "description": "Thoát vòng tính giá",
+                                      "config": {},
+                                      "retry": {
+                                        "max_attempts": 1,
+                                        "backoff": "fixed"
+                                      },
+                                      "timeout_s": 10,
+                                      "on_error": "fail"
+                                    }
+                                  ]
+                                },
+                                "default": [
+                                  {
+                                    "id": "dung_cap_2",
+                                    "type": "flow.stop@1",
+                                    "description": "Dừng: cấp 2 từ chối hẳn",
+                                    "config": {},
+                                    "retry": {
+                                      "max_attempts": 1,
+                                      "backoff": "fixed"
+                                    },
+                                    "timeout_s": 60,
+                                    "on_error": "fail"
+                                  }
+                                ]
+                              },
+                              "retry": {
+                                "max_attempts": 1,
+                                "backoff": "fixed"
+                              },
+                              "timeout_s": 10,
+                              "on_error": "fail"
+                            }
+                          ]
+                        },
+                        "retry": {
+                          "max_attempts": 1,
+                          "backoff": "fixed"
+                        },
+                        "timeout_s": 60,
+                        "on_error": "fail"
+                      }
+                    ],
+                    "rejected": [
+                      {
+                        "id": "ly_do_1",
+                        "type": "logic.switch@1",
+                        "description": "Xử lý theo lý do từ chối cấp 1",
+                        "config": {
+                          "on": "steps.duyet_cap_1.comment",
+                          "cases": {
+                            "gia": [
+                              {
+                                "id": "sua_gia_1",
+                                "type": "data.transform@1",
+                                "description": "Ghi nhận cần sửa giá (cấp 1)",
+                                "config": {
+                                  "fields": {
+                                    "quay_ve": "'gia'"
+                                  }
+                                },
+                                "retry": {
+                                  "max_attempts": 1,
+                                  "backoff": "fixed"
+                                },
+                                "timeout_s": 30,
+                                "on_error": "fail"
+                              }
+                            ],
+                            "noi_dung": [
+                              {
+                                "id": "sua_noi_dung_1",
+                                "type": "data.transform@1",
+                                "description": "Ghi nhận cần soạn lại (cấp 1)",
+                                "config": {
+                                  "fields": {
+                                    "quay_ve": "'soan'"
+                                  }
+                                },
+                                "retry": {
+                                  "max_attempts": 1,
+                                  "backoff": "fixed"
+                                },
+                                "timeout_s": 30,
+                                "on_error": "fail"
+                              },
+                              {
+                                "id": "thoat_vong_gia_1",
+                                "type": "logic.break@1",
+                                "description": "Thoát vòng tính giá",
+                                "config": {},
+                                "retry": {
+                                  "max_attempts": 1,
+                                  "backoff": "fixed"
+                                },
+                                "timeout_s": 10,
+                                "on_error": "fail"
+                              }
+                            ]
+                          },
+                          "default": [
+                            {
+                              "id": "dung_cap_1",
+                              "type": "flow.stop@1",
+                              "description": "Dừng: cấp 1 từ chối hẳn",
+                              "config": {},
+                              "retry": {
+                                "max_attempts": 1,
+                                "backoff": "fixed"
+                              },
+                              "timeout_s": 60,
+                              "on_error": "fail"
+                            }
+                          ]
+                        },
+                        "retry": {
+                          "max_attempts": 1,
+                          "backoff": "fixed"
+                        },
+                        "timeout_s": 10,
+                        "on_error": "fail"
+                      }
+                    ]
+                  },
+                  "retry": {
+                    "max_attempts": 1,
+                    "backoff": "fixed"
+                  },
+                  "timeout_s": 60,
+                  "on_error": "fail"
+                }
+              ]
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 10,
+            "on_error": "fail"
+          }
+        ],
+        "max_reached": [
+          {
+            "id": "bao_quan_ly",
+            "type": "data.object.create@1",
+            "description": "Báo quản lý: soạn lại quá ba lần",
+            "config": {
+              "object": "task",
+              "fields": {
+                "title": "{{ trigger.input.full_name }}"
+              }
+            },
+            "retry": {
+              "max_attempts": 1,
+              "backoff": "fixed"
+            },
+            "timeout_s": 30,
+            "on_error": "fail"
+          }
+        ]
+      },
+      "retry": {
+        "max_attempts": 1,
+        "backoff": "fixed"
+      },
+      "timeout_s": 10,
+      "on_error": "fail"
+    },
+    {
+      "id": "gui_bao_gia",
+      "type": "tool.call@2",
+      "description": "Gửi báo giá cho khách",
+      "config": {
+        "tool": "email.send@1.0.0",
+        "arguments": {
+          "to": "{{ trigger.input.email }}"
+        }
+      },
+      "retry": {
+        "max_attempts": 3,
+        "backoff": "exponential"
+      },
+      "timeout_s": 30,
+      "on_error": "fail"
+    }
+  ],
+  "variables": [
+    {
+      "name": "quay_ve",
+      "type": "string",
+      "default": "soan"
+    }
+  ]
+}

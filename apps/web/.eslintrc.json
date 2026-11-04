@@ -43,6 +43,29 @@
       }
     },
     {
+      "files": ["app/studio/**/canvas/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "antd",
+                "importNames": ["message", "notification"],
+                "message": "The static API does not read the theme; use App.useApp()."
+              }
+            ],
+            "patterns": [
+              {
+                "regex": "^(?!(?:antd|@ant-design/icons|@ant-design/nextjs-registry|dayjs|keycloak-js|next|react|react-dom|@xyflow/react)(?:/|$)|@dw/|node:|[.]|@/)",
+                "message": "Not on the UI allowlist (ADR-0101 (Accepted) decision 4): under app/studio/**/canvas/** only the EXCEPTIONS entry for @xyflow/react (ADR-0101) is added to it."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       "files": [
         "**/__tests__/**",
         "**/*.test.ts",

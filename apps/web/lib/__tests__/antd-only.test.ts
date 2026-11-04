@@ -4,13 +4,13 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
-  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { loadESLint } from "eslint";
 import { afterEach, describe, expect, it } from "vitest";
+import { globMatches, sources } from "./source-tree";
 
 /**
  * One component system (CLAUDE.md "Web UI"): antd. Since ADR-0101 (Accepted)
@@ -71,9 +71,11 @@ export interface UiException {
   adr: string;
 }
 
-/** Empty until workflow-builder-ui/01 adds `@xyflow/react` on
- * `app/studio/**\/canvas/**` with ADR 0101, in the change that first imports it. */
-export const EXCEPTIONS: UiException[] = [];
+/** Each entry lands in the change that first imports its module. */
+export const EXCEPTIONS: UiException[] = [
+  // The workflow canvas (workflow-builder-ui/01): only its folders import it.
+  { module: "@xyflow/react", glob: "app/studio/**/canvas/**", adr: "0101" },
+];
 
 /** The config files a package may hold at its root, by exact path. */
 const CONFIG_FILES = new Set([
@@ -135,43 +137,12 @@ const UI_PKG: UiPackage = {
 };
 const PACKAGES = [WEB_PKG, UI_PKG];
 
-const SKIPPED_DIRS = new Set(["node_modules", ".next", "test-results"]);
-const SOURCE = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs|css)$/;
 const THIS_FILE = "lib/__tests__/antd-only.test.ts";
 
 /** `entry` covers `specifier`: itself or a subpath, or anything under a `scope/*`. */
 export function covers(entry: string, specifier: string): boolean {
   if (entry.endsWith("/*")) return specifier.startsWith(entry.slice(0, -1));
   return specifier === entry || specifier.startsWith(`${entry}/`);
-}
-
-/**
- * A path glob over `/`-separated segments: `**` is zero or more segments, and
- * `*` inside a segment is any run of characters but `/`. Nothing else.
- */
-export function globMatches(glob: string, path: string): boolean {
-  const pattern = glob.split("/");
-  const parts = path.split("/");
-  const segment = (g: string, p: string) =>
-    new RegExp(
-      `^${g
-        .split("*")
-        .map((s) => s.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
-        .join("[^/]*")}$`,
-    ).test(p);
-  const match = (i: number, j: number): boolean => {
-    if (i === pattern.length) return j === parts.length;
-    if (pattern[i] === "**") {
-      for (let k = j; k <= parts.length; k++) if (match(i + 1, k)) return true;
-      return false;
-    }
-    const g = pattern[i];
-    const p = parts[j];
-    return (
-      g !== undefined && p !== undefined && segment(g, p) && match(i + 1, j + 1)
-    );
-  };
-  return match(0, 0);
 }
 
 /** A test file, a root config file or a stylesheet: where `DEV_ONLY` may go. */
@@ -275,23 +246,6 @@ export function refusedImports(
     }
   }
   return hits;
-}
-
-/** Every JS, TS and CSS source of a package, as paths relative to its root. */
-export function sources(root: string): string[] {
-  const found: string[] = [];
-  const walk = (dir: string) => {
-    for (const name of readdirSync(dir)) {
-      if (SKIPPED_DIRS.has(name)) continue;
-      const path = join(dir, name);
-      if (statSync(path).isDirectory()) walk(path);
-      else if (SOURCE.test(name)) {
-        found.push(relative(root, path).split("\\").join("/"));
-      }
-    }
-  };
-  walk(root);
-  return found;
 }
 
 /** Every refused import across `packages`. */
@@ -654,6 +608,81 @@ describe("the allowlist refuses what nobody admitted (R7.5, R7.6, SKEL15)", () =
   });
 });
 
+describe("the canvas exception: @xyflow/react on one path (workflow-builder-ui R1.1, R1.2, BU1)", () => {
+  it("refuses it outside the canvas glob with the real EXCEPTIONS", () => {
+    const pkgs = tree({
+      "web/app/approvals/a.tsx": 'import { ReactFlow } from "@xyflow/react";\n',
+      "web/app/studio/w/canvas/b.tsx":
+        'import { ReactFlow } from "@xyflow/react";\n',
+      "ui/src/x.ts": "",
+    });
+    expect(importProblems(pkgs)).toEqual([
+      "apps/web/app/approvals/a.tsx: @xyflow/react (only under app/studio/**/canvas/**)",
+    ]);
+  });
+
+  it("refuses @dw/ui declaring it", () => {
+    const [web, ui] = tree({
+      "web/package.json": JSON.stringify({
+        dependencies: { "@xyflow/react": "12.12.0" },
+      }),
+      "ui/package.json": JSON.stringify({
+        dependencies: { "@xyflow/react": "12.12.0" },
+      }),
+    });
+    expect(manifestProblems([web, ui])).toEqual([
+      "packages/typescript/ui/package.json: @xyflow/react in dependencies (no exception reaches @dw/ui)",
+    ]);
+  });
+
+  it("refuses a layout library: no entry admits @dagrejs/dagre", () => {
+    const [web, ui] = tree({
+      "web/package.json": JSON.stringify({
+        dependencies: { "@xyflow/react": "12.12.0", "@dagrejs/dagre": "3.1.1" },
+      }),
+      "ui/package.json": EMPTY,
+      "web/app/studio/w/canvas/a.tsx": 'import dagre from "@dagrejs/dagre";\n',
+    });
+    expect(manifestProblems([web, ui])).toEqual([
+      "apps/web/package.json: @dagrejs/dagre in dependencies",
+    ]);
+    expect(importProblems([web, ui])).toEqual([
+      "apps/web/app/studio/w/canvas/a.tsx: @dagrejs/dagre",
+    ]);
+  });
+
+  it("without its entry the real tree goes red, naming the canvas", () => {
+    expect(importProblems(PACKAGES, [])).toContain(
+      "apps/web/app/studio/workflows/[id]/builder/canvas/workflow-canvas.tsx: @xyflow/react",
+    );
+    expect(manifestProblems(PACKAGES, [])).toEqual([
+      "apps/web/package.json: @xyflow/react in dependencies",
+    ]);
+  });
+
+  it("only apps/web declares it, pinned exactly to 12.12.0", () => {
+    const manifests = [
+      join(REPO, "package.json"),
+      ...readdirSync(join(REPO, "packages/typescript")).map((name) =>
+        join(REPO, "packages/typescript", name, "package.json"),
+      ),
+      join(WEB, "package.json"),
+    ];
+    const declaring = manifests.filter((path) => {
+      const manifest = JSON.parse(readFileSync(path, "utf8")) as Record<
+        string,
+        Record<string, string> | undefined
+      >;
+      return ["dependencies", "peerDependencies", "devDependencies"].some(
+        (field) => manifest[field]?.["@xyflow/react"] !== undefined,
+      );
+    });
+    expect(declaring).toEqual([join(WEB, "package.json")]);
+    const web = JSON.parse(readFileSync(join(WEB, "package.json"), "utf8"));
+    expect(web.dependencies["@xyflow/react"]).toBe("12.12.0");
+  });
+});
+
 describe("an exception stands only on an Accepted ADR that names it (R7.8)", () => {
   function adrs(files: Record<string, string>): string {
     const dir = mkdtempSync(join(tmpdir(), "antd-only-adr-"));
@@ -751,6 +780,22 @@ describe("ESLint carries the UI allowlist", { timeout: 60_000 }, () => {
       "export type P = Page<number>;",
     ].join("\n");
     expect(await restricted("app/zz-probe/a.tsx", text)).toEqual([1, 7]);
+  });
+
+  it("lets @xyflow/react in under the canvas glob only", async () => {
+    const text =
+      'import { ReactFlow } from "@xyflow/react";\nexport const r = ReactFlow;\n';
+    expect(await restricted("app/studio/zz-probe/canvas/a.tsx", text)).toEqual(
+      [],
+    );
+    expect(await restricted("app/studio/zz-probe/a.tsx", text)).toEqual([1]);
+    expect(await restricted("app/approvals/zz-probe/a.tsx", text)).toEqual([1]);
+    expect(
+      await restricted(
+        "app/studio/zz-probe/canvas/a.tsx",
+        'import dagre from "@dagrejs/dagre";\nexport const d = dagre;\n',
+      ),
+    ).toEqual([1]);
   });
 
   it("keeps the static notice API refused", async () => {

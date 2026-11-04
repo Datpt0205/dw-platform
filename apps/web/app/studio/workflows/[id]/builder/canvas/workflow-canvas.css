@@ -1,0 +1,42 @@
+/* The library's structural CSS, in the components layer (ADR-0101 (Accepted)
+   decision 2): above antd's layer, so antd does not override the pane, and
+   below the utilities. Imported here, never from a .ts/.tsx file: CSS loaded
+   that way sits in no layer and beats both antd and the utilities. */
+@import "@xyflow/react/dist/base.css" layer(components);
+
+/* Every colour the library reads is an antd token: the theme in @dw/ui owns
+   the values, the canvas's own as `--ant-canvas-*` (CANVAS_VOCABULARY). No
+   literal fallback, so a missing token shows as missing rather than as the
+   library's grey. */
+@layer components {
+  .react-flow {
+    --xy-background-color: var(--ant-color-bg-layout);
+    --xy-edge-stroke: var(--ant-canvas-edge);
+    --xy-edge-stroke-selected: var(--ant-canvas-edge);
+    --xy-connectionline-stroke: var(--ant-canvas-edge);
+    --xy-node-color: var(--ant-color-text);
+    /* antd's Card draws the step's border. */
+    --xy-node-border: none;
+    --xy-node-border-selected: none;
+    --xy-handle-background-color: transparent;
+    --xy-attribution-background-color: var(--ant-color-bg-container);
+    --xy-selection-background-color: var(--ant-color-primary-bg);
+    --xy-selection-border: 1px dashed var(--ant-color-primary);
+    --xy-resize-background-color: var(--ant-color-primary);
+  }
+
+  /* The badge's link: the library's grey is 2.8:1 on white. */
+  .react-flow__attribution a {
+    color: var(--ant-color-text-secondary);
+  }
+
+  /* Anchors for edges only: nothing to see or press. */
+  .react-flow__handle {
+    border: none;
+    min-width: 0;
+    min-height: 0;
+    width: 1px;
+    height: 1px;
+    pointer-events: none;
+  }
+}

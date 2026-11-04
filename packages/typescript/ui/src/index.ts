@@ -1,4 +1,12 @@
-export { THEME_CSS_VAR_CLASS } from "./theme";
+export {
+  CANVAS_GROUPS,
+  CANVAS_VOCABULARY,
+  THEME_CSS_VAR_CLASS,
+  canvasTokenName,
+  type CanvasColour,
+  type CanvasGroup,
+} from "./theme";
+export { CANVAS_ICONS } from "./canvas-icons";
 export { ThemeProvider } from "./theme-provider";
 export { AppShell, type AppShellItem, type AppShellProps } from "./app-shell";
 export {

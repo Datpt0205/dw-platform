@@ -57,6 +57,85 @@ const dark: typeof light = {
   colorBorderSecondary: "#3a3a3c",
 };
 
+/**
+ * The workflow canvas's vocabulary (workflow-builder-ui R1.9, V4.27): a draft
+ * for Đạt's review, written once here so a change at review touches only this
+ * file. Each step-type group, keyed by the group code `GET
+ * /api/v1/studio/node-types` returns (not by a type's prefix), has a colour
+ * per mode, at least 3:1 on the card (`colorBgContainer`, antd `Card`'s
+ * background) and never one of antd's light preset tints
+ * (`.claude/rules/ui-quality.md` §12), and an `@ant-design/icons` icon, kept
+ * beside this file in `canvas-icons.tsx`: a client module, because the root
+ * layout reads `THEME_CSS_VAR_CLASS` from here on the server, where the icons
+ * cannot load (`next build` fails on their React context).
+ * "error" is the colour of the error lane and its "Khi lỗi" badge, not a
+ * group; "edge" is a connection's stroke, 3:1 on the card and on the page.
+ *
+ * Every colour is a token antd already has: an antd preset shade of that mode
+ * (light purple-6, cyan-7, gold-8, magenta-7, green-7; dark blue-7, purple-8,
+ * cyan-7, gold-7, magenta-7, green-7) or a palette token above (colorPrimary,
+ * colorError, colorTextTertiary). `buildTheme` passes them to antd as custom
+ * tokens, which antd 6.6.5 emits as `--ant-canvas-<name>` on
+ * `THEME_CSS_VAR_CLASS` (measured 2026-11-04), so the canvas's stylesheet
+ * reads the same values the contrast test measures: one owner, two readers.
+ */
+export const CANVAS_GROUPS = [
+  "trigger",
+  "ai",
+  "data",
+  "logic",
+  "human",
+  "tool",
+] as const;
+export type CanvasGroup = (typeof CANVAS_GROUPS)[number];
+export type CanvasColour = CanvasGroup | "error" | "edge";
+
+const canvasLight: Record<CanvasColour, string> = {
+  trigger: light.colorPrimary,
+  ai: "#722ed1",
+  data: "#08979c",
+  logic: "#ad6800",
+  human: "#c41d7f",
+  tool: "#389e0d",
+  error: light.colorError,
+  edge: light.colorTextTertiary,
+};
+
+const canvasDark: Record<CanvasColour, string> = {
+  trigger: "#3c89e8",
+  ai: "#ab7ae0",
+  data: "#33bcb7",
+  logic: "#e8b339",
+  human: "#e0529c",
+  tool: "#6abe39",
+  error: dark.colorError,
+  edge: dark.colorTextTertiary,
+};
+
+export const CANVAS_VOCABULARY = {
+  colours: { light: canvasLight, dark: canvasDark },
+  /** A step card: fixed size, so the layout measures nothing it draws. */
+  card: { width: 256, height: 88 },
+  /** Connections: a solid stroke for the flow, a dashed one for the error
+   * lane and the loop's return arrow (SVG `stroke-dasharray`). */
+  edge: { width: 1.5, dash: "6 4" },
+} as const;
+
+/** The custom token antd emits as `--ant-canvas-<name>` for a canvas colour. */
+export function canvasTokenName(name: CanvasColour): string {
+  return `canvas${name[0]!.toUpperCase()}${name.slice(1)}`;
+}
+
+function canvasTokens(mode: ColorMode): Record<string, string> {
+  const colours = CANVAS_VOCABULARY.colours[mode];
+  return Object.fromEntries(
+    (Object.keys(colours) as CanvasColour[]).map((name) => [
+      canvasTokenName(name),
+      colours[name],
+    ]),
+  );
+}
+
 /** The dark danger button's hover: lighter than its #ff6b61 label, as antd
  * lightens a hover in dark mode. */
 const DARK_ERROR_TEXT_HOVER = "#ff8a82";
@@ -95,6 +174,9 @@ export function buildTheme(mode: ColorMode, fontFamily: string): ThemeConfig {
     cssVar: { key: THEME_CSS_VAR_CLASS },
     token: {
       ...palette,
+      // Not antd's own tokens: antd emits them as `--ant-canvas-*` for the
+      // workflow canvas's stylesheet (CANVAS_VOCABULARY).
+      ...canvasTokens(mode),
       borderRadius: 8,
       borderRadiusLG: 12,
       controlHeight: 32,
