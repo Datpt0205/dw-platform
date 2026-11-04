@@ -57,7 +57,9 @@ _Yaml12Loader.add_implicit_resolver(
 
 def load_yaml(text: str | bytes) -> Any:
     """A workflow document as the catalog reads it (YAML 1.2 booleans)."""
-    return yaml.load(text, Loader=_Yaml12Loader)
+    # B506 only recognises `SafeLoader` by name; `_Yaml12Loader` subclasses it
+    # and constructs nothing `SafeLoader` would not.
+    return yaml.load(text, Loader=_Yaml12Loader)  # nosec B506
 
 
 def workflow_sha256(document: Mapping[str, Any]) -> str:

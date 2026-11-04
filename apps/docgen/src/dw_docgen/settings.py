@@ -52,8 +52,9 @@ class DocgenSettings(BaseSettings):
 
     # World-writable places outside `/work` where a session can leave something
     # behind for whoever gets its uid next. Each is purged of the uid's entries
-    # after its command and before the uid is handed out.
-    shared_temp_dirs: tuple[str, ...] = ("/tmp", "/dev/shm", "/dev/mqueue")
+    # after its command and before the uid is handed out. Bandit's B108 reads a
+    # literal "/tmp" as a temp file written there; these are only ever purged.
+    shared_temp_dirs: tuple[str, ...] = ("/tmp", "/dev/shm", "/dev/mqueue")  # nosec B108
 
     # A brandkit generate over a large template measures in single-digit seconds;
     # a LibreOffice PDF conversion in tens. 120s leaves headroom for both and
