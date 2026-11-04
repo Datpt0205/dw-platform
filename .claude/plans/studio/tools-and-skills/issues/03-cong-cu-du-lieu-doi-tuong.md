@@ -42,8 +42,10 @@ eval của nó. Gộp từ B8b-tools tools-and-skills 05.
     - Kiểu trường ánh xạ từ `value_schema` của bộ chiếu (`schema_projector.py:62`). Hồ sơ `dw.tool-schema/v1`
       (`check_profile`) là của lược đồ do tenant viết (W2); lược đồ sinh ở đây vẫn qua đúng bộ kiểm của executor (R1.1).
     - Phân loại của `dw.tool/v1` sinh ra (ADR-0116 (Accepted) quyết 4): `side_effect_level: none`, `output_trust:
-untrusted` (giá trị bản ghi do người ngoài viết), `data_classification` là mức cao nhất của `pd_category` các trường
-      của bản ghim (`none` khi không trường nào mang dữ liệu cá nhân). Phần chữ cố định của mô tả công cụ (khi nào dùng,
+untrusted` (giá trị bản ghi do người ngoài viết), `data_classification` là một giá trị của tập đóng ADR-0116 (Accepted) quyết 4, ánh xạ từ mức cao nhất của
+      `pd_category` các trường của bản ghim: `none` → `none` (không trường nào mang dữ liệu cá nhân), `basic` →
+      `personal`, `sensitive` → `sensitive` (ADR-0106 (Accepted), bổ sung 4/11/2026); không bao giờ ghi chính giá trị
+      `pd_category` (`basic` không thuộc tập của compliance-pdpl/05). Phần chữ cố định của mô tả công cụ (khi nào dùng,
       khi nào không) lấy từ sổ chữ `configs/copy/` với mã `studio.object_tools.*`, mà release manifest ghim.
     - `ai_description` của đối tượng và của từng trường (dòng `api_name: mô tả`) vào mô tả công cụ, do
       custom-objects/02 thêm, đi qua `contain_untrusted` như dữ liệu từ bên ngoài và cắt theo YC48, không bao giờ ghép như
@@ -138,3 +140,4 @@ untrusted` (giá trị bản ghi do người ngoài viết), `data_classificatio
   phủ chữ cho model thì đổi sang prompt có phiên bản. (M3) `limit` mặc định 20 với bản ghi nhiều trường có thể vượt
   8 000 ký tự; `[đã cắt]` và `next_cursor` đứng trước giữ cho model biết còn trang sau; đo ở lúc đóng hàng.
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): `checking-plan-consistency` của vùng studio (B:compliance-pdpl/05~tools-and-skills/03, HIGH): công cụ sinh ghi `data_classification` bằng giá trị `pd_category` (`basic`) trong khi compliance-pdpl/05 đọc tập đóng `personal`, `sensitive`, `secret` của ADR-0116 (Accepted) quyết 4, nên một lead có `phone` không cho nhãn B (mở khi lạ); nay ánh xạ sang tập đóng. Chủ của trường là tools-and-skills, bên đọc là compliance-pdpl/05, không gỡ (ADR-0106 (Accepted) bổ sung 4/11/2026). Nếu sai thì: compliance-pdpl/05 đọc `pd_category` của lược đồ công cụ thay `data_classification`.

@@ -26,7 +26,8 @@ phân tích của loại `agent` ở `.claude/plans/studio/compliance-pdpl/issue
       bảng) là `external` hay `critical`; từ vựng chỉ có `none`, `internal`, `external`, `critical`
       (`packages/python/dw_agent_runtime/src/dw_agent_runtime/contracts.py:25`);
     - `tool.call`: nhãn từ ba phân loại của phiên bản công cụ đã ghim (ADR-0116 (Accepted)): `output_trust`
-      `untrusted` → A; `data_classification` `personal`, `sensitive` hay `secret` → B; `side_effect_level` `external`
+      `untrusted` → A; `data_classification` `personal`, `sensitive` hay `secret` → B, và một giá trị ngoài tập đóng của
+      ADR-0116 (Accepted) quyết 4 (kể cả `basic`) hay tập rỗng cũng → B (đóng khi lạ, failure-modes #7); `side_effect_level` `external`
       hay `critical` → C; thiếu một phân loại → 422 `tool_unclassified` (bước 3);
     - `http.request` (khi workflow-nodes đăng ký nó): A, vì phản hồi từ ngoài, cộng C theo mức của nó;
     - Bước đọc đối tượng (`data.*`): B khi phiên bản đối tượng đã ghim có một trường `pd_category` khác `none`
@@ -218,3 +219,4 @@ phân tích của loại `agent` ở `.claude/plans/studio/compliance-pdpl/issue
   ở W2; (e) case eval của bước 7 chưa có tiêu chí hay grader riêng, chạy ở eval smoke; (c) khi overlay của đặc tả công cụ có ở W2 (bước 9), phân tích phải chạy lại khi phân loại của công cụ đã ghim
   đổi; (d) phân tích lấy lớp công ty lúc gửi kiểm định; công ty nới lớp sau đó (W2) cần phân tích lại.
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): `checking-plan-consistency` của vùng studio (B:compliance-pdpl/05~tools-and-skills/03, HIGH): giá trị `data_classification` ngoài tập đóng cho nhãn B, không bỏ qua; ticket này là bên đọc của trường mà field-security/01 từng định gỡ (ADR-0106 (Accepted) bổ sung 4/11/2026 giữ trường). Nếu sai thì: giá trị lạ làm gửi kiểm định trả 422 `tool_unclassified`.

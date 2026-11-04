@@ -18,8 +18,12 @@ luận để ticket 07 đưa DDL của `studio.records` về đúng kết luận
 1. Đạt cấp máy tham chiếu và cách vào nó; agent ghi vào Comments CPU, RAM, loại đĩa, digest của image, chỗ trống trên
    đĩa trước lần chạy và mọi dòng `postgresql.conf` khác mặc định, theo bước 1 của ticket 01 (cấu hình host chạy:
    `infra/compose/docker-compose.yml` cộng `infra/compose/docker-compose.prod.yml`).
-2. Chạy `uv run python scripts/bench_records_storage.py --scale d12 --variants all` trên máy đó, trong container riêng
-   của harness; ma trận, phép đo, tự kiểm và mã thoát là của ticket 01 bước 5 tới 7, không đổi.
+2. Chạy `uv run python scripts/bench_records_storage.py --scale d12 --variants all --revision 28a94cda6fdf` trên máy đó,
+   trong container riêng của harness; ma trận, phép đo, tự kiểm và mã thoát là của ticket 01 bước 5 tới 7, không đổi.
+   `--revision` là `down_revision` của revision `16357d3dbff8` mà ticket 02 dùng để đưa `studio.object_defs`,
+   `studio.field_defs` và `studio.records` lên head, vì DDL biến thể của harness tạo chính các bảng đó
+   (`scripts/bench_records_storage/records_bench/ddl.py:131`, `:149`) và ở head sẽ hỏng với `DuplicateTableError`, như
+   đã xảy ra với `studio.artifacts` ở ticket 01; ghi revision đã dùng vào Comments.
 3. Ghi bảng số và dòng luật quyết bước 7 vào Comments ở đây và của
    `.claude/plans/studio/discovery/issues/07-records-storage.md`; đề xuất sửa số của ADR-0107 (Accepted) quyết 1 (ngân
    sách slot) và 2 (partition) theo số đo, và số của C hẹp vào một mục sửa đổi mới của ADR đó, qua
@@ -69,3 +73,4 @@ luận để ticket 07 đưa DDL của `studio.records` về đúng kết luận
   đã tách lần chạy D12 của nó sang record-access/06. Ticket 07 đọc kết luận ở đây; nó không ghi 08 ở `Blocked by`
   vì phụ thuộc trong thư mục chỉ trỏ ngược (ticket-template), nên Comments của 07 nói điều đó. Nếu sai thì: gộp lại vào
   ticket 01, ticket 01 mở lại tới khi có máy, và ticket 07 đọc Comments của ticket 01.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): `checking-plan-consistency` của vùng studio (C:custom-objects/02~custom-objects/08, HIGH): lệnh của bước 2 chạy harness trên head, nơi ticket 02 đã tạo các bảng mà DDL biến thể tạo lại; nay ghim `--revision` trước ticket 02. Nếu sai thì: harness xóa các bảng `studio` của head trước DDL biến thể. record-access/06 dùng `make bench-record-access` của record-access/01: người chạy kiểm cùng điều đó trước lần chạy d12.

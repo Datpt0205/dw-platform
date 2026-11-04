@@ -54,8 +54,10 @@ nghị (a) (Đạt, 23/10/2026); `access_mode` đổi qua phát hành `dw.object
     - hàng `owner` và `workspace` của `studio.field_defs` nằm ngoài `FieldAccess`: chúng là cột hệ thống, hiện với ai
       tới được bản ghi (ADR-0105 (Accepted)); `name` và mọi trường công ty định nghĩa đi qua hàm;
     - với `action` `create`: trường `edit` khi chủ thể giữ `obj.<object>.create` và (trường `open`, hay trường `secured`
-      với `fld.<object>.<field>.edit`), còn lại `hidden`, không cần `obj.<object>.read`, nên vai chỉ tạo (nhập lead) tạo
-      được bản ghi; thân trả về sau khi tạo chiếu theo `action` `read` (R2.7);
+      với `fld.<object>.<field>.edit`); trường duy nhất ít nhất `read` khi chủ thể giữ `obj.<object>.create`, kể cả khi
+      trường `secured` chưa cấp và chủ thể không giữ `obj.<object>.read` (R2.6; ADR-0106 (Accepted) quyết 4: "a unique
+      field cannot be hidden from a role that creates"); còn lại `hidden`; không cần `obj.<object>.read`, nên vai chỉ tạo
+      (nhập lead) tạo được bản ghi; thân trả về sau khi tạo chiếu theo `action` `read` (R2.7);
     - quy tắc của `read` và `update`, theo thứ tự: không giữ `obj.<object>.read` → mọi trường `hidden`; trường `open` → `edit` khi giữ khóa
       của `action` ghi (`obj.<object>.update`, hay `.create` khi `action` là `create`), `read` khi không (R2.2); trường
       `secured` → `hidden` khi không có khóa `fld.*`, `read` hay `edit` cộng dồn qua mọi vai, `edit` chỉ khi cũng giữ
@@ -111,7 +113,8 @@ nghị (a) (Đạt, 23/10/2026); `access_mode` đổi qua phát hành `dw.object
 - [ ] R2.7: người giữ `obj.lead.create` mà không giữ `obj.lead.update`, với `fld.lead.phone.edit` → `action` `create`
       trả `edit` cho `phone`, `action` `update` trả `read`; trường `open` với `action` `create` → `edit`; vai chỉ giữ
       `obj.lead.create` (không `read`) → `action` `create` trả `edit` cho trường `open`, `hidden` cho trường `secured`
-      chưa cấp, kể cả trường duy nhất; gỡ nhánh `create` → test đỏ.
+      chưa cấp, và `read` cho trường duy nhất `secured` chưa cấp (R2.6); gỡ nhánh `create` hay trả `hidden` cho trường
+      duy nhất đó → test đỏ.
 - [ ] R2.4: người giữ `obj.lead.read` mức `own` neo ở workspace A, gọi từ workspace B → `FieldAccessService` vẫn tính
       `phone` theo `fld.lead.phone.read` của người đó (tầm tới bản ghi để RLS quyết); đọc khóa từ phép chiếu theo
       workspace đang thao tác → test đỏ.
@@ -134,7 +137,7 @@ nghị (a) (Đạt, 23/10/2026); `access_mode` đổi qua phát hành `dw.object
 
 ## Nguồn
 
-- `packages/python/dw_agent_runtime/src/dw_agent_runtime/contracts.py:167`; spec: R2.1 (thay `data_classification`).
+- `packages/python/dw_agent_runtime/src/dw_agent_runtime/contracts.py:167`; spec: R2.1.
 - `docs/adr/0106-field-access-follows-personal-data-category.md:52-61`; spec: R1, R2.
 - `.claude/plans/studio/custom-objects/issues/02-luoc-do-dinh-nghia-object.md:32`; spec: R1.2 (`pd_category` của `studio.field_defs`).
 - `.claude/plans/studio/tenant-rbac/issues/04-quyen-doi-tuong-va-truong-co-do-sau.md:40-45`; spec: R2.4 (`fld.*` qua `platform.effective_grants`).
@@ -179,3 +182,11 @@ nghị (a) (Đạt, 23/10/2026); `access_mode` đổi qua phát hành `dw.object
   tenant-rbac/04 (khóa `fld.*`) và record-access/04 (`bind_actor`, `studio.boundary_chain`); trước custom-objects/03,
   /06, workflow-nodes/03, tools-and-skills/03, telemetry-and-audit/03 và ticket 02.
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): `checking-plan-consistency` của vùng studio, hai CRITICAL sửa:
+  (F:field-security/01~~ADR-0106 (Accepted), CRITICAL) nhánh `create` ẩn trường duy nhất `secured` chưa cấp với vai chỉ tạo, trái
+  R2.6 và ADR-0106 (Accepted) quyết 4; nay trường duy nhất ít nhất `read` với vai giữ `obj.<object>.create` (bước 3, tiêu
+  chí R2.7), và ADR-0106 (Accepted) bổ sung 4/11/2026 ghi chữ ký bốn tham số và nhánh `create`. (E:field-security/01~~CLAUDE.md,
+  CRITICAL) M1: gỡ `ToolDefinition.data_classification` trái CLAUDE.md ("A tool definition carries ... data
+  classification") và ADR-0116 (Accepted) quyết 4; trường ở lại, chủ là tools-and-skills, bên đọc là compliance-pdpl/05
+  (nhãn B), ticket này không gỡ (ADR-0106 (Accepted) bổ sung 4/11/2026). Nếu sai thì: ADR-0106 (Accepted) quyết 4 thêm "trừ vai không giữ
+  `obj.read`" và R2.6 sửa theo; một ADR mới thay quyết 4 của ADR-0116 (Accepted) trước khi trường bị gỡ, cùng `CLAUDE.md`.

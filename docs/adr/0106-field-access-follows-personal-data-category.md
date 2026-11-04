@@ -246,3 +246,18 @@ Numbered in the block 0100-0199 reserved for Studio (ADR-0100 records the block)
   workflow-nodes/06 stores so the subject hash binds what will run and shows only to a viewer who reads every stamped
   field (its `payload_guards`). If wrong: workflow-nodes renames its code to `template_field_hidden`, and the
   rendered arguments are rebuilt live at the approval page with the hash checked against them.
+
+- Consistency check of the studio area (agent, under Đạt's delegation of 2026-10-31): decision 1's closing clause
+  ("per-property `pd_category` replaces `ToolDefinition.data_classification`") read as removing the tool field, which
+  CLAUDE.md ("Agent and tool rules": a tool definition carries data classification) and ADR-0116 decision 4 require
+  and compliance-pdpl ticket 05 reads for the B label of the capability analysis. It now reads: `pd_category` replaces
+  `data_classification` as the per-field decision; the tool-level `data_classification`, one value of ADR-0116
+  decision 4's closed set, stays, owned by tools-and-skills, and a generated object tool maps the highest
+  `pd_category` of its fields onto it (`none` to `none`, `basic` to `personal`, `sensitive` to `sensitive`). Decision
+  4's function is `resolve_field_access(principal_grants, object_security, boundary, action)`, `action` being `read`,
+  `update` (the default) or `create`: for `create` a field is `edit` when the principal holds
+  `obj.<object>.create` and the field is open or carries `fld.<object>.<field>.edit`, a unique field is at least `read`
+  for every principal holding `obj.<object>.create` even without `obj.<object>.read` (the rule of this decision, not an
+  exception to it), and `obj.<object>.read` is not required, so a create-only role can create a record. If wrong: an
+  ADR superseding ADR-0116 decision 4 and a CLAUDE.md change come first, before the tool field is removed; the unique
+  field rule gains "except for a role without `obj.<object>.read`".

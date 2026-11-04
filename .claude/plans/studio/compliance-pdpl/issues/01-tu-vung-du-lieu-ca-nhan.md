@@ -149,3 +149,4 @@ Một module kernel sở hữu từ vựng `pd_category`, `sensitive_type` và T
   `mutations/01.yaml`, chưa chạy (cuối đợt); xóa một nhãn đã thử tay, test nhãn đỏ. `reviewing-feature-security` đã đọc:
   không route, bảng, cache, công cụ hay ghi audit (ranh giới 1-5 không áp); ranh giới 6: bảng tham chiếu tạm xóa trong
   `finally`, mã lạ đọc "Loại chưa biết", không "Không"; `detail` không mang giá trị. `Xong` để đóng đợt.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): `checking-plan-consistency` của vùng studio (E:field-security/01~CLAUDE.md, CRITICAL): câu "gỡ `ToolDefinition.data_classification` là của field-security/01" ở trên không còn đúng; trường ở lại theo CLAUDE.md và ADR-0116 (Accepted) quyết 4, chủ là tools-and-skills, bên đọc là compliance-pdpl/05 (ADR-0106 (Accepted), bổ sung 4/11/2026). Nếu sai thì: một ADR thay ADR-0116 (Accepted) quyết 4 và sửa CLAUDE.md trước khi gỡ.

@@ -185,9 +185,12 @@ người gọi (R3) đến ở đây, sau khóa đọc đối tượng của ten
     - `GET /api/v1/studio/objects/{api_name}/describe`: thiếu `obj.<api_name>.read` → 403 `permission_denied` trước khi
       đọc gì, `api_name` của công ty khác → 404; quyền trường qua `resolve_field_access` (field-security/01); trả
       `ai_description` của đối tượng và của mỗi trường đọc được với nhãn `vi`, kiểu, `access`, các cờ và lựa chọn đang
-      bật, và trường Đã ẩn chỉ với `api_name`, nhãn và `access: hidden`;
+      bật, và trường Đã ẩn chỉ với `api_name`, nhãn và `access: hidden`; với `?action=create` route kiểm
+      `obj.<api_name>.create` thay `obj.<api_name>.read` (thiếu → cùng 403) và tính `access` bằng
+      `resolve_field_access(..., action='create')` (field-security/01, R2.7), nên vai chỉ tạo nhận biểu mẫu tạo với
+      trường nó ghi được là `edit`; `action` khác `read`, `create` → 422 `validation_failed`;
     - `ObjectSchemaProjector` của ticket 02 nhận quyết định trường của người gọi: lược đồ không có trường Đã ẩn, lược
-      đồ tạo, sửa chỉ có trường người gọi sửa được, và bảng `ai_description` tách riêng không có trường Đã ẩn (R3.6,
+      đồ tạo chỉ có trường mà quyết định với `action` `create` cho `edit`, lược đồ sửa chỉ có trường người gọi sửa được, và bảng `ai_description` tách riêng không có trường Đã ẩn (R3.6,
       R3.7). Bộ đệm của bộ chiếu giữ lược đồ đầy đủ theo `(tenant_id, object_id, schema_version)`; phép lọc theo quyết
       định trường của người gọi chạy sau bộ đệm ở mỗi lần gọi, không bao giờ nằm trong mục đệm, nên đổi quyền trường mà
       không đổi `schema_version` có hiệu lực ở lần gọi kế tiếp (gate, MEDIUM M5);
@@ -267,6 +270,10 @@ người gọi (R3) đến ở đây, sau khóa đọc đối tượng của ten
 - [ ] R3.3: người của công ty B gọi describe với `api_name` chỉ công ty A có → 404.
 - [ ] R3.4 (CO8): người thiếu `obj.<api_name>.read` gọi describe, `GET` một id có và một id không có → cùng 403
       `permission_denied`.
+- [ ] R3.1: vai chỉ giữ `obj.lead.create` (không `read`, không `update`) gọi `describe?action=create` → 200, trường
+      `open` `access: edit`, trường duy nhất `secured` chưa cấp `access: read`; cùng vai gọi describe không `action` →
+      403; người không giữ `obj.lead.create` gọi `describe?action=create` → 403; tính `access` của `action=create` bằng
+      `action` `update` → vai giữ `create` mà không giữ `update` thấy mọi trường `read`, test đỏ.
 - [ ] R3.5: `GET /api/v1/studio/objects` trả đúng các đối tượng người gọi giữ khóa đọc, không thừa không thiếu.
 - [ ] R3.6: lược đồ tạo của bộ chiếu không có trường người gọi không sửa được; lược đồ truy vấn không có trường Đã
       ẩn; `schema_version` tăng → lược đồ mới.
@@ -350,3 +357,4 @@ người gọi (R3) đến ở đây, sau khóa đọc đối tượng của ten
   dựng, ghi ở đây. Thứ tự dựng: sau 02 (đã xong), record-access/03, /04, field-security/01; trước 04, 05, 06,
   record-access/05.
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): `checking-plan-consistency` của vùng studio (B:custom-objects/03~field-security/01, HIGH): (r) hứa vai chỉ tạo tạo được bản ghi, nhưng describe đòi `obj.read` và tính quyền trường như `update`, nên vai đó nhận 403 hay mọi control `disabled` ở biểu mẫu tạo của ticket 05; nay describe có biến thể `?action=create` dùng nhánh `create` của field-security/01, bộ chiếu lược đồ tạo cũng vậy, tiêu chí R3.1 mới. Nếu sai thì: một route `GET .../create-form` riêng thay tham số.

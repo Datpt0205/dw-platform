@@ -18,7 +18,8 @@ audit đọc nhạy cảm là W2 ở Ngoài phạm vi. Ý định: không đư�
 - `ToolDefinition` khai `data_classification: frozenset[str]` mà không quyết định nào đọc
   (`packages/python/dw_agent_runtime/src/dw_agent_runtime/contracts.py:167`), cũng vậy ở `ToolSpec`
   (`packages/python/dw_agent_runtime/src/dw_agent_runtime/tool_specs.py:54`). Ràng buộc: `pd_category` theo từng thuộc
-  tính thay nó, có người đọc (ADR-0106 (Accepted) mục 1; failure-modes #1).
+  tính thay nó cho quyết định theo trường; trường cấp công cụ ở lại theo CLAUDE.md và ADR-0116 (Accepted) quyết 4, chủ
+  là tools-and-skills, bên đọc là compliance-pdpl/05 (ADR-0106 (Accepted) mục 1, bổ sung 4/11/2026; failure-modes #1).
 - Thang mật `internal`, `confidential`, `restricted` chấm tài liệu và trí nhớ, không chấm trường
   (`packages/python/dw_knowledge/src/dw_knowledge/contracts.py:23-37`). Ràng buộc: bảo mật trường là một trục riêng,
   không dùng lại thang này.
@@ -388,6 +389,12 @@ open` là một trường `basic` mở, hợp lệ vì phiên bản đó không 
 - 4/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 01-02. Cùng lượt duyệt spec (`Duyệt:` ở đầu). Ticket 01 là mô
   hình, migration và hàm; ticket 02 là lớp áp ở mọi đường, sau mọi ticket dựng đường đó; theo `## Ủy quyền` của
   studio.md (Đạt, 31/10/2026). Nếu sai thì: Đạt duyệt lại và ticket về `needs-triage`.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): `checking-plan-consistency` của vùng studio: (F:field-security/01~~ADR-0106 (Accepted),
+  CRITICAL) nhánh `create` của ticket 01 ẩn trường duy nhất với vai chỉ tạo, trái R2.6 và ADR-0106 (Accepted) quyết 4;
+  ticket 01 nay theo R2.6. (E:field-security/01~~CLAUDE.md, CRITICAL) M1 của ticket 01 không gỡ
+  `ToolDefinition.data_classification`; Hiện trạng sửa theo. ADR-0106 (Accepted) bổ sung 4/11/2026 ghi cả hai cùng chữ ký bốn tham
+  số. Nếu sai thì: ADR-0106 (Accepted) quyết 4 thêm ngoại lệ cho vai không giữ `obj.read`; một ADR thay ADR-0116 (Accepted) quyết 4 và sửa
+  CLAUDE.md trước khi gỡ trường.
 
 ## Danh sách ticket
 

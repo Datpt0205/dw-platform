@@ -26,7 +26,8 @@ trống.
       `.claude/rules/ui-quality.md` §6).
     - `[record_id]/page.tsx`: chi tiết và sửa; `<title>` là tên bản ghi khi người xem đọc được `name`. `permissions.update`
       sai → trang chỉ xem, mọi control `disabled`, không nút Lưu.
-    - `new/page.tsx`: tạo bản ghi.
+    - `new/page.tsx`: tạo bản ghi, sinh từ `describe?action=create` (ticket 03), không từ describe đọc, nên vai chỉ
+      tạo thấy control sửa được cho trường nó ghi được.
     - `apps/web/app/studio/objects/page.tsx`: danh sách đối tượng người xem đọc được từ `GET /api/v1/studio/objects`
       (spec R3.5), mỗi dòng một link tới `/studio/objects/[api_name]`; một mục `{ key: "objects", href: "/studio/objects",
 label: "Đối tượng", readKey: "studio.objects.manage" }` trong `STUDIO_SECTIONS` của studio-skeleton/03, vì
@@ -133,3 +134,4 @@ label: "Đối tượng", readKey: "studio.objects.manage" }` trong `STUDIO_SECT
   `vi`, nút Tạo theo `actions.create`. Sửa của lượt này không có người đọc mới: nhận rủi ro (agent, theo ủy quyền 31/10/2026). Nếu sai thì: ghi ở đây
   khi dựng. Thứ tự dựng: sau 04, record-access/05, studio-skeleton/03; cuối của khu vực.
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): `checking-plan-consistency` của vùng studio (B:custom-objects/03~field-security/01, HIGH): biểu mẫu tạo đọc `describe?action=create` của ticket 03. Nếu sai thì: biểu mẫu tạo gọi route riêng mà ticket 03 thêm.
