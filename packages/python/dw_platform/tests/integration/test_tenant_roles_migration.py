@@ -56,6 +56,14 @@ _BEFORE = sa.text(
                WHERE m.permission_set_keys ? p.key
            ) AS scopes
     FROM platform.memberships m WHERE m.tenant_id = ANY(:tenants)
+      -- Active members only: since tenant_members (349080a62e41) an invited or
+      -- suspended person holds nothing through `scopes_in`, whatever this
+      -- migration did, and the seed tenants carry such people other suites plant.
+      AND EXISTS (
+          SELECT 1 FROM platform.tenant_members tm
+          WHERE tm.tenant_id = m.tenant_id AND tm.user_id = m.user_id
+            AND tm.status = 'active'
+      )
     """
 )
 
