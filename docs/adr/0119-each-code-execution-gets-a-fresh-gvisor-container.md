@@ -146,6 +146,61 @@ confirmed on 2026-10-23 for languages and billing (DO-45.1), and the lifetime of
   does not stand in for it, and docgen keeps its own container for document generation.
 - si-platform: none; re-derived.
 
+## Measurements (code-sandbox 01, 02)
+
+Taken by `tests/spike/sandbox/`: `setup_rootless.sh` builds the host (Docker rootless with `cpu cpuset io memory pids`
+delegated to `user@<uid>.service`, gVisor release 20261019 checked against its sha512, the runtime `runsc-dw` with
+`--platform=systrap --network=none`, `python:3.12-slim@sha256:b18b261e…` with pandas 3.0.5 hash-pinned), `harness.py
+measure` writes the ten rows of R1.1 and the tests in `test_runsc_spike.py` hold the thresholds of ticket 01 steps 3 to
+5 with the `py-small` flags of decision 3 (`CAPPED_FLAGS`). CI column: run 41919844717 of the `sandbox-spike` job
+(commit b138e84, GitHub `ubuntu-24.04`), read from the job's public annotations; `results-ci.json` is its artifact.
+Host column: ticket 02, on the target host, with the same script and harness.
+
+One finding shapes every row below. **Under a rootless engine runsc cannot place the sandbox in a cgroup**: its
+systemd cgroup driver speaks only to the system bus (`systemd error: Permission denied`), and pointed at the user's bus
+it writes the hierarchy root's `cgroup.subtree_control` (`permission denied`). Without `--ignore-cgroups` no container
+starts; with it, which `setup_rootless.sh` registers, the sandbox runs in the rootless engine's own cgroup
+(`user@1001.service/app.slice/docker.service`) and no container cgroup exists to hold a cap.
+
+| #   | Item (R1.1)                                                       | CI, rootless engine                                                                                                           | Host (ticket 02) |
+| --- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| 1   | cgroup v2 delegation to `user@<uid>.service`                      | `cpuset cpu io memory pids`: đạt                                                                                              |                  |
+| 2   | fork bomb under runsc (`--pids-limit=64`)                         | 8 475 processes counted in the guest's `/proc`, then the sentry panicked (exit 2); no host `pids.peak` (no cgroup): không đạt |                  |
+| 3   | `docker stats` beside `memory.peak` and `usage_usec`              | stats 179.4 MiB, 81 PIDs; no container cgroup to read `memory.peak` or `cpu.stat` from: không đạt                             |                  |
+| 4   | `--log-driver none` with 1 MiB on stdin                           | 1 048 576 B back, same sha256, 0.15 s: đạt                                                                                    |                  |
+| 5   | tmpfs `noexec` on `/work` and `/tmp`                              | both refused (EACCES): đạt                                                                                                    |                  |
+| 6   | cold and warm latency, 20 runs each                               | cold P50 118.8 ms, P95 140.1 ms; warm P50 0.5 ms, P95 1.4 ms: đạt (measured; the 0.5 to 1.5 s estimate was high)              |                  |
+| 7   | pandas `import` and `describe()` on 100 000 rows under `py-small` | import 1.09 s, describe 0.02 s, 1.32 s wall of 30 s: đạt                                                                      |                  |
+| 8   | reaper after `kill -9` of a harness holding three containers      | 3 outlived it; `docker rm -f` by label in 0.08 s left none, no runsc process after 10 s: đạt                                  |                  |
+| 9   | rootless engine beside the runner's rootful daemon                | both ran at once; rootless socket owned by uid 1001, engine reports `name=rootless`: đạt                                      |                  |
+| 10  | `/dev/kvm`                                                        | present, not readable by the runner's user: không áp dụng (systrap needs none; the target host's is ticket 02's question)     |                  |
+
+The caps of decision 3 (CS1), the host under bombs (R1.3) and the runtime (CS2), from the Done command on the rootless
+engine and the same tests on the runner's rootful daemon with `runsc-dw` registered (decision 2's fallback):
+
+| Test                                         | CI, rootless engine                                    | CI, rootful fallback                                                                        | Host (ticket 02) |
+| -------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------- | ---------------- |
+| CPU: two busy processes, 10 s, ≤ 0.55 vCPU   | 2.105 vCPU (sandbox process tree): xfail B1            | 0.497 vCPU (`cpu.max 50000 100000`): đạt                                                    |                  |
+| Memory: 512 MiB in 16 MiB steps              | all 512 MiB allocated, not killed: xfail B2            | OOMKilled at 224 MiB after 0.94 s, exit 137, `memory.peak` 260 104 192 B ≤ 268 435 456: đạt |                  |
+| Pids: fork bomb, ≤ 64 in the guest, survives | 9 910 in the guest: xfail B3                           | sentry panicked at the first fork, host `pids.peak` 64: xfail B3                            |                  |
+| R1.3: 10 probes ≤ 5 s, `docker info` ≤ 2 s   | 10 of 10 in 0.27 to 0.36 s; `docker info` 0.046 s: đạt | 10 of 10 in 0.14 to 0.24 s; `docker info` 0.044 s: đạt                                      |                  |
+| CS2: `HostConfig.Runtime` and `dmesg` inside | `runsc-dw`, "Starting gVisor...": đạt                  | `runsc-dw`, "Starting gVisor...": đạt                                                       |                  |
+
+**Blocking rows (R1.2).** The code step does not ship while any of these is open; each test stays as written with
+`pytest.mark.xfail(strict=True)` naming its row, and turns red the day the cap starts holding.
+
+- **B1 `--cpus`** and **B2 `--memory`**: not held under the rootless engine, for the cgroup reason above. Both hold on
+  the rootful fallback. Closing them needs either runsc placing a rootless sandbox in a delegated cgroup (a runsc
+  change, or a runtime shim that does it) or decision 2's fallback with its residual risk written here.
+- **B3 `--pids-limit`**: not held on either engine, because gVisor's guest processes are not host processes. Rootless:
+  nothing bounds the guest until systrap cannot clone another stub thread and the sentry panics (exit 2). Rootful:
+  `pids.max = 64` is consumed by the sandbox's own host threads and the first forks panic the sentry. Measured remedy,
+  not yet adopted: `--ulimit=nproc=64:64` (RLIMIT_NPROC, enforced inside the guest) with `--pids-limit=512` as the
+  host backstop held the guest at exactly 64 processes and the sandbox survived, on the rootless engine in CI (row 2)
+  and on both engines in a local rig. Adopting it amends decision 3's flags and is decided with ticket 02.
+
+Docker or Podman, and rootless or the fallback, are ticket 02's choice on the target host; this ADR stays Proposed.
+
 ## Open
 
 1. **DO-45** (requester for languages and billing, Đạt for the container lifetime). Provisional call (agent,
@@ -162,7 +217,9 @@ confirmed on 2026-10-23 for languages and billing (DO-45.1), and the lifetime of
 3. **FOG-24** (prototype, code-sandbox 01): does `runsc` on systrap run on the second host's kernel and hypervisor,
    honour `--cpus`, `--memory` and `--pids-limit` under a rootless engine with delegated cgroup v2, fill
    `memory.peak` before removal, and run on the CI runners; does the host expose `/dev/kvm`? This ADR stays Proposed
-   until code-sandbox 01 answers it.
+   until code-sandbox 01 answers it. Answered for the CI runner on 2026-11-05 (Measurements): runsc runs there under a
+   rootless engine only with `--ignore-cgroups` and then holds no cap (B1 to B3); the rootful fallback holds CPU and
+   memory; `/dev/kvm` is present. The target host's answer is ticket 02's.
 4. **The package list of `dw-code-python`** (requester, part of DO-45): the research's data set minus parsers is the
    starting point, each addition a new image version that the hostile-script suite gates.
 5. **Agent code tools (W3; the requester, then Đạt).** Moved from decision 10 on 2026-10-23 (DO-45.2 (A)). Does an
