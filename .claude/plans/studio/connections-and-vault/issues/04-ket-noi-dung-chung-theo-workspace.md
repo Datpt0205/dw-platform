@@ -363,7 +363,7 @@ ConnectionDependents(total: int, visible: list[DependentRef(kind, id, name)])`, 
   `plan_shape.REGISTERED`, test bỏ index thì đỏ (M12 theo).
 - 2026-11-04 (agent, theo ủy quyền 31/10/2026): `connection_usable` là phương thức của `ConnectionUsability(store,
   catalog)` dựng một lần ở composition root (`ApiContainer.connection_usability`), vì quy tắc đọc cơ sở dữ liệu; chữ ký
-  `connection_usable(connection, context, purpose)` đúng ADR-0115 quyết 2. Nếu sai thì: hàm tự do nhận store và
+  `connection_usable(connection, context, purpose)` đúng ADR-0115 (Accepted) quyết 2. Nếu sai thì: hàm tự do nhận store và
   catalog làm tham số, chỗ gọi không đổi.
 - 2026-11-04 (agent, theo ủy quyền 31/10/2026): MEDIUM (b) của ticket 02, ai xóa trường bí mật nào: P1 không có route
   xóa một trường; phiên bản của một trường chỉ mất khi `DELETE` Kết nối (`connections.manage`, CASCADE) hay lane
