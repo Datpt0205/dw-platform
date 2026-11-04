@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 3/11/2026
-Sẵn sàng: ĐẠT (4/11/2026; 0 CRITICAL, 0 HIGH; ticket 01-07)
+Sẵn sàng: ĐẠT (4/11/2026; 0 CRITICAL, 0 HIGH; ticket 01-08)
 
 Người dựng không viết mã ghép một quy trình từ các Bước, thành một cây Bước (V4.24). Mỗi Loại bước là mã nền
 tảng trong một sổ đăng ký duy nhất, mang schema cấu hình và đầu ra, các Nhánh ra mà mỗi Bước của loại mang
@@ -1136,6 +1136,18 @@ NULL)`, để guard đọc quy tắc từ dòng thay vì đếm dòng, và thay 
   `human.approval@2` của gate ticket 06; lượt xác nhận 9 câu, sửa ở ticket 07 và ticket 06; MEDIUM ở Comments của
   ticket 07.
 - 4/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 07.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): `flow.subworkflow@1` lấy kiểu đầu ra và kiểm `inputs` qua seam Studio của
+  ticket 03 (phiên bản `live` của con ở nháp, phiên bản ghim lúc gửi kiểm định), không thêm thuộc tính vào
+  `NodeTypeSpec`; khai `inputs`, `outputs` của tài liệu do workflow-engine/09 thêm; một Quy trình của workspace khác
+  cùng công ty gọi được, người gửi cần `studio.workflows.read` trên nó, không có thì `wf.ref_unknown`; nhãn năng lực
+  mang C chỉ khi tác động của con không bị chặn trong con, và vào cùng ticket đến sau trong ticket 08 và
+  compliance-pdpl/05; lượt con lỗi thì `child_run_failed` mang `child_error_code`. Sửa: ticket 08. Nếu sai thì: một
+  thuộc tính `step_schema` của `NodeTypeSpec` nhận phụ thuộc đã phân giải, và Bước Quy trình con mang đủ ba tín hiệu.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): gate `checking-plan-readiness` của ticket 08 (builder check; không route,
+  không migration): 0 CRITICAL và 8 HIGH, đều sửa theo khuyến nghị ở dòng trên; lượt xác nhận 8 câu, sửa ở ticket 08
+  (phiên bản con của lượt mô phỏng nháp cha, con chưa có `live`, nhãn năng lực theo phiên bản con); MEDIUM ở Comments
+  của ticket 08.
+- 4/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 08.
 
 ## Danh sách ticket
 
