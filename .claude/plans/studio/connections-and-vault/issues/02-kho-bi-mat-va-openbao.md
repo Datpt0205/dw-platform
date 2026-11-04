@@ -175,8 +175,7 @@ cascade_from="platform.connections")`, đúng một cách xóa như `Offboarding
       `validate_for_profile` → test đỏ; không đặt `DW_KMS_PROVIDER` → `none`, và `put` hay `open` qua `SecretStore` →
       `kms_unavailable`, không dòng nào được ghi; `local` với `DW_LOCAL_KMS_MASTER_KEY` trống hay dưới 32 byte →
       `RuntimeError` lúc khởi động ở profile `local`; cho `none` rơi về `LocalDevKms` → test đỏ.
-- [x] Xong: các cổng nhanh của ticket xanh (wave-close.md); `make test-integration` đầy đủ, mutate.py và đo trễ ở
-      lúc đóng hàng đợi.
+- [x] Xong: `cổng nhanh của ticket theo wave-close.md; tích hợp đầy đủ, mutate.py và đo trễ lúc đóng hàng đợi` xanh.
 
 ## Nguồn
 

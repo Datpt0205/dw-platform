@@ -191,8 +191,7 @@ run_mode, purpose, connector_key, connection_id, simulate_safe)` (`run_mode` và
       kết thúc dữ liệu → `NotDispatchedError`, 550 sau dữ liệu → `RejectedError` mang 550, hết thời gian sau dấu kết
       thúc dữ liệu → `OutcomeUnknownError`; đổi 4xx thành `OutcomeUnknownError` hay 550 thành `NotDispatchedError` →
       test bảng đỏ.
-- [x] Xong: các cổng nhanh của ticket xanh (wave-close.md); `make test-integration` đầy đủ, mutate.py và đo trễ ở
-      lúc đóng hàng đợi.
+- [x] Xong: `cổng nhanh của ticket theo wave-close.md; tích hợp đầy đủ, mutate.py và đo trễ lúc đóng hàng đợi` xanh.
 
 ## Nguồn
 
