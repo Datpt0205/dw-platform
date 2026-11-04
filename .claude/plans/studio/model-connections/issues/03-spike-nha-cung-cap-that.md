@@ -74,3 +74,6 @@ Trên stack và transport của ticket 01, đo bảy nhà cung cấp mà một m
     Nếu sai thì: bỏ `skipped_providers.yaml` và giữ ticket mở tới khi đủ bảy khóa; áp luật dừng chỉ cho Bedrock.
 
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-human (Chờ Đạt 21), không `ready-for-agent` vì cần khóa thật.
+- 2026-11-05 (agent): ticket 01 dừng ở bước 0, vì GHSA-w4c7-34wj-hqm8 (Critical) chạm 1.106.1; số đo nằm ở Comments
+  của ticket 01. Ticket này chờ đúng như bước 0 của nó đã ghi. Khi ADR-0118 (Accepted) quyết định 8 đổi bản ghim, bước 0
+  ở đây đổi 1.106.1 theo bản mới trong cùng lần sửa.

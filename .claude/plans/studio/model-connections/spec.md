@@ -160,6 +160,7 @@ Hồ sơ model khai nơi xử lý dữ liệu; thiếu khai là nước ngoài, 
       hỗ trợ, tên ngoài tập là lỗi nạp; dẫn chiếu giá là cặp (`provider`, `model`) của route, đúng khóa mà `PricingPort`
       đã dùng; hồ sơ model vào release manifest. Nếu sai thì: chỉ ba cờ có bên đọc, và hồ sơ ngoài release manifest.
 - 4/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 02-03. Ticket 02 chờ workflow-engine/02, vì ghim lúc nhận lượt cần `RunRequestService` và cả hai sửa `apps/api/src/dw_api/bootstrap/studio.py` và lời gọi `RunManifestBuilder.build`; workflow-engine/05 sửa cùng `EngineSection` nhưng đã chờ ticket 02 qua workflow-engine/04, usage-and-limits/03 và compliance-pdpl/03. Ticket 03 chỉ chạm `infra/spikes/model-proxy/` sau ticket 01 và cần khóa thật (Chờ Đạt 21), nên `ready-for-human`. Theo `## Ủy quyền` của studio.md (Đạt, 31/10/2026). Nếu sai thì: hạ hai ticket về `needs-triage` và chia lại.
+- 5/11/2026 (agent, theo ủy quyền 31/10/2026): ticket 01 dừng ở bước 0, vì GHSA-w4c7-34wj-hqm8 (Critical, 27/10/2026) có khoảng `< 1.106.5` chứa bản ghim 1.106.1; chưa chạy LiteLLM. Ticket về `needs-triage`, chờ sửa bản ghim ở ADR-0118 (Accepted) quyết định 8 (khuyến nghị: 1.106.5, chạy từ 11/11/2026 02:45 giờ Việt Nam) rồi gate lại; số đo và đề xuất ở Comments của ticket 01. Sửa: ticket 01, ticket 03. Nếu sai thì: ticket 01 chạy trên 1.106.1 như đã gate, và bước 0 của nó ghi cách đọc "chạm" theo điều kiện tiên quyết.
 
 ## Danh sách ticket
 

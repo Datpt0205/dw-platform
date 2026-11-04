@@ -1,6 +1,6 @@
 # 01 — Spike: model proxy LiteLLM theo nhà cung cấp và tiêm khóa ở transport
 
-Status: ready-for-agent
+Status: needs-triage (dừng ở bước 0: GHSA-w4c7-34wj-hqm8, Critical, chạm 1.106.1; chờ sửa bản ghim ở ADR-0118 (Accepted) quyết định 8, rồi gate lại)
 Area: studio
 Yêu cầu: không (spike đo đạc trước khi W2 dựng model proxy thật theo ADR-0118 (Accepted), D8 và D13)
 
@@ -87,3 +87,51 @@ Yêu cầu: không (spike đo đạc trước khi W2 dựng model proxy thật t
     - Discovery/17 câu 2 hỏi cả khóa còn trong bộ nhớ tiến trình; ticket này không đo mục đó.
     - Trên checkout này `.env` có `OPENAI_BASE_URL` khác rỗng, trái với ghi chú của Chờ Đạt 21; spike không đọc biến đó.
 - 2026-11-02 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-05 (agent, theo ủy quyền 31/10/2026): dừng ở bước 0, đúng luật của bước đó. Chưa cài, chưa dựng, chưa chạy
+  LiteLLM; không có tệp nào dưới `infra/spikes/model-proxy/`. Đọc trên `ef4d4b0`.
+    - Giờ đọc: 2026-11-04 18:00-18:10 UTC (5/11/2026 01:00-01:10 giờ Việt Nam), sau giờ mở 4/11/2026 02:00.
+      Đã đọc `https://github.com/BerriAI/litellm/security/advisories` (hai trang, 18 advisory) và trang chi tiết của
+      GHSA-w4c7-34wj-hqm8, GHSA-7hp6-4w63-5g45, GHSA-3cv6-jpf6-8222, GHSA-g5ff-637f-6q2m và GHSA-hhww-mrg2-969h.
+      Đã đọc `https://docs.litellm.ai/blog/security-incident-oct-21-2026` (cập nhật cuối 30/10/2026) và bản ghi mà
+      trang đó trỏ tới, `https://docs.litellm.ai/blog/security-incident-oct-21-2026-attack-chain` (23/10/2026).
+      Đối chiếu thêm với OSV (`POST https://api.osv.dev/v1/query`, gói PyPI `litellm`): có 85 bản ghi, không bản ghi
+      nào có khoảng chứa 1.106.1, và OSV chưa có GHSA-w4c7-34wj-hqm8.
+    - Advisory chạm 1.106.1: một advisory, **GHSA-w4c7-34wj-hqm8** (Critical, 27/10/2026), "Unauthenticated file read
+      leaks master key on Enterprise proxy".
+        - Affected: `< 1.103.10`, `< 1.104.8`, `< 1.105.6`, `< 1.106.5`. Patched: 1.103.10, 1.104.8, 1.105.6, 1.106.5.
+        - Một request không xác thực tới bất kỳ route LLM nào làm proxy đọc một tệp cục bộ (chẳng hạn
+          `/proc/self/environ`, lộ `LITELLM_MASTER_KEY` và khóa nhà cung cấp) rồi gửi nội dung ra một URL do kẻ tấn công
+          chọn.
+        - Theo advisory, mã đó chỉ nạp khi có license Enterprise ("Open source deployments without a license are not
+          affected"). Giảm nhẹ: chặn ở biên, và giới hạn lối ra về endpoint của nhà cung cấp.
+        - Mười bảy advisory còn lại có bản sửa dưới 1.106.1. Khoảng cao nhất là của GHSA-7hp6-4w63-5g45, tới 1.104.0rc2.
+    - Báo cáo sự cố: bản ghi "attack chain" ngày 23/10/2026 tự nhận là "canonical source of truth" và "completed our
+      investigation", và chỉ nêu 1.107.0 là bản độc. Thay đổi quy trình hẹn "next week". Trang trạng thái chưa gọi nó là
+      báo cáo cuối.
+    - PyPI (`https://pypi.org/pypi/litellm/<bản>/json`, đọc 18:02 UTC), giờ tải lên UTC:
+
+        | Bản     | Tải lên          | Hết 14 ngày      |
+        | ------- | ---------------- | ---------------- |
+        | 1.106.2 | 2026-10-21 10:44 | 2026-11-04 10:44 |
+        | 1.106.3 | 2026-10-24 09:14 | 2026-11-07 09:15 |
+        | 1.106.4 | 2026-10-25 09:32 | 2026-11-08 09:33 |
+        | 1.106.5 | 2026-10-27 19:44 | 2026-11-10 19:45 |
+        | 1.106.6 | 2026-10-28 22:48 | 2026-11-11 22:49 |
+        | 1.106.7 | 2026-11-04 04:16 | 2026-11-18 04:17 |
+        | 1.108.0 | 2026-11-04 03:31 | 2026-11-18 03:32 |
+
+        1.107.0 không còn trên PyPI. Bản sửa thấp nhất của nhánh 1.106 là 1.106.5, nên mọi bản đã qua luật 14 ngày hôm
+        nay (tới 1.106.4) đều nằm trong khoảng của advisory.
+
+    - Đề xuất sửa ADR-0118 (Accepted) quyết định 8. Theo bước 0, ticket không tự chọn bản khác:
+
+        | #   | Câu hỏi                                                                                        | Khuyến nghị                                                                                                                                                                                                                                                                                                                                              |
+        | --- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+        | 1   | Bản nào thay 1.106.1?                                                                          | 1.106.5, bản sửa thấp nhất của nhánh, chạy sớm nhất 2026-11-10 19:45 UTC (11/11/2026 02:45 giờ Việt Nam), kèm một lần kiểm advisory lúc đó. Không giữ 1.106.1 với lý do proxy không có license Enterprise: làm vậy là nhận một Critical dựa vào lời nhà cung cấp về điều kiện tiên quyết (failure-modes #4), trong khi mã Enterprise nằm trong cùng gói. |
+        | 2   | Bản ghi "attack chain" ngày 23/10/2026 có là báo cáo cuối mà quyết định 8 và FOG-19 chờ không? | Có. Nó tự nhận đã hoàn tất điều tra, là nguồn chuẩn, và chỉ nêu 1.107.0 là bản độc. 1.106.5 lên sau khi khóa ký cosign được xoay ngày 23/10. Nếu sai thì: chờ nhà cung cấp gọi rõ một báo cáo là báo cáo cuối, và ticket chờ theo.                                                                                                                       |
+        | 3   | Ticket này đổi gì?                                                                             | Bước 0 và Mục tiêu đổi 1.106.1 thành 1.106.5, với giờ mở 11/11/2026 02:45. `requirements.txt` ghim `litellm[proxy]==1.106.5`. Tiêu chí thiếu khóa thêm `LITELLM_LICENSE` vào danh sách biến cấm trong `docker inspect` của `model-proxy`, để phòng thủ thêm cho chính GHSA này. Sau đó gate lại bằng builder check.                                      |
+        | 4   | Chỗ nào khác ghi 1.106.1?                                                                      | Cùng lần sửa đó: ADR-0118 (Accepted) dòng 110, 180, 183 và 203; Quyết định của spec; bước 0 của ticket 03.                                                                                                                                                                                                                                               |
+
+    - Nếu sai thì: nếu Đạt đọc "chạm" là "khoảng chứa bản đó và điều kiện tiên quyết có thể xảy ra với cấu hình của
+      quyết định 8", ticket chạy lại trên 1.106.1 mà không đổi gì khác, và bước 0 ghi rõ cách đọc đó.
+    - Chưa đo: bước 1 tới 6 và mọi tiêu chí chấp nhận. FOG-19 và FOG-21 vẫn mở (discovery/17, câu 1-3).
