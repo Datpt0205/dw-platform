@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 2/11/2026
-Sẵn sàng: ĐẠT (2/11/2026; 0 CRITICAL, 0 HIGH; ticket 02)
+Sẵn sàng: ĐẠT (4/11/2026; 0 CRITICAL, 0 HIGH; ticket 02, 03)
 
 Người dựng cần một lớp điều khiển vòng đời cho agent và quy trình: mỗi phiên bản đi qua Nháp, Đang
 kiểm định, Chờ duyệt, Đang dùng, Đã gỡ trong một máy trạng thái do PostgreSQL canh; chỉ sang Đang dùng
@@ -109,8 +109,8 @@ KHI gửi kiểm định, nội dung phiên bản bị niêm phong và bao đón
 
 - R2.1 KHI người giữ khóa gửi mà `ArtifactKindRegistry` khai cho loại (tenant-config:R2.15) gửi một nháp hợp
   lệ qua `POST /api/v1/studio/{agents|workflows|objects|data-sources}/{artifact_id}/versions/{version_id}/submit`,
-  dịch vụ gửi kiểm định PHẢI, trong một giao dịch, tính bao đóng bằng `ClosureExtractor` của loại, niêm phong nội
-  dung qua bước niêm phong của tenant-config, ghi Mã băm định nghĩa, Nơi đang dùng và audit
+  dịch vụ gửi kiểm định PHẢI, trong một giao dịch, niêm phong nội dung qua `seal` của tenant-config, bước tính bao
+  đóng bằng `extract` của mục `ArtifactKindRegistry` của loại qua `closure_of`, ghi Mã băm định nghĩa, Nơi đang dùng và audit
   `studio.version.submitted`, rồi qua `LifecycleService` chuyển phiên bản khỏi Nháp theo luật giai đoạn của loại (R1;
   ADR-0120 (Accepted) quyết 1).
 - R2.2 Mã băm định nghĩa của một phiên bản PHẢI là hàm của nội dung niêm phong và bao đóng ghim, nên
@@ -458,9 +458,9 @@ Studio của nó (YC6), mà không mở cho `dw_app` một đường xóa để 
 - Bảng, cột và trigger ở mục Dữ liệu; route ở mục API.
 - Mã: cột vòng đời và `studio.guard_version_stage()` trên `studio.artifact_versions`, với luật theo loại
   cho loại không có Cổng chất lượng và nhánh chỉ siết của `dw.object/v1` (cột `tighten_only`,
-  `compared_live_hash`); `VersionStage` StrEnum với bảng chuyển đổi thuần và `LifecycleService`; view Giai
+  `compared_live_hash`); bảng chuyển đổi thuần cạnh enum `Stage` đã có và `LifecycleService`; view Giai
   đoạn hiển thị; dịch vụ gửi kiểm định cho mọi loại đã đăng ký (route `{agents|workflows|objects|data-sources}`,
-  khóa gửi do `ArtifactKindRegistry` khai, `If-Match` bắt buộc) với bảng điều phối `ClosureExtractor` và bảng kiểm
+  khóa gửi do `ArtifactKindRegistry` khai, `If-Match` bắt buộc) với bảng kiểm
   theo loại lúc gửi kiểm định (Protocol của spec này, compliance-pdpl và workflow-nodes đăng ký kiểm của mình);
   Protocol `PublishBindingsCheck` do spec này khai, hỏi ở lệnh gửi và ở handler phát hành (R2.11, R5.10;
   tenant-config/05 đáp ứng); mở rộng `dw_evals`
@@ -493,7 +493,7 @@ Studio của nó (YC6), mà không mở cho `dw_app` một đường xóa để 
 | Phân tích năng lực Bộ ba nguy hiểm (tín hiệu A, B, C từ bao đóng, nút phê duyệt áp đảo C) lúc gửi kiểm định, 422 khi chưa đạt, kết quả ở `studio.version_assessments`                                                                                                                                                                                                                                                                                                                                                                                                                      | ADR-0125 (Accepted); R2.7 gọi nó qua bảng kiểm theo loại, R6 chỉ đọc kết quả đã ghi                                                                                                                                                                                                                    | compliance-pdpl                                                                       |
 | W2: bộ đề kiểm định của tenant (bảng, API, màn nhập câu không code, `studio.gate_run_datasets`), cùng `min_cases_total`, `pass_rate_min` của Chính sách cổng                                                                                                                                                                                                                                                                                                                                                                                                                               | YC74; cần gói và điều hướng của studio-skeleton; trường chính sách vào cùng bên đọc của nó (DO-29.1)                                                                                                                                                                                                   | agent-lifecycle, đợt sau (W2)                                                         |
 | W2: Mức rủi ro AI trên `studio.version_assessments` (công ty tự phân hạng từ mặc định, không khai thấp hơn ở v1), tờ giải thích                                                                                                                                                                                                                                                                                                                                                                                                                                                            | YC93; DO-60; bảng có từ W1 cho kết quả Phân tích năng lực (compliance-pdpl:R4.6)                                                                                                                                                                                                                       | compliance-pdpl; agent-lifecycle đọc (W2)                                             |
-| W2: tổng quan đội ngũ, "đã kiểm định thật N/M", chip cảnh báo, cảnh báo nháp để lâu (`stale_draft_days`), trang phiên bản, so sánh từng trường trên trang đó cho người dựng                                                                                                                                                                                                                                                                                                                                                                                                                | YC75; mẫu học từ phân tích đối thủ (config-chang.md mẫu 3); đọc theo quyền người xem, cổng chặn ở server; `stale_draft_days` vào chính sách cùng bên đọc (DO-29.1); người duyệt đọc Bản ứng viên và phần khác với bản Đang dùng từ W1 qua route của R5.11 (V4.23) và màn duyệt của R5.13-R5.16 (V4.37) | agent-lifecycle, đợt sau (W2)                                                         |
+| W2: tổng quan đội ngũ, "đã kiểm định thật N/M", chip cảnh báo, cảnh báo nháp để lâu (`stale_draft_days`, cùng cột `stage_changed_at` và index của nó), trang phiên bản, so sánh từng trường trên trang đó cho người dựng                                                                                                                                                                                                                                                                                                                                                                   | YC75; mẫu học từ phân tích đối thủ (config-chang.md mẫu 3); đọc theo quyền người xem, cổng chặn ở server; `stale_draft_days` vào chính sách cùng bên đọc (DO-29.1); người duyệt đọc Bản ứng viên và phần khác với bản Đang dùng từ W1 qua route của R5.11 (V4.23) và màn duyệt của R5.13-R5.16 (V4.37) | agent-lifecycle, đợt sau (W2)                                                         |
 | W2: phát hiện Lệch cấu hình, giám khảo LLM hiệu chuẩn, kiểm định retrieval, so với bản đang chạy                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | mẫu cảnh báo lệch học từ phân tích đối thủ (config-chang.md mẫu 3); cần `mcp-client`, `model-connections`                                                                                                                                                                                              | agent-lifecycle, đợt sau (W2)                                                         |
 | W2: kiểm định trực tuyến lấy mẫu (tắt mặc định, model chấm cùng Lộ trình dữ liệu), phân tích năng lực theo đường đi, gói hồ sơ AI theo Luật AI                                                                                                                                                                                                                                                                                                                                                                                                                                             | YC93; chờ `usage-and-limits`, `workflow-nodes` và luật sư (DO-60)                                                                                                                                                                                                                                      | agent-lifecycle; compliance-pdpl, đợt sau (W2)                                        |
 | W2: kiểm định lại khi ghi đè của tenant đổi Mã băm hiệu lực, phần nền tảng trả có trần cho lượt do nền tảng kích                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | bằng chứng khóa theo Mã băm hiệu lực nên bằng chứng cũ tự hết giá trị (ADR-0109 (Accepted)); DO-29.2                                                                                                                                                                                                   | agent-lifecycle; usage-and-limits, đợt sau (W2)                                       |
@@ -529,20 +529,24 @@ Mọi bảng mới: RLS ENABLE và FORCE theo tenant, grant cùng migration, tê
   `LifecycleService` ghi lúc gửi theo bộ so sánh của loại, và `compared_live_hash text` NULL (`definition_hash` của
   phiên bản Đang dùng lúc gửi, NULL khi chưa có), do `LifecycleService` ghi ở mọi lần gửi (R2.10), CHECK
   `NOT tighten_only OR compared_live_hash IS NOT NULL`;
-  `contributor_ids uuid[] NOT NULL CHECK (cardinality(contributor_ids) >= 1)`; `submitted_by`,
+  `contributor_ids uuid[] NOT NULL CHECK (cardinality(contributor_ids) >= 1)`, ghi người gọi ở mỗi lần tạo bản Nháp
+  và thêm người lưu ở mỗi lần lưu nháp của `ArtifactService` (bên đọc: R5.1, trigger), backfill dòng đã có từ audit
+  `studio.artifact.*`; `submitted_by`,
   `submitted_at`, `published_by`, `published_at`, `retired_by`, `retired_at`; `retire_reason_code`
-  CHECK (`superseded`, `explicit`); `stage_changed_at timestamptz NOT NULL`. Trigger
+  CHECK (`superseded`, `explicit`); `dw_app` giữ UPDATE trên đúng các cột này, như mọi cột của vỏ (UPDATE theo cột).
+  Trigger
   `studio.guard_version_stage()` (BEFORE INSERT OR UPDATE) cho đúng các chuyển tiếp của R1, cho mọi chuyển sang
   `live` chỉ khi `compared_live_hash` vẫn là mã băm của phiên bản Đang dùng mà lần phát hành thay (bản vừa gỡ
   `superseded` trong cùng giao dịch, vì chỉ mục một Đang dùng buộc gỡ bản cũ trước), với vế cùng NULL khi không có
   bản nào chỉ ở `awaiting_approval → live` (R1.8), còn nhánh chỉ siết `draft → live` luôn có mã băm, vì nó cần một
   bản Đang dùng để so (R2.8) và CHECK trên buộc `compared_live_hash` khác NULL khi `tighten_only` (R1.7), và chặn
-  đổi nội dung ngoài `draft`; chỉ mục một Đang dùng (`WHERE stage='live'`) và
-  `(tenant_id, stage, stage_changed_at DESC, id DESC)`. Một phiên bản chưa phát hành mỗi thành phần
+  đọc yêu cầu phê duyệt `studio.publish.<kind>` của chính phiên bản; nội dung niêm phong đã do
+  `studio.refuse_sealed_content_change()` của tenant-config giữ; chỉ mục một Đang dùng (`WHERE stage='live'`). Một phiên bản chưa phát hành mỗi thành phần
   (`WHERE stage IN ('draft','evaluating','awaiting_approval')`) là chỉ mục duy nhất từng phần của tenant-config
   (tenant-config:R2.20), nên spec này không tạo chỉ mục một Bản ứng viên riêng, bản sao thứ hai của cùng luật (R1.2;
   failure-modes #2). View
-  `studio.artifact_display_stage` tính Giai đoạn hiển thị, không lưu.
+  `studio.artifact_display_stage` (`security_invoker = true`) tính Giai đoạn hiển thị, không lưu; bên đọc ở W1 là
+  `display_stage` của route thành phần của tenant-config.
 - `platform.control_switches`: `tenant_id`, `id`; `scope_type` CHECK (`tenant`, `agent`, `workflow`);
   `workspace_id`, `target_id` NULL chỉ khi `scope_type='tenant'`; `action` CHECK (`freeze`, `kill`);
   `origin` CHECK (`tenant`, `platform`); `reason_code` CHECK (`incident`, `maintenance`, `abuse`,
@@ -709,6 +713,7 @@ Mọi bảng mới: RLS ENABLE và FORCE theo tenant, grant cùng migration, tê
 | AL33 | Ca kịch bản của công ty khác hay ngoài độ sâu như không tồn tại                                  | R4.19                                      | Người của tenant B gọi `GET`, `PUT`, `DELETE` ca kịch bản với id của tenant A → 404 giống hệt id ngẫu nhiên, không ghi, không audit ở A; người ở độ sâu `workspace` của ws1 gọi route của thành phần thuộc ws2 → 404; `artifact_id` của một agent → 404; người chỉ giữ `studio.workflows.read` đọc được danh sách ca mà `POST` → 403, người giữ `studio.workflows.edit` ghi một mình, không yêu cầu duyệt nào; chạy truy vấn bằng vai bỏ qua RLS hay bỏ lọc `owning_workspace_id` → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | AL34 | Màn duyệt không bao giờ vẽ "không có phần khác" khi không so được, và nêu phần khác của bao đóng | R5.14, R5.15                               | `live_document` không qua mô hình → "Không so được với bản Đang dùng", không thẻ nào; câu trả lời lỗi 500 → `Result` lỗi, không Sơ đồ; Bản ứng viên chỉ đổi phiên bản ghim của một công cụ → Sơ đồ không thẻ, khối bao đóng nêu phiên bản trước và sau; đưa cây rỗng khi đọc lỗi hay bỏ `closure_changes[]` → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | AL35 | Sơ đồ của màn duyệt không ghi                                                                    | R5.16                                      | Thả một Bước, nhấn phím xóa và dán trên Sơ đồ của màn → 0 yêu cầu tới route ghi nào, tài liệu hiển thị không đổi; bật bộ xử lý sửa của builder cho Sơ đồ của màn → test đếm đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| AL36 | Lệnh gửi, rút và gỡ của công ty khác hay ngoài độ sâu như không tồn tại                          | R2.1, R2.4, R2.5                           | Người của tenant B gọi `submit`, `withdraw`, `retire` với id của tenant A → 404 giống id ngẫu nhiên, phiên bản của A không đổi, 0 audit ở A; người ở độ sâu `workspace` của ws1 gửi thành phần thuộc ws2 → 404; đoạn đường dẫn khác `kind` lưu → 404; bỏ lọc độ sâu hay chạy bằng vai bỏ qua RLS → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 
 ## Tiêu chí xong
 
@@ -833,8 +838,8 @@ Mọi bảng mới: RLS ENABLE và FORCE theo tenant, grant cùng migration, tê
   (`.claude/plans/studio/workflow-builder-ui/issues/03-bieu-thuc-publish-va-chay-thu.md`, mà ticket 07 chờ); route, quyền,
   kết quả cổng, chi phí ước tính và ba giá trị để so là của spec này (R5.13, R5.14).
 - Protocol do bên dùng khai: `RunControlPort` và `RunHaltedError` (runtime khai, spec này đáp ứng bằng
-  `SqlRunControl`, đọc trạng thái thành viên của org-and-principals cho `principal_inactive`); `ClosureExtractor`
-  theo loại (agent-builder, workflow-engine cung cấp); bảng kiểm theo loại lúc gửi kiểm định (spec này khai;
+  `SqlRunControl`, đọc trạng thái thành viên của org-and-principals cho `principal_inactive`); `extract` của mục
+  `ArtifactKindRegistry` theo loại, mà `seal` gọi qua `closure_of` (agent-builder, workflow-engine cung cấp); bảng kiểm theo loại lúc gửi kiểm định (spec này khai;
   Phân tích năng lực của
   `.claude/plans/studio/compliance-pdpl/issues/05-phan-tich-bo-ba-khi-xuat-ban.md` và kiểm workflow-nodes:R9.5
   đăng ký vào); `PublishBindingsCheck` (spec này khai, tenant-config/05 đáp); `RunCancelHook` (spec này khai cùng sổ móc ở composition root của worker, workflow-engine/08 đăng ký, R8.10); `LimitsPort` cho lease
@@ -1378,6 +1383,15 @@ Mọi bảng mới: RLS ENABLE và FORCE theo tenant, grant cùng migration, tê
   không bao giờ gửi được: đề xuất Bộ giá trị gắn kiểm theo phiên bản niêm phong mới nhất (tenant-config, Quyết định
   23/10/2026). Ticket 03, 04 của spec này đọc lại tiêu chí của R2.11 ở gate của chúng. Nếu sai thì: tenant-config cho đề
   xuất kiểm theo bản Nháp và R2.11 giữ 409 ở mọi nhánh.
+- 4/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 03. Ticket 03 dựng hợp đồng giai đoạn trên vỏ đã có (cột, trigger, `LifecycleService`, gửi, rút, gỡ cho `agents` và `workflows`), không chạm bảng của ticket 01, 04, 05, 06; nhánh không cổng và hai đoạn `objects`, `data-sources` ở ticket 04, phép kiểm cổng của trigger ở ticket 06. Theo `## Ủy quyền` của studio.md (Đạt, 31/10/2026). Nếu sai thì: hạ ticket 03 về `needs-triage` và chia lại.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): gate ticket 03 trên `e35a917`, đối chiếu mã đã dựng của tenant-config/02:
+  bao đóng là `extract` của mục registry qua `closure_of` mà `seal` gọi, không bảng `ClosureExtractor`; enum là `Stage`
+  đã có; nội dung niêm phong do `studio.refuse_sealed_content_change()` giữ; `contributor_ids` do `ArtifactService` ghi
+  ở mỗi lần tạo và lưu nháp; `stage_changed_at` và index của nó sang W2 vì không bên đọc ở W1; trigger canh từng cột
+  vòng đời theo bước của nó; view `security_invoker` với bên đọc `display_stage`; `gate_run_id` bắt buộc từ `awaiting_approval`
+  (ADR-0120 (Accepted) quyết 1), phép kiểm cổng của trigger do ticket 06 thêm; AL36 cho lệnh gửi, rút và gỡ của công ty khác. Sửa:
+  R2.1, Trong phạm vi, Dữ liệu, Ngoài phạm vi, Kiểm soát, Phụ thuộc, ticket 03, ticket 06. Nếu sai thì: bảng điều phối
+  bao đóng riêng và enum riêng, giữ đồng bộ bằng test; `stage_changed_at` có lại cùng bên đọc.
 
 ## Danh sách ticket
 

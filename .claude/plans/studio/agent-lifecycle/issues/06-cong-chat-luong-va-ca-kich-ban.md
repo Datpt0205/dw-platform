@@ -33,7 +33,11 @@ chặn. Phát hành hai người, handler `.decided` và route đọc Bản ứn
    `platform.tenants.status` của công ty khác `offboarding` (spec R10.3), cùng hình với
    `platform.guard_control_switch()` của ticket 01; cùng revision thêm FK ghép `(tenant_id, gate_run_id)` của
    `studio.artifact_versions` (cột của ticket 03) tới `studio.gate_runs (tenant_id, id)` ON DELETE RESTRICT có index
-   riêng (spec R1.9); `studio.gate_case_results` có `gate_run_id` FK ghép `(tenant_id, gate_run_id)` tới
+   riêng (spec R1.9), và `CREATE OR REPLACE` `studio.guard_version_stage()` của ticket 03 để thêm nhánh của loại có
+   cổng: `evaluating → awaiting_approval` khi `gate_run_id` trỏ một Lượt kiểm định `passed` trên đúng
+   `definition_hash` của phiên bản, và cùng phép kiểm ở `awaiting_approval → live` (ticket 03 từ chối nhánh đó tới
+   đây; spec R5.6), cùng helper `dw_studio.testing.lifecycle.publish_for_test` của ticket 03 mở rộng với một Lượt kiểm
+   định `passed` cho loại có cổng; `studio.gate_case_results` có `gate_run_id` FK ghép `(tenant_id, gate_run_id)` tới
    `studio.gate_runs (tenant_id, id)` ON DELETE RESTRICT, để một DELETE lên Lượt kiểm định không kéo theo xóa dòng chỉ
    thêm, `case_id text NOT NULL` (mã Câu kiểm định, hay id dòng của ca kịch bản), `category text NOT NULL`,
    `passed boolean NOT NULL`, `reason_code text NULL`, `cost_usd numeric(12,6) NOT NULL` (chi phí của câu, từ

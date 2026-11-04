@@ -55,7 +55,8 @@ của ticket 06.
    `studio.version.live`; từ chối → `draft`. Nhãn loại approval ở điểm cắm `apps/web/components/tool-approval.tsx`;
    liên kết tới màn duyệt là của ticket 07.
 3. Nhánh gửi của loại có `has_quality_gate = false` trên route của ticket 03 (spec R2.8, R2.9; ADR-0120 (Accepted)
-   quyết 1-2): trong giao dịch gửi, gọi bước niêm phong của tenant-config, bước cấp `version_no`, ghi mã băm và so
+   quyết 1-2), gắn thêm đúng lúc này hai đoạn `objects` → `object` và `data-sources` → `endpoint` của route gửi và
+   rút (ticket 03 chỉ gắn `agents`, `workflows`), cùng ánh xạ, 404 và 403 của ticket 03 bước 6: trong giao dịch gửi, gọi bước niêm phong của tenant-config, bước cấp `version_no`, ghi mã băm và so
    `row_version` mà không đổi giai đoạn (tenant-config:R2.7, tenant-config:R2.17), với `expected_row_version` là giá trị
    `If-Match` mà route của ticket 03 nhận, như nhánh có cổng (spec R2.12), gọi bộ so sánh mà mục `ArtifactKindRegistry`
    của loại cấp (của custom-objects cho `object`; loại không có bộ so sánh, như Nguồn dữ liệu `endpoint`, luôn
