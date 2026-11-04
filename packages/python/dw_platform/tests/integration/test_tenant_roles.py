@@ -461,14 +461,25 @@ async def test_the_201st_role_is_refused_and_two_racing_for_the_200th_get_one(
             assert not racer.done(), "the second insert must wait on the first"
             await c1.commit()
             await racer
+        assert results == ["role_limit_reached"]
+        with pytest.raises(IntegrityError) as refused:
+            async with migrator.begin() as conn:
+                await plant_role(conn, t.tenant_id, "r_over", {})
+        assert _constraint(refused.value) == "role_limit_reached"
     finally:
         await first.dispose()
         await second.dispose()
-    assert results == ["role_limit_reached"]
-    with pytest.raises(IntegrityError) as refused:
+        # Leave no tenant at the cap. test_tenant_roles_migration re-runs the
+        # migration's BACKFILL, whose install_system_roles visits every tenant
+        # in the database, and the BEFORE INSERT cap refuses this one before
+        # ON CONFLICT can skip its existing system roles.
         async with migrator.begin() as conn:
-            await plant_role(conn, t.tenant_id, "r_over", {})
-    assert _constraint(refused.value) == "role_limit_reached"
+            await conn.execute(
+                sa.text(
+                    r"DELETE FROM platform.tenant_roles WHERE tenant_id = :t AND key LIKE 'r\_%'"
+                ),
+                {"t": t.tenant_id},
+            )
 
 
 async def test_an_assigned_role_of_an_active_tenant_is_not_deleted(migrator: AsyncEngine) -> None:
