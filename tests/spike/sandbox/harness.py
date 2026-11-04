@@ -1229,8 +1229,11 @@ def versions(engine: Engine) -> dict[str, Any]:
         info = engine.info()
         found["rootless_engine"] = info.get("ServerVersion")
         found["cgroup"] = f"v{info.get('CgroupVersion')} {info.get('CgroupDriver')}"
-        path = (info.get("Runtimes") or {}).get(RUNTIME, {}).get("path")
-        found["runtime"] = (info.get("Runtimes") or {}).get(RUNTIME)
+        runtime = (info.get("Runtimes") or {}).get(RUNTIME) or {}
+        path = runtime.get("path")
+        # Path and arguments only: the engine also reports runsc's whole feature
+        # list, which alone overflows the 4096 characters an annotation keeps.
+        found["runtime"] = {"path": path, "runtimeArgs": runtime.get("runtimeArgs")}
         if path:
             found["runsc"] = _tail(
                 subprocess.run(
