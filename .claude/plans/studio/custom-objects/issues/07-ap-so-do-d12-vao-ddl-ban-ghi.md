@@ -1,7 +1,7 @@
 # 07 — Áp kết luận đo D12 vào DDL của studio.records
 
 Status: ready-for-human (Chờ Đạt 23: máy tham chiếu của YC20)
-Blocked by: 01, 02, 03
+Blocked by: 01, 02, 03, 04, 06
 Area: studio
 Yêu cầu: R9.2, R9.4, R9.5
 
@@ -60,3 +60,6 @@ sửa đổi 2026-11-03), để tập slot và modulus mà RecordService dựa v
   đóng ở `--scale smoke`; bước 1 đọc Comments của ticket 08. Ticket này chờ ticket 08 nhưng không ghi 08 ở
   `Blocked by`, vì phụ thuộc trong thư mục chỉ trỏ ngược (ticket-template); ticket 08 cũng `ready-for-human` trên
   cùng máy. Nếu sai thì: ticket 08 gộp lại vào ticket 01 và bước 1 đọc lại Comments của ticket 01.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): gate của ticket 03-06: ticket này thêm 04 (cùng `studio.records`, hình
+  kế hoạch của 04 đọc chỉ mục mà ticket này đổi) và 06 (cùng `studio.field_defs`, tập slot mà móc của 06 cấp) vào
+  Blocked by, cặp va chạm của `check_plans.py`. Nếu sai thì: bỏ hai cạnh và chạy lại test của 04, 06 sau revision.
