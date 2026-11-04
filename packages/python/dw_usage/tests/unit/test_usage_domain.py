@@ -123,9 +123,9 @@ def price_field_reads(roots: list[Path], base: Path = REPO_ROOT) -> list[str]:
         for path in sorted(root.rglob("*.py")):
             tree = ast.parse(path.read_text(encoding="utf-8"))
             for node in ast.walk(tree):
-                if isinstance(node, ast.Attribute) and node.attr in _PRICE_FIELDS:
-                    found.append(f"{path.relative_to(base).as_posix()}:{node.lineno}")
-                elif isinstance(node, ast.Constant) and node.value in _PRICE_FIELDS:
+                if (isinstance(node, ast.Attribute) and node.attr in _PRICE_FIELDS) or (
+                    isinstance(node, ast.Constant) and node.value in _PRICE_FIELDS
+                ):
                     found.append(f"{path.relative_to(base).as_posix()}:{node.lineno}")
     return found
 
