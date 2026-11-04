@@ -508,6 +508,7 @@ bên ngoài thì ghi "Chờ Đạt" và làm việc kế. Đường dẫn ticket
 
 **Dở dang khi phiên ngắt (2/11/2026 tối, hết hạn mức 5 giờ; mọi subagent dừng giữa chừng).** Phiên mới đọc đoạn này trước, xem `git status`, làm tiếp chứ không làm lại:
 
+- **Phiên 4/11/2026 sáng tiếp tục** ba việc dở trong ba subagent: CI triage (`_ci3`; gitleaks đã đánh dấu fixture ở `c5a24ea`, `next` 15.5.28 đã lưu ở `ecfe5bd`), lane 1 connections-and-vault/02 (`_lane1`), lane 2 custom-objects/01 rồi record-access/01 (`_lane2`). Nếu phiên này cũng ngắt, đọc `git log` từ `df0e662`.
 - **Ngắt lần hai (3/11/2026 trưa, phiên kết thúc; ba subagent dừng giữa chừng). Làm tiếp, không làm lại:**
     - **CI triage** (ưu tiên đầu, repo public): đã đẩy `2ccd704` (build web), `2f8cfb0` (pytest thu thập lại), `2102fbb` (Prettier); có thể đang dở bump `next` 15.5.24→15.5.28 ở `apps/web/package.json` (đã thấy trong cây trước khi ngắt; lockfile chưa). **Chưa có kết luận gitleaks toàn lịch sử**: chạy trước nhất; nếu là bí mật thật thì báo, không viết lại lịch sử. Còn trivy, mypy, scaffold-smoke, integration.
     - **Lane 1, connections-and-vault/02** (dở, chưa commit): migration `70d8a4564454_connections_and_secret_envelopes.py` (head hiện tại), `dw_kernel/secret.py`, `dw_platform/adapters/kms.py`, `adapters/persistence/secret_envelopes.py`, `application/secrets.py`, sửa `offboarding.py`, `settings.py` của api và worker, `wiring.py`, `container.py`, `test_rls_coverage.py`, `test_offboarding_coverage.py`, `test_restore_drill.py`, `uv.lock`. Còn: test, `mutations/02.yaml`, cổng nhanh, commit.
