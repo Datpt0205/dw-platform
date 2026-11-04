@@ -126,9 +126,11 @@ class ToolKindFactory(Protocol):
 @dataclass(frozen=True)
 class ToolAssembler:
     """The one place a tool of a kind becomes a `RegisteredTool`: its kind's
-    factory, its schemas within the profile, its policy at or above the floor,
-    then registered for its layer. Any refusal is a `ConfigError` and nothing
-    is registered."""
+    factory, its schemas within the profile, its policy at or above the floor
+    (`build`), then registered for its layer (`assemble`). Any refusal is a
+    `ConfigError` and nothing is registered. A Studio run's pinned tool is
+    built and never registered: the run hands it to the executor itself
+    (tools-and-skills R4.1, `adapters.studio_tools`)."""
 
     registry: ToolRegistry
     kinds: Mapping[str, ToolKindFactory]
@@ -139,6 +141,18 @@ class ToolAssembler:
         contract: ToolContract,
         *,
         tenant_id: TenantId | None,
+        over: ToolDefinition | None = None,
+    ) -> RegisteredTool:
+        """`build`, then registered for the layer `tenant_id` names."""
+        tool = self.build(binding, contract, over=over)
+        self.registry.register(tool, tenant_id=tenant_id)
+        return tool
+
+    def build(
+        self,
+        binding: ToolBinding,
+        contract: ToolContract,
+        *,
         over: ToolDefinition | None = None,
     ) -> RegisteredTool:
         """`over` is the platform tool a tenant's version overrides, whose
@@ -161,6 +175,4 @@ class ToolAssembler:
                 f"tool {contract.definition.name}@{contract.definition.version} is below its floor",
                 details={"tool": contract.definition.name, **exc.details},
             ) from exc
-        tool = RegisteredTool(contract.definition, factory.build(binding, contract))
-        self.registry.register(tool, tenant_id=tenant_id)
-        return tool
+        return RegisteredTool(contract.definition, factory.build(binding, contract))

@@ -24,6 +24,7 @@ from dw_agent_runtime.contracts import (
     MessageSpec,
     SideEffectLevel,
     ToolDefinition,
+    ToolResponse,
     approval_policy_disagrees_with_side_effect,
 )
 from dw_agent_runtime.model.copy import RuntimeCopy
@@ -62,6 +63,10 @@ class ToolSpec(BaseModel):
     # `{{ steps.<id>.<field> }}` (leadcare R1.1: a reply is read since the
     # send's `sent_at`, a switch turns on `found`); none, and only `result`.
     output_fields: tuple[str, ...] = ()
+    # What of the output the model reads once the Studio assembler builds the
+    # tool (ADR-0116 decision 1, tools-and-skills R5.1): JSON Pointers, and a
+    # cap of 1 to 16 384 characters, 8 000 by default.
+    response: ToolResponse = ToolResponse()
 
     @model_validator(mode="after")
     def _a_tool_with_an_effect_says_whether_it_sends(self) -> ToolSpec:
@@ -124,6 +129,7 @@ class ToolSpec(BaseModel):
             # (tenant-config R5.4); a tool kind declares its own later
             # (ADR-0116).
             simulate_safe=self.side_effect_level == "none",
+            response=self.response,
         )
 
 

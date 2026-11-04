@@ -64,6 +64,7 @@ from dw_agent_runtime.adapters.model_retry import ModelRetryMiddleware
 from dw_agent_runtime.adapters.recalled_memory import MemoryRecallPort, RecalledMemoryMiddleware
 from dw_agent_runtime.adapters.run_budget import RunBudgetMiddleware
 from dw_agent_runtime.adapters.run_control_middleware import RunControlMiddleware
+from dw_agent_runtime.adapters.studio_tools import PinnedTools
 from dw_agent_runtime.adapters.sub_agents import SubAgentSpec, sub_agent_middleware
 from dw_agent_runtime.adapters.system_prompt import WorkerSystemPrompt
 from dw_agent_runtime.contracts import RunContext, ToolDefinition
@@ -78,7 +79,13 @@ from dw_agent_runtime.tools import ToolRegistry
 from dw_kernel.ports import IdGenerator, UtcClock
 from dw_platform.application.ports import PlatformUnitOfWorkFactory
 
-__all__ = ["AgentSpec", "CompactionSpec", "build_agent", "platform_middleware"]
+__all__ = [
+    "AgentSpec",
+    "CompactionSpec",
+    "build_agent",
+    "offered_definitions",
+    "platform_middleware",
+]
 
 
 def _utc_now() -> datetime:
@@ -158,6 +165,26 @@ class AgentSpec:
     # Only read when `recall` is set. Passed rather than taken from a module
     # global so a test can pin the moment a validity window is judged against.
     clock: Callable[[], datetime] | None = None
+    # A Studio agent's tools, built from what its run pinned
+    # (`adapters.studio_tools`; tools-and-skills R4.1). Set, they are the
+    # agent's only tools and their definitions are what every middleware is
+    # built from: `offered` stays empty and `registry` is not read.
+    pinned: PinnedTools | None = None
+
+
+def offered_definitions(spec: AgentSpec) -> list[ToolDefinition]:
+    """The one list the tools and every middleware are built from: a Studio
+    agent's pinned definitions, or a code-defined worker's toolset."""
+    if spec.pinned is None:
+        return list(spec.offered)
+    if spec.offered:
+        raise ConfigError(
+            "a Studio agent offers only what its run pinned",
+            details={"offered": [definition.name for definition in spec.offered]},
+        )
+    if spec.sub_agents:
+        raise ConfigError("a Studio agent's sub-agents are not built from a toolset")
+    return list(spec.pinned.definitions)
 
 
 def platform_middleware(spec: AgentSpec) -> list[AgentMiddleware[Any, Any]]:
@@ -181,7 +208,7 @@ def platform_middleware(spec: AgentSpec) -> list[AgentMiddleware[Any, Any]]:
     subclasses `ToolErrorMiddleware`, which re-raises it; a hand-written
     `try/except` is not.
     """
-    offered = list(spec.offered)
+    offered = offered_definitions(spec)
     stack: list[AgentMiddleware[Any, Any]] = [
         WorkerSystemPrompt(
             spec.prompts, spec.prompt_id, spec.prompt_version, spec.prompt_variables
@@ -262,14 +289,18 @@ def build_agent(
     optional because a graph a runner hosts is compiled by the runner, which
     passes its own; one built for a test or a one-shot call has none.
     """
-    offered = list(spec.offered)
-    tools: list[Any] = list(
-        platform_tools(
-            offered,
-            spec.registry,
-            spec.executor,
-            approval_type_prefix=spec.approval_type_prefix,
-            copy=spec.copy,
+    offered = offered_definitions(spec)
+    tools: list[Any] = (
+        list(spec.pinned.tools)
+        if spec.pinned is not None
+        else list(
+            platform_tools(
+                offered,
+                spec.registry,
+                spec.executor,
+                approval_type_prefix=spec.approval_type_prefix,
+                copy=spec.copy,
+            )
         )
     )
     middleware = platform_middleware(spec)

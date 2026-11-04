@@ -268,6 +268,9 @@ class ToolCall:
     idempotency_key: str | None
     approved: bool
     decision: DecisionCall | None
+    # The tool a Studio run pinned (tools-and-skills R4.1): `resolve` takes it
+    # as it is and never reads the registry for it.
+    pinned: RegisteredTool | None = None
     tool: RegisteredTool | None = None
     input: BaseModel | None = None
     input_payload: dict[str, object] = field(default_factory=dict)
@@ -275,6 +278,9 @@ class ToolCall:
     boundary: DwBoundary | None = None
     sending: tuple[SendRequest, Admission] | None = None
     after_success: list[Callable[[], Awaitable[None]]] = field(default_factory=list)
+    # The `platform.tool_executions` row the call's answer was recorded under:
+    # its success, its sample, or the earlier success a replay returns.
+    execution_id: uuid_module.UUID | None = None
 
     @property
     def registered(self) -> RegisteredTool:
@@ -298,6 +304,15 @@ class ToolCall:
 
 
 ToolStep = Callable[["ToolExecutor", ToolCall], Awaitable[BaseModel | None]]
+
+
+@dataclass(frozen=True, slots=True)
+class ToolResult:
+    """A call's answer and the execution row it was recorded under, which the
+    model-facing view names in its artifact (ADR-0116 decision 5)."""
+
+    output: BaseModel
+    execution_id: uuid_module.UUID | None
 
 
 class ToolSteps:
@@ -424,8 +439,38 @@ class ToolExecutor:
         idempotency_key: str | None = None,
         approved: bool = False,
         decision: DecisionCall | None = None,
+        pinned: RegisteredTool | None = None,
     ) -> BaseModel:
+        """The call's checked output; `execute_recorded` says which row holds it."""
+        result = await self.execute_recorded(
+            name=name,
+            version=version,
+            raw_input=raw_input,
+            run_context=run_context,
+            idempotency_key=idempotency_key,
+            approved=approved,
+            decision=decision,
+            pinned=pinned,
+        )
+        return result.output
+
+    async def execute_recorded(
+        self,
+        *,
+        name: str,
+        version: str,
+        raw_input: dict[str, object],
+        run_context: RunContext,
+        idempotency_key: str | None = None,
+        approved: bool = False,
+        decision: DecisionCall | None = None,
+        pinned: RegisteredTool | None = None,
+    ) -> ToolResult:
         """Span wrapper around the pipeline; the enforcement itself is `_execute`.
+
+        `pinned` is the tool a Studio run pinned (tools-and-skills R4.1): the
+        call resolves to it and to nothing else, and a run with a manifest that
+        is not handed one is refused at `resolve`.
 
         Attributes carry NAMES AND COUNTS ONLY — never the tool's input or
         output. Step 4 of the pipeline masks payloads before anything is
@@ -455,6 +500,7 @@ class ToolExecutor:
                     run_context=run_context,
                     idempotency_key=idempotency_key,
                     approved=approved,
+                    pinned=pinned,
                 )
                 status = "ok"
                 return result
@@ -480,7 +526,8 @@ class ToolExecutor:
         idempotency_key: str | None = None,
         approved: bool = False,
         decision: DecisionCall | None = None,
-    ) -> BaseModel:
+        pinned: RegisteredTool | None = None,
+    ) -> ToolResult:
         call = ToolCall(
             name=name,
             version=version,
@@ -489,12 +536,13 @@ class ToolExecutor:
             idempotency_key=idempotency_key,
             approved=approved,
             decision=decision,
+            pinned=pinned,
         )
         for step in self._gates:
             ended = await step(self, call)
             if ended is not None:
-                return ended
-        return await self._tail(call)
+                return ToolResult(ended, call.execution_id)
+        return ToolResult(await self._tail(call), call.execution_id)
 
     # ------------------------------------------------------- the gate steps --
 
@@ -518,7 +566,30 @@ class ToolExecutor:
             raise
 
     async def step_resolve(self, call: ToolCall) -> None:
-        """By the run's tenant: its own tool, else the platform's (R2.1)."""
+        """By the run's tenant: its own tool, else the platform's (R2.1). A
+        Studio run's tool is the one it pinned, taken as handed and never read
+        from the registry (R4.1; DO-05): a pinned tool that is not the one
+        called, or a run with a manifest that hands none, is a `ConfigError`
+        before anything is checked or run."""
+        pinned = call.pinned
+        if pinned is not None:
+            if (pinned.definition.name, pinned.definition.version) != (call.name, call.version):
+                raise ConfigError(
+                    "the pinned tool is not the one called",
+                    details={
+                        "reason": "pinned_mismatch",
+                        "tool": call.name,
+                        "version": call.version,
+                        "pinned": f"{pinned.definition.name}@{pinned.definition.version}",
+                    },
+                )
+            call.tool = pinned
+            return
+        if call.run_context.run_manifest_hash is not None:
+            raise ConfigError(
+                "a Studio run calls only the tools it pinned",
+                details={"reason": "tool_not_pinned", "tool": call.name, "version": call.version},
+            )
         call.tool = self.registry.resolve(
             call.name, call.version, tenant_id=TenantId(call.run_context.tenant_id)
         )
@@ -585,7 +656,7 @@ class ToolExecutor:
         opens no approval, sends nothing and runs nothing (R5.6)."""
         if not call.definition.intercepted_in(call.run_context.run_mode):
             return None
-        return await self._simulated(call.registered, call.run_context, call.input_hash)
+        return await self._simulated(call)
 
     async def step_approval(self, call: ToolCall) -> None:
         """R2.5: a call that needs a person runs only approved, whoever called.
@@ -633,7 +704,7 @@ class ToolExecutor:
                 call.run_context, call.definition, call.input_hash, "blocked:no_idempotency_key"
             )
             return None  # pragma: no cover - _refuse raises
-        replayed = await self._replay(call.registered, call.run_context, key, call.input_hash)
+        replayed = await self._replay(call, key)
         if replayed is not None:
             return replayed
         sending = await self._admitted_send(
@@ -672,20 +743,10 @@ class ToolExecutor:
         # A key on a `none` tool has nothing to protect and is not claimed.
         if idempotency_key is None or definition.side_effect_level == "none":
             if idempotency_key is not None:
-                replayed = await self._replay(tool, run_context, idempotency_key, input_hash)
+                replayed = await self._replay(call, idempotency_key)
                 if replayed is not None:
                     return replayed
-            result = await self._run(
-                tool,
-                call.version,
-                call.checked_input,
-                input_hash,
-                safe_input,
-                run_context,
-                idempotency_key,
-                dispatch_logged=False,
-                token=None,
-            )
+            result = await self._run(call, safe_input, dispatch_logged=False, token=None)
             await self._after_success(call)
             return result
 
@@ -693,7 +754,7 @@ class ToolExecutor:
             run_context, name, idempotency_key, lease_seconds=_lease_seconds(definition)
         )
         if token is None:
-            replayed = await self._replay(tool, run_context, idempotency_key, input_hash)
+            replayed = await self._replay(call, idempotency_key)
             if replayed is not None:
                 return replayed
             raise ConflictError(
@@ -701,7 +762,7 @@ class ToolExecutor:
                 details={"tool": name, "idempotency_key": idempotency_key},
             )
         try:
-            replayed = await self._replay(tool, run_context, idempotency_key, input_hash)
+            replayed = await self._replay(call, idempotency_key)
             if replayed is not None:
                 return replayed
             # A send that may have been applied is never made again blindly,
@@ -725,13 +786,8 @@ class ToolExecutor:
                     details={"tool": name, "idempotency_key": idempotency_key},
                 )
             result = await self._run(
-                tool,
-                call.version,
-                call.checked_input,
-                input_hash,
+                call,
                 safe_input,
-                run_context,
-                idempotency_key,
                 dispatch_logged=definition.side_effect_level in _LEAVES_THE_PLATFORM,
                 token=token,
             )
@@ -794,13 +850,10 @@ class ToolExecutor:
             await self._refuse(run_context, definition, input_hash, admission.code)
         return request, admission
 
-    async def _replay(
-        self,
-        tool: RegisteredTool,
-        run_context: RunContext,
-        idempotency_key: str,
-        input_hash: str,
-    ) -> BaseModel | None:
+    async def _replay(self, call: ToolCall, idempotency_key: str) -> BaseModel | None:
+        tool = call.registered
+        run_context = call.run_context
+        input_hash = call.input_hash
         definition = tool.definition
         existing = await self.execution_store.find_succeeded(
             run_context, definition.name, idempotency_key
@@ -813,6 +866,8 @@ class ToolExecutor:
                 details={"tool": definition.name, "idempotency_key": idempotency_key},
             )
         stored_output = getattr(existing, "output", None) or {}
+        stored_id = getattr(existing, "id", None)
+        call.execution_id = stored_id if isinstance(stored_id, uuid_module.UUID) else None
         await self._audit(
             run_context,
             "tool.replayed",
@@ -835,17 +890,18 @@ class ToolExecutor:
 
     async def _run(
         self,
-        tool: RegisteredTool,
-        version: str,
-        input_model: BaseModel,
-        input_hash: str,
+        call: ToolCall,
         safe_input: dict[str, object],
-        run_context: RunContext,
-        idempotency_key: str | None,
         *,
         dispatch_logged: bool,
         token: uuid_module.UUID | None,
     ) -> BaseModel:
+        tool = call.registered
+        version = call.version
+        input_model = call.checked_input
+        input_hash = call.input_hash
+        run_context = call.run_context
+        idempotency_key = call.idempotency_key
         definition = tool.definition
         name = definition.name
         started_at = self.clock.now().astimezone(UTC)
@@ -1002,9 +1058,10 @@ class ToolExecutor:
         output_hash = canonical_hash(output_payload)
 
         # 9. persist execution + audit
+        execution_id = self.id_generator.new_uuid()
         earlier = await self.execution_store.record(
             run_context,
-            execution_id=self.id_generator.new_uuid(),
+            execution_id=execution_id,
             tool_name=name,
             tool_version=version,
             status="succeeded",
@@ -1022,9 +1079,10 @@ class ToolExecutor:
             # The unique index refused a second success for this key: the first
             # one is the answer (the backstop behind the claim, ADR-0108 d. 5).
             assert idempotency_key is not None
-            replayed = await self._replay(tool, run_context, idempotency_key, input_hash)
+            replayed = await self._replay(call, idempotency_key)
             if replayed is not None:
                 return replayed
+        call.execution_id = execution_id
         await self._audit(
             run_context,
             "tool.executed",
@@ -1154,12 +1212,13 @@ class ToolExecutor:
             details={"tool": definition.name, "reason_code": reason},
         )
 
-    async def _simulated(
-        self, tool: RegisteredTool, run_context: RunContext, input_hash: str
-    ) -> BaseModel:
+    async def _simulated(self, call: ToolCall) -> BaseModel:
         """R5.1-R5.3: a sample of the tool's output schema, checked by its
         output model as a real output is, marked `simulated`; a `simulated`
         row and its `tool.simulated` audit event in one transaction."""
+        tool = call.registered
+        run_context = call.run_context
+        input_hash = call.input_hash
         definition = tool.definition
         try:
             validated = tool.behaviour.validate_output(sample_of(tool.behaviour.output_schema()))
@@ -1170,9 +1229,10 @@ class ToolExecutor:
             ) from exc
         output: dict[str, object] = {**validated.model_dump(mode="json"), "simulated": True}
         now = self.clock.now()
+        call.execution_id = self.id_generator.new_uuid()
         await self.execution_store.record(
             run_context,
-            execution_id=self.id_generator.new_uuid(),
+            execution_id=call.execution_id,
             tool_name=definition.name,
             tool_version=definition.version,
             status="simulated",

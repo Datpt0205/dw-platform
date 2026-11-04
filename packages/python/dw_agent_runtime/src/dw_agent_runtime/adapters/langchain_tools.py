@@ -41,7 +41,8 @@ from langgraph.types import Command, interrupt
 from pydantic import BaseModel
 
 from dw_agent_runtime.contracts import RunContext, ToolDefinition
-from dw_agent_runtime.executor import ToolExecutor, canonical_hash
+from dw_agent_runtime.contracts import model_facing_name as model_facing_name
+from dw_agent_runtime.executor import ToolExecutor, ToolResult, canonical_hash
 from dw_agent_runtime.model.copy import RuntimeCopy
 from dw_agent_runtime.registry import ConfigError
 from dw_agent_runtime.run_control import RunHaltedError
@@ -55,8 +56,6 @@ from dw_kernel.errors import (
     PermissionDeniedError,
 )
 from dw_observability.redaction import redact_mapping
-
-_NAME_SEPARATOR = "__"
 
 
 class ApprovalQuestionPort(Protocol):
@@ -107,11 +106,6 @@ _ANSWERABLE_ERRORS = frozenset(
         ErrorCode.IDEMPOTENCY_CONFLICT,
     }
 )
-
-
-def model_facing_name(tool_name: str) -> str:
-    """Providers accept ``[a-zA-Z0-9_-]`` only, so the namespace dot cannot survive."""
-    return tool_name.replace(".", _NAME_SEPARATOR)
 
 
 def platform_tools(
@@ -503,8 +497,42 @@ def _build_tool(
     # The platform layer: an agent is built once per process, before any run
     # names a tenant. The executor resolves each call by its run's tenant.
     registered = registry.resolve(definition.name, definition.version, tenant_id=None)
+    call = tool_call(
+        registered,
+        executor,
+        approval_type_prefix,
+        copy,
+        pinned=False,
+        present=lambda result: result.output.model_dump_json(),
+        rejected=lambda text: text,
+    )
+    return StructuredTool(
+        name=model_facing_name(definition.name),
+        description=definition.description,
+        args_schema=registered.behaviour.args_schema,
+        coroutine=call,
+    )
 
-    async def call(**kwargs: object) -> str:
+
+def tool_call(
+    registered: RegisteredTool,
+    executor: ToolExecutor,
+    approval_type_prefix: str,
+    copy: RuntimeCopy,
+    *,
+    pinned: bool,
+    present: Callable[[ToolResult], Any],
+    rejected: Callable[[str], Any],
+) -> Callable[..., Awaitable[Any]]:
+    """The one body of a model's call of a platform tool (tools-and-skills
+    ticket 02 step 3): the run's `RunContext`, the executor's answer to "does
+    this wait for a person", the key from the arguments, then the executor.
+    A code-defined worker's tool resolves by the run's tenant; a Studio run's
+    is handed over as it was `pinned`. `present` turns the result into what
+    the model reads, `rejected` a person's refusal."""
+    definition = registered.definition
+
+    async def call(**kwargs: object) -> Any:
         run_context = get_runtime(RunContext).context
         approved = False
         # Asks a person only for a call that will run: one the executor
@@ -516,29 +544,27 @@ def _build_tool(
                 definition, registered, kwargs, run_context, approval_type_prefix, copy
             )
             if not decision.get("approved"):
-                return copy.tool_rejected(definition.name, str(decision.get("comment", "")))
+                return rejected(
+                    copy.tool_rejected(definition.name, str(decision.get("comment", "")))
+                )
             approved = True
 
         # No failure handling here: `PlatformToolErrorsMiddleware` owns that, for
         # every tool and not only the ones built below. Two handlers would be
         # two answers to "what is the model told", and the one that fired first
         # would silently win.
-        output = await executor.execute(
+        result = await executor.execute_recorded(
             name=definition.name,
             version=definition.version,
             raw_input=kwargs,
             run_context=run_context,
             idempotency_key=_idempotency_key(definition, kwargs, run_context),
             approved=approved,
+            pinned=registered if pinned else None,
         )
-        return output.model_dump_json()
+        return present(result)
 
-    return StructuredTool(
-        name=model_facing_name(definition.name),
-        description=definition.description,
-        args_schema=registered.behaviour.args_schema,
-        coroutine=call,
-    )
+    return call
 
 
 async def _ask_human(

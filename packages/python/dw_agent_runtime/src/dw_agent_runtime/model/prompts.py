@@ -16,20 +16,39 @@ from __future__ import annotations
 
 import hashlib
 import html
+import json
 import re
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any, Final, NamedTuple
 from uuid import UUID
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
+from dw_agent_runtime.contracts import (
+    MAX_OUTPUT_BYTES,
+    MODEL_TOOL_NAME,
+    ToolDefinition,
+    model_facing_name,
+)
 from dw_agent_runtime.registry import ConfigError
 from dw_kernel.errors import DomainError, NotFoundError
 from dw_kernel.overlay import TenantOverlay
 
 _VARIABLE_PATTERN = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
 UNTRUSTED_TAG = "input"
+TOOL_OUTPUT_TAG = "tool_output"
+# Ends a tool output the model-facing view cut, inside its ceilings (R5.1).
+TRUNCATED_MARK: Final = "[đã cắt]"
+
+
+def escape_untrusted(value: str) -> str:
+    """ADR-0010's one escape: `&`, `<` and `>`, so a value can neither close
+    its block nor open another. Every untrusted block a model reads goes
+    through it exactly once."""
+    return html.escape(value, quote=False)
 
 
 def contain_untrusted(name: str, value: str) -> str:
@@ -39,8 +58,109 @@ def contain_untrusted(name: str, value: str) -> str:
     and nothing in it can open or close a block. ``name`` is a template
     placeholder, which the pattern above limits to ``[a-z0-9_]``.
     """
-    escaped = html.escape(value, quote=False)
+    escaped = escape_untrusted(value)
     return f'<{UNTRUSTED_TAG} name="{name}">\n{escaped}\n</{UNTRUSTED_TAG}>'
+
+
+class ContainedOutput(NamedTuple):
+    """A tool's answer as the model reads it, and what stays beside it: a
+    `content_and_artifact` pair whose artifact is never sent to the model."""
+
+    content: str
+    artifact: dict[str, object]
+
+
+_ABSENT: Final = object()
+
+
+def _at(document: object, pointer: str) -> object:
+    """The value a JSON Pointer (RFC 6901) names, or `_ABSENT`."""
+    node = document
+    for raw in pointer.split("/")[1:]:
+        token = raw.replace("~1", "/").replace("~0", "~")
+        if isinstance(node, Mapping) and token in node:
+            node = node[token]
+        elif isinstance(node, list) and token.isdigit() and int(token) < len(node):
+            node = node[int(token)]
+        else:
+            return _ABSENT
+    return node
+
+
+def _projected(payload: object, fields: Sequence[str]) -> object:
+    """The whole output; the value one pointer names (null when absent); or
+    an object keyed by pointer holding each value present."""
+    if not fields:
+        return payload
+    if len(fields) == 1:
+        found = _at(payload, fields[0])
+        return None if found is _ABSENT else found
+    picked = {pointer: _at(payload, pointer) for pointer in fields}
+    return {pointer: value for pointer, value in picked.items() if value is not _ABSENT}
+
+
+def _capped(escaped: str, max_chars: int) -> tuple[str, bool]:
+    """At most `max_chars` characters and `MAX_OUTPUT_BYTES` bytes of UTF-8,
+    both counted on the escaped text plus the mark that ends a cut one; cut
+    at a character, never inside an entity such as `&lt;`."""
+    if len(escaped) <= max_chars and len(escaped.encode("utf-8")) <= MAX_OUTPUT_BYTES:
+        return escaped, False
+    room = max_chars - len(TRUNCATED_MARK)
+    if room <= 0:
+        return TRUNCATED_MARK[:max_chars], True
+    kept = escaped[:room]
+    room_bytes = MAX_OUTPUT_BYTES - len(TRUNCATED_MARK.encode("utf-8"))
+    encoded = kept.encode("utf-8")
+    if len(encoded) > room_bytes:
+        # A character cut in half at the end is dropped whole.
+        kept = encoded[:room_bytes].decode("utf-8", errors="ignore")
+    # The escape writes `&` only to open an entity, so an `&` with no `;`
+    # after it is an entity cut in half.
+    opened = kept.rfind("&")
+    if opened != -1 and ";" not in kept[opened:]:
+        kept = kept[:opened]
+    return kept + TRUNCATED_MARK, True
+
+
+def contain_tool_output(
+    output: BaseModel | Mapping[str, Any],
+    definition: ToolDefinition,
+    execution_id: UUID | None,
+    *,
+    tool_version_id: str,
+) -> ContainedOutput:
+    """The one place a tool's output is wrapped and cut for the model, for
+    every tool the Studio assembler builds (ADR-0116 decision 5; R5.1-R5.3).
+
+    Projected by `definition.response.fields`, written as compact JSON,
+    escaped once by ADR-0010's escape, cut on the escaped text, and wrapped as
+    `<tool_output source="<tool>" trust="untrusted">`. A handler returns its
+    output raw: one that wrapped it too would only be escaped here, never
+    trusted. The artifact names the execution row holding the full output,
+    the pinned version and whether the content was cut; it never reaches the
+    model."""
+    source = model_facing_name(definition.name)
+    if MODEL_TOOL_NAME.fullmatch(source) is None:
+        raise ConfigError(
+            "a tool's model-facing name is outside what a provider accepts",
+            details={"tool": definition.name},
+        )
+    payload = output.model_dump(mode="json") if isinstance(output, BaseModel) else output
+    text = json.dumps(
+        _projected(payload, definition.response.fields),
+        ensure_ascii=False,
+        separators=(",", ":"),
+        default=str,
+    )
+    content, truncated = _capped(escape_untrusted(text), definition.response.max_output_chars)
+    return ContainedOutput(
+        f'<{TOOL_OUTPUT_TAG} source="{source}" trust="untrusted">\n{content}\n</{TOOL_OUTPUT_TAG}>',
+        {
+            "execution_id": None if execution_id is None else str(execution_id),
+            "tool_version_id": tool_version_id,
+            "truncated": truncated,
+        },
+    )
 
 
 class PromptArtifact(BaseModel):

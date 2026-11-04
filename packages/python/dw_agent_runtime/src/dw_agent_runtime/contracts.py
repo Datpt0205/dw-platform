@@ -6,6 +6,7 @@ frozen and carry explicit version fields that feed the release manifest.
 
 from __future__ import annotations
 
+import re
 from typing import Final, Literal
 from uuid import UUID
 
@@ -24,6 +25,29 @@ _SLUG_PATTERN = r"^[a-z][a-z0-9_]*$"
 
 SideEffectLevel = Literal["none", "internal", "external", "critical"]
 ApprovalPolicy = Literal["never", "conditional", "always"]
+
+# What reaches a model of a tool (ADR-0116 decisions 5, 6; tools-and-skills
+# R4.3, R4.5): a name of at most 64 characters, and at most 40 tools in all.
+# Read by the Studio seal (`dw_studio.core.domain.toolset`) and the Studio
+# assembler (`adapters.studio_tools`) alike, so the two cannot disagree.
+MAX_TOOL_NAME_CHARS: Final = 64
+MAX_MODEL_TOOLS: Final = 40
+# What a provider accepts as a tool's name, and so all a model-facing name
+# may hold: it is written into the `<tool_output source="...">` block as is.
+MODEL_TOOL_NAME: Final = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+_NAME_SEPARATOR = "__"
+# A JSON Pointer (RFC 6901) into a tool's output: "" is the whole of it.
+_JSON_POINTER_PATTERN = r"^(/([^~/]|~[01])*)*$"
+# The model-facing view's ceilings (ADR-0116 decision 5; YC48): a tool's own
+# cap in characters, under a hard one of 16 KiB of UTF-8 bytes.
+DEFAULT_MAX_OUTPUT_CHARS: Final = 8_000
+MAX_OUTPUT_BYTES: Final = 16_384
+
+
+def model_facing_name(tool_name: str) -> str:
+    """Providers accept ``[a-zA-Z0-9_-]`` only, so the namespace dot cannot survive."""
+    return tool_name.replace(".", _NAME_SEPARATOR)
+
 
 # The side effects a tool may have and still claim it never needs a person.
 _NEVER_IS_HONEST_FOR: Final = frozenset({"none", "internal"})
@@ -122,6 +146,12 @@ class RunContext(BaseModel):
     # The sha256 of the workflow document a wf-lite run started from, pinned on
     # its run row (wf-lite R6.14, ADR-0109); None for a run of a code graph.
     definition_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    # The run manifest a Studio run pinned (`platform.worker_runs.
+    # run_manifest_hash`, ADR-0109 decision 7); None for any other run. Such a
+    # run resolves a tool only from what it pinned: `ToolExecutor` refuses one
+    # it is not handed (tools-and-skills R4.1; DO-05). Set where a Studio run
+    # is taken and resumed (agent-builder/03).
+    run_manifest_hash: str | None = Field(default=None, pattern=r"^sha256:[0-9a-f]{64}$")
     worker_id: str
     worker_version: str = Field(pattern=_RUN_VERSION_PATTERN)
     channel: str
@@ -182,6 +212,28 @@ class MessageSpec(BaseModel):
     recipient_fields: tuple[str, ...] = Field(min_length=1)
 
 
+class ToolResponse(BaseModel):
+    """What of a tool's output reaches the model (ADR-0116 decision 5,
+    tools-and-skills R5.1): the parts `fields` points at, the whole output
+    when empty, cut at `max_output_chars`. Read by `contain_tool_output`
+    alone."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    fields: tuple[str, ...] = Field(default=(), max_length=50)
+    max_output_chars: int = Field(default=DEFAULT_MAX_OUTPUT_CHARS, ge=1, le=MAX_OUTPUT_BYTES)
+
+    @field_validator("fields")
+    @classmethod
+    def _pointers(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        for pointer in value:
+            if not pointer or re.fullmatch(_JSON_POINTER_PATTERN, pointer) is None:
+                raise ValueError("each response field is a non-empty JSON Pointer")
+        if len(set(value)) != len(value):
+            raise ValueError("a response field is named twice")
+        return value
+
+
 class ToolDefinition(BaseModel):
     """Versioned tool contract enforced by the tool executor."""
 
@@ -205,6 +257,10 @@ class ToolDefinition(BaseModel):
     # a tool with no effect, so the default is no and a definition that does
     # not say is intercepted (R5.5).
     simulate_safe: bool = False
+    # What of the output the model reads, for a tool the Studio assembler
+    # builds (tools-and-skills R5.1); a code-defined worker's tool keeps its
+    # whole output (spec, Out of scope).
+    response: ToolResponse = ToolResponse()
 
     @field_validator("name")
     @classmethod

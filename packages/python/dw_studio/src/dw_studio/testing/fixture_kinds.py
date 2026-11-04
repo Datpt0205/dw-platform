@@ -1,10 +1,13 @@
 """`fixture` and `fixture_gateless`: two kinds that exist only in tests.
 
-A document is `{"title": str, "uses": [<artifact id>, ...], "size": int}`;
+A document is `{"title": str, "uses": [<artifact id>, ...], "size": int}`,
+and may embed a `toolset` (`dw.toolset/v1`) the way an agent version does;
 `extract` returns one `artifact` reference per string in `uses`, at its
-pointer. `fixture` is gated (`has_quality_gate = true`), `fixture_gateless`
-is not. Their keys are test keys, outside `studio.` (test (d) of
-`test_permission_catalogue.py`), and their hook does nothing.
+pointer, and the toolset's references from `extract_toolset`, whose problems
+`validate_toolset` adds (tools-and-skills ticket 02, R4.5). `fixture` is
+gated (`has_quality_gate = true`), `fixture_gateless` is not. Their keys are
+test keys, outside `studio.` (test (d) of `test_permission_catalogue.py`),
+and their hook does nothing.
 
 `planted_fixture_kinds` is an async context manager for a module-scoped
 fixture: it registers the keys and the two `studio.artifact_kinds` rows as
@@ -30,6 +33,7 @@ from dw_platform.testing.rbac import register_key, unregister_key
 from dw_studio.core.application.ports import ArtifactTx
 from dw_studio.core.application.registry import ArtifactKindEntry
 from dw_studio.core.domain.artifacts import DocumentProblem, Reference, TargetKind, Usage
+from dw_studio.core.domain.toolset import extract_toolset, validate_toolset
 
 FIXTURE_READ: Final = "fixture.artifacts.read"
 FIXTURE_WRITE: Final = "fixture.artifacts.write"
@@ -55,18 +59,27 @@ def validate_fixture(document: Any) -> list[DocumentProblem]:
     size = document.get("size", 0)
     if not isinstance(size, int) or isinstance(size, bool) or size < 0:
         problems.append(DocumentProblem("/size", "size_invalid", "size is a whole number"))
+    if "toolset" in document:
+        problems.extend(validate_toolset(document["toolset"]))
     return problems
 
 
 def extract_fixture(document: Any) -> list[Reference]:
-    uses = document.get("uses", []) if isinstance(document, dict) else []
-    if not isinstance(uses, list):
+    if not isinstance(document, dict):
         return []
-    return [
-        Reference(TargetKind.ARTIFACT, item, Usage.READ, f"/uses/{n}")
-        for n, item in enumerate(uses)
-        if isinstance(item, str)
-    ]
+    uses = document.get("uses", [])
+    found = (
+        [
+            Reference(TargetKind.ARTIFACT, item, Usage.READ, f"/uses/{n}")
+            for n, item in enumerate(uses)
+            if isinstance(item, str)
+        ]
+        if isinstance(uses, list)
+        else []
+    )
+    if "toolset" in document:
+        found.extend(extract_toolset(document["toolset"]))
+    return found
 
 
 async def _no_hook(_tx: ArtifactTx, _version_id: uuid.UUID) -> None:
