@@ -9,6 +9,11 @@ Bounded-context graders (scoring engines, parsers, ...) live with their
 context, keyed "<context>.<gate>", and are registered in the eval composition
 root (`scripts/run_evals.py`); this package never imports a context. Give the
 context's dataset full security coverage.
+
+A grader of the second kind, `ObservationGrader`, grades what one trial of a
+run did (`Observation`) rather than a fixture; `judge_grader` is one, asking a
+`JudgePort` (agent-lifecycle R3; ADR-0120 decision 4). A grader that cannot
+tell abstains (`GradeResult.abstain`), and every door counts that as failing.
 """
 
 from __future__ import annotations
@@ -16,17 +21,32 @@ from __future__ import annotations
 import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, Protocol
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+
+from dw_agent_runtime.contracts import SideEffectLevel
+from dw_evals.dataset import EvalCase
 
 
 class GradeResult(BaseModel):
+    """One grade. `unknown` is a grader that could not tell: never passing, so
+    `EvalReport.ok` and `evaluate_gate` count it as failing (R3.2)."""
+
     model_config = ConfigDict(frozen=True)
 
     passed: bool
+    unknown: bool = False
+    score: float | None = None
     details: dict[str, Any] = {}
+
+    @model_validator(mode="after")
+    def _unknown_never_passes(self) -> GradeResult:
+        if self.passed and self.unknown:
+            raise ValueError("a grade cannot both pass and be unknown")
+        return self
 
     @classmethod
     def ok(cls, **details: Any) -> GradeResult:
@@ -35,6 +55,10 @@ class GradeResult(BaseModel):
     @classmethod
     def fail(cls, reason: str, **details: Any) -> GradeResult:
         return cls(passed=False, details={"reason": reason, **details})
+
+    @classmethod
+    def abstain(cls, reason: str, **details: Any) -> GradeResult:
+        return cls(passed=False, unknown=True, details={"reason": reason, **details})
 
 
 @dataclass
@@ -98,7 +122,7 @@ def grade_side_effect_approval(
     """The ToolDefinition contract must force approval on dangerous tools:
     external + policy "always" requires approval, and critical side effects
     require approval REGARDLESS of the declared policy (fail closed)."""
-    from dw_agent_runtime.contracts import ApprovalPolicy, SideEffectLevel, ToolDefinition
+    from dw_agent_runtime.contracts import ApprovalPolicy, ToolDefinition
 
     def _definition(side_effect: SideEffectLevel, policy: ApprovalPolicy) -> ToolDefinition:
         return ToolDefinition(
@@ -226,14 +250,104 @@ join these in the eval composition root (`scripts/run_evals.py`), through
 `merge_graders`: this package imports no context."""
 
 
-def merge_graders(*tables: Mapping[str, Grader]) -> dict[str, Grader]:
-    """One grader table from several. A name two tables both claim is refused,
-    naming it: which one a dataset meant cannot be guessed, and letting the
-    later table win would silently regrade every case of the earlier one."""
-    merged: dict[str, Grader] = {}
+def merge_graders[G](*tables: Mapping[str, G]) -> dict[str, G]:
+    """One grader table from several, of either kind (`Grader`,
+    `ObservationGrader`). A name two tables both claim is refused, naming it:
+    which one a dataset meant cannot be guessed, and letting the later table
+    win would silently regrade every case of the earlier one."""
+    merged: dict[str, G] = {}
     for table in tables:
         clash = sorted(merged.keys() & table.keys())
         if clash:
             raise ValueError(f"grader names registered twice: {clash}")
         merged.update(table)
     return merged
+
+
+# ------------------------------------------------------------ observations --
+class ObservedToolCall(BaseModel):
+    """One tool call a trial made: never its arguments, only their hash. A
+    side effect the run only simulated is a call with `simulated` true."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    tool: str = Field(pattern=r"^[^@\s]+@[^@\s]+$")  # name@version
+    side_effect_level: SideEffectLevel
+    simulated: bool
+    args_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class Observation(BaseModel):
+    """What one trial of a case did, as an `ObservationGrader` reads it.
+    `approval_requests` are the approval types the trial asked for, real or
+    simulated."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    final_output: dict[str, Any] | None
+    tool_calls: tuple[ObservedToolCall, ...] = ()
+    approval_requests: tuple[str, ...] = ()
+    evidence_refs: tuple[str, ...] = ()
+    cost_usd: Decimal = Field(ge=0)
+    latency_ms: int = Field(ge=0)
+    error_code: str | None = None
+
+
+class ObservationGrader(Protocol):
+    """Grades one trial's observation of a case; keyed `<context>.<gate>` like
+    `Grader`. A context's live in its own package and join at a composition
+    root through `merge_graders`."""
+
+    async def __call__(self, case: EvalCase, observation: Observation) -> GradeResult: ...
+
+
+# ------------------------------------------------------------------ judge --
+class JudgeVerdict(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    verdict: Literal["pass", "fail", "abstain"]
+    reasons: tuple[str, ...] = ()
+    score: float | None = None
+
+
+class JudgePort(Protocol):
+    """A judge of one output against a rubric and a reference. The real judge
+    is W2 and reaches its model through `ModelGateway`, so through the
+    `ResidencyGate` (ADR-0120, Consequences); `dw_evals.testing.ScriptedJudge`
+    stands in for it."""
+
+    async def judge(
+        self,
+        rubric: str,
+        case_input: dict[str, Any],
+        output: dict[str, Any],
+        reference: dict[str, Any],
+    ) -> JudgeVerdict: ...
+
+
+def judge_grader(judge: JudgePort, rubric: str) -> ObservationGrader:
+    """An `ObservationGrader` asking `judge` about a trial's `final_output`,
+    once per trial. `abstain` is unknown, `fail` fails with the judge's
+    reasons. A case whose input or expected outcome is a file reference has
+    nothing to show the judge, and a trial with no output has nothing to
+    judge: both are graded without asking it, the first unknown, the second
+    failing."""
+
+    async def grade(case: EvalCase, observation: Observation) -> GradeResult:
+        if case.input is None or case.expected is None:
+            return GradeResult.abstain("judge_needs_inline_case")
+        if observation.final_output is None:
+            return GradeResult.fail("no_final_output", error_code=observation.error_code)
+        verdict = await judge.judge(rubric, case.input, observation.final_output, case.expected)
+        reasons = list(verdict.reasons)
+        if verdict.verdict == "pass":
+            return GradeResult(passed=True, score=verdict.score, details={"reasons": reasons})
+        if verdict.verdict == "abstain":
+            return GradeResult.abstain("judge_abstained", reasons=reasons)
+        return GradeResult(
+            passed=False,
+            score=verdict.score,
+            details={"reason": "judge_failed", "reasons": reasons},
+        )
+
+    return grade
