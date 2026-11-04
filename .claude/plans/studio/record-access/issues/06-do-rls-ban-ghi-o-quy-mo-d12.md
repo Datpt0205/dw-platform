@@ -26,8 +26,8 @@ lại agent chạy được khi có máy.
    chép bảng số và hình dạng được chọn vào mục Consequences của `docs/adr/0105-record-reach-is-decided-by-postgresql.md`
    qua `mattpocock-skills:domain-modeling`; một phương án thắng khác ADR-0105 (Accepted) quyết 1, 3 hay 4 sửa quyết
    định đó trong cùng lần ghi.
-4. Phương án thắng của một trục khác phương án thắng của ticket 01 thì ghi vào Comments của ticket 02 và 03 trước khi
-   chúng lên `ready-for-agent` (spec, Phụ thuộc, "Kiểm lại khi").
+4. Phương án thắng của từng trục ở D12 ghi vào Comments của ticket 07, ticket áp nó vào sổ tầm và mẫu policy mà ticket
+   02 và 03 đã dựng tạm theo P0 (gate 4/11/2026 của ticket 02, 03; spec, Phụ thuộc, "Kiểm lại khi").
 
 ## Tiêu chí chấp nhận
 
