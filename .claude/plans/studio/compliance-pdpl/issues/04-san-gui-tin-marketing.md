@@ -41,7 +41,7 @@ Bản ghi đồng ý của gói là W2 (hai dòng của Ngoài phạm vi của s
    `configs/copy/audit_actions.d/runtime-hardening.yaml` (`schema_version`, `copy_id`
    `platform.audit_actions.compliance_pdpl`, `version`, `actions`), mỗi hành động audit của lát ở W1 một nhãn tiếng
    Việt: `marketing.sent`, `marketing.send_refused` (ticket 08 đã ghi), `residency.class_changed` (ticket 03),
-   `studio.conversation.expired` (ticket 06); một tệp, một chủ: ticket 03 và 06 không sửa tệp này. Bộ gộp danh mục là
+   `studio.conversation.expired`, `consent.expired` (ticket 06); một tệp, một chủ: ticket 03 và 06 không sửa tệp này. Bộ gộp danh mục là
    của telemetry-and-audit (telemetry-and-audit:R1.6; H-21), và test AST TA15 của telemetry-and-audit/03 đỏ khi một
    hành động ghi trong mã không có khóa trong mảnh nào, nên bước này không có test riêng. Ticket 03 không chờ được
    ticket này (phụ thuộc chỉ trỏ ngược), nên làm ticket này trước ticket 03: ticket này không chờ việc nào chưa xong.

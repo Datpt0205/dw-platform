@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 29/10/2026
-Sẵn sàng: ĐẠT (4/11/2026; 0 CRITICAL, 0 HIGH; ticket 01, 03-05, 08)
+Sẵn sàng: ĐẠT (4/11/2026; 0 CRITICAL, 0 HIGH; ticket 01, 03-06, 08)
 
 Studio xử lý dữ liệu cá nhân của khách hàng của công ty khách (lead, khách hàng) trên nền tảng đặt tại
 Việt Nam, gọi model có thể ở nước ngoài và gửi tin marketing qua Zalo và email. Lát này biến các nghĩa vụ
@@ -199,7 +199,8 @@ lane của telemetry-and-audit thi hành (DO-52). Mỗi hàm xóa hẹp của l�
 - R5.7 KHI lane lưu giữ gọi bộ xóa hội thoại, lane lưu giữ PHẢI xóa ở mọi công ty mọi tin nhắn
   `studio.conversation_messages` tạo trước mốc mà thời hạn dưới khóa `studio.conversation_messages` của
   `platform.retention_terms` cho (90 ngày), rồi mọi hội thoại `studio.conversations` không còn tin nào và có hoạt động
-  cuối trước mốc, và giữ nguyên mọi tin và hội thoại có hoạt động từ mốc trở đi (DO-52; ADR-0122 (Accepted) quyết 7).
+  cuối trước mốc, và giữ nguyên mọi tin tạo từ mốc trở đi cùng hội thoại của chúng; một hội thoại còn tin trong hạn vẫn mất các tin quá
+  hạn của nó (DO-52; ADR-0122 (Accepted) quyết 7).
 - R5.8 KHI lane lưu giữ xóa tin nhắn hay hội thoại của một workspace theo R5.7, lane lưu giữ PHẢI ghi trong cùng
   giao dịch, ở công ty và workspace đó, một sự kiện audit `studio.conversation.expired` đứng tên chính lane
   (`system:<lane>`), mang số tin và số hội thoại đã xóa ở workspace đó (ADR-0011 (Accepted)).
@@ -209,6 +210,11 @@ lane của telemetry-and-audit thi hành (DO-52). Mỗi hàm xóa hẹp của l�
 - R5.10 NẾU `platform.retention_terms` thiếu dòng của khóa mà một hàm xóa hẹp của lát đọc, hay hai dòng
   `studio.conversation_messages` và `studio.conversations` mang hai thời hạn khác nhau, THÌ hàm xóa hẹp đó PHẢI báo
   lỗi và không xóa dòng nào (telemetry-and-audit:R5.12; `failure-modes.md` #7).
+- R5.11 KHI lane lưu giữ gọi bộ xóa Bản ghi đồng ý, lane lưu giữ PHẢI xóa mọi dòng của mỗi bộ `(subject_ref, purpose,
+channel)` của một công ty mà dòng mới nhất là `withdrawn` với `withdrawn_at` trước mốc của R5.9 (hết quan hệ cộng
+  thời hạn), giữ nguyên mọi dòng của bộ mà dòng mới nhất là `granted`, và ghi trong cùng giao dịch, mỗi công ty có dòng
+  bị xóa, một sự kiện audit `consent.expired` đứng tên chính lane, ở workspace cũ nhất của công ty, mang số dòng đã xóa
+  (ADR-0124 (Accepted); ADR-0011 (Accepted)).
 
 ## Trong phạm vi
 
@@ -229,7 +235,8 @@ lane của telemetry-and-audit thi hành (DO-52). Mỗi hàm xóa hẹp của l�
 - Route công khai `GET /api/v1/public/unsubscribe/{token}`; `PATCH /api/v1/admin/tenant` thêm
   `data_route_class` (W1 chỉ siết).
 - Audit: `marketing.sent`, `marketing.send_refused` (chỉ lát này ghi, trong giao dịch của executor),
-  `residency.class_changed`, `studio.conversation.expired` (lane lưu giữ ghi, đứng tên chính lane; R5.8).
+  `residency.class_changed`, `studio.conversation.expired` (lane lưu giữ ghi, đứng tên chính lane; R5.8), `consent.expired` (lane lưu giữ ghi, đứng
+  tên chính lane; R5.11).
 
 ## Ngoài phạm vi
 
@@ -289,7 +296,8 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
   `captured_at`, `source`, `evidence_ref`, `notice_version`, `withdrawn_at`; đồng ý hiện hành là dòng mới
   nhất theo `(subject_ref, purpose, channel)`; index `(tenant_id, subject_ref, channel, purpose, captured_at DESC)`;
   thời hạn theo quan hệ cộng 5 năm (số tạm UNVERIFIED) trong mảnh `platform.consent_records`, thêm trong cùng thay
-  đổi đăng ký (ticket 08, `enforced: false` tới khi ticket 06 đăng ký bộ xóa), bộ xóa xóa theo dòng, không bằng DROP PARTITION, qua một hàm SECURITY DEFINER hẹp không
+  đổi đăng ký (ticket 08, `enforced: false` tới khi ticket 06 đăng ký bộ xóa), bộ xóa xóa theo dòng (mọi dòng của bộ mà dòng mới nhất là `withdrawn` quá hạn, R5.11), không bằng DROP
+  PARTITION, qua một hàm SECURITY DEFINER hẹp không
   đối số của ticket 06 đọc hạn dưới khóa đó ở `platform.retention_terms` (R5.9, R5.10).
 - `platform.contact_suppressions`: PK `(tenant_id, channel, address_hash)`; không hết hạn theo thời gian,
   chỉ offboarding hay yêu cầu của chủ thể dữ liệu (W2) xóa (R5.4); `dw_app` có DELETE chỉ dùng được ở lượt xóa của
@@ -399,6 +407,7 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
 | CP27 | Sàn gửi, đồng ý, chặn gửi và token hủy không đi chéo tenant                             | R3.1, R3.4         | Tenant B gửi tới địa chỉ có đồng ý ở A → `blocked:no_consent`; token hủy của A chỉ ghi dòng của A; B đọc nhật ký, đồng ý, chặn gửi của A → 0 dòng                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | CP28 | Công cụ gửi tin không thiếu dấu gửi tin, mỗi lời gọi một người nhận                     | R3.2               | Spec công cụ `external` thiếu `sends_message` → nạp lỗi; hai người nhận → `blocked:multiple_recipients`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | CP29 | Thiếu bí mật ký token hủy thì không chạy ở môi trường triển khai                        | R3.6               | `is_deployed` với bí mật 16 byte → API không khởi động                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| CP30 | Bộ xóa Bản ghi đồng ý chỉ xóa bộ đã hết quan hệ quá hạn, có audit                       | R5.11              | Bộ `granted` 6 năm tuổi → còn; bộ `withdrawn` quá hạn → xóa hết dòng của bộ; mỗi công ty một `consent.expired` ở workspace cũ nhất; ghi audit hỏng → không dòng nào bị xóa; xóa theo `captured_at` → ca `granted` đỏ                                                                                                                                                                                                                                                                                                                                                                          |
 
 ## Tiêu chí xong
 
@@ -751,6 +760,14 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
   lớp của công ty và phiên bản; `VersionAssessmentLookup` đọc dưới RLS, có test âm chéo tenant, lỗi thì gửi kiểm định
   thất bại; UNIQUE theo phiên bản, mã băm và phiên bản bộ phân tích; "overlay công ty" ở W1 là bản của công ty cho quy
   trình của gói. Sửa: R2.6, R4.2, CP6, CP12, CP26, ticket 05. Nếu sai thì: từng mục quay về bản trước trong lịch sử git.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): Theo gate `checking-plan-readiness` cho ticket 06 (1 CRITICAL, 9 HIGH):
+  bộ xóa Bản ghi đồng ý ghi `consent.expired` đứng tên lane, mỗi công ty một sự kiện ở workspace cũ nhất vì bảng toàn
+  tenant không có workspace; "hết quan hệ" của một bộ là khi dòng mới nhất là `withdrawn`, bộ còn `granted` không hết hạn
+  theo thời gian (thêm R5.11, CP30); ticket 06 bật `enforced: true` cho mảnh Bản ghi đồng ý và mảnh nhật ký gửi, quyết
+  định DROP PARTITION mà usage-and-limits/02 để cho lát này, vì ở W1 chỉ có dữ liệu giả lập (YC89); test quét nguồn chỉ
+  cho lane `retention` gọi hai hàm xóa; R5.7 nói rõ tin quá hạn bị xóa cả trong hội thoại còn hoạt động. Sửa: R5.7,
+  thêm R5.11, CP30, Trong phạm vi, Dữ liệu, ticket 04, 06. Nếu sai thì: `owning_workspace_id` trên Bản ghi đồng ý cho
+  audit; `enforced: false` lại cho nhật ký gửi; từng mục còn lại quay về bản trước trong lịch sử git.
 
 ## Danh sách ticket
 
