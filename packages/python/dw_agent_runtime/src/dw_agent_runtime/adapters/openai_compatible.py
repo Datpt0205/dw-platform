@@ -140,7 +140,8 @@ def _build_request_body(
     if response_format is not None:
         body["response_format"] = response_format
     if route.temperature is not None:
-        body["temperature"] = route.temperature
+        # A `Decimal` on the route (stable to hash); the wire takes a number.
+        body["temperature"] = float(route.temperature)
     if max_output_tokens:
         reasoning_family = route.model.startswith(("gpt-5", "o1", "o3", "o4"))
         body["max_completion_tokens" if reasoning_family else "max_tokens"] = max_output_tokens

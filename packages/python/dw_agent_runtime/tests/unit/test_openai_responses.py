@@ -16,6 +16,7 @@ from dw_agent_runtime.adapters.openai_responses import (
 from dw_agent_runtime.model.profiles import ModelRoute
 from dw_agent_runtime.model.prompts import RenderedPrompt
 from dw_agent_runtime.registry import ConfigError
+from dw_agent_runtime.testing.models import route as test_route
 
 pytestmark = pytest.mark.unit
 
@@ -92,7 +93,7 @@ def _prompt() -> RenderedPrompt:
 
 
 def test_build_body_includes_effort_and_summary() -> None:
-    route = ModelRoute(
+    route = test_route(
         provider="openai_responses", model="gpt-5", timeout_seconds=60, reasoning_effort="low"
     )
     body = _build_request_body(
@@ -110,7 +111,7 @@ def test_build_body_includes_effort_and_summary() -> None:
 
 
 def test_build_body_without_effort_omits_it() -> None:
-    route = ModelRoute(provider="openai_responses", model="gpt-5", timeout_seconds=60)
+    route = test_route(provider="openai_responses", model="gpt-5", timeout_seconds=60)
     body = _build_request_body(
         _prompt(),
         {"type": "object"},
@@ -125,7 +126,7 @@ def test_build_body_without_effort_omits_it() -> None:
 
 
 def test_build_body_sends_temperature_only_when_configured() -> None:
-    route = ModelRoute(
+    route = test_route(
         provider="openai_responses", model="gpt-5", timeout_seconds=60, temperature=0.3
     )
     body = _build_request_body(
@@ -164,7 +165,7 @@ def test_strict_schema_transform_closes_objects_and_strips_constraints() -> None
 
 
 def test_strict_flag_transforms_body_schema() -> None:
-    route = ModelRoute(provider="openai_responses", model="gpt-5", timeout_seconds=60)
+    route = test_route(provider="openai_responses", model="gpt-5", timeout_seconds=60)
     body = _build_request_body(
         _prompt(),
         {"type": "object", "properties": {"a": {"type": "string", "pattern": "x"}}},
@@ -295,7 +296,7 @@ async def test_a_route_that_asks_for_no_summary_is_not_billed_for_one(
 ) -> None:
     """The batch routes declare no summary, and `generate_structured` discards
     the one the adapter used to request regardless."""
-    route = ModelRoute(
+    route = test_route(
         provider="openai_responses",
         model="gpt-5.6-luna",
         timeout_seconds=60,
@@ -307,7 +308,7 @@ async def test_a_route_that_asks_for_no_summary_is_not_billed_for_one(
 
 @pytest.mark.asyncio
 async def test_a_route_that_declares_a_summary_gets_it(monkeypatch: pytest.MonkeyPatch) -> None:
-    route = ModelRoute(
+    route = test_route(
         provider="openai_responses",
         model="gpt-5.6-luna",
         timeout_seconds=60,

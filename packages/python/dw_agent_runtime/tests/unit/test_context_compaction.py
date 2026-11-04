@@ -24,7 +24,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMe
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
-from test_agent_factory import LOOP_CEILING_TOKENS, PROFILE_ID, THREAD, _profiles, _spec
+from test_agent_factory import LOOP_CEILING_TOKENS, PROFILE_ID, THREAD, _models, _spec
 from test_langchain_tools import make_run_context
 
 from dw_agent_runtime.adapters.agent_factory import platform_middleware
@@ -94,9 +94,7 @@ def _compactor(
         ids=SequentialIdGenerator(),
         budget=budget if budget is not None else RunBudgetLedger(),
         pricing=FlatPricing(),
-        profiles=_profiles(
-            ceiling_tokens=ceiling_tokens, summary_input_tokens=summary_input_tokens
-        ),
+        models=_models(ceiling_tokens=ceiling_tokens, summary_input_tokens=summary_input_tokens),
         profile_id=PROFILE_ID,
         summary_profile_id=PROFILE_ID,
         trigger=("messages", TRIGGER_MESSAGES),
@@ -374,7 +372,7 @@ def test_it_refuses_a_copy_without_the_summary_text(older: str) -> None:
             ids=SequentialIdGenerator(),
             budget=RunBudgetLedger(),
             pricing=FlatPricing(),
-            profiles=_profiles(),
+            models=_models(),
             profile_id=PROFILE_ID,
             summary_profile_id=PROFILE_ID,
             trigger=("messages", TRIGGER_MESSAGES),
@@ -581,7 +579,7 @@ def test_a_summary_route_without_an_input_budget_is_refused_at_build() -> None:
             ids=SequentialIdGenerator(),
             budget=RunBudgetLedger(),
             pricing=FlatPricing(),
-            profiles=_profiles(summary_input_tokens=None),
+            models=_models(summary_input_tokens=None),
             profile_id=PROFILE_ID,
             summary_profile_id=PROFILE_ID,
             trigger=("messages", TRIGGER_MESSAGES),

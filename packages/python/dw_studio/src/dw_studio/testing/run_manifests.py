@@ -10,15 +10,33 @@ ticket 06's gate takes a gated kind past `evaluating`.
 
 from __future__ import annotations
 
+import os
 import uuid
+from pathlib import Path
 from typing import Any
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from dw_agent_runtime.model.profiles import ModelProfileRegistry
+from dw_agent_runtime.model.resolver import ModelResolver
+from dw_agent_runtime.testing.models import resolver
 from dw_studio.core.application.service import ArtifactService, SealResult
 from dw_studio.testing.lifecycle import move_for_test
 from dw_studio.testing.world import Person
+
+_REPO_ROOT = Path(os.environ.get("DW_REPO_ROOT", str(Path(__file__).resolve().parents[6])))
+# The plan a test run is pinned under; every plan lists every shipped profile.
+TEST_PLAN = "professional"
+
+
+def shipped_models(default: str = "balanced") -> ModelResolver:
+    """The `ModelRoutePinPort` a test's `RunManifestBuilder` pins with: the
+    shipped profiles of `configs/models`, every plan listing all of them, so a
+    manifest pins `default` as the deployment's (model-connections R1.4)."""
+    profiles = ModelProfileRegistry()
+    profiles.load_directory(_REPO_ROOT / "configs" / "models")
+    return resolver(profiles, default)
 
 
 def fixture_document(*uses: uuid.UUID, title: str = "Khách hàng", size: int = 0) -> dict[str, Any]:

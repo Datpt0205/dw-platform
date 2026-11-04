@@ -14,13 +14,14 @@ from dw_agent_runtime.model.budget import (
     route_cost,
 )
 from dw_agent_runtime.model.profiles import ModelBudgets, ModelRoute
+from dw_agent_runtime.testing.models import route as test_route
 from dw_agent_runtime.testing.pricing import FlatPricing
 from dw_kernel.errors import PriceNotFoundError
 
 pytestmark = pytest.mark.unit
 
-_PRICED = ModelRoute(provider="openai_responses", model="gpt-5.6-luna")
-_UNPRICED = ModelRoute(provider="mock", model="mock-structured")
+_PRICED = test_route(provider="openai_responses", model="gpt-5.6-luna")
+_UNPRICED = test_route(provider="mock", model="mock-structured")
 _BOOK = FlatPricing(
     prices={"gpt-5.6-luna": (Decimal("0.20"), Decimal("1.20"))},
     refused=frozenset({"mock-structured"}),

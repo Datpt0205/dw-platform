@@ -36,12 +36,23 @@ and writes no `studio.version.published`; `seal` never calls it."""
 
 Validate = Callable[[Any], Sequence[DocumentProblem]]
 Extract = Callable[[Any], Sequence[Reference]]
+ModelProfiles = Callable[[Any], frozenset[str]]
+"""The model profiles a root's document declares, which its runs pin by value
+beside the deployment's default (model-connections R1.4); `agent` registers
+one reading `model.profile` (agent-builder/03)."""
+
+
+def no_model_profiles(document: Any) -> frozenset[str]:
+    """A kind whose documents name no model profile: its runs pin the default."""
+    return frozenset()
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class ArtifactKindEntry:
-    """One kind. Every field is required: a kind that forgot a key or its hook
-    cannot be constructed (R2.15)."""
+    """One kind. Every field but `model_profiles` is required: a kind that
+    forgot a key or its hook cannot be constructed (R2.15). `model_profiles`
+    defaults to none, because a kind that names no model profile is the
+    common case and its runs still pin the deployment's default."""
 
     kind: str
     document_schema: str
@@ -51,6 +62,7 @@ class ArtifactKindEntry:
     publish_hook: PublishHook
     validate: Validate
     extract: Extract
+    model_profiles: ModelProfiles = no_model_profiles
 
     def __post_init__(self) -> None:
         if not DOCUMENT_SCHEMA.fullmatch(self.document_schema):

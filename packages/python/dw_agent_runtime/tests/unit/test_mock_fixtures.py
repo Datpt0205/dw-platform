@@ -20,13 +20,13 @@ from pathlib import Path
 import pytest
 
 from dw_agent_runtime.adapters.mock_model import MockModelAdapter
-from dw_agent_runtime.model.profiles import ModelRoute
 from dw_agent_runtime.model.prompts import RenderedPrompt
+from dw_agent_runtime.testing.models import route as test_route
 from dw_kernel.errors import NotFoundError
 
 pytestmark = pytest.mark.unit
 
-ROUTE = ModelRoute(provider="mock", model="mock-1")
+ROUTE = test_route(provider="mock", model="mock-1")
 
 
 def _prompt(prompt_id: str = "platform.demo", version: str = "1.0.0") -> RenderedPrompt:

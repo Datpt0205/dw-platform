@@ -49,6 +49,7 @@ def test_the_api_and_the_worker_build_the_same_embedder_from_one_environment(
     from pathlib import Path
 
     from dw_agent_runtime.model.profiles import ModelProfileRegistry
+    from dw_agent_runtime.testing.models import resolver as model_resolver
     from dw_api.bootstrap.knowledge import build_embeddings as api_build_embeddings
     from dw_api.settings import ApiSettings
     from dw_knowledge.adapters.openai_embedding import OpenAICompatibleEmbeddingAdapter
@@ -62,7 +63,7 @@ def test_the_api_and_the_worker_build_the_same_embedder_from_one_environment(
     profiles = ModelProfileRegistry()
     profiles.load_directory(Path(__file__).resolve().parents[4] / "configs" / "models")
 
-    api = api_build_embeddings(ApiSettings(), profiles)
+    api = api_build_embeddings(ApiSettings(), model_resolver(profiles, "gateway"))
     worker = build_embeddings(WorkerSettings())
 
     assert isinstance(api, OpenAICompatibleEmbeddingAdapter)
@@ -72,4 +73,4 @@ def test_the_api_and_the_worker_build_the_same_embedder_from_one_environment(
         worker.dimension,
         worker.timeout,
     )
-    assert api.model == profiles.resolve("gateway").embedding.model  # type: ignore[union-attr]
+    assert api.model == profiles.layer("gateway", tenant_id=None).embedding.model  # type: ignore[union-attr]

@@ -7,7 +7,8 @@ token was invisible to every usage recorder. This adapter
 closes that seam: wrap the harness invocation in :meth:`LangchainUsageMeter.track`,
 pass the yielded callbacks into the LangChain ``config``, and on exit each
 model's ``usage_metadata`` becomes one ledger row priced by the price book
-(``PricingPort``) for the profile's chat route — the same book the gateway
+(``PricingPort``) for the chat route ``ModelResolver`` answers for the run —
+the same resolver and the same book the gateway
 prices from, so one bill speaks one currency. A call the book cannot price is
 recorded ``unpriced``, never at zero (usage-and-limits R2.5); the agent loop's
 budget middleware stops the run on it.
@@ -44,10 +45,11 @@ from typing import Any
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 
 from dw_agent_runtime.contracts import RunContext
-from dw_agent_runtime.model.budget import route_cost
+from dw_agent_runtime.model.budget import PriceKey, route_cost
 from dw_agent_runtime.model.gateway import ModelUsage, UsageRecorderPort
 from dw_agent_runtime.model.pricing import PricingPort
-from dw_agent_runtime.model.profiles import ModelProfileRegistry, ModelRoute, Provider
+from dw_agent_runtime.model.profiles import Provider
+from dw_agent_runtime.model.resolver import ModelResolver
 from dw_agent_runtime.ports import ModelRequest
 from dw_kernel.errors import PriceNotFoundError
 from dw_kernel.ports import SystemClock, UtcClock
@@ -72,7 +74,7 @@ _CLAIMED: ContextVar[dict[str, tuple[int, int]] | None] = ContextVar(
 class LangchainUsageMeter:
     """Prices and records what a LangChain harness spent in one invocation."""
 
-    profiles: ModelProfileRegistry
+    models: ModelResolver
     recorder: UsageRecorderPort
     pricing: PricingPort
     clock: UtcClock = field(default_factory=SystemClock)
@@ -142,7 +144,7 @@ class LangchainUsageMeter:
         tally: dict[str, tuple[int, int]] | None = None,
     ) -> None:
         try:
-            route = self.profiles.resolve(profile_id).chat
+            route = await self._chat_route(run_context, profile_id)
             request = ModelRequest(
                 task=task,
                 prompt_id=prompt_id,
@@ -168,9 +170,7 @@ class LangchainUsageMeter:
                 # its routes: providers do not return cost. A model answering
                 # under another name than the route's still bills at the
                 # route's price — the route is what was configured and paid for.
-                priced_route = route or ModelRoute(
-                    provider=Provider.OPENAI_COMPATIBLE, model=model_name
-                )
+                priced_route = route or _ModelName(Provider.OPENAI_COMPATIBLE, model_name)
                 usage = self._priced(
                     run_context,
                     priced_route,
@@ -185,7 +185,24 @@ class LangchainUsageMeter:
         except Exception:
             _LOG.exception("usage recording failed for run %s", run_context.run_id)
 
-    def _priced(self, run_context: RunContext, route: ModelRoute, usage: ModelUsage) -> ModelUsage:
+    async def _chat_route(self, run_context: RunContext, profile_id: str) -> PriceKey | None:
+        """The chat route the resolver answers for this run (model-connections
+        R1.1), or None when it refuses: the tokens are spent by now, so the
+        meter still records them, priced by the model the provider named. It
+        records; the budget door before the call is what refuses."""
+        try:
+            return (await self.models.resolve(run_context, profile_id, "chat")).route
+        except Exception:
+            # Broad: whatever the resolver says, the bill keeps the row.
+            _LOG.warning(
+                "no chat route for run %s (%s); priced by the answering model",
+                run_context.run_id,
+                profile_id,
+                exc_info=True,
+            )
+            return None
+
+    def _priced(self, run_context: RunContext, route: PriceKey, usage: ModelUsage) -> ModelUsage:
         try:
             quote = route_cost(
                 self.pricing,
@@ -210,6 +227,14 @@ class LangchainUsageMeter:
             price_book_version=quote.price_book_version,
             price_entry_ids=quote.entry_ids,
         )
+
+
+@dataclass(frozen=True)
+class _ModelName:
+    """A price key for a call with no resolved chat route."""
+
+    provider: str
+    model: str
 
 
 def usage_run_context(

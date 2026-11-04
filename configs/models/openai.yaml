@@ -1,6 +1,9 @@
-schema_version: "1.0"
+schema_version: "2.0"
 profile_id: openai
-routing_policy_version: "1.0.0"
+routing_policy_version: "1.1.0"
+# Data route (ADR-0123 decision 5): every route here is `foreign` until FOG-18
+# locates the alias it names; `vn` needs that answer cited in this comment.
+# `retention_days: null` says the processor's retention is not known.
 # OpenAI GPT-5. Enable with:
 #   DW_MODEL_PROVIDER=openai_compatible
 #   OPENAI_BASE_URL=https://api.openai.com/v1
@@ -15,16 +18,28 @@ routing_policy_version: "1.0.0"
 structured_extraction:
   provider: openai_responses
   model: gpt-5
+  data_location: foreign
+  processor: openai
+  retention_days: null
+  no_training: false
   timeout_seconds: 60
   reasoning_effort: low
 reasoning:
   provider: openai_responses
   model: gpt-5
+  data_location: foreign
+  processor: openai
+  retention_days: null
+  no_training: false
   timeout_seconds: 120
   reasoning_effort: medium
 deep_reasoning:
   provider: openai_responses
   model: gpt-5
+  data_location: foreign
+  processor: openai
+  retention_days: null
+  no_training: false
   timeout_seconds: 240
   reasoning_effort: high
 # Tried when the primary route fails twice (provider error/timeout or schema
@@ -32,6 +47,10 @@ deep_reasoning:
 fallback:
   provider: openai_responses
   model: gpt-5-mini
+  data_location: foreign
+  processor: openai
+  retention_days: null
+  no_training: false
   timeout_seconds: 60
 budgets:
   max_input_tokens_per_run: 100000

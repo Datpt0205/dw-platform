@@ -21,6 +21,7 @@ from dw_agent_runtime.model.gateway import ModelUsage, RoutingModelGateway
 from dw_agent_runtime.model.profiles import ModelProfileRegistry, ModelRoute
 from dw_agent_runtime.model.prompts import PromptArtifact, PromptRegistry, RenderedPrompt
 from dw_agent_runtime.ports import ModelRequest
+from dw_agent_runtime.testing.models import resolver as model_resolver
 from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_kernel.ports import FixedClock, Uuid7Generator
 from dw_observability.metrics import DW_USAGE_UNPRICED_TOTAL
@@ -137,11 +138,10 @@ def _gateway(
         price_book_version=book.version,
     )
     return RoutingModelGateway(
-        profiles=profiles,
+        models=model_resolver(profiles, "balanced"),
         prompts=prompts,
         adapters={"mock": adapter or mock},  # type: ignore[dict-item]
         usage_recorder=CompositeUsageRecorder([recorder]),
-        default_profile="balanced",
         pricing=book,
         clock=clock,
         run_control=OpenRunControl(),

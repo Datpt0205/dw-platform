@@ -15,6 +15,8 @@ from dw_agent_runtime.model.profiles import ModelProfileRegistry
 from dw_agent_runtime.model.prompts import PromptArtifact, PromptRegistry
 from dw_agent_runtime.ports import ModelOutputInvalidError, ModelRequest
 from dw_agent_runtime.registry import ConfigError
+from dw_agent_runtime.testing.models import resolver as model_resolver
+from dw_agent_runtime.testing.models import route as test_route
 from dw_agent_runtime.testing.pricing import FlatPricing
 from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_kernel.errors import DomainError, NotFoundError
@@ -83,11 +85,11 @@ def test_prompt_duplicate_rejected() -> None:
 def test_model_profiles_load_from_repo_configs() -> None:
     profiles = ModelProfileRegistry()
     profiles.load_directory(REPO_ROOT / "configs" / "models")
-    balanced = profiles.resolve("balanced")
+    balanced = profiles.layer("balanced", tenant_id=None)
+    assert balanced is not None
     assert balanced.structured_extraction.provider == "mock"
-    assert balanced.budgets.max_cost_usd_per_run == 2.0
-    with pytest.raises(NotFoundError):
-        profiles.resolve("premium")
+    assert balanced.budgets.max_cost_usd_per_run == Decimal("2.0")
+    assert profiles.layer("premium", tenant_id=None) is None
 
 
 def make_gateway(adapter: MockModelAdapter) -> RoutingModelGateway:
@@ -96,11 +98,10 @@ def make_gateway(adapter: MockModelAdapter) -> RoutingModelGateway:
     prompts = PromptRegistry()
     prompts.register(make_prompt())
     return RoutingModelGateway(
-        profiles=profiles,
+        models=model_resolver(profiles, "balanced"),
         prompts=prompts,
         adapters={"mock": adapter},
         usage_recorder=InMemoryUsageRecorder(),
-        default_profile="balanced",
         pricing=_BOOK,
         run_control=OpenRunControl(),
     )
@@ -152,11 +153,10 @@ async def test_recorded_usage_carries_the_book_s_price() -> None:
     prompts.register(make_prompt())
     recorder = InMemoryUsageRecorder()
     gateway = RoutingModelGateway(
-        profiles=profiles,
+        models=model_resolver(profiles, "balanced"),
         prompts=prompts,
         adapters={"openai_responses": adapter},
         usage_recorder=recorder,
-        default_profile="balanced",
         pricing=_BOOK,
         run_control=OpenRunControl(),
     )
@@ -175,7 +175,9 @@ async def test_recorded_usage_carries_the_book_s_price() -> None:
     )
 
     recorded = recorder.records[0][1]
-    route = profiles.resolve("gateway").structured_extraction
+    gateway_profile = profiles.layer("gateway", tenant_id=None)
+    assert gateway_profile is not None
+    route = gateway_profile.structured_extraction
     expected = float(
         route_cost(
             _BOOK,
@@ -242,11 +244,10 @@ async def test_gateway_unknown_provider_fails_fast() -> None:
     prompts = PromptRegistry()
     prompts.register(make_prompt())
     gateway = RoutingModelGateway(
-        profiles=profiles,
+        models=model_resolver(profiles, "balanced"),
         prompts=prompts,
         adapters={},
         usage_recorder=InMemoryUsageRecorder(),
-        default_profile="balanced",
         pricing=_BOOK,
         run_control=OpenRunControl(),
     )
@@ -298,7 +299,7 @@ async def test_gateway_retries_once_on_schema_invalid_output() -> None:
 
 
 async def test_gateway_uses_fallback_route_when_primary_provider_errors() -> None:
-    from dw_agent_runtime.model.profiles import ModelBudgets, ModelProfile, ModelRoute
+    from dw_agent_runtime.model.profiles import ModelBudgets, ModelProfile
     from dw_kernel.errors import InfrastructureError
 
     class FailingAdapter:
@@ -316,23 +317,22 @@ async def test_gateway_uses_fallback_route_when_primary_provider_errors() -> Non
     profiles = ModelProfileRegistry()
     profiles.register(
         ModelProfile(
-            schema_version="1.0",
+            schema_version="2.0",
             profile_id="with_fallback",
             routing_policy_version="1.0.0",
-            structured_extraction=ModelRoute(provider="flaky", model="primary-1"),
-            reasoning=ModelRoute(provider="flaky", model="primary-1"),
-            fallback=ModelRoute(provider="mock", model="fallback-1"),
+            structured_extraction=test_route(provider="flaky", model="primary-1"),
+            reasoning=test_route(provider="flaky", model="primary-1"),
+            fallback=test_route(provider="mock", model="fallback-1"),
             budgets=ModelBudgets(),
         )
     )
     prompts = PromptRegistry()
     prompts.register(make_prompt())
     gateway = RoutingModelGateway(
-        profiles=profiles,
+        models=model_resolver(profiles, "with_fallback"),
         prompts=prompts,
         adapters={"flaky": FailingAdapter(), "mock": mock},
         usage_recorder=InMemoryUsageRecorder(),
-        default_profile="with_fallback",
         pricing=_BOOK,
         run_control=OpenRunControl(),
     )
@@ -373,11 +373,10 @@ def _asking_gateway(adapter: _SchemaSeen) -> RoutingModelGateway:
     prompts = PromptRegistry()
     prompts.register(make_prompt())
     return RoutingModelGateway(
-        profiles=profiles,
+        models=model_resolver(profiles, "balanced"),
         prompts=prompts,
         adapters={"mock": adapter},
         usage_recorder=InMemoryUsageRecorder(),
-        default_profile="balanced",
         pricing=_BOOK,
         run_control=OpenRunControl(),
     )
@@ -431,16 +430,16 @@ class _ProfileRecorder:
 
 
 def _profile(profile_id: str, model: str, *, fallback: str | None = None) -> Any:
-    from dw_agent_runtime.model.profiles import ModelProfile, ModelRoute
+    from dw_agent_runtime.model.profiles import ModelProfile
 
-    primary = ModelRoute(provider="down" if fallback else "mock", model=model)
+    primary = test_route(provider="down" if fallback else "mock", model=model)
     return ModelProfile(
-        schema_version="1.0",
+        schema_version="2.0",
         profile_id=profile_id,
         routing_policy_version="1.0.0",
         structured_extraction=primary,
         reasoning=primary,
-        fallback=ModelRoute(provider="mock", model=fallback) if fallback else None,
+        fallback=test_route(provider="mock", model=fallback) if fallback else None,
     )
 
 
@@ -454,11 +453,10 @@ def _summarizing_gateway(
     prompts = PromptRegistry()
     prompts.register(make_prompt())
     return RoutingModelGateway(
-        profiles=profiles,
+        models=model_resolver(profiles, default_profile),
         prompts=prompts,
         adapters={"mock": adapter, "down": _Down()},
         usage_recorder=recorder,
-        default_profile=default_profile,
         pricing=_BOOK,
         run_control=OpenRunControl(),
     )

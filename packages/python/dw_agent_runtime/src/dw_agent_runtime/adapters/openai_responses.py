@@ -170,7 +170,8 @@ def _build_request_body(
     if max_output_tokens:
         body["max_output_tokens"] = max_output_tokens
     if route.temperature is not None:
-        body["temperature"] = route.temperature
+        # A `Decimal` on the route (stable to hash); the wire takes a number.
+        body["temperature"] = float(route.temperature)
     return body
 
 

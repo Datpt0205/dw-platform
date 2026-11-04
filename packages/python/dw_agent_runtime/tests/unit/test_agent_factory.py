@@ -42,8 +42,11 @@ from dw_agent_runtime.model.budget import BudgetExceededError, RunBudgetLedger
 from dw_agent_runtime.model.copy import load_runtime_copy
 from dw_agent_runtime.model.profiles import ModelProfile, ModelProfileRegistry
 from dw_agent_runtime.model.prompts import PromptArtifact, PromptRegistry
+from dw_agent_runtime.model.resolver import ModelResolver
 from dw_agent_runtime.registry import ConfigError
 from dw_agent_runtime.run_control import HaltReason, RunControlDoor, RunHaltedError
+from dw_agent_runtime.testing.models import pinned_default
+from dw_agent_runtime.testing.models import resolver as model_resolver
 from dw_agent_runtime.testing.pricing import FlatPricing
 from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_agent_runtime.tools import RegisteredTool, ToolRegistry, pydantic_behaviour
@@ -135,19 +138,26 @@ PROFILE_ID = "agent_test"
 LOOP_CEILING_TOKENS = 60
 
 
-def _profiles(
+def _models(
     ceiling_tokens: int = LOOP_CEILING_TOKENS, summary_input_tokens: int | None = 8000
-) -> ModelProfileRegistry:
+) -> ModelResolver:
     profiles = ModelProfileRegistry()
-    route: dict[str, object] = {"provider": "mock", "model": "mock-1"}
+    route: dict[str, object] = {
+        "provider": "mock",
+        "model": "mock-1",
+        "data_location": "vn",
+        "processor": "mock",
+        "retention_days": 0,
+        "no_training": True,
+    }
     if summary_input_tokens is not None:
         # The chat route doubles as the summariser's in these tests, and
         # compaction refuses a summary route without an input budget.
-        route["max_input_tokens"] = summary_input_tokens
+        route["capabilities"] = {"max_input_tokens": summary_input_tokens}
     profiles.register(
         ModelProfile.model_validate(
             {
-                "schema_version": "1.0",
+                "schema_version": "2.0",
                 "profile_id": PROFILE_ID,
                 "routing_policy_version": "1.0.0",
                 "structured_extraction": route,
@@ -160,7 +170,8 @@ def _profiles(
             }
         )
     )
-    return profiles
+    # A Studio agent's run (`run_manifest_hash` set) reads what it pinned.
+    return model_resolver(profiles, PROFILE_ID, pinned=pinned_default(profiles, PROFILE_ID))
 
 
 def prompt_artifact(
@@ -207,7 +218,7 @@ def _spec(model: MockChatModel, budget: RunBudgetLedger | None = None) -> AgentS
         **prompt_fields(),
         budget=budget or RunBudgetLedger(),
         pricing=FlatPricing(),
-        profiles=_profiles(),
+        models=_models(),
         profile_id=PROFILE_ID,
     )
 
@@ -598,7 +609,7 @@ async def test_a_worker_that_asks_for_compaction_actually_compacts() -> None:
         # runaway in a handful of steps, and a 16-message history plus its
         # summary crosses it — which proves the summary is counted, and is not
         # what this test measures.
-        profiles=_profiles(ceiling_tokens=1_000_000),
+        models=_models(ceiling_tokens=1_000_000),
         compaction=CompactionSpec(
             model=MockChatModel(responses=[AIMessage(content="TÓM TẮT")], mock_reply="TÓM TẮT"),
             summary_profile_id=PROFILE_ID,

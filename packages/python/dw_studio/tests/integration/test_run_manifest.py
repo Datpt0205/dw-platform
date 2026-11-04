@@ -46,11 +46,13 @@ from dw_studio.core.domain.artifacts import DocumentInvalidError, definition_bod
 from dw_studio.testing.fixture_kinds import FIXTURE_KINDS, planted_fixture_kinds
 from dw_studio.testing.lifecycle import move_for_test, publish_for_test
 from dw_studio.testing.run_manifests import (
+    TEST_PLAN,
     draft_of,
     fixture_document,
     insert_run,
     published,
     sealed,
+    shipped_models,
 )
 from dw_studio.testing.world import Person, StudioWorld, plant_world
 
@@ -98,7 +100,7 @@ def store_of(service: ArtifactService) -> SqlArtifactStore:
 
 @pytest.fixture
 def builder() -> RunManifestBuilder:
-    return RunManifestBuilder(ArtifactKindRegistry(FIXTURE_KINDS), REF)
+    return RunManifestBuilder(ArtifactKindRegistry(FIXTURE_KINDS), REF, shipped_models())
 
 
 async def build(
@@ -109,7 +111,7 @@ async def build(
     mode: Any,
 ) -> str:
     async with store_of(service).transaction(who.context()) as tx:
-        return await builder.build(tx, version_id, mode)
+        return await builder.build(tx, version_id, mode, tenant_id=who.tenant_id, plan_id=TEST_PLAN)
 
 
 async def rows(engine: AsyncEngine, statement: str, **values: Any) -> list[Any]:
@@ -266,7 +268,11 @@ async def test_a_sealed_root_pins_its_definition_closure_and_three_keys(
             "definition_hash": root.definition_hash,
         },
         "closure": definition[0].body["closure"],
-        "engine": {"durability": "sync"},
+        # The deployment's profile, by value (model-connections R1.4).
+        "engine": {
+            "durability": "sync",
+            **await shipped_models().pin(writer.tenant_id, TEST_PLAN, frozenset()),
+        },
     }
     assert len(body["closure"]) == 2
     assert sorted(await keys_of(migrator, manifest_hash)) == sorted(
@@ -359,7 +365,9 @@ async def test_a_body_past_one_mebibyte_is_too_large_and_written_nowhere(
     """R6.1: the table's CHECK is the one measure, read back by its name."""
     writer = world["writer"]
     _, root, _ = await a_live_root(service, migrator, writer)
-    huge = RunManifestBuilder(ArtifactKindRegistry(FIXTURE_KINDS), "r" * (1 << 20))
+    huge = RunManifestBuilder(
+        ArtifactKindRegistry(FIXTURE_KINDS), "r" * (1 << 20), shipped_models()
+    )
     before = await counts(migrator, writer.tenant_id)
 
     with pytest.raises(PayloadTooLargeError):
@@ -406,7 +414,9 @@ async def test_two_concurrent_builds_of_one_content_both_commit(
 
     async def first() -> str:
         async with store_of(service).transaction(writer.context()) as tx:
-            manifest_hash = await builder.build(tx, root.version_id, "live")
+            manifest_hash = await builder.build(
+                tx, root.version_id, "live", tenant_id=writer.tenant_id, plan_id=TEST_PLAN
+            )
             built.set()
             await release.wait()
             return manifest_hash
@@ -506,12 +516,17 @@ async def test_the_manifest_pins_sync_and_an_engine_the_model_refuses_writes_not
     writer = world["writer"]
     _, root, _ = await a_live_root(service, migrator, writer)
     manifest_hash = await build(service, builder, writer, root.version_id, "live")
-    assert (await manifest_body(migrator, manifest_hash))["engine"] == {"durability": "sync"}
+    engine = (await manifest_body(migrator, manifest_hash))["engine"]
+    assert engine["durability"] == "sync"
+    assert (set(engine["model_routes"]), engine["default_model_profile"]) == (
+        {"balanced"},
+        "balanced",
+    )
 
     _, other, _ = await a_live_root(service, migrator, writer)
     before = await counts(migrator, writer.tenant_id)
-    for engine in ({"durability": "async"}, {}, {"durability": "sync", "format": "x"}):
-        monkeypatch.setattr(builder_module, "ENGINE", engine)
+    for wrong in ({"durability": "async"}, {}, {"durability": "sync", "format": "x"}):
+        monkeypatch.setattr(builder_module, "ENGINE", wrong)
         with pytest.raises(ValueError, match="validation error"):
             await build(service, builder, writer, other.version_id, "live")
     assert await counts(migrator, writer.tenant_id) == before
@@ -699,7 +714,9 @@ async def test_the_receipt_holds_off_a_save_of_the_draft_it_hashes(
             found = await tx.root_version(version_id)
             read.set()
             await release.wait()
-            return found, await builder.build(tx, version_id, "simulate")
+            return found, await builder.build(
+                tx, version_id, "simulate", tenant_id=writer.tenant_id, plan_id=TEST_PLAN
+            )
 
     holder = asyncio.create_task(receipt())
     await read.wait()

@@ -24,6 +24,7 @@ from dw_agent_runtime.model.profiles import ModelProfileRegistry
 from dw_agent_runtime.model.prompts import PromptArtifact, PromptRegistry
 from dw_agent_runtime.model.single_call import SingleCallModelGateway
 from dw_agent_runtime.ports import ModelOutputInvalidError, ModelRequest
+from dw_agent_runtime.testing.models import resolver as model_resolver
 from dw_agent_runtime.testing.pricing import FlatPricing
 from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_kernel.errors import QuotaExceededError
@@ -105,11 +106,10 @@ def _gateways(adapter: MockModelAdapter) -> tuple[RoutingModelGateway, RunBudget
     )
     ledger = RunBudgetLedger()
     gateway = RoutingModelGateway(
-        profiles=profiles,
+        models=model_resolver(profiles, "balanced"),
         prompts=prompts,
         adapters={"mock": adapter},
         usage_recorder=InMemoryUsageRecorder(),
-        default_profile="balanced",
         pricing=FlatPricing(),
         budget=ledger,
         run_control=OpenRunControl(),

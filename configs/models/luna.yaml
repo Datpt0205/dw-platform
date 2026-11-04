@@ -1,6 +1,9 @@
-schema_version: "1.0"
+schema_version: "2.0"
 profile_id: luna
-routing_policy_version: "1.0.0"
+routing_policy_version: "1.1.0"
+# Data route (ADR-0123 decision 5): every route here is `foreign` until FOG-18
+# locates the alias it names; `vn` needs that answer cited in this comment.
+# `retention_days: null` says the processor's retention is not known.
 # Every generation route on gpt-5.6-luna through one OpenAI-compatible gateway
 # (OPENAI_BASE_URL). Enable with:
 #   DW_MODEL_PROVIDER=openai_compatible
@@ -16,37 +19,61 @@ routing_policy_version: "1.0.0"
 structured_extraction:
   provider: openai_responses
   model: gpt-5.6-luna
+  data_location: foreign
+  processor: fpt_ai_gateway
+  retention_days: null
+  no_training: false
   timeout_seconds: 60
   reasoning_effort: low
-  price_per_million_input: 0.20
-  price_per_million_output: 1.20
+  # Measured by `make check-model`, 2026-11-05.
+  capabilities:
+    strict_tools: true
+    numeric_bounds: true
 reasoning:
   provider: openai_responses
   model: gpt-5.6-luna
+  data_location: foreign
+  processor: fpt_ai_gateway
+  retention_days: null
+  no_training: false
   timeout_seconds: 120
   reasoning_effort: medium
-  price_per_million_input: 0.20
-  price_per_million_output: 1.20
+  # Measured by `make check-model`, 2026-11-05.
+  capabilities:
+    strict_tools: true
+    numeric_bounds: true
 chat:
   provider: openai_responses
   model: gpt-5.6-luna
+  data_location: foreign
+  processor: fpt_ai_gateway
+  retention_days: null
+  no_training: false
   timeout_seconds: 180
   reasoning_effort: medium
-  price_per_million_input: 0.20
-  price_per_million_output: 1.20
   # The most one call on this route is sent. Context compaction reads it when
   # this profile is its summariser and splits what it summarises to fit;
   # without it compaction refuses to build. Well inside the model's window on
   # purpose: a summary call is cheap work, not a place to spend the window.
-  max_input_tokens: 32000
+  # strict_tools and numeric_bounds measured by `make check-model`, 2026-11-05.
+  capabilities:
+    max_input_tokens: 32000
+    strict_tools: true
+    numeric_bounds: true
 # Tried when the primary route fails twice (provider error, timeout or schema
 # mismatch): a different model through the same gateway.
 fallback:
   provider: openai_compatible
   model: gpt-4o-mini
+  data_location: foreign
+  processor: fpt_ai_gateway
+  retention_days: null
+  no_training: false
   timeout_seconds: 60
-  price_per_million_input: 0.15
-  price_per_million_output: 0.60
+  # Measured by `make check-model`, 2026-11-05.
+  capabilities:
+    strict_tools: true
+    numeric_bounds: true
 budgets:
   max_input_tokens_per_run: 100000
   max_cost_usd_per_run: 1.00

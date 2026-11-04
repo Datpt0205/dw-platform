@@ -59,8 +59,10 @@ from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.model.copy import load_runtime_copy
 from dw_agent_runtime.model.profiles import ModelProfile, ModelProfileRegistry
 from dw_agent_runtime.model.prompts import PromptArtifact, PromptRegistry
+from dw_agent_runtime.model.resolver import ModelResolver as PlatformModelResolver
 from dw_agent_runtime.ports import RunControlPort
 from dw_agent_runtime.run_control import HaltReason, RunControlDoor
+from dw_agent_runtime.testing.models import resolver as model_resolver
 from dw_agent_runtime.testing.pricing import FlatPricing
 from dw_agent_runtime.tools import RegisteredTool, ToolRegistry, pydantic_behaviour
 from dw_kernel.ids import TenantId
@@ -201,14 +203,21 @@ def register_tools(
         )
 
 
-def profiles_for(document: AgentDocument) -> ModelProfileRegistry:
+def models_for(document: AgentDocument) -> PlatformModelResolver:
     profiles = ModelProfileRegistry()
-    route = {"provider": "mock", "model": "mock-1"}
+    route = {
+        "provider": "mock",
+        "model": "mock-1",
+        "data_location": "vn",
+        "processor": "mock",
+        "retention_days": 0,
+        "no_training": True,
+    }
     for profile_id in (document.profile_id, document.sub_agent.profile_id):
         profiles.register(
             ModelProfile.model_validate(
                 {
-                    "schema_version": "1.0",
+                    "schema_version": "2.0",
                     "profile_id": profile_id,
                     "routing_policy_version": "1.0.0",
                     "structured_extraction": route,
@@ -218,7 +227,7 @@ def profiles_for(document: AgentDocument) -> ModelProfileRegistry:
                 }
             )
         )
-    return profiles
+    return model_resolver(profiles, document.profile_id)
 
 
 def executor_over(registry: ToolRegistry, run_control: RunControlPort) -> ToolExecutor:
@@ -407,7 +416,7 @@ class StudioGraphSource:
             prompt_variables=lambda request: {"instructions": instructions},
             budget=RunBudgetLedger(),
             pricing=FlatPricing(),
-            profiles=profiles_for(document),
+            models=models_for(document),
             profile_id=document.profile_id,
             pinned=pinned,
         )

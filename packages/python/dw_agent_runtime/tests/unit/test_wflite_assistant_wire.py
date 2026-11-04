@@ -25,6 +25,7 @@ from dw_agent_runtime.model.gateway import InMemoryUsageRecorder, RoutingModelGa
 from dw_agent_runtime.model.profiles import ModelProfileRegistry
 from dw_agent_runtime.model.prompts import PromptRegistry
 from dw_agent_runtime.ports import ModelOutputInvalidError, ModelRequest
+from dw_agent_runtime.testing.models import resolver as model_resolver
 from dw_agent_runtime.testing.pricing import FlatPricing
 from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_agent_runtime.wflite import assistant_wire
@@ -211,11 +212,10 @@ async def test_a_malformed_answer_is_invalid_after_the_gateways_retries(
     prompts = PromptRegistry()
     prompts.load_directory(CONFIGS / "prompts")
     gateway = RoutingModelGateway(
-        profiles=profiles,
+        models=model_resolver(profiles, "balanced"),
         prompts=prompts,
         adapters={"mock": adapter},
         usage_recorder=InMemoryUsageRecorder(),
-        default_profile="balanced",
         pricing=FlatPricing(),
         run_control=OpenRunControl(),
     )

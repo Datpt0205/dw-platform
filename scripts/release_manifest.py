@@ -87,6 +87,24 @@ def _prompt_bundles() -> list[dict[str, str]]:
     return bundles
 
 
+def _model_profiles() -> list[dict[str, str]]:
+    """The platform model profiles (model-connections ticket 02; ADR-0118,
+    Amendments 2026-11-04), pinned by id, `routing_policy_version` and content:
+    a release that moves a route, its data route or a capability is a different
+    release, as a prompt's is."""
+    profiles = []
+    for path in sorted((REPO_ROOT / "configs" / "models").glob("*.yaml")):
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+        profiles.append(
+            {
+                "profile_id": str(raw["profile_id"]),
+                "version": str(raw["routing_policy_version"]),
+                "checksum": _checksum(path),
+            }
+        )
+    return profiles
+
+
 def _policies() -> list[dict[str, str]]:
     policies = []
     for path in sorted((REPO_ROOT / "configs" / "policies").glob("*.yaml")):
@@ -257,6 +275,7 @@ def build_manifest() -> dict[str, Any]:
         "api_version": _project_version(REPO_ROOT / "apps" / "api" / "pyproject.toml"),
         "workers": _workers(),
         "prompt_bundles": _prompt_bundles(),
+        "model_profiles": _model_profiles(),
         "copy_bundles": _copy_bundles(),
         "tool_specs": _tool_specs(),
         "toolsets": _toolsets(),

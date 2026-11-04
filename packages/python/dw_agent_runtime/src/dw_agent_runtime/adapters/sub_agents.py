@@ -113,7 +113,7 @@ def sub_agent_spec(parent: AgentSpec, child: SubAgentSpec) -> dict[str, Any]:
         # The SAME ledger object the parent holds — not a copy, not a fresh one.
         # This single argument is what keeps a delegated turn inside the ceiling
         # the run was given.
-        RunBudgetMiddleware(parent.budget, parent.profiles, profile_id, parent.pricing),
+        RunBudgetMiddleware(parent.budget, parent.models, profile_id, parent.pricing),
     ]
     spec: dict[str, Any] = {
         "name": child.name,

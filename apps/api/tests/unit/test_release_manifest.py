@@ -33,6 +33,7 @@ def test_manifest_contains_every_required_section() -> None:
         "api_version",
         "workers",
         "prompt_bundles",
+        "model_profiles",
         "tool_specs",
         "toolsets",
         "policies",
@@ -102,3 +103,19 @@ def test_the_committed_manifest_hashes_as_its_canonical_bytes() -> None:
     )
     without_sha = {k: v for k, v in committed.items() if k != "git_sha"}
     assert content_hash(without_sha) == script.manifest_ref(committed)
+
+
+def test_every_platform_model_profile_is_pinned_by_version_and_content() -> None:
+    """model-connections R2.3: a release that moves a route, its data route or
+    a capability is a different release."""
+    import yaml
+
+    manifest = _load_script().build_manifest()
+    pinned = {p["profile_id"]: p for p in manifest["model_profiles"]}
+    models = REPO_ROOT / "configs" / "models"
+    assert set(pinned) == {path.stem for path in models.glob("*.yaml")}
+    assert set(pinned) == {"balanced", "deepseek", "gateway", "low_cost", "luna", "openai"}
+    for profile_id, entry in pinned.items():
+        raw = yaml.safe_load((models / f"{profile_id}.yaml").read_text(encoding="utf-8"))
+        assert entry["version"] == raw["routing_policy_version"]
+        assert len(entry["checksum"]) == 64

@@ -24,9 +24,9 @@ from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.contracts import RunContext, WorkerDefinition
 from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.model.gateway import ModelUsage
-from dw_agent_runtime.model.profiles import ModelRoute
 from dw_agent_runtime.ports import ModelRequest
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
+from dw_agent_runtime.testing.models import route as test_route
 from dw_agent_runtime.testing.pricing import FlatPricing
 from dw_agent_runtime.testing.run_control import OpenRunControl
 
@@ -56,9 +56,9 @@ class _Recorder:
         self.rows.append((run_context, request, usage))
 
 
-class _Profiles:
-    def resolve(self, profile_id: str) -> Any:
-        return type("P", (), {"chat": ModelRoute(provider="mock", model="mock-1")})()
+class _Models:
+    async def resolve(self, run_context: RunContext, profile_id: str | None, purpose: str) -> Any:
+        return type("R", (), {"route": test_route(provider="mock", model="mock-1")})()
 
 
 def _runner(recorder: _Recorder) -> LangGraphWorkflowRunner:
@@ -74,7 +74,7 @@ def _runner(recorder: _Recorder) -> LangGraphWorkflowRunner:
         budget=RunBudgetLedger(),
         approval_policy=AutonomyApprovalPolicy(),
         usage_meter=LangchainUsageMeter(
-            profiles=cast(Any, _Profiles()), recorder=recorder, pricing=FlatPricing()
+            models=cast(Any, _Models()), recorder=recorder, pricing=FlatPricing()
         ),
         run_control=OpenRunControl(),
     )

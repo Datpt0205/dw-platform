@@ -332,6 +332,18 @@ plan_limits = sa.Table(
     sa.Column("max_tool_calls_per_run", sa.Integer, nullable=False),
 )
 
+# model-connections ticket 02 (R2.1): the platform model profiles a plan lists.
+# Global, like `plan_limits`: written by migrations only, `dw_app` reads it.
+# `profile_id` names a file of `configs/models`, checked by a test, not a key.
+plan_model_profiles = sa.Table(
+    "plan_model_profiles",
+    metadata,
+    sa.Column(
+        "plan_id", sa.Text, sa.ForeignKey("plans.plan_id", ondelete="CASCADE"), primary_key=True
+    ),
+    sa.Column("profile_id", sa.Text, primary_key=True),
+)
+
 memberships = sa.Table(
     "memberships",
     metadata,

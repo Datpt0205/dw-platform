@@ -15,7 +15,11 @@ from dw_agent_runtime.adapters.checkpoint import SqlAlchemyCheckpointSaver
 from dw_agent_runtime.adapters.checkpoint_serde import checkpoint_serializer
 from dw_agent_runtime.adapters.langchain_usage import LangchainUsageMeter
 from dw_agent_runtime.adapters.langgraph_runner import LangGraphWorkflowRunner
-from dw_agent_runtime.adapters.model_stack import ModelStack, build_model_stack
+from dw_agent_runtime.adapters.model_stack import (
+    ModelStack,
+    build_model_resolver,
+    build_model_stack,
+)
 from dw_agent_runtime.adapters.pack_tools import build_leadcare_tools, register_leadcare_tools
 from dw_agent_runtime.adapters.run_store import SqlWorkerRunStore
 from dw_agent_runtime.adapters.spend_guard import SqlSpendGuardStore
@@ -30,8 +34,8 @@ from dw_agent_runtime.adapters.wflite_host import (
 from dw_agent_runtime.approval_flow import ApproveAndResumeService, RuleGuard
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.model.copy import load_runtime_copy
-from dw_agent_runtime.model.profiles import ModelProfileRegistry
 from dw_agent_runtime.model.prompts import PromptRegistry
+from dw_agent_runtime.model.resolver import ModelResolver
 from dw_agent_runtime.ports import RunAllowancePort, RunControlPort
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.tool_specs import ToolSpecRegistry
@@ -73,6 +77,10 @@ from dw_memory.policy import MemoryWritePolicy
 from dw_memory.review import MEMORY_REVIEW, require_clearance_for_review
 from dw_memory.service import MemoryService
 from dw_observability.telemetry import TelemetryPort
+from dw_platform.adapters.persistence.plan_model_profiles import (
+    CachingPlanModelProfiles,
+    SqlPlanModelProfiles,
+)
 from dw_platform.application.config_versions import CONFIG_PREFIX
 from dw_platform.application.decision_gate import (
     DW_DECISION,
@@ -86,6 +94,7 @@ from dw_platform.application.dw_autonomy import (
 )
 from dw_platform.application.ports import PlatformUnitOfWorkFactory
 from dw_platform.application.work_queue import WorkQueue
+from dw_studio.core.adapters.run_manifest_store import SqlRunManifestEngines
 from dw_usage.adapters.price_book_file import enforce_price_coverage, load_price_book
 from dw_usage.adapters.sql import SqlUsageLedger
 from dw_usage.application.recorder import LedgerUsageRecorder
@@ -110,9 +119,7 @@ class RuntimeWiring:
     run_trails: RunTrailReader
 
 
-def _build_memory_ranker(
-    settings: ApiSettings, profiles: ModelProfileRegistry
-) -> QdrantMemoryRanker | None:
+def _build_memory_ranker(settings: ApiSettings, models: ModelResolver) -> QdrantMemoryRanker | None:
     """The memory ranker, when this deployment has a vector store to rank with.
 
     `None` rather than a stub: a stub that returned an empty order would look
@@ -131,7 +138,7 @@ def _build_memory_ranker(
 
     return _Ranker(
         client=AsyncQdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key),
-        embedder=build_embeddings(settings, profiles),
+        embedder=build_embeddings(settings, models),
     )
 
 
@@ -151,8 +158,15 @@ def build_runtime(
     run_control: RunControlPort,
 ) -> RuntimeWiring:
     # ---- versioned artifact registries -----------------------------------
-    profiles = ModelProfileRegistry()
-    profiles.load_directory(MODEL_PROFILES_DIR)
+    # The one resolver every model door asks (model-connections R1.1): the
+    # platform profiles, filtered by the plan catalogue for every run's call,
+    # and what a Studio run pinned for that run's calls.
+    models = build_model_resolver(
+        model_provider_config(settings),
+        profiles_dir=MODEL_PROFILES_DIR,
+        plans=CachingPlanModelProfiles(SqlPlanModelProfiles(session_factory), clock),
+        pinned=SqlRunManifestEngines(session_factory),
+    )
     prompts = PromptRegistry()
     prompts.load_directory(PROMPTS_DIR)
     copy = load_runtime_copy(RUNTIME_COPY_CONFIG)
@@ -183,7 +197,7 @@ def build_runtime(
     # a run's spend so neither half reaches the ceiling.
     model_stack = build_model_stack(
         model_provider_config(settings),
-        profiles=profiles,
+        models=models,
         prompts=prompts,
         session_factory=session_factory,
         clock=clock,
@@ -199,15 +213,15 @@ def build_runtime(
     # The LangChain path (agent loops, structured output) bills into the same
     # ledger through this meter rather than going unmetered.
     usage_meter = LangchainUsageMeter(
-        profiles=profiles, recorder=usage_recorder, pricing=price_book, clock=clock
+        models=models, recorder=usage_recorder, pricing=price_book, clock=clock
     )
-    chat_models = build_chat_model_factory(settings, profiles, copy)
+    chat_models = build_chat_model_factory(settings, models, copy)
 
     # ---- retrieval -------------------------------------------------------
     knowledge_gateway = KnowledgeGateway(
         session_factory=session_factory,
         vector_index=build_vector_index(settings),
-        embeddings=build_embeddings(settings, profiles),
+        embeddings=build_embeddings(settings, models),
         object_storage=object_storage,
         clock=clock,
         id_generator=ids,
@@ -283,7 +297,7 @@ def build_runtime(
         # Orders a long list of recalled facts by what the turn is about. Absent
         # without Qdrant, and absence costs only the ordering: recall still
         # answers, confidence-first, exactly as it did before ranking existed.
-        ranker=_build_memory_ranker(settings, profiles),
+        ranker=_build_memory_ranker(settings, models),
     )
 
     # ---- graphs, workers, runner ----------------------------------------
@@ -375,7 +389,7 @@ def build_runtime(
         clock=clock,
         ids=ids,
         telemetry=telemetry,
-        profiles=profiles,
+        models=models,
         prompts=prompts,
         copy=copy,
         gateway=gateway,

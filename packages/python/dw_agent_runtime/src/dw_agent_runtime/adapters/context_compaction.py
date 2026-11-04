@@ -81,13 +81,13 @@ from langchain_core.messages.utils import get_buffer_string
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from langgraph.runtime import Runtime
 
-from dw_agent_runtime.adapters.chat_model import chat_route
 from dw_agent_runtime.context import access_context_from_run
 from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.model.budget import RunBudgetLedger, route_cost
 from dw_agent_runtime.model.copy import RuntimeCopy
 from dw_agent_runtime.model.pricing import PricingPort
-from dw_agent_runtime.model.profiles import ModelProfileRegistry, ModelRoute
+from dw_agent_runtime.model.profiles import ModelRoute
+from dw_agent_runtime.model.resolver import ModelResolver
 from dw_agent_runtime.ports import RunControlPort
 from dw_agent_runtime.registry import ConfigError
 from dw_agent_runtime.run_control import RunControlDoor
@@ -120,9 +120,10 @@ class PlatformSummarizationMiddleware(SummarizationMiddleware):
         budget: RunBudgetLedger,
         # The price book a summary is priced by (usage-and-limits R2.1).
         pricing: PricingPort,
-        profiles: ModelProfileRegistry,
+        # The one resolver every model door asks (model-connections R1.1).
+        models: ModelResolver,
         # The run's profile: its ceiling is the one a summary counts against.
-        profile_id: str,
+        profile_id: str | None,
         # The summariser's own profile: its price is what a summary costs. A
         # separate argument because compaction is usually given a cheaper model
         # than the one doing the work.
@@ -148,7 +149,7 @@ class PlatformSummarizationMiddleware(SummarizationMiddleware):
             )
         # At build, on the platform layer: a deployment whose summary route
         # declares no input budget fails here, not on the first long run.
-        _input_budget(chat_route(profiles, summary_profile_id), summary_profile_id)
+        _input_budget(_platform_chat(models, summary_profile_id), summary_profile_id)
         super().__init__(
             model,
             trigger=trigger,
@@ -167,7 +168,7 @@ class PlatformSummarizationMiddleware(SummarizationMiddleware):
         self._budget = budget
         self._run_control = run_control
         self._pricing = pricing
-        self._profiles = profiles
+        self._models = models
         self._profile_id = profile_id
         self._summary_profile_id = summary_profile_id
 
@@ -193,10 +194,12 @@ class PlatformSummarizationMiddleware(SummarizationMiddleware):
             return None
         removed, preserved = self._partition_messages(messages, cutoff)
         run_context = runtime.context
-        profile = self._profiles.resolve(self._profile_id, tenant_id=run_context.tenant_id)
-        summary_route = chat_route(
-            self._profiles, self._summary_profile_id, tenant_id=run_context.tenant_id
-        )
+        # Per call, for the run's tenant and plan (or what a Studio run
+        # pinned): the run's ceiling and the summariser's route.
+        ceiling = (await self._models.resolve(run_context, self._profile_id, "chat")).budgets
+        summary_route = (
+            await self._models.resolve(run_context, self._summary_profile_id, "chat")
+        ).route
         budget = _input_budget(summary_route, self._summary_profile_id)
 
         anchor, pending = _anchor_and_rest(removed)
@@ -236,7 +239,7 @@ class PlatformSummarizationMiddleware(SummarizationMiddleware):
             # there, the refusal would read as "the summariser failed, carry
             # on" and neither would stop anything.
             await self._run_control.require_open(run_context, door=RunControlDoor.COMPACTION)
-            self._budget.check(run_context.run_id, profile.budgets, task=COMPACTION_TASK)
+            self._budget.check(run_context.run_id, ceiling, task=COMPACTION_TASK)
             try:
                 summary, input_tokens, output_tokens = await self._summarise(anchor, chunk)
             except Exception:
@@ -413,12 +416,21 @@ def _digest(messages: list[AnyMessage]) -> str:
 
 def _input_budget(route: ModelRoute, profile_id: str) -> int:
     """The summary route's input budget, or a refusal: never a number nobody chose."""
-    if route.max_input_tokens is None:
+    budget = route.capabilities.max_input_tokens
+    if budget is None:
         raise ConfigError(
             "the summary model route declares no max_input_tokens",
             details={"profile_id": profile_id},
         )
-    return route.max_input_tokens
+    return budget
+
+
+def _platform_chat(models: ModelResolver, profile_id: str) -> ModelRoute:
+    """The summariser's chat route on the platform layer, checked once at build."""
+    route = models.platform_profile(profile_id).chat
+    if route is None:
+        raise ConfigError("model profile has no chat route", details={"profile_id": profile_id})
+    return route
 
 
 def _is_summary(message: AnyMessage) -> bool:

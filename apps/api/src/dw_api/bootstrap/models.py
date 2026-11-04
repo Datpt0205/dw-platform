@@ -20,7 +20,7 @@ from dw_agent_runtime.adapters.model_stack import (
     ModelProviderConfig,
 )
 from dw_agent_runtime.model.copy import RuntimeCopy
-from dw_agent_runtime.model.profiles import ModelProfileRegistry
+from dw_agent_runtime.model.resolver import ModelResolver
 from dw_api.settings import ApiSettings
 from dw_kernel.net_guard import ensure_allowed_outbound_url
 
@@ -51,7 +51,7 @@ def model_provider_config(settings: ApiSettings) -> ModelProviderConfig:
 
 
 def build_chat_model_factory(
-    settings: ApiSettings, profiles: ModelProfileRegistry, copy: RuntimeCopy
+    settings: ApiSettings, models: ModelResolver, copy: RuntimeCopy
 ) -> ChatModelFactory | None:
     """The tool-calling model an agent loop runs on.
 
@@ -68,7 +68,7 @@ def build_chat_model_factory(
     if not (settings.openai_api_key and settings.openai_base_url):
         return None
     return OpenAICompatibleChatModelFactory(
-        profiles=profiles,
+        models=models,
         base_url=checked_base_url(settings, settings.openai_base_url),
         api_key=settings.openai_api_key,
     )

@@ -47,11 +47,13 @@ from dw_studio.core.domain.artifacts import DocumentInvalidError
 from dw_studio.core.domain.toolset import parse_toolset
 from dw_studio.testing.fixture_kinds import FIXTURE_KINDS, planted_fixture_kinds
 from dw_studio.testing.run_manifests import (
+    TEST_PLAN,
     draft_of,
     fixture_document,
     live_closure,
     published,
     sealed,
+    shipped_models,
 )
 from dw_studio.testing.world import Person, StudioWorld, plant_world
 
@@ -309,9 +311,11 @@ async def test_a_sealed_toolset_builds_from_the_run_manifest_with_its_pins(
     )
     store = service.store
     assert isinstance(store, SqlArtifactStore)  # its transaction is a `RunManifestTx` too
-    builder = RunManifestBuilder(ArtifactKindRegistry(FIXTURE_KINDS), REF)
+    builder = RunManifestBuilder(ArtifactKindRegistry(FIXTURE_KINDS), REF, shipped_models())
     async with store.transaction(writer.context()) as tx:
-        manifest_hash = await builder.build(tx, root.version_id, "live")
+        manifest_hash = await builder.build(
+            tx, root.version_id, "live", tenant_id=writer.tenant_id, plan_id=TEST_PLAN
+        )
     sessions = async_sessionmaker(app_engine, class_=AsyncSession, expire_on_commit=False)
     async with tenant_session(sessions, TenantScope(tenant_id=writer.tenant_id)) as session:
         resolver = await PinnedResolver.load(SqlRunManifestStore(session), manifest_hash)

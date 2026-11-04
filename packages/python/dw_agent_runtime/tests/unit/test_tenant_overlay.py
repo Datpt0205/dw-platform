@@ -14,10 +14,13 @@ import uuid
 
 import pytest
 
+from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.model.profiles import ModelProfile, ModelProfileRegistry
 from dw_agent_runtime.model.prompts import PromptArtifact, PromptRegistry
+from dw_agent_runtime.model.resolver import ModelResolver, StaticPlanModelProfiles
 from dw_agent_runtime.registry import ConfigError
-from dw_kernel.errors import NotFoundError
+from dw_agent_runtime.testing.models import route as test_route
+from dw_kernel.errors import EntitlementDeniedError, NotFoundError
 from dw_kernel.overlay import TenantOverlay
 
 pytestmark = pytest.mark.unit
@@ -40,11 +43,11 @@ def _prompt(text: str) -> PromptArtifact:
 def _profile(profile_id: str, model: str) -> ModelProfile:
     return ModelProfile.model_validate(
         {
-            "schema_version": "1.0",
+            "schema_version": "2.0",
             "profile_id": profile_id,
             "routing_policy_version": "1.0.0",
-            "structured_extraction": {"provider": "mock", "model": model},
-            "reasoning": {"provider": "mock", "model": model},
+            "structured_extraction": test_route(model=model),
+            "reasoning": test_route(model=model),
         }
     )
 
@@ -86,15 +89,62 @@ def test_one_tenants_override_is_invisible_to_another() -> None:
     )
 
 
-def test_a_tenant_may_define_what_the_platform_does_not() -> None:
-    registry = ModelProfileRegistry()
-    registry.register(_profile("acme_private", "gpt-on-their-contract"), tenant_id=ACME)
+def _run(tenant: uuid.UUID, plan: str = "basic") -> RunContext:
+    return RunContext(
+        run_id=uuid.uuid4(),
+        tenant_id=tenant,
+        workspace_id=uuid.uuid4(),
+        actor_id=uuid.uuid4(),
+        worker_id="test",
+        worker_version="1.0.0",
+        channel="web",
+        plan_id=plan,
+        roles=frozenset(),
+        scopes=frozenset(),
+        trace_id="t",
+    )
 
-    assert registry.resolve("acme_private", tenant_id=ACME).profile_id == "acme_private"
+
+def _models(registry: ModelProfileRegistry, **plans: frozenset[str]) -> ModelResolver:
+    return ModelResolver(registry, StaticPlanModelProfiles(plans), "balanced")
+
+
+async def test_a_tenant_may_define_what_the_platform_does_not() -> None:
+    registry = ModelProfileRegistry()
+    registry.register(_profile("balanced", "platform-model"))
+    registry.register(_profile("acme_private", "gpt-on-their-contract"), tenant_id=ACME)
+    models = _models(registry, basic=frozenset({"balanced", "acme_private"}))
+
+    own = await models.resolve(_run(ACME), "acme_private", "structured_extraction")
+    assert (own.layer, own.route.model) == ("tenant", "gpt-on-their-contract")
+    # Not the platform's to answer, and never another tenant's, even when the
+    # plan names the id.
     with pytest.raises(NotFoundError):
-        registry.resolve("acme_private")
-    with pytest.raises(NotFoundError):
-        registry.resolve("acme_private", tenant_id=OTHER)
+        models.platform_profile("acme_private")
+    with pytest.raises(EntitlementDeniedError) as refused:
+        await models.resolve(_run(OTHER), "acme_private", "structured_extraction")
+    assert refused.value.details["reason_code"] == "model_profile_unavailable"
+
+
+async def test_a_profile_only_another_tenant_overrides_falls_back_to_the_platform() -> None:
+    """MR2 (R1.3): ACME asks for a profile only OTHER has its own of. ACME gets
+    the platform's when its plan lists it, a refusal when it does not, and
+    OTHER's never. Without the platform step it is a refusal every time."""
+    registry = ModelProfileRegistry()
+    registry.register(_profile("balanced", "platform-model"))
+    registry.register(_profile("balanced", "other-model"), tenant_id=OTHER)
+
+    listed = await _models(registry, basic=frozenset({"balanced"})).resolve(
+        _run(ACME), "balanced", "reasoning"
+    )
+    assert (listed.layer, listed.route.model) == ("platform", "platform-model")
+
+    with pytest.raises(EntitlementDeniedError) as refused:
+        await _models(registry, basic=frozenset()).resolve(_run(ACME), "balanced", "reasoning")
+    assert refused.value.details["reason"] == "plan"
+
+    other = await _models(registry, basic=frozenset()).resolve(_run(OTHER), "balanced", "reasoning")
+    assert (other.layer, other.route.model) == ("tenant", "other-model")
 
 
 def test_overriding_is_allowed_but_defining_twice_in_one_layer_is_not() -> None:

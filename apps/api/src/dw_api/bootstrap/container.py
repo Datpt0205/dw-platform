@@ -37,8 +37,8 @@ from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.model.copy import RuntimeCopy
 from dw_agent_runtime.model.gateway import RoutingModelGateway
 from dw_agent_runtime.model.pricing import PricingPort
-from dw_agent_runtime.model.profiles import ModelProfileRegistry
 from dw_agent_runtime.model.prompts import PromptRegistry
+from dw_agent_runtime.model.resolver import ModelResolver
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.tool_specs import ToolSpecRegistry
 from dw_agent_runtime.tools import ToolRegistry
@@ -127,7 +127,9 @@ class RuntimeSeam:
     clock: UtcClock
     ids: IdGenerator
     telemetry: TelemetryPort
-    profiles: ModelProfileRegistry
+    # The one answer to which model route a run's call takes
+    # (model-connections R1.1): an `AgentSpec` takes it as `models`.
+    models: ModelResolver
     prompts: PromptRegistry
     copy: RuntimeCopy
     gateway: RoutingModelGateway

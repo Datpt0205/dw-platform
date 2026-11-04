@@ -17,7 +17,7 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from pydantic import BaseModel
-from test_agent_factory import OFFERED, PROFILE_ID, READ, _profiles, _registry, prompt_fields
+from test_agent_factory import OFFERED, PROFILE_ID, READ, _models, _registry, prompt_fields
 from test_langchain_tools import COPY, LeadInput, LeadOutput, make_run_context
 
 from dw_agent_runtime.adapters.agent_factory import AgentSpec, build_agent, platform_middleware
@@ -51,7 +51,7 @@ def _spec(
         **prompt_fields(WORKER_PROMPT, template=""),
         budget=budget or RunBudgetLedger(),
         pricing=FlatPricing(),
-        profiles=_profiles(),
+        models=_models(),
         profile_id=PROFILE_ID,
         sub_agents=children,
     )

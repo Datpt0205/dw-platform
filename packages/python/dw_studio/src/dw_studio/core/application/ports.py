@@ -289,6 +289,22 @@ class BindingStore(Protocol):
         ...
 
 
+class ModelRoutePinPort(Protocol):
+    """What a Studio run's manifest pins of the models it may use
+    (model-connections R1.4; ADR-0118 decision 1, Amendments 2026-11-04).
+    Satisfied at the composition root by `ModelResolver.pin`, which applies the
+    same layer order and plan filter as every call of the run."""
+
+    async def pin(
+        self, tenant_id: uuid.UUID, plan_id: str | None, profile_ids: frozenset[str]
+    ) -> dict[str, Any]:
+        """`{"model_routes": ..., "default_model_profile": ...}` for `engine`:
+        each of `profile_ids` and the deployment's default, by value. A profile
+        of `profile_ids` with no answer raises `model_profile_unavailable`; a
+        default the plan does not list is left out, as null."""
+        ...
+
+
 class RunManifestTx(BindingTx, Protocol):
     """What `RunManifestBuilder` asks of the caller's transaction beyond the
     envelope's own reads (tenant-config ticket 04): the same one, so the run

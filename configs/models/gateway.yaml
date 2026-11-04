@@ -1,6 +1,9 @@
-schema_version: "1.0"
+schema_version: "2.0"
 profile_id: gateway
-routing_policy_version: "2.0.0"
+routing_policy_version: "2.1.0"
+# Data route (ADR-0123 decision 5): every route here is `foreign` until FOG-18
+# locates the alias it names; `vn` needs that answer cited in this comment.
+# `retention_days: null` says the processor's retention is not known.
 # Every route goes through one OpenAI-compatible gateway (OPENAI_BASE_URL): a
 # LiteLLM proxy, a vendor gateway, or OpenAI itself. Provider keys and fallbacks
 # are the gateway's configuration, not the application's.
@@ -9,19 +12,28 @@ routing_policy_version: "2.0.0"
 structured_extraction:
   provider: openai_responses
   model: gpt-5.6-luna
+  data_location: foreign
+  processor: fpt_ai_gateway
+  retention_days: null
+  no_training: false
   timeout_seconds: 60
   reasoning_effort: low
-  # Public list price (F6). Without one the ledger stores NULL and the usage
-  # screen says "chưa định giá" — adjust here when the gateway's real rate
-  # card differs.
-  price_per_million_input: 0.20
-  price_per_million_output: 1.20
+  # Measured by `make check-model`, 2026-11-05.
+  capabilities:
+    strict_tools: true
+    numeric_bounds: true
 reasoning:
   provider: openai_compatible
   model: gpt-4.1
+  data_location: foreign
+  processor: fpt_ai_gateway
+  retention_days: null
+  no_training: false
   timeout_seconds: 90
-  price_per_million_input: 2.00
-  price_per_million_output: 8.00
+  # Measured by `make check-model`, 2026-11-05.
+  capabilities:
+    strict_tools: true
+    numeric_bounds: true
 # Front-office chat, and the route the lead scorer runs on too. A reasoning
 # model, so no temperature: it accepts only its own default, and the gateway
 # answers 400 for the parameter rather than ignoring it.
@@ -43,23 +55,34 @@ reasoning:
 chat:
   provider: openai_responses
   model: gpt-5.6-luna
+  data_location: foreign
+  processor: fpt_ai_gateway
+  retention_days: null
+  no_training: false
   timeout_seconds: 180
   reasoning_effort: medium
   reasoning_summary: auto
-  # Same rate the sales_luna profile bills this model at.
-  price_per_million_input: 0.20
-  price_per_million_output: 1.20
   # The most one call on this route is sent. Context compaction reads it when
   # this profile is its summariser and splits what it summarises to fit;
   # without it compaction refuses to build. Well inside the model's window on
   # purpose: a summary call is cheap work, not a place to spend the window.
-  max_input_tokens: 32000
+  # strict_tools and numeric_bounds measured by `make check-model`, 2026-11-05.
+  capabilities:
+    max_input_tokens: 32000
+    strict_tools: true
+    numeric_bounds: true
 fallback:
   provider: openai_compatible
   model: gpt-4o-mini
+  data_location: foreign
+  processor: fpt_ai_gateway
+  retention_days: null
+  no_training: false
   timeout_seconds: 60
-  price_per_million_input: 0.15
-  price_per_million_output: 0.60
+  # Measured by `make check-model`, 2026-11-05.
+  capabilities:
+    strict_tools: true
+    numeric_bounds: true
 # Retrieval. 3072 is this model's native width, measured on the gateway
 # (docs/architecture/model-gateway-findings.md) along with the fact that the
 # `dimensions` parameter is honoured if a narrower index is ever wanted.
@@ -67,8 +90,10 @@ fallback:
 embedding:
   provider: openai_compatible
   model: text-embedding-3-large
-  # Public list price for text-embedding-3-large; adjust to the gateway's rate card.
-  price_per_million_input: 0.13
+  data_location: foreign
+  processor: fpt_ai_gateway
+  retention_days: null
+  no_training: false
   dimensions: 3072
   timeout_seconds: 120
 budgets:

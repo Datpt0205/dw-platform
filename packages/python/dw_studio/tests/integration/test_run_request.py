@@ -15,6 +15,7 @@ import uuid
 from collections.abc import AsyncIterator, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -30,14 +31,26 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.pool import NullPool
 
 from dw_agent_runtime.adapters.langgraph_runner import LangGraphWorkflowRunner
+from dw_agent_runtime.contracts import RunContext
+from dw_agent_runtime.model.profiles import ModelProfileRegistry
+from dw_agent_runtime.model.resolver import ModelResolver, StaticPlanModelProfiles, pin_entry
 from dw_kernel.canonical import content_hash
-from dw_kernel.errors import ConflictError, DomainError, NotFoundError, PermissionDeniedError
+from dw_kernel.errors import (
+    ConfigError,
+    ConflictError,
+    DomainError,
+    EntitlementDeniedError,
+    NotFoundError,
+    PermissionDeniedError,
+)
 from dw_kernel.http_conditions import ExpectedVersion
 from dw_kernel.ports import SystemClock, Uuid7Generator
 from dw_platform.application.access_context import AccessContext
 from dw_platform.domain.audit import system_actor
 from dw_platform.testing.rbac import assign, plant_membership, plant_person, plant_role
 from dw_studio.core.adapters.artifact_store import SqlArtifactStore
+from dw_studio.core.adapters.run_manifest_store import SqlRunManifestEngines
+from dw_studio.core.application.ports import ModelRoutePinPort
 from dw_studio.core.application.registry import ArtifactKindEntry, ArtifactKindRegistry
 from dw_studio.core.application.run_manifests import RunManifestBuilder
 from dw_studio.core.application.run_request import (
@@ -52,6 +65,7 @@ from dw_studio.core.application.run_request import (
 )
 from dw_studio.core.application.service import ArtifactService
 from dw_studio.core.domain.artifacts import DocumentInvalidError, definition_body, definition_hash
+from dw_studio.core.domain.run_manifest import EngineSection
 from dw_studio.testing.bindings import unasked_pins
 from dw_studio.testing.fixture_kinds import (
     FIXTURE,
@@ -62,12 +76,19 @@ from dw_studio.testing.fixture_kinds import (
     FIXTURE_WRITE,
     planted_fixture_kinds,
 )
-from dw_studio.testing.run_manifests import draft_of, fixture_document, published
+from dw_studio.testing.run_manifests import (
+    TEST_PLAN,
+    draft_of,
+    fixture_document,
+    published,
+    shipped_models,
+)
 from dw_studio.testing.world import Person, StudioWorld, plant_world
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="module")]
 
 REF = "sha256:" + "f" * 64
+MODELS_DIR = Path(__file__).resolve().parents[5] / "configs" / "models"
 
 # The composition root's tables, for the fixture kinds: `fixture` runs `test`
 # only, so (`fixture`, `manual`) has no entry (R3.17).
@@ -167,12 +188,13 @@ def door_of(
     *,
     entries: Sequence[ArtifactKindEntry] = (FIXTURE, FIXTURE_GATELESS),
     run_keys: dict[tuple[str, str], str] | None = None,
+    models: ModelRoutePinPort | None = None,
 ) -> RunRequestService:
     registry = ArtifactKindRegistry(entries)
     return RunRequestService(
         store,
         registry,
-        RunManifestBuilder(registry, REF),
+        RunManifestBuilder(registry, REF, shipped_models() if models is None else models),
         RUN_KEYS if run_keys is None else run_keys,
         RunLaneRegistry(LANES),
         SystemClock(),
@@ -607,9 +629,9 @@ async def test_r3_20_a_reused_key_with_other_content_is_refused_and_changes_noth
     # Another run mode under the key: one trigger kind has one mode at the
     # door, so the row is written as the store writes it, in `simulate`.
     async with store.for_person(world.runner.context()) as tx:
-        manifest = await RunManifestBuilder(ArtifactKindRegistry((FIXTURE_GATELESS,)), REF).build(
-            tx, version_id, "simulate"
-        )
+        manifest = await RunManifestBuilder(
+            ArtifactKindRegistry((FIXTURE_GATELESS,)), REF, shipped_models()
+        ).build(tx, version_id, "simulate", tenant_id=world.runner.tenant_id, plan_id=TEST_PLAN)
         planted = replace(
             await _queued_like(migrator, first.run_id),
             id=uuid.uuid4(),
@@ -976,3 +998,186 @@ async def test_r3_11_a_concurrent_save_waits_and_the_manifest_hashes_what_was_va
     )
     expected = definition_hash(definition_body("fixture", artifact_id, content_hash(validated), []))
     assert manifest.body["root"]["definition_hash"] == expected
+
+
+# ---- model-connections ticket 02: what a run pins of its models (R1.4-R1.6) -----
+
+
+def _models(
+    plans: dict[str, frozenset[str]], *, default: str = "balanced", tenant: Any = None
+) -> ModelResolver:
+    """The shipped profiles under `plans`; `tenant` (an id, a profile) adds that
+    tenant's own profile to the tenant layer."""
+    profiles = ModelProfileRegistry()
+    profiles.load_directory(MODELS_DIR)
+    if tenant is not None:
+        tenant_id, profile = tenant
+        profiles.register(profile, tenant_id=tenant_id)
+    return ModelResolver(profiles, StaticPlanModelProfiles(plans), default)
+
+
+def _studio_run(who: Person, manifest_hash: str, plan: str = TEST_PLAN) -> RunContext:
+    return RunContext(
+        run_id=uuid.uuid4(),
+        tenant_id=who.tenant_id,
+        workspace_id=who.workspace_id,
+        actor_id=who.id,
+        worker_id="studio:test",
+        worker_version="1.0.0",
+        channel="web",
+        plan_id=plan,
+        roles=frozenset(),
+        scopes=frozenset(),
+        trace_id="t",
+        run_manifest_hash=manifest_hash,
+    )
+
+
+async def _engine_of(migrator: AsyncEngine, run_id: uuid.UUID) -> tuple[str, Any]:
+    row = await run_row(migrator, run_id)
+    (manifest,) = await rows(
+        migrator, "SELECT body FROM platform.run_manifests WHERE hash = :h", h=row.run_manifest_hash
+    )
+    return str(row.run_manifest_hash), manifest.body["engine"]
+
+
+async def test_r1_4_a_studio_run_pins_the_default_profile_by_value_and_reads_only_that(
+    store: SqlArtifactStore,
+    service: ArtifactService,
+    migrator: AsyncEngine,
+    sessions: async_sessionmaker[AsyncSession],
+    world: RunWorld,
+) -> None:
+    """MR4: the run pins `balanced` with every route but `embedding`, its
+    fallback too; a call naming no profile reads it after the deployment moved
+    to another default; a profile the manifest does not pin is `key_not_pinned`;
+    a pinned profile whose current content changed is refused before a send."""
+    _, version_id = await a_sealed(service, migrator, world.runner, "live")
+    pinned_by = _models({TEST_PLAN: frozenset({"balanced", "luna"})})
+    result = await door_of(store, models=pinned_by).request(
+        ask(person(world.runner), version_id, "manual")
+    )
+    manifest_hash, engine = await _engine_of(migrator, result.run_id)
+
+    assert engine["default_model_profile"] == "balanced"
+    assert set(engine["model_routes"]) == {"balanced"}
+    balanced = pinned_by.platform_profile("balanced")
+    assert engine["model_routes"]["balanced"] == pin_entry(balanced, "platform")
+    assert set(engine["model_routes"]["balanced"]["routes"]) == {
+        "structured_extraction",
+        "reasoning",
+        "fallback",
+    }
+    assert EngineSection.model_validate(engine).model_routes["balanced"].layer == "platform"
+
+    # DW_API_MODEL_PROFILE is now `luna`: the run still reads what it pinned.
+    later = _models({TEST_PLAN: frozenset({"balanced", "luna"})}, default="luna")
+    later.pinned = SqlRunManifestEngines(sessions)
+    run = _studio_run(world.runner, manifest_hash)
+    resolved = await later.resolve(run, None, "structured_extraction")
+    assert (resolved.profile_id, resolved.route.model) == ("balanced", "extraction-mock-1")
+    with pytest.raises(ConfigError) as unpinned:
+        await later.resolve(run, "luna", "structured_extraction")
+    assert unpinned.value.details["reason"] == "key_not_pinned"
+
+    # R1.5: `balanced` re-declared after admission is refused, not followed.
+    changed = ModelProfileRegistry()
+    moved = balanced.model_copy(
+        update={
+            "structured_extraction": balanced.structured_extraction.model_copy(
+                update={"data_location": "foreign"}
+            )
+        }
+    )
+    changed.register(moved)
+    changed.register(later.platform_profile("luna"))
+    current = ModelResolver(
+        changed,
+        StaticPlanModelProfiles({TEST_PLAN: frozenset({"balanced", "luna"})}),
+        "luna",
+        SqlRunManifestEngines(sessions),
+    )
+    with pytest.raises(EntitlementDeniedError) as refused:
+        await current.resolve(run, None, "structured_extraction")
+    assert refused.value.details == {
+        "reason_code": "model_profile_unavailable",
+        "reason": "pinned_profile_changed",
+        "profile_id": "balanced",
+    }
+
+
+async def test_r1_4_a_default_the_plan_does_not_list_is_not_pinned_and_the_run_is_taken(
+    store: SqlArtifactStore,
+    service: ArtifactService,
+    migrator: AsyncEngine,
+    sessions: async_sessionmaker[AsyncSession],
+    world: RunWorld,
+) -> None:
+    _, version_id = await a_sealed(service, migrator, world.runner, "live")
+    models = _models({TEST_PLAN: frozenset({"luna"})})
+    result = await door_of(store, models=models).request(
+        ask(person(world.runner), version_id, "manual")
+    )
+    manifest_hash, engine = await _engine_of(migrator, result.run_id)
+    assert (engine["model_routes"], engine["default_model_profile"]) == ({}, None)
+    models.pinned = SqlRunManifestEngines(sessions)
+    with pytest.raises(ConfigError) as unpinned:
+        await models.resolve(_studio_run(world.runner, manifest_hash), None, "reasoning")
+    assert unpinned.value.details["reason"] == "key_not_pinned"
+
+
+async def test_r1_4_a_declared_profile_outside_the_plan_admits_nothing(
+    store: SqlArtifactStore, service: ArtifactService, migrator: AsyncEngine, world: RunWorld
+) -> None:
+    """MR3 at admission: the kind declares `gateway`, the plan lists `balanced`
+    only: refused, 0 run rows and 0 manifests. Listed, it is pinned beside the
+    default, without its `embedding` route."""
+    artifact_id, version_id = await a_sealed(service, migrator, world.runner, "live")
+    declaring = replace(FIXTURE_GATELESS, model_profiles=lambda document: frozenset({"gateway"}))
+    unchanged = await Unchanged(migrator, world.runner.tenant_id, artifact_id).take()
+    with pytest.raises(EntitlementDeniedError) as refused:
+        await door_of(
+            store,
+            entries=(FIXTURE, declaring),
+            models=_models({TEST_PLAN: frozenset({"balanced"})}),
+        ).request(ask(person(world.runner), version_id, "manual"))
+    assert refused.value.details["reason_code"] == "model_profile_unavailable"
+    await unchanged.holds()
+
+    taken = await door_of(
+        store,
+        entries=(FIXTURE, declaring),
+        models=_models({TEST_PLAN: frozenset({"balanced", "gateway"})}),
+    ).request(ask(person(world.runner), version_id, "manual"))
+    _, engine = await _engine_of(migrator, taken.run_id)
+    assert set(engine["model_routes"]) == {"balanced", "gateway"}
+    assert "embedding" not in engine["model_routes"]["gateway"]["routes"]
+
+
+async def test_r1_6_another_companys_profile_and_manifest_are_never_this_runs(
+    store: SqlArtifactStore,
+    service: ArtifactService,
+    migrator: AsyncEngine,
+    sessions: async_sessionmaker[AsyncSession],
+    world: RunWorld,
+) -> None:
+    """The pin is the requester's company's: the other company's own
+    `balanced` is not pinned, and its tenant reads the manifest as nothing."""
+    _, version_id = await a_sealed(service, migrator, world.runner, "live")
+    shipped = _models({TEST_PLAN: frozenset({"balanced"})}).platform_profile("balanced")
+    theirs = shipped.model_copy(
+        update={"reasoning": shipped.reasoning.model_copy(update={"model": "theirs-1"})}
+    )
+    models = _models(
+        {TEST_PLAN: frozenset({"balanced"})}, tenant=(world.outsider.tenant_id, theirs)
+    )
+    result = await door_of(store, models=models).request(
+        ask(person(world.runner), version_id, "manual")
+    )
+    manifest_hash, engine = await _engine_of(migrator, result.run_id)
+    assert engine["model_routes"]["balanced"]["layer"] == "platform"
+    assert engine["model_routes"]["balanced"]["routes"]["reasoning"]["model"] == "reasoning-mock-1"
+    models.pinned = SqlRunManifestEngines(sessions)
+    with pytest.raises(ConfigError) as unread:
+        await models.resolve(_studio_run(world.outsider, manifest_hash), None, "reasoning")
+    assert unread.value.details["reason"] == "manifest_not_found"

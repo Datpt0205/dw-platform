@@ -20,6 +20,13 @@ declare is handed to the caller's `pin`, before anything is written; the door
 checks the approved Binding set there and refuses, or answers what the
 manifest's `bindings` section pins, and the Binding set gets a key row of its
 own (`config_version_id`, R2.18, R7.4).
+
+The run's models (model-connections ticket 02; R1.4): the profiles the root's
+kind says its document names (`ArtifactKindEntry.model_profiles`) and the
+deployment's default, pinned by value under `engine` by `ModelRoutePinPort`
+for the tenant and plan the caller verified, before anything is written. A
+named profile the plan does not list refuses the build; the default it does
+not list is pinned as null and refuses only a call that asks for it.
 """
 
 from __future__ import annotations
@@ -32,7 +39,7 @@ from dw_kernel.canonical import content_hash
 from dw_kernel.errors import ConfigError, ConflictError, NotFoundError
 from dw_kernel.run_mode import RunMode
 from dw_studio.core.application.bindings import PinnedBindings
-from dw_studio.core.application.ports import RunManifestTx
+from dw_studio.core.application.ports import ModelRoutePinPort, RunManifestTx
 from dw_studio.core.application.registry import ArtifactKindRegistry
 from dw_studio.core.application.service import closure_of
 from dw_studio.core.domain.artifacts import Stage, definition_body, definition_hash
@@ -48,9 +55,15 @@ refusal raised before the manifest is written (the door's `BindingPins`)."""
 
 
 class RunManifestBuilder:
-    def __init__(self, registry: ArtifactKindRegistry, release_manifest_ref: str) -> None:
+    def __init__(
+        self,
+        registry: ArtifactKindRegistry,
+        release_manifest_ref: str,
+        models: ModelRoutePinPort,
+    ) -> None:
         self.registry = registry
         self.release_manifest_ref = release_manifest_ref
+        self.models = models
 
     async def build(
         self,
@@ -58,11 +71,18 @@ class RunManifestBuilder:
         root_version_id: uuid.UUID,
         run_mode: RunMode,
         *,
+        tenant_id: uuid.UUID,
+        plan_id: str | None,
         pin: Pin | None = None,
     ) -> str:
-        """The manifest's hash, its row and its key rows written in `uow`."""
+        """The manifest's hash, its row and its key rows written in `uow`.
+
+        `tenant_id` is the transaction's own and `plan_id` that tenant's plan,
+        both from the caller's verified context, never from a request; they
+        decide which model profiles the run may use and nothing else."""
         found = await uow.root_version(root_version_id)
-        if found is None or self.registry.get(found.kind) is None:
+        entry = None if found is None else self.registry.get(found.kind)
+        if found is None or entry is None:
             raise NotFoundError("version not found")
         version = found.version
         draft = version.stage is Stage.DRAFT
@@ -97,6 +117,8 @@ class RunManifestBuilder:
             [parse_declarations(version.document).items]
             + [parse_declarations(documents[v]).items for v in pinned if v in documents]
         )
+        # R1.4: refused here, before the bindings are asked or anything written.
+        models = await self.models.pin(tenant_id, plan_id, entry.model_profiles(version.document))
         bindings = None if pin is None else await pin(list(declared.items.values()))
         manifest = RunManifest.model_validate(
             {
@@ -112,7 +134,7 @@ class RunManifestBuilder:
                     **({"stage": Stage.DRAFT.value} if draft else {}),
                 },
                 "closure": definition["closure"],
-                "engine": ENGINE,
+                "engine": {**ENGINE, **models},
                 "bindings": None if bindings is None else bindings.as_section(),
             }
         )

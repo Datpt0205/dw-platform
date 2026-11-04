@@ -3,7 +3,12 @@
 ``ModelGateway`` answers one structured question per call. An agent harness
 needs the other shape: a multi-turn model that emits tool calls. Both read the
 same ``configs/models`` profiles — an agent picks a profile and gets its
-``chat`` route.
+``chat`` route. A pack's agent is compiled once per process, so its model is
+built from the platform layer (``ModelResolver.platform_profile``); what each
+call of it may spend, and whether the run's plan allows the profile at all, is
+the budget door's per-call ``ModelResolver.resolve`` (model-connections R1.1).
+Choosing a model per tenant for an agent is ``StudioModelSelection``
+(agent-builder/03).
 
 LangChain types stay behind this adapter (import-linter enforced).
 """
@@ -13,7 +18,6 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol
-from uuid import UUID
 
 from langchain_core.callbacks import CallbackManagerForLLMRun
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -23,7 +27,8 @@ from langchain_core.tools import BaseTool
 from langchain_openai import ChatOpenAI
 from pydantic import Field
 
-from dw_agent_runtime.model.profiles import ModelProfileRegistry, ModelRoute, Provider
+from dw_agent_runtime.model.profiles import ModelRoute, Provider
+from dw_agent_runtime.model.resolver import ModelResolver
 from dw_agent_runtime.registry import ConfigError
 
 
@@ -36,25 +41,6 @@ class ChatModelFactory(Protocol):
 CHAT_PROVIDERS = (Provider.OPENAI_COMPATIBLE, Provider.OPENAI_RESPONSES)
 
 
-def chat_route(
-    profiles: ModelProfileRegistry, profile_id: str, *, tenant_id: UUID | None = None
-) -> ModelRoute:
-    """The route an agent loop talks through, or a refusal if the profile has none.
-
-    Public because two things must agree on it: the factory that builds the chat
-    model and the budget that prices what it spent. A profile without a chat
-    route cannot run an agent loop at all, and the budget must not quietly price
-    such a call at zero where the factory would have refused to make it.
-    """
-    route = profiles.resolve(profile_id, tenant_id=tenant_id).chat
-    if route is None:
-        raise ConfigError(
-            "model profile has no chat route",
-            details={"profile_id": profile_id},
-        )
-    return route
-
-
 @dataclass(frozen=True)
 class OpenAICompatibleChatModelFactory:
     """Talks one dialect to any OpenAI-compatible endpoint.
@@ -63,33 +49,42 @@ class OpenAICompatibleChatModelFactory:
     fallbacks become proxy configuration the application never sees.
     """
 
-    profiles: ModelProfileRegistry
+    models: ModelResolver
     base_url: str
     api_key: str
 
     def resolve(self, profile_id: str) -> BaseChatModel:
-        route = chat_route(self.profiles, profile_id)
+        route = self.models.platform_profile(profile_id).chat
+        if route is None:
+            # A profile without a chat route cannot run an agent loop at all.
+            raise ConfigError("model profile has no chat route", details={"profile_id": profile_id})
         if route.provider not in CHAT_PROVIDERS:
             raise ConfigError(
                 "chat route provider is not OpenAI-compatible",
                 details={"profile_id": profile_id, "provider": route.provider},
             )
-        responses = route.provider == Provider.OPENAI_RESPONSES
-        return ChatOpenAI(
-            base_url=self.base_url,
-            api_key=self.api_key,
-            model=route.model,
-            temperature=route.temperature,
-            timeout=route.timeout_seconds,
-            use_responses_api=responses,
-            # The two dialects spell reasoning differently, and they cannot both
-            # be sent: `langchain_openai` folds `reasoning_effort` into
-            # `reasoning` only when `reasoning` is absent. Sending both leaves
-            # `reasoning_effort` as a top-level key on a Responses request, where
-            # it is not a parameter, and the effort never reaches `reasoning`.
-            reasoning=_reasoning_block(route) if responses else None,
-            reasoning_effort=None if responses else route.reasoning_effort,
-        )
+        return openai_chat_model(route, base_url=self.base_url, api_key=self.api_key)
+
+
+def openai_chat_model(route: ModelRoute, *, base_url: str, api_key: str) -> ChatOpenAI:
+    """One route as a LangChain chat model: the factory's agent model, and what
+    `make check-model` probes each route's capabilities through."""
+    responses = route.provider == Provider.OPENAI_RESPONSES
+    return ChatOpenAI(
+        base_url=base_url,
+        api_key=api_key,
+        model=route.model,
+        temperature=None if route.temperature is None else float(route.temperature),
+        timeout=route.timeout_seconds,
+        use_responses_api=responses,
+        # The two dialects spell reasoning differently, and they cannot both
+        # be sent: `langchain_openai` folds `reasoning_effort` into
+        # `reasoning` only when `reasoning` is absent. Sending both leaves
+        # `reasoning_effort` as a top-level key on a Responses request, where
+        # it is not a parameter, and the effort never reaches `reasoning`.
+        reasoning=_reasoning_block(route) if responses else None,
+        reasoning_effort=None if responses else route.reasoning_effort,
+    )
 
 
 def _reasoning_block(route: ModelRoute) -> dict[str, str] | None:

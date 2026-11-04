@@ -114,9 +114,9 @@ _DECLARED_IN = "packages/python/dw_agent_runtime/src/dw_agent_runtime/model/prof
 def price_field_reads(roots: list[Path], base: Path = REPO_ROOT) -> list[str]:
     """Every attribute read of a route price field in `src/`, as `file:line`.
 
-    The declaration on `ModelRoute` is an annotated assignment, not an attribute
-    read, so it is never one of them: the book is the one owner of a price, and
-    a second reader would be a second copy that drifts (failure-modes #2).
+    `ModelRoute` declares no price since model-connections/02 (its loader
+    refuses one): the book is the one owner of a price, and a second reader
+    would be a second copy that drifts (failure-modes #2).
     """
     found: list[str] = []
     for root in roots:

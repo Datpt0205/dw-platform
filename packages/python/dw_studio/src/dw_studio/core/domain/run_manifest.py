@@ -14,8 +14,13 @@ setting) cannot ride in: the body holds no secret, and ticket 05 adds
   manifest (or from the body `definition_body` builds for a draft); a child run
   has a manifest of its own (decision 9).
 - `engine`: `durability` is `sync` and nothing else, with no default here; the
-  builder sets it for every root (R6.8, TC32). The per-kind pins of decision 8
-  join it in workflow-engine/05 with their readers.
+  builder sets it for every root (R6.8, TC32). `model_routes` (model-connections
+  R1.4; ADR-0118, Amendments 2026-11-04): each model profile the run may use,
+  by value, every route but `embedding`, each a strict `ModelRoute` (no secret
+  version, V4.35) under the `content_hash` of exactly those routes, with
+  `default_model_profile`, the deployment's profile at admission or null when
+  the plan did not list it. `ModelResolver` reads them on every call of the
+  run. The other per-kind pins of decision 8 join in workflow-engine/05.
 - `bindings` (ticket 05; R7.4, V4.35): only when the root's closure declares
   one: the approved Binding set's id, and for each name a connection's id, a
   principal's id or a variable's `content_hash`. No secret version and no
@@ -30,7 +35,8 @@ from typing import Any, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from dw_kernel.canonical import HASH_PATTERN
+from dw_agent_runtime.model.profiles import PINNED_ROUTES, ModelRoute
+from dw_kernel.canonical import HASH_PATTERN, content_hash
 from dw_kernel.run_mode import RunMode
 from dw_studio.core.domain.artifacts import TargetKind
 
@@ -64,8 +70,37 @@ class ClosureEntry(_Strict):
     content_hash: str | None = Field(pattern=_HASH)
 
 
+class ModelRoutePin(_Strict):
+    """One model profile as a run pinned it."""
+
+    layer: Literal["platform", "tenant"]
+    # The profile's `routing_policy_version`.
+    version: str = Field(min_length=1)
+    content_hash: str = Field(pattern=_HASH)
+    routes: dict[str, ModelRoute]
+
+    @model_validator(mode="after")
+    def _routes_are_what_the_hash_names(self) -> ModelRoutePin:
+        if not self.routes or not set(self.routes) <= set(PINNED_ROUTES):
+            raise ValueError(f"routes are some of {', '.join(PINNED_ROUTES)}")
+        dumped = {name: route.model_dump(mode="json") for name, route in self.routes.items()}
+        if content_hash(dumped) != self.content_hash:
+            raise ValueError("content_hash is not the hash of the pinned routes")
+        return self
+
+
 class EngineSection(_Strict):
     durability: Literal["sync"]
+    model_routes: dict[str, ModelRoutePin]
+    default_model_profile: str | None
+
+    @model_validator(mode="after")
+    def _default_is_pinned(self) -> EngineSection:
+        if self.default_model_profile is not None and (
+            self.default_model_profile not in self.model_routes
+        ):
+            raise ValueError("the default model profile is one the run pinned")
+        return self
 
 
 class BoundValue(_Strict):

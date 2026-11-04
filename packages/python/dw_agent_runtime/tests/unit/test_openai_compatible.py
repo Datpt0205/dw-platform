@@ -1,8 +1,11 @@
+from typing import Any
+
 import pytest
 
 from dw_agent_runtime.adapters.openai_compatible import _build_request_body, _extract_json_object
 from dw_agent_runtime.model.profiles import ModelRoute
 from dw_agent_runtime.model.prompts import RenderedPrompt
+from dw_agent_runtime.testing.models import route as test_route
 
 pytestmark = pytest.mark.unit
 
@@ -15,10 +18,10 @@ def _prompt() -> RenderedPrompt:
     )
 
 
-def _route(**overrides: object) -> ModelRoute:
-    defaults: dict[str, object] = {"provider": "openai_compatible", "model": "gpt-4o-mini"}
+def _route(**overrides: Any) -> ModelRoute:
+    defaults: dict[str, Any] = {"provider": "openai_compatible", "model": "gpt-4o-mini"}
     defaults.update(overrides)
-    return ModelRoute(**defaults)
+    return test_route(**defaults)
 
 
 def test_json_schema_mode_sends_native_response_format() -> None:

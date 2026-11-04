@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from dw_agent_runtime.adapters.run_store import RunStatus
 from dw_agent_runtime.adapters.runtime_tables import worker_runs
+from dw_platform.adapters.persistence.tables import entitlements
 from dw_studio.core.application.run_request import ExistingRun, QueuedRun
 
 
@@ -46,6 +47,13 @@ async def run_by_request_key(session: AsyncSession, request_key: str) -> Existin
         run_as_principal_id=row.run_as_principal_id,
         input=row.input,
     )
+
+
+async def tenant_plan(session: AsyncSession) -> str | None:
+    """The tenant's plan, under the session's RLS: the plan a run's model
+    profiles are pinned under (model-connections R1.4)."""
+    plan: str | None = await session.scalar(sa.select(entitlements.c.plan_id))
+    return plan
 
 
 async def insert_queued_run(session: AsyncSession, tenant_id: uuid.UUID, run: QueuedRun) -> bool:

@@ -10,6 +10,8 @@ from dw_agent_runtime.adapters.chat_model import (
 )
 from dw_agent_runtime.model.profiles import ModelProfile, ModelProfileRegistry, ModelRoute
 from dw_agent_runtime.registry import ConfigError
+from dw_agent_runtime.testing.models import resolver as model_resolver
+from dw_agent_runtime.testing.models import route as test_route
 
 pytestmark = pytest.mark.unit
 
@@ -26,11 +28,11 @@ def make_registry(chat: ModelRoute | None) -> ModelProfileRegistry:
     registry = ModelProfileRegistry()
     registry.register(
         ModelProfile(
-            schema_version="1.0",
+            schema_version="2.0",
             profile_id="sales",
             routing_policy_version="1.0.0",
-            structured_extraction=ModelRoute(provider="mock", model="extract"),
-            reasoning=ModelRoute(provider="mock", model="reason"),
+            structured_extraction=test_route(provider="mock", model="extract"),
+            reasoning=test_route(provider="mock", model="reason"),
             chat=chat,
         )
     )
@@ -39,13 +41,15 @@ def make_registry(chat: ModelRoute | None) -> ModelProfileRegistry:
 
 def make_factory(chat: ModelRoute | None) -> OpenAICompatibleChatModelFactory:
     return OpenAICompatibleChatModelFactory(
-        profiles=make_registry(chat), base_url="http://litellm:4000/v1", api_key="test-key"
+        models=model_resolver(make_registry(chat), "sales"),
+        base_url="http://litellm:4000/v1",
+        api_key="test-key",
     )
 
 
 def test_factory_applies_the_chat_route() -> None:
     model = make_factory(
-        ModelRoute(
+        test_route(
             provider="openai_compatible", model="sales-chat", temperature=0.3, timeout_seconds=45
         )
     ).resolve("sales")
@@ -63,7 +67,7 @@ def test_reasoning_route_uses_the_responses_api() -> None:
     at all inside `reasoning`.
     """
     model = make_factory(
-        ModelRoute(
+        test_route(
             provider="openai_responses",
             model="gpt-5.6-luna",
             reasoning_effort="medium",
@@ -78,7 +82,7 @@ def test_reasoning_route_uses_the_responses_api() -> None:
 
 def test_a_responses_route_without_reasoning_sends_no_reasoning_object() -> None:
     """An empty object asks the provider to reason with no effort stated."""
-    model = make_factory(ModelRoute(provider="openai_responses", model="gpt-5.6-luna")).resolve(
+    model = make_factory(test_route(provider="openai_responses", model="gpt-5.6-luna")).resolve(
         "sales"
     )
     assert isinstance(model, ChatOpenAI)
@@ -88,7 +92,7 @@ def test_a_responses_route_without_reasoning_sends_no_reasoning_object() -> None
 def test_chat_completions_route_keeps_reasoning_effort_beside_the_request() -> None:
     """The other dialect is the mirror image: effort is its own parameter."""
     model = make_factory(
-        ModelRoute(provider="openai_compatible", model="sales-chat", reasoning_effort="low")
+        test_route(provider="openai_compatible", model="sales-chat", reasoning_effort="low")
     ).resolve("sales")
     assert isinstance(model, ChatOpenAI)
     assert model.use_responses_api is False
@@ -102,7 +106,7 @@ def test_profile_without_a_chat_route_fails_loudly() -> None:
 
 
 def test_non_openai_compatible_provider_is_refused() -> None:
-    factory = make_factory(ModelRoute(provider="mock", model="sales-chat"))
+    factory = make_factory(test_route(provider="mock", model="sales-chat"))
     with pytest.raises(ConfigError, match="not OpenAI-compatible"):
         factory.resolve("sales")
 

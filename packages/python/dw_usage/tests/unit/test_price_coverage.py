@@ -7,7 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from dw_agent_runtime.model.profiles import ModelProfile, ModelRoute
+from dw_agent_runtime.model.profiles import ModelProfile
+from dw_agent_runtime.testing.models import route as test_route
 from dw_kernel.errors import ConfigError
 from dw_usage.adapters.price_book_file import (
     enforce_price_coverage,
@@ -55,9 +56,9 @@ _BOOK = price_book_from_document(
 
 
 def _profile(provider: str, model: str) -> ModelProfile:
-    route = ModelRoute(provider=provider, model=model)
+    route = test_route(provider=provider, model=model)
     return ModelProfile(
-        schema_version="1.0",
+        schema_version="2.0",
         profile_id="p",
         routing_policy_version="1.0.0",
         structured_extraction=route,

@@ -17,8 +17,9 @@ from pydantic import ValidationError
 from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.model.budget import RunBudgetLedger, route_cost
 from dw_agent_runtime.model.pricing import CostSource, PricingPort
-from dw_agent_runtime.model.profiles import ModelProfile, ModelProfileRegistry, ModelRoute
+from dw_agent_runtime.model.profiles import ModelRoute
 from dw_agent_runtime.model.prompts import PromptRegistry, RenderedPrompt
+from dw_agent_runtime.model.resolver import ModelResolver, Purpose, ResolvedRoute
 from dw_agent_runtime.ports import ModelOutputInvalidError, ModelRequest, OutputT, RunControlPort
 from dw_agent_runtime.run_control import RunControlDoor
 from dw_kernel.errors import InfrastructureError, NotFoundError, PriceNotFoundError
@@ -101,15 +102,14 @@ class InMemoryUsageRecorder:
 class RoutingModelGateway:
     """Implements the ``ModelGateway`` port with per-profile routing."""
 
-    profiles: ModelProfileRegistry
+    # The one answer to which route a call takes (model-connections R1.1),
+    # asked once per call with the run's context. A request naming no profile
+    # runs on the resolver's default, the deployment's own
+    # (DW_API_MODEL_PROFILE), or on the one a Studio run pinned.
+    models: ModelResolver
     prompts: PromptRegistry
     adapters: dict[str, ModelProviderAdapter]
     usage_recorder: UsageRecorderPort
-    # What a request naming no profile runs on: the deployment's own
-    # (DW_API_MODEL_PROFILE). No default here, so a host cannot forget it —
-    # while requests defaulted to "balanced", a deployment configured for a
-    # real model still sent every call that named no profile to the mock.
-    default_profile: str
     # The price book (usage-and-limits R2.1), injected by the composition root;
     # the clock says when a call happened, which is what the book prices by.
     pricing: PricingPort
@@ -122,28 +122,24 @@ class RoutingModelGateway:
     budget: RunBudgetLedger = field(default_factory=RunBudgetLedger)
     clock: UtcClock = field(default_factory=SystemClock)
 
-    def _route(self, request: ModelRequest, profile: ModelProfile) -> ModelRoute:
+    @staticmethod
+    def _purpose(request: ModelRequest) -> Purpose:
         if request.route_kind == "deep_reasoning":
-            # Visible-thinking route is optional; degrade to reasoning route.
-            return profile.deep_reasoning or profile.reasoning
+            # The resolver degrades it to `reasoning` when the profile has none.
+            return "deep_reasoning"
         if request.route_kind == "reasoning" or (
             request.route_kind == "auto" and request.task == "reasoning"
         ):
-            return profile.reasoning
-        return profile.structured_extraction
+            return "reasoning"
+        return "structured_extraction"
 
-    def _attempts(self, request: ModelRequest, profile: ModelProfile) -> list[ModelRoute]:
-        """Attempt order: primary, primary again (transient-failure retry),
-        then the profile's fallback route when it is a different model."""
-        primary = self._route(request, profile)
-        attempts = [primary, primary]
-        fallback = profile.fallback
-        if fallback is not None and (fallback.provider, fallback.model) != (
-            primary.provider,
-            primary.model,
-        ):
-            attempts.append(fallback)
-        return attempts
+    @staticmethod
+    def _attempts(resolved: ResolvedRoute) -> list[ModelRoute]:
+        """Attempt order: the resolved route, the same again (transient-failure
+        retry), then its fallbacks. Read from the resolver's answer only: no
+        door reads a profile's `fallback` itself (ADR-0123, Amendments
+        2026-11-04, decision 4)."""
+        return [resolved.route, resolved.route, *resolved.fallbacks]
 
     async def generate_structured(
         self,
@@ -177,16 +173,17 @@ class RoutingModelGateway:
         # Transient provider errors and schema-invalid outputs get one retry
         # on the primary route, then the profile fallback (if any). Non-model
         # errors (unknown provider, missing mock fixture) fail fast.
-        # One tenant-aware resolution for the route, the fallback and the
-        # budget alike. The route used to be resolved without the tenant, so a
-        # tenant with its own profile was charged against its own ceiling on
-        # the platform's model. The effective id goes onto the request so the
-        # usage recorders name the profile actually used.
-        profile_id = request.model_profile or self.default_profile
+        # One resolution for the route, the fallbacks and the budget alike,
+        # from the run's tenant and plan (or what a Studio run pinned); a
+        # refusal here sends nothing. The effective id goes onto the request so
+        # the usage recorders name the profile actually used.
+        resolved = await self.models.resolve(
+            run_context, request.model_profile, self._purpose(request)
+        )
+        profile_id = resolved.profile_id
         request = request.model_copy(update={"model_profile": profile_id})
-        profile = self.profiles.resolve(profile_id, tenant_id=run_context.tenant_id)
         # Checked before the call, not after: the point is to not make it.
-        self.budget.check(run_context.run_id, profile.budgets, task=request.task)
+        self.budget.check(run_context.run_id, resolved.budgets, task=request.task)
 
         asked = (
             request.output_schema
@@ -194,7 +191,7 @@ class RoutingModelGateway:
             else output_type.model_json_schema()
         )
         last_error: Exception | None = None
-        for index, route in enumerate(self._attempts(request, profile)):
+        for index, route in enumerate(self._attempts(resolved)):
             adapter = self.adapters.get(route.provider)
             if adapter is None:
                 if index == 0:

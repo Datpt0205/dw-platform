@@ -40,8 +40,14 @@ class TenantOverlay[K, V]:
         an artifact the platform also defines — that is the whole point of an
         override — while a genuine double-registration inside one layer is still
         refused by the caller with its own message.
+
+        A read, so it creates no layer: a per-call question about a tenant that
+        has none must not grow the overlay by one empty layer per tenant asked
+        (failure-modes #6).
         """
-        return self._layer(tenant_id).get(key)
+        if tenant_id is None:
+            return self._platform.get(key)
+        return self._tenants.get(tenant_id, {}).get(key)
 
     def put(self, key: K, value: V, *, tenant_id: UUID | None = None) -> None:
         self._layer(tenant_id)[key] = value

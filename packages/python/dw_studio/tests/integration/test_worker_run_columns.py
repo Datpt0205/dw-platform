@@ -38,7 +38,7 @@ from dw_studio.core.application.run_manifests import RunManifestBuilder
 from dw_studio.core.application.run_request import W1_TRIGGER_KINDS
 from dw_studio.core.application.service import ArtifactService
 from dw_studio.testing.fixture_kinds import FIXTURE_KINDS, planted_fixture_kinds
-from dw_studio.testing.run_manifests import draft_of, fixture_document
+from dw_studio.testing.run_manifests import TEST_PLAN, draft_of, fixture_document, shipped_models
 from dw_studio.testing.world import Person, StudioWorld, plant_world
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="module")]
@@ -94,12 +94,14 @@ async def roots(app_engine: AsyncEngine, world: StudioWorld) -> Roots:
         async_sessionmaker(app_engine, class_=AsyncSession, expire_on_commit=False), ids
     )
     service = ArtifactService(store, registry, SystemClock(), ids)
-    builder = RunManifestBuilder(registry, REF)
+    builder = RunManifestBuilder(registry, REF, shipped_models())
 
     async def root(who: Person) -> Root:
         artifact_id, version_id, _ = await draft_of(service, who, fixture_document())
         async with store.transaction(who.context()) as tx:
-            manifest = await builder.build(tx, version_id, "simulate")
+            manifest = await builder.build(
+                tx, version_id, "simulate", tenant_id=who.tenant_id, plan_id=TEST_PLAN
+            )
         return Root(who, artifact_id, version_id, manifest)
 
     return Roots(await root(world["writer"]), await root(world["outsider"]))

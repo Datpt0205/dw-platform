@@ -13,6 +13,10 @@ own settings class, and mapping it is the composition root's business.
 
 What it builds:
 
+- the model resolver (`build_model_resolver`): the platform profiles under
+  `configs/models`, the plan catalogue and, where Studio runs are taken, the
+  manifests they pinned, with the deployment's profile as the default every
+  door asks for (model-connections R1.1);
 - the provider adapters (`build_model_adapters`), with the SSRF guard on the
   endpoint and the mock refused in a deployed profile;
 - ONE `RunBudgetLedger` for the process, shared by the gateway, an agent's
@@ -52,8 +56,9 @@ from dw_agent_runtime.model.gateway import (
 from dw_agent_runtime.model.pricing import PricingPort
 from dw_agent_runtime.model.profiles import ModelProfileRegistry, Provider
 from dw_agent_runtime.model.prompts import PromptRegistry
+from dw_agent_runtime.model.resolver import ModelResolver
 from dw_agent_runtime.model.single_call import SingleCallModelGateway
-from dw_agent_runtime.ports import RunControlPort
+from dw_agent_runtime.ports import PinnedEnginePort, PlanModelProfilesPort, RunControlPort
 from dw_kernel.net_guard import ensure_allowed_outbound_url
 from dw_kernel.ports import SystemClock, UtcClock
 from dw_kernel.resilience import CircuitBreaker
@@ -84,6 +89,23 @@ class ModelProviderConfig:
     def allow_private_endpoints(self) -> bool:
         """Local/test may call a localhost provider; a deployed profile never does."""
         return not self.is_deployed
+
+
+def build_model_resolver(
+    config: ModelProviderConfig,
+    *,
+    profiles_dir: Path,
+    plans: PlanModelProfilesPort,
+    pinned: PinnedEnginePort | None = None,
+) -> ModelResolver:
+    """The process's one `ModelResolver`: the platform layer from `profiles_dir`
+    (no production code loads a tenant layer in W1), the plan catalogue the
+    composition root built, and `config.model_profile` as the default, checked
+    against the platform layer here so a profile nobody registered fails at
+    startup, not on the first call."""
+    profiles = ModelProfileRegistry()
+    profiles.load_directory(profiles_dir)
+    return ModelResolver(profiles, plans, config.model_profile, pinned)
 
 
 def build_model_adapters(
@@ -140,7 +162,7 @@ class ModelStack:
 def build_model_stack(
     config: ModelProviderConfig,
     *,
-    profiles: ModelProfileRegistry,
+    models: ModelResolver,
     prompts: PromptRegistry,
     session_factory: async_sessionmaker[AsyncSession],
     clock: UtcClock,
@@ -168,13 +190,10 @@ def build_model_stack(
     )
     budget = RunBudgetLedger()
     gateway = RoutingModelGateway(
-        profiles=profiles,
+        models=models,
         prompts=prompts,
         adapters=build_model_adapters(config, mock_fixtures_dir=mock_fixtures_dir),
         usage_recorder=recorder,
-        # Resolved here so a profile id nobody registered fails at startup,
-        # not on the first model call.
-        default_profile=profiles.resolve(config.model_profile).profile_id,
         pricing=pricing,
         # The process's one port, the gateway's first door (agent-lifecycle R7.1).
         run_control=run_control,

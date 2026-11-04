@@ -11,7 +11,9 @@ from pathlib import Path
 import pytest
 
 from dw_agent_runtime.model.profiles import ModelProfileRegistry
+from dw_agent_runtime.model.resolver import ModelResolver
 from dw_agent_runtime.registry import ConfigError
+from dw_agent_runtime.testing.models import resolver as model_resolver
 from dw_api.bootstrap.knowledge import build_embeddings, build_reranker
 from dw_api.settings import ApiSettings
 from dw_kernel.net_guard import OutboundUrlError
@@ -33,10 +35,10 @@ def _settings(**overrides: object) -> ApiSettings:
     return ApiSettings(**base)  # type: ignore[arg-type]
 
 
-def _profiles() -> ModelProfileRegistry:
+def _profiles() -> ModelResolver:
     profiles = ModelProfileRegistry()
     profiles.load_directory(REPO_ROOT / "configs" / "models")
-    return profiles
+    return model_resolver(profiles, "balanced")
 
 
 def test_no_reranker_by_default() -> None:

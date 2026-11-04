@@ -58,29 +58,32 @@ def step_schemas(node: object) -> dict[str, dict[str, Any]]:
 
 
 async def run() -> int:
-    from dw_agent_runtime.adapters.model_stack import build_model_adapters
+    from dw_agent_runtime.adapters.model_stack import build_model_adapters, build_model_resolver
     from dw_agent_runtime.contracts import RunContext
     from dw_agent_runtime.model.gateway import InMemoryUsageRecorder, RoutingModelGateway
-    from dw_agent_runtime.model.profiles import ModelProfileRegistry
     from dw_agent_runtime.model.prompts import PromptRegistry
+    from dw_agent_runtime.model.resolver import StaticPlanModelProfiles
     from dw_agent_runtime.ports import ModelRequest
     from dw_api.bootstrap.models import model_provider_config
     from dw_api.bootstrap.paths import MOCK_MODEL_FIXTURES
     from dw_api.settings import ApiSettings
 
     settings = ApiSettings()
-    profiles = ModelProfileRegistry()
-    profiles.load_directory(REPO_ROOT / "configs" / "models")
+    # The eval's plan lists the one profile it runs on (model-connections R2.2).
+    models = build_model_resolver(
+        model_provider_config(settings),
+        profiles_dir=REPO_ROOT / "configs" / "models",
+        plans=StaticPlanModelProfiles({"eval": frozenset({settings.model_profile})}),
+    )
     prompts = PromptRegistry()
     prompts.load_directory(REPO_ROOT / "configs" / "prompts")
     gateway = RoutingModelGateway(
-        profiles=profiles,
+        models=models,
         prompts=prompts,
         adapters=build_model_adapters(
             model_provider_config(settings), mock_fixtures_dir=MOCK_MODEL_FIXTURES
         ),
         usage_recorder=InMemoryUsageRecorder(),
-        default_profile=profiles.resolve(settings.model_profile).profile_id,
         pricing=load_price_book(),
         run_control=OpenRunControl(),
     )

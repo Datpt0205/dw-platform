@@ -41,6 +41,7 @@ from dw_studio.core.application.run_request import (
     RunRequestService,
 )
 from dw_studio.testing.bindings import unasked_pins
+from dw_studio.testing.run_manifests import shipped_models
 
 pytestmark = pytest.mark.unit
 
@@ -232,7 +233,7 @@ def test_the_door_keeps_its_own_frozen_run_key_table() -> None:
     door = RunRequestService(
         store=_NoStore(),
         registry=registry,
-        manifests=RunManifestBuilder(registry, "sha256:" + "0" * 64),
+        manifests=RunManifestBuilder(registry, "sha256:" + "0" * 64, shipped_models()),
         run_keys=keys,
         lanes=RunLaneRegistry(LANES),
         clock=SystemClock(),

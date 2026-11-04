@@ -108,7 +108,7 @@ from dw_studio.testing.fixture_kinds import (
     planted_fixture_kinds,
 )
 from dw_studio.testing.lifecycle import move_for_test
-from dw_studio.testing.run_manifests import draft_of, published, sealed
+from dw_studio.testing.run_manifests import draft_of, published, sealed, shipped_models
 from dw_studio.testing.world import Person, StudioWorld, plant_world
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="module")]
@@ -364,7 +364,7 @@ async def doors(sessions: async_sessionmaker[AsyncSession], world: World) -> Doo
         runs=RunRequestService(
             store,
             registry,
-            RunManifestBuilder(registry, REF),
+            RunManifestBuilder(registry, REF, shipped_models()),
             {
                 ("fixture_gateless", "manual"): FIXTURE_RUN,
                 ("fixture_gateless", "test"): FIXTURE_RUN,

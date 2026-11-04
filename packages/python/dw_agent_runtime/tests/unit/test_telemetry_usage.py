@@ -16,6 +16,7 @@ from dw_agent_runtime.model.gateway import ModelUsage, RoutingModelGateway
 from dw_agent_runtime.model.profiles import ModelProfileRegistry
 from dw_agent_runtime.model.prompts import PromptArtifact, PromptRegistry
 from dw_agent_runtime.ports import ModelRequest
+from dw_agent_runtime.testing.models import resolver as model_resolver
 from dw_agent_runtime.testing.pricing import FlatPricing
 from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_observability.metrics import DW_MODEL_TOKENS_TOTAL
@@ -107,11 +108,10 @@ async def test_a_gateway_call_emits_only_pinned_names_and_no_input_value() -> No
         )
     )
     gateway = RoutingModelGateway(
-        profiles=profiles,
+        models=model_resolver(profiles, "balanced"),
         prompts=prompts,
         adapters={"mock": adapter},
         usage_recorder=TelemetryUsageRecorder(telemetry),
-        default_profile="balanced",
         pricing=FlatPricing(),
         run_control=OpenRunControl(),
     )

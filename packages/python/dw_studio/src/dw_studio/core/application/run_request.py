@@ -27,6 +27,11 @@ the door verified, never from the request:
   declarations and its connections asked for the run's principal at the run's
   workspace, by `BindingPins`, before the manifest is written; a refusal
   (`binding_unset`, `binding_degraded`) leaves no manifest and no run row.
+- the run's models (model-connections ticket 02; R1.4, R1.6): pinned by value
+  in the manifest for the tenant of the transaction and that tenant's plan,
+  read here, for a person and a lane alike; a profile the root declares that
+  the plan does not list (`model_profile_unavailable`) leaves no manifest and
+  no run row.
 
 A request repeated under the same `request_key` gets the first run back, and a
 different request under it is refused (R3.20). Whether the run-as principal
@@ -208,6 +213,13 @@ class RunIntakeTx(RunManifestTx, Protocol):
 
     async def run_by_request_key(self, request_key: str) -> ExistingRun | None: ...
 
+    async def tenant_plan(self) -> str | None:
+        """The plan of the transaction's tenant (`platform.entitlements`, read
+        under RLS now), or None when it has none: the plan the run's model
+        profiles are pinned under (model-connections R1.4, R1.6), for a
+        person's run and a lane's alike, never from the request."""
+        ...
+
     async def insert_queued_run(self, run: QueuedRun) -> bool:
         """`INSERT ... ON CONFLICT (tenant_id, request_key) DO NOTHING`; False
         when another run already holds the key."""
@@ -354,7 +366,16 @@ class RunRequestService:
                 principal_id=parties.run_as,
             )
 
-        manifest_hash = await self.manifests.build(tx, version.id, rule.run_mode, pin=pin)
+        # The plan the run's model profiles are pinned under (model-connections
+        # R1.4, R1.6): the tenant's own, read in this transaction.
+        manifest_hash = await self.manifests.build(
+            tx,
+            version.id,
+            rule.run_mode,
+            tenant_id=parties.tenant_id,
+            plan_id=await tx.tenant_plan(),
+            pin=pin,
+        )
         run = QueuedRun(
             id=self.ids.new_uuid(),
             workspace_id=workspace_id,

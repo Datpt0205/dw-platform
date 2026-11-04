@@ -27,11 +27,10 @@ from langchain.agents.middleware import AgentMiddleware, ModelRequest, ModelResp
 from langchain_core.messages import AIMessage
 from langgraph.runtime import get_runtime
 
-from dw_agent_runtime.adapters.chat_model import chat_route
 from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.model.budget import RunBudgetLedger, route_cost
 from dw_agent_runtime.model.pricing import PricingPort
-from dw_agent_runtime.model.profiles import ModelProfileRegistry
+from dw_agent_runtime.model.resolver import ModelResolver
 from dw_kernel.errors import PriceNotFoundError
 from dw_kernel.ports import SystemClock, UtcClock
 
@@ -48,14 +47,14 @@ class RunBudgetMiddleware(AgentMiddleware[Any, Any]):
     def __init__(
         self,
         ledger: RunBudgetLedger,
-        profiles: ModelProfileRegistry,
-        profile_id: str,
+        models: ModelResolver,
+        profile_id: str | None,
         pricing: PricingPort,
         clock: UtcClock | None = None,
     ) -> None:
         super().__init__()
         self._ledger = ledger
-        self._profiles = profiles
+        self._models = models
         self._profile_id = profile_id
         self._pricing = pricing
         self._clock: UtcClock = clock if clock is not None else SystemClock()
@@ -66,15 +65,15 @@ class RunBudgetMiddleware(AgentMiddleware[Any, Any]):
         handler: Callable[[ModelRequest[Any]], Awaitable[ModelResponse[Any]]],
     ) -> ModelResponse[Any]:
         run_context = get_runtime(RunContext).context
-        # Resolved per call and per tenant: a tenant's own profile may carry its
-        # own ceiling and its own price, and the agent is compiled once for all
-        # of them.
-        profile = self._profiles.resolve(self._profile_id, tenant_id=run_context.tenant_id)
-        # Resolved BEFORE the call, like the ceiling. A profile with no chat route
-        # is a refusal, and a refusal discovered after the model already answered
-        # has already spent the money it exists to protect.
-        route = chat_route(self._profiles, self._profile_id, tenant_id=run_context.tenant_id)
-        self._ledger.check(run_context.run_id, profile.budgets, task=AGENT_LOOP_TASK)
+        # Resolved per call, for the run's tenant and plan, by the one resolver
+        # every door asks (model-connections R1.1): a tenant's own profile may
+        # carry its own ceiling, the plan may not list the profile at all, and
+        # the agent is compiled once for all of them. BEFORE the call, like the
+        # ceiling: a refusal discovered after the model already answered has
+        # already spent the money it exists to protect.
+        resolved = await self._models.resolve(run_context, self._profile_id, "chat")
+        route = resolved.route
+        self._ledger.check(run_context.run_id, resolved.budgets, task=AGENT_LOOP_TASK)
 
         response = await handler(request)
 

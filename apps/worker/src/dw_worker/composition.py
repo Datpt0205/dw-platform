@@ -26,6 +26,7 @@ from dw_agent_runtime.adapters.langgraph_runner import LangGraphWorkflowRunner
 from dw_agent_runtime.adapters.model_stack import (
     ModelProviderConfig,
     ModelStack,
+    build_model_resolver,
     build_model_stack,
 )
 from dw_agent_runtime.adapters.pack_tools import build_leadcare_tools, register_leadcare_tools
@@ -42,8 +43,8 @@ from dw_agent_runtime.adapters.wflite_host import (
 )
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.model.copy import load_runtime_copy
-from dw_agent_runtime.model.profiles import ModelProfileRegistry
 from dw_agent_runtime.model.prompts import PromptRegistry
+from dw_agent_runtime.model.resolver import StaticPlanModelProfiles
 from dw_agent_runtime.model.run_policy import load_worker_run_policy
 from dw_agent_runtime.ports import RunControlPort
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
@@ -68,6 +69,10 @@ from dw_knowledge.ports import DocumentParserPort, EmbeddingPort, ObjectStorageP
 from dw_observability.telemetry import TelemetryPort
 from dw_platform.adapters.persistence.egress_allowlist_repo import SqlAllowedHosts
 from dw_platform.adapters.persistence.plan_catalog import CachingPlanCatalog, SqlPlanCatalog
+from dw_platform.adapters.persistence.plan_model_profiles import (
+    CachingPlanModelProfiles,
+    SqlPlanModelProfiles,
+)
 from dw_platform.adapters.persistence.uow import SqlPlatformUnitOfWorkFactory
 from dw_platform.application.entitlement import PlanEntitlementService
 from dw_platform.application.work_queue import WorkQueue
@@ -148,13 +153,18 @@ def build_embeddings(settings: WorkerSettings) -> EmbeddingPort:
     """Public because two lanes need it: knowledge ingestion, and the memory
     index. Built by `dw_knowledge`'s one builder, the one the API embeds
     questions with, so "which model embeds this deployment's text" has a
-    single answer: the `embedding` route of the configured model profile.
+    single answer: the `embedding` route of the configured model profile, on
+    the platform layer (an index has one width for every tenant). No run asks
+    this resolver anything, so it lists no plan.
     """
-    profiles = ModelProfileRegistry()
-    profiles.load_directory(REPO_ROOT / "configs" / "models")
+    models = build_model_resolver(
+        model_provider_config(settings),
+        profiles_dir=REPO_ROOT / "configs" / "models",
+        plans=StaticPlanModelProfiles({}),
+    )
     return shared_build_embeddings(
         settings.embedding_provider,
-        profiles.resolve(settings.model_profile).embedding,
+        models.platform_profile(settings.model_profile).embedding,
         base_url=settings.openai_base_url,
         api_key=settings.openai_api_key,
         profile_id=settings.model_profile,
@@ -275,8 +285,14 @@ def build_model_stack_for(
     guard as a request's, priced by the same book and written to the same
     usage ledger (usage-and-limits R2.1, R3.1); a deployed profile with a paid
     route the book does not price refuses to start (R2.3)."""
-    profiles = ModelProfileRegistry()
-    profiles.load_directory(REPO_ROOT / "configs" / "models")
+    # The one resolver every model door of this process asks (model-connections
+    # R1.1), filtered by the plan catalogue. No Studio run is taken here yet, so
+    # no manifest reader: such a run's every call would be refused.
+    models = build_model_resolver(
+        model_provider_config(settings),
+        profiles_dir=REPO_ROOT / "configs" / "models",
+        plans=CachingPlanModelProfiles(SqlPlanModelProfiles(sessions), clock),
+    )
     prompts = PromptRegistry()
     prompts.load_directory(REPO_ROOT / "configs" / "prompts")
     price_book = load_price_book()
@@ -288,7 +304,7 @@ def build_model_stack_for(
     )
     return build_model_stack(
         model_provider_config(settings),
-        profiles=profiles,
+        models=models,
         prompts=prompts,
         session_factory=sessions,
         clock=clock,

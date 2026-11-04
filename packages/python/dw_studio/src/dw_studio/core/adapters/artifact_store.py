@@ -630,6 +630,9 @@ class SqlArtifactTx:
     async def insert_queued_run(self, run: QueuedRun) -> bool:
         return await run_intake.insert_queued_run(self.session, self.tenant_id, run)
 
+    async def tenant_plan(self) -> str | None:
+        return await run_intake.tenant_plan(self.session)
+
     async def audit(self, event: AuditEvent) -> None:
         await SqlAuditRepository(self.session).append(event)
 

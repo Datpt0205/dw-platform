@@ -70,9 +70,41 @@
       "version": "1.2.0"
     }
   ],
-  "git_sha": "00fefdf4a712bf9afbf10cec4b5432d38bb0bc75",
+  "git_sha": "85f547977a63d463c4642667ca6cc6d4bd771389",
   "knowledge_index_version": "2026-07-25.structure-1",
   "memory_policy_version": "2.0.0",
+  "model_profiles": [
+    {
+      "checksum": "1b3835fa641f757916f445950b73aab9a980f9e4208c4e5ed2a146a0eb66d927",
+      "profile_id": "balanced",
+      "version": "1.1.0"
+    },
+    {
+      "checksum": "3dbdc67fb109e7687c5ba938056744f44035a757aeebe6ccec0eeebde9669b21",
+      "profile_id": "deepseek",
+      "version": "1.1.0"
+    },
+    {
+      "checksum": "9efbfbbc73ccc3db3192539ff651530549375fb0c068a7cedffb76da2035a1e1",
+      "profile_id": "gateway",
+      "version": "2.1.0"
+    },
+    {
+      "checksum": "13bc718b959ef5048b46da2359d1988de8348377e70c457ba3ebdb74b8b4421f",
+      "profile_id": "low_cost",
+      "version": "1.1.0"
+    },
+    {
+      "checksum": "9f25979f38c291dbae951dc6c4cec80310b69747894f37907b8b74352c5215b0",
+      "profile_id": "luna",
+      "version": "1.1.0"
+    },
+    {
+      "checksum": "f07b2f18948489e831c8b7c9b432796f27b69a658e469352cf9dca2f99f6f6e3",
+      "profile_id": "openai",
+      "version": "1.1.0"
+    }
+  ],
   "platform_version": "0.1.0",
   "policies": [
     {

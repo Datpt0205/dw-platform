@@ -5,8 +5,8 @@ The runtime declares the question and the price book answers it
 satisfies `PricingPort` and the composition roots inject it, so this package
 never imports `dw_usage`. A route used to carry its own price, read by
 `route_cost` alone; the book is now the one owner of "what does this cost", and
-the two price fields left on `ModelRoute` are read by nothing until
-model-connections/02 removes them (H-4).
+`ModelRoute` carries no price since model-connections/02 (H-4): its price
+reference is its (`provider`, `model`), the key the book prices by.
 
 `PriceNotFoundError` (`dw_kernel.errors`) is never turned into zero here: a
 caller that catches it after a call keeps the answer, records the call as

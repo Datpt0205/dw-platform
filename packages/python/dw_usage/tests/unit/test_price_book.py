@@ -13,7 +13,7 @@ import pytest
 
 from dw_agent_runtime.model.budget import route_cost
 from dw_agent_runtime.model.pricing import chat_quantities
-from dw_agent_runtime.model.profiles import ModelRoute
+from dw_agent_runtime.testing.models import route as test_route
 from dw_kernel.errors import ConfigError, PriceNotFoundError
 from dw_usage.adapters.price_book_file import load_price_book
 from dw_usage.domain.pricing import PriceBook, price_book_from_document
@@ -136,7 +136,7 @@ def test_two_tenants_get_the_platform_layer_in_w1() -> None:
 
 
 def test_route_cost_is_the_book_s_price_for_the_same_call() -> None:
-    route = ModelRoute(provider="openai_compatible", model="m-1")
+    route = test_route(provider="openai_compatible", model="m-1")
     quote = route_cost(
         _BOOK, route, tenant_id=TENANT_A, input_tokens=6242, output_tokens=236, at=_JULY
     )

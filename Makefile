@@ -120,8 +120,8 @@ test-web: ## Browser tests for the web app (requires the stack; not in CI)
 	# runtime, not something a bug fix should make on its way past.
 	pnpm --filter @dw/web exec playwright test
 
-check-model: ## Probe the configured LLM gateway (live call, needs OPENAI_* in .env)
-	uv run python scripts/check_model_gateway.py
+check-model: ## Probe the configured LLM gateway and its capability flags (live call, needs OPENAI_* in .env; PROFILE=<id> to pick a profile)
+	PROFILE=$(PROFILE) uv run python scripts/check_model_gateway.py
 
 check-rerank: ## Probe the configured reranker (live call, needs DW_API_RERANK_* in .env)
 	uv run python scripts/check_rerank.py

@@ -313,6 +313,29 @@ class RunBindingsPort(Protocol):
         ...
 
 
+class PlanModelProfilesPort(Protocol):
+    """The platform model profiles a plan lists (`platform.plan_model_profiles`;
+    model-connections R2.1, R2.2, R2.6). Declared here, satisfied by
+    `dw_platform`, which this package never imports, and injected at the
+    composition roots; scripts and tests inject one in memory."""
+
+    async def allowed(self, plan_id: str) -> frozenset[str]:
+        """Empty for a plan with no rows. A read that fails raises: it is
+        never "every profile"."""
+        ...
+
+
+class PinnedEnginePort(Protocol):
+    """The `engine` section a Studio run's manifest pinned, read when a model
+    door of that run asks `ModelResolver` (model-connections R1.4, R1.5).
+    Declared here, satisfied by `dw_studio` at the composition root; the body
+    is content-addressed, so what it answers for a hash never changes."""
+
+    async def engine(self, tenant_id: UUID, run_manifest_hash: str) -> Mapping[str, Any] | None:
+        """None when this tenant has no manifest under that hash."""
+        ...
+
+
 class RunManifestPort(Protocol):
     """What a Studio run reads its manifest through when it runs and when it
     resumes, in any process (ADR-0109 decision 7, amended 2026-11-03).

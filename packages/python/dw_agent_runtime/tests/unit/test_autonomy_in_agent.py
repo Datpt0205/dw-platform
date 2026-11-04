@@ -21,7 +21,7 @@ from fakes import NOW, FakeExecutionStore, FakeToolClaims, FakeUoWFactory
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from pydantic import BaseModel
-from test_agent_factory import PROFILE_ID, THREAD, _profiles, prompt_fields
+from test_agent_factory import PROFILE_ID, THREAD, _models, prompt_fields
 from test_langchain_tools import COPY, LeadInput, LeadOutput, make_definition, make_run_context
 
 from dw_agent_runtime.adapters.agent_factory import AgentSpec, build_agent
@@ -86,7 +86,7 @@ def _spec(
         **prompt_fields("Trợ lý.", template=""),
         budget=RunBudgetLedger(),
         pricing=FlatPricing(),
-        profiles=_profiles(ceiling_tokens=1_000_000),
+        models=_models(ceiling_tokens=1_000_000),
         profile_id=PROFILE_ID,
     )
 

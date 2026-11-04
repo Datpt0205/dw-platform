@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from urllib.parse import urlsplit
 
-from dw_agent_runtime.model.profiles import ModelProfileRegistry
+from dw_agent_runtime.model.resolver import ModelResolver
 from dw_agent_runtime.registry import ConfigError
 from dw_api.bootstrap.models import checked_base_url
 from dw_api.settings import ApiSettings
@@ -18,15 +18,16 @@ from dw_knowledge.adapters.embedding_factory import build_embeddings as shared_b
 from dw_knowledge.ports import EmbeddingPort, RerankPort, VectorIndexPort
 
 
-def build_embeddings(settings: ApiSettings, profiles: ModelProfileRegistry) -> EmbeddingPort:
+def build_embeddings(settings: ApiSettings, models: ModelResolver) -> EmbeddingPort:
     """The question is embedded by the same builder the worker embeds chunks with.
 
     Retrieval must embed the query exactly as ingestion embedded the chunks, so
-    both read the profile's route through `dw_knowledge`'s one builder.
+    both read the profile's route through `dw_knowledge`'s one builder, from
+    the platform layer: an index has one width for every tenant.
     """
     return shared_build_embeddings(
         settings.embedding_provider,
-        profiles.resolve(settings.model_profile).embedding,
+        models.platform_profile(settings.model_profile).embedding,
         base_url=settings.openai_base_url,
         api_key=settings.openai_api_key,
         profile_id=settings.model_profile,

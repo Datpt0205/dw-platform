@@ -72,8 +72,8 @@ from dw_agent_runtime.executor import ToolExecutor
 from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.model.copy import RuntimeCopy
 from dw_agent_runtime.model.pricing import PricingPort
-from dw_agent_runtime.model.profiles import ModelProfileRegistry
 from dw_agent_runtime.model.prompts import PromptRegistry
+from dw_agent_runtime.model.resolver import ModelResolver
 from dw_agent_runtime.registry import ConfigError
 from dw_agent_runtime.tools import ToolRegistry
 from dw_kernel.ports import IdGenerator, UtcClock
@@ -151,7 +151,9 @@ class AgentSpec:
     # The price book every call of this worker is priced by (usage-and-limits
     # R2.1): the composition root's one instance, `RuntimeSeam.pricing`.
     pricing: PricingPort
-    profiles: ModelProfileRegistry
+    # The one resolver every model door of this agent asks, per call, with the
+    # run's context (model-connections R1.1): `RuntimeSeam.models`.
+    models: ModelResolver
     profile_id: str
     compaction: CompactionSpec | None = None
     # What this worker already learned about the record in view. Optional the
@@ -243,7 +245,7 @@ def platform_middleware(spec: AgentSpec) -> list[AgentMiddleware[Any, Any]]:
         RunControlMiddleware(spec.executor.run_control),
         # The only ceiling on the path that can loop. Without it an agent run is
         # bounded by `recursion_limit`, which counts steps and not money.
-        RunBudgetMiddleware(spec.budget, spec.profiles, spec.profile_id, spec.pricing),
+        RunBudgetMiddleware(spec.budget, spec.models, spec.profile_id, spec.pricing),
         # Last, so it sits closest to the model: a retry re-runs only the call
         # that failed. A failed attempt produces no response and therefore no
         # usage, so the ceiling above is not charged for one.
@@ -266,7 +268,7 @@ def platform_middleware(spec: AgentSpec) -> list[AgentMiddleware[Any, Any]]:
                 # and an agent step spend against one ceiling.
                 budget=spec.budget,
                 pricing=spec.pricing,
-                profiles=spec.profiles,
+                models=spec.models,
                 profile_id=spec.profile_id,
                 summary_profile_id=spec.compaction.summary_profile_id,
                 trigger=spec.compaction.trigger,

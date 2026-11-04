@@ -32,7 +32,7 @@ from studio_agent_prototype import (
     before_the_ceiling,
     definition_of,
     executor_over,
-    profiles_for,
+    models_for,
     register_tools,
     run_context,
     studio_sub_agents,
@@ -100,7 +100,7 @@ async def test_a_child_turn_passes_its_own_run_control_and_model_selection() -> 
         prompt_variables=lambda request: {"instructions": DOC.instructions},
         budget=RunBudgetLedger(),
         pricing=FlatPricing(),
-        profiles=profiles_for(DOC),
+        models=models_for(DOC),
         profile_id=PARENT,
     )
     child = SubAgentSpec(

@@ -9,6 +9,11 @@ its content hashed again the way it was pinned: the root by `definition_body`
 over its content and the closure pinned in the body (never `closure_of`, so a
 dependency published while the run waits changes nothing), any other row by
 the hash of its content. Comparing is `PinnedResolver`'s.
+
+`SqlRunManifestEngines` answers `PinnedEnginePort` for `ModelResolver`: the
+`engine` section of one manifest, in a transaction of its own under the run's
+tenant (model-connections R1.4, R1.5), so a model door that holds only the
+run's context reads what the run pinned and nothing current.
 """
 
 from __future__ import annotations
@@ -19,10 +24,11 @@ from dataclasses import dataclass
 from typing import Any
 
 import sqlalchemy as sa
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from dw_agent_runtime.ports import PinnedEntry, PinnedManifest, PinnedVersion
 from dw_kernel.canonical import content_hash
+from dw_platform.adapters.persistence.tenant_session import TenantScope, tenant_session
 from dw_studio.core.adapters.tables import artifact_versions, run_manifest_keys, run_manifests
 from dw_studio.core.domain.artifacts import (
     ClosureItem,
@@ -128,3 +134,22 @@ class SqlRunManifestStore:
             ),
             unread_keys=tuple(row.key_version_id for row in rows if row.id is None),
         )
+
+
+@dataclass(frozen=True)
+class SqlRunManifestEngines:
+    session_factory: async_sessionmaker[AsyncSession]
+
+    async def engine(
+        self, tenant_id: uuid.UUID, run_manifest_hash: str
+    ) -> Mapping[str, Any] | None:
+        async with tenant_session(
+            self.session_factory, TenantScope(tenant_id=tenant_id)
+        ) as session:
+            body = await session.scalar(
+                sa.select(run_manifests.c.body).where(run_manifests.c.hash == run_manifest_hash)
+            )
+        if body is None:
+            return None
+        engine: Mapping[str, Any] = body["engine"]
+        return engine

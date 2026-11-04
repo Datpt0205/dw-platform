@@ -52,14 +52,20 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from dw_agent_runtime.adapters.model_stack import build_model_resolver
 from dw_agent_runtime.ports import RunManifestPort
 from dw_agent_runtime.wflite.catalog import ShippedToolSpecs
 from dw_agent_runtime.wflite.registry import build_node_registry
 from dw_agent_runtime.wflite.validate import ToolSpecLookup
-from dw_api.bootstrap.paths import TOOL_SPECS_DIR, release_manifest_ref
+from dw_api.bootstrap.models import model_provider_config
+from dw_api.bootstrap.paths import MODEL_PROFILES_DIR, TOOL_SPECS_DIR, release_manifest_ref
 from dw_api.settings import ApiSettings
 from dw_kernel.ports import SystemClock, Uuid7Generator
 from dw_platform.adapters.persistence.config_versions_repo import SqlConfigVersionStore
+from dw_platform.adapters.persistence.plan_model_profiles import (
+    CachingPlanModelProfiles,
+    SqlPlanModelProfiles,
+)
 from dw_platform.application.config_versions import (
     CONFIG_VERSION,
     ConfigKindRegistry,
@@ -68,7 +74,7 @@ from dw_platform.application.config_versions import (
 )
 from dw_studio.core.adapters.artifact_store import SqlArtifactStore
 from dw_studio.core.adapters.run_bindings import SqlRunBindings
-from dw_studio.core.adapters.run_manifest_store import SqlRunManifestStore
+from dw_studio.core.adapters.run_manifest_store import SqlRunManifestEngines, SqlRunManifestStore
 from dw_studio.core.application.bindings import (
     BindingConnectionDependents,
     BindingPins,
@@ -189,7 +195,20 @@ def build_studio(
     )
 
     segments = SUBMIT_SEGMENTS if segments is None else MappingProxyType(dict(segments))
-    run_manifests = RunManifestBuilder(registry, release_manifest_ref())
+    # A run's models are pinned by the resolver its calls then ask
+    # (model-connections R1.4): the runtime's, or one of the same build when
+    # this process wires Studio without a runtime.
+    models = (
+        runtime.models
+        if runtime is not None
+        else build_model_resolver(
+            model_provider_config(settings),
+            profiles_dir=MODEL_PROFILES_DIR,
+            plans=CachingPlanModelProfiles(SqlPlanModelProfiles(sessions), clock),
+            pinned=SqlRunManifestEngines(sessions),
+        )
+    )
+    run_manifests = RunManifestBuilder(registry, release_manifest_ref(), models)
     run_lanes = RunLaneRegistry(_RUN_LANES)
 
     usability = container.connection_usability

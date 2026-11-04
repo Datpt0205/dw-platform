@@ -1714,6 +1714,40 @@ async def test_the_plan_catalogue_is_read_only_to_every_application_role(
             await conn.rollback()
 
 
+# model-connections ticket 02 (migration d66d6913b249).
+
+
+async def test_the_plan_model_catalogue_is_read_only_to_every_application_role(
+    db_urls: DatabaseUrls, app_engine: AsyncEngine
+) -> None:
+    """R2.1: only a migration writes `platform.plan_model_profiles`, as only one
+    writes `platform.plan_limits`: every verb of every application role asked
+    of the catalog, and each write tried as `dw_app`."""
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            held = {
+                (row.rolname, row.verb)
+                for row in await conn.execute(_HELD_VERBS, {"t": "platform.plan_model_profiles"})
+            }
+    finally:
+        await migrator.dispose()
+    assert held == {("dw_app", "SELECT")}
+    async with app_engine.connect() as conn:
+        assert await conn.scalar(
+            sa.text("SELECT count(*) FROM platform.plan_model_profiles WHERE plan_id = 'basic'")
+        )
+        for statement in (
+            "INSERT INTO platform.plan_model_profiles VALUES ('basic', 'premium')",
+            "UPDATE platform.plan_model_profiles SET profile_id = 'premium'",
+            "DELETE FROM platform.plan_model_profiles",
+            "TRUNCATE platform.plan_model_profiles",
+        ):
+            with pytest.raises(Exception, match="permission denied"):
+                await conn.execute(sa.text(statement))
+            await conn.rollback()
+
+
 # tenant-rbac ticket 02 (migration b5677d345bc1).
 
 _HELD_VERBS = sa.text(

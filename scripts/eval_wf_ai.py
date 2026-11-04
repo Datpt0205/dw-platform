@@ -41,33 +41,36 @@ CONFIGS = REPO_ROOT / "configs"
 
 def live_gateway() -> ModelGateway:
     """The gateway the deployment configured (`DW_MODEL_PROVIDER`, `DW_API_MODEL_PROFILE`)."""
-    from dw_agent_runtime.adapters.model_stack import build_model_adapters
+    from dw_agent_runtime.adapters.model_stack import build_model_adapters, build_model_resolver
     from dw_agent_runtime.model.gateway import InMemoryUsageRecorder, RoutingModelGateway
-    from dw_agent_runtime.model.profiles import ModelProfileRegistry
     from dw_agent_runtime.model.prompts import PromptRegistry
+    from dw_agent_runtime.model.resolver import StaticPlanModelProfiles
     from dw_api.bootstrap.models import model_provider_config
     from dw_api.bootstrap.paths import MOCK_MODEL_FIXTURES
     from dw_api.settings import ApiSettings
 
     settings = ApiSettings()
-    profiles = ModelProfileRegistry()
-    profiles.load_directory(CONFIGS / "models")
+    # The eval's plan lists the one profile it runs on (model-connections R2.2).
+    models = build_model_resolver(
+        model_provider_config(settings),
+        profiles_dir=CONFIGS / "models",
+        plans=StaticPlanModelProfiles({"eval": frozenset({settings.model_profile})}),
+    )
     prompts = PromptRegistry()
     prompts.load_directory(CONFIGS / "prompts")
     adapters = build_model_adapters(
         model_provider_config(settings), mock_fixtures_dir=MOCK_MODEL_FIXTURES
     )
-    profile = profiles.resolve(settings.model_profile).profile_id
+    profile = models.platform_profile(settings.model_profile).profile_id
     # Which model answered, said before any case: `.env` says mock, and a Make
     # variable from `include .env` beats one set in the shell (3/11/2026), so a
     # "live" run could be the fixture five times without this line.
     print(f"profile {profile}, adapters {', '.join(sorted(adapters))}", file=sys.stderr)
     return RoutingModelGateway(
-        profiles=profiles,
+        models=models,
         prompts=prompts,
         adapters=adapters,
         usage_recorder=InMemoryUsageRecorder(),
-        default_profile=profile,
         pricing=load_price_book(),
         run_control=OpenRunControl(),
     )

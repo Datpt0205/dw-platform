@@ -23,9 +23,10 @@ import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Protocol
 
 from dw_agent_runtime.model.pricing import PriceQuote, PricingPort, chat_quantities
-from dw_agent_runtime.model.profiles import ModelBudgets, ModelRoute
+from dw_agent_runtime.model.profiles import ModelBudgets
 from dw_kernel.errors import DomainError
 
 logger = logging.getLogger("dw_agent_runtime.budget")
@@ -48,9 +49,20 @@ class RunSpend:
     unpriced: bool = False
 
 
+class PriceKey(Protocol):
+    """What a call is priced by: the route's (`provider`, `model`), the price
+    reference of a `ModelRoute` (ADR-0118 decision 2, Amendments 2026-11-04)."""
+
+    @property
+    def provider(self) -> str: ...
+
+    @property
+    def model(self) -> str: ...
+
+
 def route_cost(
     pricing: PricingPort,
-    route: ModelRoute,
+    route: PriceKey,
     *,
     tenant_id: uuid.UUID,
     input_tokens: int,
@@ -108,7 +120,7 @@ class RunBudgetLedger:
                     "calls": str(current.calls),
                 },
             )
-        if current.cost_usd >= budgets.max_cost_usd_per_run:
+        if current.cost_usd >= float(budgets.max_cost_usd_per_run):
             raise BudgetExceededError(
                 "run reached its cost ceiling",
                 details={

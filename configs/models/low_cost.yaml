@@ -1,13 +1,22 @@
-schema_version: "1.0"
+schema_version: "2.0"
 profile_id: low_cost
-routing_policy_version: "1.0.0"
+routing_policy_version: "1.1.0"
+# Mock routes send nothing anywhere: `vn`, processed by the fixture adapter.
 structured_extraction:
   provider: mock
   model: extraction-mock-1
+  data_location: vn
+  processor: mock
+  retention_days: 0
+  no_training: true
   timeout_seconds: 45
 reasoning:
   provider: mock
   model: extraction-mock-1
+  data_location: vn
+  processor: mock
+  retention_days: 0
+  no_training: true
   timeout_seconds: 60
 budgets:
   max_input_tokens_per_run: 40000
