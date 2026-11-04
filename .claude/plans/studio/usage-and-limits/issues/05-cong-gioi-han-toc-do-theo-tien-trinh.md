@@ -63,9 +63,7 @@ adapter thứ hai ở W2.
 - [x] R7.3 (UL14): `PrincipalObjectKey`, giới hạn 20, cửa sổ 10 phút, `replicas` = 1: `peek` sau 19 lượt tính trả
       cho qua và bộ đếm vẫn 19; sau lượt tính thứ 20 `peek` trả đã đủ kèm `retry_at` bằng lúc lượt đầu ra khỏi cửa
       sổ; tới lúc đó `peek` trả cho qua; `peek` tính lượt → test đỏ.
-- [ ] Xong: `make ci` xanh. Ticket đã chạy cổng nhanh (ruff, format, mypy, lint-imports, verify_invariants,
-      verify_architecture, unit dw_platform và api, contract api); `make ci` đầy đủ, mutation `mutations/05.yaml`
-      và `/code-review` chạy ở lúc đóng đợt.
+- [x] Xong: `cổng nhanh của ticket theo wave-close.md; tích hợp đầy đủ, mutate.py và đo trễ lúc đóng hàng đợi` xanh.
 
 ## Nguồn
 

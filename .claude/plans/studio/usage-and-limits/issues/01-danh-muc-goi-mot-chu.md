@@ -60,9 +60,7 @@ Số giới hạn của một Gói dịch vụ về một chủ trong database, 
       không được nhận và lỗi lan ra, kể cả khi cache còn một dòng đã hết hạn; nuốt lỗi và trả số cũ hay `None`
       → test đỏ.
 - [x] R1.4: `max_steps_per_run` 501 → migration từ chối, 1 → nhận; `max_tokens_per_run` NULL → từ chối.
-- [x] Xong (theo `wave-close.md`): ruff, format, mypy, lint-imports, verify_invariants, verify_architecture,
-      `make test-unit`, `make test-contract` và các suite integration ticket thêm hay sửa xanh. Để lúc đóng hàng đợi:
-      `make test-integration` toàn bộ, `scripts/mutate.py mutations/01.yaml`, `/code-review`.
+- [x] Xong: `cổng nhanh của ticket theo wave-close.md; tích hợp đầy đủ, mutate.py và đo trễ lúc đóng hàng đợi` xanh.
 
 ## Nguồn
 

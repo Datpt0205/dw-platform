@@ -1953,3 +1953,71 @@ async def test_the_allowed_hosts_are_read_inserted_and_only_marked_removed(
         await migrator.dispose()
     assert held == {("dw_app", v) for v in ("SELECT", "INSERT", "DELETE")}
     assert updatable == _ALLOWED_HOSTS_UPDATABLE
+
+
+# usage-and-limits ticket 02 (migration 2354ad4d2e3c).
+
+
+@pytest.mark.parametrize(
+    ("table", "expected"),
+    [
+        # Append-only: written and read through the parent, never rewritten (R3.4).
+        ("platform.usage_events", {("dw_app", "SELECT"), ("dw_app", "INSERT")}),
+        # The roll-up recomputes a day and offboarding deletes it (R3.8).
+        (
+            "platform.usage_daily",
+            {
+                ("dw_app", "SELECT"),
+                ("dw_app", "INSERT"),
+                ("dw_app", "UPDATE"),
+                ("dw_app", "DELETE"),
+            },
+        ),
+        # Nobody but the owner on a partition, the DEFAULT included (R3.7, DO-02.2).
+        ("platform.usage_events_default", set()),
+    ],
+)
+async def test_the_usage_ledger_is_appended_and_its_roll_up_the_applications(
+    db_urls: DatabaseUrls, table: str, expected: set[tuple[str, str]]
+) -> None:
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            held = {(r.rolname, r.verb) for r in await conn.execute(_HELD_VERBS, {"t": table})}
+    finally:
+        await migrator.dispose()
+    assert held == expected
+
+
+async def test_only_dw_app_runs_the_registry_s_purge_and_drop_functions(
+    db_urls: DatabaseUrls,
+) -> None:
+    """The three SECURITY DEFINER functions are revoked from PUBLIC and
+    executable by `dw_app` alone (R3.9, R3.10)."""
+    definers = (
+        "platform.drop_expired_partitions(jsonb)",
+        "platform.append_only_tables()",
+        "platform.purge_tenant_append_only(uuid, text[])",
+    )
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            calls = {
+                (role, function): await conn.scalar(
+                    sa.text("SELECT has_function_privilege(:r, :f, 'EXECUTE')"),
+                    {"r": role, "f": function},
+                )
+                for role in ("public", "dw_app", "dw_agent_ro")
+                for function in definers
+            }
+            definer = {
+                function: await conn.scalar(
+                    sa.text("SELECT prosecdef FROM pg_proc WHERE oid = CAST(:f AS regprocedure)"),
+                    {"f": function},
+                )
+                for function in definers
+            }
+    finally:
+        await migrator.dispose()
+    assert {k for k, v in calls.items() if v} == {("dw_app", f) for f in definers}
+    assert all(definer.values())

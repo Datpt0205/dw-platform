@@ -1,6 +1,6 @@
 # 02 — Bảng giá theo ngày hiệu lực, sổ sử dụng theo lượt gọi và màn Mức độ sử dụng
 
-Status: ready-for-agent
+Status: resolved (2026-11-04, main)
 Blocked by: .claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md, .claude/plans/studio/tenant-rbac/issues/01-mot-chu-cho-quyen.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md, .claude/plans/studio/telemetry-and-audit/issues/01-otel-khong-noi-dung-va-metric.md
 Area: studio
 Yêu cầu: R2.1, R2.2, R2.3, R2.4, R2.5, R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R3.9, R3.10, R3.11, R3.12, UL5, UL7, UL12, UL16, UL18
@@ -138,54 +138,54 @@ model, at)` trả chi phí `Decimal`, phiên bản, id mục giá. `tenant_id` l
 
 ## Tiêu chí chấp nhận
 
-- [ ] R2.1: giá một model đổi ngày 2027-01-01 cho hai chi phí khác nhau; 1000 input có 800 cache_read →
+- [x] R2.1: giá một model đổi ngày 2027-01-01 cho hai chi phí khác nhau; 1000 input có 800 cache_read →
       200 `input_uncached`; bậc trên 200k token áp cho cả lời gọi; `route_cost` cho cùng lời gọi trả đúng chi phí của
       `PriceBook.price`; `PriceBook.price` của hai tenant khác nhau cho cùng lời gọi trả giá lớp nền tảng; thêm một lời đọc
       `price_per_million_input` trong `src/` ngoài `ModelRoute` → test AST đỏ, nêu tệp; một import `dw_usage` trong
       `dw_agent_runtime` → import-linter đỏ.
-- [ ] R2.2: mục giá chồng thời gian cùng khóa, loại sử dụng lạ, hay giá âm → bộ nạp từ chối.
-- [ ] R2.3: tuyến nền tảng trả phí thiếu giá `output` ở profile `uat` → khởi động lỗi, nêu route; route `mock` vẫn khởi
+- [x] R2.2: mục giá chồng thời gian cùng khóa, loại sử dụng lạ, hay giá âm → bộ nạp từ chối.
+- [x] R2.3: tuyến nền tảng trả phí thiếu giá `output` ở profile `uat` → khởi động lỗi, nêu route; route `mock` vẫn khởi
       động với mục giá 0; gỡ kiểm → test đỏ.
-- [ ] R2.4 (UL12): đổi Bảng giá → dòng sử dụng cũ giữ `price_book_version` và chi phí cũ.
-- [ ] R2.5: lời gọi ngày 2026-06-01 với mục giá sớm nhất từ 2026-07-01, hay với loại sử dụng `image_input` không có mục →
+- [x] R2.4 (UL12): đổi Bảng giá → dòng sử dụng cũ giữ `price_book_version` và chi phí cũ.
+- [x] R2.5: lời gọi ngày 2026-06-01 với mục giá sớm nhất từ 2026-07-01, hay với loại sử dụng `image_input` không có mục →
       `PriceNotFoundError`, lời gọi đó vẫn trả kết quả, dòng sổ ghi `unpriced` với `cost_usd` NULL,
       `dw_usage_unpriced_total` tăng và lời gọi kế tiếp của cùng lượt chạy bị từ chối `BudgetExceededError`; đổi lỗi thành
       chi phí 0 → test đỏ.
-- [ ] R3.1: một lượt gọi chat qua `RoutingModelGateway` hôm nay ghi đúng một Bản ghi sử dụng qua `LedgerUsageRecorder`,
+- [x] R3.1: một lượt gọi chat qua `RoutingModelGateway` hôm nay ghi đúng một Bản ghi sử dụng qua `LedgerUsageRecorder`,
       mang `tenant_id`, `workspace_id`, `run_id`, `root_run_id`, `purpose`, `payer` và `price_book_version`; `settle` một
       sự kiện có `data_route_class`, `data_location`, `processor` → ba cột lưu đúng, giá trị ngoài CHECK → từ chối; gỡ
       `LedgerUsageRecorder` khỏi `CompositeUsageRecorder` → test đỏ. Ghi lộ trình cho mọi lời gọi là tiêu chí R2.1 của
       compliance-pdpl/03.
-- [ ] R3.2: quyết toán hai lần cùng `(id, occurred_at)` → một dòng, lần thứ hai trả `False`.
-- [ ] R3.3 (UL5): adapter không báo usage → dòng `estimated` bằng ước tính, không 0; gỡ → test đỏ.
-- [ ] R3.4: `dw_app` UPDATE hay DELETE trên cha và partition mới → bị từ chối.
-- [ ] R3.5: tổng `usage_daily` một ngày bằng tổng `usage_events` ngày đó theo `window_for`; dòng lúc 2026-11-03T17:30Z của
+- [x] R3.2: quyết toán hai lần cùng `(id, occurred_at)` → một dòng, lần thứ hai trả `False`.
+- [x] R3.3 (UL5): adapter không báo usage → dòng `estimated` bằng ước tính, không 0; gỡ → test đỏ.
+- [x] R3.4: `dw_app` UPDATE hay DELETE trên cha và partition mới → bị từ chối.
+- [x] R3.5: tổng `usage_daily` một ngày bằng tổng `usage_events` ngày đó theo `window_for`; dòng lúc 2026-11-03T17:30Z của
       tenant có `timezone` NULL rơi vào ngày 2026-11-04 còn dòng lúc 2026-11-03T16:30Z rơi vào 2026-11-03, và tenant
       `Asia/Tokyo` cắt ngày lúc 15:00Z; cuộn hai lần cùng kết quả; dòng quyết toán trễ hiện sau lượt cuộn kế;
       `GET /api/v1/usage/summary` có nhóm "Cấp công ty" cho dòng `workspace_id` NULL.
-- [ ] R3.6 (UL7): tenant A đọc bảng cha `usage_events` hay `usage_daily` khi có dòng của B → 0 dòng của B;
+- [x] R3.6 (UL7): tenant A đọc bảng cha `usage_events` hay `usage_daily` khi có dòng của B → 0 dòng của B;
       `GET /api/v1/runs/{run_id}/usage` của run tenant B từ A → 404; người giữ `runs.read` ở workspace W1 mở run của W2
       cùng công ty → 404; run của chính workspace chưa gọi model nào → 200 với tổng 0; `GET /api/v1/usage/summary` từ A không có số nào của B; kết nối `dw_app` không đặt
       `app.worker_drain` không đọc được dòng của tenant khác qua policy drain.
-- [ ] R3.7 (UL7): `dw_app` đọc hay ghi một partition của `usage_events` theo tên → `permission denied`, cả
+- [x] R3.7 (UL7): `dw_app` đọc hay ghi một partition của `usage_events` theo tên → `permission denied`, cả
       partition do lane tạo lẫn DEFAULT; cấp lại SELECT trên partition → test đỏ.
-- [ ] R3.8: công ty `offboarding` có dòng trong `usage_events`, `usage_daily` → lane `offboarding` xuất mỗi dòng
+- [x] R3.8: công ty `offboarding` có dòng trong `usage_events`, `usage_daily` → lane `offboarding` xuất mỗi dòng
       một lần rồi xóa hết; test phủ offboarding (studio-skeleton:R4.3) xanh với dòng `STUDIO_EXCLUSIONS` của
       `platform.usage_events`; gỡ bước của hàm khỏi sổ bước xóa → dòng `usage_events` còn, test đỏ.
-- [ ] R3.9 (UL16): gọi `platform.purge_tenant_append_only` cho công ty `active` → 23514, 0 dòng xóa; giao dịch đặt tenant A
+- [x] R3.9 (UL16): gọi `platform.purge_tenant_append_only` cho công ty `active` → 23514, 0 dòng xóa; giao dịch đặt tenant A
       gọi hàm cho công ty B đang `offboarding` → 23514, 0 dòng của B xóa; gỡ kiểm trạng thái hay kiểm tenant → test đỏ.
-- [ ] R3.10 (UL16): với công ty `offboarding`, hàm xóa dòng của nó ở mọi bảng của `p_tables`, kể cả một bảng thử đăng ký
+- [x] R3.10 (UL16): với công ty `offboarding`, hàm xóa dòng của nó ở mọi bảng của `p_tables`, kể cả một bảng thử đăng ký
       `append_only` trong test, còn dòng của công ty khác và mọi dòng `platform.audit_events` giữ nguyên; `p_tables` có
       `platform.audit_events` hay một bảng thường → 23514, 0 dòng xóa; bước không khai `platform.consent_records`,
       `platform.marketing_send_log`, và worker dựng sổ bước xóa có cả bước này lẫn `platform.purge_tenant_marketing`.
-- [ ] R3.11: một bảng `append_only` thử đăng ký trong test có khóa ngoại `ON DELETE RESTRICT` tới một bảng thường
+- [x] R3.11: một bảng `append_only` thử đăng ký trong test có khóa ngoại `ON DELETE RESTRICT` tới một bảng thường
       thử, công ty `offboarding` có dòng ở cả hai → sổ bước xóa xếp bước của hàm trước bước của bảng thường và lane
       `offboarding` xóa hết cả hai trong một giao dịch; đổi phần nêu bảng của bước sang một danh sách viết tay không có
       bảng thử → sổ không xếp bước trước bảng thường, lỗi khóa ngoại, giao dịch xóa lùi, và test phủ của
       studio-skeleton:R4.2 đỏ, nêu tên khóa ngoại thử.
-- [ ] R3.12 (UL18): người không giữ `platform.usage.read` gọi `GET /api/v1/usage/summary` → 403, không truy vấn nào tới
+- [x] R3.12 (UL18): người không giữ `platform.usage.read` gọi `GET /api/v1/usage/summary` → 403, không truy vấn nào tới
       `usage_daily`; `tenant_owner` gọi → 200; gỡ kiểm quyền → test đỏ.
-- [ ] Xong: `make ci && make test-integration` xanh.
+- [x] Xong: `cổng nhanh của ticket theo wave-close.md; tích hợp đầy đủ, mutate.py và đo trễ lúc đóng hàng đợi` xanh.
 
 ## Nguồn
 
@@ -343,3 +343,69 @@ model, at)` trả chi phí `Decimal`, phiên bản, id mục giá. `tenant_id` l
     - M15: sổ có một cột `cache_write_tokens` mà Bảng giá có `cache_write_5m` và `cache_write_1h`; số theo loại ghi trong
       `units`, cột giữ tổng; ngưỡng bậc 200k đếm `input_tokens` gồm cả token cache, như nhà cung cấp tính.
 - 2026-11-03 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): quyết định của người dựng.
+    - Không thêm dòng `STUDIO_EXCLUSIONS` cho `platform.usage_events` (khác bước 5): bước
+      `platform.purge_tenant_append_only` giải bảng mỗi lượt và khai `platform.usage_events`, nên test phủ đọc bảng là đã
+      xóa qua `purge_order`; một dòng loại trừ là bản thứ hai của cùng sự thật và R4.5 báo "names a table the lane
+      purges". Gỡ bước khỏi sổ → R4.3 đỏ ("not purged and has no purge exclusion"). Nếu sai thì: thêm dòng và nới R4.5
+      cho loại trừ `function` mà bước của nó khai chính bảng đó.
+    - `PriceNotFoundError` ở `dw_kernel.errors`, cùng lý do `ConfigError`: Bảng giá (`dw_usage`) ném, runtime (không được
+      import `dw_usage`) bắt. `PriceBook` đáp `PricingPort` theo cấu trúc, không lớp adapter. Nếu sai thì: runtime khai lỗi
+      trong `model/pricing.py` và `dw_usage.domain` import từ đó.
+    - Giá tính một lần ở chỗ biết route (gateway, `LangchainUsageMeter`) và đi trên `ModelUsage` (`cost_source`,
+      `price_book_version`, `price_entry_ids`); `LedgerUsageRecorder` không định giá lại, usage chưa ai định giá ghi
+      `unpriced` kèm log lỗi và metric. Trong bốn bên gọi `route_cost`: gateway ghi `unpriced` và đánh dấu lượt chạy;
+      meter ghi `unpriced` (middleware ngân sách của vòng agent đánh dấu lượt chạy cho cùng lời gọi); middleware và
+      compaction đánh dấu lượt chạy (meter ghi dòng của chúng). Nếu sai thì: recorder nhận `PricingPort` và tự định giá.
+    - Ước tính (R3.3, M9) ở gateway, nơi có prompt và câu trả lời: số ký tự gửi và nhận chia 4 (tối thiểu 1), không
+      `max_tokens`; adapter báo `reported=False` khi phản hồi không có khối usage. Lời gọi LangChain không có
+      `usage_metadata` thì handler không thấy, để ticket 04 (cửa có đo). Nếu sai thì: đầu ra bằng `max_output_tokens`.
+    - Kiểm khởi động (R2.3) chạy ở hai composition root qua `enforce_price_coverage`, hồ sơ đọc bằng bộ nạp của
+      `ModelProfileRegistry` từng tệp, vì registry không có cách liệt kê và `model/profiles.py` không được sửa (H-4).
+    - `actor_kind` NOT NULL, CHECK (`user`, `service`, `system`): `service` khi `run_as_principal_id` có, không thì `user`
+      và `user_id` là người đó; `system` cho dòng của reaper ở ticket 03. `purpose` là `run` cho mọi lời gọi W1 (M10 chưa
+      áp: lời gọi compaction nằm trong tracker của vòng agent, không tách được ở W1). Nếu sai thì: `actor_kind` được NULL,
+      `purpose` theo tên tác vụ.
+    - Summary (M11): `from`, `to` là ngày theo `window_for`, mặc định tháng hiện tại, tối đa 400 ngày (422);
+      `group_by` `workspace`, `artifact`, `purpose`; lọc `workspace_id`, `artifact_kind`, `artifact_id`. Nhãn workspace
+      đọc từ `platform.workspaces`; nhãn agent, quy trình không đọc `studio.artifacts` (bảng của khu khác, W1 không có dòng
+      thành phần), màn hiện id ngắn. Màn có "Lượt gọi model" thay "số run" (M12), cột `unpriced_calls`,
+      `estimated_calls` và cảnh báo khi khác 0 (M13). Tiền hiện bằng `formatUsd` sẵn có (hai chữ số), API trả chuỗi tám chữ
+      số.
+    - `GET /runs/{run_id}/usage` ở router `runs`, cùng `runs.read` và `run_store.get` như `GET /runs/{run_id}`.
+    - Tệp giá gom theo model, `tiers` theo `min_input_tokens`; `cache_write_*` bằng giá input (OpenAI, DeepSeek không tính
+      ghi cache); mọi mục `effective_from` 2025-01-01, số UNVERIFIED (giá niêm yết chép tay; `gpt-5.6-luna` lấy giá khai
+      trên route). Mock giá 0. Nếu sai thì: một phiên bản Bảng giá mới với mục có ngày.
+    - R3.11 âm: với danh sách viết tay, lane từ chối trước lần xóa đầu (R11.7, `OffboardingRefusedError` nêu
+      `fk_ul_probe_messages_thread_id_ul_probe_threads`) thay vì lỗi khóa ngoại giữa giao dịch; không dòng nào mất.
+    - `tzdata` là phụ thuộc của `dw_usage` (ảnh slim và Windows không có dữ liệu múi giờ). Lane `usage_rollup` vào sổ
+      miễn trừ của `test_drain_setting_scan.py` (chỉ `tenants_with_usage_since`, SELECT).
+- 2026-11-04 (agent): MEDIUM để lại.
+    - M1 giữ như khuyến nghị: lane chỉ tính lại hôm nay và hôm qua; đổi múi giờ không cuộn lại lịch sử (docstring).
+    - Mảnh `platform.marketing_send_log.yaml` ghi "bật cùng bản" `drop_expired_partitions` theo sổ; ticket này không bật
+      (DROP PARTITION không lùi được, quyết định của compliance-pdpl).
+    - `next build` biên dịch và sinh 22 trang xanh trên máy Windows này, rồi đỏ ở bước `standalone` vì `EPERM symlink`
+      (môi trường, không phải mã); CI Linux xác nhận.
+    - `formatUsd` hai chữ số: một lời gọi rẻ hiện "0,00 USD" trên màn; tổng tháng đọc được.
+    - `/usage` chưa có Progress hạn mức (ticket 03).
+- 2026-11-04 (agent): resolved. Gói `dw_usage` (domain `pricing`, `events`, `windows`; application `recorder`,
+  `calendar`, `reads`, `rollup`, `coverage`; adapters `sql`, `price_book_file`; presentation `views`), đăng ký ở mọi chỗ
+  của bước 1 và hai hợp đồng import-linter mới. Revision `2354ad4d2e3c` (nối `388a31c46bdf`). `configs/pricing/
+price_book@1.0.0.yaml`, mảnh `platform.usage_events.yaml`, release manifest ghim Bảng giá, snapshot semconv thêm
+  `dw_usage_unpriced_total`. Màn `/usage` và mục điều hướng theo `platform.usage.read`. Test: dw_usage unit 52, integration
+  29 (`test_usage_ledger_db.py`, `test_append_only_purge_db.py`, `test_partition_cutoffs_db.py`); API
+  `test_usage_routes.py` 7; worker `test_worker_model_stack.py` +1, `test_worker.py` sửa; runtime unit sửa theo
+  `PricingPort` (`FlatPricing` ở `dw_agent_runtime.testing.pricing`); `test_privileges.py` +2,
+  `test_permission_catalogue.py` sửa. Chạy: unit các gói đã chạm 2084 xanh; integration lane1 dw_platform (rls, privileges,
+  offboarding, offboarding_coverage, permission_catalogue, partition_maintenance) 154, dw_usage 81 (cả unit), worker
+  `test_wflite_runs_db.py` 17. Đột biến: 27 trong `mutations/02.yaml`, viết, chưa chạy; thấy đỏ bằng tay (sao lưu, sửa,
+  khôi phục): quét AST giá trên route, hợp đồng import-linter, kiểm tenant của hàm xóa, danh sách bảng viết tay, policy
+  drain không chỉ SELECT. reviewing-feature-security đã đọc: (1) tenant: RLS FORCE trên cha, DEFAULT và `usage_daily`, test
+  âm chéo tenant ở sổ, cuộn, summary, route run, hàm xóa; (2) quyền: summary kiểm khóa trước mọi lần đọc, route run qua
+  `run_store.get` trong workspace của người gọi; (3) agent: không thêm tầm với, lời gọi thiếu giá dừng lượt chạy;
+  (4) không nội dung không tin cậy vào prompt; (5) sổ chỉ thêm, xóa chỉ qua hàm định nghĩa với ba kiểm; (6) lane cuộn đọc
+  chéo tenant chỉ SELECT, ghi theo tenant. Chạy bóng không dùng Qdrant hay S3 của dự án khác.
+- 2026-11-04 (agent): CI của `522bd4e` đỏ ở hai bước cổng nhanh không phủ: `scripts/test_verify_architecture.sh` cắm lỗi
+  theo đúng dòng `source_modules` mà ticket này đổi (thêm `dw_usage.domain`), và bandit B608 trên ba câu summary ghép
+  từ hằng (dương tính giả, `# nosec B608` kèm lý do); sửa ở `46f5650`. Dòng `Xong:` của ticket 01 và 05 đưa về dạng
+  `check_plans.py` đọc, để khu usage-and-limits sạch.

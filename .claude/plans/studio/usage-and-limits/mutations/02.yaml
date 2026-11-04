@@ -1,0 +1,189 @@
+# Mutation check of usage-and-limits ticket 02: scripts/mutate.py runs this file
+# at the queue's close (wave-close.md). One mutation per control of the ticket
+# (R2.1-R2.5, R3.1-R3.12; UL5, UL7, UL12, UL16, UL18), and one per layer where a
+# rule is held twice (the purge function and its step; the domain record and
+# the CHECKs).
+#
+# The migration mutations edit 2354ad4d2e3c in place; each integration suite
+# recreates and migrates its database per session, so the mutated text is what
+# the tests run against. Two controls are source scans and were proved red by
+# hand on 4/11/2026 (Comments of the ticket): the AST scan of route price fields
+# (R2.1) and the import-linter contract that the runtime does not import dw_usage.
+mutations:
+  # ---- R2.1-R2.5: the price book ------------------------------------------
+  - name: R2.2 the loader takes two entries of one key from one moment
+    file: packages/python/dw_usage/src/dw_usage/domain/pricing.py
+    old: "            if moment in seen:\n"
+    new: "            if False:\n"
+    tests:
+      - packages/python/dw_usage/tests/unit/test_price_book.py::test_the_loader_refuses_a_bad_book
+  - name: R2.2 the loader takes a negative price
+    file: packages/python/dw_usage/src/dw_usage/domain/pricing.py
+    old: "            if entry.usd < 0:\n"
+    new: "            if entry.usd < -1000:\n"
+    tests:
+      - packages/python/dw_usage/tests/unit/test_price_book.py::test_the_loader_refuses_a_bad_book
+  - name: R2.1 the tier ignores the call's size
+    file: packages/python/dw_usage/src/dw_usage/domain/pricing.py
+    old: "        tiers = [tier for tier in in_force if tier <= basis]\n"
+    new: "        tiers = [tier for tier in in_force if tier == 0]\n"
+    tests:
+      - packages/python/dw_usage/tests/unit/test_price_book.py::test_the_tier_of_the_whole_input_prices_the_whole_call
+  - name: R2.1 R2.4 the latest entry is taken whatever the call's moment
+    file: packages/python/dw_usage/src/dw_usage/domain/pricing.py
+    old: "            if entry.effective_from > at:\n                continue\n"
+    new: ""
+    tests:
+      - packages/python/dw_usage/tests/unit/test_price_book.py::test_a_price_changed_from_a_date_gives_two_costs
+  - name: R2.5 the book answers zero where it has no entry
+    file: packages/python/dw_usage/src/dw_usage/domain/pricing.py
+    old: "            entry = self._entry(provider, model, kind, basis, at)\n            cost += Decimal(quantity) * entry.usd / USAGE_KINDS[kind]\n            used.append(entry.entry_id)\n"
+    new: "            try:\n                entry = self._entry(provider, model, kind, basis, at)\n            except PriceNotFoundError:\n                continue\n            cost += Decimal(quantity) * entry.usd / USAGE_KINDS[kind]\n            used.append(entry.entry_id)\n"
+    tests:
+      - packages/python/dw_usage/tests/unit/test_price_book.py::test_a_call_nothing_covers_is_refused_not_free
+      - packages/python/dw_usage/tests/unit/test_recording.py::test_an_unpriced_call_keeps_its_answer_and_stops_the_run_next
+  - name: R2.5 the gateway reads an unpriced call as free and lets the run go on
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/gateway.py
+    old: "            self.budget.mark_unpriced(run_context.run_id)\n"
+    new: ""
+    tests:
+      - packages/python/dw_usage/tests/unit/test_recording.py::test_an_unpriced_call_keeps_its_answer_and_stops_the_run_next
+  - name: R2.5 the ledger forgets a run marked unpriced
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/budget.py
+    old: "        if current.unpriced:\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_run_budget.py::TestLedger::test_an_unpriced_call_stops_the_run_at_its_next_call
+      - packages/python/dw_usage/tests/unit/test_recording.py::test_an_unpriced_call_keeps_its_answer_and_stops_the_run_next
+  - name: R2.3 a deployed service starts with an unpriced paid route
+    file: packages/python/dw_usage/src/dw_usage/application/coverage.py
+    old: "    if not is_deployed:\n        return\n"
+    new: "    return\n"
+    tests:
+      - packages/python/dw_usage/tests/unit/test_price_coverage.py::test_a_paid_route_without_an_output_price_stops_a_deployed_start
+
+  # ---- R3.1-R3.3: one record per call -------------------------------------
+  - name: R3.1 the worker's composite records into no ledger
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/model_stack.py
+    old: "            # One row per call, the source of the usage screen (R3.1).\n            ledger,\n"
+    new: ""
+    tests:
+      - apps/worker/tests/unit/test_worker_model_stack.py::test_every_recorded_call_reaches_the_usage_ledger_priced_by_the_book
+  - name: R3.1 the record names no run
+    file: packages/python/dw_usage/src/dw_usage/application/recorder.py
+    old: "            run_id=run_context.run_id,\n"
+    new: "            run_id=None,\n"
+    tests:
+      - packages/python/dw_usage/tests/unit/test_recording.py::test_one_chat_call_writes_one_attributed_record
+  - name: R3.2 a second settle writes a second row
+    file: packages/python/dw_usage/src/dw_usage/adapters/sql.py
+    old: '    " ON CONFLICT (id, occurred_at) DO NOTHING RETURNING id"'
+    new: '    " RETURNING id"'
+    tests:
+      - packages/python/dw_usage/tests/integration/test_usage_ledger_db.py::test_a_record_is_stored_with_its_route_and_settled_once
+  - name: R3.3 a call the provider did not count is recorded free
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/gateway.py
+    old: "            if not usage.reported:\n                usage = _estimated(usage, prompt, raw)\n"
+    new: ""
+    tests:
+      - packages/python/dw_usage/tests/unit/test_recording.py::test_no_usage_reported_is_an_estimate_never_zero
+
+  # ---- R3.4, R3.6, R3.7: the database ------------------------------------
+  - name: R3.4 dw_app may delete from the ledger
+    file: db/migrations/versions/2354ad4d2e3c_usage_ledger_price_book_and_rollup.py
+    old: '"GRANT SELECT, INSERT ON platform.usage_events TO dw_app;"'
+    new: '"GRANT SELECT, INSERT, UPDATE, DELETE ON platform.usage_events TO dw_app;"'
+    tests:
+      - packages/python/dw_usage/tests/integration/test_usage_ledger_db.py::test_dw_app_neither_updates_nor_deletes_through_the_parent
+  - name: R3.7 dw_app keeps SELECT on the DEFAULT partition
+    file: db/migrations/versions/2354ad4d2e3c_usage_ledger_price_book_and_rollup.py
+    old: "    op.execute(\"SELECT platform._revoke_all_but_owner('platform.usage_events_default'::regclass)\")\n"
+    new: "    op.execute(\"GRANT SELECT ON platform.usage_events_default TO dw_app\")\n"
+    tests:
+      - packages/python/dw_usage/tests/integration/test_usage_ledger_db.py::test_dw_app_reaches_no_partition_by_its_name
+  - name: R3.6 the drain policy admits writes
+    file: db/migrations/versions/2354ad4d2e3c_usage_ledger_price_book_and_rollup.py
+    old: '        f" FOR SELECT USING ({_DRAIN})"'
+    new: '        f" USING ({_DRAIN}) WITH CHECK ({_DRAIN})"'
+    tests:
+      - packages/python/dw_usage/tests/integration/test_usage_ledger_db.py::test_the_drain_policy_reads_across_companies_and_writes_nothing
+  - name: R3.1 the route class takes any value
+    file: db/migrations/versions/2354ad4d2e3c_usage_ledger_price_book_and_rollup.py
+    old: "        CONSTRAINT ck_usage_events_data_route_class CHECK (data_route_class IN (\n            'vn_only', 'cross_border_minimised', 'cross_border_full')),\n"
+    new: ""
+    tests:
+      - packages/python/dw_usage/tests/integration/test_usage_ledger_db.py::test_the_database_refuses_a_value_outside_its_set
+
+  # ---- R3.5, R3.6, R3.12: the readers -------------------------------------
+  - name: R3.5 the roll-up cuts the day in UTC
+    file: packages/python/dw_usage/src/dw_usage/application/calendar.py
+    old: "        return window_bounds(await self.timezones.timezone_of(tenant_id), window_kind, at)\n"
+    new: "        return window_bounds(\"UTC\", window_kind, at)\n"
+    tests:
+      - packages/python/dw_usage/tests/integration/test_usage_ledger_db.py::test_the_roll_up_sums_each_company_day_in_its_zone
+      - packages/python/dw_usage/tests/unit/test_reads_and_rollup.py::test_the_roll_up_recomputes_today_and_yesterday_in_each_zone
+  - name: R3.5 a recompute adds to the day instead of replacing it
+    file: packages/python/dw_usage/src/dw_usage/adapters/sql.py
+    old: "            await session.execute(_CLEAR_DAY, {\"t\": tenant_id, \"day\": day})\n"
+    new: ""
+    tests:
+      - packages/python/dw_usage/tests/integration/test_usage_ledger_db.py::test_the_roll_up_sums_each_company_day_in_its_zone
+  - name: R3.12 the summary is read without the key
+    file: packages/python/dw_usage/src/dw_usage/application/reads.py
+    old: "        await self.authz.require(\n"
+    new: "        if False:\n          await self.authz.require(\n"
+    tests:
+      - packages/python/dw_usage/tests/unit/test_reads_and_rollup.py::test_without_the_key_nothing_is_read
+      - apps/api/tests/unit/test_usage_routes.py::test_the_summary_without_the_key_is_403_and_reads_nothing
+  - name: R3.6 a run's usage is read without finding the run in the caller's workspace
+    file: apps/api/src/dw_api/routes/v1/runs.py
+    old: "    record = await container.run_store.get(container.run_context_for(context, run_id), run_id)\n    return run_usage_view(await container.usage.run_usage(context.tenant_id, record.id))\n"
+    new: "    return run_usage_view(await container.usage.run_usage(context.tenant_id, run_id))\n"
+    tests:
+      - apps/api/tests/unit/test_usage_routes.py::test_another_workspaces_run_is_the_same_404_as_no_run
+
+  # ---- R3.8-R3.11 (UL16): the append-only purge ---------------------------
+  - name: R3.9 the function purges a company that is not leaving
+    file: db/migrations/versions/2354ad4d2e3c_usage_ledger_price_book_and_rollup.py
+    old: "        SELECT 1 FROM platform.tenants t WHERE t.id = p_tenant AND t.status = 'offboarding'\n"
+    new: "        SELECT 1 FROM platform.tenants t WHERE t.id = p_tenant\n"
+    tests:
+      - packages/python/dw_usage/tests/integration/test_append_only_purge_db.py::test_an_active_company_is_refused_and_keeps_every_row
+  - name: R3.9 the function purges another company than the transaction's
+    file: db/migrations/versions/2354ad4d2e3c_usage_ledger_price_book_and_rollup.py
+    old: "    IF p_tenant IS NULL OR p_tenant IS DISTINCT FROM\n        NULLIF(current_setting('app.tenant_id', true), '')::uuid THEN\n"
+    new: "    IF p_tenant IS NULL THEN\n"
+    tests:
+      - packages/python/dw_usage/tests/integration/test_append_only_purge_db.py::test_one_company_cannot_purge_another_offboarding_one
+  - name: R3.10 the function deletes from any table it is named
+    file: db/migrations/versions/2354ad4d2e3c_usage_ledger_price_book_and_rollup.py
+    old: "           OR asked.name NOT IN (SELECT a FROM platform.append_only_tables() AS a)\n"
+    new: ""
+    tests:
+      - packages/python/dw_usage/tests/integration/test_append_only_purge_db.py::test_a_table_outside_the_append_only_set_is_refused
+  - name: R3.10 the audit log joins the append-only set
+    file: db/migrations/versions/2354ad4d2e3c_usage_ledger_price_book_and_rollup.py
+    old: "      AND NOT (r.schema_name = 'platform' AND r.table_name = 'audit_events')\n"
+    new: ""
+    tests:
+      - packages/python/dw_usage/tests/integration/test_append_only_purge_db.py::test_a_table_outside_the_append_only_set_is_refused
+      - packages/python/dw_usage/tests/integration/test_append_only_purge_db.py::test_the_step_takes_every_append_only_table_no_other_step_declares
+  - name: R3.8 the step leaves the registry
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py
+    old: "        steps.register(append_only_purge_step())\n"
+    new: ""
+    tests:
+      - packages/python/dw_usage/tests/integration/test_append_only_purge_db.py::test_offboarding_exports_each_row_once_then_purges_both_tables
+      - packages/python/dw_platform/tests/integration/test_offboarding_coverage.py::test_offboarding_covers_every_table_it_has_to
+  - name: R3.11 the step's tables are a hand-written list
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py
+    old: "        tables = frozenset((await session.scalars(_APPEND_ONLY_TABLES)).all()) - declared\n"
+    new: "        tables = frozenset({\"platform.usage_events\"})\n"
+    tests:
+      - packages/python/dw_usage/tests/integration/test_append_only_purge_db.py::test_an_append_only_child_is_purged_before_its_ordinary_parent
+  - name: R3.10 the step also takes the marketing step's tables
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py
+    old: "        tables = frozenset((await session.scalars(_APPEND_ONLY_TABLES)).all()) - declared\n"
+    new: "        tables = frozenset((await session.scalars(_APPEND_ONLY_TABLES)).all())\n"
+    tests:
+      - packages/python/dw_usage/tests/integration/test_append_only_purge_db.py::test_the_step_takes_every_append_only_table_no_other_step_declares
