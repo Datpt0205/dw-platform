@@ -1,0 +1,135 @@
+# Mutation check of model-connections ticket 02: scripts/mutate.py runs this file
+# at the queue's close. One mutation per control of the spec's Kiểm soát (MR1-MR6),
+# each side of a control held twice tested on its own (failure-modes #3, #5).
+mutations:
+  - name: MR1 the budget door asks for another company (reads the platform layer)
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/run_budget.py
+    old: '        resolved = await self._models.resolve(run_context, self._profile_id, "chat")'
+    new: '        resolved = await self._models.resolve(run_context.model_copy(update={"tenant_id": run_context.workspace_id}), self._profile_id, "chat")'
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_model_resolver.py::test_every_door_takes_the_companys_own_route
+  - name: MR1 the meter prices another company's route
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langchain_usage.py
+    old: '            return (await self.models.resolve(run_context, profile_id, "chat")).route'
+    new: '            return (await self.models.resolve(run_context.model_copy(update={"tenant_id": run_context.workspace_id}), profile_id, "chat")).route'
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_model_resolver.py::test_every_door_takes_the_companys_own_route
+  - name: MR1 the gateway resolves for another company
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/gateway.py
+    old: "            run_context, request.model_profile, self._purpose(request)"
+    new: '            run_context.model_copy(update={"tenant_id": run_context.workspace_id}), request.model_profile, self._purpose(request)'
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_model_resolver.py::test_every_door_takes_the_companys_own_route
+  - name: MR1 compaction's summary route is another company's
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/context_compaction.py
+    old: '            await self._models.resolve(run_context, self._summary_profile_id, "chat")'
+    new: '            await self._models.resolve(run_context.model_copy(update={"tenant_id": run_context.workspace_id}), self._summary_profile_id, "chat")'
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_model_resolver.py::test_every_door_takes_the_companys_own_route
+  - name: MR1 the source scan stops seeing a registry read
+    file: packages/python/dw_agent_runtime/tests/unit/test_model_resolver.py
+    old: '            if func.attr in ("resolve", "layer") and "profile" in receiver:'
+    new: "            if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_model_resolver.py::test_the_scan_sees_each_shape_it_forbids
+  - name: MR2 no fallback to the platform layer
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/resolver.py
+    old: "        platform = self.profiles.layer(profile_id, tenant_id=None)"
+    new: "        platform = None"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_tenant_overlay.py::test_a_profile_only_another_tenant_overrides_falls_back_to_the_platform
+  - name: MR2 a layer answers with another company's profile
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/profiles.py
+    old: "        return self._profiles.existing(profile_id, tenant_id=tenant_id)"
+    new: "        return self._profiles.existing(profile_id, tenant_id=tenant_id) or next((layer[profile_id] for layer in self._profiles._tenants.values() if profile_id in layer), None)"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_tenant_overlay.py::test_a_tenant_may_define_what_the_platform_does_not
+  - name: MR3 the plan filter is gone
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/resolver.py
+    old: "        if profile_id not in allowed:"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_model_resolver.py::test_a_platform_profile_the_plan_does_not_list_is_refused_and_nothing_is_sent
+      - packages/python/dw_agent_runtime/tests/unit/test_tenant_overlay.py::test_a_profile_only_another_tenant_overrides_falls_back_to_the_platform
+  - name: MR3 a catalogue that cannot be read reads as every profile
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/resolver.py
+    old: "            allowed = await self.plans.allowed(plan_id) if plan_id else frozenset()"
+    new: "            allowed = self.profiles.platform_ids()"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_model_resolver.py::test_a_catalogue_that_cannot_be_read_refuses_and_is_never_every_profile
+  - name: MR3 admission pins a profile the plan does not list
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/resolver.py
+    old: "        allowed = await self.plans.allowed(plan_id) if plan_id else frozenset[str]()"
+    new: "        allowed = self.profiles.platform_ids()"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_model_resolver.py::test_pin_refuses_a_declared_profile_and_leaves_out_a_default_the_plan_does_not_list
+      - packages/python/dw_studio/tests/integration/test_run_request.py::test_r1_4_a_declared_profile_outside_the_plan_admits_nothing
+  - name: MR3 the cache keeps a stale list when the read fails
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/plan_model_profiles.py
+    old: "        if cached is not None and now - cached[0] < timedelta(seconds=self.ttl_seconds):"
+    new: "        if cached is not None:"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_plan_model_profiles_cache.py::test_a_failed_read_raises_and_the_stale_entry_is_not_used
+  - name: MR3 the application may write the plan catalogue
+    file: db/migrations/versions/d66d6913b249_plan_model_profiles.py
+    old: '            _for_role(role, f"REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON {_TABLE} FROM {role};")'
+    new: '            _for_role(role, f"GRANT INSERT, UPDATE, DELETE ON {_TABLE} TO {role};")'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_privileges.py::test_the_plan_model_catalogue_is_read_only_to_every_application_role
+  - name: MR4 a Studio run resolves from the registry, not its manifest
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/resolver.py
+    old: "        if run_context.run_manifest_hash is not None:"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_model_resolver.py::test_a_profile_the_run_did_not_pin_is_key_not_pinned
+      - packages/python/dw_agent_runtime/tests/unit/test_model_resolver.py::test_an_unpinned_profile_is_key_not_pinned
+  - name: MR4 the pinned content is not compared
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/resolver.py
+    old: '        if current is None or profile_hash(current) != pin["content_hash"]:'
+    new: "        if current is None:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_model_resolver.py::test_a_pinned_profile_whose_content_changed_is_refused_before_a_send
+      - packages/python/dw_studio/tests/integration/test_run_request.py::test_r1_4_a_studio_run_pins_the_default_profile_by_value_and_reads_only_that
+  - name: MR4 a pinned platform profile the plan dropped still answers
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/resolver.py
+    old: '        if layer == "platform" and chosen not in await self.plans.allowed(run_context.plan_id):'
+    new: "        if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_model_resolver.py::test_a_pinned_platform_profile_the_plan_dropped_is_refused
+  - name: MR4 the manifest pins no model
+    file: packages/python/dw_studio/src/dw_studio/core/application/run_manifests.py
+    old: '                "engine": {**ENGINE, **models},'
+    new: '                "engine": {**ENGINE, "model_routes": {}, "default_model_profile": None},'
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_request.py::test_r1_4_a_studio_run_pins_the_default_profile_by_value_and_reads_only_that
+  - name: MR4 a secret version may ride in a pinned route
+    file: packages/python/dw_studio/src/dw_studio/core/domain/run_manifest.py
+    old: "    routes: dict[str, ModelRoute]"
+    new: "    routes: dict[str, dict[str, Any]]"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_run_manifest_model.py::test_no_secret_version_rides_in_with_a_model_route
+  - name: MR5 a route without data_location reads as vn
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/profiles.py
+    old: '    data_location: Literal["vn", "foreign"]'
+    new: '    data_location: Literal["vn", "foreign"] = "vn"'
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_model_profile_v2.py::test_a_route_without_its_data_route_is_refused
+      - packages/python/dw_agent_runtime/tests/unit/test_model_profile_v2.py::test_a_route_built_in_code_has_no_default_data_location
+  - name: MR5 a route without a processor loads
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/profiles.py
+    old: "    processor: str = Field(min_length=1)"
+    new: '    processor: str = Field(default="unknown", min_length=1)'
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_model_profile_v2.py::test_a_route_without_its_data_route_is_refused
+  - name: MR5 data_location VN loads
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/profiles.py
+    old: '    data_location: Literal["vn", "foreign"]'
+    new: '    data_location: Literal["vn", "foreign", "VN"]'
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_model_profile_v2.py::test_a_route_without_its_data_route_is_refused
+  - name: MR6 a call without a run is answered
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/resolver.py
+    old: "        if not isinstance(run_context, RunContext):"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_model_resolver.py::test_there_is_no_answer_without_a_run

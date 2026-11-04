@@ -1,6 +1,6 @@
 # 02 — `ModelResolver` theo công ty, `ModelProfile` v2, `plan_model_profiles`
 
-Status: ready-for-agent
+Status: resolved (2026-11-05, main)
 Blocked by: .claude/plans/studio/tenant-config/issues/04-ban-ke-luot-chay.md, .claude/plans/studio/usage-and-limits/issues/02-bang-gia-so-su-dung-va-man-hinh.md, .claude/plans/studio/workflow-engine/issues/02-cot-run-va-cua-nhan-run.md
 Area: studio
 Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R2.1, R2.2, R2.3, R2.5, R2.6, R3.1, R3.2, MR1, MR2, MR3, MR4, MR5, MR6
@@ -137,41 +137,41 @@ chạy được ngay, không chờ BYOM.
 
 ## Tiêu chí chấp nhận
 
-- [ ] R1.1 (MR1): bốn cửa (ngân sách, đo, gateway, nén) trả cùng `ResolvedRoute` cho một công ty có hồ sơ riêng; một cửa
+- [x] R1.1 (MR1): bốn cửa (ngân sách, đo, gateway, nén) trả cùng `ResolvedRoute` cho một công ty có hồ sơ riêng; một cửa
       bỏ `run_context` (đọc lớp nền tảng) → test đỏ; thêm một lời gọi `ModelProfileRegistry.resolve` vào một tệp ngoài
       danh sách của bước 1 (`resolve`, `pin`, `platform_profile` ở các chỗ đã nêu) → test quét mã đỏ.
-- [ ] R1.2: hai cửa bất kỳ trong bốn trả cùng `content_hash` và `route` cho công ty có hồ sơ riêng; sai nếu hai cửa trả
+- [x] R1.2: hai cửa bất kỳ trong bốn trả cùng `content_hash` và `route` cho công ty có hồ sơ riêng; sai nếu hai cửa trả
       khác nhau.
-- [ ] R1.3 (MR2): công ty A hỏi hồ sơ mà chỉ công ty B có bản riêng nhận bản nền tảng khi gói của A liệt kê nó, và
+- [x] R1.3 (MR2): công ty A hỏi hồ sơ mà chỉ công ty B có bản riêng nhận bản nền tảng khi gói của A liệt kê nó, và
       `model_profile_unavailable` khi không; không bao giờ bản của B; gỡ bước rơi về nền tảng → test đỏ.
-- [ ] R1.4 (MR4): lượt Studio nhận qua `RunRequestService` có `engine.model_routes` với hồ sơ mặc định và mọi route của
+- [x] R1.4 (MR4): lượt Studio nhận qua `RunRequestService` có `engine.model_routes` với hồ sơ mặc định và mọi route của
       nó kể cả `fallback`, và `default_model_profile` là id đó; đổi `DW_API_MODEL_PROFILE` sau khi nhận, gọi model với
       `profile_id` `None` → vẫn hồ sơ đã ghim; gói không cho phép hồ sơ mặc định → lượt vẫn nhận, `default_model_profile`
       `null`; thêm `secret_version` vào `ResolvedRoute` hay vào mục đã ghim → test hình bản kê đỏ
       (`extra="forbid"`); hồ sơ ngoài gói lúc nhận → 0 dòng lượt, 0 bản kê.
-- [ ] R1.5 (MR4): đổi YAML của hồ sơ đã ghim (chẳng hạn `data_location`) rồi gọi model trong lượt → từ chối, 0 lời gọi
+- [x] R1.5 (MR4): đổi YAML của hồ sơ đã ghim (chẳng hạn `data_location`) rồi gọi model trong lượt → từ chối, 0 lời gọi
       tới adapter giả, không theo route mới; bỏ hồ sơ khỏi gói rồi gọi → từ chối; hỏi hồ sơ không ghim → `key_not_pinned`;
       gỡ so `content_hash`, hay đọc registry thay bản kê → test đỏ.
-- [ ] R1.6 (MR6): gọi `resolve` không có `RunContext` (kiểu không cho, và một ca gọi với `None`) → từ chối; một cửa đổi
+- [x] R1.6 (MR6): gọi `resolve` không có `RunContext` (kiểu không cho, và một ca gọi với `None`) → từ chối; một cửa đổi
       sang `platform_profile` → test quét mã của R1.1 đỏ.
-- [ ] R2.1: bộ phân giải chỉ trả hồ sơ nền tảng mà gói liệt kê; một dòng `platform.plan_model_profiles` có `profile_id`
+- [x] R2.1: bộ phân giải chỉ trả hồ sơ nền tảng mà gói liệt kê; một dòng `platform.plan_model_profiles` có `profile_id`
       không có trong `configs/models` → test đọc bảng đỏ; sai nếu trả hồ sơ ngoài gói.
-- [ ] R2.2 (MR3): lượt chạy xin hồ sơ ngoài gói, hay có gói không có dòng nào (`background`), nhận
+- [x] R2.2 (MR3): lượt chạy xin hồ sơ ngoài gói, hay có gói không có dòng nào (`background`), nhận
       `model_profile_unavailable` và 0 lời gọi model; gỡ lọc gói → test đỏ.
-- [ ] R2.6 (MR3): `PlanModelProfilesPort` ném → lượt bị từ chối, 0 lời gọi; đổi nhánh lỗi thành "mọi hồ sơ" → test đỏ.
-- [ ] R2.3: `ModelProfile` v2 mang `schema_version` `"2.0"`, `routing_policy_version`, `strict_tools`, `numeric_bounds`,
+- [x] R2.6 (MR3): `PlanModelProfilesPort` ném → lượt bị từ chối, 0 lời gọi; đổi nhánh lỗi thành "mọi hồ sơ" → test đỏ.
+- [x] R2.3: `ModelProfile` v2 mang `schema_version` `"2.0"`, `routing_policy_version`, `strict_tools`, `numeric_bounds`,
       `data_location`, `processor` và `capabilities` trên mỗi route, không còn khóa giá, `temperature` và
       `max_cost_usd_per_run` là `Decimal`; YAML `"1.0"`, YAML còn khóa giá, YAML có cờ ngoài tập mười hai → bộ nạp từ
       chối; một route không khai `strict_tools` đọc là không hỗ trợ; `contracts/release/manifest.json` có mục
       `model_profiles` cho sáu hồ sơ; sai nếu một tệp sai vẫn nạp.
-- [ ] R2.5: `compare_capabilities` trả một dòng chênh cho mỗi cờ khai khác bản thăm dò giả, và rỗng khi khớp; sai nếu
+- [x] R2.5: `compare_capabilities` trả một dòng chênh cho mỗi cờ khai khác bản thăm dò giả, và rỗng khi khớp; sai nếu
       chênh mà rỗng. Đầu ra `make check-model` một lần, hay dòng "chưa đo", ở Comments.
-- [ ] R3.1 (MR5): YAML có một route thiếu `data_location`, một route thiếu `processor`, một route `data_location: VN` →
+- [x] R3.1 (MR5): YAML có một route thiếu `data_location`, một route thiếu `processor`, một route `data_location: VN` →
       bộ nạp từ chối từng ca và test nạp `configs/models` của CI đỏ; gỡ kiểm → test đỏ.
-- [ ] R3.2 (MR5): `ModelRoute` dựng bằng mã không có `data_location` → lỗi kiểm, không có giá trị mặc định nào; mọi route
+- [x] R3.2 (MR5): `ModelRoute` dựng bằng mã không có `data_location` → lỗi kiểm, không có giá trị mặc định nào; mọi route
       không phải mock trong `configs/models` khai `foreign`; sai nếu một route thật khai `vn` mà không có câu trả lời
       FOG-18 dẫn ở chú thích của tệp.
-- [ ] Xong: `uv run python -m pytest packages/python/dw_agent_runtime/tests packages/python/dw_studio/tests packages/python/dw_platform/tests/integration -k "model_resolver or model_profile or tenant_overlay or run_manifest or plan_model_profiles or privileges"` xanh.
+- [x] Xong: `uv run python -m pytest packages/python/dw_agent_runtime/tests packages/python/dw_studio/tests packages/python/dw_platform/tests/integration -k "model_resolver or model_profile or tenant_overlay or run_manifest or plan_model_profiles or privileges"` xanh.
 
 ## Nguồn
 
@@ -243,3 +243,81 @@ chạy được ngay, không chờ BYOM.
     - compliance-pdpl/03 bước 1 tự ghi giá trị cho hồ sơ mock; ticket này đã ghi đúng các giá trị đó, nên ticket kia chỉ
       còn kiểm.
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-05 (agent, theo ủy quyền 31/10/2026): dựng xong trên `main` (lane 1). Khác ticket hay quyết khi dựng:
+    - (1) Lượt Studio đọc `engine` của bản kê qua cổng `PinnedEnginePort.engine(tenant_id, run_manifest_hash)` khai trong
+      `dw_agent_runtime.ports`, đáp ứng bởi `SqlRunManifestEngines` của `dw_studio` (một giao dịch riêng dưới RLS của công
+      ty lượt), không qua `PinnedResolver.load` mỗi lời gọi: thân bản kê đánh địa chỉ theo nội dung nên đọc một lần, giữ
+      trong bộ nhớ đệm LRU 256 mục theo (công ty, băm). Cửa không giữ `PinnedResolver`; nó chỉ có `RunContext`. Worker chưa
+      nhận lượt Studio và chưa phụ thuộc `dw_studio`, nên bộ phân giải của worker không có cổng này: mọi lời gọi của lượt
+      Studio ở đó bị từ chối (`manifest_not_found`) tới khi workflow-engine/04 nối nó. Nếu sai thì: runner của
+      workflow-engine/04 trao `PinnedResolver` của lượt cho bộ phân giải và cổng này bỏ đi.
+    - (2) `pin(tenant_id, plan_id, profile_ids)`: bỏ tham số thứ tư `default_profile`; hồ sơ mặc định là của bộ phân giải
+      (một chủ, failure-modes #2). Gói lúc nhận lượt đọc bằng `RunIntakeTx.tenant_plan()` (`platform.entitlements` dưới RLS
+      trong giao dịch của cửa), cho người và lane như nhau, vì `LaneRequester` không mang gói; không có dòng → chỉ lớp công
+      ty được ghim. Nếu sai thì: lượt của người lấy `AccessContext.plan_id`, chỉ lane đọc bảng.
+    - (3) `ResolvedRoute` thêm `budgets` (trần của hồ sơ như đang nạp, không ghim), vì cửa ngân sách, gateway và nén cần
+      trần mà không được đọc registry. `content_hash` là một hàm duy nhất, `profile_hash` = băm `pinned_routes()` (mọi
+      route trừ `embedding`), nên băm của câu trả lời và băm trong bản kê là một. Nếu sai thì: băm cả hồ sơ ở
+      `ResolvedRoute`, băm route ở bản kê, và R1.5 so cái thứ hai.
+    - (4) Bộ đo khi bộ phân giải từ chối vẫn ghi dòng, định giá theo model nhà cung cấp trả về (token đã tiêu); cửa từ chối
+      trước lời gọi là cửa ngân sách. `route_cost` nhận `PriceKey` (`provider`, `model`) thay vì `ModelRoute`.
+      Nếu sai thì: bộ đo bỏ dòng và ghi log.
+    - (5) Cờ năng lực: bool mặc định `false`, `max_strict_tools` và `max_input_tokens` mặc định null. `make check-model`
+      đo ngày 5/11/2026 trên gateway thật: `strict_tools` và `numeric_bounds` đều có ở `gpt-5.6-luna` (Responses),
+      `gpt-4.1` và `gpt-4o-mini`, nên `luna.yaml` và `gateway.yaml` khai hai cờ đó; `deepseek`, `openai` không đo được (endpoint
+      và khóa khác), để không khai (đọc là không hỗ trợ). `routing_policy_version` của sáu tệp lên một bậc minor vì nội
+      dung đổi. Migration thêm `ck_plan_model_profiles_profile_id` (khác rỗng).
+    - (6) `ArtifactKindEntry.model_profiles` là trường duy nhất có mặc định (`no_model_profiles`); docstring nói vì sao.
+      `TenantOverlay.existing` không còn tạo lớp rỗng khi đọc (bộ phân giải hỏi theo từng công ty mỗi lời gọi; failure-modes
+      #6). `openai_chat_model` tách khỏi factory để `check-model` dựng model từng route như agent. `RuntimeSeam.profiles`
+      thành `RuntimeSeam.models` (`ModelResolver`); `AgentSpec.profiles` thành `models`.
+    - (7) "Lượt kết thúc `failed`" (R1.5): bộ phân giải ném `EntitlementDeniedError` `model_profile_unavailable` trước khi
+      gửi, đã test 0 lời gọi tới adapter; đặt lượt `failed` là việc của runner lượt Studio (workflow-engine/04), chưa có.
+    - Đầu ra `make check-model` (5/11/2026, `DW_MODEL_PROVIDER=openai`):
+
+        ```
+        provider=openai profile=luna endpoint=portal.dxrank.vn
+        ok   structured_extraction  openai_responses/gpt-5.6-luna answered by gpt-5.6-luna: in=80 out=43 cost=$0.00007 3698ms
+        ok   reasoning              openai_responses/gpt-5.6-luna answered by gpt-5.6-luna: in=81 out=72 cost=$0.00010 2666ms
+        ok   structured_extraction  openai_responses/gpt-5.6-luna strict_tools=True, numeric_bounds=True
+             structured_extraction  openai_responses/gpt-5.6-luna max_strict_tools: not probed
+        ok   fallback               openai_compatible/gpt-4o-mini strict_tools=True, numeric_bounds=True
+             fallback               openai_compatible/gpt-4o-mini max_strict_tools: not probed
+        provider=openai profile=gateway endpoint=portal.dxrank.vn
+        ok   structured_extraction  openai_responses/gpt-5.6-luna answered by gpt-5.6-luna: in=81 out=39 cost=$0.00006 2433ms
+        ok   reasoning              openai_compatible/gpt-4.1 answered by gpt-4.1: in=85 out=8 cost=$0.00023 1727ms
+        ok   structured_extraction  openai_responses/gpt-5.6-luna strict_tools=True, numeric_bounds=True
+             structured_extraction  openai_responses/gpt-5.6-luna max_strict_tools: not probed
+        ok   reasoning              openai_compatible/gpt-4.1 strict_tools=True, numeric_bounds=True
+             reasoning              openai_compatible/gpt-4.1 max_strict_tools: not probed
+        ok   fallback               openai_compatible/gpt-4o-mini strict_tools=True, numeric_bounds=True
+             fallback               openai_compatible/gpt-4o-mini max_strict_tools: not probed
+        ```
+
+        Lần chạy đầu (trước khi khai) in `FAIL ... strict_tools: declared False, measured True` cho mỗi route thật và thoát
+        khác 0: phép so nhìn thấy chênh lệch.
+
+    - Test: `test_model_resolver.py` (bốn cửa chạy thật cho một công ty có hồ sơ riêng, cùng `content_hash` và route; lọc
+      gói, gói không dòng, `background`, danh mục không đọc được, lớp công ty không lọc; không `RunContext`; bản kê: đọc route
+      đã ghim, nội dung đổi, gói bỏ hồ sơ, không ghim, bản kê cũ, không có cổng; bộ đệm có giới hạn; quét mã MR1/MR6 kèm ca
+      trồng lỗi), `test_tenant_overlay.py` (MR2), `test_model_profile_v2.py` (R2.3, R3.1, R3.2 trên sáu tệp thật và các tệp
+      hỏng), `test_run_manifest_model.py` (hình bản kê, `secret_version` ở bốn mức, băm khác route, `embedding`),
+      `test_run_request.py` (R1.4-R1.6 qua `RunRequestService` thật: ghim theo giá trị, đổi hồ sơ mặc định sau khi nhận,
+      mặc định ngoài gói, hồ sơ khai ngoài gói → 0 dòng lượt và 0 bản kê, công ty khác), `test_plan_model_profiles.py` và
+      `test_privileges.py` (bảng, gieo, mọi `profile_id` có trong `configs/models` kèm ca trồng lỗi, chỉ SELECT),
+      `test_plan_model_profiles_cache.py`, `test_check_model_capabilities.py`, `test_release_manifest.py`.
+    - `mutations/02.yaml` 21 đột biến, chưa chạy bằng `mutate.py`; các bộ mới xanh ngay lần đầu nên chạy tay 12 (MR1 ở cửa
+      ngân sách, gateway, nén; MR2 ×2; MR3 lọc gói, lỗi đọc; MR4 so băm, đọc registry thay bản kê; MR5 mặc định `vn`, `VN`;
+      MR6), mỗi cái đỏ, cây khôi phục bằng bản sao.
+    - `reviewing-feature-security` (đọc): công ty, gói, workspace của lời gọi từ `RunContext`; lúc ghim từ giao dịch của cửa
+      nhận lượt, không từ thân yêu cầu; lớp nền tảng chưa lọc chỉ qua `platform_profile` ở composition root và script (test
+      quét); bảng gói toàn cục, chỉ migration ghi; bản kê không mang khóa bí mật; bản kê của công ty khác đọc là không có.
+    - MEDIUM để lại: (a) lane `studio_runs` (workflow-engine/04) phải dựng `RunContext.plan_id` từ gói hiện hành của công ty
+      (dòng lượt Studio ghi `actor_plan_id` rỗng) và nối `SqlRunManifestEngines` ở worker, không thì mọi lời gọi của lượt
+      Studio bị từ chối (đóng khi thiếu); (b) quét MR1 mù với registry giữ dưới tên không có `profile`; (c) `check-model`
+      chỉ thăm dò route đầu tiên của mỗi cặp (`provider`, `model`); (d) mỗi lời gọi model thêm một lần đọc danh mục gói
+      (bộ đệm 30 giây) và một lần băm hồ sơ.
+    - Còn ở lúc đóng hàng đợi: `mutate.py` cho `mutations/02.yaml`; `make test-integration` toàn bộ; P50/P95/P99 của cửa
+      nhận lượt Studio (thêm một câu đọc `platform.entitlements` và phần ghim) và của một lời gọi model qua gateway và agent
+      (thêm lần hỏi bộ phân giải) so với commit đầu hàng đợi; `/code-review`. Không route mới, không image, không URL ra
+      ngoài mới, nên không `reviewing-deployment-security`.
