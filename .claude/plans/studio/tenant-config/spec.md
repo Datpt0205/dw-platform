@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 2/11/2026
-Sẵn sàng: ĐẠT (3/11/2026; 0 CRITICAL, 0 HIGH; ticket 01, 02, 03, 04)
+Sẵn sàng: ĐẠT (4/11/2026; 0 CRITICAL, 0 HIGH; ticket 01-05)
 
 Mọi thứ công ty tự dựng trong Studio (đối tượng, quy trình, agent, công cụ, kỹ năng, bộ công cụ) cần
 một vỏ phiên bản chung: tối đa một phiên bản chưa phát hành (một nháp sửa được hay một Bản ứng viên đang chờ),
@@ -186,8 +186,9 @@ Người dựng thấy cái gì đang dùng một thành phần, và không xóa
   cấu hình riêng, lane offboarding PHẢI xóa hết các dòng đó của tenant và không đổi dòng nào của tenant
   khác.
 - R3.7 KHI connections-and-vault hỏi một Kết nối có thành phần nào đang dùng không
-  (connections-and-vault:R5.8), dịch vụ Nơi đang dùng PHẢI trả lời từ các Bộ giá trị gắn đã duyệt có giá
-  trị là Kết nối đó cộng `studio.dependencies`, không từ nguồn thứ hai.
+  (connections-and-vault:R5.8), dịch vụ Nơi đang dùng PHẢI trả lời từ các Bộ giá trị gắn đã duyệt của thành phần
+  chưa xóa mềm có giá trị là Kết nối đó, không từ nguồn thứ hai; `studio.dependencies` không trỏ tới Kết nối nào vì R7.1
+  cấm id kết nối trong tài liệu (gate ticket 05, 4/11/2026 (c)).
 - R3.8 NẾU một lệnh xóa chạm một dòng `studio.artifacts`, `studio.artifact_versions`, `studio.definition_manifests`,
   `platform.run_manifests`, `platform.run_manifest_keys` hay `platform.config_versions` của một công ty có
   `platform.tenants.status` khác `offboarding`, THÌ PostgreSQL PHẢI từ chối lệnh đó với SQLSTATE 23514 và không xóa
@@ -269,14 +270,20 @@ kế tiếp (V4.35; ADR-0109 (Accepted) quyết 6; ADR-0115 (Accepted) quyết 1
 - R7.1 NẾU tài liệu đem niêm phong chứa id kết nối ở chỗ phải là tên điểm gắn, THÌ dịch vụ vỏ phiên bản
   PHẢI trả 422 `validation_failed` có một lỗi cho mỗi đường dẫn đó và không niêm phong.
 - R7.2 NẾU phiên bản đem gửi hay phát hành có điểm gắn bắt buộc chưa có giá trị đã duyệt, THÌ kiểm điểm gắn
-  (`PublishBindingsCheck`) PHẢI trả `binding_unset` kèm tên điểm gắn, để lệnh gửi trả 409 và handler `.decided`
-  không đưa phiên bản sang `live` (agent-lifecycle:R2.11, agent-lifecycle:R5.10).
+  (`PublishBindingsCheck`) PHẢI trả `binding_unset` kèm tên điểm gắn, để lệnh gửi trả danh sách đó trong câu trả lời
+  thành công (đề xuất chỉ kiểm được theo khai báo đã niêm phong; nhánh chỉ siết, phát hành ngay trong giao dịch gửi,
+  trả 409) và handler `.decided` không đưa phiên bản sang `live`
+  (agent-lifecycle:R2.11, agent-lifecycle:R5.10; gate ticket 05, 4/11/2026 (a)).
 - R7.3 NẾU lúc nhận lượt chạy, kết nối được gắn đã bị thu hồi hoặc không còn dùng được cho người chạy,
   THÌ runtime PHẢI từ chối lượt chạy với `binding_degraded` trước node đầu tiên.
 - R7.4 KHI một lượt chạy được nhận, runtime PHẢI ghim vào bản kê id phiên bản Bộ giá trị gắn, id của từng kết nối
   và mã băm của từng giá trị biến, không ghi phiên bản bí mật hay giá trị bí mật nào, vì lời gọi phân giải bí mật của
   kết nối lúc gọi và ghi phiên bản đã dùng vào `platform.tool_executions.credential_version` cùng audit của nó
   (connections-and-vault; ADR-0109 (Accepted) quyết 6; ADR-0115 (Accepted) quyết 1; V4.35, H-10).
+- R7.6 NẾU lúc nhận lượt chạy, Bộ giá trị gắn đã duyệt thiếu giá trị cho một điểm gắn bắt buộc, hay mang giá trị sai kiểu,
+  theo khai báo của phiên bản gốc của lượt, THÌ runtime PHẢI từ chối lượt chạy với `binding_unset` trước node đầu tiên
+  và không ghi bản kê, vì Bộ giá trị gắn được kiểm theo phiên bản niêm phong mới nhất, có thể không phải bản `live`
+  (gate ticket 05, 4/11/2026 (g)).
 - R7.5 KHI một Bộ giá trị gắn mới được duyệt, hay bí mật của một kết nối đã ghim được xoay, trong lúc một lượt chạy
   đang chờ duyệt, runtime PHẢI tiếp tục lượt chạy đó với Bộ giá trị gắn đã ghim, còn lời gọi của nó dùng phiên bản bí
   mật mới nhất chưa bị thu hồi của kết nối lúc gọi (V4.35; connections-and-vault là chủ phép phân giải và luật thu hồi
@@ -328,6 +335,15 @@ ADR-0110 (Accepted) quyết 1-2, 7).
   workspace khác workspace của đề xuất, THÌ PostgreSQL PHẢI từ chối dòng đó bằng FK ghép
   `(tenant_id, workspace_id, approval_id)` tới `uq_approval_requests_tenant_id_workspace_id_id`, kể cả khi vai ghi bỏ
   qua RLS.
+- R8.17 NẾU người đề xuất không giữ khóa đọc của loại với tới workspace sở hữu của thành phần theo
+  `platform.workspace_reach`, hay giữ nó mà không giữ `studio.bindings.propose` với tới workspace đó, hay người quyết
+  không giữ khóa đọc của loại với tới workspace đó, THÌ API Studio PHẢI trả 404 ở trường hợp không đọc được, 403 ở trường
+  hợp đọc được mà không đề xuất được, và không ghi gì; đề xuất, người duyệt và `connection_usable` đều neo ở workspace sở
+  hữu, không ở workspace đang làm việc (ADR-0104 (Accepted) quyết 5, 11; gate ticket 05, 4/11/2026 (b), (e)).
+- R8.18 NẾU Người đề xuất rút một đề xuất mà yêu cầu phê duyệt liên kết đã rời `pending`, THÌ API Studio PHẢI trả 409
+  `proposal_decided` và không đổi gì (gate ticket 05, 4/11/2026 (f)).
+- R8.19 NẾU lane `outbox` quyết toán một dòng đã rời `proposed` bằng đường khác (rút), THÌ lane `outbox` PHẢI để nguyên
+  dòng đó và không ghi audit (gate ticket 05, 4/11/2026 (f)).
 
 ## Hành vi giữ nguyên
 
@@ -551,6 +567,8 @@ CONFLICT DO NOTHING`, một dòng cho gốc và một cho mỗi phiên bản mà
 | TC30 | Workspace sở hữu của thành phần không đổi                                                                                                                          | R2.19                                          | `dw_app` UPDATE `owning_workspace_id` của một thành phần sang workspace khác cùng tenant → từ chối vì không có quyền trên cột (studio-skeleton:R2.7); cùng lệnh bằng vai migrator → trigger từ chối; UPDATE `labels` của cùng dòng → được; gỡ trigger → ca migrator đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | TC31 | Chỉ lượt xóa của offboarding xóa cứng định nghĩa, bản kê và phiên bản cấu hình                                                                                     | R3.8                                           | `dw_app` DELETE một dòng của mỗi bảng của R3.8 thuộc công ty `active` → 23514, dòng còn; cùng lệnh khi công ty ở `offboarding` → xóa được; gỡ phép kiểm trạng thái khỏi trigger → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | TC32 | Bản kê ghim độ bền checkpoint `sync`                                                                                                                               | R6.8                                           | Bản kê của một lượt gốc `fixture` có `engine.durability` `sync`; dựng mô hình bản kê với `async`, hay thiếu `durability` → lỗi kiểm, không dòng `platform.run_manifests`; đổi kiểu của trường thành chuỗi tự do → ca `async` được nhận, test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| TC33 | Nhận lượt kiểm Bộ giá trị gắn theo phiên bản gốc của lượt                                                                                                          | R7.6                                           | Bộ giá trị gắn duyệt theo Bản ứng viên thiếu điểm gắn bắt buộc của bản `live` → nhận lượt của bản `live` trả `binding_unset`, không bản kê, không node nào chạy; gỡ lần kiểm lúc nhận → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| TC34 | Đề xuất và quyết định neo ở workspace sở hữu; rút không đua với duyệt                                                                                              | R8.17, R8.18, R8.19                            | Người đề xuất chỉ ở ws2 cho thành phần ws1 → 404; đọc được ws1 mà đề xuất chỉ ở ws2 → 403; người duyệt chỉ ở ws2 → 404; rút sau khi đã duyệt, trước quyết toán → 409 `proposal_decided`, quyết toán vẫn `approved`; gỡ neo workspace sở hữu hay khóa yêu cầu khi rút → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 ## Tiêu chí xong
 
@@ -1171,6 +1189,42 @@ api_name)`; thân đổi thì ticket 04 đổi cùng lúc.
   `run_manifest_hash` và trigger của nó, bộ dựng và `PinnedResolver`; chờ 02, 03, runtime-hardening/03 và
   foundations-hardening/07; 05 và workflow-engine/02, 03, 05 chờ nó. Theo `## Ủy quyền` của studio.md (Đạt,
   31/10/2026). Nếu sai thì: hạ ticket 04 về `needs-triage` và chia lại.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): gate `checking-plan-readiness` của ticket 05 (builder check và boundary
+  walk, ba subagent, rồi một lượt xác nhận), 0 CRITICAL và 12 HIGH, sửa theo khuyến nghị:
+  (a) vòng khóa chết: lệnh gửi đòi giá trị đã duyệt (R7.2, agent-lifecycle:R2.11) mà đề xuất kiểm theo phiên bản niêm
+  phong mới nhất (23/10/2026), nên phiên bản đầu hay phiên bản thêm điểm gắn bắt buộc không gửi được: lệnh gửi trả
+  `binding_unset` trong câu trả lời thành công, phát hành từ chối (R7.2; agent-lifecycle:R2.11 sửa cùng gate). Nếu sai
+  thì: đề xuất kiểm theo bản Nháp ở `row_version` lúc đề xuất và lệnh gửi giữ 409.
+  (b) đề xuất, người duyệt và `connection_usable` tính ở workspace đang làm việc, nên người ở ws2 gắn lại giá trị cho
+  quy trình của ws1: neo ở workspace sở hữu theo `platform.workspace_reach` (R8.17, TC34). Nếu sai thì: đề xuất ở
+  workspace đang làm việc chỉ khi nó là workspace sở hữu.
+  (c) `ConnectionDependentsPort` đọc `studio.dependencies` "trỏ tới" Kết nối, mà R7.1 cấm id kết nối trong tài liệu: một
+  nguồn, Bộ giá trị gắn `approved` của thành phần chưa xóa mềm (R3.7). Nếu sai thì: thêm `to_kind` `connection` khi một
+  loại tài liệu được phép nêu id kết nối.
+  (d) `decision_stale` khi có bất kỳ phiên bản niêm phong mới nào làm mọi đề xuất mở vô hiệu: so mã băm `bindings[]`
+  (`base_bindings_hash`). Nếu sai thì: so `version_no` như cũ.
+  (e) người duyệt không thấy được thứ mình duyệt: `GET .../bindings` theo khóa đọc của loại, người quyết phải đọc được
+  thành phần (R8.17). Nếu sai thì: payload của yêu cầu mang giá trị đề xuất, không id kết nối.
+  (f) rút đua với duyệt, quyết toán dòng đã rút trái trigger: rút chỉ khi yêu cầu còn `pending`, quyết toán để nguyên dòng
+  đã rời `proposed` (R8.18). Nếu sai thì: quyết định thắng, dòng đã rút sang `rejected` với `settlement_conflict`.
+  (g) Bộ giá trị gắn kiểm theo Bản ứng viên thay bộ mà bản `live` dùng, lúc nhận chỉ hỏi lại kết nối: kiểm lại theo phiên
+  bản gốc của lượt (R7.6, TC33). Nếu sai thì: mỗi phiên bản giữ Bộ giá trị gắn riêng.
+  (h) giá trị `principal` của tenant khác hay không `active`, và kind không có kiểm nhận mọi giá trị đúng kiểu: kiểm của
+  `principal` đăng ký ở ticket 05, kind không kiểm bị từ chối lúc đăng ký. Nếu sai thì: không đường nào an toàn hơn.
+  (i) ai khai `RunBindingsPort`, hình của nó: ticket 05 khai ở `dw_agent_runtime.ports`, trả `BoundConnection` đọc từ dòng
+  lượt chạy và bản kê (connections-and-vault/05 dùng). Nếu sai thì: connections-and-vault/05 khai và ticket này đáp sau.
+  (j) `required_scopes` không có gì để so ở W1 (Kết nối P1 không phạm vi): phải rỗng, niêm phong từ chối khác rỗng. Nếu
+  sai thì: so với `platform.connections.scopes`, luôn rỗng ở P1.
+  (k) biến bắt buộc có `default` mà chưa duyệt giá trị: coi như có giá trị, bản kê ghim mã băm của `default`. Nếu sai thì:
+  `required` cùng `default` bị niêm phong từ chối.
+  (l) ràng buộc của biến không giới hạn từ vựng: trong hồ sơ `dw.tool-schema/v1`, không `pattern`. Nếu sai thì: `pattern`
+  với giới hạn độ dài và bộ máy regex không quay lui.
+  Lượt xác nhận thêm 7 HIGH, sửa: (m) bản kê không có `principal`: chủ thể của lượt là `coalesce(run_as_principal_id,
+requested_by)` của dòng lượt chạy; (n) một Bộ giá trị gắn mỗi gốc phủ khai báo của cả bao đóng; (o) khóa của bản `live`
+  vẫn nhận; (p) "niêm phong mới nhất" không gồm Nháp; (q) `base_approved_id`; (r) người duyệt phải đọc được thành phần;
+  (s) lượt `simulate` không bị chặn vì điểm gắn. Nếu sai thì: (m) bản kê thêm trường `principal` ở một revision mới;
+  (n) mỗi thành phần trong bao đóng một Bộ riêng, bản kê ghim nhiều `config_version_id`.
+- 4/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 05.
 
 ## Danh sách ticket
 
