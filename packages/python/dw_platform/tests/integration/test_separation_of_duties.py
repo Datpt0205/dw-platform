@@ -39,7 +39,7 @@ from dw_platform.adapters.persistence.membership_admin import SqlMembershipAdmin
 from dw_platform.application.access_context import AccessContext
 from dw_platform.domain.audit import AuditEvent
 from dw_platform.testing.members import add_tenant_member
-from dw_platform.testing.rbac import catalogue_test_keys, unregister_key
+from dw_platform.testing.rbac import catalogue_test_keys, forget_in_memberships, unregister_key
 from dw_platform.testing.seed_env import seed_test_env
 
 pytestmark = pytest.mark.integration
@@ -120,6 +120,7 @@ async def catalogue(migrator_engine: AsyncEngine) -> AsyncIterator[_Catalogue]:
     yield made
     templates = [made.orderer, made.payer, made.bystander, made.pay_set]
     async with migrator_engine.begin() as conn:
+        await forget_in_memberships(conn, templates)
         # The tenants' clones of this file's templates, then the templates.
         await conn.execute(
             sa.text(

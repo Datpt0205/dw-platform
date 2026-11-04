@@ -56,7 +56,7 @@ from dw_platform.application.separation_of_duties import (
     WaiveRule,
 )
 from dw_platform.domain.audit import AuditEvent
-from dw_platform.testing.rbac import catalogue_test_keys, unregister_key
+from dw_platform.testing.rbac import catalogue_test_keys, forget_in_memberships, unregister_key
 from dw_platform.testing.seed_env import seed_test_env
 
 pytestmark = pytest.mark.integration
@@ -137,6 +137,7 @@ async def catalogue(migrator_engine: AsyncEngine) -> AsyncIterator[_Catalogue]:
         await conn.execute(sa.delete(tables.sod_rules).where(tables.sod_rules.c.key.in_(rule_keys)))
         # The tenants' clones of this file's templates, then the templates and keys.
         templates = [made.orderer, made.payer]
+        await forget_in_memberships(conn, templates)
         await conn.execute(
             sa.text(
                 "DELETE FROM platform.role_assignments a USING platform.tenant_roles r"

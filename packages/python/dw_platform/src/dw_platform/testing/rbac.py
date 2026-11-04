@@ -202,6 +202,21 @@ async def unregister_key(conn: Conn, key: str) -> None:
     await _run(conn, "DELETE FROM platform.permissions WHERE key = :k", {"k": key})
 
 
+async def forget_in_memberships(conn: Conn, keys: list[str]) -> None:
+    """Strip role-template and permission-set `keys` from every membership's
+    `role_keys` and `permission_set_keys`, before a test deletes the templates.
+    A membership still naming a deleted template is refused later by whatever
+    re-derives assignments from those columns (the tenant-roles migration's
+    BACKFILL: 'no role template'). Migrator only."""
+    await _run(
+        conn,
+        "UPDATE platform.memberships SET role_keys = role_keys - CAST(:k AS text[]),"
+        " permission_set_keys = permission_set_keys - CAST(:k AS text[])"
+        " WHERE role_keys ?| CAST(:k AS text[]) OR permission_set_keys ?| CAST(:k AS text[])",
+        {"k": keys},
+    )
+
+
 async def grants_of(conn: Conn, tenant_id: uuid.UUID, user_id: uuid.UUID) -> set[tuple[str, str]]:
     """`platform.effective_grants` as (key, depth) pairs."""
     rows = await conn.execute(
