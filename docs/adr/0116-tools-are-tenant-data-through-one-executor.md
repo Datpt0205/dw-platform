@@ -302,3 +302,13 @@ planner's provisional calls H-1-H-18:
   not a second validator. The step registry of decision 3 also holds the Digital Worker boundary and the decision
   call checks, and the Send floor of ADR-0124 as a registered step. If wrong: the method takes all four arguments
   from W1 with no reader for two of them, and the registry's order is revisited in tools-and-skills R2.6.
+
+## Amendments (2026-11-04)
+
+- connections-and-vault ticket 05 readiness gate, agent under Đạt's delegation of 2026-10-31: decision 2's load rules
+  hold for every connector action, and each action declares its `transport`, `http` or `smtp`. Empty `egress_hosts`
+  fails to load an `http` action; an `smtp` action declares no `egress_hosts`, since its host is its Connection's own,
+  written once at creation and pinned by address (ADR-0115 (Accepted) decision 7). An `smtp` action may declare
+  `data_location` and `processor` as `connection`, and its Connection then declares `vn` or `foreign` and a processor,
+  with no default (ADR-0123 (Accepted) decision 5); W1 refuses a `foreign` one before the secret is opened. If wrong:
+  SMTP hosts join the Allowed hosts of ADR-0115 decision 6 under a purpose of their own, and the action lists them.
