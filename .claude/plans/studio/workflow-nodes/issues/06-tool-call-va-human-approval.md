@@ -108,6 +108,10 @@ approval_request_id)` tới `platform.approval_requests (tenant_id, workspace_id
       tố nghiêm, mã mà `_enforce_strict_rules` của tenant-config/05 đặt cho mọi loại phê duyệt (V4.P9;
       ADR-0104 (Accepted) quyết 11; ADR-0004 (Accepted)).
     - Lúc lượt `live` tiếp tục sau quyết định, Bước chạy làn của quyết định đó và không chạy làn kia (R9.16).
+    - Yêu cầu `studio.step.approval` không rút được ở W1: lệnh rút của người yêu cầu (ADR-0004 (Accepted)) trả 409
+      `conflict` với `details.reason_code` `step_approval_not_withdrawable` qua một mục ở composition root cạnh
+      `decision_guards`, vì rút một yêu cầu mà không đóng điểm chờ để lượt kẹt `open` tới hạn chót; dừng một lượt là
+      route hủy lượt của W2. Yêu cầu chỉ rời `pending` bằng một quyết định hay trigger hủy của bước 6.
     - Lúc chủ thể chạy (Bước đầu của làn `approved`) ở `live`: `tool.call@2` render lại `arguments`, so `content_hash`
       với `subject_hash`; khác → `subject_changed`, không gửi; khớp → `ToolExecutor.execute(..., approved=True)` với đúng
       đối số đã duyệt (R9.3); không có dòng `step_approvals` của điểm chờ → `approval_missing`, không gửi. Ở chế độ khác
@@ -285,3 +289,5 @@ interrupt_id)` → hai yêu cầu, test đỏ.
       mình vào nó. Va chạm một dòng trong một tệp, như các dòng `|=` của composition root; ticket sau rebase lên ticket
       trước.
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): theo lượt xác nhận của gate ticket 07: yêu cầu `studio.step.approval`
+  không rút được ở W1 (bước 3), vì một lần rút không đóng điểm chờ. Không thêm cạnh.
