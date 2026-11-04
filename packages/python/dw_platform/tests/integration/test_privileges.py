@@ -1078,6 +1078,9 @@ async def test_the_provisioner_holds_exactly_what_its_code_runs(db_urls: Databas
     # A later revision that grants the provisioner a new table declares it the same way.
     tenant_members = _module("db/migrations/versions/349080a62e41_tenant_members.py", "tm")
     tenant_roles = _module("db/migrations/versions/b5677d345bc1_tenant_roles.py", "tr")
+    switches = _module(
+        "db/migrations/versions/8efd60e59d32_control_switches_and_platform_freezes.py", "cs"
+    )
     script = _module("scripts/create_provisioner_role.py", "create_provisioner_role")
     migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
     try:
@@ -1089,6 +1092,7 @@ async def test_the_provisioner_holds_exactly_what_its_code_runs(db_urls: Databas
         _declared(migration.PROVISIONER)  # type: ignore[attr-defined]
         | _declared(tenant_members.PROVISIONER)  # type: ignore[attr-defined]
         | _declared(tenant_roles.PROVISIONER)  # type: ignore[attr-defined]
+        | _declared(switches.PROVISIONER)  # type: ignore[attr-defined]
     )
     assert _declared(script.GRANTS) == declared, "the role script and the migration disagree"  # type: ignore[attr-defined]
     assert catalog == declared, (
@@ -2118,3 +2122,79 @@ async def test_a_run_manifest_is_inserted_read_and_only_purged(
         await migrator.dispose()
     assert held == {("dw_app", "SELECT"), ("dw_app", "INSERT"), ("dw_app", "DELETE")}
     assert trigger_call is False
+
+
+# agent-lifecycle ticket 01 (migration 8efd60e59d32): a company's switch is
+# inserted and lifted by `dw_app` (only the lift columns), deleted only by
+# the offboarding lane (its trigger refuses it elsewhere, R7.5, R10.1); the
+# operators' switches are the provisioner's; `dw_agent_ro` reads neither.
+
+_LIFT_COLUMNS = ("lifted_by", "lifted_at", "lift_reason", "lift_approval_id")
+_OTHER_COLUMNS = ("reason", "reason_code", "set_by", "action", "origin", "tenant_id")
+
+
+async def test_the_switches_are_written_only_by_the_roles_that_set_and_lift_them(
+    db_urls: DatabaseUrls,
+) -> None:
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            held = {
+                table: {(r.rolname, r.verb) for r in await conn.execute(_HELD_VERBS, {"t": table})}
+                for table in ("platform.control_switches", "platform.platform_freezes")
+            }
+
+            async def updates(role: str, table: str, column: str) -> bool:
+                return bool(
+                    await conn.scalar(
+                        sa.text("SELECT has_column_privilege(:r, :t, :c, 'UPDATE')"),
+                        {"r": role, "t": table, "c": column},
+                    )
+                )
+
+            app_lifts = {
+                c: await updates("dw_app", "platform.control_switches", c) for c in _LIFT_COLUMNS
+            }
+            app_other = {
+                c: await updates("dw_app", "platform.control_switches", c) for c in _OTHER_COLUMNS
+            }
+            operator_lifts = {
+                c: await updates("dw_provisioner", "platform.control_switches", c)
+                for c in (*_LIFT_COLUMNS, *_OTHER_COLUMNS)
+            }
+            freeze_lifts = {
+                (role, c): await updates(role, "platform.platform_freezes", c)
+                for role in ("dw_app", "dw_provisioner")
+                for c in ("lifted_by", "lifted_at", "reason")
+            }
+            trigger_calls = [
+                await conn.scalar(
+                    sa.text("SELECT has_function_privilege('public', :f, 'EXECUTE')"), {"f": f}
+                )
+                for f in (
+                    "platform.guard_control_switch()",
+                    "platform.notify_control_switch()",
+                    "platform.notify_platform_freeze()",
+                )
+            ]
+    finally:
+        await migrator.dispose()
+    assert held["platform.control_switches"] == {
+        ("dw_app", "SELECT"),
+        ("dw_app", "INSERT"),
+        ("dw_app", "DELETE"),
+        ("dw_provisioner", "SELECT"),
+        ("dw_provisioner", "INSERT"),
+    }
+    assert held["platform.platform_freezes"] == {
+        ("dw_app", "SELECT"),
+        ("dw_provisioner", "SELECT"),
+        ("dw_provisioner", "INSERT"),
+    }
+    assert all(app_lifts.values()) and not any(app_other.values())
+    assert {c for c, v in operator_lifts.items() if v} == {"lifted_by", "lifted_at", "lift_reason"}
+    assert {k for k, v in freeze_lifts.items() if v} == {
+        ("dw_provisioner", "lifted_by"),
+        ("dw_provisioner", "lifted_at"),
+    }
+    assert not any(trigger_calls)

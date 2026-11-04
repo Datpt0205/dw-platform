@@ -1,6 +1,6 @@
 # 01 — Đóng băng toàn nền tảng và theo tenant, kiểm ở mọi cửa của runtime
 
-Status: ready-for-agent
+Status: resolved (2026-11-04, main)
 Blocked by: .claude/plans/studio/org-and-principals/issues/02-thanh-vien-cap-tenant.md, .claude/plans/studio/runtime-hardening/issues/03-run-va-outbox-khong-ket.md, .claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md, .claude/plans/studio/tools-and-skills/issues/01-executor-kiem-schema-va-nha-may.md
 Area: studio
 Yêu cầu: R7.1, R7.2, R7.3, R7.4, R7.5, R7.6, R7.7, R7.8, R7.10, R7.11, R7.14, R9.1, R9.2, R10.1, AL11, AL12, AL16, AL17, AL18
@@ -155,61 +155,61 @@ WHERE approval_type IN ('studio.lifecycle.unfreeze', 'studio.lifecycle.revive') 
 
 ## Tiêu chí chấp nhận
 
-- [ ] R7.1 (AL11): đặt đóng băng giữa một run, lời gọi kế tiếp qua mỗi cửa mà ticket này gắn (model ở vòng
+- [x] R7.1 (AL11): đặt đóng băng giữa một run, lời gọi kế tiếp qua mỗi cửa mà ticket này gắn (model ở vòng
       agent, sub-agent, gateway có cấu trúc, tóm tắt, công cụ) bị từ chối, run kết thúc `cancelled` với `reason_code`
       (cửa đầu node thử ở workflow-engine/03); tiến trình B thấy công tắc do tiến trình A đặt trong 5 giây (NOTIFY mang
       `tenant_id`), và trong TTL khi NOTIFY mất; Đóng băng của nền tảng → mọi tiến trình thấy trong 5 giây; metric
       `dw_control_refusals_total` mang `door` của cửa; gỡ kiểm ở một cửa → test của cửa đó đỏ.
-- [ ] R7.14 (AL11): Đóng băng đặt khi một lượt đang `waiting_approval`; người được quyết định duyệt → 409
+- [x] R7.14 (AL11): Đóng băng đặt khi một lượt đang `waiting_approval`; người được quyết định duyệt → 409
       `tenant_frozen`, yêu cầu vẫn `pending`, lượt vẫn `waiting_approval`; gỡ Đóng băng rồi duyệt → lượt tiếp tục; lượt
       `waiting_timer` tới giờ trong lúc Đóng băng → vẫn `waiting_timer`, chạy tiếp sau khi gỡ; yêu cầu
       `studio.lifecycle.unfreeze` vẫn quyết được trong lúc Đóng băng; lượt bị hủy ở cửa khác mang `reason_code` trong
       `error` và trong audit `run.cancelled`; cho cửa `decide` hay `resume` hủy lượt khi Đóng băng → test đỏ.
-- [ ] R7.1 (AL11): sổ bước của API và của worker có bước "công tắc điều khiển" của ticket này ở chỗ đầu của thứ tự
+- [x] R7.1 (AL11): sổ bước của API và của worker có bước "công tắc điều khiển" của ticket này ở chỗ đầu của thứ tự
       R2.6, danh sách bước chờ đăng ký không còn nó, và lời gọi công cụ khi Đóng băng → `tool.denied` với `deny_frozen`
       trước kiểm quyền; gỡ dòng đăng ký của ticket này mà không đưa bước lại vào danh sách chờ → test sổ của
       tools-and-skills:R2.7 đỏ, nêu bước; đăng ký bước sau kiểm quyền → test sổ đỏ.
-- [ ] R7.3 (AL11): database ngắt quá 30 giây → lời gọi công cụ bị từ chối `control_state_unavailable`.
-- [ ] R7.2: test hợp đồng với làn `studio_inbound` giả: khi đóng băng `admission_state` trả `tenant_frozen`
+- [x] R7.3 (AL11): database ngắt quá 30 giây → lời gọi công cụ bị từ chối `control_state_unavailable`.
+- [x] R7.2: test hợp đồng với làn `studio_inbound` giả: khi đóng băng `admission_state` trả `tenant_frozen`
       và làn để nguyên sự kiện; sau khi gỡ trả mở và làn xin lượt chạy theo `received_at`.
-- [ ] R7.7 (AL11): với làn giả, lượt `chat`, `replay` và lần thử của Lượt kiểm định tới cửa nhận khi đóng băng →
+- [x] R7.7 (AL11): với làn giả, lượt `chat`, `replay` và lần thử của Lượt kiểm định tới cửa nhận khi đóng băng →
       `cancelled` `tenant_frozen`, 0 lời gọi model; gỡ nhánh tương tác → test đỏ.
-- [ ] R7.8 (AL11): với làn giả, lượt `datahub` đã xếp hàng khi đóng băng giữ `queued`, không `cancelled`;
+- [x] R7.8 (AL11): với làn giả, lượt `datahub` đã xếp hàng khi đóng băng giữ `queued`, không `cancelled`;
       sau khi gỡ chạy theo thứ tự xếp hàng.
-- [ ] R7.4 (AL12): `org_admin` gỡ đóng băng nguồn `platform` qua `POST /api/v1/admin/unfreeze` → 403.
-- [ ] R7.10 (AL18): `POST /api/v1/admin/unfreeze` mở yêu cầu `studio.lifecycle.unfreeze` với `switch_id`, Đóng
+- [x] R7.4 (AL12): `org_admin` gỡ đóng băng nguồn `platform` qua `POST /api/v1/admin/unfreeze` → 403.
+- [x] R7.10 (AL18): `POST /api/v1/admin/unfreeze` mở yêu cầu `studio.lifecycle.unfreeze` với `switch_id`, Đóng
       băng còn; người khác người xin duyệt → Đóng băng gỡ, `lift_approval_id` ghi, audit `control.freeze.lifted` với actor
       là người duyệt; xin gỡ lần hai khi yêu cầu đầu còn `pending` → 409 `lift_pending`; sự kiện `.decided` giao lại sau
       khi đã gỡ → không đổi gì, không audit; đặt Đóng băng khi đã có một Đóng băng của công ty mở → 409
       `already_frozen`; `dw_app` INSERT một dòng `origin='platform'`, hay một dòng `tenant` với `action` `kill` → 23514;
       hai `POST /admin/unfreeze` song song khác `Idempotency-Key` → một yêu cầu, một 409 `lift_pending`; nhà vận hành đặt Đóng băng cho công ty đang có Đóng băng của chính công ty → hai dòng mở, công ty
       gỡ dòng của mình thì Đóng băng của nhà vận hành vẫn chặn.
-- [ ] R7.11 (AL18): người xin gỡ tự duyệt → 409 `conflict` với `details.reason_code` `second_person_required` (mã mà
+- [x] R7.11 (AL18): người xin gỡ tự duyệt → 409 `conflict` với `details.reason_code` `second_person_required` (mã mà
       `_enforce_strict_rules` đã đặt cho mọi loại dưới tiền tố nghiêm, `approval_flow.py:139-152`), Đóng băng còn; gỡ
       `studio.lifecycle.` khỏi tiền tố nghiêm → test đỏ.
-- [ ] R9.1 (AL17): gỡ thành viên khỏi công ty rồi tiếp tục lượt chạy chờ duyệt của người đó → `cancelled`
+- [x] R9.1 (AL17): gỡ thành viên khỏi công ty rồi tiếp tục lượt chạy chờ duyệt của người đó → `cancelled`
       `principal_inactive`, 0 lời gọi model; đặt `suspended` bằng SQL rồi nhận lượt mới của người đó → như
       trên; gỡ kiểm trong `require_open` → test đỏ.
-- [ ] R9.1 (AL17): lượt của `system_actor(<lane>)` qua cửa nhận khi không có dòng `tenant_members` → chạy; một id
+- [x] R9.1 (AL17): lượt của `system_actor(<lane>)` qua cửa nhận khi không có dòng `tenant_members` → chạy; một id
       người không có dòng → `principal_inactive`.
-- [ ] R9.1 (AL17): với làn giả gọi `require_open(..., door=admission)`, tài khoản dịch vụ `suspended` rồi lượt `datahub` của nó tới cửa nhận → giữ `queued`
+- [x] R9.1 (AL17): với làn giả gọi `require_open(..., door=admission)`, tài khoản dịch vụ `suspended` rồi lượt `datahub` của nó tới cửa nhận → giữ `queued`
       với `principal_inactive`, không `cancelled`, 0 lời gọi model; kích hoạt lại tài khoản → lượt chạy theo thứ tự
       đến; đặt nhánh `cancelled` cho lượt `datahub` → test đỏ.
-- [ ] R9.2 (AL17): khóa công ty rồi nhận một lượt chạy mới của nó → `cancelled` `tenant_locked`, 0 lời gọi
+- [x] R9.2 (AL17): khóa công ty rồi nhận một lượt chạy mới của nó → `cancelled` `tenant_locked`, 0 lời gọi
       model; công ty `offboarding` rồi tiếp tục một lượt chạy chờ duyệt → `cancelled` `tenant_offboarding`; gỡ
       phép đọc trạng thái công ty khỏi `require_open` → test đỏ.
-- [ ] R7.5 (AL12): `dw_app` UPDATE trực tiếp để gỡ một Đóng băng `origin` `tenant` không `lift_approval_id`, với
+- [x] R7.5 (AL12): `dw_app` UPDATE trực tiếp để gỡ một Đóng băng `origin` `tenant` không `lift_approval_id`, với
       `lift_approval_id` của một yêu cầu `pending`, khác loại hay của công tắc khác, hay để đổi một cột khác → 23514;
       `dw_app`
       DELETE một công tắc `kill` mở của công ty `active` → 23514, công tắc còn; gỡ trigger → test đỏ.
-- [ ] R10.1: công ty có một công tắc `kill` mở và một Đóng băng đã gỡ chuyển sang `offboarding` → lane
+- [x] R10.1: công ty có một công tắc `kill` mở và một Đóng băng đã gỡ chuyển sang `offboarding` → lane
       `offboarding` xuất cả hai dòng một lần rồi xóa chúng; test phủ offboarding (studio-skeleton:R4.3) xanh với
       `platform.control_switches` không có trong `STUDIO_EXCLUSIONS`.
-- [ ] R7.6: đặt và gỡ đóng băng ghi đúng một audit trong cùng giao dịch; rollback thì audit không còn.
-- [ ] R7.1 (AL16): đóng băng tenant A không chạm run tenant B; `GET /api/v1/control-state` của người tenant A khi B
+- [x] R7.6: đặt và gỡ đóng băng ghi đúng một audit trong cùng giao dịch; rollback thì audit không còn.
+- [x] R7.1 (AL16): đóng băng tenant A không chạm run tenant B; `GET /api/v1/control-state` của người tenant A khi B
       đóng băng → mở; `dw_app` với `app.tenant_id` của A đọc `platform.control_switches` → 0 dòng của B; lệnh gỡ `POST /api/v1/admin/unfreeze` của người tenant A không chạm dòng của B; gỡ FORCE RLS khỏi `control_switches` hay bỏ dòng
       lý do bảng toàn tenant → `test_rls_coverage.py` đỏ.
-- [ ] Xong: `uv run python -m pytest packages/python/dw_agent_runtime/tests packages/python/dw_platform/tests apps/api/tests -k "control or freeze or run_control"` xanh.
+- [x] Xong: `uv run python -m pytest packages/python/dw_agent_runtime/tests packages/python/dw_platform/tests apps/api/tests -k "control or freeze or run_control"` xanh.
 
 ## Nguồn
 
@@ -268,3 +268,63 @@ WHERE approval_type IN ('studio.lifecycle.unfreeze', 'studio.lifecycle.revive') 
 - 2026-11-04 (agent): MEDIUM để lại: (a) phát lại `Idempotency-Key` của `POST /admin/freeze` sau khi đã gỡ trả lại câu trả lời cũ (ADR-0108 (Accepted) quyết 4); (b) lượt `schedule` giữ `queued` suốt Đóng băng dài bung ra sau khi gỡ: ADR-0120 (Accepted) quyết 7 giữ chúng, số lượt do lịch của workflow-triggers giới hạn; (c) `scope_type` `tool` và `workspace_archived` là W2 (spec, Ngoài phạm vi); (d) cảnh báo collision của script giữa 04 và 05 không chạm ticket này.
 - 2026-11-04 (agent, theo ủy quyền 31/10/2026): lượt xác nhận (một subagent ngữ cảnh mới, mở đúng các tệp đã dẫn), 8 HIGH và 3 dẫn sai, đã sửa: (12) lượt `waiting_timer` đánh thức trong lúc Đóng băng giữ chờ, không hủy; (13) actor `system_actor(<lane>)` bỏ qua kiểm chủ thể, id khác không có dòng là không `active`; (14) `admission_state` chỉ cho sự kiện chưa có lượt, lượt đã có qua `require_open(door=admission)`; (15) ADR-0120 (Accepted) quyết 5, 6 nay có sửa đổi 4/11/2026 ghi một chỗ mở mỗi nguồn và tham số `door` (`9a6a4b9`); (16) CHECK `scope_type` đi với `action`, `dw_app` không chèn dòng `origin='platform'`; (17) `lift_pending` giữ bằng chỉ mục duy nhất từng phần; (18) `reason_code` của lượt bị hủy ghi ở `error` và audit; (19) bước công tắc của executor không dòng thực thi, audit mang tên công cụ xin. Dẫn sai: sổ bước không nhận `deps`, `RunControlPort` là trường bắt buộc của `ToolExecutor`; `second_person_required` đã có ở `approval_flow.py:139-152`, nên bỏ cạnh tới tenant-config/05; compare-and-set của runtime-hardening/03 đã dựng, map `RunHaltedError` thêm ở nhánh lỗi của `resume`. Nếu sai thì: (12) hủy lượt chờ hẹn giờ như lượt đang chạy; (13) lượt nền cũng cần dòng thành viên; (17) kiểm `lift_pending` ở ứng dụng dưới khóa dòng công tắc.
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-04 (agent): resolved.
+    - Khác ticket (agent, theo ủy quyền 31/10/2026): (1) Một chỉ mục `(tenant_id, lift_approval_id)` phục vụ cả FK ghép của
+      `lift_approval_id` lẫn FK `tenant_id` (dẫn đầu bằng `tenant_id`), không thêm chỉ mục `(tenant_id)` riêng. Nếu sai thì: thêm
+      `ix_control_switches_tenant_id` ở revision mới. (2) `owning_workspace_id` có FK ghép `(owning_workspace_id, tenant_id)` tới
+      `platform.workspaces` ON DELETE RESTRICT kèm chỉ mục, vì `test_rls_coverage.py` (R9.4) đòi ở mọi bảng có cột này, và CHECK
+      `ck_control_switches_owning_workspace` (NULL đúng khi `scope_type='tenant'`). Nếu sai thì: bỏ FK và dòng R9.4 cho bảng này.
+      (3) Trigger gỡ dòng `origin='tenant'` còn đòi một dòng `platform.approval_decisions` `approved` do người khác người xin, để
+      một lệnh UPDATE trạng thái yêu cầu không thay được người thứ hai (D11). Nếu sai thì: chỉ đọc `status`. (4) DELETE qua được khi
+      dòng công ty không còn (CASCADE từ chính `platform.tenants`), ngoài ra chỉ khi `offboarding`. Nếu sai thì: FK RESTRICT. (5) Actor
+      của lane nhận ra qua `RUN_REQUESTING_LANES` (`dw_work`) trong `dw_agent_runtime.run_control`, `lane_actors()` đọc ở cả hai
+      composition root; không theo phiên bản UUID vì `seed_env` cấp UUID v5 cho người dùng mẫu. Nếu sai thì: tiêm tên lane từ sổ
+      lane của mỗi tiến trình. (6) `RunControlMiddleware` (agent, sub-agent) và tóm tắt lấy port từ `spec.executor.run_control`
+      (trường bắt buộc của `ToolExecutor`), không thêm trường vào `AgentSpec`. Nếu sai thì: thêm `AgentSpec.run_control`. (7) Cửa
+      `start` của runner hỏi sau khi ghi dòng lượt (sau kiểm hạn mức), nên lượt bị từ chối có dòng `cancelled` mang `reason_code`;
+      `stream` từ chối trước khi tạo task, trả 409. Nếu sai thì: từ chối trước khi ghi, không dòng. (8) Wrapper Bước của wf-lite
+      (`compile.py`) ném lại `RunHaltedError` thay vì bàn giao Bước, nếu không cửa công cụ và gateway của lượt DW thành bàn giao
+      chứ không hủy (failure-modes #5). (9) `GET /control-state` trả `{state, platform_freeze, freezes[{origin, reason_code,
+set_at}]}`, không chữ lý do, không id. (10) `Idempotency-Key` không bắt buộc ở hai route `/admin`; route gỡ của nhà vận hành
+      cho một công ty nhận `{reason}` tùy chọn vào `lift_reason`, route nền tảng không thân. (11) Bước công tắc ghi
+      `policy_decision` `deny_control_state` cho `control_state_unavailable`. (12) Lane `dw_timers` ghi log lượt bị giữ và để lease
+      giữ mục, nên thử lại sau lease (15 phút) chứ không ở nhịp kế. (13) `RunHaltedError` mang `set_by`, `switch_id` (ảnh chụp
+      giữ `id`, `set_by`) cho ticket 05; thứ tự lý do: nền tảng, Đóng băng của nhà vận hành, của công ty, rồi Tắt khẩn; ở
+      `admission` Tắt khẩn đứng trước.
+    - Nguyên mẫu (bước 6, đo trên langgraph 1.2.11, langchain 1.4.1, langchain-core 1.6.3, cả `InMemorySaver` lẫn
+      `SqlAlchemyCheckpointSaver`, `durability="sync"`; script ở scratchpad của phiên, không vào repo): `RunHaltedError` ra khỏi
+      `ainvoke` để checkpoint ở đúng bước lỗi (`aget_state().next` là `model` hay `tools`, lỗi lưu dạng chuỗi repr);
+      `ainvoke(None)` trên cùng thread tiếp tục từ đó: lời gọi model bị chặn được gọi lại, công cụ đã chạy không chạy lại; công cụ
+      bị chặn chạy lại với cùng AIMessage và cùng `tool_call_id`, không lời gọi model mới; công cụ song song đã xong không chạy
+      lại. Kết luận: Đóng băng có thể tiếp tục lượt đang chạy ở W3 mà LangGraph không cần trạng thái `frozen` (trạng thái của nền
+      tảng chỉ để runner không kết thúc lượt). Rủi ro: công cụ ném sau tác động thì chạy lại tác động, nên kiểm phải trước handler
+      (bước công tắc là bước đầu) và khóa chống lặp phải gồm `tool_call_id` (ổn định qua lần tiếp tục); tiếp tục bằng đầu vào mới
+      thay vì `None` bỏ dở lời gọi công cụ và đổi id; lý do dừng phải ở dòng lượt, không ở checkpoint.
+    - Test: unit `test_run_control.py` 35 ca (bước công tắc với bốn lý do, cửa gateway trước `prompts.render`, middleware agent và
+      sub-agent, middleware lỗi công cụ ném lại, ảnh chụp: TTL, NOTIFY, NOTIFY nền tảng, 30 giây, thứ tự lý do, Tắt khẩn, chủ thể,
+      actor của lane, trạng thái công ty, metric không nhãn tenant, dọn ảnh chụp cũ); `test_tool_steps.py` (sổ đủ R2.6, bỏ hay
+      đặt sau `scopes` → `ConfigError` nêu `control_switch`, ca dừng ở bước công tắc); `test_approval_flow.py` (cửa `decide` ×3 lý
+      do, yêu cầu không lượt quyết được khi Đóng băng); `test_context_compaction.py`; `test_agent_factory.py` (thuộc tính thứ tám
+      "frozen run refused"); `test_channel_commands.py` (tiền tố nghiêm ở worker). Integration `test_run_control_db.py` 20 ca
+      (NOTIFY qua tiến trình, TTL khi mất NOTIFY, Đóng băng nền tảng ≤ 5 giây, AL16, hủy giữa lượt với lý do ở `error` và audit,
+      R7.14 duyệt và hẹn giờ, R9.1 ×3, R9.2 ×2, làn giả R7.2, R7.7 ×3, R7.8, R9.1 `datahub`, actor của lane);
+      `test_control_switches_db.py` 13 ca (23514 từng luật của trigger, hai nguồn cùng mở, gỡ của nhà vận hành, FK ghép chéo
+      tenant, xóa ngoài offboarding, RLS, chỉ mục chờ gỡ, payload NOTIFY); `test_freeze_api.py` 10 ca (R7.4, R7.6, R7.10, R7.11,
+      AL16, hai yêu cầu song song, route nhà vận hành); `test_offboarding.py` (R10.1); `test_privileges.py` (grant theo cột,
+      provisioner); `test_rls_coverage.py`; `test_offboarding_coverage.py` và `test_permission_catalogue.py` xanh.
+    - `mutations/01.yaml` 29 đột biến, chưa chạy bằng `mutate.py`; bộ test mới xanh ngay lần đầu nên chạy tay 10 đột biến (bước
+      công tắc, cửa gateway, cửa `decide`, giữ ở `resume`, kiểm chủ thể, kiểm công ty, ánh xạ hủy của runner, middleware lỗi công
+      cụ, cửa sub-agent, 30 giây), mỗi cái đỏ.
+    - `reviewing-feature-security` (đọc): tenant chỉ từ access context hay sự kiện outbox; route nhà vận hành sau
+      `RequireProvisioningContext`; RLS FORCE và đọc thẳng chéo tenant 0 dòng; người không giữ khóa 403; người xin tự quyết 409;
+      `dw_app` không gỡ, không chèn dòng nhà vận hành, không xóa ngoài offboarding (DB tự chặn); metric không nhãn tenant; NOTIFY chỉ
+      id và mã; ảnh chụp đóng khi lỗi.
+    - MEDIUM: (a) bước 3 nói `control_state_unavailable` hủy lượt tương tác ở cửa nhận, workflow-engine:R5.16 nói giữ `queued`
+      mọi loại; chủ bảng là workflow-engine/04, làn giả theo R5.16. (b) Đóng băng đặt giữa cửa `decide` và cửa `resume` (cùng ảnh
+      chụp trong một tiến trình, cửa sổ nhỏ) để lại quyết định đã duyệt và lượt `waiting_approval` mà không lane nào thử lại;
+      ticket 05 hay workflow-engine/08. (c) Lane hẹn giờ thử lại sau lease 15 phút. (d) Hai `POST /admin/freeze` song song khác
+      khóa: một 201, một 409 nhờ chỉ mục, chưa có test riêng.
+    - Còn ở lúc đóng hàng đợi: `mutate.py` cho `mutations/01.yaml`; `make test-integration` toàn bộ; P50/P95/P99 của
+      `POST /api/v1/admin/freeze`, `POST /api/v1/admin/unfreeze`, `GET /api/v1/control-state`, bốn route `/platform`, và chi phí
+      `require_open` ở `start`, `decide`, `tool`, `model` (một truy vấn ảnh chụp mỗi 5 giây mỗi công ty; một truy vấn trạng thái ở
+      `start`/`resume`) so với commit đầu hàng đợi; `/code-review`; `reviewing-deployment-security` (route mới).

@@ -32,6 +32,7 @@ from sqlalchemy.pool import NullPool
 
 from dw_platform.adapters.persistence.offboarding import (
     _FOREIGN_KEYS,
+    STUDIO_EXCLUSIONS,
     ExportedTable,
     OffboardingPurgeStep,
     SqlTenantOffboarding,
@@ -1168,3 +1169,87 @@ async def test_offboarding_deletes_the_tenants_service_users_after_what_holds_th
         )
         assert await count(services, t=theirs["tenant"]) == 2
         assert await count(principals, t=theirs["tenant"]) == 2
+
+
+# ---------------------------------------------------------------------------
+# agent-lifecycle ticket 01 (R10.1): a company leaving the platform takes its
+# switches with it, an open kill and a lifted freeze alike, exported once and
+# deleted by the default step, which the switch trigger allows only while
+# the company is `offboarding`; the other company's stay.
+# ---------------------------------------------------------------------------
+
+
+async def _seed_switches(sessions: async_sessionmaker[AsyncSession], t: _Tenant) -> None:
+    asker, decider = await _seed_member(sessions, t), await _seed_member(sessions, t)
+    freeze, approval = uuid.uuid4(), uuid.uuid4()
+    async with sessions() as session, session.begin():
+        await session.execute(
+            sa.text("SELECT set_config('app.tenant_id', :t, true)"), {"t": str(t.tenant_id)}
+        )
+        for statement, values in (
+            (
+                "INSERT INTO platform.control_switches (id, tenant_id, scope_type,"
+                " owning_workspace_id, target_id, action, origin, reason_code, reason, set_by)"
+                " VALUES (gen_random_uuid(), :t, 'agent', :w, gen_random_uuid(), 'kill',"
+                " 'tenant', 'abuse', 'x', :u)",
+                {"t": t.tenant_id, "w": t.workspace_id, "u": asker},
+            ),
+            (
+                "INSERT INTO platform.control_switches (id, tenant_id, scope_type, action,"
+                " origin, reason_code, reason, set_by)"
+                " VALUES (:f, :t, 'tenant', 'freeze', 'tenant', 'incident', 'x', :u)",
+                {"f": freeze, "t": t.tenant_id, "u": asker},
+            ),
+            (
+                "INSERT INTO platform.approval_requests (id, tenant_id, workspace_id,"
+                " approval_type, requested_by, payload, status)"
+                " VALUES (:a, :t, :w, 'studio.lifecycle.unfreeze', :u,"
+                " jsonb_build_object('switch_id', CAST(:f AS text)), 'approved')",
+                {
+                    "a": approval,
+                    "t": t.tenant_id,
+                    "w": t.workspace_id,
+                    "u": asker,
+                    "f": str(freeze),
+                },
+            ),
+            (
+                "INSERT INTO platform.approval_decisions (id, request_id, tenant_id,"
+                " workspace_id, decided_by, outcome, decided_at)"
+                " VALUES (gen_random_uuid(), :a, :t, :w, :d, 'approved', now())",
+                {"a": approval, "t": t.tenant_id, "w": t.workspace_id, "d": decider},
+            ),
+            (
+                "UPDATE platform.control_switches SET lifted_at = now(), lifted_by = :d,"
+                " lift_approval_id = :a WHERE id = :f",
+                {"d": decider, "a": approval, "f": freeze},
+            ),
+        ):
+            await session.execute(sa.text(statement), values)
+
+
+async def test_offboarding_exports_and_deletes_the_companys_switches(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    """R10.1: both rows exported once, then deleted before the approval the
+    lifted one names (the RESTRICT key orders the steps); the other company's
+    are untouched."""
+    mine, theirs = _new_tenant(), _new_tenant()
+    for t in (mine, theirs):
+        await _seed_tenant(sessions, t)
+        await _seed_switches(sessions, t)
+    offboarding = SqlTenantOffboarding(session_factory=sessions)
+
+    exported = [
+        t
+        for t in await _collect(offboarding.export_rows(mine.tenant_id))
+        if (t.schema, t.table) == ("platform", "control_switches")
+    ]
+    assert len(exported) == 1
+    assert sorted(r["action"] for r in exported[0].rows) == ["freeze", "kill"]
+
+    await offboarding.purge_rows(mine.tenant_id)
+
+    assert await _count(sessions, mine.tenant_id, "platform", "control_switches") == 0
+    assert await _count(sessions, theirs.tenant_id, "platform", "control_switches") == 2
+    assert "platform.control_switches" not in STUDIO_EXCLUSIONS

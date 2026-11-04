@@ -38,6 +38,7 @@ from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.model.budget import BudgetExceededError, RunBudgetLedger
 from dw_agent_runtime.model.copy import load_runtime_copy
 from dw_agent_runtime.registry import ConfigError
+from dw_agent_runtime.run_control import HaltReason, RunControlDoor, RunHaltedError
 from dw_agent_runtime.testing.pricing import FlatPricing
 from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_kernel.ports import FixedClock, SequentialIdGenerator
@@ -82,6 +83,7 @@ def _compactor(
     budget: RunBudgetLedger | None = None,
     summary_input_tokens: int = 8000,
     ceiling_tokens: int = LOOP_CEILING_TOKENS,
+    control: OpenRunControl | None = None,
 ) -> tuple[PlatformSummarizationMiddleware, FakeAuditRepo]:
     repo = audit if audit is not None else FakeAuditRepo()
     middleware = PlatformSummarizationMiddleware(
@@ -99,7 +101,7 @@ def _compactor(
         summary_profile_id=PROFILE_ID,
         trigger=("messages", TRIGGER_MESSAGES),
         keep=("messages", KEEP_MESSAGES),
-        run_control=OpenRunControl(),
+        run_control=control if control is not None else OpenRunControl(),
     )
     return middleware, repo
 
@@ -262,6 +264,23 @@ async def test_a_run_over_its_ceiling_is_stopped_not_waved_through_as_a_failed_s
     with pytest.raises(BudgetExceededError):
         await agent.ainvoke({"messages": _history(8)}, THREAD, context=context)
     assert audit.events == []
+
+
+async def test_a_frozen_run_is_stopped_before_any_summary_call() -> None:
+    """agent-lifecycle R7.1 (AL11): the compaction door asks the freeze before
+    every summary call, outside the fail-open block, so the refusal escapes,
+    the summariser is never called and nothing is recorded."""
+    control = OpenRunControl()
+    control.refuse(HaltReason.TENANT_FROZEN, doors=[RunControlDoor.COMPACTION])
+    summariser = _summariser()
+    middleware, audit = _compactor(summariser, control=control)
+
+    with pytest.raises(RunHaltedError) as halted:
+        await _run(middleware, 30)
+    assert halted.value.reason is HaltReason.TENANT_FROZEN
+    assert summariser.calls == []
+    assert audit.events == []
+    assert control.doors() == [RunControlDoor.COMPACTION]
 
 
 # ------------------------------------------------------- 3. not user-authored --

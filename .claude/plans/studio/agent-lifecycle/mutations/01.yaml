@@ -1,0 +1,194 @@
+# Mutation check of agent-lifecycle ticket 01: scripts/mutate.py runs this file
+# at the queue's close (wave-close.md). One mutation per control of the
+# ticket's "Kiểm soát" rows (AL11, AL12, AL16, AL17, AL18) and per door that
+# holds one, each test calling its door directly (failure-modes #5). Ten were
+# run by hand while writing the tests (4/11/2026), each red: the tool step,
+# the gateway door, the decide door, the resume hold, the principal and the
+# company checks, the runner's halt mapping, the tool-errors re-raise, the
+# sub-agent door and the 30 s grace. The migration's mutations apply in
+# place, so their tests recreate the database from the mutated revision.
+mutations:
+  # ---- AL11: every door refuses a frozen run ------------------------------
+  - name: AL11 R7.1 the executor's control step asks nothing
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py
+    old: "            await self.run_control.require_open(call.run_context, door=RunControlDoor.TOOL)\n"
+    new: "            pass\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_run_control.py::test_a_tool_call_under_a_switch_is_halted_before_anything_resolves
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_steps.py::test_a_call_stopped_at_a_step_runs_nothing_after_it
+  - name: AL11 R7.1 the control step is registered after the scope check
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/wflite_host.py
+    old: '    steps.register("control_switch", ToolExecutor.step_control_switch)  # agent-lifecycle R7.1'
+    new: ""
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_steps.py::test_the_register_holds_all_of_r2_6_and_nothing_waits
+  - name: AL11 R7.1 the control step refuses as a permission, not a halt
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py
+    old: "                details={\"reason_code\": halted.reason.value},\n            )\n            raise\n"
+    new: "                details={\"reason_code\": halted.reason.value},\n            )\n            raise PermissionDeniedError(\"frozen\") from halted\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_run_control.py::test_a_tool_call_under_a_switch_is_halted_before_anything_resolves
+  - name: AL11 R7.1 the structured gateway renders before it asks
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/gateway.py
+    old: "        await self.run_control.require_open(run_context, door=RunControlDoor.MODEL)\n"
+    new: ""
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_run_control.py::test_the_structured_gateway_refuses_before_the_prompt_is_rendered
+  - name: AL11 R7.1 the agent stack drops its model door
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/agent_factory.py
+    old: "        RunControlMiddleware(spec.executor.run_control),\n"
+    new: ""
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_agent_factory.py::test_every_middleware_is_load_bearing
+  - name: AL11 R7.1 the sub-agent stack drops its model door
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/sub_agents.py
+    old: "        RunControlMiddleware(parent.executor.run_control),\n"
+    new: ""
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_run_control.py::test_a_delegated_turn_asks_the_parents_port_at_its_model_call
+  - name: AL11 R7.1 compaction summarises without asking
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/context_compaction.py
+    old: "            await self._run_control.require_open(run_context, door=RunControlDoor.COMPACTION)\n"
+    new: ""
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_context_compaction.py::test_a_frozen_run_is_stopped_before_any_summary_call
+  - name: AL11 R7.1 the tool-errors middleware tells the model about a halt
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langchain_tools.py
+    old: "        if isinstance(exc, RunHaltedError):\n            return None\n"
+    new: ""
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_run_control.py::test_the_tool_errors_middleware_never_tells_the_model_about_a_halt
+  - name: AL11 R7.1 the runner records a halt as failed
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langgraph_runner.py
+    old: "            status, event = RunStatus.CANCELLED, \"run.cancelled\"\n"
+    new: "            pass\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/integration/test_run_control_db.py::test_a_freeze_set_during_a_run_cancels_it_at_its_next_door
+  - name: AL11 R7.1 the start door is not asked
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langgraph_runner.py
+    old: "                await self.run_control.require_open(run_context, door=RunControlDoor.START)\n"
+    new: ""
+    tests:
+      - packages/python/dw_agent_runtime/tests/integration/test_run_control_db.py::test_a_new_run_of_a_frozen_company_is_cancelled_at_its_start
+  - name: AL11 R7.1 the NOTIFY is ignored
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/run_control.py
+    old: "        self.invalidate(payload)\n"
+    new: "        return None\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/integration/test_run_control_db.py::test_process_b_sees_a_freeze_process_a_set_through_its_notification
+  - name: AL11 R7.3 a stale snapshot is answered from for ever
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/run_control.py
+    old: "            if current is not None and now - current.read_at <= self._stale_after:\n"
+    new: "            if current is not None:\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_run_control.py::test_past_thirty_seconds_without_a_refresh_every_door_refuses
+  - name: AL11 R7.14 a decision on a paused run is not refused
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/approval_flow.py
+    old: "            if record is not None:\n                # \"keep paused runs paused"
+    new: "            if record is None:\n                # \"keep paused runs paused"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_approval_flow.py::test_a_decision_on_a_paused_run_under_a_switch_is_refused_and_writes_nothing
+  - name: AL11 R7.14 a resume under a freeze cancels the run
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langgraph_runner.py
+    old: "            if halted.reason not in HOLDING_REASONS:\n"
+    new: "            if True:\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/integration/test_run_control_db.py::test_a_timer_due_while_frozen_keeps_its_run_waiting_then_runs_on
+
+  # ---- AL17: the principal and the company ----------------------------------
+  - name: AL17 R9.1 the principal is not asked
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/run_control.py
+    old: "        if row.member_status != \"active\":\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_run_control.py::test_the_principal_must_be_an_active_member_at_the_principal_doors
+      - packages/python/dw_agent_runtime/tests/integration/test_run_control_db.py::test_a_new_run_of_a_suspended_member_is_cancelled_before_any_model_call
+  - name: AL17 R9.1 a missing member row passes
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/run_control.py
+    old: "        if row.member_status != \"active\":\n"
+    new: "        if row.member_status not in (\"active\", None):\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_run_control.py::test_the_principal_must_be_an_active_member_at_the_principal_doors
+  - name: AL17 R9.2 the company's status is not asked
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/run_control.py
+    old: "        if tenant_reason is not None:\n            return tenant_reason\n"
+    new: ""
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_run_control.py::test_a_company_not_active_is_refused_at_the_principal_doors
+      - packages/python/dw_agent_runtime/tests/integration/test_run_control_db.py::test_a_new_run_of_a_locked_company_is_cancelled
+
+  # ---- AL12, AL18: the database's rules -------------------------------------
+  - name: AL12 R7.5 a company's lift needs no approval
+    file: db/migrations/versions/8efd60e59d32_control_switches_and_platform_freezes.py
+    old: "        IF NEW.lift_approval_id IS NULL OR NOT EXISTS ("
+    new: "        IF FALSE AND NOT EXISTS ("
+    tests:
+      - packages/python/dw_platform/tests/integration/test_control_switches_db.py::test_a_company_freeze_lifts_only_with_its_approved_second_person_request
+  - name: AL18 R7.5 the requester's own approval lifts it
+    file: db/migrations/versions/8efd60e59d32_control_switches_and_platform_freezes.py
+    old: "              AND d.decided_by <> a.requested_by\n"
+    new: "\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_control_switches_db.py::test_a_company_freeze_lifts_only_with_its_approved_second_person_request
+  - name: AL12 R7.5 a switch is deleted outside offboarding
+    file: db/migrations/versions/8efd60e59d32_control_switches_and_platform_freezes.py
+    old: "            IF FOUND AND v_status IS DISTINCT FROM 'offboarding' THEN"
+    new: "            IF FALSE THEN"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_control_switches_db.py::test_a_kill_of_an_active_company_is_not_deleted
+  - name: AL12 R7.4 the company lifts an operator's switch
+    file: db/migrations/versions/8efd60e59d32_control_switches_and_platform_freezes.py
+    old: "            IF current_user <> 'dw_provisioner' OR NEW.lift_approval_id IS NOT NULL THEN"
+    new: "            IF FALSE THEN"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_control_switches_db.py::test_an_operators_freeze_is_lifted_by_the_provisioner_alone
+  - name: AL18 R7.10 the company writes an operator's switch
+    file: db/migrations/versions/8efd60e59d32_control_switches_and_platform_freezes.py
+    old: "            IF NEW.origin = 'platform' AND current_user <> 'dw_provisioner' THEN"
+    new: "            IF FALSE THEN"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_control_switches_db.py::test_a_company_cannot_write_an_operators_switch_nor_a_freeze_that_is_a_kill
+  - name: AL18 R7.10 two lift requests wait for one switch
+    file: db/migrations/versions/8efd60e59d32_control_switches_and_platform_freezes.py
+    old: "    \"CREATE UNIQUE INDEX uq_approval_requests_control_lift_pending\"\n"
+    new: "    \"CREATE INDEX uq_approval_requests_control_lift_pending\"\n"
+    tests:
+      - apps/api/tests/integration/test_freeze_api.py::test_two_concurrent_lift_requests_open_one_approval
+  - name: AL18 R7.11 the lifecycle prefix is not strict in the API
+    file: apps/api/src/dw_api/bootstrap/wiring.py
+    old: "    wiring.approval_flow.strict_approval_prefixes |= {LIFECYCLE_PREFIX}\n"
+    new: ""
+    tests:
+      - apps/api/tests/integration/test_freeze_api.py::test_a_freeze_is_lifted_only_when_another_person_approves_its_request
+  - name: AL18 R7.11 the lifecycle prefix is not strict in the worker
+    file: apps/worker/src/dw_worker/main.py
+    old: "    flow.strict_approval_prefixes |= {LIFECYCLE_PREFIX}\n"
+    new: ""
+    tests:
+      - apps/worker/tests/unit/test_channel_commands.py::test_lifting_a_freeze_takes_a_second_person_here_as_in_the_api
+  - name: AL12 R7.4 the company's request lifts an operator's freeze
+    file: packages/python/dw_platform/src/dw_platform/application/control_switches.py
+    old: "            own = next((f for f in freezes if f.origin == \"tenant\"), None)\n"
+    new: "            own = next(iter(freezes), None)\n"
+    tests:
+      - apps/api/tests/integration/test_freeze_api.py::test_a_company_cannot_lift_an_operators_freeze_and_lifting_its_own_leaves_it
+  - name: R7.10 a replayed decision is audited again
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/control_switches_repo.py
+    old: "                .where(_SWITCHES.c.id == switch_id, _SWITCHES.c.lifted_at.is_(None))\n"
+    new: "                .where(_SWITCHES.c.id == switch_id)\n"
+    tests:
+      - apps/api/tests/integration/test_freeze_api.py::test_a_freeze_is_lifted_only_when_another_person_approves_its_request
+
+  # ---- AL16: one company's switches ------------------------------------------
+  - name: AL16 R7.1 the switches are not forced under RLS
+    file: db/migrations/versions/8efd60e59d32_control_switches_and_platform_freezes.py
+    old: "    \"ALTER TABLE platform.control_switches FORCE ROW LEVEL SECURITY\",\n"
+    new: ""
+    tests:
+      - packages/python/dw_platform/tests/integration/test_rls_coverage.py
+  - name: AL16 R7.1 a snapshot is shared across companies
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/run_control.py
+    old: "        current = self._snapshots.get(tenant_id)\n"
+    new: "        current = next(iter(self._snapshots.values()), None)\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_run_control.py::test_a_freeze_of_one_company_leaves_another_open

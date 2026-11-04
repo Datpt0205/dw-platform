@@ -13,6 +13,7 @@ from dw_agent_runtime.approval_flow import (
     DecisionGuard,
 )
 from dw_agent_runtime.contracts import RunContext
+from dw_agent_runtime.run_control import HaltReason, RunControlDoor, RunHaltedError
 from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_kernel.autonomy import AutonomyLevel
 from dw_kernel.errors import ConflictError, NotFoundError, PermissionDeniedError
@@ -213,6 +214,7 @@ def make_service(
     outbox: FakeOutbox | None = None,
     guards: dict[str, DecisionGuard] | None = None,
     audit: FakeAudit | None = None,
+    control: OpenRunControl | None = None,
 ) -> ApproveAndResumeService:
     resolved = repo or FakeApprovalRepo(request=request)
     resolved_outbox = outbox or FakeOutbox()
@@ -232,7 +234,7 @@ def make_service(
         id_generator=SequentialIdGenerator(),
         strict_approval_prefixes=prefixes,
         decision_guards=guards or {},
-        run_control=OpenRunControl(),
+        run_control=control if control is not None else OpenRunControl(),
     )
 
 
@@ -281,6 +283,50 @@ async def test_non_strict_type_allows_self_approval_without_comment() -> None:
     service = make_service(make_request("demo.dispatch"), frozenset({"sales_chat."}))
     request = await decide(service, REQUESTER, "")
     assert request.status.value == "approved"
+
+
+@pytest.mark.parametrize(
+    "reason",
+    [HaltReason.TENANT_FROZEN, HaltReason.PLATFORM_FROZEN, HaltReason.ARTIFACT_KILLED],
+)
+async def test_a_decision_on_a_paused_run_under_a_switch_is_refused_and_writes_nothing(
+    reason: HaltReason,
+) -> None:
+    """agent-lifecycle R7.14 (AL11): 409 with the reason, the request still
+    pending, no decision row, no audit, the run never resumed: "keep paused
+    runs paused and refuse decisions on them" (ADR-0120 decision 7)."""
+    request = make_request("demo.dispatch", run_id=RUN_ID)
+    repo, audit = FakeApprovalRepo(request=request), FakeAudit()
+    runner = FakeRunner(hosted=True)
+    control = OpenRunControl()
+    control.refuse(reason)
+    service = make_service(
+        request, frozenset(), runner=runner, repo=repo, audit=audit, control=control
+    )
+
+    with pytest.raises(RunHaltedError) as halted:
+        await decide(service, APPROVER, "đồng ý")
+
+    assert halted.value.details["reason_code"] == reason.value
+    assert control.doors() == [RunControlDoor.DECIDE]
+    assert request.status.value == "pending"
+    assert repo.decisions == []
+    assert audit.events == []
+    assert runner.resumed == []
+
+
+async def test_a_run_less_request_is_decided_while_frozen() -> None:
+    """R7.14: lifting a freeze must be decidable while it holds, so a request
+    with no run never passes the decide door."""
+    request = make_request("studio.lifecycle.unfreeze", payload={"switch_id": str(RUN_ID)})
+    control = OpenRunControl()
+    control.refuse(HaltReason.TENANT_FROZEN)
+    service = make_service(request, frozenset({"studio.lifecycle."}), control=control)
+
+    decided = await decide(service, APPROVER, "đã xác minh sự cố đã xử lý")
+
+    assert decided.status.value == "approved"
+    assert control.asked == []
 
 
 async def test_a_host_that_cannot_resume_records_nothing() -> None:
