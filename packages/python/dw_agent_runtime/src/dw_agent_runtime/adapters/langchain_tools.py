@@ -523,16 +523,20 @@ def tool_call(
     pinned: bool,
     present: Callable[[ToolResult], Any],
     rejected: Callable[[str], Any],
+    admit: Callable[[dict[str, object]], dict[str, object]] | None = None,
 ) -> Callable[..., Awaitable[Any]]:
     """The one body of a model's call of a platform tool (tools-and-skills
     ticket 02 step 3): the run's `RunContext`, the executor's answer to "does
     this wait for a person", the key from the arguments, then the executor.
     A code-defined worker's tool resolves by the run's tenant; a Studio run's
     is handed over as it was `pinned`. `present` turns the result into what
-    the model reads, `rejected` a person's refusal."""
+    the model reads, `rejected` a person's refusal. `admit`, when given, is
+    what the arguments become before anything reads them: a strict tool's
+    `drop_strict_nulls` (tools-and-skills ticket 04 step 3)."""
     definition = registered.definition
 
-    async def call(**kwargs: object) -> Any:
+    async def call(**sent: object) -> Any:
+        kwargs = sent if admit is None else admit(sent)
         run_context = get_runtime(RunContext).context
         approved = False
         # Asks a person only for a call that will run: one the executor

@@ -32,6 +32,7 @@ from dw_agent_runtime.adapters.wflite_host import build_tool_executor_steps
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.contracts import RunContext, ToolDefinition, ToolResponse
 from dw_agent_runtime.executor import ToolExecutor
+from dw_agent_runtime.model.profiles import ModelCapabilities
 from dw_agent_runtime.pinned import PinnedResolver
 from dw_agent_runtime.ports import PinnedEntry, PinnedManifest, PinnedVersion
 from dw_agent_runtime.testing.run_control import OpenRunControl
@@ -222,6 +223,7 @@ def build(
     pins: PinnedResolver | None = None,
     *,
     object_source: ObjectSource | None = None,
+    capabilities: ModelCapabilities | None = None,
 ) -> PinnedTools:
     return studio_tools(
         toolset,
@@ -229,6 +231,7 @@ def build(
         s.assembler,
         {"object_crud": object_source or ObjectSource(), "connector_action": ActionSource()},
         s.executor,
+        capabilities=capabilities or ModelCapabilities(),
         approval_type_prefix="studio.agent.tool.",
         copy=COPY,
     )
@@ -516,6 +519,7 @@ async def test_a_studio_agent_offers_the_model_only_its_pinned_tools() -> None:
         stack().assembler,
         {"object_crud": ObjectSource()},
         spec.executor,
+        capabilities=ModelCapabilities(),
         approval_type_prefix="studio.agent.tool.",
         copy=COPY,
     )

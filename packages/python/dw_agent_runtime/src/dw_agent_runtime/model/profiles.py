@@ -79,7 +79,8 @@ class ModelCapabilities(BaseModel):
     tool_calling: bool = False
     parallel_tool_calls: bool = False
     strict_tools: bool = False
-    # The most `strict: true` tools one call may carry; unset is no strict tools.
+    # The most `strict: true` tools one call may carry; unset is no ceiling
+    # (tools-and-skills/04, `adapters.studio_tools.turn_capabilities`).
     max_strict_tools: int | None = Field(default=None, gt=0)
     numeric_bounds: bool = False
     structured_output: bool = False

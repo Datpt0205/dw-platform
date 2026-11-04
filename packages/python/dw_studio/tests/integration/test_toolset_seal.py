@@ -30,6 +30,7 @@ from sqlalchemy.pool import NullPool
 from dw_agent_runtime.adapters.studio_tools import CompiledTool, studio_tools
 from dw_agent_runtime.contracts import ToolDefinition
 from dw_agent_runtime.model.copy import load_runtime_copy
+from dw_agent_runtime.model.profiles import ModelCapabilities
 from dw_agent_runtime.pinned import PinnedResolver
 from dw_agent_runtime.ports import PinnedEntry
 from dw_agent_runtime.tool_kinds import ToolAssembler, ToolBinding, ToolContract
@@ -330,6 +331,7 @@ async def test_a_sealed_toolset_builds_from_the_run_manifest_with_its_pins(
         ),
         {"object_crud": ObjectSource(), "connector_action": ActionSource()},
         executor=None,  # type: ignore[arg-type]  # nothing is called here
+        capabilities=ModelCapabilities(),
         approval_type_prefix="studio.agent.tool.",
         copy=COPY,
     )

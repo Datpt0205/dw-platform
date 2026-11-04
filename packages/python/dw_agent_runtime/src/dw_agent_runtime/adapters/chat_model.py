@@ -124,6 +124,10 @@ class MockChatModel(BaseChatModel):
     # only the object says which arguments the model was shown, which is what a
     # test asserting "the model cannot name a tenant" has to read.
     bound_tools: list[Any] = Field(default_factory=list)
+    # What `bind_tools` was asked besides the tools (`tool_choice`, `strict`):
+    # handed with `bound_tools` to a provider's own `bind_tools`, it gives the
+    # definitions that provider would send.
+    bound_kwargs: dict[str, Any] = Field(default_factory=dict)
     # Every turn's messages, in order. Lets a test assert what actually reached
     # the model — a prompt rendered per call is otherwise unobservable.
     calls: list[list[BaseMessage]] = Field(default_factory=list)
@@ -139,6 +143,7 @@ class MockChatModel(BaseChatModel):
     def bind_tools(self, tools: Sequence[Any], **kwargs: Any) -> MockChatModel:
         self.bound_tool_names = [t.name if isinstance(t, BaseTool) else str(t) for t in tools]
         self.bound_tools = list(tools)
+        self.bound_kwargs = dict(kwargs)
         return self
 
     def _generate(
