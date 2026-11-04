@@ -96,7 +96,11 @@ _SET_DURING_RUN: dict[uuid.UUID, Callable[[], Any]] = {}
 
 def _halting_graph() -> StateGraph:  # type: ignore[type-arg]
     graph: StateGraph = StateGraph(dict)  # type: ignore[type-arg]
-    graph.add_node("act", _acting)  # type: ignore[call-overload]
+    # Through `Any`: langgraph's overloads for a node taking `Runtime[...]`
+    # resolve to `call-overload` on Windows and `arg-type` on Linux, so no one
+    # ignore code is right on both (failure-modes #4).
+    node: Any = _acting
+    graph.add_node("act", node)
     graph.add_edge(START, "act")
     graph.add_edge("act", END)
     return graph
