@@ -1,0 +1,47 @@
+# Mutation check of compliance-pdpl ticket 04: scripts/mutate.py runs this file
+# at the queue's close (.claude/rules/wave-close.md). The five mutations of the
+# ticket's step 3, (a)-(e), and one for its second criterion: a branch that
+# skips the floor when the root built none.
+mutations:
+  - name: (a) the send floor is not registered
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/wflite_host.py
+    old: '    steps.register("send_floor", ToolExecutor.step_send_floor)  # compliance-pdpl R3.1'
+    new: "    pass"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_tool_steps.py::test_the_register_holds_all_of_r2_6_and_nothing_waits
+  - name: (b) the send floor is pending again, not registered
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/wflite_host.py
+    old: |2-
+          steps.register("send_floor", ToolExecutor.step_send_floor)  # compliance-pdpl R3.1
+          return steps
+    new: |2-
+          steps._pending["send_floor"] = "compliance-pdpl/04"
+          return steps
+    tests:
+      - packages/python/dw_agent_runtime/tests/integration/test_send_floor_executor_db.py::test_a_send_without_consent_is_refused_at_the_executor
+  - name: (c) the API's root builds its executor without the floor
+    file: apps/api/src/dw_api/bootstrap/runtime.py
+    old: "        send_admission=build_send_floor("
+    new: "        send_admission=None and build_send_floor("
+    tests:
+      - apps/api/tests/integration/test_api_send_floor_root.py::test_the_apis_executor_asks_the_floor_once
+  - name: (d) the worker's root builds its executor without the floor
+    file: apps/worker/src/dw_worker/composition.py
+    old: "        send_admission=build_send_floor("
+    new: "        send_admission=None and build_send_floor("
+    tests:
+      - apps/worker/tests/integration/test_worker_send_floor_root.py::test_the_workers_executor_asks_the_floor_once
+  - name: (e) one call asks the floor twice
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py
+    old: "            admission = await self.send_admission.admit(request)"
+    new: "            admission = await self.send_admission.admit(request) and await self.send_admission.admit(request)"
+    tests:
+      - apps/api/tests/integration/test_api_send_floor_root.py::test_the_apis_executor_asks_the_floor_once
+      - apps/worker/tests/integration/test_worker_send_floor_root.py::test_the_workers_executor_asks_the_floor_once
+  - name: a root without a floor lets a message through
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py
+    old: "        if call.definition.message is None:"
+    new: "        if call.definition.message is None or self.send_admission is None:"
+    tests:
+      - apps/api/tests/integration/test_api_send_floor_root.py::test_without_a_signing_secret_the_api_sends_no_message
+      - apps/worker/tests/integration/test_worker_send_floor_root.py::test_without_a_signing_secret_the_worker_sends_no_message

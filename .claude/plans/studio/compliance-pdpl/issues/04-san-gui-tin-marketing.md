@@ -1,6 +1,6 @@
 # 04 — Sàn gửi tin marketing: phần còn lại sau lõi (sổ bước ở hai composition root, nhãn audit)
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: .claude/plans/studio/tools-and-skills/issues/01-executor-kiem-schema-va-nha-may.md, .claude/plans/studio/telemetry-and-audit/issues/01-otel-khong-noi-dung-va-metric.md
 Area: studio
 Yêu cầu: R3.12, CP25
@@ -48,14 +48,14 @@ Bản ghi đồng ý của gói là W2 (hai dòng của Ngoài phạm vi của s
 
 ## Tiêu chí chấp nhận
 
-- [ ] R3.12 (CP25): test root của API và của worker: sổ bước có `send_floor` sau `approval`, trước `claim`, không
+- [x] R3.12 (CP25): test root của API và của worker: sổ bước có `send_floor` sau `approval`, trước `claim`, không
       trong `PENDING_STEPS`, và `send_admission` được đặt; `email.send` thiếu đồng ý qua executor của mỗi root →
       `blocked:no_consent`, không `blocked:send_floor_unavailable`, đúng một dòng nhật ký gửi `blocked` và đúng một
       `marketing.send_refused` (sàn chạy một lần); bỏ `send_admission` ở một root → test của root đó đỏ.
-- [ ] R3.12 (CP25): root dựng không có `UNSUBSCRIBE_SIGNING_SECRET` ở profile `test` → `email.send` trả
+- [x] R3.12 (CP25): root dựng không có `UNSUBSCRIBE_SIGNING_SECRET` ở profile `test` → `email.send` trả
       `blocked:send_floor_unavailable`, máy SMTP giả 0 lời gọi; một nhánh bỏ qua sàn khi thiếu nó → test đỏ.
-- [ ] R3.12 (CP25): `mutations/04.yaml` có năm đột biến (a)-(e) của bước 3, mỗi đột biến nêu test mà nó làm đỏ.
-- [ ] Xong: `make ci && make test-integration` xanh.
+- [x] R3.12 (CP25): `mutations/04.yaml` có năm đột biến (a)-(e) của bước 3, mỗi đột biến nêu test mà nó làm đỏ.
+- [x] Xong: `make ci && make test-integration` xanh.
 
 ## Nguồn
 
@@ -132,3 +132,30 @@ Bản ghi đồng ý của gói là W2 (hai dòng của Ngoài phạm vi của s
   gốc chưa có test (khóa tư vấn theo `root_run_id` của ticket 08 bước 4).
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
 - 2026-11-04 (agent, theo ủy quyền 31/10/2026): `checking-plan-consistency` của vùng studio: nhãn `studio.conversation.expired` nay cho ticket 09 (vế hội thoại tách khỏi ticket 06); không đổi gì khác. Nếu sai thì: nhãn trở về ticket 06 khi ticket 09 gộp lại.
+- 2026-11-05 (agent): resolved. Test root: `apps/api/tests/integration/test_api_send_floor_root.py` (executor của
+  `build_container`) và `apps/worker/tests/integration/test_worker_send_floor_root.py` (executor của
+  `build_wflite_runtime`), phần hỏi chung ở `tests/support/send_floor_root.py`; nhãn audit ở
+  `configs/copy/audit_actions.d/compliance-pdpl.yaml`, manifest phát hành sinh lại vì mảnh copy mới; không mã sản phẩm,
+  migration hay route nào đổi. Sáu đột biến chạy tay trên bản sao gói (như `mutate.py`), cả sáu đỏ: (a) 25 test đỏ,
+  gồm test sổ; (b) test R3.2 đỏ (`sent` thay `blocked:no_consent`) và bốn test root; (c), (d) test root của đúng root đó;
+  (e) hai dòng `blocked`; nhánh bỏ qua sàn khi thiếu nó → hai test thiếu bí mật đỏ. Cổng: ruff, format, mypy,
+  lint-imports, verify_architecture, test_verify_architecture.sh, verify_invariants, check_hygiene, generate_contracts,
+  bandit xanh; bốn test integration mới xanh.
+- 2026-11-05 (agent, theo ủy quyền 31/10/2026): test root lấy executor mà bước `tool.call` của root giữ
+  (`runner.run_graphs.ports.executor`, ở API khẳng định là `container.runtime.tool_executor`) và gọi `email.send` với
+  khóa của bước `tool.call`, `approved=True` thay `DecisionCall`: lời gọi quyết định cần một DW và lớp quyết định đã seed,
+  và đường từ node `tool.call` tới `ports.executor` là test của wf-lite. Không thêm trường `executor` vào `WfLiteRuntime`.
+  Nếu sai thì: seed một DW ở mỗi DB test và chạy node `tool.call` đã biên dịch của mỗi root.
+- 2026-11-05 (agent, theo ủy quyền 31/10/2026): đột biến (b) không cho `blocked:send_floor_unavailable` như bước 3 và
+  CP25 viết: một bước chờ không quyết gì (`PENDING_STEPS`, executor.py), nên tin đi tới handler; test R3.2 vẫn đỏ, vì
+  công cụ được gọi. Giữ mã như đã dựng (bước 1: không dựng lại sàn); (b) viết bằng `steps._pending[...]` trong
+  `wflite_host.py` vì `mutate.py` nhận một tệp mỗi đột biến. Thêm đột biến thứ sáu cho tiêu chí hai. Máy SMTP giả là
+  `SmtpEmailSender.send` vá ở lớp, root dựng sender với `smtp_host=mailpit`. Nếu sai thì: `ToolSteps` từ chối
+  `send_floor` trong danh sách chờ (một dòng ở `__init__`) và CP25 sửa theo.
+- 2026-11-05 (agent): MEDIUM, cho lượt đóng hàng đợi và `checking-plan-consistency`: (a) `send_floor` trả về danh sách
+  chờ là mở khi thiếu (tin đi không qua sàn), chỉ test sổ (`PENDING_STEPS` rỗng) và test R3.2 chặn; CP25 của spec mô tả
+  một lời từ chối không mã nào làm; (b) ở test thiếu bí mật, nếu sàn bị bỏ qua thì handler vẫn từ chối
+  `work_item_missing` trước SMTP, nên test đỏ nhờ mã lý do, không nhờ máy SMTP giả; (c) test root của worker dựng
+  `build_wflite_runtime` như `dw_worker.main` gọi, không chạy `main`.
+- 2026-11-05 (agent): cho lúc đóng hàng đợi: `scripts/mutate.py` với `mutations/04.yaml`; integration đầy đủ. Không đo
+  trễ: không thao tác hay trang nào đổi (chỉ test và một mảnh copy).
