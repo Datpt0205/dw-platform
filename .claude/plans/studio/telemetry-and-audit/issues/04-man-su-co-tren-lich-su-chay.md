@@ -1,9 +1,9 @@
 # 04 — Màn sự cố trên Lịch sử chạy: Chạy tiếp từ Bước lỗi và Kết thúc; màn giải outcome_review
 
-Status: needs-triage
+Status: ready-for-agent
 Blocked by: 03, .claude/plans/studio/workflow-engine/issues/07-chay-tiep-tu-buoc-loi.md, .claude/plans/studio/workflow-engine/issues/08-tac-dong-khong-ro-ket-qua.md
 Area: studio
-Yêu cầu: R4.6, R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R7.1, R7.2, R7.3, R7.4, R7.5, TA21, TA22, TA25, TA28, TA29
+Yêu cầu: R4.6, R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.7, R6.8, R6.9, R7.1, R7.2, R7.3, R7.4, R7.5, TA21, TA22, TA25, TA28, TA29, TA42
 
 ## Mục tiêu
 
@@ -56,6 +56,20 @@ màn, nên ticket 03 trên đường găng YC94 không chờ bậc B hay ticket 
    `runs.reconcile` ở workspace của lượt, còn route vẫn là chỗ kiểm, kể cả 409 `second_person_required` với tác động
    `critical` (workflow-engine:R6.35). Phản hồi 403, 404 hay 409 → thông báo tiếng Việt theo `details.reason_code` qua
    `App.useApp()`, rồi đọc lại `.../outcome-reviews` và hiện đúng trạng thái máy chủ trả (spec R7.5); 200 → tải lại lượt, dòng chờ và Bước chạy.
+   4a. Chung cho hai route và hai khối (gate 4/11/2026, agent theo ủy quyền 31/10/2026):
+    - Đọc lượt qua `RunReadAccess` của ticket 03 (spec R4.15), không phép kiểm `runs.read` riêng, nên người dựng mở
+      lượt `simulate` của chính mình thấy sự cố của nó, và mọi ca không đọc được là 404 giống id không tồn tại.
+    - Mỗi dòng trả thêm `iteration_path` và `attempt` của Bước chạy mà dòng gắn vào (dòng đã đọc ở bước 1 hay 3), để màn
+      gắn khối vào đúng nút của cây (lần lặp, lần thử), và cờ `can_resolve` (route sự cố) hay `can_reconcile` (route
+      `outcome-reviews`) tính bằng cùng phép kiểm khóa mà route giải của workflow-engine/07, /08 dùng ở workspace của
+      lượt, chỉ phần khóa: Đóng băng và luật người thứ hai vẫn trả 409 từ route giải, màn xử lý như R6.6; màn hiện nút theo cờ đó, không theo `/me` (spec R6.7; TA42). Route giải vẫn là chỗ kiểm.
+    - W1 có nhiều nhất một dòng chờ `open` mỗi loại mỗi lượt (không chờ trong làn song song, V4.26;
+      workflow-engine:R2.16); route gặp hơn một dòng thì trả mỗi dòng với `node_id`, `iteration_path`, `attempt` NULL
+      và ghi một log lỗi, không gắn dòng nào vào Bước sai (spec R6.8); dòng sự cố không có Bước chạy lỗi nào cũng trả
+      với ba trường đó và `error_type` NULL, và màn đặt khối ở đầu trang.
+    - Phản hồi 422, 429, 5xx hay lỗi mạng → thông báo lỗi chung qua `App.useApp()`, đọc lại route đọc, không coi là đã
+      giải (spec R6.9). Chữ của mọi lỗi qua bảng thông điệp problem+json duy nhất của web theo `code` và
+      `details.reason_code`, mã lạ → chữ chung; không bảng chữ thứ hai.
 5. Test: hai route trên PostgreSQL thật (công ty khác, ngoài độ sâu, trong tầm, dòng `resolved` và `cancelled` không
    trả, dòng của lượt khác và dòng khác loại không trả); test màn với client giả (200, 409 `stale_interrupt`, 409
    `tenant_frozen`, 409 `second_person_required`, 403; `outcome_unknown` và một lỗi khác; "Đã nhận" với ô bằng chứng
@@ -103,6 +117,13 @@ màn, nên ticket 03 trên đường găng YC94 không chờ bậc B hay ticket 
       hiện `open`, `stale_interrupt` mà dòng đã giải thì khối giải thôi hiện; coi mọi phản hồi là thành công, hay giữ
       dòng chờ mà không đọc lại →
       test màn đỏ.
+- [ ] R6.7 (TA42): người không giữ `studio.workflows.resolve_incident` ở workspace của lượt → `can_resolve` false và
+      không nút; người giữ khóa mức `tenant` neo ở workspace khác xem lượt của workspace này → `can_resolve` true, nút
+      hiện; một lượt lặp có sự cố ở lần lặp 2 → khối gắn vào nút của lần lặp 2; màn đọc `/me` thay cờ → test đỏ.
+- [ ] R6.8: hai dòng `outcome_review` `open` trồng tay trong một lượt → route trả cả hai với `node_id` NULL và ghi log
+      lỗi; gắn cả hai vào Bước có `seq` lớn nhất → test đỏ.
+- [ ] R6.9: route giải trả 500, rồi một lần lỗi mạng → mỗi lần một thông báo lỗi, màn đọc lại route đọc, khối còn hiện;
+      coi 500 là xong → test đỏ.
 - [ ] Xong: `make ci && make test-integration` xanh.
 
 ## Nguồn
@@ -136,3 +157,16 @@ màn, nên ticket 03 trên đường găng YC94 không chờ bậc B hay ticket 
   ticket đó (cả hai chờ workflow-engine/05), và không ticket nào chờ ticket này, nên cạnh không làm ticket này sâu thêm.
 - 2026-10-27 (agent): theo lời đáp của Đạt (câu 2 theo A): sau 403, 404 hay 409 màn đọc lại route đọc thay vì giữ
   `open`, nên sự cố hay dòng chờ người khác đã giải thôi hiện (spec R6.6, R7.5; TA22, TA29).
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): checking-plan-readiness, builder check và boundary walk (ticket có hai
+  route và một màn); sửa ở spec (Quyết định 4/11/2026, R6.7 tới R6.9, TA42) và bước 4a: đọc lượt qua `RunReadAccess`
+  của ticket 03 (người dựng thấy sự cố của lượt mô phỏng của mình); `iteration_path`, `attempt` và cờ `can_resolve`,
+  `can_reconcile` từ máy chủ, chỉ phần khóa; nhiều dòng chờ `open` không gắn sai Bước; dòng sự cố không có Bước lỗi vẫn
+  trả; 422, 429, 5xx và lỗi mạng đọc lại trạng thái; chữ lỗi qua bảng thông điệp problem+json duy nhất của web. Lượt xác
+  nhận làm rõ cờ chỉ là phần khóa; nhận rủi ro không người đọc mới (agent, theo ủy quyền 31/10/2026). Nếu sai thì: ghi
+  ở đây khi dựng và sửa spec.
+- 2026-11-04 (agent): MEDIUM của gate, chưa sửa. (M1) Nhãn `outcome_unknown` cạnh nút và trong Alert có thể trùng chữ;
+  test màn khẳng định đúng phần tử cạnh nút. (M2) "Kết thúc" và "Bỏ" không có hộp xác nhận: chọn khi dựng theo design
+  v3. (M3) Ô bằng chứng chỉ có dấu cách: cắt trắng rồi mới coi là rỗng, độ dài theo workflow-engine:R6.32.
+- 2026-11-04 (agent): bảng cặp: ticket 03 là chặn của ticket này (có đường); workflow-engine/07, /08 cũng vậy. Không cặp
+  nào khác. Thứ tự dựng: sau ticket 03, workflow-engine/07 và /08.
+- 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
