@@ -116,7 +116,8 @@ của ticket 06.
    `author_ids` (người không được quyết thì không đọc, kể cả khi giữ tem); người xin chỉ được thấy yêu cầu (spec R5.8) mà không giữ tem,
    yêu cầu đã quyết, loại khác hay công ty khác → 404 như không tồn tại, không trả nội dung và không audit. Khi nhận: trả
    `version_id`, `version_no`, `definition_hash` và `document` niêm phong của Bản ứng viên, `live_version_id` của phiên
-   bản Đang dùng mà nó sẽ thay (NULL khi chưa có) và `changes[]`, phần khác giữa hai tài liệu chuẩn hóa bằng
+   bản mà Bản ứng viên đã so lúc gửi, tức bản có `definition_hash` bằng `compared_live_hash` (NULL khi
+   `compared_live_hash` NULL; có thể đã bị gỡ, ticket 07 thêm `base_changed`), và `changes[]` so với chính bản đó, phần khác giữa hai tài liệu chuẩn hóa bằng
    `dw_kernel.canonical` theo con trỏ JSON (`path`, `before`, `after`; mọi trường là thêm khi chưa có bản Đang dùng; một
    mảng là một giá trị ở con trỏ của nó, so nguyên mảng, không theo chỉ số phần tử), và
    ghi đúng một audit `studio.version.candidate_read` (actor là người đọc, `details` chỉ id yêu cầu và id phiên bản)

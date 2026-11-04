@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 2/11/2026
-Sẵn sàng: ĐẠT (4/11/2026; 0 CRITICAL, 0 HIGH; ticket 01-06)
+Sẵn sàng: ĐẠT (4/11/2026; 0 CRITICAL, 0 HIGH; ticket 01-07)
 
 Người dựng cần một lớp điều khiển vòng đời cho agent và quy trình: mỗi phiên bản đi qua Nháp, Đang
 kiểm định, Chờ duyệt, Đang dùng, Đã gỡ trong một máy trạng thái do PostgreSQL canh; chỉ sang Đang dùng
@@ -659,15 +659,18 @@ NULL`; FK
 - `GET /api/v1/studio/publish-approvals/{approval_id}/candidate` (người được quyết định yêu cầu `studio.publish.<kind>`
   còn `pending`, tức giữ `approvals.decide` và tem `studio.publish.approve`, ADR-0004 (Accepted) sửa đổi 07/10/2026;
   đọc, không `Idempotency-Key`): `version_id`, `version_no`, Mã băm định nghĩa và nội dung niêm phong của Bản ứng viên,
-  `live_version_id` của phiên bản Đang dùng mà nó sẽ thay (NULL khi chưa có), và `changes[]` là phần khác giữa hai tài
+  `live_version_id` của bản mà Bản ứng viên đã so lúc gửi (`compared_live_hash`; NULL khi không có), và `changes[]` là phần khác giữa hai tài
   liệu chuẩn hóa RFC 8785 theo con trỏ JSON (`path`, `before`, `after`; mọi trường là thêm khi chưa có bản Đang dùng),
   kèm audit `studio.version.candidate_read` (R5.11); người không được quyết định yêu cầu, yêu cầu đã quyết, loại khác
   `studio.publish.*` hay công ty khác → 404 như không tồn tại, không audit (R5.12). Ngoài lúc yêu cầu còn chờ, đọc định
   nghĩa vẫn cần khóa đọc của loại trên route của tenant-config (tenant-config:R2.11). Cho màn duyệt (R5.13-R5.15), câu
-  trả lời còn mang `live_document` (tài liệu niêm phong của bản Đang dùng, NULL khi chưa có), `gate` (NULL với loại không
+  trả lời còn mang `artifact` (`kind`, `api_name`), `requested_by`, `submitted_at`, `live_document` (tài liệu niêm
+  phong của bản đã so lúc gửi, NULL khi không có), `base_changed`, `compare_status` (`live`, `no_live`, `read_error`,
+  với quy trình), `step_changes[]`, `section_changes[]`, `gate` (NULL với loại không
   cổng; trạng thái, Câu an ninh đạt trên tổng, mỗi ca kịch bản `{case_id, name, passed, reason_code}`, `spent_usd`,
   `estimated_run_cost_usd` là trung bình `cost_usd` của các ca kịch bản, NULL khi không có ca) và `closure_changes[]`
-  (`{kind, artifact_id, name, before_version_no, after_version_no}` từ `studio.dependencies` của hai phiên bản), dưới
+  (`{to_kind, kind, artifact_id, key, name, before_version, after_version}` từ dòng `artifact` và `platform_artifact`
+  của `studio.dependencies` của hai phiên bản, theo ticket 07), dưới
   đúng các kiểm và một audit của R5.11, R5.12.
 - Lỗi theo vỏ problem+json của ADR-0108 (Accepted); `details.reason_code`: `candidate_exists`,
   `second_person_required` (409 khi người xin tự quyết phê duyệt phát hành, gỡ Đóng băng hay bật lại: R5.2, R7.11,
@@ -1427,6 +1430,10 @@ NULL`; FK
 - 4/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 06. Ticket 06 dựng cổng chất lượng (bảng, lane, Bộ an
   ninh, ca kịch bản, Kiểm định thử, chốt chặn, lane hết hạn) trên ticket 02, 03, 04. Theo `## Ủy quyền` của studio.md
   (Đạt, 31/10/2026). Nếu sai thì: hạ ticket 06 về `needs-triage` và chia lại.
+- 4/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 07. Ticket 07 dựng màn duyệt phát hành trên route Bản
+  ứng viên của ticket 04 (thêm trường, không route mới) và kết quả cổng của ticket 06; gate ticket 07 (4/11/2026): mọi khối
+  so với bản đã so lúc gửi, `compare_status` do máy chủ quyết, liên kết qua `CARDS`. Theo `## Ủy quyền` của studio.md
+  (Đạt, 31/10/2026). Nếu sai thì: hạ ticket 07 về `needs-triage` và chia lại.
 
 ## Danh sách ticket
 
