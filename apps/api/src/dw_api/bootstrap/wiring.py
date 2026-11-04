@@ -163,7 +163,7 @@ from dw_platform.application.support_access import (
 )
 from dw_platform.application.tenant_members import TenantMembersService
 from dw_platform.application.work_queue import WorkQueue
-from dw_studio.core.application.registry import PLATFORM_KINDS, ArtifactKindEntry
+from dw_studio.core.application.registry import ArtifactKindEntry
 from dw_usage.adapters.sql import SqlTenantTimezones, SqlUsageReads
 from dw_usage.application.calendar import UsageCalendar
 from dw_usage.application.reads import UsageReads
@@ -187,7 +187,7 @@ def _asyncpg_dsn(url: str) -> str:
 def build_container(
     settings: ApiSettings | None = None,
     *,
-    studio_kinds: Sequence[ArtifactKindEntry] = PLATFORM_KINDS,
+    studio_kinds: Sequence[ArtifactKindEntry] | None = None,
 ) -> ApiContainer:
     container = _build_container(settings, studio_kinds)
     # Every context has registered its support scope sets by now (the seam
@@ -197,7 +197,7 @@ def build_container(
 
 
 def _build_container(
-    settings: ApiSettings | None, studio_kinds: Sequence[ArtifactKindEntry]
+    settings: ApiSettings | None, studio_kinds: Sequence[ArtifactKindEntry] | None
 ) -> ApiContainer:
     settings = settings or ApiSettings()
     settings.validate_for_profile()

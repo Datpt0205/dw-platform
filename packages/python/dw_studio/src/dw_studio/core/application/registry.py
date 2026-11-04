@@ -8,9 +8,11 @@ publish hook, and two pure functions over a document: `validate` returns every
 problem with its JSON pointer, `extract` every use it makes of something else.
 
 The quality-gate flag is not here: it is `studio.artifact_kinds.has_quality_gate`
-alone, a column with no DEFAULT (R2.14). The registry the running app uses is
-`PLATFORM_KINDS`, a constant, so a kind that exists only in a test can never
-reach it from settings or the environment.
+alone, a column with no DEFAULT (R2.14). The kinds the running app registers
+are `dw_studio.kinds.platform_kinds(...)`, outside the core, which imports no
+capability (custom-objects ticket 02); a kind that exists only in a test
+reaches an app only through a composition root's `kinds=`, never from settings
+or the environment.
 """
 
 from __future__ import annotations
@@ -19,7 +21,7 @@ import uuid
 from collections.abc import Awaitable, Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any
 
 from dw_studio.core.domain.artifacts import DOCUMENT_SCHEMA, DocumentProblem, Reference
 
@@ -85,9 +87,3 @@ class ArtifactKindRegistry:
     @property
     def kinds(self) -> frozenset[str]:
         return frozenset(self._entries)
-
-
-# The kinds of the running app. Empty until a spec registers its kind, in the
-# same change as the migration row of `studio.artifact_kinds` that states its
-# `has_quality_gate` (OPS-b); the composition-root test holds the two equal.
-PLATFORM_KINDS: Final[tuple[ArtifactKindEntry, ...]] = ()

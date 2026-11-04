@@ -63,7 +63,7 @@ from dw_api.routes.v1.work_items import router as work_items_router
 from dw_api.routes.v1.zalo import router as zalo_router
 from dw_api.routes.v1.zalo import webhook_router as zalo_webhook_router
 from dw_platform.application.ports import VerifiedIdentity
-from dw_studio.core.application.registry import PLATFORM_KINDS, ArtifactKindEntry
+from dw_studio.core.application.registry import ArtifactKindEntry
 from dw_studio.core.domain.artifacts import DocumentInvalidError
 
 _LOG = logging.getLogger(__name__)
@@ -133,7 +133,7 @@ def mount_studio(app: FastAPI, container: ApiContainer) -> None:
 def create_app(
     container: ApiContainer | None = None,
     *,
-    studio_kinds: Sequence[ArtifactKindEntry] = PLATFORM_KINDS,
+    studio_kinds: Sequence[ArtifactKindEntry] | None = None,
 ) -> FastAPI:
     container = container or build_container(studio_kinds=studio_kinds)
     settings = container.settings

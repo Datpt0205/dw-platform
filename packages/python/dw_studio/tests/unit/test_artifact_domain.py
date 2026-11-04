@@ -10,11 +10,8 @@ from typing import Any
 import pytest
 
 from dw_kernel.canonical import content_hash
-from dw_studio.core.application.registry import (
-    PLATFORM_KINDS,
-    ArtifactKindEntry,
-    ArtifactKindRegistry,
-)
+from dw_kernel.ports import SystemClock, Uuid7Generator
+from dw_studio.core.application.registry import ArtifactKindEntry, ArtifactKindRegistry
 from dw_studio.core.application.service import canonical_document
 from dw_studio.core.domain.artifacts import (
     API_NAME,
@@ -25,6 +22,7 @@ from dw_studio.core.domain.artifacts import (
     definition_hash,
     label_problems,
 )
+from dw_studio.kinds import platform_kinds
 from dw_studio.testing.fixture_kinds import (
     FIXTURE,
     FIXTURE_GATELESS,
@@ -104,9 +102,15 @@ def test_a_kind_registered_twice_or_with_a_blank_key_is_refused() -> None:
         ArtifactKindEntry(kind="probe", document_schema="dw.probe/v1")  # type: ignore[call-arg]
 
 
+def _no_store(_tx: Any) -> Any:
+    raise AssertionError("no hook runs here")
+
+
 def test_the_running_app_registers_no_test_kind() -> None:
-    running = ArtifactKindRegistry(PLATFORM_KINDS)
-    assert len(running) == 0
+    running = ArtifactKindRegistry(
+        platform_kinds(_no_store, clock=SystemClock(), ids=Uuid7Generator())
+    )
+    assert running.kinds == {"object"}
     assert not running.kinds & {entry.kind for entry in FIXTURE_KINDS}
 
 

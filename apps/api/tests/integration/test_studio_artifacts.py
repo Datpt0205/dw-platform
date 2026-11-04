@@ -238,13 +238,14 @@ async def test_an_unregistered_kind_or_a_write_key_out_of_reach_creates_nothing(
 
 
 async def test_the_app_without_test_kinds_takes_no_fixture(api_db: DatabaseUrls) -> None:
-    """R2.15: built with the default kinds, `fixture` is not a kind. Ticket
-    04: the run manifest builder pins the release this process serves, and a
-    run reads its manifest through Studio's store."""
+    """R2.15: built with the default kinds, `fixture` is not a kind; `object`
+    is (custom-objects 02). Ticket 04: the run manifest builder pins the
+    release this process serves, and a run reads its manifest through
+    Studio's store."""
     container = build_container(
         ApiSettings(profile="test", database_url=api_db.app, dev_secret=SECRET)
     )
-    assert container.studio is not None and len(container.studio.kinds) == 0
+    assert container.studio is not None and container.studio.kinds.kinds == {"object"}
     assert container.studio.run_manifests.registry is container.studio.kinds
     assert container.studio.run_manifests.release_manifest_ref == release_manifest_ref()
     assert container.studio.pinned_manifests is SqlRunManifestStore

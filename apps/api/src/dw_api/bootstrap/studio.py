@@ -7,9 +7,11 @@ runtime seam is set when there is one and before the context seam, and returns
 capability's router joins the group here, and `mount_studio` in `dw_api.main`
 mounts the group and its gate.
 
-The kinds are a keyword argument defaulting to `PLATFORM_KINDS`, a constant,
-never settings or the environment: a kind that exists only in a test reaches
-an app only through a test that passes `studio_kinds=` (tenant-config R2.15).
+Without `kinds=` the app registers `platform_kinds(...)` of `dw_studio.kinds`,
+never anything from settings or the environment: a kind that exists only in
+a test reaches an app only through a test that passes `studio_kinds=`
+(tenant-config R2.15). Their hooks get their stores from `object_store_of`,
+over the session of the publish transaction (custom-objects ticket 02).
 """
 
 from __future__ import annotations
@@ -27,13 +29,11 @@ from dw_api.settings import ApiSettings
 from dw_kernel.ports import SystemClock, Uuid7Generator
 from dw_studio.core.adapters.artifact_store import SqlArtifactStore
 from dw_studio.core.adapters.run_manifest_store import SqlRunManifestStore
-from dw_studio.core.application.registry import (
-    PLATFORM_KINDS,
-    ArtifactKindEntry,
-    ArtifactKindRegistry,
-)
+from dw_studio.core.application.registry import ArtifactKindEntry, ArtifactKindRegistry
 from dw_studio.core.application.run_manifests import RunManifestBuilder
 from dw_studio.core.application.service import ArtifactService
+from dw_studio.kinds import platform_kinds
+from dw_studio.records.adapters.definition_store import object_store_of
 
 if TYPE_CHECKING:
     from dw_api.bootstrap.container import ApiContainer
@@ -58,7 +58,7 @@ def build_studio(
     container: ApiContainer,
     settings: ApiSettings,
     *,
-    kinds: Sequence[ArtifactKindEntry] = PLATFORM_KINDS,
+    kinds: Sequence[ArtifactKindEntry] | None = None,
 ) -> StudioContainer | None:
     if container.engine is None or not settings.database_url:
         return None
@@ -72,7 +72,9 @@ def build_studio(
     )
     clock = runtime.clock if runtime is not None else SystemClock()
     ids = runtime.ids if runtime is not None else Uuid7Generator()
-    registry = ArtifactKindRegistry(kinds)
+    registry = ArtifactKindRegistry(
+        platform_kinds(object_store_of, clock=clock, ids=ids) if kinds is None else kinds
+    )
     artifacts = ArtifactService(SqlArtifactStore(sessions, ids), registry, clock, ids)
 
     # Imported here, not at the top: the routes import the container's

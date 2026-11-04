@@ -21,6 +21,7 @@ order and direction and a key's `ON DELETE`, measured the same way.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import pytest
@@ -32,6 +33,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 
+import dw_studio.records.adapters.tables  # noqa: F401 - its tables join `metadata`
 from dw_studio.core.adapters.tables import metadata
 
 pytestmark = pytest.mark.integration
@@ -43,12 +45,20 @@ _PLATFORM_TABLES = frozenset(
 )
 
 
+# The partitions of `studio.records` are the migration's alone: rows are read
+# through the parent (custom-objects ticket 02), and `test_rls_coverage.py`
+# holds each partition's policy to the parent's.
+_PARTITION = re.compile(r"^records_p[0-9]+$")
+
+
 def _studio_only(name: str | None, type_: str, parent: dict[str, Any]) -> bool:
     if type_ == "schema":
         return name in {"studio", "platform"}
     if type_ == "table":
         schema = parent.get("schema_name")
-        return schema == "studio" or (schema == "platform" and name in _PLATFORM_TABLES)
+        if schema == "studio":
+            return not _PARTITION.match(name or "")
+        return schema == "platform" and name in _PLATFORM_TABLES
     return True
 
 
@@ -89,6 +99,10 @@ async def test_the_description_matches_the_migrated_catalog(studio_db: DatabaseU
         "dependencies",
         "run_manifests",
         "run_manifest_keys",
+        "object_defs",
+        "field_defs",
+        "picklist_options",
+        "records",
     }
 
 

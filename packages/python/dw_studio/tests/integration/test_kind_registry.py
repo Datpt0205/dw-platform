@@ -1,10 +1,10 @@
 """The registry the running app uses, against the database (tenant-config R2.15).
 
-`PLATFORM_KINDS`, which `build_studio` registers when no test passes `kinds=`,
-names exactly the kinds of `studio.artifact_kinds`; every key of every entry
+`platform_kinds(...)`, which `build_studio` registers when no test passes
+`kinds=`, names exactly the kinds of `studio.artifact_kinds`; every key of every entry
 is in the one permission catalogue, active; every entry carries a publish
-hook. Both sets are empty until a kind's spec registers one, so each check is
-also run with one defect planted and must name it (failure-modes #3).
+hook. Each check is also run with one defect planted and must name it
+(failure-modes #3).
 """
 
 from __future__ import annotations
@@ -19,10 +19,15 @@ from pg_test_db import DatabaseUrls
 from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 from sqlalchemy.pool import NullPool
 
-from dw_studio.core.application.registry import PLATFORM_KINDS, ArtifactKindEntry
+from dw_kernel.ports import SystemClock, Uuid7Generator
+from dw_studio.core.application.registry import ArtifactKindEntry
+from dw_studio.kinds import platform_kinds
+from dw_studio.records.adapters.definition_store import object_store_of
 from dw_studio.testing.fixture_kinds import FIXTURE, FIXTURE_KINDS, planted_fixture_kinds
 
 pytestmark = pytest.mark.integration
+
+RUNNING = platform_kinds(object_store_of, clock=SystemClock(), ids=Uuid7Generator())
 
 
 async def registry_problems(
@@ -54,7 +59,7 @@ async def test_the_running_registry_is_the_kind_table(studio_db: DatabaseUrls) -
     engine = create_async_engine(studio_db.migrator, poolclass=NullPool)
     try:
         async with engine.connect() as conn:
-            assert await registry_problems(conn, PLATFORM_KINDS) == []
+            assert await registry_problems(conn, RUNNING) == []
             await conn.rollback()
             # A row with no entry, and an entry with no row: each named.
             tx = await conn.begin()
@@ -64,9 +69,9 @@ async def test_the_running_registry_is_the_kind_table(studio_db: DatabaseUrls) -
                     " VALUES ('probe_kind', true)"
                 )
             )
-            row_only = await registry_problems(conn, PLATFORM_KINDS)
+            row_only = await registry_problems(conn, RUNNING)
             await tx.rollback()
-            entry_only = await registry_problems(conn, (*PLATFORM_KINDS, FIXTURE))
+            entry_only = await registry_problems(conn, (*RUNNING, FIXTURE))
     finally:
         await engine.dispose()
 
@@ -78,11 +83,11 @@ async def test_a_kind_without_a_catalogued_key_or_a_hook_is_named(studio_db: Dat
     engine = create_async_engine(studio_db.migrator, poolclass=NullPool)
     try:
         async with planted_fixture_kinds(engine), engine.connect() as conn:
-            assert await registry_problems(conn, FIXTURE_KINDS) == []
+            assert await registry_problems(conn, (*RUNNING, *FIXTURE_KINDS)) == []
             unread = dataclasses.replace(FIXTURE, read_key="fixture.artifacts.unknown")
             hookless = dataclasses.replace(FIXTURE, publish_hook=_none())
-            found = await registry_problems(conn, (unread,))
-            found += await registry_problems(conn, (hookless,))
+            found = await registry_problems(conn, (*RUNNING, unread))
+            found += await registry_problems(conn, (*RUNNING, hookless))
             await conn.rollback()
     finally:
         await engine.dispose()

@@ -1,0 +1,202 @@
+"""SQLAlchemy Core description of the four tables of custom objects (revision
+16357d3dbff8), on the one `metadata` of `dw_studio.core.adapters.tables`.
+
+Mirrors the migration; `test_metadata_matches_catalog.py` holds the two equal
+after `alembic upgrade head`. The slot columns come from `SLOTS`, the one
+owner of the slot set in code, and the partitions of `studio.records` are the
+migration's alone: rows are reached only through the parent.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+
+from dw_platform.adapters.persistence import tables as platform
+from dw_studio.core.adapters.tables import artifact_versions, artifacts, metadata
+from dw_studio.records.domain.field_types import SLOTS
+
+_TS = sa.TIMESTAMP(timezone=True)
+_VI = "vi-VN-x-icu"
+
+_SLOT_TYPES: dict[str, sa.types.TypeEngine[Any]] = {
+    "t": sa.Text(collation=_VI),
+    "u": sa.Text(),
+    "i": sa.BigInteger(),
+    "f": sa.Float(precision=53),
+    "d": sa.Date(),
+    "z": _TS,
+    "b": sa.Boolean(),
+}
+
+
+def _composite(column: str, target: sa.Table, *, ondelete: str) -> sa.ForeignKeyConstraint:
+    return sa.ForeignKeyConstraint(
+        [column, "tenant_id"], [target.c.id, target.c.tenant_id], ondelete=ondelete
+    )
+
+
+def _stamps() -> list[sa.Column[Any]]:
+    return [
+        sa.Column("created_at", _TS, nullable=False, server_default=sa.text("now()")),
+        sa.Column("created_by", UUID(as_uuid=True), nullable=False),
+        sa.Column("updated_at", _TS, nullable=False, server_default=sa.text("now()")),
+        sa.Column("updated_by", UUID(as_uuid=True), nullable=False),
+    ]
+
+
+object_defs = sa.Table(
+    "object_defs",
+    metadata,
+    sa.Column("id", UUID(as_uuid=True), nullable=False),
+    sa.Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("api_name", sa.Text, nullable=False),
+    sa.Column("labels", JSONB, nullable=False),
+    sa.Column("default_access", sa.Text, nullable=False, server_default=sa.text("'private'")),
+    sa.Column("ai_description", sa.Text, nullable=True),
+    sa.Column("applied_version_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("schema_version", sa.Integer, nullable=False),
+    sa.Column("next_field_no", sa.Integer, nullable=False, server_default=sa.text("1")),
+    *_stamps(),
+    sa.PrimaryKeyConstraint("tenant_id", "id"),
+    sa.UniqueConstraint("tenant_id", "api_name"),
+    _composite("id", artifacts, ondelete="RESTRICT"),
+    _composite("applied_version_id", artifact_versions, ondelete="RESTRICT"),
+    sa.Index(None, "tenant_id", "applied_version_id"),
+)
+
+field_defs = sa.Table(
+    "field_defs",
+    metadata,
+    sa.Column("id", UUID(as_uuid=True), nullable=False),
+    sa.Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("object_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("api_name", sa.Text, nullable=False),
+    sa.Column("labels", JSONB, nullable=False),
+    sa.Column("ai_description", sa.Text, nullable=True),
+    sa.Column("type", sa.Text, nullable=False),
+    sa.Column("number_mode", sa.Text, nullable=True),
+    sa.Column("scale", sa.Integer, nullable=True),
+    sa.Column("currency_code", sa.Text, nullable=True),
+    sa.Column("max_length", sa.Integer, nullable=True),
+    sa.Column("required", sa.Boolean, nullable=False),
+    sa.Column("is_unique", sa.Boolean, nullable=False),
+    sa.Column("indexed", sa.Boolean, nullable=False),
+    sa.Column("pd_category", sa.Text, nullable=False),
+    sa.Column("sensitive_type", sa.Text, nullable=True),
+    sa.Column("subject_identifier", sa.Text, nullable=True),
+    sa.Column("storage_kind", sa.Text, nullable=False),
+    sa.Column("slot", sa.Text, nullable=True),
+    sa.Column("field_no", sa.Integer, nullable=True),
+    *_stamps(),
+    sa.PrimaryKeyConstraint("tenant_id", "id"),
+    sa.UniqueConstraint("tenant_id", "object_id", "api_name"),
+    sa.UniqueConstraint("tenant_id", "object_id", "field_no"),
+    sa.Index(
+        "uq_field_defs_tenant_id_object_id_slot",
+        "tenant_id",
+        "object_id",
+        "slot",
+        unique=True,
+        postgresql_where=sa.text("slot IS NOT NULL"),
+    ),
+)
+field_defs.append_constraint(_composite("object_id", object_defs, ondelete="CASCADE"))
+
+picklist_options = sa.Table(
+    "picklist_options",
+    metadata,
+    sa.Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("field_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("key", sa.Text, nullable=False),
+    sa.Column("labels", JSONB, nullable=False),
+    sa.Column("position", sa.Integer, nullable=False),
+    sa.Column("active", sa.Boolean, nullable=False),
+    *_stamps(),
+    sa.PrimaryKeyConstraint("tenant_id", "field_id", "key"),
+    _composite("field_id", field_defs, ondelete="CASCADE"),
+)
+
+SLOT_COLUMNS: tuple[str, ...] = tuple(slot for slots in SLOTS.values() for slot in slots)
+
+records = sa.Table(
+    "records",
+    metadata,
+    sa.Column("id", UUID(as_uuid=True), nullable=False),
+    sa.Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("object_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("workspace_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("owner_kind", sa.Text, nullable=False),
+    sa.Column("owner_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("name", sa.Text(collation=_VI), nullable=False),
+    sa.Column("version", sa.Integer, nullable=False, server_default=sa.text("1")),
+    sa.Column("create_key", sa.Text, nullable=True),
+    sa.Column("data", JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
+    *(
+        sa.Column(slot, _SLOT_TYPES[family], nullable=True)
+        for family, slots in SLOTS.items()
+        for slot in slots
+    ),
+    sa.Column("created_at", _TS, nullable=False, server_default=sa.text("now()")),
+    sa.Column("created_by", UUID(as_uuid=True), nullable=False),
+    sa.Column("updated_at", _TS, nullable=False, server_default=sa.text("now()")),
+    sa.Column("updated_by", UUID(as_uuid=True), nullable=False),
+    sa.Column("deleted_at", _TS, nullable=True),
+    sa.Column("deleted_by", UUID(as_uuid=True), nullable=True),
+    sa.PrimaryKeyConstraint("tenant_id", "id"),
+    _composite("object_id", object_defs, ondelete="RESTRICT"),
+    sa.ForeignKeyConstraint(
+        ["workspace_id", "tenant_id"],
+        [platform.workspaces.c.id, platform.workspaces.c.tenant_id],
+        ondelete="RESTRICT",
+    ),
+    sa.Index(
+        "uq_records_tenant_id_object_id_create_key",
+        "tenant_id",
+        "object_id",
+        "create_key",
+        unique=True,
+        postgresql_where=sa.text("create_key IS NOT NULL"),
+    ),
+    sa.Index(
+        "ix_records_tenant_id_object_id_created_at_id",
+        "tenant_id",
+        "object_id",
+        sa.text("created_at DESC"),
+        sa.text("id DESC"),
+    ),
+    sa.Index(
+        "ix_records_tenant_id_object_id_updated_at_id",
+        "tenant_id",
+        "object_id",
+        sa.text("updated_at DESC"),
+        sa.text("id DESC"),
+    ),
+    sa.Index(None, "tenant_id", "object_id", "name", "id"),
+    sa.Index(None, "tenant_id", "workspace_id"),
+    *(
+        sa.Index(
+            None,
+            "tenant_id",
+            "object_id",
+            slot,
+            "id",
+            postgresql_where=sa.text(f"{slot} IS NOT NULL AND deleted_at IS NULL"),
+        )
+        for slot in SLOT_COLUMNS
+    ),
+    *(
+        sa.Index(
+            f"uq_records_tenant_id_object_id_{slot}",
+            "tenant_id",
+            "object_id",
+            slot,
+            unique=True,
+            postgresql_where=sa.text(f"{slot} IS NOT NULL AND deleted_at IS NULL"),
+        )
+        for slot in SLOTS["u"]
+    ),
+    postgresql_partition_by="HASH (tenant_id)",
+)

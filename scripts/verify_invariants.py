@@ -118,6 +118,9 @@ WATCHED_LITERALS: tuple[str, ...] = (
     "packages/python/dw_agent_runtime/src/dw_agent_runtime/contracts.py",
     "packages/python/dw_kernel/src/dw_kernel/autonomy.py",
     "packages/python/dw_kernel/src/dw_kernel/run_mode.py",
+    # custom-objects ticket 02: a field type no code stores is a CHECK value
+    # whose rows nobody writes.
+    "packages/python/dw_studio/src/dw_studio/records/domain/field_types.py",
 )
 
 # name -> why it is allowed to be unread.

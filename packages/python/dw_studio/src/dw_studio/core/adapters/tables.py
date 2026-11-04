@@ -150,15 +150,26 @@ dependencies = sa.Table(
     sa.Column("to_version_id", UUID(as_uuid=True), nullable=True),
     sa.Column("usage", sa.Text, nullable=False),
     sa.Column("path", sa.Text, nullable=False),
+    # custom-objects ticket 02 (ADR-0109 decision 5): a dependency on a field.
+    sa.Column("to_field_id", UUID(as_uuid=True), nullable=True),
     _composite("from_artifact_id", artifacts, ondelete="CASCADE"),
     _composite("from_version_id", artifact_versions, ondelete="CASCADE"),
     _composite("to_artifact_id", artifacts, ondelete="RESTRICT"),
     _composite("to_version_id", artifact_versions, ondelete="RESTRICT"),
+    # The target named as text: the core imports no capability ("Studio core
+    # imports no capability"); `dw_studio.records.adapters.tables` describes it.
+    sa.ForeignKeyConstraint(
+        ["to_field_id", "tenant_id"],
+        ["studio.field_defs.id", "studio.field_defs.tenant_id"],
+        name="fk_dependencies_to_field_id_field_defs",
+        ondelete="RESTRICT",
+    ),
     sa.Index(None, "tenant_id", "from_artifact_id"),
     sa.Index(None, "tenant_id", "from_version_id"),
     sa.Index(None, "tenant_id", "to_artifact_id"),
     sa.Index(None, "tenant_id", "to_version_id"),
     sa.Index(None, "tenant_id", "to_kind", "to_key"),
+    sa.Index(None, "tenant_id", "to_field_id"),
 )
 
 # What a Studio run pinned (tenant-config ticket 04, revision 28a94cda6fdf).

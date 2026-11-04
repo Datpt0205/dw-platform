@@ -13,7 +13,7 @@ either kind to `offboarding`, deletes those rows in foreign-key order, removes
 the two kinds and the keys, and asserts nothing of them is left. So a test
 that runs later in the same process (`test_permission_catalogue.py`, the
 registry-against-table test) never sees them. They reach an app only through
-`build_studio(kinds=...)`, never through `PLATFORM_KINDS`.
+`build_studio(kinds=...)`, never through `platform_kinds(...)`.
 """
 
 from __future__ import annotations
@@ -115,6 +115,10 @@ async def _remove_rows(engine: AsyncEngine, kinds: Sequence[str]) -> None:
                 " WHERE tenant_id = ANY(:t) AND run_manifest_hash IS NOT NULL",
                 "DELETE FROM platform.run_manifests WHERE tenant_id = ANY(:t)",
                 "DELETE FROM studio.dependencies WHERE tenant_id = ANY(:t)",
+                # An object's definition in the same company (custom-objects
+                # 02) holds its versions; its fields and options CASCADE.
+                "DELETE FROM studio.records WHERE tenant_id = ANY(:t)",
+                "DELETE FROM studio.object_defs WHERE tenant_id = ANY(:t)",
                 "DELETE FROM studio.artifact_versions WHERE tenant_id = ANY(:t)",
                 "DELETE FROM studio.artifacts WHERE tenant_id = ANY(:t)",
                 "DELETE FROM studio.definition_manifests WHERE tenant_id = ANY(:t)",

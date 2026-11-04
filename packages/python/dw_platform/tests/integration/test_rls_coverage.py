@@ -268,24 +268,121 @@ async def test_every_policy_actually_consults_the_tenant_setting(
     rows = (await session.execute(_POLICIES, {"schemas": await tenant_schemas(session)})).all()
     assert rows, "no policies at all — the query is wrong, not the schema"
 
-    def narrows(predicate: str | None) -> bool:
-        return predicate is not None and any(s in predicate for s in _TRUSTED_SETTINGS)
-
-    blind_reads = [
-        f"{r.schemaname}.{r.tablename}.{r.policyname}"
-        for r in rows
-        if not narrows(r.qual) and (r.tablename, r.policyname) not in _UNSCOPED_ON_PURPOSE
-    ]
-    blind_writes = [
-        f"{r.schemaname}.{r.tablename}.{r.policyname}"
-        for r in rows
-        if r.with_check is not None and not narrows(r.with_check)
-    ]
+    blind_reads, blind_writes = blind_policies(rows)
 
     assert blind_reads == [], (
         f"policies narrowing by no trusted setting and with no written reason: {blind_reads}"
     )
     assert blind_writes == [], f"policies that do not filter writes: {blind_writes}"
+
+
+def _narrows(predicate: str | None) -> bool:
+    return predicate is not None and any(s in predicate for s in _TRUSTED_SETTINGS)
+
+
+def blind_policies(rows: Sequence[sa.Row[Any]]) -> tuple[list[str], list[str]]:
+    """The policies that read, and that write, narrowed by no trusted setting."""
+    reads = [
+        f"{r.schemaname}.{r.tablename}.{r.policyname}"
+        for r in rows
+        if not _narrows(r.qual) and (r.tablename, r.policyname) not in _UNSCOPED_ON_PURPOSE
+    ]
+    writes = [
+        f"{r.schemaname}.{r.tablename}.{r.policyname}"
+        for r in rows
+        if r.with_check is not None and not _narrows(r.with_check)
+    ]
+    return reads, writes
+
+
+async def test_co21_a_permissive_policy_open_to_all_on_records_is_named(
+    session: AsyncSession,
+) -> None:
+    """custom-objects R4.2 (CO21): `studio.records` is narrowed by its
+    RESTRICTIVE tenant policy; a PERMISSIVE `USING (true)` beside it, made and
+    rolled back here, is a blind read and a blind write the rule above names."""
+    try:
+        await session.execute(
+            sa.text(
+                "CREATE POLICY open_records ON studio.records AS PERMISSIVE"
+                " USING (true) WITH CHECK (true)"
+            )
+        )
+        rows = (await session.execute(_POLICIES, {"schemas": ["studio"]})).all()
+    finally:
+        await session.rollback()
+    reads, writes = blind_policies(rows)
+    assert reads == ["studio.records.open_records"]
+    assert writes == ["studio.records.open_records"]
+
+
+# custom-objects R4.2: a partition of a Studio table carries its parent's
+# policies, the same in every respect but the table (ADR-0105 decision 1; the
+# record template). Row security is not inherited, so only this asks.
+_PARTITION_POLICIES = sa.text(
+    """
+    SELECT parent.relname AS parent, child.relname AS child,
+           ARRAY(SELECT p.polname || ' ' || p.polpermissive::text || ' ' || p.polcmd::text
+                        || ' ' || p.polroles::text
+                        || ' ' || coalesce(pg_get_expr(p.polqual, p.polrelid), '')
+                        || ' ' || coalesce(pg_get_expr(p.polwithcheck, p.polrelid), '')
+                 FROM pg_policy p WHERE p.polrelid = parent.oid ORDER BY 1) AS of_parent,
+           ARRAY(SELECT p.polname || ' ' || p.polpermissive::text || ' ' || p.polcmd::text
+                        || ' ' || p.polroles::text
+                        || ' ' || coalesce(pg_get_expr(p.polqual, p.polrelid), '')
+                        || ' ' || coalesce(pg_get_expr(p.polwithcheck, p.polrelid), '')
+                 FROM pg_policy p WHERE p.polrelid = child.oid ORDER BY 1) AS of_child
+    FROM pg_inherits i
+    JOIN pg_class parent ON parent.oid = i.inhparent
+    JOIN pg_class child ON child.oid = i.inhrelid
+    JOIN pg_namespace n ON n.oid = parent.relnamespace
+    WHERE n.nspname = 'studio' AND parent.relkind = 'p'
+    ORDER BY 1, 2
+    """
+)
+
+
+async def studio_partition_drift(conn: AsyncConnection | AsyncSession) -> list[str]:
+    rows = (await conn.execute(_PARTITION_POLICIES)).all()
+    return [
+        f"studio.{r.child} differs from studio.{r.parent}"
+        for r in rows
+        if r.of_parent != r.of_child
+    ]
+
+
+async def test_every_studio_partition_holds_its_parents_policies(session: AsyncSession) -> None:
+    rows = (await session.execute(_PARTITION_POLICIES)).all()
+    assert {r.child for r in rows} >= {f"records_p{n}" for n in range(4)}
+    assert await studio_partition_drift(session) == []
+
+
+@pytest.mark.parametrize(
+    ("statement", "named"),
+    [
+        (
+            "ALTER POLICY tenant_isolation_records ON studio.records_p2 USING (true)",
+            ["studio.records_p2 differs from studio.records"],
+        ),
+        (
+            "ALTER POLICY tenant_isolation_records ON studio.records USING (true)",
+            [f"studio.records_p{n} differs from studio.records" for n in range(4)],
+        ),
+        (
+            "DROP POLICY tenant_isolation_records ON studio.records_p3",
+            ["studio.records_p3 differs from studio.records"],
+        ),
+    ],
+)
+async def test_a_studio_partition_policy_bent_away_from_its_parent_is_named(
+    session: AsyncSession, statement: str, named: list[str]
+) -> None:
+    try:
+        await session.execute(sa.text(statement))
+        found = await studio_partition_drift(session)
+    finally:
+        await session.rollback()
+    assert found == named
 
 
 async def test_a_connection_that_never_scopes_itself_reads_nothing(
@@ -697,6 +794,18 @@ _TENANT_WIDE_ON_PURPOSE: dict[tuple[str, str], str] = {
     ("studio", "definition_manifests"): (
         "content-addressed by hash across the company; one body serves every version that"
         " seals the same content and closure"
+    ),
+    ("studio", "object_defs"): (
+        "định nghĩa đối tượng của cả công ty; workspace của nó là `owning_workspace_id` của"
+        " thành phần `object` cùng id (custom-objects ticket 02, ADR-0107 quyết 1, DO-01)"
+    ),
+    ("studio", "field_defs"): (
+        "định nghĩa đối tượng của cả công ty: trường của một đối tượng, chỉ tới qua nó"
+        " (custom-objects ticket 02, DO-01)"
+    ),
+    ("studio", "picklist_options"): (
+        "định nghĩa đối tượng của cả công ty: lựa chọn của một trường, chỉ tới qua nó"
+        " (custom-objects ticket 02, DO-01)"
     ),
 }
 
