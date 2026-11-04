@@ -302,6 +302,16 @@ Mỗi công ty chỉ thấy và chỉ ghi agent, cài đặt, hội thoại và 
   kiểm định, và cửa nhận lượt của agent đặt `RunContext.autonomy_level` bằng mức thấp hơn giữa nó và trần của công ty,
   vắng thì hỏi mọi thứ (ADR-0117 (Accepted) Amendments 2026-11-04). compliance-pdpl/07 thêm mục và lần đọc ở cửa, sau
   ticket 02 và 03 của spec này. Nếu sai thì: agent Studio ở W1 chạy không mức và luật tự chủ của agent sang W2.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): `checking-plan-consistency` của vùng studio (H:agent-builder~workflow-nodes,
+  HIGH): dòng gate ticket 04 ở trên nói ticket 02, 03, 05 đứng vững vì "agent vẫn là bước cần phán đoán (`ai.agent`) của
+  quy trình", nhưng `ai.agent` là W2 (workflow-nodes, Ngoài phạm vi) và `agent_node`, `agent_link` là W2 ở cửa nhận lượt
+  (workflow-engine/02 (a)). Đọc đúng: ở W1, bên gọi một agent Studio là lượt `simulate` của Kiểm định thử và lượt `eval`
+  của Lượt kiểm định (agent-lifecycle/06), cùng `chat` khi bản viết lại của ticket 04 theo D17 (kênh chat vào Digital
+  Worker) xong; không lượt `live` nào khác chạy agent ở W1. Ticket 02, 03, 05 giữ `ready-for-agent`: cổng chất lượng và
+  phân tích năng lực (compliance-pdpl/07) đọc chúng, và kênh chat của D17 sẽ chạy đúng runtime này. Câu cho Đạt (qua
+  `studio.md`): kéo `ai.agent` vào W1 hay để agent Studio chỉ chạy ở mô phỏng và kiểm định tới kênh chat của D17. Nếu sai
+  thì: hạ ticket 03, 05, compliance-pdpl/07 và usage-and-limits/06 về `needs-triage` cùng digital-worker, hay kéo
+  `ai.agent` và `agent_node` vào W1 ở workflow-nodes và workflow-engine/02.
 
 ## Danh sách ticket
 

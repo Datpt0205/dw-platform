@@ -49,8 +49,14 @@ chạy chết được thu hồi (spec R4, R5). Thay `RunBudgetLedger` và `tena
    kia (spec R4.8 "áp ngay"; failure-modes #7). Ranh giới kỳ của bộ đếm lấy từ
    `window_for(tenant_id, window_kind, at)` mà ticket 02 dựng trong `dw_usage` (DO-50; ADR-0121 (Accepted) quyết 9), chủ
    duy nhất của ranh giới; ticket này không viết bản thứ hai.
-3. `LimitsPort` (runtime khai, `dw_usage` đáp): `admit`, `resume`, `RunLease.before_call(estimate) -> CallPermit(max_output_tokens, call_id, occurred_at)`,
-   `after_call`, `release(reason)`. Nhận run một giao dịch, khóa bộ đếm theo thứ tự chuẩn (scope rank
+3. `LimitsPort` (runtime khai, `dw_usage` đáp): `admit`, `resume`, `admit_gate`, `RunLease.before_call(estimate) -> CallPermit(max_output_tokens, call_id, occurred_at)`,
+   `after_call`, `release(reason)`. `admit_gate(tenant_id, workspace_id, gate_run_id, ceiling_usd, payer) -> RunLease`
+   mở lease `purpose` `eval_offline` cho một Lượt kiểm định hay Kiểm định thử của agent-lifecycle/06 (không phải lượt
+   chạy, nên không qua `admit` và không tính `runs`), giữ `min` của phần còn lại qua mọi phạm vi có chính sách và
+   `ceiling_usd` thay trần mỗi lượt của gói, cùng câu trả lời từ chối như `admit`; một lượt mang `gate_run_id`
+   (`RunRequest` của workflow-engine, trường agent-lifecycle/06 thêm) gắn vào lease `open` của Lượt đó thay `admit`,
+   và `before_call` của nó kẹp thêm bởi phần còn lại của `RunContext.cost_ceiling_usd` của chính lượt khi có (trần mỗi
+   lần thử), đóng khi lease của Lượt không còn `open` (agent-lifecycle:R4.4, R4.5). Nhận run một giao dịch, khóa bộ đếm theo thứ tự chuẩn (scope rank
    rồi `scope_id`); "còn đủ" là còn lớn hơn 0 với tiền và token, còn ít nhất 1 với `runs`, phần còn lại của một phạm vi
    là `limit - used - reserved` của bộ đếm kỳ hiện tại; lease giữ `min` của phần còn lại qua mọi phạm vi có chính sách và
    trần mỗi lượt (`max_cost_usd_per_run`, `max_tokens_per_run` đã kẹp, ticket 04), cộng vào `reserved` của từng bộ đếm
@@ -201,6 +207,10 @@ chạy chết được thu hồi (spec R4, R5). Thay `RunBudgetLedger` và `tena
       tăng; lần kiểm định lại do nền tảng gây ra → không bộ đếm nào của công ty đổi; token BYOM → chỉ chính sách của công ty
       tính, Trần của gói không; tiến trình chết, lượt được nhận lại khi lease cũ còn mở → gắn vào lease đó, `runs` không
       tăng; đếm lượt `test` vào `runs` → test đỏ.
+- [ ] R5.6: `admit_gate` với `ceiling_usd` USD 2 khi tháng còn USD 5 → lease `eval_offline` giữ USD 2, `runs` không tăng;
+      tháng còn USD 0 → `limit_exceeded`, không lease; một lượt mang `gate_run_id` gắn vào lease đó, không gọi `admit`,
+      không lease thứ hai; `cost_ceiling_usd` USD 0,10 của lượt cạn → lời gọi kế tiếp `limit_exceeded` trước lời gọi dù
+      lease còn tiền; bỏ kẹp theo `cost_ceiling_usd` hay cho lượt mang `gate_run_id` gọi `admit` → test đỏ.
 - [ ] R5.9: hai tiến trình của cùng một cây nhịp cùng lúc → `used` tăng đúng phần đã quyết toán một lần; lượt gốc chờ
       một `child_run` chạy ở worker khác hơn 5 phút → lease không bị reaper đóng.
 - [ ] R4.8: tháng đã tiêu USD 40 ở workspace W, đặt chính sách USD 10 cho W → lượt kế tiếp ở W bị `limit_exceeded`; đặt
@@ -289,3 +299,10 @@ chạy chết được thu hồi (spec R4, R5). Thay `RunBudgetLedger` và `tena
   gốc); (M8) `payer` `tenant` của kiểm định trên model nền tảng mang nghĩa rộng hơn glossary (BYOM): cờ cho
   `mattpocock-skills:domain-modeling`, không sửa `docs/platform/CONTEXT.md` ở lượt này.
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): `checking-plan-consistency` của vùng studio, hai HIGH
+  (B:agent-lifecycle/06~usage-and-limits/03): Lượt kiểm định của agent-lifecycle/06 xin lease `eval_offline` mà không
+  phương thức nào của `LimitsPort` mở được (`admit` chỉ cho lượt gốc, `admit_operation` của ticket 04 không nhận
+  `eval_offline`), và trần mỗi lần thử của nó dựng trên `RunBudgetLedger` mà bước 7 gỡ. Sửa: bước 3 thêm `admit_gate`,
+  lượt mang `gate_run_id` gắn vào lease của Lượt thay `admit`, `before_call` kẹp theo `RunContext.cost_ceiling_usd`;
+  tiêu chí R5.6 mới. Nếu sai thì: `admit_operation` của ticket 04 nhận `eval_offline` với trần của bên gọi, và
+  agent-lifecycle/06 chờ ticket 04.

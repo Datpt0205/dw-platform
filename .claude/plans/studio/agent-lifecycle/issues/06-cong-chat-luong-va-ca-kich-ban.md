@@ -102,8 +102,9 @@ errors[]}` của lượt `error`, gồm mọi lỗi của R4.9), `started_at`, `
    `dry`, để Kiểm định thử không chặn Bản ứng viên. Luật cột của ticket 03 cho `gate_run_id` (đặt ở chuyển tiếp ra khỏi
    `draft`, xóa ở chuyển tiếp về `draft`) giữ nguyên trong hàm thay thế. Lane
    `studio_gate` (tối đa một Lượt kiểm định mỗi tenant, một `ReapTarget` cho lượt treo): mỗi lần thử là một run
-   `run_mode='simulate'` xin qua `RunRequestService` dưới danh nghĩa người gửi Bản ứng viên (`submitted_by`; ngữ cảnh
-   truy cập đóng dấu của người đó, không của lane), để `RunRequestService` dẫn giới hạn tạm từ bao đóng niêm phong của
+   `run_mode='simulate'`, `trigger_kind` `eval`, xin qua `RunRequestService` bằng `LaneRequester(studio_gate,
+tenant_id)` với `requested_by` và chủ thể là người gửi Bản ứng viên (`submitted_by`; với Kiểm định thử là người
+   xin), đúng hình mà workflow-engine/02 (c) làm chủ (một `PersonRequester` xin `eval` thì `run_as_mismatch`), để `RunRequestService` dẫn giới hạn tạm từ bao đóng niêm phong của
    Bản ứng viên, ghi dưới `(version_id, definition_hash)` cho riêng lượt đó, và lần thử đọc dưới giới hạn tạm giao với
    quyền của người gửi; việc dẫn, ghi, xóa giới hạn tạm và luật RLS chỉ nhận nó ở `simulate` là của workflow-engine và
    record-access (spec R4.12; workflow-engine:R3.15, workflow-engine:R3.14, record-access:R6.11, record-access:R6.12,
@@ -113,15 +114,14 @@ errors[]}` của lượt `error`, gồm mọi lỗi của R4.9), `started_at`, `
    thật, ghi `studio.step.approval.simulated` và không mở dòng `platform.approval_requests` nào (spec R4.7; hành vi của
    Bước là của workflow-nodes, ticket này thử hợp đồng với một Bước giả); ở ToolExecutor chế độ chạy đứng trước phê
    duyệt của công cụ (tools-and-skills:R2.6), nên công cụ `approval_policy: always` trong lần thử không mở yêu cầu phê
-   duyệt thật (spec R4.3). Lượt kiểm định xin lease `purpose` `eval_offline` qua `LimitsPort` của usage-and-limits/03
-   với trần mỗi lượt `max_gate_worst_case_usd`, mỗi lần thử, kể cả lần thử của ca kịch bản, dùng lease đó với trần
-   `max_trial_cost_usd`; không đọc `profile.max_cost_usd_per_run` (DO-21.4). Trần mỗi lần thử đi tới lượt qua trần chi
-   tiêu theo lượt mà cửa model đã hỏi (`budget.check(run_id, ...)`, `gateway.py:183`), nhưng `RunBudgetLedger` chỉ đọc
-   `budgets` của profile và sống trong tiến trình (`model/budget.py:76-145`), còn lần thử chạy ở làn `studio_runs`: nên
-   ticket này thêm trường tùy chọn `cost_ceiling_usd` vào `RunRequest` của workflow-engine, lưu trên dòng lượt và mang
-   lên `RunContext`, và `RunBudgetLedger.check` dùng nó thay trần của profile khi có (không đọc
-   `profile.max_cost_usd_per_run`, DO-21.4); lane đặt nó bằng `max_trial_cost_usd`; lời gọi model kế tiếp vượt trần ném
-   lỗi ngân sách, lần thử kết thúc, câu trượt với `cost_bound` (spec R4.5). Trước lời gọi model đầu tiên: chi phí xấu
+   duyệt thật (spec R4.3). Lượt kiểm định mở lease `purpose` `eval_offline` bằng `LimitsPort.admit_gate` của
+   usage-and-limits/03 bước 3 với trần `max_gate_worst_case_usd`, và mỗi lần thử, kể cả lần thử của ca kịch bản, gắn
+   vào lease đó thay `admit` qua `gate_run_id` trên dòng lượt, với trần mỗi lần thử `max_trial_cost_usd`; không đọc
+   `profile.max_cost_usd_per_run` (DO-21.4). Ticket này thêm hai trường tùy chọn `gate_run_id` và `cost_ceiling_usd`
+   vào `RunRequest` của workflow-engine, lưu trên dòng lượt và mang lên `RunContext`; lane đặt `cost_ceiling_usd` bằng
+   `max_trial_cost_usd`, và `RunLease.before_call` của usage-and-limits/03 kẹp lời gọi theo phần còn lại của trần đó
+   (không qua `RunBudgetLedger`, mà usage-and-limits/03 bước 7 gỡ); lời gọi model kế tiếp vượt trần bị từ chối
+   `limit_exceeded` trước lời gọi, lần thử kết thúc, câu trượt với `cost_bound` (spec R4.5). Trước lời gọi model đầu tiên: chi phí xấu
    nhất (mọi lần thử của Bộ an ninh và của ca kịch bản nhân trần mỗi lần thử) vượt trần mỗi lượt, hay `LimitsPort` từ
    chối lease → Lượt kiểm định `error` với `limit_exceeded`, không run nào (spec R4.4). Audit
    `studio.gate_run.started`, `studio.gate_run.completed` (actor `system:studio_gate`); thông báo người gửi. Cổng đạt
@@ -401,3 +401,11 @@ errors[]}` của lượt `error`, gồm mọi lỗi của R4.9), `started_at`, `
 - 2026-11-04 (agent, theo ủy quyền 31/10/2026): lượt xác nhận (một subagent ngữ cảnh mới, mở đúng các tệp đã dẫn), 9 HIGH và 2 dẫn sai, đã sửa: (13) Bộ an ninh là tập mẫu mở rộng thuần theo tài liệu ghim, mồi trong `input`, không tenant thứ hai; (14) `studio.gate_runs` thêm `version_id`, `requested_by`, `error`, `started_at`, `finished_at` và danh sách cột UPDATE của `dw_app`; (15) `studio.gate_case_results` có `id`, `created_at` làm cột phân vùng; (16) hai FK mới SET NULL, không RESTRICT, để sổ bước xóa không gặp vòng; (17) luật cột `gate_run_id` của ticket 03 giữ nguyên; (18) trần mỗi lần thử qua `RunRequest.cost_ceiling_usd` tới `RunContext` và `RunBudgetLedger`, vì ledger hôm nay chỉ đọc profile và sống trong tiến trình; (19) lane khóa và kiểm lại trước khi kết thúc, ưu tiên `gate` trước `dry`; (20) `canary_hits` là trường của `Observation`, `tool_calls` một lần đọc; (21) một dòng kết quả mỗi câu, không mỗi lần thử, và hai nhánh duyệt có `case_id` riêng (từ lượt xác nhận của ticket 07). Dẫn sai: `budget.check` không nhận trần theo lượt; `release_manifest.py` không ghim `configs/evals`. Nếu sai thì: (16) sổ bước xóa bỏ qua cạnh tự trỏ; (18) trần lần thử là một lease con của usage-and-limits.
 - 2026-11-04 (agent): MEDIUM thêm: không trần số ca kịch bản mỗi quy trình, nên một quy trình nhiều ca vượt `max_gate_worst_case_usd` và mọi lần gửi `limit_exceeded`; `RunRequest.cost_ceiling_usd` là trường mới trên hợp đồng của workflow-engine, ghi ở đây vì ticket này là bên đọc đầu tiên.
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): `checking-plan-consistency` của vùng studio, ba HIGH sửa ở bước 2:
+  (B:agent-lifecycle/06~~usage-and-limits/03) lease `eval_offline` mở bằng `LimitsPort.admit_gate` mà
+  usage-and-limits/03 bước 3 nay khai, lần thử gắn vào lease qua `gate_run_id` của `RunRequest`; trần mỗi lần thử đi qua
+  `RunLease.before_call` theo `cost_ceiling_usd`, không qua `RunBudgetLedger` mà usage-and-limits/03 bước 7 gỡ;
+  (B:agent-lifecycle/06~~workflow-engine/02) mỗi lần thử xin bằng `LaneRequester(studio_gate, tenant_id)`, `trigger_kind`
+  `eval`, `requested_by` và chủ thể là người gửi (Kiểm định thử: người xin), theo workflow-engine/02 (c). Nếu sai thì:
+  `admit_operation` của usage-and-limits/04 nhận `eval_offline` và ticket này chờ ticket đó; workflow-engine/02 (c) cho
+  `PersonRequester` của người gửi xin `eval`.

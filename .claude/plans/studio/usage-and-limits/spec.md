@@ -259,7 +259,8 @@ W1 dùng bộ đếm theo tiến trình, GCRA trên Valkey vào ở W2 (YC44; DO
 - Mã: gói nền tảng `dw_usage` (Bảng giá, Sổ sử dụng, chính sách, bộ đếm, lease, bảng cuộn);
   `PlanCatalogPort` và `PlanEntitlementService` đọc một chủ; `PriceBook` theo ngày hiệu lực;
   `UsageLedgerPort`; `EffectiveLimits.for_admission` trên Chuỗi phạm vi hạn mức; `LimitsPort` (runtime
-  khai) với `admit`, `resume`, `RunLease`, `release`; `LimitsMiddleware` thay `RunBudgetMiddleware`;
+  khai) với `admit`, `resume`, `admit_gate` (lease `eval_offline` của Lượt kiểm định, R5.6), `RunLease`, `release`;
+  `LimitsMiddleware` thay `RunBudgetMiddleware`;
   cửa có đo `MeteredModelGateway`, `LimitedChatModelFactory`, `MeteredEmbeddingPort`, `MeteredRerankPort`;
   `ReapTarget` cho lease mồ côi; lane `usage_rollup`; lane `retention_limits`; `RateLimiterPort` với hai khóa có
   kiểu, lần hỏi không tính lượt và adapter bộ đếm theo tiến trình trên cửa sổ trượt (W1).
