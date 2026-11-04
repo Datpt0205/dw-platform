@@ -1220,6 +1220,10 @@ def versions(engine: Engine) -> dict[str, Any]:
         # GitHub's runner image names these variables in mixed case.
         "runner_image": os.environ.get("ImageOS"),  # noqa: SIM112
         "runner_image_version": os.environ.get("ImageVersion"),  # noqa: SIM112
+        # 0 where setup_rootless.sh had to lift AppArmor's restriction (its step 2).
+        "apparmor_restrict_unprivileged_userns": _read(
+            Path("/proc/sys/kernel/apparmor_restrict_unprivileged_userns")
+        ),
     }
     with contextlib.suppress(HarnessError, OSError, subprocess.TimeoutExpired, ValueError):
         info = engine.info()
@@ -1311,9 +1315,15 @@ def _hold(count: int) -> int:
     return 0
 
 
+# GitHub keeps the first 4096 characters of an annotation; the end of a failed
+# log is what explains it, so the tail is cut to fit before it is sent.
+ANNOTATION_CHARS = 3500
+
+
 def _annotate_log(title: str, path: Path, lines: int) -> int:
     text = path.read_text(errors="replace") if path.exists() else f"{path} missing"
-    print(workflow_command("error", title, "\n".join(text.splitlines()[-lines:])))
+    tail = "\n".join(text.splitlines()[-lines:])[-ANNOTATION_CHARS:]
+    print(workflow_command("error", title, tail))
     return 0
 
 

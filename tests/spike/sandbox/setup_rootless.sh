@@ -92,28 +92,30 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommen
 
 # 2. Ubuntu 24.04 restricts unprivileged user namespaces through AppArmor
 # (kernel.apparmor_restrict_unprivileged_userns). RootlessKit and runsc each
-# create one, so each gets the profile Docker's rootless guide gives RootlessKit:
-# unconfined, plus `userns`. Written only where the restriction is on.
+# create one, so each gets the profile RootlessKit's own hint prints: named by
+# its path, unconfined, plus `userns`. Written only where the restriction is on.
 restrict=/proc/sys/kernel/apparmor_restrict_unprivileged_userns
-if [ -f "$restrict" ] && [ "$(cat "$restrict")" = "1" ]; then
+restricted() { [ -f "$restrict" ] && [ "$(cat "$restrict")" = "1" ]; }
+if restricted; then
   log "AppArmor restricts unprivileged user namespaces; profiles for rootlesskit and runsc"
-  sudo tee /etc/apparmor.d/dw-spike-rootlesskit >/dev/null <<'EOF'
+  sudo tee /etc/apparmor.d/usr.bin.rootlesskit >/dev/null <<'EOF'
 abi <abi/4.0>,
 include <tunables/global>
 
-profile dw-spike-rootlesskit /usr/bin/rootlesskit flags=(unconfined) {
+/usr/bin/rootlesskit flags=(unconfined) {
   userns,
 }
 EOF
-  sudo tee /etc/apparmor.d/dw-spike-runsc >/dev/null <<EOF
+  sudo tee "/etc/apparmor.d/usr.local.lib.gvisor.${RUNSC_RELEASE}" >/dev/null <<EOF
 abi <abi/4.0>,
 include <tunables/global>
 
-profile dw-spike-runsc ${GVISOR_DIR}/** flags=(unconfined) {
+${GVISOR_DIR}/** flags=(unconfined) {
   userns,
 }
 EOF
-  sudo apparmor_parser -r /etc/apparmor.d/dw-spike-rootlesskit /etc/apparmor.d/dw-spike-runsc
+  sudo apparmor_parser -r /etc/apparmor.d/usr.bin.rootlesskit \
+    "/etc/apparmor.d/usr.local.lib.gvisor.${RUNSC_RELEASE}"
 fi
 
 # The user-namespace facts that decide whether RootlessKit may start, each on
@@ -129,6 +131,20 @@ userns_facts() {
   echo "dmesg: $(sudo dmesg 2>/dev/null | grep -i 'apparmor=' | tail -n 2 | tr '\n' ' ')"
 }
 userns_facts
+
+# If RootlessKit still cannot create its namespace, only an explicit
+# DW_SPIKE_ALLOW_USERNS_SYSCTL=1 lifts the restriction host-wide: the CI job
+# sets it on a throwaway runner; on a real host that is the operator's call
+# (ticket 02), so the script stops instead. Either way the log says which.
+if restricted && ! rootlesskit true >/dev/null 2>&1; then
+  if [ "${DW_SPIKE_ALLOW_USERNS_SYSCTL:-0}" = "1" ]; then
+    log "the AppArmor profile did not let RootlessKit start; lifting the restriction (allowed here)"
+    sudo sysctl -q -w kernel.apparmor_restrict_unprivileged_userns=0
+    rootlesskit true || die "RootlessKit cannot start even without the AppArmor restriction"
+  else
+    die "RootlessKit cannot create a user namespace under AppArmor's restriction; set DW_SPIKE_ALLOW_USERNS_SYSCTL=1 to lift it host-wide"
+  fi
+fi
 
 # 3. Subordinate ids for the user namespace: 65536 of them, past every range
 # already handed out, so no two users share one.

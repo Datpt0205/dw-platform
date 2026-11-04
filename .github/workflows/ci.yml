@@ -303,6 +303,10 @@ jobs:
         # Every pin (gVisor release and sha512, image digest, pandas) is in the
         # script. A failure becomes one ::error carrying the log's tail.
         timeout-minutes: 15
+        env:
+          # A throwaway runner may lift AppArmor's user-namespace restriction
+          # if RootlessKit's own profile does not suffice; a real host may not.
+          DW_SPIKE_ALLOW_USERNS_SYSCTL: "1"
         run: |
           bash tests/spike/sandbox/setup_rootless.sh --rootful-fallback > setup.log 2>&1 || {
             status=$?
