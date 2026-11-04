@@ -56,7 +56,7 @@ Since 2026-10-31 the agent decides all of these itself (`studio.md` "Ủy quyề
     - backfill ADRs with a status (`docs/agents/domain.md`): 46 citations of
       ADR-001..003 point at documents this repo never had.
     - Studio (`studio.md`): each spec's `Duyệt`.
-    - Studio: dw-proterial on `email_verified` (DO-17.1) and off `memberships.role_keys` (FOG-49, holds tenant-rbac/03-04 and what follows).
+    - Studio: dw-proterial on `email_verified` (DO-17.1) and off `memberships.role_keys` (FOG-49: holds tenant-rbac/06 only; it must stop granting roles there before it takes 03).
 
 ## How a feature is checked here
 
