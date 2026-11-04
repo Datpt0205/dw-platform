@@ -14,7 +14,7 @@ sửa đổi 2026-11-03), để tập slot và modulus mà RecordService dựa v
 
 ## Việc cần làm
 
-1. Đọc bảng số và kết luận của bước 7 ticket 01 ở lần chạy `--scale d12` (Comments của ticket 01). Kết luận là A1,
+1. Đọc bảng số và kết luận của bước 7 ticket 01 ở lần chạy `--scale d12` (Comments của ticket 08). Kết luận là A1,
    modulus 4 và tập slot A0: ghi vào Comments ở đây, không revision, ticket xong. A1 trượt ngưỡng đọc ở cả hai modulus:
    quay lại người đặt yêu cầu (DO-15), ticket giữ `ready-for-human`.
 2. Kết luận khác: một revision Alembic (id ngẫu nhiên do `alembic revision -m "..."` sinh), một thay đổi mỗi phần:
@@ -56,3 +56,7 @@ sửa đổi 2026-11-03), để tập slot và modulus mà RecordService dựa v
 - 2026-11-03 (agent, theo ủy quyền 31/10/2026): tách từ ticket 02 ở gate của nó (HIGH 1): ticket 02 dựng trên DDL tạm,
   ticket này áp kết luận D12. `ready-for-human` vì cần máy tham chiếu (Chờ Đạt 23); một agent dựng được revision khi số
   đo đã có trong Comments của ticket 01.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): lần chạy `--scale d12` của ticket 01 tách sang ticket 08 khi ticket 01
+  đóng ở `--scale smoke`; bước 1 đọc Comments của ticket 08. Ticket này chờ ticket 08 nhưng không ghi 08 ở
+  `Blocked by`, vì phụ thuộc trong thư mục chỉ trỏ ngược (ticket-template); ticket 08 cũng `ready-for-human` trên
+  cùng máy. Nếu sai thì: ticket 08 gộp lại vào ticket 01 và bước 1 đọc lại Comments của ticket 01.

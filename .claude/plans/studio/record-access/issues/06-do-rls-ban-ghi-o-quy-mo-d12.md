@@ -1,7 +1,7 @@
 # 06 — Đo hình dạng RLS bản ghi ở quy mô D12 trên máy tham chiếu
 
 Status: ready-for-human (Chờ Đạt 23: máy tham chiếu của YC20)
-Blocked by: 01, .claude/plans/studio/custom-objects/issues/01-do-nen-luu-tru-ban-ghi.md
+Blocked by: 01, .claude/plans/studio/custom-objects/issues/01-do-nen-luu-tru-ban-ghi.md, .claude/plans/studio/custom-objects/issues/08-do-nen-luu-tru-o-quy-mo-d12.md
 Area: studio
 Yêu cầu: R9.1, R9.2, R9.3, R9.4, R9.5, R9.6, R9.7, R9.8, R9.9
 
@@ -18,7 +18,7 @@ lại agent chạy được khi có máy.
 1. Đạt cấp máy tham chiếu và cách vào nó; agent ghi vào Comments CPU, RAM, loại đĩa, digest của image, chỗ trống trên
    đĩa trước lần chạy và mọi dòng `postgresql.conf` khác mặc định, theo bước 1 của custom-objects/01 (cấu hình host
    chạy: `infra/compose/docker-compose.yml` cộng `infra/compose/docker-compose.prod.yml`).
-2. Chạy `make bench-record-access SCALE=d12 MODULUS=<m>` sau lần chạy `--scale d12` của custom-objects/01 trên cùng máy,
+2. Chạy `make bench-record-access SCALE=d12 MODULUS=<m>` sau lần chạy `--scale d12` của custom-objects/08 trên cùng máy,
    với `<m>` là modulus mà dòng luật quyết bước 7 trong Comments của custom-objects/01 chọn cho lần chạy đó (mặc định
    của target là 8; khi luật quyết chọn 4, dòng Xong chạy với `MODULUS=4` và Comments ghi điều đó); ma trận, phép đo, cách tính độ trễ và tự kiểm là của
    ticket 01, không đổi.
@@ -67,3 +67,6 @@ lại agent chạy được khi có máy.
   đo D12 cần máy tham chiếu mà chỉ Đạt cấp được (Chờ Đạt 23), còn ticket 01 dựng và chạy được ở `--scale smoke` trên máy
   dev. Ticket 03 chờ ticket này; Blocked by chỉ trỏ ngược, nên ticket 03 ghi điều đó ở Comments. Nếu sai thì: gộp lại
   làm bước cuối của ticket 01.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): lần chạy `--scale d12` của custom-objects/01 tách sang custom-objects/08
+  khi custom-objects/01 đóng ở `--scale smoke`; Blocked by thêm 08, bước 2 đọc modulus từ dòng luật quyết ở đó. Nếu
+  sai thì: custom-objects/08 gộp lại vào custom-objects/01 và Blocked by bỏ 08.
