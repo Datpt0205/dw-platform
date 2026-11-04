@@ -165,9 +165,7 @@ def _view(overview: BindingsOverview) -> BindingsView:
                 ),
                 state=item.state,
                 approved=None if item.state != "set" else _bound(item, item.value, overview),
-                proposed=_bound(item, item.proposed_value, overview)
-                if item.has_proposed
-                else None,
+                proposed=_bound(item, item.proposed_value, overview) if item.has_proposed else None,
                 proposal_open=item.has_proposed,
             )
         )
@@ -205,9 +203,7 @@ async def _may_propose(check: CheckInput) -> None:
     """The service's own question, before a key row is read (app-standards R2.30)."""
     artifact_id = _path_uuid(check, "artifact_id")
     if artifact_id is not None:
-        await _versions(check.container).check_propose(
-            check.context, BINDING_SET, str(artifact_id)
-        )
+        await _versions(check.container).check_propose(check.context, BINDING_SET, str(artifact_id))
 
 
 async def _may_withdraw(check: CheckInput) -> None:

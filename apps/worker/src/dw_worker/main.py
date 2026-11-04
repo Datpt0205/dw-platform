@@ -533,9 +533,7 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
         )
         # A decided proposal of a tenant's configuration version (tenant-config R8.10).
         handlers[CONFIG_VERSION_DECIDED] = build_config_version_handler(
-            ConfigSettlement(
-                store=SqlConfigVersionStore(sessions), clock=clock, id_generator=ids
-            )
+            ConfigSettlement(store=SqlConfigVersionStore(sessions), clock=clock, id_generator=ids)
         )
         # A tenant whose owners fell below two (tenant-rbac R3.12).
         handlers[OWNER_COVERAGE_LOW] = build_owner_coverage_handler(

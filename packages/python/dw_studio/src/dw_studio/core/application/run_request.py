@@ -342,6 +342,7 @@ class RunRequestService:
             problems = document_problems(entry, version.document)
             if problems:
                 raise DocumentInvalidError("the draft is not valid", problems)
+
         async def pin(decls: Sequence[BindingDecl]) -> PinnedBindings | None:
             return await self.bindings.pin(
                 tx,
