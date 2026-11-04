@@ -500,3 +500,15 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
   Protocol the core declares and the composition root satisfies; if lanes must leave `config`, that is
   `dw.workflow/v2` with a pure `upgrade_v1` applied on read, so packs and `+t<n>` rows keep loading. The status stays
   Accepted.
+
+## Amendments (2026-11-04)
+
+- (agent, theo ủy quyền 31/10/2026; found by the readiness gate of workflow-nodes/03.) Decision 3, the `has()` guard:
+  in W1 a reference to a step that does not dominate its position is refused with `wf.ref_not_dominating` even inside
+  `has()`, and `has()` guards only an optional field of a dominating step (its `error` under `continue` or `route`, an
+  optional field of its output schema). The validator builds the expression environment from the dominating steps
+  alone, because `cel-expr-python` 0.1.3 exposes no AST (FOG-50, ADR-0114 (Accepted) Amendments 2026-11-03), so a
+  guarded reference cannot be told from a bare one, and a bare one that compiles would fail only at run time. A value
+  one lane of a block produces and a later step reads goes through a variable. If this is wrong: an environment that
+  declares the non-dominating steps as `optional[T]` is measured first; if a bare selection on such a field fails to
+  compile while `has()` on it compiles, the guard returns as first written. The status stays Accepted.
