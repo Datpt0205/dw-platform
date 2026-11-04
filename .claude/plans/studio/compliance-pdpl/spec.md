@@ -333,7 +333,7 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
   không DELETE, nên bảng có một dòng `STUDIO_EXCLUSIONS` nêu cách xóa đó, cascade từ `studio.artifact_versions`
   (R5.5; studio-skeleton:R4.1); Mức rủi ro AI (`suggested_tier`, `declared_tier`) thêm ở W2 (ADR-0125 (Accepted)
   quyết 6).
-- `studio.purge_expired_conversations()`: hàm SECURITY DEFINER hẹp của ticket 06 theo mẫu xóa dữ liệu hết hạn của
+- `studio.purge_expired_conversations()`: hàm SECURITY DEFINER hẹp của ticket 09 theo mẫu xóa dữ liệu hết hạn của
   ADR-0122 (Accepted) quyết 7, vì `dw_app` chỉ SELECT, INSERT trên `studio.conversation_messages` (agent-builder);
   hàm không nhận đối số, theo tiền lệ `platform.prune_notifications()` ("It takes no argument, so no caller can widen
   it to recent rows", `db/migrations/versions/855ae928c3fa_platform_in_app_notifications.py:28-29`), nên không bên gọi
@@ -458,7 +458,7 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
   `studio.artifact_versions` cho FK ghép của `studio.version_assessments`
   (`.claude/plans/studio/tenant-config/issues/02-vo-phien-ban-va-chi-muc-phu-thuoc.md`, mà ticket 05 chờ); kind
   `policy` cho đường nới Lộ trình dữ liệu hai người ở W2 (R2.5).
-- agent-builder: hai bảng hội thoại mà hàm xóa của ticket 06 xóa, với `dw_app` chỉ SELECT, INSERT trên
+- agent-builder: hai bảng hội thoại mà hàm xóa của ticket 09 xóa (ticket 09 chờ bản viết lại theo D15/D17), với `dw_app` chỉ SELECT, INSERT trên
   `studio.conversation_messages`, `workspace_id NOT NULL` trên cả hai bảng (R5.8 đếm theo workspace) và FK ghép của
   tin nhắn tới `studio.conversations` `ON DELETE RESTRICT`
   (`.claude/plans/studio/agent-builder/issues/04-chat-va-man-chat.md`).
@@ -776,6 +776,13 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
   các mục W2 của agent không mang nhãn ở W1; tập nhãn của dòng mang C chỉ khi chính sách duyệt có một chủ cho một tác
   động chạy không hỏi; R2.6 áp cho loại `agent`; phần agent của R2.4 ở ticket 07. Sửa: Phụ thuộc, ticket 05, 07. Nếu
   sai thì: agent-builder giữ mục `autonomy` và cửa, hay R4.3 sang W2 cùng mục đó.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): `checking-plan-consistency` của vùng studio (I:agent-builder/04~compliance-pdpl/06,
+  HIGH): ticket 06 `ready-for-agent` chờ agent-builder/04, ticket `needs-triage` CẦN XEM theo D15/D17 vì dựng trên trợ
+  lý chat riêng đã bỏ, nên bộ xóa Bản ghi đồng ý và Danh sách chặn gửi không dựng được tới khi bản viết lại xong. Vế hội
+  thoại (bước 4 cũ, R5.7, R5.8, CP20 và vế hội thoại của R5.1, R5.2, R5.9, R5.10) tách sang ticket 09 mới
+  (`needs-triage`, chờ ticket 06 và agent-builder/04); ticket 06 bỏ cạnh tới agent-builder/04. Yêu cầu không đổi. Thay
+  vế "ticket 06 chờ agent-builder/04" của dòng 23/10/2026 và "ticket 06 là bản cuối sau agent-builder/04" của dòng
+  24/10/2026. Nếu sai thì: gộp ticket 09 lại vào ticket 06 và cạnh trở lại, khi bản viết lại giữ hai bảng.
 
 ## Danh sách ticket
 
@@ -789,3 +796,4 @@ Mọi bảng gắn công ty: RLS ENABLE và FORCE theo công ty, grant cùng mig
 | 06  | [Lớp lưu giữ cho kho dữ liệu cá nhân mới, bỏ dẫn Nghị định 13](issues/06-lop-luu-giu-du-lieu-ca-nhan.md)                       |
 | 07  | [Phân tích năng lực của agent: luật tự chủ và móc của loại agent](issues/07-phan-tich-nang-luc-agent.md)                       |
 | 08  | [Lõi sàn gửi tin](issues/08-loi-san-gui-tin.md)                                                                                |
+| 09  | [Lưu giữ hai bảng hội thoại](issues/09-luu-giu-hai-bang-hoi-thoai.md)                                                          |

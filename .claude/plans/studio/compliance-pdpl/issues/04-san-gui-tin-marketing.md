@@ -41,7 +41,7 @@ Bản ghi đồng ý của gói là W2 (hai dòng của Ngoài phạm vi của s
    `configs/copy/audit_actions.d/runtime-hardening.yaml` (`schema_version`, `copy_id`
    `platform.audit_actions.compliance_pdpl`, `version`, `actions`), mỗi hành động audit của lát ở W1 một nhãn tiếng
    Việt: `marketing.sent`, `marketing.send_refused` (ticket 08 đã ghi), `residency.class_changed` (ticket 03),
-   `studio.conversation.expired`, `consent.expired` (ticket 06); một tệp, một chủ: ticket 03 và 06 không sửa tệp này. Bộ gộp danh mục là
+   `studio.conversation.expired` (ticket 09), `consent.expired` (ticket 06); một tệp, một chủ: ticket 03, 06 và 09 không sửa tệp này. Bộ gộp danh mục là
    của telemetry-and-audit (telemetry-and-audit:R1.6; H-21), và test AST TA15 của telemetry-and-audit/03 đỏ khi một
    hành động ghi trong mã không có khóa trong mảnh nào, nên bước này không có test riêng. Ticket 03 không chờ được
    ticket này (phụ thuộc chỉ trỏ ngược), nên làm ticket này trước ticket 03: ticket này không chờ việc nào chưa xong.
@@ -131,3 +131,4 @@ Bản ghi đồng ý của gói là W2 (hai dòng của Ngoài phạm vi của s
   nên nhãn của bước 4 có bên đọc khi bộ gộp có; (c) hai lời gọi đồng thời tới người nhận thứ 200 và 201 của cùng lượt
   gốc chưa có test (khóa tư vấn theo `root_run_id` của ticket 08 bước 4).
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): `checking-plan-consistency` của vùng studio: nhãn `studio.conversation.expired` nay cho ticket 09 (vế hội thoại tách khỏi ticket 06); không đổi gì khác. Nếu sai thì: nhãn trở về ticket 06 khi ticket 09 gộp lại.

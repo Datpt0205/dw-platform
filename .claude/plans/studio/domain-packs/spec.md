@@ -17,8 +17,13 @@ hàng W3 nằm ở Ngoài phạm vi.
 - Lối cài mẫu báo cáo có sẵn nuốt mọi lỗi và không gốc ghép nào cung cấp hook của nó
   (`apps/api/src/dw_api/routes/v1/admin_console.py:179-199`, `apps/api/src/dw_api/routes/v1/platform.py:131-151`).
   Ràng buộc: trình cài gói không chép dạng cài lặng lẽ này (failure-modes #1).
-- Release manifest dựng từ `configs/` và không có mục gói (`scripts/release_manifest.py:205-232`). Thiếu: chưa có
-  `configs/packs/` và chưa có mục `packs` ghim gói.
+- Release manifest dựng từ `configs/` và không có mục gói (`scripts/release_manifest.py:205-232`). Thiếu: chưa có mục
+  `packs` ghim gói. Đã có `configs/packs/marketing/` của lát Digital Worker (wf-lite R1.1, leadcare R1.1), nạp thẳng
+  bằng `PackCatalog`, không phiên bản trong tên thư mục, không `package.json`: ngoại lệ có ghi của ADR-0100 (Accepted)
+  quyết 2 (Amendments 2026-11-04). Ràng buộc: R1.1 của spec này đổi thư mục đó sang `marketing@<semver>/` có
+  `package.json` và cho `PackCatalog` đọc qua cùng bộ nạp, trong cùng thay đổi, không để hai bộ nạp (failure-modes #2);
+  (agent, theo ủy quyền 31/10/2026; `checking-plan-consistency` 4/11/2026, F:domain-packs:R1.1~ADR-0100 (Accepted)). Nếu sai thì:
+  thư mục đổi tên ngay, trước bộ nạp.
 - Mọi thứ có phiên bản được release manifest ghim (`CLAUDE.md:70-71`). Ràng buộc: mỗi gói nền tảng vào release
   manifest bằng phiên bản và hash.
 - Câu trả lời kiểm kê chỉ đọc lớp nền tảng (`CLAUDE.md:231-232`). Ràng buộc: danh mục gói không phụ thuộc người hỏi.

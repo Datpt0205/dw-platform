@@ -258,3 +258,15 @@ Sales and sends a message once a person approves; all of it answers to the one a
   function and removes the mapping of `retention@1.7.0`, which replaces the second pass's line above, whose mapping
   lasted until usage-and-limits/02 (V4.P1); Consequences' coverage test turns red when a fragment is removed (if H-1
   is wrong, one versioned file with a chain of tickets returns, as V4.P1 had it).
+
+## Amendments (2026-11-04)
+
+- Consistency check of the studio area (agent, under Đạt's delegation of 2026-10-31): the Digital Worker slice of D17
+  (wf-lite R1.1, R1.4; leadcare R1.1, built and resolved) ships the Marketing pack as `configs/packs/marketing/`
+  (`workflows/<key>@<semver>.yaml`, `schemas/`), with no pack version in the directory name and no `package.json`,
+  loaded by `PackCatalog` at the platform layer with its sha256 pinned, read by Digital Worker runs, and changed per
+  tenant through wf-ai's tenant versions (`<semver>+t<n>`) rather than through installed forks. Decision 2 stays the
+  rule for Studio packs; this path is a recorded exception to it, not a second pack format: when domain-packs (W2)
+  builds the `dw.package/v1` loader, the Marketing directory moves to `marketing@<semver>/` with a `package.json`,
+  `PackCatalog` reads through that one loader, and the release manifest pins the pack, in the same change. If wrong:
+  the directory is renamed and given a `package.json` now, ahead of the loader.
