@@ -2128,6 +2128,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/studio/node-types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Node Types */
+        get: operations["list_node_types_api_v1_studio_node_types_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/studio/workflows/{artifact_id}/versions/{version_id}/retire": {
         parameters: {
             query?: never;
@@ -3035,6 +3052,19 @@ export interface components {
          * @enum {string}
          */
         CodeUnavailable: "not_pending" | "cannot_decide" | "requester" | "web_only" | "not_linked" | "comment_required" | "channel_off";
+        /**
+         * ConfigOutputView
+         * @description The output the step declares in its own config under `key`.
+         */
+        ConfigOutputView: {
+            /** Key */
+            key: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "config";
+        };
         /** ConnectionDependentView */
         ConnectionDependentView: {
             /**
@@ -3645,6 +3675,31 @@ export interface components {
              */
             field_id: string;
         };
+        /** FixedOutputView */
+        FixedOutputView: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "fixed";
+            /** Schema */
+            schema: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * FixedPortsView
+         * @description The same ports on every step of the type.
+         */
+        FixedPortsView: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "fixed";
+            /** Ports */
+            ports: components["schemas"]["PortView"][];
+        };
         /** FreezeBody */
         FreezeBody: {
             /** Reason */
@@ -3833,6 +3888,21 @@ export interface components {
             email: string;
             /** Memberships */
             memberships: components["schemas"]["WorkspaceRolesBody"][];
+        };
+        /**
+         * KeyedPortsView
+         * @description One port per key of the config object under `key`, read as the key,
+         *     and `default` when the step holds a lane under its name.
+         */
+        KeyedPortsView: {
+            default: components["schemas"]["PortView"] | null;
+            /** Key */
+            key: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "keyed";
         };
         /** KnowledgeDocumentView */
         KnowledgeDocumentView: {
@@ -4138,6 +4208,31 @@ export interface components {
             };
             /** Source Key */
             source_key: string;
+        };
+        /** NodeTypeCatalogueView */
+        NodeTypeCatalogueView: {
+            /** Catalogue Hash */
+            catalogue_hash: string;
+            /** Types */
+            types: components["schemas"]["NodeTypeView"][];
+        };
+        /** NodeTypeView */
+        NodeTypeView: {
+            /** Config Schema */
+            config_schema: {
+                [key: string]: unknown;
+            };
+            error: components["schemas"]["StepErrorView"];
+            /** Label Vi */
+            label_vi: string;
+            /** Output */
+            output: components["schemas"]["FixedOutputView"] | components["schemas"]["ConfigOutputView"];
+            /** Ports */
+            ports: components["schemas"]["FixedPortsView"] | components["schemas"]["KeyedPortsView"];
+            /** Side Effect Level */
+            side_effect_level: string;
+            /** Type */
+            type: string;
         };
         /** NotificationView */
         NotificationView: {
@@ -4580,6 +4675,16 @@ export interface components {
         PlatformUnfreezeRequest: {
             /** Reason */
             reason?: string | null;
+        };
+        /**
+         * PortView
+         * @description An outcome a step leaves by ("Nhánh ra"), by name and label.
+         */
+        PortView: {
+            /** Label Vi */
+            label_vi: string;
+            /** Name */
+            name: string;
         };
         /** PrivilegeView */
         PrivilegeView: {
@@ -5132,6 +5237,18 @@ export interface components {
             step_id: string;
             /** Type */
             type: string;
+        };
+        /**
+         * StepErrorView
+         * @description The `error` a step adds to its output under these `on_error` values.
+         */
+        StepErrorView: {
+            /** On Error */
+            on_error: string[];
+            /** Schema */
+            schema: {
+                [key: string]: unknown;
+            };
         };
         /** SupportGrantModel */
         SupportGrantModel: {
@@ -11545,6 +11662,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VersionView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_node_types_api_v1_studio_node_types_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeTypeCatalogueView"];
                 };
             };
             /** @description The request was refused */

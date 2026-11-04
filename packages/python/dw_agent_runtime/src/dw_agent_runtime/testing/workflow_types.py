@@ -22,16 +22,22 @@ None of them is registered by any composition root: a test passes
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from types import MappingProxyType
 from typing import Any
 
 from dw_agent_runtime.wflite.registry import (
+    NO_PORTS,
     Block,
+    FixedOutput,
+    FixedPorts,
     JsonSchema,
+    KeyedPorts,
     NodeTypeSpec,
+    Port,
+    Ports,
     StepDependency,
     build_node_registry,
     no_dependencies,
+    registry_of,
 )
 
 _LANE: JsonSchema = {"type": "array", "items": {"type": "object"}}
@@ -39,31 +45,9 @@ _EMPTY: JsonSchema = {"type": "object", "properties": {}}
 _ID: JsonSchema = {"type": "string", "minLength": 1}
 
 
-def _fixed(schema: JsonSchema) -> Callable[[Mapping[str, Any]], JsonSchema]:
-    return lambda config: schema
-
-
-def _ports(*ports: str) -> Callable[[Mapping[str, Any]], Mapping[str, list[Any]]]:
+def _ports(*names: str) -> FixedPorts:
     """Each port always, `[]` when the config leaves it out."""
-
-    def lanes(config: Mapping[str, Any]) -> Mapping[str, list[Any]]:
-        found: dict[str, list[Any]] = {}
-        for port in ports:
-            items = config.get(port)
-            found[port] = list(items) if isinstance(items, list) else []
-        return found
-
-    return lanes
-
-
-def _branches(config: Mapping[str, Any]) -> Mapping[str, list[Any]]:
-    branches = config.get("branches")
-    if not isinstance(branches, Mapping):
-        return {}
-    return {
-        f"branches.{name}": list(items) if isinstance(items, list) else []
-        for name, items in branches.items()
-    }
+    return FixedPorts(tuple(Port(name, name) for name in names))
 
 
 def _uses(field: str) -> Callable[[Mapping[str, Any]], tuple[StepDependency, ...]]:
@@ -82,7 +66,7 @@ def _type(
     properties: Mapping[str, JsonSchema] | None = None,
     required: tuple[str, ...] = (),
     block: Block = "none",
-    lanes: Callable[[Mapping[str, Any]], Mapping[str, list[Any]]] | None = None,
+    ports: Ports = NO_PORTS,
     ends_run: bool = False,
     exits_loop: bool = False,
     dependencies: Callable[[Mapping[str, Any]], tuple[StepDependency, ...]] = no_dependencies,
@@ -91,18 +75,19 @@ def _type(
 ) -> NodeTypeSpec:
     return NodeTypeSpec(
         type=name,
+        label_vi=name,
         config_schema={
             "type": "object",
             "required": list(required),
             "properties": dict(properties or {}),
             "additionalProperties": False,
         },
-        output_schema=_fixed(output),
+        output=FixedOutput(output),
         block=block,
         ends_run=ends_run,
         exits_loop=exits_loop,
         dependencies=dependencies,
-        lanes=lanes or (lambda config: {}),
+        ports=ports,
         side_effect_level="internal" if name == "fixture.effect@1" else "none",
         is_trigger=is_trigger,
     )
@@ -120,7 +105,7 @@ def fixture_node_types() -> tuple[NodeTypeSpec, ...]:
             properties={"on": _ID, "yes": _LANE, "no": _LANE},
             required=("on",),
             block="choice",
-            lanes=_ports("yes", "no"),
+            ports=_ports("yes", "no"),
             output={"type": "object", "properties": {"case": {"type": "string"}}},
         ),
         _type("fixture.wait@1", properties={"seconds": {"type": "integer", "minimum": 1}}),
@@ -129,7 +114,7 @@ def fixture_node_types() -> tuple[NodeTypeSpec, ...]:
             properties={"branches": {"type": "object", "additionalProperties": _LANE}},
             required=("branches",),
             block="parallel",
-            lanes=_branches,
+            ports=KeyedPorts("branches"),
         ),
         _type(
             "fixture.loop@1",
@@ -140,7 +125,7 @@ def fixture_node_types() -> tuple[NodeTypeSpec, ...]:
             },
             required=("max_iterations",),
             block="loop",
-            lanes=_ports("body", "max_reached"),
+            ports=_ports("body", "max_reached"),
         ),
         _type("fixture.stop@1", ends_run=True),
         _type("fixture.break@1", exits_loop=True),
@@ -163,6 +148,4 @@ def fixture_node_types() -> tuple[NodeTypeSpec, ...]:
 
 def fixture_node_registry() -> Mapping[str, NodeTypeSpec]:
     """The six wf-lite types and the fixture types, one registry."""
-    return MappingProxyType(
-        {**build_node_registry(), **{spec.type: spec for spec in fixture_node_types()}}
-    )
+    return registry_of((*build_node_registry().values(), *fixture_node_types()))

@@ -28,7 +28,8 @@ each with its trigger kinds.
 The `workflow` kind (workflow-engine ticket 01) is checked against the step
 types built here, `build_node_registry()`, and the platform layer of the tool
 register: the runtime seam's when it is wired, the shipped specs otherwise,
-as the worker reads them. Its publish hook activates trigger subscriptions
+as the worker reads them. The step-type catalogue (workflow-nodes ticket 02)
+answers from that same registry, built once. Its publish hook activates trigger subscriptions
 through `NoTriggerSubscriptions` until workflow-triggers/01 wires its own.
 
 Bindings (tenant-config ticket 05): `binding_set`, Studio's one kind of
@@ -55,7 +56,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from dw_agent_runtime.adapters.model_stack import build_model_resolver
 from dw_agent_runtime.ports import RunManifestPort
 from dw_agent_runtime.wflite.catalog import ShippedToolSpecs
-from dw_agent_runtime.wflite.registry import build_node_registry
+from dw_agent_runtime.wflite.registry import NodeTypeSpec, build_node_registry
 from dw_agent_runtime.wflite.validate import ToolSpecLookup
 from dw_api.bootstrap.models import model_provider_config
 from dw_api.bootstrap.paths import MODEL_PROFILES_DIR, TOOL_SPECS_DIR, release_manifest_ref
@@ -146,6 +147,9 @@ class StudioContainer:
     bindings: BindingsReader
     binding_status: BindingStatus
     run_bindings: SqlRunBindings
+    # workflow-nodes 02: the one step registry the `workflow` kind validates
+    # against and the catalogue route publishes.
+    node_types: Mapping[str, NodeTypeSpec]
 
 
 def build_studio(
@@ -176,12 +180,13 @@ def build_studio(
     tools: ToolSpecLookup = (
         runtime.tool_specs if runtime is not None else ShippedToolSpecs.load(TOOL_SPECS_DIR)
     )
+    node_types = build_node_registry()
     registry = ArtifactKindRegistry(
         platform_kinds(
             object_store_of,
             clock=clock,
             ids=ids,
-            nodes=build_node_registry(),
+            nodes=node_types,
             tools=tools,
             triggers=NoTriggerSubscriptions(),
         )
@@ -231,13 +236,19 @@ def build_studio(
     from dw_api.routes.v1.studio_artifacts import router as artifacts_router
     from dw_api.routes.v1.studio_bindings import router as bindings_router
     from dw_api.routes.v1.studio_lifecycle import lifecycle_router
+    from dw_api.routes.v1.studio_node_types import router as node_types_router
 
     return StudioContainer(
         kinds=registry,
         artifacts=artifacts,
         lifecycle=lifecycle,
         segments=segments,
-        routers=(artifacts_router, bindings_router, lifecycle_router(segments)),
+        routers=(
+            artifacts_router,
+            bindings_router,
+            lifecycle_router(segments),
+            node_types_router,
+        ),
         run_manifests=run_manifests,
         pinned_manifests=SqlRunManifestStore,
         run_requests=RunRequestService(
@@ -255,4 +266,5 @@ def build_studio(
         bindings=BindingsReader(store, registry),
         binding_status=BindingStatus(store, binding_types),
         run_bindings=SqlRunBindings(sessions),
+        node_types=node_types,
     )

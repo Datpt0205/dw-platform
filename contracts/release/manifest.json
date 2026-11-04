@@ -38,6 +38,11 @@
       "version": "1.0.0"
     },
     {
+      "checksum": "c945cbd0f35ec3427a62b3da68a52a42e233a47b6402447604668061edda506c",
+      "copy_id": "platform.run_reason_codes.workflow_nodes",
+      "version": "1.0.0"
+    },
+    {
       "checksum": "2866325cda2ce8ea08d86d4869fdd677572499e0d17f36344a255e6516979410",
       "copy_id": "platform.runtime",
       "version": "1.3.0"
@@ -70,7 +75,7 @@
       "version": "1.2.0"
     }
   ],
-  "git_sha": "85f547977a63d463c4642667ca6cc6d4bd771389",
+  "git_sha": "30308dd03756ae1f556b55d50472008a19d4b0f6",
   "knowledge_index_version": "2026-07-25.structure-1",
   "memory_policy_version": "2.0.0",
   "model_profiles": [

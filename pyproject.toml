@@ -494,6 +494,9 @@ source_modules = [
     "dw_studio.*.application",
     "dw_studio.*.workflows",
     "dw_studio.*.presentation",
+    # A library module beside the layers (workflow-nodes 02): it takes its
+    # `ExpressionEngine` as an argument, never the CEL adapter.
+    "dw_studio.workflows.templates",
 ]
 forbidden_modules = ["dw_studio.*.adapters"]
 

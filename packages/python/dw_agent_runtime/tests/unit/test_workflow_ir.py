@@ -44,7 +44,13 @@ from dw_agent_runtime.wflite.ir import (
     lower,
     reachable,
 )
-from dw_agent_runtime.wflite.registry import NodeTypeSpec, build_node_registry, no_dependencies
+from dw_agent_runtime.wflite.registry import (
+    NO_PORTS,
+    FixedOutput,
+    NodeTypeSpec,
+    build_node_registry,
+    no_dependencies,
+)
 from dw_agent_runtime.wflite.validate import (
     MESSAGES,
     PACK_RULES,
@@ -132,8 +138,10 @@ def test_a_type_that_forgets_one_of_the_four_cannot_be_built(missing: str) -> No
     built, never a silent `False`."""
     fields: dict[str, Any] = {
         "type": "probe@1",
+        "label_vi": "Thử",
         "config_schema": {"type": "object"},
-        "output_schema": lambda config: {},
+        "output": FixedOutput({}),
+        "ports": NO_PORTS,
         "block": "none",
         "ends_run": False,
         "exits_loop": False,

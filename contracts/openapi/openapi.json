@@ -1390,6 +1390,26 @@
         "title": "CodeUnavailable",
         "type": "string"
       },
+      "ConfigOutputView": {
+        "description": "The output the step declares in its own config under `key`.",
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "kind": {
+            "const": "config",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "key"
+        ],
+        "title": "ConfigOutputView",
+        "type": "object"
+      },
       "ConnectionDependentView": {
         "properties": {
           "id": {
@@ -2897,6 +2917,49 @@
         "title": "FieldPermissionView",
         "type": "object"
       },
+      "FixedOutputView": {
+        "properties": {
+          "kind": {
+            "const": "fixed",
+            "title": "Kind",
+            "type": "string"
+          },
+          "schema": {
+            "additionalProperties": true,
+            "title": "Schema",
+            "type": "object"
+          }
+        },
+        "required": [
+          "kind",
+          "schema"
+        ],
+        "title": "FixedOutputView",
+        "type": "object"
+      },
+      "FixedPortsView": {
+        "description": "The same ports on every step of the type.",
+        "properties": {
+          "kind": {
+            "const": "fixed",
+            "title": "Kind",
+            "type": "string"
+          },
+          "ports": {
+            "items": {
+              "$ref": "#/components/schemas/PortView"
+            },
+            "title": "Ports",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "ports"
+        ],
+        "title": "FixedPortsView",
+        "type": "object"
+      },
       "FreezeBody": {
         "additionalProperties": false,
         "properties": {
@@ -3370,6 +3433,37 @@
           "memberships"
         ],
         "title": "InviteMemberRequest",
+        "type": "object"
+      },
+      "KeyedPortsView": {
+        "description": "One port per key of the config object under `key`, read as the key,\nand `default` when the step holds a lane under its name.",
+        "properties": {
+          "default": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PortView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "kind": {
+            "const": "keyed",
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "key",
+          "default"
+        ],
+        "title": "KeyedPortsView",
         "type": "object"
       },
       "KnowledgeDocumentView": {
@@ -4055,6 +4149,98 @@
           "payload"
         ],
         "title": "NewWorkRequest",
+        "type": "object"
+      },
+      "NodeTypeCatalogueView": {
+        "properties": {
+          "catalogue_hash": {
+            "title": "Catalogue Hash",
+            "type": "string"
+          },
+          "types": {
+            "items": {
+              "$ref": "#/components/schemas/NodeTypeView"
+            },
+            "title": "Types",
+            "type": "array"
+          }
+        },
+        "required": [
+          "catalogue_hash",
+          "types"
+        ],
+        "title": "NodeTypeCatalogueView",
+        "type": "object"
+      },
+      "NodeTypeView": {
+        "properties": {
+          "config_schema": {
+            "additionalProperties": true,
+            "title": "Config Schema",
+            "type": "object"
+          },
+          "error": {
+            "$ref": "#/components/schemas/StepErrorView"
+          },
+          "label_vi": {
+            "title": "Label Vi",
+            "type": "string"
+          },
+          "output": {
+            "discriminator": {
+              "mapping": {
+                "config": "#/components/schemas/ConfigOutputView",
+                "fixed": "#/components/schemas/FixedOutputView"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FixedOutputView"
+              },
+              {
+                "$ref": "#/components/schemas/ConfigOutputView"
+              }
+            ],
+            "title": "Output"
+          },
+          "ports": {
+            "discriminator": {
+              "mapping": {
+                "fixed": "#/components/schemas/FixedPortsView",
+                "keyed": "#/components/schemas/KeyedPortsView"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FixedPortsView"
+              },
+              {
+                "$ref": "#/components/schemas/KeyedPortsView"
+              }
+            ],
+            "title": "Ports"
+          },
+          "side_effect_level": {
+            "title": "Side Effect Level",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "label_vi",
+          "config_schema",
+          "output",
+          "error",
+          "ports",
+          "side_effect_level"
+        ],
+        "title": "NodeTypeView",
         "type": "object"
       },
       "NotificationView": {
@@ -5054,6 +5240,25 @@
           }
         },
         "title": "PlatformUnfreezeRequest",
+        "type": "object"
+      },
+      "PortView": {
+        "description": "An outcome a step leaves by (\"Nhánh ra\"), by name and label.",
+        "properties": {
+          "label_vi": {
+            "title": "Label Vi",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "label_vi"
+        ],
+        "title": "PortView",
         "type": "object"
       },
       "PrivilegeView": {
@@ -6470,6 +6675,29 @@
           "from_lane"
         ],
         "title": "StepChangeView",
+        "type": "object"
+      },
+      "StepErrorView": {
+        "description": "The `error` a step adds to its output under these `on_error` values.",
+        "properties": {
+          "on_error": {
+            "items": {
+              "type": "string"
+            },
+            "title": "On Error",
+            "type": "array"
+          },
+          "schema": {
+            "additionalProperties": true,
+            "title": "Schema",
+            "type": "object"
+          }
+        },
+        "required": [
+          "on_error",
+          "schema"
+        ],
+        "title": "StepErrorView",
         "type": "object"
       },
       "SupportGrantModel": {
@@ -16548,6 +16776,47 @@
           }
         },
         "summary": "Read Version",
+        "tags": [
+          "studio"
+        ]
+      }
+    },
+    "/api/v1/studio/node-types": {
+      "get": {
+        "operationId": "list_node_types_api_v1_studio_node_types_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeTypeCatalogueView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "List Node Types",
         "tags": [
           "studio"
         ]

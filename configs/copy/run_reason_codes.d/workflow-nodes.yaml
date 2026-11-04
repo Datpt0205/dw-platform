@@ -1,0 +1,22 @@
+# The reason codes workflow-nodes writes on a run or a check, with their
+# Vietnamese labels: this spec's fragment of the reason-code catalogue
+# telemetry-and-audit merges (spec Quyết định 26/10/2026 H-21). Each ticket
+# adds the codes it writes, in the same change.
+schema_version: "1.0"
+copy_id: platform.run_reason_codes.workflow_nodes
+version: "1.0.0"
+codes:
+  # workflow-nodes/02, the template builder (`dw_studio.workflows.templates`).
+  template_syntax: "Mẫu có {{ chưa đóng hoặc biểu thức rỗng"
+  sink_missing: "Trường này không nhận biến {{ }}"
+  template_too_large: "Mẫu vượt 16 KiB hoặc quá 50 biểu thức"
+  render_too_large: "Văn bản dựng ra vượt 64 KiB"
+  null_in_template: "Một biểu thức trong mẫu không có giá trị"
+  non_scalar_in_text: "Danh sách hay đối tượng không chèn được vào văn bản"
+  html_markup_not_allowed: "Mẫu HTML dùng thẻ hoặc thuộc tính không được phép"
+  templated_host: "Địa chỉ trang đích phải viết sẵn, không lấy từ biến"
+  url_dot_segment: "Giá trị biến tạo ra đoạn đường dẫn . hoặc .."
+  header_crlf: "Giá trị header chứa ký tự xuống dòng"
+  prompt_literal_input_tag: "Chữ của prompt không được tự viết thẻ <input>"
+  prompt_literal_too_large: "Chữ cố định của prompt vượt 8 KiB"
+  expression_invalid: "Biểu thức trong mẫu không hợp lệ"

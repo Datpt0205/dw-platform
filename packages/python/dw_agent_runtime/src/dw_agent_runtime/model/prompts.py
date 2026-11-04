@@ -62,6 +62,21 @@ def contain_untrusted(name: str, value: str) -> str:
     return f'<{UNTRUSTED_TAG} name="{name}">\n{escaped}\n</{UNTRUSTED_TAG}>'
 
 
+# An opening or closing untrusted block, in any case: `<input>`, `</INPUT`,
+# `<input name=...`; never `<inputs` or `<input_x`, which open no block.
+_UNTRUSTED_TAG_PATTERN = re.compile(rf"(?i)</?{UNTRUSTED_TAG}\b")
+
+
+def writes_untrusted_tag(text: str) -> bool:
+    """Whether instruction text writes an untrusted block's tag itself.
+
+    The platform wraps every value; text that writes the tag too nests one
+    block in another and teaches the next author that containment is theirs
+    to do (ADR-0010). The one check for a platform prompt's `template` and a
+    tenant's prompt template (workflow-nodes R4.2)."""
+    return _UNTRUSTED_TAG_PATTERN.search(text) is not None
+
+
 class ContainedOutput(NamedTuple):
     """A tool's answer as the model reads it, and what stays beside it: a
     `content_and_artifact` pair whose artifact is never sent to the model."""
@@ -187,7 +202,7 @@ class PromptArtifact(BaseModel):
             raise ValueError(f"raw variable without a reason: {sorted(unjustified)}")
         # The registry wraps. A template doing it too nests one block in another
         # and teaches the next author that containment is the template's job.
-        if f"<{UNTRUSTED_TAG}" in self.template or f"</{UNTRUSTED_TAG}" in self.template:
+        if writes_untrusted_tag(self.template):
             raise ValueError(f"template must not write <{UNTRUSTED_TAG}> itself")
         return self
 
