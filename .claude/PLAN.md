@@ -31,10 +31,10 @@ own file and a row here.
   assistant; the Marketing pilot becomes a lead-care DW at A2, and a thin DW
   slice that really runs (with screens) comes before the rest of Studio.
   D17/D18 (Đạt, 2026-10-29): path C, a DW core plus a minimal `dw.workflow/v1`
-  engine running a shipped lead-care pack; YC118-YC125, ADR-0128 (Proposed),
-  specs `digital-worker`, `wf-lite`, `leadcare` gated and ready for agent.
-  **Next:** the unattended queue in `studio.md` (0-14 done; 13, the live leadcare demo,
-  green on `luna` 3/11; item 15 running in two lanes, heavy checks deferred to the queue's close).
+  engine running a shipped lead-care pack (YC118-YC125, ADR-0128 Proposed), built.
+  **Next:** the queue in `studio.md` (0-14 done; 15 in two lanes; wave 1: 42/133 resolved,
+  18 gated). First: CI red since `d19901f`, gitleaks verdict open (public repo), then the
+  two half-built lanes (`studio.md`, "Ngắt lần hai"); heavy checks at the queue's close.
 
 ## Decisions Đạt owes
 Since 2026-10-31 the agent decides all of these itself (`studio.md` "Ủy quyền toàn phần"), but real keys and secrets.
