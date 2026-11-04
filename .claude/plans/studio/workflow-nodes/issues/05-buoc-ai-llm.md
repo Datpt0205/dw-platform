@@ -17,7 +17,7 @@ R7.4, R7.5, WN2, WN3). Bỏ qua bản ghi opt-out (R7.3, WN14) ở W2 cùng cờ
     - `ai.llm@1` của wf-lite nêu một prompt nền tảng theo id (`name@semver`) và phân giải nó qua sổ prompt; Bước của
       Studio mang hướng dẫn và mẫu do công ty viết. Hai hợp đồng cấu hình khác nhau, nên Studio đăng ký `ai.llm@2` trong
       `studio_node_types` của ticket 03, và gói giữ nguyên `@1`.
-    - `PathRules` của workflow-engine/01 thêm tập `refused_types`; `STUDIO_RULES` từ chối `ai.llm@1` bằng
+    - `STUDIO_RULES.refused_types` (ticket 03) thêm `ai.llm@1`, nên đường Studio từ chối nó bằng
       `wf.unknown_type`, vì một lượt Studio chỉ phân giải từ bản kê, không qua sổ prompt lúc chạy (CLAUDE.md, Per-tenant
       artifacts). Danh mục `GET /api/v1/studio/node-types` của ticket 02 bỏ loại mà `STUDIO_RULES` từ chối.
     - `ai.llm@2` khai `block` `none`, `ends_run` và `exits_loop` sai, `side_effect_level` `none`, Khi lỗi `fail`,
@@ -154,3 +154,5 @@ R7.4, R7.5, WN2, WN3). Bỏ qua bản ghi opt-out (R7.3, WN14) ở W2 cùng cờ
     - (c) Hai Bước dùng hai model khác nhau trong một quy trình là W2.
     - (d) Tài liệu chấm điểm của marketing-pilot phải qua test R7.4 của ticket này.
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): theo gate của ticket 06: `refused_types` của `PathRules` dời về ticket
+  03 (phần chung của 05 và 06), ticket này chỉ thêm `ai.llm@1` vào tập của `STUDIO_RULES`. Không thêm cạnh.

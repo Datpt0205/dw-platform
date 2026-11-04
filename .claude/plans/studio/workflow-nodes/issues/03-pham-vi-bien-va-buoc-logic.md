@@ -59,14 +59,18 @@ R4.4, WN5, WN11).
       `STUDIO_RULES` của workflow-engine/01 trên cùng `WorkflowIR`. Hai mã mới vào `MESSAGES` có nhãn vi và en.
     - Bảng ánh xạ kiểu dùng chung, keyed theo kiểu trường của custom-objects, sang đại số kiểu của ticket 01.
     - Đường gói (`PACK_RULES`) không truyền `ExpressionEngine` và giữ tham chiếu nguyên giá trị của wf-lite R3.7.
+    - `PathRules` của workflow-engine/01 thêm tập `refused_types`, rỗng ở ticket này, mà bộ kiểm đọc: Bước có loại
+      trong tập → `wf.unknown_type`. Ticket 05 và 06, mỗi ticket thêm một dòng vào tập của `STUDIO_RULES` cho loại
+      `@1` của wf-lite mà nó thay, nên phần chung nằm ở ticket sớm nhất (ticket 05 và 06 đều chờ ticket này).
 4. **Sổ loại của Studio và ba loại bước** (ticket 02 bước 1).
     - Thêm `studio_node_types(ports)` ở `packages/python/dw_studio/src/dw_studio/workflows/node_registry.py` và tham số
       `extra` của `build_node_registry`. Composition root của API và worker truyền `extra=studio_node_types(ports)`
       (workflow-engine/01 bước 6); trùng `type@major` → `ValueError`.
     - Thêm vào `NodeTypeSpec` trường bắt buộc, không mặc định, `allowed_on_error` (tập Khi lỗi loại cho phép), cùng nơi
       đọc là bộ kiểm lõi: `on_error` ngoài tập → `wf.config_invalid` có con trỏ tới `on_error`. Ticket này là nơi đầu
-      tiên giới hạn nó (ticket 02 bước 4), và khai giá trị cho mọi mục có lúc đó: `human.approval@1` nhận `fail`,
-      `route` (R9.17, ticket 06 thử), năm loại wf-lite còn lại nhận `fail`, `continue`, `route`. `incident` vào tập của
+      tiên giới hạn nó (ticket 02 bước 4), và khai giá trị cho mọi mục có lúc đó: sáu loại wf-lite nhận `fail`,
+      `continue`, `route` (đường gói từ chối `on_error`, nên giá trị không đổi gì ở đó); `human.approval@2` của ticket 06
+      nhận `fail`, `route` (R9.17). `incident` vào tập của
       các loại cho phép nó cùng workflow-engine/07, nơi giá trị đó vào mô hình tài liệu. Bảng `READERS` của ticket 02
       thêm dòng của nó.
     - `data.transform@1` (mới): cấu hình `{fields: {<khóa>: <Biểu thức>}}`, khóa khớp `^[a-z][a-z0-9_]{0,39}$`, 1-50
@@ -226,3 +230,7 @@ R4.4, WN5, WN11).
     Không còn CRITICAL hay HIGH.
 
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): theo gate của ticket 05 và 06: tập `refused_types` của `PathRules` vào
+  ticket này (rỗng), vì ticket 05 và 06 cùng thêm vào nó mà không chờ nhau, nên phần chung nằm ở ticket sớm nhất; Bước
+  phê duyệt của Studio là `human.approval@2` của ticket 06, nên `allowed_on_error` của sáu loại wf-lite là `fail`,
+  `continue`, `route`. Không thêm cạnh.

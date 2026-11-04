@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 3/11/2026
-Sẵn sàng: ĐẠT (4/11/2026; 0 CRITICAL, 0 HIGH; ticket 01-05)
+Sẵn sàng: ĐẠT (4/11/2026; 0 CRITICAL, 0 HIGH; ticket 01-06)
 
 Người dựng không viết mã ghép một quy trình từ các Bước, thành một cây Bước (V4.24). Mỗi Loại bước là mã nền
 tảng trong một sổ đăng ký duy nhất, mang schema cấu hình và đầu ra, các Nhánh ra mà mỗi Bước của loại mang
@@ -245,7 +245,7 @@ thực thi (YC51; NODE-13, NODE-14, NODE-16).
 - R9.16 KHI lượt chạy tiếp tục sau quyết định của một Bước phê duyệt ở chế độ `live`, Bước phê duyệt PHẢI chạy
   làn `approved` ("Duyệt") khi quyết định là duyệt và làn `rejected` ("Từ chối") khi là từ chối, không bao giờ làn
   kia, vì mỗi kết quả của phê duyệt là một Nhánh ra mang làn Bước của nó (V4.24).
-- R9.17 NẾU cấu hình một Bước phê duyệt đặt Khi lỗi khác `fail` hay `route`, THÌ schema của `human.approval@1`
+- R9.17 NẾU cấu hình một Bước phê duyệt đặt Khi lỗi khác `fail` hay `route`, THÌ schema của `human.approval@2`
   PHẢI từ chối cấu hình đó, để một Bước phê duyệt lỗi không bao giờ cho lượt chạy đi tiếp như thể đã có quyết định
   (failure-modes #7).
 
@@ -293,9 +293,9 @@ Người dựng đặt cho một Bước phê duyệt n người duyệt bắt b
 chờ: làn Duyệt chỉ khi cả n đã duyệt, làn Từ chối ở lần từ chối đầu tiên, ở bậc B của W1 (YC110, YC51; V4.26;
 ADR-0112 (Accepted) quyết 7); k < n là W3 (Ngoài phạm vi).
 
-- R12.1 Schema cấu hình của `human.approval@1` PHẢI nhận `approval_rule` là `any` (một người được giao duyệt là
+- R12.1 Schema cấu hình của `human.approval@2` PHẢI nhận `approval_rule` là `any` (một người được giao duyệt là
   đủ), `all` (mọi người được giao phải duyệt) hay vắng mặt, đọc vắng mặt là `any`, và từ chối mọi giá trị khác, để
-  tài liệu `human.approval@1` có trước khóa này giữ nguyên hành vi.
+  tài liệu `human.approval@2` có trước khóa này giữ nguyên hành vi.
 - R12.2 KHI một Bước phê duyệt `all` mở phê duyệt ở chế độ `live`, Bước đó PHẢI mở đúng một yêu cầu phê duyệt
   `studio.step.` cho mỗi người được giao khác nhau, cùng một điểm chờ và cùng mã băm chủ thể, trong một giao dịch,
   kể cả khi Bước chạy lại sau khi worker chết.
@@ -363,7 +363,7 @@ là của workflow-engine (`.claude/plans/studio/workflow-engine/issues/09-quy-t
 - Bậc B của W1, sau đường găng YC94, không ticket thí điểm nào chờ (V4.26): `logic.parallel@1` (Bước song song, gộp
   kiểu all ở Điểm nối cuối các làn; không có loại `logic.join`), `logic.loop@1` (Bước vòng lặp có trần, kiểu
   do-while, cho chờ trong thân), `logic.break@1` (Thoát vòng lặp) và quy tắc `approval_rule` `all` của
-  `human.approval@1` (mọi người được giao phải duyệt, một điểm chờ, k = n), với cột `assignee_id` của
+  `human.approval@2` (mọi người được giao phải duyệt, một điểm chờ, k = n), với cột `assignee_id` của
   `studio.step_approvals` và kết quả của điểm chờ qua `StepWaitLookupPort` (R1.6, R10, R11, R12); cùng bậc đó,
   `flow.subworkflow@1` (Bước Quy trình con: cấu hình, đầu ra, ba tính chất vị trí với `opens_wait` đúng, Khi lỗi cho
   phép, bộ trích phụ thuộc và nhãn năng lực của loại; R13; V4.33).
@@ -421,15 +421,20 @@ là của workflow-engine (`.claude/plans/studio/workflow-engine/issues/09-quy-t
 
 ## Dữ liệu
 
-- `studio.step_assignments`: giao của một Bước phê duyệt cho người. Cột `tenant_id`,
-  `workspace_id`, `run_id`, `node_id`, `assignee_kind` CHECK (`user`) ở W1, không DEFAULT (nhóm là W2),
-  `assignee_id`, `required_scope`, `created_at timestamptz`. RLS bật và FORCE; policy thu hẹp theo `app.tenant_id`.
-  FK ghép `(tenant_id, run_id)` tới `platform.worker_runs (tenant_id, id)` (`uq_worker_runs_tenant_id_id` của
-  workflow-engine/02) `ON DELETE CASCADE`, với chỉ mục `(tenant_id, run_id, node_id)` là chỉ mục của nó.
+- `studio.step_assignments`: giao của một Bước phê duyệt cho người, một lần giao mỗi điểm chờ, ảnh chụp ứng viên lúc mở.
+  Cột `tenant_id`, `workspace_id`, `run_id`, `node_id`, `interrupt_id text NOT NULL`, `assignee_kind` CHECK (`user`) ở
+  W1, không DEFAULT (nhóm là W2), `assignee_id`, `created_at timestamptz`; không cột `required_scope`, vì tem ở
+  `platform.approval_requests.required_scope` là chủ duy nhất (ADR-0004 (Accepted)). RLS bật và FORCE; policy thu hẹp
+  theo `app.tenant_id`. FK ghép `(tenant_id, run_id)` tới `platform.worker_runs (tenant_id, id)`
+  (`uq_worker_runs_tenant_id_id` của workflow-engine/02) `ON DELETE CASCADE`; FK `(tenant_id, run_id, interrupt_id)` tới
+  `platform.run_waits (tenant_id, run_id, interrupt_id)` `ON DELETE CASCADE`; UNIQUE
+  `(tenant_id, run_id, interrupt_id, assignee_id)`, chỉ mục của cả hai FK vì dẫn đầu bằng cột của chúng.
 - `studio.step_approvals`: chủ duy nhất của liên kết một Bước phê duyệt với `platform.approval_requests`, và giữ
   mã băm chủ thể đã khoá. Cột `tenant_id`, `workspace_id`, `run_id`, `node_id`, `interrupt_id text NOT NULL`,
   `approval_request_id`, `subject_node_id`, `subject_hash`, `created_at timestamptz`. CHECK
-  `ck_step_approvals_subject_hash` (mã băm khác null khi đã khoá). FK ghép `(tenant_id, workspace_id, approval_request_id)`
+  `ck_step_approvals_subject_hash` (`subject_node_id` NULL khi và chỉ khi `subject_hash` NULL: Bước phê duyệt không có
+  chủ thể thì không khóa gì). UNIQUE `(tenant_id, run_id, interrupt_id)`, một yêu cầu mỗi điểm chờ với quy tắc `any`,
+  để Bước chạy lại sau khi worker chết không mở yêu cầu thứ hai. FK ghép `(tenant_id, workspace_id, approval_request_id)`
   tới `platform.approval_requests (tenant_id, workspace_id, id)` qua `uq_approval_requests_tenant_id_workspace_id_id`,
   ràng buộc đã có mà `platform.approval_view_receipts` và tenant-config/05 cũng dùng, nên ticket 06 không thêm UNIQUE
   nào lên bảng đó, `ON DELETE CASCADE`, có chỉ mục `(tenant_id, workspace_id, approval_request_id)`; FK
@@ -437,8 +442,8 @@ là của workflow-engine (`.claude/plans/studio/workflow-engine/issues/09-quy-t
   có chỉ mục `(tenant_id, run_id, interrupt_id)`, nên dòng chờ không giữ id
   yêu cầu nào (workflow-engine:R6.2). RLS bật và FORCE. `updated_at` do trigger giữ, nhường giá trị câu lệnh nêu.
   Ticket 07 thêm `assignee_id uuid` NULL, người duyệt bắt buộc của yêu cầu khi `approval_rule` là `all` (NULL khi
-  `any`), với UNIQUE `(tenant_id, run_id, interrupt_id, assignee_id)`, để một điểm chờ không có hai yêu cầu cho cùng
-  một người (R12.2, R12.4).
+  `any`), và thay UNIQUE của ticket 06 bằng UNIQUE NULLS NOT DISTINCT `(tenant_id, run_id, interrupt_id, assignee_id)`,
+  để một điểm chờ không có hai yêu cầu cho cùng một người và không có hai yêu cầu `any` (R12.2, R12.4).
 
 ## API
 
@@ -1091,6 +1096,27 @@ là của workflow-engine (`.claude/plans/studio/workflow-engine/issues/09-quy-t
 - 4/11/2026 (agent, theo ủy quyền 31/10/2026): gate `checking-plan-readiness` của ticket 05 (builder check; không route,
   không migration): 2 CRITICAL và 11 HIGH, đều sửa theo khuyến nghị ở hai dòng trên; lượt xác nhận 10 câu, sửa ở ticket 05; MEDIUM ở Comments của ticket 05.
 - 4/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 05.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): Bước gọi công cụ và Bước phê duyệt của Studio là `tool.call@2` và
+  `human.approval@2`, cạnh `@1` của wf-lite, vì `@1` mang `decision_class`, `proposal` và cổng tự chủ của Digital Worker
+  còn Bước Studio mang `required_scope`, người được giao, chủ thể khóa bằng mã băm và quyết định giả lập (luật bản chính
+  mới của ticket 02 bước 1); R9.17, R10.4, R12.1 và Trong phạm vi nay nói `@2`, còn dòng Quyết định cũ nói `@1` đọc là
+  `@2`; `STUDIO_RULES` từ chối hai bản `@1`. Sửa: R9.17, R12.1, Trong phạm vi, WN24, ticket 03, 06, 07, 08. Nếu sai
+  thì: `@1` nhận cả hai hình cấu hình qua `oneOf`, và mỗi đường từ chối hình kia.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): chủ thể của Bước phê duyệt là `subject`, Bước `tool.call@2` đầu tiên của
+  làn `approved`, mà đối số chỉ tham chiếu Bước trội Bước phê duyệt (`wf.unapproved_input` của wf-lite); đối số render
+  lúc mở nằm trong `payload` của yêu cầu, mã băm trong `subject_hash`, và chủ thể render lại rồi so mã băm trước khi gọi
+  executor với `approved=True` (R9.3); luật sàn HITL của wf-lite chạy trên đường Studio, nên `tool.call@2` có tác động
+  `external` hay `critical` phải là chủ thể của một phê duyệt (`wf.hitl_gate_missing`) và không bao giờ mở điểm chờ;
+  ứng viên chụp lúc mở vào `step_assignments`, một lần giao mỗi điểm chờ (`interrupt_id`), tính ở workspace của lượt,
+  không thu hẹp thì mọi người giữ scope trừ người tạo lượt, chủ thể chạy và tài khoản dịch vụ; `required_scope` chỉ ở
+  tem; UNIQUE theo điểm chờ chặn yêu cầu thứ hai khi chạy lại; bộ trả phiên bản cho mã Zalo bỏ khỏi W1. Sửa: Dữ liệu,
+  ticket 06, 07. Nếu sai thì: guard đọc `effective_grants` lúc quyết thay ảnh chụp, và người được cấp scope sau lúc mở
+  quyết được.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): gate `checking-plan-readiness` của ticket 06 (builder check cùng boundary
+  walk, vì ticket có migration): 0 CRITICAL và 12 HIGH, đều sửa theo khuyến nghị ở hai dòng trên; lượt xác nhận 10 câu,
+  sửa ở ticket 06 (ứng viên giữ cả `approvals.decide`, `payload_guards` cho lần đọc, Trường đóng dấu tìm bằng `check`
+  lại); MEDIUM ở Comments của ticket 06.
+- 4/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 06.
 
 ## Danh sách ticket
 
