@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 2/11/2026
-Sẵn sàng: ĐẠT (4/11/2026; 0 CRITICAL, 0 HIGH; ticket 01-03)
+Sẵn sàng: ĐẠT (4/11/2026; 0 CRITICAL, 0 HIGH; ticket 01-04)
 
 Người dựng cần một lớp điều khiển vòng đời cho agent và quy trình: mỗi phiên bản đi qua Nháp, Đang
 kiểm định, Chờ duyệt, Đang dùng, Đã gỡ trong một máy trạng thái do PostgreSQL canh; chỉ sang Đang dùng
@@ -1408,6 +1408,12 @@ NULL`; FK
 - 4/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 01. Ticket 01 dựng bảng công tắc, port, adapter, các cửa
   runtime và Đóng băng; Tắt khẩn cấp ở ticket 05 dùng chúng, cửa đầu node ở workflow-engine/03. Theo `## Ủy quyền` của
   studio.md (Đạt, 31/10/2026). Nếu sai thì: hạ ticket 01 về `needs-triage` và chia lại.
+- 4/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 04. Ticket 04 dựng phát hành hai người cho mọi loại
+  (phê duyệt `studio.publish.<kind>`, guard, handler `.decided` ở worker, nhánh gửi của loại không cổng, hai đoạn
+  `objects`, `data-sources`, `PublishBindingsCheck`, route đọc Bản ứng viên) trên hợp đồng của ticket 03; cổng chất lượng ở
+  ticket 06, màn duyệt ở ticket 07. Gate ticket 04 (4/11/2026): yêu cầu phát hành ở `owning_workspace_id`, payload mang
+  `version_id`, bộ so sánh là trường `compare` của `ArtifactKindEntry`, worker nhận `dw_studio`. Theo `## Ủy quyền` của
+  studio.md (Đạt, 31/10/2026). Nếu sai thì: hạ ticket 04 về `needs-triage` và chia lại.
 
 ## Danh sách ticket
 

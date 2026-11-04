@@ -131,8 +131,9 @@ awaiting_approval` không qua `evaluating`, `gate_run_id` NULL, `publish_approva
    `candidate_exists`, không 412; `If-Match` lệch trên một bản Nháp → 412 `precondition_failed` với `stale_version`,
    giao dịch lùi, phiên bản giữ `draft` (spec R2.12; ADR-0108 (Accepted) quyết 3); tài liệu sai → 422 của `seal`
    (`DocumentInvalidError`, `errors[]`). (c) Chạy các kiểm của bảng kiểm theo loại (một kiểm từ chối → 422 với
-   `reason_code` của nó, giao dịch lùi, phiên bản giữ `draft`; spec R2.7). (d) Ghi `compared_live_hash` (spec R2.10),
-   `submitted_by`, `submitted_at`. (e) Loại có cổng: `LifecycleService` chuyển `draft → evaluating` (spec R2.1; ADR-0120 (Accepted) quyết 1), ticket 06 xếp Lượt
+   `reason_code` của nó, giao dịch lùi, phiên bản giữ `draft`; spec R2.7). (d) Tính `compared_live_hash` (spec R2.10),
+   `submitted_by`, `submitted_at`, ghi trong chính lệnh UPDATE chuyển giai đoạn của (e), vì trigger chỉ cho đổi chúng ở
+   một chuyển tiếp ra khỏi `draft` (bước 3). (e) Loại có cổng: `LifecycleService` chuyển `draft → evaluating` (spec R2.1; ADR-0120 (Accepted) quyết 1), ticket 06 xếp Lượt
    kiểm định hoặc dùng lại bằng chứng trong cùng giao dịch. (f) Audit `studio.version.submitted`. Câu trả lời 202 là
    `VersionView` đã có (`studio_artifacts.py:65`) của phiên bản vừa gửi, `stage` mới; ticket 04 thêm `binding_unset[]`. Mã 412, 428 và header
    là của app-standards/03, ticket này nhận qua tenant-config/04. Ticket 04 thêm vào route này `PublishBindingsCheck`:
