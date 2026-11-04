@@ -26,19 +26,19 @@ ai thấy và mở được agent, không bao giờ nới tầm dữ liệu. age
    (`application/audience.py`) nhận giá trị JSON thô, trả `AudienceDocument`, và từ chối bằng
    `AudienceInvalidError(DomainError)` (khai ở `domain/audience.py`; 422 `validation_failed`) mang `details.reason_code` và `problems`, mỗi vấn đề một
    `pointer` RFC 6901 (`at` cộng đường trong tài liệu, ví dụ `/any_of/0/all_of/1`), một `code` và một câu cố định:
-   - không có điều kiện nào trên cả tài liệu (`any_of` rỗng, hay mọi `all_of` rỗng) → `reason_code = "audience_empty"`;
-   - mọi lỗi khác → `reason_code = "audience_invalid"`, với `code` của từng vấn đề: `audience_malformed` (sai dạng, khóa
-     lạ, `schema` khác, giá trị không phải uuid; lỗi Pydantic đổi sang vấn đề có pointer), `audience_condition_unsupported`
-     (điều kiện là đối tượng một khóa mà khóa khác `workspace_subtree`; xét trước Pydantic, để `extra="forbid"` không
-     biến nó thành `audience_malformed`), `audience_too_many_conditions` (pointer ở điều kiện thứ 21),
-     `audience_group_empty` (một `all_of` rỗng trong tài liệu có điều kiện: nhóm rỗng đúng với mọi người, nên bị từ
-     chối), `audience_workspace_unknown` (workspace không tồn tại hay của tenant khác, cùng `code` và cùng câu).
-   Workspace được kiểm qua cổng hẹp `AudienceWorkspacesPort.known(context, ids) -> frozenset[UUID]` khai cùng tệp; adapter
-   `adapters/persistence/audience_workspaces.py` đọc `platform.workspaces` trong `tenant_session` với
-   `tenant_id = context.tenant_id` nêu tường minh, không chỉ dựa RLS (`workspaces_self_select` mở workspace của tenant khác
-   cho người đó khi `app.principal_id` được đặt). Một handler trong `apps/api/src/dw_api/exception_handlers.py` đổi
-   `problems` thành `errors[]` (`pointer`, `code`, `detail`) như handler của `QueryError`, để agent-builder/04 chỉ gọi
-   `validate(..., at="/audience")` và để lỗi đi qua; không route mới.
+    - không có điều kiện nào trên cả tài liệu (`any_of` rỗng, hay mọi `all_of` rỗng) → `reason_code = "audience_empty"`;
+    - mọi lỗi khác → `reason_code = "audience_invalid"`, với `code` của từng vấn đề: `audience_malformed` (sai dạng, khóa
+      lạ, `schema` khác, giá trị không phải uuid; lỗi Pydantic đổi sang vấn đề có pointer), `audience_condition_unsupported`
+      (điều kiện là đối tượng một khóa mà khóa khác `workspace_subtree`; xét trước Pydantic, để `extra="forbid"` không
+      biến nó thành `audience_malformed`), `audience_too_many_conditions` (pointer ở điều kiện thứ 21),
+      `audience_group_empty` (một `all_of` rỗng trong tài liệu có điều kiện: nhóm rỗng đúng với mọi người, nên bị từ
+      chối), `audience_workspace_unknown` (workspace không tồn tại hay của tenant khác, cùng `code` và cùng câu).
+      Workspace được kiểm qua cổng hẹp `AudienceWorkspacesPort.known(context, ids) -> frozenset[UUID]` khai cùng tệp; adapter
+      `adapters/persistence/audience_workspaces.py` đọc `platform.workspaces` trong `tenant_session` với
+      `tenant_id = context.tenant_id` nêu tường minh, không chỉ dựa RLS (`workspaces_self_select` mở workspace của tenant khác
+      cho người đó khi `app.principal_id` được đặt). Một handler trong `apps/api/src/dw_api/exception_handlers.py` đổi
+      `problems` thành `errors[]` (`pointer`, `code`, `detail`) như handler của `QueryError`, để agent-builder/04 chỉ gọi
+      `validate(..., at="/audience")` và để lỗi đi qua; không route mới.
 3. Migration (id hex của `alembic revision`): hàm
    `platform.audience_matches(p_tenant_id uuid, p_user_id uuid, p_audience jsonb) RETURNS boolean`,
    `LANGUAGE sql STABLE SECURITY INVOKER`, `SET search_path = pg_catalog, pg_temp`: trả `true` khi và chỉ khi người đó có

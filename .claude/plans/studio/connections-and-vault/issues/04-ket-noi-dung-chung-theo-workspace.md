@@ -51,7 +51,7 @@ ticket 07 (V4.31). Gộp từ B8a-connections connections-and-vault 07. P1 chỉ
    lớp ứng dụng kết nối của nền tảng, đúng chữ ký của ADR-0115 (Accepted) quyết 2 mà ADR-0118 (Accepted) quyết 3 gọi
    với `purpose='model'` ở W2; `connection` là id Kết nối, và hàm đọc dòng ở mỗi lần hỏi, không qua bộ đệm nào, để tắt
    có hiệu lực trước lời gọi kế (spec R5.5). `context` là `UsableContext(tenant_id, principal_id, workspace_id, call_site,
-   run_requested_at)`: `call_site` bắt buộc, không mặc định, một trong `binding_review`, `run_admission`, `egress`;
+run_requested_at)`: `call_site` bắt buộc, không mặc định, một trong `binding_review`, `run_admission`, `egress`;
    `principal_id` là chủ thể mà lượt hành động thay (`principal` của bản kê, tenant-config/05 bước 9) hay người đề xuất
    giá trị Điểm gắn; `workspace_id` là workspace của lượt hay của giá trị đang duyệt; `run_requested_at` là
    `created_at` của dòng `platform.worker_runs` của lượt. Hàm không đọc `platform.worker_runs`, bản kê hay phiên bản
@@ -71,30 +71,30 @@ ticket 07 (V4.31). Gộp từ B8a-connections connections-and-vault 07. P1 chỉ
       NULL hay ở tương lai theo `platform.secret_status` của ticket 02, kể cả khi trường không còn dòng nào, hay cổng
       trả None (trình kết nối không có ở lớp nền tảng); hay `compromised_at` khác NULL và
       `run_requested_at <= compromised_at`.
-   Một lượt được xin trước một lần xoay mà Kết nối chưa bị thu hồi vì lộ sau đó qua được (spec R5.17, R1.14), và lời
-   gọi mở phiên bản mới qua `platform.open_secret` là việc của ticket 05. `ConnectorCatalogPort` (bên dùng khai):
-   `secret_fields(connector_key, connector_major) -> frozenset[str] | None`, danh sách trường bí mật mà `auth` của Bản
-   mô tả khai; ticket này gắn ở composition root một cài đặt trả None cho mọi khóa, như `CatalogueHostsPort` của ticket
-   03, tới khi ticket 05 gắn danh mục của Bản mô tả (`smtp@1.0.0`: `{password}`); test dùng bản giả. Ba chỗ gọi không
-   thuộc ticket này: lúc duyệt giá trị Điểm gắn và lúc nhận lượt ở tenant-config/05 (bước 9; R8.4, R8.9), trước lời
-   gọi ra ngoài ở `ManifestActionHandler` và `SmtpEgress` của ticket 05; ticket này hỏi thẳng hàm (failure-modes #5).
-   Bên gọi ngoài `dw_platform` tới hàm qua một Protocol chính nó khai, composition root gắn hàm này (CLAUDE.md,
-   Non-negotiable architecture); hàm đọc trong một giao dịch ngắn của riêng nó với `app.tenant_id` là
-   `context.tenant_id` (`set_config(..., true)`), nên một lần tắt đã commit trước lời hỏi luôn được thấy.
-   2a. Thu hồi vì lộ (spec R1.15, R1.16, R5.16; V4.35; H-28): cùng migration của bước 1 thêm cột
-   `compromised_at timestamptz` NULL, không DEFAULT, vào `platform.connections` (grant cột của `dw_app` không có UPDATE
-   trên nó, ticket 02 bước 2), trigger `platform.guard_connection_compromised_at()` từ chối mọi UPDATE đặt cột về NULL
-   hay lùi nó về trước giá trị đã có, và hàm SECURITY DEFINER `platform.revoke_connection_secrets(p_connection_id uuid)`
-   (`SET search_path = pg_catalog, platform`, REVOKE ALL FROM PUBLIC, GRANT EXECUTE cho `dw_app`; lấy công ty từ
-   `app.tenant_id`, không nhận tham số công ty), trong một giao dịch: khóa dòng Kết nối `FOR UPDATE`, ghi
-   `revoked_at = now()` cho mọi dòng `platform.secret_envelopes` của Kết nối có `revoked_at` NULL hay ở tương lai,
-   không đụng `replaced_at`, rồi `compromised_at = now()` trên dòng Kết nối; Kết nối không thấy được dưới
-   `app.tenant_id` → không ghi gì, route trả 404. Route `POST /api/v1/connections/{id}/revoke-credentials` theo luật
-   quyền của bước 4 với khóa `connections.manage`, một người (spec R1.15; Đạt, Q-h3); audit
-   `connection.credentials_revoked` cùng giao dịch, không mang giá trị bí mật. Lần xoay vẫn là `PATCH` với giá trị mới
-   của trường, qua `platform.put_secret` của ticket 02.
+      Một lượt được xin trước một lần xoay mà Kết nối chưa bị thu hồi vì lộ sau đó qua được (spec R5.17, R1.14), và lời
+      gọi mở phiên bản mới qua `platform.open_secret` là việc của ticket 05. `ConnectorCatalogPort` (bên dùng khai):
+      `secret_fields(connector_key, connector_major) -> frozenset[str] | None`, danh sách trường bí mật mà `auth` của Bản
+      mô tả khai; ticket này gắn ở composition root một cài đặt trả None cho mọi khóa, như `CatalogueHostsPort` của ticket
+      03, tới khi ticket 05 gắn danh mục của Bản mô tả (`smtp@1.0.0`: `{password}`); test dùng bản giả. Ba chỗ gọi không
+      thuộc ticket này: lúc duyệt giá trị Điểm gắn và lúc nhận lượt ở tenant-config/05 (bước 9; R8.4, R8.9), trước lời
+      gọi ra ngoài ở `ManifestActionHandler` và `SmtpEgress` của ticket 05; ticket này hỏi thẳng hàm (failure-modes #5).
+      Bên gọi ngoài `dw_platform` tới hàm qua một Protocol chính nó khai, composition root gắn hàm này (CLAUDE.md,
+      Non-negotiable architecture); hàm đọc trong một giao dịch ngắn của riêng nó với `app.tenant_id` là
+      `context.tenant_id` (`set_config(..., true)`), nên một lần tắt đã commit trước lời hỏi luôn được thấy.
+      2a. Thu hồi vì lộ (spec R1.15, R1.16, R5.16; V4.35; H-28): cùng migration của bước 1 thêm cột
+      `compromised_at timestamptz` NULL, không DEFAULT, vào `platform.connections` (grant cột của `dw_app` không có UPDATE
+      trên nó, ticket 02 bước 2), trigger `platform.guard_connection_compromised_at()` từ chối mọi UPDATE đặt cột về NULL
+      hay lùi nó về trước giá trị đã có, và hàm SECURITY DEFINER `platform.revoke_connection_secrets(p_connection_id uuid)`
+      (`SET search_path = pg_catalog, platform`, REVOKE ALL FROM PUBLIC, GRANT EXECUTE cho `dw_app`; lấy công ty từ
+      `app.tenant_id`, không nhận tham số công ty), trong một giao dịch: khóa dòng Kết nối `FOR UPDATE`, ghi
+      `revoked_at = now()` cho mọi dòng `platform.secret_envelopes` của Kết nối có `revoked_at` NULL hay ở tương lai,
+      không đụng `replaced_at`, rồi `compromised_at = now()` trên dòng Kết nối; Kết nối không thấy được dưới
+      `app.tenant_id` → không ghi gì, route trả 404. Route `POST /api/v1/connections/{id}/revoke-credentials` theo luật
+      quyền của bước 4 với khóa `connections.manage`, một người (spec R1.15; Đạt, Q-h3); audit
+      `connection.credentials_revoked` cùng giao dịch, không mang giá trị bí mật. Lần xoay vẫn là `PATCH` với giá trị mới
+      của trường, qua `platform.put_secret` của ticket 02.
 3. `ConnectionDependentsPort` khai ở đây, cho "Được dùng bởi" và chặn xóa: `dependents(context, connection_id) ->
-   ConnectionDependents(total: int, visible: list[DependentRef(kind, id, name)])`, `total` đếm mọi thành phần phụ thuộc,
+ConnectionDependents(total: int, visible: list[DependentRef(kind, id, name)])`, `total` đếm mọi thành phần phụ thuộc,
    `visible` chỉ những thành phần người gọi đọc được (tenant-config:R3.4, R3.7); `DELETE` đọc `total`, `GET .../dependents`
    trả cả hai, schema vào OpenAPI ở bước 7. Bên đáp ứng là tenant-config/05 (bước 11:
    đọc `studio.dependencies` cộng giá trị Bộ giá trị gắn đã duyệt trong `platform.config_versions`); workflow-engine và
@@ -115,23 +115,23 @@ ticket 07 (V4.31). Gộp từ B8a-connections connections-and-vault 07. P1 chỉ
       không dòng nào đổi, không yêu cầu phê duyệt nào mở;
     - `POST`: `owning_workspace_id` là workspace của ngữ cảnh truy cập (thân yêu cầu không có trường đó), và workspace
       đó phải nằm trong `workspace_reach(..., 'connections.manage')`, không thì 403.
-   `POST` nhận `name`, `connector_key`, `connector_major`, `external_account` bắt buộc và không rỗng (thiếu → 422, để
-   R5.21 không bị vòng qua bằng NULL), `share_scope` chỉ `workspace` (giá trị khác →
-   422; spec R5.20) và mọi trường bí mật mà `ConnectorCatalogPort.secret_fields` trả (thiếu, thừa hay cổng trả None →
-   422), lưu từng trường qua `platform.put_secret` (ticket 02), tạo dòng `active`, cùng một giao dịch; còn một Kết nối
-   chưa `revoked` cho cùng `(connector_key, external_account)` → 409 `conflict` với `details.reason_code`
-   `connection_exists` (R5.21), đọc từ tên ràng buộc `uq_connections_account_live`. `PATCH` chỉ nhận
-   `name` và giá trị mới của trường bí mật mà `ConnectorCatalogPort.secret_fields` khai (xoay; trường lạ hay cổng trả
-   None → 422), ở mọi status trừ `revoked`, không nhận `status`, `owning_workspace_id` (cột không đổi: spec R1.7,
-   ticket 02), `share_scope`, `connector_key`, `connector_major`, `external_account` (tài khoản là danh tính của Kết
-   nối: đổi tài khoản là xóa rồi tạo). `.../disable` một người, có hiệu lực ngay
-   (`active → disabled`); Kết nối không `active` → 409 `conflict` với `details.reason_code` `connection_not_active`,
-   không audit, `disabled_at` không đổi. `DELETE` khóa dòng `FOR UPDATE`, hỏi `ConnectionDependentsPort`, còn phụ thuộc → 409
-   `connection_in_use`, không xóa; xóa thì FK CASCADE xóa phong bì (ticket 02). Trường bí mật `writeOnly`; phản hồi chỉ
-   nêu tên trường đã cấu hình. `Idempotency-Key` cho mọi `POST` và `PATCH`, tùy chọn như ADR-0108 (Accepted) quyết 4: lần phát lại
-   với cùng khóa trả câu trả lời đã lưu; vân tay của thân bỏ giá trị trường bí mật (chỉ giữ tên trường), vì một mã băm
-   không khóa của mật khẩu ngoài Kho bí mật đoán ngược được (spec R1.2), nên cùng khóa với giá trị bí mật khác trả câu
-   trả lời đã lưu mà không lưu giá trị mới; màn của ticket 07 sinh khóa mới cho mỗi lần gửi.
+      `POST` nhận `name`, `connector_key`, `connector_major`, `external_account` bắt buộc và không rỗng (thiếu → 422, để
+      R5.21 không bị vòng qua bằng NULL), `share_scope` chỉ `workspace` (giá trị khác →
+      422; spec R5.20) và mọi trường bí mật mà `ConnectorCatalogPort.secret_fields` trả (thiếu, thừa hay cổng trả None →
+      422), lưu từng trường qua `platform.put_secret` (ticket 02), tạo dòng `active`, cùng một giao dịch; còn một Kết nối
+      chưa `revoked` cho cùng `(connector_key, external_account)` → 409 `conflict` với `details.reason_code`
+      `connection_exists` (R5.21), đọc từ tên ràng buộc `uq_connections_account_live`. `PATCH` chỉ nhận
+      `name` và giá trị mới của trường bí mật mà `ConnectorCatalogPort.secret_fields` khai (xoay; trường lạ hay cổng trả
+      None → 422), ở mọi status trừ `revoked`, không nhận `status`, `owning_workspace_id` (cột không đổi: spec R1.7,
+      ticket 02), `share_scope`, `connector_key`, `connector_major`, `external_account` (tài khoản là danh tính của Kết
+      nối: đổi tài khoản là xóa rồi tạo). `.../disable` một người, có hiệu lực ngay
+      (`active → disabled`); Kết nối không `active` → 409 `conflict` với `details.reason_code` `connection_not_active`,
+      không audit, `disabled_at` không đổi. `DELETE` khóa dòng `FOR UPDATE`, hỏi `ConnectionDependentsPort`, còn phụ thuộc → 409
+      `connection_in_use`, không xóa; xóa thì FK CASCADE xóa phong bì (ticket 02). Trường bí mật `writeOnly`; phản hồi chỉ
+      nêu tên trường đã cấu hình. `Idempotency-Key` cho mọi `POST` và `PATCH`, tùy chọn như ADR-0108 (Accepted) quyết 4: lần phát lại
+      với cùng khóa trả câu trả lời đã lưu; vân tay của thân bỏ giá trị trường bí mật (chỉ giữ tên trường), vì một mã băm
+      không khóa của mật khẩu ngoài Kho bí mật đoán ngược được (spec R1.2), nên cùng khóa với giá trị bí mật khác trả câu
+      trả lời đã lưu mà không lưu giá trị mới; màn của ticket 07 sinh khóa mới cho mỗi lần gửi.
 5. Bật lại hai người (D11): `POST .../enable` cho một Kết nối `disabled`, sau luật ghi của bước 4, khóa dòng Kết nối
    `FOR UPDATE`; Kết nối không `disabled` → 409 `conflict` với `details.reason_code` `connection_not_disabled`; đã có
    một yêu cầu `connections.enable` `pending` cho Kết nối → 409 `conflict` với `details.reason_code` `enable_pending`,

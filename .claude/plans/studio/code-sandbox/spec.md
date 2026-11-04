@@ -98,4 +98,4 @@ Mỗi lần chạy mã dùng một container mới dùng một lần, không m�
 | #   | Ticket                                                                                                             |
 | --- | ------------------------------------------------------------------------------------------------------------------ |
 | 01  | [Spike: runsc systrap dưới engine rootless trên máy chủ và trên runner CI](issues/01-spike-runsc-may-chu-va-ci.md) |
-| 02  | [Đo runsc trên host mục tiêu và chốt ADR-0119 (Proposed)](issues/02-do-runsc-tren-host-muc-tieu.md) |
+| 02  | [Đo runsc trên host mục tiêu và chốt ADR-0119 (Proposed)](issues/02-do-runsc-tren-host-muc-tieu.md)                |

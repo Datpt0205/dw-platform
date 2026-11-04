@@ -36,12 +36,13 @@ bị giả lập như `simulate`. Lượt chạy của worker định nghĩa b�
       `wflite/starter.py:146` dùng để bắt đầu mọi lượt chạy DW của phiên bản quy trình đã phát hành, đặt `live`
       (ADR-0111 (Accepted) quyết 2: trigger và lượt chạy tay của phiên bản đang dùng là `live`).
 
-   Chỗ dựng ngữ cảnh chỉ để tra cứu hay chỉ để gọi model, không bắt đầu lượt chạy nào, giữ mặc định `simulate`
-   và chú thích lý do: `ApiContainer.run_context_for` (`apps/api/src/dw_api/bootstrap/container.py:256`: tra lượt
-   chạy, trợ lý và mô phỏng nháp của wf-ai), `_run_context_for` (`approval_flow.py:484`: chỉ đọc dòng lượt chạy),
-   `usage_run_context` (`adapters/langchain_usage.py:177`: không có dòng `worker_runs`, không gọi ToolExecutor) và
-   ba script (`scripts/eval_leadcare.py:60`, `scripts/eval_wf_ai.py:133`, `scripts/check_model_gateway.py:81`;
-   đánh giá là `simulate` theo quyết 2). Test hiện có dựng ngữ cảnh cho lượt chạy thật đặt `live`.
+    Chỗ dựng ngữ cảnh chỉ để tra cứu hay chỉ để gọi model, không bắt đầu lượt chạy nào, giữ mặc định `simulate`
+    và chú thích lý do: `ApiContainer.run_context_for` (`apps/api/src/dw_api/bootstrap/container.py:256`: tra lượt
+    chạy, trợ lý và mô phỏng nháp của wf-ai), `_run_context_for` (`approval_flow.py:484`: chỉ đọc dòng lượt chạy),
+    `usage_run_context` (`adapters/langchain_usage.py:177`: không có dòng `worker_runs`, không gọi ToolExecutor) và
+    ba script (`scripts/eval_leadcare.py:60`, `scripts/eval_wf_ai.py:133`, `scripts/check_model_gateway.py:81`;
+    đánh giá là `simulate` theo quyết 2). Test hiện có dựng ngữ cảnh cho lượt chạy thật đặt `live`.
+
 3. Revision Alembic mới (id hex ngẫu nhiên): thêm `platform.worker_runs.run_mode text`, backfill
    `live`, `SET NOT NULL`, `ck_worker_runs_run_mode CHECK (run_mode IN ('live', 'test', 'simulate'))`,
    không DEFAULT. Cập nhật `runtime_tables.py`; `SqlWorkerRunStore.create` (`adapters/run_store.py:204`, câu
@@ -92,8 +93,9 @@ bị giả lập như `simulate`. Lượt chạy của worker định nghĩa b�
       (`adapters/langchain_tools.py:272`) chỉ coi một lệnh gọi là cần duyệt khi `approval_policy.decide(...)` đúng và
       `definition.intercepted_in(run_context.run_mode)` sai (failure-modes #5).
 
-   Mô phỏng nháp của wf-ai (`wflite/simulate.py`) không phải một chế độ chạy và không đổi hành vi: nó không có dòng
-   `worker_runs`, không gọi ToolExecutor và trả mẫu cho mọi công cụ; chung với ticket này chỉ có `sample_of`.
+    Mô phỏng nháp của wf-ai (`wflite/simulate.py`) không phải một chế độ chạy và không đổi hành vi: nó không có dòng
+    `worker_runs`, không gọi ToolExecutor và trả mẫu cho mọi công cụ; chung với ticket này chỉ có `sample_of`.
+
 7. Revision Alembic mới: thay `ck_tool_executions_status`, nay là tập của `f051d26f0610_tool_executions_refused.py:31`
    (runtime-hardening:R6.3 cộng `refused` của digital-worker/02), bằng tập đó cộng `simulated`, tức
    `CHECK (status IN ('succeeded', 'failed', 'dispatched', 'outcome_unknown', 'refused', 'simulated'))`, giữ

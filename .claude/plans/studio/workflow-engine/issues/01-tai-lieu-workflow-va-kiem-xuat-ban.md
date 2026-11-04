@@ -116,7 +116,8 @@ V4.24), và cây mang làn cho mọi cấu trúc của W1 ngay từ ticket này,
         - `MAX_NESTING = 10`: Bước ở `steps[]` có độ sâu 1, Bước trong một làn (kể cả `error_lane`) của Bước độ sâu n
           có độ sâu n + 1.
 
-      Đúng 500 Bước và đúng độ sâu 10 thì qua. Con trỏ tới Bước đầu tiên vượt.
+        Đúng 500 Bước và đúng độ sâu 10 thì qua. Con trỏ tới Bước đầu tiên vượt.
+
     - R1.8: `edges`, `nodes`, hay một khóa vị trí ở bất cứ đâu → `wf.schema_invalid` (từ `extra="forbid"`); một khóa
       làn mà loại không khai, như `expired` trên `human.approval@1` (W2) → `wf.config_invalid` (từ schema của loại);
       `error_lane` khi `on_error` khác `route`, hay `on_error: route` không có `error_lane` → `wf.schema_invalid`.
@@ -312,12 +313,13 @@ V4.24), và cây mang làn cho mọi cấu trúc của W1 ngay từ ticket này,
     - Hợp đồng `TriggerActivationPort` không nói thay đăng ký của phiên bản trước, gọi lại, hay lỗi. Sửa: bước 8.
     - R2.13 không ai trả cảnh báo: `save_draft` của tenant-config/02 không gọi bộ kiểm. Sửa: bước 6.
 
-  Lượt xác nhận (một subagent mới, builder check với ba bước của boundary walk, đọc thêm mã wf-lite) tìm 2 HIGH, sửa
-  theo khuyến nghị: tên node gộp `join:<id>` mà LangGraph cấm (`NS_END`) và làm hỏng checkpoint của lượt wf-lite đang
-  đỗ (nay giữ `join__<id>`, `wait__<id>` và cấm hai tiền tố ở id Bước); R2.2 trên đường gói từ chối đề xuất wf-ai
-  thiếu `rejected` (nay `every_port_lane` chỉ ở Studio). Cũng sửa theo lượt đó: bốn khóa mới bị từ chối ở
-  `triggers[]`, `_NOT_VALUES` nhường cho khóa làn của IR, lưu nháp không bị chặn bởi lỗi `wf.*`, nghĩa của `timeout_s`.
-  Quyết định này đứng trên mã đã ở `main` (`47df14d`, `3c85dbd`), không trên trạng thái của ADR-0128 (Proposed).
+    Lượt xác nhận (một subagent mới, builder check với ba bước của boundary walk, đọc thêm mã wf-lite) tìm 2 HIGH, sửa
+    theo khuyến nghị: tên node gộp `join:<id>` mà LangGraph cấm (`NS_END`) và làm hỏng checkpoint của lượt wf-lite đang
+    đỗ (nay giữ `join__<id>`, `wait__<id>` và cấm hai tiền tố ở id Bước); R2.2 trên đường gói từ chối đề xuất wf-ai
+    thiếu `rejected` (nay `every_port_lane` chỉ ở Studio). Cũng sửa theo lượt đó: bốn khóa mới bị từ chối ở
+    `triggers[]`, `_NOT_VALUES` nhường cho khóa làn của IR, lưu nháp không bị chặn bởi lỗi `wf.*`, nghĩa của `timeout_s`.
+    Quyết định này đứng trên mã đã ở `main` (`47df14d`, `3c85dbd`), không trên trạng thái của ADR-0128 (Proposed).
+
 - 2026-11-03 (agent): MEDIUM của gate, chưa sửa, cho người dựng và cho `checking-plan-consistency`:
     - (a) đường dẫn lỗi thành con trỏ JSON: một giá trị `cases` chứa `/` hay `~` phải thoát theo RFC 6901; `_join` của
       wf-lite hôm nay không thoát;

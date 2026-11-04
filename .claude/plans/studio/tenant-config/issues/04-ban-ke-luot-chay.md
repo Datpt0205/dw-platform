@@ -257,7 +257,7 @@ lần từ chối của `PinnedResolver` thành `blocked` với `incompatible_re
   bản kê" cần cột `artifact_kind` của workflow-engine/02: tiêu chí nay thử ở seam của ticket này, CHECK sang revision
   của workflow-engine/02; (4) bao đóng nháp "lấy từ `extract`" thay vì gọi lại `closure_of` và `definition_body` của
   ticket 02; (5) băm lại nháp khi tiếp tục dùng bao đóng đã ghim, không gọi lại `closure_of`; (6) dòng khóa ghi `ON
-  CONFLICT DO NOTHING`; (7) `run_mode` ở dòng lượt chạy và trong thân bất đồng được: trigger
+CONFLICT DO NOTHING`; (7) `run_mode` ở dòng lượt chạy và trong thân bất đồng được: trigger
   `platform.match_run_manifest()` và R6.9, kèm `run_manifest_hash` đã đặt thì không đổi; (8) `RunManifestPort` là
   `load` cho runtime qua ranh giới gói, `build` gọi thẳng trong `dw_studio`; (9) `engine` không lấy từ mục registry mà
   ticket 02 không có trường đó; (10) `hosts` giữ chữ ký, lượt Studio hỏi `PinnedResolver.load` và kiểm của

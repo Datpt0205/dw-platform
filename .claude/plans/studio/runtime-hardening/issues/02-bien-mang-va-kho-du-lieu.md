@@ -139,29 +139,29 @@ Kho dữ liệu (R8.1, R8.2, R8.4):
 - 2026-10-30 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
 - 2026-10-30 (agent): resolved ở `df27594` (`34768e7` giới hạn tốc độ và `net_guard`, `df27594` kho dữ liệu, ảnh, exporter).
   Khác với ticket:
-  - `net_guard`: với `allow_private` (chỉ người gọi không `is_deployed`), tên không phân giải được vẫn qua như hôm nay
-    (không tới được địa chỉ nào; dịch vụ compose có thể chưa lên); profile triển khai vẫn từ chối. Đo: Python xếp cả
-    NAT64 `64:ff9b::/96` vào `::/8` reserved, nên ca xấu đã bị chặn sẵn; bước tháo NAT64 là để cho qua NAT64 của địa
-    chỉ global (`64:ff9b::808:808`). `::1` cũng reserved, nên loopback được xét trước reserved.
-  - Healthcheck của Qdrant giữ phép thăm TCP (không cần khóa); của Valkey dùng mật khẩu.
-  - `create_monitor_role.py` đưa vai về đúng khai báo: thu hồi mọi membership ngoài `pg_monitor` (một đột biến cấp
-    thêm quyền được chính vòng này gỡ, nên đột biến của RH24 là thuộc tính `BYPASSRLS`).
-  - Trivy (0.74.0, đã chạy cục bộ trên 14 ảnh ghim): 12 ảnh có lỗ hổng HIGH/CRITICAL đã có bản vá, keycloak quét quá
-    giờ. Vòng quét ảnh bên thứ ba trong CI chỉ báo cáo; ảnh `dw-*` vẫn chặn. Nâng ảnh: `studio.md`, Chờ Đạt 19.
-  - Ngoài phạm vi, ghi lại: `FROM` của Dockerfile repo chưa ghim digest.
-  - `reviewing-feature-security`: tenant (Valkey của Langfuse tách khỏi cache mang AccessContext của mọi tenant);
-    phân quyền (bearer không xác minh ở tầng này, đúng bước 2); tự chủ: không đổi tầm với của agent; nội dung không tin
-    cậy: URL gốc do người vận hành cấu hình qua một chính sách địa chỉ, URL của tenant thuộc `connections-and-vault`;
-    audit: không có ghi mới; mặc định: bí mật kho `:?` ở mọi profile, settings triển khai từ chối thiếu khóa,
-    `allow_private` không nới link-local. Test âm ở mỗi chỗ.
-  - Mutation `mutations/02.yaml`: 13/13 đỏ, đối chứng xanh (lượt đầu 11/13; hai đột biến viết lại như trên).
-  - Đo trên project compose thử (cổng riêng): Qdrant có khóa 200, không khóa 401; Valkey `PONG`/`NOAUTH`; Valkey của
-    Langfuse `PONG`/`NOAUTH`; khóa hay mật khẩu trống → `docker compose config` lỗi.
-  - Độ trễ: ticket không đổi truy cập database (giới hạn tốc độ trong tiến trình), đo ở đóng wave.
-  - Cổng: ruff, format, mypy, `make test-unit` (1734), `test-contract`, `test-architecture` xanh; integration của
-    `dw_platform`, `dw_knowledge`, `dw_memory`, `apps/worker`, `apps/api`: 734 qua, 3 bỏ qua, 34 lỗi đều ở
-    `dw_knowledge` và đều là S3 `InvalidAccessKeyId` (thông tin S3 của `.env` cục bộ lệch SeaweedFS đang chạy; lỗi y
-    hệt ở `d565566`, không do ticket này). `make test-integration` toàn bộ để cho đóng wave.
-  - Việc của người vận hành trước khi triển khai: đặt `QDRANT_API_KEY`, `REDIS_PASSWORD`, `LANGFUSE_REDIS_PASSWORD`,
-    `DW_DB_MONITOR_PASSWORD` trên host uat và production, chạy `scripts/create_monitor_role.py` trên cluster có sẵn;
-    `.env` cục bộ cũng cần bốn biến này trước lần `make infra-up` tới (Chờ Đạt 20).
+    - `net_guard`: với `allow_private` (chỉ người gọi không `is_deployed`), tên không phân giải được vẫn qua như hôm nay
+      (không tới được địa chỉ nào; dịch vụ compose có thể chưa lên); profile triển khai vẫn từ chối. Đo: Python xếp cả
+      NAT64 `64:ff9b::/96` vào `::/8` reserved, nên ca xấu đã bị chặn sẵn; bước tháo NAT64 là để cho qua NAT64 của địa
+      chỉ global (`64:ff9b::808:808`). `::1` cũng reserved, nên loopback được xét trước reserved.
+    - Healthcheck của Qdrant giữ phép thăm TCP (không cần khóa); của Valkey dùng mật khẩu.
+    - `create_monitor_role.py` đưa vai về đúng khai báo: thu hồi mọi membership ngoài `pg_monitor` (một đột biến cấp
+      thêm quyền được chính vòng này gỡ, nên đột biến của RH24 là thuộc tính `BYPASSRLS`).
+    - Trivy (0.74.0, đã chạy cục bộ trên 14 ảnh ghim): 12 ảnh có lỗ hổng HIGH/CRITICAL đã có bản vá, keycloak quét quá
+      giờ. Vòng quét ảnh bên thứ ba trong CI chỉ báo cáo; ảnh `dw-*` vẫn chặn. Nâng ảnh: `studio.md`, Chờ Đạt 19.
+    - Ngoài phạm vi, ghi lại: `FROM` của Dockerfile repo chưa ghim digest.
+    - `reviewing-feature-security`: tenant (Valkey của Langfuse tách khỏi cache mang AccessContext của mọi tenant);
+      phân quyền (bearer không xác minh ở tầng này, đúng bước 2); tự chủ: không đổi tầm với của agent; nội dung không tin
+      cậy: URL gốc do người vận hành cấu hình qua một chính sách địa chỉ, URL của tenant thuộc `connections-and-vault`;
+      audit: không có ghi mới; mặc định: bí mật kho `:?` ở mọi profile, settings triển khai từ chối thiếu khóa,
+      `allow_private` không nới link-local. Test âm ở mỗi chỗ.
+    - Mutation `mutations/02.yaml`: 13/13 đỏ, đối chứng xanh (lượt đầu 11/13; hai đột biến viết lại như trên).
+    - Đo trên project compose thử (cổng riêng): Qdrant có khóa 200, không khóa 401; Valkey `PONG`/`NOAUTH`; Valkey của
+      Langfuse `PONG`/`NOAUTH`; khóa hay mật khẩu trống → `docker compose config` lỗi.
+    - Độ trễ: ticket không đổi truy cập database (giới hạn tốc độ trong tiến trình), đo ở đóng wave.
+    - Cổng: ruff, format, mypy, `make test-unit` (1734), `test-contract`, `test-architecture` xanh; integration của
+      `dw_platform`, `dw_knowledge`, `dw_memory`, `apps/worker`, `apps/api`: 734 qua, 3 bỏ qua, 34 lỗi đều ở
+      `dw_knowledge` và đều là S3 `InvalidAccessKeyId` (thông tin S3 của `.env` cục bộ lệch SeaweedFS đang chạy; lỗi y
+      hệt ở `d565566`, không do ticket này). `make test-integration` toàn bộ để cho đóng wave.
+    - Việc của người vận hành trước khi triển khai: đặt `QDRANT_API_KEY`, `REDIS_PASSWORD`, `LANGFUSE_REDIS_PASSWORD`,
+      `DW_DB_MONITOR_PASSWORD` trên host uat và production, chạy `scripts/create_monitor_role.py` trên cluster có sẵn;
+      `.env` cục bộ cũng cần bốn biến này trước lần `make infra-up` tới (Chờ Đạt 20).

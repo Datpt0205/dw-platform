@@ -60,34 +60,34 @@ Business Owner đọc scorecard của DW tính từ hàng đợi, quyết địn
   `build_model_stack`, nên cả API và worker ghi). Còn: bước 3 scorecard, 4 route nâng hạ, 5 handler outbox, 8 index
   unique một phần, 6 độ trễ, 7 test âm; mutation, rà bảo mật.
 - 2026-10-30 (agent): bước 3-5, 8 xong (`a6963ad`). Khác với ticket hay quyết khi spec im lặng (agent, tạm):
-  - Scorecard: tỷ lệ là `null` khi cửa sổ không có việc nào (không phải 0); `model_cost_usd` trả chuỗi thập phân
-    đúng sáu chữ số của cột. Cửa sổ tính bằng đồng hồ của ứng dụng (`clock.now() - days × 24 giờ`). Nếu sai thì: đổi
-    `Scorecard.*_rate` và `ScorecardView`.
-  - Route nâng hạ: mức bằng mức hiện tại là 422 `level_unchanged`; mức lạ 422 `level_invalid`; loại không có ở DW 404
-    `decision_class_not_found`; hai lần hạ cùng lúc, lần thua là 409 `level_changed`. Mở đề nghị nâng ghi thêm audit
-    `dw.autonomy.raise_requested` cùng giao dịch với approval.
-  - Từ chối đề nghị nâng: handler không ghi `raise_stale` (dòng `approval.decided` của quyết định là vết); `raise_stale`
-    chỉ khi đã duyệt mà mức đã đổi hay DW đã `retired`. Một sự kiện đã áp dụng giao lại thấy mức đã bằng `to_level` và
-    không làm gì; một quyết định `raise_stale` giao lại (tiến trình chết giữa commit và đánh dấu) có thể ghi thêm một dòng
-    `raise_stale`, mức không đổi.
-  - `DwDecisionAdmission` nhận `deciders`: một lớp cho cả `dw.decision` (Validator hay BO) và `dw.autonomy.raise`
-    (Validator hay TO), không hai bản. Worker cũng đăng ký luật đó và tiền tố strict cho đường quyết qua chat.
-  - Phía worker là `RaiseSettler` riêng (không cần đọc DW theo người gọi), handler `dw.autonomy.raise.decided`.
-  - Giới hạn biết trước: một đề nghị nâng đang chờ chặn đề nghị nâng khác của loại đó tới khi Validator hay TO quyết;
-    BO không rút được (luật strict cấm người đề nghị quyết, kể cả từ chối). Hạ mức không bị chặn.
+    - Scorecard: tỷ lệ là `null` khi cửa sổ không có việc nào (không phải 0); `model_cost_usd` trả chuỗi thập phân
+      đúng sáu chữ số của cột. Cửa sổ tính bằng đồng hồ của ứng dụng (`clock.now() - days × 24 giờ`). Nếu sai thì: đổi
+      `Scorecard.*_rate` và `ScorecardView`.
+    - Route nâng hạ: mức bằng mức hiện tại là 422 `level_unchanged`; mức lạ 422 `level_invalid`; loại không có ở DW 404
+      `decision_class_not_found`; hai lần hạ cùng lúc, lần thua là 409 `level_changed`. Mở đề nghị nâng ghi thêm audit
+      `dw.autonomy.raise_requested` cùng giao dịch với approval.
+    - Từ chối đề nghị nâng: handler không ghi `raise_stale` (dòng `approval.decided` của quyết định là vết); `raise_stale`
+      chỉ khi đã duyệt mà mức đã đổi hay DW đã `retired`. Một sự kiện đã áp dụng giao lại thấy mức đã bằng `to_level` và
+      không làm gì; một quyết định `raise_stale` giao lại (tiến trình chết giữa commit và đánh dấu) có thể ghi thêm một dòng
+      `raise_stale`, mức không đổi.
+    - `DwDecisionAdmission` nhận `deciders`: một lớp cho cả `dw.decision` (Validator hay BO) và `dw.autonomy.raise`
+      (Validator hay TO), không hai bản. Worker cũng đăng ký luật đó và tiền tố strict cho đường quyết qua chat.
+    - Phía worker là `RaiseSettler` riêng (không cần đọc DW theo người gọi), handler `dw.autonomy.raise.decided`.
+    - Giới hạn biết trước: một đề nghị nâng đang chờ chặn đề nghị nâng khác của loại đó tới khi Validator hay TO quyết;
+      BO không rút được (luật strict cấm người đề nghị quyết, kể cả từ chối). Hạ mức không bị chặn.
 - 2026-10-30 (agent): resolved (`d340030` cột chi phí, `a6963ad` scorecard và nâng hạ, `8e02ff1` mutation).
-  - `reviewing-feature-security`: tenant (mọi câu dưới `tenant_session` theo tenant và workspace của người gọi hay của
-    sự kiện; approval lọc workspace rõ vì RLS chỉ theo tenant; tenant khác đọc scorecard 404, ghi chi phí cho lượt của
-    tenant khác không cộng gì); phân quyền (chủ DW kiểm ở service nơi ghi; Validator hạ 403, TO nâng 403, người ngoài DW
-    giữ `approvals.decide` quyết 409); tự chủ (nâng không đổi gì tới khi người thứ hai duyệt; settle đóng khi thiếu lớp
-    hay DW; CHECK `earned_level <= ceiling` vẫn giữ ở DB); đầu vào (mức kiểm theo `AUTONOMY_LEVELS`, khóa loại chỉ tìm
-    trong lớp của DW); audit (`lowered`, `raise_requested` cùng giao dịch ghi; `raised`, `raise_stale` cùng giao dịch
-    settle, đứng tên người duyệt với `details.lane`); vòng đời (giới hạn ở dòng trên).
-  - Mutation `mutations/03.yaml`: 18/18 đỏ, đối chứng xanh. Trước đó bỏ điều kiện `earned_level = from_level` lặp ở
-    câu UPDATE của settle (dòng lớp đã giữ `FOR UPDATE` từ lúc đọc; một chỗ giữ luật, failure-modes #3).
-  - Độ trễ (200 lời gọi ấm, ứng dụng ASGI thật, PostgreSQL thật; ba DW, 3.000 việc trong 120 ngày, 1.500 approval
-    `dw.decision`, 3.000 lượt chạy): `GET scorecard?days=30` P50/P95/P99 49,5/60,7/70,3 ms, `days=90`
-    49,9/61,0/69,2 ms, `POST .../autonomy` (hạ) 49,4/64,9/69,2 ms (route mới, không số gốc); `GET /work-items` cha
-    `e50bbb6` 33,6/44,2/50,9 ms, sau 33,9/42,3/48,2 ms. Trong ngân sách, không index mới cho scorecard.
-  - Cổng: ruff, format, mypy, `make test-unit`, `test-contract` (snapshot OpenAPI và client sinh lại),
-    `test-architecture`; integration của `dw_platform`, `dw_agent_runtime`, `apps/api`, `apps/worker`: 820 passed, 3 skipped (`make test-unit` 1772, contract 24, architecture 32).
+    - `reviewing-feature-security`: tenant (mọi câu dưới `tenant_session` theo tenant và workspace của người gọi hay của
+      sự kiện; approval lọc workspace rõ vì RLS chỉ theo tenant; tenant khác đọc scorecard 404, ghi chi phí cho lượt của
+      tenant khác không cộng gì); phân quyền (chủ DW kiểm ở service nơi ghi; Validator hạ 403, TO nâng 403, người ngoài DW
+      giữ `approvals.decide` quyết 409); tự chủ (nâng không đổi gì tới khi người thứ hai duyệt; settle đóng khi thiếu lớp
+      hay DW; CHECK `earned_level <= ceiling` vẫn giữ ở DB); đầu vào (mức kiểm theo `AUTONOMY_LEVELS`, khóa loại chỉ tìm
+      trong lớp của DW); audit (`lowered`, `raise_requested` cùng giao dịch ghi; `raised`, `raise_stale` cùng giao dịch
+      settle, đứng tên người duyệt với `details.lane`); vòng đời (giới hạn ở dòng trên).
+    - Mutation `mutations/03.yaml`: 18/18 đỏ, đối chứng xanh. Trước đó bỏ điều kiện `earned_level = from_level` lặp ở
+      câu UPDATE của settle (dòng lớp đã giữ `FOR UPDATE` từ lúc đọc; một chỗ giữ luật, failure-modes #3).
+    - Độ trễ (200 lời gọi ấm, ứng dụng ASGI thật, PostgreSQL thật; ba DW, 3.000 việc trong 120 ngày, 1.500 approval
+      `dw.decision`, 3.000 lượt chạy): `GET scorecard?days=30` P50/P95/P99 49,5/60,7/70,3 ms, `days=90`
+      49,9/61,0/69,2 ms, `POST .../autonomy` (hạ) 49,4/64,9/69,2 ms (route mới, không số gốc); `GET /work-items` cha
+      `e50bbb6` 33,6/44,2/50,9 ms, sau 33,9/42,3/48,2 ms. Trong ngân sách, không index mới cho scorecard.
+    - Cổng: ruff, format, mypy, `make test-unit`, `test-contract` (snapshot OpenAPI và client sinh lại),
+      `test-architecture`; integration của `dw_platform`, `dw_agent_runtime`, `apps/api`, `apps/worker`: 820 passed, 3 skipped (`make test-unit` 1772, contract 24, architecture 32).

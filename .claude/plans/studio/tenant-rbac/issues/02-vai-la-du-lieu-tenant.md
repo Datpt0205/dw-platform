@@ -169,7 +169,7 @@ xóa cache ở route khóa của foundations-hardening/02 là tạm và ticket n
       (mỗi câu của plpgsql lấy snapshot mới); khi `platform.tenants.status` là `setup` và số thành viên công ty `active` có
       gán `tenant_owner` (đếm trên `platform.role_assignments` nối `platform.tenant_members`, không qua
       `platform.effective_grants`, vốn chỉ tính tenant `active`) từ hai trở lên, đặt `status = 'active'` (`WHERE status =
-      'setup'`) trong cùng giao dịch và ghi audit `platform.tenant.setup_completed` đứng tên người mà dòng của lệnh ghi
+'setup'`) trong cùng giao dịch và ghi audit `platform.tenant.setup_completed` đứng tên người mà dòng của lệnh ghi
       nêu (người vừa `active`, hay người vừa được gán chủ), `details` là id hai chủ sở hữu, nhãn tiếng Việt của hành động
       vào mảnh `configs/copy/audit_actions.d/tenant-rbac.yaml` trong cùng thay đổi (H-21). Lần đăng nhập đầu của chủ sở
       hữu là đường kích hoạt thường: `bootstrap` gọi `platform.activate_invited_members` (org-and-principals:R4.5) ở mọi
@@ -373,8 +373,7 @@ xóa cache ở route khóa của foundations-hardening/02 là tạm và ticket n
 - 2026-11-02 (agent, theo ủy quyền 31/10/2026): HIGH 10: tiêu chí R3.11 đòi 409 `operator_not_assignable` khi tạo công ty
   với email của một `support_staff`, nhưng cửa membership có sẵn (`ck_memberships_not_support_staff`, `af8ee878b4ab`) từ
   chối trước với `support_staff_not_member`, nên tiêu chí không xanh được mà không đổi cửa đó, và phép đột biến "bỏ nhánh
-  `support_staff`" không làm đỏ ca này (failure-modes #3); `POST .../operators`, `.../support-staff` không bắt 23514 mới, ra
-  500. Sửa: ca tạo công ty mong mã có sẵn, nhánh `support_staff` được thử ở hai đường cửa membership không thấy, hai route
+  `support_staff`" không làm đỏ ca này (failure-modes #3); `POST .../operators`, `.../support-staff` không bắt 23514 mới, ra 500. Sửa: ca tạo công ty mong mã có sẵn, nhánh `support_staff` được thử ở hai đường cửa membership không thấy, hai route
   đổi 23514 thành 409. Nếu sai thì: `platform.refuse_support_staff_membership()` nhường cho trigger mới và mã thống nhất
   thành `operator_not_assignable`.
 - 2026-11-02 (agent, theo ủy quyền 31/10/2026): HIGH 11: bước 15 đặt `platform.tenant_access_versions` vào

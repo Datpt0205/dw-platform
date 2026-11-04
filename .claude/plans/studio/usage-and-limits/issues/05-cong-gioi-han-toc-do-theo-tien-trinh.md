@@ -133,10 +133,10 @@ adapter thứ hai ở W2.
 - 2026-11-02 (agent, theo ủy quyền 31/10/2026): `ApiContainer.rate_limiter` là `RateLimiterPort | None = None`, không
   bắt buộc, để hơn hai mươi container dựng tay trong test không phải sửa; `build_container` luôn đặt nó, trước cổng
   database vì bộ đếm không cần Postgres. `replicas = settings.api_replicas or 1` ở wiring là chỗ duy nhất đọc trống là
-  1. Thêm `api_replicas=1` vào hai bộ settings triển khai của test (`test_dev_endpoints.deployed_settings`,
-  `test_zalo_webhook_endpoint.deployed`) và một dòng chú thích `DW_API_REPLICAS` trong `.env.example`. `__len__` và
-  `replicas` trên adapter để test đọc bảng và số tiến trình. Nếu sai thì: trường bắt buộc nghĩa là sửa mọi fixture
-  dựng `ApiContainer`.
+    1. Thêm `api_replicas=1` vào hai bộ settings triển khai của test (`test_dev_endpoints.deployed_settings`,
+       `test_zalo_webhook_endpoint.deployed`) và một dòng chú thích `DW_API_REPLICAS` trong `.env.example`. `__len__` và
+       `replicas` trên adapter để test đọc bảng và số tiến trình. Nếu sai thì: trường bắt buộc nghĩa là sửa mọi fixture
+       dựng `ApiContainer`.
 - 2026-11-02 (agent): resolved. `RateLimiterPort`, `SourceKey`, `PrincipalObjectKey`, `RateDecision` ở
   `dw_platform/application/rate_limit.py`; `InProcessRateLimiter` ở `dw_platform/adapters/rate_limit.py`;
   `DW_API_REPLICAS` bắt buộc khi `is_deployed`, overlay uat/prod đặt `"1"` (`docker compose ... config` hợp lệ);

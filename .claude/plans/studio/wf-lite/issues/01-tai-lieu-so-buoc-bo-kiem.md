@@ -70,21 +70,21 @@ message_en}]` với mã `wf.schema_invalid`, `wf.duplicate_step_id`, `wf.unknown
 - 2026-10-29 (agent): viết lại theo gate `checking-plan-readiness` lượt 1.
 - 2026-10-29 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
 - 2026-10-30 (agent): làm xong. Chọn khi làm, ghi lại:
-  - Lane của một bước nằm trong `config` dưới tên cổng: `approved`/`rejected` của `human.approval@1`,
-    `cases`/`default` của `logic.switch@1` (như cách ticket viết `cases` và `default`); sổ khai cổng của từng loại.
-  - `tool.call@1` nêu công cụ dạng `name@semver` để tra `ToolSpecRegistry` theo khóa của nó; đầu ra của bước là
-    `{result}` (wf-lite/02 ghi kết quả có kiểu của công cụ vào đó).
-  - Người dùng `{{ steps.<cổng>.proposal }}` thấy được bước cổng từ trong lane của chính nó (R4.3 đòi điều đó).
-  - Tham chiếu tới id bước không có là `wf.ref_unknown`; có mà không đứng trước là `wf.ref_not_dominating`.
-  - Kind của `trigger.work_item` phải có trong `work_kinds[]`, và tệp schema của mỗi kind phải có và là JSON Schema
-    hợp lệ: `wf.config_invalid` nêu tệp.
-  - Bộ kiểm JSON Schema là `dw_platform.application.json_schema` (một chủ, digital-worker/02).
-  - Catalog đọc YAML với boolean của YAML 1.2: PyYAML theo YAML 1.1 đọc `on:` thành khóa `True` (đo trên PyYAML 6,
-    30/10/2026), nên `logic.switch` viết `on:` đã không tới bộ kiểm. Có test và đột biến riêng.
-  - `ShippedToolSpecs` đọc lớp nền tảng của `configs/tools` cho bộ kiểm, vì `ToolSpecRegistry` cần bản chữ của runtime
-    để dựng định nghĩa, việc bộ kiểm không cần, và worker không nạp công cụ. `load_shipped_packs(configs)` là một
-    hàm cho cả API (trước cổng cơ sở dữ liệu, nên gói sai chặn cả khi không có database) và worker (trước lane đầu
-    tiên). Hàng đợi việc đọc schema từ catalog đó.
+    - Lane của một bước nằm trong `config` dưới tên cổng: `approved`/`rejected` của `human.approval@1`,
+      `cases`/`default` của `logic.switch@1` (như cách ticket viết `cases` và `default`); sổ khai cổng của từng loại.
+    - `tool.call@1` nêu công cụ dạng `name@semver` để tra `ToolSpecRegistry` theo khóa của nó; đầu ra của bước là
+      `{result}` (wf-lite/02 ghi kết quả có kiểu của công cụ vào đó).
+    - Người dùng `{{ steps.<cổng>.proposal }}` thấy được bước cổng từ trong lane của chính nó (R4.3 đòi điều đó).
+    - Tham chiếu tới id bước không có là `wf.ref_unknown`; có mà không đứng trước là `wf.ref_not_dominating`.
+    - Kind của `trigger.work_item` phải có trong `work_kinds[]`, và tệp schema của mỗi kind phải có và là JSON Schema
+      hợp lệ: `wf.config_invalid` nêu tệp.
+    - Bộ kiểm JSON Schema là `dw_platform.application.json_schema` (một chủ, digital-worker/02).
+    - Catalog đọc YAML với boolean của YAML 1.2: PyYAML theo YAML 1.1 đọc `on:` thành khóa `True` (đo trên PyYAML 6,
+      30/10/2026), nên `logic.switch` viết `on:` đã không tới bộ kiểm. Có test và đột biến riêng.
+    - `ShippedToolSpecs` đọc lớp nền tảng của `configs/tools` cho bộ kiểm, vì `ToolSpecRegistry` cần bản chữ của runtime
+      để dựng định nghĩa, việc bộ kiểm không cần, và worker không nạp công cụ. `load_shipped_packs(configs)` là một
+      hàm cho cả API (trước cổng cơ sở dữ liệu, nên gói sai chặn cả khi không có database) và worker (trước lane đầu
+      tiên). Hàng đợi việc đọc schema từ catalog đó.
 - 2026-10-30 (agent): `reviewing-feature-security`: không bảng, không route, không quyền mới; tài liệu đến từ repo, không
   từ tenant. Hiệu ứng ra ngoài phải nằm trong lane Duyệt cùng loại quyết định và nhận nguyên bản đã duyệt, kiểm lúc
   khởi động (cửa cuối vẫn là `ToolExecutor`, wf-lite/02 R6.17). Mutation check `mutations/01.yaml`: 20/20 đỏ, đối

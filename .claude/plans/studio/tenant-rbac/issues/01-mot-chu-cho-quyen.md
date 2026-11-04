@@ -108,7 +108,7 @@ phần bootstrap của foundations-hardening 05 (brief B11).
   `apps/api/src` và hằng `*_SCOPE`, nên mù với phần lớn chỗ kiểm hôm nay: `authz.require(action=HẰNG)` trong service
   (`admin_console.py:193-336`, `digital_workers.py:248-305`, `separation_of_duties.py:120-150`), `APPROVALS_DECIDE` ở
   `approval_flow.py:263-266`, `idempotent(MEMBERS_WRITE, ...)`, `idempotent(DW_MANAGE, ...)`, `_RECORDS_ALL_READ in
-  scopes` (failure-modes #0); khóa mới kiểm qua hằng qua được (b) không dòng danh mục, còn (c) báo
+scopes` (failure-modes #0); khóa mới kiểm qua hằng qua được (b) không dòng danh mục, còn (c) báo
   `platform.roles.read`, `dw.manage`, `approvals.decide` là không ai kiểm. Sửa: bước 5 (b) định nghĩa chỗ kiểm đọc bằng
   `ast` (đối số `action` của `.require(`, đối số đầu của `idempotent(`, `has_scope(`, `in ... scopes`, hằng
   `*_SCOPE`, giải hằng nhập từ module khác), chỗ không giải ra chuỗi làm (b) đỏ trừ danh sách có lý do; tiêu chí R1.1

@@ -22,7 +22,7 @@ model với đủ thuộc tính gán, chỉ thêm và idempotent; màn Mức đ�
    `dw_agent_runtime` và `dw_platform` không import `dw_usage` (runtime khai port, `dw_usage` đáp); `dw_usage.domain`
    không import FastAPI hay SQLAlchemy.
 2. `configs/pricing/price_book@1.0.0.yaml` và `dw_usage.domain.pricing.PriceBook.price(tenant_id, quantities, provider,
-   model, at)` trả chi phí `Decimal`, phiên bản, id mục giá. `tenant_id` lấy từ `RunContext` của lời gọi, không bao giờ từ
+model, at)` trả chi phí `Decimal`, phiên bản, id mục giá. `tenant_id` lấy từ `RunContext` của lời gọi, không bao giờ từ
    request; ở W1 mọi tenant nhận lớp nền tảng, vì mục giá riêng tenant (`platform.tenant_price_entries`, giải như
    `TenantOverlay`) là BYOM W2 (ADR-0121 (Accepted) quyết 3), và chữ ký mang `tenant_id` từ đầu (`CLAUDE.md` mục
    'Per-tenant artifacts'). Loại sử dụng là tập đóng (`input_uncached`, `cache_read`, `cache_write_5m`,

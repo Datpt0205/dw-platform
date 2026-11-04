@@ -472,10 +472,10 @@ chỉ siết của `dw.object/v1`); ticket này không viết chuyển giai đo�
   (d) `change_note` chưa có bên ghi trong ticket này (failure-modes #1): lệnh gửi của agent-lifecycle/03 ghi nó, hoặc cột
   rời đi; `studio.artifact_versions` không có `created_at`, nên `GET .../versions` không có thời điểm niêm phong;
   (e) rollback của ADR-0120 (Accepted) quyết 1 ("một phiên bản mới chép từ phiên bản cũ") chưa có route: `POST
-  .../draft` chỉ chép bản `live` hay bản số lớn nhất; chủ là agent-lifecycle hay một ticket sau, có thể thêm
+.../draft` chỉ chép bản `live` hay bản số lớn nhất; chủ là agent-lifecycle hay một ticket sau, có thể thêm
   `from_version_no` tùy chọn;
   (f) `platform.refuse_delete_outside_offboarding()` là `SECURITY DEFINER` với `search_path` ghim và `REVOKE ... FROM
-  PUBLIC`, như `platform.guard_contact_suppression()` (`db/migrations/versions/0c3e9392cc06_marketing_send_floor.py:146`),
+PUBLIC`, như `platform.guard_contact_suppression()` (`db/migrations/versions/0c3e9392cc06_marketing_send_floor.py:146`),
   để đọc được `platform.tenants`; hai hàm cùng một luật, nên một ticket sau có thể gắn hàm mới lên
   `platform.contact_suppressions` và gỡ hàm cũ;
   (g) `platform.workspace_reach` bỏ workspace đã lưu trữ, nên thành phần của workspace đã lưu trữ thành 404 với mọi

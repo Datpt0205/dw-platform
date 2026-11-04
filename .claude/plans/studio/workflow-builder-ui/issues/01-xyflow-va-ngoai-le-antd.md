@@ -78,11 +78,11 @@ R1.3, R1.9, BU1, BU14).
     - nhìn bằng mắt qua ảnh chụp Playwright: chế độ tối; tương phản ≥ 3:1 cho đường nối, ô "+" và vòng focus; màu không
       bao giờ một mình; giảm chuyển động tắt mọi chuyển tiếp; huy hiệu ghi công không bị Drawer che ở ≥ `lg`, ở `md` và ở
       320 px → bộ từ vựng của bước 4.
-   Khi một hàng cổng trượt, phần không cần gói vẫn commit: fixture, danh mục giả, bộ từ vựng, `theme-contrast.test.ts`
-   và `canvas-colours.test.ts`; ghim gói, `workflow-canvas.tsx`, CSS lớp và mục `EXCEPTIONS` thì không.
-   Hai phép đo cần người thật không thuộc ticket này và ticket không chờ chúng: NVDA tiếng Việt trên `Tree`, và năm người
-   dùng nghiệp vụ làm nhiệm vụ có kịch bản (người tham gia chờ DO-22, Chủ: Đạt). Chúng ở lại discovery/24, chạy trên
-   builder thật sau ticket 04, và kết quả ghi vào ADR-0101 (Accepted).
+      Khi một hàng cổng trượt, phần không cần gói vẫn commit: fixture, danh mục giả, bộ từ vựng, `theme-contrast.test.ts`
+      và `canvas-colours.test.ts`; ghim gói, `workflow-canvas.tsx`, CSS lớp và mục `EXCEPTIONS` thì không.
+      Hai phép đo cần người thật không thuộc ticket này và ticket không chờ chúng: NVDA tiếng Việt trên `Tree`, và năm người
+      dùng nghiệp vụ làm nhiệm vụ có kịch bản (người tham gia chờ DO-22, Chủ: Đạt). Chúng ở lại discovery/24, chạy trên
+      builder thật sau ticket 04, và kết quả ghi vào ADR-0101 (Accepted).
 4. Bộ từ vựng của Sơ đồ (V4.27): agent dựng bản nháp, gồm màu nhóm từ token của theme (trigger xanh dương, AI tím, dữ
    liệu cyan, logic vàng, con người hồng tím, công cụ xanh lá, lỗi đỏ), mỗi màu đạt 3:1 trên nền thẻ ở cả chế độ sáng và
    tối, không là sắc nhạt preset của antd (`.claude/rules/ui-quality.md` §12); một biểu tượng `@ant-design/icons` mỗi
@@ -104,7 +104,7 @@ R1.3, R1.9, BU1, BU14).
    `multiSelectionKeyCode` là `null`. antd vẽ mọi thân Bước, nhãn làn, đầu khung chứa, menu, Popover, biểu mẫu trong
    Drawer, thông báo và nút thu phóng (antd `Button` trong một `Panel` của React Flow); không dùng `MiniMap`, `Controls`,
    `NodeToolbar`. `@xyflow/react/dist/base.css` vào `@layer components` bằng `@import "@xyflow/react/dist/base.css"
-   layer(components);` trong một tệp `.css` cạnh thành phần, dưới glob canvas, cùng ánh xạ `--xy-*` sang `--ant-*` trong
+layer(components);` trong một tệp `.css` cạnh thành phần, dưới glob canvas, cùng ánh xạ `--xy-*` sang `--ant-*` trong
    cùng lớp, không giá trị dự phòng literal; không import `base.css` từ tệp `.ts`/`.tsx`, vì CSS nạp như thế không ở lớp
    nào và thắng cả lớp antd lẫn utilities. Giữ huy hiệu React Flow ở góc dưới trái bằng `attributionPosition`, không ẩn
    khi chưa mua Pro (DO-42.2, V4.25).

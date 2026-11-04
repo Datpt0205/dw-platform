@@ -106,7 +106,7 @@ hồi hay thiếu (spec R1.9, R1.10, R1.14; V4.20; V4.35). Gộp từ B8a-connec
    `EXPORT_EXCLUSIONS["platform.secret_envelopes"]` với lý do "bí mật không rời Kho bí mật qua đường ra nào, gói xuất
    cũng vậy (R1.2, R1.6); `dw_app` không SELECT", và một dòng `STUDIO_EXCLUSIONS["platform.secret_envelopes"]` là
    `OffboardingExclusion(reason="REVOKE ALL với dw_app; xóa theo FK CASCADE khi lane xóa platform.connections",
-   cascade_from="platform.connections")`, đúng một cách xóa như `OffboardingExclusion` đòi (`offboarding.py:163-189`);
+cascade_from="platform.connections")`, đúng một cách xóa như `OffboardingExclusion` đòi (`offboarding.py:163-189`);
    workflow-triggers/02 sửa lý do khi thêm chủ thể `studio.inbound_endpoints`, và `platform.delete_secret` không phải
    bước của lane.
 

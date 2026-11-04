@@ -112,28 +112,28 @@ now()` của DW `operating`), chuyển `in_progress`, rồi gọi `DigitalWorker
 - 2026-10-29 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
 - 2026-10-30 (agent): làm theo bốn pha, mỗi pha một commit: hàng đợi (`6fa3116`), lane `dw_work` (`cb95e1f`), cổng
   duyệt (`0e108d6`), ranh giới ở `ToolExecutor` (`857b317`). Làm khác ticket, có lý do:
-  - Bộ kiểm JSON Schema ở `dw_platform.application.json_schema` (`jsonschema==4.26.0` ghim ở `dw_platform`), không ở
-    `dw_kernel`: kernel khai `dependencies = []` và hợp đồng import "Kernel is pure (stdlib only)"; runtime (wf-lite)
-    đã phụ thuộc platform nên vẫn một chủ. Đo trước khi dùng: 27 µs một lần kiểm, `format: email` có hiệu lực với
-    `FORMAT_CHECKER`.
-  - R5.3 không đi bằng `admission` truyền theo lời gọi mà bằng sổ `type_admissions` theo loại ở composition root
-    (cùng hình `decision_guards`, nhưng async và trong giao dịch của quyết định); `proposal_editors` theo loại giữ
-    R5.4. `decide` không có nhánh nào cho `dw.decision`. Nối ở API và ở worker (lệnh duyệt qua chat; không có
-    editor ở đó nên bản sửa bị từ chối).
-  - R6.1 ghi lần từ chối vào `platform.tool_executions` với trạng thái mới `refused` (migration `f051d26f0610`), không
-    khóa chống lặp, không `dispatch_id` (CHECK), cộng một dòng audit `tool.denied`. Lượt chạy có
-    `run_as_principal_id` mà executor không có cổng ranh giới, hay cổng không thấy DW, bị từ chối (đóng khi thiếu).
-  - `RunContext` thêm `requested_by` và `run_as_principal_id`; dòng lượt chạy ghi cả hai; lượt chạy tiếp hành động
-    lại dưới principal (test mới trong `test_approval_flow.py`).
-  - `dw_app` giữ DELETE trên `work_items` cho offboarding, cùng lý do ticket 01.
-  - Bộ che R5.6 hỏi một lần mỗi trang (`readable(context, requests)`): bản đầu hỏi từng dòng và P95 của
-    `GET /approvals` lên 480 ms (đo), sửa còn 54 ms.
-  - `approval_decisions.edited_payload` là `JSONB(none_as_null=True)`: JSONB mặc định ghi JSON `null` cho None, CHECK
-    mới từ chối mọi quyết định thường (tìm bằng test tích hợp).
-  - `RecordingRunStarter` đứng chỗ bộ chạy tới wf-lite/02; chưa việc nào vào được vì chưa gói nào khai schema.
-  - Tìm thấy ngoài ticket: `ApproveAndResumeService` của worker (lệnh duyệt qua chat) không nhận `decision_guards`
-    của `memory.review` như API; chat chỉ quyết loại có cổng phiên bản chủ thể đăng ký, nên hôm nay không với tới,
-    nhưng là cùng hình failure-modes #5. Ghi ở `platform-runtime.md`.
+    - Bộ kiểm JSON Schema ở `dw_platform.application.json_schema` (`jsonschema==4.26.0` ghim ở `dw_platform`), không ở
+      `dw_kernel`: kernel khai `dependencies = []` và hợp đồng import "Kernel is pure (stdlib only)"; runtime (wf-lite)
+      đã phụ thuộc platform nên vẫn một chủ. Đo trước khi dùng: 27 µs một lần kiểm, `format: email` có hiệu lực với
+      `FORMAT_CHECKER`.
+    - R5.3 không đi bằng `admission` truyền theo lời gọi mà bằng sổ `type_admissions` theo loại ở composition root
+      (cùng hình `decision_guards`, nhưng async và trong giao dịch của quyết định); `proposal_editors` theo loại giữ
+      R5.4. `decide` không có nhánh nào cho `dw.decision`. Nối ở API và ở worker (lệnh duyệt qua chat; không có
+      editor ở đó nên bản sửa bị từ chối).
+    - R6.1 ghi lần từ chối vào `platform.tool_executions` với trạng thái mới `refused` (migration `f051d26f0610`), không
+      khóa chống lặp, không `dispatch_id` (CHECK), cộng một dòng audit `tool.denied`. Lượt chạy có
+      `run_as_principal_id` mà executor không có cổng ranh giới, hay cổng không thấy DW, bị từ chối (đóng khi thiếu).
+    - `RunContext` thêm `requested_by` và `run_as_principal_id`; dòng lượt chạy ghi cả hai; lượt chạy tiếp hành động
+      lại dưới principal (test mới trong `test_approval_flow.py`).
+    - `dw_app` giữ DELETE trên `work_items` cho offboarding, cùng lý do ticket 01.
+    - Bộ che R5.6 hỏi một lần mỗi trang (`readable(context, requests)`): bản đầu hỏi từng dòng và P95 của
+      `GET /approvals` lên 480 ms (đo), sửa còn 54 ms.
+    - `approval_decisions.edited_payload` là `JSONB(none_as_null=True)`: JSONB mặc định ghi JSON `null` cho None, CHECK
+      mới từ chối mọi quyết định thường (tìm bằng test tích hợp).
+    - `RecordingRunStarter` đứng chỗ bộ chạy tới wf-lite/02; chưa việc nào vào được vì chưa gói nào khai schema.
+    - Tìm thấy ngoài ticket: `ApproveAndResumeService` của worker (lệnh duyệt qua chat) không nhận `decision_guards`
+      của `memory.review` như API; chat chỉ quyết loại có cổng phiên bản chủ thể đăng ký, nên hôm nay không với tới,
+      nhưng là cùng hình failure-modes #5. Ghi ở `platform-runtime.md`.
 - 2026-10-30 (agent): `reviewing-feature-security`: (1) tenant: `work_items` RLS FORCE một hình workspace, hàm quét
   chỉ trả id, lane đặt tenant và workspace mỗi giao dịch, cổng ranh giới đọc dưới phạm vi của lượt; (2) quyền: người
   giữ, Work Assigner, chủ DW, người quyết đọc trong giao dịch, payload và đề xuất che, test âm mỗi cửa; (3) tự chủ:

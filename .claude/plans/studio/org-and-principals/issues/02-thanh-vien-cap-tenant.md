@@ -54,17 +54,18 @@ ra đời, cùng foundations-hardening/07, vì cùng sửa lane offboarding và 
       `INSERT INTO platform.memberships`), như `scripts/demo_dw_seed.py` của leadcare/02 nếu đã có, theo luật của
       đường gần nhất ở trên; fixture test ghi membership bằng SQL thô ghi dòng thành viên công ty trước, qua một helper.
 
-   **Kích hoạt.** Ở mỗi lần đăng nhập, `bootstrap` (`identity_provisioning.py:111-160`) gọi, ngay sau `_resolve_user` và
-   trước `_read_memberships`, trong cùng giao dịch nối danh tính, hàm `platform.activate_invited_members(p_user_id uuid)
-   RETURNS integer` (SECURITY DEFINER, `SET search_path = pg_catalog, platform`, REVOKE khỏi PUBLIC, EXECUTE chỉ cho
-   `dw_app`): một câu `UPDATE platform.tenant_members SET status = 'active' WHERE user_id = p_user_id AND status =
-   'invited'` ở mọi tenant của người đó, không bao giờ từ `suspended`, vì mở lại cần hai người (D11) và `_resolve_user`
-   chạy trước khi có `app.tenant_id`. Không thêm policy ghi nào theo `app.principal_id`: `tenant_members_self_select`
-   chỉ SELECT, nên không kết nối nào tự đổi trạng thái của chính mình. Cách này phủ cả nhánh nối danh tính của người được
-   mời lẫn nhánh dev (`identity_provisioning.py:172-177`), nơi người dùng gieo sẵn không có dòng
-   `platform.external_identities` và nhận `invited` ở bước 3. Đó là lần kích hoạt mà luật chuyển `setup` → `active` của
-   tenant-rbac (tenant-rbac:R3.10; V4.38) đọc, qua trigger mà tenant-rbac/02, ticket sau ticket này, gắn lên bảng; ticket
-   này không đọc trạng thái `setup` và không đổi `platform.tenants`.
+    **Kích hoạt.** Ở mỗi lần đăng nhập, `bootstrap` (`identity_provisioning.py:111-160`) gọi, ngay sau `_resolve_user` và
+    trước `_read_memberships`, trong cùng giao dịch nối danh tính, hàm `platform.activate_invited_members(p_user_id uuid)
+RETURNS integer` (SECURITY DEFINER, `SET search_path = pg_catalog, platform`, REVOKE khỏi PUBLIC, EXECUTE chỉ cho
+    `dw_app`): một câu `UPDATE platform.tenant_members SET status = 'active' WHERE user_id = p_user_id AND status =
+'invited'` ở mọi tenant của người đó, không bao giờ từ `suspended`, vì mở lại cần hai người (D11) và `_resolve_user`
+    chạy trước khi có `app.tenant_id`. Không thêm policy ghi nào theo `app.principal_id`: `tenant_members_self_select`
+    chỉ SELECT, nên không kết nối nào tự đổi trạng thái của chính mình. Cách này phủ cả nhánh nối danh tính của người được
+    mời lẫn nhánh dev (`identity_provisioning.py:172-177`), nơi người dùng gieo sẵn không có dòng
+    `platform.external_identities` và nhận `invited` ở bước 3. Đó là lần kích hoạt mà luật chuyển `setup` → `active` của
+    tenant-rbac (tenant-rbac:R3.10; V4.38) đọc, qua trigger mà tenant-rbac/02, ticket sau ticket này, gắn lên bảng; ticket
+    này không đọc trạng thái `setup` và không đổi `platform.tenants`.
+
 5. **Người đọc.** Dựng AccessContext (`membership_lookup.py:80-106`) join `platform.tenant_members` và đòi
    `status = 'active'`, thiếu dòng là từ chối (fail closed), nên mọi route cần AccessContext, kể cả `GET /api/v1/me`, trả
    403 cho người không `active`; `member_status()` đọc cột thay cho suy luận; `GET /api/v1/admin/members`,
@@ -120,7 +121,7 @@ ra đời, cùng foundations-hardening/07, vì cùng sửa lane offboarding và 
   thêm cạnh Blocked by.
 - 2026-11-02 (agent, theo ủy quyền 31/10/2026): gate CRITICAL C1: "một câu `UPDATE` trên `platform.tenant_members`" trong
   `_resolve_user` không có đường RLS: hàm chạy trước khi `bootstrap` đặt `app.tenant_id` (`identity_provisioning.py:111-
-  120`), `tenant_members_self_select` chỉ SELECT, nên câu đó cập nhật 0 dòng, và người dựng phải tự chế một policy ghi
+120`), `tenant_members_self_select` chỉ SELECT, nên câu đó cập nhật 0 dòng, và người dựng phải tự chế một policy ghi
   theo `app.principal_id` hay một câu không lọc `status`, cả hai cho phép đổi `suspended` sang `active` không qua hai
   người (D11). Sửa: bước 4 "Kích hoạt": hàm SECURITY DEFINER `platform.activate_invited_members` chỉ đổi `invited` sang
   `active`, gọi ở mỗi lần `bootstrap` ngay sau `_resolve_user`, không policy ghi theo principal; tiêu chí R4.5 thêm ca

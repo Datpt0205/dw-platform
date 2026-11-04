@@ -129,6 +129,7 @@ Hồ sơ model khai nơi xử lý dữ liệu; thiếu khai là nước ngoài, 
     - không tự nới cấu hình của ADR-0118 (Accepted) quyết định 8.
 
     Chi tiết ở Comments của ticket 01. Sửa: ticket 01, ticket 03, Danh sách ticket. Nếu sai thì: như dòng `Nếu sai thì` ở Comments của ticket 01.
+
 - 2/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 01. Ticket 01 chỉ chạm `infra/spikes/model-proxy/` và Comments của nó, không bảng, route, migration, config hay prompt nào của ticket 02; ticket 03 chờ nó và chạm cùng thư mục. Cách chia 02 và 03 được duyệt khi gate chạy cho chúng. Theo `## Ủy quyền` của studio.md (Đạt, 31/10/2026). Nếu sai thì: hạ ticket 01 về `needs-triage` và chia lại.
 
 ## Danh sách ticket

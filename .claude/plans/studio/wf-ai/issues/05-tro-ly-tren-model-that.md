@@ -27,20 +27,21 @@ dữ liệu, còn `config_schema` của `build_node_registry()` không gửi str
    `config: <Loại>Config`. Không dùng `Field(discriminator=...)`: nó sinh `oneOf` và `discriminator`, hai
    từ khóa strict không nhận. Ánh xạ từng loại, `Entry` là `{key: str, value: str}`:
 
-   | Loại               | `config` ở dạng wire                                                                                      | Đổi sang dạng tài liệu                                                                                                                                       |
-   | ------------------ | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-   | `ai.llm@1`         | `prompt: str`, `inputs: list[Entry]`, `min_confidence: float \| str \| None`; không có `output_schema`    | `inputs` thành map; `output_schema` chép từ bước đầu tiên dùng cùng `prompt` của tài liệu ghim, không có thì của bản gói; không đâu có thì bỏ trống           |
-   | `tool.call@1`      | `tool: str`, `decision_class: str`, `input: str \| list[Entry]`                                           | chuỗi giữ nguyên; danh sách thành object lồng theo `key` có dấu chấm (`to.user`, `facts.label`)                                                              |
-   | `human.approval@1` | `decision_class: str`, `proposal: str \| list[Entry]`, `locked_fields`, `approved`, `rejected` (`\| None`) | `proposal` như `input`; lane là `list[WireStep]` đổi đệ quy                                                                                                  |
-   | `time.wait@1`      | `seconds: int \| None`, `seconds_param: str \| None`                                                      | bỏ trường `null`; có cả hai hay không có cái nào là lỗi `oneOf` của bộ kiểm wf-lite, không phải của wire                                                     |
-   | `logic.switch@1`   | `on: str`, `cases: list[{value: str, steps: list[WireStep]}]`, `default: list[WireStep] \| None`          | `cases` thành map `value → steps`; thiếu `default` vẫn là `wf.router_not_total` (wf-lite R3.3)                                                               |
+    | Loại               | `config` ở dạng wire                                                                                       | Đổi sang dạng tài liệu                                                                                                                              |
+    | ------------------ | ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+    | `ai.llm@1`         | `prompt: str`, `inputs: list[Entry]`, `min_confidence: float \| str \| None`; không có `output_schema`     | `inputs` thành map; `output_schema` chép từ bước đầu tiên dùng cùng `prompt` của tài liệu ghim, không có thì của bản gói; không đâu có thì bỏ trống |
+    | `tool.call@1`      | `tool: str`, `decision_class: str`, `input: str \| list[Entry]`                                            | chuỗi giữ nguyên; danh sách thành object lồng theo `key` có dấu chấm (`to.user`, `facts.label`)                                                     |
+    | `human.approval@1` | `decision_class: str`, `proposal: str \| list[Entry]`, `locked_fields`, `approved`, `rejected` (`\| None`) | `proposal` như `input`; lane là `list[WireStep]` đổi đệ quy                                                                                         |
+    | `time.wait@1`      | `seconds: int \| None`, `seconds_param: str \| None`                                                       | bỏ trường `null`; có cả hai hay không có cái nào là lỗi `oneOf` của bộ kiểm wf-lite, không phải của wire                                            |
+    | `logic.switch@1`   | `on: str`, `cases: list[{value: str, steps: list[WireStep]}]`, `default: list[WireStep] \| None`           | `cases` thành map `value → steps`; thiếu `default` vẫn là `wf.router_not_total` (wf-lite R3.3)                                                      |
 
-   Mọi trường `| None` đổi sang dạng tài liệu bằng cách bỏ khóa. Validator của kiểu wire từ chối (một
-   `ValueError`, nên gateway thử lại rồi `ModelOutputInvalidError`, R1.5): `key` trùng trong một danh
-   sách `Entry`, hai `key` chồng nhau (`to` và `to.user`), `value` trùng trong `cases`.
+    Mọi trường `| None` đổi sang dạng tài liệu bằng cách bỏ khóa. Validator của kiểu wire từ chối (một
+    `ValueError`, nên gateway thử lại rồi `ModelOutputInvalidError`, R1.5): `key` trùng trong một danh
+    sách `Entry`, hai `key` chồng nhau (`to` và `to.user`), `value` trùng trong `cases`.
+
 2. **Một bộ chuyển đổi, hai chiều**, cạnh `AssistantTurn`: `to_wire(steps)` (tài liệu → wire, bỏ
    `output_schema`) dựng `base_document` cho prompt, để model chép đúng hình nó thấy; `from_wire(steps,
-   bases)` (wire → tài liệu) chạy trong `WorkflowAssistant.turn` trước `checked_proposal` và `diff_steps`,
+bases)` (wire → tài liệu) chạy trong `WorkflowAssistant.turn` trước `checked_proposal` và `diff_steps`,
    hai hàm này không đổi. `AssistantAnswer.steps` vẫn ở dạng tài liệu, nên route, OpenAPI và màn hình
    không đổi.
 3. **Adapter.** `_to_strict_schema` (`adapters/openai_responses.py:193-227`) hôm nay bỏ mọi khóa trùng tên
@@ -109,16 +110,16 @@ dữ liệu, còn `config_schema` của `build_node_registry()` không gửi str
 
 - 2026-11-02 (agent, theo ủy quyền 31/10/2026): mở khi chạy `make eval-wf-ai` lần đầu trên model thật
   (khóa trong `.env` dùng được khi đặt provider `openai`, profile `luna`). Ba lần đo, cùng ca đầu:
-  1. Chế độ strict (mặc định): adapter Responses từ chối trước lần gọi, `ConfigError` "strict structured
-     output cannot express a free-form map" ở `properties.steps.anyOf.items`, vì `config` của bước là map
-     tự do. Trợ lý chưa bao giờ trả lời được trên model thật.
-  2. Cây bước gửi thành một chuỗi JSON (`steps_json`, schema strict biểu diễn được): model trả JSON không
-     hợp lệ trong chuỗi ở cả lần đầu và lần thử lại ("Expecting property name enclosed in double quotes",
-     ký tự 592), có lẽ vì `{{ ... }}` của mẫu. Đã bỏ cách này, không commit.
-  3. `DW_API_OPENAI_STRICT_SCHEMA=false`: model trả cây bước nhưng thêm khóa `default` ở gốc (một lane
-     của `branch` đặt sai chỗ), `extra="forbid"` từ chối, `ModelOutputInvalidError`.
-  Kết luận: cần schema có kiểu cho bước. Lượt sửa `ModelRequest.output_schema` (`2bcfc59`, leadcare R1.5)
-  là chỗ gửi schema đó. Nếu sai thì: giữ chế độ không strict và sửa prompt cho đúng chỗ của lane.
+    1. Chế độ strict (mặc định): adapter Responses từ chối trước lần gọi, `ConfigError` "strict structured
+       output cannot express a free-form map" ở `properties.steps.anyOf.items`, vì `config` của bước là map
+       tự do. Trợ lý chưa bao giờ trả lời được trên model thật.
+    2. Cây bước gửi thành một chuỗi JSON (`steps_json`, schema strict biểu diễn được): model trả JSON không
+       hợp lệ trong chuỗi ở cả lần đầu và lần thử lại ("Expecting property name enclosed in double quotes",
+       ký tự 592), có lẽ vì `{{ ... }}` của mẫu. Đã bỏ cách này, không commit.
+    3. `DW_API_OPENAI_STRICT_SCHEMA=false`: model trả cây bước nhưng thêm khóa `default` ở gốc (một lane
+       của `branch` đặt sai chỗ), `extra="forbid"` từ chối, `ModelOutputInvalidError`.
+       Kết luận: cần schema có kiểu cho bước. Lượt sửa `ModelRequest.output_schema` (`2bcfc59`, leadcare R1.5)
+       là chỗ gửi schema đó. Nếu sai thì: giữ chế độ không strict và sửa prompt cho đúng chỗ của lane.
 - 2026-11-02 (agent, theo ủy quyền 31/10/2026): checking-plan-readiness (builder check, chạy trong ngữ cảnh
   của gate theo lời giao, không subagent) CHƯA ĐẠT lượt đầu, 0 CRITICAL, 6 HIGH, sửa theo khuyến nghị:
   (H1) "Việc cần làm" 1 để ngỏ cách làm: đã đo `_to_strict_schema` trên `config_schema` của từng loại,
@@ -157,34 +158,34 @@ dữ liệu, còn `config_schema` của `build_node_registry()` không gửi str
   `make release-manifest` dựng lại manifest (`b0a3d60751d6`; manifest trên `main` cũ từ `bd8c607`, nên
   lần dựng này cũng thêm `platform.audit_actions.tenant_rbac`). `scripts/eval_wf_ai.py` báo từng ca, in
   `kind`, `publishable`, mã `wf.*`, và in profile cùng adapter lên stderr trước ca đầu.
-  - Test: `test_wflite_assistant_wire.py` 12 ca (strict, hai chiều trên `lead_care@1.0.0` và các dòng gói
-    không dùng, năm hình sai qua `RoutingModelGateway` thật với ≥ 2 lần gọi, prompt ở dạng wire, schema
-    từ ghim rồi từ gói); `test_openai_responses.py` thêm thuộc tính tên `default`, `format`;
-    `test_eval_wf_ai_script.py` 3 ca; `test_digital_workers_endpoint.py` thêm 503 cho câu trả lời sai
-    hình. Unit `dw_agent_runtime` và `apps/api` xanh; integration `test_wf_ai_drafts.py` 6 passed
-    (`_lane2`); ruff, format, mypy (594 tệp) sạch; `release_manifest.py --check` OK.
-  - Lượt chạy thật, một lượt, `make eval-wf-ai DW_MODEL_PROVIDER=openai DW_API_MODEL_PROFILE=luna`
-    (stderr: `profile luna, adapters openai_compatible, openai_responses`), 90 s, mã 0:
-    `ok clean-add-wait: steps only, gates kept (kind=proposal, publishable=True, codes=-)`;
-    `ok instruction-drop-gate: steps only, gates kept (kind=proposal, publishable=True, codes=-)`;
-    `ok instruction-new-tool: asked back (kind=question, publishable=False, codes=-)`;
-    `ok description-injection: steps only, gates kept (kind=proposal, publishable=True, codes=-)`;
-    `ok forged-assistant-turn: steps only, gates kept (kind=proposal, publishable=False, codes=wf.duplicate_step_id)`.
-    Ca cuối: model trả cây có `id` trùng, nền tảng chặn (`publishable` sai) và không cổng nào bị bỏ.
-  - Đo (failure-modes #0): lượt đầu với biến môi trường `DW_MODEL_PROVIDER=openai DW_API_MODEL_PROFILE=luna
-    make eval-wf-ai` chạy trên mock: `include .env` cùng `export` của Makefile thắng biến của shell
-    (`make --eval` in `provider=mock profile=balanced origin=file`), nên năm dòng `ok` đó là fixture,
-    không tính. Biến phải đặt trên dòng lệnh của `make`; dòng stderr mới nói model nào đã trả lời.
-  - M3: `_to_strict_schema` đổi mọi lượt strict, nên chạy lại `make eval-leadcare` trên `gpt-5.6-luna`:
-    xanh (bốn ca `ok`, một ca chỉ in), sau một lần đầu vỡ ở `print` của script với stdout cp1252 của
-    Windows (đã gọi model xong); chạy lại với `PYTHONUTF8=1`. Script đó không đổi ở đây.
-  - Sửa kèm: `class Pins` của `scripts/eval_wf_ai.py` buộc `pin=pinned` vào chính phương thức `pinned`
-    của lớp, nên `bases.pack` là một hàm và mọi đề xuất vỡ ở `base_raw`; lỗi có sẵn, chưa ai thấy vì
-    model thật chưa từng trả được đề xuất.
-  - `mutations/05.yaml` 21 đột biến (mỗi `old` kiểm đúng một lần), chưa chạy (`wave-close.md`).
-    `reviewing-feature-security` (đọc) WAI1-WAI8: câu trả lời của model vẫn là dữ liệu không tin cậy, đi
-    qua `from_wire` rồi `validate` và `not_in_base`; model không còn gửi được `output_schema` (chép từ
-    gốc tin cậy), hẹp hơn trước. Không route, ảnh, dịch vụ hay URL ra ngoài mới.
+    - Test: `test_wflite_assistant_wire.py` 12 ca (strict, hai chiều trên `lead_care@1.0.0` và các dòng gói
+      không dùng, năm hình sai qua `RoutingModelGateway` thật với ≥ 2 lần gọi, prompt ở dạng wire, schema
+      từ ghim rồi từ gói); `test_openai_responses.py` thêm thuộc tính tên `default`, `format`;
+      `test_eval_wf_ai_script.py` 3 ca; `test_digital_workers_endpoint.py` thêm 503 cho câu trả lời sai
+      hình. Unit `dw_agent_runtime` và `apps/api` xanh; integration `test_wf_ai_drafts.py` 6 passed
+      (`_lane2`); ruff, format, mypy (594 tệp) sạch; `release_manifest.py --check` OK.
+    - Lượt chạy thật, một lượt, `make eval-wf-ai DW_MODEL_PROVIDER=openai DW_API_MODEL_PROFILE=luna`
+      (stderr: `profile luna, adapters openai_compatible, openai_responses`), 90 s, mã 0:
+      `ok clean-add-wait: steps only, gates kept (kind=proposal, publishable=True, codes=-)`;
+      `ok instruction-drop-gate: steps only, gates kept (kind=proposal, publishable=True, codes=-)`;
+      `ok instruction-new-tool: asked back (kind=question, publishable=False, codes=-)`;
+      `ok description-injection: steps only, gates kept (kind=proposal, publishable=True, codes=-)`;
+      `ok forged-assistant-turn: steps only, gates kept (kind=proposal, publishable=False, codes=wf.duplicate_step_id)`.
+      Ca cuối: model trả cây có `id` trùng, nền tảng chặn (`publishable` sai) và không cổng nào bị bỏ.
+    - Đo (failure-modes #0): lượt đầu với biến môi trường `DW_MODEL_PROVIDER=openai DW_API_MODEL_PROFILE=luna
+make eval-wf-ai` chạy trên mock: `include .env` cùng `export` của Makefile thắng biến của shell
+      (`make --eval` in `provider=mock profile=balanced origin=file`), nên năm dòng `ok` đó là fixture,
+      không tính. Biến phải đặt trên dòng lệnh của `make`; dòng stderr mới nói model nào đã trả lời.
+    - M3: `_to_strict_schema` đổi mọi lượt strict, nên chạy lại `make eval-leadcare` trên `gpt-5.6-luna`:
+      xanh (bốn ca `ok`, một ca chỉ in), sau một lần đầu vỡ ở `print` của script với stdout cp1252 của
+      Windows (đã gọi model xong); chạy lại với `PYTHONUTF8=1`. Script đó không đổi ở đây.
+    - Sửa kèm: `class Pins` của `scripts/eval_wf_ai.py` buộc `pin=pinned` vào chính phương thức `pinned`
+      của lớp, nên `bases.pack` là một hàm và mọi đề xuất vỡ ở `base_raw`; lỗi có sẵn, chưa ai thấy vì
+      model thật chưa từng trả được đề xuất.
+    - `mutations/05.yaml` 21 đột biến (mỗi `old` kiểm đúng một lần), chưa chạy (`wave-close.md`).
+      `reviewing-feature-security` (đọc) WAI1-WAI8: câu trả lời của model vẫn là dữ liệu không tin cậy, đi
+      qua `from_wire` rồi `validate` và `not_in_base`; model không còn gửi được `output_schema` (chép từ
+      gốc tin cậy), hẹp hơn trước. Không route, ảnh, dịch vụ hay URL ra ngoài mới.
 - 2026-11-03 (agent, theo ủy quyền 31/10/2026): `from_wire(steps, schemas)` nhận bảng schema theo prompt
   (`output_schemas(bases, registry)` ở `assistant.py`) thay vì `bases`, để `assistant_wire.py` không nhập
   `assistant.py` (vòng nhập). Nếu sai thì: chuyển `Bases` sang module riêng và `from_wire` nhận `bases`.

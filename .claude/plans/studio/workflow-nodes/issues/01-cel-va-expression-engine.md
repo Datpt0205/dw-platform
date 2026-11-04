@@ -39,8 +39,8 @@ setting chọn binding đã bị bỏ (spec R3.6 [Bỏ], Ngoài phạm vi). Hai 
       giờ mang chữ lỗi của binding, vì chữ đó có thể chứa giá trị (đo được: `NOT_FOUND: Key not found in map : "nope"`,
       và chữ ngoại lệ của hàm Python).
     - Protocol `ExpressionEngine` có hai phương thức. `check(source: str, env: ExpressionEnv) -> CheckedExpression |
-      list[ExpressionIssue]` chạy đồng bộ. `async evaluate(checked: CheckedExpression, activation: Mapping[str, object])
-      -> object | ExpressionError`. `evaluate` trả giá trị dạng JSON: `dict`, `list`, `str`, `int`, `float`, `bool`,
+list[ExpressionIssue]` chạy đồng bộ. `async evaluate(checked: CheckedExpression, activation: Mapping[str, object])
+-> object | ExpressionError`. `evaluate` trả giá trị dạng JSON: `dict`, `list`, `str`, `int`, `float`, `bool`,
       `None`; timestamp là chuỗi RFC 3339 có độ lệch, duration là chuỗi dạng `"3600s"`, bytes là base64, và một
       message thành `dict` bỏ trường vắng (dạng JSON của protobuf). Bên gọi cần `bool` mà nhận `None` thì coi là
       `expression_error`, không bao giờ là `false`. Lỗi không mang node hay đường dẫn: bên gọi biết node và tự gắn.
@@ -60,17 +60,18 @@ setting chọn binding đã bị bỏ (spec R3.6 [Bỏ], Ngoài phạm vi). Hai 
           bằng `RuntimeError`; `check` tách nó theo các dòng `<input>:dòng:cột:` thành `ExpressionIssue`, và chọn kind
           theo mẫu chữ đã đo:
 
-          | Mẫu chữ của binding               | kind                   |
-          | --------------------------------- | ---------------------- |
-          | `Syntax error`                    | `syntax`               |
-          | `undeclared reference to '<n>'`   | `undeclared_reference` |
-          | `undefined field '<f>'`           | `undefined_field`      |
-          | `found no matching overload`      | `no_matching_overload` |
-          | `Exceeded max recursion depth`    | `too_deep`             |
-          | mẫu khác                          | `other`                |
+            | Mẫu chữ của binding             | kind                   |
+            | ------------------------------- | ---------------------- |
+            | `Syntax error`                  | `syntax`               |
+            | `undeclared reference to '<n>'` | `undeclared_reference` |
+            | `undefined field '<f>'`         | `undefined_field`      |
+            | `found no matching overload`    | `no_matching_overload` |
+            | `Exceeded max recursion depth`  | `too_deep`             |
+            | mẫu khác                        | `other`                |
 
-          Mỗi mẫu có một ca trong bộ test hợp đồng. Nhờ vậy, một bản binding đổi chữ sẽ làm test đỏ, thay vì bị xếp
-          sai kind một cách lặng lẽ (failure-modes #4).
+            Mỗi mẫu có một ca trong bộ test hợp đồng. Nhờ vậy, một bản binding đổi chữ sẽ làm test đỏ, thay vì bị xếp
+            sai kind một cách lặng lẽ (failure-modes #4).
+
         - `result_type` là `Expression.return_type()` ánh xạ ngược về đại số kiểu. Một trường wrapper được binding
           kiểm như kiểu vô hướng của nó (đo được: trường `BoolValue` trả `BOOL`), nên ánh xạ về `T`; lúc tính, trường
           vắng ra `None`, và `o.flag && true` với `flag` vắng ra lỗi `UNKNOWN` (đã đo), tức đóng.
@@ -102,16 +103,17 @@ setting chọn binding đã bị bỏ (spec R3.6 [Bỏ], Ngoài phạm vi). Hai 
     - `object{...}` thành một message trong `google.protobuf.descriptor_pool.DescriptorPool` dựng theo env, đặt trong
       gói `dwenv_<12 ký tự đầu của env_hash>`. Kiểu của từng trường như sau:
 
-      | Kiểu trong đại số                 | Kiểu proto                                                       |
-      | --------------------------------- | ---------------------------------------------------------------- |
-      | vô hướng                          | wrapper type: `StringValue`, `Int64Value`, `DoubleValue`, `BoolValue`, `BytesValue` |
-      | `timestamp`, `duration`           | `google.protobuf.Timestamp`, `google.protobuf.Duration`          |
-      | `object` lồng                     | message                                                          |
-      | `list[T]`                         | `repeated`                                                       |
-      | `map[string, T]`                  | `map<string, T>`                                                 |
-      | `dyn`                             | `google.protobuf.Value`                                          |
+        | Kiểu trong đại số       | Kiểu proto                                                                          |
+        | ----------------------- | ----------------------------------------------------------------------------------- |
+        | vô hướng                | wrapper type: `StringValue`, `Int64Value`, `DoubleValue`, `BoolValue`, `BytesValue` |
+        | `timestamp`, `duration` | `google.protobuf.Timestamp`, `google.protobuf.Duration`                             |
+        | `object` lồng           | message                                                                             |
+        | `list[T]`               | `repeated`                                                                          |
+        | `map[string, T]`        | `map<string, T>`                                                                    |
+        | `dyn`                   | `google.protobuf.Value`                                                             |
 
-      `optional[T]` dùng extension `optional`.
+        `optional[T]` dùng extension `optional`.
+
     - Activation dạng dict được chuyển thành message bằng `json_format.ParseDict`, trong tiến trình tính. Khóa lạ thì
       trả `expression_error`. Đo được: chuyển một dict 20 trường rồi tính mất khoảng 267 µs.
     - Trường vô hướng là wrapper, không phải vô hướng proto3. Trường vô hướng proto3 bị vắng đọc thành giá trị không
@@ -124,30 +126,30 @@ setting chọn binding đã bị bỏ (spec R3.6 [Bỏ], Ngoài phạm vi). Hai 
       (`cel_expr_python.ext`), và các hàm nền tảng dưới đây. Các hàm nền tảng viết bằng Python và đăng ký qua
       `CelExtension`:
 
-      | Hàm                                                  | Hành vi                                                                                     |
-      | ---------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-      | `text.nfc(string) -> string`                         | chuẩn hóa Unicode NFC                                                                       |
-      | `text.unaccent(string) -> string`                    | NFD, bỏ dấu (nhóm Mn), `đ` thành `d`, `Đ` thành `D`                                         |
-      | `text.mask_contacts(string) -> string`               | thay bằng `[đã che]` mỗi địa chỉ email và mỗi dãy giống số điện thoại: dấu `+` tùy chọn, rồi ít nhất 9 chữ số, có thể xen dấu cách, chấm hay gạch |
-      | `phone.e164(string) -> string`                       | xem ngay dưới bảng                                                                          |
-      | `email.normalize(string) -> string`                  | bỏ khoảng trắng hai đầu và đổi sang chữ thường; không có đúng một `@` thì trả `expression_error` |
-      | `fmt.money_vnd(int) -> string`                       | `1.234.567 ₫`                                                                               |
-      | `fmt.datetime(timestamp) -> string`                  | `dd/MM/yyyy HH:mm` theo `Asia/Ho_Chi_Minh`                                                   |
-      | `fmt.date(timestamp)` và `fmt.date(string) -> string` | `dd/MM/yyyy` theo cùng múi giờ; bản `string` nhận ngày dạng `YYYY-MM-DD` (ADR-0114 (Accepted) quyết 4) |
+        | Hàm                                                   | Hành vi                                                                                                                                           |
+        | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+        | `text.nfc(string) -> string`                          | chuẩn hóa Unicode NFC                                                                                                                             |
+        | `text.unaccent(string) -> string`                     | NFD, bỏ dấu (nhóm Mn), `đ` thành `d`, `Đ` thành `D`                                                                                               |
+        | `text.mask_contacts(string) -> string`                | thay bằng `[đã che]` mỗi địa chỉ email và mỗi dãy giống số điện thoại: dấu `+` tùy chọn, rồi ít nhất 9 chữ số, có thể xen dấu cách, chấm hay gạch |
+        | `phone.e164(string) -> string`                        | xem ngay dưới bảng                                                                                                                                |
+        | `email.normalize(string) -> string`                   | bỏ khoảng trắng hai đầu và đổi sang chữ thường; không có đúng một `@` thì trả `expression_error`                                                  |
+        | `fmt.money_vnd(int) -> string`                        | `1.234.567 ₫`                                                                                                                                     |
+        | `fmt.datetime(timestamp) -> string`                   | `dd/MM/yyyy HH:mm` theo `Asia/Ho_Chi_Minh`                                                                                                        |
+        | `fmt.date(timestamp)` và `fmt.date(string) -> string` | `dd/MM/yyyy` theo cùng múi giờ; bản `string` nhận ngày dạng `YYYY-MM-DD` (ADR-0114 (Accepted) quyết 4)                                            |
 
-      `phone.e164` bỏ dấu cách, chấm, gạch và ngoặc, rồi xét năm trường hợp:
+        `phone.e164` bỏ dấu cách, chấm, gạch và ngoặc, rồi xét năm trường hợp:
         - `0` cộng 9 chữ số → `+84` cộng 9 chữ số;
         - `+840` cộng 9 chữ số → `+84` cộng 9 chữ số (bỏ số 0 trung kế);
         - `84` cộng 9 chữ số → `+84` cộng 9 chữ số;
         - `+` cộng 8 đến 15 chữ số, trừ hai trường hợp trên → giữ nguyên;
         - trường hợp khác → `expression_error`, không bao giờ trả chuỗi rỗng.
 
-      `fmt.datetime` và `fmt.date` dùng `zoneinfo` của Python cùng gói `tzdata`, không dùng bảng múi giờ của binding,
-      vì binding không tìm được tên múi giờ IANA trên Windows.
+        `fmt.datetime` và `fmt.date` dùng `zoneinfo` của Python cùng gói `tzdata`, không dùng bảng múi giờ của binding,
+        vì binding không tìm được tên múi giờ IANA trên Windows.
 
-      `time.add_workdays` vào cùng lịch làm việc ở W2 (spec, Ngoài phạm vi). Mọi hàm nền tảng báo lỗi bằng cách ném; binding trả
-      `ERROR` với `OUT_OF_RANGE` cho mọi hàm Python ném lỗi (đã đo), nên lỗi của mọi hàm nền tảng mang
-      `OUT_OF_RANGE`, và adapter trả `expression_error`.
+        `time.add_workdays` vào cùng lịch làm việc ở W2 (spec, Ngoài phạm vi). Mọi hàm nền tảng báo lỗi bằng cách ném; binding trả
+        `ERROR` với `OUT_OF_RANGE` cho mọi hàm Python ném lỗi (đã đo), nên lỗi của mọi hàm nền tảng mang
+        `OUT_OF_RANGE`, và adapter trả `expression_error`.
 4. Import-linter, hợp đồng của studio-skeleton:R5.6, mà Ngoài phạm vi của studio-skeleton giao cho ticket này:
     - Tên hợp đồng: "CEL binding only in dw_studio.core.adapters.cel". Loại `forbidden`.
     - Nguồn: mọi gói trong `root_packages` (studio-skeleton/02 bước 2 thêm `dw_studio` vào đó).
@@ -170,8 +172,9 @@ setting chọn binding đã bị bỏ (spec R3.6 [Bỏ], Ngoài phạm vi). Hai 
     - Timestamp không múi giờ bị từ chối.
     - Hai khóa cache của hai tenant khác nhau.
 
-   Vector test của si-platform không có ở đây: chủ của chúng là quy tắc kiểm hợp lệ W2 của custom-objects (hàng tương
-   ứng trong Ngoài phạm vi của custom-objects; DO-03.2).
+    Vector test của si-platform không có ở đây: chủ của chúng là quy tắc kiểm hợp lệ W2 của custom-objects (hàng tương
+    ứng trong Ngoài phạm vi của custom-objects; DO-03.2).
+
 6. Ticket này không gắn engine vào composition root nào, vì chưa có bên nào đọc nó (failure-modes #1). Ticket đầu
    tiên gọi `ExpressionEngine` từ một composition root sẽ dựng ở đó một `CelCppEngine` cho mỗi tiến trình và gọi
    `aclose()` khi tắt: ticket 03 làm việc này cho API (route `/expressions/*`), workflow-engine làm cho worker.

@@ -91,60 +91,60 @@ hẹn giờ dừng không mở approval; không hiệu ứng nào lặp lại kh
 - 2026-10-29 (agent): theo lượt xác nhận của gate: migration thêm `platform.worker_runs.definition_hash` và `platform.dw_timer_scopes_due` trả cặp `(tenant_id, workspace_id)`; wrapper của nút so `definition_hash` (R6.19), để `GraphInterrupt` đi qua (R6.18) và dựng gói bốn trường (R6.20); `ToolExecutor` tự hỏi `DecisionAutonomy` (R6.17); thuê 15 phút. Ca chéo tenant của lane `dw_timers` và chéo workspace của `trail` thêm vào WFL14, WFL15.
 - 2026-10-29 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
 - 2026-10-30 (agent): đang làm, dừng ở cuối pha B (tiếp ở phiên sau, theo thứ tự này):
-  - Xong: pha A `a170793` (migration `16ac88642439`: `worker_runs.definition_hash`, `dw_timer_scopes_due`;
-    `RunStatus.waiting_timer`; runner đỗ lượt ở `{wait: timer}` không approval, chạy tiếp từ cả hai chờ, `RunWaitsPort`;
-    `durability="sync"` cho lượt có `definition_hash`; R6.17 ở `ToolExecutor` qua `DecisionCall`) và pha B `6976baf`
-    (`wflite.compile` với sáu nút và wrapper, `wflite.waits`, `wflite.starter`, `run_store.resume_context`,
-    `approval_id` trong payload chạy tiếp; 11 test biên dịch trong bộ nhớ xanh).
-  - Còn (pha C): một hàm dựng chung đăng ký đồ thị và `WorkerDefinition` của mọi tài liệu trong `PackCatalog` vào
-    `GraphRegistry`/`WorkerRegistry`, gọi ở `build_runtime` của API và ở một runtime wf-lite mới của worker (worker
-    nền tảng chưa có runner: cần checkpointer, run store, `build_model_stack`, prompt, `ToolRegistry`, `ToolExecutor` với
-    `SqlDwBoundary`, `DecisionAutonomy(SqlDecisionLevels)`, `SqlApprovedDecisions`, `DecisionGate`, `WorkQueue`,
-    `WorkQueueRunWaits` gắn vào runner); `WorkflowRunStarter` thay `RecordingRunStarter`; lane `dw_timers`
-    (`apps/worker/src/dw_worker/consumers/dw_timers.py`: `due_timer_scopes` → `claim_timers` thuê 15 phút →
-    `run_store.get` + `resume_context` + `runner.resume`, `ConflictError` là no-op); `configs/copy/wflite_handoff.yaml`
-    (câu khuyến nghị theo mã) nạp vào `WfPorts.recommendations`; `trail` ở `GET /v1/work-items/{id}` (R6.13: từ
-    checkpoint khi lượt đang chờ, từ `worker_runs.result` khi đã xong, dưới ngữ cảnh người gọi).
-  - Còn (pha D): test integration PostgreSQL thật với model giả (lượt đi hết, dừng ở duyệt rồi chạy tiếp, hẹn giờ, bàn
-    giao, WFL11, WFL14 hai lane song song và tiến trình chết sau khi nhận, WFL16 dừng giữa bước gửi rồi chạy tiếp và đỏ
-    khi gỡ `durability="sync"`, WFL17, WFL21, WFL22); `mutations/02.yaml`; `reviewing-feature-security`; độ trễ (ticket
-    đổi truy cập database); cổng nhanh và integration của `dw_agent_runtime`, `apps/worker`, `apps/api`.
+    - Xong: pha A `a170793` (migration `16ac88642439`: `worker_runs.definition_hash`, `dw_timer_scopes_due`;
+      `RunStatus.waiting_timer`; runner đỗ lượt ở `{wait: timer}` không approval, chạy tiếp từ cả hai chờ, `RunWaitsPort`;
+      `durability="sync"` cho lượt có `definition_hash`; R6.17 ở `ToolExecutor` qua `DecisionCall`) và pha B `6976baf`
+      (`wflite.compile` với sáu nút và wrapper, `wflite.waits`, `wflite.starter`, `run_store.resume_context`,
+      `approval_id` trong payload chạy tiếp; 11 test biên dịch trong bộ nhớ xanh).
+    - Còn (pha C): một hàm dựng chung đăng ký đồ thị và `WorkerDefinition` của mọi tài liệu trong `PackCatalog` vào
+      `GraphRegistry`/`WorkerRegistry`, gọi ở `build_runtime` của API và ở một runtime wf-lite mới của worker (worker
+      nền tảng chưa có runner: cần checkpointer, run store, `build_model_stack`, prompt, `ToolRegistry`, `ToolExecutor` với
+      `SqlDwBoundary`, `DecisionAutonomy(SqlDecisionLevels)`, `SqlApprovedDecisions`, `DecisionGate`, `WorkQueue`,
+      `WorkQueueRunWaits` gắn vào runner); `WorkflowRunStarter` thay `RecordingRunStarter`; lane `dw_timers`
+      (`apps/worker/src/dw_worker/consumers/dw_timers.py`: `due_timer_scopes` → `claim_timers` thuê 15 phút →
+      `run_store.get` + `resume_context` + `runner.resume`, `ConflictError` là no-op); `configs/copy/wflite_handoff.yaml`
+      (câu khuyến nghị theo mã) nạp vào `WfPorts.recommendations`; `trail` ở `GET /v1/work-items/{id}` (R6.13: từ
+      checkpoint khi lượt đang chờ, từ `worker_runs.result` khi đã xong, dưới ngữ cảnh người gọi).
+    - Còn (pha D): test integration PostgreSQL thật với model giả (lượt đi hết, dừng ở duyệt rồi chạy tiếp, hẹn giờ, bàn
+      giao, WFL11, WFL14 hai lane song song và tiến trình chết sau khi nhận, WFL16 dừng giữa bước gửi rồi chạy tiếp và đỏ
+      khi gỡ `durability="sync"`, WFL17, WFL21, WFL22); `mutations/02.yaml`; `reviewing-feature-security`; độ trễ (ticket
+      đổi truy cập database); cổng nhanh và integration của `dw_agent_runtime`, `apps/worker`, `apps/api`.
 - 2026-10-30 (agent): đang làm, pha C xong `7197171`, test pha D xong `c98c422`:
-  - Pha C: `adapters/wflite_host.py` là bộ dựng chung của API và worker (executor luôn có ranh giới DW và phép kiểm
-    R6.17, cổng `DecisionGate`, đăng ký `dw:<key>@<version>`, starter, `RunTrailReader`); worker dựng runtime wf-lite
-    và lane `dw_timers`; `trail` ở `GET /v1/work-items/{id}`; `checkpoint_serde` và bộ đọc release manifest chuyển
-    vào `dw_agent_runtime` (image worker ship `contracts/release`).
-  - Pha D: `apps/worker/tests/integration/test_wflite_runs_db.py` 14 ca xanh. WFL16 đo được: lỗi giả trong tiến trình
-    không phân biệt `sync` với mặc định (LangGraph ghi nốt checkpoint khi lỗi lan ra), nên test giết tiến trình con
-    bằng `os._exit` sau bước gửi; gỡ `durability="sync"` thì đỏ 3/3 (dấu hiệu: `tool.replayed`). Đo thêm: một
-    `Command(resume=…)` không có interrupt đang chờ được interrupt kế tiếp nhận.
-  - Còn: kết quả `mutations/02.yaml` (đang chạy); sửa rò rỉ do `reviewing-feature-security` tìm ra (lượt wf-lite dừng
-    ở một tiến trình rồi kết thúc ở tiến trình kia để lại mục trong `RunBudgetLedger` của tiến trình dừng); độ trễ
-    của `GET /v1/work-items/{id}` so với `d565566`; cổng nhanh, integration của ba gói; đóng ticket.
+    - Pha C: `adapters/wflite_host.py` là bộ dựng chung của API và worker (executor luôn có ranh giới DW và phép kiểm
+      R6.17, cổng `DecisionGate`, đăng ký `dw:<key>@<version>`, starter, `RunTrailReader`); worker dựng runtime wf-lite
+      và lane `dw_timers`; `trail` ở `GET /v1/work-items/{id}`; `checkpoint_serde` và bộ đọc release manifest chuyển
+      vào `dw_agent_runtime` (image worker ship `contracts/release`).
+    - Pha D: `apps/worker/tests/integration/test_wflite_runs_db.py` 14 ca xanh. WFL16 đo được: lỗi giả trong tiến trình
+      không phân biệt `sync` với mặc định (LangGraph ghi nốt checkpoint khi lỗi lan ra), nên test giết tiến trình con
+      bằng `os._exit` sau bước gửi; gỡ `durability="sync"` thì đỏ 3/3 (dấu hiệu: `tool.replayed`). Đo thêm: một
+      `Command(resume=…)` không có interrupt đang chờ được interrupt kế tiếp nhận.
+    - Còn: kết quả `mutations/02.yaml` (đang chạy); sửa rò rỉ do `reviewing-feature-security` tìm ra (lượt wf-lite dừng
+      ở một tiến trình rồi kết thúc ở tiến trình kia để lại mục trong `RunBudgetLedger` của tiến trình dừng); độ trễ
+      của `GET /v1/work-items/{id}` so với `d565566`; cổng nhanh, integration của ba gói; đóng ticket.
 - 2026-10-30 (agent): resolved ở `3c85dbd` (pha A `a170793`, B `6976baf`, C `7197171`, test `c98c422`, sửa `d209fb9`,
   `3c85dbd`). Khác với ticket và spec, ngoài hai chỗ đã ghi (sha256 vào `definition_hash`, thuê 15 phút):
-  - Test integration ở `apps/worker/tests/integration/test_wflite_runs_db.py` (lane thật của worker) và test route ở
-    `apps/api/tests/unit/test_work_items_endpoint.py`; gói mẫu `tests/fixtures/packs/sample`, không `lead_care`.
-  - WFL16 giết tiến trình con bằng `os._exit`: lỗi giả trong tiến trình không đỏ khi gỡ `sync` (đo, ghi ở
-    `failure-modes.md` #4). Lượt chết khi `running` không có đường tự chạy tiếp (reaper đánh `failed`); test tái
-    kích hoạt bằng tay để hỏi đúng câu của R6.8.
-  - `RunTrailReader` đọc một nguồn theo trạng thái của việc (checkpoint khi việc đang chạy/chờ, `result` khi đã đóng).
-  - `reviewing-feature-security` tìm hai lỗi, đã sửa: (1) lượt wf-lite dừng ở một tiến trình rồi kết thúc ở tiến trình
-    kia để lại mục `RunBudgetLedger` mãi mãi, nay giải phóng lúc dừng (chỉ cho lượt wf-lite); (2) `run_checkpoints`
-    chỉ hẹp theo tenant ở RLS và saver không lọc workspace, nên người ở workspace khác cùng tenant đọc được checkpoint,
-    nay `aget_tuple`/`alist` lọc workspace của config. RLS của `run_checkpoints` vẫn chỉ theo tenant (ngoài ticket này).
-  - Sáu ranh giới: tenant (lane nhận dưới RLS của phạm vi, trail dưới phạm vi người gọi, test âm hai nguồn); phân quyền
-    (`trail` sau `WorkQueue.get`, 404 như không tồn tại); tự chủ (mọi `tool.call` mang `DecisionCall`, cửa công cụ là
-    chốt cuối, mức không đọc được là A0, trần tenant lạ là `FAIL_CLOSED_LEVEL`); nội dung không tin cậy (đầu ra model
-    kiểm JSON Schema, sai thì bàn giao; tham chiếu thay nguyên giá trị; ca prompt injection của eval thuộc gói
-    `lead_care` ở leadcare/01, gói mẫu là fixture); audit (`dw.decision.auto`, `run.*`, bàn giao của hàng đợi; run ghi
-    release manifest cả ở worker); vòng đời (thuê 15 phút, sổ chi tiêu giải phóng lúc dừng và lúc kết thúc).
-  - Mutation `mutations/02.yaml`: 30/30 đỏ, đối chứng xanh (25 lượt đầu bắt 23; hai bộ lọc hẹn giờ có hai tầng nên
-    thêm test từng tầng và đột biến hàm SQL; thêm ba đột biến cho các bản sửa).
-  - Độ trễ `GET /v1/work-items/{id}`, 200 request ấm, so `d565566`: lượt đang chờ P50/P95/P99 44,8/52,9/62,0 →
-    54,0/67,9/82,4 ms (lần đo thứ hai 53,9/64,1/84,7); lượt đã xong 44,9/53,8/58,6 → 52,9/63,9/77,2 ms. Trong ngân sách
-    (P95 ≤ 300 ms) nhưng P95 xấu hơn 21-28%: lý do là chính vòng đọc mà R6.13 đòi (một giao dịch, khoảng 10 ms trên
-    máy này); bản đầu đọc hai vòng (P95 +57%) đã bỏ một.
-  - Cổng: ruff, format, mypy, `make test-unit` (1708), `test-contract`, `test-architecture`, integration của
-    `dw_agent_runtime`, `apps/worker`, `apps/api` (297) xanh; G1: `test_approval_flow.py` không đổi, xanh.
-  - Để cho wave close: trivy image worker (chỉ thêm `COPY contracts/release`), `/code-review` của wave.
+    - Test integration ở `apps/worker/tests/integration/test_wflite_runs_db.py` (lane thật của worker) và test route ở
+      `apps/api/tests/unit/test_work_items_endpoint.py`; gói mẫu `tests/fixtures/packs/sample`, không `lead_care`.
+    - WFL16 giết tiến trình con bằng `os._exit`: lỗi giả trong tiến trình không đỏ khi gỡ `sync` (đo, ghi ở
+      `failure-modes.md` #4). Lượt chết khi `running` không có đường tự chạy tiếp (reaper đánh `failed`); test tái
+      kích hoạt bằng tay để hỏi đúng câu của R6.8.
+    - `RunTrailReader` đọc một nguồn theo trạng thái của việc (checkpoint khi việc đang chạy/chờ, `result` khi đã đóng).
+    - `reviewing-feature-security` tìm hai lỗi, đã sửa: (1) lượt wf-lite dừng ở một tiến trình rồi kết thúc ở tiến trình
+      kia để lại mục `RunBudgetLedger` mãi mãi, nay giải phóng lúc dừng (chỉ cho lượt wf-lite); (2) `run_checkpoints`
+      chỉ hẹp theo tenant ở RLS và saver không lọc workspace, nên người ở workspace khác cùng tenant đọc được checkpoint,
+      nay `aget_tuple`/`alist` lọc workspace của config. RLS của `run_checkpoints` vẫn chỉ theo tenant (ngoài ticket này).
+    - Sáu ranh giới: tenant (lane nhận dưới RLS của phạm vi, trail dưới phạm vi người gọi, test âm hai nguồn); phân quyền
+      (`trail` sau `WorkQueue.get`, 404 như không tồn tại); tự chủ (mọi `tool.call` mang `DecisionCall`, cửa công cụ là
+      chốt cuối, mức không đọc được là A0, trần tenant lạ là `FAIL_CLOSED_LEVEL`); nội dung không tin cậy (đầu ra model
+      kiểm JSON Schema, sai thì bàn giao; tham chiếu thay nguyên giá trị; ca prompt injection của eval thuộc gói
+      `lead_care` ở leadcare/01, gói mẫu là fixture); audit (`dw.decision.auto`, `run.*`, bàn giao của hàng đợi; run ghi
+      release manifest cả ở worker); vòng đời (thuê 15 phút, sổ chi tiêu giải phóng lúc dừng và lúc kết thúc).
+    - Mutation `mutations/02.yaml`: 30/30 đỏ, đối chứng xanh (25 lượt đầu bắt 23; hai bộ lọc hẹn giờ có hai tầng nên
+      thêm test từng tầng và đột biến hàm SQL; thêm ba đột biến cho các bản sửa).
+    - Độ trễ `GET /v1/work-items/{id}`, 200 request ấm, so `d565566`: lượt đang chờ P50/P95/P99 44,8/52,9/62,0 →
+      54,0/67,9/82,4 ms (lần đo thứ hai 53,9/64,1/84,7); lượt đã xong 44,9/53,8/58,6 → 52,9/63,9/77,2 ms. Trong ngân sách
+      (P95 ≤ 300 ms) nhưng P95 xấu hơn 21-28%: lý do là chính vòng đọc mà R6.13 đòi (một giao dịch, khoảng 10 ms trên
+      máy này); bản đầu đọc hai vòng (P95 +57%) đã bỏ một.
+    - Cổng: ruff, format, mypy, `make test-unit` (1708), `test-contract`, `test-architecture`, integration của
+      `dw_agent_runtime`, `apps/worker`, `apps/api` (297) xanh; G1: `test_approval_flow.py` không đổi, xanh.
+    - Để cho wave close: trivy image worker (chỉ thêm `COPY contracts/release`), `/code-review` của wave.

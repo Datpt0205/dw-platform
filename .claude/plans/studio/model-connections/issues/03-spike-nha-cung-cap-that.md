@@ -17,6 +17,7 @@ Trên stack và transport của ticket 01, đo bảy nhà cung cấp mà một m
     - vLLM và FPT AI Factory: khóa và `api_base`.
 
     Khóa chỉ tới `model-proxy` qua transport của ticket 01, từng lượt gọi. `egress-standin` chỉ cho ra internet tới đúng các máy của bảy nhà cung cấp này.
+
 2. Với mỗi nhà cung cấp, đo:
     - streaming có usage;
     - gọi công cụ;

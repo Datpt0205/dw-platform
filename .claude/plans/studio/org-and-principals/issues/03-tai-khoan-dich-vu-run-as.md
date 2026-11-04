@@ -32,13 +32,13 @@ nếu nó đã vào `main`).
    `digital_workers_repo.py:115-124` (không bao giờ từ thân request).
 2. **Dòng chi tiết: mở rộng `platform.service_principals`** (`be93e0c26a4c_platform_digital_workers.py:97-115`):
     - thêm `description text CHECK (description IS NULL OR char_length(description) <= 1000)`; `created_by uuid NULL` FK
-      `platform.users` `ON DELETE SET NULL`, index `ix_service_principals_created_by`; `updated_at timestamptz NOT NULL
-DEFAULT now()` với trigger `touch_updated_at` (`platform.touch_updated_at()`);
+      `platform.users` `ON DELETE SET NULL`, index `ix_service_principals_created_by`;
+      `updated_at timestamptz NOT NULL DEFAULT now()` với trigger `touch_updated_at` (`platform.touch_updated_at()`);
     - thay `ck_service_principals_name` bằng `CHECK (btrim(name) <> '' AND char_length(name) <= 120)`, cùng tên; dòng cũ
       vi phạm làm migration dừng và in số dòng, không sửa tên tự động;
     - `uq_service_principals_tenant_id_name UNIQUE (tenant_id, name)`; trước khi thêm, mỗi dòng trùng `(tenant_id, name)`
-      với một dòng sớm hơn (theo `created_at`, rồi `user_id`) đổi tên thành `left(name, 108) || ' (' || left(user_id::text,
-8) || ')'` và migration in số dòng đã đổi; vi phạm ràng buộc này ở `POST` của bước 6 và ở tạo DW
+      với một dòng sớm hơn (theo `created_at`, rồi `user_id`) đổi tên thành
+      `left(name, 108) || ' (' || left(user_id::text, 8) || ')'` và migration in số dòng đã đổi; vi phạm ràng buộc này ở `POST` của bước 6 và ở tạo DW
       (`SqlDigitalWorkerRepository.create`) đều thành 409 `service_principal_name_taken`;
     - `uq_service_principals_tenant_id_user_id` đã có: đích của khóa ngoại ghép mà bảng khác dùng (R6.10), giữ;
     - không thêm khóa ngoại `(tenant_id, user_id)` tới `platform.tenant_members`: với nó, bước xóa
@@ -84,8 +84,8 @@ uuid) RETURNS boolean`, `LANGUAGE sql STABLE`: vai trò là `tenant_owner` hay c
    giữ dòng phiên bản rồi mới tới guard; người khóa dòng vai trò trước rồi mới ghi bảng quyền (xác nhận của tenant-rbac/03
    bước 4, mọi UPDATE `platform.tenant_roles`) đi ngược chiều, và hai bên vẫn bế tắc qua dòng phiên bản dù không còn khóa
    advisory. Vì vậy câu đầu của giao dịch tạo DW, sau `claim_effect_key` và trước `INSERT platform.users`, là `SELECT id
-   FROM platform.tenant_roles WHERE tenant_id = :t AND key = ANY(:role_keys) AND deleted_at IS NULL ORDER BY id FOR NO
-   KEY UPDATE` (`dw_app` có UPDATE trên bảng, `b5677d345bc1_tenant_roles.py:1251`); vai trò chưa có thì lần đồng bộ tạo
+FROM platform.tenant_roles WHERE tenant_id = :t AND key = ANY(:role_keys) AND deleted_at IS NULL ORDER BY id FOR NO
+KEY UPDATE` (`dw_app` có UPDATE trên bảng, `b5677d345bc1_tenant_roles.py:1251`); vai trò chưa có thì lần đồng bộ tạo
    mới, không ai khác thấy dòng đó; guard lấy lại khóa đã giữ, không chờ. Trigger nào khóa dòng vai trò trong một lần ghi
    bảng quyền có tên đứng trước `trg_z_` theo bảng chữ cái. Nếu sai thì: lần xác nhận của tenant-rbac/03 cập nhật dòng
    phiên bản trước khi khóa dòng vai trò, qua một hàm SECURITY DEFINER, vì `dw_app` không có UPDATE trên
@@ -418,7 +418,7 @@ depth, anchor_workspace_id)` là quyền hiệu lực của chủ thể mà hàm
   guard từ chối `tenant_owner` cho tài khoản dịch vụ. `PUT` thành viên với một membership rỗng vai trò gặp
   `uq_memberships_scope_user` (có trước ticket này: `_write` coi `before` rỗng là chưa có dòng), nên test R6.4 qua
   route dùng workspace thứ hai. M2, M13, M15, M16 như ghi trên. Lúc đóng hàng đợi: `scripts/mutate.py
-  .claude/plans/studio/org-and-principals/mutations/03.yaml`, đo P50/P95/P99 theo M11 (thêm `GET` service
+.claude/plans/studio/org-and-principals/mutations/03.yaml`, đo P50/P95/P99 theo M11 (thêm `GET` service
   principals, `POST`, `PATCH`).
 - 2026-11-03 (agent): cổng của ticket: ruff, format, mypy (624 tệp), lint-imports, `verify_architecture.py`,
   `verify_invariants.py`, unit của `dw_platform`, `dw_api`, `dw_worker`, `dw_kernel`, `-m contract`, và tích hợp

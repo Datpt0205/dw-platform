@@ -32,7 +32,8 @@ Kiểm `type@major` chưa đăng ký là `wf.unknown_node_type` của workflow-e
           của Studio;
         - tham số `extra` của `build_node_registry`, mà composition root của Studio truyền vào.
 
-      Ticket này không thêm hai thứ đó, vì chưa có mục Studio nào để truyền (CLAUDE.md, Work style 6).
+        Ticket này không thêm hai thứ đó, vì chưa có mục Studio nào để truyền (CLAUDE.md, Work style 6).
+
     - Một ticket sau mà loại của nó wf-lite đã ship (ticket 03 `logic.switch@1`, 05 `ai.llm@1`, 06 `tool.call@1` và
       `human.approval@1`) sửa đúng mục đó. Nó không thêm mục thứ hai. Sau khi sửa, mọi quy trình trong `configs/packs`
       vẫn qua bộ kiểm wf-lite và giữ nguyên nghĩa: `PackCatalog` nạp được mọi gói đã ship. Nếu không giữ được như vậy,
@@ -135,7 +136,8 @@ Kiểm `type@major` chưa đăng ký là `wf.unknown_node_type` của workflow-e
         - `expression_error` hay `expression_budget_exceeded` làm cả lần render thất bại với đúng mã đó;
         - Biểu thức ra `null` ở mọi đích trừ `json` → `null_in_template`.
 
-      Không bao giờ render thành chuỗi rỗng.
+        Không bao giờ render thành chuỗi rỗng.
+
     - Đổi giá trị vô hướng ra chữ bằng một hàm `scalar_text`:
         - `string` giữ nguyên;
         - `int` viết thập phân; `double` theo `json.dumps`; `bool` thành `true` hay `false`;
@@ -146,13 +148,14 @@ Kiểm `type@major` chưa đăng ký là `wf.unknown_node_type` của workflow-e
         - **`html`**:
             - giá trị đi qua `html.escape(..., quote=True)`;
             - chữ tĩnh chỉ được dùng các thẻ `p br b strong i em u ul ol li a h1 h2 h3 h4 blockquote table thead tbody
-              tr th td span div`;
+tr th td span div`;
             - thuộc tính duy nhất được dùng là `href` của `a`, với giá trị literal bắt đầu bằng `https://` hay
               `mailto:`;
             - Biểu thức chỉ đứng ở nội dung chữ, không đứng trong một thẻ.
 
-          Vi phạm → `html_markup_not_allowed` lúc gửi kiểm định, kiểm bằng `html.parser` của stdlib. Non-scalar →
-          `non_scalar_in_text`.
+            Vi phạm → `html_markup_not_allowed` lúc gửi kiểm định, kiểm bằng `html.parser` của stdlib. Non-scalar →
+            `non_scalar_in_text`.
+
         - **`url`**:
             - luật này chỉ áp cho mẫu có ít nhất một Biểu thức; một URL toàn chữ tĩnh là việc của cửa ra ngoài;
             - phần literal trước Biểu thức đầu tiên phải chứa trọn scheme và authority, khớp
@@ -220,7 +223,7 @@ Kiểm `type@major` chưa đăng ký là `wf.unknown_node_type` của workflow-e
 - [ ] R1.5: `step_output_schema` của một Bước có `on_error` là `continue` hay `route` mang `error`
       (`object{code, message}`). `on_error` là `fail`, hay vắng → không có `error`. Cho `fail` công bố `error` → test đỏ.
 - [ ] R4.1: cùng giá trị `<b>An</b>` render là `<b>An</b>` ở đích `text` và `&lt;b&gt;An&lt;/b&gt;` ở đích `html`.
-  Thêm các ca:
+      Thêm các ca:
     - `list[string]` ở `text` → `non_scalar_in_text`;
     - `null` ở `text` → `null_in_template`, ở `json` → `null`;
     - lá `json` đúng một `{{ x }}` với `x` là `int` → số, không phải chuỗi;
@@ -232,7 +235,8 @@ Kiểm `type@major` chưa đăng ký là `wf.unknown_node_type` của workflow-e
     - `\{{ x }}` render ra nguyên chữ `{{ x }}`;
     - `{{ "}}" }}` render ra `}}`.
 
-  Gỡ từng phép kiểm → ca của nó đỏ.
+    Gỡ từng phép kiểm → ca của nó đỏ.
+
 - [ ] R4.2 (WN2):
     - lời nhắn lead chứa `</input>` render ở đích `prompt` không đóng được khối; gỡ `contain_untrusted` ở đích prompt →
       test đỏ;
@@ -286,8 +290,9 @@ Kiểm `type@major` chưa đăng ký là `wf.unknown_node_type` của workflow-e
       `x-dw-sink` mặc định.
     - `error` của R1.5 mơ hồ: thuộc loại hay thuộc Bước, và dạng nào.
 
-  Không còn gì đổi theo bản Rust, AST, kiểm độ lồng hay tham chiếu từ `check`: ticket này chỉ gọi `check` và
-  `evaluate`.
+    Không còn gì đổi theo bản Rust, AST, kiểm độ lồng hay tham chiếu từ `check`: ticket này chỉ gọi `check` và
+    `evaluate`.
+
 - 2026-11-03 (agent): MEDIUM của gate, cho người làm và cho `checking-plan-consistency`:
     - (a) workflow-engine/01 lập kế hoạch một mô hình tài liệu `dw.workflow/v1`, một bộ kiểm và một trình biên dịch
       trong `dw_studio`, trong khi wf-lite đã dựng chúng trong `dw_agent_runtime` (`document.py`, `validate.py`,
@@ -318,8 +323,9 @@ Kiểm `type@major` chưa đăng ký là `wf.unknown_node_type` của workflow-e
     - `writes_untrusted_tag` là `(?i)</?input`, chỉ trên `template` của `PromptArtifact`;
     - luật `url` chỉ áp cho mẫu có Biểu thức, và khóa query được mã hóa.
 
-  B7 (tầng của module) là MEDIUM (e). S4 (`null` làm hỏng lần render) là quyết định có ghi `Nếu sai thì:` ở dòng
-  Quyết định 3/11/2026 của spec. Không còn CRITICAL hay HIGH.
+    B7 (tầng của module) là MEDIUM (e). S4 (`null` làm hỏng lần render) là quyết định có ghi `Nếu sai thì:` ở dòng
+    Quyết định 3/11/2026 của spec. Không còn CRITICAL hay HIGH.
+
 - 2026-11-03 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
 - 2026-11-03 (agent, theo ủy quyền 31/10/2026): theo gate của workflow-engine/01 (spec workflow-engine, Quyết định
   3/11/2026): mã loại chưa đăng ký là `wf.unknown_type` mà wf-lite đã ship, không `wf.unknown_node_type`. workflow-engine/01

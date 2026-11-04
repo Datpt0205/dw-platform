@@ -104,30 +104,30 @@ workspace_id uuid, state text)` `SECURITY DEFINER`, `SET search_path = pg_catalo
   SMTP/Mailpit giả và lượt integration từ cửa nhận tới bàn giao, (f) mutation và hai lượt rà bảo mật.
 - 2026-10-30 (agent): resolved, trừ R1.5 (`57ee004` gói, `bfa6b75` công cụ, `8b51792` nối, `6cf41ca` cửa nhận,
   `0687ead` Mailpit, `8791a06` eval, `7b5156c`, `12a0141`, `9341032` test). Khác với ticket, ngoài các dòng trước:
-  - R1.5 chưa chạy: máy này không có model thật (`.env` để `DW_MODEL_PROVIDER=mock`, không `OPENAI_BASE_URL`;
-    `make check-model` cũng chỉ trả từ model giả). Bộ eval `leadcare_injection_v1.jsonl` (năm ca) và `make
-    eval-leadcare` đã sẵn sàng và đã chạy tới bước gọi model; ô R1.5 để trống tới khi có khóa (`studio.md`, Chờ Đạt 21).
-  - Cửa nhận: lead có trường lạ (kể cả `tenant_id`) bị schema từ chối `payload_invalid`, nên ca LCP4 kiểm "không dòng
-    nào ở tenant B" bằng lời từ chối đó; `source_key_reused` đi theo `WorkQueue.enqueue` (422 như mọi lỗi
-    `_refused` của hàng đợi, không 409 như R2.9 viết; mã lỗi đúng).
-  - Công cụ `mailbox.fetch_reply` dùng loại quyết định `work.handoff` (không hiệu ứng); `work.handoff` không có
-    `output_fields`. Mailpit ghim v1.31.6 (một HIGH có bản vá; v1.32.0 sạch nhưng mới 8 ngày, gộp vào Chờ Đạt 19).
-  - `reviewing-feature-security`: tenant (tenant và workspace lấy từ dòng DW sau chữ ký; lead nêu tenant khác bị từ
-    chối; hàm phạm vi chỉ ba cột); phân quyền (chữ ký là quyền duy nhất của cửa nhận, mọi lý do không tin là một 401;
-    khóa chỉ cho BO/TO, 404 trước 403, có audit); tự chủ (thư chỉ đi qua cổng duyệt, Sàn gửi tin và cửa công cụ;
-    người nhận đọc từ việc, khóa trong đề xuất); nội dung không tin cậy (mọi giá trị của lead và thư trả lời trong
-    `<input>`; bộ eval chèn lệnh chờ chạy); audit (`work_item.received` của lane `intake` và Bản ghi đồng ý cùng giao
-    dịch với việc; `dw.intake_key.read`); mặc định (cửa nhận đóng khi triển khai, 503 khi thiếu bí mật; công cụ gửi
-    từ chối mọi host ngoài hộp thư dev trước khi kết nối). Test âm ở mỗi chỗ.
-  - `reviewing-deployment-security` (bước 9): route công khai mới đóng 503 ở mọi profile triển khai và qua bộ giới
-    hạn tốc độ theo địa chỉ; dịch vụ compose mới chỉ ở overlay dev, chỉ nghe loopback, ảnh ghim digest, đã quét
-    trivy; URL ra ngoài: SMTP chỉ tới `mailpit`/`localhost`/`127.0.0.1`, `MAILBOX_API_URL` do người vận hành đặt và
-    chỉ ở profile cục bộ.
-  - Mutation `mutations/01.yaml`: 13/13 đỏ, đối chứng xanh.
-  - Độ trễ `POST /api/v1/intake/leads` (route mới, không có số gốc), 200 lead ký đúng, ứng dụng ASGI thật và
-    PostgreSQL thật: P50/P95/P99 47,3/56,9/63,0 ms (lần hai 44,1/54,8/64,5), trong ngân sách.
-  - Cổng: ruff, format, mypy, `make test-unit` (1769), `test-contract`, `test-architecture`, kiểm manifest xanh;
-    integration của `dw_platform`, `dw_agent_runtime`, `apps/api`, `apps/worker`: 794 qua, 3 bỏ qua.
+    - R1.5 chưa chạy: máy này không có model thật (`.env` để `DW_MODEL_PROVIDER=mock`, không `OPENAI_BASE_URL`;
+      `make check-model` cũng chỉ trả từ model giả). Bộ eval `leadcare_injection_v1.jsonl` (năm ca) và `make
+eval-leadcare` đã sẵn sàng và đã chạy tới bước gọi model; ô R1.5 để trống tới khi có khóa (`studio.md`, Chờ Đạt 21).
+    - Cửa nhận: lead có trường lạ (kể cả `tenant_id`) bị schema từ chối `payload_invalid`, nên ca LCP4 kiểm "không dòng
+      nào ở tenant B" bằng lời từ chối đó; `source_key_reused` đi theo `WorkQueue.enqueue` (422 như mọi lỗi
+      `_refused` của hàng đợi, không 409 như R2.9 viết; mã lỗi đúng).
+    - Công cụ `mailbox.fetch_reply` dùng loại quyết định `work.handoff` (không hiệu ứng); `work.handoff` không có
+      `output_fields`. Mailpit ghim v1.31.6 (một HIGH có bản vá; v1.32.0 sạch nhưng mới 8 ngày, gộp vào Chờ Đạt 19).
+    - `reviewing-feature-security`: tenant (tenant và workspace lấy từ dòng DW sau chữ ký; lead nêu tenant khác bị từ
+      chối; hàm phạm vi chỉ ba cột); phân quyền (chữ ký là quyền duy nhất của cửa nhận, mọi lý do không tin là một 401;
+      khóa chỉ cho BO/TO, 404 trước 403, có audit); tự chủ (thư chỉ đi qua cổng duyệt, Sàn gửi tin và cửa công cụ;
+      người nhận đọc từ việc, khóa trong đề xuất); nội dung không tin cậy (mọi giá trị của lead và thư trả lời trong
+      `<input>`; bộ eval chèn lệnh chờ chạy); audit (`work_item.received` của lane `intake` và Bản ghi đồng ý cùng giao
+      dịch với việc; `dw.intake_key.read`); mặc định (cửa nhận đóng khi triển khai, 503 khi thiếu bí mật; công cụ gửi
+      từ chối mọi host ngoài hộp thư dev trước khi kết nối). Test âm ở mỗi chỗ.
+    - `reviewing-deployment-security` (bước 9): route công khai mới đóng 503 ở mọi profile triển khai và qua bộ giới
+      hạn tốc độ theo địa chỉ; dịch vụ compose mới chỉ ở overlay dev, chỉ nghe loopback, ảnh ghim digest, đã quét
+      trivy; URL ra ngoài: SMTP chỉ tới `mailpit`/`localhost`/`127.0.0.1`, `MAILBOX_API_URL` do người vận hành đặt và
+      chỉ ở profile cục bộ.
+    - Mutation `mutations/01.yaml`: 13/13 đỏ, đối chứng xanh.
+    - Độ trễ `POST /api/v1/intake/leads` (route mới, không có số gốc), 200 lead ký đúng, ứng dụng ASGI thật và
+      PostgreSQL thật: P50/P95/P99 47,3/56,9/63,0 ms (lần hai 44,1/54,8/64,5), trong ngân sách.
+    - Cổng: ruff, format, mypy, `make test-unit` (1769), `test-contract`, `test-architecture`, kiểm manifest xanh;
+      integration của `dw_platform`, `dw_agent_runtime`, `apps/api`, `apps/worker`: 794 qua, 3 bỏ qua.
 - 2026-11-02 (agent, theo ủy quyền 31/10/2026): R1.5 chạy được và xanh trên model thật (`gpt-5.6-luna` qua
   `portal.dxrank.vn`; `.env` có khóa và `OPENAI_BASE_URL`, nhưng `DW_MODEL_PROVIDER=mock`, nên chạy với
   `DW_MODEL_PROVIDER=openai DW_API_MODEL_PROFILE=luna`). Lần chạy đầu tìm ra lỗi chỉ lần gọi thật mới thấy

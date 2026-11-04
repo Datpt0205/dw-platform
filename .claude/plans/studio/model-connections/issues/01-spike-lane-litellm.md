@@ -18,6 +18,7 @@ Yêu cầu: không (spike đo đạc trước khi W2 dựng model proxy thật t
     - `compose.yml` với tên project `dw-spike-model-proxy`.
 
     Biến môi trường duy nhất có giá trị bí mật là `LITELLM_MASTER_KEY`: khóa truy cập của chính proxy, một giá trị thử cố định. `HTTPS_PROXY` và `HTTP_PROXY` trỏ `egress-standin`.
+
 2. Bốn dịch vụ trong `compose.yml`, mọi ảnh tự dựng đi từ cùng ảnh nền ghim:
     - `model-proxy`, cổng `127.0.0.1:8010`;
     - `egress-standin`: một proxy HTTP và CONNECT ghi tên máy đích của mỗi kết nối. Nó đứng thay smokescreen, vì smokescreen thật còn chờ `.claude/plans/studio/discovery/issues/21-vault-and-egress.md` và connections-and-vault;
@@ -25,6 +26,7 @@ Yêu cầu: không (spike đo đạc trước khi W2 dựng model proxy thật t
     - `ollama`: ảnh `ollama/ollama` ghim digest, model `qwen2.5:0.5b`, không mở cổng ra host.
 
     `model-proxy` chỉ nằm trên mạng `ingress`, chung với `egress-standin`. `fake-upstream` và `ollama` chỉ nằm trên mạng `upstream`, chung với `egress-standin`. Vì vậy một lời gọi đi thẳng từ `model-proxy` không tới được upstream. Các cổng 8000, 3000, 3010, 3020 thuộc dự án khác trên máy này; spike chỉ dùng 8010 và 8011.
+
 3. Transport ở `infra/spikes/model-proxy/tests/key_transport.py`: một `httpx2.AsyncBaseTransport` bọc transport mặc định.
     - Nó đọc `api_key` và `api_base` từ một `contextvars.ContextVar` đặt cho từng lượt gọi (vai của `StudioModelSelection` ở ADR-0118 (Accepted) quyết định 8, chưa có trong mã), rồi thêm hai giá trị đó vào thân JSON của request `/chat/completions`, kể cả request stream.
     - Không truyền qua `extra_body`, header của model hay `model_kwargs`.
@@ -40,6 +42,7 @@ Yêu cầu: không (spike đo đạc trước khi W2 dựng model proxy thật t
     - ánh xạ lỗi 400, 401, 429, 500 và quá hạn: mã HTTP và kiểu lỗi client nhận được, và thân lỗi của upstream có bị chép ra không.
 
     Ghi bảng số đo vào Comments, và một dòng Quyết định vào `spec.md` nêu cấu hình chốt cùng các mục FOG-19, FOG-21 đã đo.
+
 6. Nếu cấu hình của ADR-0118 (Accepted) quyết định 8 không cho `api_key` trong thân request đi qua (chẳng hạn chỉ `allow_client_side_credentials: true` mới cho), dừng, ghi số đo và ghi đề xuất sửa quyết định 8 vào Comments. Không tự nới cấu hình: nới nó là mở lại đúng đường của GHSA-3cv6-jpf6-8222. Một tiêu chí dưới đây mà LiteLLM 1.106.1 với cấu hình đó không giữ được (chẳng hạn proxy không đi qua `egress-standin`, hay thiếu khóa mà trả mã khác 401) cũng được xử lý như vậy: dừng, ghi số đo và đề xuất. Không sửa tiêu chí cho xanh.
 
 ## Tiêu chí chấp nhận
@@ -74,6 +77,7 @@ Yêu cầu: không (spike đo đạc trước khi W2 dựng model proxy thật t
     - (10) Thêm bước 6: cấu hình của quyết định 8 không cho `api_key` đi qua thì dừng và đề xuất, không tự nới.
 
     Nếu sai thì: đặt lại `Xong:` dưới `packages/python/dw_studio/tests/spike` sau studio-skeleton/02, gộp ticket 03 trở lại đây, và chạy spike trên một bản LiteLLM khác chỉ sau khi sửa ADR-0118 (Accepted).
+
 - 2026-11-02 (agent): MEDIUM để lại, chưa sửa:
     - ADR-0118 (Accepted) dẫn `uv.lock:2717-2718` và `uv.lock:1712-1713`; hôm nay là `uv.lock:2741-2742` (`openai` 3.14.1) và `uv.lock:1736-1737` (`httpx2` 2.13.0).
     - Hiện trạng của spec dẫn `.env.example:171`; khối gateway nay ở `.env.example:178-193`.

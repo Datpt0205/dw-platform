@@ -120,25 +120,25 @@ message`, hai dấu phải khớp hoặc nạp lỗi; `configs/tools` hôm nay k
   (ghi `marketing.sent` sau khi công cụ thành công); lời gọi không địa chỉ nào → `blocked:no_recipient`; route
   `GET`/`POST` luôn được gắn, thiếu bí mật → 503; bản ghi hủy nhận không ghi audit (người hủy không là principal; ticket
   không đòi). Hai test offboarding của kênh và DW đặt tenant `offboarding` trước khi xóa, như lane thật.
-  - `reviewing-feature-security`: tenant (ba bảng RLS, bảng toàn tenant có lý do, hàm đếm và hàm xóa RAISE khi thiếu hay
-    lệch `app.tenant_id`, test âm CP27 đọc và ghi chéo tenant); phân quyền (route công khai lấy tenant từ token đã kiểm
-    chữ ký; token sai là 404 như không tồn tại); tự chủ (sàn ở `ToolExecutor`, nơi hiệu ứng xảy ra, sau approval và phát
-    lại, trước giành lượt; không sàn thì không gửi); nội dung không tin cậy (địa chỉ từ đầu vào công cụ chuẩn hóa và
-    băm, không lưu nguyên văn; link hủy chèn sau khi băm đầu vào); audit (dòng `blocked` và `marketing.send_refused`
-    cùng một giao dịch; `marketing.sent` mang `consent_record_id`); mặc định (thiếu đồng ý là từ chối, trùng thời điểm
-    đọc là `withdrawn`, thiếu sàn là từ chối, spec im lặng về gửi tin là nạp lỗi). Test âm ở mỗi chỗ.
-  - Mutation `mutations/08.yaml`: 18/18 đỏ, đối chứng xanh (lượt đầu 17/18: đột biến CP27 sửa `WHERE` trong khi test
-    giữ `RAISE`; viết lại).
-  - Độ trễ (bước 10), lời gọi công cụ gửi tin qua `ToolExecutor`, 200 lần ấm, PostgreSQL thật: không sàn P50/P95/P99
-    50,8/63,7/70,3 ms (lần hai 50,6/66,4/75,3); có sàn 85,3/102,7/109,6 ms (86,4/107,3/116,4). Trong ngân sách
-    (P95 ≤ 300 ms); P95 xấu hơn khoảng 60%: đó là phần ticket đòi — một giao dịch riêng (hai khóa tư vấn, năm câu đọc,
-    một câu ghi) commit trước khi gửi (R3.9), cộng một giao dịch ghi `marketing.sent` sau khi gửi, và một lần đọc phát
-    lại trước sàn.
-  - Cổng: ruff, format, mypy, `make test-unit` (1743), `test-contract`, `test-architecture`, kiểm manifest xanh;
-    integration `dw_platform` (482), `dw_agent_runtime`, `apps/api`, `apps/worker` xanh; web: typecheck, lint, test
-    allowlist antd xanh.
-  - Để cho đóng wave: `reviewing-deployment-security` (route công khai mới), đo trang `/unsubscribe/[token]` bằng
-    Playwright.
+    - `reviewing-feature-security`: tenant (ba bảng RLS, bảng toàn tenant có lý do, hàm đếm và hàm xóa RAISE khi thiếu hay
+      lệch `app.tenant_id`, test âm CP27 đọc và ghi chéo tenant); phân quyền (route công khai lấy tenant từ token đã kiểm
+      chữ ký; token sai là 404 như không tồn tại); tự chủ (sàn ở `ToolExecutor`, nơi hiệu ứng xảy ra, sau approval và phát
+      lại, trước giành lượt; không sàn thì không gửi); nội dung không tin cậy (địa chỉ từ đầu vào công cụ chuẩn hóa và
+      băm, không lưu nguyên văn; link hủy chèn sau khi băm đầu vào); audit (dòng `blocked` và `marketing.send_refused`
+      cùng một giao dịch; `marketing.sent` mang `consent_record_id`); mặc định (thiếu đồng ý là từ chối, trùng thời điểm
+      đọc là `withdrawn`, thiếu sàn là từ chối, spec im lặng về gửi tin là nạp lỗi). Test âm ở mỗi chỗ.
+    - Mutation `mutations/08.yaml`: 18/18 đỏ, đối chứng xanh (lượt đầu 17/18: đột biến CP27 sửa `WHERE` trong khi test
+      giữ `RAISE`; viết lại).
+    - Độ trễ (bước 10), lời gọi công cụ gửi tin qua `ToolExecutor`, 200 lần ấm, PostgreSQL thật: không sàn P50/P95/P99
+      50,8/63,7/70,3 ms (lần hai 50,6/66,4/75,3); có sàn 85,3/102,7/109,6 ms (86,4/107,3/116,4). Trong ngân sách
+      (P95 ≤ 300 ms); P95 xấu hơn khoảng 60%: đó là phần ticket đòi — một giao dịch riêng (hai khóa tư vấn, năm câu đọc,
+      một câu ghi) commit trước khi gửi (R3.9), cộng một giao dịch ghi `marketing.sent` sau khi gửi, và một lần đọc phát
+      lại trước sàn.
+    - Cổng: ruff, format, mypy, `make test-unit` (1743), `test-contract`, `test-architecture`, kiểm manifest xanh;
+      integration `dw_platform` (482), `dw_agent_runtime`, `apps/api`, `apps/worker` xanh; web: typecheck, lint, test
+      allowlist antd xanh.
+    - Để cho đóng wave: `reviewing-deployment-security` (route công khai mới), đo trang `/unsubscribe/[token]` bằng
+      Playwright.
 - 2026-10-30 (agent): `check_plans.py` của khu: cảnh báo va chạm 08 với 04 và 06 (cùng ba bảng, route hủy, tệp chính sách)
   là đúng: 04 và 06 xây trên những gì 08 dựng. Không ghi `Blocked by: 08` vào 04 vì số chỉ được trỏ ngược; khi cắt lại
   lượt ticket của khu, đánh số lại (08 trước 04) ở `checking-plan-consistency`. Neo chết `retention@1.7.0.yaml:118-120`

@@ -79,26 +79,26 @@ duy nhất trả mức tự chủ có hiệu lực (R1, R2, ADR-0128 (Proposed) 
 - 2026-10-29 (agent): theo gate lượt 2: route thành viên từ chối ghi membership của user `kind = 'service'` (R1.17, DWK36); bốn người phải `kind = 'human'`; mọi route theo id trả 404 trước 403 (R1.5).
 - 2026-10-29 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
 - 2026-10-30 (agent): code và test xong (`5e1ca10`). Làm khác spec, có lý do:
-  - `dw_app` giữ DELETE trên `service_principals`, `digital_workers`, `dw_decision_classes`. Spec ghi "DELETE không
-    cấp (offboarding xóa bằng vai của nó)", nhưng offboarding ở repo này chạy bằng `dw_app` và chỉ xóa bảng tenant mà
-    `dw_app` có DELETE (`offboarding.py`, `_CATALOG_PURGEABLE`); thiếu quyền đó thì `digital_workers` giữ workspace bằng
-    RESTRICT và không tenant nào có DW offboard được. Không đường ứng dụng nào xóa dòng. Test:
-    `test_offboarding_exports_and_purges_a_tenant_holding_a_dw`.
-  - Khóa ngoại ghép mang `tenant_id`: `digital_workers (tenant_id, workspace_id)` tới workspace,
-    `(tenant_id, principal_user_id)` tới `service_principals`, `dw_decision_classes (tenant_id, workspace_id, dw_id)`
-    tới DW (spec ghi khóa một cột): khóa ngoại không đi qua RLS, như `3f1cb1d4cece`.
-  - Scope quản trị: nền tảng dùng tiền tố `platform.` (`is_administrative`), spec ghi `admin.*`; R1.15 và phép kiểm
-    catalog R1.18 xét cả hai. `tenant_owner` chưa có trong danh mục vai, vẫn bị cấm theo tên.
-  - Membership không có "tạm ngưng" ở repo này; R1.17 cho thu hẹp vai và gỡ membership, từ chối thêm vai, bộ quyền,
-    workspace (trigger `ck_memberships_dw_principal_roles_fixed`, cả `dw_app` lẫn `dw_provisioner`).
-  - Lọc `kind = 'human'` cũng ở sơ đồ tổ chức (`hierarchy_repo`) và `SqlScopeHolders.holding` (ai được báo việc);
-    `holds`/`scopes_of` không lọc vì ticket 02 hỏi chúng về chính principal. Bộ lọc ở `/directory/candidates` là phòng
-    thủ thêm: principal không có email nên truy vấn đó vốn đã loại nó, đột biến không đỏ được.
-  - `DecisionAutonomy` chưa có cổng nào gọi: `DecisionGate` của ticket 02 là người đọc (failure-modes #1, ghi ở đây
-    để ticket 02 nối).
-  - `ToolCatalogPort` là `ToolRegistry.has_tool` (tên công cụ đã đăng ký, mọi phiên bản), đọc lúc hỏi.
-  - Sau offboarding, dòng `platform.users` của principal còn lại như mọi user người (bảng định danh không có
-    `tenant_id`); xóa theo `owner_tenant_id ON DELETE CASCADE` khi dòng tenant bị xóa.
+    - `dw_app` giữ DELETE trên `service_principals`, `digital_workers`, `dw_decision_classes`. Spec ghi "DELETE không
+      cấp (offboarding xóa bằng vai của nó)", nhưng offboarding ở repo này chạy bằng `dw_app` và chỉ xóa bảng tenant mà
+      `dw_app` có DELETE (`offboarding.py`, `_CATALOG_PURGEABLE`); thiếu quyền đó thì `digital_workers` giữ workspace bằng
+      RESTRICT và không tenant nào có DW offboard được. Không đường ứng dụng nào xóa dòng. Test:
+      `test_offboarding_exports_and_purges_a_tenant_holding_a_dw`.
+    - Khóa ngoại ghép mang `tenant_id`: `digital_workers (tenant_id, workspace_id)` tới workspace,
+      `(tenant_id, principal_user_id)` tới `service_principals`, `dw_decision_classes (tenant_id, workspace_id, dw_id)`
+      tới DW (spec ghi khóa một cột): khóa ngoại không đi qua RLS, như `3f1cb1d4cece`.
+    - Scope quản trị: nền tảng dùng tiền tố `platform.` (`is_administrative`), spec ghi `admin.*`; R1.15 và phép kiểm
+      catalog R1.18 xét cả hai. `tenant_owner` chưa có trong danh mục vai, vẫn bị cấm theo tên.
+    - Membership không có "tạm ngưng" ở repo này; R1.17 cho thu hẹp vai và gỡ membership, từ chối thêm vai, bộ quyền,
+      workspace (trigger `ck_memberships_dw_principal_roles_fixed`, cả `dw_app` lẫn `dw_provisioner`).
+    - Lọc `kind = 'human'` cũng ở sơ đồ tổ chức (`hierarchy_repo`) và `SqlScopeHolders.holding` (ai được báo việc);
+      `holds`/`scopes_of` không lọc vì ticket 02 hỏi chúng về chính principal. Bộ lọc ở `/directory/candidates` là phòng
+      thủ thêm: principal không có email nên truy vấn đó vốn đã loại nó, đột biến không đỏ được.
+    - `DecisionAutonomy` chưa có cổng nào gọi: `DecisionGate` của ticket 02 là người đọc (failure-modes #1, ghi ở đây
+      để ticket 02 nối).
+    - `ToolCatalogPort` là `ToolRegistry.has_tool` (tên công cụ đã đăng ký, mọi phiên bản), đọc lúc hỏi.
+    - Sau offboarding, dòng `platform.users` của principal còn lại như mọi user người (bảng định danh không có
+      `tenant_id`); xóa theo `owner_tenant_id ON DELETE CASCADE` khi dòng tenant bị xóa.
 - 2026-10-30 (agent): `reviewing-feature-security`: sáu ranh giới; untrusted content không áp (không lời gọi model,
   mandate và tham số chưa vào prompt nào). Một lỗ hổng không đóng ở ticket này: `dw_app` chèn được user `service`
   nêu `owner_tenant_id` bất kỳ (bảng `users` không RLS); nó không thành principal ở tenant khác vì trigger đòi
@@ -116,5 +116,5 @@ duy nhất trả mức tự chủ có hiệu lực (R1, R2, ADR-0128 (Proposed) 
   không P95 nào kém hơn 20%.
 - 2026-10-30 (agent): cổng nhanh xanh: ruff, format, mypy (470 tệp), `make test-unit`, `make test-contract`,
   `make test-architecture`; integration của `dw_platform`, `apps/api`, `dw_agent_runtime` xanh. `make
-  test-integration` đầy đủ và `/code-review` chờ lúc đóng đợt (`wave-close.md`). Ticket resolved (`5e1ca10`,
+test-integration` đầy đủ và `/code-review` chờ lúc đóng đợt (`wave-close.md`). Ticket resolved (`5e1ca10`,
   `827556e`, `cd19cfe`).

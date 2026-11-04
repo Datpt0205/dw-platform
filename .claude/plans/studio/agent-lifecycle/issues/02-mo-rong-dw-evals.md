@@ -23,7 +23,7 @@ R3, G1).
    `model_validator` từ chối `passed=True` cùng `unknown=True`, và hàm dựng `GradeResult.abstain(reason, **details)`
    (`passed=False, unknown=True`), để mọi cửa đếm `unknown` như trượt, kể cả `EvalReport.ok` của CI. Model
    `Observation` (Pydantic, `frozen`, `extra="forbid"`): `final_output: dict[str, Any] | None`, `tool_calls:
-   tuple[ObservedToolCall, ...]` (mỗi phần tử `tool` dạng `name@version`, `side_effect_level` là `SideEffectLevel` của
+tuple[ObservedToolCall, ...]` (mỗi phần tử `tool` dạng `name@version`, `side_effect_level` là `SideEffectLevel` của
    `dw_agent_runtime.contracts`, `simulated: bool`, `args_sha256` hex 64 ký tự; tác động bị giả lập là các phần tử có
    `simulated=True`, không phải một trường thứ hai), `approval_requests: tuple[str, ...]` (loại phê duyệt lần thử đã
    xin, thật hay giả lập), `evidence_refs: tuple[str, ...]`, `cost_usd: Decimal` (`ge=0`), `latency_ms: int` (`ge=0`),
@@ -31,7 +31,7 @@ R3, G1).
    `async __call__(case: EvalCase, observation: Observation) -> GradeResult`, khóa `<context>.<gate>` như `Grader`.
    `JudgeVerdict` (`verdict: Literal["pass", "fail", "abstain"]`, `reasons: tuple[str, ...]`, `score: float | None`) và
    `JudgePort` (Protocol bất đồng bộ `judge(rubric, case_input, output, reference) -> JudgeVerdict`); `judge_grader(judge,
-   rubric) -> ObservationGrader` chấm `final_output` qua port, `abstain` thành `GradeResult.abstain`, `fail` thành trượt
+rubric) -> ObservationGrader` chấm `final_output` qua port, `abstain` thành `GradeResult.abstain`, `fail` thành trượt
    kèm `reasons`. Adapter giả `ScriptedJudge` (trả verdict theo `case_id` và đếm lời gọi) ở `dw_evals/testing.py`;
    adapter giám khảo thật là W2 (ADR-0120 (Accepted), Consequences) và sẽ đi qua `ModelGateway`, nên qua
    `ResidencyGate`. `GRADERS` không đổi; `merge_graders` thành generic theo kiểu giá trị (`Mapping[str, G]` →
@@ -51,7 +51,7 @@ R3, G1).
 4. `dw_evals/gate.py` mới, thuần: `GatePolicy` (Pydantic, `frozen`, `extra="forbid"`) chỉ với các trường có bên đọc ở
    ticket này: `policy_id`, `version` (semver), `security_pass_rate: Literal[1.0]`, `pass_k: int` (`ge=1, le=10`; bên
    đọc: bên gọi `run_cases`); ticket 06 thêm các trường còn lại của DO-29.1 cùng bên đọc của chúng. `evaluate_gate(report,
-   policy) -> GateVerdict(passed, reasons)`, không tham số nào khác (R3.4), là chủ duy nhất của "Lượt kiểm định này đạt
+policy) -> GateVerdict(passed, reasons)`, không tham số nào khác (R3.4), là chủ duy nhất của "Lượt kiểm định này đạt
    không" (ADR-0120 (Accepted) quyết 4), còn "câu này đạt không qua k lần thử" là của `run_cases` (R3.1). Luật ở ticket
    này: báo cáo không có câu nào → `no_cases`; mỗi câu `unknown` → `case_unknown:<case_id>`; mỗi câu trượt mà không
    `unknown` → `case_failed:<case_id>`; `passed` chỉ khi không có lý do nào; `reasons` sắp theo `case_id` nên không phụ thuộc thứ tự
@@ -135,7 +135,7 @@ R3, G1).
   generic với cùng hành vi. Nếu sai thì: một `merge_observation_graders` riêng dùng chung phần từ chối tên trùng.
   (7) tiêu chí R3.5 không đỏ được ở `f95a89f`: chưa có `dw_studio`, và hợp đồng cấm `dw_evals` import `dw_studio` là của
   studio-skeleton:R5.1 (studio-skeleton/02), nên viết lại ở đây là hai bản một sự thật (failure-modes #2); sửa: `Blocked
-  by` studio-skeleton/02, tiêu chí là đột biến `import dw_studio` làm `lint-imports` đỏ. Nếu sai thì: ticket này tự
+by` studio-skeleton/02, tiêu chí là đột biến `import dw_studio` làm `lint-imports` đỏ. Nếu sai thì: ticket này tự
   thêm hợp đồng `forbidden` cho `dw_evals` và studio-skeleton/02 bỏ `dw_evals` khỏi R5.1.
 - 2026-11-02 (agent): MEDIUM của gate, chưa sửa, cho người dựng: Hiện trạng của spec (đọc ở `ab33703`) chưa biết
   `make eval-leadcare` và `make eval-wf-ai` (từ 30/10): dataset `.jsonl` riêng, bảng chấm riêng

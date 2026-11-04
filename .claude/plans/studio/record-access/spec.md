@@ -443,7 +443,7 @@ chạy D12 của ticket 06 xét ngưỡng.
   chạy lại cùng khóa của R8.12 mà workflow-nodes:R6.5 dựa vào.
 - Kiểm lại khi: `platform.effective_grants` đổi hình → ticket 02 tới 05; custom-objects đổi số partition (modulus 4 theo
   luật quyết của custom-objects/01, `custom-objects:R9.5`) hay harness, seed của custom-objects/01 → ticket 01, 03, 06; số đo D12 của ticket 06 trượt ngưỡng R9 hay chọn phương án khác ticket 01 → sổ
-tầm của ticket 02, mẫu policy của ticket 03 và
+  tầm của ticket 02, mẫu policy của ticket 03 và
   ADR-0105 (Accepted); foundations-hardening/03 rút `foundations-hardening:R5.3` (dạng InitPlan) → ticket 02, 03;
   custom-objects/02 đổi khóa ngoại RESTRICT tới `studio.field_defs` hay `studio.object_defs`, hay foundations-hardening/07
   đổi hình sổ bước xóa → ticket 04; workflow-engine
@@ -624,4 +624,4 @@ tầm của ticket 02, mẫu policy của ticket 03 và
 | 03  | [Cột truy cập, bộ policy trên bảng bản ghi, mặc định truy cập theo object và phạm vi toàn tenant cho lane](issues/03-policy-ban-ghi-va-mac-dinh-truy-cap.md) |
 | 04  | [Ngữ cảnh actor ở mọi cửa và biên dữ liệu của agent và workflow](issues/04-ngu-canh-actor-o-moi-cua.md)                                                      |
 | 05  | [Giao người phụ trách và đổi workspace sở hữu](issues/05-giao-nguoi-phu-trach.md)                                                                            |
-| 06  | [Đo hình dạng RLS bản ghi ở quy mô D12 trên máy tham chiếu](issues/06-do-rls-ban-ghi-o-quy-mo-d12.md)                                 |
+| 06  | [Đo hình dạng RLS bản ghi ở quy mô D12 trên máy tham chiếu](issues/06-do-rls-ban-ghi-o-quy-mo-d12.md)                                                        |

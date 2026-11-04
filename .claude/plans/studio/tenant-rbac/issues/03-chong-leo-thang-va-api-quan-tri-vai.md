@@ -358,7 +358,7 @@ trị viên, `platform.roles.bind` gán vai trò không trọng yếu.
   org-and-principals/03 tạo, ở đây chỉ đọc (bước 2, 6, 11), cạnh `Blocked by` một chiều; `principal_inactive` là 409
   `conflict` với `details.reason_code`, như `_conflict` (`digital_workers.py:227`). MEDIUM, chưa sửa: (M16) luật neo
   "vai trò chưa ai giữ, một neo bất kỳ" của bước 2 diễn bằng `EXISTS (SELECT 1 FROM platform.effective_grants(tenant,
-  người làm) h WHERE platform.holder_covers_grant(tenant, người làm, khóa, độ sâu, h.anchor_workspace_id))`, không truyền
+người làm) h WHERE platform.holder_covers_grant(tenant, người làm, khóa, độ sâu, h.anchor_workspace_id))`, không truyền
   NULL làm "neo bất kỳ" vào hàm chung. (M17) `_check_roles` hôm nay đọc vai trò theo khóa (`RoleCatalogPort`), nên bước
   11 tra id vai trò của tenant trước khi gọi `platform.role_is_critical`; port mới hay thêm phương thức là việc của người
   dựng. Kết quả: ĐẠT cho chỗ sửa; Status giữ `needs-triage` tới khi ticket 05 (FOG-49) `resolved`, rồi lên

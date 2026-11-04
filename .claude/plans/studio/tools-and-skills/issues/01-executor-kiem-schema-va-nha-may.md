@@ -35,7 +35,7 @@ runtime-hardening/01.
    (`packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py:601`) và mẫu giả lập
    (`packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py:860`, `sample_of` nhận output JSON Schema).
 3. `ToolRegistry.register(tool, *, tenant_id: TenantId | None = None)` và `ToolRegistry.resolve(name, version, *,
-   tenant_id: TenantId | None)` theo khóa `(tenant_id, name, version)`: `None` là lớp nền tảng; một `tenant_id` tìm
+tenant_id: TenantId | None)` theo khóa `(tenant_id, name, version)`: `None` là lớp nền tảng; một `tenant_id` tìm
    mục của đúng công ty đó rồi lớp nền tảng, không bao giờ mục của công ty khác (`not_found`); `has_tool`,
    `all_definitions` và `definitions_for` chỉ đọc lớp nền tảng (câu trả lời kho không tùy người hỏi, `CLAUDE.md`
    "Per-tenant artifacts"). `ToolExecutor` resolve bằng `run_context.tenant_id`

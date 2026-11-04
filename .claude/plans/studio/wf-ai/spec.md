@@ -91,17 +91,17 @@ Trợ lý chỉ đổi cây bước; mọi thứ khác của quy trình gốc gi
 
 ## Ngoài phạm vi
 
-| Việc                                                                           | Vì sao                                                                                                                                    | Chủ                  |
-| ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
-| Tài liệu và ảnh quy trình làm đầu vào của trợ lý (D18 (4))                     | cần đọc tệp và ảnh qua cửa tri thức; lát này chỉ nhận chữ                                                                                 | đợt sau              |
-| Dựng quy trình từ mô tả trống                                                  | D16 (2): sau sửa gói mẫu                                                                                                                  | đợt sau (W3)         |
-| Thêm công cụ, prompt, biến, loại quyết định hay trigger mới                    | D18 (4); prompt và công cụ mới là phiên bản của nền tảng                                                                                  | không làm            |
-| Canvas kéo thả                                                                 | D16 (4)                                                                                                                                   | workflow-builder-ui  |
-| Bộ máy vòng đời chung của Studio (đóng băng, rút lại, nhiều loại)              | ADR-0120 (Accepted) cho mọi loại; lát này chỉ quy trình của DW                                                                            | agent-lifecycle      |
-| Đóng băng của tenant hay nền tảng chặn phát hành (ADR-0120 (Accepted) quyết 7) | chưa có cờ đóng băng nào trong code                                                                                                       | agent-lifecycle      |
-| Approval `dw.workflow.publish` hết hạn                                         | nền tảng chưa có lane hết hạn approval (chỉ mã quyết qua Zalo hết hạn); chủ DW rút được (R6.10); khi lane có, nó hủy approval và R6.11 áp | agent-lifecycle      |
-| Mô phỏng với model thật                                                        | lát này mẫu theo schema; model thật tốn tiền và cần khóa                                                                                  | đợt sau              |
-| Chạy eval với model thật trong CI                                              | CI không có khóa model; ticket 05 chạy `make eval-wf-ai` trên máy có khóa (2/11/2026)                                                     | đợt sau              |
+| Việc                                                                           | Vì sao                                                                                                                                    | Chủ                 |
+| ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| Tài liệu và ảnh quy trình làm đầu vào của trợ lý (D18 (4))                     | cần đọc tệp và ảnh qua cửa tri thức; lát này chỉ nhận chữ                                                                                 | đợt sau             |
+| Dựng quy trình từ mô tả trống                                                  | D16 (2): sau sửa gói mẫu                                                                                                                  | đợt sau (W3)        |
+| Thêm công cụ, prompt, biến, loại quyết định hay trigger mới                    | D18 (4); prompt và công cụ mới là phiên bản của nền tảng                                                                                  | không làm           |
+| Canvas kéo thả                                                                 | D16 (4)                                                                                                                                   | workflow-builder-ui |
+| Bộ máy vòng đời chung của Studio (đóng băng, rút lại, nhiều loại)              | ADR-0120 (Accepted) cho mọi loại; lát này chỉ quy trình của DW                                                                            | agent-lifecycle     |
+| Đóng băng của tenant hay nền tảng chặn phát hành (ADR-0120 (Accepted) quyết 7) | chưa có cờ đóng băng nào trong code                                                                                                       | agent-lifecycle     |
+| Approval `dw.workflow.publish` hết hạn                                         | nền tảng chưa có lane hết hạn approval (chỉ mã quyết qua Zalo hết hạn); chủ DW rút được (R6.10); khi lane có, nó hủy approval và R6.11 áp | agent-lifecycle     |
+| Mô phỏng với model thật                                                        | lát này mẫu theo schema; model thật tốn tiền và cần khóa                                                                                  | đợt sau             |
+| Chạy eval với model thật trong CI                                              | CI không có khóa model; ticket 05 chạy `make eval-wf-ai` trên máy có khóa (2/11/2026)                                                     | đợt sau             |
 
 ## API
 
@@ -165,10 +165,10 @@ Không có.
 
 ## Danh sách ticket
 
-| #   | Ticket                                                     |
-| --- | ---------------------------------------------------------- |
-| 01  | [Một lượt với trợ lý, không lưu](issues/01-luot-tro-ly.md) |
-| 02  | [Bản nháp và mô phỏng](issues/02-ban-nhap-mo-phong.md)     |
-| 03  | [Gửi duyệt và phát hành](issues/03-phat-hanh.md)           |
-| 04  | [Màn hình trợ lý và thẻ duyệt](issues/04-man-hinh.md)      |
+| #   | Ticket                                                                     |
+| --- | -------------------------------------------------------------------------- |
+| 01  | [Một lượt với trợ lý, không lưu](issues/01-luot-tro-ly.md)                 |
+| 02  | [Bản nháp và mô phỏng](issues/02-ban-nhap-mo-phong.md)                     |
+| 03  | [Gửi duyệt và phát hành](issues/03-phat-hanh.md)                           |
+| 04  | [Màn hình trợ lý và thẻ duyệt](issues/04-man-hinh.md)                      |
 | 05  | [Trợ lý trả lời được trên model thật](issues/05-tro-ly-tren-model-that.md) |

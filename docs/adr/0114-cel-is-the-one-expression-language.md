@@ -217,7 +217,7 @@ out of the repository, as ticket 01 said; these are the numbers.
   evaluator process and a 1 s wall clock. Measured: spawning the process and the first evaluation take 298 ms, a
   typical round trip 149 µs, and a pathological evaluation is killed at about 1.07 s.
 - **Errors.** A compile problem raises one `RuntimeError` whose text begins with a status (`INVALID_ARGUMENT: ERROR:
-  <input>:line:col: ...`). An evaluation error is not raised: it is returned as a value of type `ERROR`
+<input>:line:col: ...`). An evaluation error is not raised: it is returned as a value of type `ERROR`
   (`divide by zero`, `NOT_FOUND: Key not found in map`, `OUT_OF_RANGE: integer overflow`, a Python function's exception
   text as `OUT_OF_RANGE: <message>`). Only the budget is raised. The parser refuses depth over 32 by itself.
 - **Regex and time.** `matches` is RE2: a backreference or lookahead is refused, and `(a+)+$` over 30 `a`s returns in
