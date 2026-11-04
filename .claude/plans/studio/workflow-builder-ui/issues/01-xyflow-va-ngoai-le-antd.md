@@ -1,6 +1,6 @@
 # 01 — Thử nghiệm Sơ đồ có cấu trúc, rồi ngoại lệ antd-only cho `@xyflow/react` và bộ từ vựng của Sơ đồ
 
-Status: ready-for-agent
+Status: resolved (2026-11-04, main)
 Blocked by: .claude/plans/studio/studio-skeleton/issues/03-seam-web-va-allowlist-antd.md
 Area: studio
 Yêu cầu: R1.1, R1.2, R1.3, R1.9, BU1, BU14
@@ -123,27 +123,27 @@ layer(components);` trong một tệp `.css` cạnh thành phần, dưới glob 
 
 ## Tiêu chí chấp nhận
 
-- [ ] R1.1: `@xyflow/react` 12.12.0 ghim chính xác trong `apps/web/package.json`; `apps/web/package.json` và
+- [x] R1.1: `@xyflow/react` 12.12.0 ghim chính xác trong `apps/web/package.json`; `apps/web/package.json` và
       `packages/typescript/ui/package.json`, hai manifest mà allowlist đọc, không khai thư viện bố cục nào, vì allowlist
       không có mục cho nó; chỉ tệp dưới glob canvas import gói (allowlist, không đếm tệp); lockfile có đúng một `zustand`
       ≥4.5.6, thêm một bản 5.x hay hạ về dưới 4.5.6 → test lockfile đỏ.
-- [ ] R1.2 (BU1): với mục `EXCEPTIONS` thật, một cây thử có `app/approvals/a.tsx` import `@xyflow/react` →
+- [x] R1.2 (BU1): với mục `EXCEPTIONS` thật, một cây thử có `app/approvals/a.tsx` import `@xyflow/react` →
       `antd-only.test.ts` đỏ; khai báo gói trong `@dw/ui` → đỏ; `apps/web` khai `@dagrejs/dagre` → đỏ; gỡ mục allowlist
       có ADR → test đỏ, nêu `workflow-canvas.tsx`.
-- [ ] R1.3: test thành phần render `workflow-canvas.tsx` với hai node và một cạnh (shim `ResizeObserver` và
+- [x] R1.3: test thành phần render `workflow-canvas.tsx` với hai node và một cạnh (shim `ResizeObserver` và
       `DOMMatrixReadOnly` trong vitest): mỗi thân Bước là một antd `Card` mang `description`; không phần tử nào có lớp
       `react-flow__minimap`, `react-flow__controls` hay `react-flow__node-toolbar`; huy hiệu có lớp `bottom` và `left`;
       không `.react-flow__node` nào có lớp `draggable` hay `tabindex`, không handle nào có lớp `connectable`;
       `nodesDraggable`, `nodesConnectable` hay `nodesFocusable` thành `true` → test đỏ (phím mặc định của thư viện là
       R2.7, kiểm ở ticket 02 bằng Playwright).
-- [ ] R1.9 (BU14): bộ từ vựng nằm một lần trong theme của `@dw/ui`; `theme-contrast.test.ts` đọc mỗi màu nhóm và
+- [x] R1.9 (BU14): bộ từ vựng nằm một lần trong theme của `@dw/ui`; `theme-contrast.test.ts` đọc mỗi màu nhóm và
       khẳng định ≥ 3:1 trên nền thẻ ở hai chế độ; hạ một màu dưới 3:1 → test đỏ; trong cây thử của
       `canvas-colours.test.ts`, mỗi ca `#1677ff`, `rgba(0,0,0,.45)`, `hsla(0,0%,0%,.5)` và `background: white` trong một
       tệp dưới glob canvas → đỏ, nêu tệp; `var(--ant-color-border)` → qua.
-- [ ] R1.1: số đo của bước 3 (kB gzip theo cách đo ở đó, p95 bố cục ở F7, thời gian tới thẻ đầu, khung hình và bộ nhớ ở
+- [x] R1.1: số đo của bước 3 (kB gzip theo cách đo ở đó, p95 bố cục ở F7, thời gian tới thẻ đầu, khung hình và bộ nhớ ở
       F6 và F7, lỗi CSP = 0, lỗi lúc chạy = 0) ghi vào ADR-0101 (Accepted); F1-F9 và danh mục giả có trong
       `apps/web/lib/__fixtures__/workflows/`.
-- [ ] Xong: `pnpm -C apps/web test` xanh.
+- [x] Xong: `pnpm -C apps/web test` xanh.
 
 ## Nguồn
 
@@ -171,3 +171,57 @@ layer(components);` trong một tệp `.css` cạnh thành phần, dưới glob 
 - 2026-11-03 (agent, theo ủy quyền 31/10/2026): lượt xác nhận ngữ cảnh mới sau các sửa trên, 3 HIGH đã sửa: (1) cấu hình các loại bậc B và chỗ đặt làn của chúng trong fixture theo workflow-nodes:R10.1, R11.1, R11.2, R12.1, R13.1, làn song song tạm dưới `config.branches`, và ticket workflow-nodes đăng ký loại sửa fixture cùng thay đổi (spec "Kiểm lại khi"); (2) danh mục giả nêu nguồn làn của mỗi loại (Nhánh ra cố định, hay khóa map như `cases`, `branches` cùng `default`), `error_lane` ngoài danh mục; (3) props của `workflow-canvas.tsx` là `CanvasShapes` trong `apps/web/lib/workflow-shapes.ts` mà `workflow-layout.ts` của ticket 02 trả, thẻ có `Handle` ẩn làm neo cạnh. Cùng lượt, sửa tại chỗ: fixture không `key`, `version`, tệp JSON; cách đếm 500 Bước và độ sâu 10 như workflow-engine/01; khi hàng cổng trượt thì phần không cần gói vẫn commit; test màu thấy biến `--*` và prop `color`; R1.1 nói allowlist theo glob, không đếm tệp. Nếu sai thì: làn song song nằm ở khóa cấp `config` theo tên làn, và fixture đổi khi workflow-nodes/R10.1 quyết; canvas nhận `Node` và `Edge` của React Flow dựng sẵn, và kiểu đó sống dưới glob canvas.
 - 2026-11-03 (agent): MEDIUM thêm từ lượt xác nhận: (f) màu nhóm khóa theo mã nhóm mà danh mục `node-types` trả (R2.1), không theo tiền tố của `type`; "lỗi" là màu của làn lỗi và huy hiệu "Khi lỗi", không là một nhóm Loại bước; (g) màu đường nối đi tới SVG của React Flow qua `--xy-edge-stroke`, nên bộ từ vựng cần cả giá trị TS cho `theme-contrast.test.ts` lẫn biến CSS cho tệp `.css` của canvas; khuyến nghị theme phát chúng thành biến trên lớp `THEME_CSS_VAR_CLASS` như token antd, một chủ, hai cách đọc.
 - 2026-11-03 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-04 (agent): resolved, làn dựng 2, hai commit (mã, rồi test). Ba hàng cổng đạt (CSP 0 vi phạm do Sơ đồ, 0 luật
+  `react-flow` ngoài lớp, 0 lỗi console và `pageerror` ở `next start` lẫn `next dev`), nên ngoại lệ được cấp; mọi số đo
+  và bài học ở ADR-0101 (Accepted) Amendments 2026-11-04 (JS tải đầu 732,3 kB, Sơ đồ thêm 64,7 kB; p95 bố cục F7
+  0,70 ms; thẻ đầu F7 p95 4 510 ms, cull 3 279 ms; mọi hàng trượt ngân sách trang, kể cả F1). Trang thử, bản nháp
+  `workflow-layout.ts`, `Tree`, bàn phím, kéo thả và kịch bản đo đã xóa trước commit. Khác với ticket:
+    - Quyết định (agent, theo ủy quyền 31/10/2026): biểu tượng của bộ từ vựng ở `packages/typescript/ui/src/canvas-icons.tsx`
+      (`"use client"`), cạnh `theme.ts`, không trong `theme.ts`: layout gốc đọc `THEME_CSS_VAR_CLASS` từ `theme.ts` ở
+      máy chủ, và `@ant-design/icons` nạp ở đó làm `next build` hỏng ("createContext is not a function", đo). Màu, cỡ
+      thẻ, kiểu đường nối ở `CANVAS_VOCABULARY` trong `theme.ts`. Nếu sai thì: `theme.ts` giữ tên biểu tượng dạng chuỗi
+      và Sơ đồ có bảng tên sang thành phần.
+    - Quyết định (agent, theo ủy quyền 31/10/2026): theo MEDIUM (g), màu của bộ từ vựng vào antd thành token tùy biến,
+      antd 6.6.5 phát chúng thành `--ant-canvas-*` trên `THEME_CSS_VAR_CLASS` (đo); tệp `.css` của Sơ đồ đọc biến đó,
+      `theme-contrast.test.ts` đọc giá trị TS, và `canvas-colours.test.ts` đỏ khi Sơ đồ đọc một `--ant-canvas-*` mà bộ từ
+      vựng không có. Nếu sai thì: một biến CSS khai trong `globals.css` ánh xạ từ token, và test so hai bản.
+    - Quyết định (agent, theo ủy quyền 31/10/2026): danh mục giả mang `type`, `label_vi`, `group`, `side_effect_level`,
+      `on_error` (tập Khi lỗi cho phép) và `ports` (`none`, `fixed` với `items`, `map` với `key` và `default` khi có),
+      không mang schema cấu hình hay đầu ra (bố cục không đọc; chủ là workflow-nodes/02). Sáu nhóm bằng `CANVAS_GROUPS`;
+      `flow.stop@1` và `flow.subworkflow@1` thuộc nhóm `logic`. Fixture dùng loại của đường Studio: `ai.llm@2`,
+      `tool.call@2`, `human.approval@2` (workflow-nodes, dòng Quyết định 4/11/2026), `trigger.datahub@1`. F4 có làn lỗi
+      ở mọi Bước của chuỗi chính, vì `logic.switch`, `logic.loop`, `logic.parallel`, `logic.break` và `flow.stop` chỉ cho
+      `fail` (workflow-nodes R1.6); Bước trong làn lỗi là `fail`. Nếu sai thì: nhóm `flow` có màu riêng trong theme, và
+      danh mục giả theo hình route khi workflow-nodes/02 chốt.
+    - Quyết định (agent, theo ủy quyền 31/10/2026): không đề xuất hạ trần 500 Bước: F7 trượt ngân sách cả khi cull như
+      ticket lường, nhưng F1 (15 Bước) cũng trượt (p95 1 181 ms, route không Sơ đồ đã 651 ms), nên không trần nào thấp
+      hơn đạt 1 s. Nếu sai thì: ticket 02 đo trang builder thật và số Bước mà trang đạt 1 s thành một dòng Quyết định
+      của workflow-engine.
+    - Thêm ngoài ticket: `lib/__tests__/workflow-fixtures.test.ts` kiểm F1-F9 theo danh mục giả (hình Bước, khóa Studio,
+      `error_lane` chỉ khi `route`, Nhánh ra bắt buộc có làn, F1 15, F6 300, F7 đúng 500 và độ sâu 10), vì
+      `model_validate` của ticket 02 chờ workflow-engine/01; `lib/__tests__/source-tree.ts` tách `globMatches` và
+      `sources` khỏi `antd-only.test.ts` để test màu đọc cùng glob (một tệp test import tệp test khác chạy lại cả bộ của
+      nó); `workflow-canvas-config.test.tsx` đọc props giao cho `ReactFlow`, vì DOM không thấy `nodesConnectable` (handle
+      tự `isConnectable={false}`) hay nhãn cạnh (jsdom không vẽ cạnh): hai đột biến đó sống ở test DOM rồi đỏ ở test props.
+      Nút thu phóng ở góc dưới phải: ở góc trên phải chúng che thẻ ở `md`.
+    - Test: `antd-only.test.ts` (5 ca R1.2/BU1 mới, 1 ca ESLint), `canvas-lockfile.test.ts`, `canvas-colours.test.ts`,
+      `theme-contrast.test.ts` (bộ từ vựng hai chế độ), `workflow-fixtures.test.ts`, `workflow-canvas.test.tsx`,
+      `workflow-canvas-config.test.tsx`; `pnpm -C apps/web test` 34 tệp, 277 ca xanh. 23 đột biến web
+      chạy tay, đều đỏ (liệt kê ở đầu `mutations/01.yaml`, tệp không có mục pytest nào).
+    - `reviewing-feature-security` (đọc): không route, không migration, không dữ liệu tenant (trang thử chỉ đọc fixture
+      tĩnh và đã xóa); chuỗi cung ứng: một gói chạy mới ghim chính xác, một `zustand` 4.5.7, `pnpm audit --audit-level
+high` 0 (3 moderate có sẵn qua vitest, eslint, openapi-typescript), pip-audit 0; CSP không nới; ranh giới import
+      giữ bằng allowlist, ESLint và test props.
+    - Còn cho lượt cuối hàng đợi: kéo bằng con trỏ thật (Playwright 1.62 dừng sau khi nhấn chuột trên phần tử HTML5
+      draggable, Windows headless); `next build` cục bộ biên dịch và sinh 23 trang rồi dừng ở bước standalone vì EPERM
+      symlink của Windows (môi trường); ticket không thêm route hay trang nào, nên không có thao tác nào để đo latency
+      riêng; NVDA và năm người dùng ở discovery/24; FOG-51 đóng bằng một dòng ở discovery/24 trỏ tới ADR-0101 (Accepted) Amendments
+      2026-11-04.
+    - MEDIUM: (a) mọi trang có một sự kiện `securitypolicyviolation` `script-src eval` từ phép thử JIT `Function("")`
+      của zod 4 (chunk của `@dw/api-client`), zod tự bắt; `z.config({ jitless: true })` tắt nó, việc của nền tảng; (b)
+      route không Sơ đồ đã tải 667,6 kB JS gzip, lớn hơn nhiều khoảng 250 kB của antd; lượt latency cuối hàng đợi nên
+      xem; (c) `workflow-canvas.tsx` còn chuỗi tiếng Anh mặc định của thư viện trong các mô tả a11y ẩn
+      (`ariaLabelConfig`) tới khi ticket 02 đưa khóa thông điệp DO-57 vào (R2.9); (d) bài học cho ticket 02 và 04 (đường
+      Tab 24 điểm dừng, `Tree` tràn ngang và menu "…" mở ngoài màn ở 320 px, thẻ 256 × 88 không đủ cho hàng huy hiệu, mũi
+      tên quay lại bên phải) ở ADR-0101 (Accepted) Amendments 2026-11-04; (e) `mutations/01.yaml` là `mutations: []`, nên
+      `scripts/mutate.py` báo "no mutation matches" nếu chạy nó; lượt cuối bỏ qua tệp này.

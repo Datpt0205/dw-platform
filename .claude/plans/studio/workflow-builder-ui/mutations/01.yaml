@@ -1,0 +1,28 @@
+# Mutation check of workflow-builder-ui ticket 01. Every control the ticket adds
+# is guarded by vitest, which scripts/mutate.py does not run (pytest only), so
+# this file holds no entry and the queue's close has nothing to run from it.
+#
+# Each control was planted by hand on 4/11/2026 (backed up by copy, mutated, the
+# guarding file run with `vitest run <file>`, restored by copy) and went red:
+#   BU1   the EXCEPTIONS glob widened to "**"                -> the canvas exception: refuses it outside the canvas glob
+#   BU1   an exception reaching @dw/ui's manifest            -> refuses @dw/ui declaring it
+#   BU1   the @xyflow/react entry removed                    -> no source ... imports a module off the allowlist (names workflow-canvas.tsx)
+#   BU1   @xyflow/react dropped from the ESLint canvas override -> lets @xyflow/react in under the canvas glob only
+#   BU1   the lockfile test accepting zustand 5.x            -> refuses a second copy, a 5.x and a version below 4.5.6
+#   BU1   the lockfile test accepting two zustand copies     -> refuses a second copy, ...
+#   R1.3  nodesDraggable true                                -> workflow-canvas(-config).test.tsx
+#   R1.3  nodesConnectable true                              -> workflow-canvas-config.test.tsx (handles hide it from the DOM)
+#   R1.3  nodesFocusable true                                -> workflow-canvas(-config).test.tsx
+#   R1.3  edgesFocusable true                                -> workflow-canvas-config.test.tsx
+#   R1.3  deleteKeyCode "Backspace"                          -> no library key deletes, pans or selects
+#   R1.3  the badge at the bottom right                      -> keeps the badge, at the bottom left
+#   R1.3  a step body drawn as a div, not an antd Card       -> draws each step body as an antd Card
+#   R1.3  base.css imported with no layer                    -> is imported once, by the canvas stylesheet, into @layer components
+#   R2.9  an edge's ariaLabel left to the English default    -> every edge is unnamed rather than the English default
+#   BU14  `--xy-edge-stroke: #b1b1b7` in the canvas CSS      -> holds for the real canvas
+#   BU14  `--xy-handle-background-color: white`              -> holds for the real canvas
+#   BU14  the scanner blind to hsla(                         -> goes red on a.css with hsla(...)
+#   R1.9  the light data colour lowered to #36cfc9 (2.1:1)   -> data is 3:1 on the card, and no light preset tint
+#   R1.9  buildTheme no longer passing the canvas tokens     -> reaches antd as its own token
+#   R1.1  F7 counted as other than 500 steps                 -> count and depth as workflow-engine/01 counts them
+mutations: []
