@@ -297,6 +297,11 @@ Mỗi công ty chỉ thấy và chỉ ghi agent, cài đặt, hội thoại và 
   lại mang theo. Ticket 02, 03, 05 không đổi vì D15: agent vẫn là bước cần phán đoán (`ai.agent`) của quy trình. Nếu sai
   thì: Đạt giữ `/chat` như viết là kênh của YC96, và ticket 04 qua gate với các HIGH ở Comments đã sửa.
 - 4/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 02-03, 05.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): theo gate `checking-plan-readiness` của compliance-pdpl/07: `dw.agent/v1`
+  có thêm mục `autonomy` không bắt buộc (A0-A4, không mặc định) mà luật bộ ba của ADR-0125 (Accepted) quyết 3 đọc lúc gửi
+  kiểm định, và cửa nhận lượt của agent đặt `RunContext.autonomy_level` bằng mức thấp hơn giữa nó và trần của công ty,
+  vắng thì hỏi mọi thứ (ADR-0117 (Accepted) Amendments 2026-11-04). compliance-pdpl/07 thêm mục và lần đọc ở cửa, sau
+  ticket 02 và 03 của spec này. Nếu sai thì: agent Studio ở W1 chạy không mức và luật tự chủ của agent sang W2.
 
 ## Danh sách ticket
 

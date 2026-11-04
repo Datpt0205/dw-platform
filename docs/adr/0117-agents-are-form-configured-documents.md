@@ -294,3 +294,16 @@ open:
   envelope's own routes (`POST /api/v1/studio/artifacts`, `PUT .../draft`); only its settings have agent routes.
   If this is wrong: a tenant may override the frame through an approved `platform.config_versions` row, with a test
   that the override still closes the block, and `CLAUDE.md` loses the exception. The status stays Accepted.
+
+## Amendments (2026-11-04)
+
+Amended on 2026-11-04 by the agent under Đạt's delegation of 2026-10-31 (agent, theo ủy quyền 31/10/2026), from the
+readiness gate of compliance-pdpl ticket 07:
+
+- Decision 2: `dw.agent/v1` gains an optional `autonomy` section, one level of `dw_kernel.autonomy` (A0-A4) with no
+  default. ADR-0125 decision 3 reads an agent's declared autonomy at submit, and no section declared one. The agent's
+  run door sets `RunContext.autonomy_level` to the lower of the pinned version's `autonomy` and the tenant's ceiling,
+  as the runner does for a worker; a version without it runs with no level, which the approval policy reads as asking
+  about everything, so a version sealed before the section existed runs closed. compliance-pdpl/07 adds the section
+  and the door's read, after agent-builder/02 and /03 have built the schema and the door. Nếu sai thì: Studio agents
+  in W1 always run with no level and ADR-0125's agent rule moves to W2 with the section.
