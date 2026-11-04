@@ -107,10 +107,12 @@ purpose) -> ResolvedRoute` serves `StudioModelSelection`, `LimitsMiddleware` (AD
 8. **The model proxy is a stateless translation lane, never imported.** Compose service `model-proxy`
    is built in CI from a digest-pinned Python base with `pip install --require-hashes` of one exact
    LiteLLM version, never a vendor tag; its digest is in the release manifest, and a LiteLLM version is
-   adopted only after 14 days and an advisory check. Under that rule v1 pins 1.106.1, from before the
-   incident of 2026-10-21, until the vendor's final incident report lets a later version through the
-   same rule (FOG-19). Configuration: no `DATABASE_URL`, no provider
-   variable, `cache: false`, `disable_cooldowns: true`, `num_retries: 0`,
+   adopted only after 14 days and an advisory check. Under that rule v1 pins 1.106.5, the lowest
+   release of the 1.106 line patched for GHSA-w4c7-34wj-hqm8, first run no earlier than 2026-11-10
+   19:45 UTC and only after an advisory check at that moment; the vendor's post of 2026-10-23 on the
+   attack chain is the final incident report this pin waited for (FOG-19), and 1.106.1, pinned on
+   2026-10-23, is inside that advisory's range (amended 2026-11-05). Configuration: no `DATABASE_URL`,
+   no provider variable, no `LITELLM_LICENSE`, `cache: false`, `disable_cooldowns: true`, `num_retries: 0`,
    `turn_off_message_logging: true`, spend and error logs off, `allow_client_side_credentials: false`,
    and `configurable_clientside_auth_params` only for `api_base` under regexes anchored at both ends.
    It sits on the internal network `dw-llm` with the API, the worker and the egress proxy only, so the
@@ -180,8 +182,9 @@ purpose) -> ResolvedRoute` serves `StudioModelSelection`, `LimitsMiddleware` (AD
    version (1.106.1, from before the incident day, until the vendor's final incident report; FOG-19),
    and, per alias, whether the models behind the requester's existing gateway are processed in Vietnam
    or abroad; until declared they count as foreign (FOG-18). Answered 2026-10-23 for the version:
-   1.106.1 under decision 8's rule of 14 days and an advisory check. Still owed: the location of each
-   alias (FOG-18).
+   1.106.1 under decision 8's rule of 14 days and an advisory check; since 2026-11-05 the pin is
+   1.106.5 and the vendor's post of 2026-10-23 is the final incident report (Amendments (2026-11-05)).
+   Still owed: the location of each alias (FOG-18).
 2. **DO-43** (requester for fallback, on-premises endpoints and caps; Đạt for tools): provisional call
    by the agent on 2026-10-23 following the recommendation: no fallback but a second route on the
    tenant's own connections; workspace-owned tenant models get tools; no on-premises endpoints in v1;
@@ -201,7 +204,7 @@ purpose) -> ResolvedRoute` serves `StudioModelSelection`, `LimitsMiddleware` (AD
 Accepted by Đạt on 2026-10-23 with these amendments from the decision brief:
 
 - Decision 8: LiteLLM is pinned under the rule of 14 days and an advisory check, at 1.106.1 for v1, rather
-  than left open.
+  than left open. (Since 2026-11-05 the pin is 1.106.5; Amendments (2026-11-05).)
 - Consequences: an undeclared alias counts as foreign, so the pilot needs a route declared as
   processed in Vietnam before its first AI step (FOG-10).
 - Open: DO-19 answered for the version (the location of each alias still owed, FOG-18); DO-43 and the
@@ -257,3 +260,29 @@ readiness gate of model-connections tickets 02 and 03:
   route's (`provider`, `model`) pair, the key the price book already prices by. `model_connection_model_id` joins with
   the first tenant route in W2. Model profiles join the release manifest. Nếu sai thì: only the capabilities with a W1
   reader are declared, and a W2 schema change adds the rest.
+
+## Amendments (2026-11-05)
+
+Amended on 2026-11-05 by the agent under Đạt's delegation of 2026-10-31 (agent, theo ủy quyền 31/10/2026), from
+model-connections ticket 01, which stopped at its step 0 without installing or running LiteLLM (`af46069`):
+
+- Decision 8: the pin moves from 1.106.1 to 1.106.5. GHSA-w4c7-34wj-hqm8 (Critical, published 2026-10-27; affected
+  `< 1.103.10`, `< 1.104.8`, `< 1.105.6`, `< 1.106.5`) lets an unauthenticated request to any LLM route make the proxy
+  read a local file, such as `/proc/self/environ` with the master key and provider keys, and send it to a URL the
+  attacker picks. The advisory says the code loads only with an Enterprise license, but keeping 1.106.1 on that word
+  would accept a Critical on the vendor's account of its own precondition while the Enterprise code ships in the same
+  package (failure-modes #4). 1.106.5, the lowest patched release of the 1.106 line, reached PyPI at 2026-10-27 19:44
+  UTC, so under the rule of 14 days it may first run at 2026-11-10 19:45 UTC (2026-11-11 02:45 Vietnam time), and only
+  after an advisory check at that moment; every release past its 14 days on 2026-11-05 (up to 1.106.4) is inside the
+  advisory's range. Nếu sai thì: if Đạt reads "touches" as "the range holds the release and the precondition can occur
+  under decision 8's configuration", v1 stays on 1.106.1, model-connections ticket 01 runs on it unchanged, and its
+  step 0 states that reading.
+- Decision 8, FOG-19: the vendor's post of 2026-10-23 on the attack chain
+  (https://docs.litellm.ai/blog/security-incident-oct-21-2026-attack-chain) is recorded as the final incident report
+  the pin waited for. It calls itself the canonical source of truth, says the investigation is complete and names only
+  1.107.0 as malicious, and 1.106.5 was published after the vendor rotated its cosign signing key on 2026-10-23.
+  Nếu sai thì: the pin waits until the vendor names a report final, and ticket 01 waits with it.
+- Decision 8, configuration: no `LITELLM_LICENSE` in the model proxy's environment, beside no provider variable, so
+  the Enterprise code this advisory needs is never licensed to load; ticket 01's missing-key criterion fails on it in
+  `docker inspect` of `model-proxy`. Nếu sai thì: the variable leaves that list and nothing else changes.
+- Open DO-19 and the acceptance of 2026-10-23 keep the version they recorded, 1.106.1, with a pointer to this entry.
