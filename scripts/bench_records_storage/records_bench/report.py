@@ -36,6 +36,15 @@ THRESHOLDS: dict[str, tuple[Op, float, str]] = {
     "background_p95_ratio": ("<=", 1.5, "R9.11"),
     "campaign_create_p95_ms": ("<=", 10.0, "R9.12"),
     "lock_wait_max_ms": ("<=", 100.0, "R9.12"),
+    # record-access R9 (its spec's table); its R9.1, R9.2 and R9.5 hold the same
+    # numbers as page_p95_ms, get_p95_ms and write_p95_ms above.
+    "next_page_p95_ms": ("<=", 50.0, "record-access:R9.3"),
+    "count_p95_ms": ("<=", 300.0, "record-access:R9.4"),
+    "assign_p95_ms": ("<=", 20.0, "record-access:R9.6"),
+    "scope_compute_p95_ms": ("<=", 50.0, "record-access:R9.7"),
+    "door_p95_ms": ("<=", 1.0, "record-access:R9.8"),
+    "recompute_total_s": ("<=", 120.0, "record-access:R9.9"),
+    "stale_reads_after_revoke": ("<=", 0.0, "record-access:R9.9"),
 }
 
 READ_PROFILES = (
@@ -88,6 +97,10 @@ def series_limit(thresholds: dict[str, tuple[Op, float, str]], series: str) -> f
         ("t2_get", "get_p95_ms"),
         ("write_", "write_p95_ms"),
         ("campaign", "campaign_create_p95_ms"),
+        ("next_", "next_page_p95_ms"),
+        ("count_", "count_p95_ms"),
+        ("assign", "assign_p95_ms"),
+        ("scope_compute", "scope_compute_p95_ms"),
     ):
         if series.startswith(prefix):
             return thresholds[key][1]
@@ -159,6 +172,11 @@ class Report:
     shapes: dict[str, dict[str, Any]] = field(default_factory=dict)
     info: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)  # a step that raised
+    # record-access/01: the cells its matrix asks for at its one modulus, the
+    # self-checks of its step 7 that failed, and its own sections of the report.
+    policy_cells: list[tuple[str, str, int]] = field(default_factory=list)
+    check_failures: list[str] = field(default_factory=list)
+    sections: list[tuple[str, list[str]]] = field(default_factory=list)
 
     # ------------------------------------------------------------- adding --
     def add(self, row: Row) -> Row:
@@ -207,7 +225,7 @@ class Report:
                     keys += [(m, name, modulus) for m in read_cell_metrics()]
                 if variant.writes:
                     keys += [(m, name, modulus) for m in write_cell_metrics()]
-        return keys
+        return keys + self.policy_cells
 
     def problems(self) -> list[str]:
         found = {row.key: row for row in self.rows}
@@ -240,6 +258,7 @@ class Report:
                 )
         if any(v in self.variants for v in ("A1",)) and not self.selfchecks:
             out.append("tự kiểm CO27 không chạy")
+        out += [f"tự kiểm chính sách: {f}" for f in self.check_failures]
         out += [f"bước lỗi: {e}" for e in self.errors]
         return out
 
@@ -366,9 +385,13 @@ class Report:
             f"- {c.variant} m{c.modulus}: {c.metric} = {c.value} ({c.note})"
             for c in self.selfchecks
         ]
-        lines += ["", "## Luật quyết (bước 7)", "", *[f"- {d}" for d in self.decide()], ""]
+        lines.append("")
+        if self.variants:
+            lines += ["## Luật quyết (bước 7)", "", *[f"- {d}" for d in self.decide()], ""]
         if self.info:
             lines += ["## Kết quả không có ngưỡng", "", *[f"- {i}" for i in self.info], ""]
+        for title, body in self.sections:
+            lines += [f"## {title}", "", *body, ""]
         lines += ["## Kế hoạch đi kèm mỗi khẳng định", ""]
         for c in self.claims:
             lines += [
@@ -398,6 +421,8 @@ class Report:
             "shapes": self.shapes,
             "info": self.info,
             "errors": self.errors,
+            "check_failures": self.check_failures,
+            "sections": self.sections,
             "decision": self.decide(),
             "problems": self.problems(),
         }

@@ -52,6 +52,17 @@ def parse(argv: list[str]) -> argparse.Namespace:
     p.add_argument(
         "--skip-soak-unless-needed", action="store_true", default=True, help=argparse.SUPPRESS
     )
+    p.add_argument(
+        "--policy-variants",
+        default=None,
+        help="record-access/01: all, or a comma list of P0,K,L,E,H. Builds only policy cells"
+        " at the one modulus of --moduli; custom-objects/01's cells do not run.",
+    )
+    p.add_argument(
+        "--modulus-note",
+        default="chưa chọn: luật quyết bước 7 của custom-objects/01 chưa chọn modulus ở scale này",
+        help="where the modulus came from, for RESULTS.md",
+    )
     return p.parse_args(argv)
 
 
@@ -65,7 +76,7 @@ def variants_of(arg: str) -> list[str]:
     return names
 
 
-async def _step(report: Report, label: str, fn: Callable[[], Awaitable[None]]) -> None:
+async def step(report: Report, label: str, fn: Callable[[], Awaitable[None]]) -> None:
     started = time.monotonic()
     try:
         await fn()
@@ -99,27 +110,27 @@ async def run_cell(
     path = WritePath(variant, facts)
     restart = container.restart_cold if container else None
     if reads:
-        await _step(
+        await step(
             report,
             f"{label} R9.1",
             lambda: measure.reads(report, endpoint, facts, variant, modulus, path, writer, restart),
         )
-        await _step(
+        await step(
             report,
             f"{label} R9.2 planning",
             lambda: measure.planning(report, endpoint, facts, variant, modulus, scale.read_samples),
         )
-        await _step(
+        await step(
             report,
             f"{label} R9.2 cache",
             lambda: measure.cache_memory(report, endpoint, facts, variant, modulus),
         )
-        await _step(
+        await step(
             report,
             f"{label} R9.8",
             lambda: measure.qerror(report, endpoint, facts, variant, modulus, scale.qerror_queries),
         )
-        await _step(
+        await step(
             report,
             f"{label} R9.9",
             lambda: measure.t2_busy(report, endpoint, facts, variant, modulus, path, writer),
@@ -140,38 +151,38 @@ async def run_cell(
                 )
             )
 
-        await _step(report, f"{label} HOT", hot)
+        await step(report, f"{label} HOT", hot)
         if variant.name == "A1":
-            await _step(
+            await step(
                 report,
                 f"{label} PARALLEL SAFE",
                 lambda: measure.parallel_aggregates(report, endpoint, facts, variant, modulus),
             )
     if writes:
-        await _step(
+        await step(
             report,
             f"{label} R9.6 R9.7 soak",
             lambda: measure.soak(report, endpoint, facts, variant, modulus, path, writer),
         )
-        await _step(
+        await step(
             report,
             f"{label} R9.10",
             lambda: measure.import_rows(report, endpoint, facts, variant, modulus, path, writer),
         )
-        await _step(
+        await step(
             report,
             f"{label} R9.12",
             lambda: measure.campaign_children(
                 report, endpoint, facts, variant, modulus, path, writer
             ),
         )
-        await _step(
+        await step(
             report,
             f"{label} R9.11",
             lambda: measure.promote_purge(report, endpoint, facts, variant, modulus, writer),
         )
     if kept:
-        await _step(
+        await step(
             report,
             f"{label} phép đo cũ",
             lambda: measure.kept_measurements(
@@ -180,7 +191,7 @@ async def run_cell(
         )
     if variant.name == "A1":
         # Last: it drops an index of the cell.
-        await _step(
+        await step(
             report,
             f"{label} tự kiểm CO27",
             lambda: measure.self_check(report, endpoint, facts, variant, modulus, path, writer),
@@ -220,10 +231,25 @@ async def config_lines(endpoint: Endpoint) -> list[str]:
     return lines
 
 
+def policy_variants_of(arg: str) -> list[str]:
+    from .policy.run import POLICY_ORDER
+
+    if arg == "all":
+        return list(POLICY_ORDER)
+    names = [v.strip() for v in arg.split(",") if v.strip()]
+    unknown = [n for n in names if n not in POLICY_ORDER]
+    if unknown:
+        raise SystemExit(f"unknown policy variants: {', '.join(unknown)}")
+    return names
+
+
 async def main_async(args: argparse.Namespace) -> int:
     scale = SCALES[args.scale]
-    names = variants_of(args.variants)
     moduli = [int(m) for m in args.moduli.split(",")]
+    policy = policy_variants_of(args.policy_variants) if args.policy_variants else None
+    if policy is not None and len(moduli) != 1:
+        raise SystemExit("--policy-variants runs at one modulus: pass --moduli 8 or --moduli 4")
+    names = [] if policy is not None else variants_of(args.variants)
     report = Report(scale.name, names, moduli, thresholds=parse_threshold_overrides(args.threshold))
     endpoint = Endpoint.from_env(args.host, args.port)
     container = None if args.no_container else Container(args.container, args.port, endpoint)
@@ -247,6 +273,18 @@ async def main_async(args: argparse.Namespace) -> int:
             )
         log(f"template at revision {args.revision}")
         await prepare_template(endpoint, args.revision)
+        if policy is not None:
+            from .policy.run import run_policy
+
+            await run_policy(
+                report,
+                endpoint,
+                container,
+                scale.name,
+                policy,
+                moduli[0],
+                checkpoint=lambda: _write(report, out),
+            )
         for name in names:
             variant = VARIANTS[name]
             ddl = cell_ddl(variant, 8)
@@ -255,7 +293,7 @@ async def main_async(args: argparse.Namespace) -> int:
                 + (" và các bảng pivot" if variant.pivot else "")
                 + f" ({', '.join(ddl.indexes[:6])}, …)"
             )
-        for modulus in moduli:
+        for modulus in moduli if names else []:
             for name in names:
                 variant = VARIANTS[name]
                 await run_cell(
@@ -303,6 +341,12 @@ async def main_async(args: argparse.Namespace) -> int:
             container.remove()
             log(f"removed {container.name} and its volume")
         _write(report, out)
+        if policy is not None:
+            from .policy.run import results_markdown
+
+            (out / "RESULTS.md").write_text(
+                results_markdown(report, moduli[0], args.modulus_note), encoding="utf-8"
+            )
     problems = report.problems()
     log(f"report: {out / 'report.md'}")
     for p in problems:

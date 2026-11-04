@@ -20,7 +20,7 @@ COMPOSE := docker compose --env-file .env -f infra/compose/docker-compose.yml
         db-migrate migrate lint format typecheck \
         test-unit coverage test-integration test-architecture test-contract test-hooks test-plans \
         test-e2e test-web test-all eval-smoke test-eval-smoke eval-leadcare eval-wf-ai \
-        demo-dw demo-dw-again demo-dw-down \
+        demo-dw demo-dw-again demo-dw-down bench-record-access \
         generate-contracts new-context release-manifest release-manifest-check semconv-snapshot semconv-snapshot-check ci
 
 help: ## List available targets
@@ -146,6 +146,11 @@ demo-dw-again: ## One more lead on the running demo (after demo-dw): run and scr
 
 demo-dw-down: ## Stop the digital-worker demo and drop its volumes (project dwdemo only)
 	bash scripts/demo_dw.sh down
+
+SCALE ?= smoke
+MODULUS ?= 8
+bench-record-access: ## record-access/01's policy variants on the records harness (SCALE=smoke|d12 MODULUS=8|4; own container, not CI)
+	uv run python scripts/bench_records_storage.py --scale $(SCALE) --moduli $(MODULUS) --policy-variants all
 
 eval-smoke: ## Evaluation smoke suite (deterministic safety-gate graders)
 	uv run python scripts/run_evals.py --smoke

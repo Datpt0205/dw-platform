@@ -13,7 +13,7 @@ import subprocess
 import sys
 import time
 import uuid
-from typing import Any
+from typing import Any, Protocol
 
 import asyncpg
 
@@ -41,6 +41,22 @@ from .seed import (
     profiles_and_scopes,
     tenant_plans,
 )
+
+
+class CellExtension(Protocol):
+    """What record-access/01's policy cell adds to a cell, at three points of the build.
+
+    `schema` runs after the variant's DDL and before the seed (it replaces the
+    reach stand-ins), `seed` runs after `seed(scale)` in place of loading the
+    precomputed reach arrays, and `post_load` after the variant's indexes and keys.
+    A custom-objects/01 cell passes none and builds exactly as before.
+    """
+
+    def schema(self, modulus: int) -> list[str]: ...
+
+    async def seed(self, conn: asyncpg.Connection, facts: SeedFacts) -> None: ...
+
+    def post_load(self, modulus: int) -> list[str]: ...
 
 
 def log(message: str) -> None:
@@ -359,13 +375,21 @@ async def _seed_shares(conn: asyncpg.Connection, facts: SeedFacts, variant: Vari
     )
 
 
-async def build_cell(endpoint: Endpoint, scale: Scale, variant: Variant, modulus: int) -> SeedFacts:
+async def build_cell(
+    endpoint: Endpoint,
+    scale: Scale,
+    variant: Variant,
+    modulus: int,
+    extension: CellExtension | None = None,
+) -> SeedFacts:
     await create_cell_database(endpoint)
     ddl = cell_ddl(variant, modulus)
     conn = await endpoint.connect("migrator", command_timeout=None)
     try:
         started = time.monotonic()
         for statement in ddl.schema:
+            await conn.execute(statement)
+        for statement in extension.schema(modulus) if extension else []:
             await conn.execute(statement)
         t2, small = await _choose_tenants(conn, scale)
         facts = SeedFacts(
@@ -381,14 +405,19 @@ async def build_cell(endpoint: Endpoint, scale: Scale, variant: Variant, modulus
         log(f"{variant.name} m{modulus}: seeding records")
         await _seed_records(conn, facts, variant)
         await _seed_shares(conn, facts, variant)
-        await conn.copy_records_to_table(
-            "principal_scopes",
-            schema_name="studio",
-            columns=["tenant_id", "principal_id", "action", "arm", "ids"],
-            records=facts.scopes,
-        )
+        if extension:
+            await extension.seed(conn, facts)
+        else:
+            await conn.copy_records_to_table(
+                "principal_scopes",
+                schema_name="studio",
+                columns=["tenant_id", "principal_id", "action", "arm", "ids"],
+                records=facts.scopes,
+            )
         log(f"{variant.name} m{modulus}: indexes and keys ({len(ddl.post_load)} statements)")
         for statement in ddl.post_load:
+            await conn.execute(statement)
+        for statement in extension.post_load(modulus) if extension else []:
             await conn.execute(statement)
         t1_partition = await t1_partition_name(conn, facts, "studio.records")
         for option, value in scale.t1_partition_reloptions:

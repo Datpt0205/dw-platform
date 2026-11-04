@@ -1,0 +1,107 @@
+# Mutation check of record-access ticket 01: scripts/mutate.py runs this file.
+# One mutation per control of the policy variants (step 7's self-checks and the
+# rules of steps 2 and 5): what makes the exit code honest, and what every
+# variant must keep from A1 and from ADR-0105 (Accepted).
+# Not here: the database half of step 7 (a session with no tenant, no actor, no
+# ledger row or a stale epoch; T2 in T1's session; an expired share), which only
+# a run against PostgreSQL shows; each cell runs it, and the runs with a broken
+# policy are in the ticket's Comments.
+mutations:
+  - name: R9.1 the RESTRICTIVE tenant policy loses its tenant clause
+    file: scripts/bench_records_storage/records_bench/policy/variants.py
+    old: |2-
+              f"CREATE POLICY tenant_isolation_{short} ON {table} AS RESTRICTIVE"
+              f" USING ({TENANT}) WITH CHECK ({TENANT})",
+    new: |2-
+              f"CREATE POLICY tenant_isolation_{short} ON {table} AS RESTRICTIVE"
+              f" USING (true) WITH CHECK (true)",
+    tests:
+      - scripts/bench_records_storage/records_bench/tests/test_policy.py::test_every_variant_keeps_a1s_restrictive_tenant_policy
+  - name: R9.1 the share arm ignores grants_valid_until
+    file: scripts/bench_records_storage/records_bench/policy/variants.py
+    old: 'NOT_EXPIRED = "(grants_valid_until IS NULL OR grants_valid_until > now())"'
+    new: 'NOT_EXPIRED = "true"'
+    tests:
+      - scripts/bench_records_storage/records_bench/tests/test_policy.py::test_the_share_arm_honours_grants_valid_until
+  - name: R9.1 a policy variant is pointed at A0
+    file: scripts/bench_records_storage/records_bench/policy/variants.py
+    old: '    base: str = "A1"  # the storage variant of custom-objects/01 it replaces parts of'
+    new: '    base: str = "A0"'
+    tests:
+      - scripts/bench_records_storage/records_bench/tests/test_policy.py::test_every_policy_variant_is_built_on_a1
+  - name: R9.1 a variant adds an index outside its declared replacement
+    file: scripts/bench_records_storage/records_bench/policy/variants.py
+    old: "    out.append(SUPPORT_TABLES)"
+    new: |2-
+          out.append(SUPPORT_TABLES)
+          out.append("CREATE INDEX ix_records_extra ON studio.records (tenant_id, name)")
+    tests:
+      - scripts/bench_records_storage/records_bench/tests/test_policy.py::test_a_variant_creates_nothing_outside_its_declared_replacement
+  - name: R9.1 the catalog check passes an undeclared difference
+    file: scripts/bench_records_storage/records_bench/policy/checks.py
+    old: "        if reference.get(key) == cell.get(key) or is_declared(key, allowed):"
+    new: "        if True:"
+    tests:
+      - scripts/bench_records_storage/records_bench/tests/test_policy.py::test_the_catalog_diff_fails_what_was_not_declared
+  - name: R9.7 the computed reach is not compared with the harness's
+    file: scripts/bench_records_storage/records_bench/policy/checks.py
+    old: "        if want == got:"
+    new: "        if True:"
+    tests:
+      - scripts/bench_records_storage/records_bench/tests/test_policy.py::test_the_door_reach_must_equal_the_harness_arrays
+  - name: R9.7 extra grant keys pass even when records carry them
+    file: scripts/bench_records_storage/records_bench/policy/checks.py
+    old: '        if arm == "grants" and want <= got and not (got - want) & carried_grants:'
+    new: '        if arm == "grants" and want <= got:'
+    tests:
+      - scripts/bench_records_storage/records_bench/tests/test_policy.py::test_extra_grant_keys_pass_only_while_no_record_carries_them
+  - name: R9.8 an acl function reads a stale or old-epoch ledger row
+    file: scripts/bench_records_storage/records_bench/policy/variants.py
+    old: |2-
+          "s.state = 'valid' AND s.epoch = (SELECT e.epoch FROM studio.access_epochs e"
+          " WHERE e.tenant_id = s.tenant_id)"
+    new: '    "true"'
+    tests:
+      - scripts/bench_records_storage/records_bench/tests/test_policy.py::test_the_acl_functions_are_stable_invoker_with_a_fixed_search_path
+  - name: R9.9 the door publishes a computation begun before a revocation
+    file: scripts/bench_records_storage/records_bench/policy/variants.py
+    old: |2-
+                  + "\n    WHERE s.version = v0;"
+              )
+          else:
+    new: |2-
+                  + ";"
+              )
+          else:
+    tests:
+      - scripts/bench_records_storage/records_bench/tests/test_policy.py::test_the_door_publishes_only_from_the_version_it_started_on
+  - name: R9.2 a transaction skips the door
+    file: scripts/bench_records_storage/records_bench/policy/variants.py
+    old: "        \" ELSE '' END, true), studio.ensure_principal_scope()\""
+    new: "        \" ELSE '' END, true)\""
+    tests:
+      - scripts/bench_records_storage/records_bench/tests/test_policy.py::test_the_door_runs_in_every_scoped_transaction
+  - name: R9.1 the Của tôi filter is the hint in every variant
+    file: scripts/bench_records_storage/records_bench/policy/variants.py
+    old: '    return f" AND owner_id = ${placeholder}"'
+    new: '    return " AND owner_id = (SELECT studio.acl_user())"'
+    tests:
+      - scripts/bench_records_storage/records_bench/tests/test_policy.py::test_the_own_filter_is_a_parameter_except_on_the_hint_axis
+  - name: R9.1 a winner under 10% better replaces P0
+    file: scripts/bench_records_storage/records_bench/policy/run.py
+    old: '    if best == axis and "P0" in pool and _closer_than(p0, other, WIN_MARGIN):'
+    new: "    if False:"
+    tests:
+      - scripts/bench_records_storage/records_bench/tests/test_policy.py::test_under_ten_percent_apart_p0_is_kept
+  - name: R9.1 a policy cell without its numbers passes
+    file: scripts/bench_records_storage/records_bench/report.py
+    old: "        return keys + self.policy_cells"
+    new: "        return keys"
+    tests:
+      - scripts/bench_records_storage/records_bench/tests/test_policy.py::test_a_policy_cell_without_its_numbers_exits_non_zero
+  - name: R9.1 a failed self-check exits zero
+    file: scripts/bench_records_storage/records_bench/report.py
+    old: '        out += [f"tự kiểm chính sách: {f}" for f in self.check_failures]'
+    new: ""
+    tests:
+      - scripts/bench_records_storage/records_bench/tests/test_policy.py::test_a_failed_self_check_exits_non_zero

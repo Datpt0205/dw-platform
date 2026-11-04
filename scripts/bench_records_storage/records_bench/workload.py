@@ -63,7 +63,8 @@ def uuid7() -> uuid.UUID:
     return uuid.UUID(int=value)
 
 
-def page_sql(order: str, cursor: bool) -> str:
+def page_sql(order: str, cursor: bool, predicate: str = "") -> str:
+    """A list page; `predicate` (" AND ...") is set only by a record-access/01 policy cell."""
     extra, order_by = PAGE_ORDERS[order]
     keyset = ""
     if cursor:
@@ -73,7 +74,7 @@ def page_sql(order: str, cursor: bool) -> str:
     return (
         "SELECT * FROM studio.records WHERE tenant_id = $1 AND object_id = $2 AND deleted_at IS"
         " NULL"
-        f"{extra}{keyset} ORDER BY {order_by} LIMIT 50"
+        f"{extra}{predicate}{keyset} ORDER BY {order_by} LIMIT 50"
     )
 
 
@@ -248,6 +249,95 @@ class WritePath:
                 ["diem_ai"],
             )
             return int(row["version"])
+
+    async def update_slot(
+        self,
+        conn: asyncpg.Connection,
+        writer: Writer,
+        record_id: uuid.UUID,
+        object_id: uuid.UUID,
+        value: str,
+        write_key: str | None,
+    ) -> int | None:
+        """One slot column changed, under the update policy's WITH CHECK (record-access R9.5)."""
+        async with scoped(conn, writer.tenant, writer.user, writer.actor_kind):
+            await self._head(conn, writer.tenant, object_id)
+            row = await conn.fetchrow(
+                "UPDATE studio.records SET t02 = $3, version = version + 1, updated_by = $4"
+                " WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL RETURNING version,"
+                " workspace_id",
+                writer.tenant,
+                record_id,
+                value,
+                writer.user,
+            )
+            if row is None:
+                return None
+            if write_key is not None:
+                await conn.execute(
+                    "INSERT INTO studio.record_write_keys (tenant_id, write_key, record_id, op,"
+                    " version, actor_id)"
+                    " VALUES ($1, $2, $3, 'update', $4, $5)",
+                    writer.tenant,
+                    write_key,
+                    record_id,
+                    row["version"],
+                    writer.user,
+                )
+            await self._tail(
+                conn,
+                writer,
+                record_id,
+                object_id,
+                row["workspace_id"],
+                row["version"],
+                "updated",
+                ["t02"],
+            )
+            return int(row["version"])
+
+    async def definer_write(
+        self,
+        conn: asyncpg.Connection,
+        writer: Writer,
+        record_id: uuid.UUID,
+        object_id: uuid.UUID,
+        action: str,
+        fields: list[str],
+        call: str,
+        *args: Any,
+    ) -> int | None:
+        """A write only a SECURITY DEFINER function makes (assign, share; ADR-0105 decision 3).
+
+        `call` returns the record's new version and owning workspace, as
+        `(version, workspace_id)`; the transaction is the pipeline's all the same.
+        """
+        async with scoped(conn, writer.tenant, writer.user, writer.actor_kind):
+            await self._head(conn, writer.tenant, object_id)
+            row = await conn.fetchrow(call, *args)
+            if row is None or row[0] is None:
+                return None
+            await self._tail(
+                conn, writer, record_id, object_id, row[1], int(row[0]), action, fields
+            )
+            return int(row[0])
+
+    async def delete(
+        self, conn: asyncpg.Connection, writer: Writer, record_id: uuid.UUID, object_id: uuid.UUID
+    ) -> bool:
+        """DELETE under the delete policy, with the pipeline's lock, outbox and audit rows."""
+        async with scoped(conn, writer.tenant, writer.user, writer.actor_kind):
+            await self._head(conn, writer.tenant, object_id)
+            workspace_id = await conn.fetchval(
+                "DELETE FROM studio.records WHERE tenant_id = $1 AND id = $2 RETURNING"
+                " workspace_id",
+                writer.tenant,
+                record_id,
+            )
+            if workspace_id is None:
+                return False
+            await self._tail(conn, writer, record_id, object_id, workspace_id, 0, "deleted", [])
+            return True
 
     def new_values(
         self, plan: TenantPlan, layout: ObjectLayout, rng: random.Random
@@ -463,9 +553,20 @@ async def lead_cursors(
 
 
 # ------------------------------------------------------------------ the load --
+# A read of one kind for one profile; record-access/01's policy cell passes its own
+# (pages with and without a slot filter, on two objects, keyset, count).
+ReadOp = Callable[[asyncpg.Connection, Profile, str, random.Random], Awaitable[Any]]
+
+
 @dataclass
 class MixedLoad:
-    """50 sessions, 80% reads over every profile, 15% scoring updates, 5% creates."""
+    """50 sessions, 80% reads over every profile, 15% scoring updates, 5% creates.
+
+    By default the reads are custom-objects/01's first page and GET, and an update
+    changes `data` only (the AI scoring flow). A record-access/01 policy cell
+    passes its own read kinds and `read_op`, and `slot_updates` so the 15% change
+    one slot column under the update policy's WITH CHECK (its R9.5).
+    """
 
     endpoint: Endpoint
     facts: SeedFacts
@@ -477,6 +578,9 @@ class MixedLoad:
     recorder: Recorder = field(default_factory=Recorder)
     read_target: int = 1_000
     seed: int = 1
+    read_kinds: tuple[str, ...] = ("page", "get")
+    read_op: ReadOp | None = None
+    slot_updates: bool = False
 
     async def _worker(
         self, worker_no: int, stop: asyncio.Event, rate_per_worker: float | None, wf_prefix: str
@@ -484,7 +588,7 @@ class MixedLoad:
         rng = random.Random(self.seed * 1000 + worker_no)
         plan = self.facts.t1
         conn = await self.endpoint.connect("app")
-        series = [(p, kind) for p in self.profiles for kind in ("page", "get")]
+        series = [(p, kind) for p in self.profiles for kind in self.read_kinds]
         lead = plan.object_id(LEAD)
         step = 0
         next_at = time.perf_counter()
@@ -504,7 +608,9 @@ class MixedLoad:
                     ]
                     profile, kind = rng.choice(behind or series)
                     name = f"{kind}_warm:{profile.name}"
-                    if kind == "page":
+                    if self.read_op is not None:
+                        await timed(self.recorder, name, self.read_op(conn, profile, kind, rng))
+                    elif kind == "page":
                         await timed(self.recorder, name, read_page(conn, profile, plan, None))
                     else:
                         pool = self.get_pools[profile.name]
@@ -517,13 +623,16 @@ class MixedLoad:
                     step += 1
                     key = f"wf:{wf_prefix}:{worker_no}:{step}"
                     target = rng.choice(self.update_pool)
-                    await timed(
-                        self.recorder,
-                        "write_update",
-                        self.path.update_data(
+                    update = (
+                        self.path.update_slot(
+                            conn, self.writer, target, lead, f"sửa {rng.randrange(500)}", key
+                        )
+                        if self.slot_updates
+                        else self.path.update_data(
                             conn, self.writer, target, lead, rng.randrange(100), key
-                        ),
+                        )
                     )
+                    await timed(self.recorder, "write_update", update)
                 else:
                     obj = LEAD if rng.random() < 0.2 else rng.randrange(1, plan.objects)
                     await timed(
@@ -538,7 +647,7 @@ class MixedLoad:
         reads_done = all(
             self.recorder.settled(f"{k}_warm:{p.name}", self.read_target)
             for p in self.profiles
-            for k in ("page", "get")
+            for k in self.read_kinds
         )
         return (
             reads_done
@@ -565,12 +674,17 @@ class MixedLoad:
         self, sessions: int, seconds: float, ops_per_second: float, tag: str
     ) -> Recorder:
         stop = asyncio.Event()
+        asyncio.get_running_loop().call_later(seconds, stop.set)
+        return await self.until_stopped(sessions, ops_per_second, tag, stop)
+
+    async def until_stopped(
+        self, sessions: int, ops_per_second: float, tag: str, stop: asyncio.Event
+    ) -> Recorder:
+        """The paced load until `stop` is set: the background of a measurement that ends itself."""
         per_worker = ops_per_second / sessions
         workers = [
             asyncio.create_task(self._worker(i, stop, per_worker, tag)) for i in range(sessions)
         ]
-        await asyncio.sleep(seconds)
-        stop.set()
         await asyncio.gather(*workers)
         return self.recorder
 

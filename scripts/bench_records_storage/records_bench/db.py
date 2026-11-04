@@ -41,6 +41,19 @@ def _env() -> dict[str, str]:
     return values
 
 
+class AppConnection(asyncpg.Connection):  # type: ignore[misc]  # asyncpg has no stubs
+    """A `dw_app` connection whose scoped transactions run one more statement.
+
+    `after_scope` runs after the settings of every `scoped` transaction, in the
+    same round trip: record-access/01's door call (`studio.ensure_principal_scope()`,
+    ADR-0105 decision 4), which every Studio transaction makes. A custom-objects/01
+    cell never sets it, so its numbers do not move (record-access/01 step 1).
+    """
+
+    __slots__ = ("after_scope",)
+    after_scope: str
+
+
 @dataclass(frozen=True)
 class Endpoint:
     host: str
@@ -50,6 +63,7 @@ class Endpoint:
     migrator_password: str
     app_password: str
     database: str = BENCH_DB
+    after_scope: str = ""
 
     @classmethod
     def from_env(cls, host: str, port: int) -> Endpoint:
@@ -91,7 +105,10 @@ class Endpoint:
             # A read that never ends still ends the run (it counts as a slow sample).
             settings["statement_timeout"] = "60s"
         kwargs["server_settings"] = {**settings, **kwargs.get("server_settings", {})}
-        return await asyncpg.connect(
+        door = role == "app" and bool(self.after_scope)
+        if door:
+            kwargs["connection_class"] = AppConnection
+        conn = await asyncpg.connect(
             host=self.host,
             port=self.port,
             user=user,
@@ -100,6 +117,10 @@ class Endpoint:
             statement_cache_size=kwargs.pop("statement_cache_size", 256),
             **kwargs,
         )
+        # Not isinstance: asyncpg's ConnectionMeta answers True for every connection.
+        if door:
+            conn.after_scope = self.after_scope
+        return conn
 
 
 def _setting(value: str) -> str:
@@ -132,7 +153,9 @@ async def scoped(
     workspace_scope: str | None = None,
 ) -> AsyncIterator[asyncpg.Connection]:
     """One `dw_app` transaction with its settings; COMMIT on success."""
-    await conn.execute(scope_sql(tenant, user, actor_kind, workspace_scope))
+    extra = getattr(conn, "after_scope", "") if type(conn) is AppConnection else ""
+    after = f"; {extra}" if extra else ""
+    await conn.execute(scope_sql(tenant, user, actor_kind, workspace_scope) + after)
     try:
         yield conn
     except BaseException:
