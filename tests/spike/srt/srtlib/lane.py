@@ -275,7 +275,12 @@ class Worker:
             while not self.stopping:
                 if until is not None and time.time() > until:
                     break
-                await self._claim_cycle()
+                try:
+                    await self._claim_cycle()
+                except Exception as exc:  # a lane cycle fails, the lane goes on
+                    # Measured (T5 stress): a PoolTimeout here used to end the
+                    # worker, leaving every queued run to nobody.
+                    self.log("claim_error", error=repr(exc)[:300])
                 with contextlib.suppress(TimeoutError):
                     await asyncio.wait_for(self.wake.wait(), self.s.poll)
                 self.wake.clear()
@@ -318,17 +323,22 @@ class Worker:
                     (
                         await session.execute(
                             sa.text(
-                                "UPDATE srt.runs SET status = 'running',"
-                                " lease_owner = :w || ':' || gen_random_uuid()::text,"
-                                " lease_until = now() + make_interval(secs => :lease),"
-                                " last_worker = :w, claims = claims + 1"
-                                " WHERE id IN (SELECT id FROM srt.runs WHERE status = 'queued'"
+                                "WITH picked AS MATERIALIZED (SELECT id FROM srt.runs"
+                                " WHERE status = 'queued'"
                                 " AND available_at <= now()"
                                 " AND (CAST(:only AS uuid) IS NULL OR id = CAST(:only AS uuid))"
                                 " AND (NOT alternate OR last_worker IS DISTINCT FROM :w"
                                 "      OR available_at < now() - interval '20 seconds')"
                                 " ORDER BY priority, available_at, created_at, id LIMIT :n"
-                                " FOR UPDATE SKIP LOCKED) RETURNING *"
+                                " FOR UPDATE SKIP LOCKED)"
+                                # `id IN (SELECT ... LIMIT n FOR UPDATE SKIP LOCKED)`
+                                # became a nested-loop semi join whose inner side
+                                # was rescanned: one cycle claimed 9,300 rows (q3).
+                                " UPDATE srt.runs r SET status = 'running',"
+                                " lease_owner = :w || ':' || gen_random_uuid()::text,"
+                                " lease_until = now() + make_interval(secs => :lease),"
+                                " last_worker = :w, claims = r.claims + 1"
+                                " FROM picked WHERE r.id = picked.id RETURNING r.*"
                             ),
                             {
                                 "w": self.s.worker,

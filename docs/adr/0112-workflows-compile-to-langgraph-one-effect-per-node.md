@@ -238,10 +238,14 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
   keep it in paid editions (n8n <https://docs.n8n.io/n8n-community-license/community-license/license-faq> and
   Activepieces <https://www.activepieces.com/docs/about/license>, as read by the research on 2026-10-22; Dify's and
   Windmill's terms are S5's reading, not re-read for this ADR), and each brings a second tenancy model.
-- **A custom interpreter** (option C of V4.34, a token engine on Postgres). Not built: it would re-implement the
-  checkpoint, interrupt and human-in-the-loop machinery LangGraph already gives
-  (<https://docs.langchain.com/oss/python/langgraph/interrupts>), a reason that stays a claim until spike S-RT
-  measures it, and whose numbers replace this line after the spike. S-RT is discovery 14 widened (two weeks in S0,
+- **A custom interpreter** (option C of V4.34, a token engine on Postgres). Not built, on spike S-RT's numbers
+  (discovery 14, `db/bench/srt/RESULTS.md`, measured 2026-11-04 on two worker processes over the PostgreSQL saver with
+  `durability="sync"`): option A met T1 (15 of 15 golden traces of RW1-RW6 and their variants, every resume on the
+  other worker), T2 (5 steps done in 1.07 s while one lane waited out a 5 s backoff) and T7 (an incident after a
+  parallel block resumed at its failed step under the same key, steps 1-6 and the join once), which is the rule's
+  whole condition for keeping A; what A missed (T6 with the current saver, T8 without a cross-process cancel signal,
+  T3 at one stalled-holder cell of W2's `lookup_then_resend`; T5 only with no cap on runs in flight) traced to the
+  saver, the lane and the dispatch path, not to LangGraph. S-RT is discovery 14 widened (two weeks in S0,
   beside foundations-hardening and app-standards, so the critical path does not lengthen), with six reference
   workflows RW1 to RW6 and thresholds T1 to T9. LangGraph on the tree (option A: each lane a subgraph,
   `durability="sync"`, decision 11's golden traces) is kept if it meets T1 to T8; if it misses T1, T2 or T7, C,
@@ -519,3 +523,9 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
   ask about. Studio's step is `ai.llm@2`, its instructions and template written by the tenant, beside wf-lite's
   `ai.llm@1`, which names a platform prompt by id and stays on the pack path only. If this is wrong: the check moves
   into W1 with the flags, and workflow-nodes/05 waits on compliance-pdpl's flag ticket.
+
+## Amendments (2026-11-04, spike S-RT)
+
+- (agent, theo ủy quyền 31/10/2026; discovery 14.) Alternatives' line on the custom interpreter now carries spike
+  S-RT's measurements instead of the reason it stated as a claim, as that line asked; V4.34's rule keeps option A, so
+  no decision changes. The status stays Accepted.

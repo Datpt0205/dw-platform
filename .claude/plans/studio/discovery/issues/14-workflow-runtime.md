@@ -1,7 +1,7 @@
 # 14 — Spike runtime S-RT: sáu quy trình tham chiếu, ngưỡng T1-T9, ma trận sập của tác động và các câu runtime đã có
 
 Type: prototype
-Status: ready-for-agent
+Status: resolved
 Area: studio · Viết: 23/10/2026
 FOG: FOG-56 `runtime-mechanics`, FOG-37 `checkpoint-allowlist`, FOG-59 `run-manifest-cost`
 
@@ -194,6 +194,34 @@ Các phép đo khác, đo trong cùng các lượt chạy:
 - Đạt khi: luật quyết ở cuối "Phép đo quyết định" chọn được engine, với ca đối chứng của T3 (gỡ dòng `dispatched`
   thì K4 của chế độ không gì đỏ). Lần đo lại trên host thí điểm không chặn ticket này (ticket 20).
 
+## Answer
+
+Đo ngày 4/11/2026 trên máy dev (không phải máy tham chiếu), hai tiến trình worker trên PostgreSQL 16.15 của compose,
+`durability="sync"`; số, lệnh và commit ở [`db/bench/srt/RESULTS.md`](../../../../../db/bench/srt/RESULTS.md), harness ở
+`tests/spike/srt/`.
+
+- **Luật quyết chọn A.** T1 đạt (golden trace 15/15 của RW1-RW6 và các biến thể, mỗi lần tiếp tục ở worker kia), T2 đạt
+  (5 Bước xong trong 1,07 giây khi một làn chờ backoff 5 giây), T7 đạt (Chạy tiếp từ Bước lỗi chạy lại đúng `s7` cùng
+  khóa, `s1`-`s6`, ba làn và `Điểm nối` 1 lần, tác động của 1-6 không gửi lại, cùng `run_id`). Không dựng C, không mở B.
+- T3: 41/42 ô đúng, hai đối chứng đỏ (gỡ `dispatched` → K4 "không gì" áp dụng 2 lần). Có khóa: 1 ở mọi ô. Không gì: T,
+  K4 và treo sau `dispatched` đỗ `outcome_review`, 0 lần tự gửi lại. Nội bộ: 0 lần ghi trùng. RW5: 0 lần hai kênh. Trượt
+  một ô W2: tra cứu, khi bên giữ treo sau `dispatched` không heartbeat được → áp dụng 2 lần.
+- T4 đạt: tiếp quản sau khi giết worker 56,9-68,9 giây; tắt có trật tự 0,81 giây; lượt đỗ resume qua compiler kế tiếp hai
+  chiều; đổi tên node chờ thì lượt kết thúc im lặng (phép kiểm resume của workflow-engine/05 là chốt duy nhất).
+- T5 đạt với trần lô của làn (1.000/1.000, giữa hai node p95 203 ms, saver blob 187 ms); không trần thì 810/1.000 hỏng vì
+  pool của tiến trình, như mốc 506/1.000, không vì saver.
+- T6 trượt với saver hiện tại (20 × 100 KB: 22,5 MiB; RW2 đỗ 22,4 KB vì checkpoint của namespace làn); saver blob có tỉa
+  write đạt (2,09 MiB). T8 đạt với NOTIFY hủy (12-42 ms), trượt với chỉ heartbeat 15 giây (13,8-14,0 giây). T9 không áp.
+- Câu 1: có, rào gộp vào câu gắn tenant sẵn có, 0 lượt đi về thêm (+0,2 ms p50 mỗi lần ghi), mọi lần ghi của bên giữ cũ
+  bị từ chối; `FOR SHARE` rồi `UPDATE` cùng dòng trong một giao dịch thì deadlock giữa hai làn. Câu 2: 2xx p99 11 ms;
+  Bước đầu p95 66 ms ở 20/giây với NOTIFY (240 ms chỉ thăm dò), bão hòa ở 60/giây vì sức chứa. Câu 3: có, outbox FIFO của
+  nền tảng bắt công ty khác chờ 533 giây sau 100.000 sự kiện; làn theo công ty 0,5 giây sau 10.000 lượt, với lệnh nhận ở
+  dạng CTE (dạng `IN (...)` nhận 9.300 lượt một chu kỳ). Câu 5: `ALLOWED = ()` đủ cho mọi lượt của spike. Câu 6: dựng bản
+  kê p95 30,9 ms (gốc niêm phong) và 168 ms (Nháp), nạp lại khi resume 7,8 ms nóng, 93 ms ở tiến trình mới. Câu 7-9 và
+  11: như T1, T7, T8.
+- Chưa đo: máy tham chiếu và host thí điểm (ticket 20, Chờ Đạt 23; container 4 vCPU / 3 GiB không được áp), nhà cung
+  cấp thật, mã sản phẩm của workflow-engine/03-09, saver blob ở khối lượng thật.
+
 ## Comments
 
 - 2026-10-24 (agent): thêm câu 7-9 cho bậc B của V4.26 (B1-B3), bắt đầu từ số đo trong bộ nhớ ngày 24/10/2026; không
@@ -215,3 +243,6 @@ Các phép đo khác, đo trong cùng các lượt chạy:
   saver, cũng dựng C như trượt T1, T2 hay T7.
 - 2026-10-29 (agent): phần FOG-37 (allowlist của checkpoint) đã đo ở foundations-hardening/02, Comments 29/10/2026: không kiểu nào ngoài `SAFE_MSGPACK_TYPES` được nạp, `ALLOWED = ()` (OPS-j).
 - 2026-11-04 (agent, phân loại G12, theo ủy quyền 31/10/2026): `ready-for-agent`. Đã trả lời: câu 5 (FOG-37) ở foundations-hardening/02 (`1c681e8`, Comments 29/10/2026): không kiểu nào ngoài `SAFE_MSGPACK_TYPES` được nạp, `ALLOWED = ()`. Một mảnh của T3: wf-lite/02 (R6.8) giết tiến trình bằng `os._exit` sau bước gửi, và gỡ `durability="sync"` thì đỏ 3/3. Phần còn lại chưa chạy, và workflow-engine/03 chờ nó qua dòng `Blocked by:`. Không cần người, khóa hay máy riêng.
+- 2026-11-04 (agent): dựng và chạy spike S-RT (`645a2a0` harness, kết quả ở commit kế tiếp); khác cách làm đã ghi: database `dw_spike_srt_lane2` (`DW_TEST_DB_SUFFIX=_lane2` của làn build 2, không `_srt`) trên PostgreSQL của dwskel không giới hạn, không phải container 4 vCPU / 3 GiB; trình biên dịch là nguyên mẫu theo quyết định 4 của ADR-0112 trên mô hình `Step` của wf-lite, vì `wflite/compile.py` chưa có song song, vòng lặp, map, quy trình con và wrapper của quyết định 5 (03, 06 dựng chúng); cửa tác động ngoài là `ToolExecutor` thật.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): `resolved`, không tách ticket `ready-for-human`: lần đo lại trên host thí điểm đã là ticket 20 (Chờ Đạt 23) theo dòng "Đạt khi". Ghi chú có ngày vào Comments của workflow-engine/03, 04, 05, 06, 08, 09 và tenant-config/04; một dòng thay lý do của "A custom interpreter" ở Alternatives của ADR-0112 (Accepted), Amendments 2026-11-04. Nếu sai thì: một ticket `ready-for-human` đo lại T4, T5, câu 2 và 6 trong container 4 vCPU / 3 GiB trước workflow-engine/03.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): T6 trượt với saver hiện tại không kéo saver blob theo kênh lên W1, vì luật quyết chỉ kéo nó khi T5 trượt vì saver, và T5 đạt với trần lô; đưa saver blob lên vì T6 để Đạt quyết, ghi ở Comments của workflow-engine/03. Nếu sai thì: saver blob có tỉa write (2,09 MiB đo được) vào W1 trước workflow-engine/03.

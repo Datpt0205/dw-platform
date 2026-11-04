@@ -340,3 +340,4 @@ CONFLICT DO NOTHING`; (7) `run_mode` ở dòng lượt chạy và trong thân b�
     - Owed ở lúc đóng hàng: `mutate.py` cho `mutations/04.yaml`; p95 của `build` (R6.6, 1.000 lượt, 50 thành phần, hai đường;
       `dw_studio.testing.run_manifests.live_closure` dựng bao đóng); `make test-integration` toàn bộ; độ trễ của
       INSERT/UPDATE `platform.worker_runs` (trigger mới đọc một dòng bản kê khi cột khác NULL).
+- 2026-11-04 (agent, discovery/14 câu 6, `db/bench/srt/RESULTS.md`): phép đo R6.6 chạy trên máy dev (PostgreSQL của compose không giới hạn): `build` bao đóng 50, 1.000 gốc khác nhau, p50 / p95 / p99 23,4 / 30,9 / 40,9 ms với gốc đã niêm phong (trên ngưỡng 20 ms) và 131,9 / 168,0 / 194,1 ms với gốc Nháp; `PinnedResolver.load` khi resume 6,3 / 7,8 ms nóng, 69,8 / 93,4 ms ở tiến trình mới với kết nối mới. Chưa phải số của lúc đóng hàng trên máy tham chiếu; ngưỡng 20 ms trượt cần Đạt chấp nhận số mới hay một lượt sửa.
