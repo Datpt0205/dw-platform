@@ -17,10 +17,10 @@ gắn giới hạn vào phiên công cụ là của ticket 03.
 ## Việc cần làm
 
 1. Phép dẫn giới hạn của loại `agent`: một hàm thuần `derive_agent_boundary(closure)` trong `dw_studio.agents.domain`,
-   nhận đúng kết quả của `closure_of` của tenant-config (tham chiếu cùng các dòng phiên bản đã nạp: tài liệu `dw.agent/v1`,
-   phiên bản Bộ công cụ đã ghim, mỗi đối tượng một phiên bản; `packages/python/dw_studio/src/dw_studio/core/application/service.py:587`),
+   nhận đúng kết quả của `closure_of` của tenant-config (tham chiếu cùng các dòng phiên bản đã nạp: tài liệu `dw.agent/v1`
+   với mục `toolset` nhúng, mỗi đối tượng một phiên bản; `packages/python/dw_studio/src/dw_studio/core/application/service.py:587`),
    như `RunRequestService` đưa cho bộ dẫn của loại (workflow-engine/03 bước 7), và không truy vấn nào: siêu dữ liệu của
-   công cụ đối tượng lấy từ `ToolsetSpec` của dòng Bộ công cụ, hay từ hàm thuần của `ObjectToolGenerator` trên dòng
+   công cụ đối tượng lấy từ `ToolsetSpec` của mục `toolset` trong tài liệu, hay từ hàm thuần của `ObjectToolGenerator` trên dòng
    phiên bản đối tượng trong cùng kết quả, nên ở lượt `simulate` nó đọc đúng bao đóng mà bản kê của lượt ghim (tenant-config:R6.1).
    Hàm trả đúng hình mà `ActorBoundaryPort.record` của record-access/04 nhận (đối tượng với cờ, trường với `access`),
    không kiểu thứ hai. Đối tượng và lệnh đọc từ siêu dữ liệu có cấu trúc của công cụ mà `ObjectToolGenerator` của

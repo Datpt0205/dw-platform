@@ -312,3 +312,14 @@ planner's provisional calls H-1-H-18:
   `data_location` and `processor` as `connection`, and its Connection then declares `vn` or `foreign` and a processor,
   with no default (ADR-0123 (Accepted) decision 5); W1 refuses a `foreign` one before the secret is opened. If wrong:
   SMTP hosts join the Allowed hosts of ADR-0115 decision 6 under a purpose of their own, and the action lists them.
+- tools-and-skills ticket 02 readiness gate, agent under Đạt's delegation of 2026-10-31: decision 6's embedded
+  `dw.toolset/v1` section is the agent document's `toolset`, never a reference to a `toolset` kind: in W1 an entry names
+  an object by its artifact id with the operations it enables, or a connector action by its connector's
+  `<key>@<semver>` and action name with its binding, and the envelope's seal pins each object's `live` version and hash as it pins every `artifact` reference.
+  The 40-tool ceiling counts the tools that reach the model, one per enabled operation of an object entry; the default
+  of 20 per turn arrives with per-turn selection in W2. A Studio run hands the executor the tool it pinned
+  (`execute(..., pinned=...)`), so resolve never reads the process registry for it. Decision 5's artifact carries
+  `execution_id`, `tool_version_id` and `truncated` in W1; `output_ref` joins with the W2 store of outputs above
+  256 KiB and its retention, the full output staying in `platform.tool_executions.output` meanwhile, and the 16 KiB
+  ceiling is measured on the escaped content inside the block. If wrong: a `toolset` kind with versions of its own, and
+  the W1 store of large outputs with its retention fragment and purger.
