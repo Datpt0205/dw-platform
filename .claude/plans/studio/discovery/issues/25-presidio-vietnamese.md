@@ -1,7 +1,7 @@
 # 25 — Presidio trên dữ liệu cá nhân tiếng Việt: họ tên, địa chỉ, CCCD, số điện thoại
 
 Type: prototype
-Status: needs-triage
+Status: ready-for-agent
 Area: studio · Viết: 23/10/2026
 FOG: FOG-77 `presidio`
 
@@ -46,4 +46,21 @@ Bộ nhãn là dữ liệu giả lập; không đưa văn bản của người t
 - Brief B11; `docs/adr/0106-field-access-follows-personal-data-category.md` (Open 5).
 - [research.md](../research.md) mục 12 (độ chính xác của Presidio với dữ liệu cá nhân tiếng Việt chưa kiểm).
 
+## Việc của agent (phân loại 4/11/2026)
+
+- Câu hỏi: precision và recall theo loại (họ tên, địa chỉ, CCCD, số điện thoại) của Presidio với bộ nhận dạng
+  tiếng Việt trên lời nhắn lead giả lập; CPU mỗi 1.000 ký tự; cỡ image tăng thêm.
+- Cách làm: spike dưới `tests/spike/presidio/`, venv tạm, `presidio-analyzer` và một mô hình NER tiếng Việt công
+  khai ghim đúng phiên bản (ghi tên, giấy phép, cỡ); bộ nhận dạng mẫu cho số `+84` và số nội địa, CCCD 12 chữ số.
+  Tập có nhãn: từ bộ sinh của marketing-pilot/01 (`tests/e2e/marketing_pilot/generator.py`, hạt giống cố định),
+  mở rộng bằng nhãn span cho họ tên (danh sách tên của bộ sinh), địa chỉ (danh sách tỉnh sau sáp nhập 2025 của
+  ticket 27 câu 1), CCCD giả lập, số trong dải thử `+84900000000`-`+84900009999`; có dấu và không dấu, viết tắt;
+  ít nhất 500 lời nhắn; không văn bản của người thật.
+- Đầu ra: `## Answer` (bảng theo loại kèm phiên bản và máy), một dòng vào Open 5 của ADR-0106 (Accepted).
+- Đạt khi: bảng đủ ô; recall số điện thoại và CCCD bằng 1,0 trên tập (YC87 đã đòi che số điện thoại). Đề xuất,
+  chưa chốt (Đạt và luật sư chốt mức chấp nhận): recall họ tên và địa chỉ ≥ 0,95 thì giữ `cross_border_minimised`
+  cho W2, thấp hơn thì đề xuất bỏ khỏi v1 (ADR-0123).
+
 ## Comments
+
+- 2026-11-04 (agent, phân loại G12, theo ủy quyền 31/10/2026): `ready-for-agent`. Chưa câu nào được đo, Presidio chưa có trong repo; spec `compliance-pdpl` để nó ở W2 và compliance-pdpl/03 từ chối đích `foreign` của `cross_border_minimised` tới lúc đó. Không cần người, khóa hay máy riêng: bộ nhãn là dữ liệu giả lập; chỉ mức chấp nhận là của Đạt và luật sư.

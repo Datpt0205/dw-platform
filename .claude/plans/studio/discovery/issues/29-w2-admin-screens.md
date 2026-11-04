@@ -1,7 +1,7 @@
 # 29 — Màn quản trị W2: ma trận vai trò, biểu mẫu theo lược đồ, diff phiên bản và tín hiệu lệch cấu hình
 
 Type: prototype
-Status: needs-triage
+Status: ready-for-human (Đạt: người dựng và người duyệt nghiệp vụ của DO-22 cho câu 2)
 Area: studio · Viết: 23/10/2026
 FOG: FOG-39 `rbac-matrix-ui`, FOG-52 `diff-readability`, FOG-53 `schema-form`
 
@@ -48,3 +48,5 @@ nghiệp vụ thật.
 - Brief B3 (F7), B6 (F6, F7), B10a.
 
 ## Comments
+
+- 2026-11-04 (agent, phân loại G12, theo ủy quyền 31/10/2026): `ready-for-human`. Chưa câu nào được đo. Câu 1 (ma trận 200 x 7) và câu 3 (cỡ bản port biểu mẫu; checkout dw-proterial có ở `C:\code\dw-proterial`) agent làm được ở W2; màn diff của W1 là agent-lifecycle/07 (gate xong, `f62f688`, chưa dựng). Câu 2 (người duyệt có nói đúng thay đổi sau khi đọc diff, cảnh báo lệch nào được hành động theo) cần người dùng nghiệp vụ thật. Cần: Đạt tìm người dựng và người duyệt của đội thí điểm (DO-22).

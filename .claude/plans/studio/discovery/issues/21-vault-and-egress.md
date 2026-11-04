@@ -1,7 +1,7 @@
 # 21 — Kho bí mật và egress: OpenBao Transit, smokescreen, che giá trị bí mật, danh sách hậu tố công khai
 
 Type: prototype
-Status: needs-triage
+Status: ready-for-agent
 Area: studio · Viết: 23/10/2026
 FOG: FOG-25 `openbao`, FOG-26 `smokescreen`, FOG-27 `redaction`
 
@@ -54,4 +54,21 @@ YC61: bí mật không bao giờ ở dạng rõ, kể cả khi dịch vụ khóa
 - Brief B8a (F2, F3, F7, F8, F9, F14), B8b; `docs/adr/0115-tenant-credentials-vault-and-one-egress-client.md` (Open 5).
 - [research.md](../research.md) mục 8 (giấy phép và dải chặn của smokescreen, Transit và độ trễ OpenBao chưa kiểm).
 
+## Việc của agent (phân loại 4/11/2026)
+
+- Câu hỏi: câu 1 (FOG-25) trên compose máy dev, câu 2 (FOG-26), và phần còn lại của câu 3 (FOG-27): dạng
+  JSON-escaped và cắt cụt, chi phí che theo giá trị trên thân lớn, cách làm mới danh sách hậu tố đã ghim.
+- Cách làm: FOG-25 đúng bước 1 của connections-and-vault/06 (OpenBao 2.7.x thật trong container, không
+  `bao server -dev`). FOG-26: dựng smokescreen từ commit ghim trong một compose thử (không vào stack chạy), client
+  là egress client của connections-and-vault/03 qua proxy; thử 100.64.0.0/10, multicast, NAT64, IPv6, CONNECT tới
+  25, 465, 587, nhận diện vai không mTLS; ghi giấy phép và cỡ image. FOG-27: thêm ca JSON-escaped và cắt cụt vào
+  test canary của connections-and-vault/03, đo che trên thân 1 MB và 10 MB.
+- Đầu ra: `## Answer` ở đây, mục Open 5 của ADR-0115 (Accepted); FOG-25 thêm vào Comments của
+  connections-and-vault/06.
+- Đạt khi: theo bảng Phép đo quyết định; FOG-25 theo ngưỡng (a)-(c) ở bước 1 của connections-and-vault/06; FOG-27
+  khi mọi dạng được che và gỡ một dạng thì test đỏ. Mở niêm phong trên host thật là connections-and-vault/08
+  (`ready-for-human`, Chờ Đạt 20) và không chặn ticket này.
+
 ## Comments
+
+- 2026-11-04 (agent, phân loại G12, theo ủy quyền 31/10/2026): `ready-for-agent`. Đã trả lời: câu 3 phần lớn, connections-and-vault/03 (`f84192e`): egress client che theo giá trị ở dạng thô, mã hóa URL và base64 trong body, lỗi và log; danh sách hậu tố công khai chép nguyên văn vào gói (`dw_platform/domain/public_suffix_list.dat`, commit `52b71b3c` ngày 17/10/2026, MPL-2.0), không thư viện. Câu 1: kho bí mật đã dựng trên `LocalDevKms` (connections-and-vault/02, `c53af90`); tương đương Transit, tự mở niêm phong và độ trễ là bước 1 của connections-and-vault/06 (`ready-for-agent`, chưa dựng). Câu 2: chưa ai đo, smokescreen thuộc ADR-0115 quyết định 7 ở W2.

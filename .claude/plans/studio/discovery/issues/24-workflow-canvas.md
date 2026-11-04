@@ -1,7 +1,7 @@
 # 24 — Sơ đồ quy trình: `@xyflow/react` với bố cục cấu trúc dưới CSP nonce, lớp antd, Next 15.5 và React 19
 
 Type: prototype
-Status: needs-triage
+Status: ready-for-human (Đạt: năm quản trị viên nghiệp vụ của DO-22 và người nghe NVDA tiếng Việt)
 Area: studio · Viết: 23/10/2026
 FOG: FOG-51 `canvas`
 
@@ -124,3 +124,4 @@ vòng lặp có chờ, `Sự cố`) đo ở [14](14-workflow-runtime.md), trên 
   F1-F9 và bảng đo của nghiên cứu sơ đồ đã gộp phản biện (bất biến bố cục hẹp hơn, roving focus qua culling, test
   `aria-*` trước NVDA, F9); hành vi bộ máy của bậc B chuyển sang ticket 14.
 - 2026-11-03 (agent, theo ủy quyền 31/10/2026): gate của workflow-builder-ui/01: ticket đó đo mọi hàng của bảng trừ hai hàng cần người thật, NVDA tiếng Việt trên Dạng danh sách và năm quản trị viên nghiệp vụ (chờ DO-22, Chủ: Đạt). Hai hàng ấy ở lại ticket này, chạy trên builder thật sau workflow-builder-ui/04, kết quả vào ADR 0101; FOG-51 đóng khi chúng xong, không khi workflow-builder-ui/01 xong. Hàng 300 và 500 thẻ không quyết trần theo gói: W1 giữ trần nền tảng 500 Bước và độ sâu 10 (workflow-engine R2.10; ADR 0112 Amendments 2026-11-03), phép đo chỉ xác nhận hay đề xuất hạ. Nếu sai thì: hai hàng thành một ticket `ready-for-human` trong workflow-builder-ui.
+- 2026-11-04 (agent, phân loại G12, theo ủy quyền 31/10/2026): `ready-for-human`. Theo Comments 3/11/2026, mọi hàng trừ hai hàng cần người là workflow-builder-ui/01 (`ready-for-agent`, gate `868607b`), chưa dựng, nên chưa câu nào có số. Hai hàng ở lại đây (NVDA đọc tiếng Việt trên Dạng danh sách; năm quản trị viên nghiệp vụ) và chạy trên builder thật sau workflow-builder-ui/04. Cần: Đạt tìm người tham gia (đội thí điểm của DO-22) và một người nghe NVDA.

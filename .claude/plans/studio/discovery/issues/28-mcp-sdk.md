@@ -1,7 +1,7 @@
 # 28 — SDK `mcp` 2.x sau cổng MCP: client tiêm vào, chuyển hướng, năng lực khai báo, resume sau elicitation
 
 Type: prototype
-Status: needs-triage
+Status: ready-for-agent
 Area: studio · Viết: 23/10/2026
 FOG: FOG-69 `mcp-sdk`
 
@@ -12,7 +12,8 @@ FOG: FOG-69 `mcp-sdk`
 2. Khi resume sau một yêu cầu bổ sung thông tin (elicitation), lời gọi MCP đầu tiên có được phát lại dưới executor của
    nền tảng không?
 3. Client Python chính thức đã hỗ trợ extension Tasks chưa?
-4. Khách Marketing sẽ dùng máy chủ MCP nào, và chúng hỗ trợ CIMD, đăng ký trước hay chỉ DCR?
+4. Khách Marketing sẽ dùng máy chủ MCP nào, và chúng hỗ trợ CIMD, đăng ký trước hay chỉ DCR? (Chuyển sang
+   ticket 02, câu 10, ngày 4/11/2026.)
 
 ## Vì sao
 
@@ -46,4 +47,19 @@ Một tiến trình `mcp-gateway` nguyên mẫu dùng `mcp` 2.x với client htt
 - Brief B8b.
 - [research.md](../research.md) mục 7 (extension Tasks, client httpx2 tiêm vào: chưa kiểm).
 
+## Việc của agent (phân loại 4/11/2026)
+
+- Câu hỏi: câu 1-3; câu 4 đã chuyển sang ticket 02.
+- Cách làm: spike dưới `tests/spike/mcp/`, venv tạm với `mcp` 2.x mới nhất ghim đúng phiên bản (không vào
+  `uv.lock`: theo ADR-0116 `mcp` chỉ ở `mcp-gateway`); client httpx2 tiêm vào kèm proxy và timeout; máy chủ giả
+  tại chỗ trả chuyển hướng cùng origin, khác origin và một elicitation; một máy chủ tham chiếu công khai của dự án
+  Model Context Protocol chạy tại chỗ làm máy chủ thật; executor nguyên mẫu ghi lại mỗi lời gọi. Câu 3 đọc mã nguồn
+  và changelog của SDK, ghi commit.
+- Đầu ra: `## Answer` ở đây và một dòng vào mục Open của ADR-0116 (Accepted).
+- Đạt khi: chuyển hướng khác origin bị từ chối; không khai năng lực nào khi không có callback; 0 lời gọi phát lại
+  ngoài executor sau elicitation; câu 3 trả có hay không kèm dẫn chứng. Trượt một dòng thì ghi cấu hình bù, hay đề
+  xuất elicitation sang v1.5 (DO-46).
+
 ## Comments
+
+- 2026-11-04 (agent, phân loại G12, theo ủy quyền 31/10/2026): `ready-for-agent`. Chưa câu nào được đo; MCP ở W2 và `mcp` chưa có trong `uv.lock`. Câu 4 hỏi khách nên chuyển sang ticket 02; câu 1-3 chỉ cần SDK công khai và máy chủ chạy tại chỗ.

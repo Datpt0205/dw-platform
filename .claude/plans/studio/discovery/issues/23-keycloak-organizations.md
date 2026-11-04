@@ -1,7 +1,7 @@
 # 23 — Keycloak 26.8: Organizations, brokering, `email_verified` và lời mời khi tắt đăng ký
 
 Type: prototype
-Status: needs-triage
+Status: ready-for-human (Đạt: IdP thử Google và Entra hay SAML; Chờ Đạt 18)
 Area: studio · Viết: 23/10/2026
 FOG: FOG-78 `keycloak`
 
@@ -55,3 +55,4 @@ Nâng từ 26.7.2 lên 26.8 chưa có ticket W1 nào nhận; kết quả ở đ�
 ## Comments
 
 - 2026-10-29 (agent): câu 2, phần token của realm `dw`, đã đo ở foundations-hardening/02, Comments 29/10/2026: access token mang `email_verified` boolean, user chưa xác minh không nhận token; realm chưa có IdP brokered nên phần brokering còn mở (OPS-j).
+- 2026-11-04 (agent, phân loại G12, theo ủy quyền 31/10/2026): `ready-for-human`. Đã trả lời: câu 2, phần realm `dw` (foundations-hardening/02, `1c681e8`, Comments 29/10/2026): access token mang `email_verified` boolean, người chưa xác minh không nhận token; phần IdP brokered còn mở. Câu 4 một phần: org-and-principals/01 thấy token đầu không tự làm mới, sau đó 5 phút một lần, nên tab bỏ quên giữ phiên tới 10 giờ (Chờ Đạt 18). Câu 1 cần IdP thử thật (dự án Google, tenant Entra hay một IdP SAML); câu 3 và 5 đo được trên Keycloak cục bộ (repo vẫn ghim 26.7.2) và chưa ai đo. Cần: Đạt tạo IdP thử; trả Chờ Đạt 18.

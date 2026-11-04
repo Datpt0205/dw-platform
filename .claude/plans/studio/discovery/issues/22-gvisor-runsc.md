@@ -1,7 +1,7 @@
 # 22 — runsc systrap trên host thứ hai và trên runner CI
 
 Type: prototype
-Status: needs-triage
+Status: ready-for-human (Đạt: VM thứ hai của D14 cho code-sandbox/02)
 Area: studio · Viết: 23/10/2026
 FOG: FOG-24 `gvisor`
 
@@ -50,3 +50,5 @@ không mạng chạy bộ script tấn công (fork bomb, cấp phát bộ nhớ,
   kiểm).
 
 ## Comments
+
+- 2026-11-04 (agent, phân loại G12, theo ủy quyền 31/10/2026): `ready-for-human`. Chưa câu nào được đo. code-sandbox/01 (`ready-for-agent`) chạy harness trên máy dev và runner CI, nên trả câu 4 và nửa máy dev của câu 2-3; câu 1 và các trần trên kernel và hypervisor thật là code-sandbox/02 (`ready-for-human`), và ADR-0119 vẫn Proposed tới đó. Cần: Đạt dựng VM thứ hai (D14) theo bước 1 của code-sandbox/02.

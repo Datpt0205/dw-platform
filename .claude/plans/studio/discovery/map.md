@@ -108,6 +108,28 @@ Bảng là chỉ mục; trạng thái nằm ở dòng `Status:` của từng tic
 
 77 FOG nằm trong 30 ticket; FOG-60, FOG-61, FOG-62, FOG-80 và FOG-82 ở mục Fog. Không FOG nào nằm ở hai chỗ.
 
+### Phân loại ngày 4/11/2026
+
+Lượt G12 (agent, theo ủy quyền 31/10/2026) đặt `Status:` cho cả 30 ticket. Bằng chứng ở dòng Comments ngày 4/11/2026
+của từng ticket; ticket `ready-for-agent` có thêm mục "Việc của agent" (câu hỏi, cách làm, đầu ra, đạt khi). Không
+ticket nào được trả lời trọn, nên không ticket nào `resolved`; phần đã trả lời ở "Trả lời từ ticket" dưới Decisions so
+far. Không ticket nào lỗi thời theo D15 và D17: câu chat của ticket 02 (FOG-68) đọc lại là kênh chat vào Digital Worker.
+Câu hỏi cho khách của ticket 05 (câu 4), 07 (câu 6) và 28 (câu 4) chuyển sang ticket 02 (câu 8-10).
+
+- `ready-for-agent` (12): 08, 09, 10, 13, 14, 15, 16, 21, 25, 26, 27, 28. Làm trước 14 (workflow-engine/03 chờ nó),
+  rồi 08 và 09; 15 chạy trong agent-builder/01, phần FOG-25 của 21 trong bước 1 của connections-and-vault/06, phần
+  upsert của 10 trong custom-objects/03; 25, 26 và 28 phục vụ W2.
+- `ready-for-human` (18), theo thứ cần:
+    - máy tham chiếu của YC20 hay host cỡ thí điểm của D14, do Đạt cấp (Chờ Đạt 23): 05, 07, 20, 30; VM thứ hai của D14
+      cho code-sandbox/02: 22;
+    - tài khoản, khóa hay IdP thử do Đạt cấp: 01 (tài khoản thử chang.fpt.net, D10), 17 và 19 (khóa model thật, Chờ Đạt
+      21), 23 (IdP thử Google và Entra hay SAML, Chờ Đạt 18);
+    - Đạt trả lời: 06 và 12 (grilling; câu 4 của 06 còn cần người giữ dw-proterial); Đạt hỏi bên yêu cầu: 18;
+    - khách thí điểm và người dùng nghiệp vụ của DO-22: 02, 24, 29 (cùng câu 5 của 12 và nhãn hạng lead của 19);
+    - luật sư của compliance-pdpl/02: 03, 11;
+    - chủ ứng dụng nhà cung cấp của DO-20: 04.
+- `wontfix`: không có.
+
 ### Quy tắc chung
 
 - Nguồn ngoài repo ghi loại (_documented_, _measured_, _vendor claim_) và ngày như [research.md](research.md); điều
@@ -169,7 +191,34 @@ DO-45); các dòng dưới đã theo bản chốt, và mỗi quyết định có
 
 ### Trả lời từ ticket
 
-Chưa có. Mỗi ticket xong thêm một dòng: số ticket, ý chính, link tới `## Answer`.
+Chưa ticket nào xong. Mỗi ticket xong thêm một dòng: số ticket, ý chính, link tới `## Answer`. Phần đã trả lời, theo lượt
+phân loại ngày 4/11/2026 (chi tiết và commit ở Comments của ticket):
+
+- [03](issues/03-legal-status.md): danh sách dữ liệu nhạy cảm của Nghị định 356 Điều 4.1 chép từ Công báo
+  (compliance-pdpl/01).
+- [05](issues/05-record-access-scale.md): ở smoke, mọi biến thể policy quét một partition với InitPlan (record-access/01);
+  dạng sub-SELECT nhanh hơn 62% trên PostgreSQL 16.15 (foundations-hardening/03).
+- [06](issues/06-principals-and-roles.md): người giữ dw-proterial chuyển nó khỏi `memberships.role_keys` trước
+  tenant-rbac/03 (ADR-0104 (Accepted) Open 5).
+- [07](issues/07-records-storage.md): index sắp `vi-VN-x-icu` dùng được dưới RLS, hạn mức đếm bằng dòng bộ đếm,
+  `unaccent` và cột `COLLATE "C"` chạy dưới `dw_migrator` ở compose (custom-objects/01).
+- [09](issues/09-grants-partitions-offboarding.md): FOG-31, partition tạo sau mang đủ RLS dạng InitPlan, thứ tự xóa suy
+  từ `pg_constraint` (studio-skeleton/01, foundations-hardening/03 và /07).
+- [10](issues/10-dedupe-and-upsert.md): chuẩn hóa số trên tập giả lập 0 gộp nhầm (marketing-pilot/01); DO-35 chấp nhận
+  cách dò tồn tại có giới hạn; `ON CONFLICT` chạy dưới policy theo lệnh (custom-objects/01).
+- [12](issues/12-approvals-and-authorship.md): người khởi chạy không tự duyệt `studio.step.` (ADR-0125 (Accepted) Open
+  4); bằng chứng kiểm định theo effective hash; DW có duyệt kèm sửa (digital-worker/02).
+- [13](issues/13-pinned-toolchain.md): import-linter nhận `**`, `compare_metadata` không thấy policy, quyền cột, CHECK,
+  trigger, vị từ index; merge-patch và kiểu TS cho đối tượng mở chạy (studio-skeleton/01, /02, app-standards/03).
+- [14](issues/14-workflow-runtime.md): FOG-37, allowlist của checkpoint (foundations-hardening/02).
+- [16](issues/16-cel-and-jsonschema.md): FOG-50, `cel-expr-python` là engine duy nhất (workflow-nodes/01, ADR-0114
+  (Accepted) Amendments 2026-11-03).
+- [21](issues/21-vault-and-egress.md): che theo giá trị ở dạng thô, URL và base64, danh sách hậu tố ghim trong gói
+  (connections-and-vault/03).
+- [23](issues/23-keycloak-organizations.md): token của realm `dw` mang `email_verified` (foundations-hardening/02).
+- [26](issues/26-personal-data-stores.md): FOG-71, commit quy ước GenAI ghim, span không mang nội dung
+  (telemetry-and-audit/01).
+- [27](issues/27-vietnam-reference-data.md): `tzdata` là phụ thuộc chạy của `dw-usage` và `dw-studio`.
 
 ## Fog
 

@@ -1,7 +1,7 @@
 # 30 — Truy vấn tổng hợp dưới RLS ở quy mô D12: đếm, tổng, nhóm theo trường và theo ngày qua RecordService
 
 Type: prototype
-Status: needs-triage
+Status: ready-for-human (máy tham chiếu của YC20, Chờ Đạt 23)
 Area: studio · Viết: 24/10/2026
 FOG: FOG-81 `aggregate-rls`
 
@@ -64,3 +64,5 @@ ADR 0127.
   ghi trên máy dev, chưa đo ở D12).
 
 ## Comments
+
+- 2026-11-04 (agent, phân loại G12, theo ủy quyền 31/10/2026): `ready-for-human`. Chỉ có số smoke trên máy dev: custom-objects/01 (Comments 4/11/2026) đo một tổng hợp PARALLEL SAFE có Gather nhanh gần gấp đôi (821/701 so với 1.705/1.451 ms ở modulus 8, kết quả bằng nhau); record-access/01 đo đếm P0 p95 1.003-49.195 ms (`db/bench/record-access/RESULTS.md`). Câu hỏi là quy mô D12 (10^7 bản ghi một đối tượng) với bộ gieo và harness của record-access/01 (`make bench-record-access`), không làm được trên máy dev (VM Docker 7,9 GB, ước 75-100 GB đĩa mỗi biến thể). Cần: Đạt cấp máy tham chiếu (Chờ Đạt 23).
