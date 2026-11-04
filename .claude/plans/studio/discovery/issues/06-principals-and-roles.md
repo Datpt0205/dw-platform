@@ -1,7 +1,7 @@
 # 06 — Chủ thể qua chuỗi lồng nhau, mức truy cập trên định nghĩa, khóa vai của gói nghiệp vụ và sản phẩm hạ nguồn
 
 Type: grilling
-Status: needs-triage
+Status: ready-for-human (Đạt; người giữ dw-proterial cho FOG-49)
 Area: studio · Viết: 23/10/2026
 FOG: FOG-45 `nested-actors`, FOG-46 `definition-depth`, FOG-49 `pack-roles`
 
@@ -47,3 +47,5 @@ thêm policy theo mức truy cập như bảng bản ghi, ngoài RLS chỉ theo 
   `docs/adr/0104-tenant-roles-with-depth-and-one-effective-grants-owner.md`, mục Open.
 
 ## Comments
+
+- 2026-11-04 (agent, phân loại G12, theo ủy quyền 31/10/2026): `ready-for-human`. Một phần câu 4 đã có: ADR-0104 (Accepted) Open 5, ngày 24/10/2026: người giữ dw-proterial chuyển nó khỏi `memberships.role_keys` trước khi tenant-rbac/03 khóa cột, việc đó là tenant-rbac/05 (`ready-for-human`); vai trò mẫu của gói gọi khóa đối tượng thế nào vẫn mở. Câu 1-2 (FOG-45) còn mở ở ADR-0102 (Accepted) Open 3 và ADR-0103 (Accepted) Open 4 (quyết định 5 chỉ đề xuất giao mọi giới hạn trên chuỗi; record-access/04 gate xong, chưa dựng); câu 3 (FOG-46) chưa ai quyết (tenant-rbac/04 `needs-triage`). Cần: một buổi hỏi Đạt, và người giữ dw-proterial cho câu 4.

@@ -1,7 +1,7 @@
 # 07 — Nền lưu trữ bản ghi: partition băm, ngân sách slot, collation tiếng Việt và tìm không dấu
 
 Type: prototype
-Status: needs-triage
+Status: ready-for-human (máy tham chiếu của YC20, Chờ Đạt 23)
 Area: studio · Viết: 23/10/2026
 FOG: FOG-41 `records-storage-perf`, FOG-55 `unaccent`
 
@@ -14,7 +14,8 @@ FOG: FOG-41 `records-storage-perf`, FOG-55 `unaccent`
 4. Hạn mức lưu trữ đếm bản ghi bằng dòng bộ đếm hay bằng ước lượng (FOG-41)?
 5. `CREATE EXTENSION unaccent` có chạy dưới `dw_migrator` trong CI và compose không; cột STORED generated có nhận hàm
    bọc IMMUTABLE với `COLLATE "C"` không; PostgreSQL managed có `unaccent` không (FOG-55)?
-6. Tìm theo tiền tố từ có đủ cho người dùng Marketing không; quy trình xử lý lệch collation ICU khi cập nhật
+6. Tìm theo tiền tố từ có đủ cho người dùng Marketing không (chuyển sang ticket 02, câu 9, ngày 4/11/2026); quy
+   trình xử lý lệch collation ICU khi cập nhật
    `postgres:16-alpine` là gì (FOG-55)?
 
 ## Vì sao
@@ -52,3 +53,5 @@ ticket 05, gieo tới 10^7 bản ghi; một script cập nhật kiểu Lead; ima
   `dw_migrator` chưa kiểm).
 
 ## Comments
+
+- 2026-11-04 (agent, phân loại G12, theo ủy quyền 31/10/2026): `ready-for-human`. Đã trả lời trên máy dev, PostgreSQL 16.15 (custom-objects/01, `5ad9dff`, Comments 4/11/2026): câu 3 có: `ORDER BY name` dưới RLS dùng `records_p*_tenant_id_object_id_name_id_idx`, không Sort, trả "An, Ánh, Ân, Bình, Đạt"; câu 4: dòng bộ đếm, vì `reltuples` của partition lệch 0,5-0,9% và không tách được một tenant; câu 5 ở compose: `CREATE EXTENSION unaccent` chạy dưới `dw_migrator` (1.1, extension tin cậy), cột STORED `COLLATE "C"` từ hàm IMMUTABLE chạy được; CI và PostgreSQL managed chưa kiểm. Câu 1-2 chỉ có số smoke (planning, relcache 6,3-12,6 MB, HOT, WAL); số D12 là custom-objects/08, áp vào DDL ở /07, đường thật ở /09 (`ready-for-human`). Câu 6: phần khách sang ticket 02; quy trình lệch collation ICU chưa ai viết, agent viết được khi tìm không dấu vào W2. Cần: Đạt cấp máy tham chiếu (Chờ Đạt 23).

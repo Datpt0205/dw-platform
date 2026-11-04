@@ -1,7 +1,7 @@
 # 04 — Nhà cung cấp kênh của thí điểm: Zalo OA và ZNS, Meta Lead Ads, Google
 
 Type: research
-Status: needs-triage
+Status: ready-for-human (Đạt và chủ ứng dụng nhà cung cấp của DO-20; OA, Page và ứng dụng thử của bên yêu cầu)
 Area: studio · Viết: 23/10/2026
 FOG: FOG-04 `zalo-zns`, FOG-05 `meta-google`, FOG-79 `lock-retries`
 
@@ -53,3 +53,4 @@ lead.
   (`requirements.md` mục Không làm, N8), và ghi thời gian Google xác minh `gmail.send` là của khách, vì nền tảng không
   giữ ứng dụng Google nào (DO-20 (c), `connections-and-vault/01` bước 4). Sửa: Câu hỏi (câu 4). Nếu sai thì: nền tảng
   giữ một ứng dụng Google, và câu 4 hỏi lại thời gian xác minh cho hồ sơ của nền tảng.
+- 2026-11-04 (agent, phân loại G12, theo ủy quyền 31/10/2026): `ready-for-human`. Chưa câu nào được trả lời: connections-and-vault/03 (`f84192e`) dựng module chữ ký webhook, nhưng ghi rõ `zalo_oa_zevent` đo trên OA thật thuộc W2 (Comments của ticket đó); hồ sơ duyệt là connections-and-vault/01 (`ready-for-human`, DO-20). Mọi câu cần OA, ứng dụng Meta và dự án Google thật. Cần: Đạt và pháp nhân giữ ứng dụng nhà cung cấp; `studio.md` chưa có dòng Chờ Đạt cho việc này.

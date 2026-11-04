@@ -1,7 +1,7 @@
 # 10 — Kiểm trùng lead và sự tồn tại dưới RLS: chuẩn hóa số điện thoại, trường duy nhất, upsert theo từng lệnh
 
 Type: prototype
-Status: needs-triage
+Status: ready-for-agent
 Area: studio · Viết: 23/10/2026
 FOG: FOG-11 `dedupe-phone`, FOG-42 `upsert-under-rls`
 
@@ -46,4 +46,22 @@ làm sau khi ticket 05 dựng xong policy; câu 1 không phải chờ.
 - Brief B4, B7b, B12.
 - [research.md](../research.md) mục 2 (upsert dưới policy theo từng lệnh chưa kiểm).
 
+## Việc của agent (phân loại 4/11/2026)
+
+- Câu hỏi: (a) phần còn lại của câu 1: `phonenumbers` (ghim đúng phiên bản) có đưa mọi dạng số của bộ sinh
+  `tests/e2e/marketing_pilot/generator.py`, cùng số 11 chữ số theo đầu số trước đợt đổi năm 2018, về cùng E.164
+  với oracle `tests/e2e/marketing_pilot/measure.py` không; giấy phép và cỡ wheel của nó? (b) câu 3 dưới policy bản
+  ghi đầy đủ.
+- Cách làm: (a) venv tạm, không thêm vào `uv.lock`; chạy trên hạt giống 20261102 và một danh sách đầu số cũ lấy từ
+  văn bản đổi đầu số (ghi số hiệu, URL, loại, ngày đọc); so từng khóa với oracle và với định dạng `phone_vn`
+  (`packages/python/dw_platform/src/dw_platform/application/json_schema.py:77`). (b) trong custom-objects/03
+  (`ready-for-agent`): test upsert `ON CONFLICT ... DO UPDATE` dưới policy của record-access/03, với ca âm: vai
+  trò không đọc được dòng trùng nhận 409 `duplicate_value` chung, không ghi lọt, không lộ id; gỡ policy thì đỏ.
+- Đầu ra: `## Answer` ở đây; (b) đóng bằng một dòng trỏ tới Comments của custom-objects/03.
+- Đạt khi: (a) 0 gộp nhầm, trùng lọt ≤ 1% (KQ3), "0901 234 567" và "+84901234567" một khóa (YC95), giấy phép
+  không copyleft; (b) như bảng Phép đo quyết định. Trượt (a) thì RecordService giữ bộ chuẩn hóa tự viết theo
+  custom-objects:R6.2 và ghi số đầu số cũ bị sót.
+
 ## Comments
+
+- 2026-11-04 (agent, phân loại G12, theo ủy quyền 31/10/2026): `ready-for-agent`. Đã trả lời: câu 1 một phần, marketing-pilot/01 (`9397afb`): trên hạt giống 20261102, 200 lead, 0 gộp nhầm, trùng lọt 0/4, "0901 234 567" và "+84901234567" một khóa, bằng bộ chuẩn hóa tự viết của harness, không phải `phonenumbers`. Câu 2 là quyết định của Đạt (DO-35, 23 và 24/10/2026, mục Quyết định của spec `custom-objects`): trường duy nhất là cách dò tồn tại được chấp nhận làm rủi ro còn lại, với 409 chung, tối đa 20 lần mỗi người mỗi đối tượng trong 10 phút rồi 429 và audit (custom-objects/03, chưa dựng). Câu 3 một phần, custom-objects/01 (Comments 4/11/2026): `ON CONFLICT ... DO UPDATE` chạy dưới policy theo lệnh, còn `RETURNING (xmax = 0)` lỗi trên bảng partition nên thêm hay sửa đọc từ `version = 1`.

@@ -1,7 +1,7 @@
 # 02 — Khách thí điểm: số liệu, nguồn lead, người duyệt và file mẫu
 
 Type: grilling
-Status: needs-triage
+Status: ready-for-human (khách thí điểm và bên yêu cầu, một buổi hỏi do Đạt hẹn, DO-22)
 Area: studio · Viết: 23/10/2026
 FOG: FOG-02 `pilot-customer`, FOG-06 `email-path`, FOG-14 `vn-encodings`, FOG-15 `hr-exports`, FOG-68 `polling-ok`
 
@@ -20,6 +20,10 @@ Hỏi khách thí điểm (một đội marketing thật, DO-22) cùng bên yêu
    tính nhân sự (FOG-15)?
 6. Người dùng thí điểm chấp nhận polling cho chat, hay token streaming là bắt buộc ở P1 (FOG-68)?
 7. Khách có xác nhận đích của các kết quả đo được (KQ) trong `requirements.md` không, như DO-22 đòi trước chạy bóng?
+8. (Từ ticket 05, câu 4, 4/11/2026) Khách thí điểm và khách mục tiêu có bao nhiêu workspace, và cây sâu mấy tầng?
+9. (Từ ticket 07, câu 6, 4/11/2026) Tìm theo tiền tố từ, không dấu, có đủ cho người dùng Marketing không?
+10. (Từ ticket 28, câu 4, 4/11/2026) Khách Marketing sẽ dùng máy chủ MCP nào, và chúng hỗ trợ CIMD, đăng ký trước
+    hay chỉ DCR?
 
 ## Vì sao
 
@@ -49,3 +53,5 @@ chờ câu trả lời này.
 - [research.md](../research.md) mục 13 (cột file nhân sự chưa kiểm), mục 15 (tần suất VNI, TCVN3 chưa kiểm).
 
 ## Comments
+
+- 2026-11-04 (agent, phân loại G12, theo ủy quyền 31/10/2026): `ready-for-human`. Chưa câu nào được trả lời, vì chưa có tên khách (DO-22). Phía nền tảng của câu 3 đã chốt: SMTP chung là đường email P1 (DO-48), dựng ở connections-and-vault/05 (`ready-for-agent`); câu hỏi còn là hộp thư của khách cho phép gì. Câu 6 (FOG-68) đọc lại theo D15/D17: chat chỉ là kênh vào Digital Worker, không là trợ lý riêng (`requirements.md` mục Không làm), nên câu hỏi là kênh chat vào DW chăm sóc lead có cần token streaming ở P1 không; nó không lỗi thời. Câu 8-10 nhận từ ticket 05, 07 và 28 để mọi câu cho khách nằm một chỗ. Cần: Đạt hẹn một buổi với khách thí điểm và bên yêu cầu; `studio.md` chưa có dòng Chờ Đạt cho việc này.

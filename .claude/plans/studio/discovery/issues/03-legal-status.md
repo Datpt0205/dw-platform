@@ -1,7 +1,7 @@
 # 03 — Tình trạng pháp lý tháng 10/2026: chứng nhận dịch vụ xử lý dữ liệu cá nhân và văn bản hướng dẫn Luật AI
 
 Type: research
-Status: needs-triage
+Status: ready-for-human (luật sư của compliance-pdpl/02, do Đạt chọn)
 Area: studio · Viết: 23/10/2026
 FOG: FOG-73 `pdpl-certificate`, FOG-74 `vn-law-status`
 
@@ -44,3 +44,5 @@ giữ và phân loại trường có thể đổi cổng phát hành và mặc �
   kiến luật sư; văn bản hướng dẫn chưa kiểm).
 
 ## Comments
+
+- 2026-11-04 (agent, phân loại G12, theo ủy quyền 31/10/2026): `ready-for-human`. Một phần câu 4 đã có: danh sách dữ liệu nhạy cảm của Nghị định 356/2025/NĐ-CP Điều 4 khoản 1 chép nguyên văn từ Công báo vào `SensitiveType` (compliance-pdpl/01, `ae5434f`); việc trường lead-ad, UTM và hồ sơ mạng xã hội có là "theo dõi hành vi" không, cùng câu 1-3, cần đọc và diễn giải văn bản, mà người dùng repo này đã giao cho luật sư (compliance-pdpl/02, `ready-for-human`); `vbpl.moj.gov.vn` không phân giải được từ máy này (Comments của compliance-pdpl/01). Cần: luật sư do Đạt chọn; `studio.md` chưa có dòng Chờ Đạt cho việc này.

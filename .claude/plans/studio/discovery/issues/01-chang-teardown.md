@@ -1,7 +1,7 @@
 # 01 — Quan sát chang.fpt.net bằng tài khoản thử theo danh sách kiểm của teardown
 
 Type: research
-Status: needs-triage
+Status: ready-for-human (Đạt: tài khoản thử chang.fpt.net của D10)
 Area: studio · Viết: 23/10/2026
 FOG: FOG-01 `chang`
 
@@ -56,3 +56,5 @@ cấu hình trong các brief hiện được chỉnh theo phỏng đoán từ t�
 - [research.md](../research.md) mục 16 (chang.fpt.net là sản phẩm nào và "Brain (Beta)" làm gì: chưa kiểm).
 
 ## Comments
+
+- 2026-11-04 (agent, phân loại G12, theo ủy quyền 31/10/2026): `ready-for-human`. Chưa câu nào được trả lời: không ticket, ADR hay commit nào ghi một quan sát trên chang.fpt.net; [teardown-chang.md](../teardown-chang.md) vẫn chỉ từ tám ảnh chụp (dòng 7), và mục "Danh sách kiểm khi có tài khoản thử" chưa có dòng `Quan sát | Màn | …` nào. Cần: Đạt chuyển tài khoản thử mà bên yêu cầu cấp theo D10; người dùng nó theo luật của DO-23. `studio.md` chưa có dòng Chờ Đạt cho việc này.

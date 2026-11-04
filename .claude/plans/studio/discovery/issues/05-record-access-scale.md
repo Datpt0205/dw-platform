@@ -1,7 +1,7 @@
 # 05 — Quyền trên bản ghi ở quy mô D12: policy sáu nhánh, principal scope và cây workspace
 
 Type: prototype
-Status: needs-triage
+Status: ready-for-human (máy tham chiếu của YC20, Chờ Đạt 23)
 Area: studio · Viết: 23/10/2026
 FOG: FOG-40 `record-access-perf`, FOG-44 `tree-scale`, FOG-43 `search-tenant-filter`
 
@@ -16,7 +16,8 @@ FOG: FOG-40 `record-access-perf`, FOG-44 `tree-scale`, FOG-43 `search-tenant-fil
    đã đo ở si-platform `db/si/migrations/0057_record_tenant_policies_initplan.sql` có lặp lại trên PostgreSQL 16 ở đây
    không (FOG-40)?
 4. Hàm cây đệ quy và bước dựng closure tốn bao nhiêu ở 1.000 workspace; có bao giờ cần bảng closure không; khách thí
-   điểm và khách mục tiêu có bao nhiêu workspace (FOG-44)?
+   điểm và khách mục tiêu có bao nhiêu workspace (FOG-44)? (Phần số workspace của khách chuyển sang ticket 02,
+   câu 8, ngày 4/11/2026.)
 5. Bộ lọc should của Qdrant với hàng trăm tới hàng nghìn giá trị MatchAny ở 10^6 điểm chạy ra sao, và bao lâu một lần
    bước kiểm lại bản ghi để lại ít hơn `top_k` kết quả (FOG-43, phục vụ W2)?
 
@@ -57,3 +58,5 @@ Số đo ghi phiên bản PostgreSQL, máy đo và kế hoạch truy vấn vào 
 - [research.md](../research.md) mục 1 và 2 (khóa tổng hợp ở 10^7 bản ghi chưa kiểm).
 
 ## Comments
+
+- 2026-11-04 (agent, phân loại G12, theo ủy quyền 31/10/2026): `ready-for-human`. Đã trả lời ở quy mô smoke, máy dev (record-access/01, `5a56e41`, `4c5dc4e`, `db/bench/record-access/RESULTS.md`): câu 3, hình kế hoạch: mọi biến thể policy quét đúng một partition ở custom và generic plan, với 15 InitPlan; và lợi ích InitPlan của si-platform lặp lại trên PostgreSQL 16.15: trang đầu 224,0 → 84,2 ms trung vị (foundations-hardening/03, `62d3b32`). Câu 1-2 chỉ có số smoke (trang đầu P0 p95 119-48.253 ms trên máy dev quá tải; tính lại tầm 5.000 chủ thể 107 s bốn kết nối; 0 lần thấy tầm cũ sau thu hồi trên 1.000), không thay số D12: lần đo D12 là record-access/06 và /07 (`ready-for-human`). Câu 4 (hàm cây ở 1.000 workspace) và câu 5 (MatchAny của Qdrant, W2) không ticket W1 nào đo; cả hai làm được trên máy dev khi tới lượt, câu 5 trước spec truy hồi W2; số workspace của khách sang ticket 02. Cần: Đạt cấp máy tham chiếu (Chờ Đạt 23).
