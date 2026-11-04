@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 2/11/2026
-Sẵn sàng: ĐẠT (4/11/2026; 0 CRITICAL, 0 HIGH; ticket 02-05)
+Sẵn sàng: ĐẠT (4/11/2026; 0 CRITICAL, 0 HIGH; ticket 02-07)
 
 Lát Marketing cần gửi email và sau này gửi Zalo tới lead, mà muốn vậy công ty phải lưu được token và
 mật khẩu của nhà cung cấp, và nền tảng phải gọi ra Internet mà không bao giờ lộ bí mật hay bị lừa gọi
@@ -529,9 +529,11 @@ revoked`; `disabled → active | revoked`; `revoked` là trạng thái cuối (R
 
 ## Màn hình
 
-- `/studio/connections`: antd `Table` (tên, trình kết nối, tài khoản ngoài, Phạm vi dùng chung,
-  Connection status bằng chữ, lần dùng gần nhất); `Drawer` thêm kết nối (API key, basic); trang chi tiết
-  (sức khỏe, mã lỗi gần nhất, phạm vi đã cấp, "Được dùng bởi"); xác nhận xóa nêu tên kết nối và danh
+- `/studio/connections`: antd `Table` (tên, trình kết nối, tài khoản ngoài, workspace sở hữu, Phạm vi dùng chung,
+  Connection status bằng chữ, nhãn thu hồi vì lộ, lần dùng gần nhất); `Drawer` thêm kết nối dựng từ
+  `GET /api/v1/connectors`; trang chi tiết (sức khỏe suy từ trạng thái, `compromised_at` và `secret_fields`, thiết lập
+  không bí mật, "Được dùng bởi", nút "Đổi bí mật"; mã lỗi gần nhất và phạm vi đã cấp chờ bên ghi của W2); nút ghi bật
+  theo `can_manage` do server tính (ticket 07); xác nhận xóa nêu tên kết nối và danh
   sách phụ thuộc; người thiếu `connections.manage` thấy nút bị tắt kèm lý do, và API vẫn chặn; nút "Bật lại"
   gửi yêu cầu cho người thứ hai duyệt, và trang chi tiết hiện yêu cầu đang chờ; nút "Thu hồi vì lộ" gọi route của
   R1.15 sau một xác nhận nói rằng mọi lượt chưa xong của kết nối sẽ dừng ở lời gọi ra ngoài kế tiếp, và trang chi tiết
@@ -1082,6 +1084,47 @@ connection_id)` trả `total` và `visible` (tenant-config:R3.4, R3.7). Nếu sa
   rời `SmtpEgress`, đột biến là đưa nó vào lỗi. Nếu sai thì: (h) Hành động khai một tên Điểm gắn cố định; (i) không có
   đường an toàn hơn; (j) lỗi mang văn bản đã che và đột biến là tắt che.
 - 4/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 05.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): gate `checking-plan-readiness` của ticket 06 (builder check, rồi
+  boundary walk vì bản sửa thêm một migration), 0 CRITICAL và 9 HIGH, sửa theo khuyến nghị:
+  (a) lane `credential_rewrap` không có cửa đọc ghi phong bì (`dw_app` không quyền nào trên bảng, ADR-0115 (Accepted)
+  quyết 1): ba hàm SECURITY DEFINER, `platform.tenants_with_secrets()`, `platform.secret_rewrap_candidates` và
+  `platform.put_rewrapped_key` so-và-đặt trên `kek_version`, hẹp theo `app.tenant_id`, chỉ ghi `wrapped_data_key` mang
+  tiền tố `vault:v<n>:`. Nếu sai thì: một hàm definer không đối số làm cả lượt trong cơ sở dữ liệu, không lộ khối ra
+  ứng dụng.
+  (b) "đạt" của FOG-25 không có ngưỡng: bốn mục, tương đương API, mở niêm phong không người với khóa niêm phong ngoài
+  tập sao lưu, p95 ≤ 50 ms ở 10 lời gọi mỗi giây, bộ nhớ ≤ 512 MiB (số tạm, đo lại ở ticket 08). Nếu sai thì: Đạt đặt
+  ngưỡng khác ở ADR-0115 (Accepted) Open 5.
+  (c) ai tạo khóa của công ty và ai sửa được cấu hình khóa: `ensure_tenant_key` lười ở lần ghi đầu, chính sách
+  `dw-api`/`dw-worker` có `create` mà không `config` hay `delete`, chỉ `dw-offboarding` hủy. Nếu sai thì: khóa tạo lúc
+  tạo công ty bằng một lane riêng.
+  (d) hủy khóa lỗi ở offboarding: công ty ở lại `offboarding`, không bao giờ `offboarded` khi khóa còn, khóa không có là
+  đã hủy, audit `tenant.key_destroyed` đứng tên người quyết (CLAUDE.md, Agent and tool rules). Nếu sai thì: không đường
+  nào an toàn hơn.
+  (e) `/ready` khi `kms` hỏng: 200 với `kms` `unavailable`, vì mỗi lời gọi tự đóng (R2.4); profile triển khai từ chối
+  `none` như `local` (R2.1, R2.2). Nếu sai thì: 503, và api rời định tuyến khi OpenBao hỏng.
+  (f) diễn tập trên `bao server -dev` xanh mà không chứng minh gì (failure-modes #0): OpenBao có niêm phong trong compose,
+  thêm vào job integration của CI, thiếu thì đỏ. Nếu sai thì: diễn tập chỉ chạy ở ticket 08 trên host.
+  (g) hạn giữ off-box và danh tính chụp snapshot: bốn hạn ở `infra/backup/retention.env`, kiểm trong CI, AppRole
+  `dw-backup` chỉ đọc snapshot. Nếu sai thì: hạn off-box do lifecycle của bucket giữ và kiểm đọc cấu hình bucket.
+  (h) thông tin xác thực AppRole qua docker secret, không biến môi trường; lane `offboarding` cầm `dw-offboarding` một
+  mình. Nếu sai thì: biến môi trường `_FILE` trỏ tới tệp.
+  (i) lane không nâng `min_decryption_version`, để bản sao lưu còn hạn vẫn khôi phục được (R2.7, R2.8). Nếu sai thì: nâng
+  sau khi bản sao lưu cuối giữ phiên bản cũ hết hạn.
+  (j) việc trên host thật (D14, khóa niêm phong và AppRole thật, đích off-box thật, đo lại trên host) tách sang ticket 08
+  `ready-for-human` (Chờ Đạt 20); ticket 06 dựng trên compose của máy dev. Ticket 06 thêm Blocked by 05 (cùng composition
+  root của worker). Nếu sai thì: ticket 06 chờ host và ticket 08 gộp lại.
+  Boundary walk trên bản đã sửa: 1 HIGH, sửa: (k) quyền hủy khóa của `dw-offboarding` đọc được từ mọi mã của worker:
+  `destroy_tenant_key` đòi bằng chứng `offboarding` đọc trong giao dịch, một chỗ gọi giữ bằng quét nguồn. Nếu sai thì:
+  hủy khóa chạy trong một tiến trình riêng chỉ cầm `dw-offboarding`.
+- 4/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 06, 08.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): gate `checking-plan-readiness` của ticket 07 (builder check, rồi một lượt
+  xác nhận), 0 CRITICAL và 6 HIGH, sửa theo khuyến nghị: (a) "sức khỏe" và "mã lỗi gần nhất" không có nguồn: sức khỏe suy
+  từ trạng thái, `compromised_at`, `secret_fields` theo một thứ tự ưu tiên, mã lỗi và phạm vi đã cấp chờ bên ghi W2 (mục
+  Màn hình sửa); (b) nút ghi tắt theo `can_manage` do server tính bằng luật tầm với của route ghi (ADR-0104 (Accepted)
+  quyết 5); (c) nút "Đổi bí mật" để Kết nối dùng lại sau thu hồi vì lộ; (d) nút theo trạng thái; (e) danh sách phân
+  trang theo cursor; (f) nhãn không trái tiêu chí khi `compromised_at` chỉ tiến. Nếu sai thì: (a) cột `last_error_code` do
+  ticket 05 ghi; (b) `/me` trả tầm với theo khóa; (c)-(f) không đường nào an toàn hơn.
+- 4/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 07.
 
 ## Danh sách ticket
 
@@ -1094,3 +1137,4 @@ connection_id)` trả `total` và `visible` (tenant-config:R3.4, R3.7). Nếu sa
 | 05  | [Manifest dw.connector/v1 với khối delivery, trình kết nối email SMTP và lane xóa phiên bản bí mật cũ](issues/05-manifest-va-ket-noi-email.md)       |
 | 06  | [OpenBao Transit: khóa khi triển khai, xoay khóa, hủy khóa, sao lưu và diễn tập khôi phục](issues/06-openbao-transit-va-sao-luu-kho-khoa.md)         |
 | 07  | [Màn Kết nối /studio/connections](issues/07-man-ket-noi.md)                                                                                          |
+| 08  | [OpenBao trên host triển khai: nâng host, khóa niêm phong và AppRole thật, đích off-box, đo lại FOG-25](issues/08-openbao-tren-host-trien-khai.md)   |
