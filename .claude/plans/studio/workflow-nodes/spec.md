@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 3/11/2026
-Sẵn sàng: ĐẠT (4/11/2026; 0 CRITICAL, 0 HIGH; ticket 01-03)
+Sẵn sàng: ĐẠT (4/11/2026; 0 CRITICAL, 0 HIGH; ticket 01-04)
 
 Người dựng không viết mã ghép một quy trình từ các Bước, thành một cây Bước (V4.24). Mỗi Loại bước là mã nền
 tảng trong một sổ đăng ký duy nhất, mang schema cấu hình và đầu ra, các Nhánh ra mà mỗi Bước của loại mang
@@ -1058,6 +1058,21 @@ là của workflow-engine (`.claude/plans/studio/workflow-engine/issues/09-quy-t
   boundary walk, vì ticket có ba route; không migration): 0 CRITICAL, 11 HIGH, đều sửa theo khuyến nghị ở các dòng trên
   và ADR-0112 (Accepted) Amendments 2026-11-04; lượt xác nhận 10 câu, sửa ở ticket 03; MEDIUM ở Comments của ticket 03.
 - 4/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 03.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): Bước giao chuyển `run_mode` của lượt qua `RecordAssignPort`, và
+  `AssignRecordService` ở `simulate` không giao, không audit, không outbox (record-access/05 bước 6), vì Bước không bao
+  giờ tự giả lập mà chuyển chế độ cho cửa (ADR-0112 (Accepted) quyết 6; CRITICAL của gate ticket 04). Sửa: R5.5, ticket 04. Nếu sai thì: record-access/05 đổi hợp đồng `simulate` của `AssignRecordService`, và R5.5 đổi theo.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): Bước giao: ứng viên là người thỏa kiểm người nhận của record-access:R8.5
+  trên bản ghi, gọi cùng hàm, trong workspace sở hữu, thu hẹp thêm bằng `candidates` (Biểu thức `list[string]`); chủ
+  thể chạy cần tầm `assign` (record-access:R8.4) và là actor của audit; bản ghi đã có người phụ trách khác chủ thể chạy
+  thì giữ người cũ trừ khi `reassign`; "lâu nhất chưa nhận" là bảng `studio.assign_rotation` theo Bước giao của một quy
+  trình, chọn dưới khóa hàng và ghi khóa của lần chạy để chạy lại chọn đúng người, vì cột `owner_assigned_at` mà ticket
+  04 cũ đọc không ticket nào tạo; bốn Bước bản ghi không ghi trường người phụ trách; `upsert` kiểm trùng theo
+  `match_on` có thứ tự. Sửa: R6.1, R6.2, R5.4, ticket 04. Nếu sai thì: `studio.assign_record` của record-access/05 đặt
+  `owner_assigned_at` trên `studio.records`, và vòng xoay đọc nó qua một hàm SECURITY DEFINER chỉ trả thời điểm.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): gate `checking-plan-readiness` của ticket 04 (builder check cùng boundary
+  walk, vì ticket nay có migration): 1 CRITICAL và 9 HIGH, đều sửa theo khuyến nghị ở hai dòng trên; lượt xác nhận 10 câu, sửa ở ticket 04; MEDIUM ở Comments
+  của ticket 04.
+- 4/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 04.
 
 ## Danh sách ticket
 
