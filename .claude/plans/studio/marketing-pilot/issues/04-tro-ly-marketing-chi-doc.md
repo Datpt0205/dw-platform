@@ -37,3 +37,33 @@ Người dùng Marketing có một trợ lý trả lời câu hỏi về lead v�
 - 2026-10-24 (agent): lượt f của vòng 4, theo V4.17 của Đạt (dòng cùng ngày của spec): mỗi thành phần có tối đa một bản chưa phát hành, nên bước 4 dựng Nháp của R5.4 khi trợ lý không có Bản ứng viên đang chờ và Rút lại bản khai A2 sau khi nó qua sàn; tiêu chí không đổi.
 - 2026-10-24 (agent): kiểm lượt f của vòng 4: bước 4 tạo Nháp của R5.4 chỉ khi trợ lý không có Nháp hay Bản ứng viên, và ca sau sửa tiếp bản Nháp mà lệnh Rút lại để lại, vì tạo Nháp lúc đã có Nháp trả 409 `draft_exists` (tenant-config:R2.23), nên câu "lần dựng Nháp sau không gặp 409" bỏ; tiêu chí không đổi.
 - 2026-10-25 (agent): lượt h, theo V4.31 của Đạt: Blocked by gỡ agent-lifecycle/04, thêm agent-lifecycle/06 (Cổng chất lượng, nay tách khỏi phát hành hai người) và agent-builder/05 (giới hạn dữ liệu của agent, tách khỏi agent-builder/02) theo bảng cạnh của lượt h; agent-lifecycle/04 vẫn là tổ tiên qua agent-lifecycle/06. Ticket này thuộc lối ra W1b: ticket 05 (W1a) không chờ nó, ticket 06 chờ nó. Tiêu chí không đổi.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): checking-plan-readiness trên `cb5e9a4` (builder check; không route, không
+  migration): CẦN XEM, ticket ở lại `needs-triage`. Trường hợp: dựng trên trợ lý chat riêng đã bỏ. Ticket này là một
+  trợ lý hỏi đáp có `Người được dùng` và màn chat của agent-builder/04, tức "trợ lý chat hỏi đáp như một sản phẩm" mà
+  D15 của Đạt không làm (`requirements.md`, 29/10/2026, Không làm); D17 đọc YC96 lại là kênh chat vào Digital Worker
+  chăm sóc lead (studio.md, Chờ Đạt 12), và agent-builder/04, chỗ dựa của bước 5, cũng CẦN XEM vì cùng lý do
+  (`e35a917`). Khuyến nghị theo ủy quyền: viết lại R5 của spec và ticket này qua `writing-plan-specs` cùng lần viết lại
+  agent-builder/04, khi `requirements.md` sửa theo D15: trợ lý là kênh chat của Digital Worker chăm sóc lead (hỏi về
+  lead, việc trong hàng đợi và scorecard của DW đó, theo quyền người hỏi), không agent riêng. Giữ bước 1 của `cb5e9a4`
+  (agent dựng qua `POST /api/v1/studio/artifacts` và route cài đặt) nếu kênh vẫn là một agent Studio. Bản viết lại phải
+  mang các HIGH sau, mỗi dòng một khuyến nghị:
+    - (1) Tín hiệu A của R5.4 chỉ có thể đến từ `output_trust` của công cụ đối tượng, vì `message` do người ngoài viết:
+      công cụ `object_crud` khai `untrusted` cho trường đó, nếu không ca A3 không bao giờ thành Bộ ba và test không đỏ
+      (ADR-0125 (Accepted) quyết 1); nói rõ hệ quả cho mọi agent dùng công cụ đối tượng.
+    - (2) Ca R5.4 nêu công cụ gửi nào ghim được vào agent ở W1 (công cụ tenant là W2, `email.send` của lát là một Bước
+      `tool.call`; công cụ gói `email.send@1.0.0` của leadcare là ứng viên).
+    - (3) Cộng tác viên Marketing nằm ngoài `Người được dùng` (chỉ Marketing và Sales), nên vế trợ lý của R5.2 thành
+      "không thấy agent": thêm vai đó vào audience, hay đổi người hỏi của ca.
+    - (4) Cổng an ninh 100% cho một agent trên profile `test` với model giả: ca nào, chấm không gọi model ra sao, ai là
+      người không phải Tác giả duyệt.
+    - (5) R5.1, R5.2 khẳng định trên kết quả công cụ (`hidden_fields`, các dòng trả về), không trên văn bản của model;
+      nói chữ "Đã ẩn" do màn chat dựng hay do model viết.
+    - (6) Định danh trực tiếp (`name`, `phone_e164`, `email`, `message`) có vào ngữ cảnh model của trợ lý không khi
+      người hỏi có quyền trường: R3.4 chỉ phủ `ai.llm`, và luật không ghi xuống của YC113 là W2.
+    - (7) "Khai A2 → qua sàn" khẳng định gì (2xx của route gửi hay kết quả phân tích đã lưu), và Rút lại khi Bản ứng viên
+      còn `evaluating` hay khi cổng tự trả về Nháp.
+    - (8) Các HIGH của agent-builder/04 trong Comments của nó (`e35a917`): nội dung chat không vào hàng lượt chạy, khóa
+      và audience ở cả hai route `POST`, workspace của hội thoại, `active_run_id`, `Idempotency-Key`, eval cho bề mặt chat.
+      Đã trả lời ở lần gate ticket 03 (không còn là câu hỏi): Lead đã giao giữ workspace Marketing (record-access:R8.2), mức
+      Của tôi của Sales với tới Lead mình phụ trách ở mọi workspace (record-access:R3.1). Nếu sai thì: Đạt giữ trợ lý riêng
+      (YC96 nguyên nghĩa cũ), và ticket qua gate sau khi sửa (1)-(8).
