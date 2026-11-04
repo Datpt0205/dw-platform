@@ -101,7 +101,7 @@ move on.
 
 A new guard ships with a demonstration that removing the guard turns a test red.
 
-## 4. Trusting a library instead of measuring it — NOT THINKABLE (found 8×)
+## 4. Trusting a library instead of measuring it — NOT THINKABLE (found 9×)
 
 MinIO withdrew both its images from Docker Hub; the error read as a credentials
 problem. The move to quay.io held until MinIO withdrew them there too: twelve
@@ -124,6 +124,12 @@ by the convention at 64 characters was created truncated, so the adapter that
 turned its violation into a `ConflictError` by name matched nothing, and every
 concurrent write surfaced as a raw IntegrityError (connections-and-vault/02,
 4/11/2026). Only the integration test that triggered the violation showed it.
+
+asyncpg answers `isinstance(conn, SubclassOfConnection)` True for every connection,
+so a harness could not tell the subclass that calls the access door from a plain
+connection by type; the check passed for the connection it was meant to refuse
+(record-access/01, 4/11/2026). It was caught before any committed number depended
+on it, by a self-check that tried the wrong connection on purpose.
 
 No amount of care catches these. The habit that does:
 
