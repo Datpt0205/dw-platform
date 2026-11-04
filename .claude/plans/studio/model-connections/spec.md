@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 2/11/2026
-Sẵn sàng: ĐẠT (4/11/2026; 0 CRITICAL, 0 HIGH; ticket 01-03)
+Sẵn sàng: ĐẠT (5/11/2026; 0 CRITICAL, 0 HIGH; ticket 01-03)
 
 Mọi cửa model của Studio cần một bộ phân giải theo công ty để chọn đúng hồ sơ model mà gói cho phép, ghim vào bản kê lượt chạy và đi theo lộ trình dữ liệu chặt nhất, thay cho ba chỗ đọc hồ sơ lệch nhau hôm nay; và công ty cần kết nối model của chính mình qua model proxy LiteLLM không trạng thái. W1 làm `ModelResolver` và hồ sơ nền tảng lọc theo gói cho bước AI và trợ lý, cùng một spike đo model proxy trước khi dựng; kết nối model đầy đủ (BYOM) là W2.
 
@@ -100,19 +100,19 @@ Hồ sơ model khai nơi xử lý dữ liệu; thiếu khai là nước ngoài, 
 - usage-and-limits: ticket 02 chờ `.claude/plans/studio/usage-and-limits/issues/02-bang-gia-so-su-dung-va-man-hinh.md`, nơi Bảng giá ra đời và `route_cost` thôi đọc giá trên route, rồi bỏ hai trường giá khi dựng `ModelProfile` v2; mỗi tệp `model/profiles.py`, `configs/models/*.yaml` có một ticket sửa (H-4).
 - Seam do bên khác dựng, tham chiếu bằng slug: `usage-and-limits` (Bảng giá là chủ duy nhất của giá, kể cả mục giá của công ty `platform.tenant_price_entries` cho BYOM (usage-and-limits:R2.1); hồ sơ chỉ dẫn chiếu; sổ usage); `compliance-pdpl` (`ResidencyGate` gọi bởi mọi caller của bộ phân giải, lớp tuyến chặt nhất của công ty, workspace và agent, chỉ đọc trường tuyến dữ liệu của R2.3 và R3; ticket 03 của compliance-pdpl không thêm lại các trường đó); `connections-and-vault` (kho bí mật, kết nối `llm_<kind>`, `egress_allowed_hosts`, smokescreen trên mạng `dw-llm`).
 - Lát thí điểm chạy dưới `vn_only` nên cần ít nhất một route nền tảng khai `data_location` là Việt Nam trước bước AI đầu tiên (ADR-0118 (Accepted); FOG-10 ở `.claude/plans/studio/discovery/issues/19-vietnamese-model-quality.md`, FOG-18 ở `.claude/plans/studio/discovery/issues/18-requester-questions.md`).
-- Kiểm lại khi: báo cáo sự cố cuối của LiteLLM hay một advisory mới → ticket 01 và bản ghim; FOG-18 khai nơi xử lý của từng alias trên gateway nền tảng → R3.2; FOG-10 không tìm được model xử lý tại Việt Nam đủ chất lượng → bước AI đầu tiên của thí điểm; luật sư đổi kết luận DO-54.2 → R3.
+- Kiểm lại khi: một sự cố mới của LiteLLM sau báo cáo cuối ngày 23/10/2026, hay một advisory mới chạm bản ghim → ticket 01 và bản ghim; FOG-18 khai nơi xử lý của từng alias trên gateway nền tảng → R3.2; FOG-10 không tìm được model xử lý tại Việt Nam đủ chất lượng → bước AI đầu tiên của thí điểm; luật sư đổi kết luận DO-54.2 → R3.
 
 ## Câu hỏi còn mở
 
 ## Quyết định
 
-- 23/10/2026 (agent, tạm): ghim LiteLLM 1.106.1 cho lane BYOM tới khi có báo cáo sự cố cuối (O6/DO-19, theo D13). Sửa: ticket 01, Ngoài phạm vi. Nếu sai thì: nếu báo cáo cho phép 1.106.2, nâng theo quy trình 14 ngày.
+- 23/10/2026 (agent, tạm): ghim LiteLLM 1.106.1 cho lane BYOM tới khi có báo cáo sự cố cuối (O6/DO-19, theo D13). Sửa: ticket 01, Ngoài phạm vi. Nếu sai thì: nếu báo cáo cho phép 1.106.2, nâng theo quy trình 14 ngày. (Từ 5/11/2026 bản ghim là 1.106.5, xem dòng 5/11/2026 bên dưới.)
 - 23/10/2026 (agent, tạm): `data_location` không khai coi là nước ngoài, và YAML thiếu `data_location` làm CI đỏ (ADR-0123 (Accepted), `failure-modes.md` #7). Sửa: R3.1, R3.2. Nếu sai thì: nếu có mặc định khác do counsel chốt, đổi R3.2.
 - 23/10/2026 (agent, tạm): không fallback từ model của công ty sang model nền tảng; token BYOM chỉ trừ hạn mức công ty đặt (DO-43 khuyến nghị a). Sửa: Ngoài phạm vi. Nếu sai thì: theo ghi chú DO-43.
 - 23/10/2026 (Đạt): DO-21.5 theo (a): Bảng giá là chủ duy nhất của giá; bỏ R2.4 và phần giá khỏi `ModelProfile` v2, hồ sơ chỉ dẫn chiếu. Sửa: R2, R2.4 (rút), Trong phạm vi, Ngoài phạm vi, Phụ thuộc, ticket 02.
 - 23/10/2026 (Đạt): DO-43 theo (a), cả bốn ý của dòng tạm cùng ngày ở trên: không chuyển sang route của nền tảng hay công ty khác, model của công ty trên kết nối của workspace được dùng công cụ, không endpoint tại chỗ ở v1, token BYOM chỉ tính vào trần do công ty đặt; BYOM ở W2. Hỏi: Q1.
 - 23/10/2026 (Đạt): DO-54.2 theo (a): nền tảng là bên xử lý, công ty là bên kiểm soát, DPA ký trước chạy bóng; sản phẩm xuất đầu vào cho hồ sơ, luật sư quyết ai nộp DPIA và CTIA; nới lộ trình dữ liệu cần hai người (D11), siết một người. Hỏi: Q2.
-- 23/10/2026 (Đạt): ADR-0118 (Accepted) kèm sửa: LiteLLM ghim 1.106.1 và chỉ nâng sau 14 ngày cùng một lần kiểm advisory; alias chưa khai nơi xử lý là nước ngoài; lát thí điểm cần một route xử lý tại Việt Nam trước bước AI đầu tiên (FOG-10). Dòng tạm về bản LiteLLM cùng ngày ở trên thành quyết định có ngày. Sửa: Phụ thuộc, ticket 01.
+- 23/10/2026 (Đạt): ADR-0118 (Accepted) kèm sửa: LiteLLM ghim 1.106.1 và chỉ nâng sau 14 ngày cùng một lần kiểm advisory; alias chưa khai nơi xử lý là nước ngoài; lát thí điểm cần một route xử lý tại Việt Nam trước bước AI đầu tiên (FOG-10). Dòng tạm về bản LiteLLM cùng ngày ở trên thành quyết định có ngày. Sửa: Phụ thuộc, ticket 01. (Từ 5/11/2026 bản ghim là 1.106.5, xem dòng 5/11/2026 bên dưới.)
 - 23/10/2026 (agent, tạm): spec và ticket 01 gọi lane LiteLLM là model proxy, đúng thuật ngữ glossary; tên tệp ticket 01 giữ nguyên để không gãy liên kết (phát hiện kiểm nhất quán 23/10/2026). Sửa: tiêu đề, đoạn đầu, Ngoài phạm vi, ticket 01. Nếu sai thì: đổi lại tên trong cùng các chỗ đó.
 - 23/10/2026 (agent, tạm): trường tuyến dữ liệu (`data_location`, `processor`, `retention_days`, `no_training`) và luật "không khai là nước ngoài" chỉ ở spec này (R2.3, R3); compliance-pdpl chỉ đọc; ticket 02 chờ tenant-config/04 vì ghim route vào bản kê lượt chạy (phát hiện kiểm nhất quán 23/10/2026). Sửa: Trong phạm vi, Ngoài phạm vi, Phụ thuộc, ticket 02. Nếu sai thì: chuyển trường sang compliance-pdpl và đổi chiều Blocked by của compliance-pdpl/03.
 - 24/10/2026 (Đạt): dịch vụ compose của Model proxy tên `model-proxy` ở mọi tài liệu, tên của glossary, không còn `litellm-byom`; ADR-0118 (Accepted) quyết 8 sửa cùng ngày. Sửa: Ngoài phạm vi.
@@ -131,7 +131,8 @@ Hồ sơ model khai nơi xử lý dữ liệu; thiếu khai là nước ngoài, 
     - tham số cấm được liệt kê;
     - thêm phép đo regex `api_base` lồng nhau và phép đo cooldown, retry tắt;
     - log của proxy và callback của LangChain được quét ở bốn dạng mã hóa;
-    - luật 14 ngày tính từ lúc 1.106.1 lên PyPI ngày 20/10/2026, nên chỉ chạy được từ 4/11/2026;
+    - luật 14 ngày tính từ lúc 1.106.1 lên PyPI ngày 20/10/2026, nên chỉ chạy được từ 4/11/2026 (từ 5/11/2026: 1.106.5,
+      chạy được từ 2026-11-10 19:45 UTC);
     - bỏ câu "một model proxy hay hai", vì D13 đã chốt;
     - không tự nới cấu hình của ADR-0118 (Accepted) quyết định 8.
 
@@ -161,6 +162,25 @@ Hồ sơ model khai nơi xử lý dữ liệu; thiếu khai là nước ngoài, 
       đã dùng; hồ sơ model vào release manifest. Nếu sai thì: chỉ ba cờ có bên đọc, và hồ sơ ngoài release manifest.
 - 4/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 02-03. Ticket 02 chờ workflow-engine/02, vì ghim lúc nhận lượt cần `RunRequestService` và cả hai sửa `apps/api/src/dw_api/bootstrap/studio.py` và lời gọi `RunManifestBuilder.build`; workflow-engine/05 sửa cùng `EngineSection` nhưng đã chờ ticket 02 qua workflow-engine/04, usage-and-limits/03 và compliance-pdpl/03. Ticket 03 chỉ chạm `infra/spikes/model-proxy/` sau ticket 01 và cần khóa thật (Chờ Đạt 21), nên `ready-for-human`. Theo `## Ủy quyền` của studio.md (Đạt, 31/10/2026). Nếu sai thì: hạ hai ticket về `needs-triage` và chia lại.
 - 5/11/2026 (agent, theo ủy quyền 31/10/2026): ticket 01 dừng ở bước 0, vì GHSA-w4c7-34wj-hqm8 (Critical, 27/10/2026) có khoảng `< 1.106.5` chứa bản ghim 1.106.1; chưa chạy LiteLLM. Ticket về `needs-triage`, chờ sửa bản ghim ở ADR-0118 (Accepted) quyết định 8 (khuyến nghị: 1.106.5, chạy từ 11/11/2026 02:45 giờ Việt Nam) rồi gate lại; số đo và đề xuất ở Comments của ticket 01. Sửa: ticket 01, ticket 03. Nếu sai thì: ticket 01 chạy trên 1.106.1 như đã gate, và bước 0 của nó ghi cách đọc "chạm" theo điều kiện tiên quyết.
+- 5/11/2026 (agent, theo ủy quyền 31/10/2026): nhận đề xuất bốn ý ở Comments của ticket 01; thay bản ghim của hai dòng 23/10/2026 ở trên.
+    - ADR-0118 (Accepted) quyết định 8 ghim LiteLLM 1.106.5, bản sửa thấp nhất của nhánh 1.106 cho GHSA-w4c7-34wj-hqm8;
+      chạy sớm nhất 2026-11-10 19:45 UTC (11/11/2026 02:45 giờ Việt Nam) theo luật 14 ngày, sau một lần kiểm advisory
+      lúc đó (Amendments 2026-11-05 của ADR). Nếu sai thì: nếu Đạt đọc "chạm" là "khoảng chứa bản đó và điều kiện
+      tiên quyết có thể xảy ra với cấu hình của quyết định 8", ticket 01 chạy lại trên 1.106.1 mà không đổi gì khác, và
+      bước 0 của nó ghi rõ cách đọc đó.
+    - Bản ghi "attack chain" ngày 23/10/2026 của nhà cung cấp là báo cáo sự cố cuối mà bản ghim và FOG-19 chờ. Nếu sai
+      thì: chờ nhà cung cấp gọi rõ một báo cáo là báo cáo cuối, và ticket 01 chờ theo.
+    - Tiêu chí thiếu khóa của ticket 01 cấm thêm `LITELLM_LICENSE` trong môi trường của `model-proxy`, và quyết định 8
+      cấm biến đó cho `model-proxy` thật ở W2, để mã Enterprise mà advisory cần không bao giờ được nạp. Nếu sai thì:
+      bỏ biến đó khỏi danh sách cấm, không đổi gì khác.
+
+    Sửa: ticket 01 (Mục tiêu, bước 0, 1, 6, hai tiêu chí), ticket 03 (bước 0), Phụ thuộc (Kiểm lại khi).
+
+- 5/11/2026 (agent, theo ủy quyền 31/10/2026): gate lại ticket 01 bằng `checking-plan-readiness` (builder check và một lượt
+  xác nhận, không boundary walk vì ticket không có migration hay route): 0 CRITICAL, 14 HIGH đã sửa như khuyến nghị; chi tiết
+  ở Comments của ticket 01. Hai lần gọi tạm: luật 14 ngày áp cả cho gói phụ thuộc của LiteLLM (cờ `--exclude-newer`), và `max_retries: 0` theo từng model chỉ được thêm khi đo thấy client bên trong LiteLLM tự retry, như
+  một lần siết của quyết định 8. Sửa: ticket 01. Nếu sai thì: luật 14 ngày chỉ áp cho `litellm`, và retry của client làm
+  ticket dừng và đề xuất như bước 6 của nó.
 
 ## Danh sách ticket
 

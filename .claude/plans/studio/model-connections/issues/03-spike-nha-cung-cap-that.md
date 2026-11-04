@@ -13,7 +13,7 @@ Trên stack và transport của ticket 01, đo bảy nhà cung cấp mà một m
 
 0. Điều kiện trước. Ticket 01 đã `resolved` mà không dừng ở bước 0 hay bước 6 của nó; nếu ticket 01 dừng và đề xuất sửa
    ADR-0118 (Accepted) quyết định 8, ticket này chờ bản sửa đó và qua gate lại. Ngay trước bước 1, đọc lại advisory như
-   bước 0 của ticket 01 (cùng hai địa chỉ) và ghi giờ đọc vào Comments; có advisory chạm 1.106.1 thì dừng ở đây.
+   bước 0 của ticket 01 (cùng hai địa chỉ) và ghi giờ đọc vào Comments; có advisory chạm 1.106.5, bản ghim của ADR-0118 (Accepted) quyết định 8 từ 5/11/2026, thì dừng ở đây.
 1. Khóa chỉ nằm trong môi trường của tiến trình test trên host, dưới tên `DW_SPIKE_<PROVIDER>_*`:
     - Azure: khóa, endpoint và deployment;
     - Bedrock: cặp khóa tĩnh và vùng;
@@ -77,3 +77,5 @@ Trên stack và transport của ticket 01, đo bảy nhà cung cấp mà một m
 - 2026-11-05 (agent): ticket 01 dừng ở bước 0, vì GHSA-w4c7-34wj-hqm8 (Critical) chạm 1.106.1; số đo nằm ở Comments
   của ticket 01. Ticket này chờ đúng như bước 0 của nó đã ghi. Khi ADR-0118 (Accepted) quyết định 8 đổi bản ghim, bước 0
   ở đây đổi 1.106.1 theo bản mới trong cùng lần sửa.
+- 2026-11-05 (agent, theo ủy quyền 31/10/2026): ADR-0118 (Accepted) quyết định 8 nay ghim 1.106.5 (Amendments
+  2026-11-05); bước 0 đổi 1.106.1 thành 1.106.5. Ticket vẫn `ready-for-human` (Chờ Đạt 21) và vẫn chờ ticket 01.
