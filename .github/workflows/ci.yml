@@ -313,6 +313,9 @@ jobs:
             python3 tests/spike/sandbox/harness.py annotate-log --title "sandbox-spike setup failed" setup.log
             exit "$status"
           }
+      - name: Pins and versions measured
+        if: ${{ !cancelled() }}
+        run: uv run python tests/spike/sandbox/harness.py versions
       - name: "R1.1: the ten rows, results-ci.json"
         if: ${{ !cancelled() }}
         timeout-minutes: 10

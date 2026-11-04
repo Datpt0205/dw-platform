@@ -1240,6 +1240,8 @@ def versions(engine: Engine) -> dict[str, Any]:
         image = engine.inspect(IMAGE)
         found["image_id"] = image.get("Id")
         found["image_labels"] = (image.get("Config") or {}).get("Labels")
+    with contextlib.suppress(HarnessError, OSError, subprocess.TimeoutExpired, ValueError):
+        found["rootful_engine"] = Engine(f"unix://{ROOTFUL_SOCKET}").info().get("ServerVersion")
     return found
 
 
@@ -1339,11 +1341,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     a.add_argument("--title", required=True)
     a.add_argument("--lines", type=int, default=40)
     a.add_argument("path", type=Path)
+    sub.add_parser("versions", help="the pins and versions measured, as one ::notice")
     args = parser.parse_args(argv)
     if args.command == "hold":
         return _hold(args.count)
     if args.command == "annotate-log":
         return _annotate_log(args.title, args.path, args.lines)
+    if args.command == "versions":
+        found = json.dumps(versions(Engine.under_test()), ensure_ascii=False)
+        print(workflow_command("notice", "sandbox-spike versions", found))
+        return 0
     # The statuses are Vietnamese; a Windows console is cp1252 by default.
     if isinstance(sys.stdout, io.TextIOWrapper):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
