@@ -16,6 +16,7 @@ import {
   SplitCellsOutlined,
   UnorderedListOutlined,
 } from "@ant-design/icons";
+import { studioNav } from "../../app/studio/_meta/nav";
 import type { NavItem } from "./types";
 
 /**
@@ -159,5 +160,6 @@ const platformNav: NavItem[] = [
  */
 export const NAV_ITEMS: NavItem[] = [
   // <context navs plug in here>
+  ...studioNav,
   ...platformNav,
 ];

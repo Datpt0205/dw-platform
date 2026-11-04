@@ -6,22 +6,6 @@
       {
         "paths": [
           {
-            "name": "sonner",
-            "message": "Notices go through antd: const { message, notification } = App.useApp()."
-          },
-          {
-            "name": "radix-ui",
-            "message": "antd is the one component system (CLAUDE.md, Web UI)."
-          },
-          {
-            "name": "lucide-react",
-            "message": "Icons come from @ant-design/icons."
-          },
-          {
-            "name": "class-variance-authority",
-            "message": "antd is the one component system (CLAUDE.md, Web UI)."
-          },
-          {
             "name": "antd",
             "importNames": ["message", "notification"],
             "message": "The static API does not read the theme; use App.useApp()."
@@ -29,8 +13,8 @@
         ],
         "patterns": [
           {
-            "group": ["@radix-ui/*"],
-            "message": "antd is the one component system (CLAUDE.md, Web UI)."
+            "regex": "^(?!(?:antd|@ant-design/icons|@ant-design/nextjs-registry|dayjs|keycloak-js|next|react|react-dom)(?:/|$)|@dw/|node:|[.]|@/)",
+            "message": "Not on the UI allowlist (ADR-0101 (Accepted) decision 4, CLAUDE.md Web UI): a library joins through its own Accepted ADR and an EXCEPTIONS entry in lib/__tests__/antd-only.test.ts."
           }
         ]
       }
@@ -56,6 +40,39 @@
       "files": ["lib/money.ts", "lib/dates.ts"],
       "rules": {
         "no-restricted-syntax": "off"
+      }
+    },
+    {
+      "files": [
+        "**/__tests__/**",
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "e2e/**",
+        "./vitest.config.mts",
+        "./vitest.setup.ts",
+        "./playwright.config.ts",
+        "./postcss.config.mjs",
+        "./next.config.ts"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "antd",
+                "importNames": ["message", "notification"],
+                "message": "The static API does not read the theme; use App.useApp()."
+              }
+            ],
+            "patterns": [
+              {
+                "regex": "^(?!(?:antd|@ant-design/icons|@ant-design/nextjs-registry|dayjs|keycloak-js|next|react|react-dom|vitest|@testing-library/react|@playwright/test|jsdom|@vitejs/plugin-react|tailwindcss|@tailwindcss/postcss|eslint|eslint-config-next|typescript)(?:/|$)|@types/|@dw/|node:|[.]|@/)",
+                "message": "Not on the UI allowlist or DEV_ONLY (ADR-0101 (Accepted) decision 4): a test or config file may add only the dev tools lib/__tests__/antd-only.test.ts lists."
+              }
+            ]
+          }
+        ]
       }
     }
   ]

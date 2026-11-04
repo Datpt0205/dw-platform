@@ -296,6 +296,28 @@ const _supportOperatorsMirrorTheRoutes: [
 ] = [true, true, true, true, true];
 void _supportOperatorsMirrorTheRoutes;
 
+// ---- Studio (studio-skeleton ticket 03) -------------------------------------
+// One artifact of `GET /api/v1/studio/artifacts`: the envelope every Studio
+// kind shares (tenant-config/02), never a kind's document.
+const studioArtifactSchema = z.object({
+  id: z.string(),
+  kind: z.string(),
+  api_name: z.string(),
+  owning_workspace_id: z.string(),
+  labels: z.array(z.string()),
+  last_version_no: z.number().int(),
+  version: z.number().int(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+export type StudioArtifact = z.infer<typeof studioArtifactSchema>;
+
+const _studioArtifactMirrorsTheRoute: [
+  SameType<StudioArtifact, Generated["ArtifactView"]>,
+  SameType<keyof StudioArtifact, keyof Generated["ArtifactView"]>,
+] = [true, true];
+void _studioArtifactMirrorsTheRoute;
+
 // ---- Digital Workers (digital-worker R9) -----------------------------------
 // The types ARE the generated ones, not a hand-kept mirror: nothing here can
 // drift from the routes because nothing here restates them. The runtime check
@@ -1244,6 +1266,17 @@ export class ApiClient {
       "GET",
       `/api/v1/audit/events${pageQueryString(params)}`,
       pageSchema(auditEventSchema),
+    );
+  }
+
+  // ---- Studio ---------------------------------------------------------------
+
+  /** The artifacts the caller may read, each kind by its own read key. */
+  listStudioArtifacts(params: PageParams = {}): Promise<Page<StudioArtifact>> {
+    return this.request(
+      "GET",
+      `/api/v1/studio/artifacts${pageQueryString(params)}`,
+      pageSchema(studioArtifactSchema),
     );
   }
 
