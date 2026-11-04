@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 3/11/2026
-Sẵn sàng: ĐẠT (4/11/2026; 0 CRITICAL, 0 HIGH; ticket 01-03)
+Sẵn sàng: ĐẠT (4/11/2026; 0 CRITICAL, 0 HIGH; ticket 01-04)
 
 Người dựng không viết mã dựng một Quy trình bằng cách đặt Bước vào ô của một Sơ đồ có cấu trúc, cấu hình mỗi Bước bằng
 biểu mẫu antd sinh từ schema, viết Biểu thức với một bộ Chọn biến có kiểu, chạy mô phỏng và gửi kiểm định. Sơ đồ là
@@ -556,7 +556,17 @@ bản với bản Đang dùng theo id Bước cho màn duyệt phát hành (YC33
   hiện giá trị trường chỉ trong Drawer của thẻ, nơi máy chủ đã che (`Đã ẩn`). Nếu sai thì: màn là một route riêng và
   đọc nội dung đã ghim qua một route mới của tenant-config. Kiểm lại khi wf-ai hay workflow-engine đổi `diff_steps` →
   R3.16-R3.20, BU17, ticket 03. Sửa: ticket 03; agent-lifecycle/07 bước 1, 3.
-- 4/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 02-03.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): gate ticket 04: (1) hình của một khối chọn theo cờ `block`, `ends_run`,
+  `exits_loop` của danh mục (ADR-0112 (Accepted) Amendments 2026-11-03), chỉ nội dung thẻ của từng loại W1 chọn theo
+  tên; (2) Sơ đồ vẽ đúng tài liệu, kể cả Nháp chưa hợp lệ: làn kết thúc không nối về điểm gộp, Bước sau một Bước kết
+  thúc mang `wf.unreachable_node`; (3) Tag làn của `logic.switch` là khóa của mục `cases`, vì `logic.switch` so `on` với
+  khóa (wf-lite `registry.py`), nên hàng `logic.switch` của bảng R1.5 đổi ví dụ "Điểm ≥ 70" thành "hot"; (4) lối ra
+  thường, làn "Đã đủ N lần" và làn lỗi của một khung có chỗ riêng, "Thoát vòng lặp" chỉ tới lối ra thường; (5) trạng
+  thái thu gọn khóa theo người xem và Quy trình, Sơ đồ chỉ đọc mở mọi khung; (6) Bước mới chỉ mang làn bắt buộc và làn
+  `default`, bàn phím đi theo cấu trúc (ticket 02 sửa theo). Nếu sai thì: hình chọn theo tên loại và một loại W2 sửa
+  mã; Sơ đồ ẩn Bước không tới được; Tag nêu một điều kiện do máy chủ tóm tắt; làn "Đã đủ N lần" vẽ trong khung; thu gọn
+  theo trình duyệt, chung cho mọi màn. Sửa: R1.5 (hàng `logic.switch`), ticket 02, 04.
+- 4/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 02-04.
 
 ## Danh sách ticket
 
