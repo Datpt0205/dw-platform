@@ -312,6 +312,41 @@ Mỗi công ty chỉ thấy và chỉ ghi agent, cài đặt, hội thoại và 
   `studio.md`): kéo `ai.agent` vào W1 hay để agent Studio chỉ chạy ở mô phỏng và kiểm định tới kênh chat của D17. Nếu sai
   thì: hạ ticket 03, 05, compliance-pdpl/07 và usage-and-limits/06 về `needs-triage` cùng digital-worker, hay kéo
   `ai.agent` và `agent_node` vào W1 ở workflow-nodes và workflow-engine/02.
+- 5/11/2026 (agent, theo ủy quyền 31/10/2026): số đo của ticket 01 (nguyên mẫu), đầu vào của FOG-36 (ADR-0117 (Accepted),
+  Consequences). Đo bằng `packages/python/dw_agent_runtime/tests/prototype/measure_compile.py` ở commit `3f23034`: mỗi
+  (đường, số khóa, cách đo) một tiến trình lạnh; mỗi khóa một phiên bản riêng của fixture (agent 10 công cụ, `MockChatModel`),
+  chia đều cho 2 công ty. Đường `studio`: `StudioGraphSource` dựng agent vào LRU trần 256. Đường `workflow`: đường phiên
+  bản quy trình của công ty chạy hôm nay, `TenantWorkflowGraphs.ensure` đăng ký vào `GraphRegistry` rồi biên dịch như
+  `LangGraphWorkflowRunner._graph` vào một dict đứng thay `_compiled`. Thời gian và RSS đo không bật `tracemalloc`; bộ nhớ
+  mỗi khóa là tổng `tracemalloc` chia số khóa, ở một tiến trình lạnh khác. Cột cuối: thêm khóa tới khóa thứ 257 sau phép
+  đo rồi đếm mục còn giữ. Máy L: container Linux `python:3.12-slim-bookworm` (16 lõi, không giới hạn bộ nhớ) trên máy W,
+  RSS là `VmRSS`; máy W: Windows 11, AMD Ryzen 7 7735U, Python 3.12.10, RSS là Working Set.
+
+    | Đường    | Khóa | Biên dịch mỗi khóa P50 / P95 (ms) | RSS trước → sau (tăng), MiB | Mỗi khóa, MiB (`tracemalloc`) | Mục còn sau khóa 257 | Commit    | Máy |
+    | -------- | ---- | --------------------------------- | --------------------------- | ----------------------------- | -------------------- | --------- | --- |
+    | studio   | 10   | 5,0 / 6,8                         | 146,2 → 148,1 (+1,9)        | 0,192                         | 256                  | `3f23034` | L   |
+    | studio   | 100  | 5,0 / 6,6                         | 146,1 → 160,9 (+14,8)       | 0,146                         | 256                  | `3f23034` | L   |
+    | studio   | 256  | 5,1 / 7,5                         | 146,7 → 183,8 (+37,1)       | 0,143                         | 256                  | `3f23034` | L   |
+    | workflow | 10   | 106,0 / 119,2                     | 146,4 → 148,5 (+2,1)        | 0,234                         | 257                  | `3f23034` | L   |
+    | workflow | 100  | 103,9 / 128,6                     | 146,6 → 168,2 (+21,7)       | 0,215                         | 257                  | `3f23034` | L   |
+    | workflow | 256  | 105,1 / 132,0                     | 146,7 → 202,3 (+55,6)       | 0,214                         | 257                  | `3f23034` | L   |
+    | studio   | 10   | 7,5 / 13,1                        | 143,2 → 145,6 (+2,3)        | 0,191                         | 256                  | `3f23034` | W   |
+    | studio   | 100  | 6,3 / 8,4                         | 143,5 → 159,0 (+15,5)       | 0,146                         | 256                  | `3f23034` | W   |
+    | studio   | 256  | 7,1 / 10,0                        | 143,3 → 182,4 (+39,1)       | 0,143                         | 256                  | `3f23034` | W   |
+    | workflow | 10   | 39,5 / 48,2                       | 143,3 → 145,7 (+2,3)        | 0,233                         | 257                  | `3f23034` | W   |
+    | workflow | 100  | 40,2 / 53,8                       | 143,5 → 166,4 (+22,9)       | 0,215                         | 257                  | `3f23034` | W   |
+    | workflow | 256  | 39,8 / 51,4                       | 143,9 → 201,9 (+58,0)       | 0,214                         | 257                  | `3f23034` | W   |
+
+    Kết luận: có. 256 mục của cache agent nằm trong 1 GiB của worker (`infra/compose/docker-compose.prod.yml:44`) với hơn
+    50% để trống: cả tiến trình đo giữ 184 MiB RSS ở 256 khóa (18% của 1 GiB), cache chiếm 37-39 MiB trong đó; cả khi mỗi
+    phiên bản mang lược đồ công cụ riêng thay vì dùng chung theo công ty như ở đây và mỗi khóa nặng gấp bốn (0,6 MiB),
+    256 mục là khoảng 150 MiB, vẫn dưới 512 MiB. Trần 256 của ADR-0117 (Accepted) quyết 5 giữ nguyên, không đề xuất trần
+    mới. Đường quy trình giữ 257 trên 257 graph: `_compiled` và `GraphRegistry` không trần là chỗ rò thật (tăng khoảng
+    0,21 MiB mỗi phiên bản công ty phát hành, tới khi tiến trình khởi động lại). Vì vậy nguồn thật của ticket 03 là một cài
+    đặt của `run_graphs: RunGraphsPort` cùng LRU thay `_compiled` (một trần cho cả graph agent lẫn graph quy trình), không
+    phải cửa riêng. Biên dịch một agent 5-7 ms (P95 dưới 14 ms), nên một lần trượt cache không đáng kể so với lời gọi model.
+    Nếu sai thì: đo lại trong ảnh worker thật với giới hạn 1 GiB của compose và với công cụ Studio thật (tools-and-skills/03);
+    nếu 256 mục vượt 512 MiB, trần mới là 512 MiB chia số đo mỗi khóa.
 
 ## Danh sách ticket
 

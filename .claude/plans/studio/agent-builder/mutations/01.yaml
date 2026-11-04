@@ -1,0 +1,84 @@
+# Mutation check of agent-builder ticket 01 (the measured prototype):
+# scripts/mutate.py runs this file at the queue's close (wave-close.md). One
+# mutation per "sai nếu" of the ticket's acceptance criteria; criterion 2 (the
+# measurement table in spec.md) is a document, read rather than mutated. Every
+# mutation below was run by hand while writing the tests (5/11/2026), each red.
+# All but one mutate a file outside `src/`, so they apply in place and run one
+# at a time; the resume test owns its database (`dw_test_agent_proto`).
+mutations:
+  # ---- Criterion 1: the cache key and its ceiling -------------------------
+  - name: AB01 c1 the cache key drops the company
+    file: packages/python/dw_agent_runtime/tests/prototype/studio_agent_prototype.py
+    old: "    return (tenant_id, document.agent_version_id, document.pinned_hash)\n"
+    new: "    return (uuid.UUID(int=0), document.agent_version_id, document.pinned_hash)\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/prototype/test_studio_graph_cache.py::test_two_companies_on_one_version_and_hash_hold_two_entries
+  - name: AB01 c1 the cache key drops the pinned hash
+    file: packages/python/dw_agent_runtime/tests/prototype/studio_agent_prototype.py
+    old: "    return (tenant_id, document.agent_version_id, document.pinned_hash)\n"
+    new: "    return (tenant_id, document.agent_version_id, \"\")\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/prototype/test_studio_graph_cache.py::test_one_version_under_two_pinned_hashes_holds_two_entries
+  - name: AB01 c1 the cache has no ceiling
+    file: packages/python/dw_agent_runtime/tests/prototype/studio_agent_prototype.py
+    old: "        while len(self.compiled) > self.capacity:\n            self.compiled.popitem(last=False)\n"
+    new: ""
+    tests:
+      - packages/python/dw_agent_runtime/tests/prototype/test_studio_graph_cache.py::test_the_257th_key_evicts_the_least_recently_used
+  - name: AB01 c1 the ceiling evicts the newest, not the least used
+    file: packages/python/dw_agent_runtime/tests/prototype/studio_agent_prototype.py
+    old: "            self.compiled.popitem(last=False)\n"
+    new: "            self.compiled.popitem(last=True)\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/prototype/test_studio_graph_cache.py::test_the_257th_key_evicts_the_least_recently_used
+  # ---- Criterion 3: the child's own stack ---------------------------------
+  - name: AB01 c3 the child's stack drops its run control
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/sub_agents.py
+    old: "        RunControlMiddleware(parent.executor.run_control),\n"
+    new: ""
+    tests:
+      - packages/python/dw_agent_runtime/tests/prototype/test_studio_sub_agent_stack.py::test_a_child_turn_passes_its_own_run_control_and_model_selection
+  - name: AB01 c3 the child's stack drops its model selection
+    file: packages/python/dw_agent_runtime/tests/prototype/studio_agent_prototype.py
+    old: "    built[\"middleware\"] = before_the_ceiling(built[\"middleware\"], selection)\n"
+    new: ""
+    tests:
+      - packages/python/dw_agent_runtime/tests/prototype/test_studio_sub_agent_stack.py::test_a_child_turn_passes_its_own_run_control_and_model_selection
+  # ---- Criterion 4: the resume across processes ---------------------------
+  - name: AB01 c4 the second process starts the turn over
+    file: packages/python/dw_agent_runtime/tests/prototype/test_resume_across_processes.py
+    old: "        finished = await turn.run(thread_id, None)\n"
+    new: "        finished = await turn.run(thread_id, {\"messages\": [HumanMessage(QUESTION)]})\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/prototype/test_resume_across_processes.py::test_a_second_process_carries_the_turn_on_from_the_first_ones_checkpoint
+  - name: AB01 c4 the turn's state lives only in its process
+    file: packages/python/dw_agent_runtime/tests/prototype/test_resume_across_processes.py
+    old: "            checkpoint_serializer(),\n        )\n"
+    new: "            checkpoint_serializer(),\n        )\n        saver = __import__(\"langgraph.checkpoint.memory\", fromlist=[\"x\"]).InMemorySaver()\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/prototype/test_resume_across_processes.py::test_a_second_process_carries_the_turn_on_from_the_first_ones_checkpoint
+  - name: AB01 c4 the turn runs at LangGraph's default durability
+    file: packages/python/dw_agent_runtime/tests/prototype/test_resume_across_processes.py
+    old: "            payload, config=self.config(thread_id), context=self.context(), durability=\"sync\"\n"
+    new: "            payload, config=self.config(thread_id), context=self.context()\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/prototype/test_resume_across_processes.py::test_a_second_process_carries_the_turn_on_from_the_first_ones_checkpoint
+  # ---- Criterion 5: the three library contracts ---------------------------
+  - name: AB01 c5a the default model takes the call
+    file: packages/python/dw_agent_runtime/tests/unit/test_library_contracts.py
+    old: "        return handler(request.override(model=self._chosen))\n"
+    new: "        return handler(request)\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_library_contracts.py::test_a_middleware_that_swaps_the_model_leaves_the_default_uncalled
+  - name: AB01 c5b the two probes change places
+    file: packages/python/dw_agent_runtime/tests/unit/test_library_contracts.py
+    old: "        middleware=[_Probe(\"first\", log), _Probe(\"second\", log)],\n"
+    new: "        middleware=[_Probe(\"second\", log), _Probe(\"first\", log)],\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_library_contracts.py::test_the_earlier_middleware_is_the_outer_layer
+  - name: AB01 c5c the child declares tools
+    file: packages/python/dw_agent_runtime/tests/unit/test_library_contracts.py
+    old: "        \"model\": _model(\"con\"),\n    }\n"
+    new: "        \"model\": _model(\"con\"),\n        \"tools\": [],\n    }\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_library_contracts.py::test_a_sub_agent_without_tools_is_refused_not_given_its_callers
