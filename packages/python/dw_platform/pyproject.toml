@@ -17,6 +17,10 @@ dependencies = [
     # Imported directly by `application/json_schema.py` (tool schemas: no remote
     # `$ref`, tools-and-skills/01); pinned to the version jsonschema resolves.
     "referencing==0.37.0",
+    # Exact: the vault's AES-256-GCM, AES key wrap and HKDF
+    # (`application/secrets.py`, `adapters/kms.py`; connections-and-vault 02).
+    # The version `uv.lock` already resolved through pyjwt[crypto].
+    "cryptography==50.0.1",
 ]
 
 [build-system]

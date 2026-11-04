@@ -86,6 +86,7 @@ from dw_platform.application.ports import (
 from dw_platform.application.provisioning import ProvisioningService
 from dw_platform.application.rate_limit import RateLimiterPort
 from dw_platform.application.scorecard import ScorecardService
+from dw_platform.application.secrets import SecretStore
 from dw_platform.application.separation_of_duties import SeparationOfDutiesService
 from dw_platform.application.service_principals import (
     ServicePrincipalBindingGuard,
@@ -217,6 +218,10 @@ class ApiContainer:
     # (digital-worker R5.6: a `dw.decision`'s proposal).
     approval_masks: dict[str, ApprovalPayloadMask] = field(default_factory=dict)
     notifications: NotificationService | None = None
+    # The credential broker (connections-and-vault R1); Postgres only. Its key
+    # service is built ahead of the database gate, so a wrong `DW_KMS_PROVIDER`
+    # fails at startup either way. Ticket 04's connection routes read it.
+    secret_store: SecretStore | None = None
     # Customer-granted support access (ADR 0024). A context registers its
     # grantable scope sets and resource describers on the catalog at the seam
     # in `wiring.py`; `build_container` freezes it once wiring is done.

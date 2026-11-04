@@ -263,6 +263,23 @@ async def test_offboarding_covers_every_table_it_has_to(migrator: AsyncEngine) -
     assert found == []
 
 
+_ENVELOPES = "platform.secret_envelopes"
+
+
+@pytest.mark.parametrize("dropped", ["purge", "export"])
+async def test_the_envelopes_need_both_their_rows(migrator: AsyncEngine, dropped: str) -> None:
+    """connections-and-vault R1.6 (CV2): the envelopes are neither exported nor
+    deleted by the lane; without either row the coverage names the table."""
+    policy = _pinned_policy()
+    purge = {k: v for k, v in STUDIO_EXCLUSIONS.items() if dropped != "purge" or k != _ENVELOPES}
+    export = {k: v for k, v in EXPORT_EXCLUSIONS.items() if dropped != "export" or k != _ENVELOPES}
+    assert STUDIO_EXCLUSIONS[_ENVELOPES].cascade_from == "platform.connections"
+    async with migrator.connect() as conn:
+        found = await offboarding_violations(conn, purge, export, _PLATFORM_PREDATING, policy.term)
+    assert found, f"dropping the {dropped} row of {_ENVELOPES} went unnoticed"
+    assert all(_ENVELOPES in line for line in found), found
+
+
 _TENANT = "tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid"
 
 
@@ -303,8 +320,10 @@ async def _violations_after(
             await conn.execute(sa.text("RESET ROLE"))
             found = await offboarding_violations(
                 conn,
-                purge if purge is not None else STUDIO_EXCLUSIONS,
-                export if export is not None else EXPORT_EXCLUSIONS,
+                # A probe's rows are added to the real ones, which the
+                # migrated catalog still needs (`platform.secret_envelopes`).
+                {**STUDIO_EXCLUSIONS, **(purge or {})},
+                {**EXPORT_EXCLUSIONS, **(export or {})},
                 predating if predating is not None else _PLATFORM_PREDATING,
                 term_of or (policy.term),
             )

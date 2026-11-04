@@ -616,6 +616,10 @@ async def test_a_connection_that_binds_no_principal_reads_no_chat_preference(
 # ---------------------------------------------------------------------------
 
 _TENANT_WIDE_ON_PURPOSE: dict[tuple[str, str], str] = {
+    ("platform", "connections"): (
+        "tầm dùng của một Kết nối vượt workspace theo thiết kế (connections-and-vault D1);"
+        " workspace sở hữu là `owning_workspace_id`, giữ bởi khóa ghép RESTRICT"
+    ),
     ("platform", "consent_records"): (
         "a person's consent is the controller's, the tenant (ADR-0124 decision 4): a "
         "withdrawal recorded in one workspace stops sends from every other"
@@ -638,6 +642,10 @@ _TENANT_WIDE_ON_PURPOSE: dict[tuple[str, str], str] = {
     ),
     ("platform", "entitlements"): "what the tenant's plan includes, for the whole company",
     ("platform", "policy_overrides"): "a tenant's override of a platform policy, company-wide",
+    ("platform", "secret_envelopes"): (
+        "dòng con của chủ thể mang workspace (Kết nối: `owning_workspace_id`), chỉ tới qua"
+        " cửa SECURITY DEFINER; connections-and-vault ticket 02"
+    ),
     ("platform", "service_principals"): (
         "a service principal is an identity of the company (ADR-0103 decision 2); its "
         "workspace is `owning_workspace_id`, held by the RESTRICT composite key"

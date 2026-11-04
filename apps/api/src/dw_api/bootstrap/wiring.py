@@ -67,6 +67,7 @@ from dw_api.settings import ApiSettings
 from dw_connectors.adapters.zalo_link import ZaloLinking
 from dw_kernel.ports import SystemClock, Uuid7Generator
 from dw_platform.adapters.cache import NullCache, ValkeyCache
+from dw_platform.adapters.kms import build_kms
 from dw_platform.adapters.persistence.admin_console_repo import SqlAdminConsoleRepository
 from dw_platform.adapters.persistence.approval_codes import SqlApprovalCodeStore
 from dw_platform.adapters.persistence.caching_lookup import CachingMembershipLookup
@@ -137,6 +138,7 @@ from dw_platform.application.membership_admin import (
 from dw_platform.application.notifications import NotificationService
 from dw_platform.application.provisioning import ProvisioningService
 from dw_platform.application.scorecard import ScorecardService
+from dw_platform.application.secrets import SecretStore
 from dw_platform.application.separation_of_duties import SeparationOfDutiesService
 from dw_platform.application.service_principals import (
     ServicePrincipalBindingGuard,
@@ -198,6 +200,9 @@ def _build_container(
     ids = Uuid7Generator()
     authorization = ScopeAuthorizationService()
     telemetry = build_telemetry(settings)
+    # Before the database gate: a key service that cannot be built stops the
+    # process here, whatever else is configured (connections-and-vault R2.2).
+    kms = build_kms(settings.kms_provider, settings.local_kms_master_key.get_secret_value())
 
     # Built ahead of the database gate below: neither depends on Postgres, and
     # readiness must report both regardless of whether a database is
@@ -301,6 +306,9 @@ def _build_container(
         id_generator=ids,
     )
     container.notifications = NotificationService(SqlNotificationRepository(session_factory))
+    container.secret_store = SecretStore(
+        kms=kms, audit=SqlScopedAudit(session_factory), clock=clock, id_generator=ids
+    )
     container.approval_masks[DW_DECISION] = DwProposalMask(
         SqlDigitalWorkerRepository(session_factory)
     )

@@ -101,7 +101,7 @@ move on.
 
 A new guard ships with a demonstration that removing the guard turns a test red.
 
-## 4. Trusting a library instead of measuring it — NOT THINKABLE (found 7×)
+## 4. Trusting a library instead of measuring it — NOT THINKABLE (found 8×)
 
 MinIO withdrew both its images from Docker Hub; the error read as a credentials
 problem. The move to quay.io held until MinIO withdrew them there too: twelve
@@ -118,6 +118,12 @@ LangGraph's default durability looked unsafe for a step that sends, and a test
 raising inside the next step could not show it: the loop flushes pending
 checkpoint writes on the way out, so the run survived without `durability="sync"`
 too. Only a real process death (`os._exit` in a child) told them apart (wf-lite/02).
+
+Postgres cuts an identifier to 63 bytes with a NOTICE, not an error. A UNIQUE named
+by the convention at 64 characters was created truncated, so the adapter that
+turned its violation into a `ConflictError` by name matched nothing, and every
+concurrent write surfaced as a raw IntegrityError (connections-and-vault/02,
+4/11/2026). Only the integration test that triggered the violation showed it.
 
 No amount of care catches these. The habit that does:
 

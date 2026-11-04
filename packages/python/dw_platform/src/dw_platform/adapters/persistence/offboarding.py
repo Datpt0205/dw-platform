@@ -189,12 +189,26 @@ class OffboardingExclusion:
 # class does not read either mapping; the coverage test does, and fails a tenant
 # table that is neither purged nor listed, a row the catalog does not confirm,
 # and a row for a table that is gone or now handled (R4.1, R4.3-R4.5).
-STUDIO_EXCLUSIONS: Mapping[str, OffboardingExclusion] = MappingProxyType({})
+STUDIO_EXCLUSIONS: Mapping[str, OffboardingExclusion] = MappingProxyType(
+    {
+        "platform.secret_envelopes": OffboardingExclusion(
+            reason="REVOKE ALL với dw_app; xóa theo FK CASCADE khi lane xóa platform.connections",
+            cascade_from="platform.connections",
+        ),
+    }
+)
 
 # Tenant tables `export_rows` does not export, with why the bundle goes without
 # them: apart from STUDIO_EXCLUSIONS, because being deleted another way says
 # nothing about being handed back to the customer first (R4.1).
-EXPORT_EXCLUSIONS: Mapping[str, str] = MappingProxyType({})
+EXPORT_EXCLUSIONS: Mapping[str, str] = MappingProxyType(
+    {
+        "platform.secret_envelopes": (
+            "bí mật không rời Kho bí mật qua đường ra nào, gói xuất cũng vậy (R1.2, R1.6);"
+            " dw_app không SELECT"
+        ),
+    }
+)
 
 # A real schema/table identifier from Postgres's own catalog never needs
 # quoting and never contains anything this does not match. Checked, not

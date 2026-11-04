@@ -68,6 +68,7 @@ IMPORT_TO_DIST = {
     "yaml": "pyyaml",
     "jsonschema": "jsonschema",
     "referencing": "referencing",
+    "cryptography": "cryptography",
     "deepagents": "deepagents",
     "playwright": "playwright",
     "reportlab": "reportlab",

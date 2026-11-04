@@ -31,12 +31,18 @@ import uuid
 import pytest
 import sqlalchemy as sa
 from pg_harness import TEST_DB, DatabaseUrls, postgres_container, recreate_database, run_alembic
+from pg_test_db import test_db_name as lane_db_name
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 
 pytestmark = pytest.mark.integration
 
 RESTORE_DB = "dw_test_restore_drill"
+# What `pg_dump`/`pg_restore` and the URLs below name, with a lane's
+# `DW_TEST_DB_SUFFIX` applied as `recreate_database` applies it: a bare name
+# dumps another run's `dw_test` into a restore database nobody recreated.
+SOURCE_DB_NAME = lane_db_name(TEST_DB)
+RESTORE_DB_NAME = lane_db_name(RESTORE_DB)
 CONTAINER = postgres_container()
 PG_USER = os.environ.get("PG_USER", "dw_admin")
 
@@ -72,7 +78,7 @@ async def test_dump_restore_round_trips_through_a_migrated_schema(
     finally:
         await seed_engine.dispose()
 
-    dump = _docker_exec("pg_dump", "-U", PG_USER, "-Fc", TEST_DB)
+    dump = _docker_exec("pg_dump", "-U", PG_USER, "-Fc", SOURCE_DB_NAME)
     assert dump.returncode == 0, dump.stderr.decode()
     assert dump.stdout, "pg_dump produced an empty archive"
 
@@ -83,21 +89,21 @@ async def test_dump_restore_round_trips_through_a_migrated_schema(
         "-U",
         PG_USER,
         "-d",
-        RESTORE_DB,
+        RESTORE_DB_NAME,
         "--clean",
         "--if-exists",
         input_bytes=dump.stdout,
     )
     assert restore.returncode == 0, restore.stderr.decode()
 
-    heads = run_alembic(["heads"], _same_server_url(db_urls.migrator, RESTORE_DB))
+    heads = run_alembic(["heads"], _same_server_url(db_urls.migrator, RESTORE_DB_NAME))
     assert heads.returncode == 0, f"{heads.stdout}\n{heads.stderr}"
     assert heads.stdout.count("(head)") == 1, (
         f"expected exactly one alembic head after restore, got:\n{heads.stdout}"
     )
 
     verify_engine = create_async_engine(
-        _same_server_url(db_urls.admin, RESTORE_DB), poolclass=NullPool
+        _same_server_url(db_urls.admin, RESTORE_DB_NAME), poolclass=NullPool
     )
     try:
         async with verify_engine.connect() as conn:

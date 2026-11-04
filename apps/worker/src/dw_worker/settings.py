@@ -22,6 +22,7 @@ from dw_knowledge.ingest_jobs import (
     DEFAULT_LEASE_SECONDS,
     DEFAULT_RETRY_BACKOFF_SECONDS,
 )
+from dw_platform.adapters.kms import KmsProvider, check_kms_settings
 
 # Mirrors dw_api.settings: the same four profiles, and the same rule that
 # anything forbidden in production is forbidden in UAT, because the difference
@@ -265,6 +266,17 @@ class WorkerSettings(BaseSettings):
             "DW_WORKER_UNSUBSCRIBE_SIGNING_SECRET", "UNSUBSCRIBE_SIGNING_SECRET"
         ),
     )
+    # The tenant key service (connections-and-vault R2.2; ADR-0115 decision 1):
+    # `none`, the default, seals and opens no secret (`kms_unavailable`);
+    # `local` is the development key service, refused when deployed. OpenBao
+    # Transit arrives with ticket 06. Read under one name by api and worker.
+    kms_provider: KmsProvider = Field(
+        default="none", validation_alias=AliasChoices("DW_KMS_PROVIDER")
+    )
+    # `local` only: base64 of at least 32 bytes, generated on this machine.
+    local_kms_master_key: SecretStr = Field(
+        default=SecretStr(""), validation_alias=AliasChoices("DW_LOCAL_KMS_MASTER_KEY")
+    )
     approval_code_secret: SecretStr = Field(
         default=SecretStr(""),
         validation_alias=AliasChoices("DW_WORKER_APPROVAL_CODE_SECRET", "DW_APPROVAL_CODE_SECRET"),
@@ -341,6 +353,13 @@ class WorkerSettings(BaseSettings):
 
     def validate_for_profile(self) -> None:
         """Fail fast on configurations that must never reach a deployed profile."""
+        # Before any other rule, in every profile (R2.2).
+        check_kms_settings(
+            self.kms_provider,
+            self.local_kms_master_key.get_secret_value(),
+            deployed=self.is_deployed,
+            profile=self.profile,
+        )
         if not self.is_deployed:
             return
         if not self.database_url:
