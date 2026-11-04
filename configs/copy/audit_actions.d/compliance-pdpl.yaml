@@ -1,0 +1,15 @@
+# The audit actions compliance-pdpl writes in W1, with their Vietnamese labels:
+# this spec's fragment of the action catalogue telemetry-and-audit merges
+# (telemetry-and-audit R1.6; H-21). One file, one owner (ticket 04): ticket 08
+# writes the two `marketing.*` actions, ticket 03 `residency.class_changed`,
+# ticket 09 `studio.conversation.expired` and ticket 06 `consent.expired`;
+# those tickets add no fragment of their own.
+schema_version: "1.0"
+copy_id: platform.audit_actions.compliance_pdpl
+version: "1.0.0"
+actions:
+  marketing.sent: "Gửi tin marketing qua Sàn gửi tin"
+  marketing.send_refused: "Sàn gửi tin chặn một tin marketing"
+  residency.class_changed: "Siết lớp tuyến dữ liệu của công ty hay workspace"
+  studio.conversation.expired: "Xóa tin nhắn hội thoại quá hạn lưu giữ"
+  consent.expired: "Xóa Bản ghi đồng ý quá hạn lưu giữ"
