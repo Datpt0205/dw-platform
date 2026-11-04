@@ -53,8 +53,8 @@ R4.4, WN5, WN11).
       được nhận (`["bool"]` cho một điều kiện, mà ticket 07 dùng cho "Lặp lại khi"). Trường mẫu là `x-dw-sink` của
       ticket 02; ticket này gắn `check_template` vào bộ kiểm.
     - Tham chiếu không trội → `wf.ref_not_dominating`; lỗi biên dịch khác → `wf.expression_invalid` (bước 1). Kết quả
-      không thuộc tập kiểu khai, kể cả `dyn` → `wf.type_mismatch` (workflow-engine:R2.6). Lý do cho `dyn`: ADR-0114
-      (Accepted) quyết 4 từ chối json trong điều kiện khi không có `type()` bảo vệ, mà không có AST để thấy `type()`;
+      không thuộc tập kiểu khai, kể cả `dyn` → `wf.type_mismatch` (workflow-engine:R2.6). Lý do cho `dyn`:
+      ADR-0114 (Accepted) quyết 4 từ chối json trong điều kiện khi không có `type()` bảo vệ, mà không có AST để thấy `type()`;
       người dựng viết `string(x)`. Trường không đọc được → `field_not_readable` (bước 2), kiểm ở `dw_studio` qua seam
       `STUDIO_RULES` của workflow-engine/01 trên cùng `WorkflowIR`. Hai mã mới vào `MESSAGES` có nhãn vi và en.
     - Bảng ánh xạ kiểu dùng chung, keyed theo kiểu trường của custom-objects, sang đại số kiểu của ticket 01.
@@ -150,7 +150,7 @@ R4.4, WN5, WN11).
       `{"trigger": {"input": {"amount": 11}}}` trả `true` từ máy chủ; với `run_id` của một lượt người gọi đọc được →
       tính trên đầu ra đã che. `/check` trên một trường `x-dw-cel` `["bool"]` với nguồn trả `string` → 200 có lỗi
       `wf.type_mismatch`.
-- [ ] R3.5, cả ba route: người gọi không giữ `studio.workflows.edit` → 403; người của công ty khác gọi với id quy trình
+- [ ] R3.5: ở cả ba route, người gọi không giữ `studio.workflows.edit` → 403; người của công ty khác gọi với id quy trình
       này, hay `/evaluate` với `run_id` của công ty khác hay của một quy trình khác → 404 giống hệt id không có; lần gọi
       thứ 61 trong 60 giây tới `/check` và `/evaluate` → 429; gỡ từng kiểm → test của nó đỏ.
 - [ ] Xong: `uv run pytest packages/python/dw_studio/tests/workflows/test_variable_scope.py packages/python/dw_studio/tests/workflows/test_logic_nodes.py packages/python/dw_studio/tests/workflows/test_expression_routes.py packages/python/dw_agent_runtime/tests/unit/test_wflite_validate.py` xanh.
