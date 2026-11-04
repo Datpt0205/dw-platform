@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 3/11/2026
-Sẵn sàng: ĐẠT (4/11/2026; 0 CRITICAL, 0 HIGH; ticket 01-02)
+Sẵn sàng: ĐẠT (4/11/2026; 0 CRITICAL, 0 HIGH; ticket 01-03)
 
 Người dựng không viết mã dựng một Quy trình bằng cách đặt Bước vào ô của một Sơ đồ có cấu trúc, cấu hình mỗi Bước bằng
 biểu mẫu antd sinh từ schema, viết Biểu thức với một bộ Chọn biến có kiểu, chạy mô phỏng và gửi kiểm định. Sơ đồ là
@@ -62,7 +62,7 @@ ADR-0101 (Accepted); ADR-0112 (Accepted) quyết 1).
 | Cấu trúc                           | Ngữ pháp trên Sơ đồ                                                                                                                                                                                                          |
 | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Chuỗi                              | Thẻ Bước xếp một chiều, trên xuống dưới; một ô "+" trên mỗi đường nối, luôn hiện, không chỉ khi rê chuột, vùng chạm ít nhất 24 px; làn trống có ô "Thêm Bước" nét đứt                                                        |
-| `logic.switch`                     | Thẻ điều kiện; dưới nó các làn cạnh nhau theo thứ tự tài liệu, mỗi làn dưới một Tag điều kiện ("Điểm ≥ 70"); làn "Khác" luôn có; các làn gộp ở một điểm dưới các làn, không phải Điểm nối                                    |
+| `logic.switch`                     | Thẻ điều kiện; dưới nó các làn cạnh nhau theo thứ tự tài liệu, mỗi làn dưới một Tag mang khóa của mục `cases` ("hot"); làn "Khác" luôn có; các làn gộp ở một điểm dưới các làn, không phải Điểm nối                          |
 | Bước phê duyệt (`human.approval`)  | Thẻ người duyệt (người được giao, phạm vi; "Cần cả N người duyệt" khi Bước đòi N người duyệt bắt buộc); làn "Duyệt" và "Từ chối" treo dưới thẻ, gộp ở một điểm dưới các làn                                                  |
 | Bước song song (`logic.parallel`)  | Khung "Song song" N làn cạnh nhau; đáy khung là Điểm nối, một thanh "Chờ tất cả nhánh xong"                                                                                                                                  |
 | Bước vòng lặp (`logic.loop`)       | Khung "Lặp lại khi … (tối đa N lần)" quanh thân; mũi tên "Lặp lại" dọc bên trái; làn "Đã đủ N lần" cho Nhánh ra `max_reached` khi Bước có làn đó; Bước "Thoát vòng lặp" (`logic.break`) vẽ mũi tên tới lối ra dưới khung     |
@@ -543,7 +543,20 @@ bản với bản Đang dùng theo id Bước cho màn duyệt phát hành (YC33
   dạng của cùng tài liệu, dưới `md` chỉ có Danh sách; không phần tử ẩn nào nhận focus. Nếu sai thì: `Tree` hiện cạnh
   Sơ đồ từ `lg`. (8) Sửa `triggers[]` không thuộc W1 (Ngoài phạm vi). Nếu sai thì: một thẻ trình kích hoạt ở đầu Sơ
   đồ, và một ticket của spec này sửa nó. Sửa: Trong phạm vi, Ngoài phạm vi, Màn hình, R3.16, ticket 02, 03.
-- 4/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 02.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): gate ticket 03: (1) lớp phần khác nhận đầu ra của `diff_steps` và
+  `diff_sections` của wf-lite mà ticket 03 mở rộng (phần riêng gồm `retry`, `timeout_s`, `on_error` và tập tên làn; làn
+  `error_lane`; `fields` của Bước đã sửa; tên phần ngoài cây Bước), màn duyệt của agent-lifecycle/07 gọi hai hàm và
+  đưa `step_changes[]`, `section_changes[]` cùng hai tài liệu; một thay đổi chỉ ở `retry` nay là `changed` cả ở wf-ai.
+  Nếu sai thì: như dòng gate ticket 02 (1). (2) Trang đọc trạng thái (sửa, Bản ứng viên chờ, không phiên bản chưa phát
+  hành) và giai đoạn ở đầu trang từ `stage` của `GET .../versions`, một nguồn; gửi kiểm định, chạy mô phỏng,
+  `draft/scope` và `/expressions/check` xả tự lưu trước khi gọi. Nếu sai thì: trang đọc giai đoạn từ route của
+  agent-lifecycle, và nút khóa tới khi tự lưu xong. (3) `POST .../draft` gửi `If-Match` của thành phần và một
+  `Idempotency-Key` mỗi lần bấm, như route đã dựng đòi. Nếu sai thì: route thôi đòi `If-Match`, và dòng đó của ticket
+  03 rút. (4) Màn lượt chạy là chế độ `?run=` của trang builder, vẽ phiên bản trang sẽ hiện, đọc lại khi lượt còn chạy,
+  hiện giá trị trường chỉ trong Drawer của thẻ, nơi máy chủ đã che (`Đã ẩn`). Nếu sai thì: màn là một route riêng và
+  đọc nội dung đã ghim qua một route mới của tenant-config. Kiểm lại khi wf-ai hay workflow-engine đổi `diff_steps` →
+  R3.16-R3.20, BU17, ticket 03. Sửa: ticket 03; agent-lifecycle/07 bước 1, 3.
+- 4/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 02-03.
 
 ## Danh sách ticket
 
