@@ -18,7 +18,10 @@ canvas của ADR-0101 (Accepted) quyết 1, chỉ đọc, và đọc qua route B
 
 1. Câu trả lời của `GET /api/v1/studio/publish-approvals/{approval_id}/candidate` (ticket 04, bước 5) thêm, dưới đúng
    các kiểm và ca 404 của route đó, không route mới và không audit thứ hai (spec R5.11, R5.12): `live_document`, tài liệu
-   niêm phong của phiên bản Đang dùng mà Bản ứng viên sẽ thay (NULL khi `live_version_id` NULL); `gate`, NULL với loại có
+   niêm phong của phiên bản Đang dùng mà Bản ứng viên sẽ thay (NULL khi `live_version_id` NULL); với loại `workflow`,
+   `step_changes[]` và `section_changes[]`, đầu ra của `diff_steps` và `diff_sections` của wf-lite trên `live_document`
+   và tài liệu Bản ứng viên (chủ duy nhất của diff theo id Bước, workflow-builder-ui/03 bước 9), NULL khi
+   `live_document` NULL hay không qua mô hình; `gate`, NULL với loại có
    `has_quality_gate = false`, còn lại là tóm tắt của Lượt kiểm định mà `gate_run_id` của Bản ứng viên trỏ tới, đọc từ
    `studio.gate_runs` và `studio.gate_case_results` của ticket 06: `status`, số Câu an ninh đạt trên tổng, mỗi ca kịch bản
    `{case_id, name, passed, reason_code}` (`name` từ `studio.workflow_scenarios`, NULL khi ca đã bị xóa sau Lượt kiểm
@@ -44,8 +47,9 @@ canvas của ADR-0101 (Accepted) quyết 1, chỉ đọc, và đọc qua route B
 3. Sơ đồ chỉ đọc (spec R5.14, R5.16; workflow-builder-ui:R3.16-R3.20): một thành phần client
    `apps/web/app/studio/publish-approvals/[approvalId]/canvas/review-diagram.tsx`, dưới glob
    `apps/web/app/studio/**/canvas/**` của ADR-0101 (Accepted) quyết 1, nạp bằng `next/dynamic` với `ssr: false`, dựng Sơ
-   đồ chỉ đọc và lớp phần khác của workflow-builder-ui/03 (bước 7, 9 của ticket đó) với tài liệu của Bản ứng viên và đúng
-   một trong ba giá trị so mà trang tính, không giá trị nào suy từ giá trị khác: tài liệu `live_document` khi nó qua mô
+   đồ chỉ đọc và lớp phần khác của workflow-builder-ui/03 (bước 7, 9 của ticket đó) với tài liệu của Bản ứng viên,
+   `step_changes[]` và `section_changes[]` của bước 1, và đúng một trong ba giá trị so mà trang tính, không giá trị nào
+   suy từ giá trị khác: tài liệu `live_document` khi nó qua mô
    hình `dw.workflow/v1`; "chưa có bản Đang dùng" khi `live_version_id` NULL; "đọc lỗi" khi `live_version_id` khác NULL mà
    `live_document` vắng hay không qua mô hình. Trang không bao giờ đưa một cây rỗng hay "chưa có bản Đang dùng" thay cho
    "đọc lỗi". Sơ đồ của màn không có ô chèn, kéo, nối, phím sửa hay gọi API ghi nào; mọi thao tác vốn sửa ở builder (thả
