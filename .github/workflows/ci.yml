@@ -6,6 +6,14 @@ name: CI
 on:
   push:
     branches: [main]
+    # A push of plan documents and ADRs alone starts no run: with gate lanes
+    # pushing those every few minutes, cancel-in-progress below cancelled every
+    # run for hours (40 in a row on 2026-11-04), so no code commit was ever
+    # checked. Their Prettier layout is still checked by the next run, which
+    # formats the whole tree, and by each gate lane before it commits.
+    paths-ignore:
+      - ".claude/plans/**"
+      - "docs/adr/**"
   pull_request:
 
 concurrency:
