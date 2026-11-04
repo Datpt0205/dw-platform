@@ -3,11 +3,11 @@ import { z } from "zod";
 /** Mirrors dw_platform approval + dw_agent_runtime run/timeline views. */
 
 export const approvalSchema = z.object({
-  id: z.string().uuid(),
+  id: z.string().guid(),
   approval_type: z.string(),
   reason: z.string(),
   status: z.enum(["pending", "approved", "rejected", "cancelled"]),
-  run_id: z.string().uuid().nullable(),
+  run_id: z.string().guid().nullable(),
   payload: z.record(z.string(), z.unknown()),
   created_at: z.string().nullable(),
   decided_at: z.string().nullable(),
@@ -59,7 +59,7 @@ export const approvalViewOutcomeSchema = z.object({
 export type ApprovalViewOutcome = z.infer<typeof approvalViewOutcomeSchema>;
 
 export const runSchema = z.object({
-  id: z.string().uuid(),
+  id: z.string().guid(),
   status: z.enum([
     "pending",
     "running",
@@ -73,7 +73,7 @@ export const runSchema = z.object({
   graph_version: z.string(),
   result: z.record(z.string(), z.unknown()).nullable(),
   error: z.record(z.string(), z.unknown()).nullable(),
-  approval_request_id: z.string().uuid().nullable(),
+  approval_request_id: z.string().guid().nullable(),
   release_manifest_ref: z.string().nullable(),
 });
 export type Run = z.infer<typeof runSchema>;

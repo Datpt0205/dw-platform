@@ -5,9 +5,9 @@ export const demoUserSchema = z.object({
   display_name: z.string(),
   description: z.string(),
   roles: z.array(z.string()),
-  tenant_id: z.string().uuid(),
+  tenant_id: z.string().guid(),
   tenant_name: z.string(),
-  workspace_id: z.string().uuid(),
+  workspace_id: z.string().guid(),
 });
 export type DemoUser = z.infer<typeof demoUserSchema>;
 
@@ -16,9 +16,9 @@ export const devSessionSchema = z.object({
   subject: z.string(),
   display_name: z.string(),
   roles: z.array(z.string()),
-  tenant_id: z.string().uuid(),
+  tenant_id: z.string().guid(),
   tenant_name: z.string(),
-  workspace_id: z.string().uuid(),
+  workspace_id: z.string().guid(),
   expires_at: z.string(),
 });
 export type DevSessionInfo = z.infer<typeof devSessionSchema>;

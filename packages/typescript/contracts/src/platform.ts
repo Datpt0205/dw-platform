@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const knowledgeDocumentSchema = z.object({
-  document_id: z.string().uuid(),
+  document_id: z.string().guid(),
   title: z.string(),
   domain: z.string(),
   classification: z.string(),
@@ -14,7 +14,7 @@ export const knowledgeDocumentSchema = z.object({
 export type KnowledgeDocument = z.infer<typeof knowledgeDocumentSchema>;
 
 export const ingestJobSchema = z.object({
-  job_id: z.string().uuid(),
+  job_id: z.string().guid(),
   status: z.string(),
   title: z.string(),
   filename: z.string(),
@@ -25,7 +25,7 @@ export const ingestJobSchema = z.object({
   // job failed; a partial read is the third state, and the uploader is the only
   // person who can do anything about it.
   warnings: z.array(z.string()),
-  document_id: z.string().uuid().nullable(),
+  document_id: z.string().guid().nullable(),
   chunk_count: z.number().int().nullable(),
   created_at: z.string(),
   updated_at: z.string(),
@@ -33,7 +33,7 @@ export const ingestJobSchema = z.object({
 export type IngestJob = z.infer<typeof ingestJobSchema>;
 
 export const memoryItemSchema = z.object({
-  memory_id: z.string().uuid(),
+  memory_id: z.string().guid(),
   worker_id: z.string(),
   memory_type: z.string(),
   content: z.string(),
@@ -41,7 +41,7 @@ export const memoryItemSchema = z.object({
   classification: z.string(),
   provenance_count: z.number().int(),
   valid_from: z.string(),
-  created_by_run_id: z.string().uuid(),
+  created_by_run_id: z.string().guid(),
 });
 export type MemoryItem = z.infer<typeof memoryItemSchema>;
 
@@ -63,7 +63,7 @@ export type Integration = z.infer<typeof integrationSchema>;
  * id; this is what turns one into a person the UI can show or pick.
  */
 export const workspaceMemberSchema = z.object({
-  user_id: z.string().uuid(),
+  user_id: z.string().guid(),
   display_name: z.string(),
   email: z.string().nullable(),
   role_keys: z.array(z.string()),
@@ -82,7 +82,7 @@ export type WorkspaceMember = z.infer<typeof workspaceMemberSchema>;
 // A department/workspace of the caller's tenant. `archived` hides it from
 // day-to-day use without deleting the records that reference it.
 export const adminWorkspaceSchema = z.object({
-  workspace_id: z.string().uuid(),
+  workspace_id: z.string().guid(),
   slug: z.string(),
   name: z.string(),
   member_count: z.number().int(),
@@ -179,7 +179,7 @@ export type Inbox = z.infer<typeof inboxSchema>;
 // the roles they hold, and who they report to. `manager_user_id` is null for a
 // root of the tree; the API rejects an edit that would create a cycle.
 export const hierarchyMemberSchema = z.object({
-  user_id: z.string().uuid(),
+  user_id: z.string().guid(),
   display_name: z.string(),
   email: z.string().nullable(),
   role_keys: z.array(z.string()),
