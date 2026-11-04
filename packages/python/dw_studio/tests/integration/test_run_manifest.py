@@ -44,13 +44,13 @@ from dw_studio.core.application.run_manifests import RunManifestBuilder
 from dw_studio.core.application.service import ArtifactService
 from dw_studio.core.domain.artifacts import DocumentInvalidError, definition_body
 from dw_studio.testing.fixture_kinds import FIXTURE_KINDS, planted_fixture_kinds
+from dw_studio.testing.lifecycle import move_for_test, publish_for_test
 from dw_studio.testing.run_manifests import (
     draft_of,
     fixture_document,
     insert_run,
     published,
     sealed,
-    set_stage,
 )
 from dw_studio.testing.world import Person, StudioWorld, plant_world
 
@@ -259,7 +259,7 @@ async def test_a_sealed_root_pins_its_definition_closure_and_three_keys(
         "release_manifest_ref": REF,
         "run_mode": "live",
         "root": {
-            "kind": "fixture",
+            "kind": "fixture_gateless",
             "artifact_id": str(root_id),
             "version_id": str(root.version_id),
             "version_no": 1,
@@ -594,8 +594,7 @@ async def test_a_resume_elsewhere_resolves_the_version_it_pinned(
         fixture_document(title="phiên bản 2"),
     )
     v2 = await sealed(service, writer, target_id, saved.row_version)
-    await set_stage(migrator, v1.version_id, "retired")
-    await set_stage(migrator, v2.version_id, "live")
+    await publish_for_test(migrator, v2.version_id)  # v1 retired, superseded
 
     answer = await in_a_fresh_process(studio_db, writer, run_id, "artifact", str(target_id))
 
@@ -639,7 +638,7 @@ async def test_a_simulated_draft_saved_again_refuses_its_resume(
     # The target publishes v2 while the kept draft's run waits.
     draft = await service.create_draft(writer.context(), target, ExpectedVersion(1))
     v2 = await sealed(service, writer, target, draft.row_version)
-    await set_stage(migrator, v2.version_id, "live")
+    await publish_for_test(migrator, v2.version_id)
 
     refused = await in_a_fresh_process(studio_db, writer, edited_run, "artifact", str(target))
     resumed = await in_a_fresh_process(studio_db, writer, kept_run, "artifact", str(target))
@@ -663,7 +662,7 @@ async def test_a_candidate_sent_back_and_edited_refuses_its_test_run(
     manifest_hash = await build(service, builder, writer, root.version_id, "test")
     assert "stage" not in (await manifest_body(migrator, manifest_hash))["root"]
 
-    await set_stage(migrator, root.version_id, "draft")
+    await move_for_test(migrator, root.version_id, "draft")
     resolver = await load_as(app_sessions, writer.tenant_id, manifest_hash)
     assert resolver.root.artifact is not None and resolver.root.artifact.stage == "draft"
 

@@ -45,7 +45,7 @@ from dw_kernel.ports import SystemClock, Uuid7Generator
 from dw_platform.adapters.persistence.offboarding import SqlTenantOffboarding
 from dw_platform.testing.personal_data import assert_field_tables_classified
 from dw_platform.testing.rbac import PlantedTenant, plant_tenant
-from dw_studio.core.adapters.artifact_store import SqlArtifactStore
+from dw_studio.core.adapters.artifact_store import SqlArtifactStore, SqlArtifactTx
 from dw_studio.core.application.registry import ArtifactKindEntry, ArtifactKindRegistry
 from dw_studio.core.application.service import ArtifactService, SealResult
 from dw_studio.core.domain.artifacts import DocumentInvalidError
@@ -59,6 +59,7 @@ from dw_studio.records.domain.field_types import FIELD_TYPES, SLOTS
 from dw_studio.records.domain.locks import object_lock_key
 from dw_studio.records.domain.rules import ObjectVersionRejected
 from dw_studio.testing.fixture_kinds import FIXTURE_KINDS, planted_fixture_kinds
+from dw_studio.testing.lifecycle import move_for_test, publish_for_test, publish_on
 from dw_studio.testing.objects import (
     object_document,
     object_field,
@@ -180,15 +181,14 @@ async def go_live(
     service: ArtifactService,
     who: Person,
     version_id: uuid.UUID,
-    *,
-    retire: uuid.UUID | None = None,
 ) -> None:
     """The transaction agent-lifecycle opens to take a version `live`, with the
-    kind's hook called through its registry entry (R1.1)."""
+    kind's hook called through its registry entry (R1.1): the legal path of
+    `dw_studio.testing.lifecycle` (an approved request, the live version
+    retired `superseded` first), as `dw_app`, then the hook, in one go."""
     async with service.store.transaction(who.context()) as tx:
-        if retire is not None:
-            await tx.update_version(retire, stage="retired")
-        await tx.update_version(version_id, stage="live")
+        assert isinstance(tx, SqlArtifactTx)
+        await publish_on(tx.session, version_id)
         await entry(service).publish_hook(tx, version_id)
 
 
@@ -335,8 +335,8 @@ async def _object_rows(conn: Any, tenant: PlantedTenant) -> dict[str, uuid.UUID]
         "INSERT INTO studio.artifacts (id, tenant_id, kind, api_name, owning_workspace_id,"
         " row_version) VALUES (:artifact, :t, 'object', :name, :w, 1)",
         "INSERT INTO studio.artifact_versions (id, tenant_id, artifact_id, stage,"
-        " document_schema, document, row_version)"
-        " VALUES (:version, :t, :artifact, 'draft', 'dw.object/v1', '{}', 1)",
+        " document_schema, document, row_version, contributor_ids)"
+        " VALUES (:version, :t, :artifact, 'draft', 'dw.object/v1', '{}', 1, ARRAY[:u]::uuid[])",
         "INSERT INTO studio.object_defs (id, tenant_id, api_name, labels, applied_version_id,"
         " schema_version, created_by, updated_by)"
         ' VALUES (:artifact, :t, :name, \'{"vi": "Đơn"}\', :version, 1, :u, :u)',
@@ -675,7 +675,7 @@ async def test_r1_1_a_later_version_is_applied_whole_and_twice_is_once(
         object_field("ghi_chu"),
         default_access="public_read_write",
     )
-    artifact_id, v1 = await published(service, who, first)
+    artifact_id, _ = await published(service, who, first)
     second = object_document(
         object_field(
             "giai_doan",
@@ -693,7 +693,7 @@ async def test_r1_1_a_later_version_is_applied_whole_and_twice_is_once(
     )
     v2 = await sealed_next(service, who, artifact_id, second)
 
-    await go_live(service, who, v2.version_id, retire=v1.version_id)
+    await go_live(service, who, v2.version_id)
 
     found = await stored(sessions, who, artifact_id)
     assert found.definition == definition_of(second)
@@ -799,7 +799,7 @@ async def test_r1_5_the_hook_waits_for_a_record_writers_shared_lock(
 
     async with app_engine.connect() as holder:
         await holder.execute(sa.text("SELECT pg_advisory_xact_lock_shared(:k)"), {"k": key})
-        task = asyncio.create_task(go_live(service, who, v2.version_id, retire=v1.version_id))
+        task = asyncio.create_task(go_live(service, who, v2.version_id))
         for _ in range(200):
             assert not task.done(), "the hook did not wait"
             waiting = await rows(
@@ -835,7 +835,7 @@ async def _rejected(
     before = await stored(sessions, who, artifact_id)
 
     with pytest.raises(ObjectVersionRejected) as caught:
-        await go_live(service, who, v2.version_id, retire=v1.version_id)
+        await go_live(service, who, v2.version_id)
 
     after = await stored(sessions, who, artifact_id)
     assert after == before
@@ -927,11 +927,7 @@ async def test_r1_1_an_object_with_a_definition_or_a_candidate_is_not_deleted(
     else:
         artifact_id, row_version = await create(service, who, object_document())
         sealed = await seal(service, who, artifact_id, row_version)
-        await rows(
-            migrator,
-            "UPDATE studio.artifact_versions SET stage = 'awaiting_approval' WHERE id = :v",
-            v=sealed.version_id,
-        )
+        await move_for_test(migrator, sealed.version_id, "awaiting_approval")
 
     with pytest.raises(ConflictError) as caught:
         await _soft_delete(service, who, artifact_id)
@@ -950,14 +946,14 @@ async def test_r1_1_a_draft_object_and_an_unused_fixture_are_deleted(
 
     writer = world.studio["writer"]
     row, draft = await service.create(
-        writer.context(), kind="fixture", api_name=name(), labels=[], document={"title": "Mẫu"}
+        writer.context(),
+        kind="fixture_gateless",
+        api_name=name(),
+        labels=[],
+        document={"title": "Mẫu"},
     )
     sealed = await seal(service, writer, row.id, draft.row_version)
-    await rows(
-        migrator,
-        "UPDATE studio.artifact_versions SET stage = 'live' WHERE id = :v",
-        v=sealed.version_id,
-    )
+    await publish_for_test(migrator, sealed.version_id)
     await _soft_delete(service, writer, row.id)
     assert await _deleted_at(migrator, row.id) is not None
 

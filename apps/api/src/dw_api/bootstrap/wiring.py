@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 from qdrant_client import AsyncQdrantClient
 from sqlalchemy.ext.asyncio import (
@@ -199,8 +199,11 @@ def build_container(
     settings: ApiSettings | None = None,
     *,
     studio_kinds: Sequence[ArtifactKindEntry] | None = None,
+    studio_segments: Mapping[str, str] | None = None,
 ) -> ApiContainer:
-    container = _build_container(settings, studio_kinds)
+    """`studio_kinds` and `studio_segments` are a test's: the kinds the app
+    registers and the lifecycle route segment of each (agent-lifecycle 03)."""
+    container = _build_container(settings, studio_kinds, studio_segments)
     # Every context has registered its support scope sets by now (the seam
     # below); nothing may add one while the process serves requests.
     container.support_catalog.freeze()
@@ -208,7 +211,9 @@ def build_container(
 
 
 def _build_container(
-    settings: ApiSettings | None, studio_kinds: Sequence[ArtifactKindEntry] | None
+    settings: ApiSettings | None,
+    studio_kinds: Sequence[ArtifactKindEntry] | None,
+    studio_segments: Mapping[str, str] | None,
 ) -> ApiContainer:
     settings = settings or ApiSettings()
     settings.validate_for_profile()
@@ -476,7 +481,9 @@ def _build_container(
     if object_storage is None:
         _LOG.warning("no object storage configured: the agent runtime is not wired")
         # Studio needs Postgres alone: a host with a database serves it (R6.1).
-        container.studio = build_studio(container, settings, kinds=studio_kinds)
+        container.studio = build_studio(
+            container, settings, kinds=studio_kinds, segments=studio_segments
+        )
         return container
 
     # ---- agent runtime ---------------------------------------------------
@@ -619,7 +626,9 @@ def _build_container(
     # Platform code, wired after the runtime seam and before any context, so a
     # context consumes it through a Protocol it declares and this root
     # satisfies; `main.mount_studio` mounts its group and gate.
-    container.studio = build_studio(container, settings, kinds=studio_kinds)
+    container.studio = build_studio(
+        container, settings, kinds=studio_kinds, segments=studio_segments
+    )
 
     # ---- BOUNDED CONTEXTS PLUG IN HERE -----------------------------------
     # Build your context from `container.runtime` (the RuntimeSeam) and attach

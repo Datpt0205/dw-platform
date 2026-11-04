@@ -230,6 +230,8 @@ async def test_a_group_mounted_without_studio_answers_otherwise() -> None:
     container.studio = StudioContainer(
         kinds=ArtifactKindRegistry(()),
         artifacts=cast(Any, None),
+        lifecycle=cast(Any, None),
+        segments={},
         routers=(artifacts_router,),
         run_manifests=cast(Any, None),
         pinned_manifests=cast(Any, None),

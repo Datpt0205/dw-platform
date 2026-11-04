@@ -34,6 +34,7 @@ from dw_platform.application.access_context import AccessContext
 from dw_platform.application.effect_keys import EffectClaim
 from dw_platform.domain.audit import AuditEvent
 from dw_studio.core.adapters.tables import (
+    artifact_display_stage,
     artifact_versions,
     artifacts,
     definition_manifests,
@@ -56,10 +57,24 @@ _API_NAME_TAKEN = "uq_artifacts_tenant_id_kind_api_name"
 _API_NAME_IMMUTABLE = "ck_artifacts_api_name_immutable"
 _UNRELEASED = "uq_artifact_versions_unreleased"
 _NOT_IN_USE = "ck_artifacts_not_in_use"
+_STAGE_REFUSED = "ck_artifact_versions_stage_transition"
+_LIVE = "uq_artifact_versions_live"
 _RUN_MANIFEST_SIZE = "ck_run_manifests_body_size"
 _DEADLOCK = "40P01"
 
 _REACH = sa.text("SELECT platform.workspace_reach(:t, :u, :k) AS w")
+
+# The displayed stage of the artifact row a statement reads, from the view in
+# that same statement (agent-lifecycle R1.5): never recomputed here.
+_DISPLAY_STAGE = (
+    sa.select(artifact_display_stage.c.display_stage)
+    .where(
+        artifact_display_stage.c.tenant_id == artifacts.c.tenant_id,
+        artifact_display_stage.c.artifact_id == artifacts.c.id,
+    )
+    .scalar_subquery()
+    .label("display_stage")
+)
 
 
 def _conflict(message: str, reason: str, **details: object) -> ConflictError:
@@ -82,6 +97,7 @@ def _artifact(row: Any) -> ArtifactRow:
         row_version=row.row_version,
         created_at=row.created_at,
         updated_at=row.updated_at,
+        display_stage=row.display_stage,
     )
 
 
@@ -98,6 +114,18 @@ def _version(row: Any) -> VersionRow:
         row_version=row.row_version,
         based_on_version_id=row.based_on_version_id,
         change_note=row.change_note,
+        contributor_ids=tuple(row.contributor_ids),
+        gate_run_id=row.gate_run_id,
+        publish_approval_id=row.publish_approval_id,
+        tighten_only=row.tighten_only,
+        compared_live_hash=row.compared_live_hash,
+        submitted_by=row.submitted_by,
+        submitted_at=row.submitted_at,
+        published_by=row.published_by,
+        published_at=row.published_at,
+        retired_by=row.retired_by,
+        retired_at=row.retired_at,
+        retire_reason_code=row.retire_reason_code,
     )
 
 
@@ -127,11 +155,11 @@ class SqlArtifactTx:
         return frozenset(row.w for row in rows)
 
     async def artifact(self, artifact_id: uuid.UUID, *, lock: bool = False) -> ArtifactRow | None:
-        statement = sa.select(artifacts).where(
+        statement = sa.select(artifacts, _DISPLAY_STAGE).where(
             artifacts.c.id == artifact_id, artifacts.c.deleted_at.is_(None)
         )
         if lock:
-            statement = statement.with_for_update()
+            statement = statement.with_for_update(of=artifacts)
         row = (await self.session.execute(statement)).one_or_none()
         return None if row is None else _artifact(row)
 
@@ -163,7 +191,8 @@ class SqlArtifactTx:
                         labels=list(labels),
                         row_version=1,
                     )
-                    .returning(artifacts)
+                    # No version exists yet: the caller reads the row back.
+                    .returning(artifacts, sa.null().label("display_stage"))
                 )
             ).one()
         except IntegrityError as exc:
@@ -180,6 +209,7 @@ class SqlArtifactTx:
         document_schema: str,
         document: Any,
         based_on_version_id: uuid.UUID | None,
+        contributor_ids: Sequence[uuid.UUID],
     ) -> VersionRow:
         try:
             row = (
@@ -195,6 +225,7 @@ class SqlArtifactTx:
                         document=document,
                         row_version=1,
                         based_on_version_id=based_on_version_id,
+                        contributor_ids=list(contributor_ids),
                     )
                     .returning(artifact_versions)
                 )
@@ -212,7 +243,7 @@ class SqlArtifactTx:
                     sa.update(artifacts)
                     .where(artifacts.c.id == artifact_id)
                     .values(**values)
-                    .returning(artifacts)
+                    .returning(artifacts, _DISPLAY_STAGE)
                 )
             ).one()
         except IntegrityError as exc:
@@ -227,14 +258,22 @@ class SqlArtifactTx:
         return _artifact(row)
 
     async def update_version(self, version_id: uuid.UUID, **values: Any) -> VersionRow:
-        row = (
-            await self.session.execute(
-                sa.update(artifact_versions)
-                .where(artifact_versions.c.id == version_id)
-                .values(**values)
-                .returning(artifact_versions)
-            )
-        ).one()
+        try:
+            row = (
+                await self.session.execute(
+                    sa.update(artifact_versions)
+                    .where(artifact_versions.c.id == version_id)
+                    .values(**values)
+                    .returning(artifact_versions)
+                )
+            ).one()
+        except IntegrityError as exc:
+            refused = _refused(exc)
+            if refused == _STAGE_REFUSED:
+                raise _conflict("the stage machine refused this move", "stage_refused") from exc
+            if refused == _LIVE:
+                raise _conflict("this artifact already has a live version", "live_exists") from exc
+            raise
         return _version(row)
 
     async def soft_delete(self, artifact_id: uuid.UUID) -> None:
@@ -374,7 +413,7 @@ class SqlArtifactTx:
                 for scope in scopes
             )
         )
-        statement = sa.select(artifacts).where(
+        statement = sa.select(artifacts, _DISPLAY_STAGE).where(
             artifacts.c.deleted_at.is_(None),
             reach,
             after_position(artifacts.c.updated_at, artifacts.c.id, after),

@@ -34,6 +34,9 @@ class ArtifactRow:
     row_version: int
     created_at: datetime
     updated_at: datetime
+    # `studio.artifact_display_stage` (agent-lifecycle R1.5), read in the same
+    # statement; None only where the statement could not read it (an insert).
+    display_stage: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +52,19 @@ class VersionRow:
     row_version: int
     based_on_version_id: uuid.UUID | None
     change_note: str | None
+    # The lifecycle columns (agent-lifecycle ticket 03; ADR-0120 decision 1).
+    contributor_ids: tuple[uuid.UUID, ...]
+    gate_run_id: uuid.UUID | None
+    publish_approval_id: uuid.UUID | None
+    tighten_only: bool
+    compared_live_hash: str | None
+    submitted_by: uuid.UUID | None
+    submitted_at: datetime | None
+    published_by: uuid.UUID | None
+    published_at: datetime | None
+    retired_by: uuid.UUID | None
+    retired_at: datetime | None
+    retire_reason_code: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,6 +143,7 @@ class ArtifactTx(Protocol):
         document_schema: str,
         document: Any,
         based_on_version_id: uuid.UUID | None,
+        contributor_ids: Sequence[uuid.UUID],
     ) -> VersionRow:
         """Raises `ConflictError` `draft_exists` by `uq_artifact_versions_unreleased`."""
         ...
@@ -135,7 +152,11 @@ class ArtifactTx(Protocol):
         """Raises `ConflictError` `api_name_taken` or `api_name_immutable`."""
         ...
 
-    async def update_version(self, version_id: uuid.UUID, **values: Any) -> VersionRow: ...
+    async def update_version(self, version_id: uuid.UUID, **values: Any) -> VersionRow:
+        """Raises `ConflictError` `stage_refused` by
+        `ck_artifact_versions_stage_transition` (the stage machine's trigger)
+        and `live_exists` by `uq_artifact_versions_live`."""
+        ...
 
     async def soft_delete(self, artifact_id: uuid.UUID) -> None:
         """Raises `ConflictError` `artifact_in_use` by `ck_artifacts_not_in_use`."""

@@ -7,7 +7,10 @@ People (all members of `ws1` unless said otherwise):
 - `reader`: read only, at workspace depth in `ws1`;
 - `tenant_reader`: read at tenant depth (anchored in `ws1`): reaches both;
 - `ws2_writer`: read and write at workspace depth in `ws2`, a member there;
-- `outsider`: read and write in the other company's workspace.
+- `outsider`: read and write in the other company's workspace;
+- `co_writer`: read, write and submit in `ws1`, a second author;
+- `retirer`: read and `studio.versions.retire` at workspace depth in `ws1`;
+- `outsider_retirer`: the same in the other company's workspace.
 """
 
 from __future__ import annotations
@@ -26,6 +29,7 @@ from dw_platform.testing.rbac import (
     plant_role,
     plant_tenant,
 )
+from dw_studio.lifecycle.application.service import VERSIONS_RETIRE_SCOPE
 from dw_studio.testing.fixture_kinds import FIXTURE_READ, FIXTURE_SUBMIT, FIXTURE_WRITE
 
 
@@ -68,6 +72,7 @@ class StudioWorld:
 
 
 _WRITE = (FIXTURE_READ, FIXTURE_WRITE, FIXTURE_SUBMIT)
+_RETIRE = (FIXTURE_READ, VERSIONS_RETIRE_SCOPE)
 
 
 async def _person(
@@ -97,4 +102,7 @@ async def plant_world(conn: AsyncConnection) -> StudioWorld:
     world.people["tenant_reader"] = await _person(conn, tenant, ws1, (FIXTURE_READ,), "tenant")
     world.people["ws2_writer"] = await _person(conn, tenant, ws2, _WRITE, "workspace")
     world.people["outsider"] = await _person(conn, other, other.main, _WRITE, "workspace")
+    world.people["co_writer"] = await _person(conn, tenant, ws1, _WRITE, "workspace")
+    world.people["retirer"] = await _person(conn, tenant, ws1, _RETIRE, "workspace")
+    world.people["outsider_retirer"] = await _person(conn, other, other.main, _RETIRE, "workspace")
     return world

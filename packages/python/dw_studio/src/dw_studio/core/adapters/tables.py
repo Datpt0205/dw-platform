@@ -103,17 +103,53 @@ artifact_versions = sa.Table(
     sa.Column("row_version", sa.Integer, nullable=False),
     sa.Column("based_on_version_id", UUID(as_uuid=True), nullable=True),
     sa.Column("change_note", sa.Text, nullable=True),
+    # The lifecycle columns (agent-lifecycle ticket 03, revision 6503c6f309b1).
+    # `gate_run_id` gets its composite key with `studio.gate_runs` (ticket 06).
+    sa.Column("gate_run_id", UUID(as_uuid=True), nullable=True),
+    sa.Column("publish_approval_id", UUID(as_uuid=True), nullable=True),
+    sa.Column("tighten_only", sa.Boolean, nullable=False, server_default=sa.false()),
+    sa.Column("compared_live_hash", sa.Text, nullable=True),
+    sa.Column("contributor_ids", ARRAY(UUID(as_uuid=True)), nullable=False),
+    sa.Column("submitted_by", UUID(as_uuid=True), nullable=True),
+    sa.Column("submitted_at", _TS, nullable=True),
+    sa.Column("published_by", UUID(as_uuid=True), nullable=True),
+    sa.Column("published_at", _TS, nullable=True),
+    sa.Column("retired_by", UUID(as_uuid=True), nullable=True),
+    sa.Column("retired_at", _TS, nullable=True),
+    sa.Column("retire_reason_code", sa.Text, nullable=True),
     sa.UniqueConstraint("tenant_id", "id"),
     sa.UniqueConstraint("artifact_id", "version_no"),
     _composite("artifact_id", artifacts, ondelete="CASCADE"),
+    sa.ForeignKeyConstraint(
+        ["publish_approval_id", "tenant_id"],
+        [platform.approval_requests.c.id, platform.approval_requests.c.tenant_id],
+        ondelete="RESTRICT",
+    ),
     sa.Index(None, "tenant_id", "artifact_id"),
     sa.Index(None, "tenant_id", "based_on_version_id"),
+    sa.Index(None, "tenant_id", "publish_approval_id"),
     sa.Index(
         "uq_artifact_versions_unreleased",
         "artifact_id",
         unique=True,
         postgresql_where=sa.text("stage IN ('draft', 'evaluating', 'awaiting_approval')"),
     ),
+    sa.Index(
+        "uq_artifact_versions_live",
+        "artifact_id",
+        unique=True,
+        postgresql_where=sa.text("stage = 'live'"),
+    ),
+)
+
+# A view (agent-lifecycle R1.5), so not in `metadata`: nothing creates it but
+# its revision, and the catalog test compares tables.
+artifact_display_stage = sa.table(
+    "artifact_display_stage",
+    sa.column("tenant_id", UUID(as_uuid=True)),
+    sa.column("artifact_id", UUID(as_uuid=True)),
+    sa.column("display_stage", sa.Text),
+    schema="studio",
 )
 # Declared after the table exists, as a self-reference must be. `SET NULL` of
 # the one column only: `tenant_id` is NOT NULL (measured 24/10/2026, PG 16).

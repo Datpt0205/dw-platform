@@ -727,9 +727,24 @@ _STUDIO_WRITES: dict[str, tuple[frozenset[str], frozenset[str]]] = {
                 "definition_hash",
                 "row_version",
                 "change_note",
+                # The lifecycle columns (agent-lifecycle ticket 03, R1.1).
+                "gate_run_id",
+                "publish_approval_id",
+                "tighten_only",
+                "compared_live_hash",
+                "contributor_ids",
+                "submitted_by",
+                "submitted_at",
+                "published_by",
+                "published_at",
+                "retired_by",
+                "retired_at",
+                "retire_reason_code",
             }
         ),
     ),
+    # A view read under the reader's own RLS (agent-lifecycle R1.5): SELECT only.
+    "artifact_display_stage": (frozenset(), frozenset()),
     "definition_manifests": (frozenset({"INSERT", "DELETE"}), frozenset()),
     "dependencies": (frozenset({"INSERT", "DELETE"}), frozenset()),
     # Custom objects (custom-objects ticket 02): the definitions change only in

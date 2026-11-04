@@ -4,9 +4,10 @@ studio-skeleton R6.11).
 The real app, built with `studio_kinds=FIXTURE_KINDS` and never reassigned
 after, on a world of two workspaces, people at each depth of the fixture keys,
 and another company (`dw_studio.testing.world`). A version outside `draft`
-is placed by the migrator, as `LifecycleService` (agent-lifecycle/03) will;
-a seal runs through `ArtifactService.seal` in a transaction of the store, as
-agent-lifecycle/03's submit route will.
+is placed by the legal path of `dw_studio.testing.lifecycle` (agent-lifecycle
+03), and a live one is of `fixture_gateless`, since the gated `fixture`
+reaches `live` only through ticket 06's gate; a seal runs through
+`ArtifactService.seal` in a transaction of the store, as the submit route does.
 """
 
 from __future__ import annotations
@@ -36,6 +37,7 @@ from dw_studio.core.adapters.artifact_store import SqlArtifactTx
 from dw_studio.core.adapters.run_manifest_store import SqlRunManifestStore
 from dw_studio.core.application.service import ArtifactService, SealResult
 from dw_studio.testing.fixture_kinds import FIXTURE_KINDS, planted_fixture_kinds
+from dw_studio.testing.lifecycle import move_for_test
 from dw_studio.testing.world import StudioWorld, plant_world
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="module")]
@@ -90,12 +92,10 @@ class Api:
             return await self.service.seal(tx, uuid.UUID(artifact_id), draft["version"])
 
     async def stage(self, version_id: uuid.UUID, to: str) -> None:
-        await self.sql(
-            "UPDATE studio.artifact_versions SET stage = :s WHERE id = :v", s=to, v=version_id
-        )
+        await move_for_test(self.migrator, version_id, to)
 
     async def published(self, who: str = "writer", **kw: Any) -> tuple[str, SealResult]:
-        created = await self.create(who, **kw)
+        created = await self.create(who, **{"kind": "fixture_gateless", **kw})
         sealed = await self.seal(who, created["id"])
         await self.stage(sealed.version_id, "live")
         return created["id"], sealed
@@ -508,8 +508,9 @@ async def test_a_new_draft_copies_the_live_version_or_the_highest(api: Api, v2_s
         headers=match(created.json()["version"]),
     )
     v2 = await api.seal("writer", artifact_id)
-    await api.stage(v1.version_id, "retired")
-    await api.stage(v2.version_id, v2_stage)
+    if v2_stage == "retired":
+        await api.stage(v1.version_id, "retired")
+    await api.stage(v2.version_id, v2_stage)  # live: v1 retired, superseded
     action = "studio.artifact.draft_created"
     audits = await api.count("platform.audit_events", resource_id=artifact_id, action=action)
 
@@ -619,7 +620,7 @@ async def test_a_soft_delete_hides_the_artifact_and_is_audited(api: Api) -> None
 async def test_an_artifact_in_use_elsewhere_is_not_deleted(api: Api) -> None:
     """R3.3 (TC5): a live version in another workspace uses it; retired, it does not."""
     target, _ = await api.published()
-    user = await api.create("ws2_writer", document=doc(target))
+    user = await api.create("ws2_writer", kind="fixture_gateless", document=doc(target))
     sealed = await api.seal("ws2_writer", user["id"])
     await api.stage(sealed.version_id, "live")
 
@@ -636,8 +637,8 @@ async def test_an_artifact_in_use_elsewhere_is_not_deleted(api: Api) -> None:
 async def test_where_used_names_only_what_the_caller_reads(api: Api) -> None:
     """R3.4 (TC7)."""
     target, _ = await api.published()
-    mine = await api.create("writer", document=doc(target))
-    theirs = await api.create("ws2_writer", document=doc(target))
+    mine = await api.create("writer", kind="fixture_gateless", document=doc(target))
+    theirs = await api.create("ws2_writer", kind="fixture_gateless", document=doc(target))
     for who, created in (("writer", mine), ("ws2_writer", theirs)):
         sealed = await api.seal(who, created["id"])
         await api.stage(sealed.version_id, "live")

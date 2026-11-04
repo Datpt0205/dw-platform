@@ -852,9 +852,12 @@ async def _seed_studio(
             ),
             *(
                 (
+                    # Inserted as a sealed draft, the one stage a row starts in
+                    # (agent-lifecycle R1.1); the purge order does not read it.
                     "INSERT INTO studio.artifact_versions (id, tenant_id, artifact_id, stage,"
                     " version_no, document_schema, document, content_hash, definition_hash,"
-                    " row_version) VALUES (:v, :t, :a, 'live', 1, 'dw.probe/v1', '{}', :h, :h, 1)",
+                    " row_version, contributor_ids) VALUES (:v, :t, :a, 'draft', 1,"
+                    " 'dw.probe/v1', '{}', :h, :h, 1, ARRAY[gen_random_uuid()])",
                     {"v": v, "t": tenant_id, "a": a, "h": _HASH},
                 )
                 for v, a in ((used_v1, used), (user_v1, user))

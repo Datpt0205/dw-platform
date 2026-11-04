@@ -10,8 +10,10 @@ in the seal's transaction (R3.1, TC6), resolution of `artifact` references and
 the soft delete that waits on it (R3.3, TC5), and one lock for the three version
 writes (R2.7, R2.23).
 
-A version outside `draft` is placed by the migrator, as `LifecycleService`
-(agent-lifecycle/03) will; the one-unreleased index holds it all the same.
+A version outside `draft` is placed by `dw_studio.testing.lifecycle`, the
+legal path `studio.guard_version_stage()` allows (agent-lifecycle 03); a live
+version is of `fixture_gateless`, since the gated `fixture` reaches `live` only
+through ticket 06's gate.
 """
 
 from __future__ import annotations
@@ -28,6 +30,7 @@ import sqlalchemy as sa
 from pg_test_db import DatabaseUrls
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import (
+    AsyncConnection,
     AsyncEngine,
     AsyncSession,
     async_sessionmaker,
@@ -49,6 +52,7 @@ from dw_studio.core.domain.artifacts import (
     definition_body,
 )
 from dw_studio.testing.fixture_kinds import FIXTURE_KINDS, planted_fixture_kinds
+from dw_studio.testing.lifecycle import move_for_test, publish_for_test, submit_on
 from dw_studio.testing.world import Person, StudioWorld, plant_world
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="module")]
@@ -130,18 +134,16 @@ async def as_app(
 
 
 async def stage(migrator: AsyncEngine, version_id: uuid.UUID, to: str) -> None:
-    await run(
-        migrator, "UPDATE studio.artifact_versions SET stage = :s WHERE id = :v", s=to, v=version_id
-    )
+    await move_for_test(migrator, version_id, to)
 
 
 async def published(
     service: ArtifactService, migrator: AsyncEngine, who: Person, **kw: Any
 ) -> tuple[uuid.UUID, SealResult]:
-    """An artifact with a `live` version 1."""
-    artifact_id, row_version = await make(service, who, **kw)
+    """An artifact (`fixture_gateless` unless `kind=`) with a `live` version 1."""
+    artifact_id, row_version = await make(service, who, **{"kind": "fixture_gateless", **kw})
     sealed = await seal(service, who, artifact_id, row_version)
-    await stage(migrator, sealed.version_id, "live")
+    await publish_for_test(migrator, sealed.version_id)
     return artifact_id, sealed
 
 
@@ -185,7 +187,8 @@ async def test_a_sealed_versions_content_is_fixed(
     to: str,
 ) -> None:
     """R2.9 (TC1): from `dw_app`, by SQL, past the service."""
-    artifact_id, row_version = await make(service, world["writer"])
+    kind = "fixture" if to == "evaluating" else "fixture_gateless"
+    artifact_id, row_version = await make(service, world["writer"], kind=kind)
     sealed = await seal(service, world["writer"], artifact_id, row_version)
     await stage(migrator, sealed.version_id, to)
 
@@ -302,19 +305,20 @@ async def test_a_version_never_belongs_to_or_builds_on_another_tenant(
     service: ArtifactService, migrator: AsyncEngine, world: StudioWorld
 ) -> None:
     """R2.18 (TC29): `artifact_id` on insert, `based_on_version_id` on update."""
-    theirs, their_version = await _other_tenant_version(service, world)
+    _, their_version = await _other_tenant_version(service, world)
+    # Their artifact with no unreleased version, so no index refuses a draft
+    # before the key does (a version is inserted as a draft, agent-lifecycle R1.1).
+    released, _ = await published(service, migrator, world["outsider"])
     refused = await refusal(
         run(
             migrator,
-            # `retired` and numbered, so no index refuses it before the key.
             "INSERT INTO studio.artifact_versions (id, tenant_id, artifact_id, stage,"
-            " version_no, document_schema, document, content_hash, definition_hash,"
-            " row_version)"
-            " VALUES (:id, :t, :a, 'retired', 99, 'dw.fixture/v1', '{}', :h, :h, 1)",
+            " document_schema, document, row_version, contributor_ids)"
+            " VALUES (:id, :t, :a, 'draft', 'dw.fixture/v1', '{}', 1, ARRAY[:u]::uuid[])",
             id=uuid.uuid4(),
             t=world.tenant.tenant_id,
-            a=theirs,
-            h=HASH,
+            a=released,
+            u=world["writer"].id,
         )
     )
     assert refused == "fk_artifact_versions_artifact_id_artifacts"
@@ -433,8 +437,9 @@ async def test_one_unreleased_version_per_artifact(
     tenant = world.tenant.tenant_id
     insert = (
         "INSERT INTO studio.artifact_versions (id, tenant_id, artifact_id, stage,"
-        " document_schema, document, row_version)"
-        " VALUES (:id, :t, :a, 'draft', 'dw.fixture/v1', '{\"title\": \"x\"}', 1)"
+        " document_schema, document, row_version, contributor_ids)"
+        " VALUES (:id, :t, :a, 'draft', 'dw.fixture/v1', '{\"title\": \"x\"}', 1,"
+        " ARRAY[gen_random_uuid()])"
     )
     with_draft, _ = await make(service, world["writer"])
     assert (
@@ -452,18 +457,17 @@ async def test_one_unreleased_version_per_artifact(
         == "uq_artifact_versions_unreleased"
     )
 
-    released, v1 = await published(service, migrator, world["writer"])
+    released, _ = await published(service, migrator, world["writer"])
     v2 = await service.create_draft(world["writer"].context(), released, ExpectedVersion(1))
     v2_sealed = await seal(service, world["writer"], released, v2.row_version)
-    await stage(migrator, v1.version_id, "retired")
-    await stage(migrator, v2_sealed.version_id, "live")
+    await publish_for_test(migrator, v2_sealed.version_id)  # v1 retired, superseded
     await as_app(app_engine, tenant, insert, id=uuid.uuid4(), t=tenant, a=released)
 
 
 async def _offboarding_rows(
     migrator: AsyncEngine, status: str
 ) -> tuple[PlantedTenant, dict[str, Any]]:
-    """A company in `status` with one artifact, its live version and a manifest."""
+    """A company in `status` with one artifact, its sealed version and a manifest."""
     async with migrator.begin() as conn:
         tenant = await plant_tenant(conn, status=status)
     artifact_id, version_id = uuid.uuid4(), uuid.uuid4()
@@ -479,12 +483,14 @@ async def _offboarding_rows(
     await run(
         migrator,
         "INSERT INTO studio.artifact_versions (id, tenant_id, artifact_id, stage, version_no,"
-        " document_schema, document, content_hash, definition_hash, row_version)"
-        " VALUES (:v, :t, :a, 'live', 1, 'dw.fixture/v1', '{}', :h, :h, 1)",
+        " document_schema, document, content_hash, definition_hash, row_version,"
+        " contributor_ids)"
+        " VALUES (:v, :t, :a, 'draft', 1, 'dw.fixture/v1', '{}', :h, :h, 1, ARRAY[:u]::uuid[])",
         v=version_id,
         t=tenant.tenant_id,
         a=artifact_id,
         h=HASH,
+        u=uuid.uuid4(),
     )
     await run(
         migrator,
@@ -577,8 +583,8 @@ async def test_a_seal_numbers_hashes_and_leaves_the_stage(
 ) -> None:
     """R2.7 (TC2), R2.13 (TC27): both kinds sealed alike, both left in `draft`,
     no approval opened; the definition hash recomputed here."""
-    approvals = await run(migrator, "SELECT count(*) FROM platform.approval_requests")
     target, live = await published(service, migrator, world["writer"])
+    approvals = await run(migrator, "SELECT count(*) FROM platform.approval_requests")
     for kind in ("fixture", "fixture_gateless"):
         artifact_id, row_version = await make(
             service, world["writer"], kind=kind, document=doc(target)
@@ -770,7 +776,12 @@ async def test_a_seal_in_flight_holds_off_the_soft_delete_of_its_target(
 
         tx.live_target = then_delete  # type: ignore[method-assign,assignment]
         sealed = await service.seal(tx, artifact_id, row_version)
-        await tx.update_version(sealed.version_id, stage="evaluating")
+        await tx.update_version(
+            sealed.version_id,
+            stage="evaluating",
+            submitted_by=world["writer"].id,
+            submitted_at=sa.func.now(),
+        )
     assert seen["waited"], "the soft delete did not wait for the seal's read"
     with pytest.raises(ConflictError) as refused:
         await seen["delete"]
@@ -835,23 +846,40 @@ async def _seal(service: ArtifactService, who: Person, artifact_id: uuid.UUID, r
 
 # What the lock holder changes before it commits, and what the write must then
 # answer: only a write that read the versions after taking the lock sees it.
-_BUMP = (
-    "UPDATE studio.artifact_versions SET row_version = row_version + 1"
-    " WHERE artifact_id = :a AND stage = 'draft'"
-)
-_CANDIDATE = (
-    "INSERT INTO studio.artifact_versions (id, tenant_id, artifact_id, stage, version_no,"
-    " document_schema, document, content_hash, definition_hash, row_version)"
-    " VALUES (gen_random_uuid(), :t, :a, 'awaiting_approval', 2, 'dw.fixture/v1', '{}', :h, :h, 1)"
-)
+Change = Callable[[AsyncConnection, uuid.UUID, uuid.UUID], Coroutine[Any, Any, None]]
+
+
+async def _bump(conn: AsyncConnection, artifact_id: uuid.UUID, tenant: uuid.UUID) -> None:
+    await conn.execute(
+        sa.text(
+            "UPDATE studio.artifact_versions SET row_version = row_version + 1"
+            " WHERE artifact_id = :a AND stage = 'draft'"
+        ),
+        {"a": artifact_id},
+    )
+
+
+async def _candidate(conn: AsyncConnection, artifact_id: uuid.UUID, tenant: uuid.UUID) -> None:
+    """A sealed v2 inserted as a draft and submitted, as the legal path goes."""
+    version_id = uuid.uuid4()
+    await conn.execute(
+        sa.text(
+            "INSERT INTO studio.artifact_versions (id, tenant_id, artifact_id, stage, version_no,"
+            " document_schema, document, content_hash, definition_hash, row_version,"
+            " contributor_ids) VALUES (:v, :t, :a, 'draft', 2, 'dw.fixture/v1', '{}', :h, :h, 1,"
+            " ARRAY[gen_random_uuid()])"
+        ),
+        {"v": version_id, "t": tenant, "a": artifact_id, "h": HASH},
+    )
+    await submit_on(conn, version_id)
 
 
 @pytest.mark.parametrize(
     ("write", "change", "answer"),
     [
-        (_save, _BUMP, "stale_version"),
-        (_create_draft, _CANDIDATE, "candidate_pending"),
-        (_seal, _BUMP, "stale_version"),
+        (_save, _bump, "stale_version"),
+        (_create_draft, _candidate, "candidate_pending"),
+        (_seal, _bump, "stale_version"),
     ],
     ids=["save_draft", "create_draft", "seal"],
 )
@@ -860,7 +888,7 @@ async def test_each_version_write_reads_only_after_the_artifact_lock(
     migrator: AsyncEngine,
     world: StudioWorld,
     write: Write,
-    change: str,
+    change: Change,
     answer: str,
 ) -> None:
     """R2.7 (TC2), R2.23: another transaction holds the artifact row `FOR
@@ -880,9 +908,7 @@ async def test_each_version_write_reads_only_after_the_artifact_lock(
         pending = asyncio.create_task(write(service, world["writer"], artifact_id, rv))
         await asyncio.sleep(0.5)
         waited = not pending.done()
-        await conn.execute(
-            sa.text(change), {"a": artifact_id, "t": world.tenant.tenant_id, "h": HASH}
-        )
+        await change(conn, artifact_id, world.tenant.tenant_id)
     assert waited, "the write did not wait for the artifact row lock"
     with pytest.raises((ConflictError, PreconditionFailedError)) as refused:
         await pending
@@ -919,5 +945,6 @@ async def test_a_second_draft_written_round_the_service_is_a_conflict(
                 document_schema="dw.fixture/v1",
                 document=json.loads('{"title": "x"}'),
                 based_on_version_id=None,
+                contributor_ids=[world["writer"].id],
             )
     assert refused.value.details["reason_code"] == "draft_exists"

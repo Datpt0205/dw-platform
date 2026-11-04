@@ -520,6 +520,13 @@ forbidden_modules = [
 ]
 
 [[tool.importlinter.contracts]]
+# R5.2: the capabilities never import each other; what one needs of another
+# reaches it through the core (a registry entry, a port) at the composition root.
+name = "Studio capabilities are independent"
+type = "independence"
+modules = ["dw_studio.records", "dw_studio.lifecycle"]
+
+[[tool.importlinter.contracts]]
 # studio-skeleton R5.6; ADR 0114 decision 2: one adapter imports the CEL
 # binding, and every other module reaches expressions through
 # `dw_kernel.expressions.ExpressionEngine`. Indirect imports are allowed, so a

@@ -1,9 +1,11 @@
 """Builders for the run manifest's tests and its measurement (tenant-config
-ticket 04): artifacts of the `fixture` kind with a `live` version, a closure of
-any size, and run rows that name a manifest.
+ticket 04): artifacts with a `live` version, a closure of any size, and run
+rows that name a manifest.
 
-A version leaves `draft` only by the migrator here, as `LifecycleService`
-(agent-lifecycle/03) will move it; the seal itself changes no stage.
+A version leaves `draft` by the legal path of `dw_studio.testing.lifecycle`
+(agent-lifecycle 03); the seal itself changes no stage. A live version is of
+`fixture_gateless` and an `evaluating` one of the gated `fixture`, since only
+ticket 06's gate takes a gated kind past `evaluating`.
 """
 
 from __future__ import annotations
@@ -15,6 +17,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from dw_studio.core.application.service import ArtifactService, SealResult
+from dw_studio.testing.lifecycle import move_for_test
 from dw_studio.testing.world import Person
 
 
@@ -22,21 +25,13 @@ def fixture_document(*uses: uuid.UUID, title: str = "Khách hàng", size: int = 
     return {"title": title, "uses": [str(u) for u in uses], "size": size}
 
 
-async def set_stage(migrator: AsyncEngine, version_id: uuid.UUID, stage: str) -> None:
-    async with migrator.begin() as conn:
-        await conn.execute(
-            sa.text("UPDATE studio.artifact_versions SET stage = :s WHERE id = :v"),
-            {"s": stage, "v": version_id},
-        )
-
-
 async def draft_of(
-    service: ArtifactService, who: Person, document: dict[str, Any]
+    service: ArtifactService, who: Person, document: dict[str, Any], *, kind: str = "fixture"
 ) -> tuple[uuid.UUID, uuid.UUID, int]:
-    """A new `fixture` artifact and its draft: (artifact, draft version, row_version)."""
+    """A new artifact and its draft: (artifact, draft version, row_version)."""
     row, draft = await service.create(
         who.context(),
-        kind="fixture",
+        kind=kind,
         api_name=f"a_{uuid.uuid4().hex[:12]}",
         labels=[],
         document=document,
@@ -59,10 +54,12 @@ async def published(
     *,
     stage: str = "live",
 ) -> tuple[uuid.UUID, SealResult]:
-    """A `fixture` artifact whose version 1 is sealed and moved to `stage`."""
-    artifact_id, _, row_version = await draft_of(service, who, document)
+    """An artifact whose version 1 is sealed and moved to `stage`: of the
+    gated `fixture` for `evaluating`, of `fixture_gateless` otherwise."""
+    kind = "fixture" if stage == "evaluating" else "fixture_gateless"
+    artifact_id, _, row_version = await draft_of(service, who, document, kind=kind)
     result = await sealed(service, who, artifact_id, row_version)
-    await set_stage(migrator, result.version_id, stage)
+    await move_for_test(migrator, result.version_id, stage)
     return artifact_id, result
 
 

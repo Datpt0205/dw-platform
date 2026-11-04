@@ -23,7 +23,7 @@ route) checks the kind's submit key first.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -47,6 +47,7 @@ from dw_studio.core.application.ports import (
     ArtifactStore,
     ArtifactTx,
     DependencyRow,
+    Dependent,
     ListScope,
     VersionRow,
 )
@@ -76,6 +77,9 @@ class SealResult:
     version_no: int
     content_hash: str
     definition_hash: str
+    # What the definition hash pinned, for the submit's per-kind checks
+    # (agent-lifecycle R2.7): the seal's own closure, not a second one.
+    closure: tuple[ClosureItem, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,11 +118,37 @@ def _stale() -> Exception:
     )
 
 
+async def name_or_count(
+    tx: ArtifactTx, registry: ArtifactKindRegistry, dependents: Sequence[Dependent]
+) -> DependentGroup:
+    """Each dependent named where the caller reads it with its own kind's key,
+    counted otherwise (TC7): the one rule `dependents` and agent-lifecycle's
+    retire (R2.6) both answer with."""
+    group = DependentGroup()
+    reach: dict[str, frozenset[uuid.UUID]] = {}
+    for dependent in dependents:
+        entry = registry.get(dependent.kind)
+        if entry is not None and entry.read_key not in reach:
+            reach[entry.read_key] = await tx.reach(entry.read_key)
+        if entry is not None and dependent.owning_workspace_id in reach[entry.read_key]:
+            group.items.append(
+                DependentRef(dependent.artifact_id, dependent.kind, dependent.api_name)
+            )
+        else:
+            group.hidden += 1
+    return group
+
+
 def _unreleased(versions: Sequence[VersionRow]) -> VersionRow | None:
     """The one draft or candidate an artifact may have (R2.20)."""
     return next(
         (v for v in versions if v.stage is Stage.DRAFT or v.stage in CANDIDATE_STAGES), None
     )
+
+
+def _with(people: Sequence[uuid.UUID], person: uuid.UUID) -> list[uuid.UUID]:
+    """`people` with `person` added last unless already there, order kept."""
+    return [*people, person] if person not in people else list(people)
 
 
 def canonical_document(document: Any, *, at: str = "/document") -> Any:
@@ -172,12 +202,35 @@ class ArtifactService:
         return entry
 
     @staticmethod
-    async def _writable(tx: ArtifactTx, row: ArtifactRow, entry: ArtifactKindEntry) -> None:
-        if row.owning_workspace_id not in await tx.reach(entry.write_key):
+    async def _holds(tx: ArtifactTx, row: ArtifactRow, key: str) -> None:
+        """403 unless `key` reaches the artifact's owning workspace."""
+        if row.owning_workspace_id not in await tx.reach(key):
             raise PermissionDeniedError(
-                "you may read this artifact and not change it",
-                details={"action": entry.write_key},
+                "you may read this artifact and not do this", details={"action": key}
             )
+
+    async def _writable(self, tx: ArtifactTx, row: ArtifactRow, entry: ArtifactKindEntry) -> None:
+        await self._holds(tx, row, entry.write_key)
+
+    async def open_for(
+        self,
+        tx: ArtifactTx,
+        artifact_id: uuid.UUID,
+        *,
+        kind: str,
+        key: Callable[[ArtifactKindEntry], str],
+        lock: bool,
+    ) -> tuple[ArtifactRow, ArtifactKindEntry]:
+        """The artifact for an action keyed by `key` of its kind's entry, the
+        same two questions every write here asks: 404 for one the caller cannot
+        read or whose stored kind is not `kind` (a route segment names one kind),
+        403 for one they read without the key (agent-lifecycle R2.1, R2.4, R2.5)."""
+        row = await self._load(tx, artifact_id, lock=lock)
+        if row.kind != kind:
+            raise NotFoundError("artifact not found")
+        entry = await self._readable(tx, row)
+        await self._holds(tx, row, key(entry))
+        return row, entry
 
     def _entry(self, kind: str) -> ArtifactKindEntry:
         entry = self.registry.get(kind)
@@ -207,7 +260,7 @@ class ArtifactService:
             row = await self._load(tx, artifact_id, lock=False)
             await self._writable(tx, row, await self._readable(tx, row))
 
-    def _event(
+    def event(
         self,
         context: AccessContext,
         action: str,
@@ -270,15 +323,18 @@ class ArtifactService:
                 document_schema=entry.document_schema,
                 document=document,
                 based_on_version_id=None,
+                contributor_ids=[context.principal_id],
             )
             await tx.audit(
-                self._event(
+                self.event(
                     context,
                     "studio.artifact.created",
                     artifact_id,
                     {"kind": kind, "api_name": api_name},
                 )
             )
+            # Read back for its displayed stage, now that its draft exists.
+            row = await self._load(tx, artifact_id, lock=False)
         return row, draft
 
     async def get(self, context: AccessContext, artifact_id: uuid.UUID) -> ArtifactRow:
@@ -372,7 +428,7 @@ class ArtifactService:
                 artifact_id, **changes, row_version=row.row_version + 1
             )
             await tx.audit(
-                self._event(
+                self.event(
                     context, "studio.artifact.updated", artifact_id, {"fields": sorted(changes)}
                 )
             )
@@ -390,7 +446,7 @@ class ArtifactService:
                 raise _stale()
             await tx.soft_delete(artifact_id)
             await tx.audit(
-                self._event(context, "studio.artifact.deleted", artifact_id, {"kind": row.kind})
+                self.event(context, "studio.artifact.deleted", artifact_id, {"kind": row.kind})
             )
 
     # ---- the draft --------------------------------------------------------
@@ -434,9 +490,11 @@ class ArtifactService:
                 content_hash=None,
                 definition_hash=None,
                 row_version=unreleased.row_version + 1,
+                # Everyone who saved it is an author (agent-lifecycle R5.1, R5.2).
+                contributor_ids=_with(unreleased.contributor_ids, context.principal_id),
             )
             await tx.audit(
-                self._event(
+                self.event(
                     context,
                     "studio.artifact.draft_saved",
                     artifact_id,
@@ -479,9 +537,10 @@ class ArtifactService:
                 document_schema=base.document_schema,
                 document=base.document,
                 based_on_version_id=base.id,
+                contributor_ids=[context.principal_id],
             )
             await tx.audit(
-                self._event(
+                self.event(
                     context,
                     "studio.artifact.draft_created",
                     artifact_id,
@@ -523,22 +582,16 @@ class ArtifactService:
     async def dependents(self, context: AccessContext, artifact_id: uuid.UUID) -> Dependents:
         """R3.4: grouped by stage; named only where the caller reads the
         dependent with its own kind's key, counted otherwise (TC7)."""
-        live, candidate = DependentGroup(), DependentGroup()
         async with self.store.transaction(context) as tx:
             row = await self._load(tx, artifact_id, lock=False)
             await self._readable(tx, row)
-            reach: dict[str, frozenset[uuid.UUID]] = {}
-            for dependent in await tx.dependents(artifact_id):
-                group = live if dependent.stage is Stage.LIVE else candidate
-                entry = self.registry.get(dependent.kind)
-                if entry is not None and entry.read_key not in reach:
-                    reach[entry.read_key] = await tx.reach(entry.read_key)
-                if entry is not None and dependent.owning_workspace_id in reach[entry.read_key]:
-                    group.items.append(
-                        DependentRef(dependent.artifact_id, dependent.kind, dependent.api_name)
-                    )
-                else:
-                    group.hidden += 1
+            found = await tx.dependents(artifact_id)
+            live = await name_or_count(
+                tx, self.registry, [d for d in found if d.stage is Stage.LIVE]
+            )
+            candidate = await name_or_count(
+                tx, self.registry, [d for d in found if d.stage is not Stage.LIVE]
+            )
         return Dependents(live=live, candidate=candidate)
 
     async def seal(
@@ -576,7 +629,7 @@ class ArtifactService:
             definition_hash=manifest_hash,
             row_version=unreleased.row_version + 1,
         )
-        return SealResult(unreleased.id, version_no, root_hash, manifest_hash)
+        return SealResult(unreleased.id, version_no, root_hash, manifest_hash, tuple(closure))
 
     async def closure_of(
         self, tx: ArtifactTx, kind: str, artifact_id: uuid.UUID, document: Any

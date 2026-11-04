@@ -51,6 +51,13 @@ class ArtifactView(BaseModel):
     version: int = Field(description="The artifact's ETag; `If-Match` of its writes.")
     created_at: datetime
     updated_at: datetime
+    display_stage: str | None = Field(
+        description=(
+            "The stage shown for the artifact, computed by `studio.artifact_display_stage`:"
+            " `killed`, `live`, `awaiting_approval`, `evaluating`, `draft` or `retired`,"
+            " first that holds."
+        )
+    )
 
 
 class ArtifactDraftView(BaseModel):
@@ -131,6 +138,7 @@ def _artifact(row: ArtifactRow) -> ArtifactView:
         version=row.row_version,
         created_at=row.created_at,
         updated_at=row.updated_at,
+        display_stage=row.display_stage,
     )
 
 
@@ -145,7 +153,7 @@ def _draft(row: VersionRow) -> ArtifactDraftView:
     )
 
 
-def _version(row: VersionRow) -> VersionView:
+def version_view(row: VersionRow) -> VersionView:
     return VersionView(
         id=row.id,
         version_no=row.version_no or 0,
@@ -353,7 +361,7 @@ async def list_versions(
     artifact_id: uuid.UUID, context: RequireStudioAccess, container: RequireContainer
 ) -> VersionList:
     versions = await _service(container).versions(context, artifact_id)
-    return VersionList(items=[_version(v) for v in versions])
+    return VersionList(items=[version_view(v) for v in versions])
 
 
 @router.get("/{artifact_id}/versions/{version_no}", response_model=VersionView)
@@ -363,7 +371,7 @@ async def read_version(
     context: RequireStudioAccess,
     container: RequireContainer,
 ) -> VersionView:
-    return _version(await _service(container).version(context, artifact_id, version_no))
+    return version_view(await _service(container).version(context, artifact_id, version_no))
 
 
 @router.get("/{artifact_id}/dependents", response_model=DependentsView)

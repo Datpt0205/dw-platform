@@ -1,0 +1,114 @@
+"""`SqlLifecycleStore`: the stage machine's reads beyond the envelope, on the
+envelope's own session (as `dw_app`, under the caller's tenant).
+
+It decides nothing: `studio.guard_version_stage()` refuses a move, and the
+envelope's `update_version` reads that refusal back by its constraint name.
+"""
+
+from __future__ import annotations
+
+import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
+
+import sqlalchemy as sa
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from dw_kernel.errors import NotFoundError
+from dw_platform.adapters.persistence import tables as platform
+from dw_platform.adapters.persistence.repositories import (
+    SqlApprovalRepository,
+    _approval_from_row,
+)
+from dw_platform.application.access_context import AccessContext
+from dw_platform.domain.approval import ApprovalRequest
+from dw_studio.core.adapters.artifact_store import SqlArtifactStore, SqlArtifactTx
+from dw_studio.core.adapters.tables import (
+    artifact_kinds,
+    artifact_versions,
+    artifacts,
+    dependencies,
+)
+from dw_studio.core.application.ports import Dependent
+from dw_studio.core.domain.artifacts import Stage
+
+
+@dataclass
+class SqlLifecycleTx:
+    envelope: SqlArtifactTx
+
+    @property
+    def session(self) -> AsyncSession:
+        return self.envelope.session
+
+    async def has_quality_gate(self, kind: str) -> bool:
+        gated = await self.session.scalar(
+            sa.select(artifact_kinds.c.has_quality_gate).where(artifact_kinds.c.kind == kind)
+        )
+        if gated is None:
+            raise NotFoundError("no such kind")
+        return bool(gated)
+
+    async def publish_approval(self, approval_id: uuid.UUID) -> ApprovalRequest | None:
+        # Tenant RLS alone, not the platform repository's workspace filter: the
+        # right to withdraw is the submit key's at the artifact's workspace.
+        row = (
+            await self.session.execute(
+                sa.select(platform.approval_requests)
+                .where(platform.approval_requests.c.id == approval_id)
+                .with_for_update()
+            )
+        ).first()
+        return None if row is None else _approval_from_row(row)
+
+    async def save_approval(self, request: ApprovalRequest) -> None:
+        await SqlApprovalRepository(self.session).save(request)
+
+    async def live_dependents(self, version_id: uuid.UUID) -> list[Dependent]:
+        rows = await self.session.execute(
+            sa.select(
+                artifacts.c.id,
+                artifacts.c.kind,
+                artifacts.c.api_name,
+                artifacts.c.owning_workspace_id,
+                artifact_versions.c.stage,
+            )
+            .distinct()
+            .select_from(
+                dependencies.join(
+                    artifact_versions,
+                    sa.and_(
+                        artifact_versions.c.tenant_id == dependencies.c.tenant_id,
+                        artifact_versions.c.id == dependencies.c.from_version_id,
+                    ),
+                ).join(
+                    artifacts,
+                    sa.and_(
+                        artifacts.c.tenant_id == dependencies.c.tenant_id,
+                        artifacts.c.id == dependencies.c.from_artifact_id,
+                    ),
+                )
+            )
+            .where(
+                dependencies.c.to_version_id == version_id,
+                dependencies.c.from_artifact_id != dependencies.c.to_artifact_id,
+                artifact_versions.c.stage == Stage.LIVE.value,
+                artifacts.c.deleted_at.is_(None),
+            )
+            .order_by(artifacts.c.api_name, artifacts.c.id)
+        )
+        return [
+            Dependent(row.id, row.kind, row.api_name, row.owning_workspace_id, Stage(row.stage))
+            for row in rows
+        ]
+
+
+@dataclass(frozen=True)
+class SqlLifecycleStore:
+    artifacts: SqlArtifactStore
+
+    @asynccontextmanager
+    async def transaction(self, context: AccessContext) -> AsyncIterator[SqlLifecycleTx]:
+        async with self.artifacts.transaction(context) as envelope:
+            yield SqlLifecycleTx(envelope)

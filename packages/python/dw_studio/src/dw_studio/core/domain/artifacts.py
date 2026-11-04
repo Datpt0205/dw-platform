@@ -43,6 +43,47 @@ class Stage(StrEnum):
     RETIRED = "retired"
 
 
+class RetireReason(StrEnum):
+    """`studio.artifact_versions.retire_reason_code` (`ck_..._retire_reason_code`)."""
+
+    SUPERSEDED = "superseded"
+    EXPLICIT = "explicit"
+
+
+# The stage machine of ADR-0120 decision 1, as (from, to) pairs: a kind with a
+# quality gate goes through `evaluating`, a kind without one (R1.6) straight to
+# `awaiting_approval`. `studio.guard_version_stage()` holds the same pairs as
+# the backstop; `LifecycleService` asks `may_move` before it writes one.
+GATED_MOVES: Final = frozenset(
+    {
+        (Stage.DRAFT, Stage.EVALUATING),
+        (Stage.EVALUATING, Stage.DRAFT),
+        (Stage.EVALUATING, Stage.AWAITING_APPROVAL),
+        (Stage.AWAITING_APPROVAL, Stage.DRAFT),
+        (Stage.AWAITING_APPROVAL, Stage.LIVE),
+        (Stage.LIVE, Stage.RETIRED),
+    }
+)
+GATELESS_MOVES: Final = frozenset(
+    {
+        (Stage.DRAFT, Stage.AWAITING_APPROVAL),
+        (Stage.AWAITING_APPROVAL, Stage.DRAFT),
+        (Stage.AWAITING_APPROVAL, Stage.LIVE),
+        (Stage.LIVE, Stage.RETIRED),
+    }
+)
+# The tighten-only branch (R1.7): a kind without a gate whose comparator says
+# every change only tightens, the object definition alone in v1.
+TIGHTEN_ONLY_MOVE: Final = (Stage.DRAFT, Stage.LIVE)
+
+
+def may_move(source: Stage, target: Stage, *, gated: bool, tighten_only: bool = False) -> bool:
+    """Whether the machine has this move for a kind gated or not."""
+    if tighten_only and not gated and (source, target) == TIGHTEN_ONLY_MOVE:
+        return True
+    return (source, target) in (GATED_MOVES if gated else GATELESS_MOVES)
+
+
 # A candidate: sealed and on its way to `live` (ADR-0120 decision 1).
 CANDIDATE_STAGES: Final = frozenset({Stage.EVALUATING, Stage.AWAITING_APPROVAL})
 # A version whose use of another artifact stops that artifact's deletion (R3.3).
