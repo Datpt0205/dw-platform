@@ -76,6 +76,10 @@ IMPORT_TO_DIST = {
     "langchain": "langchain",
     "langchain_core": "langchain-core",
     "langchain_openai": "langchain-openai",
+    # The one CEL binding and the descriptor pools its typed objects need
+    # (ADR 0114; workflow-nodes 01).
+    "cel_expr_python": "cel-expr-python",
+    "google": "protobuf",
     "dw_kernel": "dw-kernel",
     "dw_platform": "dw-platform",
     "dw_agent_runtime": "dw-agent-runtime",

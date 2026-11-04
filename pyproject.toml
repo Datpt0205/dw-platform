@@ -181,6 +181,17 @@ disallow_incomplete_defs = false
 module = ["asyncpg", "asyncpg.*"]
 ignore_missing_imports = true
 
+# Ships `.pyi` stubs without a `py.typed` marker (ADR 0114 pins it exactly);
+# only `dw_studio.core.adapters.cel` imports it.
+[[tool.mypy.overrides]]
+module = ["cel_expr_python", "cel_expr_python.*"]
+follow_untyped_imports = true
+
+# Ships no type information; the CEL adapter builds descriptor pools with it.
+[[tool.mypy.overrides]]
+module = ["google.protobuf", "google.protobuf.*"]
+ignore_missing_imports = true
+
 # Ships no type information (ADR 0116 pins it exactly); one wrapper,
 # `dw_platform.application.json_schema`, is the only importer.
 [[tool.mypy.overrides]]
@@ -301,6 +312,9 @@ forbidden_modules = [
     "dw_observability",
     "dw_evals",
     "dw_usage",
+    # The CEL binding (ADR 0114): its import name, read from the installed
+    # wheel (FOG-50). The port lives here; the binding never does.
+    "cel_expr_python",
 ]
 
 [[tool.importlinter.contracts]]
@@ -504,3 +518,29 @@ forbidden_modules = [
     "dw_studio.tools",
     "dw_studio.lifecycle",
 ]
+
+[[tool.importlinter.contracts]]
+# studio-skeleton R5.6; ADR 0114 decision 2: one adapter imports the CEL
+# binding, and every other module reaches expressions through
+# `dw_kernel.expressions.ExpressionEngine`. Indirect imports are allowed, so a
+# composition root that builds `CelCppEngine` has not imported the binding.
+name = "CEL binding only in dw_studio.core.adapters.cel"
+type = "forbidden"
+source_modules = [
+    "dw_kernel",
+    "dw_platform",
+    "dw_agent_runtime",
+    "dw_knowledge",
+    "dw_memory",
+    "dw_connectors",
+    "dw_observability",
+    "dw_evals",
+    "dw_studio",
+    "dw_usage",
+    "dw_api",
+    "dw_docgen",
+    "dw_worker",
+]
+forbidden_modules = ["cel_expr_python"]
+ignore_imports = ["dw_studio.core.adapters.cel.** -> cel_expr_python"]
+allow_indirect_imports = true

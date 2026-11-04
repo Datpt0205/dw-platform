@@ -11,6 +11,16 @@ dependencies = [
     "dw-agent-runtime",
     "pydantic>=2.10,<3",
     "sqlalchemy[asyncio]>=2.0.36,<2.1",
+    # The one CEL binding (ADR 0114 decision 2), pinned exactly: a 0.1.x C++
+    # wheel behind `ExpressionEngine` and a contract suite. Only
+    # `dw_studio.core.adapters.cel` imports it (import-linter).
+    "cel-expr-python==0.1.3",
+    # Typed objects reach the binding as messages of a descriptor pool built per
+    # expression environment (workflow-nodes 01 step 3).
+    "protobuf==7.36.1",
+    # `fmt.datetime`/`fmt.date` read Asia/Ho_Chi_Minh through `zoneinfo`; a host
+    # without an IANA database (Windows) needs the package, never the binding's.
+    "tzdata>=2024.1",
 ]
 
 [build-system]
