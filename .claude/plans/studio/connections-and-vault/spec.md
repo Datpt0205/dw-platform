@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 2/11/2026
-Sẵn sàng: ĐẠT (3/11/2026; 0 CRITICAL, 0 HIGH; ticket 02-04)
+Sẵn sàng: ĐẠT (4/11/2026; 0 CRITICAL, 0 HIGH; ticket 02-05)
 
 Lát Marketing cần gửi email và sau này gửi Zalo tới lead, mà muốn vậy công ty phải lưu được token và
 mật khẩu của nhà cung cấp, và nền tảng phải gọi ra Internet mà không bao giờ lộ bí mật hay bị lừa gọi
@@ -258,6 +258,10 @@ quyết 2; V4.20; V4.35).
 - R5.21 NẾU người gọi tạo một Kết nối khi công ty còn một Kết nối chưa `revoked` cho cùng `connector_key` và
   `external_account`, THÌ API kết nối PHẢI trả 409 `conflict` với `details.reason_code` `connection_exists` và không
   ghi, để Kết nối đã tắt chỉ trở lại qua bật lại hai người (D11).
+- R5.22 NẾU một lệnh sửa Kết nối đổi `settings` (thiết lập không bí mật mà `settings_schema` của Bản mô tả khai: với
+  `smtp` là host, cổng, TLS, tên đăng nhập, `data_location` và `processor`) mà không mang giá trị mới cho mọi trường bí
+  mật của trình kết nối, THÌ API kết nối PHẢI trả 422 `settings_need_new_secret` và không đổi dòng hay phong bì nào, vì
+  host là nơi mật khẩu đã lưu được gửi tới (gate ticket 05, 4/11/2026 (b)).
 
 ### R6 — Bản mô tả trình kết nối biên dịch thành công cụ
 
@@ -268,8 +272,12 @@ V4.30).
 
 - R6.1 KHI nạp một Bản mô tả trình kết nối `dw.connector/v1`, bộ nạp PHẢI biên dịch mỗi Hành động thành
   một Đặc tả công cụ lớp nền tảng có input và output JSON Schema, Mức tác động và `max_retries` là 0.
-- R6.2 NẾU một Bản mô tả khai một trường bí mật trong input, hoặc `max_retries` khác 0, THÌ bộ nạp PHẢI
-  từ chối và không đăng ký Hành động nào.
+- R6.2 NẾU một Bản mô tả khai một trường bí mật trong input, `max_retries` khác 0, hay vi phạm một luật nạp của
+  ADR-0116 (Accepted) quyết 2 và 4 (Hành động không namespace, Hành động ghi khai `side_effect_level: none` không lý do,
+  thiếu `effect_class`, `data_location`, `processor`, `pd_categories`, `data_classification` hay `output_trust`, Hành
+  động `transport: http` có `egress_hosts` rỗng), THÌ bộ nạp PHẢI từ chối và không đăng ký Hành động nào; Hành động
+  `transport: smtp` không khai `egress_hosts`, vì host của nó là của Kết nối (R5.22, R7.3; ADR-0116 (Accepted) sửa đổi
+  4/11/2026).
 - R6.3 KHI một Hành động trả kết quả, `ManifestActionHandler` PHẢI trả kết quả đã kiểm output schema cho
   `ToolExecutor` mà không tự bọc hay cắt, vì chỉ bộ bọc của tools-and-skills:R5.1 bọc và cắt đầu ra công
   cụ (YC48).
@@ -313,6 +321,15 @@ quyết (YC41, YC64; DO-48; ADR-0116 (Accepted) quyết 2; V4.30).
   `NotDispatchedError` mang mã của lần dừng (V4.30).
 - R7.8 NẾU máy chủ SMTP trả một mã 4yz hay 5yz cho một lệnh của lời gọi, kể cả trả lời sau dấu kết thúc dữ liệu, THÌ
   `SmtpEgress` PHẢI ném `RejectedError` mang mã SMTP đó và không gửi lại (RFC 5321 mục 4.2; V4.30).
+- R7.9 NẾU một header của thư `email.send` dựng ra chứa CR hay LF, hay đối số nêu từ hai địa chỉ người nhận trở lên, THÌ
+  `SmtpEgress` PHẢI từ chối với `NotDispatchedError` `message_invalid` (hay ToolExecutor từ chối theo input schema) và
+  không mở kết nối SMTP; `RCPT TO` chỉ lấy từ `to` đã kiểm, `From` là `from_address` của Kết nối (gate ticket 05,
+  4/11/2026 (d)).
+- R7.10 NẾU `settings.is_deployed` là đúng và chứng chỉ TLS của máy chủ SMTP không xác minh được theo `host` của thiết
+  lập, hay cổng khác 465 và 587, THÌ `SmtpEgress` PHẢI từ chối trước `AUTH` và không gửi mật khẩu.
+- R7.11 NẾU Kết nối của một lời gọi khai `data_location` khác `vn`, THÌ `ManifestActionHandler` PHẢI từ chối với
+  `egress_blocked:data_location` trước khi mở bí mật, vì mọi công ty ở W1 có Lộ trình dữ liệu `vn_only`
+  (ADR-0123 (Accepted) quyết 3, 5).
 
 ## Trong phạm vi
 
@@ -361,7 +378,7 @@ quyết (YC41, YC64; DO-48; ADR-0116 (Accepted) quyết 2; V4.30).
 | W2: bộ điều phối OAuth và làm mới token một luồng; bên ghi của Connection status `pending`, `needs_reauth`, `revoked`, audit `connection.revoked`, thông báo `needs_reauth` và outbox `connection.status_changed` v1                                                                           | YC65; `from_briefs` B8a 10, 11; P1 chỉ kết nối dùng chung, chưa có luồng cấp quyền; ở P1 không lệnh nào đưa Kết nối vào ba trạng thái ấy và không ai đọc sự kiện ấy, nên chúng đi cùng bên ghi đầu tiên (failure-modes #1; trigger của ticket 04 đã giữ bảng chuyển đủ)                                                                              | connections-and-vault đợt sau (W2)                                   |
 | W2: định tuyến sự kiện ứng dụng nhà cung cấp theo tài khoản ngoài; cùng Page hay OA do hai công ty nối thì gửi tới cả hai                                                                                                                                                                      | YC97; `from_briefs` B8a 13 (phần định tuyến); cần cửa `provider_app` của workflow-triggers; DO-48.2: không bật trước ý kiến luật sư (compliance-pdpl/02, câu 3 của discovery/18)                                                                                                                                                                     | connections-and-vault đợt sau (W2); workflow-triggers                |
 | W2: trình kết nối Zalo OA và ZNS; Meta Lead Ads                                                                                                                                                                                                                                                | YC97; `from_briefs` B8a 14, 15; cần OAuth và duyệt ứng dụng                                                                                                                                                                                                                                                                                          | connections-and-vault đợt sau (W2)                                   |
-| W2: trường `egress_hosts` trong `dw.connector/v1` và cách gắn `CatalogueHostsPort` từ sổ Bản mô tả; bộ kiểm chữ ký `standard_webhooks_v1a`, `meta_x_hub_signature_256`, `zalo_oa_zevent` trong `VERIFIERS`                                                                                     | W1 không có Hành động HTTP nào của trình kết nối (SMTP đi `SmtpEgress`) và không có cửa nhận nào dùng ba lược đồ ấy (workflow-triggers:R5.2 chỉ dùng Standard Webhooks v1 và token tĩnh); W1 gắn `CatalogueHostsPort` rỗng, nên R3.17 từ chối mọi lời gọi `connector` và `oauth`; `zalo_oa_zevent` cần đo trên OA thật (ADR-0115 (Accepted) quyết 8) | connections-and-vault đợt sau (W2), cùng trình kết nối HTTP đầu tiên |
+| W2: cách gắn `CatalogueHostsPort` từ sổ Bản mô tả (trường `egress_hosts` có từ W1, bắt buộc với Hành động `transport: http` theo ADR-0116 (Accepted) quyết 2); bộ kiểm chữ ký `standard_webhooks_v1a`, `meta_x_hub_signature_256`, `zalo_oa_zevent` trong `VERIFIERS`                          | W1 không có Hành động HTTP nào của trình kết nối (SMTP đi `SmtpEgress`) và không có cửa nhận nào dùng ba lược đồ ấy (workflow-triggers:R5.2 chỉ dùng Standard Webhooks v1 và token tĩnh); W1 gắn `CatalogueHostsPort` rỗng, nên R3.17 từ chối mọi lời gọi `connector` và `oauth`; `zalo_oa_zevent` cần đo trên OA thật (ADR-0115 (Accepted) quyết 8) | connections-and-vault đợt sau (W2), cùng trình kết nối HTTP đầu tiên |
 | W2: gửi email qua Gmail của công ty bằng ứng dụng Google nội bộ của khách, như một Hành động khai trong Bản mô tả trình kết nối                                                                                                                                                                | YC107; N8; DO-20 (c): nền tảng không giữ ứng dụng Google nào (ticket 01 bước 4); cần bộ điều phối OAuth (YC65); P1 gửi qua SMTP (R7)                                                                                                                                                                                                                 | connections-and-vault đợt sau (W2)                                   |
 | W2: lane gửi tin đã xếp hàng, hỏi công tắc Tắt khẩn cấp trước khi gọi nhà cung cấp (hợp đồng agent-lifecycle:R8.4)                                                                                                                                                                             | Đạt giao chủ lane cho spec này ngày 24/10/2026; tin chỉ được hoãn và xếp hàng từ W2, nên W1 chỉ có lane giả trong test của agent-lifecycle                                                                                                                                                                                                           | connections-and-vault đợt sau (W2)                                   |
 | W3: trình kết nối TikTok Lead Generation                                                                                                                                                                                                                                                       | N8: rút khỏi phần W2 của YC97; chỉ làm sau một ticket khám phá kiểm API (FOG-82)                                                                                                                                                                                                                                                                     | connections-and-vault đợt sau (W3); marketing-pilot                  |
@@ -444,7 +461,9 @@ không `workspace_id`, mỗi bảng một dòng có lý do trong `_TENANT_WIDE_O
   ở ticket 04 (R5.7); `share_scope text NOT NULL` CHECK (`owner`, `workspace`,
   `workspace_subtree`); `external_account text`, bắt buộc ở `POST` của P1 và không đổi qua `PATCH`; `status text NOT NULL` CHECK (`pending`, `active`,
   `needs_reauth`, `disabled`, `revoked`), không DEFAULT; `scopes text[] NOT NULL DEFAULT '{}'`;
-  `last_used_at timestamptz` NULL; `compromised_at timestamptz` NULL, không DEFAULT, thời điểm của lần thu hồi vì lộ
+  `last_used_at timestamptz` NULL, ghi sau lời gọi `succeeded` (ticket 05); `settings jsonb NOT NULL DEFAULT '{}'`,
+  CHECK object và ≤ 4 096 byte, thiết lập không bí mật theo `settings_schema` của Bản mô tả, đổi qua `PATCH` chỉ cùng
+  giá trị mới của mọi trường bí mật (R5.22; ticket 05); `compromised_at timestamptz` NULL, không DEFAULT, thời điểm của lần thu hồi vì lộ
   gần nhất, chỉ `platform.revoke_connection_secrets` ghi (grant cột của `dw_app` không có UPDATE trên nó), trigger
   `platform.guard_connection_compromised_at()` từ chối mọi UPDATE đặt nó về NULL hay lùi nó về trước giá trị đã có,
   và lane `credential_purge` không đụng nó, nên dấu thu hồi không mất khi vật liệu bí mật bị xóa (R1.16, R5.16; H-28;
@@ -485,7 +504,9 @@ revoked`; `disabled → active | revoked`; `revoked` là trạng thái cuối (R
   ký), theo `platform.workspace_reach` tới workspace sở hữu: danh sách chỉ gồm Kết nối trong tầm đọc, theo id ngoài tầm
   đọc → 404, đọc được mà không ghi được → 403 (R5.18), `POST` tạo ở workspace đang làm việc; `share_scope` chỉ
   `workspace` (R5.20); tạo khi còn Kết nối chưa `revoked` cho cùng tài khoản → 409 `connection_exists` (R5.21); trường
-  bí mật `writeOnly`; `PATCH` chỉ nhận `name` và giá trị mới của trường bí mật; `.../disable` lên Kết nối không
+  bí mật `writeOnly`; `POST` nhận `settings` kiểm theo `settings_schema` (422 `settings_invalid`; với `smtp`,
+  `external_account` bằng `from_address`, 422 `external_account_mismatch`); `PATCH` chỉ nhận `name` và giá trị mới
+  của trường bí mật, `settings` chỉ cùng giá trị mới của mọi trường bí mật (422 `settings_need_new_secret`, R5.22); `.../test` không nhận `Idempotency-Key`; `.../disable` lên Kết nối không
   `active` → 409 `connection_not_active`; `Idempotency-Key` cho `POST` và `PATCH`, vân tay bỏ giá trị bí mật (R1.2);
   DELETE còn phụ thuộc → 409
   `connection_in_use`. `.../enable` trả 202 kèm id yêu cầu `connections.enable` nằm ở workspace sở hữu (R5.10), 409
@@ -553,6 +574,8 @@ revoked`; `disabled → active | revoked`; `revoked` là trạng thái cuối (R
 | CV29 | Lời gọi trình kết nối chỉ tới host của Bản mô tả; chỉ `https` khi triển khai                  | R3.17, R3.20                                 | Purpose `connector` không `connector_key` → `egress_blocked:host_not_allowed`; `connector_key` có `egress_hosts` `{api.example.vn}` gọi `other.example.vn` → `host_not_allowed`, máy giả không nhận gì; purpose `oauth` như vậy → như vậy; với settings triển khai, `http://` tới host được phép, hay một bước chuyển hướng hạ về `http://` → `egress_blocked:scheme`, không gửi `Authorization` dạng rõ; gỡ kiểm `egress_hosts` hay kiểm `https` → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | CV30 | Gỡ Máy chủ được phép có hiệu lực ngay, chỉ trong công ty mình                                 | R3.18, R3.19                                 | `DELETE` của người giữ `integrations.admin` → `removed_at` có giá trị, audit `egress.allowlist.removed` cùng giao dịch, lời gọi kế tiếp tới đích đó → `host_not_allowed`; công ty B `DELETE` id của công ty A → 404, dòng của A còn hiệu lực; người không giữ `integrations.admin` → 403, dòng còn; gỡ lọc `removed_at` khỏi kiểm danh sách hay gỡ kiểm quyền ở route → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | CV31 | Mỗi route kết nối chỉ trên Kết nối người gọi với tới                                          | R5.18                                        | Người giữ `connections.read` và `connections.manage` chỉ ở W1: danh sách không có Kết nối của W2, `GET {id}`, `dependents` của W2 → 404; người đọc được W2 mà chỉ giữ `connections.manage` ở W1: `PATCH` (xoay), `DELETE`, `disable`, `enable`, `revoke-credentials` trên Kết nối W2 → 403, không phong bì, dòng hay yêu cầu nào đổi; `POST` trong ngữ cảnh W2 → 403; gỡ kiểm `workspace_reach` ở luật ghi → `PATCH` chéo workspace thành công, test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| CV32 | Thiết lập của Kết nối chỉ đổi cùng bí mật mới; nơi xử lý do Kết nối khai, không mặc định      | R5.22, R7.11                                 | `POST` `smtp` thiếu `data_location` hay sai kiểu → 422 `settings_invalid`, không dòng nào; `external_account` khác `from_address` → 422; `PATCH` đổi `host` không mang mật khẩu mới → 422 `settings_need_new_secret`, dòng và phong bì không đổi; Kết nối `data_location: foreign` → `email.send` `egress_blocked:data_location`, `platform.open_secret` không được gọi; gỡ kiểm mật khẩu mới hay gỡ nhánh nơi xử lý → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| CV33 | Thư SMTP không chèn header, một người nhận, TLS xác minh theo host                            | R7.9, R7.10                                  | `subject` có CR/LF rồi `Bcc:` → `message_invalid`, máy giả không nhận kết nối nào; hai địa chỉ trong `to` → input schema từ chối; thân có một dòng chỉ một dấu chấm rồi `MAIL FROM` → máy giả nhận đúng một thư và một `RCPT TO`; với settings triển khai, chứng chỉ tự ký hay sai tên → `tls_failed` trước `AUTH`, cổng 2525 → `egress_blocked:port`; gỡ `email.policy.SMTP` hay tắt kiểm hostname → test đỏ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 
 ## Tiêu chí xong
 
@@ -1021,6 +1044,44 @@ connection_id)` trả `total` và `visible` (tenant-config:R3.4, R3.7). Nếu sa
   Dữ liệu và ticket 02 ghi bốn mục ấy là của ticket 04 (sửa ticket 02 vì mâu thuẫn; ticket 02 dựng không đổi). Nếu sai
   thì: ticket 02 tạo chúng và ticket 04 chỉ thêm trigger.
 - 3/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 04.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): gate `checking-plan-readiness` của ticket 05 (builder check và boundary
+  walk, ba subagent, rồi một lượt xác nhận), 1 CRITICAL và 6 HIGH, sửa theo khuyến nghị:
+  (a) CRITICAL, trái ADR-0116 (Accepted) quyết 2 và 4: luật nạp của ticket chỉ có trường bí mật, `max_retries` và khối
+  `delivery`, thiếu namespace, lý do của `none` cho Hành động ghi, `effect_class`, `data_location`, `pd_categories`,
+  phân loại, và spec dời `egress_hosts` sang W2 trong khi ADR coi `egress_hosts` rỗng là lỗi nạp. Sửa: R6.2 gồm mọi luật
+  của ADR, `transport` (`http` | `smtp`), `egress_hosts` bắt buộc với `http`, không có với `smtp`;
+  ADR-0116 (Accepted) sửa đổi 4/11/2026 ghi vế `smtp`. Nếu sai thì: không đường nào được nhận; bỏ một luật là sửa ADR trước.
+  (b) host, cổng, TLS và địa chỉ gửi của SMTP không có chỗ lưu (`platform.connections` không cột, `PATCH` chỉ nhận
+  `name` và bí mật), và một host đổi được là đường gửi mật khẩu đã lưu tới máy khác: cột `settings` kiểm theo
+  `settings_schema` của Bản mô tả, `PATCH` đổi nó chỉ cùng giá trị mới của mọi trường bí mật (R5.22, CV32; lượt xác nhận
+  thay bản ghi-một-lần, vì Kết nối đang dùng không xóa được và R5.21 chặn tạo bản thứ hai, nên đổi cổng sẽ kẹt);
+  `external_account` của `smtp` là `from_address` (M13 của ticket 04). Nếu sai thì: `settings` ghi một lần và R5.21 nới
+  cho một Kết nối thay thế.
+  (c) `POST .../test` không có lượt chạy nên không `run_mode`, trong khi R7.5 từ chối mọi chế độ khác `live`:
+  `SmtpEgress.probe` chỉ `EHLO`, `AUTH`, `QUIT`, `send` đòi `run_mode` không mặc định; route không hỏi
+  `connection_usable`, không nhận `Idempotency-Key`. Nếu sai thì: `call_site` thứ tư `probe` trong `UsableContext`.
+  (d) đối số `email.send` không tin cậy mà không luật nào cấm CR/LF trong header, nhiều người nhận hay dấu kết thúc dữ
+  liệu trong thân, và Đặc tả công cụ không mang `message` nên sàn gửi tin (ADR-0124 (Accepted)) không thấy người nhận:
+  input `{to, subject, text}` đóng, `message.recipient_fields: [to]`, `email.policy.SMTP`, `RCPT TO` chỉ từ `to`, `From`
+  cố định, `Message-ID` băm (R7.9, CV33). Nếu sai thì: thêm `cc` với mỗi địa chỉ trong `recipient_fields`.
+  (e) handler lấy `run_requested_at`, chủ thể và workspace từ đâu, `connection_usable` hỏi ở đâu: `RunBindingsPort` trả
+  `BoundConnection` đọc từ dòng lượt chạy và bản kê (tenant-config/05), handler là chỗ hỏi duy nhất lúc gọi ra ngoài,
+  kiểm và mở bí mật trong một giao dịch với dòng Kết nối `FOR SHARE`; TLS xác minh theo host (R7.10). Nếu sai thì:
+  `RunContext` mang `run_requested_at` đặt ở mọi chỗ dựng.
+  (f) `smtp@1.0.0` khai `data_location: VN` cho host do công ty chọn, mặc định mở (ADR-0123 (Accepted) quyết 5: không
+  khai là nước ngoài): Kết nối khai `data_location`, `processor` trong `settings`, Bản mô tả khai `connection`, W1 từ chối
+  `foreign` (R7.11). Nếu sai thì: Bản mô tả khai `foreign` và công ty thí điểm cần bản cam kết.
+  (g) ticket 02 và 03 để lại cho ticket này dựng `KmsPort`, `SecretStore`, `EgressClient` ở worker, ticket 04 để lại
+  `last_used_at` và danh mục: bước 10 dựng chúng ở worker cùng `RunBindingsPort` (thêm `dw-studio`), handler ghi
+  `last_used_at` sau `succeeded`, `SmtpEgress` vào danh sách được gọi `Secret.reveal()`. Nếu sai thì: worker dựng ở
+  `build_registry` như ticket 03 ghi.
+  Lượt xác nhận (builder check mới trên bản đã sửa): 0 CRITICAL, 3 HIGH, sửa: (h) tên Điểm gắn đến từ cấu hình đã niêm
+  phong của Bước hay mục toolset, không từ đối số của model; (i) input của `email.send` mang `unsubscribe_url` mà sàn gửi
+  tin của executor điền và đòi (`executor.py:732`), thư có `List-Unsubscribe`, `approval_policy: always`
+  (ADR-0124 (Accepted) quyết 5, 7); (j) tiêu chí R1.2 không đỏ được nếu `SmtpEgress` không mang văn bản của máy chủ: văn bản không
+  rời `SmtpEgress`, đột biến là đưa nó vào lỗi. Nếu sai thì: (h) Hành động khai một tên Điểm gắn cố định; (i) không có
+  đường an toàn hơn; (j) lỗi mang văn bản đã che và đột biến là tắt che.
+- 4/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 05.
 
 ## Danh sách ticket
 
