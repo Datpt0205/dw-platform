@@ -1,0 +1,94 @@
+# Mutation check of tools-and-skills ticket 04: scripts/mutate.py runs this file.
+# One mutation per control of the strict mode (R4.4, R4.6, with R1.1 and R1.3
+# held by the executor): the schema and the flag go together, the ceiling, the
+# numeric bounds, the keywords left out, and the nulls dropped before the
+# executor while a required one is still refused (failure-modes #3).
+mutations:
+  # ---------------------------------------------------------------- R4.4 --
+  - name: R4.4 the strict schema goes without the provider's strict flag
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/agent_factory.py
+    old: "        *([StrictToolsMiddleware()] if spec.pinned is not None and spec.pinned.strict else []),\n"
+    new: ""
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_strict_tool_schemas.py::test_a_strict_route_sends_the_strict_schema_byte_for_byte_with_the_flag
+  - name: R4.4 the strict flag goes with the plain schema
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/studio_tools.py
+    old: "        args_schema=render_input_schema(original, capabilities),"
+    new: "        args_schema=original,"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_strict_tool_schemas.py::test_a_strict_route_sends_the_strict_schema_byte_for_byte_with_the_flag
+  - name: R4.4 the middleware sets no strict flag
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/studio_tools.py
+    old: '        settings = {**request.model_settings, "strict": True}'
+    new: "        settings = dict(request.model_settings)"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_strict_tool_schemas.py::test_a_strict_route_sends_the_strict_schema_byte_for_byte_with_the_flag
+  - name: R4.4 an optional property is not made nullable
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/studio_tools.py
+    old: "                name: _strict(child, kept) if name in required else _nullable(_strict(child, kept))"
+    new: "                name: _strict(child, kept)"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_strict_tool_schemas.py::test_a_strict_route_sends_the_strict_schema_byte_for_byte_with_the_flag
+  - name: R4.4 array items are not made strict
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/studio_tools.py
+    old: '            out["items"] = _strict(value, kept)'
+    new: '            out["items"] = dict(value)'
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_strict_tool_schemas.py::test_a_strict_route_sends_the_strict_schema_byte_for_byte_with_the_flag
+  - name: R4.4 past max_strict_tools the tools stay strict
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/studio_tools.py
+    old: "    if capabilities.strict_tools and ceiling is not None and count > ceiling:"
+    new: "    if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_strict_tool_schemas.py::test_past_max_strict_tools_every_tool_is_plain
+  - name: R4.4 an unset ceiling reads as no strict tools
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/studio_tools.py
+    old: "    if capabilities.strict_tools and ceiling is not None and count > ceiling:"
+    new: "    if capabilities.strict_tools and (ceiling is None or count > ceiling):"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_strict_tool_schemas.py::test_an_unset_ceiling_is_no_ceiling
+  - name: R4.4 numeric bounds kept without numeric_bounds
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/studio_tools.py
+    old: "    kept = _STRICT_KEYWORDS | (_NUMERIC_BOUNDS if capabilities.numeric_bounds else frozenset())"
+    new: "    kept = _STRICT_KEYWORDS | _NUMERIC_BOUNDS"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_strict_tool_schemas.py::test_without_numeric_bounds_the_model_sees_no_minimum_and_the_executor_still_does
+  - name: R4.4 every keyword of the original reaches the strict schema
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/studio_tools.py
+    old: "        elif keyword in kept:"
+    new: '        elif keyword not in ("required", "additionalProperties"):'
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_strict_tool_schemas.py::test_keywords_a_strict_schema_does_not_carry_stay_out_of_it
+  # ------------------------------------------------- step 3 (R1.1, R1.3) --
+  - name: R4.4 the nulls are not dropped before the executor
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/studio_tools.py
+    old: "            admit=partial(drop_strict_nulls, original) if capabilities.strict_tools else None,"
+    new: "            admit=None,"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_strict_tool_schemas.py::test_a_null_for_an_optional_key_is_dropped_before_the_executor
+  - name: R4.4 the call body ignores what admit makes of the arguments
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langchain_tools.py
+    old: "        kwargs = sent if admit is None else admit(sent)"
+    new: "        kwargs = sent"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_strict_tool_schemas.py::test_a_null_for_an_optional_key_is_dropped_before_the_executor
+  - name: R1.1 a required key's null is dropped too
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/studio_tools.py
+    old: '            key in (b.get("required") or ()) or _accepts_null(b["properties"][key])'
+    new: '            _accepts_null(b["properties"][key])'
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_strict_tool_schemas.py::test_a_null_for_a_required_key_still_reaches_the_executor_and_is_refused
+  - name: R1.1 a null the original schema accepts is dropped
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/studio_tools.py
+    old: '            key in (b.get("required") or ()) or _accepts_null(b["properties"][key])'
+    new: '            key in (b.get("required") or ())'
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_strict_tool_schemas.py::test_a_null_the_original_schema_accepts_is_kept
+  # ---------------------------------------------------------------- R4.6 --
+  - name: R4.6 the flag is read as always strict
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/studio_tools.py
+    old: "    if not capabilities.strict_tools:\n        return copying.deepcopy(dict(schema))\n"
+    new: ""
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_strict_tool_schemas.py::test_a_route_without_strict_tools_renders_the_original_schema
+      - packages/python/dw_agent_runtime/tests/unit/test_strict_tool_schemas.py::test_a_plain_route_sends_the_original_schema_and_no_strict_flag
