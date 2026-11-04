@@ -1,0 +1,274 @@
+# Mutation check of studio-skeleton ticket 04: scripts/mutate.py runs this file
+# at the queue's close (wave-close.md). One mutation per control the ticket adds,
+# each guarded by a pytest case of apps/api/tests/unit/test_compose_policy.py,
+# which runs the rules on hand-built rendered models without Docker. The same
+# controls are planted in real compose files by scripts/test_compose_policy.sh
+# (bash, so not run by mutate.py); each rule switched off was also seen to turn
+# that suite red by hand on 5/11/2026 (ticket Comments). The script is not under
+# src/, so mutate.py mutates it in place, one at a time.
+mutations:
+  - name: R8.1 dw-internal rule off
+    file: scripts/verify_compose_policy.py
+    old: '    "dw-internal": _each(_on_dw_internal),'
+    new: '    "dw-internal": lambda _r, _s: False,'
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_each_defect_breaks_its_own_rule
+  - name: R8.1 an alias of dw-internal is not dw-internal
+    file: scripts/verify_compose_policy.py
+    old: "    return any(_network_name(model, key) == target for key in _networks(spec))"
+    new: '    return "dw-internal" in _networks(spec)'
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_an_alias_of_dw_internal_is_dw_internal
+  - name: R8.2 a network that is not internal passes
+    file: scripts/verify_compose_policy.py
+    old: '        if (model.get("networks", {}).get(key) or {}).get("internal") is not True:'
+    new: "        if False:"
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_each_defect_breaks_its_own_rule
+  - name: R8.2 a service with no network passes
+    file: scripts/verify_compose_policy.py
+    old: '    if not _networks(spec) and not spec.get("network_mode"):'
+    new: "    if False:"
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_each_defect_breaks_its_own_rule
+  - name: R8.2 an undeclared caller on the network passes
+    file: scripts/verify_compose_policy.py
+    old: "        if members - allowed:"
+    new: "        if False:"
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_sharing_a_network_with_an_undeclared_caller_is_red
+  - name: R8.3 a pulled image without a digest passes
+    file: scripts/verify_compose_policy.py
+    old: '        return not _PULLED_PINNED.match(str(spec.get("image") or ""))'
+    new: "        return False"
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_each_defect_breaks_its_own_rule
+  - name: R8.3 an unpinned FROM passes
+    file: scripts/verify_compose_policy.py
+    old: "    return not images or not all(_PIN_DIGEST.search(image) for image in images)"
+    new: "    return False"
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_a_built_image_needs_every_from_pinned
+      - apps/api/tests/unit/test_compose_policy.py::test_from_an_arg_reads_its_default
+  - name: R8.3 an unreadable Dockerfile passes
+    file: scripts/verify_compose_policy.py
+    old: "    if text is None:\n        return True\n"
+    new: "    if text is None:\n        return False\n"
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_a_missing_dockerfile_is_unpinned
+  - name: R8.4 ports rule off
+    file: scripts/verify_compose_policy.py
+    old: '    "ports": _each(_publishes_ports, tuple(c for c in COMBINATIONS if c != PORTS_ALLOWED_IN)),'
+    new: '    "ports": lambda _r, _s: False,'
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_each_defect_breaks_its_own_rule
+  - name: R8.4 ports read in the base file only
+    file: scripts/verify_compose_policy.py
+    old: "tuple(c for c in COMBINATIONS if c != PORTS_ALLOWED_IN)"
+    new: '("base",)'
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_ports_only_in_the_dev_overlay_pass
+  - name: R8.5 healthcheck rule off
+    file: scripts/verify_compose_policy.py
+    old: '    "healthcheck": _each(_no_healthcheck),'
+    new: '    "healthcheck": lambda _r, _s: False,'
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_each_defect_breaks_its_own_rule
+  - name: R8.5 a disabled healthcheck counts
+    file: scripts/verify_compose_policy.py
+    old: '    return not check or bool(check.get("disable")) or'
+    new: "    return not check or False or"
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_each_defect_breaks_its_own_rule
+  - name: R8.5 read_only rule off
+    file: scripts/verify_compose_policy.py
+    old: '    "read_only": _each(lambda _m, _n, s: s.get("read_only") is not True),'
+    new: '    "read_only": lambda _r, _s: False,'
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_each_defect_breaks_its_own_rule
+  - name: R8.5 cap_drop rule off
+    file: scripts/verify_compose_policy.py
+    old: '        lambda _m, _n, s: "ALL" not in [str(c).upper() for c in s.get("cap_drop") or []]'
+    new: "        lambda _m, _n, s: False"
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_each_defect_breaks_its_own_rule
+  - name: R8.5 no-new-privileges rule off
+    file: scripts/verify_compose_policy.py
+    old: '        lambda _m, _n, s: "no-new-privileges:true" not in (s.get("security_opt") or [])'
+    new: "        lambda _m, _n, s: False"
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_each_defect_breaks_its_own_rule
+  - name: R8.5 init rule off
+    file: scripts/verify_compose_policy.py
+    old: '    "init": _each(lambda _m, _n, s: s.get("init") is not True),'
+    new: '    "init": lambda _r, _s: False,'
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_each_defect_breaks_its_own_rule
+  - name: R8.5 user 0:0 and root are not root
+    file: scripts/verify_compose_policy.py
+    old: '    return user.split(":", 1)[0] in ("", "0", "root")'
+    new: '    return user == ""'
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_each_defect_breaks_its_own_rule
+  - name: R8.5 mem_limit rule off
+    file: scripts/verify_compose_policy.py
+    old: '    "mem_limit": _each(lambda _m, _n, s: not s.get("mem_limit")),'
+    new: '    "mem_limit": lambda _r, _s: False,'
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_each_defect_breaks_its_own_rule
+  - name: R8.5 an unlimited pids_limit passes
+    file: scripts/verify_compose_policy.py
+    old: '        lambda _m, _n, s: not (isinstance(s.get("pids_limit"), int) and s["pids_limit"] > 0)'
+    new: '        lambda _m, _n, s: s.get("pids_limit") is None'
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_each_defect_breaks_its_own_rule
+  - name: R8.5 deploy memory read in uat only
+    file: scripts/verify_compose_policy.py
+    old: "    for combo in DEPLOYED:"
+    new: "    for combo in DEPLOYED[:1]:"
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_deploy_memory_is_required_in_uat_and_in_prod_each
+  - name: R8.5 network_mode rule off
+    file: scripts/verify_compose_policy.py
+    old: '    "network_mode": _each(lambda _m, _n, s: bool(s.get("network_mode"))),'
+    new: '    "network_mode": lambda _r, _s: False,'
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_each_defect_breaks_its_own_rule
+  - name: R8.5 privileged rule off
+    file: scripts/verify_compose_policy.py
+    old: '    "privileged": _each(lambda _m, _n, s: s.get("privileged") is True),'
+    new: '    "privileged": lambda _r, _s: False,'
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_each_defect_breaks_its_own_rule
+  - name: R8.5 cap_add rule off
+    file: scripts/verify_compose_policy.py
+    old: '    "cap_add": _each(lambda _m, _n, s: bool(s.get("cap_add"))),'
+    new: '    "cap_add": lambda _r, _s: False,'
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_each_defect_breaks_its_own_rule
+  - name: R8.5 pid-host rule off
+    file: scripts/verify_compose_policy.py
+    old: '    "pid-host": _each(lambda _m, _n, s: s.get("pid") == "host"),'
+    new: '    "pid-host": lambda _r, _s: False,'
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_each_defect_breaks_its_own_rule
+  - name: R8.5 ipc-host rule off
+    file: scripts/verify_compose_policy.py
+    old: '    "ipc-host": _each(lambda _m, _n, s: s.get("ipc") == "host"),'
+    new: '    "ipc-host": lambda _r, _s: False,'
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_each_defect_breaks_its_own_rule
+  - name: R8.5 docker-socket rule off
+    file: scripts/verify_compose_policy.py
+    old: '    "docker-socket": _each(_mounts_docker_socket),'
+    new: '    "docker-socket": lambda _r, _s: False,'
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_each_defect_breaks_its_own_rule
+  - name: R8.6 profile rule off
+    file: scripts/verify_compose_policy.py
+    old: '    "profile": _each(lambda _m, n, s: n not in (s.get("profiles") or [])),'
+    new: '    "profile": lambda _r, _s: False,'
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_each_defect_breaks_its_own_rule
+  - name: R8.7 ci-config rule off
+    file: scripts/verify_compose_policy.py
+    old: '    "ci-config": _no_ci_config,'
+    new: '    "ci-config": lambda _r, _s: False,'
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_ci_config_and_smoke_lines_are_required
+  - name: R8.7 a commented-out compose line counts
+    file: scripts/verify_compose_policy.py
+    old: '        if stripped.startswith("#"):'
+    new: "        if False:"
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_ci_config_and_smoke_lines_are_required
+  - name: R8.7 ci-smoke rule off
+    file: scripts/verify_compose_policy.py
+    old: '    "ci-smoke": _no_ci_smoke,'
+    new: '    "ci-smoke": lambda _r, _s: False,'
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_ci_config_and_smoke_lines_are_required
+  - name: R8.7 a built image outside the trivy list passes
+    file: scripts/verify_compose_policy.py
+    old: '            if str(spec.get("image") or "") not in rendered.ci.trivy_images:'
+    new: "            if False:"
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_ci_trivy_reads_the_list_for_built_and_the_grep_for_pulled
+  - name: R8.7 a pulled image passes without the pinned-pull scan
+    file: scripts/verify_compose_policy.py
+    old: "        elif not rendered.ci.trivy_scans_pinned_pulls:"
+    new: "        elif False:"
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_ci_trivy_reads_the_list_for_built_and_the_grep_for_pulled
+  - name: R8.8 a violation without an exception line is not reported
+    file: scripts/verify_compose_policy.py
+    old: "        if service not in exceptions.get(rule, {})"
+    new: "        if False"
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_a_violation_without_an_exception_line_is_red
+  - name: R8.9 a stale exception is not reported
+    file: scripts/verify_compose_policy.py
+    old: "            if (service, rule) not in current:"
+    new: "            if False:"
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_an_exception_that_no_longer_matches_is_stale
+  - name: R8.10 an exception outside the base set needs no ADR
+    file: scripts/verify_compose_policy.py
+    old: "            elif (service, rule) not in base:"
+    new: "            elif False:"
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_an_exception_outside_the_base_set_needs_an_adr
+  - name: R8.10 an exception for an unknown rule passes
+    file: scripts/verify_compose_policy.py
+    old: "        if rule not in RULES:"
+    new: "        if False:"
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_an_exception_for_an_unknown_rule_is_red
+  - name: R8.10 a Proposed ADR admits
+    file: scripts/verify_compose_policy.py
+    old: '        and status.group(1) == "Accepted"'
+    new: "        and True"
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_an_adr_that_does_not_name_both_or_is_not_accepted_does_not
+  - name: R8.10 a substring of the service admits
+    file: scripts/verify_compose_policy.py
+    old: '        and f"`{service}`" in body'
+    new: "        and service in body"
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_an_adr_that_does_not_name_both_or_is_not_accepted_does_not
+  - name: R8.10 a substring of the rule admits
+    file: scripts/verify_compose_policy.py
+    old: '        and f"`{rule}`" in body'
+    new: "        and rule in body"
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_an_adr_that_does_not_name_both_or_is_not_accepted_does_not
+  - name: R8.10 an ADR outside docs/adr admits
+    file: scripts/verify_compose_policy.py
+    old: "    if adr_dir not in path.parents or not path.is_file():"
+    new: "    if not path.is_file():"
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_an_adr_outside_docs_adr_does_not_admit
+  - name: a missing BASE_SHA is not named
+    file: scripts/verify_compose_policy.py
+    old: '    if _git(repo, "cat-file", "-e", f"{BASE_SHA}^{{commit}}").returncode != 0:'
+    new: "    if False:"
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_a_missing_base_commit_is_named
+  - name: a combination that fails to render is not a finding
+    file: scripts/verify_compose_policy.py
+    old: "    if done.returncode != 0:"
+    new: "    if False:"
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_a_combination_that_fails_is_a_finding
+  - name: a combination with no service is not a finding
+    file: scripts/verify_compose_policy.py
+    old: '    if not model.get("services"):'
+    new: "    if False:"
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_a_combination_with_no_service_is_a_finding
+  - name: compose sees the caller's own values
+    file: scripts/verify_compose_policy.py
+    old: '    env = {k: v for k, v in os.environ.items() if k not in names and not k.startswith("COMPOSE_")}'
+    new: "    env = dict(os.environ)"
+    tests:
+      - apps/api/tests/unit/test_compose_policy.py::test_compose_never_sees_the_callers_own_values
