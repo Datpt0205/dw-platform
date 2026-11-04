@@ -270,3 +270,26 @@ and D12 (the scale target), and on the call on DO-11, decided 2026-10-23.
   The variants start from decisions 1, 3 and 4 as written (P0); a winner that differs from one of them amends that
   decision in the same change that records the numbers. If this is wrong, ticket 06 folds back into ticket 01 as its
   last step and ticket 01 stays open until the host exists.
+
+## Amendments (2026-11-04)
+
+- Readiness gate of record-access tickets 02 to 05 (agent, under Đạt's delegation of 2026-10-31). Tickets 02 and 03
+  build the closure ledger and the policy template on P0, decisions 1, 3 and 4 as written, without waiting for ticket
+  06's D12 run; a new ticket 07 applies ticket 06's winner in a later revision, as custom-objects ticket 07 does for
+  ADR 0107. Measuring before freezing still holds: P0 is provisional until ticket 07 closes. If this is wrong, ticket
+  03 waits for ticket 06 again and ticket 07 is withdrawn.
+- Decision 1, refined: a soft delete is an UPDATE of `deleted_at`, so `record_access_<t>_update`'s WITH CHECK also
+  requires delete reach when the new row's `deleted_at` is set; tenant-wide default access and update depth never
+  delete, through either command. The template module exports each command's reach expression, which the policies,
+  RecordService's `permissions` and `studio.assign_record` share.
+- Decision 4, refined: the own arm holds objects held at own depth or deeper; creating at own depth checks the
+  (object, anchor workspace) pair, so a create grant on one object never opens another object's workspace; the row
+  carries the earliest expiry of the assignments behind it (`valid_until`) and reads as missing after it; the
+  per-principal trigger upserts a stale row, so a computation begun before a principal's first revocation never
+  publishes after it; the door does nothing for a non-member (support staff, lanes), which then reaches nothing.
+- Decision 5, refined: `tenant_wide_scope` takes the frozen registry built at the worker's composition root, injected
+  into the lane that uses it; only that root constructs it.
+- Decision 6, refined: one helper, `bind_actor`, is the only setter of `app.actor_kind`, `app.boundary_id` and
+  `app.run_mode`, reading the run's principal and mode from its run row; a child run binds the boundaries of its whole
+  chain, root first, and `studio.acl_boundary_objects` returns their intersection (ADR 0103 decision 5); `dw_app`
+  writes no boundary row directly, one SECURITY DEFINER function records a boundary and its object and field rows.
