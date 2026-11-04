@@ -198,6 +198,17 @@ STUDIO_EXCLUSIONS: Mapping[str, OffboardingExclusion] = MappingProxyType(
             reason="REVOKE ALL với dw_app; xóa theo FK CASCADE khi lane xóa platform.connections",
             cascade_from="platform.connections",
         ),
+        # record-access ticket 02: the reach ledger, which `dw_app` only reads.
+        "studio.principal_scopes": OffboardingExclusion(
+            reason="dữ liệu dẫn xuất, không xóa bằng dw_app; đi theo cascade khi offboarding xóa"
+            " thành viên công ty",
+            cascade_from="platform.tenant_members",
+        ),
+        "studio.access_epochs": OffboardingExclusion(
+            reason="một dòng đếm mỗi công ty, dw_app chỉ đọc; xóa qua hàm SECURITY DEFINER"
+            " studio.purge_access_epoch",
+            function="studio.purge_access_epoch",
+        ),
     }
 )
 
@@ -296,6 +307,8 @@ class OffboardingPurgeSteps:
         # The tenant's service users, which `dw_app` may not delete
         # (org-and-principals R6.8).
         steps.register(service_users_purge_step())
+        # The record reach epoch row, which `dw_app` reads only (record-access R5.6).
+        steps.register(access_epoch_purge_step())
         return steps
 
     def register(self, step: OffboardingPurgeStep) -> None:
@@ -329,6 +342,26 @@ def access_version_purge_step() -> OffboardingPurgeStep:
         name="platform.purge_tenant_access_version",
         tables=frozenset({"platform.tenant_access_versions"}),
         run=_purge_access_version,
+    )
+
+
+_PURGE_ACCESS_EPOCH = text("SELECT studio.purge_access_epoch(CAST(:t AS uuid))")
+
+
+async def _purge_access_epoch(session: AsyncSession, tenant_id: UUID) -> None:
+    await session.execute(_PURGE_ACCESS_EPOCH, {"t": str(tenant_id)})
+
+
+def access_epoch_purge_step() -> OffboardingPurgeStep:
+    """`studio.access_epochs` loses its row through the SECURITY DEFINER
+    function migration f6ea6e818d0c made for it, which refuses a tenant that is
+    not `offboarding` or not the transaction's own. It declares no table, so the
+    coverage test reads the exclusion's `function` way and not a second owner;
+    where it falls in the order does not matter: `studio.bump_access_epoch()`
+    makes no row for a company `offboarding`, so no delete after it brings the
+    row back (record-access R5.6)."""
+    return OffboardingPurgeStep(
+        name="studio.purge_access_epoch", tables=frozenset(), run=_purge_access_epoch
     )
 
 

@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import Any
 
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 
 from dw_platform.adapters.persistence import tables as platform
 from dw_studio.core.adapters.tables import artifact_versions, artifacts, metadata
@@ -145,6 +145,62 @@ field_permissions = sa.Table(
     sa.ForeignKeyConstraint(["granted_by"], [platform.users.c.id], ondelete="SET NULL"),
     sa.Index(None, "tenant_id", "field_id"),
     sa.Index(None, "granted_by"),
+)
+
+# The record reach ledger (revision f6ea6e818d0c, record-access ticket 02): read
+# and written only in SQL, by `studio.ensure_principal_scope()` and the
+# `studio.acl_*` readers; described here so the catalog comparison covers it.
+_UUIDS = ARRAY(UUID(as_uuid=True))
+_REACH = (
+    *(
+        f"{action}_{arm}"
+        for action in ("read", "create", "update", "delete", "assign")
+        for arm in ("own", "keys", "tenant")
+    ),
+    "create_own_keys",
+)
+
+access_epochs = sa.Table(
+    "access_epochs",
+    metadata,
+    sa.Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("epoch", sa.BigInteger, nullable=False, server_default=sa.text("0")),
+    sa.Column("changed_at", _TS, nullable=False, server_default=sa.text("now()")),
+    sa.PrimaryKeyConstraint("tenant_id"),
+    sa.ForeignKeyConstraint(["tenant_id"], [platform.tenants.c.id], ondelete="CASCADE"),
+)
+
+principal_scopes = sa.Table(
+    "principal_scopes",
+    metadata,
+    sa.Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("principal_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("epoch", sa.BigInteger, nullable=False),
+    sa.Column("version", sa.BigInteger, nullable=False),
+    sa.Column("state", sa.Text, nullable=False),
+    sa.Column("computed_at", _TS, nullable=False),
+    sa.Column("valid_until", _TS, nullable=True),
+    sa.Column("workspace_ids", _UUIDS, nullable=False),
+    *(
+        sa.Column(column, _UUIDS, nullable=False, server_default=sa.text("'{}'::uuid[]"))
+        for column in _REACH
+    ),
+    sa.PrimaryKeyConstraint("tenant_id", "principal_id"),
+    sa.ForeignKeyConstraint(
+        ["tenant_id", "principal_id"],
+        [platform.tenant_members.c.tenant_id, platform.tenant_members.c.user_id],
+        ondelete="CASCADE",
+    ),
+)
+
+access_input_tables = sa.Table(
+    "access_input_tables",
+    metadata,
+    sa.Column("table_name", sa.Text, nullable=False),
+    sa.Column("trigger_function", sa.Text, nullable=False),
+    sa.Column("events", sa.Text, nullable=True),
+    sa.Column("reason", sa.Text, nullable=False),
+    sa.PrimaryKeyConstraint("table_name"),
 )
 
 SLOT_COLUMNS: tuple[str, ...] = tuple(slot for slots in SLOTS.values() for slot in slots)
