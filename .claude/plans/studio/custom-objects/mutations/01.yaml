@@ -1,0 +1,92 @@
+# Mutation check of custom-objects ticket 01: scripts/mutate.py runs this file.
+# One mutation per control of the harness (CO27, ticket 01 step 6): what makes
+# the exit code honest, and the DDL guarantees the measured variants rest on
+# (FORCE RLS and no dw_app privilege on a partition, the W1 and W2 arms).
+# Not here: measure.self_check's DROP INDEX, which only a run against
+# PostgreSQL can show: the same HOT counter reads 0 on A1 with the updated_at
+# btree and > 0 without it, in the ticket's Comments (2026-11-03).
+mutations:
+  - name: CO27 an index claim without its EXPLAIN (ANALYZE, BUFFERS) passes
+    file: scripts/bench_records_storage/records_bench/report.py
+    old: "            if claim.indexes and not explain_is_analyzed(claim.explain):"
+    new: "            if False:"
+    tests:
+      - scripts/bench_records_storage/records_bench/tests/test_report.py::test_an_index_claim_without_its_analyzed_plan_exits_non_zero
+  - name: CO27 a bare EXPLAIN counts as analyzed
+    file: scripts/bench_records_storage/records_bench/report.py
+    old: '    return "actual time=" in text and "Buffers:" in text'
+    new: '    return "actual time=" in text or "Index" in text'
+    tests:
+      - scripts/bench_records_storage/records_bench/tests/test_report.py::test_an_index_claim_without_its_analyzed_plan_exits_non_zero
+  - name: CO27 a HOT self-check at zero passes
+    file: scripts/bench_records_storage/records_bench/report.py
+    old: "            if check.value is None or check.value <= 0:"
+    new: "            if check.value is None:"
+    tests:
+      - scripts/bench_records_storage/records_bench/tests/test_report.py::test_a_blind_hot_counter_exits_non_zero
+  - name: CO27 the HOT ratio ignores the counter
+    file: scripts/bench_records_storage/records_bench/measure.py
+    old: "    return (after[1] - before[1]) / updates"
+    new: "    return 1.0"
+    tests:
+      - scripts/bench_records_storage/records_bench/tests/test_report.py::test_a_blind_hot_counter_exits_non_zero
+  - name: CO27 a cell whose number is missing passes
+    file: scripts/bench_records_storage/records_bench/report.py
+    old: "            if row is None or row.value is None:"
+    new: "            if row is None:"
+    tests:
+      - scripts/bench_records_storage/records_bench/tests/test_report.py::test_a_cell_whose_value_is_none_counts_as_missing
+  - name: CO27 one modulus is complete when only one was asked
+    file: scripts/bench_records_storage/records_bench/report.py
+    old: "            for modulus in (8, 4):  # both, whatever was asked: one modulus is incomplete"
+    new: "            for modulus in self.moduli:"
+    tests:
+      - scripts/bench_records_storage/records_bench/tests/test_report.py::test_asking_for_one_modulus_does_not_make_one_modulus_complete
+  - name: R9 a p95 under 1,000 samples passes
+    file: scripts/bench_records_storage/records_bench/report.py
+    old: "                and row.samples < MIN_SAMPLES"
+    new: "                and row.samples < 0"
+    tests:
+      - scripts/bench_records_storage/records_bench/tests/test_report.py::test_a_p95_under_a_thousand_samples_exits_non_zero
+  - name: CO27 a missed threshold fails the run
+    file: scripts/bench_records_storage/records_bench/report.py
+    old: '        out += [f"bước lỗi: {e}" for e in self.errors]'
+    new: '        out += [f"bước lỗi: {e}" for e in self.errors] + [r.metric for r in self.rows if r.verdict == "trượt"]'
+    tests:
+      - scripts/bench_records_storage/records_bench/tests/test_report.py::test_a_missed_threshold_is_a_row_marked_missed_and_still_exits_zero
+  - name: R9 a series stops before its miss is certain
+    file: scripts/bench_records_storage/records_bench/report.py
+    old: "    return over > target - math.ceil(0.95 * target)"
+    new: "    return over >= target - math.ceil(0.95 * target)"
+    tests:
+      - scripts/bench_records_storage/records_bench/tests/test_report.py::test_a_series_stops_early_only_once_its_miss_is_certain
+  - name: ADR-0105 1 a partition keeps dw_app's default SELECT
+    file: scripts/bench_records_storage/records_bench/ddl.py
+    old: '        *[f"REVOKE ALL ON {p} FROM dw_app" for p in partitions("studio.records", modulus)],'
+    new: ""
+    tests:
+      - scripts/bench_records_storage/records_bench/tests/test_ddl_and_seed.py::test_every_partition_carries_the_parents_policies_and_no_dw_app_privilege
+  - name: ADR-0105 1 a partition is not FORCE
+    file: scripts/bench_records_storage/records_bench/ddl.py
+    old: '        f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY",'
+    new: ""
+    tests:
+      - scripts/bench_records_storage/records_bench/tests/test_ddl_and_seed.py::test_every_partition_carries_the_parents_policies_and_no_dw_app_privilege
+  - name: A1 measures W1's three arms instead of six
+    file: scripts/bench_records_storage/records_bench/ddl.py
+    old: '    if w2 and action in ("read", "update"):'
+    new: "    if False:"
+    tests:
+      - scripts/bench_records_storage/records_bench/tests/test_ddl_and_seed.py::test_the_w1_policy_has_three_arms_for_people_and_w2_six_for_any_actor
+  - name: A0 admits agents and workflows
+    file: scripts/bench_records_storage/records_bench/ddl.py
+    old: "    return \"(SELECT studio.acl_actor_kind()) = 'user'\""
+    new: "    return \"(SELECT studio.acl_actor_kind()) IN ('user', 'agent', 'workflow')\""
+    tests:
+      - scripts/bench_records_storage/records_bench/tests/test_ddl_and_seed.py::test_the_w1_policy_has_three_arms_for_people_and_w2_six_for_any_actor
+  - name: step 4 a read profile is missing from the seed
+    file: scripts/bench_records_storage/records_bench/seed.py
+    old: '    profiles.append(Profile("service_account", 0, svc, "user", LEAD))'
+    new: ""
+    tests:
+      - scripts/bench_records_storage/records_bench/tests/test_ddl_and_seed.py::test_every_profile_the_report_expects_is_a_principal_of_the_seed
