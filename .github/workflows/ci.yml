@@ -280,6 +280,62 @@ jobs:
         if: always()
         run: docker compose --env-file .env -f infra/compose/docker-compose.yml --profile infra down -v
 
+  # code-sandbox 01: gVisor runsc under a rootless engine, measured -----------
+  sandbox-spike:
+    # ADR-0119 (Proposed) is held until this spike reports. Nothing needs this
+    # job, so a red spike stops no other job. It runs on every push so the
+    # harness is seen running (failure-modes.md #1). Its logs need a token to
+    # read; the table does not: every row and every test outcome is also a
+    # `::notice` on the check run, readable from the public annotations API.
+    name: Sandbox spike · runsc under a rootless engine
+    runs-on: ubuntu-24.04
+    needs: [contracts]
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11.31"
+          enable-cache: true
+      - name: Sync workspace
+        run: uv sync --all-packages
+      - name: Rootless engine, runsc and the rootful fallback
+        # Every pin (gVisor release and sha512, image digest, pandas) is in the
+        # script. A failure becomes one ::error carrying the log's tail.
+        timeout-minutes: 15
+        run: |
+          bash tests/spike/sandbox/setup_rootless.sh --rootful-fallback > setup.log 2>&1 || {
+            status=$?
+            python3 tests/spike/sandbox/harness.py annotate-log --title "sandbox-spike setup failed" setup.log
+            exit "$status"
+          }
+      - name: "R1.1: the ten rows, results-ci.json"
+        if: ${{ !cancelled() }}
+        timeout-minutes: 10
+        run: uv run python tests/spike/sandbox/harness.py measure --where ci --out results-ci.json
+      - name: "Done: R1.2-R1.4 on the rootless engine"
+        if: ${{ !cancelled() }}
+        timeout-minutes: 10
+        env:
+          DW_SANDBOX_SPIKE: "1"
+        run: uv run python -m pytest tests/spike/sandbox
+      - name: "R1.2-R1.4 on the rootful fallback (decision 2)"
+        if: ${{ !cancelled() }}
+        timeout-minutes: 10
+        env:
+          DW_SANDBOX_SPIKE: "1"
+          DW_SPIKE_DOCKER_HOST: unix:///var/run/docker.sock
+        run: uv run python -m pytest tests/spike/sandbox
+      - name: Upload results-ci.json
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: sandbox-spike-results
+          path: |
+            results-ci.json
+            setup.log
+          if-no-files-found: warn
+
   # 9 + 10. container build + compose smoke ----------------------------------
   containers:
     name: Container build · compose smoke test

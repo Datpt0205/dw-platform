@@ -1,0 +1,44 @@
+# Mutation check of code-sandbox ticket 01 (the runsc spike): scripts/mutate.py
+# runs this file at the queue's close (wave-close.md). One mutation per control
+# of the ticket's step 7 (CS1 pids, CS1 memory, CS2 runtime), plus the CPU cap,
+# which R1.2's acceptance line also asks to see red.
+#
+# Where it can run: only on a host prepared by
+# `bash tests/spike/sandbox/setup_rootless.sh --rootful-fallback`, with
+# DW_SANDBOX_SPIKE=1 and DW_SPIKE_DOCKER_HOST=unix:///var/run/docker.sock in the
+# environment (the rootful fallback, where the CPU and memory caps hold). On the
+# Windows dev machine every spike test is red before any mutation (no
+# `runsc-dw`, by design), and mutate.py reports the group as meaningless.
+#
+# Run by hand on 5/11/2026 in a local rig (a privileged systemd ubuntu:24.04
+# container on Docker Desktop with docker-ce 28.0.4, the runner's user and
+# uid), on a copy of the directory: the CPU, memory and runtime mutations each
+# turned their tests red; the pids mutation did not, because that cap does not
+# hold with or without the flag (blocking row B3 of ADR-0119 (Proposed)), so
+# its test stays xfail and the mutation survives until B3's remedy lands.
+mutations:
+  - name: CS01 CS1 the CPU cap is gone
+    file: tests/spike/sandbox/harness.py
+    old: "    \"--cpus=0.5\",\n"
+    new: ""
+    tests:
+      - tests/spike/sandbox/test_runsc_spike.py::test_cpu_cap_holds
+  - name: CS01 CS1 the memory cap is gone
+    file: tests/spike/sandbox/harness.py
+    old: "    \"--memory=256m\",\n    \"--memory-swap=256m\",\n"
+    new: ""
+    tests:
+      - tests/spike/sandbox/test_runsc_spike.py::test_memory_cap_holds
+  - name: CS01 CS1 the pids cap is gone (survives while B3 is open)
+    file: tests/spike/sandbox/harness.py
+    old: "    \"--pids-limit=64\",\n"
+    new: ""
+    tests:
+      - tests/spike/sandbox/test_runsc_spike.py::test_pids_cap_holds
+  - name: CS01 CS2 the container runs on runc
+    file: tests/spike/sandbox/harness.py
+    old: "    \"--runtime=runsc-dw\",\n"
+    new: "    \"--runtime=runc\",\n"
+    tests:
+      - tests/spike/sandbox/test_runsc_spike.py::test_kernel_inside_is_gvisor
+      - tests/spike/sandbox/test_runsc_spike.py::test_engine_reports_runsc_dw
