@@ -17,15 +17,13 @@ git: every slice's commit message, and the pre-split narrative at
 | Chat channels (Zalo)               | `.claude/plans/channels.md`         | Upstreamed; live run owed                                         |
 | Studio → Digital Workers (D15)     | `.claude/plans/studio.md`           | skeleton/01, telemetry/01, app-standards/01-04, foundations/01-02 |
 
-After working in an area, update its file. Update this index only when an
-area's state, the next step or a decision owed changes. A new area gets its
-own file and a row here.
+After working in an area, update its file. Update this index only when an area's state, the next
+step or a decision owed changes. A new area gets its own file and a row here.
 
 ## Now (2026-10-29)
 
-- **Platform seed, no bounded context.** Products live in their own repos
-  (first: `https://github.com/Datpt0205/platform-bidding`); the removed Supply
-  Chain context left its platform pieces, listed in `platform-runtime.md`.
+- **Platform seed, no bounded context.** Products live in their own repos (first: `https://github.com/Datpt0205/platform-bidding`);
+  the removed Supply Chain context left its platform pieces, listed in `platform-runtime.md`.
 - **Digital Workers first (D15, 2026-10-29).** Studio turns to the CASANOS
   Digital Worker: agentic within bounds, owning a queue, never a chat
   assistant; the Marketing pilot becomes a lead-care DW at A2, and a thin DW
@@ -34,10 +32,12 @@ own file and a row here.
   a shipped lead-care pack (YC118-YC125, ADR-0128 Proposed), built. D19 (2026-11-04):
   HITL drops by evidence per decision class (ADR-0129 Proposed, spec `autonomy-evidence`
   needs-info until Q1-Q3 are measured on lead-care's 200 synthetic leads, queue item 16).
-  **Next:** queue item 15 in `studio.md` (CI triage first, two lanes); heavy checks at its close.
+  **Next:** queue item 15 in `studio.md` (two lanes; CI green again 2026-11-04); heavy checks at its close.
 
 ## Decisions Đạt owes
+
 Since 2026-10-31 the agent decides all of these itself (`studio.md` "Ủy quyền toàn phần"), but real keys and secrets.
+
 - **Runtime:**
     - a plan quota on direct model calls (`runs_per_day`/`spend_usd_per_day`
       are enforced only in the runner);
