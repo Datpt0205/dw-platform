@@ -1,0 +1,189 @@
+# Mutation check of tenant-config ticket 04: scripts/mutate.py runs this file at
+# the queue's close (wave-close.md). One mutation per control of the ticket's
+# "Kiểm soát" rows (TC15, TC21, TC28, TC29, TC31, TC32) and per layer that
+# holds one. Run by hand while writing the tests (4/11/2026), each red in its
+# named case: the resolver's key check, the hash comparison, the draft-mode
+# check, the trigger's mode check, the keys' ON CONFLICT and the receipt's FOR
+# SHARE. The migration's and the tests' own mutations apply in place, so their
+# tests recreate the database from the mutated revision.
+mutations:
+  # ---- R6.1: what is pinned ---------------------------------------------
+  - name: R6.1 a sealed root's closure is not its definition manifest's
+    file: packages/python/dw_studio/src/dw_studio/core/application/run_manifests.py
+    old: '                "closure": definition["closure"],'
+    new: '                "closure": [],'
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_manifest.py::test_a_sealed_root_pins_its_definition_closure_and_three_keys
+  - name: R6.1 a sealed root's keys skip its where-used versions
+    file: packages/python/dw_studio/src/dw_studio/core/application/run_manifests.py
+    old: "            pinned = await uow.pinned_versions(version.id)"
+    new: "            pinned = []"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_manifest.py::test_a_sealed_root_pins_its_definition_closure_and_three_keys
+  - name: TC28 R6.1 a draft is hashed apart from the seal's step
+    file: packages/python/dw_studio/src/dw_studio/core/application/run_manifests.py
+    old: "            definition = definition_body(found.kind, version.artifact_id, root_hash, closure)"
+    new: "            definition = definition_body(found.kind, version.id, root_hash, closure)"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_manifest.py::test_a_simulated_draft_pins_the_hash_its_seal_gives_and_writes_nothing_else
+  - name: TC28 R6.1 a draft's receipt writes its definition manifest
+    file: packages/python/dw_studio/src/dw_studio/core/application/run_manifests.py
+    old: "            pinned_hash = definition_hash(definition)\n"
+    new: "            pinned_hash = definition_hash(definition)\n            await uow.put_manifest(pinned_hash, definition)\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_manifest.py::test_a_simulated_draft_pins_the_hash_its_seal_gives_and_writes_nothing_else
+  - name: R6.1 the receipt reads the draft without FOR SHARE on its artifact
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/artifact_store.py
+    old: "        # a `save_draft` it waited for had committed.\n        kind = await self.session.scalar(\n            sa.select(artifacts.c.kind)\n            .where(artifacts.c.id == artifact_id, artifacts.c.deleted_at.is_(None))\n            .with_for_update(read=True)\n"
+    new: "        # a `save_draft` it waited for had committed.\n        kind = await self.session.scalar(\n            sa.select(artifacts.c.kind)\n            .where(artifacts.c.id == artifact_id, artifacts.c.deleted_at.is_(None))\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_manifest.py::test_the_receipt_holds_off_a_save_of_the_draft_it_hashes
+  - name: R6.1 a body past 1 MiB is not read back by its constraint
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/artifact_store.py
+    old: "            if _refused(exc) == _RUN_MANIFEST_SIZE:"
+    new: "            if False:"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_manifest.py::test_a_body_past_one_mebibyte_is_too_large_and_written_nowhere
+
+  # ---- R6.2: one row per content ------------------------------------------
+  - name: R6.2 the manifest row is written without ON CONFLICT
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/artifact_store.py
+    old: "                .values(tenant_id=self.context.tenant_id, hash=manifest_hash, body=body)\n                .on_conflict_do_nothing(index_elements=[\"tenant_id\", \"hash\"])\n"
+    new: "                .values(tenant_id=self.context.tenant_id, hash=manifest_hash, body=body)\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_manifest.py::test_the_same_content_is_one_manifest_and_another_mode_another
+      - packages/python/dw_studio/tests/integration/test_run_manifest.py::test_two_concurrent_builds_of_one_content_both_commit
+  - name: R6.2 the key rows are written without ON CONFLICT
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/artifact_store.py
+    old: "            .on_conflict_do_nothing()\n"
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_manifest.py::test_two_concurrent_builds_of_one_content_both_commit
+  - name: R6.2 the run mode is not in the body
+    file: packages/python/dw_studio/src/dw_studio/core/application/run_manifests.py
+    old: '                "run_mode": run_mode,'
+    new: '                "run_mode": "live",'
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_manifest.py::test_the_same_content_is_one_manifest_and_another_mode_another
+
+  # ---- R6.3, R6.4 (TC15): only what was pinned ------------------------------
+  - name: TC15 R6.3 an unpinned key is answered
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/pinned.py
+    old: "        if entry is None:"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_pinned_resolver.py::test_a_key_the_manifest_does_not_pin_is_refused_without_a_read
+  - name: TC15 R6.3 the store reads past RLS
+    file: packages/python/dw_studio/tests/integration/test_run_manifest.py
+    old: "        await load_as(app_sessions, outsider.tenant_id, mine)"
+    new: "        await load_as(async_sessionmaker(migrator, class_=AsyncSession), outsider.tenant_id, mine)"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_manifest.py::test_another_tenant_neither_builds_on_nor_loads_this_tenants_rows
+  - name: TC15 R6.4 the store reads each target's current live version
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/run_manifest_store.py
+    old: "    artifact_versions.c.id == run_manifest_keys.c.artifact_version_id,\n"
+    new: "    artifact_versions.c.stage == \"live\",\n    artifact_versions.c.artifact_id\n    == (lambda p: sa.select(p.c.artifact_id).where(p.c.id == run_manifest_keys.c.artifact_version_id).scalar_subquery())(artifact_versions.alias(\"p\")),\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_manifest.py::test_a_resume_elsewhere_resolves_the_version_it_pinned
+  - name: TC15 R6.4 the pinned hash is not compared
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/pinned.py
+    old: "    if row is not None and row.current_hash is not None and row.current_hash != entry.content_hash:"
+    new: "    if False:"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_manifest.py::test_a_simulated_draft_saved_again_refuses_its_resume
+      - packages/python/dw_studio/tests/integration/test_run_manifest.py::test_a_candidate_sent_back_and_edited_refuses_its_test_run
+  - name: TC15 R6.4 only a root pinned as a draft is hashed again
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/run_manifest_store.py
+    old: "    if row.stage != Stage.DRAFT.value:"
+    new: "    if root.get(\"stage\") != Stage.DRAFT.value:"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_manifest.py::test_a_candidate_sent_back_and_edited_refuses_its_test_run
+
+  # ---- R6.7, R6.9 (TC28): only simulate runs a draft --------------------------
+  - name: TC28 R6.7 a draft root is accepted in any mode
+    file: packages/python/dw_studio/src/dw_studio/core/application/run_manifests.py
+    old: '        if draft and run_mode != "simulate":'
+    new: "        if False:"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_manifest.py::test_a_draft_root_outside_simulate_is_refused_before_any_write
+  - name: TC28 R6.9 the run row's mode is not checked against its manifest
+    file: db/migrations/versions/28a94cda6fdf_run_manifests.py
+    old: "            IF v_mode IS DISTINCT FROM NEW.run_mode THEN"
+    new: "            IF false THEN"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_manifest.py::test_a_run_row_holds_its_manifests_mode_and_keeps_its_manifest
+  - name: TC28 R6.9 a pinned run changes its manifest
+    file: db/migrations/versions/28a94cda6fdf_run_manifests.py
+    old: "        IF TG_OP = 'UPDATE' AND OLD.run_manifest_hash IS NOT NULL"
+    new: "        IF false AND OLD.run_manifest_hash IS NOT NULL"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_manifest.py::test_a_run_row_holds_its_manifests_mode_and_keeps_its_manifest
+  - name: TC28 R6.9 the trigger is gone
+    file: db/migrations/versions/28a94cda6fdf_run_manifests.py
+    old: "    \"CREATE TRIGGER match_run_manifest\"\n    \" BEFORE INSERT OR UPDATE OF run_manifest_hash, run_mode ON platform.worker_runs\"\n    \" FOR EACH ROW EXECUTE FUNCTION platform.match_run_manifest()\",\n"
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_manifest.py::test_a_run_row_holds_its_manifests_mode_and_keeps_its_manifest
+
+  # ---- R6.8 (TC32): durability is sync ----------------------------------------
+  - name: TC32 R6.8 the engine takes any durability
+    file: packages/python/dw_studio/src/dw_studio/core/domain/run_manifest.py
+    old: '    durability: Literal["sync"]'
+    new: "    durability: str"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_run_manifest_model.py::test_the_engine_takes_sync_and_nothing_else
+      - packages/python/dw_studio/tests/integration/test_run_manifest.py::test_the_manifest_pins_sync_and_an_engine_the_model_refuses_writes_nothing
+
+  # ---- R2.18 (TC29), R6.5 (TC15): the keys hold ------------------------------
+  - name: TC29 R2.18 the version key is one column
+    file: db/migrations/versions/28a94cda6fdf_run_manifests.py
+    old: "            FOREIGN KEY (artifact_version_id, tenant_id)\n            REFERENCES studio.artifact_versions (id, tenant_id) ON DELETE RESTRICT,"
+    new: "            FOREIGN KEY (artifact_version_id)\n            REFERENCES studio.artifact_versions (id) ON DELETE RESTRICT,"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_manifest.py::test_a_key_never_points_into_another_tenant
+  - name: TC15 R6.5 the key does not hold the pinned version
+    file: db/migrations/versions/28a94cda6fdf_run_manifests.py
+    old: "        CONSTRAINT fk_run_manifest_keys_artifact_version_id_artifact_versions\n            FOREIGN KEY (artifact_version_id, tenant_id)\n            REFERENCES studio.artifact_versions (id, tenant_id) ON DELETE RESTRICT,\n"
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_manifest.py::test_what_a_run_still_points_to_is_never_deleted
+  - name: TC15 R6.5 the run does not hold its manifest
+    file: db/migrations/versions/28a94cda6fdf_run_manifests.py
+    old: "            REFERENCES platform.run_manifests (hash, tenant_id) ON DELETE RESTRICT\n"
+    new: "            REFERENCES platform.run_manifests (hash, tenant_id) ON DELETE SET NULL\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_manifest.py::test_what_a_run_still_points_to_is_never_deleted
+
+  # ---- R3.8 (TC31): only offboarding deletes ----------------------------------
+  - name: TC31 R3.8 a manifest is deleted outside offboarding
+    file: db/migrations/versions/28a94cda6fdf_run_manifests.py
+    old: "    \"CREATE TRIGGER refuse_delete_outside_offboarding BEFORE DELETE ON platform.run_manifests\"\n    \" FOR EACH ROW EXECUTE FUNCTION platform.refuse_delete_outside_offboarding()\",\n"
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_manifest.py::test_only_an_offboarding_company_loses_its_run_manifests
+  - name: TC31 R3.8 a key is deleted outside offboarding
+    file: db/migrations/versions/28a94cda6fdf_run_manifests.py
+    old: "    \"CREATE TRIGGER refuse_delete_outside_offboarding BEFORE DELETE\"\n    \" ON platform.run_manifest_keys\"\n    \" FOR EACH ROW EXECUTE FUNCTION platform.refuse_delete_outside_offboarding()\",\n"
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_manifest.py::test_only_an_offboarding_company_loses_its_run_manifests
+
+  # ---- R3.6 (TC21): offboarding purges in the catalog's order -----------------
+  - name: TC21 R3.6 the derivation drops the pinned version's key
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py
+    old: "    \"   AND NOT (k.confdeltype = 'a' AND k.condeferrable AND k.condeferred)\""
+    new: "    \"   AND NOT (k.confdeltype = 'a' AND k.condeferrable AND k.condeferred)\"\n    \"   AND k.conname <> 'fk_run_manifest_keys_artifact_version_id_artifact_versions'\""
+    tests:
+      - packages/python/dw_platform/tests/integration/test_offboarding.py::test_a_runs_pinned_versions_are_purged_by_the_catalogs_key_not_by_name
+  - name: TC21 R3.6 the derivation drops the run's key to its manifest
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py
+    old: "    \"   AND NOT (k.confdeltype = 'a' AND k.condeferrable AND k.condeferred)\""
+    new: "    \"   AND NOT (k.confdeltype = 'a' AND k.condeferrable AND k.condeferred)\"\n    \"   AND k.conname <> 'fk_worker_runs_run_manifest_hash_run_manifests'\""
+    tests:
+      - packages/python/dw_platform/tests/integration/test_offboarding.py::test_offboarding_purges_studio_artifacts_that_use_each_other
+  - name: TC21 studio-skeleton R4.3 dw_app cannot delete a run manifest
+    file: db/migrations/versions/28a94cda6fdf_run_manifests.py
+    old: '    ("dw_app", "GRANT SELECT, INSERT, DELETE ON platform.run_manifests TO dw_app;"),'
+    new: '    ("dw_app", "GRANT SELECT, INSERT ON platform.run_manifests TO dw_app;"),'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_offboarding_coverage.py::test_offboarding_covers_every_table_it_has_to

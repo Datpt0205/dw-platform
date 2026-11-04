@@ -37,11 +37,18 @@ from dw_studio.core.adapters.tables import metadata
 pytestmark = pytest.mark.integration
 
 
+# The `platform` tables this package describes (tenant-config ticket 04).
+_PLATFORM_TABLES = frozenset(
+    table.name for table in metadata.tables.values() if table.schema == "platform"
+)
+
+
 def _studio_only(name: str | None, type_: str, parent: dict[str, Any]) -> bool:
     if type_ == "schema":
-        return name == "studio"
+        return name in {"studio", "platform"}
     if type_ == "table":
-        return parent.get("schema_name") == "studio"
+        schema = parent.get("schema_name")
+        return schema == "studio" or (schema == "platform" and name in _PLATFORM_TABLES)
     return True
 
 
@@ -80,6 +87,8 @@ async def test_the_description_matches_the_migrated_catalog(studio_db: DatabaseU
         "artifact_versions",
         "definition_manifests",
         "dependencies",
+        "run_manifests",
+        "run_manifest_keys",
     }
 
 

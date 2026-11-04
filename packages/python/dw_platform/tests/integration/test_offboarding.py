@@ -30,7 +30,13 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import NullPool
 
-from dw_platform.adapters.persistence.offboarding import ExportedTable, SqlTenantOffboarding
+from dw_platform.adapters.persistence.offboarding import (
+    _FOREIGN_KEYS,
+    ExportedTable,
+    OffboardingPurgeStep,
+    SqlTenantOffboarding,
+    order_purge_steps,
+)
 from dw_platform.testing.members import add_tenant_member
 
 pytestmark = pytest.mark.integration
@@ -873,12 +879,34 @@ async def _seed_studio(
                 " VALUES (:t, :h, '{}')",
                 {"t": tenant_id, "h": _HASH},
             ),
+            # A run pinning both versions through its manifest (ticket 04).
+            (
+                "INSERT INTO platform.run_manifests (tenant_id, hash, body)"
+                ' VALUES (:t, :h, \'{"run_mode": "live"}\')',
+                {"t": tenant_id, "h": _HASH},
+            ),
+            *(
+                (
+                    "INSERT INTO platform.run_manifest_keys"
+                    " (id, tenant_id, manifest_hash, artifact_version_id) VALUES (:id, :t, :h, :v)",
+                    {"id": uuid.uuid4(), "t": tenant_id, "h": _HASH, "v": v},
+                )
+                for v in (user_v1, used_v1)
+            ),
+            (
+                "INSERT INTO platform.worker_runs (run_mode, id, thread_id, tenant_id,"
+                " workspace_id, worker_id, worker_version, graph_version, requested_by,"
+                " run_manifest_hash) VALUES ('live', :r, :r, :t, :w, 'studio', '1', '1',"
+                " gen_random_uuid(), :h)",
+                {"r": uuid.uuid4(), "t": tenant_id, "w": ws2, "h": _HASH},
+            ),
         ]
         for statement, values in statements:
             await session.execute(sa.text(statement), values)
 
 
 _STUDIO_TABLES = ("dependencies", "definition_manifests", "artifact_versions", "artifacts")
+_RUN_TABLES = ("worker_runs", "run_manifests", "run_manifest_keys")
 
 
 async def test_offboarding_purges_studio_artifacts_that_use_each_other(
@@ -903,12 +931,18 @@ async def test_offboarding_purges_studio_artifacts_that_use_each_other(
         position = {name: order.index(f"studio.{name}") for name in _STUDIO_TABLES}
         assert position["dependencies"] < position["artifact_versions"] < position["artifacts"]
         assert order.index("studio.artifacts") < order.index("platform.workspaces")
+        # Ticket 04 (R3.6): from the catalog's RESTRICT keys, not by CASCADE.
+        assert order.index("platform.run_manifest_keys") < position["artifact_versions"]
+        assert order.index("platform.worker_runs") < order.index("platform.run_manifests")
 
         await offboarding.purge_rows(mine)
 
         for table in _STUDIO_TABLES:
             assert await _count(sessions, mine, "studio", table) == 0, table
             assert await _count(sessions, theirs, "studio", table) >= 1, table
+        for table in _RUN_TABLES:
+            assert await _count(sessions, mine, "platform", table) == 0, table
+            assert await _count(sessions, theirs, "platform", table) >= 1, table
     finally:
         async with migrator.begin() as conn:
             await conn.execute(
@@ -921,6 +955,29 @@ async def test_offboarding_purges_studio_artifacts_that_use_each_other(
                 sa.text("DELETE FROM studio.artifact_kinds WHERE kind = :k"), {"k": _PROBE_KIND}
             )
         await migrator.dispose()
+
+
+async def test_a_runs_pinned_versions_are_purged_by_the_catalogs_key_not_by_name(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    """Ticket 04 (R3.6, TC21): `platform.run_manifest_keys` sorts before
+    `studio.artifact_versions` by name alone, so the purge test above cannot
+    tell the key from the alphabet. Named the other way round here, only the
+    catalog's `fk_run_manifest_keys_artifact_version_id_artifact_versions`, read
+    by the lane's own query, puts the keys first."""
+
+    async def nothing(_session: AsyncSession, _tenant: uuid.UUID) -> None:
+        return None
+
+    keys = OffboardingPurgeStep("z_keys", frozenset({"platform.run_manifest_keys"}), nothing)
+    versions = OffboardingPurgeStep("a_versions", frozenset({"studio.artifact_versions"}), nothing)
+    async with sessions() as session, session.begin():
+        foreign_keys = (await session.execute(_FOREIGN_KEYS)).all()
+
+    assert [step.name for step in order_purge_steps([versions, keys], foreign_keys)] == [
+        "z_keys",
+        "a_versions",
+    ]
 
 
 # ---- org-and-principals 03: the tenant's service users (R6.8) ------------------

@@ -2021,3 +2021,28 @@ async def test_only_dw_app_runs_the_registry_s_purge_and_drop_functions(
         await migrator.dispose()
     assert {k for k, v in calls.items() if v} == {("dw_app", f) for f in definers}
     assert all(definer.values())
+
+
+# tenant-config ticket 04 (migration 28a94cda6fdf): a run manifest and its keys
+# are written once and never rewritten; DELETE serves the offboarding lane alone
+# (its trigger refuses it elsewhere, R3.8); `dw_agent_ro` reads neither.
+
+
+@pytest.mark.parametrize("table", ["platform.run_manifests", "platform.run_manifest_keys"])
+async def test_a_run_manifest_is_inserted_read_and_only_purged(
+    db_urls: DatabaseUrls, table: str
+) -> None:
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            held = {(r.rolname, r.verb) for r in await conn.execute(_HELD_VERBS, {"t": table})}
+            trigger_call = await conn.scalar(
+                sa.text(
+                    "SELECT has_function_privilege('public',"
+                    " 'platform.match_run_manifest()', 'EXECUTE')"
+                )
+            )
+    finally:
+        await migrator.dispose()
+    assert held == {("dw_app", "SELECT"), ("dw_app", "INSERT"), ("dw_app", "DELETE")}
+    assert trigger_call is False

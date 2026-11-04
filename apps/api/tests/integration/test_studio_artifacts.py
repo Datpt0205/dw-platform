@@ -27,11 +27,13 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from dw_api.bootstrap import ApiContainer
+from dw_api.bootstrap.paths import release_manifest_ref
 from dw_api.bootstrap.wiring import build_container
 from dw_api.main import create_app
 from dw_api.settings import ApiSettings
 from dw_platform.adapters.identity.dev_token import DevTokenVerifier
 from dw_studio.core.adapters.artifact_store import SqlArtifactTx
+from dw_studio.core.adapters.run_manifest_store import SqlRunManifestStore
 from dw_studio.core.application.service import ArtifactService, SealResult
 from dw_studio.testing.fixture_kinds import FIXTURE_KINDS, planted_fixture_kinds
 from dw_studio.testing.world import StudioWorld, plant_world
@@ -236,11 +238,16 @@ async def test_an_unregistered_kind_or_a_write_key_out_of_reach_creates_nothing(
 
 
 async def test_the_app_without_test_kinds_takes_no_fixture(api_db: DatabaseUrls) -> None:
-    """R2.15: built with the default kinds, `fixture` is not a kind."""
+    """R2.15: built with the default kinds, `fixture` is not a kind. Ticket
+    04: the run manifest builder pins the release this process serves, and a
+    run reads its manifest through Studio's store."""
     container = build_container(
         ApiSettings(profile="test", database_url=api_db.app, dev_secret=SECRET)
     )
     assert container.studio is not None and len(container.studio.kinds) == 0
+    assert container.studio.run_manifests.registry is container.studio.kinds
+    assert container.studio.run_manifests.release_manifest_ref == release_manifest_ref()
+    assert container.studio.pinned_manifests is SqlRunManifestStore
     assert container.engine is not None
     await container.engine.dispose()
 

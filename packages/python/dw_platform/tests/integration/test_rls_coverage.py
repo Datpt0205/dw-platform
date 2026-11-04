@@ -650,6 +650,13 @@ _TENANT_WIDE_ON_PURPOSE: dict[tuple[str, str], str] = {
         "dòng con của chủ thể mang workspace (Kết nối: `owning_workspace_id`), chỉ tới qua"
         " cửa SECURITY DEFINER; connections-and-vault ticket 02"
     ),
+    ("platform", "run_manifests"): (
+        "bản kê lượt chạy định danh theo nội dung, dùng chung cho mọi lượt chạy cùng nội dung,"
+        " ở mọi workspace (tenant-config ticket 04, DO-01)"
+    ),
+    ("platform", "run_manifest_keys"): (
+        "khóa của bản kê lượt chạy, con của bản kê, chỉ tới qua nó (tenant-config ticket 04)"
+    ),
     ("platform", "service_principals"): (
         "a service principal is an identity of the company (ADR-0103 decision 2); its "
         "workspace is `owning_workspace_id`, held by the RESTRICT composite key"

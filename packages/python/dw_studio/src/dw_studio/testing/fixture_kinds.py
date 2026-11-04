@@ -109,6 +109,11 @@ async def _remove_rows(engine: AsyncEngine, kinds: Sequence[str]) -> None:
                 {"t": tenants},
             )
             for statement in (
+                # A run pinning a manifest, then the manifests and (by
+                # CASCADE) their keys, before the versions they hold.
+                "DELETE FROM platform.worker_runs"
+                " WHERE tenant_id = ANY(:t) AND run_manifest_hash IS NOT NULL",
+                "DELETE FROM platform.run_manifests WHERE tenant_id = ANY(:t)",
                 "DELETE FROM studio.dependencies WHERE tenant_id = ANY(:t)",
                 "DELETE FROM studio.artifact_versions WHERE tenant_id = ANY(:t)",
                 "DELETE FROM studio.artifacts WHERE tenant_id = ANY(:t)",
