@@ -37,6 +37,8 @@ from dw_platform.application.effect_keys import PendingEffect
 from dw_platform.application.role_admin import (
     ROLES_WRITE,
     CreateRole,
+    FieldPermission,
+    ObjectPrivilege,
     Privilege,
     Proposal,
     RoleAdminService,
@@ -85,6 +87,21 @@ class PrivilegeView(BaseModel):
     depth: str = Field(description="`own`, `workspace` or `tenant`.")
 
 
+class ObjectPrivilegeView(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    object_id: uuid.UUID = Field(description="A live object definition of this company.")
+    action: str = Field(description="An enforced action of `platform.object_actions`.")
+    depth: str = Field(description="`own`, `workspace` or `tenant`.")
+
+
+class FieldPermissionView(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    field_id: uuid.UUID = Field(description="A field of a live object of this company.")
+    access: str = Field(description="`read`, or `edit`, which gives read too.")
+
+
 class RoleView(BaseModel):
     id: uuid.UUID
     key: str
@@ -114,6 +131,8 @@ class RoleDetailView(BaseModel):
     version: int = Field(description="The role's ETag; `If-Match` of its writes.")
     updated_at: datetime
     permissions: list[PrivilegeView]
+    object_privileges: list[ObjectPrivilegeView]
+    field_permissions: list[FieldPermissionView]
 
 
 class RoleAssignmentView(BaseModel):
@@ -167,9 +186,14 @@ class CreateRoleBody(BaseModel):
 
 
 class PermissionsBody(BaseModel):
+    """Each array present replaces that kind of the role's grants; one left
+    out keeps it (R9.14)."""
+
     model_config = ConfigDict(extra="forbid")
 
-    permissions: list[PrivilegeView]
+    permissions: list[PrivilegeView] | None = None
+    object_privileges: list[ObjectPrivilegeView] | None = None
+    field_permissions: list[FieldPermissionView] | None = None
 
 
 def _role_view(role: RoleDetail) -> RoleDetailView:
@@ -185,6 +209,14 @@ def _role_view(role: RoleDetail) -> RoleDetailView:
         version=role.version,
         updated_at=role.updated_at,
         permissions=[PrivilegeView(key=p.key, depth=p.depth) for p in role.privileges],
+        object_privileges=[
+            ObjectPrivilegeView(object_id=p.object_id, action=p.action, depth=p.depth)
+            for p in role.object_privileges
+        ],
+        field_permissions=[
+            FieldPermissionView(field_id=p.field_id, access=p.access)
+            for p in role.field_permissions
+        ],
     )
 
 
@@ -378,17 +410,38 @@ async def set_role_permissions(
     expected: RequireIfMatch,
     body: Annotated[PermissionsBody, Body()],
 ) -> RoleChangeView:
-    """The role's whole set of privileges: applied at once (200) when it only
-    narrows, else a proposal (202, R7.1, R7.6, RB32)."""
+    """The role's privileges, object privileges and field permissions, each
+    array present replacing its kind: applied at once (200) when it only
+    narrows, else a proposal (202, R7.1, R7.6, RB32, R9.14)."""
     service = _service(container)
-    target = [Privilege(p.key, p.depth) for p in body.permissions]
+    target = (
+        None if body.permissions is None else [Privilege(p.key, p.depth) for p in body.permissions]
+    )
+    objects = (
+        None
+        if body.object_privileges is None
+        else [ObjectPrivilege(p.object_id, p.action, p.depth) for p in body.object_privileges]
+    )
+    fields = (
+        None
+        if body.field_permissions is None
+        else [FieldPermission(p.field_id, p.access) for p in body.field_permissions]
+    )
 
     async def run(effect: PendingEffect | None) -> RoleChangeView:
         return await _change(
             container,
             context,
             role_id,
-            await service.set_permissions(context, role_id, expected, target, effect=effect),
+            await service.set_permissions(
+                context,
+                role_id,
+                expected,
+                target,
+                object_privileges=objects,
+                field_permissions=fields,
+                effect=effect,
+            ),
         )
 
     return await _answer(container, context, role_id, response, idempotency, run)

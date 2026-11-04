@@ -28,7 +28,7 @@ import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Literal, Protocol
+from typing import Literal, Protocol, cast
 
 from dw_kernel.errors import (
     ConflictError,
@@ -77,6 +77,103 @@ class Privilege:
 
     def as_json(self) -> dict[str, str]:
         return {"key": self.key, "depth": self.depth}
+
+
+@dataclass(frozen=True, slots=True, order=True)
+class ObjectPrivilege:
+    """An action on a company object at a depth (`obj.<object>.<action>`, R9)."""
+
+    object_id: uuid.UUID
+    action: str
+    depth: str
+
+    def as_json(self) -> dict[str, str]:
+        return {"object_id": str(self.object_id), "action": self.action, "depth": self.depth}
+
+
+@dataclass(frozen=True, slots=True, order=True)
+class FieldPermission:
+    """Read or edit on a company field (`fld.<object>.<field>.read|edit`, R9)."""
+
+    field_id: uuid.UUID
+    access: str
+
+    def as_json(self) -> dict[str, str]:
+        return {"field_id": str(self.field_id), "access": self.access}
+
+
+OBJECT_DEPTHS = DEPTHS
+FIELD_ACCESS: tuple[str, ...] = ("read", "edit")
+
+
+@dataclass(frozen=True, slots=True)
+class RoleGrants:
+    """Everything `PUT /admin/roles/{id}/permissions` sets: catalogue
+    privileges, object privileges and field permissions. A proposal's payload
+    carries all three in full, so the confirmation applies exactly what was
+    proposed (R9.14)."""
+
+    permissions: tuple[Privilege, ...] = ()
+    object_privileges: tuple[ObjectPrivilege, ...] = ()
+    field_permissions: tuple[FieldPermission, ...] = ()
+
+    def as_payload(self) -> dict[str, object]:
+        return {
+            "permissions": [p.as_json() for p in self.permissions],
+            "object_privileges": [p.as_json() for p in self.object_privileges],
+            "field_permissions": [p.as_json() for p in self.field_permissions],
+        }
+
+    @classmethod
+    def from_payload(cls, payload: Mapping[str, object], *, current: RoleGrants) -> RoleGrants:
+        """The payload's grants; a kind a payload does not carry (one proposed
+        before tenant-rbac/04) stays as ``current``."""
+
+        def rows(name: str) -> list[Mapping[str, str]]:
+            return cast(list[Mapping[str, str]], payload.get(name) or [])
+
+        return cls(
+            permissions=tuple(sorted(Privilege(p["key"], p["depth"]) for p in rows("permissions")))
+            if "permissions" in payload
+            else current.permissions,
+            object_privileges=tuple(
+                sorted(
+                    ObjectPrivilege(uuid.UUID(p["object_id"]), p["action"], p["depth"])
+                    for p in rows("object_privileges")
+                )
+            )
+            if "object_privileges" in payload
+            else current.object_privileges,
+            field_permissions=tuple(
+                sorted(
+                    FieldPermission(uuid.UUID(p["field_id"]), p["access"])
+                    for p in rows("field_permissions")
+                )
+            )
+            if "field_permissions" in payload
+            else current.field_permissions,
+        )
+
+
+RecordRow = ObjectPrivilege | FieldPermission
+
+
+@dataclass(frozen=True, slots=True)
+class RecordKeys:
+    """The keys each object or field row gives, from the database's one owner
+    of them (`platform.record_privilege_keys`), under the caller's RLS: a row
+    whose object or field is not live in this tenant gives none. ``actions``
+    is `platform.object_actions` (action -> enforced)."""
+
+    keys: Mapping[RecordRow, tuple[Privilege, ...]]
+    actions: Mapping[str, bool]
+
+    def keyed(self, grants: RoleGrants) -> tuple[Privilege, ...]:
+        """``grants`` as one set of keys, the shape `platform.rbac_refusals`
+        and `diff_privileges` read."""
+        rows: list[RecordRow] = [*grants.object_privileges, *grants.field_permissions]
+        found = [*grants.permissions, *(k for row in rows for k in self.keys.get(row, ()))]
+        return tuple(sorted(found))
 
 
 @dataclass(frozen=True, slots=True)
@@ -159,6 +256,12 @@ class RoleDetail:
     updated_at: datetime
     deleted: bool
     privileges: tuple[Privilege, ...]
+    object_privileges: tuple[ObjectPrivilege, ...] = ()
+    field_permissions: tuple[FieldPermission, ...] = ()
+
+    @property
+    def grants(self) -> RoleGrants:
+        return RoleGrants(self.privileges, self.object_privileges, self.field_permissions)
 
 
 @dataclass(frozen=True, slots=True)
@@ -318,6 +421,10 @@ class RoleAdminRepositoryPort(Protocol):
 
     async def catalogue(self, keys: frozenset[str]) -> Mapping[str, CatalogueKey]: ...
 
+    async def record_keys(self, context: AccessContext, rows: Sequence[RecordRow]) -> RecordKeys:
+        """The keys each row gives, under the caller's RLS, and the actions."""
+        ...
+
     async def refusals(
         self, context: AccessContext, changes: Sequence[Mapping[str, object]]
     ) -> list[Refusal]:
@@ -349,12 +456,12 @@ class RoleAdminRepositoryPort(Protocol):
         role_id: uuid.UUID,
         *,
         expected: ExpectedVersion,
-        target: Sequence[Privilege] | None,
+        target: RoleGrants | None,
         delete: bool,
         audit: AuditEvent,
         effect: PendingEffect | None = None,
     ) -> RoleDetail:
-        """Under the role row's lock and ``expected`` (412): set the privileges
+        """Under the role row's lock and ``expected`` (412): set the grants
         to ``target``, or soft-delete the role (409 `role_in_use` when it is
         held), with ``audit``, in one transaction."""
         ...
@@ -542,12 +649,15 @@ class RoleAdminService:
             )
         if command.from_template is not None and command.clone_of is not None:
             raise DomainError("from_template or clone_of, not both")
-        privileges, template_key = await self._source(context, command)
+        grants, template_key = await self._source(context, command)
         role_id = self.ids.new_uuid()
+        keys = await self.repo.record_keys(
+            context, [*grants.object_privileges, *grants.field_permissions]
+        )
         changes: list[dict[str, object]] = [
             {"op": "role_create", "role_id": str(role_id), "role_key": key}
         ]
-        changes += privilege_changes(role_id, PrivilegeDiff(added=privileges))
+        changes += privilege_changes(role_id, PrivilegeDiff(added=keys.keyed(grants)))
         _refuse_if_any(await self.repo.refusals(context, changes))
         if await self.repo.role_by_key(context, key) is not None:
             raise conflict("this company already has a role with that key", "role_key_taken")
@@ -563,7 +673,7 @@ class RoleAdminService:
                 "description": command.description,
                 "kind": command.kind,
                 "template_key": template_key,
-                "permissions": [p.as_json() for p in privileges],
+                **grants.as_payload(),
             },
         )
         return await self._propose(context, proposal, expected=None, effect=effect)
@@ -623,19 +733,43 @@ class RoleAdminService:
         context: AccessContext,
         role_id: uuid.UUID,
         expected: ExpectedVersion,
-        permissions: Sequence[Privilege],
+        permissions: Sequence[Privilege] | None,
         *,
+        object_privileges: Sequence[ObjectPrivilege] | None = None,
+        field_permissions: Sequence[FieldPermission] | None = None,
         effect: PendingEffect | None = None,
     ) -> Proposal | RoleDetail:
-        """Applied at once (200) when it only narrows, else a proposal (202)."""
+        """Applied at once (200) when it only narrows, else a proposal (202).
+        A kind left out (None) keeps the role's; one given replaces it (R9.14)."""
         await self.authz.require(context=context, action=ROLES_WRITE, resource_type="role")
         role = await self._live_role(context, role_id)
         if role.key == "tenant_owner":
             raise rbac_refusal_error([Refusal("role_is_system")]) or AssertionError()
-        target = await self._checked_privileges(permissions)
+        current = role.grants
+        objects = (
+            current.object_privileges if object_privileges is None else tuple(object_privileges)
+        )
+        fields = (
+            current.field_permissions if field_permissions is None else tuple(field_permissions)
+        )
+        keys = await self.repo.record_keys(
+            context,
+            [*current.object_privileges, *current.field_permissions, *objects, *fields],
+        )
+        target = RoleGrants(
+            permissions=current.permissions
+            if permissions is None
+            else await self._checked_privileges(permissions),
+            object_privileges=_checked_objects(objects, keys)
+            if object_privileges is not None
+            else objects,
+            field_permissions=_checked_fields(fields, keys)
+            if field_permissions is not None
+            else fields,
+        )
         if not expected.matches(role.version):
             raise _stale_if_match()
-        diff = diff_privileges(role.privileges, target)
+        diff = diff_privileges(keys.keyed(current), keys.keyed(target))
         _refuse_if_any(await self.repo.refusals(context, privilege_changes(role_id, diff)))
         if not diff.widens:
             if diff.empty:
@@ -659,7 +793,7 @@ class RoleAdminService:
             kind="role_permissions",
             role_id=role_id,
             base_version=expected.version,
-            payload={"permissions": [p.as_json() for p in target]},
+            payload=target.as_payload(),
         )
         return await self._propose(context, proposal, expected=expected, effect=effect)
 
@@ -788,13 +922,14 @@ class RoleAdminService:
 
     async def _source(
         self, context: AccessContext, command: CreateRole
-    ) -> tuple[tuple[Privilege, ...], str | None]:
-        """The privileges a new role starts with, read now: the confirmation
-        never reads the template or the source role again."""
+    ) -> tuple[RoleGrants, str | None]:
+        """The grants a new role starts with, read now: the confirmation never
+        reads the template or the source role again. A clone copies the source
+        role's object privileges and field permissions too (step 7)."""
         if command.from_template is not None:
             for template in await self.repo.list_templates():
                 if template.key == command.from_template:
-                    return template.privileges, template.key
+                    return RoleGrants(template.privileges), template.key
             raise DomainError(
                 "no such role template",
                 details={"errors": [{"pointer": "/from_template", "detail": "unknown"}]},
@@ -807,8 +942,8 @@ class RoleAdminService:
                     "no such role to clone",
                     details={"errors": [{"pointer": "/clone_of", "detail": "unknown"}]},
                 )
-            return source.privileges, None
-        return (), None
+            return source.grants, None
+        return RoleGrants(), None
 
     async def _checked_privileges(self, permissions: Sequence[Privilege]) -> tuple[Privilege, ...]:
         seen: dict[str, Privilege] = {}
@@ -819,6 +954,14 @@ class RoleAdminService:
             pointer = f"/permissions/{index}"
             if privilege.key in seen:
                 errors.append({"pointer": pointer, "detail": "listed twice"})
+            elif privilege.key.startswith(("obj.", "fld.")):
+                # A generated key is set by id in its own array (step 6).
+                errors.append(
+                    {
+                        "pointer": f"{pointer}/key",
+                        "detail": "a record key goes in object_privileges or field_permissions",
+                    }
+                )
             elif known is None or known.status == "retired":
                 errors.append({"pointer": f"{pointer}/key", "detail": "unknown key"})
             elif privilege.depth not in known.allowed_depths:
@@ -827,6 +970,50 @@ class RoleAdminService:
         if errors:
             raise DomainError("these privileges cannot be set", details={"errors": errors})
         return tuple(sorted(seen.values()))
+
+
+def _checked_objects(
+    rows: Sequence[ObjectPrivilege], keys: RecordKeys
+) -> tuple[ObjectPrivilege, ...]:
+    """422 with a pointer per element before any proposal (R9.13): an action
+    that is not enforced, a depth outside the set, an object this tenant does
+    not have alive, which answers as one that does not exist anywhere."""
+    seen: set[tuple[uuid.UUID, str]] = set()
+    errors: list[dict[str, str]] = []
+    for index, row in enumerate(rows):
+        pointer = f"/object_privileges/{index}"
+        if (row.object_id, row.action) in seen:
+            errors.append({"pointer": pointer, "detail": "listed twice"})
+        elif not keys.actions.get(row.action, False):
+            errors.append({"pointer": f"{pointer}/action", "detail": "action not enforced"})
+        elif row.depth not in OBJECT_DEPTHS:
+            errors.append({"pointer": f"{pointer}/depth", "detail": "depth not allowed"})
+        elif not keys.keys.get(row):
+            errors.append({"pointer": f"{pointer}/object_id", "detail": "unknown object"})
+        seen.add((row.object_id, row.action))
+    if errors:
+        raise DomainError("these object privileges cannot be set", details={"errors": errors})
+    return tuple(sorted(rows))
+
+
+def _checked_fields(
+    rows: Sequence[FieldPermission], keys: RecordKeys
+) -> tuple[FieldPermission, ...]:
+    """As `_checked_objects`, for field permissions."""
+    seen: set[uuid.UUID] = set()
+    errors: list[dict[str, str]] = []
+    for index, row in enumerate(rows):
+        pointer = f"/field_permissions/{index}"
+        if row.field_id in seen:
+            errors.append({"pointer": pointer, "detail": "listed twice"})
+        elif row.access not in FIELD_ACCESS:
+            errors.append({"pointer": f"{pointer}/access", "detail": "access is read or edit"})
+        elif not keys.keys.get(row):
+            errors.append({"pointer": f"{pointer}/field_id", "detail": "unknown field"})
+        seen.add(row.field_id)
+    if errors:
+        raise DomainError("these field permissions cannot be set", details={"errors": errors})
+    return tuple(sorted(rows))
 
 
 def _stale_if_match() -> DWError:
@@ -855,15 +1042,20 @@ __all__ = [
     "ConfirmAudits",
     "ConfirmOutcome",
     "CreateRole",
+    "FieldPermission",
     "NewProposal",
+    "ObjectPrivilege",
     "Privilege",
     "PrivilegeDiff",
     "Proposal",
+    "RecordKeys",
+    "RecordRow",
     "Refusal",
     "RoleAdminRepositoryPort",
     "RoleAdminService",
     "RoleAssignmentRow",
     "RoleDetail",
+    "RoleGrants",
     "RoleSummary",
     "RoleTemplate",
     "conflict",

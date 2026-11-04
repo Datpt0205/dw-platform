@@ -144,6 +144,34 @@ tenant_role_permissions = sa.Table(
     sa.Column("depth", sa.Text, nullable=False),
 )
 
+# A role's privilege on a company object (tenant-rbac ticket 04, migration
+# ef68083f2905); its key `obj.<object>.<action>` is generated, never stored.
+tenant_role_object_privileges = sa.Table(
+    "tenant_role_object_privileges",
+    metadata,
+    sa.Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("role_id", UUID(as_uuid=True), primary_key=True),
+    sa.Column("object_id", UUID(as_uuid=True), primary_key=True),
+    sa.Column("action", sa.Text, primary_key=True),
+    sa.Column("depth", sa.Text, nullable=False),
+)
+
+# A role's read or edit on a company field (ADR-0106 decision 3), in the studio
+# schema beside the field definitions; `edit` gives `.read` and `.edit`.
+field_permissions = sa.Table(
+    "field_permissions",
+    metadata,
+    sa.Column("tenant_id", UUID(as_uuid=True), primary_key=True),
+    sa.Column("role_id", UUID(as_uuid=True), primary_key=True),
+    sa.Column("field_id", UUID(as_uuid=True), primary_key=True),
+    sa.Column("access", sa.Text, nullable=False),
+    sa.Column("granted_by", UUID(as_uuid=True), nullable=True),
+    sa.Column(
+        "granted_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text("now()")
+    ),
+    schema="studio",
+)
+
 # One role held by one membership; its workspace is the membership's, through
 # the composite key to `memberships (tenant_id, workspace_id, id)`.
 role_assignments = sa.Table(

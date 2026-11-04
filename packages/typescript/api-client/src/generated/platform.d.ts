@@ -193,7 +193,8 @@ export interface paths {
         };
         /**
          * List Permissions
-         * @description tenant-rbac R1.4: the permission catalogue, by area then key, for a
+         * @description tenant-rbac R1.4, R9.1: the permission catalogue, by area then key, and the
+         *     keys generated for each live object and enforced action, for a
          *     holder of `platform.roles.read`.
          */
         get: operations["list_permissions_api_v1_admin_permissions_get"];
@@ -360,8 +361,9 @@ export interface paths {
         get?: never;
         /**
          * Set Role Permissions
-         * @description The role's whole set of privileges: applied at once (200) when it only
-         *     narrows, else a proposal (202, R7.1, R7.6, RB32).
+         * @description The role's privileges, object privileges and field permissions, each
+         *     array present replacing its kind: applied at once (200) when it only
+         *     narrows, else a proposal (202, R7.1, R7.6, RB32, R9.14).
          */
         put: operations["set_role_permissions_api_v1_admin_roles__role_id__permissions_put"];
         post?: never;
@@ -3629,6 +3631,20 @@ export interface components {
             /** Suggestion */
             suggestion?: string | null;
         };
+        /** FieldPermissionView */
+        FieldPermissionView: {
+            /**
+             * Access
+             * @description `read`, or `edit`, which gives read too.
+             */
+            access: string;
+            /**
+             * Field Id
+             * Format: uuid
+             * @description A field of a live object of this company.
+             */
+            field_id: string;
+        };
         /** FreezeBody */
         FreezeBody: {
             /** Reason */
@@ -4144,6 +4160,25 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** ObjectPrivilegeView */
+        ObjectPrivilegeView: {
+            /**
+             * Action
+             * @description An enforced action of `platform.object_actions`.
+             */
+            action: string;
+            /**
+             * Depth
+             * @description `own`, `workspace` or `tenant`.
+             */
+            depth: string;
+            /**
+             * Object Id
+             * Format: uuid
+             * @description A live object definition of this company.
+             */
+            object_id: string;
+        };
         /** OffboardingStatusView */
         OffboardingStatusView: {
             /** Error */
@@ -4469,6 +4504,11 @@ export interface components {
         /** PermissionView */
         PermissionView: {
             /**
+             * Action
+             * @description For a generated `obj.*` key: its action.
+             */
+            action?: string | null;
+            /**
              * Allowed Depths
              * @description The depths the key takes by its kind.
              */
@@ -4485,6 +4525,11 @@ export interface components {
              */
             max_grantable_depth: string | null;
             /**
+             * Object Id
+             * @description For a generated `obj.<object>.<action>` key: the object, as `object_privileges` of `PUT /admin/roles/{role_id}/permissions` takes it.
+             */
+            object_id?: string | null;
+            /**
              * Risk
              * @enum {string}
              */
@@ -4500,10 +4545,18 @@ export interface components {
              */
             status: "active" | "unassigned" | "retired";
         };
-        /** PermissionsBody */
+        /**
+         * PermissionsBody
+         * @description Each array present replaces that kind of the role's grants; one left
+         *     out keeps it (R9.14).
+         */
         PermissionsBody: {
+            /** Field Permissions */
+            field_permissions?: components["schemas"]["FieldPermissionView"][] | null;
+            /** Object Privileges */
+            object_privileges?: components["schemas"]["ObjectPrivilegeView"][] | null;
             /** Permissions */
-            permissions: components["schemas"]["PrivilegeView"][];
+            permissions?: components["schemas"]["PrivilegeView"][] | null;
         };
         /** PlatformFreezeRequest */
         PlatformFreezeRequest: {
@@ -4738,6 +4791,8 @@ export interface components {
         RoleDetailView: {
             /** Description */
             description: string | null;
+            /** Field Permissions */
+            field_permissions: components["schemas"]["FieldPermissionView"][];
             /** Holder Count */
             holder_count: number;
             /**
@@ -4753,6 +4808,8 @@ export interface components {
             kind: string;
             /** Name */
             name: string;
+            /** Object Privileges */
+            object_privileges: components["schemas"]["ObjectPrivilegeView"][];
             /** Permissions */
             permissions: components["schemas"]["PrivilegeView"][];
             /** Template Key */

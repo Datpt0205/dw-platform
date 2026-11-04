@@ -37,15 +37,28 @@ _WORKSPACE_SLUG_CONSTRAINT = "uq_workspaces_tenant_slug"
 # The catalogue with, for the caller, the depths each key takes by its kind
 # and the broadest of them the caller could hand out at their own workspace:
 # `platform.holder_covers_grant`, the hold rule's own comparison (step 5).
+# The catalogue's rows and, beside them, the keys generated for every live
+# object and enforced action, with the attributes their one owner gives
+# (`platform.object_permission_keys`, tenant-rbac R9.1); never stored here.
 _PERMISSIONS = sa.text(
     """
-    SELECT p.key, p.area, p.label_vi, p.scope_kind, p.risk, p.status, d.allowed_depths,
+    SELECT p.key, p.area, p.label_vi, p.scope_kind, p.risk, p.status, p.object_id,
+           p.action, d.allowed_depths,
            (SELECT x.depth
             FROM unnest(d.allowed_depths) WITH ORDINALITY x(depth, n)
             WHERE platform.holder_covers_grant(
                 CAST(:t AS uuid), CAST(:u AS uuid), p.key, x.depth, CAST(:w AS uuid))
             ORDER BY x.n DESC LIMIT 1) AS max_grantable_depth
-    FROM platform.permissions p
+    FROM (
+        SELECT k.key, k.area, k.label_vi, k.scope_kind, k.risk, k.status,
+               NULL::uuid AS object_id, NULL::text AS action, 0 AS sort_order
+        FROM platform.permissions k
+        UNION ALL
+        SELECT o.key, o.area, o.label_vi, o.scope_kind, o.risk, 'active',
+               o.object_id, o.action, o.sort_order
+        FROM platform.object_permission_keys(CAST(:t AS uuid)) o
+        WHERE o.tenant_grantable
+    ) p
     CROSS JOIN LATERAL (
         SELECT CASE p.scope_kind
                    WHEN 'tenant' THEN ARRAY['tenant']
@@ -53,7 +66,7 @@ _PERMISSIONS = sa.text(
                    ELSE ARRAY['own', 'workspace', 'tenant']
                END AS allowed_depths
     ) d
-    ORDER BY p.area, p.key
+    ORDER BY p.area, p.object_id NULLS FIRST, p.sort_order, p.key
     """
 )
 
@@ -208,6 +221,8 @@ class SqlAdminConsoleRepository:
                 status=row.status,
                 allowed_depths=tuple(row.allowed_depths),
                 max_grantable_depth=row.max_grantable_depth,
+                object_id=row.object_id,
+                action=row.action,
             )
             for row in rows
         ]

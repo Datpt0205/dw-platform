@@ -80,6 +80,12 @@ class PermissionView(BaseModel):
         description="The broadest depth the caller could hand out at their own workspace"
         " (the hold rule, `platform.holder_covers_grant`); null when none."
     )
+    object_id: UUID | None = Field(
+        default=None,
+        description="For a generated `obj.<object>.<action>` key: the object, as"
+        " `object_privileges` of `PUT /admin/roles/{role_id}/permissions` takes it.",
+    )
+    action: str | None = Field(default=None, description="For a generated `obj.*` key: its action.")
 
 
 class PermissionSetView(BaseModel):
@@ -251,7 +257,8 @@ async def archive_workspace(
 async def list_permissions(
     context: RequireAccessContext, container: RequireContainer
 ) -> list[PermissionView]:
-    """tenant-rbac R1.4: the permission catalogue, by area then key, for a
+    """tenant-rbac R1.4, R9.1: the permission catalogue, by area then key, and the
+    keys generated for each live object and enforced action, for a
     holder of `platform.roles.read`."""
     rows = await _service(container).list_permissions(context)
     return [
@@ -264,6 +271,8 @@ async def list_permissions(
             status=cast(PermissionStatus, r.status),
             allowed_depths=list(r.allowed_depths),
             max_grantable_depth=r.max_grantable_depth,
+            object_id=r.object_id,
+            action=r.action,
         )
         for r in rows
     ]

@@ -48,18 +48,25 @@ from dw_platform.application.role_admin import (
     CatalogueKey,
     ConfirmAudits,
     ConfirmOutcome,
+    FieldPermission,
     NewProposal,
+    ObjectPrivilege,
     Privilege,
+    PrivilegeDiff,
     Proposal,
     ProposalKind,
     ProposalStatus,
+    RecordKeys,
+    RecordRow,
     Refusal,
     RoleAssignmentRow,
     RoleDetail,
+    RoleGrants,
     RoleSummary,
     RoleTemplate,
     conflict,
     diff_privileges,
+    privilege_changes,
     rbac_refusal_error,
 )
 from dw_platform.domain.audit import AuditEvent
@@ -68,6 +75,8 @@ _R = tables.tenant_roles
 _P = tables.tenant_role_permissions
 _A = tables.role_assignments
 _REQ = tables.role_change_requests
+_O = tables.tenant_role_object_privileges
+_F = tables.field_permissions
 
 # `platform.rbac_refusals` for many changes in one round trip; a preview, so
 # it takes no lock (the trigger takes it for the write).
@@ -116,13 +125,33 @@ _ROLE = sa.text(
             FROM platform.role_assignments a
             JOIN platform.memberships m ON m.tenant_id = a.tenant_id AND m.id = a.membership_id
             WHERE a.tenant_id = r.tenant_id AND a.role_id = r.id) AS holder_count,
+           -- The catalogue's keys; a role's record keys are its rows below.
            (SELECT coalesce(jsonb_agg(jsonb_build_array(g.permission_key, g.depth)
                                       ORDER BY g.permission_key), '[]'::jsonb)
-            FROM platform.role_privileges(r.tenant_id, r.id) g) AS privileges
+            FROM platform.role_privileges(r.tenant_id, r.id) g
+            JOIN platform.permissions k ON k.key = g.permission_key) AS privileges,
+           (SELECT coalesce(jsonb_agg(jsonb_build_array(o.object_id, o.action, o.depth)
+                                      ORDER BY o.object_id, o.action), '[]'::jsonb)
+            FROM platform.tenant_role_object_privileges o
+            WHERE o.tenant_id = r.tenant_id AND o.role_id = r.id) AS object_privileges,
+           (SELECT coalesce(jsonb_agg(jsonb_build_array(f.field_id, f.access)
+                                      ORDER BY f.field_id), '[]'::jsonb)
+            FROM studio.field_permissions f
+            WHERE f.tenant_id = r.tenant_id AND f.role_id = r.id) AS field_permissions
     FROM platform.tenant_roles r
     WHERE r.tenant_id = CAST(:t AS uuid)
     """
 )
+# `platform.record_privilege_keys` for many rows in one round trip, under the
+# caller's RLS: a row naming another tenant's object or field gives no key.
+_RECORD_KEYS = sa.text(
+    """
+    SELECT (e.ord - 1)::int AS idx,
+           platform.record_privilege_keys(e.item ->> 'table', e.item -> 'row') AS keys
+    FROM jsonb_array_elements(CAST(:rows AS jsonb)) WITH ORDINALITY e(item, ord)
+    """
+)
+_ACTIONS = sa.text("SELECT action, enforced FROM platform.object_actions")
 _TEMPLATES = sa.text(
     """
     SELECT t.key, t.name, t.kind,
@@ -167,7 +196,42 @@ def _detail(row: Any) -> RoleDetail:
         updated_at=row.updated_at,
         deleted=row.deleted_at is not None,
         privileges=tuple(Privilege(k, d) for k, d in row.privileges),
+        object_privileges=tuple(
+            ObjectPrivilege(uuid.UUID(o), a, d) for o, a, d in row.object_privileges
+        ),
+        field_permissions=tuple(FieldPermission(uuid.UUID(f), a) for f, a in row.field_permissions),
     )
+
+
+def _row_json(context: AccessContext, row: RecordRow) -> dict[str, object]:
+    """A row as `platform.record_privilege_keys` reads it."""
+    if isinstance(row, ObjectPrivilege):
+        return {
+            "table": "tenant_role_object_privileges",
+            "row": {"tenant_id": str(context.tenant_id), **row.as_json()},
+        }
+    return {
+        "table": "field_permissions",
+        "row": {"tenant_id": str(context.tenant_id), **row.as_json()},
+    }
+
+
+async def record_keys_in(
+    session: AsyncSession, context: AccessContext, rows: Sequence[RecordRow]
+) -> RecordKeys:
+    unique = list(dict.fromkeys(rows))
+    keys: dict[RecordRow, tuple[Privilege, ...]] = {}
+    if unique:
+        found = await session.execute(
+            _RECORD_KEYS,
+            {"rows": json.dumps([_row_json(context, r) for r in unique])},
+        )
+        for item in found:
+            keys[unique[item.idx]] = tuple(
+                sorted(Privilege(k["key"], k["depth"]) for k in item.keys)
+            )
+    actions = {r.action: bool(r.enforced) for r in await session.execute(_ACTIONS)}
+    return RecordKeys(keys=keys, actions=actions)
 
 
 def proposal_of(row: Any) -> Proposal:
@@ -340,6 +404,10 @@ class SqlRoleAdminRepository:
                 r.key: CatalogueKey(r.key, r.scope_kind, r.status, r.tenant_grantable) for r in rows
             }
 
+    async def record_keys(self, context: AccessContext, rows: Sequence[RecordRow]) -> RecordKeys:
+        async with tenant_session(self.session_factory, scope_of(context)) as session:
+            return await record_keys_in(session, context, rows)
+
     async def refusals(
         self, context: AccessContext, changes: Sequence[Mapping[str, object]]
     ) -> list[Refusal]:
@@ -385,7 +453,7 @@ class SqlRoleAdminRepository:
         role_id: uuid.UUID,
         *,
         expected: ExpectedVersion,
-        target: Sequence[Privilege] | None,
+        target: RoleGrants | None,
         delete: bool,
         audit: AuditEvent,
         effect: PendingEffect | None = None,
@@ -411,7 +479,7 @@ class SqlRoleAdminRepository:
                         sa.update(_R).where(_R.c.id == role_id).values(deleted_at=sa.func.now())
                     )
                 else:
-                    await _set_privileges(session, context, role_id, target or ())
+                    await _set_grants(session, context, role_id, target or RoleGrants())
                 await SqlAuditRepository(session).append(audit)
                 found = await _role(
                     session, context, sa.text("r.id = CAST(:id AS uuid)"), id=role_id
@@ -622,23 +690,21 @@ async def _refuse_for_confirmer(
             }
         ]
     elif proposal.kind == "role_create":
+        role_id = uuid.UUID(str(payload["role_id"]))
+        target = RoleGrants.from_payload(payload, current=RoleGrants())
+        keys = await _keys_of(session, context, target)
         changes = [
-            {"op": "role_create", "role_id": str(payload["role_id"]), "role_key": payload["key"]}
-        ] + [
-            {
-                "op": "add",
-                "role_id": str(payload["role_id"]),
-                "permission_key": p["key"],
-                "depth": p["depth"],
-            }
-            for p in _privileges(payload)
+            {"op": "role_create", "role_id": str(role_id), "role_key": payload["key"]},
+            *privilege_changes(role_id, PrivilegeDiff(added=keys.keyed(target))),
         ]
     elif proposal.kind == "role_permissions":
-        from dw_platform.application.role_admin import privilege_changes
-
         assert proposal.role_id is not None
-        current = await _current_privileges(session, proposal.role_id)
-        changes = privilege_changes(proposal.role_id, diff_privileges(current, _target(payload)))
+        current = await _current_grants(session, proposal.role_id)
+        target = RoleGrants.from_payload(payload, current=current)
+        keys = await _keys_of(session, context, current, target)
+        changes = privilege_changes(
+            proposal.role_id, diff_privileges(keys.keyed(current), keys.keyed(target))
+        )
     else:
         changes = []
     error = rbac_refusal_error(await ask_refusals(session, context, changes))
@@ -665,7 +731,9 @@ async def _apply(
                 created_by=proposal.proposed_by,
             )
         )
-        await _set_privileges(session, context, role_id, _target(payload))
+        await _set_grants(
+            session, context, role_id, RoleGrants.from_payload(payload, current=RoleGrants())
+        )
         return {"role_key": payload["key"]}
     assert proposal.role_id is not None
     role_key = await session.scalar(sa.select(_R.c.key).where(_R.c.id == proposal.role_id))
@@ -677,9 +745,11 @@ async def _apply(
         )
         return {"role_key": role_key}
     if proposal.kind == "role_permissions":
-        current = await _current_privileges(session, proposal.role_id)
-        diff = diff_privileges(current, _target(payload))
-        await _set_privileges(session, context, proposal.role_id, _target(payload))
+        current = await _current_grants(session, proposal.role_id)
+        target = RoleGrants.from_payload(payload, current=current)
+        keys = await _keys_of(session, context, current, target)
+        diff = diff_privileges(keys.keyed(current), keys.keyed(target))
+        await _set_grants(session, context, proposal.role_id, target)
         return {
             "role_key": role_key,
             "added": [p.as_json() for p in diff.added],
@@ -707,12 +777,14 @@ async def _apply(
     }
 
 
-def _privileges(payload: Mapping[str, object]) -> list[Mapping[str, str]]:
-    return cast(list[Mapping[str, str]], payload.get("permissions") or [])
-
-
-def _target(payload: Mapping[str, object]) -> tuple[Privilege, ...]:
-    return tuple(sorted(Privilege(p["key"], p["depth"]) for p in _privileges(payload)))
+async def _keys_of(
+    session: AsyncSession, context: AccessContext, *grants: RoleGrants
+) -> RecordKeys:
+    rows: list[RecordRow] = []
+    for g in grants:
+        rows += g.object_privileges
+        rows += g.field_permissions
+    return await record_keys_in(session, context, rows)
 
 
 async def _current_privileges(session: AsyncSession, role_id: uuid.UUID) -> tuple[Privilege, ...]:
@@ -722,13 +794,97 @@ async def _current_privileges(session: AsyncSession, role_id: uuid.UUID) -> tupl
     return tuple(sorted(Privilege(r.permission_key, r.depth) for r in rows))
 
 
+async def _current_grants(session: AsyncSession, role_id: uuid.UUID) -> RoleGrants:
+    objects = await session.execute(
+        sa.select(_O.c.object_id, _O.c.action, _O.c.depth).where(_O.c.role_id == role_id)
+    )
+    fields = await session.execute(
+        sa.select(_F.c.field_id, _F.c.access).where(_F.c.role_id == role_id)
+    )
+    return RoleGrants(
+        permissions=await _current_privileges(session, role_id),
+        object_privileges=tuple(
+            sorted(ObjectPrivilege(r.object_id, r.action, r.depth) for r in objects)
+        ),
+        field_permissions=tuple(sorted(FieldPermission(r.field_id, r.access) for r in fields)),
+    )
+
+
+async def _set_grants(
+    session: AsyncSession, context: AccessContext, role_id: uuid.UUID, target: RoleGrants
+) -> None:
+    """Move the role's three kinds of rows to ``target``, each removed,
+    changed in place, then added, every statement judged by its trigger."""
+    await _set_privileges(session, context, role_id, target.permissions)
+    current_objects = {
+        (r.object_id, r.action): r.depth
+        for r in await session.execute(
+            sa.select(_O.c.object_id, _O.c.action, _O.c.depth).where(_O.c.role_id == role_id)
+        )
+    }
+    wanted_objects = {(p.object_id, p.action): p.depth for p in target.object_privileges}
+    for object_id, action in sorted(set(current_objects) - set(wanted_objects)):
+        await session.execute(
+            sa.delete(_O).where(
+                _O.c.role_id == role_id, _O.c.object_id == object_id, _O.c.action == action
+            )
+        )
+    for (object_id, action), depth in sorted(wanted_objects.items()):
+        before = current_objects.get((object_id, action))
+        if before is None:
+            await session.execute(
+                sa.insert(_O).values(
+                    tenant_id=context.tenant_id,
+                    role_id=role_id,
+                    object_id=object_id,
+                    action=action,
+                    depth=depth,
+                )
+            )
+        elif before != depth:
+            await session.execute(
+                sa.update(_O)
+                .where(_O.c.role_id == role_id, _O.c.object_id == object_id, _O.c.action == action)
+                .values(depth=depth)
+            )
+    current_fields = {
+        r.field_id: r.access
+        for r in await session.execute(
+            sa.select(_F.c.field_id, _F.c.access).where(_F.c.role_id == role_id)
+        )
+    }
+    wanted_fields = {p.field_id: p.access for p in target.field_permissions}
+    for field_id in sorted(set(current_fields) - set(wanted_fields)):
+        await session.execute(
+            sa.delete(_F).where(_F.c.role_id == role_id, _F.c.field_id == field_id)
+        )
+    for field_id, access in sorted(wanted_fields.items()):
+        before_access = current_fields.get(field_id)
+        if before_access is None:
+            await session.execute(
+                sa.insert(_F).values(
+                    tenant_id=context.tenant_id,
+                    role_id=role_id,
+                    field_id=field_id,
+                    access=access,
+                    granted_by=context.principal_id,
+                )
+            )
+        elif before_access != access:
+            await session.execute(
+                sa.update(_F)
+                .where(_F.c.role_id == role_id, _F.c.field_id == field_id)
+                .values(access=access, granted_by=context.principal_id, granted_at=sa.func.now())
+            )
+
+
 async def _set_privileges(
     session: AsyncSession,
     context: AccessContext,
     role_id: uuid.UUID,
     target: Sequence[Privilege],
 ) -> None:
-    """Move the role's rows to ``target``: removed, re-depthed, added."""
+    """Move the role's catalogue rows to ``target``: removed, re-depthed, added."""
     current = {p.key: p.depth for p in await _current_privileges(session, role_id)}
     wanted = {p.key: p.depth for p in target}
     gone = sorted(set(current) - set(wanted))

@@ -72,6 +72,10 @@ class PermissionInfo:
     # caller holds at their own workspace (the hold rule), None when none.
     allowed_depths: tuple[str, ...] = ()
     max_grantable_depth: str | None = None
+    # A generated `obj.<object>.<action>` key (tenant-rbac R9.1): the ids a
+    # client puts in `object_privileges`; None for a catalogue row.
+    object_id: uuid.UUID | None = None
+    action: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

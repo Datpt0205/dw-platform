@@ -17,6 +17,7 @@ from typing import Any
 
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from dw_platform.adapters.persistence.tenant_session import TenantScope, tenant_session
@@ -24,6 +25,7 @@ from dw_platform.application.access_context import AccessContext
 from dw_studio.core.adapters.artifact_store import SqlArtifactTx
 from dw_studio.core.adapters.tables import artifact_versions
 from dw_studio.core.application.ports import ArtifactTx
+from dw_studio.core.domain.artifacts import DocumentProblem
 from dw_studio.records.adapters.tables import field_defs, object_defs, picklist_options
 from dw_studio.records.application.ports import AppliedObject, FieldStorage, ObjectVersion
 from dw_studio.records.domain.document import (
@@ -34,8 +36,10 @@ from dw_studio.records.domain.document import (
     OptionDefinition,
 )
 from dw_studio.records.domain.locks import object_lock_key
+from dw_studio.records.domain.rules import ObjectVersionRejected
 
 _LOCK = sa.text("SELECT pg_advisory_xact_lock(:k)")
+_SERVICE_NOT_CRITICAL = "ck_role_assignments_service_not_critical"
 
 # The columns of `field_defs` a `FieldDefinition` carries, by the same names.
 _FIELD_COLUMNS = (
@@ -208,11 +212,30 @@ class SqlObjectDefinitionStore:
         )
 
     async def update_field(self, field_id: uuid.UUID, **values: Any) -> None:
-        await self.session.execute(
-            sa.update(field_defs)
-            .where(field_defs.c.id == field_id)
-            .values(**self._stamped(**values))
-        )
+        try:
+            await self.session.execute(
+                sa.update(field_defs)
+                .where(field_defs.c.id == field_id)
+                .values(**self._stamped(**values))
+            )
+        except IntegrityError as exc:
+            # tenant-rbac R9.9: a field made sensitive while a role holding a
+            # `fld.*` key of it is held by a service account; the publish
+            # rolls back with the reason (V4.18).
+            cause = getattr(exc.orig, "__cause__", None)
+            if getattr(cause, "constraint_name", None) != _SERVICE_NOT_CRITICAL:
+                raise
+            raise ObjectVersionRejected(
+                "a field a service account reads cannot become sensitive",
+                [
+                    DocumentProblem(
+                        "/fields",
+                        "field_held_by_service_account",
+                        f"field {field_id} is granted to a role a service account holds;"
+                        " remove the grant before marking it sensitive",
+                    )
+                ],
+            ) from exc
 
     async def put_options(self, field_id: uuid.UUID, options: Sequence[OptionDefinition]) -> None:
         if not options:

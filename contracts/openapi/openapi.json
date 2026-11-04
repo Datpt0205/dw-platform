@@ -2875,6 +2875,28 @@
         "title": "FeedbackView",
         "type": "object"
       },
+      "FieldPermissionView": {
+        "additionalProperties": false,
+        "properties": {
+          "access": {
+            "description": "`read`, or `edit`, which gives read too.",
+            "title": "Access",
+            "type": "string"
+          },
+          "field_id": {
+            "description": "A field of a live object of this company.",
+            "format": "uuid",
+            "title": "Field Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field_id",
+          "access"
+        ],
+        "title": "FieldPermissionView",
+        "type": "object"
+      },
       "FreezeBody": {
         "additionalProperties": false,
         "properties": {
@@ -4090,6 +4112,34 @@
         "title": "NotificationView",
         "type": "object"
       },
+      "ObjectPrivilegeView": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "description": "An enforced action of `platform.object_actions`.",
+            "title": "Action",
+            "type": "string"
+          },
+          "depth": {
+            "description": "`own`, `workspace` or `tenant`.",
+            "title": "Depth",
+            "type": "string"
+          },
+          "object_id": {
+            "description": "A live object definition of this company.",
+            "format": "uuid",
+            "title": "Object Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "object_id",
+          "action",
+          "depth"
+        ],
+        "title": "ObjectPrivilegeView",
+        "type": "object"
+      },
       "OffboardingStatusView": {
         "properties": {
           "error": {
@@ -4796,6 +4846,18 @@
       },
       "PermissionView": {
         "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "For a generated `obj.*` key: its action.",
+            "title": "Action"
+          },
           "allowed_depths": {
             "description": "The depths the key takes by its kind.",
             "items": {
@@ -4827,6 +4889,19 @@
             ],
             "description": "The broadest depth the caller could hand out at their own workspace (the hold rule, `platform.holder_covers_grant`); null when none.",
             "title": "Max Grantable Depth"
+          },
+          "object_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "For a generated `obj.<object>.<action>` key: the object, as `object_privileges` of `PUT /admin/roles/{role_id}/permissions` takes it.",
+            "title": "Object Id"
           },
           "risk": {
             "enum": [
@@ -4871,18 +4946,51 @@
       },
       "PermissionsBody": {
         "additionalProperties": false,
+        "description": "Each array present replaces that kind of the role's grants; one left\nout keeps it (R9.14).",
         "properties": {
+          "field_permissions": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/FieldPermissionView"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field Permissions"
+          },
+          "object_privileges": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ObjectPrivilegeView"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Object Privileges"
+          },
           "permissions": {
-            "items": {
-              "$ref": "#/components/schemas/PrivilegeView"
-            },
-            "title": "Permissions",
-            "type": "array"
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/PrivilegeView"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Permissions"
           }
         },
-        "required": [
-          "permissions"
-        ],
         "title": "PermissionsBody",
         "type": "object"
       },
@@ -5472,6 +5580,13 @@
             ],
             "title": "Description"
           },
+          "field_permissions": {
+            "items": {
+              "$ref": "#/components/schemas/FieldPermissionView"
+            },
+            "title": "Field Permissions",
+            "type": "array"
+          },
           "holder_count": {
             "title": "Holder Count",
             "type": "integer"
@@ -5496,6 +5611,13 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "object_privileges": {
+            "items": {
+              "$ref": "#/components/schemas/ObjectPrivilegeView"
+            },
+            "title": "Object Privileges",
+            "type": "array"
           },
           "permissions": {
             "items": {
@@ -5537,7 +5659,9 @@
           "holder_count",
           "version",
           "updated_at",
-          "permissions"
+          "permissions",
+          "object_privileges",
+          "field_permissions"
         ],
         "title": "RoleDetailView",
         "type": "object"
@@ -8596,7 +8720,7 @@
     },
     "/api/v1/admin/permissions": {
       "get": {
-        "description": "tenant-rbac R1.4: the permission catalogue, by area then key, for a\nholder of `platform.roles.read`.",
+        "description": "tenant-rbac R1.4, R9.1: the permission catalogue, by area then key, and the\nkeys generated for each live object and enforced action, for a\nholder of `platform.roles.read`.",
         "operationId": "list_permissions_api_v1_admin_permissions_get",
         "responses": {
           "200": {
@@ -9323,7 +9447,7 @@
     },
     "/api/v1/admin/roles/{role_id}/permissions": {
       "put": {
-        "description": "The role's whole set of privileges: applied at once (200) when it only\nnarrows, else a proposal (202, R7.1, R7.6, RB32).",
+        "description": "The role's privileges, object privileges and field permissions, each\narray present replacing its kind: applied at once (200) when it only\nnarrows, else a proposal (202, R7.1, R7.6, RB32, R9.14).",
         "operationId": "set_role_permissions_api_v1_admin_roles__role_id__permissions_put",
         "parameters": [
           {
