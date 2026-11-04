@@ -13,6 +13,8 @@ on:
     # formats the whole tree, and by each gate lane before it commits.
     paths-ignore:
       - ".claude/plans/**"
+      - ".claude/PLAN.md"
+      - ".claude/rules/**"
       - "docs/adr/**"
   pull_request:
 
