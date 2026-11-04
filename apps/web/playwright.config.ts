@@ -33,7 +33,8 @@ export default defineConfig({
     locale: "vi-VN",
   },
   // Viewports, owned here. The platform pages are checked on both sides of
-  // antd's lg (992px, where the menu becomes a drawer) and at a 320px phone;
+  // antd's lg (992px, where the menu becomes a drawer) and at a 320px phone,
+  // and so is /studio (studio-skeleton R7.4);
   // the older specs run on the desktop project only. Every project runs in
   // Vietnam's time zone, so a dev machine and CI agree.
   projects: [
@@ -49,7 +50,7 @@ export default defineConfig({
       ] as const
     ).map(([name, width, height]) => ({
       name,
-      testMatch: /platform-pages\.spec\.ts/,
+      testMatch: /(platform-pages|studio)\.spec\.ts/,
       use: {
         ...devices["Desktop Chrome"],
         viewport: { width, height },

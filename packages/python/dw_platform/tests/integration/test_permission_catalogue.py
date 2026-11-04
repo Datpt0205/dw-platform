@@ -208,16 +208,29 @@ def scan_sources(roots: Iterable[Path]) -> Scan:
     return scan
 
 
+_WEB_KEY = re.compile(r"\b(?:scope|anyScope|readKey):\s*(\"[^\"]+\"|\[[^\]]*\])")
+
+
+def _web_sources(repo: Path) -> list[Path]:
+    """The web files that name keys: the nav registry, and each context's
+    `_meta` manifests (studio-skeleton/03: a Studio area's `readKey` lives in
+    `app/studio/_meta/sections.ts`, not in the registry)."""
+    web = repo / "apps" / "web"
+    return [web / "lib" / "nav" / "registry.ts", *sorted(web.glob("app/*/_meta/*.ts"))]
+
+
 def scan_configs(repo: Path) -> Scan:
     """The keys tools and the web navigation name."""
     scan = Scan()
     for path in sorted((repo / "configs" / "tools").rglob("*.yaml")):
         for key in yaml.safe_load(path.read_text("utf-8")).get("required_scopes") or []:
             scan.add(str(key), path.name)
-    registry = (repo / "apps" / "web" / "lib" / "nav" / "registry.ts").read_text("utf-8")
-    for match in re.finditer(r"(?:scope|anyScope):\s*(\"[^\"]+\"|\[[^\]]*\])", registry):
-        for key in re.findall(r"\"([^\"]+)\"", match.group(1)):
-            scan.add(key, "nav/registry.ts")
+    web = repo / "apps" / "web"
+    for path in _web_sources(repo):
+        site = path.relative_to(web).as_posix()
+        for match in _WEB_KEY.finditer(path.read_text("utf-8")):
+            for key in re.findall(r"\"([^\"]+)\"", match.group(1)):
+                scan.add(key, site)
     return scan
 
 
@@ -334,6 +347,33 @@ def test_a_key_checked_through_a_constant_imported_elsewhere_is_seen(tmp_path: P
     assert catalogue_problems({"route.key": "active"}, [], scan.keys) == [
         "(b) x.y is checked, catalogue says None"
     ]
+
+
+def test_a_read_key_in_a_web_meta_manifest_is_seen(tmp_path: Path) -> None:
+    """studio-skeleton/03 step 8: a key only a `_meta` manifest names is still
+    a key the code checks, so the coverage test sees it."""
+    files = {
+        "configs/tools/.keep": "",
+        "apps/web/lib/nav/registry.ts": 'const a = { scope: "approvals.read" };\n',
+        "apps/web/app/studio/_meta/sections.ts": (
+            "export const STUDIO_SECTIONS = [\n"
+            '  { key: "object", href: "/studio/objects", label: "x",'
+            ' readKey: "studio.objects.read" },\n'
+            "];\n"
+        ),
+        "apps/web/app/studio/_meta/nav.ts": "anyScope: sections.map((s) => s.readKey),\n",
+        # Outside `_meta`, a page names no key the menu reads.
+        "apps/web/app/studio/layout.tsx": 'const b = { readKey: "not.a.manifest" };\n',
+    }
+    for name, text in files.items():
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, "utf-8")
+    keys = scan_configs(tmp_path).keys
+    assert keys == {
+        "approvals.read": {"lib/nav/registry.ts"},
+        "studio.objects.read": {"app/studio/_meta/sections.ts"},
+    }
 
 
 def test_a_check_whose_key_does_not_resolve_is_reported(tmp_path: Path) -> None:

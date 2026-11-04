@@ -1,0 +1,36 @@
+# Mutation check of studio-skeleton ticket 03: scripts/mutate.py runs this file
+# at the queue's close (wave-close.md). One mutation per control the ticket adds.
+#
+# mutate.py runs pytest only, so the web controls (vitest) are not entries here.
+# Each was planted by hand on 4/11/2026 (backed up by copy, mutated, its test
+# run with `vitest run <file> -t <name>`, restored by copy) and went red:
+#   G3    "sonner" added to ALLOWED                      -> catches each way the old system could come back
+#   R7.6  an exception admitted outside its glob          -> admits a path exception under its glob only
+#   R7.5  @dw/ui given an exception, import side         -> admits an app-wide exception ... nowhere in @dw/ui
+#   R7.5  @dw/ui given an exception, manifest side       -> lets an app-wide exception into apps/web's manifest, never @dw/ui's
+#   R7.8  the ADR's status line not read                 -> refuses a Proposed ADR
+#   R7.8  the module name not looked for in the ADR      -> refuses an Accepted ADR that does not name the module
+#   R7.6  the old lazy import clause ([\s\S]*?)           -> does not let one statement swallow the next
+#   R7.6  side-effect `import "x"` not matched           -> does not let one statement swallow the next
+#   R7.6  `export ... from` not matched                  -> sees export-from and the CSS @import and @plugin directives
+#   R7.6  CSS `@plugin` not matched                      -> sees export-from ...
+#   R7.6  `.cjs` dropped from the extensions read        -> reads every JS, TS and CSS extension
+#   R7.6  dev tools allowed in every file                -> keeps dev tools to test files, root config files and stylesheets
+#   R7.6  config files matched by basename, any folder   -> keeps dev tools ...
+#   R7.5  any devDependency allowed                      -> refuses an unlisted library in devDependencies too
+#   R7.6  `**` read as one segment                       -> matches globs by segment
+#   R7.7  the ESLint allowlist regex replaced            -> errors on an unlisted module and on nothing allowlisted
+#   R7.7  the ESLint dev override matched by basename    -> lets dev tools into test and root config files only
+#   R7.2  anyScope dropped when no area exists           -> is hidden from everyone while no area is registered
+#   R7.1  a second /studio item in NAV_ITEMS             -> is in NAV_ITEMS exactly once
+#   R7.3  a refusal drawn as an empty table              -> draws the forbidden state for permission_denied
+#   R7.3  later pages not appended                       -> appends the second page on Tải thêm
+# R7.4 (no sideways scroll at 320 px) is a Playwright spec, run with the
+# screenshots at the queue's close (`make test-web`).
+mutations:
+  - name: R7.2 the key scan skips the web _meta manifests
+    file: packages/python/dw_platform/tests/integration/test_permission_catalogue.py
+    old: '    return [web / "lib" / "nav" / "registry.ts", *sorted(web.glob("app/*/_meta/*.ts"))]'
+    new: '    return [web / "lib" / "nav" / "registry.ts"]'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_permission_catalogue.py::test_a_read_key_in_a_web_meta_manifest_is_seen
