@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 3/11/2026
-Sẵn sàng: ĐẠT (3/11/2026; 0 CRITICAL, 0 HIGH; ticket 01)
+Sẵn sàng: ĐẠT (4/11/2026; 0 CRITICAL, 0 HIGH; ticket 01-02)
 
 Người dựng không viết mã dựng một Quy trình bằng cách đặt Bước vào ô của một Sơ đồ có cấu trúc, cấu hình mỗi Bước bằng
 biểu mẫu antd sinh từ schema, viết Biểu thức với một bộ Chọn biến có kiểu, chạy mô phỏng và gửi kiểm định. Sơ đồ là
@@ -162,8 +162,9 @@ bản với bản Đang dùng theo id Bước cho màn duyệt phát hành (YC33
   bản Nháp đang có cùng ETag của nó và không gọi lại route (tenant-config:R2.23).
 - R3.16 KHI một màn mở Sơ đồ chỉ đọc của một phiên bản kèm bản Đang dùng của cùng Quy trình để so, hay kèm lời nêu rằng
   Quy trình chưa có bản Đang dùng, Sơ đồ chỉ đọc PHẢI gắn nhãn "Mới" cho mỗi Bước có id chỉ ở phiên bản đang xem, là
-  mọi Bước khi chưa có bản Đang dùng, nhãn "Đã sửa" cho mỗi Bước có id ở cả hai bản mà nội dung, làn chứa hay thứ tự
-  giữa các Bước chung của làn khác, và không nhãn nào cho Bước giống hệt, luôn có chữ cùng biểu tượng.
+  mọi Bước khi chưa có bản Đang dùng, nhãn "Đã sửa" cho mỗi Bước có id cùng Loại bước ở cả hai bản mà nội dung, làn chứa
+  hay thứ tự giữa các Bước chung của làn khác, và không nhãn nào cho Bước giống hệt, luôn có chữ cùng biểu tượng; một id
+  mà Loại bước đổi là một Bước bị xóa cộng một Bước "Mới", như `diff_steps` của wf-lite quyết.
 - R3.17 KHI một id Bước chỉ có ở bản Đang dùng, Sơ đồ chỉ đọc PHẢI liệt kê Bước đó trong danh sách "Bước đã xóa" cạnh Sơ
   đồ, với tên, Loại bước và làn cũ của nó, vì phiên bản đang xem không có chỗ cho thẻ của nó.
 - R3.18 KHI người xem chọn một Bước mang nhãn "Đã sửa", Sơ đồ chỉ đọc PHẢI mở một Drawer chỉ đọc nêu từng trường của
@@ -179,13 +180,15 @@ bản với bản Đang dùng theo id Bước cho màn duyệt phát hành (YC33
 
 - Route `/studio/workflows/[id]/builder` và các thành phần của nó, kể cả màn lượt chạy của lượt mô phỏng trên cùng Sơ
   đồ.
-- Sơ đồ chỉ đọc với lớp phần khác so với bản Đang dùng, tính theo id Bước bằng diff của `workflow-graph.ts`: nhãn "Mới",
+- Sơ đồ chỉ đọc với lớp phần khác so với bản Đang dùng, tính theo id Bước bằng `diff_steps` của wf-lite
+  (`dw_agent_runtime.wflite.outline`, chủ duy nhất của diff theo id Bước, mà wf-ai đã dùng) do ticket 03 mở rộng: nhãn "Mới",
   "Đã sửa", danh sách "Bước đã xóa", Drawer chỉ đọc nêu trường đã khác, tên các phần ngoài cây Bước đã khác, và thông
   báo khi không so được (R3.16-R3.20); thành phần dưới glob canvas mà màn duyệt của agent-lifecycle/07 dùng, còn route,
   quyền và hai phiên bản đưa vào là của màn đó.
 - `apps/web/lib/workflow-graph.ts`: mô-đun thuần, không import gói nào: tài liệu `dw.workflow/v1` là cây Bước, mỗi
-  Nhánh ra của Bước là một làn; chèn vào ô, dời sang ô khác, xóa Bước hay khung chứa, hoàn tác và làm lại, thứ tự phím
-  theo tài liệu, diff theo id Bước.
+  Nhánh ra của Bước là một làn; chèn vào ô, dời sang ô khác (không bao giờ vào cây con của chính Bước được dời), xóa
+  Bước hay khung chứa, thêm và bỏ một làn theo khóa (`cases`, `branches`), hoàn tác và làm lại, thứ tự phím theo tài
+  liệu, sinh id cho Bước mới. Không diff: lớp phần khác đọc diff của máy chủ (R3.16).
 - `apps/web/lib/workflow-layout.ts`: mô-đun thuần, không import gói nào, ngoài glob canvas: vị trí của năm khối tính từ
   cây theo hai bước (đo từ dưới lên, đặt từ trên xuống), O(n), trả hình thuần mà Sơ đồ dưới glob canvas đổi thành node
   và cạnh của React Flow.
@@ -213,6 +216,7 @@ bản với bản Đang dùng theo id Bước cho màn duyệt phát hành (YC33
 | Màn "Lịch sử chạy" và `run_steps`                                                                                                                                                               | Đọc từ Postgres dưới RLS (ADR-0122 (Accepted))                                                                                                                                                                                                                                                      | `telemetry-and-audit`                                                    |
 | Vòng đời và màn duyệt phát hành: route, quyền, kết quả cổng, chi phí ước tính và hai phiên bản đưa vào để so; màn đó dùng Sơ đồ chỉ đọc và lớp phần khác của spec này (R3.16-R3.20)             | Giai đoạn và cổng phát hành (ADR-0120 (Accepted)); màn duyệt W1 là `.claude/plans/studio/agent-lifecycle/issues/07-man-duyet-phat-hanh.md` (V4.37)                                                                                                                                                  | `agent-lifecycle`                                                        |
 | Biểu mẫu bản ghi                                                                                                                                                                                | Thuộc trình bày của đối tượng                                                                                                                                                                                                                                                                       | `custom-objects`                                                         |
+| Sửa `triggers[]` trong builder                                                                                                                                                                  | W1 không tiêu chí nào cho việc đó: Quy trình W1 nhận trình kích hoạt từ gói mẫu hay phiên bản trước (D16), và bảng Loại bước không đưa loại `trigger.*` vào ô của `steps[]`; ở W1 người duyệt cũng nhập theo `config_schema` như mọi trường, vì bộ chọn người duyệt là dòng W2 bên dưới             | đợt sau (W2, `workflow-builder-ui`)                                      |
 | Mở một lượt chạy bất kỳ từ Lịch sử chạy trên Sơ đồ (lượt `live`, lượt của Trình kích hoạt); W1 vẽ trên Sơ đồ lượt mô phỏng chạy từ builder (R3.11, R3.12)                                       | B7b-nodes workflow-builder-ui 09; màn Lịch sử chạy của W1 là của telemetry-and-audit                                                                                                                                                                                                                | đợt sau (W2, `workflow-builder-ui`); `telemetry-and-audit`               |
 | Trang Phiên bản: so sánh hai phiên bản bất kỳ, khôi phục một phiên bản thành Nháp                                                                                                               | B7b-nodes workflow-builder-ui 10; W1 chỉ so một phiên bản với bản Đang dùng, cho màn duyệt phát hành (R3.16-R3.20; V4.37)                                                                                                                                                                           | đợt sau (W2, `workflow-builder-ui`)                                      |
 | Trình soạn schema không cần code, chọn người duyệt                                                                                                                                              | B7b-nodes workflow-builder-ui 11                                                                                                                                                                                                                                                                    | đợt sau (W2, `workflow-builder-ui`)                                      |
@@ -224,8 +228,9 @@ bản với bản Đang dùng theo id Bước cho màn duyệt phát hành (YC33
 
 - `/studio/workflows/[id]/builder` (người giữ `studio.workflows.edit`): bảng Loại bước bên trái từ `lg`, kéo vào ô;
   Sơ đồ có cấu trúc trên xuống dưới, mỗi đường nối có ô "+" và mỗi làn trống có ô "Thêm Bước", mỗi ô mở Popover bảng
-  chọn; cấu hình của Bước trong Drawer (Form sinh từ `config_schema`, tab "Khi lỗi"); menu "…" của Bước có Thêm sau, Di
-  chuyển…, Xóa, Sao chép tham chiếu; Ctrl+K "Đi tới Bước"; khung chứa thu gọn được; nút thu phóng là antd Button; huy
+  chọn; cấu hình của Bước trong Drawer (Form sinh từ `config_schema`, tab "Khi lỗi"); menu "…" của Bước có Thêm trước,
+  Thêm sau, Di chuyển…, Xóa, Sao chép tham chiếu; Ctrl+K "Đi tới Bước"; khung chứa thu gọn được; nút thu phóng là antd
+  Button; một antd `Segmented` "Sơ đồ | Danh sách" ở đầu trang chuyển giữa Sơ đồ và Dạng danh sách từ `md`; huy
   hiệu ghi công React Flow ở góc dưới trái để Drawer không che. Trạng thái: xem và sửa Nháp, tự lưu ("Đang lưu… / Đã
   lưu / Lưu thất bại"), huy hiệu lỗi trên Bước, xóa có thông báo Hoàn tác, chạy mô phỏng (`simulate`) với một lựa chọn
   duyệt hay từ chối cho mỗi Bước phê duyệt, nút Gửi kiểm định (khóa có lý do). Dưới `md` và ở 320 px: Dạng danh sách là
@@ -516,6 +521,29 @@ bản với bản Đang dùng theo id Bước cho màn duyệt phát hành (YC33
   `rgba(`, `hsla(` và tên màu. Sửa: BU14, ticket 01, 02. Nếu sai thì: ghim gói và mục `EXCEPTIONS` dời sang ticket 02,
   ticket 01 chỉ đo, và hai phép đo cần người thật thành một ticket `ready-for-human` của spec này.
 - 3/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 01.
+- 4/11/2026 (agent, theo ủy quyền 31/10/2026): gate ticket 02: (1) diff theo id Bước có một chủ, `diff_steps` của wf-lite
+  (`packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/outline.py`, wf-ai R4.1), đã so làn chứa và chỉ số
+  giữa các Bước chung đúng như R3.16 đòi và đã phục vụ route của wf-ai; `workflow-graph.ts` không viết diff thứ hai, ticket
+  03 mở rộng `diff_steps` (trường `retry`, `timeout_s`, `on_error`, làn `error_lane`, danh sách trường đã khác, phần
+  ngoài cây Bước) và màn gọi đưa kết quả cho Sơ đồ chỉ đọc; một id đổi Loại bước là xóa cộng thêm như `diff_steps`
+  (failure-modes #2). Nếu sai thì: `workflow-graph.ts` giữ một diff TS với test đối chiếu cùng bộ fixture của
+  `diff_steps`, và R3.16 trở lại gắn "Đã sửa" cho id đổi Loại bước. (2) Form của Drawer sinh từ `config_schema` bỏ các
+  khóa làn mà danh mục nêu; làn chỉ sửa trên Sơ đồ; thêm, bỏ một làn theo khóa và đổi `on_error` khỏi `route` khi làn lỗi
+  còn Bước là thao tác cây của `workflow-graph.ts`, mà bỏ làn còn Bước theo đúng luật xóa của R2.10, R2.11. Nếu sai thì:
+  Form hiện làn như một trường mảng, và mất Bước không có Hoàn tác. (3) id Bước mới do `workflow-graph.ts` sinh: phần
+  tên của Loại bước (sau dấu chấm, trước `@`), `_`, sáu ký tự `[a-z0-9]` ngẫu nhiên, sinh lại khi trùng trong tài liệu,
+  không sửa được ở W1, nên không id nào của một Bước đã xóa được dùng lại cho Bước khác (ADR-0112 (Accepted) quyết 1).
+  Nếu sai thì: id theo bộ đếm của Loại bước và R3.16 chấp nhận "Đã sửa" cho id dùng lại. (4) Hoàn tác và làm lại chỉ
+  phủ thao tác cây, và Ctrl+Z, Ctrl+Shift+Z chỉ chạy khi focus ở Sơ đồ hay `Tree`; trong một ô nhập là hoàn tác của ô
+  đó. Nếu sai thì: một ngăn hoàn tác chung cho cây và cấu hình, chạy ở mọi chỗ ngoài ô nhập. (5) Đường bàn phím tới chỉ
+  số 0 của một làn không rỗng là "Thêm trước" của menu "…" (Màn hình). Nếu sai thì: ô "+" là điểm dừng của roving focus
+  giữa hai Bước. (6) "Di chuyển…" mở một antd `Modal` với `TreeSelect` các ô đích theo cây, không có ô nào trong cây con
+  của Bước được dời, và thao tác dời của `workflow-graph.ts` từ chối đích đó (giữ cây đúng hình, không phải kiểm của bộ
+  kiểm). Nếu sai thì: chế độ chọn ô bằng phím mũi tên. (7) Từ `md`, một `Segmented` "Sơ đồ | Danh sách" chuyển giữa hai
+  dạng của cùng tài liệu, dưới `md` chỉ có Danh sách; không phần tử ẩn nào nhận focus. Nếu sai thì: `Tree` hiện cạnh
+  Sơ đồ từ `lg`. (8) Sửa `triggers[]` không thuộc W1 (Ngoài phạm vi). Nếu sai thì: một thẻ trình kích hoạt ở đầu Sơ
+  đồ, và một ticket của spec này sửa nó. Sửa: Trong phạm vi, Ngoài phạm vi, Màn hình, R3.16, ticket 02, 03.
+- 4/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 02.
 
 ## Danh sách ticket
 
