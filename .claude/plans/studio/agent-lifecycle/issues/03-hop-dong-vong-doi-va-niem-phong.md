@@ -371,3 +371,8 @@ awaiting_approval` không qua `evaluating`, `gate_run_id` NULL, `publish_approva
     - Còn ở lúc đóng hàng đợi: `mutate.py` cho `mutations/03.yaml`; `make test-integration` toàn bộ; P50/P95/P99 của ba route
       `submit`, `withdraw`, `retire`, `GET /api/v1/studio/artifacts` và `/{id}` (view), `PUT .../draft` (trigger), `POST
 /api/v1/studio/artifacts` (đọc lại) so với commit đầu hàng đợi; `/code-review`; `reviewing-deployment-security` (route mới).
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): sau `706c979`, `test_plan_shape.py` đỏ ở trang `GET
+/api/v1/studio/artifacts`: view đọc lại `studio.artifacts` mỗi dòng, một lần quét thứ hai của bảng mà trang xếp theo. Revision
+  `9b97696ff72f` dựng lại view từ `studio.artifact_versions` gom theo thành phần (cùng cột, cùng thứ tự ưu tiên, vẫn
+  `security_invoker`), đột biến view của `mutations/03.yaml` trỏ sang revision đó và đỏ. Nếu sai thì: bỏ cột khỏi trang danh
+  sách và chỉ trả ở `GET .../{id}`.

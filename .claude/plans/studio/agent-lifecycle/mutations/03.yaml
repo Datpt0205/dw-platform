@@ -48,9 +48,9 @@ mutations:
   tests:
   - packages/python/dw_studio/tests/integration/test_version_stage_contract.py::test_r1_6_the_flag_is_read_by_the_trigger_itself
 - name: R1.5 the display view runs as its owner, past the reader's RLS
-  file: db/migrations/versions/6503c6f309b1_studio_version_lifecycle.py
-  old: CREATE VIEW studio.artifact_display_stage WITH (security_invoker = true) AS
-  new: CREATE VIEW studio.artifact_display_stage AS
+  file: db/migrations/versions/9b97696ff72f_studio_display_stage_over_versions.py
+  old: "WITH (security_invoker = true) AS\n    SELECT v.tenant_id,"
+  new: "WITH (security_invoker = false) AS\n    SELECT v.tenant_id,"
   tests:
   - packages/python/dw_studio/tests/integration/test_version_stage_contract.py::test_r1_5_the_view_reads_under_the_readers_own_tenant
 - name: AL1 R1.1 a version inserted outside draft
