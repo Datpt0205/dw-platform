@@ -1,0 +1,111 @@
+# Mutation check of agent-lifecycle ticket 02: scripts/mutate.py runs this file
+# at the queue's close (.claude/rules/wave-close.md). One mutation per control
+# the ticket's criteria name (R3.1-R3.4, the "gỡ ... → test đỏ" lines), each
+# test calling the function that decides: `run_cases`, `evaluate_gate`, the
+# models' validators, `judge_grader`. All were run by hand while writing the
+# tests (5/11/2026), each red. Not here, because mutate.py runs pytest only:
+# R3.5, `import dw_studio` planted in `dw_evals/gate.py`, seen red by
+# `lint-imports` ("Platform core does not import Studio") and green again.
+mutations:
+  - name: R3.1 a case passes when any trial passes
+    file: packages/python/dw_evals/src/dw_evals/runner.py
+    old: "        passed=first_failed is None,"
+    new: "        passed=any(g.passed for g in grades),"
+    tests:
+      - packages/python/dw_evals/tests/unit/test_run_cases.py::test_a_consistency_case_fails_when_one_of_its_k_trials_fails
+  - name: R3.1 a consistency case runs its own trials, not pass_k
+    file: packages/python/dw_evals/src/dw_evals/runner.py
+    old: "    count = pass_k if CONSISTENCY_TAG in case.tags else case.trials"
+    new: "    count = case.trials"
+    tests:
+      - packages/python/dw_evals/tests/unit/test_run_cases.py::test_a_consistency_case_fails_when_one_of_its_k_trials_fails
+      - packages/python/dw_evals/tests/unit/test_run_cases.py::test_a_consistency_case_passes_when_all_k_trials_pass
+  - name: R3.1 every case runs pass_k times
+    file: packages/python/dw_evals/src/dw_evals/runner.py
+    old: "    count = pass_k if CONSISTENCY_TAG in case.tags else case.trials"
+    new: "    count = pass_k"
+    tests:
+      - packages/python/dw_evals/tests/unit/test_run_cases.py::test_a_case_without_the_tag_runs_its_own_trials_whatever_pass_k
+  - name: R3.2 an unknown trial does not make its case unknown
+    file: packages/python/dw_evals/src/dw_evals/runner.py
+    old: "        unknown=any(g.unknown for g in grades),"
+    new: "        unknown=False,"
+    tests:
+      - packages/python/dw_evals/tests/unit/test_run_cases.py::test_one_unknown_trial_makes_the_case_unknown_and_failing
+      - packages/python/dw_evals/tests/unit/test_recorded_gate_run.py::test_an_abstaining_judge_leaves_the_case_unknown_and_the_gate_failed
+  - name: R3.2 a grade may pass and be unknown at once
+    file: packages/python/dw_evals/src/dw_evals/graders.py
+    old: "        if self.passed and self.unknown:"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_evals/tests/unit/test_observation_graders.py::test_a_grade_cannot_both_pass_and_be_unknown
+  - name: R3.2 an abstaining judge is a failure, not unknown
+    file: packages/python/dw_evals/src/dw_evals/graders.py
+    old: '        if verdict.verdict == "abstain":'
+    new: '        if verdict.verdict == "never":'
+    tests:
+      - packages/python/dw_evals/tests/unit/test_observation_graders.py::test_each_verdict_becomes_its_grade
+      - packages/python/dw_evals/tests/unit/test_recorded_gate_run.py::test_an_abstaining_judge_leaves_the_case_unknown_and_the_gate_failed
+  - name: R3.2 a case stated by reference reaches the judge
+    file: packages/python/dw_evals/src/dw_evals/graders.py
+    old: "        if case.input is None or case.expected is None:"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_evals/tests/unit/test_observation_graders.py::test_a_case_stated_by_reference_is_unknown_without_asking_the_judge
+  - name: R3.2 the gate's unknown rule removed
+    file: packages/python/dw_evals/src/dw_evals/gate.py
+    old: '        rule = "case_unknown" if result.unknown else "case_failed"'
+    new: '        rule = "case_failed"'
+    tests:
+      - packages/python/dw_evals/tests/unit/test_gate.py::test_an_unknown_case_fails_the_gate_naming_it
+      - packages/python/dw_evals/tests/unit/test_recorded_gate_run.py::test_an_abstaining_judge_leaves_the_case_unknown_and_the_gate_failed
+  - name: R3.4 the gate's failed rule removed
+    file: packages/python/dw_evals/src/dw_evals/gate.py
+    old: "        if result.passed:"
+    new: "        if result.passed or not result.unknown:"
+    tests:
+      - packages/python/dw_evals/tests/unit/test_gate.py::test_a_failing_case_fails_the_gate_naming_it
+      - packages/python/dw_evals/tests/unit/test_recorded_gate_run.py::test_a_bad_observation_fails_the_gate
+  - name: R3.4 the gate's no_cases rule removed
+    file: packages/python/dw_evals/src/dw_evals/gate.py
+    old: "    if not report.results:"
+    new: "    if False:"
+    tests:
+      - packages/python/dw_evals/tests/unit/test_gate.py::test_an_empty_report_fails_with_no_cases
+  - name: R3.4 the reasons follow the order the cases ran in
+    file: packages/python/dw_evals/src/dw_evals/gate.py
+    old: "    for result in sorted(report.results, key=lambda r: r.case_id):"
+    new: "    for result in report.results:"
+    tests:
+      - packages/python/dw_evals/tests/unit/test_gate.py::test_the_verdict_does_not_depend_on_the_order_the_cases_ran_in
+  - name: R3.4 the gate policy takes a field nobody reads
+    file: packages/python/dw_evals/src/dw_evals/gate.py
+    old: '    model_config = ConfigDict(frozen=True, extra="forbid")'
+    new: "    model_config = ConfigDict(frozen=True)"
+    tests:
+      - packages/python/dw_evals/tests/unit/test_gate.py::test_a_policy_is_refused_unless_it_is_well_formed
+  - name: R3.4 the gate policy takes a security rate below 1.0
+    file: packages/python/dw_evals/src/dw_evals/gate.py
+    old: "    security_pass_rate: float = Field(ge=1.0, le=1.0)"
+    new: "    security_pass_rate: float = Field(ge=0.0, le=1.0)"
+    tests:
+      - packages/python/dw_evals/tests/unit/test_gate.py::test_a_policy_is_refused_unless_it_is_well_formed
+  - name: R3.3 a case stating a value both ways, or neither, is accepted
+    file: packages/python/dw_evals/src/dw_evals/dataset.py
+    old: "            if (ref is None) == (inline is None):"
+    new: "            if False:"
+    tests:
+      - packages/python/dw_evals/tests/unit/test_dataset.py::test_a_value_stated_both_ways_or_neither_is_refused
+  - name: R3.3 run_dataset ignores an inline value
+    file: packages/python/dw_evals/src/dw_evals/runner.py
+    old: "    if inline is not None:"
+    new: "    if False:"
+    tests:
+      - packages/python/dw_evals/tests/unit/test_dataset.py::test_an_inline_case_runs_through_run_dataset_with_its_values
+  - name: R3.1 a target that raises stops the run
+    file: packages/python/dw_evals/src/dw_evals/runner.py
+    old: "    except Exception as exc:  # a target that crashed is a failing trial"
+    new: "    except ArithmeticError as exc:  # a target that crashed is a failing trial"
+    tests:
+      - packages/python/dw_evals/tests/unit/test_run_cases.py::test_a_target_that_raises_fails_its_trial_and_the_rest_still_run
+      - packages/python/dw_evals/tests/unit/test_recorded_gate_run.py::test_a_trial_never_recorded_is_a_target_error_not_a_pass

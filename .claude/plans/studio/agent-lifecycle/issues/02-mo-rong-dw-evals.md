@@ -1,6 +1,6 @@
 # 02 — Mở rộng dw_evals: quan sát, bộ chấm theo quan sát, JudgePort, lần chạy lặp, chính sách cổng thuần
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: .claude/plans/studio/studio-skeleton/issues/02-goi-dw-studio-va-seam-api.md
 Area: studio
 Yêu cầu: R3.1, R3.2, R3.3, R3.4, R3.5, G1
@@ -68,25 +68,25 @@ policy) -> GateVerdict(passed, reasons)`, không tham số nào khác (R3.4), l�
 
 ## Tiêu chí chấp nhận
 
-- [ ] R3.1: `run_cases` chạy một câu có tag `consistency` với `pass_k = 3` và một bộ chấm giả đạt, trượt, đạt → câu
+- [x] R3.1: `run_cases` chạy một câu có tag `consistency` với `pass_k = 3` và một bộ chấm giả đạt, trượt, đạt → câu
       trượt với `trials = 3`, `trials_passed = 2`; cả 3 lần đạt → câu đạt; target giả nhận đúng 3 lời gọi; một câu không
       có tag đó với `trials = 1` → target nhận 1 lời gọi dù `pass_k = 3`.
-- [ ] R3.2: một bộ chấm theo quan sát trả `GradeResult.abstain` → `CaseResult.unknown` và `evaluate_gate` trả
+- [x] R3.2: một bộ chấm theo quan sát trả `GradeResult.abstain` → `CaseResult.unknown` và `evaluate_gate` trả
       `passed=False` với `case_unknown:<case_id>`; `GradeResult(passed=True, unknown=True)` → lỗi validate; gỡ validator
       đó hay luật `unknown` của `evaluate_gate` → test đỏ.
-- [ ] R3.2: test đầu-cuối của bước 6 qua `RecordedTarget` và `judge_grader` trên `ScriptedJudge`: quan sát tốt (verdict
+- [x] R3.2: test đầu-cuối của bước 6 qua `RecordedTarget` và `judge_grader` trên `ScriptedJudge`: quan sát tốt (verdict
       `pass`) → cổng đạt; quan sát xấu (`fail`) → `case_failed:<case_id>`; giám khảo kiêng (`abstain`) →
       `case_unknown:<case_id>`; `ScriptedJudge` nhận đúng một lời gọi mỗi lần thử; không lời gọi model nào.
-- [ ] R3.3: một `EvalCase` có cả ref lẫn nội tuyến cho `input`, hay cho `expected`, hay không có cái nào → lỗi validate,
+- [x] R3.3: một `EvalCase` có cả ref lẫn nội tuyến cho `input`, hay cho `expected`, hay không có cái nào → lỗi validate,
       câu không chạy; câu chỉ có `input` và `expected` nội tuyến chạy qua `run_dataset` với giá trị đó.
-- [ ] R3.4: `evaluate_gate` cho cùng `GateVerdict` với cùng `(report, policy)` khi đảo thứ tự câu; báo cáo rỗng →
+- [x] R3.4: `evaluate_gate` cho cùng `GateVerdict` với cùng `(report, policy)` khi đảo thứ tự câu; báo cáo rỗng →
       `no_cases`; mỗi luật của nó (`no_cases`, `case_unknown`, `case_failed`) có test đỏ khi gỡ luật; `GatePolicy` có
       trường lạ hay `security_pass_rate` khác 1.0 → lỗi validate.
-- [ ] R3.5: thêm `import dw_studio` vào một module của `dw_evals` → `lint-imports` đỏ ở hợp đồng của
+- [x] R3.5: thêm `import dw_studio` vào một module của `dw_evals` → `lint-imports` đỏ ở hợp đồng của
       studio-skeleton:R5.1; gỡ lại → xanh.
-- [ ] G1: `make eval-smoke` và `apps/api/tests/unit/test_eval_datasets.py` xanh, không đổi tệp nào dưới
+- [x] G1: `make eval-smoke` và `apps/api/tests/unit/test_eval_datasets.py` xanh, không đổi tệp nào dưới
       `evals/datasets`.
-- [ ] Xong: `make ci` xanh.
+- [x] Xong: `make ci` xanh.
 
 ## Nguồn
 
@@ -149,3 +149,43 @@ by` studio-skeleton/02, tiêu chí là đột biến `import dw_studio` làm `li
 - 2026-11-02 (agent): bảng cặp: ticket này với 01, 03, 04, 05 (không đường phụ thuộc) không chạm chung bảng, route,
   migration, config hay prompt nào: nó chỉ chạm `packages/python/dw_evals` và test của nó; 06 và 07 chờ nó.
 - 2026-11-02 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-05 (agent): resolved. Mã ở `packages/python/dw_evals/src/dw_evals/` (`dataset.py`, `graders.py`, `runner.py`,
+  `gate.py` mới, `testing.py` mới, docstring `__init__.py`); test ở `packages/python/dw_evals/tests/unit/`
+  (`test_dataset.py`, `test_observation_graders.py`, `test_run_cases.py`, `test_gate.py`, `test_recorded_gate_run.py`),
+  ba quan sát đã ghi ở `tests/fixtures/observations/`; không tệp nào dưới `evals/datasets` đổi, `run_evals.py` không
+  đổi. `mutations/02.yaml` có 16 đột biến, chạy tay từng cái (sao lưu, sửa, chạy, chép lại), cả 16 đỏ. R3.5: thêm
+  `import dw_studio` vào `dw_evals/gate.py` → `lint-imports` đỏ ở "Platform core does not import Studio"
+  (`dw_evals.gate -> dw_studio`), gỡ → 15 kept; test chỉ đọc hợp đồng đó từ `pyproject.toml`, không viết bản thứ hai.
+  Cổng (trên bản xuất sạch của HEAD cộng tệp của ticket, vì cây chung có sửa dở của phiên khác ở `wflite/`): ruff,
+  format, mypy, lint-imports, bandit, verify_invariants, verify_architecture, test_verify_architecture.sh, check_hygiene,
+  generate_contracts, release_manifest, `run_evals.py --smoke` xanh; unit qua cổng coverage, một test đỏ ngoài ticket
+  (MEDIUM (d) dưới đây).
+- 2026-11-05 (agent, theo ủy quyền 31/10/2026): `security_pass_rate` là `float` với `Field(ge=1.0, le=1.0)` thay
+  `Literal[1.0]`: kiểu không có Literal số thực và mypy từ chối nó; mọi giá trị khác 1.0 vẫn lỗi validate. Nếu sai thì:
+  một validator nêu tên 1.0, cùng test.
+- 2026-11-05 (agent, theo ủy quyền 31/10/2026): báo cáo của `run_cases` dùng `EvalReport` với `dataset_id`,
+  `dataset_version`, `worker_id` là `None` (câu có thể đến từ nhiều nguồn: bộ an ninh và ca kịch bản của ticket 06);
+  `security_coverage_ok` tính từ category của các câu bằng một hàm `has_full_security_coverage` mà `EvalDataset` cũng
+  gọi, nên luật phủ có một chủ. Nếu sai thì: `run_cases` nhận danh tính dataset qua tham số từ khóa.
+- 2026-11-05 (agent, theo ủy quyền 31/10/2026): `judge_grader`: câu khai `input` hay `expected` bằng tham chiếu tệp →
+  `abstain` `judge_needs_inline_case` mà không hỏi giám khảo (bộ chấm không có thư mục gốc để đọc tệp; `unknown` chặn
+  như trượt); lần thử không có `final_output` → trượt `no_final_output`, không hỏi. `ScriptedJudge` đọc `case_id` từ
+  `case_input["case_id"]`, vì chữ ký `JudgePort.judge(rubric, case_input, output, reference)` của ticket không mang id
+  câu. Nếu sai thì: `run_cases` đọc tham chiếu trước khi chấm, và `JudgePort.judge` nhận id câu.
+- 2026-11-05 (agent, theo ủy quyền 31/10/2026): `run_cases`: lần thử đánh số từ 1, chạy lần lượt, không dừng sớm (tiêu
+  chí R3.1 đòi đủ 3 lời gọi); tên bộ chấm không có trong bảng → câu trượt `unknown grader` với `trials = 0`, không gọi
+  target (như `scenario_invalid` 0 lần thử của ticket 06); `pass_k` ngoài 1-10 hay hai câu cùng `case_id` →
+  `ValueError` trước lần thử đầu. `merge_graders` generic bằng tham số kiểu PEP 695 (ruff UP047). Nếu sai thì: chạy các
+  lần thử của câu không chấm được và trượt từng lần.
+- 2026-11-05 (agent): MEDIUM, cho lượt đóng hàng đợi và ticket 06: (a) `GatePolicy.policy_id` và `version` chỉ định
+  danh chính sách, chưa ai đọc tới khi ticket 06 ghi chúng với Lượt kiểm định; `security_pass_rate` chỉ được đọc như cận
+  của validator, luật từng câu của `evaluate_gate` là nghĩa của 1.0; (b) `EvalReport.ok` của một báo cáo `run_cases`
+  đòi đủ ba category an ninh của CI, mà Bộ kiểm định an ninh nền tảng có thể không có: cổng của ticket 06 kết luận bằng
+  `evaluate_gate`, không bằng `ok`; (c) ở cây làm việc chung, mypy báo 6 lỗi ở `dw_agent_runtime/wflite/*` và pytest
+  lỗi khi thu test (`validate()` thiếu `rules`), từ sửa dở chưa commit của phiên khác, không của ticket này; (d) bộ unit
+  toàn repo trên bản xuất sạch: 3011 passed, 1 failed, coverage 76.97% (ngưỡng 70%); test đỏ là
+  `dw_agent_runtime/tests/unit/test_telemetry_usage.py::test_a_gateway_call_emits_only_pinned_names_and_no_input_value`,
+  xanh khi chạy riêng và trong 928 test của gói, chạy trước mọi test của `dw_evals` và không gói nào của nó import
+  `dw_evals`: phụ thuộc thứ tự, ngoài ticket này, để lượt đóng hàng đợi tìm.
+- 2026-11-05 (agent): cho lúc đóng hàng đợi: `scripts/mutate.py` với `mutations/02.yaml`. Không test integration nào
+  thêm, không đo trễ (không route hay trang nào đổi), không ảnh chụp.

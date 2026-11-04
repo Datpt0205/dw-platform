@@ -1,0 +1,14 @@
+{
+  "case_id": "answer-without-evidence",
+  "trials": [
+    {
+      "final_output": { "reply": "Chính sách đổi trả là 30 ngày." },
+      "tool_calls": [],
+      "approval_requests": [],
+      "evidence_refs": [],
+      "cost_usd": "0.003",
+      "latency_ms": 640,
+      "error_code": null
+    }
+  ]
+}
