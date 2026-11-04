@@ -121,6 +121,11 @@ def project(applied: AppliedObject) -> ObjectSchemas:
 _Key = tuple[uuid.UUID, uuid.UUID, int]
 
 
+def cache_key(tenant_id: uuid.UUID, object_id: uuid.UUID, schema_version: int) -> _Key:
+    """The one cache key: the tenant first (gate CRITICAL, 3/11/2026)."""
+    return (tenant_id, object_id, schema_version)
+
+
 class ObjectSchemaProjector:
     def __init__(
         self, reader: ObjectDefinitionReader, *, max_entries: int = DEFAULT_CACHE_ENTRIES
@@ -137,7 +142,7 @@ class ObjectSchemaProjector:
         """The schemas of that tenant's object at `schema_version`, the one the
         caller snapshot. A newer definition read on a miss is returned and kept
         under its own version; the caller compares `schema_version`."""
-        key = (tenant_id, object_id, schema_version)
+        key = cache_key(tenant_id, object_id, schema_version)
         cached = self._cache.get(key)
         if cached is not None:
             self._cache.move_to_end(key)
@@ -146,7 +151,7 @@ class ObjectSchemaProjector:
         if applied is None:
             return None
         built = project(applied)
-        self._remember((tenant_id, object_id, built.schema_version), built)
+        self._remember(cache_key(tenant_id, object_id, built.schema_version), built)
         return built
 
     def _remember(self, key: _Key, schemas: ObjectSchemas) -> None:

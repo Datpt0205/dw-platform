@@ -333,6 +333,16 @@ async def _violations_after(
     return found
 
 
+@pytest.mark.parametrize("table", ["object_defs", "field_defs", "picklist_options", "records"])
+async def test_a_custom_object_table_dw_app_may_not_delete_is_named(
+    db_urls: DatabaseUrls, table: str
+) -> None:
+    """custom-objects R4.4: the four tables take the lane's default step, by
+    the DELETE `dw_app` holds; without it the table is named, by name."""
+    found = await _violations_after(db_urls, [f"REVOKE DELETE ON studio.{table} FROM dw_app"])
+    assert f"R4.1 studio.{table} is not purged and has no purge exclusion" in found
+
+
 @pytest.mark.parametrize("schema", ["studio", "platform"])
 async def test_a_table_read_by_column_and_not_deleted_is_named_until_listed(
     db_urls: DatabaseUrls, schema: str

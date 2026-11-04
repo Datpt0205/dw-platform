@@ -1,0 +1,198 @@
+# Mutation check of custom-objects ticket 02: scripts/mutate.py runs this file at
+# the queue's close (wave-close.md). One mutation per control of the ticket's
+# "Kiểm soát" rows (CO1-CO6, CO21, CO23-CO25) and per layer that holds one. Run
+# by hand while writing the tests (4/11/2026; every new suite passed on its first
+# run), each red in its named case. The slot UNIQUE is CO4's second wall behind
+# the hook's lock, so it has a test of its own (failure-modes #3). The
+# migration's mutations apply in place, so their tests recreate the database from
+# the mutated revision. CO21 and the partition policies are planted and named in
+# `test_rls_coverage.py` itself; CO5's CHECK in `assert_field_tables_classified`.
+mutations:
+  - name: R1.8 CO23 a mixed change counts as tighten-only
+    file: packages/python/dw_studio/src/dw_studio/records/domain/rules.py
+    old: and all(difference.tightens for difference in self.differences)
+    new: and any(difference.tightens for difference in self.differences)
+    tests:
+      - packages/python/dw_studio/tests/unit/test_object_rules.py::test_r1_8_tighten_only_holds_exactly_when_every_change_tightens
+      - packages/python/dw_studio/tests/unit/test_object_rules.py::test_r1_8_securing_phone_alone_tightens_and_with_a_label_does_not
+  - name: R3.7 CO1 the projector's cache key drops the tenant
+    file: packages/python/dw_studio/src/dw_studio/records/application/schema_projector.py
+    old: "    return (tenant_id, object_id, schema_version)"
+    new: "    return (uuid.UUID(int=0), object_id, schema_version)"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_schema_projector.py::test_co1_two_companies_with_one_object_id_each_get_their_own
+  - name: R3.7 the projector never hits its cache
+    file: packages/python/dw_studio/src/dw_studio/records/application/schema_projector.py
+    old: "        if cached is not None:"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_schema_projector.py::test_a_hit_reads_nothing_and_the_oldest_entry_leaves
+  - name: R3.7 CO25 ai_description goes into the schema's description
+    file: packages/python/dw_studio/src/dw_studio/records/application/schema_projector.py
+    old: '    return value if field.required else {"anyOf": [value, {"type": "null"}]}'
+    new:
+      "    if field.ai_description:\n        value[\"description\"] = field.ai_description\n    return\
+      \ value if field.required else {\"anyOf\": [value, {\"type\": \"null\"}]}"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_schema_projector.py::test_co25_a_description_is_data_beside_the_schema_never_in_it
+  - name: R2.5 CO24 a sensitive field may be open
+    file: packages/python/dw_studio/src/dw_studio/records/domain/rules.py
+    old: 'if field.pd_category is PdCategory.SENSITIVE and field.access_mode == "open":'
+    new: "if False:"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_object_rules.py::test_r2_5_a_sensitive_field_is_never_open
+  - name: R2.5 CO24 a new personal-data field may start open
+    file: packages/python/dw_studio/src/dw_studio/records/domain/rules.py
+    old: 'if field.pd_category is not PdCategory.NONE and field.access_mode == "open":'
+    new: "if False:"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_object_rules.py::test_r2_5_a_new_field_with_personal_data_starts_secured
+  - name: R2.5 CO24 a published category may be lowered
+    file: packages/python/dw_studio/src/dw_studio/records/domain/rules.py
+    old: "    return PD_ORDER.index(new) < PD_ORDER.index(live)"
+    new: "    return False"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_object_rules.py::test_r2_5_no_category_is_lowered_the_name_fields_included
+  - name: R2.4 CO6 a published field may go
+    file: packages/python/dw_studio/src/dw_studio/records/domain/rules.py
+    old: "        if api_name not in proposed:
+
+      "
+    new: "        if False:
+
+      "
+    tests:
+      - packages/python/dw_studio/tests/unit/test_object_rules.py::test_r2_4_a_published_field_or_option_cannot_go
+  - name: R1.6 the slot budget is not counted
+    file: packages/python/dw_studio/src/dw_studio/records/domain/rules.py
+    old: "    found += _slot_budget(document.fields)
+
+      "
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/unit/test_object_rules.py::test_r1_6_the_document_holds_no_more_filtering_fields_than_slots
+  - name: R1.6 is_unique on any type
+    file: packages/python/dw_studio/src/dw_studio/records/domain/rules.py
+    old: "    if field.is_unique and field.type not in TEXT_LIKE:"
+    new: "    if False:"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_object_rules.py::test_r1_6_unique_is_text_email_phone_url_only
+  - name: R2.6 no length check on ai_description
+    file: packages/python/dw_studio/src/dw_studio/records/domain/rules.py
+    old: "    if text is None or _nfc_length(text) <= MAX_AI_DESCRIPTION:"
+    new: "    if True:"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_object_rules.py::test_r2_6_an_ai_description_is_500_characters_counted_in_nfc
+  - name: R2.6 the length is counted before NFC
+    file: packages/python/dw_studio/src/dw_studio/records/domain/rules.py
+    old: '    return len(unicodedata.normalize("NFC", text))'
+    new: "    return len(text)"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_object_rules.py::test_r2_6_an_ai_description_is_500_characters_counted_in_nfc
+  - name: R2.3 a field may take a system row's name
+    file: packages/python/dw_studio/src/dw_studio/records/domain/rules.py
+    old: "        elif field.api_name in SYSTEM_FIELDS:"
+    new: "        elif False:"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_object_rules.py::test_r2_3_a_field_name_is_forty_lower_case_characters
+  - name: R2.2 CO5 a field's category is not checked
+    file: packages/python/dw_studio/src/dw_studio/records/domain/rules.py
+    old:
+      "    found += _classification(\n        classification_problems((f\"/fields/{n}\", f) for n, f\
+      \ in enumerate(document.fields))\n    )\n"
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/unit/test_object_rules.py::test_r2_2_a_field_without_a_category_is_named_at_the_field
+  - name: R1.5 the lock key drops the tenant
+    file: packages/python/dw_studio/src/dw_studio/records/domain/locks.py
+    old: _DOMAIN + tenant_id.bytes + object_id.bytes
+    new: _DOMAIN + object_id.bytes
+    tests:
+      - packages/python/dw_studio/tests/unit/test_object_rules.py::test_the_lock_key_is_one_signed_bigint_per_tenant_and_object
+  - name: R2.4 R2.5 CO6 CO24 the hook skips check_against_live
+    file: packages/python/dw_studio/src/dw_studio/records/application/metadata.py
+    old: "        problems = check_against_live(live_document, version.document)"
+    new: "        problems = []"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_object_definitions.py::test_r2_4_the_hook_refuses_a_version_that_drops_or_retypes_a_field
+      - packages/python/dw_studio/tests/integration/test_object_definitions.py::test_r2_5_the_hook_refuses_an_open_new_field_and_a_lowered_category
+  - name: R1.1 the hook does not write default_access
+    file: packages/python/dw_studio/src/dw_studio/records/application/metadata.py
+    old: "            default_access=document.default_access,\n            applied_version_id=context.version_id,"
+    new: "            applied_version_id=context.version_id,"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_object_definitions.py::test_r1_1_a_later_version_is_applied_whole_and_twice_is_once
+  - name: R1.1 the hook applies the same version twice
+    file: packages/python/dw_studio/src/dw_studio/records/application/metadata.py
+    old: "        if applied is not None and applied.applied_version_id == version_id:\n            return\n"
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/integration/test_object_definitions.py::test_r1_1_a_later_version_is_applied_whole_and_twice_is_once
+  - name: R1.5 the hook takes no lock and a record writer's shared lock does not hold it
+    file: packages/python/dw_studio/src/dw_studio/records/adapters/definition_store.py
+    old: '        await self.session.execute(_LOCK, {"k": object_lock_key(self.context.tenant_id, object_id)})'
+    new: "        return None"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_object_definitions.py::test_co4_the_slot_unique_refuses_a_second_field_in_one_slot
+      - packages/python/dw_studio/tests/integration/test_object_definitions.py::test_r1_5_the_hook_waits_for_a_record_writers_shared_lock
+  - name: R1.5 CO4 two slot steps run unlocked
+    file: packages/python/dw_studio/src/dw_studio/records/adapters/definition_store.py
+    old: '        await self.session.execute(_LOCK, {"k": object_lock_key(self.context.tenant_id, object_id)})'
+    new: "        return None"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_object_definitions.py::test_co4_the_slot_unique_refuses_a_second_field_in_one_slot
+  - name: R1.3 CO3 the object kind's write key is another key
+    file: packages/python/dw_studio/src/dw_studio/kinds.py
+    old: "        write_key=OBJECTS_MANAGE_SCOPE,"
+    new: '        write_key="platform.admin",'
+    tests:
+      - apps/api/tests/integration/test_studio_objects.py::test_r1_3_only_a_holder_of_the_object_key_creates_or_finds_an_object
+  - name: R1.1 the delete trigger forgets the kind
+    file: db/migrations/versions/16357d3dbff8_studio_object_definitions_and_records.py
+    old: "        IF OLD.kind = 'object' AND OLD.deleted_at IS NULL"
+    new: "        IF OLD.deleted_at IS NULL"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_object_definitions.py::test_r1_1_a_draft_object_and_an_unused_fixture_are_deleted
+  - name: R4.6 CO1 the record's workspace key is one column
+    file: db/migrations/versions/16357d3dbff8_studio_object_definitions_and_records.py
+    old:
+      "        CONSTRAINT fk_records_workspace_id_workspaces FOREIGN KEY (workspace_id, tenant_id)\n\
+      \            REFERENCES platform.workspaces (id, tenant_id) ON DELETE RESTRICT,"
+    new:
+      "        CONSTRAINT fk_records_workspace_id_workspaces FOREIGN KEY (workspace_id)\n           \
+      \ REFERENCES platform.workspaces (id) ON DELETE RESTRICT,"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_object_definitions.py::test_r4_6_no_key_points_into_another_company[records.workspace_id]
+  - name: R4.2 CO1 a partition's tenant policy admits every row
+    file: db/migrations/versions/16357d3dbff8_studio_object_definitions_and_records.py
+    old:
+      "            f\"CREATE POLICY tenant_isolation_records ON studio.{part} AS RESTRICTIVE\"\n    \
+      \        f\" USING {_TENANT} WITH CHECK {_TENANT}\","
+    new:
+      "            f\"CREATE POLICY tenant_isolation_records ON studio.{part} AS RESTRICTIVE\"\n    \
+      \        \" USING (true) WITH CHECK (true)\","
+    tests:
+      - packages/python/dw_studio/tests/integration/test_object_definitions.py::test_r4_2_the_tenant_policy_alone_narrows_records_and_definitions
+  - name: R4.2 R9.5 CO1 dw_app keeps the schema's SELECT on a partition
+    file: db/migrations/versions/16357d3dbff8_studio_object_definitions_and_records.py
+    old: '    *(f"REVOKE ALL ON studio.{part} FROM dw_app;" for part in _PARTITIONS),'
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/integration/test_object_definitions.py::test_r9_5_records_are_four_hash_partitions_each_forced_and_closed
+      - packages/python/dw_studio/tests/integration/test_object_definitions.py::test_r4_2_dw_app_reads_no_partition_by_name
+  - name: R1.1 no trigger refuses the soft delete of an object in use
+    file: db/migrations/versions/16357d3dbff8_studio_object_definitions_and_records.py
+    old:
+      "    \"CREATE TRIGGER refuse_object_artifact_delete BEFORE UPDATE OF deleted_at\"\n    \" ON studio.artifacts\"\
+      \n    \" FOR EACH ROW EXECUTE FUNCTION studio.refuse_object_artifact_delete()\",\n"
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/integration/test_object_definitions.py::test_r1_1_an_object_with_a_definition_or_a_candidate_is_not_deleted
+  - name: R1.5 CO4 two filtering fields may share a slot
+    file: db/migrations/versions/16357d3dbff8_studio_object_definitions_and_records.py
+    old:
+      "    \"CREATE UNIQUE INDEX uq_field_defs_tenant_id_object_id_slot\"\n    \" ON studio.field_defs\
+      \ (tenant_id, object_id, slot) WHERE slot IS NOT NULL\",\n"
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/integration/test_object_definitions.py::test_co4_the_slot_unique_refuses_a_second_field_in_one_slot

@@ -16,6 +16,7 @@ So the privilege model is asserted, not assumed. Three claims:
 
 from __future__ import annotations
 
+import re
 import uuid
 from collections.abc import AsyncIterator
 
@@ -702,6 +703,10 @@ async def test_the_studio_schema_holds_nothing_it_should_not(db_urls: DatabaseUr
 # The artifact envelope (tenant-config ticket 02, step 3): table-wide INSERT
 # and DELETE (the offboarding lane deletes as `dw_app`, and a trigger refuses
 # it elsewhere), UPDATE only of these columns, never of the table.
+# `_SLOTS` stands for every slot column of `studio.records`, read from the
+# catalog, so the slot set keeps one owner (`dw_studio`'s `field_types.SLOTS`).
+_SLOTS = "<slots>"
+_SLOT_NAME = re.compile(r"^[tuifdzb][0-9]{2}$")
 _STUDIO_WRITES: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     "artifact_kinds": (frozenset(), frozenset()),
     "artifacts": (
@@ -727,6 +732,58 @@ _STUDIO_WRITES: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     ),
     "definition_manifests": (frozenset({"INSERT", "DELETE"}), frozenset()),
     "dependencies": (frozenset({"INSERT", "DELETE"}), frozenset()),
+    # Custom objects (custom-objects ticket 02): the definitions change only in
+    # what the publish hook writes; a record never moves owner, workspace or object.
+    "object_defs": (
+        frozenset({"INSERT", "DELETE"}),
+        frozenset(
+            {
+                "labels",
+                "default_access",
+                "ai_description",
+                "applied_version_id",
+                "schema_version",
+                "next_field_no",
+                "updated_at",
+                "updated_by",
+            }
+        ),
+    ),
+    "field_defs": (
+        frozenset({"INSERT", "DELETE"}),
+        frozenset(
+            {
+                "labels",
+                "ai_description",
+                "required",
+                "max_length",
+                "pd_category",
+                "sensitive_type",
+                "subject_identifier",
+                "updated_at",
+                "updated_by",
+            }
+        ),
+    ),
+    "picklist_options": (
+        frozenset({"INSERT", "DELETE"}),
+        frozenset({"labels", "position", "active", "updated_at", "updated_by"}),
+    ),
+    "records": (
+        frozenset({"INSERT", "DELETE"}),
+        frozenset(
+            {
+                "name",
+                "data",
+                _SLOTS,
+                "version",
+                "updated_at",
+                "updated_by",
+                "deleted_at",
+                "deleted_by",
+            }
+        ),
+    ),
 }
 
 
@@ -758,6 +815,21 @@ async def test_the_artifact_envelope_grants_dw_app_its_writes_and_no_more(
                     )
                 }
                 assert held == {"SELECT", *verbs}, table
+                if _SLOTS in columns:
+                    slots = {
+                        row[0]
+                        for row in await conn.execute(
+                            sa.text(
+                                "SELECT attname FROM pg_attribute"
+                                " WHERE attrelid = CAST(:t AS regclass) AND attnum > 0"
+                                "   AND NOT attisdropped"
+                            ),
+                            {"t": f"studio.{table}"},
+                        )
+                        if _SLOT_NAME.match(row[0])
+                    }
+                    assert slots, table
+                    columns = (columns - {_SLOTS}) | slots
                 assert updatable == columns, table
     finally:
         await migrator.dispose()

@@ -1,6 +1,6 @@
 # 02 — Định nghĩa object và trường, bảng bản ghi và chiếu JSON Schema từ định nghĩa
 
-Status: ready-for-agent
+Status: resolved (2026-11-04, main)
 Blocked by: .claude/plans/studio/studio-skeleton/issues/02-goi-dw-studio-va-seam-api.md, .claude/plans/studio/tenant-config/issues/02-vo-phien-ban-va-chi-muc-phu-thuoc.md, .claude/plans/studio/org-and-principals/issues/01-khoa-don-vi-va-siet-realm.md, .claude/plans/studio/compliance-pdpl/issues/01-tu-vung-du-lieu-ca-nhan.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md, .claude/plans/studio/tenant-rbac/issues/01-mot-chu-cho-quyen.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md
 Area: studio
 Yêu cầu: R1.1, R1.3, R1.4, R1.5, R1.6, R1.8, R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R3.7, R4.1, R4.2, R4.4, R4.6, R9.4, R9.5, CO1, CO2, CO3, CO4, CO5, CO6, CO21, CO23, CO24, CO25
@@ -200,93 +200,93 @@ của người gọi, và ticket 06 nối loại `object` vào đường phát h
 
 ## Tiêu chí chấp nhận
 
-- [ ] R1.1 (CO2): móc phát hành, gọi qua mục `ArtifactKindRegistry` của loại `object` cho một `dw.object/v1` 20
+- [x] R1.1 (CO2): móc phát hành, gọi qua mục `ArtifactKindRegistry` của loại `object` cho một `dw.object/v1` 20
       trường trong giao dịch đưa phiên bản lên Đang dùng mà fixture mở thay agent-lifecycle (phê duyệt `approved` dựng
       bằng fixture; đường thật kiểm ở ticket 06), áp định nghĩa trong cùng giao dịch, số quan hệ của schema `studio`
       trong `pg_class` không đổi; `dw_app` chạy `CREATE TABLE studio.x` hay
       `CREATE INDEX ON studio.records` → bị từ chối; cấp `CREATE` trên `studio` cho `dw_app` → test đỏ.
-- [ ] R1.1: sau mỗi lần áp, định nghĩa đọc lại bằng `definition_of(document)` của phiên bản đó, `applied_version_id` là
+- [x] R1.1: sau mỗi lần áp, định nghĩa đọc lại bằng `definition_of(document)` của phiên bản đó, `applied_version_id` là
       phiên bản đó và `schema_version` là `version_no` của nó; lần đầu có ba dòng `system` (`name` mang `pd_category`
       của `name_field`); phiên bản sau chỉ hạ `default_access` từ `public_read_write` xuống `private` → cột đổi theo,
       gỡ bước ghi `default_access` → test đỏ; gọi móc lần hai cho cùng phiên bản → không dòng nào đổi, không audit mới;
       `studio.object_defs.api_name` bằng `studio.artifacts.api_name`.
-- [ ] R1.1: xóa mềm thành phần `object` đã có định nghĩa, hay có Bản ứng viên ở `awaiting_approval` (đặt bằng vai
+- [x] R1.1: xóa mềm thành phần `object` đã có định nghĩa, hay có Bản ứng viên ở `awaiting_approval` (đặt bằng vai
       migrator) → 409 `artifact_in_use`, `deleted_at` giữ NULL; thành phần `object` chỉ có bản Nháp xóa mềm được; thành
       phần `fixture` có bản `live` mà không ai dùng xóa mềm được (R3.3 của tenant-config/02 giữ xanh); gỡ trigger, hay
       bỏ điều kiện `kind`, → test đỏ.
-- [ ] R1.8 (CO23): test thuộc tính trên cặp tài liệu sinh ngẫu nhiên: bộ so sánh báo chỉ siết đúng khi mọi khác biệt
+- [x] R1.8 (CO23): test thuộc tính trên cặp tài liệu sinh ngẫu nhiên: bộ so sánh báo chỉ siết đúng khi mọi khác biệt
       là đóng trường hay hạ `default_access`; phiên bản đầu (chưa có Đang dùng) → không chỉ siết; nâng `default_access`,
       mở một trường, đổi nhãn hay `ai_description` → không chỉ siết; vừa đóng `phone` vừa đổi nhãn → không chỉ siết; chỉ
       đổi thứ tự `fields[]`, hay ghi tường minh một giá trị mặc định → không khác biệt; coi thay đổi trộn đó là chỉ siết
       → test đỏ.
-- [ ] R1.3 (CO3): trên app dựng không `studio_kinds=`, người thiếu `studio.objects.manage` tạo thành phần loại `object`
+- [x] R1.3 (CO3): trên app dựng không `studio_kinds=`, người thiếu `studio.objects.manage` tạo thành phần loại `object`
       qua `POST /api/v1/studio/artifacts` → 403 `permission_denied`, và `PUT .../draft` một thành phần `object` có sẵn →
       404 như thành phần không tồn tại, vì khóa đó cũng là khóa đọc (`tenant-config:R2.11`, TC24); không dòng mới trong
       `studio.artifact_versions`; người giữ khóa → 201; đổi khóa ghi của mục sang một khóa người thiếu kia giữ → test
       đỏ (lệnh Gửi kiểm định kiểm ở ticket 06).
-- [ ] R1.4: tài liệu không nêu `default_access` → dòng có `private`; giá trị ngoài CHECK bị từ chối theo tên ràng
+- [x] R1.4: tài liệu không nêu `default_access` → dòng có `private`; giá trị ngoài CHECK bị từ chối theo tên ràng
       buộc.
-- [ ] R1.5 (CO4): hai giao dịch song song, mỗi giao dịch lấy khóa của móc rồi chạy bước cấp slot của móc cho một trường
+- [x] R1.5 (CO4): hai giao dịch song song, mỗi giao dịch lấy khóa của móc rồi chạy bước cấp slot của móc cho một trường
       lọc được họ `t` mới (hai `api_name` khác nhau) của cùng một đối tượng → hai slot khác nhau; gỡ khóa advisory và
       UNIQUE `(tenant_id, object_id, slot)` → hai trường cùng slot, test đỏ; một giao dịch giữ
       `pg_advisory_xact_lock_shared` trên `object_lock_key` của đối tượng → móc chờ tới khi giao dịch đó kết thúc.
-- [ ] R1.6: đối tượng đã dùng hết slot `t` thêm một trường lọc được kiểu `text` → 422 có con trỏ
+- [x] R1.6: đối tượng đã dùng hết slot `t` thêm một trường lọc được kiểu `text` → 422 có con trỏ
       `/fields/<n>`, định nghĩa không đổi; `is_unique` trên trường `number` → `unique_not_supported`; dòng
       `storage_kind = 'slot'` không slot, hay `data` không `field_no`, ghi thẳng bằng SQL → CHECK từ chối.
-- [ ] R2.1: giá trị CHECK của `type` đọc từ `pg_constraint` bằng `FieldType`, theo mẫu
+- [x] R2.1: giá trị CHECK của `type` đọc từ `pg_constraint` bằng `FieldType`, theo mẫu
       `test_fixed_set_checks_db.py`; trường công ty kiểu `json`, `user` hay `owner` → 422 qua `seal`.
-- [ ] R2.2 (CO5): trường thiếu `pd_category` → 422 `validation_failed` qua `seal` với `errors[].code`
+- [x] R2.2 (CO5): trường thiếu `pd_category` → 422 `validation_failed` qua `seal` với `errors[].code`
       `pd_category_required` và con trỏ `/fields/<n>`, `name_field` thiếu `pd_category` → cùng mã với con trỏ
       `/name_field/pd_category`, không số phiên bản nào được cấp; CHECK của `pd_category` bằng danh sách của `dw_kernel.personal_data`
       (`assert_field_tables_classified` của `dw_platform.testing.personal_data` thấy `studio.field_defs`); gỡ kiểm →
       test đỏ.
-- [ ] R2.3: `api_name` trường 40 ký tự thì nhận, 41 thì 422; `Lead` có chữ hoa → 422; trường tên `name` → 422
+- [x] R2.3: `api_name` trường 40 ký tự thì nhận, 41 thì 422; `Lead` có chữ hoa → 422; trường tên `name` → 422
       `reserved_api_name`; tài liệu có `api_name` ở gốc → 422 (`extra="forbid"`).
-- [ ] R2.4 (CO6): `check_against_live` trả `field_removed` khi bản mới bỏ trường đã phát hành (kể cả đổi tên, là bỏ tên
+- [x] R2.4 (CO6): `check_against_live` trả `field_removed` khi bản mới bỏ trường đã phát hành (kể cả đổi tên, là bỏ tên
       cũ thêm tên mới), `option_removed` khi bỏ một lựa chọn, `field_immutable` khi đổi `type`, `number_mode`, `scale`,
       `currency_code`, `is_unique` hay `indexed`, mỗi lỗi có con trỏ; móc gọi cho phiên bản như vậy →
       `ObjectVersionRejected` mang các lỗi đó, giao dịch cuộn lại, định nghĩa và `applied_version_id` không đổi; gỡ bước
       gọi trong móc → test đỏ (422 ở lệnh Gửi kiểm định kiểm ở ticket 06).
-- [ ] R2.5 (CO24): phiên bản đặt `access_mode: open` cho trường `sensitive` → 422 qua `seal` có con trỏ
+- [x] R2.5 (CO24): phiên bản đặt `access_mode: open` cho trường `sensitive` → 422 qua `seal` có con trỏ
       `/fields/<n>`, không số phiên bản; cho một trường mới `basic`, hay hạ `pd_category` của trường đã phát hành hay
       của `name_field` từ `sensitive` xuống `none` → `check_against_live` trả lỗi có con trỏ và móc ném
       `ObjectVersionRejected`, không áp gì; gỡ một bước kiểm → test đỏ.
-- [ ] R2.6: `ai_description` 500 ký tự (chuỗi NFC, có dấu tiếng Việt) thì nhận, 501 thì 422 có con trỏ
+- [x] R2.6: `ai_description` 500 ký tự (chuỗi NFC, có dấu tiếng Việt) thì nhận, 501 thì 422 có con trỏ
       `/ai_description` hay `/fields/<n>/ai_description`, không phát hành gì; bỏ trống thì nhận; CHECK độ dài của hai
       cột từ chối 501 ký tự ghi thẳng bằng SQL.
-- [ ] R3.7 (CO25): trường có `ai_description` chứa `</input>` và "bỏ qua mọi chỉ dẫn" → JSON Schema của bộ chiếu không
+- [x] R3.7 (CO25): trường có `ai_description` chứa `</input>` và "bỏ qua mọi chỉ dẫn" → JSON Schema của bộ chiếu không
       có chuỗi đó ở `title`, `description` hay nhãn, giá trị chỉ có trong bảng `ai_description` tách riêng; ghép
       `ai_description` vào `description` của lược đồ → test đỏ (trường Đã ẩn với người gọi kiểm ở ticket 03).
-- [ ] R3.7 (CO1): test đơn vị với bản giả của `ObjectDefinitionReader` (trả định nghĩa theo công ty, đúng như kho thật
+- [x] R3.7 (CO1): test đơn vị với bản giả của `ObjectDefinitionReader` (trả định nghĩa theo công ty, đúng như kho thật
       dưới RLS): hai công ty có đối tượng cùng `object_id` và cùng `schema_version` mà trường khác nhau → bộ chiếu trả
       mỗi công ty lược đồ và `ai_description` của chính nó, kể cả khi gọi xen kẽ trên một bộ đệm đã đầy; bỏ `tenant_id`
       khỏi khóa → test đỏ.
-- [ ] R4.1: INSERT vào `studio.records` thiếu `owner_kind`, `owner_id` hay `workspace_id` → vi phạm NOT NULL.
-- [ ] R4.2 (CO1): trên `studio.records` và mỗi partition, test thêm trong giao dịch của nó (cuộn lại khi xong) một
+- [x] R4.1: INSERT vào `studio.records` thiếu `owner_kind`, `owner_id` hay `workspace_id` → vi phạm NOT NULL.
+- [x] R4.2 (CO1): trên `studio.records` và mỗi partition, test thêm trong giao dịch của nó (cuộn lại khi xong) một
       policy PERMISSIVE `USING (true) WITH CHECK (true)` cho vai thử, vì ở ticket này bảng chưa có policy PERMISSIVE nào
       và mọi dòng đã bị từ chối sẵn, để chính `tenant_isolation_records` lọc; rồi: kết nối không đặt `app.tenant_id`
       đọc 0 dòng ở bốn bảng; INSERT với `tenant_id` của công ty khác → RLS từ chối; làm hỏng
       `tenant_isolation_records` trên bảng cha hay một partition → test đỏ; `dw_app` đọc thẳng `studio.records_p3` → permission denied; một vai thử NOBYPASSRLS
       có SELECT trên `studio.records_p3`, không đặt tenant → 0 dòng; `test_rls_coverage.py` thấy mọi partition và so
       policy của mỗi partition với bảng cha.
-- [ ] R4.2 (CO21): thêm policy PERMISSIVE `USING (true)` lên `studio.records` → test catalog đỏ.
-- [ ] R4.4: offboarding một công ty có hai đối tượng, có trường, lựa chọn và một dòng `studio.dependencies` có
+- [x] R4.2 (CO21): thêm policy PERMISSIVE `USING (true)` lên `studio.records` → test catalog đỏ.
+- [x] R4.4: offboarding một công ty có hai đối tượng, có trường, lựa chọn và một dòng `studio.dependencies` có
       `to_field_id` trỏ tới một trường của nó → mỗi dòng của ba bảng định nghĩa xuất đúng một lần, sau purge còn 0 dòng
       ở ba bảng đó, dòng của công ty khác giữ nguyên; thứ tự mà sổ bước xóa suy ra đặt `studio.dependencies` trước
       `studio.field_defs` và `studio.object_defs` trước `studio.artifact_versions`, `studio.artifacts`; thu DELETE của
       `dw_app` trên một trong bốn bảng → test phủ offboarding của studio-skeleton/01 đỏ, nêu tên bảng
       (studio-skeleton:R4.1, studio-skeleton:R4.2). Dòng `studio.records` của R4.4 kiểm ở ticket 03 (CO20), vì `dw_app`
       chưa có policy PERMISSIVE nào trên bảng đó tới record-access/03.
-- [ ] R4.6 (CO1): bằng `dw_migrator`, vai bỏ qua RLS nên chỉ khóa ngoại chặn được (ở ticket này `studio.records` chưa
+- [x] R4.6 (CO1): bằng `dw_migrator`, vai bỏ qua RLS nên chỉ khóa ngoại chặn được (ở ticket này `studio.records` chưa
       có policy PERMISSIVE nào cho `dw_app` ghi), INSERT dòng của công ty A vào `studio.records` hay `studio.field_defs`
       với `object_id` của công ty B, vào `studio.picklist_options` với `field_id` của B, vào `studio.object_defs` với
       `id` của một thành phần của B hay `applied_version_id` của một phiên bản của B, vào `studio.records` với
       `workspace_id` của B, và vào `studio.dependencies` với `to_field_id` của một trường của B → lỗi FK ghép (23503),
       không dòng nào; migration thử đổi một FK ghép thành FK một cột → test đỏ.
-- [ ] R9.5: test catalog thấy `studio.records` là `PARTITION BY HASH (tenant_id)` với 4 partition `studio.records_p0`
+- [x] R9.5: test catalog thấy `studio.records` là `PARTITION BY HASH (tenant_id)` với 4 partition `studio.records_p0`
       tới `studio.records_p3`, mỗi partition ENABLE và FORCE RLS, không quyền nào của `dw_app` (DDL tạm; ticket 07 giữ
       hay đổi theo số đo D12).
-- [ ] R9.4: test catalog đọc `pg_index` thấy đúng tập slot của DDL tạm, mỗi slot một chỉ mục từng phần đúng vị từ, và
+- [x] R9.4: test catalog đọc `pg_index` thấy đúng tập slot của DDL tạm, mỗi slot một chỉ mục từng phần đúng vị từ, và
       tập cột slot trong `pg_attribute` bằng bảng họ sang tập slot của `field_types.py`; thêm một cột slot ở migration
       mà không thêm vào bảng đó → test đỏ.
 - [ ] Xong: `make test-integration` xanh.
@@ -368,3 +368,61 @@ của người gọi, và ticket 06 nối loại `object` vào đường phát h
 - 2026-11-03 (agent): MEDIUM thêm, chưa sửa: (h) từ ticket này tới record-access/03, `studio.records` chỉ có policy RESTRICTIVE (đóng: `dw_app` không đọc ghi dòng nào), khuôn RESTRICTIVE cộng `record_access_*` của `CLAUDE.md` và phép kiểm khuôn trong `test_rls_coverage.py` đến cùng record-access/03 (bước 7 của nó); không nới phép kiểm nào ở đây. (i) Chữ ký móc `(tx, version_id)` không mang actor: móc lấy actor của audit từ ngữ cảnh mà bên gọi đặt trên giao dịch (người duyệt và `details.lane` ở handler `.decided`, người gửi ở nhánh chỉ siết), ticket 06 kiểm. (j) field-security/01 neo `02-luoc-do-dinh-nghia-object.md:32` cho `pd_category`, nay ở dòng 38 sau lần viết lại; gate của field-security/01 sửa neo.
 - 2026-11-03 (agent): bảng cặp: 02~~01, `check_plans.py` báo chung tên `studio.object_defs`, `studio.field_defs`, `studio.records`, `studio.records_p0`, nhưng ticket 01 tạo chúng trong DDL của harness trên database `dw_bench` riêng, không trong chuỗi migration, nên không chung bảng, route, migration, config hay prompt; không đặt cạnh, vì Xong của ticket 01 chờ máy tham chiếu. 07~~03: chung `studio.records`, `studio.record_write_keys`, đã đặt ticket 07 chờ ticket 03. 06~03 (`details.reason_code`): không thuộc ticket này. Tệp chung với ticket đang mở ngoài area: chuỗi migration, `dw_studio/core/application/registry.py`, `dw_studio/core/adapters/tables.py`, `apps/api/src/dw_api/bootstrap/studio.py`, `apps/api/src/dw_api/main.py` (tenant-config/02, lane 1), `test_rls_coverage.py`, `test_privileges.py`, `scripts/verify_invariants.py`, dòng `platform.permissions` (tenant-rbac/03, usage-and-limits/02), hợp đồng import trong `pyproject.toml`.
 - 2026-11-03 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): quyết định khi dựng, mỗi cái kèm Nếu sai thì:
+    - (1) Bộ so sánh: phiên bản không khác gì bản Đang dùng thì không chỉ siết (`Comparison.tighten_only` cần ít nhất
+      một khác biệt), nên vẫn qua người thứ hai. Nếu sai thì: đổi điều kiện thành "mọi khác biệt", phiên bản giống hệt
+      được phát hành một mình ở ticket 06.
+    - (2) `pd_category` của mô hình là `PdCategory | None`, None là "thiếu" và `classification_problems` báo
+      `pd_category_required`, để mọi lỗi về cùng một lần (cùng hình `ClassifiedField` của kernel). Nếu sai thì: khóa
+      bắt buộc ở pydantic, lỗi thiếu là `required` của bước parse và các lỗi ngữ nghĩa chỉ chạy khi parse qua.
+    - (3) Hàm parse điền `max_length` 255 cho bốn kiểu chữ và `scale` 0 cho số `exact` và tiền; CHECK đòi đúng cặp đó
+      (`ck_field_defs_max_length_type`, `ck_field_defs_scale_type`), nên ghi tường minh mặc định không là khác biệt và mọi
+      tài liệu `seal` nhận không vỡ CHECK sau phê duyệt. Nếu sai thì: cột NULL nghĩa là mặc định, CHECK nới về "chỉ cho kiểu
+      đó".
+    - (4) "UPDATE trừ cột khóa" đọc là chỉ các cột móc ghi (`studio.object_defs`: nhãn, mô tả, truy cập mặc định, phiên bản
+      đã áp, `schema_version`, `next_field_no`, `updated_*`; `studio.field_defs`: bảy thuộc tính đổi được; lựa chọn: nhãn,
+      vị trí, bật), vì kiểu, kho, slot, `field_no` và `api_name` bất biến (R2.4). Nếu sai thì: một revision cấp thêm cột khi
+      W2 cần.
+    - (5) `ObjectVersionRejected` là lớp con của `DocumentInvalidError`, nên đi qua handler 422 `validation_failed` sẵn có.
+      Nếu sai thì: ticket 06 thêm handler riêng.
+    - (6) `next_field_no` lấy theo từng trường bằng `UPDATE ... RETURNING` trong giao dịch của móc, dưới khóa đối tượng.
+      Nếu sai thì: móc đếm trong bộ nhớ và ghi một lần ở cuối.
+    - (7) Actor của audit là `AccessContext` của giao dịch, qua `ObjectDefinitionStore.context` (MEDIUM (i)); nhà máy
+      `object_store_of` ở `dw_studio.records.adapters` nhận `SqlArtifactTx` và từ chối loại khác; `build_studio` truyền nó
+      vào `platform_kinds(...)`. Nếu sai thì: `ArtifactTx` khai `context` và nhà máy đọc qua Protocol.
+    - (8) `OBJECTS_MANAGE_SCOPE` là hằng module thường (không `Final`): phép quét `*_SCOPE` của
+      `test_permission_catalogue.py` chỉ đọc phép gán thường. Nếu sai thì: phép quét đọc thêm `AnnAssign`.
+    - (9) Phép so policy partition với bảng cha trong `test_rls_coverage.py` chỉ cho partition của schema `studio`: partition
+      thời gian của `platform` cố ý chỉ có policy tenant (`ensure_time_partitions`), `dw_app` không có quyền nào trên chúng.
+      Nếu sai thì: mở rộng phép so và đổi hàm tạo partition.
+    - (10) Khóa bộ đệm của bộ chiếu là một hàm `cache_key`: đột biến bỏ tenant ở một trong hai chỗ dựng khóa cũ chỉ làm mất
+      lần trúng, không làm lộ, nên test xanh; nay một chỗ, đột biến đỏ. Nếu sai thì: không có.
+    - (11) `SqlObjectDefinitionReader` và `ObjectSchemaProjector` dựng và có test (reader dưới RLS, bộ chiếu với bản giả),
+      chưa nối ở composition root: route describe và bộ chiếu theo người gọi là của ticket 03. Nếu sai thì: nối vào
+      `StudioContainer` ngay.
+- 2026-11-04 (agent): resolved. Commit `65bddef` (mã, revision `16357d3dbff8`), commit đóng ticket này (test, spec đột biến).
+    - Khác ticket: mô hình `dw.object/v1` có kiểm từng thuộc tính theo kiểu (`number_mode`, `scale`, `currency_code`,
+      `max_length`, lựa chọn chỉ cho danh sách chọn, khóa lựa chọn) để không tài liệu nào qua `seal` rồi vỡ CHECK; slot của
+      kiểu `currency` và số `exact` ở họ `i`; `refuse_object_artifact_delete` không gửi DETAIL nên `in_use` là `{}`. Kết quả
+      smoke của ticket 01 không có mục "không chạy được"; ba mục của nó chạy chính ở test ở đây (UNIQUE từng phần trên `u`,
+      trigger `updated_at` trên bảng cha, policy theo partition). `fixture_kinds._remove_rows` xóa thêm `studio.records`,
+      `studio.object_defs` của công ty thử.
+    - Test: unit `test_object_rules.py` (R1.6, R1.8 thuộc tính trên 600 cặp sinh ngẫu nhiên, R2.1-R2.6, `definition_of`,
+      khóa), `test_schema_projector.py` (CO25, CO1 hai công ty cùng `object_id` trên bộ đệm đầy); integration
+      `test_object_definitions.py` (catalog R2.1, R2.2, R9.4, R9.5; R4.1; R4.2 với vai thử NOBYPASSRLS và policy PERMISSIVE
+      thử; R4.6 bảy khóa ghép; CO2; móc R1.1 20 trường, phiên bản sau, lũy đẳng; R1.4; R1.5 hai giao dịch và khóa chia sẻ;
+      CO4 UNIQUE riêng; R2.4, R2.5 qua móc; `seal` R1.6, R2.1, R2.2, R2.6; xóa mềm; R4.4 qua lane thật);
+      `apps/api/.../test_studio_objects.py` (R1.3 403/404/201, registry so `studio.artifact_kinds`); `test_rls_coverage.py`
+      (ba bảng toàn tenant, CO21, partition so bảng cha), `test_privileges.py`, `test_offboarding_coverage.py` (thu DELETE).
+    - `mutations/02.yaml` 27 đột biến, chưa chạy bằng `mutate.py`; cả 27 chạy tay khi viết test (mọi bộ mới xanh lần đầu),
+      mỗi cái đỏ ở ca của nó.
+    - `reviewing-feature-security` (đọc): ranh giới 1, 2, 4, 5, 6 áp dụng, có ca âm; 3 không (không công cụ, không lượt chạy).
+    - MEDIUM để lại: (k) `order_purge_steps` không mang cạnh CASCADE của bảng có bước riêng: `studio.object_defs` CASCADE
+      sang `studio.field_defs`, mà `studio.dependencies` RESTRICT tới nó; hôm nay thứ tự đúng nhờ cạnh
+      `dependencies → field_defs` cộng thứ tự tên (`dependencies` < `object_defs`), đổi tên bảng có thể làm lượt xóa vấp FK
+      giữa chừng; chủ là foundations-hardening. (l) Bốn bảng không có trigger `refuse_delete_outside_offboarding` như vỏ:
+      `dw_app` xóa được định nghĩa ngoài offboarding; W1 không gì xóa, xóa đối tượng là W2. (m) Kiểu trường ngoài mười kiểu
+      trả mã chung `value_not_allowed`, chưa có mã riêng. MEDIUM (a)-(j) của gate giữ nguyên chủ.
+    - Owed lúc đóng hàng đợi: `mutate.py` cho `mutations/02.yaml`; `make test-integration` toàn bộ; P50/P95/P99 của
+      `POST /api/v1/studio/artifacts` và `PUT .../draft` loại `object` và của `seal` với `validate_object` (không route mới);
+      `/code-review` trên diff.
