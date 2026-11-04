@@ -4,7 +4,7 @@
 # of the template builder, as the ticket's "Gỡ từng phép kiểm → ca của nó đỏ"
 # asks.
 #
-# Three are guarded by a test that scans source files by path (the one
+# Two are guarded by a test that scans source files by path (the one
 # registry, the formatter scan): mutate.py's package copy is invisible to such
 # a test, so they run in place. They are marked `# in place` and were shown
 # red by hand on 2026-11-05 with a sample of the others

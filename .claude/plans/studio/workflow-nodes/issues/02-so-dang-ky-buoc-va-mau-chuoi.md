@@ -377,8 +377,8 @@ tr th td span div`;
 typecheck` xanh; gitleaks 689 commit sạch. `reviewing-feature-security`: ranh giới 1 (danh mục như nhau với mọi
   tenant, có test), 2 (403 ngay tại route, có test gỡ kiểm), 4 (bộ dựng mẫu là phép kiểm); 3, 5, 6 không áp dụng: không
   tác động, không ghi, không tạo gì. `mutations/02.yaml` 34 mục, chưa chạy `scripts/mutate.py`; 12 mục làm đỏ bằng tay
-  tại chỗ, kể cả ba mục quét nguồn phải chạy tại chỗ (`lane2-wn02-mutate-by-hand.log`).
-- 2026-11-05 (agent): Còn nợ ở lúc đóng hàng đợi: `scripts/mutate.py` cho `mutations/02.yaml` (ba mục `# in place`
+  tại chỗ, kể cả hai mục quét nguồn phải chạy tại chỗ (`lane2-wn02-mutate-by-hand.log`).
+- 2026-11-05 (agent): Còn nợ ở lúc đóng hàng đợi: `scripts/mutate.py` cho `mutations/02.yaml` (hai mục `# in place`
   chạy tay); P50/P95/P99 của `GET /api/v1/studio/node-types` (không có mốc trước, route mới) và của các route Studio
   dựng `workflow` qua sổ đã đổi (lưu nháp, gửi kiểm định); `/code-review`; `reviewing-deployment-security` cho route
   mới.
