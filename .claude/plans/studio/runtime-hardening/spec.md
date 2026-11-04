@@ -3,13 +3,14 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 25/10/2026
 Duyệt: agent, tạm theo ủy quyền 30/10/2026
-Sẵn sàng: ĐẠT (2/11/2026; 0 CRITICAL, 0 HIGH; ticket 01-03)
+Sẵn sàng: ĐẠT (5/11/2026; 0 CRITICAL, 1 HIGH; ticket 04)
 
 Studio gọi công cụ có hiệu ứng, gọi ra ngoài và xếp run cùng sự kiện lên các dịch vụ nền đang để một hiệu ứng
 chạy hai lần, một client lách giới hạn tốc độ, một URL ra ngoài tới địa chỉ nội bộ, kho vector và cache không
-đòi xác thực, một run kẹt sau khi resume chết và một sự kiện outbox đốt hết lượt thử trong hai giây. Spec này sửa
-các lỗi đã đo trong code ngày 23/10/2026, mỗi bản vá kèm một test âm đã thấy đỏ trước bản vá và đỏ lại khi hoàn
-tác; không thêm tính năng. Nó phục vụ YC4, YC41 (mức đồng thời và nhật ký lần gửi của các mức bảo đảm, V4.30), YC63
+đòi xác thực, một run kẹt sau khi resume chết, một sự kiện outbox đốt hết lượt thử trong hai giây và sự kiện của
+một công ty chờ sau cả hàng tồn outbox của công ty khác. Spec này sửa các lỗi đã đo trong code ngày 23/10/2026 và ở
+spike S-RT ngày 4/11/2026, mỗi bản vá kèm một test âm đã thấy đỏ trước bản vá và đỏ lại khi hoàn tác; không thêm
+tính năng. Nó phục vụ YC4, YC41 (mức đồng thời và nhật ký lần gửi của các mức bảo đảm, V4.30), YC63
 và phần công cụ của YC5. Spec tách từ foundations-hardening (Quyết định), nên số R6-R10, G5, G7 và số kiểm soát giữ nguyên,
 kiểm soát mang tiền tố RH; ticket của spec khác chạm cùng hàm, bảng hay tệp với một ticket ở đây chờ ticket đó
 qua dòng Blocked by của chúng (ADR-0103 (Accepted), ADR-0108 (Accepted)).
@@ -111,6 +112,17 @@ qua dòng Blocked by của chúng (ADR-0103 (Accepted), ADR-0108 (Accepted)).
   (`packages/python/dw_platform/src/dw_platform/adapters/persistence/outbox_drain.py:102-119`).
   Thiếu: ba lượt thử trong khoảng hai giây và thư chết không có số đo nào, như đã ghi ở
   `.claude/plans/platform-runtime.md:88-91`.
+- Đọc lại ở `bc7cd77` ngày 5/11/2026, sau ticket 03: claim lấy dòng đến hạn của mọi công ty theo một thứ tự
+  `occurred_at` chung (`packages/python/dw_platform/src/dw_platform/adapters/persistence/outbox_drain.py:50-95`),
+  lane rút tối đa `outbox_batch_size` (8) sự kiện mỗi nhịp `poll_interval_seconds` (1 giây)
+  (`apps/worker/src/dw_worker/settings.py:216`, `apps/worker/src/dw_worker/settings.py:55`,
+  `apps/worker/src/dw_worker/consumers/outbox.py:98-103`), và index của claim dẫn bằng `occurred_at`, không có
+  `tenant_id` (`db/migrations/versions/65443fe9fd9a_run_status_checks_and_outbox_backoff.py:88-91`). Spike S-RT câu 3
+  đo bằng `SqlOutboxDrain` thật, lô 100 liền nhau: sự kiện của công ty D được nhận sau 533,2 giây, ở lô thứ 1.001,
+  sau đủ 100.000 sự kiện của công ty C; nguyên mẫu rút theo công ty nhận nó sau 0,086 giây
+  (`db/bench/srt/RESULTS.md:204-219`; harness `tests/spike/srt/srtlib/measure.py:1290-1414`). Với lô 8 mỗi giây của
+  lane thật, 100.000 sự kiện đứng trước là khoảng 12.500 nhịp, gần 3,5 giờ (tính, không đo). Thiếu: một công ty không
+  chờ sau hàng tồn của công ty khác.
 - Không câu lệnh nào ngoài test xóa dòng outbox đã xử lý (grep), và chính sách retention không có lớp
   cho outbox (`configs/policies/retention@1.8.0.yaml:23`). Thiếu: hạn giữ chưa ai quyết.
 - Idempotency HTTP: dấu vân tay không có người gọi
@@ -229,10 +241,10 @@ Trước đây: resume chạy graph mà không đổi trạng thái (`packages/p
   ngoài `pending`, `approved`, `rejected`, `cancelled`, `expired`, hay `outcome` của quyết định ngoài
   `approved`, `rejected`, THÌ PostgreSQL PHẢI từ chối câu lệnh và không đổi dòng nào.
 
-### R10 — Outbox lùi thời gian khi thử lại và thư chết thấy được [Sửa]
+### R10 — Outbox lùi thời gian khi thử lại, thư chết thấy được, và không công ty nào chờ sau hàng tồn của công ty khác [Sửa]
 
-Một sự kiện lỗi không đốt hết lượt thử trong hai giây, và sự kiện bỏ cuộc hiện trên số đo và cảnh
-báo.
+Một sự kiện lỗi không đốt hết lượt thử trong hai giây, sự kiện bỏ cuộc hiện trên số đo và cảnh
+báo, và một lần nhập lớn của một công ty không giữ sự kiện của công ty khác lại sau nó.
 Trước đây: claim mọi dòng còn lượt theo `occurred_at` (`packages/python/dw_platform/src/dw_platform/adapters/persistence/outbox_drain.py:46-79`).
 
 - R10.1 KHI lần giao thứ n của một sự kiện outbox thất bại mà sự kiện còn lượt, lane `outbox` PHẢI
@@ -247,6 +259,12 @@ Trước đây: claim mọi dòng còn lượt theo `occurred_at` (`packages/pyt
   trong cùng giao dịch.
 - R10.5 NẾU `--operator` của script phát lại không phải một người vận hành, THÌ script phát lại PHẢI
   thoát với mã 1 và không đổi sự kiện nào.
+- R10.6 KHI một công ty có sự kiện outbox đến hạn (`processed_at` và `dead_at` rỗng, `available_at` không sau
+  `now()`) thuộc một loại mà một tiến trình worker giao, lane `outbox` của tiến trình đó PHẢI nhận sự kiện đến hạn
+  sớm nhất (`available_at` nhỏ nhất) trong các sự kiện thuộc những loại đó của công ty đó, hoặc thấy tiến trình khác
+  đã nhận nó, trong không quá ⌈T / K⌉ lần claim liên tiếp bắt đầu sau lúc nó đến hạn, bất kể công ty khác còn bao
+  nhiêu sự kiện đến hạn; K là `outbox_tenants_per_tick` (mặc định 8), T là số công ty khác nhau, kể cả công ty đó, có
+  sự kiện đến hạn thuộc những loại đó ở một lần claim nào trong khoảng chờ.
 
 ## Hành vi giữ nguyên
 
@@ -256,6 +274,8 @@ Số G giữ nguyên từ foundations-hardening; G5 ở cả hai spec (Quyết �
   checkpoint (test: `test_pause_restart_resume_approved`).
 - G7 KHI request tới `/api/v1/health` hay `/api/v1/ready`, middleware giới hạn tốc độ PHẢI TIẾP TỤC
   không đếm request đó (test: `test_health_is_exempt_and_zero_disables`).
+- G9 KHI một lần claim nhận hai sự kiện đến hạn của cùng một công ty, lane `outbox` PHẢI TIẾP TỤC giao sự kiện có
+  `occurred_at` sớm hơn trước (test: `test_one_company_s_events_are_claimed_oldest_first`).
 
 ## Trong phạm vi
 
@@ -273,6 +293,9 @@ Số G giữ nguyên từ foundations-hardening; G5 ở cả hai spec (Quyết �
   `dead_at`, gauge `dw_outbox_dead_letters`, cảnh báo `DwOutboxDeadLetters` và script phát lại thư chết
   của người vận hành, cùng mảnh `configs/copy/audit_actions.d/runtime-hardening.yaml` mang nhãn của audit
   `platform.outbox.replayed` (telemetry-and-audit:R1.6; H-21).
+- Claim outbox chia theo công ty trong lane `outbox` hiện có: mỗi lần claim lấy tối đa `outbox_tenants_per_tick` công
+  ty có sự kiện đến hạn theo vòng xoay, mỗi công ty tối đa `outbox_batch_size` sự kiện đến hạn sớm nhất, cùng một index
+  một phần dẫn bằng `tenant_id` (R10.6, G9, RH37; ticket 04).
 
 ## Ngoài phạm vi
 
@@ -290,6 +313,10 @@ Số G giữ nguyên từ foundations-hardening; G5 ở cả hai spec (Quyết �
 | Điểm chờ `outcome_review`, route giải dưới `runs.reconcile`, wrapper chỉ thử lại khi `not_dispatched` hay `rejected` thử lại được                | V4.30 mục 5, 6: lát này trả `outcome_unknown` (R6.9, R6.12), động cơ đỗ lượt và giải; lần giải đóng lần gửi chưa biết kết quả bằng một dòng kết thúc (Phụ thuộc)                                    | `workflow-engine` (ticket 03, ticket 08)                 |
 | W2: mức có khóa hay tra cứu (`idempotency.mode` khác `none`, `reconciliation`, `resend_same_key`, `lookup_then_resend`, lane `studio_reconcile`) | H-5: tác động ra ngoài duy nhất của W1 là SMTP, không khóa, không tra cứu; khối `delivery` có đủ trường nhưng bộ nạp từ chối các giá trị đó tới trình kết nối đầu tiên khai chúng                   | `connections-and-vault`, `workflow-engine`, đợt sau (W2) |
 | Cột `credential_version` của `platform.tool_executions`                                                                                          | H-10: egress phân giải bí mật nên connections-and-vault là chủ cột; ticket 01 không đổi vì cột đó                                                                                                   | `connections-and-vault`                                  |
+| Công bằng giữa các workspace của cùng một công ty; ưu tiên theo loại sự kiện hay theo gói                                                        | Spike đo giữa hai công ty; trong một công ty, `occurred_at` là thứ tự chính công ty đó tạo ra (G9), và ưu tiên theo gói chưa ai quyết                                                               | đợt sau                                                  |
+| Hàng `knowledge.ingest_jobs`, cũng nhận theo một thứ tự `available_at` chung của mọi công ty                                                     | Cùng dạng lỗi nhưng chưa đo; mỗi hàng một ticket sau khi đo, như outbox                                                                                                                             | `knowledge`, đợt sau                                     |
+| Hàng lượt chạy Studio                                                                                                                            | Làn đó đã nhận theo công ty: D bắt đầu sau 0,514 giây dù C có 10.000 lượt xếp hàng (spike S-RT câu 3)                                                                                               | `workflow-engine` (ticket 04)                            |
+| Lease của claim outbox, để hai tiến trình worker không cùng giao một sự kiện                                                                     | Claim commit trước khi giao và không đẩy `available_at`, nên tiến trình kia nhận lại sự kiện đang giao; giao ít nhất một lần, handler lũy đẳng, và triển khai hôm nay chạy một worker               | đợt sau, trước bản sao worker thứ hai                    |
 
 ## Kiểm soát
 
@@ -315,6 +342,7 @@ Số G giữ nguyên từ foundations-hardening; G5 ở cả hai spec (Quyết �
 | RH34 | Nhật ký lần gửi bền trước lời gọi ra ngoài, kết quả không rõ không thành lỗi | R6.11, R6.12 | Lúc nhà cung cấp giả nhận lời gọi, một kết nối thứ hai đọc thấy dòng `dispatched` đã commit; T: nhà cung cấp giả áp dụng rồi để lời gọi hết thời gian → dòng `outcome_unknown`, không `failed`; handler ném lỗi không có kiểu sau `dispatched` → `outcome_unknown`; `not_dispatched`, `rejected` → `failed` mang mã; gỡ bước ghi `dispatched`, hay ghi `failed` cho lỗi không có kiểu → ca K4 hay T gửi hai lần, test đỏ                                                                                              |
 | RH35 | Người giữ claim cũ không gửi sau khi bị tiếp quản                            | R6.13        | S: người giữ cũ dừng ngay trước bước ghi `dispatched` tới quá `expires_at`, người mới tiếp quản và gửi, rồi người cũ chạy tiếp → không có dòng `dispatched` thứ hai, handler của người cũ không chạy, nhà cung cấp giả có đúng 1 lời gọi; gỡ rào `claim_token` ở câu chèn `dispatched` → nhà cung cấp giả nhận 2 lời gọi, test đỏ                                                                                                                                                                                     |
 | RH36 | Khóa của tenant này không chặn, không replay cho tenant khác                 | R6.14        | Tenant A có claim còn hạn, một lần `succeeded` và một lần gửi chưa biết kết quả với cùng `tool_name` và khóa; tenant B gọi khóa đó → handler của B chạy một lần, B nhận output của chính nó; bỏ `tenant_id` khỏi khóa chính của claim → test đỏ                                                                                                                                                                                                                                                                       |
+| RH37 | Hàng tồn của một công ty không làm công ty khác chờ                          | R10.6        | PostgreSQL thật: công ty C có 5.000 sự kiện đến hạn sớm hơn, công ty D một sự kiện → lần claim đầu nhận sự kiện của D, mỗi sự kiện trả về thuộc công ty được chọn; K = 2, ba công ty mỗi công ty 50 sự kiện sớm hơn và D có `tenant_id` lớn nhất → D được nhận trong 2 lần claim liên tiếp; claim theo một thứ tự chung, xếp công ty theo sự kiện đến hạn sớm nhất, bỏ con trỏ vòng xoay, hay bỏ điều kiện công ty ở bước chọn dòng → test đỏ                                                                         |
 
 ## Tiêu chí xong
 
@@ -350,6 +378,11 @@ Số G giữ nguyên từ foundations-hardening; G5 ở cả hai spec (Quyết �
 - telemetry-and-audit: catalog hành động gộp từ một mảnh mỗi spec (telemetry-and-audit:R1.6, telemetry-and-audit:R1.10;
   H-21); ticket 03 thêm mảnh của spec này cho `platform.outbox.replayed`, và test AST của catalog đọc mảnh đó khi
   `.claude/plans/studio/telemetry-and-audit/issues/03-lich-su-chay-theo-buoc.md`, đi sau ticket 01 và ticket 03, vào.
+- telemetry-and-audit: `.claude/plans/studio/telemetry-and-audit/issues/02-cay-span-va-mot-trace-id.md` thêm cột
+  `trace_parent` vào `platform.outbox_events` và đổi dispatcher của lane `outbox`, cùng bảng và cùng tệp với ticket 04;
+  ticket đó phải chờ ticket 04, với cạnh ở dòng Blocked by của chính nó (OPS-b), vì ticket 04 phải vào trước khi lead
+  thật của nhiều công ty cùng chạy, còn ticket đó chờ workflow-engine/03, /05 và usage-and-limits/03. Cạnh đó chưa
+  được ghi ở ngày 5/11/2026 (dòng Quyết định cùng ngày).
 - Seam: `ConsumerRegistry.register` và `build_retention_consumer` ở composition root của worker cho lane
   `tool_claims_retention`; `ToolExecutor` nhận `ToolClaimPort` qua constructor.
 - Hợp đồng: ADR-0108 (Accepted) quyết định 5; ADR-0113 (Accepted) quyết định 1; ADR-0115 (Accepted) quyết định
@@ -363,7 +396,9 @@ Số G giữ nguyên từ foundations-hardening; G5 ở cả hai spec (Quyết �
   → R6.9, ticket 01; connections-and-vault thêm cột `credential_version` vào `platform.tool_executions` (H-10) → R6.3,
   ticket 01; tools-and-skills đổi chỗ bước giành lượt và ghi `dispatched` trong sổ bước → R6.11, ticket 01; một trình
   kết nối khai khóa hay tra cứu (W2, H-5) → R6.9, R6.10; telemetry-and-audit đổi định dạng hay chỗ của mảnh nhãn audit
-  (H-21) → Trong phạm vi, ticket 03.
+  (H-21) → Trong phạm vi, ticket 03; workflow-triggers chọn hàng riêng cho sự kiện của trigger bản ghi (`record_event`,
+  W2) thay vì `platform.outbox_events` → R10.6, ticket 04; worker chạy bản sao thứ hai → hàng "Lease của claim outbox"
+  ở Ngoài phạm vi, R10.6.
 
 ## Câu hỏi còn mở
 
@@ -505,6 +540,37 @@ Số G giữ nguyên từ foundations-hardening; G5 ở cả hai spec (Quyết �
   `dead_at` là chủ duy nhất của "đã chết" (`failure-modes.md` #2). Sửa: R9.1, R9.3, R10.2, RH25, RH28, ticket 03. Nếu
   sai thì: CHECK bỏ `waiting_timer` cùng lúc wf-lite đổi trạng thái chờ hẹn giờ của run sang `waiting` của ADR-0113 (Accepted), và
   sự kiện chết giữa lần giao cuối được đếm bằng `attempts >= outbox_max_attempts` ở backlog và gauge thay vì `dead_at`.
+- 5/11/2026 (agent, theo ủy quyền 31/10/2026): spike S-RT câu 3 (`db/bench/srt/RESULTS.md`, quyết sau spike ở studio.md
+  ngày 4/11/2026, mục 3) đo claim outbox FIFO giữ sự kiện của công ty D sau 100.000 sự kiện của công ty C 533,2 giây, nên
+  R10 thêm R10.6, G9, RH37 và ticket 04. Cách: claim của lane `outbox` hiện có chia theo công ty trong một giao dịch dưới
+  `app.worker_drain` như hôm nay: chọn tối đa K công ty có sự kiện đến hạn theo vòng xoay `tenant_id` sau một con trỏ
+  mà mỗi tiến trình giữ trong bộ nhớ (quay vòng gồm cả chính công ty ở con trỏ, để một công ty duy nhất có hàng tồn
+  được rút mỗi nhịp), rồi mỗi công ty tối đa `outbox_batch_size` sự kiện đến hạn sớm nhất theo `available_at`,
+  `FOR UPDATE SKIP LOCKED`, trên index một phần `(tenant_id, available_at)`: dòng đang lùi thời gian nằm cuối khoảng của
+  công ty nên không bị quét, còn index `(tenant_id, occurred_at)` phải đọc qua chúng mỗi lần claim khi handler của một
+  công ty đang lỗi; trong một lần claim, sự kiện vẫn giao theo `occurred_at` (G9). Loại: (1) hàm SECURITY DEFINER trả id công ty rồi claim từng công ty dưới `app.tenant_id`, như nguyên mẫu
+  của spike: K + 1 giao dịch mỗi nhịp và một hàm mới, trong khi lane đã đọc mọi công ty dưới `app.worker_drain`
+  (foundations-hardening:R2.6), và đổi quyền của drain là quyết định riêng; (2) một tiến trình hay một lane mỗi công ty:
+  số tiến trình theo số công ty; (3) xếp công ty theo sự kiện cũ nhất: công ty có hàng tồn cũ luôn đứng đầu, nên hơn K
+  công ty như vậy thì công ty khác đói (một đột biến của RH37); (4) chọn công ty ngẫu nhiên: không có cận kiểm được;
+  (5) con trỏ bền trong PostgreSQL: con trỏ mất khi khởi động lại chỉ làm vòng xoay bắt đầu lại, cận của R10.6 vẫn
+  đúng trong mỗi tiến trình. `outbox_batch_size` đổi nghĩa từ trần một nhịp thành trần mỗi công ty một nhịp và thêm
+  `outbox_tenants_per_tick` (mặc định 8, 1 tới 64), nên một nhịp giao tối đa 64 sự kiện thay vì 8; không cấu hình triển
+  khai nào đặt biến đó (grep). Tiêu chí mới là R10.6 dưới R10, không phải R11, vì dòng Trước đây của R10 tả đúng claim
+  FIFO, còn R11 và G8 là số của foundations-hardening, nên dòng giữ nguyên mới là G9. Sửa: đoạn mở, Hiện trạng, R10,
+  R10.6, G9, Trong phạm vi, Ngoài phạm vi, RH37, Phụ thuộc, ticket 04. Nếu sai thì: claim theo hàm định danh và
+  `app.tenant_id` từng công ty như nguyên mẫu (thêm hàm vào migration, đổi danh sách module của
+  foundations-hardening:R2.6), con trỏ thành một dòng PostgreSQL dùng chung các tiến trình, `outbox_batch_size` giữ
+  nghĩa trần tổng và chia cho các công ty được chọn, hay trong một công ty chọn theo `occurred_at` trên index
+  `(tenant_id, occurred_at)` và đo lần claim khi hàng tồn đang lùi thời gian.
+- 5/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 04.
+- 5/11/2026 (agent, theo ủy quyền 31/10/2026): nhận rủi ro của HIGH duy nhất còn lại ở gate ticket 04: ticket 04 và
+  `.claude/plans/studio/telemetry-and-audit/issues/02-cay-span-va-mot-trace-id.md` cùng chạm `platform.outbox_events`
+  và `apps/worker/src/dw_worker/consumers/outbox.py` mà chưa có đường phụ thuộc, vì lượt viết ticket 04 chỉ được sửa
+  thư mục runtime-hardening; phiên chạy hàng đợi thêm đường dẫn tới ticket 04 vào dòng Blocked by của
+  telemetry-and-audit/02. Rủi ro thấp: ticket đó còn chờ workflow-engine/03, /05 và usage-and-limits/03 chưa dựng, còn
+  ticket 04 không chờ ticket nào chưa xong. Nếu sai thì: telemetry-and-audit/02 bắt đầu trước khi ticket 04 xong, dựng
+  trên claim FIFO, và ticket 04 dựng lại trên cột `trace_parent`; dừng telemetry-and-audit/02 tới khi ticket 04 xong.
 
 ## Danh sách ticket
 
@@ -513,3 +579,4 @@ Số G giữ nguyên từ foundations-hardening; G5 ở cả hai spec (Quyết �
 | 01  | [ToolExecutor giành lượt trước hiệu ứng, không còn cửa sau](issues/01-toolexecutor-gianh-luot-khong-cua-sau.md)                           |
 | 02  | [Biên mạng: rate limit theo địa chỉ, net_guard chỉ địa chỉ toàn cầu, Qdrant và Valkey có xác thực](issues/02-bien-mang-va-kho-du-lieu.md) |
 | 03  | [Run không kẹt ở waiting_approval, CHECK trạng thái, outbox lùi thời gian và thư chết](issues/03-run-va-outbox-khong-ket.md)              |
+| 04  | [Rút outbox công bằng theo công ty](issues/04-outbox-rut-cong-bang-theo-cong-ty.md)                                                       |
