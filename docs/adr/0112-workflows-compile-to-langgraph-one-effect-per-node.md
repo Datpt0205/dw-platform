@@ -512,3 +512,10 @@ entitlement) and D7 (every code execution in its own fresh container); the engin
   one lane of a block produces and a later step reads goes through a variable. If this is wrong: an environment that
   declares the non-dominating steps as `optional[T]` is measured first; if a bare selection on such a field fails to
   compile while `has()` on it compiles, the guard returns as first written. The status stays Accepted.
+- (agent, theo ủy quyền 31/10/2026; found by the readiness gate of workflow-nodes/05.) Decision 8, the phase of the
+  opt-out check: `ai.llm` asks `RecordsPort.processing_flags` and refuses with `ai_opt_out` from W2, with
+  compliance-pdpl's `ai_opt_out` and `processing_restricted` flags, as Đạt decided on 2026-10-23 (workflow-nodes Q9 (a):
+  R7.3 and its control WN14 move to W2, W1 scoring only simulated leads, YC89); in W1 no record carries either flag to
+  ask about. Studio's step is `ai.llm@2`, its instructions and template written by the tenant, beside wf-lite's
+  `ai.llm@1`, which names a platform prompt by id and stays on the pack path only. If this is wrong: the check moves
+  into W1 with the flags, and workflow-nodes/05 waits on compliance-pdpl's flag ticket.
