@@ -1,6 +1,6 @@
 # 03 — Hợp đồng vòng đời phiên bản và gửi kiểm định niêm phong
 
-Status: ready-for-agent
+Status: resolved (2026-11-04, main)
 Blocked by: 01, .claude/plans/studio/tenant-config/issues/04-ban-ke-luot-chay.md, .claude/plans/studio/studio-skeleton/issues/02-goi-dw-studio-va-seam-api.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md
 Area: studio
 Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R1.8, R1.9, R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R2.7, R2.10, R2.12, R2.13, R7.9, AL1, AL2, AL3, AL10, AL19, AL21, AL36
@@ -189,71 +189,71 @@ awaiting_approval` không qua `evaluating`, `gate_run_id` NULL, `publish_approva
 
 ## Tiêu chí chấp nhận
 
-- [ ] R1.1 (AL1): mọi chuyển tiếp bất hợp lệ bằng `dw_app` trực tiếp (bảng liệt kê từng cặp) → 23514
+- [x] R1.1 (AL1): mọi chuyển tiếp bất hợp lệ bằng `dw_app` trực tiếp (bảng liệt kê từng cặp) → 23514
       `ck_artifact_versions_stage_transition`; INSERT một dòng `live` → 23514; gỡ trigger khỏi bảng → test catalog đỏ.
-- [ ] R1.2 (AL2): INSERT phiên bản `live` thứ hai cho một thành phần (bằng helper hợp lệ) → lỗi
+- [x] R1.2 (AL2): INSERT phiên bản `live` thứ hai cho một thành phần (bằng helper hợp lệ) → lỗi
       `uq_artifact_versions_live`; gỡ chỉ mục → test đỏ.
-- [ ] R1.3 (AL2): hai lệnh gửi kiểm định song song bản Nháp duy nhất của một thành phần, cùng `If-Match` → một 202,
+- [x] R1.3 (AL2): hai lệnh gửi kiểm định song song bản Nháp duy nhất của một thành phần, cùng `If-Match` → một 202,
       một 409 `candidate_exists` (không 412, không 404), đúng một audit `studio.version.submitted`; gỡ phép đọc lại
       giai đoạn sau `no_draft` của route → lần thứ hai nhận 404, test đỏ.
-- [ ] R1.4: `LifecycleService` đưa một phiên bản `fixture_gateless` lên `live` khi đã có bản `live` → bản cũ
+- [x] R1.4: `LifecycleService` đưa một phiên bản `fixture_gateless` lên `live` khi đã có bản `live` → bản cũ
       `retired` (`superseded`) trong cùng giao dịch; đảo thứ tự hai lệnh → lỗi chỉ mục, test đỏ.
-- [ ] R1.5: view cho đúng thứ tự ưu tiên (bản `live` của thành phần có công tắc `kill` mở → Bị kill);
+- [x] R1.5: view cho đúng thứ tự ưu tiên (bản `live` của thành phần có công tắc `kill` mở → Bị kill);
       `GET /api/v1/studio/artifacts/{id}` trả `display_stage` từ view; `dw_app` với `app.tenant_id` của tenant A đọc
       view → 0 dòng của tenant B; tạo lại view không `security_invoker` → test đỏ; không cột nào lưu Giai đoạn hiển thị.
-- [ ] R1.6: một phiên bản `fixture_gateless` đi `draft → awaiting_approval → live` không có `gate_run_id`; cùng
+- [x] R1.6: một phiên bản `fixture_gateless` đi `draft → awaiting_approval → live` không có `gate_run_id`; cùng
       đường với loại `fixture` (có cổng) → 23514; `fixture` ở `evaluating → awaiting_approval` → 23514 (tới ticket 06);
       `→ live` khi approval còn `pending` → 23514; người quyết nằm trong `contributor_ids` hay là `submitted_by` →
       23514; `publish_approval_id` trỏ một yêu cầu `approved` khác loại hay của phiên bản khác → 23514; ở
       `awaiting_approval`, `dw_app` UPDATE `contributor_ids` hay `compared_live_hash` không đổi `stage` → 23514; đổi cờ của `fixture_gateless` sang true → `draft → awaiting_approval` bị từ chối.
-- [ ] R1.7: phiên bản `object` có `tighten_only` true và `compared_live_hash` bằng `definition_hash` của bản `live`
+- [x] R1.7: phiên bản `object` có `tighten_only` true và `compared_live_hash` bằng `definition_hash` của bản `live`
       → `draft → live` nhận, không approval; cùng giá trị với `fixture_gateless` → 23514; bỏ nhánh khỏi trigger →
       test đỏ.
-- [ ] R1.8 (AL19): `dw_app` UPDATE `awaiting_approval → live` (approval `approved`) sau khi bản `live` đã đổi kể từ
+- [x] R1.8 (AL19): `dw_app` UPDATE `awaiting_approval → live` (approval `approved`) sau khi bản `live` đã đổi kể từ
       lúc gửi (`compared_live_hash` cũ) → 23514; bản `live` cũ vừa gỡ `superseded` trong cùng giao dịch và
       `compared_live_hash` là mã của nó → nhận; chưa có bản `live` lúc gửi lẫn lúc chuyển (cùng NULL) → nhận; gỡ luật
       khỏi trigger → test đỏ.
-- [ ] R1.9 (AL21): bằng vai migrator, UPDATE một dòng phiên bản của tenant A đặt `publish_approval_id` là id một yêu
+- [x] R1.9 (AL21): bằng vai migrator, UPDATE một dòng phiên bản của tenant A đặt `publish_approval_id` là id một yêu
       cầu phê duyệt của tenant B → FK ghép từ chối, dòng không đổi; cùng id của một yêu cầu của tenant A → nhận; đổi FK
       sang một cột `publish_approval_id` → test đỏ.
-- [ ] R2.10: gửi một phiên bản `fixture` khi thành phần đã có bản `live` → `compared_live_hash` bằng `definition_hash`
+- [x] R2.10: gửi một phiên bản `fixture` khi thành phần đã có bản `live` → `compared_live_hash` bằng `definition_hash`
       của bản đó; chưa có bản `live` → NULL.
-- [ ] R2.1 (AL3): gửi kiểm định một nháp `fixture` hợp lệ → bao đóng, Mã băm định nghĩa, Nơi đang dùng,
+- [x] R2.1 (AL3): gửi kiểm định một nháp `fixture` hợp lệ → bao đóng, Mã băm định nghĩa, Nơi đang dùng,
       `submitted_by` và audit `studio.version.submitted` ghi trong một giao dịch, phiên bản sang `evaluating` với
       `gate_run_id` NULL; người đọc được mà thiếu khóa gửi mà mục registry của loại khai → 403, không đổi gì; người giữ
       khóa gửi ở độ sâu `workspace` của ws1 gửi thành phần có `owning_workspace_id` ws2 → 404; `POST /workflows/{id của một thành phần agent}/…/submit` → 404; `POST /objects/…/submit` → 404 tới ticket 04; `version_id`
       không phải bản Nháp của `artifact_id` → 404, không niêm phong gì.
-- [ ] R1.6 (AL1): người ghi `contributor_ids` mà trigger và ticket 04 đọc: A tạo thành phần, B lưu nháp, A lưu lại → `contributor_ids` là `[A, B]`;
+- [x] R1.6 (AL1): người ghi `contributor_ids` mà trigger và ticket 04 đọc: A tạo thành phần, B lưu nháp, A lưu lại → `contributor_ids` là `[A, B]`;
       bỏ phép thêm người lưu ở `save_draft` → test đỏ; migration trên một DB có dòng đã có backfill `contributor_ids`
       từ audit `studio.artifact.*`.
-- [ ] R2.2 (AL3): hai phiên bản cùng nội dung và bao đóng → cùng Mã băm định nghĩa; đổi phiên bản một
+- [x] R2.2 (AL3): hai phiên bản cùng nội dung và bao đóng → cùng Mã băm định nghĩa; đổi phiên bản một
       thành phần ghim → Mã băm định nghĩa khác.
-- [ ] R2.3 (AL3): rollback giữa giao dịch gửi kiểm định → không bản kê, phụ thuộc hay audit; một `SubmitCheck` ném
+- [x] R2.3 (AL3): rollback giữa giao dịch gửi kiểm định → không bản kê, phụ thuộc hay audit; một `SubmitCheck` ném
       lỗi → giao dịch lùi, phiên bản `draft`.
-- [ ] R2.4: rút một Bản ứng viên `fixture_gateless` ở `awaiting_approval` → về `draft`, yêu cầu phê duyệt phát hành
+- [x] R2.4: rút một Bản ứng viên `fixture_gateless` ở `awaiting_approval` → về `draft`, yêu cầu phê duyệt phát hành
       `cancelled`, `publish_approval_id` NULL, audit `returned_to_draft` với `withdrawn`; một người giữ khóa gửi khác
       người gửi rút được; người thiếu khóa gửi → 403; với thành phần mà route tạo nháp vừa trả 409 `candidate_pending`,
       rút rồi lưu nháp → lưu được trên chính phiên bản vừa rút, không thêm dòng `draft` nào; rút một bản `draft` → 409
       `not_a_candidate`.
-- [ ] R2.5: gỡ một phiên bản Đang dùng không bị phụ thuộc → `retired` (`explicit`), `retired_by`, với audit.
-- [ ] R2.6: gỡ một phiên bản mà phiên bản Đang dùng của thành phần khác phụ thuộc → 409 `artifact_in_use` kèm danh sách
+- [x] R2.5: gỡ một phiên bản Đang dùng không bị phụ thuộc → `retired` (`explicit`), `retired_by`, với audit.
+- [x] R2.6: gỡ một phiên bản mà phiên bản Đang dùng của thành phần khác phụ thuộc → 409 `artifact_in_use` kèm danh sách
       bên đọc được và số bên ẩn; gỡ v2 khi bên phụ thuộc chỉ ghim v1 đã `retired` → nhận; gỡ một bản `draft` → 409
       `not_live`.
-- [ ] R2.4 (AL36): theo CLAUDE.md, Tenancy and authorization, người của tenant B gọi `submit`, `withdraw` và `retire` với
+- [x] R2.4 (AL36): theo CLAUDE.md, Tenancy and authorization, người của tenant B gọi `submit`, `withdraw` và `retire` với
       `artifact_id`, `version_id` của tenant A → 404 giống hệt id ngẫu nhiên, phiên bản của A không đổi, 0 audit ở A;
       chạy route bằng vai bỏ qua RLS hay bỏ lọc độ sâu → test đỏ.
-- [ ] R2.7 (AL10): đăng ký một kiểm fixture từ chối cho loại `fixture` → gửi kiểm định 422 với `reason_code` của
+- [x] R2.7 (AL10): đăng ký một kiểm fixture từ chối cho loại `fixture` → gửi kiểm định 422 với `reason_code` của
       kiểm, phiên bản vẫn `draft`, không bản kê hay audit; bỏ bước chạy bảng kiểm → test đỏ.
-- [ ] R2.12: nháp được lưu lại sau khi người gửi tải nó, rồi gửi với `If-Match` cũ → 412 `precondition_failed` với
+- [x] R2.12: nháp được lưu lại sau khi người gửi tải nó, rồi gửi với `If-Match` cũ → 412 `precondition_failed` với
       `stale_version`, phiên bản vẫn `draft`, không `version_no` nào được cấp, không bản kê hay audit; `If-Match`
       đúng → gửi được; bỏ việc chuyển `If-Match` cho `seal` → test đỏ.
-- [ ] R2.13: gửi không có `If-Match` → 428 `precondition_required`, không đổi gì.
-- [ ] R7.9: đóng băng công ty rồi gửi kiểm định → 409 `tenant_frozen`, phiên bản vẫn `draft`; Đóng băng của nền tảng
+- [x] R2.13: gửi không có `If-Match` → 428 `precondition_required`, không đổi gì.
+- [x] R7.9: đóng băng công ty rồi gửi kiểm định → 409 `tenant_frozen`, phiên bản vẫn `draft`; Đóng băng của nền tảng
       → 409 `platform_frozen`; `RunControlPort` giả trả `control_state_unavailable` → 409, không niêm phong; bỏ phép hỏi
       → test đỏ.
-- [ ] R1.1 (AL1): `test_privileges.py` khẳng định đúng danh sách cột UPDATE của `dw_app` ở bước 1; test đã chuyển của bước
+- [x] R1.1 (AL1): `test_privileges.py` khẳng định đúng danh sách cột UPDATE của `dw_app` ở bước 1; test đã chuyển của bước
       11 xanh trên helper.
-- [ ] Xong: `uv run python -m pytest packages/python/dw_studio/tests apps/api/tests -k "lifecycle or version_stage or submit"` xanh.
+- [x] Xong: `uv run python -m pytest packages/python/dw_studio/tests apps/api/tests -k "lifecycle or version_stage or submit"` xanh.
 
 ## Nguồn
 
@@ -316,3 +316,58 @@ awaiting_approval` không qua `evaluating`, `gate_run_id` NULL, `publish_approva
 - 2026-11-04 (agent): MEDIUM để lại: (a) gỡ phiên bản đối tượng và Nguồn dữ liệu không có route ở W1; (b) một Bản ứng viên ghim một phiên bản sau đó bị gỡ vẫn lên `live` được (R2.6 chỉ đếm bên Đang dùng); (c) cùng `Idempotency-Key` sau rút và sửa trả lại câu trả lời cũ trong 24 giờ (ADR-0108 (Accepted) quyết 4): người gọi dùng khóa mới cho lần gửi mới; (d) rút đua với quyết định duyệt: cả hai khóa dòng thành phần, handler của ticket 04 đọc lại giai đoạn; (e) rút ở `evaluating` hủy Lượt kiểm định là của ticket 06; (f) cảnh báo `ears` của R2.11 (hai modal) là câu của gate tenant-config/05, để chủ câu sửa.
 - 2026-11-04 (agent, theo ủy quyền 31/10/2026): lượt xác nhận (một subagent ngữ cảnh mới, mở đúng các tệp đã dẫn), 6 HIGH và 3 dẫn sai về mã, đã sửa: (16) cột vòng đời đổi cả khi `stage` không đổi: trigger canh từng cột theo bước của nó; (17) `publish_approval_id` phải là yêu cầu `studio.publish.<kind>` của chính phiên bản; (18) loại không cổng trước ticket 04: ticket này chỉ gắn đoạn `agents`, `workflows`, đoạn `objects`, `data-sources` đến ở ticket 04; (19) lệnh rút đọc và hủy yêu cầu qua adapter của Studio dưới RLS theo tenant, không qua repository lọc theo workspace; (20) bên phụ thuộc của lệnh gỡ theo `to_version_id`, trong giao dịch gỡ, vì `dependents()` theo thành phần và mở giao dịch riêng; (21) câu trả lời 202 là `VersionView`, lệnh gỡ không thân, `not_live`. Dẫn sai: `approval_flow.py:115` thành `:142-152`, `:285-286`; `dependents()` không đọc theo `to_version_id`; `display_stage` là trường mới. Nếu sai thì: (16) chỉ canh cặp giai đoạn và tin `LifecycleService`; (18) ticket 03 gắn cả bốn đoạn và trả 409 cho loại không cổng tới ticket 04; (20) chặn gỡ khi bất kỳ phiên bản Đang dùng nào dùng thành phần.
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): resolved. Dựng khác ticket ở những chỗ sau, mỗi chỗ một quyết định:
+    - (1) `LifecycleService`, các Protocol của nó (`LifecycleTx`, `ControlStatePort` chỉ một câu `admission_state`,
+      `SubmitCheck`) và adapter SQL ở gói năng lực mới `dw_studio.lifecycle` (đã có tên trong hợp đồng "Studio core imports
+      no capability"), cùng hợp đồng `independence` `dw_studio.records` với `dw_studio.lifecycle`; bảng chuyển đổi
+      (`may_move`, `GATED_MOVES`, `GATELESS_MOVES`) và `RetireReason` cạnh `Stage` ở lõi. Nếu sai thì: chuyển vào
+      `dw_studio.core.application` và bỏ hợp đồng độc lập.
+    - (2) Với loại có cổng, trigger từ chối cả `awaiting_approval → live` (không chỉ `evaluating → awaiting_approval`) tới khi
+      ticket 06 thay hàm; không chạm được vì loại có cổng không tới `awaiting_approval`, nên chỉ là đóng khi thiếu. Nếu sai thì:
+      cho qua với phép kiểm phê duyệt như loại không cổng.
+    - (3) "Phiên bản mà lần phát hành này thay" là dòng `retired`/`superseded` của cùng thành phần có
+      `xmin = pg_current_xact_id()::xid` (giao dịch cấp trên); một lần gỡ trong savepoint không tính, tức đóng khi lỗi. Nếu sai
+      thì: trigger ghi một setting cục bộ giao dịch lúc gỡ `superseded` và đọc lại lúc lên `live`.
+    - (4) Trigger thêm vài điều ở đúng chuyển tiếp: chèn chỉ `draft` với mọi cột vòng đời rỗng, về `draft` phải xóa hết cột
+      của lần gửi, vào `live` cần `published_by`, vào `retired` cần `retired_by`; cùng CHECK cặp `submitted_*`,
+      `published_*`, bộ ba `retired_*`, dạng `compared_live_hash` và không NULL trong `contributor_ids`. Nếu sai thì: bỏ các
+      CHECK cặp, giữ các luật của ticket.
+    - (5) Route gửi của một đoạn trả 404 cho loại không cổng (chưa có nhánh, ticket 04); mọi lần chuyển giai đoạn không tăng
+      `row_version`, nên sau khi rút ETag của nháp là giá trị sau niêm phong. Nếu sai thì: 409 cho (a); tăng ở lần về `draft`.
+    - (6) Bảng đoạn → loại là `SUBMIT_SEGMENTS` ở `dw_studio.lifecycle`; test thay bằng `build_container(studio_segments=)`
+      (`agents` → `fixture`, `workflows` → `fixture_gateless`); kiểm của `Idempotency-Key` ở cấp module lấy loại từ đoạn của
+      URL qua `container.studio.segments`. Nếu sai thì: một route có tham số `{segment}`.
+    - (7) `VERSIONS_SUBMIT_SCOPE` khai khóa mà loại `agent`, `workflow` sẽ nêu ở agent-builder/02, workflow-engine/01; tới lúc
+      đó không lần chạy nào kiểm khóa này (failure-modes #1, ghi rõ). `ArtifactView.display_stage` là `str | None`, đọc từ view
+      trong cùng câu lệnh (cả `FOR UPDATE OF artifacts` và `RETURNING`); lệnh tạo đọc lại dòng sau khi có nháp. `dependents()`
+      và lệnh gỡ dùng chung `name_or_count`. Lệnh rút đọc yêu cầu `FOR UPDATE`, hủy bằng `ApprovalRequest.cancel()` và
+      `SqlApprovalRepository.save` (so `version`).
+    - (8) Test đã dựng: `fixture` không lên `live` nữa, nên mọi bản `live` của test là `fixture_gateless` qua
+      `publish_for_test`/`move_for_test`/`publish_on` (cả `test_studio_artifacts.py`, `test_offboarding.py` chèn bản nháp đã
+      niêm phong); `go_live` của `test_object_definitions.py` đi đường hợp lệ bằng `dw_app` rồi chạy móc trong cùng giao dịch;
+      thế giới test thêm `co_writer`, `retirer`, `outsider_retirer`; ca "hai năng lực không hợp đồng" của
+      `test_verify_architecture.sh` nay nêu `dw_studio.workflows`.
+    - Test: `test_version_stage_contract.py` 43 ca (catalog, 13 cặp bất hợp lệ bằng `dw_app`, chèn ngoài `draft`, chỉ mục một
+      Đang dùng, luật theo loại, năm ca phê duyệt sai, sáu cột ngoài bước, cờ cổng đọc lúc ghi, nhánh chỉ siết và hai ca từ chối,
+      ba ca R1.8, FK ghép, view theo thứ tự và theo tenant, `contributor_ids`); `test_lifecycle_service.py` 26 ca (R2.1, R2.2, R2.3
+      ×2, R2.7, R2.10, R2.12, R7.9 ×3, R1.3, R1.4, R2.4 ×3, R2.5, R2.6 ×2, AL36 ×2 gồm đoạn khác loại khi rút, người và chỗ được gửi ×4);
+      `test_lifecycle_backfill.py` (revision trên DB có dòng: backfill từ audit, dòng không audit dừng revision và nêu id);
+      `test_studio_lifecycle.py` 14 ca qua HTTP (202, 428, 412, 409 song song, 403/404 ×4, 404 phiên bản lạ, Đóng băng thật của
+      ticket 01, rút, gỡ và `artifact_in_use`, AL36 cả ba route so với id ngẫu nhiên, `display_stage`); `test_stage_machine.py`
+      unit; `test_privileges.py` danh sách cột UPDATE và view; bộ test đã chuyển xanh.
+    - `mutations/03.yaml` 18 đột biến, chưa chạy bằng `mutate.py`; bộ test mới xanh ngay lần đầu nên chạy tay 16 đột biến (ba
+      luật phê duyệt, cũ của R1.8, nhánh chỉ siết, cột ngoài bước, cờ cổng, view không `security_invoker`, chèn ngoài `draft`,
+      đọc lại sau `no_draft`, hỏi Đóng băng, bảng kiểm, bên phụ thuộc, thứ tự lên `live`, `contributor_ids` khi lưu, đoạn khác
+      loại, `If-Match` cho `seal`, độ sâu), mỗi cái đỏ đúng lý do; đột biến "đoạn khác loại" lúc đầu sống (lệnh gửi của loại
+      không cổng trả 404 sẵn), nên thêm ca rút dưới đoạn khác loại, nay đỏ.
+    - `reviewing-feature-security` (đọc): tenant từ access context mỗi giao dịch, view `security_invoker`, FK ghép, 404 như id
+      ngẫu nhiên; khóa gửi và khóa gỡ ở độ sâu tới `owning_workspace_id` hỏi ở chỗ ghi; người duyệt khác tác giả và người gửi do
+      trigger giữ; không nội dung không tin cậy nào vào prompt; audit cùng giao dịch, FK RESTRICT; trạng thái điều khiển không
+      đọc được → 409, kiểm ném lỗi → lùi giao dịch.
+    - MEDIUM: (a) `dependents()` nay hỏi `workspace_reach` riêng cho nhóm Đang dùng và nhóm ứng viên (tối đa hai truy vấn thêm
+      mỗi khóa đọc); (b) mỗi UPDATE của `studio.artifact_versions` (kể cả lưu nháp) thêm một truy vấn loại và cờ cổng trong
+      trigger; (c) `display_stage` thêm năm `EXISTS` mỗi dòng của danh sách thành phần; (d) `test_r2_10` hạ cờ cổng của `fixture`
+      trong chốc lát bằng vai migrator, nên test cùng mô-đun không chạy song song.
+    - Còn ở lúc đóng hàng đợi: `mutate.py` cho `mutations/03.yaml`; `make test-integration` toàn bộ; P50/P95/P99 của ba route
+      `submit`, `withdraw`, `retire`, `GET /api/v1/studio/artifacts` và `/{id}` (view), `PUT .../draft` (trigger), `POST
+/api/v1/studio/artifacts` (đọc lại) so với commit đầu hàng đợi; `/code-review`; `reviewing-deployment-security` (route mới).
