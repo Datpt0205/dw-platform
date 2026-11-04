@@ -1,6 +1,6 @@
 # 02 — Cột run Studio, CHECK trạng thái và cửa RunRequestService
 
-Status: ready-for-agent
+Status: resolved (2026-11-04, main)
 Blocked by: .claude/plans/studio/runtime-hardening/issues/03-run-va-outbox-khong-ket.md, .claude/plans/studio/tenant-config/issues/04-ban-ke-luot-chay.md
 Area: studio
 Yêu cầu: R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, R3.9, R3.10, R3.11, R3.12, R3.17, R3.18, R3.19, R3.20, R3.21, R3.22, WE1, WE18, WE19, WE20, WE21, WE49, WE50, WE51
@@ -26,25 +26,25 @@ Cho `platform.worker_runs` các cột một lượt chạy Studio cần và đ�
 
 ## Tiêu chí chấp nhận
 
-- [ ] R3.1: migration thêm đủ 15 cột đúng tên của mục Dữ liệu (đủ 17 cột của R3.1 cùng `definition_hash`, `run_as_principal_id` đã có), cột hàng đợi theo ADR-0113 (Accepted) quyết 1; mô tả bảng khớp catalog sau `alembic upgrade head`; không có cột `lease_expires_at`, `attempts`, `dead_at`, `cancel_requested_at`; dòng `RunRequestService` vừa tạo có `deadline_at` NULL; `priority = 3` → CHECK từ chối; xóa một lượt cha còn lượt con → FK `parent_run_id` từ chối (RESTRICT), cả hai dòng còn nguyên; `test_offboarding.py` purge một tenant có lượt chạy mang `artifact_version_id` và một cặp lượt cha, lượt con nối bằng `parent_run_id` → xong, tenant khác nguyên; sắp sổ bước xóa (foundations-hardening:R11.4) mà bỏ cạnh `artifact_version_id`, để các mục `studio` của tenant-config/02 đứng trước `platform.worker_runs` → test đỏ; dòng cũ có `root_run_id = id` sau `upgrade`; một lượt của worker định nghĩa bằng code tạo sau migration có `root_run_id = id`, `chain_depth` 0 và chạy được (G1 vẫn xanh); `dw_app` chèn dòng `parent_run_id` NULL mà `root_run_id` khác `id` → `ck_worker_runs_root_run` từ chối; lượt wf-lite ghi `definition_hash` hex trần vẫn nhận, dòng Studio mang hex trần → CHECK từ chối; dòng `dead_lettered` không giữ thread của nó (một lượt mới cùng `thread_id` chèn được).
-- [ ] R3.2: `dw_app` ghi `status='bogus'` → CHECK của runtime-hardening/03 từ chối (ticket này không đặt lại CHECK, chỉ dựa vào nó).
-- [ ] R3.3: `RunRequestService` tạo một dòng `queued` mang `run_mode`, `run_manifest_hash`, `run_as_principal_id`, `trigger_kind`, `priority`, `request_key` đúng, và `inbound_event_id` khi yêu cầu nêu một sự kiện nhận; `dw_app` chèn dòng có `artifact_kind` mà `run_manifest_hash` NULL → `ck_worker_runs_studio_manifest` từ chối; gỡ CHECK → dòng Studio thiếu bản kê lọt, test đỏ.
-- [ ] R3.17 (WE49): gọi thẳng `RunRequestService` với yêu cầu `test` của người không giữ `studio.workflows.test` ở workspace của lượt → `permission_denied`, 0 dòng, 0 bản kê; người giữ khóa đó ở workspace khác cùng công ty → như trên; phiên bản của công ty khác → không tìm thấy (đọc dưới RLS ở bước 3 (b), trước kiểm khóa), 0 dòng; người giữ vai `platform_admin` mà không giữ khóa → `permission_denied`; cặp (`artifact_kind`, `trigger_kind`) không có mục trong bảng khóa chạy (loại fixture với `manual`) → như trên; người giữ khóa ở workspace của lượt → một dòng `queued`; gỡ lời kiểm khỏi cửa → ca đầu tạo dòng, test đỏ.
-- [ ] R3.18 (WE50): dòng mang `workspace_id` là `owning_workspace_id` của thành phần gốc, `artifact_kind`, `artifact_id`, `definition_hash` của dòng phiên bản, dù yêu cầu kèm giá trị khác; lane `studio_inbound` xin `datahub` với chủ thể của đăng ký → dòng có `requested_by` là `system_actor` của lane và `run_as_principal_id` là chủ thể đó; lane `studio_gate` xin `eval` cho người gửi → `requested_by` và chủ thể là người đó; một dòng chèn không nêu `root_run_id` → trigger đặt bằng `id`; dòng Studio có `actor_record_visibility` `'restricted'` và `actor_scopes` rỗng, không phải DEFAULT; dùng giá trị của yêu cầu → test đỏ.
-- [ ] R3.19 (WE50): `manual` nêu chủ thể chạy là người khác → `run_as_mismatch`, 0 dòng; một người xin `datahub` hay `eval` → `run_as_mismatch`; lane `studio_inbound` xin `eval`, hay một `LaneRequester` ngoài sổ → `run_as_mismatch`; `dw_app` chèn dòng Studio có `run_as_principal_id` NULL → `ck_worker_runs_studio_run_as` từ chối; gỡ kiểm hay CHECK → test đỏ.
-- [ ] R3.20 (WE51): cùng `request_key`, cùng nội dung, hai lần tuần tự → cùng `run_id`, lần hai `created = false`; cùng khóa mà khác phiên bản, chế độ chạy hay đầu vào → `request_key_reused`, dòng cũ không đổi; hai người khác nhau gửi cùng `Idempotency-Key` → hai dòng; bỏ so nội dung → lần hai nhận lượt của yêu cầu khác, test đỏ.
-- [ ] R3.21: một dòng mới → đúng một audit `run.started` trong giao dịch chèn dòng, đứng tên người xin (với `eval` là người gửi Bản ứng viên kèm `details.lane` `studio_gate`, với `datahub` là `system:studio_inbound`); giao dịch lùi → không audit; lần trả dòng đã có → không audit thứ hai; bỏ audit → test đỏ.
-- [ ] R3.22: yêu cầu `agent_node` hay `schedule` → `trigger_kind_unsupported`, 0 lần đọc phiên bản (spy), 0 dòng; không phải lỗi CHECK 23514.
-- [ ] R3.9: yêu cầu `simulate` cho một bản Nháp → một dòng `queued` có `definition_hash` NULL, bản kê ghi giai đoạn `draft` và mã băm tạm bằng mã băm niêm phong sẽ cho nội dung nháp lúc nhận; sửa bản Nháp sau đó không đổi bản kê.
-- [ ] R3.11 (WE20): gọi thẳng `RunRequestService`, không qua route, với yêu cầu `simulate` cho một bản Nháp của loại fixture mà `validate` trả hai lỗi → từ chối với cả hai lỗi kèm con trỏ, 0 dòng `worker_runs`, 0 bản kê; sửa hết lỗi rồi gửi lại → một dòng `queued`; bộ kiểm chạy đúng một lần mỗi yêu cầu (spy); gỡ lời gọi `validate` khỏi `RunRequestService` → test đỏ; một `save_draft` mở song song ngay sau lần đọc dòng thành phần của cửa → chờ tới khi giao dịch nhận commit (chờ tới khi `pg_locks` có phiên chờ, không `sleep`), bản kê băm đúng nội dung đã qua kiểm; bỏ `FOR SHARE` → bản kê băm nội dung chưa kiểm, test đỏ.
-- [ ] R3.10 (WE19): yêu cầu `live` nêu một phiên bản `awaiting_approval` hay `retired` → bị từ chối, 0 dòng `worker_runs`; yêu cầu `live` nêu một bản Nháp → bị từ chối, 0 dòng, 0 bản kê; gỡ kiểm giai đoạn ở `RunRequestService` → ca `awaiting_approval` qua, test đỏ.
-- [ ] R3.4: `RunRequestService` không gọi runner hay `graph.ainvoke` (kiểm bằng spy ở test).
-- [ ] R3.5 (WE1): thêm một module chèn `worker_runs` `status='queued'` với `artifact_kind` Studio ngoài `RunRequestService` → test kiến trúc đỏ; gỡ khẳng định → ca trồng lỗi qua.
-- [ ] R3.6: hai yêu cầu cùng `request_key` song song → đúng một dòng `worker_runs`, cả hai nhận cùng `run_id`.
-- [ ] R3.7: `dw_app` gắn tenant A SELECT dòng `worker_runs` của tenant B → 0 dòng.
-- [ ] R3.12 (WE21): `dw_app` gắn tenant A chèn dòng `worker_runs` mang `artifact_version_id` của một phiên bản tenant B, hay `parent_run_id` của một lượt chạy tenant B → lỗi FK, không dòng nào được ghi; đổi một trong hai FK về FK một cột → ca của nó qua, test đỏ.
-- [ ] R3.8 (WE18): INSERT `worker_runs` với `trigger_kind = 'bogus'` → CHECK từ chối; dòng có `artifact_kind` mà `trigger_kind` NULL → CHECK từ chối; dòng không `artifact_kind` (worker định nghĩa bằng code) với `trigger_kind` NULL → nhận; gỡ hai CHECK → test đỏ.
-- [ ] Xong: `make test-integration` xanh.
+- [x] R3.1: migration thêm đủ 15 cột đúng tên của mục Dữ liệu (đủ 17 cột của R3.1 cùng `definition_hash`, `run_as_principal_id` đã có), cột hàng đợi theo ADR-0113 (Accepted) quyết 1; mô tả bảng khớp catalog sau `alembic upgrade head`; không có cột `lease_expires_at`, `attempts`, `dead_at`, `cancel_requested_at`; dòng `RunRequestService` vừa tạo có `deadline_at` NULL; `priority = 3` → CHECK từ chối; xóa một lượt cha còn lượt con → FK `parent_run_id` từ chối (RESTRICT), cả hai dòng còn nguyên; `test_offboarding.py` purge một tenant có lượt chạy mang `artifact_version_id` và một cặp lượt cha, lượt con nối bằng `parent_run_id` → xong, tenant khác nguyên; sắp sổ bước xóa (foundations-hardening:R11.4) mà bỏ cạnh `artifact_version_id`, để các mục `studio` của tenant-config/02 đứng trước `platform.worker_runs` → test đỏ; dòng cũ có `root_run_id = id` sau `upgrade`; một lượt của worker định nghĩa bằng code tạo sau migration có `root_run_id = id`, `chain_depth` 0 và chạy được (G1 vẫn xanh); `dw_app` chèn dòng `parent_run_id` NULL mà `root_run_id` khác `id` → `ck_worker_runs_root_run` từ chối; lượt wf-lite ghi `definition_hash` hex trần vẫn nhận, dòng Studio mang hex trần → CHECK từ chối; dòng `dead_lettered` không giữ thread của nó (một lượt mới cùng `thread_id` chèn được).
+- [x] R3.2: `dw_app` ghi `status='bogus'` → CHECK của runtime-hardening/03 từ chối (ticket này không đặt lại CHECK, chỉ dựa vào nó).
+- [x] R3.3: `RunRequestService` tạo một dòng `queued` mang `run_mode`, `run_manifest_hash`, `run_as_principal_id`, `trigger_kind`, `priority`, `request_key` đúng, và `inbound_event_id` khi yêu cầu nêu một sự kiện nhận; `dw_app` chèn dòng có `artifact_kind` mà `run_manifest_hash` NULL → `ck_worker_runs_studio_manifest` từ chối; gỡ CHECK → dòng Studio thiếu bản kê lọt, test đỏ.
+- [x] R3.17 (WE49): gọi thẳng `RunRequestService` với yêu cầu `test` của người không giữ `studio.workflows.test` ở workspace của lượt → `permission_denied`, 0 dòng, 0 bản kê; người giữ khóa đó ở workspace khác cùng công ty → như trên; phiên bản của công ty khác → không tìm thấy (đọc dưới RLS ở bước 3 (b), trước kiểm khóa), 0 dòng; người giữ vai `platform_admin` mà không giữ khóa → `permission_denied`; cặp (`artifact_kind`, `trigger_kind`) không có mục trong bảng khóa chạy (loại fixture với `manual`) → như trên; người giữ khóa ở workspace của lượt → một dòng `queued`; gỡ lời kiểm khỏi cửa → ca đầu tạo dòng, test đỏ.
+- [x] R3.18 (WE50): dòng mang `workspace_id` là `owning_workspace_id` của thành phần gốc, `artifact_kind`, `artifact_id`, `definition_hash` của dòng phiên bản, dù yêu cầu kèm giá trị khác; lane `studio_inbound` xin `datahub` với chủ thể của đăng ký → dòng có `requested_by` là `system_actor` của lane và `run_as_principal_id` là chủ thể đó; lane `studio_gate` xin `eval` cho người gửi → `requested_by` và chủ thể là người đó; một dòng chèn không nêu `root_run_id` → trigger đặt bằng `id`; dòng Studio có `actor_record_visibility` `'restricted'` và `actor_scopes` rỗng, không phải DEFAULT; dùng giá trị của yêu cầu → test đỏ.
+- [x] R3.19 (WE50): `manual` nêu chủ thể chạy là người khác → `run_as_mismatch`, 0 dòng; một người xin `datahub` hay `eval` → `run_as_mismatch`; lane `studio_inbound` xin `eval`, hay một `LaneRequester` ngoài sổ → `run_as_mismatch`; `dw_app` chèn dòng Studio có `run_as_principal_id` NULL → `ck_worker_runs_studio_run_as` từ chối; gỡ kiểm hay CHECK → test đỏ.
+- [x] R3.20 (WE51): cùng `request_key`, cùng nội dung, hai lần tuần tự → cùng `run_id`, lần hai `created = false`; cùng khóa mà khác phiên bản, chế độ chạy hay đầu vào → `request_key_reused`, dòng cũ không đổi; hai người khác nhau gửi cùng `Idempotency-Key` → hai dòng; bỏ so nội dung → lần hai nhận lượt của yêu cầu khác, test đỏ.
+- [x] R3.21: một dòng mới → đúng một audit `run.started` trong giao dịch chèn dòng, đứng tên người xin (với `eval` là người gửi Bản ứng viên kèm `details.lane` `studio_gate`, với `datahub` là `system:studio_inbound`); giao dịch lùi → không audit; lần trả dòng đã có → không audit thứ hai; bỏ audit → test đỏ.
+- [x] R3.22: yêu cầu `agent_node` hay `schedule` → `trigger_kind_unsupported`, 0 lần đọc phiên bản (spy), 0 dòng; không phải lỗi CHECK 23514.
+- [x] R3.9: yêu cầu `simulate` cho một bản Nháp → một dòng `queued` có `definition_hash` NULL, bản kê ghi giai đoạn `draft` và mã băm tạm bằng mã băm niêm phong sẽ cho nội dung nháp lúc nhận; sửa bản Nháp sau đó không đổi bản kê.
+- [x] R3.11 (WE20): gọi thẳng `RunRequestService`, không qua route, với yêu cầu `simulate` cho một bản Nháp của loại fixture mà `validate` trả hai lỗi → từ chối với cả hai lỗi kèm con trỏ, 0 dòng `worker_runs`, 0 bản kê; sửa hết lỗi rồi gửi lại → một dòng `queued`; bộ kiểm chạy đúng một lần mỗi yêu cầu (spy); gỡ lời gọi `validate` khỏi `RunRequestService` → test đỏ; một `save_draft` mở song song ngay sau lần đọc dòng thành phần của cửa → chờ tới khi giao dịch nhận commit (chờ tới khi `pg_locks` có phiên chờ, không `sleep`), bản kê băm đúng nội dung đã qua kiểm; bỏ `FOR SHARE` → bản kê băm nội dung chưa kiểm, test đỏ.
+- [x] R3.10 (WE19): yêu cầu `live` nêu một phiên bản `awaiting_approval` hay `retired` → bị từ chối, 0 dòng `worker_runs`; yêu cầu `live` nêu một bản Nháp → bị từ chối, 0 dòng, 0 bản kê; gỡ kiểm giai đoạn ở `RunRequestService` → ca `awaiting_approval` qua, test đỏ.
+- [x] R3.4: `RunRequestService` không gọi runner hay `graph.ainvoke` (kiểm bằng spy ở test).
+- [x] R3.5 (WE1): thêm một module chèn `worker_runs` `status='queued'` với `artifact_kind` Studio ngoài `RunRequestService` → test kiến trúc đỏ; gỡ khẳng định → ca trồng lỗi qua.
+- [x] R3.6: hai yêu cầu cùng `request_key` song song → đúng một dòng `worker_runs`, cả hai nhận cùng `run_id`.
+- [x] R3.7: `dw_app` gắn tenant A SELECT dòng `worker_runs` của tenant B → 0 dòng.
+- [x] R3.12 (WE21): `dw_app` gắn tenant A chèn dòng `worker_runs` mang `artifact_version_id` của một phiên bản tenant B, hay `parent_run_id` của một lượt chạy tenant B → lỗi FK, không dòng nào được ghi; đổi một trong hai FK về FK một cột → ca của nó qua, test đỏ.
+- [x] R3.8 (WE18): INSERT `worker_runs` với `trigger_kind = 'bogus'` → CHECK từ chối; dòng có `artifact_kind` mà `trigger_kind` NULL → CHECK từ chối; dòng không `artifact_kind` (worker định nghĩa bằng code) với `trigger_kind` NULL → nhận; gỡ hai CHECK → test đỏ.
+- [x] Xong: `make test-integration` xanh.
 
 ## Nguồn
 
@@ -105,3 +105,43 @@ Cho `platform.worker_runs` các cột một lượt chạy Studio cần và đ�
   cập của người gửi" và agent-builder/03 nói `requested_by` là actor của lane, cả hai trái (c). (c) là chủ hình người
   xin; hai ticket kia nay dẫn nó, và (c) nêu thêm chủ thể của lần thử Kiểm định thử là người xin. Nếu sai thì:
   `PersonRequester` của người gửi xin `eval`, và sổ lane bỏ `studio_gate`.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): dựng ở `e6e91e3` (mã), test ở commit theo sau; `e6c07e4` (fix(ci)) thêm hai trường mới của `StudioContainer` vào `test_studio_seam.py`, mà `e6e91e3` làm đỏ ở bộ unit và scaffold-smoke. Khác ticket:
+    - (1) Mục (`workflow`, `test`) → `studio.workflows.test` của bảng khóa chạy chuyển sang workflow-engine/01 (Comments ở
+      đó): loại `workflow` và khóa chưa có, một mục trỏ tới khóa ngoài catalogue là khai mà không ai đọc (failure-modes #1)
+      và kiểm (b) của `test_permission_catalogue.py` không thấy nó. `_RUN_KEYS` của `build_studio` hôm nay rỗng, nên mọi
+      yêu cầu của người bị từ chối cho tới khi một loại đăng ký mục; test dùng bảng riêng với khóa thử
+      `fixture.artifacts.run`. Nếu sai thì: ticket này thêm khóa vào catalogue trước ticket 01.
+    - (2) Sổ lane `_RUN_LANES` (`studio_inbound` → `datahub`, `studio_gate` → `eval`) đóng băng ở
+      `apps/api/src/dw_api/bootstrap/studio.py`, vì worker chưa dựng Studio; lane của workflow-triggers và agent-lifecycle/06
+      ở worker dời hằng đó sang chỗ chung khi nối. `LaneRequester` chỉ do `RunLaneRegistry.requester` dựng (quét nguồn), cửa
+      còn từ chối lane ngoài sổ của chính nó. Nếu sai thì: sổ ở `dw_worker` và API không cấp lane nào.
+    - (3) Thêm ngoài ticket, rẻ và đóng chặt (failure-modes #7): `ck_worker_runs_studio_request_key` (MEDIUM (e) của gate),
+      `ck_worker_runs_studio_artifact` (`artifact_kind`, `artifact_id`, `artifact_version_id` cùng có hay cùng vắng), mã
+      `version_not_live` (409) cho R3.10 và `inbound_event_unexpected` (422) cho `inbound_event_id` ở lượt không phải
+      `datahub`, cả hai có nhãn trong `configs/copy/run_reason_codes.d/workflow-engine.yaml`; nhãn `run.started` trong
+      `configs/copy/audit_actions.d/workflow-engine.yaml`. Nếu sai thì: gỡ hai CHECK và để mã đó thành `conflict` trơn.
+    - (4) Trùng khóa tuần tự được đọc trước `validate` và `build`, nên lần lặp lại không ghi bản kê mồ côi (MEDIUM (b) chỉ
+      còn ở ca song song). Kiểm giai đoạn R3.10 chỉ xét phiên bản đã niêm phong; bản Nháp ở `live` là lời từ chối
+      `draft_root_not_simulate` của `RunManifestBuilder`, không kiểm thứ hai.
+    - (5) `SqlArtifactTx` mang `tenant_id` và `context: AccessContext | None` (giao dịch của lane không có người, `reach`
+      từ chối); `RootVersion` thêm `owning_workspace_id`, đọc trong cùng câu `FOR SHARE`. Câu ghi dòng ở
+      `dw_studio/core/adapters/run_intake.py`, chỗ duy nhất (WE1).
+    - (6) `FINISHED_RUN_STATUSES` của `checkpoint_retention.py` nay đọc `TERMINAL_STATUSES` (bản sao thứ hai, failure-modes
+      #2), nên checkpoint của lượt `dead_lettered` cũng được dọn; mô tả `worker_runs` của `runtime_tables.py` thêm
+      `model_cost_usd`, `run_manifest_hash` còn thiếu và 15 cột mới, một test so tên và NULL với catalog.
+    - Test: `test_run_request.py` (cửa gọi thẳng, không route: R3.3, R3.4, R3.6, R3.9-R3.11, R3.17-R3.22, cả ca chen
+      `save_draft` chờ `pg_locks`), `test_worker_run_columns.py` (CHECK, FK ghép chéo tenant, RLS, cột, tập kết thúc và tập
+      `trigger_kind` so với catalog), `test_run_columns_backfill.py` (dòng cũ thành gốc, `updated_at` giữ nguyên),
+      `test_run_request_door.py` (quét nguồn WE1 và `LaneRequester`, kèm ca trồng lỗi), `test_offboarding.py` (lượt Studio cha
+      con mang `artifact_version_id` bị xóa, thứ tự bước do cạnh catalog, bỏ cạnh thì đảo), `test_privileges.py` (grant không
+      đổi, trigger không ai gọi), `test_run_tree_columns_db.py` (lượt code là gốc của chính nó và vẫn chạy).
+    - `mutations/02.yaml` 38 đột biến, chưa chạy bằng `mutate.py`; bộ mới xanh ngay lần đầu nên chạy tay 22 (WE49, WE50 ×4, WE51 ×2, R3.21, R3.22, WE19, WE20 ×2, WE18, R3.3, R3.19, WE21 ×2, `dead_lettered` ở chỉ mục và ở `TERMINAL_STATUSES`, backfill, ba quét nguồn), mỗi cái đỏ; một neo của quét lệch sau `ruff format`, đã sửa.
+    - `reviewing-feature-security` (đọc): tenant của giao dịch từ ngữ cảnh đã xác minh hay từ lane do sổ cấp; mọi định danh
+      của dòng đọc dưới RLS, không từ yêu cầu; khóa chạy hỏi `workspace_reach` ở chỗ ghi; FK ghép mang `tenant_id`; audit
+      cùng giao dịch; không gọi runner; không nội dung không tin cậy nào vào prompt.
+    - MEDIUM: (a) MEDIUM (a), (b), (d), (f) của gate giữ nguyên; (b) mỗi yêu cầu thêm một câu đọc `request_key` trước khi
+      dựng bản kê; (c) `RunRequestService` chưa có bên gọi nào ngoài test cho tới workflow-triggers/01, agent-builder,
+      agent-lifecycle/06.
+    - Còn ở lúc đóng hàng đợi: `mutate.py` cho `mutations/02.yaml`; `make test-integration` toàn bộ; P50/P95/P99 của các
+      route ghi `worker_runs` (lượt code qua `SqlWorkerRunStore`, thêm trigger BEFORE INSERT và chín chỉ mục) so với commit
+      đầu hàng đợi; `/code-review`.

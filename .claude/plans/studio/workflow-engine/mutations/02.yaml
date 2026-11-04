@@ -1,0 +1,247 @@
+# Mutation check of workflow-engine ticket 02: scripts/mutate.py runs this file
+# at the queue's close (wave-close.md). One mutation per control of the
+# ticket's "Kiểm soát" rows (WE1, WE18-WE21, WE49-WE51) and per rule of the
+# door, the migration and the scans, each test calling the door where the
+# effect happens: `RunRequestService` directly (never a route), the columns as
+# dw_app SQL (failure-modes #5). The door's and the migration's suites passed
+# on their first run, so 22 of these were applied by hand on 4/11/2026, each
+# red (named in the ticket's Comments). The migration's
+# mutations apply in place, so their tests recreate the database from the
+# mutated revision; the scans' mutate the test file in place (a scan cannot
+# see a package copy).
+mutations:
+  # ---- the door (RunRequestService) -------------------------------------------
+  - name: WE49 R3.17 the door does not check the person's run key
+    file: packages/python/dw_studio/src/dw_studio/core/application/run_request.py
+    old: "            await self._may_run(tx, root, request.trigger_kind, workspace_id)\n"
+    new: "            pass\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_request.py::test_r3_17_the_run_key_is_checked_at_the_runs_workspace_by_the_door
+      - packages/python/dw_studio/tests/integration/test_run_request.py::test_r3_17_a_pair_without_a_run_key_is_refused
+  - name: WE49 R3.17 the run key checked at the caller's workspace, not the run's
+    file: packages/python/dw_studio/src/dw_studio/core/application/run_request.py
+    old: "        if key is None or workspace_id not in await tx.reach(key):"
+    new: "        if key is None or not await tx.reach(key):"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_request.py::test_r3_17_the_run_key_is_checked_at_the_runs_workspace_by_the_door
+  - name: WE50 R3.18 the workspace taken from the requester's context
+    file: packages/python/dw_studio/src/dw_studio/core/application/run_request.py
+    old: "        workspace_id = root.owning_workspace_id\n"
+    new: "        workspace_id = (\n            request.requester.context.workspace_id\n            if isinstance(request.requester, PersonRequester)\n            else root.owning_workspace_id\n        )\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_request.py::test_r3_18_identity_comes_from_the_rows_read_never_from_the_caller
+  - name: WE50 R3.19 a person runs as whoever they name
+    file: packages/python/dw_studio/src/dw_studio/core/application/run_request.py
+    old: "            if run_as != person:\n"
+    new: "            if False:\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_request.py::test_r3_19_a_person_runs_only_as_themself
+  - name: WE50 R3.19 a person asks for a lane's kind
+    file: packages/python/dw_studio/src/dw_studio/core/application/run_request.py
+    old: "            if rule.asked_by != \"person\":\n"
+    new: "            if False:\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_request.py::test_r3_19_a_person_runs_only_as_themself
+  - name: WE50 R3.19 a lane asks for any kind, registered or not
+    file: packages/python/dw_studio/src/dw_studio/core/application/run_request.py
+    old: "        if rule.asked_by != \"lane\" or not self.lanes.may_request(requester, request.trigger_kind):\n"
+    new: "        if rule.asked_by != \"lane\":\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_request.py::test_r3_19_a_lane_asks_only_for_its_own_kinds_and_names_its_principal
+  - name: WE50 R3.19 a lane names no principal
+    file: packages/python/dw_studio/src/dw_studio/core/application/run_request.py
+    old: "        if request.run_as_principal_id is None:\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_request.py::test_r3_19_a_lane_asks_only_for_its_own_kinds_and_names_its_principal
+  - name: R3.18 a data-hub run asked in its principal's name, not the lane's
+    file: packages/python/dw_studio/src/dw_studio/core/application/run_request.py
+    old: "        requested_by = system_actor(requester.lane).value if rule.lane_acts_as_itself else run_as\n"
+    new: "        requested_by = run_as\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_request.py::test_r3_18_a_data_hub_run_is_the_inbound_lanes_acting_as_the_subscriptions_principal
+  - name: R3.21 the gate's run does not say which lane carried it out
+    file: packages/python/dw_studio/src/dw_studio/core/application/run_request.py
+    old: "            details[\"lane\"] = parties.lane\n"
+    new: "            pass\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_request.py::test_r3_18_an_eval_run_is_the_submitters_carried_out_by_the_gate
+  - name: WE51 R3.20 a reused key returns the other request's run
+    file: packages/python/dw_studio/src/dw_studio/core/application/run_request.py
+    old: "        existing.artifact_version_id != request.version_id\n        or existing.run_mode != rule.run_mode\n        or existing.run_as_principal_id != parties.run_as\n        or existing.input != input_payload\n"
+    new: "        False\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_request.py::test_r3_20_a_reused_key_with_other_content_is_refused_and_changes_nothing
+  - name: WE51 R3.20 the request key not named by its requester
+    file: packages/python/dw_studio/src/dw_studio/core/application/run_request.py
+    old: "        request_key = f\"{request.trigger_kind}:{parties.requested_by}:{request.source_key}\"\n"
+    new: "        request_key = f\"{request.trigger_kind}:{request.source_key}\"\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_request.py::test_r3_20_two_people_with_one_idempotency_key_get_two_runs
+  - name: WE51 R3.6 the insert has no conflict target
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/run_intake.py
+    old: "        .on_conflict_do_nothing(\n            index_elements=[worker_runs.c.tenant_id, worker_runs.c.request_key],\n            index_where=worker_runs.c.request_key.is_not(None),\n        )\n"
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_request.py::test_r3_6_two_concurrent_requests_with_one_key_make_one_row
+  - name: R3.21 no run.started with the row
+    file: packages/python/dw_studio/src/dw_studio/core/application/run_request.py
+    old: "        await tx.audit(self._started(run, parties))  # R3.21\n"
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_request.py::test_r3_21_a_new_row_has_one_run_started_in_the_requesters_name
+      - packages/python/dw_studio/tests/integration/test_run_request.py::test_r3_20_the_same_request_twice_is_one_run_and_one_audit
+  - name: R3.22 a kind outside W1 read as manual
+    file: packages/python/dw_studio/src/dw_studio/core/application/run_request.py
+    old: "        rule = _TRIGGERS.get(request.trigger_kind)\n"
+    new: "        rule = _TRIGGERS.get(request.trigger_kind, _TRIGGERS[\"manual\"])\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_request.py::test_r3_22_a_kind_outside_w1_is_refused_before_any_read
+  - name: R3.3 an inbound event on a run that is not a data-hub run
+    file: packages/python/dw_studio/src/dw_studio/core/application/run_request.py
+    old: "        if request.inbound_event_id is not None and request.trigger_kind != \"datahub\":\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_request.py::test_an_inbound_event_belongs_to_a_data_hub_run_only
+  - name: WE19 R3.10 no stage check at the door
+    file: packages/python/dw_studio/src/dw_studio/core/application/run_request.py
+    old: "        if rule.run_mode == \"live\" and version.stage not in (Stage.LIVE, Stage.DRAFT):\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_request.py::test_r3_10_a_live_request_for_a_version_not_live_is_refused
+  - name: WE20 R3.11 the door does not validate the draft
+    file: packages/python/dw_studio/src/dw_studio/core/application/run_request.py
+    old: "            problems = list(entry.validate(version.document))\n"
+    new: "            problems = []\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_request.py::test_r3_11_a_failing_draft_is_refused_with_every_problem_by_the_door_itself
+  - name: WE20 R3.11 the root read without FOR SHARE
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/artifact_store.py
+    old: "                sa.select(artifacts.c.kind, artifacts.c.owning_workspace_id)\n                .where(artifacts.c.id == artifact_id, artifacts.c.deleted_at.is_(None))\n                .with_for_update(read=True)\n"
+    new: "                sa.select(artifacts.c.kind, artifacts.c.owning_workspace_id)\n                .where(artifacts.c.id == artifact_id, artifacts.c.deleted_at.is_(None))\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_request.py::test_r3_11_a_concurrent_save_waits_and_the_manifest_hashes_what_was_validated
+  - name: WE50 R3.18 the actor stamp left at its open DEFAULT
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/run_intake.py
+    old: "            actor_record_visibility=\"restricted\",\n"
+    new: "            actor_record_visibility=\"open\",\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_request.py::test_r3_18_identity_comes_from_the_rows_read_never_from_the_caller
+  # ---- the migration ------------------------------------------------------------
+  - name: WE18 R3.8 trigger kind outside the set
+    file: db/migrations/versions/703be798341f_studio_run_columns_and_the_run_request_.py
+    old: "            CHECK (trigger_kind IN ('chat', 'manual', 'test', 'eval', 'datahub')),\n"
+    new: "            CHECK (trigger_kind IS NULL OR true),\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_worker_run_columns.py::test_r3_8_the_trigger_kind_is_one_of_w1_and_required_of_a_studio_run
+  - name: WE18 R3.8 a Studio run without a trigger kind
+    file: db/migrations/versions/703be798341f_studio_run_columns_and_the_run_request_.py
+    old: "            CHECK (artifact_kind IS NULL OR trigger_kind IS NOT NULL),\n"
+    new: "            CHECK (true),\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_worker_run_columns.py::test_r3_8_the_trigger_kind_is_one_of_w1_and_required_of_a_studio_run
+  - name: R3.3 a Studio run without its manifest
+    file: db/migrations/versions/703be798341f_studio_run_columns_and_the_run_request_.py
+    old: "            CHECK (artifact_kind IS NULL OR run_manifest_hash IS NOT NULL),\n"
+    new: "            CHECK (true),\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_worker_run_columns.py::test_r3_3_r3_19_a_studio_row_without_what_it_must_carry_is_refused
+  - name: WE50 R3.19 a Studio run without its principal
+    file: db/migrations/versions/703be798341f_studio_run_columns_and_the_run_request_.py
+    old: "            CHECK (artifact_kind IS NULL OR run_as_principal_id IS NOT NULL),\n"
+    new: "            CHECK (true),\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_worker_run_columns.py::test_r3_3_r3_19_a_studio_row_without_what_it_must_carry_is_refused
+  - name: R3.20 a Studio run without its request key
+    file: db/migrations/versions/703be798341f_studio_run_columns_and_the_run_request_.py
+    old: "            CHECK (artifact_kind IS NULL OR request_key IS NOT NULL),\n"
+    new: "            CHECK (true),\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_worker_run_columns.py::test_r3_3_r3_19_a_studio_row_without_what_it_must_carry_is_refused
+  - name: R3.1 a Studio run without its artifact, or a code run with one
+    file: db/migrations/versions/703be798341f_studio_run_columns_and_the_run_request_.py
+    old: "            CHECK ((artifact_kind IS NULL) = (artifact_id IS NULL)\n"
+    new: "            CHECK (true OR (artifact_kind IS NULL) = (artifact_id IS NULL)\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_worker_run_columns.py::test_a_code_run_carrying_studio_columns_is_refused
+  - name: R3.1 priority outside 0-2
+    file: db/migrations/versions/703be798341f_studio_run_columns_and_the_run_request_.py
+    old: "CHECK (priority IN (0, 1, 2))"
+    new: "CHECK (priority >= 0)"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_worker_run_columns.py::test_r3_1_priority_is_one_of_three
+  - name: R3.1 the tree's shape unchecked
+    file: db/migrations/versions/703be798341f_studio_run_columns_and_the_run_request_.py
+    old: "            CHECK ((parent_run_id IS NULL AND root_run_id = id AND chain_depth = 0)\n"
+    new: "            CHECK (true OR (parent_run_id IS NULL AND root_run_id = id AND chain_depth = 0)\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_worker_run_columns.py::test_r3_1_a_row_naming_no_root_is_its_own_and_the_tree_holds_its_shape
+  - name: R3.1 no default root for an insert that names none
+    file: db/migrations/versions/703be798341f_studio_run_columns_and_the_run_request_.py
+    old: "        NEW.root_run_id := COALESCE(NEW.root_run_id, NEW.id);\n"
+    new: "        NEW.root_run_id := NEW.root_run_id;\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_worker_run_columns.py::test_r3_1_a_row_naming_no_root_is_its_own_and_the_tree_holds_its_shape
+  - name: R3.1 a parent deleted with its child
+    file: db/migrations/versions/703be798341f_studio_run_columns_and_the_run_request_.py
+    old: "            REFERENCES platform.worker_runs (id, tenant_id) ON DELETE RESTRICT,\n"
+    new: "            REFERENCES platform.worker_runs (id, tenant_id) ON DELETE CASCADE,\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_worker_run_columns.py::test_r3_1_a_parent_with_a_child_is_not_deleted
+  - name: R3.1 the definition hash not read by its owner
+    file: db/migrations/versions/703be798341f_studio_run_columns_and_the_run_request_.py
+    old: "                   OR (artifact_kind IS NOT NULL AND definition_hash ~ {_SHA256}))\n"
+    new: "                   OR definition_hash ~ {_SHA256})\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_worker_run_columns.py::test_r3_1_the_definition_hash_is_read_by_its_owner
+  - name: R3.1 a dead letter holds its thread
+    file: db/migrations/versions/703be798341f_studio_run_columns_and_the_run_request_.py
+    old: "_FINISHED = \"'completed', 'failed', 'cancelled', 'dead_lettered'\"\n"
+    new: "_FINISHED = \"'completed', 'failed', 'cancelled'\"\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_worker_run_columns.py::test_r3_1_a_dead_letter_holds_no_thread
+      - packages/python/dw_studio/tests/integration/test_worker_run_columns.py::test_r3_1_the_finished_statuses_are_one_set_in_code_and_index
+  - name: R3.1 the backfill touches every old row
+    file: db/migrations/versions/703be798341f_studio_run_columns_and_the_run_request_.py
+    old: "    \"ALTER TABLE platform.worker_runs DISABLE TRIGGER touch_updated_at\",\n"
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_columns_backfill.py::test_the_revision_makes_every_existing_run_its_own_root
+  - name: WE21 R3.12 the version key on the id alone
+    file: db/migrations/versions/703be798341f_studio_run_columns_and_the_run_request_.py
+    old: "            FOREIGN KEY (artifact_version_id, tenant_id)\n            REFERENCES studio.artifact_versions (id, tenant_id) ON DELETE RESTRICT,\n"
+    new: "            FOREIGN KEY (artifact_version_id)\n            REFERENCES studio.artifact_versions (id) ON DELETE RESTRICT,\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_worker_run_columns.py::test_r3_12_a_run_cannot_name_another_companys_version_or_parent
+  - name: WE21 R3.12 the parent key on the id alone
+    file: db/migrations/versions/703be798341f_studio_run_columns_and_the_run_request_.py
+    old: "            FOREIGN KEY (parent_run_id, tenant_id)\n            REFERENCES platform.worker_runs (id, tenant_id) ON DELETE RESTRICT,\n"
+    new: "            FOREIGN KEY (parent_run_id)\n            REFERENCES platform.worker_runs (id) ON DELETE RESTRICT,\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_worker_run_columns.py::test_r3_12_a_run_cannot_name_another_companys_version_or_parent
+  # ---- the code that reads the finished set ----------------------------------------
+  - name: R3.1 TERMINAL_STATUSES without dead_lettered
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/run_store.py
+    old: "    {RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED, RunStatus.DEAD_LETTERED}\n"
+    new: "    {RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED}\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_worker_run_columns.py::test_r3_1_the_finished_statuses_are_one_set_in_code_and_index
+  # ---- the scans (WE1), mutated in place --------------------------------------------
+  - name: WE1 R3.5 the insert scan does not read artifact_kind
+    file: packages/python/dw_studio/tests/unit/test_run_request_door.py
+    old: "_inserts_runs(tree := ast.parse(text)) and _names_artifact_kind(tree)"
+    new: "_inserts_runs(tree := ast.parse(text)) and False"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_run_request_door.py::test_r3_5_a_planted_studio_insert_is_named
+  - name: WE1 R3.5 the scan blind to callers of the row write
+    file: packages/python/dw_studio/tests/unit/test_run_request_door.py
+    old: "        and any(name == \"insert_queued_run\" for name, _ in _calls(ast.parse(text)))\n"
+    new: "        and False\n"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_run_request_door.py::test_r3_5_a_planted_caller_of_the_row_write_is_named
+  - name: R3.18 the scan blind to a forged lane requester
+    file: packages/python/dw_studio/tests/unit/test_run_request_door.py
+    old: "        if path != DOOR and any(name == \"LaneRequester\" for name, _ in _calls(ast.parse(text)))\n"
+    new: "        if False\n"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_run_request_door.py::test_r3_18_a_planted_lane_requester_is_named

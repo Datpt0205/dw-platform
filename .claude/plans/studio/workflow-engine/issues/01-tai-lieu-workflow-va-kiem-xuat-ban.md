@@ -345,3 +345,8 @@ V4.24), và cây mang làn cho mọi cấu trúc của W1 ngay từ ticket này,
   Ngoài khu: workflow-nodes/02 (mã `wf.unknown_type`, bốn trường mới của `NodeTypeSpec` trong `READERS`, MEDIUM (a)
   đã đáp), workflow-nodes/03 (R2.6, `has()`).
 - 2026-11-03 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-04 (agent, theo ủy quyền 31/10/2026): workflow-engine/02 dựng bảng khóa chạy `_RUN_KEYS` ở
+  `apps/api/src/dw_api/bootstrap/studio.py` mà không có mục (`workflow`, `test`), vì loại `workflow` và khóa
+  `studio.workflows.test` chưa có: một mục trỏ tới khóa ngoài catalogue là khai mà không ai đọc (failure-modes #1). Ticket
+  này thêm mục đó cùng khóa và loại, dưới một hằng `*_SCOPE` để kiểm (b) của `test_permission_catalogue.py` đọc được. Nếu
+  sai thì: workflow-engine/02 thêm khóa vào catalogue trước.

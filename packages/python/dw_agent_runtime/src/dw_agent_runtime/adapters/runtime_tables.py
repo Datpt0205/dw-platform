@@ -54,6 +54,8 @@ worker_runs = sa.Table(
     sa.Column("subject_ref", sa.Text, nullable=True),
     sa.Column("created_at", sa.TIMESTAMP(timezone=True), nullable=False),
     sa.Column("updated_at", sa.TIMESTAMP(timezone=True), nullable=False),
+    # Migration d55d55e34e7f: the run's model spend.
+    sa.Column("model_cost_usd", sa.Numeric(12, 6), nullable=False, server_default="0"),
     # tenant-config 04 (migration 28a94cda6fdf): the manifest a Studio run pins.
     sa.Column("run_manifest_hash", sa.Text, nullable=True),
     # workflow-engine 02 (migration 703be798341f): the run tree, the Studio

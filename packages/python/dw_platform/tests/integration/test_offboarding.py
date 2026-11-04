@@ -824,6 +824,7 @@ async def _seed_studio(
     ws1, ws2 = uuid.uuid4(), uuid.uuid4()
     used, user = uuid.uuid4(), uuid.uuid4()
     used_v1, user_v1 = uuid.uuid4(), uuid.uuid4()
+    parent_run = uuid.uuid4()
     async with sessions() as session, session.begin():
         await session.execute(
             sa.text("SELECT set_config('app.tenant_id', :t, true)"), {"t": str(tenant_id)}
@@ -904,6 +905,36 @@ async def _seed_studio(
                 " gen_random_uuid(), :h)",
                 {"r": uuid.uuid4(), "t": tenant_id, "w": ws2, "h": _HASH},
             ),
+            # A Studio run naming its version, and its child (workflow-engine
+            # 02): both RESTRICT keys, purged by the one delete of the step.
+            *(
+                (
+                    "INSERT INTO platform.worker_runs (run_mode, id, thread_id, tenant_id,"
+                    " workspace_id, worker_id, worker_version, graph_version, requested_by,"
+                    " run_manifest_hash, artifact_kind, artifact_id, artifact_version_id,"
+                    " trigger_kind, run_as_principal_id, request_key, definition_hash,"
+                    " parent_run_id, root_run_id, chain_depth)"
+                    " VALUES ('live', :r, :r, :t, :w, 'studio', '1', :h, gen_random_uuid(),"
+                    " :h, :k, :a, :v, 'manual', gen_random_uuid(), :key, :h,"
+                    " CAST(:p AS uuid), COALESCE(CAST(:p AS uuid), CAST(:r AS uuid)), :d)",
+                    {
+                        "r": run,
+                        "t": tenant_id,
+                        "w": ws2,
+                        "h": _HASH,
+                        "k": _PROBE_KIND,
+                        "a": user,
+                        "v": user_v1,
+                        "key": f"manual:{run}",
+                        "p": parent,
+                        "d": depth,
+                    },
+                )
+                for run, parent, depth in (
+                    (parent_run, None, 0),
+                    (uuid.uuid4(), parent_run, 1),
+                )
+            ),
         ]
         for statement, values in statements:
             await session.execute(sa.text(statement), values)
@@ -938,6 +969,8 @@ async def test_offboarding_purges_studio_artifacts_that_use_each_other(
         # Ticket 04 (R3.6): from the catalog's RESTRICT keys, not by CASCADE.
         assert order.index("platform.run_manifest_keys") < position["artifact_versions"]
         assert order.index("platform.worker_runs") < order.index("platform.run_manifests")
+        # workflow-engine 02: a run names its version by a RESTRICT key.
+        assert order.index("platform.worker_runs") < position["artifact_versions"]
 
         await offboarding.purge_rows(mine)
 
@@ -982,6 +1015,31 @@ async def test_a_runs_pinned_versions_are_purged_by_the_catalogs_key_not_by_name
         "z_keys",
         "a_versions",
     ]
+
+
+async def test_a_studio_run_is_purged_before_its_version_by_the_catalogs_key(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    """workflow-engine 02 (R3.1): named so that name order puts the versions
+    first, only `fk_worker_runs_artifact_version_id_artifact_versions`, read
+    from the catalog, puts the runs before them; without that edge the order
+    turns round, so the step list holds no copy of it."""
+
+    async def nothing(_session: AsyncSession, _tenant: uuid.UUID) -> None:
+        return None
+
+    runs = OffboardingPurgeStep("z_runs", frozenset({"platform.worker_runs"}), nothing)
+    versions = OffboardingPurgeStep("a_versions", frozenset({"studio.artifact_versions"}), nothing)
+    async with sessions() as session, session.begin():
+        foreign_keys = (await session.execute(_FOREIGN_KEYS)).all()
+    edge = "fk_worker_runs_artifact_version_id_artifact_versions"
+    assert edge in {fk.conname for fk in foreign_keys}
+
+    def order(keys: list[object]) -> list[str]:
+        return [step.name for step in order_purge_steps([versions, runs], keys)]
+
+    assert order(list(foreign_keys)) == ["z_runs", "a_versions"]
+    assert order([fk for fk in foreign_keys if fk.conname != edge]) == ["a_versions", "z_runs"]
 
 
 # ---- org-and-principals 03: the tenant's service users (R6.8) ------------------

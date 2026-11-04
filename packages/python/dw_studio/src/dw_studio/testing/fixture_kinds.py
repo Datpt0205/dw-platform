@@ -38,7 +38,10 @@ from dw_studio.core.domain.toolset import extract_toolset, validate_toolset
 FIXTURE_READ: Final = "fixture.artifacts.read"
 FIXTURE_WRITE: Final = "fixture.artifacts.write"
 FIXTURE_SUBMIT: Final = "fixture.artifacts.submit"
-FIXTURE_KEYS: Final = (FIXTURE_READ, FIXTURE_WRITE, FIXTURE_SUBMIT)
+# The run key a test's run-key table names for the fixture kinds
+# (workflow-engine/02); not on either entry, which carries no run key.
+FIXTURE_RUN: Final = "fixture.artifacts.run"
+FIXTURE_KEYS: Final = (FIXTURE_READ, FIXTURE_WRITE, FIXTURE_SUBMIT, FIXTURE_RUN)
 
 
 def validate_fixture(document: Any) -> list[DocumentProblem]:

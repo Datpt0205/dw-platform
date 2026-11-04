@@ -2213,3 +2213,40 @@ async def test_the_switches_are_written_only_by_the_roles_that_set_and_lift_them
         ("dw_provisioner", "lifted_at"),
     }
     assert not any(trigger_calls)
+
+
+# workflow-engine ticket 02 (migration 703be798341f): the Studio run columns
+# change no grant on `platform.worker_runs` (`dw_app` writes a run as before,
+# `dw_agent_ro` and the provisioner hold nothing), and the trigger that makes
+# a run its own root is called by its trigger alone.
+
+
+async def test_the_run_columns_change_no_grant_and_their_trigger_is_no_ones(
+    db_urls: DatabaseUrls,
+) -> None:
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            held = {
+                (r.rolname, r.verb)
+                for r in await conn.execute(_HELD_VERBS, {"t": "platform.worker_runs"})
+            }
+            callers = {
+                role: await conn.scalar(
+                    sa.text(
+                        "SELECT has_function_privilege(:r,"
+                        " 'platform.default_root_run_id()', 'EXECUTE')"
+                    ),
+                    {"r": role},
+                )
+                for role in ("public", "dw_app", "dw_agent_ro", "dw_provisioner")
+            }
+    finally:
+        await migrator.dispose()
+    assert held == {
+        ("dw_app", "SELECT"),
+        ("dw_app", "INSERT"),
+        ("dw_app", "UPDATE"),
+        ("dw_app", "DELETE"),
+    }
+    assert not any(callers.values()), callers
