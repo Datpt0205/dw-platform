@@ -179,7 +179,7 @@ red "dw_studio.probe's presentation outside the adapter contract's sources" "$d"
   "dw_studio.probe: dw_studio.probe.presentation missing from the source_modules of 'Studio inner layers never import Studio adapters'"
 
 d=$(skeleton)
-swap "$d/pyproject.toml" 'source_modules = ["dw_platform.domain", "dw_studio.*.domain"]' 'source_modules = ["dw_platform.domain"]'
+swap "$d/pyproject.toml" 'source_modules = ["dw_platform.domain", "dw_studio.*.domain", "dw_usage.domain"]' 'source_modules = ["dw_platform.domain", "dw_usage.domain"]'
 red "dw_studio.core.domain outside the domain contract" "$d" \
   "dw_studio.core: dw_studio.core.domain missing from the source_modules of 'Domain layers never import frameworks or providers'"
 

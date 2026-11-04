@@ -147,7 +147,7 @@ _FILTERS = (
 )
 _SUMMARY: Final[dict[str, sa.TextClause]] = {
     "workspace": sa.text(
-        "SELECT CAST(d.workspace_id AS text) AS key, NULL AS artifact_kind, w.name AS label, "
+        "SELECT CAST(d.workspace_id AS text) AS key, NULL AS artifact_kind, w.name AS label, "  # nosec B608 - fixed text, values bound
         + _SUMS
         + " FROM platform.usage_daily d"
         " LEFT JOIN platform.workspaces w ON w.tenant_id = d.tenant_id AND w.id = d.workspace_id"
@@ -155,7 +155,7 @@ _SUMMARY: Final[dict[str, sa.TextClause]] = {
         + " GROUP BY d.workspace_id, w.name ORDER BY sum(d.cost_usd) DESC, key NULLS LAST"
     ),
     "artifact": sa.text(
-        "SELECT CAST(d.artifact_id AS text) AS key, d.artifact_kind, NULL AS label, "
+        "SELECT CAST(d.artifact_id AS text) AS key, d.artifact_kind, NULL AS label, "  # nosec B608 - fixed text, values bound
         + _SUMS
         + " FROM platform.usage_daily d"
         + _FILTERS
@@ -163,7 +163,7 @@ _SUMMARY: Final[dict[str, sa.TextClause]] = {
         " ORDER BY sum(d.cost_usd) DESC, key NULLS LAST"
     ),
     "purpose": sa.text(
-        "SELECT d.purpose AS key, NULL AS artifact_kind, NULL AS label, "
+        "SELECT d.purpose AS key, NULL AS artifact_kind, NULL AS label, "  # nosec B608 - fixed text, values bound
         + _SUMS
         + " FROM platform.usage_daily d"
         + _FILTERS
