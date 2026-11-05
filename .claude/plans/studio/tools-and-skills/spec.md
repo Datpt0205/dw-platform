@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 2/11/2026
-Sẵn sàng: ĐẠT (5/11/2026; 0 CRITICAL, 0 HIGH; ticket 01-05)
+Sẵn sàng: ĐẠT (5/11/2026; 0 CRITICAL, 0 HIGH; ticket 01-06)
 
 Trợ lý Marketing cần đọc lead và gửi email, mà mỗi lời gọi công cụ phải được kiểm theo đúng lược đồ và
 chính sách của công ty, chạy với quyền của người hỏi, và không để kết quả từ bên ngoài đóng vai chỉ
@@ -537,6 +537,12 @@ action: <tên Hành động>, binding: <tên điểm gắn>}`; `ToolsetSpec`, `v
   `include_tools` của `SkillsMiddleware`; không chờ ticket nào, không chạy song song với agent-builder/03 (cùng thư mục
   `tests/prototype/`). Theo `## Ủy quyền` của studio.md (Đạt, 31/10/2026). Nếu sai thì: hạ ticket 05 về `needs-triage`
   và gộp việc nâng vào ticket kỹ năng W2.
+- 5/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 06. Ticket 06 đếm lược đồ sống của cửa công cụ, đưa tỉ
+  lệ trúng của hai LRU trong `json_schema.py` ra metric và định cỡ cache theo số đo (phát hiện của discovery/16, Open 6
+  của ADR-0116 (Accepted)), phục vụ R1.1 và R1.2; chờ ticket 03 (công cụ đối tượng là phần lớn lược đồ sống), không chạy song
+  song với ticket nào khác sửa `json_schema.py` hay `telemetry.py` của `dw_observability`. Theo `## Ủy quyền` của
+  studio.md (Đạt, 31/10/2026). Nếu sai thì: hạ ticket 06 về `needs-triage` và gộp phần đếm vào lượt đo trễ lúc đóng
+  hàng của W1.
 
 ## Danh sách ticket
 
@@ -547,3 +553,4 @@ action: <tên Hành động>, binding: <tên điểm gắn>}`; `ToolsetSpec`, `v
 | 03  | [Công cụ dữ liệu đối tượng theo phiên bản lược đồ, dùng quyền của người gọi](issues/03-cong-cu-du-lieu-doi-tuong.md)       |
 | 04  | [Chế độ strict của args schema theo cờ năng lực của model profile](issues/04-che-do-strict-theo-model-profile.md)          |
 | 05  | [Nâng deepagents lên 0.7.32 và khóa những gì nó đổi bằng test hợp đồng](issues/05-nang-deepagents.md)                      |
+| 06  | [Đếm lược đồ sống, đo tỉ lệ trúng và định cỡ cache validator của cửa công cụ](issues/06-dinh-co-cache-validator.md)        |
