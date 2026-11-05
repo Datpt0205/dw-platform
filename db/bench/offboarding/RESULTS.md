@@ -151,3 +151,32 @@ storage list failed`, 12,4 giây sau khi nhận). Collection `dw_knowledge` chư
    Đề xuất: test phủ đọc mọi schema có bảng mang `tenant_id` (hay policy `tenant_isolation_*`), không chỉ hai schema, và
    lane từ chối trước lần xuất đầu (R11.7) khi một bảng tenant có `has_any_column_privilege` mà không có
    `has_table_privilege`, thay vì lặng lẽ bỏ qua; bảng `_PLATFORM_PREDATING` ít nhất phải được xuất hoặc nêu tên.
+
+## Sau foundations-hardening 08: gói ghi luồng, đo lại ở 10^6
+
+Đo ngày 5/11/2026, cùng máy và cùng cách như trên, trên ảnh `dw-worker:lane2-fh08` build từ một bản xuất sạch của commit
+tính năng (`3d4be83`: gói ghi theo lô vào tệp tạm không tên, tải lên theo phần qua `put_stream`; không push, đã xóa sau
+lần đo), database riêng `DW_TEST_DB_SUFFIX=_lane2fh08` (đã xóa). `--cpus 1.0 --memory 1g --memory-swap 1g`, worker thật
+với mọi lane. Khác lần đo của discovery 09 ở hai chỗ, cả hai là kho thật của một bản cài mới: Qdrant của compose với
+một collection tri thức chưa ai tạo (`QDRANT_COLLECTION=fog32_absent_<hex>`), và bucket đính kèm chưa ai tạo
+(`DW_WORKER_FEEDBACK_BUCKET=fog32-feedback-absent-<hex>`); harness không còn né hai kho đó (R11.12). Seed lại: 1.360.000
+bản ghi trong 379 giây.
+
+| Lần chạy                | Bản ghi   | Giới hạn | `memory.peak` (B) | anon lớn nhất (mẫu mỗi giây) | Kết cục                                      | Xuất    | Xóa    | Gói zip / ndjson bản ghi |
+| ----------------------- | --------- | -------- | ----------------- | ---------------------------- | -------------------------------------------- | ------- | ------ | ------------------------ |
+| Head `b0113f4` (ở trên) | 1.000.000 | 1 GiB    | 1.074.491.392     | 1.063.600.128                | `oom_kill` 1 sau 34,5 giây, kẹt `exporting`  | —       | —      | —                        |
+| **`3d4be83`**           | 1.000.000 | 1 GiB    | 499.367.936       | **263.041.024**              | **`completed`**, `oom_kill` 0, không lỗi nào | 163,3 s | 14,3 s | 156,4 MB / 1.881,4 MB    |
+
+- Gói: **đúng 1.000.000 dòng `studio.records`, 1.000.000 id khác nhau, md5 các id khớp seed, 0 dòng của công ty khác**;
+  16 mục. Sau lần xóa: `big` 0, `mid` 250.000, `small` 100.000, `other` 10.000.
+- `memory.peak` gồm cache trang của tệp tạm (cgroup cuối: anon 210,9 MB, file 67,6 MB); tiêu chí của ticket là anon lớn
+  nhất dưới 512 MiB và không `oom_kill`. Anon 263 MB so với 349 MB của nguyên mẫu `spool`, vì gói nén không còn nằm trong
+  bộ nhớ lúc tải: SDK đọc tệp từng phần 5 MiB, tối đa ba phần song song.
+- Từ lúc chạy tới `completed`: 190,7 giây, CPU 152,8 giây, bị bóp CPU 615 lần (49,0 giây); `pids.peak` 34.
+- Khóa gói theo yêu cầu: `<tenant>/offboarding-<request_id>.zip` (R11.18).
+- Biến thể `--variant spool` của `worker_entry.py` thay `_build_bundle`, hàm không còn từ `3d4be83`: chạy nó nay đo đúng
+  mã của ảnh.
+
+Phép thử rẻ thay cho phép đo này trong CI: `test_the_bundle_writer_holds_one_batch_not_the_table`
+(`apps/worker/tests/unit/test_offboarding_consumer.py`), 10 lô 1.000 dòng tiếng Việt khoảng 2 KB dưới `tracemalloc`: đỉnh
+17,3 MB với bản ghi luồng, 134,3 MB với `_build_bundle` của `b0113f4` trên cùng đầu vào; ngưỡng của test là 32 MB.

@@ -425,19 +425,21 @@ def _worker_env(env: dict[str, str]) -> list[str]:
         "DW_WORKER_DATABASE_URL": (
             f"postgresql+asyncpg://dw_app:{env['DW_DB_APP_PASSWORD']}@postgres:5432/{db}"
         ),
-        # No Qdrant: the knowledge index's `delete_by_tenant` fails on a collection
-        # nobody has created (the memory ranker's returns), which fails the request
-        # after the SQL purge has committed; measured once, then the in-memory index.
+        # Discovery 09 ran without Qdrant and with the feedback bucket pointed at
+        # one that existed, because the lane failed on both stores while they did
+        # not exist yet. Since foundations-hardening 08 a store nobody created holds
+        # nothing (R11.12), so the run uses the real ones as a fresh deployment has
+        # them: Qdrant with a knowledge collection never made, and a `feedback`
+        # bucket no attachment ever created.
+        "QDRANT_URL": "http://qdrant:6333",
+        "QDRANT_API_KEY": env.get("QDRANT_API_KEY", ""),
+        "QDRANT_COLLECTION": f"fog32_absent_{uuid.uuid4().hex[:8]}",
         "S3_ENDPOINT_URL": "http://s3:8333",
         "MINIO_ROOT_USER": env["MINIO_ROOT_USER"],
         "MINIO_ROOT_PASSWORD": env["MINIO_ROOT_PASSWORD"],
         "S3_BUCKET_EXPORTS": env.get("S3_BUCKET_EXPORTS", "dw-exports"),
         "S3_BUCKET_ARTIFACTS": env.get("S3_BUCKET_ARTIFACTS", "dw-artifacts"),
-        # The `feedback` bucket exists only once someone has uploaded an
-        # attachment (the API makes it on its first put), and the lane's list
-        # of a missing bucket fails the whole request: measured first, then
-        # pointed at a bucket that exists, under the same `feedback/` prefix.
-        "DW_WORKER_FEEDBACK_BUCKET": env.get("S3_BUCKET_ARTIFACTS", "dw-artifacts"),
+        "DW_WORKER_FEEDBACK_BUCKET": f"fog32-feedback-absent-{uuid.uuid4().hex[:8]}",
         "DW_WORKER_EMBEDDING_PROVIDER": "hash",
         "DW_WORKER_MODEL_PROVIDER": "mock",
     }

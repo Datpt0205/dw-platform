@@ -1,0 +1,125 @@
+# Mutation check of foundations-hardening ticket 08: scripts/mutate.py runs this file at the
+# queue's close (.claude/rules/wave-close.md), not at the ticket.
+# One mutation per Kiểm soát row the ticket implements (FH37, FH38, FH39, FH40, FH41, FH44),
+# more where a row holds more than one guard. Each was broken by hand once at the ticket, a
+# sample of them (ticket Comments); the tool's control run comes first at the close.
+mutations:
+  - name: FH37 the bundle writer holds every batch it wrote
+    file: apps/worker/src/dw_worker/consumers/offboarding.py
+    old: |
+      def _write_rows(entry: IO[bytes], rows: list[dict[str, Any]], first: bool) -> None:
+          text = "\n".join(json.dumps(row, default=_json_default, ensure_ascii=False) for row in rows)
+    new: |
+      def _write_rows(entry: IO[bytes], rows: list[dict[str, Any]], first: bool, _held: list[str] = []) -> None:  # noqa: B006
+          text = "\n".join(json.dumps(row, default=_json_default, ensure_ascii=False) for row in rows)
+          _held.append(text)
+    tests:
+      - apps/worker/tests/unit/test_offboarding_consumer.py::test_the_bundle_writer_holds_one_batch_not_the_table
+  - name: FH37 a table arriving twice is written as a second entry
+    file: apps/worker/src/dw_worker/consumers/offboarding.py
+    old: |2
+                          raise ValueError(f"{name} arrived in two runs of batches")
+    new: |2
+                          pass
+    tests:
+      - apps/worker/tests/unit/test_offboarding_consumer.py::test_a_table_arriving_in_two_runs_is_refused
+  - name: FH38 a stale purging request is claimed back as exporting
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py
+    old: |2
+                          " SET status = CASE WHEN status = 'purging' AND export_key IS NOT NULL"
+    new: |2
+                          " SET status = CASE WHEN false"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_offboarding.py::test_a_stale_purging_request_is_claimed_back_with_its_bundle
+  - name: FH38 a failure after purging is reported failed
+    file: apps/worker/src/dw_worker/consumers/offboarding.py
+    old: '                await _report(lane, tenant_id, "purging", exc.export_key, exc.__cause__ or exc)'
+    new: '                await _report(lane, tenant_id, "failed", exc.export_key, exc.__cause__ or exc)'
+    tests:
+      - apps/worker/tests/unit/test_offboarding_consumer.py::test_a_purge_step_that_fails_keeps_the_request_purging_with_its_key
+  - name: FH38 a resumed pass deletes without looking for its bundle
+    file: apps/worker/src/dw_worker/consumers/offboarding.py
+    old: "                if not await self.exports.has_object(export_key):"
+    new: "                if False:"
+    tests:
+      - apps/worker/tests/unit/test_offboarding_consumer.py::test_a_resumed_request_whose_bundle_is_gone_deletes_nothing
+  - name: FH38 a resumed pass exports again
+    file: apps/worker/src/dw_worker/consumers/offboarding.py
+    old: "        if claim.resume_export_key is not None:"
+    new: "        if False:"
+    tests:
+      - apps/worker/tests/unit/test_offboarding_consumer.py::test_a_resumed_request_purges_with_its_bundle_and_exports_nothing
+  - name: FH39 a missing bucket lists as NoSuchBucket
+    file: packages/python/dw_knowledge/src/dw_knowledge/adapters/minio_storage.py
+    old: |2
+              if not self.client.bucket_exists(self.bucket):
+                  return []
+    new: |2
+              if False:
+                  return []
+    tests:
+      - packages/python/dw_knowledge/tests/integration/test_object_storage_contract.py::test_a_bucket_nobody_made_lists_nothing
+      - apps/worker/tests/integration/test_offboarding_stores.py::test_a_company_with_no_attachment_bucket_and_no_knowledge_collection_completes
+  - name: FH39 the knowledge index purges a missing collection as an error
+    file: packages/python/dw_knowledge/src/dw_knowledge/adapters/qdrant_index.py
+    old: |2
+                  if not await self.client.collection_exists(self.collection):
+                      return
+                  await self.client.delete(
+    new: |2
+                  if False:
+                      return
+                  await self.client.delete(
+    tests:
+      - packages/python/dw_knowledge/tests/integration/test_qdrant_tenant_purge.py::test_purging_a_tenant_from_a_collection_nobody_made_is_done
+      - apps/worker/tests/integration/test_offboarding_stores.py::test_a_company_with_no_attachment_bucket_and_no_knowledge_collection_completes
+  - name: FH40 a column-only tenant table is skipped, not refused
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py
+    old: "        if column_only:"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_offboarding_registry.py::test_a_tenant_table_read_by_column_only_refuses_the_pass
+  - name: FH41 the coverage test reads studio and platform only
+    file: packages/python/dw_platform/tests/integration/test_offboarding_coverage.py
+    old: "    WHERE n.nspname <> 'information_schema' AND n.nspname !~ '^pg_'"
+    new: "    WHERE n.nspname IN ('studio', 'platform')"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_offboarding_coverage.py::test_a_table_read_by_column_only_is_named_in_every_schema[memory]
+  - name: FH41 the coverage test does not ask about column-only SELECT
+    file: packages/python/dw_platform/tests/integration/test_offboarding_coverage.py
+    old: '        if await conn.scalar(_READ_BY_COLUMN_ONLY, {"t": table}):'
+    new: "        if False:"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_offboarding_coverage.py::test_a_table_read_by_column_only_is_named_in_every_schema[platform-predating]
+  - name: FH44 the live pass never refreshes its claim
+    file: apps/worker/src/dw_worker/consumers/offboarding.py
+    old: "                await self.store.keep_claim(tenant_id)"
+    new: "                await asyncio.sleep(0)"
+    tests:
+      - apps/worker/tests/unit/test_offboarding_consumer.py::test_a_live_pass_keeps_its_claim_and_stops_when_done
+  - name: FH44 a lost claim is logged and the pass runs on
+    file: apps/worker/src/dw_worker/consumers/offboarding.py
+    old: "                if missed >= _MISSED_HEARTBEATS:"
+    new: "                if False:"
+    tests:
+      - apps/worker/tests/unit/test_offboarding_consumer.py::test_a_pass_that_cannot_keep_its_claim_stops_before_uploading
+  - name: FH44 keep_claim refreshes every request of the tenant
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py
+    old: |
+      _KEEP_CLAIM = text(
+          "UPDATE platform.tenant_offboarding_requests SET updated_at = now()"
+          " WHERE tenant_id = :tenant_id AND status IN ('exporting', 'purging')"
+      )
+    new: |
+      _KEEP_CLAIM = text(
+          "UPDATE platform.tenant_offboarding_requests SET updated_at = now()"
+          " WHERE tenant_id = :tenant_id"
+      )
+    tests:
+      - packages/python/dw_platform/tests/integration/test_offboarding.py::test_keep_claim_refreshes_only_the_tenants_request_in_flight
+  - name: FH44 the bundle key follows the clock, not the request
+    file: apps/worker/src/dw_worker/consumers/offboarding.py
+    old: '    return f"{claim.tenant_id}/offboarding-{claim.request_id}.zip"'
+    new: '    return f"{claim.tenant_id}/offboarding-{datetime.now().timestamp()}.zip"'
+    tests:
+      - apps/worker/tests/unit/test_offboarding_consumer.py::test_the_export_key_is_one_per_request_on_every_status
