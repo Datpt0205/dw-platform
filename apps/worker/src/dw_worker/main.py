@@ -24,7 +24,7 @@ import logging
 import os
 import signal
 import socket
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
@@ -149,7 +149,15 @@ from dw_platform.application.dw_autonomy import (
 )
 from dw_platform.application.egress_allowlist import EGRESS_ALLOWED_HOST, AllowedHostSettler
 from dw_platform.application.work_queue import WorkQueue
+from dw_platform.domain.approval import decided_event_type
 from dw_platform.retention_policy import RetentionPurgerRegistry, load_retention_policy
+from dw_studio.core.application.registry import ArtifactKindEntry, ArtifactKindRegistry
+from dw_studio.lifecycle.application.publish import (
+    PUBLISH_PREFIX,
+    publish_approval_type,
+    publish_decision_guards,
+)
+from dw_studio.lifecycle.application.review import PublishSettler as StudioPublishSettler
 from dw_studio.records.adapters.record_store import (
     RECORD_WRITE_KEYS,
     SqlRecordWriteKeyRetention,
@@ -167,6 +175,8 @@ from dw_worker.composition import (
     build_ingest_components,
     build_object_storage,
     build_residency_gate,
+    build_studio_kinds,
+    build_studio_lifecycle,
     build_studio_runner,
     build_vector_index,
     build_wflite_runtime,
@@ -208,6 +218,7 @@ from dw_worker.consumers.reaper import INTERVAL_SECONDS as REAP_INTERVAL_SECONDS
 from dw_worker.consumers.reaper import ReapTarget, build_reaper_consumer
 from dw_worker.consumers.retention import INTERVAL_SECONDS as RETENTION_INTERVAL_SECONDS
 from dw_worker.consumers.retention import RetentionPrunePort, build_retention_consumer
+from dw_worker.consumers.studio_publish import build_publish_decided_handler
 from dw_worker.consumers.studio_runs import (
     DEAD_LETTERED,
     UnwiredBindingReview,
@@ -272,6 +283,7 @@ def build_channel_decision_command(
     strict_approval_prefixes: frozenset[str] = frozenset(),
     ids: IdGenerator,
     clock: UtcClock,
+    studio_kinds: Sequence[ArtifactKindEntry] | None = None,
 ) -> ChannelDecisionCommand:
     """`DUYỆT <mã>` / `KHÔNG <mã> <lý do>` from a linked chat (ADR 0007, channels Z5).
 
@@ -282,7 +294,10 @@ def build_channel_decision_command(
     does in the API's `wiring.py`; a type no context answers for is never
     decided by chat (no version, no decision). Without
     `DW_APPROVAL_CODE_SECRET` the command still answers a decision, with
-    "not enabled", so the words never reach a model.
+    "not enabled", so the words never reach a model. A Studio publish request
+    is decided here under the same guard as in the API, one per kind of
+    `build_studio_kinds` (`studio_kinds=` a test's door), so no door decides
+    one past it (agent-lifecycle R5.2, R5.3).
     """
     flow = ApproveAndResumeService(
         uow_factory=SqlPlatformUnitOfWorkFactory(sessions),
@@ -301,6 +316,9 @@ def build_channel_decision_command(
             DW_WORKFLOW_PUBLISH: PUBLISH_ADMISSION,
         },
         strict_approval_prefixes=frozenset({DW_AUTONOMY_PREFIX, DW_WORKFLOW_PREFIX}),
+        decision_guards=publish_decision_guards(
+            build_studio_kinds(clock=clock, ids=ids, kinds=studio_kinds).kinds
+        ),
         run_graphs=runner.run_graphs,
         telemetry=runner.telemetry,
     )
@@ -318,6 +336,9 @@ def build_channel_decision_command(
     # A configuration version takes a second person, here as in the API
     # (tenant-config R8.8); chat decides none, having no subject version for it.
     flow.strict_approval_prefixes |= {CONFIG_PREFIX}
+    # Publishing a Studio version takes a person who is not its submitter,
+    # here as in the API (agent-lifecycle R5.2; ADR-0104 decision 11).
+    flow.strict_approval_prefixes |= {PUBLISH_PREFIX}
     secret = settings.approval_code_secret.get_secret_value()
     return ChannelDecisionCommand(
         ChannelApprovalDecisionService(
@@ -456,6 +477,32 @@ def build_studio_lanes(
         SqlScopeHolders(sessions), SqlNotificationRepository(sessions)
     )
     return lane
+
+
+def register_studio_publish(
+    handlers: dict[str, EventHandler],
+    sessions: async_sessionmaker[AsyncSession],
+    *,
+    run_control: RunControlPort,
+    clock: UtcClock,
+    ids: IdGenerator,
+    kinds: Sequence[ArtifactKindEntry] | None = None,
+) -> ArtifactKindRegistry:
+    """A decided Studio publish request (agent-lifecycle R5.5, R5.9, R5.10,
+    R7.12): one handler under `studio.publish.<kind>.decided` for every kind
+    of the worker's registry, by a loop over it, never a list; `kinds=` is a
+    test's door. The registry, for the caller's own checks."""
+    registry = build_studio_kinds(clock=clock, ids=ids, kinds=kinds)
+    handler = build_publish_decided_handler(
+        StudioPublishSettler(
+            build_studio_lifecycle(
+                sessions, registry, run_control=run_control, clock=clock, ids=ids
+            )
+        )
+    )
+    for kind in registry.kinds:
+        handlers[decided_event_type(publish_approval_type(kind))] = handler
+    return registry
 
 
 def build_tenant_wide_scopes() -> TenantWideScopeRegistry:
@@ -695,7 +742,6 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
                 store=SqlKilledRuns(sessions), hooks=build_run_cancel_hooks(), clock=clock, ids=ids
             )
         )
-        # A decided publication of a DW's workflow draft (wf-ai R6.5, R6.6).
         # Studio runs (workflow-engine/04): the queue's two lanes and the
         # reader of a dead letter.
         build_studio_lanes(
@@ -708,6 +754,9 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
             ids=ids,
             telemetry=telemetry,
         )
+        # A decided publication of a Studio version (agent-lifecycle R5.5).
+        register_studio_publish(handlers, sessions, run_control=run_control, clock=clock, ids=ids)
+        # A decided publication of a DW's workflow draft (wf-ai R6.5, R6.6).
         handlers[DW_WORKFLOW_PUBLISH_DECIDED] = build_publish_handler(
             PublishSettler(
                 repo=SqlWorkflowDrafts(sessions),

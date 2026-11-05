@@ -232,6 +232,7 @@ async def test_a_group_mounted_without_studio_answers_otherwise() -> None:
         artifacts=cast(Any, None),
         lifecycle=cast(Any, None),
         segments={},
+        candidates=cast(Any, None),
         kill_switches=cast(Any, None),
         kill_segments={},
         routers=(artifacts_router,),

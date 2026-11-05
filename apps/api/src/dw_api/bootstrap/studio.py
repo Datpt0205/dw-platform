@@ -13,10 +13,17 @@ a test reaches an app only through a test that passes `studio_kinds=`
 (tenant-config R2.15). Their hooks get their stores from `object_store_of`,
 over the session of the publish transaction (custom-objects ticket 02).
 
-The stage machine (agent-lifecycle ticket 03) mounts one submit, withdraw and
-retire route per segment of `SUBMIT_SEGMENTS`, unless a test names its own
-`segments=` (to put a test kind under one); its submit asks the process's one
-`SqlRunControl` (ticket 01) and runs the per-kind checks of `_SUBMIT_CHECKS`.
+The stage machine (agent-lifecycle ticket 03) mounts one submit and withdraw
+route per segment of `SUBMIT_SEGMENTS`, retire under `RETIRE_SEGMENTS` alone,
+unless a test names its own `segments=` (to put a test kind under one); its
+submit asks the process's one `SqlRunControl` (ticket 01), runs the per-kind
+checks of `_SUBMIT_CHECKS` and asks `BindingStatus` (tenant-config ticket 05)
+whether every required binding has an approved value. A publish request
+(ticket 04) is decided under the guard `publish_decision_guards` registers for
+every kind of the registry, by a loop and never a list, on the approval flow
+`bootstrap.runtime` builds (its `studio.publish.` prefix is strict in
+`wiring.py`); the decision is carried out on the worker, and the reviewer
+reads the candidate through `CandidateReader`.
 A kill and the request to revive (ticket 05) mount under `KILL_SEGMENTS`
 alone, never a test's `segments=`: a switch kills an agent or a workflow,
 `ck_control_switches_scope_type`.
@@ -117,6 +124,8 @@ from dw_studio.kinds import (
 from dw_studio.lifecycle.adapters.store import SqlKillStore, SqlLifecycleStore
 from dw_studio.lifecycle.application.kill import KILL_SEGMENTS, KillSwitchService
 from dw_studio.lifecycle.application.ports import SubmitCheck
+from dw_studio.lifecycle.application.publish import publish_decision_guards
+from dw_studio.lifecycle.application.review import CandidateReader
 from dw_studio.lifecycle.application.service import SUBMIT_SEGMENTS, LifecycleService
 from dw_studio.records.adapters.actor_boundaries import SqlActorBoundaries
 from dw_studio.records.adapters.definition_store import (
@@ -164,6 +173,9 @@ class StudioContainer:
     # segment of each kind it submits, withdraws and retires.
     lifecycle: LifecycleService
     segments: Mapping[str, str]
+    # agent-lifecycle 04: the candidate of a pending publish request, read by
+    # the person who may decide it.
+    candidates: CandidateReader
     # agent-lifecycle 05: a component's kill and the request to revive it,
     # under the route segment of each kind a switch can kill.
     kill_switches: KillSwitchService
@@ -249,9 +261,6 @@ def build_studio(
     )
     store = SqlArtifactStore(sessions, ids)
     artifacts = ArtifactService(store, registry, clock, ids)
-    lifecycle = LifecycleService(
-        SqlLifecycleStore(store), artifacts, container.run_control, _SUBMIT_CHECKS, clock
-    )
 
     segments = SUBMIT_SEGMENTS if segments is None else MappingProxyType(dict(segments))
     # A run's models are pinned by the resolver its calls then ask
@@ -272,13 +281,25 @@ def build_studio(
 
     usability = container.connection_usability
     binding_types = platform_binding_types(usability)
+    binding_status = BindingStatus(store, binding_types)
+    lifecycle = LifecycleService(
+        SqlLifecycleStore(store),
+        artifacts,
+        container.run_control,
+        _SUBMIT_CHECKS,
+        clock,
+        bindings=binding_status,
+    )
     config_kinds = ConfigKindRegistry([BindingSets(store, registry, binding_types, usability)])
     config_store = SqlConfigVersionStore(sessions)
     if container.approval_flow is not None:
         # Asked before a `config.version` decision is written (R8.9, R8.17).
+        # And no author decides their own version's publication (agent-lifecycle
+        # R5.2, R5.3): one guard per kind of the registry.
         container.approval_flow.decision_guards = {
             **container.approval_flow.decision_guards,
             CONFIG_VERSION: ConfigVersionDecisions(config_kinds, config_store),
+            **publish_decision_guards(registry.kinds),
         }
     # A connection is in use while an approved Binding set binds it (R3.7).
     container.connections = dataclasses.replace(
@@ -304,6 +325,7 @@ def build_studio(
     from dw_api.routes.v1.studio_kill import kill_router
     from dw_api.routes.v1.studio_lifecycle import lifecycle_router
     from dw_api.routes.v1.studio_node_types import router as node_types_router
+    from dw_api.routes.v1.studio_publish_approvals import router as publish_approvals_router
     from dw_api.routes.v1.studio_records import router as records_router
 
     return StudioContainer(
@@ -311,6 +333,7 @@ def build_studio(
         artifacts=artifacts,
         lifecycle=lifecycle,
         segments=segments,
+        candidates=CandidateReader(lifecycle),
         kill_switches=KillSwitchService(SqlKillStore(store), artifacts, clock, ids),
         kill_segments=KILL_SEGMENTS,
         routers=(
@@ -319,6 +342,7 @@ def build_studio(
             lifecycle_router(segments),
             kill_router(KILL_SEGMENTS),
             node_types_router,
+            publish_approvals_router,
             records_router,
         ),
         run_manifests=run_manifests,
@@ -339,7 +363,7 @@ def build_studio(
         run_lanes=run_lanes,
         config_versions=ConfigVersionService(config_kinds, config_store, clock, ids),
         bindings=BindingsReader(store, registry),
-        binding_status=BindingStatus(store, binding_types),
+        binding_status=binding_status,
         run_bindings=SqlRunBindings(sessions),
         node_types=node_types,
         actor_boundaries=actor_boundaries,

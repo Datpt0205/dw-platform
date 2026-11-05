@@ -102,6 +102,7 @@ def test_a_kind_registered_twice_or_with_a_blank_key_is_refused() -> None:
             publish_hook=_hook,
             validate=validate_fixture,
             extract=extract_fixture,
+            compare=None,
         )
     with pytest.raises(TypeError):
         ArtifactKindEntry(kind="probe", document_schema="dw.probe/v1")  # type: ignore[call-arg]

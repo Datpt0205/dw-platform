@@ -1327,6 +1327,83 @@
         "title": "CancelResult",
         "type": "object"
       },
+      "CandidateView": {
+        "properties": {
+          "approval_id": {
+            "format": "uuid",
+            "title": "Approval Id",
+            "type": "string"
+          },
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "changes": {
+            "description": "What the candidate changes against that version; every field an `add` when there is none.",
+            "items": {
+              "$ref": "#/components/schemas/ChangeView"
+            },
+            "title": "Changes",
+            "type": "array"
+          },
+          "definition_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Definition Hash"
+          },
+          "document": {
+            "additionalProperties": true,
+            "title": "Document",
+            "type": "object"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "live_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The version the candidate was compared with when it was submitted; null when there was none.",
+            "title": "Live Version Id"
+          },
+          "version_id": {
+            "format": "uuid",
+            "title": "Version Id",
+            "type": "string"
+          },
+          "version_no": {
+            "title": "Version No",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "approval_id",
+          "version_id",
+          "artifact_id",
+          "kind",
+          "version_no",
+          "definition_hash",
+          "document",
+          "live_version_id",
+          "changes"
+        ],
+        "title": "CandidateView",
+        "type": "object"
+      },
       "ChangeStateRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1339,6 +1416,38 @@
           "state"
         ],
         "title": "ChangeStateRequest",
+        "type": "object"
+      },
+      "ChangeView": {
+        "properties": {
+          "after": {
+            "description": "The candidate's value; null on `remove`.",
+            "title": "After"
+          },
+          "before": {
+            "description": "The compared version's value; null on `add`.",
+            "title": "Before"
+          },
+          "op": {
+            "enum": [
+              "add",
+              "remove",
+              "replace"
+            ],
+            "title": "Op",
+            "type": "string"
+          },
+          "path": {
+            "description": "JSON pointer (RFC 6901) of the value that changed.",
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "op"
+        ],
+        "title": "ChangeView",
         "type": "object"
       },
       "ClassStandingView": {
@@ -7440,6 +7549,100 @@
           "schema"
         ],
         "title": "StepErrorView",
+        "type": "object"
+      },
+      "SubmitView": {
+        "description": "A submitted version (R2.8-R2.11): `live` on the tighten-only branch,\notherwise `evaluating` or `awaiting_approval`.",
+        "properties": {
+          "based_on_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Based On Version Id"
+          },
+          "binding_unset": {
+            "description": "Required bindings with no approved value yet, by name; empty when every one has one. Publishing waits for them (R2.11, R5.10).",
+            "items": {
+              "type": "string"
+            },
+            "title": "Binding Unset",
+            "type": "array"
+          },
+          "change_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Note"
+          },
+          "content_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Hash"
+          },
+          "definition_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Definition Hash"
+          },
+          "document": {
+            "additionalProperties": true,
+            "title": "Document",
+            "type": "object"
+          },
+          "document_schema": {
+            "title": "Document Schema",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "stage": {
+            "title": "Stage",
+            "type": "string"
+          },
+          "version_no": {
+            "title": "Version No",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "version_no",
+          "stage",
+          "document_schema",
+          "document",
+          "content_hash",
+          "definition_hash",
+          "based_on_version_id",
+          "change_note",
+          "binding_unset"
+        ],
+        "title": "SubmitView",
         "type": "object"
       },
       "SupportGrantModel": {
@@ -17050,7 +17253,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/VersionView"
+                  "$ref": "#/components/schemas/SubmitView"
                 }
               }
             },
@@ -17077,7 +17280,7 @@
             "description": "The server failed"
           }
         },
-        "summary": "Submit a agent draft: sealed, checked, on to its gate",
+        "summary": "Submit a agent draft: sealed, checked, on to its gate or its approval",
         "tags": [
           "studio"
         ]
@@ -18193,6 +18396,189 @@
         ]
       }
     },
+    "/api/v1/studio/data-sources/{artifact_id}/versions/{version_id}/submit": {
+      "post": {
+        "operationId": "submit_data_sources_version_api_v1_studio_data_sources__artifact_id__versions__version_id__submit_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "description": "Required. The strong ETag of the version you read, for example \"7\". A stale or weak one is a 412; none, *, a list or a repeat is a 428.",
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required. The strong ETag of the version you read, for example \"7\". A stale or weak one is a 412; none, *, a list or a repeat is a 428.",
+              "title": "If-Match"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmitView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Submit a endpoint draft: sealed, checked, on to its gate or its approval",
+        "tags": [
+          "studio"
+        ]
+      }
+    },
+    "/api/v1/studio/data-sources/{artifact_id}/versions/{version_id}/withdraw": {
+      "post": {
+        "operationId": "withdraw_data_sources_version_api_v1_studio_data_sources__artifact_id__versions__version_id__withdraw_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Withdraw a endpoint candidate back to its draft",
+        "tags": [
+          "studio"
+        ]
+      }
+    },
     "/api/v1/studio/node-types": {
       "get": {
         "operationId": "list_node_types_api_v1_studio_node_types_get",
@@ -18741,6 +19127,242 @@
         ]
       }
     },
+    "/api/v1/studio/objects/{artifact_id}/versions/{version_id}/submit": {
+      "post": {
+        "operationId": "submit_objects_version_api_v1_studio_objects__artifact_id__versions__version_id__submit_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "description": "Required. The strong ETag of the version you read, for example \"7\". A stale or weak one is a 412; none, *, a list or a repeat is a 428.",
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required. The strong ETag of the version you read, for example \"7\". A stale or weak one is a 412; none, *, a list or a repeat is a 428.",
+              "title": "If-Match"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmitView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Submit a object draft: sealed, checked, on to its gate or its approval",
+        "tags": [
+          "studio"
+        ]
+      }
+    },
+    "/api/v1/studio/objects/{artifact_id}/versions/{version_id}/withdraw": {
+      "post": {
+        "operationId": "withdraw_objects_version_api_v1_studio_objects__artifact_id__versions__version_id__withdraw_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Withdraw a object candidate back to its draft",
+        "tags": [
+          "studio"
+        ]
+      }
+    },
+    "/api/v1/studio/publish-approvals/{approval_id}/candidate": {
+      "get": {
+        "operationId": "read_publish_candidate_api_v1_studio_publish_approvals__approval_id__candidate_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "approval_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Approval Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidateView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "The candidate of a pending publish request, for the person who may decide it",
+        "tags": [
+          "studio"
+        ]
+      }
+    },
     "/api/v1/studio/workflows/{artifact_id}/kill": {
       "post": {
         "operationId": "kill_workflows_api_v1_studio_workflows__artifact_id__kill_post",
@@ -19043,7 +19665,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/VersionView"
+                  "$ref": "#/components/schemas/SubmitView"
                 }
               }
             },
@@ -19070,7 +19692,7 @@
             "description": "The server failed"
           }
         },
-        "summary": "Submit a workflow draft: sealed, checked, on to its gate",
+        "summary": "Submit a workflow draft: sealed, checked, on to its gate or its approval",
         "tags": [
           "studio"
         ]

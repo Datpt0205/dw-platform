@@ -4,8 +4,9 @@ composition root (tenant-config R2.15; ADR-0100 decision 6, ADR-0109 decision 1)
 A kind's spec registers one entry with every field named, none defaulted: the
 document schema, the read, write and submit keys its routes check (from the
 one permission catalogue, `studio.<area>.<verb>`, tenant-rbac R1.6), its
-publish hook, and two pure functions over a document: `validate` returns every
-problem with its JSON pointer, `extract` every use it makes of something else.
+publish hook, two pure functions over a document (`validate` returns every
+problem with its JSON pointer, `extract` every use it makes of something
+else), and its comparator, or None (agent-lifecycle R2.8).
 
 The quality-gate flag is not here: it is `studio.artifact_kinds.has_quality_gate`
 alone, a column with no DEFAULT (R2.14). The kinds the running app registers
@@ -35,6 +36,11 @@ on the tighten-only branch (agent-lifecycle R2.9, R5.5). It changes no stage
 and writes no `studio.version.published`; `seal` never calls it."""
 
 Validate = Callable[[Any], Sequence[DocumentProblem]]
+Compare = Callable[[Any | None, Any], bool]
+"""A kind without a quality gate's comparator (agent-lifecycle R2.8): given
+the live version's document (None when there is none) and the one just
+sealed, whether every change only tightens (`tighten_only`). The `object`
+kind's is `compare_object(live, doc).tighten_only` (custom-objects/06)."""
 Extract = Callable[[Any], Sequence[Reference]]
 ModelProfiles = Callable[[Any], frozenset[str]]
 """The model profiles a root's document declares, which its runs pin by value
@@ -52,7 +58,9 @@ class ArtifactKindEntry:
     """One kind. Every field but `model_profiles` is required: a kind that
     forgot a key or its hook cannot be constructed (R2.15). `model_profiles`
     defaults to none, because a kind that names no model profile is the
-    common case and its runs still pin the deployment's default."""
+    common case and its runs still pin the deployment's default. `compare` is
+    named on every entry like the rest, None for a kind with no comparator,
+    whose submit is never tighten-only (agent-lifecycle R2.8)."""
 
     kind: str
     document_schema: str
@@ -62,6 +70,7 @@ class ArtifactKindEntry:
     publish_hook: PublishHook
     validate: Validate
     extract: Extract
+    compare: Compare | None
     model_profiles: ModelProfiles = no_model_profiles
 
     def __post_init__(self) -> None:

@@ -1,11 +1,12 @@
 """What `LifecycleService` asks of storage, of the run controls, and of each
-kind's submit checks (agent-lifecycle R2.1, R2.4-R2.7, R7.9).
+kind's submit checks (agent-lifecycle R2.1, R2.4-R2.11, R5, R7.9, R7.12).
 
 One transaction is the envelope's own (`ArtifactTx`, under the caller's
-tenant), so a seal, its checks, the stage it moves to and the audit commit or
-roll back together; this port adds only what the stage machine reads beyond
-the envelope. Who may act is the service's question, what a row may become is
-`studio.guard_version_stage()`'s.
+tenant, or the tenant alone for a recorded decision), so a seal, its checks,
+the stage it moves to, the publish request it opens and the audit commit or
+roll back together; this port adds only what the stage machine reads and
+writes beyond the envelope. Who may act is the service's question, what a row
+may become is `studio.guard_version_stage()`'s.
 """
 
 from __future__ import annotations
@@ -17,17 +18,31 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from dw_platform.application.access_context import AccessContext
+from dw_platform.application.authorization import ApprovalAudience
 from dw_platform.application.control_switches import ControlSwitchTx
 from dw_platform.domain.approval import ApprovalRequest
+from dw_platform.domain.outbox import OutboxEvent
 from dw_studio.core.application.bindings import BindingVerdict
-from dw_studio.core.application.ports import ArtifactTx, Dependent, VersionRow
+from dw_studio.core.application.ports import ArtifactTx, BindingTx, Dependent, VersionRow
 from dw_studio.core.domain.artifacts import ClosureItem
+
+
+@dataclass(frozen=True, slots=True)
+class PublishDecision:
+    """A decided publish request as its `.decided` handler reads it: the
+    type, the outcome, the workspace it was raised in and who decided."""
+
+    approval_type: str
+    approved: bool
+    workspace_id: uuid.UUID
+    decided_by: uuid.UUID
 
 
 class LifecycleTx(Protocol):
     @property
-    def envelope(self) -> ArtifactTx:
-        """The envelope's transaction this one extends; `seal` runs in it."""
+    def envelope(self) -> BindingTx:
+        """The envelope's transaction this one extends; `seal` and the
+        bindings check run in it."""
         ...
 
     async def has_quality_gate(self, kind: str) -> bool:
@@ -52,10 +67,41 @@ class LifecycleTx(Protocol):
         (R2.6)."""
         ...
 
+    async def open_approval(self, request: ApprovalRequest) -> None:
+        """A new publish request, before the version that names it (R5.1)."""
+        ...
+
+    async def announce(self, event: OutboxEvent) -> None:
+        """One outbox event in this transaction (`studio.version.live`)."""
+        ...
+
+    async def publish_decision(self, approval_id: uuid.UUID) -> PublishDecision | None:
+        """The request and its decision, under the tenant's RLS; None when
+        there is no such request or it is not decided."""
+        ...
+
+    async def candidate_artifact(self, approval_id: uuid.UUID) -> uuid.UUID | None:
+        """The artifact of the version whose `publish_approval_id` is this
+        request, read without a lock: the caller locks the artifact, then
+        reads the version again under it."""
+        ...
+
+    async def visible_approval(
+        self, approval_id: uuid.UUID, *, workspace_id: uuid.UUID, audience: ApprovalAudience
+    ) -> ApprovalRequest | None:
+        """The request as the approval inbox reads it: in the caller's
+        workspace and seen by `audience` (ADR-0004, amendment 2026-10-07)."""
+        ...
+
 
 class LifecycleStore(Protocol):
     def transaction(self, context: AccessContext) -> AbstractAsyncContextManager[LifecycleTx]:
         """Commits on a clean exit, rolls back on an exception."""
+        ...
+
+    def for_tenant(self, tenant_id: uuid.UUID) -> AbstractAsyncContextManager[LifecycleTx]:
+        """A transaction under the tenant alone, for a recorded decision
+        carried out with no caller (the `.decided` handler)."""
         ...
 
 
@@ -114,9 +160,15 @@ class SubmitCheck(Protocol):
 class PublishBindingsCheck(Protocol):
     """Whether a version's required bindings all have approved values
     (agent-lifecycle R2.11, R5.10; tenant-config R7.2), asked at the submit and
-    by the publish handler; `BindingStatus.satisfied` answers it at the
-    composition root (tenant-config ticket 05). The submit and the handler
-    that ask it are agent-lifecycle ticket 04's. Its own transaction, under the
-    tenant alone: the handler has no caller. Raising stops the publish."""
+    by the publish handler; `BindingStatus.satisfied_in` answers it at the
+    composition root (tenant-config ticket 05).
 
-    async def satisfied(self, tenant_id: uuid.UUID, version_id: uuid.UUID) -> BindingVerdict: ...
+    In the caller's transaction, not one of its own (agent-lifecycle ticket 04,
+    a decision under delegation): the submit's seal wrote the where-used index
+    the closure's declarations are read from and holds the component's lock,
+    so a second transaction would read the closure before the seal and wait on
+    that lock. Raising stops the publish."""
+
+    async def satisfied_in(
+        self, tx: BindingTx, tenant_id: uuid.UUID, version_id: uuid.UUID
+    ) -> BindingVerdict: ...

@@ -100,6 +100,9 @@ def _entry(kind: str) -> ArtifactKindEntry:
         publish_hook=_no_hook,
         validate=validate_fixture,
         extract=extract_fixture,
+        # No comparator: `fixture_gateless` is the shape of `endpoint`, every
+        # submit waits for approval (agent-lifecycle ticket 04).
+        compare=None,
     )
 
 

@@ -23,13 +23,14 @@ from __future__ import annotations
 import json
 import uuid
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession
 
-from dw_studio.core.application.ports import ArtifactTx, VersionRow
+from dw_studio.core.application.bindings import BindingVerdict
+from dw_studio.core.application.ports import ArtifactTx, BindingTx, VersionRow
 from dw_studio.core.domain.artifacts import ClosureItem, Stage
 from dw_studio.lifecycle.application.ports import SubmitRefusal
 
@@ -286,3 +287,22 @@ class RefusingCheck:
         if self.fail:
             raise RuntimeError("the check could not answer")
         return SubmitRefusal(self.reason_code, "the fixture check refuses this version")
+
+
+@dataclass
+class StubBindings:
+    """`PublishBindingsCheck` for a test (agent-lifecycle ticket 04): answers
+    `unset` (every binding set when empty), or raises when `fail` is set;
+    records each version it was asked about."""
+
+    unset: tuple[str, ...] = ()
+    fail: bool = False
+    asked: list[uuid.UUID] = field(default_factory=list)
+
+    async def satisfied_in(
+        self, tx: BindingTx, tenant_id: uuid.UUID, version_id: uuid.UUID
+    ) -> BindingVerdict:
+        self.asked.append(version_id)
+        if self.fail:
+            raise RuntimeError("the bindings check could not answer")
+        return BindingVerdict(self.unset)

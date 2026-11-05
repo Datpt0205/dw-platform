@@ -176,6 +176,7 @@ from dw_platform.application.support_access import (
 from dw_platform.application.tenant_members import TenantMembersService
 from dw_platform.application.work_queue import WorkQueue
 from dw_studio.core.application.registry import ArtifactKindEntry
+from dw_studio.lifecycle.application.publish import PUBLISH_PREFIX
 from dw_usage.adapters.limit_policies_sql import SqlLimitPolicies
 from dw_usage.adapters.limits_sql import SqlLimits
 from dw_usage.adapters.sql import SqlTenantTimezones, SqlUsageReads
@@ -530,6 +531,10 @@ def _build_container(
     # component, takes a second person (agent-lifecycle R7.11; D11), here as
     # in the worker.
     wiring.approval_flow.strict_approval_prefixes |= {LIFECYCLE_PREFIX}
+    # Publishing a Studio version takes a person who is not its submitter,
+    # with a reason, here as in the worker (agent-lifecycle R5.2; ADR-0104
+    # decision 11); `build_studio` adds the guard against every other author.
+    wiring.approval_flow.strict_approval_prefixes |= {PUBLISH_PREFIX}
     # The portal half of a decision on Zalo (ADR 0007, channels Z5): the view
     # receipt and the single-use code. A context registers who answers for its
     # approval types' subject version on `approval_subjects` at the seam below

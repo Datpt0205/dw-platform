@@ -46,6 +46,7 @@ from dw_studio.lifecycle.application.service import LifecycleService
 from dw_studio.testing.fixture_kinds import FIXTURE_KINDS, planted_fixture_kinds
 from dw_studio.testing.lifecycle import (
     RefusingCheck,
+    StubBindings,
     decide_for_test,
     move_for_test,
     publish_for_test,
@@ -108,7 +109,12 @@ def lifecycle_of(
     store = artifacts.store
     assert isinstance(store, SqlArtifactStore)
     return LifecycleService(
-        SqlLifecycleStore(store), artifacts, controls or Controls(), checks or {}, SystemClock()
+        SqlLifecycleStore(store),
+        artifacts,
+        controls or Controls(),
+        checks or {},
+        SystemClock(),
+        bindings=StubBindings(),
     )
 
 
@@ -190,9 +196,11 @@ async def test_r2_1_a_submit_seals_records_and_moves_to_evaluating_in_one_go(
     target, target_v1 = await live_one(artifacts, migrator, writer)
     artifact_id, version_id, row_version = await created(artifacts, writer, uses=[target])
 
-    moved = await lifecycle.submit(
-        writer.context(), "fixture", artifact_id, version_id, ExpectedVersion(row_version)
-    )
+    moved = (
+        await lifecycle.submit(
+            writer.context(), "fixture", artifact_id, version_id, ExpectedVersion(row_version)
+        )
+    ).version
 
     row = await version(migrator, version_id)
     assert (moved.stage.value, row.stage, row.version_no) == ("evaluating", "evaluating", 1)
@@ -469,22 +477,6 @@ async def test_r2_1_a_version_that_is_not_this_artifacts_draft_is_404_and_seals_
             )
     row = await version(migrator, version_id)
     assert (row.stage, row.version_no) == ("draft", None)
-
-
-async def test_a_gateless_kinds_submit_waits_for_ticket_04(
-    artifacts: ArtifactService, lifecycle: LifecycleService, world: StudioWorld
-) -> None:
-    """No branch yet: 404, as an unmounted segment would answer."""
-    writer = world["writer"]
-    artifact_id, version_id, row_version = await created(artifacts, writer, kind="fixture_gateless")
-    with pytest.raises(NotFoundError):
-        await lifecycle.submit(
-            writer.context(),
-            "fixture_gateless",
-            artifact_id,
-            version_id,
-            ExpectedVersion(row_version),
-        )
 
 
 # ============================================================== withdraw ==

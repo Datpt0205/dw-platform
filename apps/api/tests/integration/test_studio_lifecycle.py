@@ -222,7 +222,7 @@ async def test_r1_3_two_submits_at_once_give_one_202_and_one_candidate_exists(ap
         ("reader", "agents", 403),  # reads it, lacks the kind's submit key
         ("ws2_writer", "agents", 404),  # holds the key in ws2 only
         ("writer", "workflows", 404),  # the segment names another kind
-        ("writer", "objects", 404),  # not mounted until ticket 04
+        ("writer", "objects", 404),  # not among this test's segments
     ],
 )
 async def test_r2_1_who_and_where_may_submit(api: Api, who: str, segment: str, status: int) -> None:

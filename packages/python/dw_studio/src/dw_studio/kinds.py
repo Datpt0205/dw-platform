@@ -71,6 +71,9 @@ def object_kind(
         publish_hook=MetadataService(object_store, clock, ids).apply,
         validate=validate_object,
         extract=extract_object,
+        # The comparator is custom-objects/06's (`compare_object(live,
+        # doc).tighten_only`); until then every submit waits for approval.
+        compare=None,
     )
 
 
@@ -96,6 +99,8 @@ def workflow_kind(
         publish_hook=workflow_publish_hook(triggers, boundaries, nodes),
         validate=WorkflowValidator(nodes, tools, expressions),
         extract=WorkflowDependencies(nodes),
+        # A gated kind: its versions reach approval through the gate (R2.8).
+        compare=None,
     )
 
 

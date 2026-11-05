@@ -37,7 +37,14 @@ const PREVIEW_KEY = "preview";
  * generic title below — the card still shows every argument, so nothing about
  * the decision is hidden, only its headline is less specific.
  */
-const APPROVAL_TITLE: Record<string, string> = {};
+const APPROVAL_TITLE: Record<string, string> = {
+  // agent-lifecycle 04: a Studio version waiting for a second person to
+  // publish it; the review screen is ticket 07's.
+  "studio.publish.agent": "Duyệt phát hành phiên bản agent",
+  "studio.publish.workflow": "Duyệt phát hành phiên bản quy trình",
+  "studio.publish.object": "Duyệt phát hành phiên bản đối tượng",
+  "studio.publish.endpoint": "Duyệt phát hành phiên bản nguồn dữ liệu",
+};
 
 /**
  * PLUG-IN POINT: field names as the person deciding knows them. An unmapped

@@ -4,11 +4,13 @@ R7.9; the spec's "API").
 
 One route per segment of `SUBMIT_SEGMENTS`, each naming one kind: an artifact
 of another kind under that segment is a 404, as one that does not exist.
-`agents` and `workflows` here; ticket 04 adds `objects` and `data-sources`
-with the branch of a kind without a quality gate. Mounted inside the Studio
-group (`dw_api.main.mount_studio`). Each takes an optional `Idempotency-Key`
-(ADR-0108 decision 4); a submit requires `If-Match`, the draft's ETag (428
-without it, before any write).
+`agents` and `workflows`, and from ticket 04 `objects` and `data-sources`,
+the branch of a kind without a quality gate; retire only under
+`RETIRE_SEGMENTS`. Mounted inside the Studio group (`dw_api.main.mount_studio`).
+Each takes an optional `Idempotency-Key` (ADR-0108 decision 4); a submit
+requires `If-Match`, the draft's ETag (428 without it, before any write), and
+answers 202 with the required bindings that have no approved value yet
+(`binding_unset`, R2.11).
 
 No `from __future__ import annotations`: the routes are defined inside
 `_mount`, and FastAPI resolves a string annotation against the module's
@@ -20,6 +22,7 @@ from collections.abc import Mapping
 from typing import Annotated, Any
 
 from fastapi import APIRouter
+from pydantic import Field
 
 from dw_api.dependencies.auth import RequireStudioAccess
 from dw_api.dependencies.conditions import RequireIfMatch
@@ -27,7 +30,30 @@ from dw_api.dependencies.idempotency import CheckInput, IdempotentOperation, ide
 from dw_api.dependencies.services import RequireContainer
 from dw_api.routes.v1.studio_artifacts import VersionView, version_view
 from dw_kernel.errors import InfrastructureError
-from dw_studio.lifecycle.application.service import LifecycleService
+from dw_studio.lifecycle.application.service import (
+    RETIRE_SEGMENTS,
+    LifecycleService,
+    Submitted,
+)
+
+
+class SubmitView(VersionView):
+    """A submitted version (R2.8-R2.11): `live` on the tighten-only branch,
+    otherwise `evaluating` or `awaiting_approval`."""
+
+    binding_unset: list[str] = Field(
+        description=(
+            "Required bindings with no approved value yet, by name; empty when"
+            " every one has one. Publishing waits for them (R2.11, R5.10)."
+        )
+    )
+
+
+def submit_view(submitted: Submitted) -> SubmitView:
+    return SubmitView(
+        **version_view(submitted.version).model_dump(),
+        binding_unset=list(submitted.binding_unset),
+    )
 
 
 def _service(container: Any) -> LifecycleService:
@@ -88,19 +114,19 @@ def _mount(router: APIRouter, segment: str, kind: str) -> None:
         # The key first: a retry meets its effect before a version is compared.
         idempotency: submit_idempotency,
         expected: RequireIfMatch,
-    ) -> VersionView:
+    ) -> SubmitView:
         service = _service(container)
 
-        async def run(effect: Any) -> VersionView:
-            return version_view(
+        async def run(effect: Any) -> SubmitView:
+            return submit_view(
                 await service.submit(context, kind, artifact_id, version_id, expected, effect)
             )
 
-        async def reread(_id: str) -> VersionView:
-            return version_view(await service.version(context, kind, artifact_id, version_id))
+        async def reread(_id: str) -> SubmitView:
+            return submit_view(await service.submitted(context, kind, artifact_id, version_id))
 
         view = await idempotency.once(status=202, run=run, reread=reread)
-        result: VersionView = await idempotency.record(view, status_code=202)
+        result: SubmitView = await idempotency.record(view, status_code=202)
         return result
 
     async def withdraw(
@@ -150,10 +176,10 @@ def _mount(router: APIRouter, segment: str, kind: str) -> None:
         f"{base}/submit",
         submit,
         methods=["POST"],
-        response_model=VersionView,
+        response_model=SubmitView,
         status_code=202,
         name=f"submit_{name}_version",
-        summary=f"Submit a {kind} draft: sealed, checked, on to its gate",
+        summary=f"Submit a {kind} draft: sealed, checked, on to its gate or its approval",
     )
     router.add_api_route(
         f"{base}/withdraw",
@@ -163,6 +189,8 @@ def _mount(router: APIRouter, segment: str, kind: str) -> None:
         name=f"withdraw_{name}_version",
         summary=f"Withdraw a {kind} candidate back to its draft",
     )
+    if segment not in RETIRE_SEGMENTS:
+        return
     router.add_api_route(
         f"{base}/retire",
         retire,

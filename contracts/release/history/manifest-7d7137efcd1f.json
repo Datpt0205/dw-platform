@@ -1,0 +1,226 @@
+{
+  "api_version": "0.1.0",
+  "approval_policy_version": "1.0.0",
+  "copy_bundles": [
+    {
+      "checksum": "797ad1469d489e51fa021ca1123d32c95e5a1681547dbda79d65bb6c541128d4",
+      "copy_id": "platform.audit_actions.agent_lifecycle",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "2a94ae11e112dd5b6fc1254e9d3635411a13299c2069495b5d61db1003573543",
+      "copy_id": "platform.audit_actions.compliance_pdpl",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "9c5ece27d926622ee7fd5365915e695b0f45afefb557e21604468c7a129e75af",
+      "copy_id": "platform.audit_actions.connections_and_vault",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "14766e86936c5db38b4af925379a0873e035f5272afaa4c4d4bfb99febe7961c",
+      "copy_id": "platform.audit_actions.foundations_hardening",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "0b67fa856ecc410bc07e8f67340c8db8e57a369c35833a13e82c63a6cb86889a",
+      "copy_id": "platform.audit_actions.runtime_hardening",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "04821f3cc903c5b3c0c153b75a88acd603032251c28de52f447ed0357645199b",
+      "copy_id": "platform.audit_actions.tenant_rbac",
+      "version": "1.1.0"
+    },
+    {
+      "checksum": "5cd2208962b123878685d0b73cdea3e2f8f76e70bdf9814de9091dbdd9667d06",
+      "copy_id": "platform.audit_actions.usage_and_limits",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "fc229b16779e65fce795ee379916be3fe9e093993f1fd9325aa6710865358606",
+      "copy_id": "platform.audit_actions.workflow_engine",
+      "version": "1.1.0"
+    },
+    {
+      "checksum": "157df89d9b16a646120c67b8ade1fb7cf6087424aec00a4d1e03e4fe1265554c",
+      "copy_id": "marketing.leadcare_handoff",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "a72da4603bad6b61aaca550fa623e358936c68e27ac0c3d2119b16cc2a3833d0",
+      "copy_id": "platform.run_reason_codes.usage_and_limits",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "6e7f6463054fbe1c803bd8166a0e2b12953bb4783ec8dbf0da066a47e9dcde37",
+      "copy_id": "platform.run_reason_codes.workflow_engine",
+      "version": "1.1.0"
+    },
+    {
+      "checksum": "c945cbd0f35ec3427a62b3da68a52a42e233a47b6402447604668061edda506c",
+      "copy_id": "platform.run_reason_codes.workflow_nodes",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "2866325cda2ce8ea08d86d4869fdd677572499e0d17f36344a255e6516979410",
+      "copy_id": "platform.runtime",
+      "version": "1.3.0"
+    },
+    {
+      "checksum": "d15eb453fc6e6c8a12f13bce4776ad5ea54c92d45725cb4bf08c2c8b8c05f5f5",
+      "copy_id": "platform.runtime",
+      "version": "1.4.0"
+    },
+    {
+      "checksum": "dcfeed6e919c29bac34362aea015040597fcec5657dbc8fe82a86866fc9ec1db",
+      "copy_id": "platform.runtime",
+      "version": "1.5.0"
+    },
+    {
+      "checksum": "f7cd2b502af52c5a650162e7392e1ee3b3b841387f44e6726afaf7bad67fe5f7",
+      "copy_id": "platform.runtime",
+      "version": "1.6.0"
+    },
+    {
+      "checksum": "22b139bbba4f0dd6dc9982501154cddcbb513bea8df4f2c2f0876f0b62374577",
+      "copy_id": "platform.wflite_handoff",
+      "version": "1.0.0"
+    }
+  ],
+  "eval_datasets": [
+    {
+      "checksum": "2c3569c4af18d9543cbb0223b5dd1c59bf2e4932260ec193975baa1ac38d9d9d",
+      "dataset_id": "platform_smoke",
+      "version": "1.2.0"
+    }
+  ],
+  "knowledge_index_version": "2026-07-25.structure-1",
+  "memory_policy_version": "2.0.0",
+  "model_profiles": [
+    {
+      "checksum": "01dd66bd413a1c153441a5bd4928cdf933b35d78925a091a91b337b7cd0139d6",
+      "profile_id": "balanced",
+      "version": "1.1.0"
+    },
+    {
+      "checksum": "1dd26395d44384717eaf4cc4137f5607ed3dd9ac963aa8918cfc014f0be1d94e",
+      "profile_id": "deepseek",
+      "version": "1.1.0"
+    },
+    {
+      "checksum": "8e6a074abd0a0d1cd3cfc185ba9e29c7d24e3f783636c49f27691b0db5e4c26b",
+      "profile_id": "gateway",
+      "version": "2.1.0"
+    },
+    {
+      "checksum": "300b2f7d8869706b6e8114acb1dc00ea5ece153e018423ba42999ccf17c021f5",
+      "profile_id": "low_cost",
+      "version": "1.1.0"
+    },
+    {
+      "checksum": "22a3c5d0cbe263f6a293906c6c44f3edd9551861ad357348ea1cc41c74ce8443",
+      "profile_id": "luna",
+      "version": "1.1.0"
+    },
+    {
+      "checksum": "79ca084912f73e6a44240054d8510a90cad0fca4b73584f2a775cc8a85a4704c",
+      "profile_id": "openai",
+      "version": "1.1.0"
+    }
+  ],
+  "platform_version": "0.1.0",
+  "policies": [
+    {
+      "checksum": "bbebba26b5708933b6f8ab5c43a08f57d4c6ef595e09afb1a9422df0b7d6b49c",
+      "policy_id": "attachment_ingest",
+      "version": "1.1.0"
+    },
+    {
+      "checksum": "44f08cb00c60979eb2a20fcd63dc2c2240a1e10660b34d45e970df0405bbff6a",
+      "policy_id": "platform.marketing_send",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "1f043342bfd8d81f034548353a1edd42b9d637f160b380a7812c014b64d422df",
+      "policy_id": "retention",
+      "version": "1.8.0"
+    },
+    {
+      "checksum": "6cd61b8265d8ce82fdd5047dbec29a09cf5ce6b705226bb97fc24b7e19bf3be5",
+      "policy_id": "worker_runs",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "0248d610a4981c1d88ec2de064f1222659683d07aabd7a3f39473d9d3885d525",
+      "policy_id": "retention.d",
+      "version": "fragments"
+    }
+  ],
+  "price_books": [
+    {
+      "checksum": "68f34df362bafd2f7ab68f27d9bac51ee45e66ab8a2b1afe6f4b1b18ad95836f",
+      "price_book_id": "platform",
+      "version": "1.0.0"
+    }
+  ],
+  "prompt_bundles": [
+    {
+      "checksum": "3a1be60a62c6017cee239689218d350bf8c28174f285575c3610838b6efc1d5a",
+      "prompt_id": "marketing.lead_email_draft",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "76e22bbc017611a298aa4aab5b6e5ffa7fd08b5c5f2bfff951861445b6a8fc9a",
+      "prompt_id": "marketing.lead_reminder_draft",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "52b251bc01bfe3b9dc259bd4d2a119a4958fe2c37f62bc2800e5630f67dd0ac8",
+      "prompt_id": "marketing.lead_reply_classify",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "931911a2cc7402841f7573e900246848c76df3daa1c367b4faff56a8b67fc43d",
+      "prompt_id": "marketing.lead_score",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "b5dee5fc2c33cf58c88dad2853961f1aae2372dafb70080158098a45fb57a042",
+      "prompt_id": "platform.untrusted_demo",
+      "version": "1.1.0"
+    },
+    {
+      "checksum": "331f76d45972c7d70d526fa273519589839f3cbb44b17e2e0ec666a8808f6730",
+      "prompt_id": "wf_ai.workflow_edit",
+      "version": "1.1.0"
+    }
+  ],
+  "rubrics": [],
+  "schema_version": "1.0",
+  "tool_specs": [
+    {
+      "approval_policy": "always",
+      "checksum": "236ac3b0c4c224d3bbc1b3d1cc0fc7ca7a165ba44a94784b1b108c029db6fbc4",
+      "name": "email.send",
+      "side_effect_level": "external",
+      "version": "1.0.0"
+    },
+    {
+      "approval_policy": "never",
+      "checksum": "8669c1963a6f2afaaba4eecd294d5b02888c55d11a6ed7fa085bc7864e0b4494",
+      "name": "mailbox.fetch_reply",
+      "side_effect_level": "none",
+      "version": "1.0.0"
+    },
+    {
+      "approval_policy": "conditional",
+      "checksum": "0b5db11e3eba5e2e0c79fe85a7bffefd3a3a371cef7072f1ba2e33ca5a52f1f3",
+      "name": "work.handoff",
+      "side_effect_level": "internal",
+      "version": "1.0.0"
+    }
+  ],
+  "toolsets": [],
+  "workers": []
+}

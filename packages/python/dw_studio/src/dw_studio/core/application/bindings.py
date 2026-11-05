@@ -470,21 +470,28 @@ class BindingStatus:
     types: BindingTypes
 
     async def satisfied(self, tenant_id: uuid.UUID, version_id: uuid.UUID) -> BindingVerdict:
+        """In a transaction of its own, under the tenant alone."""
         async with self.store.for_tenant(tenant_id) as tx:
-            root = await tx.root_version(version_id)
-            if root is None:
-                raise NotFoundError("version not found")
-            decls = await declarations_of(tx, root.version)
-            approved = await tx.binding_set(root.version.artifact_id, "approved")
-            values = binding_set_values(None if approved is None else approved.document)
-            review = (
-                None
-                if approved is None
-                else Review(
-                    tenant_id, root.owning_workspace_id, approved.proposed_by, "binding_review"
-                )
-            )
-            invalid = await _invalid_names(self.types, tx, review, decls, values)
+            return await self.satisfied_in(tx, tenant_id, version_id)
+
+    async def satisfied_in(
+        self, tx: BindingTx, tenant_id: uuid.UUID, version_id: uuid.UUID
+    ) -> BindingVerdict:
+        """In the caller's transaction: a submit asks it after its seal wrote
+        the where-used index, under the component's lock (agent-lifecycle
+        ticket 04)."""
+        root = await tx.root_version(version_id)
+        if root is None:
+            raise NotFoundError("version not found")
+        decls = await declarations_of(tx, root.version)
+        approved = await tx.binding_set(root.version.artifact_id, "approved")
+        values = binding_set_values(None if approved is None else approved.document)
+        review = (
+            None
+            if approved is None
+            else Review(tenant_id, root.owning_workspace_id, approved.proposed_by, "binding_review")
+        )
+        invalid = await _invalid_names(self.types, tx, review, decls, values)
         return BindingVerdict(tuple(sorted({*unset_required(decls, values), *invalid})))
 
 

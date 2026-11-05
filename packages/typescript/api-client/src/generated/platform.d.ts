@@ -2013,7 +2013,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Submit a agent draft: sealed, checked, on to its gate */
+        /** Submit a agent draft: sealed, checked, on to its gate or its approval */
         post: operations["submit_agents_version_api_v1_studio_agents__artifact_id__versions__version_id__submit_post"];
         delete?: never;
         options?: never;
@@ -2213,6 +2213,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/studio/data-sources/{artifact_id}/versions/{version_id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit a endpoint draft: sealed, checked, on to its gate or its approval */
+        post: operations["submit_data_sources_version_api_v1_studio_data_sources__artifact_id__versions__version_id__submit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/studio/data-sources/{artifact_id}/versions/{version_id}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw a endpoint candidate back to its draft */
+        post: operations["withdraw_data_sources_version_api_v1_studio_data_sources__artifact_id__versions__version_id__withdraw_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/studio/node-types": {
         parameters: {
             query?: never;
@@ -2332,6 +2366,57 @@ export interface paths {
         patch: operations["update_record_api_v1_studio_objects__api_name__records__record_id__patch"];
         trace?: never;
     };
+    "/api/v1/studio/objects/{artifact_id}/versions/{version_id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit a object draft: sealed, checked, on to its gate or its approval */
+        post: operations["submit_objects_version_api_v1_studio_objects__artifact_id__versions__version_id__submit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/studio/objects/{artifact_id}/versions/{version_id}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw a object candidate back to its draft */
+        post: operations["withdraw_objects_version_api_v1_studio_objects__artifact_id__versions__version_id__withdraw_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/studio/publish-approvals/{approval_id}/candidate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The candidate of a pending publish request, for the person who may decide it */
+        get: operations["read_publish_candidate_api_v1_studio_publish_approvals__approval_id__candidate_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/studio/workflows/{artifact_id}/kill": {
         parameters: {
             query?: never;
@@ -2392,7 +2477,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Submit a workflow draft: sealed, checked, on to its gate */
+        /** Submit a workflow draft: sealed, checked, on to its gate or its approval */
         post: operations["submit_workflows_version_api_v1_studio_workflows__artifact_id__versions__version_id__submit_post"];
         delete?: never;
         options?: never;
@@ -3247,10 +3332,71 @@ export interface components {
             /** Cancelled */
             cancelled: boolean;
         };
+        /** CandidateView */
+        CandidateView: {
+            /**
+             * Approval Id
+             * Format: uuid
+             */
+            approval_id: string;
+            /**
+             * Artifact Id
+             * Format: uuid
+             */
+            artifact_id: string;
+            /**
+             * Changes
+             * @description What the candidate changes against that version; every field an `add` when there is none.
+             */
+            changes: components["schemas"]["ChangeView"][];
+            /** Definition Hash */
+            definition_hash: string | null;
+            /** Document */
+            document: {
+                [key: string]: unknown;
+            };
+            /** Kind */
+            kind: string;
+            /**
+             * Live Version Id
+             * @description The version the candidate was compared with when it was submitted; null when there was none.
+             */
+            live_version_id: string | null;
+            /**
+             * Version Id
+             * Format: uuid
+             */
+            version_id: string;
+            /** Version No */
+            version_no: number;
+        };
         /** ChangeStateRequest */
         ChangeStateRequest: {
             /** State */
             state: string;
+        };
+        /** ChangeView */
+        ChangeView: {
+            /**
+             * After
+             * @description The candidate's value; null on `remove`.
+             */
+            after?: unknown;
+            /**
+             * Before
+             * @description The compared version's value; null on `add`.
+             */
+            before?: unknown;
+            /**
+             * Op
+             * @enum {string}
+             */
+            op: "add" | "remove" | "replace";
+            /**
+             * Path
+             * @description JSON pointer (RFC 6901) of the value that changed.
+             */
+            path: string;
         };
         /** ClassStandingView */
         ClassStandingView: {
@@ -5811,6 +5957,41 @@ export interface components {
             schema: {
                 [key: string]: unknown;
             };
+        };
+        /**
+         * SubmitView
+         * @description A submitted version (R2.8-R2.11): `live` on the tighten-only branch,
+         *     otherwise `evaluating` or `awaiting_approval`.
+         */
+        SubmitView: {
+            /** Based On Version Id */
+            based_on_version_id: string | null;
+            /**
+             * Binding Unset
+             * @description Required bindings with no approved value yet, by name; empty when every one has one. Publishing waits for them (R2.11, R5.10).
+             */
+            binding_unset: string[];
+            /** Change Note */
+            change_note: string | null;
+            /** Content Hash */
+            content_hash: string | null;
+            /** Definition Hash */
+            definition_hash: string | null;
+            /** Document */
+            document: {
+                [key: string]: unknown;
+            };
+            /** Document Schema */
+            document_schema: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Stage */
+            stage: string;
+            /** Version No */
+            version_no: number;
         };
         /** SupportGrantModel */
         SupportGrantModel: {
@@ -11878,7 +12059,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["VersionView"];
+                    "application/json": components["schemas"]["SubmitView"];
                 };
             };
             /** @description The request was refused */
@@ -12584,6 +12765,96 @@ export interface operations {
             };
         };
     };
+    submit_data_sources_version_api_v1_studio_data_sources__artifact_id__versions__version_id__submit_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
+                "Idempotency-Key"?: string | null;
+                /** @description Required. The strong ETag of the version you read, for example "7". A stale or weak one is a 412; none, *, a list or a repeat is a 428. */
+                "If-Match"?: string[] | null;
+            };
+            path: {
+                artifact_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubmitView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    withdraw_data_sources_version_api_v1_studio_data_sources__artifact_id__versions__version_id__withdraw_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                artifact_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VersionView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     list_node_types_api_v1_studio_node_types_get: {
         parameters: {
             query?: never;
@@ -12935,6 +13206,136 @@ export interface operations {
             };
         };
     };
+    submit_objects_version_api_v1_studio_objects__artifact_id__versions__version_id__submit_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
+                "Idempotency-Key"?: string | null;
+                /** @description Required. The strong ETag of the version you read, for example "7". A stale or weak one is a 412; none, *, a list or a repeat is a 428. */
+                "If-Match"?: string[] | null;
+            };
+            path: {
+                artifact_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubmitView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    withdraw_objects_version_api_v1_studio_objects__artifact_id__versions__version_id__withdraw_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                artifact_id: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VersionView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    read_publish_candidate_api_v1_studio_publish_approvals__approval_id__candidate_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                approval_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CandidateView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     kill_workflows_api_v1_studio_workflows__artifact_id__kill_post: {
         parameters: {
             query?: never;
@@ -13092,7 +13493,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["VersionView"];
+                    "application/json": components["schemas"]["SubmitView"];
                 };
             };
             /** @description The request was refused */

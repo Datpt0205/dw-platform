@@ -1,0 +1,13 @@
+# The audit actions agent-lifecycle writes, with their Vietnamese labels: this
+# spec's fragment of the action catalogue telemetry-and-audit merges
+# (telemetry-and-audit R1.6; H-21). Ticket 04 writes the first three: the
+# version published (by its submitter on the tighten-only branch, by the
+# decider on the outbox lane), sent back to its draft (withdrawn, rejected or
+# not appliable), and its candidate read by the person deciding it.
+schema_version: "1.0"
+copy_id: platform.audit_actions.agent_lifecycle
+version: "1.0.0"
+actions:
+  studio.version.published: "Phát hành phiên bản thành bản đang dùng"
+  studio.version.returned_to_draft: "Đưa phiên bản về bản nháp"
+  studio.version.candidate_read: "Người duyệt xem bản ứng viên chờ phát hành"

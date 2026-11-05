@@ -51,7 +51,11 @@ from dw_platform.application.connection_admin import ConnectionService
 from dw_platform.application.service_principals import ServicePrincipalService
 from dw_studio.core.application.service import ArtifactService
 from dw_studio.lifecycle.application.kill import KILL_SEGMENTS, KillSwitchService
-from dw_studio.lifecycle.application.service import SUBMIT_SEGMENTS, LifecycleService
+from dw_studio.lifecycle.application.service import (
+    RETIRE_SEGMENTS,
+    SUBMIT_SEGMENTS,
+    LifecycleService,
+)
 from dw_studio.records.application.record_service import RecordService
 from dw_usage.application.limits import LIMITS_MANAGE
 
@@ -147,13 +151,15 @@ DECLARED: dict[tuple[str, str], object] = {
         "/api/v1/studio/artifacts/{artifact_id}/bindings/proposals/{config_version_id}/withdraw",
     ): bindings_routes._may_withdraw,
     # The stored kind's submit key, or the retire key, at the artifact's owning
-    # workspace, one segment per kind (agent-lifecycle R2.1, R2.4, R2.5).
+    # workspace, one segment per kind (agent-lifecycle R2.1, R2.4, R2.5); retire
+    # under `RETIRE_SEGMENTS` alone (ticket 04).
     **{
         ("POST", f"/api/v1/studio/{segment}/{{artifact_id}}/versions/{{version_id}}/{action}"): (
             lifecycle_routes._may_retire if action == "retire" else lifecycle_routes._may_submit
         )
         for segment in SUBMIT_SEGMENTS
         for action in ("submit", "withdraw", "retire")
+        if action != "retire" or segment in RETIRE_SEGMENTS
     },
     # `studio.lifecycle.kill` at the component's owning workspace, after its
     # read key, one segment per kind a switch kills (agent-lifecycle R8.1, R8.6).

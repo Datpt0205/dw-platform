@@ -9,6 +9,7 @@ layer lives. Only the composition root imports concrete adapters
 from __future__ import annotations
 
 import os
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -51,7 +52,7 @@ from dw_agent_runtime.ports import BindingReviewPort, LimitsPort, RunControlPort
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.tool_specs import ToolSpecRegistry
 from dw_agent_runtime.tools import ToolRegistry
-from dw_agent_runtime.wflite.catalog import PackCatalog
+from dw_agent_runtime.wflite.catalog import PackCatalog, ShippedToolSpecs
 from dw_agent_runtime.wflite.node_wrapper import StudioNodePorts, StudioRunPorts
 from dw_agent_runtime.wflite.registry import build_node_registry
 from dw_agent_runtime.wflite.starter import WorkflowRunStarter
@@ -71,6 +72,7 @@ from dw_knowledge.gateway import KnowledgeGateway
 from dw_knowledge.ingest_jobs import IngestJobQueue, IngestJobStore
 from dw_knowledge.ports import DocumentParserPort, EmbeddingPort, ObjectStoragePort, VectorIndexPort
 from dw_observability.telemetry import TelemetryPort
+from dw_platform.adapters.persistence.connections_repo import SqlConnectionStore
 from dw_platform.adapters.persistence.egress_allowlist_repo import SqlAllowedHosts
 from dw_platform.adapters.persistence.held_run_alerts import SqlHeldRunAlerts
 from dw_platform.adapters.persistence.plan_model_profiles import (
@@ -79,10 +81,21 @@ from dw_platform.adapters.persistence.plan_model_profiles import (
 )
 from dw_platform.adapters.persistence.residency import SqlRouteClasses
 from dw_platform.adapters.persistence.uow import SqlPlatformUnitOfWorkFactory
+from dw_platform.application.connections import ConnectionUsability, NoConnectorCatalog
 from dw_platform.application.work_queue import WorkQueue
+from dw_studio.core.adapters.artifact_store import SqlArtifactStore
 from dw_studio.core.adapters.cel.engine import CelCppEngine
 from dw_studio.core.adapters.run_manifest_store import SqlRunManifestEngines
 from dw_studio.core.adapters.studio_runs import SqlStudioRunStore
+from dw_studio.core.application.bindings import BindingStatus, platform_binding_types
+from dw_studio.core.application.registry import ArtifactKindEntry, ArtifactKindRegistry
+from dw_studio.core.application.service import ArtifactService
+from dw_studio.kinds import platform_kinds
+from dw_studio.lifecycle.adapters.store import SqlLifecycleStore
+from dw_studio.lifecycle.application.service import LifecycleService
+from dw_studio.records.adapters.actor_boundaries import SqlActorBoundaries
+from dw_studio.records.adapters.definition_store import object_store_of
+from dw_studio.workflows.adapters.triggers import NoTriggerSubscriptions
 from dw_usage.adapters.limits_sql import SqlLimits
 from dw_usage.adapters.price_book_file import enforce_price_coverage, load_price_book
 from dw_usage.adapters.sql import SqlUsageLedger
@@ -541,6 +554,55 @@ def build_studio_runner(
             alerts=SqlHeldRunAlerts(sessions),
             expressions=CelCppEngine(),
         ),
+    )
+
+
+def build_studio_kinds(
+    *, clock: UtcClock, ids: IdGenerator, kinds: Sequence[ArtifactKindEntry] | None = None
+) -> ArtifactKindRegistry:
+    """The worker's `ArtifactKindRegistry`: exactly `platform_kinds(...)`, built
+    as the API's `build_studio` builds it, so a publish hook runs here as it
+    would there (agent-lifecycle ticket 04 step 0). `kinds=` is a test's door,
+    never settings or the environment (tenant-config R2.15)."""
+    if kinds is not None:
+        return ArtifactKindRegistry(kinds)
+    return ArtifactKindRegistry(
+        platform_kinds(
+            object_store_of,
+            clock=clock,
+            ids=ids,
+            nodes=build_node_registry(),
+            tools=ShippedToolSpecs.load(CONFIGS / "tools"),
+            triggers=NoTriggerSubscriptions(),
+            boundaries=SqlActorBoundaries(),
+            expressions=CelCppEngine(),
+        )
+    )
+
+
+def build_studio_lifecycle(
+    sessions: async_sessionmaker[AsyncSession],
+    registry: ArtifactKindRegistry,
+    *,
+    run_control: RunControlPort,
+    clock: UtcClock,
+    ids: IdGenerator,
+) -> LifecycleService:
+    """The one writer of a version's stage, as the publish handler needs it
+    (agent-lifecycle R5.5): the process's run controls and the bindings check
+    over the same connection rule as the API's (`NoConnectorCatalog`). The
+    worker submits nothing, so no per-kind submit check is wired."""
+    store = SqlArtifactStore(sessions, ids)
+    usability = ConnectionUsability(
+        store=SqlConnectionStore(sessions), catalog=NoConnectorCatalog()
+    )
+    return LifecycleService(
+        SqlLifecycleStore(store),
+        ArtifactService(store, registry, clock, ids),
+        run_control,
+        {},
+        clock,
+        bindings=BindingStatus(store, platform_binding_types(usability)),
     )
 
 

@@ -7,7 +7,7 @@ from __future__ import annotations
 import pytest
 
 from dw_studio.core.domain.artifacts import Stage, may_move
-from dw_studio.lifecycle.application.service import SUBMIT_SEGMENTS
+from dw_studio.lifecycle.application.service import RETIRE_SEGMENTS, SUBMIT_SEGMENTS
 
 pytestmark = pytest.mark.unit
 
@@ -34,6 +34,13 @@ def test_draft_to_live_is_the_tighten_only_branch_of_a_kind_without_a_gate() -> 
     assert not may_move(D, L, gated=True, tighten_only=True)
 
 
-def test_only_the_gated_kinds_segments_are_mounted_in_this_ticket() -> None:
-    """Ticket 04 adds `objects` and `data-sources` with the gateless branch."""
-    assert dict(SUBMIT_SEGMENTS) == {"agents": "agent", "workflows": "workflow"}
+def test_each_segment_names_one_kind_and_retire_is_agents_and_workflows_only() -> None:
+    """Ticket 04 added `objects` and `data-sources` with the gateless branch;
+    a live object or data source is not retired by this route (the spec's API)."""
+    assert dict(SUBMIT_SEGMENTS) == {
+        "agents": "agent",
+        "workflows": "workflow",
+        "objects": "object",
+        "data-sources": "endpoint",
+    }
+    assert {"agents", "workflows"} == RETIRE_SEGMENTS
