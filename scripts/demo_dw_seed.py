@@ -7,7 +7,11 @@ way a person would make it, so every invariant those paths hold holds here too:
    ``scripts/grant_platform_operator.py``, the documented first-operator bootstrap
    (the one step no API can do: the operator API is itself operator-gated);
 2. the operator creates the tenant with its two owners, the Business Owner and
-   the Technical Owner (``POST /platform/tenants``); it is born in ``setup``;
+   the Technical Owner (``POST /platform/tenants``); it is born in ``setup``,
+   at ``vn_only`` like every tenant, and the seed, as the migrator, moves this
+   one synthetic tenant to ``cross_border_full`` (``allow_cross_border``), since
+   every shipped model profile is foreign and loosening has no two-person
+   flow yet (compliance-pdpl ticket 03);
 3. both owners sign in, which links their invitations and makes the tenant
    ``active`` (tenant-rbac R3.9, org-and-principals R4.5);
 4. the Business Owner invites the Work Assigner, the Validator and the sales
@@ -27,16 +31,22 @@ Sign-in is the dev issuer's (``scripts/demo_dw_api.py``). The ids land in
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import os
 import subprocess
 import sys
+import uuid
 from pathlib import Path
 from typing import Any
 
 import httpx
+import sqlalchemy as sa
+from sqlalchemy.ext.asyncio import create_async_engine
 
+from dw_kernel.residency import RouteClass
 from dw_platform.adapters.identity.dev_token import DevTokenVerifier
+from dw_platform.adapters.persistence import tables
 from scripts.demo_dw_api import Api, DemoError, Person, wait_until_up
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -44,6 +54,8 @@ TENANT_SLUG = "dw-demo"
 TENANT_NAME = "Công ty Demo DW"
 SENDER = "dw-leadcare@demo.local"
 REPLY_WAIT_SECONDS = 60
+# Synthetic data only: the demo tenant's class, never a real tenant's.
+DEMO_ROUTE_CLASS: RouteClass = "cross_border_full"
 
 
 OPERATOR = Person("operator", "dev|dwdemo.operator", "operator@dwdemo.local", "Vận hành nền tảng")
@@ -73,7 +85,30 @@ def grant_operator(email: str) -> None:
         raise DemoError(f"grant_platform_operator: {done.stderr.strip() or done.stdout.strip()}")
 
 
-def seed(api: Api) -> dict[str, Any]:
+async def allow_cross_border(database_url: str, tenant_id: str) -> None:
+    """The demo tenant's class, set as the migrator before its first run pins one.
+
+    compliance-pdpl ticket 03 refuses every foreign route to a `vn_only` tenant,
+    and loosening through `PATCH /admin/tenant` answers 409
+    `second_person_required` until the two-person flow exists; the coordinator's
+    decision (studio.md, 2026-11-05) is this one direct write, for the demo's
+    synthetic tenant only. Real tenants keep `vn_only`.
+    """
+    engine = create_async_engine(database_url)
+    try:
+        async with engine.begin() as conn:
+            moved = await conn.execute(
+                sa.update(tables.tenants)
+                .where(tables.tenants.c.id == uuid.UUID(tenant_id))
+                .values(data_route_class=DEMO_ROUTE_CLASS)
+            )
+        if moved.rowcount != 1:
+            raise DemoError(f"tenant {tenant_id} not found as the migrator")
+    finally:
+        await engine.dispose()
+
+
+def seed(api: Api, database_url: str) -> dict[str, Any]:
     api.sign_in(OPERATOR)
     grant_operator(OPERATOR.email)
     tenant = api.call(
@@ -89,6 +124,7 @@ def seed(api: Api) -> dict[str, Any]:
         expect=201,
     )
     scope = (tenant["tenant_id"], tenant["workspace_id"])
+    asyncio.run(allow_cross_border(database_url, tenant["tenant_id"]))
     ids = {
         person.role: api.sign_in(person)["principal_id"]
         for person in (BUSINESS_OWNER, TECHNICAL_OWNER)
@@ -192,14 +228,15 @@ def main() -> int:
     args = parser.parse_args()
     base_url = os.environ.get("DW_DEMO_API_URL", "http://localhost:8010").rstrip("/")
     secret = os.environ.get("DW_API_DEV_SECRET", "")
-    if not os.environ.get("DW_DATABASE_URL"):
+    database_url = os.environ.get("DW_DATABASE_URL", "")
+    if not database_url:
         print("DW_DATABASE_URL (the demo database's migrator) is required", file=sys.stderr)
         return 2
     with httpx.Client(timeout=30) as http:
         api = Api(base_url=base_url, tokens=DevTokenVerifier(secret), http=http)
         try:
             wait_until_up(http, base_url)
-            state = seed(api)
+            state = seed(api, database_url)
         except DemoError as exc:
             print(f"!! seed: {exc}", file=sys.stderr)
             return 1
