@@ -56,6 +56,11 @@ commits. Each lane runs its integration tests with its own
 the other is testing on. Tickets that share a migration chain step, a contract snapshot or a
 table are not run side by side.
 
+A lane writes only the files it owns. A fixer runs on named paths (`ruff check --fix <own files>`),
+never on the tree, and a file that looks changed is never reset from `HEAD` (`git show HEAD:… >`,
+`checkout`, `restore`, `stash`): on 5/11/2026 a tree-wide `ruff --fix` made another lane's test
+file look changed, and overwriting it from `HEAD` threw that lane's work away mid-ticket.
+
 ## At the queue's close — once, before the queue is called done
 
 1. `scripts/mutate.py` for every `mutations/<NN>.yaml` the queue wrote.
