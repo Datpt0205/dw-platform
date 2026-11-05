@@ -1,0 +1,178 @@
+# Mutation check of record-access ticket 04: scripts/mutate.py runs this file at
+# the queue's close (wave-close.md). One mutation per control (RA18-RA21, RA27 and
+# the gate's (b), (d), (e), (f), (g), (h), (i), (m), (o)) and per layer that holds
+# one (failure-modes #3, #5): the database's in the migration, taking effect when
+# the suite's session fixture recreates the database; the application's in the
+# module that holds it. The scan mutations edit the file a source scan reads, in
+# place (`mutate-in-place`).
+mutations:
+  - name: RA18 R6.3 a module outside the list binds agent
+    file: packages/python/dw_platform/tests/unit/test_session_setting_scan.py
+    old: |2-
+          "packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/record_session.py": (
+              frozenset({"agent"}),
+    new: |2-
+          "packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/record_session.py": (
+              frozenset({"agent", "workflow"}),
+    tests:
+      - packages/python/dw_platform/tests/unit/test_session_setting_scan.py::test_a_binder_or_a_builder_outside_its_list_is_named
+  - name: RA18 R6.3 (g) app.boundary_id leaves the scanned settings
+    file: packages/python/dw_platform/tests/unit/test_session_setting_scan.py
+    old: 'SETTINGS = ("app.workspace_scope", "app.actor_kind", "app.boundary_id", "app.run_mode")'
+    new: 'SETTINGS = ("app.workspace_scope", "app.actor_kind", "app.run_mode")'
+    tests:
+      - packages/python/dw_platform/tests/unit/test_session_setting_scan.py::test_each_form_of_a_setter_is_named
+  - name: RA18 R6.3 (d) the principal is not checked against the run row
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/tenant_session.py
+    old: "        if row.bound is None or row.bound != row.principal:\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_tenant_wide_scope.py::test_a_run_s_actor_for_another_principal_or_no_row_binds_nothing
+      - packages/python/dw_studio/tests/integration/test_actor_boundaries.py::test_r6_3_a_context_naming_another_principal_or_run_binds_nothing
+      - packages/python/dw_studio/tests/integration/test_actor_boundaries.py::test_r6_9_an_unattended_workflow_reads_with_its_service_account
+  - name: RA18 R6.3 (e) the mode comes from RunContext, not the run row
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/record_session.py
+    old: "        (await session.execute(_REACH_DOOR)).first()\n"
+    new:
+      "        (await session.execute(_REACH_DOOR)).first()\n        await session.execute(text(\"SELECT\
+      \ set_config('app.run_mode', :m, true)\"), {\"m\": run.run_mode})\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_actor_boundaries.py::test_r6_3_the_mode_is_the_run_row_s_never_the_context_s
+  - name: RA19 R6.4 the boundary arm leaves the record policies
+    file: db/migrations/versions/996c234cfde3_actor_boundaries.py
+    old: "        return _actor_ok(command) if boundary else _USER_OK\n"
+    new:
+      "        return (\n            f\"({_USER_OK} OR (SELECT studio.acl_actor_kind()) IN ('agent',\
+      \ 'workflow'))\"\n            if boundary\n            else _USER_OK\n        )\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_actor_boundaries.py::test_r6_4_a_lead_boundary_reads_no_campaign_and_never_deletes_a_lead
+      - packages/python/dw_studio/tests/integration/test_actor_boundaries.py::test_r6_4_an_injected_request_for_another_person_s_lead_finds_nothing
+      - packages/python/dw_studio/tests/integration/test_record_policies.py::test_r4_1_every_record_table_holds_the_module_s_policies
+  - name: RA19 R6.4 the soft delete asks the boundary's update, not delete
+    file: packages/python/dw_studio/src/dw_studio/records/adapters/record_policy.py
+    old: "        f\" AND (deleted_at IS NULL OR ({actor_sql('delete')} AND {reach_sql('delete')}))))\"\n"
+    new: "        f\" AND (deleted_at IS NULL OR ({actor_sql('update')} AND {reach_sql('delete')}))))\"\n"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_record_policy.py::test_a_soft_delete_needs_update_and_delete_reach
+      - packages/python/dw_studio/tests/integration/test_record_policies.py::test_r4_1_every_record_table_holds_the_module_s_policies
+  - name: RA19 R6.4 (f) a child run binds its own boundary only
+    file: db/migrations/versions/996c234cfde3_actor_boundaries.py
+    old: "AND p.chain_depth < c.chain_depth\n"
+    new: "AND p.chain_depth < c.chain_depth AND false\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_actor_boundaries.py::test_r6_4_a_child_run_reads_the_intersection_of_its_chain
+  - name: RA19 R6.4 (f) the chain unions its boundaries instead of intersecting them
+    file: db/migrations/versions/996c234cfde3_actor_boundaries.py
+    old: "            HAVING count(*) = (SELECT listed FROM admitted)\n"
+    new: "            HAVING count(*) >= 1\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_actor_boundaries.py::test_r6_4_a_child_run_reads_the_intersection_of_its_chain
+  - name: RA19 R6.5 an id of another company's boundary is skipped, not refused
+    file: db/migrations/versions/996c234cfde3_actor_boundaries.py
+    old: "            WHERE admitted.listed > 0 AND admitted.usable = admitted.listed\n"
+    new: "            WHERE admitted.listed > 0\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_actor_boundaries.py::test_r6_5_no_boundary_or_another_company_s_reads_nothing
+      - packages/python/dw_studio/tests/integration/test_actor_boundaries.py::test_r6_13_a_provisional_boundary_outside_simulate_reads_and_writes_nothing
+  - name: RA19 R6.5 a chain missing a link keeps the links it found
+    file: db/migrations/versions/996c234cfde3_actor_boundaries.py
+    old: "                         AND bool_and(boundary_id IS NOT NULL)\n"
+    new: "                         AND bool_or(boundary_id IS NOT NULL)\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_actor_boundaries.py::test_r6_5_no_boundary_or_another_company_s_reads_nothing
+  - name: RA19 R6.6 the tool session reads no reach door (stamped reach)
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/record_session.py
+    old: "        (await session.execute(_REACH_DOOR)).first()\n"
+    new: "        pass\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_actor_boundaries.py::test_r6_6_a_resumed_run_reads_with_the_principal_s_reach_now
+  - name: RA19 R6.6 the actor settings outlive the transaction
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/tenant_session.py
+    old: "    \"       set_config('app.boundary_id', :boundary, true),\"\n"
+    new: "    \"       set_config('app.boundary_id', :boundary, false),\"\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_actor_boundaries.py::test_r6_6_the_next_transaction_on_the_connection_carries_no_actor
+      - packages/python/dw_platform/tests/unit/test_session_setting_scan.py::test_every_exemption_says_why_and_is_still_there
+  - name: R6.7 two published boundaries for one version
+    file: db/migrations/versions/996c234cfde3_actor_boundaries.py
+    old: "    \"CREATE UNIQUE INDEX uq_actor_boundaries_tenant_id_kind_source_id_source_version\"\n"
+    new: "    \"CREATE INDEX uq_actor_boundaries_tenant_id_kind_source_id_source_version\"\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_actor_boundaries.py::test_r6_7_record_writes_one_boundary_by_api_name
+      - packages/python/dw_studio/tests/integration/test_metadata_matches_catalog.py
+  - name: R6.7 an unknown api_name is skipped on a published boundary
+    file: db/migrations/versions/996c234cfde3_actor_boundaries.py
+    old: "        IF p_run_id IS NULL THEN\n"
+    new: "        IF false THEN\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_actor_boundaries.py::test_r6_7_record_writes_one_boundary_by_api_name
+  - name: R6.7 (i) dw_app may insert a boundary row again
+    file: db/migrations/versions/996c234cfde3_actor_boundaries.py
+    old: "    op.execute(_for_role(\"dw_app\", f\"GRANT SELECT, DELETE ON {tables} TO dw_app;\"))\n"
+    new: "    op.execute(_for_role(\"dw_app\", f\"GRANT SELECT, INSERT, DELETE ON {tables} TO dw_app;\"))\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_actor_boundaries.py::test_r6_7_dw_app_inserts_no_boundary_row
+      - packages/python/dw_platform/tests/integration/test_privileges.py::test_dw_app_reads_and_deletes_a_boundary_and_writes_none
+  - name: RA20 R6.8 the trigger lets UPDATE through
+    file: db/migrations/versions/996c234cfde3_actor_boundaries.py
+    old: "        IF TG_OP = 'UPDATE' THEN\n"
+    new: "        IF TG_OP = 'UPDATE' THEN\n            RETURN NEW;\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_actor_boundaries.py::test_r6_8_a_boundary_never_changes_and_a_published_one_stays_while_active
+  - name: RA20 R6.8 the trigger lets DELETE through while the company is active
+    file: db/migrations/versions/996c234cfde3_actor_boundaries.py
+    old: "        IF NOT FOUND OR v_status = 'offboarding' THEN\n"
+    new: "        IF true THEN\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_actor_boundaries.py::test_r6_8_a_boundary_never_changes_and_a_published_one_stays_while_active
+  - name: RA21 R6.9 the run binds its requester, not its run-as principal
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/tenant_session.py
+    old: "    \"SELECT r.run_mode, coalesce(r.run_as_principal_id, r.requested_by) AS principal,\"\n"
+    new: "    \"SELECT r.run_mode, r.requested_by AS principal,\"\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_actor_boundaries.py::test_r6_9_an_unattended_workflow_reads_with_its_service_account
+      - packages/python/dw_studio/tests/integration/test_actor_boundaries.py::test_r6_3_the_tool_session_binds_agent_the_run_s_principal_and_boundary
+  - name: R6.10 (h) dw_app loses DELETE on the boundary's object rows
+    file: db/migrations/versions/996c234cfde3_actor_boundaries.py
+    old: "    # 2. The triggers.\n"
+    new: "    op.execute(\"REVOKE DELETE ON studio.actor_boundary_objects FROM dw_app\")\n    # 2. The triggers.\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_offboarding_coverage.py
+      - packages/python/dw_studio/tests/integration/test_actor_boundaries.py::test_r6_10_offboarding_exports_and_purges_the_boundaries
+  - name: RA27 R6.11 record_provisional narrowed to a draft root
+    file: db/migrations/versions/996c234cfde3_actor_boundaries.py
+    old: "              AND (p_run_id IS NOT NULL OR v.definition_hash = p_source_version)\n"
+    new: "              AND ((p_run_id IS NOT NULL AND v.stage = 'draft') OR v.definition_hash = p_source_version)\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_actor_boundaries.py::test_r6_11_a_simulate_run_gets_one_provisional_boundary
+      - packages/python/dw_studio/tests/integration/test_actor_boundaries.py::test_r6_12_a_simulate_run_reads_within_its_provisional_boundary
+  - name: RA27 R6.11 two provisional boundaries for one run
+    file: db/migrations/versions/996c234cfde3_actor_boundaries.py
+    old: "    \"CREATE UNIQUE INDEX uq_actor_boundaries_tenant_id_run_id\"\n"
+    new: "    \"CREATE INDEX uq_actor_boundaries_tenant_id_run_id\"\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_actor_boundaries.py::test_r6_11_a_simulate_run_gets_one_provisional_boundary
+  - name: RA27 R6.13 the simulate check leaves acl_boundary_objects
+    file: db/migrations/versions/996c234cfde3_actor_boundaries.py
+    old: "                   current_setting('app.run_mode', true) IS NOT DISTINCT FROM 'simulate'\n"
+    new: "                   true\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_actor_boundaries.py::test_r6_13_a_provisional_boundary_outside_simulate_reads_and_writes_nothing
+  - name: RA27 R6.14 the run-mode check leaves the trigger
+    file: db/migrations/versions/996c234cfde3_actor_boundaries.py
+    old: "            WHERE r.tenant_id = NEW.tenant_id AND r.id = NEW.run_id AND r.run_mode = 'simulate'\n"
+    new: "            WHERE r.tenant_id = NEW.tenant_id AND r.id = NEW.run_id\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_actor_boundaries.py::test_r6_14_a_provisional_boundary_for_a_live_or_another_company_s_run_is_refused
+  - name: RA27 R6.14 the stated tenant leaves the trigger
+    file: db/migrations/versions/996c234cfde3_actor_boundaries.py
+    old: "            WHERE r.tenant_id = NEW.tenant_id AND r.id = NEW.run_id AND r.run_mode = 'simulate'\n"
+    new: "            WHERE r.id = NEW.run_id AND r.run_mode = 'simulate'\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_actor_boundaries.py::test_r6_14_a_provisional_boundary_for_a_live_or_another_company_s_run_is_refused
+  - name: RA27 R6.15 a child row of a provisional boundary is refused on cascade
+    file: db/migrations/versions/996c234cfde3_actor_boundaries.py
+    old: "            IF NOT FOUND OR v_run IS NOT NULL THEN\n"
+    new: "            IF false THEN\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_actor_boundaries.py::test_r6_15_deleting_a_provisional_boundary_cascades_and_spares_the_rest

@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 
 from dw_platform.adapters.persistence.tenant_session import (
+    ActorBindingRefusedError,
     TenantWideLane,
     TenantWideScopeRefusedError,
     TenantWideScopeRegistry,
@@ -24,19 +25,27 @@ pytestmark = pytest.mark.unit
 
 
 class _Result:
+    def __init__(self, row: Any = None) -> None:
+        self.row = row
+
     def first(self) -> None:
         return None
 
+    def one_or_none(self) -> Any:
+        return self.row
+
 
 class RecordingSession:
-    """Records each statement and its parameters, in order."""
+    """Records each statement and its parameters, in order; a run's row, when
+    given, answers the read of `bind_actor`."""
 
-    def __init__(self) -> None:
+    def __init__(self, run_row: Any = None) -> None:
         self.statements: list[tuple[str, dict[str, Any]]] = []
+        self.run_row = run_row
 
     async def execute(self, statement: Any, params: dict[str, Any] | None = None) -> _Result:
         self.statements.append((str(statement), dict(params or {})))
-        return _Result()
+        return _Result(self.run_row if "platform.worker_runs" in str(statement) else None)
 
 
 OFFBOARDING = TenantWideLane(
@@ -108,7 +117,46 @@ async def test_bind_actor_binds_user_for_the_transaction_and_refuses_another_kin
     await bind_actor(session, "user")  # type: ignore[arg-type]
     [(sql, params)] = session.statements
     assert "set_config('app.actor_kind', :kind, true)" in sql
-    assert params == {"kind": "user"}
+    assert "set_config('app.boundary_id', :boundary, true)" in sql
+    assert "set_config('app.run_mode', :mode, true)" in sql
+    # `user` clears whatever a run's actor bound earlier in the transaction.
+    assert params == {"kind": "user", "boundary": "", "mode": ""}
     with pytest.raises(ValueError):
         await bind_actor(session, "admin")  # type: ignore[arg-type]
+    with pytest.raises(ValueError):
+        await bind_actor(session, "user", run_id=uuid.uuid4())  # type: ignore[arg-type]
+    with pytest.raises(ValueError):
+        await bind_actor(session, "agent")  # type: ignore[arg-type]
     assert len(session.statements) == 1
+
+
+class _RunRow:
+    def __init__(self, principal: uuid.UUID, bound: uuid.UUID | None) -> None:
+        self.run_mode = "live"
+        self.principal = principal
+        self.bound = bound
+        self.chain = "b1,b2"
+
+
+@pytest.mark.parametrize("kind", ["agent", "workflow"])
+async def test_a_run_s_actor_binds_its_row_s_mode_and_chain(kind: str) -> None:
+    """R6.3 (gate (d), (e)): the mode and the boundaries are the row's."""
+    run, principal = uuid.uuid4(), uuid.uuid4()
+    session = RecordingSession(_RunRow(principal, principal))
+    await bind_actor(session, kind, run_id=run)  # type: ignore[arg-type]
+    [(read, read_params), (_, params)] = session.statements
+    assert "studio.boundary_chain(r.id)" in read and read_params == {"run": run}
+    assert params == {"kind": kind, "boundary": "b1,b2", "mode": "live"}
+
+
+@pytest.mark.parametrize("bound", ["another", "none"])
+async def test_a_run_s_actor_for_another_principal_or_no_row_binds_nothing(bound: str) -> None:
+    """Gate (m): `bind_actor` sets no principal; it refuses one the run does not act as."""
+    principal = uuid.uuid4()
+    session = RecordingSession(_RunRow(principal, uuid.uuid4() if bound == "another" else None))
+    with pytest.raises(ActorBindingRefusedError):
+        await bind_actor(session, "agent", run_id=uuid.uuid4())  # type: ignore[arg-type]
+    missing = RecordingSession(None)
+    with pytest.raises(ActorBindingRefusedError):
+        await bind_actor(missing, "workflow", run_id=uuid.uuid4())  # type: ignore[arg-type]
+    assert all("set_config" not in sql for sql, _ in (*session.statements, *missing.statements))

@@ -667,6 +667,15 @@ _STUDIO_DEFINERS: dict[str, str] = {
         "trigger: reads the row's company members, which a definer caller may not, to refuse"
         " an owner who is not an active member (ck_records_owner_in_tenant)"
     ),
+    # record-access ticket 04 (migration 996c234cfde3): dw_app writes no boundary row.
+    "record_actor_boundary": (
+        "the one writer of a data boundary and its object and field rows, which dw_app may"
+        " not INSERT, so a published boundary cannot gain a row after its transaction"
+    ),
+    "refuse_boundary_change": (
+        "trigger: reads the company's status and the parent boundary whatever the caller's"
+        " settings, to refuse a change of a boundary (ck_actor_boundaries_frozen)"
+    ),
 }
 
 
@@ -802,6 +811,12 @@ _STUDIO_WRITES: dict[str, tuple[frozenset[str], frozenset[str]]] = {
         frozenset({"INSERT", "DELETE"}),
         frozenset({"access", "granted_by", "granted_at"}),
     ),
+    # Data boundaries (record-access ticket 04): written only by
+    # `studio.record_actor_boundary`; DELETE for the offboarding lane and a
+    # provisional boundary's end, the trigger refusing the rest (R6.8).
+    "actor_boundaries": (frozenset({"DELETE"}), frozenset()),
+    "actor_boundary_objects": (frozenset({"DELETE"}), frozenset()),
+    "actor_boundary_fields": (frozenset({"DELETE"}), frozenset()),
     "records": (
         frozenset({"INSERT", "DELETE"}),
         frozenset(
@@ -2609,3 +2624,57 @@ async def test_dw_app_calls_the_door_and_the_readers_and_no_one_the_computation(
     finally:
         await migrator.dispose()
     assert {k for k, v in calls.items() if v} == {("dw_app", f) for f in _LEDGER_DOORS}
+
+
+# record-access ticket 04 (migration 996c234cfde3): the data boundaries.
+
+_BOUNDARY_DOORS = (
+    "studio.record_actor_boundary(text, uuid, text, uuid, jsonb, jsonb)",
+    "studio.boundary_chain(uuid)",
+    "studio.acl_boundary_objects(text)",
+)
+_BOUNDARY_TRIGGERS = (
+    "studio.refuse_boundary_change()",
+    "studio.check_provisional_run()",
+)
+
+
+@pytest.mark.parametrize(
+    "relation",
+    ["studio.actor_boundaries", "studio.actor_boundary_objects", "studio.actor_boundary_fields"],
+)
+async def test_dw_app_reads_and_deletes_a_boundary_and_writes_none(
+    db_urls: DatabaseUrls, relation: str
+) -> None:
+    """R6.7, R6.8 (gate (i)): `dw_app` SELECT and DELETE, no INSERT or UPDATE;
+    the provisioner, `dw_agent_ro` and PUBLIC nothing."""
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            held = {(r.rolname, r.verb) for r in await conn.execute(_HELD_VERBS, {"t": relation})}
+            public = await conn.scalar(
+                sa.text("SELECT has_table_privilege('public', :t, 'SELECT')"), {"t": relation}
+            )
+    finally:
+        await migrator.dispose()
+    assert held == {("dw_app", "SELECT"), ("dw_app", "DELETE")}
+    assert not public
+
+
+async def test_dw_app_calls_the_boundary_writer_and_readers_and_no_one_the_triggers(
+    db_urls: DatabaseUrls,
+) -> None:
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            calls = {
+                (role, function): await conn.scalar(
+                    sa.text("SELECT has_function_privilege(:r, :f, 'EXECUTE')"),
+                    {"r": role, "f": function},
+                )
+                for role in ("public", "dw_app", "dw_agent_ro", "dw_provisioner")
+                for function in (*_BOUNDARY_DOORS, *_BOUNDARY_TRIGGERS)
+            }
+    finally:
+        await migrator.dispose()
+    assert {k for k, v in calls.items() if v} == {("dw_app", f) for f in _BOUNDARY_DOORS}

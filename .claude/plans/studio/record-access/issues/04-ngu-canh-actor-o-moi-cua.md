@@ -1,6 +1,6 @@
 # 04 — Ngữ cảnh actor ở mọi cửa và biên dữ liệu của agent và workflow
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 03, .claude/plans/studio/workflow-engine/issues/02-cot-run-va-cua-nhan-run.md, .claude/plans/studio/org-and-principals/issues/03-tai-khoan-dich-vu-run-as.md, .claude/plans/studio/tenant-config/issues/03-che-do-chay-va-gia-lap-o-executor.md
 Area: studio
 Yêu cầu: R6.3, R6.4, R6.5, R6.6, R6.7, R6.8, R6.9, R6.10, R6.11, R6.12, R6.13, R6.14, R6.15, RA18, RA19, RA20, RA21, RA27
@@ -117,59 +117,59 @@ run_id, version_id, pinned_hash, objects, fields) -> boundary_id` cho giới h�
 
 ## Tiêu chí chấp nhận
 
-- [ ] R6.3 (RA18): phiên công cụ của một lượt chạy agent có `app.actor_kind = 'agent'`, `app.user_id` là
+- [x] R6.3 (RA18): phiên công cụ của một lượt chạy agent có `app.actor_kind = 'agent'`, `app.user_id` là
       `coalesce(run_as_principal_id, requested_by)` của dòng lượt và `app.boundary_id` của phiên bản; test kiến trúc: một
       module ngoài bảng cho phép gọi `bind_actor` với `agent` → đỏ; thêm `set_config('app.boundary_id', ...)` ngoài
       `bind_actor` → test quét mã đỏ.
-- [ ] R6.3: dòng lượt có `run_mode` `live` mà `RunContext` mang `simulate` → giao dịch gắn `live`; gắn theo
+- [x] R6.3: dòng lượt có `run_mode` `live` mà `RunContext` mang `simulate` → giao dịch gắn `live`; gắn theo
       `RunContext` → test đỏ.
-- [ ] R6.4 (RA19): giới hạn chỉ có `mkt_lead` với `can_read`: bản ghi của object khác → 0 dòng dù chủ thể thấy nó;
+- [x] R6.4 (RA19): giới hạn chỉ có `mkt_lead` với `can_read`: bản ghi của object khác → 0 dòng dù chủ thể thấy nó;
       DELETE và xóa mềm một lead khi giới hạn không có `can_delete` → 0 dòng bị ảnh hưởng hay 42501; gỡ nhánh giới hạn
       khỏi policy → test đỏ.
-- [ ] R6.4 (RA19): lượt chạy agent của người U, giới hạn `mkt_lead`, gọi công cụ đọc lead của người V theo id như một
+- [x] R6.4 (RA19): lượt chạy agent của người U, giới hạn `mkt_lead`, gọi công cụ đọc lead của người V theo id như một
       lời nhắc bị chèn yêu cầu → 0 dòng, công cụ trả không tìm thấy.
-- [ ] R6.4 (RA19): lượt quy trình cha có giới hạn chỉ `mkt_lead` `can_read`, lượt con có giới hạn `mkt_lead`
+- [x] R6.4 (RA19): lượt quy trình cha có giới hạn chỉ `mkt_lead` `can_read`, lượt con có giới hạn `mkt_lead`
       và `mkt_campaign` với mọi cờ → lượt con đọc `mkt_campaign` 0 dòng và không sửa được lead; chỉ gắn giới hạn của lượt
       con → test đỏ.
-- [ ] R6.5 (RA19): loại `agent` không có `app.boundary_id` → 0 dòng; `app.boundary_id` của một giới hạn thuộc tenant B
+- [x] R6.5 (RA19): loại `agent` không có `app.boundary_id` → 0 dòng; `app.boundary_id` của một giới hạn thuộc tenant B
       → 0 dòng; một mắt xích của chuỗi thuộc tenant B → 0 dòng.
-- [ ] R6.6 (RA19): lượt chạy dừng chờ phê duyệt, chủ thể mất lần gán vai trò, lượt chạy tiếp tục → câu lệnh kế tiếp
+- [x] R6.6 (RA19): lượt chạy dừng chờ phê duyệt, chủ thể mất lần gán vai trò, lượt chạy tiếp tục → câu lệnh kế tiếp
       0 dòng; đọc tầm đóng dấu thay vì gọi cửa sổ tầm → test đỏ.
-- [ ] R6.6: giao dịch `agent` commit trên một kết nối, giao dịch kế tiếp trên cùng kết nối gắn tenant mà
+- [x] R6.6: giao dịch `agent` commit trên một kết nối, giao dịch kế tiếp trên cùng kết nối gắn tenant mà
       không gọi `bind_actor` → 0 bản ghi; đặt setting bằng `set_config(..., false)` → test đỏ.
-- [ ] R6.7: `ActorBoundaryPort.record` ghi đúng một giới hạn cho mỗi bộ (loại, `version_id`, `definition_hash`), với
+- [x] R6.7: `ActorBoundaryPort.record` ghi đúng một giới hạn cho mỗi bộ (loại, `version_id`, `definition_hash`), với
       `ObjectBoundary` theo `api_name` đổi ra đúng `object_id`; ghi lần hai cho cùng phiên bản → 23505, không có dòng thứ
       hai; một `api_name` không có → lỗi, không dòng nào.
-- [ ] R6.7: `dw_app` INSERT một dòng `studio.actor_boundary_objects` vào giới hạn của một phiên bản `live` →
+- [x] R6.7: `dw_app` INSERT một dòng `studio.actor_boundary_objects` vào giới hạn của một phiên bản `live` →
       permission denied; cấp lại INSERT cho `dw_app` → test đỏ.
-- [ ] R6.8 (RA20): UPDATE `studio.actor_boundary_objects` của phiên bản đã ghi, hay của một giới hạn tạm, bằng vai sở hữu
+- [x] R6.8 (RA20): UPDATE `studio.actor_boundary_objects` của phiên bản đã ghi, hay của một giới hạn tạm, bằng vai sở hữu
       bảng → 23514 `ck_actor_boundaries_frozen`, bằng `dw_app` → permission denied; `dw_app` DELETE một dòng của mỗi bảng
       thuộc giới hạn đã phát hành khi công ty `active` → 23514, dòng còn; cùng lệnh khi công ty `offboarding` → xóa được;
       gỡ phép kiểm DELETE khỏi trigger → test đỏ.
-- [ ] R6.9 (RA21): tài khoản dịch vụ chỉ có `read` lead ở mức Của tôi, chạy với loại `workflow`: thấy lead của chính
+- [x] R6.9 (RA21): tài khoản dịch vụ chỉ có `read` lead ở mức Của tôi, chạy với loại `workflow`: thấy lead của chính
       nó, 0 lead của người phát hành có mức Toàn công ty; gắn người phát hành làm chủ thể → test đỏ.
-- [ ] R6.10: công ty `offboarding` có một giới hạn dữ liệu trỏ tới một đối tượng và một trường của nó → lane
+- [x] R6.10: công ty `offboarding` có một giới hạn dữ liệu trỏ tới một đối tượng và một trường của nó → lane
       `offboarding` xuất mỗi dòng của ba bảng một lần rồi xóa hết, cùng định nghĩa đối tượng và trường, không lỗi khóa
       ngoại; dòng của công ty khác còn nguyên; test phủ offboarding (studio-skeleton:R4.1, studio-skeleton:R4.2) xanh;
       thu DELETE của `dw_app` trên `studio.actor_boundary_objects` → test phủ offboarding đỏ (gate (h)).
-- [ ] R6.11 (RA27): với một dòng `platform.worker_runs` `run_mode = 'simulate'` của fixture, `record_provisional` cho
+- [x] R6.11 (RA27): với một dòng `platform.worker_runs` `run_mode = 'simulate'` của fixture, `record_provisional` cho
       một bản Nháp ghi đúng một giới hạn tạm có `run_id` của lượt, `source_id` là `version_id`, `source_version` là
       `pinned_hash`, cùng dòng đối tượng và trường của nó; gọi lần hai cho cùng lượt → 23505, không dòng thứ hai; hai
       lượt `simulate` của cùng bản Nháp, cùng mã băm → hai giới hạn tạm, không đụng chỉ mục duy nhất của giới hạn đã
       phát hành; cùng lời gọi cho một lượt `simulate` có gốc là một Bản ứng viên ở `evaluating` (một lần thử của Lượt
       kiểm định), dưới `(version_id, definition_hash)` → đúng một giới hạn tạm như trên; thu hẹp `record_provisional`
       hay trigger về gốc ở `draft` → lần ghi cho Bản ứng viên bị từ chối, test đỏ.
-- [ ] R6.12 (RA27): lượt `simulate` có giới hạn tạm chỉ có `mkt_lead` với `can_read`, giao dịch gắn
+- [x] R6.12 (RA27): lượt `simulate` có giới hạn tạm chỉ có `mkt_lead` với `can_read`, giao dịch gắn
       `app.run_mode = 'simulate'`: bản ghi `mkt_campaign` → 0 dòng dù người thử thấy nó; lead người thử không thấy →
       0 dòng; lead người thử thấy → 1 dòng; cùng ba ca ở lần thử của Lượt kiểm định trên một Bản ứng viên, giới hạn tạm
       dưới `(version_id, definition_hash)`, chủ thể là người gửi: lead người gửi thấy → 1 dòng, lead người gửi không
       thấy và bản ghi `mkt_campaign` → 0 dòng.
-- [ ] R6.13 (RA27): cùng `app.boundary_id` của giới hạn tạm trong giao dịch có `app.run_mode = 'live'`, hay không gắn
+- [x] R6.13 (RA27): cùng `app.boundary_id` của giới hạn tạm trong giao dịch có `app.run_mode = 'live'`, hay không gắn
       `app.run_mode` → 0 dòng, INSERT bị từ chối; gỡ kiểm `simulate` khỏi `studio.acl_boundary_objects` → test đỏ.
-- [ ] R6.14 (RA27): `record_provisional` với `run_id` của một lượt `live`, hay của một lượt thuộc tenant B → 23514
+- [x] R6.14 (RA27): `record_provisional` với `run_id` của một lượt `live`, hay của một lượt thuộc tenant B → 23514
       `ck_actor_boundaries_provisional_run`, 0 dòng ở ba bảng; gỡ kiểm `run_mode`, hay kiểm `tenant_id` tường minh, khỏi
       trigger → test đỏ.
-- [ ] R6.15 (RA27): hai lượt `simulate` X, Y có giới hạn tạm, cạnh một giới hạn đã phát hành của công ty `active`:
+- [x] R6.15 (RA27): hai lượt `simulate` X, Y có giới hạn tạm, cạnh một giới hạn đã phát hành của công ty `active`:
       `dw_app` DELETE dòng cha của giới hạn tạm của X → dòng đối tượng và trường của nó đi theo cascade, không lỗi
       `ck_actor_boundaries_frozen`, giới hạn tạm của Y và giới hạn đã phát hành còn nguyên; sau commit,
       `app.boundary_id` cũ của X → 0 dòng (R6.5); bỏ nhánh "dòng cha là giới hạn tạm hay không còn" khỏi trigger của bảng
@@ -240,3 +240,67 @@ run_id, version_id, pinned_hash, objects, fields) -> boundary_id` cho giới h�
   dựng: sau 03, workflow-engine/02, org-and-principals/03, tenant-config/03; trước 05, custom-objects/03,
   workflow-engine/03.
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-05 (agent, theo ủy quyền 31/10/2026): quyết khi dựng, mỗi điều một dòng. (D1) `ActorBoundaryPort`,
+  `ObjectBoundary`, `FieldBoundary` khai một chỗ ở `dw_studio.core.application.boundaries`, không ở gói `records`: móc
+  của `workflow` (`dw_studio.workflows`), của `agent` và `RunRequestService` (`dw_studio.core`) không được import
+  `dw_studio.records` (hợp đồng độc lập và "Studio core imports no capability"); adapter `SqlActorBoundaries` ở
+  `dw_studio.records.adapters.actor_boundaries`. Nếu sai thì: port về `records` và core khai một Protocol hẹp của riêng
+  nó. (D2) tham số phiên của port kiểu `Any`, vì lớp application không import SQLAlchemy. Nếu sai thì: một Protocol
+  `execute`/`scalar`. (D3) nối ở composition root của API (`StudioContainer.actor_boundaries`); worker chưa có
+  composition Studio và không phụ thuộc `dw-studio`, nên nối ở đó là một phụ thuộc không ai đọc (failure-modes #1): lane
+  Studio đầu tiên của worker (workflow-engine/04, /05) nối nó. Nếu sai thì: thêm `dw-studio` vào worker và dựng
+  `SqlActorBoundaries` ở `dw_worker/main.py`. (D4) `studio.record_actor_boundary` kiểm thêm phiên bản: là của công ty,
+  và ở giới hạn đã phát hành `definition_hash` của nó bằng mã băm truyền vào (23514 `ck_actor_boundaries_source`);
+  `api_name` không có → 23503 mang tên khóa ngoại của bảng con. Nếu sai thì: bỏ phép kiểm nguồn. (D5) trigger
+  `refuse_boundary_change` là SECURITY DEFINER, đọc `platform.tenants` và dòng cha không qua setting của người gọi;
+  công ty không còn (cascade của chính dòng công ty) thì cho qua, như `platform.guard_control_switch()`. Nếu sai thì:
+  invoker. (D6) `app.boundary_id`, `app.run_mode` vào `_REACH_READS` của `test_rls_coverage.py`, không vào
+  `_TRUSTED_SETTINGS` như bước 4 viết: theo D6 của ticket 03, `app.actor_kind` và `app.user_id` là `_REACH_READS`, và
+  một setting tin cậy sẽ để lọt policy chỉ hẹp theo nó; không policy nào đọc thẳng hai setting này. Nếu sai thì: thêm
+  vào `_TRUSTED_SETTINGS`. (D7) `bind_actor(session, kind, *, run_id=None)`: `user` xóa `app.boundary_id` và
+  `app.run_mode` về rỗng; `agent`, `workflow` đọc chế độ, chủ thể và chuỗi trong một SELECT rồi từ chối
+  (`ActorBindingRefusedError`) trước khi đặt gì; loại không so với `artifact_kind` của dòng. Nếu sai thì: từ chối loại
+  khác `artifact_kind`. (D8) helper phiên công cụ là
+  `dw_agent_runtime.adapters.record_session.agent_record_session(session_factory, run)`, chủ thể lấy từ `RunContext`
+  (`run_as_principal_id`, rồi `requested_by`, rồi `actor_id`) và `bind_actor` đối chiếu dòng lượt; danh sách cho phép
+  của phép quét: `user_session.py` {`user`}, `record_session.py` {`agent`}, `dw_studio.testing.records` {`user`,
+  `agent`, `workflow`} (helper `act_as_run`); `workflow` chưa có người gắn sản xuất, module runner của workflow-engine
+  thêm dòng của nó khi dựng. Nếu sai thì: một dòng cho runner ngay bây giờ. (D9) `studio.boundary_chain` đòi chuỗi tới
+  được một gốc (`parent_run_id` NULL) qua `chain_depth` giảm hẳn, không thì `'{}'`; `studio.acl_boundary_objects` trả
+  `'{}'` cho một danh sách sai dạng thay vì lỗi ép kiểu. Nếu sai thì: lỗi. (D10) revision `ALTER POLICY` bốn policy
+  PERMISSIVE tại chỗ trên bảng cha và mọi partition, văn bản chép từ `record_policy.actor_sql`; `test_record_policies.py`
+  so catalog với module. Nếu sai thì: DROP rồi CREATE. (D11) test trồng phiên bản là bản Nháp đã niêm phong của loại
+  `workflow`, và lượt `artifact_kind = 'agent'` trỏ tới chúng, vì loại `agent` chưa đăng ký tới agent-builder/02; mã
+  giới hạn đọc id và mã băm, không đọc giai đoạn, trừ ca Lượt kiểm định dời Bản ứng viên sang `evaluating` theo đường
+  hợp lệ. Nếu sai thì: trồng lại khi loại `agent` có.
+- 2026-11-05 (agent): reviewing-feature-security: tách tenant (giới hạn và mắt xích của công ty B → 0 dòng, lượt của
+  công ty B ở `record_provisional` → 23514, trigger đọc lượt theo `tenant_id` nêu tường minh, RLS FORCE ba bảng); phân
+  quyền (giới hạn giao tầm sống, cửa sổ tầm ở mỗi giao dịch, chủ thể từ dòng lượt, `dw_app` không INSERT/UPDATE, xóa
+  giới hạn đã phát hành chỉ khi offboarding); tác tử (lời nhắc bị chèn đòi lead của V → không tìm thấy; lượt con giao
+  chuỗi); nội dung không tin cậy không áp dụng (không model, không prompt); audit: không lần ghi nào của ticket là bản
+  ghi một người làm, giới hạn đi trong giao dịch phát hành có audit của agent-lifecycle; vòng đời: setting sống một
+  giao dịch, giới hạn tạm xóa theo lượt (workflow-engine:R3.14), thiếu hay sai dạng → `'{}'`. `mutations/04.yaml` 25
+  mục, chưa chạy `scripts/mutate.py`.
+- 2026-11-05 (agent): MEDIUM. (M5) thứ tự xóa của offboarding: `studio.actor_boundary_fields` RESTRICT tới
+  `studio.field_defs`, mà `field_defs` cũng mất dòng qua CASCADE từ `studio.object_defs`; `order_purge_steps` không
+  mang cascade vào một bảng có bước riêng, nên bước của bảng trường chạy trước `object_defs` chỉ vì nó không có bước
+  nào đứng trước (vòng đầu). Xanh hôm nay (R6.10), ẩn họa nếu sau này một khóa ngoại trỏ tới bảng trường giới hạn.
+  (M6) port, adapter và `agent_record_session` chưa có người gọi sản xuất: agent-builder/03, /05 và workflow-engine/03
+  đọc chúng; failure-modes #1 đứng mở tới đó. (M7) `studio.acl_boundary_objects` thành InitPlan ở mọi câu lệnh, kể cả
+  của `user` (trả `'{}'` nhanh); đo ở lần đo trễ của hàng.
+- 2026-11-05 (agent): resolved. Revision `996c234cfde3`. Test: `test_actor_boundaries.py` 19 ca (R6.3 ba ca gồm lượt
+  của pack và (m), R6.4 ba ca gồm lời nhắc bị chèn và chuỗi con, R6.5 gồm mắt xích thiếu, của B và sai dạng, R6.6 hai,
+  R6.7 hai, R6.8, R6.9, R6.10 qua lane offboarding thật, R6.11-R6.15); `test_privileges.py` (ba bảng, hàm, definer);
+  `test_rls_coverage.py` (bảng toàn tenant, hàm của policy, `_REACH_READS`); đơn vị: quét setting (+3 dạng, người gắn
+  `agent`/`workflow`), `bind_actor` (+3), mẫu policy (+1). Phá tay 9 mục của `mutations/04.yaml` (kiểm `simulate`, nhánh
+  dòng cha của bảng con, tenant nêu tường minh của trigger lượt, `bool_and` của chuỗi, phép giao `HAVING`, `coalesce`
+  chủ thể, cửa sổ tầm của phiên công cụ, quét người gắn `agent`, quét `app.boundary_id`), cả 9 đỏ. Cổng: đơn vị toàn
+  repo xanh, phủ 77,06%; tích hợp: platform (privileges, rls_coverage, offboarding_coverage, offboarding,
+  offboarding_registry) 170 qua, studio (metadata, record_policies, actor_boundaries, principal_scopes) 98 qua; mypy 851
+  tệp, lint-imports 15 hợp đồng, verify_invariants, verify_architecture, check_hygiene, `release_manifest --check`,
+  `check_plans.py` của khu vực 24 Đạt xanh. Không route nên không OpenAPI, không kiểu TS.
+- 2026-11-05 (agent): nợ lúc đóng hàng: `scripts/mutate.py` cho `mutations/04.yaml` (25); `make test-integration` đầy
+  đủ; P50/P95/P99 so với `d5ca66e` của mọi đường đọc và ghi bản ghi dưới policy mới (InitPlan
+  `studio.acl_boundary_objects` thêm vào mỗi câu lệnh, kể cả của `user`), `bind_actor` của `agent`/`workflow` (một
+  SELECT dòng lượt cùng `studio.boundary_chain`) và xuất, xóa của offboarding (ba bảng mới); `/code-review`; không
+  route, ảnh hay dịch vụ nên không reviewing-deployment-security.

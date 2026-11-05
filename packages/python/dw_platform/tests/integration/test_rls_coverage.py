@@ -134,6 +134,11 @@ _TRUSTED_SETTINGS = (
 _REACH_READS = (
     "current_setting('app.actor_kind'",
     "current_setting('app.user_id'",
+    # record-access ticket 04: a run's boundaries and mode, read inside
+    # `studio.acl_boundary_objects`; a policy that read either directly would
+    # be a reach read like the others, valid only beside a tenant clause.
+    "current_setting('app.boundary_id'",
+    "current_setting('app.run_mode'",
     "studio.acl_",
 )
 
@@ -869,6 +874,14 @@ _TENANT_WIDE_ON_PURPOSE: dict[tuple[str, str], str] = {
         "sổ tầm dẫn xuất của một chủ thể và epoch của cả tenant: một dòng đếm mỗi công ty"
         " (record-access ticket 02, ADR-0105 quyết 4, DO-01)"
     ),
+    **{
+        ("studio", table): (
+            "giới hạn dữ liệu của một phiên bản agent hay quy trình đã phát hành, hay giới hạn"
+            " tạm của một lượt `simulate` có gốc chưa phát hành, thuộc định nghĩa toàn tenant"
+            " (record-access ticket 04, DO-01)"
+        )
+        for table in ("actor_boundaries", "actor_boundary_objects", "actor_boundary_fields")
+    },
 }
 
 _TENANT_WITHOUT_WORKSPACE = sa.text(
@@ -1437,6 +1450,8 @@ async def test_every_function_a_record_policy_reads_is_stable_invoker_and_pinned
         "studio.acl_objects(text,text)",
         "studio.acl_keys(text)",
         "studio.acl_create_own_keys()",
+        # record-access ticket 04: the boundary arm of every record policy.
+        "studio.acl_boundary_objects(text)",
     }
     assert record_function_violations(functions) == []
 

@@ -1,11 +1,14 @@
 """Who sets the record settings, and who builds the tenant-wide registry
-(record-access ticket 03, gates (e), (f), (g), (p); ADR-0105 decisions 5 and 6).
+(record-access ticket 03, gates (e), (f), (g), (p); ticket 04, gate (g);
+ADR-0105 decisions 5 and 6).
 
 `app.workspace_scope = 'tenant'` opens every row of the bound tenant, Studio
 records included; `app.actor_kind` is what the record policies admit a
-transaction by. Each has one setter in `tenant_session.py`: `tenant_wide_scope`
-and `bind_actor`. The source under `packages/`, `apps/`, `db/migrations/` and
-`scripts/` is scanned for any other way of setting either:
+transaction by, and `app.boundary_id` and `app.run_mode` what bound an agent or
+a workflow to its run's boundaries. Each has one setter in `tenant_session.py`:
+`tenant_wide_scope` the first, `bind_actor` the other three. The source under
+`packages/`, `apps/`, `db/migrations/` and `scripts/` is scanned for any other
+way of setting one:
 
 * `set_config('<setting>'`, or the setting's name quoted anywhere but inside
   `current_setting(` (a bind parameter naming it);
@@ -36,7 +39,7 @@ pytestmark = pytest.mark.unit
 
 REPO = Path(__file__).resolve().parents[5]
 SCANNED = ("packages", "apps", "db/migrations", "scripts")
-SETTINGS = ("app.workspace_scope", "app.actor_kind")
+SETTINGS = ("app.workspace_scope", "app.actor_kind", "app.boundary_id", "app.run_mode")
 SETTER = "packages/python/dw_platform/src/dw_platform/adapters/persistence/tenant_session.py"
 
 # Frozen: a new entry is a decision, with its reason.
@@ -47,16 +50,21 @@ EXEMPT: dict[str, str] = {
     ),
 }
 
-# Who may call `bind_actor`, with which kinds, and why (ticket 04 adds `agent`
-# for the runtime's tool session and `workflow` for the workflow runner).
+# Who may call `bind_actor`, with which kinds, and why. `workflow` has no
+# production binder yet: the workflow runner's module joins with its own line
+# when workflow-engine builds it (record-access ticket 04, step 4).
 ACTOR_BINDERS: dict[str, tuple[frozenset[str], str]] = {
     "packages/python/dw_studio/src/dw_studio/records/adapters/user_session.py": (
         frozenset({"user"}),
         "the transaction of an authenticated Studio request, the one door of `user`",
     ),
+    "packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/record_session.py": (
+        frozenset({"agent"}),
+        "the transaction of a Studio object tool's call, the one door of `agent` (ticket 04)",
+    ),
     "packages/python/dw_studio/src/dw_studio/testing/records.py": (
-        frozenset({"user"}),
-        "the test helper binding a test's connection as that door does (gate (p))",
+        frozenset({"user", "agent", "workflow"}),
+        "the test helper binding a test's connection as those doors do (gate (p))",
     ),
 }
 
@@ -168,6 +176,8 @@ def test_every_exemption_says_why_and_is_still_there() -> None:
     setter = (REPO / SETTER).read_text(encoding="utf-8")
     assert "set_config('app.workspace_scope', 'tenant', true)" in setter
     assert "set_config('app.actor_kind', :kind, true)" in setter
+    assert "set_config('app.boundary_id', :boundary, true)" in setter
+    assert "set_config('app.run_mode', :mode, true)" in setter
 
 
 def _plant(root: Path, where: str, source: str) -> None:
@@ -188,6 +198,9 @@ def _plant(root: Path, where: str, source: str) -> None:
         'dsn = "postgresql://h/db?options=-c%20app.workspace_scope%3Dtenant"\n',
         "env = {'PGOPTIONS': '-c app.actor_kind=user'}\n",
         "params = {'k': 'app.workspace_scope', 'v': 'tenant'}\n",
+        "q = \"SELECT set_config('app.boundary_id', :b, true)\"\n",
+        "q = \"SET LOCAL app.run_mode = 'simulate'\"\n",
+        "env = {'PGOPTIONS': '-c app.boundary_id=x'}\n",
     ],
     ids=[
         "set_config",
@@ -199,6 +212,9 @@ def _plant(root: Path, where: str, source: str) -> None:
         "DSN options",
         "PGOPTIONS",
         "parameter",
+        "boundary set_config",
+        "run mode SET LOCAL",
+        "boundary PGOPTIONS",
     ],
 )
 def test_each_form_of_a_setter_is_named(tmp_path: Path, source: str) -> None:
@@ -261,8 +277,23 @@ def test_a_binder_or_a_builder_outside_its_list_is_named(tmp_path: Path) -> None
         "apps/worker/src/dw_worker/main.py",
         "REG = TenantWideScopeRegistry()\n",
     )
+    # Ticket 04 (R6.3, RA18): `agent` from a module outside the list, `workflow`
+    # from the runtime's tool session, which binds `agent` only.
+    _plant(
+        tmp_path,
+        "packages/python/dw_studio/src/dw_studio/workflows/adapters/probe.py",
+        "async def f(s, r):\n    await bind_actor(s, 'agent', run_id=r)\n",
+    )
+    _plant(
+        tmp_path,
+        "packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/record_session.py",
+        "async def f(s, r):\n    await bind_actor(s, 'workflow', run_id=r)\n",
+    )
     assert sorted(call_violations(tmp_path, ACTOR_BINDERS, REGISTRY_BUILDERS)) == [
         "apps/api/src/dw_api/bootstrap/probe.py: builds TenantWideScopeRegistry",
+        "packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/record_session.py:"
+        " binds ['workflow']",
         "packages/python/dw_platform/src/dw_platform/adapters/probe.py: calls bind_actor",
         "packages/python/dw_studio/src/dw_studio/records/adapters/user_session.py: binds ['agent']",
+        "packages/python/dw_studio/src/dw_studio/workflows/adapters/probe.py: calls bind_actor",
     ]
