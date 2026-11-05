@@ -724,6 +724,8 @@ tenant_offboarding_requests = sa.Table(
     sa.Column(
         "updated_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text("now()")
     ),
+    # How many times the offboarding lane claimed it (foundations-hardening R11.15).
+    sa.Column("claims", sa.Integer, nullable=False, server_default=sa.text("0")),
 )
 
 policy_overrides = sa.Table(

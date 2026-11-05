@@ -25,7 +25,9 @@ the worker's composition root builds and injects here (record-access ticket 03);
 tells the worker which tenant has a request waiting until it asks, and asking is
 itself the cross-tenant read `app.tenant_id` scoping exists to prevent — so
 it runs under `app.worker_drain`, like the retention sweep, but only for that
-one query. Migration `dd1db8ca43a2`.
+one query. Migration `dd1db8ca43a2`. Before it claims, the lane stops every
+stale `exporting` request it has already claimed three times (R11.15), each in a
+transaction of its own under that request's tenant (R11.20).
 
 What this does NOT do: touch Qdrant (either collection: knowledge chunks or
 memory vectors) or object storage. Both live behind ports
@@ -37,7 +39,9 @@ separately, calling `export_rows`/`purge_rows` here for the Postgres half.
 
 from __future__ import annotations
 
+import logging
 import re
+import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from types import MappingProxyType
@@ -48,16 +52,22 @@ from sqlalchemy import Text, bindparam, text
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from dw_kernel.ids import TenantId, WorkspaceId
+from dw_kernel.ports import SystemClock, UtcClock
+from dw_platform.adapters.persistence.lane_audit import append_across_tenants
 from dw_platform.adapters.persistence.tenant_session import (
     TenantWideScopeRegistry,
     tenant_wide_scope,
 )
+from dw_platform.domain.audit import lane_audit_event
 
 __all__ = [
     "APPEND_ONLY_STEP",
     "EXPORT_BATCH_ROWS",
     "EXPORT_EXCLUSIONS",
+    "MAX_EXPORT_CLAIMS",
     "OFFBOARDING_LANE",
+    "STOPPED_ACTION",
     "STUDIO_EXCLUSIONS",
     "ExportedTable",
     "OffboardingClaim",
@@ -75,10 +85,65 @@ _SET_TENANT = text("SELECT set_config('app.tenant_id', :tenant_id, true)")
 OFFBOARDING_LANE = "offboarding"
 _SET_DRAIN = text("SELECT set_config('app.worker_drain', 'on', true)")
 
+logger = logging.getLogger("dw_platform.offboarding")
+
 # How long an in-progress request goes untouched before `claim_requested`
 # treats it as abandoned by a dead worker rather than owned by a live one.
 # Comfortably above how long one tenant's export+purge should ever take.
 _STALE_CLAIM_MINUTES = 30
+
+# A request still `exporting` after this many claims is stopped instead of
+# claimed again (R11.15): each claim was a worker that died before the bundle
+# was uploaded. A request in `purging` is never stopped (R11.11).
+MAX_EXPORT_CLAIMS = 3
+STOPPED_ACTION = "tenant.offboarding.stopped"
+
+# Under the drain, which requests to stop: the ids only, each stopped in its own
+# transaction (R11.20).
+_STOPPABLE = text(
+    "SELECT id, tenant_id FROM platform.tenant_offboarding_requests"
+    " WHERE status = 'exporting' AND claims >= :max_claims"
+    "   AND updated_at < now() - make_interval(mins => :stale_minutes)"
+    " ORDER BY updated_at, id"
+)
+
+# Under the request's own tenant. The conditions are asked again: a second
+# worker that stopped it first, or a pass that moved it on, leaves no row here,
+# and only a returned row is audited.
+_STOP = text(
+    "UPDATE platform.tenant_offboarding_requests"
+    " SET status = 'failed', error = :error, updated_at = now()"
+    " WHERE id = :id AND tenant_id = :tenant_id AND status = 'exporting'"
+    "   AND claims >= :max_claims AND updated_at < now() - make_interval(mins => :stale_minutes)"
+    " RETURNING requested_by, claims"
+)
+
+# Claims new requests and stale ones, counting each claim (R11.15). A stale
+# `exporting` request already claimed `MAX_EXPORT_CLAIMS` times is never
+# claimed: the stop fails it, or, when its audit could not be written, it
+# waits for the next tick. A stale `purging` request is always claimed.
+_CLAIM = text(
+    "UPDATE platform.tenant_offboarding_requests"
+    " SET status = CASE WHEN status = 'purging' AND export_key IS NOT NULL"
+    "                   THEN 'purging' ELSE 'exporting' END,"
+    "     claims = claims + 1,"
+    "     updated_at = now()"
+    " WHERE status = 'requested'"
+    "    OR (status = 'exporting' AND claims < :max_claims"
+    "        AND updated_at < now() - make_interval(mins => :stale_minutes))"
+    "    OR (status = 'purging' AND updated_at < now() - make_interval(mins => :stale_minutes))"
+    " RETURNING tenant_id, id,"
+    "   CASE WHEN status = 'purging' THEN export_key END AS resume_export_key"
+)
+
+# Any one of the tenant's workspaces: `audit_events.workspace_id` is NOT NULL,
+# and a record of the whole tenant belongs to none of them in particular.
+_A_WORKSPACE = text("SELECT id FROM platform.workspaces WHERE tenant_id = :t ORDER BY id LIMIT 1")
+
+
+class _NoWorkspaceError(Exception):
+    """The stop of a request has no workspace to write its audit against."""
+
 
 # A live pass refreshing its own claim (R11.17); see `keep_claim`.
 _KEEP_CLAIM = text(
@@ -541,6 +606,8 @@ class SqlTenantOffboarding:
     steps: OffboardingPurgeSteps = field(default_factory=OffboardingPurgeSteps.platform)
     # Every row of the leaving tenant, through the worker's frozen registry.
     scopes: TenantWideScopeRegistry = field(kw_only=True)
+    # When a stopped request's audit says it happened (R11.15).
+    clock: UtcClock = field(default_factory=SystemClock, kw_only=True)
 
     async def _exportable_tables(self, session: AsyncSession) -> list[tuple[str, str]]:
         rows = (await session.execute(_CATALOG_EXPORTABLE)).all()
@@ -750,10 +817,7 @@ class SqlTenantOffboarding:
         to trade it against than a missing audit row for an edge case that
         should not occur.
         """
-        workspace_id = await session.scalar(
-            text("SELECT id FROM platform.workspaces WHERE tenant_id = :t LIMIT 1"),
-            {"t": str(tenant_id)},
-        )
+        workspace_id = await session.scalar(_A_WORKSPACE, {"t": str(tenant_id)})
         requested_by = await session.scalar(
             text(
                 "SELECT requested_by FROM platform.tenant_offboarding_requests"
@@ -803,22 +867,17 @@ class SqlTenantOffboarding:
         the SQL purge may already have committed, so exporting again would hand
         back an empty company under a new key. Anything else restarts at
         `exporting`, which only reads and overwrites the request's own key.
+
+        Every claim counts (R11.15). A stale `exporting` request claimed
+        `MAX_EXPORT_CLAIMS` times is stopped first, in its own transaction
+        (R11.20), and never claimed again.
         """
+        await self._stop_dead_requests()
         async with self.session_factory() as session, session.begin():
             await session.execute(_SET_DRAIN)
             rows = await session.execute(
-                text(
-                    "UPDATE platform.tenant_offboarding_requests"
-                    " SET status = CASE WHEN status = 'purging' AND export_key IS NOT NULL"
-                    "                   THEN 'purging' ELSE 'exporting' END,"
-                    "     updated_at = now()"
-                    " WHERE status = 'requested'"
-                    "    OR (status IN ('exporting', 'purging')"
-                    "        AND updated_at < now() - make_interval(mins => :stale_minutes))"
-                    " RETURNING tenant_id, id,"
-                    "   CASE WHEN status = 'purging' THEN export_key END AS resume_export_key"
-                ),
-                {"stale_minutes": _STALE_CLAIM_MINUTES},
+                _CLAIM,
+                {"stale_minutes": _STALE_CLAIM_MINUTES, "max_claims": MAX_EXPORT_CLAIMS},
             )
             return [
                 OffboardingClaim(
@@ -828,6 +887,70 @@ class SqlTenantOffboarding:
                 )
                 for row in rows
             ]
+
+    async def _stop_dead_requests(self) -> None:
+        """Fail every stale `exporting` request claimed `MAX_EXPORT_CLAIMS`
+        times (R11.15), one transaction each (R11.20): a stop whose audit cannot
+        be written rolls back alone, its request stays `exporting` until the
+        next tick, and no other tenant's stop or claim waits on it."""
+        params = {"stale_minutes": _STALE_CLAIM_MINUTES, "max_claims": MAX_EXPORT_CLAIMS}
+        async with self.session_factory() as session, session.begin():
+            await session.execute(_SET_DRAIN)
+            doomed = (await session.execute(_STOPPABLE, params)).all()
+        for row in doomed:
+            try:
+                await self._stop(row.id, row.tenant_id)
+            except Exception:
+                logger.exception(
+                    "offboarding could not stop request %s of tenant %s", row.id, row.tenant_id
+                )
+
+    async def _stop(self, request_id: UUID, tenant_id: UUID) -> None:
+        """The lane stops its own retries, so the record stands in its name and
+        names the operator who asked (R11.15; ADR 0011). Under the request's own
+        tenant, not the drain: by now the tenant is known."""
+        async with self.session_factory() as session, session.begin():
+            await session.execute(_SET_TENANT, {"tenant_id": str(tenant_id)})
+            stopped = (
+                await session.execute(
+                    _STOP,
+                    {
+                        "id": request_id,
+                        "tenant_id": tenant_id,
+                        "error": (
+                            f"stopped by the offboarding lane after {MAX_EXPORT_CLAIMS} claims:"
+                            " every pass ended before the bundle was uploaded"
+                        ),
+                        "stale_minutes": _STALE_CLAIM_MINUTES,
+                        "max_claims": MAX_EXPORT_CLAIMS,
+                    },
+                )
+            ).one_or_none()
+            if stopped is None:
+                return
+            workspace_id = await session.scalar(_A_WORKSPACE, {"t": str(tenant_id)})
+            if workspace_id is None:
+                # Raised inside the transaction: the stop rolls back with it.
+                raise _NoWorkspaceError(f"tenant {tenant_id} has no workspace to audit against")
+            await append_across_tenants(
+                session,
+                [
+                    lane_audit_event(
+                        lane=OFFBOARDING_LANE,
+                        event_id=uuid.uuid4(),
+                        tenant_id=TenantId(tenant_id),
+                        workspace_id=WorkspaceId(workspace_id),
+                        action=STOPPED_ACTION,
+                        resource_type="tenant_offboarding_request",
+                        resource_id=str(request_id),
+                        occurred_at=self.clock.now(),
+                        details={
+                            "requested_by": str(stopped.requested_by),
+                            "claims": stopped.claims,
+                        },
+                    )
+                ],
+            )
 
     async def keep_claim(self, tenant_id: UUID) -> None:
         """Mark the tenant's in-flight request as still owned (R11.17), so a pass

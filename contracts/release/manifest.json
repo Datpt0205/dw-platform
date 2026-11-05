@@ -13,6 +13,11 @@
       "version": "1.0.0"
     },
     {
+      "checksum": "14766e86936c5db38b4af925379a0873e035f5272afaa4c4d4bfb99febe7961c",
+      "copy_id": "platform.audit_actions.foundations_hardening",
+      "version": "1.0.0"
+    },
+    {
       "checksum": "0b67fa856ecc410bc07e8f67340c8db8e57a369c35833a13e82c63a6cb86889a",
       "copy_id": "platform.audit_actions.runtime_hardening",
       "version": "1.0.0"
@@ -85,7 +90,7 @@
       "version": "1.2.0"
     }
   ],
-  "git_sha": "unknown",
+  "git_sha": "87996f5a5648a94dbe880a23103252f22377a48b",
   "knowledge_index_version": "2026-07-25.structure-1",
   "memory_policy_version": "2.0.0",
   "model_profiles": [

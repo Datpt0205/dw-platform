@@ -805,6 +805,7 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
                         session_factory=sessions,
                         steps=build_purge_steps(),
                         scopes=build_tenant_wide_scopes(),
+                        clock=clock,
                     ),
                     artifacts=build_object_storage(settings),
                     exports=build_export_bucket(settings),

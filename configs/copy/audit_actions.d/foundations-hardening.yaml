@@ -1,0 +1,11 @@
+# The audit actions foundations-hardening writes, with their Vietnamese labels:
+# this spec's fragment of the action catalogue telemetry-and-audit merges
+# (telemetry-and-audit R1.6; H-21).
+schema_version: "1.0"
+copy_id: platform.audit_actions.foundations_hardening
+version: "1.0.0"
+actions:
+  # foundations-hardening/09: the offboarding lane stops a request whose export
+  # died three times, as `system:offboarding`, the operator who asked in
+  # `details.requested_by` (R11.15).
+  tenant.offboarding.stopped: "Dừng yêu cầu offboarding sau ba lần xuất không xong"
