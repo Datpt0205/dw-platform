@@ -184,7 +184,7 @@ switch_id}` trong cùng giao dịch; trả 201 với `{switch_id}`;
   `Idempotency-Key`. `UnfreezeSettler` thành `SwitchLiftSettler` với hai dòng `SwitchLift` (`UNFREEZE_LIFT`,
   `REVIVE_LIFT`; bật lại ghi thêm outbox). Lane `control_switch` (`dw_agent_runtime.control_switch_lane`, `SqlKilledRuns`)
   là handler outbox của `control.switch.changed`; `RunCancelUnit`, `RunCancelHook` ở `dw_agent_runtime.ports`, sổ
-  `RunCancelHooks` dựng và đóng ở `build_run_cancel_hooks()` của worker, rỗng. Test: `test_kill_switch.py` (unit, 51 ca),
+  `RunCancelHooks` dựng và đóng ở `build_run_cancel_hooks()` của worker, rỗng. Test: `test_kill_switch.py` (unit, 42 ca; thông điệp commit `a5c3aca` ghi nhầm 51),
   `test_kill_switch_db.py` (17), `test_kill_api.py` (10), hai ca ở `test_studio_runs.py`, hai ở `test_studio_runner.py`;
   `mutations/05.yaml` 23 đột biến chưa chạy, 12 phá tay đều đỏ.
 - 2026-11-05 (agent, theo ủy quyền 31/10/2026): quyết khi dựng. (D1) Thành phần của chính lượt có một chủ:
