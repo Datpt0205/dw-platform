@@ -41,8 +41,8 @@ Since 2026-10-31 the agent decides all of these itself (`studio.md` "Ủy quyề
 - **Runtime:**
     - a plan quota on direct model calls (`runs_per_day`/`spend_usd_per_day`
       are enforced only in the runner);
-    - the model profile and key for uat/production (local runs on `luna`,
-      gpt-5.6-luna, `make check-model`; the key is only in local `.env`);
+    - the model profile and key for uat/production, and a route processed in Vietnam: every profile is foreign, so
+      a `vn_only` company (the default) gets no model call (compliance-pdpl/03; demo seeds run `cross_border_full`);
     - the rerank key for uat/production (local reranks through FPT Cloud,
       `make check-rerank`; the key is only in local `.env`);
     - whether CI runs the web vitest suite and the Playwright specs (`web-ui/antd-shell` ticket 10).
