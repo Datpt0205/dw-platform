@@ -45,3 +45,11 @@ Yêu cầu: không (nguyên mẫu đo đạc, chốt ADR B9-3 trước khi cắt
 - 2026-11-05 (agent, theo ủy quyền 31/10/2026): dòng kết luận chọn cho ticket 03 một cài đặt của `run_graphs: RunGraphsPort` cùng LRU thay `_compiled`, không phải cửa riêng: một cửa trả lời "graph của phiên bản công ty này ở đâu" cho cả quy trình lẫn agent, và đường quy trình hôm nay giữ 257 trên 257 graph (bảng), nên LRU thay `_compiled` đóng cả hai chỗ rò. Nếu sai thì: ADR-0117 (Accepted) quyết 5 giữ cửa riêng bên cạnh `GraphRegistry`, và `_compiled` của đường quy trình cần trần riêng trong lát DW.
 - 2026-11-05 (agent, theo ủy quyền 31/10/2026): "máy đo" ghi cả hai: máy Windows dev và một container Linux `python:3.12-slim-bookworm` trên cùng máy (worker chạy Linux); RSS đo bằng Working Set (Windows) và `VmRSS` (Linux), không thêm `psutil`. Nếu sai thì: đo lại trong ảnh worker thật với giới hạn 1 GiB của compose.
 - 2026-11-05 (agent, theo ủy quyền 31/10/2026): ticket 02 `Blocked by: 01` (MEDIUM iv) không sửa ở đây: ticket 02 không đọc số đo, nhưng sửa cạnh là việc của `checking-plan-consistency` vùng studio. Nếu sai thì: gỡ cạnh ngay khi ticket 02 vào hàng.
+- 2026-11-05 (agent, discovery/15): nguyên mẫu này trả lời discovery/15 câu 1-4, thêm hai tệp:
+  `tests/prototype/test_approval_reaches_the_runner.py` (interrupt phê duyệt tới bên gọi graph với `FilesystemMiddleware`
+  ngoài hay trong ngăn xếp, ở agent gọi và agent liên kết; bản bọc nuốt nó làm 4/4 ca đỏ) và
+  `test_resume_runs_no_call_twice.py` (chết, chờ duyệt, đóng băng sau một lời gọi song song đã xong: 0 lần chạy lại ở
+  tiến trình hai). Mọi test ở đây và ba test hợp đồng xanh trên deepagents 0.7.32 (langchain 1.4.9, langgraph 1.2.20);
+  việc nâng là tools-and-skills/05. Cho ticket 03: `recursion_limit` của lượt không chặn agent con nào, chỉ lease của
+  `LimitsMiddleware` chặn; `include_tools` của `SkillsMiddleware` đưa và chạy công cụ ngoài bộ offer (discovery/15
+  `## Answer`, câu 2 và 3). Thư mục này bị ticket 03 xóa: hai tệp mới đi cùng, và ticket 03 giữ ba phép đo ở test của nó.
