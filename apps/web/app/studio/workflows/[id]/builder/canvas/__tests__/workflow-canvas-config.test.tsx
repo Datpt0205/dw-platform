@@ -23,6 +23,7 @@ vi.mock("@xyflow/react", async (importOriginal) => {
 });
 
 const { default: WorkflowCanvas } = await import("../workflow-canvas");
+const { SHAPES, VIEWS } = await import("./canvas-fixture");
 
 beforeAll(() => {
   globalThis.DOMMatrixReadOnly ??= class {
@@ -33,15 +34,7 @@ beforeAll(() => {
 function draw() {
   render(
     <div style={{ width: 800, height: 600 }}>
-      <WorkflowCanvas
-        shapes={{
-          cards: [
-            { id: "a", x: 0, y: 0, description: "Bước A" },
-            { id: "b", x: 0, y: 136, description: "Bước B" },
-          ],
-          connections: [{ id: "a->b", from: "a", to: "b" }],
-        }}
-      />
+      <WorkflowCanvas shapes={SHAPES} views={VIEWS} />
     </div>,
   );
   return seen.props!;
@@ -70,7 +63,8 @@ describe("the library's own interaction stays off (decision 3)", () => {
 
   it("every edge is unnamed rather than the English default (R2.9)", () => {
     const edges = draw().edges as { ariaLabel?: unknown }[];
-    expect(edges).toHaveLength(1);
+    expect(edges).toHaveLength(SHAPES.connections.length);
+    expect(edges.length).toBeGreaterThan(0);
     for (const edge of edges) expect(edge.ariaLabel).toBeNull();
   });
 });

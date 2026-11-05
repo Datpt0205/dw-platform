@@ -114,8 +114,10 @@ const canvasDark: Record<CanvasColour, string> = {
 
 export const CANVAS_VOCABULARY = {
   colours: { light: canvasLight, dark: canvasDark },
-  /** A step card: fixed size, so the layout measures nothing it draws. */
-  card: { width: 256, height: 88 },
+  /** A step card: fixed size, so the layout measures nothing it draws; tall
+   * enough for the name, the type line and a row of badges (88 px held only
+   * two of the three, workflow-builder-ui/01). */
+  card: { width: 256, height: 120 },
   /** Connections: a solid stroke for the flow, a dashed one for the error
    * lane and the loop's return arrow (SVG `stroke-dasharray`). */
   edge: { width: 1.5, dash: "6 4" },

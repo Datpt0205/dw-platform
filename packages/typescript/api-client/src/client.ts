@@ -327,6 +327,12 @@ export type DigitalWorkerListItem = Generated["DigitalWorkerListItemView"];
 export type DwDecisionClass = Generated["DecisionClassView"];
 export type DwScorecard = Generated["ScorecardView"];
 export type WorkflowOutline = Generated["WorkflowOutlineView"];
+// The step-type catalogue and a Studio draft (workflow-builder-ui/02): the
+// generated types, as the Digital Worker block above.
+export type StudioNodeTypeCatalogue = Generated["NodeTypeCatalogueView"];
+export type StudioNodeType = Generated["NodeTypeView"];
+export type StudioDraft = Generated["ArtifactDraftView"];
+export type StudioSavedDraft = Generated["SavedDraftView"];
 export type WorkflowOutlineStep = Generated["OutlineStepView"];
 export type AdminPermission = Generated["PermissionView"];
 // Tenant roles and who holds them (tenant-rbac ticket 03): a role is the
@@ -378,7 +384,14 @@ export class ApiClient {
     method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
     path: string,
     schema: z.ZodType<T>,
-    init?: { body?: unknown; idempotencyKey?: string; signal?: AbortSignal },
+    init?: {
+      body?: unknown;
+      idempotencyKey?: string;
+      /** The version the caller read: an R3 resource's write sends it as the
+       * strong ETag `"<version>"` (app-standards R3). */
+      ifMatch?: number;
+      signal?: AbortSignal;
+    },
   ): Promise<T> {
     const fetchImpl = this.options.fetchImpl ?? fetch;
     const headers: Record<string, string> = { Accept: "application/json" };
@@ -387,6 +400,7 @@ export class ApiClient {
     if (token) headers.Authorization = `Bearer ${token}`;
     if (init?.body !== undefined) headers["Content-Type"] = "application/json";
     if (init?.idempotencyKey) headers["Idempotency-Key"] = init.idempotencyKey;
+    if (init?.ifMatch !== undefined) headers["If-Match"] = `"${init.ifMatch}"`;
 
     const response = await fetchImpl(`${this.options.baseUrl}${path}`, {
       method,
@@ -1314,6 +1328,51 @@ export class ApiClient {
       "GET",
       `/api/v1/studio/artifacts${pageQueryString(params)}`,
       pageSchema(studioArtifactSchema),
+    );
+  }
+
+  /** One artifact's envelope; 404 for one the caller may not read. */
+  getStudioArtifact(artifactId: string): Promise<StudioArtifact> {
+    return this.request(
+      "GET",
+      `/api/v1/studio/artifacts/${encodeURIComponent(artifactId)}`,
+      studioArtifactSchema,
+    );
+  }
+
+  /** The step-type catalogue (workflow-nodes R1.2); 403 without
+   * `studio.workflows.edit`. */
+  getStudioNodeTypes(signal?: AbortSignal): Promise<StudioNodeTypeCatalogue> {
+    return this.request(
+      "GET",
+      "/api/v1/studio/node-types",
+      generated<StudioNodeTypeCatalogue>(),
+      { signal },
+    );
+  }
+
+  /** The artifact's draft; 404 `not_found` when it has none. */
+  getStudioDraft(artifactId: string): Promise<StudioDraft> {
+    return this.request(
+      "GET",
+      `/api/v1/studio/artifacts/${encodeURIComponent(artifactId)}/draft`,
+      generated<StudioDraft>(),
+    );
+  }
+
+  /** Replace the draft's document under `If-Match` of the draft version the
+   * caller read; 412 when it changed since. The answer carries the new
+   * version and the kind's warnings. */
+  saveStudioDraft(
+    artifactId: string,
+    version: number,
+    document: Record<string, unknown>,
+  ): Promise<StudioSavedDraft> {
+    return this.request(
+      "PUT",
+      `/api/v1/studio/artifacts/${encodeURIComponent(artifactId)}/draft`,
+      generated<StudioSavedDraft>(),
+      { body: { document }, ifMatch: version },
     );
   }
 

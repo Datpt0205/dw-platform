@@ -7,6 +7,7 @@ import {
   sources,
 } from "../../../../../../../lib/__tests__/source-tree";
 import WorkflowCanvas from "../workflow-canvas";
+import { SHAPES, VIEWS } from "./canvas-fixture";
 
 /**
  * The canvas draws what it is given and lets the library do nothing a builder
@@ -29,20 +30,10 @@ beforeAll(() => {
   } as unknown as typeof DOMMatrixReadOnly;
 });
 
-const SHAPES = {
-  cards: [
-    { id: "chuan_hoa", x: 0, y: 0, description: "Chuẩn hóa số điện thoại" },
-    { id: "luu_lead", x: 0, y: 136, description: "Lưu hoặc cập nhật Lead" },
-  ],
-  connections: [
-    { id: "chuan_hoa->luu_lead", from: "chuan_hoa", to: "luu_lead" },
-  ],
-};
-
 function draw(): HTMLElement {
   const { container } = render(
     <div style={{ width: 800, height: 600 }}>
-      <WorkflowCanvas shapes={SHAPES} />
+      <WorkflowCanvas shapes={SHAPES} views={VIEWS} />
     </div>,
   );
   return container;
@@ -51,12 +42,12 @@ function draw(): HTMLElement {
 describe("the workflow canvas (R1.3)", () => {
   it("draws each step body as an antd Card carrying its description", () => {
     const view = draw();
-    const nodes = [...view.querySelectorAll(".react-flow__node")];
+    const nodes = [...view.querySelectorAll(".react-flow__node-step")];
     expect(nodes).toHaveLength(2);
     for (const [i, node] of nodes.entries()) {
       const card = node.querySelector(".ant-card");
       expect(card).not.toBeNull();
-      expect(card?.textContent).toContain(SHAPES.cards[i]!.description);
+      expect(card?.textContent).toContain(VIEWS.get(SHAPES.cards[i]!.id)!.name);
     }
   });
 
@@ -83,7 +74,8 @@ describe("the workflow canvas (R1.3)", () => {
       expect(node.hasAttribute("tabindex")).toBe(false);
     }
     const handles = [...view.querySelectorAll(".react-flow__handle")];
-    expect(handles.length).toBe(4);
+    // Two anchors on each card, "+" and join: one in, one out.
+    expect(handles.length).toBe(2 * nodes.length);
     for (const handle of handles) {
       expect(handle.classList).not.toContain("connectable");
     }
