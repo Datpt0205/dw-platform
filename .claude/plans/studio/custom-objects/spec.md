@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 2/11/2026
-Sẵn sàng: ĐẠT (5/11/2026; 0 CRITICAL, 0 HIGH; ticket 10, 11)
+Sẵn sàng: ĐẠT (5/11/2026; 0 CRITICAL, 0 HIGH; ticket 01-06, 10, 11)
 
 Công ty tự định nghĩa đối tượng và trường của mình (Lead và Campaign của Marketing trước tiên, D4) mà không
 cần nhà vận hành hay migration: định nghĩa là dữ liệu trên các bảng cố định do migration tạo, và mọi đường
