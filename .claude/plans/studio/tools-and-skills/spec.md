@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 2/11/2026
-Sẵn sàng: ĐẠT (4/11/2026; 0 CRITICAL, 0 HIGH; ticket 01-04)
+Sẵn sàng: ĐẠT (5/11/2026; 0 CRITICAL, 0 HIGH; ticket 01-05)
 
 Trợ lý Marketing cần đọc lead và gửi email, mà mỗi lời gọi công cụ phải được kiểm theo đúng lược đồ và
 chính sách của công ty, chạy với quyền của người hỏi, và không để kết quả từ bên ngoài đóng vai chỉ
@@ -532,6 +532,11 @@ action: <tên Hành động>, binding: <tên điểm gắn>}`; `ToolsetSpec`, `v
   `object_crud`, lược đồ thu hẹp theo bảo mật trường và eval của công cụ, chờ ticket 02, custom-objects/04 và
   field-security/01; field-security/02, agent-builder/03 và /05 chờ nó. Theo `## Ủy quyền` của studio.md (Đạt,
   31/10/2026). Nếu sai thì: hạ ticket 03 về `needs-triage` và chia lại.
+- 5/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 05. Ticket 05 nâng deepagents lên 0.7.32 (dòng W2
+  deepagents của Ngoài phạm vi, kéo lên trước kỹ năng W2 theo discovery/15) và khóa bằng test hợp đồng đường
+  `include_tools` của `SkillsMiddleware`; không chờ ticket nào, không chạy song song với agent-builder/03 (cùng thư mục
+  `tests/prototype/`). Theo `## Ủy quyền` của studio.md (Đạt, 31/10/2026). Nếu sai thì: hạ ticket 05 về `needs-triage`
+  và gộp việc nâng vào ticket kỹ năng W2.
 
 ## Danh sách ticket
 
@@ -541,3 +546,4 @@ action: <tên Hành động>, binding: <tên điểm gắn>}`; `ToolsetSpec`, `v
 | 02  | [dw.toolset/v1 và công cụ ghim phiên bản thành StructuredTool, bọc và cắt đầu ra](issues/02-toolset-va-cong-cu-ghim.md)    |
 | 03  | [Công cụ dữ liệu đối tượng theo phiên bản lược đồ, dùng quyền của người gọi](issues/03-cong-cu-du-lieu-doi-tuong.md)       |
 | 04  | [Chế độ strict của args schema theo cờ năng lực của model profile](issues/04-che-do-strict-theo-model-profile.md)          |
+| 05  | [Nâng deepagents lên 0.7.32 và khóa những gì nó đổi bằng test hợp đồng](issues/05-nang-deepagents.md)                      |
